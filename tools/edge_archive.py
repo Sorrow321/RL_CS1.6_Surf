@@ -120,6 +120,7 @@ class RayOperator:
                 f"at max(speed, {self.floor:g} u/s), line spacing {self.spacing:g} u - no planner")
 
 
+FRONTIER_TOP = 0.05     # --select-frontier: the top 5% of live nodes by goal-potential progress
 SURF_LOOK = 1.0         # --moves surf: seconds of free flight searched for the surface of impact
 SURF_DT = 0.05          # ... in 50 ms trace segments
 
@@ -366,6 +367,8 @@ class Archive:
         return sorted({i for s in self.index.values() for i in s})
 
     greedy = False              # --greedy: expand each node once
+    frontier_frac = 0.0         # --select-frontier
+    progress_of = None          # node id -> goal-potential progress (set with --select-frontier)
 
     def select(self, n, rng):
         ids = np.asarray(self.live_ids(), np.int64)
@@ -378,7 +381,22 @@ class Archive:
                 self.n_sel[int(i)] += 1
             return [int(i) for i in pick]
         w = 1.0 / np.sqrt(1.0 + np.asarray([self.n_sel[i] for i in ids], np.float64))
-        pick = rng.choice(ids, size=min(n, len(ids)), replace=len(ids) < n, p=w / w.sum())
+        nf = 0
+        if self.frontier_frac > 0.0 and self.progress_of is not None and len(ids) > 20:
+            # --select-frontier F: F of the parents drawn, with the same count weights, from the
+            # top FRONTIER_TOP of live nodes by the map's goal-potential progress (Go-Explore's
+            # score-aware cell selection, with the map's own potential as the score); the rest
+            # stays count-only, so a dip the potential hides is still explored
+            prog = np.asarray([self.progress_of(i) for i in ids], np.float64)
+            top = ids[prog >= np.quantile(prog, 1.0 - FRONTIER_TOP)]
+            nf = int(round(n * self.frontier_frac))
+            wt = 1.0 / np.sqrt(1.0 + np.asarray([self.n_sel[i] for i in top], np.float64))
+            fpick = rng.choice(top, size=nf, replace=len(top) < nf, p=wt / wt.sum())
+        else:
+            fpick = np.zeros(0, np.int64)
+        pick = rng.choice(ids, size=min(n - nf, len(ids)), replace=len(ids) < n - nf,
+                          p=w / w.sum())
+        pick = np.concatenate([fpick, pick])
         for i in pick:
             self.n_sel[int(i)] += 1
         return [int(i) for i in pick]
@@ -614,6 +632,10 @@ def main(argv=None) -> int:
                          "included)")
     ap.add_argument("--n-moves", type=int, default=3,
                     help="--moves prim: primitives drawn per expanded node")
+    ap.add_argument("--select-frontier", type=float, default=0.0,
+                    help="F in [0, 1): F of every batch's parents come from the top 5%% of live "
+                         "nodes by the map's goal-potential progress (the baked goal field; "
+                         "Go-Explore's score-aware selection), the rest count-only")
     ap.add_argument("--pre-death", type=float, default=0.0,
                     help="SECONDS: a flight that dies also admits its decision-tick state this "
                          "long before the death (0 = off) - the states just before a failure, "
@@ -716,6 +738,27 @@ def main(argv=None) -> int:
     st0 = core1.get_states()[0].copy()
     Archive.greedy = bool(a.greedy)
     arch = Archive()
+    if float(a.select_frontier) > 0.0:
+        # the map's own goal potential (the trainer's baked geodesic field) as the frontier score
+        from surfgym.goalfield import load_goal_field
+        _bsp = Path(ctx.map_path)
+        _cands = sorted(_bsp.parent.glob(f"{_bsp.stem}.goal_*.npz"))
+        _cands = [c for c in _cands if c.stem.split(".goal_")[-1].isdigit()]
+        if not _cands:
+            raise SystemExit(f"--select-frontier: no baked goal field next to {_bsp}")
+        _gf = load_goal_field(str(_cands[0]))
+        _d0 = float(_gf.sample(np.asarray([st0["origin"]], np.float64))[0])
+        _pcache = {}
+
+        def _prog(i, _a=arch):
+            if i not in _pcache:
+                d = float(_gf.sample(np.asarray([_a.state[i]["origin"]], np.float64))[0])
+                _pcache[i] = (_d0 - d) if np.isfinite(d) else -1e9
+            return _pcache[i]
+        arch.frontier_frac = float(a.select_frontier)
+        arch.progress_of = _prog
+        print(f"edge_archive: --select-frontier {a.select_frontier:g} - the frontier score is "
+              f"{_cands[0].name}'s progress (d0 {_d0:,.0f} u)", flush=True)
     root = arch.add(st0, fl.fresh_keys(), np.asarray(obs0)[0], keys_of(st0[None], mins)[0], -1,
                     -1, 0, 0, [np.round(st0["origin"].astype(np.float64), 1).tolist()])
     arch.index[arch.key[root]] = [root, root]
