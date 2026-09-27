@@ -30047,3 +30047,15 @@ runs/research/archive_s1_uf2d, plot bev.png):
 - Still open (Codex): exact state restore (PmPersist, view deltas, side-hold ticks, trigger state) is not in surf_set_state; parent selection is node-first, not key-first; the "fast" elite ranks 3-D speed; `--select-frontier` loads the lexically first goal field and its summary omits it (kept out of any recipe); summaries omit temperature, checkpoint hash and primitive config; pre-death nodes have no stored partial path, so archive_route could draw an unflown chord across them.
 - Codex's next generic operator: **progressive widening**. The 3 level rays are tried once per new key; later selections of that key add one fresh mover-matched 3-D primitive; selection is key-first. A uniform 6-way mix dilutes the easy maps.
 - Its proposed test for the tangent-approach question: a paired operator bench on policy-owned pre-contact states (rate vs curvature primitives vs the post-impact surf line), reporting first-contact incidence |v.n|/|v| and energy retention.
+
+## 2026-09-27 09:20 (machine clock) - progressive widening + key-first selection: NULL on blue200 (the regression map)
+
+`--moves widen --select-keys` (Codex's proposed generic alphabet):
+- A node's first expansion flies the three level rays; each later expansion flies one fresh step-1 primitive (the mover's config).
+- Parents are chosen key-first: a key by 1 / sqrt(1 + its selections), then one of its elites uniformly.
+- Result, blue200, prim1_b025, seed 0, 10 min: **no finish** after 260,186 expansions (~295k flights: 226,544 deaths, 53,592 duplicates, 7,492 new, 7,860 replacements); best 46.0% of the start distance.
+- The three rays alone find the finish at 97,654 expansions / ~293k flights / 268 s.
+- Yields per slot: rays 0.035-0.038, primitive slot 0.023.
+- On the easy map every alphabet that diverts flights from the rays has now slowed discovery below the budget: mix, widen. On uf2 the rays never enter the pit (54 pit nodes) and the primitives do (3,937).
+- A fixed alphabet has a map-dependent optimum. The next generic step would allocate flights by each move type's measured novelty yield, but the yields measured tonight differ little (blue200 0.037 vs 0.023; uf2 mix 0.024 vs 0.029). Not built.
+- Two changes at once (widening and key-first), so this does not attribute the null to either.
