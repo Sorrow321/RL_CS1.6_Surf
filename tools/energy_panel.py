@@ -1,34 +1,49 @@
-"""energy_panel.py - the marginal momentum cost of the search executor's YAW sampling noise, on a
-frozen multi-map panel of the executor's own airborne states (Codex 2026-09-27 21:16Z protocol).
-MEASUREMENT only; it chooses one executor constant and must never be tuned per map.
+"""energy_panel.py (v3) - the marginal momentum cost of the search executor's YAW sampling noise,
+on a frozen multi-map panel (Codex 2026-09-27 21:16Z / 21:35Z protocol). MEASUREMENT only; it
+chooses ONE executor constant for every map and must never be tuned per map.
 
     python tools/energy_panel.py <mover ckpt> --panel MAP.bsp:STATES.npy [...]
-        [--yaw-scales 1,0.5,0.25,0.1] [--n 48] [--horizon 0.3] [--out panel.npz]
+        [--yaw-scales 1,0.5,0.25,0.1] [--n 48] [--out panel.npz]
 
-1. ELIGIBILITY on the ACTUAL post-bootstrap state: each candidate state is restored, stepped one
-   neutral tick, and kept only if it did not reset, touched nothing on that tick (the core's
-   contact telemetry), is airborne (onground < 0) and its speed lies in a stratum:
-   [600, 1000), [1000, 2000), [2000, inf) u/s. Up to --n per (map, stratum), drawn with a fixed
-   seed; the exact post-bootstrap states and their md5s are saved.
-2. PAIRED BRANCHES: every stratum's states are flown under each yaw sigma scale s AND under the
-   REFERENCE yaw scale 1e-6 (the policy's mean yaw), with pitch and the categorical keys NATIVE
-   and the torch RNG re-seeded per branch - identical key Gumbels and pitch draws, only the yaw
-   residual differs. The command is the search's own straight-ahead line (RayOperator ray 0).
-3. COMMON HORIZON H (--horizon s): per state, the reference's first contact or death before H
-   CENSORS the pair; else a treatment contact / death before H is a treatment EVENT (a paired
-   failure, counted); else the paired excess work is (dE_s(H) - dE_ref(H)) / KE0 / H, with
-   E = 0.5 |v|^2 + 800 z (its z origin cancels in the difference).
+FIXTURE (declared): a STANDARDIZED physics/controller bench, not a search-node continuation. Each
+candidate is an original zero-clocked SurfState from a frozen collector's dump; before every batch
+the core is reset (a clean hidden state: PmPersist, triggers), the candidate is restored and ONE
+neutral tick is taken (the bootstrap); the executor starts from that tick's observation with
+fresh held keys. Every branch replays exactly this from the ORIGINAL candidate and must reproduce
+the eligibility pass's post-bootstrap state bit for bit (origin + velocity hash), else the state
+is dropped from that comparison and counted.
 
-THE RULE (declared 2026-09-27 before this panel ran): a (map, stratum) cell is DECISIVE with >= 20
-uncensored pairs. Yaw scale s PASSES a cell iff the median paired excess >= -1 % KE0/s, its lower
-quartile >= -3 % KE0/s, and its event fraction (events / uncensored pairs) <= 10 %. The executor's
-yaw scale for the search is the LARGEST s passing every decisive cell; pitch and keys stay native;
-native yaw (s = 1) passing means no change. Full greedy and the free-air physics bound are NOT the
-reference (greedy also argmaxes the keys).
+ELIGIBILITY (post-bootstrap): no reset, no contact on the bootstrap tick (core telemetry),
+airborne (onground < 0), HORIZONTAL speed in a stratum [600, 1000), [1000, 2000), [2000, inf)
+(the air wish is horizontal). Up to --n per (map, stratum), a fixed seed.
 
-Output: the table, the chosen scale, and --out (.npz): per (map, stratum, scale) the per-tick
-energy, contact count, death flag, yaw command and action rows, the source indices, the state
-md5s, and a JSON header (argv, git HEAD, md5 of the checkpoint / states / map / core DLL).
+BRANCHES: yaw sigma x s for each s, and the REFERENCE yaw x1e-6 (the policy's mean yaw); pitch and
+the categorical keys NATIVE; torch re-seeded per branch, so the first decision's key Gumbels, pitch
+draw and observation are identical - only the yaw residual differs.
+
+THE DECISIVE HORIZON is ONE controller interval (act_every ticks: 40 ms for prim1). Per state:
+the reference's contact or death inside it CENSORS the pair; a treatment death inside it is a
+DEATH event; a treatment contact inside it is a CONTACT (reported, excluded from the energy
+statistic, not a failure); otherwise the paired excess work is
+    (dE_s - dE_ref) / KE_h0 / interval,   E = 0.5 |v|^2 + 800 z,   KE_h0 = 0.5 |v_h|^2
+(yaw moves only the horizontal velocity in the air, so the gravity terms cancel in the pair).
+The same statistic at 0.3 s is reported as the CLOSED-LOOP effect (7-8 decisions; not decisive).
+
+THE RULE (declared 2026-09-27, committed before this version ran):
+  * a (map, stratum) cell with >= 20 eligible states is POPULATED; a populated cell is DECISIVE
+    iff >= 20 pairs are uncensored AND at most 50 % are censored;
+  * the panel is CONCLUSIVE only if every populated cell is decisive and every map has at least
+    one decisive cell - otherwise the verdict is INCONCLUSIVE and nothing is chosen;
+  * yaw scale s PASSES a decisive cell iff the median excess >= -1 % KE_h0/s, its lower quartile
+    >= -3 % KE_h0/s, and its death fraction (deaths / uncensored pairs) <= 10 %;
+  * the chosen yaw scale is the LARGEST s passing every decisive cell (s = 1 passing: no change);
+    pitch and keys stay native.
+
+Output: the table, the verdict, and --out (.npz): per cell the original source indices, the
+original and expected post-bootstrap states, their hashes; per branch the start-state hashes and
+match flags, per-tick energy, contact counts, death flags, the full view vector (yaw, pitch) and
+the action rows; a JSON header (argv, git HEAD, rule, fixture, md5 of checkpoint / states / map /
+core DLL).
 """
 from __future__ import annotations
 
@@ -49,11 +64,18 @@ sys.path.insert(0, str(ROOT / "tools"))
 G = 800.0
 STRATA = ((600.0, 1000.0), (1000.0, 2000.0), (2000.0, float("inf")))
 REF = 1e-6
-MIN_PAIRS, MED_TOL, LQ_TOL, EVENT_TOL = 20, -0.01, -0.03, 0.10
+POP, MIN_PAIRS, MAX_CENS = 20, 20, 0.50
+MED_TOL, LQ_TOL, DEATH_TOL = -0.01, -0.03, 0.10
+LONG_SECS = 0.3
 
 
 def md5(p):
     return hashlib.md5(Path(p).read_bytes()).hexdigest()
+
+
+def st_hash(st):
+    return hashlib.md5(np.ascontiguousarray(st["origin"]).tobytes()
+                       + np.ascontiguousarray(st["velocity"]).tobytes()).hexdigest()
 
 
 def main(argv=None) -> int:
@@ -62,7 +84,6 @@ def main(argv=None) -> int:
     ap.add_argument("--panel", nargs="+", required=True, help="MAP.bsp:STATES.npy pairs")
     ap.add_argument("--yaw-scales", default="1,0.5,0.25,0.1")
     ap.add_argument("--n", type=int, default=48, help="states per (map, stratum)")
-    ap.add_argument("--horizon", type=float, default=0.3, help="seconds (the common horizon)")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out", default=None)
     a = ap.parse_args(argv)
@@ -71,11 +92,13 @@ def main(argv=None) -> int:
     import edge_archive as ea
     scales = [float(s) for s in a.yaw_scales.split(",")]
     branches = scales + [REF]
-    traces = {}
-    table = {}
-    header = {"argv": sys.argv, "rule": {"min_pairs": MIN_PAIRS, "median_tol": MED_TOL,
-                                         "lq_tol": LQ_TOL, "event_tol": EVENT_TOL,
-                                         "ref_yaw_scale": REF, "strata": STRATA[:2] + ((2000.0, None),)},
+    header = {"argv": sys.argv, "version": 3,
+              "rule": {"populated": POP, "min_pairs": MIN_PAIRS, "max_censored": MAX_CENS,
+                       "median_tol": MED_TOL, "lq_tol": LQ_TOL, "death_tol": DEATH_TOL,
+                       "ref_yaw_scale": REF, "strata_horizontal": [[600, 1000], [1000, 2000],
+                                                                   [2000, None]]},
+              "fixture": "standardized: core reset + restore original candidate + one neutral "
+                         "bootstrap tick; fresh held keys; not a search-node continuation",
               "ckpt_md5": md5(a.ckpt), "maps": {}}
     try:
         header["git_head"] = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT,
@@ -84,80 +107,88 @@ def main(argv=None) -> int:
         header["git_head"] = None
     dll = os.environ.get("SURFCORE_DLL")
     header["core_dll_md5"] = md5(dll) if dll and Path(dll).exists() else None
+    blob, table = {}, {}
+    neutral1 = np.array([7, 3, 1, 1, 0, 0], np.int32)
     for pair in a.panel:
         mp, _, sp = pair.partition(".bsp:")
         mp += ".bsp"
+        mname = Path(mp).stem
         st_raw = np.load(sp)
         st_all, first_ix = np.unique(st_raw, return_index=True)
-        header["maps"][Path(mp).stem] = {"map_md5": md5(mp), "states": sp, "states_md5": md5(sp)}
-        # 1. eligibility on the post-bootstrap state, in one pass over a big scratch core
+        header["maps"][mname] = {"map_md5": md5(mp), "states": sp, "states_md5": md5(sp)}
         ctx = record_ckpt.build([str(a.ckpt), "--episodes", "1", "--plan-scratch", "256",
-                                 "--ep-ticks", str(int(round(a.horizon * 100)) + 400),
-                                 "--map", str(mp), "--stochastic",
+                                 "--ep-ticks", "1000", "--map", str(mp), "--stochastic",
                                  "--exec-view-scale", f"{REF},1"])
         core = ctx.scratch.core
         S = core.num_envs
         tick_s = float(ctx.tick.ms) / 1000.0
-        H = int(round(a.horizon / tick_s))
+        K = int(ea.Flyer(ctx).K)
+        HL = int(round(LONG_SECS / tick_s))
         rng = np.random.default_rng(int(a.seed))
         order = rng.permutation(len(st_all))
-        neutral = np.tile(np.array([7, 3, 1, 1, 0, 0], np.int32), (S, 1))
-        elig = {k: [] for k in range(len(STRATA))}           # stratum -> [(file index, state)]
+        elig = {k: [] for k in range(len(STRATA))}   # stratum -> [(file ix, original, post)]
         for c0 in range(0, len(order), S):
             if all(len(v) >= int(a.n) for v in elig.values()):
                 break
             idx = order[c0:c0 + S]
+            core.reset(int(a.seed))                   # a clean hidden state for the batch
+            origs = []
             for i in range(S):
                 s2 = st_all[idx[min(i, len(idx) - 1)]].copy()
                 s2["tick"] = 0
                 s2["stuck_ticks"] = 0
+                origs.append(s2)
                 core.set_state(i, s2)
-            _o, _r, done, trunc, _ = core.step(neutral)
+            _o, _r, done, trunc, _ = core.step(np.tile(neutral1, (S, 1)))
             cnt, _tn, _tp = core.get_touch()
             cur = core.get_states()
             for i in range(len(idx)):
                 if done[i] or trunc[i] or cnt[i] > 0 or cur[i]["onground"] >= 0:
                     continue
-                sp_ = float(np.linalg.norm(cur[i]["velocity"].astype(np.float64)))
+                vh = float(np.hypot(cur[i]["velocity"][0], cur[i]["velocity"][1]))
                 for k, (lo, hi) in enumerate(STRATA):
-                    if lo <= sp_ < hi and len(elig[k]) < int(a.n):
-                        s3 = cur[i].copy()
-                        s3["tick"] = 0
-                        s3["stuck_ticks"] = 0
-                        elig[k].append((int(first_ix[idx[i]]), s3))
-        print(f"energy_panel: {Path(mp).stem}: eligible airborne post-bootstrap states per stratum "
-              + ", ".join(f"[{lo:g}, {hi:g}) {len(elig[k])}" for k, (lo, hi) in enumerate(STRATA)),
-              flush=True)
-        # 2. paired branches per stratum
+                    if lo <= vh < hi and len(elig[k]) < int(a.n):
+                        elig[k].append((int(first_ix[idx[i]]), origs[i], cur[i].copy()))
+        print(f"energy_panel v3: {mname}: eligible per horizontal-speed stratum "
+              + ", ".join(f"[{lo:g}, {hi:g}) {len(elig[k])}" for k, (lo, hi) in enumerate(STRATA))
+              + f"; decisive horizon {K} ticks ({K * tick_s * 1000:.0f} ms)", flush=True)
         for k, (lo, hi) in enumerate(STRATA):
             pool = elig[k]
             n = len(pool)
             if n == 0:
                 continue
+            cell = f"{mname}|{k}"
+            blob[cell + "|src_ix"] = np.array([p[0] for p in pool], np.int64)
+            blob[cell + "|orig"] = np.stack([p[1] for p in pool])
+            blob[cell + "|post"] = np.stack([p[2] for p in pool])
+            exp_hash = [st_hash(p[2]) for p in pool]
             res = {}
             for sc in branches:
-                ctx_b = record_ckpt.build([str(a.ckpt), "--episodes", "1", "--plan-scratch",
-                                           str(n), "--ep-ticks", str(H + 400), "--map", str(mp),
-                                           "--stochastic", "--exec-view-scale", f"{sc:g},1"])
-                cb = ctx_b.scratch.core
-                fb = ctx_b.finish_box
+                cb_ctx = record_ckpt.build([str(a.ckpt), "--episodes", "1", "--plan-scratch",
+                                            str(n), "--ep-ticks", str(HL + 400), "--map", str(mp),
+                                            "--stochastic", "--exec-view-scale", f"{sc:g},1"])
+                cb = cb_ctx.scratch.core
+                fb = cb_ctx.finish_box
                 fin = 0.5 * (np.asarray(fb[0], np.float64) + np.asarray(fb[1], np.float64))
-                op = ea.RayOperator(float(ctx_b.tick.ms), fin, n=3)
-                ctx_b.planner = op
-                fl = ea.Flyer(ctx_b)
+                op = ea.RayOperator(float(cb_ctx.tick.ms), fin, n=3)
+                cb_ctx.planner = op
+                fl = ea.Flyer(cb_ctx)
+                cb.reset(int(a.seed))
                 for i in range(n):
                     cb.set_state(i, pool[i][1])
-                # the first observation: the SAME neutral tick every branch takes
-                obs, *_ = cb.step(np.tile(np.array([7, 3, 1, 1, 0, 0], np.int32), (n, 1)))
+                obs, _r, d0, t0, _ = cb.step(np.tile(neutral1, (n, 1)))     # THE bootstrap tick
                 obs = np.ascontiguousarray(np.asarray(obs, np.float32))
+                c0_, _tn, _tp = cb.get_touch()
                 cur = cb.get_states()
+                match = np.array([(not d0[i]) and (not t0[i]) and c0_[i] == 0
+                                  and st_hash(cur[i]) == exp_hash[i] for i in range(n)])
                 lines = [op.line_and_curve_of(cur[i]["origin"].astype(np.float64),
                                               cur[i]["velocity"].astype(np.float64),
                                               float(cur[i]["yaw"]), op.choice_nums[0], 0)[0]
                          for i in range(n)]
-                ctx_b.scratch.line.set_lines(np.arange(n), [ln[:fl.L_MAX] for ln in lines])
-                torch.manual_seed(int(a.seed))          # identical draws in every branch
-                pol = ctx_b.scratch.make_policy(cb, ctx_b.scratch.line)
+                cb_ctx.scratch.line.set_lines(np.arange(n), [ln[:fl.L_MAX] for ln in lines])
+                torch.manual_seed(int(a.seed))            # identical draws in every branch
+                pol = cb_ctx.scratch.make_policy(cb, cb_ctx.scratch.line)
                 if fl.keys_hold:
                     from surfgym.keyshold import KeysHold
                     pol.keys = KeysHold(n)
@@ -165,22 +196,21 @@ def main(argv=None) -> int:
                                       - int(getattr(pol, "_period", fl.K)))
                 pol._tick = 0
                 v0 = cur["velocity"].astype(np.float64)
-                ke0 = 0.5 * np.sum(v0 ** 2, axis=1)
-                e0 = ke0 + G * cur["origin"][:, 2].astype(np.float64)
-                E = np.zeros((H, n))
-                C = np.zeros((H, n), np.int32)
-                D = np.zeros((H, n), bool)
-                Y = np.full((H, n), np.nan)
-                A = np.zeros((H, n, 6), np.int16)
+                e0 = 0.5 * np.sum(v0 ** 2, axis=1) + G * cur["origin"][:, 2].astype(np.float64)
+                keh0 = 0.5 * (v0[:, 0] ** 2 + v0[:, 1] ** 2)
+                E = np.zeros((HL, n))
+                C = np.zeros((HL, n), np.int32)
+                D = np.zeros((HL, n), bool)
+                VW = np.full((HL, n, 3), np.nan)
+                A = np.zeros((HL, n, 6), np.int16)
                 dead = np.zeros(n, bool)
-                for t in range(H):
+                for t in range(HL):
                     acts = pol.act(obs)
                     view = getattr(pol, "view", None)
                     obs, _r, done, trunc, _ = (cb.step(acts) if view is None
                                                else cb.step(acts, view=view))
                     obs = np.ascontiguousarray(np.asarray(obs, np.float32))
-                    ended = np.asarray(done, bool) | np.asarray(trunc, bool)
-                    dead |= ended
+                    dead |= np.asarray(done, bool) | np.asarray(trunc, bool)
                     cnt, _tn, _tp = cb.get_touch()
                     cs = cb.states_view
                     E[t] = (0.5 * np.sum(cs["velocity"].astype(np.float64) ** 2, axis=1)
@@ -189,58 +219,72 @@ def main(argv=None) -> int:
                     D[t] = dead
                     A[t] = np.asarray(acts)[:n, :6]
                     if view is not None:
-                        Y[t] = np.asarray(view, np.float64).reshape(n, -1)[:, 0]
-                ev = np.full(n, H, np.int64)                  # first contact / death tick (H = none)
-                for i in range(n):
-                    w = np.flatnonzero((C[:, i] > 0) | D[:, i])
-                    if len(w):
-                        ev[i] = int(w[0])
-                res[sc] = {"E": E, "C": C, "D": D, "Y": Y, "A": A, "ev": ev, "e0": e0, "ke0": ke0}
-                traces[(Path(mp).stem, k, sc)] = res[sc]
+                        vv = np.asarray(view, np.float64).reshape(n, -1)
+                        VW[t, :, :vv.shape[1]] = vv[:, :3]
+                res[sc] = {"E": E, "C": C, "D": D, "VW": VW, "A": A, "e0": e0, "keh0": keh0,
+                           "match": match}
+                for key_, arr in res[sc].items():
+                    blob[f"{cell}|{sc:g}|{key_}"] = arr
+                blob[f"{cell}|{sc:g}|start_hash"] = np.array([st_hash(cur[i]) for i in range(n)])
             ref = res[REF]
-            hs = H * tick_s
-            for sc in scales:
+
+            def stats(sc, H):
                 b = res[sc]
-                cen = ref["ev"] < H
-                evt = (~cen) & (b["ev"] < H)
-                ok = (~cen) & (~evt)
+                ok_start = ref["match"] & b["match"]
+                r_ev = ((ref["C"][:H] > 0) | ref["D"][:H]).any(axis=0)
+                cen = ok_start & r_ev
+                pair = ok_start & ~r_ev
+                death = pair & b["D"][:H].any(axis=0)
+                contact = pair & ~death & (b["C"][:H] > 0).any(axis=0)
+                clean = pair & ~death & ~contact
+                hs = H * tick_s
                 exc = ((b["E"][H - 1] - b["e0"]) - (ref["E"][H - 1] - ref["e0"])) / np.maximum(
-                    ref["ke0"], 1.0) / hs
-                x = exc[ok]
-                npair = int((~cen).sum())
-                med = float(np.median(x)) if len(x) else float("nan")
-                lq = float(np.percentile(x, 25)) if len(x) else float("nan")
-                efr = float(evt.sum()) / max(1, npair)
-                decisive = npair >= MIN_PAIRS
-                passed = bool(decisive and med >= MED_TOL and lq >= LQ_TOL and efr <= EVENT_TOL)
-                table[(Path(mp).stem, k, sc)] = {"pairs": npair, "clean": int(ok.sum()),
-                                                  "events": int(evt.sum()),
-                                                  "censored": int(cen.sum()), "median": med,
-                                                  "lq": lq, "event_frac": efr,
-                                                  "decisive": decisive, "pass": passed}
-                print(f"   [{lo:g}, {hi:g}) yaw x{sc:g}: {npair} uncensored pairs "
-                      f"({int(cen.sum())} censored by the reference), treatment events "
-                      f"{int(evt.sum())} ({100 * efr:.0f}%), paired excess median "
-                      f"{100 * med:+.2f}% KE0/s, lower quartile {100 * lq:+.2f}%"
-                      f" -> {'PASS' if passed else ('fail' if decisive else 'not decisive')}",
-                      flush=True)
-    cells = {(m, k) for (m, k, _s) in table}
+                    ref["keh0"], 1.0) / hs
+                x = exc[clean]
+                npair = int(pair.sum())
+                return {"eligible": n, "start_mismatch": int((~ok_start).sum()),
+                        "censored": int(cen.sum()), "pairs": npair, "deaths": int(death.sum()),
+                        "contacts": int(contact.sum()), "clean": int(clean.sum()),
+                        "median": float(np.median(x)) if len(x) else float("nan"),
+                        "lq": float(np.percentile(x, 25)) if len(x) else float("nan"),
+                        "death_frac": float(death.sum()) / max(1, npair)}
+            for sc in scales:
+                s1 = stats(sc, K)
+                sl = stats(sc, HL)
+                populated = n >= POP
+                decisive = bool(populated and s1["pairs"] >= MIN_PAIRS
+                                and s1["censored"] <= MAX_CENS * max(1, n - s1["start_mismatch"]))
+                passed = bool(decisive and s1["median"] >= MED_TOL and s1["lq"] >= LQ_TOL
+                              and s1["death_frac"] <= DEATH_TOL)
+                table[(mname, k, sc)] = dict(s1, populated=populated, decisive=decisive,
+                                             passed=passed, closed_loop_0p3=sl)
+                print(f"   [{lo:g}, {hi:g}) yaw x{sc:g}: one interval: {s1['pairs']} pairs "
+                      f"({s1['censored']} censored, {s1['start_mismatch']} start mismatches), "
+                      f"deaths {s1['deaths']}, contacts {s1['contacts']}, excess median "
+                      f"{100 * s1['median']:+.2f}% KE_h0/s LQ {100 * s1['lq']:+.2f}% -> "
+                      f"{'PASS' if passed else ('fail' if decisive else ('NOT DECISIVE' if populated else 'unpopulated'))}"
+                      f" | 0.3 s closed loop: median {100 * sl['median']:+.2f}% LQ "
+                      f"{100 * sl['lq']:+.2f}% over {sl['clean']} clean", flush=True)
+    maps_ = sorted({m for (m, _k, _s) in table})
+    cells = sorted({(m, k) for (m, k, _s) in table})
+    s0 = scales[0]
+    bad_cells = [(m, k) for (m, k) in cells
+                 if table[(m, k, s0)]["populated"] and not table[(m, k, s0)]["decisive"]]
+    maps_ok = all(any(table[(m, k, s0)]["decisive"] for (mm, k) in cells if mm == m) for m in maps_)
+    conclusive = (not bad_cells) and maps_ok
     chosen = None
-    for sc in sorted(scales, reverse=True):
-        dec = [table[(m, k, sc)] for (m, k) in cells if table[(m, k, sc)]["decisive"]]
-        if dec and all(c["pass"] for c in dec):
-            chosen = sc
-            break
-    print(f"energy_panel: decisive cells {sum(1 for (m, k) in cells if table[(m, k, scales[0])]['decisive'])}"
-          f" of {len(cells)}; the rule chooses yaw scale "
-          f"{'x%g' % chosen if chosen is not None else 'NONE (no scale passes every decisive cell)'}"
-          f" (pitch and keys native)")
+    if conclusive:
+        for sc in sorted(scales, reverse=True):
+            if all(table[(m, k, sc)]["passed"] for (m, k) in cells if table[(m, k, sc)]["decisive"]):
+                chosen = sc
+                break
+    verdict = ("CONCLUSIVE" if conclusive else "INCONCLUSIVE") + (
+        f": yaw x{chosen:g}" if chosen is not None else ": nothing chosen")
+    print(f"energy_panel v3: {verdict}; populated-but-not-decisive cells {bad_cells or 'none'}; "
+          f"every map has a decisive cell: {maps_ok}")
     if a.out:
-        blob = {}
-        for (m, k, sc), r in traces.items():
-            for key_, arr in r.items():
-                blob[f"{m}|{k}|{sc:g}|{key_}"] = arr
         header["table"] = {f"{m}|{k}|{sc:g}": v for (m, k, sc), v in table.items()}
+        header["verdict"] = verdict
         header["chosen_yaw_scale"] = chosen
         np.savez_compressed(a.out, header=np.array(json.dumps(header)), **blob)
         print(f"   traces -> {a.out}")
