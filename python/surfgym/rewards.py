@@ -649,6 +649,7 @@ class RaceReward:
                  d_latch: float = 0.0, ng: int = 0, ng_gamma: float = 0.0,
                  ng_d0: float = 0.0, death_charge: float = 0.0,
                  arc=None, arc_scale: float = 0.0, stall_arc: bool = False,
+                 arc_death_charge: float = 0.0,
                  ratchet: bool = False, ratchet_d0: float = 0.0,
                  d0_per_env: bool = False, tick_ms: float = 10.0,
                  cc_tmax: float = 0.0, cc_p0: float = CC_P0,
@@ -795,6 +796,23 @@ class RaceReward:
                                 or float(d_latch) > 0.0):
             raise ValueError("--race-arc with --race-ng/--race-dfloor/"
                              "--race-latch is untested; run it as its own arm")
+        # --arc-death-charge KAPPA (2026-09-27, Codex's ordered first fix for the executor's
+        # objective): a DEATH forfeits kappa x the arc banked on the CURRENT line since it was
+        # installed (MultiArcProgress.arc0), clamped at >= 0 so dying after going backwards is
+        # never paid. Measured on unitfarmer2's shaft loop: an inside cut ran the arc projection
+        # 34% ahead of the line (inside the corridor) and the mover died keeping it - the
+        # stock arc term pays a fatal corner cut. The finish keeps its bank; truncation is
+        # exempt (bootstrapped); completed earlier lines keep theirs. 0 = off, byte-identical.
+        self.arc_death_charge = float(arc_death_charge)
+        if self.arc_death_charge:
+            if arc is None or not hasattr(arc, "arc0"):
+                raise ValueError("--arc-death-charge needs the per-env goal arc "
+                                 "(--goal-reward arc: MultiArcProgress.arc0)")
+            if self.arc_death_charge < 0.0:
+                raise ValueError("--arc-death-charge is a charge: kappa >= 0")
+            if float(death_charge) or self.ng:
+                raise ValueError("--arc-death-charge with --death-charge/--race-ng: two "
+                                 "terminal charges; run one")
         # --race-ratchet: pay only NEW progress records inside an episode.
         # False is the control path byte for byte (no array, no branch the
         # control did not take). It is a DIFFERENT treatment of the same
@@ -1486,6 +1504,10 @@ class RaceReward:
             # arc, anything larger is a relocation.
             pos = _states(core)["origin"]
             arc_before = self.arc.arc.copy()
+            if self.arc_death_charge:
+                # the dying line's bank, read BEFORE advance (an ended row's `pos` is the next
+                # episode's spawn) - nothing else changes when the flag is off
+                self._arc_bank = np.maximum(arc_before - self.arc.arc0, 0.0)
             delta, inside = self.arc.advance(pos)
             np.clip(delta, -clip, clip, out=delta)
             r = (delta * self.arc_scale - self.time_pen * self.every) \
@@ -1579,6 +1601,10 @@ class RaceReward:
             r[dead] -= phi_prev[dead]
             if self.ng == 1:
                 r[goal] -= phi_prev[goal]
+        if self.arc_death_charge > 0.0 and self.arc is not None:
+            dead = done.astype(bool) & ~goal
+            r[dead] -= (self.arc_death_charge * self.arc_scale
+                        * self._arc_bank[dead]).astype(np.float32)
         if self.death_charge > 0.0:
             # kappa-scaled death charge on the stock scheme: doomed depth
             # still nets (1-kappa)*Phi, deliberate dives pay kappa*Phi

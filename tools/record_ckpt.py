@@ -83,6 +83,9 @@ TRAIN_ONLY = frozenset({
     # --spawn-states: a share of the TRAINING spawn pool drawn from a file of own states; a
     # recording spawns at the map start like the trainer's eval
     "spawn_states", "spawn_states_frac",
+    # --arc-death-charge: a TRAINING terminal charge on the goal-arc bank; a recording computes
+    # no training reward
+    "arc_death_charge",
     # --stall-arc: which progress coordinate the TRAINING stall kill watches (the route arc
     # instead of the field). A recording does not stall-kill unless --eval-stall is passed, and
     # that hook stays on the field - refused below for a stall_arc checkpoint

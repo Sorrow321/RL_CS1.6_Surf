@@ -4044,6 +4044,14 @@ def main() -> None:
                          "deliberate deep dive abandons kappa*Phi. 0 = "
                          "off, byte-identical. Mutually exclusive with "
                          "--race-ng terminal modes. ckpt restores")
+    ap.add_argument("--arc-death-charge", type=float, default=None,
+                    help="--goal-reward arc: a DEATH forfeits KAPPA x the arc banked on the "
+                         "CURRENT line since it was installed (clamped >= 0); the finish keeps "
+                         "its bank, truncation is exempt, completed earlier lines keep theirs. "
+                         "The stock arc term pays a fatal corner cut (an inside chord runs the "
+                         "projection ahead of the line and death keeps it; measured +34%% on "
+                         "unitfarmer2's shaft loop, ledger 2026-09-27 12:05). 0/absent = off, "
+                         "byte-identical. ckpt restores; record_ckpt TRAIN_ONLY")
     ap.add_argument("--demo-file", default=None,
                     help="Salimans-Chen backward curriculum (1812.03381): "
                          "path to a time-ordered STATE_DTYPE .npy demo spine "
@@ -6172,6 +6180,9 @@ def main() -> None:
         if args.death_charge is None and ck_cfg.get("death_charge"):
             args.death_charge = float(ck_cfg["death_charge"])
             restored.append(f"death_charge={args.death_charge:g}")
+        if args.arc_death_charge is None and ck_cfg.get("arc_death_charge"):
+            args.arc_death_charge = float(ck_cfg["arc_death_charge"])
+            restored.append(f"arc_death_charge={args.arc_death_charge:g}")
         if args.ez_eps is None and ck_cfg.get("ez_eps") is not None:
             args.ez_eps = float(ck_cfg["ez_eps"])
             restored.append(f"ez_eps={args.ez_eps:g}")
@@ -8339,6 +8350,7 @@ def main() -> None:
                            ("--goals", bool(args.goals)),
                            ("--race-ng", bool(args.race_ng)),
                            ("--death-charge", bool(args.death_charge)),
+                           ("--arc-death-charge", bool(args.arc_death_charge)),
                            ("--speed-equiv", float(args.speed_equiv or 0.0) > 0.0),
                            ("--speed-coef", float(args.speed_coef or 0.0) > 0.0),
                            ("--frame-stack", int(args.frame_stack or 0) > 1)):
@@ -10471,6 +10483,8 @@ def main() -> None:
                 # --race-arc: single-map by the guard above, so handing the
                 # one line to the (single) slot is exact
                 arc=arc_line, arc_scale=arc_scale,
+                # --arc-death-charge: a death forfeits the current line's arc bank
+                arc_death_charge=float(args.arc_death_charge or 0.0),
                 # --stall-arc: the stall detector watches the route arc
                 stall_arc=bool(args.stall_arc),
                 # --race-ratchet: the record rule, and THIS map's start
@@ -10511,6 +10525,10 @@ def main() -> None:
                       f"per-call tax (1-{_g:.6f})*Phi, {_term}; "
                       f"Phi(spawn-mean)=0, full bank = "
                       f"{100.0 * args.race_shaping:g}")
+            if args.arc_death_charge:
+                print(f"race: ARC DEATH CHARGE kappa={args.arc_death_charge:g} - a death "
+                      f"forfeits kappa x the arc banked on the current line (>= 0); the "
+                      f"finish keeps it, truncation exempt")
             if args.death_charge:
                 print(f"race: DEATH CHARGE kappa={args.death_charge:g} - "
                       f"death abandons kappa*Phi of the bank; per-step "
@@ -11349,6 +11367,9 @@ def main() -> None:
             meta["config"]["prim_turn"] = str(args.prim_turn)
         if float(args.prim_pitch_max) != 85.0:
             meta["config"]["prim_pitch_max"] = float(args.prim_pitch_max)
+    # --arc-death-charge: in the config ONLY when on, so the control's config is unchanged
+    if float(args.arc_death_charge or 0.0) > 0.0:
+        meta["config"]["arc_death_charge"] = float(args.arc_death_charge)
     # --goal-planner primlearn: the planner's PPO / reward knobs and the uniform-first share,
     # ONLY then (record_ckpt.py: TRAIN_ONLY - a recording runs the stored planner greedily)
     if PLPLAN:
@@ -15153,7 +15174,7 @@ def main() -> None:
                     static_obs[:, REWARD_SLOT] = torch.tanh(
                         torch.from_numpy(r_acc).to(device,
                                                    non_blocking=True) / 0.1)
-                    if args.race_ng or args.death_charge:
+                    if args.race_ng or args.death_charge or args.arc_death_charge:
                         # ended rows carry the OLD episode's terminal charge
                         # (up to -Phi ~ -100); the row now holds the NEW
                         # episode's first obs, whose eval mirror starts at

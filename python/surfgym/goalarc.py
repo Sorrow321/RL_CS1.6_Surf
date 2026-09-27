@@ -275,6 +275,10 @@ class MultiArcProgress:
         self.length = np.full(self.n_envs, 2, np.int32)
         self.arc = np.zeros(self.n_envs, np.float64)
         self.idx = np.zeros(self.n_envs, np.int64)
+        # the arc each env's CURRENT line started at (set wherever the anchor is re-set: a new
+        # line or a reset; `advance` never moves it) - the bank origin --arc-death-charge
+        # forfeits from. Bookkeeping only: nothing else reads it
+        self.arc0 = np.zeros(self.n_envs, np.float64)
         # held once: the reset path rebuilds nothing per call and the advance
         # path allocates only the window it actually reads
         self._rows = np.arange(self.n_envs, dtype=np.int64)
@@ -358,6 +362,7 @@ class MultiArcProgress:
         if origin is None:
             self.arc[idx] = 0.0
             self.idx[idx] = 0
+            self.arc0[idx] = 0.0
             return
         o = self._flat(np.asarray(origin, np.float64))
         if o.ndim != 2 or o.shape[1] != 3:
@@ -371,6 +376,7 @@ class MultiArcProgress:
         arc = self._locate(idx, np.ascontiguousarray(o))
         self.arc[idx] = arc
         self.idx[idx] = self._index(arc, idx)
+        self.arc0[idx] = arc
 
     def describe(self) -> str:
         lo = float((int(self.length.min()) - 1) * self.spacing)
@@ -458,6 +464,7 @@ class MultiArcProgress:
         arc = self._locate(rows, np.ascontiguousarray(p64[rows]))
         self.arc[rows] = arc
         self.idx[rows] = self._index(arc, rows)
+        self.arc0[rows] = arc
 
     def advance(self, origin):
         """-> (delta (N,) float64, inside (N,) bool).
