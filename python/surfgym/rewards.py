@@ -807,6 +807,15 @@ class RaceReward:
         # ran the arc projection 34% ahead of the line while still inside the corridor and the
         # mover died after it. 0 = off, byte-identical.
         self.arc_death_charge = float(arc_death_charge)
+        if not np.isfinite(self.arc_death_charge):
+            # nan is truthy yet fails every comparison (it would bank and never charge); inf
+            # would produce -inf returns (Codex review 2026-09-27 10:55Z)
+            raise ValueError(f"--arc-death-charge must be finite, got {arc_death_charge!r}")
+        if self.arc_death_charge and float(cc_tmax) > 0.0:
+            # --curiosity-cond scales the paid shaping per env AFTER the bank stored the unscaled
+            # delta, so the bond would charge more than was paid (Codex review 10:55Z)
+            raise ValueError("--arc-death-charge with --curiosity-cond: the bank would hold "
+                             "unscaled credit; not implemented")
         if self.arc_death_charge:
             if arc is None or not hasattr(arc, "bank"):
                 raise ValueError("--arc-death-charge needs the per-env goal arc "

@@ -30528,3 +30528,17 @@ The plain recipe: prim1_b025 (random curves on blue025 only; it never saw these 
 - The level-ray alphabet came from edgeflow, where the routes are flat.
 - On a surf map the route is gated by the energy carried into each gap. The search loses it compoundingly and stops at the first gap that needs ~90% of a real surfer's speed.
 - This is the same failure class as unitfarmer2 (energy lost on the ramp run and the U-turn).
+
+## 2026-09-27 17:01 (machine clock) - SUPERSEDED (Codex 10:55Z): the 12:15 "--arc-death-charge" entry's protocol text
+
+- The 12:15 entry's "Grzes-style terminal accounting" and "from scratch or a pre-registered value reset" launch wording are **superseded** by the later entry "Codex's blocking review of 6baeb6b".
+  - The mechanism is a face-value death bond on the most recently installed, not-yet-replaced line. Superseded lines keep their credit.
+  - The discount example uses Gamma = gamma_tick ** KH.
+  - The gate is the offline counterfactual return audit, then a warm matched fork with --critic-warmup 96. Nothing is to be launched from the 12:15 text.
+- Codex's 10:55Z review: P0 closed for goal_planner=prim / goal_reward=arc without curiosity (15/15 and goalarc 40/40, run independently). Two hardening items are now done:
+  - a non-finite kappa is refused (nan banks but never charges; inf gives -inf returns);
+  - RaceReward refuses the bond together with curiosity conditioning (its per-env scale would make the bank hold unscaled credit).
+  - Tests: 17 in test_arc_death_charge; 56 with race_arc / goalarc.
+- Codex also judged that track_bench's PRIMARY event is not yet the recipe success event. The real GoalSystem tests the sphere every tick, requests termination and credits the hit on the next ended tick; the bench flies on for 2 s and tests 0.1 s chords.
+  - Open items: per-tick sphere emulation, per-tick paths, helper tests, and a provenance manifest (state / line / map hashes, source rows).
+  - Status: implementation eligible for the offline audit, not for a rental arm.

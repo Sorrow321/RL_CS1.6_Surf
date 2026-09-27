@@ -233,6 +233,12 @@ def test_refusals():
     with pytest.raises(ValueError):
         RaceReward(_FlatField(), scale=1.0, arc=arc, arc_scale=SCALE, arc_death_charge=1.0,
                    death_charge=0.5, ng_d0=1000.0)
+    for bad in (float("nan"), float("inf")):                              # non-finite kappa
+        with pytest.raises(ValueError):
+            RaceReward(_FlatField(), scale=1.0, arc=arc, arc_scale=SCALE, arc_death_charge=bad)
+    with pytest.raises(ValueError):                                       # curiosity-scaled pay
+        RaceReward(_FlatField(), scale=1.0, arc=arc, arc_scale=SCALE, arc_death_charge=1.0,
+                   cc_tmax=1.0)
 
 
 def test_advance_never_touches_the_bookkeeping():
