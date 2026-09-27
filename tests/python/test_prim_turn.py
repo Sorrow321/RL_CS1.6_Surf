@@ -47,3 +47,17 @@ def test_planner_carries_the_turn_and_refuses_an_unknown_one():
     assert pp.turn == "curv"
     with pytest.raises(ValueError):
         PrimitivePlanner(turn="radius")
+
+
+
+def test_curv_uses_the_horizontal_speed_not_the_dive():
+    """Codex: in the velocity frame a steep dive's VERTICAL speed must not tighten the horizontal
+    turn - at horizontal 600 u/s the rate is 2x the knots, whatever the fall speed."""
+    p = np.array([90.0, 90.0, 90.0, 0.0, 0.0, 0.0])
+    dive = curve([0, 0, 0], [600.0, 0, -1500.0], 0.0, p, 0.5, 3, 300.0, turn="curv")
+    d0 = dive[1] - dive[0]
+    d1 = dive[-1] - dive[-2]
+    yaw = math.degrees(math.atan2(d1[1], d1[0]) - math.atan2(d0[1], d0[0])) % 360.0
+    # 90 deg/s at the floor x (600 / 300) = 180 deg/s for 0.5 s = 90 deg (the total-speed form
+    # would have turned 1,616 / 300 x 90 x 0.5 = 242 deg)
+    assert abs(yaw - 90.0) < 4.0

@@ -91,8 +91,10 @@ def curve(origin, velocity, yaw_deg, params, secs, knots, floor, flat=False,
     wh = np.radians(rate_profile(p[:knots], secs, t))
     if turn == "curv" and frame != "map":
         # --prim-turn curv: the sideways knots are the rates AT THE FLOOR SPEED; the curve keeps
-        # that curvature at its own (higher) speed, so the rate scales by speed / floor
-        wh = wh * (float(speed) / max(float(floor), 1e-6))
+        # that HORIZONTAL curvature at the agent's own horizontal speed, so the rate scales by
+        # max(horizontal speed, floor) / floor (Codex 2026-09-27: a steep dive's vertical speed must
+        # not tighten the horizontal turn - the radius of a turn is set by the horizontal speed)
+        wh = wh * (max(float(vh), float(floor)) / max(float(floor), 1e-6))
     wv = (np.zeros_like(t) if flat
           else np.radians(rate_profile(p[knots:2 * knots], secs, t)))
     if frame == "map":

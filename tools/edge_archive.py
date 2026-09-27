@@ -180,8 +180,8 @@ class SurfOperator:
 
     shape = "prim_surf"
 
-    def __init__(self, tick_ms: float, finish, k: int, seed: int, core):
-        self.prim = PrimOperator(tick_ms, finish, k, seed)
+    def __init__(self, tick_ms: float, finish, k: int, seed: int, core, cfg=None):
+        self.prim = PrimOperator(tick_ms, finish, k, seed, cfg=cfg)
         self.core = core
         self.n_choice = int(k) + 1
         self.secs = self.prim.secs
@@ -215,9 +215,9 @@ class MixOperator:
 
     shape = "mix"
 
-    def __init__(self, tick_ms: float, finish, k: int, seed: int):
+    def __init__(self, tick_ms: float, finish, k: int, seed: int, cfg=None):
         self.rays = RayOperator(tick_ms, finish, n=3)
-        self.prim = PrimOperator(tick_ms, finish, k, seed)
+        self.prim = PrimOperator(tick_ms, finish, k, seed, cfg=cfg)
         if self.rays.commit_ticks != self.prim.commit_ticks:
             raise ValueError("--moves mix: the rays and the primitives must commit alike")
         self.n_choice = 3 + int(k)
@@ -258,7 +258,9 @@ class PrimOperator:
                                      side=float(d["prim_side"]), down=float(d["prim_down"]),
                                      up=float(d["prim_up"]), floor=float(d["prim_floor"]),
                                      spacing=RAY_SPACING,
+                                     flat=bool(cfg.get("prim_flat") or 0),
                                      frame=str(cfg.get("prim_frame") or "velocity"),
+                                     pitch_max=float(cfg.get("prim_pitch_max") or 85.0),
                                      turn=str(cfg.get("prim_turn") or "rate"))
         self.n_choice = int(k)
         self.secs = float(d["prim_secs"])
@@ -729,9 +731,10 @@ def main(argv=None) -> int:
                                     cfg=getattr(ctx, "cfg", None))
                        if a.moves == "prim" else
                        SurfOperator(float(ctx.tick.ms), _fc, int(a.n_moves), int(a.seed),
-                                    ctx.scratch.core)
+                                    ctx.scratch.core, cfg=getattr(ctx, "cfg", None))
                        if a.moves == "prim_surf" else
-                       MixOperator(float(ctx.tick.ms), _fc, int(a.n_moves), int(a.seed))
+                       MixOperator(float(ctx.tick.ms), _fc, int(a.n_moves), int(a.seed),
+                                   cfg=getattr(ctx, "cfg", None))
                        if a.moves == "mix" else
                        RayOperator(float(ctx.tick.ms), _fc, n=(4 if a.moves == "rays4" else 3)))
         print("edge_archive: --rays 3 - " + ctx.planner.describe(), flush=True)
