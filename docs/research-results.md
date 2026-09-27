@@ -30842,3 +30842,29 @@ Edgeflow, first finishing chain (same caveat, unpaired):
 - Then the paired zero-yaw-reference panel, the rule declared in tools/energy_panel.py's docstring before it ran.
 - Then one frozen yaw scale, and paired (torch-seeded) search runs at matched live ticks.
 - The ramp-command tail redesign waits for its own paired diagnostic (Codex: the coast's own collision-aware continuation where it captures B, else an inertial continuation; source-riding geometry kept).
+
+## 2026-09-27 23:35 (machine clock) - the paired momentum panel chooses yaw noise x0.25 (frozen); the paired utopia search launched; the ramp viewer
+
+**The paired momentum panel** (tools/energy_panel.py v2; the rule was committed in b47f692 BEFORE the run; traces in runs/research/energy_panel_v2.npz).
+- States: from the FROZEN collector (prim1_b025, native, rays, seed 0, 10M live ticks, --keep-going --dump-states) on blue025, blue200, utopia and uf2. Eligibility was checked on the post-bootstrap state.
+- Branches: yaw sigma x s against the mean-yaw reference (x1e-6), with pitch and keys native and the same torch draws in every branch.
+- Common horizon: 0.3 s.
+- Paired excess work, median / lower quartile, in % KE0 per second:
+
+| cell | yaw x1 (native) | x0.5 | x0.25 | x0.1 |
+|---|---|---|---|---|
+| utopia 600-1000 u/s (39 pairs) | -7.41 / -16.91 FAIL | -1.49 / -3.75 FAIL | -0.28 / -0.86 pass | -0.04 / -0.15 pass |
+| utopia 1000-2000 (26) | -4.99 / -8.22 FAIL | -0.71 / -2.31 pass | -0.13 / -0.65 pass | -0.04 / -0.21 pass |
+| utopia >= 2000 (22) | -0.32 / -0.82 pass | -0.14 / -0.23 pass | -0.02 / -0.05 pass | -0.00 / -0.01 pass |
+| uf2 600-1000 (23) | -2.04 / -6.26 FAIL | -0.73 / -1.62 pass | -0.09 / -0.35 pass | -0.00 / -0.09 pass |
+
+- The edgeflow cells and uf2 1000-2000 were NOT decisive (2-9 uncensored pairs): edgeflow's airborne states touch something within 0.3 s.
+- Treatment events were 0-2 per cell.
+- **The declared rule chooses yaw sigma x0.25, pitch and keys native. It is frozen as the search executor's setting (--exec-view-scale 0.25,1), the same on every map.**
+
+**The paired search test** (launched 23:30; torch seeded, so native and treated share the draws): the plain rays archive on utopia, prim1_b025, seed 0, 150M live ticks, native vs --exec-view-scale 0.25,1 (runs/research/paired_{native,yaw025}_utopia). First report at about 22M live ticks: ROUTE 8.46% (native) vs 18.91% (yaw x0.25).
+
+**Viewer**: https://claude.ai/artifact/D5NKVJobsrhqbAKNVa5hbx shows the ramps3 extraction of utopia / blue025 / blue200 / uf2, a fresh blue025 ramp-command chain and the utopia R26 failure.
+- uf2 ramps3 (cell 16): 898,497 samples, 328 surfaces (14 floors, 30 ramps, 229 walls, 30 ceilings, 25 kill).
+- The fresh blue025 ramp search (ramps3, the fixed contract, native executor, seed 0) found its first finishing chain at 5.17M live ticks (12,884 expansions): 19 commands, 22.3 s. Replay 0/32 (median 7 plans); edge fidelity product 0.68.
+- **Only 2 of the chain's 19 commands were direct**, and 8 first contacts matched no extracted surface (-4). Search-wide, 593 direct outcomes against 32,092 other-contact and 18,913 no-contact outcomes.
