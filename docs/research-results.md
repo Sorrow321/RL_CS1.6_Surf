@@ -29990,3 +29990,39 @@ runs/research/archive_s1_uf2d, plot bev.png):
 - `--moves prim_surf` (3 primitives + the surf line) against the prim control at 300k flights, same mover: progress 2,484 vs 2,440, in-pit max 1,324 vs 1,457. No effect.
 - The surf-school arm (the uf2 mover practising on utopia): on utopia its primitive success is down 59-65%, level 40-44%, up 9-13% (on uf2: 31 / 20 / 6%). The landing bench on uf2 follows when it ends.
 - A box deploy's test suite failed test_curiosity_cond::test_draw_is_the_mixture...; it passes locally, so this is a platform flake, not tonight's change.
+
+## 2026-09-27 08:53 (machine clock) - uf2 hour 5: temperature and surf-school nulls; --prim-turn curv (curvature primitives) deployed on box B; real-map discovery table (the plain recipe opens only ski_2)
+
+**Mover temperature in the archive** (`--exec-temp 0.5` vs native, same mover s1x @2.677B, seed 5, 300k flights, --mid-states):
+- in-pit max 1,374 vs 1,371; p99 1,003 vs 1,001; progress 2,455 vs 2,528. No effect.
+- The bench's greedy-vs-sampled gap is not reproduced by cooling the mover inside the search.
+
+**The surf school** (`school_uf2`: s1x @1.86B continued on surf_src_utopia with random primitives, 4090, ~490M steps):
+- On utopia its primitive success is down 59-65%, level 40-44%, up 9-13%.
+- On the uf2 landing bench @2.354B:
+  - sampled: 55/64 alive at 1 s, but vh median 1,250 (joint endpoint 10/64, against 23/64 for the uf2 mover @~2.1B);
+  - greedy: 1,352 at 1 s, 1,222 at 2 s;
+  - the surf line: 0/64 alive.
+- Single-map surf practice on utopia made the mover safer and slower on uf2, not better. Released.
+
+**`--prim-turn curv`** (goalprim.curve / PrimitivePlanner / train_fast / record_ckpt mirror / edge_archive's PrimOperator reads the mover's own primitive config; tests/python/test_prim_turn.py 3/3, test_goal_prim 17/17):
+- A primitive's sideways knots keep their CURVATURE at the traced speed (the rate at the 300 u/s floor, scaled by speed / floor).
+- A surf turn is a radius in space. The record's wall-ride (206 deg in 0.5 s at 1,140 u/s, a ~160 u radius) needs ~410 deg/s. The rate form (+-180 deg/s at any speed) cannot draw it; the curvature form (+-180 at the floor) draws up to +-684 deg/s at 1,140 u/s.
+- Default rate, byte-identical.
+- Deployed on box B, which replaces the 300k-expansion variant (its round 11: 282k expansions, 139k nodes, 3,088 cells, no finish; logs kept in runs/research/s1xE3_uf2):
+  - `s1xC8_uf2` continues box A's best pit mover (s1xF8 @2.217B) with `--prim-turn curv`, 80% of its spawns from box A's 104,644 own goid-weighted states;
+  - its loop rounds are 100k expansions with --mid-states --dump-weights goid --pre-death 0.5, and the archive draws curvature primitives too;
+  - the watchdog was re-registered to 13:54 with the new harvest spec.
+
+**Real-map discovery table:**
+
+| map | pass 1: blue025 mover, 3 level rays, 5 min | pass 2: surf-school mover, 3 random primitives, 10 min |
+|---|---|---|
+| surf_ski_2 | FOUND, 2 s (flat 9/9) | - |
+| surf_excessus | no (21.1%) | no (18.3%) |
+| surf_gi_rino | no (34.9%) | running |
+| surf_hopee_v2 | no (37.2%) | queued |
+| surf_src_sidistic | no (6.7%) | queued |
+| surf_src_utopia | no (25.3%) | - |
+
+- Beyond ski_2, the real maps need a mover that can surf. The unitfarmer2 landing is the same missing skill.
