@@ -8178,17 +8178,23 @@ def main() -> None:
         if _ssf is None or not 0.0 < float(_ssf) < 1.0:
             raise SystemExit("--spawn-states needs --spawn-states-frac in (0, 1)")
         from surfgym.core import STATE_DTYPE as _SD
-        _ss = np.load(args.spawn_states, allow_pickle=False)
-        if _ss.dtype != _SD or _ss.ndim != 1 or len(_ss) < 1:
-            raise SystemExit(f"--spawn-states {args.spawn_states}: a 1-D STATE_DTYPE array is "
-                             f"needed, got {_ss.dtype} {_ss.shape}")
-        _ss = _ss.copy()
-        _ss["tick"] = 0
-        _ss["stuck_ticks"] = 0
-        SPAWN_STATES = _ss
-        print(f"--spawn-states: {len(_ss):,} own states from {args.spawn_states}; "
+        def _load_spawn_states(_path):
+            _a = np.load(_path, allow_pickle=False)
+            if _a.dtype != _SD or _a.ndim != 1 or len(_a) < 1:
+                raise SystemExit(f"--spawn-states {_path}: a 1-D STATE_DTYPE array is "
+                                 f"needed, got {_a.dtype} {_a.shape}")
+            _a = _a.copy()
+            _a["tick"] = 0
+            _a["stuck_ticks"] = 0
+            return _a
+        SPAWN_STATES = _load_spawn_states(args.spawn_states)
+        # the file is RE-READ when its mtime changes (checked every 20 iterations): an outer
+        # loop (a fresh edge archive of the current policy) can refresh the own-state pool
+        # without restarting the run; replace it atomically (write + rename)
+        SS_MTIME = os.path.getmtime(args.spawn_states)
+        print(f"--spawn-states: {len(SPAWN_STATES):,} own states from {args.spawn_states}; "
               f"{float(_ssf):.0%} of every training spawn pool drawn uniformly from them "
-              f"(exact states, clocks zeroed)")
+              f"(exact states, clocks zeroed; re-read when the file changes)")
     elif args.spawn_states_frac is not None and flag_given("--spawn-states-frac"):
         raise SystemExit("--spawn-states-frac without --spawn-states")
     # CLAUDE.md section 0: HUMAN DEMOS NEVER TRAIN THE AGENT. Every
@@ -14310,6 +14316,19 @@ def main() -> None:
             _tick_retune(global_step)
         fleet.set_step(global_step)   # authoritative (survives resume)
         t_pool = tm.now()
+
+        if SPAWN_STATES is not None and it_no % 20 == 0:
+            # --spawn-states: re-read a refreshed file (an outer archive loop replaced it)
+            try:
+                _mt = os.path.getmtime(args.spawn_states)
+                if _mt != SS_MTIME:
+                    SPAWN_STATES = _load_spawn_states(args.spawn_states)
+                    SS_MTIME = _mt
+                    print(f"--spawn-states: re-read {len(SPAWN_STATES):,} own states from "
+                          f"{args.spawn_states} at step {global_step:,}", flush=True)
+            except (OSError, ValueError) as _e:
+                print(f"--spawn-states: re-read failed ({_e}); keeping the previous pool",
+                      flush=True)
 
         def _set_pool(_slot, _pool):
             # the predecessor archive replaces --archive-frac of whatever

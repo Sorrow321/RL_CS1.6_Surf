@@ -606,6 +606,13 @@ def main(argv=None) -> int:
                             velocity=np.stack([arch.state[i]["velocity"] for i in ids])
                             .astype(np.float32),
                             depth=np.asarray([arch.depth[i] for i in ids], np.int32),
+                            node_id=np.asarray(ids, np.int64),
+                            parent=np.asarray([arch.parent[i] for i in ids], np.int64),
+                            # every node's origin by id (a retired elite can be a live node's
+                            # ancestor), so a chain to ANY live node can be read back
+                            all_origin=np.stack([arch.state[i]["origin"] for i in
+                                                 range(len(arch))]).astype(np.float32),
+                            all_parent=np.asarray(arch.parent, np.int64),
                             t=np.asarray([arch.t[i] for i in ids], np.int32),
                             n_sel=np.asarray([arch.n_sel[i] for i in ids], np.int32),
                             root=np.asarray(st0["origin"], np.float32), finish=fin.astype(np.float32))

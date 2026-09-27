@@ -48,6 +48,15 @@ def main(argv=None) -> int:
             print(f"   the northernmost escaped node: {np.round(o[j], 0).tolist()} at "
                   f"{np.hypot(v[j, 0], v[j, 1]):,.0f} u/s, depth {int(z['depth'][j])}, "
                   f"{int(z['t'][j]) / 100.0:.1f} s from the root")
+            if "all_parent" in z.files:
+                # its chain back to the root, one point per move (analysis only)
+                ao, ap = z["all_origin"], z["all_parent"]
+                nid, pts = int(z["node_id"][j]), []
+                while nid >= 0:
+                    pts.append(np.round(ao[nid], 0).astype(int).tolist())
+                    nid = int(ap[nid])
+                print("   its chain, one point per 2 s move: " + " -> ".join(
+                    f"({a},{b},{c})" for a, b, c in pts[::-1]))
     return 0
 
 
