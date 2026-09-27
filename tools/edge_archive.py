@@ -291,9 +291,12 @@ class RampOperator:
     shape = "ramp"
 
     def __init__(self, tick_ms: float, finish, rampmap, k: int, timeout: float = RAMP_TIMEOUT,
-                 gravity: float = 800.0):
+                 gravity: float = 800.0, tail: str = "slide"):
         self.rm = rampmap
         self.gravity = float(gravity)
+        if tail not in ("slide", "inertial", "level"):
+            raise ValueError(f"--ramp-tail: unknown tail {tail!r}")
+        self.tail = tail
         self.tick_ms = float(tick_ms)
         self.targets = [int(s) for s in range(rampmap.n_surf) if int(rampmap.cat[s]) in (0, 1)]
         self.FIN = len(self.targets)                  # the finish box is the last command
@@ -497,6 +500,16 @@ class RampOperator:
         tail, p, w = [], end.copy(), un * spd
         g = np.array([0.0, 0.0, -self.gravity])
         gt = g - (float(g @ nb) * nb if nb is not None else 0.0)
+        if self.tail == "inertial":
+            gt = np.zeros(3)                          # the arrival tangent, held straight
+        elif self.tail == "level" and nb is not None:
+            # RIDE: B's in-plane horizontal direction (normal x up), signed along the arrival
+            # tangent; no in-plane gravity (the rider holds the ramp)
+            lv = np.cross(nb, np.array([0.0, 0.0, 1.0]))
+            if float(np.linalg.norm(lv)) > 1e-6:
+                lv = lv / float(np.linalg.norm(lv))
+                w = lv * (spd if float(lv @ un) >= 0.0 else -spd)
+            gt = np.zeros(3)
         for _ in range(int(RAMP_TAIL / 0.01)):
             w = w + gt * 0.01
             p = p + w * 0.01
@@ -526,7 +539,7 @@ class RampOperator:
                 f"surfaces ({int(sum(1 for s in self.targets if self.rm.cat[s] == 1))} ramps, "
                 f"{int(sum(1 for s in self.targets if self.rm.cat[s] == 0))} floors) + the finish, "
                 f"{self.k} per expansion in the node's coast order (progressive widening), a "
-                f"Hermite arrival into B's plane + {RAMP_TAIL:g} s slide; a flight ends at the "
+                f"Hermite arrival into B's plane + {RAMP_TAIL:g} s {self.tail} tail; a flight ends at the "
                 f"first new contact after departure or {self.secs:g} s - no planner")
 
 
@@ -1162,6 +1175,10 @@ def main(argv=None) -> int:
                     help="--moves prim: primitives drawn per expanded node")
     ap.add_argument("--ramps", default=None,
                     help="--moves ramp: the map's surfaces (tools/ramps.py v2 .npz)")
+    ap.add_argument("--ramp-tail", choices=("slide", "inertial", "level"), default="slide",
+                    help="--moves ramp: the command line's continuation past its arrival: slide "
+                         "(default: free sliding down B's plane), inertial (the arrival tangent "
+                         "held), level (RIDE along B at the arrival height)")
     ap.add_argument("--ramp-k", type=int, default=4,
                     help="--moves ramp: commands per expansion (the node's next K in its coast "
                          "order; progressive widening)")
@@ -1290,7 +1307,8 @@ def main(argv=None) -> int:
                        MixOperator(float(ctx.tick.ms), _fc, 1, int(a.seed),
                                    cfg=getattr(ctx, "cfg", None))
                        if a.moves == "widen" else
-                       RampOperator(float(ctx.tick.ms), _fc, _load_rampmap(a.ramps), int(a.ramp_k))
+                       RampOperator(float(ctx.tick.ms), _fc, _load_rampmap(a.ramps), int(a.ramp_k),
+                                    tail=str(a.ramp_tail))
                        if a.moves == "ramp" else
                        RayOperator(float(ctx.tick.ms), _fc, n=(4 if a.moves == "rays4" else 3)))
         print("edge_archive: --rays 3 - " + ctx.planner.describe(), flush=True)

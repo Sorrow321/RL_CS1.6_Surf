@@ -268,7 +268,10 @@ def main(argv=None) -> int:
                       f"{'PASS' if passed else ('fail' if decisive else ('NOT DECISIVE' if populated else 'unpopulated'))}"
                       f" | 0.3 s closed loop: median {100 * sl['median']:+.2f}% LQ "
                       f"{100 * sl['lq']:+.2f}% over {sl['clean']} clean", flush=True)
-    maps_ = sorted({m for (m, _k, _s) in table})
+    # EVERY panel map, including one with no eligible state at all (it has no cell in the
+    # table): a map without a decisive cell makes the panel INCONCLUSIVE (v3's first run checked
+    # only the maps present in the table and so passed the two edgeflow maps vacuously)
+    maps_ = sorted(header["maps"])
     cells = sorted({(m, k) for (m, k, _s) in table})
     s0 = scales[0]
     bad_cells = [(m, k) for (m, k) in cells
