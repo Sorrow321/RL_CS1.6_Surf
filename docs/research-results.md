@@ -29723,3 +29723,58 @@ runs/research/archive_s1_uf2d, plot bev.png):
 - edge_archive.py `--dump-nodes`: the live nodes' positions, velocities, depths and ticks.
 - tools/plot_archive_bev.py: top-down and side views over the occupancy, grey scale, labelled. A
   reference line may be overlaid for analysis.
+
+## 2026-09-27 06:07 (machine clock) - OVERNIGHT (user asleep, 9 h to 14:23): escape the unitfarmer2 pit. The 3-D move alphabet gets the search into the pit; no mover conserves the drop speed yet. Launches: the mover loop (local) and two flat arms with archive-state spawns (rented)
+
+**The user's brief** (05:23): work overnight for ~9 hours, Vast topped up ($29.88).
+- The goal is to escape the unitfarmer2 pit, champion-free and generic.
+- Planner-free if possible. The user doubts that 3 level rays are enough on real maps ("the space of actions should be larger").
+- Talk to Codex; it now answers automatically every ~20 min.
+
+**Measurement, uf2 archives, 100k expansions each** (tools/uf2_archive_probe.py; the pit box and rungs from docs/gate_boxes.json and docs/uf2-exploration-review.md, measurement only):
+
+| mover | moves | pit-box nodes | in-pit max vh | out of the shaft |
+|---|---|---|---|---|
+| prim1_b025 (blue025 only) | 3 level rays | 54 | 817 | 0 |
+| prim1_b025 | 3 random step-1 primitives (`--moves prim`) | 3,937 | 1,222 | 0 |
+| s1w_uf2 @662M (stage 1 continued on uf2) | 3 random primitives | 1,987 | 1,193 | 0 |
+| s1w_uf2 @751M | 3 random primitives | 1,920 | 1,195 | 0 |
+
+- Codex's disambiguation (level rays vs mover skill): BOTH halves matter.
+  - The 3-D alphabet is what gets the search into the pit (70x the pit nodes).
+  - No mover keeps the ~1,780 u/s that the drop allows (the pit's speed rung is 1,400).
+- On blue025 the same `--moves prim` finds nothing in 76k expansions, where the level rays finish at 5.3k. The alphabet is map-dependent, so a mixed alphabet is still open.
+
+**The pit's geometry** (occupancy cross-sections with the human record overlaid, analysis only; runs/research/archive_s1p_uf2/pit_sections.png):
+- Two levels, each with a north-south A-frame surf ramp, joined by a tall open shaft at the south end.
+- The record walks south off the start platform and drops down that shaft onto the LOWER A-frame. It surfs north (t 4-5 s: 1,148 -> 1,765 u/s, which is the free-fall energy of the drop, nothing gained by strafing), turns, and comes back south at 1,786 u/s.
+- The south wall then throws it up the shaft to the UPPER level (t 7-8 s, vz +898). It surfs the upper A-frame north and out of the start area at z ~500 (t 10 s).
+- The missing skill: land on a steep ramp while falling and surf it without losing energy.
+
+**Code** (commits 425cc9b, 8c68e51; tests: test_stall_arc 5/5, test_spawn_states 2/2, test_race_arc 16/16):
+- `--stall-arc 1`: under --race-arc, the stall kill watches the ROUTE ARC instead of the field (Codex: on a detour map the field detector kills every route-following episode). Off by default, byte-identical.
+- `--spawn-states FILE --spawn-states-frac F`: a share of every training spawn pool drawn uniformly from a file of the agent's OWN states.
+  - Section 0 applies: the trainer and the launcher both require SELF_STATES=1.
+  - The file is re-read when it changes; TRAIN_ONLY in the recorder.
+- tools/edge_archive.py:
+  - `--moves prim --n-moves K` (PrimOperator: K random step-1 primitives per expansion);
+  - `--dump-states` (the live nodes' full states, clocks zeroed);
+  - `--dump-nodes` now carries parent links.
+- tools/uf2_archive_probe.py: pit-box nodes, in-pit speed, out-of-shaft nodes, and an escaped node's chain.
+- test_race_arc's fake core had gone stale (RaceReward.on_reset reads the gravity since an earlier change). All 16 of its tests were failing before tonight; now fixed.
+
+**Launched:**
+1. **Local 5090, `s1x_uf2`:** the stage-1 mover (ARM_RESUME from s1w_uf2 @837M), with `SELF_STATES=1 --spawn-states runs/research/loop_states_uf2.npy --spawn-states-frac 0.5`.
+   - The states come from archive_s1wB_uf2: 10,785 live nodes of the mover's own search.
+   - The trainer re-reads the file each time the loop refreshes it.
+2. **Local loop** (scratchpad loop_uf2.sh; log runs/research/loop_s1x_uf2.txt):
+   - each round waits for +250M mover steps;
+   - then a fresh 3-D archive with the current mover (100k expansions), the probe, and an atomic swap of the states file;
+   - deadline 13:45; it stops on a finishing chain.
+3. **Two rented 4090s:** no 3090 passed the filters tonight (0 of 27); 4090 offers 42494303 and 52775603, 0.40-0.41 $/h, 8+ physical cores per GPU.
+   - Both are from-scratch FLAT arms on uf2 with the pinned SCRATCH recipe (abs view, keys hold, potential channel + curtain).
+   - Common flags: `--race-ratchet --spawn-states <the same 10,785 archive states> --spawn-states-frac 0.5`, 3B steps, watchdogs with harvest specs.
+   - `axspn4_uf2`: `--int-coef 1.0`, the old arm whose entrants surfed the first ramp.
+   - `axspn10_uf2`: `--int-coef 2.5`, the old arm that found the entry.
+   - Idea: the archive supplies the policy's own coverage of the pit (not a route, not a demo), and the flat race policy learns the surf and the launch from those states.
+   - Pre-registered verdict: a greedy episode from the true start that leaves the shaft by 1.5B steps; the in-pit speed rung is the diagnostic.
