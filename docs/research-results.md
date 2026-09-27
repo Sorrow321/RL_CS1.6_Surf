@@ -29549,3 +29549,35 @@ primlearn executors that NEVER trained on blue200):
 **Launched: flatself2_b200.** The same flat recipe on the route from the blue050-executor archive
 (runs/research/archive_x_v1ri_b050_s1/selfroute_b200.npz; 79 vertices, 9,951 u). That is the whole
 pipeline with no blue200-specific training anywhere upstream.
+
+## 2026-09-27 04:02 (machine clock) - the whole pipeline with NO training on the map upstream: blue200 9/9 greedy at 152M; the other three edgeflow maps searched in ~2 s each
+
+**flatself2_b200:**
+- The route was found by the archive with the v1ri_b050 executor (trained ONLY on blue050);
+  runs/research/archive_x_v1ri_b050_s1, 12 plans, 23.4 s.
+- The flat policy was trained from scratch along it (same flags as flatself_b200).
+- Greedy from the start: 0/9 at 1M, 0/9 at 77M, **9/9 at 152M (mean 15.59 s, best 15.03 s)**;
+  ~519k steps/s, so ~5 minutes of training. Stopped at the verdict.
+- Nothing in this pipeline was trained on blue200 before the flat policy.
+
+**How the route is searched** (for the record, as explained to the user):
+- The search runs in the simulator and uses no learned planner.
+- A table of the KINDS of state reached so far, keyed by the position cell, speed, heading,
+  rising or falling, and contact. Each entry holds the exact state and a link to its parent.
+- Loop: pick the least-tried entries, restore each exact state, fly all three commands (straight,
+  +-45 deg, 2 s) with a line-following executor trained elsewhere, and add every new kind of
+  state reached.
+- No reward and no distance-to-goal: a state is kept because it is new. The search stops at the
+  first flight that enters the finish box; the back-links give the route (the executor's own
+  flown positions).
+
+**The same search on the other maps** (seed 0, each executor never trained on the map it searched):
+
+| map | executor trained only on | expansions / wall | route |
+|---|---|---|---|
+| blue100 | blue050 | 433 / 2 s | 7 plans, 13.6 s; line 6,142 u |
+| blue050 | blue025 | 236 / 2 s | 6 plans, 11.2 s; line 4,566 u |
+| blue025 | blue050 | 178 / 2 s | 6 plans, 11.1 s; line 3,770 u |
+
+**Running: flatself_b100** (the same flat recipe on the blue100 route); blue050 and blue025 follow,
+one at a time.
