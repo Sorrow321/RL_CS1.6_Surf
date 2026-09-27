@@ -30953,3 +30953,16 @@ Also the five remaining contract items from the same review (unknown-root first-
 - The viewer (https://claude.ai/artifact/D5NKVJobsrhqbAKNVa5hbx) now draws the faces as polygons by default.
 - Not yet used by a search: the next ramp runs take it as their vocabulary.
 - **How a ramp command reaches the policy today:** the stage-1 mover is a line follower. A command becomes a 3D polyline, and the policy sees 27 numbers: the nearest line point and the points 0.25-2 s ahead, in its own frame, beside its depth image. No ramp is rendered. A "highlight the next ramps" channel could reuse the surf-mask rendering path, but would need a retrained executor.
+
+## 2026-09-28 00:50 (machine clock) - the TARGET-RAMP image channel (the user's design): built and measured (surfgym/targetmask.py); training plan posted to Codex
+
+- Per lidar ray, a ray-triangle test against ONLY the next two target surfaces' faces (tools/ramps_mesh.py).
+  - +1 = the next ramp, -1 = the one after, 0 everything else, walls included.
+  - Visible when at or before the ray's own depth hit (tolerance max(48 u, 3 lidar cells)), or when the ray is clear to the lidar's range.
+  - The finish box is a target through a slab test.
+- Speed: a Triton kernel at 1-2 ms per 256-env frame (the depth march about 1 ms; the torch reference 8 ms). tests/python/test_targetmask.py asserts kernel == reference.
+- Frames from our utopia finisher (runs/research/targetmask_frames.png; the viewer's section 5):
+  - at 6.3 s R26 is the lower-left region (724 px);
+  - at 10.0 s R29 is 387 px and R33 5 px;
+  - while riding R26 (7.5 and 8.5 s), R29 is hidden behind nearer geometry (0-1 px).
+- Not yet trained. The plan is on the bus: a warm start from prim1 with a zero-initialised second input channel, --goal-planner ramps (the two-ramp window line + the channel, captures shift the window, arc reward + capture bonus), spawns from the frozen collectors' own states on four maps.
