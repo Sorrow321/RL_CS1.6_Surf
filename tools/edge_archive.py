@@ -104,6 +104,46 @@ class RayOperator:
                 f"at max(speed, {self.floor:g} u/s), line spacing {self.spacing:g} u - no planner")
 
 
+class PrimOperator:
+    """--moves prim: K RANDOM primitives per expansion, drawn uniformly from step 1's own
+    distribution (goalprim.PrimitivePlanner with its defaults: 3 sideways knots in [-180, 180]
+    deg/s, 3 vertical in [-120, 90] deg/s, a 2 s curve along the 3D velocity at max(speed,
+    300 u/s), 128 u line spacing) and committed for the curve's 2 s. Each (node, slot) flight
+    gets a FRESH draw; the numbers are kept per flight (``last``) so a chain can be written down.
+    No planner, no learned choice: the mover's own training vocabulary, climbs and dives
+    included."""
+
+    shape = "prim"
+
+    def __init__(self, tick_ms: float, finish, k: int, seed: int):
+        from surfgym.goalprim import PRIM_DEFAULTS, PrimitivePlanner
+        d = PRIM_DEFAULTS
+        self.prim = PrimitivePlanner(secs=float(d["prim_secs"]), knots=int(d["prim_knots"]),
+                                     side=float(d["prim_side"]), down=float(d["prim_down"]),
+                                     up=float(d["prim_up"]), floor=float(d["prim_floor"]),
+                                     spacing=RAY_SPACING)
+        self.n_choice = int(k)
+        self.secs = float(d["prim_secs"])
+        self.commit_ticks = int(round(self.secs * 1000.0 / float(tick_ms)))
+        self.budget_ticks = self.commit_ticks
+        self.choice_nums = np.zeros((self.n_choice, 1), np.float64)   # unused: a slot index
+        self.finish = np.asarray(finish, np.float64)
+        self.rng = np.random.default_rng(int(seed) + 911)
+        self.last = []
+
+    def line_and_curve_of(self, origin, velocity, yaw_deg, nums, k=None):
+        p = self.prim.sample(self.rng)
+        self.last.append(np.round(p, 2).tolist())
+        return self.prim.line_and_curve(origin, velocity, yaw_deg, p)
+
+    def describe(self) -> str:
+        return (f"move operator: {self.n_choice} RANDOM step-1 primitives per expansion (sideways "
+                f"+-{self.prim.side:g} deg/s, vertical -{self.prim.down:g}..+{self.prim.up:g} "
+                f"deg/s at {self.prim.knots} knots, {self.secs:g} s along the 3D velocity at "
+                f"max(speed, {self.prim.floor:g} u/s)), committed {self.secs:g} s "
+                f"({self.commit_ticks} ticks) - no planner")
+
+
 def keys_of(st, mins) -> list:
     """The archive key of each STATE_DTYPE row (Codex's v1 quantiser)."""
     o = np.asarray(st["origin"], np.float64)
@@ -370,6 +410,17 @@ def main(argv=None) -> int:
                          "(0 / +-45 deg), committed 2 s, flown by ANY executor checkpoint - a "
                          "primlearn one without --plan-choices, or step 1's --goal-planner prim "
                          "follower; the checkpoint's planner (if any) is not used")
+    ap.add_argument("--moves", choices=("rays", "prim"), default="rays",
+                    help="with --rays 3 / for any executor: rays = the three level rays "
+                         "(RayOperator); prim = --n-moves RANDOM step-1 primitives per expansion "
+                         "(PrimOperator: the mover's own training distribution, climbs and dives "
+                         "included)")
+    ap.add_argument("--n-moves", type=int, default=3,
+                    help="--moves prim: primitives drawn per expanded node")
+    ap.add_argument("--dump-states", action="store_true",
+                    help="write <out>/archive_states.npy at the end: every live node's full "
+                         "STATE_DTYPE row, clocks zeroed - the agent's own states, a "
+                         "SELF_STATES spawn source for train_fast --spawn-states")
     ap.add_argument("--dump-nodes", action="store_true",
                     help="write <out>/nodes.npz at the end: every live node's origin, velocity, "
                          "depth, ticks from the root and times selected (where the archive "
@@ -400,7 +451,11 @@ def main(argv=None) -> int:
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     rng = np.random.default_rng(int(a.seed))
-    probe = 3 if int(a.rays) == 3 else _ckpt_choices(a.ckpt)
+    if a.moves == "prim" and int(a.rays) != 3:
+        raise SystemExit("--moves prim is a planner-free operator: pass --rays 3 as well "
+                         "(the checkpoint's planner is not used)")
+    probe = ((int(a.n_moves) if a.moves == "prim" else 3) if int(a.rays) == 3
+             else _ckpt_choices(a.ckpt))
     S = int(a.parents) * probe
     rargv = [str(a.ckpt), "--episodes", "1", "--plan-scratch", str(S)]
     if not a.greedy:
@@ -418,8 +473,9 @@ def main(argv=None) -> int:
         fb = getattr(ctx, "finish_box", None)
         if fb is None or fb[0] is None:
             raise SystemExit("edge_archive: the recorder returned no finish box")
-        ctx.planner = RayOperator(float(ctx.tick.ms), 0.5 * (np.asarray(fb[0], np.float64)
-                                                           + np.asarray(fb[1], np.float64)))
+        _fc = 0.5 * (np.asarray(fb[0], np.float64) + np.asarray(fb[1], np.float64))
+        ctx.planner = (PrimOperator(float(ctx.tick.ms), _fc, int(a.n_moves), int(a.seed))
+                       if a.moves == "prim" else RayOperator(float(ctx.tick.ms), _fc))
         print("edge_archive: --rays 3 - " + ctx.planner.describe(), flush=True)
     elif ctx.planner is None:
         raise SystemExit("edge_archive: the recorder built no primitive planner (pass --rays 3 "
@@ -457,6 +513,7 @@ def main(argv=None) -> int:
     best_node = root
     finishers = []
     terminal = {}           # finish node -> the flight's terminal position (the goal crossing)
+    move_nums = {}          # --moves prim: node -> the primitive numbers of the move that made it
 
     def report(final=False):
         ids = arch.live_ids()
@@ -489,23 +546,34 @@ def main(argv=None) -> int:
                   flush=True)
             break
         jobs = [(p, k) for p in parents for k in range(fl.C)]
+        if isinstance(ctx.planner, PrimOperator):
+            ctx.planner.last = []
         res = fl.fly(jobs, arch, fin)
+        drawn = (list(ctx.planner.last) if isinstance(ctx.planner, PrimOperator) else None)
         expansions += len(parents)
-        for (p, k), r in zip(jobs, res):
+        for j, ((p, k), r) in enumerate(zip(jobs, res)):
+            if drawn is not None and j < len(drawn):
+                r["nums"] = drawn[j]
             tried[k] += 1
             if r["fin"]:
                 fins += 1
                 nid = arch.add(arch.state[p], arch.keys_state[p], arch.obs[p], ("FIN",), p, k,
                                arch.depth[p] + 1, arch.t[p] + r["ticks"], r["path"])
                 terminal[nid] = r.get("terminal")
+                if r.get("nums") is not None:
+                    move_nums[nid] = r["nums"]
                 finishers.append(nid)
                 continue
             if r["died"] or r["end"] is None:
                 deaths += 1
                 continue
             key = keys_of(r["end"][None], mins)[0]
+            n_before = len(arch)
             what = arch.admit(r["end"], r["keys"], r["obs"], key, p, k, arch.depth[p] + 1,
                               arch.t[p] + r["ticks"], r["path"])
+            if r.get("nums") is not None:
+                for _nid in range(n_before, len(arch)):
+                    move_nums[_nid] = r["nums"]
             if what == "new":
                 yield_new[k] += 1
                 d = float(np.linalg.norm(r["end"]["origin"].astype(np.float64) - fin))
@@ -523,6 +591,14 @@ def main(argv=None) -> int:
             break
     rec = report(final=True)
     prog_f.close()
+    if a.dump_states:
+        _ids = arch.live_ids()
+        _st = np.stack([arch.state[i] for i in _ids]).copy()
+        _st["tick"] = 0
+        _st["stuck_ticks"] = 0
+        np.save(out / "archive_states.npy", _st)
+        print(f"edge_archive: {len(_ids):,} live node states -> {out / 'archive_states.npy'}",
+              flush=True)
     if a.dump_nodes:
         ids = arch.live_ids()
         np.savez_compressed(out / "nodes.npz",
@@ -547,7 +623,7 @@ def main(argv=None) -> int:
                  "moves": moves,
                  "nodes": [{"origin": np.round(arch.state[i]["origin"].astype(np.float64), 1)
                             .tolist(), "t": arch.t[i], "move": arch.move[i],
-                            "path": arch.path[i]} for i in ch],
+                            "nums": move_nums.get(i), "path": arch.path[i]} for i in ch],
                  # the goal crossing (the last node's own state is its parent's: the core
                  # autoresets a finished row, so only the position survives)
                  "terminal": terminal.get(nid),
@@ -557,18 +633,23 @@ def main(argv=None) -> int:
         print(f"edge_archive: FIRST FINISHING CHAIN after {expansions:,} expansions "
               f"({rec['secs']:.0f} s): {len(moves)} plans, {chain['secs']:.1f} s from the root, "
               f"moves {moves}", flush=True)
-        rep = replay(fl, arch, root, moves, fin)
+        if isinstance(ctx.planner, PrimOperator):
+            rep = None
+            print("edge_archive: --moves prim - no open-loop replay (a slot index does not name "
+                  "a move)", flush=True)
+        else:
+            rep = replay(fl, arch, root, moves, fin)
+            print(f"edge_archive: the chain's plan sequence replayed from the true start, no "
+                  f"restores, executor sampling: {rep['finished']}/{rep['n']} finish; median "
+                  f"plans completed {rep['median_plans']}", flush=True)
         summary["replay"] = rep
-        print(f"edge_archive: the chain's plan sequence replayed from the true start, no "
-              f"restores, executor sampling: {rep['finished']}/{rep['n']} finish; median plans "
-              f"completed {rep['median_plans']}", flush=True)
         # the chain's exact states, root first, clocks zeroed: a SELF_STATES spine for the
         # trainer's --demo-file (the agent's own search states - no human input)
         sp = np.stack([arch.state[i] for i in ch]).copy()
         sp["tick"] = 0
         sp["stuck_ticks"] = 0
         np.save(out / "chain_states.npy", sp)
-        fid = edge_fidelity(fl, arch, ch, fin)
+        fid = ([] if isinstance(ctx.planner, PrimOperator) else edge_fidelity(fl, arch, ch, fin))
         summary["edge_fidelity"] = fid
         chain["edge_fidelity"] = fid
         (out / "chain.json").write_text(json.dumps(chain), encoding="utf-8")
@@ -582,7 +663,8 @@ def main(argv=None) -> int:
                       f"{e['pos_err_med']} u, speed err median {e['spd_err_med']} u/s"
                       + (f", downstream-solvable {e['solvable']}/{e['probed']}"
                          if e.get('probed') else ""), flush=True)
-        pr = float(np.prod([max(e["survived"], 0) / e["n"] for e in fid]))
+        pr = (float(np.prod([max(e["survived"], 0) / e["n"] for e in fid])) if fid
+              else float("nan"))
         summary["fidelity_product"] = pr
         print(f"edge_archive: product of the edges' survival rates {pr:.4f}", flush=True)
         print("edge_archive: each chain edge re-flown 32 x from its EXACT parent state "

@@ -648,7 +648,7 @@ class RaceReward:
                  every: int = 1, d_floor: float = 0.0,
                  d_latch: float = 0.0, ng: int = 0, ng_gamma: float = 0.0,
                  ng_d0: float = 0.0, death_charge: float = 0.0,
-                 arc=None, arc_scale: float = 0.0,
+                 arc=None, arc_scale: float = 0.0, stall_arc: bool = False,
                  ratchet: bool = False, ratchet_d0: float = 0.0,
                  d0_per_env: bool = False, tick_ms: float = 10.0,
                  cc_tmax: float = 0.0, cc_p0: float = CC_P0,
@@ -786,6 +786,11 @@ class RaceReward:
         # validated as its own arm); refuse loudly rather than run silently.
         self.arc = arc
         self.arc_scale = float(arc_scale)
+        # --stall-arc: the stall detector's progress coordinate is -arc (a new record ALONG THE
+        # ROUTE re-arms it), not the field distance; without an arc it is refused
+        self.stall_arc = bool(stall_arc)
+        if self.stall_arc and arc is None:
+            raise ValueError("--stall-arc needs --race-arc (the route whose arc it watches)")
         if arc is not None and (self.ng or float(d_floor) > 0.0
                                 or float(d_latch) > 0.0):
             raise ValueError("--race-arc with --race-ng/--race-dfloor/"
@@ -1229,6 +1234,8 @@ class RaceReward:
             self._arc_spawn = self.arc.arc.copy()
             self._arc_max = self.arc.arc.copy()
             self._arc_off = np.zeros(n, np.int64)
+            if self.stall_arc:
+                self._best = -np.asarray(self.arc.arc, np.float64).copy()
         if self.int_coef > 0.0:
             mins, maxs = core.map_bounds()
             self._mins = mins.astype(np.float64)
@@ -1730,8 +1737,10 @@ class RaceReward:
                                              self._sr_last_pos[sib], np.nan)
             self._sr_pos = pos
             self._sr_de = self._sr_de_of(dc, pos)
-        improved = d < self._best - self.stall_eps
-        self._best = np.minimum(self._best, d)
+        # --stall-arc: the route arc is the progress coordinate (ended rows are re-armed below)
+        sd = (-np.asarray(self.arc.arc, np.float64) if self.stall_arc else d)
+        improved = sd < self._best - self.stall_eps
+        self._best = np.minimum(self._best, sd)
         self._since = np.where(improved, 0, self._since + self.every)
         if self.d_latch > 0.0:
             self._latched |= d <= self.d_latch
@@ -1770,7 +1779,8 @@ class RaceReward:
                 self._arc_spawn[ended] = self.arc.arc[ended]
                 self._arc_max[ended] = self.arc.arc[ended]
                 self._arc_off[ended] = 0
-            self._best[ended] = d[ended]
+            self._best[ended] = (-np.asarray(self.arc.arc, np.float64)[ended] if self.stall_arc
+                                 else d[ended])
             if self._vz is not None:
                 # --surf-bonus / --dive-pen: the vz tracker re-anchors on
                 # the fresh spawn, or the first tick of every new episode

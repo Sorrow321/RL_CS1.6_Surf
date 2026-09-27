@@ -47,9 +47,12 @@ class _FlatField:
 
 class _FakeCore:
     def __init__(self, n=1):
+        from types import SimpleNamespace
         self.num_envs = n
         self.states_view = np.zeros(n, STATE_DTYPE)
         self.goal_hits = np.zeros(n, np.uint8)
+        # RaceReward.on_reset reads the gravity (its --surf-bonus tracker)
+        self.config = SimpleNamespace(phys=SimpleNamespace(sv_gravity=800.0))
 
     def at(self, xyz):
         self.states_view["origin"][:] = np.asarray(xyz, np.float32)

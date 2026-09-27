@@ -80,6 +80,13 @@ class _RouteProbe:
 # a new flag nobody taught this file about, and we refuse to emit a
 # trajectory rather than emit a plausible wrong one.
 TRAIN_ONLY = frozenset({
+    # --spawn-states: a share of the TRAINING spawn pool drawn from a file of own states; a
+    # recording spawns at the map start like the trainer's eval
+    "spawn_states", "spawn_states_frac",
+    # --stall-arc: which progress coordinate the TRAINING stall kill watches (the route arc
+    # instead of the field). A recording does not stall-kill unless --eval-stall is passed, and
+    # that hook stays on the field - refused below for a stall_arc checkpoint
+    "stall_arc",
     # dip_diag: the dip/* tolerance metric (round 37) is LOGGING ONLY - it
     # reads the reward's own running minimum after the reward is computed and
     # touches no tensor a rollout sees. Fourth flag in three rounds to land
@@ -2199,6 +2206,10 @@ def main(argv=None, build_only: bool = False, device=None):
         if gf is None:
             raise SystemExit("--eval-stall needs a goal field to stall "
                              "against; this ckpt has none")
+        if cfg.get("stall_arc"):
+            raise SystemExit("--eval-stall on a --stall-arc checkpoint: the recording's stall "
+                             "hook watches the field, the run's training kill watched the route "
+                             "arc - not mirrored")
         _stall_ticks = TICK.secs_to_ticks(float(cfg.get("stall_secs") or 15.0))
         # train_fast: `every = KH if --reward-per-decision else 1`, and
         # KH = act_every * max(1, chunk)

@@ -5144,6 +5144,12 @@ def main() -> None:
     ap.add_argument("--stall-secs", type=float, default=None,     # 15
                     help="race: kill an episode whose distance-to-finish "
                          "best hasn't improved for this long (0 = off)")
+    ap.add_argument("--stall-arc", type=int, default=None,        # 0
+                    help="race + --race-arc: 1 = the stall detector watches the ROUTE ARC (a "
+                         "new record along the route by more than --stall-eps in one call "
+                         "re-arms the timer) instead of the field distance, which on a detour "
+                         "map kills every episode that follows the route (Codex, 2026-09-27). "
+                         "0 = the field, byte-identical. ckpt restores")
     ap.add_argument("--stall-eps", type=float, default=None,      # 32
                     help="race: how much a SINGLE decision must improve the "
                          "episode's best distance to re-arm the stall timer. "
@@ -5751,6 +5757,15 @@ def main() -> None:
                     help="--int-split: weight of the intrinsic advantage in the "
                          "policy gradient, A = A_E + coef x A_I, before the "
                          "per-minibatch normalisation")
+    ap.add_argument("--spawn-states", default=None,
+                    help="a .npy of STATE_DTYPE rows of the agent's OWN states (tools/"
+                         "edge_archive.py --dump-states): --spawn-states-frac of every "
+                         "training spawn pool is replaced each iteration by uniform draws from "
+                         "it (exact states, clocks zeroed). Section 0: needs SELF_STATES=1. "
+                         "Single-map. ckpt restores")
+    ap.add_argument("--spawn-states-frac", type=float, default=None,
+                    help="with --spawn-states: the share of the spawn pool it replaces, in "
+                         "(0, 1)")
     ap.add_argument("--archive-frac", type=float, default=None,   # 0 = off
                     help="survivor-gated predecessor archive: the share of the "
                          "spawn pool replaced each iteration by archive rows - "
@@ -6196,6 +6211,9 @@ def main() -> None:
         if args.stall_eps is None and ck_cfg.get("stall_eps") is not None:
             args.stall_eps = float(ck_cfg["stall_eps"])
             restored.append(f"stall_eps={args.stall_eps:g}")
+        if args.stall_arc is None and ck_cfg.get("stall_arc") is not None:
+            args.stall_arc = int(ck_cfg["stall_arc"])
+            restored.append(f"stall_arc={args.stall_arc}")
         if args.max_step is None and ck_cfg.get("max_step") is not None:
             args.max_step = float(ck_cfg["max_step"])
             restored.append(f"max_step={args.max_step:g}")
@@ -6489,6 +6507,12 @@ def main() -> None:
         if args.demo_file is None and ck_cfg.get("demo_file"):
             args.demo_file = str(ck_cfg["demo_file"])
             restored.append(f"demo_file={args.demo_file}")
+        if args.spawn_states is None and ck_cfg.get("spawn_states"):
+            args.spawn_states = str(ck_cfg["spawn_states"])
+            restored.append(f"spawn_states={args.spawn_states}")
+        if args.spawn_states_frac is None and ck_cfg.get("spawn_states_frac") is not None:
+            args.spawn_states_frac = float(ck_cfg["spawn_states_frac"])
+            restored.append(f"spawn_states_frac={args.spawn_states_frac:g}")
         if args.demo_window is None and ck_cfg.get("demo_window") is not None:
             args.demo_window = int(ck_cfg["demo_window"])
         if args.demo_rate is None and ck_cfg.get("demo_rate") is not None:
@@ -7242,6 +7266,14 @@ def main() -> None:
         args.stall_secs = 30.0 if args.race_dist == "euclid" else 15.0
     if args.stall_eps is None:
         args.stall_eps = 32.0                 # RaceReward's own default
+    if args.stall_arc is None:
+        args.stall_arc = 0
+    args.stall_arc = int(args.stall_arc)
+    if args.stall_arc not in (0, 1):
+        raise SystemExit("--stall-arc is 0 or 1")
+    if args.stall_arc and (args.reward != "race" or not args.race_arc):
+        raise SystemExit("--stall-arc 1 needs --reward race and --race-arc (the route whose arc "
+                         "the stall detector watches)")
     if args.max_step is None:
         args.max_step = 100.0                 # RaceReward's own default
     if args.ret_norm is None:
@@ -8138,6 +8170,27 @@ def main() -> None:
                              "is rebuilt from the map each iteration")
         if not 0.0 < float(args.archive_frac) < 1.0:
             raise SystemExit("--archive-frac must be in (0, 1)")
+    SPAWN_STATES = None
+    if args.spawn_states:
+        if args.maps:
+            raise SystemExit("--spawn-states is single-map")
+        _ssf = args.spawn_states_frac
+        if _ssf is None or not 0.0 < float(_ssf) < 1.0:
+            raise SystemExit("--spawn-states needs --spawn-states-frac in (0, 1)")
+        from surfgym.core import STATE_DTYPE as _SD
+        _ss = np.load(args.spawn_states, allow_pickle=False)
+        if _ss.dtype != _SD or _ss.ndim != 1 or len(_ss) < 1:
+            raise SystemExit(f"--spawn-states {args.spawn_states}: a 1-D STATE_DTYPE array is "
+                             f"needed, got {_ss.dtype} {_ss.shape}")
+        _ss = _ss.copy()
+        _ss["tick"] = 0
+        _ss["stuck_ticks"] = 0
+        SPAWN_STATES = _ss
+        print(f"--spawn-states: {len(_ss):,} own states from {args.spawn_states}; "
+              f"{float(_ssf):.0%} of every training spawn pool drawn uniformly from them "
+              f"(exact states, clocks zeroed)")
+    elif args.spawn_states_frac is not None and flag_given("--spawn-states-frac"):
+        raise SystemExit("--spawn-states-frac without --spawn-states")
     # CLAUDE.md section 0: HUMAN DEMOS NEVER TRAIN THE AGENT. Every
     # spawn-state / imitation / route source - given as a flag OR restored
     # from a checkpoint - must be declared policy-derived by the operator
@@ -8145,7 +8198,8 @@ def main() -> None:
     # (abbreviations, unguarded flags, checkpoint restores; GPT cross-review
     # 2026-09-13), so the trainer checks the resolved configuration itself.
     _src = [(k, getattr(args, k, None))
-            for k in ("demo_file", "bc_file", "route", "goal_route", "codebook")]
+            for k in ("demo_file", "bc_file", "route", "goal_route", "codebook",
+                      "spawn_states")]
     _src = [(k, v) for k, v in _src if v]
     if _src and os.environ.get("SELF_STATES") != "1":
         raise SystemExit(
@@ -10396,6 +10450,8 @@ def main() -> None:
                 # --race-arc: single-map by the guard above, so handing the
                 # one line to the (single) slot is exact
                 arc=arc_line, arc_scale=arc_scale,
+                # --stall-arc: the stall detector watches the route arc
+                stall_arc=bool(args.stall_arc),
                 # --race-ratchet: the record rule, and THIS map's start
                 # geodesic as the observation column's normaliser
                 ratchet=bool(args.race_ratchet), ratchet_d0=_s.rf_d0,
@@ -11059,6 +11115,9 @@ def main() -> None:
                        # record_ckpt.py mirrors it into its own stall hook
                        "stall_eps": (args.stall_eps
                                      if args.reward == "race" else None),
+                       # --stall-arc: which progress coordinate the TRAINING stall kill
+                       # watches (record_ckpt.py: TRAIN_ONLY - evals do not stall-kill)
+                       "stall_arc": int(args.stall_arc),
                        # --max-step is a reward TERM, but it is one of the
                        # terms the --obs-reward eval feed reproduces, so
                        # record_ckpt.py mirrors it into its own feed
@@ -11199,6 +11258,11 @@ def main() -> None:
                        "spawn_burst": args.spawn_burst,
                        "spawn_burst_p": args.spawn_burst_p,
                        "demo_file": args.demo_file,
+                       # --spawn-states: a share of the TRAINING spawn pool from own states
+                       # (record_ckpt.py: TRAIN_ONLY - a recording spawns at the map start)
+                       "spawn_states": args.spawn_states,
+                       "spawn_states_frac": (float(args.spawn_states_frac)
+                                             if args.spawn_states else None),
                        "demo_window": (args.demo_window
                                        if args.demo_file else None),
                        "demo_rate": (args.demo_rate
@@ -13179,6 +13243,7 @@ def main() -> None:
         if UNSTUCK_INT:
             for _s, _b in zip(slots, INT_BASE):
                 _s.reward_fn.int_coef = _b * (1.0 + unstuck_T)
+    SS_RNG = np.random.default_rng(int(args.seed) + 4242)     # --spawn-states draws
     ARCH = None
     if ARCHIVE:
         from surfgym.archive import PredecessorArchive
@@ -14251,6 +14316,16 @@ def main() -> None:
             # pool the spawn source built (reservoir, window, frontier)
             if ARCH is not None:
                 _pool = ARCH.mix_pool(_pool, float(args.archive_frac))
+            if SPAWN_STATES is not None:
+                # --spawn-states: the same rule over the file of own states - uniformly
+                # chosen pool positions, uniformly drawn rows (a pool shorter than 4096 rows,
+                # the map-start pool before the reservoir fills, is tiled up to it first)
+                if len(_pool) < 4096:
+                    _pool = np.resize(_pool, 4096)
+                _m = int(round(len(_pool) * float(args.spawn_states_frac)))
+                _pos = SS_RNG.choice(len(_pool), _m, replace=False)
+                _pool = _pool.copy()
+                _pool[_pos] = SPAWN_STATES[SS_RNG.integers(0, len(SPAWN_STATES), _m)]
             _slot.core.set_spawn_pool(_pool)
         for _s in slots:
             if demo is not None:
@@ -14334,6 +14409,9 @@ def main() -> None:
                                       * args.respawn_frontier_frac)),
                             _s.respawn)
                     _set_pool(_s, _rp)
+            elif SPAWN_STATES is not None:
+                # --spawn-states before the reservoir fills: map starts + own states
+                _set_pool(_s, _s.pool)
         if goalsys is not None:
             goalsys.iterate(respawn, step=global_step)
         if (args.respawn_random and goal_field is not None
