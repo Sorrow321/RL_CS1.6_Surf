@@ -29497,3 +29497,55 @@ seeds 3 and 5).
 - This is the xSELF construction (CLAUDE.md section 3) with the route from the archive instead
   of from the policy's own greedy runs.
 - The verdict: greedy finishes from the map start (9 per eval).
+
+## 2026-09-27 03:55 (machine clock) - BLUE200 FINISHED 9/9 GREEDY FROM THE START with NO PLANNER: the archive's self-found route + a flat policy with an arc reward along it; the independent review (Fable): drop the learned online planner
+
+**flatself_b200** (launched in the previous entry; stopped at 379M after four decisive evals):
+- The standard from-scratch flat recipe (SCRATCH, POT=off) + `--race-arc` / `--route` along the
+  seed-3 route from tools/edge_archive.py (SELF_STATES; the agent's own search).
+- Greedy from the map start (9 episodes each, the 16 platform spawns):
+
+| step | greedy | times |
+|---|---|---|
+| 1M | 0/9 | - |
+| 77M | 0/9 | - |
+| **152M** | **7/9** | mean 15.27 s, best 14.62 s |
+| 228M | **9/9** | mean 14.81 s, best 14.21 s |
+| 303M | **9/9** | mean 14.98 s, best 14.41 s |
+| 379M | **9/9** | mean 15.02 s, best 14.13 s |
+
+- ~430k steps/s: 9/9 after ~9 minutes of training. The found route itself took 18.0 s.
+- The trajectories were checked: the finishing episodes end inside the finish box. All 9 fly the
+  full detour (min x ~-1,975, max y ~1,213).
+
+**The independent review** (docs/review-fable-2026-09-27.md; a Fable subagent, read-only):
+- **Verdict: drop the learned online planner.** blue200 had already been solved by a flat policy
+  following a route line on 09-24: efTGT200 got 6/9 greedy at 202M, and srFT200 / rpCTL got 9/9.
+  But that route came from a map-geometry graph, which does not connect the real maps.
+  - The five days since then tried to make a PPO planner DISCOVER the route through a reward that
+    is binary until the first finish (refund_i), on top of an executor whose return is cut at
+    every 2 s plan (exec_cut 1). The executor's death costs at most the rest of the current plan:
+    plan/death 0.356 with ~3.2 s training episodes on ch3v3LC, so 0.64^10-13 = 0.3-1.2% even with
+    perfect choices.
+  - The flat policy has a 20 s horizon and a GLOBAL progress coordinate.
+  - The archive does the macro exploration; the route line is the policy's memory and commitment.
+- **Corrections to my own reports**, per the review:
+  - The 3-choice planner's "frontier 16-21% -> 30-37% from the start" was Euclidean episode
+    progress. The greedy episodes die in the pit north of the start after 2.9-5.0 s, so it was a
+    longer dive, not a frontier.
+  - The judge 2x2 was a null manipulation: the strict 384 u corridor is 3D around a level ray,
+    and a fall from the platform (z ~600) to the kill floor (z ~275) never leaves it.
+  - Greedy is not the trained policy (argmax including the keys' keep bin, z = mu): report greedy
+    AND sampled evals together.
+
+**Discovery without training on the map** (edge_archive --rays 3, 64 parents, 3 rays forced onto
+primlearn executors that NEVER trained on blue200):
+
+| executor trained only on | seed 0 | seed 1 |
+|---|---|---|
+| blue050 (v1ri_b050 final) | 1,384 expansions, 11 s, 12 plans (23.9 s) | 1,539 expansions, 12 s, 12 plans (23.4 s) |
+| blue025 (v1ri_b025 harvest) | 5,480 expansions, 37 s, 16 plans (31.3 s) | 5,256 expansions, 33 s, 14 plans (26.8 s) |
+
+**Launched: flatself2_b200.** The same flat recipe on the route from the blue050-executor archive
+(runs/research/archive_x_v1ri_b050_s1/selfroute_b200.npz; 79 vertices, 9,951 u). That is the whole
+pipeline with no blue200-specific training anywhere upstream.

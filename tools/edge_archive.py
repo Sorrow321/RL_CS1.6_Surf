@@ -302,6 +302,10 @@ def main(argv=None) -> int:
                          "speed error to the stored child - and for the first N edges the share of "
                          "(up to 16) re-flown children from which a fresh search (400 expansions) "
                          "still finds a finishing chain (Codex's fidelity questions)")
+    ap.add_argument("--rays", type=int, default=0,
+                    help="3 = fly the three level rays (0 / +-45 deg) even when the checkpoint's "
+                         "planner is not a --plan-choices one (e.g. step 1's primitive follower): "
+                         "the executor only needs to follow a line")
     ap.add_argument("--greedy", action="store_true",
                     help="the executor acts GREEDILY (deterministic with the simulator): every "
                          "(node, move) has ONE outcome, so each node is expanded once "
@@ -323,7 +327,7 @@ def main(argv=None) -> int:
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     rng = np.random.default_rng(int(a.seed))
-    probe = _ckpt_choices(a.ckpt)
+    probe = 3 if int(a.rays) == 3 else _ckpt_choices(a.ckpt)
     S = int(a.parents) * probe
     rargv = [str(a.ckpt), "--episodes", "1", "--plan-scratch", str(S)]
     if not a.greedy:
@@ -333,6 +337,17 @@ def main(argv=None) -> int:
     ctx = record_ckpt.build(rargv, device=a.device)
     if ctx.planner is None or getattr(ctx, "scratch", None) is None:
         raise SystemExit("edge_archive: the recorder built no primitive planner / scratch core")
+    if int(a.rays) == 3 and not int(getattr(ctx.planner, "n_choice", 0) or 0):
+        # --rays 3 on a planner without choices: give it the three rays (only its line drawing is
+        # used - the executor follows whatever line the fan shows)
+        from surfgym.goalprimplan import choice_table
+        _P = ctx.planner
+        _P.n_choice = 3
+        _P.choice_nums = choice_table(3, _P.prim.knots, 45.0)
+        _P.shape = "ray"
+        _P.ray_deg = 45.0
+        print("edge_archive: --rays 3 - the checkpoint's planner has no choices; flying the three "
+              "level rays with its executor", flush=True)
     fl = Flyer(ctx)
     P = ctx.planner
     fin = np.asarray(P.finish, np.float64)
