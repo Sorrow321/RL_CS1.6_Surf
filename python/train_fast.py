@@ -10020,15 +10020,23 @@ def main() -> None:
         if RPLAN:
             # --goal-planner ramps: the vocabulary (refused unless extracted from THIS .bsp), the
             # fleet's windows and the eval's
-            from surfgym.goalramps import RampPlanner
+            from surfgym.goalramps import RampPlanner, find_goal_field
             from surfgym.rampvocab import RampVocab
+            from surfgym.goalfield import load_goal_field as _lgf
+            # the GEODESIC potential orders the targets (the consecutive ramps down it), whatever
+            # --race-dist the reward uses; a map without a baked geodesic field is refused
+            _gfp = find_goal_field(slots[0].bsp)
+            if _gfp is None:
+                raise SystemExit(f"--goal-planner ramps: no geodesic goal field beside "
+                                 f"{slots[0].bsp} (<map>.goal_<cell>.npz) to order the targets")
+            print(f"--goal-planner ramps: targets ordered by the geodesic field {_gfp}")
             _ramp_planner = RampPlanner(
                 RampVocab(args.ramp_vocab, slots[0].bsp), N, slots[0].goal_box, TICK.ms,
                 topk=int(args.ramp_topk), horizon=float(args.ramp_horizon),
                 fade=float(args.ramp_fade),
                 gravity=float(getattr(core.config.phys, "sv_gravity", 800.0)),
                 line_cap=min(768, int(route.pts.shape[1]) if route is not None else 768),
-                seed=int(args.seed) + 9091)
+                seed=int(args.seed) + 9091, goal_field=_lgf(_gfp))
         planner = ((_ramp_planner if RPLAN else prim_planner if PPLAN
                     else FinishRef(slots[0].goal_box) if PLPLAN
                     else None) or BFSPlanner.for_core(

@@ -3,9 +3,14 @@ executor is shown its next target surfaces as an IMAGE CHANNEL (surfgym.targetma
 (the fan) through them, and rides them one after another in one long episode.
 
 * WINDOW: per env the next target T1 and the one after it T2 (surfaces of a surfgym.rampvocab
-  vocabulary, or the finish box). At spawn, T1 is drawn among the top-k targets closest to the
-  spawn's ballistic arc (the source surface excluded) and T2 is the target closest to the arc
-  launched off T1's ride; the line is window_line([T1, T2]).
+  vocabulary, or the finish box). A target is ELIGIBLE only when it lies closer to the finish
+  than the agent - its geodesic distance (the map's goal field, the median over its contact
+  origins) is PROGRESS_DELTA below the agent's, and T2's below T1's: the consecutive ramps down
+  the geodesic potential (the user, 2026-09-28; without it a standing spawn's ballistic arc is a
+  vertical drop and its closest targets were the start's own floors). Among the eligible, T1 is
+  drawn among the top-k by closest approach of the spawn's ballistic arc (the source surface
+  excluded) and T2 is the closest to the arc launched off T1's ride; the line is
+  window_line([T1, T2]).
 * CAPTURE and TAKEOFF come from collision telemetry (SurfCore.get_touch -> RampVocab.classify),
   never from positions: the first contact with T1 is its CAPTURE (the line is rebuilt as the ride
   along T1 then T2); DEPART_TICKS contact-free ticks after it are its TAKEOFF, and the window
@@ -37,7 +42,18 @@ DEPART_TICKS = 10        # contact-free physics ticks after a capture = the TAKE
 
 FIN = -2                 # the finish box as a target (surfgym.targetmask.FIN)
 NONE = -1
-RAMP_DEFAULTS = {"ramp_topk": 4, "ramp_horizon": 3.0, "ramp_fade": 0.3}
+RAMP_DEFAULTS = {"ramp_topk": 2, "ramp_horizon": 3.0, "ramp_fade": 0.3}
+PROGRESS_DELTA = 250.0   # u: a target must lie this much closer to the finish (geodesic) than
+                         # the agent (or than the previous target) to be eligible
+
+
+def find_goal_field(bsp):
+    """the map's cached GEODESIC goal field (<map>.goal_<cell>.npz beside the .bsp) -> path, or None"""
+    from pathlib import Path as _P
+    b = _P(bsp)
+    c = [q for q in sorted(b.parent.glob(f"{b.stem}.goal_*.npz"))
+         if q.stem.split(".goal_")[-1].isdigit()]
+    return str(c[0]) if c else None
 
 
 def ride_dir(nb, toward):
@@ -156,9 +172,11 @@ class RampWindows:
 
     def __init__(self, vocab, n_envs: int, finish_box, tick_ms: float, *, topk: int = 4,
                  horizon: float = 3.0, fade: float = 0.3, gravity: float = 800.0,
-                 line_cap: int = 768, rng=None, deterministic: bool = False):
+                 line_cap: int = 768, rng=None, deterministic: bool = False, goal_field=None):
         from scipy.spatial import cKDTree
         self.voc = vocab
+        # the geodesic potential that orders the targets (None = no progress filter)
+        self.gf = goal_field
         self.N = int(n_envs)
         self.tick_ms = float(tick_ms)
         self.topk = max(1, int(topk))
@@ -187,6 +205,13 @@ class RampWindows:
         self._rad = (np.asarray([float(np.linalg.norm(self.tp[int(k)] - self._cen[j], axis=1).max())
                                  for j, k in enumerate(self._ids)])
                      if len(self._ids) else np.zeros(0))
+        # per target its geodesic distance to the finish: the median over its contact origins
+        self.d_surf = {}
+        if self.gf is not None:
+            for k in self._ids:
+                d = np.asarray(self.gf.sample(self.tp[int(k)]), np.float64)
+                d = d[d < self.gf.reach_max]
+                self.d_surf[int(k)] = float(np.median(d)) if len(d) else np.inf
         n = self.N
         self.t1 = np.full(n, NONE, np.int64)
         self.t2 = np.full(n, NONE, np.int64)
@@ -205,9 +230,17 @@ class RampWindows:
         g = np.array([0.0, 0.0, -self.gravity])
         return p[None] + v[None] * ts[:, None] + 0.5 * g[None] * ts[:, None] ** 2
 
-    def _candidates(self, p, v, exclude):
-        """targets by their closest approach to the ballistic arc from (p, v) within the
-        horizon: -> [(dist, id)] sorted; the finish box is a candidate like a target"""
+    def _d_at(self, p):
+        """the geodesic distance to the finish at p (inf without a field / off it)"""
+        if self.gf is None:
+            return np.inf
+        d = float(self.gf.sample(np.asarray(p, np.float64)[None])[0])
+        return d if d < self.gf.reach_max else np.inf
+
+    def _candidates(self, p, v, exclude, d_max=np.inf):
+        """ELIGIBLE targets (geodesic distance below d_max) by their closest approach to the
+        ballistic arc from (p, v) within the horizon: -> [(dist, id)] sorted; the finish box is
+        a candidate like a target and always eligible"""
         path = self._arc(p, v, self.horizon)
         need = self.topk + 1
         out = []
@@ -217,6 +250,8 @@ class RampWindows:
             for j in np.argsort(lb):
                 s = int(self._ids[j])
                 if s in exclude:
+                    continue
+                if self.d_surf and not self.d_surf.get(s, np.inf) < d_max:
                     continue
                 if len(out) >= need and lb[j] > out[need - 1][0]:
                     break                          # no later target can beat the k-th best
@@ -240,8 +275,11 @@ class RampWindows:
         """choose_next for window_line: the target closest to the arc launched at the end of the
         previous ride (the previous target and `exclude` never)"""
         def f(cp, cv, prev):
+            d_max = (self.d_surf.get(int(prev), np.inf) - PROGRESS_DELTA
+                     if (prev is not None and self.d_surf) else np.inf)
             c = self._candidates(np.asarray(cp, np.float64), np.asarray(cv, np.float64),
-                                 exclude | ({int(prev)} if prev is not None else set()))
+                                 exclude | ({int(prev)} if prev is not None else set()),
+                                 d_max=d_max)
             return int(c[0][1]) if c else FIN
         return f
 
@@ -293,7 +331,13 @@ class RampWindows:
         for n, i in enumerate(idx):
             p, v = origin[n], velocity[n]
             ex = {int(src[n])} if src[n] != NONE else set()
-            t1 = self._pick(self._candidates(p, v, ex))
+            # a slow spawn (standing on the start, say) would draw its arc as a vertical drop:
+            # lay it along the geodesic field's descent direction at RAY_FLOOR instead
+            va = v
+            if self.gf is not None and float(np.linalg.norm(v[:2])) < RAY_FLOOR:
+                yaw = np.radians(float(self.gf.descent_yaw(p[None])[0]))
+                va = np.array([np.cos(yaw) * RAY_FLOOR, np.sin(yaw) * RAY_FLOOR, v[2]])
+            t1 = self._pick(self._candidates(p, va, ex, d_max=self._d_at(p) - PROGRESS_DELTA))
             ln, t2 = self._window(p, v, t1, ex)
             self.t1[i] = t1
             self.t2[i] = t2
@@ -383,7 +427,11 @@ class RampWindows:
         return ids, vals.astype(np.float32)
 
     def describe(self) -> str:
-        return (f"ramp windows: {self.N} envs, T1 drawn {'closest' if self.deterministic else f'among the top {self.topk}'} "
+        return (f"ramp windows: {self.N} envs, targets "
+                + ("ORDERED by the geodesic potential (eligible = closer to the finish by "
+                   f"{PROGRESS_DELTA:g} u than the agent / the previous target), "
+                   if self.d_surf else "NOT ordered (no goal field), ")
+                + f"T1 drawn {'closest' if self.deterministic else f'among the top {self.topk}'} "
                 f"targets by closest approach of the {self.horizon:g} s ballistic arc, T2 off T1's "
                 f"ride; capture = first telemetry contact, takeoff = {self.depart} contact-free "
                 f"ticks; channel fade {self.fade_ticks * self.tick_ms / 1000.0:g} s")
@@ -398,9 +446,11 @@ class RampPlanner:
     primitive = False
 
     def __init__(self, vocab, n_envs: int, finish_box, tick_ms: float, *, topk: int, horizon: float,
-                 fade: float, gravity: float = 800.0, line_cap: int = 768, seed: int = 0):
+                 fade: float, gravity: float = 800.0, line_cap: int = 768, seed: int = 0,
+                 goal_field=None):
         self.vocab = vocab
-        kw = dict(topk=topk, horizon=horizon, fade=fade, gravity=gravity, line_cap=line_cap)
+        kw = dict(topk=topk, horizon=horizon, fade=fade, gravity=gravity, line_cap=line_cap,
+                  goal_field=goal_field)
         self.windows = RampWindows(vocab, n_envs, finish_box, tick_ms,
                                    rng=np.random.default_rng(int(seed)), **kw)
         self.eval_windows = RampWindows(vocab, 1, finish_box, tick_ms, deterministic=True, **kw)

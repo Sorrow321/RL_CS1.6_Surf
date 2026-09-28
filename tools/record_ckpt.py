@@ -1496,17 +1496,25 @@ def main(argv=None, build_only: bool = False, device=None):
                 # the eval windows (the closest candidate every time), and the target channel
                 # appended to the lidar exactly as trained (target_channel 0 = held at zero). The
                 # hooks are the trainer's own (surfgym.goalramps.make_ramp_hooks)
-                from surfgym.goalramps import RampPlanner, TargetLidar, make_ramp_hooks
+                from surfgym.goalramps import (RampPlanner, TargetLidar, find_goal_field,
+                                               make_ramp_hooks)
+                from surfgym.goalfield import load_goal_field as _lgf
                 from surfgym.rampvocab import RampVocab
                 from surfgym.targetmask import TargetMask
                 _voc = RampVocab(str(cfg.get("ramp_vocab")), map_path)
+                # the geodesic field orders the targets, as in training
+                _gfp = find_goal_field(map_path)
+                if _gfp is None:
+                    raise SystemExit(f"--goal-planner ramps: no geodesic goal field beside "
+                                     f"{map_path} to order the targets")
                 _rpl = RampPlanner(_voc, 1, zones["end"], TICK.ms,
                                    topk=int(cfg.get("ramp_topk") or 4),
                                    horizon=float(cfg.get("ramp_horizon") or 3.0),
                                    fade=float(cfg.get("ramp_fade") or 0.3),
                                    gravity=float(getattr(core.config.phys, "sv_gravity", 800.0)),
                                    line_cap=min(768, int(_ml.pts.shape[1])
-                                                if _ml is not None else 768))
+                                                if _ml is not None else 768),
+                                   goal_field=_lgf(_gfp))
                 print(_rpl.describe())
                 lidar = TargetLidar(lidar, TargetMask(str(cfg.get("ramp_vocab")), zones["end"],
                                                       device),
