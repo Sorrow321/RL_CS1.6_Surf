@@ -1435,7 +1435,7 @@ def main(argv=None, build_only: bool = False, device=None):
             # path to it); --plan-target random is the secondary eval. The
             # hooks are the trainer's own (surfgym.goalplan.make_plan_hooks).
             _gp = str(cfg.get("goal_planner"))
-            if _gp not in ("bfs", "learned", "vocab", "jump", "prim", "primlearn"):
+            if _gp not in ("bfs", "learned", "vocab", "jump", "prim", "primlearn", "ramps"):
                 raise SystemExit(f"unknown goal_planner "
                                  f"{cfg.get('goal_planner')!r}")
             # --plan-vocab is MIRRORED: the vocabulary the executor was
@@ -1451,7 +1451,7 @@ def main(argv=None, build_only: bool = False, device=None):
                                           make_plan_hooks)
             say("planner", 24)
             # --goal-planner prim: no map graph at all (surfgym/goalprim.py)
-            _plan = None if _gp in ("prim", "primlearn") else BFSPlanner.for_core(
+            _plan = None if _gp in ("prim", "primlearn", "ramps") else BFSPlanner.for_core(
                 core, gcell, zones["end"],
                 # --goal-planner learned / vocab need only the graph + the
                 # finish (and its occupancy, for the surf slabs)
@@ -1490,6 +1490,31 @@ def main(argv=None, build_only: bool = False, device=None):
                     # the executor wrapper factory (built below); the tool that asked draws its
                     # own lines (tools/edge_archive.py --rays 3: the planner-free operator)
                     _psearch = {}
+            elif _gp == "ramps":
+                # --goal-planner ramps: MIRRORED - the checkpoint's vocabulary (refused unless it
+                # was extracted from THIS .bsp: a recording on another map needs that map's own),
+                # the eval windows (the closest candidate every time), and the target channel
+                # appended to the lidar exactly as trained (target_channel 0 = held at zero). The
+                # hooks are the trainer's own (surfgym.goalramps.make_ramp_hooks)
+                from surfgym.goalramps import RampPlanner, TargetLidar, make_ramp_hooks
+                from surfgym.rampvocab import RampVocab
+                from surfgym.targetmask import TargetMask
+                _voc = RampVocab(str(cfg.get("ramp_vocab")), map_path)
+                _rpl = RampPlanner(_voc, 1, zones["end"], TICK.ms,
+                                   topk=int(cfg.get("ramp_topk") or 4),
+                                   horizon=float(cfg.get("ramp_horizon") or 3.0),
+                                   fade=float(cfg.get("ramp_fade") or 0.3),
+                                   gravity=float(getattr(core.config.phys, "sv_gravity", 800.0)),
+                                   line_cap=min(768, int(_ml.pts.shape[1])
+                                                if _ml is not None else 768))
+                print(_rpl.describe())
+                lidar = TargetLidar(lidar, TargetMask(str(cfg.get("ramp_vocab")), zones["end"],
+                                                      device),
+                                    _rpl.eval_windows,
+                                    mode="live" if int(cfg.get("target_channel") or 0) else "off")
+                print(lidar.describe())
+                _goal_meta, _goal_tick = make_ramp_hooks(_rpl.eval_windows, _voc, core, _ev,
+                                                         line=_ml)
             elif _gp == "primlearn":
                 # --goal-planner primlearn: MIRRORED - the checkpoint's own primitive planner
                 # (ck["planner"]) GREEDY from the spawn, re-choosing like training at the next

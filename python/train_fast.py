@@ -1277,6 +1277,63 @@ def widen_for_obs(ck, policy, route_dim, flag="--act-hist"):
     return n
 
 
+def widen_for_target_channel(ck, policy):
+    """--goal-planner ramps: grow the checkpoint's first conv by ONE trailing zero input channel
+    (the target channel, after the lidar's own) IN PLACE, and its Adam moments with it. Refuses
+    any other mismatch. -> tensors touched (0 = the checkpoint already has the channel)."""
+    sd = ck.get("policy") or {}
+    name = next((n for n, p in policy.state_dict().items()
+                 if n.startswith("conv.") and n.endswith("weight") and p.dim() == 4), None)
+    if name is None or name not in sd:
+        raise SystemExit("--goal-planner ramps: no first conv layer found to widen")
+    t, want = sd[name], policy.state_dict()[name]
+    cin, cwant = int(t.shape[1]), int(want.shape[1])
+    if cin == cwant:
+        return 0
+    if cin + 1 != cwant or tuple(t.shape[2:]) != tuple(want.shape[2:]) \
+            or t.shape[0] != want.shape[0]:
+        raise SystemExit(f"--goal-planner ramps: the checkpoint's {name} is {tuple(t.shape)} "
+                         f"and this run's is {tuple(want.shape)} - only ONE added input channel "
+                         "(the target channel) is a supported warm start")
+
+    def _pad(x):
+        return torch.cat([x, torch.zeros(x.shape[0], 1, *x.shape[2:], dtype=x.dtype)], dim=1)
+    sd[name] = _pad(t)
+    n = 1
+    idx_of = {nm: i for i, (nm, _) in enumerate(policy.named_parameters())}
+    ost = ((ck.get("optimizer") or {}).get("state")) or {}
+    i = idx_of.get(name)
+    st = ost.get(i) if i in ost else ost.get(str(i))
+    for key in ("exp_avg", "exp_avg_sq"):
+        m = (st or {}).get(key)
+        if m is not None and m.dim() == 4 and int(m.shape[1]) == cin:
+            st[key] = _pad(m)
+            n += 1
+    return n
+
+
+def reset_critic_tower(ck, policy):
+    """--reset-critic: the checkpoint's value tower (vf.*, value_head) is replaced by this run's
+    fresh initialisation and its Adam moments are zeroed (the step count is kept). The actor
+    and the shared conv trunk are untouched. -> tensors replaced."""
+    sd = ck.get("policy") or {}
+    fresh = policy.state_dict()
+    idx_of = {nm: i for i, (nm, _) in enumerate(policy.named_parameters())}
+    ost = ((ck.get("optimizer") or {}).get("state")) or {}
+    n = 0
+    for nm, v in fresh.items():
+        if not (nm.startswith("vf.") or nm.startswith("value_head.")):
+            continue
+        sd[nm] = v.detach().clone().cpu()
+        n += 1
+        i = idx_of.get(nm)
+        st = ost.get(i) if i in ost else ost.get(str(i))
+        for key in ("exp_avg", "exp_avg_sq"):
+            if st is not None and st.get(key) is not None:
+                st[key] = torch.zeros_like(st[key])
+    return n
+
+
 def widen_for_rnn(ck, policy):
     """Warm-start a feed-forward checkpoint onto a --rnn Policy.
 
@@ -4663,7 +4720,7 @@ def main() -> None:
                     help="--goal-planner prim: the speed (u/s) a primitive is traced at "
                          "when the agent is slower")
     ap.add_argument("--goal-planner", default=None,
-                    choices=("bfs", "learned", "vocab", "jump", "prim", "primlearn"),
+                    choices=("bfs", "learned", "vocab", "jump", "prim", "primlearn", "ramps"),
                     help="--goals: bfs = plan every spawn's goal with the "
                          "deterministic BFS planner over the walkable graph "
                          "(surfgym/goalplan.py) and show the planned path "
@@ -4691,7 +4748,32 @@ def main() -> None:
                          "(surfgym/goalprimplan.py, step 2; the executor keeps "
                          "training). ckpt "
                          "restores; an explicit flag overrides the "
-                         "checkpoint's")
+                         "checkpoint's. ramps = the RAMP-WINDOW task "
+                         "(surfgym/goalramps.py): target surfaces of --ramp-vocab "
+                         "shown as an image channel and the fan's line, advanced "
+                         "on collision telemetry in one long episode")
+    # --- --goal-planner ramps (surfgym/goalramps.py, the user's target channel, 2026-09-28)
+    ap.add_argument("--ramp-vocab", default=None,
+                    help="--goal-planner ramps: this map's target vocabulary (tools/ramps_mesh.py "
+                         "v4 npz, bound to the .bsp by its size + mtime). ckpt restores")
+    ap.add_argument("--target-channel", type=int, default=None, choices=(0, 1),
+                    help="--goal-planner ramps: 1 = the target-ramp image channel is drawn "
+                         "(surfgym.targetmask: no occlusion, T1 = 1, T2 = 0.5, a continuous "
+                         "cross-fade at each takeoff); 0 = the SAME widened input with that "
+                         "channel held at zero - the control arm. ckpt restores")
+    ap.add_argument("--ramp-topk", type=int, default=None,
+                    help="--goal-planner ramps: a spawn's T1 is drawn uniformly among the top-k "
+                         "targets by closest approach of its ballistic arc (4). ckpt restores")
+    ap.add_argument("--ramp-horizon", type=float, default=None,
+                    help="--goal-planner ramps: s of ballistic arc a T1 is chosen on (3.0). "
+                         "ckpt restores")
+    ap.add_argument("--ramp-fade", type=float, default=None,
+                    help="--goal-planner ramps: s of the channel's takeoff cross-fade (0.3). "
+                         "ckpt restores")
+    ap.add_argument("--reset-critic", type=int, default=None, choices=(0, 1),
+                    help="on a resume: re-initialise the value tower (vf.*, value_head) and zero "
+                         "its Adam moments - the TASK changed (Codex 23:16Z: the old critic is "
+                         "stale); pair with --critic-warmup. Training-only")
     # --- --plan-graph (surfgym/goalplan.py): the planner's graph. walk (the
     # default, never written) = the walkable floor; ride = the ride shell -
     # surfaces within 256 u below plus one 128 u hop - for surf maps.
@@ -6404,6 +6486,11 @@ def main() -> None:
                     continue
                 if ck_cfg.get(_k) is not None:
                     setattr(args, _k, ck_cfg[_k])
+        # --goal-planner ramps: its vocabulary, channel and knobs, like every run-defining flag
+        for _k in ("ramp_vocab", "target_channel", "ramp_topk", "ramp_horizon", "ramp_fade"):
+            if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
+                setattr(args, _k, ck_cfg[_k])
+                restored.append(f"{_k}={ck_cfg[_k]}")
         # --goal-planner learned / --freeze-policy: restored like every
         # other run-defining flag, so a bare resume of a learned-planner
         # checkpoint keeps training the planner (and keeps the executor
@@ -7674,6 +7761,33 @@ def main() -> None:
         args.prim_flat = None
         args.prim_frame = None
         args.prim_pitch_max = None
+    # --goal-planner ramps (surfgym/goalramps.py): the ramp-window task. RPLAN is a Python
+    # constant like PPLAN; with it off every branch keyed on it is dead
+    RPLAN = args.goal_planner == "ramps"
+    from surfgym.goalramps import RAMP_DEFAULTS
+    if RPLAN:
+        if not args.ramp_vocab:
+            raise SystemExit("--goal-planner ramps needs --ramp-vocab (this map's "
+                             "tools/ramps_mesh.py v4 npz)")
+        for _k, _dflt in RAMP_DEFAULTS.items():
+            if getattr(args, _k) is None:
+                setattr(args, _k, _dflt)
+        if args.target_channel is None:
+            args.target_channel = 1
+        if args.goal_reward != "arc" or args.goal_obs != "fan":
+            raise SystemExit("--goal-planner ramps pays arc progress along the window line and "
+                             "shows that line on the fan: --goal-reward arc --goal-obs fan")
+        if args.heldout_maps:
+            raise SystemExit("--goal-planner ramps: --heldout-maps is not implemented (a "
+                             "held-out map needs its own vocabulary); pass --heldout-maps ''")
+    else:
+        _set = [f"--{_k.replace('_', '-')}" for _k in
+                ("ramp_vocab", "target_channel", "ramp_topk", "ramp_horizon", "ramp_fade")
+                if flag_given(f"--{_k.replace('_', '-')}")]
+        if _set:
+            raise SystemExit(f"{', '.join(_set)} without --goal-planner ramps")
+        args.ramp_vocab = args.target_channel = None
+        args.ramp_topk = args.ramp_horizon = args.ramp_fade = None
     LPLAN = args.goal_planner == "learned"
     _lp_knobs = ("plan_lr", "plan_ent", "plan_batch", "plan_epochs",
                  "plan_novelty", "plan_progress", "plan_finish_bonus",
@@ -9569,6 +9683,7 @@ def main() -> None:
                               curtain=curtain)
 
     _raw_lidar = {}
+    _target_masks = {}           # --goal-planner ramps: the target channel's masks, per map
     for slot in slots:
         with D.rank0_first():        # vision SDF npz build/write
             slot.lidar = GpuLidar(slot.core, args.lidar_w, args.lidar_h,
@@ -9612,6 +9727,16 @@ def main() -> None:
             slot.lidar = GoalBallLidar(slot.lidar, slot.n,
                                        radius=float(args.goal_radius),
                                        views=int(args.goal_views))
+        if args.goals and args.goal_planner == "ramps":
+            # --goal-planner ramps: the target channel after the lidar's own (in_ch + 1); its
+            # windows are bound once the goal system has built them. --target-channel 0 keeps
+            # the channel and holds it at zero (the control arm's identical architecture)
+            from surfgym.goalramps import TargetLidar
+            from surfgym.targetmask import TargetMask
+            _target_masks[slot.name] = TargetMask(args.ramp_vocab, slot.goal_box, device)
+            slot.lidar = TargetLidar(slot.lidar, _target_masks[slot.name], None,
+                                     mode="live" if int(args.target_channel) else "off")
+            print(f"{slot.name}: " + slot.lidar.describe())
         mn_b, mx_b = slot.core.map_bounds()
         # map_center is per map: the truncation bootstrap reconstructs a
         # terminal pose from obs slots 12..14 = (pos - centre)/2000, and a
@@ -9892,7 +10017,20 @@ def main() -> None:
         # --goal-planner learned / vocab need only the GRAPH (the walkable
         # patch or the occupancy slabs, the wall diagnostic, the kill
         # ceiling) and the finish field: no random targets
-        planner = ((prim_planner if PPLAN else FinishRef(slots[0].goal_box) if PLPLAN
+        if RPLAN:
+            # --goal-planner ramps: the vocabulary (refused unless extracted from THIS .bsp), the
+            # fleet's windows and the eval's
+            from surfgym.goalramps import RampPlanner
+            from surfgym.rampvocab import RampVocab
+            _ramp_planner = RampPlanner(
+                RampVocab(args.ramp_vocab, slots[0].bsp), N, slots[0].goal_box, TICK.ms,
+                topk=int(args.ramp_topk), horizon=float(args.ramp_horizon),
+                fade=float(args.ramp_fade),
+                gravity=float(getattr(core.config.phys, "sv_gravity", 800.0)),
+                line_cap=min(768, int(route.pts.shape[1]) if route is not None else 768),
+                seed=int(args.seed) + 9091)
+        planner = ((_ramp_planner if RPLAN else prim_planner if PPLAN
+                    else FinishRef(slots[0].goal_box) if PLPLAN
                     else None) or BFSPlanner.for_core(
             slots[0].core, float(slots[0].goal_cell), slots[0].goal_box,
             n_targets=(0 if MACRO else int(args.goal_plan_targets)),
@@ -9901,8 +10039,8 @@ def main() -> None:
                if args.plan_graph in ("ride", "tight") else {})))
         print(planner.describe())
         _pst = (planner.snap(slots[0].plat_pool["origin"].astype(np.float64))
-                if not (PPLAN or PLPLAN) else None)
-        if PPLAN or PLPLAN:
+                if not (PPLAN or PLPLAN or RPLAN) else None)
+        if PPLAN or PLPLAN or RPLAN:
             pass                    # a primitive has no map graph and no finish target
         elif planner.fin is not None and not np.isfinite(
                 planner.dist[planner.fin, _pst]).any():
@@ -10787,6 +10925,19 @@ def main() -> None:
                 "--conv-mult / --trunk / --lidar-w / --lidar-h and the "
                 "scalar mask, all of which are restored from the checkpoint "
                 "when their flag is absent - drop the flag that shrank it")
+        if RPLAN:
+            # --goal-planner ramps onto a checkpoint trained WITHOUT the target channel: the
+            # conv's first layer gains ONE zero input slice (the channel is last), its Adam
+            # moments too - on the first forward the new input multiplies zero weights, so the
+            # resumed actor is the checkpoint's own function (tests/python/test_goalramps.py
+            # proves it on logits and greedy actions) and the slice grows from zero
+            n_w = widen_for_target_channel(ck, policy)
+            if n_w:
+                print(f"--goal-planner ramps: the checkpoint's conv reads "
+                      f"{int(policy.state_dict()['conv.0.weight'].shape[1]) - 1} channel(s); "
+                      f"widened {n_w} tensors (conv.0.weight + its Adam moments gain one ZERO "
+                      "input slice for the target channel) - the resumed actor is the "
+                      "checkpoint's function at step 0")
         if N_ROUTE:
             # FIRST, before the GRU and the trailing pads: the route-side
             # scalar block sits BETWEEN the trunk output and the GRU state,
@@ -10918,6 +11069,11 @@ def main() -> None:
                 "row would be READ differently from how these weights "
                 "learned to write it (and world mode has a third head). "
                 "Drop --view-absolute to restore the checkpoint's own mode.")
+        if int(args.reset_critic or 0):
+            n_r = reset_critic_tower(ck, policy)
+            print(f"--reset-critic: the value tower re-initialised ({n_r} tensors: vf.* and "
+                  "value_head from this run's fresh init, their Adam moments zeroed) - the "
+                  "actor and the shared trunk are the checkpoint's")
         policy.load_state_dict(ck["policy"])
         if VIEW_ABS:
             _mv = policy.project_log_std()
@@ -11382,6 +11538,13 @@ def main() -> None:
             "goal_plan_finish": float(args.goal_plan_finish),
             "goal_plan_dmin": float(args.goal_plan_dmin),
             "goal_plan_dmax": float(args.goal_plan_dmax)})
+    # --goal-planner ramps: the vocabulary, the channel and the knobs; record_ckpt.py MIRRORS them
+    if RPLAN:
+        meta["config"].update({"ramp_vocab": str(args.ramp_vocab),
+                               "target_channel": int(args.target_channel),
+                               "ramp_topk": int(args.ramp_topk),
+                               "ramp_horizon": float(args.ramp_horizon),
+                               "ramp_fade": float(args.ramp_fade)})
     # --goal-planner prim: its knobs, ONLY then; record_ckpt.py MIRRORS them (the recording draws
     # the same kind of primitive)
     if PPLAN or PLPLAN:
@@ -12920,6 +13083,13 @@ def main() -> None:
                                        radius=float(args.goal_radius),
                                        views=int(args.goal_views))
             print(_ball.describe())
+        if RPLAN:
+            # --goal-planner ramps: the eval renders through its own target camera (one env, the
+            # eval windows); the trainer's eval passes goalsys.eval_ball to the policy
+            from surfgym.goalramps import TargetLidar
+            _eval_ball = TargetLidar(_raw_lidar[slots[0].name], _target_masks[slots[0].name],
+                                     planner.eval_windows,
+                                     mode="live" if int(args.target_channel) else "off")
         _learned = None
         if LPLAN:
             # --goal-planner learned: the planner network, its PPO and its
@@ -13130,6 +13300,9 @@ def main() -> None:
             # --goal-obs fanline: the cameras draw the goal system's lines
             slots[0].lidar.line = goalsys.line
             goalsys.eval_ball.line = goalsys.eval_line
+        if RPLAN:
+            # the fleet's camera draws the fleet's windows
+            slots[0].lidar.windows = planner.windows
         if _learned is not None:
             # the terminal obs carries (pos - map centre) / 2000 in 12..14
             goalsys.map_center = np.asarray(

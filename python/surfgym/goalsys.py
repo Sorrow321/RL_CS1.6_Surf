@@ -46,6 +46,11 @@ class GoalSystem:
         # and the planner's own path to it as the env's line. None = every
         # branch below is the pre-planner code, byte for byte.
         self.planner = planner
+        # --goal-planner ramps (surfgym/goalramps.py): the RAMP-WINDOW task - one long episode
+        # per spawn riding target surfaces shown as an image channel and a line; the window
+        # advances on collision telemetry, the arc bank survives its shifts, no sphere ever
+        # ends an episode (the finish box is the only success). False = none of this.
+        self.ramps = bool(getattr(planner, "ramps", False))
         # --goal-planner learned (surfgym/goallearn.py): a LearnedPlanner
         # writes each env's line, one 800 u vocabulary shape at a time, and
         # the end goal of every episode is the finish box. `planner` is then
@@ -281,6 +286,13 @@ class GoalSystem:
 
     # ------------------------------------------------------------ describe
     def describe(self) -> str:
+        if self.ramps:
+            return ("goals: RAMP WINDOWS (--goal-planner ramps) - one episode rides target "
+                    "surfaces one after another: the window [T1, T2] on the fan and in the "
+                    "target channel, advanced by collision telemetry (capture = first contact, "
+                    "takeoff = DEPART_TICKS contact-free ticks); goal-arc reward along the window "
+                    "line, its death-bond bank kept across shifts; the finish box is the only "
+                    "success, no sphere")
         if self.learned is not None and getattr(self.learned,
                                                 "wants_segments", False):
             return ("goals: PLAN DIET (--goal-planner vocab) - the end goal "
@@ -663,6 +675,9 @@ class GoalSystem:
         if self.learned is not None:
             self._assign_learned(idx)
             return
+        if self.ramps:
+            self._assign_ramps(idx)
+            return
         org = self.core.states_view["origin"][idx].astype(np.float64)
         dd = np.asarray(self._field_sample(org), np.float64)
         self.depth[idx] = np.clip(1.0 - dd / self.d0, 0.0, 1.0)
@@ -821,6 +836,61 @@ class GoalSystem:
                                                np.float32))
         self.pending[idx] = False
 
+    # ------------------------------------------------ --goal-planner ramps
+    def _assign_ramps(self, idx) -> None:
+        """--goal-planner ramps: envs ``idx`` start an episode - their target window from the
+        spawn state (the surface a spawn rests on is never its T1), the window line on the fan
+        and the arc (a new episode: the bank starts at zero), no sphere."""
+        P = self.planner
+        sv = self.core.states_view
+        org = sv["origin"][idx].astype(np.float64)
+        vel = sv["velocity"][idx].astype(np.float64)
+        src = P.vocab.contact_of(org, sv["ducked"][idx])
+        lines = P.windows.spawn(idx, org, vel, source=src)
+        if self.line is not None:
+            self.line.set_lines(idx, lines)
+        if self.arc is not None:
+            self.arc.set_lines(idx, lines)
+            rf = self.reward_fn
+            if rf is not None and getattr(rf, "_arc_spawn", None) is not None:
+                rf._arc_spawn[idx] = 0.0
+                rf._arc_max[idx] = 0.0
+        self.sphere.clear(idx)
+        self.plan_tgt[idx] = P.windows.t1[idx]
+        self.plan_fin[idx] = False
+        self.kind[idx] = 3
+        self.k[idx] = 0.0
+        self.pending[idx] = False
+        self.n_assigned[3] += len(idx)
+
+    def _on_step_ramps(self, done, trunc, ep_len) -> np.ndarray:
+        """--goal-planner ramps, after fleet.step: settle the ended episodes (success = the core
+        crossed the ARMED finish box), then read the tick's collision telemetry, advance every
+        live env's window and put the shifted envs' new lines on the fan and the arc - re-anchored
+        at zero instantaneous reward, the episode's death-bond bank KEPT."""
+        P = self.planner
+        ended = (np.asarray(done, bool) | np.asarray(trunc, bool))
+        fin = ended & np.asarray(self.core.goal_hits, bool)
+        if ended.any():
+            e = np.flatnonzero(ended)
+            P.windows.settle(e, fin[e])
+            for i in e:
+                self.stats.note(self.k[i], KIND[3], bool(fin[i]), int(ep_len[i]))
+                self.plan_n[0] += 1
+                self.plan_ok[0] += int(fin[i])
+            self.pending[ended] = False
+        cnt, nrm, pts = self.core.get_touch()
+        sv = self.core.states_view
+        ids = P.vocab.classify(cnt, nrm, pts, sv["ducked"])
+        idx, lines = P.windows.on_tick(ids, sv["origin"].astype(np.float64),
+                                       sv["velocity"].astype(np.float64), ended)
+        if len(idx):
+            if self.line is not None:
+                self.line.set_lines(idx, lines)
+            if self.arc is not None:
+                self.arc.set_lines(idx, lines, keep_bank=True)
+        return fin
+
     # ----------------------------------------------- --goal-planner learned
     def _assign_learned(self, idx) -> None:
         """--goal-planner learned: envs ``idx`` start a new episode. Their
@@ -909,6 +979,8 @@ class GoalSystem:
         learned, for the terminal position of an ended episode."""
         if self.learned is not None:
             return self._on_step_learned(done, trunc, ep_len, term_obs)
+        if self.ramps:
+            return self._on_step_ramps(done, trunc, ep_len)
         ended = (np.asarray(done, bool) | np.asarray(trunc, bool))
         gmask = self.pending & ended
         if self.planner is not None and ended.any():
@@ -1020,6 +1092,12 @@ class GoalSystem:
 
     def note(self, step: int) -> str:
         pnote = self._plan_note(step) if self.planner is not None else ""
+        if self.ramps:
+            rs = self.planner.windows.pop_stats()
+            ne = max(int(rs["episodes"]), 1)
+            pnote += (f"  rides/ep {rs['rides'] / ne:.2f} skips/ep {rs['skips'] / ne:.2f} "
+                      f"fin {rs['fin']}/{rs['episodes']} rides>=2 "
+                      f"{sum(v for k, v in rs['ride_hist'].items() if k >= 2) / ne:.1%}")
         if getattr(self.planner, "primitive", False) and self.planner.bin_n.sum() >= 2000:
             pnote += chr(10) + self.planner.table()
         st = self.stats.pop()
@@ -1094,6 +1172,12 @@ class GoalSystem:
         map's eval tally in goals.csv / plan.csv."""
         from .goalplan import make_plan_hooks
         self._ev_foreign = planner is not None and planner is not self.planner
+        if self.ramps:
+            # --goal-planner ramps: env 0's window from the eval spawn (the map start), the
+            # closest candidate every time (deterministic), advanced by env 0's telemetry
+            from .goalramps import make_ramp_hooks
+            return make_ramp_hooks(self.planner.eval_windows, self.planner.vocab, eval_core,
+                                   self.ev, line=self.eval_line)
         if getattr(self.planner, "primitive", False):
             # --goal-planner prim: a seeded random primitive per eval episode, from the spawn
             from .goalprim import make_prim_hooks
@@ -1245,6 +1329,11 @@ class GoalSystem:
         md = float(np.mean(ev["dists"])) if ev["dists"] else float("nan")
         mt = ((float(np.mean(ev["ticks"])) / self._ticks_per_s)
               if ev["ticks"] else float("nan"))
+        if self.ramps:
+            r = ev.get("rides") or []
+            return (f"  ramp-eval finish {ev['succ']}/{ev['n']} rides "
+                    + ("/".join(str(x) for x in r) if r else "-")
+                    + f" skips {ev.get('skips', 0)}")
         if getattr(self.planner, "primitive", False):
             return (f"  prim-eval {ev['succ']}/{ev['n']} random primitives completed from the "
                     f"spawn (mean length " + (f"{md:,.0f}u" if md == md else "-")

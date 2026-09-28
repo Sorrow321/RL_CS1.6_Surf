@@ -565,81 +565,15 @@ class RampOperator:
         return lv if float(lv @ toward) >= 0.0 else -lv
 
     def window_line(self, origin, velocity, ks, riding_first=False, coast=None):
-        """--ahead: ONE line through a WINDOW of targets ks = [k0, k1, ...]. Per target: an
-        arrival into its plane (k0 from the node's real coast when given, a later one from a
-        ballistic launch off the previous ride) and a RIDE along it at the arrival height to its
-        far edge; riding_first: the flight is ON k0 already and the line starts with its ride from
-        here. The finish (FIN) is a target like a ramp: the line arrives in its box and ends.
-        -> (resampled line, raw points)."""
-        from surfgym.route import resample_polyline
-        o = np.asarray(origin, np.float64).reshape(3)
-        v = np.asarray(velocity, np.float64).reshape(3)
-        g = np.array([0.0, 0.0, -self.gravity])
-        segs = [o[None]]
-        cur_p, cur_v = o, v
-        for j, k in enumerate(int(x) for x in ks):
-            spd = max(float(np.linalg.norm(cur_v)), RAY_FLOOR)
-            if j == 0 and riding_first and k < self.FIN:
-                # already riding k0: its level line from here to its far edge
-                dq, iq = self.tt[k].query(cur_p[None], k=1)
-                nb = self.tn[k][int(iq[0])]
-                lv = self._ride_dir(k, nb, cur_v / max(float(np.linalg.norm(cur_v)), 1e-9))
-                ext = float(((self.tp[k] - cur_p[None]) @ lv).max())
-                ss = np.arange(1, max(2, int(max(ext, 0.0) / (spd * 0.01))) + 1) * spd * 0.01
-                segs.append(cur_p[None] + lv[None] * ss[:, None])
-                cur_p, cur_v = segs[-1][-1], lv * spd
-                continue
-            if j == 0 and coast is not None:
-                path, pvel = coast
-            else:
-                ts = np.arange(0.0, RAMP_COAST, self.dt_path)
-                path = cur_p[None] + cur_v[None] * ts[:, None] + 0.5 * g[None] * ts[:, None] ** 2
-                pvel = cur_v[None] + g[None] * ts[:, None]
-            if k >= self.FIN:
-                jj = int(np.argmin(np.linalg.norm(path - self.finish[None], axis=1)))
-                pb, nb = self.finish, None
-            else:
-                dq, iq = self.tt[k].query(path, k=1)
-                jj = int(np.argmin(dq))
-                pb, nb = self.tp[k][int(iq[jj])], self.tn[k][int(iq[jj])]
-            tc = max(0.2, jj * self.dt_path, float(np.linalg.norm(pb - cur_p)) / spd)
-            vc = pvel[min(jj, len(pvel) - 1)]
-            sp2 = max(float(np.linalg.norm(vc)), RAY_FLOOR)
-            if nb is not None:
-                u = vc - float(vc @ nb) * nb
-                if np.linalg.norm(u) < 1e-3:
-                    u = (pb - cur_p) - float((pb - cur_p) @ nb) * nb
-                end = pb - nb * RAMP_PRESS
-            else:
-                u = pb - cur_p
-                end = pb
-            un = u / max(float(np.linalg.norm(u)), 1e-6)
-            vv = cur_v if np.linalg.norm(cur_v) >= 1.0 else un * RAY_FLOOR
-            ss = np.linspace(0.0, 1.0, max(2, int(np.ceil(tc / 0.01))) + 1)
-            h00 = 2 * ss ** 3 - 3 * ss ** 2 + 1
-            h10 = ss ** 3 - 2 * ss ** 2 + ss
-            h01 = -2 * ss ** 3 + 3 * ss ** 2
-            h11 = ss ** 3 - ss ** 2
-            herm = (h00[:, None] * cur_p[None] + h10[:, None] * (vv * tc)[None]
-                    + h01[:, None] * end[None] + h11[:, None] * (un * sp2 * tc)[None])
-            segs.append(herm[1:])
-            if nb is None:
-                cur_p, cur_v = end, un * sp2
-                break                                  # the finish: the line ends in its box
-            lv = self._ride_dir(k, nb, un)
-            ext = float(((self.tp[k] - end[None]) @ lv).max())
-            rs = np.arange(1, max(2, int(max(ext, 0.0) / (sp2 * 0.01))) + 1) * sp2 * 0.01
-            segs.append(end[None] + lv[None] * rs[:, None])
-            cur_p, cur_v = segs[-1][-1], lv * sp2
-        else:
-            # past the last ride: RIDE_PAST of lookahead along the launch direction
-            d = cur_v / max(float(np.linalg.norm(cur_v)), 1e-9)
-            segs.append(cur_p[None] + d[None] * np.linspace(RIDE_PAST / 8, RIDE_PAST, 8)[:, None])
-        pts = np.vstack(segs)
-        line, _total = resample_polyline(pts, RAY_SPACING)
-        if len(line) > self.line_cap:
-            line = line[:self.line_cap]               # the far end of the window is lookahead
-        return np.asarray(line, np.float32), pts
+        """--ahead: ONE line through a WINDOW of targets ks = [k0, k1, ...] - the ramp-window
+        line, whose single implementation is surfgym.goalramps.window_line (the trainer's
+        --goal-planner ramps draws the same lines). -> (resampled line, raw points)."""
+        from surfgym.goalramps import window_line as _window_line
+        return _window_line(self.tp, self.tn, self.tt, self.finish, origin, velocity, ks,
+                            fin=self.FIN, riding_first=riding_first, coast=coast,
+                            gravity=self.gravity, dt_path=self.dt_path, line_cap=self.line_cap,
+                            ray_floor=RAY_FLOOR, ray_spacing=RAY_SPACING, ramp_coast=RAMP_COAST,
+                            ramp_press=RAMP_PRESS, ride_past=RIDE_PAST)
 
     def describe(self) -> str:
         return (f"move operator (ramp): 'go to surface B' commands over {len(self.targets)} "

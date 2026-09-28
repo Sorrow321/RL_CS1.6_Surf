@@ -313,8 +313,14 @@ class MultiArcProgress:
         return q
 
     # ----------------------------------------------------------------- build
-    def set_lines(self, idx, lines, origin=None) -> None:
+    def set_lines(self, idx, lines, origin=None, keep_bank: bool = False) -> None:
         """Install ``lines[k]`` into env ``idx[k]`` and re-anchor those envs.
+
+        ``keep_bank=True`` (the ramp-window task, surfgym.goalramps): the
+        episode's death-bond bank survives the new line. A window shift is
+        not a new episode - re-anchoring pays zero instantaneous reward, and
+        clearing the bank would let every shift start a fresh shaping budget
+        that a later death no longer forfeits (Codex 23:16Z).
 
         Same contract as ``MultiLine.set_lines``: the lines are numpy (L, 3),
         ``2 <= L <= l_max``, and ALREADY resampled at ``self.spacing`` - the
@@ -363,7 +369,8 @@ class MultiArcProgress:
             self.pts[e, :len(a)] = a
             self.pts[e, len(a):] = a[-1]
             self.length[e] = len(a)
-        self.bank[idx] = 0.0
+        if not keep_bank:
+            self.bank[idx] = 0.0
         if origin is None:
             self.arc[idx] = 0.0
             self.idx[idx] = 0
