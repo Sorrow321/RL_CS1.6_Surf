@@ -56,17 +56,23 @@ def _draw_keys(frame, W, H, fwd, side, jump, duck):
     _draw_key(frame, x0 + 2 * (k + gap), y1, k + 14, 22, "DUCK", duck)
 
 
-def _fit_text(img, text, x, y, maxw, scale, colour=(255, 255, 255)):
+def _fit_text(img, text, x, y, maxw, scale, colour=(255, 255, 255),
+              outline=False):
     """Draw `text` so it FITS in `maxw` px, shrinking the font rather than
     running off the panel. The lidar is 64 px wide on most runs, so a panel
     is ~384 px and a caption written at a fixed scale is silently cropped -
-    which is how a legend ends up saying 'bright = FARTHER from go'."""
+    which is how a legend ends up saying 'bright = FARTHER from go'.
+    outline=True draws a dark outline under the text, for a panel whose
+    bright regions would otherwise swallow white text (the target channel)."""
     s = float(scale)
     while s > 0.28:
         (tw, _), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, s, 1)
         if tw <= maxw:
             break
         s -= 0.05
+    if outline:
+        cv2.putText(img, text, (x, y), cv2.FONT_HERSHEY_SIMPLEX, s, (0, 0, 0), 3,
+                    cv2.LINE_AA)
     cv2.putText(img, text, (x, y), cv2.FONT_HERSHEY_SIMPLEX, s, colour, 1,
                 cv2.LINE_AA)
 
@@ -174,11 +180,17 @@ def main() -> None:
                          "lidar_vfov, else 90)")
     ap.add_argument("--horizon", action="store_true",
                     help="draw the world-horizon line (off by default)")
+    ap.add_argument("--targets", action="store_true",
+                    help="--goal-planner ramps runs: the TARGET CHANNEL the policy received, in "
+                         "a panel under the depth - its window per tick from the recording's "
+                         "trailer (make_ramp_hooks), drawn through the run's vocabulary exactly "
+                         "as training did (white = next / riding, grey = the one after); a run "
+                         "with --target-channel 0 saw zeros and shows zeros")
     ap.add_argument("--ep", type=int, default=None,
                     help="render only this episode (1-based)")
     args = ap.parse_args()
 
-    rows, episodes, headers, hdr = [], [], [], {}
+    rows, episodes, headers, trailers, hdr = [], [], [], [], {}
     for line in open(args.traj, encoding="utf-8"):
         o = json.loads(line)
         if isinstance(o, dict) and "map" in o:
@@ -188,6 +200,7 @@ def main() -> None:
         elif isinstance(o, dict) and "end" in o and rows:
             episodes.append(np.asarray(rows, dtype=np.float64))
             headers.append(hdr)
+            trailers.append(o)
             rows = []
     if not episodes:
         raise SystemExit("no episodes in trajectory file")
@@ -197,6 +210,7 @@ def main() -> None:
                              f"{len(episodes)} episodes)")
         headers = [headers[args.ep - 1]]
         episodes = [episodes[args.ep - 1]]
+        trailers = [trailers[args.ep - 1]]
     # real time = one frame per tick at the recording's OWN tick. The header
     # is the only place that knows it; refuse to guess (surfgym.tick).
     if args.fps is None:
@@ -327,6 +341,25 @@ def main() -> None:
     # >= 3 px), one view full size
     # --normals: a third kind of panel, the ego normal as RGB, stacked
     # directly under the depth (then the ball panel, when both are on)
+    # --targets: the ramp run's target channel (surfgym.targetmask, the run's own vocabulary,
+    # its windows as recorded); target_channel 0 = the control arm, which saw zeros
+    tmask = None
+    tgt_live = True
+    if args.targets:
+        from surfgym.targetmask import TargetMask
+        from surfgym.zones import load_zones
+        _voc = rcfg.get("ramp_vocab")
+        if not _voc:
+            raise SystemExit("--targets: this run.json names no ramp_vocab (not a "
+                             "--goal-planner ramps run)")
+        _vp = Path(_voc)
+        if not _vp.is_absolute():
+            _vp = ROOT / _vp
+        _zn = load_zones(core.bsp_path) or {}
+        tmask = TargetMask(str(_vp), _zn.get("end"), device)
+        tgt_live = bool(int(rcfg.get("target_channel") or 0))
+        print(f"--targets: {_vp.name} "
+              + ("(live)" if tgt_live else "(the run held it at ZERO: --target-channel 0)"))
     ball_panel = args.goal_ball > 0
     if ball_panel and args.surf_mask:
         raise SystemExit("--goal-ball and --surf-mask are exclusive")
@@ -334,7 +367,8 @@ def main() -> None:
         raise SystemExit("--normals and --surf-mask are exclusive (|n_z| is "
                          "the normal's third channel)")
     n_panels = (1 + int(bool(args.normals))
-                + int(args.surf_mask or ball_panel) + int(pot is not None))
+                + int(args.surf_mask or ball_panel) + int(pot is not None)
+                + int(tmask is not None))
     FRAME_H = H * n_panels
     # the display range of the potential panel is the ENCODING's own clip, so
     # the colours mean the same thing across frames and across runs (a
@@ -407,6 +441,15 @@ def main() -> None:
                 radius=np.full(B, float(gr or args.goal_radius), np.float32))
         pitch = a[:, 12] if a.shape[1] > 12 else np.zeros(n)
         duck = (a[:, 8].astype(np.int64) & 4) != 0     # buttons IN_DUCK bit
+        t_ids = t_vals = None
+        if tmask is not None:
+            from surfgym.goalramps import slot_values
+            _tg = (trailers[ei].get("targets") if ei < len(trailers) else None) or {}
+            if _tg.get("events"):
+                t_ids, t_vals = slot_values(_tg["events"], n, float(_tg.get("fade_ticks", 30.0)))
+            else:
+                print(f"episode {ei + 1}: no target windows in its trailer (recorded before "
+                      "they were logged) - target panel blank")
         for s0 in range(0, n, B):
             sl = slice(s0, min(s0 + B, n))
             k = sl.stop - sl.start
@@ -419,6 +462,13 @@ def main() -> None:
                 d = ball.render(o, yw, pt, dk, idx=np.arange(k)).cpu().numpy()
             else:
                 d = lidar.render(o, yw, pt, dk).cpu().numpy()      # (k, h, w)
+            tch = None
+            if tmask is not None:
+                if t_ids is not None and tgt_live:
+                    tmask.set_slots(k, t_ids[sl], t_vals[sl], combine="max")
+                    tch = tmask.render(lidar, o, yw, pt, dk).cpu().numpy()
+                else:
+                    tch = np.zeros((k, lidar.H, lidar.W), np.float32)
             enc_max = 1.25 if (near and near < rng_u) else 1.0
             for i in range(k):
                 dep = d[i][..., 0] if d[i].ndim == 3 else d[i]
@@ -447,7 +497,7 @@ def main() -> None:
                 cv2.putText(frame, txt, (8, H - 10), cv2.FONT_HERSHEY_SIMPLEX,
                             0.55, (255, 255, 255), 1, cv2.LINE_AA)
                 if (args.normals or ball is not None or args.surf_mask
-                        or pot is not None):
+                        or pot is not None or tmask is not None):
                     cv2.putText(frame, "depth", (8, 22),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.55,
                                 (255, 255, 255), 1, cv2.LINE_AA)
@@ -550,6 +600,27 @@ def main() -> None:
                               8, H - 10, W - 16, 0.5)
                     cv2.line(pfr, (0, 0), (W, 0), (60, 60, 60), 1)
                     frame = np.vstack((frame, pfr))
+                if tch is not None:
+                    # the TARGET CHANNEL the policy received: 0 black, the one after 0.5 grey,
+                    # the next / the one being ridden 1 white (grey levels, labelled - not a
+                    # colour code)
+                    tv = np.clip(tch[i], 0.0, 1.0)
+                    tfr = cv2.cvtColor(((tv * 235.0) + 20.0).astype(np.uint8),
+                                       cv2.COLOR_GRAY2BGR)
+                    tfr = cv2.resize(tfr, (W, H), interpolation=cv2.INTER_NEAREST)
+                    if t_ids is not None:
+                        ri = sl.start + i
+                        lab = "   ".join(
+                            f"{('FIN' if s_ == -2 else 'S' + str(s_))} {v_:.2f}"
+                            for s_, v_ in zip(t_ids[ri], t_vals[ri]) if s_ != -1 and v_ > 0)
+                    else:
+                        lab = "no windows recorded"
+                    _fit_text(tfr, "targets (white = next / riding, grey = the one after)"
+                              + ("" if tgt_live else "  HELD AT ZERO in this run"),
+                              8, 22, W - 16, 0.55, outline=True)
+                    _fit_text(tfr, lab, 8, H - 10, W - 16, 0.5, outline=True)
+                    cv2.line(tfr, (0, 0), (W, 0), (60, 60, 60), 1)
+                    frame = np.vstack((frame, tfr))
                 write(np.ascontiguousarray(frame).tobytes())
                 total += 1
     close()

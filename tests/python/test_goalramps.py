@@ -259,3 +259,38 @@ def test_the_target_lidar_adds_one_channel_and_off_holds_it_at_zero(voc):
     img = lid.render(o, torch.zeros(2), torch.zeros(2), torch.zeros(2, dtype=torch.int64))
     assert img.shape == (2, H, W, 2)
     assert float(img[..., 1].abs().max()) == 0.0 and float(img[..., 0].min()) == 0.5
+
+
+def test_the_recorded_window_events_rebuild_the_channel_exactly(voc):
+    """make_ramp_hooks records one event per window change ([row, prev, T1, T2, tau]); the POV
+    render rebuilds every row's slots from them with slot_values - which must equal what the
+    windows showed the policy at that row (RampWindows.slots after the previous tick)"""
+    v, _bsp, _ = voc
+    w = _windows(v)
+    o = np.array([[1000.0, -1500.0, 250.0]] * 2)
+    vel = np.array([[0.0, 1500.0, 0.0]] * 2)
+    w.spawn([0, 1], o, vel)
+    none = -np.ones((2, 8), np.int64)
+    on0 = none.copy()
+    on0[0, 0] = 0
+    on1 = none.copy()
+    on1[0, 0] = 1
+    script = [on0] * 3 + [none] * 40 + [on1] * 5 + [none] * 60
+    seen_ids, seen_vals, events = [], [], []
+
+    def snap(row):
+        e = [row, int(w.prev[0]), int(w.t1[0]), int(w.t2[0]), int(min(w.tau[0], 1 << 20))]
+        if not events or events[-1][1:4] != e[1:4]:
+            events.append(e)
+    snap(0)
+    for k, ids in enumerate(script):
+        si, sv = w.slots([0])
+        seen_ids.append(si[0])
+        seen_vals.append(sv[0])
+        idx, _ = w.on_tick(ids, o, vel, np.zeros(2, bool))
+        if 0 in idx:
+            snap(k + 1)
+    got_i, got_v = gr.slot_values(events, len(script), w.fade_ticks)
+    assert len(events) >= 3                            # spawn + two takeoffs
+    assert np.array_equal(got_i, np.asarray(seen_ids))
+    assert np.allclose(got_v, np.asarray(seen_vals), atol=1e-6)

@@ -970,6 +970,10 @@ def pov_render_plan(p: Path, panels=()):
             # --normals: the ego-frame normal channels as an RGB
             # panel under the depth (render_pov.py --normals)
             vis.append("--normals")
+        if rcfg.get("goal_planner") == "ramps":
+            # --goal-planner ramps: the target channel the policy
+            # receives, drawn from the recording's own windows
+            vis.append("--targets")
         if rcfg.get("goal_obs") in ("ball", "both"):
             # the goal-ball view channels the policy receives,
             # stacked under the depth panel
@@ -994,6 +998,8 @@ def pov_render_plan(p: Path, panels=()):
         _needs.append("--obs-potential")
     if rcfg.get("surf_mask"):
         _needs.append("--surf-mask")
+    if rcfg.get("goal_planner") == "ramps":
+        _needs.append("--targets")
     script = _render_script(p, _needs)
     # Pin the MAP to the main checkout. render_pov.py without --map
     # resolves the trajectory header's map name against its OWN repo
@@ -1053,7 +1059,8 @@ def pov_render_plan(p: Path, panels=()):
             tags_extra.append("pot")
     tags = (["nrm"] if "--normals" in vis else []) \
         + (["ball"] if "--goal-ball" in vis
-           else ["mask"] if "--surf-mask" in vis else [])
+           else ["mask"] if "--surf-mask" in vis else []) \
+        + (["tgt"] if "--targets" in vis else [])
     if rcfg.get("obs_potential") and _script_supports(
             script, "--obs-potential"):
         if _flag_takes_value(script, "--obs-potential"):

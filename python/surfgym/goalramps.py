@@ -546,6 +546,16 @@ def make_ramp_hooks(windows, vocab, core, ev: dict, *, line=None):
     every tick reads env 0's collision telemetry, advances the window and keeps `line` (the eval
     fan) on it. ev tallies episodes, rides, skips and finishes."""
     ev.update({"n": 0, "succ": 0, "rides": [], "skips": 0, "chain": []})
+    # the window as the policy SAW it, for the POV render (tools/render_pov.py --targets): one
+    # event per change, [row, prev, T1, T2, tau at that row] - the channel's values at row k are
+    # the fade of tau + (k - row) (slot_values); rows are the episode's own tick index
+    rec = {"t0": None, "events": []}
+
+    def _snap(row):
+        e = [int(row), int(windows.prev[0]), int(windows.t1[0]), int(windows.t2[0]),
+             int(min(windows.tau[0], 1 << 20))]
+        if not rec["events"] or rec["events"][-1][1:4] != e[1:4]:
+            rec["events"].append(e)
 
     def _src():
         sv = core.states_view
@@ -557,6 +567,9 @@ def make_ramp_hooks(windows, vocab, core, ev: dict, *, line=None):
         o = sv["origin"][0].astype(np.float64)
         v = sv["velocity"][0].astype(np.float64)
         ln = windows.spawn([0], o[None], v[None], source=_src())[0]
+        rec["t0"] = None
+        rec["events"] = []
+        _snap(0)
         if line is not None:
             line.set_lines(np.array([0]), [ln])
         ev["n"] += 1
@@ -566,6 +579,8 @@ def make_ramp_hooks(windows, vocab, core, ev: dict, *, line=None):
                 "plan": {"planner": "ramps", "t1": int(windows.t1[0]), "t2": int(windows.t2[0])}}
 
     def on_tick(t, states, rewards, done, trunc):
+        if rec["t0"] is None:
+            rec["t0"] = int(t)
         ended = bool(done[0]) or bool(trunc[0])
         if ended:
             fin = bool(np.asarray(core.goal_hits, bool)[0])
@@ -584,5 +599,32 @@ def make_ramp_hooks(windows, vocab, core, ev: dict, *, line=None):
                 ev["chain"][-1].append(int(windows.t1[0]))
             if line is not None:
                 line.set_lines(idx, lines)
+            # the policy sees the new window from the NEXT row on
+            _snap(int(t) - int(rec["t0"]) + 1)
 
+    def episode_end(ep):
+        return {"targets": {"events": list(rec["events"]),
+                            "fade_ticks": float(windows.fade_ticks)}}
+
+    episode_meta.episode_end = episode_end
     return episode_meta, on_tick
+
+
+def slot_values(events, n_rows, fade_ticks):
+    """a recorded episode's window events (make_ramp_hooks' trailer) -> per row the channel's
+    three slots: (ids (n, 3) int64, values (n, 3) float32) - exactly RampWindows.slots"""
+    ids = np.full((n_rows, 3), NONE, np.int64)
+    vals = np.zeros((n_rows, 3), np.float32)
+    ev = sorted(events, key=lambda e: e[0])
+    for j, (row, prev, t1, t2, tau0) in enumerate(ev):
+        lo = max(0, int(row))
+        hi = n_rows if j + 1 == len(ev) else min(n_rows, int(ev[j + 1][0]))
+        if hi <= lo:
+            continue
+        k = np.arange(lo, hi)
+        f = np.minimum(1.0, (float(tau0) + (k - lo)) / max(float(fade_ticks), 1.0))
+        ids[lo:hi] = (prev, t1, t2)
+        vals[lo:hi, 0] = (1.0 - f) if prev != NONE else 0.0
+        vals[lo:hi, 1] = (0.5 + 0.5 * f) if t1 != NONE else 0.0
+        vals[lo:hi, 2] = (0.5 * f) if t2 != NONE else 0.0
+    return ids, vals
