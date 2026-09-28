@@ -529,3 +529,30 @@ def test_the_pass_reward_counts_window_shifts_and_nothing_else(voc):
     assert w.tick_pass[1] == 1 and w.tick_pass[0] == 0
     w.on_tick(none, *_state(AWAY), np.array([True, True]))  # ended rows never pay
     assert w.tick_pass.sum() == 0
+
+
+def test_the_numba_search_answers_exactly_what_the_kd_trees_do(voc):
+    """RampWindows' compiled search (goalramps._FAST_SEARCH: brute-force minima over the same
+    subsampled origins) against its KD-tree path - the same T1 / T2 and the same line from every
+    spawn state, and the same window after the same ticks"""
+    if gr._FAST_SEARCH is None:
+        pytest.skip("numba unavailable (or SURFGYM_NO_NUMBA=1): only the KD path exists")
+    _v, bsp, tmp = voc
+    v = _wedge_vocab(tmp, bsp)
+    fin = ((20000, 0, 0), (20100, 100, 100))
+    rng = np.random.default_rng(5)
+    o = np.column_stack([rng.uniform(-3000, 6000, 40), rng.uniform(-2500, 1500, 40),
+                         rng.uniform(200, 1500, 40)])
+    vel = np.column_stack([rng.uniform(-1500, 2500, 40), rng.uniform(-800, 800, 40),
+                           rng.uniform(-300, 300, 40)])
+    got = []
+    for fast in (True, False):
+        w = gr.RampWindows(v, 40, fin, 10.0, topk=2, horizon=3.0, fade=0.3,
+                           rng=np.random.default_rng(0))
+        if not fast:
+            w._fast = None
+        lines = w.spawn(np.arange(40), o, vel)
+        got.append((w.t1.copy(), w.t2.copy(), lines))
+    assert np.array_equal(got[0][0], got[1][0]) and np.array_equal(got[0][1], got[1][1])
+    assert all(a.shape == b.shape and np.allclose(a, b, atol=1e-3)
+               for a, b in zip(got[0][2], got[1][2]))

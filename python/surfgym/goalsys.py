@@ -24,6 +24,7 @@ Nothing here runs unless --goals is set; the control path is untouched.
 from __future__ import annotations
 
 import csv
+import time
 from pathlib import Path
 
 import numpy as np
@@ -203,6 +204,9 @@ class GoalSystem:
         self.k = np.zeros(self.N, np.float64)
         # --ramp-reward pass: the window shifts of the last tick per env (set by _on_step_ramps)
         self.ramp_pass = np.zeros(self.N, np.float32)
+        # --goal-planner ramps: this iteration's milliseconds per stage of the ramp bookkeeping
+        # (printed by note())
+        self.rt = {"touch": 0.0, "classify": 0.0, "windows": 0.0, "lines": 0.0, "spawn": 0.0}
         self.kind = np.zeros(self.N, np.int8)
         # start depth as a fraction of d0 (0 = spawn, 1 = finish), so
         # goal success can be reported per 10%% band of the MAP - the
@@ -844,11 +848,13 @@ class GoalSystem:
         spawn state (the surface a spawn rests on is never its T1), the window line on the fan
         and the arc (a new episode: the bank starts at zero), no sphere."""
         P = self.planner
+        _t0 = time.perf_counter()
         sv = self.core.states_view
         org = sv["origin"][idx].astype(np.float64)
         vel = sv["velocity"][idx].astype(np.float64)
         src = P.vocab.contact_of(org, sv["ducked"][idx])
         lines = P.windows.spawn(idx, org, vel, source=src)
+        self.rt["spawn"] += (time.perf_counter() - _t0) * 1e3
         if self.line is not None:
             self.line.set_lines(idx, lines)
         if self.arc is not None:
@@ -881,18 +887,27 @@ class GoalSystem:
                 self.plan_n[0] += 1
                 self.plan_ok[0] += int(fin[i])
             self.pending[ended] = False
+        _t0 = time.perf_counter()
         cnt, nrm, pts = self.core.get_touch()
         sv = self.core.states_view
+        _t1 = time.perf_counter()
         ids = P.vocab.classify(cnt, nrm, pts, sv["ducked"])
+        _t2 = time.perf_counter()
         idx, lines = P.windows.on_tick(ids, sv["origin"].astype(np.float64),
                                        sv["velocity"].astype(np.float64), ended)
         # --ramp-reward pass: this tick's window shifts per env (+1 each, added by the trainer)
         self.ramp_pass = P.windows.tick_pass.astype(np.float32)
+        _t3 = time.perf_counter()
         if len(idx):
             if self.line is not None:
                 self.line.set_lines(idx, lines)
             if self.arc is not None:
                 self.arc.set_lines(idx, lines, keep_bank=True)
+        _t4 = time.perf_counter()
+        self.rt["touch"] += (_t1 - _t0) * 1e3
+        self.rt["classify"] += (_t2 - _t1) * 1e3
+        self.rt["windows"] += (_t3 - _t2) * 1e3
+        self.rt["lines"] += (_t4 - _t3) * 1e3
         return fin
 
     # ----------------------------------------------- --goal-planner learned
@@ -1102,7 +1117,9 @@ class GoalSystem:
             pnote += (f"  rides/ep {rs['rides'] / ne:.2f} skips/ep {rs['skips'] / ne:.2f} "
                       f"hops held/ep {rs.get('holds', 0) / ne:.2f} "
                       f"fin {rs['fin']}/{rs['episodes']} rides>=2 "
-                      f"{sum(v for k, v in rs['ride_hist'].items() if k >= 2) / ne:.1%}")
+                      f"{sum(v for k, v in rs['ride_hist'].items() if k >= 2) / ne:.1%}"
+                      "  ramp ms " + "/".join(f"{k} {v:,.0f}" for k, v in self.rt.items()))
+            self.rt = {k: 0.0 for k in self.rt}
         if getattr(self.planner, "primitive", False) and self.planner.bin_n.sum() >= 2000:
             pnote += chr(10) + self.planner.table()
         st = self.stats.pop()

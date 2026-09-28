@@ -54,6 +54,8 @@ edge; the finish box ends the line; past the last ride, RIDE_PAST u of lookahead
 """
 from __future__ import annotations
 
+import os
+
 import numpy as np
 
 # the ramp operator's constants (tools/edge_archive.py uses these values; one set for every map)
@@ -71,6 +73,96 @@ PROGRESS_DELTA = 250.0   # u: a target must lie this much closer to the finish (
                          # the agent (or than the previous target) to be eligible
 SPEED_MARGIN = 300.0     # u/s added to the speed bound of the reach cap (air-strafe gain)
 LAND_DT = 0.05           # s: the step of the takeoff test's free-flight arc
+
+
+def _build_fast_search():
+    """numba kernels for the window's geometric search - EXACT: brute-force minima over the same
+    subsampled contact origins the per-target KD trees hold. The target search was ~15 KD queries
+    per spawn of 30-120 points against <= 400 origins each, ~60 us apiece of mostly call
+    overhead (the respawn phase of a 2,048-env iteration: 2.96 s of 7.8). None = no numba: the
+    KD path, identical answers. SURFGYM_NO_NUMBA=1 forces it."""
+    try:
+        from numba import njit
+    except Exception:
+        return None
+
+    @njit(cache=True, nogil=True)
+    def nearest_pair(path, O, s, c):
+        """(distance, path index, origin index - s) of the closest (path point, O[s:s+c]) pair:
+        per path point its nearest origin, then the first path point with the least - what a KD
+        query per point followed by an argmin over the points returns"""
+        best = np.inf
+        bj = 0
+        bi = s
+        for j in range(path.shape[0]):
+            px = path[j, 0]
+            py = path[j, 1]
+            pz = path[j, 2]
+            dj = np.inf
+            ij = s
+            for i in range(s, s + c):
+                dx = O[i, 0] - px
+                dy = O[i, 1] - py
+                dz = O[i, 2] - pz
+                d2 = dx * dx + dy * dy + dz * dz
+                if d2 < dj:
+                    dj = d2
+                    ij = i
+            if dj < best:
+                best = dj
+                bj = j
+                bi = ij
+        return np.sqrt(best), bj, bi - s
+
+    @njit(cache=True, nogil=True)
+    def candidates(path, cen, rad, O, ostart, ocount, pj, n_p, dsurf, use_d, d_min, d_max,
+                   excl, need):
+        """RampWindows._candidates' search: per target a lower bound (its bounding sphere's
+        distance to the path), best-first over the bounds with exact distances, stopping once
+        no later target can beat the need-th best PIECE. -> (per piece its best distance, inf =
+        not reached; per target its exact distance, -1 = not computed)"""
+        F = cen.shape[0]
+        lb = np.empty(F)
+        for f in range(F):
+            m = np.inf
+            for t in range(path.shape[0]):
+                dx = path[t, 0] - cen[f, 0]
+                dy = path[t, 1] - cen[f, 1]
+                dz = path[t, 2] - cen[f, 2]
+                d = np.sqrt(dx * dx + dy * dy + dz * dz)
+                if d < m:
+                    m = d
+            lb[f] = max(0.0, m - rad[f])
+        order = np.argsort(lb)
+        pbest = np.full(n_p, np.inf)
+        fdist = np.full(F, -1.0)
+        kth = np.inf
+        nfound = 0
+        for jj in range(F):
+            f = order[jj]
+            if lb[f] > kth:
+                break
+            p = pj[f]
+            if excl[p]:
+                continue
+            if use_d:
+                d = dsurf[f]
+                if not (d_min <= d and d < d_max):
+                    continue
+            dm, _j, _i = nearest_pair(path, O, ostart[f], ocount[f])
+            fdist[f] = dm
+            if dm < pbest[p]:
+                if pbest[p] == np.inf:
+                    nfound += 1
+                pbest[p] = dm
+            if nfound >= need:
+                kth = np.sort(pbest)[need - 1]
+        return pbest, fdist
+
+    return nearest_pair, candidates
+
+
+_FAST_SEARCH = None if os.environ.get("SURFGYM_NO_NUMBA") == "1" else _build_fast_search()
 
 
 def find_goal_field(bsp):
@@ -95,7 +187,7 @@ def ride_dir(nb, toward):
 def window_line(tp, tn, tt, finish, origin, velocity, ks, *, fin, riding_first=False, coast=None,
                 gravity=800.0, dt_path=0.05, line_cap=768, ray_floor=RAY_FLOOR,
                 ray_spacing=RAY_SPACING, ramp_coast=RAMP_COAST, ramp_press=RAMP_PRESS,
-                ride_past=RIDE_PAST, choose_next=None, chosen=None):
+                ride_past=RIDE_PAST, choose_next=None, chosen=None, nearest=None):
     """ONE line through a WINDOW of targets ks = [k0, k1, ...] (tp / tn / tt: per target its
     contact origins, their normals and a cKDTree over them; `fin` = the id that means the finish
     box). Per target: an arrival into its plane (k0 from the node's real coast when given, a
@@ -104,7 +196,9 @@ def window_line(tp, tn, tt, finish, origin, velocity, ks, *, fin, riding_first=F
     ride from here. The finish is a target like a ramp: the line arrives in its box and ends.
     A None in ks is chosen ON THE WAY by choose_next(launch point, launch velocity, previous k)
     - the next target from where the previous ride ends, in the same pass - and every resolved
-    id is appended to `chosen` (a list) when one is given.
+    id is appended to `chosen` (a list) when one is given. nearest(k, points) -> (distance,
+    point index, origin index) of the closest pair replaces the KD queries (RampWindows' exact
+    numba search; None = tt).
     -> (resampled line float32, raw points)."""
     from .route import resample_polyline
     o = np.asarray(origin, np.float64).reshape(3)
@@ -126,8 +220,11 @@ def window_line(tp, tn, tt, finish, origin, velocity, ks, *, fin, riding_first=F
         spd = max(float(np.linalg.norm(cur_v)), ray_floor)
         if j == 0 and riding_first and k != fin:
             # already riding k0: its level line from here to its far edge
-            dq, iq = tt[k].query(cur_p[None], k=1)
-            nb = tn[k][int(iq[0])]
+            if nearest is not None:
+                nb = tn[k][int(nearest(k, cur_p[None])[2])]
+            else:
+                dq, iq = tt[k].query(cur_p[None], k=1)
+                nb = tn[k][int(iq[0])]
             lv = ride_dir(nb, cur_v / max(float(np.linalg.norm(cur_v)), 1e-9))
             ext = float(((tp[k] - cur_p[None]) @ lv).max())
             ss = np.arange(1, max(2, int(max(ext, 0.0) / (spd * 0.01))) + 1) * spd * 0.01
@@ -143,6 +240,10 @@ def window_line(tp, tn, tt, finish, origin, velocity, ks, *, fin, riding_first=F
         if k == fin:
             jj = int(np.argmin(np.linalg.norm(path - finish[None], axis=1)))
             pb, nb = finish, None
+        elif nearest is not None:
+            _dm, jj, io = nearest(k, path)
+            jj, io = int(jj), int(io)
+            pb, nb = tp[k][io], tn[k][io]
         else:
             dq, iq = tt[k].query(path, k=1)
             jj = int(np.argmin(dq))
@@ -262,6 +363,18 @@ class RampWindows:
         self._rad = (np.asarray([float(np.linalg.norm(self.tp[int(k)] - self._cen[j], axis=1).max())
                                  for j, k in enumerate(self._ids)])
                      if len(self._ids) else np.zeros(0))
+        # the numba search's flat view (surfgym.goalramps._FAST_SEARCH): every target's origins
+        # in _ids order, where each starts, how many, its piece (compact 0..n_p-1)
+        self._jof = {int(k): j for j, k in enumerate(self._ids)}
+        self._O = (np.ascontiguousarray(np.concatenate([self.tp[int(k)] for k in self._ids]),
+                                        np.float64) if len(self._ids) else np.zeros((0, 3)))
+        self._ocount = np.asarray([len(self.tp[int(k)]) for k in self._ids], np.int64)
+        self._ostart = np.concatenate([[0], np.cumsum(self._ocount)[:-1]]).astype(np.int64)
+        _pc = sorted(self.pfaces)
+        self._pcompact = {q: i for i, q in enumerate(_pc)}
+        self._pfull = np.asarray(_pc, np.int64)
+        self._pj = np.asarray([self._pcompact[self._pof[int(k)]] for k in self._ids], np.int64)
+        self._fast = _FAST_SEARCH
         # per target its geodesic distance to the finish: the median over its contact origins;
         # per PIECE its lowest part (10th percentile over all its origins) - the next target
         # must lie beyond all of it
@@ -276,6 +389,7 @@ class RampWindows:
             for q, fs in self.pfaces.items():
                 d = np.concatenate([dd[f] for f in fs])
                 self.p_low[q] = float(np.percentile(d, 10)) if len(d) else np.inf
+        self._dsurf = np.asarray([self.d_surf.get(int(k), np.inf) for k in self._ids], np.float64)
         n = self.N
         self.t1 = np.full(n, NONE, np.int64)
         self.t2 = np.full(n, NONE, np.int64)
@@ -339,7 +453,20 @@ class RampWindows:
         best = {}                                  # piece -> closest approach of its surfaces
         dist = {}                                  # surface -> closest approach (the ones seen)
         kth = np.inf                               # the need-th best piece so far
-        if len(self._ids):
+        if len(self._ids) and self._fast is not None:
+            ex = np.zeros(len(self._pfull), np.bool_)
+            for q in exclude:
+                if q in self._pcompact:
+                    ex[self._pcompact[q]] = True
+            pb_, fd_ = self._fast[1](np.ascontiguousarray(path, np.float64), self._cen, self._rad,
+                                     self._O, self._ostart, self._ocount, self._pj,
+                                     len(self._pfull), self._dsurf, bool(self.d_surf),
+                                     float(d_min), float(d_max), ex, int(need))
+            for jc in np.flatnonzero(pb_ < np.inf):
+                best[int(self._pfull[jc])] = float(pb_[jc])
+            for f in np.flatnonzero(fd_ >= 0.0):
+                dist[int(self._ids[f])] = float(fd_[f])
+        elif len(self._ids):
             lb = np.maximum(0.0, np.linalg.norm(path[:, None, :] - self._cen[None], axis=2).min(0)
                             - self._rad)
             for j in np.argsort(lb):
@@ -374,13 +501,22 @@ class RampWindows:
                 continue
             d_s = dist.get(s) if dist is not None else None
             if d_s is None:
-                dq, _iq = self.tt[s].query(path, k=1)
-                d_s = float(dq.min())
+                d_s = float(self._nearest(s, path)[0])
             pr = self.tp[s] @ vh
             x = float(pr.max() - pr.min()) - d_s
             if x > sc:
                 best, sc = s, x
         return int(best)
+
+    def _nearest(self, k, pts):
+        """(distance, point index, origin index) of the closest (pts, target k's origins) pair"""
+        pts = np.ascontiguousarray(pts, np.float64)
+        if self._fast is not None:
+            j = self._jof[int(k)]
+            return self._fast[0](pts, self._O, self._ostart[j], self._ocount[j])
+        dq, iq = self.tt[int(k)].query(pts, k=1)
+        jj = int(np.argmin(dq))
+        return float(dq[jj]), jj, int(iq[jj])
 
     def _pick(self, cands):
         if not cands:
@@ -416,20 +552,20 @@ class RampWindows:
         if t1 == FIN:
             ln, _raw = window_line(self.tp, self.tn, self.tt, self.finish, p, v, [FIN], fin=FIN,
                                    gravity=self.gravity, dt_path=self.dt_path,
-                                   line_cap=self.line_cap)
+                                   line_cap=self.line_cap, nearest=self._nearest)
             return ln, NONE
         got = []
         ln, _raw = window_line(self.tp, self.tn, self.tt, self.finish, p, v, [t1, None], fin=FIN,
                                riding_first=riding, gravity=self.gravity, dt_path=self.dt_path,
                                line_cap=self.line_cap, choose_next=self._next_fn(exclude),
-                               chosen=got)
+                               chosen=got, nearest=self._nearest)
         return ln, (got[1] if len(got) > 1 else NONE)
 
     def _line(self, i, p, v, riding):
         ks = [int(self.t1[i])] + ([int(self.t2[i])] if self.t2[i] != NONE else [])
         ln, _raw = window_line(self.tp, self.tn, self.tt, self.finish, p, v, ks, fin=FIN,
                                riding_first=riding, gravity=self.gravity, dt_path=self.dt_path,
-                               line_cap=self.line_cap)
+                               line_cap=self.line_cap, nearest=self._nearest)
         return ln
 
     # ------------------------------------------------------------------ spawn
