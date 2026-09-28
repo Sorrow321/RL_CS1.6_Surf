@@ -31946,3 +31946,70 @@ Codex asks the user to rule on sections 0 and 0b directly. run_arm.sh has no gua
 * Cannonball stayed flat.
 * The gains stopped near ~1.2B and then regressed, so in this configuration "train for more" hit a ceiling at ~30-70% per map.
 * Demo-derived diagnostic (uf2 WR + cannonball's demo lineage): never a result, never a base.
+
+## 2026-09-28 18:23 (machine clock) - pair and triplet bench of jtPAIRS5 (tools/pair_bench.py, 17ee88b): short hops work, long / turning / climbing ones fail on T1; pair "success" is a loose box entry; triplets 10/97 greedy
+
+**The user's questions.**
+
+1. Why does the dashboard not show the pair rates?
+2. Does unitfarmer2's 43% mean the pit was passed?
+3. Which transitions fail - hard ones only, or simple ones too?
+4. The user's new test: on what fraction of TRIPLETS (T1 -> T2 -> T3 from consecutive finisher ramps) does the current agent succeed?
+
+**All numbers below are from runs/jtPAIRS5/ckpt_latest.pt (1.273B, after the regression).** Every pair or triplet is spawned at its own state, 1 greedy + 16 sampled episodes. Results in runs/research/pair_bench/.
+
+**Dashboard.**
+
+* The dashboard plots race/map_pct (share of the WHOLE map's route covered by the eval from its spawn, 3-13% here - a pair spans a few % of a map) and race/success_rate (the pooled training completion, 22% -> 42%).
+* The per-map pair completion rates quoted in the reports were only in the text log ("per map done"). progress.csv has no column for them.
+
+**unitfarmer2's 43%.** It is the mean over all 17 pairs, each spawned at the human record's own state 0.5 s before its T1. 13 of the 17 lie past the pit. The pit pairs are [17,18] (12% sampled) and [18,19] (0%). Nothing passed the pit.
+
+**Pairs: completion vs the finisher's own transition** (Spearman over 102 pairs):
+
+| measure | Spearman | completion by bin |
+|---|---|---|
+| flight time | -0.62 | < 0.5 s 73%, 0.5-1 s 58%, 1-1.5 s 38%, 1.5-2.5 s 25%, > 2.5 s 2% |
+| horizontal gap | -0.53 | < 500 u 81%, > 1,000 u 15-30% |
+| heading change | -0.38 | < 30 deg 51-55%, 60-90 deg 0%, > 90 deg 14% |
+| height change | -0.05 (not monotone) | climbs > 300 u 8%, drops > 1,000 u 18% |
+
+* Easy pairs (flight < 1 s, gap < 1,000 u, level or down, turn < 45 deg): 19 of 21 complete, mean 86%. The two that fail are unitfarmer2 [22,25] (never touches T1 from its spawn) and celestial [129,131].
+
+**Pairs: failure modes** (1,030 failed episodes):
+
+* miss_t2 60%: passed T1, never touched T2. The median closest approach to T2's contact origins is 1,207 u; only 9 of 57 such pairs come within 300 u.
+* wrong_ramp 21%, miss_t1 18%, stuck_t1 1%.
+* The policy passes T1 at 0.94x the finisher's speed (median). Where looked at, the failure starts on T1:
+  * utopia [50,60] leaves T1's box ~4,000 u from the finisher's launch point, 800 u higher, heading 76 deg off.
+  * cannonball [510,520] pops off T1 upward (vz +1,200..+1,600 against the finisher's -680) at ~60% of its speed.
+
+**Pair "success" is a box entry.** T2's box is the padded AABB of its contact origins; the episode ends on entering it. Exact distance to T2's contact origins when success is counted:
+
+| map | median | share > 500 u |
+|---|---|---|
+| utopia | 463 u | 40% (one pair's median 1,818 u) |
+| cannonball | 305 u | 21% |
+| petrus / celestial / unitfarmer2 | 79-106 u | - |
+
+On the big-ramp maps the task pays for flying near T2, not for landing on it.
+
+**Triplets** (97 across five maps; T3 = the next pair's T2; success = entering T3's box after passing T1 and T2):
+
+* Greedy: 10/97 (10%) - utopia 2/18, petrus 7/24, cannonball 0/22, celestial 1/17, unitfarmer2 0/16.
+* Sampled: 117/1,552 episodes (8%); 24/97 triplets succeed at least once.
+* Where they fail, by contact:
+  * 64% never touch T2;
+  * 11% fly through T2's box without touching it (the window counts that as passing T2);
+  * 13% touch T2, then miss T3;
+  * 2% stuck on T2, 2% miss T1.
+* T2 is really touched in 21% of episodes, against the pair bench's 37% box-entry success for the same hops.
+* Strict success (T2 touched, then T3 entered): 91/1,552 = 5.9%.
+* Chaining is worse than independent: the product of the two pair rates predicts 15.0% on average, the actual rate is 7.5%.
+
+**Reading.**
+
+* The ramp-graph task is learned for SHORT hops.
+* It fails on long flights, big turns and climbs, and the failure is visible already on T1: where and how the policy leaves it.
+* The pair task's success test (entering an AABB) lets part of the learned "success" be a fly-by, most on the big-ramp maps. A triplet, which needs T2 actually ridden, halves the rate again.
+* Demo-derived diagnostic data (the uf2 WR, cannonball's demo lineage): measurement only.
