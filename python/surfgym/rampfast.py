@@ -185,8 +185,8 @@ if _njit is not None and os.environ.get("SURFGYM_NO_NUMBA") != "1":
                     horizon, progress_delta, speed_margin):
         """RampWindows._next_fn: the target closest to the arc from (cp, cv) - beyond compact
         piece q (-1 = none) and the launch point, within the reach cap - or the finish box when
-        the reach cap reaches it and it is at least as close -> index j or FIN (FIN also when
-        nothing is eligible)"""
+        the reach cap reaches it and it is at least as close -> index j, FIN, or NONE (nothing
+        eligible: never an unreachable finish, Codex 2026-09-28)"""
         d_max = np.inf
         d_min = -np.inf
         if use_d:
@@ -229,8 +229,10 @@ if _njit is not None and os.environ.get("SURFGYM_NO_NUMBA") != "1":
             if d < fd:
                 fd = d
         fin_ok = d_min <= 0.0
-        if bp < 0 or (fin_ok and fd <= bd):
+        if fin_ok and (bp < 0 or fd <= bd):
             return FIN
+        if bp < 0:
+            return NONE
         if phas[bp]:
             axx = pax[bp]
             axy = pay[bp]
@@ -328,6 +330,8 @@ if _njit is not None and os.environ.get("SURFGYM_NO_NUMBA") != "1":
                                 pax, pay, phas, need, grid, mins, cell, valid_max, sentinel,
                                 reach_max, fin_lo, fin_hi, gravity, horizon, progress_delta,
                                 speed_margin)
+                if k == NONE:
+                    break                  # nothing next: the last ride's lookahead below
             else:
                 k = k1
             if step == 1:
@@ -354,7 +358,8 @@ if _njit is not None and os.environ.get("SURFGYM_NO_NUMBA") != "1":
                         ext = e
                 st = spd * 0.01
                 m = max(2, int(max(ext, 0.0) / st))
-                if n + m + 1 > buf.shape[0]:
+                # + the 8 lookahead points that may follow this ride (Codex 2026-09-28)
+                if n + m + 9 > buf.shape[0]:
                     raise ValueError("rampfast.window: the raw line buffer is full")
                 for s in range(1, m + 1):
                     ss = s * spd * 0.01

@@ -259,7 +259,9 @@ class MultiLine:
         arrs = []
         lens = np.empty(len(lines), np.int64)
         for k, ln in enumerate(lines):
-            a = np.ascontiguousarray(np.asarray(ln, np.float32))
+            # a COPY: the install is queued, and the caller may reuse its array before the next
+            # read (the eager install copied at once - Codex 2026-09-28)
+            a = np.array(ln, dtype=np.float32, order="C", copy=True)
             if a.ndim != 2 or a.shape[1] != 3:
                 raise ValueError(f"set_lines: line {k} has shape {a.shape}, "
                                  f"want (L, 3)")

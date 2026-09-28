@@ -396,3 +396,18 @@ def test_queued_installs_read_exactly_like_immediate_ones():
     assert torch.equal(lazy.length, ref.length)
     assert torch.equal(lazy.features(o, y, s), ref.features(o, y, s))
     assert torch.equal(lazy.arc_position(o), ref.arc_position(o))
+
+
+
+def test_a_queued_install_is_a_copy_of_the_callers_line():
+    """the install is queued until the next read, so it must not see the caller reuse its
+    array in between (the eager install copied at once - Codex 2026-09-28)"""
+    n = 2
+    ln = np.ascontiguousarray(helix()[:12], np.float32)
+    want = ln.copy()
+    ml = MultiLine(n, l_max=len(ln), spacing=SPACING)
+    ml.set_lines([0], [ln])
+    ln[:] = 0.0                                          # the caller reuses its buffer
+    ref = MultiLine(n, l_max=len(ln), spacing=SPACING)
+    ref.set_lines([0], [want])
+    assert torch.equal(ml.pts, ref.pts) and torch.equal(ml.length, ref.length)

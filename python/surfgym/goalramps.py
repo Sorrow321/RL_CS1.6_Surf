@@ -83,6 +83,7 @@ RAMP_DEFAULTS = {"ramp_topk": 2, "ramp_horizon": 3.0, "ramp_fade": 0.3, "ramp_re
                  "ramp_offtarget_pen": 0.0}
 PROGRESS_DELTA = 250.0   # u: a target must lie this much closer to the finish (geodesic) than
                          # the agent (or than the previous target) to be eligible
+REPLAN_SECS = 0.1        # s: a HOLDING window (no target was in reach) redraws this often
 SPEED_MARGIN = 300.0     # u/s added to the speed bound of the reach cap (air-strafe gain)
 
 
@@ -144,11 +145,12 @@ def window_line(tp, tn, tt, finish, origin, velocity, ks, *, fin, riding_first=F
     segs = [o[None]]
     cur_p, cur_v = o, v
     prev_k = None
+    at_finish = False
     for j, k in enumerate(ks):
         if k is None:
             k = choose_next(cur_p, cur_v, prev_k)
             if k is None or k == NONE:
-                break
+                break                              # nothing next: the last ride's lookahead
         k = int(k)
         prev_k = k
         if chosen is not None:
@@ -207,13 +209,14 @@ def window_line(tp, tn, tt, finish, origin, velocity, ks, *, fin, riding_first=F
         segs.append(herm[1:])
         if nb is None:
             cur_p, cur_v = end, un * sp2
+            at_finish = True
             break                                  # the finish: the line ends in its box
         lv = ride_dir(nb, un)
         ext = float(((tp[k] - end[None]) @ lv).max())
         rs = np.arange(1, max(2, int(max(ext, 0.0) / (sp2 * 0.01))) + 1) * sp2 * 0.01
         segs.append(end[None] + lv[None] * rs[:, None])
         cur_p, cur_v = segs[-1][-1], lv * sp2
-    else:
+    if not at_finish:
         # past the last ride: ride_past of lookahead along the launch direction
         d = cur_v / max(float(np.linalg.norm(cur_v)), 1e-9)
         segs.append(cur_p[None] + d[None] * np.linspace(ride_past / 8, ride_past, 8)[:, None])
@@ -249,6 +252,7 @@ class RampWindows:
         self.topk = max(1, int(topk))
         self.horizon = float(horizon)
         self.fade_ticks = max(1.0, float(fade) * 1000.0 / self.tick_ms)
+        self.replan_ticks = max(1, int(round(REPLAN_SECS * 1000.0 / self.tick_ms)))
         self.gravity = float(gravity)
         self.line_cap = int(line_cap)
         self.rng = rng if rng is not None else np.random.default_rng(0)
@@ -373,6 +377,9 @@ class RampWindows:
         self.v0p = np.ones(n, np.float64)
         self.v0t = np.full(n, 0.5, np.float64)
         self.entered = np.zeros(n, bool)               # inside T1's box once, not yet left
+        # a window whose last draw found nothing in reach (T1 NONE): redrawn every replan_ticks
+        # (an env never spawned has T1 NONE too, and is not holding)
+        self.holding = np.zeros(n, bool)
         self.source = np.full(n, NONE, np.int64)       # the surface an env spawned on
         self.n_capt = np.zeros(n, np.int64)            # takeoffs (= completed rides) this episode
         self.n_skip = np.zeros(n, np.int64)
@@ -382,7 +389,8 @@ class RampWindows:
         # per env the pieces this episode has left behind (and the one it spawned on): never a
         # target again - no cycles (Codex: excluding only the last piece let A -> B -> C -> A)
         self.visited = [set() for _ in range(n)]
-        self.stats = {"episodes": 0, "rides": 0, "skips": 0, "fin": 0, "ride_hist": {}}
+        self.stats = {"episodes": 0, "rides": 0, "skips": 0, "fin": 0, "holds": 0,
+                      "ride_hist": {}}
         # the compiled window (rampfast.window): per target its normals in _ids order; per
         # compact piece its targets (their indices, in pfaces order) and its lowest geodesic
         # part; the goal field's grid for the one-point sampler; a raw-point buffer
@@ -493,7 +501,7 @@ class RampWindows:
         """ELIGIBLE targets (geodesic distance in [d_min, d_max); pieces in `exclude` never) by
         the closest approach of the ballistic arc from (p, v) within the horizon to their PIECE,
         each piece as its RIDE surface (_ride_face): -> [(dist, surface id)] sorted; the finish
-        box is a candidate like a target and always eligible"""
+        box is a candidate like a target when the band reaches it (d_min <= 0)"""
         path = self._arc(p, v, self.horizon)
         need = self.topk + 1
         best = {}                                  # piece -> closest approach of its surfaces
@@ -570,21 +578,28 @@ class RampWindows:
         return float(dq[jj]), jj, int(iq[jj])
 
     def _steer(self, p, v):
-        """the velocity a window is laid with: the state's own, or - when it barely moves
-        horizontally (a standing spawn, a vertical landing on a ramp) - RAY_FLOOR along the
-        geodesic field's descent direction (its own vertical kept). From the state's own the
-        ride along a target had no direction and ran back toward the start: at a standing spawn
-        (utopia), and at the first capture, which rebuilt the spawn's line from the real
-        velocity (Codex 2026-09-28)"""
+        """the velocity a window is laid with: the state's own at a horizontal speed of RAY_FLOOR
+        or more; below it RAY_FLOOR along a horizontal direction that BLENDS the state's own into
+        the geodesic field's descent direction, weight |v_h| / RAY_FLOOR on its own (all descent
+        at a standstill), its own vertical kept - continuous in the state (a hard switch at
+        RAY_FLOOR turned two B7 shifts by 45 and 61 deg for a few u/s, Codex 2026-09-28). From
+        the state's own alone the ride along a target had no direction and ran back toward the
+        start: at a standing spawn (utopia), and at the first capture (Codex 2026-09-28)"""
         v = np.asarray(v, np.float64).reshape(3)
-        if self.gf is not None and float(np.linalg.norm(v[:2])) < RAY_FLOOR:
-            yaw = np.radians(float(self.gf.descent_yaw(np.asarray(p, np.float64)[None])[0]))
-            return np.array([np.cos(yaw) * RAY_FLOOR, np.sin(yaw) * RAY_FLOOR, v[2]])
-        return v
+        h = float(np.hypot(v[0], v[1]))
+        if self.gf is None or h >= RAY_FLOOR:
+            return v
+        yaw = np.radians(float(self.gf.descent_yaw(np.asarray(p, np.float64)[None])[0]))
+        dd = np.array([np.cos(yaw), np.sin(yaw)])
+        w = h / RAY_FLOOR
+        m = w * (v[:2] / h if h > 1e-9 else dd) + (1.0 - w) * dd
+        nm = float(np.linalg.norm(m))
+        m = m / nm if nm > 1e-9 else dd            # its own exactly against descent at w = 1/2
+        return np.array([m[0] * RAY_FLOOR, m[1] * RAY_FLOOR, v[2]])
 
     def _pick(self, cands):
         if not cands:
-            return FIN
+            return NONE                            # nothing in reach: the window HOLDS
         if self.deterministic:
             return int(cands[0][1])
         k = min(self.topk, len(cands))
@@ -608,8 +623,53 @@ class RampWindows:
                     d_min = d_ref - self._reach(cv)
             c = self._candidates(cp, cv, exclude | ({q} if q is not None else set()),
                                  d_max=d_max, d_min=d_min)
-            return int(c[0][1]) if c else FIN
+            return int(c[0][1]) if c else NONE     # nothing in reach: no second target
         return f
+
+    def _draw(self, p, va, q, exclude):
+        """T1 for a state (p, its steered velocity va): the pick among the targets in the band
+        below the geodesic distance here - and below piece q's lowest part (the piece it spawned
+        on or last left) - within the reach cap; the pieces in `exclude` never. NONE when the band
+        holds none (the finish is in it only within the cap). Off the field: no band"""
+        d0 = self._d_at(p)
+        if q is not None and q in self.p_low:
+            d0 = min(d0, self.p_low[q])            # beyond the piece it spawned on / left
+        if np.isfinite(d0):
+            return self._pick(self._candidates(p, va, exclude, d_max=d0 - PROGRESS_DELTA,
+                                               d_min=d0 - self._reach(va)))
+        return self._pick(self._candidates(p, va, exclude))
+
+    def _hold_line(self, p, v):
+        """a HOLDING window's line (no target in reach): RIDE_PAST of lookahead from here along
+        the steered velocity - what a window's line runs past its last ride"""
+        from .route import resample_polyline
+        v = self._steer(p, v)
+        d = v / max(float(np.linalg.norm(v)), 1e-9)
+        p = np.asarray(p, np.float64).reshape(3)
+        pts = np.vstack([p[None], p[None] + d[None] * np.linspace(RIDE_PAST / 8, RIDE_PAST,
+                                                                  8)[:, None]])
+        line, _total = resample_polyline(pts, RAY_SPACING)
+        return np.asarray(line, np.float32)
+
+    def _redraw(self, i, p, v):
+        """a HOLDING window (T1 NONE): a fresh draw from here -> its line, or None (still nothing
+        in reach). The surface left last keeps fading from the value it shows now"""
+        va = self._steer(p, v)
+        ex = set(self.visited[i])
+        q = self._piece(self.prev[i] if self.prev[i] != NONE else self.source[i])
+        t1 = self._draw(p, va, q, ex)
+        if t1 == NONE:
+            return None
+        f = min(1.0, float(self.tau[i]) / self.fade_ticks)
+        self.v0p[i] = self.v0p[i] * (1.0 - f) if self.prev[i] != NONE else 0.0
+        self.v0t[i] = 0.0                          # T1 showed nothing while holding
+        self.t1[i] = t1
+        self.holding[i] = False
+        ln, t2 = self._window(p, va, t1, ex)
+        self.t2[i] = t2
+        self.tau[i] = 0
+        self.entered[i] = False
+        return ln
 
     def _fast_window(self, p, v, k0, k1, riding, exclude):
         """rampfast.window - the line and the second target in one compiled pass. k1: None =
@@ -652,7 +712,10 @@ class RampWindows:
         return ln, (t2 if t2 < 0 else int(self._ids[t2]))
 
     def _window(self, p, v, t1, exclude, riding=False):
-        """ONE pass: the line through T1 and a T2 chosen where T1's ride ends -> (line, t2)"""
+        """ONE pass: the line through T1 and a T2 chosen where T1's ride ends -> (line, t2);
+        T1 NONE (nothing in reach) -> (the holding line, NONE)"""
+        if t1 == NONE:
+            return self._hold_line(p, v), NONE
         v = self._steer(p, v)
         r = self._fast_window(p, v, t1, NONE if t1 == FIN else None, riding, exclude)
         if r is not None:
@@ -698,14 +761,9 @@ class RampWindows:
             # a slow spawn (standing on the start, say) would draw its arc as a vertical drop:
             # lay it along the geodesic field's descent direction at RAY_FLOOR instead
             va = self._steer(p, v)
-            d0 = self._d_at(p)
-            if q is not None and q in self.p_low:
-                d0 = min(d0, self.p_low[q])            # beyond the piece it spawned on
-            if np.isfinite(d0):
-                t1 = self._pick(self._candidates(p, va, ex, d_max=d0 - PROGRESS_DELTA,
-                                                 d_min=d0 - self._reach(va)))
-            else:
-                t1 = self._pick(self._candidates(p, va, ex))   # off the field: no band
+            t1 = self._draw(p, va, q, ex)          # NONE: nothing in reach - the window holds
+            self.stats["holds"] += int(t1 == NONE)
+            self.holding[i] = t1 == NONE
             self.visited[i] = set(ex)
             # the window along the SAME arc the draw used: from a standing spawn's own zero
             # velocity the arrival falls straight down T1's slope and its ride had no direction
@@ -734,9 +792,14 @@ class RampWindows:
         self.tau += 1
         self.tick_pass[:] = 0
         live = ~ended
+        changed = {}
+        # a HOLDING window (nothing was in reach): a fresh draw every replan_ticks
+        for i in np.flatnonzero(self.holding & live & (self.tau % self.replan_ticks == 0)):
+            ln = self._redraw(int(i), origin[i], velocity[i])
+            if ln is not None:
+                changed[int(i)] = ln
         in1 = self.in_box(self.t1, origin) & live
         in2 = self.in_box(self.t2, origin) & live
-        changed = {}
         # inside T2's box before T1 was ever entered: T1 is SKIPPED, T2 (entered now) is T1
         for i in np.flatnonzero(in2 & ~in1 & ~self.entered):
             self.n_skip[i] += 1
@@ -766,11 +829,22 @@ class RampWindows:
         v_t1 = self.v0t[i] + (1.0 - self.v0t[i]) * f if self.t1[i] != NONE else 0.0
         v_t2 = 0.5 * f if self.t2[i] != NONE else 0.0
         self.prev[i] = self.t1[i]
-        self.t1[i] = self.t2[i] if self.t2[i] != NONE else FIN
         q = self._piece(self.prev[i])
         if q is not None:
             self.visited[i].add(q)
-        ln, t2 = self._window(p, v, int(self.t1[i]), set(self.visited[i]), riding=bool(riding))
+        if self.t2[i] != NONE:
+            self.t1[i] = self.t2[i]
+            ln, t2 = self._window(p, v, int(self.t1[i]), set(self.visited[i]),
+                                  riding=bool(riding))
+        else:
+            # nothing was in reach past T1's ride: a fresh draw from here - or the window HOLDS
+            # (T1 NONE, the line runs on ahead, a redraw every replan_ticks); never an
+            # unreachable finish (Codex 2026-09-28)
+            va = self._steer(p, v)
+            self.t1[i] = self._draw(p, va, q, set(self.visited[i]))
+            self.stats["holds"] += int(self.t1[i] == NONE)
+            self.holding[i] = self.t1[i] == NONE
+            ln, t2 = self._window(p, va, int(self.t1[i]), set(self.visited[i]))
         self.t2[i] = t2
         self.tau[i] = 0
         self.v0p[i] = v_t1
@@ -790,7 +864,8 @@ class RampWindows:
 
     def pop_stats(self) -> dict:
         s = self.stats
-        self.stats = {"episodes": 0, "rides": 0, "skips": 0, "fin": 0, "ride_hist": {}}
+        self.stats = {"episodes": 0, "rides": 0, "skips": 0, "fin": 0, "holds": 0,
+                      "ride_hist": {}}
         return s
 
     # ------------------------------------------------------------------ channel

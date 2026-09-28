@@ -1126,6 +1126,7 @@ class GoalSystem:
             rs = self.planner.windows.pop_stats()
             ne = max(int(rs["episodes"]), 1)
             pnote += (f"  rides/ep {rs['rides'] / ne:.2f} skips/ep {rs['skips'] / ne:.2f} "
+                      f"holds/ep {rs.get('holds', 0) / ne:.2f} "
                       f"fin {rs['fin']}/{rs['episodes']} rides>=2 "
                       f"{sum(v for k, v in rs['ride_hist'].items() if k >= 2) / ne:.1%}"
                       f"  off-target {self._off_n / max(self._live_n, 1):.2%} of ticks"

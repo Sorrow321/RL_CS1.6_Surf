@@ -642,3 +642,133 @@ def test_the_first_capture_keeps_riding_down_the_potential(voc):
     assert list(idx) == [0] and w.entered[0]
     ride = lines[0][np.abs(lines[0][:, 1] + 20.0) < 1.0]
     assert len(ride) >= 2 and ride[-1, 0] > ride[0, 0] + 500.0
+
+
+
+def _short(v, n=1, goal_field=None, fast=True):
+    """a 0.8 s horizon: the reach cap ((|v| + 940 u/s) x 0.8 s) spans one of the synthetic
+    ramps, never two - so a band can be empty (under _AlongY: ramps at d 10,020 / 7,020 /
+    4,020, the finish at ~1,900)"""
+    w = gr.RampWindows(v, n, ((900, 8000, 0), (1100, 8200, 300)), 10.0, topk=1, horizon=0.8,
+                       fade=0.3, deterministic=True, goal_field=goal_field)
+    if not fast:
+        w._fast = None
+        w._fast_win = False
+    return w
+
+
+def test_an_empty_band_holds_and_redraws_never_an_unreachable_finish(voc):
+    """Codex 2026-09-28: with no ramp in the band and the finish beyond the reach cap the window
+    HOLDS - T1 NONE, nothing in the channel, a line that runs on ahead - and redraws every
+    REPLAN_SECS until a target is in reach; it used to take the finish, a map away"""
+    v, _bsp, _ = voc
+    w = _short(v, goal_field=_AlongY())
+    far = (np.array([1000.0, -3000.0, 400.0]), np.array([0.0, 1500.0, 0.0]))    # d 13,000
+    ln = w.spawn([0], far[0][None], far[1][None])[0]
+    assert w.t1[0] == gr.NONE and w.t2[0] == gr.NONE and w.stats["holds"] == 1
+    assert np.allclose(ln[0], far[0]) and ln[-1, 1] > far[0][1] + 200.0      # runs on ahead
+    assert float(w.slots([0])[1].max()) == 0.0                                 # no target shown
+    near = (np.array([1000.0, -1500.0, 400.0]), np.array([0.0, 1500.0, 0.0]))  # ramp 0 in reach
+    got = None
+    for k in range(1, w.replan_ticks + 1):
+        idx, _ = w.on_tick(None, near[0][None], near[1][None], np.zeros(1, bool))
+        if len(idx):
+            got = k
+            break
+    assert got is not None and w.t1[0] == 0                   # redrawn within REPLAN_SECS
+
+
+def test_passing_the_last_target_in_reach_holds_then_redraws_continuously(voc):
+    """T1 passed with no T2 (nothing was in reach past its ride) and nothing in reach from the
+    exit either: the window holds (the pass still counts), the channel keeps fading the ramp
+    just left, and once a ramp comes into reach it is drawn as T1 - every channel value moving
+    at most 1 / fade_ticks per tick throughout"""
+    v, _bsp, _ = voc
+    w = _short(v, goal_field=_AlongY())
+    w.spawn([0], APPROACH[0][None], APPROACH[1][None])
+    assert w.t1[0] == 0 and w.t2[0] == gr.NONE              # ramp 1 is past T1's reach
+    mid = (np.array([1000.0, 1500.0, 400.0]), np.array([0.0, 1500.0, 0.0]))  # ramp 1 in reach
+    script = [ON0] * 3 + [AWAY] * 25 + [mid] * 40
+    prev = _channel_by_surface(w)
+    held = False
+    for st in script:
+        w.on_tick(None, st[0][None], st[1][None], np.zeros(1, bool))
+        if w.t1[0] == gr.NONE:
+            held = True
+            assert w.prev[0] == 0 and w.n_capt[0] == 1
+        cur = _channel_by_surface(w)
+        for s_ in set(prev) & set(cur):
+            assert abs(cur[s_] - prev[s_]) <= 1.0 / w.fade_ticks + 1e-6, (s_, prev, cur)
+        prev = cur
+    assert held and w.stats["holds"] == 1
+    assert w.t1[0] == 1 and w.n_capt[0] == 1                 # redrawn: ramp 1
+
+
+def test_the_compiled_window_holds_exactly_where_the_python_one_does(voc):
+    """the empty band in the compiled search (rampfast.next_target NONE, the ride's lookahead)
+    against the Python path: the same T1 / T2 - NONE included - and the same lines"""
+    if gr._FAST_SEARCH is None:
+        pytest.skip("numba unavailable (or SURFGYM_NO_NUMBA=1): only the KD path exists")
+    v, _bsp, _ = voc
+    rng = np.random.default_rng(3)
+    o = np.column_stack([rng.uniform(-1500, 2500, 60), rng.uniform(-4000, 7000, 60),
+                         rng.uniform(100, 900, 60)])
+    vel = np.column_stack([rng.uniform(-800, 800, 60), rng.uniform(-500, 2500, 60),
+                           rng.uniform(-300, 300, 60)])
+    got = []
+    for fast in (True, False):
+        w = _short(v, n=60, goal_field=_AlongY(), fast=fast)
+        lines = w.spawn(np.arange(60), o, vel)
+        got.append((w.t1.copy(), w.t2.copy(), lines))
+    assert (got[0][0] == gr.NONE).any() and (got[0][1] == gr.NONE).any()
+    assert ((got[0][0] >= 0) & (got[0][1] == gr.NONE)).any()     # a ride with nothing next
+    assert np.array_equal(got[0][0], got[1][0]) and np.array_equal(got[0][1], got[1][1])
+    assert all(a.shape == b.shape and np.allclose(a, b, atol=1e-3)
+               for a, b in zip(got[0][2], got[1][2]))
+
+
+def test_the_steered_velocity_is_continuous_at_the_ray_floor(voc):
+    """_steer blends the state's own horizontal direction into the descent direction below
+    RAY_FLOOR (weight |v_h| / RAY_FLOOR): no jump at RAY_FLOOR (the hard switch turned two B7
+    shifts by 45 and 61 deg - Codex 2026-09-28), idempotent, its own vertical kept, all descent
+    at a standstill"""
+    v, _bsp, _ = voc
+    w = _windows(v, n=1, goal_field=_DescentField())          # descent: +x
+    p = np.array([0.0, 0.0, 400.0])
+
+    def ang(a, b):
+        c = float(a[:2] @ b[:2]) / (np.linalg.norm(a[:2]) * np.linalg.norm(b[:2]))
+        return float(np.degrees(np.arccos(np.clip(c, -1.0, 1.0))))
+    for deg in (0.0, 45.0, 90.0, 135.0, 170.0, 180.0):
+        u = np.array([np.cos(np.radians(deg)), np.sin(np.radians(deg))])
+        lo = w._steer(p, np.array([*(u * (gr.RAY_FLOOR - 0.1)), 50.0]))
+        hi = w._steer(p, np.array([*(u * (gr.RAY_FLOOR + 0.1)), 50.0]))
+        assert ang(lo, hi) < 0.1 and abs(np.linalg.norm(lo[:2]) - np.linalg.norm(hi[:2])) < 0.5
+        assert lo[2] == 50.0 and np.allclose(w._steer(p, lo), lo)
+    assert np.allclose(w._steer(p, np.array([0.0, 0.0, -100.0])), [gr.RAY_FLOOR, 0.0, -100.0])
+    prev = None
+    for s in np.linspace(0.0, 400.0, 801):                    # across: a smooth turn
+        cur = w._steer(p, np.array([0.0, s, 0.0]))
+        if prev is not None:
+            assert ang(prev, cur) < 1.0, s
+        prev = cur
+
+
+def test_the_riding_first_line_counts_its_lookahead_against_the_buffer(voc):
+    """rampfast.window's riding-first ride reserves room for the 8 lookahead points that may
+    follow it (it reserved 1: a ride filling the buffer wrote past its end - Codex 2026-09-28);
+    a full buffer hands the window to the Python path, which lays the same line"""
+    if gr._FAST_SEARCH is None:
+        pytest.skip("numba unavailable (or SURFGYM_NO_NUMBA=1): only the KD path exists")
+    v, _bsp, _ = voc
+    w = _windows(v, n=1)
+    p, vel = np.array([1000.0, -20.0, 250.0]), np.array([1500.0, 0.0, 0.0])
+    m = max(2, int((float(w.tp[0][:, 0].max()) - 1000.0) / 15.0))   # its ride, 15 u a point
+    w._buf = np.empty((m + 6, 3))            # room for the ride and 4 more: not the lookahead
+    assert w._fast_window(p, vel, 0, gr.NONE, True, set()) is None
+    w._buf = np.empty((100_000, 3))
+    fast = w._fast_window(p, vel, 0, gr.NONE, True, set())[0]
+    py, _raw = gr.window_line(w.tp, w.tn, w.tt, w.finish, p, vel, [0], fin=gr.FIN,
+                              riding_first=True, gravity=w.gravity, dt_path=w.dt_path,
+                              line_cap=w.line_cap)
+    assert fast.shape == py.shape and np.allclose(fast, py, atol=1e-3)

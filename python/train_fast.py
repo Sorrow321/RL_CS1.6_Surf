@@ -11225,8 +11225,24 @@ def main() -> None:
 
     D.assert_equal("policy_params@startup", param_checksum())
 
+    def _git_state():
+        """the checkout this run's code came from: {commit, dirty (tracked files changed)} -
+        or None without git (Codex 2026-09-28: run.json did not say which code ran)"""
+        import subprocess
+        root = Path(__file__).resolve().parents[1]
+        try:
+            c = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, capture_output=True,
+                               text=True, timeout=20)
+            d = subprocess.run(["git", "status", "--porcelain", "--untracked-files=no"],
+                               cwd=root, capture_output=True, text=True, timeout=20)
+        except (OSError, subprocess.SubprocessError):
+            return None
+        if c.returncode != 0:
+            return None
+        return {"commit": c.stdout.strip(), "dirty": bool(d.stdout.strip())}
+
     meta = {"label": args.run, "started": time.strftime("%Y-%m-%dT%H:%M:%S"),
-            "finished": None,
+            "finished": None, "git": _git_state(),
             # "map" stays the FIRST map so every existing consumer (the
             # dashboard, record_ckpt, the honesty tools) keeps working; a
             # single-map run therefore writes exactly the config it always
