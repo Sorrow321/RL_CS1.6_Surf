@@ -610,6 +610,41 @@ def make_ramp_hooks(windows, vocab, core, ev: dict, *, line=None):
     return episode_meta, on_tick
 
 
+def replay_events(windows, vocab, rows):
+    """A recording made WITHOUT the logged windows (a trainer started before make_ramp_hooks
+    wrote them): re-run the deterministic eval windows (a 1-env RampWindows, deterministic=True)
+    over its recorded states -> the same event list make_ramp_hooks writes. Contacts come from
+    the validated contact planes at each post-step state (RampVocab.contact_of, the duck bit of
+    the buttons as the hull) instead of the collision telemetry the live hooks read, so a
+    capture or takeoff can land a tick or two off - a display approximation, labelled as such.
+    rows: (n, >= 9) the recording's rows (origin 1..3, velocity 4..6, buttons 8)."""
+    rows = np.asarray(rows, np.float64)
+    n = len(rows)
+    if n == 0:
+        return []
+    org = rows[:, 1:4]
+    vel = rows[:, 4:7]
+    duck = ((rows[:, 8].astype(np.int64) & 4) != 0).astype(np.int64)
+    src = vocab.contact_of(org[:1], duck[:1])
+    windows.spawn([0], org[:1], vel[:1], source=src)
+    events = []
+
+    def snap(row):
+        e = [int(row), int(windows.prev[0]), int(windows.t1[0]), int(windows.t2[0]),
+             int(min(windows.tau[0], 1 << 20))]
+        if not events or events[-1][1:4] != e[1:4]:
+            events.append(e)
+    snap(0)
+    cs = vocab.contact_of(org, duck)                 # the contact at every recorded state
+    ids = np.full((1, 8), -1, np.int64)
+    for k in range(n - 1):
+        ids[0, 0] = cs[k + 1]                        # post-step state of tick k = row k + 1
+        idx, _ = windows.on_tick(ids, org[k + 1:k + 2], vel[k + 1:k + 2], np.zeros(1, bool))
+        if len(idx):
+            snap(k + 1)
+    return events
+
+
 def slot_values(events, n_rows, fade_ticks):
     """a recorded episode's window events (make_ramp_hooks' trailer) -> per row the channel's
     three slots: (ids (n, 3) int64, values (n, 3) float32) - exactly RampWindows.slots"""

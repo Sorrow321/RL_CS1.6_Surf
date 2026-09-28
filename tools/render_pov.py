@@ -360,6 +360,31 @@ def main() -> None:
         tgt_live = bool(int(rcfg.get("target_channel") or 0))
         print(f"--targets: {_vp.name} "
               + ("(live)" if tgt_live else "(the run held it at ZERO: --target-channel 0)"))
+    _rep = {}
+
+    def _replay(a, hdr_):
+        """a recording WITHOUT logged windows: the eval's deterministic windows re-run over its
+        states (surfgym.goalramps.replay_events) -> (events, fade ticks)"""
+        if "w" not in _rep:
+            from surfgym.goalfield import load_goal_field
+            from surfgym.goalramps import RampWindows, find_goal_field
+            from surfgym.rampvocab import RampVocab
+            from surfgym.tick import header_tick_ms
+            voc = RampVocab(str(_vp), args.map)
+            gfp = find_goal_field(args.map)
+            if gfp is None:
+                raise SystemExit(f"--targets replay: no geodesic goal field beside {args.map}")
+            ph = hdr_.get("phys") or {}
+            _rep["voc"] = voc
+            _rep["w"] = RampWindows(
+                voc, 1, _zn["end"], float(header_tick_ms(hdr_, "--targets replay")),
+                topk=int(rcfg.get("ramp_topk") or 2),
+                horizon=float(rcfg.get("ramp_horizon") or 3.0),
+                fade=float(rcfg.get("ramp_fade") or 0.3),
+                gravity=float(ph.get("sv_gravity") or ph.get("gravity") or 800.0),
+                deterministic=True, goal_field=load_goal_field(gfp))
+        from surfgym.goalramps import replay_events
+        return replay_events(_rep["w"], _rep["voc"], a), float(_rep["w"].fade_ticks)
     ball_panel = args.goal_ball > 0
     if ball_panel and args.surf_mask:
         raise SystemExit("--goal-ball and --surf-mask are exclusive")
@@ -442,14 +467,20 @@ def main() -> None:
         pitch = a[:, 12] if a.shape[1] > 12 else np.zeros(n)
         duck = (a[:, 8].astype(np.int64) & 4) != 0     # buttons IN_DUCK bit
         t_ids = t_vals = None
+        t_replayed = False
         if tmask is not None:
             from surfgym.goalramps import slot_values
             _tg = (trailers[ei].get("targets") if ei < len(trailers) else None) or {}
             if _tg.get("events"):
                 t_ids, t_vals = slot_values(_tg["events"], n, float(_tg.get("fade_ticks", 30.0)))
             else:
-                print(f"episode {ei + 1}: no target windows in its trailer (recorded before "
-                      "they were logged) - target panel blank")
+                # recorded before the windows were logged (a trainer started earlier): the
+                # eval's own deterministic windows re-run over the recorded states
+                _ev, _fd = _replay(a, headers[ei] if ei < len(headers) else {})
+                t_ids, t_vals = slot_values(_ev, n, _fd)
+                t_replayed = True
+                print(f"episode {ei + 1}: target windows REPLAYED from the recorded states "
+                      f"({len(_ev)} window changes)")
         for s0 in range(0, n, B):
             sl = slice(s0, min(s0 + B, n))
             k = sl.stop - sl.start
@@ -616,7 +647,8 @@ def main() -> None:
                     else:
                         lab = "no windows recorded"
                     _fit_text(tfr, "targets (white = next / riding, grey = the one after)"
-                              + ("" if tgt_live else "  HELD AT ZERO in this run"),
+                              + ("" if tgt_live else "  HELD AT ZERO in this run")
+                              + ("  [replayed from positions]" if t_replayed else ""),
                               8, 22, W - 16, 0.55, outline=True)
                     _fit_text(tfr, lab, 8, H - 10, W - 16, 0.5, outline=True)
                     cv2.line(tfr, (0, 0), (W, 0), (60, 60, 60), 1)

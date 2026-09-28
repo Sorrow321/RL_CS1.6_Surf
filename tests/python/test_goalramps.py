@@ -294,3 +294,23 @@ def test_the_recorded_window_events_rebuild_the_channel_exactly(voc):
     assert len(events) >= 3                            # spawn + two takeoffs
     assert np.array_equal(got_i, np.asarray(seen_ids))
     assert np.allclose(got_v, np.asarray(seen_vals), atol=1e-6)
+
+
+def test_a_recording_without_logged_windows_is_replayed_from_its_states(voc):
+    """replay_events: states resting on T1's validated contact plane capture it; leaving it for
+    DEPART_TICKS takes off - the same events the live hooks write (from positions)"""
+    v, _bsp, _ = voc
+    w = _windows(v)
+    rows = []
+    for k in range(80):
+        if k < 5:
+            o = [1000.0, -1500.0, 250.0]                 # in the air, approaching
+        elif k < 25:
+            o = [1000.0 + k, -20.0, 250.0]              # on ramp 0's standing contact plane
+        else:
+            o = [1000.0, 1000.0, 250.0]                 # left it
+        rows.append([k] + o + [0.0, 1500.0, 0.0, 0.0, 0])
+    ev = gr.replay_events(w, v, np.asarray(rows, float))
+    assert ev[0][2] == 0                                # T1 = ramp 0 at the spawn
+    # the takeoff: DEPART_TICKS rows after the last contact (row 24), the window shifts
+    assert any(e[2] == 1 and e[1] == 0 and e[0] == 25 + gr.DEPART_TICKS - 1 for e in ev), ev
