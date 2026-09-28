@@ -31554,3 +31554,33 @@ Everything else is unchanged: from `runs/research/stage/prim1_mover.pt`, on surf
 * **rampB11_box** = B8's argv on the same code: the same-code control. B8 ran pre-299363a code, so it is not the control.
 * Discriminator: ordered MAX and finishes, with time-to-gate at matched steps.
 * The arc reward is kept, so the flag marks the event the +1 reward would pay, not a reward. rampB5_pass (+1 per ramp alone) did worse than arc.
+
+## 2026-09-28 10:51 (machine clock) - the ordered arc cannot see the planner's branch: B8's "~29k wall" is a route fork, and on route-agnostic progress B8 is the MOST consistent arm at the same frontier
+
+**What the ordered arc misses.** B8's eval episodes at 152M were rescored tick by tick against our finisher's line (scratch divergence.py). Eight of nine leave that line's 1,500 u corridor at 16-18 s, around (12,900, -700, 7,800), at geodesic d ~138,000.
+
+* They leave onto the PLANNER's branch: T1 42, 49, 61, 62, 72, 76, 78, where the finisher's route takes S41.
+* After leaving they pass 3-7 more ramps, and their geodesic d keeps falling to 82-98k before the final fall at z ~1,110.
+* The ordered arc credits none of that. So "B8 stopped at ~29k / 65.9k, below B7's 80.1k" is a statement about WHICH ROUTE each arm took, not how far it got.
+* B7's 80k episodes stayed on the finisher's route. Two B7 episodes took the planner's branch too.
+
+**A route-agnostic frontier that a fall cannot flatter.** The measure is d(start) - d(at the episode's LAST window shift), i.e. the geodesic progress where the agent had just left the box of a ramp the planner asked for (scratch last_shift_d.py). Mean / MAX in u:
+
+| step | B7 (telemetry) | B8 (boxes, P = 1) | B9 (boxes, P = 0) |
+|---|---|---|---|
+| 76M | 23,196 / 56,497 | 42,468 / 64,301 | 37,003 / 54,544 |
+| 126M | 14,380 / 27,662 | 43,000 / 68,117 | 32,503 / 51,516 |
+| 152M | 45,295 / 71,033 | 63,455 / **74,003** | 45,505 / 69,376 |
+| 177M | 35,375 / 67,825 | **66,285** / 71,584 | 41,605 / 69,790 |
+| 202M | 51,201 / 70,662 | - | - |
+| 277M | 27,573 / 72,965 | - | - |
+
+**Reading:**
+
+* **Frontier:** the same across the three arms, 71-74k u of the 166k start distance (~44%). 0 finishes anywhere.
+* **Consistency:** the penalty arm is far ahead. At 177M all 9 of B8's episodes are past 56k u; B9 has 4/9, B7 3/9.
+* **Two caveats:**
+  * Under the boxes a "shift" can be a fly-through (Codex). The position is still where the agent really was, before its fall.
+  * B7's shifts are telemetry events, B8's and B9's are box events. So the three columns time their last shift differently.
+
+**Consequence for the stationary rule.** The ordered MAX can stall while an arm progresses on the planner's branch. From rampB10_obspass on, the driver judges stationarity on this route-agnostic MAX and prints the ordered arc beside it.
