@@ -62,6 +62,7 @@ edge; the finish box ends the line; past the last ride, RIDE_PAST u of lookahead
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import numpy as np
 
@@ -393,6 +394,10 @@ class RampWindows:
         self.seq = None
         self.seq_k = np.zeros(n, np.int64)
         self.seq_done = np.zeros(n, bool)
+        # --ramp-pairs: a per-ENV sequence (its episode's pair) over the global one, looked up
+        # from each spawn state by pair_lookup (origin -> [t1, t2] or None)
+        self.env_seq = [None] * n
+        self.pair_lookup = None
         self.source = np.full(n, NONE, np.int64)       # the surface an env spawned on
         self.n_capt = np.zeros(n, np.int64)            # takeoffs (= completed rides) this episode
         self.n_skip = np.zeros(n, np.int64)
@@ -491,9 +496,19 @@ class RampWindows:
         self.seq_k[:] = 0
         self.seq_done[:] = False
 
+    def _seq_of(self, i):
+        """env i's target sequence: its episode's pair (--ramp-pairs), else the global
+        --ramp-sequence, else None (the planner draws)"""
+        s = self.env_seq[i]
+        return s if s is not None else self.seq
+
     def seq_stage(self, i):
-        """--ramp-sequence: how far env i got - targets passed, +1 once the last is entered"""
-        return int(self.seq_k[i]) + int(self.seq_done[i] and self.seq_k[i] == len(self.seq) - 1)
+        """--ramp-sequence / --ramp-pairs: how far env i got - targets passed, +1 once the last
+        is entered"""
+        s = self._seq_of(i)
+        if s is None:
+            return 0
+        return int(self.seq_k[i]) + int(self.seq_done[i] and self.seq_k[i] == len(s) - 1)
 
     def offtarget(self, counts, normals, origin, live=None):
         """(N,) bool: the env touches a RAMP-like plane (contact normal z in RAMP_NZ) outside the
@@ -802,10 +817,20 @@ class RampWindows:
             # a slow spawn (standing on the start, say) would draw its arc as a vertical drop:
             # lay it along the geodesic field's descent direction at RAY_FLOOR instead
             va = self._steer(p, v)
-            if self.seq is not None:
-                # --ramp-sequence: the list's first two targets, never a draw
-                t1 = self.seq[0]
-                t2 = self.seq[1] if len(self.seq) > 1 else NONE
+            if self.pair_lookup is not None:
+                # --ramp-pairs: the pair this spawn state was cut for (None: none - the global
+                # sequence or the planner)
+                pr = self.pair_lookup(p)
+                self.env_seq[i] = None if pr is None else [int(pr[0]), int(pr[1])]
+                if pr is None:
+                    # a spawn no pair was cut for (a stochastic / drop-spawn recording) - or a
+                    # core that moved the pool state: counted, never hidden
+                    self.stats["pair_miss"] = self.stats.get("pair_miss", 0) + 1
+            sq = self._seq_of(i)
+            if sq is not None:
+                # --ramp-sequence / --ramp-pairs: the list's first two targets, never a draw
+                t1 = sq[0]
+                t2 = sq[1] if len(sq) > 1 else NONE
                 self.seq_k[i] = 0
                 self.seq_done[i] = False
                 self.holding[i] = False
@@ -864,7 +889,8 @@ class RampWindows:
         # inside T1's box: T1 ENTERED - the line becomes the ride along T1 then T2 from here
         for i in np.flatnonzero(in1 & ~self.entered):
             self.entered[i] = True
-            if self.seq is not None and self.seq_k[i] == len(self.seq) - 1:
+            sq = self._seq_of(i)
+            if sq is not None and self.seq_k[i] == len(sq) - 1:
                 self.seq_done[i] = True            # --ramp-sequence: the LAST target entered
             if int(i) not in changed:
                 changed[int(i)] = None             # the ride line, built below
@@ -898,16 +924,17 @@ class RampWindows:
         q = self._piece(self.prev[i])
         if q is not None:
             self.visited[i].add(q)
-        if self.seq is not None:
-            # --ramp-sequence: the next targets in the list, never a draw; past its end the
-            # window holds (no redraw). A skip lands INSIDE the new T1: the last one entered so
-            # completes the sequence
+        sq = self._seq_of(i)
+        if sq is not None:
+            # --ramp-sequence / --ramp-pairs: the next targets in the list, never a draw; past
+            # its end the window holds (no redraw). A skip lands INSIDE the new T1: the last one
+            # entered so completes the sequence
             k = int(self.seq_k[i]) + 1
-            self.seq_k[i] = min(k, len(self.seq))
-            if k < len(self.seq):
-                self.t1[i] = self.seq[k]
-                self.t2[i] = self.seq[k + 1] if k + 1 < len(self.seq) else NONE
-                if riding and k == len(self.seq) - 1:
+            self.seq_k[i] = min(k, len(sq))
+            if k < len(sq):
+                self.t1[i] = sq[k]
+                self.t2[i] = sq[k + 1] if k + 1 < len(sq) else NONE
+                if riding and k == len(sq) - 1:
                     self.seq_done[i] = True
                 ln = self._line(int(i), p, v, bool(riding))
             else:
@@ -957,7 +984,7 @@ class RampWindows:
                         np.asarray(finished, bool).reshape(-1)):
             self.stats["episodes"] += 1
             self.stats["fin"] += int(f)
-            self.stats["seq_done"] += int(self.seq is not None and self.seq_done[i])
+            self.stats["seq_done"] += int(self._seq_of(i) is not None and self.seq_done[i])
             r = int(self.n_capt[i])
             self.stats["ride_hist"][r] = self.stats["ride_hist"].get(r, 0) + 1
 
@@ -1005,7 +1032,7 @@ class RampPlanner:
 
     def __init__(self, vocab, n_envs: int, finish_box, tick_ms: float, *, topk: int, horizon: float,
                  fade: float, gravity: float = 800.0, line_cap: int = 768, seed: int = 0,
-                 goal_field=None, sequence=None):
+                 goal_field=None, sequence=None, pairs=None):
         self.vocab = vocab
         kw = dict(topk=topk, horizon=horizon, fade=fade, gravity=gravity, line_cap=line_cap,
                   goal_field=goal_field)
@@ -1017,11 +1044,30 @@ class RampPlanner:
         if self.sequence is not None:
             self.windows.set_sequence(self.sequence)
             self.eval_windows.set_sequence(self.sequence)
+        # --ramp-pairs: each spawn state's own [T1, T2] (load_ramp_pairs), on both
+        self.pairs = pairs
+        if pairs is not None:
+            bad = sorted({int(t) for t in np.concatenate([pairs["t1"], pairs["t2"]])
+                          if int(t) not in self.windows.tp})
+            if bad:
+                raise ValueError(f"--ramp-pairs {pairs.get('path')}: {bad} are not target "
+                                 f"surfaces of {vocab.describe().splitlines()[0]}")
+            table = {_origin_key(o): (int(a), int(b))
+                     for o, a, b in zip(pairs["states"]["origin"], pairs["t1"], pairs["t2"])}
+
+            def lookup(p, _t=table):
+                return _t.get(_origin_key(p))
+            self.windows.pair_lookup = lookup
+            self.eval_windows.pair_lookup = lookup
         self.finish_center = self.windows.finish
         self.fin = None
 
     def describe(self) -> str:
         s = self.vocab.describe() + "\n" + self.windows.describe()
+        if self.pairs is not None:
+            s += (f"\n--ramp-pairs: {len(self.pairs['t1'])} [T1, T2] pairs from "
+                  f"{self.pairs.get('source')} ({self.pairs.get('path')}): every spawn is a pair's "
+                  "state, shown that pair; entering T2 ends the episode as a success")
         if self.sequence is not None:
             s += (f"\n--ramp-sequence: a PREDEFINED target list {self.sequence} replaces the "
                   "planner (T1/T2 = the next two in it; entering the last one ends the episode "
@@ -1097,6 +1143,43 @@ def target_view_cams(lidar):
     the ONE builder the trainer (TargetLidar) and tools/render_pov.py share"""
     return [(_ViewCam(lidar, span), float(dyaw), float(pitch), nm)
             for nm, dyaw, pitch, span in TARGET_VIEWS]
+
+
+def _origin_key(p):
+    """a spawn origin as a lookup key: the core copies a pool row's origin verbatim (float32)"""
+    p = np.asarray(p, np.float32).reshape(3)
+    return (round(float(p[0]), 1), round(float(p[1]), 1), round(float(p[2]), 1))
+
+
+def ramp_file_for_map(paths, stem, root=None):
+    """--ramp-vocab / --ramp-pairs name ONE npz per map (a comma list on a --maps run): the one
+    whose own "map" field is `stem`. A single file is returned as it is - the consumer refuses a
+    file made for another map (RampVocab checks the .bsp) - and None when the list has none for
+    `stem`. Relative paths resolve against `root`."""
+    ps = [str(v).strip() for v in str(paths).split(",") if str(v).strip()]
+
+    def _abs(v):
+        q = Path(v)
+        return q if (q.is_absolute() or root is None) else Path(root) / q
+
+    if len(ps) == 1:
+        return _abs(ps[0])
+    for v in ps:
+        q = _abs(v)
+        if str(np.load(q, allow_pickle=False)["map"]) == str(stem):
+            return q
+    return None
+
+
+def load_ramp_pairs(path):
+    """tools/ramp_pairs.py's npz -> {states (clocks zeroed), t1, t2, source, map, path}"""
+    z = np.load(path, allow_pickle=False)
+    st = z["states"].copy()
+    for f in ("tick", "stuck_ticks", "progress", "best_progress"):
+        if f in st.dtype.names:
+            st[f] = 0
+    return {"states": st, "t1": z["t1"].astype(np.int64), "t2": z["t2"].astype(np.int64),
+            "source": str(z["source"]), "map": str(z["map"]), "path": str(path)}
 
 
 class TargetLidar:
@@ -1225,7 +1308,7 @@ def make_ramp_hooks(windows, vocab, core, ev: dict, *, line=None):
             # --ramp-sequence: the completed sequence is the success (the hook ended it)
             fin = bool(np.asarray(core.goal_hits, bool)[0]) or bool(rec["seq_kill"])
             ev["succ"] += int(fin)
-            if windows.seq is not None:
+            if windows._seq_of(0) is not None:
                 ev["stages"].append(windows.seq_stage(0))
             ev["rides"].append(int(windows.n_capt[0]))
             ev["skips"] += int(windows.n_skip[0])
@@ -1246,7 +1329,7 @@ def make_ramp_hooks(windows, vocab, core, ev: dict, *, line=None):
                 line.set_lines(idx, lines)
             # the policy sees the new window from the NEXT row on
             _snap(int(t) - int(rec["t0"]) + 1)
-        if windows.seq is not None and windows.seq_done[0] and not rec["seq_kill"]:
+        if windows._seq_of(0) is not None and windows.seq_done[0] and not rec["seq_kill"]:
             # --ramp-sequence: the last target entered - the episode ends as a SUCCESS
             m = np.zeros(core.num_envs, np.uint8)
             m[0] = 1
@@ -1255,8 +1338,8 @@ def make_ramp_hooks(windows, vocab, core, ev: dict, *, line=None):
 
     def episode_end(ep):
         out = {"events": list(rec["events"]), "fade_ticks": float(windows.fade_ticks)}
-        if windows.seq is not None:
-            out.update({"sequence": list(windows.seq), "seq_stage": windows.seq_stage(0),
+        if windows._seq_of(0) is not None:
+            out.update({"sequence": list(windows._seq_of(0)), "seq_stage": windows.seq_stage(0),
                         "seq_done": bool(rec["seq_kill"])})
         return {"targets": out}
 

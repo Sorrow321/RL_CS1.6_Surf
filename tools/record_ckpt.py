@@ -96,6 +96,8 @@ TRAIN_ONLY = frozenset({
     "int_match",
     # --ramp-offtarget-pen: a TRAINING charge for surfing a ramp the planner did not ask for
     "ramp_offtarget_pen",
+    # --ramp-pairs' provenance per map (the pairs themselves are MIRRORED) - metadata
+    "ramp_pairs_sources",
     # --arc-death-charge: a TRAINING terminal charge on the goal-arc bank; a recording computes
     # no training reward
     "arc_death_charge",
@@ -1512,13 +1514,36 @@ def main(argv=None, build_only: bool = False, device=None):
                 # appended to the lidar exactly as trained (target_channel 0 = held at zero). The
                 # hooks are the trainer's own (surfgym.goalramps.make_ramp_hooks)
                 from surfgym.goalramps import (RampPlanner, TargetLidar, find_goal_field,
-                                               make_ramp_hooks)
+                                               load_ramp_pairs, make_ramp_hooks,
+                                               ramp_file_for_map)
                 from surfgym.goalfield import load_goal_field as _lgf
                 from surfgym.rampvocab import RampVocab
                 from surfgym.targetmask import TargetMask
-                _voc = RampVocab(str(cfg.get("ramp_vocab")), map_path)
+                # a joint (--maps) run names one vocabulary per map: THIS map's
+                _vocp = ramp_file_for_map(cfg.get("ramp_vocab"), Path(map_path).stem, ROOT)
+                if _vocp is None:
+                    raise SystemExit(f"--goal-planner ramps: the checkpoint's ramp_vocab has no "
+                                     f"vocabulary for {Path(map_path).stem}")
+                _voc = RampVocab(str(_vocp), map_path)
+                # --ramp-pairs: MIRRORED - this map's pairs are the recording's spawns (the
+                # trainer's eval core spawns from them) and each spawn is shown its own pair
+                _pairs = None
+                if cfg.get("ramp_pairs"):
+                    _pp_ = ramp_file_for_map(cfg.get("ramp_pairs"), Path(map_path).stem, ROOT)
+                    if _pp_ is None:
+                        raise SystemExit(f"--ramp-pairs: the checkpoint's pairs name no file for "
+                                         f"{Path(map_path).stem}")
+                    _pairs = load_ramp_pairs(str(_pp_))
+                    if _pairs["map"] != Path(map_path).stem:
+                        raise SystemExit(f"--ramp-pairs {_pp_}: cut on {_pairs['map']}, "
+                                         f"not {Path(map_path).stem}")
+                    if spawn == "start":
+                        core.set_spawn_pool(_pairs["states"])
+                        print(f"spawn pool: --ramp-pairs - the {len(_pairs['t1'])} pair states of "
+                              f"{_pp_} (source {_pairs['source']}), like the trainer's eval")
                 # the geodesic field orders the targets, as in training
-                _gfp = find_goal_field(map_path, cfg.get("goal_cell"))
+                # (this map's goal cell - the per-map pick above - like the trainer's slot)
+                _gfp = find_goal_field(map_path, gcell)
                 if _gfp is None:
                     raise SystemExit(f"--goal-planner ramps: no geodesic goal field beside "
                                      f"{map_path} to order the targets")
@@ -1533,10 +1558,10 @@ def main(argv=None, build_only: bool = False, device=None):
                                    # --ramp-sequence: MIRRORED - the same predefined target list
                                    sequence=([int(x) for x in
                                               str(cfg.get("ramp_sequence")).split(",") if x]
-                                             if cfg.get("ramp_sequence") else None))
+                                             if cfg.get("ramp_sequence") else None),
+                                   pairs=_pairs)
                 print(_rpl.describe())
-                lidar = TargetLidar(lidar, TargetMask(str(cfg.get("ramp_vocab")), zones["end"],
-                                                      device),
+                lidar = TargetLidar(lidar, TargetMask(str(_vocp), zones["end"], device),
                                     _rpl.eval_windows,
                                     mode="live" if int(cfg.get("target_channel") or 0) else "off",
                                     # --target-views: MIRRORED (the channel's directions)

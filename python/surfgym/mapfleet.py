@@ -642,8 +642,13 @@ class MapFleet:
             if not m.any():
                 continue
             j = torch.as_tensor(np.flatnonzero(m), device=origin.device)
+            kw = {}
+            if hasattr(s.lidar, "set_goals") or getattr(s.lidar, "takes_idx", False):
+                # a goal-ball / target-channel wrapper: its windows are the slot's own, so the
+                # subset rows render THEIR targets by the slot's LOCAL row index
+                kw["idx"] = idx[m] - s.lo
             im = s.lidar.render(origin[j], yaw_deg[j], pitch_deg[j],
-                                ducked[j]).reshape(int(j.numel()), -1)
+                                ducked[j], **kw).reshape(int(j.numel()), -1)
             if out is None:
                 out = torch.zeros((n, im.shape[1]), device=im.device,
                                   dtype=im.dtype)

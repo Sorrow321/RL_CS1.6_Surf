@@ -353,9 +353,12 @@ def main() -> None:
         if not _voc:
             raise SystemExit("--targets: this run.json names no ramp_vocab (not a "
                              "--goal-planner ramps run)")
-        _vp = Path(_voc)
-        if not _vp.is_absolute():
-            _vp = ROOT / _vp
+        # a joint (--maps) run names one vocabulary per map: THIS recording's map's
+        from surfgym.goalramps import ramp_file_for_map
+        _vp = ramp_file_for_map(_voc, Path(core.bsp_path).stem, ROOT)
+        if _vp is None:
+            raise SystemExit(f"--targets: the run's ramp_vocab has no vocabulary for "
+                             f"{Path(core.bsp_path).stem}")
         _zn = load_zones(core.bsp_path) or {}
         tmask = TargetMask(str(_vp), _zn.get("end"), device)
         tgt_live = bool(int(rcfg.get("target_channel") or 0))

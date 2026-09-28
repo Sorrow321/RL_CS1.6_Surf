@@ -4796,6 +4796,13 @@ def main() -> None:
                          "speed alone is bought by leaving lower (the user, 2026-09-28: 'bonus "
                          "for speed (or energy?) on exit from ramp'). 0 (default) = off. "
                          "ckpt restores")
+    ap.add_argument("--ramp-pairs", default=None,
+                    help="--goal-planner ramps: finisher PAIRS as the training task "
+                         "(tools/ramp_pairs.py npz; a comma list, one per map of --maps): every "
+                         "spawn is a pair's own state and the env is shown that pair [T1, T2]; "
+                         "entering T2 ends the episode as a success (the user, 2026-09-28: "
+                         "'see this => do this' on many maps). A pair file whose source is a "
+                         "demo needs --ramp-sequence-source demo. ckpt restores")
     ap.add_argument("--target-views", type=int, default=None, choices=(1, 6),
                     help="--goal-planner ramps: the target channel from 1 direction (the view's "
                          "own, default) or 6 (+ up, down, back, left, right: five more image "
@@ -6561,7 +6568,11 @@ def main() -> None:
         # --goal-planner ramps: its vocabulary, channel and knobs, like every run-defining flag
         for _k in ("ramp_vocab", "target_channel", "ramp_topk", "ramp_horizon", "ramp_fade",
                    "ramp_reward", "ramp_offtarget_pen", "ramp_obs_pass", "ramp_sequence",
-                   "ramp_sequence_source", "target_views", "ramp_exit_bonus"):
+                   "ramp_sequence_source", "target_views", "ramp_exit_bonus", "ramp_pairs"):
+            if _k == "ramp_sequence" and flag_given("--ramp-pairs"):
+                continue      # --ramp-pairs replaces a checkpoint's global sequence (one map's ids)
+            if _k == "ramp_pairs" and flag_given("--ramp-sequence"):
+                continue
             if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
                 setattr(args, _k, ck_cfg[_k])
                 restored.append(f"{_k}={ck_cfg[_k]}")
@@ -7847,10 +7858,30 @@ def main() -> None:
     # constant like PPLAN; with it off every branch keyed on it is dead
     RPLAN = args.goal_planner == "ramps"
     from surfgym.goalramps import RAMP_DEFAULTS
+    RVOCAB_OF = {}            # map stem -> its ramp vocabulary npz (--ramp-vocab, a comma list)
+    RPAIRS_OF = {}            # map stem -> load_ramp_pairs (--ramp-pairs, a comma list)
     if RPLAN:
         if not args.ramp_vocab:
             raise SystemExit("--goal-planner ramps needs --ramp-vocab (this map's "
                              "tools/ramps_mesh.py v4 npz)")
+        for _vp in [v.strip() for v in str(args.ramp_vocab).split(",") if v.strip()]:
+            RVOCAB_OF[str(np.load(_vp, allow_pickle=False)["map"])] = _vp
+        if args.ramp_pairs:
+            from surfgym.goalramps import load_ramp_pairs
+            for _pp in [v.strip() for v in str(args.ramp_pairs).split(",") if v.strip()]:
+                _pr = load_ramp_pairs(_pp)
+                RPAIRS_OF[_pr["map"]] = _pr
+            _demo = sorted(m for m, pr in RPAIRS_OF.items()
+                           if not str(pr["source"]).startswith("self:"))
+            if _demo and not (flag_given("--ramp-sequence-source")
+                              and args.ramp_sequence_source == "demo"):
+                raise SystemExit(f"--ramp-pairs: the pairs of {_demo} are not policy-owned "
+                                 f"({[RPAIRS_OF[m]['source'] for m in _demo]}): CLAUDE.md "
+                                 "section 0 - declare the diagnostic with "
+                                 "--ramp-sequence-source demo")
+            for _m, _pr in RPAIRS_OF.items():
+                print(f"--ramp-pairs: {_m}: {len(_pr['t1'])} pairs from {_pr['source']} "
+                      f"({_pr['path']})")
         for _k, _dflt in RAMP_DEFAULTS.items():
             if getattr(args, _k) is None:
                 setattr(args, _k, _dflt)
@@ -7875,7 +7906,7 @@ def main() -> None:
         _set = [f"--{_k.replace('_', '-')}" for _k in
                 ("ramp_vocab", "target_channel", "ramp_topk", "ramp_horizon", "ramp_fade",
                  "ramp_reward", "ramp_offtarget_pen", "ramp_obs_pass", "ramp_sequence",
-                 "ramp_sequence_source", "target_views", "ramp_exit_bonus")
+                 "ramp_sequence_source", "target_views", "ramp_exit_bonus", "ramp_pairs")
                 if flag_given(f"--{_k.replace('_', '-')}")]
         if _set:
             raise SystemExit(f"{', '.join(_set)} without --goal-planner ramps")
@@ -7887,6 +7918,7 @@ def main() -> None:
         args.ramp_sequence = args.ramp_sequence_source = None
         args.target_views = None
         args.ramp_exit_bonus = None
+        args.ramp_pairs = None
     # --ramp-reward pass: +1 per window shift, added to the per-tick reward after the goal system's
     # step; the arc shaping is off (arc_scale 0 below)
     # --ramp-sequence: the predefined target list (surface ids) instead of the planner
@@ -7909,8 +7941,15 @@ def main() -> None:
                   "CLAUDE.md section 0 forbids that for training: this run is a LABELLED "
                   "DIAGNOSTIC (the user asked for it, 2026-09-28) and its checkpoints are marked "
                   "demo_contaminated - never resumed, benchmarked as a result or used as a base")
-    elif args.ramp_sequence_source and not args.ramp_sequence:
-        raise SystemExit("--ramp-sequence-source without --ramp-sequence")
+    elif args.ramp_sequence_source and not (args.ramp_sequence or args.ramp_pairs):
+        raise SystemExit("--ramp-sequence-source without --ramp-sequence or --ramp-pairs")
+    if RSEQ is not None and args.ramp_pairs:
+        raise SystemExit("--ramp-sequence and --ramp-pairs: one global target list or a pair per "
+                         "spawn, not both")
+    if RPLAN and args.ramp_pairs and args.ramp_sequence_source == "demo":
+        print("!! --ramp-pairs with --ramp-sequence-source demo: some pairs were READ OFF A HUMAN "
+              "RECORD (CLAUDE.md section 0): this run is a LABELLED DIAGNOSTIC (the user asked for "
+              "it, 2026-09-28) and its checkpoints are marked demo_contaminated")
     RPASS = RPLAN and args.ramp_reward == "pass"
     # --ramp-exit-bonus: K per 1,000 u of every pass exit's energy height, added per tick
     REXIT = float(args.ramp_exit_bonus) if RPLAN and args.ramp_exit_bonus else 0.0
@@ -9432,6 +9471,12 @@ def main() -> None:
                       f"{len(dp) / len(pool):.2f} (requested {f:.2f})")
         if not args.keep_teleports:
             core.set_teleport_fail(True)
+        if RPAIRS_OF:
+            # --ramp-pairs: every spawn (and every eval episode) is one of this map's pairs
+            if _bsp.stem not in RPAIRS_OF:
+                raise SystemExit(f"--ramp-pairs: no pair file for {_bsp.stem} "
+                                 f"(the pair files name {sorted(RPAIRS_OF)})")
+            pool = plat_pool = RPAIRS_OF[_bsp.stem]["states"]
         core.set_spawn_pool(pool)
         slot.goal_field = goal_field
         slot.reward_field = reward_field
@@ -9888,7 +9933,10 @@ def main() -> None:
             # the channel and holds it at zero (the control arm's identical architecture)
             from surfgym.goalramps import TargetLidar
             from surfgym.targetmask import TargetMask
-            _target_masks[slot.name] = TargetMask(args.ramp_vocab, slot.goal_box, device)
+            if slot.name not in RVOCAB_OF:
+                raise SystemExit(f"--goal-planner ramps: no --ramp-vocab entry for {slot.name} "
+                                 f"(the vocabularies name {sorted(RVOCAB_OF)})")
+            _target_masks[slot.name] = TargetMask(RVOCAB_OF[slot.name], slot.goal_box, device)
             slot.lidar = TargetLidar(slot.lidar, _target_masks[slot.name], None,
                                      mode="live" if int(args.target_channel) else "off",
                                      views=int(args.target_views or 1))
@@ -10128,6 +10176,7 @@ def main() -> None:
     # policy's input row and --race-arc must not, or the arm would be moving
     # two things at once.
     arc_line = None
+    ARC_SLOTS = None          # --goal-planner ramps on several maps: the goal arc per map
     arc_scale = 0.0
     if args.race_arc:
         if args.reward != "race":
@@ -10159,8 +10208,9 @@ def main() -> None:
     # the planner is a map artifact, like the goal field it sits beside.
     planner = None
     if args.goal_planner:
-        if MULTI:
-            raise SystemExit("--goal-planner is single-map for now")
+        if MULTI and not RPLAN:
+            raise SystemExit("--goal-planner is single-map for now (ramps runs one planner "
+                             "per map)")
         if slots[0].goal_box is None:
             raise SystemExit("--goal-planner: no finish box on this map")
         from surfgym.goalplan import BFSPlanner, PLAN_SEED_OFFSET
@@ -10188,18 +10238,27 @@ def main() -> None:
             from surfgym.goalfield import load_goal_field as _lgf
             # the GEODESIC potential orders the targets (the consecutive ramps down it), whatever
             # --race-dist the reward uses; a map without a baked geodesic field is refused
-            _gfp = find_goal_field(slots[0].bsp, args.goal_cell)
+            # the slot's own goal cell (--goal-cell may be a per-map list)
+            _gfp = find_goal_field(slots[0].bsp, slots[0].goal_cell)
             if _gfp is None:
                 raise SystemExit(f"--goal-planner ramps: no geodesic goal field beside "
                                  f"{slots[0].bsp} (<map>.goal_<cell>.npz) to order the targets")
             print(f"--goal-planner ramps: targets ordered by the geodesic field {_gfp}")
-            _ramp_planner = RampPlanner(
-                RampVocab(args.ramp_vocab, slots[0].bsp), N, slots[0].goal_box, TICK.ms,
-                topk=int(args.ramp_topk), horizon=float(args.ramp_horizon),
-                fade=float(args.ramp_fade),
-                gravity=float(getattr(core.config.phys, "sv_gravity", 800.0)),
-                line_cap=min(768, int(route.pts.shape[1]) if route is not None else 768),
-                seed=int(args.seed) + 9091, goal_field=_lgf(_gfp), sequence=RSEQ)
+            # one planner per map: its vocabulary, its finish, its geodesic field (the run's
+            # --goal-cell when that map has it baked, else its first), its pairs; env rows local
+            RPLANNERS = {}
+            for _si, _s in enumerate(slots):
+                _gfs = (find_goal_field(_s.bsp, _s.goal_cell) if _s is not slots[0] else _gfp)
+                RPLANNERS[_s.name] = RampPlanner(
+                    RampVocab(RVOCAB_OF[_s.name], _s.bsp), _s.n, _s.goal_box, TICK.ms,
+                    topk=int(args.ramp_topk), horizon=float(args.ramp_horizon),
+                    fade=float(args.ramp_fade),
+                    gravity=float(getattr(core.config.phys, "sv_gravity", 800.0)),
+                    line_cap=min(768, int(route.pts.shape[1]) if route is not None else 768),
+                    seed=int(args.seed) + 9091 + 7 * _si,
+                    goal_field=(_lgf(_gfs) if _gfs else None), sequence=RSEQ,
+                    pairs=RPAIRS_OF.get(_s.name))
+            _ramp_planner = RPLANNERS[slots[0].name]
         planner = ((_ramp_planner if RPLAN else prim_planner if PPLAN
                     else FinishRef(slots[0].goal_box) if PLPLAN
                     else None) or BFSPlanner.for_core(
@@ -10209,6 +10268,9 @@ def main() -> None:
             **({"graph_kind": args.plan_graph}
                if args.plan_graph in ("ride", "tight") else {})))
         print(planner.describe())
+        if RPLAN and MULTI:
+            for _s in slots[1:]:
+                print(f"[{_s.name}] " + RPLANNERS[_s.name].describe())
         _pst = (planner.snap(slots[0].plat_pool["origin"].astype(np.float64))
                 if not (PPLAN or PLPLAN or RPLAN) else None)
         if PPLAN or PLPLAN or RPLAN:
@@ -10299,8 +10361,9 @@ def main() -> None:
         # arc, L_ref = the map line's length (or speed_est * k_cap).
         if args.reward != "race":
             raise SystemExit("--goal-reward arc needs --reward race")
-        if len(slots) > 1:
-            raise SystemExit("--goal-reward arc is single-map for now")
+        if len(slots) > 1 and not RPLAN:
+            raise SystemExit("--goal-reward arc is single-map for now (--goal-planner ramps "
+                             "runs one arc per map)")
         if not args.race_shaping:
             raise SystemExit("--goal-reward arc pays through the shaping "
                              "scale: run with --race-shaping 1 (the "
@@ -10334,6 +10397,19 @@ def main() -> None:
                                           args.race_arc_corridor or 1500.0))
         arc_line.window = int(getattr(arc_line, "window",
                                       args.race_arc_window or 16))
+        if MULTI:
+            # --goal-planner ramps on several maps: each map's reward reads the arcs of its OWN
+            # rows (arc_line itself stays the first map's for the single-arc consumers)
+            ARC_SLOTS = {}
+            for _s in slots:
+                _a = MultiArcProgress(_s.n, l_max=int(arc_line.pts.shape[1]),
+                                      spacing=DEFAULT_SPACING,
+                                      corridor=float(arc_line.corridor),
+                                      window=int(arc_line.window))
+                _a.ref_length, _a.source = arc_line.ref_length, arc_line.source
+                _a.corridor, _a.window = arc_line.corridor, arc_line.window
+                ARC_SLOTS[_s.name] = _a
+            arc_line = ARC_SLOTS[slots[0].name]
         arc_scale = 100.0 / _lref * args.race_shaping
         if RPASS:
             # --ramp-reward pass: the arc still locates the agent on its line (the fan and the
@@ -10821,8 +10897,9 @@ def main() -> None:
                 ng=args.race_ng, ng_gamma=GAMMA_T, ng_d0=_s.rf_d0,
                 death_charge=(args.death_charge or 0.0),
                 # --race-arc: single-map by the guard above, so handing the
-                # one line to the (single) slot is exact
-                arc=arc_line, arc_scale=arc_scale,
+                # one line to the (single) slot is exact; --goal-planner ramps on several maps:
+                # the map's own arc
+                arc=(ARC_SLOTS[_s.name] if ARC_SLOTS else arc_line), arc_scale=arc_scale,
                 # --arc-death-charge: a death forfeits the current line's arc bank
                 arc_death_charge=float(args.arc_death_charge or 0.0),
                 # --stall-arc: the stall detector watches the route arc
@@ -11749,6 +11826,16 @@ def main() -> None:
                                "ramp_obs_pass": int(args.ramp_obs_pass or 0),
                                "target_views": int(args.target_views or 1),
                                "ramp_exit_bonus": float(args.ramp_exit_bonus or 0.0)})
+        if RPAIRS_OF:
+            # --ramp-pairs: MIRRORED by record_ckpt.py (each map's pairs are its eval spawns); the
+            # provenance of every map's pairs rides with every checkpoint, and a demo-derived one
+            # marks the weights (CLAUDE.md section 0)
+            _psrc = {m: str(pr["source"]) for m, pr in RPAIRS_OF.items()}
+            meta["config"].update({
+                "ramp_pairs": str(args.ramp_pairs),
+                "ramp_pairs_sources": _psrc,
+                "ramp_sequence_source": str(args.ramp_sequence_source or "self"),
+                "demo_contaminated": any(not s.startswith("self:") for s in _psrc.values())})
         if RSEQ is not None:
             # --ramp-sequence: MIRRORED by record_ckpt.py; its provenance rides with every
             # checkpoint, and a demo-derived one marks the weights (CLAUDE.md section 0)
@@ -13287,10 +13374,10 @@ def main() -> None:
     # on top, so the rank shares of one map stay a partition too.
     goalsys = None
     if args.goals:
-        from surfgym.goalsys import GoalSystem
+        from surfgym.goalsys import GoalSystem, RampSlot
         # --goal-planner ramps draws its windows from the spawn state alone, so it runs without
         # the reservoir too (--respawn-frac 0: every episode from the map start - --ramp-sequence)
-        if (respawn is None and not RPLAN) or MULTI:
+        if (respawn is None and not RPLAN) or (MULTI and not RPLAN):
             raise SystemExit("--goals needs the respawn reservoir and a "
                              "single map (per-slot goals: plan G5)")
         _ball = _eval_ball = None
@@ -13311,10 +13398,13 @@ def main() -> None:
             # --goal-planner ramps: the eval renders through its own target camera (one env, the
             # eval windows); the trainer's eval passes goalsys.eval_ball to the policy
             from surfgym.goalramps import TargetLidar
-            _eval_ball = TargetLidar(_raw_lidar[slots[0].name], _target_masks[slots[0].name],
-                                     planner.eval_windows,
+            _eval_balls = {
+                _s.name: TargetLidar(_raw_lidar[_s.name], _target_masks[_s.name],
+                                     RPLANNERS[_s.name].eval_windows,
                                      mode="live" if int(args.target_channel) else "off",
                                      views=int(args.target_views or 1))
+                for _s in slots}
+            _eval_ball = _eval_balls[slots[0].name]
         _learned = None
         if LPLAN:
             # --goal-planner learned: the planner network, its PPO and its
@@ -13521,14 +13611,22 @@ def main() -> None:
                              **({"planner": planner} if planner is not None
                                 else {}),
                              **({"learned": _learned} if _learned is not None
-                                else {}))
+                                else {}),
+                             # --goal-planner ramps: the task per map slot (one on a single map)
+                             **({"ramp_slots": [
+                                 RampSlot(_s.lo, _s.hi, _s.core, RPLANNERS[_s.name],
+                                          _s.reward_fn,
+                                          (ARC_SLOTS[_s.name] if ARC_SLOTS else arc_line),
+                                          _s.name, _eval_balls[_s.name]) for _s in slots]}
+                                if RPLAN else {}))
         if args.goal_obs == "fanline":
             # --goal-obs fanline: the cameras draw the goal system's lines
             slots[0].lidar.line = goalsys.line
             goalsys.eval_ball.line = goalsys.eval_line
         if RPLAN:
-            # the fleet's camera draws the fleet's windows
-            slots[0].lidar.windows = planner.windows
+            # each map's camera draws its own windows (local env rows)
+            for _s in slots:
+                _s.lidar.windows = RPLANNERS[_s.name].windows
         if _learned is not None:
             # the terminal obs carries (pos - map centre) / 2000 in 12..14
             goalsys.map_center = np.asarray(
@@ -16769,7 +16867,9 @@ def main() -> None:
                     _ev_meta, _ev_tick = goalsys.eval_hooks(
                         _s.eval_core, seed=global_step,
                         **({"planner": held_planners[_s.name]}
-                           if _s.name in held_planners else {}))
+                           if _s.name in held_planners else {}),
+                        # --goal-planner ramps on several maps: this map's windows
+                        **({"ramp_slot": _s.name} if (RPLAN and MULTI) else {}))
                 # --eval-stall: TRAINING's stall rule, on the eval core. A
                 # FRESH hook per recording (its running best is per episode
                 # and per rollout), chained AFTER the goal hook so a goal
@@ -16792,7 +16892,10 @@ def main() -> None:
                     _ev_tick = chain_ticks(_ev_tick, _ev_stall)
                 record_rollout(_s.eval_core,
                                EVAL_GREEDY(policy, packer, device,
-                                           (goalsys.eval_ball
+                                           (goalsys.ramp_slot(_s.name).eval_ball
+                                            if (goalsys is not None and RPLAN
+                                                and MULTI)
+                                            else goalsys.eval_ball
                                             if (goalsys is not None
                                                 and goalsys.eval_ball
                                                 is not None)
@@ -16812,7 +16915,9 @@ def main() -> None:
                                            cc_fn=_s.eval_cc_feed,
                                            ratchet_fn=_s.eval_ratchet_feed,
                                            keys_hold=args.keys_hold,
-                                           pass_fn=(goalsys.eval_pass_feed()
+                                           pass_fn=(goalsys.eval_pass_feed(
+                                                        _s.name if (RPLAN and MULTI)
+                                                        else None)
                                                     if N_PASS else None)),
                                path, episodes=n_rec,
                                max_ticks=n_rec * args.ep_ticks,

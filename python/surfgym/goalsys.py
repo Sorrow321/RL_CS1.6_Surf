@@ -35,12 +35,24 @@ from .goals import (AirSampler, GoalStats, KCurriculum, MultiLine,
 KIND = {0: "achieved", 1: "air", 2: "finish", 3: "planned"}
 
 
+class RampSlot:
+    """--goal-planner ramps on ONE map of the fleet: its env rows [lo, hi), its core, its planner
+    (vocabulary + windows), and its reward function and arc (both over its own rows only). A
+    single-map run is one slot over every env."""
+
+    __slots__ = ("lo", "hi", "core", "planner", "rf", "arc", "name", "eval_ball")
+
+    def __init__(self, lo, hi, core, planner, rf=None, arc=None, name="", eval_ball=None):
+        self.lo, self.hi, self.core, self.planner = int(lo), int(hi), core, planner
+        self.rf, self.arc, self.name, self.eval_ball = rf, arc, str(name), eval_ball
+
+
 class GoalSystem:
     def __init__(self, core, n_envs: int, line, goal_field, d0,
                  args, device, out_dir, seed: int = 0, ball=None,
                  eval_ball=None, arc=None, reward_fn=None, dist_field=None,
                  snap_every: int = 100, tick_ms: float = 10.0,
-                 planner=None, learned=None):
+                 planner=None, learned=None, ramp_slots=None):
         self.core = core
         # --goal-planner bfs (surfgym/goalplan.py): every spawn is handed a
         # PLANNED goal (kind 3) - a target of the deterministic BFS planner
@@ -52,6 +64,13 @@ class GoalSystem:
         # advances on collision telemetry, the arc bank survives its shifts, no sphere ever
         # ends an episode (the finish box is the only success). False = none of this.
         self.ramps = bool(getattr(planner, "ramps", False))
+        # the ramp task per map slot (RampSlot): several = one policy on several maps; None = the
+        # one map this system was built on, every env
+        self._rs = None
+        if self.ramps:
+            self._rs = (list(ramp_slots) if ramp_slots else
+                        [RampSlot(0, int(n_envs), core, planner, reward_fn, arc, "",
+                                  eval_ball)])
         # --goal-planner learned (surfgym/goallearn.py): a LearnedPlanner
         # writes each env's line, one 800 u vocabulary shape at a time, and
         # the end goal of every episode is the finish box. `planner` is then
@@ -854,24 +873,32 @@ class GoalSystem:
         """--goal-planner ramps: envs ``idx`` start an episode - their target window from the
         spawn state (the surface a spawn rests on is never its T1), the window line on the fan
         and the arc (a new episode: the bank starts at zero), no sphere."""
-        P = self.planner
-        _t0 = time.perf_counter()
-        sv = self.core.states_view
-        org = sv["origin"][idx].astype(np.float64)
-        vel = sv["velocity"][idx].astype(np.float64)
-        src = P.vocab.contact_of(org, sv["ducked"][idx])
-        lines = P.windows.spawn(idx, org, vel, source=src)
-        self.rt["spawn"] += (time.perf_counter() - _t0) * 1e3
-        if self.line is not None:
-            self.line.set_lines(idx, lines)
-        if self.arc is not None:
-            self.arc.set_lines(idx, lines)
-            rf = self.reward_fn
-            if rf is not None and getattr(rf, "_arc_spawn", None) is not None:
-                rf._arc_spawn[idx] = 0.0
-                rf._arc_max[idx] = 0.0
+        idx = np.asarray(idx, np.int64)
+        for S in self._rs:
+            # each map slot draws its own envs' windows on its own core, in its local rows
+            m = (idx >= S.lo) & (idx < S.hi)
+            if not m.any():
+                continue
+            gi = idx[m]
+            li = gi - S.lo
+            P = S.planner
+            _t0 = time.perf_counter()
+            sv = S.core.states_view
+            org = sv["origin"][li].astype(np.float64)
+            vel = sv["velocity"][li].astype(np.float64)
+            src = P.vocab.contact_of(org, sv["ducked"][li])
+            lines = P.windows.spawn(li, org, vel, source=src)
+            self.rt["spawn"] += (time.perf_counter() - _t0) * 1e3
+            if self.line is not None:
+                self.line.set_lines(gi, lines)
+            if S.arc is not None:
+                S.arc.set_lines(li, lines)
+                rf = S.rf
+                if rf is not None and getattr(rf, "_arc_spawn", None) is not None:
+                    rf._arc_spawn[li] = 0.0
+                    rf._arc_max[li] = 0.0
+            self.plan_tgt[gi] = P.windows.t1[li]
         self.sphere.clear(idx)
-        self.plan_tgt[idx] = P.windows.t1[idx]
         self.plan_fin[idx] = False
         self.kind[idx] = 3
         self.k[idx] = 0.0
@@ -881,75 +908,101 @@ class GoalSystem:
     def take_pass_flags(self) -> np.ndarray:
         """--ramp-obs-pass: (N,) float32 - 1 where the env's window shifted since the previous
         decision (RampWindows.take_passes; a respawn restarts it)"""
-        return self.planner.windows.take_passes()
+        if len(self._rs) == 1:
+            return self._rs[0].planner.windows.take_passes()
+        return np.concatenate([S.planner.windows.take_passes() for S in self._rs])
 
     def pass_flags_at(self, idx) -> np.ndarray:
         """--ramp-obs-pass at a terminal state: the flag without restarting the count"""
-        return self.planner.windows.pass_flags(idx)
+        if len(self._rs) == 1:
+            return self._rs[0].planner.windows.pass_flags(idx)
+        idx = np.asarray(idx, np.int64)
+        out = np.zeros(len(idx), np.float32)
+        for S in self._rs:
+            m = (idx >= S.lo) & (idx < S.hi)
+            if m.any():
+                out[m] = S.planner.windows.pass_flags(idx[m] - S.lo)
+        return out
 
-    def eval_pass_feed(self):
+    def ramp_slot(self, name=None):
+        """the RampSlot of map `name` (None / a single-map run: the first)"""
+        if name is None or len(self._rs) == 1:
+            return self._rs[0]
+        for S in self._rs:
+            if S.name == name:
+                return S
+        raise KeyError(f"no ramp slot for map {name!r}: {[S.name for S in self._rs]}")
+
+    def eval_pass_feed(self, slot=None):
         """--ramp-obs-pass for the greedy eval: the policy wrapper's pass_fn off the eval
-        windows (goalramps.make_pass_feed)"""
+        windows of map `slot` (goalramps.make_pass_feed)"""
         from .goalramps import make_pass_feed
-        return make_pass_feed(self.planner.eval_windows)
+        return make_pass_feed(self.ramp_slot(slot).planner.eval_windows)
 
     def _on_step_ramps(self, done, trunc, ep_len) -> np.ndarray:
         """--goal-planner ramps, after fleet.step: settle the ended episodes (success = the core
         crossed the ARMED finish box), then read the tick's collision telemetry, advance every
         live env's window and put the shifted envs' new lines on the fan and the arc - re-anchored
-        at zero instantaneous reward, the episode's death-bond bank KEPT."""
-        P = self.planner
+        at zero instantaneous reward, the episode's death-bond bank KEPT. Per map slot: each on
+        its own core, windows and arc, in its own rows."""
         ended = (np.asarray(done, bool) | np.asarray(trunc, bool))
-        fin = ended & np.asarray(self.core.goal_hits, bool)
-        seq = P.windows.seq is not None
-        if seq:
-            # --ramp-sequence: a completed sequence (killed below on the tick after its last
-            # target was entered) is the episode's success
-            fin = fin | (ended & self.pending)
-        if ended.any():
-            e = np.flatnonzero(ended)
-            P.windows.settle(e, fin[e])
-            for i in e:
-                self.stats.note(self.k[i], KIND[3], bool(fin[i]), int(ep_len[i]))
-                self.plan_n[0] += 1
-                self.plan_ok[0] += int(fin[i])
-            self.pending[ended] = False
-        _t0 = time.perf_counter()
-        cnt, nrm, _pts = self.core.get_touch()
-        sv = self.core.states_view
-        org = sv["origin"].astype(np.float64)
-        _t1 = time.perf_counter()
-        # surfing a ramp the planner did not ask for (checked against the window the policy
-        # acted on, before it moves)
-        off = P.windows.offtarget(cnt, nrm, org, ~ended)
-        self.ramp_off = off.astype(np.float32)
-        self._off_n += int(off.sum())
-        self._live_n += int((~ended).sum())
-        _t2 = time.perf_counter()
-        # the boxes: positions only
-        idx, lines = P.windows.on_tick(None, org, sv["velocity"].astype(np.float64), ended)
-        # --ramp-reward pass: this tick's window shifts per env (+1 each, added by the trainer)
-        self.ramp_pass = P.windows.tick_pass.astype(np.float32)
-        # --ramp-exit-bonus: this tick's pass exits' energy heights (u), added by the trainer
-        self.ramp_exit = P.windows.tick_exit_h.astype(np.float32)
-        if seq:
-            # --ramp-sequence: the last target entered - end the episode; it settles as a
-            # success on the next tick (the sphere goals' kill-then-credit pattern)
-            hit = P.windows.seq_done & ~ended & ~self.pending
-            if hit.any():
-                self.core.force_fail(hit)
-                self.pending |= hit
-        _t3 = time.perf_counter()
-        if len(idx):
-            if self.line is not None:
-                self.line.set_lines(idx, lines)
-            if self.arc is not None:
-                self.arc.set_lines(idx, lines, keep_bank=True)
-        _t4 = time.perf_counter()
-        self.rt["touch"] += (_t1 - _t0) * 1e3
-        self.rt["offtarget"] += (_t2 - _t1) * 1e3
-        self.rt["windows"] += (_t3 - _t2) * 1e3
-        self.rt["lines"] += (_t4 - _t3) * 1e3
+        fin = np.zeros(len(ended), bool)
+        for S in self._rs:
+            sl = slice(S.lo, S.hi)
+            P = S.planner
+            e_s = ended[sl]
+            f_s = e_s & np.asarray(S.core.goal_hits, bool)
+            seq = P.windows.seq is not None or P.windows.pair_lookup is not None
+            if seq:
+                # --ramp-sequence / --ramp-pairs: a completed sequence (killed below on the tick
+                # after its last target was entered) is the episode's success
+                f_s = f_s | (e_s & self.pending[sl])
+            fin[sl] = f_s
+            if e_s.any():
+                el = np.flatnonzero(e_s)
+                P.windows.settle(el, f_s[el])
+                for i in el + S.lo:
+                    self.stats.note(self.k[i], KIND[3], bool(fin[i]), int(ep_len[i]))
+                    self.plan_n[0] += 1
+                    self.plan_ok[0] += int(fin[i])
+                self.pending[el + S.lo] = False
+            _t0 = time.perf_counter()
+            cnt, nrm, _pts = S.core.get_touch()
+            sv = S.core.states_view
+            org = sv["origin"].astype(np.float64)
+            _t1 = time.perf_counter()
+            # surfing a ramp the planner did not ask for (checked against the window the policy
+            # acted on, before it moves)
+            off = P.windows.offtarget(cnt, nrm, org, ~e_s)
+            self.ramp_off[sl] = off
+            self._off_n += int(off.sum())
+            self._live_n += int((~e_s).sum())
+            _t2 = time.perf_counter()
+            # the boxes: positions only
+            li, lines = P.windows.on_tick(None, org, sv["velocity"].astype(np.float64), e_s)
+            # --ramp-reward pass: this tick's window shifts per env (+1 each, added by the
+            # trainer); --ramp-exit-bonus: this tick's pass exits' energy heights (u)
+            self.ramp_pass[sl] = P.windows.tick_pass
+            self.ramp_exit[sl] = P.windows.tick_exit_h
+            if seq:
+                # the last target entered - end the episode; it settles as a success on the next
+                # tick (the sphere goals' kill-then-credit pattern)
+                hit = P.windows.seq_done & ~e_s & ~self.pending[sl]
+                if hit.any():
+                    S.core.force_fail(hit)
+                    self.pending[sl] |= hit
+            _t3 = time.perf_counter()
+            if len(li):
+                gi = np.asarray(li, np.int64) + S.lo
+                if self.line is not None:
+                    self.line.set_lines(gi, lines)
+                if S.arc is not None:
+                    S.arc.set_lines(li, lines, keep_bank=True)
+            _t4 = time.perf_counter()
+            self.rt["touch"] += (_t1 - _t0) * 1e3
+            self.rt["offtarget"] += (_t2 - _t1) * 1e3
+            self.rt["windows"] += (_t3 - _t2) * 1e3
+            self.rt["lines"] += (_t4 - _t3) * 1e3
         return fin
 
     # ----------------------------------------------- --goal-planner learned
@@ -1151,21 +1204,52 @@ class GoalSystem:
                 f"len {ln:,.0f}u"
                 + (f" UNPLANNABLE {nof}" if nof else ""))
 
+    def _ramp_seq_mode(self) -> bool:
+        """--ramp-sequence or --ramp-pairs on any map slot"""
+        return any(getattr(S.planner, "sequence", None) is not None
+                   or getattr(S.planner, "pairs", None) is not None for S in self._rs)
+
+    def _pop_ramp_stats(self) -> dict:
+        """the windows' episode stats since the last call, summed over the map slots"""
+        out = None
+        # several maps: each one's (episodes, completed sequences) for the log's per-map line
+        self._per_map = []
+        for S in self._rs:
+            rs = S.planner.windows.pop_stats()
+            if len(self._rs) > 1:
+                self._per_map.append((S.name, int(rs["episodes"]), int(rs.get("seq_done", 0))))
+            if out is None:
+                out = {k: (dict(v) if k == "ride_hist" else v) for k, v in rs.items()}
+                continue
+            for k, v in rs.items():
+                if k == "ride_hist":
+                    for r, c in v.items():
+                        out["ride_hist"][r] = out["ride_hist"].get(r, 0) + c
+                else:
+                    out[k] = out.get(k, 0) + v
+        return out
+
     def note(self, step: int) -> str:
         pnote = self._plan_note(step) if self.planner is not None else ""
         if self.ramps:
-            rs = self.planner.windows.pop_stats()
+            rs = self._pop_ramp_stats()
             ne = max(int(rs["episodes"]), 1)
             pnote += (f"  rides/ep {rs['rides'] / ne:.2f} skips/ep {rs['skips'] / ne:.2f} "
                       f"holds/ep {rs.get('holds', 0) / ne:.2f} "
                       + (f"SEQUENCE done {rs.get('seq_done', 0)}/{rs['episodes']} "
-                         if getattr(self.planner, "sequence", None) is not None else "")
+                         if self._ramp_seq_mode() else "")
+                      + (f"PAIR-LOOKUP MISSES {rs['pair_miss']} "
+                         if rs.get("pair_miss") else "")
                       + (f"exit energy {rs.get('exit_h', 0.0) / max(rs['rides'], 1):,.0f} u/pass "
                          if rs.get("exit_h") else "")
                       + f"fin {rs['fin']}/{rs['episodes']} rides>=2 "
                       f"{sum(v for k, v in rs['ride_hist'].items() if k >= 2) / ne:.1%}"
                       f"  off-target {self._off_n / max(self._live_n, 1):.2%} of ticks"
-                      "  ramp ms " + "/".join(f"{k} {v:,.0f}" for k, v in self.rt.items()))
+                      "  ramp ms " + "/".join(f"{k} {v:,.0f}" for k, v in self.rt.items())
+                      + ("  per map done " + " ".join(
+                          f"{n.replace('surf_', '').replace('src_', '')} {d}/{e}"
+                          for n, e, d in self._per_map)
+                         if getattr(self, "_per_map", None) else ""))
             self.rt = {k: 0.0 for k in self.rt}
             self._off_n = 0
             self._live_n = 0
@@ -1228,7 +1312,7 @@ class GoalSystem:
 
     # --------------------------------------------------------------- eval
     def plan_eval_hooks(self, eval_core, seed: int,
-                        random_targets: bool = False, planner=None):
+                        random_targets: bool = False, planner=None, ramp_slot=None):
         """--goal-planner's eval: (episode_meta, on_tick) for record_rollout
         on a 1-env core. The HEADLINE (random_targets=False) is the real
         task: from wherever the core spawned env 0 (the map start on the
@@ -1247,7 +1331,8 @@ class GoalSystem:
             # --goal-planner ramps: env 0's window from the eval spawn (the map start), the
             # closest candidate every time (deterministic), advanced by env 0's telemetry
             from .goalramps import make_ramp_hooks
-            return make_ramp_hooks(self.planner.eval_windows, self.planner.vocab, eval_core,
+            S = self.ramp_slot(ramp_slot)
+            return make_ramp_hooks(S.planner.eval_windows, S.planner.vocab, eval_core,
                                    self.ev, line=self.eval_line)
         if getattr(self.planner, "primitive", False):
             # --goal-planner prim: a seeded random primitive per eval episode, from the spawn
@@ -1272,14 +1357,15 @@ class GoalSystem:
             random_targets=random_targets)
 
     def eval_hooks(self, eval_core, seed: int, holdout_only: bool = False,
-                   planner=None):
+                   planner=None, ramp_slot=None):
         """(episode_meta, on_tick) for record_rollout on the 1-env eval core:
         a random reachable-air goal per episode inside the current air
         radius (seeded per recording), the chord as its line, sphere entry
         force-fails the env (the recorder sees a normal episode end)."""
         if self.planner is not None:
-            # --goal-planner: the headline eval is the REAL task
-            return self.plan_eval_hooks(eval_core, seed, planner=planner)
+            # --goal-planner: the headline eval is the REAL task (ramp_slot: the map's own
+            # ramp windows on a multi-map --goal-planner ramps run)
+            return self.plan_eval_hooks(eval_core, seed, planner=planner, ramp_slot=ramp_slot)
         rng = np.random.default_rng(int(seed) & 0x7FFFFFFF)
         ev = self.ev
         ev.update({"n": 0, "succ": 0, "pending": False, "center": None,
@@ -1406,9 +1492,10 @@ class GoalSystem:
             return (f"  ramp-eval finish {ev['succ']}/{ev['n']} rides "
                     + ("/".join(str(x) for x in r) if r else "-")
                     + f" skips {ev.get('skips', 0)} off-target ticks {ev.get('off', 0)}"
-                    + (f" SEQUENCE stages {'/'.join(str(x) for x in st)} of "
-                       f"{len(self.planner.sequence)}"
-                       if getattr(self.planner, "sequence", None) is not None else "")
+                    + (f" SEQUENCE stages {'/'.join(str(x) for x in st)}"
+                       + (f" of {len(self.planner.sequence)}"
+                          if getattr(self.planner, "sequence", None) is not None else "")
+                       if st else "")
                     + (f" exit energy mean {sum(ev['exit_h']) / len(ev['exit_h']):,.0f} u over "
                        f"{len(ev['exit_h'])} passes" if ev.get("exit_h") else ""))
         if getattr(self.planner, "primitive", False):

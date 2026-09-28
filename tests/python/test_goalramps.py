@@ -1072,3 +1072,130 @@ def test_a_pass_pays_the_exits_energy_height_and_nothing_else(voc):
     assert abs(h[0] - want) < 1e-6 and h[1] == 0.0
     assert tick(AWAY).sum() == 0.0                                 # once
     assert tick(AWAY, ON1)[1] == 0.0 and w.n_skip[1] == 1          # a skip pays nothing
+
+
+
+def test_ramp_pairs_give_each_spawn_its_own_pair_and_end_on_the_second(voc):
+    """--ramp-pairs: a spawn at a pair's state is shown THAT pair [T1, T2] and entering T2 after
+    T1 completes it (the episode's success); a spawn at no pair's state falls back to the
+    planner - the global sequence stays None"""
+    from surfgym.core import STATE_DTYPE
+    v, _bsp, _ = voc
+    st = np.zeros(2, STATE_DTYPE)
+    st["origin"][0] = APPROACH[0]
+    st["origin"][1] = MID[0]
+    pairs = {"states": st, "t1": np.array([0, 1]), "t2": np.array([1, 2]), "source": "self:test",
+             "map": "surf_fake", "path": "mem"}
+    pl = gr.RampPlanner(v, 3, ((900, 8000, 0), (1100, 8200, 300)), 10.0, topk=1, horizon=6.0,
+                        fade=0.3, pairs=pairs)
+    w = pl.windows
+    w.spawn([0, 1, 2], np.stack([APPROACH[0], MID[0], np.array([50.0, -3000.0, 400.0])]),
+            np.stack([APPROACH[1], MID[1], APPROACH[1]]))
+    assert w.env_seq[0] == [0, 1] and (w.t1[0], w.t2[0]) == (0, 1)
+    assert w.env_seq[1] == [1, 2] and (w.t1[1], w.t2[1]) == (1, 2)
+    assert w.env_seq[2] is None and w.seq is None
+    o = np.stack([ON0[0], MID[0], MID[0]])
+    vel = np.stack([ON0[1], MID[1], MID[1]])
+    w.on_tick(None, o, vel, np.zeros(3, bool))                    # env 0 enters 0
+    o[0] = AWAY[0]
+    w.on_tick(None, o, vel, np.zeros(3, bool))                    # passes 0: T1 = 1
+    assert w.t1[0] == 1 and not w.seq_done[0]
+    o[0] = ON1[0]
+    w.on_tick(None, o, vel, np.zeros(3, bool))                    # enters 1: the pair is done
+    assert w.seq_done[0] and w.seq_stage(0) == 2
+
+
+def test_ramp_file_for_map_picks_each_maps_own_file(tmp_path):
+    """--ramp-vocab / --ramp-pairs on a --maps run: one npz per map, picked by its own "map"
+    field; a single file is returned as it is (its consumer checks the map); none -> None"""
+    for m in ("surf_a", "surf_b"):
+        np.savez(tmp_path / f"{m}.npz", map=m)
+    both = f"{tmp_path / 'surf_a.npz'},{tmp_path / 'surf_b.npz'}"
+    assert gr.ramp_file_for_map(both, "surf_b") == tmp_path / "surf_b.npz"
+    assert gr.ramp_file_for_map(both, "surf_a") == tmp_path / "surf_a.npz"
+    assert gr.ramp_file_for_map(both, "surf_c") is None
+    assert gr.ramp_file_for_map("surf_a.npz", "surf_zzz", tmp_path) == tmp_path / "surf_a.npz"
+
+
+class _SlotCore:
+    """a map slot's core: n envs, the calls the ramp goal system makes"""
+
+    class config:
+        class phys:
+            sv_gravity = 800.0
+
+    def __init__(self, n):
+        self.n = n
+        self.killed = np.zeros(n, np.int64)
+        self.goal_hits = np.zeros(n, bool)
+        self.states_view = {"origin": np.zeros((n, 3), np.float32),
+                            "velocity": np.zeros((n, 3), np.float32),
+                            "ducked": np.zeros(n, np.int64)}
+
+    def map_bounds(self):
+        return np.array([-9e3, -9e3, -9e3]), np.array([9e3, 9e3, 9e3])
+
+    def get_touch(self):
+        return (np.zeros(self.n, np.int32), np.zeros((self.n, 8, 3), np.float32),
+                np.zeros((self.n, 8, 3), np.float32))
+
+    def force_fail(self, m):
+        self.killed += np.asarray(m, bool)
+
+    def at(self, i, st):
+        self.states_view["origin"][i] = st[0]
+        self.states_view["velocity"][i] = st[1]
+
+
+def test_one_goal_system_runs_each_map_slot_on_its_own_core_planner_and_rows(voc, tmp_path):
+    """--goal-planner ramps on --maps (the user, 2026-09-28: joint training on many maps' pairs):
+    envs [0, 2) are map A, [2, 4) map B. A spawn reads ITS map's core and pairs; a completed pair
+    kills the env on ITS map's core in its LOCAL row and settles as a success on the next tick;
+    the log counts each map's completions"""
+    from types import SimpleNamespace
+    from surfgym.core import STATE_DTYPE
+    from surfgym.goalsys import GoalSystem, RampSlot
+    v, _bsp, _ = voc
+
+    def pairs(o1, o2, t1, t2, name):
+        st = np.zeros(2, STATE_DTYPE)
+        st["origin"][0], st["origin"][1] = o1, o2
+        return {"states": st, "t1": np.array(t1), "t2": np.array(t2), "source": "self:test",
+                "map": name, "path": "mem"}
+    box = ((900, 8000, 0), (1100, 8200, 300))
+    pa = gr.RampPlanner(v, 2, box, 10.0, topk=1, horizon=6.0, fade=0.3,
+                        pairs=pairs(APPROACH[0], MID[0], [0, 1], [1, 2], "surf_a"))
+    pb = gr.RampPlanner(v, 2, box, 10.0, topk=1, horizon=6.0, fade=0.3,
+                        pairs=pairs(MID[0], APPROACH[0], [1, 0], [2, 1], "surf_b"))
+    ca, cb = _SlotCore(2), _SlotCore(2)
+    ca.at(0, APPROACH)
+    ca.at(1, MID)
+    cb.at(0, MID)
+    cb.at(1, APPROACH)
+    args = SimpleNamespace(goal_radius=192.0, goal_holdout=None, goal_air_frac=0.0,
+                           goal_kmin=1.0, goal_kmax=5.0, goal_kcap=1.0, goal_curriculum=0)
+    gs = GoalSystem(ca, 4, None, SimpleNamespace(reachable=lambda p: np.ones(len(p), bool)),
+                    1.0, args, "cpu", tmp_path, planner=pa,
+                    ramp_slots=[RampSlot(0, 2, ca, pa, name="surf_a"),
+                                RampSlot(2, 4, cb, pb, name="surf_b")])
+    gs.assign(np.arange(4))
+    assert list(gs.plan_tgt) == [0, 1, 1, 0]                  # each map's own pairs
+    assert pb.windows.env_seq == [[1, 2], [0, 1]]
+    no = np.zeros(4, bool)
+    ln = np.ones(4, np.int64)
+    # map B's local env 1 (global 3): enter 0, pass it, enter 1 - its pair is done
+    for st in (ON0, AWAY, ON1):
+        cb.at(1, st)
+        fin = gs.on_step(no, no, ln)
+        assert not fin.any()
+    assert list(cb.killed) == [0, 1] and not ca.killed.any()  # killed on B's core, row 1
+    assert list(gs.pending) == [False, False, False, True]
+    done = np.array([False, False, False, True])
+    cb.at(1, APPROACH)                                        # the core respawned it
+    fin = gs.on_step(done, no, ln)
+    assert list(fin) == [False, False, False, True]           # settled as the success
+    gs.assign(np.array([3]))
+    assert pb.windows.env_seq[1] == [0, 1] and not pb.windows.seq_done[1]
+    note = gs.note(0)
+    assert "per map done a 0/0 b 1/1" in note, note
+    assert gs.ramp_slot("surf_b").planner is pb and gs.ramp_slot("surf_a").planner is pa
