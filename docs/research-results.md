@@ -31584,3 +31584,7 @@ Everything else is unchanged: from `runs/research/stage/prim1_mover.pt`, on surf
   * B7's shifts are telemetry events, B8's and B9's are box events. So the three columns time their last shift differently.
 
 **Consequence for the stationary rule.** The ordered MAX can stall while an arm progresses on the planner's branch. From rampB10_obspass on, the driver judges stationarity on this route-agnostic MAX and prints the ordered arc beside it.
+
+## 2026-09-28 10:52 (machine clock) - correction: B9 had 3/9 episodes past 56k at 177M, not 4/9
+
+The entry above miscounted. The route-agnostic progress list for B9@177M is [43,946, 69,790, 20,381, 20,624, 64,542, 28,109, 64,565, 41,969, 20,513]: three episodes past 56k u. B7@177M is also 3/9 and B8@177M 9/9.
