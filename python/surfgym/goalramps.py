@@ -380,6 +380,11 @@ class RampWindows:
         # a window whose last draw found nothing in reach (T1 NONE): redrawn every replan_ticks
         # (an env never spawned has T1 NONE too, and is not holding)
         self.holding = np.zeros(n, bool)
+        # --ramp-sequence: a PREDEFINED target list replaces the planner (set_sequence) - seq_k is
+        # T1's index in it, seq_done is set once its LAST target is entered
+        self.seq = None
+        self.seq_k = np.zeros(n, np.int64)
+        self.seq_done = np.zeros(n, bool)
         self.source = np.full(n, NONE, np.int64)       # the surface an env spawned on
         self.n_capt = np.zeros(n, np.int64)            # takeoffs (= completed rides) this episode
         self.n_skip = np.zeros(n, np.int64)
@@ -393,7 +398,7 @@ class RampWindows:
         # target again - no cycles (Codex: excluding only the last piece let A -> B -> C -> A)
         self.visited = [set() for _ in range(n)]
         self.stats = {"episodes": 0, "rides": 0, "skips": 0, "fin": 0, "holds": 0,
-                      "ride_hist": {}}
+                      "seq_done": 0, "ride_hist": {}}
         # the compiled window (rampfast.window): per target its normals in _ids order; per
         # compact piece its targets (their indices, in pfaces order) and its lowest geodesic
         # part; the goal field's grid for the one-point sampler; a raw-point buffer
@@ -456,6 +461,26 @@ class RampWindows:
         L = self._blim[p]
         return (ok & (a >= L[:, 0]) & (a <= L[:, 1]) & (b >= L[:, 2]) & (b <= L[:, 3])
                 & (o[:, 2] >= L[:, 4]) & (o[:, 2] <= L[:, 5]))
+
+    def set_sequence(self, seq):
+        """--ramp-sequence: a PREDEFINED target list (surface ids, in order) replaces the planner.
+        Every episode starts at seq[0]; T1 / T2 are seq[k] / seq[k + 1]; a pass (or a skip into
+        T2) advances k; entering the LAST target completes the sequence (seq_done); past the end
+        the window holds with no redraw. A surface may appear twice (a ramp left and landed on
+        again)"""
+        seq = [int(s) for s in seq]
+        if not seq:
+            raise ValueError("--ramp-sequence: an empty target list")
+        bad = [s for s in seq if s not in self.tp]
+        if bad:
+            raise ValueError(f"--ramp-sequence: {bad} are not target surfaces of this vocabulary")
+        self.seq = seq
+        self.seq_k[:] = 0
+        self.seq_done[:] = False
+
+    def seq_stage(self, i):
+        """--ramp-sequence: how far env i got - targets passed, +1 once the last is entered"""
+        return int(self.seq_k[i]) + int(self.seq_done[i] and self.seq_k[i] == len(self.seq) - 1)
 
     def offtarget(self, counts, normals, origin, live=None):
         """(N,) bool: the env touches a RAMP-like plane (contact normal z in RAMP_NZ) outside the
@@ -764,14 +789,26 @@ class RampWindows:
             # a slow spawn (standing on the start, say) would draw its arc as a vertical drop:
             # lay it along the geodesic field's descent direction at RAY_FLOOR instead
             va = self._steer(p, v)
-            t1 = self._draw(p, va, q, ex)          # NONE: nothing in reach - the window holds
-            self.stats["holds"] += int(t1 == NONE)
-            self.holding[i] = t1 == NONE
-            self.visited[i] = set(ex)
-            # the window along the SAME arc the draw used: from a standing spawn's own zero
-            # velocity the arrival falls straight down T1's slope and its ride had no direction
-            # (utopia's start: the line rode S26 back toward the start)
-            ln, t2 = self._window(p, va, t1, ex)
+            if self.seq is not None:
+                # --ramp-sequence: the list's first two targets, never a draw
+                t1 = self.seq[0]
+                t2 = self.seq[1] if len(self.seq) > 1 else NONE
+                self.seq_k[i] = 0
+                self.seq_done[i] = False
+                self.holding[i] = False
+                self.visited[i] = set(ex)
+                self.t1[i] = t1
+                self.t2[i] = t2
+                ln = self._line(int(i), p, va, False)
+            else:
+                t1 = self._draw(p, va, q, ex)      # NONE: nothing in reach - the window holds
+                self.stats["holds"] += int(t1 == NONE)
+                self.holding[i] = t1 == NONE
+                self.visited[i] = set(ex)
+                # the window along the SAME arc the draw used: from a standing spawn's own zero
+                # velocity the arrival falls straight down T1's slope and its ride had no
+                # direction (utopia's start: the line rode S26 back toward the start)
+                ln, t2 = self._window(p, va, t1, ex)
             self.t1[i] = t1
             self.t2[i] = t2
             self.prev[i] = NONE
@@ -813,6 +850,8 @@ class RampWindows:
         # inside T1's box: T1 ENTERED - the line becomes the ride along T1 then T2 from here
         for i in np.flatnonzero(in1 & ~self.entered):
             self.entered[i] = True
+            if self.seq is not None and self.seq_k[i] == len(self.seq) - 1:
+                self.seq_done[i] = True            # --ramp-sequence: the LAST target entered
             if int(i) not in changed:
                 changed[int(i)] = None             # the ride line, built below
         # out of T1's box after entering it: T1 PASSED - the window shifts
@@ -836,7 +875,24 @@ class RampWindows:
         q = self._piece(self.prev[i])
         if q is not None:
             self.visited[i].add(q)
-        if self.t2[i] != NONE:
+        if self.seq is not None:
+            # --ramp-sequence: the next targets in the list, never a draw; past its end the
+            # window holds (no redraw). A skip lands INSIDE the new T1: the last one entered so
+            # completes the sequence
+            k = int(self.seq_k[i]) + 1
+            self.seq_k[i] = min(k, len(self.seq))
+            if k < len(self.seq):
+                self.t1[i] = self.seq[k]
+                self.t2[i] = self.seq[k + 1] if k + 1 < len(self.seq) else NONE
+                if riding and k == len(self.seq) - 1:
+                    self.seq_done[i] = True
+                ln = self._line(int(i), p, v, bool(riding))
+            else:
+                self.t1[i] = NONE
+                self.t2[i] = NONE
+                ln = self._hold_line(p, v)
+            t2 = self.t2[i]
+        elif self.t2[i] != NONE:
             self.t1[i] = self.t2[i]
             ln, t2 = self._window(p, v, int(self.t1[i]), set(self.visited[i]),
                                   riding=bool(riding))
@@ -878,13 +934,14 @@ class RampWindows:
                         np.asarray(finished, bool).reshape(-1)):
             self.stats["episodes"] += 1
             self.stats["fin"] += int(f)
+            self.stats["seq_done"] += int(self.seq is not None and self.seq_done[i])
             r = int(self.n_capt[i])
             self.stats["ride_hist"][r] = self.stats["ride_hist"].get(r, 0) + 1
 
     def pop_stats(self) -> dict:
         s = self.stats
         self.stats = {"episodes": 0, "rides": 0, "skips": 0, "fin": 0, "holds": 0,
-                      "ride_hist": {}}
+                      "seq_done": 0, "ride_hist": {}}
         return s
 
     # ------------------------------------------------------------------ channel
@@ -925,18 +982,28 @@ class RampPlanner:
 
     def __init__(self, vocab, n_envs: int, finish_box, tick_ms: float, *, topk: int, horizon: float,
                  fade: float, gravity: float = 800.0, line_cap: int = 768, seed: int = 0,
-                 goal_field=None):
+                 goal_field=None, sequence=None):
         self.vocab = vocab
         kw = dict(topk=topk, horizon=horizon, fade=fade, gravity=gravity, line_cap=line_cap,
                   goal_field=goal_field)
         self.windows = RampWindows(vocab, n_envs, finish_box, tick_ms,
                                    rng=np.random.default_rng(int(seed)), **kw)
         self.eval_windows = RampWindows(vocab, 1, finish_box, tick_ms, deterministic=True, **kw)
+        # --ramp-sequence: the predefined target list, on both
+        self.sequence = None if sequence is None else [int(s) for s in sequence]
+        if self.sequence is not None:
+            self.windows.set_sequence(self.sequence)
+            self.eval_windows.set_sequence(self.sequence)
         self.finish_center = self.windows.finish
         self.fin = None
 
     def describe(self) -> str:
-        return self.vocab.describe() + "\n" + self.windows.describe()
+        s = self.vocab.describe() + "\n" + self.windows.describe()
+        if self.sequence is not None:
+            s += (f"\n--ramp-sequence: a PREDEFINED target list {self.sequence} replaces the "
+                  "planner (T1/T2 = the next two in it; entering the last one ends the episode "
+                  "as a success)")
+        return s
 
 
 class TargetLidar:
@@ -1007,12 +1074,13 @@ def make_ramp_hooks(windows, vocab, core, ev: dict, *, line=None):
     window from its spawn state (windows is a 1-env RampWindows, deterministic for the headline);
     every tick reads env 0's collision telemetry, advances the window and keeps `line` (the eval
     fan) on it. ev tallies episodes, rides, skips and finishes."""
-    ev.update({"n": 0, "succ": 0, "rides": [], "skips": 0, "chain": [], "off": 0})
+    ev.update({"n": 0, "succ": 0, "rides": [], "skips": 0, "chain": [], "off": 0,
+               "stages": []})
     # the window as the policy SAW it, for the POV render (tools/render_pov.py --targets): one
     # event per change, [row, prev, T1, T2, tau at that row, fade start of prev, fade start of
     # T1] - the channel's values at row k are the fade of tau + (k - row) (slot_values); rows are
     # the episode's own tick index
-    rec = {"t0": None, "events": []}
+    rec = {"t0": None, "events": [], "seq_kill": False}
 
     def _snap(row):
         rec["events"] = _snap_event(windows, row, rec["events"])
@@ -1029,6 +1097,7 @@ def make_ramp_hooks(windows, vocab, core, ev: dict, *, line=None):
         ln = windows.spawn([0], o[None], v[None], source=_src())[0]
         rec["t0"] = None
         rec["events"] = []
+        rec["seq_kill"] = False
         _snap(0)
         if line is not None:
             line.set_lines(np.array([0]), [ln])
@@ -1043,8 +1112,11 @@ def make_ramp_hooks(windows, vocab, core, ev: dict, *, line=None):
             rec["t0"] = int(t)
         ended = bool(done[0]) or bool(trunc[0])
         if ended:
-            fin = bool(np.asarray(core.goal_hits, bool)[0])
+            # --ramp-sequence: the completed sequence is the success (the hook ended it)
+            fin = bool(np.asarray(core.goal_hits, bool)[0]) or bool(rec["seq_kill"])
             ev["succ"] += int(fin)
+            if windows.seq is not None:
+                ev["stages"].append(windows.seq_stage(0))
             ev["rides"].append(int(windows.n_capt[0]))
             ev["skips"] += int(windows.n_skip[0])
             windows.settle([0], [fin])
@@ -1062,10 +1134,19 @@ def make_ramp_hooks(windows, vocab, core, ev: dict, *, line=None):
                 line.set_lines(idx, lines)
             # the policy sees the new window from the NEXT row on
             _snap(int(t) - int(rec["t0"]) + 1)
+        if windows.seq is not None and windows.seq_done[0] and not rec["seq_kill"]:
+            # --ramp-sequence: the last target entered - the episode ends as a SUCCESS
+            m = np.zeros(core.num_envs, np.uint8)
+            m[0] = 1
+            core.force_fail(m)
+            rec["seq_kill"] = True
 
     def episode_end(ep):
-        return {"targets": {"events": list(rec["events"]),
-                            "fade_ticks": float(windows.fade_ticks)}}
+        out = {"events": list(rec["events"]), "fade_ticks": float(windows.fade_ticks)}
+        if windows.seq is not None:
+            out.update({"sequence": list(windows.seq), "seq_stage": windows.seq_stage(0),
+                        "seq_done": bool(rec["seq_kill"])})
+        return {"targets": out}
 
     episode_meta.episode_end = episode_end
     return episode_meta, on_tick

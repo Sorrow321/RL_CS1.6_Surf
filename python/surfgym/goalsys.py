@@ -899,6 +899,11 @@ class GoalSystem:
         P = self.planner
         ended = (np.asarray(done, bool) | np.asarray(trunc, bool))
         fin = ended & np.asarray(self.core.goal_hits, bool)
+        seq = P.windows.seq is not None
+        if seq:
+            # --ramp-sequence: a completed sequence (killed below on the tick after its last
+            # target was entered) is the episode's success
+            fin = fin | (ended & self.pending)
         if ended.any():
             e = np.flatnonzero(ended)
             P.windows.settle(e, fin[e])
@@ -923,6 +928,13 @@ class GoalSystem:
         idx, lines = P.windows.on_tick(None, org, sv["velocity"].astype(np.float64), ended)
         # --ramp-reward pass: this tick's window shifts per env (+1 each, added by the trainer)
         self.ramp_pass = P.windows.tick_pass.astype(np.float32)
+        if seq:
+            # --ramp-sequence: the last target entered - end the episode; it settles as a
+            # success on the next tick (the sphere goals' kill-then-credit pattern)
+            hit = P.windows.seq_done & ~ended & ~self.pending
+            if hit.any():
+                self.core.force_fail(hit)
+                self.pending |= hit
         _t3 = time.perf_counter()
         if len(idx):
             if self.line is not None:
@@ -1142,7 +1154,9 @@ class GoalSystem:
             ne = max(int(rs["episodes"]), 1)
             pnote += (f"  rides/ep {rs['rides'] / ne:.2f} skips/ep {rs['skips'] / ne:.2f} "
                       f"holds/ep {rs.get('holds', 0) / ne:.2f} "
-                      f"fin {rs['fin']}/{rs['episodes']} rides>=2 "
+                      + (f"SEQUENCE done {rs.get('seq_done', 0)}/{rs['episodes']} "
+                         if getattr(self.planner, "sequence", None) is not None else "")
+                      + f"fin {rs['fin']}/{rs['episodes']} rides>=2 "
                       f"{sum(v for k, v in rs['ride_hist'].items() if k >= 2) / ne:.1%}"
                       f"  off-target {self._off_n / max(self._live_n, 1):.2%} of ticks"
                       "  ramp ms " + "/".join(f"{k} {v:,.0f}" for k, v in self.rt.items()))
@@ -1382,9 +1396,13 @@ class GoalSystem:
               if ev["ticks"] else float("nan"))
         if self.ramps:
             r = ev.get("rides") or []
+            st = ev.get("stages") or []
             return (f"  ramp-eval finish {ev['succ']}/{ev['n']} rides "
                     + ("/".join(str(x) for x in r) if r else "-")
-                    + f" skips {ev.get('skips', 0)} off-target ticks {ev.get('off', 0)}")
+                    + f" skips {ev.get('skips', 0)} off-target ticks {ev.get('off', 0)}"
+                    + (f" SEQUENCE stages {'/'.join(str(x) for x in st)} of "
+                       f"{len(self.planner.sequence)}"
+                       if getattr(self.planner, "sequence", None) is not None else ""))
         if getattr(self.planner, "primitive", False):
             return (f"  prim-eval {ev['succ']}/{ev['n']} random primitives completed from the "
                     f"spawn (mean length " + (f"{md:,.0f}u" if md == md else "-")

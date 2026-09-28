@@ -841,3 +841,101 @@ def test_a_checkpoint_grows_onto_the_pass_column_as_its_own_function():
     grads = [p.grad for n_, p in new.named_parameters() if n_ in ("pi.0.weight", "vf.0.weight")]
     feat = int(new.feat_dim)
     assert all(float(gr_[:, feat + col].abs().max()) > 0.0 for gr_ in grads)
+
+
+
+MID = (np.array([1000.0, 1500.0, 400.0]), np.array([1500.0, 0.0, 0.0]))   # between ramps 0 and 1
+
+
+def test_a_predefined_sequence_replaces_the_planner_and_may_revisit_a_ramp(voc):
+    """--ramp-sequence (the user, 2026-09-28): T1 / T2 are the list's next two, a pass advances
+    it - back to a ramp already left included (unitfarmer2's record lands on its first ramp again),
+    whatever the geodesic order says - entering the LAST target completes it, and past the end
+    the window holds with no redraw"""
+    v, _bsp, _ = voc
+    w = _windows(v, n=1, goal_field=_AlongY())
+    w.set_sequence([0, 1, 0])
+    w.spawn([0], APPROACH[0][None], APPROACH[1][None])
+    assert (w.t1[0], w.t2[0], w.seq_k[0]) == (0, 1, 0)
+
+    def tick(st):
+        return w.on_tick(None, st[0][None], st[1][None], np.zeros(1, bool))
+    tick(ON0)
+    tick(AWAY)                                                # 0 passed
+    assert (w.t1[0], w.t2[0], w.seq_k[0]) == (1, 0, 1) and not w.seq_done[0]
+    tick(ON1)
+    tick(MID)                                                 # 1 passed: back to 0, the last
+    assert (w.t1[0], w.t2[0], w.seq_k[0]) == (0, gr.NONE, 2) and not w.seq_done[0]
+    tick(ON0)                                                 # the last target entered
+    assert w.seq_done[0] and w.seq_stage(0) == 3
+    tick(AWAY)                                                # left it: the window holds
+    assert w.t1[0] == gr.NONE and not w.holding[0]
+    for _ in range(3 * w.replan_ticks):
+        idx, _ = tick(MID)
+        assert len(idx) == 0 and w.t1[0] == gr.NONE           # no redraw after the sequence
+    w.settle([0], [True])
+    assert w.pop_stats()["seq_done"] == 1
+    w.spawn([0], APPROACH[0][None], APPROACH[1][None])        # a new episode starts it over
+    assert (w.t1[0], w.seq_k[0], bool(w.seq_done[0])) == (0, 0, False)
+
+
+def test_a_skip_into_the_last_target_completes_the_sequence(voc):
+    v, _bsp, _ = voc
+    w = _windows(v, n=1)
+    w.set_sequence([0, 1])
+    w.spawn([0], APPROACH[0][None], APPROACH[1][None])
+    w.on_tick(None, ON1[0][None], ON1[1][None], np.zeros(1, bool))   # into T2's box first
+    assert w.t1[0] == 1 and w.seq_k[0] == 1 and w.seq_done[0] and w.n_skip[0] == 1
+
+
+def test_a_sequence_must_name_target_surfaces(voc):
+    v, _bsp, _ = voc
+    w = _windows(v, n=1)
+    with pytest.raises(ValueError):
+        w.set_sequence([0, 99])
+    with pytest.raises(ValueError):
+        w.set_sequence([])
+
+
+class _SeqCore:
+    """the few core calls make_ramp_hooks makes, one env"""
+    num_envs = 1
+
+    def __init__(self):
+        self.killed = 0
+        self.goal_hits = np.zeros(1, bool)
+        self.states_view = {"origin": APPROACH[0][None].astype(np.float32),
+                            "velocity": APPROACH[1][None].astype(np.float32),
+                            "ducked": np.zeros(1, np.int64)}
+
+    def get_touch(self):
+        return (np.zeros(1, np.int32), np.zeros((1, 8, 3), np.float32),
+                np.zeros((1, 8, 3), np.float32))
+
+    def force_fail(self, m):
+        self.killed += int(np.asarray(m)[0])
+
+    def at(self, st):
+        self.states_view["origin"] = st[0][None].astype(np.float32)
+        self.states_view["velocity"] = st[1][None].astype(np.float32)
+
+
+def test_the_eval_ends_a_completed_sequence_as_a_success(voc):
+    """make_ramp_hooks under --ramp-sequence: the tick the last target is entered the episode is
+    ended (force_fail) and it settles as a SUCCESS, with its stage in the record"""
+    v, _bsp, _ = voc
+    w = _windows(v, n=1)
+    w.set_sequence([0, 1])
+    core = _SeqCore()
+    ev = {}
+    meta, on_tick = gr.make_ramp_hooks(w, v, core, ev)
+    meta(0)
+    no = np.zeros(1, bool)
+    for k, st in enumerate((ON0, ON0, AWAY, ON1)):
+        core.at(st)
+        on_tick(k, None, None, no, no)
+    assert core.killed == 1 and w.seq_done[0]
+    on_tick(4, None, None, np.ones(1, bool), no)              # the kill lands: the episode ends
+    assert ev["succ"] == 1 and ev["stages"] == [2]
+    rec = meta.episode_end(0)["targets"]
+    assert rec["seq_done"] and rec["seq_stage"] == 2 and rec["sequence"] == [0, 1]

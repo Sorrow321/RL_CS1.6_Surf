@@ -4786,6 +4786,18 @@ def main() -> None:
                          "pass: surfing a ramp the planner did not ask for, or going back to one "
                          "already passed (the user, 2026-09-28). "
                          "0 (default) = off. ckpt restores")
+    ap.add_argument("--ramp-sequence", default=None,
+                    help="--goal-planner ramps: a PREDEFINED target list, comma-separated target "
+                         "surface ids in order, replaces the planner: T1/T2 = the next two in it, "
+                         "a pass advances it, entering the LAST one ends the episode as a "
+                         "success (the user, 2026-09-28: can the current-ramp/next-ramp paradigm "
+                         "learn a given pattern). Needs --ramp-sequence-source. ckpt restores")
+    ap.add_argument("--ramp-sequence-source", default=None, choices=("demo", "self"),
+                    help="the provenance of --ramp-sequence: 'demo' (read off a human record - "
+                         "CLAUDE.md section 0 forbids that for training, so the run is a "
+                         "LABELLED DIAGNOSTIC and its checkpoint is marked demo_contaminated: "
+                         "never resumed but by another declared demo diagnostic) or 'self' (the "
+                         "policy's own recordings). ckpt restores")
     ap.add_argument("--ramp-obs-pass", type=int, default=None, choices=(0, 1),
                     help="--goal-planner ramps: 1 = one more scalar-side observation column "
                          "(the LAST): 1 on the decision after the window shifted - the ramp the "
@@ -6521,10 +6533,19 @@ def main() -> None:
                     setattr(args, _k, ck_cfg[_k])
         # --goal-planner ramps: its vocabulary, channel and knobs, like every run-defining flag
         for _k in ("ramp_vocab", "target_channel", "ramp_topk", "ramp_horizon", "ramp_fade",
-                   "ramp_reward", "ramp_offtarget_pen", "ramp_obs_pass"):
+                   "ramp_reward", "ramp_offtarget_pen", "ramp_obs_pass", "ramp_sequence",
+                   "ramp_sequence_source"):
             if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
                 setattr(args, _k, ck_cfg[_k])
                 restored.append(f"{_k}={ck_cfg[_k]}")
+        # CLAUDE.md section 0: a checkpoint trained on demo-derived targets is never resumed -
+        # except by another DECLARED demo diagnostic (--ramp-sequence-source demo)
+        if ck_cfg.get("demo_contaminated") and not (
+                flag_given("--ramp-sequence-source") and args.ramp_sequence_source == "demo"):
+            raise SystemExit("this checkpoint was trained on DEMO-DERIVED targets "
+                             "(demo_contaminated): CLAUDE.md section 0 - it is never resumed, "
+                             "benchmarked as a result or used as a base; only another declared "
+                             "demo diagnostic (--ramp-sequence-source demo) may continue it")
         # --goal-planner learned / --freeze-policy: restored like every
         # other run-defining flag, so a bare resume of a learned-planner
         # checkpoint keeps training the planner (and keeps the executor
@@ -7826,7 +7847,8 @@ def main() -> None:
     else:
         _set = [f"--{_k.replace('_', '-')}" for _k in
                 ("ramp_vocab", "target_channel", "ramp_topk", "ramp_horizon", "ramp_fade",
-                 "ramp_reward", "ramp_offtarget_pen", "ramp_obs_pass")
+                 "ramp_reward", "ramp_offtarget_pen", "ramp_obs_pass", "ramp_sequence",
+                 "ramp_sequence_source")
                 if flag_given(f"--{_k.replace('_', '-')}")]
         if _set:
             raise SystemExit(f"{', '.join(_set)} without --goal-planner ramps")
@@ -7835,8 +7857,31 @@ def main() -> None:
         args.ramp_reward = None
         args.ramp_offtarget_pen = None
         args.ramp_obs_pass = None
+        args.ramp_sequence = args.ramp_sequence_source = None
     # --ramp-reward pass: +1 per window shift, added to the per-tick reward after the goal system's
     # step; the arc shaping is off (arc_scale 0 below)
+    # --ramp-sequence: the predefined target list (surface ids) instead of the planner
+    RSEQ = None
+    if RPLAN and args.ramp_sequence:
+        try:
+            RSEQ = [int(x) for x in str(args.ramp_sequence).replace(" ", "").split(",") if x]
+        except ValueError:
+            raise SystemExit(f"--ramp-sequence wants comma-separated surface ids, got "
+                             f"{args.ramp_sequence!r}")
+        if not RSEQ:
+            raise SystemExit("--ramp-sequence: an empty target list")
+        if args.ramp_sequence_source not in ("demo", "self"):
+            raise SystemExit("--ramp-sequence needs its provenance: --ramp-sequence-source demo "
+                             "(read off a human record) or self (the policy's own recordings)")
+        print(f"--ramp-sequence: PREDEFINED targets {RSEQ} (no planner draw); entering the last "
+              f"one ends the episode as a success")
+        if args.ramp_sequence_source == "demo":
+            print("!! --ramp-sequence-source demo: these targets were READ OFF A HUMAN RECORD. "
+                  "CLAUDE.md section 0 forbids that for training: this run is a LABELLED "
+                  "DIAGNOSTIC (the user asked for it, 2026-09-28) and its checkpoints are marked "
+                  "demo_contaminated - never resumed, benchmarked as a result or used as a base")
+    elif args.ramp_sequence_source and not args.ramp_sequence:
+        raise SystemExit("--ramp-sequence-source without --ramp-sequence")
     RPASS = RPLAN and args.ramp_reward == "pass"
     # --ramp-offtarget-pen: a charge per tick of surfing a ramp outside the pieces the env may ride
     ROFF = float(args.ramp_offtarget_pen) if RPLAN and args.ramp_offtarget_pen else 0.0
@@ -10098,7 +10143,7 @@ def main() -> None:
                 fade=float(args.ramp_fade),
                 gravity=float(getattr(core.config.phys, "sv_gravity", 800.0)),
                 line_cap=min(768, int(route.pts.shape[1]) if route is not None else 768),
-                seed=int(args.seed) + 9091, goal_field=_lgf(_gfp))
+                seed=int(args.seed) + 9091, goal_field=_lgf(_gfp), sequence=RSEQ)
         planner = ((_ramp_planner if RPLAN else prim_planner if PPLAN
                     else FinishRef(slots[0].goal_box) if PLPLAN
                     else None) or BFSPlanner.for_core(
@@ -11644,6 +11689,12 @@ def main() -> None:
                                "ramp_reward": str(args.ramp_reward),
                                "ramp_offtarget_pen": float(args.ramp_offtarget_pen or 0.0),
                                "ramp_obs_pass": int(args.ramp_obs_pass or 0)})
+        if RSEQ is not None:
+            # --ramp-sequence: MIRRORED by record_ckpt.py; its provenance rides with every
+            # checkpoint, and a demo-derived one marks the weights (CLAUDE.md section 0)
+            meta["config"].update({"ramp_sequence": ",".join(str(x) for x in RSEQ),
+                                   "ramp_sequence_source": str(args.ramp_sequence_source),
+                                   "demo_contaminated": args.ramp_sequence_source == "demo"})
     # --goal-planner prim: its knobs, ONLY then; record_ckpt.py MIRRORS them (the recording draws
     # the same kind of primitive)
     if PPLAN or PLPLAN:

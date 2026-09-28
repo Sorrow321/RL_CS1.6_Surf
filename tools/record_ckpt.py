@@ -86,6 +86,10 @@ TRAIN_ONLY = frozenset({
     # --ramp-reward: what the TRAINING reward pays in the ramp-window task (arc progress, or +1
     # per target passed); a recording computes no training reward
     "ramp_reward",
+    # --ramp-sequence-source / demo_contaminated: the PROVENANCE of a --ramp-sequence (mirrored
+    # itself, below) - metadata, no behaviour
+    "ramp_sequence_source",
+    "demo_contaminated",
     # --ramp-offtarget-pen: a TRAINING charge for surfing a ramp the planner did not ask for
     "ramp_offtarget_pen",
     # --arc-death-charge: a TRAINING terminal charge on the goal-arc bank; a recording computes
@@ -1521,7 +1525,11 @@ def main(argv=None, build_only: bool = False, device=None):
                                    gravity=float(getattr(core.config.phys, "sv_gravity", 800.0)),
                                    line_cap=min(768, int(_ml.pts.shape[1])
                                                 if _ml is not None else 768),
-                                   goal_field=_lgf(_gfp))
+                                   goal_field=_lgf(_gfp),
+                                   # --ramp-sequence: MIRRORED - the same predefined target list
+                                   sequence=([int(x) for x in
+                                              str(cfg.get("ramp_sequence")).split(",") if x]
+                                             if cfg.get("ramp_sequence") else None))
                 print(_rpl.describe())
                 lidar = TargetLidar(lidar, TargetMask(str(cfg.get("ramp_vocab")), zones["end"],
                                                       device),
