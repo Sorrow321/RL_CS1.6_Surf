@@ -8,23 +8,35 @@ executor is shown its next target surfaces as an IMAGE CHANNEL (surfgym.targetma
   origins) is PROGRESS_DELTA below the agent's, and T2's below T1's: the consecutive ramps down
   the geodesic potential (the user, 2026-09-28; without it a standing spawn's ballistic arc is a
   vertical drop and its closest targets were the start's own floors), beyond the WHOLE previous
-  target (below its lowest part: the facing side of the same chute is not a next target) - and
+  piece (below its lowest part: the facing side of the same chute is not a next target) - and
   by at most what the
   horizon can cover: along any flown path the geodesic distance falls no faster than the path
   is long, so a target more than (speed + g * horizon + SPEED_MARGIN) * horizon below the agent
   cannot be the next one (without the cap utopia's chain jumped S27 -> S84, 85k u of geodesic
   across a wall the ballistic arc ignores; the finisher's consecutive ramps step at most 13.5k).
-  Among the eligible, T1 is
-  drawn among the top-k by closest approach of the spawn's ballistic arc (the source surface
-  excluded) and T2 is the closest to the arc launched off T1's ride; the line is
-  window_line([T1, T2]).
+  The choice is per PIECE (RampVocab.piece: target surfaces joined at an edge - a wedge's two
+  sides and its end caps): among the eligible, T1 is drawn among the top-k pieces by closest
+  approach of the spawn's ballistic arc (the piece it spawned on excluded) and T2 is the closest
+  piece to the arc launched off T1's ride (T1's piece excluded); a piece enters the window as its
+  RIDE surface - the one running furthest along the travel direction, less the arc's distance to
+  it - so a wedge's side, never its end cap (without pieces utopia's chain went S28 -> S30 -> S31:
+  the end caps of two wedges, and the line off S30's ride turned the agent 90 deg off the route);
+  the line is window_line([T1, T2]). A standing spawn's window is laid along the same descent
+  direction as its T1 draw (with the spawn's own zero velocity the ride along T1 had no direction
+  and ran back toward the start).
 * CAPTURE and TAKEOFF come from collision telemetry (SurfCore.get_touch -> RampVocab.classify),
-  never from positions: the first contact with T1 is its CAPTURE (the line is rebuilt as the ride
-  along T1 then T2); DEPART_TICKS contact-free ticks after it are its TAKEOFF, and the window
-  shifts (T2 -> T1, a new T2 from the new T1's ride). A contact with T2 before T1 skips T1.
+  never from positions, per piece: the first contact with any surface of T1's piece is its
+  CAPTURE (the line is rebuilt as the ride along T1 then T2); DEPART_TICKS contact-free ticks
+  after it are its TAKEOFF - unless the free flight comes back down onto the piece (a HOP along
+  the ride, re-checked every DEPART_TICKS ticks: the utopia finisher's own ride hops 16 times,
+  10-32 ticks of free fall each, against 25 real departures) - and the window shifts (T2 -> T1, a
+  new T2 from the new T1's ride). A contact with T2's piece while T1's is not touched ends T1 at
+  once: a skip if T1 was never captured, else its ride.
 * CHANNEL values, continuous (targetmask.takeoff_fade_values restricted to three slots): T1 = 1,
   T2 = 0.5; at a takeoff a FADE cross-fade runs - the ramp just left 1 -> 0, the new T1 0.5 -> 1,
-  the new T2 0 -> 0.5 - so the channel never jumps at a touch or a takeoff.
+  the new T2 0 -> 0.5 - so the channel never jumps at a touch or a takeoff. Each fade starts from
+  the value its surface shows at the shift, so a second shift inside a fade does not jump either
+  (only the oldest surface, dropped from the three slots, goes to zero at once).
 * The reward is the goal-arc reward along the current line (GoalSystem / MultiArcProgress), its
   per-episode bank KEPT across window shifts (a new line re-anchors the arc at zero instantaneous
   reward; it does not mint a fresh shaping budget - Codex 23:16Z).
@@ -53,6 +65,7 @@ RAMP_DEFAULTS = {"ramp_topk": 2, "ramp_horizon": 3.0, "ramp_fade": 0.3}
 PROGRESS_DELTA = 250.0   # u: a target must lie this much closer to the finish (geodesic) than
                          # the agent (or than the previous target) to be eligible
 SPEED_MARGIN = 300.0     # u/s added to the speed bound of the reach cap (air-strafe gain)
+LAND_DT = 0.05           # s: the step of the takeoff test's free-flight arc
 
 
 def find_goal_field(bsp):
@@ -176,7 +189,11 @@ class RampWindows:
     their lines; on_tick(ids, origin, velocity, ended) consumes one physics tick's classified
     contacts (RampVocab.classify) and returns the envs whose line changed + their new lines;
     slots(idx) gives the channel's (ids, values) per env. deterministic=True (the eval) takes the
-    closest candidate instead of a uniform draw among the top-k."""
+    closest candidate instead of a uniform draw among the top-k.
+
+    T1 / T2 are SURFACES (what the channel draws and the line rides); the choice, the capture and
+    the takeoff are per PIECE (RampVocab.piece: surfaces joined at an edge - a wedge's two sides
+    and its end caps)."""
 
     def __init__(self, vocab, n_envs: int, finish_box, tick_ms: float, *, topk: int = 4,
                  horizon: float = 3.0, fade: float = 0.3, gravity: float = 800.0,
@@ -203,6 +220,33 @@ class RampWindows:
         self.dt_path = 5.0 * self.tick_ms / 1000.0
         self.tp, self.tn = vocab.tp, vocab.tn
         self.tt = {k: cKDTree(v) for k, v in self.tp.items()}
+        # PIECES: target surface -> piece (a vocabulary without them: every surface its own), a
+        # lookup table over every surface id for the telemetry (-1: not a target), and per piece
+        # its surfaces and its origins together (the takeoff test's "back down onto it")
+        pc = getattr(vocab, "piece", None)
+        self._pof = {int(k): (int(pc[k]) if pc is not None and int(pc[k]) >= 0 else int(k))
+                     for k in self.tp}
+        n_ids = max([int(getattr(vocab, "n_surf", 0))] + [k + 1 for k in self.tp])
+        self.pmap = np.full(max(n_ids, 1), -1, np.int64)
+        for k, q in self._pof.items():
+            self.pmap[k] = q
+        self.pfaces = {}
+        for k in sorted(self.tp):
+            self.pfaces.setdefault(self._pof[int(k)], []).append(int(k))
+        lat = getattr(vocab, "lateral", None)
+        area = getattr(vocab, "area", None)
+        # per surface the lateral radius of its subsampled origins: the vocabulary's own contact
+        # radius, or 1.5 x the subsample's spacing where the subsample is sparser
+        tlat = {k: max(float(lat[k]) if lat is not None else 48.0,
+                       1.5 * float(np.sqrt(float(area[k]) / max(len(v), 1)))
+                       if area is not None else 0.0)
+                for k, v in self.tp.items()}
+        self.ptp, self.ptn, self.ptt, self.ptlat = {}, {}, {}, {}
+        for q, fs in self.pfaces.items():
+            self.ptp[q] = np.concatenate([self.tp[f] for f in fs])
+            self.ptn[q] = np.concatenate([self.tn[f] for f in fs])
+            self.ptt[q] = cKDTree(self.ptp[q])
+            self.ptlat[q] = max(tlat[f] for f in fs)
         # per target a bounding sphere of its origins: the arc query is best-first over these
         # lower bounds with EXACT per-target distances (one tree of every target's origins
         # returns the k nearest points, which all belong to the big surface under the arc -
@@ -213,27 +257,48 @@ class RampWindows:
         self._rad = (np.asarray([float(np.linalg.norm(self.tp[int(k)] - self._cen[j], axis=1).max())
                                  for j, k in enumerate(self._ids)])
                      if len(self._ids) else np.zeros(0))
-        # per target its geodesic distance to the finish: the median over its contact origins,
-        # and its LOWEST part (10th percentile) - the next target must lie beyond all of it
+        # per target its geodesic distance to the finish: the median over its contact origins;
+        # per PIECE its lowest part (10th percentile over all its origins) - the next target
+        # must lie beyond all of it
         self.d_surf = {}
-        self.d_low = {}
+        self.p_low = {}
         if self.gf is not None:
+            dd = {}
             for k in self._ids:
                 d = np.asarray(self.gf.sample(self.tp[int(k)]), np.float64)
-                d = d[d < self.gf.reach_max]
-                self.d_surf[int(k)] = float(np.median(d)) if len(d) else np.inf
-                self.d_low[int(k)] = float(np.percentile(d, 10)) if len(d) else np.inf
+                dd[int(k)] = d[d < self.gf.reach_max]
+                self.d_surf[int(k)] = float(np.median(dd[int(k)])) if len(dd[int(k)]) else np.inf
+            for q, fs in self.pfaces.items():
+                d = np.concatenate([dd[f] for f in fs])
+                self.p_low[q] = float(np.percentile(d, 10)) if len(d) else np.inf
         n = self.N
         self.t1 = np.full(n, NONE, np.int64)
         self.t2 = np.full(n, NONE, np.int64)
         self.prev = np.full(n, NONE, np.int64)
         self.tau = np.full(n, 1 << 30, np.int64)      # ticks since the last takeoff
-        self.captured = np.zeros(n, bool)              # T1 touched, not yet left
-        self.free = np.zeros(n, np.int64)              # contact-free ticks since T1's last touch
+        # where the last shift's fades START: the surface just left from v0p (1 -> 0), T1 from
+        # v0t (-> 1) - the values those surfaces showed at the shift (1 and 0.5 after a full fade)
+        self.v0p = np.ones(n, np.float64)
+        self.v0t = np.full(n, 0.5, np.float64)
+        self.captured = np.zeros(n, bool)              # T1's piece touched, not yet left
+        # contact-free ticks since T1's piece was last touched (or since the last takeoff test
+        # that found the free flight coming back down onto it)
+        self.free = np.zeros(n, np.int64)
         self.source = np.full(n, NONE, np.int64)       # the surface an env spawned on
         self.n_capt = np.zeros(n, np.int64)            # takeoffs (= completed rides) this episode
         self.n_skip = np.zeros(n, np.int64)
-        self.stats = {"episodes": 0, "rides": 0, "skips": 0, "fin": 0, "ride_hist": {}}
+        self.stats = {"episodes": 0, "rides": 0, "skips": 0, "holds": 0, "fin": 0,
+                      "ride_hist": {}}
+
+    # ------------------------------------------------------------------ pieces
+    def _pc(self, s):
+        """surface id(s) -> piece id(s); FIN / NONE (negative) stay as they are"""
+        s = np.asarray(s, np.int64)
+        return np.where(s >= 0, self.pmap[np.clip(s, 0, len(self.pmap) - 1)], s)
+
+    def _piece(self, s):
+        """one surface -> its piece (None: not a target surface, or FIN / NONE)"""
+        return self._pof.get(int(s)) if s is not None and int(s) >= 0 else None
 
     # ------------------------------------------------------------------ targets
     def _arc(self, p, v, secs):
@@ -253,31 +318,61 @@ class RampWindows:
         return ((float(np.linalg.norm(v)) + self.gravity * self.horizon + SPEED_MARGIN)
                 * self.horizon)
 
+    def _eligible(self, s, d_min, d_max):
+        return not self.d_surf or d_min <= self.d_surf.get(int(s), np.inf) < d_max
+
     def _candidates(self, p, v, exclude, d_max=np.inf, d_min=-np.inf):
-        """ELIGIBLE targets (geodesic distance in [d_min, d_max)) by their closest approach to the
-        ballistic arc from (p, v) within the horizon: -> [(dist, id)] sorted; the finish box is
-        a candidate like a target and always eligible"""
+        """ELIGIBLE targets (geodesic distance in [d_min, d_max); pieces in `exclude` never) by
+        the closest approach of the ballistic arc from (p, v) within the horizon to their PIECE,
+        each piece as its RIDE surface (_ride_face): -> [(dist, surface id)] sorted; the finish
+        box is a candidate like a target and always eligible"""
         path = self._arc(p, v, self.horizon)
         need = self.topk + 1
-        out = []
+        best = {}                                  # piece -> closest approach of its surfaces
+        dist = {}                                  # surface -> closest approach (the ones seen)
+        kth = np.inf                               # the need-th best piece so far
         if len(self._ids):
             lb = np.maximum(0.0, np.linalg.norm(path[:, None, :] - self._cen[None], axis=2).min(0)
                             - self._rad)
             for j in np.argsort(lb):
+                if lb[j] > kth:
+                    break                          # no later surface can beat the k-th piece
                 s = int(self._ids[j])
-                if s in exclude:
+                q = self._pof[s]
+                if q in exclude or not self._eligible(s, d_min, d_max):
                     continue
-                if self.d_surf and not (d_min <= self.d_surf.get(s, np.inf) < d_max):
-                    continue
-                if len(out) >= need and lb[j] > out[need - 1][0]:
-                    break                          # no later target can beat the k-th best
                 dq, _iq = self.tt[s].query(path, k=1)
-                out.append((float(dq.min()), s))
-                out.sort()
+                dist[s] = float(dq.min())
+                best[q] = min(best.get(q, np.inf), dist[s])
+                if len(best) >= need:
+                    kth = sorted(best.values())[need - 1]
+        vh = np.array([float(v[0]), float(v[1]), 0.0])
+        vh = vh / max(float(np.linalg.norm(vh)), 1e-9)
+        out = [(dq_, self._ride_face(q, path, vh, d_min, d_max, dist))
+               for q, dq_ in sorted(best.items(), key=lambda x: x[1])[:need]]
         # the finish box: the arc's closest approach to the box (0 inside it)
-        q = np.clip(path, self.fin_lo[None], self.fin_hi[None])
-        out.append((float(np.linalg.norm(path - q, axis=1).min()), FIN))
+        c = np.clip(path, self.fin_lo[None], self.fin_hi[None])
+        out.append((float(np.linalg.norm(path - c, axis=1).min()), FIN))
         return sorted(out)
+
+    def _ride_face(self, q, path, vh, d_min, d_max, dist=None):
+        """the surface of piece q the flight rides: the longest run along the travel direction,
+        less the arc's distance to it - a wedge's side, never its end cap (a cap runs ACROSS the
+        travel direction: utopia's S31 spans 254 u of it, the sides S32 / S33 4,420 u); of two
+        mirror sides, the nearer. dist: closest approaches already measured (surface -> u)"""
+        best, sc = None, -np.inf
+        for s in self.pfaces[q]:
+            if not self._eligible(s, d_min, d_max):
+                continue
+            d_s = dist.get(s) if dist is not None else None
+            if d_s is None:
+                dq, _iq = self.tt[s].query(path, k=1)
+                d_s = float(dq.min())
+            pr = self.tp[s] @ vh
+            x = float(pr.max() - pr.min()) - d_s
+            if x > sc:
+                best, sc = s, x
+        return int(best)
 
     def _pick(self, cands):
         if not cands:
@@ -289,21 +384,21 @@ class RampWindows:
 
     def _next_fn(self, exclude):
         """choose_next for window_line: the target closest to the arc launched at the end of the
-        previous ride (the previous target and `exclude` never)"""
+        previous ride (the previous target's piece and the pieces in `exclude` never)"""
         def f(cp, cv, prev):
             cp = np.asarray(cp, np.float64)
             cv = np.asarray(cv, np.float64)
+            q = self._piece(prev)
             d_max, d_min = np.inf, -np.inf
             if self.d_surf:
-                # BEYOND the previous target (below its lowest part: its facing sibling on the
-                # same chute is not a next target) and below the launch point; within the reach
-                # cap of it
-                d_ref = min(self.d_low.get(int(prev), np.inf) if prev is not None else np.inf,
+                # BEYOND the previous piece (below its lowest part: its facing side and its end
+                # caps are not a next target) and below the launch point; within the reach cap
+                d_ref = min(self.p_low.get(q, np.inf) if q is not None else np.inf,
                             self._d_at(cp))
                 if np.isfinite(d_ref):
                     d_max = d_ref - PROGRESS_DELTA
                     d_min = d_ref - self._reach(cv)
-            c = self._candidates(cp, cv, exclude | ({int(prev)} if prev is not None else set()),
+            c = self._candidates(cp, cv, exclude | ({q} if q is not None else set()),
                                  d_max=d_max, d_min=d_min)
             return int(c[0][1]) if c else FIN
         return f
@@ -322,20 +417,6 @@ class RampWindows:
                                chosen=got)
         return ln, (got[1] if len(got) > 1 else NONE)
 
-    def _after(self, s, p, v, exclude):
-        """the target after s: the closest to the ballistic arc launched off s's ride (the end of
-        window_line([s]) and its direction)"""
-        if s == FIN:
-            return NONE
-        ln, raw = window_line(self.tp, self.tn, self.tt, self.finish, p, v, [s], fin=FIN,
-                              gravity=self.gravity, dt_path=self.dt_path, line_cap=self.line_cap)
-        pe = raw[-1]
-        d = raw[-1] - raw[-2] if len(raw) >= 2 else v
-        d = d / max(float(np.linalg.norm(d)), 1e-9)
-        spd = max(float(np.linalg.norm(v)), RAY_FLOOR)
-        c = self._candidates(pe, d * spd, exclude | {s})
-        return int(c[0][1]) if c else FIN
-
     def _line(self, i, p, v, riding):
         ks = [int(self.t1[i])] + ([int(self.t2[i])] if self.t2[i] != NONE else [])
         ln, _raw = window_line(self.tp, self.tn, self.tt, self.finish, p, v, ks, fin=FIN,
@@ -346,7 +427,8 @@ class RampWindows:
     # ------------------------------------------------------------------ spawn
     def spawn(self, idx, origin, velocity, source=None):
         """fresh episodes for envs idx: draw T1 / T2 from their spawn states -> list of lines.
-        `source` (len(idx),) = the surface each spawn is on (never drawn as T1), NONE if none"""
+        `source` (len(idx),) = the surface each spawn is on (its piece is never drawn as T1),
+        NONE if none"""
         idx = np.asarray(idx, np.int64).reshape(-1)
         origin = np.asarray(origin, np.float64).reshape(-1, 3)
         velocity = np.asarray(velocity, np.float64).reshape(-1, 3)
@@ -355,7 +437,8 @@ class RampWindows:
         lines = []
         for n, i in enumerate(idx):
             p, v = origin[n], velocity[n]
-            ex = {int(src[n])} if src[n] != NONE else set()
+            q = self._piece(src[n])
+            ex = {q} if q is not None else set()
             # a slow spawn (standing on the start, say) would draw its arc as a vertical drop:
             # lay it along the geodesic field's descent direction at RAY_FLOOR instead
             va = v
@@ -363,15 +446,20 @@ class RampWindows:
                 yaw = np.radians(float(self.gf.descent_yaw(p[None])[0]))
                 va = np.array([np.cos(yaw) * RAY_FLOOR, np.sin(yaw) * RAY_FLOOR, v[2]])
             d0 = self._d_at(p)
-            if src[n] != NONE and int(src[n]) in self.d_low:
-                d0 = min(d0, self.d_low[int(src[n])])      # beyond the surface it spawned on
+            if q is not None and q in self.p_low:
+                d0 = min(d0, self.p_low[q])            # beyond the piece it spawned on
             t1 = self._pick(self._candidates(p, va, ex, d_max=d0 - PROGRESS_DELTA,
                                              d_min=d0 - self._reach(va)))
-            ln, t2 = self._window(p, v, t1, ex)
+            # the window along the SAME arc the draw used: from a standing spawn's own zero
+            # velocity the arrival falls straight down T1's slope and its ride had no direction
+            # (utopia's start: the line rode S26 back toward the start)
+            ln, t2 = self._window(p, va, t1, ex)
             self.t1[i] = t1
             self.t2[i] = t2
             self.prev[i] = NONE
             self.tau[i] = 1 << 30
+            self.v0p[i] = 1.0
+            self.v0t[i] = 0.5
             self.captured[i] = False
             self.free[i] = 0
             self.source[i] = src[n]
@@ -384,20 +472,26 @@ class RampWindows:
     def on_tick(self, ids, origin, velocity, ended):
         """one physics tick: ids (N, T) classified contacts; ended (N,) bool (those rows are
         settled and skipped - they respawn through spawn()). -> (idx of envs whose line changed,
-        their lines)"""
+        their lines). A contact counts for T1 / T2 when it is on any surface of their piece."""
         ids = np.asarray(ids)
         ended = np.asarray(ended, bool)
         self.tau += 1
         live = ~ended
-        on1 = (ids == self.t1[:, None]).any(1) & live & (self.t1 >= 0)
-        on2 = (ids == self.t2[:, None]).any(1) & live & (self.t2 >= 0)
+        pid = np.where(ids >= 0, self.pmap[np.clip(ids, 0, len(self.pmap) - 1)], -1)
+        on1 = (pid == self._pc(self.t1)[:, None]).any(1) & live & (self.t1 >= 0)
+        on2 = (pid == self._pc(self.t2)[:, None]).any(1) & live & (self.t2 >= 0)
         changed = {}
-        # a contact with T2 before T1 is captured: T1 is skipped
-        for i in np.flatnonzero(on2 & ~on1 & ~self.captured):
-            self.n_skip[i] += 1
-            self.stats["skips"] += 1
+        # a contact with T2 while T1 is not touched ends T1 at once: SKIPPED if it was never
+        # captured, its RIDE if it was (the agent left it for T2) - T2, touched now, is captured
+        for i in np.flatnonzero(on2 & ~on1):
+            if self.captured[i]:
+                self.n_capt[i] += 1
+                self.stats["rides"] += 1
+            else:
+                self.n_skip[i] += 1
+                self.stats["skips"] += 1
             changed[int(i)] = self._shift(i, origin[i], velocity[i], riding=True)
-        on1 = (ids == self.t1[:, None]).any(1) & live & (self.t1 >= 0)
+        on1 = (pid == self._pc(self.t1)[:, None]).any(1) & live & (self.t1 >= 0)
         # the first contact with T1: its CAPTURE - the line becomes the ride along T1 then T2
         cap = on1 & ~self.captured
         for i in np.flatnonzero(cap):
@@ -406,8 +500,14 @@ class RampWindows:
                 changed[int(i)] = None             # the ride line, built below
         self.free[on1] = 0
         self.free[self.captured & ~on1 & live] += 1
-        # DEPART_TICKS contact-free ticks after a capture: the TAKEOFF - the window shifts
+        # DEPART_TICKS contact-free ticks after a capture: the TAKEOFF - the window shifts -
+        # unless the free flight comes back down onto T1's piece: a HOP along the ride, looked
+        # at again DEPART_TICKS ticks later
         for i in np.flatnonzero(self.captured & live & (self.free >= self.depart)):
+            if self._lands_on(int(self.t1[i]), origin[i], velocity[i]):
+                self.free[i] = 0
+                self.stats["holds"] += 1
+                continue
             self.n_capt[i] += 1
             self.stats["rides"] += 1
             changed[int(i)] = self._shift(i, origin[i], velocity[i], riding=False)
@@ -416,14 +516,41 @@ class RampWindows:
                  else self._line(int(i), origin[i], velocity[i], True) for i in idx]
         return idx, lines
 
+    def _lands_on(self, s, p, v):
+        """the free flight from (p, v) comes back down onto target s's PIECE within the horizon:
+        its arc crosses a contact plane of the piece (the nearest contact origin's) from the free
+        side, within the contact radius of that origin - a HOP along the ride, not a takeoff"""
+        q = self._piece(s)
+        if q is None:
+            return False
+        ts = np.arange(0.0, self.horizon + 1e-9, LAND_DT)
+        p = np.asarray(p, np.float64)
+        v = np.asarray(v, np.float64)
+        path = (p[None] + v[None] * ts[:, None]
+                + 0.5 * np.array([0.0, 0.0, -self.gravity])[None] * ts[:, None] ** 2)
+        _dq, iq = self.ptt[q].query(path, k=1)
+        rel = path - self.ptp[q][iq]
+        nrm = self.ptn[q][iq]
+        h = (rel * nrm).sum(1)                                    # height over the contact plane
+        lat = np.linalg.norm(rel - h[:, None] * nrm, axis=1)
+        return bool(((h[:-1] > 0.0) & (h[1:] <= 0.0) & (lat[1:] <= self.ptlat[q])).any())
+
     def _shift(self, i, p, v, riding):
         """T1 done (left, or skipped): T2 becomes T1, a new T2 chosen where its ride ends - one
-        pass that also lays the new line -> the line"""
+        pass that also lays the new line -> the line. The fades start from the values the two
+        surviving surfaces show now (continuous under a second shift inside a fade)"""
+        f = min(1.0, float(self.tau[i]) / self.fade_ticks)
+        v_t1 = self.v0t[i] + (1.0 - self.v0t[i]) * f if self.t1[i] != NONE else 0.0
+        v_t2 = 0.5 * f if self.t2[i] != NONE else 0.0
         self.prev[i] = self.t1[i]
         self.t1[i] = self.t2[i] if self.t2[i] != NONE else FIN
-        ln, t2 = self._window(p, v, int(self.t1[i]), {int(self.prev[i])}, riding=bool(riding))
+        q = self._piece(self.prev[i])
+        ln, t2 = self._window(p, v, int(self.t1[i]), {q} if q is not None else set(),
+                              riding=bool(riding))
         self.t2[i] = t2
         self.tau[i] = 0
+        self.v0p[i] = v_t1
+        self.v0t[i] = v_t2
         self.captured[i] = bool(riding)
         self.free[i] = 0
         return ln
@@ -439,31 +566,37 @@ class RampWindows:
 
     def pop_stats(self) -> dict:
         s = self.stats
-        self.stats = {"episodes": 0, "rides": 0, "skips": 0, "fin": 0, "ride_hist": {}}
+        self.stats = {"episodes": 0, "rides": 0, "skips": 0, "holds": 0, "fin": 0,
+                      "ride_hist": {}}
         return s
 
     # ------------------------------------------------------------------ channel
     def slots(self, idx=None):
         """(ids (n, 3), values (n, 3)): [the target just left, T1, T2] with the continuous takeoff
-        cross-fade (1 -> 0, 0.5 -> 1, 0 -> 0.5 over the fade)"""
+        cross-fade (1 -> 0, 0.5 -> 1, 0 -> 0.5 over the fade, each from the value its surface
+        showed at the shift)"""
         sl = slice(None) if idx is None else np.asarray(idx, np.int64)
         f = np.minimum(1.0, self.tau[sl] / self.fade_ticks)
         ids = np.stack([self.prev[sl], self.t1[sl], self.t2[sl]], axis=1)
-        vals = np.stack([np.where(self.prev[sl] != NONE, 1.0 - f, 0.0),
-                         np.where(self.t1[sl] != NONE, 0.5 + 0.5 * f, 0.0),
+        v0p, v0t = self.v0p[sl], self.v0t[sl]
+        vals = np.stack([np.where(self.prev[sl] != NONE, v0p * (1.0 - f), 0.0),
+                         np.where(self.t1[sl] != NONE, v0t + (1.0 - v0t) * f, 0.0),
                          np.where(self.t2[sl] != NONE, 0.5 * f, 0.0)], axis=1)
         vals[ids == NONE] = 0.0
         return ids, vals.astype(np.float32)
 
     def describe(self) -> str:
-        return (f"ramp windows: {self.N} envs, targets "
+        return (f"ramp windows: {self.N} envs, {len(self.tp)} target surfaces in "
+                f"{len(self.pfaces)} pieces, targets "
                 + ("ORDERED by the geodesic potential (eligible = closer to the finish by "
-                   f"{PROGRESS_DELTA:g} u than the agent / the previous target), "
+                   f"{PROGRESS_DELTA:g} u than the agent / the previous piece), "
                    if self.d_surf else "NOT ordered (no goal field), ")
                 + f"T1 drawn {'closest' if self.deterministic else f'among the top {self.topk}'} "
-                f"targets by closest approach of the {self.horizon:g} s ballistic arc, T2 off T1's "
-                f"ride; capture = first telemetry contact, takeoff = {self.depart} contact-free "
-                f"ticks; channel fade {self.fade_ticks * self.tick_ms / 1000.0:g} s")
+                f"pieces by closest approach of the {self.horizon:g} s ballistic arc, each as "
+                f"its longest surface along the travel direction; T2 off T1's ride; capture = "
+                f"first telemetry contact with the piece, takeoff = {self.depart} contact-free "
+                f"ticks unless the free flight lands back on it; channel fade "
+                f"{self.fade_ticks * self.tick_ms / 1000.0:g} s")
 
 
 class RampPlanner:
@@ -547,15 +680,13 @@ def make_ramp_hooks(windows, vocab, core, ev: dict, *, line=None):
     fan) on it. ev tallies episodes, rides, skips and finishes."""
     ev.update({"n": 0, "succ": 0, "rides": [], "skips": 0, "chain": []})
     # the window as the policy SAW it, for the POV render (tools/render_pov.py --targets): one
-    # event per change, [row, prev, T1, T2, tau at that row] - the channel's values at row k are
-    # the fade of tau + (k - row) (slot_values); rows are the episode's own tick index
+    # event per change, [row, prev, T1, T2, tau at that row, fade start of prev, fade start of
+    # T1] - the channel's values at row k are the fade of tau + (k - row) (slot_values); rows are
+    # the episode's own tick index
     rec = {"t0": None, "events": []}
 
     def _snap(row):
-        e = [int(row), int(windows.prev[0]), int(windows.t1[0]), int(windows.t2[0]),
-             int(min(windows.tau[0], 1 << 20))]
-        if not rec["events"] or rec["events"][-1][1:4] != e[1:4]:
-            rec["events"].append(e)
+        rec["events"] = _snap_event(windows, row, rec["events"])
 
     def _src():
         sv = core.states_view
@@ -630,10 +761,7 @@ def replay_events(windows, vocab, rows):
     events = []
 
     def snap(row):
-        e = [int(row), int(windows.prev[0]), int(windows.t1[0]), int(windows.t2[0]),
-             int(min(windows.tau[0], 1 << 20))]
-        if not events or events[-1][1:4] != e[1:4]:
-            events.append(e)
+        _snap_event(windows, row, events)
     snap(0)
     cs = vocab.contact_of(org, duck)                 # the contact at every recorded state
     ids = np.full((1, 8), -1, np.int64)
@@ -645,13 +773,27 @@ def replay_events(windows, vocab, rows):
     return events
 
 
+def _snap_event(windows, row, events):
+    """append env 0's window as an event [row, prev, T1, T2, tau, v0p, v0t] when it changed"""
+    e = [int(row), int(windows.prev[0]), int(windows.t1[0]), int(windows.t2[0]),
+         int(min(windows.tau[0], 1 << 20)), round(float(windows.v0p[0]), 6),
+         round(float(windows.v0t[0]), 6)]
+    if not events or events[-1][1:4] != e[1:4]:
+        events.append(e)
+    return events
+
+
 def slot_values(events, n_rows, fade_ticks):
     """a recorded episode's window events (make_ramp_hooks' trailer) -> per row the channel's
-    three slots: (ids (n, 3) int64, values (n, 3) float32) - exactly RampWindows.slots"""
+    three slots: (ids (n, 3) int64, values (n, 3) float32) - exactly RampWindows.slots. An event
+    is [row, prev, T1, T2, tau] + [v0p, v0t] (the fade starts; recordings written before those
+    were logged start every fade from a full one: 1 and 0.5)"""
     ids = np.full((n_rows, 3), NONE, np.int64)
     vals = np.zeros((n_rows, 3), np.float32)
     ev = sorted(events, key=lambda e: e[0])
-    for j, (row, prev, t1, t2, tau0) in enumerate(ev):
+    for j, e in enumerate(ev):
+        row, prev, t1, t2, tau0 = e[:5]
+        v0p, v0t = (float(e[5]), float(e[6])) if len(e) >= 7 else (1.0, 0.5)
         lo = max(0, int(row))
         hi = n_rows if j + 1 == len(ev) else min(n_rows, int(ev[j + 1][0]))
         if hi <= lo:
@@ -659,7 +801,7 @@ def slot_values(events, n_rows, fade_ticks):
         k = np.arange(lo, hi)
         f = np.minimum(1.0, (float(tau0) + (k - lo)) / max(float(fade_ticks), 1.0))
         ids[lo:hi] = (prev, t1, t2)
-        vals[lo:hi, 0] = (1.0 - f) if prev != NONE else 0.0
-        vals[lo:hi, 1] = (0.5 + 0.5 * f) if t1 != NONE else 0.0
+        vals[lo:hi, 0] = v0p * (1.0 - f) if prev != NONE else 0.0
+        vals[lo:hi, 1] = (v0t + (1.0 - v0t) * f) if t1 != NONE else 0.0
         vals[lo:hi, 2] = (0.5 * f) if t2 != NONE else 0.0
     return ids, vals

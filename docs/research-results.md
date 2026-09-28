@@ -31180,3 +31180,80 @@ Before any training arm: measure the next ramp's pixel contrast against its surr
 * **Command:** `launch_local.ps1 resume prim1_mover rampB3_on --goal-planner ramps --ramp-vocab runs/research/ramps_mesh_surf_src_utopia.npz --target-channel 1 --heldout-maps= --ep-secs 60 --race-dist geodesic --goal-cell 72 --reset-critic 1 --critic-warmup 20 --reset-int-counts --reset-steps --steps 400e6 --record-every 50e6`. The gate PASSED.
 * **At 51M steps:** greedy from the start rides 1-2 targets and reaches 11.3k of 166k u (6.8%). All 9 episodes die in the gap below the first wedges (z 8,280-9,600, 5-17 s, 1.5k-17.8k u of route) at about 1.5k u/s average speed. The flat finisher crosses those gaps at 3,000+ u/s.
 * **Reference:** the flat geodesic recipe (jt3ANCHU, from scratch, frontier curriculum) first finished utopia at about 0.30B of its own steps, 9/9 at 0.47B.
+
+## 2026-09-28 07:45 (machine clock) - three target-channel bugs, the user's two and a third; rampB3_on's 400M null is VOID
+
+**What the user reported.** They watched rampB3_on's eval POV (`traj_0252706816`):
+
+> "After the second ramp ... I don't see the third ramp ... There is a wall ... occluding, but the target channel shouldn't consider the occlusions."
+
+> "the first ramp disappears a little bit too early from the target channel ... before we end surfing on this ramp."
+
+### Bug 1: the chain targeted the wedges' end caps
+
+The target channel has no occlusion. It is drawn through walls, and the renderer checks out: no range cull, and no back-face cull.
+
+What it drew after the second ramp was the wrong surfaces. The window went S28 -> **S30 -> S31**:
+
+* **S30** is the end cap of the wedge just ridden. Its normal is (0.91, 0, 0.42), it covers 327k u^2, and at the takeoff it was *behind* the agent.
+* **S31** is the front cap of the next wedge. It faces the agent, and it is the wall the depth view showed.
+
+The third ramp, S32/S33 (the next wedge's sides), was never in the window. The caps won the choice because the rule picked the surface closest to the flight path and the caps sit right at the wedge ends.
+
+It cost more than a picture. The line off S30's ride ran along the cap's level line, across the route. The agent followed it: its heading swung from 9 to 263-290 deg at rows 841-900, and it died there.
+
+**Four rules were measured and rejected** before the fix. The two geodesic-based rules also fail the "any map" test.
+
+* **Geodesic alignment of the ride direction** (|dd/ds| >= 0.5). On utopia the caps score 0.09-0.11 and the finisher's ridden ramps score 0.66 or more. But the rule would drop 25-39% of the ramps on edgeflow blue025-200, whose route turns against the potential.
+* **Landing angle** (at most 45 deg). It drops S85, a ramp the finisher rode, which the straight launch meets at 51 deg where the route turns.
+* **Geodesic progress of the ride** (at least 250 u). It drops S37, S75 and S98, which the finisher rode with -290 to 159 u of progress.
+* **Air-strafe steerability** (about 3000/|v| rad/s). At the slow speeds of a walk from the start, a 90 deg turn onto a cap is physically possible, so this rule picks caps again.
+
+**The fix: PIECES** (no new constant).
+
+* **Pieces.** Target surfaces joined at an edge form one piece. This is the existing `TargetMask` object rule, now `rampvocab.edge_pieces`. Utopia has 106 targets in 40 pieces, the largest with 4-7 faces. A wedge is one piece: its two sides and its caps.
+* **Choice.** The window chooses a piece: the closest to the flight path, and never the piece just ridden. The next piece must lie beyond that whole piece's lowest 10% of geodesic.
+* **Surface.** The piece enters the window as its ride surface: the one running furthest along the travel direction, less its distance to the path. Off S28, cap S31 spans 254 u of the travel direction and sides S32/S33 span 4,420 u. Of two mirror sides, the nearer wins.
+* **Capture and takeoff are per piece.** A contact with either side of a wedge counts as riding it.
+
+**Static chains from each map's start, before -> after:**
+
+* utopia: 26 targets with 6 caps, stalling at 54% of d0 -> 16 targets with no caps, reaching 67%;
+* blue100 and blue200: 91% -> 100%;
+* petrus (96%), unitfarmer2 (92%), blue025 and blue050: unchanged.
+
+These walks use idealized straight launches. In a run the windows are re-laid from the agent's real state.
+
+### Bug 2: a hop along a ramp was taken for its takeoff
+
+The takeoff was 10 contact-free ticks. Surfers hop along a ramp:
+
+* **B3, episode 1:** the agent left S26 at row 398 and was in free fall for 0.95 s (vz changing by exactly g). It landed on S26 again at rows 495-540. The window had shifted at row 408.
+* **Our own utopia finisher** (raw telemetry, measurement only): 16 same-surface hops of 10-32 ballistic ticks, against 25 real departures. Classification is not the cause: it misses 8 of 1,629 touches.
+
+**Fix.** A takeoff also needs the free-flight arc NOT to come back down onto T1's piece. The test is a crossing of a contact plane from the free side, within its contact radius, re-checked every 10 ticks. On the finisher it predicts 16/16 hops and wrongly holds 4/25 departures, and those holds are released at a later check.
+
+**Also fixed:**
+
+* A contact with T2's piece while T1's is not touched now ends T1's ride at once.
+* The fades start from the value each surface shows at the shift, so a second shift inside a fade no longer jumps (Codex's review). The events log the two fade starts, and old 5-field events still read.
+
+### Bug 3 (found while tracing bug 1): a standing spawn's first ride pointed back to the start
+
+The spawn drew T1 along the descent direction but laid the window from its own zero velocity. The arrival then fell straight down S26's slope, so the level-line sign was a coin flip. The spawn window's ride ran along S26 toward the START: launch x -13,978, the start end of S26.
+
+Every start spawn of B3 was paid along that line. **Fix:** the window uses the same arc as the draw.
+
+### Verification
+
+* **Tests:** 22 in `test_goalramps.py` + `test_targetmask.py`, plus `test_edge_archive_tool.py`. Six of the new tests fail on the previous code.
+* **Replay of `traj_0252706816`:** S26 holds until row 550 (was 408), and after S28 the window is S32 / S36 (was S30 / S31), in all 9 episodes.
+* **POV:** re-rendered at the same path. The old one is kept as `traj_0252706816.tgt.pov.old_windows.mp4`.
+* **Per-tick cost** (2048 envs replaying the finisher's ride): on_tick 4.7 ms, was 6.2 ms. The old logic made 11.0 window changes per tick, including 451 skips and 1,472 "rides" of which many were hops; the new one makes 6.9. A spawn costs 1.49 ms, was 1.13.
+* **B3's final checkpoint recorded with the new windows** (`pov_fixcheck.jsonl`, 2 greedy episodes): 22.1 and 22.7 s alive; episode 1 took 8 window steps (26 28 32 35 3 42 49 61 66). B3's own evals died at 9.5-12.6 s.
+
+### rampB3_on, final
+
+* 400.6M steps at 99,970 steps/s.
+* Greedy from the start: 12.1-13.2k of 166k u (8.5-9.5%). 0/9 finishes at every eval. Rides 2-3 per episode.
+* **Void as evidence about the ramp-window task.** All three bugs were live: caps as targets, hops shifting the window, and the start line pointing backward.

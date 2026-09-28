@@ -10,8 +10,12 @@ task's pieces, on synthetic data (no map files, no GPU).
 4. RampVocab: a touch on a validated contact plane is its surface, off the plane / with another
    normal / from the other hull it is not; a vocabulary is refused on another map signature.
 5. RampWindows: capture at the first T1 contact, takeoff after DEPART_TICKS contact-free ticks
-   (the window shifts T2 -> T1), a T2 contact before T1 skips T1, and the channel's values move
-   continuously (at most 1 / fade_ticks per tick).
+   (the window shifts T2 -> T1) unless the free flight comes back down onto T1 (a hop), a T2
+   contact before T1 skips T1 and after it ends T1's ride, a wedge (sides + end cap) is ONE piece
+   that enters the window as a side (never the cap) and is captured by a contact on any of its
+   surfaces, a standing spawn rides its first target down the potential, and the channel's values
+   move continuously per surface (at most 1 / fade_ticks per tick, a second shift inside a fade
+   included) and rebuild exactly from the recorded events.
 6. TargetLidar: one channel more than the wrapped lidar; mode "off" holds it at zero.
 """
 from __future__ import annotations
@@ -186,23 +190,36 @@ def test_a_vocabulary_is_bound_to_its_map(voc):
         RampVocab(_vocab(tmp, tmp / "surf_fake.bsp").parent / "vocab.npz", tmp / "surf_fake2.bsp")
 
 
-def _windows(v):
-    return gr.RampWindows(v, 2, ((900, 8000, 0), (1100, 8200, 300)), 10.0, topk=1, horizon=6.0,
-                          fade=0.3, deterministic=True)
+def _windows(v, n=2, goal_field=None):
+    return gr.RampWindows(v, n, ((900, 8000, 0), (1100, 8200, 300)), 10.0, topk=1, horizon=6.0,
+                          fade=0.3, deterministic=True, goal_field=goal_field)
+
+
+# the synthetic ramps stand in the planes y = 0 / 3000 / 6000 (facing -y, x 0..2000, z 0..500):
+# APPROACH meets ramp 0 at a glancing angle (~20 deg, 0.97 s out, inside its extent), AWAY leaves
+# it (moving off its free side and past its end), HOP is airborne in front of it and comes back
+# down onto it (0.56 s out, inside its extent)
+APPROACH = (np.array([-1000.0, -600.0, 400.0]), np.array([1500.0, 600.0, 0.0]))
+AWAY = (np.array([2600.0, -400.0, 300.0]), np.array([1500.0, -300.0, 0.0]))
+HOP = (np.array([500.0, -300.0, 300.0]), np.array([1000.0, 500.0, 0.0]))
+
+
+def _state(s, n=2):
+    return np.tile(s[0], (n, 1)), np.tile(s[1], (n, 1))
 
 
 def test_capture_takeoff_and_the_window_shift(voc):
     v, _bsp, _ = voc
     w = _windows(v)
-    o = np.array([[1000.0, -1500.0, 250.0], [1000.0, -1500.0, 250.0]])
-    vel = np.array([[0.0, 1500.0, 0.0], [0.0, 1500.0, 0.0]])
-    lines = w.spawn([0, 1], o, vel)
+    lines = w.spawn([0, 1], *_state(APPROACH))
     assert len(lines) == 2 and w.t1[0] == 0 and w.t2[0] == 1
     none = -np.ones((2, 8), np.int64)
     on0 = none.copy()
     on0[0, 0] = 0
+    o, vel = _state(APPROACH)
     idx, _ = w.on_tick(on0, o, vel, np.zeros(2, bool))              # capture of T1 by env 0
     assert list(idx) == [0] and w.captured[0] and not w.captured[1]
+    o, vel = _state(AWAY)
     for _ in range(gr.DEPART_TICKS - 1):
         idx, _ = w.on_tick(none, o, vel, np.zeros(2, bool))
         assert len(idx) == 0
@@ -215,27 +232,197 @@ def test_capture_takeoff_and_the_window_shift(voc):
     assert list(idx) == [1] and w.t1[1] == 1 and w.captured[1] and w.n_skip[1] == 1
 
 
-def test_the_channel_values_move_continuously(voc):
+def test_a_hop_along_the_ride_is_not_a_takeoff(voc):
+    """airborne over T1 with the free flight coming back down onto it: no takeoff however long
+    (the finisher's own hops last 10-32 ticks), looked at again every DEPART_TICKS; once the
+    flight leaves it, the takeoff comes at the next look"""
     v, _bsp, _ = voc
     w = _windows(v)
-    o = np.array([[1000.0, -1500.0, 250.0]] * 2)
-    vel = np.array([[0.0, 1500.0, 0.0]] * 2)
-    w.spawn([0, 1], o, vel)
-    ids, vals = w.slots()
-    assert np.allclose(vals[0], [0.0, 1.0, 0.5])                  # before any takeoff
+    w.spawn([0, 1], *_state(APPROACH))
     none = -np.ones((2, 8), np.int64)
     on0 = none.copy()
     on0[0, 0] = 0
-    prev = w.slots()[1]
-    for t in range(80):
-        w.on_tick(on0 if t < 3 else none, o, vel, np.zeros(2, bool))
-        cur = w.slots()[1]
-        # a slot that changed target id starts from where the SAME surface's value was
-        assert np.all(cur >= -1e-6) and np.all(cur <= 1.0 + 1e-6)
-        prev = cur
+    w.on_tick(on0, *_state(APPROACH), np.zeros(2, bool))            # captured
+    for _ in range(4 * gr.DEPART_TICKS):
+        idx, _ = w.on_tick(none, *_state(HOP), np.zeros(2, bool))
+        assert 0 not in idx
+    assert w.t1[0] == 0 and w.captured[0] and w.n_capt[0] == 0
+    assert w.stats["holds"] == 4
+    shifted = None
+    for k in range(gr.DEPART_TICKS):
+        idx, _ = w.on_tick(none, *_state(AWAY), np.zeros(2, bool))
+        if 0 in idx:
+            shifted = k
+    assert shifted is not None and w.t1[0] == 1 and w.prev[0] == 0 and w.n_capt[0] == 1
+
+
+def test_leaving_t1_for_t2_ends_its_ride_and_captures_t2(voc):
+    v, _bsp, _ = voc
+    w = _windows(v)
+    w.spawn([0, 1], *_state(APPROACH))
+    none = -np.ones((2, 8), np.int64)
+    on0 = none.copy()
+    on0[0, 0] = 0
+    on1 = none.copy()
+    on1[0, 0] = 1
+    w.on_tick(on0, *_state(APPROACH), np.zeros(2, bool))            # T1 = 0 captured
+    w.on_tick(none, *_state(HOP), np.zeros(2, bool))
+    idx, _ = w.on_tick(on1, *_state(HOP), np.zeros(2, bool))        # on T2, off T1
+    assert list(idx) == [0] and w.prev[0] == 0 and w.t1[0] == 1 and w.captured[0]
+    assert w.n_capt[0] == 1 and w.n_skip[0] == 0
+
+
+def _wedge_vocab(tmp_path, bsp):
+    """one WEDGE piece along +x - side A (facing -y) and side B (facing +y) meeting at a ridge
+    (y 0, z 1000, x 0..3600) and an end CAP (0.93, 0, 0.37) closing them at x 3600..4000 - and a
+    separate ramp R further along (x 6000..9000, facing -y); contact origins 20 u out"""
+    rng = np.random.default_rng(1)
+    k = 400
+
+    def side(sy):                  # ridge (x 0..3600, y 0, z 1000) -> base (x 0..4000, y sy*750, z 0)
+        u = rng.uniform(0, 1, k)
+        x = rng.uniform(0, 1, k) * (3600.0 + 400.0 * u)
+        return np.stack([x, sy * 750.0 * u, 1000.0 * (1.0 - u)], 1)
+    a_, b_ = rng.uniform(0, 1, (2, k))
+    fl = a_ + b_ > 1
+    a_[fl], b_[fl] = 1 - a_[fl], 1 - b_[fl]
+    c0, c1, c2 = np.array([4000.0, -750, 0]), np.array([4000.0, 750, 0]), np.array([3600.0, 0, 1000])
+    cap = c0 + a_[:, None] * (c1 - c0) + b_[:, None] * (c2 - c0)
+    ur, xr = rng.uniform(0, 1, k), rng.uniform(6000, 9000, k)
+    ramp = np.stack([xr, -2000.0 - 750.0 * ur, 1000.0 * (1.0 - ur)], 1)
+    nA, nB = np.array([0.0, -0.8, 0.6]), np.array([0.0, 0.8, 0.6])
+    nC = np.array([0.928, 0.0, 0.371]) / np.linalg.norm([0.928, 0.0, 0.371])
+    pts, nrm, sid = [], [], []
+    for s_, (P, n) in enumerate(((side(-1.0), nA), (side(1.0), nB), (cap, nC), (ramp, nA))):
+        pts.append(P + n * 20.0)
+        nrm.append(np.tile(n, (k, 1)))
+        sid.append(np.full(k, s_))
+    R0, R1 = np.array([0.0, 0, 1000]), np.array([3600.0, 0, 1000])
+    A0, A1 = np.array([0.0, -750, 0]), np.array([4000.0, -750, 0])
+    B0, B1 = np.array([0.0, 750, 0]), np.array([4000.0, 750, 0])
+    Q = [np.array([6000.0, -2000, 1000]), np.array([9000.0, -2000, 1000]),
+         np.array([6000.0, -2750, 0]), np.array([9000.0, -2750, 0])]
+    tris = np.array([[R0, A0, A1], [R0, A1, R1], [R0, B1, B0], [R0, R1, B1], [A1, B1, R1],
+                     [Q[0], Q[2], Q[3]], [Q[0], Q[3], Q[1]]])
+    f = tmp_path / "wedge.npz"
+    P = np.concatenate(pts)
+    N = np.concatenate(nrm)
+    S = np.concatenate(sid)
+    np.savez(f, version=4, map=Path(bsp).stem, bsp_sig=bsp_signature(bsp), mesh_sha1="x",
+             cat=np.array([1, 1, 1, 1]), normal=np.stack([nA, nB, nC, nA]),
+             area=np.array([3.8e6, 3.8e6, 3.0e5, 3.75e6]), touchable=np.ones(4),
+             points=P, normals=N, surf=S, duck_points=P - N * 8.0, duck_normals=N, duck_surf=S,
+             tris=tris, tri_surf=np.array([0, 0, 1, 1, 2, 3, 3]))
+    return RampVocab(f, bsp)
+
+
+A_, B_, CAP, R_ = 0, 1, 2, 3
+
+
+def test_the_wedge_is_one_piece_and_enters_the_window_as_a_side(voc):
+    """a wedge's sides and its end cap are ONE piece; the window takes it as the surface that
+    runs furthest along the travel direction - a side, never the cap - whether the flight comes
+    along the wedge or at its end cap head-on; of the two sides, the nearer"""
+    _v, bsp, tmp = voc
+    v = _wedge_vocab(tmp, bsp)
+    assert v.piece[A_] == v.piece[B_] == v.piece[CAP] != v.piece[R_]
+    fin = ((20000, 0, 0), (20100, 100, 100))
+    for o, vel, want in (([-1500.0, -500.0, 900.0], [1500.0, 0.0, 0.0], {A_}),     # along, A's side
+                         ([-1500.0, 500.0, 900.0], [1500.0, 0.0, 0.0], {B_}),      # along, B's side
+                         ([5000.0, 0.0, 600.0], [-1500.0, 0.0, 0.0], {A_, B_})):   # at the cap
+        w = gr.RampWindows(v, 1, fin, 10.0, topk=1, horizon=3.0, fade=0.3, deterministic=True)
+        w.spawn([0], np.array([o]), np.array([vel]))
+        assert int(w.t1[0]) in want, (o, vel, w.t1[0])
+        assert int(w.t2[0]) != CAP
+
+
+def test_a_contact_anywhere_on_the_piece_is_on_its_target(voc):
+    """T1 is a side of the wedge: landing on the OTHER side captures it (the same piece, no
+    skip), and T2 is on another piece"""
+    _v, bsp, tmp = voc
+    v = _wedge_vocab(tmp, bsp)
+    w = gr.RampWindows(v, 1, ((20000, 0, 0), (20100, 100, 100)), 10.0, topk=1, horizon=3.0,
+                       fade=0.3, deterministic=True)
+    o, vel = np.array([[-1500.0, -500.0, 900.0]]), np.array([[1500.0, 0.0, 0.0]])
+    w.spawn([0], o, vel)
+    assert w.t1[0] == A_ and w.t2[0] == R_
+    on_b = -np.ones((1, 8), np.int64)
+    on_b[0, 0] = B_
+    idx, _ = w.on_tick(on_b, o, vel, np.zeros(1, bool))
+    assert list(idx) == [0] and w.captured[0] and w.t1[0] == A_ and w.n_skip[0] == 0
+
+
+class _DescentField:
+    """a geodesic potential falling along +x (10 000 - x): its descent direction is yaw 0"""
+    reach_max = 1e9
+
+    def sample(self, p):
+        return 10000.0 - np.asarray(p, np.float64).reshape(-1, 3)[:, 0]
+
+    def descent_yaw(self, p):
+        return np.zeros(len(np.atleast_2d(p)))
+
+
+def test_a_standing_spawn_rides_its_first_target_down_the_potential(voc):
+    """a standing spawn's window is laid along the descent direction its T1 draw used: with its
+    own zero velocity the arrival fell straight onto T1 and its ride ran either way (utopia's
+    start: back toward the start)"""
+    v, _bsp, _ = voc
+    w = _windows(v, n=1, goal_field=_DescentField())
+    o = np.array([[-2000.0, -600.0, 400.0]])
+    ln = w.spawn([0], o, np.zeros((1, 3)))[0]
+    assert w.t1[0] == 0
+    # the ride along T1: RAMP_PRESS inside its contact plane (y = -20)
+    on_ramp = ln[np.abs(ln[:, 1] - (-20.0 + gr.RAMP_PRESS)) < 1.0]
+    assert len(on_ramp) >= 2 and on_ramp[-1, 0] > on_ramp[0, 0] + 500.0
+
+
+class _AlongY:
+    """a geodesic potential falling along +y (10 000 - y): the ramps y = 0 / 3000 / 6000 are
+    consecutive, a surface left behind never comes back as a target"""
+    reach_max = 1e9
+
+    def sample(self, p):
+        return 10000.0 - np.asarray(p, np.float64).reshape(-1, 3)[:, 1]
+
+    def descent_yaw(self, p):
+        return np.full(len(np.atleast_2d(p)), 90.0)
+
+
+def _channel_by_surface(w):
+    ids, vals = w.slots([0])
+    return {int(s): float(x) for s, x in zip(ids[0], vals[0]) if s != gr.NONE}
+
+
+def test_the_channel_values_move_continuously(voc):
+    """per SURFACE the channel moves at most 1 / fade_ticks per tick - through a takeoff, and
+    through a second shift inside the fade (only the oldest surface, dropped from the three
+    slots, may go to zero at once)"""
+    v, _bsp, _ = voc
+    w = _windows(v, goal_field=_AlongY())
+    w.spawn([0, 1], *_state(APPROACH))
     ids, vals = w.slots()
-    assert np.allclose(vals[0], [0.0, 1.0, 0.5])                  # the fade has finished
-    assert ids[0, 0] == 0 and ids[0, 1] == 1 and ids[0, 2] == 2
+    assert w.t1[0] == 0 and w.t2[0] == 1
+    assert np.allclose(vals[0], [0.0, 1.0, 0.5])                  # before any takeoff
+    none = -np.ones((2, 8), np.int64)
+    on0, on1, on2 = none.copy(), none.copy(), none.copy()
+    on0[0, 0], on1[0, 0], on2[0, 0] = 0, 1, 2
+    script = ([(on0, APPROACH)] * 3 + [(none, AWAY)] * gr.DEPART_TICKS    # takeoff off 0
+              + [(on1, HOP)] * 2 + [(on2, HOP)] + [(none, AWAY)] * 80)   # 1 -> 2 inside the fade
+    prev = _channel_by_surface(w)
+    shifts = 0
+    for ids_t, st in script:
+        idx, _ = w.on_tick(ids_t, *_state(st), np.zeros(2, bool))
+        shifts += int(0 in idx and w.tau[0] == 0)
+        cur = _channel_by_surface(w)
+        for s in set(prev) & set(cur):
+            assert abs(cur[s] - prev[s]) <= 1.0 / w.fade_ticks + 1e-6, (s, prev, cur)
+        assert all(-1e-6 <= x <= 1.0 + 1e-6 for x in cur.values())
+        prev = cur
+    assert shifts >= 2
+    ids, vals = w.slots([0])
+    assert ids[0, 0] == 2 and ids[0, 1] == gr.FIN                 # 0 -> 1 -> 2 -> the finish
+    assert np.allclose(vals[0, :2], [0.0, 1.0])                   # the fades have finished
 
 
 class _FakeLidar:
@@ -262,38 +449,35 @@ def test_the_target_lidar_adds_one_channel_and_off_holds_it_at_zero(voc):
 
 
 def test_the_recorded_window_events_rebuild_the_channel_exactly(voc):
-    """make_ramp_hooks records one event per window change ([row, prev, T1, T2, tau]); the POV
-    render rebuilds every row's slots from them with slot_values - which must equal what the
-    windows showed the policy at that row (RampWindows.slots after the previous tick)"""
+    """make_ramp_hooks records one event per window change ([row, prev, T1, T2, tau, fade
+    starts]); the POV render rebuilds every row's slots from them with slot_values - which must
+    equal what the windows showed the policy at that row (RampWindows.slots after the previous
+    tick), a second shift inside a fade included; an old 5-field event list still reads"""
     v, _bsp, _ = voc
-    w = _windows(v)
-    o = np.array([[1000.0, -1500.0, 250.0]] * 2)
-    vel = np.array([[0.0, 1500.0, 0.0]] * 2)
-    w.spawn([0, 1], o, vel)
+    w = _windows(v, goal_field=_AlongY())
+    w.spawn([0, 1], *_state(APPROACH))
     none = -np.ones((2, 8), np.int64)
-    on0 = none.copy()
-    on0[0, 0] = 0
-    on1 = none.copy()
-    on1[0, 0] = 1
-    script = [on0] * 3 + [none] * 40 + [on1] * 5 + [none] * 60
+    on0, on1, on2 = none.copy(), none.copy(), none.copy()
+    on0[0, 0], on1[0, 0], on2[0, 0] = 0, 1, 2
+    script = ([(on0, APPROACH)] * 3 + [(none, AWAY)] * 40 + [(on1, HOP)] * 2 + [(on2, HOP)]
+              + [(none, AWAY)] * 60)
     seen_ids, seen_vals, events = [], [], []
-
-    def snap(row):
-        e = [row, int(w.prev[0]), int(w.t1[0]), int(w.t2[0]), int(min(w.tau[0], 1 << 20))]
-        if not events or events[-1][1:4] != e[1:4]:
-            events.append(e)
-    snap(0)
-    for k, ids in enumerate(script):
+    gr._snap_event(w, 0, events)
+    for k, (ids, st) in enumerate(script):
         si, sv = w.slots([0])
         seen_ids.append(si[0])
         seen_vals.append(sv[0])
-        idx, _ = w.on_tick(ids, o, vel, np.zeros(2, bool))
+        idx, _ = w.on_tick(ids, *_state(st), np.zeros(2, bool))
         if 0 in idx:
-            snap(k + 1)
+            gr._snap_event(w, k + 1, events)
     got_i, got_v = gr.slot_values(events, len(script), w.fade_ticks)
-    assert len(events) >= 3                            # spawn + two takeoffs
+    assert len(events) >= 4                            # spawn + three shifts
+    assert any(abs(e[5] - 1.0) > 1e-3 for e in events)  # one shift started mid-fade
     assert np.array_equal(got_i, np.asarray(seen_ids))
-    assert np.allclose(got_v, np.asarray(seen_vals), atol=1e-6)
+    assert np.allclose(got_v, np.asarray(seen_vals), atol=1e-5)
+    n_old = int(events[1][0]) + int(w.fade_ticks) + 5
+    old_i, old_v = gr.slot_values([e[:5] for e in events[:2]], n_old, w.fade_ticks)
+    assert np.allclose(old_v[-1], [0.0, 1.0, 0.5]) and old_i[-1, 1] == events[1][2]
 
 
 def test_a_recording_without_logged_windows_is_replayed_from_its_states(voc):
@@ -304,12 +488,12 @@ def test_a_recording_without_logged_windows_is_replayed_from_its_states(voc):
     rows = []
     for k in range(80):
         if k < 5:
-            o = [1000.0, -1500.0, 250.0]                 # in the air, approaching
+            o, vel = list(APPROACH[0]), list(APPROACH[1])  # in the air, approaching
         elif k < 25:
-            o = [1000.0 + k, -20.0, 250.0]              # on ramp 0's standing contact plane
+            o, vel = [1000.0 + k, -20.0, 250.0], [1500.0, 0.0, 0.0]   # on ramp 0's plane
         else:
-            o = [1000.0, 1000.0, 250.0]                 # left it
-        rows.append([k] + o + [0.0, 1500.0, 0.0, 0.0, 0])
+            o, vel = list(AWAY[0]), list(AWAY[1])          # left it
+        rows.append([k] + o + vel + [0.0, 0])
     ev = gr.replay_events(w, v, np.asarray(rows, float))
     assert ev[0][2] == 0                                # T1 = ramp 0 at the spawn
     # the takeoff: DEPART_TICKS rows after the last contact (row 24), the window shifts

@@ -25,6 +25,35 @@ LATERAL_MIN = 48.0                     # u: the lateral match radius is max(this
 K_NEAR = 8
 
 
+def edge_pieces(tris, ts, n_surf):
+    """surface -> PIECE id (-1 for a surface with no triangle here): surfaces whose triangle edges
+    share a 16 u cell (edge samples every 8 u) are one physical piece - a wedge's two sides and
+    its end caps. tris (m, 3, 3), ts (m,) the surface of each triangle."""
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
+    obj = -np.ones(n_surf, np.int64)
+    if len(ts) == 0:
+        return obj
+    eds = []
+    for a_, b_ in ((0, 1), (1, 2), (2, 0)):
+        seg = tris[:, b_] - tris[:, a_]
+        k = np.maximum(1, np.ceil(np.linalg.norm(seg, axis=1) / 8.0).astype(np.int64))
+        tid = np.repeat(np.arange(len(tris)), k + 1)
+        frac = np.concatenate([np.linspace(0.0, 1.0, kk + 1) for kk in k])
+        eds.append((ts[tid], np.floor((tris[tid, a_] + seg[tid] * frac[:, None]) / 16.0)))
+    sid = np.concatenate([e[0] for e in eds])
+    cell = np.concatenate([e[1] for e in eds]).astype(np.int64)
+    _c, cid = np.unique(cell, axis=0, return_inverse=True)
+    cid = cid.reshape(-1)
+    g = coo_matrix((np.ones(len(sid)), (sid, n_surf + cid)),
+                   shape=(n_surf + len(_c), n_surf + len(_c)))
+    _n, lab = connected_components(g, directed=False)
+    used = np.unique(ts)
+    _l, compact = np.unique(lab[used], return_inverse=True)
+    obj[used] = compact.reshape(-1)
+    return obj
+
+
 def bsp_signature(bsp) -> str:
     st = Path(bsp).stat()
     return f"{st.st_size}_{st.st_mtime_ns}"
@@ -71,6 +100,20 @@ class RampVocab:
                                       & (n_stand > 0))
         self.is_target = np.zeros(self.n_surf, bool)
         self.is_target[self.targets] = True
+        # PIECES: target surfaces joined at an edge (a wedge's two sides and its end caps) are
+        # one physical piece - what the ramp windows choose, capture and leave (a target with no
+        # triangle in the file, or a vocabulary without triangles: its own piece)
+        self.piece = np.full(self.n_surf, -1, np.int64)
+        if "tris" in z.files and "tri_surf" in z.files and len(self.targets):
+            tr = z["tris"].astype(np.float64)
+            ts = z["tri_surf"].astype(np.int64)
+            sel = np.isin(ts, self.targets)
+            self.piece = edge_pieces(tr[sel], ts[sel], self.n_surf)
+        lone = self.targets[self.piece[self.targets] < 0]
+        self.piece[lone] = int(self.piece.max()) + 1 + np.arange(len(lone))
+        self.piece_faces = {}
+        for s in self.targets:
+            self.piece_faces.setdefault(int(self.piece[s]), []).append(int(s))
         # per surface the lateral match radius: 1.5 x its sample spacing, at least LATERAL_MIN
         n_s = np.bincount(self.surf, minlength=self.n_surf).astype(np.float64)
         spacing = np.sqrt(self.area / np.maximum(n_s, 1.0))

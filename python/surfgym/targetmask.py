@@ -367,28 +367,10 @@ class TargetMask:
 
     @staticmethod
     def _objects(tris, ts, n_surf):
-        """surface -> object id: target surfaces whose edges share a 16 u cell are one object"""
-        from scipy.sparse import coo_matrix
-        from scipy.sparse.csgraph import connected_components
-        eds = []
-        for a_, b_ in ((0, 1), (1, 2), (2, 0)):
-            seg = tris[:, b_] - tris[:, a_]
-            k = np.maximum(1, np.ceil(np.linalg.norm(seg, axis=1) / 8.0).astype(np.int64))
-            tid = np.repeat(np.arange(len(tris)), k + 1)
-            frac = np.concatenate([np.linspace(0.0, 1.0, kk + 1) for kk in k])
-            eds.append((ts[tid], np.floor((tris[tid, a_] + seg[tid] * frac[:, None]) / 16.0)))
-        sid = np.concatenate([e[0] for e in eds])
-        cell = np.concatenate([e[1] for e in eds]).astype(np.int64)
-        _c, cid = np.unique(cell, axis=0, return_inverse=True)
-        cid = cid.reshape(-1)
-        g = coo_matrix((np.ones(len(sid)), (sid, n_surf + cid)),
-                       shape=(n_surf + len(_c), n_surf + len(_c)))
-        _n, lab = connected_components(g, directed=False)
-        used = np.unique(ts)
-        obj = -np.ones(n_surf, np.int64)
-        _l, compact = np.unique(lab[used], return_inverse=True)
-        obj[used] = compact.reshape(-1)
-        return obj
+        """surface -> object id: target surfaces whose edges share a 16 u cell are one object
+        (surfgym.rampvocab.edge_pieces - the ramp windows' pieces are the same rule)"""
+        from .rampvocab import edge_pieces
+        return edge_pieces(tris, ts, n_surf)
 
     def set_targets(self, n_envs, t1, t2):
         """per env the next target (t1, +1) and the one after (t2, -1): surface ids (object ids
