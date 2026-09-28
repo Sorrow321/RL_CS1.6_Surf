@@ -31432,3 +31432,53 @@ B4 at matched steps: 8.8% / 7.9%. Some greedy episodes now pass the first wedge 
 * **Consistency, not frontier.** B7's gain is consistency: at 76M, 6/9 episodes are past 20k u with at least 3 rides. B4 managed 1/9 at 26M and 0/9 at 51M; B6 managed 2/9. The ordered frontier did not move.
 * **No cause is identified.** All the fixes entered together, the runs are independent chaotic realizations, and no target_channel=0 control has run.
 * **Still open** (Codex): the FIN fallback when no ramp is eligible (it bypasses the reach gate), and _steer's discontinuity at 300 u/s. That discontinuity redirected two B7 shifts by 45-61 deg (at 93 and 69 u/s). Fixes follow once rampB9_box has started, so B8 and B9 run identical code.
+
+## 2026-09-28 10:06 (machine clock) - rampB8_boxpen final (box triggers + off-target penalty 1.0/tick), rescored on the ordered arc; B9 control launched
+
+**Setup.** B8 is B7's arm with two changes:
+
+* the box triggers (e608691);
+* `--ramp-offtarget-pen 1.0`.
+
+Everything else is unchanged: from `runs/research/stage/prim1_mover.pt`, on surf_src_utopia, `--goal-planner ramps --target-channel 1 --ep-secs 60 --race-dist geodesic --goal-cell 72 --reset-critic 1 --critic-warmup 20`, 200M steps. It ran on the local 5090 from 09:40 to 10:02, averaging 158,823 steps/s including startup and evals, about 230k in steady state.
+
+**Two metrics, 9 greedy true-start episodes per eval, 0 finishes anywhere:**
+
+* **geodesic "track"** (the trainer's cover %): 4.1 / 9.4 / 13.7 / 26.6 / 21.4 / 26.8 / 40.0 / 40.7% at 1 / 26 / 51 / 76 / 101 / 126 / 152 / 177M.
+* **ORDERED arc**, mean / max in u, out of 192,896:
+  * The reference is our own finisher's line (`utopia_finisher_rawtouch`), used for measurement only, with 128 u vertices, an order window of 16 and a 1,500 u corridor.
+  * This is Codex's metric (bus 20260928T071803Z). The scratch scorer reproduces Codex's B7@76M per-episode numbers to within one 128 u vertex: mean 22,556 vs 22,494.
+
+| step | B8 (boxes + penalty) mean / max | B7 (old triggers, no penalty) mean / max |
+|---|---|---|
+| 1M | 8,149 / 9,216 | 9,472 / 10,624 |
+| 26M | 16,540 / 33,664 | 18,432 / 39,552 |
+| 51M | 23,908 / 46,336 | 18,830 / 41,728 |
+| 76M | 45,924 / 65,920 | 22,556 / 33,536 |
+| 101M | 29,611 / 30,080 | 35,072 / 66,944 |
+| 126M | 31,431 / 64,128 | 17,977 / 33,664 |
+| 152M | 33,052 / 65,792 | 45,255 / **80,128** |
+| 177M | 45,099 / 65,664 | 38,443 / 73,856 |
+| 202M | - | 57,557 / 80,128 |
+
+**Off-target contact:**
+
+* Training: 0.25-0.4% of ticks at the start, 3.4-4.1% at 60-75M, 2.53% at the end.
+* Evals: 0 ticks in every eval except 152M, which had 110.
+* End of training: rides/ep 2.48, 53.6% of episodes with at least 2 rides.
+
+**Reading:**
+
+* **Consistency.** From 101M on, B8 is more consistent than B7: its worst episode is 28,800 u at 152-177M, against B7's 7,808 at 177M.
+* **Walls.** B8 sits at two walls:
+  * ~28.8-30.1k u: all 9 episodes at 101M, 5/9 at 177M;
+  * ~65.5k u: 4/9 at 177M.
+* **Frontier.** B8's ordered frontier stopped at **65,920 u, BELOW B7's 80,128** (reached at 152M, 202M and 277M).
+* **The geodesic track said the opposite at 177M** (40.7% vs 22.5%). Read the ordered arc.
+* **Attribution.** B7 is not a control: it ran the old telemetry triggers. **rampB9_box** is the control: identical argv minus `--ramp-offtarget-pen`, the same code as B8, launched automatically at 10:02 (PID 45744); the record gate passed.
+* **Code freeze.** Codex's open defects are fixed only after this point, so B8 and B9 run byte-identical code:
+  * the FIN fallback on an empty band;
+  * _steer's discontinuity at 300 u/s;
+  * the riding-first guard;
+  * set_lines keeping a reference to its input array;
+  * the git commit missing from run.json.
