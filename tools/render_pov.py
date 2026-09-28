@@ -364,9 +364,8 @@ def main() -> None:
         # --target-views 6: the channel's five more directions, exactly as the policy saw them
         # (the trainer's own cameras: surfgym.goalramps.TARGET_VIEWS / _ViewCam), one more panel
         if int(rcfg.get("target_views") or 1) > 1:
-            from surfgym.goalramps import TARGET_VIEWS, _ViewCam
-            tviews = [(_ViewCam(lidar, span), float(dyaw), float(pch), nm)
-                      for nm, dyaw, pch, span in TARGET_VIEWS]
+            from surfgym.goalramps import target_view_cams
+            tviews = target_view_cams(lidar)
             print(f"--targets: {1 + len(tviews)} directions (the view's own + "
                   + ", ".join(v[3] for v in tviews) + ") - one more panel")
     _rep = {}

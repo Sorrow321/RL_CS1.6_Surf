@@ -958,7 +958,8 @@ def test_the_eval_ends_a_completed_sequence_as_a_success(voc):
 
 
 
-def test_six_target_views_each_see_their_own_side(tmp_path):
+@pytest.mark.parametrize("pinhole", [False, True])
+def test_six_target_views_each_see_their_own_side(tmp_path, pinhole):
     """--target-views 6: the target channel from the view's own direction and from up, down,
     back, left, right. A box of six target surfaces around the eye - a wall ahead, a ceiling, a
     floor, a wall behind, one on each side - each lights exactly its own view's channel"""
@@ -986,12 +987,34 @@ def test_six_target_views_each_see_their_own_side(tmp_path):
     tm = TargetMask(str(mesh), None, "cpu")
 
     class _Lid:
-        channels, near, range, pinhole = 1, 2000.0, 11500.0, False
+        channels, near, range = 1, 2000.0, 11500.0
 
         def __init__(self):
             self.H, self.W, self.device = 24, 48, torch.device("cpu")
+            self.pinhole = pinhole
             self.yoff = torch.linspace(0.9, -0.9, self.W)        # col 0 looks left, like the lidar
             self.poff = torch.linspace(0.6, -0.6, self.H)        # row 0 looks up
+            # --pinhole: GpuLidar's tangent-plane offsets (120 x 90 deg)
+            self.uoff = torch.as_tensor(np.tan(np.radians(60.0))
+                                        * (2.0 * np.arange(self.W) / (self.W - 1) - 1.0),
+                                        dtype=torch.float32)
+            self.voff = torch.as_tensor(np.tan(np.radians(45.0))
+                                        * (1.0 - 2.0 * np.arange(self.H) / (self.H - 1)),
+                                        dtype=torch.float32)
+
+        def _dirs_pinhole(self, N, yaw_deg, pitch_deg, d2r):
+            yw = yaw_deg.view(N, 1, 1) * d2r
+            pt = pitch_deg.view(N, 1, 1) * d2r
+            cy, sy, cp, sp = torch.cos(yw), torch.sin(yw), torch.cos(pt), torch.sin(pt)
+            u = self.uoff.view(1, 1, self.W)
+            v = self.voff.view(1, self.H, 1)
+            dx = cp * cy + u * sy - v * sp * cy
+            dy = cp * sy - u * cy - v * sp * sy
+            dz = sp + v * cp
+            inv = torch.rsqrt(dx * dx + dy * dy + dz * dz)
+            self._dx.copy_(dx * inv)
+            self._dy.copy_(dy * inv)
+            self._dz.copy_(dz * inv)
 
         def render(self, origin, yaw, pitch, ducked, **kw):
             return torch.zeros(origin.shape[0], self.H, self.W)

@@ -157,3 +157,45 @@ def test_slots_max_combine_and_zero_slots(tmp_path):
     assert float(ch[0, r, c]) == pytest.approx(0.7)
     tm.set_slots(1, [[0]], [[0.0]])
     assert float(tm.render(lid, o, yaw, z0, dk).abs().sum()) == 0.0
+
+
+
+class _PinLidar(_Lidar):
+    """the rectilinear (--pinhole) camera: GpuLidar's tangent-plane offsets and _dirs_pinhole"""
+    def __init__(self, H=24, W=48, dev="cpu", hfov=120.0, vfov=90.0):
+        super().__init__(H, W, dev)
+        self.pinhole = True
+        tu, tv = np.tan(np.radians(hfov / 2)), np.tan(np.radians(vfov / 2))
+        self.uoff = torch.as_tensor(tu * (2.0 * np.arange(W) / (W - 1) - 1.0), dtype=torch.float32,
+                                    device=self.device)
+        self.voff = torch.as_tensor(tv * (1.0 - 2.0 * np.arange(H) / (H - 1)), dtype=torch.float32,
+                                    device=self.device)
+
+    def _dirs_pinhole(self, N, yaw_deg, pitch_deg, d2r):
+        yw = yaw_deg.view(N, 1, 1) * d2r
+        pt = pitch_deg.view(N, 1, 1) * d2r
+        cy, sy, cp, sp = torch.cos(yw), torch.sin(yw), torch.cos(pt), torch.sin(pt)
+        u = self.uoff.view(1, 1, self.W)
+        v = self.voff.view(1, self.H, 1)
+        dx = cp * cy + u * sy - v * sp * cy
+        dy = cp * sy - u * cy - v * sp * sy
+        dz = sp + v * cp
+        inv = torch.rsqrt(dx * dx + dy * dy + dz * dz)
+        self._dx.copy_(dx * inv)
+        self._dy.copy_(dy * inv)
+        self._dz.copy_(dz * inv)
+
+
+def test_the_pinhole_kernel_matches_the_pinhole_reference(tmp_path):
+    """--pinhole: the fused kernel's rectilinear ray (PINHOLE) equals the torch path's
+    _dirs_pinhole, and a straight ramp edge stays straight in the image"""
+    if DEV != "cuda" or not tmm.HAVE_TRITON:
+        pytest.skip("the fused kernel needs CUDA + triton")
+    tm = tmm.TargetMask(str(_mesh(tmp_path)), None, DEV)
+    lid = _PinLidar(dev=DEV)
+    orig = [[500, -2000, 233]] * 4
+    for pitch in (0.0, -40.0, 60.0):
+        got = _view(tm, lid, [0, 1, 0, 1], [1, 0, -1, -1], orig, [90.0] * 4, pitch=pitch)
+        ref = _view(tm, lid, [0, 1, 0, 1], [1, 0, -1, -1], orig, [90.0] * 4, pitch=pitch,
+                    force_torch=True)
+        assert torch.equal(got, ref), pitch

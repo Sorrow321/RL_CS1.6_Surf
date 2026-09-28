@@ -1030,19 +1030,23 @@ class RampPlanner:
 
 
 class _ViewCam:
-    """one extra direction of the target channel (--target-views 6): the lidar's equiangular grid
-    - its H x W and its vertical span - with its own horizontal span. It carries what
-    TargetMask.render reads off a lidar: H, W, yoff, poff, device, pinhole, and for the torch path
-    the ray buffers and directions (the lidar's own methods, run on this grid)"""
-
-    pinhole = False
+    """one extra direction of the target channel (--target-views 6): the lidar's own camera - its
+    H x W, its vertical span, and its projection (equiangular, or --pinhole's rectilinear one) -
+    with, on the equiangular camera, its own horizontal span. It carries what TargetMask.render
+    reads off a lidar: H, W, yoff / poff (uoff / voff under --pinhole), device, pinhole, and for the
+    torch path the ray buffers and directions (the lidar's own formulas, on this grid)"""
 
     def __init__(self, lidar, hfov_deg=None):
         import torch
         self._lidar_cls = type(lidar)
         self.H, self.W, self.device = int(lidar.H), int(lidar.W), lidar.device
+        self.pinhole = bool(getattr(lidar, "pinhole", False))
         self.poff = lidar.poff
-        if hfov_deg is None:
+        if self.pinhole:
+            # a rectilinear camera cannot span 180 deg: every extra view is the lidar's own field
+            self.uoff, self.voff = lidar.uoff, lidar.voff
+            self.yoff = lidar.yoff
+        elif hfov_deg is None:
             self.yoff = lidar.yoff
         else:
             yoff = (float(hfov_deg) * (0.5 - (np.arange(self.W) + 0.5) / self.W)) * np.pi / 180.0
@@ -1070,6 +1074,30 @@ class _ViewCam:
         torch.mul(cp, torch.sin(y), out=self._dy)
         self._dz.copy_(torch.sin(p).expand_as(self._dz))
 
+    def _dirs_pinhole(self, N, yaw_deg, pitch_deg, d2r):
+        """GpuLidar._dirs_pinhole, term for term, on this camera's tangent-plane offsets"""
+        import torch
+        yw = yaw_deg.view(N, 1, 1) * d2r
+        pt = pitch_deg.view(N, 1, 1) * d2r
+        cy, sy = torch.cos(yw), torch.sin(yw)
+        cp, sp = torch.cos(pt), torch.sin(pt)
+        u = self.uoff.view(1, 1, self.W)
+        v = self.voff.view(1, self.H, 1)
+        dx = cp * cy + u * sy - v * sp * cy
+        dy = cp * sy - u * cy - v * sp * sy
+        dz = sp + v * cp
+        inv = torch.rsqrt(dx * dx + dy * dy + dz * dz)
+        torch.mul(dx, inv, out=self._dx)
+        torch.mul(dy, inv, out=self._dy)
+        torch.mul(dz, inv, out=self._dz)
+
+
+def target_view_cams(lidar):
+    """--target-views 6: the five extra directions' cameras, [(camera, yaw offset, pitch, name)] -
+    the ONE builder the trainer (TargetLidar) and tools/render_pov.py share"""
+    return [(_ViewCam(lidar, span), float(dyaw), float(pitch), nm)
+            for nm, dyaw, pitch, span in TARGET_VIEWS]
+
 
 class TargetLidar:
     """A lidar with the target channel appended (the GoalBallLidar pattern): channels = the
@@ -1082,8 +1110,6 @@ class TargetLidar:
     def __init__(self, lidar, tm, windows=None, mode: str = "live", views: int = 1):
         if mode not in ("live", "off"):
             raise ValueError(f"TargetLidar: mode live|off, got {mode!r}")
-        if getattr(lidar, "pinhole", False):
-            raise ValueError("TargetLidar mirrors the equiangular camera; --pinhole is separate")
         if int(views) not in (1, 1 + len(TARGET_VIEWS)):
             raise ValueError(f"--target-views: 1 (the view's own) or {1 + len(TARGET_VIEWS)} "
                              f"(+ {', '.join(v[0] for v in TARGET_VIEWS)}), got {views}")
@@ -1093,13 +1119,14 @@ class TargetLidar:
         self.channels = self.base + self.views
         # the extra directions' cameras: (camera, yaw offset, pitch) - the level ones reuse the
         # lidar's own grid, the two poles a 180 deg span
-        self._cams = ([(_ViewCam(lidar, span), float(dyaw), float(pitch))
-                       for _n, dyaw, pitch, span in TARGET_VIEWS] if self.views > 1 else [])
+        self._cams = ([(c, dyaw, pitch) for c, dyaw, pitch, _nm in target_view_cams(lidar)]
+                      if self.views > 1 else [])
         self.W, self.H = int(lidar.W), int(lidar.H)
         self.device = lidar.device
         self.near, self.range = float(lidar.near), float(lidar.range)
         self.yoff, self.poff = lidar.yoff, lidar.poff
-        self.pinhole = False
+        # the wrapped lidar's projection (--pinhole: rectilinear, the target channel too)
+        self.pinhole = bool(getattr(lidar, "pinhole", False))
         self.takes_idx = True          # MapFleet.render_rows passes a subset batch's env rows
         self.potential = getattr(lidar, "potential", None)
         self.vision_clip = bool(getattr(lidar, "vision_clip", False))

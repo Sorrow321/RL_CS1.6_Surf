@@ -173,7 +173,8 @@ if HAVE_TRITON:
     @triton.jit
     def _tm_fused_kernel(yaw_ptr, pitch_ptr, eye_ptr, yoff_ptr, poff_ptr, sid_ptr, val_ptr,
                          pstart_ptr, pcount_ptr, pf_ptr, pi_ptr, mask_ptr, sph_ptr, out_ptr,
-                         H, W, BLOCK: tl.constexpr, MAXV: tl.constexpr):
+                         H, W, BLOCK: tl.constexpr, MAXV: tl.constexpr,
+                         PINHOLE: tl.constexpr = False):
         """one program = one env x BLOCK pixels: the equiangular camera's ray (the lidar's own
         _dirs_equiangular, term for term), the env's three target SLOTS (ids and values), and the
         channel: the value of the nearest slot whose value is not 0 (MAXV: the LARGEST value
@@ -186,12 +187,31 @@ if HAVE_TRITON:
         row = offs // W
         col = offs % W
         d2r = 0.017453292519943295
-        pa = tl.load(pitch_ptr + e) * d2r + tl.load(poff_ptr + row, mask=m, other=0.0)
-        ya = tl.load(yaw_ptr + e) * d2r + tl.load(yoff_ptr + col, mask=m, other=0.0)
-        cp = tl.cos(pa)
-        dx = cp * tl.cos(ya)
-        dy = cp * tl.sin(ya)
-        dz = tl.sin(pa)
+        if PINHOLE:
+            # --pinhole: the lidar's rectilinear ray (_dirs_pinhole, term for term) - yoff /
+            # poff carry the TANGENT-PLANE offsets uoff / voff here
+            yw = tl.load(yaw_ptr + e) * d2r
+            pt = tl.load(pitch_ptr + e) * d2r
+            cy = tl.cos(yw)
+            sy = tl.sin(yw)
+            cpt = tl.cos(pt)
+            spt = tl.sin(pt)
+            uo = tl.load(yoff_ptr + col, mask=m, other=0.0)
+            vo = tl.load(poff_ptr + row, mask=m, other=0.0)
+            dx = cpt * cy + uo * sy - vo * spt * cy
+            dy = cpt * sy - uo * cy - vo * spt * sy
+            dz = spt + vo * cpt
+            inv = 1.0 / tl.sqrt(dx * dx + dy * dy + dz * dz)
+            dx = dx * inv
+            dy = dy * inv
+            dz = dz * inv
+        else:
+            pa = tl.load(pitch_ptr + e) * d2r + tl.load(poff_ptr + row, mask=m, other=0.0)
+            ya = tl.load(yaw_ptr + e) * d2r + tl.load(yoff_ptr + col, mask=m, other=0.0)
+            cp = tl.cos(pa)
+            dx = cp * tl.cos(ya)
+            dy = cp * tl.sin(ya)
+            dz = tl.sin(pa)
         ox = tl.load(eye_ptr + e * 3 + 0)
         oy = tl.load(eye_ptr + e * 3 + 1)
         oz = tl.load(eye_ptr + e * 3 + 2)
@@ -477,14 +497,16 @@ class TargetMask:
             self.set_slots(N, np.full((N, 1), NONE), np.zeros((N, 1)))
         sids, svals = self.sids, self.svals
         if (HAVE_TRITON and self.device.type == "cuda" and not force_torch
-                and not lidar.pinhole and not bool((sids == FIN).any())):
+                and not bool((sids == FIN).any())):
             out = torch.empty(N, lidar.H, lidar.W, device=self.device, dtype=torch.float32)
             R = lidar.H * lidar.W
+            ph = bool(getattr(lidar, "pinhole", False))
             _tm_fused_kernel[(N, triton.cdiv(R, TM_BLOCK))](
                 yaw_deg.float().contiguous(), pitch_deg.float().contiguous(), eye,
-                lidar.yoff, lidar.poff, sids, svals, self.pstart, self.pcount, self.pf, self.pi,
+                lidar.uoff if ph else lidar.yoff, lidar.voff if ph else lidar.poff,
+                sids, svals, self.pstart, self.pcount, self.pf, self.pi,
                 self.mask, self.sph, out, lidar.H, lidar.W, BLOCK=TM_BLOCK,
-                MAXV=self.combine == "max")
+                MAXV=self.combine == "max", PINHOLE=ph)
             return out
         lidar._ensure_buffers(N)
         dirs = lidar._dirs_pinhole if lidar.pinhole else lidar._dirs_equiangular
