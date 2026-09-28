@@ -10049,7 +10049,7 @@ def main() -> None:
             from surfgym.goalfield import load_goal_field as _lgf
             # the GEODESIC potential orders the targets (the consecutive ramps down it), whatever
             # --race-dist the reward uses; a map without a baked geodesic field is refused
-            _gfp = find_goal_field(slots[0].bsp)
+            _gfp = find_goal_field(slots[0].bsp, args.goal_cell)
             if _gfp is None:
                 raise SystemExit(f"--goal-planner ramps: no geodesic goal field beside "
                                  f"{slots[0].bsp} (<map>.goal_<cell>.npz) to order the targets")

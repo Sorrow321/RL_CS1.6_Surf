@@ -1506,7 +1506,7 @@ def main(argv=None, build_only: bool = False, device=None):
                 from surfgym.targetmask import TargetMask
                 _voc = RampVocab(str(cfg.get("ramp_vocab")), map_path)
                 # the geodesic field orders the targets, as in training
-                _gfp = find_goal_field(map_path)
+                _gfp = find_goal_field(map_path, cfg.get("goal_cell"))
                 if _gfp is None:
                     raise SystemExit(f"--goal-planner ramps: no geodesic goal field beside "
                                      f"{map_path} to order the targets")

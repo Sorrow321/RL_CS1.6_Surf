@@ -371,7 +371,7 @@ def main() -> None:
             from surfgym.rampvocab import RampVocab
             from surfgym.tick import header_tick_ms
             voc = RampVocab(str(_vp), args.map)
-            gfp = find_goal_field(args.map)
+            gfp = find_goal_field(args.map, rcfg.get("goal_cell"))
             if gfp is None:
                 raise SystemExit(f"--targets replay: no geodesic goal field beside {args.map}")
             ph = hdr_.get("phys") or {}

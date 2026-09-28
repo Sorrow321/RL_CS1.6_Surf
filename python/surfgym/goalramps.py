@@ -83,10 +83,19 @@ LAND_DT = 0.05           # s: the step of the takeoff test's free-flight arc
 _FAST_SEARCH = _rf.FAST
 
 
-def find_goal_field(bsp):
-    """the map's cached GEODESIC goal field (<map>.goal_<cell>.npz beside the .bsp) -> path, or None"""
+def find_goal_field(bsp, cell=None):
+    """the map's cached GEODESIC goal field (<map>.goal_<cell>.npz beside the .bsp) -> path, or
+    None: the run's own --goal-cell when given and baked, else the first baked one (it took the
+    first by name whatever the run used - Codex 2026-09-28)"""
     from pathlib import Path as _P
     b = _P(bsp)
+    if cell is not None:
+        try:
+            want = b.parent / f"{b.stem}.goal_{int(float(cell))}.npz"
+        except (TypeError, ValueError):
+            want = None
+        if want is not None and want.exists():
+            return str(want)
     c = [q for q in sorted(b.parent.glob(f"{b.stem}.goal_*.npz"))
          if q.stem.split(".goal_")[-1].isdigit()]
     return str(c[0]) if c else None
