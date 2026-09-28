@@ -1,10 +1,12 @@
-"""The target-ramp channel (surfgym.targetmask): the Triton kernel equals the torch reference, the
-channel is +1 / -1 / 0, the next target wins a tie, and occlusion follows the depth hit."""
+"""The target-ramp channel (surfgym.targetmask), on a synthetic mesh (no map files needed): the
+Triton kernel equals the torch reference; a target is drawn with NO occlusion; the nearer of the
+two targets wins an overlap; a target split into many coplanar pieces (a BSP tessellation with
+T-junctions) draws as one solid region; the finish box is a target; unit="object" joins an
+A-frame's two slopes into one target."""
 import sys
 from pathlib import Path
 
 import numpy as np
-import pytest
 import torch
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -12,18 +14,42 @@ sys.path.insert(0, str(ROOT / "python"))
 
 from surfgym import targetmask as tmm  # noqa: E402
 
-MESH = ROOT / "runs" / "research" / "ramps_mesh_surf_edgeflow_blue025.npz"
+
+def _quad(p0, p1, p2, p3, split=1):
+    """a planar quad as 2*split*split triangles (a fine tessellation, like the BSP's)"""
+    tris = []
+    a = np.array(p0, float)
+    u = (np.array(p1, float) - a) / split
+    v = (np.array(p3, float) - a) / split
+    for i in range(split):
+        for j in range(split):
+            q0 = a + u * i + v * j
+            tris.append([q0, q0 + u, q0 + u + v])
+            tris.append([q0, q0 + u + v, q0 + v])
+    return np.array(tris)
+
+
+def _mesh(tmp_path):
+    # surface 0: a ramp in the plane y = 0 (x 0..1000, z 0..500), tessellated 8 x 8
+    r0 = _quad([0, 0, 0], [1000, 0, 0], [1000, 0, 500], [0, 0, 500], split=8)
+    # surface 1: a ramp farther along +y (y = 3000), same extent
+    r1 = _quad([0, 3000, 0], [1000, 3000, 0], [1000, 3000, 500], [0, 3000, 500], split=2)
+    # surfaces 2 + 3: an A-frame's two slopes meeting at a ridge (x 4000..5000)
+    a = _quad([4000, 0, 0], [5000, 0, 0], [5000, 300, 300], [4000, 300, 300])
+    b = _quad([4000, 300, 300], [5000, 300, 300], [5000, 600, 0], [4000, 600, 0])
+    tris = np.concatenate([r0, r1, a, b]).astype(np.float32)
+    ts = np.concatenate([np.full(len(r0), 0), np.full(len(r1), 1), np.full(len(a), 2),
+                         np.full(len(b), 3)])
+    p = tmp_path / "mesh.npz"
+    np.savez(p, tris=tris, tri_surf=ts, cat=np.array([1, 1, 1, 1]))
+    return p
 
 
 class _Lidar:
-    """the minimal lidar surface TargetMask.render reads: rays, the depth decoder, range, cell"""
-
-    def __init__(self, n, H=16, W=32, dev="cpu"):
-        self.H, self.W, self.pinhole = H, W, False
-        self.range, self.cell, self.device = 11500.0, 32.0, torch.device(dev)
-        self.yoff = torch.linspace(-1.0, 1.0, W, device=self.device)
-        self.poff = torch.linspace(-0.7, 0.2, H, device=self.device)
-        self._dx = self._dy = self._dz = None
+    def __init__(self, H=24, W=48, dev="cpu"):
+        self.H, self.W, self.pinhole, self.device = H, W, False, torch.device(dev)
+        self.yoff = torch.linspace(-0.9, 0.9, W, device=self.device)
+        self.poff = torch.linspace(-0.6, 0.6, H, device=self.device)
 
     def _ensure_buffers(self, n):
         self._dx = torch.zeros(n, self.H, self.W, device=self.device)
@@ -38,52 +64,58 @@ class _Lidar:
         self._dy.copy_(cp * torch.sin(y))
         self._dz.copy_(torch.sin(p).expand_as(self._dz))
 
-    def decode_depth(self, enc):
-        return enc.float()
+
+DEV = "cuda" if torch.cuda.is_available() else "cpu"
 
 
-@pytest.mark.skipif(not MESH.exists(), reason="needs the local blue025 face extraction")
-def test_kernel_matches_the_torch_reference_and_the_channel_is_signed():
-    dev = "cuda" if torch.cuda.is_available() else "cpu"
-    tm = tmm.TargetMask(str(MESH), None, dev)
-    z = np.load(MESH)
-    ramps = [int(s) for s in np.flatnonzero(z["cat"] == 1)][:4]
-    N = 8
-    rng = np.random.default_rng(0)
-    c = z["centroid"][ramps[0]]
-    origin = torch.as_tensor(c[None] + rng.normal(0, 300, (N, 3)) + [0, 0, 400.0],
-                             dtype=torch.float32, device=dev)
-    lid = _Lidar(N, dev=dev)
-    lid._ensure_buffers(N)
-    yaw = torch.as_tensor(rng.uniform(0, 360, N), dtype=torch.float32, device=dev)
-    pitch = torch.full((N,), -30.0, device=dev)
-    lid._dirs_equiangular(N, yaw, pitch, np.pi / 180.0)
-    ex = origin[:, 0].view(N, 1, 1)
-    ey = origin[:, 1].view(N, 1, 1)
-    ez = (origin[:, 2] + 17.0).view(N, 1, 1)
-    sid = torch.as_tensor([ramps[i % len(ramps)] for i in range(N)], device=dev)
-    ref, kref = tm._tri_hit_torch(sid, ex, ey, ez, lid._dx, lid._dy, lid._dz)
-    got, kgot = tm._tri_hit(sid, ex, ey, ez, lid._dx, lid._dy, lid._dz)
-    fin = torch.isfinite(ref)
-    assert torch.equal(fin, torch.isfinite(got))
-    assert torch.allclose(ref[fin], got[fin], rtol=1e-4, atol=0.5)
-    assert torch.equal(kref[fin].long(), kgot[fin].long())
-    # the channel: depth = the next target's own hit -> +1 there; an occluder in front -> 0
-    tm.set_targets(N, sid.cpu().numpy(), np.full(N, -1))
-    depth = torch.where(fin, ref, torch.full_like(ref, lid.range))
-    ch = tm.render(lid, origin, yaw, pitch, torch.zeros(N, dtype=torch.int64, device=dev), depth)
-    assert set(torch.unique(ch).tolist()) <= {-1.0, 0.0, 1.0}
-    assert bool((ch[fin] == 1.0).all())
-    occl = torch.where(fin, ref - 500.0, depth)          # something 500 u in front of the ramp
-    # (500 u in front along the ray is > GRAZE cells off the ramp's plane unless the ray grazes)
-    ch2 = tm.render(lid, origin, yaw, pitch, torch.zeros(N, dtype=torch.int64, device=dev), occl)
-    # a ray whose occluder point (500 u short of the ramp) is more than GRAZE cells off the ramp's
-    # plane is occluded; a GRAZING ray (the occluder point still within GRAZE cells of the plane,
-    # as the depth march's early stops are) keeps seeing the target by design
-    s_ = sid.view(N, 1, 1).expand_as(kref)
-    nrm = tm.pn[s_, kref]
-    cosang = ((nrm[..., 0] * lid._dx + nrm[..., 1] * lid._dy + nrm[..., 2] * lid._dz).abs()
-              / nrm.norm(dim=-1).clamp_min(1e-9))
-    off_plane = 500.0 * cosang > tmm.GRAZE * lid.cell + 1.0
-    assert not bool((ch2[fin & off_plane] == 1.0).any())
-    assert bool(off_plane[fin].any())
+def _view(tm, lid, t1, t2, origin, yaw, pitch=0.0, force_torch=False):
+    N = len(t1)
+    tm.set_targets(N, t1, t2)
+    o = torch.as_tensor(np.asarray(origin, np.float32).reshape(N, 3), device=DEV)
+    return tm.render(lid, o, torch.as_tensor(np.asarray(yaw, np.float32), device=DEV),
+                     torch.full((N,), float(pitch), device=DEV),
+                     torch.zeros(N, dtype=torch.int64, device=DEV), force_torch=force_torch)
+
+
+def test_kernel_matches_reference_no_occlusion_and_nearer_wins(tmp_path):
+    tm = tmm.TargetMask(str(_mesh(tmp_path)), None, DEV)
+    lid = _Lidar(dev=DEV)
+    # from (500, -2000, 250 - eye 17) looking +y (yaw 90): ramp 0 is in front (y = 0, 2000 u),
+    # ramp 1 behind it (y = 3000, 5000 u) - the SAME direction
+    orig = [[500, -2000, 233]] * 4
+    yaw = [90.0] * 4
+    got = _view(tm, lid, [0, 1, 0, 1], [1, 0, -1, -1], orig, yaw)
+    ref = _view(tm, lid, [0, 1, 0, 1], [1, 0, -1, -1], orig, yaw, force_torch=True)
+    assert torch.equal(got, ref)
+    r, c = lid.H // 2, lid.W // 2
+    assert got[0, r, c] == 1.0          # t1 = ramp 0 (nearer): +1
+    assert got[1, r, c] == -1.0         # t1 = ramp 1 (farther), t2 = ramp 0 nearer: -1 wins
+    assert got[3, r, c] == 1.0          # ramp 1 alone, BEHIND ramp 0: drawn (no occlusion)
+    # the finely tessellated ramp 0 (128 triangles, shared edges) draws as ONE solid region
+    lit = (got[2] == 1.0).cpu().numpy()
+    for row in np.flatnonzero(lit.any(1)):
+        cols = np.flatnonzero(lit[row])
+        assert cols.max() - cols.min() + 1 == len(cols)       # no hole inside a row
+
+
+def test_finish_box_is_a_target(tmp_path):
+    tm = tmm.TargetMask(str(_mesh(tmp_path)),
+                        {"mins": (2000, -100, 0), "maxs": (2100, 100, 100)}, DEV)
+    lid = _Lidar(dev=DEV)
+    ch = _view(tm, lid, [tmm.FIN], [tmm.NONE], [[2050, -2000, 33]], [90.0])
+    assert (ch == 1.0).sum() > 0 and (ch == -1.0).sum() == 0
+
+
+def test_object_unit_joins_an_a_frame(tmp_path):
+    tm = tmm.TargetMask(str(_mesh(tmp_path)), None, DEV, unit="object")
+    obj = tm.obj_of_surf
+    assert obj[2] == obj[3]                 # the A-frame's two slopes are one object
+    assert len({int(obj[0]), int(obj[1]), int(obj[2])}) == 3
+    lid = _Lidar(dev=DEV)
+    # from above and before the ridge, looking along it (+x) and down: both slopes are the one
+    # target, so the lit region spans both sides of the ridge
+    ch = _view(tm, lid, [int(obj[2])], [tmm.NONE], [[3000, 300, 700]], [0.0], pitch=-20.0)
+    lit = (ch[0] == 1.0).cpu().numpy()
+    assert lit.sum() > 0
+    cols = np.flatnonzero(lit.any(0))
+    assert cols.min() < lid.W // 2 < cols.max()   # left and right of the centre line

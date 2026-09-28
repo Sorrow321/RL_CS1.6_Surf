@@ -1,20 +1,24 @@
-"""targetmask.py - the TARGET-RAMP channel: which of the lidar's pixels see the next ramp (+1) and
-the one after it (-1); everything else 0 (the user, 2026-09-28: "the geometry comes from the depth
-render; the destination ramps are a separate channel").
+"""targetmask.py - the TARGET-RAMP channel: where in the lidar's view the next ramp is (+1) and the
+one after it (-1); everything else 0 (the user, 2026-09-28: "the geometry comes from the depth
+render; the destination ramps are a separate channel ... rasterize, ignoring walls").
 
-No new render and no voxel bake: the depth march already cast every ray, so each ray is tested
-against ONLY the two target surfaces' triangles (tools/ramps_mesh.py - a flat ramp is a handful of
-triangles) with Moller-Trumbore, and it shows a target when the triangle hit lies at or before the
-ray's own depth hit (+ a tolerance: the march stops inside the solid, up to a cell past the
-surface). Occlusion is therefore exactly the depth image's (a ray clear to the lidar's range
-shows a target at ANY distance - direction without occlusion past the range), walls and every
-other surface read 0,
-and the finish - a trigger box, not a surface - is a target like a ramp through the same slab
-test as --obs-potential-curtain. One batched torch pass per render; no per-env Python.
+The target is drawn like a HUD objective marker: WITHOUT occlusion - a wall between the eye and
+the target does not hide it - so it always carries the target's direction and shape, and the
+depth channel carries the walls. (The occluded variant was built first, a4f8b0e: it needed the
+depth march's hit per ray and a patch for the march's grazing error, and cost 3x the depth render.)
 
-    tm = TargetMask(mesh_npz, finish_box, device, max_tris=128)
-    tm.set_targets(env_ids, t1_surface, t2_surface)       # -1 = none, FIN = the finish
-    chan = tm.render(lidar, origin, yaw, pitch, ducked, depth)   # (N, H, W) in {-1, 0, +1}
+It is close to free: a target surface is a few PLANES (one for a flat ramp; a curved ramp or a
+whole object is several), and each plane is baked once into a 2D occupancy mask in its own
+coordinates (8 u cells, one cell of dilation so the BSP's T-junction cracks close). Per ray and
+per plane: one ray-plane intersection and one mask lookup - independent of how finely the BSP
+compiler tessellated the surface. The nearer of the two targets wins where they overlap.
+
+    tm = TargetMask(mesh_npz, finish_box=None, device="cuda", unit="face")   # or unit="object"
+    tm.set_targets(n_envs, t1, t2)                   # surface / object ids, FIN, NONE
+    chan = tm.render(lidar, origin, yaw, pitch, ducked)   # (N, H, W) in {-1, 0, +1}
+
+unit="object": a target is a whole connected object (e.g. an A-frame's two slopes and its caps:
+target faces touching at an edge), not one slope - coarser but more forgiving.
 """
 from __future__ import annotations
 
@@ -29,18 +33,93 @@ except ImportError:                       # pragma: no cover
     HAVE_TRITON = False
 
 FIN = -2          # the finish box as a target id
-GRAZE = 2.5       # lidar cells: a depth hit this close to the target's plane is a skimming ray
 NONE = -1
 TM_BLOCK = 128
+RES = 8.0         # u: the plane masks' cell
+MERGE_DEG = 3.0   # a target's pieces within this angle and MERGE_DIST of a plane share its mask
+MERGE_DIST = 16.0
+MAX_CELLS = 1 << 22   # per-plane mask budget; a larger plane coarsens its cell
+
+
+def _plane_groups(tris, ts):
+    """(T,3,3), (T,) target ids -> per triangle a PLANE id: within one target, the largest
+    triangle seeds a plane and every triangle within MERGE_DEG of its normal and MERGE_DIST of it
+    joins (the BSP compile leaves near-coplanar pieces of one ramp with slightly different planes;
+    a curved ramp becomes a few planes, one per MERGE_DEG of turn)"""
+    e1 = tris[:, 1] - tris[:, 0]
+    e2 = tris[:, 2] - tris[:, 0]
+    cr = np.cross(e1, e2)
+    area = 0.5 * np.linalg.norm(cr, axis=1)
+    n = cr / np.maximum(2.0 * area[:, None], 1e-12)
+    flip = (n[:, 2] < -1e-6) | ((np.abs(n[:, 2]) <= 1e-6) & ((n[:, 1] < -1e-6)
+                                                           | ((np.abs(n[:, 1]) <= 1e-6)
+                                                              & (n[:, 0] < 0))))
+    n[flip] *= -1.0
+    cen = tris.mean(axis=1)
+    pid = -np.ones(len(tris), np.int64)
+    cos_m = np.cos(np.radians(MERGE_DEG))
+    nxt = 0
+    for s in np.unique(ts):
+        idx = np.flatnonzero(ts == s)
+        idx = idx[np.argsort(-area[idx])]
+        free = np.ones(len(idx), bool)
+        for a in range(len(idx)):
+            if not free[a]:
+                continue
+            seed = idx[a]
+            ns = n[seed]
+            ds = float(ns @ cen[seed])
+            cand = idx[free]
+            close = (n[cand] @ ns >= cos_m) & (np.abs(cen[cand] @ ns - ds) <= MERGE_DIST)
+            pid[cand[close]] = nxt
+            free[np.isin(idx, cand[close])] = False
+            nxt += 1
+    return pid, n, area
+
+
+def _rasterize(uv_tris, res):
+    """(k,3,2) triangles in plane coordinates -> (u0, v0, nu, nv, mask uint8 [nv, nu])"""
+    lo = uv_tris.reshape(-1, 2).min(0) - 2 * res
+    hi = uv_tris.reshape(-1, 2).max(0) + 2 * res
+    nu = int(np.ceil((hi[0] - lo[0]) / res))
+    nv = int(np.ceil((hi[1] - lo[1]) / res))
+    m = np.zeros((nv, nu), np.uint8)
+    for tr in uv_tris:
+        a, b, c = tr
+        bl = np.floor((np.minimum(np.minimum(a, b), c) - lo) / res).astype(int)
+        bh = np.ceil((np.maximum(np.maximum(a, b), c) - lo) / res).astype(int)
+        iu = np.arange(max(bl[0], 0), min(bh[0] + 1, nu))
+        iv = np.arange(max(bl[1], 0), min(bh[1] + 1, nv))
+        if not len(iu) or not len(iv):
+            continue
+        U, V = np.meshgrid(lo[0] + (iu + 0.5) * res, lo[1] + (iv + 0.5) * res)
+        v0, v1 = b - a, c - a
+        den = v0[0] * v1[1] - v1[0] * v0[1]
+        if abs(den) < 1e-9:
+            continue
+        pu, pv = U - a[0], V - a[1]
+        s = (pu * v1[1] - v1[0] * pv) / den
+        t = (v0[0] * pv - pu * v0[1]) / den
+        # a half-cell margin, so a sliver still covers the cells it crosses
+        eps = 0.5 * res / max(np.sqrt(abs(den)), 1e-9)
+        ins = (s >= -eps) & (t >= -eps) & (s + t <= 1.0 + eps)
+        m[np.ix_(iv, iu)] |= ins.astype(np.uint8)
+    # one cell of dilation: closes the cracks the compiler's T-junctions leave between pieces
+    dm = m.copy()
+    dm[1:] |= m[:-1]
+    dm[:-1] |= m[1:]
+    dm[:, 1:] |= m[:, :-1]
+    dm[:, :-1] |= m[:, 1:]
+    return float(lo[0]), float(lo[1]), nu, nv, dm
+
 
 if HAVE_TRITON:
     @triton.jit
-    def _tm_kernel(dx_ptr, dy_ptr, dz_ptr, eye_ptr, sid_ptr, cnt_ptr,
-                   pn_ptr, pv0_ptr, pa1_ptr, pa2_ptr, pd_ptr, out_ptr, kout_ptr, R, MT,
-                   BLOCK: tl.constexpr):
-        """one program = one env x BLOCK rays: the nearest hit distance of each ray on that env's
-        target surface (inf = none) - the torch path's ray-plane distance and dual-vector
-        barycentrics, term for term, looping over the surface's own triangles"""
+    def _tm_plane_kernel(dx_ptr, dy_ptr, dz_ptr, eye_ptr, sid_ptr, pstart_ptr, pcount_ptr,
+                         pf_ptr, pi_ptr, mask_ptr, sph_ptr, t_ptr, R, BLOCK: tl.constexpr):
+        """one program = one env x BLOCK rays: the nearest distance at which each ray crosses one
+        of its target's planes INSIDE that plane's mask (inf = never). pf = 16 floats per plane
+        (n, d, origin, e_u, e_v, u0, v0, cell), pi = (mask offset, nu, nv)"""
         e = tl.program_id(0)
         rb = tl.program_id(1)
         offs = rb * BLOCK + tl.arange(0, BLOCK)
@@ -54,313 +133,320 @@ if HAVE_TRITON:
         oz = tl.load(eye_ptr + e * 3 + 2)
         s = tl.load(sid_ptr + e)
         best = tl.full([BLOCK], float("inf"), tl.float32)
-        bk = tl.full([BLOCK], 0, tl.int64)
-        c = tl.where(s >= 0, tl.load(cnt_ptr + tl.maximum(s, 0)), 0)
-        sb = tl.maximum(s, 0) * MT
-        for k in range(0, c):
-            q = (sb + k) * 3
-            nx = tl.load(pn_ptr + q + 0)
-            ny = tl.load(pn_ptr + q + 1)
-            nz = tl.load(pn_ptr + q + 2)
-            vx = tl.load(pv0_ptr + q + 0)
-            vy = tl.load(pv0_ptr + q + 1)
-            vz = tl.load(pv0_ptr + q + 2)
-            ax = tl.load(pa1_ptr + q + 0)
-            ay = tl.load(pa1_ptr + q + 1)
-            az = tl.load(pa1_ptr + q + 2)
-            bx = tl.load(pa2_ptr + q + 0)
-            by = tl.load(pa2_ptr + q + 1)
-            bz = tl.load(pa2_ptr + q + 2)
-            d = tl.load(pd_ptr + sb + k)
-            nd = dx * nx + dy * ny + dz * nz
-            ok = tl.abs(nd) > 1e-9
-            tt = (d - (ox * nx + oy * ny + oz * nz)) / tl.where(ok, nd, 1.0)
-            ovx = ox - vx
-            ovy = oy - vy
-            ovz = oz - vz
-            u = (ovx * ax + ovy * ay + ovz * az) + tt * (dx * ax + dy * ay + dz * az)
-            v = (ovx * bx + ovy * by + ovz * bz) + tt * (dx * bx + dy * by + dz * bz)
-            hit = ok & (tt > 0.0) & (u >= 0.0) & (v >= 0.0) & (u + v <= 1.0)
-            better = hit & (tt < best)
-            best = tl.where(better, tt, best)
-            bk = tl.where(better, k, bk)
-        tl.store(out_ptr + base, best, mask=m)
-        tl.store(kout_ptr + base, bk, mask=m)
+        p0 = tl.where(s >= 0, tl.load(pstart_ptr + tl.maximum(s, 0)), 0)
+        pc = tl.where(s >= 0, tl.load(pcount_ptr + tl.maximum(s, 0)), 0)
+        for j in range(0, pc):
+            # the plane's bounding sphere: a block none of whose rays passes it skips the plane
+            sx = tl.load(sph_ptr + (p0 + j) * 4 + 0) - ox
+            sy = tl.load(sph_ptr + (p0 + j) * 4 + 1) - oy
+            sz = tl.load(sph_ptr + (p0 + j) * 4 + 2) - oz
+            sr = tl.load(sph_ptr + (p0 + j) * 4 + 3)
+            tcl = sx * dx + sy * dy + sz * dz
+            cc = sx * sx + sy * sy + sz * sz
+            near = ((cc - tcl * tcl) <= sr * sr) & ((tcl > 0.0) | (cc <= sr * sr)) & m
+            if tl.sum(near.to(tl.int32), axis=0) > 0:
+                best = _tm_plane_one(dx, dy, dz, ox, oy, oz, pf_ptr, pi_ptr, mask_ptr, p0 + j,
+                                     best, m)
+        tl.store(t_ptr + base, best, mask=m)
 
     @triton.jit
-    def _tm_vis_kernel(dx_ptr, dy_ptr, dz_ptr, td_ptr, eye_ptr, sid_ptr, cnt_ptr,
-                       pn_ptr, pv0_ptr, pa1_ptr, pa2_ptr, pd_ptr, sph_ptr, vis_ptr, R, MT,
-                       rng, tol, graze, BLOCK: tl.constexpr):
-        """_tm_kernel's nearest hit, then the visibility rule in registers: the hit is at or
-        before the ray's own depth hit (+ tol), or the ray is clear to range, or the depth's
-        hit point lies within `graze` of the hit triangle's plane (a skimming ray)"""
+    def _tm_target_best(dx, dy, dz, ox, oy, oz, s, pstart_ptr, pcount_ptr, pf_ptr, pi_ptr,
+                        mask_ptr, sph_ptr, m, BLOCK: tl.constexpr):
+        """the nearest masked-plane hit of each ray on target s (inf = none)"""
+        best = tl.full([BLOCK], float("inf"), tl.float32)
+        p0 = tl.where(s >= 0, tl.load(pstart_ptr + tl.maximum(s, 0)), 0)
+        pc = tl.where(s >= 0, tl.load(pcount_ptr + tl.maximum(s, 0)), 0)
+        for j in range(0, pc):
+            sx = tl.load(sph_ptr + (p0 + j) * 4 + 0) - ox
+            sy = tl.load(sph_ptr + (p0 + j) * 4 + 1) - oy
+            sz = tl.load(sph_ptr + (p0 + j) * 4 + 2) - oz
+            sr = tl.load(sph_ptr + (p0 + j) * 4 + 3)
+            tcl = sx * dx + sy * dy + sz * dz
+            cc = sx * sx + sy * sy + sz * sz
+            near = ((cc - tcl * tcl) <= sr * sr) & ((tcl > 0.0) | (cc <= sr * sr)) & m
+            if tl.sum(near.to(tl.int32), axis=0) > 0:
+                best = _tm_plane_one(dx, dy, dz, ox, oy, oz, pf_ptr, pi_ptr, mask_ptr, p0 + j,
+                                     best, m)
+        return best
+
+    @triton.jit
+    def _tm_fused_kernel(yaw_ptr, pitch_ptr, eye_ptr, yoff_ptr, poff_ptr, s1_ptr, s2_ptr,
+                         pstart_ptr, pcount_ptr, pf_ptr, pi_ptr, mask_ptr, sph_ptr, out_ptr,
+                         H, W, BLOCK: tl.constexpr):
+        """one program = one env x BLOCK pixels: the equiangular camera's ray (the lidar's own
+        _dirs_equiangular, term for term), both targets, and the channel value: +1 where the next
+        target is the nearer hit, -1 where the one after is, 0 elsewhere"""
         e = tl.program_id(0)
         rb = tl.program_id(1)
+        R = H * W
         offs = rb * BLOCK + tl.arange(0, BLOCK)
         m = offs < R
-        base = e * R + offs
-        dx = tl.load(dx_ptr + base, mask=m, other=0.0)
-        dy = tl.load(dy_ptr + base, mask=m, other=0.0)
-        dz = tl.load(dz_ptr + base, mask=m, other=0.0)
-        td = tl.load(td_ptr + base, mask=m, other=0.0)
+        row = offs // W
+        col = offs % W
+        d2r = 0.017453292519943295
+        pa = tl.load(pitch_ptr + e) * d2r + tl.load(poff_ptr + row, mask=m, other=0.0)
+        ya = tl.load(yaw_ptr + e) * d2r + tl.load(yoff_ptr + col, mask=m, other=0.0)
+        cp = tl.cos(pa)
+        dx = cp * tl.cos(ya)
+        dy = cp * tl.sin(ya)
+        dz = tl.sin(pa)
         ox = tl.load(eye_ptr + e * 3 + 0)
         oy = tl.load(eye_ptr + e * 3 + 1)
         oz = tl.load(eye_ptr + e * 3 + 2)
-        s = tl.load(sid_ptr + e)
-        best = tl.full([BLOCK], float("inf"), tl.float32)
-        bnx = tl.zeros([BLOCK], tl.float32)
-        bny = tl.zeros([BLOCK], tl.float32)
-        bnz = tl.zeros([BLOCK], tl.float32)
-        bd = tl.zeros([BLOCK], tl.float32)
-        c = tl.where(s >= 0, tl.load(cnt_ptr + tl.maximum(s, 0)), 0)
-        sb = tl.maximum(s, 0) * MT
-        # the block's rays against the surface's bounding sphere: none passes it -> no loop
-        sx = tl.load(sph_ptr + tl.maximum(s, 0) * 4 + 0)
-        sy = tl.load(sph_ptr + tl.maximum(s, 0) * 4 + 1)
-        sz = tl.load(sph_ptr + tl.maximum(s, 0) * 4 + 2)
-        sr = tl.load(sph_ptr + tl.maximum(s, 0) * 4 + 3)
-        cx = sx - ox
-        cy = sy - oy
-        cz = sz - oz
-        tc = cx * dx + cy * dy + cz * dz
-        cc = cx * cx + cy * cy + cz * cz
-        near = ((cc - tc * tc) <= sr * sr) & ((tc > 0.0) | (cc <= sr * sr)) & m
-        n_near = tl.sum(near.to(tl.int32), axis=0)
-        c = tl.where(n_near > 0, c, 0)
-        for k in range(0, c):
-            q = (sb + k) * 3
-            nx = tl.load(pn_ptr + q + 0)
-            ny = tl.load(pn_ptr + q + 1)
-            nz = tl.load(pn_ptr + q + 2)
-            vx = tl.load(pv0_ptr + q + 0)
-            vy = tl.load(pv0_ptr + q + 1)
-            vz = tl.load(pv0_ptr + q + 2)
-            ax = tl.load(pa1_ptr + q + 0)
-            ay = tl.load(pa1_ptr + q + 1)
-            az = tl.load(pa1_ptr + q + 2)
-            bx = tl.load(pa2_ptr + q + 0)
-            by = tl.load(pa2_ptr + q + 1)
-            bz = tl.load(pa2_ptr + q + 2)
-            d = tl.load(pd_ptr + sb + k)
+        b1 = _tm_target_best(dx, dy, dz, ox, oy, oz, tl.load(s1_ptr + e), pstart_ptr, pcount_ptr,
+                             pf_ptr, pi_ptr, mask_ptr, sph_ptr, m, BLOCK)
+        b2 = _tm_target_best(dx, dy, dz, ox, oy, oz, tl.load(s2_ptr + e), pstart_ptr, pcount_ptr,
+                             pf_ptr, pi_ptr, mask_ptr, sph_ptr, m, BLOCK)
+        inf = float("inf")
+        val = tl.where((b1 < inf) & (b1 <= b2), 1.0, tl.where(b2 < inf, -1.0, 0.0))
+        tl.store(out_ptr + e * R + offs, val, mask=m)
+
+    @triton.jit
+    def _tm_plane_one(dx, dy, dz, ox, oy, oz, pf_ptr, pi_ptr, mask_ptr, pj, best, m):
+        """one plane: the ray-plane distance, the mask lookup, the running nearest hit"""
+        if True:
+            q = pj * 16
+            nx = tl.load(pf_ptr + q + 0)
+            ny = tl.load(pf_ptr + q + 1)
+            nz = tl.load(pf_ptr + q + 2)
+            d = tl.load(pf_ptr + q + 3)
+            px0 = tl.load(pf_ptr + q + 4)
+            py0 = tl.load(pf_ptr + q + 5)
+            pz0 = tl.load(pf_ptr + q + 6)
+            ux = tl.load(pf_ptr + q + 7)
+            uy = tl.load(pf_ptr + q + 8)
+            uz = tl.load(pf_ptr + q + 9)
+            vx = tl.load(pf_ptr + q + 10)
+            vy = tl.load(pf_ptr + q + 11)
+            vz = tl.load(pf_ptr + q + 12)
+            u0 = tl.load(pf_ptr + q + 13)
+            v0 = tl.load(pf_ptr + q + 14)
+            res = tl.load(pf_ptr + q + 15)
+            off = tl.load(pi_ptr + pj * 3 + 0)
+            nu = tl.load(pi_ptr + pj * 3 + 1)
+            nv = tl.load(pi_ptr + pj * 3 + 2)
             nd = dx * nx + dy * ny + dz * nz
             ok = tl.abs(nd) > 1e-9
             tt = (d - (ox * nx + oy * ny + oz * nz)) / tl.where(ok, nd, 1.0)
-            ovx = ox - vx
-            ovy = oy - vy
-            ovz = oz - vz
-            u = (ovx * ax + ovy * ay + ovz * az) + tt * (dx * ax + dy * ay + dz * az)
-            v = (ovx * bx + ovy * by + ovz * bz) + tt * (dx * bx + dy * by + dz * bz)
-            hit = ok & (tt > 0.0) & (u >= 0.0) & (v >= 0.0) & (u + v <= 1.0)
-            better = hit & (tt < best)
-            best = tl.where(better, tt, best)
-            bnx = tl.where(better, nx, bnx)
-            bny = tl.where(better, ny, bny)
-            bnz = tl.where(better, nz, bnz)
-            bd = tl.where(better, d, bd)
-        px = ox + dx * td
-        py = oy + dy * td
-        pz = oz + dz * td
-        nl = tl.sqrt(bnx * bnx + bny * bny + bnz * bnz) + 1e-9
-        dist = tl.abs(bnx * px + bny * py + bnz * pz - bd) / nl
-        found = best < 1e30
-        vis = found & ((best <= td + tol) | (td >= rng - 1.0) | ((best > td) & (dist <= graze)))
-        tl.store(vis_ptr + base, vis.to(tl.int8), mask=m)
+            rx = ox + dx * tt - px0
+            ry = oy + dy * tt - py0
+            rz = oz + dz * tt - pz0
+            uu = rx * ux + ry * uy + rz * uz
+            vv = rx * vx + ry * vy + rz * vz
+            iu = tl.floor((uu - u0) / res).to(tl.int64)
+            iv = tl.floor((vv - v0) / res).to(tl.int64)
+            inb = ok & (tt > 0.0) & (iu >= 0) & (iu < nu) & (iv >= 0) & (iv < nv) & m
+            mv = tl.load(mask_ptr + off + iv * nu + iu, mask=inb, other=0)
+            hit = inb & (mv > 0)
+            best = tl.where(hit & (tt < best), tt, best)
+        return best
 
 
 class TargetMask:
-    def __init__(self, mesh_npz, finish_box=None, device="cuda", max_tris: int = 128,
-                 tol: float = 48.0):
+    def __init__(self, mesh_npz, finish_box=None, device="cuda", unit: str = "face",
+                 res: float = RES):
+        if unit not in ("face", "object"):
+            raise ValueError(f"TargetMask: unit face|object, got {unit!r}")
         z = np.load(mesh_npz)
-        tris = z["tris"].astype(np.float32)
+        tris = z["tris"].astype(np.float64)
         ts = z["tri_surf"].astype(np.int64)
-        self.n_surf = int(len(z["cat"]))
+        cat = z["cat"].astype(np.int64)
+        self.unit = unit
         self.device = torch.device(device)
-        self.max_tris = int(max_tris)
-        self.tol = float(tol)
-        # per surface: its (up to max_tris LARGEST) triangles, padded: (S, max_tris, 3, 3)
-        area = 0.5 * np.linalg.norm(np.cross(tris[:, 1] - tris[:, 0], tris[:, 2] - tris[:, 0]),
-                                    axis=1)
-        pad = np.zeros((self.n_surf, self.max_tris, 3, 3), np.float32)
-        cnt = np.zeros(self.n_surf, np.int64)
-        for s in range(self.n_surf):
-            idx = np.flatnonzero(ts == s)
-            if len(idx) > self.max_tris:
-                idx = idx[np.argsort(-area[idx])[:self.max_tris]]
-            pad[s, :len(idx)] = tris[idx]
-            cnt[s] = len(idx)
-        self.tris = torch.as_tensor(pad, device=self.device)
-        self.cnt = torch.as_tensor(cnt, device=self.device)
-        # per triangle: the (unnormalised) plane normal n and offset d = n.v0, and the DUAL vectors
-        # a1, a2 with u = (p - v0).a1, v = (p - v0).a2 for a point p of the plane - so a ray's hit
-        # is three batched matmuls (dir.n, dir.a1, dir.a2) and elementwise work, no cross products
-        v0 = pad[:, :, 0].astype(np.float64)
-        e1 = pad[:, :, 1] - v0
-        e2 = pad[:, :, 2] - v0
-        nn = np.cross(e1, e2)
-        c1 = np.cross(e2, nn)
-        c2 = np.cross(nn, e1)
-        den1 = np.einsum("smk,smk->sm", e1, c1)
-        den2 = np.einsum("smk,smk->sm", e2, c2)
-        good = (np.abs(den1) > 1e-9) & (np.abs(den2) > 1e-9)
-        a1 = np.where(good[..., None], c1 / np.where(good, den1, 1.0)[..., None], 0.0)
-        a2 = np.where(good[..., None], c2 / np.where(good, den2, 1.0)[..., None], 0.0)
-        f32 = lambda x: torch.as_tensor(np.asarray(x, np.float32), device=self.device)  # noqa: E731
-        self.pn, self.pv0, self.pa1, self.pa2 = f32(nn), f32(v0), f32(a1), f32(a2)
-        self.pd = f32(np.einsum("smk,smk->sm", nn, v0))
-        # per surface: a bounding sphere (centre, radius) of its kept triangles - a block of rays
-        # that passes none of it skips the triangle loop
-        sph = np.zeros((self.n_surf, 4), np.float32)
-        for s in range(self.n_surf):
-            if cnt[s]:
-                v = pad[s, :cnt[s]].reshape(-1, 3)
-                c = v.mean(0)
-                sph[s, :3] = c
-                sph[s, 3] = float(np.linalg.norm(v - c, axis=1).max()) + 1.0
-        self.sph = f32(sph)
-        self.fin = (None if finish_box is None else
+        keep = ts >= 0
+        tris, ts = tris[keep], ts[keep]
+        n_surf = int(len(cat))
+        if unit == "object":
+            # a target is a whole OBJECT: target faces (floors, ramps) touching at an edge (their
+            # edge samples share a 16 u cell), whatever their angle
+            tgt = np.isin(ts, np.flatnonzero((cat == 0) | (cat == 1)))
+            obj = self._objects(tris[tgt], ts[tgt], n_surf)
+            self.obj_of_surf = obj
+            ts = np.where(tgt, obj[ts], -1)
+            keep = ts >= 0
+            tris, ts = tris[keep], ts[keep]
+            self.n_targets = int(obj.max()) + 1 if (obj >= 0).any() else 0
+        else:
+            self.obj_of_surf = np.arange(n_surf)
+            self.n_targets = n_surf
+        pid, nrm, area = _plane_groups(tris, ts)
+        planes = []                      # (target, pf[16], mask, bounding sphere)
+        for p in np.unique(pid):
+            sel = pid == p
+            T = tris[sel]
+            w = area[sel]
+            n = (nrm[sel] * w[:, None]).sum(0)
+            n = n / max(np.linalg.norm(n), 1e-12)
+            eu = np.cross(n, [0.0, 0.0, 1.0])
+            if np.linalg.norm(eu) < 1e-3:
+                eu = np.array([1.0, 0.0, 0.0])
+            eu = eu / np.linalg.norm(eu)
+            ev = np.cross(n, eu)
+            o = (T.mean(axis=1) * w[:, None]).sum(0) / max(w.sum(), 1e-12)
+            rel = T - o
+            uv = np.stack([rel @ eu, rel @ ev], axis=-1)            # (k, 3, 2)
+            ext = uv.reshape(-1, 2).max(0) - uv.reshape(-1, 2).min(0)
+            r = max(float(res), float(np.sqrt((ext[0] + 4 * res) * (ext[1] + 4 * res)
+                                              / MAX_CELLS)))
+            u0, v0, nu, nv, mk = _rasterize(uv, r)
+            pf = np.array([n[0], n[1], n[2], float(n @ o), o[0], o[1], o[2], eu[0], eu[1], eu[2],
+                           ev[0], ev[1], ev[2], u0, v0, r], np.float32)
+            vv = T.reshape(-1, 3)
+            sc = vv.mean(0)
+            sph = np.array([sc[0], sc[1], sc[2],
+                            float(np.linalg.norm(vv - sc, axis=1).max()) + 2.0 * r], np.float32)
+            planes.append((int(ts[sel][0]), pf, mk, sph))
+        planes.sort(key=lambda x: x[0])
+        start = np.zeros(self.n_targets, np.int64)
+        count = np.zeros(self.n_targets, np.int64)
+        pi, masks, off = [], [], 0
+        for i, (s, _pf, mk, _sph) in enumerate(planes):
+            if count[s] == 0:
+                start[s] = i
+            count[s] += 1
+            pi.append((off, mk.shape[1], mk.shape[0]))
+            masks.append(mk.reshape(-1))
+            off += mk.size
+        self.n_planes = len(planes)
+        self.planes_per_target = count
+        self.pf = torch.as_tensor(np.stack([p[1] for p in planes]) if planes
+                                  else np.zeros((0, 16), np.float32), device=self.device)
+        self.pi = torch.as_tensor(np.asarray(pi, np.int64).reshape(-1, 3), device=self.device)
+        self.mask = torch.as_tensor(np.concatenate(masks) if masks else np.zeros(1, np.uint8),
+                                    device=self.device)
+        self.sph = torch.as_tensor(np.stack([p[3] for p in planes]) if planes
+                                   else np.zeros((0, 4), np.float32), device=self.device)
+        self.pstart = torch.as_tensor(start, device=self.device)
+        self.pcount = torch.as_tensor(count, device=self.device)
+        self.mask_bytes = int(off)
+        if finish_box is not None and isinstance(finish_box, dict):
+            finish_box = (finish_box["mins"], finish_box["maxs"])
+        self.fin = (None if finish_box is None or finish_box[0] is None else
                     (torch.as_tensor(np.asarray(finish_box[0], np.float32), device=self.device),
                      torch.as_tensor(np.asarray(finish_box[1], np.float32), device=self.device)))
         self.t1 = None
         self.t2 = None
 
+    @staticmethod
+    def _objects(tris, ts, n_surf):
+        """surface -> object id: target surfaces whose edges share a 16 u cell are one object"""
+        from scipy.sparse import coo_matrix
+        from scipy.sparse.csgraph import connected_components
+        eds = []
+        for a_, b_ in ((0, 1), (1, 2), (2, 0)):
+            seg = tris[:, b_] - tris[:, a_]
+            k = np.maximum(1, np.ceil(np.linalg.norm(seg, axis=1) / 8.0).astype(np.int64))
+            tid = np.repeat(np.arange(len(tris)), k + 1)
+            frac = np.concatenate([np.linspace(0.0, 1.0, kk + 1) for kk in k])
+            eds.append((ts[tid], np.floor((tris[tid, a_] + seg[tid] * frac[:, None]) / 16.0)))
+        sid = np.concatenate([e[0] for e in eds])
+        cell = np.concatenate([e[1] for e in eds]).astype(np.int64)
+        _c, cid = np.unique(cell, axis=0, return_inverse=True)
+        cid = cid.reshape(-1)
+        g = coo_matrix((np.ones(len(sid)), (sid, n_surf + cid)),
+                       shape=(n_surf + len(_c), n_surf + len(_c)))
+        _n, lab = connected_components(g, directed=False)
+        used = np.unique(ts)
+        obj = -np.ones(n_surf, np.int64)
+        _l, compact = np.unique(lab[used], return_inverse=True)
+        obj[used] = compact.reshape(-1)
+        return obj
+
     def set_targets(self, n_envs, t1, t2):
-        """per env the next target (t1, drawn +1) and the one after (t2, drawn -1): surface ids,
-        FIN for the finish box, NONE for no target"""
+        """per env the next target (t1, +1) and the one after (t2, -1): surface ids (object ids
+        with unit="object" - see obj_of_surf), FIN for the finish box, NONE for no target"""
         self.t1 = torch.as_tensor(np.asarray(t1, np.int64).reshape(n_envs), device=self.device)
         self.t2 = torch.as_tensor(np.asarray(t2, np.int64).reshape(n_envs), device=self.device)
 
-    def _tri_hit(self, sid, ex, ey, ez, dx, dy, dz, chunk: int = 64):
-        if HAVE_TRITON and self.device.type == "cuda":
-            N, H, W = dx.shape
-            R = H * W
-            out = torch.empty(N, R, device=self.device, dtype=torch.float32)
-            kout = torch.empty(N, R, device=self.device, dtype=torch.int64)
-            eye = torch.cat([ex, ey, ez], dim=-1).reshape(N, 3).contiguous()
-            _tm_kernel[(N, triton.cdiv(R, TM_BLOCK))](
-                dx.contiguous(), dy.contiguous(), dz.contiguous(), eye, sid.contiguous(), self.cnt,
-                self.pn, self.pv0, self.pa1, self.pa2, self.pd, out, kout, R, self.max_tris,
-                BLOCK=TM_BLOCK)
-            return out.reshape(N, H, W), kout.reshape(N, H, W)
-        return self._tri_hit_torch(sid, ex, ey, ez, dx, dy, dz, chunk)
+    def _plane_hit_torch(self, sid, eye, dirs):
+        """the torch reference of _tm_plane_kernel: (N,), (N,3), (N,R,3) -> (N,R) distances"""
+        N, R, _ = dirs.shape
+        best = torch.full((N, R), float("inf"), device=self.device)
+        cnt = torch.where(sid >= 0, self.pcount[sid.clamp(min=0)], torch.zeros_like(sid))
+        st = torch.where(sid >= 0, self.pstart[sid.clamp(min=0)], torch.zeros_like(sid))
+        for j in range(int(cnt.max().item()) if N else 0):
+            act = cnt > j
+            pidx = (st + j).clamp(max=max(self.n_planes - 1, 0))
+            pf = self.pf[pidx]                                    # (N, 16)
+            pi = self.pi[pidx]
+            n = pf[:, 0:3]
+            nd = (dirs * n[:, None]).sum(-1)
+            ok = nd.abs() > 1e-9
+            tt = ((pf[:, 3] - (eye * n).sum(-1))[:, None]
+                  / torch.where(ok, nd, torch.ones_like(nd)))
+            rel = eye[:, None] + dirs * tt[..., None] - pf[:, None, 4:7]
+            uu = (rel * pf[:, None, 7:10]).sum(-1)
+            vv = (rel * pf[:, None, 10:13]).sum(-1)
+            iu = torch.floor((uu - pf[:, 13:14]) / pf[:, 15:16]).long()
+            iv = torch.floor((vv - pf[:, 14:15]) / pf[:, 15:16]).long()
+            nu, nv = pi[:, 1:2], pi[:, 2:3]
+            inb = ok & (tt > 0) & (iu >= 0) & (iu < nu) & (iv >= 0) & (iv < nv) & act[:, None]
+            flat = (pi[:, 0:1] + iv.clamp(min=0) * nu + iu.clamp(min=0)).clamp(
+                0, max(self.mask.numel() - 1, 0))
+            hit = inb & (self.mask[flat] > 0)
+            best = torch.where(hit & (tt < best), tt, best)
+        return best
 
-    def _tri_hit_torch(self, sid, ex, ey, ez, dx, dy, dz, chunk: int = 64):
-        """(N,) surface ids, eye (N,1,1), dirs (N,H,W) -> the nearest hit distance of each ray on
-        that surface's triangles (inf = none). Per env the ray-plane distance and the two
-        barycentric coordinates are batched matmuls of the ray directions against the triangles'
-        precomputed normals and dual vectors; `chunk` envs at a time, padded to the chunk's own
-        largest triangle count."""
-        N, H, W = dx.shape
-        R = H * W
-        out = torch.full((N, R), float("inf"), device=self.device)
-        kout = torch.zeros((N, R), dtype=torch.int64, device=self.device)
-        cnt_all = torch.where(sid >= 0, self.cnt[sid.clamp(min=0)], torch.zeros_like(sid))
-        dirs = torch.stack([dx, dy, dz], dim=-1).reshape(N, R, 3)
-        eye = torch.cat([ex, ey, ez], dim=-1).reshape(N, 3)
-        for c0 in range(0, N, chunk):
-            sl = slice(c0, min(N, c0 + chunk))
-            M = int(cnt_all[sl].max().item()) if cnt_all[sl].numel() else 0
-            if M == 0:
-                continue
-            s_ = sid[sl].clamp(min=0)
-            n_, v0 = self.pn[s_, :M], self.pv0[s_, :M]            # (n, M, 3)
-            a1, a2, d_ = self.pa1[s_, :M], self.pa2[s_, :M], self.pd[s_, :M]
-            valid = torch.arange(M, device=self.device)[None, :] < cnt_all[sl][:, None]
-            dr, o = dirs[sl], eye[sl]
-            nd = torch.bmm(dr, n_.transpose(1, 2))                # (n, R, M)
-            no = (n_ * o[:, None]).sum(-1)                        # (n, M)
-            ok_nd = nd.abs() > 1e-9
-            tt = (d_ - no)[:, None] / torch.where(ok_nd, nd, torch.ones_like(nd))
-            ov = o[:, None] - v0                                   # (n, M, 3)
-            u = (ov * a1).sum(-1)[:, None] + tt * torch.bmm(dr, a1.transpose(1, 2))
-            v = (ov * a2).sum(-1)[:, None] + tt * torch.bmm(dr, a2.transpose(1, 2))
-            hit = ok_nd & (tt > 0) & (u >= 0) & (v >= 0) & (u + v <= 1) & valid[:, None]
-            mv, mi = torch.where(hit, tt, torch.full_like(tt, float("inf"))).min(dim=-1)
-            out[sl] = mv
-            kout[sl] = mi
-        return out.reshape(N, H, W), kout.reshape(N, H, W)
-
-    def _box_hit(self, ex, ey, ez, dx, dy, dz):
+    def _box_hit(self, eye, dirs):
         """entry distance of each ray into the finish box (inf = misses it)"""
         lo, hi = self.fin
-        o = [ex, ey, ez]
-        dd = [dx, dy, dz]
-        tmin = torch.zeros_like(dx)
-        tmax = torch.full_like(dx, float("inf"))
+        tmin = torch.zeros(dirs.shape[:2], device=self.device)
+        tmax = torch.full(dirs.shape[:2], float("inf"), device=self.device)
         for a in range(3):
-            inv = 1.0 / torch.where(dd[a].abs() < 1e-9, torch.full_like(dd[a], 1e-9), dd[a])
-            t0 = (lo[a] - o[a]) * inv
-            t1 = (hi[a] - o[a]) * inv
+            d = dirs[..., a]
+            inv = 1.0 / torch.where(d.abs() < 1e-9, torch.full_like(d, 1e-9), d)
+            t0 = (lo[a] - eye[:, a:a + 1]) * inv
+            t1 = (hi[a] - eye[:, a:a + 1]) * inv
             tmin = torch.maximum(tmin, torch.minimum(t0, t1))
             tmax = torch.minimum(tmax, torch.maximum(t0, t1))
         return torch.where(tmax >= tmin, tmin, torch.full_like(tmin, float("inf")))
 
+    def _dist(self, sid, eye, dx, dy, dz, force_torch=False):
+        N, H, W = dx.shape
+        R = H * W
+        if HAVE_TRITON and self.device.type == "cuda" and not force_torch:
+            t = torch.empty(N, R, device=self.device, dtype=torch.float32)
+            _tm_plane_kernel[(N, triton.cdiv(R, TM_BLOCK))](
+                dx.contiguous(), dy.contiguous(), dz.contiguous(), eye, sid.contiguous(),
+                self.pstart, self.pcount, self.pf, self.pi, self.mask, self.sph, t, R,
+                BLOCK=TM_BLOCK)
+        else:
+            dirs = torch.stack([dx, dy, dz], dim=-1).reshape(N, R, 3)
+            t = self._plane_hit_torch(sid, eye, dirs)
+        if self.fin is not None and bool((sid == FIN).any()):
+            dirs = torch.stack([dx, dy, dz], dim=-1).reshape(N, R, 3)
+            t = torch.where((sid == FIN).view(N, 1), self._box_hit(eye, dirs), t)
+        return t
+
     @torch.no_grad()
-    def render(self, lidar, origin, yaw_deg, pitch_deg, ducked, depth):
-        """the channel for a render whose depth channel is ``depth`` (N, H, W): the lidar's own
-        rays (its _dirs_* and eye height), the decoded hit distance, then the two targets"""
+    def render(self, lidar, origin, yaw_deg, pitch_deg, ducked, depth=None, force_torch=False):
+        """(N, H, W): +1 where the view sees the next target, -1 the one after, 0 elsewhere - no
+        occlusion; the nearer target wins where the two overlap. `depth` is not needed."""
         N = origin.shape[0]
+        eye = torch.stack([origin[:, 0], origin[:, 1],
+                           origin[:, 2] + torch.where(ducked.bool(), 12.0, 17.0)],
+                          dim=1).float().contiguous()
+        none = torch.full((N,), NONE, dtype=torch.int64, device=self.device)
+        s1 = self.t1 if self.t1 is not None else none
+        s2 = self.t2 if self.t2 is not None else none
+        if (HAVE_TRITON and self.device.type == "cuda" and not force_torch
+                and not lidar.pinhole and not bool(((s1 == FIN) | (s2 == FIN)).any())):
+            out = torch.empty(N, lidar.H, lidar.W, device=self.device, dtype=torch.float32)
+            R = lidar.H * lidar.W
+            _tm_fused_kernel[(N, triton.cdiv(R, TM_BLOCK))](
+                yaw_deg.float().contiguous(), pitch_deg.float().contiguous(), eye,
+                lidar.yoff, lidar.poff, s1.contiguous(), s2.contiguous(), self.pstart,
+                self.pcount, self.pf, self.pi, self.mask, self.sph, out, lidar.H, lidar.W,
+                BLOCK=TM_BLOCK)
+            return out
         lidar._ensure_buffers(N)
-        ex = origin[:, 0].view(N, 1, 1).float()
-        ey = origin[:, 1].view(N, 1, 1).float()
-        ez = (origin[:, 2] + torch.where(ducked.bool(), 12.0, 17.0)).view(N, 1, 1).float()
         dirs = lidar._dirs_pinhole if lidar.pinhole else lidar._dirs_equiangular
         dirs(N, yaw_deg, pitch_deg, np.pi / 180.0)
         dx, dy, dz = lidar._dx, lidar._dy, lidar._dz
-        t_depth = lidar.decode_depth(depth.reshape(N, lidar.H, lidar.W))
-        out = torch.zeros(N, lidar.H, lidar.W, device=self.device)
-        o3 = (ex, ey, ez)
-        cell = float(getattr(lidar, "cell", 16.0))
-        tol = max(self.tol, 3.0 * cell)
-        if HAVE_TRITON and self.device.type == "cuda":
-            R = lidar.H * lidar.W
-            eye = torch.cat([ex, ey, ez], dim=-1).reshape(N, 3).contiguous()
-            tdc = t_depth.contiguous().float()
-            dxc, dyc, dzc = dx.contiguous(), dy.contiguous(), dz.contiguous()
-            for sid, val in ((self.t2, -1.0), (self.t1, 1.0)):     # t1 last: it wins a tie
-                if sid is None:
-                    continue
-                vis = torch.empty(N, R, device=self.device, dtype=torch.int8)
-                _tm_vis_kernel[(N, triton.cdiv(R, TM_BLOCK))](
-                    dxc, dyc, dzc, tdc, eye, sid.contiguous(), self.cnt, self.pn, self.pv0,
-                    self.pa1, self.pa2, self.pd, self.sph, vis, R, self.max_tris,
-                    float(lidar.range),
-                    float(tol), float(GRAZE * cell), BLOCK=TM_BLOCK)
-                vis = vis.reshape(N, lidar.H, lidar.W).bool()
-                if self.fin is not None and bool((sid == FIN).any()):
-                    tf = self._box_hit(*o3, dx, dy, dz)
-                    vf = torch.isfinite(tf) & ((tf <= t_depth + tol)
-                                               | (t_depth >= lidar.range - 1.0))
-                    vis = torch.where((sid == FIN).view(N, 1, 1), vf, vis)
-                out = torch.where(vis, torch.full_like(out, val), out)
-            return out
-        for sid, val in ((self.t2, -1.0), (self.t1, 1.0)):     # t1 drawn last: it wins a tie
-            if sid is None:
-                continue
-            t_hit, k_hit = self._tri_hit(sid, *o3, dx, dy, dz)
-            # GRAZING: the depth march (a voxel SDF) stops early on a ray that skims a surface -
-            # measured on utopia, up to thousands of u before the exact hit. When the depth's own
-            # hit point lies within GRAZE cells of the target triangle's plane, the ray was
-            # skimming the target: it sees it
-            s_ = sid.clamp(min=0).view(N, 1, 1).expand_as(k_hit)
-            nrm = self.pn[s_, k_hit]                                   # (N, H, W, 3)
-            nl = nrm.norm(dim=-1).clamp_min(1e-9)
-            px = ex + dx * t_depth
-            py = ey + dy * t_depth
-            pz = ez + dz * t_depth
-            pdist = ((nrm[..., 0] * px + nrm[..., 1] * py + nrm[..., 2] * pz)
-                     - self.pd[s_, k_hit]).abs() / nl
-            graze = ((t_hit > t_depth) & (pdist <= GRAZE * float(getattr(lidar, "cell", 16.0)))
-                     & (sid >= 0).view(N, 1, 1))
-            if self.fin is not None:
-                tf = self._box_hit(*o3, dx, dy, dz)
-                t_hit = torch.where((sid == FIN).view(N, 1, 1), tf, t_hit)
-            # visible: the target's hit is at or before the ray's own depth hit - or the ray saw
-            # NOTHING within the lidar's range (clear to range): then a farther target still shows
-            # its direction (occlusion past the range is unknown to the depth render)
-            clear = t_depth >= lidar.range - 1.0
-            # the march stops on the voxel grid, up to ~a cell (along a grazing ray, more) away
-            # from the exact triangle: the tolerance scales with the lidar's own cell
-            tol = max(self.tol, 3.0 * float(getattr(lidar, "cell", 16.0)))
-            vis = torch.isfinite(t_hit) & ((t_hit <= t_depth + tol) | clear | graze)
-            out = torch.where(vis, torch.full_like(out, val), out)
-        return out
+        inf = torch.full((N, lidar.H * lidar.W), float("inf"), device=self.device)
+        t1 = self._dist(self.t1, eye, dx, dy, dz, force_torch) if self.t1 is not None else inf
+        t2 = self._dist(self.t2, eye, dx, dy, dz, force_torch) if self.t2 is not None else inf
+        out = torch.zeros(N, lidar.H * lidar.W, device=self.device)
+        out = torch.where(torch.isfinite(t2) & (t2 < t1), torch.full_like(out, -1.0), out)
+        out = torch.where(torch.isfinite(t1) & (t1 <= t2), torch.full_like(out, 1.0), out)
+        return out.reshape(N, lidar.H, lidar.W)
