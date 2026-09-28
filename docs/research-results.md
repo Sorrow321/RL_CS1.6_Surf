@@ -31835,3 +31835,28 @@ The exit bonus alone plateaus ~30 u of climb short of S19.
 2. `--ramp-exit-bonus` is the class section 0b disqualifies ("any climb / take-off / ramp bonus"), and K = 50 was chosen after looking at uf2. Its energy term is inherited energy paid again at every exit, not energy gained in the ride. PASS is a box exit that needs no contact.
 
 Codex asks the user to rule on sections 0 and 0b directly. run_arm.sh has no guard for either flag.
+
+## 2026-09-28 13:49 (machine clock) - uf2SEQ_WRdiagV6NP (pinhole, six views, exit bonus, novelty 0.2): the climb after S18 now clears S19's height (z ~190-210) but misses its footprint by ~170 u; no landing
+
+**Run.** From uf2SEQ_WRdiagEB2/ckpt_latest.pt (equiangular, one view), with `--pinhole 1 --target-views 6`, exit bonus 50, `--int-match 0.2 --int-view 0 --reset-int-counts`. It ran 13:15-13:48 (~365M -> ~843M) and was stopped by the energy-aware stationary rule.
+
+**Evals** (S19's lowest contact z 88; box z 40..532):
+
+| step | stages | S18 exit energy | top z after S18 |
+|---|---|---|---|
+| 415M | 0/1/1/0/1/0/0/0/0 (camera switch) | - | - |
+| 440M | 3 x 8 + 0 | 1,088 | -674 |
+| 540M | 3 x 9 | 1,555 | -507 |
+| 641M | 3 x 9 | 1,492 | +57 |
+| 692M | 3 x 9 | 1,475 | +192 |
+| 817M | 3 x 9 | 1,516 | +204 |
+| 843M | 3 x 9 | 1,532 | +177 |
+
+**Training completions: 0% throughout.**
+
+**Where the climb goes.** In the 817M/843M evals, every episode's apex, 1.5-2.1 s after leaving S18, is at z 173-210 around (x -2,785, y -3,540 to -3,600). That is 475-520 u horizontally from S19's box footprint (centre (-2,171, -3,136), x ~-2,346..-2,011). The closest footprint approach while inside the box's z range is 160-193 u; then they fall to z ~-990. The record lands on S19 at (-2,016, -3,031, 392).
+
+**Reading.**
+
+* The energy shortfall is gone: they now clear S19's height by 100+ u. The failure is AIM: the climb heads west and south of S19.
+* Confounded: this run changed three things at once versus EB2 (pinhole, six views, novelty 0.2) and trained 475M steps longer. It does not attribute the gain to pinhole. The equiangular twin (V6N) is still owed.
