@@ -175,10 +175,15 @@ class MultiLine:
         self.speed_floor = float(speed_floor)
         self.near_scale = float(near_scale)
         self.clamp = float(clamp)
-        self.pts = torch.zeros((self.n_envs, self.l_max, 3),
-                               dtype=torch.float32, device=device)
-        self.length = torch.full((self.n_envs,), 2, dtype=torch.int64,
-                                 device=device)
+        self._pts = torch.zeros((self.n_envs, self.l_max, 3),
+                                dtype=torch.float32, device=device)
+        self._length = torch.full((self.n_envs,), 2, dtype=torch.int64,
+                                  device=device)
+        # set_lines QUEUES (env -> float32 (L, 3), the latest wins); the first read of pts /
+        # length installs the queue in ONE host->device copy. A line changes on any physics tick
+        # (the ramp windows, 2026-09-28: 0.49 s of a 9.2 s iteration was per-tick installs, each
+        # a synchronizing copy) but is read once per decision
+        self._pending = {}
         self.t = torch.as_tensor(self.offsets, dtype=torch.float32,
                                  device=device)
         # column indices, held once: the validity mask is rebuilt every call
@@ -190,6 +195,20 @@ class MultiLine:
         # lines are stored at z 0 and each origin is read at z 0). Off = the
         # 3D line, bit-identical to before the flag.
         self.flat = False
+
+    @property
+    def pts(self):
+        """(N, l_max, 3) the lines on the device, every queued install applied"""
+        if self._pending:
+            self._flush()
+        return self._pts
+
+    @property
+    def length(self):
+        """(N,) each line's valid rows, every queued install applied"""
+        if self._pending:
+            self._flush()
+        return self._length
 
     def set_flat(self, flag: bool = True) -> None:
         """Height-free lines (--prim-flat): zero the stored z; from now on
@@ -220,8 +239,12 @@ class MultiLine:
         point repeated, not zeros - it is masked by ``length`` and never
         read, but if a clamp is ever missed the failure is "the env stares at
         its goal" instead of "the env flies at the map origin".
+
+        The install is QUEUED and applied by the next read of ``pts`` /
+        ``length`` (every reader goes through them), so every install between
+        two reads costs one copy; what a read returns is exactly what the
+        immediate installs would have left, the never-read padding aside.
         """
-        import torch
         idx = np.asarray(idx, np.int64).reshape(-1)
         lines = list(lines)
         if len(idx) != len(lines):
@@ -245,17 +268,27 @@ class MultiLine:
                                  f"2 <= L <= l_max={self.l_max}")
             arrs.append(a)
             lens[k] = len(a)
-        w = int(lens.max())
-        block = np.empty((len(idx), w, 3), np.float32)
         for k, a in enumerate(arrs):
+            self._pending[int(idx[k])] = a
+
+    def _flush(self) -> None:
+        """install the queued lines: one padded block, one host->device copy"""
+        import torch
+        items = sorted(self._pending.items())
+        self._pending = {}
+        idx = np.fromiter((k for k, _a in items), np.int64, len(items))
+        lens = np.fromiter((len(a) for _k, a in items), np.int64, len(items))
+        w = int(lens.max())
+        block = np.empty((len(items), w, 3), np.float32)
+        for k, (_e, a) in enumerate(items):
             block[k, :lens[k]] = a
             block[k, lens[k]:] = a[-1]
         if self.flat:
             block[:, :, 2] = 0.0
-        dev = self.pts.device
+        dev = self._pts.device
         it = torch.as_tensor(idx, device=dev)
-        self.pts[it, :w] = torch.as_tensor(block, device=dev)
-        self.length[it] = torch.as_tensor(lens, device=dev)
+        self._pts[it, :w] = torch.as_tensor(block, device=dev)
+        self._length[it] = torch.as_tensor(lens, device=dev)
 
     # -------------------------------------------------------------- features
     @property

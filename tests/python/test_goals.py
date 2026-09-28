@@ -371,3 +371,28 @@ def test_goal_stats_pop():
     assert g.pop()["n"] == 0                             # cleared by pop
     with pytest.raises(ValueError, match="unknown goal kind"):
         g.note(1.0, "bogus", True, 1)
+
+
+def test_queued_installs_read_exactly_like_immediate_ones():
+    """MultiLine.set_lines QUEUES and the next read of pts / length installs the queue in one
+    copy (the ramp windows change lines on any tick, the fan reads once per decision): several
+    installs, some of the same env, then one read - the features and arc positions are those
+    of installing only each env's final line"""
+    rng = np.random.default_rng(3)
+    n = 6
+    h = helix()
+    lines = [h[: rng.integers(8, len(h))] for _ in range(12)]
+    short = chord_line(np.zeros(3), np.array([3000.0, 500.0, -200.0]), SPACING)
+    lazy = MultiLine(n, l_max=len(h), spacing=SPACING)
+    lazy.set_lines([0, 1, 2], lines[:3])
+    lazy.set_lines([1, 4], [lines[3], short])       # env 1 twice: the later one wins
+    lazy.set_lines([5, 0], lines[4:6])
+    final = {0: lines[5], 1: lines[3], 2: lines[2], 4: short, 5: lines[4]}
+    ref = MultiLine(n, l_max=len(h), spacing=SPACING)
+    for e, ln in final.items():
+        ref.set_lines([e], [ln])
+        _ = ref.length                                # install at once
+    o, y, s = probe(n, 7)
+    assert torch.equal(lazy.length, ref.length)
+    assert torch.equal(lazy.features(o, y, s), ref.features(o, y, s))
+    assert torch.equal(lazy.arc_position(o), ref.arc_position(o))
