@@ -31758,3 +31758,26 @@ Exit energy heights are in u.
 * The rule stopped a run that was still improving: its progress measure (stage frontier, landings, training completion rate) could not see a rising climb.
 * The continuation, **uf2SEQ_WRdiagEB2**, runs from uf2SEQ_WRdiagEB/ckpt_latest.pt with the same flags (declared demo). Its progress also counts the eval's median S18 exit energy (+50 u) and its median height after S18 (+20 u).
 * Still the user's labelled demo-derived diagnostic; Codex's objection (T095447Z) stands until the user rules on section 0.
+
+## 2026-09-28 12:54 (machine clock) - uf2SEQ_WRdiagEB2 plateaued; --int-match (novelty comparable to the rest of the reward); uf2SEQ_WRdiagIM launched
+
+**uf2SEQ_WRdiagEB2** (the exit-bonus continuation, ~190M -> ~365M) was stopped by the energy-aware stationary rule. It showed no progress after its first eval:
+
+* every eval at stage 3, 0 landings;
+* S18 exit energy 1,398-1,486 u (EB@177M: 1,483);
+* top z after S18 5-62 (EB@177M: 68; S19 from z 88).
+
+The exit bonus alone plateaus ~30 u of climb short of S19.
+
+**--int-match R** (98da4f5; the user: "add intrinsic exploration reward, and make it comparable to normal reward"):
+
+* **Why it's needed.** The count novelty was effectively off in these runs: 0.25/sqrt(visits) on a saturated table (36.8M visits) paid ~0.05 per episode against ~600.
+* **How it works.** After every iteration the --int-coef coefficient is rescaled so the novelty paid over the iteration's ticks tracks R x |the rest of the reward| over the same ticks: the sqrt of the needed factor, <= 4x per iteration, clamped [1e-4, 1e4].
+* **Why the ratio is sound.** Sums over the same ticks, so a single-start run's episode waves cannot distort the ratio.
+* **Guards.** Refused without --int-coef > 0, with --int-split, and with --reward-per-decision.
+
+**uf2SEQ_WRdiagIM:**
+
+* **Setup.** From uf2SEQ_WRdiagEB2/ckpt_latest.pt, with the exit bonus 50, `--int-match 1`, `--int-view 0 --reset-int-counts`, int_speed 3. The novelty key is position (256 u cells) x 3 speed bands, with no view sectors.
+* **Why no view sectors.** With novelty worth as much as the task, a gaze-keyed count invites farming in place (CLAUDE.md, the velocity-vector keys).
+* **Status.** Demo-derived diagnostic, declared. The same energy-aware stationary stop applies.
