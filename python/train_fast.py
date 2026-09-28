@@ -13451,7 +13451,8 @@ def main() -> None:
                              # reached-state goals arrive as a COUNT of
                              # reservoir snapshots; the curriculum's k is
                              # in seconds, so the assigner needs the cadence
-                             snap_every=respawn.snap_every,
+                             snap_every=(respawn.snap_every if respawn is not None
+                                         else 100),     # ramps without the reservoir
                              tick_ms=TICK.ms,
                              # --goal-planner: every spawn's goal is planned
                              **({"planner": planner} if planner is not None
