@@ -821,7 +821,7 @@ class RampWindows:
                 # --ramp-pairs: the pair this spawn state was cut for (None: none - the global
                 # sequence or the planner)
                 pr = self.pair_lookup(p)
-                self.env_seq[i] = None if pr is None else [int(pr[0]), int(pr[1])]
+                self.env_seq[i] = None if pr is None else [int(x) for x in pr]
                 if pr is None:
                     # a spawn no pair was cut for (a stochastic / drop-spawn recording) - or a
                     # core that moved the pool state: counted, never hidden
@@ -1047,13 +1047,16 @@ class RampPlanner:
         # --ramp-pairs: each spawn state's own [T1, T2] (load_ramp_pairs), on both
         self.pairs = pairs
         if pairs is not None:
-            bad = sorted({int(t) for t in np.concatenate([pairs["t1"], pairs["t2"]])
-                          if int(t) not in self.windows.tp})
+            # a spawn's target list: its pair [T1, T2], or a longer run ("seqs", (P, L) - e.g.
+            # tools/pair_bench.py --triplets: T1 -> T2 -> T3, success = entering the last)
+            seqs = (np.asarray(pairs["seqs"], np.int64) if pairs.get("seqs") is not None
+                    else np.stack([pairs["t1"], pairs["t2"]], 1).astype(np.int64))
+            bad = sorted({int(t) for t in seqs.reshape(-1) if int(t) not in self.windows.tp})
             if bad:
                 raise ValueError(f"--ramp-pairs {pairs.get('path')}: {bad} are not target "
                                  f"surfaces of {vocab.describe().splitlines()[0]}")
-            table = {_origin_key(o): (int(a), int(b))
-                     for o, a, b in zip(pairs["states"]["origin"], pairs["t1"], pairs["t2"])}
+            table = {_origin_key(o): tuple(int(x) for x in q)
+                     for o, q in zip(pairs["states"]["origin"], seqs)}
 
             def lookup(p, _t=table):
                 return _t.get(_origin_key(p))

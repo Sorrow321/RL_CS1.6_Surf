@@ -2550,7 +2550,15 @@ def main(argv=None, build_only: bool = False, device=None):
                                search=(_L.get("_psearch") or {}).get("s"),
                                scratch=(_L.get("_psearch") or {}).get("scratch"),
                                # the map's finish box (a goal-planner checkpoint's zones "end")
-                               finish_box=(_L.get("_emn"), _L.get("_emx")))
+                               finish_box=(_L.get("_emn"), _L.get("_emx")),
+                               # the recording's own hooks (a ramp checkpoint's windows drive the
+                               # target channel through them) and header, for a tool that runs
+                               # record_rollout itself (tools/pair_bench.py)
+                               on_tick=on_tick, episode_meta=episode_meta,
+                               header_extra=header_extra, ep_ticks=ep_ticks,
+                               vocab=_L.get("_voc"),
+                               # a ramp checkpoint's planner (its eval_windows drive the hooks)
+                               ramp_planner=_L.get("_rpl"))
     if int(args.nudge_hold) > 0 or args.nudge_vel is not None:
         if not (cfg.get("view_continuous") or cfg.get("view_absolute")):
             raise SystemExit("--nudge-hold needs a --view-continuous / "
