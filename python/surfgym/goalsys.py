@@ -204,9 +204,14 @@ class GoalSystem:
         self.k = np.zeros(self.N, np.float64)
         # --ramp-reward pass: the window shifts of the last tick per env (set by _on_step_ramps)
         self.ramp_pass = np.zeros(self.N, np.float32)
+        # --ramp-offtarget-pen: 1 where the env touched a ramp outside the pieces it may ride on
+        # the last tick (RampWindows.offtarget), and this iteration's off-target / live ticks
+        self.ramp_off = np.zeros(self.N, np.float32)
+        self._off_n = 0
+        self._live_n = 0
         # --goal-planner ramps: this iteration's milliseconds per stage of the ramp bookkeeping
         # (printed by note())
-        self.rt = {"touch": 0.0, "classify": 0.0, "windows": 0.0, "lines": 0.0, "spawn": 0.0}
+        self.rt = {"touch": 0.0, "offtarget": 0.0, "windows": 0.0, "lines": 0.0, "spawn": 0.0}
         self.kind = np.zeros(self.N, np.int8)
         # start depth as a fraction of d0 (0 = spawn, 1 = finish), so
         # goal success can be reported per 10%% band of the MAP - the
@@ -888,13 +893,19 @@ class GoalSystem:
                 self.plan_ok[0] += int(fin[i])
             self.pending[ended] = False
         _t0 = time.perf_counter()
-        cnt, nrm, pts = self.core.get_touch()
+        cnt, nrm, _pts = self.core.get_touch()
         sv = self.core.states_view
+        org = sv["origin"].astype(np.float64)
         _t1 = time.perf_counter()
-        ids = P.vocab.classify(cnt, nrm, pts, sv["ducked"])
+        # surfing a ramp the planner did not ask for (checked against the window the policy
+        # acted on, before it moves)
+        off = P.windows.offtarget(cnt, nrm, org, ~ended)
+        self.ramp_off = off.astype(np.float32)
+        self._off_n += int(off.sum())
+        self._live_n += int((~ended).sum())
         _t2 = time.perf_counter()
-        idx, lines = P.windows.on_tick(ids, sv["origin"].astype(np.float64),
-                                       sv["velocity"].astype(np.float64), ended)
+        # the boxes: positions only
+        idx, lines = P.windows.on_tick(None, org, sv["velocity"].astype(np.float64), ended)
         # --ramp-reward pass: this tick's window shifts per env (+1 each, added by the trainer)
         self.ramp_pass = P.windows.tick_pass.astype(np.float32)
         _t3 = time.perf_counter()
@@ -905,7 +916,7 @@ class GoalSystem:
                 self.arc.set_lines(idx, lines, keep_bank=True)
         _t4 = time.perf_counter()
         self.rt["touch"] += (_t1 - _t0) * 1e3
-        self.rt["classify"] += (_t2 - _t1) * 1e3
+        self.rt["offtarget"] += (_t2 - _t1) * 1e3
         self.rt["windows"] += (_t3 - _t2) * 1e3
         self.rt["lines"] += (_t4 - _t3) * 1e3
         return fin
@@ -1115,11 +1126,13 @@ class GoalSystem:
             rs = self.planner.windows.pop_stats()
             ne = max(int(rs["episodes"]), 1)
             pnote += (f"  rides/ep {rs['rides'] / ne:.2f} skips/ep {rs['skips'] / ne:.2f} "
-                      f"hops held/ep {rs.get('holds', 0) / ne:.2f} "
                       f"fin {rs['fin']}/{rs['episodes']} rides>=2 "
                       f"{sum(v for k, v in rs['ride_hist'].items() if k >= 2) / ne:.1%}"
+                      f"  off-target {self._off_n / max(self._live_n, 1):.2%} of ticks"
                       "  ramp ms " + "/".join(f"{k} {v:,.0f}" for k, v in self.rt.items()))
             self.rt = {k: 0.0 for k in self.rt}
+            self._off_n = 0
+            self._live_n = 0
         if getattr(self.planner, "primitive", False) and self.planner.bin_n.sum() >= 2000:
             pnote += chr(10) + self.planner.table()
         st = self.stats.pop()
@@ -1355,7 +1368,7 @@ class GoalSystem:
             r = ev.get("rides") or []
             return (f"  ramp-eval finish {ev['succ']}/{ev['n']} rides "
                     + ("/".join(str(x) for x in r) if r else "-")
-                    + f" skips {ev.get('skips', 0)}")
+                    + f" skips {ev.get('skips', 0)} off-target ticks {ev.get('off', 0)}")
         if getattr(self.planner, "primitive", False):
             return (f"  prim-eval {ev['succ']}/{ev['n']} random primitives completed from the "
                     f"spawn (mean length " + (f"{md:,.0f}u" if md == md else "-")

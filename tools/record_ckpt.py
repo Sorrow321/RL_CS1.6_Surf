@@ -86,6 +86,8 @@ TRAIN_ONLY = frozenset({
     # --ramp-reward: what the TRAINING reward pays in the ramp-window task (arc progress, or +1
     # per target passed); a recording computes no training reward
     "ramp_reward",
+    # --ramp-offtarget-pen: a TRAINING charge for surfing a ramp the planner did not ask for
+    "ramp_offtarget_pen",
     # --arc-death-charge: a TRAINING terminal charge on the goal-arc bank; a recording computes
     # no training reward
     "arc_death_charge",

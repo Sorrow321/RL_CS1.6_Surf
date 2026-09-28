@@ -4770,6 +4770,13 @@ def main() -> None:
     ap.add_argument("--ramp-fade", type=float, default=None,
                     help="--goal-planner ramps: s of the channel's takeoff cross-fade (0.3). "
                          "ckpt restores")
+    ap.add_argument("--ramp-offtarget-pen", type=float, default=None,
+                    help="--goal-planner ramps: a charge per physics tick on which the agent "
+                         "touches a RAMP-like plane (normal z 0.02-0.7) outside the boxes of the "
+                         "pieces it may ride - T1, T2, and the one it spawned on until its first "
+                         "pass: surfing a ramp the planner did not ask for, or going back to one "
+                         "already passed (the user, 2026-09-28). "
+                         "0 (default) = off. ckpt restores")
     ap.add_argument("--ramp-reward", default=None, choices=("arc", "pass"),
                     help="--goal-planner ramps: the reward. arc (default) = signed arc progress "
                          "along the window line (100 per 1,500 u, the line re-laid at every "
@@ -6497,7 +6504,7 @@ def main() -> None:
                     setattr(args, _k, ck_cfg[_k])
         # --goal-planner ramps: its vocabulary, channel and knobs, like every run-defining flag
         for _k in ("ramp_vocab", "target_channel", "ramp_topk", "ramp_horizon", "ramp_fade",
-                   "ramp_reward"):
+                   "ramp_reward", "ramp_offtarget_pen"):
             if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
                 setattr(args, _k, ck_cfg[_k])
                 restored.append(f"{_k}={ck_cfg[_k]}")
@@ -7802,16 +7809,22 @@ def main() -> None:
     else:
         _set = [f"--{_k.replace('_', '-')}" for _k in
                 ("ramp_vocab", "target_channel", "ramp_topk", "ramp_horizon", "ramp_fade",
-                 "ramp_reward")
+                 "ramp_reward", "ramp_offtarget_pen")
                 if flag_given(f"--{_k.replace('_', '-')}")]
         if _set:
             raise SystemExit(f"{', '.join(_set)} without --goal-planner ramps")
         args.ramp_vocab = args.target_channel = None
         args.ramp_topk = args.ramp_horizon = args.ramp_fade = None
         args.ramp_reward = None
+        args.ramp_offtarget_pen = None
     # --ramp-reward pass: +1 per window shift, added to the per-tick reward after the goal system's
     # step; the arc shaping is off (arc_scale 0 below)
     RPASS = RPLAN and args.ramp_reward == "pass"
+    # --ramp-offtarget-pen: a charge per tick of surfing a ramp outside the pieces the env may ride
+    ROFF = float(args.ramp_offtarget_pen) if RPLAN and args.ramp_offtarget_pen else 0.0
+    if RPLAN:
+        print(f"--goal-planner ramps: off-target ramp contact "
+              + (f"charged {ROFF:g} per tick" if ROFF else "logged, not charged"))
     LPLAN = args.goal_planner == "learned"
     _lp_knobs = ("plan_lr", "plan_ent", "plan_batch", "plan_epochs",
                  "plan_novelty", "plan_progress", "plan_finish_bonus",
@@ -11584,7 +11597,8 @@ def main() -> None:
                                "ramp_topk": int(args.ramp_topk),
                                "ramp_horizon": float(args.ramp_horizon),
                                "ramp_fade": float(args.ramp_fade),
-                               "ramp_reward": str(args.ramp_reward)})
+                               "ramp_reward": str(args.ramp_reward),
+                               "ramp_offtarget_pen": float(args.ramp_offtarget_pen or 0.0)})
     # --goal-planner prim: its knobs, ONLY then; record_ckpt.py MIRRORS them (the recording draws
     # the same kind of primitive)
     if PPLAN or PLPLAN:
@@ -14972,6 +14986,10 @@ def main() -> None:
                         # --ramp-reward pass: +1 per target passed on this tick (the goal
                         # system advanced the windows just above; an ended row never shifts)
                         r = r + goalsys.ramp_pass
+                    if ROFF and r is not None:
+                        # --ramp-offtarget-pen: this tick's contact with a ramp the planner did
+                        # not ask for (an ended row is never off-target)
+                        r = r - ROFF * goalsys.ramp_off
                     if PLAN_JOINT:
                         # --plan-joint: the planner's reward IS this one, tick by
                         # tick - handed over before the truncation bootstrap below
