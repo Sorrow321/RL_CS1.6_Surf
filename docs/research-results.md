@@ -31781,3 +31781,30 @@ The exit bonus alone plateaus ~30 u of climb short of S19.
 * **Setup.** From uf2SEQ_WRdiagEB2/ckpt_latest.pt, with the exit bonus 50, `--int-match 1`, `--int-view 0 --reset-int-counts`, int_speed 3. The novelty key is position (256 u cells) x 3 speed bands, with no view sectors.
 * **Why no view sectors.** With novelty worth as much as the task, a gaze-keyed count invites farming in place (CLAUDE.md, the velocity-vector keys).
 * **Status.** Demo-derived diagnostic, declared. The same energy-aware stationary stop applies.
+
+## 2026-09-28 13:07 (machine clock) - uf2SEQ_WRdiagIM: novelty matched 1:1 to the task derails the pit route; no landing
+
+**Run.** From uf2SEQ_WRdiagEB2/ckpt_latest.pt: exit bonus 50, `--int-match 1`, `--int-view 0 --reset-int-counts`. It was stopped by the energy-aware stationary rule at ~541M (12:55-13:07, ~175M steps).
+
+**The adaptation worked.**
+
+* The coefficient went 0.25 -> 1 -> 4 -> 16 -> 64 -> 197 -> 512 in 7 iterations, then held ~440-1,200.
+* Novelty paid tracked the rest of the reward per iteration, e.g. 555,307 vs 557,494, 463,430 vs 481,492.
+* Intrinsic ~360-650 per episode.
+
+**The route did not survive it.** Evals, median over 9:
+
+| step | stages | S18 exit energy | top z after S18 |
+|---|---|---|---|
+| 365M (the EB2 checkpoint, before any update) | 3 x 9 | 1,498 u | **+83** (S19 from z 88: 5 u short) |
+| 390M | 3/3/2/3/2/3/3/3/3 | 1,441 | -522 |
+| 415M | 3/2/2/2/2/2/2/2/2 | 1,223 | -456 |
+| 465M | 3 x 9 | 1,075 | -707 |
+| 541M | 3 x 9 | 1,455 | -45 |
+
+**Reading:**
+
+* The rest of the reward per iteration fell from ~0.8-1.1M to ~0.5M: the agent traded the task for novelty.
+* It never landed; training completions stayed at 0%.
+* At 1:1, count novelty over 256 u cells x 3 speed bands pulls the policy off the route rather than higher in the pit.
+* The exit-bonus policy on its own came within 5 u of S19's lowest contact in that first eval.
