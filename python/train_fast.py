@@ -5902,6 +5902,14 @@ def main() -> None:
                          "archive then keeps the run-ups to FAST discoveries (the "
                          "first-ramp descent needs >= 1,400 on unitfarmer2), not to "
                          "crawling. 0 = any speed")
+    ap.add_argument("--int-match", type=float, default=None,
+                    help="count-based novelty kept COMPARABLE to the rest of the reward: after "
+                         "every iteration the --int-coef coefficient is rescaled so that the "
+                         "novelty paid over the iteration's ticks tracks R x |everything else "
+                         "paid over the same ticks| (1 = equal; the square root of the needed "
+                         "factor, at most 4x per iteration, clamped to [1e-4, 1e4]). Saturated "
+                         "counts no longer silence it: the coefficient grows as they do "
+                         "(the user, 2026-09-28). 0 (default) = off. ckpt restores")
     ap.add_argument("--int-split", action="store_true",
                     help="two-head critic with a NON-EPISODIC intrinsic return "
                          "(Burda et al., RND, ICLR 2019 sec. 2.3; docs/int_split.md): "
@@ -6413,6 +6421,9 @@ def main() -> None:
         if args.int_coef is None and ck_cfg.get("int_coef") is not None:
             args.int_coef = float(ck_cfg["int_coef"])
             restored.append(f"int_coef={args.int_coef:g}")
+        if args.int_match is None and ck_cfg.get("int_match") is not None:
+            args.int_match = float(ck_cfg["int_match"])
+            restored.append(f"int_match={args.int_match:g}")
         if args.maxvel is None and ck_cfg.get("maxvel") is not None:
             args.maxvel = float(ck_cfg["maxvel"])
             restored.append(f"maxvel={args.maxvel:g}")
@@ -8390,6 +8401,22 @@ def main() -> None:
     # constants, so the flag-off trainer allocates, traces and captures
     # exactly what it always did. None = the flag-off constants.
     INT_SPLIT = bool(args.int_split)
+    # --int-match: the novelty coefficient rescaled every iteration to track R x the rest
+    IMATCH = float(args.int_match or 0.0)
+    if IMATCH:
+        if not np.isfinite(IMATCH) or IMATCH < 0.0:
+            raise SystemExit(f"--int-match must be finite and >= 0, got {IMATCH!r}")
+        if not float(args.int_coef or 0.0) > 0.0:
+            raise SystemExit("--int-match rescales the count novelty: it needs --int-coef > 0")
+        if INT_SPLIT:
+            raise SystemExit("--int-match keeps the novelty IN the reward; --int-split moves it to "
+                             "its own stream - pick one")
+        if args.reward_per_decision:
+            raise SystemExit("--int-match sums the reward per physics tick; "
+                             "--reward-per-decision is not implemented with it")
+        print(f"--int-match {IMATCH:g}: the novelty coefficient (from --int-coef "
+              f"{float(args.int_coef):g}) is rescaled after every iteration so the novelty paid "
+              f"tracks {IMATCH:g} x |the rest of the reward| over the same ticks")
     if args.int_gamma is None:
         args.int_gamma = 0.99
     if args.int_vf is None:
@@ -12000,6 +12027,8 @@ def main() -> None:
                                "int_gamma": float(args.int_gamma),
                                "int_vf": float(args.int_vf),
                                "int_adv_coef": float(args.int_adv_coef)})
+    if IMATCH:
+        meta["config"]["int_match"] = IMATCH
     if CRL:
         # --crl, written ONLY when on (a control's config dump gains no key):
         # the flag, every knob a resume restores, and - provenance only - the
@@ -13686,6 +13715,9 @@ def main() -> None:
             for _s, _b in zip(slots, INT_BASE):
                 _s.reward_fn.int_coef = _b * (1.0 + unstuck_T)
     SS_RNG = np.random.default_rng(int(args.seed) + 4242)     # --spawn-states draws
+    # --int-match: the reward the fleet was paid this iteration (novelty included), and the note
+    imatch_rsum = 0.0
+    imatch_note = ""
     ARCH = None
     if ARCHIVE:
         from surfgym.archive import PredecessorArchive
@@ -15457,6 +15489,8 @@ def main() -> None:
                         fleet.stash_depth_bins(ended, tail_bin, TAIL_BINS)
                     if r is not None:
                         r_acc += r
+                        if IMATCH:
+                            imatch_rsum += float(r.sum())
                         if INT_SPLIT:
                             rint_acc += _int_r()
                     ended_acc |= ended
@@ -16373,6 +16407,19 @@ def main() -> None:
                 rs = fleet.pop_stats()
             race_sr, race_fin = rs["success_rate"], rs["finish_s"]
             race_int = rs["int_per_ep"]
+            if IMATCH:
+                # --int-match: this iteration's novelty paid vs the rest, over the same ticks
+                _ip = (float(rs["int_per_ep"]) * float(rs["episodes"])
+                       if rs["episodes"] and rs["int_per_ep"] == rs["int_per_ep"] else 0.0)
+                _ext = imatch_rsum - _ip
+                if _ip > 1e-9 and abs(_ext) > 1e-9:
+                    _f = min(4.0, max(0.25, (IMATCH * abs(_ext) / _ip) ** 0.5))
+                    for _s in slots:
+                        _s.reward_fn.int_coef = float(np.clip(_s.reward_fn.int_coef * _f,
+                                                              1e-4, 1e4))
+                imatch_note = (f"  int-match c {slots[0].reward_fn.int_coef:.4g} (novelty "
+                               f"{_ip:,.0f} vs rest {_ext:,.0f} this iter)")
+                imatch_rsum = 0.0
         # dip/*: the setback diagnostic (surfgym/dipmeter.py). Drained
         # EVERY iteration whether or not the reward is a RaceReward, so the
         # accumulator can never run away on a non-race arm; a fleet with no
@@ -17150,7 +17197,7 @@ def main() -> None:
         print(f"step {global_step:>13,d}  rew {rmean:8.2f}  len {lmean:6.0f}  "
               f"fps {fps:,.0f}  kl {kl:.4f}  ent {ent_coef:.4f}"
               f"{hyg_note}{race_note}{front_note}{back_note}{gate_note}"
-              f"{unstuck_note}{cc_note}{crl_note}")
+              f"{unstuck_note}{cc_note}{crl_note}{imatch_note}")
         tm.flush(it_no)
         if D.enabled:
             # C2 production asserts (docs/ddp-plan.md §5): cheap, exact,

@@ -92,6 +92,8 @@ TRAIN_ONLY = frozenset({
     "demo_contaminated",
     # --ramp-exit-bonus: a TRAINING reward term (the recording draws the same windows either way)
     "ramp_exit_bonus",
+    # --int-match: the novelty coefficient's per-iteration rescaling - TRAINING only
+    "int_match",
     # --ramp-offtarget-pen: a TRAINING charge for surfing a ramp the planner did not ask for
     "ramp_offtarget_pen",
     # --arc-death-charge: a TRAINING terminal charge on the goal-arc bank; a recording computes
