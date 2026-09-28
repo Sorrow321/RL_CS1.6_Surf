@@ -31649,3 +31649,43 @@ The entry above miscounted. The route-agnostic progress list for B9@177M is [43,
   * --reset-critic 1 --critic-warmup 20, --steps 500e6;
   * the penalty 1.0 is restored from B8.
 * **Driver:** it logs the eval stages (0-4) and the training completion rate, and stops the run after 10 min without progress on either.
+
+## 2026-09-28 12:09 (machine clock) - uf2SEQ_WRdiag final (stage 3 of 4, no landing), why the last stage fails, --target-views 6, uf2SEQ_WRdiag6v launched
+
+**uf2SEQ_WRdiag, the user's demo-derived diagnostic** ([19, 17, 18, 19] from the uf2 record):
+
+* **Stopped by the stationary rule at ~380M** (12:03). The best was eval stage 3 of 4 in all 9 episodes from 227M on, 0 completions; training passes/ep up to 3.48, 0% completions.
+* **The route IS learned.** Real contacts, off the recorded positions and independent of the boxes, follow the record's order within ~0.4-0.7 s of its timing: S19 3.4-3.6 s, S17 4.4-5.4 s, S18 6.1-7.2 s.
+* **The landing is not.** Two measured causes, on the 277M eval:
+  1. **Energy.** The agents leave S18 at 1,097-1,138 u/s; the record left at ~1,600, and climbing to S19's height needs ~1,230. They top out at z ~-100 against S19's z 88..458. This is the same energy loss through the ramp run and U-turn the archive search showed.
+  2. **Sight.** In the final ~2.6 s, S19 is in the camera 0% of the time: it sits a median +46 deg above the eye (max +80) while the policy holds the camera at a median -62 deg. The pitch target can reach +30, but the policy never looks up.
+
+**The user's POV question at t = 1 s** (episode 1, tick 100, camera pitch -69, vfov 90, so the rows reach -114 deg):
+
+* The white sliver is S19 (T1), seen nearly edge-on: the view ray meets its surface at 5-9 deg.
+* The two separate grey bands are ONE ramp, S17 (T2). It runs N-S about 1,900 u below the start platform, with 143 of its contact origins in front of the agent and 257 behind. The rows past -90 deg look backward, mirrored, so the part behind shows along the bottom.
+* The equiangular camera maps near-nadir geometry into near-horizontal bands.
+
+**--target-views 6** (4e379c7; the POV panel ddcb276), at the user's request:
+
+* The target channel from the view's own direction plus up, down, back, left, right, as five more image channels. Targets only; the depth image stays the view's own.
+* up/down look straight up/down with a 180 deg horizontal span, so the six views cover the whole sphere.
+* A checkpoint gains the channels as zero conv slices (its own function at step 0, tested); each view lights only its own side of a synthetic box (tested).
+* **Cost, measured per 1M-step iteration:** 2.67 s -> 3.5-4.0 s, about 30% slower.
+
+  | part | one view | six views |
+  |---|---|---|
+  | target render | 88 ms | 533 ms (~90 ms per extra view) |
+  | PPO update | 685 ms | 935-1,030 ms (7-channel image) |
+  | forward | 64 ms | 131 ms |
+
+  Rendering the five extra views at half resolution would cut the render share ~4x.
+
+**uf2SEQ_WRdiag6v:**
+
+* Launched 12:06 from uf2SEQ_WRdiag/ckpt_latest.pt, the same sequence and flags plus `--target-views 6`.
+* The resume of the demo-contaminated checkpoint is DECLARED with an explicit `--ramp-sequence-source demo`.
+* No critic reset; the stationary stop is on eval stage / completions and the training completion rate.
+* The question it answers: does seeing S19 above/behind let the policy learn the landing? The energy shortfall may still block it.
+
+**Open issue.** The KL of the first actor updates after --critic-warmup ends is huge: uf2SEQ_WRdiag 22-27M: 379, 241, 449, 43, 8, then ~0.03. The small view-head sigmas (0.06-0.15) make it sensitive. It did not stop learning.
