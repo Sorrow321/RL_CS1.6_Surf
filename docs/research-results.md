@@ -31322,3 +31322,32 @@ The windows no longer decide this. The wall is a speed skill, the same one B3's 
 **Tried and reverted:** a tick-to-tick plane cache in classify. It changed 4.2% of touching env-ticks, for a saving of 0.66 ms per tick.
 
 **Still to do:** the per-episode window must go to about 0.1 ms, which means drawing it in one compiled pass over the spawning envs; and reward_py needs splitting (the new "ramp ms" counters do that).
+
+## 2026-09-28 08:50 (machine clock) - rampB5_pass final: the +1-per-ramp reward did not help (worse after 51M)
+
+**Run:** 150,994,944 steps at 93,685 steps/s on average.
+
+**Greedy evals from the start:**
+
+| step | track | rides per episode |
+|---|---|---|
+| 1M | 4.9% | 1-2 |
+| 26M | 6.2% | 1-2 |
+| 51M | 7.1% | 2 |
+| 76M | 5.0% | 0-2 |
+| 101M | 4.7% | 0-2 |
+| 126M | 6.0% | 0-2 |
+
+0/9 finishes at every eval.
+
+* **Speed regressed after 51M.** Peak speed at 76-101M was 1,430-1,630 u/s, against 2,050-2,160 u/s earlier.
+* **Training passes per episode stayed flat** at 0.3-0.46.
+* **The arc reward did no better.** rampB4_on (fixed windows, arc reward) sat at 7.9-8.8% at 26-51M. Neither reward teaches the speed the first wedge gap needs.
+
+**Throughput work since:**
+
+* **Commit 2bdafe0:** an exact compiled target search.
+* **Commit 4588e0f:** the whole window line compiled (surfgym/rampfast.py). Checked identical on utopia: 1,500 spawns and 200 ticks x 2,048 envs.
+  * spawn: 1.63 -> 0.38 ms per env;
+  * on_tick: 3.79 -> 1.07 ms per tick.
+* **The 12M-step probe's split** of the ramp task's 5.6 s of a 9.2 s iteration, before 4588e0f: spawn 2.3 s, windows 1.2 s, classify 1.1 s, installing lines 0.5 s (each MultiLine install is a host-to-device copy).
