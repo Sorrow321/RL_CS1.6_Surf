@@ -30966,3 +30966,31 @@ Also the five remaining contract items from the same review (unknown-root first-
   - at 10.0 s R29 is 387 px and R33 5 px;
   - while riding R26 (7.5 and 8.5 s), R29 is hidden behind nearer geometry (0-1 px).
 - Not yet trained. The plan is on the bus: a warm start from prim1 with a zero-initialised second input channel, --goal-planner ramps (the two-ramp window line + the channel, captures shift the window, arc reward + capture bonus), spawns from the frozen collectors' own states on four maps.
+
+## 2026-09-28 02:49 (machine clock) - target channel v2 (the user's redesign): no occlusion (an objective marker), plane masks, one fused kernel - 0.25 ms per 2,048-env frame
+
+- **The user:** v1's cost (3x the depth render) was wrong; draw the target without occlusion ("walls are ignored - good for us"); a target could also be the whole object rather than one slope.
+- **v2** (python/surfgym/targetmask.py, 9e704f3):
+  - Each target surface is a few planes: near-coplanar pieces within 3 deg / 16 u are merged. The utopia route ramps drop from 68 / 22 / 18 / 37 exact planes to 13 / 7 / 6 / 11.
+  - Each plane is baked into an 8 u occupancy mask (one cell of dilation closes the T-junction cracks). Utopia: 2,241 planes, 126 MB, built in 3 s.
+  - Per pixel: one ray-plane intersection + one mask lookup per plane, in one fused Triton kernel (the equiangular ray from yaw/pitch, both targets, the value). Per-plane bounding-sphere culling per block.
+  - The nearer target wins an overlap. unit=object joins touching target faces (an A-frame's slopes).
+  - The finish box is a target (slab test).
+- **Accuracy**, against exact ray-triangle casts, occlusion ignored, on five of our finisher's frames: every crossing pixel is lit; 0-14 edge pixels are extra (the dilation).
+- **Cost at 2,048 envs:**
+
+| version | target channel per frame |
+|---|---|
+| v1 (occluded, per-ray triangle loop) | 2.95 ms |
+| plane masks, unmerged | 1.0 ms |
+| merged planes | 0.6 ms |
+| **fused kernel** | **0.25 ms** |
+
+  The depth render is 0.3-0.5 ms on the same batch.
+- Frames (the viewer's section 5): riding R26 (7.5 and 8.5 s), R29 and R33 are now visible in their true direction, where v1's occlusion hid them.
+- The occluded v1 is kept in git (a4f8b0e) for comparison. Codex (bus 23:16Z) had flagged the unlimited-range bearing as a caveat; the user chose the marker semantics.
+- **Still before any training** (Codex 23:16Z):
+  - collision-grounded contact origins and orientation in ramps_mesh;
+  - captures from telemetry;
+  - arc-only reward with the bank preserved across window shifts;
+  - the single-map pair, target channel vs forced zero, same widened network.
