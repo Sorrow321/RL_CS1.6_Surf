@@ -1026,3 +1026,26 @@ def test_six_target_views_each_see_their_own_side(tmp_path):
         assert img.shape == (1, 24, 48, 7)
         lit = [names[c] for c in range(6) if float(img[0, :, :, 1 + c].abs().max()) > 0.0]
         assert lit == [names[s_]], (s_, lit)
+
+
+
+def test_a_pass_pays_the_exits_energy_height_and_nothing_else(voc):
+    """--ramp-exit-bonus: tick_exit_h is, on the tick of a PASS, the exit's energy as the height it
+    could climb to - z + |v|^2 / 2g - above the left ramp's lowest validated contact; 0 on an
+    entry, on hops inside the box, on a skip and on every other tick"""
+    v, _bsp, _ = voc
+    w = _windows(v)
+    w.spawn([0, 1], *_state(APPROACH))
+    zlow = float(w.tp[0][:, 2].min())
+
+    def tick(st0, st1=APPROACH):
+        _tick(w, st0, st1)
+        return w.tick_exit_h.copy()
+    assert tick(ON0).sum() == 0.0                                  # the entry
+    for _ in range(5):
+        assert tick(HOP).sum() == 0.0                              # hops inside the box
+    h = tick(AWAY)                                                 # the pass
+    want = AWAY[0][2] + float(AWAY[1] @ AWAY[1]) / (2.0 * w.gravity) - zlow
+    assert abs(h[0] - want) < 1e-6 and h[1] == 0.0
+    assert tick(AWAY).sum() == 0.0                                 # once
+    assert tick(AWAY, ON1)[1] == 0.0 and w.n_skip[1] == 1          # a skip pays nothing

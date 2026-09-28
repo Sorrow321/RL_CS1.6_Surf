@@ -80,7 +80,8 @@ RAMP_NZ = (0.02, 0.7)    # a RAMP-like contact plane: tools/ramps_mesh.py's cate
 FIN = -2                 # the finish box as a target (surfgym.targetmask.FIN)
 NONE = -1
 RAMP_DEFAULTS = {"ramp_topk": 2, "ramp_horizon": 3.0, "ramp_fade": 0.3, "ramp_reward": "arc",
-                 "ramp_offtarget_pen": 0.0, "ramp_obs_pass": 0, "target_views": 1}
+                 "ramp_offtarget_pen": 0.0, "ramp_obs_pass": 0, "target_views": 1,
+                 "ramp_exit_bonus": 0.0}
 # --target-views 6: the target channel's five extra directions after the view's own, as (name, yaw
 # offset deg, pitch deg, horizontal span deg or None = the lidar's own). Back / left / right are
 # level; up / down look straight up / down with a 180 deg span, so the six views cover the whole
@@ -398,6 +399,11 @@ class RampWindows:
         # window shifts on the CURRENT tick per env (on_tick clears it): --ramp-reward pass pays
         # +1 for each
         self.tick_pass = np.zeros(n, np.int64)
+        # --ramp-exit-bonus: this tick's PASS exits per env as the height the exit state could
+        # climb to (z + |v|^2 / 2g) above the left piece's lowest validated contact, >= 0
+        self.tick_exit_h = np.zeros(n, np.float64)
+        self.p_zlow = {q: float(min(float(self.tp[f][:, 2].min()) for f in fs))
+                       for q, fs in self.pfaces.items()}
         # window shifts since the policy last read them (take_passes, once per decision):
         # --ramp-obs-pass shows the policy the event --ramp-reward pass pays
         self.pass_acc = np.zeros(n, np.int64)
@@ -839,6 +845,7 @@ class RampWindows:
         ended = np.asarray(ended, bool)
         self.tau += 1
         self.tick_pass[:] = 0
+        self.tick_exit_h[:] = 0.0
         live = ~ended
         changed = {}
         # a HOLDING window (nothing was in reach): a fresh draw every replan_ticks
@@ -865,6 +872,15 @@ class RampWindows:
         for i in np.flatnonzero(self.entered & ~in1 & live):
             self.n_capt[i] += 1
             self.stats["rides"] += 1
+            # --ramp-exit-bonus: the exit's energy, as the height it could climb to above the
+            # lowest point of the ramp it leaves
+            q = self._piece(self.t1[i])
+            if q is not None:
+                vv = np.asarray(velocity[i], np.float64)
+                h = (float(origin[i][2]) + float(vv @ vv) / (2.0 * self.gravity)
+                     - self.p_zlow[q])
+                self.tick_exit_h[i] += max(0.0, h)
+                self.stats["exit_h"] = self.stats.get("exit_h", 0.0) + max(0.0, h)
             changed[int(i)] = self._shift(i, origin[i], velocity[i], riding=False)
         idx = np.asarray(sorted(changed), np.int64)
         lines = [changed[int(i)] if changed[int(i)] is not None
@@ -1142,7 +1158,7 @@ def make_ramp_hooks(windows, vocab, core, ev: dict, *, line=None):
     every tick reads env 0's collision telemetry, advances the window and keeps `line` (the eval
     fan) on it. ev tallies episodes, rides, skips and finishes."""
     ev.update({"n": 0, "succ": 0, "rides": [], "skips": 0, "chain": [], "off": 0,
-               "stages": []})
+               "stages": [], "exit_h": []})
     # the window as the policy SAW it, for the POV render (tools/render_pov.py --targets): one
     # event per change, [row, prev, T1, T2, tau at that row, fade start of prev, fade start of
     # T1] - the channel's values at row k are the fade of tau + (k - row) (slot_values); rows are
@@ -1194,6 +1210,8 @@ def make_ramp_hooks(windows, vocab, core, ev: dict, *, line=None):
         ev["off"] += int(windows.offtarget(cnt[:1], nrm[:1], org)[0])
         idx, lines = windows.on_tick(None, org, sv["velocity"][:1].astype(np.float64),
                                      np.zeros(1, bool))
+        if windows.tick_exit_h[0] > 0.0:
+            ev["exit_h"].append(float(windows.tick_exit_h[0]))
         if len(idx):
             if ev["chain"]:
                 ev["chain"][-1].append(int(windows.t1[0]))

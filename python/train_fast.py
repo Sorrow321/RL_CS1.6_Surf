@@ -4788,6 +4788,14 @@ def main() -> None:
                          "pass: surfing a ramp the planner did not ask for, or going back to one "
                          "already passed (the user, 2026-09-28). "
                          "0 (default) = off. ckpt restores")
+    ap.add_argument("--ramp-exit-bonus", type=float, default=None,
+                    help="--goal-planner ramps: on every PASS (leaving T1's box after entering "
+                         "it) the reward adds K per 1,000 u of the exit's ENERGY HEIGHT - the "
+                         "height the exit state could climb to, z + |v|^2/2g, above the lowest "
+                         "validated contact of the ramp it leaves (>= 0). Energy, not speed: "
+                         "speed alone is bought by leaving lower (the user, 2026-09-28: 'bonus "
+                         "for speed (or energy?) on exit from ramp'). 0 (default) = off. "
+                         "ckpt restores")
     ap.add_argument("--target-views", type=int, default=None, choices=(1, 6),
                     help="--goal-planner ramps: the target channel from 1 direction (the view's "
                          "own, default) or 6 (+ up, down, back, left, right: five more image "
@@ -6542,7 +6550,7 @@ def main() -> None:
         # --goal-planner ramps: its vocabulary, channel and knobs, like every run-defining flag
         for _k in ("ramp_vocab", "target_channel", "ramp_topk", "ramp_horizon", "ramp_fade",
                    "ramp_reward", "ramp_offtarget_pen", "ramp_obs_pass", "ramp_sequence",
-                   "ramp_sequence_source", "target_views"):
+                   "ramp_sequence_source", "target_views", "ramp_exit_bonus"):
             if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
                 setattr(args, _k, ck_cfg[_k])
                 restored.append(f"{_k}={ck_cfg[_k]}")
@@ -7856,7 +7864,7 @@ def main() -> None:
         _set = [f"--{_k.replace('_', '-')}" for _k in
                 ("ramp_vocab", "target_channel", "ramp_topk", "ramp_horizon", "ramp_fade",
                  "ramp_reward", "ramp_offtarget_pen", "ramp_obs_pass", "ramp_sequence",
-                 "ramp_sequence_source", "target_views")
+                 "ramp_sequence_source", "target_views", "ramp_exit_bonus")
                 if flag_given(f"--{_k.replace('_', '-')}")]
         if _set:
             raise SystemExit(f"{', '.join(_set)} without --goal-planner ramps")
@@ -7867,6 +7875,7 @@ def main() -> None:
         args.ramp_obs_pass = None
         args.ramp_sequence = args.ramp_sequence_source = None
         args.target_views = None
+        args.ramp_exit_bonus = None
     # --ramp-reward pass: +1 per window shift, added to the per-tick reward after the goal system's
     # step; the arc shaping is off (arc_scale 0 below)
     # --ramp-sequence: the predefined target list (surface ids) instead of the planner
@@ -7892,6 +7901,16 @@ def main() -> None:
     elif args.ramp_sequence_source and not args.ramp_sequence:
         raise SystemExit("--ramp-sequence-source without --ramp-sequence")
     RPASS = RPLAN and args.ramp_reward == "pass"
+    # --ramp-exit-bonus: K per 1,000 u of every pass exit's energy height, added per tick
+    REXIT = float(args.ramp_exit_bonus) if RPLAN and args.ramp_exit_bonus else 0.0
+    if REXIT:
+        if not np.isfinite(REXIT) or REXIT < 0.0:
+            raise SystemExit(f"--ramp-exit-bonus must be finite and >= 0, got {REXIT!r}")
+        if args.reward_per_decision:
+            raise SystemExit("--ramp-exit-bonus adds its term per physics tick; "
+                             "--reward-per-decision would drop it silently")
+        print(f"--ramp-exit-bonus: every pass pays {REXIT:g} per 1,000 u of the exit's energy "
+              "height (z + |v|^2/2g above the left ramp's lowest contact)")
     # --ramp-offtarget-pen: a charge per tick of surfing a ramp outside the pieces the env may ride
     ROFF = float(args.ramp_offtarget_pen) if RPLAN and args.ramp_offtarget_pen else 0.0
     if RPLAN:
@@ -11701,7 +11720,8 @@ def main() -> None:
                                "ramp_reward": str(args.ramp_reward),
                                "ramp_offtarget_pen": float(args.ramp_offtarget_pen or 0.0),
                                "ramp_obs_pass": int(args.ramp_obs_pass or 0),
-                               "target_views": int(args.target_views or 1)})
+                               "target_views": int(args.target_views or 1),
+                               "ramp_exit_bonus": float(args.ramp_exit_bonus or 0.0)})
         if RSEQ is not None:
             # --ramp-sequence: MIRRORED by record_ckpt.py; its provenance rides with every
             # checkpoint, and a demo-derived one marks the weights (CLAUDE.md section 0)
@@ -15109,6 +15129,10 @@ def main() -> None:
                         # --ramp-reward pass: +1 per target passed on this tick (the goal
                         # system advanced the windows just above; an ended row never shifts)
                         r = r + goalsys.ramp_pass
+                    if REXIT and r is not None:
+                        # --ramp-exit-bonus: this tick's pass exits, K per 1,000 u of energy
+                        # height (an ended row never passes)
+                        r = r + (REXIT / 1000.0) * goalsys.ramp_exit
                     if ROFF and r is not None:
                         # --ramp-offtarget-pen: this tick's contact with a ramp the planner did
                         # not ask for (an ended row is never off-target)

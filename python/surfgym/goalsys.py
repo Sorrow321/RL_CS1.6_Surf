@@ -204,6 +204,8 @@ class GoalSystem:
         self.k = np.zeros(self.N, np.float64)
         # --ramp-reward pass: the window shifts of the last tick per env (set by _on_step_ramps)
         self.ramp_pass = np.zeros(self.N, np.float32)
+        # --ramp-exit-bonus: the last tick's pass exits' energy heights per env (u)
+        self.ramp_exit = np.zeros(self.N, np.float32)
         # --ramp-offtarget-pen: 1 where the env touched a ramp outside the pieces it may ride on
         # the last tick (RampWindows.offtarget), and this iteration's off-target / live ticks
         self.ramp_off = np.zeros(self.N, np.float32)
@@ -928,6 +930,8 @@ class GoalSystem:
         idx, lines = P.windows.on_tick(None, org, sv["velocity"].astype(np.float64), ended)
         # --ramp-reward pass: this tick's window shifts per env (+1 each, added by the trainer)
         self.ramp_pass = P.windows.tick_pass.astype(np.float32)
+        # --ramp-exit-bonus: this tick's pass exits' energy heights (u), added by the trainer
+        self.ramp_exit = P.windows.tick_exit_h.astype(np.float32)
         if seq:
             # --ramp-sequence: the last target entered - end the episode; it settles as a
             # success on the next tick (the sphere goals' kill-then-credit pattern)
@@ -1156,6 +1160,8 @@ class GoalSystem:
                       f"holds/ep {rs.get('holds', 0) / ne:.2f} "
                       + (f"SEQUENCE done {rs.get('seq_done', 0)}/{rs['episodes']} "
                          if getattr(self.planner, "sequence", None) is not None else "")
+                      + (f"exit energy {rs.get('exit_h', 0.0) / max(rs['rides'], 1):,.0f} u/pass "
+                         if rs.get("exit_h") else "")
                       + f"fin {rs['fin']}/{rs['episodes']} rides>=2 "
                       f"{sum(v for k, v in rs['ride_hist'].items() if k >= 2) / ne:.1%}"
                       f"  off-target {self._off_n / max(self._live_n, 1):.2%} of ticks"
@@ -1402,7 +1408,9 @@ class GoalSystem:
                     + f" skips {ev.get('skips', 0)} off-target ticks {ev.get('off', 0)}"
                     + (f" SEQUENCE stages {'/'.join(str(x) for x in st)} of "
                        f"{len(self.planner.sequence)}"
-                       if getattr(self.planner, "sequence", None) is not None else ""))
+                       if getattr(self.planner, "sequence", None) is not None else "")
+                    + (f" exit energy mean {sum(ev['exit_h']) / len(ev['exit_h']):,.0f} u over "
+                       f"{len(ev['exit_h'])} passes" if ev.get("exit_h") else ""))
         if getattr(self.planner, "primitive", False):
             return (f"  prim-eval {ev['succ']}/{ev['n']} random primitives completed from the "
                     f"spawn (mean length " + (f"{md:,.0f}u" if md == md else "-")
