@@ -7,7 +7,14 @@ executor is shown its next target surfaces as an IMAGE CHANNEL (surfgym.targetma
   than the agent - its geodesic distance (the map's goal field, the median over its contact
   origins) is PROGRESS_DELTA below the agent's, and T2's below T1's: the consecutive ramps down
   the geodesic potential (the user, 2026-09-28; without it a standing spawn's ballistic arc is a
-  vertical drop and its closest targets were the start's own floors). Among the eligible, T1 is
+  vertical drop and its closest targets were the start's own floors), beyond the WHOLE previous
+  target (below its lowest part: the facing side of the same chute is not a next target) - and
+  by at most what the
+  horizon can cover: along any flown path the geodesic distance falls no faster than the path
+  is long, so a target more than (speed + g * horizon + SPEED_MARGIN) * horizon below the agent
+  cannot be the next one (without the cap utopia's chain jumped S27 -> S84, 85k u of geodesic
+  across a wall the ballistic arc ignores; the finisher's consecutive ramps step at most 13.5k).
+  Among the eligible, T1 is
   drawn among the top-k by closest approach of the spawn's ballistic arc (the source surface
   excluded) and T2 is the closest to the arc launched off T1's ride; the line is
   window_line([T1, T2]).
@@ -45,6 +52,7 @@ NONE = -1
 RAMP_DEFAULTS = {"ramp_topk": 2, "ramp_horizon": 3.0, "ramp_fade": 0.3}
 PROGRESS_DELTA = 250.0   # u: a target must lie this much closer to the finish (geodesic) than
                          # the agent (or than the previous target) to be eligible
+SPEED_MARGIN = 300.0     # u/s added to the speed bound of the reach cap (air-strafe gain)
 
 
 def find_goal_field(bsp):
@@ -205,13 +213,16 @@ class RampWindows:
         self._rad = (np.asarray([float(np.linalg.norm(self.tp[int(k)] - self._cen[j], axis=1).max())
                                  for j, k in enumerate(self._ids)])
                      if len(self._ids) else np.zeros(0))
-        # per target its geodesic distance to the finish: the median over its contact origins
+        # per target its geodesic distance to the finish: the median over its contact origins,
+        # and its LOWEST part (10th percentile) - the next target must lie beyond all of it
         self.d_surf = {}
+        self.d_low = {}
         if self.gf is not None:
             for k in self._ids:
                 d = np.asarray(self.gf.sample(self.tp[int(k)]), np.float64)
                 d = d[d < self.gf.reach_max]
                 self.d_surf[int(k)] = float(np.median(d)) if len(d) else np.inf
+                self.d_low[int(k)] = float(np.percentile(d, 10)) if len(d) else np.inf
         n = self.N
         self.t1 = np.full(n, NONE, np.int64)
         self.t2 = np.full(n, NONE, np.int64)
@@ -237,8 +248,13 @@ class RampWindows:
         d = float(self.gf.sample(np.asarray(p, np.float64)[None])[0])
         return d if d < self.gf.reach_max else np.inf
 
-    def _candidates(self, p, v, exclude, d_max=np.inf):
-        """ELIGIBLE targets (geodesic distance below d_max) by their closest approach to the
+    def _reach(self, v):
+        """u of geodesic the horizon can cover from speed |v| at most (the reach cap)"""
+        return ((float(np.linalg.norm(v)) + self.gravity * self.horizon + SPEED_MARGIN)
+                * self.horizon)
+
+    def _candidates(self, p, v, exclude, d_max=np.inf, d_min=-np.inf):
+        """ELIGIBLE targets (geodesic distance in [d_min, d_max)) by their closest approach to the
         ballistic arc from (p, v) within the horizon: -> [(dist, id)] sorted; the finish box is
         a candidate like a target and always eligible"""
         path = self._arc(p, v, self.horizon)
@@ -251,7 +267,7 @@ class RampWindows:
                 s = int(self._ids[j])
                 if s in exclude:
                     continue
-                if self.d_surf and not self.d_surf.get(s, np.inf) < d_max:
+                if self.d_surf and not (d_min <= self.d_surf.get(s, np.inf) < d_max):
                     continue
                 if len(out) >= need and lb[j] > out[need - 1][0]:
                     break                          # no later target can beat the k-th best
@@ -275,11 +291,20 @@ class RampWindows:
         """choose_next for window_line: the target closest to the arc launched at the end of the
         previous ride (the previous target and `exclude` never)"""
         def f(cp, cv, prev):
-            d_max = (self.d_surf.get(int(prev), np.inf) - PROGRESS_DELTA
-                     if (prev is not None and self.d_surf) else np.inf)
-            c = self._candidates(np.asarray(cp, np.float64), np.asarray(cv, np.float64),
-                                 exclude | ({int(prev)} if prev is not None else set()),
-                                 d_max=d_max)
+            cp = np.asarray(cp, np.float64)
+            cv = np.asarray(cv, np.float64)
+            d_max, d_min = np.inf, -np.inf
+            if self.d_surf:
+                # BEYOND the previous target (below its lowest part: its facing sibling on the
+                # same chute is not a next target) and below the launch point; within the reach
+                # cap of it
+                d_ref = min(self.d_low.get(int(prev), np.inf) if prev is not None else np.inf,
+                            self._d_at(cp))
+                if np.isfinite(d_ref):
+                    d_max = d_ref - PROGRESS_DELTA
+                    d_min = d_ref - self._reach(cv)
+            c = self._candidates(cp, cv, exclude | ({int(prev)} if prev is not None else set()),
+                                 d_max=d_max, d_min=d_min)
             return int(c[0][1]) if c else FIN
         return f
 
@@ -337,7 +362,11 @@ class RampWindows:
             if self.gf is not None and float(np.linalg.norm(v[:2])) < RAY_FLOOR:
                 yaw = np.radians(float(self.gf.descent_yaw(p[None])[0]))
                 va = np.array([np.cos(yaw) * RAY_FLOOR, np.sin(yaw) * RAY_FLOOR, v[2]])
-            t1 = self._pick(self._candidates(p, va, ex, d_max=self._d_at(p) - PROGRESS_DELTA))
+            d0 = self._d_at(p)
+            if src[n] != NONE and int(src[n]) in self.d_low:
+                d0 = min(d0, self.d_low[int(src[n])])      # beyond the surface it spawned on
+            t1 = self._pick(self._candidates(p, va, ex, d_max=d0 - PROGRESS_DELTA,
+                                             d_min=d0 - self._reach(va)))
             ln, t2 = self._window(p, v, t1, ex)
             self.t1[i] = t1
             self.t2[i] = t2
