@@ -646,3 +646,21 @@ def test_a_fast_return_between_two_arc_samples_is_still_a_landing(voc):
                        fade=0.3, deterministic=True)
     assert w._lands_on(0, np.array([-75.0, -30.0, 300.0]), np.array([3000.0, 400.0, 0.0]))
     assert not w._lands_on(0, np.array([-275.0, -30.0, 300.0]), np.array([3000.0, 400.0, 0.0]))
+
+
+def test_the_first_capture_keeps_riding_down_the_potential(voc):
+    """Codex's case: a standing spawn's line rides T1 down the potential (+x), and the FIRST
+    CAPTURE - a contact with zero velocity - rebuilds the ride from the state: laid with the
+    descent direction too, it still runs +x (from the state's own velocity it ran back)"""
+    v, _bsp, _ = voc
+    w = _windows(v, n=1, goal_field=_DescentField())
+    o = np.array([[-2000.0, -600.0, 400.0]])
+    w.spawn([0], o, np.zeros((1, 3)))
+    assert w.t1[0] == 0
+    on0 = -np.ones((1, 8), np.int64)
+    on0[0, 0] = 0
+    at = np.array([[1000.0, -20.0, 250.0]])
+    idx, lines = w.on_tick(on0, at, np.zeros((1, 3)), np.zeros(1, bool))   # the capture
+    assert list(idx) == [0] and w.captured[0]
+    ride = lines[0][np.abs(lines[0][:, 1] + 20.0) < 1.0]
+    assert len(ride) >= 2 and ride[-1, 0] > ride[0, 0] + 500.0

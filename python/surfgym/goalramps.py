@@ -499,6 +499,19 @@ class RampWindows:
         jj = int(np.argmin(dq))
         return float(dq[jj]), jj, int(iq[jj])
 
+    def _steer(self, p, v):
+        """the velocity a window is laid with: the state's own, or - when it barely moves
+        horizontally (a standing spawn, a vertical landing on a ramp) - RAY_FLOOR along the
+        geodesic field's descent direction (its own vertical kept). From the state's own the
+        ride along a target had no direction and ran back toward the start: at a standing spawn
+        (utopia), and at the first capture, which rebuilt the spawn's line from the real
+        velocity (Codex 2026-09-28)"""
+        v = np.asarray(v, np.float64).reshape(3)
+        if self.gf is not None and float(np.linalg.norm(v[:2])) < RAY_FLOOR:
+            yaw = np.radians(float(self.gf.descent_yaw(np.asarray(p, np.float64)[None])[0]))
+            return np.array([np.cos(yaw) * RAY_FLOOR, np.sin(yaw) * RAY_FLOOR, v[2]])
+        return v
+
     def _pick(self, cands):
         if not cands:
             return FIN
@@ -570,6 +583,7 @@ class RampWindows:
 
     def _window(self, p, v, t1, exclude, riding=False):
         """ONE pass: the line through T1 and a T2 chosen where T1's ride ends -> (line, t2)"""
+        v = self._steer(p, v)
         r = self._fast_window(p, v, t1, NONE if t1 == FIN else None, riding, exclude)
         if r is not None:
             return r
@@ -586,6 +600,7 @@ class RampWindows:
         return ln, (got[1] if len(got) > 1 else NONE)
 
     def _line(self, i, p, v, riding):
+        v = self._steer(p, v)
         r = self._fast_window(p, v, int(self.t1[i]), int(self.t2[i]), riding, set())
         if r is not None:
             return r[0]
@@ -612,10 +627,7 @@ class RampWindows:
             ex = {q} if q is not None else set()
             # a slow spawn (standing on the start, say) would draw its arc as a vertical drop:
             # lay it along the geodesic field's descent direction at RAY_FLOOR instead
-            va = v
-            if self.gf is not None and float(np.linalg.norm(v[:2])) < RAY_FLOOR:
-                yaw = np.radians(float(self.gf.descent_yaw(p[None])[0]))
-                va = np.array([np.cos(yaw) * RAY_FLOOR, np.sin(yaw) * RAY_FLOOR, v[2]])
+            va = self._steer(p, v)
             d0 = self._d_at(p)
             if q is not None and q in self.p_low:
                 d0 = min(d0, self.p_low[q])            # beyond the piece it spawned on
