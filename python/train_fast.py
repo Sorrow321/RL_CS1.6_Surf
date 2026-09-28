@@ -13226,7 +13226,9 @@ def main() -> None:
     goalsys = None
     if args.goals:
         from surfgym.goalsys import GoalSystem
-        if respawn is None or MULTI:
+        # --goal-planner ramps draws its windows from the spawn state alone, so it runs without
+        # the reservoir too (--respawn-frac 0: every episode from the map start - --ramp-sequence)
+        if (respawn is None and not RPLAN) or MULTI:
             raise SystemExit("--goals needs the respawn reservoir and a "
                              "single map (per-slot goals: plan G5)")
         _ball = _eval_ball = None
@@ -15400,6 +15402,10 @@ def main() -> None:
                                 demo.note_outcomes(demo_idx[ei][known],
                                                    goal_now[known])
                             demo_idx[ei] = demo.match(sv_view[ei]["origin"])
+                    if respawn is None and goalsys is not None and ended.any():
+                        # --goal-planner ramps without the reservoir: the ended envs respawned
+                        # at the map start; their windows are drawn all the same
+                        goalsys.assign(np.flatnonzero(ended))
                     tm.add("respawn", t_resp)
                     if TAILW > 0.0 and ended.any():
                         # the ended episodes' groups, snapshotted BEFORE the
