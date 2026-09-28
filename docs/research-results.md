@@ -31385,3 +31385,40 @@ B4 at matched steps: 8.8% / 7.9%. Some greedy episodes now pass the first wedge 
 **Open:** the fade's dropped oldest slot, grazes counted as rides, BSP collision in the hop and arrival tests, the 25-degree group cap, K_NEAR crowding, and the target_channel=0 control.
 
 **rampB7_arc.** B6's argv on bf747c1, with a 300M cap.
+
+## 2026-09-28 09:40 (machine clock) - rampB7_arc final: up to 33% of utopia from the start, 10 rides; BOX triggers + --ramp-offtarget-pen (e608691); rampB8_boxpen launched
+
+**rampB7_arc** (bf747c1, arc reward, telemetry triggers): 300.9M steps at 141.8k steps/s on average.
+
+| step | mean track from the start | rides per episode |
+|---|---|---|
+| 76M | 15.9% | up to 8 |
+| 101M | 24.1% | up to 8 |
+| 126M | 10.1% | |
+| 152M | 29.8% | up to 9 |
+| 177M | 22.5% | |
+| 202M | 33.4% | up to 10 |
+| 227M | 20.7% | |
+| 252M | 25.2% | |
+| 277M | 17.6% | |
+
+0/9 finishes at every eval.
+
+* **Ramp runs before it** stayed at 7-11%, with 2 rides by 51M.
+* **The first wedge gap:** the finisher enters it at about 2,100 u/s, not 3,000+ (an earlier ledger claim, corrected). Early agents enter at about 1,840 u/s and half cross.
+* **The next wall** is the 90 deg left turn after S35 (x 11-14k). The finisher leaves S35 at 2,880 u/s and air-strafes left for about 1.2 s.
+
+**Box triggers (the user; e608691).**
+
+* **What they replace:** the telemetry capture / takeoff / hop test, which cost 2.5 s of a 7 s iteration.
+* **The rule:** per piece, a box in its own frame, 48 u past its validated contacts. Inside T1's box = entered; out of it after that = passed; inside T2's box first = skipped.
+* **Measured on the finisher:** 98% of its ride ticks inside with no margin, all 49 hops inside, and the box left a median 4 ticks after its last contact.
+* **Cost at 2,048 envs:** 1.0 ms per tick for the windows plus 0.48 ms for the off-target test.
+
+**--ramp-offtarget-pen** (the user: "penalize for surfing on things that it's not supposed to surf ... surfing on one thing, then going back").
+
+* **Charged per tick** of contact with a RAMP-like plane (normal z 0.02-0.7) outside the boxes of T1, T2 and, before the first pass, the spawn's piece.
+* **Going back** to a passed piece counts as off-target.
+* **The finisher itself,** through the deterministic eval windows, is off-target 14.9% of the time. The windows picked S42 at the Y-split after S35 where it turned left to S41: the planner chooses the branch, and the executor must follow.
+
+**rampB8_boxpen:** B7's argv on e608691 + `--ramp-offtarget-pen 1.0`, 200M cap. A box-only control (the same without the penalty) follows.
