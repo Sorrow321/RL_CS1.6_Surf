@@ -345,6 +345,7 @@ def main() -> None:
     # its windows as recorded); target_channel 0 = the control arm, which saw zeros
     tmask = None
     tgt_live = True
+    tviews = []
     if args.targets:
         from surfgym.targetmask import TargetMask
         from surfgym.zones import load_zones
@@ -360,6 +361,14 @@ def main() -> None:
         tgt_live = bool(int(rcfg.get("target_channel") or 0))
         print(f"--targets: {_vp.name} "
               + ("(live)" if tgt_live else "(the run held it at ZERO: --target-channel 0)"))
+        # --target-views 6: the channel's five more directions, exactly as the policy saw them
+        # (the trainer's own cameras: surfgym.goalramps.TARGET_VIEWS / _ViewCam), one more panel
+        if int(rcfg.get("target_views") or 1) > 1:
+            from surfgym.goalramps import TARGET_VIEWS, _ViewCam
+            tviews = [(_ViewCam(lidar, span), float(dyaw), float(pch), nm)
+                      for nm, dyaw, pch, span in TARGET_VIEWS]
+            print(f"--targets: {1 + len(tviews)} directions (the view's own + "
+                  + ", ".join(v[3] for v in tviews) + ") - one more panel")
     _rep = {}
 
     def _replay(a, hdr_):
@@ -393,7 +402,7 @@ def main() -> None:
                          "the normal's third channel)")
     n_panels = (1 + int(bool(args.normals))
                 + int(args.surf_mask or ball_panel) + int(pot is not None)
-                + int(tmask is not None))
+                + int(tmask is not None) + int(bool(tviews)))
     FRAME_H = H * n_panels
     # the display range of the potential panel is the ENCODING's own clip, so
     # the colours mean the same thing across frames and across runs (a
@@ -498,8 +507,11 @@ def main() -> None:
                 if t_ids is not None and tgt_live:
                     tmask.set_slots(k, t_ids[sl], t_vals[sl], combine="max")
                     tch = tmask.render(lidar, o, yw, pt, dk).cpu().numpy()
+                    tex = [tmask.render(cam, o, yw + dyaw, torch.full_like(pt, pch), dk)
+                           .cpu().numpy() for cam, dyaw, pch, _nm in tviews]
                 else:
                     tch = np.zeros((k, lidar.H, lidar.W), np.float32)
+                    tex = [np.zeros((k, lidar.H, lidar.W), np.float32) for _v in tviews]
             enc_max = 1.25 if (near and near < rng_u) else 1.0
             for i in range(k):
                 dep = d[i][..., 0] if d[i].ndim == 3 else d[i]
@@ -653,6 +665,32 @@ def main() -> None:
                     _fit_text(tfr, lab, 8, H - 10, W - 16, 0.5, outline=True)
                     cv2.line(tfr, (0, 0), (W, 0), (60, 60, 60), 1)
                     frame = np.vstack((frame, tfr))
+                    if tviews:
+                        # the five more directions as a 3 x 2 grid (the same grey levels),
+                        # each labelled with its direction and its lit share
+                        tw_, th_ = W // 3, H // 2
+                        tiles = []
+                        for (_c, _dy, _pc, nm), tv_all in zip(tviews, tex):
+                            tv_ = np.clip(tv_all[i], 0.0, 1.0)
+                            tl = cv2.cvtColor(((tv_ * 235.0) + 20.0).astype(np.uint8),
+                                              cv2.COLOR_GRAY2BGR)
+                            tl = cv2.resize(tl, (tw_, th_), interpolation=cv2.INTER_NEAREST)
+                            cv2.putText(tl, f"{nm}  {float((tv_ > 0).mean()) * 100:4.1f}% px",
+                                        (6, 16), cv2.FONT_HERSHEY_SIMPLEX, 0.45,
+                                        (255, 255, 255), 1, cv2.LINE_AA)
+                            cv2.rectangle(tl, (0, 0), (tw_ - 1, th_ - 1), (60, 60, 60), 1)
+                            tiles.append(tl)
+                        leg = np.full((th_, tw_, 3), 20, np.uint8)
+                        for j_, ln_ in enumerate(("5 more target", "views, as the",
+                                                  "policy sees them:", "up/down 180 deg",
+                                                  "wide; back, left,", "right level")):
+                            cv2.putText(leg, ln_, (6, 18 + 18 * j_), cv2.FONT_HERSHEY_SIMPLEX,
+                                        0.42, (230, 230, 230), 1, cv2.LINE_AA)
+                        tiles.append(leg)
+                        grid = np.vstack((np.hstack(tiles[0:3]), np.hstack(tiles[3:6])))
+                        if grid.shape[0] != H or grid.shape[1] != W:
+                            grid = cv2.resize(grid, (W, H), interpolation=cv2.INTER_NEAREST)
+                        frame = np.vstack((frame, grid))
                 write(np.ascontiguousarray(frame).tobytes())
                 total += 1
     close()
