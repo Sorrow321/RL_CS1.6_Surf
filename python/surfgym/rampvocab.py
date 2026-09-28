@@ -25,28 +25,41 @@ LATERAL_MIN = 48.0                     # u: the lateral match radius is max(this
 K_NEAR = 8
 
 
+# tools/ramps_mesh.py's own adjacency: two triangles touch when samples of their edges (every
+# EDGE_STEP u) come within EDGE_R u - a shared edge or a T-junction, never a gap
+EDGE_STEP = 4.0
+EDGE_R = 2.5
+
+
 def edge_pieces(tris, ts, n_surf):
-    """surface -> PIECE id (-1 for a surface with no triangle here): surfaces whose triangle edges
-    share a 16 u cell (edge samples every 8 u) are one physical piece - a wedge's two sides and
-    its end caps. tris (m, 3, 3), ts (m,) the surface of each triangle."""
+    """surface -> PIECE id (-1 for a surface with no triangle here): surfaces whose triangles
+    TOUCH (the extractor's exact adjacency: edge samples every EDGE_STEP u within EDGE_R u) are
+    one physical piece - a wedge's two sides and its end caps. tris (m, 3, 3), ts (m,) the
+    surface of each triangle. (It replaced a 16 u voxel co-membership rule that joined edges up
+    to ~28 u apart and split real junctions - Codex, 2026-09-28: utopia's [3, 5, 42, 44, 46]
+    came out as two pieces.)"""
     from scipy.sparse import coo_matrix
     from scipy.sparse.csgraph import connected_components
+    from scipy.spatial import cKDTree
     obj = -np.ones(n_surf, np.int64)
     if len(ts) == 0:
         return obj
-    eds = []
+    tids, pts = [], []
     for a_, b_ in ((0, 1), (1, 2), (2, 0)):
         seg = tris[:, b_] - tris[:, a_]
-        k = np.maximum(1, np.ceil(np.linalg.norm(seg, axis=1) / 8.0).astype(np.int64))
+        k = np.maximum(1, np.ceil(np.linalg.norm(seg, axis=1) / EDGE_STEP).astype(np.int64))
         tid = np.repeat(np.arange(len(tris)), k + 1)
-        frac = np.concatenate([np.linspace(0.0, 1.0, kk + 1) for kk in k])
-        eds.append((ts[tid], np.floor((tris[tid, a_] + seg[tid] * frac[:, None]) / 16.0)))
-    sid = np.concatenate([e[0] for e in eds])
-    cell = np.concatenate([e[1] for e in eds]).astype(np.int64)
-    _c, cid = np.unique(cell, axis=0, return_inverse=True)
-    cid = cid.reshape(-1)
-    g = coo_matrix((np.ones(len(sid)), (sid, n_surf + cid)),
-                   shape=(n_surf + len(_c), n_surf + len(_c)))
+        off = np.concatenate([[0], np.cumsum(k + 1)[:-1]])
+        j = np.arange(len(tid)) - np.repeat(off, k + 1)
+        frac = j / np.repeat(k, k + 1)
+        tids.append(tid)
+        pts.append(tris[tid, a_] + seg[tid] * frac[:, None])
+    tid = np.concatenate(tids)
+    pr = cKDTree(np.concatenate(pts)).query_pairs(r=EDGE_R, output_type="ndarray")
+    sa, sb = ts[tid[pr[:, 0]]], ts[tid[pr[:, 1]]]
+    keep = sa != sb
+    sa, sb = sa[keep], sb[keep]
+    g = coo_matrix((np.ones(len(sa)), (sa, sb)), shape=(n_surf, n_surf))
     _n, lab = connected_components(g, directed=False)
     used = np.unique(ts)
     _l, compact = np.unique(lab[used], return_inverse=True)

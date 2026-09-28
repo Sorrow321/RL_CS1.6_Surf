@@ -559,3 +559,90 @@ def test_the_numba_search_answers_exactly_what_the_kd_trees_do(voc):
     assert np.array_equal(got[0][0], got[1][0]) and np.array_equal(got[0][1], got[1][1])
     assert all(a.shape == b.shape and np.allclose(a, b, atol=1e-3)
                for a, b in zip(got[0][2], got[1][2]))
+
+
+def test_the_finish_box_is_a_candidate_only_within_the_reach_cap(voc):
+    """FIN's geodesic distance is 0: it is eligible only when the band's lower edge reaches 0
+    (it used to be appended always - training drew it as T1 from 10.4% of real utopia states, a
+    median 90k u of geodesic away)"""
+    v, _bsp, _ = voc
+    w = _windows(v, n=1, goal_field=_AlongY())
+    p, vel = APPROACH
+    far = w._candidates(p, vel, set(), d_max=10350.0, d_min=100.0)
+    near = w._candidates(p, vel, set(), d_max=10350.0, d_min=-10.0)
+    assert all(s != gr.FIN for _d, s in far) and any(s != gr.FIN for _d, s in far)
+    assert any(s == gr.FIN for _d, s in near)
+
+
+def test_a_piece_is_eligible_as_a_whole_never_through_its_end_cap(voc):
+    """eligibility is the PIECE's median geodesic distance: a band that only the end cap of a
+    wedge lies in (the cap nearer the finish than the sides) does not make the wedge a candidate
+    as its cap (utopia's [28, 29, 30] below 155k)"""
+    _v, bsp, tmp = voc
+    v = _wedge_vocab(tmp, bsp)
+    w = gr.RampWindows(v, 1, ((20000, 0, 0), (20100, 100, 100)), 10.0, topk=1, horizon=3.0,
+                       fade=0.3, deterministic=True, goal_field=_DescentField())
+    d_cap = float(np.median(w.gf.sample(w.tp[CAP])))
+    d_side = float(np.median(w.gf.sample(w.tp[A_])))
+    assert d_cap < d_side
+    band = w._candidates(np.array([-1500.0, -500.0, 900.0]), np.array([1500.0, 0.0, 0.0]),
+                         set(), d_max=0.5 * (d_cap + d_side), d_min=0.0)
+    assert all(s not in (A_, B_, CAP) for _d, s in band)
+
+
+def test_the_ride_surface_follows_the_pieces_axis_whatever_the_heading(voc):
+    """the ride surface is the one running furthest along the piece's main axis (its largest
+    surface's level line), so a flight heading ACROSS a wedge still gets a side, never the cap
+    (along the travel direction the cap won from 38 of 360 headings)"""
+    _v, bsp, tmp = voc
+    v = _wedge_vocab(tmp, bsp)
+    w = gr.RampWindows(v, 1, ((20000, 0, 0), (20100, 100, 100)), 10.0, topk=1, horizon=3.0,
+                       fade=0.3, deterministic=True)
+    q = int(v.piece[A_])
+    for hd in range(0, 360, 15):
+        vh = np.array([np.cos(np.radians(hd)), np.sin(np.radians(hd)), 0.0])
+        p0 = np.array([3800.0, 0.0, 1400.0]) - vh * 1500.0
+        path = w._arc(p0, vh * 1500.0, 3.0)
+        assert w._ride_face(q, path, vh, -np.inf, np.inf, {}) in (A_, B_), hd
+
+
+def test_a_piece_left_behind_is_never_a_target_again(voc):
+    """the pieces an episode has left (and the one it spawned on) are excluded for the rest of
+    it - no cycles"""
+    _v, bsp, tmp = voc
+    v = _wedge_vocab(tmp, bsp)
+    w = gr.RampWindows(v, 1, ((20000, 0, 0), (20100, 100, 100)), 10.0, topk=1, horizon=3.0,
+                       fade=0.3, deterministic=True)
+    o, vel = np.array([[-1500.0, -500.0, 900.0]]), np.array([[1500.0, 0.0, 0.0]])
+    w.spawn([0], o, vel)
+    assert w.t1[0] in (A_, B_) and w.t2[0] == R_
+    wedge = int(v.piece[A_])
+    away = (np.array([[9500.0, -2500.0, 1500.0]]), np.array([[-1500.0, 0.0, 0.0]]))
+    w._shift(0, away[0][0], away[1][0], riding=False)       # A left: R is T1, heading back
+    assert wedge in w.visited[0] and w.t1[0] == R_
+    assert w.t2[0] not in (A_, B_, CAP)                      # the wedge is not next, ever
+
+
+def _plane_vocab(tmp_path, bsp):
+    """one small target plane facing -y: validated origins at y = -20 around (0, -20, 300)"""
+    g = np.linspace(-10.0, 10.0, 5)
+    P = np.array([[x, -20.0, 300.0 + z] for x in g for z in g])
+    N = np.tile([0.0, -1.0, 0.0], (len(P), 1))
+    f = tmp_path / "plane.npz"
+    np.savez(f, version=4, map=Path(bsp).stem, bsp_sig=bsp_signature(bsp), mesh_sha1="x",
+             cat=np.array([1]), normal=np.array([[0.0, -1.0, 0.0]]), area=np.array([400.0]),
+             touchable=np.ones(1), points=P, normals=N, surf=np.zeros(len(P), np.int64),
+             duck_points=P, duck_normals=N, duck_surf=np.zeros(len(P), np.int64))
+    return RampVocab(f, bsp)
+
+
+def test_a_fast_return_between_two_arc_samples_is_still_a_landing(voc):
+    """Codex's case: origin (0, -20, 300), normal -y, radius 48; from (-75, -30, 300) at
+    (3000, 400, 0) the arc crosses the plane at t = 0.025 s at x = 0 - inside - but the next
+    sample (t = 0.05 s) is at x = 75, outside: the crossing is interpolated between samples"""
+    _v, bsp, tmp = voc
+    v = _plane_vocab(tmp, bsp)
+    w = gr.RampWindows(v, 1, ((20000, 0, 0), (20100, 100, 100)), 10.0, topk=1, horizon=3.0,
+                       fade=0.3, deterministic=True)
+    assert w._lands_on(0, np.array([-75.0, -30.0, 300.0]), np.array([3000.0, 400.0, 0.0]))
+    assert not w._lands_on(0, np.array([-275.0, -30.0, 300.0]), np.array([3000.0, 400.0, 0.0]))

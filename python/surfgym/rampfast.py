@@ -113,25 +113,20 @@ if _njit is not None and os.environ.get("SURFGYM_NO_NUMBA") != "1":
         return pbest, fdist
 
     @_njit(cache=True, nogil=True)
-    def ride_face(p, pf_start, pf_count, pf_j, path, vhx, vhy, O, ostart, ocount, dsurf, use_d,
-                  d_min, d_max, fdist):
-        """RampWindows._ride_face for compact piece p: its eligible surface with the longest run
-        along the travel direction less the arc's distance to it (first maximum) -> index j"""
+    def ride_face(p, pf_start, pf_count, pf_j, path, axx, axy, O, ostart, ocount, fdist):
+        """RampWindows._ride_face for compact piece p: its surface with the longest run along
+        the axis (axx, axy) less the arc's distance to it (first maximum) -> index j"""
         best = -1
         sc = -np.inf
         for t in range(pf_start[p], pf_start[p] + pf_count[p]):
             j = pf_j[t]
-            if use_d:
-                d = dsurf[j]
-                if not (d_min <= d and d < d_max):
-                    continue
             ds = fdist[j]
             if ds < 0.0:
                 ds, _a, _b = nearest_pair(path, O, ostart[j], ocount[j])
             lo = np.inf
             hi = -np.inf
             for i in range(ostart[j], ostart[j] + ocount[j]):
-                pr = O[i, 0] * vhx + O[i, 1] * vhy + O[i, 2] * 0.0
+                pr = O[i, 0] * axx + O[i, 1] * axy
                 if pr < lo:
                     lo = pr
                 if pr > hi:
@@ -185,12 +180,13 @@ if _njit is not None and os.environ.get("SURFGYM_NO_NUMBA") != "1":
 
     @_njit(cache=True, nogil=True)
     def next_target(cpx, cpy, cpz, cvx, cvy, cvz, q, excl, cen, rad, O, ostart, ocount, pj,
-                    n_p, dsurf, use_d, plow, pf_start, pf_count, pf_j, need, grid, mins, cell,
-                    valid_max, sentinel, reach_max, fin_lo, fin_hi, gravity, horizon,
-                    progress_delta, speed_margin):
+                    n_p, dsurf, use_d, plow, pf_start, pf_count, pf_j, pax, pay, phas, need,
+                    grid, mins, cell, valid_max, sentinel, reach_max, fin_lo, fin_hi, gravity,
+                    horizon, progress_delta, speed_margin):
         """RampWindows._next_fn: the target closest to the arc from (cp, cv) - beyond compact
         piece q (-1 = none) and the launch point, within the reach cap - or the finish box when
-        it is at least as close -> index j or FIN"""
+        the reach cap reaches it and it is at least as close -> index j or FIN (FIN also when
+        nothing is eligible)"""
         d_max = np.inf
         d_min = -np.inf
         if use_d:
@@ -232,12 +228,18 @@ if _njit is not None and os.environ.get("SURFGYM_NO_NUMBA") != "1":
             d = norm3(path[t, 0] - qx, path[t, 1] - qy, path[t, 2] - qz)
             if d < fd:
                 fd = d
-        if bp < 0 or fd <= bd:
+        fin_ok = d_min <= 0.0
+        if bp < 0 or (fin_ok and fd <= bd):
             return FIN
-        sh = norm3(cvx, cvy, 0.0)
-        sh = sh if sh > 1e-9 else 1e-9
-        return ride_face(bp, pf_start, pf_count, pf_j, path, cvx / sh, cvy / sh, O, ostart,
-                         ocount, dsurf, use_d, d_min, d_max, fdist)
+        if phas[bp]:
+            axx = pax[bp]
+            axy = pay[bp]
+        else:
+            sh = norm3(cvx, cvy, 0.0)
+            sh = sh if sh > 1e-9 else 1e-9
+            axx = cvx / sh
+            axy = cvy / sh
+        return ride_face(bp, pf_start, pf_count, pf_j, path, axx, axy, O, ostart, ocount, fdist)
 
     @_njit(cache=True, nogil=True)
     def ride_dir(nbx, nby, nbz, tx, ty, tz):
@@ -297,7 +299,8 @@ if _njit is not None and os.environ.get("SURFGYM_NO_NUMBA") != "1":
 
     @_njit(cache=True, nogil=True)
     def window(ox, oy, oz, vx, vy, vz, k0, k1, riding_first, excl, cen, rad, O, NRM, ostart,
-               ocount, pj, n_p, dsurf, use_d, plow, pf_start, pf_count, pf_j, need, grid, mins,
+               ocount, pj, n_p, dsurf, use_d, plow, pf_start, pf_count, pf_j, pax, pay, phas,
+               need, grid, mins,
                cell, valid_max, sentinel, reach_max, fin_lo, fin_hi, finish, gravity, horizon,
                progress_delta, speed_margin, dt_path, ramp_coast, ramp_press, ride_past,
                ray_floor, ray_spacing, line_cap, buf):
@@ -322,8 +325,9 @@ if _njit is not None and os.environ.get("SURFGYM_NO_NUMBA") != "1":
                 qprev = pj[prev] if prev >= 0 else -1
                 k = next_target(cpx, cpy, cpz, cvx, cvy, cvz, qprev, excl, cen, rad, O, ostart,
                                 ocount, pj, n_p, dsurf, use_d, plow, pf_start, pf_count, pf_j,
-                                need, grid, mins, cell, valid_max, sentinel, reach_max, fin_lo,
-                                fin_hi, gravity, horizon, progress_delta, speed_margin)
+                                pax, pay, phas, need, grid, mins, cell, valid_max, sentinel,
+                                reach_max, fin_lo, fin_hi, gravity, horizon, progress_delta,
+                                speed_margin)
             else:
                 k = k1
             if step == 1:
