@@ -31046,3 +31046,42 @@ Video: `runs/research/utopia_target_pov_clip.mp4`. Its ride sequence has 26 targ
 * Whether `--vision-clip` becomes the from-scratch default is the user's call. It changes pixels on the 19 maps above and nowhere else.
 
 Pre-existing failure, left alone: `test_flags_round30::test_max_step_is_the_teleport_clip_and_scales_with_every` fails because `_FakeCore` has no `.config` (`rewards.py:1209`, since f2d5df2).
+
+## 2026-09-28 04:24 (machine clock) - BACKLOG (the user): the far field is a "fog of war" in the depth image; plus Codex's review of `--vision-clip`
+
+**The user, after the fixed utopia video:** far objects are very hard to see in the depth video, unlike the game, where textures separate objects. Ideas: image-space depth gradients (edges), ideally rendered at higher resolution and then downsampled; a depth function that stays sharp far away and still works near; several channels (depth + edges + more); something that plays the role of textures. **Decision: backlog.** Train the target channel first, then improve the depth render if that works.
+
+**The fog is in the POLICY's input, not only the video.** The video shows the encoded depth the policy receives, normalised per frame. The encoding (`GpuLidar`, near 2,000 u, range 11,500 u) is linear to 1.0 at 2,000 u, then `1 + 0.25 (1 - exp(-(d - 2000)/2500))`, which tops out at 1.244. The input difference between two surfaces 1,000 u apart:
+
+| depths (u) | 500 vs 1,500 | 3,000 vs 4,000 | 5,000 vs 6,000 | 8,000 vs 9,000 | 10,000 vs 11,000 |
+|---|---|---|---|---|---|
+| input difference | 0.500 | 0.055 | 0.025 | 0.0075 | 0.0034 |
+| share of the near-field difference | 100% | 11% | 5% | 1.5% | 0.7% |
+
+At 3,500 u/s, 3,500-7,000 u is one to two seconds of flight, which is the range where the next ramps are chosen.
+
+**What earlier arms already measured** (none of them tested far-field contrast directly):
+
+* Depth cannot separate a ramp from the wall beside it at the same depth. At the petrus bend the ramp read 0.420 and the wall 0.425; the median contrast was +0.31 sigma, against +1.51 sigma for the |n_z| surf mask.
+* The surf mask as the second channel (`jtCPM`) tied on cannonball within the noise floor and was better per hour. On petrus it lost to the potential channel by a whole gate.
+* `--normals` cost 55% of throughput.
+* `--obs-fourier 6`, a NeRF-style re-encoding of depth, stayed one gate below the matched seed at half the samples.
+* The pinhole camera was negative.
+
+**Candidates when this comes off the backlog:**
+
+1. A log-depth encoding. It is one line in the march and adds no channel, so it cannot be warm-started across without a transient. With `ln(1 + d/200)`, far contrast rises about 2-5x and near contrast roughly halves.
+2. An edge channel: `|grad ln d|` from a 2x supersampled render, max-pooled to 64x32. Silhouettes then have the same strength at every distance. Surface creases (a normal change at equal depth, the petrus-bend case) need the normal, not the depth.
+3. A per-surface identity channel, the "texture" role: hashed surface ids from the ramps_mesh vocabulary.
+
+Before any training arm: measure the next ramp's pixel contrast against its surroundings at 2-8k u on our own recordings under each encoding, the petrus-bend method. That costs zero GPU-hours.
+
+**Codex's review of 0d84b7a** (bus 20260928T021606Z): keep `--vision-clip` an opt-in ANALYSIS flag (`p1`), not a default, and do not train the target arm on it yet.
+
+* A valid counterexample: four thin visible pillars at (+-8, +-8) around a voxel satisfy all 9 duck tests and evade all 27 lines, so a no-CLIP map CAN get a 2. The panel of real maps (petrus, cannonball, edgeflow: 0) does not prove "no CLIP means identical".
+* Real CLIP within about 16-18 u of visible geometry is erased by the line exclusion.
+* Sky inside a line is not excluded.
+* Wiring gaps: `beam_tas.py` and `wr_scan.py` do not mirror the flag; `render_pov` reads only `run.json`, and the trajectory header should carry the flag; the new caches are missing from `restamp_maps.py`, the pool bundle and box seeding.
+* The goal field should get its own configuration-space occupancy (duck-hull free space), as a new semantic.
+* The ramp graph needs collision-surface identity: every `-4` contact aliases to one id, which corrupts departures on clip maps.
+* A cleaner vision contract: configuration-space depth, meaning the distance the player's origin can travel along the ray. It needs its own matched arm.
