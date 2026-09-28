@@ -16,6 +16,7 @@ compiler tessellated the surface. The nearer of the two targets wins where they 
     tm = TargetMask(mesh_npz, finish_box=None, device="cuda", unit="face")   # or unit="object"
     tm.set_targets(n_envs, t1, t2)                   # surface / object ids, FIN, NONE
     chan = tm.render(lidar, origin, yaw, pitch, ducked)   # (N, H, W) in {-1, 0, +1}
+    tm.set_slots(n_envs, ids, vals)   # up to three slots with any values (a cross-fade)
 
 unit="object": a target is a whole connected object (e.g. an A-frame's two slopes and its caps:
 target faces touching at an edge), not one slope - coarser but more forgiving.
@@ -170,12 +171,13 @@ if HAVE_TRITON:
         return best
 
     @triton.jit
-    def _tm_fused_kernel(yaw_ptr, pitch_ptr, eye_ptr, yoff_ptr, poff_ptr, s1_ptr, s2_ptr,
+    def _tm_fused_kernel(yaw_ptr, pitch_ptr, eye_ptr, yoff_ptr, poff_ptr, sid_ptr, val_ptr,
                          pstart_ptr, pcount_ptr, pf_ptr, pi_ptr, mask_ptr, sph_ptr, out_ptr,
-                         H, W, BLOCK: tl.constexpr):
+                         H, W, BLOCK: tl.constexpr, MAXV: tl.constexpr):
         """one program = one env x BLOCK pixels: the equiangular camera's ray (the lidar's own
-        _dirs_equiangular, term for term), both targets, and the channel value: +1 where the next
-        target is the nearer hit, -1 where the one after is, 0 elsewhere"""
+        _dirs_equiangular, term for term), the env's three target SLOTS (ids and values), and the
+        channel: the value of the nearest slot whose value is not 0 (MAXV: the LARGEST value
+        among the slots the ray crosses), else 0"""
         e = tl.program_id(0)
         rb = tl.program_id(1)
         R = H * W
@@ -193,12 +195,21 @@ if HAVE_TRITON:
         ox = tl.load(eye_ptr + e * 3 + 0)
         oy = tl.load(eye_ptr + e * 3 + 1)
         oz = tl.load(eye_ptr + e * 3 + 2)
-        b1 = _tm_target_best(dx, dy, dz, ox, oy, oz, tl.load(s1_ptr + e), pstart_ptr, pcount_ptr,
-                             pf_ptr, pi_ptr, mask_ptr, sph_ptr, m, BLOCK)
-        b2 = _tm_target_best(dx, dy, dz, ox, oy, oz, tl.load(s2_ptr + e), pstart_ptr, pcount_ptr,
-                             pf_ptr, pi_ptr, mask_ptr, sph_ptr, m, BLOCK)
         inf = float("inf")
-        val = tl.where((b1 < inf) & (b1 <= b2), 1.0, tl.where(b2 < inf, -1.0, 0.0))
+        best = tl.full([BLOCK], inf, tl.float32)
+        val = tl.zeros([BLOCK], tl.float32)
+        for k in range(0, 3):
+            s = tl.load(sid_ptr + e * 3 + k)
+            v = tl.load(val_ptr + e * 3 + k)
+            s = tl.where(v != 0.0, s, -1)
+            b = _tm_target_best(dx, dy, dz, ox, oy, oz, s, pstart_ptr, pcount_ptr,
+                                pf_ptr, pi_ptr, mask_ptr, sph_ptr, m, BLOCK)
+            if MAXV:
+                val = tl.where((b < inf) & (v > val), v, val)
+            else:
+                closer = b < best
+                best = tl.where(closer, b, best)
+                val = tl.where(closer, v, val)
         tl.store(out_ptr + e * R + offs, val, mask=m)
 
     @triton.jit
@@ -240,6 +251,30 @@ if HAVE_TRITON:
             hit = inb & (mv > 0)
             best = tl.where(hit & (tt < best), tt, best)
         return best
+
+
+def takeoff_fade_values(leave_ticks, t, fade_ticks):
+    """The CONTINUOUS target schedule (the user, 2026-09-28: no jump when a ramp is reached): the
+    route's targets 0, 1, 2, ... (the last may be FIN), ``leave_ticks[i]`` the tick the agent LEFT
+    target i (its takeoff; +inf while not yet left). Target i's value at tick t is
+
+        0.5 * ramp(t - L[i-2]) + 0.5 * ramp(t - L[i-1]) - 1.0 * ramp(t - L[i]),
+
+    ramp(x) = clip(x / fade_ticks, 0, 1), L[-1] = L[-2] = -inf: it fades in as the one AFTER
+    (0 -> 0.5) when the ramp two before it is left, brightens to NEXT (0.5 -> 1) when the ramp
+    before it is left, and fades out (1 -> 0) when it is left itself. A TOUCH changes nothing;
+    every value is a sum of continuous ramps, so no timing of the takeoffs makes it jump.
+    -> (n,) values."""
+    L = np.asarray(leave_ticks, np.float64)
+    n = len(L)
+
+    def ramp(x):
+        return np.clip(np.asarray(x, np.float64) / max(float(fade_ticks), 1e-9), 0.0, 1.0)
+    prev1 = np.concatenate(([-np.inf], L[:-1])) if n else L
+    prev2 = np.concatenate(([-np.inf, -np.inf], L[:-2]))[:n] if n else L
+    # +-inf need no special case: ramp(t + inf) = 1 (the virtual predecessors), ramp(t - inf) = 0
+    # (a ramp never left)
+    return 0.5 * ramp(t - prev2) + 0.5 * ramp(t - prev1) - ramp(t - L)
 
 
 class TargetMask:
@@ -326,6 +361,9 @@ class TargetMask:
                      torch.as_tensor(np.asarray(finish_box[1], np.float32), device=self.device)))
         self.t1 = None
         self.t2 = None
+        self.sids = None
+        self.svals = None
+        self.combine = "nearest"
 
     @staticmethod
     def _objects(tris, ts, n_surf):
@@ -355,8 +393,35 @@ class TargetMask:
     def set_targets(self, n_envs, t1, t2):
         """per env the next target (t1, +1) and the one after (t2, -1): surface ids (object ids
         with unit="object" - see obj_of_surf), FIN for the finish box, NONE for no target"""
-        self.t1 = torch.as_tensor(np.asarray(t1, np.int64).reshape(n_envs), device=self.device)
-        self.t2 = torch.as_tensor(np.asarray(t2, np.int64).reshape(n_envs), device=self.device)
+        t1 = np.asarray(t1, np.int64).reshape(n_envs)
+        t2 = np.asarray(t2, np.int64).reshape(n_envs)
+        self.set_slots(n_envs, np.stack([t1, t2, np.full(n_envs, NONE)], 1),
+                       np.tile(np.array([1.0, -1.0, 0.0], np.float32), (n_envs, 1)),
+                       combine="nearest")
+
+    def set_slots(self, n_envs, ids, vals, combine: str = "max"):
+        """per env up to three target SLOTS: ids (n, K) (surface / object ids, FIN, NONE) and
+        their channel values (n, K) - e.g. a cross-fade: the ramp just left fading 1 -> 0, the
+        next 0.5 -> 1, the new one after 0 -> 0.5. A pixel shows the value of the nearest slot
+        with a non-zero value (combine="nearest"), or the LARGEST value among the slots the ray
+        crosses (combine="max", the default here: with brightness as the order, a pixel is then
+        the max of continuously changing values and cannot jump)."""
+        if combine not in ("max", "nearest"):
+            raise ValueError(f"TargetMask: combine max|nearest, got {combine!r}")
+        self.combine = combine
+        ids = np.asarray(ids, np.int64).reshape(n_envs, -1)
+        vals = np.asarray(vals, np.float32).reshape(n_envs, -1)
+        k = ids.shape[1]
+        if k > 3:
+            raise ValueError("TargetMask: at most three target slots")
+        pad_i = np.full((n_envs, 3), NONE, np.int64)
+        pad_v = np.zeros((n_envs, 3), np.float32)
+        pad_i[:, :k] = ids
+        pad_v[:, :k] = vals
+        self.sids = torch.as_tensor(pad_i, device=self.device).contiguous()
+        self.svals = torch.as_tensor(pad_v, device=self.device).contiguous()
+        self.t1 = self.sids[:, 0]
+        self.t2 = self.sids[:, 1]
 
     def _plane_hit_torch(self, sid, eye, dirs):
         """the torch reference of _tm_plane_kernel: (N,), (N,3), (N,R,3) -> (N,R) distances"""
@@ -426,27 +491,34 @@ class TargetMask:
         eye = torch.stack([origin[:, 0], origin[:, 1],
                            origin[:, 2] + torch.where(ducked.bool(), 12.0, 17.0)],
                           dim=1).float().contiguous()
-        none = torch.full((N,), NONE, dtype=torch.int64, device=self.device)
-        s1 = self.t1 if self.t1 is not None else none
-        s2 = self.t2 if self.t2 is not None else none
+        if self.sids is None:
+            self.set_slots(N, np.full((N, 1), NONE), np.zeros((N, 1)))
+        sids, svals = self.sids, self.svals
         if (HAVE_TRITON and self.device.type == "cuda" and not force_torch
-                and not lidar.pinhole and not bool(((s1 == FIN) | (s2 == FIN)).any())):
+                and not lidar.pinhole and not bool((sids == FIN).any())):
             out = torch.empty(N, lidar.H, lidar.W, device=self.device, dtype=torch.float32)
             R = lidar.H * lidar.W
             _tm_fused_kernel[(N, triton.cdiv(R, TM_BLOCK))](
                 yaw_deg.float().contiguous(), pitch_deg.float().contiguous(), eye,
-                lidar.yoff, lidar.poff, s1.contiguous(), s2.contiguous(), self.pstart,
-                self.pcount, self.pf, self.pi, self.mask, self.sph, out, lidar.H, lidar.W,
-                BLOCK=TM_BLOCK)
+                lidar.yoff, lidar.poff, sids, svals, self.pstart, self.pcount, self.pf, self.pi,
+                self.mask, self.sph, out, lidar.H, lidar.W, BLOCK=TM_BLOCK,
+                MAXV=self.combine == "max")
             return out
         lidar._ensure_buffers(N)
         dirs = lidar._dirs_pinhole if lidar.pinhole else lidar._dirs_equiangular
         dirs(N, yaw_deg, pitch_deg, np.pi / 180.0)
         dx, dy, dz = lidar._dx, lidar._dy, lidar._dz
-        inf = torch.full((N, lidar.H * lidar.W), float("inf"), device=self.device)
-        t1 = self._dist(self.t1, eye, dx, dy, dz, force_torch) if self.t1 is not None else inf
-        t2 = self._dist(self.t2, eye, dx, dy, dz, force_torch) if self.t2 is not None else inf
-        out = torch.zeros(N, lidar.H * lidar.W, device=self.device)
-        out = torch.where(torch.isfinite(t2) & (t2 < t1), torch.full_like(out, -1.0), out)
-        out = torch.where(torch.isfinite(t1) & (t1 <= t2), torch.full_like(out, 1.0), out)
+        R = lidar.H * lidar.W
+        best = torch.full((N, R), float("inf"), device=self.device)
+        out = torch.zeros(N, R, device=self.device)
+        for k in range(3):
+            s = torch.where(svals[:, k] != 0, sids[:, k], torch.full_like(sids[:, k], NONE))
+            b = self._dist(s, eye, dx, dy, dz, force_torch)
+            v = svals[:, k:k + 1].expand(-1, R)
+            if self.combine == "max":
+                out = torch.where(torch.isfinite(b) & (v > out), v, out)
+            else:
+                closer = b < best
+                best = torch.where(closer, b, best)
+                out = torch.where(closer, v, out)
         return out.reshape(N, lidar.H, lidar.W)

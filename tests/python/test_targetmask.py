@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import pytest
 import torch
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -119,3 +120,40 @@ def test_object_unit_joins_an_a_frame(tmp_path):
     assert lit.sum() > 0
     cols = np.flatnonzero(lit.any(0))
     assert cols.min() < lid.W // 2 < cols.max()   # left and right of the centre line
+
+
+def test_takeoff_fade_is_continuous_and_ignores_touches():
+    rng = np.random.default_rng(0)
+    for _ in range(50):
+        n = int(rng.integers(2, 9))
+        leave = np.sort(rng.uniform(0, 400, n))
+        leave[rng.random(n) < 0.2] = np.inf          # some ramps never left
+        leave = np.sort(leave)
+        prev = tmm.takeoff_fade_values(leave, -1.0, 30.0)
+        assert np.allclose(prev[:2], [1.0, 0.5]) and np.allclose(prev[2:], 0.0)
+        for t in np.arange(0.0, 500.0, 1.0):
+            v = tmm.takeoff_fade_values(leave, t, 30.0)
+            assert np.all(v >= -1e-9) and np.all(v <= 1.0 + 1e-9)
+            assert np.max(np.abs(v - prev)) <= 1.0 / 30.0 + 1e-9    # at most one ramp step per tick
+            prev = v
+
+
+def test_slots_max_combine_and_zero_slots(tmp_path):
+    tm = tmm.TargetMask(str(_mesh(tmp_path)), None, DEV)
+    lid = _Lidar(dev=DEV)
+    o = torch.as_tensor(np.asarray([[500, -2000, 233]], np.float32), device=DEV)
+    yaw = torch.as_tensor([90.0], device=DEV)
+    z0 = torch.zeros(1, device=DEV)
+    dk = torch.zeros(1, dtype=torch.int64, device=DEV)
+    r, c = lid.H // 2, lid.W // 2
+    # ramp 0 (near, 0.5) in front of ramp 1 (far, 1.0): MAX shows 1.0 where they overlap
+    tm.set_slots(1, [[0, 1]], [[0.5, 1.0]])
+    assert float(tm.render(lid, o, yaw, z0, dk)[0, r, c]) == 1.0
+    tm.set_slots(1, [[0, 1]], [[0.5, 1.0]], combine="nearest")
+    assert float(tm.render(lid, o, yaw, z0, dk)[0, r, c]) == 0.5
+    # a slot at value 0 neither draws nor hides anything
+    tm.set_slots(1, [[0, 1]], [[0.0, 0.7]])
+    ch = tm.render(lid, o, yaw, z0, dk)
+    assert float(ch[0, r, c]) == pytest.approx(0.7)
+    tm.set_slots(1, [[0]], [[0.0]])
+    assert float(tm.render(lid, o, yaw, z0, dk).abs().sum()) == 0.0

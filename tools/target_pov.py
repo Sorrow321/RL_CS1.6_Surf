@@ -38,13 +38,20 @@ def main(argv=None) -> int:
     ap.add_argument("--every", type=int, default=4, help="ticks per video frame (4 = 25 fps)")
     ap.add_argument("--scale", type=int, default=10)
     ap.add_argument("--unit", choices=("face", "object"), default="face")
+    ap.add_argument("--schedule", choices=("takeoff", "touch"), default="takeoff",
+                    help="takeoff (default): a target stays lit while it is ridden and fades out "
+                         "over --fade s after the TAKEOFF, the next brightening 0.5 -> 1 and the "
+                         "one after fading in 0 -> 0.5 (targetmask.takeoff_fade_values: "
+                         "continuous); touch: the old +1 / -1 switch at the first touch")
+    ap.add_argument("--fade", type=float, default=0.3, help="seconds of cross-fade")
     a = ap.parse_args(argv)
     import cv2
     import torch
     from scipy.spatial import cKDTree
     import record_ckpt
     from ramps import RampMap
-    from surfgym.targetmask import FIN, NONE, TargetMask
+    from surfgym.targetmask import FIN, NONE, TargetMask, takeoff_fade_values
+    import edge_archive as ea
 
     rows = [json.loads(ln) for ln in open(a.traj, encoding="utf-8") if ln.startswith("[")]
     A = np.asarray([r[:13] for r in rows], np.float64)
@@ -81,8 +88,27 @@ def main(argv=None) -> int:
                     continue            # a flicker back onto the previous surface
                 seq.append(m)
                 first_t.append(t)
+    # the TAKEOFF from each ride: the first tick at which the agent has been off that surface
+    # for DEPART_TICKS consecutive ticks after touching it (the ride contract's own rule)
+    msets = [{o2m[int(x)] for x in s.split(",") if x not in ("", "-4") and int(x) in o2m}
+             for s in sets[:n]]
+    leave = []
+    for i, (s, t0) in enumerate(zip(seq, first_t)):
+        last = t0
+        tl = np.inf
+        for tt_ in range(t0, n):
+            if s in msets[tt_]:
+                last = tt_
+            elif tt_ - last >= ea.DEPART_TICKS:
+                tl = float(last + ea.DEPART_TICKS)
+                break
+        leave.append(tl)
+    tgt_seq = list(seq) + [FIN]                 # the finish is the last target; never left
+    leave_all = np.asarray(leave + [np.inf])
+    fade_t = float(a.fade) * 100.0
     print(f"target_pov: {n} ticks, ride sequence of {len(seq)} target surfaces: "
-          + " ".join(f"{s}@{t / 100:.1f}s" for s, t in zip(seq, first_t)))
+          + " ".join(f"{s}@{t / 100:.1f}-{(lv / 100 if np.isfinite(lv) else float('nan')):.1f}s"
+                     for s, t, lv in zip(seq, first_t, leave)))
     ctx = record_ckpt.build([str(a.ckpt), "--episodes", "1", "--map", str(a.map)])
     lidar = ctx.pol.lidar
     dev = lidar.device
@@ -101,6 +127,7 @@ def main(argv=None) -> int:
     font = cv2.FONT_HERSHEY_SIMPLEX
     k = -1
     ticks = list(range(0, n, int(a.every)))
+    prev_ch, prev_dp, jumps = None, None, []
     B = 64
     for c0 in range(0, len(ticks), B):
         tt = ticks[c0:c0 + B]
@@ -110,33 +137,60 @@ def main(argv=None) -> int:
         dk = torch.as_tensor(duck[tt], device=dev)
         out = lidar.render(o, yaw, pitch, dk)
         depth = (out[..., 0] if out.dim() == 4 else out).float().cpu().numpy()
-        t1s, t2s, labels = [], [], []
+        labels = []
+        sl_ids, sl_vals = [], []
         for t in tt:
             while k + 1 < len(seq) and first_t[k + 1] <= t:
                 k += 1
-            nx = seq[k + 1] if k + 1 < len(seq) else FIN
-            af = seq[k + 2] if k + 2 < len(seq) else (FIN if k + 1 < len(seq) else NONE)
-            t1s.append(remap(nx) if nx >= 0 else nx)
-            t2s.append(remap(af) if af >= 0 else af)
             cur = seq[k] if k >= 0 else None
-            labels.append((cur, nx, af))
-        tm.set_targets(len(tt), t1s, t2s)
+            if a.schedule == "touch":
+                nx = seq[k + 1] if k + 1 < len(seq) else FIN
+                af = seq[k + 2] if k + 2 < len(seq) else (FIN if k + 1 < len(seq) else NONE)
+                ids_ = [nx, af, NONE]
+                vals_ = [1.0, -1.0, 0.0]
+            else:
+                v = takeoff_fade_values(leave_all, float(t), fade_t)
+                top = [int(i) for i in np.argsort(-v)[:3] if v[i] > 1e-6]
+                top.sort()
+                ids_ = [tgt_seq[i] for i in top] + [NONE] * (3 - len(top))
+                vals_ = [float(v[i]) for i in top] + [0.0] * (3 - len(top))
+                lit = [(tgt_seq[i], float(v[i])) for i in top]
+                nx = max(lit, key=lambda x: x[1])[0] if lit else NONE
+                af = NONE
+            sl_ids.append([(remap(s) if s >= 0 else s) for s in ids_])
+            sl_vals.append(vals_)
+            labels.append((cur, ids_, vals_))
+        tm.set_slots(len(tt), np.asarray(sl_ids), np.asarray(sl_vals, np.float32))
         ch = tm.render(lidar, o, yaw, pitch, dk).cpu().numpy()
         dmax = float(np.percentile(depth, 99.5)) or 1.0
+        dn = np.clip(depth / dmax, 0.0, 1.0)
+        for j in range(len(tt)):
+            if prev_ch is not None:
+                dch = np.abs(ch[j] - prev_ch)
+                ddp = np.abs(dn[j] - prev_dp)
+                jumps.append((float(dch.mean()), float((dch > 0.25).mean()), float(ddp.mean()),
+                              float((ddp > 0.25).mean()), float(tt[j])))
+            prev_ch = ch[j]
+            prev_dp = dn[j]
         for j, t in enumerate(tt):
             fr = np.full((FH, FW), 20, np.uint8)
             dimg = np.clip(depth[j] / dmax, 0.0, 1.0)
             dimg = (dimg * 235 + 20).astype(np.uint8)
-            cimg = np.full(ch[j].shape, 128, np.uint8)
-            cimg[ch[j] > 0.5] = 255
-            cimg[ch[j] < -0.5] = 0
+            if a.schedule == "touch":
+                cimg = np.full(ch[j].shape, 128, np.uint8)
+                cimg[ch[j] > 0.5] = 255
+                cimg[ch[j] < -0.5] = 0
+            else:                              # 0 black, 0.5 grey, 1 white: brightness = order
+                cimg = (np.clip(ch[j], 0.0, 1.0) * 235 + 20).astype(np.uint8)
             fr[34:34 + H, 10:10 + W] = cv2.resize(dimg, (W, H), interpolation=cv2.INTER_NEAREST)
             fr[34:34 + H, 20 + W:20 + 2 * W] = cv2.resize(cimg, (W, H),
                                                          interpolation=cv2.INTER_NEAREST)
             cv2.putText(fr, "DEPTH (dark = near)", (10, 24), font, 0.6, 230, 1, cv2.LINE_AA)
-            cv2.putText(fr, "TARGETS: WHITE = next ramp, BLACK = the one after", (20 + W, 24), font,
-                        0.6, 230, 1, cv2.LINE_AA)
-            cur, nx, af = labels[j]
+            cv2.putText(fr, ("TARGETS: WHITE = next ramp, BLACK = the one after"
+                             if a.schedule == "touch" else
+                             "TARGETS: WHITE = next / riding, GREY = the one after"),
+                        (20 + W, 24), font, 0.6, 230, 1, cv2.LINE_AA)
+            cur, ids_, vals_ = labels[j]
             sp = float(np.linalg.norm(A[t, 4:7]))
 
             def nm(s):
@@ -149,13 +203,20 @@ def main(argv=None) -> int:
                 return ("R" if int(mcat[s]) == 1 else "F") + str(s)
             line1 = (f"t {t / 100:6.2f} s    speed {sp:5,.0f} u/s    last ramp touched: "
                      f"{nm(cur)}")
-            line2 = f"next (white): {nm(nx)}    after (black): {nm(af)}    ({a.unit} targets)"
+            line2 = ("targets: " + "   ".join(f"{nm(s)} {v:+.2f}" for s, v in zip(ids_, vals_)
+                                              if s != NONE and v != 0.0)
+                     + f"    ({a.unit}, {a.schedule} schedule)")
             cv2.putText(fr, line1, (10, 34 + H + 28), font, 0.62, 235, 1, cv2.LINE_AA)
             cv2.putText(fr, line2, (10, 34 + H + 56), font, 0.62, 235, 1, cv2.LINE_AA)
             ff.stdin.write(fr.tobytes())
     ff.stdin.close()
     ff.wait()
-    print(f"target_pov: {len(ticks)} frames -> {a.out}")
+    J = np.asarray(jumps)
+    np.savez(str(a.out) + ".jumps.npz", jumps=J, leave=np.asarray(leave), touch=np.asarray(first_t))
+    print(f"target_pov: {len(ticks)} frames -> {a.out}; frame-to-frame change of the target "
+          f"channel: mean |dv| {J[:, 0].mean():.4f} (max {J[:, 0].max():.3f}), pixels changing > "
+          f"0.25: mean {100 * J[:, 1].mean():.2f}% (99th pct {100 * np.percentile(J[:, 1], 99):.1f}%, "
+          f"max {100 * J[:, 1].max():.1f}%)")
     return 0
 
 
