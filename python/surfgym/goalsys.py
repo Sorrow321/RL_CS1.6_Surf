@@ -201,6 +201,8 @@ class GoalSystem:
         self.stats = GoalStats()
         self.rng = np.random.default_rng(seed)
         self.k = np.zeros(self.N, np.float64)
+        # --ramp-reward pass: the window shifts of the last tick per env (set by _on_step_ramps)
+        self.ramp_pass = np.zeros(self.N, np.float32)
         self.kind = np.zeros(self.N, np.int8)
         # start depth as a fraction of d0 (0 = spawn, 1 = finish), so
         # goal success can be reported per 10%% band of the MAP - the
@@ -884,6 +886,8 @@ class GoalSystem:
         ids = P.vocab.classify(cnt, nrm, pts, sv["ducked"])
         idx, lines = P.windows.on_tick(ids, sv["origin"].astype(np.float64),
                                        sv["velocity"].astype(np.float64), ended)
+        # --ramp-reward pass: this tick's window shifts per env (+1 each, added by the trainer)
+        self.ramp_pass = P.windows.tick_pass.astype(np.float32)
         if len(idx):
             if self.line is not None:
                 self.line.set_lines(idx, lines)

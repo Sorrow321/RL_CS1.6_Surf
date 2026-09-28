@@ -4770,6 +4770,15 @@ def main() -> None:
     ap.add_argument("--ramp-fade", type=float, default=None,
                     help="--goal-planner ramps: s of the channel's takeoff cross-fade (0.3). "
                          "ckpt restores")
+    ap.add_argument("--ramp-reward", default=None, choices=("arc", "pass"),
+                    help="--goal-planner ramps: the reward. arc (default) = signed arc progress "
+                         "along the window line (100 per 1,500 u, the line re-laid at every "
+                         "window change); pass = +1 for every target PASSED - each window shift "
+                         "(a target ridden and left, or skipped for the one after it) - and "
+                         "nothing else (the success bonus at the finish stays). A piece pays "
+                         "once: the next target lies beyond the whole previous piece. Needs "
+                         "--time-pen 0 (0.005 per tick = 0.5/s outweighs +1 per 2-4 s ride) "
+                         "and no --reward-per-decision. ckpt restores")
     ap.add_argument("--reset-critic", type=int, default=None, choices=(0, 1),
                     help="on a resume: re-initialise the value tower (vf.*, value_head) and zero "
                          "its Adam moments - the TASK changed (Codex 23:16Z: the old critic is "
@@ -6487,7 +6496,8 @@ def main() -> None:
                 if ck_cfg.get(_k) is not None:
                     setattr(args, _k, ck_cfg[_k])
         # --goal-planner ramps: its vocabulary, channel and knobs, like every run-defining flag
-        for _k in ("ramp_vocab", "target_channel", "ramp_topk", "ramp_horizon", "ramp_fade"):
+        for _k in ("ramp_vocab", "target_channel", "ramp_topk", "ramp_horizon", "ramp_fade",
+                   "ramp_reward"):
             if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
                 setattr(args, _k, ck_cfg[_k])
                 restored.append(f"{_k}={ck_cfg[_k]}")
@@ -7780,14 +7790,28 @@ def main() -> None:
         if args.heldout_maps:
             raise SystemExit("--goal-planner ramps: --heldout-maps is not implemented (a "
                              "held-out map needs its own vocabulary); pass --heldout-maps ''")
+        if args.ramp_reward == "pass":
+            if float(args.time_pen or 0.0) != 0.0:
+                raise SystemExit(f"--ramp-reward pass pays +1 per target passed and nothing "
+                                 f"else: --time-pen {args.time_pen:g} (restored from the "
+                                 f"checkpoint?) charges {100 * float(args.time_pen):g} per second, "
+                                 f"more than a 2-4 s ride pays - pass --time-pen 0")
+            if args.reward_per_decision:
+                raise SystemExit("--ramp-reward pass adds its +1 per physics tick; "
+                                 "--reward-per-decision is not implemented with it")
     else:
         _set = [f"--{_k.replace('_', '-')}" for _k in
-                ("ramp_vocab", "target_channel", "ramp_topk", "ramp_horizon", "ramp_fade")
+                ("ramp_vocab", "target_channel", "ramp_topk", "ramp_horizon", "ramp_fade",
+                 "ramp_reward")
                 if flag_given(f"--{_k.replace('_', '-')}")]
         if _set:
             raise SystemExit(f"{', '.join(_set)} without --goal-planner ramps")
         args.ramp_vocab = args.target_channel = None
         args.ramp_topk = args.ramp_horizon = args.ramp_fade = None
+        args.ramp_reward = None
+    # --ramp-reward pass: +1 per window shift, added to the per-tick reward after the goal system's
+    # step; the arc shaping is off (arc_scale 0 below)
+    RPASS = RPLAN and args.ramp_reward == "pass"
     LPLAN = args.goal_planner == "learned"
     _lp_knobs = ("plan_lr", "plan_ent", "plan_batch", "plan_epochs",
                  "plan_novelty", "plan_progress", "plan_finish_bonus",
@@ -10172,8 +10196,15 @@ def main() -> None:
         arc_line.window = int(getattr(arc_line, "window",
                                       args.race_arc_window or 16))
         arc_scale = 100.0 / _lref * args.race_shaping
-        print(arc_line.describe() + f" -> goal arc shaping scale "
-              f"{arc_scale:.6g}/u (100 per {_lref:,.0f}u)")
+        if RPASS:
+            # --ramp-reward pass: the arc still locates the agent on its line (the fan and the
+            # diagnostics); it pays nothing
+            arc_scale = 0.0
+            print(arc_line.describe() + " -> --ramp-reward pass: the arc pays NOTHING; +1 per "
+                  "target passed (window shift), the finish bonus, no time penalty")
+        else:
+            print(arc_line.describe() + f" -> goal arc shaping scale "
+                  f"{arc_scale:.6g}/u (100 per {_lref:,.0f}u)")
     # --act-hist / --obs-compass. Built HERE, after goal_dist_field, because
     # the compass has to follow whichever field RaceReward shapes on: the
     # per-env GoalDistField under --goal-reward euclid/geo (so the compass
@@ -11552,7 +11583,8 @@ def main() -> None:
                                "target_channel": int(args.target_channel),
                                "ramp_topk": int(args.ramp_topk),
                                "ramp_horizon": float(args.ramp_horizon),
-                               "ramp_fade": float(args.ramp_fade)})
+                               "ramp_fade": float(args.ramp_fade),
+                               "ramp_reward": str(args.ramp_reward)})
     # --goal-planner prim: its knobs, ONLY then; record_ckpt.py MIRRORS them (the recording draws
     # the same kind of primitive)
     if PPLAN or PLPLAN:
@@ -14936,6 +14968,10 @@ def main() -> None:
                     else:
                         r = fleet.reward(prev_obs, o2, term_obs, base_r, done,
                                          trunc)
+                    if RPASS and r is not None:
+                        # --ramp-reward pass: +1 per target passed on this tick (the goal
+                        # system advanced the windows just above; an ended row never shifts)
+                        r = r + goalsys.ramp_pass
                     if PLAN_JOINT:
                         # --plan-joint: the planner's reward IS this one, tick by
                         # tick - handed over before the truncation bootstrap below

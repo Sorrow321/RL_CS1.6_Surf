@@ -83,6 +83,9 @@ TRAIN_ONLY = frozenset({
     # --spawn-states: a share of the TRAINING spawn pool drawn from a file of own states; a
     # recording spawns at the map start like the trainer's eval
     "spawn_states", "spawn_states_frac",
+    # --ramp-reward: what the TRAINING reward pays in the ramp-window task (arc progress, or +1
+    # per target passed); a recording computes no training reward
+    "ramp_reward",
     # --arc-death-charge: a TRAINING terminal charge on the goal-arc bank; a recording computes
     # no training reward
     "arc_death_charge",

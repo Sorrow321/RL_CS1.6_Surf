@@ -37,9 +37,14 @@ executor is shown its next target surfaces as an IMAGE CHANNEL (surfgym.targetma
   the new T2 0 -> 0.5 - so the channel never jumps at a touch or a takeoff. Each fade starts from
   the value its surface shows at the shift, so a second shift inside a fade does not jump either
   (only the oldest surface, dropped from the three slots, goes to zero at once).
-* The reward is the goal-arc reward along the current line (GoalSystem / MultiArcProgress), its
-  per-episode bank KEPT across window shifts (a new line re-anchors the arc at zero instantaneous
-  reward; it does not mint a fresh shaping budget - Codex 23:16Z).
+* The reward (--ramp-reward): "arc" = the goal-arc reward along the current line (GoalSystem /
+  MultiArcProgress), its per-episode bank KEPT across window shifts (a new line re-anchors the arc
+  at zero instantaneous reward; it does not mint a fresh shaping budget - Codex 23:16Z); "pass"
+  (the user, 2026-09-28: "plus one for one ramp fully passed ... impossible to farm reward by
+  just sliding on the same thing") = +1 per WINDOW SHIFT and nothing else - a target ridden and
+  left, or skipped for the one after it, the moment a new target enters the channel. A piece
+  pays once: the next target always lies beyond the whole previous piece on the geodesic.
+  RampWindows.tick_pass holds this tick's shifts per env.
 
 window_line is the ramp operator's line (tools/edge_archive.py RampOperator delegates here): one
 line through a window of targets - per target an arrival into its plane (a cubic Hermite curve off
@@ -61,7 +66,7 @@ DEPART_TICKS = 10        # contact-free physics ticks after a capture = the TAKE
 
 FIN = -2                 # the finish box as a target (surfgym.targetmask.FIN)
 NONE = -1
-RAMP_DEFAULTS = {"ramp_topk": 2, "ramp_horizon": 3.0, "ramp_fade": 0.3}
+RAMP_DEFAULTS = {"ramp_topk": 2, "ramp_horizon": 3.0, "ramp_fade": 0.3, "ramp_reward": "arc"}
 PROGRESS_DELTA = 250.0   # u: a target must lie this much closer to the finish (geodesic) than
                          # the agent (or than the previous target) to be eligible
 SPEED_MARGIN = 300.0     # u/s added to the speed bound of the reach cap (air-strafe gain)
@@ -287,6 +292,9 @@ class RampWindows:
         self.source = np.full(n, NONE, np.int64)       # the surface an env spawned on
         self.n_capt = np.zeros(n, np.int64)            # takeoffs (= completed rides) this episode
         self.n_skip = np.zeros(n, np.int64)
+        # window shifts on the CURRENT tick per env (on_tick clears it): --ramp-reward pass pays
+        # +1 for each
+        self.tick_pass = np.zeros(n, np.int64)
         self.stats = {"episodes": 0, "rides": 0, "skips": 0, "holds": 0, "fin": 0,
                       "ride_hist": {}}
 
@@ -476,6 +484,7 @@ class RampWindows:
         ids = np.asarray(ids)
         ended = np.asarray(ended, bool)
         self.tau += 1
+        self.tick_pass[:] = 0
         live = ~ended
         pid = np.where(ids >= 0, self.pmap[np.clip(ids, 0, len(self.pmap) - 1)], -1)
         on1 = (pid == self._pc(self.t1)[:, None]).any(1) & live & (self.t1 >= 0)
@@ -553,6 +562,7 @@ class RampWindows:
         self.v0t[i] = v_t2
         self.captured[i] = bool(riding)
         self.free[i] = 0
+        self.tick_pass[i] += 1
         return ln
 
     def settle(self, idx, finished):

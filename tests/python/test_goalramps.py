@@ -498,3 +498,34 @@ def test_a_recording_without_logged_windows_is_replayed_from_its_states(voc):
     assert ev[0][2] == 0                                # T1 = ramp 0 at the spawn
     # the takeoff: DEPART_TICKS rows after the last contact (row 24), the window shifts
     assert any(e[2] == 1 and e[1] == 0 and e[0] == 25 + gr.DEPART_TICKS - 1 for e in ev), ev
+
+
+def test_the_pass_reward_counts_window_shifts_and_nothing_else(voc):
+    """--ramp-reward pass: tick_pass is +1 on the tick a window SHIFTS (a takeoff, a ride left
+    for T2, a skip) and 0 on every other tick - a capture, a hop held over T1, plain flight"""
+    v, _bsp, _ = voc
+    w = _windows(v)
+    w.spawn([0, 1], *_state(APPROACH))
+    none = -np.ones((2, 8), np.int64)
+    on0, on1 = none.copy(), none.copy()
+    on0[0, 0], on1[0, 0] = 0, 1
+    paid = []
+
+    def tick(ids, st):
+        w.on_tick(ids, *_state(st), np.zeros(2, bool))
+        paid.append(int(w.tick_pass[0]))
+    tick(on0, APPROACH)                                     # capture: 0
+    for _ in range(3 * gr.DEPART_TICKS):
+        tick(none, HOP)                                     # held hops: 0
+    assert sum(paid) == 0 and w.t1[0] == 0
+    for _ in range(gr.DEPART_TICKS):
+        tick(none, AWAY)                                    # the takeoff: +1, once
+    assert sum(paid) == 1 and w.t1[0] == 1
+    tick(on1, HOP)                                          # capture of the new T1: 0
+    assert sum(paid) == 1
+    sk = none.copy()
+    sk[1, 0] = 1                                            # env 1 skips T1 = 0 for T2 = 1
+    w.on_tick(sk, *_state(APPROACH), np.zeros(2, bool))
+    assert w.tick_pass[1] == 1 and w.tick_pass[0] == 0
+    w.on_tick(none, *_state(AWAY), np.array([True, True]))  # ended rows never pay
+    assert w.tick_pass.sum() == 0
