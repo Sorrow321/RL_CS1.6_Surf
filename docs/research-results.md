@@ -31737,3 +31737,24 @@ Both checkpoints are demo-contaminated and are never a base or a result.
 * **Size of the term.** At K = 50 the record's three exits would pay ~260 and the agent's ~155, against an episode return of ~100-450.
 * **Question.** Does paying exit energy raise the S17/S18 exits enough to land on S19?
 * **Stopping.** Stationary stop, as before.
+
+## 2026-09-28 12:42 (machine clock) - uf2SEQ_WRdiagEB: the exit bonus raises the pit energies (half the gap) and the climb after S18 reaches z ~68, 20 u under S19; continued as uf2SEQ_WRdiagEB2
+
+**Result.** uf2SEQ_WRdiagEB (`--ramp-exit-bonus 50`, from the stuck one-view diagnostic, critic-warmup 10) stopped at ~190M (12:40) by a stage-only stationary rule. Every eval was stage 3 of 4 with 0 landings, but the energies climbed through the whole run. Medians over the 9 eval episodes:
+
+| | S19 exit | S17 exit | S18 exit | leaving S18 | top z after S18 |
+|---|---|---|---|---|---|
+| before (diag @277M) | 835 | 1,215 | 1,038 | 1,116 u/s, vz +861 | -98 |
+| EB @1M | 857 | 1,313 | 1,008 | 1,186, vz +599 | -107 |
+| EB @101M | 894 | 1,551 | 1,344 | 1,494, vz -193 | +29 |
+| EB @177M | 895 | 1,652 | 1,483 | 1,398, vz +987 | +68 |
+| record | 1,208 | 2,082 | 1,926 | 1,616, vz +1,242 | +587 |
+
+Exit energy heights are in u.
+
+**Reading:**
+
+* The bonus closes about half of the S17/S18 energy gap in 177M steps. The climb after S18 went from z -98 to +68; S19's lowest validated contact is z 88, its box from z 40.
+* The rule stopped a run that was still improving: its progress measure (stage frontier, landings, training completion rate) could not see a rising climb.
+* The continuation, **uf2SEQ_WRdiagEB2**, runs from uf2SEQ_WRdiagEB/ckpt_latest.pt with the same flags (declared demo). Its progress also counts the eval's median S18 exit energy (+50 u) and its median height after S18 (+20 u).
+* Still the user's labelled demo-derived diagnostic; Codex's objection (T095447Z) stands until the user rules on section 0.
