@@ -31588,3 +31588,64 @@ Everything else is unchanged: from `runs/research/stage/prim1_mover.pt`, on surf
 ## 2026-09-28 10:52 (machine clock) - correction: B9 had 3/9 episodes past 56k at 177M, not 4/9
 
 The entry above miscounted. The route-agnostic progress list for B9@177M is [43,946, 69,790, 20,381, 20,624, 64,542, 28,109, 64,565, 41,969, 20,513]: three episodes past 56k u. B7@177M is also 3/9 and B8@177M 9/9.
+
+## 2026-09-28 11:32 (machine clock) - rampB10_obspass vs rampB11_box (the pass flag): no effect on the frontier, exploratory only; Codex corrections; the user's unitfarmer2 diagnostic launched
+
+**The arms.** Both ran on the local 5090, the same code (2599bf0) and B8's argv:
+
+* **B10** = B8's argv + `--ramp-obs-pass 1`, 10:47-11:08. The driver stopped it at ~160M: no new last-shift MAX for 10 min.
+* **B11** = the same without the flag, 11:08-11:30, to its 200M cap.
+
+**Results, mean / MAX in k u:**
+
+| step | B10 last-shift | B11 last-shift | B10 ordered | B11 ordered |
+|---|---|---|---|---|
+| 51M | 15.6 / 43.4 | 17.7 / 20.8 | 18.6 / 45.6 | 20.5 / 24.6 |
+| 101M | 41.4 / 69.7 | 31.1 / 58.8 | 26.4 / 30.0 | 30.0 / 30.2 |
+| 126M | 50.2 / 64.0 | 39.6 / 63.7 | 29.5 / 32.3 | 29.0 / 29.1 |
+| 152M | 57.6 / 68.4 | 33.0 / 68.3 | 27.5 / 28.9 | 32.1 / 58.9 |
+| 177M | - | 54.7 / 68.8 | - | 29.1 / 30.2 |
+
+0 finishes in both.
+
+**Verdict: no frontier effect of the flag** on either metric, with a consistency lean toward B10 on the last-shift diagnostic. EXPLORATORY per Codex (T085641Z), for three reasons:
+
+* **The critics differ.** --reset-critic draws a fresh wider critic for B10, so a strict A/B needs the same widened architecture with the flag held at 0.
+* **The start already differs.** B11's frozen-actor 1M eval is identical to B8's and B9's, 8,149 / 9,216; B10's is 8,917 / 15,104. The widened pi.0 GEMM is ~1 ulp off, and the chaos amplifies it.
+* **It is not the reward.** B10 used the arc reward, so the bit marks a window shift, not a reward received.
+
+**Corrections (Codex T085641Z / T085643Z):**
+
+* **B9 also broke the stationary rule.** Its ordered MAX was 45,205 at 26M and did not improve until 177M.
+* **The route denominator is 174,080 u**, not 192,896. The percentages above that used 192,896 are wrong; the absolute numbers stand.
+* **Last-shift geodesic progress is a BRANCH DIAGNOSTIC, not the frontier or the stop signal.**
+  * A shift can be a box fly-through or reverse exit, and the geodesic field is non-injective, so "a fall cannot flatter it" was too strong.
+  * The metric was chosen after seeing B8/B9.
+  * Report n/9 with it. The B8@152M mean over all 9 episodes is ~56.4k, not the 63.5k over the 8 that shifted.
+  * Codex's alternative: a frozen per-route reference for the planner's branch, from policy-owned data and trimmed at the last supported tick, scored for every arm.
+* **299363a is incomplete in two places:**
+  * FIN is still drawn when _d_at() is off the field, because the no-band path makes FIN eligible.
+  * _steer flips 180 deg at 150 u/s for a velocity exactly opposite descent. It is a single point, but not continuous. A vector-sum rule, v + (1 - |v_h|/300) x 300 x descent, would be continuous as a vector.
+  Both are open.
+
+**The user's unitfarmer2 diagnostic (the user, 2026-09-28): "can our current paradigm - current ramp, next ramp - learn this behavior on the hardest map".**
+
+* **A DEMO-DERIVED DIAGNOSTIC, not a recipe.** The targets are read off the unitfarmer2 WORLD RECORD's opening contacts. CLAUDE.md section 0 forbids this for training; the user asked for it as a labelled exception.
+  * `--ramp-sequence-source demo` stamps every checkpoint demo_contaminated.
+  * The trainer refuses to resume such a checkpoint unless another demo diagnostic is declared explicitly.
+  * Never resumed, never a base, never a result.
+* **The sequence.** The record's contacts, as vocabulary surfaces / pieces:
+  * S19 / p1, brushed on the way down, 3.0 s;
+  * S17 / p14 (pit ramp A), 4.2-5.0 s, ~1,750 u/s;
+  * S18 / p15 (the facing ramp B, the U-turn), 5.8-6.5 s;
+  * S19 / p1 again, the landing, 7.9 s.
+  So `--ramp-sequence 19,17,18,19` (7d7024d): T1/T2 are the next two in the list, a pass advances it, and entering the last target ends the episode as a success.
+* **The record replayed through these windows:** enters 19 at 2.94 s, passes it 3.31; 17 at 4.15 / 4.99; 18 at 5.66 / 6.56; lands on 19 at 7.79 s = done. The start is not inside 19's box.
+* **The pattern should be possible at 10 ms.** Climbing from S18 back up to S19 needs ~1,230 u/s; the record left S18 at ~1,600 u/s. So the run keeps the checkpoint's own 10 ms tick.
+* **Run uf2SEQ_WRdiag:**
+  * starts from runs/rampB8_boxpen/ckpt_final.pt;
+  * map maps_pool/surf_unitfarmer2.bsp, uf2's vocabulary, --goal-cell 32;
+  * --ep-secs 20, --respawn-frac 0 (every episode starts at the map start);
+  * --reset-critic 1 --critic-warmup 20, --steps 500e6;
+  * the penalty 1.0 is restored from B8.
+* **Driver:** it logs the eval stages (0-4) and the training completion rate, and stops the run after 10 min without progress on either.
