@@ -31257,3 +31257,68 @@ Every start spawn of B3 was paid along that line. **Fix:** the window uses the s
 * 400.6M steps at 99,970 steps/s.
 * Greedy from the start: 12.1-13.2k of 166k u (8.5-9.5%). 0/9 finishes at every eval. Rides 2-3 per episode.
 * **Void as evidence about the ramp-window task.** All three bugs were live: caps as targets, hops shifting the window, and the start line pointing backward.
+
+## 2026-09-28 08:21 (machine clock) - B3's reward was NOT farmed; a +1-per-ramp reward (--ramp-reward pass); B4 and B5 both stop at the first wedge gap; 75% of the wall clock was the ramp task's Python
+
+### B3's reward: not farming
+
+**The user:** "the reward ... raised from 170 to like 700 ... the progress across the map was like tiny ... Is it farming it or something?"
+
+**Method.** Twelve training-like episodes of B3's final checkpoint: reservoir spawns, stochastic, recorded under B3's own pre-fix code (commit 3644f0f). The reward was rebuilt tick by tick with the trainer's MultiArcProgress: 100 per 1,500 u, corridor 384 u, window 16, time penalty 0.005 per tick.
+
+**Result, per episode on average:**
+
+* 687 reward, from 10,303 u of line progress;
+* against 11,381 u of real geodesic progress;
+* only 65 u paid on line stretches heading away from the finish.
+
+So the reward tracked real progress, and the scale is just large: 100 per 1,500 u, about 7,000 over the whole route.
+
+**Where the progress happened.** The training-like episodes spawned at 7-46% of the map and reached up to 47%. The from-start eval never saw this. It stayed at 8.5% because 23 of its 27 greedy episodes died with the end cap S30 as T1: the line turned them off the route in the gap after wedge 1, at x -1,100 to -1,700. That is bug 1 of 45a125b.
+
+### B4 and B5: the same wall
+
+**rampB4_on** is B3's command on the fixed code. It was stopped after 11 minutes, at 55.6M steps.
+
+| eval | track from start | rides |
+|---|---|---|
+| 1M | 8.5k u | 1-2 |
+| 26M | 14.6k u (8.8%) | 1-4 |
+| 51M | 13.1k u (7.9%) | 2 in all 9 |
+
+**--ramp-reward pass.** The user asked: "plus one for one ramp fully passed ... impossible to farm reward by just sliding on the same thing ... plus one when we see a new ramp appearing in the target channel." Implemented in commit b9816a5:
+
+* +1 per window shift, plus the finish bonus;
+* the arc pays nothing;
+* the trainer refuses a nonzero --time-pen.
+
+**rampB5_pass** is B4's command plus `--ramp-reward pass --time-pen 0 --int-coef 0 --timing`, with a 150M cap. From the start: 4.9% at 1M, 6.2% at 26M, 7.1% at 51M, 2 rides in all 9 episodes.
+
+**Both arms fail in the same place.** Every eval chain is S26 -> S28 -> S32: correct targets, no caps. The episodes die in the 3,400 u gap between wedge 1 (ends at x -2,700) and wedge 2 (starts at x 660):
+
+* deaths at x -3,900 to -1,100, z 8,300-9,200;
+* peak speed 2,100-2,300 u/s;
+* the finisher crosses this gap at 3,000+ u/s.
+
+The windows no longer decide this. The wall is a speed skill, the same one B3's early evals showed.
+
+### Throughput: 75% of the wall clock
+
+**The user:** "FPS is below 100k while normally our training is running at around 350k." Reference points: prim1_b025 (goal line + arc, 2,048 envs) runs at 218k; jt3ANCHU (flat, 6,144 envs) at 470k.
+
+**B5's --timing, per 1M-step iteration (9.4 s):**
+
+* reward_py 3.47 s: the per-tick classification and windows, plus the reward;
+* respawn 3.6 s: a window drawn for each of about 1,800 new episodes, about 2 ms each;
+* update 1.0 s;
+* vis_cpu + lidar 1.2 s: depth plus the target channel;
+* env (physics) 0.21 s.
+
+**Fix, commit 2bdafe0 (exact).** A compiled search (numba), checked identical on utopia: 1,500 spawns and a 200-tick replay at 2,048 envs.
+
+* spawn: 1.97 -> 1.04 ms per env;
+* on_tick: 4.49 -> 3.40 ms per tick.
+
+**Tried and reverted:** a tick-to-tick plane cache in classify. It changed 4.2% of touching env-ticks, for a saving of 0.66 ms per tick.
+
+**Still to do:** the per-episode window must go to about 0.1 ms, which means drawing it in one compiled pass over the spawning envs; and reward_py needs splitting (the new "ramp ms" counters do that).
