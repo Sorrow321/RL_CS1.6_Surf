@@ -31351,3 +31351,37 @@ The windows no longer decide this. The wall is a speed skill, the same one B3's 
   * spawn: 1.63 -> 0.38 ms per env;
   * on_tick: 3.79 -> 1.07 ms per tick.
 * **The 12M-step probe's split** of the ramp task's 5.6 s of a 9.2 s iteration, before 4588e0f: spawn 2.3 s, windows 1.2 s, classify 1.1 s, installing lines 0.5 s (each MultiLine install is a host-to-device copy).
+
+## 2026-09-28 09:04 (machine clock) - rampB6_arc on the fast code: 11.4% by 51M, ahead of B4; Codex's window defects fixed (09ef559, bf747c1); rampB7_arc launched
+
+**rampB6_arc.** B4's exact argv (arc reward, windows as of 45a125b) on the fast code (2bdafe0, 4588e0f, e1dae5e). Stopped at about 80M, 9 minutes in, at 149k steps/s on average.
+
+| step | track from the start | rides per episode |
+|---|---|---|
+| 1M | 5.1% | 1-2 |
+| 26M | 9.7% | one episode 6 |
+| 51M | 11.4% (18.9k u) | 2-6 |
+| 76M | 10.5% | 0-6 |
+
+B4 at matched steps: 8.8% / 7.9%. Some greedy episodes now pass the first wedge gap.
+
+**Window defects found by Codex (reviews 20260928T055812Z and 060948Z).** Measured at 3,000 real states (the finisher plus B3's training-like runs), training windows with the random top-2 draw.
+
+* **The finish box was always a candidate.**
+  * Before: T1 = FIN 10.4% of the time, a median 90k u of geodesic away.
+  * Fix: FIN is a candidate only when the band's lower edge reaches 0.
+  * After: 2.2%, median 8.2k u.
+* **Eligibility per face let a wedge in through its cap alone.**
+  * Before: T1 cap-like 7.3%, T2 13.5%.
+  * Fix: eligibility is per piece (the median of all its origins), and the ride face runs furthest along the piece's main axis (its largest face's level line).
+  * After: T1 0.0%, T2 0.5%.
+* **Cycles.** Fix: per-env visited pieces.
+* **The hop test missed fast crossings between samples.** Fix: the crossing is interpolated, with the per-origin radius.
+* **Pieces joined gaps and split junctions** (a 16 u voxel rule). Fix: the extractor's exact adjacency (4 u samples within 2.5 u). Utopia: 39 pieces, not 40.
+* **The first capture rebuilt a standing spawn's ride from the real velocity,** reversing it. Fix: _steer lays every window with the descent direction below RAY_FLOOR of horizontal speed.
+
+**Checks.** The compiled path is identical to the Python path on utopia: 1,500 spawns, and 200 ticks x 2,048 envs. 25 tests pass, and 24 + 1 skipped with SURFGYM_NO_NUMBA=1.
+
+**Open:** the fade's dropped oldest slot, grazes counted as rides, BSP collision in the hop and arrival tests, the 25-degree group cap, K_NEAR crowding, and the target_channel=0 control.
+
+**rampB7_arc.** B6's argv on bf747c1, with a 300M cap.
