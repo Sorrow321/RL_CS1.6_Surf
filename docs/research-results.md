@@ -31808,3 +31808,30 @@ The exit bonus alone plateaus ~30 u of climb short of S19.
 * It never landed; training completions stayed at 0%.
 * At 1:1, count novelty over 256 u cells x 3 speed bands pulls the policy off the route rather than higher in the pit.
 * The exit-bonus policy on its own came within 5 u of S19's lowest contact in that first eval.
+
+## 2026-09-28 13:15 (machine clock) - --pinhole for the target channel; uf2SEQ_WRdiagV6NP launched (the six-view + exit-bonus + novelty-0.2 setup, all observations pinhole)
+
+**The request.** The user: "render all observations in pinhole, and run the same thing". The equiangular camera is what split S17 at the nadir and flattened ramps into bands in the POV the user asked about.
+
+**697e987:**
+
+* The TargetMask kernel gets a PINHOLE switch: GpuLidar._dirs_pinhole's rectilinear ray, term for term.
+* TargetLidar accepts a pinhole lidar.
+* The --target-views 6 cameras follow the lidar's projection.
+* A rectilinear camera cannot span 180 deg, so under --pinhole up and down use the lidar's own 120 x 90 field. The cap above 45 deg elevation stays covered; thin 35-45 deg slivers at the level views' seams do not.
+* Tests: the pinhole kernel equals the torch reference at three pitches (CUDA); each of the six pinhole views lights only its own side.
+* The depth image already had a pinhole march; `pinhole` is not an architecture key, so a warm start keeps its tensors. The trained features now see a different projection.
+
+**uf2SEQ_WRdiagV6NP:**
+
+* From uf2SEQ_WRdiagEB2/ckpt_latest.pt (equiangular, the exit-bonus policy that came within 5 u of S19).
+* `--target-views 6 --pinhole 1`, exit bonus 50, `--int-match 0.2 --int-view 0 --reset-int-counts`.
+* The equiangular twin uf2SEQ_WRdiagV6N was prepared but never launched; the user redirected to pinhole first.
+* Demo-derived diagnostic, declared. The energy-aware stationary stop applies.
+
+**Codex T103637Z (for the user), two objections:**
+
+1. `--ramp-sequence-source demo` puts demo targets into the observation, the reward and the success, so it is gradient, not measurement. The lineage also contradicts "never a base": WRdiag is the base of 6v and EB.
+2. `--ramp-exit-bonus` is the class section 0b disqualifies ("any climb / take-off / ramp bonus"), and K = 50 was chosen after looking at uf2. Its energy term is inherited energy paid again at every exit, not energy gained in the ride. PASS is a box exit that needs no contact.
+
+Codex asks the user to rule on sections 0 and 0b directly. run_arm.sh has no guard for either flag.
