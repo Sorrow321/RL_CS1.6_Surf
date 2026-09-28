@@ -30994,3 +30994,55 @@ Also the five remaining contract items from the same review (unknown-root first-
   - captures from telemetry;
   - arc-only reward with the bank preserved across window shifts;
   - the single-map pair, target channel vs forced zero, same widened network.
+
+## 2026-09-28 04:06 (machine clock) - the "missing ramp" at utopia t = 43 s is a CLIP brush: the point hull cannot see it; `--vision-clip` (the user: "Around t=43 I see that there's a missing ramp on both depth and target")
+
+**What the user saw.** In the target-channel video of our jt3ANCHU finisher (`runs/research/utopia_target_pov_takeoff.mp4`) the agent flies 42.57-44.86 s and lands on a ramp at x 7,166-8,690 (ridden ducked 44.86-45.29 s, plane normal (0.14, 0.77, 0.625) then (0, 0.78, 0.625)). Neither the depth image nor the target channel showed that ramp.
+
+**Why, measured.** In the compiled map that ramp exists ONLY in the player hulls:
+
+* a world **CLIP brush**: point contents EMPTY for 128 u behind the ride surface, a point trace passes straight through (fraction 1.0), and the standing and ducked hull traces hit the same plane at the support distance. hlcsg compiles CLIP brushes into hulls 1-3 only;
+* **func_wall `*46`** (rendermode 2, renderamt 32) has faces on the ramp, but its hull 0 in the .bsp is 40 leaves, **all EMPTY**; hulls 1 and 3 have 51 solid leaves each (read from the file itself - the C core parses it correctly). 3,000 vertical traces through its box: point hull 0 hits, duck hull 517, stand hull 413. A thin func_wall of the same style (`*114`) is hit by 1,000/1,000 point traces;
+* what a human sees there: 10 **func_illusionary** pieces `*118-*127` (visible, no collision) plus `*46` at 32/255 opacity.
+
+The vision grid (`surf_occupancy_grid`) samples the POINT hull, so the depth showed open air. The target video's ride sequence came from the touch recording's ramps3 ids, and ramps3 (`tools/ramps.py`) finds surfaces with a point probe, so that contact was `-4` (unknown) and the ramp was never made a target. My earlier per-ray audit ("the depth agrees with the physics") compared against POINT traces and was blind to exactly this.
+
+**How common (census over 120 maps).** Random ducked-hull traces from free space. A hit counts as clip-only when the point hull has nothing within 16 u behind the plane at the projection or 24 u beside it (sky counts as solid, as in the grid), on planes with >= 5 hits.
+
+* 19 of 120 maps have clip-only SURF planes; pooled over all maps, 2.61% of surf hits are clip-only.
+* Share of surf hits that are clip-only, by map: surf_src_kairo_b2 **92.7%**, surf_hamburglar_love **87.0%**, surf_gi_rino **71.2%**, surf_src_raphaello **58.3%**, surf_excav_final **23.9%**, surf_src_utopia 6.5%, freeland_uncapped 3.3%, simulatedway 3.0%, forsaken (and _b2) 2.4%, unitfarmer1 1.6%, **unitfarmer2 1.3%** (3 planes), **celestial 0.7%** (1 plane), century_final 0.6%, abyss 0.5%, ut0pia 0.5%, 0way 0.3%.
+* cannonball, petrus_lite and edgeflow_blue050: 0.
+* Entities like `*46` (no point-hull solid, solid in the player hulls): utopia `*22` and `*46`, rapira `*23`; no others.
+
+**The fix, opt-in, default unchanged.**
+
+* core: `surf_occupancy_grid_player` (additive export). It returns 1 = point-hull solid (== `surf_occupancy_grid` bit for bit) and 2 = player-only solid. A voxel is 2 when the ducked box centred on it lies inside the duck hull's solid at all 8 corners AND 27 point traces across the box (9 per axis) meet no point-hull solid. A gap narrower than the box between visible brushes, or an overhanging compiled hull at a ridge, therefore stays as it was.
+* The first version used a 27-POINT lattice. It gave 145 false player-only voxels in petrus's shifted samplings: thin visible walls ran between the lattice points, and 18-243 of 729 fine-lattice points inside those boxes were point-solid. It was replaced by the line traces.
+* vision: `slab_occupancy` / `build_sdf(player=True)` write the caches `slaboccp_<cell>` / `sdfp_<cell>` (gitignored, signature `_p1`). `GpuLidar(vision_clip=True)` refuses to combine with `--surf-mask` / `--normals`, whose face bakes have no clip entries.
+* trainer: `--vision-clip {0,1}`, default 0, restored from the checkpoint on resume, config key `vision_clip`. `record_ckpt.py` mirrors it and takes a logged override that is written into the header as `vision_clip` / `vision_clip_ckpt`; `render_pov.py`, `diversity_bench.py` and `expert_dagger.py` mirror it too.
+* Verified: a CPU smoke scratch run on petrus_lite has `vision_clip = 1` in `run.json`, and a resume without the flag restores it.
+* `tools/ramps_mesh.py`: `clip_dressing` adds the func_illusionary triangles that lie ON the player's collision surface. A triangle qualifies when >= 3 of 5 samples have a ducked contact within +-8 u of the support distance with normal dot > 0.98; it is oriented by the side the contact came from. `tri_src` marks solid faces 0 and dressing 1; `--no-clip-dressing` turns it off. On utopia: 281 triangles, 2.02M u^2.
+* `tools/target_pov.py`: a `-4` contact maps to the nearest floor or ramp contact origin (<= 64 u); `--vision-clip` is passed through.
+
+**Identity.** The player grid has 0 player-only voxels over all 13 slab samplings on petrus_lite (16 u, 66M voxels), cannonball (32 u, 671M) and edgeflow_blue050. `--vision-clip` therefore bakes those maps' SDFs identical to today's. `tests/python/test_vision_clip.py` checks two things. On petrus, bit 0 is the point grid, there are no 2s, and the slab bake is identical. On utopia's ride surface, the point trace passes, the duck and stand traces hit, and the grid reads 0 -> 2.
+
+**Result on utopia (32 u).** The player-hull slab adds 33,541 voxels and removes none; the bake takes 52 s for the occupancy and 97 s for the SDF. The per-ray audit covers 42.0-46.0 s (100 frames x 2,048 rays) against the exact first hit on the face mesh (solid faces including `*46`, plus the dressing). A ray counts as lacking when its depth reads > 200 u and > 20% beyond the mesh hit.
+
+| rays lacking | default | `--vision-clip` |
+|---|---|---|
+| all rays | 43,409 (21.2%) | 277 (0.14%) |
+| of the 1,279 rays that hit a dressing triangle first | 945 (73.9%) | 56 (4.4%) |
+
+The residual is single-pixel leaks through the sloped clip slab, about one voxel thick. The march hits at d <= 0.6 cell on a nearest-neighbour SDF, and a diagonal staircase leaks. Thin visible geometry has the same property; the march is not changed here.
+
+Video: `runs/research/utopia_target_pov_clip.mp4`. Its ride sequence has 26 targets; the clip ramp is R281, ridden 44.9-45.4 s. Before/after strip: `runs/research/utopia_clip_ramp_before_after.png`.
+
+**Not fixed here, and what it implies:**
+
+* ramps3 and the edge archive's ramp ids come from a POINT probe, so every clip ramp is a `-4` unknown to the ramp operator. That affects 6.5% of utopia's surf and most of kairo_b2, hamburglar_love, gi_rino and raphaello.
+* The goal field's BFS (`map_occupancy`, point hull) routes through CLIP walls and ramps.
+* The `--surf-mask` / `--normals` bakes come from faces and have no entry for a clip brush.
+* A target channel on a map without a viewer mesh needs a collision-grounded extraction (Codex's blocker, 23:16Z).
+* Whether `--vision-clip` becomes the from-scratch default is the user's call. It changes pixels on the 19 maps above and nowhere else.
+
+Pre-existing failure, left alone: `test_flags_round30::test_max_step_is_the_teleport_clip_and_scales_with_every` fails because `_FakeCore` has no `.config` (`rewards.py:1209`, since f2d5df2).

@@ -226,6 +226,7 @@ def build_lidar(core: SurfCore, cfg: dict, cell: float, device, field=None):
                     device=device, surf_mask=bool(cfg.get("surf_mask", 0)),
                     pinhole=bool(cfg.get("pinhole", 0)),
                     normals=bool(cfg.get("normals", 0)),
+                    vision_clip=bool(cfg.get("vision_clip", 0)),
                     # --obs-potential: the race field as channel 2 (the
                     # goal field the caller built; record_ckpt's mirror)
                     potential=LidarPotential.from_cfg(

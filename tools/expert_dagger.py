@@ -268,6 +268,7 @@ def load_bundle(ckpt_path, map_path, device, audit: bool = True) -> dict:
                      device=device, surf_mask=bool(cfg.get("surf_mask", 0)),
                      pinhole=bool(cfg.get("pinhole", 0)),
                      normals=bool(cfg.get("normals", 0)),
+                     vision_clip=bool(cfg.get("vision_clip", 0)),
                      # --obs-potential: the race field as channel 2, the
                      # trainer's own scale (record_ckpt mirrors it the same way)
                      potential=LidarPotential.from_cfg(

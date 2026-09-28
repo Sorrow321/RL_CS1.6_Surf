@@ -617,6 +617,8 @@ _SDF_SEMANTICS = "s4"      # s4: NOTSOLID func_conveyors excluded from solids
 _OCC_SEMANTICS = "o2"      # base occupancy content (o2: conveyor fix); the
                            # occ cache predates content tags and _map_sig
                            # alone cannot see a solid-set change in the C code
+_PLAYER_SEMANTICS = "p1"   # vision_clip: the PLAYER-hull grid (CLIP brushes,
+                           # core.occupancy_grid(player=True)); own cache files
 
 
 def _map_sig(bsp: Path) -> str:
@@ -690,7 +692,7 @@ def map_occupancy(core, cell: float = 16.0, cache_dir=None):
     return occ, mins
 
 
-def slab_occupancy(core, cell: float = 16.0, cache_dir=None):
+def slab_occupancy(core, cell: float = 16.0, cache_dir=None, player: bool = False):
     """Occupancy that thin geometry cannot slip through.
 
     Two layers on top of the base voxel-center sampling:
@@ -705,18 +707,32 @@ def slab_occupancy(core, cell: float = 16.0, cache_dir=None):
     Physics collides with these brushes (they are in the C solid set), so a
     depth sensor that misses them shows the agent free air where the world
     blocks — on surf_src_cannonball, 104 thin panes sit exactly where
-    agents crash. Cached to ``maps/<map>.slabocc_<cell>.npz``."""
+    agents crash. Cached to ``maps/<map>.slabocc_<cell>.npz``.
+
+    ``player=True`` (``--vision-clip``) samples the PLAYER's collision
+    geometry instead of the point hull's: every sampling also marks the
+    solid only the player hulls hold (``core.occupancy_grid(player=True)``).
+    hlcsg compiles CLIP brushes into the player hulls and leaves them out of
+    the point hull, so without it a clip-brush ramp renders as open air
+    while the player surfs it - surf_src_utopia's curved ramps (CLIP
+    brushes dressed with non-solid func_illusionary pieces), and most ramps
+    of a few pool maps. On a map with no player-only solid the grid is
+    identical. Cached apart, ``slaboccp_<cell>.npz``."""
     bsp = Path(core.bsp_path)
-    sig = f"{_map_sig(bsp)}_{_SDF_SEMANTICS}"
+    sig = f"{_map_sig(bsp)}_{_SDF_SEMANTICS}" + (f"_{_PLAYER_SEMANTICS}" if player else "")
     cache = Path(cache_dir) if cache_dir else bsp.parent
-    cache_file = cache / f"{bsp.stem}.slabocc_{cell:g}.npz"
+    cache_file = cache / f"{bsp.stem}.{'slaboccp' if player else 'slabocc'}_{cell:g}.npz"
     if cache_file.exists():
         z = np.load(cache_file, allow_pickle=False)
         if "sig" in z and str(z["sig"]) == sig:
             return z["occ"], z["mins"].astype(np.float64)
 
-    occ, mins = map_occupancy(core, cell, cache_dir)
-    occ = occ.copy()
+    if player:
+        mins, nx, ny, nz = grid_dims(core, cell)
+        occ = (core.occupancy_grid(mins, cell, nx, ny, nz, player=True) != 0).astype(np.uint8)
+    else:
+        occ, mins = map_occupancy(core, cell, cache_dir)
+        occ = occ.copy()
     nz, ny, nx = occ.shape
     step = cell / 4.0
     for axis in range(3):
@@ -724,7 +740,11 @@ def slab_occupancy(core, cell: float = 16.0, cache_dir=None):
             off = np.zeros(3)
             off[axis] = k * step
             # shifting the grid origin samples center + off in every voxel
-            occ |= core.occupancy_grid(mins + off, cell, nx, ny, nz)
+            if player:
+                occ |= (core.occupancy_grid(mins + off, cell, nx, ny, nz, player=True)
+                        != 0).astype(np.uint8)
+            else:
+                occ |= core.occupancy_grid(mins + off, cell, nx, ny, nz)
 
     # thin solid entities: exact AABB rasterization (axis-aligned panes)
     from .zones import parse_bsp
@@ -753,26 +773,30 @@ def slab_occupancy(core, cell: float = 16.0, cache_dir=None):
     return occ, mins
 
 
-def build_sdf(core, cell: float = 16.0, cache_dir=None):
+def build_sdf(core, cell: float = 16.0, cache_dir=None, player: bool = False):
     """Build (or load) the map's unsigned distance field.
 
     Returns (sdf ndarray [nz, ny, nx] in map units, mins (3,), cell).
     The cache is invalidated when the .bsp changes (size+mtime signature) or
     the builder semantics bump — a recompiled map must never serve stale
     geometry to vision while physics uses the new one.
+
+    ``player=True`` (``--vision-clip``): the field of the PLAYER's collision
+    geometry, CLIP brushes included (:func:`slab_occupancy`); cached apart,
+    ``sdfp_<cell>.npz``.
     """
     from scipy.ndimage import distance_transform_edt
 
     bsp = Path(core.bsp_path)
-    sig = f"{_map_sig(bsp)}_{_SDF_SEMANTICS}"
+    sig = f"{_map_sig(bsp)}_{_SDF_SEMANTICS}" + (f"_{_PLAYER_SEMANTICS}" if player else "")
     cache = Path(cache_dir) if cache_dir else bsp.parent
-    cache_file = cache / f"{bsp.stem}.sdf_{cell:g}.npz"
+    cache_file = cache / f"{bsp.stem}.{'sdfp' if player else 'sdf'}_{cell:g}.npz"
     if cache_file.exists():
         z = np.load(cache_file, allow_pickle=False)
         if "sig" in z and str(z["sig"]) == sig:
             return z["sdf"], z["mins"], float(z["cell"])
 
-    occ, mins = slab_occupancy(core, cell, cache_dir)
+    occ, mins = slab_occupancy(core, cell, cache_dir, player=player)
     # outside the sampled box counts as solid (GoldSrc void), so pad with 1
     occ = np.pad(occ, 1, constant_values=1)
     dist = distance_transform_edt(occ == 0, sampling=cell)
@@ -1263,6 +1287,12 @@ class GpuLidar:
     is taken; ``norm`` is applied here in :meth:`render` as a post-process
     of the rendered channel). Exclusive with the three above for the same
     reason.
+
+    ``vision_clip=True`` (``--vision-clip``) marches the field of the
+    PLAYER's collision geometry, CLIP brushes included
+    (:func:`build_sdf`), instead of the point hull's; same kernel, same
+    shapes. Exclusive with ``surf_mask`` / ``normals``, whose bakes come
+    from the rendered faces and have no entry on a clip brush.
     """
 
     def __init__(self, core, width: int = 128, height: int = 64,
@@ -1272,7 +1302,7 @@ class GpuLidar:
                  device="cuda", surf_mask: bool = False,
                  mask_only: bool = False,
                  pinhole: bool = False, normals: bool = False,
-                 potential=None) -> None:
+                 potential=None, vision_clip: bool = False) -> None:
         if potential is not None and (surf_mask or pinhole or normals):
             raise ValueError(
                 "the potential channel (--obs-potential) is its own "
@@ -1296,12 +1326,21 @@ class GpuLidar:
             raise ValueError(
                 "normals and pinhole are separate experiments and there is "
                 "no combined kernel yet — run them on separate screens")
+        if vision_clip and (surf_mask or normals):
+            raise ValueError(
+                "--vision-clip renders CLIP brushes, and the --surf-mask / "
+                "--normals bakes come from the rendered faces, which a clip "
+                "brush does not have: its pixels would read 'no surface'. "
+                "Run them on separate screens")
         # Depth encoding: d/near_range within near_range (identical to the
         # legacy linear code, so warm-started nets keep their features), plus
         # a bounded tail 1 + 0.25*(1 - exp(-(d-near)/2500)) for the far field
         # — where legacy nets only ever saw a flat 1.0. near_range=None (or
         # == range) reproduces the legacy encoding exactly.
-        sdf, mins, cell = build_sdf(core, cell)
+        # the default call stays build_sdf(core, cell) exactly (tests stub it)
+        sdf, mins, cell = (build_sdf(core, cell, player=True) if vision_clip
+                           else build_sdf(core, cell))
+        self.vision_clip = bool(vision_clip)
         self.device = torch.device(device)
         # flat fp16 grid + integer strides: one fused gather per march step
         self.sdf_flat = torch.as_tensor(sdf, device=self.device) \

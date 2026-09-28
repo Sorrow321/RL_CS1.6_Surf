@@ -213,6 +213,7 @@ def main() -> None:
     # match the run's actual sensor (map/dims/range/encoding) via run.json
     # when the traj sits inside a run directory
     rng_u, near, cell, pinhole = 2000.0, None, None, False
+    vclip = False                # --vision-clip: the player-hull depth image
     explicit_map = args.map is not None      # an explicit --map beats both
     rcfg = {}                    # the run's config, for the potential channel
     rj = Path(args.traj).parent / "run.json"
@@ -224,6 +225,7 @@ def main() -> None:
         near = c.get("lidar_near")
         cell = c.get("lidar_cell")
         pinhole = bool(c.get("pinhole", 0))
+        vclip = bool(c.get("vision_clip", 0))
         if c.get("normals"):
             args.normals = True
         if c.get("obs_potential"):
@@ -304,7 +306,7 @@ def main() -> None:
                      cell=float(cell), device=device, pinhole=pinhole,
                      surf_mask=bool(args.surf_mask),
                      normals=bool(args.normals),
-                     potential=pot)
+                     potential=pot, vision_clip=vclip)
 
     out_path = Path(args.out) if args.out else Path(args.traj).with_suffix(".pov.mp4")
     # the lidar is EQUIANGULAR (fisheye-like) with anisotropic pixels:

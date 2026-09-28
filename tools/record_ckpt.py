@@ -643,6 +643,14 @@ def main(argv=None, build_only: bool = False, device=None):
                          "deliberate probe (how does this policy behave under "
                          "a different cap?) and is logged loudly and written "
                          "into every episode header as maxvel/maxvel_ckpt")
+    ap.add_argument("--vision-clip", type=int, default=None, choices=(0, 1),
+                    help="OVERRIDE the vision grid: 1 = the depth image marches the "
+                         "PLAYER's collision geometry, CLIP brushes included "
+                         "(surfgym.vision.build_sdf(player=True)). Default: the "
+                         "checkpoint's own vision_clip (0 for every checkpoint "
+                         "that predates the flag). An override shows these weights "
+                         "pixels they did not train on; logged loudly and written "
+                         "into every episode header as vision_clip/vision_clip_ckpt")
     ap.add_argument("--act-every", type=int, default=None,
                     help="OVERRIDE the decision interval in physics ticks. "
                          "Default: the checkpoint's own act_every. With "
@@ -1169,6 +1177,15 @@ def main(argv=None, build_only: bool = False, device=None):
     # scaled under abs by the start geodesic the config recorded for this
     # map ("obs_potential_d0"), so the policy sees the image it trained on.
     from surfgym.vision import LidarPotential
+    # --vision-clip: the depth image of the PLAYER's collision geometry (CLIP
+    # brushes included). MIRRORED like normals; read the ckpt value first and
+    # unconditionally (the maxvel idiom) so the config audit sees the key
+    cfg_vclip = int(cfg.get("vision_clip") or 0)
+    vclip = cfg_vclip if args.vision_clip is None else int(args.vision_clip)
+    if vclip != cfg_vclip:
+        print(f"!! --vision-clip OVERRIDE: rendering with vision_clip={vclip} "
+              f"instead of the checkpoint's {cfg_vclip}. The depth image of "
+              f"clip-brush geometry differs from what these weights trained on.")
     lidar = GpuLidar(core, lw, lh,
                      hfov_deg=float(cfg.get("lidar_hfov") or 120.0),
                      vfov_deg=float(cfg.get("lidar_vfov") or 90.0),
@@ -1180,7 +1197,8 @@ def main(argv=None, build_only: bool = False, device=None):
                      pinhole=bool(cfg.get("pinhole", 0)),
                      normals=bool(cfg.get("normals", 0)),
                      potential=LidarPotential.from_cfg(
-                         cfg, gf, core, device, Path(map_path).stem))
+                         cfg, gf, core, device, Path(map_path).stem),
+                     vision_clip=bool(vclip))
     if cfg.get("obs_potential"):
         # all three keys named here as literals on purpose: audit_cfg reads
         # this file's string constants, and from_cfg reads them in vision.py
@@ -2277,6 +2295,10 @@ def main(argv=None, build_only: bool = False, device=None):
         # file: every downstream honesty tool reads the traj, not this log
         header_extra["maxvel"] = maxvel
         header_extra["maxvel_ckpt"] = cfg_maxvel
+    if vclip != cfg_vclip:
+        # a recording that SAW different pixels says so in its own file
+        header_extra["vision_clip"] = vclip
+        header_extra["vision_clip_ckpt"] = cfg_vclip
     if tick_override:
         # record_rollout writes the REAL tick (tick_ms / tick_pattern_ms /
         # tick_phase) from the core; this names the tick the weights trained

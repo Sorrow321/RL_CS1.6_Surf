@@ -871,6 +871,76 @@ void surf_occupancy_grid(SurfSim* s, const float* mins, float cell,
     }
 }
 
+/* surf_occupancy_grid's test at one point: world solid / sky, or a solid brush entity */
+static int occ_point_solid(const BspMap* m, const float* p) {
+    int pc = point_contents(m, p);
+    if (pc == -2 || pc == -6) return 1;
+    PmTrace tr;
+    trace_player(m, 2, p, p, &tr);
+    return tr.startsolid ? 1 : 0;
+}
+
+/* surf_occupancy_grid plus the solid that exists only in the PLAYER hulls (additive export).
+ * hlcsg compiles CLIP brushes into clip hulls 1-3 and leaves them out of hull 0 (the render
+ * nodes point_contents walks), so a point-hull grid shows a clip-brush ramp as open air while
+ * the player surfs it: surf_src_utopia's curved ramps are CLIP brushes dressed with non-solid
+ * func_illusionary pieces, and on some pool maps most ramps are built that way. The ducked hull
+ * is the geometry grown by the ducked box, so a point lies inside the geometry iff the box
+ * centred on it lies wholly inside the duck hull's solid: tested at the box's 8 corners (exact
+ * for one convex brush). A voxel is marked only when, in addition, the box holds no point-hull
+ * solid: 27 point traces cross it, 9 along each axis (a 3x3 grid of lines over the other two:
+ * the faces' mid-lines and the centre), so a visible wall of ANY thickness through the box is
+ * crossed. A gap narrower than the box between visible brushes, or a compiled hull that
+ * overhangs a ramp's ridge (a missing edge bevel), is then left as it was, so a map with no
+ * player-only solid gets exactly surf_occupancy_grid's grid.
+ * out: 1 = point-hull solid (== surf_occupancy_grid), 2 = player-hull-only solid, 0 = open. */
+void surf_occupancy_grid_player(SurfSim* s, const float* mins, float cell,
+                                int32_t nx, int32_t ny, int32_t nz, uint8_t* out) {
+    const float* bmn = g_player_mins[1];     /* the ducked box */
+    const float* bmx = g_player_maxs[1];
+    int iz;
+#pragma omp parallel for schedule(dynamic, 1)
+    for (iz = 0; iz < nz; iz++) {
+        for (int iy = 0; iy < ny; iy++) {
+            for (int ix = 0; ix < nx; ix++) {
+                float p[3] = { mins[0] + (ix + 0.5f) * cell,
+                               mins[1] + (iy + 0.5f) * cell,
+                               mins[2] + (iz + 0.5f) * cell };
+                uint8_t v = 0;
+                if (occ_point_solid(&s->map, p)) {
+                    v = 1;
+                } else {
+                    PmTrace tr;
+                    trace_player(&s->map, 1, p, p, &tr);
+                    int inside = tr.startsolid;
+                    for (int k = 0; k < 8 && inside; k++) {
+                        float q[3] = { p[0] + ((k & 1) ? bmx[0] : bmn[0]),
+                                       p[1] + ((k & 2) ? bmx[1] : bmn[1]),
+                                       p[2] + ((k & 4) ? bmx[2] : bmn[2]) };
+                        trace_player(&s->map, 1, q, q, &tr);
+                        inside = tr.startsolid;
+                    }
+                    for (int k = 0; k < 27 && inside; k++) {
+                        int ax = k / 9, u = ax == 0 ? 1 : 0, w = ax == 2 ? 1 : 2;
+                        float a0[3], a1[3];
+                        a0[ax] = p[ax] + bmn[ax];
+                        a1[ax] = p[ax] + bmx[ax];
+                        a0[u] = a1[u] = p[u] + 0.5f * (bmn[u] + bmx[u])
+                                      + (float)(k % 3 - 1) * 0.5f * (bmx[u] - bmn[u]);
+                        a0[w] = a1[w] = p[w] + 0.5f * (bmn[w] + bmx[w])
+                                      + (float)((k / 3) % 3 - 1) * 0.5f * (bmx[w] - bmn[w]);
+                        if (occ_point_solid(&s->map, a0)) { inside = 0; break; }
+                        trace_player(&s->map, 2, a0, a1, &tr);
+                        if (tr.startsolid || tr.allsolid || tr.fraction < 1.0f) inside = 0;
+                    }
+                    if (inside) v = 2;
+                }
+                out[(size_t)ix + (size_t)nx * ((size_t)iy + (size_t)ny * iz)] = v;
+            }
+        }
+    }
+}
+
 void surf_pm_step_usercmd(SurfSim* s, SurfState* st, float yaw, float pitch,
                           float fmove, float smove, int32_t buttons, int32_t msec) {
     /* SV_RunCmd duties: msec>50 chop into two halves, basevelocity fold, pm tick.

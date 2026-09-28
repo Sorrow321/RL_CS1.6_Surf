@@ -1021,15 +1021,30 @@ class SurfCore:
         return int(self._lib.surf_point_contents(sim, arr))
 
     def occupancy_grid(self, mins: Sequence[float], cell: float,
-                       nx: int, ny: int, nz: int) -> np.ndarray:
+                       nx: int, ny: int, nz: int, player: bool = False) -> np.ndarray:
         """Solid/sky occupancy voxel grid (uint8, shape (nz, ny, nx) C-order
-        as [iz, iy, ix]), sampled at voxel centers. For GPU-vision precompute."""
+        as [iz, iy, ix]), sampled at voxel centers. For GPU-vision precompute.
+
+        ``player=True`` (additive export surf_occupancy_grid_player) also
+        marks the solid only the PLAYER hulls hold - CLIP brushes, which
+        hlcsg leaves out of the point hull: 1 = point-hull solid (the
+        ``player=False`` grid exactly), 2 = player-hull-only solid, 0 = open."""
         sim = self._handle()
         out = np.zeros(nx * ny * nz, dtype=np.uint8)
         m = (c_float * 3)(*(float(v) for v in mins))
-        self._lib.surf_occupancy_grid(
-            sim, m, c_float(cell), c_int32(nx), c_int32(ny), c_int32(nz),
-            out.ctypes.data_as(ctypes.POINTER(ctypes.c_uint8)))
+        if player:
+            fn = getattr(self._lib, "surf_occupancy_grid_player", None)
+            if fn is None:
+                raise RuntimeError(
+                    "this surfcore build predates surf_occupancy_grid_player - "
+                    "rebuild the core (build.ps1 / ./build.sh)")
+            fn.argtypes = [ctypes.c_void_p, ctypes.POINTER(c_float), c_float, c_int32,
+                           c_int32, c_int32, ctypes.POINTER(ctypes.c_uint8)]
+            fn.restype = None
+        else:
+            fn = self._lib.surf_occupancy_grid
+        fn(sim, m, c_float(cell), c_int32(nx), c_int32(ny), c_int32(nz),
+           out.ctypes.data_as(ctypes.POINTER(ctypes.c_uint8)))
         return out.reshape(nz, ny, nx)
 
     def pm_step_usercmd(

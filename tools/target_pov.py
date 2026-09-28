@@ -9,7 +9,10 @@ MEASUREMENT / visualisation only - use our own policies' recordings (CLAUDE.md s
         [--every 4] [--scale 10] [--unit face]
 
 --touch: per tick the contact SETS in --ramps-old ids (tools' finisher_touch recording); each
-old id is mapped to the face-extraction surface whose contact samples it overlaps most.
+old id is mapped to the face-extraction surface whose contact samples it overlaps most, and a
+contact no old surface knows (-4: a CLIP-brush ramp, which the old point-probe extraction cannot
+see) to the floor / ramp surface whose contact origin is nearest the player's origin.
+--vision-clip 1: the depth image of the player's collision geometry (CLIP brushes included).
 """
 from __future__ import annotations
 
@@ -44,6 +47,9 @@ def main(argv=None) -> int:
                          "one after fading in 0 -> 0.5 (targetmask.takeoff_fade_values: "
                          "continuous); touch: the old +1 / -1 switch at the first touch")
     ap.add_argument("--fade", type=float, default=0.3, help="seconds of cross-fade")
+    ap.add_argument("--vision-clip", type=int, choices=(0, 1), default=None,
+                    help="passed to record_ckpt: 1 = the depth image of the player's collision "
+                         "geometry, CLIP brushes included (default: the checkpoint's own)")
     a = ap.parse_args(argv)
     import cv2
     import torch
@@ -74,13 +80,25 @@ def main(argv=None) -> int:
         ids, c = np.unique(zm["surf"][i[d < 64]], return_counts=True)
         if len(ids):
             o2m[s] = int(ids[np.argmax(c)])
+    # -4 = a contact no old surface knows: the nearest floor / ramp contact origin (<= 64 u)
+    fr = np.isin(mcat[zm["surf"]], (0, 1))
+    tree_fr = cKDTree(zm["points"][fr])
+    surf_fr = zm["surf"][fr]
+
+    def to_mesh(x, t):
+        if x == "":
+            return None
+        if x == "-4":
+            d, i = tree_fr.query(A[t, 1:4])
+            return int(surf_fr[i]) if d <= 64.0 else None
+        return o2m.get(int(x))
     # the ride sequence: target surfaces (floors, ramps) in touch order, consecutive repeats merged
     seq, first_t = [], []
     for t in range(n):
         for x in sets[t].split(","):
-            if x in ("", "-4") or int(x) not in o2m:
+            m = to_mesh(x, t)
+            if m is None:
                 continue
-            m = o2m[int(x)]
             if int(mcat[m]) not in (0, 1):
                 continue
             if not seq or seq[-1] != m:
@@ -90,8 +108,8 @@ def main(argv=None) -> int:
                 first_t.append(t)
     # the TAKEOFF from each ride: the first tick at which the agent has been off that surface
     # for DEPART_TICKS consecutive ticks after touching it (the ride contract's own rule)
-    msets = [{o2m[int(x)] for x in s.split(",") if x not in ("", "-4") and int(x) in o2m}
-             for s in sets[:n]]
+    msets = [{m for m in (to_mesh(x, t) for x in s.split(",")) if m is not None}
+             for t, s in enumerate(sets[:n])]
     leave = []
     for i, (s, t0) in enumerate(zip(seq, first_t)):
         last = t0
@@ -109,7 +127,9 @@ def main(argv=None) -> int:
     print(f"target_pov: {n} ticks, ride sequence of {len(seq)} target surfaces: "
           + " ".join(f"{s}@{t / 100:.1f}-{(lv / 100 if np.isfinite(lv) else float('nan')):.1f}s"
                      for s, t, lv in zip(seq, first_t, leave)))
-    ctx = record_ckpt.build([str(a.ckpt), "--episodes", "1", "--map", str(a.map)])
+    ctx = record_ckpt.build([str(a.ckpt), "--episodes", "1", "--map", str(a.map)]
+                            + (["--vision-clip", str(a.vision_clip)]
+                               if a.vision_clip is not None else []))
     lidar = ctx.pol.lidar
     dev = lidar.device
     tm = TargetMask(a.mesh, ctx.finish_box, dev, unit=a.unit)

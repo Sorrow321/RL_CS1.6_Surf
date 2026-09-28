@@ -4322,6 +4322,18 @@ def main() -> None:
     ap.add_argument("--pinhole", type=int, default=None,
                     choices=(0, 1),                # 0; ckpt restores
                     help="rectilinear camera instead of the equiangular one")
+    # --vision-clip: the depth image marches the PLAYER's collision geometry
+    # (surfgym.vision.build_sdf(player=True)) instead of the point hull's.
+    # hlcsg compiles CLIP brushes into the player hulls only, so the point
+    # hull shows a clip-brush ramp as open air while the player surfs it
+    # (surf_src_utopia's curved ramps; most ramps of a few pool maps). On a
+    # map with no player-only solid the grid is identical. Pixel values
+    # change where it matters, so like --pinhole the ckpt's setting is
+    # restored on resume.
+    ap.add_argument("--vision-clip", type=int, default=None,
+                    choices=(0, 1),                # 0; ckpt restores
+                    help="depth renders the player's collision geometry, CLIP "
+                         "brushes included (the point hull leaves them out)")
     # --normals: the hit surface's full unit normal as three more channels
     # (depth, nx, ny, nz), in the player's ego frame - rotated by the view
     # yaw only, x forward / y left / z up, flipped to face the ray, 0 where
@@ -6670,6 +6682,11 @@ def main() -> None:
         if args.pinhole is None and ck_cfg.get("pinhole") is not None:
             args.pinhole = int(ck_cfg["pinhole"])
             restored.append(f"pinhole={args.pinhole}")
+        # no shape guard for --vision-clip either: same tensors, the pixels
+        # of clip-brush geometry change
+        if args.vision_clip is None and ck_cfg.get("vision_clip") is not None:
+            args.vision_clip = int(ck_cfg["vision_clip"])
+            restored.append(f"vision_clip={args.vision_clip}")
         if args.normals is None and ck_cfg.get("normals") is not None:
             args.normals = int(ck_cfg["normals"])
             restored.append(f"normals={args.normals}")
@@ -7474,6 +7491,8 @@ def main() -> None:
                              "run them on separate screens")
     if args.pinhole is None:
         args.pinhole = 0
+    if args.vision_clip is None:
+        args.vision_clip = 0
     if args.normals is None:
         args.normals = 0
     if args.lidar_hfov is None:
@@ -9565,7 +9584,8 @@ def main() -> None:
                                   normals=bool(args.normals),
                                   potential=_lidar_potential(
                                       slot.reward_field, slot.rf_d0,
-                                      slot.name, slot.goal_box))
+                                      slot.name, slot.goal_box),
+                                  vision_clip=bool(args.vision_clip))
         _raw_lidar[slot.name] = slot.lidar
         if args.obs_potential:
             print(f"--obs-potential {args.obs_potential}: {slot.name} "
@@ -9680,7 +9700,8 @@ def main() -> None:
                                     potential=_lidar_potential(
                                         hs.reward_field, hs.rf_d0,
                                         f"heldout {_bsp.stem}",
-                                        hs.goal_box))
+                                        hs.goal_box),
+                                    vision_clip=bool(args.vision_clip))
             mn_b, mx_b = ec.map_bounds()
             hs.map_center = ((mn_b + mx_b) / 2.0).astype(np.float32)
             _rp = _bsp.with_name(f"{_bsp.stem}.route.npz")
@@ -11027,6 +11048,9 @@ def main() -> None:
                        "lidar_w": args.lidar_w, "lidar_h": args.lidar_h,
                        "surf_mask": args.surf_mask,
                        "pinhole": args.pinhole,
+                       # --vision-clip is what the policy SEES (clip-brush
+                       # geometry in the depth image): record_ckpt.py mirrors it
+                       "vision_clip": args.vision_clip,
                        # --normals / the fov are what the policy SEES:
                        # record_ckpt.py and render_pov.py mirror all three
                        "normals": args.normals,

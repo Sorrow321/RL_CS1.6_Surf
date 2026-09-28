@@ -269,6 +269,12 @@ SURF_API int32_t surf_point_contents(SurfSim* s, const float* p); /* CONTENTS_* 
  * = 1 if the point mins + (i+0.5)*cell is solid, else 0. OpenMP-parallel. */
 SURF_API void surf_occupancy_grid(SurfSim* s, const float* mins, float cell,
                                   int32_t nx, int32_t ny, int32_t nz, uint8_t* out);
+/* Additive: the same grid plus the solid only the PLAYER hulls hold (CLIP brushes - hlcsg
+ * leaves them out of hull 0): out = 1 point-hull solid (== surf_occupancy_grid), 2 = inside
+ * player-hull-only solid (the ducked box centred on the point lies wholly inside the duck
+ * hull's solid and holds no point-hull solid), 0 = open. OpenMP-parallel. */
+SURF_API void surf_occupancy_grid_player(SurfSim* s, const float* mins, float cell,
+                                         int32_t nx, int32_t ny, int32_t nz, uint8_t* out);
 
 /* One physics tick at usercmd level — the parity-harness primitive (docs/05 tier 2). */
 SURF_API void surf_pm_step_usercmd(SurfSim* s, SurfState* st, float yaw, float pitch,
