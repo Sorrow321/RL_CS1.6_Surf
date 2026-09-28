@@ -326,7 +326,9 @@ def test_the_obs_block_is_seven_columns_at_the_tail():
     # checkpoint by widen_for_obs' zero-pad and --keys-hold never can, so the
     # one block that needs the tail keeps it (and the ratchet arm's own
     # pinned test stays green)
-    assert "RATCHET_COL = N_SCALAR + N_ROUTE - 1" in SRC
+    # the ratchet is LAST unless --ramp-obs-pass puts its flag after it (N_PASS = 0 by default)
+    assert "RATCHET_COL = N_SCALAR + N_ROUTE - N_PASS - 1" in SRC
+    assert "PASS_COL = N_SCALAR + N_ROUTE - 1" in SRC
     # ... and the three writers agree on that order
     for txt in (SRC, SRC):
         i_k = txt.index("dst[:, KEYS0:KEYS0 + N_KEYS].copy_(keys_pin")

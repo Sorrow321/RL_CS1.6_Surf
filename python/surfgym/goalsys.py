@@ -876,6 +876,21 @@ class GoalSystem:
         self.pending[idx] = False
         self.n_assigned[3] += len(idx)
 
+    def take_pass_flags(self) -> np.ndarray:
+        """--ramp-obs-pass: (N,) float32 - 1 where the env's window shifted since the previous
+        decision (RampWindows.take_passes; a respawn restarts it)"""
+        return self.planner.windows.take_passes()
+
+    def pass_flags_at(self, idx) -> np.ndarray:
+        """--ramp-obs-pass at a terminal state: the flag without restarting the count"""
+        return self.planner.windows.pass_flags(idx)
+
+    def eval_pass_feed(self):
+        """--ramp-obs-pass for the greedy eval: the policy wrapper's pass_fn off the eval
+        windows (goalramps.make_pass_feed)"""
+        from .goalramps import make_pass_feed
+        return make_pass_feed(self.planner.eval_windows)
+
     def _on_step_ramps(self, done, trunc, ep_len) -> np.ndarray:
         """--goal-planner ramps, after fleet.step: settle the ended episodes (success = the core
         crossed the ARMED finish box), then read the tick's collision telemetry, advance every

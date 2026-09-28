@@ -454,7 +454,9 @@ def test_the_flag_exists_defaults_off_and_is_recorded():
     assert 'ck_cfg.get("race_ratchet")' in src                # restored
     assert "ratchet=bool(args.race_ratchet), ratchet_d0=_s.rf_d0" in src
     assert "N_RATCHET = 1 if args.race_ratchet else 0" in src
-    assert "RATCHET_COL = N_SCALAR + N_ROUTE - 1" in src      # LAST column
+    # the ratchet is LAST unless --ramp-obs-pass puts its flag after it (N_PASS = 0 by default)
+    assert "RATCHET_COL = N_SCALAR + N_ROUTE - N_PASS - 1" in src
+    assert "PASS_COL = N_SCALAR + N_ROUTE - 1" in src
     assert "ratchet_fn=_s.eval_ratchet_feed" in src           # and the evals
     assert "fleet.terminal_ratchet(ti, pos_np)" in src        # and the boot
 

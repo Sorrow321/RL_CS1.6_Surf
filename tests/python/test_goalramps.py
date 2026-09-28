@@ -772,3 +772,72 @@ def test_the_riding_first_line_counts_its_lookahead_against_the_buffer(voc):
                               riding_first=True, gravity=w.gravity, dt_path=w.dt_path,
                               line_cap=w.line_cap)
     assert fast.shape == py.shape and np.allclose(fast, py, atol=1e-3)
+
+
+
+def test_the_pass_flag_is_one_on_the_decision_after_a_shift_and_zero_otherwise(voc):
+    """--ramp-obs-pass (the user, 2026-09-28): take_passes is 1 where the window shifted since the
+    last read - a pass, a skip - and 0 through an entry, hops inside the box and plain flight;
+    one read restarts it, the bootstrap's pass_flags does not, a respawn does"""
+    v, _bsp, _ = voc
+    w = _windows(v)
+    w.spawn([0, 1], *_state(APPROACH))
+    assert w.take_passes().tolist() == [0.0, 0.0]
+    _tick(w, ON0)                                            # the entry: no pass
+    for _ in range(5):
+        _tick(w, HOP)
+    assert w.take_passes().tolist() == [0.0, 0.0]
+    _tick(w, AWAY)                                           # env 0 passes T1
+    _tick(w, AWAY)
+    assert w.take_passes().tolist() == [1.0, 0.0]
+    assert w.take_passes().tolist() == [0.0, 0.0]            # read once
+    _tick(w, AWAY, ON1)                                      # env 1 skips T1 for T2
+    assert w.pass_flags([1]).tolist() == [1.0] and w.pass_flags([1]).tolist() == [1.0]
+    w.spawn([1], APPROACH[0][None], APPROACH[1][None])       # a new episode: nothing passed
+    assert w.take_passes().tolist() == [0.0, 0.0]
+
+
+def test_the_eval_pass_feed_reads_env_0_once_per_decision(voc):
+    """make_pass_feed: the eval / recording column - env 0's flag off its 1-env windows, 0 for
+    any other env of the core, restarted by the read"""
+    v, _bsp, _ = voc
+    w = _windows(v, n=1)
+    w.spawn([0], APPROACH[0][None], APPROACH[1][None])
+    feed = gr.make_pass_feed(w)
+
+    class _Core:
+        states_view = {"origin": np.zeros((3, 3))}
+    for st in (ON0, ON0, AWAY):
+        w.on_tick(None, st[0][None], st[1][None], np.zeros(1, bool))
+    assert feed(_Core(), 3).tolist() == [1.0, 0.0, 0.0]
+    assert feed(_Core()).tolist() == [0.0, 0.0, 0.0]
+
+
+def test_a_checkpoint_grows_onto_the_pass_column_as_its_own_function():
+    """--ramp-obs-pass is the LAST scalar-side column, so widen_for_obs' zero-pad grows a
+    checkpoint onto it: the resumed policy computes the checkpoint's logits and value whatever
+    the flag holds, and the flag's weights then learn from zero"""
+    from train_fast import widen_for_obs
+    R = 5
+    torch.manual_seed(0)
+    old = Policy(N_SCALAR + R + W * H, W, H, emb=32, hidden=24, route_dim=R).eval()
+    ck = _ck(old)
+    torch.manual_seed(1)
+    new = Policy(N_SCALAR + R + 1 + W * H, W, H, emb=32, hidden=24, route_dim=R + 1)
+    assert widen_for_obs(ck, new, R + 1, flag="--ramp-obs-pass 1") > 0
+    new.load_state_dict(ck["policy"])
+    new.eval()
+    g = torch.Generator().manual_seed(4)
+    scal = torch.randn(6, N_SCALAR + R, generator=g)
+    img = torch.rand(6, W * H, generator=g)
+    la, va = old(torch.cat([scal, img], 1))
+    for flag in (0.0, 1.0):
+        lb, vb = new(torch.cat([scal, torch.full((6, 1), flag), img], 1))
+        assert torch.allclose(la, lb, atol=1e-6, rtol=0), (la - lb).abs().max().item()
+        assert torch.allclose(va, vb, atol=1e-6, rtol=0), (va - vb).abs().max().item()
+    lb, vb = new(torch.cat([scal, torch.ones(6, 1), img], 1))
+    (lb.sum() + vb.sum()).backward()
+    col = N_SCALAR + R - N_SCALAR                 # the flag's column in the towers' input
+    grads = [p.grad for n_, p in new.named_parameters() if n_ in ("pi.0.weight", "vf.0.weight")]
+    feat = int(new.feat_dim)
+    assert all(float(gr_[:, feat + col].abs().max()) > 0.0 for gr_ in grads)

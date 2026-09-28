@@ -2398,7 +2398,7 @@ class _TorchPolicyBase:
                  extra_slot: int = -1, extra_fn=None, route=None,
                  latch_fn=None, pitch_fixed=None, aux=None, masks=None,
                  priv_fn=None, cc_fn=None, ratchet_fn=None,
-                 keys_hold=False):
+                 keys_hold=False, pass_fn=None):
         self.policy, self.packer, self.device = policy, packer, device
         self.lidar, self.core = lidar, core
         # --pitch-fixed: the trainer pins the states' pitch column before
@@ -2425,6 +2425,9 @@ class _TorchPolicyBase:
         # a constant would be scoring a different network input than
         # training wrote.
         self.ratchet_fn = ratchet_fn
+        # --ramp-obs-pass: the pass flag, the LAST column of the scalar half, off the eval
+        # windows (goalramps.make_pass_feed). None on every checkpoint without it
+        self.pass_fn = pass_fn
         # --act-hist / --obs-compass: a surfgym.obsaux.ObsAux, the SAME class
         # the rollout drives. Two implementations of one feature drift, and
         # the drift only shows up as eval recordings that disagree with
@@ -2637,6 +2640,12 @@ class _TorchPolicyBase:
             # checkpoint onto it
             t = torch.cat([t, torch.as_tensor(
                 self.ratchet_fn(self.core), dtype=torch.float32,
+                device=self.device).reshape(-1, 1)], dim=1)
+        if self.pass_fn is not None:
+            # --ramp-obs-pass: LAST of the scalar half, after the ratchet gap - exactly where
+            # fill_vision writes it and where widen_for_obs pads a checkpoint onto it
+            t = torch.cat([t, torch.as_tensor(
+                self.pass_fn(self.core, t.shape[0]), dtype=torch.float32,
                 device=self.device).reshape(-1, 1)], dim=1)
         if self.lidar is not None:
             if self.pitch_fixed is not None:
@@ -4777,6 +4786,14 @@ def main() -> None:
                          "pass: surfing a ramp the planner did not ask for, or going back to one "
                          "already passed (the user, 2026-09-28). "
                          "0 (default) = off. ckpt restores")
+    ap.add_argument("--ramp-obs-pass", type=int, default=None, choices=(0, 1),
+                    help="--goal-planner ramps: 1 = one more scalar-side observation column "
+                         "(the LAST): 1 on the decision after the window shifted - the ramp the "
+                         "planner asked for was passed (or skipped for the one after it), the "
+                         "event --ramp-reward pass pays - else 0 (the user, 2026-09-28: 'if I get "
+                         "ones here I get a reward'). A checkpoint without it is widened by one "
+                         "ZERO column (its own function at step 0). 0 (default) = off. "
+                         "ckpt restores")
     ap.add_argument("--ramp-reward", default=None, choices=("arc", "pass"),
                     help="--goal-planner ramps: the reward. arc (default) = signed arc progress "
                          "along the window line (100 per 1,500 u, the line re-laid at every "
@@ -6504,7 +6521,7 @@ def main() -> None:
                     setattr(args, _k, ck_cfg[_k])
         # --goal-planner ramps: its vocabulary, channel and knobs, like every run-defining flag
         for _k in ("ramp_vocab", "target_channel", "ramp_topk", "ramp_horizon", "ramp_fade",
-                   "ramp_reward", "ramp_offtarget_pen"):
+                   "ramp_reward", "ramp_offtarget_pen", "ramp_obs_pass"):
             if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
                 setattr(args, _k, ck_cfg[_k])
                 restored.append(f"{_k}={ck_cfg[_k]}")
@@ -7809,7 +7826,7 @@ def main() -> None:
     else:
         _set = [f"--{_k.replace('_', '-')}" for _k in
                 ("ramp_vocab", "target_channel", "ramp_topk", "ramp_horizon", "ramp_fade",
-                 "ramp_reward", "ramp_offtarget_pen")
+                 "ramp_reward", "ramp_offtarget_pen", "ramp_obs_pass")
                 if flag_given(f"--{_k.replace('_', '-')}")]
         if _set:
             raise SystemExit(f"{', '.join(_set)} without --goal-planner ramps")
@@ -7817,6 +7834,7 @@ def main() -> None:
         args.ramp_topk = args.ramp_horizon = args.ramp_fade = None
         args.ramp_reward = None
         args.ramp_offtarget_pen = None
+        args.ramp_obs_pass = None
     # --ramp-reward pass: +1 per window shift, added to the per-tick reward after the goal system's
     # step; the arc shaping is off (arc_scale 0 below)
     RPASS = RPLAN and args.ramp_reward == "pass"
@@ -9982,7 +10000,10 @@ def main() -> None:
     # outright (see the resume block). Having no warm start to protect, it
     # yields the trailing slot to --race-ratchet, which does.
     N_KEYS = keyshold.N_FEATURES if args.keys_hold else 0
-    N_ROUTE = N_FAN + N_LATCH + N_AUX + N_CC + N_KEYS + N_RATCHET
+    # --ramp-obs-pass: the pass flag, LAST of all - after the ratchet gap - so a checkpoint
+    # without it grows onto it by widen_for_obs' trailing zero-pad (its own function at step 0)
+    N_PASS = 1 if (RPLAN and int(args.ramp_obs_pass or 0)) else 0
+    N_ROUTE = N_FAN + N_LATCH + N_AUX + N_CC + N_KEYS + N_RATCHET + N_PASS
     # column of the --race-latch flag, and the first column of the aux block.
     # With no aux block LATCH_COL is N_SCALAR + N_ROUTE - 1 exactly as before.
     LATCH_COL = N_SCALAR + N_FAN + N_LATCH - 1
@@ -9992,7 +10013,11 @@ def main() -> None:
     CC_COL = N_SCALAR + N_FAN + N_LATCH + N_AUX + N_CC - 1
     # --keys-hold: the 7-wide block, between the T column and the ratchet gap
     KEYS0 = N_SCALAR + N_FAN + N_LATCH + N_AUX + N_CC
-    RATCHET_COL = N_SCALAR + N_ROUTE - 1
+    RATCHET_COL = N_SCALAR + N_ROUTE - N_PASS - 1
+    PASS_COL = N_SCALAR + N_ROUTE - 1
+    if N_PASS:
+        print(f"--ramp-obs-pass: obs column {PASS_COL} = 1 on the decision after the window "
+              "shifted (the ramp the planner asked for was passed or skipped), else 0")
     if N_KEYS:
         print(f"{KeysHold(1).describe()}; obs columns "
               f"{KEYS0}..{KEYS0 + N_KEYS - 1}; policy heads {NVEC} "
@@ -11004,6 +11029,9 @@ def main() -> None:
                 _grew.append(f"--act-hist {int(args.act_hist)}")
             if int(args.obs_compass or 0) > _gc:
                 _grew.append("--obs-compass 1")
+            if N_PASS and not int(ck_cfg.get("ramp_obs_pass") or 0):
+                # the pass column is LAST: the exact trailing widen below
+                _grew.append("--ramp-obs-pass 1")
             if CC and not int(ck_cfg.get("curiosity_cond") or 0):
                 # a plain checkpoint onto the T-conditioned family: the T
                 # column is LAST, so the zero-pad below is the exact
@@ -11614,7 +11642,8 @@ def main() -> None:
                                "ramp_horizon": float(args.ramp_horizon),
                                "ramp_fade": float(args.ramp_fade),
                                "ramp_reward": str(args.ramp_reward),
-                               "ramp_offtarget_pen": float(args.ramp_offtarget_pen or 0.0)})
+                               "ramp_offtarget_pen": float(args.ramp_offtarget_pen or 0.0),
+                               "ramp_obs_pass": int(args.ramp_obs_pass or 0)})
     # --goal-planner prim: its knobs, ONLY then; record_ckpt.py MIRRORS them (the recording draws
     # the same kind of primitive)
     if PPLAN or PLPLAN:
@@ -12857,6 +12886,10 @@ def main() -> None:
     ratchet_pin = (torch.zeros((N, 1), pin_memory=(device.type == "cuda"))
                    if N_RATCHET else None)
     ratchet_np = ratchet_pin.numpy()[:, 0] if N_RATCHET else None
+    # --ramp-obs-pass: the pass flag's pinned staging row
+    pass_pin = (torch.zeros((N, 1), pin_memory=(device.type == "cuda"))
+                if N_PASS else None)
+    pass_np = pass_pin.numpy()[:, 0] if N_PASS else None
     # --priv-critic: one pinned (N, 10) staging block, filled in place off
     # the live core states and the reward object, then uploaded with the
     # rest of the per-decision traffic. static_priv is a STATIC buffer like
@@ -12948,6 +12981,12 @@ def main() -> None:
             ratchet_np[:] = fleet.ratchet_gap()
             dst[:, RATCHET_COL:RATCHET_COL + 1].copy_(ratchet_pin,
                                                       non_blocking=True)
+        if N_PASS:
+            # --ramp-obs-pass: 1 where the env's window shifted during the decision just made
+            # (fill_vision runs after its K ticks; a respawn restarted the count, so a row that
+            # just ended reads 0). 8 KB host->device, off the graph
+            pass_np[:] = goalsys.take_pass_flags()
+            dst[:, PASS_COL:PASS_COL + 1].copy_(pass_pin, non_blocking=True)
         if N_CC:
             # --curiosity-cond: the T of the episode the state belongs to
             # (fill_vision runs AFTER the reward call, which redrew it for
@@ -15183,6 +15222,14 @@ def main() -> None:
                                 gp = fleet.terminal_ratchet(ti, pos_np)
                                 blocks.append(torch.as_tensor(
                                     gp, device=device).reshape(-1, 1))
+                            if N_PASS:
+                                # --ramp-obs-pass AT s_T: the shifts since
+                                # the last decision, read before the goal
+                                # system respawns these rows (goalsys.assign
+                                # below restarts the count)
+                                blocks.append(torch.as_tensor(
+                                    goalsys.pass_flags_at(ti),
+                                    device=device).reshape(-1, 1))
                             blocks.append(vis)
                             full = torch.cat(blocks, dim=1)
                             pv = None
@@ -16621,7 +16668,9 @@ def main() -> None:
                                            priv_fn=_s.eval_priv_feed,
                                            cc_fn=_s.eval_cc_feed,
                                            ratchet_fn=_s.eval_ratchet_feed,
-                                           keys_hold=args.keys_hold),
+                                           keys_hold=args.keys_hold,
+                                           pass_fn=(goalsys.eval_pass_feed()
+                                                    if N_PASS else None)),
                                path, episodes=n_rec,
                                max_ticks=n_rec * args.ep_ticks,
                                seed=global_step & 0x7FFFFFFF,
@@ -16690,7 +16739,11 @@ def main() -> None:
                                                priv_fn=_s.eval_priv_feed,
                                                cc_fn=_s.eval_cc_feed,
                                                ratchet_fn=_s.eval_ratchet_feed,
-                                               keys_hold=args.keys_hold),
+                                               keys_hold=args.keys_hold,
+                                               # no ramp hooks drive this eval: the column
+                                               # is held at 0 (ramp runs evaluate greedy)
+                                               pass_fn=((lambda _c, n: np.zeros(n, np.float32))
+                                                        if N_PASS else None)),
                                    spath, episodes=n_rec,
                                    max_ticks=n_rec * args.ep_ticks,
                                    seed=global_step & 0x7FFFFFFF,

@@ -1336,6 +1336,8 @@ def main(argv=None, build_only: bool = False, device=None):
                   f"{'ZEROED' if args.route_mode == 'off' else 'FROZEN at the first decision'}"
                   " for this recording")
     goal_hooks = None
+    # --ramp-obs-pass: the policy wrappers' pass_fn, set by the ramps branch below
+    pass_fn = None
     if cfg.get("goals"):
         # --goals: the fan rides a per-env line (train_fast --goals); the
         # recording gives env 0 a random reachable-air goal per episode
@@ -1528,6 +1530,9 @@ def main(argv=None, build_only: bool = False, device=None):
                 print(lidar.describe())
                 _goal_meta, _goal_tick = make_ramp_hooks(_rpl.eval_windows, _voc, core, _ev,
                                                          line=_ml)
+                if int(cfg.get("ramp_obs_pass") or 0):
+                    from surfgym.goalramps import make_pass_feed
+                    pass_fn = make_pass_feed(_rpl.eval_windows)
             elif _gp == "primlearn":
                 # --goal-planner primlearn: MIRRORED - the checkpoint's own primitive planner
                 # (ck["planner"]) GREEDY from the spawn, re-choosing like training at the next
@@ -1895,6 +1900,10 @@ def main(argv=None, build_only: bool = False, device=None):
               f"{core.obs_dim + route_dim - train_fast.keyshold.N_FEATURES}"
               f"..{core.obs_dim + route_dim - 1}")
     if cfg.get("race_ratchet"):
+        route_dim += 1
+    # --ramp-obs-pass: the pass flag, LAST of the scalar half (after the ratchet gap) - fed off
+    # the eval windows below (goalramps.make_pass_feed), exactly as the trainer's eval does
+    if int(cfg.get("ramp_obs_pass") or 0):
         route_dim += 1
         print(f"--race-ratchet: the record gap (d - b)/d0 is obs column "
               f"{core.obs_dim + route_dim - 1}")
@@ -2433,7 +2442,7 @@ def main(argv=None, build_only: bool = False, device=None):
                extra_fn=extra_fn, route=route,
                latch_fn=latch_fn, pitch_fixed=pitch_fixed,
                aux=obs_aux, masks=masks, cc_fn=cc_fn,
-               keys_hold=keys_hold, ratchet_fn=ratchet_fn)
+               keys_hold=keys_hold, ratchet_fn=ratchet_fn, pass_fn=pass_fn)
     if locals().get("_psearch") is not None:
         # --plan-search M (--goal-planner primlearn): a scratch core of M envs built like this one,
         # its own fan line, and a fresh greedy wrapper of the SAME executor per simulation
@@ -2464,7 +2473,7 @@ def main(argv=None, build_only: bool = False, device=None):
                          extra_slot=extra_slot, extra_fn=extra_fn, route=_l,
                          latch_fn=latch_fn, pitch_fixed=pitch_fixed, aux=obs_aux,
                          masks=masks, cc_fn=cc_fn, keys_hold=keys_hold,
-                         ratchet_fn=ratchet_fn)
+                         ratchet_fn=ratchet_fn, pass_fn=pass_fn)
         if int(args.plan_scratch) > 0:
             # --plan-scratch: the pieces only - the tool that asked flies them itself
             from types import SimpleNamespace as _NS

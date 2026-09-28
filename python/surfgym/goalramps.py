@@ -80,7 +80,7 @@ RAMP_NZ = (0.02, 0.7)    # a RAMP-like contact plane: tools/ramps_mesh.py's cate
 FIN = -2                 # the finish box as a target (surfgym.targetmask.FIN)
 NONE = -1
 RAMP_DEFAULTS = {"ramp_topk": 2, "ramp_horizon": 3.0, "ramp_fade": 0.3, "ramp_reward": "arc",
-                 "ramp_offtarget_pen": 0.0}
+                 "ramp_offtarget_pen": 0.0, "ramp_obs_pass": 0}
 PROGRESS_DELTA = 250.0   # u: a target must lie this much closer to the finish (geodesic) than
                          # the agent (or than the previous target) to be eligible
 REPLAN_SECS = 0.1        # s: a HOLDING window (no target was in reach) redraws this often
@@ -386,6 +386,9 @@ class RampWindows:
         # window shifts on the CURRENT tick per env (on_tick clears it): --ramp-reward pass pays
         # +1 for each
         self.tick_pass = np.zeros(n, np.int64)
+        # window shifts since the policy last read them (take_passes, once per decision):
+        # --ramp-obs-pass shows the policy the event --ramp-reward pass pays
+        self.pass_acc = np.zeros(n, np.int64)
         # per env the pieces this episode has left behind (and the one it spawned on): never a
         # target again - no cycles (Codex: excluding only the last piece let A -> B -> C -> A)
         self.visited = [set() for _ in range(n)]
@@ -779,6 +782,7 @@ class RampWindows:
             self.source[i] = src[n]
             self.n_capt[i] = 0
             self.n_skip[i] = 0
+            self.pass_acc[i] = 0                   # a new episode starts with nothing passed
             lines.append(ln)
         return lines
 
@@ -851,7 +855,22 @@ class RampWindows:
         self.v0t[i] = v_t2
         self.entered[i] = bool(riding)
         self.tick_pass[i] += 1
+        self.pass_acc[i] += 1
         return ln
+
+    def take_passes(self, idx=None):
+        """--ramp-obs-pass: (n,) float32, 1 where the window shifted (T1 passed, or skipped for
+        T2) since the last call, else 0 - and the count restarts. Read once per decision, it is
+        the policy's view of the event --ramp-reward pass pays"""
+        sl = slice(None) if idx is None else np.asarray(idx, np.int64)
+        out = (self.pass_acc[sl] > 0).astype(np.float32)
+        self.pass_acc[sl] = 0
+        return out
+
+    def pass_flags(self, idx):
+        """take_passes' value for envs idx WITHOUT restarting the count (the truncation
+        bootstrap reads the flag its terminal state would have shown)"""
+        return (self.pass_acc[np.asarray(idx, np.int64)] > 0).astype(np.float32)
 
     def settle(self, idx, finished):
         """episodes of envs idx ended (finished: reached the finish box) - the stats"""
@@ -967,6 +986,19 @@ class TargetLidar:
             self.tm.set_slots(n, ids, vals, combine="max")
             ch = self.tm.render(self.lidar, origin, yaw_deg, pitch_deg, ducked).to(img.dtype)
         return torch.cat([img, ch.unsqueeze(-1)], dim=-1)
+
+
+def make_pass_feed(windows):
+    """--ramp-obs-pass in an eval / a recording (the policy wrappers' pass_fn): env 0's flag off
+    the 1-env RampWindows that make_ramp_hooks drives - 1 on the decision after its window
+    shifted - and 0 for any other env of the core"""
+    def feed(core, n=None):
+        if n is None:
+            n = int(np.asarray(core.states_view["origin"]).shape[0])
+        out = np.zeros(int(n), np.float32)
+        out[0] = float(windows.take_passes([0])[0])
+        return out
+    return feed
 
 
 def make_ramp_hooks(windows, vocab, core, ev: dict, *, line=None):
