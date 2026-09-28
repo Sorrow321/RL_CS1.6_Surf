@@ -31085,3 +31085,64 @@ Before any training arm: measure the next ramp's pixel contrast against its surr
 * The goal field should get its own configuration-space occupancy (duck-hull free space), as a new semantic.
 * The ramp graph needs collision-surface identity: every `-4` contact aliases to one id, which corrupts departures on clip maps.
 * A cleaner vision contract: configuration-space depth, meaning the distance the player's origin can travel along the ray. It needs its own matched arm.
+
+## 2026-09-28 05:13 (machine clock) - the RAMP-WINDOW task built (--goal-planner ramps, the user's target channel) on a collision-grounded vocabulary; the causal A/B launched
+
+**Why now.** The user asked to train the target channel first (the depth far-field work is backlogged, ledger 04:24). Codex's launch blockers (bus 23:16Z, 02:16Z) are addressed below. The one exception is the user's deliberate design choice: the channel is a beacon drawn without occlusion.
+
+**1. The vocabulary, grounded in collision (tools/ramps_mesh.py v4, commit 774cbe7).**
+
+* **Orientation:** the exporter's face normals. The mesh winds clockwise: the stored normal is opposite the winding on 97.7% of utopia's world triangles. Point traces (entities included) confirm the stored side on 81.1% of sampled faces and contradict it on 0.2%. The other 18.8% are faces no point reaches: faces under a solid transparent func_wall, faces pressed into the world, and player-hull-only entities such as `*46`. v3 took the side from point contents and reversed 82% of the faces it called ambiguous.
+* **Contact origins are traced, not assumed.** Standing and ducked hull traces run onto sample points of every floor and ramp. Where the hull stops is measured per exact plane, because it is NOT the box support on every map:
+
+  | maps | where the hull stops on a ramp |
+  |---|---|
+  | utopia, blue025 | the box support, to 0.03 u |
+  | petrus, cannonball, uf2 | 11-16 u short standing, 7-12 u short ducked (the compiler's hull expansion) |
+  | floors, most maps | mostly 1.57 u short |
+
+  A sample is accepted when its hit agrees with its plane's median stop to within 1 u.
+* **Adjacency and hidden surfaces:** adjacency is exact (edge samples every 4 u, touching within 2.5 u). HIDDEN marks a floor or ramp that no hull touches; it is never a target.
+* **Provenance:** the output records the .bsp's size + mtime signature and the mesh's sha1, and surfgym.rampvocab refuses a mismatch.
+
+| map | ramps | floors | hidden | standing validated | ducked validated |
+|---|---|---|---|---|---|
+| edgeflow_blue025 | 16 | 9 | 0 | 95.1% | 96.4% |
+| edgeflow_blue050 | 20 | 9 | 0 | 94.6% | 96.6% |
+| edgeflow_blue100 | 28 | 9 | 0 | 94.4% | 96.9% |
+| edgeflow_blue200 | 44 | 9 | 0 | 94.3% | 97.8% |
+| unitfarmer2 | 31 | 17 | 1 | 89.4% | 89.9% |
+| petrus_lite | 94 | 112 | 38 | 72.9% | 76.0% |
+| src_utopia | 94 | 24 | 257 | 75.8% | 77.8% |
+
+**Precision and recall against collision truth.** The utopia finisher's raw telemetry (jt3ANCHU re-run greedily, measurement only: 5,404 ticks, 1,629 touches) was classified by the new vocabulary:
+
+* floor touches: 156 of 156 map to a target;
+* ramp touches: 99.5% of 1,472 map to a target, including the CLIP ramp at 44.9 s;
+* no complete surface change between consecutive contact ticks;
+* the old point-probe extraction (ramps3) left 2.6% of the same touches unknown.
+
+**2. The task (surfgym/goalramps.py, surfgym/rampvocab.py).**
+
+* **Window:** per env [T1, T2]. T1 is drawn uniformly among the top-4 targets by closest approach of the spawn's 3 s ballistic arc, with the spawn's source surface excluded. The search is best-first over per-target bounding spheres with exact per-target distances: one tree of all origins returned only the source's points. T2 is chosen where T1's ride ends, in the same pass that lays the line (window_line's choose_next hook).
+* **Advancing:** capture = the first telemetry contact with T1. Takeoff = DEPART_TICKS (10) contact-free ticks after it, and the window shifts. A contact with T2 first skips T1.
+* **Channel:** T1 = 1, T2 = 0.5, with a 0.3 s cross-fade at each takeoff (continuous).
+* **Reward:** arc progress along the window line (goal-arc, corridor 384). The death bond (kappa 1) keeps its bank across window shifts: `MultiArcProgress.set_lines(keep_bank=True)`, so a shift re-anchors at zero instantaneous reward and a death forfeits the episode's whole arc credit. There is no capture bonus. The only success is the finish box.
+* **Shared line code:** window_line moved to the library. `tools/edge_archive.py` delegates to it and is identical on 300/300 random windows.
+* **Trainer wiring:**
+  * TargetLidar appends the channel (in_ch + 1); `--target-channel 0` holds it at zero, the control arm's identical architecture.
+  * The eval uses the deterministic closest candidate.
+  * `widen_for_target_channel` gives conv.0 and its Adam moments one zero input slice. tests/python/test_goalramps.py proves the logits, values and greedy actions are the checkpoint's whatever the new channel holds, and that the slice then receives gradient.
+  * `--reset-critic` re-initialises vf.* and value_head and zeroes their moments.
+  * record_ckpt mirrors the flags, and the record gate passes (greedy, stochastic, mixed, POV).
+* **Cost on utopia (local 5090, 2,048 envs):** 75-110k steps/s against about 150k for plain prim1 on utopia. The telemetry and windows add about 4 s per 1M steps. A spawn costs 0.81 ms per env after the one-pass window; classification costs about 2.7 ms per tick at 2,048 touching envs.
+* **GPU smoke** (5M steps, channel on): KL 0.21 / 0.05 / 0.03 after the critic warm-up; greedy episodes from the start ride 1-3 targets. CPU smokes at 64 envs x 16 steps show approx_kl 20-150, but untouched prim1 on its own map (blue025) does the same there. That is a property of the tiny CPU batches, not of this code.
+
+**3. The A/B (Codex's clean experiment).** One map, the same policy-derived spawn pool, the same seed and RNG, and the same reward, horizon and planner. Only the channel differs.
+
+* **Warm start:** `runs/research/stage/prim1_mover.pt` (the prim1_b025 mover), widened to two channels, critic re-initialised, 20 value-only warm-up updates.
+* **Run:** utopia, 300M steps per arm, one seed, local 5090, run sequentially (B then A). Launched with `tools/launch_local.ps1 resume`, `MAP=maps_pool/surf_src_utopia.bsp`, `SELF_STATES=1`, `SURFCORE_DLL=build_clip`.
+* **Flags:** `--goal-planner ramps --ramp-vocab runs/research/ramps_mesh_surf_src_utopia.npz --heldout-maps= --ep-secs 10 --arc-death-charge 1.0 --reset-critic 1 --critic-warmup 20 --reset-int-counts --reset-steps --spawn-states runs/research/panel_collect_utopia/archive_states.npy --spawn-states-frac 0.95 --steps 300e6 --record-every 25e6`.
+* **The only difference:** `--target-channel 1` (rampB_on) against `0` (rampA_off).
+* **Spawn provenance:** 22,836 own states of the prim1 mover's utopia archive search (panel_collect_utopia). They are policy-owned; no record, no demo.
+* **Headline metric:** greedy rides per episode from the true start (the ramp-eval chain) and the track progress, read step-matched.
