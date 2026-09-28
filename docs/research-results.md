@@ -31146,3 +31146,37 @@ Before any training arm: measure the next ramp's pixel contrast against its surr
 * **The only difference:** `--target-channel 1` (rampB_on) against `0` (rampA_off).
 * **Spawn provenance:** 22,836 own states of the prim1 mover's utopia archive search (panel_collect_utopia). They are policy-owned; no record, no demo.
 * **Headline metric:** greedy rides per episode from the true start (the ramp-eval chain) and the track progress, read step-matched.
+
+## 2026-09-28 06:17 (machine clock) - rampB_on was asking the agent to STAY AT THE START: the target rule was not goal-directed. Fixed: targets ordered by the geodesic potential (the user's "consecutive ramps along the geodesic"), capped by reach, beyond the previous target
+
+**The user:** "the agent isn't progressing through the map, it's just standing in the beginning ... which ramps do you give it ... take the consecutive ramps along the geodesic ... the map is very easy ... You need to figure out what's wrong."
+
+**What was wrong, measured.** rampB_on was stopped at 193M steps, and the queued rampA_off was cancelled (same rule, uninformative).
+
+* **Stuck at the start.** Greedy runs from the start reached 300-2,500 u of track (Euclid, of 17,040) at 480-1,100 u/s peak. Training averaged 0.35 rides per episode.
+* **The eval's windows asked for exactly that.** From the map start they were T1 = S2 and T2 = S0: the start's own FLOORS, 115-567 u away. The rule drew T1 among the targets closest to the spawn's ballistic arc, and a standing spawn's arc is a vertical drop, so its closest targets are the floors it stands on.
+* **Nothing in the rule pointed at the finish.** No search runs in this task.
+
+**Fix 1: order by the geodesic potential.** A target is eligible only when its geodesic distance (median over its contact origins, the map's goal field) is 250 u below the agent's, and T2's below T1's. A slow spawn's arc is laid along the field's descent direction.
+
+* Measured on our own finisher's ride (jt3ANCHU, measurement only): the geodesic distance of the ridden surfaces falls monotonically, 166k to 10k u, over 26 surfaces. The rule's T1 matches the finisher's next ramp at about 15 of 26 of its takeoffs, and has it in its top 4 at about 23 of 26.
+* The steepest-descent PATH of the field is not the route: it strays a median 2.0k u and up to 14.4k u from the finisher. The breadth-first field flies across voids, so the ORDER is what the field gets right, not the path.
+
+**Fix 2: a reach cap.** Without it, the chain from the start jumped S27 to S84: 85k u of geodesic, 8.9k u away, across a wall the collision-free arc ignores. Along any flown path the geodesic distance falls no faster than the path is long. A target more than (speed + g x horizon + 300) x horizon below the agent therefore cannot be next.
+
+**Fix 3: beyond the previous target.** The next target must lie below the previous one's lowest 10% of geodesic distance, so an A-frame's facing slope is never next.
+
+**The resulting chain.** From the start it now descends to the finish in 34-35 targets, max step 7.6k u. The finisher's consecutive steps are max 13.5k u, median 6.7k u. The chain sometimes rides the mirror slope of the finisher's A-frame (S28 for S29) and touches some wedge end caps. The caps are the same size as small ramps the finisher did ride (327k u^2 against S37/S75's 383k), so no size cut separates them.
+
+**Other changes for the rerun:**
+
+* no death bond (the recipe that finished utopia has none), so standing still to the timeout is not the safe choice;
+* the standard own-state reservoir instead of the fixed 95% file, so the spawn frontier follows the agent;
+* 60 s episodes, so the eval from the start can finish (the finisher takes 54 s);
+* `--race-dist geodesic --goal-cell 72` for an honest track metric. With goal cell 32 the trainer silently started a 30-minute bake; it was killed before writing anything.
+
+**rampB3_on (running).**
+
+* **Command:** `launch_local.ps1 resume prim1_mover rampB3_on --goal-planner ramps --ramp-vocab runs/research/ramps_mesh_surf_src_utopia.npz --target-channel 1 --heldout-maps= --ep-secs 60 --race-dist geodesic --goal-cell 72 --reset-critic 1 --critic-warmup 20 --reset-int-counts --reset-steps --steps 400e6 --record-every 50e6`. The gate PASSED.
+* **At 51M steps:** greedy from the start rides 1-2 targets and reaches 11.3k of 166k u (6.8%). All 9 episodes die in the gap below the first wedges (z 8,280-9,600, 5-17 s, 1.5k-17.8k u of route) at about 1.5k u/s average speed. The flat finisher crosses those gaps at 3,000+ u/s.
+* **Reference:** the flat geodesic recipe (jt3ANCHU, from scratch, frontier curriculum) first finished utopia at about 0.30B of its own steps, 9/9 at 0.47B.
