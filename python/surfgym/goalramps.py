@@ -58,6 +58,8 @@ import os
 
 import numpy as np
 
+from . import rampfast as _rf
+
 # the ramp operator's constants (tools/edge_archive.py uses these values; one set for every map)
 RAY_FLOOR = 300.0        # u/s: a line is laid at max(speed, this)
 RAY_SPACING = 128.0      # u: the line's vertex spacing (the fan's)
@@ -75,94 +77,10 @@ SPEED_MARGIN = 300.0     # u/s added to the speed bound of the reach cap (air-st
 LAND_DT = 0.05           # s: the step of the takeoff test's free-flight arc
 
 
-def _build_fast_search():
-    """numba kernels for the window's geometric search - EXACT: brute-force minima over the same
-    subsampled contact origins the per-target KD trees hold. The target search was ~15 KD queries
-    per spawn of 30-120 points against <= 400 origins each, ~60 us apiece of mostly call
-    overhead (the respawn phase of a 2,048-env iteration: 2.96 s of 7.8). None = no numba: the
-    KD path, identical answers. SURFGYM_NO_NUMBA=1 forces it."""
-    try:
-        from numba import njit
-    except Exception:
-        return None
-
-    @njit(cache=True, nogil=True)
-    def nearest_pair(path, O, s, c):
-        """(distance, path index, origin index - s) of the closest (path point, O[s:s+c]) pair:
-        per path point its nearest origin, then the first path point with the least - what a KD
-        query per point followed by an argmin over the points returns"""
-        best = np.inf
-        bj = 0
-        bi = s
-        for j in range(path.shape[0]):
-            px = path[j, 0]
-            py = path[j, 1]
-            pz = path[j, 2]
-            dj = np.inf
-            ij = s
-            for i in range(s, s + c):
-                dx = O[i, 0] - px
-                dy = O[i, 1] - py
-                dz = O[i, 2] - pz
-                d2 = dx * dx + dy * dy + dz * dz
-                if d2 < dj:
-                    dj = d2
-                    ij = i
-            if dj < best:
-                best = dj
-                bj = j
-                bi = ij
-        return np.sqrt(best), bj, bi - s
-
-    @njit(cache=True, nogil=True)
-    def candidates(path, cen, rad, O, ostart, ocount, pj, n_p, dsurf, use_d, d_min, d_max,
-                   excl, need):
-        """RampWindows._candidates' search: per target a lower bound (its bounding sphere's
-        distance to the path), best-first over the bounds with exact distances, stopping once
-        no later target can beat the need-th best PIECE. -> (per piece its best distance, inf =
-        not reached; per target its exact distance, -1 = not computed)"""
-        F = cen.shape[0]
-        lb = np.empty(F)
-        for f in range(F):
-            m = np.inf
-            for t in range(path.shape[0]):
-                dx = path[t, 0] - cen[f, 0]
-                dy = path[t, 1] - cen[f, 1]
-                dz = path[t, 2] - cen[f, 2]
-                d = np.sqrt(dx * dx + dy * dy + dz * dz)
-                if d < m:
-                    m = d
-            lb[f] = max(0.0, m - rad[f])
-        order = np.argsort(lb)
-        pbest = np.full(n_p, np.inf)
-        fdist = np.full(F, -1.0)
-        kth = np.inf
-        nfound = 0
-        for jj in range(F):
-            f = order[jj]
-            if lb[f] > kth:
-                break
-            p = pj[f]
-            if excl[p]:
-                continue
-            if use_d:
-                d = dsurf[f]
-                if not (d_min <= d and d < d_max):
-                    continue
-            dm, _j, _i = nearest_pair(path, O, ostart[f], ocount[f])
-            fdist[f] = dm
-            if dm < pbest[p]:
-                if pbest[p] == np.inf:
-                    nfound += 1
-                pbest[p] = dm
-            if nfound >= need:
-                kth = np.sort(pbest)[need - 1]
-        return pbest, fdist
-
-    return nearest_pair, candidates
-
-
-_FAST_SEARCH = None if os.environ.get("SURFGYM_NO_NUMBA") == "1" else _build_fast_search()
+# the compiled target search and window builder (surfgym.rampfast: nearest_pair, candidates,
+# ride_face, next_target, window, gf_sample1) - exact ports of the Python path below; None = no
+# numba or SURFGYM_NO_NUMBA=1, and the Python / KD path runs
+_FAST_SEARCH = _rf.FAST
 
 
 def find_goal_field(bsp):
@@ -411,6 +329,37 @@ class RampWindows:
         self.tick_pass = np.zeros(n, np.int64)
         self.stats = {"episodes": 0, "rides": 0, "skips": 0, "holds": 0, "fin": 0,
                       "ride_hist": {}}
+        # the compiled window (rampfast.window): per target its normals in _ids order; per
+        # compact piece its targets (their indices, in pfaces order) and its lowest geodesic
+        # part; the goal field's grid for the one-point sampler; a raw-point buffer
+        self._fast_win = self._fast is not None and bool(len(self._ids))
+        if self._fast_win:
+            self._N = np.ascontiguousarray(np.concatenate([self.tn[int(k)] for k in self._ids]),
+                                           np.float64)
+            pfj, pfs, pfc = [], [], []
+            for q in self._pfull:
+                fs = self.pfaces[int(q)]
+                pfs.append(len(pfj))
+                pfc.append(len(fs))
+                pfj.extend(self._jof[f] for f in fs)
+            self._pf_j = np.asarray(pfj, np.int64)
+            self._pf_start = np.asarray(pfs, np.int64)
+            self._pf_count = np.asarray(pfc, np.int64)
+            self._plow = np.asarray([self.p_low.get(int(q), np.inf) for q in self._pfull],
+                                    np.float64)
+            if self.gf is not None and not all(hasattr(self.gf, a) for a in
+                                               ("grid", "mins", "cell", "_valid_max",
+                                                "sentinel")):
+                self._fast_win = False     # a field without a voxel grid: the Python path
+            elif self.gf is not None:
+                self._gfa = (np.ascontiguousarray(self.gf.grid, np.float32),
+                             np.asarray(self.gf.mins, np.float64), float(self.gf.cell),
+                             np.float32(self.gf._valid_max), np.float32(self.gf.sentinel),
+                             float(self.gf.reach_max))
+            else:
+                self._gfa = (np.zeros((1, 1, 1), np.float32), np.zeros(3), 1.0,
+                             np.float32(0.0), np.float32(0.0), 0.0)
+            self._buf = np.empty((100_000, 3), np.float64)
 
     # ------------------------------------------------------------------ pieces
     def _pc(self, s):
@@ -547,8 +496,50 @@ class RampWindows:
             return int(c[0][1]) if c else FIN
         return f
 
+    def _fast_window(self, p, v, k0, k1, riding, exclude):
+        """rampfast.window - the line and the second target in one compiled pass. k1: None =
+        choose it off k0's ride (beyond k0's piece and `exclude`), NONE = no second, else fixed.
+        -> (line, second target id / FIN / NONE), or None (no compiled path, or its buffer is
+        full: the Python path draws this window)"""
+        if not self._fast_win:
+            return None
+        ex = np.zeros(len(self._pfull), np.bool_)
+        for q in exclude:
+            if q in self._pcompact:
+                ex[self._pcompact[q]] = True
+        j0 = _rf.FIN if k0 == FIN else self._jof[int(k0)]
+        if k1 is None:
+            j1 = _rf.CHOOSE
+        elif k1 == NONE:
+            j1 = _rf.NONE
+        elif k1 == FIN:
+            j1 = _rf.FIN
+        else:
+            j1 = self._jof[int(k1)]
+        grid, mins, cell, vmax, sent, rmax = self._gfa
+        p = np.asarray(p, np.float64).reshape(3)
+        v = np.asarray(v, np.float64).reshape(3)
+        try:
+            ln, t2 = self._fast[4](
+                float(p[0]), float(p[1]), float(p[2]), float(v[0]), float(v[1]), float(v[2]),
+                int(j0), int(j1), bool(riding), ex, self._cen, self._rad, self._O, self._N,
+                self._ostart, self._ocount, self._pj, len(self._pfull), self._dsurf,
+                bool(self.d_surf), self._plow, self._pf_start, self._pf_count, self._pf_j,
+                int(self.topk + 1), grid, mins, cell, vmax, sent, rmax, self.fin_lo,
+                self.fin_hi, np.asarray(self.finish, np.float64), float(self.gravity),
+                float(self.horizon), float(PROGRESS_DELTA), float(SPEED_MARGIN),
+                float(self.dt_path), float(RAMP_COAST), float(RAMP_PRESS), float(RIDE_PAST),
+                float(RAY_FLOOR), float(RAY_SPACING), int(self.line_cap), self._buf)
+        except ValueError:
+            return None
+        t2 = int(t2)
+        return ln, (t2 if t2 < 0 else int(self._ids[t2]))
+
     def _window(self, p, v, t1, exclude, riding=False):
         """ONE pass: the line through T1 and a T2 chosen where T1's ride ends -> (line, t2)"""
+        r = self._fast_window(p, v, t1, NONE if t1 == FIN else None, riding, exclude)
+        if r is not None:
+            return r
         if t1 == FIN:
             ln, _raw = window_line(self.tp, self.tn, self.tt, self.finish, p, v, [FIN], fin=FIN,
                                    gravity=self.gravity, dt_path=self.dt_path,
@@ -562,6 +553,9 @@ class RampWindows:
         return ln, (got[1] if len(got) > 1 else NONE)
 
     def _line(self, i, p, v, riding):
+        r = self._fast_window(p, v, int(self.t1[i]), int(self.t2[i]), riding, set())
+        if r is not None:
+            return r[0]
         ks = [int(self.t1[i])] + ([int(self.t2[i])] if self.t2[i] != NONE else [])
         ln, _raw = window_line(self.tp, self.tn, self.tt, self.finish, p, v, ks, fin=FIN,
                                riding_first=riding, gravity=self.gravity, dt_path=self.dt_path,

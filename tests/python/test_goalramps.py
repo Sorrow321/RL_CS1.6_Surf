@@ -352,15 +352,23 @@ def test_a_contact_anywhere_on_the_piece_is_on_its_target(voc):
     assert list(idx) == [0] and w.captured[0] and w.t1[0] == A_ and w.n_skip[0] == 0
 
 
-class _DescentField:
+def _linear_field(fx, fy):
+    """a real GoalField (a voxel grid, so the compiled window samples it too) holding the linear
+    potential 10 000 - (fx x + fy y) at its voxel centres - trilinear sampling reproduces it"""
+    from surfgym.goalfield import GoalField
+    cell = 200.0
+    mins = np.array([-6000.0, -6000.0, -4000.0])
+    nx, ny, nz = 100, 100, 40
+    xs = mins[0] + (np.arange(nx) + 0.5) * cell
+    ys = mins[1] + (np.arange(ny) + 0.5) * cell
+    lay = 10000.0 - (fx * xs[None, :] + fy * ys[:, None])
+    grid = np.broadcast_to(lay[None], (nz, ny, nx)).astype(np.float32).copy()
+    return GoalField(grid, mins, cell, 1e9)
+
+
+def _DescentField():
     """a geodesic potential falling along +x (10 000 - x): its descent direction is yaw 0"""
-    reach_max = 1e9
-
-    def sample(self, p):
-        return 10000.0 - np.asarray(p, np.float64).reshape(-1, 3)[:, 0]
-
-    def descent_yaw(self, p):
-        return np.zeros(len(np.atleast_2d(p)))
+    return _linear_field(1.0, 0.0)
 
 
 def test_a_standing_spawn_rides_its_first_target_down_the_potential(voc):
@@ -377,16 +385,10 @@ def test_a_standing_spawn_rides_its_first_target_down_the_potential(voc):
     assert len(on_ramp) >= 2 and on_ramp[-1, 0] > on_ramp[0, 0] + 500.0
 
 
-class _AlongY:
+def _AlongY():
     """a geodesic potential falling along +y (10 000 - y): the ramps y = 0 / 3000 / 6000 are
     consecutive, a surface left behind never comes back as a target"""
-    reach_max = 1e9
-
-    def sample(self, p):
-        return 10000.0 - np.asarray(p, np.float64).reshape(-1, 3)[:, 1]
-
-    def descent_yaw(self, p):
-        return np.full(len(np.atleast_2d(p)), 90.0)
+    return _linear_field(0.0, 1.0)
 
 
 def _channel_by_surface(w):
@@ -532,9 +534,9 @@ def test_the_pass_reward_counts_window_shifts_and_nothing_else(voc):
 
 
 def test_the_numba_search_answers_exactly_what_the_kd_trees_do(voc):
-    """RampWindows' compiled search (goalramps._FAST_SEARCH: brute-force minima over the same
-    subsampled origins) against its KD-tree path - the same T1 / T2 and the same line from every
-    spawn state, and the same window after the same ticks"""
+    """RampWindows' compiled search and window (surfgym.rampfast: brute-force minima over the
+    same subsampled origins, window_line step for step) against its Python / KD-tree path - the
+    same T1 / T2 and the same line from every spawn state"""
     if gr._FAST_SEARCH is None:
         pytest.skip("numba unavailable (or SURFGYM_NO_NUMBA=1): only the KD path exists")
     _v, bsp, tmp = voc
@@ -551,6 +553,7 @@ def test_the_numba_search_answers_exactly_what_the_kd_trees_do(voc):
                            rng=np.random.default_rng(0))
         if not fast:
             w._fast = None
+            w._fast_win = False
         lines = w.spawn(np.arange(40), o, vel)
         got.append((w.t1.copy(), w.t2.copy(), lines))
     assert np.array_equal(got[0][0], got[1][0]) and np.array_equal(got[0][1], got[1][1])
