@@ -80,7 +80,14 @@ RAMP_NZ = (0.02, 0.7)    # a RAMP-like contact plane: tools/ramps_mesh.py's cate
 FIN = -2                 # the finish box as a target (surfgym.targetmask.FIN)
 NONE = -1
 RAMP_DEFAULTS = {"ramp_topk": 2, "ramp_horizon": 3.0, "ramp_fade": 0.3, "ramp_reward": "arc",
-                 "ramp_offtarget_pen": 0.0, "ramp_obs_pass": 0}
+                 "ramp_offtarget_pen": 0.0, "ramp_obs_pass": 0, "target_views": 1}
+# --target-views 6: the target channel's five extra directions after the view's own, as (name, yaw
+# offset deg, pitch deg, horizontal span deg or None = the lidar's own). Back / left / right are
+# level; up / down look straight up / down with a 180 deg span, so the six views cover the whole
+# sphere around the agent (the level views cover +-vfov/2 about the horizon, the two poles the
+# caps beyond it)
+TARGET_VIEWS = (("up", 0.0, 90.0, 180.0), ("down", 0.0, -90.0, 180.0),
+                ("back", 180.0, 0.0, None), ("left", 90.0, 0.0, None), ("right", -90.0, 0.0, None))
 PROGRESS_DELTA = 250.0   # u: a target must lie this much closer to the finish (geodesic) than
                          # the agent (or than the previous target) to be eligible
 REPLAN_SECS = 0.1        # s: a HOLDING window (no target was in reach) redraws this often
@@ -1006,20 +1013,72 @@ class RampPlanner:
         return s
 
 
+class _ViewCam:
+    """one extra direction of the target channel (--target-views 6): the lidar's equiangular grid
+    - its H x W and its vertical span - with its own horizontal span. It carries what
+    TargetMask.render reads off a lidar: H, W, yoff, poff, device, pinhole, and for the torch path
+    the ray buffers and directions (the lidar's own methods, run on this grid)"""
+
+    pinhole = False
+
+    def __init__(self, lidar, hfov_deg=None):
+        import torch
+        self._lidar_cls = type(lidar)
+        self.H, self.W, self.device = int(lidar.H), int(lidar.W), lidar.device
+        self.poff = lidar.poff
+        if hfov_deg is None:
+            self.yoff = lidar.yoff
+        else:
+            yoff = (float(hfov_deg) * (0.5 - (np.arange(self.W) + 0.5) / self.W)) * np.pi / 180.0
+            self.yoff = torch.as_tensor(yoff, dtype=torch.float32, device=self.device)
+        self._buf_n = None
+
+    def _ensure_buffers(self, N):
+        import torch
+        if self._buf_n == N and not (getattr(self, "_dx", None) is not None
+                                     and self._dx.is_inference()
+                                     and not torch.is_inference_mode_enabled()):
+            return
+        self._buf_n = N
+        sh = (N, self.H, self.W)
+        self._dx = torch.empty(sh, device=self.device)
+        self._dy = torch.empty(sh, device=self.device)
+        self._dz = torch.empty(sh, device=self.device)
+
+    def _dirs_equiangular(self, N, yaw_deg, pitch_deg, d2r):
+        import torch
+        p = pitch_deg.view(N, 1, 1) * d2r + self.poff.view(1, self.H, 1)
+        y = yaw_deg.view(N, 1, 1) * d2r + self.yoff.view(1, 1, self.W)
+        cp = torch.cos(p)
+        torch.mul(cp, torch.cos(y), out=self._dx)
+        torch.mul(cp, torch.sin(y), out=self._dy)
+        self._dz.copy_(torch.sin(p).expand_as(self._dz))
+
+
 class TargetLidar:
     """A lidar with the target channel appended (the GoalBallLidar pattern): channels = the
     wrapped lidar's + 1; render() draws the per-env window slots of `windows` (RampWindows) through
     `tm` (surfgym.targetmask.TargetMask, no occlusion, max-combine). mode "off" renders the same
-    channel as zeros - the control arm with the identical architecture."""
+    channel as zeros - the control arm with the identical architecture. views 6 (--target-views)
+    adds the channel from five more directions (TARGET_VIEWS: up, down, back, left, right) after
+    the view's own - targets only, the depth image stays the view's own."""
 
-    def __init__(self, lidar, tm, windows=None, mode: str = "live"):
+    def __init__(self, lidar, tm, windows=None, mode: str = "live", views: int = 1):
         if mode not in ("live", "off"):
             raise ValueError(f"TargetLidar: mode live|off, got {mode!r}")
         if getattr(lidar, "pinhole", False):
             raise ValueError("TargetLidar mirrors the equiangular camera; --pinhole is separate")
+        if int(views) not in (1, 1 + len(TARGET_VIEWS)):
+            raise ValueError(f"--target-views: 1 (the view's own) or {1 + len(TARGET_VIEWS)} "
+                             f"(+ {', '.join(v[0] for v in TARGET_VIEWS)}), got {views}")
         self.lidar, self.tm, self.windows, self.mode = lidar, tm, windows, mode
         self.base = int(getattr(lidar, "channels", 1))
-        self.channels = self.base + 1
+        self.views = int(views)
+        self.channels = self.base + self.views
+        # the extra directions' cameras: (camera, yaw offset, pitch) - the level ones reuse the
+        # lidar's own grid, the two poles a 180 deg span
+        self._cams = ([(_ViewCam(lidar, span), float(dyaw), float(pitch))
+                       for _n, dyaw, pitch, span in TARGET_VIEWS] if self.views > 1 else [])
         self.W, self.H = int(lidar.W), int(lidar.H)
         self.device = lidar.device
         self.near, self.range = float(lidar.near), float(lidar.range)
@@ -1035,7 +1094,10 @@ class TargetLidar:
 
     def describe(self) -> str:
         return (f"target channel ({self.mode}): the window's surfaces drawn without occlusion, "
-                f"after the lidar's {self.base} channel(s) -> in_ch {self.channels}")
+                f"after the lidar's {self.base} channel(s)"
+                + (f", from {self.views} directions (the view's own, "
+                   + ", ".join(v[0] for v in TARGET_VIEWS) + ")" if self.views > 1 else "")
+                + f" -> in_ch {self.channels}")
 
     def render(self, origin, yaw_deg, pitch_deg, ducked, idx=None, **kw):
         import torch
@@ -1044,15 +1106,20 @@ class TargetLidar:
             img = img.unsqueeze(-1)
         n = origin.shape[0]
         if self.mode == "off" or self.windows is None:
-            ch = torch.zeros((n, self.H, self.W), dtype=img.dtype, device=img.device)
+            ch = torch.zeros((n, self.H, self.W, self.views), dtype=img.dtype, device=img.device)
         else:
             ids, vals = self.windows.slots(idx)
             if len(ids) != n:
                 raise ValueError(f"TargetLidar: {n} poses but {len(ids)} windows (pass idx for "
                                  "a subset batch)")
             self.tm.set_slots(n, ids, vals, combine="max")
-            ch = self.tm.render(self.lidar, origin, yaw_deg, pitch_deg, ducked).to(img.dtype)
-        return torch.cat([img, ch.unsqueeze(-1)], dim=-1)
+            chs = [self.tm.render(self.lidar, origin, yaw_deg, pitch_deg, ducked)]
+            for cam, dyaw, pitch in self._cams:
+                chs.append(self.tm.render(cam, origin, yaw_deg + dyaw,
+                                          torch.full_like(pitch_deg, pitch, dtype=torch.float32),
+                                          ducked))
+            ch = torch.stack(chs, dim=-1).to(img.dtype)
+        return torch.cat([img, ch], dim=-1)
 
 
 def make_pass_feed(windows):

@@ -1534,7 +1534,9 @@ def main(argv=None, build_only: bool = False, device=None):
                 lidar = TargetLidar(lidar, TargetMask(str(cfg.get("ramp_vocab")), zones["end"],
                                                       device),
                                     _rpl.eval_windows,
-                                    mode="live" if int(cfg.get("target_channel") or 0) else "off")
+                                    mode="live" if int(cfg.get("target_channel") or 0) else "off",
+                                    # --target-views: MIRRORED (the channel's directions)
+                                    views=int(cfg.get("target_views") or 1))
                 print(lidar.describe())
                 _goal_meta, _goal_tick = make_ramp_hooks(_rpl.eval_windows, _voc, core, _ev,
                                                          line=_ml)

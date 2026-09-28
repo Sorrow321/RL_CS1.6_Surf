@@ -98,11 +98,27 @@ def test_the_new_slice_receives_gradient_and_the_moments_are_padded():
     assert float(g[:, 1].abs().max()) > 0.0
 
 
-def test_only_one_added_channel_is_a_supported_warm_start():
-    ck = _ck(_pol(1, 0))
-    assert widen_for_target_channel(_ck(_pol(2, 1)), _pol(2, 2)) == 0     # already has it
+def test_added_target_channels_widen_as_the_checkpoints_function_and_fewer_are_refused():
+    """--target-views 6 grows a one-view checkpoint (depth + target) by five more zero input
+    slices: the widened policy computes the checkpoint's logits and value whatever the new
+    channels hold; a run with FEWER image channels than its checkpoint is refused"""
+    assert widen_for_target_channel(_ck(_pol(2, 1)), _pol(2, 2)) == 0     # already has them
+    plain = _pol(2, 0).eval()
+    ck = _ck(plain)
+    wide = _pol(7, 5)
+    assert widen_for_target_channel(ck, wide) == 3          # the weight + both moments
+    wide.load_state_dict(ck["policy"])
+    wide.eval()
+    assert float(wide.state_dict()["conv.0.weight"][:, 2:].abs().max()) == 0.0
+    g = torch.Generator().manual_seed(8)
+    scal = torch.randn(6, N_SCALAR, generator=g)
+    base = torch.rand(6, H * W, 2, generator=g)
+    la, va = plain(torch.cat([scal, base.reshape(6, -1)], 1))
+    for extra in (torch.zeros(6, H * W, 5), torch.rand(6, H * W, 5, generator=g)):
+        lb, vb = wide(torch.cat([scal, torch.cat([base, extra], -1).reshape(6, -1)], 1))
+        assert torch.allclose(la, lb, atol=1e-6, rtol=0) and torch.allclose(va, vb, atol=1e-6, rtol=0)
     with pytest.raises(SystemExit):
-        widen_for_target_channel(ck, _pol(3, 3))
+        widen_for_target_channel(_ck(_pol(3, 1)), _pol(2, 2))
 
 
 def test_reset_critic_replaces_the_value_tower_only():
@@ -939,3 +955,74 @@ def test_the_eval_ends_a_completed_sequence_as_a_success(voc):
     assert ev["succ"] == 1 and ev["stages"] == [2]
     rec = meta.episode_end(0)["targets"]
     assert rec["seq_done"] and rec["seq_stage"] == 2 and rec["sequence"] == [0, 1]
+
+
+
+def test_six_target_views_each_see_their_own_side(tmp_path):
+    """--target-views 6: the target channel from the view's own direction and from up, down,
+    back, left, right. A box of six target surfaces around the eye - a wall ahead, a ceiling, a
+    floor, a wall behind, one on each side - each lights exactly its own view's channel"""
+    from surfgym.targetmask import TargetMask
+
+    def quad(p0, p1, p2, p3):
+        a, b, c, d = (np.asarray(x, float) for x in (p0, p1, p2, p3))
+        return np.array([[a, b, c], [a, c, d]])
+    e = 17.0                                                   # the standing eye height
+    faces = [quad([1000, -300, e - 300], [1000, 300, e - 300], [1000, 300, e + 300],
+                  [1000, -300, e + 300]),                      # 0: ahead (+x)
+             quad([-400, -400, e + 1000], [400, -400, e + 1000], [400, 400, e + 1000],
+                  [-400, 400, e + 1000]),                      # 1: above
+             quad([-400, -400, e - 1000], [400, -400, e - 1000], [400, 400, e - 1000],
+                  [-400, 400, e - 1000]),                      # 2: below
+             quad([-1000, -300, e - 300], [-1000, 300, e - 300], [-1000, 300, e + 300],
+                  [-1000, -300, e + 300]),                     # 3: behind
+             quad([-300, 1000, e - 300], [300, 1000, e - 300], [300, 1000, e + 300],
+                  [-300, 1000, e + 300]),                      # 4: left (+y)
+             quad([-300, -1000, e - 300], [300, -1000, e - 300], [300, -1000, e + 300],
+                  [-300, -1000, e + 300])]                     # 5: right (-y)
+    mesh = tmp_path / "box.npz"
+    np.savez(mesh, tris=np.concatenate(faces).astype(np.float32),
+             tri_surf=np.repeat(np.arange(6), 2), cat=np.ones(6, np.int64))
+    tm = TargetMask(str(mesh), None, "cpu")
+
+    class _Lid:
+        channels, near, range, pinhole = 1, 2000.0, 11500.0, False
+
+        def __init__(self):
+            self.H, self.W, self.device = 24, 48, torch.device("cpu")
+            self.yoff = torch.linspace(0.9, -0.9, self.W)        # col 0 looks left, like the lidar
+            self.poff = torch.linspace(0.6, -0.6, self.H)        # row 0 looks up
+
+        def render(self, origin, yaw, pitch, ducked, **kw):
+            return torch.zeros(origin.shape[0], self.H, self.W)
+
+        def _ensure_buffers(self, n):
+            self._dx = torch.zeros(n, self.H, self.W)
+            self._dy = torch.zeros_like(self._dx)
+            self._dz = torch.zeros_like(self._dx)
+
+        def _dirs_equiangular(self, N, yaw_deg, pitch_deg, d2r):
+            p = pitch_deg.view(N, 1, 1) * d2r + self.poff.view(1, self.H, 1)
+            y = yaw_deg.view(N, 1, 1) * d2r + self.yoff.view(1, 1, self.W)
+            cp = torch.cos(p)
+            self._dx.copy_(cp * torch.cos(y))
+            self._dy.copy_(cp * torch.sin(y))
+            self._dz.copy_(torch.sin(p).expand_as(self._dz))
+
+    class _Win:
+        target = 0
+
+        def slots(self, idx=None):
+            return (np.array([[gr.NONE, self.target, gr.NONE]]),
+                    np.array([[0.0, 1.0, 0.0]], np.float32))
+    win = _Win()
+    lid = gr.TargetLidar(_Lid(), tm, win, views=6)
+    assert lid.channels == 7
+    names = ["ahead"] + [v[0] for v in gr.TARGET_VIEWS]
+    for s_ in range(6):
+        win.target = s_
+        img = lid.render(torch.zeros(1, 3), torch.zeros(1), torch.zeros(1),
+                         torch.zeros(1, dtype=torch.int64))
+        assert img.shape == (1, 24, 48, 7)
+        lit = [names[c] for c in range(6) if float(img[0, :, :, 1 + c].abs().max()) > 0.0]
+        assert lit == [names[s_]], (s_, lit)

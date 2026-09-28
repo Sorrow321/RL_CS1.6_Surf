@@ -1278,9 +1278,10 @@ def widen_for_obs(ck, policy, route_dim, flag="--act-hist"):
 
 
 def widen_for_target_channel(ck, policy):
-    """--goal-planner ramps: grow the checkpoint's first conv by ONE trailing zero input channel
-    (the target channel, after the lidar's own) IN PLACE, and its Adam moments with it. Refuses
-    any other mismatch. -> tensors touched (0 = the checkpoint already has the channel)."""
+    """--goal-planner ramps: grow the checkpoint's first conv by the trailing zero input channels
+    it lacks (the target channel after the lidar's own; --target-views 6: its five more
+    directions after that) IN PLACE, and its Adam moments with them. Refuses any other mismatch.
+    -> tensors touched (0 = the checkpoint already has them)."""
     sd = ck.get("policy") or {}
     name = next((n for n, p in policy.state_dict().items()
                  if n.startswith("conv.") and n.endswith("weight") and p.dim() == 4), None)
@@ -1290,14 +1291,15 @@ def widen_for_target_channel(ck, policy):
     cin, cwant = int(t.shape[1]), int(want.shape[1])
     if cin == cwant:
         return 0
-    if cin + 1 != cwant or tuple(t.shape[2:]) != tuple(want.shape[2:]) \
-            or t.shape[0] != want.shape[0]:
+    k = cwant - cin
+    if k < 1 or tuple(t.shape[2:]) != tuple(want.shape[2:]) or t.shape[0] != want.shape[0]:
         raise SystemExit(f"--goal-planner ramps: the checkpoint's {name} is {tuple(t.shape)} "
-                         f"and this run's is {tuple(want.shape)} - only ONE added input channel "
-                         "(the target channel) is a supported warm start")
+                         f"and this run's is {tuple(want.shape)} - only ADDED trailing input "
+                         "channels (the target channel, its extra views) are a supported warm "
+                         "start")
 
     def _pad(x):
-        return torch.cat([x, torch.zeros(x.shape[0], 1, *x.shape[2:], dtype=x.dtype)], dim=1)
+        return torch.cat([x, torch.zeros(x.shape[0], k, *x.shape[2:], dtype=x.dtype)], dim=1)
     sd[name] = _pad(t)
     n = 1
     idx_of = {nm: i for i, (nm, _) in enumerate(policy.named_parameters())}
@@ -4786,6 +4788,12 @@ def main() -> None:
                          "pass: surfing a ramp the planner did not ask for, or going back to one "
                          "already passed (the user, 2026-09-28). "
                          "0 (default) = off. ckpt restores")
+    ap.add_argument("--target-views", type=int, default=None, choices=(1, 6),
+                    help="--goal-planner ramps: the target channel from 1 direction (the view's "
+                         "own, default) or 6 (+ up, down, back, left, right: five more image "
+                         "channels, targets only - the user, 2026-09-28: 'when the agent is down "
+                         "it doesn't see up'). A checkpoint with fewer is widened by zero conv "
+                         "input slices (its own function at step 0). ckpt restores")
     ap.add_argument("--ramp-sequence", default=None,
                     help="--goal-planner ramps: a PREDEFINED target list, comma-separated target "
                          "surface ids in order, replaces the planner: T1/T2 = the next two in it, "
@@ -6534,7 +6542,7 @@ def main() -> None:
         # --goal-planner ramps: its vocabulary, channel and knobs, like every run-defining flag
         for _k in ("ramp_vocab", "target_channel", "ramp_topk", "ramp_horizon", "ramp_fade",
                    "ramp_reward", "ramp_offtarget_pen", "ramp_obs_pass", "ramp_sequence",
-                   "ramp_sequence_source"):
+                   "ramp_sequence_source", "target_views"):
             if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
                 setattr(args, _k, ck_cfg[_k])
                 restored.append(f"{_k}={ck_cfg[_k]}")
@@ -7848,7 +7856,7 @@ def main() -> None:
         _set = [f"--{_k.replace('_', '-')}" for _k in
                 ("ramp_vocab", "target_channel", "ramp_topk", "ramp_horizon", "ramp_fade",
                  "ramp_reward", "ramp_offtarget_pen", "ramp_obs_pass", "ramp_sequence",
-                 "ramp_sequence_source")
+                 "ramp_sequence_source", "target_views")
                 if flag_given(f"--{_k.replace('_', '-')}")]
         if _set:
             raise SystemExit(f"{', '.join(_set)} without --goal-planner ramps")
@@ -7858,6 +7866,7 @@ def main() -> None:
         args.ramp_offtarget_pen = None
         args.ramp_obs_pass = None
         args.ramp_sequence = args.ramp_sequence_source = None
+        args.target_views = None
     # --ramp-reward pass: +1 per window shift, added to the per-tick reward after the goal system's
     # step; the arc shaping is off (arc_scale 0 below)
     # --ramp-sequence: the predefined target list (surface ids) instead of the planner
@@ -9835,7 +9844,8 @@ def main() -> None:
             from surfgym.targetmask import TargetMask
             _target_masks[slot.name] = TargetMask(args.ramp_vocab, slot.goal_box, device)
             slot.lidar = TargetLidar(slot.lidar, _target_masks[slot.name], None,
-                                     mode="live" if int(args.target_channel) else "off")
+                                     mode="live" if int(args.target_channel) else "off",
+                                     views=int(args.target_views or 1))
             print(f"{slot.name}: " + slot.lidar.describe())
         mn_b, mx_b = slot.core.map_bounds()
         # map_center is per map: the truncation bootstrap reconstructs a
@@ -11053,13 +11063,15 @@ def main() -> None:
             # moments too - on the first forward the new input multiplies zero weights, so the
             # resumed actor is the checkpoint's own function (tests/python/test_goalramps.py
             # proves it on logits and greedy actions) and the slice grows from zero
+            _w0 = (ck.get("policy") or {}).get("conv.0.weight")
+            _cin0 = int(_w0.shape[1]) if _w0 is not None and _w0.dim() == 4 else -1
             n_w = widen_for_target_channel(ck, policy)
             if n_w:
-                print(f"--goal-planner ramps: the checkpoint's conv reads "
-                      f"{int(policy.state_dict()['conv.0.weight'].shape[1]) - 1} channel(s); "
-                      f"widened {n_w} tensors (conv.0.weight + its Adam moments gain one ZERO "
-                      "input slice for the target channel) - the resumed actor is the "
-                      "checkpoint's function at step 0")
+                _cw = int(policy.state_dict()['conv.0.weight'].shape[1])
+                print(f"--goal-planner ramps: the checkpoint's conv reads {_cin0} channel(s), "
+                      f"this run's {_cw}; widened {n_w} tensors (conv.0.weight + its Adam "
+                      f"moments gain {_cw - _cin0} ZERO input slice(s): the target channel's) - "
+                      "the resumed actor is the checkpoint's function at step 0")
         if N_ROUTE:
             # FIRST, before the GRU and the trailing pads: the route-side
             # scalar block sits BETWEEN the trunk output and the GRU state,
@@ -11688,7 +11700,8 @@ def main() -> None:
                                "ramp_fade": float(args.ramp_fade),
                                "ramp_reward": str(args.ramp_reward),
                                "ramp_offtarget_pen": float(args.ramp_offtarget_pen or 0.0),
-                               "ramp_obs_pass": int(args.ramp_obs_pass or 0)})
+                               "ramp_obs_pass": int(args.ramp_obs_pass or 0),
+                               "target_views": int(args.target_views or 1)})
         if RSEQ is not None:
             # --ramp-sequence: MIRRORED by record_ckpt.py; its provenance rides with every
             # checkpoint, and a demo-derived one marks the weights (CLAUDE.md section 0)
@@ -13251,7 +13264,8 @@ def main() -> None:
             from surfgym.goalramps import TargetLidar
             _eval_ball = TargetLidar(_raw_lidar[slots[0].name], _target_masks[slots[0].name],
                                      planner.eval_windows,
-                                     mode="live" if int(args.target_channel) else "off")
+                                     mode="live" if int(args.target_channel) else "off",
+                                     views=int(args.target_views or 1))
         _learned = None
         if LPLAN:
             # --goal-planner learned: the planner network, its PPO and its
