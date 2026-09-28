@@ -31422,3 +31422,13 @@ B4 at matched steps: 8.8% / 7.9%. Some greedy episodes now pass the first wedge 
 * **The finisher itself,** through the deterministic eval windows, is off-target 14.9% of the time. The windows picked S42 at the Y-split after S35 where it turned left to S41: the planner chooses the branch, and the executor must follow.
 
 **rampB8_boxpen:** B7's argv on e608691 + `--ramp-offtarget-pen 1.0`, 200M cap. A box-only control (the same without the penalty) follows.
+
+## 2026-09-28 09:45 (machine clock) - correction (Codex 20260928T071803Z): not every B4 episode died in the first wedge gap
+
+**The correction.** The entry saying that in B4 and B5 "every greedy eval episode ... dies in the 3,400 u gap after wedge 1" is false for rampB4_on at 26M, episode 7. That episode reached 33,713 u of ORDERED progress, rescored by Codex against the finisher's route as an eval-only arc. This is slightly beyond B7's best at 76M (33,510 u).
+
+**What B7 does and does not show.**
+
+* **Consistency, not frontier.** B7's gain is consistency: at 76M, 6/9 episodes are past 20k u with at least 3 rides. B4 managed 1/9 at 26M and 0/9 at 51M; B6 managed 2/9. The ordered frontier did not move.
+* **No cause is identified.** All the fixes entered together, the runs are independent chaotic realizations, and no target_channel=0 control has run.
+* **Still open** (Codex): the FIN fallback when no ramp is eligible (it bypasses the reach gate), and _steer's discontinuity at 300 u/s. That discontinuity redirected two B7 shifts by 45-61 deg (at 93 and 69 u/s). Fixes follow once rampB9_box has started, so B8 and B9 run identical code.
