@@ -31482,3 +31482,75 @@ Everything else is unchanged: from `runs/research/stage/prim1_mover.pt`, on surf
   * the riding-first guard;
   * set_lines keeping a reference to its input array;
   * the git commit missing from run.json.
+
+## 2026-09-28 10:47 (machine clock) - rampB9_box final: the penalty's net effect under the box code; corrections (Codex); Codex's fixes; --ramp-obs-pass; B10/B11 launched
+
+**B9** is B8's argv without `--ramp-offtarget-pen`, on the same code (e608691 boxes). Its serialized config differs from B8's in exactly one key (Codex). It ran on the local 5090, 10:02-10:25, averaging 136,577 steps/s.
+
+**Ordered arc, mean / MAX in u** (same scorer and route as the B8 entry above):
+
+| step | B8 (P = 1.0) | B9 (P = 0) |
+|---|---|---|
+| 26M | 16,540 / 33,664 | 21,220 / 45,184 |
+| 51M | 23,908 / 46,336 | 28,217 / 28,800 |
+| 76M | 45,924 / **65,920** | 27,918 / 34,304 |
+| 101M | 29,611 / 30,080 | 27,079 / 32,128 |
+| 126M | 31,431 / 64,128 | 25,799 / 33,152 |
+| 152M | 33,052 / 65,792 | 28,501 / 29,952 |
+| 177M | 45,099 / 65,664 | 36,807 / **66,048** |
+
+**Training at the end:**
+
+| | off-target share of ticks | rides/ep |
+|---|---|---|
+| B8 | 2.53% | 2.48 |
+| B9 | 6.33% | 2.22 |
+
+**Verdict** (ordered MAX and finishes decide; Codex):
+
+* **Frontier:** the same, ~66k u, 0 finishes in both. Both are far below B7's 80,146.
+* **Time to that gate:** B8 76M, B9 177M.
+* **Consistency** (mean and minimum): B8 is ahead from 76M on. This is a diagnostic, not the verdict.
+* **The penalty works as a mechanism:** off-target contact is 60% lower.
+* One seed each.
+
+**Corrections (Codex 20260928T075747Z / T081054Z):**
+
+* **B7 DID set a new ordered frontier:** 80,146 u (46.0%) at 152M and 80,145 at 202M, about 2x B4's ordered MAX. The "consistency, not frontier" line in dd8cb0d and in my report to the user holds for B7@76M only.
+* **Stationary rule broken twice.** Applied to the ordered MAX:
+  * B7 ran 16m53s past its last new MAX (152M);
+  * B8 ran more than 10 minutes past its 76M MAX.
+  From B10 on, the driver stops an arm after 10 minutes without a new ordered MAX.
+* **"Rides" under boxes are box exits, not verified ramp contacts.**
+* **Box semantics are not telemetry-equivalent.** Replaying B7's 108 eval episodes through the boxes, the target sequence survives in 57, and sequence plus event rows in 1. So B8 is not "B7 + penalty", and B7 is no control for the boxes.
+
+**Open box/penalty defects** (Codex), for the user to rule on:
+
+1. BOX_MARGIN 48 is LATERAL_MIN, not the vocabulary's radius (median 64 u per piece, max 225).
+2. Entry and pass need no contact, dwell or direction: fly-throughs and reversals count.
+3. offtarget() does not tie the touched plane to a piece; overlapping boxes make false exemptions and false charges.
+4. **The policy-owned finisher is charged on 14.9% of ticks.** The planner picks S42 where the finisher's route takes S41, so a fallible planner becomes obedience supervision. Related: the finisher's own replay through the eval windows sticks at T1 = 42 after 4 passes, [26, 28, 33, 35, 42]. A MISSED T1 never shifts, because there is no miss or replan rule. This is the same on the pre-fix code.
+5. The penalty is a no-op under --reward-per-decision.
+6. P is not validated as finite and >= 0.
+
+**Code since B9 started:**
+
+* **299363a** (Codex's first five fixes):
+  * FIN is a candidate only within the reach cap. An empty band HOLDS: T1 NONE, a lookahead line, a redraw every 0.1 s.
+  * _steer is continuous at 300 u/s.
+  * The riding-first guard is +9.
+  * set_lines copies its input.
+  * run.json records the git commit.
+  * On 601 finisher states the draws are unchanged: T1 NONE 0, FIN drawn only at d <= 23k, compiled == Python.
+* **2599bf0 --ramp-obs-pass** (the user: "expose this reward to the agent as an observation ... a binary flag"):
+  * One trailing scalar-side column, 1 on the decision after the window shifted.
+  * The warm start is function-identical by test, via widen_for_obs's zero pad.
+  * The greedy eval and record_ckpt feed it from the eval windows. The truncation bootstrap reads it before the respawn restarts it.
+* **Tests:** 19 failures in test_race_ratchet / test_obsaux / test_curiosity_cond / test_flags_round30 predate both commits (a FakeCore without .config, and others).
+
+**Launched (driver: stationary stop, then the next arm):**
+
+* **rampB10_obspass** = B8's argv + `--ramp-obs-pass 1`.
+* **rampB11_box** = B8's argv on the same code: the same-code control. B8 ran pre-299363a code, so it is not the control.
+* Discriminator: ordered MAX and finishes, with time-to-gate at matched steps.
+* The arc reward is kept, so the flag marks the event the +1 reward would pay, not a reward. rampB5_pass (+1 per ramp alone) did worse than arc.
