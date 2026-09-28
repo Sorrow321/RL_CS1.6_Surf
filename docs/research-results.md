@@ -31710,3 +31710,30 @@ The entry above miscounted. The route-agnostic progress list for B9@177M is [43,
 * **Why training can't find it.** No episode has ever landed, so nothing in the return says a faster S18 exit pays. It is the same energy deficit the archive search showed on this map (0.60-0.76 of the record's speed through the U-turn).
 
 Both checkpoints are demo-contaminated and are never a base or a result.
+
+## 2026-09-28 12:28 (machine clock) - the 10 ms tick is not uf2's bottleneck (uf2FULL passed the pit at 10 ms); --ramp-exit-bonus; uf2SEQ_WRdiagEB launched
+
+**The tick.** Per the user's recollection, confirmed: uf2FULL and uf2FULLc (2026-09-13, demo-assisted windows of the record's approach) passed the pit from the true start, greedy 4/4 and sampled 6-7/8, to 46% of the map. Both ran at tick_ms 10.0 / act_every 4, so the landing is physically possible at our tick. No search test is needed.
+
+**--ramp-exit-bonus K** (7626e0b; the user: "add bonus for speed (or energy?) on exit from ramp"):
+
+* **What it pays.** Every PASS pays K per 1,000 u of the exit's ENERGY HEIGHT: z + |v|^2/2g above the lowest validated contact of the ramp it leaves, >= 0.
+* **Energy, not speed.** Speed alone is bought by leaving lower: the six-view agent left S18 faster and 200 u lower, and climbed no higher. A frictionless ride conserves the energy height, so it pays what strafing adds and what a hard landing takes.
+* **Guards.** It is refused with --reward-per-decision and for K < 0 or non-finite. The training and eval notes report the mean exit energy.
+
+**Exit energy heights on uf2's sequence, in u:**
+
+| | S19 | S17 | S18 |
+|---|---|---|---|
+| record | 1,208 | 2,082 | 1,926 |
+| one-view agent @277M | ~836 | ~1,220 | ~1,040 |
+| six-view agent @152M | ~868 | ~1,380 | ~1,010 |
+
+**The largest deficit is at S17.** The agents come off it with 700-860 u less energy than the record: the landing into the pit after the drop, or the ride.
+
+**uf2SEQ_WRdiagEB.**
+
+* **Setup.** The stuck one-view diagnostic (uf2SEQ_WRdiag/ckpt_latest.pt, stage 3 since 227M) + `--ramp-exit-bonus 50` + `--critic-warmup 10` (no critic reset). Everything else is the diagnostic's; the demo resume is declared.
+* **Size of the term.** At K = 50 the record's three exits would pay ~260 and the agent's ~155, against an episode return of ~100-450.
+* **Question.** Does paying exit energy raise the S17/S18 exits enough to land on S19?
+* **Stopping.** Stationary stop, as before.
