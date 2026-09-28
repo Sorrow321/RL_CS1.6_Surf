@@ -31860,3 +31860,89 @@ Codex asks the user to rule on sections 0 and 0b directly. run_arm.sh has no gua
 
 * The energy shortfall is gone: they now clear S19's height by 100+ u. The failure is AIM: the climb heads west and south of S19.
 * Confounded: this run changed three things at once versus EB2 (pinhole, six views, novelty 0.2) and trained 475M steps longer. It does not attribute the gain to pinhole. The equiangular twin (V6N) is still owed.
+
+## 2026-09-28 16:26 (machine clock) - joint ramp-pair training on five maps (--maps + --ramp-pairs); jtPAIRS5 launched
+
+**The request.** The user: "I just have a feeling that the policy doesn't generalize 'go to where you see target ramp'. Maybe we can run joint training on multiple maps? ... take finisher lines for some maps (utopia, cannonball, celestial, petrus, and for unitfarmer from human WR), extract sequences of ramps and just train on it statically (just taking sequences of 2). And just train for more, so that the model gets more examples to learn pattern 'see this => do this'. Because latest version clearly can touch the ramp. It's just not trying => it doesn't see it as goal". Asked to choose, the user picked "build true joint now" and all five maps.
+
+**The data (tools/ramp_pairs.py).** Each finisher line gives the ordered sequence of target pieces it rides. Consecutive pairs [T1, T2] each get a spawn state: the run's own state 0.5 s before its first contact with T1, or the map start for the first pair.
+
+| map | pairs | source of the line |
+|---|---|---|
+| surf_src_utopia | 19 | self:jt3ANCHU |
+| surf_petrus_lite | 25 | self:petFRONTratOnly |
+| surf_src_cannonball | 23 | demo-lineage:gbCANfin3 (the gbCAN* lineage is demo-trained, CLAUDE.md section 0) |
+| surf_src_celestial | 18 | self:gsCELunstuck4 |
+| surf_unitfarmer2 | 17 | demo:uf2_wr (the human record) |
+
+**Code (commit b4ebd3b).**
+
+* `--goal-planner ramps` now runs on `--maps`. One shared policy; each map has its own vocabulary (`--ramp-vocab` comma list, matched by each npz's `map` field), target channel, RampPlanner, goal arc (per-slot MultiArcProgress into that slot's RaceReward) and eval (its own TargetLidar, windows and pass feed).
+* GoalSystem takes `ramp_slots`: spawn, tick, kill-then-credit, pass flags and stats run per map on that map's core, in its local rows. A single-map run is one slot and makes the same calls as before.
+* `--ramp-pairs` (comma list, one npz per map): each map's pairs are its spawn pool, for training and for the eval core. A spawn is shown its own pair, looked up by its origin. Entering T2 after T1 ends the episode as a success. Lookup misses are counted in the log, never hidden.
+* Provenance: a pair file whose source is not `self:` is refused unless `--ramp-sequence-source demo` declares the diagnostic. `ramp_pairs_sources` and `demo_contaminated` go into every checkpoint.
+* `record_ckpt.py` and `render_pov.py` pick each recording's own map's vocabulary and pairs (`goalramps.ramp_file_for_map`). A recording spawns at the pairs, like the trainer's eval.
+* The ramp planner's geodesic field is now looked up at the slot's own goal cell (`--goal-cell` may be a per-map list).
+* The log prints `per map done <map> k/n` for each map.
+* Tests: two-map GoalSystem (each spawn reads its own map's pairs; a completed pair is killed on its own core's local row and settles as a success; per-map counts), and the per-map file picker. test_goalramps 43/43. The 13 failures in the wider goal/plan/fleet/record selection all predate this change (FakeCore without `.config`; source-text checks whose text was already absent at HEAD).
+* Five-map smoke (40 envs, warm from V6NP): trained and evaluated on all five maps from pair spawns. First eval: utopia 1/2 and unitfarmer2 1/2 pairs completed, the others 0/2. Training 19/91 pairs on its first iteration. No pair-lookup misses. KL 0.3-4 at 40 envs is the tiny batch. The record gate on its checkpoint passed 20 recordings (greedy, stoch and mixed spawns on each map) and 5 POV renders.
+
+**jtPAIRS5 (launched 16:19 by the driver. Trainer pid 30008; the record gate passed 20 recordings + 5 POV renders at 16:26. First iterations: KL 0.027-0.040, explained variance 0.98. At ~885M (about 30M steps in), training pair completions per map: utopia 299/605 (49%), petrus_lite 208/667 (31%), cannonball 100/504 (20%), celestial 59/404 (15%), unitfarmer2 83/610 (14%). int-match raised the novelty coefficient to 17.8 so that novelty is 0.2 of the rest.).**
+
+* Warm from runs/uf2SEQ_WRdiagV6NP/ckpt_latest.pt: pinhole, six target views, the same observation layout, demo_contaminated, so only a declared demo diagnostic may continue it.
+* `--maps surf_src_utopia,surf_petrus_lite,surf_src_cannonball,surf_src_celestial,surf_unitfarmer2 --goal-cell 72,32,32,32,32 --envs 2040` (408 per map), `--ramp-pairs` with the five files above, `--ramp-sequence-source demo --target-views 6 --pinhole 1 --ep-secs 20 --respawn-frac 0 --ramp-exit-bonus 50 --int-match 0.2 --int-view 0 --reset-int-counts --record-every 50e6 --eval-greedy-only`.
+* Local RTX 5090, via tools/launch_local.ps1 (record gate).
+* **A LABELLED DEMO-DERIVED DIAGNOSTIC** with two demo sources, unitfarmer2's human record and cannonball's demo-trained lineage. Never a result, never a base.
+* Stop rule: 10 minutes without any map's training completion rate rising 2 points over its best, or any map's eval completions rising.
+* Metric: per-map pair completion, in training and in the greedy eval (9 pair spawns per map per eval).
+
+## 2026-09-28 17:20 (machine clock) - jtPAIRS5 (joint ramp pairs, five maps): completion rose on four maps to ~1.21B, then regressed; unitfarmer2's pit pairs never completed; stopped by the stationary rule
+
+**Run.** 16:19-17:18, 855M -> 1.273B (~420M steps, ~174k steps/s). The driver stopped it at 17:18: 10 minutes with no map's training completion rising 2 points over its best and no eval rising. Only ckpt_latest.pt exists (1.273B, after the regression). The resume preset checkpoints every 1e9, so the ~1.21B peak was not kept.
+
+**Training pair completion** (stochastic policy, per map, over the driver's 30 s samples):
+
+| map | ~889M | best | 1.273B (end) |
+|---|---|---|---|
+| utopia | 57% | 70.1% | ~41% |
+| petrus_lite | 34% | 71.3% | ~61% |
+| cannonball | 22% | 29.0% | ~18-25% |
+| celestial | 18% | 38.6% | ~30% |
+| unitfarmer2 | 14% | 42.5% | ~28% |
+
+**Greedy eval** (9 random pair spawns per map per eval; the drawn pairs differ per eval, so each cell is noisy):
+
+| step | utopia | petrus | cannonball | celestial | unitfarmer2 |
+|---|---|---|---|---|---|
+| 856M | 1/9 | 0/9 | 1/9 | 2/9 | 0/9 |
+| 906M | 5/9 | 6/9 | 3/9 | 2/9 | 0/9 |
+| 956M | 7/9 | 5/9 | 2/9 | 5/9 | 3/9 |
+| 1.006B | 4/9 | 7/9 | 1/9 | 3/9 | 3/9 |
+| 1.056B | 6/9 | 6/9 | 3/9 | 2/9 | 0/9 |
+| 1.106B | 5/9 | 6/9 | 0/9 | 3/9 | 5/9 |
+| 1.156B | 5/9 | 7/9 | 2/9 | 2/9 | 4/9 |
+| 1.207B | 5/9 | 5/9 | 1/9 | 4/9 | 4/9 |
+| 1.257B | 7/9 | 3/9 | 1/9 | 4/9 | 3/9 |
+
+**Per pair (all greedy evals).**
+
+* unitfarmer2's pit pairs [17,18] and [18,19] (S18 -> S19, the landing the sequence diagnostics never made) went 0/3 and 0/5.
+* Its other pairs complete, e.g. [0,19] 5/7, [19,17] 4/6, [42,43] 5/5, [22,25] 4/7.
+* On every map, the pairs that completed tend to complete again and the hard ones stay at 0. Samples are 1-8 tries per pair.
+
+**The late regression.**
+
+* After ~1.21B, utopia fell from ~62% to ~40%.
+* At ~1.24B every map dropped at once (training win 47.6% -> 29.6%) and recovered only partly (~40%).
+* KL (0.02-0.06) and explained variance (~0.985) stayed normal throughout.
+* The yaw sigma rose steadily, 0.063 -> 0.090.
+* --int-match doubled the novelty coefficient (14.6 -> ~33) to keep novelty at ~20% of a rising rest. It did not spike at the drop.
+* Cause not established.
+
+**Reading.**
+
+* More pair examples across maps raised completion on four of five maps: petrus, celestial, unitfarmer2 and utopia. The policy does learn to go to the next shown target on many pairs.
+* It did not unlock unitfarmer2's S18 -> S19 transition.
+* Cannonball stayed flat.
+* The gains stopped near ~1.2B and then regressed, so in this configuration "train for more" hit a ceiling at ~30-70% per map.
+* Demo-derived diagnostic (uf2 WR + cannonball's demo lineage): never a result, never a base.
