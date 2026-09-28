@@ -31689,3 +31689,24 @@ The entry above miscounted. The route-agnostic progress list for B9@177M is [43,
 * The question it answers: does seeing S19 above/behind let the policy learn the landing? The energy shortfall may still block it.
 
 **Open issue.** The KL of the first actor updates after --critic-warmup ends is huge: uf2SEQ_WRdiag 22-27M: 379, 241, 449, 43, 8, then ~0.03. The small view-head sigmas (0.06-0.15) make it sensitive. It did not stop learning.
+
+## 2026-09-28 12:19 (machine clock) - uf2SEQ_WRdiag6v final: six target views do not unlock the landing; the S18 exit is short of vertical speed
+
+**Result.** The run was stopped by the stationary rule at ~175M steps (12:18). Every eval was stage 3 of 4 (9/9), with 0 completions in eval and training (0 of 500-1,700 episodes per iteration). The route is unchanged: real contacts S19 3.4-3.6 s, S17 4.3-5.2 s, S18 6.0-6.7 s.
+
+**Leaving S18** (the last S18 contact per eval episode, medians):
+
+| | t | speed | vz | climb angle | z at exit | top z after |
+|---|---|---|---|---|---|---|
+| record | 6.53 s | 1,616 | +1,242 | +50 deg | -583 | +587 (lands on S19) |
+| one view (uf2SEQ_WRdiag@277M) | 7.17 s | 1,116 | +861 | +50 deg | -611 | -98 |
+| six views (@152M) | 6.72 s | 1,259 | +353 | +16 deg | -819 | -99 |
+
+**Reading:**
+
+* **What the one-view policy lacks is speed.** It already leaves at the record's +50 deg climb angle, but with 500 u/s less speed. Reaching S19's lowest contact (z 88) from z -600 needs vz ~1,050 at the exit, i.e. ~1,370 u/s at +50 deg.
+* **The six views changed the exit, not the outcome.** The agents leave earlier and lower, faster but flat, and reach the same height.
+* **Seeing the target was not the missing piece; the speed carried through S17 into S18 is.**
+* **Why training can't find it.** No episode has ever landed, so nothing in the return says a faster S18 exit pays. It is the same energy deficit the archive search showed on this map (0.60-0.76 of the record's speed through the U-turn).
+
+Both checkpoints are demo-contaminated and are never a base or a result.
