@@ -32218,3 +32218,36 @@ The user: "let's draw normals. Let's make a shorter run and decide shorter, mayb
 * dencCTL's route max: 454M 87,948; 529M 100,799 (the 97k gate); 605M 104,589; 680M 98,369; 756M 129,736.
 * Among the other arms at 756M: LOG 128,728, DUAL 129,388, TEX 100,655.
 * A positive needs the 97k gate before 529M, or a lead at 605-756M beyond the 27% noise floor.
+
+## 2026-09-30 19:00 (machine clock) - dencNRM (--obs-normal, 0.76e9): the FIRST observation change that clears the noise floor - the 97k gate at 378M vs 529M, the wall at 756M (7/9 past) vs 1.134B, ahead 60-88% at every mark from 303M
+
+**dencNRM** (18:36-19:00, 0.76e9 steps, local 5090; the same preset as dencCTL plus the face-normal channels). Route max (eval_honesty --order-only 16) at matched evals:
+
+| step | CTL | NRM | NRM / CTL | LOG | DUAL | TEX |
+|---|---|---|---|---|---|---|
+| 227M | 47,689 | 52,096 | 1.09 | 34,304 | 49,097 | 31,687 |
+| 303M | 50,155 | 91,232 | 1.82 | 49,231 | 50,129 | 50,213 |
+| 378M | 69,949 | **114,843** | 1.64 | 49,278 | 70,844 | 56,897 |
+| 454M | 87,948 | 141,528 | 1.61 | 52,156 | 96,670 | 70,177 |
+| 529M | 100,799 | 165,232 | 1.64 | 60,687 | 97,207 | 73,129 |
+| 605M | 104,589 | 196,976 | 1.88 | 92,370 | 102,559 | 89,344 |
+| 680M | 98,369 | 173,031 | 1.76 | 111,741 | 107,997 | 99,440 |
+| 756M | 129,736 | **207,490 (7/9 past the wall)** | 1.60 | 128,728 | 129,388 | 100,655 |
+
+**Gates:**
+
+* 97k: NRM 378M, CTL 529M, LOG 680M, DUAL 529M, TEX 680M.
+* The 205,440 u wall: NRM 756M with 7 of 9 episodes past it. CTL, LOG and TEX needed 1.134B; DUAL never got past in 1.5B.
+* 0 finishes.
+
+**Reading.**
+
+* One seed, but the lead is 60-88% at six consecutive evals (303M-756M), against a 27% seed-noise floor at 750M. It clears the 97k gate 150M steps earlier, and the wall 380M steps earlier than any other arm.
+* By the gate-ladder rule (which gate, at what step) this is a real positive, and the first one for an observation change in this program.
+* It agrees with the earlier, unfinished normal arms (xW2NRM 149k vs 89k at 1.5B; xW3DNRM the best matched reading of its wave). Those paid 55% throughput for a 2 GB normal grid; this one costs about what texture did (~225k average fps early, as dencCTL).
+* Why normals and not texture: the normal says what KIND of surface a pixel is (floor, ramp, wall, ceiling) and at which angle it faces, directly and at every distance. That is exactly what depth cannot separate (a ramp beside a wall at the same depth). The texture's colour says it only through the map author's texture choice.
+
+**Not yet shown:**
+
+* finishes - run it to 1.5e9 (resume);
+* a second map with no constant changed - CLAUDE.md 0b requires that before calling a recipe winner, e.g. petrus with its own control.
