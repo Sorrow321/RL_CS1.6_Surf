@@ -48,6 +48,8 @@ maps_full_dataset/
 *.slabocc_*.npz
 # --vision-clip's player-hull bakes (surfgym.vision, CLIP brushes included)
 *.sdfp_*.npz
+# --obs-texture's face-id grid (surfgym/texmap.py), baked per map and cell
+*.faceid_*.npz
 *.slaboccp_*.npz
 *.surfnz_*.npz
 !maps/surf_ski_2.sdf_16.npz

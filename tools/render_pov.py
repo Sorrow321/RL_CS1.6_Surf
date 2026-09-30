@@ -324,7 +324,11 @@ def main() -> None:
                      normals=bool(args.normals),
                      potential=pot, vision_clip=vclip,
                      depth_enc=depth_enc,
-                     depth_log_d0=float(rcfg.get("depth_log_d0") or 200.0))
+                     depth_log_d0=float(rcfg.get("depth_log_d0") or 200.0),
+                     # --obs-texture: the texture channels the run trained on (one more panel)
+                     texture=bool(rcfg.get("obs_texture") or 0))
+    if lidar.texmap is not None:
+        print("--obs-texture mirrored: " + lidar.texmap.describe())
     if depth_enc != "legacy":
         print(f"--depth-enc {depth_enc} (d0 {lidar.log_d0:g} u) mirrored from the run")
 
@@ -408,7 +412,8 @@ def main() -> None:
     if args.normals and args.surf_mask:
         raise SystemExit("--normals and --surf-mask are exclusive (|n_z| is "
                          "the normal's third channel)")
-    n_panels = (1 + int(depth_enc == "dual") + int(bool(args.normals))
+    n_panels = (1 + int(depth_enc == "dual") + int(lidar.texmap is not None)
+                + int(bool(args.normals))
                 + int(args.surf_mask or ball_panel) + int(pot is not None)
                 + int(tmask is not None) + int(bool(tviews)))
     FRAME_H = H * n_panels
@@ -555,6 +560,18 @@ def main() -> None:
                                                   "dual": " (legacy encoding)"}.get(depth_enc, ""),
                                 (8, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.55,
                                 (255, 255, 255), 1, cv2.LINE_AA)
+                if lidar.texmap is not None:
+                    # --obs-texture: the R, G, B channels exactly as the policy receives them
+                    tc = lidar.tex_channel
+                    rgb = (np.clip(d[i][..., tc:tc + 3], 0.0, 1.0) * 255.0).astype(np.uint8)
+                    tfr_ = cv2.resize(np.ascontiguousarray(rgb[..., ::-1]), (W, H),
+                                      interpolation=cv2.INTER_NEAREST)
+                    for _o, _c in ((3, (0, 0, 0)), (1, (255, 255, 255))):
+                        cv2.putText(tfr_, "texture channels (R, G, B): far = the texture's "
+                                    "average colour", (8, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                                    _c, _o, cv2.LINE_AA)
+                    cv2.line(tfr_, (0, 0), (W, 0), (60, 60, 60), 1)
+                    frame = np.vstack((frame, tfr_))
                 if depth_enc == "dual":
                     # --depth-enc dual: the second depth channel, the log encoding, on its own
                     # fixed range (a clear ray at the range is its ceiling)

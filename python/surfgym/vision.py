@@ -863,6 +863,330 @@ if HAVE_TRITON:
             tl.store(out_ptr + offs * 2 + 0, enl, mask=m)
             tl.store(out_ptr + offs * 2 + 1, val, mask=m)
 
+    @triton.jit
+    def _tex_rgb(ex, ey, ez, dx, dy, dz, t, m, rng,
+                 nx, ny, nz, stride_z, stride_y, mnx, mny, mnz, inv_cell, cell,
+                 fid_ptr, fdata_ptr, ftex_ptr, tdim_ptr, tmip_ptr, atlas_ptr, tavg_ptr,
+                 tsky_ptr, sky_rgb, pix_rad):
+        """--obs-texture: the hit's colour (surfgym/texmap.py). The face is the face-id grid's at
+        the voxel the march stopped in; the point is the ray's intersection with that face's plane
+        when it lies within two cells of the march's t (else the march's own point); the mip is
+        the one whose texel matches the pixel's footprint (texels per unit x t x the pixel angle /
+        the incidence cosine), past mip 3 the texture's average; a sky face is the flat sky
+        colour; a miss or a voxel with no face is black. -> (r, g, b) in [0, 1]."""
+        px = ex + dx * t
+        py = ey + dy * t
+        pz = ez + dz * t
+        ix = tl.minimum(tl.maximum(((px - mnx) * inv_cell).to(tl.int64), 0), nx - 1)
+        iy = tl.minimum(tl.maximum(((py - mny) * inv_cell).to(tl.int64), 0), ny - 1)
+        iz = tl.minimum(tl.maximum(((pz - mnz) * inv_cell).to(tl.int64), 0), nz - 1)
+        vox = iz * stride_z + iy * stride_y + ix
+        fid = tl.load(fid_ptr + vox, mask=m, other=-1).to(tl.int32)
+        ok = m & (t < rng) & (fid >= 0)
+        f = tl.maximum(fid, 0).to(tl.int64) * 16
+        sx = tl.load(fdata_ptr + f + 0, mask=ok, other=0.0)
+        sy = tl.load(fdata_ptr + f + 1, mask=ok, other=0.0)
+        sz = tl.load(fdata_ptr + f + 2, mask=ok, other=0.0)
+        so = tl.load(fdata_ptr + f + 3, mask=ok, other=0.0)
+        vx = tl.load(fdata_ptr + f + 4, mask=ok, other=0.0)
+        vy = tl.load(fdata_ptr + f + 5, mask=ok, other=0.0)
+        vz = tl.load(fdata_ptr + f + 6, mask=ok, other=0.0)
+        vo = tl.load(fdata_ptr + f + 7, mask=ok, other=0.0)
+        nnx = tl.load(fdata_ptr + f + 8, mask=ok, other=0.0)
+        nny = tl.load(fdata_ptr + f + 9, mask=ok, other=0.0)
+        nnz = tl.load(fdata_ptr + f + 10, mask=ok, other=0.0)
+        fdd = tl.load(fdata_ptr + f + 11, mask=ok, other=0.0)
+        tpu = tl.load(fdata_ptr + f + 12, mask=ok, other=1.0)
+        nd = dx * nnx + dy * nny + dz * nnz
+        an = tl.abs(nd)
+        tp = (fdd - (ex * nnx + ey * nny + ez * nnz)) / tl.where(an > 1e-4, nd, 1.0)
+        use = (an > 1e-4) & (tp > 0.0) & (tl.abs(tp - t) < 2.0 * cell)
+        th = tl.where(use, tp, t)
+        hx = ex + dx * th
+        hy = ey + dy * th
+        hz = ez + dz * th
+        u = hx * sx + hy * sy + hz * sz + so
+        v = hx * vx + hy * vy + hz * vz + vo
+        foot = th * pix_rad * tpu / tl.maximum(an, 0.15)
+        lev = tl.floor(tl.log2(tl.maximum(foot, 1.0)))
+        far = lev > 3.0
+        li = tl.minimum(lev, 3.0).to(tl.int32)
+        tex = tl.load(ftex_ptr + tl.maximum(fid, 0), mask=ok, other=0)
+        tw = tl.load(tdim_ptr + tex * 2 + 0, mask=ok, other=1)
+        tht = tl.load(tdim_ptr + tex * 2 + 1, mask=ok, other=1)
+        base = tl.load(tmip_ptr + tex * 4 + li, mask=ok, other=0)
+        wl = tl.maximum(tw >> li, 1)
+        hl = tl.maximum(tht >> li, 1)
+        sc = tl.exp2(-li.to(tl.float32))
+        iu = tl.floor(u * sc).to(tl.int32) % wl
+        iv = tl.floor(v * sc).to(tl.int32) % hl
+        iu = tl.where(iu < 0, iu + wl, iu)
+        iv = tl.where(iv < 0, iv + hl, iv)
+        texel = tl.load(atlas_ptr + base + iv * wl + iu, mask=ok & (far == 0), other=0)
+        avg = tl.load(tavg_ptr + tex, mask=ok, other=0)
+        sky = tl.load(tsky_ptr + tex, mask=ok, other=0)
+        col = tl.where(far, avg, texel)
+        col = tl.where(sky != 0, sky_rgb, col)
+        col = tl.where(ok, col, 0)
+        return ((col & 0xFF).to(tl.float32) * (1.0 / 255.0),
+                ((col >> 8) & 0xFF).to(tl.float32) * (1.0 / 255.0),
+                ((col >> 16) & 0xFF).to(tl.float32) * (1.0 / 255.0))
+
+    @triton.jit
+    def _march_kernel_tex(eye_ptr, yaw_ptr, pitch_ptr, duck_ptr, out_ptr,
+                      sdf_ptr, yoff_ptr, poff_ptr,
+                      total, HW, W,
+                      nx, ny, nz, stride_z, stride_y,
+                      mnx, mny, mnz, inv_cell, cell, rng, near,
+                      max_steps,
+                          fid_ptr, fdata_ptr, ftex_ptr, tdim_ptr, tmip_ptr, atlas_ptr,
+                          tavg_ptr, tsky_ptr, sky_rgb, pix_rad,
+                      BLOCK: tl.constexpr):
+        """--obs-texture: _march_kernel verbatim, then the hit's texture colour
+        (_tex_rgb): (depth, R, G, B) interleaved per pixel. A copy: _march_kernel is
+        pinned bit-exact."""
+        # one lane per ray; a block covers a contiguous pixel patch, so lanes
+        # diverge little and each ray stops loading memory once it has hit
+        offs = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+        m = offs < total
+        n = offs // HW
+        pix = offs % HW
+        r = pix // W
+        c = pix % W
+        ex = tl.load(eye_ptr + n * 3 + 0, mask=m, other=0.0)
+        ey = tl.load(eye_ptr + n * 3 + 1, mask=m, other=0.0)
+        ez = tl.load(eye_ptr + n * 3 + 2, mask=m, other=0.0)
+        dk = tl.load(duck_ptr + n, mask=m, other=0)
+        ez += tl.where(dk != 0, 12.0, 17.0)
+        yw = tl.load(yaw_ptr + n, mask=m, other=0.0) + tl.load(yoff_ptr + c, mask=m, other=0.0)
+        pt = tl.load(pitch_ptr + n, mask=m, other=0.0) + tl.load(poff_ptr + r, mask=m, other=0.0)
+        cp = tl.cos(pt)
+        dx = cp * tl.cos(yw)
+        dy = cp * tl.sin(yw)
+        dz = tl.sin(pt)
+        t = tl.zeros([BLOCK], tl.float32)
+        alive = m
+        hit_eps = 0.6 * cell
+        min_step = 0.3 * cell
+        # the eye's own voxel -- the contact-blackout guard (module note)
+        ix0 = tl.minimum(tl.maximum(((ex - mnx) * inv_cell).to(tl.int64), 0), nx - 1)
+        iy0 = tl.minimum(tl.maximum(((ey - mny) * inv_cell).to(tl.int64), 0), ny - 1)
+        iz0 = tl.minimum(tl.maximum(((ez - mnz) * inv_cell).to(tl.int64), 0), nz - 1)
+        vox0 = iz0 * stride_z + iy0 * stride_y + ix0
+        # Early exit + a RUNTIME trip bound, both worth ~2x on their own and
+        # 4.15x together (5.70 -> 1.37 ms per 2048-env batch), bit-exact.
+        # Why they matter: the mean ray finishes in 9.9 steps and only 0.12%
+        # of rays reach the 64th, but a constexpr `for` has no break, so every
+        # block paid all 64 trips; and a constexpr bound gets fully unrolled,
+        # which past ~32 trips costs more in register pressure than the work
+        # (1.65 ms at 32 vs 4.90 at 48 — tools/bench_lidar.py).
+        # Exactness: `alive` is monotone (only ever &='d) and a dead lane adds
+        # 0 to t, so leaving the loop once every lane is dead cannot change an
+        # output value. The depth encoding is warm-start ABI — it must not.
+        k = 0
+        while k < max_steps and tl.max(alive.to(tl.int32)) > 0:
+            px = ex + dx * t
+            py = ey + dy * t
+            pz = ez + dz * t
+            ix = tl.minimum(tl.maximum(((px - mnx) * inv_cell).to(tl.int64), 0), nx - 1)
+            iy = tl.minimum(tl.maximum(((py - mny) * inv_cell).to(tl.int64), 0), ny - 1)
+            iz = tl.minimum(tl.maximum(((pz - mnz) * inv_cell).to(tl.int64), 0), nz - 1)
+            vox = iz * stride_z + iy * stride_y + ix
+            d = tl.load(sdf_ptr + vox, mask=alive, other=0.0).to(tl.float32)
+            # `vox == vox0` is a no-op wherever the eye is in air, so a
+            # frame that is not black today is bit-identical
+            alive = alive & ((d > hit_eps) | (vox == vox0)) & (t < rng)
+            t += tl.where(alive, tl.maximum(d * 0.9, min_step), 0.0)
+            k += 1
+        t = tl.minimum(t, rng)
+        # near-linear + bounded far tail (near == rng -> legacy t/rng exactly)
+        enc = tl.minimum(t, near) / near \
+            + 0.25 * (1.0 - tl.exp(-tl.maximum(t - near, 0.0) / 2500.0))
+        tr_, tg_, tb_ = _tex_rgb(ex, ey, ez, dx, dy, dz, t, m, rng,
+                                 nx, ny, nz, stride_z, stride_y, mnx, mny, mnz,
+                                 inv_cell, cell, fid_ptr, fdata_ptr, ftex_ptr,
+                                 tdim_ptr, tmip_ptr, atlas_ptr, tavg_ptr, tsky_ptr,
+                                 sky_rgb, pix_rad)
+        tl.store(out_ptr + offs * 4 + 0, enc, mask=m)
+        tl.store(out_ptr + offs * 4 + 1, tr_, mask=m)
+        tl.store(out_ptr + offs * 4 + 2, tg_, mask=m)
+        tl.store(out_ptr + offs * 4 + 3, tb_, mask=m)
+
+    @triton.jit
+    def _march_kernel_pot_tex(eye_ptr, yaw_ptr, pitch_ptr, duck_ptr, out_ptr,
+                          sdf_ptr, pot_ptr, deye_ptr, yoff_ptr, poff_ptr,
+                          total, HW, W,
+                          nx, ny, nz, stride_z, stride_y,
+                          mnx, mny, mnz, inv_cell, cell, rng, near,
+                          max_steps,
+                          fid_ptr, fdata_ptr, ftex_ptr, tdim_ptr, tmip_ptr, atlas_ptr,
+                          tavg_ptr, tsky_ptr, sky_rgb, pix_rad,
+                          pnx, pny, pnz, pstride_z, pstride_y,
+                          pmnx, pmny, pmnz, pinv_cell, pcell,
+                          quant, valid_max,
+                          scale_inv, lo, hi, bad,
+                          cx0, cy0, cz0, cx1, cy1, cz1,
+                          REL: tl.constexpr, CURTAIN: tl.constexpr,
+                          BLOCK: tl.constexpr):
+        """--obs-texture with --obs-potential: _march_kernel_pot verbatim, then the
+        hit's texture colour (_tex_rgb): (depth, potential, R, G, B) interleaved per
+        pixel. A copy: _march_kernel_pot is every --obs-potential checkpoint's ABI."""
+        offs = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+        m = offs < total
+        n = offs // HW
+        pix = offs % HW
+        r = pix // W
+        c = pix % W
+        ex = tl.load(eye_ptr + n * 3 + 0, mask=m, other=0.0)
+        ey = tl.load(eye_ptr + n * 3 + 1, mask=m, other=0.0)
+        ez = tl.load(eye_ptr + n * 3 + 2, mask=m, other=0.0)
+        dk = tl.load(duck_ptr + n, mask=m, other=0)
+        ez += tl.where(dk != 0, 12.0, 17.0)
+        yw = tl.load(yaw_ptr + n, mask=m, other=0.0) + tl.load(yoff_ptr + c, mask=m, other=0.0)
+        pt = tl.load(pitch_ptr + n, mask=m, other=0.0) + tl.load(poff_ptr + r, mask=m, other=0.0)
+        cp = tl.cos(pt)
+        dx = cp * tl.cos(yw)
+        dy = cp * tl.sin(yw)
+        dz = tl.sin(pt)
+        t = tl.zeros([BLOCK], tl.float32)
+        alive = m
+        hit_eps = 0.6 * cell
+        min_step = 0.3 * cell
+        # the eye's own voxel -- the contact-blackout guard (module note)
+        ix0 = tl.minimum(tl.maximum(((ex - mnx) * inv_cell).to(tl.int64), 0), nx - 1)
+        iy0 = tl.minimum(tl.maximum(((ey - mny) * inv_cell).to(tl.int64), 0), ny - 1)
+        iz0 = tl.minimum(tl.maximum(((ez - mnz) * inv_cell).to(tl.int64), 0), nz - 1)
+        vox0 = iz0 * stride_z + iy0 * stride_y + ix0
+        k = 0
+        while k < max_steps and tl.max(alive.to(tl.int32)) > 0:
+            px = ex + dx * t
+            py = ey + dy * t
+            pz = ez + dz * t
+            ix = tl.minimum(tl.maximum(((px - mnx) * inv_cell).to(tl.int64), 0), nx - 1)
+            iy = tl.minimum(tl.maximum(((py - mny) * inv_cell).to(tl.int64), 0), ny - 1)
+            iz = tl.minimum(tl.maximum(((pz - mnz) * inv_cell).to(tl.int64), 0), nz - 1)
+            vox = iz * stride_z + iy * stride_y + ix
+            d = tl.load(sdf_ptr + vox, mask=alive, other=0.0).to(tl.float32)
+            # `vox == vox0` is a no-op wherever the eye is in air, so a
+            # frame that is not black today is bit-identical
+            alive = alive & ((d > hit_eps) | (vox == vox0)) & (t < rng)
+            t += tl.where(alive, tl.maximum(d * 0.9, min_step), 0.0)
+            k += 1
+        t = tl.minimum(t, rng)
+        enc = tl.minimum(t, near) / near \
+            + 0.25 * (1.0 - tl.exp(-tl.maximum(t - near, 0.0) / 2500.0))
+        # --obs-potential-curtain: the finish is a trigger_multiple, not a
+        # solid, so the march runs straight THROUGH it and stops on the far
+        # wall of the finish room - the goal is never a pixel. An analytic
+        # slab test against the finish AABB (the box is 1 u thin in y, far
+        # under the 32 u march step, so stepping onto it is hopeless) says
+        # whether this ray entered it before its hit; if it did, the sample
+        # below is replaced by the goal value d = 0.
+        if CURTAIN:
+            cbig = 3.0e38
+            ct0 = tl.zeros([BLOCK], tl.float32)
+            ct1 = tl.zeros([BLOCK], tl.float32) + cbig
+            ax = tl.abs(dx) > 1e-12
+            iv = 1.0 / tl.where(ax, dx, 1.0)
+            ta = (cx0 - ex) * iv
+            tb = (cx1 - ex) * iv
+            ins = (ex >= cx0) & (ex <= cx1)
+            ct0 = tl.where(ax, tl.maximum(ct0, tl.minimum(ta, tb)),
+                           tl.where(ins, ct0, cbig))
+            ct1 = tl.where(ax, tl.minimum(ct1, tl.maximum(ta, tb)),
+                           tl.where(ins, ct1, -cbig))
+            ay = tl.abs(dy) > 1e-12
+            iv = 1.0 / tl.where(ay, dy, 1.0)
+            ta = (cy0 - ey) * iv
+            tb = (cy1 - ey) * iv
+            ins = (ey >= cy0) & (ey <= cy1)
+            ct0 = tl.where(ay, tl.maximum(ct0, tl.minimum(ta, tb)),
+                           tl.where(ins, ct0, cbig))
+            ct1 = tl.where(ay, tl.minimum(ct1, tl.maximum(ta, tb)),
+                           tl.where(ins, ct1, -cbig))
+            az = tl.abs(dz) > 1e-12
+            iv = 1.0 / tl.where(az, dz, 1.0)
+            ta = (cz0 - ez) * iv
+            tb = (cz1 - ez) * iv
+            ins = (ez >= cz0) & (ez <= cz1)
+            ct0 = tl.where(az, tl.maximum(ct0, tl.minimum(ta, tb)),
+                           tl.where(ins, ct0, cbig))
+            ct1 = tl.where(az, tl.minimum(ct1, tl.maximum(ta, tb)),
+                           tl.where(ins, ct1, -cbig))
+            ct0 = tl.maximum(ct0, 0.0)
+            chit = (ct0 <= ct1) & (ct0 <= t)
+        # the potential, one field cell short of the hit along the ray
+        # (LidarPotential: the march stops INSIDE a solid voxel, where the
+        # field holds its sentinel; one cell back is the air at the surface)
+        ts = tl.maximum(t - pcell, 0.0)
+        gx = (ex + dx * ts - pmnx) * pinv_cell - 0.5
+        gy = (ey + dy * ts - pmny) * pinv_cell - 0.5
+        gz = (ez + dz * ts - pmnz) * pinv_cell - 0.5
+        fx0 = tl.floor(gx)
+        fy0 = tl.floor(gy)
+        fz0 = tl.floor(gz)
+        fx = gx - fx0
+        fy = gy - fy0
+        fz = gz - fz0
+        jx = fx0.to(tl.int64)
+        jy = fy0.to(tl.int64)
+        jz = fz0.to(tl.int64)
+        num = tl.zeros([BLOCK], tl.float32)
+        den = tl.zeros([BLOCK], tl.float32)
+        # corners in GoalField.sample's order (dz outer, dy, dx inner) so the
+        # float32 accumulation is the reference's, term for term
+        for cdz in tl.static_range(2):
+            if cdz == 1:
+                wz = fz
+            else:
+                wz = 1.0 - fz
+            kz = tl.minimum(tl.maximum(jz + cdz, 0), pnz - 1) * pstride_z
+            for cdy in tl.static_range(2):
+                if cdy == 1:
+                    wy = fy
+                else:
+                    wy = 1.0 - fy
+                ky = tl.minimum(tl.maximum(jy + cdy, 0), pny - 1) * pstride_y
+                for cdx in tl.static_range(2):
+                    if cdx == 1:
+                        wx = fx
+                    else:
+                        wx = 1.0 - fx
+                    kx = tl.minimum(tl.maximum(jx + cdx, 0), pnx - 1)
+                    code = tl.load(pot_ptr + kz + ky + kx, mask=m,
+                                   other=0).to(tl.int32) & 0xFFFF
+                    v = code.to(tl.float32) * quant
+                    honest = tl.where(v < valid_max, 1.0, 0.0)
+                    w = ((wx * wy) * wz) * honest
+                    num += w * v
+                    den += w
+        ok = den > 1e-6
+        vhit = num / tl.maximum(den, 1e-6)
+        if CURTAIN:
+            # a ray through the finish curtain reads the GOAL: d = 0, honest
+            # (abs and logabs -> 0, rel -> its goal-ward clip, norm -> the
+            # most goal-ward value in the frame)
+            vhit = tl.where(chit, 0.0, vhit)
+            ok = ok | chit
+        deye = tl.load(deye_ptr + n, mask=m, other=0.0)
+        if REL:
+            ok = ok & (deye < valid_max)
+            val = (deye - vhit) * scale_inv
+        else:
+            val = vhit * scale_inv
+        val = tl.minimum(tl.maximum(val, lo), hi)
+        val = tl.where(ok, val, bad)
+        tr_, tg_, tb_ = _tex_rgb(ex, ey, ez, dx, dy, dz, t, m, rng,
+                                 nx, ny, nz, stride_z, stride_y, mnx, mny, mnz,
+                                 inv_cell, cell, fid_ptr, fdata_ptr, ftex_ptr,
+                                 tdim_ptr, tmip_ptr, atlas_ptr, tavg_ptr, tsky_ptr,
+                                 sky_rgb, pix_rad)
+        tl.store(out_ptr + offs * 5 + 0, enc, mask=m)
+        tl.store(out_ptr + offs * 5 + 1, val, mask=m)
+        tl.store(out_ptr + offs * 5 + 2, tr_, mask=m)
+        tl.store(out_ptr + offs * 5 + 3, tg_, mask=m)
+        tl.store(out_ptr + offs * 5 + 4, tb_, mask=m)
+
 #: --depth-enc: the depth channel's encodings (GpuLidar(depth_enc=))
 DEPTH_ENCODINGS = ("legacy", "log", "dual")
 
@@ -1557,7 +1881,14 @@ class GpuLidar:
                  mask_only: bool = False,
                  pinhole: bool = False, normals: bool = False,
                  potential=None, vision_clip: bool = False,
-                 depth_enc: str = "legacy", depth_log_d0: float = 200.0) -> None:
+                 depth_enc: str = "legacy", depth_log_d0: float = 200.0,
+                 texture=False) -> None:
+        if texture and (surf_mask or pinhole or normals or vision_clip
+                        or depth_enc != "legacy"):
+            raise ValueError(
+                "--obs-texture has kernels for the plain and the --obs-potential renders with "
+                "the legacy depth only (not --surf-mask, --pinhole, --normals, --vision-clip or "
+                "--depth-enc)")
         if depth_enc not in DEPTH_ENCODINGS:
             raise ValueError(f"depth_enc {depth_enc!r}: one of {DEPTH_ENCODINGS}")
         if depth_enc != "legacy" and (surf_mask or pinhole or normals):
@@ -1671,6 +2002,21 @@ class GpuLidar:
         if self.depth_ch == 2:
             self.channels += 1
         self.pot_channel = self.depth_ch
+        # --obs-texture: (R, G, B) of the hit after every other channel (surfgym/texmap.py);
+        # the footprint's pixel angle is the coarser, vertical one of the equiangular camera
+        self.texmap = None
+        if texture:
+            from .texmap import TextureMap
+            if isinstance(texture, TextureMap):
+                self.texmap = texture
+            else:
+                self.texmap = TextureMap.for_lidar(
+                    core.bsp_path, self.sdf_flat, (self.nz, self.ny, self.nx), self.mins_f,
+                    self.cell, f"{_map_sig(Path(core.bsp_path))}_{_SDF_SEMANTICS}",
+                    self.device)
+            self.channels += 3
+        self.tex_channel = self.channels - 3 if self.texmap is not None else None
+        self.tex_pix_rad = float(np.radians(self.vfov_deg / self.H))
         # the depth channel 0's largest value (a clear ray at the range), for displays
         self.enc_max = (float(np.log1p(self.range / self.log_d0)) * self.lscale
                         if self.depth_enc == "log" else
@@ -1816,6 +2162,8 @@ class GpuLidar:
         BLOCK = MARCH_BLOCK
         if self.depth_enc != "legacy":
             return self._render_triton_enc(origin, yaw_deg, pitch_deg, ducked)
+        if self.texmap is not None:
+            return self._render_triton_tex(origin, yaw_deg, pitch_deg, ducked)
         if self.potential is not None:
             P = self.potential
             # the eye's own field once per env (8 gathers on N points), not
@@ -1944,6 +2292,95 @@ class GpuLidar:
             BLOCK=BLOCK, num_warps=MARCH_WARPS)
         return out
 
+    @torch.no_grad()
+    def _render_triton_tex(self, origin, yaw_deg, pitch_deg, ducked):
+        """--obs-texture: _march_kernel_tex / _march_kernel_pot_tex, the shipped dispatch's
+        arguments plus the texture map's."""
+        N = origin.shape[0]
+        d2r = float(np.pi / 180.0)
+        total = N * self.H * self.W
+        BLOCK = MARCH_BLOCK
+        X = self.texmap
+        targs = (X.fid, X.fdata, X.ftex, X.tdim, X.tmip, X.atlas, X.tavg, X.tsky,
+                 X.sky_packed, self.tex_pix_rad)
+        out = torch.empty(N, self.H, self.W, self.channels, device=self.device)
+        if self.potential is not None:
+            P = self.potential
+            deye = (P.eye(origin, ducked).contiguous() if P.rel else self._deye_zero(N))
+            _march_kernel_pot_tex[(triton.cdiv(total, BLOCK),)](
+                origin.contiguous(), (yaw_deg * d2r).contiguous(),
+                (pitch_deg * d2r).contiguous(),
+                ducked.to(torch.int32).contiguous(),
+                out, self.sdf_flat, P.codes, deye, self.yoff, self.poff,
+                total, self.H * self.W, self.W,
+                self.nx, self.ny, self.nz, self.stride_z, self.stride_y,
+                self.mins_f[0], self.mins_f[1], self.mins_f[2],
+                1.0 / self.cell, self.cell, self.range, self.near,
+                self.max_steps, *targs,
+                P.nx, P.ny, P.nz, P.stride_z, P.stride_y,
+                P.mins_f[0], P.mins_f[1], P.mins_f[2], 1.0 / P.cell, P.cell,
+                P.quant, P.valid_max, P.scale_inv, P.lo, P.hi, P.bad,
+                *(P.curtain[0] + P.curtain[1] if P.curtain is not None
+                  else (0.0,) * 6),
+                REL=bool(P.rel), CURTAIN=bool(P.curtain is not None),
+                BLOCK=BLOCK, num_warps=MARCH_WARPS)
+            return out
+        _march_kernel_tex[(triton.cdiv(total, BLOCK),)](
+            origin.contiguous(), (yaw_deg * d2r).contiguous(),
+            (pitch_deg * d2r).contiguous(), ducked.to(torch.int32).contiguous(),
+            out, self.sdf_flat, self.yoff, self.poff,
+            total, self.H * self.W, self.W,
+            self.nx, self.ny, self.nz, self.stride_z, self.stride_y,
+            self.mins_f[0], self.mins_f[1], self.mins_f[2],
+            1.0 / self.cell, self.cell, self.range, self.near,
+            self.max_steps, *targs, BLOCK=BLOCK, num_warps=MARCH_WARPS)
+        return out
+
+    @torch.no_grad()
+    def _tex_torch(self, ex, ey, ez, t):
+        """--obs-texture's colour on the torch path: _tex_rgb, term for term. -> (N, H, W, 3)"""
+        X = self.texmap
+        N = t.shape[0]
+        dx, dy, dz = self._dx, self._dy, self._dz
+        px, py, pz = ex + dx * t, ey + dy * t, ez + dz * t
+        mx, my, mz = self.mins[0], self.mins[1], self.mins[2]
+        ix = ((px - mx) / self.cell).long().clamp_(0, self.nx - 1)
+        iy = ((py - my) / self.cell).long().clamp_(0, self.ny - 1)
+        iz = ((pz - mz) / self.cell).long().clamp_(0, self.nz - 1)
+        vox = iz * self.stride_z + iy * self.stride_y + ix
+        fid = X.fid[vox.reshape(-1)].reshape(t.shape).long()
+        ok = (t < self.range) & (fid >= 0)
+        f = fid.clamp(min=0)
+        fd = X.fdata.view(-1, 16)[f]                                   # (N, H, W, 16)
+        nd = dx * fd[..., 8] + dy * fd[..., 9] + dz * fd[..., 10]
+        an = nd.abs()
+        tp = (fd[..., 11] - (ex * fd[..., 8] + ey * fd[..., 9] + ez * fd[..., 10])) \
+            / torch.where(an > 1e-4, nd, torch.ones_like(nd))
+        use = (an > 1e-4) & (tp > 0.0) & ((tp - t).abs() < 2.0 * self.cell)
+        th = torch.where(use, tp, t)
+        hx, hy, hz = ex + dx * th, ey + dy * th, ez + dz * th
+        u = hx * fd[..., 0] + hy * fd[..., 1] + hz * fd[..., 2] + fd[..., 3]
+        v = hx * fd[..., 4] + hy * fd[..., 5] + hz * fd[..., 6] + fd[..., 7]
+        foot = th * self.tex_pix_rad * fd[..., 12] / an.clamp(min=0.15)
+        lev = torch.floor(torch.log2(foot.clamp(min=1.0)))
+        far = lev > 3.0
+        li = lev.clamp(max=3.0).long()
+        tex = X.ftex[f].long()
+        tw = X.tdim[tex * 2].long()
+        tht = X.tdim[tex * 2 + 1].long()
+        base = X.tmip[tex * 4 + li].long()
+        wl = (tw >> li).clamp(min=1)
+        hl = (tht >> li).clamp(min=1)
+        sc = torch.exp2(-li.float())
+        iu = torch.remainder(torch.floor(u * sc).long(), wl)
+        iv = torch.remainder(torch.floor(v * sc).long(), hl)
+        texel = X.atlas[(base + iv * wl + iu).clamp(0, X.atlas.numel() - 1)].long()
+        col = torch.where(far, X.tavg[tex].long(), texel)
+        col = torch.where(X.tsky[tex] != 0, torch.full_like(col, X.sky_packed), col)
+        col = torch.where(ok, col, torch.zeros_like(col))
+        return torch.stack(((col & 0xFF), (col >> 8) & 0xFF, (col >> 16) & 0xFF), -1).float() \
+            * (1.0 / 255.0)
+
     def _dirs_equiangular(self, N, yaw_deg, pitch_deg, d2r):
         """The shipped camera, verbatim: per-pixel ANGLES added to the view.
 
@@ -2035,7 +2472,12 @@ class GpuLidar:
             val = P.encode(vhit, ok, deye)
             if self.depth_enc == "dual":
                 return torch.stack((enc, enl, val), dim=-1)
+            if self.texmap is not None:
+                return torch.cat((torch.stack((enc, val), dim=-1),
+                                  self._tex_torch(ex, ey, ez, t)), dim=-1)
             return torch.stack((enc, val), dim=-1)
+        if self.texmap is not None:
+            return torch.cat((enc[..., None], self._tex_torch(ex, ey, ez, t)), dim=-1)
         if not (self.surf_mask or self.normals):
             return torch.stack((enc, enl), dim=-1) if self.depth_enc == "dual" else enc
         # same hit voxel the triton path re-derives, same interleaving

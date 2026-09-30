@@ -1102,6 +1102,7 @@ ARCH_KEYS = (("emb", "--emb"), ("hidden", "--hidden"), ("trunk", "--trunk"),
              ("normals", "--normals"), ("surf_mask", "--surf-mask"),
              ("obs_potential", "--obs-potential"),
              ("depth_enc", "--depth-enc"),
+             ("obs_texture", "--obs-texture"),
              ("keys_hold", "--keys-hold"),
              ("obs_fourier", "--obs-fourier"))
 
@@ -4447,6 +4448,12 @@ def main() -> None:
                          "ln(1 + near/d0), 1.0 at near and far differences in proportion (0.073 "
                          "at 5-6k u); dual = both, two depth channels (in_ch + 1). Changes the "
                          "image: SCRATCH arms; ckpt restores, a mismatch is refused")
+    ap.add_argument("--obs-texture", type=int, default=None, choices=(0, 1),
+                    help="the map's own textures as three more image channels (R, G, B of the "
+                         "hit surface; the user, 2026-09-30): the mip matching the pixel's "
+                         "footprint, past mip 3 the texture's average colour, sky flat, unlit "
+                         "(surfgym/texmap.py; a face-id grid baked once per map and cached). "
+                         "in_ch + 3: SCRATCH arms; ckpt restores, a mismatch is refused")
     ap.add_argument("--depth-log-d0", type=float, default=None,
                     help="--depth-enc log / dual: d0 of ln(1 + d/d0), u (default 200); ckpt "
                          "restores")
@@ -6917,6 +6924,17 @@ def main() -> None:
                 "channels): a checkpoint trained on one encoding is not a warm start of "
                 "another - start a fresh run, or drop the flag to keep the ckpt's "
                 f"setting ({ck_cfg.get('depth_enc') or 'legacy'})")
+        # --obs-texture: three more conv1 input channels - restored, a mismatch refused
+        if args.obs_texture is None and ck_cfg.get("obs_texture"):
+            args.obs_texture = 1
+            restored.append("obs_texture=1")
+        elif args.obs_texture is not None \
+                and int(args.obs_texture) != int(ck_cfg.get("obs_texture") or 0):
+            raise SystemExit(
+                "--obs-texture changes the conv trunk's input channels (+3: the texture's R, "
+                "G, B) and a checkpoint's first layer cannot be widened or narrowed - start a "
+                "fresh run, or drop the flag to keep the ckpt's setting "
+                f"({int(ck_cfg.get('obs_texture') or 0)})")
         if args.depth_log_d0 is None and ck_cfg.get("depth_log_d0") is not None:
             args.depth_log_d0 = float(ck_cfg["depth_log_d0"])
             restored.append(f"depth_log_d0={args.depth_log_d0:g}")
@@ -7713,6 +7731,14 @@ def main() -> None:
         args.frame_stack = 0
     check_vision_exclusive(args.surf_mask, args.pinhole, args.frame_stack,
                            args.normals, args.obs_potential)
+    if args.obs_texture is None:
+        args.obs_texture = 0
+    if args.obs_texture and (args.surf_mask or args.pinhole or args.normals
+                             or args.vision_clip or (args.frame_stack or 0) > 1
+                             or (args.depth_enc or "legacy") != "legacy"):
+        raise SystemExit("--obs-texture has kernels for the plain and the --obs-potential "
+                         "renders with the legacy depth only (not --surf-mask, --pinhole, "
+                         "--normals, --vision-clip, --frame-stack or --depth-enc)")
     if args.depth_enc is None:
         args.depth_enc = "legacy"
     if args.depth_log_d0 is None:
@@ -9931,6 +9957,7 @@ def main() -> None:
     for slot in slots:
         with D.rank0_first():        # vision SDF npz build/write
             slot.lidar = GpuLidar(slot.core, args.lidar_w, args.lidar_h,
+                                  texture=bool(args.obs_texture),
                                   depth_enc=str(args.depth_enc),
                                   depth_log_d0=float(args.depth_log_d0),
                                   hfov_deg=float(args.lidar_hfov),
@@ -9948,6 +9975,9 @@ def main() -> None:
                                       slot.name, slot.goal_box),
                                   vision_clip=bool(args.vision_clip))
         _raw_lidar[slot.name] = slot.lidar
+        if args.obs_texture:
+            print(f"--obs-texture: {slot.name} " + slot.lidar.texmap.describe()
+                  + f" -> in_ch {slot.lidar.channels}")
         if args.obs_potential:
             print(f"--obs-potential {args.obs_potential}: {slot.name} "
                   + slot.lidar.potential.describe()
@@ -10063,6 +10093,7 @@ def main() -> None:
                                    and not args.warm_caches) else None)
             with D.rank0_first():        # vision SDF npz build/write
                 hs.lidar = GpuLidar(ec, args.lidar_w, args.lidar_h,
+                                    texture=bool(args.obs_texture),
                                     depth_enc=str(args.depth_enc),
                                     depth_log_d0=float(args.depth_log_d0),
                                     hfov_deg=float(args.lidar_hfov),
@@ -12096,6 +12127,9 @@ def main() -> None:
     # geodesic the abs channel was scaled by rides along so an eval tool
     # renders the very same channel (it recomputes the same number from
     # the same spawns, but the record is the record)
+    if args.obs_texture:
+        # --obs-texture: ONLY when on, so a config without it is the pre-flag one
+        meta["config"]["obs_texture"] = 1
     if args.depth_enc != "legacy":
         # --depth-enc: ONLY off the default, so a legacy config dump is the pre-flag one;
         # record_ckpt.py and render_pov.py mirror both keys
