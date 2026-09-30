@@ -32013,3 +32013,43 @@ On the big-ramp maps the task pays for flying near T2, not for landing on it.
 * It fails on long flights, big turns and climbs, and the failure is visible already on T1: where and how the policy leaves it.
 * The pair task's success test (entering an AABB) lets part of the learned "success" be a fly-by, most on the big-ramp maps. A triplet, which needs T2 actually ridden, halves the rate again.
 * Demo-derived diagnostic data (the uf2 WR, cannonball's demo lineage): measurement only.
+
+## 2026-09-30 11:21 (machine clock) - --depth-enc log / dual (8faa884): three from-scratch cannonball arms launched on the depth channel's far field
+
+**The user (2026-09-30).**
+
+* The ramp-graph search stays the direction. On-demand transitions are a genuinely harder task than learning one path.
+* The triplets were only a feasibility probe, and the real pipeline will not use any record data.
+* First, go back to the simple case: flat policy, cannonball, the standard geodesic reward. Improve the observation so near and far are distinguishable: different contrast for different depths, several channels, scaling. Textures are worth a look if they are affordable.
+* Later: cross-attention conditioning for the target signal, and a GRU/LSTM for ramp-to-ramp transitions.
+
+**The encoding today** (ledger 2026-09-28 04:24): linear to 1.0 at 2,000 u, then a 0.25 tail. Two surfaces 1,000 u apart differ by 0.5 near, 0.025 at 5-6k u and 0.0075 at 8-9k u.
+
+**Built (8faa884).**
+
+* `--depth-enc log`: ln(1 + d/d0) / ln(1 + near/d0), d0 = 200 u. It reads 1.0 at 2,000 u like legacy. 1,000 u apart reads 0.073 at 5-6k u (2.9x legacy), 0.048 at 8-9k u (6.4x), 0.039 at 10-11k u (11x). Near contrast is 74% of legacy.
+* `--depth-enc dual`: legacy AND log as two depth channels (in_ch 3 with the potential).
+* Two new kernels generated from the shipped ones' verbatim sources; the shipped kernels are untouched. Mirrored in record_ckpt and render_pov (dual gets a log depth panel).
+* Tests: formulas, layout, refusals; CUDA agreement on cannonball, with dual's channel 0 bit-exact; trainer smokes.
+
+**Textures: feasible, not built.** Cannonball's 103 textures are all embedded in the .bsp (no .wad needed). The renderer is an SDF march with no face identity at the hit, so textures need three things:
+
+* a per-voxel face-id grid (+1-3 GB at cell 32);
+* UV from texinfo, and mip selection by distance (a 64x32 pixel spans ~165 u at 5,000 u, so far textures reduce to per-surface average colours);
+* kernel gathers.
+
+The rendering cost is small; the engineering is about a day. The far-field part of what textures give is surface identity, which a cheaper per-surface id/colour channel would also give, from the same face-id grid.
+
+**The arms** (local RTX 5090, back to back, one seed, 1.5e9 steps each, `tools/launch_local.ps1 scratch_ablate` = the standard recipe):
+
+* The standard recipe: cannonball 64x32; geodesic race reward; reservoir 0.9 / margin 10; `--obs-potential norm --obs-potential-curtain`; `--keys-hold`; absolute continuous view; act-every 4; T = 128; int-coef 0.25; evals every 75M x 9 episodes.
+* **dencCTL**: legacy, a fresh same-card control.
+* **dencLOG**: `--depth-enc log`.
+* **dencDUAL**: `--depth-enc dual`.
+
+**Metric:** per eval, eval_honesty --order-only 16 on the route - the step the 97k gate is first cleared, the step the 205,440 u wall is first crossed, crossings past the wall, and finishes.
+
+* The reference is round 32's cyKEYPOT, the same preset on this card on older code: 97k at 502M, the wall at 1.003B, 4/9 crossings at best, 0 finishes.
+* The seed-noise floor (27% at 750M) and the gate ladder apply. Only a gate cleared much earlier or later, or a wall crossed that the control does not cross, counts.
+
+Liveness: an arm whose progress.csv stops growing for 10 minutes is stopped; a gate plateau is not (fixed budget, step-matched).
