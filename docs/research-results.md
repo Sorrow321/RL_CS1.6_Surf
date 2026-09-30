@@ -32154,3 +32154,38 @@ Cost measured earlier: ~+5% render, ~1.6% per iteration (ledger 16:27).
 **dencTEX:** scratch_ablate + `--obs-texture 1`, 1.5e9 steps, one seed, local 5090. The only difference from **dencCTL** (same day, same preset, same card) is the texture flag. Scored like the depth arms (eval_honesty --order-only 16: the 97k gate, the 205,440 u wall, crossings, finishes). The reference is dencCTL's 97k at 529M, the wall at 1.134B, 6/45 late crossings, 0 finishes.
 
 Caveat: `restamp_maps.py` and the pool bundle do not know the faceid cache yet, which is Codex's point from 09-28 about new caches. It is local-only until they do.
+
+## 2026-09-30 18:10 (machine clock) - dencTEX (--obs-texture, 1.5e9): no gain over the control; all four observation arms stop at the same 88.8% wall at the same eval
+
+**dencTEX** (17:05-18:10), against dencCTL at matched steps (route max, eval_honesty --order-only 16):
+
+| step | CTL | TEX |
+|---|---|---|
+| 227M | 47,689 | 31,687 |
+| 454M | 87,948 | 70,177 |
+| 529M | 100,799 | 73,129 |
+| 680M | 98,369 | 99,440 |
+| 831M | 147,156 | 114,879 |
+| 907M | 166,706 | 122,496 |
+| 1.058B | 194,855 | 170,276 |
+| 1.134B | 206,217 (2/9 past) | 208,025 (1/9) |
+| 1.209B | 205,440 (0/9) | 208,931 (5/9) |
+| 1.285B | 205,568 (3/9) | 205,522 (2/9) |
+| 1.360B | 206,442 (1/9) | 205,495 (1/9) |
+| 1.436B | 205,310 (0/9) | 205,522 (3/9) |
+
+**The four observation arms together:**
+
+| arm | 97k gate | wall first crossed | late crossings (>= 1.134B) | best route | finishes |
+|---|---|---|---|---|---|
+| CTL (legacy depth) | 529M | 1.134B | 6/45 | 206,442 | 0 |
+| LOG (log depth) | 680M | 1.134B | 19/45 | 208,023 | 0 |
+| DUAL (both) | 529M | never | 0/45 | 205,424 | 0 |
+| TEX (depth + texture RGB) | 680M | 1.134B | 12/45 | 208,931 | 0 |
+
+**Reading.**
+
+* TEX lagged the control through the middle, by 30-45k u at 830M-1.06B. That is either the price of three more channels to learn, or seed noise.
+* It then reached the wall at the same eval and crossed it a little more often late. It never finished.
+* Every arm except DUAL crossed the wall first at the same eval, 1.134B, and none finished. The observation is not what limits progress on this benchmark.
+* The 88.8% wall is the known shaping barrier. The final descent RAISES geodesic d (ledger rounds 18-20; `--race-ratchet` broke it champion-free). A better eye cannot pay for a reward that charges the right line. To be measured, observation changes need a benchmark whose progress is not capped by the reward.
