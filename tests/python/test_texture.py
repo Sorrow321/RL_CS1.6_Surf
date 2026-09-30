@@ -161,3 +161,64 @@ def test_trainer_smoke_trains_records_and_resumes():
     assert "obs_texture" not in oc
     for n in (run, "cya_tex_re", "cya_tex_bad", "cya_tex_off"):
         shutil.rmtree(ROOT / "runs" / n, ignore_errors=True)
+
+
+@needs_cuda_caches
+def test_face_normal_mode_on_cannonball():
+    """--obs-normal: the same face lookup, the face's unit normal turned to the camera and rotated
+    into the ego frame (x fwd, y left, z up); triton == torch; the texture mode's colours are
+    unchanged by the switch; a down-looking pose reads floors as (0, 0, 1)"""
+    from surfgym import SurfCore, default_config
+    core = SurfCore(str(CANNONBALL), default_config(num_envs=1, lidar_w=0, lidar_h=0))
+    kw = dict(range_units=11500.0, near_range=2000.0, cell=32.0)
+    lt = vision.GpuLidar(core, 64, 32, device="cuda", texture=True, **kw)
+    ln = vision.GpuLidar(core, 64, 32, device="cuda", texture=lt.texmap, texture_mode="normal", **kw)
+    lc = vision.GpuLidar(core, 64, 32, device="cpu", texture=True, texture_mode="normal", **kw)
+    a = np.asarray(CPOSES, np.float32)
+
+    def tens(dev):
+        return (torch.as_tensor(a[:, 0:3]).to(dev), torch.as_tensor(a[:, 3]).to(dev),
+                torch.as_tensor(a[:, 4]).to(dev), torch.as_tensor(a[:, 5]).to(dev))
+    ot = lt.render(*tens("cuda")).cpu()
+    on = ln.render(*tens("cuda")).cpu()
+    oc = lc.render(*tens("cpu"))
+    assert torch.equal(on[..., 0], ot[..., 0])
+    assert (on[..., 1:] - oc[..., 1:]).abs().max(-1).values.lt(1e-4).float().mean() > 0.999
+    nrm = on[..., 1:].norm(dim=-1)
+    hit = nrm > 0
+    assert hit.float().mean() > 0.99 and torch.allclose(nrm[hit], torch.ones_like(nrm[hit]),
+                                                        atol=1e-4)
+    # facing the camera: the normal and the ray point against each other (ego x > 0 means the
+    # surface faces forward-ward... the facing test is on the world vectors, re-derived here)
+    ln._ensure_buffers(len(a))
+    ln._dirs_equiangular(len(a), tens("cuda")[1], tens("cuda")[2], float(np.pi / 180))
+    yp = tens("cuda")[1].view(-1, 1, 1) * float(np.pi / 180)
+    fx, fy, fz = (on[..., 1].cuda(), on[..., 2].cuda(), on[..., 3].cuda())
+    wx = fx * torch.cos(yp) - fy * torch.sin(yp)
+    wy = fx * torch.sin(yp) + fy * torch.cos(yp)
+    facing = (wx * ln._dx + wy * ln._dy + fz * ln._dz)
+    assert float((facing[hit.cuda()] <= 1e-4).float().mean()) > 0.999
+    # the bottom rows of the steepest down-looking pose are mostly floor or ramp: z up > 0.5
+    k = int(np.argmin(a[:, 4]))
+    assert float((on[k, -4:, :, 3] > 0.5).float().mean()) > 0.5
+
+
+@needs_run
+@pytest.mark.skipif(not FACEID.exists(), reason="needs the baked cannonball face grid (cell 32)")
+def test_normal_trainer_smoke():
+    run = "cya_nrm"
+    r = _train(run, ABS + ["--obs-potential", "norm", "--obs-normal", "1"])
+    assert r.returncode == 0, r.stdout[-4000:] + r.stderr[-4000:]
+    assert "--obs-normal: surf_src_cannonball the hit face's ego-frame unit normal" in r.stdout
+    d = ROOT / "runs" / run
+    assert json.loads((d / "run.json").read_text(encoding="utf-8"))["config"]["obs_normal"] == 1
+    ck = torch.load(d / "ckpt_final.pt", map_location="cpu", weights_only=False)
+    assert tuple(ck["policy"]["conv.0.weight"].shape) == (16, 5, 5, 5)
+    rec = _run([sys.executable, "-u", str(RECORD), str(d / "ckpt_final.pt"),
+                "--map", str(CANNONBALL), "--episodes", "1", "--out", str(d / "rec.jsonl")])
+    assert rec.returncode == 0, rec.stdout[-4000:] + rec.stderr[-4000:]
+    bad = _train("cya_nrm_bad", ABS + ["--obs-potential", "norm", "--obs-normal", "1",
+                                       "--obs-texture", "1"])
+    assert bad.returncode != 0 and "pick one" in bad.stdout + bad.stderr
+    for n in (run, "cya_nrm_bad"):
+        shutil.rmtree(ROOT / "runs" / n, ignore_errors=True)

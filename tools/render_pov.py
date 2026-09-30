@@ -326,7 +326,8 @@ def main() -> None:
                      depth_enc=depth_enc,
                      depth_log_d0=float(rcfg.get("depth_log_d0") or 200.0),
                      # --obs-texture: the texture channels the run trained on (one more panel)
-                     texture=bool(rcfg.get("obs_texture") or 0))
+                     texture=bool(rcfg.get("obs_texture") or rcfg.get("obs_normal") or 0),
+                     texture_mode=("normal" if rcfg.get("obs_normal") else "rgb"))
     if lidar.texmap is not None:
         print("--obs-texture mirrored: " + lidar.texmap.describe())
     if depth_enc != "legacy":
@@ -563,13 +564,21 @@ def main() -> None:
                 if lidar.texmap is not None:
                     # --obs-texture: the R, G, B channels exactly as the policy receives them
                     tc = lidar.tex_channel
-                    rgb = (np.clip(d[i][..., tc:tc + 3], 0.0, 1.0) * 255.0).astype(np.uint8)
+                    if lidar.texture_mode == "normal":
+                        # the face normal (x fwd, y left, z up) in [-1, 1] as R, G, B: a floor
+                        # (128, 128, 255), a wall ahead (0, 128, 128), no face mid-grey
+                        rgb = ((np.clip(d[i][..., tc:tc + 3], -1.0, 1.0) + 1.0) * 127.5
+                               ).astype(np.uint8)
+                    else:
+                        rgb = (np.clip(d[i][..., tc:tc + 3], 0.0, 1.0) * 255.0).astype(np.uint8)
                     tfr_ = cv2.resize(np.ascontiguousarray(rgb[..., ::-1]), (W, H),
                                       interpolation=cv2.INTER_NEAREST)
                     for _o, _c in ((3, (0, 0, 0)), (1, (255, 255, 255))):
-                        cv2.putText(tfr_, "texture channels (R, G, B): far = the texture's "
-                                    "average colour", (8, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
-                                    _c, _o, cv2.LINE_AA)
+                        cv2.putText(tfr_, ("face normal (x fwd, y left, z up) as R, G, B"
+                                           if lidar.texture_mode == "normal" else
+                                           "texture channels (R, G, B): far = the texture's "
+                                           "average colour"), (8, 22), cv2.FONT_HERSHEY_SIMPLEX,
+                                    0.5, _c, _o, cv2.LINE_AA)
                     cv2.line(tfr_, (0, 0), (W, 0), (60, 60, 60), 1)
                     frame = np.vstack((frame, tfr_))
                 if depth_enc == "dual":

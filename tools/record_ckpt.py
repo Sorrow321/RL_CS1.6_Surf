@@ -1217,7 +1217,9 @@ def main(argv=None, build_only: bool = False, device=None):
                      # --depth-enc: MIRRORED (what every depth pixel means; dual = 2 channels)
                      depth_enc=str(cfg.get("depth_enc") or "legacy"),
                      # --obs-texture: MIRRORED (the hit surface's R, G, B; +3 channels)
-                     texture=bool(cfg.get("obs_texture") or 0),
+                     texture=bool(cfg.get("obs_texture") or cfg.get("obs_normal") or 0),
+                     # --obs-normal: MIRRORED (the face channels carry the ego-frame normal)
+                     texture_mode=("normal" if cfg.get("obs_normal") else "rgb"),
                      depth_log_d0=float(cfg.get("depth_log_d0") or 200.0))
     if cfg.get("obs_potential"):
         # all three keys named here as literals on purpose: audit_cfg reads

@@ -864,6 +864,35 @@ if HAVE_TRITON:
             tl.store(out_ptr + offs * 2 + 1, val, mask=m)
 
     @triton.jit
+    def _face_normal(ex, ey, ez, dx, dy, dz, t, m, rng,
+                     nx, ny, nz, stride_z, stride_y, mnx, mny, mnz, inv_cell,
+                     fid_ptr, fdata_ptr, yp):
+        """--obs-normal: the unit normal of the face the face-id grid names at the march's stop,
+        turned to face the ray and rotated into the player's ego frame by the VIEW yaw (x
+        forward, y left, z up - _march_kernel_nrm's convention); a miss or no face (0, 0, 0)."""
+        px = ex + dx * t
+        py = ey + dy * t
+        pz = ez + dz * t
+        ix = tl.minimum(tl.maximum(((px - mnx) * inv_cell).to(tl.int64), 0), nx - 1)
+        iy = tl.minimum(tl.maximum(((py - mny) * inv_cell).to(tl.int64), 0), ny - 1)
+        iz = tl.minimum(tl.maximum(((pz - mnz) * inv_cell).to(tl.int64), 0), nz - 1)
+        vox = iz * stride_z + iy * stride_y + ix
+        fid = tl.load(fid_ptr + vox, mask=m, other=-1).to(tl.int32)
+        ok = m & (t < rng) & (fid >= 0)
+        f = tl.maximum(fid, 0).to(tl.int64) * 16
+        wx = tl.load(fdata_ptr + f + 8, mask=ok, other=0.0)
+        wy = tl.load(fdata_ptr + f + 9, mask=ok, other=0.0)
+        wz = tl.load(fdata_ptr + f + 10, mask=ok, other=0.0)
+        sgn = tl.where(wx * dx + wy * dy + wz * dz > 0.0, -1.0, 1.0)
+        wx = wx * sgn
+        wy = wy * sgn
+        wz = wz * sgn
+        cy = tl.cos(yp)
+        sy = tl.sin(yp)
+        return (tl.where(ok, wx * cy + wy * sy, 0.0), tl.where(ok, wy * cy - wx * sy, 0.0),
+                tl.where(ok, wz, 0.0))
+
+    @triton.jit
     def _tex_rgb(ex, ey, ez, dx, dy, dz, t, m, rng,
                  nx, ny, nz, stride_z, stride_y, mnx, mny, mnz, inv_cell, cell,
                  fid_ptr, fdata_ptr, ftex_ptr, tdim_ptr, tmip_ptr, atlas_ptr, tavg_ptr,
@@ -941,7 +970,7 @@ if HAVE_TRITON:
                       max_steps,
                           fid_ptr, fdata_ptr, ftex_ptr, tdim_ptr, tmip_ptr, atlas_ptr,
                           tavg_ptr, tsky_ptr, sky_rgb, pix_rad,
-                      BLOCK: tl.constexpr):
+                      OUT: tl.constexpr, BLOCK: tl.constexpr):
         """--obs-texture: _march_kernel verbatim, then the hit's texture colour
         (_tex_rgb): (depth, R, G, B) interleaved per pixel. A copy: _march_kernel is
         pinned bit-exact."""
@@ -1002,11 +1031,17 @@ if HAVE_TRITON:
         # near-linear + bounded far tail (near == rng -> legacy t/rng exactly)
         enc = tl.minimum(t, near) / near \
             + 0.25 * (1.0 - tl.exp(-tl.maximum(t - near, 0.0) / 2500.0))
-        tr_, tg_, tb_ = _tex_rgb(ex, ey, ez, dx, dy, dz, t, m, rng,
-                                 nx, ny, nz, stride_z, stride_y, mnx, mny, mnz,
-                                 inv_cell, cell, fid_ptr, fdata_ptr, ftex_ptr,
-                                 tdim_ptr, tmip_ptr, atlas_ptr, tavg_ptr, tsky_ptr,
-                                 sky_rgb, pix_rad)
+        if OUT == 1:
+            tr_, tg_, tb_ = _face_normal(ex, ey, ez, dx, dy, dz, t, m, rng,
+                                         nx, ny, nz, stride_z, stride_y, mnx, mny, mnz,
+                                         inv_cell, fid_ptr, fdata_ptr,
+                                         tl.load(yaw_ptr + n, mask=m, other=0.0))
+        else:
+            tr_, tg_, tb_ = _tex_rgb(ex, ey, ez, dx, dy, dz, t, m, rng,
+                                     nx, ny, nz, stride_z, stride_y, mnx, mny, mnz,
+                                     inv_cell, cell, fid_ptr, fdata_ptr, ftex_ptr,
+                                     tdim_ptr, tmip_ptr, atlas_ptr, tavg_ptr, tsky_ptr,
+                                     sky_rgb, pix_rad)
         tl.store(out_ptr + offs * 4 + 0, enc, mask=m)
         tl.store(out_ptr + offs * 4 + 1, tr_, mask=m)
         tl.store(out_ptr + offs * 4 + 2, tg_, mask=m)
@@ -1026,7 +1061,7 @@ if HAVE_TRITON:
                           quant, valid_max,
                           scale_inv, lo, hi, bad,
                           cx0, cy0, cz0, cx1, cy1, cz1,
-                          REL: tl.constexpr, CURTAIN: tl.constexpr,
+                          REL: tl.constexpr, CURTAIN: tl.constexpr, OUT: tl.constexpr,
                           BLOCK: tl.constexpr):
         """--obs-texture with --obs-potential: _march_kernel_pot verbatim, then the
         hit's texture colour (_tex_rgb): (depth, potential, R, G, B) interleaved per
@@ -1176,11 +1211,17 @@ if HAVE_TRITON:
             val = vhit * scale_inv
         val = tl.minimum(tl.maximum(val, lo), hi)
         val = tl.where(ok, val, bad)
-        tr_, tg_, tb_ = _tex_rgb(ex, ey, ez, dx, dy, dz, t, m, rng,
-                                 nx, ny, nz, stride_z, stride_y, mnx, mny, mnz,
-                                 inv_cell, cell, fid_ptr, fdata_ptr, ftex_ptr,
-                                 tdim_ptr, tmip_ptr, atlas_ptr, tavg_ptr, tsky_ptr,
-                                 sky_rgb, pix_rad)
+        if OUT == 1:
+            tr_, tg_, tb_ = _face_normal(ex, ey, ez, dx, dy, dz, t, m, rng,
+                                         nx, ny, nz, stride_z, stride_y, mnx, mny, mnz,
+                                         inv_cell, fid_ptr, fdata_ptr,
+                                         tl.load(yaw_ptr + n, mask=m, other=0.0))
+        else:
+            tr_, tg_, tb_ = _tex_rgb(ex, ey, ez, dx, dy, dz, t, m, rng,
+                                     nx, ny, nz, stride_z, stride_y, mnx, mny, mnz,
+                                     inv_cell, cell, fid_ptr, fdata_ptr, ftex_ptr,
+                                     tdim_ptr, tmip_ptr, atlas_ptr, tavg_ptr, tsky_ptr,
+                                     sky_rgb, pix_rad)
         tl.store(out_ptr + offs * 5 + 0, enc, mask=m)
         tl.store(out_ptr + offs * 5 + 1, val, mask=m)
         tl.store(out_ptr + offs * 5 + 2, tr_, mask=m)
@@ -1882,7 +1923,10 @@ class GpuLidar:
                  pinhole: bool = False, normals: bool = False,
                  potential=None, vision_clip: bool = False,
                  depth_enc: str = "legacy", depth_log_d0: float = 200.0,
-                 texture=False) -> None:
+                 texture=False, texture_mode: str = "rgb") -> None:
+        if texture_mode not in ("rgb", "normal"):
+            raise ValueError(f"texture_mode {texture_mode!r}: rgb (--obs-texture) or normal "
+                             "(--obs-normal)")
         if texture and (surf_mask or pinhole or normals or vision_clip
                         or depth_enc != "legacy"):
             raise ValueError(
@@ -2016,6 +2060,8 @@ class GpuLidar:
                     self.device)
             self.channels += 3
         self.tex_channel = self.channels - 3 if self.texmap is not None else None
+        # --obs-normal: the same three channels carry the face's ego-frame normal, not its colour
+        self.texture_mode = str(texture_mode)
         self.tex_pix_rad = float(np.radians(self.vfov_deg / self.H))
         # the depth channel 0's largest value (a clear ray at the range), for displays
         self.enc_max = (float(np.log1p(self.range / self.log_d0)) * self.lscale
@@ -2323,6 +2369,7 @@ class GpuLidar:
                 *(P.curtain[0] + P.curtain[1] if P.curtain is not None
                   else (0.0,) * 6),
                 REL=bool(P.rel), CURTAIN=bool(P.curtain is not None),
+                OUT=int(self.texture_mode == "normal"),
                 BLOCK=BLOCK, num_warps=MARCH_WARPS)
             return out
         _march_kernel_tex[(triton.cdiv(total, BLOCK),)](
@@ -2333,7 +2380,8 @@ class GpuLidar:
             self.nx, self.ny, self.nz, self.stride_z, self.stride_y,
             self.mins_f[0], self.mins_f[1], self.mins_f[2],
             1.0 / self.cell, self.cell, self.range, self.near,
-            self.max_steps, *targs, BLOCK=BLOCK, num_warps=MARCH_WARPS)
+            self.max_steps, *targs, OUT=int(self.texture_mode == "normal"),
+            BLOCK=BLOCK, num_warps=MARCH_WARPS)
         return out
 
     @torch.no_grad()
@@ -2352,6 +2400,17 @@ class GpuLidar:
         ok = (t < self.range) & (fid >= 0)
         f = fid.clamp(min=0)
         fd = X.fdata.view(-1, 16)[f]                                   # (N, H, W, 16)
+        if self.texture_mode == "normal":
+            # _face_normal, term for term
+            wx, wy, wz = fd[..., 8], fd[..., 9], fd[..., 10]
+            sgn = torch.where(wx * dx + wy * dy + wz * dz > 0.0, -1.0, 1.0)
+            wx, wy, wz = wx * sgn, wy * sgn, wz * sgn
+            yp = (self._yaw_deg_last * (np.pi / 180.0)).view(N, 1, 1)
+            cy, sy = torch.cos(yp), torch.sin(yp)
+            z = torch.zeros_like(wx)
+            return torch.stack((torch.where(ok, wx * cy + wy * sy, z),
+                                torch.where(ok, wy * cy - wx * sy, z),
+                                torch.where(ok, wz, z)), -1)
         nd = dx * fd[..., 8] + dy * fd[..., 9] + dz * fd[..., 10]
         an = nd.abs()
         tp = (fd[..., 11] - (ex * fd[..., 8] + ey * fd[..., 9] + ez * fd[..., 10])) \
@@ -2414,6 +2473,7 @@ class GpuLidar:
     @torch.no_grad()
     def _render_torch(self, origin, yaw_deg, pitch_deg, ducked):
         N = origin.shape[0]
+        self._yaw_deg_last = yaw_deg          # --obs-normal's ego rotation (_tex_torch)
         self._ensure_buffers(N)
         d2r = np.pi / 180.0
         ex = origin[:, 0].view(N, 1, 1)
