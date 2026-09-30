@@ -1101,6 +1101,7 @@ ARCH_KEYS = (("emb", "--emb"), ("hidden", "--hidden"), ("trunk", "--trunk"),
              ("lidar_w", "--lidar-w"), ("lidar_h", "--lidar-h"),
              ("normals", "--normals"), ("surf_mask", "--surf-mask"),
              ("obs_potential", "--obs-potential"),
+             ("depth_enc", "--depth-enc"),
              ("keys_hold", "--keys-hold"),
              ("obs_fourier", "--obs-fourier"))
 
@@ -4439,6 +4440,16 @@ def main() -> None:
     # in_ch becomes 2 (like --surf-mask), so a ckpt cannot switch it
     # mid-run; default None = off and byte-identical to the trainer
     # before the flag (the key is written only when set).
+    ap.add_argument("--depth-enc", default=None, choices=("legacy", "log", "dual"),
+                    help="the depth channel's encoding (the user, 2026-09-30: the far field is a "
+                         "fog). legacy (the default) = linear to 1.0 at --lidar-near, then a "
+                         "0.25 tail (1,000 u apart reads 0.025 at 5-6k u); log = ln(1 + d/d0) / "
+                         "ln(1 + near/d0), 1.0 at near and far differences in proportion (0.073 "
+                         "at 5-6k u); dual = both, two depth channels (in_ch + 1). Changes the "
+                         "image: SCRATCH arms; ckpt restores, a mismatch is refused")
+    ap.add_argument("--depth-log-d0", type=float, default=None,
+                    help="--depth-enc log / dual: d0 of ln(1 + d/d0), u (default 200); ckpt "
+                         "restores")
     ap.add_argument("--obs-potential", default=None,
                     choices=("abs", "rel", "norm", "logabs"),  # off; ckpt restores
                     help="second image channel = the race potential at each "
@@ -6893,6 +6904,22 @@ def main() -> None:
                 "first layer cannot be widened, narrowed or re-read - "
                 "start a fresh run, or drop the flag to keep the ckpt's "
                 f"setting ({ck_cfg.get('obs_potential') or 'off'})")
+        # --depth-enc rides in the checkpoint the same way: dual widens conv1 by a channel,
+        # and log changes what every depth pixel MEANS, so neither is a warm start of the
+        # other; restored when the flag is absent, refused when it is passed and differs
+        if args.depth_enc is None and ck_cfg.get("depth_enc"):
+            args.depth_enc = str(ck_cfg["depth_enc"])
+            restored.append(f"depth_enc={args.depth_enc}")
+        elif args.depth_enc is not None \
+                and str(args.depth_enc) != str(ck_cfg.get("depth_enc") or "legacy"):
+            raise SystemExit(
+                "--depth-enc changes the depth pixels (and under dual the conv trunk's input "
+                "channels): a checkpoint trained on one encoding is not a warm start of "
+                "another - start a fresh run, or drop the flag to keep the ckpt's "
+                f"setting ({ck_cfg.get('depth_enc') or 'legacy'})")
+        if args.depth_log_d0 is None and ck_cfg.get("depth_log_d0") is not None:
+            args.depth_log_d0 = float(ck_cfg["depth_log_d0"])
+            restored.append(f"depth_log_d0={args.depth_log_d0:g}")
         # --keys-hold changes the ACTION HEAD's width (fwd/side/duck gain a
         # keep bin), so action_head.weight is (sum(NVEC), hidden) with a
         # different sum(NVEC) - a checkpoint trained one way cannot be read
@@ -7686,6 +7713,23 @@ def main() -> None:
         args.frame_stack = 0
     check_vision_exclusive(args.surf_mask, args.pinhole, args.frame_stack,
                            args.normals, args.obs_potential)
+    if args.depth_enc is None:
+        args.depth_enc = "legacy"
+    if args.depth_log_d0 is None:
+        args.depth_log_d0 = 200.0
+    if args.depth_enc != "legacy":
+        if args.surf_mask or args.pinhole or args.normals:
+            raise SystemExit("--depth-enc log / dual has kernels for the plain and the "
+                             "--obs-potential renders only (not --surf-mask, --pinhole, "
+                             "--normals)")
+        if not args.depth_log_d0 > 0.0:
+            raise SystemExit(f"--depth-log-d0 must be > 0, got {args.depth_log_d0!r}")
+        _nr = float(args.lidar_near or args.lidar_range or 2000.0)
+        print(f"--depth-enc {args.depth_enc}: depth = "
+              + ("(legacy, " if args.depth_enc == "dual" else "")
+              + f"ln(1 + d/{args.depth_log_d0:g}) / ln(1 + {_nr:g}/{args.depth_log_d0:g})"
+              + (") - two depth channels" if args.depth_enc == "dual" else "")
+              + " (the far field in proportion instead of the legacy 0.25 tail)")
     if args.obs_potential:
         # the channel IS the shaping field: no race reward, no field; the
         # euclid proxy has no grid; --goals shapes on a per-env field
@@ -9887,6 +9931,8 @@ def main() -> None:
     for slot in slots:
         with D.rank0_first():        # vision SDF npz build/write
             slot.lidar = GpuLidar(slot.core, args.lidar_w, args.lidar_h,
+                                  depth_enc=str(args.depth_enc),
+                                  depth_log_d0=float(args.depth_log_d0),
                                   hfov_deg=float(args.lidar_hfov),
                                   vfov_deg=float(args.lidar_vfov),
                                   range_units=args.lidar_range,
@@ -10017,6 +10063,8 @@ def main() -> None:
                                    and not args.warm_caches) else None)
             with D.rank0_first():        # vision SDF npz build/write
                 hs.lidar = GpuLidar(ec, args.lidar_w, args.lidar_h,
+                                    depth_enc=str(args.depth_enc),
+                                    depth_log_d0=float(args.depth_log_d0),
                                     hfov_deg=float(args.lidar_hfov),
                                     vfov_deg=float(args.lidar_vfov),
                                     range_units=args.lidar_range,
@@ -12048,6 +12096,11 @@ def main() -> None:
     # geodesic the abs channel was scaled by rides along so an eval tool
     # renders the very same channel (it recomputes the same number from
     # the same spawns, but the record is the record)
+    if args.depth_enc != "legacy":
+        # --depth-enc: ONLY off the default, so a legacy config dump is the pre-flag one;
+        # record_ckpt.py and render_pov.py mirror both keys
+        meta["config"]["depth_enc"] = str(args.depth_enc)
+        meta["config"]["depth_log_d0"] = float(args.depth_log_d0)
     if args.obs_potential:
         meta["config"]["obs_potential"] = str(args.obs_potential)
         meta["config"]["obs_potential_d0"] = {

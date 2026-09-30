@@ -567,14 +567,16 @@ class MapFleet:
             if pot is not None and getattr(pot, "norm", False):
                 img = s.lidar.render(v[:, 0:3], v[:, 3], v[:, 4], v[:, 5],
                                      post=False)
-                batch_norm = (pot, s.lidar.H, s.lidar.W)
+                # --depth-enc dual puts a second depth channel ahead of the potential
+                batch_norm = (pot, s.lidar.H, s.lidar.W, int(s.lidar.channels),
+                              int(getattr(s.lidar, "pot_channel", 1)))
             else:
                 img = s.lidar.render(v[:, 0:3], v[:, 3], v[:, 4], v[:, 5])
             out[s.lo:s.hi] = img.reshape(s.n, -1)
         if batch_norm is not None:
-            pot, H, W = batch_norm
-            view = out.view(out.shape[0], H, W, 2)
-            view[..., 1] = pot.normalise(view[..., 1])
+            pot, H, W, C, pc = batch_norm
+            view = out.view(out.shape[0], H, W, C)
+            view[..., pc] = pot.normalise(view[..., pc])
         return out
 
     # -- --priv-critic ------------------------------------------------------

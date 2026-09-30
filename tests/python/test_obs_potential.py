@@ -1030,7 +1030,8 @@ def test_norm_batched_over_slots_matches_per_slot():
 
 def test_fleet_render_batches_the_norm_post_process():
     src = (ROOT / "python" / "surfgym" / "mapfleet.py").read_text(encoding="utf-8")
-    assert "post=False" in src and "pot.normalise(view[..., 1])" in src
+    # the potential's channel: 1, or 2 under --depth-enc dual (pot_channel)
+    assert "post=False" in src and "pot.normalise(view[..., pc])" in src
     vsrc = (ROOT / "python" / "surfgym" / "vision.py").read_text(encoding="utf-8")
     assert "def render(self, origin, yaw_deg, pitch_deg, ducked, post: bool = True):" in vsrc
     assert "if post and self.potential is not None and self.potential.post:" in vsrc

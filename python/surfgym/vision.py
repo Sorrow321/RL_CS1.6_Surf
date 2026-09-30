@@ -612,6 +612,260 @@ if HAVE_TRITON:
         tl.store(out_ptr + offs * 2 + 1, val, mask=m)
 
 
+    @triton.jit
+    def _march_kernel_enc(eye_ptr, yaw_ptr, pitch_ptr, duck_ptr, out_ptr,
+                      sdf_ptr, yoff_ptr, poff_ptr,
+                      total, HW, W,
+                      nx, ny, nz, stride_z, stride_y,
+                      mnx, mny, mnz, inv_cell, cell, rng, near,
+                      max_steps, ld0, lscale,
+                      ENC: tl.constexpr, BLOCK: tl.constexpr):
+        """--depth-enc log / dual: the march above, verbatim, with another encoding of
+        the hit distance. log = ln(1 + t / d0) * lscale, lscale = 1 / ln(1 + near / d0),
+        so 1.0 at `near` like the legacy code, but a far difference keeps its RELATIVE
+        size instead of being squashed into the legacy 0.25 tail (1,000 u apart at
+        5-6k u: 0.073 vs 0.025; at 8-9k u: 0.048 vs 0.0075). dual (ENC 2) = the
+        legacy encoding AND the log one, interleaved per pixel (2 channels, NHWC).
+        A copy, not a flag on _march_kernel: that source is pinned bit-exact."""
+        # one lane per ray; a block covers a contiguous pixel patch, so lanes
+        # diverge little and each ray stops loading memory once it has hit
+        offs = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+        m = offs < total
+        n = offs // HW
+        pix = offs % HW
+        r = pix // W
+        c = pix % W
+        ex = tl.load(eye_ptr + n * 3 + 0, mask=m, other=0.0)
+        ey = tl.load(eye_ptr + n * 3 + 1, mask=m, other=0.0)
+        ez = tl.load(eye_ptr + n * 3 + 2, mask=m, other=0.0)
+        dk = tl.load(duck_ptr + n, mask=m, other=0)
+        ez += tl.where(dk != 0, 12.0, 17.0)
+        yw = tl.load(yaw_ptr + n, mask=m, other=0.0) + tl.load(yoff_ptr + c, mask=m, other=0.0)
+        pt = tl.load(pitch_ptr + n, mask=m, other=0.0) + tl.load(poff_ptr + r, mask=m, other=0.0)
+        cp = tl.cos(pt)
+        dx = cp * tl.cos(yw)
+        dy = cp * tl.sin(yw)
+        dz = tl.sin(pt)
+        t = tl.zeros([BLOCK], tl.float32)
+        alive = m
+        hit_eps = 0.6 * cell
+        min_step = 0.3 * cell
+        # the eye's own voxel -- the contact-blackout guard (module note)
+        ix0 = tl.minimum(tl.maximum(((ex - mnx) * inv_cell).to(tl.int64), 0), nx - 1)
+        iy0 = tl.minimum(tl.maximum(((ey - mny) * inv_cell).to(tl.int64), 0), ny - 1)
+        iz0 = tl.minimum(tl.maximum(((ez - mnz) * inv_cell).to(tl.int64), 0), nz - 1)
+        vox0 = iz0 * stride_z + iy0 * stride_y + ix0
+        # Early exit + a RUNTIME trip bound, both worth ~2x on their own and
+        # 4.15x together (5.70 -> 1.37 ms per 2048-env batch), bit-exact.
+        # Why they matter: the mean ray finishes in 9.9 steps and only 0.12%
+        # of rays reach the 64th, but a constexpr `for` has no break, so every
+        # block paid all 64 trips; and a constexpr bound gets fully unrolled,
+        # which past ~32 trips costs more in register pressure than the work
+        # (1.65 ms at 32 vs 4.90 at 48 — tools/bench_lidar.py).
+        # Exactness: `alive` is monotone (only ever &='d) and a dead lane adds
+        # 0 to t, so leaving the loop once every lane is dead cannot change an
+        # output value. The depth encoding is warm-start ABI — it must not.
+        k = 0
+        while k < max_steps and tl.max(alive.to(tl.int32)) > 0:
+            px = ex + dx * t
+            py = ey + dy * t
+            pz = ez + dz * t
+            ix = tl.minimum(tl.maximum(((px - mnx) * inv_cell).to(tl.int64), 0), nx - 1)
+            iy = tl.minimum(tl.maximum(((py - mny) * inv_cell).to(tl.int64), 0), ny - 1)
+            iz = tl.minimum(tl.maximum(((pz - mnz) * inv_cell).to(tl.int64), 0), nz - 1)
+            vox = iz * stride_z + iy * stride_y + ix
+            d = tl.load(sdf_ptr + vox, mask=alive, other=0.0).to(tl.float32)
+            # `vox == vox0` is a no-op wherever the eye is in air, so a
+            # frame that is not black today is bit-identical
+            alive = alive & ((d > hit_eps) | (vox == vox0)) & (t < rng)
+            t += tl.where(alive, tl.maximum(d * 0.9, min_step), 0.0)
+            k += 1
+        t = tl.minimum(t, rng)
+        enl = tl.log(1.0 + t / ld0) * lscale
+        if ENC == 2:
+            enc = tl.minimum(t, near) / near \
+                + 0.25 * (1.0 - tl.exp(-tl.maximum(t - near, 0.0) / 2500.0))
+            tl.store(out_ptr + offs * 2 + 0, enc, mask=m)
+            tl.store(out_ptr + offs * 2 + 1, enl, mask=m)
+        else:
+            tl.store(out_ptr + offs, enl, mask=m)
+
+    @triton.jit
+    def _march_kernel_pot_enc(eye_ptr, yaw_ptr, pitch_ptr, duck_ptr, out_ptr,
+                          sdf_ptr, pot_ptr, deye_ptr, yoff_ptr, poff_ptr,
+                          total, HW, W,
+                          nx, ny, nz, stride_z, stride_y,
+                          mnx, mny, mnz, inv_cell, cell, rng, near,
+                          max_steps, ld0, lscale,
+                          pnx, pny, pnz, pstride_z, pstride_y,
+                          pmnx, pmny, pmnz, pinv_cell, pcell,
+                          quant, valid_max,
+                          scale_inv, lo, hi, bad,
+                          cx0, cy0, cz0, cx1, cy1, cz1,
+                          REL: tl.constexpr, CURTAIN: tl.constexpr, ENC: tl.constexpr,
+                          BLOCK: tl.constexpr):
+        """--depth-enc log / dual with --obs-potential: _march_kernel_pot verbatim (the
+        march, the curtain, the potential sample) with _march_kernel_enc's encoding:
+        (log depth, potential), or under dual (legacy depth, log depth, potential),
+        interleaved per pixel. A copy: _march_kernel_pot is every --obs-potential
+        checkpoint's ABI."""
+        offs = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+        m = offs < total
+        n = offs // HW
+        pix = offs % HW
+        r = pix // W
+        c = pix % W
+        ex = tl.load(eye_ptr + n * 3 + 0, mask=m, other=0.0)
+        ey = tl.load(eye_ptr + n * 3 + 1, mask=m, other=0.0)
+        ez = tl.load(eye_ptr + n * 3 + 2, mask=m, other=0.0)
+        dk = tl.load(duck_ptr + n, mask=m, other=0)
+        ez += tl.where(dk != 0, 12.0, 17.0)
+        yw = tl.load(yaw_ptr + n, mask=m, other=0.0) + tl.load(yoff_ptr + c, mask=m, other=0.0)
+        pt = tl.load(pitch_ptr + n, mask=m, other=0.0) + tl.load(poff_ptr + r, mask=m, other=0.0)
+        cp = tl.cos(pt)
+        dx = cp * tl.cos(yw)
+        dy = cp * tl.sin(yw)
+        dz = tl.sin(pt)
+        t = tl.zeros([BLOCK], tl.float32)
+        alive = m
+        hit_eps = 0.6 * cell
+        min_step = 0.3 * cell
+        # the eye's own voxel -- the contact-blackout guard (module note)
+        ix0 = tl.minimum(tl.maximum(((ex - mnx) * inv_cell).to(tl.int64), 0), nx - 1)
+        iy0 = tl.minimum(tl.maximum(((ey - mny) * inv_cell).to(tl.int64), 0), ny - 1)
+        iz0 = tl.minimum(tl.maximum(((ez - mnz) * inv_cell).to(tl.int64), 0), nz - 1)
+        vox0 = iz0 * stride_z + iy0 * stride_y + ix0
+        k = 0
+        while k < max_steps and tl.max(alive.to(tl.int32)) > 0:
+            px = ex + dx * t
+            py = ey + dy * t
+            pz = ez + dz * t
+            ix = tl.minimum(tl.maximum(((px - mnx) * inv_cell).to(tl.int64), 0), nx - 1)
+            iy = tl.minimum(tl.maximum(((py - mny) * inv_cell).to(tl.int64), 0), ny - 1)
+            iz = tl.minimum(tl.maximum(((pz - mnz) * inv_cell).to(tl.int64), 0), nz - 1)
+            vox = iz * stride_z + iy * stride_y + ix
+            d = tl.load(sdf_ptr + vox, mask=alive, other=0.0).to(tl.float32)
+            # `vox == vox0` is a no-op wherever the eye is in air, so a
+            # frame that is not black today is bit-identical
+            alive = alive & ((d > hit_eps) | (vox == vox0)) & (t < rng)
+            t += tl.where(alive, tl.maximum(d * 0.9, min_step), 0.0)
+            k += 1
+        t = tl.minimum(t, rng)
+        enc = tl.minimum(t, near) / near \
+            + 0.25 * (1.0 - tl.exp(-tl.maximum(t - near, 0.0) / 2500.0))
+        enl = tl.log(1.0 + t / ld0) * lscale
+        # --obs-potential-curtain: the finish is a trigger_multiple, not a
+        # solid, so the march runs straight THROUGH it and stops on the far
+        # wall of the finish room - the goal is never a pixel. An analytic
+        # slab test against the finish AABB (the box is 1 u thin in y, far
+        # under the 32 u march step, so stepping onto it is hopeless) says
+        # whether this ray entered it before its hit; if it did, the sample
+        # below is replaced by the goal value d = 0.
+        if CURTAIN:
+            cbig = 3.0e38
+            ct0 = tl.zeros([BLOCK], tl.float32)
+            ct1 = tl.zeros([BLOCK], tl.float32) + cbig
+            ax = tl.abs(dx) > 1e-12
+            iv = 1.0 / tl.where(ax, dx, 1.0)
+            ta = (cx0 - ex) * iv
+            tb = (cx1 - ex) * iv
+            ins = (ex >= cx0) & (ex <= cx1)
+            ct0 = tl.where(ax, tl.maximum(ct0, tl.minimum(ta, tb)),
+                           tl.where(ins, ct0, cbig))
+            ct1 = tl.where(ax, tl.minimum(ct1, tl.maximum(ta, tb)),
+                           tl.where(ins, ct1, -cbig))
+            ay = tl.abs(dy) > 1e-12
+            iv = 1.0 / tl.where(ay, dy, 1.0)
+            ta = (cy0 - ey) * iv
+            tb = (cy1 - ey) * iv
+            ins = (ey >= cy0) & (ey <= cy1)
+            ct0 = tl.where(ay, tl.maximum(ct0, tl.minimum(ta, tb)),
+                           tl.where(ins, ct0, cbig))
+            ct1 = tl.where(ay, tl.minimum(ct1, tl.maximum(ta, tb)),
+                           tl.where(ins, ct1, -cbig))
+            az = tl.abs(dz) > 1e-12
+            iv = 1.0 / tl.where(az, dz, 1.0)
+            ta = (cz0 - ez) * iv
+            tb = (cz1 - ez) * iv
+            ins = (ez >= cz0) & (ez <= cz1)
+            ct0 = tl.where(az, tl.maximum(ct0, tl.minimum(ta, tb)),
+                           tl.where(ins, ct0, cbig))
+            ct1 = tl.where(az, tl.minimum(ct1, tl.maximum(ta, tb)),
+                           tl.where(ins, ct1, -cbig))
+            ct0 = tl.maximum(ct0, 0.0)
+            chit = (ct0 <= ct1) & (ct0 <= t)
+        # the potential, one field cell short of the hit along the ray
+        # (LidarPotential: the march stops INSIDE a solid voxel, where the
+        # field holds its sentinel; one cell back is the air at the surface)
+        ts = tl.maximum(t - pcell, 0.0)
+        gx = (ex + dx * ts - pmnx) * pinv_cell - 0.5
+        gy = (ey + dy * ts - pmny) * pinv_cell - 0.5
+        gz = (ez + dz * ts - pmnz) * pinv_cell - 0.5
+        fx0 = tl.floor(gx)
+        fy0 = tl.floor(gy)
+        fz0 = tl.floor(gz)
+        fx = gx - fx0
+        fy = gy - fy0
+        fz = gz - fz0
+        jx = fx0.to(tl.int64)
+        jy = fy0.to(tl.int64)
+        jz = fz0.to(tl.int64)
+        num = tl.zeros([BLOCK], tl.float32)
+        den = tl.zeros([BLOCK], tl.float32)
+        # corners in GoalField.sample's order (dz outer, dy, dx inner) so the
+        # float32 accumulation is the reference's, term for term
+        for cdz in tl.static_range(2):
+            if cdz == 1:
+                wz = fz
+            else:
+                wz = 1.0 - fz
+            kz = tl.minimum(tl.maximum(jz + cdz, 0), pnz - 1) * pstride_z
+            for cdy in tl.static_range(2):
+                if cdy == 1:
+                    wy = fy
+                else:
+                    wy = 1.0 - fy
+                ky = tl.minimum(tl.maximum(jy + cdy, 0), pny - 1) * pstride_y
+                for cdx in tl.static_range(2):
+                    if cdx == 1:
+                        wx = fx
+                    else:
+                        wx = 1.0 - fx
+                    kx = tl.minimum(tl.maximum(jx + cdx, 0), pnx - 1)
+                    code = tl.load(pot_ptr + kz + ky + kx, mask=m,
+                                   other=0).to(tl.int32) & 0xFFFF
+                    v = code.to(tl.float32) * quant
+                    honest = tl.where(v < valid_max, 1.0, 0.0)
+                    w = ((wx * wy) * wz) * honest
+                    num += w * v
+                    den += w
+        ok = den > 1e-6
+        vhit = num / tl.maximum(den, 1e-6)
+        if CURTAIN:
+            # a ray through the finish curtain reads the GOAL: d = 0, honest
+            # (abs and logabs -> 0, rel -> its goal-ward clip, norm -> the
+            # most goal-ward value in the frame)
+            vhit = tl.where(chit, 0.0, vhit)
+            ok = ok | chit
+        deye = tl.load(deye_ptr + n, mask=m, other=0.0)
+        if REL:
+            ok = ok & (deye < valid_max)
+            val = (deye - vhit) * scale_inv
+        else:
+            val = vhit * scale_inv
+        val = tl.minimum(tl.maximum(val, lo), hi)
+        val = tl.where(ok, val, bad)
+        if ENC == 2:
+            tl.store(out_ptr + offs * 3 + 0, enc, mask=m)
+            tl.store(out_ptr + offs * 3 + 1, enl, mask=m)
+            tl.store(out_ptr + offs * 3 + 2, val, mask=m)
+        else:
+            tl.store(out_ptr + offs * 2 + 0, enl, mask=m)
+            tl.store(out_ptr + offs * 2 + 1, val, mask=m)
+
+#: --depth-enc: the depth channel's encodings (GpuLidar(depth_enc=))
+DEPTH_ENCODINGS = ("legacy", "log", "dual")
+
 _SDF_BUILDER_VERSION = 2   # frozen in _map_sig's format — see below
 _SDF_SEMANTICS = "s4"      # s4: NOTSOLID func_conveyors excluded from solids
 _OCC_SEMANTICS = "o2"      # base occupancy content (o2: conveyor fix); the
@@ -1302,7 +1556,16 @@ class GpuLidar:
                  device="cuda", surf_mask: bool = False,
                  mask_only: bool = False,
                  pinhole: bool = False, normals: bool = False,
-                 potential=None, vision_clip: bool = False) -> None:
+                 potential=None, vision_clip: bool = False,
+                 depth_enc: str = "legacy", depth_log_d0: float = 200.0) -> None:
+        if depth_enc not in DEPTH_ENCODINGS:
+            raise ValueError(f"depth_enc {depth_enc!r}: one of {DEPTH_ENCODINGS}")
+        if depth_enc != "legacy" and (surf_mask or pinhole or normals):
+            raise ValueError(
+                "--depth-enc log / dual has kernels for the plain and the --obs-potential "
+                "renders only; --surf-mask, --pinhole and --normals keep the legacy encoding")
+        if not (float(depth_log_d0) > 0.0):
+            raise ValueError(f"depth_log_d0 must be > 0, got {depth_log_d0!r}")
         if potential is not None and (surf_mask or pinhole or normals):
             raise ValueError(
                 "the potential channel (--obs-potential) is its own "
@@ -1398,6 +1661,21 @@ class GpuLidar:
         self.range = float(range_units)
         self.near = float(near_range) if near_range else self.range
         self.max_steps = int(max_steps)
+        # --depth-enc: legacy (the shipped code, above), log = ln(1 + t/d0) / ln(1 + near/d0)
+        # (1.0 at near, far differences kept in proportion), dual = both, as TWO depth
+        # channels ahead of the potential. pot_channel = where the potential sits
+        self.depth_enc = str(depth_enc)
+        self.log_d0 = float(depth_log_d0)
+        self.lscale = 1.0 / float(np.log1p(self.near / self.log_d0))
+        self.depth_ch = 2 if self.depth_enc == "dual" else 1
+        if self.depth_ch == 2:
+            self.channels += 1
+        self.pot_channel = self.depth_ch
+        # the depth channel 0's largest value (a clear ray at the range), for displays
+        self.enc_max = (float(np.log1p(self.range / self.log_d0)) * self.lscale
+                        if self.depth_enc == "log" else
+                        1.0 + 0.25 * (1.0 - float(np.exp(-(self.range - self.near) / 2500.0)))
+                        if self.near < self.range else 1.0)
         self._buf_n = 0                                          # lazy buffers
         d2r = np.pi / 180.0
         # per-pixel angular offsets (surfcore.h convention)
@@ -1472,7 +1750,8 @@ class GpuLidar:
             # --obs-potential norm / logabs: a post-process of the abs
             # sample the kernel tail emitted (raw u, bad at -1) - per frame
             # for norm, pointwise for logabs, on either path
-            out[..., 1] = self.potential.postprocess(out[..., 1])
+            out[..., self.pot_channel] = self.potential.postprocess(
+                out[..., self.pot_channel])
         return out
 
     @torch.no_grad()
@@ -1485,6 +1764,10 @@ class GpuLidar:
         encoded value is ~0.05 u of distance. With no near range the
         encoding is linear and so is this."""
         enc = enc.float()
+        if self.depth_enc == "log":
+            # --depth-enc log: t = d0 (exp(enc / lscale) - 1); under dual channel 0 is legacy
+            t = self.log_d0 * torch.expm1(enc / self.lscale)
+            return torch.clamp(t, min=0.0, max=self.range)
         t = enc * self.near
         if self.near < self.range:
             x = torch.clamp(1.0 - 4.0 * (enc - 1.0), min=1e-12)
@@ -1531,6 +1814,8 @@ class GpuLidar:
         d2r = float(np.pi / 180.0)
         total = N * self.H * self.W
         BLOCK = MARCH_BLOCK
+        if self.depth_enc != "legacy":
+            return self._render_triton_enc(origin, yaw_deg, pitch_deg, ducked)
         if self.potential is not None:
             P = self.potential
             # the eye's own field once per env (8 gathers on N points), not
@@ -1614,6 +1899,51 @@ class GpuLidar:
             self.max_steps, BLOCK=BLOCK, num_warps=MARCH_WARPS)
         return out
 
+    @torch.no_grad()
+    def _render_triton_enc(self, origin, yaw_deg, pitch_deg, ducked):
+        """--depth-enc log / dual: _march_kernel_enc / _march_kernel_pot_enc, the shipped
+        dispatch's arguments plus (d0, lscale, ENC)."""
+        N = origin.shape[0]
+        d2r = float(np.pi / 180.0)
+        total = N * self.H * self.W
+        BLOCK = MARCH_BLOCK
+        ENC = 2 if self.depth_enc == "dual" else 1
+        if self.potential is not None:
+            P = self.potential
+            deye = (P.eye(origin, ducked).contiguous() if P.rel else self._deye_zero(N))
+            out = torch.empty(N, self.H, self.W, self.channels, device=self.device)
+            _march_kernel_pot_enc[(triton.cdiv(total, BLOCK),)](
+                origin.contiguous(), (yaw_deg * d2r).contiguous(),
+                (pitch_deg * d2r).contiguous(),
+                ducked.to(torch.int32).contiguous(),
+                out, self.sdf_flat, P.codes, deye, self.yoff, self.poff,
+                total, self.H * self.W, self.W,
+                self.nx, self.ny, self.nz, self.stride_z, self.stride_y,
+                self.mins_f[0], self.mins_f[1], self.mins_f[2],
+                1.0 / self.cell, self.cell, self.range, self.near,
+                self.max_steps, self.log_d0, self.lscale,
+                P.nx, P.ny, P.nz, P.stride_z, P.stride_y,
+                P.mins_f[0], P.mins_f[1], P.mins_f[2], 1.0 / P.cell, P.cell,
+                P.quant, P.valid_max, P.scale_inv, P.lo, P.hi, P.bad,
+                *(P.curtain[0] + P.curtain[1] if P.curtain is not None
+                  else (0.0,) * 6),
+                REL=bool(P.rel), CURTAIN=bool(P.curtain is not None), ENC=ENC,
+                BLOCK=BLOCK, num_warps=MARCH_WARPS)
+            return out
+        out = (torch.empty(N, self.H, self.W, 2, device=self.device) if ENC == 2
+               else torch.empty(N, self.H, self.W, device=self.device))
+        _march_kernel_enc[(triton.cdiv(total, BLOCK),)](
+            origin.contiguous(), (yaw_deg * d2r).contiguous(),
+            (pitch_deg * d2r).contiguous(), ducked.to(torch.int32).contiguous(),
+            out, self.sdf_flat, self.yoff, self.poff,
+            total, self.H * self.W, self.W,
+            self.nx, self.ny, self.nz, self.stride_z, self.stride_y,
+            self.mins_f[0], self.mins_f[1], self.mins_f[2],
+            1.0 / self.cell, self.cell, self.range, self.near,
+            self.max_steps, self.log_d0, self.lscale, ENC=ENC,
+            BLOCK=BLOCK, num_warps=MARCH_WARPS)
+        return out
+
     def _dirs_equiangular(self, N, yaw_deg, pitch_deg, d2r):
         """The shipped camera, verbatim: per-pixel ANGLES added to the view.
 
@@ -1681,6 +2011,11 @@ class GpuLidar:
         enc = (torch.clamp(t, max=self.near) / self.near
                + 0.25 * (1.0 - torch.exp(-torch.clamp(t - self.near, min=0.0)
                                          / 2500.0)))
+        # --depth-enc: the enc kernels' encoding, term for term
+        enl = (torch.log(1.0 + t / self.log_d0) * self.lscale
+               if self.depth_enc != "legacy" else None)
+        if self.depth_enc == "log":
+            enc = enl
         if self.potential is not None:
             # _march_kernel_pot's tail, term for term: the sample one field
             # cell short of the hit, the eye's own field, the encoding
@@ -1698,9 +2033,11 @@ class GpuLidar:
                                          self._dz, t))
             deye = P.eye(origin, ducked).view(N, 1, 1)
             val = P.encode(vhit, ok, deye)
+            if self.depth_enc == "dual":
+                return torch.stack((enc, enl, val), dim=-1)
             return torch.stack((enc, val), dim=-1)
         if not (self.surf_mask or self.normals):
-            return enc
+            return torch.stack((enc, enl), dim=-1) if self.depth_enc == "dual" else enc
         # same hit voxel the triton path re-derives, same interleaving
         ix = ((ex + self._dx * t - mx) * inv_cell).long().clamp_(0, self.nx - 1)
         iy = ((ey + self._dy * t - my) * inv_cell).long().clamp_(0, self.ny - 1)

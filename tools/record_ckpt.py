@@ -1213,7 +1213,10 @@ def main(argv=None, build_only: bool = False, device=None):
                      normals=bool(cfg.get("normals", 0)),
                      potential=LidarPotential.from_cfg(
                          cfg, gf, core, device, Path(map_path).stem),
-                     vision_clip=bool(vclip))
+                     vision_clip=bool(vclip),
+                     # --depth-enc: MIRRORED (what every depth pixel means; dual = 2 channels)
+                     depth_enc=str(cfg.get("depth_enc") or "legacy"),
+                     depth_log_d0=float(cfg.get("depth_log_d0") or 200.0))
     if cfg.get("obs_potential"):
         # all three keys named here as literals on purpose: audit_cfg reads
         # this file's string constants, and from_cfg reads them in vision.py

@@ -315,12 +315,18 @@ def main() -> None:
             raise SystemExit("--obs-potential: this run.json records no "
                              "obs_potential mode to mirror")
         print(f"--obs-potential {pot.mode}: " + pot.describe())
+    # --depth-enc: the run's own encoding of the depth pixels (dual: a second, log panel)
+    depth_enc = str(rcfg.get("depth_enc") or "legacy")
     lidar = GpuLidar(core, args.w, args.h, hfov_deg=HFOV, vfov_deg=VFOV,
                      range_units=rng_u, near_range=near,
                      cell=float(cell), device=device, pinhole=pinhole,
                      surf_mask=bool(args.surf_mask),
                      normals=bool(args.normals),
-                     potential=pot, vision_clip=vclip)
+                     potential=pot, vision_clip=vclip,
+                     depth_enc=depth_enc,
+                     depth_log_d0=float(rcfg.get("depth_log_d0") or 200.0))
+    if depth_enc != "legacy":
+        print(f"--depth-enc {depth_enc} (d0 {lidar.log_d0:g} u) mirrored from the run")
 
     out_path = Path(args.out) if args.out else Path(args.traj).with_suffix(".pov.mp4")
     # the lidar is EQUIANGULAR (fisheye-like) with anisotropic pixels:
@@ -402,7 +408,7 @@ def main() -> None:
     if args.normals and args.surf_mask:
         raise SystemExit("--normals and --surf-mask are exclusive (|n_z| is "
                          "the normal's third channel)")
-    n_panels = (1 + int(bool(args.normals))
+    n_panels = (1 + int(depth_enc == "dual") + int(bool(args.normals))
                 + int(args.surf_mask or ball_panel) + int(pot is not None)
                 + int(tmask is not None) + int(bool(tviews)))
     FRAME_H = H * n_panels
@@ -514,7 +520,9 @@ def main() -> None:
                 else:
                     tch = np.zeros((k, lidar.H, lidar.W), np.float32)
                     tex = [np.zeros((k, lidar.H, lidar.W), np.float32) for _v in tviews]
-            enc_max = 1.25 if (near and near < rng_u) else 1.0
+            # the legacy display range as it always was; --depth-enc log's own ceiling
+            enc_max = ((1.25 if (near and near < rng_u) else 1.0) if depth_enc != "log"
+                       else lidar.enc_max)
             for i in range(k):
                 dep = d[i][..., 0] if d[i].ndim == 3 else d[i]
                 img = (np.clip(1.0 - dep / enc_max, 0, 1) * 255).astype(np.uint8)
@@ -542,10 +550,22 @@ def main() -> None:
                 cv2.putText(frame, txt, (8, H - 10), cv2.FONT_HERSHEY_SIMPLEX,
                             0.55, (255, 255, 255), 1, cv2.LINE_AA)
                 if (args.normals or ball is not None or args.surf_mask
-                        or pot is not None or tmask is not None):
-                    cv2.putText(frame, "depth", (8, 22),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.55,
+                        or pot is not None or tmask is not None or depth_enc != "legacy"):
+                    cv2.putText(frame, "depth" + {"log": " (log encoding)",
+                                                  "dual": " (legacy encoding)"}.get(depth_enc, ""),
+                                (8, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.55,
                                 (255, 255, 255), 1, cv2.LINE_AA)
+                if depth_enc == "dual":
+                    # --depth-enc dual: the second depth channel, the log encoding, on its own
+                    # fixed range (a clear ray at the range is its ceiling)
+                    lmax = float(np.log1p(lidar.range / lidar.log_d0)) * lidar.lscale
+                    limg = (np.clip(1.0 - d[i][..., 1] / lmax, 0, 1) * 255).astype(np.uint8)
+                    lfr = cv2.resize(cv2.applyColorMap(limg, cv2.COLORMAP_TURBO), (W, H),
+                                     interpolation=cv2.INTER_NEAREST)
+                    cv2.putText(lfr, f"depth (log encoding, d0 {lidar.log_d0:g} u)", (8, 22),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 1, cv2.LINE_AA)
+                    cv2.line(lfr, (0, 0), (W, 0), (60, 60, 60), 1)
+                    frame = np.vstack((frame, lfr))
                 if args.normals:
                     # channels 1..3: the hit surface's unit normal in the
                     # player's ego frame (x forward, y left, z up), each in
@@ -628,7 +648,7 @@ def main() -> None:
                     # fixed display range is the encoding's clip so a flat
                     # frame LOOKS flat instead of being autoscaled into
                     # structure that is not there.
-                    pv = np.asarray(d[i][..., 1], np.float32)
+                    pv = np.asarray(d[i][..., lidar.pot_channel], np.float32)
                     u = np.clip((pv - POT_LO) / (POT_HI - POT_LO), 0.0, 1.0)
                     pfr = cv2.applyColorMap((u * 255).astype(np.uint8),
                                             cv2.COLORMAP_MAGMA)
