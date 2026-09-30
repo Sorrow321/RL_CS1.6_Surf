@@ -32053,3 +32053,44 @@ The rendering cost is small; the engineering is about a day. The far-field part 
 * The seed-noise floor (27% at 750M) and the gate ladder apply. Only a gate cleared much earlier or later, or a wall crossed that the control does not cross, counts.
 
 Liveness: an arm whose progress.csv stops growing for 10 minutes is stopped; a gate plateau is not (fixed budget, step-matched).
+
+## 2026-09-30 14:28 (machine clock) - depth-encoding arms (dencCTL / dencLOG / dencDUAL, 1.5e9 steps each): no arm separates past the noise floor; log crosses the wall most often (19/45 late evals vs 6/45), dual never crosses; 0 finishes anywhere
+
+**Runs.** Local 5090, back to back, scratch_ablate preset, one seed, 1.5e9 steps each: dencCTL 11:45-12:48, dencLOG 12:51-13:39, dencDUAL 13:41-14:28. Scored with eval_honesty --order-only 16 on each eval of 9 greedy episodes.
+
+**Route max** (u) at matched steps:
+
+| step | CTL (legacy) | LOG | DUAL |
+|---|---|---|---|
+| 227M | 47,689 | 34,304 | 49,097 |
+| 303M | 50,155 | 49,231 | 50,129 |
+| 454M | 87,948 | 52,156 | 96,670 |
+| 529M | 100,799 | 60,687 | 97,207 |
+| 605M | 104,589 | 92,370 | 102,559 |
+| 756M | 129,736 | 128,728 | 129,388 |
+| 907M | 166,706 | 166,784 | 138,012 |
+| 982M | 175,770 | 196,608 | 145,022 |
+| 1.058B | 194,855 | 199,307 | 156,449 |
+| 1.134B | 206,217 (2/9 past) | 205,447 (1/9) | 181,630 |
+| 1.209B | 205,440 (0/9) | 206,179 (3/9) | 203,944 |
+| 1.285B | 205,568 (3/9) | 205,568 (6/9) | 205,424 |
+| 1.360B | 206,442 (1/9) | 208,023 (9/9) | 181,248 |
+| 1.436B | 205,310 (0/9) | 205,440 (0/9) | 205,376 |
+
+**Gates:**
+
+| arm | 97k gate | wall first crossed | crossings past 205,440 u in the late evals (>= 1.134B) |
+|---|---|---|---|
+| CTL | 529M | 1.134B | 6/45 |
+| LOG | 680M | 1.134B | 19/45 (9/9 at 1.360B) |
+| DUAL | 529M (96,670 at 454M) | never | 0/45 (best 205,424 u) |
+
+The round-32 reference cyKEYPOT (same preset, this card, older code) had 97k at 502M and the wall at 1.003B.
+
+**Finishes: 0 in every arm.**
+
+**Reading, inside the one-seed noise floor** (27% at 750M, a gate ladder):
+
+* **LOG** sat at the ~50k gate ~225M steps longer than the control, then matched it by 756M, led at 982M-1.058B, crossed the wall at the same eval, and crossed it most often afterwards. The last eval fell to 0/9 in both CTL and LOG.
+* **DUAL** matched early, then fell behind from ~830M (907M: 138k vs 167k) and did not cross the wall in 1.5e9.
+* No arm is a winner. Log's late wall-crossing edge is the only suggestive signal, and it needs longer (finishes) to mean anything.
