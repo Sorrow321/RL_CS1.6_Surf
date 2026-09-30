@@ -32123,3 +32123,34 @@ Against a ~2.6 s iteration (~400k steps/s) that is about +42 ms, **~1.6% of thro
 * BSP texinfo / miptex / palette parsing;
 * a far-field level: at 64x32 a pixel spans 33 u at 1,000 u and 165 u at 5,000 u, so even mip 3 aliases past ~260 u. A precomputed per-texture average colour is needed as the far level, or the far field sparkles frame to frame;
 * record_ckpt / render_pov mirroring, and tests.
+
+## 2026-09-30 17:02 (machine clock) - --obs-texture built (9df99e1) and dencTEX launched: the map's own textures as three image channels, from scratch on cannonball against dencCTL
+
+**The user:** after the preview video (tools/texture_preview.py, 02a493a), "this looks cool. Let's try to train it."
+
+**Build (9df99e1).**
+
+* surfgym/texmap.py:
+  * the .bsp's faces, texinfo and embedded textures (every mip through its palette, each texture's average colour);
+  * the visible triangles (no triggers, clip, null, hint, skip or origin);
+  * a face-id grid on the depth field's voxels: every solid voxel within 2 voxels of air holds its nearest visible face within 3 cells. It is baked on the GPU (brute-force exact point-triangle: 8.6M voxels x 49,487 triangles in ~7 s) and cached as sparse pairs (13.7 MB, `*.faceid_*.npz`).
+* vision.py: `_march_kernel_tex` / `_march_kernel_pot_tex`, copied from the shipped kernels, which stay untouched. The texture tail:
+  * the face at the march's stop voxel;
+  * the ray's intersection with that face's plane;
+  * the mip by pixel footprint, and past mip 3 the texture's average;
+  * sky flat, unlit.
+  * Channels: (depth, potential, R, G, B).
+* The trainer flag restores from a checkpoint and refuses a mismatch; record_ckpt and render_pov mirror it (render_pov adds an RGB panel).
+
+**Checks** (tests/python/test_texture.py, 104 other vision tests unchanged):
+
+* depth is bit-exact against the shipped kernel, with and without the potential;
+* triton RGB equals the torch reference;
+* the grid's face equals an exact ray cast's on 92.6% of the policy's pixels (same texture 96.4%);
+* the trainer smoke passes.
+
+Cost measured earlier: ~+5% render, ~1.6% per iteration (ledger 16:27).
+
+**dencTEX:** scratch_ablate + `--obs-texture 1`, 1.5e9 steps, one seed, local 5090. The only difference from **dencCTL** (same day, same preset, same card) is the texture flag. Scored like the depth arms (eval_honesty --order-only 16: the 97k gate, the 205,440 u wall, crossings, finishes). The reference is dencCTL's 97k at 529M, the wall at 1.134B, 6/45 late crossings, 0 finishes.
+
+Caveat: `restamp_maps.py` and the pool bundle do not know the faceid cache yet, which is Codex's point from 09-28 about new caches. It is local-only until they do.
