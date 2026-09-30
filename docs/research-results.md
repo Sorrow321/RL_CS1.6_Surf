@@ -32094,3 +32094,32 @@ The round-32 reference cyKEYPOT (same preset, this card, older code) had 97k at 
 * **LOG** sat at the ~50k gate ~225M steps longer than the control, then matched it by 756M, led at 982M-1.058B, crossed the wall at the same eval, and crossed it most often afterwards. The last eval fell to 0/9 in both CTL and LOG.
 * **DUAL** matched early, then fell behind from ~830M (907M: 138k vs 167k) and did not cross the wall in 1.5e9.
 * No arm is a winner. Log's late wall-crossing edge is the only suggestive signal, and it needs longer (finishes) to mean anything.
+
+## 2026-09-30 16:27 (machine clock) - texture render cost MEASURED: +5% on the render, ~1.6% per training iteration
+
+**The user:** after the depth-encoding arms, "what about the render of the texture? Did you measure how much time does it take? Will it be too slow?"
+
+**The prototype** (measurement only; scratchpad texbench*.py). The shipped depth march, then at the hit:
+
+* the face id from a voxel grid (int16, the SDF's shape, +1.34 GB);
+* the face's texinfo (s, t axes and offsets);
+* a mip level from the pixel footprint;
+* one texel from an RGBA8 atlas at cannonball's real sizes (103 textures, 4 mips, 26.5 MB; 18,779 faces, 4,819 texinfo);
+* output: depth + R, G, B.
+
+Timed on cannonball's real 839x881x908 grid, with 2048 real poses from dencCTL's evals, 64x32, the local 5090 (idle, CUDA events, 200 calls). The prototype's depth-only path is bit-identical to the shipped kernel. The face-id layout is synthetic (coherent 4-voxel blocks); a real nearest-face bake is more coherent, not less.
+
+| | ms per call (2048 envs) | per iteration (128 calls) |
+|---|---|---|
+| shipped depth kernel | 0.565 | 72 ms |
+| depth + texture RGB | 0.596 (+5%) | +4 ms |
+| policy update, conv input 2 -> 5 channels (16,384-sample minibatch) | 16.59 -> 17.19 | +38 ms (64 minibatches) |
+
+Against a ~2.6 s iteration (~400k steps/s) that is about +42 ms, **~1.6% of throughput**. Speed is not the obstacle.
+
+**What is left to build:**
+
+* the nearest-face bake per surface voxel (one-time, cached);
+* BSP texinfo / miptex / palette parsing;
+* a far-field level: at 64x32 a pixel spans 33 u at 1,000 u and 165 u at 5,000 u, so even mip 3 aliases past ~260 u. A precomputed per-texture average colour is needed as the far level, or the far field sparkles frame to frame;
+* record_ckpt / render_pov mirroring, and tests.
