@@ -32189,3 +32189,32 @@ Caveat: `restamp_maps.py` and the pool bundle do not know the faceid cache yet, 
 * It then reached the wall at the same eval and crossed it a little more often late. It never finished.
 * Every arm except DUAL crossed the wall first at the same eval, 1.134B, and none finished. The observation is not what limits progress on this benchmark.
 * The 88.8% wall is the known shaping barrier. The final descent RAISES geodesic d (ledger rounds 18-20; `--race-ratchet` broke it champion-free). A better eye cannot pay for a reward that charges the right line. To be measured, observation changes need a benchmark whose progress is not capped by the reward.
+
+## 2026-09-30 18:33 (machine clock) - --obs-normal (f8c5950) and dencNRM launched: the hit face's normal as three channels, a HALF-length arm (0.76e9) decided at matched steps against dencCTL
+
+**The user** asked whether we ever rendered the normals' angle with an axis such as +Z. Yes:
+
+* `--surf-mask` (|n_z|):
+  * an August screen: high-variance, two seeds, 48.8k and 5.1k;
+  * `jtCPM`, 2026-09-11, which replaced the potential channel: it tied on cannonball (1.46x throughput) and lost a gate on petrus.
+* `--normals` (the full ego-frame normal):
+  * xW2NRM: 149k vs 89k at 1.5B and 171k vs 41k at 2.5B;
+  * xW3DNRM: 134k at 1.5B, then the box died at 1.6B;
+  * both at 55% throughput.
+* None of them ran with the current potential channel; the old kernels refuse the combination.
+
+The user: "let's draw normals. Let's make a shorter run and decide shorter, maybe half time."
+
+**Built (f8c5950).** `--obs-normal` reads the face at the march's stop from --obs-texture's face-id grid. Its plane normal is turned to face the camera and rotated into the ego frame (x forward, y left, z up, the old --normals convention), in the texture's three channels.
+
+* There is no 2 GB normal grid; the old --normals cost 55% of throughput.
+* Channels: (depth, potential, nx, ny, nz).
+* Tests: triton equals torch; the normals are unit length and face the camera; the texture mode is unchanged; trainer smoke.
+
+**dencNRM:** scratch_ablate + `--obs-normal 1`, **0.76e9 steps** (half the 1.5e9 arms, so the 756M eval is its last), one seed, local 5090.
+
+**Decision at matched steps against dencCTL.**
+
+* dencCTL's route max: 454M 87,948; 529M 100,799 (the 97k gate); 605M 104,589; 680M 98,369; 756M 129,736.
+* Among the other arms at 756M: LOG 128,728, DUAL 129,388, TEX 100,655.
+* A positive needs the 97k gate before 529M, or a lead at 605-756M beyond the 27% noise floor.
