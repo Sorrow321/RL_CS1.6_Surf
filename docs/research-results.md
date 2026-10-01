@@ -32251,3 +32251,27 @@ The user: "let's draw normals. Let's make a shorter run and decide shorter, mayb
 
 * finishes - run it to 1.5e9 (resume);
 * a second map with no constant changed - CLAUDE.md 0b requires that before calling a recipe winner, e.g. petrus with its own control.
+
+## 2026-10-01 17:23 (machine clock) - dencNRM continued to 1.5e9: it sits at the 88.8% wall from 756M (crossings 7, 2, 9, 7, 0, 0, 0, 2, 4, 0 of 9 per eval), 0 finishes
+
+Resumed 2026-10-01 16:50 from ckpt_latest (752.9M) to 1.5e9, the same 75M / 9-episode evals. The trainer outlived the background driver's time limit and ended at 1,500.5M.
+
+| step | route max (u) | episodes past 205,440 u |
+|---|---|---|
+| 829M | 205,450 | 2/9 |
+| 905M | 207,491 | 9/9 |
+| 980M | 205,558 | 7/9 |
+| 1.056B | 205,212 | 0/9 |
+| 1.131B | 205,225 | 0/9 |
+| 1.207B | 205,293 | 0/9 |
+| 1.282B | 205,490 | 2/9 |
+| 1.358B | 205,561 | 4/9 |
+| 1.433B | 205,243 | 0/9 (all dive below) |
+
+Late crossings (>= 1.131B): 6/45 (CTL 6/45). 0 finishes.
+
+**Reading.**
+
+* The normal channel buys the wall ~380M steps earlier (756M vs 1.134B) and not a finish.
+* The wall is the known shaping barrier, and nothing in this preset pushes past it: no `--unstuck`, no ratchet, no frontier respawn - just the uniform own-state reservoir and count novelty.
+* The user (2026-10-01): "the goal of this part of the research is not to pass the map ... here we are just optimizing the observation." So the observation arms are judged on time-to-gate. On that, normals is the first clear positive (97k at 378M vs 529M, the wall at 756M vs 1.134B).
