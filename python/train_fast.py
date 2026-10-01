@@ -372,7 +372,7 @@ class Policy(nn.Module):
                  view_absolute=None, obs_fourier: int = 0,
                  int_split: bool = False, dropout: float = 0.0,
                  plan_film: int = 0, film_dim: int = 0,
-                 views: int = 1, views_scale: int = 1):
+                 views: int = 1, views_scale: int = 1, drop_depth: bool = False):
         super().__init__()
         # --priv-critic (asymmetric actor-critic, Pinto et al. 2017): the
         # CRITIC additionally reads a privileged state block the simulator
@@ -477,6 +477,15 @@ class Policy(nn.Module):
         if self.obs_fourier < 0:
             raise SystemExit(f"--obs-fourier {obs_fourier} < 0")
         conv_ch = in_ch + 2 * self.obs_fourier
+        # --obs-no-depth: the image row still carries the depth (channel 0 - the march needs it to
+        # find the hit, the recorder and the POV draw it), but the conv never reads it
+        self.drop_depth = bool(drop_depth)
+        if self.drop_depth:
+            if self.obs_fourier or self.views > 1 or in_ch < 2:
+                raise SystemExit("--obs-no-depth drops channel 0 of a single-camera image with "
+                                 "at least one other channel (not with --obs-fourier or "
+                                 "--obs-views)")
+            conv_ch -= 1
         if self.obs_fourier:
             # 2^k * pi, k = 0..L-1. persistent=False: derived from the
             # config, never a learned tensor, so the state_dict of an L>0
@@ -819,6 +828,8 @@ class Policy(nn.Module):
         # have made this a real transpose per forward (perf-results.md S9).
         im = (self._ring_image(img) if self.views > 1
               else img.reshape(-1, self.lidar_h, self.lidar_w, self.in_ch))
+        if self.drop_depth:
+            im = im[..., 1:]                 # --obs-no-depth: the conv never sees the depth
         if self.obs_fourier:
             # --obs-fourier: sin/cos of the depth channel at 2^k pi, built
             # while the image is still NHWC so the cat is contiguous in the
@@ -1133,6 +1144,7 @@ ARCH_KEYS = (("emb", "--emb"), ("hidden", "--hidden"), ("trunk", "--trunk"),
              ("obs_ttc", "--obs-ttc"),
              ("obs_edges", "--obs-edges"),
              ("obs_views", "--obs-views"),
+             ("obs_no_depth", "--obs-no-depth"),
              ("obs_views_scale", "--obs-views-scale"),
              ("keys_hold", "--keys-hold"),
              ("obs_fourier", "--obs-fourier"))
@@ -4522,6 +4534,12 @@ def main() -> None:
                          "as channels (in_ch x 4); norm's potential is standardised over all "
                          "four together. 1 (default) = the front camera only. SCRATCH arms; "
                          "ckpt restores, a mismatch is refused")
+    ap.add_argument("--obs-no-depth", type=int, default=None, choices=(0, 1),
+                    help="the policy does NOT see the depth channel (the user, 2026-10-02): the "
+                         "image keeps its other channels (e.g. --obs-normal's normal + the "
+                         "potential) and the conv reads those only. The depth is still rendered "
+                         "(the march needs it to find the hit; the recorder and the POV draw it). "
+                         "conv in_ch - 1: SCRATCH arms; ckpt restores, a mismatch is refused")
     ap.add_argument("--obs-views-scale", type=int, default=None, choices=(1, 2),
                     help="--obs-views: the side and back cameras' resolution divisor (2 = "
                          "--lidar-w/2 x --lidar-h/2 at the same fov, upsampled into the stack; "
@@ -7018,6 +7036,15 @@ def main() -> None:
                     f"{_vf} changes the image row and the conv trunk's input channels, and a "
                     "checkpoint's first layer cannot be widened or narrowed - start a fresh run, "
                     f"or drop the flag to keep the ckpt's setting ({_cv})")
+        if args.obs_no_depth is None and ck_cfg.get("obs_no_depth"):
+            args.obs_no_depth = 1
+            restored.append("obs_no_depth=1")
+        elif args.obs_no_depth is not None \
+                and int(args.obs_no_depth) != int(ck_cfg.get("obs_no_depth") or 0):
+            raise SystemExit(
+                "--obs-no-depth changes the conv trunk's input channels (-1) and a checkpoint's "
+                "first layer cannot be widened or narrowed - start a fresh run, or drop the flag "
+                f"to keep the ckpt's setting ({int(ck_cfg.get('obs_no_depth') or 0)})")
         if args.obs_edges is None and ck_cfg.get("obs_edges"):
             args.obs_edges = 1
             restored.append("obs_edges=1")
@@ -7861,6 +7888,17 @@ def main() -> None:
         args.obs_ttc = 0
     if args.obs_edges is None:
         args.obs_edges = 0
+    if args.obs_no_depth is None:
+        args.obs_no_depth = 0
+    if args.obs_no_depth and ((args.frame_stack or 0) > 1 or args.surf_mask or args.goals
+                              or (args.depth_enc or "legacy") == "dual"
+                              or (args.obs_fourier or 0) or (args.obs_views or 1) > 1
+                              or not (args.obs_potential or args.obs_normal or args.obs_texture
+                                      or args.obs_slope or args.normals)):
+        raise SystemExit("--obs-no-depth drops the depth channel of a single-camera image and "
+                         "needs another channel to keep (--obs-potential / --obs-normal / "
+                         "--obs-texture / --obs-slope / --normals); not with --frame-stack, "
+                         "--surf-mask, --goals, --depth-enc dual, --obs-fourier or --obs-views")
     if args.obs_views is None:
         args.obs_views = 1
     if args.obs_views_scale is None:
@@ -10142,6 +10180,10 @@ def main() -> None:
         if args.obs_texture:
             print(f"--obs-texture: {slot.name} " + slot.lidar.texmap.describe()
                   + f" -> in_ch {slot.lidar.channels}")
+        if args.obs_no_depth:
+            print(f"--obs-no-depth: {slot.name} the policy's conv reads channels 1..."
+                  f"{slot.lidar.channels - 1} of {slot.lidar.channels} - NOT the depth (still "
+                  f"rendered: the march needs it) -> conv in_ch {slot.lidar.channels - 1}")
         if args.obs_views > 1:
             print(f"--obs-views {args.obs_views}: {slot.name} front {args.lidar_w}x"
                   f"{args.lidar_h} + left / right / back cameras "
@@ -10964,7 +11006,8 @@ def main() -> None:
                     plan_film=int(args.plan_film or 0),
                     film_dim=(N_FAN if args.plan_film else 0),
                     views=int(args.obs_views),
-                    views_scale=int(args.obs_views_scale)).to(device)
+                    views_scale=int(args.obs_views_scale),
+                    drop_depth=bool(args.obs_no_depth)).to(device)
     R = policy.rnn_size                    # 0 without --rnn
     # (c) action noise rank-DISTINCT, and set BEFORE the graph capture: the
     #     Gumbel rand_like runs inside the captured graph, whose philox seed
@@ -12335,6 +12378,8 @@ def main() -> None:
         meta["config"]["obs_ttc"] = 1
     if args.obs_edges:
         meta["config"]["obs_edges"] = 1
+    if args.obs_no_depth:
+        meta["config"]["obs_no_depth"] = 1
     if args.obs_views > 1:
         meta["config"]["obs_views"] = int(args.obs_views)
         meta["config"]["obs_views_scale"] = int(args.obs_views_scale)

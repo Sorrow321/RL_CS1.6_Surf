@@ -2006,6 +2006,8 @@ def main(argv=None, build_only: bool = False, device=None):
                     in_ch=int(getattr(lidar, "conv_channels", lidar.channels)) * stack,
                     views=int(cfg.get("obs_views") or 1),
                     views_scale=int(cfg.get("obs_views_scale") or 1),
+                    # --obs-no-depth: MIRRORED (the conv never reads channel 0)
+                    drop_depth=bool(cfg.get("obs_no_depth") or 0),
                     n_codes=n_codes, chunk=chunk,
                     route_dim=route_dim,
                     route_critic_only=bool(cfg.get("route_critic_only")),

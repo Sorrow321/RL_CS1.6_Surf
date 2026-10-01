@@ -576,7 +576,9 @@ def main() -> None:
                 if (args.normals or ball is not None or args.surf_mask
                         or pot is not None or tmask is not None or depth_enc != "legacy"):
                     cv2.putText(frame, "depth" + {"log": " (log encoding)",
-                                                  "dual": " (legacy encoding)"}.get(depth_enc, ""),
+                                                  "dual": " (legacy encoding)"}.get(depth_enc, "")
+                                + (" - NOT seen by the policy" if rcfg.get("obs_no_depth")
+                                   else ""),
                                 (8, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.55,
                                 (255, 255, 255), 1, cv2.LINE_AA)
                 if lidar.edges:
