@@ -1254,6 +1254,9 @@ if HAVE_TRITON:
             tl.store(out_ptr + offs * 5 + 3, tg_, mask=m)
             tl.store(out_ptr + offs * 5 + 4, tb_, mask=m)
 
+#: --obs-ttc: the looming channel's time scale, s (exp(-time to contact / TTC_TAU))
+TTC_TAU = 1.0
+
 #: --depth-enc: the depth channel's encodings (GpuLidar(depth_enc=))
 DEPTH_ENCODINGS = ("legacy", "log", "dual")
 
@@ -1949,7 +1952,7 @@ class GpuLidar:
                  pinhole: bool = False, normals: bool = False,
                  potential=None, vision_clip: bool = False,
                  depth_enc: str = "legacy", depth_log_d0: float = 200.0,
-                 texture=False, texture_mode: str = "rgb") -> None:
+                 texture=False, texture_mode: str = "rgb", ttc: bool = False) -> None:
         if texture_mode not in ("rgb", "normal", "slope"):
             raise ValueError(f"texture_mode {texture_mode!r}: rgb (--obs-texture), normal "
                              "(--obs-normal) or slope (--obs-slope)")
@@ -2090,6 +2093,13 @@ class GpuLidar:
                             if self.texmap is not None else None)
         # --obs-normal: the same three channels carry the face's ego-frame normal, not its colour
         self.texture_mode = str(texture_mode)
+        # --obs-ttc: one more channel AFTER every other (a post-process of the render): the
+        # kernels write the channels before it (_kchannels)
+        self._kchannels = self.channels
+        self.ttc = bool(ttc)
+        if self.ttc:
+            self.channels += 1
+        self.ttc_channel = self.channels - 1 if self.ttc else None
         self.tex_pix_rad = float(np.radians(self.vfov_deg / self.H))
         # the depth channel 0's largest value (a clear ray at the range), for displays
         self.enc_max = (float(np.log1p(self.range / self.log_d0)) * self.lscale
@@ -2149,7 +2159,7 @@ class GpuLidar:
         self._alive = torch.empty(sh, dtype=torch.bool, device=self.device)
 
     @torch.no_grad()
-    def render(self, origin, yaw_deg, pitch_deg, ducked, post: bool = True):
+    def render(self, origin, yaw_deg, pitch_deg, ducked, post: bool = True, velocity=None):
         """origin (N,3), yaw/pitch (N,) degrees, ducked (N,) bool/int ->
         (N, H, W) depths, (N, H, W, 2) with --surf-mask or --obs-potential,
         or (N, H, W, 4) with --normals. Triton kernel when available
@@ -2172,7 +2182,29 @@ class GpuLidar:
             # for norm, pointwise for logabs, on either path
             out[..., self.pot_channel] = self.potential.postprocess(
                 out[..., self.pot_channel])
+        if self.ttc:
+            out = self._append_ttc(out, origin, yaw_deg, pitch_deg, velocity)
         return out
+
+    @torch.no_grad()
+    def _append_ttc(self, out, origin, yaw_deg, pitch_deg, velocity):
+        """--obs-ttc: exp(-tau / TTC_TAU), tau = depth / (velocity . ray) where the player closes
+        on the point (closing speed > 1 u/s), else 0 - appended as the last channel"""
+        if velocity is None:
+            raise ValueError("--obs-ttc: GpuLidar.render needs the velocity (velocity=)")
+        N = origin.shape[0]
+        self._ensure_buffers(N)
+        dirs = self._dirs_pinhole if self.pinhole else self._dirs_equiangular
+        dirs(N, yaw_deg, pitch_deg, np.pi / 180.0)
+        dep = out if out.dim() == 3 else out[..., 0]
+        t = self.decode_depth(dep)
+        v = torch.as_tensor(velocity, dtype=torch.float32, device=self.device).reshape(N, 3, 1, 1)
+        c = v[:, 0] * self._dx + v[:, 1] * self._dy + v[:, 2] * self._dz
+        ttc = torch.where(c > 1.0, torch.exp(-t / (c.clamp(min=1.0) * TTC_TAU)),
+                          torch.zeros_like(c))
+        if out.dim() == 3:
+            out = out[..., None]
+        return torch.cat((out, ttc[..., None]), dim=-1)
 
     @torch.no_grad()
     def decode_depth(self, enc):
@@ -2333,7 +2365,7 @@ class GpuLidar:
         if self.potential is not None:
             P = self.potential
             deye = (P.eye(origin, ducked).contiguous() if P.rel else self._deye_zero(N))
-            out = torch.empty(N, self.H, self.W, self.channels, device=self.device)
+            out = torch.empty(N, self.H, self.W, self._kchannels, device=self.device)
             _march_kernel_pot_enc[(triton.cdiv(total, BLOCK),)](
                 origin.contiguous(), (yaw_deg * d2r).contiguous(),
                 (pitch_deg * d2r).contiguous(),
@@ -2377,7 +2409,7 @@ class GpuLidar:
         X = self.texmap
         targs = (X.fid, X.fdata, X.ftex, X.tdim, X.tmip, X.atlas, X.tavg, X.tsky,
                  X.sky_packed, self.tex_pix_rad)
-        out = torch.empty(N, self.H, self.W, self.channels, device=self.device)
+        out = torch.empty(N, self.H, self.W, self._kchannels, device=self.device)
         if self.potential is not None:
             P = self.potential
             deye = (P.eye(origin, ducked).contiguous() if P.rel else self._deye_zero(N))

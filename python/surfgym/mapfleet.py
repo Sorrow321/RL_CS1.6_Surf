@@ -542,6 +542,9 @@ class MapFleet:
             vis_np[s.lo:s.hi, 3] = sv["yaw"]
             vis_np[s.lo:s.hi, 4] = sv["pitch"]
             vis_np[s.lo:s.hi, 5] = sv["ducked"]
+            if vis_np.shape[1] >= 9:
+                # --obs-ttc: the velocity rides in the same upload (columns 6..8)
+                vis_np[s.lo:s.hi, 6:9] = sv["velocity"]
 
     def render(self, vis_gpu, out):
         """Render each slot's depth block with ITS map's SDF.
@@ -551,7 +554,9 @@ class MapFleet:
         if self.single:
             s = self.slots[0]
             img = s.lidar.render(vis_gpu[:, 0:3], vis_gpu[:, 3],
-                                 vis_gpu[:, 4], vis_gpu[:, 5])
+                                 vis_gpu[:, 4], vis_gpu[:, 5],
+                                 **({"velocity": vis_gpu[:, 6:9]}
+                                    if getattr(s.lidar, "ttc", False) else {}))
             return img.reshape(vis_gpu.shape[0], -1)
         # --obs-potential norm: the per-frame standardisation is per ROW, so
         # it is the same arithmetic whether it runs per slot or once over
@@ -566,12 +571,16 @@ class MapFleet:
             pot = getattr(s.lidar, "potential", None)
             if pot is not None and getattr(pot, "norm", False):
                 img = s.lidar.render(v[:, 0:3], v[:, 3], v[:, 4], v[:, 5],
-                                     post=False)
+                                     post=False,
+                                     **({"velocity": v[:, 6:9]}
+                                        if getattr(s.lidar, "ttc", False) else {}))
                 # --depth-enc dual puts a second depth channel ahead of the potential
                 batch_norm = (pot, s.lidar.H, s.lidar.W, int(s.lidar.channels),
                               int(getattr(s.lidar, "pot_channel", 1)))
             else:
-                img = s.lidar.render(v[:, 0:3], v[:, 3], v[:, 4], v[:, 5])
+                img = s.lidar.render(v[:, 0:3], v[:, 3], v[:, 4], v[:, 5],
+                                     **({"velocity": v[:, 6:9]}
+                                        if getattr(s.lidar, "ttc", False) else {}))
             out[s.lo:s.hi] = img.reshape(s.n, -1)
         if batch_norm is not None:
             pot, H, W, C, pc = batch_norm
@@ -621,7 +630,7 @@ class MapFleet:
             s.priv.fill(out[j], p, np.asarray(vel, np.float64)[j], d,
                         tick[j], arc=arc, latch=lt)
 
-    def render_rows(self, idx, origin, yaw_deg, pitch_deg, ducked):
+    def render_rows(self, idx, origin, yaw_deg, pitch_deg, ducked, velocity=None):
         """Depth for an arbitrary set of env rows, each on ITS map's SDF.
 
         Used by the truncation bootstrap, which renders a reconstructed
@@ -634,8 +643,11 @@ class MapFleet:
             if hasattr(ld, "set_goals") or getattr(ld, "takes_idx", False):
                 # goal-ball / target-channel wrapper: the subset rows render THEIR goals
                 return ld.render(origin, yaw_deg, pitch_deg, ducked,
-                                 idx=idx).reshape(n, -1)
-            return ld.render(origin, yaw_deg, pitch_deg, ducked).reshape(n, -1)
+                                 idx=idx, **({"velocity": velocity} if velocity is not None
+                                             else {})).reshape(n, -1)
+            return ld.render(origin, yaw_deg, pitch_deg, ducked,
+                             **({"velocity": velocity} if velocity is not None
+                                else {})).reshape(n, -1)
         import torch
         idx = np.asarray(idx, np.int64)
         out = None
@@ -649,6 +661,8 @@ class MapFleet:
                 # a goal-ball / target-channel wrapper: its windows are the slot's own, so the
                 # subset rows render THEIR targets by the slot's LOCAL row index
                 kw["idx"] = idx[m] - s.lo
+            if velocity is not None:
+                kw["velocity"] = velocity[j]         # --obs-ttc
             im = s.lidar.render(origin[j], yaw_deg[j], pitch_deg[j],
                                 ducked[j], **kw).reshape(int(j.numel()), -1)
             if out is None:

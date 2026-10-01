@@ -1105,6 +1105,7 @@ ARCH_KEYS = (("emb", "--emb"), ("hidden", "--hidden"), ("trunk", "--trunk"),
              ("obs_texture", "--obs-texture"),
              ("obs_normal", "--obs-normal"),
              ("obs_slope", "--obs-slope"),
+             ("obs_ttc", "--obs-ttc"),
              ("keys_hold", "--keys-hold"),
              ("obs_fourier", "--obs-fourier"))
 
@@ -2665,7 +2666,11 @@ class _TorchPolicyBase:
                                  device=self.device)
             dk = torch.as_tensor(sv["ducked"].copy().astype(np.int32),
                                  device=self.device)
-            depth = self.lidar.render(o, yw, pt, dk).reshape(t.shape[0], -1)
+            # --obs-ttc: the looming channel needs the velocity
+            _vk = ({"velocity": torch.as_tensor(np.ascontiguousarray(sv["velocity"]),
+                                                dtype=torch.float32, device=self.device)}
+                   if getattr(self.lidar, "ttc", False) else {})
+            depth = self.lidar.render(o, yw, pt, dk, **_vk).reshape(t.shape[0], -1)
             if self._stack > 1:
                 depth = self._push_frame(depth, sv["tick"])
             t = torch.cat([t, depth], dim=1)
@@ -4468,6 +4473,12 @@ def main() -> None:
                          "floor seen from above 0, a wall 0.5, a ceiling 1, no face -1 - off "
                          "--obs-texture's face-id grid. in_ch + 1: SCRATCH arms; ckpt restores, a "
                          "mismatch is refused; exclusive with --obs-texture / --obs-normal")
+    ap.add_argument("--obs-ttc", type=int, default=None, choices=(0, 1),
+                    help="ONE more image channel folding the velocity into the render (the user, "
+                         "2026-10-01): the looming / time to contact of every pixel at the "
+                         "current velocity, exp(-depth / ((velocity . ray) x 1 s)) where the "
+                         "player closes on the point, 0 where it moves away or parallel. in_ch + "
+                         "1: SCRATCH arms; ckpt restores, a mismatch is refused")
     ap.add_argument("--depth-log-d0", type=float, default=None,
                     help="--depth-enc log / dual: d0 of ln(1 + d/d0), u (default 200); ckpt "
                          "restores")
@@ -6949,6 +6960,15 @@ def main() -> None:
                 "G, B) and a checkpoint's first layer cannot be widened or narrowed - start a "
                 "fresh run, or drop the flag to keep the ckpt's setting "
                 f"({int(ck_cfg.get('obs_texture') or 0)})")
+        if args.obs_ttc is None and ck_cfg.get("obs_ttc"):
+            args.obs_ttc = 1
+            restored.append("obs_ttc=1")
+        elif args.obs_ttc is not None \
+                and int(args.obs_ttc) != int(ck_cfg.get("obs_ttc") or 0):
+            raise SystemExit(
+                "--obs-ttc changes the conv trunk's input channels (+1) and a checkpoint's "
+                "first layer cannot be widened or narrowed - start a fresh run, or drop the flag "
+                f"to keep the ckpt's setting ({int(ck_cfg.get('obs_ttc') or 0)})")
         if args.obs_slope is None and ck_cfg.get("obs_slope"):
             args.obs_slope = 1
             restored.append("obs_slope=1")
@@ -7770,6 +7790,13 @@ def main() -> None:
         args.obs_normal = 0
     if args.obs_slope is None:
         args.obs_slope = 0
+    if args.obs_ttc is None:
+        args.obs_ttc = 0
+    if args.obs_ttc and (args.goals or (args.frame_stack or 0) > 1 or args.surf_mask
+                         or args.normals):
+        raise SystemExit("--obs-ttc is a post-process of the plain / potential / face renders: "
+                         "not with --goals (its wrappers do not pass the velocity), "
+                         "--frame-stack, --surf-mask or --normals")
     if int(bool(args.obs_normal)) + int(bool(args.obs_texture)) + int(bool(args.obs_slope)) > 1:
         raise SystemExit("--obs-normal, --obs-texture and --obs-slope all fill the face channels; "
                          "pick one")
@@ -10003,6 +10030,7 @@ def main() -> None:
     for slot in slots:
         with D.rank0_first():        # vision SDF npz build/write
             slot.lidar = GpuLidar(slot.core, args.lidar_w, args.lidar_h,
+                                  ttc=bool(args.obs_ttc),
                                   texture=bool(args.obs_texture or args.obs_normal
                                                or args.obs_slope),
                                   texture_mode=("normal" if args.obs_normal else "slope"
@@ -10027,6 +10055,9 @@ def main() -> None:
         if args.obs_texture:
             print(f"--obs-texture: {slot.name} " + slot.lidar.texmap.describe()
                   + f" -> in_ch {slot.lidar.channels}")
+        if args.obs_ttc:
+            print(f"--obs-ttc: {slot.name} the looming channel exp(-depth / ((v . ray) x 1 s)) "
+                  f"(0 moving away / parallel) -> in_ch {slot.lidar.channels}")
         if args.obs_slope:
             print(f"--obs-slope: {slot.name} the visible face's slope, acos(n_z) / 180 deg (floor "
                   f"0, wall 0.5, ceiling 1, no face -1) off the face-id grid -> in_ch "
@@ -10150,6 +10181,7 @@ def main() -> None:
                                    and not args.warm_caches) else None)
             with D.rank0_first():        # vision SDF npz build/write
                 hs.lidar = GpuLidar(ec, args.lidar_w, args.lidar_h,
+                                    ttc=bool(args.obs_ttc),
                                     texture=bool(args.obs_texture or args.obs_normal
                                                  or args.obs_slope),
                                     texture_mode=("normal" if args.obs_normal else "slope"
@@ -12194,6 +12226,8 @@ def main() -> None:
         meta["config"]["obs_normal"] = 1
     if args.obs_slope:
         meta["config"]["obs_slope"] = 1
+    if args.obs_ttc:
+        meta["config"]["obs_ttc"] = 1
     if args.depth_enc != "legacy":
         # --depth-enc: ONLY off the default, so a legacy config dump is the pre-flag one;
         # record_ckpt.py and render_pov.py mirror both keys
@@ -13223,9 +13257,11 @@ def main() -> None:
     # allocated on the single-map path, where render() returns the
     # renderer's own tensor exactly as it always did.
     img_stage = (torch.zeros((N, FRAME), device=device) if MULTI else None)
-    vis_pin = torch.zeros((N, 6), pin_memory=(device.type == "cuda"))
+    # (x, y, z, yaw, pitch, ducked) [+ (vx, vy, vz) under --obs-ttc]
+    _VIS_W = 9 if args.obs_ttc else 6
+    vis_pin = torch.zeros((N, _VIS_W), pin_memory=(device.type == "cuda"))
     vis_np = vis_pin.numpy()
-    vis_gpu = torch.zeros((N, 6), device=device)
+    vis_gpu = torch.zeros((N, _VIS_W), device=device)
     # --race-latch: a pinned staging row for the one flag column
     latch_pin = torch.zeros((N, 1), pin_memory=(device.type == "cuda"))
     latch_np = latch_pin.numpy()[:, 0]
@@ -15485,8 +15521,14 @@ def main() -> None:
                             # other frame of this run was taken at.
                             _pt = (ts[:, 9] * 90.0 if PITCH_PIN is None else
                                    torch.full_like(ts[:, 9], PITCH_PIN))
+                            # --obs-ttc: the terminal velocity, world frame, from the
+                            # terminal obs (0/1 = velocity in the yaw frame / 1000, 2 = vz / 1000)
+                            _vel = (torch.stack(((ts[:, 0] * ts[:, 8] - ts[:, 1] * ts[:, 7]),
+                                                 (ts[:, 0] * ts[:, 7] + ts[:, 1] * ts[:, 8]),
+                                                 ts[:, 2]), 1) * 1000.0
+                                    if args.obs_ttc else None)
                             vis = fleet.render_rows(ti, pos, yawd,
-                                                    _pt, ts[:, 5])
+                                                    _pt, ts[:, 5], velocity=_vel)
                             if ring is not None:
                                 # s_T is where decision t+1 WOULD have looked,
                                 # so its history is the ring as it stands: the

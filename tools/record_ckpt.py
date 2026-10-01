@@ -1217,6 +1217,9 @@ def main(argv=None, build_only: bool = False, device=None):
                      # --depth-enc: MIRRORED (what every depth pixel means; dual = 2 channels)
                      depth_enc=str(cfg.get("depth_enc") or "legacy"),
                      # --obs-texture: MIRRORED (the hit surface's R, G, B; +3 channels)
+                     # --obs-ttc: MIRRORED (the looming channel; the policy wrapper passes
+                     # the eval core's velocity)
+                     ttc=bool(cfg.get("obs_ttc") or 0),
                      texture=bool(cfg.get("obs_texture") or cfg.get("obs_normal")
                                   or cfg.get("obs_slope") or 0),
                      # --obs-normal / --obs-slope: MIRRORED (what the face channels carry)
