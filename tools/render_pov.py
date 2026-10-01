@@ -329,7 +329,9 @@ def main() -> None:
                      texture=bool(rcfg.get("obs_texture") or rcfg.get("obs_normal")
                                   or rcfg.get("obs_slope") or 0),
                      texture_mode=("normal" if rcfg.get("obs_normal") else "slope"
-                                   if rcfg.get("obs_slope") else "rgb"))
+                                   if rcfg.get("obs_slope") else "rgb"),
+                     # --obs-ttc: the looming channel (rendered from the recorded velocity)
+                     ttc=bool(rcfg.get("obs_ttc") or 0))
     if lidar.texmap is not None:
         print("--obs-texture mirrored: " + lidar.texmap.describe())
     if depth_enc != "legacy":
@@ -415,7 +417,7 @@ def main() -> None:
     if args.normals and args.surf_mask:
         raise SystemExit("--normals and --surf-mask are exclusive (|n_z| is "
                          "the normal's third channel)")
-    n_panels = (1 + int(depth_enc == "dual") + int(lidar.texmap is not None)
+    n_panels = (1 + int(depth_enc == "dual") + int(lidar.texmap is not None) + int(lidar.ttc)
                 + int(bool(args.normals))
                 + int(args.surf_mask or ball_panel) + int(pot is not None)
                 + int(tmask is not None) + int(bool(tviews)))
@@ -517,7 +519,9 @@ def main() -> None:
                 # (k, h, w, 1 + views): channel 0 is the map depth
                 d = ball.render(o, yw, pt, dk, idx=np.arange(k)).cpu().numpy()
             else:
-                d = lidar.render(o, yw, pt, dk).cpu().numpy()      # (k, h, w)
+                _vk = ({"velocity": torch.tensor(a[sl, 4:7], dtype=torch.float32, device=device)}
+                       if lidar.ttc else {})
+                d = lidar.render(o, yw, pt, dk, **_vk).cpu().numpy()      # (k, h, w)
             tch = None
             if tmask is not None:
                 if t_ids is not None and tgt_live:
@@ -563,16 +567,27 @@ def main() -> None:
                                                   "dual": " (legacy encoding)"}.get(depth_enc, ""),
                                 (8, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.55,
                                 (255, 255, 255), 1, cv2.LINE_AA)
+                if lidar.ttc:
+                    # --obs-ttc: the looming channel, grey (white = about to hit, black = moving
+                    # away / parallel / far in time)
+                    lt = (np.clip(d[i][..., lidar.ttc_channel], 0.0, 1.0) * 255.0).astype(np.uint8)
+                    lfr_ = cv2.resize(cv2.cvtColor(lt, cv2.COLOR_GRAY2BGR), (W, H),
+                                      interpolation=cv2.INTER_NEAREST)
+                    for _o, _c in ((3, (0, 0, 0)), (1, (255, 255, 255))):
+                        cv2.putText(lfr_, "looming: exp(-time to contact / 1 s), white = imminent",
+                                    (8, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.5, _c, _o, cv2.LINE_AA)
+                    cv2.line(lfr_, (0, 0), (W, 0), (60, 60, 60), 1)
+                    frame = np.vstack((frame, lfr_))
                 if lidar.texmap is not None:
                     # --obs-texture: the R, G, B channels exactly as the policy receives them
                     tc = lidar.tex_channel
                     if lidar.texture_mode == "slope":
                         # the slope in [0, 1] as grey (floor black, wall mid-grey, ceiling white;
                         # no face dark blue-grey)
-                        sl = d[i][..., tc]
-                        g = (np.clip(sl, 0.0, 1.0) * 255.0).astype(np.uint8)
-                        rgb = np.stack([g, g, g], -1)
-                        rgb[sl < 0] = (60, 40, 40)
+                        slp = d[i][..., tc]          # not `sl`: that is the frame slice
+                        gry = (np.clip(slp, 0.0, 1.0) * 255.0).astype(np.uint8)
+                        rgb = np.stack([gry, gry, gry], -1)
+                        rgb[slp < 0] = (60, 40, 40)
                     elif lidar.texture_mode == "normal":
                         # the face normal (x fwd, y left, z up) in [-1, 1] as R, G, B: a floor
                         # (128, 128, 255), a wall ahead (0, 128, 128), no face mid-grey
