@@ -873,6 +873,32 @@ if HAVE_TRITON:
         return tl.minimum(tl.maximum(tl.where(x >= 0.0, r, 3.14159265 - r) * 0.31830989, 0.0), 1.0)
 
     @triton.jit
+    def _face_plane_t(ex, ey, ez, dx, dy, dz, t, m, rng,
+                      nx, ny, nz, stride_z, stride_y, mnx, mny, mnz, inv_cell, cell,
+                      fid_ptr, fdata_ptr):
+        """--obs-edges' source: the ray's EXACT depth on the plane of the face the face-id grid
+        names at the march's stop (within two cells of the march's t), else the march's t"""
+        px = ex + dx * t
+        py = ey + dy * t
+        pz = ez + dz * t
+        ix = tl.minimum(tl.maximum(((px - mnx) * inv_cell).to(tl.int64), 0), nx - 1)
+        iy = tl.minimum(tl.maximum(((py - mny) * inv_cell).to(tl.int64), 0), ny - 1)
+        iz = tl.minimum(tl.maximum(((pz - mnz) * inv_cell).to(tl.int64), 0), nz - 1)
+        vox = iz * stride_z + iy * stride_y + ix
+        fid = tl.load(fid_ptr + vox, mask=m, other=-1).to(tl.int32)
+        ok = m & (t < rng) & (fid >= 0)
+        f = tl.maximum(fid, 0).to(tl.int64) * 16
+        wx = tl.load(fdata_ptr + f + 8, mask=ok, other=0.0)
+        wy = tl.load(fdata_ptr + f + 9, mask=ok, other=0.0)
+        wz = tl.load(fdata_ptr + f + 10, mask=ok, other=0.0)
+        fdd = tl.load(fdata_ptr + f + 11, mask=ok, other=0.0)
+        nd = dx * wx + dy * wy + dz * wz
+        an = tl.abs(nd)
+        tp = (fdd - (ex * wx + ey * wy + ez * wz)) / tl.where(an > 1e-4, nd, 1.0)
+        use = ok & (an > 1e-4) & (tp > 0.0) & (tl.abs(tp - t) < 2.0 * cell)
+        return tl.where(use, tp, t)
+
+    @triton.jit
     def _face_normal(ex, ey, ez, dx, dy, dz, t, m, rng,
                      nx, ny, nz, stride_z, stride_y, mnx, mny, mnz, inv_cell,
                      fid_ptr, fdata_ptr, yp):
@@ -1058,6 +1084,15 @@ if HAVE_TRITON:
         if OUT == 2:
             tl.store(out_ptr + offs * 2 + 0, enc, mask=m)
             tl.store(out_ptr + offs * 2 + 1, tr_, mask=m)
+        elif OUT == 3:
+            # --obs-edges' supersampled source: (depth, ego normal, the exact face-plane depth)
+            tp_ = _face_plane_t(ex, ey, ez, dx, dy, dz, t, m, rng, nx, ny, nz, stride_z,
+                                stride_y, mnx, mny, mnz, inv_cell, cell, fid_ptr, fdata_ptr)
+            tl.store(out_ptr + offs * 5 + 0, enc, mask=m)
+            tl.store(out_ptr + offs * 5 + 1, tr_, mask=m)
+            tl.store(out_ptr + offs * 5 + 2, tg_, mask=m)
+            tl.store(out_ptr + offs * 5 + 3, tb_, mask=m)
+            tl.store(out_ptr + offs * 5 + 4, tp_, mask=m)
         else:
             tl.store(out_ptr + offs * 4 + 0, enc, mask=m)
             tl.store(out_ptr + offs * 4 + 1, tr_, mask=m)
@@ -1254,8 +1289,101 @@ if HAVE_TRITON:
             tl.store(out_ptr + offs * 5 + 3, tg_, mask=m)
             tl.store(out_ptr + offs * 5 + 4, tb_, mask=m)
 
+if HAVE_TRITON:
+    @triton.jit
+    def _edge_pair_k(src_ptr, n, ra, ca, rb, cb, H2, W2, yw, pt, cy, sy, yoff_ptr, poff_ptr, m,
+                     rng, edge_rel):
+        """--obs-edges: one fine pixel pair (a, b) of image n -> its edge strength (0 when the
+        pair lies outside the fine image): GpuLidar._edge_pair, term for term"""
+        ok = m & (ra >= 0) & (ra < H2) & (ca >= 0) & (ca < W2) & (rb >= 0) & (rb < H2) \
+            & (cb >= 0) & (cb < W2)
+        ia = ((n * H2 + tl.minimum(tl.maximum(ra, 0), H2 - 1)) * W2
+              + tl.minimum(tl.maximum(ca, 0), W2 - 1)) * 5
+        ib = ((n * H2 + tl.minimum(tl.maximum(rb, 0), H2 - 1)) * W2
+              + tl.minimum(tl.maximum(cb, 0), W2 - 1)) * 5
+        fax = tl.load(src_ptr + ia + 1, mask=ok, other=0.0)
+        fay = tl.load(src_ptr + ia + 2, mask=ok, other=0.0)
+        faz = tl.load(src_ptr + ia + 3, mask=ok, other=0.0)
+        ta = tl.load(src_ptr + ia + 4, mask=ok, other=0.0)
+        fbx = tl.load(src_ptr + ib + 1, mask=ok, other=0.0)
+        fby = tl.load(src_ptr + ib + 2, mask=ok, other=0.0)
+        fbz = tl.load(src_ptr + ib + 3, mask=ok, other=0.0)
+        tb = tl.load(src_ptr + ib + 4, mask=ok, other=0.0)
+        # world normals (the ego normal rotated back by the view yaw)
+        nax = fax * cy - fay * sy
+        nay = fax * sy + fay * cy
+        nbx = fbx * cy - fby * sy
+        nby = fbx * sy + fby * cy
+        # the fine rays (the equiangular camera: _dirs_equiangular)
+        pa = pt + tl.load(poff_ptr + tl.minimum(tl.maximum(ra, 0), H2 - 1), mask=ok, other=0.0)
+        ya = yw + tl.load(yoff_ptr + tl.minimum(tl.maximum(ca, 0), W2 - 1), mask=ok, other=0.0)
+        pb = pt + tl.load(poff_ptr + tl.minimum(tl.maximum(rb, 0), H2 - 1), mask=ok, other=0.0)
+        yb = yw + tl.load(yoff_ptr + tl.minimum(tl.maximum(cb, 0), W2 - 1), mask=ok, other=0.0)
+        dax = tl.cos(pa) * tl.cos(ya)
+        day = tl.cos(pa) * tl.sin(ya)
+        daz = tl.sin(pa)
+        dbx = tl.cos(pb) * tl.cos(yb)
+        dby = tl.cos(pb) * tl.sin(yb)
+        dbz = tl.sin(pb)
+        va = (fax * fax + fay * fay + faz * faz > 0.25) & (ta < rng)
+        vb = (fbx * fbx + fby * fby + fbz * fbz > 0.25) & (tb < rng)
+        crease = (1.0 - tl.minimum(tl.maximum(nax * nbx + nay * nby + faz * fbz, -1.0), 1.0)) * 0.5
+        den = nax * dbx + nay * dby + faz * dbz
+        den = tl.where(tl.abs(den) > 1e-3, den, 1e-3)
+        tp = ta * (nax * dax + nay * day + faz * daz) / den
+        s1 = tl.minimum(tl.maximum(tl.abs(tb - tp) / tl.maximum(tb, 1.0) / edge_rel, 0.0), 1.0)
+        den = nbx * dax + nby * day + fbz * daz
+        den = tl.where(tl.abs(den) > 1e-3, den, 1e-3)
+        tp = tb * (nbx * dbx + nby * dby + fbz * dbz) / den
+        s2 = tl.minimum(tl.maximum(tl.abs(ta - tp) / tl.maximum(ta, 1.0) / edge_rel, 0.0), 1.0)
+        e = tl.maximum(crease, tl.maximum(s1, s2))
+        e = tl.where(va & vb, e, tl.where(va != vb, 1.0, 0.0))
+        return tl.where(ok, e, 0.0)
+
+    @triton.jit
+    def _edge_kernel(src_ptr, yaw_ptr, pitch_ptr, yoff_ptr, poff_ptr, out_ptr,
+                     total, H, W, H2, W2, rng, edge_rel, BLOCK: tl.constexpr):
+        """--obs-edges: per coarse pixel (an EDGE_SS = 2 block of the fine render), the max edge
+        strength of the 12 fine pairs incident to its four fine pixels"""
+        offs = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+        m = offs < total
+        n = offs // (H * W)
+        pix = offs % (H * W)
+        r = pix // W
+        c = pix % W
+        yw = tl.load(yaw_ptr + n, mask=m, other=0.0)
+        pt = tl.load(pitch_ptr + n, mask=m, other=0.0)
+        cy = tl.cos(yw)
+        sy = tl.sin(yw)
+        r0 = 2 * r
+        c0 = 2 * c
+        best = tl.zeros([BLOCK], tl.float32)
+        for k in tl.static_range(2):
+            # horizontal pairs in fine row r0 + k, vertical pairs in fine column c0 + k
+            rr = r0 + k
+            cc = c0 + k
+            best = tl.maximum(best, _edge_pair_k(src_ptr, n, rr, c0 - 1, rr, c0, H2, W2, yw, pt,
+                                                 cy, sy, yoff_ptr, poff_ptr, m, rng, edge_rel))
+            best = tl.maximum(best, _edge_pair_k(src_ptr, n, rr, c0, rr, c0 + 1, H2, W2, yw, pt,
+                                                 cy, sy, yoff_ptr, poff_ptr, m, rng, edge_rel))
+            best = tl.maximum(best, _edge_pair_k(src_ptr, n, rr, c0 + 1, rr, c0 + 2, H2, W2, yw,
+                                                 pt, cy, sy, yoff_ptr, poff_ptr, m, rng,
+                                                 edge_rel))
+            best = tl.maximum(best, _edge_pair_k(src_ptr, n, r0 - 1, cc, r0, cc, H2, W2, yw, pt,
+                                                 cy, sy, yoff_ptr, poff_ptr, m, rng, edge_rel))
+            best = tl.maximum(best, _edge_pair_k(src_ptr, n, r0, cc, r0 + 1, cc, H2, W2, yw, pt,
+                                                 cy, sy, yoff_ptr, poff_ptr, m, rng, edge_rel))
+            best = tl.maximum(best, _edge_pair_k(src_ptr, n, r0 + 1, cc, r0 + 2, cc, H2, W2, yw,
+                                                 pt, cy, sy, yoff_ptr, poff_ptr, m, rng,
+                                                 edge_rel))
+        tl.store(out_ptr + offs, best, mask=m)
+
 #: --obs-ttc: the looming channel's time scale, s (exp(-time to contact / TTC_TAU))
 TTC_TAU = 1.0
+#: --obs-edges: the supersampling of the edge render, and the relative depth mismatch off a
+#: pixel's surface plane that reads as a full silhouette edge
+EDGE_SS = 2
+EDGE_REL = 0.02
 
 #: --depth-enc: the depth channel's encodings (GpuLidar(depth_enc=))
 DEPTH_ENCODINGS = ("legacy", "log", "dual")
@@ -1952,8 +2080,9 @@ class GpuLidar:
                  pinhole: bool = False, normals: bool = False,
                  potential=None, vision_clip: bool = False,
                  depth_enc: str = "legacy", depth_log_d0: float = 200.0,
-                 texture=False, texture_mode: str = "rgb", ttc: bool = False) -> None:
-        if texture_mode not in ("rgb", "normal", "slope"):
+                 texture=False, texture_mode: str = "rgb", ttc: bool = False,
+                 edges: bool = False) -> None:
+        if texture_mode not in ("rgb", "normal", "slope", "edgesrc"):
             raise ValueError(f"texture_mode {texture_mode!r}: rgb (--obs-texture), normal "
                              "(--obs-normal) or slope (--obs-slope)")
         if texture and (surf_mask or pinhole or normals or vision_clip
@@ -2087,9 +2216,10 @@ class GpuLidar:
                     core.bsp_path, self.sdf_flat, (self.nz, self.ny, self.nx), self.mins_f,
                     self.cell, f"{_map_sig(Path(core.bsp_path))}_{_SDF_SEMANTICS}",
                     self.device)
-            # --obs-slope: ONE channel (the facing normal's angle with +Z); the others three
-            self.channels += 1 if texture_mode == "slope" else 3
-        self.tex_channel = (self.channels - (1 if texture_mode == "slope" else 3)
+            # --obs-slope: ONE channel (the facing normal's angle with +Z); the others three;
+            # the internal edge source four (the normal and the exact plane depth)
+            self.channels += {"slope": 1, "edgesrc": 4}.get(texture_mode, 3)
+        self.tex_channel = (self.channels - {"slope": 1, "edgesrc": 4}.get(texture_mode, 3)
                             if self.texmap is not None else None)
         # --obs-normal: the same three channels carry the face's ego-frame normal, not its colour
         self.texture_mode = str(texture_mode)
@@ -2100,6 +2230,16 @@ class GpuLidar:
         if self.ttc:
             self.channels += 1
         self.ttc_channel = self.channels - 1 if self.ttc else None
+        # --obs-edges: one more channel after that, from a 2x supersampled depth + normal render
+        # (a shallow copy of this lidar, _edge_cam) - it needs the face-id grid
+        self.edges = bool(edges)
+        if self.edges and (self.texmap is None or pinhole or self.depth_enc != "legacy"):
+            raise ValueError("--obs-edges needs the face-id grid (--obs-normal / --obs-texture / "
+                             "--obs-slope), the equiangular camera and the legacy depth")
+        if self.edges:
+            self.channels += 1
+        self.edge_channel = self.channels - 1 if self.edges else None
+        self._edge_cam_obj = None
         self.tex_pix_rad = float(np.radians(self.vfov_deg / self.H))
         # the depth channel 0's largest value (a clear ray at the range), for displays
         self.enc_max = (float(np.log1p(self.range / self.log_d0)) * self.lscale
@@ -2184,7 +2324,94 @@ class GpuLidar:
                 out[..., self.pot_channel])
         if self.ttc:
             out = self._append_ttc(out, origin, yaw_deg, pitch_deg, velocity)
+        if self.edges:
+            out = self._append_edges(out, origin, yaw_deg, pitch_deg, ducked)
         return out
+
+    def _edge_cam(self):
+        """--obs-edges: this lidar at EDGE_SS x the resolution (the same fov, depth grid and face
+        lookup - a shallow copy, nothing reloaded) rendering (depth, facing ego normal, exact
+        plane depth)"""
+        if self._edge_cam_obj is None:
+            import copy
+            c = copy.copy(self)
+            c.W, c.H = self.W * EDGE_SS, self.H * EDGE_SS
+            d2r = np.pi / 180.0
+            c.yoff = torch.as_tensor((self.hfov_deg * (0.5 - (np.arange(c.W) + 0.5) / c.W)) * d2r,
+                                     dtype=torch.float32, device=self.device)
+            c.poff = torch.as_tensor((self.vfov_deg * (0.5 - (np.arange(c.H) + 0.5) / c.H)) * d2r,
+                                     dtype=torch.float32, device=self.device)
+            c.texture_mode = "edgesrc"
+            c.potential = None
+            c.ttc = c.edges = False
+            c.channels = c._kchannels = 5
+            c.tex_channel = 1
+            c.tex_pix_rad = float(np.radians(self.vfov_deg / c.H))
+            c._buf_n = 0
+            c._edge_cam_obj = None
+            self._edge_cam_obj = c
+        return self._edge_cam_obj
+
+    @staticmethod
+    def _edge_pair(na, nb, da, db, ta, tb, va, vb):
+        """edge strength of neighbouring pixel pairs: max(crease, silhouette) where both hit a
+        face, 1 where exactly one does, 0 where neither. crease = (1 - na.nb) / 2; silhouette =
+        |t_b - b's ray on a's plane| / t_b / EDGE_REL (either way round), clipped to 1"""
+        crease = (1.0 - (na * nb).sum(-1).clamp(-1.0, 1.0)) * 0.5
+
+        def sil(n1, t1, d1, d2, t2):
+            den = (n1 * d2).sum(-1)
+            den = torch.where(den.abs() > 1e-3, den, torch.full_like(den, 1e-3))
+            tp = t1 * (n1 * d1).sum(-1) / den
+            return ((t2 - tp).abs() / t2.clamp(min=1.0) / EDGE_REL).clamp(0.0, 1.0)
+        e = torch.maximum(crease, torch.maximum(sil(na, ta, da, db, tb), sil(nb, tb, db, da, ta)))
+        return torch.where(va & vb, e, (va ^ vb).float())
+
+    @torch.no_grad()
+    def _append_edges(self, out, origin, yaw_deg, pitch_deg, ducked):
+        """--obs-edges: the 2x render's pixel-pair edges, each pixel the max of its pairs,
+        max-pooled EDGE_SS x EDGE_SS onto the image - appended as the last channel"""
+        cam = self._edge_cam()
+        src = cam.render(origin, yaw_deg, pitch_deg, ducked)               # (N, 2H, 2W, 5)
+        N = origin.shape[0]
+        if HAVE_TRITON and self.device.type == "cuda" and EDGE_SS == 2:
+            # the fused kernel (_edge_kernel): the torch lines below, term for term
+            d2r = float(np.pi / 180.0)
+            e = torch.empty(N, self.H, self.W, device=self.device)
+            total = N * self.H * self.W
+            _edge_kernel[(triton.cdiv(total, 256),)](
+                src.contiguous(), (torch.as_tensor(yaw_deg, dtype=torch.float32,
+                                                   device=self.device) * d2r).contiguous(),
+                (torch.as_tensor(pitch_deg, dtype=torch.float32, device=self.device)
+                 * d2r).contiguous(), cam.yoff, cam.poff, e, total, self.H, self.W, cam.H, cam.W,
+                float(self.range), float(EDGE_REL), BLOCK=256, num_warps=4)
+            if out.dim() == 3:
+                out = out[..., None]
+            return torch.cat((out, e[..., None]), dim=-1)
+        cam._ensure_buffers(N)
+        cam._dirs_equiangular(N, yaw_deg, pitch_deg, np.pi / 180.0)
+        d = torch.stack((cam._dx, cam._dy, cam._dz), -1)
+        ne = src[..., 1:4]
+        yp = (torch.as_tensor(yaw_deg, dtype=torch.float32, device=self.device)
+              * (np.pi / 180.0)).view(N, 1, 1)
+        cy, sy = torch.cos(yp), torch.sin(yp)
+        n = torch.stack((ne[..., 0] * cy - ne[..., 1] * sy, ne[..., 0] * sy + ne[..., 1] * cy,
+                         ne[..., 2]), -1)
+        t = src[..., 4]
+        v = (ne.norm(dim=-1) > 0.5) & (t < self.range)
+        eh = self._edge_pair(n[:, :, :-1], n[:, :, 1:], d[:, :, :-1], d[:, :, 1:],
+                             t[:, :, :-1], t[:, :, 1:], v[:, :, :-1], v[:, :, 1:])
+        ev = self._edge_pair(n[:, :-1], n[:, 1:], d[:, :-1], d[:, 1:],
+                             t[:, :-1], t[:, 1:], v[:, :-1], v[:, 1:])
+        E = torch.zeros_like(t)
+        E[:, :, :-1] = torch.maximum(E[:, :, :-1], eh)
+        E[:, :, 1:] = torch.maximum(E[:, :, 1:], eh)
+        E[:, :-1] = torch.maximum(E[:, :-1], ev)
+        E[:, 1:] = torch.maximum(E[:, 1:], ev)
+        e = E.view(N, self.H, EDGE_SS, self.W, EDGE_SS).amax(dim=(2, 4))
+        if out.dim() == 3:
+            out = out[..., None]
+        return torch.cat((out, e[..., None]), dim=-1)
 
     @torch.no_grad()
     def _append_ttc(self, out, origin, yaw_deg, pitch_deg, velocity):
@@ -2429,7 +2656,7 @@ class GpuLidar:
                 *(P.curtain[0] + P.curtain[1] if P.curtain is not None
                   else (0.0,) * 6),
                 REL=bool(P.rel), CURTAIN=bool(P.curtain is not None),
-                OUT={"rgb": 0, "normal": 1, "slope": 2}[self.texture_mode],
+                OUT={"rgb": 0, "normal": 1, "slope": 2, "edgesrc": 3}[self.texture_mode],
                 BLOCK=BLOCK, num_warps=MARCH_WARPS)
             return out
         _march_kernel_tex[(triton.cdiv(total, BLOCK),)](
@@ -2440,7 +2667,8 @@ class GpuLidar:
             self.nx, self.ny, self.nz, self.stride_z, self.stride_y,
             self.mins_f[0], self.mins_f[1], self.mins_f[2],
             1.0 / self.cell, self.cell, self.range, self.near,
-            self.max_steps, *targs, OUT={"rgb": 0, "normal": 1, "slope": 2}[self.texture_mode],
+            self.max_steps, *targs,
+            OUT={"rgb": 0, "normal": 1, "slope": 2, "edgesrc": 3}[self.texture_mode],
             BLOCK=BLOCK, num_warps=MARCH_WARPS)
         return out
 
@@ -2460,7 +2688,7 @@ class GpuLidar:
         ok = (t < self.range) & (fid >= 0)
         f = fid.clamp(min=0)
         fd = X.fdata.view(-1, 16)[f]                                   # (N, H, W, 16)
-        if self.texture_mode in ("normal", "slope"):
+        if self.texture_mode in ("normal", "slope", "edgesrc"):
             # _face_normal, term for term
             wx, wy, wz = fd[..., 8], fd[..., 9], fd[..., 10]
             sgn = torch.where(wx * dx + wy * dy + wz * dz > 0.0, -1.0, 1.0)
@@ -2468,6 +2696,16 @@ class GpuLidar:
             yp = (self._yaw_deg_last * (np.pi / 180.0)).view(N, 1, 1)
             cy, sy = torch.cos(yp), torch.sin(yp)
             z = torch.zeros_like(wx)
+            if self.texture_mode == "edgesrc":
+                # --obs-edges' source: + the exact face-plane depth (_face_plane_t)
+                nd = dx * fd[..., 8] + dy * fd[..., 9] + dz * fd[..., 10]
+                an = nd.abs()
+                tp = (fd[..., 11] - (ex * fd[..., 8] + ey * fd[..., 9] + ez * fd[..., 10])) \
+                    / torch.where(an > 1e-4, nd, torch.ones_like(nd))
+                use = ok & (an > 1e-4) & (tp > 0.0) & ((tp - t).abs() < 2.0 * self.cell)
+                return torch.stack((torch.where(ok, wx * cy + wy * sy, z),
+                                    torch.where(ok, wy * cy - wx * sy, z),
+                                    torch.where(ok, wz, z), torch.where(use, tp, t)), -1)
             if self.texture_mode == "slope":
                 # --obs-slope: acos(the facing normal's z) / pi, no face -1 (exact acos here)
                 return torch.where(ok, torch.acos(wz.clamp(-1.0, 1.0)) / np.pi,

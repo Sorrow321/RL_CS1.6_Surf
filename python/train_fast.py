@@ -1106,6 +1106,7 @@ ARCH_KEYS = (("emb", "--emb"), ("hidden", "--hidden"), ("trunk", "--trunk"),
              ("obs_normal", "--obs-normal"),
              ("obs_slope", "--obs-slope"),
              ("obs_ttc", "--obs-ttc"),
+             ("obs_edges", "--obs-edges"),
              ("keys_hold", "--keys-hold"),
              ("obs_fourier", "--obs-fourier"))
 
@@ -4479,6 +4480,14 @@ def main() -> None:
                          "current velocity, exp(-depth / ((velocity . ray) x 1 s)) where the "
                          "player closes on the point, 0 where it moves away or parallel. in_ch + "
                          "1: SCRATCH arms; ckpt restores, a mismatch is refused")
+    ap.add_argument("--obs-edges", type=int, default=None, choices=(0, 1),
+                    help="ONE more image channel (the user, 2026-10-01): EDGES - creases (the "
+                         "neighbouring pixels' surface normals differ) and silhouettes (the "
+                         "neighbour's hit is off this pixel's surface plane by > 2%% of its "
+                         "depth), found on a 2x supersampled depth + normal render and max-pooled "
+                         "onto the image. Needs a face mode (--obs-normal / --obs-texture / "
+                         "--obs-slope). in_ch + 1: SCRATCH arms; ckpt restores, a mismatch is "
+                         "refused")
     ap.add_argument("--depth-log-d0", type=float, default=None,
                     help="--depth-enc log / dual: d0 of ln(1 + d/d0), u (default 200); ckpt "
                          "restores")
@@ -6960,6 +6969,15 @@ def main() -> None:
                 "G, B) and a checkpoint's first layer cannot be widened or narrowed - start a "
                 "fresh run, or drop the flag to keep the ckpt's setting "
                 f"({int(ck_cfg.get('obs_texture') or 0)})")
+        if args.obs_edges is None and ck_cfg.get("obs_edges"):
+            args.obs_edges = 1
+            restored.append("obs_edges=1")
+        elif args.obs_edges is not None \
+                and int(args.obs_edges) != int(ck_cfg.get("obs_edges") or 0):
+            raise SystemExit(
+                "--obs-edges changes the conv trunk's input channels (+1) and a checkpoint's "
+                "first layer cannot be widened or narrowed - start a fresh run, or drop the flag "
+                f"to keep the ckpt's setting ({int(ck_cfg.get('obs_edges') or 0)})")
         if args.obs_ttc is None and ck_cfg.get("obs_ttc"):
             args.obs_ttc = 1
             restored.append("obs_ttc=1")
@@ -7792,6 +7810,11 @@ def main() -> None:
         args.obs_slope = 0
     if args.obs_ttc is None:
         args.obs_ttc = 0
+    if args.obs_edges is None:
+        args.obs_edges = 0
+    if args.obs_edges and not (args.obs_normal or args.obs_texture or args.obs_slope):
+        raise SystemExit("--obs-edges reads the face-id grid of a face mode: pass --obs-normal, "
+                         "--obs-texture or --obs-slope with it")
     if args.obs_ttc and (args.goals or (args.frame_stack or 0) > 1 or args.surf_mask
                          or args.normals):
         raise SystemExit("--obs-ttc is a post-process of the plain / potential / face renders: "
@@ -10031,6 +10054,7 @@ def main() -> None:
         with D.rank0_first():        # vision SDF npz build/write
             slot.lidar = GpuLidar(slot.core, args.lidar_w, args.lidar_h,
                                   ttc=bool(args.obs_ttc),
+                                  edges=bool(args.obs_edges),
                                   texture=bool(args.obs_texture or args.obs_normal
                                                or args.obs_slope),
                                   texture_mode=("normal" if args.obs_normal else "slope"
@@ -10055,6 +10079,9 @@ def main() -> None:
         if args.obs_texture:
             print(f"--obs-texture: {slot.name} " + slot.lidar.texmap.describe()
                   + f" -> in_ch {slot.lidar.channels}")
+        if args.obs_edges:
+            print(f"--obs-edges: {slot.name} creases + silhouettes from a 2x supersampled depth + "
+                  f"normal render, max-pooled -> in_ch {slot.lidar.channels}")
         if args.obs_ttc:
             print(f"--obs-ttc: {slot.name} the looming channel exp(-depth / ((v . ray) x 1 s)) "
                   f"(0 moving away / parallel) -> in_ch {slot.lidar.channels}")
@@ -10182,6 +10209,7 @@ def main() -> None:
             with D.rank0_first():        # vision SDF npz build/write
                 hs.lidar = GpuLidar(ec, args.lidar_w, args.lidar_h,
                                     ttc=bool(args.obs_ttc),
+                                    edges=bool(args.obs_edges),
                                     texture=bool(args.obs_texture or args.obs_normal
                                                  or args.obs_slope),
                                     texture_mode=("normal" if args.obs_normal else "slope"
@@ -12228,6 +12256,8 @@ def main() -> None:
         meta["config"]["obs_slope"] = 1
     if args.obs_ttc:
         meta["config"]["obs_ttc"] = 1
+    if args.obs_edges:
+        meta["config"]["obs_edges"] = 1
     if args.depth_enc != "legacy":
         # --depth-enc: ONLY off the default, so a legacy config dump is the pre-flag one;
         # record_ckpt.py and render_pov.py mirror both keys

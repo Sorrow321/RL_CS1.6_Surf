@@ -1033,7 +1033,9 @@ def test_fleet_render_batches_the_norm_post_process():
     # the potential's channel: 1, or 2 under --depth-enc dual (pot_channel)
     assert "post=False" in src and "pot.normalise(view[..., pc])" in src
     vsrc = (ROOT / "python" / "surfgym" / "vision.py").read_text(encoding="utf-8")
-    assert "def render(self, origin, yaw_deg, pitch_deg, ducked, post: bool = True):" in vsrc
+    # (velocity=None: --obs-ttc's looming channel, 2026-10-01)
+    assert ("def render(self, origin, yaw_deg, pitch_deg, ducked, post: bool = True, "
+            "velocity=None):") in vsrc
     assert "if post and self.potential is not None and self.potential.post:" in vsrc
 
 

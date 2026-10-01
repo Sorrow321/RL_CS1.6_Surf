@@ -1220,6 +1220,8 @@ def main(argv=None, build_only: bool = False, device=None):
                      # --obs-ttc: MIRRORED (the looming channel; the policy wrapper passes
                      # the eval core's velocity)
                      ttc=bool(cfg.get("obs_ttc") or 0),
+                     # --obs-edges: MIRRORED (the supersampled edge channel)
+                     edges=bool(cfg.get("obs_edges") or 0),
                      texture=bool(cfg.get("obs_texture") or cfg.get("obs_normal")
                                   or cfg.get("obs_slope") or 0),
                      # --obs-normal / --obs-slope: MIRRORED (what the face channels carry)

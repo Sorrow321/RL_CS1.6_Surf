@@ -331,7 +331,9 @@ def main() -> None:
                      texture_mode=("normal" if rcfg.get("obs_normal") else "slope"
                                    if rcfg.get("obs_slope") else "rgb"),
                      # --obs-ttc: the looming channel (rendered from the recorded velocity)
-                     ttc=bool(rcfg.get("obs_ttc") or 0))
+                     ttc=bool(rcfg.get("obs_ttc") or 0),
+                     # --obs-edges: the edge channel (one more panel)
+                     edges=bool(rcfg.get("obs_edges") or 0))
     if lidar.texmap is not None:
         print("--obs-texture mirrored: " + lidar.texmap.describe())
     if depth_enc != "legacy":
@@ -418,6 +420,7 @@ def main() -> None:
         raise SystemExit("--normals and --surf-mask are exclusive (|n_z| is "
                          "the normal's third channel)")
     n_panels = (1 + int(depth_enc == "dual") + int(lidar.texmap is not None) + int(lidar.ttc)
+                + int(lidar.edges)
                 + int(bool(args.normals))
                 + int(args.surf_mask or ball_panel) + int(pot is not None)
                 + int(tmask is not None) + int(bool(tviews)))
@@ -567,6 +570,16 @@ def main() -> None:
                                                   "dual": " (legacy encoding)"}.get(depth_enc, ""),
                                 (8, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.55,
                                 (255, 255, 255), 1, cv2.LINE_AA)
+                if lidar.edges:
+                    # --obs-edges: the edge channel, white = an edge (crease or silhouette)
+                    ed = (np.clip(d[i][..., lidar.edge_channel], 0.0, 1.0) * 255.0).astype(np.uint8)
+                    efr_ = cv2.resize(cv2.cvtColor(ed, cv2.COLOR_GRAY2BGR), (W, H),
+                                      interpolation=cv2.INTER_NEAREST)
+                    for _o, _c in ((3, (0, 0, 0)), (1, (255, 255, 255))):
+                        cv2.putText(efr_, "edges (creases + silhouettes): white",
+                                    (8, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.5, _c, _o, cv2.LINE_AA)
+                    cv2.line(efr_, (0, 0), (W, 0), (60, 60, 60), 1)
+                    frame = np.vstack((frame, efr_))
                 if lidar.ttc:
                     # --obs-ttc: the looming channel, grey (white = about to hit, black = moving
                     # away / parallel / far in time)

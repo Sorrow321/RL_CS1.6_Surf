@@ -271,3 +271,52 @@ def test_slope_trainer_smoke():
                 "--map", str(CANNONBALL), "--episodes", "1", "--out", str(d / "rec.jsonl")])
     assert rec.returncode == 0, rec.stdout[-4000:] + rec.stderr[-4000:]
     shutil.rmtree(d, ignore_errors=True)
+
+
+@needs_cuda_caches
+def test_edges_on_cannonball():
+    """--obs-edges: the last channel; the fused kernel == the torch reference; the other channels
+    are the normal mode's; values in [0, 1]; a sizeable but minority share of edge pixels"""
+    from surfgym import SurfCore, default_config
+    core = SurfCore(str(CANNONBALL), default_config(num_envs=1, lidar_w=0, lidar_h=0))
+    kw = dict(range_units=11500.0, near_range=2000.0, cell=32.0)
+    ln = vision.GpuLidar(core, 64, 32, device="cuda", texture=True, texture_mode="normal", **kw)
+    le = vision.GpuLidar(core, 64, 32, device="cuda", texture=ln.texmap, texture_mode="normal",
+                         edges=True, **kw)
+    lc = vision.GpuLidar(core, 64, 32, device="cpu", texture=True, texture_mode="normal",
+                         edges=True, **kw)
+    assert (le.channels, le.edge_channel) == (5, 4)
+    a = np.asarray(CPOSES, np.float32)
+
+    def tens(dev):
+        return (torch.as_tensor(a[:, 0:3]).to(dev), torch.as_tensor(a[:, 3]).to(dev),
+                torch.as_tensor(a[:, 4]).to(dev), torch.as_tensor(a[:, 5]).to(dev))
+    oe = le.render(*tens("cuda")).cpu()
+    assert torch.equal(oe[..., :4], ln.render(*tens("cuda")).cpu())
+    oc = lc.render(*tens("cpu"))
+    assert (oe[..., 4] - oc[..., 4]).abs().max() < 1e-3
+    e = oe[..., 4]
+    assert float(e.min()) >= 0.0 and float(e.max()) <= 1.0
+    assert 0.05 < float((e > 0.5).float().mean()) < 0.6
+    with pytest.raises(ValueError):
+        vision.GpuLidar(core, 64, 32, device="cuda", edges=True, **kw)    # no face lookup
+
+
+@needs_run
+@pytest.mark.skipif(not FACEID.exists(), reason="needs the baked cannonball face grid (cell 32)")
+def test_edges_trainer_smoke():
+    run = "cya_edges"
+    r = _train(run, ABS + ["--obs-potential", "norm", "--obs-normal", "1", "--obs-edges", "1"])
+    assert r.returncode == 0, r.stdout[-4000:] + r.stderr[-4000:]
+    assert "-> in_ch 6" in r.stdout
+    d = ROOT / "runs" / run
+    assert json.loads((d / "run.json").read_text(encoding="utf-8"))["config"]["obs_edges"] == 1
+    ck = torch.load(d / "ckpt_final.pt", map_location="cpu", weights_only=False)
+    assert tuple(ck["policy"]["conv.0.weight"].shape) == (16, 6, 5, 5)
+    rec = _run([sys.executable, "-u", str(RECORD), str(d / "ckpt_final.pt"),
+                "--map", str(CANNONBALL), "--episodes", "1", "--out", str(d / "rec.jsonl")])
+    assert rec.returncode == 0, rec.stdout[-4000:] + rec.stderr[-4000:]
+    alone = _train("cya_edges_bad", ABS + ["--obs-potential", "norm", "--obs-edges", "1"])
+    assert alone.returncode != 0 and "--obs-edges reads the face-id grid" in alone.stdout + alone.stderr
+    for n in (run, "cya_edges_bad"):
+        shutil.rmtree(ROOT / "runs" / n, ignore_errors=True)
