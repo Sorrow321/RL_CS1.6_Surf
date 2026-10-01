@@ -222,3 +222,52 @@ def test_normal_trainer_smoke():
     assert bad.returncode != 0 and "pick one" in bad.stdout + bad.stderr
     for n in (run, "cya_nrm_bad"):
         shutil.rmtree(ROOT / "runs" / n, ignore_errors=True)
+
+
+@needs_cuda_caches
+def test_slope_mode_on_cannonball():
+    """--obs-slope: one channel, acos(the facing normal's z) / pi off the same face lookup;
+    triton (a polynomial acos) == torch (exact) to 1e-4; floors ~0 on a down-looking pose; the
+    slope is the normal mode's z read as an angle"""
+    from surfgym import SurfCore, default_config
+    core = SurfCore(str(CANNONBALL), default_config(num_envs=1, lidar_w=0, lidar_h=0))
+    kw = dict(range_units=11500.0, near_range=2000.0, cell=32.0)
+    lt = vision.GpuLidar(core, 64, 32, device="cuda", texture=True, **kw)
+    ls = vision.GpuLidar(core, 64, 32, device="cuda", texture=lt.texmap, texture_mode="slope", **kw)
+    ln = vision.GpuLidar(core, 64, 32, device="cuda", texture=lt.texmap, texture_mode="normal", **kw)
+    lc = vision.GpuLidar(core, 64, 32, device="cpu", texture=True, texture_mode="slope", **kw)
+    assert ls.channels == 2 and ls.tex_channel == 1
+    a = np.asarray(CPOSES, np.float32)
+
+    def tens(dev):
+        return (torch.as_tensor(a[:, 0:3]).to(dev), torch.as_tensor(a[:, 3]).to(dev),
+                torch.as_tensor(a[:, 4]).to(dev), torch.as_tensor(a[:, 5]).to(dev))
+    os_ = ls.render(*tens("cuda")).cpu()
+    oc = lc.render(*tens("cpu"))
+    on = ln.render(*tens("cuda")).cpu()
+    assert torch.equal(os_[..., 0], on[..., 0])
+    assert (os_[..., 1] - oc[..., 1]).abs().max() < 1e-4
+    sl = os_[..., 1]
+    ok = sl >= 0
+    assert ok.float().mean() > 0.99 and float(sl[ok].max()) <= 1.0
+    want = torch.acos(on[..., 3].clamp(-1, 1)) / np.pi
+    assert (sl[ok] - want[ok]).abs().max() < 1e-4
+    k = int(np.argmin(a[:, 4]))
+    assert float((sl[k, -4:] < 0.25).float().mean()) > 0.5          # floors / gentle ramps below
+
+
+@needs_run
+@pytest.mark.skipif(not FACEID.exists(), reason="needs the baked cannonball face grid (cell 32)")
+def test_slope_trainer_smoke():
+    run = "cya_slope"
+    r = _train(run, ABS + ["--obs-potential", "norm", "--obs-slope", "1"])
+    assert r.returncode == 0, r.stdout[-4000:] + r.stderr[-4000:]
+    assert "-> in_ch 3" in r.stdout
+    d = ROOT / "runs" / run
+    assert json.loads((d / "run.json").read_text(encoding="utf-8"))["config"]["obs_slope"] == 1
+    ck = torch.load(d / "ckpt_final.pt", map_location="cpu", weights_only=False)
+    assert tuple(ck["policy"]["conv.0.weight"].shape) == (16, 3, 5, 5)
+    rec = _run([sys.executable, "-u", str(RECORD), str(d / "ckpt_final.pt"),
+                "--map", str(CANNONBALL), "--episodes", "1", "--out", str(d / "rec.jsonl")])
+    assert rec.returncode == 0, rec.stdout[-4000:] + rec.stderr[-4000:]
+    shutil.rmtree(d, ignore_errors=True)

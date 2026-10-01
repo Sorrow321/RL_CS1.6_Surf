@@ -864,6 +864,15 @@ if HAVE_TRITON:
             tl.store(out_ptr + offs * 2 + 1, val, mask=m)
 
     @triton.jit
+    def _acos01(x):
+        """acos(x) / pi for x in [-1, 1] (Abramowitz-Stegun 4.4.45, |err| < 7e-5 rad): triton
+        has no acos"""
+        a = tl.abs(x)
+        r = tl.sqrt(tl.maximum(1.0 - a, 0.0)) * (1.5707288 + a * (-0.2121144 + a * (
+            0.0742610 - 0.0187293 * a)))
+        return tl.minimum(tl.maximum(tl.where(x >= 0.0, r, 3.14159265 - r) * 0.31830989, 0.0), 1.0)
+
+    @triton.jit
     def _face_normal(ex, ey, ez, dx, dy, dz, t, m, rng,
                      nx, ny, nz, stride_z, stride_y, mnx, mny, mnz, inv_cell,
                      fid_ptr, fdata_ptr, yp):
@@ -1031,21 +1040,29 @@ if HAVE_TRITON:
         # near-linear + bounded far tail (near == rng -> legacy t/rng exactly)
         enc = tl.minimum(t, near) / near \
             + 0.25 * (1.0 - tl.exp(-tl.maximum(t - near, 0.0) / 2500.0))
-        if OUT == 1:
+        if OUT >= 1:
             tr_, tg_, tb_ = _face_normal(ex, ey, ez, dx, dy, dz, t, m, rng,
                                          nx, ny, nz, stride_z, stride_y, mnx, mny, mnz,
                                          inv_cell, fid_ptr, fdata_ptr,
                                          tl.load(yaw_ptr + n, mask=m, other=0.0))
+            if OUT == 2:
+                # --obs-slope: the facing normal's angle with +Z / 180 deg; no face -1
+                tr_ = tl.where(tr_ * tr_ + tg_ * tg_ + tb_ * tb_ > 0.5,
+                               _acos01(tl.minimum(tl.maximum(tb_, -1.0), 1.0)), -1.0)
         else:
             tr_, tg_, tb_ = _tex_rgb(ex, ey, ez, dx, dy, dz, t, m, rng,
                                      nx, ny, nz, stride_z, stride_y, mnx, mny, mnz,
                                      inv_cell, cell, fid_ptr, fdata_ptr, ftex_ptr,
                                      tdim_ptr, tmip_ptr, atlas_ptr, tavg_ptr, tsky_ptr,
                                      sky_rgb, pix_rad)
-        tl.store(out_ptr + offs * 4 + 0, enc, mask=m)
-        tl.store(out_ptr + offs * 4 + 1, tr_, mask=m)
-        tl.store(out_ptr + offs * 4 + 2, tg_, mask=m)
-        tl.store(out_ptr + offs * 4 + 3, tb_, mask=m)
+        if OUT == 2:
+            tl.store(out_ptr + offs * 2 + 0, enc, mask=m)
+            tl.store(out_ptr + offs * 2 + 1, tr_, mask=m)
+        else:
+            tl.store(out_ptr + offs * 4 + 0, enc, mask=m)
+            tl.store(out_ptr + offs * 4 + 1, tr_, mask=m)
+            tl.store(out_ptr + offs * 4 + 2, tg_, mask=m)
+            tl.store(out_ptr + offs * 4 + 3, tb_, mask=m)
 
     @triton.jit
     def _march_kernel_pot_tex(eye_ptr, yaw_ptr, pitch_ptr, duck_ptr, out_ptr,
@@ -1211,22 +1228,31 @@ if HAVE_TRITON:
             val = vhit * scale_inv
         val = tl.minimum(tl.maximum(val, lo), hi)
         val = tl.where(ok, val, bad)
-        if OUT == 1:
+        if OUT >= 1:
             tr_, tg_, tb_ = _face_normal(ex, ey, ez, dx, dy, dz, t, m, rng,
                                          nx, ny, nz, stride_z, stride_y, mnx, mny, mnz,
                                          inv_cell, fid_ptr, fdata_ptr,
                                          tl.load(yaw_ptr + n, mask=m, other=0.0))
+            if OUT == 2:
+                # --obs-slope: the facing normal's angle with +Z / 180 deg; no face -1
+                tr_ = tl.where(tr_ * tr_ + tg_ * tg_ + tb_ * tb_ > 0.5,
+                               _acos01(tl.minimum(tl.maximum(tb_, -1.0), 1.0)), -1.0)
         else:
             tr_, tg_, tb_ = _tex_rgb(ex, ey, ez, dx, dy, dz, t, m, rng,
                                      nx, ny, nz, stride_z, stride_y, mnx, mny, mnz,
                                      inv_cell, cell, fid_ptr, fdata_ptr, ftex_ptr,
                                      tdim_ptr, tmip_ptr, atlas_ptr, tavg_ptr, tsky_ptr,
                                      sky_rgb, pix_rad)
-        tl.store(out_ptr + offs * 5 + 0, enc, mask=m)
-        tl.store(out_ptr + offs * 5 + 1, val, mask=m)
-        tl.store(out_ptr + offs * 5 + 2, tr_, mask=m)
-        tl.store(out_ptr + offs * 5 + 3, tg_, mask=m)
-        tl.store(out_ptr + offs * 5 + 4, tb_, mask=m)
+        if OUT == 2:
+            tl.store(out_ptr + offs * 3 + 0, enc, mask=m)
+            tl.store(out_ptr + offs * 3 + 1, val, mask=m)
+            tl.store(out_ptr + offs * 3 + 2, tr_, mask=m)
+        else:
+            tl.store(out_ptr + offs * 5 + 0, enc, mask=m)
+            tl.store(out_ptr + offs * 5 + 1, val, mask=m)
+            tl.store(out_ptr + offs * 5 + 2, tr_, mask=m)
+            tl.store(out_ptr + offs * 5 + 3, tg_, mask=m)
+            tl.store(out_ptr + offs * 5 + 4, tb_, mask=m)
 
 #: --depth-enc: the depth channel's encodings (GpuLidar(depth_enc=))
 DEPTH_ENCODINGS = ("legacy", "log", "dual")
@@ -1924,9 +1950,9 @@ class GpuLidar:
                  potential=None, vision_clip: bool = False,
                  depth_enc: str = "legacy", depth_log_d0: float = 200.0,
                  texture=False, texture_mode: str = "rgb") -> None:
-        if texture_mode not in ("rgb", "normal"):
-            raise ValueError(f"texture_mode {texture_mode!r}: rgb (--obs-texture) or normal "
-                             "(--obs-normal)")
+        if texture_mode not in ("rgb", "normal", "slope"):
+            raise ValueError(f"texture_mode {texture_mode!r}: rgb (--obs-texture), normal "
+                             "(--obs-normal) or slope (--obs-slope)")
         if texture and (surf_mask or pinhole or normals or vision_clip
                         or depth_enc != "legacy"):
             raise ValueError(
@@ -2058,8 +2084,10 @@ class GpuLidar:
                     core.bsp_path, self.sdf_flat, (self.nz, self.ny, self.nx), self.mins_f,
                     self.cell, f"{_map_sig(Path(core.bsp_path))}_{_SDF_SEMANTICS}",
                     self.device)
-            self.channels += 3
-        self.tex_channel = self.channels - 3 if self.texmap is not None else None
+            # --obs-slope: ONE channel (the facing normal's angle with +Z); the others three
+            self.channels += 1 if texture_mode == "slope" else 3
+        self.tex_channel = (self.channels - (1 if texture_mode == "slope" else 3)
+                            if self.texmap is not None else None)
         # --obs-normal: the same three channels carry the face's ego-frame normal, not its colour
         self.texture_mode = str(texture_mode)
         self.tex_pix_rad = float(np.radians(self.vfov_deg / self.H))
@@ -2369,7 +2397,7 @@ class GpuLidar:
                 *(P.curtain[0] + P.curtain[1] if P.curtain is not None
                   else (0.0,) * 6),
                 REL=bool(P.rel), CURTAIN=bool(P.curtain is not None),
-                OUT=int(self.texture_mode == "normal"),
+                OUT={"rgb": 0, "normal": 1, "slope": 2}[self.texture_mode],
                 BLOCK=BLOCK, num_warps=MARCH_WARPS)
             return out
         _march_kernel_tex[(triton.cdiv(total, BLOCK),)](
@@ -2380,7 +2408,7 @@ class GpuLidar:
             self.nx, self.ny, self.nz, self.stride_z, self.stride_y,
             self.mins_f[0], self.mins_f[1], self.mins_f[2],
             1.0 / self.cell, self.cell, self.range, self.near,
-            self.max_steps, *targs, OUT=int(self.texture_mode == "normal"),
+            self.max_steps, *targs, OUT={"rgb": 0, "normal": 1, "slope": 2}[self.texture_mode],
             BLOCK=BLOCK, num_warps=MARCH_WARPS)
         return out
 
@@ -2400,7 +2428,7 @@ class GpuLidar:
         ok = (t < self.range) & (fid >= 0)
         f = fid.clamp(min=0)
         fd = X.fdata.view(-1, 16)[f]                                   # (N, H, W, 16)
-        if self.texture_mode == "normal":
+        if self.texture_mode in ("normal", "slope"):
             # _face_normal, term for term
             wx, wy, wz = fd[..., 8], fd[..., 9], fd[..., 10]
             sgn = torch.where(wx * dx + wy * dy + wz * dz > 0.0, -1.0, 1.0)
@@ -2408,6 +2436,10 @@ class GpuLidar:
             yp = (self._yaw_deg_last * (np.pi / 180.0)).view(N, 1, 1)
             cy, sy = torch.cos(yp), torch.sin(yp)
             z = torch.zeros_like(wx)
+            if self.texture_mode == "slope":
+                # --obs-slope: acos(the facing normal's z) / pi, no face -1 (exact acos here)
+                return torch.where(ok, torch.acos(wz.clamp(-1.0, 1.0)) / np.pi,
+                                   torch.full_like(wz, -1.0))[..., None]
             return torch.stack((torch.where(ok, wx * cy + wy * sy, z),
                                 torch.where(ok, wy * cy - wx * sy, z),
                                 torch.where(ok, wz, z)), -1)
