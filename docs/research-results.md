@@ -32304,3 +32304,35 @@ Route max (eval_honesty --order-only 16) at matched evals:
 The first dencSLOPE launch was killed by the record gate: the new POV slope panel shadowed the frame slice. That was fixed in e7cb849 and relaunched.
 
 Paused at the user's request (2026-10-01): the 3D-module cost benchmark was rejected before it ran ("it looks very heavy to my GPU, stop it"), and dencTTC (built and tested, 766438a) is NOT launched.
+
+## 2026-10-01 18:44 (machine clock) - dencTTC (--obs-ttc, the looming channel, 0.76e9): inside the noise of the control; the 3-channel normal stays the only clear positive
+
+**The user's idea 2:** fold the velocity into the render.
+
+Route max (eval_honesty --order-only 16) at matched evals, local 5090, scratch_ablate + the arm's flag:
+
+| step | CTL | NRM (normal, 3 ch) | SLOPE (1 ch) | TTC (looming, 1 ch) |
+|---|---|---|---|---|
+| 227M | 47,689 | 52,096 | 51,684 | 45,752 |
+| 303M | 50,155 | 91,232 | 56,736 | 57,858 |
+| 378M | 69,949 | 114,843 | 77,822 | 85,157 |
+| 454M | 87,948 | 141,528 | 96,364 | 88,832 |
+| 529M | 100,799 | 165,232 | 101,418 | 105,856 |
+| 605M | 104,589 | 196,976 | 117,881 | 120,047 |
+| 680M | 98,369 | 173,031 | 141,453 | 125,985 |
+| 756M | 129,736 | 207,490 (7/9 past) | 166,782 | 143,183 |
+
+**97k gate:** TTC 529M, CTL 529M, SLOPE 529M, NRM 378M. No wall crossing in 0.76e9 except NRM.
+
+**Reading.**
+
+* TTC is 0.96-1.28x the control at every mark: inside the 27% seed-noise floor, so no effect is shown.
+* The policy already has the velocity in its scalars and the depth in the image. Their product, the time to contact, adds nothing it does not seem to compute itself at this stage.
+
+**The observation screen so far** (from scratch, cannonball, one seed each):
+
+* the full ego-frame face normal is the only clear positive: the 97k gate 150M earlier, the wall 380M earlier;
+* slope-only is a small late gain;
+* log depth, dual depth, texture and TTC are null or within noise.
+
+dencTTC ran 18:20-18:44. Per the user, nothing else is launched on the GPU until they say so; the 3D-module benchmark is still on hold.
