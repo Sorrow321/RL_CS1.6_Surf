@@ -32424,3 +32424,128 @@ That is true of what the edges network can REPRESENT (zero weights on the channe
 2. If NRM holds: edges with their first-layer weights initialised to ZERO, so the run starts exactly as the normals network and edges enter only as fast as the gradient pulls them in. That is the user's "just ignore it", built in.
 
 Nothing launched; the GPU is idle.
+
+## 2026-10-01 21:06 (machine clock) - dencNRM1K LAUNCHED: the normals arm with HALF the envs (1,024)
+
+**The user (2026-10-01):** "what if we reduce the amount of environments that we run simultaneously, for example, twice? Let's see what happens."
+
+**Context.** The next planned arm is four cameras (front, left, right, back) stacked as channels. Its rollout image buffer at full resolution would be 21.5 GB (2,048 envs x 128 decisions x 4 views x 20 KB). Halving the envs is one way to make it fit. This run measures what halving the envs does on its own.
+
+**The arm.**
+
+* Flags: `launch_local.ps1 scratch_ablate dencNRM1K --steps 0.76e9 --obs-normal 1 --envs 1024`. This is dencNRM with `--envs 1024`; nothing else changes.
+* Hardware: local 5090, seed 0.
+
+**What changes with the envs.**
+
+* A PPO iteration is 131,072 decisions instead of 262,144.
+* Minibatches are 8,192 instead of 16,384.
+* There are still 64 gradient steps per iteration (16 minibatches x 4 epochs), so the update density (gradient steps per env step) DOUBLES.
+* CLAUDE.md's n-steps section measured density as a real, non-monotone variable. This is therefore an optimizer change as well as a parallelism change, and is read as such.
+
+**Scoring.** Route max at matched evals against dencNRM (`--record-every 75e6`; eval steps land within ~1M of dencNRM's), plus the 97k / wall steps, plus fps for the wall-clock reading.
+
+## 2026-10-01 21:43 (machine clock) - dencNRM1K (the normals arm with HALF the envs): faster per step, even on wall clock
+
+Route max (eval_honesty --order-only 16) at matched evals, local 5090, seed 0. Both runs are scratch_ablate + `--obs-normal 1`; 1K adds `--envs 1024`. Minutes are training wall time at that eval.
+
+| step | NRM, 2,048 envs | min | NRM1K, 1,024 envs | min |
+|---|---|---|---|---|
+| 152M | 27,136 | 6 | 45,554 | 9 |
+| 228M | 52,096 | 8 | 56,672 | 12 |
+| 303M | 91,232 | 10 | 111,722 | 14 |
+| 379M | 114,843 | 13 | 126,404 | 18 |
+| 454M | 141,528 | 15 | 193,372 | 21 |
+| 530M | 165,232 | 17 | 195,099 | 25 |
+| 605M | 196,976 | 20 | 205,568 (7/9 past) | 28 |
+| 681M | 173,031 | 22 | 206,028 (3/9 past) | 31 |
+| 756M | 207,490 (7/9 past) | 25 | 206,286 (9/9 past) | 35 |
+
+**Gates.**
+
+| | 2,048 envs | 1,024 envs |
+|---|---|---|
+| 97k gate | 378M, 13 min | 302M, 14 min |
+| wall | 756M, 25 min | 605M, 28 min |
+| throughput (whole run) | 502,537 steps/s | 358,670 steps/s (0.71x) |
+| finishes | 0 | 0 |
+
+**Reading.**
+
+* **Per step, half the envs learned faster.** Both gates came 1.25x earlier, and the route max was ahead at every matched eval from 152M. That is consistent with the doubled update density (the same 64 gradient steps per iteration on half the data). At one seed the 1.25x is inside the 27% floor; the direction is consistent at every mark.
+* **On wall clock it is a wash.** 0.71x throughput cancels the per-step gain: 14 vs 13 min to 97k, 28 vs 25 min to the wall.
+* **For the camera ring this means 1,024 envs costs nothing.** It is the clean way to fit four full-resolution cameras: about 23 GB measured-extrapolated, against 33-35 GB at 2,048 envs. This run is that arm's same-envs control.
+* **Measured memory.** This run used ~14.3 GB of GPU memory: 17.6 GB in use minus the desktop's 3.3 GB.
+
+## 2026-10-01 21:44 (machine clock) - dencNRM512 LAUNCHED: the normals arm with a QUARTER of the envs (512)
+
+**The user (2026-10-01):** "let's try to reduce n_envs twice again. We need to figure out what value hurts. Maybe we don't need that many parallel envs."
+
+**The arm.** `launch_local.ps1 scratch_ablate dencNRM512 --steps 0.76e9 --obs-normal 1 --envs 512` on the local 5090, seed 0. This is dencNRM / dencNRM1K with 512 envs; nothing else changes.
+
+**What changes.**
+
+* An iteration is 65,536 decisions; minibatches are 4,096.
+* There are still 64 gradient steps per iteration, so the update density is 4x dencNRM's and 2x dencNRM1K's.
+
+**Read against** dencNRM (2,048 envs: 97k at 378M / 13 min, wall at 756M / 25 min) and dencNRM1K (1,024 envs: 302M / 14 min, 605M / 28 min). Both are judged per step and on wall clock.
+
+**Note.** The CPU/GPU test rerun for the camera ring (`--obs-views`, not yet committed) was stopped so it would not perturb this run's throughput; it reruns after.
+
+## 2026-10-01 22:40 (machine clock) - dencNRM512 (a quarter of the envs): per step still faster; on wall clock 512 is where it starts to cost
+
+**The env sweep of the normals arm.** scratch_ablate + `--obs-normal 1`, local 5090, seed 0, 0.76e9 steps each; only `--envs` differs. Cells are route max (eval_honesty --order-only 16) and training wall minutes at that eval.
+
+| step | 2,048 envs | 1,024 envs | 512 envs |
+|---|---|---|---|
+| 152M | 27,136, 6 min | 45,554, 9 min | 48,176, 12 min |
+| 228M | 52,096, 8 min | 56,672, 12 min | 77,632, 18 min |
+| 303M | 91,232, 10 min | 111,722, 14 min | 113,095, 24 min |
+| 379M | 114,843, 13 min | 126,404, 18 min | 148,246, 29 min |
+| 454M | 141,528, 15 min | 193,372, 21 min | 165,098, 34 min |
+| 530M | 165,232, 17 min | 195,099, 25 min | 208,992 (4/9 past), 39 min |
+| 605M | 196,976, 20 min | 205,568 (7/9 past), 28 min | 209,189 (9/9 past), 43 min |
+| 681M | 173,031, 22 min | 206,028 (3/9 past), 31 min | 206,208 (4/9 past), 48 min |
+| 756M | 207,490 (7/9 past), 25 min | 206,286 (9/9 past), 35 min | 205,568 (3/9 past), 52 min |
+
+**Gates and throughput:**
+
+| envs | 97k gate | wall (205,440 u) | throughput |
+|---|---|---|---|
+| 2,048 | 379M / 13 min | 756M / 25 min | 502,537 steps/s |
+| 1,024 | 303M / 14 min | 605M / 28 min | 358,670 steps/s (0.71x) |
+| 512 | 301M / 24 min | 527M / 39 min | 239,913 steps/s (0.48x) |
+
+**Reading.**
+
+* **Per step, fewer envs never hurt down to 512.** The wall came at 756M -> 605M -> 527M as the envs halved, and 512 was first past it, with 9/9 at 602M. Every halving doubles the update density: the same 64 gradient steps per iteration on half the data. This testbed rewards that density. One seed per point: the 1,024 vs 512 differences (97k equal, wall 1.15x) are inside the noise; 2,048 vs 512 (wall 1.43x) is not.
+* **On wall clock, 512 is where it starts to cost.** Throughput falls 0.71x and then 0.48x. 1,024 still breaks even with 2,048 (14/28 min vs 13/25), while 512 needs 24 min to 97k and 39 min to the wall. The fixed 64 gradient steps per iteration dominate once the rollout is small.
+* **1,024 envs is the sweet spot on this card:**
+  * the same wall-clock time as 2,048;
+  * a better per-step curve;
+  * half the rollout memory, ~14.3 GB measured.
+* Changing the scratch default from 2,048 is the user's decision. Every earlier scratch control ran at 2,048.
+* 0 finishes anywhere. As before, these arms have no unstuck mechanism and are judged on time-to-gate.
+
+## 2026-10-01 22:53 (machine clock) - the camera ring is built (b7b1c8a); its launch is held for GPU memory
+
+**What was built.**
+
+* `--obs-views 4` (`--obs-views-scale 2` = half-resolution side cameras): front + left + right + back cameras, each with depth, potential and normal x3, stacked as 20 channels.
+* The potential is standardised over the whole ring.
+* Tests:
+  * all 60 observation tests pass;
+  * the ring equals four separately turned renders bit for bit, on the CPU and on the CUDA triton path;
+  * the record gate passes, POV included.
+
+**Render cost on real poses at 1,024 envs.**
+
+| render | time |
+|---|---|
+| front only | 0.25 ms |
+| ring, full-resolution sides | 1.54 ms |
+| ring, half-resolution sides | 0.89 ms |
+
+The full-resolution ring adds ~0.17 s to a 1.46 s iteration.
+
+**Why it is held.** The planned arm is full resolution at 1,024 envs against dencNRM1K. Its estimate is ~24 GB: dencNRM1K's measured 14.3 GB, plus 8 GB more rollout images, plus larger minibatches. At 22:52 the 5090 already had 11.65 GB in use by the user's applications (two games and the desktop). It does not fit beside them, so it was not launched. The options are put to the user.
