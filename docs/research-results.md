@@ -32618,3 +32618,44 @@ GPU memory for the ring was ~17 GB (20.7 GB in use with the desktop), below the 
 **Read against dencNRM1K** (97k at 302M / 14 min, wall at 605M / 28 min) at matched evals.
 
 **Housekeeping.** `tests/python/test_rnn_policy.py::test_eval_wrapper_carries_the_state_and_zeroes_it_on_a_tick_reset` fails independently of this work. Its `_FakeCore` has had no `.config` since 967f3a87 (2026-09-06), which reads the core's pitch ceiling. It is not fixed here.
+
+## 2026-10-02 00:39 (machine clock) - dencNODEPTH (one camera, normal + potential, no depth): NEGATIVE - the depth is needed
+
+Route max (eval_honesty --order-only 16) at matched evals, local 5090, seed 0. Both runs are scratch_ablate + `--obs-normal 1 --envs 1024`; the second adds `--obs-no-depth 1`. Cells are route max and training wall minutes.
+
+| step | with depth (dencNRM1K) | no depth (dencNODEPTH) |
+|---|---|---|
+| 76M | 16,920, 6 min | 15,559, 4 min |
+| 152M | 45,554, 9 min | 34,304, 6 min |
+| 227M | 56,672, 12 min | 50,108, 9 min |
+| 303M | 111,722, 14 min | 52,058, 12 min |
+| 378M | 126,404, 18 min | 97,000, 14 min |
+| 454M | 193,372, 21 min | 101,167, 17 min |
+| 529M | 195,099, 25 min | 114,985, 20 min |
+| 605M | 205,568 (7/9 past), 28 min | 131,469, 23 min |
+| 680M | 206,028 (3/9 past), 31 min | 157,593, 26 min |
+| 755M | 206,286 (9/9 past), 35 min | 165,296, 29 min |
+
+**Gates and throughput.**
+
+| | with depth | no depth |
+|---|---|---|
+| 97k gate | 303M / 14 min | 378M / 14 min |
+| wall | 605M / 28 min | not reached in 0.76e9 (best 165,296) |
+| throughput | 358,670 steps/s | 432,671 steps/s |
+| finishes | 0 | 0 |
+
+**Reading.**
+
+* **Without the depth the policy learns more slowly at every eval from 152M.** It sits at ~50-52k from 227M to 303M, and it is 1.6-2.1x behind from 303M to 529M. It never reaches the wall the depth arm crossed at 605M.
+* **The normal + potential alone are enough for the early gates but not for the late ones.** The normal gives the shape of each surface and the potential its goal distance, but not HOW FAR away it is. The late gates need that.
+* **The throughput difference is not a property of the flag.** The render and the buffer are identical, and conv.0 is one channel smaller. It most likely reflects shorter eval episodes (a weaker agent's evals end sooner, and evals count in the wall time), plus desktop load during dencNRM1K: the camera-ring smoke tests ran on the CPU for a few minutes. The verdict is per step.
+* **The observation screen ends the day here.** Depth + potential + the 3-channel ego-frame normal, one front camera, is the best observation measured. The following were null or negative:
+  * log / dual depth;
+  * texture;
+  * slope (1 channel);
+  * looming / TTC;
+  * edges on top of the normal;
+  * four cameras stacked as channels;
+  * dropping the depth.
+* The env sweep found 1,024 envs to be the sweet spot on this card.
