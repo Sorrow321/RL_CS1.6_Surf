@@ -32598,3 +32598,23 @@ GPU memory for the ring was ~17 GB (20.7 GB in use with the desktop), below the 
 * **The likely mechanism is the stacking itself.** Stacking cameras as channels makes the first conv layer SUM, at every pixel, what four different directions see at that image position. A filter tuned to a ramp edge in the front view also responds to whatever the back view holds there. The network has to learn to separate the views before it can use any of them.
 * The edge channel showed the same pattern: extra input that the first layer must sort out slowed learning even though it carried information.
 * **Not tested: a shared per-camera encoder.** Run the same conv trunk on each camera separately (weights shared), then concatenate the four embeddings. That is the usual multi-camera design and keeps each view's spatial structure intact; the cost is 4x the conv compute. It would test 360-degree vision without the pixel-level mixing.
+
+## 2026-10-02 00:08 (machine clock) - dencNODEPTH LAUNCHED: one camera, the normal + the potential, NO depth
+
+**The user (2026-10-02):** "we take one cam and we only render normals plus the potential field channel ... We do not render depths."
+
+**The flag** (a1e2620): `--obs-no-depth 1`.
+
+* The renderer is untouched: the march still finds each hit through the depth, and the recorder and the POV still draw it.
+* The policy slices channel 0 off before conv.0, so the network reads 4 channels: the ego-frame normal x, y, z and the potential.
+* "Normals plus potential" is therefore 4 channels, not 2. The normal is three numbers per pixel.
+
+**The arm.**
+
+* Flags: `launch_local.ps1 scratch_ablate dencNODEPTH --steps 0.76e9 --obs-normal 1 --obs-no-depth 1 --envs 1024`.
+* Hardware: local 5090, seed 0.
+* It is dencNRM1K minus the depth channel.
+
+**Read against dencNRM1K** (97k at 302M / 14 min, wall at 605M / 28 min) at matched evals.
+
+**Housekeeping.** `tests/python/test_rnn_policy.py::test_eval_wrapper_carries_the_state_and_zeroes_it_on_a_tick_reset` fails independently of this work. Its `_FakeCore` has had no `.config` since 967f3a87 (2026-09-06), which reads the core's pitch ceiling. It is not fixed here.
