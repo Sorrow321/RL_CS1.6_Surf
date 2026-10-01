@@ -32336,3 +32336,59 @@ Route max (eval_honesty --order-only 16) at matched evals, local 5090, scratch_a
 * log depth, dual depth, texture and TTC are null or within noise.
 
 dencTTC ran 18:20-18:44. Per the user, nothing else is launched on the GPU until they say so; the 3D-module benchmark is still on hold.
+
+## 2026-10-01 19:20 (machine clock) - dencEDGE LAUNCHED (--obs-normal + --obs-edges, 0.76e9): does an edge channel add to the face normal?
+
+**The user's idea (2026-10-01):** "we have the depths, the normals ... and also maybe the edges ... I'm just not sure if we should compute them in lower resolution. Maybe we need to compute them in higher ... edges or gradients, something like this."
+
+**What the channel is** (a640bfd):
+
+* **Resolution.** Edges are found on a 2x supersampled render (128x64 for the 64x32 image). Each policy pixel takes the max over the 12 fine pixel pairs touching its 2x2 block, so an edge thinner than a policy pixel still lights it.
+* **Crease** (a fold between two faces): (1 - n_a . n_b) / 2 from the two pixels' face normals.
+* **Silhouette** (a depth step): |t_b - t_pred| / t_b / 0.02, clipped to 1. Here t_pred is the depth pixel b would have if it lay on pixel a's face plane, taken in both directions. It uses the EXACT ray-plane depth of the face, because the march's 32 u SDF depth is too coarse for a 2% step.
+* **Hits and misses.** One hit beside a miss counts as an edge of 1; two misses count as 0.
+* **Implementation.** One fused triton kernel; its output matches the torch reference to 7e-5, and the other channels are bit-identical to the normal-only render.
+* **Cost** at 2,048 envs:
+  * the normal-only render is 1.66 ms;
+  * adding edges makes it 3.51 ms, i.e. +1.85 ms per render, about +0.24 s per 128-decision iteration.
+
+**The arm.**
+
+* Flags: `launch_local.ps1 scratch_ablate dencEDGE --steps 0.76e9 --obs-normal 1 --obs-edges 1`. That is the dencNRM arm plus one channel (in_ch 6: depth, potential, normal x3, edges).
+* Hardware: local 5090, seed 0.
+* Comparison: dencNRM at matched evals (97k at 378M, wall at 756M with 7/9 past) and dencCTL.
+* Throughput: read step-matched, not on wall clock; the edge pass costs throughput.
+* The record gate, POV included, passed on a smoke checkpoint before launch.
+
+## 2026-10-01 19:52 (machine clock) - dencEDGE (--obs-normal + --obs-edges, 0.76e9): edges do NOT add to the normal - the arm tracked the control, not the normal arm
+
+Route max (eval_honesty --order-only 16) at matched evals, local 5090, scratch_ablate + the arm's flags, seed 0:
+
+| step | CTL | NRM (normal) | EDGE (normal + edges) | NRM / EDGE |
+|---|---|---|---|---|
+| 152M | 19,865 | 27,136 | 19,927 | 1.36x |
+| 228M | 47,689 | 52,096 | 30,927 | 1.68x |
+| 303M | 50,155 | 91,232 | 49,492 | 1.84x |
+| 379M | 69,949 | 114,843 | 55,761 | 2.06x |
+| 454M | 87,948 | 141,528 | 58,392 | 2.42x |
+| 530M | 100,799 | 165,232 | 77,391 | 2.14x |
+| 605M | 104,589 | 196,976 | 100,526 | 1.96x |
+| 681M | 98,369 | 173,031 | 104,293 | 1.66x |
+| 756M | 129,736 | 207,490 (7/9 past) | 118,013 | 1.76x |
+
+* **Gates.** 97k at 605M (CTL 529M, NRM 378M); no wall crossing in 0.76e9. 0 finishes.
+* **Relative to the control:** 0.65-1.06x at every mark, i.e. level with or behind it.
+* **The trap gate.** EDGE sat at the ~50k trap gate from 303M to 454M (49,492 / 55,761 / 58,392), then climbed at about the control's rate.
+* **Throughput.** Steady fps (median of time/fps, 300-700M) was EDGE 424,949 vs NRM 501,410: 0.85x. That is more than the ~9% the render microbenchmark predicted. The comparison is step-matched, so this does not enter the verdict.
+
+**Reading.**
+
+* The arm carries every channel of the normal arm plus one, and it did NOT keep the normal arm's lead. It is 1.4-2.4x behind NRM at every mark, outside the 27% floor.
+* At one seed, this cannot separate two readings:
+  * the edge channel hurts. It is dense and high-contrast (about 30% of pixels above 0.5) and largely redundant: creases are discontinuities of the normal channel, silhouettes are discontinuities of the depth, and a 5x5 first conv can compute both at the policy's own resolution;
+  * NRM's lead was partly the gate coin flip (CLAUDE.md: the metric is near-binary in which gate a seed clears).
+* Either way the edge channel is not a positive and costs 15% of throughput, so it is dropped.
+* **A caveat now attached to the normal arm.** The only clear positive of the screen rests on one run, and the first arm that contains it did not reproduce its lead.
+* A low-resolution (64x32) edge channel was not tried. It would carry no information the first conv layer cannot compute itself.
+
+dencEDGE ran 19:20-19:51. The GPU is idle.
