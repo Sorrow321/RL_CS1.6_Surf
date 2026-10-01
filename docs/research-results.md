@@ -32549,3 +32549,52 @@ Route max (eval_honesty --order-only 16) at matched evals, local 5090, seed 0. B
 The full-resolution ring adds ~0.17 s to a 1.46 s iteration.
 
 **Why it is held.** The planned arm is full resolution at 1,024 envs against dencNRM1K. Its estimate is ~24 GB: dencNRM1K's measured 14.3 GB, plus 8 GB more rollout images, plus larger minibatches. At 22:52 the 5090 already had 11.65 GB in use by the user's applications (two games and the desktop). It does not fit beside them, so it was not launched. The options are put to the user.
+
+## 2026-10-01 23:04 (machine clock) - dencVIEW4 LAUNCHED: the camera ring at full resolution, 1,024 envs
+
+**The user closed the games**, so the launch held in the previous entry went ahead. 3.8 GB of the 5090 was in use at launch.
+
+**The arm.**
+
+* Flags: `launch_local.ps1 scratch_ablate dencVIEW4 --steps 0.76e9 --obs-normal 1 --obs-views 4 --envs 1024`.
+* Hardware: local 5090, seed 0.
+* What the policy sees: front + left + right + back 64x32 cameras, each depth + potential + normal x3 = in_ch 20, with the potential standardised over the ring.
+* It is dencNRM1K with the three extra cameras; nothing else changes.
+
+**Read against dencNRM1K** at matched evals: 97k at 302M / 14 min, wall at 605M / 28 min, 9/9 past at 756M. Judged per step; the ring's extra render cost (+~12% per iteration) is reported on wall clock.
+
+## 2026-10-01 23:57 (machine clock) - dencVIEW4 (the camera ring, full resolution, 1,024 envs): NEGATIVE - slower per step and on wall clock
+
+Route max (eval_honesty --order-only 16) at matched evals, local 5090, seed 0. Both runs are scratch_ablate + `--obs-normal 1 --envs 1024`; the second adds `--obs-views 4`. Cells are route max and training wall minutes.
+
+| step | 1 camera (dencNRM1K) | 4 cameras (dencVIEW4) |
+|---|---|---|
+| 76M | 16,920, 6 min | 16,667, 5 min |
+| 152M | 45,554, 9 min | 31,576, 10 min |
+| 227M | 56,672, 12 min | 52,132, 15 min |
+| 303M | 111,722, 14 min | 82,621, 21 min |
+| 378M | 126,404, 18 min | 105,196, 26 min |
+| 454M | 193,372, 21 min | 101,206, 31 min |
+| 529M | 195,099, 25 min | 106,736, 35 min |
+| 605M | 205,568 (7/9 past), 28 min | 142,052, 40 min |
+| 680M | 206,028 (3/9 past), 31 min | 148,759, 45 min |
+| 755M | 206,286 (9/9 past), 35 min | 166,333, 50 min |
+
+**Gates and cost.**
+
+| | 1 camera | 4 cameras |
+|---|---|---|
+| 97k gate | 303M / 14 min | 378M / 26 min |
+| wall | 605M / 28 min | not reached in 0.76e9 (best 166,333) |
+| throughput | 358,670 steps/s | 248,990 steps/s (0.69x) |
+| finishes | 0 | 0 |
+
+GPU memory for the ring was ~17 GB (20.7 GB in use with the desktop), below the ~24 GB estimate.
+
+**Reading.**
+
+* The ring is behind at every eval from 152M: 0.52x at 454M, 0.81x at 755M. The 97k gate came 1.25x later per step and 1.9x later on wall clock, and the wall was not reached where the control was 9/9 past by 755M.
+* It also sat at ~101-107k from 378M to 529M. That is gate-like, so one seed, but the gap is large and consistent.
+* **The likely mechanism is the stacking itself.** Stacking cameras as channels makes the first conv layer SUM, at every pixel, what four different directions see at that image position. A filter tuned to a ramp edge in the front view also responds to whatever the back view holds there. The network has to learn to separate the views before it can use any of them.
+* The edge channel showed the same pattern: extra input that the first layer must sort out slowed learning even though it carried information.
+* **Not tested: a shared per-camera encoder.** Run the same conv trunk on each camera separately (weights shared), then concatenate the four embeddings. That is the usual multi-camera design and keeps each view's spatial structure intact; the cost is 4x the conv compute. It would test 360-degree vision without the pixel-level mixing.
