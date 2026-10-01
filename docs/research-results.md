@@ -32392,3 +32392,35 @@ Route max (eval_honesty --order-only 16) at matched evals, local 5090, scratch_a
 * A low-resolution (64x32) edge channel was not tried. It would carry no information the first conv layer cannot compute itself.
 
 dencEDGE ran 19:20-19:51. The GPU is idle.
+
+## 2026-10-01 20:14 (machine clock) - dencEDGE follow-up: the network did not ignore the edge channel, it turned it UP
+
+**The user's question:** if normals help and normals + edges hurt, how can that be? The network could simply ignore one channel.
+
+That is true of what the edges network can REPRESENT (zero weights on the channel give back the normals network). It is not what training did.
+
+**Measured on CPU**, on 882 frames from dencEDGE's own 756M greedy eval (every 40th tick of 9 episodes). For each channel, its share of the first conv layer's input signal = the energy of that channel's term in conv.0's output, using that run's own weights.
+
+| channel | fresh init, 6 ch (40 orthogonal draws: mean [min-max]) | dencEDGE trained (760M) | dencNRM trained (1.5B, 5 ch) |
+|---|---|---|---|
+| depth | 21.1% [9.6-30.7] | 33.4% | 56.1% |
+| potential | 29.2% [12.9-43.7] | 17.0% | 16.8% |
+| normal x, y, z (sum) | 37.6% | 29.7% | 27.0% |
+| edges | 12.0% [7.5-17.8] | **19.8%** | - |
+
+* **The edges were turned up.** Their share rose from ~12% at init to 19.8%, above all 40 random starts. Their weight norm is 1.15x init, tied with depth for the largest of the six.
+* **Why they are easy to grab.** On real frames the edge channel is the most changeable channel from pixel to pixel: rms neighbour difference 0.446, against depth 0.105 and normals 0.24-0.35. It is lit on 35% of pixels.
+* **Training curves agree with the evals.** Training episode reward and length (2,048 envs) show the same ordering: EDGE tracks CTL and NRM leads from ~228M. For example, reward at 750M is CTL 16.9 / NRM 28.4 / EDGE 14.7. So the gap is not 9-episode eval noise. The value fit is the same in all arms (explained variance 0.96-0.99).
+
+**Reading.**
+
+* Gradient descent does not "ignore" a redundant channel; it uses whatever correlates with reward early. The edges network is therefore a different network, built partly on edges, rather than the normals network plus a muted channel.
+* That it learned the route more slowly BECAUSE of this is a hypothesis, not shown. The edges run also lost ~150M steps in the ~50k trap, and one run per arm cannot separate the two.
+* **Caveat:** NRM's weights are from 1.5B (its 756M checkpoint was overwritten by the resume), so its column is not step-matched.
+
+**What would resolve it:**
+
+1. Rerun dencNRM with identical flags (a replicate, against the one-seed rule; the user's call).
+2. If NRM holds: edges with their first-layer weights initialised to ZERO, so the run starts exactly as the normals network and edges enter only as fast as the gradient pulls them in. That is the user's "just ignore it", built in.
+
+Nothing launched; the GPU is idle.
