@@ -333,7 +333,10 @@ def main() -> None:
                      # --obs-ttc: the looming channel (rendered from the recorded velocity)
                      ttc=bool(rcfg.get("obs_ttc") or 0),
                      # --obs-edges: the edge channel (one more panel)
-                     edges=bool(rcfg.get("obs_edges") or 0))
+                     edges=bool(rcfg.get("obs_edges") or 0),
+                     # --obs-views: the camera ring (three more depth panels)
+                     views=int(rcfg.get("obs_views") or 1),
+                     views_scale=int(rcfg.get("obs_views_scale") or 1))
     if lidar.texmap is not None:
         print("--obs-texture mirrored: " + lidar.texmap.describe())
     if depth_enc != "legacy":
@@ -420,7 +423,7 @@ def main() -> None:
         raise SystemExit("--normals and --surf-mask are exclusive (|n_z| is "
                          "the normal's third channel)")
     n_panels = (1 + int(depth_enc == "dual") + int(lidar.texmap is not None) + int(lidar.ttc)
-                + int(lidar.edges)
+                + int(lidar.edges) + (int(getattr(lidar, "views", 1)) - 1)
                 + int(bool(args.normals))
                 + int(args.surf_mask or ball_panel) + int(pot is not None)
                 + int(tmask is not None) + int(bool(tviews)))
@@ -518,13 +521,19 @@ def main() -> None:
             yw = torch.tensor(a[sl, 7], dtype=torch.float32, device=device)
             pt = torch.tensor(pitch[sl], dtype=torch.float32, device=device)
             dk = torch.tensor(duck[sl].astype(np.int32), device=device)
+            sv = None
             if ball is not None:
                 # (k, h, w, 1 + views): channel 0 is the map depth
                 d = ball.render(o, yw, pt, dk, idx=np.arange(k)).cpu().numpy()
             else:
                 _vk = ({"velocity": torch.tensor(a[sl, 4:7], dtype=torch.float32, device=device)}
                        if lidar.ttc else {})
-                d = lidar.render(o, yw, pt, dk, **_vk).cpu().numpy()      # (k, h, w)
+                d = lidar.render(o, yw, pt, dk, **_vk)
+                if getattr(lidar, "views", 1) > 1:
+                    # --obs-views: the ring row -> the front image + the side cameras
+                    d, sv = (x.cpu().numpy() for x in lidar.split_views(d))
+                else:
+                    d = d.cpu().numpy()                                       # (k, h, w)
             tch = None
             if tmask is not None:
                 if t_ids is not None and tgt_live:
@@ -580,6 +589,19 @@ def main() -> None:
                                     (8, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.5, _c, _o, cv2.LINE_AA)
                     cv2.line(efr_, (0, 0), (W, 0), (60, 60, 60), 1)
                     frame = np.vstack((frame, efr_))
+                if sv is not None:
+                    # --obs-views: each side camera's depth, coloured like the front panel
+                    for j, nm in enumerate(("left camera (yaw +90)", "right camera (yaw -90)",
+                                            "back camera (yaw 180)")[:sv.shape[1]]):
+                        simg = (np.clip(1.0 - sv[i, j][..., 0] / enc_max, 0, 1)
+                                * 255).astype(np.uint8)
+                        sfr = cv2.resize(cv2.applyColorMap(simg, cv2.COLORMAP_TURBO), (W, H),
+                                         interpolation=cv2.INTER_NEAREST)
+                        for _o, _c in ((3, (0, 0, 0)), (1, (255, 255, 255))):
+                            cv2.putText(sfr, nm + ": depth", (8, 22), cv2.FONT_HERSHEY_SIMPLEX,
+                                        0.5, _c, _o, cv2.LINE_AA)
+                        cv2.line(sfr, (0, 0), (W, 0), (60, 60, 60), 1)
+                        frame = np.vstack((frame, sfr))
                 if lidar.ttc:
                     # --obs-ttc: the looming channel, grey (white = about to hit, black = moving
                     # away / parallel / far in time)

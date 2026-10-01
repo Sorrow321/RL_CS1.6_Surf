@@ -1384,6 +1384,9 @@ TTC_TAU = 1.0
 #: pixel's surface plane that reads as a full silhouette edge
 EDGE_SS = 2
 EDGE_REL = 0.02
+#: --obs-views: the camera ring's yaw offsets, degrees - front, left, right, back (yaw grows
+#: to the LEFT: +y is left of +x)
+VIEW_RING_YAWS = (0.0, 90.0, -90.0, 180.0)
 
 #: --depth-enc: the depth channel's encodings (GpuLidar(depth_enc=))
 DEPTH_ENCODINGS = ("legacy", "log", "dual")
@@ -2081,7 +2084,7 @@ class GpuLidar:
                  potential=None, vision_clip: bool = False,
                  depth_enc: str = "legacy", depth_log_d0: float = 200.0,
                  texture=False, texture_mode: str = "rgb", ttc: bool = False,
-                 edges: bool = False) -> None:
+                 edges: bool = False, views: int = 1, views_scale: int = 1) -> None:
         if texture_mode not in ("rgb", "normal", "slope", "edgesrc"):
             raise ValueError(f"texture_mode {texture_mode!r}: rgb (--obs-texture), normal "
                              "(--obs-normal) or slope (--obs-slope)")
@@ -2275,6 +2278,28 @@ class GpuLidar:
                                         device=self.device)      # (W,)
             self.voff = torch.as_tensor(vo, dtype=torch.float32,
                                         device=self.device)      # (H,)
+        # --obs-views (the user, 2026-10-01): a RING of cameras around the front one - left
+        # (+90), right (-90), back (180) - each the same render turned about the vertical, the
+        # side ones at 1/views_scale the resolution (same fov). render() then returns ONE flat
+        # row per env, [front (H, W, C) | side (views - 1, H/s, W/s, C)], frame_size wide; the
+        # policy upsamples the sides and stacks the views as channels (conv_channels).
+        self.views, self.views_scale = int(views), int(views_scale)
+        if self.views not in (1, 4) or self.views_scale not in (1, 2):
+            raise ValueError(f"views {views!r} / views_scale {views_scale!r}: 1 or 4 views, "
+                             "side cameras at scale 1 or 2")
+        if self.views > 1 and (self.ttc or self.edges or self.surf_mask or self.normals
+                               or self.pinhole or self.depth_enc != "legacy"):
+            raise ValueError("--obs-views turns the plain / potential / face renders of the "
+                             "legacy-depth equiangular camera: not with --obs-ttc, --obs-edges, "
+                             "--surf-mask, --normals, --pinhole or --depth-enc")
+        if self.views > 1 and (self.W % self.views_scale or self.H % self.views_scale):
+            raise ValueError(f"--obs-views-scale {self.views_scale} must divide the image "
+                             f"({self.W}x{self.H})")
+        self._side_cam_obj = None
+        self.frame_size = (self.H * self.W * self.channels
+                           + (self.views - 1) * (self.H // self.views_scale)
+                           * (self.W // self.views_scale) * self.channels)
+        self.conv_channels = self.channels * self.views
 
     def _ensure_buffers(self, N):
         _dx = getattr(self, "_dx", None)
@@ -2312,10 +2337,10 @@ class GpuLidar:
         per-frame standardisation ONCE over the whole fleet instead of once
         per slot (2026-09-12: 103 slots x 32 decisions x ~22 small float64
         launches was 4.85 s of a 9.1 s iteration on the 103-map pool)."""
-        if HAVE_TRITON and self.device.type == "cuda":
-            out = self._render_triton(origin, yaw_deg, pitch_deg, ducked)
-        else:
-            out = self._render_torch(origin, yaw_deg, pitch_deg, ducked)
+        if self.views > 1:
+            # --obs-views: the camera ring, ONE flat row per env (_render_ring)
+            return self._render_ring(origin, yaw_deg, pitch_deg, ducked, post)
+        out = self._render_raw(origin, yaw_deg, pitch_deg, ducked)
         if post and self.potential is not None and self.potential.post:
             # --obs-potential norm / logabs: a post-process of the abs
             # sample the kernel tail emitted (raw u, bad at -1) - per frame
@@ -2327,6 +2352,84 @@ class GpuLidar:
         if self.edges:
             out = self._append_edges(out, origin, yaw_deg, pitch_deg, ducked)
         return out
+
+    def _render_raw(self, origin, yaw_deg, pitch_deg, ducked):
+        """the kernel's render, no post-process: (N, H, W) or (N, H, W, C)"""
+        if HAVE_TRITON and self.device.type == "cuda":
+            return self._render_triton(origin, yaw_deg, pitch_deg, ducked)
+        return self._render_torch(origin, yaw_deg, pitch_deg, ducked)
+
+    def _side_cam(self):
+        """--obs-views: this lidar at 1/views_scale the resolution (the same fov, grids, face
+        lookup and potential - a shallow copy, nothing reloaded) for the side and back cameras,
+        with buffers of its own (it renders (views - 1) x N rays per call)"""
+        if self._side_cam_obj is None:
+            import copy
+            c = copy.copy(self)
+            s = self.views_scale
+            c.W, c.H = self.W // s, self.H // s
+            d2r = np.pi / 180.0
+            c.yoff = torch.as_tensor((self.hfov_deg * (0.5 - (np.arange(c.W) + 0.5) / c.W)) * d2r,
+                                     dtype=torch.float32, device=self.device)
+            c.poff = torch.as_tensor((self.vfov_deg * (0.5 - (np.arange(c.H) + 0.5) / c.H)) * d2r,
+                                     dtype=torch.float32, device=self.device)
+            c.tex_pix_rad = float(np.radians(self.vfov_deg / c.H))
+            c.views, c.views_scale = 1, 1
+            c.frame_size, c.conv_channels = c.H * c.W * c.channels, c.channels
+            c._buf_n = 0
+            c._side_cam_obj = c._edge_cam_obj = None
+            self._side_cam_obj = c
+        return self._side_cam_obj
+
+    @torch.no_grad()
+    def _render_ring(self, origin, yaw_deg, pitch_deg, ducked, post):
+        """--obs-views: the front camera plus (views - 1) side cameras at VIEW_RING_YAWS[1:]
+        (left +90, right -90, back 180), each the plain render turned about the vertical (the
+        same pitch; its normals in ITS OWN ego frame) -> (N, frame_size): [front (H, W, C) |
+        side (views - 1, H/s, W/s, C)], channel-fastest. norm's potential is standardised over
+        all the views together, each view weighted alike (a side pixel counts s x s times), so
+        the ring keeps which way is goal-ward; logabs is pointwise. One kernel launch per
+        resolution: the side cameras render as one (views - 1) x N batch."""
+        N = origin.shape[0]
+        k = self.views - 1
+        front = self._render_raw(origin, yaw_deg, pitch_deg, ducked)
+        if front.dim() == 3:
+            front = front[..., None]
+        cam = self._side_cam()
+        yaw = torch.as_tensor(yaw_deg, dtype=torch.float32, device=self.device)
+        offs = torch.tensor(VIEW_RING_YAWS[1:self.views], dtype=torch.float32,
+                            device=self.device)
+        side = cam._render_raw(origin.repeat(k, 1), (yaw[None, :] + offs[:, None]).reshape(-1),
+                               torch.as_tensor(pitch_deg, device=self.device).repeat(k),
+                               torch.as_tensor(ducked, device=self.device).repeat(k))
+        if side.dim() == 3:
+            side = side[..., None]
+        side = side.reshape(k, N, cam.H, cam.W, -1).permute(1, 0, 2, 3, 4).contiguous()
+        if post and self.potential is not None and self.potential.post:
+            pc = self.pot_channel
+            if self.potential.logabs:
+                front[..., pc] = self.potential.log_compress(front[..., pc])
+                side[..., pc] = self.potential.log_compress(side[..., pc])
+            else:
+                s = self.views_scale
+                sp = side[..., pc]
+                if s > 1:
+                    sp = sp.repeat_interleave(s, dim=2).repeat_interleave(s, dim=3)
+                hw = self.H * self.W
+                joint = torch.cat((front[..., pc].reshape(N, hw), sp.reshape(N, -1)), dim=1)
+                jn = self.potential.normalise(joint[:, None, :])[:, 0, :]
+                front[..., pc] = jn[:, :hw].reshape(N, self.H, self.W)
+                side[..., pc] = jn[:, hw:].reshape(N, k, self.H, self.W)[:, :, ::s, ::s]
+        return torch.cat((front.reshape(N, -1), side.reshape(N, -1)), dim=1)
+
+    def split_views(self, flat):
+        """--obs-views: ring rows (N, frame_size) -> (front (N, H, W, C), side (N, views - 1,
+        H/s, W/s, C)), the sides in ring order (left, right, back) - for displays and tests"""
+        N, C = flat.shape[0], self.channels
+        f = self.H * self.W * C
+        h, w = self.H // self.views_scale, self.W // self.views_scale
+        return (flat[:, :f].reshape(N, self.H, self.W, C),
+                flat[:, f:].reshape(N, self.views - 1, h, w, C))
 
     def _edge_cam(self):
         """--obs-edges: this lidar at EDGE_SS x the resolution (the same fov, depth grid and face

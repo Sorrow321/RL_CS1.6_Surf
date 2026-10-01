@@ -1222,6 +1222,9 @@ def main(argv=None, build_only: bool = False, device=None):
                      ttc=bool(cfg.get("obs_ttc") or 0),
                      # --obs-edges: MIRRORED (the supersampled edge channel)
                      edges=bool(cfg.get("obs_edges") or 0),
+                     # --obs-views: MIRRORED (the camera ring; its row and in_ch)
+                     views=int(cfg.get("obs_views") or 1),
+                     views_scale=int(cfg.get("obs_views_scale") or 1),
                      texture=bool(cfg.get("obs_texture") or cfg.get("obs_normal")
                                   or cfg.get("obs_slope") or 0),
                      # --obs-normal / --obs-slope: MIRRORED (what the face channels carry)
@@ -1963,7 +1966,8 @@ def main(argv=None, build_only: bool = False, device=None):
     if args.cold_policy is not None:
         # --cold-policy: the trainer's own step-0 draw (train_fast seeds torch, then builds)
         torch.manual_seed(int(args.cold_policy))
-    policy = Policy(core.obs_dim + route_dim + lw * lh * lidar.channels * stack,
+    policy = Policy(core.obs_dim + route_dim
+                    + int(getattr(lidar, "frame_size", lw * lh * lidar.channels)) * stack,
                     lw, lh,
                     emb=int(cfg.get("emb", 256)),
                     hidden=int(cfg.get("hidden", 256)),
@@ -1999,7 +2003,9 @@ def main(argv=None, build_only: bool = False, device=None):
                     plan_film=int(cfg.get("plan_film") or 0),
                     film_dim=(int(route.n_features) if cfg.get("plan_film")
                               and route is not None else 0),
-                    in_ch=lidar.channels * stack,
+                    in_ch=int(getattr(lidar, "conv_channels", lidar.channels)) * stack,
+                    views=int(cfg.get("obs_views") or 1),
+                    views_scale=int(cfg.get("obs_views_scale") or 1),
                     n_codes=n_codes, chunk=chunk,
                     route_dim=route_dim,
                     route_critic_only=bool(cfg.get("route_critic_only")),

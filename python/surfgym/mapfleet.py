@@ -569,7 +569,9 @@ class MapFleet:
         for s in self.slots:
             v = vis_gpu[s.lo:s.hi]
             pot = getattr(s.lidar, "potential", None)
-            if pot is not None and getattr(pot, "norm", False):
+            # (--obs-views: the ring standardises its potential over all its views itself)
+            if pot is not None and getattr(pot, "norm", False) \
+                    and getattr(s.lidar, "views", 1) == 1:
                 img = s.lidar.render(v[:, 0:3], v[:, 3], v[:, 4], v[:, 5],
                                      post=False,
                                      **({"velocity": v[:, 6:9]}

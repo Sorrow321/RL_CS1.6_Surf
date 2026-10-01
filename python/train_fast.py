@@ -371,7 +371,8 @@ class Policy(nn.Module):
                  yaw_cond: bool = False, view_continuous: bool = False,
                  view_absolute=None, obs_fourier: int = 0,
                  int_split: bool = False, dropout: float = 0.0,
-                 plan_film: int = 0, film_dim: int = 0):
+                 plan_film: int = 0, film_dim: int = 0,
+                 views: int = 1, views_scale: int = 1):
         super().__init__()
         # --priv-critic (asymmetric actor-critic, Pinto et al. 2017): the
         # CRITIC additionally reads a privileged state block the simulator
@@ -434,9 +435,17 @@ class Policy(nn.Module):
         self.route_dim = int(route_dim)
         self.route_critic_only = bool(route_critic_only) and self.route_dim > 0
         self.scal_dim = N_SCALAR + self.route_dim
-        assert obs_dim == self.scal_dim + lidar_w * lidar_h * in_ch, \
+        # --obs-views: the image row is [front (H, W, c) | (views - 1) side cameras (H/s, W/s,
+        # c)] with c = in_ch / views; features() upsamples the sides and stacks the views
+        self.views, self.views_scale = int(views), int(views_scale)
+        _vc = in_ch // self.views
+        _frame = (lidar_w * lidar_h * in_ch if self.views == 1 else
+                  lidar_w * lidar_h * _vc + (self.views - 1) * (lidar_w // self.views_scale)
+                  * (lidar_h // self.views_scale) * _vc)
+        assert obs_dim == self.scal_dim + _frame, \
             (f"obs_dim {obs_dim} != {N_SCALAR}+{self.route_dim}+"
-             f"{lidar_w}x{lidar_h}x{in_ch}")
+             f"{lidar_w}x{lidar_h}x{in_ch}" + (f" ({self.views} views)" if self.views > 1
+                                               else ""))
         self.lidar_w, self.lidar_h, self.in_ch = lidar_w, lidar_h, in_ch
         # --obs-fourier L: a FIXED, parameter-free positional encoding of the
         # DEPTH channel, prepended to the trunk. The depth image is one
@@ -783,6 +792,21 @@ class Policy(nn.Module):
         logits, value = self.heads(f, scal, h1, priv=priv)
         return logits, value, h1
 
+    def _ring_image(self, img):
+        """--obs-views: [front | sides] rows -> (B, H, W, views x c) NHWC - the side cameras
+        upsampled (nearest, views_scale) and stacked after the front's channels in ring order
+        (left, right, back)"""
+        H, W, s, V = self.lidar_h, self.lidar_w, self.views_scale, self.views
+        c = self.in_ch // V
+        img = img.reshape(-1, img.shape[-1])
+        n, f = img.shape[0], H * W * c
+        front = img[:, :f].reshape(n, H, W, c)
+        side = img[:, f:].reshape(n, V - 1, H // s, W // s, c)
+        if s > 1:
+            side = side.repeat_interleave(s, dim=2).repeat_interleave(s, dim=3)
+        side = side.permute(0, 2, 3, 1, 4).reshape(n, H, W, (V - 1) * c)
+        return torch.cat((front, side), dim=-1)
+
     def features(self, scal, img):
         """The fused trunk output `f`: selected scalars ++ conv embedding."""
         # The renderer emits the image channel-FASTEST (NHWC), so view+permute
@@ -793,7 +817,8 @@ class Policy(nn.Module):
         # .contiguous() in fp32. At in_ch=2 the restride is still free and the
         # channels_last trunk consumes it natively; two SEPARATE planes would
         # have made this a real transpose per forward (perf-results.md S9).
-        im = img.reshape(-1, self.lidar_h, self.lidar_w, self.in_ch)
+        im = (self._ring_image(img) if self.views > 1
+              else img.reshape(-1, self.lidar_h, self.lidar_w, self.in_ch))
         if self.obs_fourier:
             # --obs-fourier: sin/cos of the depth channel at 2^k pi, built
             # while the image is still NHWC so the cat is contiguous in the
@@ -1107,6 +1132,8 @@ ARCH_KEYS = (("emb", "--emb"), ("hidden", "--hidden"), ("trunk", "--trunk"),
              ("obs_slope", "--obs-slope"),
              ("obs_ttc", "--obs-ttc"),
              ("obs_edges", "--obs-edges"),
+             ("obs_views", "--obs-views"),
+             ("obs_views_scale", "--obs-views-scale"),
              ("keys_hold", "--keys-hold"),
              ("obs_fourier", "--obs-fourier"))
 
@@ -4488,6 +4515,17 @@ def main() -> None:
                          "onto the image. Needs a face mode (--obs-normal / --obs-texture / "
                          "--obs-slope). in_ch + 1: SCRATCH arms; ckpt restores, a mismatch is "
                          "refused")
+    ap.add_argument("--obs-views", type=int, default=None, choices=(1, 4),
+                    help="the CAMERA RING (the user, 2026-10-01): 4 = the front camera plus "
+                         "left (+90), right (-90) and back (180) cameras, each the same render "
+                         "(depth, potential, face channels) turned about the vertical, stacked "
+                         "as channels (in_ch x 4); norm's potential is standardised over all "
+                         "four together. 1 (default) = the front camera only. SCRATCH arms; "
+                         "ckpt restores, a mismatch is refused")
+    ap.add_argument("--obs-views-scale", type=int, default=None, choices=(1, 2),
+                    help="--obs-views: the side and back cameras' resolution divisor (2 = "
+                         "--lidar-w/2 x --lidar-h/2 at the same fov, upsampled into the stack; "
+                         "the rollout buffer stores them small). Default 1; ckpt restores")
     ap.add_argument("--depth-log-d0", type=float, default=None,
                     help="--depth-enc log / dual: d0 of ln(1 + d/d0), u (default 200); ckpt "
                          "restores")
@@ -6969,6 +7007,17 @@ def main() -> None:
                 "G, B) and a checkpoint's first layer cannot be widened or narrowed - start a "
                 "fresh run, or drop the flag to keep the ckpt's setting "
                 f"({int(ck_cfg.get('obs_texture') or 0)})")
+        for _vk, _vf in (("obs_views", "--obs-views"), ("obs_views_scale", "--obs-views-scale")):
+            _cv = int(ck_cfg.get(_vk) or 1)
+            if getattr(args, _vk) is None:
+                if _cv != 1:
+                    setattr(args, _vk, _cv)
+                    restored.append(f"{_vk}={_cv}")
+            elif int(getattr(args, _vk)) != _cv:
+                raise SystemExit(
+                    f"{_vf} changes the image row and the conv trunk's input channels, and a "
+                    "checkpoint's first layer cannot be widened or narrowed - start a fresh run, "
+                    f"or drop the flag to keep the ckpt's setting ({_cv})")
         if args.obs_edges is None and ck_cfg.get("obs_edges"):
             args.obs_edges = 1
             restored.append("obs_edges=1")
@@ -7812,6 +7861,18 @@ def main() -> None:
         args.obs_ttc = 0
     if args.obs_edges is None:
         args.obs_edges = 0
+    if args.obs_views is None:
+        args.obs_views = 1
+    if args.obs_views_scale is None:
+        args.obs_views_scale = 1
+    if args.obs_views > 1 and (args.goals or (args.frame_stack or 0) > 1 or args.surf_mask
+                               or args.normals or args.pinhole or args.obs_ttc or args.obs_edges
+                               or (args.depth_enc or "legacy") != "legacy"
+                               or (args.obs_fourier or 0) or args.bc_file):
+        raise SystemExit("--obs-views turns the plain / potential / face renders of the "
+                         "legacy-depth equiangular camera: not with --goals, --frame-stack, "
+                         "--surf-mask, --normals, --pinhole, --obs-ttc, --obs-edges, --depth-enc, "
+                         "--obs-fourier or --bc-file")
     if args.obs_edges and not (args.obs_normal or args.obs_texture or args.obs_slope):
         raise SystemExit("--obs-edges reads the face-id grid of a face mode: pass --obs-normal, "
                          "--obs-texture or --obs-slope with it")
@@ -10055,6 +10116,8 @@ def main() -> None:
             slot.lidar = GpuLidar(slot.core, args.lidar_w, args.lidar_h,
                                   ttc=bool(args.obs_ttc),
                                   edges=bool(args.obs_edges),
+                                  views=int(args.obs_views),
+                                  views_scale=int(args.obs_views_scale),
                                   texture=bool(args.obs_texture or args.obs_normal
                                                or args.obs_slope),
                                   texture_mode=("normal" if args.obs_normal else "slope"
@@ -10079,6 +10142,12 @@ def main() -> None:
         if args.obs_texture:
             print(f"--obs-texture: {slot.name} " + slot.lidar.texmap.describe()
                   + f" -> in_ch {slot.lidar.channels}")
+        if args.obs_views > 1:
+            print(f"--obs-views {args.obs_views}: {slot.name} front {args.lidar_w}x"
+                  f"{args.lidar_h} + left / right / back cameras "
+                  f"{args.lidar_w // args.obs_views_scale}x{args.lidar_h // args.obs_views_scale}"
+                  f" (same fov, potential standardised over the ring) -> row "
+                  f"{slot.lidar.frame_size} per env, in_ch {slot.lidar.conv_channels}")
         if args.obs_edges:
             print(f"--obs-edges: {slot.name} creases + silhouettes from a 2x supersampled depth + "
                   f"normal render, max-pooled -> in_ch {slot.lidar.channels}")
@@ -10210,6 +10279,8 @@ def main() -> None:
                 hs.lidar = GpuLidar(ec, args.lidar_w, args.lidar_h,
                                     ttc=bool(args.obs_ttc),
                                     edges=bool(args.obs_edges),
+                                    views=int(args.obs_views),
+                                    views_scale=int(args.obs_views_scale),
                                     texture=bool(args.obs_texture or args.obs_normal
                                                  or args.obs_slope),
                                     texture_mode=("normal" if args.obs_normal else "slope"
@@ -10260,8 +10331,12 @@ def main() -> None:
     # buffer stores that, never the stack (a stack is a gather).
     STACK = max(1, int(args.frame_stack))
     PRO = max(frame_offsets(STACK))     # prologue rows; 0 when stacking is off
-    FRAME = args.lidar_w * args.lidar_h * lidar.channels
-    img_ch = lidar.channels * STACK
+    # --obs-views: the ring's row (the front image + the small side cameras) and its stack
+    FRAME = int(getattr(lidar, "frame_size", args.lidar_w * args.lidar_h * lidar.channels))
+    img_ch = int(getattr(lidar, "conv_channels", lidar.channels)) * STACK
+    if args.obs_views > 1 and type(lidar).__name__ != "GpuLidar":
+        raise SystemExit("--obs-views renders through the plain GpuLidar; a goal / target "
+                         f"wrapper ({type(lidar).__name__}) does not carry the ring")
     # --route: the lookahead fan is a SCALAR-side block, [15 core | R | image]
     route = None
     if args.route:
@@ -10887,7 +10962,9 @@ def main() -> None:
                     int_split=INT_SPLIT,
                     dropout=float(args.dropout),
                     plan_film=int(args.plan_film or 0),
-                    film_dim=(N_FAN if args.plan_film else 0)).to(device)
+                    film_dim=(N_FAN if args.plan_film else 0),
+                    views=int(args.obs_views),
+                    views_scale=int(args.obs_views_scale)).to(device)
     R = policy.rnn_size                    # 0 without --rnn
     # (c) action noise rank-DISTINCT, and set BEFORE the graph capture: the
     #     Gumbel rand_like runs inside the captured graph, whose philox seed
@@ -12258,6 +12335,9 @@ def main() -> None:
         meta["config"]["obs_ttc"] = 1
     if args.obs_edges:
         meta["config"]["obs_edges"] = 1
+    if args.obs_views > 1:
+        meta["config"]["obs_views"] = int(args.obs_views)
+        meta["config"]["obs_views_scale"] = int(args.obs_views_scale)
     if args.depth_enc != "legacy":
         # --depth-enc: ONLY off the default, so a legacy config dump is the pre-flag one;
         # record_ckpt.py and render_pov.py mirror both keys
