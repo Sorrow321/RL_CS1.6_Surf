@@ -32275,3 +32275,32 @@ Late crossings (>= 1.131B): 6/45 (CTL 6/45). 0 finishes.
 * The normal channel buys the wall ~380M steps earlier (756M vs 1.134B) and not a finish.
 * The wall is the known shaping barrier, and nothing in this preset pushes past it: no `--unstuck`, no ratchet, no frontier respawn - just the uniform own-state reservoir and count novelty.
 * The user (2026-10-01): "the goal of this part of the research is not to pass the map ... here we are just optimizing the observation." So the observation arms are judged on time-to-gate. On that, normals is the first clear positive (97k at 378M vs 529M, the wall at 756M vs 1.134B).
+
+## 2026-10-01 18:10 (machine clock) - dencSLOPE (--obs-slope, 1 channel, 0.76e9): a small late gain over the control, well short of the 3-channel normal
+
+**The user's idea 1:** one channel with the normal's angle to +Z might be easier to learn than three.
+
+Route max (eval_honesty --order-only 16) at matched evals:
+
+| step | CTL | NRM (3 ch) | SLOPE (1 ch) |
+|---|---|---|---|
+| 227M | 47,689 | 52,096 | 51,684 |
+| 303M | 50,155 | 91,232 | 56,736 |
+| 378M | 69,949 | 114,843 | 77,822 |
+| 454M | 87,948 | 141,528 | 96,364 |
+| 529M | 100,799 | 165,232 | 101,418 |
+| 605M | 104,589 | 196,976 | 117,881 |
+| 680M | 98,369 | 173,031 | 141,453 |
+| 756M | 129,736 | 207,490 (7/9 past the wall) | 166,782 |
+
+* 97k gate at 529M (CTL 529M, NRM 378M). The wall was not reached in 0.76e9; NRM reached it at 756M.
+
+**Reading.**
+
+* The slope alone is level with the control to 529M and ahead late (1.44x at 680M, 1.29x at 756M), at the edge of the 27% noise floor.
+* The full ego-frame normal leads it by 1.2-1.6x at every mark from 303M.
+* So which way a surface FACES relative to the player (the normal's forward/left components) carries most of the gain, not its slope alone. Three channels were not harder to learn here.
+
+The first dencSLOPE launch was killed by the record gate: the new POV slope panel shadowed the frame slice. That was fixed in e7cb849 and relaunched.
+
+Paused at the user's request (2026-10-01): the 3D-module cost benchmark was rejected before it ran ("it looks very heavy to my GPU, stop it"), and dencTTC (built and tested, 766438a) is NOT launched.
