@@ -33240,3 +33240,51 @@ Per the caveat, the win rate with a 2 s margin may be harvest. The from-start ev
 * **What closing the gap takes:** the WR pace needs ~1,700 u/s on the shortest line, or ~1,950 u/s on the agent's current line.
 * **Metric note:** skate_wr.py's "could press" (eye within 64 u of the true button box) undercounts. The core autoresets on the finish tick, so the entry tick is never recorded, and the last recorded tick can sit up to ~14 u (one tick of flight) outside the 38 u box, past 64 u diagonally. Report the trainer's box finish. It is the user's 38 u box and roughly the engine's 64 u +use sphere.
 * **Training:** 95% of episodes finish (from mid-course spawns, ~44 s each). Stall kills 5%.
+
+## 2026-10-03 22:33 (machine clock) - skate_laby: the WR demo, ANALYSIS ONLY (never training, CLAUDE.md s0) - where the agent's 99.78 s loses to the 74.90 s record
+
+**Source:** `skate_laby.dem`, from the user ("not for training, just for analysis"). Parsed with `tools/demo/parse_hldemo.py` into the scratchpad only. Nothing from it enters a run.
+
+**Server physics (the demo's movevars):**
+
+* gravity 800, airaccelerate 100, accelerate 5, friction 4, maxspeed 320, stepsize 18, maxvelocity 3500. Ours is 4000; the WR's peak is 2,612.
+* The float is per-player, from a plugin: the WR player's origin is z -179.0 in 10,104 of 10,124 frames. Our zero-gravity hover is at -180.
+* The demo's `onground` reads 1 throughout, but the measured strafe gains are AIR physics: 0.21 u/s per frame at 1,500-1,800 u/s against the air model's 0.27 (ground would be 1.41). So the airborne hover model stands.
+* **Ducks:** 828 frames are ducked (view height 12), with the origin unchanged at -179, i.e. the mid-air duck. parse_hldemo's `uc_buttons` here are shifted 8 bits: 1024 = IN_DUCK, 2048 = IN_FORWARD, 8192 = IN_USE (15 frames at the button).
+* **Inputs:** sidemove +/-250 on 9,593 frames; forward ~never; no jumps.
+* **Frame rate:** usercmd msec 7/8, mean 7.61 ms = **131 fps**. Air acceleration AND air turning are capped per FRAME (30 u/s), so this player had 31% more of both per second than our 10 ms tick.
+
+**Timing check:** teleport (the push) to entering our 38 u box = **74.90 s**, the WR exactly. The box and our clock reproduce the official timer.
+
+**Boosts:** the start push (to 1,603 u/s), and a second trigger_push at x -2832..-2688, y 3568..3824 (speed 800, +x).
+
+| | human | agent |
+|---|---|---|
+| reaches the booster at | 27.8 s | ~36.4 s |
+| speed at the booster | 1,811 -> 2,604 | ~1,460 -> ~2,260 |
+
+**Section comparison** (ground-field progress, 10% slices):
+
+* The agent loses 1.9-3.4 s in EVERY slice. Its path is 6-12% longer per slice, and it is 15-25% slower in every slice.
+
+| whole run | human | agent |
+|---|---|---|
+| path flown | 132,133 u | 144,307 u (+9%) |
+| mean speed | 1,759 u/s | 1,444 u/s |
+
+**Speed budget:**
+
+| | human | agent |
+|---|---|---|
+| boosts | +2,368 | +2,364 |
+| strafe gains | +1,327 (17.7 u/s per s) | +1,921 (19.3) |
+| hard wall hits | 3 (-681) | 12 (-1,206) |
+| speed lost while turning > 57 deg/s | -1,490 | -2,973 |
+| total heading turned | 12,569 deg | 17,120 deg (+36%) |
+
+**Reading:** the agent is NOT short of strafing power. It loses in the TURNS, as the user guessed: more zigzag (36% more heading change, a 9% longer line), 4x the wall hits and 2x the speed lost while turning.
+
+* The frame rate is the physics half of this. At 131 fps the per-frame 30 u/s cap gives 31% more lateral acceleration, so at 1,700 u/s the minimum turn radius is ~735 u against ~963 u at 100 fps. A 100 Hz agent must take every corner wider or touch the wall.
+* The other half is the policy: decisions every 40 ms (68 u of flight at 1,700 u/s), against a human who adjusts every 7.6 ms.
+
+**Leaderboard (the user):** rank 4 is 1:21, rank 12 is 1:30 and rank 40 is 1:40. The agent's 1:39.78 is about rank 40; the WR is a 6 s outlier over rank 4.
