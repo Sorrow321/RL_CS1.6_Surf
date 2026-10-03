@@ -5545,6 +5545,11 @@ def main() -> None:
                          "verdict reads it, and it taxes the surviving, "
                          "long-episode policies the most)")
     ap.add_argument("--ckpt-every", type=float, default=10e6)
+    ap.add_argument("--save-best", type=int, default=0, choices=(0, 1),
+                    help="single-map race runs: after every greedy eval with finishes, save "
+                         "ckpt_best.pt when its best finish time beats this launch's best so far "
+                         "(the user, 2026-10-04, skate_laby: the 89.35 s weights were lost "
+                         "between the 1e9-step checkpoints). Not a config key; 0 = off")
     ap.add_argument("--ckpt", default=None)
     ap.add_argument("--sb3", default=None)
     ap.add_argument("--reset-steps", action="store_true")
@@ -15555,6 +15560,7 @@ def main() -> None:
     int_sync = args.int_sync_every if D.enabled else 0
     int_row = []              # --int-split: this iteration's int/* values
     it_no = 0
+    best_fin_saved = float("inf")     # --save-best: this launch's best greedy finish (s)
     while global_step < int(args.steps):
         it_no += 1
         tm.start_iter()
@@ -17671,6 +17677,13 @@ def main() -> None:
                       f"{f'[HELDOUT {_s.tag}]' if _s.heldout else f'[{_s.tag}]' if MULTI else ''}: fwd {_f:7.0f}u"
                       f"  path {_p:7.0f}u  peak {_v:6.0f} u/s"
                       f"{prog_note} -> {path.name}")
+                if (args.save_best and not MULTI and not _s.heldout and p_nfin
+                        and fin_best < best_fin_saved):
+                    # --save-best: keep the weights behind every new best greedy finish
+                    best_fin_saved = float(fin_best)
+                    save_ckpt("best")
+                    print(f"--save-best: new best greedy finish {fin_best:.2f}s at step "
+                          f"{global_step:,} -> ckpt_best.pt")
                 if not args.eval_greedy_only:
                     spath = out / f"traj_{global_step:010d}{sfx}_stoch.jsonl"
                     _sv_stall = (None if _ev_stall is None
