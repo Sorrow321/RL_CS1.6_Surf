@@ -33227,3 +33227,16 @@ Per the caveat, the win rate with a 2 s margin may be harvest. The from-start ev
 
 * The finish bonus is +1 per second under 120 s, paid on the finish tick and clamped at 0, so there is no suicide channel. A 75 s finish gets +45, a 110 s finish +10.
 * The 180 s cap stops 110-120 s finishers being truncated in training and evals.
+
+## 2026-10-03 22:11 (machine clock) - skate_laby: skLABY11 first sub-100 s finish, 99.78 s (+24.88 s on the WR), at 3,222M
+
+* **Every eval since 2,014M finished 9/9** by the trainer's 38 u box.
+* **Best trainer finish per eval:** 109.77 (2,014M), 104.87, 115.46, 103.94 (2,316M), 112.52, 115.39, 117.30, 115.76, 107.52, 104.46, **101.38 (2,920M)**, 107.74, 110.33, 104.36, **99.78 s (3,222M)**.
+* **Spread:** within one eval the 9 runs sit within ~3 s of each other (2,316M: 103.94-106.73). Across evals the best varies by 10+ s, so read the trend, not one eval.
+* **The 2,316M best run (103.94 s):**
+  * mean speed 1,401 u/s, steady (p10 1,307, p90 1,481);
+  * 12 hard wall contacts costing 1,045 u/s in all, against 4,439 u/s gained by strafing;
+  * flown path ~145,700 u, ~15% longer than the 127k u route.
+* **What closing the gap takes:** the WR pace needs ~1,700 u/s on the shortest line, or ~1,950 u/s on the agent's current line.
+* **Metric note:** skate_wr.py's "could press" (eye within 64 u of the true button box) undercounts. The core autoresets on the finish tick, so the entry tick is never recorded, and the last recorded tick can sit up to ~14 u (one tick of flight) outside the 38 u box, past 64 u diagonally. Report the trainer's box finish. It is the user's 38 u box and roughly the engine's 64 u +use sphere.
+* **Training:** 95% of episodes finish (from mid-course spawns, ~44 s each). Stall kills 5%.
