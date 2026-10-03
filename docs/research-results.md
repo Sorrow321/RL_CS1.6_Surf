@@ -33090,3 +33090,32 @@ Route max (eval_honesty --order-only 16) at matched evals, seed 0, single RTX 30
 
 * The server's sv_airaccelerate is unknown; ours is 100. Hovering, all speed comes from air strafing (the 30 u/s wish cap) and the start push.
 * Whether the server's hover is sv_gravity 0 or a plugin's per-player gravity does not matter to the physics.
+
+## 2026-10-03 20:06 (machine clock) - skate_laby: the finish box reached THROUGH the button's wall; pad 192 -> 38 u; skLABY7 learned the hover course in ~75M; skLABY8 resumes it
+
+**skLABY7** (hover physics, `--sv-gravity 0`), stopped at 595M.
+
+* By 76M: 6/9 greedy episodes past W1, the furthest at 89% of the then-route.
+* At W1 every crossing is DUCKED (100% of the ticks over the hurdle), at ~1,400 u/s and the hover height.
+* By 378-454M it "finished" 4 of 9 greedy episodes at 102-117 s. 0 of those could press the button.
+
+**The user:** "the red area around the button is too large so that the agent cannot reach it. It gets into this area too early ... shrink it ... five times".
+
+**Measured:**
+
+* The button sits on the west face (x 2161) of a solid block ~140 u thick. A hovering player's origin gets to x 2144 against it.
+* The corridor behind the block starts at x ~2320, and the 192 u-padded box reached x 2354.
+* All 4 "finishes" entered the box from that corridor (last recorded positions x 2341-2371). That is BEHIND the button, which no +use can press from.
+* The ground field had seeds there too. On the corrected field that corridor is still 8,456 u from the button.
+
+**Fix:** pad 38 u (c79302c), box x 2123-2200, y -406 to -298, z -230 to -122.
+
+* It is reachable only against the button's face (origin x 2123-2144).
+* The ground field's start reading rises 119,165 -> 127,748 u. The route is now 126,988 u with 12 duck windows, not 8: 4 more lie in the last 6.3k u (x 760-840).
+* The WR pace on this route is ~1,695 u/s.
+* skLABY7 measured on the corrected field: 93% at 529M (119,274 of 127,748 u), 0/9 past windows 9-12.
+
+**skLABY8:** `launch_local.ps1 resume runs/skLABY7/ckpt_latest.pt` (595M), skate_laby, `--record-every 75e6`.
+
+* **Why a warm start:** this fixes the goal, not the physics or the recipe. The checkpoint already hovers, ducks the windows and flies 93% of the real route, and the last 8.5k u holds 4 more windows of the same kind.
+* **Launch mishap:** a first resume launch without `MAP=` picked the launcher's default map (cannonball). It was killed before its first iteration and the empty run directory removed.
