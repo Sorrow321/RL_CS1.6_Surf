@@ -33345,3 +33345,30 @@ skLABY12, 40-minute check-in.
 **Checkpoints:** the 4,506M weights (89.35 s) were not saved. On disk: ckpt_4977065984.pt and ckpt_latest (5.44B).
 
 **Proposal to the user:** a fine-tuning resume at a lower learning rate (1e-4), which is a generic schedule change.
+
+## 2026-10-04 00:45 (machine clock) - skate_laby: skLABY13, a fine-tuning resume at lr 1e-4 with --save-best; the expert loop needs a port
+
+**skLABY12**, stopped at ~5.97B.
+
+* Its last evals kept drifting: 101.30 and 111.88 s best.
+* Its best stays 89.35 s, at 4,506M; those weights were not saved.
+
+**The user asked for the expert loop** ("alpha zero style ... expert loop ... this search was quite good at optimizing just the same path").
+
+* `tools/expert_loop.py` cannot run on the skate policy as it stands:
+  * `beam_tas.py` REFUSES `keys_hold` checkpoints (it builds and edits ENGINE action rows, and the keep bin shifts every one).
+  * `train_fast.py` refuses `--bc-file` with `--keys-hold` (engine indices would be fitted through the widened heads).
+  * `beam_tas.build_sim` does not mirror `sv_gravity` (the hover), sv_friction, bhop_cap or stamina.
+  * Its goal field is `build_goal_field`, not the ground field.
+* A port is ~3-5 h with replay-identity tests. Offered to the user. The user: start with something easy.
+
+**`--save-best`** (44e37b6): saves ckpt_best.pt behind every new best greedy finish.
+
+* Tested at 1024 envs on ckpt_4977065984.pt: evals 95.65 / 93.40 / 94.60 s -> saved at 95.65 and 93.40.
+* Side note: the same test at `--envs 64` evaluated a stuck policy (it stopped at the first wall). The recorder ran the same checkpoint to 93.9 / 95.4 s finishes. The likely cause is one PPO update on a 16x smaller batch perturbing the policy before that first eval, not the eval path.
+
+**skLABY13:** resume of skLABY12's ckpt_4977065984.pt (its nearby evals: 90.60 s at 4,883M, 94.42 at 5,034M) + `--lr 1e-4` (was 3e-4) + `--save-best 1`, `--envs 1024`.
+
+* Everything else is restored: hover, finish_k 1, a 180 s cap, 131 Hz, stall_eps 5, margin 2, the 500 u/s floor.
+* The log confirms "optimizer lr: 0.0003 -> 0.0001". Record gate passed.
+* The user's prior: unsure an LR cut helps.
