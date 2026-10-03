@@ -32821,3 +32821,36 @@ Route max (eval_honesty --order-only 16) at matched evals, seed 0. Every arm is 
 * **Ops lessons.**
   * Background processes started with DETACHED_PROCESS opened a console window for every ssh / vastai call (the user: "STOP OPENING CMDS"). Now CREATE_NO_WINDOW or Start-Process -WindowStyle Hidden.
   * I misjudged elapsed time and destroyed two boxes after ~3.5 min of image loading (inside the 5-min window), blocklisting their hosts. The two entries were removed again; one of those hosts then served arDEEP.
+
+## 2026-10-03 17:16 (machine clock) - NORMALISATION BATCH launched on single RTX 3090s (lnCTL / lnSIMBA / lnSIMDEEP / lnSPLIT)
+
+**The user (2026-10-03):** "Are there some standard techniques in CNN that we didn't use?" ... "Yep, let's do it."
+
+**Never tried here:**
+
+* LayerNorm anywhere in the network. The survey's own note: "Bigger nets ... retry only after LayerNorm".
+* Separate policy / value image encoders.
+
+**Code** (140124f, pushed):
+
+* `--simba`: SimBa towers (input Linear, pre-LN residual blocks 4x wide, final LN) plus LayerNorm on the image embedding.
+* `--split-trunk`: the value reads its own plain trunk.
+
+**Network cost** relative to the plain net (eager, local 5090):
+
+| flags | network time | params |
+|---|---|---|
+| `--simba` | 1.21x | 4.8M |
+| `--simba --conv-mult 2 --tower-depth 4` | 1.88x | 9.1M |
+| `--split-trunk` | 1.84x | 3.0M |
+
+**The batch.** Same protocol as the architecture batch: `SCRATCH=1 BUDGET=0.76e9 run_arm.sh <run> --obs-normal 1 --envs 1024 <arm>`, one single RTX 3090 per arm, seed 0, the user-approved ceiling $0.34/h.
+
+| arm | flags |
+|---|---|
+| lnCTL | none (also a same-protocol replicate of arCTL: a direct one-seed noise estimate) |
+| lnSIMBA | `--simba 1` |
+| lnSIMDEEP | `--simba 1 --conv-mult 2 --tower-depth 4` (does scaling pay once normalised?) |
+| lnSPLIT | `--split-trunk 1` |
+
+**Infrastructure.** Scored and harvested by the same local monitor (runs/research/arch2/); every helper runs window-less.
