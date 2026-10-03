@@ -32685,3 +32685,40 @@ Route max (eval_honesty --order-only 16) at matched evals, local 5090, seed 0. B
 * Channels: depth + potential + normal x3 + reach = in_ch 6.
 * Control: dencNRM1K (97k at 302M / 14 min, wall at 605M / 28 min), at matched evals.
 * GPU at launch: 6.8 GB in use by the user's applications. The dashboard was down (the machine had restarted) and was restarted on 8600 first.
+
+## 2026-10-03 14:35 (machine clock) - dencREACH (+ the free-flight reach channel): within noise - a small early lead, the same wall
+
+Route max (eval_honesty --order-only 16) at matched evals, local 5090, seed 0. Both runs are scratch_ablate + `--obs-normal 1 --envs 1024`; the second adds `--obs-reach 1`. Cells are route max and training wall minutes.
+
+| step | baseline (dencNRM1K) | + reach (dencREACH) |
+|---|---|---|
+| 76M | 16,920, 6 min | 18,853, 4 min |
+| 152M | 45,554, 9 min | 49,102, 8 min |
+| 227M | 56,672, 12 min | 73,959, 12 min |
+| 303M | 111,722, 14 min | 109,214, 16 min |
+| 378M | 126,404, 18 min | 159,009, 20 min |
+| 454M | 193,372, 21 min | 194,776, 25 min |
+| 529M | 195,099, 25 min | 205,568 (2/9 past), 30 min |
+| 605M | 205,568 (7/9 past), 28 min | 205,568 (7/9 past), 37 min |
+| 680M | 206,028 (3/9 past), 31 min | 206,080 (3/9 past), 42 min |
+| 755M | 206,286 (9/9 past), 35 min | 205,485 (2/9 past), 46 min |
+
+**Gates and throughput.**
+
+| | baseline | + reach |
+|---|---|---|
+| 97k gate | 303M / 14 min | 303M / 16 min |
+| wall | 605M / 28 min | 529M / 30 min |
+| throughput | 358,670 steps/s | 269,012 steps/s (0.75x) |
+| finishes | 0 | 0 |
+
+**Reading.**
+
+* **Per step, the reach arm is ahead at 76M-378M except 303M** (1.3x at 227M and 378M). It reached the wall one eval earlier: 529M vs 605M, 1.14x.
+* **That is inside the 27% one-seed floor**, so no effect is shown. It is far smaller than the face normal's own effect against the control (1.4x to 97k, 1.5x to the wall).
+* **Both arms sit at the same 205k wall from ~530-605M.** Their crossing counts (2-9/9) fluctuate eval to eval, and there are 0 finishes.
+* **On wall clock there is no gain** (16 / 30 min vs 14 / 28). The 0.75x throughput has two causes that this run cannot separate:
+  * the unfused torch post-process: ~40 elementwise launches per render;
+  * the user's game sharing the GPU during the run: 6.8 GB in use at launch.
+  A fused kernel would remove the first.
+* **Verdict: null at this resolution.** The physics channel does not hurt and may help early. It does not move the wall, and nothing observational has: the 205k wall is the exploration / credit gate CLAUDE.md documents, and no unstuck mechanism runs in these arms.
