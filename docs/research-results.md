@@ -33326,3 +33326,22 @@ skLABY12, 40-minute check-in.
 * Peak speed rises from ~2,200 to 2,407-2,500 u/s.
 * **Rank:** on the user's leaderboard points (rank 4 = 1:21, rank 12 = 1:30, rank 40 = 1:40), 89.35 s is around rank 12.
 * Training: 95% of episodes finish; stall kills 5%.
+
+## 2026-10-04 00:04 (machine clock) - skate_laby: skLABY12 plateaus / drifts after 4.5B; best stays 89.35 s
+
+**Best trainer finish per eval**, 4,808M-5,412M: 92.75, 90.60, 99.97, 94.42, 95.02, 99.34, 98.91, 98.44, 105.69 s. All 9/9 finish every time. The trend is worse than 4.43-4.66B (94.20, 89.35, 92.81, 89.91).
+
+**Training log over the same span:**
+
+| | earlier | now |
+|---|---|---|
+| reward | 156 (4.6B) | 143-150 |
+| yaw sigma | 0.106-0.110 (4.4-4.9B) | 0.126-0.130 |
+| approx_kl | | 0.03-0.046 at lr 3e-4 |
+| training win rate | | 87-98% |
+
+**Reading:** constant-LR PPO drifting around a solved skill. The noise is up and the reward is off its peak.
+
+**Checkpoints:** the 4,506M weights (89.35 s) were not saved. On disk: ckpt_4977065984.pt and ckpt_latest (5.44B).
+
+**Proposal to the user:** a fine-tuning resume at a lower learning rate (1e-4), which is a generic schedule change.
