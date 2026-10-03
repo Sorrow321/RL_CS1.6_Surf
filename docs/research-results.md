@@ -33052,3 +33052,41 @@ Route max (eval_honesty --order-only 16) at matched evals, seed 0, single RTX 30
 * The hurdle is still a real skill. The agent must reach W1 below ~700 u/s and press jump fresh 90-155 u before the face, then duck in the air.
 
 **Caveat:** whether the WR server runs a no-slowdown plugin is not known; this is the model.
+
+## 2026-10-03 19:42 (machine clock) - skate_laby: the server HOVERS (zero gravity), not slides; --sv-gravity, skLABY7. skLABY6 (jump physics) took all 8 hurdles but is not the server's game
+
+**skLABY6** (`--bhop-cap 0 --stamina 0`, gravity 800), stopped at 228M. Hurdle crossings read off the ground field:
+
+| step | past W1..W8 (of 9) | furthest progress |
+|---|---|---|
+| 76M | 6, 3, 0, 0, 0, 0, 0, 0 | 28,305 u (24%) |
+| 152M | 9, 9, 9, 9, 2, 1, 0, 0 | 106,216 u (89%) |
+| 227M | 9, 9, 9, 9, 4, 3, 3, 2 | 109,436 u (92%) at the 120 s cutoff |
+
+* 0 button presses.
+* With the jump penalties off, the agent learned to JUMP the hurdles inside 76M. It is slow, though: it spends most of the 120 s at the hurdles in the meander (W5-W8).
+
+**The user, on the real server:** "if I press jump, nothing happens. If I press duck, I a little bit duck down ... I'm kind of sliding on the floor ... I'm above the floor, so I'm a little bit in the air. And if I just press the duck and move forward, I cross the window ... without the duck I am not crossing the window." And: "I think our agent has mostly correct physics, we just need to fix the window thing."
+
+**Zero gravity reproduces every observation in the core:**
+
+* **Hover:** the start teleport's destination is at z -216, so the player's origin lands at -180, feet 40 u above the floor. At sv_gravity 0 it stays there (onground -1).
+* **Jump:** it needs ground, so it does nothing (vz 0).
+* **The windows:** at W1, standing + forward at 600 u/s is blocked, because the 44-48 u hurdle is taller than the 40 u hover. Ducked + forward crosses in 0.38 s and keeps 600 u/s, because a mid-air duck lifts the feet 18 u, to 58 u.
+* **The slide:** with no input, the start push carries 1,608 u/s at the hover height. After the first wall the player keeps sliding at 456 u/s. That is the slide, and it needs no friction change: in the air there is no friction.
+* **Gravity 800 does the opposite of the server:** the player lands, ducking cannot pass a hurdle, and jumping works.
+* So skLABY5 and skLABY6 trained a different game: gravity, a floor, and jumps. The earlier slide model (`--sv-friction 0`) and the jump-penalty switches are irrelevant while hovering, since there is no ground contact and no jump.
+
+**`--sv-gravity`** (adbe490): the server's gravity.
+
+* Stock 800. Written to the config only when changed, restored from a checkpoint and mirrored by record_ckpt.
+* Tested: at 0 the hover holds and jump does nothing; at 800 the player falls. The flag reaches run.json and the recording's phys block.
+
+**skLABY7:** scratch_ablate + `--obs-normal 1 --envs 1024 --race-ground 1 --sv-gravity 0 --speed-coef 0.002 --min-speed-kill 500 --min-speed-grace 1 --min-speed-secs 1`, local 5090.
+
+* Friction, the bhop cap and stamina are left at stock: they never act on a hovering player.
+
+**Caveats:**
+
+* The server's sv_airaccelerate is unknown; ours is 100. Hovering, all speed comes from air strafing (the 30 u/s wish cap) and the start push.
+* Whether the server's hover is sv_gravity 0 or a plugin's per-player gravity does not matter to the physics.
