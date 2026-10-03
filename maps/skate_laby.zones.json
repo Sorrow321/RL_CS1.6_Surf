@@ -16,14 +16,14 @@
   },
   "end": {
     "mins": [
-      1969.0,
-      -560.0,
-      -384.0
+      2123.0,
+      -406.0,
+      -230.0
     ],
     "maxs": [
-      2354.0,
-      -144.0,
-      32.0
+      2200.0,
+      -298.0,
+      -122.0
     ],
     "true_aabb": {
       "mins": [
@@ -38,7 +38,7 @@
       ]
     },
     "from": "func_button",
-    "pad": 192.0,
+    "pad": 38.0,
     "degenerate": false
   },
   "note": "2026-10-03: start/end as auto-detected; 'spawns' = the start teleport's destination (info_teleport_destination 'start', origin -1056 -1792 -216, feet on the floor: player origin z = -216 + 36), facing +y, inside the 1600 u/s start push - where the human timer starts (user: 'Timer starts on a strong push forward in the start'). The spawn room is disconnected from the course except through that teleport.",
@@ -51,5 +51,6 @@
       ],
       "yaw": 90.0
     }
-  ]
+  ],
+  "note_end": "2026-10-03 (user): the 192 u pad reached through the button's 140 u wall into the corridor behind it (x 2320+), where skLABY7 'finished' 4/9 without being able to press; pad cut 5x to 38 u, so the box is reachable only against the button's face (origin x 2123..2144)."
 }
