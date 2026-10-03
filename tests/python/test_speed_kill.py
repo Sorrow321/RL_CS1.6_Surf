@@ -45,3 +45,21 @@ def test_the_speed_floor_kills_slow_episodes():
     assert "min_speed_kill" not in cfg0["config"]
     for n in ("cya_msk_on", "cya_msk_win", "cya_msk_off"):
         shutil.rmtree(ROOT / "runs" / n, ignore_errors=True)
+
+
+@needs_run
+def test_sv_friction_reaches_training_and_recording():
+    """--sv-friction: the server's ground friction (stock 4); a slide server is 0. The config
+    carries it only when changed; record_ckpt rebuilds the core with it."""
+    from test_obs_potential import CANNONBALL, RECORD, _run
+    r = _train("cya_fric", ABS + ["--sv-friction", "0"], steps="6144")
+    assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-3000:]
+    d = ROOT / "runs" / "cya_fric"
+    assert json.loads((d / "run.json").read_text(encoding="utf-8"))["config"]["sv_friction"] == 0.0
+    rec = _run([sys.executable, "-u", str(RECORD), str(d / "ckpt_final.pt"), "--map",
+                str(CANNONBALL), "--episodes", "1", "--out", str(d / "rec.jsonl")])
+    assert rec.returncode == 0, rec.stdout[-3000:] + rec.stderr[-3000:]
+    hdr = json.loads((d / "rec.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    phys = hdr.get("phys") or {}
+    assert float(phys.get("sv_friction", -1)) == 0.0, phys
+    shutil.rmtree(d, ignore_errors=True)

@@ -4437,6 +4437,13 @@ def main() -> None:
                     help="minimum hold of the side key (A/D) in physics ticks, enforced in "
                          "env.c (a change within N ticks of the last is ignored). 0 = off, "
                          "bit-identical; 40 = 0.3 s at 131 Hz. ckpt restores")
+    ap.add_argument("--sv-friction", type=float, default=None,
+                    help="the server's ground friction, sv_friction (GoldSrc stock 4). It scales "
+                         "ONLY the ground-friction drop, not the ground or air acceleration, so "
+                         "0 is a slide server (the user, 2026-10-03, skate_laby: 'if you let go "
+                         "of all your buttons the character starts sliding forward' - an AMXX "
+                         "plugin's doing, not the map's). Physics: a checkpoint restores it and "
+                         "record_ckpt mirrors it")
     ap.add_argument("--maxvel", type=float, default=None,
                     help="sv_maxvelocity (default 2000, the GoldSrc stock "
                          "value all pre-race runs trained on; real surf "
@@ -6743,6 +6750,9 @@ def main() -> None:
         if args.int_match is None and ck_cfg.get("int_match") is not None:
             args.int_match = float(ck_cfg["int_match"])
             restored.append(f"int_match={args.int_match:g}")
+        if args.sv_friction is None and ck_cfg.get("sv_friction") is not None:
+            args.sv_friction = float(ck_cfg["sv_friction"])
+            restored.append(f"sv_friction={args.sv_friction:g}")
         if args.maxvel is None and ck_cfg.get("maxvel") is not None:
             args.maxvel = float(ck_cfg["maxvel"])
             restored.append(f"maxvel={args.maxvel:g}")
@@ -7917,6 +7927,8 @@ def main() -> None:
         args.ret_norm = 0
     if args.int_coef is None:
         args.int_coef = 0.0
+    if args.sv_friction is None:
+        args.sv_friction = 4.0   # GoldSrc stock; every run before the flag trained under this
     if args.maxvel is None:
         args.maxvel = 2000.0     # every pre-race ckpt trained under this
     if args.respawn_frac is None:
@@ -9766,7 +9778,7 @@ def main() -> None:
                              max_episode_ticks=args.ep_ticks,
                              water_fail=1, yaw_jitter_deg=args.yaw_jitter,
                              yaw_adaptive=1 if args.yaw_adaptive else 0, yaw_blend=float(args.yaw_blend), side_hold_ticks=int(args.side_hold),
-                             sv_maxvelocity=args.maxvel,
+                             sv_maxvelocity=args.maxvel, sv_friction=float(args.sv_friction),
                              lidar_w=0, lidar_h=0,
                              pitch_rate_max_deg=pitch_rate_core, **_tick_env,
                              **_view_env)
@@ -10354,7 +10366,7 @@ def main() -> None:
             num_envs=1, spawn_mode=2, max_episode_ticks=args.ep_ticks,
             water_fail=1,
             yaw_adaptive=1 if args.yaw_adaptive else 0, yaw_blend=float(args.yaw_blend), side_hold_ticks=int(args.side_hold),
-            sv_maxvelocity=args.maxvel,
+            sv_maxvelocity=args.maxvel, sv_friction=float(args.sv_friction),
             lidar_w=0, lidar_h=0, pitch_rate_max_deg=pitch_rate_core,
             **_tick_env, **_view_env), tick_ms=args.tick_ms)
         if not args.keep_teleports:
@@ -10512,7 +10524,8 @@ def main() -> None:
             ec = SurfCore(str(_bsp), default_config(
                 num_envs=1, spawn_mode=2, max_episode_ticks=args.ep_ticks,
                 water_fail=1, yaw_adaptive=1 if args.yaw_adaptive else 0, yaw_blend=float(args.yaw_blend), side_hold_ticks=int(args.side_hold),
-                sv_maxvelocity=args.maxvel, lidar_w=0, lidar_h=0,
+                sv_maxvelocity=args.maxvel, sv_friction=float(args.sv_friction),
+                lidar_w=0, lidar_h=0,
                 pitch_rate_max_deg=pitch_rate_core, **_tick_env, **_view_env),
                 tick_ms=args.tick_ms)
             hs = HeldoutSlot(_bsp.stem, str(_bsp), ec, N)
@@ -12223,6 +12236,8 @@ def main() -> None:
                        "int_speed": (args.int_speed
                                      if args.reward == "race" else None),
                        "maxvel": args.maxvel,
+                       **({"sv_friction": float(args.sv_friction)}
+                          if float(args.sv_friction) != 4.0 else {}),
                        "yaw_adaptive": args.yaw_adaptive,
                        "yaw_blend": args.yaw_blend,
                        "side_hold": args.side_hold,
