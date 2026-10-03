@@ -556,7 +556,7 @@ class MapFleet:
             img = s.lidar.render(vis_gpu[:, 0:3], vis_gpu[:, 3],
                                  vis_gpu[:, 4], vis_gpu[:, 5],
                                  **({"velocity": vis_gpu[:, 6:9]}
-                                    if getattr(s.lidar, "ttc", False) else {}))
+                                    if getattr(s.lidar, "uses_velocity", False) else {}))
             return img.reshape(vis_gpu.shape[0], -1)
         # --obs-potential norm: the per-frame standardisation is per ROW, so
         # it is the same arithmetic whether it runs per slot or once over
@@ -575,14 +575,14 @@ class MapFleet:
                 img = s.lidar.render(v[:, 0:3], v[:, 3], v[:, 4], v[:, 5],
                                      post=False,
                                      **({"velocity": v[:, 6:9]}
-                                        if getattr(s.lidar, "ttc", False) else {}))
+                                        if getattr(s.lidar, "uses_velocity", False) else {}))
                 # --depth-enc dual puts a second depth channel ahead of the potential
                 batch_norm = (pot, s.lidar.H, s.lidar.W, int(s.lidar.channels),
                               int(getattr(s.lidar, "pot_channel", 1)))
             else:
                 img = s.lidar.render(v[:, 0:3], v[:, 3], v[:, 4], v[:, 5],
                                      **({"velocity": v[:, 6:9]}
-                                        if getattr(s.lidar, "ttc", False) else {}))
+                                        if getattr(s.lidar, "uses_velocity", False) else {}))
             out[s.lo:s.hi] = img.reshape(s.n, -1)
         if batch_norm is not None:
             pot, H, W, C, pc = batch_norm

@@ -1225,6 +1225,9 @@ def main(argv=None, build_only: bool = False, device=None):
                      # --obs-views: MIRRORED (the camera ring; its row and in_ch)
                      views=int(cfg.get("obs_views") or 1),
                      views_scale=int(cfg.get("obs_views_scale") or 1),
+                     # --obs-reach: MIRRORED (the free-flight reach channel; the policy wrapper
+                     # passes the eval core's velocity)
+                     reach=bool(cfg.get("obs_reach") or 0),
                      texture=bool(cfg.get("obs_texture") or cfg.get("obs_normal")
                                   or cfg.get("obs_slope") or 0),
                      # --obs-normal / --obs-slope: MIRRORED (what the face channels carry)

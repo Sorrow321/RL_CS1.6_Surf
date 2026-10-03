@@ -1380,6 +1380,11 @@ if HAVE_TRITON:
 
 #: --obs-ttc: the looming channel's time scale, s (exp(-time to contact / TTC_TAU))
 TTC_TAU = 1.0
+#: --obs-reach: the reach channel's time scale, s (tanh(slack / REACH_TAU))
+REACH_TAU = 1.0
+#: the engine's air-control cap, u/s per tick (src/pm.c pm_air_accelerate: wishspeed is
+#: capped at 30 and the impulse may not push the velocity's component along wishdir past it)
+AIR_CAP = 30.0
 #: --obs-edges: the supersampling of the edge render, and the relative depth mismatch off a
 #: pixel's surface plane that reads as a full silhouette edge
 EDGE_SS = 2
@@ -2084,7 +2089,8 @@ class GpuLidar:
                  potential=None, vision_clip: bool = False,
                  depth_enc: str = "legacy", depth_log_d0: float = 200.0,
                  texture=False, texture_mode: str = "rgb", ttc: bool = False,
-                 edges: bool = False, views: int = 1, views_scale: int = 1) -> None:
+                 edges: bool = False, views: int = 1, views_scale: int = 1,
+                 reach: bool = False) -> None:
         if texture_mode not in ("rgb", "normal", "slope", "edgesrc"):
             raise ValueError(f"texture_mode {texture_mode!r}: rgb (--obs-texture), normal "
                              "(--obs-normal) or slope (--obs-slope)")
@@ -2242,6 +2248,19 @@ class GpuLidar:
         if self.edges:
             self.channels += 1
         self.edge_channel = self.channels - 1 if self.edges else None
+        # --obs-reach (the user, 2026-10-03): one more channel, a post-process of the depth and
+        # the player's state - can the player's current momentum carry it to each visible
+        # surface point in free flight? The engine's own constants: gravity from the core's
+        # physics, the 30 u/s-per-tick air-control cap at the core's tick
+        self.reach = bool(reach)
+        if self.reach:
+            self.channels += 1
+        self.reach_channel = self.channels - 1 if self.reach else None
+        _ph = getattr(getattr(core, "config", None), "phys", None)
+        self.reach_g = float(getattr(_ph, "sv_gravity", 800.0) or 800.0)
+        self.reach_tick_s = float(getattr(core, "tick_ms", 10.0) or 10.0) / 1000.0
+        # the velocity rides into render() for the looming and the reach channels
+        self.uses_velocity = self.ttc or self.reach
         self._edge_cam_obj = None
         self.tex_pix_rad = float(np.radians(self.vfov_deg / self.H))
         # the depth channel 0's largest value (a clear ray at the range), for displays
@@ -2287,7 +2306,8 @@ class GpuLidar:
         if self.views not in (1, 4) or self.views_scale not in (1, 2):
             raise ValueError(f"views {views!r} / views_scale {views_scale!r}: 1 or 4 views, "
                              "side cameras at scale 1 or 2")
-        if self.views > 1 and (self.ttc or self.edges or self.surf_mask or self.normals
+        if self.views > 1 and (self.ttc or self.edges or self.reach or self.surf_mask
+                               or self.normals
                                or self.pinhole or self.depth_enc != "legacy"):
             raise ValueError("--obs-views turns the plain / potential / face renders of the "
                              "legacy-depth equiangular camera: not with --obs-ttc, --obs-edges, "
@@ -2351,6 +2371,8 @@ class GpuLidar:
             out = self._append_ttc(out, origin, yaw_deg, pitch_deg, velocity)
         if self.edges:
             out = self._append_edges(out, origin, yaw_deg, pitch_deg, ducked)
+        if self.reach:
+            out = self._append_reach(out, origin, yaw_deg, pitch_deg, ducked, velocity)
         return out
 
     def _render_raw(self, origin, yaw_deg, pitch_deg, ducked):
@@ -2535,6 +2557,58 @@ class GpuLidar:
         if out.dim() == 3:
             out = out[..., None]
         return torch.cat((out, ttc[..., None]), dim=-1)
+
+    @torch.no_grad()
+    def _append_reach(self, out, origin, yaw_deg, pitch_deg, ducked, velocity):
+        """--obs-reach: the FREE-FLIGHT reach of every visible surface point, appended as the
+        last channel - tanh(slack / REACH_TAU) in (-1, 1), slack in seconds:
+
+        * vertical: in the air only gravity moves the player up or down (the air control is
+          horizontal: pm_air_move zeroes forward[2] / right[2]), so the feet cross the point's
+          height at a KNOWN time - the later root of z_feet + v_z t - g t^2 / 2 = z_point. No
+          real root = the point is above the jump's apex (the energy is not enough): -1;
+        * horizontal: the speed can only be redirected - a sideways push of AIR_CAP u/s per tick
+          (a turn rate of a / |v_h|, a = AIR_CAP / tick) - or braked; so reaching a point at
+          distance d and bearing theta off the velocity takes about theta |v_h| / a (turn) +
+          d / |v_h| (fly), with |v_h| floored at AIR_CAP (from rest the air control drifts at
+          30 u/s at most);
+        * slack = (time to fall to the point's height) - (time to get above it): > 0 = the
+          momentum carries the player there (brake to land), < 0 = it falls short.
+
+        A ray that hits nothing within the range reads -1. Not modelled: the ground (a jump), the
+        geometry between (the arc may clip it), and the ramps (a ramp redirects the flight)."""
+        if velocity is None:
+            raise ValueError("--obs-reach: GpuLidar.render needs the velocity (velocity=)")
+        N = origin.shape[0]
+        self._ensure_buffers(N)
+        dirs = self._dirs_pinhole if self.pinhole else self._dirs_equiangular
+        dirs(N, yaw_deg, pitch_deg, np.pi / 180.0)
+        dep = out if out.dim() == 3 else out[..., 0]
+        t = self.decode_depth(dep)
+        hit = t < self.range * (1.0 - 1e-6)
+        o = torch.as_tensor(origin, dtype=torch.float32, device=self.device).reshape(N, 3, 1, 1)
+        dk = torch.as_tensor(ducked, device=self.device).reshape(N, 1, 1).bool()
+        # the hit point (the eye is 17 u above the origin, 12 ducked) and the feet (the hull's
+        # bottom, 36 u below the origin, 18 ducked)
+        rx, ry = t * self._dx, t * self._dy
+        pz = o[:, 2] + torch.where(dk, 12.0, 17.0) + t * self._dz
+        feet = o[:, 2] - torch.where(dk, 18.0, 36.0)
+        v = torch.as_tensor(velocity, dtype=torch.float32, device=self.device).reshape(N, 3, 1, 1)
+        g = self.reach_g
+        disc = v[:, 2] * v[:, 2] + 2.0 * g * (feet - pz)
+        t_fall = (v[:, 2] + torch.sqrt(disc.clamp(min=0.0))) / g
+        ok = hit & (disc >= 0.0) & (t_fall >= 0.0)
+        d = torch.sqrt(rx * rx + ry * ry)
+        vh = torch.sqrt(v[:, 0] * v[:, 0] + v[:, 1] * v[:, 1])
+        veff = vh.clamp(min=AIR_CAP)
+        cos = (v[:, 0] * rx + v[:, 1] * ry) / (vh * d).clamp(min=1e-6)
+        theta = torch.where(vh > AIR_CAP, torch.acos(cos.clamp(-1.0, 1.0)), torch.zeros_like(cos))
+        t_need = theta * veff / (AIR_CAP / self.reach_tick_s) + d / veff
+        r = torch.tanh((t_fall - t_need) / REACH_TAU)
+        r = torch.where(ok, r, torch.full_like(r, -1.0))
+        if out.dim() == 3:
+            out = out[..., None]
+        return torch.cat((out, r[..., None]), dim=-1)
 
     @torch.no_grad()
     def decode_depth(self, enc):

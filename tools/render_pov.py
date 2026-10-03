@@ -336,7 +336,9 @@ def main() -> None:
                      edges=bool(rcfg.get("obs_edges") or 0),
                      # --obs-views: the camera ring (three more depth panels)
                      views=int(rcfg.get("obs_views") or 1),
-                     views_scale=int(rcfg.get("obs_views_scale") or 1))
+                     views_scale=int(rcfg.get("obs_views_scale") or 1),
+                     # --obs-reach: the free-flight reach channel (one more panel)
+                     reach=bool(rcfg.get("obs_reach") or 0))
     if lidar.texmap is not None:
         print("--obs-texture mirrored: " + lidar.texmap.describe())
     if depth_enc != "legacy":
@@ -424,6 +426,7 @@ def main() -> None:
                          "the normal's third channel)")
     n_panels = (1 + int(depth_enc == "dual") + int(lidar.texmap is not None) + int(lidar.ttc)
                 + int(lidar.edges) + (int(getattr(lidar, "views", 1)) - 1)
+                + int(getattr(lidar, "reach", False))
                 + int(bool(args.normals))
                 + int(args.surf_mask or ball_panel) + int(pot is not None)
                 + int(tmask is not None) + int(bool(tviews)))
@@ -527,7 +530,7 @@ def main() -> None:
                 d = ball.render(o, yw, pt, dk, idx=np.arange(k)).cpu().numpy()
             else:
                 _vk = ({"velocity": torch.tensor(a[sl, 4:7], dtype=torch.float32, device=device)}
-                       if lidar.ttc else {})
+                       if getattr(lidar, "uses_velocity", lidar.ttc) else {})
                 d = lidar.render(o, yw, pt, dk, **_vk)
                 if getattr(lidar, "views", 1) > 1:
                     # --obs-views: the ring row -> the front image + the side cameras
@@ -591,6 +594,19 @@ def main() -> None:
                                     (8, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.5, _c, _o, cv2.LINE_AA)
                     cv2.line(efr_, (0, 0), (W, 0), (60, 60, 60), 1)
                     frame = np.vstack((frame, efr_))
+                if getattr(lidar, "reach", False):
+                    # --obs-reach: the free-flight reach, grey (white = the momentum carries the
+                    # player there, mid-grey = just at the edge, black = falls short / above the
+                    # apex / nothing hit)
+                    rc = ((np.clip(d[i][..., lidar.reach_channel], -1.0, 1.0) + 1.0) * 127.5
+                          ).astype(np.uint8)
+                    rfr_ = cv2.resize(cv2.cvtColor(rc, cv2.COLOR_GRAY2BGR), (W, H),
+                                      interpolation=cv2.INTER_NEAREST)
+                    for _o, _c in ((3, (0, 0, 0)), (1, (255, 255, 255))):
+                        cv2.putText(rfr_, "reach: white = can fly there, black = cannot",
+                                    (8, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.5, _c, _o, cv2.LINE_AA)
+                    cv2.line(rfr_, (0, 0), (W, 0), (60, 60, 60), 1)
+                    frame = np.vstack((frame, rfr_))
                 if sv is not None:
                     # --obs-views: each side camera's depth, coloured like the front panel
                     for j, nm in enumerate(("left camera (yaw +90)", "right camera (yaw -90)",

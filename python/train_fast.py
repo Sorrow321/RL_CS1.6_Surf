@@ -1145,6 +1145,7 @@ ARCH_KEYS = (("emb", "--emb"), ("hidden", "--hidden"), ("trunk", "--trunk"),
              ("obs_edges", "--obs-edges"),
              ("obs_views", "--obs-views"),
              ("obs_no_depth", "--obs-no-depth"),
+             ("obs_reach", "--obs-reach"),
              ("obs_views_scale", "--obs-views-scale"),
              ("keys_hold", "--keys-hold"),
              ("obs_fourier", "--obs-fourier"))
@@ -2709,7 +2710,7 @@ class _TorchPolicyBase:
             # --obs-ttc: the looming channel needs the velocity
             _vk = ({"velocity": torch.as_tensor(np.ascontiguousarray(sv["velocity"]),
                                                 dtype=torch.float32, device=self.device)}
-                   if getattr(self.lidar, "ttc", False) else {})
+                   if getattr(self.lidar, "uses_velocity", False) else {})
             depth = self.lidar.render(o, yw, pt, dk, **_vk).reshape(t.shape[0], -1)
             if self._stack > 1:
                 depth = self._push_frame(depth, sv["tick"])
@@ -4534,6 +4535,14 @@ def main() -> None:
                          "as channels (in_ch x 4); norm's potential is standardised over all "
                          "four together. 1 (default) = the front camera only. SCRATCH arms; "
                          "ckpt restores, a mismatch is refused")
+    ap.add_argument("--obs-reach", type=int, default=None, choices=(0, 1),
+                    help="ONE more image channel (the user, 2026-10-03): the FREE-FLIGHT REACH of "
+                         "every visible surface point - can the current momentum carry the "
+                         "player there before gravity takes it below the point? tanh(slack / "
+                         "1 s): gravity fixes when the feet reach the point's height (no root = "
+                         "above the apex: -1), the air control (30 u/s per tick, sideways) "
+                         "bounds the turn and the speed bounds the distance. Engine constants "
+                         "only. in_ch + 1: SCRATCH arms; ckpt restores, a mismatch is refused")
     ap.add_argument("--obs-no-depth", type=int, default=None, choices=(0, 1),
                     help="the policy does NOT see the depth channel (the user, 2026-10-02): the "
                          "image keeps its other channels (e.g. --obs-normal's normal + the "
@@ -7036,6 +7045,15 @@ def main() -> None:
                     f"{_vf} changes the image row and the conv trunk's input channels, and a "
                     "checkpoint's first layer cannot be widened or narrowed - start a fresh run, "
                     f"or drop the flag to keep the ckpt's setting ({_cv})")
+        if args.obs_reach is None and ck_cfg.get("obs_reach"):
+            args.obs_reach = 1
+            restored.append("obs_reach=1")
+        elif args.obs_reach is not None \
+                and int(args.obs_reach) != int(ck_cfg.get("obs_reach") or 0):
+            raise SystemExit(
+                "--obs-reach changes the conv trunk's input channels (+1) and a checkpoint's "
+                "first layer cannot be widened or narrowed - start a fresh run, or drop the flag "
+                f"to keep the ckpt's setting ({int(ck_cfg.get('obs_reach') or 0)})")
         if args.obs_no_depth is None and ck_cfg.get("obs_no_depth"):
             args.obs_no_depth = 1
             restored.append("obs_no_depth=1")
@@ -7890,6 +7908,13 @@ def main() -> None:
         args.obs_edges = 0
     if args.obs_no_depth is None:
         args.obs_no_depth = 0
+    if args.obs_reach is None:
+        args.obs_reach = 0
+    if args.obs_reach and (args.goals or (args.frame_stack or 0) > 1 or args.surf_mask
+                           or args.normals or (args.obs_views or 1) > 1):
+        raise SystemExit("--obs-reach is a post-process of the plain / potential / face renders: "
+                         "not with --goals (its wrappers do not pass the velocity), "
+                         "--frame-stack, --surf-mask, --normals or --obs-views")
     if args.obs_no_depth and ((args.frame_stack or 0) > 1 or args.surf_mask or args.goals
                               or (args.depth_enc or "legacy") == "dual"
                               or (args.obs_fourier or 0) or (args.obs_views or 1) > 1
@@ -10156,6 +10181,7 @@ def main() -> None:
                                   edges=bool(args.obs_edges),
                                   views=int(args.obs_views),
                                   views_scale=int(args.obs_views_scale),
+                                  reach=bool(args.obs_reach),
                                   texture=bool(args.obs_texture or args.obs_normal
                                                or args.obs_slope),
                                   texture_mode=("normal" if args.obs_normal else "slope"
@@ -10180,6 +10206,10 @@ def main() -> None:
         if args.obs_texture:
             print(f"--obs-texture: {slot.name} " + slot.lidar.texmap.describe()
                   + f" -> in_ch {slot.lidar.channels}")
+        if args.obs_reach:
+            print(f"--obs-reach: {slot.name} the free-flight reach channel (gravity "
+                  f"{slot.lidar.reach_g:g}, air control {30.0 / slot.lidar.reach_tick_s:g} u/s^2 "
+                  f"sideways) -> in_ch {slot.lidar.channels}")
         if args.obs_no_depth:
             print(f"--obs-no-depth: {slot.name} the policy's conv reads channels 1..."
                   f"{slot.lidar.channels - 1} of {slot.lidar.channels} - NOT the depth (still "
@@ -10323,6 +10353,7 @@ def main() -> None:
                                     edges=bool(args.obs_edges),
                                     views=int(args.obs_views),
                                     views_scale=int(args.obs_views_scale),
+                                    reach=bool(args.obs_reach),
                                     texture=bool(args.obs_texture or args.obs_normal
                                                  or args.obs_slope),
                                     texture_mode=("normal" if args.obs_normal else "slope"
@@ -12380,6 +12411,8 @@ def main() -> None:
         meta["config"]["obs_edges"] = 1
     if args.obs_no_depth:
         meta["config"]["obs_no_depth"] = 1
+    if args.obs_reach:
+        meta["config"]["obs_reach"] = 1
     if args.obs_views > 1:
         meta["config"]["obs_views"] = int(args.obs_views)
         meta["config"]["obs_views_scale"] = int(args.obs_views_scale)
@@ -13413,7 +13446,7 @@ def main() -> None:
     # renderer's own tensor exactly as it always did.
     img_stage = (torch.zeros((N, FRAME), device=device) if MULTI else None)
     # (x, y, z, yaw, pitch, ducked) [+ (vx, vy, vz) under --obs-ttc]
-    _VIS_W = 9 if args.obs_ttc else 6
+    _VIS_W = 9 if (args.obs_ttc or args.obs_reach) else 6
     vis_pin = torch.zeros((N, _VIS_W), pin_memory=(device.type == "cuda"))
     vis_np = vis_pin.numpy()
     vis_gpu = torch.zeros((N, _VIS_W), device=device)
@@ -15681,7 +15714,7 @@ def main() -> None:
                             _vel = (torch.stack(((ts[:, 0] * ts[:, 8] - ts[:, 1] * ts[:, 7]),
                                                  (ts[:, 0] * ts[:, 7] + ts[:, 1] * ts[:, 8]),
                                                  ts[:, 2]), 1) * 1000.0
-                                    if args.obs_ttc else None)
+                                    if (args.obs_ttc or args.obs_reach) else None)
                             vis = fleet.render_rows(ti, pos, yawd,
                                                     _pt, ts[:, 5], velocity=_vel)
                             if ring is not None:
