@@ -32971,3 +32971,33 @@ Route max (eval_honesty --order-only 16) at matched evals, seed 0, single RTX 30
 * **SimBa + bigger:** 97k early like SimBa, wall at 605M (= arCTL), one collapsed eval at 680M (3,876), recovered at 755M. Scaling on top of LN did not add to it at this budget.
 * **The split value encoder is negative:** stuck at the ~52k gate from 227M to 453M; 97k only at 605M; no wall.
 * **Cost:** the two batches spent 22.02 -> ~17.3 (this one ~$2.6, including the relaunched split box). All boxes harvested and destroyed; vast shows 0 instances.
+
+## 2026-10-03 19:12 (machine clock) - skate_laby: the 3-D goal field flew over the maze walls; a GROUND-BOUND field (--race-ground) and skLABY5
+
+**skLABY4** (slide server `--sv-friction 0`, `--speed-coef 0.01`, sustained 500 u/s floor), stopped at 895M:
+
+* 0 of 9 greedy episodes could press the stop button at any of its 12 evals.
+* Every training episode was killed (stall_frac 1.0, ~14.5 s each).
+* The greedy line circled one spot near (-1340, -1765) under the bonus.
+
+**Diagnosis.** The user, twice: "maybe the potential field that we baked is bad there", and "there are some places on this map where you need to duck in order to fly forward. It's like a small window".
+
+* The 3-D field is a breadth-first search through FREE AIR.
+* The maze walls are 32 u tall (floor -256, tops -224) under a ceiling ~240 u up, so that search routes OVER them. Its start reads ~87.5k u.
+* A ground-bound player's route is 119,156 u (below). The old field pointed the slider at walls it could only clear with a jump, and the CS bunnyhop cap makes a jump at speed ruinous.
+
+**`--race-ground`** (b202c4b): `goalfield.build_ground_field`.
+
+* **The graph:** a 2.5-D graph of the standable floors, one node per floor per 16 u column. The column scan uses the ducked hull, so floors under windows count.
+* **Walk links:** to a neighbouring column's floor within the 18 u step height, through a standing- or ducked-hull trace.
+* **Jump links:** to columns 2-4 cells away, only in the directions a walk is blocked. A ducked hull at feet +24/+45/+63 must clear the gap, with a 64 u penalty. These are the duck windows.
+* **Distances:** reverse Dijkstra from the floors inside the finish. Cached as `<map>.goalw_16.npz`. The reward, the potential channel, the stall rule and eval progress all read it; record_ckpt and render_pov mirror it.
+* **The decisive bug** in the first build: a walk direction whose neighbour column had no floor, or no reachable one, was not marked blocked. No jump was ever tried there, and the field came out disconnected.
+* **Result:** 129,938 of 132,551 floors reach the finish. The start reads 119,156 u, so the 74.90 s WR averages ~1,590 u/s.
+
+**skLABY5:** scratch_ablate + `--obs-normal 1 --envs 1024 --race-ground 1 --sv-friction 0 --speed-coef 0.002 --min-speed-kill 500 --min-speed-grace 1 --min-speed-secs 1`, local 5090, launched 19:08, record gate passed.
+
+* The speed bonus is 5x smaller than skLABY4's (the user: "let's either drop it or make it smaller").
+* At 63M: training episodes 13.7-13.9 s, all killed. Greedy eval progress 7,502 of 119,156 u. Peak speed 1,626 u/s, which is the push.
+
+**Caveat on any WR comparison:** the plugin's real friction and airaccelerate are unknown, and the CS bunnyhop cap applies to the window jumps.
