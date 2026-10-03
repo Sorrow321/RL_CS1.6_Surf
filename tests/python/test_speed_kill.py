@@ -63,3 +63,48 @@ def test_sv_friction_reaches_training_and_recording():
     phys = hdr.get("phys") or {}
     assert float(phys.get("sv_friction", -1)) == 0.0, phys
     shutil.rmtree(d, ignore_errors=True)
+
+
+@needs_run
+def test_jump_penalties_reach_training_and_recording():
+    """--bhop-cap 0 / --stamina 0: CS 1.6's jump penalties off (a no-slowdown server). The config
+    carries them only when off; record_ckpt rebuilds the core without them."""
+    from test_obs_potential import CANNONBALL, RECORD, _run
+    r = _train("cya_jpen", ABS + ["--bhop-cap", "0", "--stamina", "0"], steps="6144")
+    assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-3000:]
+    d = ROOT / "runs" / "cya_jpen"
+    cfg = json.loads((d / "run.json").read_text(encoding="utf-8"))["config"]
+    assert cfg["bhop_cap"] == 0 and cfg["stamina"] == 0, cfg
+    rec = _run([sys.executable, "-u", str(RECORD), str(d / "ckpt_final.pt"), "--map",
+                str(CANNONBALL), "--episodes", "1", "--out", str(d / "rec.jsonl")])
+    assert rec.returncode == 0, rec.stdout[-3000:] + rec.stderr[-3000:]
+    hdr = json.loads((d / "rec.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    phys = hdr.get("phys") or {}
+    assert int(phys.get("enable_bhop_cap", -1)) == 0 and int(phys.get("enable_stamina", -1)) == 0, phys
+    shutil.rmtree(d, ignore_errors=True)
+
+
+def test_jump_penalties_physics():
+    """The cap does what the help says, on the cannonball spawn floor: a jump at 1,200 u/s leaves
+    240 u/s with it and keeps its speed without it."""
+    import numpy as np
+    from surfgym import SurfCore, default_config
+    from surfgym.core import SurfState
+    from test_obs_potential import CANNONBALL
+    out = {}
+    for cap in (1, 0):
+        core = SurfCore(str(CANNONBALL), default_config(num_envs=1, lidar_w=0, lidar_h=0,
+                                                        sv_friction=0.0, enable_bhop_cap=cap))
+        core.reset(0)
+        st = core.get_states()[0]
+        s = SurfState()
+        for k in range(3):
+            s.origin[k] = float(st["origin"][k])
+        for _ in range(60):                               # settle on the spawn floor
+            core.pm_step_usercmd(s, 0.0, 0.0, 0.0, 0.0, 0, 10)
+        assert s.onground != -1
+        s.velocity[0], s.velocity[1] = 1200.0, 0.0
+        core.pm_step_usercmd(s, 0.0, 0.0, 0.0, 0.0, 2, 10)      # IN_JUMP
+        out[cap] = float(np.hypot(s.velocity[0], s.velocity[1]))
+    assert abs(out[1] - 240.0) < 1.0, out
+    assert out[0] > 1150.0, out

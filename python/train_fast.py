@@ -4444,6 +4444,16 @@ def main() -> None:
                          "of all your buttons the character starts sliding forward' - an AMXX "
                          "plugin's doing, not the map's). Physics: a checkpoint restores it and "
                          "record_ckpt mirrors it")
+    ap.add_argument("--bhop-cap", type=int, default=None, choices=(0, 1),
+                    help="CS 1.6's bunnyhop cap (stock 1): a jump above 1.2 x maxspeed (300 u/s) "
+                         "leaves 0.8 x that (240 u/s). 0 = a no-slowdown server (the user, "
+                         "2026-10-03, skate_laby: its hurdles take a jump at slide speed). "
+                         "Physics: a checkpoint restores it and record_ckpt mirrors it")
+    ap.add_argument("--stamina", type=int, default=None, choices=(0, 1),
+                    help="CS 1.6's jump stamina (stock 1): for 1.3 s after every jump the ground "
+                         "speed is multiplied by up to 0.88 per tick and a second jump is lower. "
+                         "0 = a no-slowdown server. Physics: restored from a checkpoint, mirrored "
+                         "by record_ckpt")
     ap.add_argument("--maxvel", type=float, default=None,
                     help="sv_maxvelocity (default 2000, the GoldSrc stock "
                          "value all pre-race runs trained on; real surf "
@@ -6761,6 +6771,10 @@ def main() -> None:
         if args.race_ground is None and ck_cfg.get("race_ground"):
             args.race_ground = 1
             restored.append("race_ground=1")
+        for _jk in ("bhop_cap", "stamina"):
+            if getattr(args, _jk) is None and ck_cfg.get(_jk) is not None:
+                setattr(args, _jk, int(ck_cfg[_jk]))
+                restored.append(f"{_jk}={int(ck_cfg[_jk])}")
         if args.sv_friction is None and ck_cfg.get("sv_friction") is not None:
             args.sv_friction = float(ck_cfg["sv_friction"])
             restored.append(f"sv_friction={args.sv_friction:g}")
@@ -7945,6 +7959,10 @@ def main() -> None:
                          "--race-kill-aware or --race-dist euclid")
     if args.sv_friction is None:
         args.sv_friction = 4.0   # GoldSrc stock; every run before the flag trained under this
+    if args.bhop_cap is None:
+        args.bhop_cap = 1        # CS 1.6 stock, like every run before the flag
+    if args.stamina is None:
+        args.stamina = 1
     if args.maxvel is None:
         args.maxvel = 2000.0     # every pre-race ckpt trained under this
     if args.respawn_frac is None:
@@ -9795,6 +9813,7 @@ def main() -> None:
                              water_fail=1, yaw_jitter_deg=args.yaw_jitter,
                              yaw_adaptive=1 if args.yaw_adaptive else 0, yaw_blend=float(args.yaw_blend), side_hold_ticks=int(args.side_hold),
                              sv_maxvelocity=args.maxvel, sv_friction=float(args.sv_friction),
+                             enable_bhop_cap=int(args.bhop_cap), enable_stamina=int(args.stamina),
                              lidar_w=0, lidar_h=0,
                              pitch_rate_max_deg=pitch_rate_core, **_tick_env,
                              **_view_env)
@@ -10388,6 +10407,7 @@ def main() -> None:
             water_fail=1,
             yaw_adaptive=1 if args.yaw_adaptive else 0, yaw_blend=float(args.yaw_blend), side_hold_ticks=int(args.side_hold),
             sv_maxvelocity=args.maxvel, sv_friction=float(args.sv_friction),
+            enable_bhop_cap=int(args.bhop_cap), enable_stamina=int(args.stamina),
             lidar_w=0, lidar_h=0, pitch_rate_max_deg=pitch_rate_core,
             **_tick_env, **_view_env), tick_ms=args.tick_ms)
         if not args.keep_teleports:
@@ -10546,6 +10566,7 @@ def main() -> None:
                 num_envs=1, spawn_mode=2, max_episode_ticks=args.ep_ticks,
                 water_fail=1, yaw_adaptive=1 if args.yaw_adaptive else 0, yaw_blend=float(args.yaw_blend), side_hold_ticks=int(args.side_hold),
                 sv_maxvelocity=args.maxvel, sv_friction=float(args.sv_friction),
+                enable_bhop_cap=int(args.bhop_cap), enable_stamina=int(args.stamina),
                 lidar_w=0, lidar_h=0,
                 pitch_rate_max_deg=pitch_rate_core, **_tick_env, **_view_env),
                 tick_ms=args.tick_ms)
@@ -12264,6 +12285,9 @@ def main() -> None:
                        **({"race_ground": 1} if args.race_ground else {}),
                        **({"sv_friction": float(args.sv_friction)}
                           if float(args.sv_friction) != 4.0 else {}),
+                       # --bhop-cap / --stamina: written only when OFF (stock runs keep their dump)
+                       **({"bhop_cap": 0} if not int(args.bhop_cap) else {}),
+                       **({"stamina": 0} if not int(args.stamina) else {}),
                        "yaw_adaptive": args.yaw_adaptive,
                        "yaw_blend": args.yaw_blend,
                        "side_hold": args.side_hold,

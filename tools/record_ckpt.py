@@ -1034,6 +1034,8 @@ def main(argv=None, build_only: bool = False, device=None):
         sv_maxvelocity=maxvel,          # physics parity unless --maxvel
         # --sv-friction: MIRRORED (the server's ground friction; stock 4 when absent)
         sv_friction=float(cfg.get("sv_friction") if cfg.get("sv_friction") is not None else 4.0),
+        # --bhop-cap / --stamina: MIRRORED (CS 1.6's jump penalties; stock 1 when absent)
+        enable_bhop_cap=int(cfg.get("bhop_cap", 1)), enable_stamina=int(cfg.get("stamina", 1)),
         # --yaw-adaptive REDEFINES what a yaw bin means (k * atan(30/|v|)
         # instead of a fixed deg/tick). Recording such a ckpt on a stock core
         # silently reinterprets every steering action: measured 42k track vs
@@ -2529,6 +2531,7 @@ def main(argv=None, build_only: bool = False, device=None):
             water_fail=1, yaw_jitter_deg=yaw_jitter, sv_maxvelocity=maxvel,
             sv_friction=float(cfg.get("sv_friction") if cfg.get("sv_friction") is not None
                               else 4.0),
+            enable_bhop_cap=int(cfg.get("bhop_cap", 1)), enable_stamina=int(cfg.get("stamina", 1)),
             yaw_adaptive=1 if cfg.get("yaw_adaptive") else 0,
             yaw_blend=float(cfg.get("yaw_blend") or 1.0),
             side_hold_ticks=int(cfg.get("side_hold") or 0),
