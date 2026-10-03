@@ -33398,3 +33398,11 @@ skLABY12, 40-minute check-in.
 * **Time sensitivity:** a second saved is worth ~+1.5 (finish_k 1/s + time_pen 0.5/s), on top of ~150 of time-independent reward (progress 100 + finish 50). A 7 s gain is ~+10 (6%), so the curve LOOKS flat while the time moves.
 * **Proposed term:** potential-based speed shaping, Phi = K * |v_xy| / 1000. Every u/s lost (a wall hit, a bad turn) is charged on the tick it happens; every u/s gained is paid when gained. It telescopes, so it does not change which run is optimal, only makes the credit immediate.
 * Not yet launched: the LR change is still improving and one change at a time keeps the attribution.
+
+## 2026-10-04 01:34 (machine clock) - skate_laby: skLABY13 79.70 s (+4.80 s on the WR, ahead of the user's rank 4 at 1:21); --speed-pot built, held for the plateau
+
+* **skLABY13** (lr 1e-4) keeps improving. Best per eval since the cut: 89.03 -> 84.70 -> 82.29 -> 82.71 / 83.10 -> **79.70 s (5,733M)**, saved as ckpt_best.pt.
+* **`--speed-pot K`** (4a03cc0): potential-based speed shaping, Phi = K*|v_xy|/1000, paid as its change per call.
+  * It telescopes; ended rows re-anchor; it is restored from a checkpoint, written only when on, and TRAIN_ONLY for the recorder.
+  * Tests: per-call pay, telescoping, the re-anchor, 0 = off, and a trainer + recorder smoke.
+  * Held until the LR run plateaus, so that the two changes stay attributable.
