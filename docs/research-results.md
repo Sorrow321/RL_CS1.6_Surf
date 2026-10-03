@@ -32885,3 +32885,32 @@ Route max (eval_honesty --order-only 16) at matched evals, seed 0. Every arm is 
 |---|---|---|
 | skLABY1 | scratch_ablate + `--obs-normal 1 --envs 1024` | record gate passed; stopped at 57.7M for skLABY2. Its random policy was stall-killed at ~15 s per episode. |
 | skLABY2 | the same + `--min-speed-kill 500 --min-speed-grace 1` | launched, --steps 3e9 |
+
+## 2026-10-03 18:05 (machine clock) - skLABY2 stalled under an instant 500 u/s floor; skLABY3 relaunched with a speed bonus and a sustained floor
+
+**The user:** "I don't see reward going up. Do we have speed bonus? I guess rewards need some changes to converge."
+
+**skLABY2** (scratch_ablate + normals, 1,024 envs, `--min-speed-kill 500 --min-speed-grace 1`; 379M steps when stopped):
+
+* race/stall_frac was 1.0 at EVERY iteration: every training episode ended in the speed kill.
+* ep_len_mean was ~224 ticks (2.2 s).
+* ep_rew_mean was flat at 1.26 from 30M to 379M.
+* Greedy evals (no kill) covered 2-10k of the 88k u course; peak speed was only the push's 1,663 u/s.
+* No speed bonus was on: the recipe pays progress, time penalty, finish bonus and novelty.
+
+**What keeping speed takes in this engine.** Horizontal speed after the push, measured in the core:
+
+| input | 0.5 s | 1 s | 1.5 s | 2 s |
+|---|---|---|---|---|
+| none | 740 | 96 | 0 | 0 |
+| duck held 4 ticks / released 4 (the policy's 40 ms rhythm) | 1,311 | 871 | 492 | 256 |
+| jumping 4 / 4 | 239 | 202 | 103 | 39 |
+
+* Jumping loses speed because of CS's bhop cap (a jump above 300 u/s leaves 195).
+* Duck-tapping is the skate technique and holds speed far better. Without strafing it still falls below 500 by 1.5 s.
+* So an instant 500 floor kills before the technique can be found, and nothing in the reward paid for "a bit more speed".
+
+**Changes** (9e0d473):
+
+* `--min-speed-secs`: the floor kills only after a SUSTAINED stretch below it (per-env ticks below, reset when above).
+* **skLABY3:** `--speed-coef 0.01` (the existing generic term: 0.01 x h_speed / 1000 per tick, ~0.9x the progress income at equal speed) + `--min-speed-kill 500 --min-speed-grace 1 --min-speed-secs 1`.
