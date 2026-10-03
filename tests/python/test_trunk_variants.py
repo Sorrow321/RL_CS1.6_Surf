@@ -89,3 +89,61 @@ def test_trunk_trainer_smoke(trunk):
                 "--map", str(CANNONBALL), "--episodes", "1", "--out", str(d / "rec.jsonl")])
     assert rec.returncode == 0, rec.stdout[-4000:] + rec.stderr[-4000:]
     shutil.rmtree(d, ignore_errors=True)
+
+
+def test_simba_towers_and_embedding():
+    import train_fast as tf
+    torch.manual_seed(0)
+    p = _policy(simba=True)
+    assert isinstance(p.pi[0], nn.Linear) and isinstance(p.pi[-1], nn.LayerNorm)
+    blocks = [m for m in p.pi if isinstance(m, tf._SimbaBlock)]
+    assert len(blocks) == 1 and blocks[0].fc1.out_features == tf.SIMBA_EXPAND * 64
+    assert any(isinstance(m, nn.LayerNorm) for m in p.conv)          # the embedding's LN
+    deep = _policy(simba=True, tower_depth=4)
+    assert len([m for m in deep.vf if isinstance(m, tf._SimbaBlock)]) == 2
+    from train_fast import N_SCALAR
+    x = torch.randn(4, N_SCALAR + W * H * C)
+    logits, value = p(x)
+    assert logits.shape[0] == 4 and value.shape == (4,)
+    # every Linear inside the residual blocks got the orthogonal init (not torch's default)
+    w = blocks[0].fc1.weight
+    assert torch.allclose(w @ w.T, 2.0 * torch.eye(w.shape[0]), atol=1e-4) or \
+        torch.allclose(w.T @ w, 2.0 * torch.eye(w.shape[1]), atol=1e-4)
+    with pytest.raises(SystemExit):
+        _policy(simba=True, trunk="plainres")
+
+
+def test_split_trunk_separates_policy_and_value():
+    torch.manual_seed(0)
+    p = _policy(split_trunk=True)
+    assert p.conv_v is not None
+    from train_fast import N_SCALAR
+    x = torch.randn(3, N_SCALAR + W * H * C)
+    l0, v0 = p(x)
+    with torch.no_grad():
+        for prm in p.conv_v.parameters():
+            prm.add_(0.1 * torch.randn_like(prm))
+    l1, v1 = p(x)
+    assert torch.equal(l0, l1) and not torch.allclose(v0, v1)       # value reads conv_v only
+    with torch.no_grad():
+        for prm in p.conv.parameters():
+            prm.add_(0.1 * torch.randn_like(prm))
+    l2, v2 = p(x)
+    assert not torch.allclose(l1, l2) and torch.equal(v1, v2)       # policy reads conv only
+    assert _policy().conv_v is None
+
+
+@needs_run
+@pytest.mark.skipif(not FACEID.exists(), reason="needs the baked cannonball face grid (cell 32)")
+@pytest.mark.parametrize("flag", ["--simba", "--split-trunk"])
+def test_norm_split_trainer_smoke(flag):
+    run = f"cya_{flag.strip('-').replace('-', '_')}"
+    r = _train(run, ABS + ["--obs-potential", "norm", "--obs-normal", "1", flag, "1"])
+    assert r.returncode == 0, r.stdout[-4000:] + r.stderr[-4000:]
+    d = ROOT / "runs" / run
+    key = flag.strip("-").replace("-", "_")
+    assert json.loads((d / "run.json").read_text(encoding="utf-8"))["config"][key] == 1
+    rec = _run([sys.executable, "-u", str(RECORD), str(d / "ckpt_final.pt"),
+                "--map", str(CANNONBALL), "--episodes", "1", "--out", str(d / "rec.jsonl")])
+    assert rec.returncode == 0, rec.stdout[-4000:] + rec.stderr[-4000:]
+    shutil.rmtree(d, ignore_errors=True)

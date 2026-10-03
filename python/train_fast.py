@@ -404,6 +404,27 @@ def _softmoe_trunk(in_ch: int, emb: int, m: int = 1) -> nn.Sequential:
     )
 
 
+#: --simba: the residual blocks' width expansion (SimBa's 4x, as in a transformer FFN)
+SIMBA_EXPAND = 4
+
+
+class _SimbaBlock(nn.Module):
+    """--simba (Lee et al. 2024, "SimBa: Simplicity Bias for Scaling Up Parameters in Deep RL"):
+    a PRE-LayerNorm residual feed-forward block, x + W2 relu(W1 LN(x)), W1 widening by
+    SIMBA_EXPAND. SimBa's finding - and BRO's (Nauman et al. 2024) - is that in deep RL a wider or
+    deeper network only pays once the layers are normalised like this; the plain towers here
+    are two tanh Linears with no normalisation at all."""
+
+    def __init__(self, h: int, expand: int = SIMBA_EXPAND):
+        super().__init__()
+        self.ln = nn.LayerNorm(h)
+        self.fc1 = nn.Linear(h, expand * h)
+        self.fc2 = nn.Linear(expand * h, h)
+
+    def forward(self, x):
+        return x + self.fc2(F.relu(self.fc1(self.ln(x))))
+
+
 class _TanhDrop(nn.Module):
     """tanh followed by CONSISTENT dropout (Hausknecht & Wagener 2022): the
     mask is a NON-PERSISTENT buffer drawn once per rollout by
@@ -456,7 +477,8 @@ class Policy(nn.Module):
                  view_absolute=None, obs_fourier: int = 0,
                  int_split: bool = False, dropout: float = 0.0,
                  plan_film: int = 0, film_dim: int = 0,
-                 views: int = 1, views_scale: int = 1, drop_depth: bool = False):
+                 views: int = 1, views_scale: int = 1, drop_depth: bool = False,
+                 simba: bool = False, split_trunk: bool = False):
         super().__init__()
         # --priv-critic (asymmetric actor-critic, Pinto et al. 2017): the
         # CRITIC additionally reads a privileged state block the simulator
@@ -601,14 +623,7 @@ class Policy(nn.Module):
                                  "stage table - pick one")
             self.conv = _resnet_trunk(conv_ch, emb)
         elif self.trunk == "plain":
-            _m = self.conv_mult
-            self.conv = nn.Sequential(
-                nn.Conv2d(conv_ch, 16 * _m, 5, stride=2, padding=2), nn.ReLU(),
-                nn.Conv2d(16 * _m, 32 * _m, 3, stride=2, padding=1), nn.ReLU(),
-                nn.Conv2d(32 * _m, 64 * _m, 3, stride=2, padding=1), nn.ReLU(),
-                nn.AdaptiveAvgPool2d((4, 8)), nn.Flatten(),
-                nn.Linear(64 * _m * 4 * 8, emb), nn.ReLU(),
-            )
+            self.conv = self._plain_trunk(conv_ch, emb, bool(simba))
         elif self.trunk == "plainres":
             # --trunk plainres: the plain stack + a residual block after each stride-2 conv
             self.conv = _plainres_trunk(conv_ch, emb, self.conv_mult)
@@ -626,6 +641,15 @@ class Policy(nn.Module):
         feat = len(idx) + emb
         self.feat_dim = feat
         self.dropout = float(dropout)
+        # --simba / --split-trunk (the user, 2026-10-03): LayerNorm'd residual towers; a second
+        # image encoder for the value
+        self.simba, self.split_trunk = bool(simba), bool(split_trunk)
+        if self.simba and (self.trunk != "plain" or self.dropout > 0.0 or self.rnn != "none"):
+            raise SystemExit("--simba is built on the plain trunk, without --dropout or --rnn")
+        if self.split_trunk and (self.rnn != "none" or self.route_dim or int(plan_film or 0)
+                                 or self.trunk != "plain"):
+            raise SystemExit("--split-trunk gives the value its own plain trunk; not with --rnn, "
+                             "--route or --plan-film")
         def mlp(extra=0):
             # + rnn_size: the GRU block is the LAST input block of both
             # towers (0 wide without --rnn, so the Linear is the old one).
@@ -635,6 +659,13 @@ class Policy(nn.Module):
             # and widen_for_route keeps working at any depth.
             def act():
                 return _TanhDrop(self.dropout, hidden) if self.dropout > 0.0 else nn.Tanh()
+            if self.simba:
+                # --simba: the input Linear (still `<tower>.0`, so the widening tools keep
+                # working), max(1, tower_depth // 2) pre-LN residual blocks, a final LayerNorm
+                return nn.Sequential(
+                    nn.Linear(feat + extra + self.rnn_size, hidden),
+                    *[_SimbaBlock(hidden) for _ in range(max(1, self.tower_depth // 2))],
+                    nn.LayerNorm(hidden))
             layers = [nn.Linear(feat + extra + self.rnn_size, hidden),
                       act()]
             for _ in range(self.tower_depth - 1):
@@ -654,7 +685,14 @@ class Policy(nn.Module):
         # nested modules, so this yields exactly the same Conv2d/Linear list
         # in exactly the same order and consumes the RNG identically - the
         # bit-identity the flag promises (tests/python/test_trunk.py).
-        for m in list(self.conv.modules()) + list(self.pi) + list(self.vf):
+        _towers = ((list(self.pi.modules()) + list(self.vf.modules())) if self.simba else
+                   (list(self.pi) + list(self.vf)))
+        # --split-trunk: the value's own image encoder, built here (after every other module,
+        # so the flag-off construction is untouched) and initialised LAST
+        self.conv_v = (self._plain_trunk(conv_ch, emb, self.simba) if self.split_trunk
+                       else None)
+        for m in (list(self.conv.modules()) + _towers
+                  + (list(self.conv_v.modules()) if self.conv_v is not None else [])):
             if isinstance(m, (nn.Linear, nn.Conv2d)):
                 nn.init.orthogonal_(m.weight, np.sqrt(2))
                 if m.bias is not None:     # resnet convs are bias-free: the
@@ -809,6 +847,8 @@ class Policy(nn.Module):
         # the arithmetic and the weights are unchanged, so checkpoints stay
         # interchangeable in both directions.
         self.conv = self.conv.to(memory_format=torch.channels_last)
+        if self.conv_v is not None:
+            self.conv_v = self.conv_v.to(memory_format=torch.channels_last)
         # ---- --int-split: the intrinsic value head --------------------------
         # Registered LAST (after the view heads and the channels_last move)
         # so every pre-existing parameter keeps its index in
@@ -889,6 +929,9 @@ class Policy(nn.Module):
         call returns (logits, value, h_next)."""
         f = self.features(scal, img)
         if self.gru is None:
+            if self.conv_v is not None:
+                # --split-trunk: the value tower reads its OWN image encoder
+                return self.heads(f, scal, priv=priv, f_v=self.features(scal, img, self.conv_v))
             return self.heads(f, scal, priv=priv)
         if h is None:
             raise ValueError("--rnn policy called without its hidden state")
@@ -898,6 +941,20 @@ class Policy(nn.Module):
         # the ACTOR could see and the privileged block never enters it.
         logits, value = self.heads(f, scal, h1, priv=priv)
         return logits, value, h1
+
+    def _plain_trunk(self, conv_ch, emb, ln=False):
+        """the historical 3-conv stack (constructed by the same calls in the same order as
+        before any flag existed); --simba puts a LayerNorm between its embedding Linear and the
+        ReLU (DrQ-v2's encoder trunk: Linear -> LayerNorm -> nonlinearity)"""
+        _m = self.conv_mult
+        tail = ([nn.Linear(64 * _m * 4 * 8, emb), nn.LayerNorm(emb), nn.ReLU()] if ln else
+                [nn.Linear(64 * _m * 4 * 8, emb), nn.ReLU()])
+        return nn.Sequential(
+            nn.Conv2d(conv_ch, 16 * _m, 5, stride=2, padding=2), nn.ReLU(),
+            nn.Conv2d(16 * _m, 32 * _m, 3, stride=2, padding=1), nn.ReLU(),
+            nn.Conv2d(32 * _m, 64 * _m, 3, stride=2, padding=1), nn.ReLU(),
+            nn.AdaptiveAvgPool2d((4, 8)), nn.Flatten(), *tail,
+        )
 
     def _ring_image(self, img):
         """--obs-views: [front | sides] rows -> (B, H, W, views x c) NHWC - the side cameras
@@ -914,7 +971,7 @@ class Policy(nn.Module):
         side = side.permute(0, 2, 3, 1, 4).reshape(n, H, W, (V - 1) * c)
         return torch.cat((front, side), dim=-1)
 
-    def features(self, scal, img):
+    def features(self, scal, img, trunk=None):
         """The fused trunk output `f`: selected scalars ++ conv embedding."""
         # The renderer emits the image channel-FASTEST (NHWC), so view+permute
         # is a free RESTRIDE that declares NHWC — at in_ch=1 the two layouts
@@ -940,7 +997,8 @@ class Policy(nn.Module):
             im = torch.cat([im, torch.sin(a), torch.cos(a)], dim=-1)
         im = im.permute(0, 3, 1, 2)
         if self.film is None:
-            return torch.cat([scal[:, self.feat_idx], self.conv(im)], dim=1)
+            return torch.cat([scal[:, self.feat_idx],
+                              (self.conv if trunk is None else trunk)(im)], dim=1)
         # --plan-film: conv[0..5] are the three conv+ReLU blocks; the gate
         # multiplies and shifts their output per channel, then pool + Linear
         gb = self.film(scal[:, N_SCALAR:N_SCALAR + self.film_dim])
@@ -952,7 +1010,7 @@ class Policy(nn.Module):
                 x = x * (1.0 + g[:, :, None, None].to(x.dtype))                     + b[:, :, None, None].to(x.dtype)
         return torch.cat([scal[:, self.feat_idx], x], dim=1)
 
-    def heads(self, f, scal, g=None, priv=None):
+    def heads(self, f, scal, g=None, priv=None, f_v=None):
         """Towers + heads on the fused features. `g` (--rnn) is the GRU
         output for these rows, appended LAST to both tower inputs; `priv`
         (--priv-critic) reaches the VALUE head only."""
@@ -963,6 +1021,8 @@ class Policy(nn.Module):
         # measurably degraded their vision agent). route_dim 0 = neither
         # branch exists and this is the pre-route model, byte for byte.
         f_pi = f_vf = f
+        if f_v is not None:
+            f_vf = f_v                       # --split-trunk (never with --route)
         if self.route_dim:
             f_vf = torch.cat([f, scal[:, N_SCALAR:]], dim=1)
             f_pi = f if self.route_critic_only else f_vf
@@ -1244,6 +1304,8 @@ ARCH_KEYS = (("emb", "--emb"), ("hidden", "--hidden"), ("trunk", "--trunk"),
              ("obs_views", "--obs-views"),
              ("obs_no_depth", "--obs-no-depth"),
              ("obs_reach", "--obs-reach"),
+             ("simba", "--simba"),
+             ("split_trunk", "--split-trunk"),
              ("obs_views_scale", "--obs-views-scale"),
              ("keys_hold", "--keys-hold"),
              ("obs_fourier", "--obs-fourier"))
@@ -4637,6 +4699,18 @@ def main() -> None:
                          "as channels (in_ch x 4); norm's potential is standardised over all "
                          "four together. 1 (default) = the front camera only. SCRATCH arms; "
                          "ckpt restores, a mismatch is refused")
+    ap.add_argument("--simba", type=int, default=None, choices=(0, 1),
+                    help="LayerNorm'd network (the user, 2026-10-03; SimBa, Lee et al. 2024): "
+                         "the pi / vf towers become an input Linear, max(1, tower_depth // 2) "
+                         "pre-LayerNorm residual blocks (x + W2 relu(W1 LN(x)), 4x wide) and a "
+                         "final LayerNorm, and the image embedding gets a LayerNorm before its "
+                         "ReLU. Plain trunk only. SCRATCH arms; ckpt restores, a mismatch is "
+                         "refused")
+    ap.add_argument("--split-trunk", type=int, default=None, choices=(0, 1),
+                    help="separate image encoders for the policy and the value (the user, "
+                         "2026-10-03): the value tower reads its own plain trunk, so the value "
+                         "loss no longer shapes the features the policy steers by. SCRATCH "
+                         "arms; ckpt restores, a mismatch is refused")
     ap.add_argument("--obs-reach", type=int, default=None, choices=(0, 1),
                     help="ONE more image channel (the user, 2026-10-03): the FREE-FLIGHT REACH of "
                          "every visible surface point - can the current momentum carry the "
@@ -7147,6 +7221,16 @@ def main() -> None:
                     f"{_vf} changes the image row and the conv trunk's input channels, and a "
                     "checkpoint's first layer cannot be widened or narrowed - start a fresh run, "
                     f"or drop the flag to keep the ckpt's setting ({_cv})")
+        for _ak, _af in (("simba", "--simba"), ("split_trunk", "--split-trunk")):
+            _cv = int(ck_cfg.get(_ak) or 0)
+            if getattr(args, _ak) is None:
+                if _cv:
+                    setattr(args, _ak, _cv)
+                    restored.append(f"{_ak}={_cv}")
+            elif int(getattr(args, _ak)) != _cv:
+                raise SystemExit(f"{_af} changes the network's modules, and a checkpoint's cannot "
+                                 "be rebuilt into another - start a fresh run, or drop the flag "
+                                 f"to keep the ckpt's setting ({_cv})")
         if args.obs_reach is None and ck_cfg.get("obs_reach"):
             args.obs_reach = 1
             restored.append("obs_reach=1")
@@ -8012,6 +8096,10 @@ def main() -> None:
         args.obs_no_depth = 0
     if args.obs_reach is None:
         args.obs_reach = 0
+    if args.simba is None:
+        args.simba = 0
+    if args.split_trunk is None:
+        args.split_trunk = 0
     if args.obs_reach and (args.goals or (args.frame_stack or 0) > 1 or args.surf_mask
                            or args.normals or (args.obs_views or 1) > 1):
         raise SystemExit("--obs-reach is a post-process of the plain / potential / face renders: "
@@ -11140,7 +11228,9 @@ def main() -> None:
                     film_dim=(N_FAN if args.plan_film else 0),
                     views=int(args.obs_views),
                     views_scale=int(args.obs_views_scale),
-                    drop_depth=bool(args.obs_no_depth)).to(device)
+                    drop_depth=bool(args.obs_no_depth),
+                    simba=bool(args.simba),
+                    split_trunk=bool(args.split_trunk)).to(device)
     R = policy.rnn_size                    # 0 without --rnn
     # (c) action noise rank-DISTINCT, and set BEFORE the graph capture: the
     #     Gumbel rand_like runs inside the captured graph, whose philox seed
@@ -12515,6 +12605,10 @@ def main() -> None:
         meta["config"]["obs_no_depth"] = 1
     if args.obs_reach:
         meta["config"]["obs_reach"] = 1
+    if args.simba:
+        meta["config"]["simba"] = 1
+    if args.split_trunk:
+        meta["config"]["split_trunk"] = 1
     if args.obs_views > 1:
         meta["config"]["obs_views"] = int(args.obs_views)
         meta["config"]["obs_views_scale"] = int(args.obs_views_scale)

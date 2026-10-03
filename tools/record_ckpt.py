@@ -2011,6 +2011,9 @@ def main(argv=None, build_only: bool = False, device=None):
                     views_scale=int(cfg.get("obs_views_scale") or 1),
                     # --obs-no-depth: MIRRORED (the conv never reads channel 0)
                     drop_depth=bool(cfg.get("obs_no_depth") or 0),
+                    # --simba / --split-trunk: MIRRORED (the network's modules)
+                    simba=bool(cfg.get("simba") or 0),
+                    split_trunk=bool(cfg.get("split_trunk") or 0),
                     n_codes=n_codes, chunk=chunk,
                     route_dim=route_dim,
                     route_critic_only=bool(cfg.get("route_critic_only")),
