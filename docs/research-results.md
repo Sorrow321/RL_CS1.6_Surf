@@ -33288,3 +33288,30 @@ Per the caveat, the win rate with a 2 s margin may be harvest. The from-start ev
 * The other half is the policy: decisions every 40 ms (68 u of flight at 1,700 u/s), against a human who adjusts every 7.6 ms.
 
 **Leaderboard (the user):** rank 4 is 1:21, rank 12 is 1:30 and rank 40 is 1:40. The agent's 1:39.78 is about rank 40; the WR is a 6 s outlier over rank 4.
+
+## 2026-10-03 22:41 (machine clock) - skate_laby: skLABY11 best 97.66 s; skLABY12 ramps the physics tick to the WR player's 131 fps (--tick-ms-schedule 10:7.63:500e6)
+
+**skLABY11** (`--finish-k 1`, 180 s cap), stopped at ~3.98B.
+
+* All 9 runs finish at every eval.
+* Best: **97.66 s at 3,599M** (+22.76 s on the WR). Later evals: 101.99, 107.08, 116.28 s best.
+
+**skLABY12** (the user: "Yeah, let's do it"): resume of skLABY11 + `--tick-ms-schedule 10:7.63:500e6`, `--envs 1024`.
+
+* **Why:** the WR demo's usercmds run 7/8 ms (131 fps). Air acceleration and turning are capped per frame, so 131 fps gives 31% more lateral acceleration (min turn radius at 1,700 u/s: ~735 u vs ~963 u).
+* **Not demo supervision:** this is a physics parameter of the game client, read from the demo like the movevars. No state, action or line from the demo is used.
+* **The ramp:** 100 -> 130.4 Hz (pattern [8,8,7] ms) between steps 3,976.7M and 4,476.7M, then held. A frozen policy does not survive a hard tick switch (CLAUDE.md, xQR32), hence the ramp.
+* **Converted per tick on the ramp** (from the log, at the end):
+
+  | constant | at the end of the ramp |
+  |---|---|
+  | gamma | 0.99961664/tick (same 20 s horizon) |
+  | time_pen | 0.00383/tick |
+  | stall_eps | 3.833 u/tick (still 500 u/s) |
+  | stall window | 15 s = 1,956 ticks |
+  | respawn margin | 260 ticks |
+  | decisions | every 30.7 ms (was 40) |
+
+* The speed floor's grace and window are re-derived from `core.tick_ms` at every iteration, so they follow too.
+* **Episode cap:** 23,478 ticks, i.e. 180 s at the end of the ramp (234.8 s at its start).
+* Record gate passed.
