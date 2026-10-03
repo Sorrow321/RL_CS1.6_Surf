@@ -32914,3 +32914,27 @@ Route max (eval_honesty --order-only 16) at matched evals, seed 0. Every arm is 
 
 * `--min-speed-secs`: the floor kills only after a SUSTAINED stretch below it (per-env ticks below, reset when above).
 * **skLABY3:** `--speed-coef 0.01` (the existing generic term: 0.01 x h_speed / 1000 per tick, ~0.9x the progress income at equal speed) + `--min-speed-kill 500 --min-speed-grace 1 --min-speed-secs 1`.
+
+## 2026-10-03 18:29 (machine clock) - skLABY3 plateaued too; skate_laby is a SLIDE map: --sv-friction, and skLABY4 on a slide server
+
+**skLABY3** (+ `--speed-coef 0.01`, sustained 500 u/s floor; 264M steps when stopped):
+
+* Every training episode was killed at exactly 320 ticks (3.2 s).
+* ep_rew_mean was flat at 3.73 from ~130M.
+* Greedy evals covered 6-10k of the 88k u course and never exceeded the push's speed.
+
+**The route.** The field's greedy descent line is ~86,180 u, the floor z -220 at both ends, 91% flat floor, no net drop. The WR therefore averages ~1,150 u/s on FLAT ground, which stock CS friction (4) cannot allow: the player stops in 1.5 s with no input.
+
+**The user:** "this is a slide map ... if you let go of all your buttons the character starts sliding forward ... maybe ... there is some AMXX plugin required to implement this, not just a map."
+
+* The map has no func_friction, so the slide is the server's: a plugin or sv_friction.
+* GoldSrc's sv_friction scales ONLY the ground-friction drop (pm_friction), not the ground or air acceleration. It therefore models a slide server without a core change.
+
+**`--sv-friction`** (baebc3c):
+
+* It reaches the training, eval and held-out cores; a checkpoint restores it; the config carries it only when changed; record_ckpt mirrors it (the recording header's phys block shows it).
+* Measured with no input after the push: at 0 the player keeps 1,608 u/s until the first wall, then slides on at 456 u/s; at 4 it stops in 1.5 s.
+
+**skLABY4:** scratch_ablate + `--obs-normal 1 --envs 1024 --sv-friction 0 --speed-coef 0.01 --min-speed-kill 500 --min-speed-grace 1 --min-speed-secs 1`, local 5090.
+
+**Caveat on the WR comparison.** The actual plugin's friction value (0 or small), its handling of edgefriction, and the server's airaccelerate are unknown. sv_friction 0 is the model.
