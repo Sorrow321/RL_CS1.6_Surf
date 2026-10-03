@@ -5617,6 +5617,16 @@ def main() -> None:
                          "the guard moves the paid fraction by 0.12 points "
                          "(23.41%% -> 23.29%%), so it is cheap insurance "
                          "rather than a second treatment.")
+    ap.add_argument("--min-speed-kill", type=float, default=None,  # 0 = off
+                    help="race, TRAINING only: fail an episode whose HORIZONTAL speed is below "
+                         "this many u/s once --min-speed-grace has passed since its (re)spawn - "
+                         "the user, 2026-10-03, for maps with no death (skate_laby: 'kill the "
+                         "agent when ... the speed drops below ... 500'). The kill is the stall "
+                         "kill's force_fail and is counted in race/stall_frac. 0 = off")
+    ap.add_argument("--min-speed-grace", type=float, default=None,  # 1.0
+                    help="--min-speed-kill: seconds after each (re)spawn before the speed floor "
+                         "applies (a start push reads 0 velocity while the player is inside "
+                         "it). Default 1.0")
     ap.add_argument("--stall-secs", type=float, default=None,     # 15
                     help="race: kill an episode whose distance-to-finish "
                          "best hasn't improved for this long (0 = off)")
@@ -7236,6 +7246,11 @@ def main() -> None:
                 raise SystemExit(f"{_af} changes the network's modules, and a checkpoint's cannot "
                                  "be rebuilt into another - start a fresh run, or drop the flag "
                                  f"to keep the ckpt's setting ({_cv})")
+        if args.min_speed_kill is None and ck_cfg.get("min_speed_kill"):
+            args.min_speed_kill = float(ck_cfg["min_speed_kill"])
+            args.min_speed_grace = float(ck_cfg.get("min_speed_grace") or 1.0) \
+                if args.min_speed_grace is None else args.min_speed_grace
+            restored.append(f"min_speed_kill={args.min_speed_kill:g}")
         if args.obs_reach is None and ck_cfg.get("obs_reach"):
             args.obs_reach = 1
             restored.append("obs_reach=1")
@@ -12610,6 +12625,10 @@ def main() -> None:
         meta["config"]["obs_no_depth"] = 1
     if args.obs_reach:
         meta["config"]["obs_reach"] = 1
+    if args.min_speed_kill:
+        meta["config"]["min_speed_kill"] = float(args.min_speed_kill)
+        meta["config"]["min_speed_grace"] = float(args.min_speed_grace
+                                                  if args.min_speed_grace is not None else 1.0)
     if args.simba:
         meta["config"]["simba"] = 1
     if args.split_trunk:
@@ -15613,6 +15632,10 @@ def main() -> None:
         # already builds, so trunc_frac and crawl_frac share one denominator
         # with each other and with the episodes the return deque saw.
         hyg_end = hyg_trunc = hyg_crawl = hyg_stall = 0
+        # --min-speed-kill: the floor in u/s and the grace in physics ticks (at the core's tick)
+        _msk = float(args.min_speed_kill or 0.0)
+        _msk_grace = int(round(float(args.min_speed_grace if args.min_speed_grace is not None
+                                     else 1.0) * 1000.0 / float(core.tick_ms)))
         if TAILW > 0.0:
             # --tail-weight bookkeeping is per ROLLOUT: the groups are the
             # episodes this buffer saw end, and nothing carries over
@@ -15764,6 +15787,9 @@ def main() -> None:
                 # episode ends mark the decision boundary done; the couple of
                 # post-reset sub-ticks inherit the held action (standard
                 # frame-skip semantics, negligible contamination).
+                if _msk > 0.0:
+                    # --min-speed-kill: below the speed floor past the grace -> FAIL, next tick
+                    hyg_stall += fleet.apply_speed_kills(_msk, _msk_grace)
                 hyg_stall += fleet.apply_stall_kills()   # stagnation kill,
                 # next tick; the count is race/stall_frac's numerator
                 r_acc = np.zeros(N, np.float32)

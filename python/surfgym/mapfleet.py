@@ -405,6 +405,23 @@ class MapFleet:
                 s.core.force_fail(sm)
         return n
 
+    def apply_speed_kills(self, min_speed: float, grace_ticks: int) -> int:
+        """--min-speed-kill (the user, 2026-10-03, skate_laby: "there is no death in this map, so
+        you can kind of live forever ... kill the agent when ... the speed drops below some
+        value"): every env past ``grace_ticks`` of its episode (the core re-zeroes the episode
+        tick at every spawn and reservoir respawn) whose HORIZONTAL speed is below ``min_speed``
+        is failed through ``force_fail``, the stall kill's path. Training only, like the stall
+        kill. Returns the number of envs killed."""
+        n = 0
+        for s in self.slots:
+            sv = s.core.states_view
+            v = sv["velocity"]
+            m = (sv["tick"] >= grace_ticks) & (np.hypot(v[:, 0], v[:, 1]) < min_speed)
+            if m.any():
+                n += int(m.sum())
+                s.core.force_fail(m.astype(np.uint8))
+        return n
+
     def stagnant_mask(self):
         """(N,) bool of envs making no progress, or None when no slot
         tracks it."""

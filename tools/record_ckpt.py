@@ -80,6 +80,9 @@ class _RouteProbe:
 # a new flag nobody taught this file about, and we refuse to emit a
 # trajectory rather than emit a plausible wrong one.
 TRAIN_ONLY = frozenset({
+    # --min-speed-kill / --min-speed-grace: a TRAINING kill rule (force_fail below a speed
+    # floor); evals and recordings never kill, exactly like the stall kill
+    "min_speed_kill", "min_speed_grace",
     # --spawn-states: a share of the TRAINING spawn pool drawn from a file of own states; a
     # recording spawns at the map start like the trainer's eval
     "spawn_states", "spawn_states_frac",
