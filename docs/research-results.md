@@ -33199,3 +33199,31 @@ Within 18M steps:
 | training win rate | 0% | 1.92% (@ 66.8 s) |
 
 Per the caveat, the win rate with a 2 s margin may be harvest. The from-start eval is the verdict.
+
+## 2026-10-03 21:12 (machine clock) - skate_laby: skLABY10 finishes 9/9 at 109.69 s best (+34.8 s on the WR); time pressure strengthened -> skLABY11 (--finish-k 1, 180 s cap)
+
+**skLABY10** (`--stall-eps 5`), stopped at ~1.79B.
+
+* **Evals:**
+
+  | step | finished (of 9) | times |
+  |---|---|---|
+  | 1,528M | 9 | 109.69-119.47 s, best 109.69 |
+  | 1,603M | 0 | - |
+  | 1,679M | 8 | best 114.73 |
+  | 1,754M | 0 | - |
+
+  The runs take 110-120 s against the 120 s cap, so whether an eval "finishes" flips on a few seconds.
+* **Splits of the 109.69 s run:** a flat ~1,200 u/s along the route everywhere (987-1,273 per section); each window is crossed in ~0.6 s. The WR needs ~1,700 u/s on this 127k u route.
+
+**The user:** "Are we giving more reward for faster completion? ... do we have time pressure?"
+
+* Yes, but weak: time_pen 0.005/tick (-0.5/s) is the only time term.
+* The progress shaping pays 100 per route whatever the time, and the +50 finish bonus is flat (`--finish-k` was 0).
+* The speed bonus pays per second alive, so it does not separate a fast finish from a slow one.
+* Undiscounted, a 75 s run earns ~139.5 against ~122 for a 110 s run (+14%). With gamma's ~20 s horizon, even less of it is felt.
+
+**skLABY11** (the user: "Yep, let's do it"): resume of skLABY10 + `--finish-k 1` (finish_tref 120 s) + `--ep-ticks 18000` (a 180 s cap). Everything else is restored (verified in run.json).
+
+* The finish bonus is +1 per second under 120 s, paid on the finish tick and clamped at 0, so there is no suicide channel. A 75 s finish gets +45, a 110 s finish +10.
+* The 180 s cap stops 110-120 s finishers being truncated in training and evals.
