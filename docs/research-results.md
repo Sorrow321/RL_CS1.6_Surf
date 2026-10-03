@@ -32938,3 +32938,36 @@ Route max (eval_honesty --order-only 16) at matched evals, seed 0. Every arm is 
 **skLABY4:** scratch_ablate + `--obs-normal 1 --envs 1024 --sv-friction 0 --speed-coef 0.01 --min-speed-kill 500 --min-speed-grace 1 --min-speed-secs 1`, local 5090.
 
 **Caveat on the WR comparison.** The actual plugin's friction value (0 or small), its handling of edgefriction, and the server's airaccelerate are unknown. sv_friction 0 is the model.
+
+## 2026-10-03 19:09 (machine clock) - NORMALISATION BATCH result: SimBa LayerNorm is the first architecture change ahead of BOTH controls; the split encoder is worse
+
+Route max (eval_honesty --order-only 16) at matched evals, seed 0, single RTX 3090s. Every arm is `SCRATCH=1 run_arm.sh` + `--obs-normal 1 --envs 1024`, 0.76e9.
+
+| step | lnCTL | lnSIMBA (`--simba 1`) | lnSIMDEEP (`--simba 1 --conv-mult 2 --tower-depth 4`) | lnSPLIT (`--split-trunk 1`) |
+|---|---|---|---|---|
+| 152M | 44,660 | 31,918 | 27,176 | 48,631 |
+| 302M | 92,564 | 104,754 | 101,568 | 51,690 |
+| 378M | 100,136 | 104,704 | 159,770 | 52,032 |
+| 453M | 98,136 | 157,780 | 196,352 | 55,534 |
+| 529M | 143,087 | 205,814 (5/9 past) | 194,403 | 95,272 |
+| 604M | 170,880 | 197,089 | 206,336 (3/9 past) | 104,560 |
+| 680M | 206,758 (2/9 past) | 181,120 | 3,876 | 104,520 |
+| 755M | 206,208 (5/9 past) | 209,152 (8/9 past) | 205,402 | 98,560 |
+
+**Gates** (with the previous batch's same-protocol control arCTL: 97k at 378M, wall at 605M):
+
+| arm | 97k gate | wall |
+|---|---|---|
+| lnCTL | 378M | 680M |
+| arCTL | 378M | 605M |
+| lnSIMBA | 302M | 529M |
+| lnSIMDEEP | 302M | 605M |
+| lnSPLIT | 605M | never |
+
+**Reading.**
+
+* **The two controls agree:** 97k at 378M in both; the wall at 680M vs 605M, 1.12x. That is a direct one-seed noise estimate of ~10-15% at this protocol, smaller than the 27% floor of older protocols.
+* **SimBa** (`--simba`: pre-LN residual towers + LN on the image embedding) is ahead of BOTH controls at both gates: 97k one eval earlier (1.25x), the wall 1.14-1.29x earlier, and 8/9 past at 755M, the best crossing count of any arm. It is the first architecture change to beat the measured noise in this program.
+* **SimBa + bigger:** 97k early like SimBa, wall at 605M (= arCTL), one collapsed eval at 680M (3,876), recovered at 755M. Scaling on top of LN did not add to it at this budget.
+* **The split value encoder is negative:** stuck at the ~52k gate from 227M to 453M; 97k only at 605M; no wall.
+* **Cost:** the two batches spent 22.02 -> ~17.3 (this one ~$2.6, including the relaunched split box). All boxes harvested and destroyed; vast shows 0 instances.
