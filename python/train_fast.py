@@ -6443,6 +6443,14 @@ def main() -> None:
                     help="how many route vertices the arc anchor may move "
                          "per tick (anti-farming: an off-route flight cannot "
                          "walk the coordinate down the track)")
+    ap.add_argument("--race-ground", type=int, default=None, choices=(0, 1),
+                    help="race: the GROUND-BOUND goal field (the user, 2026-10-03, skate_laby: "
+                         "'maybe the potential field ... is bad'): a walkable graph of the "
+                         "standable floors, linked by step-height climbs, drops and ducked jumps "
+                         "through windows, instead of the 3-D search through free air, which "
+                         "routes OVER walls lower than the ceiling (skate_laby's 32 u maze walls). "
+                         "The reward, the potential channel, the stall rule and eval progress all "
+                         "read it; record_ckpt / render_pov mirror it. 0 = the 3-D field")
     ap.add_argument("--race-kill-aware", type=int, default=None,
                     choices=(0, 1),                # S2; 0; ckpt restores
                     help="mask fail-teleport/fatal-hurt volumes as walls in "
@@ -6750,6 +6758,9 @@ def main() -> None:
         if args.int_match is None and ck_cfg.get("int_match") is not None:
             args.int_match = float(ck_cfg["int_match"])
             restored.append(f"int_match={args.int_match:g}")
+        if args.race_ground is None and ck_cfg.get("race_ground"):
+            args.race_ground = 1
+            restored.append("race_ground=1")
         if args.sv_friction is None and ck_cfg.get("sv_friction") is not None:
             args.sv_friction = float(ck_cfg["sv_friction"])
             restored.append(f"sv_friction={args.sv_friction:g}")
@@ -7927,6 +7938,11 @@ def main() -> None:
         args.ret_norm = 0
     if args.int_coef is None:
         args.int_coef = 0.0
+    if args.race_ground is None:
+        args.race_ground = 0
+    if args.race_ground and (args.race_kill_aware or args.race_dist == "euclid"):
+        raise SystemExit("--race-ground replaces the 3-D geodesic field: not with "
+                         "--race-kill-aware or --race-dist euclid")
     if args.sv_friction is None:
         args.sv_friction = 4.0   # GoldSrc stock; every run before the flag trained under this
     if args.maxvel is None:
@@ -9876,9 +9892,14 @@ def main() -> None:
                 # tools/ddp_launch.sh runs --warm-caches once out of band
                 # so this is the fallback, not the plan.
                 with D.rank0_first():
-                    goal_field = build_goal_field(core, goal_box,
-                                                  cell=slot.goal_cell,
-                                                  device=device)
+                    if args.race_ground:
+                        # --race-ground: the walkable floors' field (goalfield.py)
+                        from surfgym.goalfield import build_ground_field
+                        goal_field = build_ground_field(core, goal_box)
+                    else:
+                        goal_field = build_goal_field(core, goal_box,
+                                                      cell=slot.goal_cell,
+                                                      device=device)
                 if args.race_kill_aware:
                     with D.rank0_first():
                         reward_field = build_goal_field(core, goal_box,
@@ -10551,8 +10572,12 @@ def main() -> None:
                 # seeded from the ARMED box, like every training slot (see
                 # the long note above); rank 0 bakes, the rest read the cache
                 with D.rank0_first():
-                    gf = build_goal_field(ec, hs.goal_box, cell=hs.goal_cell,
-                                          device=device)
+                    if args.race_ground:
+                        from surfgym.goalfield import build_ground_field
+                        gf = build_ground_field(ec, hs.goal_box)
+                    else:
+                        gf = build_goal_field(ec, hs.goal_box, cell=hs.goal_cell,
+                                              device=device)
             # the STANDARD field for both roles: nothing ever shapes on a
             # held-out map, so --race-kill-aware has nothing to mask here
             hs.goal_field = hs.reward_field = gf
@@ -12236,6 +12261,7 @@ def main() -> None:
                        "int_speed": (args.int_speed
                                      if args.reward == "race" else None),
                        "maxvel": args.maxvel,
+                       **({"race_ground": 1} if args.race_ground else {}),
                        **({"sv_friction": float(args.sv_friction)}
                           if float(args.sv_friction) != 4.0 else {}),
                        "yaw_adaptive": args.yaw_adaptive,

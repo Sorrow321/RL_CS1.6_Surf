@@ -605,3 +605,196 @@ def blur_goal_field(gf: "GoalField", sigma_cells: float, quant=None) -> "GoalFie
     q32 = np.float32(quant)
     out[ok] = (np.rint(v / q32).astype(np.float32) * q32).astype(np.float32)
     return GoalField(out, gf.mins, gf.cell, gf.reach_max)
+
+
+# --- --race-ground (the user, 2026-10-03, skate_laby: "maybe the potential field that we baked is
+# bad there") -------------------------------------------------------------------------------------
+# The 3-D field above is a breadth-first search through FREE AIR: on a map whose walls are lower
+# than its ceiling it routes OVER them. skate_laby's maze walls are 32 u tall (floor -256, tops
+# -224) under a ceiling ~240 u up, so its field floated across the maze and pointed a sliding player
+# at walls it can only clear by jumping (and the CS bunnyhop cap makes a jump at speed ruinous);
+# every greedy eval circled one of those spots. A ground-bound player walks a 2.5-D graph: the
+# standable floors of each column, linked to a neighbouring column's floor only by a step-height
+# climb or a drop, with the player's own hull trace finding no wall in between.
+_GROUND_BUILDER_VERSION = 5
+GROUND_CELL = 16.0
+GROUND_STEP = 18.0          # the engine's stepsize: a climb above it needs a jump
+_STAND_HALF = 36.0          # the standing hull's half-height (origin above the floor)
+GROUND_JUMP = 45.0          # a jump's apex above the take-off floor (sqrt(2 g h) = 268 u/s)
+GROUND_JUMP_PEN = 64.0      # a jump link costs this much more than walking the same ground
+_DUCK_HALF = 18.0           # the ducked hull's half-height: under a low window the player ducks
+                            # (the user, 2026-10-03: 'places ... where you need to duck ... like a
+                            # small window')
+
+
+def build_ground_field(core, zone, cell: float = GROUND_CELL, cache_dir=None,
+                       step: float = GROUND_STEP, verbose: bool = True) -> GoalField:
+    """The geodesic distance-to-goal of a GROUND-BOUND player (no jumps, no flight), as a
+    :class:`GoalField` over the same kind of 3-D voxel grid every consumer already samples.
+
+    * floors: every column (``cell`` apart in x and y) is scanned top-down with the STANDING hull
+      (``core.trace`` hull 0); each landing on a standable surface (normal z >= 0.7) is a node at
+      that ORIGIN height, and the scan continues below it, so stacked levels are kept;
+    * links: a node links to each of the 8 neighbouring columns' floor the player would land on -
+      the highest one at most ``step`` above it - when the standing hull moves there horizontally,
+      raised by the climb, without touching anything; drops are free (the player falls);
+    * distances: Dijkstra from the nodes inside ``zone`` over the REVERSED links, edge length the
+      horizontal step;
+    * the grid: each node's distance fills its column's voxels from a ducked origin (18 u below
+      standing) to a jump's apex (+45 u) - the heights the player's origin takes over that floor -
+      and everything else holds the sentinel, so ``sample`` renormalises exactly as for the 3-D
+      field. Cached as ``<map>.goalw_<cell>.npz`` under its own signature."""
+    import time
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import dijkstra
+
+    bsp = Path(core.bsp_path)
+    box = np.round(np.asarray(zone["mins"] + zone["maxs"], np.float64), 1)
+    sig = (f"w{_GROUND_BUILDER_VERSION}_{step:g}_{_map_sig(bsp)}_"
+           + "_".join(f"{v:g}" for v in box))
+    cache = Path(cache_dir) if cache_dir else bsp.parent
+    cache_file = cache / f"{bsp.stem}.goalw_{cell:g}.npz"
+    if cache_file.exists():
+        z = np.load(cache_file, allow_pickle=False)
+        if "sig" in z and str(z["sig"]) == sig:
+            q = float(z["quant"])
+            return GoalField(z["grid"].astype(np.float32) * q, z["mins"], float(z["cell"]),
+                             float(z["reach_max"]))
+    t0 = time.time()
+    lo, hi = (np.asarray(v, np.float64) for v in core.map_bounds())
+    nx = int(np.ceil((hi[0] - lo[0]) / cell))
+    ny = int(np.ceil((hi[1] - lo[1]) / cell))
+    nzv = int(np.ceil((hi[2] - lo[2]) / cell))
+    xs = lo[0] + (np.arange(nx) + 0.5) * cell
+    ys = lo[1] + (np.arange(ny) + 0.5) * cell
+    ztop, zbot = hi[2] - _DUCK_HALF - 1.0, lo[2] + _DUCK_HALF
+    tr = core.trace
+    # 1. floors, per column
+    nodes_xyz, col = [], {}
+    for ix in range(nx):
+        x = float(xs[ix])
+        for iy in range(ny):
+            y = float(ys[iy])
+            z, here = ztop, []
+            while z > zbot:
+                if tr((x, y, z), (x, y, z), 1).startsolid:
+                    z -= min(cell * 0.5, 8.0)
+                    continue
+                t = tr((x, y, z), (x, y, zbot), 1)
+                if t.fraction >= 1.0 or t.startsolid:
+                    break
+                floor = float(t.endpos[2]) - _DUCK_HALF
+                if t.normal[2] >= 0.7:
+                    here.append(len(nodes_xyz))
+                    nodes_xyz.append((ix, iy, floor + _STAND_HALF))
+                z = floor - _DUCK_HALF - 1.0
+            if here:
+                col[(ix, iy)] = here
+    nodes = np.asarray(nodes_xyz, np.float64).reshape(-1, 3)
+    n = len(nodes)
+    if verbose:
+        print(f"ground field: {n:,} standable floor nodes in {len(col):,} of {nx * ny:,} columns "
+              f"({time.time() - t0:.0f}s)")
+    # 2. links (A -> B), stored reversed for the backward Dijkstra
+    src, dst, wts = [], [], []
+    nb = [(dx, dy) for dx in (-1, 0, 1) for dy in (-1, 0, 1) if dx or dy]
+    for a in range(n):
+        ia, ja, za = int(nodes[a, 0]), int(nodes[a, 1]), nodes[a, 2]
+        xa, ya = float(xs[ia]), float(ys[ja])
+        blocked_dirs = []
+        for dx, dy in nb:
+            cand = col.get((ia + dx, ja + dy))
+            if not cand:
+                blocked_dirs.append((dx, dy))      # a wall column: no floor to step onto
+                continue
+            # the floor the player lands on: the highest at most `step` above A
+            best, bz = None, -1e30
+            for b in cand:
+                zb = nodes[b, 2]
+                if zb <= za + step + 0.5 and zb > bz:
+                    best, bz = b, zb
+            if best is None:
+                blocked_dirs.append((dx, dy))      # only a floor too high to step onto
+                continue
+            # the engine's step move: lift by the step height, move, settle - so a seam or lip
+            # under `step` does not cut the link, while a wall taller than it still blocks the hull
+            # (the move at floor height is the fallback under a low ceiling)
+            xb, yb = float(xs[ia + dx]), float(ys[ja + dy])
+            passed = False
+            top = max(za, bz)                 # the higher floor's STANDING origin
+            for hull, h in ((0, top + step + 0.1), (0, top + 0.1),
+                            (1, top - _STAND_HALF + _DUCK_HALF + step + 0.1),
+                            (1, top - _STAND_HALF + _DUCK_HALF + 0.1)):
+                t = tr((xa, ya, h), (xb, yb, h), hull)
+                if not t.startsolid and t.fraction >= 1.0:
+                    passed = True
+                    break
+            if not passed:
+                blocked_dirs.append((dx, dy))
+                continue
+            src.append(best)
+            dst.append(a)
+            wts.append(cell * (1.4142135623730951 if (dx and dy) else 1.0))
+        # jump links (the user, 2026-10-03: "places ... where you need to duck in order to fly
+        # forward ... like a small window"): where walking into a neighbour is blocked, a DUCKED
+        # player at a jump's height - feet up to GROUND_JUMP above A's floor, plus the ducked
+        # hull's 18 u when it tucks its feet mid-air - may pass 2-4 columns on, over a low wall or
+        # through a raised window, and land on a floor no higher than its feet were
+        fa = za - _STAND_HALF
+        for dx, dy in blocked_dirs:
+            for kk in (2, 3, 4):
+                cand = col.get((ia + kk * dx, ja + kk * dy))
+                if not cand:
+                    continue
+                xb, yb = float(xs[ia + kk * dx]), float(ys[ja + kk * dy])
+                hit = None
+                for feet in (24.0, GROUND_JUMP, GROUND_JUMP + _DUCK_HALF):
+                    oz = fa + feet + _DUCK_HALF + 0.1
+                    if tr((xa, ya, oz), (xa, ya, oz), 1).startsolid:
+                        continue
+                    t = tr((xa, ya, oz), (xb, yb, oz), 1)
+                    if t.startsolid or t.fraction < 1.0:
+                        continue
+                    land = [b for b in cand if nodes[b, 2] - _STAND_HALF <= fa + feet + 0.5]
+                    if land:
+                        hit = max(land, key=lambda b: nodes[b, 2])
+                        break
+                if hit is not None:
+                    src.append(hit)
+                    dst.append(a)
+                    wts.append(kk * cell * (1.4142135623730951 if (dx and dy) else 1.0)
+                               + GROUND_JUMP_PEN)
+                    break
+    g = coo_matrix((np.asarray(wts, np.float64), (np.asarray(src), np.asarray(dst))),
+                   shape=(n, n)).tocsr()
+    # 3. distances from the finish
+    zmin, zmax = np.asarray(zone["mins"], np.float64), np.asarray(zone["maxs"], np.float64)
+    ox, oy = xs[nodes[:, 0].astype(int)], ys[nodes[:, 1].astype(int)]
+    inside = ((ox >= zmin[0]) & (ox <= zmax[0]) & (oy >= zmin[1]) & (oy <= zmax[1])
+              & (nodes[:, 2] >= zmin[2] - _STAND_HALF) & (nodes[:, 2] <= zmax[2] + _STAND_HALF))
+    seeds = np.flatnonzero(inside)
+    if seeds.size == 0:
+        raise RuntimeError("ground field: no standable floor inside the finish zone")
+    d = dijkstra(g, directed=True, indices=seeds, min_only=True)
+    ok = np.isfinite(d)
+    reach_max = float(d[ok].max())
+    if verbose:
+        print(f"ground field: {int(ok.sum()):,} of {n:,} floors reach the finish, max "
+              f"{reach_max:,.0f} u, {len(wts):,} links ({time.time() - t0:.0f}s)")
+    # 4. the 3-D grid: each floor's distance over the heights its player's origin can take
+    sentinel = reach_max + 2.0 * cell
+    grid = np.full((nzv, ny, nx), sentinel, np.float32)
+    zc = lo[2] + (np.arange(nzv) + 0.5) * cell
+    for a in np.flatnonzero(ok):
+        ia, ja, za = int(nodes[a, 0]), int(nodes[a, 1]), nodes[a, 2]
+        ks = np.flatnonzero((zc >= za - 18.0 - 0.5 * cell) & (zc <= za + 45.0 + 0.5 * cell))
+        if ks.size:
+            grid[ks, ja, ia] = np.minimum(grid[ks, ja, ia], d[a])
+    quant = cell / 8.0
+    if sentinel / quant > 65535:
+        quant = sentinel / 65000.0
+    grid_q = np.clip(np.rint(grid / quant), 0, 65535).astype(np.uint16)
+    mins = lo.astype(np.float64)
+    np.savez_compressed(cache_file, grid=grid_q, quant=np.float32(quant), mins=mins,
+                        cell=np.float32(cell), reach_max=np.float32(reach_max), sig=np.str_(sig))
+    return GoalField(grid_q.astype(np.float32) * quant, mins, cell, reach_max)

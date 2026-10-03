@@ -295,7 +295,7 @@ def main() -> None:
     # actually received instead of depth alone.
     pot = None
     if args.obs_potential:
-        from surfgym.goalfield import build_goal_field
+        from surfgym.goalfield import build_goal_field, build_ground_field
         from surfgym.vision import LidarPotential
         from surfgym.zones import load_zones
         zones = load_zones(core.bsp_path) or {}
@@ -307,7 +307,8 @@ def main() -> None:
         print(f"--obs-potential: goal field @ cell {gcell:g}")
         # seed from the ARMED finish box: anything smaller re-keys the cache
         # and rebakes a field that is already on disk (record_ckpt.py)
-        gf = build_goal_field(core, zones["end"], cell=gcell)
+        gf = (build_ground_field(core, zones["end"]) if rcfg.get("race_ground")
+              else build_goal_field(core, zones["end"], cell=gcell))
         core.set_goal_box(zones["end"]["mins"], zones["end"]["maxs"])
         pot = LidarPotential.from_cfg(rcfg, gf, core, device,
                                       Path(args.map).stem)

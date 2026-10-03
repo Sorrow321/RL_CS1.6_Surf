@@ -1095,7 +1095,7 @@ def main(argv=None, build_only: bool = False, device=None):
     cmp_goal_field = None
     if cfg.get("reward") == "race":
         # finish zone is armed for ANY race recording, whatever the spawns
-        from surfgym.goalfield import EuclidField, build_goal_field
+        from surfgym.goalfield import EuclidField, build_goal_field, build_ground_field
         from surfgym.zones import load_zones
         zones = load_zones(core.bsp_path)
         say(f"goal field @ cell {gcell:g}", 18)
@@ -1104,6 +1104,8 @@ def main(argv=None, build_only: bool = False, device=None):
         # re-keys the cache (the seed box is in the signature) and rebakes a
         # field the trainer already has on disk.
         gf = (EuclidField(zones["end"]) if cfg.get("race_dist") == "euclid"
+              # --race-ground: MIRRORED (the walkable floors' field the potential channel read)
+              else build_ground_field(core, zones["end"]) if cfg.get("race_ground")
               else build_goal_field(core, zones["end"], cell=gcell))
         if cfg.get("race_field_blur"):
             # --race-field-blur: the obs channel read the BLURRED field in
