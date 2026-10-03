@@ -32659,3 +32659,29 @@ Route max (eval_honesty --order-only 16) at matched evals, local 5090, seed 0. B
   * four cameras stacked as channels;
   * dropping the depth.
 * The env sweep found 1,024 envs to be the sweet spot on this card.
+
+## 2026-10-03 13:47 (machine clock) - dencREACH LAUNCHED: the free-flight reach channel on the best observation
+
+**The user (2026-10-03):** "one more channel ... the render of the areas where you can get if you keep flying ... whether your energy is enough to fly there ... see how far we can get with current velocity and height."
+
+**The channel** (`--obs-reach`, ad97ee1) is tanh(slack / 1 s) per visible point.
+
+* **Vertical.** In the air only gravity moves the player vertically: pm_air_move zeroes the z of forward / right, so the air control is horizontal. The feet therefore cross a point's height at a KNOWN time, the later root of z_feet + v_z t - g t^2 / 2 = z_point.
+* **Above the apex.** No real root means the energy cannot lift the player there, and the pixel reads -1.
+* **Horizontal.** pm_air_accelerate only pushes sideways by 30 u/s per tick (3,000 u/s^2 at 10 ms) or brakes. Reaching a point at distance d and bearing theta therefore takes about theta |v_h| / 3000 + d / |v_h|.
+* **The value.** slack = t_fall - t_need. Rays that hit nothing read -1. The constants are the engine's gravity and tick, the same on every map (CLAUDE.md 0b).
+* **Not modelled:** a jump from the ground, geometry along the arc, ramps redirecting the flight, boosters.
+
+**Previewed on real flight** (dencNRM1K's 755M eval, 64x32, CPU):
+
+* slow (410 u/s): nearly all black;
+* rising at 3,100 u/s: nearly everything ahead white, except above the apex;
+* the ramp being ridden: black at the player's side, because a 90-degree air turn at 3,000 u/s takes ~1.6 s.
+
+**The arm.**
+
+* Flags: `launch_local.ps1 scratch_ablate dencREACH --steps 0.76e9 --obs-normal 1 --obs-reach 1 --envs 1024`.
+* Hardware: local 5090, seed 0.
+* Channels: depth + potential + normal x3 + reach = in_ch 6.
+* Control: dencNRM1K (97k at 302M / 14 min, wall at 605M / 28 min), at matched evals.
+* GPU at launch: 6.8 GB in use by the user's applications. The dashboard was down (the machine had restarted) and was restarted on 8600 first.
