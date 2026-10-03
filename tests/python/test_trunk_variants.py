@@ -138,7 +138,9 @@ def test_split_trunk_separates_policy_and_value():
 @pytest.mark.parametrize("flag", ["--simba", "--split-trunk"])
 def test_norm_split_trainer_smoke(flag):
     run = f"cya_{flag.strip('-').replace('-', '_')}"
-    r = _train(run, ABS + ["--obs-potential", "norm", "--obs-normal", "1", flag, "1"])
+    # --keys-hold: the scalar-side block the rented recipe carries (it is how --split-trunk
+    # first failed on a box: a guard refused any route_dim)
+    r = _train(run, ABS + ["--obs-potential", "norm", "--obs-normal", "1", "--keys-hold", flag, "1"])
     assert r.returncode == 0, r.stdout[-4000:] + r.stderr[-4000:]
     d = ROOT / "runs" / run
     key = flag.strip("-").replace("-", "_")

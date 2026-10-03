@@ -646,10 +646,10 @@ class Policy(nn.Module):
         self.simba, self.split_trunk = bool(simba), bool(split_trunk)
         if self.simba and (self.trunk != "plain" or self.dropout > 0.0 or self.rnn != "none"):
             raise SystemExit("--simba is built on the plain trunk, without --dropout or --rnn")
-        if self.split_trunk and (self.rnn != "none" or self.route_dim or int(plan_film or 0)
+        if self.split_trunk and (self.rnn != "none" or int(plan_film or 0)
                                  or self.trunk != "plain"):
-            raise SystemExit("--split-trunk gives the value its own plain trunk; not with --rnn, "
-                             "--route or --plan-film")
+            raise SystemExit("--split-trunk gives the value its own plain trunk; not with --rnn "
+                             "or --plan-film")
         def mlp(extra=0):
             # + rnn_size: the GRU block is the LAST input block of both
             # towers (0 wide without --rnn, so the Linear is the old one).
@@ -1022,8 +1022,13 @@ class Policy(nn.Module):
         # branch exists and this is the pre-route model, byte for byte.
         f_pi = f_vf = f
         if f_v is not None:
-            f_vf = f_v                       # --split-trunk (never with --route)
-        if self.route_dim:
+            # --split-trunk: the value tower reads its own image features; the scalar-side block
+            # (--route's fan, --keys-hold's held keys) joins each tower's features as before
+            f_vf = f_v
+            if self.route_dim:
+                f_vf = torch.cat([f_v, scal[:, N_SCALAR:]], dim=1)
+                f_pi = f if self.route_critic_only else torch.cat([f, scal[:, N_SCALAR:]], dim=1)
+        elif self.route_dim:
             f_vf = torch.cat([f, scal[:, N_SCALAR:]], dim=1)
             f_pi = f if self.route_critic_only else f_vf
         if g is not None:
