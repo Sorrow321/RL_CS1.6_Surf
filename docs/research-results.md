@@ -33127,3 +33127,34 @@ Route max (eval_honesty --order-only 16) at matched evals, seed 0, single RTX 30
 * The trainer's own box finish is the same episode, at the same time.
 * Windows passed (of 9 episodes): W1-W4 9/9, W5-W8 6-8/9, W9-W12 1-2/9.
 * skLABY8 is training from there. A waiter reports when a press time beats 74.90 s, or at 25 minutes.
+
+## 2026-10-03 20:33 (machine clock) - skate_laby: why skLABY8 does not finish - training never reaches the last third; the dashboard's 3000-tick record cap; skLABY9 with --respawn-margin 2
+
+**The user:** "the agent is not finishing the map ... Maybe it's the 3000 iterations limit. If I spawn record frontier, I see it's maximum 2999."
+
+**skLABY8, 596M-1,049M:**
+
+* Only the first eval finished (113.81 s). Every later eval: 0/9.
+* Greedy episodes reach 94-96% of the route by the 120 s cap, but 0/9 get past windows 9-12.
+
+**The 3000 is the dashboard's, not training's.** Every record button ran record_ckpt with `--episodes 2 --ep-ticks 3000`, which is 30 s of game. The user's frontier recording shows it:
+
+* 2 episodes spawned from the respawn pool at 27-28% of the route.
+* They flew at 1,340-1,430 u/s mean and reached 58%.
+* Both were cut at exactly 30.0 s. Neither would have been killed by the speed floor or the stall rule: 93% of decisions re-armed the stall timer, and the longest gap was 0.3 s.
+
+Training episodes and the trainer's evals run to the 120 s cap.
+
+* **Fixed** (6135059): a run whose own cap is past 3000 ticks now records ONE episode at that cap. The dashboard was restarted (pid 28384).
+
+**Why training does not finish:**
+
+* Training episodes average 15.5-16.5 s. 100% end in the stall/speed kill, and the training win rate is 0.00%: the +50 has never been seen.
+* The respawn pool keeps only snapshots >= 10 s before an episode's end, so each 16 s episode contributes its first ~6 s.
+* The pool's deepest state rose only from 45% to 35% of the start distance left (i.e. 55% -> 65% of the route) over 380M steps. The last third (windows 9-12 and the button) is never trained on.
+* Greedy episodes, replayed under the training kill rules, would survive 84-88 s, to ~83% of the route, so it is not the kill rules on a good line. The pool simply never carries training deep enough.
+
+**skLABY9:** resume of skLABY8 (ckpt ~1.05B) + `--respawn-margin 2`. Everything else as skLABY8 (verified in run.json).
+
+* This is round 18's documented fix for a pool that cannot reach the hard part (cannonball's wall bin went from 0 to ~20% of the reservoir).
+* Watch for the CLAUDE.md caveat: once finishes start, a 2 s margin harvests states 2 s from the goal. Read the win rate together with the pool's minimum depth, and the eval FROM THE START is the verdict.
