@@ -32854,3 +32854,34 @@ Route max (eval_honesty --order-only 16) at matched evals, seed 0. Every arm is 
 | lnSPLIT | `--split-trunk 1` |
 
 **Infrastructure.** Scored and harvested by the same local monitor (runs/research/arch2/); every helper runs window-less.
+
+## 2026-10-03 17:45 (machine clock) - skate_laby: a new map, set up and launched locally (skLABY2), against the human WR 1:14.90
+
+**The user (2026-10-03):** "launch locally a new run on the new map skate_laby.bsp ... a skate map, there's no flying, and it's straightforward (one path, very clear), so it's all about strafing and keeping speed. I wonder if our RL can break the human WR." Then: "Human WR 01:14.90. Timer starts on a strong push forward in the start", and "there is no death in this map ... kill the agent when ... the speed drops below ... 500."
+
+**The map** (maps/skate_laby.bsp, from the repo root):
+
+* **Start.** A type-3 button map, start wired as on type 1: trigger_multiple *46 fires the start button 'oi' (target counter_start). The SAME brush is a trigger_teleport to 'start' (-1056, -1792, -216, yaw 90). That destination sits inside trigger_push *49 (1600 u/s, +y): the "strong push forward".
+* **Finish.** The stop button *6 (target counter_off) at (2161, -352, -176).
+* **No func_friction anywhere.** The simulator's pfriction is fixed at 1.0 and needs no change for this map. pm.c already carries CS 1.6's bunnyhop cap (1.2 x maxspeed on a jump), stamina and the duck mechanics.
+* **The goal field** (cell 32) bakes in 8 s: 258,639 reachable voxels, d0 87,974 u.
+* **The spawn room is DISCONNECTED** from the course except through the teleport. The 48 u push lane (between func_wall *50 x2) does not resolve at cell 32 either. The field reads 87,504 u just past the lane and 0 at the button.
+
+**The start, without a map-specific training method.**
+
+* `map_spawn_pool` now honours a zones file's declared 'spawns' (with their yaw) (b5dc69d).
+* maps/skate_laby.zones.json (source: manual) declares the teleport destination (-1056, -1792, -180), facing +y. That is where the human timer starts.
+* Measured in the core: the player leaves the push at 1,608 u/s at 0.2 s. With no input it lands at 1,114 u/s and stops by 1.5 s (ground friction 4).
+
+**Timing for the WR.** Training keeps the standard touch box (the button padded 192 u, the user's 2026-08-23 rule). The WR comparison is scored separately (scratchpad skate_wr.py): the first tick the EYE is within 64 u (the +use reach) of the button's true box, timed from the spawn (= the timer start).
+
+**Caveat on the comparison.** The WR server's settings (sv_airaccelerate, fps) are unknown. Ours: airaccelerate 100, 10 ms tick, maxvel 4000.
+
+**The speed floor** (e77692f): `--min-speed-kill U --min-speed-grace S`. A TRAINING episode whose horizontal speed is below U once S seconds have passed since its (re)spawn ends as a FAIL, through the stall kill's force_fail, counted in race/stall_frac. Evals never kill. The grace covers the push, where the velocity reads 0 while the player is inside it.
+
+**Runs** (local 5090, seed 0):
+
+| run | flags | outcome |
+|---|---|---|
+| skLABY1 | scratch_ablate + `--obs-normal 1 --envs 1024` | record gate passed; stopped at 57.7M for skLABY2. Its random policy was stall-killed at ~15 s per episode. |
+| skLABY2 | the same + `--min-speed-kill 500 --min-speed-grace 1` | launched, --steps 3e9 |
