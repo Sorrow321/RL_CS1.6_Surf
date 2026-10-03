@@ -33001,3 +33001,54 @@ Route max (eval_honesty --order-only 16) at matched evals, seed 0, single RTX 30
 * At 63M: training episodes 13.7-13.9 s, all killed. Greedy eval progress 7,502 of 119,156 u. Peak speed 1,626 u/s, which is the push.
 
 **Caveat on any WR comparison:** the plugin's real friction and airaccelerate are unknown, and the CS bunnyhop cap applies to the window jumps.
+
+## 2026-10-03 19:31 (machine clock) - skate_laby: skLABY5 stops at the first "window", a 48 u hurdle; under stock CS 1.6 a crossing is always followed by the speed-floor kill. --bhop-cap / --stamina, skLABY6
+
+**skLABY5**, stopped at 478M: every greedy eval from 152M to 454M ended the same way.
+
+* All 9 of 9 episodes reach the first duck "window" W1 at (-3608, -3336), 26,163 u into the 118,653 u ground route. They get there at 19.9-21 s and 1,100-1,300 u/s.
+* They then stay at W1 for the remaining ~99 s, until the 120 s cutoff.
+
+**The user:** "is it actually not pressing the duck ... or there is some bug with the map, maybe the character is a little bit low so that it cannot pass even in theory"; and "it should by accident press control to duck and move forward, but it doesn't happen".
+
+**W1's geometry** (point and player-hull traces):
+
+* It is a solid HURDLE, not a window. Its top is 44-48 u above the floor and it is 40-48 u deep. Above it is open air up to the ceiling at z ~0.
+* It is worldspawn: no brush entity lies within 2,500 u.
+* A plain jump peaks at 45 u, 3 u short. A jump plus a mid-air duck (which lifts the feet 18 u) peaks at 63 u. Ducking alone cannot pass, because the block starts at the floor.
+* It sits 150-200 u after a 90 degree corner.
+
+**Scripted passes** (10 ms ticks, sv_friction 0):
+
+| scenario | stock CS (bhop cap + stamina on) | cap and stamina off |
+|---|---|---|
+| from rest, forward held, jump + duck | 90 of 90 (jump spot, duck delay) combos pass | 90 of 90 pass |
+| entering at 300 u/s | take-off must be 40-70 u before the face; 1 s after crossing: 0-28 u/s | 344 of 540 pass; speed kept (300 u/s) |
+| entering at 600 u/s | same window; 0-28 u/s | 144 of 540 pass (take-off 90-155 u before) |
+| entering at 1,200 u/s | same window; 0-28 u/s | none: the jump needs >= 166 u of run-up and the straight after the corner is 156 u |
+
+* The stock collapse to 0-28 u/s is the bunnyhop cap (240 u/s at take-off) followed by stamina (x0.88 per ground tick after landing).
+* Stamina does not make re-jumps too low: a duck-jump 0.7 s after the previous take-off still peaks at 53 u.
+
+**What the agent did at W1** (all 9 episodes, 454M):
+
+* It made 0 real jump take-offs. The highest the feet got was 18 u, which is a duck-tap pop.
+* It pressed jump on 2,900-4,000 ticks per episode, ~85% of them in the air.
+* Every on-ground jump tick had jump held on the tick before. CS jumps only on a fresh press, so none fired.
+* It ducked on ~1,370 ground ticks per episode.
+
+**Why training cannot teach it:**
+
+* Under stock CS 1.6 physics, every crossing at speed leaves 0-30 u/s. The 500 u/s training floor (1 s) then kills the agent: in training, a crossing is always followed by death.
+* The WR pace also argues against the stock penalties: ~1,584 u/s average over 8 hurdles. Under them, each hurdle is a near-full stop, and ground strafing at sv_accelerate 5 needs ~3.7 s to get back to 1,500 u/s.
+
+**`--bhop-cap` / `--stamina`** (40e152f): CS 1.6's two jump penalties as server physics switches.
+
+* Stock is 1. They are written to the config only when off, restored from a checkpoint and mirrored by record_ckpt.
+* Tested: a jump at 1,200 u/s leaves 240 u/s with the cap and keeps 1,200 without it.
+
+**skLABY6:** skLABY5's flags + `--bhop-cap 0 --stamina 0`, i.e. a no-slowdown slide server, local 5090.
+
+* The hurdle is still a real skill. The agent must reach W1 below ~700 u/s and press jump fresh 90-155 u before the face, then duck in the air.
+
+**Caveat:** whether the WR server runs a no-slowdown plugin is not known; this is the model.
