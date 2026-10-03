@@ -1359,8 +1359,15 @@ class Handler(SimpleHTTPRequestHandler):
                 if _rc.get(_k):
                     _rneeds.append(_f)
             _rec = _worktree_tool(ck, "record_ckpt.py", _rneeds)
+            # A button must be able to show what the trainer's own evals can. On a long map
+            # (skate_laby: 100+ s from the start) the 3000-tick cap cut every recording at 30 s,
+            # so no finish could ever appear (the user, 2026-10-03: "maximum 2999"). A run whose
+            # own episode cap is longer records ONE episode at that cap (~1.5 min of wall time
+            # for 120 s of game); short-cap runs keep 2 x 3000.
+            _cap = int(_rc.get("ep_ticks") or 3000)
+            _eps, _ticks = ("1", str(_cap)) if _cap > 3000 else ("2", "3000")
             cmd = [sys.executable, str(_rec), str(ck),
-                   "--episodes", "2", "--ep-ticks", "3000",
+                   "--episodes", _eps, "--ep-ticks", _ticks,
                    "--progress-file", str(prog)]
             if spawn:
                 cmd += ["--spawn", spawn]
