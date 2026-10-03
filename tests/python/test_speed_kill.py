@@ -39,6 +39,13 @@ def test_the_speed_floor_kills_slow_episodes():
                                      encoding="utf-8")))
     wl = [float(r["rollout/ep_len_mean"] or 0) for r in wrows if float(r["rollout/ep_len_mean"] or 0)]
     assert wl and min(wl) >= 190, wl
+    # a resume restores the whole floor - the window too (it once came back instant: skLABY8)
+    res = _train("cya_msk_res", [], steps="49152",
+                 ckpt=ROOT / "runs" / "cya_msk_win" / "ckpt_final.pt")
+    assert res.returncode == 0, res.stdout[-3000:] + res.stderr[-3000:]
+    rcfg = json.loads((ROOT / "runs" / "cya_msk_res" / "run.json").read_text(encoding="utf-8"))
+    assert (rcfg["config"]["min_speed_kill"], rcfg["config"]["min_speed_secs"]) == (500.0, 1.0)
+    shutil.rmtree(ROOT / "runs" / "cya_msk_res", ignore_errors=True)
     off = _train("cya_msk_off", ABS, steps="24576")
     assert off.returncode == 0, off.stdout[-3000:] + off.stderr[-3000:]
     cfg0 = json.loads((ROOT / "runs" / "cya_msk_off" / "run.json").read_text(encoding="utf-8"))

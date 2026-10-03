@@ -7298,7 +7298,12 @@ def main() -> None:
             args.min_speed_kill = float(ck_cfg["min_speed_kill"])
             args.min_speed_grace = float(ck_cfg.get("min_speed_grace") or 1.0) \
                 if args.min_speed_grace is None else args.min_speed_grace
-            restored.append(f"min_speed_kill={args.min_speed_kill:g}")
+            # the sustained window too: without it a resume kills on the FIRST slow tick
+            # (the instant floor that stalled skLABY2)
+            if args.min_speed_secs is None and ck_cfg.get("min_speed_secs"):
+                args.min_speed_secs = float(ck_cfg["min_speed_secs"])
+            restored.append(f"min_speed_kill={args.min_speed_kill:g}"
+                            + (f" over {args.min_speed_secs:g} s" if args.min_speed_secs else ""))
         if args.obs_reach is None and ck_cfg.get("obs_reach"):
             args.obs_reach = 1
             restored.append("obs_reach=1")
