@@ -33119,3 +33119,11 @@ Route max (eval_honesty --order-only 16) at matched evals, seed 0, single RTX 30
 
 * **Why a warm start:** this fixes the goal, not the physics or the recipe. The checkpoint already hovers, ducks the windows and flies 93% of the real route, and the last 8.5k u holds 4 more windows of the same kind.
 * **Launch mishap:** a first resume launch without `MAP=` picked the launcher's default map (cannonball). It was killed before its first iteration and the empty run directory removed.
+
+## 2026-10-03 20:11 (machine clock) - skate_laby: FIRST honest finish, 113.81 s (+38.91 s on the 74.90 s WR), on skLABY8's first eval
+
+* skLABY8's first eval (596M) is the skLABY7 checkpoint as it was, scored on the corrected 38 u finish box.
+* 1 of 9 greedy episodes flew on past the corridor behind the button, where the old box used to end it. It reached the button's face and finished at 113.81 s, within +use reach of the button (skate_wr.py: eye within 64 u of the true box).
+* The trainer's own box finish is the same episode, at the same time.
+* Windows passed (of 9 episodes): W1-W4 9/9, W5-W8 6-8/9, W9-W12 1-2/9.
+* skLABY8 is training from there. A waiter reports when a press time beats 74.90 s, or at 25 minutes.
