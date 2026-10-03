@@ -4444,6 +4444,12 @@ def main() -> None:
                          "of all your buttons the character starts sliding forward' - an AMXX "
                          "plugin's doing, not the map's). Physics: a checkpoint restores it and "
                          "record_ckpt mirrors it")
+    ap.add_argument("--sv-gravity", type=float, default=None,
+                    help="the server's gravity, sv_gravity (GoldSrc stock 800). 0 = a hover server "
+                         "(the user, 2026-10-03, on the skate_laby server: jump does nothing, the "
+                         "player floats a little above the floor and crosses the 'windows' only "
+                         "ducked - zero gravity at the start teleport's height reproduces all "
+                         "three). Physics: a checkpoint restores it and record_ckpt mirrors it")
     ap.add_argument("--bhop-cap", type=int, default=None, choices=(0, 1),
                     help="CS 1.6's bunnyhop cap (stock 1): a jump above 1.2 x maxspeed (300 u/s) "
                          "leaves 0.8 x that (240 u/s). 0 = a no-slowdown server (the user, "
@@ -6771,6 +6777,9 @@ def main() -> None:
         if args.race_ground is None and ck_cfg.get("race_ground"):
             args.race_ground = 1
             restored.append("race_ground=1")
+        if args.sv_gravity is None and ck_cfg.get("sv_gravity") is not None:
+            args.sv_gravity = float(ck_cfg["sv_gravity"])
+            restored.append(f"sv_gravity={args.sv_gravity:g}")
         for _jk in ("bhop_cap", "stamina"):
             if getattr(args, _jk) is None and ck_cfg.get(_jk) is not None:
                 setattr(args, _jk, int(ck_cfg[_jk]))
@@ -7959,6 +7968,8 @@ def main() -> None:
                          "--race-kill-aware or --race-dist euclid")
     if args.sv_friction is None:
         args.sv_friction = 4.0   # GoldSrc stock; every run before the flag trained under this
+    if args.sv_gravity is None:
+        args.sv_gravity = 800.0  # GoldSrc stock, like every run before the flag
     if args.bhop_cap is None:
         args.bhop_cap = 1        # CS 1.6 stock, like every run before the flag
     if args.stamina is None:
@@ -9814,6 +9825,7 @@ def main() -> None:
                              yaw_adaptive=1 if args.yaw_adaptive else 0, yaw_blend=float(args.yaw_blend), side_hold_ticks=int(args.side_hold),
                              sv_maxvelocity=args.maxvel, sv_friction=float(args.sv_friction),
                              enable_bhop_cap=int(args.bhop_cap), enable_stamina=int(args.stamina),
+                             sv_gravity=float(args.sv_gravity),
                              lidar_w=0, lidar_h=0,
                              pitch_rate_max_deg=pitch_rate_core, **_tick_env,
                              **_view_env)
@@ -10408,6 +10420,7 @@ def main() -> None:
             yaw_adaptive=1 if args.yaw_adaptive else 0, yaw_blend=float(args.yaw_blend), side_hold_ticks=int(args.side_hold),
             sv_maxvelocity=args.maxvel, sv_friction=float(args.sv_friction),
             enable_bhop_cap=int(args.bhop_cap), enable_stamina=int(args.stamina),
+            sv_gravity=float(args.sv_gravity),
             lidar_w=0, lidar_h=0, pitch_rate_max_deg=pitch_rate_core,
             **_tick_env, **_view_env), tick_ms=args.tick_ms)
         if not args.keep_teleports:
@@ -10567,6 +10580,7 @@ def main() -> None:
                 water_fail=1, yaw_adaptive=1 if args.yaw_adaptive else 0, yaw_blend=float(args.yaw_blend), side_hold_ticks=int(args.side_hold),
                 sv_maxvelocity=args.maxvel, sv_friction=float(args.sv_friction),
                 enable_bhop_cap=int(args.bhop_cap), enable_stamina=int(args.stamina),
+                sv_gravity=float(args.sv_gravity),
                 lidar_w=0, lidar_h=0,
                 pitch_rate_max_deg=pitch_rate_core, **_tick_env, **_view_env),
                 tick_ms=args.tick_ms)
@@ -12287,6 +12301,8 @@ def main() -> None:
                           if float(args.sv_friction) != 4.0 else {}),
                        # --bhop-cap / --stamina: written only when OFF (stock runs keep their dump)
                        **({"bhop_cap": 0} if not int(args.bhop_cap) else {}),
+                       **({"sv_gravity": float(args.sv_gravity)}
+                          if float(args.sv_gravity) != 800.0 else {}),
                        **({"stamina": 0} if not int(args.stamina) else {}),
                        "yaw_adaptive": args.yaw_adaptive,
                        "yaw_blend": args.yaw_blend,

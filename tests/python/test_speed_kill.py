@@ -108,3 +108,45 @@ def test_jump_penalties_physics():
         out[cap] = float(np.hypot(s.velocity[0], s.velocity[1]))
     assert abs(out[1] - 240.0) < 1.0, out
     assert out[0] > 1150.0, out
+
+
+@needs_run
+def test_sv_gravity_reaches_training_and_recording():
+    """--sv-gravity 0: the config carries it only when changed; record_ckpt rebuilds the core
+    with it (the recording's phys block states it)."""
+    from test_obs_potential import CANNONBALL, RECORD, _run
+    r = _train("cya_grav", ABS + ["--sv-gravity", "0"], steps="6144")
+    assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-3000:]
+    d = ROOT / "runs" / "cya_grav"
+    assert json.loads((d / "run.json").read_text(encoding="utf-8"))["config"]["sv_gravity"] == 0.0
+    rec = _run([sys.executable, "-u", str(RECORD), str(d / "ckpt_final.pt"), "--map",
+                str(CANNONBALL), "--episodes", "1", "--out", str(d / "rec.jsonl")])
+    assert rec.returncode == 0, rec.stdout[-3000:] + rec.stderr[-3000:]
+    hdr = json.loads((d / "rec.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    phys = hdr.get("phys") or {}
+    assert float(phys.get("sv_gravity", -1)) == 0.0, phys
+    shutil.rmtree(d, ignore_errors=True)
+
+
+def test_sv_gravity_zero_hovers():
+    """At sv_gravity 0 a player placed in the air stays there (the hover), and jump, which needs
+    the ground, does nothing; at 800 it falls."""
+    from surfgym import SurfCore, default_config
+    from surfgym.core import SurfState
+    from test_obs_potential import CANNONBALL
+    for grav, falls in ((0.0, False), (800.0, True)):
+        core = SurfCore(str(CANNONBALL), default_config(num_envs=1, lidar_w=0, lidar_h=0,
+                                                        sv_gravity=grav))
+        core.reset(0)
+        st = core.get_states()[0]
+        s = SurfState()
+        for k in range(3):
+            s.origin[k] = float(st["origin"][k])
+        s.origin[2] += 40.0
+        s.onground = -1
+        z0 = float(s.origin[2])
+        for _ in range(50):
+            core.pm_step_usercmd(s, 0.0, 0.0, 0.0, 0.0, 2, 10)       # IN_JUMP held
+        assert (float(s.origin[2]) < z0 - 1.0) == falls, (grav, z0, float(s.origin[2]))
+        if not falls:
+            assert abs(float(s.velocity[2])) < 1e-3 and s.onground == -1
