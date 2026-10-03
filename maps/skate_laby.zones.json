@@ -1,0 +1,55 @@
+{
+  "map": "skate_laby",
+  "source": "manual",
+  "bsp_sig": "6440410_1791041867801272900",
+  "start": {
+    "mins": [
+      -1120.0,
+      -3309.5,
+      -544.0
+    ],
+    "maxs": [
+      -992.0,
+      -3308.5,
+      -400.0
+    ]
+  },
+  "end": {
+    "mins": [
+      1969.0,
+      -560.0,
+      -384.0
+    ],
+    "maxs": [
+      2354.0,
+      -144.0,
+      32.0
+    ],
+    "true_aabb": {
+      "mins": [
+        2161.0,
+        -368.0,
+        -192.0
+      ],
+      "maxs": [
+        2162.0,
+        -336.0,
+        -160.0
+      ]
+    },
+    "from": "func_button",
+    "pad": 192.0,
+    "degenerate": false
+  },
+  "note": "2026-10-03: start/end as auto-detected; 'spawns' = the start teleport's destination (info_teleport_destination 'start', origin -1056 -1792 -216, feet on the floor: player origin z = -216 + 36), facing +y, inside the 1600 u/s start push - where the human timer starts (user: 'Timer starts on a strong push forward in the start'). The spawn room is disconnected from the course except through that teleport.",
+  "spawns": [
+    {
+      "origin": [
+        -1056.0,
+        -1792.0,
+        -180.0
+      ],
+      "yaw": 90.0
+    }
+  ]
+}

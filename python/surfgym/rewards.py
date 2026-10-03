@@ -2329,6 +2329,21 @@ def map_spawn_pool(core: SurfCore, yaw: np.ndarray | float | None = None
     from .core import SurfState  # noqa: F401  (STATE_DTYPE is module-level)
 
     spawns = list(core.spawns())
+    # A map's zones file may declare where the TIMED run starts - "spawns": [{"origin": [x, y, z],
+    # "yaw": deg}, ...] - for a map whose spawn room reaches the course only through its start
+    # teleport (skate_laby, 2026-10-03: the timer starts at the teleport destination, inside the
+    # start push; the room itself is disconnected from the course in the goal field). Declared
+    # spawns keep their declared yaw: the field's descent direction is undefined at a point the
+    # voxel graph cannot resolve (that map's 48 u push lane).
+    declared = None
+    try:
+        from .zones import load_zones
+        declared = (load_zones(core.bsp_path, create=False) or {}).get("spawns")
+    except Exception:                      # noqa: BLE001 - no zones file: the map's own spawns
+        declared = None
+    if declared:
+        spawns = [(tuple(float(v) for v in d["origin"]), float(d.get("yaw", 0.0)))
+                  for d in declared]
     if not spawns:
         raise RuntimeError("map_spawn_pool: map has no spawn points")
     # A spawn whose STANDING hull starts inside solid is dead on arrival: the core fails a
@@ -2363,7 +2378,7 @@ def map_spawn_pool(core: SurfCore, yaw: np.ndarray | float | None = None
         pool[i]["origin"] = origin
         pool[i]["yaw"] = syaw
         pool[i]["onground"] = -1
-    if yaw is not None:
+    if yaw is not None and not declared:
         pool["yaw"] = yaw
     return pool
 
