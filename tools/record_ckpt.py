@@ -80,6 +80,8 @@ class _RouteProbe:
 # a new flag nobody taught this file about, and we refuse to emit a
 # trajectory rather than emit a plausible wrong one.
 TRAIN_ONLY = frozenset({
+    # --speed-pot: a training reward term (potential-based speed shaping); a recording pays nothing
+    "speed_pot",
     # --min-speed-kill / --min-speed-grace: a TRAINING kill rule (force_fail below a speed
     # floor); evals and recordings never kill, exactly like the stall kill
     "min_speed_kill", "min_speed_grace", "min_speed_secs",

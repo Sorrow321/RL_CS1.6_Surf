@@ -1028,6 +1028,11 @@ class RaceReward:
         # here: racing collects the same income PLUS shaping, and circling
         # gets stall-killed in 15s
         self.speed_coef = 0.0
+        # --speed-pot (the user, 2026-10-04, skate_laby: "lost speed on turns"): potential-based
+        # speed shaping, Phi = speed_pot * |v_xy| / 1000, paid per call as the CHANGE of Phi.
+        # 0 = off (the block is skipped). Set by the trainer on training slots, like speed_coef.
+        self.speed_pot = 0.0
+        self._spd_prev = None
         # --surf-bonus / --dive-pen (round 40, pnSURF): "surfing = good,
         # diving = bad" as a dense per-tick term. Both are REWARD UNITS PER
         # SECOND on the flag; the trainer converts to per-tick. 0/0 is off
@@ -1207,6 +1212,7 @@ class RaceReward:
         # seconds conversion in this class takes.
         self._vz = v0[:, 2].astype(np.float64).copy()
         self._g_tick = float(core.config.phys.sv_gravity) * self.tick_ms * 1e-3
+        self._spd_prev = None        # --speed-pot re-anchors on the first call
         self._best = self._d.copy()
         if self.sr:
             if n % 2:
@@ -1535,6 +1541,17 @@ class RaceReward:
         s = np.hypot(v[:, 0], v[:, 1]).astype(np.float64)
         if self.speed_coef > 0.0:
             r += (self.speed_coef / 1000.0) * s.astype(np.float32)
+        if self.speed_pot > 0.0:
+            # --speed-pot: a u/s lost at a wall or in a bad turn is charged on the call it is lost,
+            # a u/s gained by strafing is paid when gained; the sum over an episode telescopes to
+            # speed_pot * (|v| at its end - |v| at its start) / 1000. Ended rows already hold the
+            # NEXT episode's spawn (the core autoresets in place): they pay 0 and re-anchor.
+            if self._spd_prev is None or self._spd_prev.shape != s.shape:
+                self._spd_prev = s.copy()
+            dv = s - self._spd_prev
+            dv[ended] = 0.0
+            r += ((self.speed_pot / 1000.0) * dv).astype(np.float32)
+            self._spd_prev = s.copy()
         if self.dip_speed_coef > 0.0 and self._rec is not None and self.arc is None:
             # `_rec` already holds this state's record (updated above), so
             # dc > _rec + margin is exactly "inside a dip"; ended rows are

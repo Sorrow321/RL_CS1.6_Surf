@@ -5607,6 +5607,13 @@ def main() -> None:
                     help="race: per-tick bonus speed_coef*h_speed/1000 — "
                          "tilts line choice toward carrying speed (0.005 => "
                          "0.01/tick at 2000 u/s, ~40%% of shaping income)")
+    ap.add_argument("--speed-pot", type=float, default=None,      # 0 = off
+                    help="race: potential-based speed shaping, Phi = K * |v_xy| / 1000, paid as "
+                         "its change every call - a u/s lost at a wall or in a bad turn is "
+                         "charged when it is lost, a u/s gained is paid when gained, and it "
+                         "telescopes, so it moves credit in time without changing which run is "
+                         "best (the user, 2026-10-04, skate_laby: 'lost speed on turns'). "
+                         "A checkpoint restores it. 0 = off")
     ap.add_argument("--surf-bonus", type=float, default=None,     # 0 = off
                     help="race (round 40, pnSURF): REWARD UNITS PER SECOND "
                          "paid while the player is riding a surfable face. "
@@ -6732,6 +6739,9 @@ def main() -> None:
         if args.fail_pen is None and ck_cfg.get("fail_pen") is not None:
             args.fail_pen = float(ck_cfg["fail_pen"])
             restored.append(f"fail_pen={args.fail_pen:g}")
+        if args.speed_pot is None and ck_cfg.get("speed_pot") is not None:
+            args.speed_pot = float(ck_cfg["speed_pot"])
+            restored.append(f"speed_pot={args.speed_pot:g}")
         if args.speed_coef is None and ck_cfg.get("speed_coef") is not None:
             args.speed_coef = float(ck_cfg["speed_coef"])
             restored.append(f"speed_coef={args.speed_coef:g}")
@@ -7930,6 +7940,8 @@ def main() -> None:
         args.fail_pen = 0.0
     if args.speed_coef is None:
         args.speed_coef = 0.0
+    if args.speed_pot is None:
+        args.speed_pot = 0.0
     if args.surf_bonus is None:
         args.surf_bonus = 0.0
     if args.dive_pen is None:
@@ -11579,6 +11591,9 @@ def main() -> None:
                 frontier_anchor_speed=(100.0 if args.respawn_frontier_anchor
                                        else 0.0))
             _s.reward_fn.speed_coef = SPEED_COEF_T
+            # --speed-pot: a potential in reward units per 1000 u/s - no tick scaling (a change of
+            # Phi is the same whatever the tick); training slots only, like speed_coef
+            _s.reward_fn.speed_pot = float(args.speed_pot)
             _s.reward_fn.surf_bonus = SURF_BONUS_T
             _s.reward_fn.dive_pen = DIVE_PEN_T
             _s.reward_fn.surf_hspd = float(args.surf_hspd)
@@ -12287,6 +12302,8 @@ def main() -> None:
                                         if args.reward == "race" else None),
                        "speed_coef": (args.speed_coef
                                       if args.reward == "race" else None),
+                       **({"speed_pot": float(args.speed_pot)}
+                          if args.reward == "race" and args.speed_pot else {}),
                        "surf_bonus": (args.surf_bonus
                                       if args.reward == "race" else None),
                        "dive_pen": (args.dive_pen
