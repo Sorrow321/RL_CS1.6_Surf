@@ -405,7 +405,8 @@ class MapFleet:
                 s.core.force_fail(sm)
         return n
 
-    def apply_speed_kills(self, min_speed: float, grace_ticks: int) -> int:
+    def apply_speed_kills(self, min_speed: float, grace_ticks: int, window_ticks: int = 0,
+                          step_ticks: int = 1) -> int:
         """--min-speed-kill (the user, 2026-10-03, skate_laby: "there is no death in this map, so
         you can kind of live forever ... kill the agent when ... the speed drops below some
         value"): every env past ``grace_ticks`` of its episode (the core re-zeroes the episode
@@ -413,10 +414,21 @@ class MapFleet:
         is failed through ``force_fail``, the stall kill's path. Training only, like the stall
         kill. Returns the number of envs killed."""
         n = 0
-        for s in self.slots:
+        if getattr(self, "_slow_ticks", None) is None:
+            self._slow_ticks = {}                   # slot index -> per-env ticks below the floor
+        for si, s in enumerate(self.slots):
             sv = s.core.states_view
             v = sv["velocity"]
             m = (sv["tick"] >= grace_ticks) & (np.hypot(v[:, 0], v[:, 1]) < min_speed)
+            if window_ticks > 0:
+                # --min-speed-secs: only a SUSTAINED stretch below the floor kills - the ticks
+                # spent below it since it was last above (counted per call, step_ticks each)
+                slow = self._slow_ticks.get(si)
+                if slow is None or slow.shape[0] != m.shape[0]:
+                    slow = self._slow_ticks[si] = np.zeros(m.shape[0], np.int64)
+                slow[:] = np.where(m, slow + int(step_ticks), 0)
+                m = slow >= window_ticks
+                slow[m] = 0
             if m.any():
                 n += int(m.sum())
                 s.core.force_fail(m.astype(np.uint8))

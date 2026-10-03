@@ -31,9 +31,17 @@ def test_the_speed_floor_kills_slow_episodes():
     lens = [float(r["rollout/ep_len_mean"] or 0) for r in rows]
     assert max(lens) > 0 and all(L < 130 for L in lens if L > 0)
     assert any(float(r["race/stall_frac"] or 0) > 0 for r in rows)
+    # --min-speed-secs: only a sustained second below the floor kills - episodes run ~1 s longer
+    win = _train("cya_msk_win", ABS + ["--min-speed-kill", "500", "--min-speed-grace", "1",
+                                       "--min-speed-secs", "1"], steps="24576")
+    assert win.returncode == 0, win.stdout[-3000:] + win.stderr[-3000:]
+    wrows = list(csv.DictReader(open(ROOT / "runs" / "cya_msk_win" / "progress.csv",
+                                     encoding="utf-8")))
+    wl = [float(r["rollout/ep_len_mean"] or 0) for r in wrows if float(r["rollout/ep_len_mean"] or 0)]
+    assert wl and min(wl) >= 190, wl
     off = _train("cya_msk_off", ABS, steps="24576")
     assert off.returncode == 0, off.stdout[-3000:] + off.stderr[-3000:]
     cfg0 = json.loads((ROOT / "runs" / "cya_msk_off" / "run.json").read_text(encoding="utf-8"))
     assert "min_speed_kill" not in cfg0["config"]
-    for n in ("cya_msk_on", "cya_msk_off"):
+    for n in ("cya_msk_on", "cya_msk_win", "cya_msk_off"):
         shutil.rmtree(ROOT / "runs" / n, ignore_errors=True)

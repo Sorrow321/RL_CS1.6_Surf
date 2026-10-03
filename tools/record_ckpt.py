@@ -82,7 +82,7 @@ class _RouteProbe:
 TRAIN_ONLY = frozenset({
     # --min-speed-kill / --min-speed-grace: a TRAINING kill rule (force_fail below a speed
     # floor); evals and recordings never kill, exactly like the stall kill
-    "min_speed_kill", "min_speed_grace",
+    "min_speed_kill", "min_speed_grace", "min_speed_secs",
     # --spawn-states: a share of the TRAINING spawn pool drawn from a file of own states; a
     # recording spawns at the map start like the trainer's eval
     "spawn_states", "spawn_states_frac",
