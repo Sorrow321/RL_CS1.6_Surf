@@ -33315,3 +33315,14 @@ Per the caveat, the win rate with a 2 s margin may be harvest. The from-start ev
 * The speed floor's grace and window are re-derived from `core.tick_ms` at every iteration, so they follow too.
 * **Episode cap:** 23,478 ticks, i.e. 180 s at the end of the ramp (234.8 s at its start).
 * Record gate passed.
+
+## 2026-10-03 23:22 (machine clock) - skate_laby: at the WR player's 131 fps the best finish drops 97.66 -> 89.35 s (+14.45 s on the WR)
+
+skLABY12, 40-minute check-in.
+
+* The tick ramp completed at 4,472M: [8,8,7] ms = 7.6667 ms = 130.4 Hz. The eval headers carry `tick_ms 7.666667` + the pattern, so the times are real seconds.
+* All 9 runs finish at every eval.
+* **Best trainer finish per eval:** 101.86 (4,128M), 113.16, 96.91, 96.17, 94.20 (4,430M), **89.35 (4,506M)**, 92.81, 89.91 (4,657M), 96.84 (4,732M).
+* Peak speed rises from ~2,200 to 2,407-2,500 u/s.
+* **Rank:** on the user's leaderboard points (rank 4 = 1:21, rank 12 = 1:30, rank 40 = 1:40), 89.35 s is around rank 12.
+* Training: 95% of episodes finish; stall kills 5%.
