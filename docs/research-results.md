@@ -33158,3 +33158,44 @@ Training episodes and the trainer's evals run to the 120 s cap.
 
 * This is round 18's documented fix for a pool that cannot reach the hard part (cannonball's wall bin went from 0 to ~20% of the reservoir).
 * Watch for the CLAUDE.md caveat: once finishes start, a 2 s margin harvests states 2 s from the goal. Read the win rate together with the pool's minimum depth, and the eval FROM THE START is the verdict.
+
+## 2026-10-03 20:49 (machine clock) - skate_laby: the STALL RULE killed every healthy training episode at 15 s (it is checked per TICK). --stall-eps 5; skLABY10
+
+**skLABY9** (`--respawn-margin 2`), stopped at ~1.38B.
+
+* One honest finish at 1,309M: 116.48 s.
+* The respawn pool barely moved: deepest state 59% -> 63% of the route. Training win rate 0%.
+* The pool saved in the checkpoint (20,000 states): 64% at 20-30% of the route, a gap at 10-20%, max 56.8%.
+
+**The search:**
+
+* Random-action recordings from pool starts (6 x 30 s) flew healthily (53-57% reached), and neither kill rule fired when replayed PER DECISION. Yet training episodes lasted 15.5-16.5 s with 100% "stall" ends.
+* **Cause:** without `--reward-per-decision` the race reward, and with it the stall detector, is called EVERY TICK (`every=1`). The detector re-arms only when ONE call improves the best by > `--stall-eps` (32 u). Per tick that is > 3,200 u/s of progress along the field. A skate flight is ~1,300 u/s, ~13 u per tick.
+* Replayed per tick, the rule kills every healthy episode at exactly 15.0 s (0 re-arms; hurdle steps give the rare one):
+  * from the start: dead at 15-16% of the route;
+  * from the pool: dead at 37-45%.
+* This is the training ep_len, the pool's pile-up and the 0% win rate.
+* CLAUDE.md's own note ("the stall threshold is PER-CALL and scales with --act-every", 13.7% of calls clearing at K=3) assumed per-decision calls. The default since is per tick.
+
+**Scope:** on cannonball the rule rarely fires (late stall_frac 0.01-0.06 in the arch/ln batches): fast surf clears 32 u per tick often enough. Slow or flat maps (skate, mazes) are where it bites. Any slow-map run without `--reward-per-decision` has had every training episode cut at 15 s after its last >32 u tick.
+
+**Fix:** `--stall-eps 5`, i.e. 500 u/s of field progress per tick, the speed floor's rate. Replayed on recordings:
+
+| episodes | killed |
+|---|---|
+| healthy stochastic flight | 0 of 6 |
+| skLABY4's circling greedy episodes | 9 of 9 (25-33 s) |
+| greedy evals stuck at the last windows | 8 of 9 (77-114 s) |
+
+**skLABY10** = resume of skLABY9 + `--stall-eps 5` (verified in run.json; margin 2, gravity 0, ground field, speed floor 500 over 1 s, 1024 envs).
+
+Within 18M steps:
+
+| | before | after |
+|---|---|---|
+| training ep_len | 1,580 ticks | 4,700-7,300 ticks (47-73 s) |
+| reward per episode | 12 | 39-46 |
+| pool's deepest state | 63% of the route | 98.5% |
+| training win rate | 0% | 1.92% (@ 66.8 s) |
+
+Per the caveat, the win rate with a 2 s margin may be harvest. The from-start eval is the verdict.
