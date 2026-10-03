@@ -33372,3 +33372,29 @@ skLABY12, 40-minute check-in.
 * Everything else is restored: hover, finish_k 1, a 180 s cap, 131 Hz, stall_eps 5, margin 2, the 500 u/s floor.
 * The log confirms "optimizer lr: 0.0003 -> 0.0001". Record gate passed.
 * The user's prior: unsure an LR cut helps.
+
+## 2026-10-04 01:28 (machine clock) - skate_laby: lr 1e-4 works - best 89.35 -> 82.29 s (+7.39 s on the WR) in ~45 min (skLABY13)
+
+**skLABY13** (resume of ckpt_4977065984.pt at lr 1e-4; nothing else changed):
+
+| | value |
+|---|---|
+| `--save-best` saves | 89.03 s (5,053M), 84.70 s (5,204M), **82.29 s (5,431M)** -> ckpt_best.pt |
+| evals since 5,431M (best per eval) | 82.29, 84.64, 82.71, 83.23 s, all finishing |
+
+| training log | before (lr 3e-4) | at 5.66B (lr 1e-4) |
+|---|---|---|
+| reward | 143-150 | 167.7 |
+| yaw sigma | 0.126-0.130 | **0.067** |
+| approx_kl | 0.04 | 0.023 |
+| training win rate | 87-98% | 100% (@ 33.0 s) |
+| stall kills | 5-7% | 0% |
+
+* **Rank:** on the user's points (rank 4 = 1:21), 82.29 s is around rank 5.
+* **Reading:** at 3e-4 the policy was drifting around the solved skill. The LR cut lets it settle (the noise halved) and tighten the line.
+
+**The user, next:** "reward is basically stationary ... maybe our reward is not that sensitive to the timer ... a proxy metric, for example ... lost speed on turns".
+
+* **Time sensitivity:** a second saved is worth ~+1.5 (finish_k 1/s + time_pen 0.5/s), on top of ~150 of time-independent reward (progress 100 + finish 50). A 7 s gain is ~+10 (6%), so the curve LOOKS flat while the time moves.
+* **Proposed term:** potential-based speed shaping, Phi = K * |v_xy| / 1000. Every u/s lost (a wall hit, a bad turn) is charged on the tick it happens; every u/s gained is paid when gained. It telescopes, so it does not change which run is optimal, only makes the credit immediate.
+* Not yet launched: the LR change is still improving and one change at a time keeps the attribution.
