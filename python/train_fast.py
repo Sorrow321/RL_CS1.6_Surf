@@ -320,6 +320,90 @@ def _resnet_trunk(in_ch: int, emb: int) -> nn.Sequential:
     )
 
 
+# --- --trunk plainres / softmoe (the user, 2026-10-03: "add some residual connections or scale
+# some parts ... mixture of experts") - both keep the plain trunk's three stride-2 convs, its
+# 4x8 grid and its `emb` output contract, at a cost the trainer can afford (the --trunk resnet
+# above keeps a full-resolution 32-channel stem and measured 9-10x slower end to end) ---------
+class _ResBlk(nn.Module):
+    """--trunk plainres: an IMPALA-style pre-activation residual block at a fixed width and
+    resolution, no norm: x + conv(relu(conv(relu(x)))). Policy.__init__ ZERO-initialises the
+    second conv after the generic init, so a fresh plainres trunk computes exactly the plain
+    stack's function and the residual paths have to earn their place."""
+
+    def __init__(self, c: int):
+        super().__init__()
+        self.c1 = nn.Conv2d(c, c, 3, padding=1)
+        self.c2 = nn.Conv2d(c, c, 3, padding=1)
+
+    def forward(self, x):
+        return x + self.c2(F.relu(self.c1(F.relu(x))))
+
+
+def _plainres_trunk(in_ch: int, emb: int, m: int = 1) -> nn.Sequential:
+    """the plain stack with a residual block after each stride-2 conv (32x16, 16x8 and 4x8 at
+    the 64x32 image): 6 more 3x3 convs at the downsampled resolutions"""
+    return nn.Sequential(
+        nn.Conv2d(in_ch, 16 * m, 5, stride=2, padding=2), _ResBlk(16 * m), nn.ReLU(),
+        nn.Conv2d(16 * m, 32 * m, 3, stride=2, padding=1), _ResBlk(32 * m), nn.ReLU(),
+        nn.Conv2d(32 * m, 64 * m, 3, stride=2, padding=1), _ResBlk(64 * m), nn.ReLU(),
+        nn.AdaptiveAvgPool2d((4, 8)), nn.Flatten(),
+        nn.Linear(64 * m * 4 * 8, emb), nn.ReLU(),
+    )
+
+
+class _SoftMoE(nn.Module):
+    """--trunk softmoe: a SOFT mixture of experts (Puigcerver et al. 2023) as the trunk's
+    embedding layer, placed the way Obando-Ceron et al. (ICML 2024, "Mixtures of Experts Unlock
+    Parameter Scaling for Deep RL") placed it - the penultimate layer, the conv output's 4x8
+    positions as 32 tokens of C channels ("PerConv" tokens).
+
+    E experts x S slots. Each slot takes a softmax-over-TOKENS mix of the tokens (dispatch),
+    each expert is an MLP C -> hidden -> d on its own S slots, and each token takes a
+    softmax-over-SLOTS mix of the slot outputs (combine); the 32 output tokens of d = emb / 32
+    are flattened to `emb`. Every op is a dense, static-shape matmul / einsum (CUDA-graph
+    capturable, no routing). With E 8, S 4, hidden 512 at C 64: 0.33M parameters and ~1.4M
+    multiply-adds per sample, against the plain trunk's 2048 -> 512 Linear (1.05M / 1.05M)."""
+
+    def __init__(self, c: int, n_tok: int, emb: int, experts: int = 8, slots: int = 4,
+                 hidden: int = 512):
+        super().__init__()
+        if emb % n_tok:
+            raise SystemExit(f"--trunk softmoe: --emb {emb} must be a multiple of the "
+                             f"{n_tok} tokens")
+        self.E, self.S, self.d = int(experts), int(slots), emb // n_tok
+        self.phi = nn.Parameter(torch.randn(c, self.E * self.S) / np.sqrt(c))
+        self.w1 = nn.Parameter(torch.empty(self.E, c, hidden))
+        self.b1 = nn.Parameter(torch.zeros(self.E, 1, hidden))
+        self.w2 = nn.Parameter(torch.empty(self.E, hidden, self.d))
+        self.b2 = nn.Parameter(torch.zeros(self.E, 1, self.d))
+        for e in range(self.E):
+            nn.init.orthogonal_(self.w1.data[e], np.sqrt(2))
+            nn.init.orthogonal_(self.w2.data[e], np.sqrt(2))
+
+    def forward(self, x):
+        B, C = x.shape[0], x.shape[1]
+        tok = x.flatten(2).transpose(1, 2)                         # (B, n, C)
+        logits = tok @ self.phi.to(tok.dtype)                      # (B, n, E S)
+        disp = logits.float().softmax(dim=1).to(tok.dtype)         # each slot: over tokens
+        comb = logits.float().softmax(dim=2).to(tok.dtype)         # each token: over slots
+        slot = (disp.transpose(1, 2) @ tok).view(B, self.E, self.S, C)
+        h = F.relu(torch.einsum("besc,ech->besh", slot, self.w1.to(tok.dtype))
+                   + self.b1.to(tok.dtype))
+        y = (torch.einsum("besh,ehd->besd", h, self.w2.to(tok.dtype))
+             + self.b2.to(tok.dtype)).reshape(B, self.E * self.S, self.d)
+        return (comb @ y).flatten(1)                               # (B, n d) = emb
+
+
+def _softmoe_trunk(in_ch: int, emb: int, m: int = 1) -> nn.Sequential:
+    """the plain stack's three convs, then the soft MoE in place of the 2048 -> emb Linear"""
+    return nn.Sequential(
+        nn.Conv2d(in_ch, 16 * m, 5, stride=2, padding=2), nn.ReLU(),
+        nn.Conv2d(16 * m, 32 * m, 3, stride=2, padding=1), nn.ReLU(),
+        nn.Conv2d(32 * m, 64 * m, 3, stride=2, padding=1), nn.ReLU(),
+        nn.AdaptiveAvgPool2d((4, 8)), _SoftMoE(64 * m, 32, emb), nn.ReLU(),
+    )
+
+
 class _TanhDrop(nn.Module):
     """tanh followed by CONSISTENT dropout (Hausknecht & Wagener 2022): the
     mask is a NON-PERSISTENT buffer drawn once per rollout by
@@ -525,6 +609,13 @@ class Policy(nn.Module):
                 nn.AdaptiveAvgPool2d((4, 8)), nn.Flatten(),
                 nn.Linear(64 * _m * 4 * 8, emb), nn.ReLU(),
             )
+        elif self.trunk == "plainres":
+            # --trunk plainres: the plain stack + a residual block after each stride-2 conv
+            self.conv = _plainres_trunk(conv_ch, emb, self.conv_mult)
+        elif self.trunk == "softmoe":
+            # --trunk softmoe: the plain stack's convs + a soft mixture of experts as the
+            # embedding layer (Obando-Ceron et al. 2024)
+            self.conv = _softmoe_trunk(conv_ch, emb, self.conv_mult)
         else:
             raise SystemExit(f"unknown --trunk {self.trunk!r}")
         # The route block is concatenated LAST, after the conv embedding, so
@@ -568,6 +659,13 @@ class Policy(nn.Module):
                 nn.init.orthogonal_(m.weight, np.sqrt(2))
                 if m.bias is not None:     # resnet convs are bias-free: the
                     nn.init.zeros_(m.bias)  # norm after them carries the shift
+        if self.trunk == "plainres":
+            # each residual block starts as the identity: a fresh plainres trunk IS the plain
+            # stack's function (tests/python/test_trunk_variants.py)
+            for m in self.conv.modules():
+                if isinstance(m, _ResBlk):
+                    nn.init.zeros_(m.c2.weight)
+                    nn.init.zeros_(m.c2.bias)
         nn.init.orthogonal_(self.action_head.weight, 0.01)
         nn.init.zeros_(self.action_head.bias)
         nn.init.orthogonal_(self.value_head.weight, 1.0)
@@ -4360,10 +4458,14 @@ def main() -> None:
                     help="--codebook: logit added to each fitted action index "
                          "(3.0 => ~20x the odds of its head's other bins; the "
                          "decoder can still move off it in one update)")
-    ap.add_argument("--trunk", choices=("plain", "resnet"), default=None,
+    ap.add_argument("--trunk", choices=("plain", "resnet", "plainres", "softmoe"),
+                    default=None,
                     help="image encoder: plain (the historical 3-conv "
-                         "stack, default) or resnet (residual, 2.79M "
-                         "params). ckpt overrides")
+                         "stack, default), resnet (residual, 2.79M "
+                         "params, full-resolution stem: 9-10x slower), plainres (the "
+                         "plain stack + a zero-initialised residual block after each "
+                         "stride-2 conv) or softmoe (the plain convs + a soft mixture "
+                         "of 8 experts as the embedding layer). ckpt overrides")
     ap.add_argument("--rnn", choices=("none", "gru"), default=None,
                     help="recurrent policy: one GRU layer between the fused "
                          "trunk output and the pi/vf towers, its state "
