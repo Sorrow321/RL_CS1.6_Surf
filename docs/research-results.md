@@ -32722,3 +32722,102 @@ Route max (eval_honesty --order-only 16) at matched evals, local 5090, seed 0. B
   * the user's game sharing the GPU during the run: 6.8 GB in use at launch.
   A fused kernel would remove the first.
 * **Verdict: null at this resolution.** The physics channel does not hurt and may help early. It does not move the wall, and nothing observational has: the 205k wall is the exploration / credit gate CLAUDE.md documents, and no unstuck mechanism runs in these arms.
+
+## 2026-10-03 15:21 (machine clock) - ARCHITECTURE BATCH launched on rented RTX 3090s (arCTL / arDEEP / arRES / arMOE)
+
+**The user (2026-10-03):**
+
+* "optimize ... our model architecture. Maybe we could add some residual connections or scale ... some parts ... we can slightly increase the model size and the training will go faster";
+* "balance the model size and the FPS";
+* "launch on vast boxes ... many runs in parallel ... 1 billion ... maybe 600 million";
+* "mixture of experts ... try it as well".
+
+**Prior evidence (all on older recipes).**
+
+* Round 30 wave 1, goal lineage: `--tower-depth 4 --conv-mult 2` (DEEP) was far outside the noise.
+* Wave 3, plain geodesic reward: DEEP did NOT reproduce. It reached 114k at 1.0B, then fell to a 58k plateau.
+* Wider MLP towers were null.
+* `--trunk resnet` (full-resolution stem) was 9-10x slower and never trained.
+* Nothing has been run on today's recipe: continuous absolute view, held keys, potential + normal channels, 1,024 envs.
+
+**Cost, measured eager on the local 5090.** Network time per 1,024-env PPO iteration relative to the baseline (eager overstates absolute ms; the ratios are the point):
+
+| variant | parameters | network time |
+|---|---|---|
+| baseline | 1.96M | 1.0x |
+| conv-mult 2 | 3.08M | 1.6x |
+| tower-depth 4 | 2.77M | 1.6x |
+| DEEP | 3.89M | 2.0x |
+| plainres (new) | 2.06M | 3.1x |
+| conv-mult 3 | 4.25M | 2.9x |
+
+**New trunks** (d40dbbc):
+
+* `--trunk plainres`: the plain convs plus a zero-initialised IMPALA-style residual block after each stride-2 conv. A fresh trunk equals the plain stack.
+* `--trunk softmoe`: the plain convs plus a soft mixture of 8 experts as the embedding layer (Obando-Ceron et al., ICML 2024). It has 0.33M parameters against the dense layer's 1.05M.
+
+**The batch.** Every arm is `SCRATCH=1 BUDGET=0.76e9 bash tools/run_arm.sh <run> --obs-normal 1 --envs 1024 <arm>`, which is the local scratch_ablate recipe + normals at 1,024 envs. One single RTX 3090 per arm, seed 0.
+
+| arm | flags |
+|---|---|
+| arCTL | none (the control) |
+| arDEEP | `--conv-mult 2 --tower-depth 4` |
+| arRES | `--trunk plainres` |
+| arMOE | `--trunk softmoe` |
+
+* **Market.** Only one 3090 was under the $0.22 cap. **The user approved single 3090s above it** (offers up to $0.34/h). arCTL and arMOE landed on the same Quebec host (76.65.180.31).
+* **Deferred.** `--conv-mult 2` alone and `--tower-depth 4` alone follow if DEEP moves.
+* **Scoring.** eval_honesty --order-only 16 per eval, pulled home every 5 min by a local monitor. Judged against arCTL per step and on wall clock.
+* **Infrastructure.** Commit d40dbbc pushed to origin/petrusnight. Each box is registered with the fleet watchdog (harvest spec, pid file); a local monitor releases each box when its trainer ends. Dashboards tunnel to local ports 8611-8614.
+
+## 2026-10-03 17:04 (machine clock) - ARCHITECTURE BATCH result (arCTL / arDEEP / arRES / arMOE, single RTX 3090s): no variant clearly beats the plain network; residual is worse, MoE level-to-slightly-ahead
+
+Route max (eval_honesty --order-only 16) at matched evals, seed 0. Every arm is `SCRATCH=1 run_arm.sh` + `--obs-normal 1 --envs 1024`, 0.76e9 steps, one RTX 3090 each (different hosts). Ratios are to the control.
+
+| step | control | DEEP (`--conv-mult 2 --tower-depth 4`) | residual (`--trunk plainres`) | MoE (`--trunk softmoe`) |
+|---|---|---|---|---|
+| 76M | 17,433 | 19,832 (1.14x) | 17,024 (0.98x) | 18,668 (1.07x) |
+| 152M | 30,558 | 50,106 (1.64x) | 27,095 (0.89x) | 50,122 (1.64x) |
+| 227M | 53,994 | 59,753 (1.11x) | 50,110 (0.93x) | 58,094 (1.08x) |
+| 303M | 92,569 | 100,497 (1.09x) | 58,240 (0.63x) | 105,249 (1.14x) |
+| 378M | 100,944 | 114,015 (1.13x) | 104,530 (1.04x) | 99,365 (0.98x) |
+| 454M | 149,130 | 126,024 (0.85x) | 104,582 (0.70x) | 161,235 (1.08x) |
+| 529M | 194,336 | 167,321 (0.86x) | 102,079 (0.53x) | 197,208 (1.01x) |
+| 605M | 205,696 (1/9 past) | 195,200 (0.95x) | 114,228 (0.56x) | 206,132 (7/9 past) |
+| 680M | 205,352 | 205,503 (1/9 past) | 149,092 (0.73x) | 205,568 (5/9 past) |
+| 755M | 205,613 (5/8 past) | 197,621 | 167,242 | 205,422 |
+
+**Gates, wall clock and throughput.** Throughput differs by HOST (different CPUs), not by architecture: the residual arm was the FASTEST box. So the minutes are not a model-cost comparison.
+
+| arm | 97k gate | wall | throughput |
+|---|---|---|---|
+| control | 378M / 36 min | 605M / 57 min | 172,954 steps/s |
+| DEEP | 302M / 32 min | 680M / 73 min | 154,187 steps/s |
+| residual | 378M / 35 min | never (best 167,242) | 178,253 steps/s |
+| MoE | 302M / 30 min | 605M / 61 min | 161,282 steps/s |
+
+0 finishes anywhere.
+
+**Reading** (one seed per arm; the 27% floor applies).
+
+* **MoE (soft mixture of experts as the embedding layer):**
+  * the only non-negative variant;
+  * ahead or level at every eval except 378M (0.98x);
+  * 97k one eval earlier;
+  * the same wall step, with 7/9 past at 605M against the control's 1/9;
+  * 1.64x at 152M, 1.00-1.14x elsewhere, so the effect is inside the noise. It has 0.33M parameters in place of the dense 1.05M.
+* **DEEP (wider convs + deeper towers):** ahead early (1.09-1.64x to 378M), behind mid-run (0.85-0.86x at 454-529M), and at the wall one eval LATER. Mixed, i.e. null. This matches its wave-3 non-reproduction on the geodesic reward.
+* **Residual (`plainres`):**
+  * level to 227M;
+  * then stuck at the ~100-105k gate from 303M to 529M (0.53-0.70x);
+  * never reached the wall.
+  The blocks are zero-initialised, so it starts AS the plain network. Its divergence is learned, and here it learned slower. Negative at this seed.
+* **The batch's answer to "is there a capacity bottleneck":** not on this recipe. Every non-broken arm reaches the same 205k wall at 600-680M; model size does not move the wall.
+
+**Cost and housekeeping.**
+
+* About $2.06 of vast credit (22.02 -> 19.96), including the first control box: its deploy failed on a transient git clone error ('fetch-pack: invalid index-pack output'), so it was released. The clone in deploy_box.sh is now retried 3x over HTTP/1.1.
+* Every box was harvested (all eval recordings + progress.csv + run.json in runs/research/arch/<arm>/; the watchdog's standard set in runs/research/<arm>/) and released. vast shows 0 instances and the registry is empty.
+* **Ops lessons.**
+  * Background processes started with DETACHED_PROCESS opened a console window for every ssh / vastai call (the user: "STOP OPENING CMDS"). Now CREATE_NO_WINDOW or Start-Process -WindowStyle Hidden.
+  * I misjudged elapsed time and destroyed two boxes after ~3.5 min of image loading (inside the 5-min window), blocklisting their hosts. The two entries were removed again; one of those hosts then served arDEEP.

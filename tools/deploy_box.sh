@@ -81,7 +81,7 @@ fi
 echo "== 2/5 torch (backgrounded; it is the long pole) + clone + build"
 $SSH -p "$PORT" "root@$HOST" "(setsid nohup $PIPCMD \
     > /root/pip.log 2>&1 < /dev/null &); sleep 2; \
-  (command -v git >/dev/null && command -v gcc >/dev/null) ||     (for _i in \$(seq 1 60); do DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=600 update -qq >/dev/null 2>&1 && DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=600 install -y -qq git build-essential >/dev/null 2>&1 && break; command -v git >/dev/null && command -v gcc >/dev/null && break; sleep 10; done; command -v gcc || echo '!! gcc still missing after 10 min');   git clone --depth 1 $REPO /root/RL_Surf 2>&1 | tail -1; \
+  (command -v git >/dev/null && command -v gcc >/dev/null) ||     (for _i in \$(seq 1 60); do DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=600 update -qq >/dev/null 2>&1 && DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=600 install -y -qq git build-essential >/dev/null 2>&1 && break; command -v git >/dev/null && command -v gcc >/dev/null && break; sleep 10; done; command -v gcc || echo '!! gcc still missing after 10 min');   for _c in 1 2 3; do test -d /root/RL_Surf/.git && break; rm -rf /root/RL_Surf; git -c http.version=HTTP/1.1 clone --depth 1 $REPO /root/RL_Surf 2>&1 | tail -1; done; \
   cd /root/RL_Surf && git config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*' \
     && git fetch origin --quiet && git checkout -q -B $BRANCH origin/$BRANCH && git log --oneline -1 \
     && mkdir -p runs && bash build.sh 2>&1 | tail -1"
