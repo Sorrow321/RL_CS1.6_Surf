@@ -33552,3 +33552,18 @@ The human ALSO bumps (~610 u/s, immediately). The agent carries the boost longer
 * **Best greedy policy run so far: 74.13 s.** That is 0.75 s under the WR on the core's finish rule, and the second sub-WR run of this checkpoint (74.23 in its round-1 eval).
 * Finer decisions at INFERENCE make it far more consistent (the mean is 1.4 s better; the 83.58 outlier is gone).
 * Published as runs/skWR_search/traj_0000000011 (K=4) and traj_0000000012 (K=2).
+
+## 2026-10-04 06:00 (machine clock) - skate_laby expert loop round 3: the policy **73.36 s** (1.52 s under the WR), mean 74.68 s under the WR; planner 71.56 s
+
+| round | planner best | policy best | policy mean (5 runs) |
+|---|---|---|---|
+| 0 | 73.25 | 75.93 | 76.83 |
+| 1 | 73.26 | 74.23 | 75.37 |
+| 2 | 72.18 | 74.69 | 74.94 (4/5 finished) |
+| **3** | **71.56** | **73.36** | **74.68** |
+
+* **Round 3 eval:** 73.84, 75.81, 75.02, **73.36**, 75.39 s, 5/5 finished; the round-2 crash did not recur.
+* **Against the WR** (74.88 s on the same finish rule): the best run is 1.52 s under, and the 5-run MEAN is under too.
+* Weights: runs/skEXIT/best_round3_73.36s.pt.
+* Published: runs/skWR_search/traj_0000000030 (the 5 runs) and traj_0000000031 (the 71.56 s planner line).
+* Round 4 is planning at 71.78-71.83 s.
