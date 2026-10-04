@@ -125,6 +125,14 @@ def main() -> int:
                          "time. 0: gate against the incumbent's own earlier mean, which after a "
                          "selection is optimistically biased (skate_laby rounds 15-16: 73.77 and "
                          "73.88 s rejected against round 14's 73.71)")
+    ap.add_argument("--target-mean", type=float, default=None,
+                    help="stop once a round is ACCEPTED with an eval mean at or below this (s); "
+                         "skate_laby 2026-10-04: the user's goal 'a 1 s margin on the WR' = 73.88")
+    ap.add_argument("--lr-halve-after", type=int, default=0,
+                    help="after this many gate rejections IN A ROW, halve the training lr (down to "
+                         "--lr-min) and count again; 0 = off. The manual rule of skate_laby rounds "
+                         "19-24: lr 5e-5 kept breaking a polished incumbent, 2.5e-5 did not")
+    ap.add_argument("--lr-min", type=float, default=1.25e-5)
     ap.add_argument("--bc-history", type=int, default=0,
                     help="dataset aggregation (DAgger's D <- D u D_i; AlphaZero's replay window): "
                          "train each round on its own planner lines PLUS those of the previous N "
@@ -144,6 +152,7 @@ def main() -> int:
     cur = Path(args.ckpt).resolve()
     best_s, best_ck = float("inf"), None
     best_mean, best_mean_ck = float(args.seed_mean), cur
+    lr_now, rejects_in_row, target_hit = float(args.lr), 0, False
     log(fh, f"seed {cur} (step {ckpt_step(cur):,}); deadline in {args.deadline_h:g} h")
     for r in range(args.start_round, args.start_round + args.rounds):
         if time.time() + args.round_h * 3600.0 > deadline:
@@ -242,7 +251,7 @@ def main() -> int:
         rc = run([PY, "-u", ROOT / "python" / "train_fast.py", "--map", args.map,
                   "--ckpt", cur, "--run", run_name, "--steps", steps, "--envs", args.envs,
                   "--no-eval-at-start", "--record-every", "1e12", "--ckpt-every", "1e12",
-                  "--lr", args.lr,
+                  "--lr", lr_now,
                   "--bc-file", bc_train, "--bc-coef", args.bc_coef, "--bc-coef-final", 0,
                   "--bc-steps", args.train_steps, "--bc-target", args.bc_target,
                   "--bc-value-coef", args.bc_value_coef,
@@ -301,16 +310,31 @@ def main() -> int:
                 best_mean, best_mean_ck = mean, out / "best_mean.pt"
                 shutil.copyfile(final, best_mean_ck)
                 row["gate"] = "accepted"
+                rejects_in_row = 0
                 log(fh, f"round {r}: gate ACCEPTED (mean {mean:.2f} s vs {bar:.2f} s, all {n} "
                         f"finished) -> {best_mean_ck}")
+                if args.target_mean is not None and mean <= args.target_mean:
+                    target_hit = True
+                    row["target_reached"] = True
+                    log(fh, f"round {r}: TARGET REACHED (mean {mean:.2f} s <= "
+                            f"{args.target_mean:g} s) - stopping")
             else:
                 nxt = best_mean_ck
                 row["gate"] = "rejected"
+                rejects_in_row += 1
                 log(fh, f"round {r}: gate rejected (mean {mean:.2f} s vs {bar:.2f} s)"
                         f" - the next round plans from {best_mean_ck}")
+                if (args.lr_halve_after and rejects_in_row >= args.lr_halve_after
+                        and lr_now > args.lr_min):
+                    lr_now, rejects_in_row = max(args.lr_min, lr_now / 2.0), 0
+                    log(fh, f"round {r}: {args.lr_halve_after} rejections in a row - lr -> "
+                            f"{lr_now:g}")
+        row["lr"] = lr_now
         with open(out / "summary.jsonl", "a", encoding="utf-8") as f:
             f.write(json.dumps(row) + "\n")
         cur = nxt
+        if target_hit:
+            break
     log(fh, f"done: best policy run {best_s if best_ck else None} s ({best_ck}); best mean "
             f"{best_mean:.2f} s ({best_mean_ck})")
     return 0
