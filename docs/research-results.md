@@ -33620,3 +33620,12 @@ The human ALSO bumps (~610 u/s, immediately). The agent carries the boost longer
 * **exit_local.py --gate 1** (the commit above): a round's policy becomes the planning base only if all eval episodes finish and their mean beats the best mean so far; otherwise the next round restarts from the best. Evals are now 9 episodes.
 * **skEXIT2:** relaunched 07:09 (hidden, pid 32580) from runs/skEXIT/round7_mean73.71s.pt, gate bar 73.71 s, rounds 9-24, deadline 5 h.
 * **Kept:** best single run runs/skEXIT/best_round5_72.71s.pt; best 5-run mean runs/skEXIT/round7_mean73.71s.pt.
+
+## 2026-10-04 07:26 (machine clock) - skate_laby gated round 9 rejected; the gate's bar corrected to the 9-episode protocol (74.10 s)
+
+* **Gated round 9** (from round 7): planner 71.44 / 71.55 / 71.53 s.
+  * The policy: 74.23, 73.64, 73.91, 75.79, 76.59, 74.20, 74.11, 75.61, 74.15 s (9/9 finished, mean 74.69, best 73.64).
+  * **Rejected** against the bar 73.71.
+* **The bar was the seed's 5-episode mean.** On the driver's own 9-episode protocol the round-7 checkpoint scores 73.71, 73.88, 73.72, 73.88, 73.39 (the 5-episode eval reproduced exactly), then 75.91, 73.70, 73.58, 75.12: **mean 74.10**, best 73.39.
+* The rejection stands either way, but a bar 0.39 s too strict would also have refused rounds in [73.71, 74.10).
+* **Relaunched** from round 10 with `--seed-mean 74.10` (pid 44016, deadline 4.6 h). The partial round 10 (planner 71.45-71.64 s) was discarded.
