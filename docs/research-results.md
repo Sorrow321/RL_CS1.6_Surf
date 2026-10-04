@@ -33420,3 +33420,27 @@ skLABY12, 40-minute check-in.
 * **The single change against skLABY13's plateau:** the speed potential, 10 reward units per 1000 u/s.
 * **For scale:** a 300 u/s wall loss now costs 3.0 at once, against the time penalty's 0.5/s. The start push (0 -> 1,600) pays +16 once per start episode, a per-spawn constant the critic absorbs.
 * **Verdict:** the from-start eval's best per eval against skLABY13's ~80-81 s band.
+
+## 2026-10-04 03:53 (machine clock) - skate_laby: --speed-pot 10 takes the best from 79.70 to 75.96 s (+1.06 s on the WR); finer decisions are worth ~1.4 s; skLABY15 at act_every 2
+
+**skLABY14** (resume of the 79.70 s weights + `--speed-pot 10`, lr 1e-4), stopped at ~7.55B.
+
+* **--save-best chain:** 79.40, 79.16, 79.01, 78.68, 78.65, 78.41, 78.21, 77.59, 76.98, 76.65, 76.24, 76.07 -> **75.96 s (7,318.5M; that eval's 9 runs averaged 76.33 s)**.
+* Every eval beat skLABY13's 80-83 s plateau band. The last evals: 75.97, 77.09, 77.51 s best.
+* **Reading:** the potential-based speed term (the user's "lost speed on turns" proxy) is a clear positive on top of the LR cut.
+* The weights are kept as runs/skLABY14/ckpt_best_75.96s.pt (md5 72d86cff4a40...).
+
+**The user:** "Are we training at act-every=4?" Yes: at 130.4 Hz that is a decision every 30.7 ms, against the WR player's 131 input frames/s. The 79.70 s weights recorded at other decision intervals, with NO training (record_ckpt --act-every):
+
+| decision interval | three greedy runs |
+|---|---|
+| K=4 (30.7 ms) | 79.93, 79.85, 80.81 s |
+| K=3 (23.0 ms) | 79.24, 79.58, 79.99 s |
+| K=2 (15.3 ms) | **78.44, 78.48, 78.78 s** |
+
+The policy transfers, and finer control alone is worth ~1.4 s.
+
+**skLABY15** (the user: "Yes"): resume of ckpt_best_75.96s.pt + `--act-every 2`, with speed_pot 10, lr 1e-4 and save-best. Everything else is restored and verified in run.json. Record gate passed.
+
+* n_steps stays 128 decisions, i.e. ~2 s of game per rollout at K=2 (was ~3.9 s).
+* Throughput will drop: twice the renders and decisions per tick.
