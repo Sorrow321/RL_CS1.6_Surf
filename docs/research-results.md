@@ -33726,3 +33726,13 @@ The human ALSO bumps (~610 u/s, immediately). The agent carries the boost longer
 * **Implication:**
   * The cheapest remaining seconds are in the first 0.3 s of the run.
   * This also explains part of the ~1 s that inference at act_every 2 bought earlier: twice the pre-boost impulses.
+
+## 2026-10-04 08:47 (machine clock) - CORRECTION to the entry above (start-boost gap table): two absolute columns mis-added
+
+* **The correct sums:**
+  * 0-35%: planner **27.08 s**, policy mean **28.81 s** (not 25.08 / 26.81).
+  * 60-100%, including the last tick to the finish: planner **28.76 s**, policy **29.34 s** (not 30.71 / 31.29).
+* **Unchanged:**
+  * The differences: +1.73 / +0.21 / +0.58 s.
+  * The totals: 71.19 / 73.71.
+  * Every conclusion.
