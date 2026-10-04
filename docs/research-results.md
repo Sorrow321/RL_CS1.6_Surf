@@ -33955,3 +33955,44 @@ The human ALSO bumps (~610 u/s, immediately). The agent carries the boost longer
 * **Next:** final record-attempt evals.
   * Per checkpoint: 30-100 greedy runs on spawn seed 300 (the round-5 batch's spawns).
   * Plus runs from the canonical start (yaw jitter 0 = the teleport's yaw 90, the server's start).
+
+## 2026-10-04 12:22 (machine clock) - skate_laby FINAL record-attempt evals: round 23 - 100/100 finish, mean 73.13 s, 93% under the WR, best 72.17 s; canonical start 72.35 s
+
+**Protocol:**
+
+* Greedy record_ckpt at act_every 4 on the 131 Hz tick.
+* Spawn seed 300: the same spawns as the round-5 30-run batch, yaw jitter 8 as in training.
+* "Canonical" = `--yaw-jitter 0`: the teleport destination's yaw 90, which a player on the server gets, tick phase 0.
+* WR = 74.88 s on our clock (teleport to the 38 u box); official 1:14.90.
+
+| policy | runs | finished | mean | median | best | under WR | under 73.0 | canonical start |
+|---|---|---|---|---|---|---|---|---|
+| **round 23** (round23_best72.11s.pt) | 100 | **100** | **73.13** | **72.91** | **72.17** | **93** | **60** | **72.35** |
+| round 24 (loop incumbent) | 30 | 30 | 73.33 | 73.16 | 72.45 | 28 | 6 | 72.90 |
+| round 18 | 30 | 29 | 73.38 | 73.28 | 72.72 | 27 | 5 | 72.78 |
+| round 5 (earlier best single) | 30 | 30 | 74.07 | - | 72.38 | 17 | 9 | 75.41 (slow mode) |
+| round 14 | - | - | - | - | - | - | - | 73.97 |
+
+**Paired on the 30 shared spawns:**
+
+* round 23 vs round 24: -0.155 s, faster on 23/30.
+* round 23 vs round 18: -0.19 s, faster on 21/29.
+* round 23 vs round 5: -0.89 s.
+
+**Two notes:**
+
+* **The gate's verdict on round 23 was too harsh.** It rejected round 23 for one crash in its 9-run eval; over 100 runs it finished every time. A 1-in-9 failure is weak evidence, and the all-finish rule has no tolerance for a rare crash.
+* **The canonical start is reproducible only at tick phase 0.** The second canonical episode starts at phase 2 of the [8,8,7] ms pattern, and the chaos then gives a different time: 72.35 vs 72.96 for round 23.
+
+**Best results of the night:**
+
+* Policy: best single run **72.11 s** (round 23's loop eval) and 72.17 s in the 100-run batch.
+* Canonical start: **72.35 s**, 2.53 s under the WR.
+* Planner (open-loop search line): **70.66 s**.
+
+**Published** to runs/skWR_search:
+
+* traj_0000000300: round 23 from the canonical start.
+* traj_0000000301: round 23's 10 fastest of the 100.
+
+Every run file is in runs/skWR_final.
