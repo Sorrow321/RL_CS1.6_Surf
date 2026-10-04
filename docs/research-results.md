@@ -33996,3 +33996,36 @@ The human ALSO bumps (~610 u/s, immediately). The agent carries the boost longer
 * traj_0000000301: round 23's 10 fastest of the 100.
 
 Every run file is in runs/skWR_final.
+
+## 2026-10-04 13:13 (machine clock) - CORRECTION (the user): the skate_laby server clamps velocity at **2000 u/s per axis**; we trained at 4000. **The 2026-10-04 "WR beaten" claims are RETRACTED**
+
+**The user** (watching the agent-vs-WR video): "After boost, human WR speed doesn't go to 2600. It's maxed at 2000."
+
+**The WR demo shows a clamp** (analysis only):
+
+* **The 800 u/s booster** (trigger_push, +x) briefly pushes the human to |v| = 2,612 (vx 2,608.6) at 27.65 s.
+* **From the next frames** vx reads **exactly 2000.0** for 68 frames (27.69-28.20 s).
+* **Later, vy = -2000.0 exactly** at 29.42 s and at 32.23 s.
+* **75 frames in all** have an axis component of exactly +-2000.0.
+* **It is per axis, not a magnitude cap:** |v| reads 2000.2-2000.6 while the other axis keeps 24-49 u/s.
+* **It is not `sv_maxvelocity`.** The demo's only movevars message says maxvelocity 3500, so the clamp is server-side and unnamed, like the hover. Its effect is exactly `sv_maxvelocity 2000`.
+* **Our core clamps per axis the same way** (src/pm.c:124).
+
+**What we ran:** every skate_laby run since the hover model trained at **`--maxvel 4000`**. The agent rode 2,400-2,600 u/s for ~25% of the route after the booster. That is exactly the section where it "beat" the human by 2.2 s (35-60%: human 17.76 s at 1,875 u/s, policy 15.56 s at 2,194 u/s).
+
+**Re-evaluated at `--maxvel 2000`** (record_ckpt override, the trained weights unchanged; runs/skWR_cap2000):
+
+| policy | maxvel 4000 (as trained) | maxvel 2000 (the server) |
+|---|---|---|
+| round 23, 30 runs (seed 300) | 30/30, mean 73.17, best 72.29 | **17/30 finish, mean 76.92, best 75.49, 0 under the WR** |
+| round 23, canonical start | 72.35 | 1 crash, 76.16 |
+| round 24, 30 runs | 30/30, mean 73.33, best 72.45 | **17/30, mean 77.04, best 75.59, 0 under the WR** |
+
+**Verdict:**
+
+* **Under the server's physics no policy beats the WR (74.88).** The night's results (72.11 / 72.17 / 72.35 s, "93% under the WR", the agent-vs-human video) were measured in the wrong physics.
+* **They stand only as results for a 4000 u/s server.**
+* **The weights crash on 13/30 runs at the 2000 cap.** Speeds after the booster change the duck and turn timing they learned.
+* **The section analysis still holds where speeds stay under 2000:** in the first 35% the human is 1.9 s faster than the round-14 policy. That part is unaffected by the cap and is now the whole gap.
+
+**Fix:** retrain under `--maxvel 2000`. First a PPO resume of round 23 at 2000, so the checkpoint carries maxvel 2000 and every tool (beam_tas, plan_to_bc, record_ckpt) reads it. Then the expert loop from there.
