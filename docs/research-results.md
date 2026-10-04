@@ -33534,3 +33534,13 @@ The human ALSO bumps (~610 u/s, immediately). The agent carries the boost longer
 * The run is viewable as runs/skWR_search/traj_0000000010.jsonl (5 episodes), beside the planner's 73.25 s line (traj_0000000000).
 * **Training inputs:** the policy's own planner lines only (SELF_STATES=1). The human demo entered nothing; it was only the timing and physics reference.
 * **The physics model's open items:** the server's exact airaccelerate (the demo says 100, ours is 100), and the plugin's hover implementation (modelled as sv_gravity 0, which matches the demo's z -179 and air-strafe gain rates).
+
+## 2026-10-04 05:45 (machine clock) - skate_laby expert loop round 2: planner 72.18 s; the policy is tighter (finishers' mean 74.94 s) but one of 5 evals crashed and crawled
+
+* **Planner** (from the round-1 policy, gate 75.72 s): 72.23 / 72.24 / **72.18 s** lines. Round 1 was 73.26.
+* **The policy after training:** 74.69, 74.76, 75.00, 75.32 s, plus one run TRUNCATED at 180 s.
+  * The finishers' mean is 74.94 s (round 1: 75.37).
+  * Best 74.69 s, still under the WR, but not a new best: round 1's 74.23 stays in best.pt.
+* **The truncated run:** at 49.0 s (61.1% of the route, (175,-624)) it lost its speed (to 36 u/s) and crawled at ~30 u/s for 131 s.
+  * The training speed floor (500 u/s over 1 s) kills every such state, so the policy has never practised a near-stop recovery. Under the floor, a crash is a dead end.
+  * One-off so far (rounds 0-1: 10/10 finished).
