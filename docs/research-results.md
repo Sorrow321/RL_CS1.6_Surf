@@ -33683,3 +33683,10 @@ The human ALSO bumps (~610 u/s, immediately). The agent carries the boost longer
 * **Gated round 12** (from round 7): the policy 75.91, 74.13, 74.11, 74.14, 74.14, 76.06, 75.86, 74.01, 76.11 s (mean 74.94). Rejected.
 * **Rounds 9-12 from round 7:** means 74.69 / 74.63 / 74.82 / 74.94 against round 7's own 74.10. One round of training (3e8 steps at lr 1e-4) costs ~0.5-0.8 s of mean more than the imitation buys.
 * **Relaunched from round 13** (pid 38392, deadline 3.4 h) with `--lr 5e-5 --train-steps 2e8 --waves 6`, per-wave spawns, the same 74.10 bar.
+
+## 2026-10-04 08:28 (machine clock) - skate_laby gated round 13 ACCEPTED (lr 5e-5, 2e8 steps, 6 spawn waves): mean 74.06 s, 6/9 runs take the clean post-booster turn
+
+* **Planner**, 6 waves from 6 spawns: 71.69 / 71.51 / 71.59 / 71.66 / 71.55 / 71.62 s. The greedy gates were 73.21-75.82, i.e. the spawns land on both branches.
+* **Policy** after training (397 s): 73.45, 73.61, 73.75, 73.52, 73.51, 73.52, 74.77, 76.42, 73.99 s. 9/9 finished; mean **74.06** against the 74.10 bar: ACCEPTED.
+* **6 of 9 runs in the fast cluster** (73.45-73.75), against ~half before. The smaller step (lr 5e-5, 2e8) plus per-spawn lines is the first change since round 7 that the gate takes.
+* Kept as runs/skEXIT2/round13_mean74.06s.pt. Runs: runs/skWR_search/traj_0000000130. Round 14 plans from it (its first wave: 71.29 s).
