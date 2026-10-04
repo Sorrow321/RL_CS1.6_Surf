@@ -33846,3 +33846,15 @@ The human ALSO bumps (~610 u/s, immediately). The agent carries the boost longer
   * Rounds 17-18 trained on four rounds' lines: 73.49 (8 finishers, one crash), then 73.07.
   * Dataset aggregation is the change that moved the policy. One seed, so this is suggestive, not proven.
 * Kept as runs/skEXIT2/round18_mean73.07s.pt. Runs: runs/skWR_search/traj_0000000180.
+
+## 2026-10-04 09:46 (machine clock) - skate_laby round 19 rejected (+0.64 s paired); the planner from round 18 reaches **70.70 s**
+
+* **Planner** from round 18: best **70.70 s**, the best line so far. Pool: rounds 16-19, 381 lines.
+* **Challenger:**
+  * Runs: 74.68, 74.11, 73.50, 73.46, 74.01, 74.60, 73.72, 73.91, 73.62.
+  * 9/9 finished, mean 73.96.
+* **Incumbent (round 18)** on the same spawns:
+  * Runs: 72.90, 73.04, 73.18, 73.35, 73.32, 73.47, 73.79, 73.23, 73.61.
+  * Mean 73.32.
+* **Paired:** +0.64 s worse; rejected. Round 20 plans from round 18.
+* **Noise between spawn sets:** round 18 reads 73.07 on seed 7018 and 73.32 on seed 7019.
