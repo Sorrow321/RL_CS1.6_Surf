@@ -34133,3 +34133,14 @@ Every run file is in runs/skWR_final.
 * **Best single runs at the cap so far:**
   * 74.57 s in round 3's eval.
   * 74.38 s for the round-3 policy's greedy baseline in round 4's planning (a planner baseline, not an eval).
+
+## 2026-10-04 16:18 (machine clock) - skEXIT3 round 4 ACCEPTED: at the 2000 u/s cap the MEAN is now under the WR - 74.86 s; 6/9 runs beat it, best **74.32 s**
+
+* **Planner:** 73.03 s.
+* **Challenger:** 74.64, **74.32**, 74.82, 75.13, 74.69, 75.56, 74.86, 75.13, 74.57 s.
+  * 9/9 finished, mean **74.86**.
+  * 6 of 9 runs beat the WR (74.88).
+* **Incumbent (round 3)** on the same spawns: mean 75.28.
+* **Paired:** -0.42 s, faster on 8/9.
+* Kept as runs/skEXIT3/round4_mean74.86s.pt. Runs: runs/skWR_cap2000/traj_0000000040.
+* **The driver stopped at its deadline. The chain continued at 16:18** from round 4: rounds 5+, `--target-best 73.88`. The target is 0.44 s below the best run.
