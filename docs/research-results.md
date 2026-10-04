@@ -33771,3 +33771,23 @@ The human ALSO bumps (~610 u/s, immediately). The agent carries the boost longer
 **Planning is reproducible:** the new round 17 wave 0 is 71.270 s, greedy 73.899 s, identical to the killed driver's wave 0.
 
 **Caveat:** the two changes are confounded. This is a record attempt, not an ablation.
+
+## 2026-10-04 09:21 (machine clock) - skate_laby round 17 (first round with the paired gate + BC pool): faster on the same spawns, but 1 crash -> rejected
+
+* **BC pool:** this round's lines + rounds 14-16. Every one planned from round 13 or 14; 4 x ~95 lines.
+* **Planner:** best 71.18 s.
+* **Paired eval** (the same 9 spawns, record_ckpt --seed 7017):
+
+| | finished | mean | best |
+|---|---|---|---|
+| challenger (round 17) | **8/9** | 73.49 (8 finishers) | **73.08** (best loop run so far) |
+| incumbent (round 14), re-evaluated | 9/9 | 73.71 | 73.19 |
+
+* **Per spawn, among the 8 shared finishes:** the challenger is faster on 5 of 8, by -0.25 s on average.
+* **The crash** (spawn yaw 87.57):
+  * At 95.1% of the route, at (769, -272), speed went from 1,847 to 39 u/s in one decision (a head-on hit).
+  * It never recovered and was truncated at 180 s.
+  * Training never shows it a low-speed state there: `--min-speed-kill 500` ends those episodes.
+  * The incumbent on the same spawn finished in 73.45.
+* **Verdict:** gate rejected (all 9 must finish). Round 18 plans from round 14 again, pooling rounds 15-18.
+* Kept as runs/skEXIT2/round17_best73.08s.pt. Runs: runs/skWR_search/traj_0000000170.
