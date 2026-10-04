@@ -16,8 +16,12 @@ this alpha zero style expert loop ... I think it can help"):
              full window, as expert_loop pins it);
   4. EVAL    tools/record_ckpt.py greedy episodes of the round's checkpoint from the map start.
 
-The next round plans from the round's checkpoint (always - the AlphaZero order); the best eval
-overall is copied to <out>/best.pt. One JSON line per round in <out>/summary.jsonl.
+With --gate 1 (default) the next round plans from the GATED best checkpoint - AlphaGo Zero's
+evaluator: a round's policy becomes the new base only when every eval episode finished and their
+mean beats the best mean so far (<out>/best_mean.pt); otherwise the next round restarts from the
+best. --gate 0 always continues from the latest (the plain order; on skate_laby it let one bad
+round, 73.71 -> 75.34 s mean, seed the next). The best single eval run is copied to <out>/best.pt.
+One JSON line per round in <out>/summary.jsonl.
 
 Every input the trainer sees is the POLICY'S OWN (the planner only ever proposes from the
 checkpoint's distribution), so the BC file and the spine are declared SELF_STATES=1 (CLAUDE.md
@@ -105,7 +109,14 @@ def main() -> int:
     ap.add_argument("--bc-coef", type=float, default=0.5)
     ap.add_argument("--bc-value-coef", type=float, default=0.25)
     ap.add_argument("--bc-target", default="dist")
-    ap.add_argument("--eval-eps", type=int, default=5)
+    ap.add_argument("--eval-eps", type=int, default=9)
+    ap.add_argument("--gate", type=int, default=1, choices=(0, 1),
+                    help="1: plan each round from the gated best checkpoint (all eval episodes "
+                         "finished and the best mean so far); 0: always the latest")
+    ap.add_argument("--seed-mean", type=float, default=float("inf"),
+                    help="the seed's known eval mean (s): the gate's starting bar")
+    ap.add_argument("--start-round", type=int, default=0,
+                    help="the first round's number (directory and run names continue from it)")
     ap.add_argument("--extra", nargs=argparse.REMAINDER, default=[],
                     help="extra train_fast flags (everything after --extra)")
     args = ap.parse_args()
@@ -117,8 +128,9 @@ def main() -> int:
     deadline = t_start + args.deadline_h * 3600.0
     cur = Path(args.ckpt).resolve()
     best_s, best_ck = float("inf"), None
+    best_mean, best_mean_ck = float(args.seed_mean), cur
     log(fh, f"seed {cur} (step {ckpt_step(cur):,}); deadline in {args.deadline_h:g} h")
-    for r in range(args.rounds):
+    for r in range(args.start_round, args.start_round + args.rounds):
         if time.time() + args.round_h * 3600.0 > deadline:
             log(fh, f"round {r}: would cross the deadline - stopping")
             break
@@ -213,10 +225,25 @@ def main() -> int:
             shutil.copyfile(final, best_ck)
             row["new_best"] = True
             log(fh, f"round {r}: NEW BEST policy {best_s:.2f} s -> {best_ck}")
+        nxt = final
+        if args.gate:
+            mean = (sum(fins) / len(fins)) if (fins and len(fins) == n) else float("inf")
+            if mean < best_mean:
+                best_mean, best_mean_ck = mean, out / "best_mean.pt"
+                shutil.copyfile(final, best_mean_ck)
+                row["gate"] = "accepted"
+                log(fh, f"round {r}: gate ACCEPTED (mean {mean:.2f} s, all {n} finished) -> "
+                        f"{best_mean_ck}")
+            else:
+                nxt = best_mean_ck
+                row["gate"] = "rejected"
+                log(fh, f"round {r}: gate rejected (mean {mean:.2f} s vs the best {best_mean:.2f} s)"
+                        f" - the next round plans from {best_mean_ck}")
         with open(out / "summary.jsonl", "a", encoding="utf-8") as f:
             f.write(json.dumps(row) + "\n")
-        cur = final
-    log(fh, f"done: best policy {best_s if best_ck else None} s ({best_ck})")
+        cur = nxt
+    log(fh, f"done: best policy run {best_s if best_ck else None} s ({best_ck}); best mean "
+            f"{best_mean:.2f} s ({best_mean_ck})")
     return 0
 
 
