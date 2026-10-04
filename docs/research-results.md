@@ -34059,3 +34059,15 @@ Every run file is in runs/skWR_final.
 * **Round 1, wave 0:** planner best **73.209 s**, greedy 75.67.
 * **The line obeys the cap:** its header says sv_maxvelocity 2000; |vx| and |vy| max out at exactly 2000.0; |v_h| maxes at 2,008.
 * **So under the server's physics the search beats the WR (74.88) by 1.67 s at once.** The open question is again distillation into the policy.
+
+## 2026-10-04 14:02 (machine clock) - skEXIT3 round 1 (2000 cap) accepted on the mean, but it is not faster on typical runs
+
+* **Planner:** best 73.14 s, from 23 of 24 waves.
+  * Wave 23's greedy baseline (spawn seed 124) did not finish in 180 s, so beam_tas stopped that wave. The seed still crashes on some spawns.
+* **Challenger:** 76.07, 76.11, 76.45, 76.71, 75.54, 75.69, **75.39**, 76.21, 76.19 s (mean 76.04).
+* **Incumbent (seed)** on the same spawns: 83.61, 75.52, 75.95, 75.98, 75.43, 76.02, 75.58, 75.86, 75.69 s (mean 76.63).
+* **Paired:**
+  * The gate accepted on the mean (-0.59 s). The difference is the incumbent's one slow run (83.61).
+  * On the other 8 spawns the challenger is +0.28 s SLOWER on average.
+  * Read it as "more reliable, not faster".
+* Round 2 plans from round 1.
