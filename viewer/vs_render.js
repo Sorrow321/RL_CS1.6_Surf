@@ -262,7 +262,7 @@ function sideHud(k, t) {
   txt('AGENT  (filled marker, solid line)', W + 86, ly, 22, '600');
   txt('HUMAN  (hollow marker, dashed line)', W + 86, ly + 38, 22, '600');
   speedChart(k, t, ly + 90);
-  resultBox(t, ly + 505);
+  resultBox(t, ly + 540);
 }
 
 function resultBox(t, y0) {
@@ -282,33 +282,46 @@ function resultBox(t, y0) {
 }
 
 function speedChart(k, t, y0) {
-  var x0 = W + 78, x1 = TW - 26, yb = y0 + 330, yt = y0 + 40;
-  var tEnd = Math.max(data.agent.finish, data.human.finish) + 1, vMax = 2700;
   txt('SPEED OVER TIME', W + 22, y0 + 10, 26, 'bold');
+  var k0 = Math.round(data.pre * data.fps);
+  var tEnd = Math.max(data.agent.finish, data.human.finish) + 1;
+  // two charts, one per runner, on the same axes: in one chart the traces overlap
+  oneChart(data.agent, 'AGENT', false, y0 + 30, k, k0, tEnd, false);
+  oneChart(data.human, 'HUMAN', true, y0 + 210, k, k0, tEnd, true);
+}
+
+function oneChart(tr, label, dashed, y0, k, k0, tEnd, xLabels) {
+  var x0 = W + 92, x1 = TW - 26, yt = y0 + 34, yb = y0 + 160, vLo = 1000, vHi = 2700;
   function X(tt) { return x0 + (x1 - x0) * tt / tEnd; }
-  function Y(v) { return yb - (yb - yt) * v / vMax; }
+  function Y(v) { return yb - (yb - yt) * (Math.max(vLo, Math.min(vHi, v)) - vLo) / (vHi - vLo); }
   hctx.strokeStyle = '#6b717a'; hctx.lineWidth = 1.5;
   hctx.beginPath(); hctx.moveTo(x0, yt); hctx.lineTo(x0, yb); hctx.lineTo(x1, yb); hctx.stroke();
-  [0, 1000, 2000].forEach(function (v) { txt(String(v), x0 - 8, Y(v) + 6, 16, '600', 'right', '#cfd3d8'); });
-  [0, 20, 40, 60].forEach(function (tt) { txt(tt + ' s', X(tt), yb + 24, 16, '600', 'center', '#cfd3d8'); });
-  hctx.save(); hctx.setLineDash([3, 5]); hctx.strokeStyle = '#d8d8d8'; hctx.lineWidth = 2;
-  hctx.beginPath(); hctx.moveTo(x0, Y(2000)); hctx.lineTo(x1, Y(2000)); hctx.stroke(); hctx.restore();
-  txt('server speed cap 2000 u/s', x1, Y(2000) - 8, 16, '600', 'right', '#e0e0e0');
-  var k0 = Math.round(data.pre * data.fps);
-  if (k > k0) {
-    [[data.human, true], [data.agent, false]].forEach(function (p) {
-      var fr = p[0].f, kk = Math.min(k, k0 + Math.round(p[0].finish * data.fps));
-      hctx.save(); hctx.setLineDash(p[1] ? [8, 6] : []); hctx.lineWidth = p[1] ? 2.5 : 3;
-      hctx.strokeStyle = p[1] ? '#e8e8e8' : '#ffffff';
-      hctx.beginPath();
-      for (var j = k0; j <= kk; j += 3) {
-        var tt = j / data.fps - data.pre;
-        if (j === k0) hctx.moveTo(X(tt), Y(fr[j][5])); else hctx.lineTo(X(tt), Y(fr[j][5]));
-      }
-      hctx.stroke(); hctx.restore();
+  [1000, 1500, 2000, 2500].forEach(function (v) {
+    txt(String(v), x0 - 8, Y(v) + 6, 15, '600', 'right', '#cfd3d8');
+  });
+  if (xLabels) {
+    [0, 20, 40, 60].forEach(function (tt) {
+      txt(tt + ' s', X(tt), yb + 22, 15, '600', 'center', '#cfd3d8');
     });
   }
-  txt('u/s', W + 22, yt + 4, 16, '600', 'left', '#cfd3d8');
+  hctx.save(); hctx.setLineDash([3, 5]); hctx.strokeStyle = '#d8d8d8'; hctx.lineWidth = 2;
+  hctx.beginPath(); hctx.moveTo(x0, Y(2000)); hctx.lineTo(x1, Y(2000)); hctx.stroke(); hctx.restore();
+  txt('cap 2000', x1, Y(2000) - 6, 14, '600', 'right', '#e0e0e0');
+  // the runner's label, with its line style as a key
+  hctx.save(); hctx.setLineDash(dashed ? [8, 6] : []); hctx.strokeStyle = '#ffffff'; hctx.lineWidth = 3;
+  hctx.beginPath(); hctx.moveTo(W + 22, y0 + 12); hctx.lineTo(W + 70, y0 + 12); hctx.stroke(); hctx.restore();
+  txt(label + ' speed', W + 80, y0 + 19, 19, 'bold', 'left');
+  if (k > k0) {
+    var fr = tr.f, kk = Math.min(k, k0 + Math.round(tr.finish * data.fps));
+    hctx.save(); hctx.setLineDash(dashed ? [8, 6] : []); hctx.lineWidth = 2.5;
+    hctx.strokeStyle = '#ffffff'; hctx.lineJoin = 'round';
+    hctx.beginPath();
+    for (var j = k0; j <= kk; j += 2) {
+      var tt = j / data.fps - data.pre;
+      if (j === k0) hctx.moveTo(X(tt), Y(fr[j][5])); else hctx.lineTo(X(tt), Y(fr[j][5]));
+    }
+    hctx.stroke(); hctx.restore();
+  }
 }
 
 // ---------------------------------------------------------------------------- per frame
