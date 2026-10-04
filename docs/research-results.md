@@ -33575,3 +33575,14 @@ The human ALSO bumps (~610 u/s, immediately). The agent carries the boost longer
 * Round 3's 73.36 s stays the best single run.
 * The loop now trades peak for consistency: the round-3 spread was 73.36-75.81.
 * Published: runs/skWR_search/traj_0000000040.
+
+## 2026-10-04 06:27 (machine clock) - skate_laby expert loop round 5: the policy **72.71 s** (2.17 s under the WR), mean 73.98 s
+
+* **Planner:** 72.01 / 71.91 / 71.94 s (gate 74.27). Round 6's first wave is already at 71.15 s.
+* **Policy:** 73.42, 74.84, 73.32, **72.71**, 75.61 s. 5/5 finished; 4/5 under the WR's 74.88.
+* Weights: runs/skEXIT/best_round5_72.71s.pt. Runs: runs/skWR_search/traj_0000000050.
+
+| round | 0 | 1 | 2 | 3 | 4 | 5 |
+|---|---|---|---|---|---|---|
+| policy best (s) | 75.93 | 74.23 | 74.69 | 73.36 | 74.10 | **72.71** |
+| policy mean (s) | 76.83 | 75.37 | 74.94 | 74.68 | 74.30 | **73.98** |
