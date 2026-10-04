@@ -34190,3 +34190,14 @@ Every run file is in runs/skWR_final.
 * **The planner from round 4 stays at 72.7 s** (gap 2.0-2.2 s). This is the same plateau shape as at 4000 u/s (policy ~73.1 against lines ~70.7).
 * **Round 9** runs at lr 1.25e-5 (the floor).
 * **Best single run:** 74.21 s.
+
+## 2026-10-04 18:40 (machine clock) - skEXIT3 round 9 (lr 1.25e-5) rejected (+0.38 s paired) - five in a row from round 4
+
+* **Challenger:** 74.67-75.27 s, mean 74.90.
+* **Incumbent (round 4)** on the same spawns: 74.28-74.91 s, mean 74.53.
+* **Every lr tried from round 4 is worse:** 5e-5 (+0.30, +0.33), 2.5e-5 (+0.71, +0.37), 1.25e-5 (+0.38).
+* **The gap is structural.** Planner 72.69 against the policy's 74.86 (round 4's eval). 1.72 s of the 2.17 s is in the first 35% of the route.
+* **Proposed next step** (needs a beam_tas change; asked the user first):
+  * Plan from the policy's OWN states along its runs, not only from the map start (DAgger).
+  * Concentrate it in the first third.
+* **Best single run:** 74.21 s.
