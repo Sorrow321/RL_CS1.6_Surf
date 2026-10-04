@@ -33736,3 +33736,12 @@ The human ALSO bumps (~610 u/s, immediately). The agent carries the boost longer
   * The differences: +1.73 / +0.21 / +0.58 s.
   * The totals: 71.19 / 73.71.
   * Every conclusion.
+
+## 2026-10-04 08:51 (machine clock) - skate_laby gated round 15 REJECTED by 0.06 s (mean 73.77 vs 73.71); best single loop run 73.29 s
+
+* **Planner** (from round 14): best 71.22 s.
+* **Policy:** 74.04, 73.83, 73.96, 73.29, 73.53, 73.72, 73.60, 73.65, 74.26 s.
+  * 9/9 finished, all under the WR.
+  * Mean 73.77, so the gate rejects (the bar is 73.71); round 16 plans from round 14 again.
+* **Kept anyway** as runs/skEXIT2/round15_best73.29s.pt, for its single best run.
+* Runs: runs/skWR_search/traj_0000000150.
