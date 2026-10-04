@@ -33858,3 +33858,36 @@ The human ALSO bumps (~610 u/s, immediately). The agent carries the boost longer
   * Mean 73.32.
 * **Paired:** +0.64 s worse; rejected. Round 20 plans from round 18.
 * **Noise between spawn sets:** round 18 reads 73.07 on seed 7018 and 73.32 on seed 7019.
+
+## 2026-10-04 09:58 (machine clock) - skate_laby round 20 rejected (+0.66 s paired); relaunch with 24 waves per round from ONE base and no cross-round pool
+
+**Round 20** (from round 18; pool rounds 17-20, 381 lines):
+
+* Planner: 70.74 s.
+* Challenger: runs 73.56-74.14, mean 73.90.
+* Incumbent (round 18) on the same spawns: mean 73.25.
+* Paired: +0.66 s; worse on 8 of 9 spawns. Rejected.
+
+**The pattern over rounds 15-20.** Each policy trained on planner lines; "base" is the policy those lines were planned from.
+
+| round | base of the training policy | lines in BC | from which bases | paired vs incumbent |
+|---|---|---|---|---|
+| 15, 16 | 14 | ~95 (1 round) | 14 | about level / slightly worse (old biased bar) |
+| 17 | 14 | 379 | 13, 14, 14, 14 | finishers -0.25 s, 1 crash |
+| **18** | 14 | 378 | **14, 14, 14, 14** | **-0.68 s, 9/9 faster** |
+| 19 | 18 | 381 | 14, 14, 14, 18 | +0.64 s |
+| 20 | 18 | 381 | 14, 14, 18, 18 | +0.66 s |
+
+**Reading.**
+
+* The only clear win trained on ~380 lines that were ALL planned from the training policy itself.
+* Lines planned from an older policy hurt, although they are faster than the policy: 71.2 s lines against a 73.1 s policy. Mixing two policies' styles plausibly averages them.
+* ~95 lines alone were not enough.
+* This is consistent with on-policy expert iteration (AlphaZero trains on the CURRENT network's search) plus enough data.
+
+**Relaunch** (09:58, pid 39880), from round 18, rounds 21+, deadline 12:13:
+
+* `--waves 24 --bc-history 0`: ~380 lines per round, all planned from the round's own base.
+* The paired gate stays on.
+* Rounds take ~26 min: planning ~8.5, distil ~7.5, training ~7, two evals ~2.5.
+* Round 21's three already-planned waves were discarded. Planning is deterministic, and the new wave 0 reproduced 70.833 s exactly.
