@@ -33511,3 +33511,26 @@ The human ALSO bumps (~610 u/s, immediately). The agent carries the boost longer
 
 * Every training input is the policy's own: the planner proposes only from the checkpoint's distribution.
 * The human demo is used nowhere (CLAUDE.md s0).
+
+## 2026-10-04 05:32 (machine clock) - skate_laby: **THE POLICY BEATS THE WORLD RECORD** - 74.23 s (greedy, no search) against the WR's 74.88 s on the same finish rule (official 74.90)
+
+**Expert iteration (tools/exit_local.py, runs/skEXIT):**
+
+| round | planner waves (2,048 envs, 64 greedy, R=25) | the policy after training (3e8 steps, BC 0.5 -> 0, dist target, value 0.25, spawns along the planner line), 5 greedy runs from the map start |
+|---|---|---|
+| 0 (seed skLABY16, 75.42 s) | 73.25 / 73.56 / 73.62 s | 77.10, 76.24, 77.55, 77.35, 75.93 (best 75.93, mean 76.83) |
+| 1 | 73.31 / 73.26 / 73.29 s | 76.62, 75.77, **74.40**, **74.23**, 75.85 (best **74.23**, mean 75.37) |
+
+**The finish rule, checked:**
+
+* The core counts a finish when the player's HULL touches the 38 u box (env.c: the origin within [box - player_maxs, box - player_mins], swept), i.e. the engine's trigger-overlap rule.
+* The WR demo's raw frames under the SAME rule: **74.881 s** from the teleport.
+* The same demo with the origin within 64 u of the button (+use reach): 74.881 s; with the origin inside the 38 u box: 74.897 s (= the official 74.90).
+* The agent's 74.229 s run reaches +use reach at ~74.228 s (straight-line from the last recorded tick).
+
+**Verdict:** the greedy policy, from the map start, with no search at inference, runs **0.65 s faster than the human world record** on one rule, and its second-best run (74.40 s) is under it too.
+
+* Weights: runs/skEXIT/best_round1_74.23s.pt.
+* The run is viewable as runs/skWR_search/traj_0000000010.jsonl (5 episodes), beside the planner's 73.25 s line (traj_0000000000).
+* **Training inputs:** the policy's own planner lines only (SELF_STATES=1). The human demo entered nothing; it was only the timing and physics reference.
+* **The physics model's open items:** the server's exact airaccelerate (the demo says 100, ours is 100), and the plugin's hover implementation (modelled as sv_gravity 0, which matches the demo's z -179 and air-strafe gain rates).
