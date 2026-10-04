@@ -33444,3 +33444,31 @@ The policy transfers, and finer control alone is worth ~1.4 s.
 
 * n_steps stays 128 decisions, i.e. ~2 s of game per rollout at K=2 (was ~3.9 s).
 * Throughput will drop: twice the renders and decisions per tick.
+
+## 2026-10-04 04:39 (machine clock) - skate_laby: the post-booster sharp turn (the user's question) - the human bumps too; the remaining gap is path length
+
+**The user** (going to sleep, authorising ~9 h overnight): "at iteration around 4300/10088 the agent gets boost ... 2600+ ... a very sharp turn ... it bumps into the wall all the time ... take a look at the world record to see if the real human is also bumping there".
+
+**The turn** (the agent's 76.90 s greedy run from skLABY15's latest eval against the WR demo, ANALYSIS ONLY; anchored on the trigger_push box x -2832..-2688, y 3568..3824):
+
+| | human | agent |
+|---|---|---|
+| in the booster at | 27.63 s | 29.19 s (already 1.56 s behind) |
+| hard contacts in the next 6 s | **2, at +0.06 / +0.07 s: -437 and -175 u/s** | **1, at +3.99 s: -692 u/s** |
+| speed at +3.5 s | 2,002 u/s | 2,572 u/s |
+| time to cover 2k / 4k / 8k / 12k u of route after the booster | 0.98 / 1.99 / 3.94 / 6.04 s | 0.75 / 1.51 / 3.00 / 5.18 s |
+
+The human ALSO bumps (~610 u/s, immediately). The agent carries the boost longer and bumps later; over the 12k u after the booster it is 0.86 s FASTER than the WR.
+
+**Whole-route 5% slices** (agent 76.90 s, human 74.90 s):
+
+| section | agent vs human |
+|---|---|
+| 5-35% (before the booster) | +1.55 s; paths +7-14% longer in 10-20% and 25-30% |
+| 35-45% (booster + turn) | -0.88 s |
+| 45-55% (after the bump) | +1.01 s; the agent's 1,722-1,740 u/s against the human's 1,801-1,878 |
+| 55-100% | +0.33 s |
+| path flown | **139,290 u against 132,133 (+5.4%)** |
+
+* Section mean speeds are mostly HIGHER for the agent (1,712-1,866 against 1,679-1,806). **The remaining gap is line length, not speed.**
+* **One suspect:** `--speed-coef` pays 0.2 per 1,000 u FLOWN (speed level x time), so it softens the penalty on a longer, faster line by ~24%. It was added in the setup to keep a still-learning agent moving.
