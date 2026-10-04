@@ -33677,3 +33677,9 @@ The human ALSO bumps (~610 u/s, immediately). The agent carries the boost longer
 * The fast runs take the same turn cleanly. This is exactly the spot the user flagged ("it bumps into the wall all the time").
 * Which mode a run lands in is decided by the approach the start jitter produces.
 * A policy that always took the fast branch would run ~72.9 s on average.
+
+## 2026-10-04 08:13 (machine clock) - skate_laby gated round 12 rejected (4th in a row); smaller steps: lr 5e-5, 2e8 steps, 6 spawn waves
+
+* **Gated round 12** (from round 7): the policy 75.91, 74.13, 74.11, 74.14, 74.14, 76.06, 75.86, 74.01, 76.11 s (mean 74.94). Rejected.
+* **Rounds 9-12 from round 7:** means 74.69 / 74.63 / 74.82 / 74.94 against round 7's own 74.10. One round of training (3e8 steps at lr 1e-4) costs ~0.5-0.8 s of mean more than the imitation buys.
+* **Relaunched from round 13** (pid 38392, deadline 3.4 h) with `--lr 5e-5 --train-steps 2e8 --waves 6`, per-wave spawns, the same 74.10 bar.
