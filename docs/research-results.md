@@ -33406,3 +33406,17 @@ skLABY12, 40-minute check-in.
   * It telescopes; ended rows re-anchor; it is restored from a checkpoint, written only when on, and TRAIN_ONLY for the recorder.
   * Tests: per-call pay, telescoping, the re-anchor, 0 = off, and a trainer + recorder smoke.
   * Held until the LR run plateaus, so that the two changes stay attributable.
+
+## 2026-10-04 02:20 (machine clock) - skate_laby: skLABY13 plateaus at ~80 s (best 79.70 s); skLABY14 = the same + --speed-pot 10
+
+**skLABY13**, stopped at ~6.64B.
+
+* After the 79.70 s best (5,733M), every eval's best sat at 79.97-82.89 s for ~900M steps (6,035-6,639M): 79.97, 82.89, 80.60, 80.52, 80.63, 81.67, 80.17, 80.37, 80.44.
+* That is a plateau.
+* The 79.70 s weights are kept as runs/skLABY13/ckpt_best_79.70s.pt (step 5,732,564,992, optimizer lr 1e-4).
+
+**skLABY14:** resume of ckpt_best_79.70s.pt + `--speed-pot 10`, `--lr 1e-4`, `--save-best 1`, `--envs 1024`. Every other setting is restored and verified in run.json. Record gate passed.
+
+* **The single change against skLABY13's plateau:** the speed potential, 10 reward units per 1000 u/s.
+* **For scale:** a 300 u/s wall loss now costs 3.0 at once, against the time penalty's 0.5/s. The start push (0 -> 1,600) pays +16 once per start episode, a per-spawn constant the critic absorbs.
+* **Verdict:** the from-start eval's best per eval against skLABY13's ~80-81 s band.
