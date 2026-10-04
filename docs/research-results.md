@@ -33567,3 +33567,11 @@ The human ALSO bumps (~610 u/s, immediately). The agent carries the boost longer
 * Weights: runs/skEXIT/best_round3_73.36s.pt.
 * Published: runs/skWR_search/traj_0000000030 (the 5 runs) and traj_0000000031 (the 71.56 s planner line).
 * Round 4 is planning at 71.78-71.83 s.
+
+## 2026-10-04 06:12 (machine clock) - skate_laby expert loop round 4: every one of 5 policy runs under the WR (mean 74.30 s, spread 0.4 s)
+
+* **Planner:** 71.83 / 71.78 / 71.79 s (gate 75.36).
+* **Policy:** 74.50, 74.10, 74.22, 74.31, 74.35 s. 5/5 finished, ALL under the WR's 74.88 (same rule); mean 74.30, best 74.10.
+* Round 3's 73.36 s stays the best single run.
+* The loop now trades peak for consistency: the round-3 spread was 73.36-75.81.
+* Published: runs/skWR_search/traj_0000000040.
