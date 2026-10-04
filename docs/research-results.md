@@ -34254,3 +34254,13 @@ Every run file is in runs/skWR_final.
 * **Other maps' viewer meshes predate the fix.** Re-export them before trusting entity placement in the viewer.
 
 **Video:** runs/skWR_cap2000/agent_vs_human_wr_v4_music.mp4, with the user's music (trimmed to 80.4 s, fades in and out).
+
+## 2026-10-04 20:18 (machine clock) - skEXIT3 stopped by the user during round 13; rounds 7-12 all rejected
+
+* **Rounds 7-12** (from round 4, lr 2.5e-5 then 1.25e-5): paired +0.71, +0.37, +0.38, +0.44, +0.31, +0.39 s. All rejected; the planner stayed at 72.64-72.70 s.
+* **Stopped by the user** at 20:2x while distilling round 13 (driver pid 52016, killed with its plan_to_bc child).
+* **Final state at the server's 2000 u/s cap:**
+  * Policy: runs/skEXIT3/round4_mean74.86s.pt, best single eval run 74.21 s, mean ~74.5-74.9.
+  * Search line: 72.64 s (runs/skWR_cap2000/planner_72.64s).
+  * Video: runs/skWR_cap2000/agent_vs_human_wr_v4_music.mp4.
+* **The proposed next step stays open:** DAgger-style planning from the policy's own states in the first third of the route.
