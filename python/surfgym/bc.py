@@ -500,7 +500,7 @@ def onehot_probs(actions) -> np.ndarray:
     return out
 
 
-def check_probs(probs, actions=None, tol: float = 1e-4) -> None:
+def check_probs(probs, actions=None, tol: float = 1e-4, nvec=None) -> None:
     """Raise unless ``probs`` is a valid (n, 6, NPAD) per-head distribution:
     finite, non-negative, zero in every slot past that head's own nvec, and
     each head's row summing to 1. With ``actions``, also that the target
@@ -510,7 +510,8 @@ def check_probs(probs, actions=None, tol: float = 1e-4) -> None:
         raise ValueError(f"probs must be (n, {NACT}, {NPAD}), got {p.shape}")
     if not np.isfinite(p).all() or (p < -tol).any():
         raise ValueError("probs must be finite and non-negative")
-    for h, n in enumerate(ACTION_NVEC):
+    # nvec: the heads the target is over - ACTION_NVEC, or the --keys-hold policy heads
+    for h, n in enumerate(ACTION_NVEC if nvec is None else nvec):
         if n < NPAD and len(p) and np.abs(p[:, h, n:]).max() > tol:
             raise ValueError(f"probs head {h} has mass past its {n} bins")
     if len(p):
@@ -766,9 +767,48 @@ def make_line_reward(cfg: dict, field, d0: float, k: int,
 # --------------------------------------------------------------------------
 # the file
 # --------------------------------------------------------------------------
+def keys_policy_rows(engine_acts):
+    """--keys-hold: ENGINE action rows of ONE line from a spawn -> (policy-space rows, the held
+    state each decision SAW as (D, 3) engine bins, its (D, 7) observation features).
+
+    The line starts NEUTRAL (every spawn does). On a held head the policy row is KEEP when the
+    engine value equals what is held, else engine bin + 1; yaw, pitch and jump pass through."""
+    from .keyshold import HELD_HEADS, KEEP, NEUTRAL, KeysHold
+    a = np.asarray(engine_acts, np.int64).reshape(-1, 6)
+    held = np.empty((len(a), 3), np.int64)
+    pol = a.copy()
+    st = np.asarray(NEUTRAL, np.int64).copy()
+    for t in range(len(a)):
+        held[t] = st
+        for c, h in enumerate(HELD_HEADS):
+            pol[t, h] = KEEP if a[t, h] == st[c] else a[t, h] + 1
+            st[c] = a[t, h]
+    feat = KeysHold._encode(held.astype(np.int32), None)
+    return pol, held, feat
+
+
+def keys_policy_probs(probs, held):
+    """--keys-hold: a (D, 6, NPAD) ENGINE-space distribution target -> policy space, given the
+    held state each row saw: the held engine bin's mass moves to KEEP (bin 0), every other engine
+    bin b to b + 1. Yaw, pitch and jump are untouched."""
+    from .keyshold import HELD_HEADS
+    p = np.asarray(probs, np.float32).copy()
+    out = p.copy()
+    r = np.arange(len(p))
+    for c, h in enumerate(HELD_HEADS):
+        src = p[:, h, :]
+        new = np.zeros_like(src)
+        new[:, 1:] = src[:, :-1]                        # engine b -> b + 1
+        hb = np.asarray(held[:, c], np.int64)
+        new[r, 0] = src[r, hb]                          # the held value -> KEEP
+        new[r, hb + 1] = 0.0
+        out[:, h, :] = new
+    return out
+
+
 def save_bc_dataset(path, states, scal, latch, actions, weights, line_id,
                     meta: dict, probs=None, zret=None, zmask=None,
-                    view=None, view_zmu=None, view_zsd=None) -> None:
+                    view=None, view_zmu=None, view_zsd=None, keys=None) -> None:
     """Write a BC file. With none of ``probs`` / ``zret`` / ``zmask`` this
     writes VERSION 1 - the same keys, in the same order, that shipped - so
     an untreated round's file is byte-identical to the one it always wrote
@@ -784,8 +824,19 @@ def save_bc_dataset(path, states, scal, latch, actions, weights, line_id,
     weights = np.ascontiguousarray(weights, dtype=np.float32).reshape(n)
     line_id = np.ascontiguousarray(line_id, dtype=np.int32).reshape(n)
     hi = np.asarray(ACTION_NVEC, np.int64)
+    kcols = {}
+    if keys is not None:
+        # --keys-hold: POLICY-space rows (the widened heads) + the 7 held-key columns
+        from .keyshold import N_FEATURES, nvec_with_keep
+        if not meta.get("keys_hold"):
+            raise ValueError("keys columns need meta['keys_hold']")
+        hi = np.asarray(nvec_with_keep(ACTION_NVEC), np.int64)
+        kcols["keys"] = np.ascontiguousarray(keys, np.float32).reshape(n, N_FEATURES)
+    elif meta.get("keys_hold"):
+        raise ValueError("meta['keys_hold'] without the keys columns")
     if (actions < 0).any() or (actions >= hi[None, :]).any():
-        raise ValueError("actions out of range for ACTION_NVEC")
+        raise ValueError("actions out of range for "
+                         + ("the keys-hold heads" if keys is not None else "ACTION_NVEC"))
     # --view-continuous columns: written only when given, after every
     # existing key, so a discrete file is byte-identical to before
     vcols = {}
@@ -812,12 +863,12 @@ def save_bc_dataset(path, states, scal, latch, actions, weights, line_id,
                  latch=latch, actions=actions, weights=weights,
                  line_id=line_id,
                  meta=np.str_(json.dumps(meta, sort_keys=True, default=str)),
-                 **vcols)
+                 **vcols, **kcols)
         return
     probs = (onehot_probs(actions) if probs is None
              else np.ascontiguousarray(probs, np.float32).reshape(n, NACT,
                                                                   NPAD))
-    check_probs(probs, actions)
+    check_probs(probs, actions, nvec=(tuple(int(v) for v in hi) if keys is not None else None))
     zret = (np.zeros(n, np.float32) if zret is None
             else np.ascontiguousarray(zret, np.float32).reshape(n))
     zmask = (np.zeros(n, np.float32) if zmask is None
@@ -827,7 +878,7 @@ def save_bc_dataset(path, states, scal, latch, actions, weights, line_id,
     np.savez(path, version=np.int32(2), states=states, scal=scal,
              latch=latch, actions=actions, weights=weights, line_id=line_id,
              meta=np.str_(json.dumps(meta, sort_keys=True, default=str)),
-             probs=probs, zret=zret, zmask=zmask, **vcols)
+             probs=probs, zret=zret, zmask=zmask, **vcols, **kcols)
 
 
 def load_bc_meta(path) -> dict:
@@ -897,7 +948,7 @@ class BCDataset:
     def __init__(self, path, device, n_latch: int, obs_reward: bool,
                  seed: int = 0, priv_fn=None, view_continuous: bool = False,
                  yaw_adaptive: bool = False, pitch_rate_max_deg: float = 10.0,
-                 view_absolute=None, n_cc: int = 0):
+                 view_absolute=None, n_cc: int = 0, keys_hold: bool = False):
         import torch
         z = np.load(path, allow_pickle=False)
         ver = int(z["version"])
@@ -933,6 +984,15 @@ class BCDataset:
         self.n_cc = int(n_cc)
         if self.n_cc:
             cols.append(np.zeros((self.n, 1), np.float32))
+        # --keys-hold: the 7 held-key columns, after the latch and the cc T column (the rollout's
+        # _obs order), and POLICY-space targets - the file must have been built for it
+        if bool(self.meta.get("keys_hold")) != bool(keys_hold):
+            raise SystemExit(f"{path}: built for keys_hold={bool(self.meta.get('keys_hold'))}, "
+                             f"the trainer has keys_hold={bool(keys_hold)}")
+        if keys_hold:
+            if "keys" not in z.files:
+                raise SystemExit(f"{path}: keys_hold meta but no keys columns")
+            cols.append(np.asarray(z["keys"], np.float32).reshape(self.n, -1))
         self.scal = torch.as_tensor(np.concatenate(cols, axis=1),
                                     dtype=torch.float32, device=device)
         pose = np.zeros((self.n, 6), np.float32)
@@ -949,7 +1009,9 @@ class BCDataset:
         self.probs = None
         if self.has_probs:
             p = np.asarray(z["probs"], np.float32).reshape(self.n, NACT, NPAD)
-            check_probs(p, act)
+            from .keyshold import nvec_with_keep
+            check_probs(p, act, nvec=(nvec_with_keep(ACTION_NVEC)
+                                      if self.meta.get("keys_hold") else None))
             self.probs = torch.as_tensor(p, dtype=torch.float32,
                                          device=device)
         zr = (np.asarray(z["zret"], np.float32) if self.has_value

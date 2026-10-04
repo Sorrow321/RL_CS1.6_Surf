@@ -363,9 +363,12 @@ def test_flag_is_off_by_default_saved_restored_and_a_mismatch_is_refused():
 def test_the_incompatible_flags_are_refused():
     for frag in ("--keys-hold with --chunk",
                  "--keys-hold with --mask-forward-air",
-                 "--keys-hold with --yaw-cond",
-                 "--keys-hold with --bc-file"):
+                 "--keys-hold with --yaw-cond"):
         assert frag in SRC, frag
+    # --bc-file is SUPPORTED under --keys-hold since 2026-10-04 (skate_laby's expert loop): the
+    # file carries POLICY-space targets + the held-key columns and BCDataset checks the mode
+    assert "keys_hold=bool(args.keys_hold))" in SRC
+    assert "--keys-hold with --bc-file" not in SRC
 
 
 def test_the_launcher_carries_keys_hold_on_the_scratch_line_only():

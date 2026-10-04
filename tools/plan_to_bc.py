@@ -89,7 +89,8 @@ from pick_selfline import contact_cut
 from surfgym.bc import (check_probs, contact_rows, decision_gamma,
                         last_contact_cut, make_eval_feeds, make_line_reward,
                         rank_lineages, replay_line, returns_to_go,
-                        save_bc_dataset, subsample_by_path, survivor_probs)
+                        save_bc_dataset, subsample_by_path, survivor_probs,
+                        keys_policy_probs, keys_policy_rows)
 from surfgym.core import phys_to_dict
 from surfgym.rewards import map_spawn_pool
 from surfgym.tick import TickClock, ticks_to_secs
@@ -328,17 +329,11 @@ def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
     plans = load_plans(files)
     ck = torch.load(ckpt, map_location="cpu", weights_only=False)
     cfg = ck.get("config") or {}
-    if cfg.get("keys_hold"):
-        # --keys-hold widens fwd/side/duck by a "keep" bin at index 0 and
-        # shifts every engine bin up by one. A plan's action rows are ENGINE
-        # indices, so cloning them into these heads would label every real
-        # key press as "keep" - silently, and the cloned policy would then
-        # never press anything. Refuse rather than mis-decode.
-        raise SystemExit(
-            "plan_to_bc cannot target a --keys-hold checkpoint: the plan's "
-            "action rows are ENGINE bins and this policy's fwd/side/duck "
-            "heads carry a KEEP bin at index 0 (surfgym/keyshold.py). "
-            "Re-fit the plan in policy space first.")
+    # --keys-hold (2026-10-04): a plan's action rows are ENGINE bins; each line is replayed
+    # through the keys-hold rule from its NEUTRAL spawn (surfgym.bc.keys_policy_rows) so every
+    # row carries the policy-space target AND the 7 held-key columns the policy saw there
+    KEYS = bool(cfg.get("keys_hold"))
+    all_keys = []
     K = int(plans["K"])
     if K != int(cfg.get("act_every", 1)):
         raise SystemExit(f"plan act_every {K} != ckpt act_every "
@@ -582,15 +577,24 @@ def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
         if best_states is None:
             best_states = np.ascontiguousarray(states_arr[:cut + 1]).copy()
             best_line = info
+        if KEYS:
+            _pol, _held, _feat = keys_policy_rows(np.asarray(acts, np.int64)[:, :6])
         for ri, ((st, scal, latch, act), jd) in enumerate(zip(rows, keep_jd)):
             all_states.append(st)
             all_scal.append(scal)
             all_latch.append(latch)
-            all_act.append(act)
+            if KEYS:
+                if not np.array_equal(np.asarray(act, np.int64)[:6], np.asarray(acts[jd], np.int64)[:6]):
+                    raise SystemExit(f"line {j} decision {jd}: the replayed row is not the plan's")
+                all_act.append(_pol[jd])
+                all_keys.append(_feat[jd])
+            else:
+                all_act.append(act)
             all_w.append(w)
             all_id.append(j)
             if line_probs is not None:
-                all_probs.append(line_probs[j][jd])
+                all_probs.append(keys_policy_probs(line_probs[j][jd][None], _held[jd:jd + 1])[0]
+                                 if KEYS else line_probs[j][jd])
             all_z.append(float(z_line[jd]) if jd < len(z_line) else 0.0)
             all_zm.append(zm_line if jd < len(z_line) else 0.0)
             if VIEWC:
@@ -658,7 +662,9 @@ def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
     zmask = np.array(all_zm, np.float32) if value_target else None
     act_arr = np.array(all_act, np.int64)
     if probs is not None:
-        check_probs(probs, act_arr)
+        from surfgym.keyshold import nvec_with_keep
+        check_probs(probs, act_arr,
+                    nvec=(nvec_with_keep((15, 7, 3, 3, 2, 2)) if KEYS else None))
         # how much of the file is actually a DISTRIBUTION rather than the
         # one-hot the old target already was: the honest read-out of what
         # P2 can possibly change (round 27 measured the kept lineages
@@ -672,6 +678,8 @@ def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
     else:
         meta["target_kind"] = "argmax"
     meta["value_target"] = bool(value_target)
+    if KEYS:
+        meta["keys_hold"] = 1
     if value_target:
         m = zmask > 0.0
         meta["value"] = {
@@ -688,7 +696,8 @@ def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
                     act_arr, np.array(all_w, np.float32),
                     np.array(all_id, np.int32), meta,
                     probs=probs, zret=zret, zmask=zmask,
-                    view=view_arr, view_zmu=vmu_arr, view_zsd=vsd_arr)
+                    view=view_arr, view_zmu=vmu_arr, view_zsd=vsd_arr,
+                    keys=(np.array(all_keys, np.float32) if KEYS else None))
     lead = (f"best {secs(t_best):.2f}s" if t_best is not None
             else f"best arc {meta['best_arc']:,.0f}u")
     print(f"bc: {n_rows:,} rows from {len(kept)} line(s) "

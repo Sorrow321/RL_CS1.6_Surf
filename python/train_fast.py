@@ -9416,11 +9416,9 @@ def main() -> None:
                 "a yaw bin with a SIDE KEY, and under --keys-hold the side "
                 "head's bin 0 is 'keep', not 'press A' - the pairing the "
                 "table encodes is not the one it would be learning.")
-        if args.bc_file:
-            raise SystemExit(
-                "--keys-hold with --bc-file: the cloned rows carry ENGINE "
-                "action indices and the loss would fit them through the "
-                "widened heads, i.e. label every 'press A' as 'keep'.")
+        # --bc-file with --keys-hold (2026-10-04): plan_to_bc writes POLICY-space targets and the
+        # held-key columns for a keys-hold checkpoint (surfgym.bc.keys_policy_rows), and BCDataset
+        # refuses a file built for the other mode in either direction
     # ---- --tick-ms: every per-tick constant, converted ONCE here ---------
     # TICK.ms is the REALISED mean tick (7.667 for a 7.63 request); the
     # per-tick flags are defined at the 10 ms reference and rescaled so
@@ -15116,7 +15114,9 @@ def main() -> None:
                        # of the same mode (z_from_view_abs), never deltas
                        view_absolute=VIEW_ABS,
                        # --curiosity-cond: the rows get the T = 0 column
-                       n_cc=N_CC)
+                       n_cc=N_CC,
+                       # --keys-hold: the rows' held-key columns + policy-space targets
+                       keys_hold=bool(args.keys_hold))
         print(bc.describe())
         bc_lidar, bc_dtype = slots[0].lidar, b_img.dtype
         bc_steps = (float(args.bc_steps) if args.bc_steps
