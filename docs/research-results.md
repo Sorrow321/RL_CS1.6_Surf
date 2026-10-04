@@ -33599,3 +33599,15 @@ The human ALSO bumps (~610 u/s, immediately). The agent carries the boost longer
 * **K=2 (inference only):** 73.67-74.80 s. 10/10 finished; mean 74.14; **10/10 under the WR**.
 * For this policy finer decisions buy consistency, not speed: the best is 73.67 against 72.71 at K=4.
 * Published: runs/skWR_search/traj_0000000051 (K=4) and traj_0000000052 (K=2).
+
+## 2026-10-04 06:53 (machine clock) - skate_laby expert loop round 7: the most consistent policy yet - 5/5 at 73.39-73.88 s (mean 73.71)
+
+* **Planner:** 71.78 / 71.87 / 71.82 s (gate 74.15).
+* **Policy:** 73.71, 73.88, 73.72, 73.88, 73.39 s. 5/5 finished, all ~1.0-1.5 s under the WR's 74.88; mean **73.71** (the loop's best mean).
+* Round 5's 72.71 s stays the best single run.
+
+| | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
+|---|---|---|---|---|---|---|---|---|
+| policy mean (s) | 76.83 | 75.37 | 74.94 | 74.68 | 74.30 | 73.98 | 74.96 | **73.71** |
+
+* Kept as runs/skEXIT/round7_mean73.71s.pt. Runs: runs/skWR_search/traj_0000000070.
