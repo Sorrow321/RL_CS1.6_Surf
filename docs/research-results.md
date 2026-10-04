@@ -34038,3 +34038,24 @@ Every run file is in runs/skWR_final.
 * **Record gate passed.** run.json: maxvel 2000.
 * **Purpose:** adapt the weights to the cap. They crash on 13/30 runs at 2000 out of the box.
 * **Next:** run the expert loop from the adapted checkpoint. It carries maxvel 2000, so beam_tas, plan_to_bc and record_ckpt all read it.
+
+## 2026-10-04 13:32 (machine clock) - skate_laby under the server's 2000 u/s cap: skCAP1 adapted (9/9, mean 75.86); the expert loop restarted (skEXIT3); the planner finds **73.21 s** at 2000 in its first wave
+
+**skCAP1 evals** (round 23 resumed at `--maxvel 2000`, lr 5e-5):
+
+| steps | finished | mean | best |
+|---|---|---|---|
+| +0 | 6/9 | 76.10 | 75.39 |
+| +100M | 8/9 | 76.24 | 75.69 |
+| +200M | 9/9 | 76.31 | 75.23 |
+| +300M | 9/9 | 76.12 | 75.68 |
+| +400M | 9/9 | 75.86 | 75.46 |
+
+* Stopped at 11.46B. Seed: runs/skCAP1/seed_cap2000.pt (its config says maxvel 2000).
+
+**skEXIT3** (13:32, pid 48124):
+
+* `exit_local.py --ckpt runs/skCAP1/seed_cap2000.pt --out runs/skEXIT3 --waves 24 --lr 5e-5 --gate 1 --gate-rematch 1 --bc-history 0`, the rest as rounds 21-25. Deadline 3 h.
+* **Round 1, wave 0:** planner best **73.209 s**, greedy 75.67.
+* **The line obeys the cap:** its header says sv_maxvelocity 2000; |vx| and |vy| max out at exactly 2000.0; |v_h| maxes at 2,008.
+* **So under the server's physics the search beats the WR (74.88) by 1.67 s at once.** The open question is again distillation into the policy.
