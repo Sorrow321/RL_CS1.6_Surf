@@ -34181,3 +34181,12 @@ Every run file is in runs/skWR_final.
 * **The same pattern as after round 18 at 4000 u/s:** training a polished policy toward lines ~2 s faster than it makes it worse.
 * **Next:** round 8 at 2.5e-5. One more rejection halves the lr to 1.25e-5.
 * **Best single run** is still 74.21 s (round 4's policy).
+
+## 2026-10-04 18:13 (machine clock) - skEXIT3 round 8 (lr 2.5e-5) rejected (+0.37 s paired); lr auto-halved to 1.25e-5
+
+* **Challenger:** 75.09-75.66 s, mean 75.28. Very tight, consistently slow.
+* **Incumbent (round 4)** on the same spawns: 74.53-75.62 s, mean 74.91.
+* **Four rounds from round 4 have now come out worse** (5: +0.30, 6: +0.33, 7: +0.71, 8: +0.37). The trained challengers settle on a consistent ~75.2-75.4 s line.
+* **The planner from round 4 stays at 72.7 s** (gap 2.0-2.2 s). This is the same plateau shape as at 4000 u/s (policy ~73.1 against lines ~70.7).
+* **Round 9** runs at lr 1.25e-5 (the floor).
+* **Best single run:** 74.21 s.
