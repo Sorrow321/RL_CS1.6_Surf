@@ -34122,3 +34122,14 @@ Every run file is in runs/skWR_final.
   * Round 3: mean 75.03, best 74.57.
   * Round 4's planner: 73.03.
   * The round-3 policy's greedy runs from the planner spawns: median 74.97, 5/23 under the WR.
+
+## 2026-10-04 16:10 (machine clock) - the stopping rule, corrected by the user: ONE run 1 s under the WR is enough
+
+* **The user:** "No need to take average, just one run is enough."
+* **The target is now `--target-best 73.88`:** stop as soon as ANY greedy eval run is at or below 73.88 s, at the 2000 u/s cap.
+  * Either the challenger's 9 runs or the incumbent's 9-run rematch counts.
+  * That checkpoint is copied to runs/skEXIT3/target_run.pt.
+* **The chain** that continues after round 4 was restarted with this flag in place of `--target-mean`. Everything else is unchanged.
+* **Best single runs at the cap so far:**
+  * 74.57 s in round 3's eval.
+  * 74.38 s for the round-3 policy's greedy baseline in round 4's planning (a planner baseline, not an eval).
