@@ -33904,3 +33904,15 @@ The human ALSO bumps (~610 u/s, immediately). The agent carries the boost longer
   * Three rounds of training from round 18 (19, 20, 21), with three different BC sets, all came out ~0.65-0.70 s worse.
   * Further training breaks a fragile behaviour (the post-booster turn) more often than it gains elsewhere.
 * **Relaunch** (10:25, pid 18532), from round 18, at **`--lr 2.5e-5`** (half). Everything else as round 21: 24 waves, no pool, paired gate. Deadline 12:13.
+
+## 2026-10-04 10:53 (machine clock) - skate_laby round 22 (lr 2.5e-5) level with round 18 (+0.04 s paired), rejected
+
+* **Planner:** 70.71 s.
+* **Challenger:** 74.55, 73.46, 73.19, 72.88, 72.99, 73.10, 73.20, 73.09, 72.83 s (mean 73.26).
+* **Incumbent (round 18)** on the same spawns: mean 73.22.
+* **Paired:** faster on 6 of 9 spawns (-0.12 to -0.46 s), slower on 3 (+0.25, +0.50, +1.18).
+* **Reading:**
+  * Halving the lr shrank the damage from +0.65-0.70 s (rounds 19-21, lr 5e-5) to +0.04.
+  * No slow-mode runs this time.
+  * It is not yet an improvement.
+* Kept as runs/skEXIT2/round22_best72.83s.pt. Round 23 plans from round 18 at the same lr.
