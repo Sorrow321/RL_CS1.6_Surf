@@ -34105,3 +34105,20 @@ Every run file is in runs/skWR_final.
 * **Margins:** -0.31 s for the best run; the mean is still +0.15 s.
 * **Throughput:** training ran at 160-230k fps (round 1: up to 369k; the 4000 phase ~500k), so the round took 1,241 s to train. 66 Chrome processes were up meanwhile, which possibly competed for the GPU.
 * Kept as runs/skEXIT3/round3_mean75.03s.pt. Runs: runs/skWR_cap2000/traj_0000000030.
+
+## 2026-10-04 16:04 (machine clock) - skate_laby: the user's stopping rule - keep training until the agent beats the WR by 1 s
+
+**The user:** "let's keep training until the margin between our agent and WR is 1 second."
+
+* **Read as:** an ACCEPTED round whose 9-run eval MEAN is at or below **73.88 s** (WR 74.88 - 1). The paired gate, all 9 finished, the 2000 u/s cap.
+* **tools/exit_local.py gained two options:**
+  * `--target-mean S`: stop on an accepted round with mean <= S.
+  * `--lr-halve-after N` / `--lr-min`: halve the lr after N rejections in a row. This automates the manual 5e-5 -> 2.5e-5 step of rounds 19-24.
+* **The chain:** when the current driver finishes round 4 (deadline 16:31), the loop continues from its incumbent:
+  * rounds 5+, 24 waves, max-ticks 12000;
+  * lr 5e-5, halved after 2 rejections in a row, floor 1.25e-5;
+  * paired gate, `--target-mean 73.88`, deadline 12 h.
+* **Where it stands:**
+  * Round 3: mean 75.03, best 74.57.
+  * Round 4's planner: 73.03.
+  * The round-3 policy's greedy runs from the planner spawns: median 74.97, 5/23 under the WR.
