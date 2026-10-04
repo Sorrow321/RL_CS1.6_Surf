@@ -33916,3 +33916,17 @@ The human ALSO bumps (~610 u/s, immediately). The agent carries the boost longer
   * No slow-mode runs this time.
   * It is not yet an improvement.
 * Kept as runs/skEXIT2/round22_best72.83s.pt. Round 23 plans from round 18 at the same lr.
+
+## 2026-10-04 11:19 (machine clock) - skate_laby round 23 (lr 2.5e-5): the FASTEST policy yet - 8 finishers mean **72.65 s**, best **72.11 s** - but one crash -> rejected
+
+* **Planner:** 70.70 s.
+* **Challenger:** 72.63, 72.81, 73.06, 72.60, 72.50, 72.67, **72.11**, 72.86 s, and one crash.
+* **Incumbent (round 18)** on the same spawns: 72.73-73.82 s, mean 73.41.
+* **Paired:** faster on **all 8** shared spawns, by -0.10 to -1.22 s, mean **-0.72 s**.
+* **72.11 s is the best closed-loop policy run so far.** The previous best was round 5's 72.38, a best of 30.
+* **The crash** (spawn yaw 85.0):
+  * By 12.6 s (12.7% of the route) the run was down to ~855 u/s, against a normal ~1,650.
+  * It then hit a wall head-on (vy -843 -> 0) and hovered at ~20-30 u/s until the 180 s cap.
+  * The faster lines in the first third are riskier.
+* **Verdict:** gate rejected (all 9 must finish); round 24 plans from round 18 again.
+* Kept as runs/skEXIT2/round23_best72.11s.pt, the record-attempt candidate. Runs: runs/skWR_search/traj_0000000230.
