@@ -33639,3 +33639,13 @@ The human ALSO bumps (~610 u/s, immediately). The agent carries the boost longer
   * From round 4 on the policy already reproduces 99.8% / 99% of the planner's decisions. The planner's ~2 s edge lives in a few hundred deviating decisions, so the BC term carries little new signal late in the loop.
   * Every wave planned from spawn seed 0, while the evals start from 9 jittered spawns. The distilled lines tune ONE start.
 * **`--spawn-per-wave 1`:** each wave's spawn seed is 1 + 100r + w. Relaunched from round 11 (pid 47584, deadline 4.3 h), seed round 7, gate bar 74.10. The partial round 11 (planner 71.48-71.55 s) was discarded.
+
+## 2026-10-04 07:44 (machine clock) - skate_laby: the round-5 policy, 30 more greedy runs (spawn seed 300) - best **72.38 s** (2.50 s under the WR); a bimodal finish time
+
+* **All 30 runs** (sorted, s): 72.38, 72.64, 72.69, 72.74, 72.75, 72.82, 72.86, 72.87, 72.93, 73.00, 73.01, 73.12, 73.16, 73.17, 74.44, 74.68, 74.74, 74.91, 74.93, 75.09, 75.10, 75.13, 75.14, 75.16, 75.32, 75.34, 75.34, 75.35, 75.59, 75.60.
+  * 30/30 finished; mean 74.07, median 74.56; **17/30 under the WR's 74.88** on the same rule.
+* **Best single greedy policy run so far: 72.38 s.**
+* **The times are BIMODAL:** 14 runs at 72.38-73.17 and 16 at 74.44-75.60, a ~2 s gap.
+  * The spawn jitter decides, somewhere on the course, between a fast and a slow outcome.
+  * A policy that always took the fast branch would average ~72.9.
+* Published: runs/skWR_search/traj_0000000053.
