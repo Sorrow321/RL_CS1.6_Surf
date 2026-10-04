@@ -157,7 +157,10 @@ MAIN_MAPS = Path("C:/RL_Surf/maps")
 # of the fwd/side/duck heads is "keep" while every engine bin has shifted up
 # by one. A search that ignored that would score plans it could not replay
 # and would read every "press A" as "keep holding whatever you had".
-UNSUPPORTED = ("route_file", "chunk", "frame_stack", "race_arc", "keys_hold")
+# "keys_hold" left this list on 2026-10-04: the wrappers resolve the keep bin themselves and the
+# held state is cloned at every resample (see KEYS below); only the raw-row proposal editors are
+# refused under it.
+UNSUPPORTED = ("route_file", "chunk", "frame_stack", "race_arc")
 
 
 def resolve_map(name_or_path, cfg_map):
@@ -210,6 +213,10 @@ def build_sim(cfg, map_path, num_envs, ep_cap, tick=None):
         num_envs=num_envs, spawn_mode=2, max_episode_ticks=ep_cap,
         water_fail=1,
         sv_maxvelocity=float(cfg.get("maxvel", 2000.0)),
+        # --sv-gravity / --sv-friction / --bhop-cap / --stamina: MIRRORED (stock when absent)
+        sv_gravity=float(cfg.get("sv_gravity") if cfg.get("sv_gravity") is not None else 800.0),
+        sv_friction=float(cfg.get("sv_friction") if cfg.get("sv_friction") is not None else 4.0),
+        enable_bhop_cap=int(cfg.get("bhop_cap", 1)), enable_stamina=int(cfg.get("stamina", 1)),
         yaw_adaptive=1 if cfg.get("yaw_adaptive") else 0,
         yaw_blend=float(cfg.get("yaw_blend") or 1.0),
         side_hold_ticks=int(cfg.get("side_hold") or 0),
@@ -1863,6 +1870,27 @@ def main():
         raise SystemExit("beam_tas v1 cannot clone the per-env inference "
                          "state of: " + ", ".join(bad))
     _rc.audit_cfg(cfg, strict=not args.no_config_audit)
+    # --keys-hold: MIRRORED (record_ckpt's rule) - set_keys_hold moves train_fast.NVEC, which the
+    # packer, the Policy's action head and the wrappers read at construction time. This module's
+    # own NVEC import stays the ENGINE's, which is what every raw-row editor below writes in.
+    KEYS = bool(cfg.get("keys_hold"))
+    import train_fast as _tf
+    _tf.set_keys_hold(KEYS)
+    if KEYS:
+        _raw = [f for f, on in (("--eps", args.eps > 0.0), ("--dedup", args.dedup),
+                                ("--commit", args.commit > 0),
+                                ("--greedy-prefix", args.greedy_prefix > 0),
+                                ("--prefix-line", bool(args.prefix_line)),
+                                ("--branch-at", bool(args.branch_at)),
+                                ("--branch-grid", bool(args.branch_grid)),
+                                ("--macro-hold", bool(args.macro_hold))) if on]
+        if _raw:
+            raise SystemExit("--keys-hold checkpoint: " + ", ".join(_raw) + " write raw ENGINE "
+                             "action rows, and under keys-hold the policy's fwd/side/duck bin 0 "
+                             "is 'keep' - plan with the policy's own proposals (--greedy-envs "
+                             "is fine)")
+        print(f"--keys-hold: heads {_tf.NVEC} (engine {_tf.NVEC_CORE}); the held state is "
+              f"cloned with the state at every resample")
 
     # --tick-ms: the physics tick the weights trained under (checkpoints
     # that predate the flag have no key: 10 ms), overridable the way
@@ -1947,11 +1975,13 @@ def main():
     elif gc:
         gcell = float(gc)
 
-    from surfgym.goalfield import EuclidField, build_goal_field
+    from surfgym.goalfield import EuclidField, build_goal_field, build_ground_field
     from surfgym.zones import load_zones
     zones = load_zones(core1.bsp_path)
     t0 = time.time()
     gf = (EuclidField(zones["end"]) if cfg.get("race_dist") == "euclid"
+          # --race-ground: MIRRORED (the walkable floors' field the reward and channel read)
+          else build_ground_field(core1, zones["end"]) if cfg.get("race_ground")
           else build_goal_field(core1, zones["end"], cell=gcell))
     dt = time.time() - t0
     print(f"goal field @ cell {gcell:g} in {dt:.1f}s"
@@ -1974,16 +2004,34 @@ def main():
 
     arm(core1)
     from surfgym.vision import LidarPotential
+    # every vision option is MIRRORED exactly as record_ckpt builds its lidar (the image the
+    # weights were trained on: face normals / texture / slope, depth encoding, edges, the camera
+    # ring, the reach and time-to-contact channels, vision clip)
     lidar = GpuLidar(core1, lw, lh,
+                     hfov_deg=float(cfg.get("lidar_hfov") or 120.0),
+                     vfov_deg=float(cfg.get("lidar_vfov") or 90.0),
                      range_units=float(cfg.get("lidar_range", 2000.0)),
                      near_range=cfg.get("lidar_near"),
                      cell=cell, device=device,
                      surf_mask=bool(cfg.get("surf_mask", 0)),
                      pinhole=bool(cfg.get("pinhole", 0)),
+                     normals=bool(cfg.get("normals", 0)),
                      # --obs-potential: the race field as channel 2, the
                      # trainer's own scale (record_ckpt mirrors it the same way)
                      potential=LidarPotential.from_cfg(
-                         cfg, gf, core1, device, Path(map_path).stem, d0=d0))
+                         cfg, gf, core1, device, Path(map_path).stem, d0=d0),
+                     vision_clip=bool(int(cfg.get("vision_clip") or 0)),
+                     depth_enc=str(cfg.get("depth_enc") or "legacy"),
+                     ttc=bool(cfg.get("obs_ttc") or 0),
+                     edges=bool(cfg.get("obs_edges") or 0),
+                     views=int(cfg.get("obs_views") or 1),
+                     views_scale=int(cfg.get("obs_views_scale") or 1),
+                     reach=bool(cfg.get("obs_reach") or 0),
+                     texture=bool(cfg.get("obs_texture") or cfg.get("obs_normal")
+                                  or cfg.get("obs_slope") or 0),
+                     texture_mode=("normal" if cfg.get("obs_normal") else "slope"
+                                   if cfg.get("obs_slope") else "rgb"),
+                     depth_log_d0=float(cfg.get("depth_log_d0") or 200.0))
     stack = max(1, int(cfg.get("frame_stack") or 1))   # 1: refused above
     extra = (12,) if cfg.get("obs_reward") else ()
     # --race-latch: one observation column, concatenated LAST on the scalar
@@ -2013,8 +2061,9 @@ def main():
     if VIEW_ABS and not VIEWC:
         raise SystemExit("checkpoint config has view_absolute without "
                          "view_continuous")
-    policy = Policy(core1.obs_dim + n_latch + n_cc
-                    + lw * lh * lidar.channels * stack,
+    n_keys = _tf.keyshold.N_FEATURES if KEYS else 0
+    policy = Policy(core1.obs_dim + n_latch + n_cc + n_keys
+                    + int(getattr(lidar, "frame_size", lw * lh * lidar.channels)) * stack,
                     lw, lh,
                     emb=int(cfg.get("emb", 256)),
                     hidden=int(cfg.get("hidden", 256)),
@@ -2029,8 +2078,15 @@ def main():
                     # (16, in_ch + 2L, 5, 5), so it is MIRRORED -
                     # an unmirrored L would not even load.
                     obs_fourier=int(cfg.get("obs_fourier") or 0),
-                    in_ch=lidar.channels * stack,
-                    n_codes=0, chunk=0, route_dim=n_latch + n_cc,
+                    in_ch=int(getattr(lidar, "conv_channels", lidar.channels)) * stack,
+                    views=int(cfg.get("obs_views") or 1),
+                    views_scale=int(cfg.get("obs_views_scale") or 1),
+                    drop_depth=bool(cfg.get("obs_no_depth") or 0),
+                    simba=bool(cfg.get("simba") or 0),
+                    split_trunk=bool(cfg.get("split_trunk") or 0),
+                    # the scalar columns after the core's: latch, the cc T column and the
+                    # --keys-hold held state, in the order the wrappers' _obs appends them
+                    n_codes=0, chunk=0, route_dim=n_latch + n_cc + n_keys,
                     route_critic_only=bool(cfg.get("route_critic_only")),
                     view_continuous=VIEWC, view_absolute=VIEW_ABS
                     ).to(device)
@@ -2177,7 +2233,7 @@ def main():
             es1, ef1, _, lf1 = mk_feed()
             gpol = GreedyTorchPolicy(policy, packer, device, lidar, core1,
                                      K, stack, extra_slot=es1, extra_fn=ef1,
-                                     latch_fn=lf1, cc_fn=cc_fn1)
+                                     latch_fn=lf1, cc_fn=cc_fn1, keys_hold=KEYS)
             end, ticks, fin, _ = run_episode(core1, gpol, obs, f,
                                              ep_cap, header1, e)
             print(f"greedy ep{e} (spawn seed {args.seed + e}): {end} in "
@@ -2241,13 +2297,13 @@ def main():
         spol = MixedTorchPolicy(policy, packer, device, lidar, coreN,
                                 K, stack, n_greedy=args.greedy_envs,
                                 extra_slot=esN, extra_fn=efN,
-                                latch_fn=latchN, cc_fn=cc_fnN)
+                                latch_fn=latchN, cc_fn=cc_fnN, keys_hold=KEYS)
     elif args.eps > 0.0 or args.dedup:
         spol = EpsSampledTorchPolicy(policy, packer, device, lidar, coreN,
                                      K, stack, eps=args.eps,
                                      dedup=args.dedup,
                                      extra_slot=esN, extra_fn=efN,
-                                     latch_fn=latchN, cc_fn=cc_fnN)
+                                     latch_fn=latchN, cc_fn=cc_fnN, keys_hold=KEYS)
     elif (n_cc and args.cc_temp == "trained"
           and int(cfg.get("cc_temp_scale") or 0)
           and float(cc_TN.max()) > 0.0):
@@ -2258,13 +2314,13 @@ def main():
         spol = TemperedTorchPolicy(policy, packer, device, lidar, coreN,
                                    K, stack, keys_temp=_kt,
                                    extra_slot=esN, extra_fn=efN,
-                                   latch_fn=latchN, cc_fn=cc_fnN)
+                                   latch_fn=latchN, cc_fn=cc_fnN, keys_hold=KEYS)
         print(f"--cc-temp trained: proposal keys temperatures "
               f"{float(_kt.min()):.3f}..{float(_kt.max()):.3f}")
     else:   # never route eps=0 through the mixer: RNG-stream parity
         spol = SampledTorchPolicy(policy, packer, device, lidar, coreN,
                                   K, stack, extra_slot=esN, extra_fn=efN,
-                                  latch_fn=latchN, cc_fn=cc_fnN)
+                                  latch_fn=latchN, cc_fn=cc_fnN, keys_hold=KEYS)
     if n_cc and args.cc_temp == "trained" and not isinstance(
             spol, TemperedTorchPolicy) and int(cfg.get("cc_temp_scale") or 0) \
             and float(cc_TN.max()) > 0.0:
@@ -2282,7 +2338,7 @@ def main():
     if prefix > 0:
         gpolN = GreedyTorchPolicy(policy, packer, device, lidar, coreN,
                                   K, stack, extra_slot=esN, extra_fn=efN,
-                                  latch_fn=latchN, cc_fn=cc_fnN)
+                                  latch_fn=latchN, cc_fn=cc_fnN, keys_hold=KEYS)
     value_fn = None
     if args.boundary_v or args.score in ("v", "dv"):
         def value_fn(o):
@@ -2786,6 +2842,11 @@ def main():
                 hist[:d + 1, losers] = hist[:d + 1, donors]
                 if VIEWC:
                     hist_v[:d + 1, losers] = hist_v[:d + 1, donors]
+                if KEYS and getattr(spol, "keys", None) is not None:
+                    # --keys-hold: the held keys are episode history - the loser now holds what
+                    # the donor holds (the policy reads them as 7 obs columns next decision)
+                    spol.keys.state[losers] = spol.keys.state[donors]
+                    spol.keys.boot[losers] = spol.keys.boot[donors]
                 obs = np.array(obs)        # patch clones' scalar obs too
                 obs[losers] = obs[donors]
                 valid[:] = True
@@ -3174,7 +3235,7 @@ def main():
             diag = {"frontier_vertex": frontier["vert"],
                     "frontier_d": frontier["d"],
                     "frontier_tick": frontier["tick"]}
-            if dth_t:
+            if dth_t and str(args.route_file).lower() not in ("", "none"):
                 tt = np.concatenate(dth_t)
                 oo = np.concatenate(dth_o).astype(np.float64)
                 P = np.asarray(load_route(Path(args.route_file))[0],

@@ -400,9 +400,15 @@ def test_eval_and_recorder_resolve_the_same_way():
     assert "train_fast.set_keys_hold(keys_hold)" in rc
     assert "keys_hold=keys_hold" in rc
     assert "route_dim += train_fast.keyshold.N_FEATURES" in rc
-    # the two planner tools must REFUSE rather than mis-decode
+    # beam_tas PLANS with a keys-hold policy (2026-10-04, skate_laby): it mirrors the flag the
+    # recorder's way, hands it to every wrapper and clones the held state with the env state;
+    # the raw-ENGINE-row proposal editors stay refused under it
     bt = (ROOT / "tools" / "beam_tas.py").read_text(encoding="utf-8")
-    assert '"keys_hold"' in bt and "UNSUPPORTED" in bt
+    assert "_tf.set_keys_hold(KEYS)" in bt
+    assert bt.count("keys_hold=KEYS") >= 6
+    assert "spol.keys.state[losers] = spol.keys.state[donors]" in bt
+    assert "write raw ENGINE" in bt
+    assert '"keys_hold")' not in bt.split("UNSUPPORTED = (")[1].split(")")[0]
     pb = (ROOT / "tools" / "plan_to_bc.py").read_text(encoding="utf-8")
     assert 'cfg.get("keys_hold")' in pb
 
