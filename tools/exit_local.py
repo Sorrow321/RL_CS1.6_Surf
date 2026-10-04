@@ -85,6 +85,22 @@ def finish_times(traj: Path):
     return out, n
 
 
+def episode_times(traj: Path):
+    """-> one entry per episode in file order: its finish seconds, or None if it did not finish.
+    Two record_ckpt runs on the same --seed are aligned episode by episode (same spawns)."""
+    out, hdr, rows = [], None, 0
+    for line in open(traj, encoding="utf-8"):
+        o = json.loads(line)
+        if isinstance(o, dict) and "map" in o:
+            hdr, rows = o, 0
+        elif isinstance(o, list):
+            rows += 1
+        elif isinstance(o, dict) and "end" in o:
+            out.append(rows * float(hdr.get("tick_ms", 10.0)) / 1000.0 if o["end"] == "done"
+                       else None)
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--ckpt", required=True, help="the seed checkpoint (policy-derived only)")
@@ -324,7 +340,21 @@ def main() -> int:
                     row["target_reached"] = {"by": "incumbent", "run_s": round(min(fi), 3)}
                     log(fh, f"round {r}: TARGET REACHED - an incumbent run of {min(fi):.2f} s <= "
                             f"{args.target_best:g} s -> {out / 'target_run.pt'}")
-            if mean < bar:
+            accept = mean < bar
+            if args.gate_rematch:
+                # the PAIRED rule (skate_laby skEXIT3 round 6, 2026-10-04): one incumbent crash
+                # set its mean to inf and handed the gate to a challenger 0.33 s SLOWER on the 8
+                # spawns both finished. Compare on the spawns both finished; the challenger must
+                # still finish all of its own.
+                ci = episode_times(ev) if ev.exists() else []
+                ii = episode_times(evi) if evi.exists() else []
+                pairs = [(a, b) for a, b in zip(ci, ii) if a is not None and b is not None]
+                paired = (sum(a - b for a, b in pairs) / len(pairs)) if pairs else None
+                row["paired_s"] = round(paired, 3) if paired is not None else None
+                accept = mean != float("inf") and (paired < 0.0 if pairs else True)
+                log(fh, f"round {r}: paired on {len(pairs)} shared finishes: "
+                        f"{'n/a' if paired is None else f'{paired:+.3f} s'} (challenger - incumbent)")
+            if accept:
                 best_mean, best_mean_ck = mean, out / "best_mean.pt"
                 shutil.copyfile(final, best_mean_ck)
                 row["gate"] = "accepted"
