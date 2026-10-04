@@ -33939,3 +33939,19 @@ The human ALSO bumps (~610 u/s, immediately). The agent carries the boost longer
 * **Paired:** -0.13 s on average. 6 spawns faster, 2 slower, 1 level. A small gain, not far outside the noise.
 * **The incumbent is now round 24,** kept as runs/skEXIT2/round24_mean73.31s.pt. Runs: runs/skWR_search/traj_0000000240.
 * **Round 25** (planning from round 24) is the last before the 12:13 deadline.
+
+## 2026-10-04 12:10 (machine clock) - skate_laby round 25 rejected (+0.31 s paired); the expert loop stopped at its 12:13 deadline
+
+* **Round 25** (from round 24, lr 2.5e-5):
+  * Planner: 70.70 s.
+  * Challenger: 72.99-74.52 s, mean 73.66.
+  * Incumbent (round 24) on the same spawns: mean 73.35.
+  * Rejected.
+* **The driver stopped before round 26** (it would have crossed the deadline).
+* **Final state of the loop:**
+  * Incumbent: round 24, runs/skEXIT2/best_mean.pt = round24_mean73.31s.pt.
+  * Best single run: round 23, 72.11 s (round23_best72.11s.pt).
+  * Best planner line: 70.66 s (round 24).
+* **Next:** final record-attempt evals.
+  * Per checkpoint: 30-100 greedy runs on spawn seed 300 (the round-5 batch's spawns).
+  * Plus runs from the canonical start (yaw jitter 0 = the teleport's yaw 90, the server's start).
