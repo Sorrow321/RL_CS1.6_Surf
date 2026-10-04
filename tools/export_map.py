@@ -353,14 +353,30 @@ def main():
             continue
         mb = MeshBuilder()
         m = models[mi]
+        # a brush entity with an "origin" key (an origin brush) stores its model RELATIVE to that
+        # origin; without the offset skate_laby's start-booster walls (func_wall *50, origins
+        # -1040/-1136 -1776 -144) were drawn at the map centre, across a corridor the runners
+        # fly through (the physics core, src/bsp.c ent_bounds, always applied it)
+        off = parse_vec3(ent["origin"]) if "origin" in ent else (0.0, 0.0, 0.0)
         for fi in range(m["firstface"], m["firstface"] + m["numfaces"]):
             face = faces[fi]
-            mb.add_face(face_polygon(face, edges, surfedges, vertexes),
-                        face_normal(face))
+            poly = face_polygon(face, edges, surfedges, vertexes)
+            poly = [(p[0] + off[0], p[1] + off[1], p[2] + off[2]) for p in poly]
+            mb.add_face(poly, face_normal(face))
         brush = {"classname": classname, "model": mi,
                  "targetname": ent.get("targetname", ""),
                  "target": ent.get("target", ""),
-                 "skin": int(float(ent.get("skin", 0) or 0))}
+                 "skin": int(float(ent.get("skin", 0) or 0)),
+                 # how the game draws it (a viewer that draws every brush opaque shows walls
+                 # where the game shows glass or nothing): rendermode 0 normal, 2 texture
+                 # (renderamt = opacity, 0 = invisible), 4 alpha-test ('{' cut-outs), 5 additive
+                 "rendermode": int(float(ent.get("rendermode", 0) or 0)),
+                 "renderamt": int(float(ent.get("renderamt", 0) or 0)),
+                 "origin": list(off)}
+        if "speed" in ent:
+            brush["speed"] = float(ent["speed"] or 0)
+        if "angles" in ent:
+            brush["angles"] = parse_vec3(ent["angles"])
         brush.update(mb.to_dict())
         brush["_faces"] = mb.faces   # stripped below; used for the summary
         brush["_tris"] = mb.tris

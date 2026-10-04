@@ -84,6 +84,52 @@ function addSolid(geo) {
   scene.add(edges);
 }
 
+function addGlass(b, opacity) {
+  var geo = buildGeometry(b.positions, b.normals, b.indices, [0.80, 0.88, 0.95]);
+  scene.add(new THREE.Mesh(geo, new THREE.MeshLambertMaterial({
+    vertexColors: true, transparent: true, opacity: opacity, depthWrite: false,
+    side: THREE.DoubleSide })));
+  scene.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo, 28),
+    new THREE.LineBasicMaterial({ color: 0xe8f0f8, transparent: true, opacity: 0.55 })));
+}
+
+var boosters = [];   // trigger_push AABBs (GoldSrc), grown by the player hull
+
+// a trigger_push: a translucent amber volume with bright edges and chevrons on its floor
+// pointing the way it pushes (its "angles" yaw), so a viewer sees why the speed jumps
+function addBooster(b) {
+  var geo = buildGeometry(b.positions, b.normals, b.indices, [1.0, 0.72, 0.22]);
+  scene.add(new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+    vertexColors: true, transparent: true, opacity: 0.22, depthWrite: false,
+    side: THREE.DoubleSide })));
+  scene.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo, 28),
+    new THREE.LineBasicMaterial({ color: 0xffc040, transparent: true, opacity: 0.95 })));
+  var p = b.positions, lo = [1e9, 1e9, 1e9], hi = [-1e9, -1e9, -1e9];
+  for (var i = 0; i < p.length; i += 3) {
+    for (var a = 0; a < 3; a++) { lo[a] = Math.min(lo[a], p[i + a]); hi[a] = Math.max(hi[a], p[i + a]); }
+  }
+  boosters.push([lo[0] - 16, lo[1] - 16, lo[2] - 36, hi[0] + 16, hi[1] + 16, hi[2] + 36]);
+  var yaw = ((b.angles && b.angles[1]) || 0) * Math.PI / 180;
+  var fx = Math.cos(yaw), fy = Math.sin(yaw), sx = -fy, sy = fx;     // forward / side (GoldSrc)
+  var cx = (lo[0] + hi[0]) / 2, cy = (lo[1] + hi[1]) / 2;
+  var len = Math.abs(fx) * (hi[0] - lo[0]) + Math.abs(fy) * (hi[1] - lo[1]);
+  var wid = Math.abs(sx) * (hi[0] - lo[0]) + Math.abs(sy) * (hi[1] - lo[1]);
+  var z = lo[2] + 1.5, half = Math.min(wid * 0.38, 60), depth = half * 0.8;
+  var pts = [];
+  for (var c = -2; c <= 2; c++) {
+    var ox = cx + fx * c * len / 6, oy = cy + fy * c * len / 6;
+    var tip = g2t(ox + fx * depth / 2, oy + fy * depth / 2, z);
+    pts.push(g2t(ox - fx * depth / 2 + sx * half, oy - fy * depth / 2 + sy * half, z), tip);
+    pts.push(tip, g2t(ox - fx * depth / 2 - sx * half, oy - fy * depth / 2 - sy * half, z));
+  }
+  var cg = new THREE.BufferGeometry().setFromPoints(pts);
+  scene.add(new THREE.LineSegments(cg, new THREE.LineBasicMaterial({ color: 0xffd060 })));
+  // a second, slightly raised copy reads as a thicker stroke on the floor
+  var pts2 = pts.map(function (v) { return v.clone().add(new THREE.Vector3(0, 0.8, 0)); });
+  scene.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts2),
+    new THREE.LineBasicMaterial({ color: 0xffd060 })));
+}
+
 var camA = new THREE.PerspectiveCamera(VFOV, W / PH, 2, 40000);
 var camH = new THREE.PerspectiveCamera(VFOV, W / PH, 2, 40000);
 var data = null;
@@ -133,6 +179,27 @@ function key(x, y, w, h, label, on) {
   hctx.fillText(label, x + w / 2, y + h / 2 + 1);
 }
 
+var curK = 0;
+
+// seconds since the runner was last inside a booster (trigger_push) volume, or -1 (not in
+// the last 1.2 s). By position, not by a speed jump: under the 2000 u/s cap the 800 booster
+// adds only ~190 u/s to a runner already at 1,810, and a speed rule missed it.
+function inBooster(f) {
+  for (var i = 0; i < boosters.length; i++) {
+    var b = boosters[i];
+    if (f[0] >= b[0] && f[0] <= b[3] && f[1] >= b[1] && f[1] <= b[4] && f[2] >= b[2] && f[2] <= b[5]) return true;
+  }
+  return false;
+}
+
+function boostAge(fr, k) {
+  var lim = Math.round(1.2 * data.fps), k0 = Math.round((data.pre || 0) * data.fps);
+  for (var j = k; j >= Math.max(k0, k - lim); j--) {
+    if (inBooster(fr[j])) return (k - j) / data.fps;
+  }
+  return -1;
+}
+
 function panelHud(y0, tr, f, t) {
   var fin = t >= tr.finish;
   // a soft top band so the titles read on bright sky
@@ -150,6 +217,13 @@ function panelHud(y0, tr, f, t) {
     txt('GO!', W / 2, y0 + PH / 2 + 60, 170, 'bold', 'center');
   }
   txt(f[5] + ' u/s', 30, y0 + PH - 30, 34, 'bold');
+  var age = boostAge(tr.f, curK);
+  if (age >= 0) {
+    hctx.save();
+    hctx.globalAlpha = Math.max(0, 1 - age / 1.2);
+    txt('BOOST!', 30, y0 + PH - 82, 54, 'bold', 'left', '#ffd060');
+    hctx.restore();
+  }
   var k = 50, gp = 6, x0 = W - 3 * k - 2 * gp - 28, ky = y0 + PH - 2 * k - gp - 26;
   key(x0 + k + gp, ky, k, k, 'W', f[6] === 2);
   key(x0, ky + k + gp, k, k, 'A', f[7] === 0);
@@ -340,6 +414,7 @@ function renderFrame(k) {
   renderer.render(scene, camH);
   renderer.setScissorTest(false);
   hctx.clearRect(0, 0, W, H);
+  curK = k;
   panelHud(0, data.agent, fa, t);
   barHud(k);
   panelHud(PH + BAR, data.human, fh, t);
@@ -362,7 +437,22 @@ Promise.all([fetch(meshUrl).then(function (r) { return r.json(); }),
     data = res[1];
     addSolid(buildGeometry(mesh.world.positions, mesh.world.normals, mesh.world.indices, null));
     (mesh.brushes || []).forEach(function (b) {
-      if (!b.classname || b.classname.indexOf('trigger_') === 0) return;
+      if (!b.classname) return;
+      if (b.classname === 'trigger_push') { addBooster(b); return; }
+      if (b.classname.indexOf('trigger_') === 0) return;
+      var rm = b.rendermode || 0, ra = b.renderamt || 0;
+      // as the game draws it: rendermode 2 at renderamt 0 is INVISIBLE (an invisible wall),
+      // 5 is an additive glow, 4 an alpha-tested cut-out (the windows' frames, func_illusionary
+      // *47): drawn opaque, the cut-out filled the window openings with a wall the runners
+      // seemed to fly through (the user, 2026-10-04)
+      if (rm === 2 && ra === 0) return;
+      if (rm === 5) return;
+      if (rm === 4) { addGlass(b, 0.14); return; }
+      if (rm === 2) {
+        // a translucent visual sitting on a booster is drawn by addBooster already
+        if (b.classname === 'func_illusionary' && b.speed) return;
+        addGlass(b, Math.max(0.12, ra / 255)); return;
+      }
       var rgb = b.classname === 'func_button' ? [0.80, 0.30, 0.28] : null;
       addSolid(buildGeometry(b.positions, b.normals, b.indices, rgb));
     });
