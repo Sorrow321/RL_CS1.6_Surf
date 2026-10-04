@@ -33544,3 +33544,11 @@ The human ALSO bumps (~610 u/s, immediately). The agent carries the boost longer
 * **The truncated run:** at 49.0 s (61.1% of the route, (175,-624)) it lost its speed (to 36 u/s) and crawled at ~30 u/s for 131 s.
   * The training speed floor (500 u/s over 1 s) kills every such state, so the policy has never practised a near-stop recovery. Under the floor, a crash is a dead end.
   * One-off so far (rounds 0-1: 10/10 finished).
+
+## 2026-10-04 05:49 (machine clock) - skate_laby: the 74.23 s policy (round 1) re-run 10x at K=4 and 10x at K=2 (inference only), spawn seed 100 - best **74.13 s**
+
+* **K=4 (as trained):** 10/10 finish. Sorted: **74.13**, 75.53, 75.54, 75.59, 75.88, 75.90, 75.91, 76.01, 76.23, 83.58. Mean 76.43; 1/10 under the WR's 74.88 (same rule).
+* **K=2 (the same weights deciding every 15.3 ms):** 10/10 finish. Sorted: 74.45, 74.55, 74.87, 75.00, 75.02, 75.08, 75.16, 75.18, 75.31, 75.72. Mean **75.03**; 3/10 under 74.88.
+* **Best greedy policy run so far: 74.13 s.** That is 0.75 s under the WR on the core's finish rule, and the second sub-WR run of this checkpoint (74.23 in its round-1 eval).
+* Finer decisions at INFERENCE make it far more consistent (the mean is 1.4 s better; the 83.58 outlier is gone).
+* Published as runs/skWR_search/traj_0000000011 (K=4) and traj_0000000012 (K=2).
