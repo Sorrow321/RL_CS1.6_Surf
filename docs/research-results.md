@@ -33891,3 +33891,16 @@ The human ALSO bumps (~610 u/s, immediately). The agent carries the boost longer
 * The paired gate stays on.
 * Rounds take ~26 min: planning ~8.5, distil ~7.5, training ~7, two evals ~2.5.
 * Round 21's three already-planned waves were discarded. Planning is deterministic, and the new wave 0 reproduced 70.833 s exactly.
+
+## 2026-10-04 10:25 (machine clock) - skate_laby round 21 (24 waves, 384 same-base lines) rejected: the post-booster slow mode came back in 2 of 9 runs; relaunch at lr 2.5e-5
+
+* **Round 21** (from round 18; BC = 384 lines, all planned from round 18):
+  * Planner: 70.70 s.
+  * Challenger: 75.92, 72.70, 74.11, 73.62, 73.76, 73.42, 73.78, 73.04, 76.28 s (mean 74.07).
+  * Incumbent on the same spawns: mean 73.37.
+* **The two slow runs lose +1.9 / +2.3 s at 35-60%,** the post-booster turn. Elsewhere the challenger is mixed: 0-35% runs from -0.77 to +0.84 s per spawn.
+* **Round 18 itself never showed the slow mode** in 36 runs (its own eval and three rematches: 72.50-74.49 s).
+* **Reading:**
+  * Three rounds of training from round 18 (19, 20, 21), with three different BC sets, all came out ~0.65-0.70 s worse.
+  * Further training breaks a fragile behaviour (the post-booster turn) more often than it gains elsewhere.
+* **Relaunch** (10:25, pid 18532), from round 18, at **`--lr 2.5e-5`** (half). Everything else as round 21: 24 waves, no pool, paired gate. Deadline 12:13.
