@@ -34092,3 +34092,16 @@ Every run file is in runs/skWR_final.
 * Lines slower than 92 s are useless; a 92+ s eval run already counts as a failure.
 * A capped wave now takes 23 s at 1.05M env-steps/s (it was 60 s).
 * Deadline unchanged (16:31).
+
+## 2026-10-04 15:42 (machine clock) - skEXIT3 round 3 ACCEPTED: under the server's 2000 u/s cap the policy beats the WR in **3 of 9 runs** (best **74.57 s**)
+
+* **Planner:** 73.39 s.
+* **Challenger:** 75.19, 74.73, 74.97, 75.35, 75.55, **74.57**, 74.87, 75.03, 74.97 s.
+  * 9/9 finished, mean **75.03**.
+  * Three runs beat the WR (74.88): 74.57, 74.73, 74.87.
+* **Incumbent (round 1)** on the same spawns: mean 75.89, best 75.23.
+* **Paired:** -0.86 s, faster on 7/9.
+* **This is the first legitimate WR-beating policy run:** the server's physics (hover + 2000 u/s per-axis cap), our clock (teleport to the 38 u box), WR = 74.88.
+* **Margins:** -0.31 s for the best run; the mean is still +0.15 s.
+* **Throughput:** training ran at 160-230k fps (round 1: up to 369k; the 4000 phase ~500k), so the round took 1,241 s to train. 66 Chrome processes were up meanwhile, which possibly competed for the GPU.
+* Kept as runs/skEXIT3/round3_mean75.03s.pt. Runs: runs/skWR_cap2000/traj_0000000030.
