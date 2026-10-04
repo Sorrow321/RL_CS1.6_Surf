@@ -33649,3 +33649,31 @@ The human ALSO bumps (~610 u/s, immediately). The agent carries the boost longer
   * The spawn jitter decides, somewhere on the course, between a fast and a slow outcome.
   * A policy that always took the fast branch would average ~72.9.
 * Published: runs/skWR_search/traj_0000000053.
+
+## 2026-10-04 08:01 (machine clock) - skate_laby: the bimodality is the post-booster turn (the user's spot) - half the runs lose 2.1 s there
+
+**Gated round 11** (per-wave spawns, merged distil), from round 7:
+
+* Planner 71.52 / 71.58 / 71.47 s from three spawns.
+* The policy: 73.56, 75.74, 73.56, 76.15, 73.50, 75.74, 73.43, 76.05, 75.65 s (mean 74.82). Rejected.
+* Bimodal again.
+
+**Where the two modes split.** The round-5 policy's 30 runs, mean time to each 5% of ground-field route progress, fast mode (14 runs, mean 72.87) against slow mode (16, mean 75.12):
+
+| route progress | slow - fast |
+|---|---|
+| 0-40% | +0.04 to +0.16 s, cumulative (no split) |
+| 40-45% (the booster and the sharp turn) | **+0.25** |
+| 45-50% | **+0.67** |
+| 50-55% | **+0.44** |
+| 55-60% | **+0.31** |
+| 60-65% | **+0.16** |
+| 65-100% | +0.01 to +0.11 per slice |
+| total | +2.25 |
+
+**Reading:**
+
+* In ~half the runs the policy takes the post-booster turn badly, sheds its speed, and spends the next ~25% of the route regaining it.
+* The fast runs take the same turn cleanly. This is exactly the spot the user flagged ("it bumps into the wall all the time").
+* Which mode a run lands in is decided by the approach the start jitter produces.
+* A policy that always took the fast branch would run ~72.9 s on average.
