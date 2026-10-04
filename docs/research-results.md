@@ -33586,3 +33586,9 @@ The human ALSO bumps (~610 u/s, immediately). The agent carries the boost longer
 |---|---|---|---|---|---|---|
 | policy best (s) | 75.93 | 74.23 | 74.69 | 73.36 | 74.10 | **72.71** |
 | policy mean (s) | 76.83 | 75.37 | 74.94 | 74.68 | 74.30 | **73.98** |
+
+## 2026-10-04 06:41 (machine clock) - skate_laby expert loop round 6: planner 71.12 s; the policy dips (74.05 best, 74.96 mean)
+
+* **Planner:** 71.15 / 71.19 / **71.12 s** (gate 75.10).
+* **Policy:** 74.04, 76.13, 74.37, 74.19, 76.08 s. 5/5 finished; 3/5 under the WR. Worse than round 5 (72.71 / 73.98).
+* The 5-run evals swing ~1 s round to round. best.pt stays round 5. The loop continues from round 6 (AlphaZero order).
