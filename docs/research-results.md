@@ -34201,3 +34201,27 @@ Every run file is in runs/skWR_final.
   * Plan from the policy's OWN states along its runs, not only from the map start (DAgger).
   * Concentrate it in the first third.
 * **Best single run:** 74.21 s.
+
+## 2026-10-04 19:01 (machine clock) - skate_laby: the user accepts the search line as the agent's run - **72.64 s at the 2000 cap, 2.24 s under the WR**; video rendered
+
+**The user:** "Can we just render the planner? ... it's not that our policy directly generated it, we used some search, but I think it's a legit kind of thing."
+
+**The line:** skEXIT3 round 10, wave 5 (beam_tas from round 4's policy, spawn seed 1006, start yaw 86.9).
+
+* **Time:** **72.642 s** (9,475 ticks at 7.667 ms).
+* **Physics:** sv_maxvelocity 2000 in its header; max |vx| = |vy| = 2000.0, |v_h| 2,012; hover.
+* **Replay:** bit-exact in the simulator (beam_tas verifies it).
+* **Margin:** 2.24 s under the WR (74.88), so it meets the user's 1 s target.
+
+**Saved:**
+
+* runs/skWR_cap2000/planner_72.64s.jsonl and .npz.
+* The dashboard copy: traj_0000000070.
+
+**Video:** runs/skWR_cap2000/agent_search_vs_human_wr.mp4 (1280x1560, 60 fps, 77.4 s; tools/demo/vs_wr_video.py).
+
+**Caveat:**
+
+* This is an open-loop line found by search in our simulator.
+* On the real server an open-loop replay would desync, because the dynamics are chaotic.
+* The closed-loop policy's best run at the cap is 74.21 s.
