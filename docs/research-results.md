@@ -33690,3 +33690,13 @@ The human ALSO bumps (~610 u/s, immediately). The agent carries the boost longer
 * **Policy** after training (397 s): 73.45, 73.61, 73.75, 73.52, 73.51, 73.52, 74.77, 76.42, 73.99 s. 9/9 finished; mean **74.06** against the 74.10 bar: ACCEPTED.
 * **6 of 9 runs in the fast cluster** (73.45-73.75), against ~half before. The smaller step (lr 5e-5, 2e8) plus per-spawn lines is the first change since round 7 that the gate takes.
 * Kept as runs/skEXIT2/round13_mean74.06s.pt. Runs: runs/skWR_search/traj_0000000130. Round 14 plans from it (its first wave: 71.29 s).
+
+## 2026-10-04 08:40 (machine clock) - skate_laby gated round 14 ACCEPTED: **9/9 runs on the fast branch**, mean 73.71 s - the post-booster turn is fixed
+
+* **Planner** (6 spawns): best 71.19 s.
+* **Policy:** 73.45, 73.60, 73.72, 73.66, 74.15, 73.46, 73.81, 73.66, 73.85 s.
+  * 9/9 finished; mean **73.71** over 9 episodes (round 13: 74.06; round 7 on the same protocol: 74.10).
+  * Every run is 0.7-1.4 s under the WR's 74.88.
+  * **No slow mode:** all nine take the clean post-booster turn. Rounds 7-12 split ~half/half at it.
+* **The step that fixed it:** the gate + smaller updates (lr 5e-5, 2e8) + planner lines from 6 different spawns, two rounds in a row.
+* Kept as runs/skEXIT2/round14_mean73.71s.pt. Runs: runs/skWR_search/traj_0000000140.
