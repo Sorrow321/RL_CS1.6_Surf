@@ -33472,3 +33472,42 @@ The human ALSO bumps (~610 u/s, immediately). The agent carries the boost longer
 
 * Section mean speeds are mostly HIGHER for the agent (1,712-1,866 against 1,679-1,806). **The remaining gap is line length, not speed.**
 * **One suspect:** `--speed-coef` pays 0.2 per 1,000 u FLOWN (speed level x time), so it softens the penalty on a longer, faster line by ~24%. It was added in the setup to keep a still-learning agent moving.
+
+## 2026-10-04 05:02 (machine clock) - skate_laby overnight: act_every 2 training is worse; dropping the speed bonus -> 75.42 s; the expert loop ported to keys-hold policies; a 64-env planner line runs **74.83 s**, under the 74.90 WR
+
+**skLABY15** (`--act-every 2` from the 75.96 s weights), stopped after ~680M.
+
+* Its first eval at K=2 (one PPO update in) was 75.79 s best, 75.92 mean.
+* After that, eval means were 77.2-79.7 s, against skLABY14's 76.2-77.8 at K=4.
+* Sigma rose 0.052 -> 0.061 and reward fell 170.9 -> 167.7; fps was 233k against 340k at K=4.
+* **Verdict:** training at K=2 makes the K=4-born policy WORSE (the cannonball precedent: "the finer decision grid ... does not transfer to the policy at this budget"). Finer decisions help at inference only.
+
+**skLABY16** (the 75.96 s weights at K=4 + `--speed-coef 0`, the per-second speed-level bonus dropped; it pays per u FLOWN and softens the cost of a wider line):
+
+* --save-best chain: 76.01, 75.99, 75.70 -> **75.42 s (7,847.5M)**.
+* Eval means: 75.89-76.89.
+* A small step that held; kept as runs/skLABY16/ckpt_best_75.42s.pt.
+
+**The expert loop, ported to this policy** (the user, overnight: "I would actually implement this alpha zero style expert loop"):
+
+* **beam_tas (871fd0d):**
+  * keys-hold planning: set_keys_hold, the 7 columns, keys_hold= on every wrapper, the held state CLONED at every resample; raw-row proposal editors refused;
+  * build_sim mirrors sv_gravity / sv_friction / bhop_cap / stamina;
+  * race_ground -> build_ground_field;
+  * the lidar and the Policy built with record_ckpt's full option set (face normals etc.);
+  * `--route-file none` for route-free maps.
+* **First search** (skLABY14's 75.96 s weights, 64 envs, 8 greedy, d-score, R=25):
+  * the greedy gate ran 75.95 s, matching the trainer's eval of 75.96;
+  * **best line 74.83 s**, replayed open-loop BIT-EXACT at tick 9761, in 11.5 s of search.
+  * That is a policy-guided search line (AlphaZero's "expert"), not the policy's own greedy run, and it is already under the human WR (74.90 s, timed the same way: teleport to the 38 u box).
+* **plan_to_bc / bc.py / train_fast (21cd9fb):** keys-hold BC.
+  * Engine rows from a NEUTRAL spawn are converted to policy-space targets (KEEP when unchanged, else bin + 1), plus the 7 held-key columns; search distributions move the same way.
+  * Tested: the round trip resolves back to the engine rows bit for bit.
+  * Distil of the 74.83 s plan: 9,764 rows.
+  * A 4e6-step BC warm resume: bc loss 1.37 -> 0.81, per-head acc 0.82 -> 0.87.
+* **tools/exit_local.py:** plan (3 beam_tas waves, 2,048 envs, 64 greedy, R=25, keep 16) -> distil -> train (3e8 steps, lr 1e-4, BC 0.5 -> 0 dist target, value coef 0.25, spawns along the planner line, SELF_STATES=1) -> eval (record_ckpt, 5 greedy).
+
+**Launched 05:02** from skLABY16's 75.42 s weights as runs/skEXIT (driver pid 31056, hidden; deadline 7.3 h).
+
+* Every training input is the policy's own: the planner proposes only from the checkpoint's distribution.
+* The human demo is used nowhere (CLAUDE.md s0).
