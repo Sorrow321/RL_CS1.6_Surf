@@ -33629,3 +33629,13 @@ The human ALSO bumps (~610 u/s, immediately). The agent carries the boost longer
 * **The bar was the seed's 5-episode mean.** On the driver's own 9-episode protocol the round-7 checkpoint scores 73.71, 73.88, 73.72, 73.88, 73.39 (the 5-episode eval reproduced exactly), then 75.91, 73.70, 73.58, 75.12: **mean 74.10**, best 73.39.
 * The rejection stands either way, but a bar 0.39 s too strict would also have refused rounds in [73.71, 74.10).
 * **Relaunched** from round 10 with `--seed-mean 74.10` (pid 44016, deadline 4.6 h). The partial round 10 (planner 71.45-71.64 s) was discarded.
+
+## 2026-10-04 07:41 (machine clock) - skate_laby gated round 10 rejected; the planner now plans every wave from its own spawn (--spawn-per-wave)
+
+* **Gated round 10** (from round 7): planner 71.46 / 71.64 / 71.45 s.
+  * The policy: 75.19, 75.38, 72.98, 73.91, 75.36, 75.76, 73.03, 74.64, 75.40 s (9/9 finished, mean 74.63, best 72.98).
+  * Rejected against 74.10.
+* **The per-round table** (bc acc / joint acc at the start of each round's training):
+  * From round 4 on the policy already reproduces 99.8% / 99% of the planner's decisions. The planner's ~2 s edge lives in a few hundred deviating decisions, so the BC term carries little new signal late in the loop.
+  * Every wave planned from spawn seed 0, while the evals start from 9 jittered spawns. The distilled lines tune ONE start.
+* **`--spawn-per-wave 1`:** each wave's spawn seed is 1 + 100r + w. Relaunched from round 11 (pid 47584, deadline 4.3 h), seed round 7, gate bar 74.10. The partial round 11 (planner 71.48-71.55 s) was discarded.
