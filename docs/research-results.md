@@ -33827,3 +33827,22 @@ The human ALSO bumps (~610 u/s, immediately). The agent carries the boost longer
   * The policy flies 4% more path and ~50 u/s slower.
 * The policy's remaining weakness is execution in the first third, and it is not a physics limit.
 * Taking the best of each section gives ~71.8 s (human 0-35% + policy). The planner's line is 71.19.
+
+## 2026-10-04 09:32 (machine clock) - skate_laby round 18 ACCEPTED: mean **73.07 s** (from 73.71), faster than the incumbent on 9 of 9 paired spawns
+
+* **BC pool:** rounds 15-18, 378 planner lines. Every one was planned from round 14.
+* **Planner:** best 71.21 s.
+* **Paired eval** (the same 9 spawns, seed 7018):
+
+| | finished | runs (s) | mean | best |
+|---|---|---|---|---|
+| challenger (round 18) | 9/9 | 73.27, 73.06, 72.89, 72.96, 73.22, 73.18, 72.58, 73.07, 73.40 | **73.07** | **72.58** |
+| incumbent (round 14) | 9/9 | 73.46, 73.34, 74.02, 73.59, 73.79, 73.62, 73.77, 73.91, 74.26 | 73.75 | 73.34 |
+
+* **Paired differences:** every spawn is faster, by -0.19 to -1.19 s, mean **-0.68 s**.
+* **Against the WR:** all 9 runs beat it (74.88 on our clock), by 1.5-2.3 s.
+* **What changed:**
+  * Rounds 15-16 trained on one round's lines and their gated means did not move (73.77, 73.88).
+  * Rounds 17-18 trained on four rounds' lines: 73.49 (8 finishers, one crash), then 73.07.
+  * Dataset aggregation is the change that moved the policy. One seed, so this is suggestive, not proven.
+* Kept as runs/skEXIT2/round18_mean73.07s.pt. Runs: runs/skWR_search/traj_0000000180.
