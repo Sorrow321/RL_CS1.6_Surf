@@ -34029,3 +34029,12 @@ Every run file is in runs/skWR_final.
 * **The section analysis still holds where speeds stay under 2000:** in the first 35% the human is 1.9 s faster than the round-14 policy. That part is unaffected by the cap and is now the whole gap.
 
 **Fix:** retrain under `--maxvel 2000`. First a PPO resume of round 23 at 2000, so the checkpoint carries maxvel 2000 and every tool (beam_tas, plan_to_bc, record_ckpt) reads it. Then the expert loop from there.
+
+## 2026-10-04 13:17 (machine clock) - skCAP1: round 23 resumed under the server's cap (`--maxvel 2000`)
+
+* **Launch:** `launch_local.ps1 resume runs/skEXIT2/round23_best72.11s.pt skCAP1 --maxvel 2000 --lr 5e-5 --record-every 100e6 --ckpt-every 250e6 --save-best 1`, with MAP=skate_laby and SELF_STATES=1. Local 5090, pid 48572.
+* **Everything else is restored from the checkpoint:** hover, ground field, 131 Hz, speed-pot 10, min-speed-kill 500, respawn 0.9.
+  * The respawn spine is round 23's planner lines (policy-derived). Those lines were planned at 4000 u/s, so their states are clamped on the first tick.
+* **Record gate passed.** run.json: maxvel 2000.
+* **Purpose:** adapt the weights to the cap. They crash on 13/30 runs at 2000 out of the box.
+* **Next:** run the expert loop from the adapted checkpoint. It carries maxvel 2000, so beam_tas, plan_to_bc and record_ckpt all read it.
