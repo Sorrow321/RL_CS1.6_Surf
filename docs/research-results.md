@@ -34071,3 +34071,24 @@ Every run file is in runs/skWR_final.
   * On the other 8 spawns the challenger is +0.28 s SLOWER on average.
   * Read it as "more reliable, not faster".
 * Round 2 plans from round 1.
+
+## 2026-10-04 14:56 (machine clock) - skEXIT3 round 2 (2000 cap) rejected (+0.10 s paired); planner waves capped at 92 s (`--max-ticks 12000`)
+
+**Round 2:**
+
+* Planner: 73.38 s.
+* Challenger: mean 75.97, best 75.34.
+* Incumbent (round 1) on the same spawns: mean 75.87, best **74.95** (the closest any policy run has come to the WR at the cap).
+* Paired: +0.10 s, faster on 3/9. Rejected.
+
+**Slow rounds.** Round 2's planning took 1,609 s, against round 1's 610.
+
+* Some waves ran all 23,478 ticks (234 generations) instead of stopping at ~9,900. A few envs never finish (the policy hovers when stuck), and the search runs to max-ticks.
+* In round 1, every wave stopped at ~99 generations, all finished.
+* Search throughput also fell, from 1.2-1.35M to 0.33-0.80M env-steps/s. Some of that is contention from something else on the GPU.
+
+**Fix.** Restarted at round 3 (14:55, pid 48180) from round 1 (round1_mean76.04s.pt) with `--max-ticks 12000` (92 s), for planning and evals alike.
+
+* Lines slower than 92 s are useless; a 92+ s eval run already counts as a failure.
+* A capped wave now takes 23 s at 1.05M env-steps/s (it was 60 s).
+* Deadline unchanged (16:31).
