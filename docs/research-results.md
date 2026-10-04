@@ -34151,3 +34151,23 @@ Every run file is in runs/skWR_final.
 * **Incumbent (round 4)** on the same spawns: 74.28-75.06 s, mean 74.58.
 * **Throughput is back:** training took 429 s, against round 3's 1,241. Rounds are ~28 min.
 * **Round 6** plans from round 4 at lr 5e-5. One more rejection halves the lr.
+
+## 2026-10-04 17:15 (machine clock) - skEXIT3 round 6 was accepted by a gate FLAW; the gate now decides on the paired mean; restart from round 4 at lr 2.5e-5
+
+**Round 6** (from round 4, lr 5e-5):
+
+* Challenger: 75.39-76.03 s, mean 75.68. All 9 finished.
+* Incumbent (round 4) on the same spawns: 74.21-78.62 s, one crash (8/9).
+* The rematch rule set the incumbent's mean to inf on one crash, so the gate ACCEPTED a challenger that is **0.33 s slower on the 8 spawns both finished** (faster on 2/8).
+
+**Fix (tools/exit_local.py, --gate-rematch):**
+
+* Accept iff the challenger finishes all 9 AND the paired mean over the spawns BOTH finished is negative.
+* Replayed on rounds 1-6, it reproduces every earlier decision except round 6, which it rejects (+0.329 on 8).
+
+**Restart** (17:15, pid 52016) from round 4 (round4_mean74.86s.pt, copied back over best_mean.pt):
+
+* Round 6's weights are kept as round6_accepted_by_crash_rule.pt.
+* Rounds 7+, lr **2.5e-5**: rounds 5 and 6 from round 4 at 5e-5 were both worse. Halving after 2 more rejections, floor 1.25e-5.
+* `--target-best 73.88`, deadline 11 h.
+* The best single run so far is 74.22 s (round 5's challenger).
