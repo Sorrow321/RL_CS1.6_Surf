@@ -176,9 +176,30 @@ def main() -> int:
             break
         # 2. DISTIL ----------------------------------------------------------------------------
         bc, spine = rdir / "bc.npz", rdir / "spine.npy"
-        rc = run([PY, "-u", ROOT / "tools" / "plan_to_bc.py", "--plan", *npzs, "--ckpt", cur,
-                  "--out", bc, "--spine", spine, "--map", args.map],
-                 rdir / "distil.log", timeout=3600)
+        if args.spawn_per_wave and len(npzs) > 1:
+            # plan_to_bc replays every line of ONE file from one spawn: one file per wave's spawn,
+            # then merged (surfgym.bc.merge_bc_files); the spines are concatenated (the fixed
+            # full window draws spawns uniformly over all of them)
+            import numpy as np
+            sys.path.insert(0, str(ROOT / "python"))
+            from surfgym.bc import merge_bc_files
+            parts, spines, rc = [], [], 0
+            for i, z in enumerate(npzs):
+                bi, si = rdir / f"bc_{i}.npz", rdir / f"spine_{i}.npy"
+                rc = run([PY, "-u", ROOT / "tools" / "plan_to_bc.py", "--plan", z, "--ckpt", cur,
+                          "--out", bi, "--spine", si, "--map", args.map],
+                         rdir / f"distil_{i}.log", timeout=3600)
+                if rc != 0 or not bi.exists():
+                    break
+                parts.append(bi)
+                spines.append(np.load(si))
+            if rc == 0 and parts:
+                merge_bc_files(parts, bc)
+                np.save(spine, np.concatenate(spines))
+        else:
+            rc = run([PY, "-u", ROOT / "tools" / "plan_to_bc.py", "--plan", *npzs, "--ckpt", cur,
+                      "--out", bc, "--spine", spine, "--map", args.map],
+                     rdir / "distil.log", timeout=3600)
         if rc != 0 or not bc.exists():
             log(fh, f"round {r}: distil failed (rc {rc}) - see {rdir / 'distil.log'}")
             row["stopped"] = "distil failed"

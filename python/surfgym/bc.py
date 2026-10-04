@@ -921,7 +921,47 @@ def load_bc_arrays(path) -> dict:
                          if "view_zmu" in z.files else None),
             "view_zsd": (np.asarray(z["view_zsd"], np.float32)
                          if "view_zsd" in z.files else None),
+            # --keys-hold: the held-key columns, None when the file has none
+            "keys": (np.asarray(z["keys"], np.float32) if "keys" in z.files else None),
             "meta": json.loads(str(z["meta"]))}
+
+
+def merge_bc_files(paths, out) -> dict:
+    """Concatenate BC files built for the SAME checkpoint into one (tools/exit_local.py
+    --spawn-per-wave: plan_to_bc replays every line of a file from ONE spawn, so a round that
+    planned from several spawns distils one file per spawn and merges them here). Line ids are
+    offset per file; the first file's meta is kept with 'merged_from', and the optional columns
+    (probs / value / view / keys) must be present in all files or in none. -> the merged meta."""
+    parts = [load_bc_arrays(p) for p in paths]
+    if not parts:
+        raise ValueError("nothing to merge")
+
+    def cat(key):
+        vals = [p[key] for p in parts]
+        if all(v is None for v in vals):
+            return None
+        if any(v is None for v in vals):
+            raise ValueError(f"column {key!r} is in some files and not in others")
+        return np.concatenate(vals, axis=0)
+
+    line_ids, off = [], 0
+    for p in parts:
+        line_ids.append(p["line_id"] + off)
+        off += int(p["line_id"].max()) + 1 if len(p["line_id"]) else 0
+    meta = dict(parts[0]["meta"])
+    meta["merged_from"] = [str(x) for x in paths]
+    meta["lines"] = int(sum(int(p["meta"].get("lines", 0)) for p in parts))
+    meta["best_s"] = min((p["meta"].get("best_s") for p in parts
+                          if p["meta"].get("best_s") is not None), default=None)
+    has_v2 = any(p["has_probs"] or p["has_value"] for p in parts)
+    save_bc_dataset(out, cat("states"), cat("scal"), cat("latch"), cat("actions"),
+                    cat("weights"), np.concatenate(line_ids), meta,
+                    probs=cat("probs") if has_v2 else None,
+                    zret=cat("zret") if has_v2 else None,
+                    zmask=cat("zmask") if has_v2 else None,
+                    view=cat("view"), view_zmu=cat("view_zmu"), view_zsd=cat("view_zsd"),
+                    keys=cat("keys"))
+    return meta
 
 
 class BCDataset:
