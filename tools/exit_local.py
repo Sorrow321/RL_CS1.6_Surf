@@ -118,6 +118,18 @@ def main() -> int:
                          "finished and the best mean so far); 0: always the latest")
     ap.add_argument("--seed-mean", type=float, default=float("inf"),
                     help="the seed's known eval mean (s): the gate's starting bar")
+    ap.add_argument("--gate-rematch", type=int, default=0, choices=(0, 1),
+                    help="1: every round re-evaluates the INCUMBENT on the same spawn seeds as the "
+                         "challenger (record_ckpt --seed 7000+round for both) and gates on that "
+                         "paired mean - AlphaGo Zero's evaluator plays both on fresh games each "
+                         "time. 0: gate against the incumbent's own earlier mean, which after a "
+                         "selection is optimistically biased (skate_laby rounds 15-16: 73.77 and "
+                         "73.88 s rejected against round 14's 73.71)")
+    ap.add_argument("--bc-history", type=int, default=0,
+                    help="dataset aggregation (DAgger's D <- D u D_i; AlphaZero's replay window): "
+                         "train each round on its own planner lines PLUS those of the previous N "
+                         "rounds (<out>/round_<k>/bc.npz + spine.npy, each round's own file, never "
+                         "a pool); 0 = this round's lines only")
     ap.add_argument("--start-round", type=int, default=0,
                     help="the first round's number (directory and run names continue from it)")
     ap.add_argument("--extra", nargs=argparse.REMAINDER, default=[],
@@ -207,7 +219,21 @@ def main() -> int:
                 f.write(json.dumps(row) + "\n")
             break
         import numpy as np
-        spine_len = int(np.load(spine).shape[0])
+        bc_train, spine_train = bc, spine
+        if args.bc_history > 0:
+            hist = [out / f"round_{k}" for k in range(r - 1, r - 1 - args.bc_history, -1)]
+            hist = [h for h in hist if (h / "bc.npz").exists() and (h / "spine.npy").exists()]
+            if hist:
+                sys.path.insert(0, str(ROOT / "python"))
+                from surfgym.bc import merge_bc_files
+                bc_train, spine_train = rdir / "bc_pool.npz", rdir / "spine_pool.npy"
+                pmeta = merge_bc_files([bc] + [h / "bc.npz" for h in hist], bc_train)
+                np.save(spine_train, np.concatenate([np.load(spine)]
+                                                    + [np.load(h / "spine.npy") for h in hist]))
+                row["bc_pool"] = [h.name for h in hist]
+                log(fh, f"round {r}: BC pool = this round + {[h.name for h in hist]} "
+                        f"({pmeta.get('lines')} lines)")
+        spine_len = int(np.load(spine_train).shape[0])
         # 3. TRAIN -----------------------------------------------------------------------------
         t0 = time.time()
         run_name = f"{out.name}_r{r}"
@@ -217,13 +243,15 @@ def main() -> int:
                   "--ckpt", cur, "--run", run_name, "--steps", steps, "--envs", args.envs,
                   "--no-eval-at-start", "--record-every", "1e12", "--ckpt-every", "1e12",
                   "--lr", args.lr,
-                  "--bc-file", bc, "--bc-coef", args.bc_coef, "--bc-coef-final", 0,
+                  "--bc-file", bc_train, "--bc-coef", args.bc_coef, "--bc-coef-final", 0,
                   "--bc-steps", args.train_steps, "--bc-target", args.bc_target,
                   "--bc-value-coef", args.bc_value_coef,
-                  "--demo-file", spine, "--demo-window", spine_len, "--demo-rate", "2.0",
+                  "--demo-file", spine_train, "--demo-window", spine_len, "--demo-rate", "2.0",
                   "--demo-min-ep", "1e9", "--demo-grow", "0", *args.extra],
                  rdir / "train.log", env_extra={"SELF_STATES": "1"}, timeout=4 * 3600)
         final = ROOT / "runs" / run_name / "ckpt_final.pt"
+        if bc_train != bc:
+            bc_train.unlink(missing_ok=True)        # derivable from the rounds' own files
         row["train"] = {"run": run_name, "rc": rc, "wall_s": round(time.time() - t0, 1)}
         bl = ROOT / "runs" / run_name / "bc_log.csv"
         if bl.exists():
@@ -238,8 +266,9 @@ def main() -> int:
             break
         # 4. EVAL ------------------------------------------------------------------------------
         ev = rdir / "eval.jsonl"
+        ev_seed = ["--seed", 7000 + r] if args.gate_rematch else []
         run([PY, "-u", ROOT / "tools" / "record_ckpt.py", final, "--map", args.map,
-             "--episodes", args.eval_eps, "--ep-ticks", args.max_ticks, "--out", ev],
+             "--episodes", args.eval_eps, "--ep-ticks", args.max_ticks, "--out", ev, *ev_seed],
             rdir / "eval.log", timeout=3600)
         fins, n = finish_times(ev) if ev.exists() else ([], 0)
         row["eval"] = {"finishes": len(fins), "episodes": n,
@@ -256,16 +285,28 @@ def main() -> int:
         nxt = final
         if args.gate:
             mean = (sum(fins) / len(fins)) if (fins and len(fins) == n) else float("inf")
-            if mean < best_mean:
+            bar = best_mean
+            if args.gate_rematch:
+                evi = rdir / "eval_incumbent.jsonl"
+                run([PY, "-u", ROOT / "tools" / "record_ckpt.py", best_mean_ck, "--map", args.map,
+                     "--episodes", args.eval_eps, "--ep-ticks", args.max_ticks, "--out", evi,
+                     *ev_seed], rdir / "eval_incumbent.log", timeout=3600)
+                fi, ni = finish_times(evi) if evi.exists() else ([], 0)
+                bar = (sum(fi) / len(fi)) if (fi and len(fi) == ni) else float("inf")
+                row["eval_incumbent"] = {"ckpt": str(best_mean_ck), "finishes": len(fi),
+                                         "episodes": ni, "mean_s": round(bar, 3) if fi else None}
+                log(fh, f"round {r}: incumbent on the same spawns: {len(fi)}/{ni} finish, mean "
+                        f"{bar:.3f} s")
+            if mean < bar:
                 best_mean, best_mean_ck = mean, out / "best_mean.pt"
                 shutil.copyfile(final, best_mean_ck)
                 row["gate"] = "accepted"
-                log(fh, f"round {r}: gate ACCEPTED (mean {mean:.2f} s, all {n} finished) -> "
-                        f"{best_mean_ck}")
+                log(fh, f"round {r}: gate ACCEPTED (mean {mean:.2f} s vs {bar:.2f} s, all {n} "
+                        f"finished) -> {best_mean_ck}")
             else:
                 nxt = best_mean_ck
                 row["gate"] = "rejected"
-                log(fh, f"round {r}: gate rejected (mean {mean:.2f} s vs the best {best_mean:.2f} s)"
+                log(fh, f"round {r}: gate rejected (mean {mean:.2f} s vs {bar:.2f} s)"
                         f" - the next round plans from {best_mean_ck}")
         with open(out / "summary.jsonl", "a", encoding="utf-8") as f:
             f.write(json.dumps(row) + "\n")

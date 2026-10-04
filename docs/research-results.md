@@ -33745,3 +33745,29 @@ The human ALSO bumps (~610 u/s, immediately). The agent carries the boost longer
   * Mean 73.77, so the gate rejects (the bar is 73.71); round 16 plans from round 14 again.
 * **Kept anyway** as runs/skEXIT2/round15_best73.29s.pt, for its single best run.
 * Runs: runs/skWR_search/traj_0000000150.
+
+## 2026-10-04 09:08 (machine clock) - skate_laby expert loop: round 17 lost to an operator error; relaunched with a rematch gate and BC aggregation
+
+**The incident.**
+
+* At 09:07 I killed the loop's driver (pid 38392) and its round-17 trainer about 5 minutes into training.
+* The cause: a "dry run" of a new process-tree kill helper. Its kill loop was still inside the lines I ran.
+* Lost: round 17's training only.
+* Not lost:
+  * the incumbent (runs/skEXIT2/best_mean.pt = round14_mean73.71s.pt, byte-identical);
+  * every earlier round;
+  * the GPU state.
+
+**The relaunch** (09:07, pid 34868), from round 14, re-planning round 17, deadline 12:13. Two changes to tools/exit_local.py, both default off:
+
+1. **`--gate-rematch 1`.**
+   * What: every round re-evaluates the INCUMBENT on the same 9 spawn seeds as the challenger (record_ckpt --seed 7000+round for both). The gate compares those paired means.
+   * Why: rounds 15 and 16 (73.77, 73.88) were rejected against round 14's 73.71. That bar is the minimum over noisy 9-episode means, so it is optimistically biased and gets stuck. AlphaGo Zero's evaluator plays both players on fresh games every time.
+2. **`--bc-history 3`.**
+   * What: each round trains on its own planner lines plus the previous 3 rounds' (each round's own bc.npz and spine). That is ~4 x 95 lines, ~880k rows. This is DAgger's dataset aggregation and AlphaZero's replay window.
+   * Why: BC head accuracy is 99.9% on the planner's states, yet the closed-loop policy runs 2.5 s off the lines. That points at state coverage, not fit.
+   * The pool file is deleted after training; it is derivable.
+
+**Planning is reproducible:** the new round 17 wave 0 is 71.270 s, greedy 73.899 s, identical to the killed driver's wave 0.
+
+**Caveat:** the two changes are confounded. This is a record attempt, not an ablation.
