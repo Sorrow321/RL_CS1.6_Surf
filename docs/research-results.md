@@ -33791,3 +33791,39 @@ The human ALSO bumps (~610 u/s, immediately). The agent carries the boost longer
   * The incumbent on the same spawn finished in 73.45.
 * **Verdict:** gate rejected (all 9 must finish). Round 18 plans from round 14 again, pooling rounds 15-18.
 * Kept as runs/skEXIT2/round17_best73.08s.pt. Runs: runs/skWR_search/traj_0000000170.
+
+## 2026-10-04 09:23 (machine clock) - skate_laby: the WR human vs the agent per route section (demo ANALYSIS only) + a correction on the start boost
+
+**Correction to the 08:4x start-boost entry.**
+
+* The start `trigger_push` (speed 1600, yaw 90) sits on the teleport destination (-1056 -1792, yaw 90).
+* For the first ~17 ticks it acts as BASEVELOCITY:
+  * the player already moves at ~1,600 u/s from tick 1;
+  * the recorded `velocity` excludes basevelocity, which is why it reads 30-66 u/s there;
+  * on leaving the trigger (tick ~18 = 0.138 s) the push is added to the velocity.
+* So the effect stated before holds: exit speed = own velocity + 1,600.
+* The demo matches the simulator:
+  * the human leaves the push at 0.137-0.144 s with 1,655-1,661 u/s (own velocity ~60), the same as the planner's 1,669;
+  * the human reads 1,680 u/s at 1 s, against the planner's 1,690.
+
+**Section times.**
+
+* The WR demo is timed from the teleport to the 38 u box: 74.88 s.
+* The policy is round 14's 9 runs (mean 73.71). The planner is round 14's best line (71.19).
+
+| route | human | policy | planner | human path / speed | policy path / speed | planner path / speed |
+|---|---|---|---|---|---|---|
+| 0-35% | **26.90** | 28.81 | 27.08 | 46,417 u / 1,726 | 48,273 / 1,676 | 46,555 / 1,720 |
+| 35-60% (booster, sharp turn) | 17.76 | **15.56** | 15.35 | 33,280 / 1,875 | 34,105 / 2,194 | 33,841 / 2,206 |
+| 60-100% | 30.22 | **29.34** | 28.77 | 52,044 / 1,722 | 52,911 / 1,804 | 52,166 / 1,814 |
+
+**Reading:**
+
+* The agent's whole lead over the human is the booster section and what follows it:
+  * -2.2 s in 35-60%, where the human sheds the booster speed (1,875 u/s against 2,200);
+  * -0.9 s over 60-100%.
+* **In the first 35% the HUMAN is 1.9 s faster than the policy.**
+  * The planner matches the human there: the same path to 0.3% and the same speed.
+  * The policy flies 4% more path and ~50 u/s slower.
+* The policy's remaining weakness is execution in the first third, and it is not a physics limit.
+* Taking the best of each section gives ~71.8 s (human 0-35% + policy). The planner's line is 71.19.
