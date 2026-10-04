@@ -34144,3 +34144,10 @@ Every run file is in runs/skWR_final.
 * **Paired:** -0.42 s, faster on 8/9.
 * Kept as runs/skEXIT3/round4_mean74.86s.pt. Runs: runs/skWR_cap2000/traj_0000000040.
 * **The driver stopped at its deadline. The chain continued at 16:18** from round 4: rounds 5+, `--target-best 73.88`. The target is 0.44 s below the best run.
+
+## 2026-10-04 16:47 (machine clock) - skEXIT3 round 5 rejected (+0.30 s paired); best single run 74.22 s; planner 72.65 s
+
+* **Challenger:** 75.01, **74.22**, 74.97, 74.83, 74.50, 75.19, 75.28, 75.33, 74.56 s (mean 74.88).
+* **Incumbent (round 4)** on the same spawns: 74.28-75.06 s, mean 74.58.
+* **Throughput is back:** training took 429 s, against round 3's 1,241. Rounds are ~28 min.
+* **Round 6** plans from round 4 at lr 5e-5. One more rejection halves the lr.
