@@ -33930,3 +33930,12 @@ The human ALSO bumps (~610 u/s, immediately). The agent carries the boost longer
   * The faster lines in the first third are riskier.
 * **Verdict:** gate rejected (all 9 must finish); round 24 plans from round 18 again.
 * Kept as runs/skEXIT2/round23_best72.11s.pt, the record-attempt candidate. Runs: runs/skWR_search/traj_0000000230.
+
+## 2026-10-04 11:46 (machine clock) - skate_laby round 24 (lr 2.5e-5) ACCEPTED by a small margin (-0.13 s paired); planner 70.66 s
+
+* **Planner** from round 18: **70.66 s**, the best line so far.
+* **Challenger:** 73.52, 73.97, 73.37, **72.58**, 73.34, 73.37, 72.83, 73.66, 73.11 s (9/9, mean 73.31).
+* **Incumbent (round 18)** on the same spawns: mean 73.43.
+* **Paired:** -0.13 s on average. 6 spawns faster, 2 slower, 1 level. A small gain, not far outside the noise.
+* **The incumbent is now round 24,** kept as runs/skEXIT2/round24_mean73.31s.pt. Runs: runs/skWR_search/traj_0000000240.
+* **Round 25** (planning from round 24) is the last before the 12:13 deadline.
