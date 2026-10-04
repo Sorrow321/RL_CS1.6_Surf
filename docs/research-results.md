@@ -34171,3 +34171,13 @@ Every run file is in runs/skWR_final.
 * Rounds 7+, lr **2.5e-5**: rounds 5 and 6 from round 4 at 5e-5 were both worse. Halving after 2 more rejections, floor 1.25e-5.
 * `--target-best 73.88`, deadline 11 h.
 * The best single run so far is 74.22 s (round 5's challenger).
+
+## 2026-10-04 17:45 (machine clock) - skEXIT3 round 7 (lr 2.5e-5) rejected: +0.71 s paired, 8/9
+
+* **Planner:** 72.70 s.
+* **Challenger:** 75.39, 75.40, 75.39, crash, 75.35, 74.70, 75.53, 76.02, 75.17 s.
+* **Incumbent (round 4)** on the same spawns: 74.27-75.43 s, mean 74.69.
+* **Three rounds from round 4 have now come out worse:** 5 (+0.30, lr 5e-5), 6 (+0.33, 5e-5), 7 (+0.71 and a crash, 2.5e-5).
+* **The same pattern as after round 18 at 4000 u/s:** training a polished policy toward lines ~2 s faster than it makes it worse.
+* **Next:** round 8 at 2.5e-5. One more rejection halves the lr to 1.25e-5.
+* **Best single run** is still 74.21 s (round 4's policy).
