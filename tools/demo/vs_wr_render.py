@@ -29,7 +29,7 @@ def main():
 
     o = Options()
     o.add_argument("--headless=new")
-    o.add_argument("--window-size=1280,1560")
+    o.add_argument("--window-size=1920,1560")
     o.add_argument("--use-angle=d3d11")
     o.add_argument("--ignore-gpu-blocklist")
     o.add_argument("--hide-scrollbars")

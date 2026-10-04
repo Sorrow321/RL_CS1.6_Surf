@@ -5,7 +5,7 @@
  * Coordinates: GoldSrc (x, y, z) -> three.js (x, z, -y), exactly as viewer/app.js. */
 'use strict';
 
-var W = 1280, PH = 720, BAR = 120, H = 2 * PH + BAR;
+var W = 1280, SIDE = 640, TW = W + SIDE, PH = 720, BAR = 120, H = 2 * PH + BAR;
 var VFOV = 67.4;          // vertical fov for a 100 deg horizontal fov at 16:9
 var PITCH = 4.0;          // fixed camera pitch (deg down): pitch has no effect on movement
 var EYE_STAND = 17.0, EYE_DUCK = 12.0;   // CS view offsets above the origin
@@ -20,14 +20,14 @@ var meshUrl = params.get('mesh') || 'assets/skate_laby.mesh.json';
 var wrap = document.getElementById('wrap');
 var renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
 renderer.setPixelRatio(1);
-renderer.setSize(W, H);
+renderer.setSize(TW, H);
 wrap.appendChild(renderer.domElement);
 var hud = document.createElement('canvas');
-hud.width = W; hud.height = H;
+hud.width = TW; hud.height = H;
 wrap.appendChild(hud);
 var hctx = hud.getContext('2d');
 var comp = document.createElement('canvas');
-comp.width = W; comp.height = H;
+comp.width = TW; comp.height = H;
 var cctx = comp.getContext('2d');
 
 var scene = new THREE.Scene();
@@ -87,6 +87,7 @@ function addSolid(geo) {
 var camA = new THREE.PerspectiveCamera(VFOV, W / PH, 2, 40000);
 var camH = new THREE.PerspectiveCamera(VFOV, W / PH, 2, 40000);
 var data = null;
+var mmImg = null;
 window.ready = false;
 window.loadError = null;
 
@@ -140,7 +141,14 @@ function panelHud(y0, tr, f, t) {
   hctx.fillStyle = g; hctx.fillRect(0, y0, W, 110);
   txt(tr.title, 28, y0 + 52, 38, 'bold');
   txt(tr.sub, 30, y0 + 88, 24, '600', 'left', '#e8e8e8');
-  txt((fin ? tr.finish : t).toFixed(2) + ' s', W - 28, y0 + 66, 58, 'bold', 'right');
+  txt((fin ? tr.finish : Math.max(0, t)).toFixed(2) + ' s', W - 28, y0 + 66, 58, 'bold', 'right');
+  if (t < 0) {
+    hctx.fillStyle = 'rgba(0,0,0,0.35)';
+    hctx.fillRect(0, y0 + 110, W, PH - 110);
+    txt(String(Math.ceil(-t)), W / 2, y0 + PH / 2 + 70, 200, 'bold', 'center');
+  } else if (t < 0.6) {
+    txt('GO!', W / 2, y0 + PH / 2 + 60, 170, 'bold', 'center');
+  }
   txt(f[5] + ' u/s', 30, y0 + PH - 30, 34, 'bold');
   var k = 50, gp = 6, x0 = W - 3 * k - 2 * gp - 28, ky = y0 + PH - 2 * k - gp - 26;
   key(x0 + k + gp, ky, k, k, 'W', f[6] === 2);
@@ -182,10 +190,131 @@ function barHud(k) {
   txt(data.gap[k], W / 2, y0 + 38, 30, 'bold', 'center');
 }
 
+// ---------------------------------------------------------------------- side column
+var MM_X = W + 20, MM_Y = 84;
+
+function mmPt(x, y) {
+  var m = data.minimap;
+  return [MM_X + (x - m.x0) / (m.x1 - m.x0) * m.w, MM_Y + (m.y1 - y) / (m.y1 - m.y0) * m.h];
+}
+
+function trail(fr, k0, k, dashed) {
+  hctx.save();
+  hctx.lineJoin = 'round'; hctx.lineCap = 'round';
+  hctx.setLineDash(dashed ? [9, 7] : []);
+  for (var pass = 0; pass < 2; pass++) {       // dark under-stroke, then the line itself
+    hctx.lineWidth = pass ? 3 : 6;
+    hctx.strokeStyle = pass ? (dashed ? '#e8e8e8' : '#ffffff') : 'rgba(0,0,0,0.75)';
+    hctx.beginPath();
+    for (var j = k0; j <= k; j += 2) {
+      var q = mmPt(fr[j][0], fr[j][1]);
+      if (j === k0) hctx.moveTo(q[0], q[1]); else hctx.lineTo(q[0], q[1]);
+    }
+    var qe = mmPt(fr[k][0], fr[k][1]);
+    hctx.lineTo(qe[0], qe[1]);
+    hctx.stroke();
+  }
+  hctx.restore();
+}
+
+function marker(q, filled, label) {
+  hctx.save();
+  hctx.beginPath();
+  if (filled) {   // agent: filled triangle pointing down
+    hctx.moveTo(q[0] - 11, q[1] - 16); hctx.lineTo(q[0] + 11, q[1] - 16); hctx.lineTo(q[0], q[1] + 3);
+  } else {        // human: hollow triangle pointing up
+    hctx.moveTo(q[0] - 11, q[1] + 16); hctx.lineTo(q[0] + 11, q[1] + 16); hctx.lineTo(q[0], q[1] - 3);
+  }
+  hctx.closePath();
+  hctx.strokeStyle = '#000000'; hctx.lineWidth = 6; hctx.stroke();
+  if (filled) { hctx.fillStyle = '#ffffff'; hctx.fill(); }
+  hctx.strokeStyle = '#ffffff'; hctx.lineWidth = 3; hctx.stroke();
+  hctx.restore();
+  txt(label, q[0] + 16, filled ? q[1] - 8 : q[1] + 22, 20, 'bold', 'left');
+}
+
+function sideHud(k, t) {
+  hctx.fillStyle = '#121519';
+  hctx.fillRect(W, 0, SIDE, H);
+  txt('TOP-DOWN MAP', W + 22, 58, 32, 'bold');
+  var m = data.minimap;
+  hctx.drawImage(mmImg, MM_X, MM_Y, m.w, m.h);
+  var qs = mmPt(data.start[0], data.start[1]), qf = mmPt(data.finish[0], data.finish[1]);
+  [[qs, 'START', -1], [qf, 'FINISH', -1]].forEach(function (p) {
+    hctx.fillStyle = '#ffffff'; hctx.strokeStyle = '#000000'; hctx.lineWidth = 3;
+    hctx.strokeRect(p[0][0] - 7, p[0][1] - 7, 14, 14);
+    hctx.fillRect(p[0][0] - 5, p[0][1] - 5, 10, 10);
+    // START's label sits LEFT of its marker so it never collides with the runners' labels
+    txt(p[1], p[0][0] + 12 * p[2], p[0][1] + 7, 18, 'bold', p[2] < 0 ? 'right' : 'left');
+  });
+  var k0 = Math.round(data.pre * data.fps);
+  if (k > k0) {
+    trail(data.human.f, k0, k, true);
+    trail(data.agent.f, k0, k, false);
+  }
+  marker(mmPt(data.human.f[k][0], data.human.f[k][1]), false, 'HUMAN');
+  marker(mmPt(data.agent.f[k][0], data.agent.f[k][1]), true, 'AGENT');
+  var ly = MM_Y + m.h + 44;
+  hctx.save(); hctx.lineWidth = 3; hctx.strokeStyle = '#ffffff';
+  hctx.setLineDash([]); hctx.beginPath(); hctx.moveTo(W + 24, ly - 8); hctx.lineTo(W + 74, ly - 8); hctx.stroke();
+  hctx.setLineDash([9, 7]); hctx.beginPath(); hctx.moveTo(W + 24, ly + 30); hctx.lineTo(W + 74, ly + 30); hctx.stroke();
+  hctx.restore();
+  txt('AGENT  (filled marker, solid line)', W + 86, ly, 22, '600');
+  txt('HUMAN  (hollow marker, dashed line)', W + 86, ly + 38, 22, '600');
+  speedChart(k, t, ly + 90);
+  resultBox(t, ly + 505);
+}
+
+function resultBox(t, y0) {
+  txt('RESULT', W + 22, y0, 26, 'bold');
+  var a = data.agent, h = data.human;
+  [[a, 'AGENT', y0 + 46], [h, 'HUMAN (WR)', y0 + 86]].forEach(function (r) {
+    txt(r[1], W + 24, r[2], 26, '600', 'left', '#e8e8e8');
+    var done = t >= r[0].finish;
+    txt(done ? r[0].finish.toFixed(2) + ' s' : (t < 0 ? '-' : 'racing...'), TW - 30, r[2], 28,
+        'bold', 'right', done ? '#ffffff' : '#9aa0a8');
+  });
+  if (t >= a.finish && t >= h.finish) {
+    var d = h.finish - a.finish;
+    txt((d >= 0 ? 'AGENT FASTER BY ' : 'HUMAN FASTER BY ') + Math.abs(d).toFixed(2) + ' s',
+        W + SIDE / 2, y0 + 150, 34, 'bold', 'center');
+  }
+}
+
+function speedChart(k, t, y0) {
+  var x0 = W + 78, x1 = TW - 26, yb = y0 + 330, yt = y0 + 40;
+  var tEnd = Math.max(data.agent.finish, data.human.finish) + 1, vMax = 2700;
+  txt('SPEED OVER TIME', W + 22, y0 + 10, 26, 'bold');
+  function X(tt) { return x0 + (x1 - x0) * tt / tEnd; }
+  function Y(v) { return yb - (yb - yt) * v / vMax; }
+  hctx.strokeStyle = '#6b717a'; hctx.lineWidth = 1.5;
+  hctx.beginPath(); hctx.moveTo(x0, yt); hctx.lineTo(x0, yb); hctx.lineTo(x1, yb); hctx.stroke();
+  [0, 1000, 2000].forEach(function (v) { txt(String(v), x0 - 8, Y(v) + 6, 16, '600', 'right', '#cfd3d8'); });
+  [0, 20, 40, 60].forEach(function (tt) { txt(tt + ' s', X(tt), yb + 24, 16, '600', 'center', '#cfd3d8'); });
+  hctx.save(); hctx.setLineDash([3, 5]); hctx.strokeStyle = '#d8d8d8'; hctx.lineWidth = 2;
+  hctx.beginPath(); hctx.moveTo(x0, Y(2000)); hctx.lineTo(x1, Y(2000)); hctx.stroke(); hctx.restore();
+  txt('server speed cap 2000 u/s', x1, Y(2000) - 8, 16, '600', 'right', '#e0e0e0');
+  var k0 = Math.round(data.pre * data.fps);
+  if (k > k0) {
+    [[data.human, true], [data.agent, false]].forEach(function (p) {
+      var fr = p[0].f, kk = Math.min(k, k0 + Math.round(p[0].finish * data.fps));
+      hctx.save(); hctx.setLineDash(p[1] ? [8, 6] : []); hctx.lineWidth = p[1] ? 2.5 : 3;
+      hctx.strokeStyle = p[1] ? '#e8e8e8' : '#ffffff';
+      hctx.beginPath();
+      for (var j = k0; j <= kk; j += 3) {
+        var tt = j / data.fps - data.pre;
+        if (j === k0) hctx.moveTo(X(tt), Y(fr[j][5])); else hctx.lineTo(X(tt), Y(fr[j][5]));
+      }
+      hctx.stroke(); hctx.restore();
+    });
+  }
+  txt('u/s', W + 22, yt + 4, 16, '600', 'left', '#cfd3d8');
+}
+
 // ---------------------------------------------------------------------------- per frame
 function renderFrame(k) {
   k = Math.max(0, Math.min(data.n - 1, k));
-  var t = k / data.fps;
+  var t = k / data.fps - (data.pre || 0);
   var fa = data.agent.f[k], fh = data.human.f[k];
   setCam(camA, fa);
   setCam(camH, fh);
@@ -201,6 +330,7 @@ function renderFrame(k) {
   panelHud(0, data.agent, fa, t);
   barHud(k);
   panelHud(PH + BAR, data.human, fh, t);
+  sideHud(k, t);
   return true;
 }
 
@@ -223,6 +353,14 @@ Promise.all([fetch(meshUrl).then(function (r) { return r.json(); }),
       var rgb = b.classname === 'func_button' ? [0.80, 0.30, 0.28] : null;
       addSolid(buildGeometry(b.positions, b.normals, b.indices, rgb));
     });
+    return new Promise(function (resolve, reject) {
+      mmImg = new Image();
+      mmImg.onload = resolve;
+      mmImg.onerror = function () { reject('minimap image failed: ' + data.minimap.url); };
+      mmImg.src = data.minimap.url;
+    });
+  })
+  .then(function () {
     renderFrame(0);
     window.nFrames = data.n;
     window.ready = true;
