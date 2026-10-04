@@ -33592,3 +33592,10 @@ The human ALSO bumps (~610 u/s, immediately). The agent carries the boost longer
 * **Planner:** 71.15 / 71.19 / **71.12 s** (gate 75.10).
 * **Policy:** 74.04, 76.13, 74.37, 74.19, 76.08 s. 5/5 finished; 3/5 under the WR. Worse than round 5 (72.71 / 73.98).
 * The 5-run evals swing ~1 s round to round. best.pt stays round 5. The loop continues from round 6 (AlphaZero order).
+
+## 2026-10-04 06:45 (machine clock) - skate_laby: the round-5 policy (72.71 s) re-run 10x at K=4 and 10x at K=2 (spawn seed 200)
+
+* **K=4 (as trained):** 72.71, 72.93, 72.93, 72.94, 72.95, 73.91, 74.81, 74.99, 75.02, 75.17 s. 10/10 finished; mean 73.84; **7/10 under the WR's 74.88**. Five of ten land at 72.71-72.95, ~2 s under the WR.
+* **K=2 (inference only):** 73.67-74.80 s. 10/10 finished; mean 74.14; **10/10 under the WR**.
+* For this policy finer decisions buy consistency, not speed: the best is 73.67 against 72.71 at K=4.
+* Published: runs/skWR_search/traj_0000000051 (K=4) and traj_0000000052 (K=2).
