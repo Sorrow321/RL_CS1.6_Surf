@@ -128,6 +128,11 @@ def main() -> int:
     ap.add_argument("--target-mean", type=float, default=None,
                     help="stop once a round is ACCEPTED with an eval mean at or below this (s); "
                          "skate_laby 2026-10-04: the user's goal 'a 1 s margin on the WR' = 73.88")
+    ap.add_argument("--target-best", type=float, default=None,
+                    help="stop as soon as ANY greedy eval run (the challenger's, or the "
+                         "incumbent's rematch) finishes at or below this (s); its checkpoint is "
+                         "copied to <out>/target_run.pt. skate_laby 2026-10-04, the user: a 1 s "
+                         "margin on the WR, 'just one run is enough' = 73.88")
     ap.add_argument("--lr-halve-after", type=int, default=0,
                     help="after this many gate rejections IN A ROW, halve the training lr (down to "
                          "--lr-min) and count again; 0 = off. The manual rule of skate_laby rounds "
@@ -291,6 +296,12 @@ def main() -> int:
             shutil.copyfile(final, best_ck)
             row["new_best"] = True
             log(fh, f"round {r}: NEW BEST policy {best_s:.2f} s -> {best_ck}")
+        if args.target_best is not None and fins and min(fins) <= args.target_best:
+            target_hit = True
+            shutil.copyfile(final, out / "target_run.pt")
+            row["target_reached"] = {"by": "challenger", "run_s": round(min(fins), 3)}
+            log(fh, f"round {r}: TARGET REACHED - a challenger run of {min(fins):.2f} s <= "
+                    f"{args.target_best:g} s -> {out / 'target_run.pt'}")
         nxt = final
         if args.gate:
             mean = (sum(fins) / len(fins)) if (fins and len(fins) == n) else float("inf")
@@ -306,6 +317,13 @@ def main() -> int:
                                          "episodes": ni, "mean_s": round(bar, 3) if fi else None}
                 log(fh, f"round {r}: incumbent on the same spawns: {len(fi)}/{ni} finish, mean "
                         f"{bar:.3f} s")
+                if (args.target_best is not None and not target_hit and fi
+                        and min(fi) <= args.target_best):
+                    target_hit = True
+                    shutil.copyfile(best_mean_ck, out / "target_run.pt")
+                    row["target_reached"] = {"by": "incumbent", "run_s": round(min(fi), 3)}
+                    log(fh, f"round {r}: TARGET REACHED - an incumbent run of {min(fi):.2f} s <= "
+                            f"{args.target_best:g} s -> {out / 'target_run.pt'}")
             if mean < bar:
                 best_mean, best_mean_ck = mean, out / "best_mean.pt"
                 shutil.copyfile(final, best_mean_ck)
