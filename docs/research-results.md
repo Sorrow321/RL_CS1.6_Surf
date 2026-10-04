@@ -33700,3 +33700,29 @@ The human ALSO bumps (~610 u/s, immediately). The agent carries the boost longer
   * **No slow mode:** all nine take the clean post-booster turn. Rounds 7-12 split ~half/half at it.
 * **The step that fixed it:** the gate + smaller updates (lr 5e-5, 2e8) + planner lines from 6 different spawns, two rounds in a row.
 * Kept as runs/skEXIT2/round14_mean73.71s.pt. Runs: runs/skWR_search/traj_0000000140.
+
+## 2026-10-04 08:47 (machine clock) - skate_laby: where the round-14 policy still loses 2.5 s to its own planner line - the start boost
+
+**Measured** (CPU only, from existing files): runs/skEXIT2/round_14/eval.jsonl (9 policy runs, mean 73.71) against the round's best planner line, wave_4/beam_best.jsonl (71.19 s). The time is per 5% slice of ground-field route progress.
+
+| route | planner | policy mean | policy - planner |
+|---|---|---|---|
+| 0-35% | 25.08 s | 26.81 s | **+1.73 s** (69% of the gap) |
+| 35-60% (booster, sharp turn) | 15.35 | 15.55 | +0.21 |
+| 60-100% | 30.71 | 31.29 | +0.58 |
+
+**Mechanism:**
+
+* **Through 0-35% the policy is 60-85 u/s slower everywhere.** The deficit vanishes at the second booster (35-40%), which sets the speed.
+* **The start boost ADDS ~1,606 u/s along +y** to the entry velocity (tick ~18). So every u/s gained in the 17 ticks before it is kept for ~28 s.
+  * Planner: entry 63 u/s -> exit 1,669.
+  * Policy runs: entry 30-60 -> exit 1,611-1,670.
+* **Before the boost, speed rises only at decision ticks** (t = 1, 5, 9, 13, 17). The view is held for the 4 ticks of a decision, and the 30 u/s air-accelerate cap is reached in the first of them. So at act_every 4 the reachable entry speed is ~sqrt(5) x 30 = 67 u/s, which the planner reaches.
+  * Estimate, not measured: per-tick decisions would allow ~sqrt(17) x 30 = 124.
+* **Right after the boost, some runs strafe into the side wall** (run 7: vx +368 clipped to 0 at tick 29, -50 u/s).
+* **Speed at 1 s predicts the finish:**
+  * 1,673-1,694 u/s -> 9,580-9,600 ticks (73.45-73.60 s).
+  * 1,576-1,636 u/s -> 9,608-9,672 ticks.
+* **Implication:**
+  * The cheapest remaining seconds are in the first 0.3 s of the run.
+  * This also explains part of the ~1 s that inference at act_every 2 bought earlier: twice the pre-boost impulses.
