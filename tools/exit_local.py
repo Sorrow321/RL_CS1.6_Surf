@@ -102,6 +102,9 @@ def main() -> int:
     ap.add_argument("--resample", type=int, default=25)
     ap.add_argument("--score", default="d")
     ap.add_argument("--keep", type=int, default=16)
+    ap.add_argument("--spawn-per-wave", type=int, default=0, choices=(0, 1),
+                    help="1: each planner wave starts from its own spawn seed (the evals' start "
+                         "jitter); 0: every wave from spawn seed 0")
     ap.add_argument("--max-ticks", type=int, default=23478)
     ap.add_argument("--train-steps", type=float, default=3e8)
     ap.add_argument("--envs", type=int, default=1024)
@@ -147,7 +150,11 @@ def main() -> int:
                       "--score", args.score, "--resample-every", args.resample,
                       "--greedy-eps", 1, "--max-ticks", args.max_ticks,
                       "--keep-finishers", args.keep, "--route-file", "none",
-                      "--torch-seed", 1000 * r + w, "--seed", 0, "--out-dir", wdir],
+                      "--torch-seed", 1000 * r + w,
+                      # --spawn-per-wave: each wave plans from its own spawn draw, so the BC lines
+                      # cover the start jitter the evals see (a wave of one spawn tunes one start)
+                      "--seed", (1 + 100 * r + w) if args.spawn_per_wave else 0,
+                      "--out-dir", wdir],
                      rdir / f"wave_{w}.log", timeout=3600)
             s = {}
             if (wdir / "summary.json").exists():
