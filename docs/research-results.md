@@ -34225,3 +34225,32 @@ Every run file is in runs/skWR_final.
 * This is an open-loop line found by search in our simulator.
 * On the real server an open-loop replay would desync, because the dynamics are chaotic.
 * The closed-loop policy's best run at the cap is 74.21 s.
+
+## 2026-10-04 19:52 (machine clock) - VIEWER BUG: tools/export_map.py ignored brush-entity origins (the physics never did)
+
+**What the user saw:** in the agent-vs-WR video both runners flew through walls ("the window is not shown").
+
+**Two rendering errors, both in the viewer path only:**
+
+1. **Origin brushes were misplaced.**
+   * export_map.py drew brush entities without their `origin` key. An origin brush stores its model relative to that origin.
+   * On skate_laby this put the start booster's two side walls (func_wall *50, origins -1040 and -1136, -1776, -144) and its trigger_push (*49) at the MAP CENTRE (x 8..56, y -64..320).
+   * That spot is a corridor both runners cross at ~45.3 s (agent) and 45.9 s (human).
+   * **src/bsp.c ent_bounds has always applied the origin, so training physics was never affected.**
+2. **Brushes were drawn opaque regardless of rendermode.**
+   * func_illusionary *47 (rendermode 4, alpha-tested window panes, two 96x64 u panes in the window strip) showed as solid wall where the runners pass at ~59.6-62.9 s.
+   * Also drawn although the game draws nothing or only a glow there:
+     * func_wall *7 (rendermode 2, renderamt 0 = invisible);
+     * two additive func_illusionary glows (*3, *5).
+
+**Fix** (commit "export_map: offset brush entities by their origin key ..."):
+
+* export_map.py adds the origin and emits rendermode / renderamt / speed / angles. skate_laby's mesh was re-exported; that asset is untracked.
+* vs_render.js draws brushes by rendermode:
+  * invisible and additive brushes skipped;
+  * alpha-test brushes as faint glass;
+  * the boosters (trigger_push) as amber volumes with floor chevrons;
+  * a BOOST! flash while a runner is inside a booster, detected by volume, because at the 2000 cap the 800 booster adds only ~190 u/s.
+* **Other maps' viewer meshes predate the fix.** Re-export them before trusting entity placement in the viewer.
+
+**Video:** runs/skWR_cap2000/agent_vs_human_wr_v4_music.mp4, with the user's music (trimmed to 80.4 s, fades in and out).
