@@ -33611,3 +33611,12 @@ The human ALSO bumps (~610 u/s, immediately). The agent carries the boost longer
 | policy mean (s) | 76.83 | 75.37 | 74.94 | 74.68 | 74.30 | 73.98 | 74.96 | **73.71** |
 
 * Kept as runs/skEXIT/round7_mean73.71s.pt. Runs: runs/skWR_search/traj_0000000070.
+
+## 2026-10-04 07:10 (machine clock) - skate_laby expert loop round 8 regressed; the loop now GATES (AlphaGo Zero's evaluator) - skEXIT2 from round 7
+
+* **Round 8** (from round 7's 73.71 s-mean policy): planner 71.51 / **71.48** / 71.61 s (gate 73.23).
+  * The policy after training: 74.96, 76.88, 74.97, 75.00, 74.87 s (mean **75.34**).
+  * A regression, which the plain order then handed to round 9 as its seed. Round 9 was stopped mid-plan; its waves had reached 72.77-72.81 s.
+* **exit_local.py --gate 1** (the commit above): a round's policy becomes the planning base only if all eval episodes finish and their mean beats the best mean so far; otherwise the next round restarts from the best. Evals are now 9 episodes.
+* **skEXIT2:** relaunched 07:09 (hidden, pid 32580) from runs/skEXIT/round7_mean73.71s.pt, gate bar 73.71 s, rounds 9-24, deadline 5 h.
+* **Kept:** best single run runs/skEXIT/best_round5_72.71s.pt; best 5-run mean runs/skEXIT/round7_mean73.71s.pt.
