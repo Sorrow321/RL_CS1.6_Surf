@@ -2611,7 +2611,7 @@ class _TorchPolicyBase:
                  extra_slot: int = -1, extra_fn=None, route=None,
                  latch_fn=None, pitch_fixed=None, aux=None, masks=None,
                  priv_fn=None, cc_fn=None, ratchet_fn=None,
-                 keys_hold=False, pass_fn=None):
+                 keys_hold=False, pass_fn=None, vec_fn=None):
         self.policy, self.packer, self.device = policy, packer, device
         self.lidar, self.core = lidar, core
         # --pitch-fixed: the trainer pins the states' pitch column before
@@ -2641,6 +2641,9 @@ class _TorchPolicyBase:
         # --ramp-obs-pass: the pass flag, the LAST column of the scalar half, off the eval
         # windows (goalramps.make_pass_feed). None on every checkpoint without it
         self.pass_fn = pass_fn
+        # --ramp-obs-vec: the arrow to the next ramp, four columns after the pass flag, off the
+        # eval windows (goalramps.make_vec_feed). None on every checkpoint without it
+        self.vec_fn = vec_fn
         # --act-hist / --obs-compass: a surfgym.obsaux.ObsAux, the SAME class
         # the rollout drives. Two implementations of one feature drift, and
         # the drift only shows up as eval recordings that disagree with
@@ -2860,6 +2863,12 @@ class _TorchPolicyBase:
             t = torch.cat([t, torch.as_tensor(
                 self.pass_fn(self.core, t.shape[0]), dtype=torch.float32,
                 device=self.device).reshape(-1, 1)], dim=1)
+        if self.vec_fn is not None:
+            # --ramp-obs-vec: LAST of the scalar half, after the pass flag - exactly where
+            # fill_vision writes it and where widen_for_obs pads a checkpoint onto it
+            t = torch.cat([t, torch.as_tensor(
+                self.vec_fn(self.core, t.shape[0]), dtype=torch.float32,
+                device=self.device).reshape(-1, 4)], dim=1)
         if self.lidar is not None:
             if self.pitch_fixed is not None:
                 self.core.set_pitch(self.pitch_fixed)
@@ -5150,6 +5159,15 @@ def main() -> None:
                          "ones here I get a reward'). A checkpoint without it is widened by one "
                          "ZERO column (its own function at step 0). 0 (default) = off. "
                          "ckpt restores")
+    ap.add_argument("--ramp-obs-vec", type=int, default=None, choices=(0, 1),
+                    help="--goal-planner ramps: 1 = four more scalar-side observation columns (the "
+                         "LAST): the ARROW to the next ramp to reach (T1, or T2 once T1 is entered) - "
+                         "the unit vector to its nearest validated contact origin in the view's ego "
+                         "frame (forward, left, up) and its length / 2,000 u (capped at 4); zeros "
+                         "without a target (the user, 2026-10-06: 'the vector ... that points to the "
+                         "next ramp ... when it's in the pit, it will point up'). A checkpoint "
+                         "without it is widened by four ZERO columns. 0 (default) = off. "
+                         "ckpt restores")
     ap.add_argument("--ramp-reach-bonus", type=float, default=None,
                     help="--goal-planner ramps: K added on every tick a target is ENTERED (T1's box, "
                          "or the next one's after a skip) - the 'you reached the ramp' event of "
@@ -6951,7 +6969,7 @@ def main() -> None:
         for _k in ("ramp_vocab", "target_channel", "ramp_topk", "ramp_horizon", "ramp_fade",
                    "ramp_reward", "ramp_offtarget_pen", "ramp_obs_pass", "ramp_sequence",
                    "ramp_sequence_source", "target_views", "ramp_exit_bonus", "ramp_pairs",
-                   "ramp_reach_bonus"):
+                   "ramp_reach_bonus", "ramp_obs_vec"):
             if _k == "ramp_sequence" and flag_given("--ramp-pairs"):
                 continue      # --ramp-pairs replaces a checkpoint's global sequence (one map's ids)
             if _k == "ramp_pairs" and flag_given("--ramp-sequence"):
@@ -8502,7 +8520,7 @@ def main() -> None:
                 ("ramp_vocab", "target_channel", "ramp_topk", "ramp_horizon", "ramp_fade",
                  "ramp_reward", "ramp_offtarget_pen", "ramp_obs_pass", "ramp_sequence",
                  "ramp_sequence_source", "target_views", "ramp_exit_bonus", "ramp_pairs",
-                 "ramp_reach_bonus")
+                 "ramp_reach_bonus", "ramp_obs_vec")
                 if flag_given(f"--{_k.replace('_', '-')}")]
         if _set:
             raise SystemExit(f"{', '.join(_set)} without --goal-planner ramps")
@@ -8515,6 +8533,7 @@ def main() -> None:
         args.target_views = None
         args.ramp_exit_bonus = None
         args.ramp_reach_bonus = None
+        args.ramp_obs_vec = None
         args.ramp_pairs = None
     # --ramp-reward pass: +1 per window shift, added to the per-tick reward after the goal system's
     # step; the arc shaping is off (arc_scale 0 below)
@@ -10840,7 +10859,10 @@ def main() -> None:
     # --ramp-obs-pass: the pass flag, LAST of all - after the ratchet gap - so a checkpoint
     # without it grows onto it by widen_for_obs' trailing zero-pad (its own function at step 0)
     N_PASS = 1 if (RPLAN and int(args.ramp_obs_pass or 0)) else 0
-    N_ROUTE = N_FAN + N_LATCH + N_AUX + N_CC + N_KEYS + N_RATCHET + N_PASS
+    # --ramp-obs-vec: the arrow to the next ramp, four columns LAST of all - after the pass flag -
+    # so a checkpoint without it grows onto it by widen_for_obs' trailing zero-pad
+    N_RVEC = 4 if (RPLAN and int(args.ramp_obs_vec or 0)) else 0
+    N_ROUTE = N_FAN + N_LATCH + N_AUX + N_CC + N_KEYS + N_RATCHET + N_PASS + N_RVEC
     # column of the --race-latch flag, and the first column of the aux block.
     # With no aux block LATCH_COL is N_SCALAR + N_ROUTE - 1 exactly as before.
     LATCH_COL = N_SCALAR + N_FAN + N_LATCH - 1
@@ -10850,8 +10872,12 @@ def main() -> None:
     CC_COL = N_SCALAR + N_FAN + N_LATCH + N_AUX + N_CC - 1
     # --keys-hold: the 7-wide block, between the T column and the ratchet gap
     KEYS0 = N_SCALAR + N_FAN + N_LATCH + N_AUX + N_CC
-    RATCHET_COL = N_SCALAR + N_ROUTE - N_PASS - 1
-    PASS_COL = N_SCALAR + N_ROUTE - 1
+    RATCHET_COL = N_SCALAR + N_ROUTE - N_RVEC - N_PASS - 1
+    PASS_COL = N_SCALAR + N_ROUTE - N_RVEC - 1
+    RVEC0 = N_SCALAR + N_ROUTE - N_RVEC
+    if N_RVEC:
+        print(f"--ramp-obs-vec: obs columns {RVEC0}..{RVEC0 + N_RVEC - 1} = the arrow to the next "
+              "ramp (unit vector forward / left / up in the view's frame, length / 2,000 u)")
     if N_PASS:
         print(f"--ramp-obs-pass: obs column {PASS_COL} = 1 on the decision after the window "
               "shifted (the ramp the planner asked for was passed or skipped), else 0")
@@ -11913,6 +11939,9 @@ def main() -> None:
             if N_PASS and not int(ck_cfg.get("ramp_obs_pass") or 0):
                 # the pass column is LAST: the exact trailing widen below
                 _grew.append("--ramp-obs-pass 1")
+            if N_RVEC and not int(ck_cfg.get("ramp_obs_vec") or 0):
+                # the arrow is LAST: the exact trailing widen below
+                _grew.append("--ramp-obs-vec 1")
             if CC and not int(ck_cfg.get("curiosity_cond") or 0):
                 # a plain checkpoint onto the T-conditioned family: the T
                 # column is LAST, so the zero-pad below is the exact
@@ -12537,7 +12566,8 @@ def main() -> None:
                                "ramp_obs_pass": int(args.ramp_obs_pass or 0),
                                "target_views": int(args.target_views or 1),
                                "ramp_exit_bonus": float(args.ramp_exit_bonus or 0.0),
-                               "ramp_reach_bonus": float(args.ramp_reach_bonus or 0.0)})
+                               "ramp_reach_bonus": float(args.ramp_reach_bonus or 0.0),
+                               "ramp_obs_vec": int(args.ramp_obs_vec or 0)})
         if RPAIRS_OF:
             # --ramp-pairs: MIRRORED by record_ckpt.py (each map's pairs are its eval spawns); the
             # provenance of every map's pairs rides with every checkpoint, and a demo-derived one
@@ -13837,6 +13867,10 @@ def main() -> None:
     pass_pin = (torch.zeros((N, 1), pin_memory=(device.type == "cuda"))
                 if N_PASS else None)
     pass_np = pass_pin.numpy()[:, 0] if N_PASS else None
+    # --ramp-obs-vec: the arrow's pinned staging block
+    rvec_pin = (torch.zeros((N, N_RVEC), pin_memory=(device.type == "cuda"))
+                if N_RVEC else None)
+    rvec_np = rvec_pin.numpy() if N_RVEC else None
     # --priv-critic: one pinned (N, 10) staging block, filled in place off
     # the live core states and the reward object, then uploaded with the
     # rest of the per-decision traffic. static_priv is a STATIC buffer like
@@ -13934,6 +13968,12 @@ def main() -> None:
             # just ended reads 0). 8 KB host->device, off the graph
             pass_np[:] = goalsys.take_pass_flags()
             dst[:, PASS_COL:PASS_COL + 1].copy_(pass_pin, non_blocking=True)
+        if N_RVEC:
+            # --ramp-obs-vec: the arrow from the state the policy is about to act on (fill_vision
+            # runs after the reward call and the windows' shifts; an ended row is already at its
+            # respawn with its new window). 32 KB host->device at N=2048, off the graph
+            rvec_np[:] = goalsys.target_vecs()
+            dst[:, RVEC0:RVEC0 + N_RVEC].copy_(rvec_pin, non_blocking=True)
         if N_CC:
             # --curiosity-cond: the T of the episode the state belongs to
             # (fill_vision runs AFTER the reward call, which redrew it for
@@ -16238,6 +16278,17 @@ def main() -> None:
                                 blocks.append(torch.as_tensor(
                                     goalsys.pass_flags_at(ti),
                                     device=device).reshape(-1, 1))
+                            if N_RVEC:
+                                # --ramp-obs-vec AT s_T: the arrow from the
+                                # reconstructed terminal pose, read before the
+                                # goal system respawns these rows (their
+                                # windows still hold the ended episode's
+                                # targets)
+                                blocks.append(torch.as_tensor(
+                                    goalsys.target_vecs_at(
+                                        ti, pos_np,
+                                        np.degrees(np.arctan2(to[:, 7], to[:, 8]))),
+                                    device=device))
                             blocks.append(vis)
                             full = torch.cat(blocks, dim=1)
                             pv = None
@@ -17704,7 +17755,11 @@ def main() -> None:
                                            pass_fn=(goalsys.eval_pass_feed(
                                                         _s.name if (RPLAN and MULTI)
                                                         else None)
-                                                    if N_PASS else None)),
+                                                    if N_PASS else None),
+                                           vec_fn=(goalsys.eval_vec_feed(
+                                                       _s.name if (RPLAN and MULTI)
+                                                       else None)
+                                                   if N_RVEC else None)),
                                path, episodes=n_rec,
                                max_ticks=n_rec * args.ep_ticks,
                                seed=global_step & 0x7FFFFFFF,
@@ -17784,7 +17839,10 @@ def main() -> None:
                                                # no ramp hooks drive this eval: the column
                                                # is held at 0 (ramp runs evaluate greedy)
                                                pass_fn=((lambda _c, n: np.zeros(n, np.float32))
-                                                        if N_PASS else None)),
+                                                        if N_PASS else None),
+                                               vec_fn=((lambda _c, n: np.zeros((n, 4),
+                                                                               np.float32))
+                                                       if N_RVEC else None)),
                                    spath, episodes=n_rec,
                                    max_ticks=n_rec * args.ep_ticks,
                                    seed=global_step & 0x7FFFFFFF,

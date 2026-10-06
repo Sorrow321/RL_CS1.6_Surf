@@ -940,6 +940,35 @@ class GoalSystem:
                 return S
         raise KeyError(f"no ramp slot for map {name!r}: {[S.name for S in self._rs]}")
 
+    def target_vecs(self) -> np.ndarray:
+        """--ramp-obs-vec: (N, 4) float32 - every env's arrow to its next ramp (RampWindows.
+        target_vec) off its slot's windows and its core's live origin and view yaw"""
+        parts = []
+        for S in self._rs:
+            sv = S.core.states_view
+            parts.append(S.planner.windows.target_vec(sv["origin"], sv["yaw"]))
+        return parts[0] if len(parts) == 1 else np.concatenate(parts)
+
+    def target_vecs_at(self, idx, pos, yaw_deg) -> np.ndarray:
+        """--ramp-obs-vec at TERMINAL states (the truncation bootstrap): rows idx at their
+        reconstructed position / view yaw - read before the goal system respawns them, so the
+        windows still hold the ended episode's targets"""
+        idx = np.asarray(idx, np.int64)
+        pos = np.asarray(pos, np.float64).reshape(-1, 3)
+        yaw_deg = np.asarray(yaw_deg, np.float64).reshape(-1)
+        out = np.zeros((len(idx), 4), np.float32)
+        for S in self._rs:
+            m = (idx >= S.lo) & (idx < S.hi)
+            if m.any():
+                out[m] = S.planner.windows.target_vec(pos[m], yaw_deg[m], idx=idx[m] - S.lo)
+        return out
+
+    def eval_vec_feed(self, slot=None):
+        """--ramp-obs-vec for the greedy eval: the policy wrapper's vec_fn off the eval windows of
+        map `slot` (goalramps.make_vec_feed)"""
+        from .goalramps import make_vec_feed
+        return make_vec_feed(self.ramp_slot(slot).planner.eval_windows)
+
     def eval_pass_feed(self, slot=None):
         """--ramp-obs-pass for the greedy eval: the policy wrapper's pass_fn off the eval
         windows of map `slot` (goalramps.make_pass_feed)"""

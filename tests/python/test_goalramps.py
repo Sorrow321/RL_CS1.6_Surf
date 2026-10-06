@@ -1227,3 +1227,55 @@ def test_t1_dist_and_the_reach_event(voc):
                - 1000.0) < 1e-6
     w.t1[1] = gr.NONE
     assert np.isnan(w.t1_dist(np.stack([APPROACH[0], APPROACH[0]]))[1])
+
+
+def test_target_vec_points_at_the_next_ramp_in_the_views_frame(voc):
+    """--ramp-obs-vec (the user, 2026-10-06: "the vector ... that points to the next ramp"): the
+    unit vector to T1's nearest validated contact origin in the VIEW's ego frame (forward, left,
+    up) and its length / 2,000 u; once T1 is entered it points at T2; FIN at the finish box's
+    nearest point; zeros for NONE; the length column is capped at 4"""
+    v, _bsp, _ = voc
+    w = _windows(v)
+    w.spawn([0, 1], *_state(APPROACH))
+    o = np.stack([APPROACH[0], APPROACH[0]])
+    u = np.array([1000.0, 580.0, 0.0]) / np.hypot(1000.0, 580.0)   # to ramp 0's x = 0 edge
+    a = w.target_vec(o, np.array([0.0, 90.0]))
+    assert a.shape == (2, 4) and a.dtype == np.float32
+    # the vocabulary's origins are 300 random samples per ramp (~58 u apart), so the nearest one
+    # is near the edge, not on it: the direction to within ~0.15; the FRAME exactly
+    assert np.allclose(a[0, :3], u, atol=0.15)                      # yaw 0: forward is +x
+    assert np.allclose(a[1, :3], [a[0, 1], -a[0, 0], a[0, 2]], atol=1e-5)   # yaw 90: +y
+    assert np.allclose(np.linalg.norm(a[:, :3], axis=1), 1.0, atol=1e-5)
+    assert abs(a[0, 3] - np.hypot(1000.0, 580.0) / gr.VEC_D_SCALE) < 0.04
+    _tick(w, ON0)                                                   # env 0 enters T1 ...
+    assert w.entered[0] and w.t2[0] == 1
+    b = w.target_vec(np.stack([ON0[0], APPROACH[0]]), np.zeros(2))
+    assert np.allclose(b[0, :3], [0.0, 1.0, 0.0], atol=0.15)        # ... so it points at T2
+    assert abs(b[0, 3] - 3000.0 / gr.VEC_D_SCALE) < 0.04
+    assert np.allclose(b[1], a[0])                                  # env 1 untouched
+    sub = w.target_vec(APPROACH[0][None], np.array([0.0]), idx=[1])  # one env by index
+    assert np.allclose(sub[0], a[0])
+    w.t1[1], w.entered[1] = gr.FIN, False                           # the finish box
+    f = w.target_vec(np.stack([ON0[0], np.array([1000.0, 7000.0, 100.0])]), np.full(2, 90.0))
+    assert np.allclose(f[1], [1.0, 0.0, 0.0, 1000.0 / gr.VEC_D_SCALE], atol=1e-6)
+    far = w.target_vec(np.stack([ON0[0], np.array([1000.0, -60000.0, 100.0])]), np.zeros(2))
+    assert far[1, 3] == gr.VEC_D_CAP                                # 68,000 u: capped
+    w.t1[1] = gr.NONE
+    assert np.all(w.target_vec(o, np.zeros(2))[1] == 0.0)
+
+
+def test_the_eval_vec_feed_is_env_0s_arrow_and_zeros_elsewhere(voc):
+    """the recorder's / eval's vec_fn: env 0's arrow off the eval windows from the core's live
+    origin and view yaw, zeros for every other env of the core"""
+    v, _bsp, _ = voc
+    w = _windows(v, n=1)
+    w.spawn([0], *_state(APPROACH, n=1))
+
+    class _Core:
+        states_view = {"origin": np.stack([APPROACH[0], ON0[0], ON1[0]]),
+                       "yaw": np.array([0.0, 45.0, 90.0])}
+
+    out = gr.make_vec_feed(w)(_Core(), 3)
+    assert out.shape == (3, 4)
+    assert np.allclose(out[0], w.target_vec(APPROACH[0][None], np.zeros(1))[0])
+    assert np.all(out[1:] == 0.0)

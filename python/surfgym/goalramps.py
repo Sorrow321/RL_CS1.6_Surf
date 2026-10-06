@@ -82,12 +82,14 @@ RAMP_PRESS = 16.0        # u: a line arrives this far inside the target's contac
 BOX_MARGIN = 48.0        # u: a piece's box reaches this far past its validated contact origins
                          # (rampvocab.LATERAL_MIN, the vocabulary's own contact radius)
 RAMP_NZ = (0.02, 0.7)    # a RAMP-like contact plane: tools/ramps_mesh.py's category rule
+VEC_D_SCALE = 2000.0     # u: --ramp-obs-vec's distance column is the arrow's length / this ...
+VEC_D_CAP = 4.0          # ... capped here (8,000 u)
 
 FIN = -2                 # the finish box as a target (surfgym.targetmask.FIN)
 NONE = -1
 RAMP_DEFAULTS = {"ramp_topk": 2, "ramp_horizon": 3.0, "ramp_fade": 0.3, "ramp_reward": "arc",
                  "ramp_offtarget_pen": 0.0, "ramp_obs_pass": 0, "target_views": 1,
-                 "ramp_exit_bonus": 0.0, "ramp_reach_bonus": 0.0}
+                 "ramp_exit_bonus": 0.0, "ramp_reach_bonus": 0.0, "ramp_obs_vec": 0}
 # --target-views 6: the target channel's five extra directions after the view's own, as (name, yaw
 # offset deg, pitch deg, horizontal span deg or None = the lidar's own). Back / left / right are
 # level; up / down look straight up / down with a 180 deg span, so the six views cover the whole
@@ -999,6 +1001,54 @@ class RampWindows:
             out[idx] = d
         return out
 
+    def target_vec(self, origin, yaw_deg, idx=None):
+        """--ramp-obs-vec (the user, 2026-10-06: "the vector ... that points to the next ramp from
+        the current position of the agent"): (n, 4) float32 per env of `idx` (default all, origin
+        and yaw_deg aligned with it) - the ARROW to the next ramp to reach (T1, or T2 once T1 is
+        entered: on a ramp the next one is the one after it) as the unit vector from the origin to
+        that target's nearest validated contact origin in the VIEW's ego frame (forward, left, up)
+        and its length / VEC_D_SCALE (capped at VEC_D_CAP); the finish box measures to its
+        nearest point; zeros without a target (NONE)."""
+        idx = np.arange(self.N) if idx is None else np.asarray(idx, np.int64).reshape(-1)
+        origin = np.asarray(origin, np.float64).reshape(-1, 3)
+        yaw = np.radians(np.asarray(yaw_deg, np.float64).reshape(-1))
+        tgt = np.where(self.entered[idx], self.t2[idx], self.t1[idx])
+        q = np.full((len(idx), 3), np.nan)
+        for s in np.unique(tgt):
+            s = int(s)
+            if s == NONE:
+                continue
+            m = np.flatnonzero(tgt == s)
+            p = origin[m]
+            if s == FIN:
+                q[m] = np.clip(p, self.fin_lo, self.fin_hi)
+                continue
+            pc = self._pof.get(s)
+            best_d = np.full(len(m), np.inf)
+            best_q = np.zeros((len(m), 3))
+            for f in (self.pfaces.get(pc, [s]) if pc is not None else [s]):
+                if f not in self.tt:
+                    continue
+                d, j = self.tt[f].query(p)
+                b = d < best_d
+                best_d[b] = d[b]
+                best_q[b] = np.asarray(self.tp[f], np.float64)[j[b]]
+            q[m] = best_q
+        out = np.zeros((len(idx), 4), np.float32)
+        ok = np.isfinite(q[:, 0])
+        if ok.any():
+            v = q[ok] - origin[ok]
+            c, sn = np.cos(yaw[ok]), np.sin(yaw[ok])
+            fwd = v[:, 0] * c + v[:, 1] * sn
+            left = v[:, 1] * c - v[:, 0] * sn
+            d = np.sqrt(fwd * fwd + left * left + v[:, 2] * v[:, 2])
+            inv = 1.0 / np.maximum(d, 1.0)
+            out[ok, 0] = fwd * inv
+            out[ok, 1] = left * inv
+            out[ok, 2] = v[:, 2] * inv
+            out[ok, 3] = np.minimum(d / VEC_D_SCALE, VEC_D_CAP)
+        return out
+
     def take_passes(self, idx=None):
         """--ramp-obs-pass: (n,) float32, 1 where the window shifted (T1 passed, or skipped for
         T2) since the last call, else 0 - and the count restarts. Read once per decision, it is
@@ -1290,6 +1340,21 @@ class TargetLidar:
                                           ducked))
             ch = torch.stack(chs, dim=-1).to(img.dtype)
         return torch.cat([img, ch], dim=-1)
+
+
+def make_vec_feed(windows):
+    """--ramp-obs-vec in an eval / a recording (the policy wrappers' vec_fn): env 0's arrow off the
+    1-env RampWindows that make_ramp_hooks drives, from the core's live origin and view yaw; zeros
+    for any other env of the core"""
+    def feed(core, n=None):
+        sv = core.states_view
+        if n is None:
+            n = int(np.asarray(sv["origin"]).shape[0])
+        out = np.zeros((int(n), 4), np.float32)
+        out[0] = windows.target_vec(np.asarray(sv["origin"], np.float64)[:1],
+                                    np.asarray(sv["yaw"], np.float64)[:1], idx=[0])[0]
+        return out
+    return feed
 
 
 def make_pass_feed(windows):
