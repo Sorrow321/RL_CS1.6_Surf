@@ -34642,3 +34642,27 @@ Tested by putting the WR's own positions through OUR rules: the sequence, `--ram
   * The entropy coefficient rose to 0.017 (x (1 + T)) and did not stop it.
 * **The tempered episodes now try faster approaches.** In the 1.305B eval, several pass along S19's LOW face (z ~55) at ~1,060 u/s heading ~142, the WR's arrival speed (1,065), and live ~1.8 s more. Position-based contact_of puts them on S19's plane for 1-11 frames, but the collision telemetry registered no touch, so they glide past without clipping.
 * **Continued:** the run goes on to ~3 h (09:47) and is checked hourly. A new stage (S20) halves T. If none comes, the generic local-noise route has failed on this transition and the next step is the search the user named.
+
+## 2026-10-06 07:59 (machine clock) - S17U stopped at 1.42B (temperature alone: 0 S20 touches in ~820M steps, sigma shrank 0.034 -> 0.016 against T 2.83); own-state PIT PRACTICE (--spawn-states with seq_k); uf2SEQ_WRdiagS17P launched
+
+**uf2SEQ_WRdiagS17U, final** (600M -> 1.42B, 06:47-07:56):
+* Stage stuck at 4 throughout; T rose to 2.83.
+* **0 of ~1.5 million training episodes touched S20.**
+* The policy cancels the temperature: view sigma 0.034 -> 0.016, so the effective sampled sigma is only ~0.06.
+* Greedy evals mostly 4/4, a few at 3.
+* Stopped: stationary for 420M steps. **Local per-step noise does not find the different S18 exit** the WR uses.
+
+**Own-state pit practice (4fc8d44).**
+* `--spawn-states` accepts tools/stage_states.py's .npz {states, seq_k}: the policy's OWN states, each cut LEAD s before its own k-th touch, starting the --ramp-sequence at k. The map start and every eval start at 0.
+* Return-then-explore over own states (CLAUDE.md 0b allows it; section 0 holds: source self:<run>, SELF_STATES=1).
+* Under --ramp-touch the stage is now the list position reached (k_reach), so a part-way spawn reads on the same scale as a full episode.
+* **The file** runs/research/uf2_stage/uf2_stage23_n0.npz comes from 24 stochastic episodes of uf2SEQ_WRdiagS17N0/ckpt_final (600M), cut 0.3 / 0.5 / 0.8 s before:
+  * the S18 touch (k=2, 72 states);
+  * the S19 landing (k=3, 33 states, from the 11 episodes that landed).
+
+**uf2SEQ_WRdiagS17P:**
+* S17U's exact state: resumed from its ckpt_latest (1.42B), with the --unstuck schedule restored (T 2.83, stuck 422M).
+* Plus `--spawn-states runs/research/uf2_stage/uf2_stage23_n0.npz --spawn-states-frac 0.5`.
+* Novelty off, `--target-kl 0.05 --save-best 1`, 6e9 steps, evals every 50M from the map start.
+* **The only change against S17U is the practice** (~1,100 episodes per iteration instead of ~650; half of them start just before the S18 exit or the S19 landing).
+* **What counts:** list position 5 (S20) in training or in a greedy eval from the map start.
