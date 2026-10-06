@@ -34333,3 +34333,67 @@ Every run file is in runs/skWR_final.
 * A free-space geodesic field to each target's contact origins, the same BFS the map's goal field uses, baked per target.
 * The path from under S19 then goes around its edge and onto its top surface, so climbing over the edge pays and the underside does not.
 * It is generic: no map constant.
+
+## 2026-10-06 04:05 (machine clock) - uf2SEQ_WRdiagDIST stopped (after 1.33B its evals no longer reach the pit); the user's redirect: ONE camera plus an ARROW to the next ramp, from scratch; uf2SEQ_WRdiagVEC launched
+
+**uf2SEQ_WRdiagDIST, final.** Warm from uf2SEQ_WRdiagV6NP (six pinhole target views), with `--ramp-reward dist --ramp-reach-bonus 25`, exit bonus 50 and novelty 0.2; a declared demo diagnostic. Each eval is 9 greedy episodes. The stage is how many targets of [19, 17, 18, 19] were passed; the closest-approach column gives the typical value / the best.
+
+| steps | stage | closest to S19 after S18 | top z after S18 |
+|---|---|---|---|
+| 1.06B | 3 (9/9) | 514 / 501 u | -386 |
+| 1.18B | 3 (9/9) | 112 / 91 u | 3 |
+| 1.21B | 3 (9/9) | 104 / 84 u | 1 |
+| 1.26B | 3 (9/9) | 668 / 662 u | -503 |
+| 1.31B | 3 (9/9) | 598 / 593 u | -363 |
+| 1.33B-1.41B | 0-1 | - | - |
+
+* **0/9 landings in every eval.**
+* After the best eval (84 u under S19's lowest edge, 1.21B) the climb fell back.
+* From 1.33B on, the greedy episodes no longer reach S18 at all.
+* The run regressed and was stopped at ~1.42B (03:57).
+
+**The user's redirect (2026-10-06):**
+* **No free-space geodesic distance per target.** The proposal is REJECTED: "it gives the model kind of exactly the path where the one that it should follow and ... the policy should figure out it by itself."
+* **One camera.** The multiple target cameras "didn't prove to be useful".
+* **An ARROW in the observation:** "the vector ... that points to the next ramp from the current position of the agent ... when it's in the pit, it will point up". The user's own caveat: it may be too little information to generalise, "but let's try it".
+* **From scratch:** "We don't want to reuse the like contaminated checkpoints."
+
+**`--ramp-obs-vec 1` (6ab79c7).** Four observation columns, the LAST of the scalar half (here columns 49..52):
+* the unit vector from the agent to the next target's nearest validated contact origin, in the view's ego frame (forward, left, up);
+* its length / 2,000 u, capped at 4.
+
+The next target is T1, or T2 once T1 is entered, so on a ramp the arrow already points at the next one. FIN uses the finish box's nearest point; with no target the columns are zeros.
+
+The columns are:
+* written from the live state at every decision;
+* rebuilt at the reconstructed terminal pose for the truncation bootstrap;
+* fed to both eval wrappers;
+* mirrored by record_ckpt.py.
+
+An older checkpoint widens onto them by the trailing zero-pad.
+
+Checks:
+* tests/python/test_goalramps.py passes 46/46.
+* A local smoke with the run's exact flags (8.4M steps, 112k steps/s) ran truncations and evals, and the record gate passed: greedy, stoch, mixed and POV.
+
+**uf2SEQ_WRdiagVEC:**
+* **FROM SCRATCH, no checkpoint.**
+* **Launcher:** `tools/launch_local.ps1 scratch_ablate` on maps_pool/surf_unitfarmer2.bsp, local 5090. This is the full scratch set: VIEW abs, KEYS hold, POT off (the potential channel is refused with `--goals`).
+* **Plus:**
+  * `--goals 1 --goal-planner ramps --goal-obs fan --goal-reward arc` and uf2's vocabulary;
+  * `--target-channel 1 --target-views 1`: one camera, equiangular, no pinhole;
+  * `--ramp-obs-vec 1`;
+  * `--ramp-reward dist --ramp-reach-bonus 25` and `--ramp-offtarget-pen 1`;
+  * `--ramp-sequence 19,17,18,19 --ramp-sequence-source demo`;
+  * `--ep-secs 20 --stall-secs 30 --goal-cell 32 --respawn-frac 0`, so every episode starts at the map start;
+  * `--int-view 0 --int-match 0.2`;
+  * `--steps 1.2e9` (~3 h at ~110k steps/s) and `--record-every 25e6`.
+* **Still a LABELLED DEMO DIAGNOSTIC.** The weights are clean, but the target list is read off the WR, so the trainer stamps every checkpoint demo_contaminated (CLAUDE.md section 0).
+* **Dropped: `--ramp-exit-bonus`.** Codex (2026-09-28) put it in section 0b's class: a ramp / take-off bonus whose K was chosen on uf2. This run is the user's building block: distance, reach bonus and the arrow.
+* **Watched, per 25M:**
+  * the eval stage (0-4);
+  * the closest approach to S19 after S18, and the top z after S18;
+  * the training SEQUENCE done n/N.
+* **Watched for a false completion:** any completion that enters S19's box from BELOW without contact. Box occupancy is not the physical event (Codex 2026-10-05).
+* **Stop rule:** stationary for 10 minutes after the first stage-3 eval, or a regression like DIST's.
+* Trainer pid 48072 (launched 04:03:28), log runs/uf2SEQ_WRdiagVEC_launch.txt; dashboard http://localhost:8600.
