@@ -34630,3 +34630,15 @@ Tested by putting the WR's own positions through OUR rules: the sequence, `--ram
 * Plus `--int-coef 0 --int-match 0 --target-kl 0.05 --save-best 1`, the full 17-target WR sequence, `--ramp-touch 1`, 60 s episodes, 1,024 envs, `--steps 6e9`, `--record-every 50e6`.
 * **What counts:** the first greedy eval or training episode that touches S20 (stage 5), and the stage after that.
 * Trainer pid 48648 (launched 06:47:27), compiled; record gate passed.
+
+## 2026-10-06 07:51 (machine clock) - uf2SEQ_WRdiagS17U, 1 h in (600M -> 1.35B): no S20 yet; the temperature is partly cancelled by the policy shrinking its own sigma
+
+* **Stage:** stuck at 4 since 249M, so T rose to **2.43** by 1.35B (stuck 343M steps).
+* **No S20:** 0 of ~830,000 training episodes touched 5 targets.
+* **Greedy evals:** 4/4 in most of the 14 evals. Three evals fell back to 3 (953M, 1.0B, 1.305B), mostly or entirely below the landing.
+* **The temperature is partly undone.**
+  * The update scores the tempered distribution, so PPO can shrink its own sigma to restore its preferred sampling width: the view head's base sigma fell 0.034 -> **0.018**, and the second head's 0.096 -> 0.038.
+  * The effective sampled view sigma is 0.018 x 3.43 = 0.062, only ~1.8x the starting 0.034.
+  * The entropy coefficient rose to 0.017 (x (1 + T)) and did not stop it.
+* **The tempered episodes now try faster approaches.** In the 1.305B eval, several pass along S19's LOW face (z ~55) at ~1,060 u/s heading ~142, the WR's arrival speed (1,065), and live ~1.8 s more. Position-based contact_of puts them on S19's plane for 1-11 frames, but the collision telemetry registered no touch, so they glide past without clipping.
+* **Continued:** the run goes on to ~3 h (09:47) and is checked hourly. A new stage (S20) halves T. If none comes, the generic local-noise route has failed on this transition and the next step is the search the user named.
