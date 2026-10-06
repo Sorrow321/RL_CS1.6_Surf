@@ -424,6 +424,7 @@ class RampWindows:
         self.touch = False
         self.touched = np.zeros(n, bool)
         self.tick_touch = np.zeros(n, np.int64)
+        self.n_touch = np.zeros(n, np.int64)           # targets touched this episode
         self.p_zlow = {q: float(min(float(self.tp[f][:, 2].min()) for f in fs))
                        for q, fs in self.pfaces.items()}
         # window shifts since the policy last read them (take_passes, once per decision):
@@ -532,6 +533,7 @@ class RampWindows:
         for i in rows[hit]:
             self.touched[i] = True
             self.tick_touch[i] = 1
+            self.n_touch[i] += 1
             self.stats["touches"] = self.stats.get("touches", 0) + 1
             sq = self._seq_of(i)
             if sq is not None and self.seq_k[i] == len(sq) - 1:
@@ -912,6 +914,7 @@ class RampWindows:
             self.v0t[i] = 0.5
             self.entered[i] = False
             self.touched[i] = False
+            self.n_touch[i] = 0
             self.source[i] = src[n]
             self.n_capt[i] = 0
             self.n_skip[i] = 0
@@ -1127,6 +1130,11 @@ class RampWindows:
             self.stats["seq_done"] += int(self._seq_of(i) is not None and self.seq_done[i])
             r = int(self.n_capt[i])
             self.stats["ride_hist"][r] = self.stats["ride_hist"].get(r, 0) + 1
+            if self.touch:
+                # --ramp-touch: targets TOUCHED per SETTLED episode (the honest count: the
+                # per-tick "touches" stat spans episodes that settle in a later iteration)
+                h = self.stats.setdefault("touch_hist", {})
+                h[int(self.n_touch[i])] = h.get(int(self.n_touch[i]), 0) + 1
 
     def pop_stats(self) -> dict:
         s = self.stats

@@ -1266,12 +1266,14 @@ class GoalSystem:
             if len(self._rs) > 1:
                 self._per_map.append((S.name, int(rs["episodes"]), int(rs.get("seq_done", 0))))
             if out is None:
-                out = {k: (dict(v) if k == "ride_hist" else v) for k, v in rs.items()}
+                out = {k: (dict(v) if k in ("ride_hist", "touch_hist") else v)
+                       for k, v in rs.items()}
                 continue
             for k, v in rs.items():
-                if k == "ride_hist":
+                if k in ("ride_hist", "touch_hist"):
+                    h = out.setdefault(k, {})
                     for r, c in v.items():
-                        out["ride_hist"][r] = out["ride_hist"].get(r, 0) + c
+                        h[r] = h.get(r, 0) + c
                 else:
                     out[k] = out.get(k, 0) + v
         return out
@@ -1283,8 +1285,8 @@ class GoalSystem:
             ne = max(int(rs["episodes"]), 1)
             _touch = any(S.planner.windows.touch for S in self._rs)
             pnote += (f"  rides/ep {rs['rides'] / ne:.2f} skips/ep {rs['skips'] / ne:.2f} "
-                      + (f"touches/ep {rs.get('touches', 0) / ne:.2f} max rides "
-                         f"{max(rs['ride_hist']) if rs['ride_hist'] else 0} "
+                      + (("touched per episode " + " ".join(
+                          f"{k}:{v}" for k, v in sorted(rs.get("touch_hist", {}).items())) + " ")
                          if _touch else "")
                       + f"holds/ep {rs.get('holds', 0) / ne:.2f} "
                       + (f"SEQUENCE done {rs.get('seq_done', 0)}/{rs['episodes']} "

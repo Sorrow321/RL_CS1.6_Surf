@@ -1364,3 +1364,25 @@ def test_ramp_touch_a_box_graze_is_not_a_pass(voc):
     assert w.touched[0]
     _tick(w, AWAY)                                       # touched, then left: PASSED
     assert w.t1[0] == 1 and w.n_capt[0] == 1 and w.seq_k[0] == 1
+
+
+def test_ramp_touch_counts_touched_targets_per_settled_episode(voc):
+    """--ramp-touch: the per-episode count of touched targets lands in touch_hist when the episode
+    settles, and a respawn restarts it"""
+    v, _bsp, _ = voc
+    w = _windows(v)
+    w.set_sequence([0, 1, 2])
+    w.set_touch(True)
+    w.spawn([0, 1], *_state(APPROACH))
+    n_ = np.array([0.0, -1.0, 0.0])
+    duck = np.zeros(2, np.int64)
+    _tick(w, ON0)
+    w.note_touch(*_touches([(ON0[0], n_), None]), duck)
+    _tick(w, AWAY)
+    _tick(w, ON1)
+    w.note_touch(*_touches([(ON1[0], n_), None]), duck)
+    assert list(w.n_touch) == [2, 0]
+    w.settle([0, 1], [False, False])
+    assert w.stats["touch_hist"] == {2: 1, 0: 1}
+    w.spawn([0], *_state(APPROACH, n=1))
+    assert w.n_touch[0] == 0
