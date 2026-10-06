@@ -34438,3 +34438,71 @@ Its evals, 9 greedy episodes each (stage = targets of [19, 17, 18, 19] passed):
 * **The comparison that counts** is the step at which it first holds stage 3 against VEC's 51M / 127M, and then the climb after S18.
   * It is one seed each, and the env count differs too (1,024 vs 2,048: double the update density per step), so only a large difference means anything.
 * Trainer pid 22548 (launched 04:32:59), log runs/uf2SEQ_WRdiagVECNS_launch.txt; dashboard http://localhost:8600.
+
+## 2026-10-06 05:04 (machine clock) - uf2SEQ_WRdiagVECNS: normals + SimBa climbed to S19 by 101M, but box-rule "completions" never touched it; --ramp-touch (reach = contact); the user: keep going with the WR ramps one by one - uf2SEQ_WRdiagS17T resumed with the full 17-ramp WR sequence
+
+**uf2SEQ_WRdiagVECNS: normals + SimBa (+ 1,024 envs) climbed out of the pit, but the "completions" were a box graze.** Evals, 9 greedy episodes each; the closest-approach column gives the typical value / the best:
+
+| steps | stages | closest to S19 after S18 | top z after S18 | "done" |
+|---|---|---|---|---|
+| 26M | all 3 | 819 / 797 u | -683 | 0/9 |
+| 51M | all 3 | 1,228 / 1,193 u | -690 | 0/9 |
+| 76M | all 3 | 871 / 416 u | -514 | 0/9 |
+| 101M | all 4 | 76 / 70 u | 241 | 9/9 |
+| 126M | all 4 | 56 / 51 u | 200 | 9/9 |
+| 152M | all 4 | 47 / 45 u | 198 | 9/9 |
+| 177M | all 4 | 53 / 47 u | 143 | 9/9 |
+
+Training reported win 92-96% @ ~7.0-7.5 s; the WR lands on S19 at 7.9 s.
+
+* **Against VEC** (same flags without normals / SimBa, 2,048 envs): VEC took stage 3 at 51M and never got closer than 700 u to S19 in 218M steps. VECNS took stage 3 at 26M and reached S19's box at 101M. One seed each, with the env count changed too, but the climb out of the pit appeared only with normals + SimBa.
+* **landing_check** (scratchpad tool) replays the greedy policy through record_ckpt with the end-of-episode kill DELAYED 200 ticks, and classifies every contact by the vocabulary:
+  * at 124.8M and at 198.2M, 9/9 and 8/9 completions;
+  * **0 contacts with S19** in the 1.2-1.4 s after the "completion";
+  * every episode fell from z 77-135 to z ~-975 and died;
+  * at 198M, 3-8 ticks of contact with non-vocabulary geometry, most likely S19's underside or edge.
+* The ramp's AABB padded 48 u is entered from below or beside its lowest edge. The box rule credited that as entering S19, so the sequence "completed".
+* **CAVEAT on the replay, found afterwards:** after the box entry, the box rule marks the sequence done, so T2 is NONE and the ARROW reads zeros.
+  * That is an observation the policy never saw in training, because its episodes ended on that tick.
+  * So the 0 contacts show that the policy did not touch S19 BEFORE or AT the box entry. They do NOT show that it would not have landed with the arrow still on S19.
+  * A stochastic replay of 198M (12 episodes) also had 0 S19 contacts, under the same confound.
+* **The user's view (2026-10-06):** "I wouldn't say it was exploiting too much. It was ... taking off well enough and then jumping on the surf. Maybe it's not like perfect, but I guess it's fine. But okay, your idea maybe is also good."
+  * The data says the climb gets within ~50 u, but no greedy episode touched S19's riding surface.
+* **Stopped at ~200M (04:54).**
+
+**`--ramp-touch 1` (3a268e8): a target is REACHED on the first physical CONTACT with its piece.**
+* The contact is the tick's collision telemetry classified by the vocabulary (plane, normal, footprint), not entering the padded box.
+* The reach bonus, the arrow's switch to T2 and a sequence's completion all wait for that contact.
+* Leaving T1's box without having touched it is no pass: T1 stays the target, so `seq_stage` counts touched ramps.
+* Mirrored in record_ckpt. Evals log every touch; the training line adds touches/ep and max rides.
+* The default is 0, the box rule, unchanged.
+* Tests 49/49; smoke and record gate pass.
+* The one failing test in tests/python/test_flags_round30.py (`test_max_step_is_the_teleport_clip_and_scales_with_every`: `_FakeCore` has no `config`, in rewards.py) is pre-existing and outside these files.
+
+**The user's direction: keep going, and supply the WR's ramps one by one** — "will it converge to the end".
+
+The WR's ordered target contacts (ANALYSIS of runs/research/uf2_wr/surf_unitfarmer2.jsonl with RampVocab.contact_of; scratchpad wr_ramp_seq.py):
+
+| order | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| surface | 19 | 17 | 18 | 19 | 20 | 22 | 25 | 30 | 33 | 35 | 36 | 37 | 39 | 42 | 43 | 47 | 14 |
+| WR time (s) | 2.99 | 4.17 | 5.82 | 7.91 | 9.19 | 11.56 | 12.38 | 15.72 | 17.65 | 19.49 | 22.00 | 23.61 | 26.92 | 30.72 | 31.63 | 34.71 | 37.03 |
+
+* The start floor (surface 0) and a 1-frame brush of surface 2 at 2.43 s are left out.
+* Surface 14 is the finish room's floor; the WR's playback is 38.53 s.
+
+**uf2SEQ_WRdiagS17T:**
+* RESUMED from uf2SEQ_WRdiagVECNS/ckpt_latest.pt (~198M; same labelled demo diagnostic, declared), with:
+  * `--ramp-sequence 19,17,18,19,20,22,25,30,33,35,36,37,39,42,43,47,14 --ramp-sequence-source demo`;
+  * `--ramp-touch 1`;
+  * `--ep-secs 60` (the WR needs 38.5 s);
+  * `--steps 2e9 --record-every 50e6`.
+* Everything else (normals, SimBa, arrow, one camera, dist + reach 25, 1,024 envs) is restored from the checkpoint.
+* The window already hands the ramps over one at a time (T1 + T2, the arrow to the next one), and every touch pays the reach bonus, so the run extends ramp by ramp with no restart.
+* **The metric:** targets TOUCHED in order in the greedy evals (`touches` in the eval record), and the finish.
+* **Stop rule:** no new touched ramp in the evals for 10 minutes after the first plateau, or a regression.
+* **Relaunch note.** The first resume came up at 2,048 envs, because a resume does not restore `--envs`. That broke torch.compile (eager, the SimBa bug above), so it was killed after ~1 min and relaunched with `--envs 1024`: pid 50860, 05:00:58, compiled, ~127k steps/s.
+* **First greedy eval (198.7M, one update after the switch):** 9/9 touched 19 -> 17 -> 18, then fell short of S19 by 274-297 u, top z 14 after S18.
+* **Training:** "max rides 4", so some training episodes touched S19 and left it toward S20.
+  * The line's `touches/ep` (3.3-3.95) is NOT a per-episode count: it divides the touches of an iteration by the episodes settled in it, and an episode spans ~1.5 iterations.
+  * e68203c replaces it with a per-SETTLED-episode histogram (`touched per episode k:n`) for later launches; this run keeps the old line.
