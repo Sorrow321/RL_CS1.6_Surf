@@ -34506,3 +34506,49 @@ The WR's ordered target contacts (ANALYSIS of runs/research/uf2_wr/surf_unitfarm
 * **Training:** "max rides 4", so some training episodes touched S19 and left it toward S20.
   * The line's `touches/ep` (3.3-3.95) is NOT a per-episode count: it divides the touches of an iteration by the episodes settled in it, and an episode spans ~1.5 iterations.
   * e68203c replaces it with a per-SETTLED-episode histogram (`touched per episode k:n`) for later launches; this run keeps the old line.
+
+## 2026-10-06 05:44 (machine clock) - S17T learned the S19 landing (4/4 touched, 249-350M) and lost it to ONE update (kl 0.42); the WR scored by our rules: 17/17 in order, 0 off-target ticks; WR viewer overlay; --target-kl + best-stage checkpoints; uf2SEQ_WRdiagS17K launched overnight
+
+**uf2SEQ_WRdiagS17T** (resumed VECNS@198M; all 17 WR ramps; `--ramp-touch 1`; 60 s episodes; 1,024 envs). Greedy evals, 9 episodes each:
+
+| steps | targets touched (all 9) | closest to S19 after S18 | top z after S18 |
+|---|---|---|---|
+| 199M | 3 | 297 u | 14 |
+| 249M | 4 | 1 u | 484 |
+| 299M | 4 | 3 u | 407 |
+| 350M | 4 | 3 u | 405 |
+| 400M | 3 | 295 u | -92 |
+| 450M | 3 | 730 u | -294 |
+| 501M | 3 | 829 u | -120 |
+| 551M | 3 | 634 u | 8 |
+
+* **The S19 landing was learned in <50M steps once reaching S19 meant touching it.** Every greedy episode touched 19 -> 17 -> 18 -> 19 from 249M to 350M. No episode ever touched S20 ("max rides 4" in training).
+* **It was lost to ONE update.** At step 353,370,112, approx_kl was 0.4232 (the usual is 0.01-0.05, with 0.0755 the largest of the previous 20 updates).
+  * The next iteration, reward fell 366 -> 284 and touches per episode ~4 -> ~2.9. Training never passed S19 again (max rides 3 from 366M).
+  * The view head's sigma was 0.034, so a small shift of the mean is a large KL.
+  * Stopped at 553M (05:36), stationary 25 min. The good weights were gone: only ckpt_latest.pt, overwritten.
+* **The off-target charge was NOT involved:** 0.00-0.06% of ticks throughout.
+
+**The user's hypothesis (2026-10-06):** "in the world record, does the human not surf the same ramp by accident? ... surfs the same ramp twice, like the left and right ... our problem statement kind of requires to not hit any other ramp and we will kind of punish the model for that".
+
+Tested by putting the WR's own positions through OUR rules: the sequence, `--ramp-touch`, the box passes, and `offtarget()` (scratchpad wr_through_rules.py; RampVocab.contact_of per frame stands in for the telemetry).
+* The WR touches **17/17 targets in order**, completes the sequence, and has **0 off-target ticks**.
+* The only ramp it touches twice is S19 (2.99 s and 7.91 s), which the sequence lists twice.
+* Piece 19's two faces (S25 and S27, "left and right") are one target piece, so touching either is on-target.
+* The rules are consistent with the record.
+
+**The WR in the viewer:** runs/uf2_WR_view/traj_0000000000.jsonl (header map renamed to surf_unitfarmer2, so the mesh resolves).
+* Every target the record touches is outlined from the tick it is touched, labelled "WR target k/17: S<id> touched at <t> s".
+* For this, viewer plans now take a `label` and draw over the map (37b5e07).
+* Link: http://localhost:8600/viewer/index.html?traj=%2Fruns%2Fuf2_WR_view%2Ftraj_0000000000.jsonl
+
+**The fixes (37b5e07):**
+* `--target-kl X`: PPO's early stop. Before each minibatch's backward the update's approx KL so far is read; over 1.5 X the rest of the update is skipped. Off by default.
+  * A smoke with X = 0.002 stopped 25/25 updates at epoch 1, minibatch 2.
+  * One minibatch step alone moves this policy's KL by up to ~0.016.
+* `--save-best` on a ramp-sequence run keeps ckpt_beststage.pt behind every new best mean eval stage.
+
+**The user (2026-10-06, going to sleep):** "the big goal is to make it past the map ... if it passes it early, given the sequence of ramps ... the next step would be to make the search of the ramps kind of automatic ... it discovers them by itself through MCTS or something like this ... I rather doubt that it will converge so quick".
+
+**uf2SEQ_WRdiagS17K:** S17T's exact setup, again from VECNS@198M, plus `--target-kl 0.05` (stops at 0.075: the normal 0.01-0.05 updates pass, a 0.42 spike is cut) and `--save-best 1`. `--steps 5e9`, `--record-every 50e6`, local 5090.
+* Trainer pid 52292 (launched 05:43:00); the guard stopped its first update (kl 0.0859, epoch 3); record gate passed.
