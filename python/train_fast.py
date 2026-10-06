@@ -4109,6 +4109,16 @@ def main() -> None:
                          "duplicates: stride 3 cuts the update phase "
                          "(~50%% of the iteration) to ~1/3 at equal game-time")
     ap.add_argument("--lr", type=float, default=None)      # 3e-4; ckpt restores
+    ap.add_argument("--target-kl", type=float, default=None,
+                    help="PPO early stop (Stable-Baselines3's target_kl; Schulman et al. 2017's "
+                         "KL-limited updates): before each minibatch's backward the approx KL "
+                         "of the update so far, mean(old log-prob - current), is read, and once "
+                         "it exceeds 1.5 x this the rest of the update (that minibatch, the "
+                         "epoch, the later epochs) is skipped. uf2SEQ_WRdiagS17T lost its S19 "
+                         "landing to ONE update at kl 0.42 (typical 0.01-0.05) with the view "
+                         "sigma at 0.034, and never found it again (2026-10-06). One host sync "
+                         "per minibatch. Unset / 0 = off (bit-identical). Not restored from a "
+                         "checkpoint")
     ap.add_argument("--wd", type=float, default=None,      # 0 = Adam, bit-identical
                     help="decoupled weight decay (AdamW); 0 keeps plain Adam. ckpt restores")
     ap.add_argument("--dropout", type=float, default=None,  # 0 = off
@@ -12823,6 +12833,9 @@ def main() -> None:
             meta["config"]["min_speed_secs"] = float(args.min_speed_secs)
     if args.simba:
         meta["config"]["simba"] = 1
+    if float(args.target_kl or 0.0) > 0.0:
+        # --target-kl: an optimizer setting, recorded for provenance (TRAIN_ONLY in record_ckpt)
+        meta["config"]["target_kl"] = float(args.target_kl)
     if args.split_trunk:
         meta["config"]["split_trunk"] = 1
     if args.obs_views > 1:
@@ -15674,6 +15687,13 @@ def main() -> None:
     int_row = []              # --int-split: this iteration's int/* values
     it_no = 0
     best_fin_saved = float("inf")     # --save-best: this launch's best greedy finish (s)
+    best_stage_saved = -1.0           # --save-best on a --ramp-sequence run: best mean eval stage
+    TKL = float(args.target_kl or 0.0)
+    if TKL < 0.0 or TKL != TKL:
+        raise SystemExit(f"--target-kl must be >= 0, got {TKL!r}")
+    if TKL > 0.0:
+        print(f"--target-kl {TKL:g}: an update stops once its approx KL exceeds {1.5 * TKL:g}")
+    tkl_acc = [0, 0, [], 0]           # updates, stops, the stops' (epoch, mb, kl), stops ever
     while global_step < int(args.steps):
         it_no += 1
         tm.start_iter()
@@ -17107,7 +17127,10 @@ def main() -> None:
         # step, no log-sigma projection; the executor and its optimizer
         # state stay bit-identical to the resumed checkpoint (kl / losses
         # log 0)
-        for _ in range(0 if FREEZE else args.epochs):
+        tkl_hit = None                 # --target-kl: (epoch, minibatch, kl) of an early stop
+        for _ep in range(0 if FREEZE else args.epochs):
+            if tkl_hit is not None:
+                break
             if RNN:
                 # --rnn: shuffle ENVS, not rows. Minibatch k is B whole
                 # sequences, laid out time-major so perm[k*mb:(k+1)*mb] is
@@ -17201,6 +17224,17 @@ def main() -> None:
                     SIL.refresh(_si, _sraw)
                     loss = loss + SIL_COEF * _sl
                     sil_loss_t = _sl.detach()
+                if TKL > 0.0 and not warming:
+                    # --target-kl: the update so far, read off this minibatch's own forward
+                    # (before its step); over the threshold, nothing more of this update runs
+                    with torch.no_grad():
+                        _klm = (f_logp[idx] - logp.detach()).mean().reshape(1)
+                        if D.enabled:
+                            D.all_reduce_mean_(_klm)       # every rank stops together
+                    _klv = float(_klm.item())
+                    if _klv > 1.5 * TKL:
+                        tkl_hit = (int(_ep), int(k_mb), _klv)
+                        break
                 opt.zero_grad(set_to_none=True)
                 loss.backward()
                 if warming:
@@ -17225,6 +17259,24 @@ def main() -> None:
                 if rnd is not None:
                     rnd.train_step(f_scal[idx])   # tiny MLP, outside compile
                 last_diag = (idx, logp, vl, pg, el)
+        if TKL > 0.0:
+            # --target-kl: one line per 25 updates with how often and where the update stopped
+            tkl_acc[0] += 1
+            if tkl_hit is not None:
+                tkl_acc[1] += 1
+                tkl_acc[2].append(tkl_hit)
+                if tkl_acc[3] == 0 and D.is_main:
+                    # the first stop of the launch, at once (then one line per 25 updates)
+                    print(f"--target-kl {TKL:g}: FIRST early stop at step {global_step:,}, epoch "
+                          f"{tkl_hit[0] + 1} minibatch {tkl_hit[1] + 1}, kl {tkl_hit[2]:.4f}")
+                tkl_acc[3] += 1
+            if tkl_acc[0] >= 25 and D.is_main:
+                _h = tkl_acc[2]
+                print(f"--target-kl {TKL:g}: {tkl_acc[1]}/{tkl_acc[0]} updates stopped early"
+                      + (f" (at epoch.minibatch "
+                         + " ".join(f"{e + 1}.{k + 1}" for e, k, _ in _h[-8:])
+                         + f"; kl {max(x for _, _, x in _h):.3f} max)" if _h else ""))
+                tkl_acc[:3] = [0, 0, []]
         # diagnostics hoisted out of the inner loop (plan step 12c): the
         # per-minibatch float() syncs fired 256x/iteration and only the
         # last survived; one fleet-mean read reports the same numbers
@@ -17827,6 +17879,17 @@ def main() -> None:
                     save_ckpt("best")
                     print(f"--save-best: new best greedy finish {fin_best:.2f}s at step "
                           f"{global_step:,} -> ckpt_best.pt")
+                if (args.save_best and not MULTI and not _s.heldout and RPLAN
+                        and goalsys is not None and goalsys.ev.get("stages")):
+                    # --save-best on a --ramp-sequence run: the weights behind every new best
+                    # MEAN eval stage (targets passed; touched ones under --ramp-touch) - the
+                    # S19 landing of uf2SEQ_WRdiagS17T (249-350M) was overwritten by ckpt_latest
+                    _sm = float(np.mean(goalsys.ev["stages"]))
+                    if _sm > best_stage_saved:
+                        best_stage_saved = _sm
+                        save_ckpt("beststage")
+                        print(f"--save-best: new best mean eval stage {_sm:.2f} at step "
+                              f"{global_step:,} -> ckpt_beststage.pt")
                 if not args.eval_greedy_only:
                     spath = out / f"traj_{global_step:010d}{sfx}_stoch.jsonl"
                     _sv_stall = (None if _ev_stall is None

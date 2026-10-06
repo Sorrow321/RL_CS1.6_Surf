@@ -445,13 +445,19 @@ function buildGoalOverlay(ep) {
       var pts = (pl.line || []).map(function (p) { return new THREE.Vector3(p[0], p[2], -p[1]); });
       if (pts.length < 2) return null;
       var geo = new THREE.BufferGeometry().setFromPoints(pts);
-      var cur = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xffffff }));
+      // drawn over the map like the trail (depthTest off): an overlay is read through walls
+      var cur = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xffffff,
+                                                                  depthTest: false }));
       var past = new THREE.Line(geo, new THREE.LineDashedMaterial({
-        color: 0x9aa3ae, dashSize: 40, gapSize: 30, transparent: true, opacity: 0.55 }));
+        color: 0x9aa3ae, dashSize: 40, gapSize: 30, transparent: true, opacity: 0.55,
+        depthTest: false }));
+      cur.renderOrder = 10; past.renderOrder = 10;
       past.computeLineDistances();
       cur.visible = false; past.visible = false;
       goalGroup.add(cur); goalGroup.add(past);
-      return { t: +pl.t || 0, cur: cur, past: past };
+      // a plan may carry its own overlay label (an analysis overlay - e.g. the ramps a record
+      // touches); otherwise it is numbered as a planner primitive
+      return { t: +pl.t || 0, cur: cur, past: past, label: pl.label || null };
     }).filter(function (x) { return x; });
   }
   if (g && g.center) {
@@ -484,7 +490,8 @@ function updatePlanOverlay(tick) {
     planLines[j].cur.visible = (j === active);
     planLines[j].past.visible = (j < active);
   }
-  planLabel = active < 0 ? '' : ('planner primitive ' + (active + 1) + '/' + planLines.length +
+  planLabel = active < 0 ? '' : ((planLines[active].label ||
+    ('planner primitive ' + (active + 1) + '/' + planLines.length)) +
     '  (solid = active, dashed = earlier)');
 }
 
