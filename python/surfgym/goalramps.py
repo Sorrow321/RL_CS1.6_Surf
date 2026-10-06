@@ -51,7 +51,12 @@ executor is shown its next target surfaces as an IMAGE CHANNEL (surfgym.targetma
   just sliding on the same thing") = +1 per WINDOW SHIFT and nothing else - a target ridden and
   left, or skipped for the one after it, the moment a new target enters the channel. A piece
   pays once: the next target always lies beyond the whole previous piece on the geodesic.
-  RampWindows.tick_pass holds this tick's shifts per env.
+  RampWindows.tick_pass holds this tick's shifts per env. "dist" (the user, 2026-10-06: the
+  sparse version gives no gradient for an almost-landing) = potential shaping on the Euclidean
+  distance from the agent to T1 (RampWindows.t1_dist: its piece's nearest validated contact
+  origin), 100 per 1,500 u like "arc", re-anchored at every window shift and every episode
+  boundary - paid as the DIFFERENCE, never as a per-tick -d, which would make dying early pay -
+  plus --ramp-reach-bonus per T1 entered (RampWindows.tick_enter).
 
 window_line is the ramp operator's line (tools/edge_archive.py RampOperator delegates here): one
 line through a window of targets - per target an arrival into its plane (a cubic Hermite curve off
@@ -82,7 +87,7 @@ FIN = -2                 # the finish box as a target (surfgym.targetmask.FIN)
 NONE = -1
 RAMP_DEFAULTS = {"ramp_topk": 2, "ramp_horizon": 3.0, "ramp_fade": 0.3, "ramp_reward": "arc",
                  "ramp_offtarget_pen": 0.0, "ramp_obs_pass": 0, "target_views": 1,
-                 "ramp_exit_bonus": 0.0}
+                 "ramp_exit_bonus": 0.0, "ramp_reach_bonus": 0.0}
 # --target-views 6: the target channel's five extra directions after the view's own, as (name, yaw
 # offset deg, pitch deg, horizontal span deg or None = the lidar's own). Back / left / right are
 # level; up / down look straight up / down with a 180 deg span, so the six views cover the whole
@@ -407,6 +412,9 @@ class RampWindows:
         # --ramp-exit-bonus: this tick's PASS exits per env as the height the exit state could
         # climb to (z + |v|^2 / 2g) above the left piece's lowest validated contact, >= 0
         self.tick_exit_h = np.zeros(n, np.float64)
+        # --ramp-reach-bonus: T1 ENTERED on the current tick per env (on_tick clears it) - the
+        # "you reached the ramp" event of --ramp-reward dist (a skip enters the new T1 too)
+        self.tick_enter = np.zeros(n, np.int64)
         self.p_zlow = {q: float(min(float(self.tp[f][:, 2].min()) for f in fs))
                        for q, fs in self.pfaces.items()}
         # window shifts since the policy last read them (take_passes, once per decision):
@@ -871,6 +879,7 @@ class RampWindows:
         self.tau += 1
         self.tick_pass[:] = 0
         self.tick_exit_h[:] = 0.0
+        self.tick_enter[:] = 0
         live = ~ended
         changed = {}
         # a HOLDING window (nothing was in reach): a fresh draw every replan_ticks
@@ -889,6 +898,7 @@ class RampWindows:
         # inside T1's box: T1 ENTERED - the line becomes the ride along T1 then T2 from here
         for i in np.flatnonzero(in1 & ~self.entered):
             self.entered[i] = True
+            self.tick_enter[i] += 1
             sq = self._seq_of(i)
             if sq is not None and self.seq_k[i] == len(sq) - 1:
                 self.seq_done[i] = True            # --ramp-sequence: the LAST target entered
@@ -963,6 +973,31 @@ class RampWindows:
         self.tick_pass[i] += 1
         self.pass_acc[i] += 1
         return ln
+
+    def t1_dist(self, origin):
+        """--ramp-reward dist: (N,) Euclidean distance from each env's origin to its T1 - the
+        nearest validated contact origin of T1's PIECE (any of its surfaces: the places a player
+        touching the ramp occupies, so the hull is already accounted for); for the finish box
+        the distance to the box (0 inside); NaN without a target (NONE)."""
+        origin = np.asarray(origin, np.float64)
+        out = np.full(self.N, np.nan, np.float64)
+        for s in np.unique(self.t1):
+            s = int(s)
+            if s == NONE:
+                continue
+            idx = np.flatnonzero(self.t1 == s)
+            p = origin[idx]
+            if s == FIN:
+                gap = np.maximum(0.0, np.maximum(self.fin_lo - p, p - self.fin_hi))
+                out[idx] = np.linalg.norm(gap, axis=1)
+                continue
+            q = self._pof.get(s)
+            d = np.full(len(idx), np.inf)
+            for f in (self.pfaces.get(q, [s]) if q is not None else [s]):
+                if f in self.tt:
+                    d = np.minimum(d, self.tt[f].query(p)[0])
+            out[idx] = d
+        return out
 
     def take_passes(self, idx=None):
         """--ramp-obs-pass: (n,) float32, 1 where the window shifted (T1 passed, or skipped for
@@ -1203,6 +1238,12 @@ class TargetLidar:
         self.base = int(getattr(lidar, "channels", 1))
         self.views = int(views)
         self.channels = self.base + self.views
+        # one frame, every channel read by the conv (no camera ring under the target channel).
+        # Defined HERE: --obs-views (b7b1c8a) gave GpuLidar conv_channels / frame_size, and
+        # through __getattr__ below a ramps run read the WRAPPED lidar's 1 channel - it built a
+        # 1-channel conv and refused every target-channel checkpoint (2026-10-06)
+        self.conv_channels = self.channels
+        self.frame_size = int(lidar.H) * int(lidar.W) * self.channels
         # the extra directions' cameras: (camera, yaw offset, pitch) - the level ones reuse the
         # lidar's own grid, the two poles a 180 deg span
         self._cams = ([(c, dyaw, pitch) for c, dyaw, pitch, _nm in target_view_cams(lidar)]

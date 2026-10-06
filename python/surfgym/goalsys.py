@@ -228,6 +228,13 @@ class GoalSystem:
         # --ramp-offtarget-pen: 1 where the env touched a ramp outside the pieces it may ride on
         # the last tick (RampWindows.offtarget), and this iteration's off-target / live ticks
         self.ramp_off = np.zeros(self.N, np.float32)
+        # --ramp-reward dist (the trainer sets want_dist): per env after the tick its T1 and the
+        # distance to it (RampWindows.t1_dist; NaN without a target), and --ramp-reach-bonus's
+        # T1 entries of the tick
+        self.want_dist = False
+        self.ramp_dist = np.full(self.N, np.nan, np.float64)
+        self.ramp_t1 = np.full(self.N, -1, np.int64)
+        self.ramp_enter = np.zeros(self.N, np.float32)
         self._off_n = 0
         self._live_n = 0
         # --goal-planner ramps: this iteration's milliseconds per stage of the ramp bookkeeping
@@ -984,6 +991,12 @@ class GoalSystem:
             # trainer); --ramp-exit-bonus: this tick's pass exits' energy heights (u)
             self.ramp_pass[sl] = P.windows.tick_pass
             self.ramp_exit[sl] = P.windows.tick_exit_h
+            self.ramp_enter[sl] = P.windows.tick_enter
+            if self.want_dist:
+                # --ramp-reward dist: the distance to the window AFTER this tick's shifts; the
+                # trainer pays its difference only while T1 is unchanged
+                self.ramp_dist[sl] = P.windows.t1_dist(org)
+                self.ramp_t1[sl] = P.windows.t1
             if seq:
                 # the last target entered - end the episode; it settles as a success on the next
                 # tick (the sphere goals' kill-then-credit pattern)

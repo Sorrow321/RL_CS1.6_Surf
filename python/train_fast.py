@@ -5150,7 +5150,12 @@ def main() -> None:
                          "ones here I get a reward'). A checkpoint without it is widened by one "
                          "ZERO column (its own function at step 0). 0 (default) = off. "
                          "ckpt restores")
-    ap.add_argument("--ramp-reward", default=None, choices=("arc", "pass"),
+    ap.add_argument("--ramp-reach-bonus", type=float, default=None,
+                    help="--goal-planner ramps: K added on every tick a target is ENTERED (T1's box, "
+                         "or the next one's after a skip) - the 'you reached the ramp' event of "
+                         "--ramp-reward dist (the user, 2026-10-06). 0 (default) = off. "
+                         "ckpt restores")
+    ap.add_argument("--ramp-reward", default=None, choices=("arc", "pass", "dist"),
                     help="--goal-planner ramps: the reward. arc (default) = signed arc progress "
                          "along the window line (100 per 1,500 u, the line re-laid at every "
                          "window change); pass = +1 for every target PASSED - each window shift "
@@ -5158,7 +5163,13 @@ def main() -> None:
                          "nothing else (the success bonus at the finish stays). A piece pays "
                          "once: the next target lies beyond the whole previous piece. Needs "
                          "--time-pen 0 (0.005 per tick = 0.5/s outweighs +1 per 2-4 s ride) "
-                         "and no --reward-per-decision. ckpt restores")
+                         "and no --reward-per-decision. dist = potential shaping on the "
+                         "EUCLIDEAN distance to T1 (its piece's nearest validated contact origin), "
+                         "100 per 1,500 u like arc, paid as the difference and re-anchored at every "
+                         "window shift and episode boundary (a per-tick -d would make dying early "
+                         "pay), plus --ramp-reach-bonus per target entered; the arc pays nothing "
+                         "(the user, 2026-10-06: the sparse reward gives no gradient for an "
+                         "almost-landing). ckpt restores")
     ap.add_argument("--reset-critic", type=int, default=None, choices=(0, 1),
                     help="on a resume: re-initialise the value tower (vf.*, value_head) and zero "
                          "its Adam moments - the TASK changed (Codex 23:16Z: the old critic is "
@@ -6939,7 +6950,8 @@ def main() -> None:
         # --goal-planner ramps: its vocabulary, channel and knobs, like every run-defining flag
         for _k in ("ramp_vocab", "target_channel", "ramp_topk", "ramp_horizon", "ramp_fade",
                    "ramp_reward", "ramp_offtarget_pen", "ramp_obs_pass", "ramp_sequence",
-                   "ramp_sequence_source", "target_views", "ramp_exit_bonus", "ramp_pairs"):
+                   "ramp_sequence_source", "target_views", "ramp_exit_bonus", "ramp_pairs",
+                   "ramp_reach_bonus"):
             if _k == "ramp_sequence" and flag_given("--ramp-pairs"):
                 continue      # --ramp-pairs replaces a checkpoint's global sequence (one map's ids)
             if _k == "ramp_pairs" and flag_given("--ramp-sequence"):
@@ -8489,7 +8501,8 @@ def main() -> None:
         _set = [f"--{_k.replace('_', '-')}" for _k in
                 ("ramp_vocab", "target_channel", "ramp_topk", "ramp_horizon", "ramp_fade",
                  "ramp_reward", "ramp_offtarget_pen", "ramp_obs_pass", "ramp_sequence",
-                 "ramp_sequence_source", "target_views", "ramp_exit_bonus", "ramp_pairs")
+                 "ramp_sequence_source", "target_views", "ramp_exit_bonus", "ramp_pairs",
+                 "ramp_reach_bonus")
                 if flag_given(f"--{_k.replace('_', '-')}")]
         if _set:
             raise SystemExit(f"{', '.join(_set)} without --goal-planner ramps")
@@ -8501,6 +8514,7 @@ def main() -> None:
         args.ramp_sequence = args.ramp_sequence_source = None
         args.target_views = None
         args.ramp_exit_bonus = None
+        args.ramp_reach_bonus = None
         args.ramp_pairs = None
     # --ramp-reward pass: +1 per window shift, added to the per-tick reward after the goal system's
     # step; the arc shaping is off (arc_scale 0 below)
@@ -8546,6 +8560,26 @@ def main() -> None:
               "height (z + |v|^2/2g above the left ramp's lowest contact)")
     # --ramp-offtarget-pen: a charge per tick of surfing a ramp outside the pieces the env may ride
     ROFF = float(args.ramp_offtarget_pen) if RPLAN and args.ramp_offtarget_pen else 0.0
+    # --ramp-reward dist: potential shaping on the Euclidean distance to T1 (100 per 1,500 u, the
+    # arc's scale times --race-shaping), its difference paid per tick while T1 is unchanged
+    RDIST = RPLAN and args.ramp_reward == "dist"
+    RD_SCALE = ((100.0 / 1500.0) * (float(args.race_shaping) if args.race_shaping is not None
+                                    else 1.0)) if RDIST else 0.0
+    # --ramp-reach-bonus: K per target entered on the tick
+    RREACH = float(args.ramp_reach_bonus) if RPLAN and args.ramp_reach_bonus else 0.0
+    if RDIST or RREACH:
+        if args.reward_per_decision:
+            raise SystemExit("--ramp-reward dist / --ramp-reach-bonus add their terms per physics "
+                             "tick; --reward-per-decision would drop them silently")
+        if not np.isfinite(RREACH) or RREACH < 0.0:
+            raise SystemExit(f"--ramp-reach-bonus must be finite and >= 0, got {RREACH!r}")
+    if RDIST:
+        print(f"--ramp-reward dist: potential shaping on the Euclidean distance to T1 at "
+              f"{RD_SCALE:.6g}/u (100 per {100.0 / RD_SCALE:,.0f} u), re-anchored at every window "
+              f"shift and episode boundary; the arc pays nothing"
+              + (f"; +{RREACH:g} per target entered" if RREACH else ""))
+    elif RREACH:
+        print(f"--ramp-reach-bonus: +{RREACH:g} per target entered")
     if RPLAN:
         print(f"--goal-planner ramps: off-target ramp contact "
               + (f"charged {ROFF:g} per tick" if ROFF else "logged, not charged"))
@@ -11065,7 +11099,12 @@ def main() -> None:
                 ARC_SLOTS[_s.name] = _a
             arc_line = ARC_SLOTS[slots[0].name]
         arc_scale = 100.0 / _lref * args.race_shaping
-        if RPASS:
+        if RDIST:
+            # --ramp-reward dist: the arc still locates the agent on its line (the fan and the
+            # diagnostics); it pays nothing - the distance to T1 does
+            arc_scale = 0.0
+            print(arc_line.describe() + " -> --ramp-reward dist: the arc pays NOTHING")
+        elif RPASS:
             # --ramp-reward pass: the arc still locates the agent on its line (the fan and the
             # diagnostics); it pays nothing
             arc_scale = 0.0
@@ -12497,7 +12536,8 @@ def main() -> None:
                                "ramp_offtarget_pen": float(args.ramp_offtarget_pen or 0.0),
                                "ramp_obs_pass": int(args.ramp_obs_pass or 0),
                                "target_views": int(args.target_views or 1),
-                               "ramp_exit_bonus": float(args.ramp_exit_bonus or 0.0)})
+                               "ramp_exit_bonus": float(args.ramp_exit_bonus or 0.0),
+                               "ramp_reach_bonus": float(args.ramp_reach_bonus or 0.0)})
         if RPAIRS_OF:
             # --ramp-pairs: MIRRORED by record_ckpt.py (each map's pairs are its eval spawns); the
             # provenance of every map's pairs rides with every checkpoint, and a demo-derived one
@@ -14080,6 +14120,10 @@ def main() -> None:
     # run with the same seed draws. MapFleet.reset offsets slot i by 1013*i
     # on top, so the rank shares of one map stay a partition too.
     goalsys = None
+    # --ramp-reward dist: per env the last tick's distance to T1 and that T1 (the trainer's own state,
+    # carried across iterations; NaN / -1 = re-anchor on the next tick)
+    rd_prev = np.full(N, np.nan, np.float64)
+    rd_t1 = np.full(N, -1, np.int64)
     if args.goals:
         from surfgym.goalsys import GoalSystem, RampSlot
         # --goal-planner ramps draws its windows from the spawn state alone, so it runs without
@@ -14326,6 +14370,8 @@ def main() -> None:
                                           (ARC_SLOTS[_s.name] if ARC_SLOTS else arc_line),
                                           _s.name, _eval_balls[_s.name]) for _s in slots]}
                                 if RPLAN else {}))
+        if RDIST:
+            goalsys.want_dist = True
         if args.goal_obs == "fanline":
             # --goal-obs fanline: the cameras draw the goal system's lines
             slots[0].lidar.line = goalsys.line
@@ -15986,6 +16032,21 @@ def main() -> None:
                         # --ramp-offtarget-pen: this tick's contact with a ramp the planner did
                         # not ask for (an ended row is never off-target)
                         r = r - ROFF * goalsys.ramp_off
+                    if RDIST and r is not None:
+                        # --ramp-reward dist: the drop of the Euclidean distance to T1 since the
+                        # last tick, paid only while T1 is the same target and the row did not
+                        # end (an ended row's state is already the respawn); a window shift or a
+                        # new episode re-anchors at zero instantaneous reward
+                        _dn = goalsys.ramp_dist
+                        _tn = goalsys.ramp_t1
+                        _ok = (~(done | trunc).astype(bool) & (_tn == rd_t1)
+                               & np.isfinite(_dn) & np.isfinite(rd_prev))
+                        r = r + np.where(_ok, RD_SCALE * (rd_prev - _dn), 0.0).astype(np.float32)
+                        rd_prev[:] = _dn
+                        rd_t1[:] = _tn
+                    if RREACH and r is not None:
+                        # --ramp-reach-bonus: this tick's target entries (an ended row enters none)
+                        r = r + RREACH * goalsys.ramp_enter
                     if PLAN_JOINT:
                         # --plan-joint: the planner's reward IS this one, tick by
                         # tick - handed over before the truncation bootstrap below

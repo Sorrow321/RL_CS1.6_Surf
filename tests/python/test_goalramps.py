@@ -1199,3 +1199,31 @@ def test_one_goal_system_runs_each_map_slot_on_its_own_core_planner_and_rows(voc
     note = gs.note(0)
     assert "per map done a 0/0 b 1/1" in note, note
     assert gs.ramp_slot("surf_b").planner is pb and gs.ramp_slot("surf_a").planner is pa
+
+
+def test_t1_dist_and_the_reach_event(voc):
+    """--ramp-reward dist (the user, 2026-10-06): t1_dist is the Euclidean distance to the
+    nearest validated contact origin of T1's piece (ramp 0's origins lie at y = -20, x 0..2000,
+    z 0..500), it follows the window to the next target after a pass, and a box entry raises
+    tick_enter for exactly one tick; FIN measures to the finish box (0 inside)"""
+    v, _bsp, _ = voc
+    w = _windows(v)
+    w.spawn([0, 1], *_state(APPROACH))
+    d = w.t1_dist(np.stack([APPROACH[0], APPROACH[0]]))
+    want = float(np.hypot(1000.0, 580.0))              # to the ramp's x = 0 edge at z ~400
+    assert abs(d[0] - want) < 80.0 and abs(d[1] - want) < 80.0
+    _tick(w, ON0)                                       # env 0 enters T1
+    assert list(w.tick_enter) == [1, 0]
+    assert w.t1_dist(np.stack([ON0[0], APPROACH[0]]))[0] < 60.0
+    _tick(w, ON0)
+    assert list(w.tick_enter) == [0, 0]                 # one tick only
+    _tick(w, AWAY)                                      # passed: T1 is ramp 1 (origins y 2980)
+    assert w.t1[0] == 1
+    d1 = w.t1_dist(np.stack([AWAY[0], APPROACH[0]]))[0]
+    assert abs(d1 - float(np.hypot(600.0, 3380.0))) < 60.0   # to ramp 1's x = 2000 edge
+    w.t1[0] = gr.FIN                                    # the finish box (900..1100, 8000..8200)
+    assert w.t1_dist(np.stack([np.array([1000.0, 8100.0, 100.0]), APPROACH[0]]))[0] == 0.0
+    assert abs(w.t1_dist(np.stack([np.array([1000.0, 7000.0, 100.0]), APPROACH[0]]))[0]
+               - 1000.0) < 1e-6
+    w.t1[1] = gr.NONE
+    assert np.isnan(w.t1_dist(np.stack([APPROACH[0], APPROACH[0]]))[1])
