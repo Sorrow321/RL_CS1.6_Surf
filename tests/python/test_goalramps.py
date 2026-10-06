@@ -1279,3 +1279,88 @@ def test_the_eval_vec_feed_is_env_0s_arrow_and_zeros_elsewhere(voc):
     assert out.shape == (3, 4)
     assert np.allclose(out[0], w.target_vec(APPROACH[0][None], np.zeros(1))[0])
     assert np.all(out[1:] == 0.0)
+
+
+def _touches(rows):
+    """per env (origin, normal) or None -> SurfCore.get_touch's (counts, normals, points)"""
+    n = len(rows)
+    cnt = np.zeros(n, np.int32)
+    nrm = np.zeros((n, 8, 3), np.float32)
+    pts = np.zeros((n, 8, 3), np.float32)
+    for i, r in enumerate(rows):
+        if r is not None:
+            cnt[i] = 1
+            pts[i, 0], nrm[i, 0] = r
+    return cnt, nrm, pts
+
+
+def test_ramp_touch_reaches_on_contact_not_on_the_box(voc):
+    """--ramp-touch (2026-10-06: uf2's sequence was 'completed' 9/9 by clipping S19's padded box
+    without ever touching S19): inside a target's box WITHOUT a contact reaches nothing - no
+    tick_touch, the arrow still points at it, the LAST target does not complete; the first
+    contact with its own surface does, once; a contact with another ramp never counts"""
+    v, _bsp, _ = voc
+    w = _windows(v)
+    w.set_sequence([0, 1])
+    w.set_touch(True)
+    w.spawn([0, 1], *_state(APPROACH))
+    n_ = np.array([0.0, -1.0, 0.0])
+    duck = np.zeros(2, np.int64)
+    _tick(w, ON0)                                        # env 0 inside ramp 0's box ...
+    assert w.entered[0] and not w.touched[0]
+    w.note_touch(*_touches([None, None]), duck)
+    assert list(w.tick_touch) == [0, 0]
+    a = w.target_vec(np.stack([ON0[0], APPROACH[0]]), np.zeros(2))
+    assert a[0, 3] < 0.05                                # ... the arrow still on ramp 0
+    # env 1 touches ramp 1 while its T1 is ramp 0: not a reach
+    w.note_touch(*_touches([(ON0[0], n_), (ON1[0], n_)]), duck)
+    assert list(w.tick_touch) == [1, 0] and w.touched[0] and not w.touched[1]
+    assert not w.seq_done[0]                             # ramp 0 is not the last target
+    b = w.target_vec(np.stack([ON0[0], APPROACH[0]]), np.zeros(2))
+    assert b[0, 1] > 0.9                                 # touched: the arrow turns to ramp 1
+    w.note_touch(*_touches([(ON0[0], n_), None]), duck)
+    assert list(w.tick_touch) == [0, 0]                  # once per target
+    _tick(w, AWAY)                                       # passed: T1 = ramp 1, the LAST
+    assert w.t1[0] == 1 and not w.touched[0]
+    _tick(w, ON1)                                        # inside its box: NOT complete
+    assert w.entered[0] and not w.seq_done[0]
+    w.note_touch(*_touches([None, None]), duck)
+    assert not w.seq_done[0]
+    w.note_touch(*_touches([(ON1[0], n_), None]), duck)  # the contact completes it
+    assert w.seq_done[0] and w.tick_touch[0] == 1
+
+
+def test_without_ramp_touch_the_box_completes_as_before(voc):
+    """the default: entering the LAST target's box completes the sequence (the pre-flag rule)"""
+    v, _bsp, _ = voc
+    w = _windows(v)
+    w.set_sequence([0, 1])
+    w.spawn([0, 1], *_state(APPROACH))
+    _tick(w, ON0)
+    _tick(w, AWAY)
+    _tick(w, ON1)
+    assert w.seq_done[0] and not w.touch
+    w.note_touch(*_touches([None, None]), np.zeros(2, np.int64))   # a no-op without the flag
+    assert list(w.tick_touch) == [0, 0]
+
+
+def test_ramp_touch_a_box_graze_is_not_a_pass(voc):
+    """--ramp-touch: leaving T1's box WITHOUT having touched it is no pass - T1 stays the target
+    and its box can be entered again; touched, the same exit passes it as before"""
+    v, _bsp, _ = voc
+    w = _windows(v)
+    w.set_sequence([0, 1, 2])
+    w.set_touch(True)
+    w.spawn([0, 1], *_state(APPROACH))
+    n_ = np.array([0.0, -1.0, 0.0])
+    duck = np.zeros(2, np.int64)
+    _tick(w, HOP)                                        # inside ramp 0's box, off its plane
+    w.note_touch(*_touches([None, None]), duck)
+    assert w.entered[0] and not w.touched[0]
+    _tick(w, AWAY)                                       # left it untouched: no pass
+    assert w.t1[0] == 0 and not w.entered[0] and w.n_capt[0] == 0 and w.seq_k[0] == 0
+    _tick(w, ON0)                                        # back in, and this time on it
+    w.note_touch(*_touches([(ON0[0], n_), None]), duck)
+    assert w.touched[0]
+    _tick(w, AWAY)                                       # touched, then left: PASSED
+    assert w.t1[0] == 1 and w.n_capt[0] == 1 and w.seq_k[0] == 1

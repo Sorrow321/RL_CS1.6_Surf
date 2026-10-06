@@ -89,7 +89,8 @@ FIN = -2                 # the finish box as a target (surfgym.targetmask.FIN)
 NONE = -1
 RAMP_DEFAULTS = {"ramp_topk": 2, "ramp_horizon": 3.0, "ramp_fade": 0.3, "ramp_reward": "arc",
                  "ramp_offtarget_pen": 0.0, "ramp_obs_pass": 0, "target_views": 1,
-                 "ramp_exit_bonus": 0.0, "ramp_reach_bonus": 0.0, "ramp_obs_vec": 0}
+                 "ramp_exit_bonus": 0.0, "ramp_reach_bonus": 0.0, "ramp_obs_vec": 0,
+                 "ramp_touch": 0}
 # --target-views 6: the target channel's five extra directions after the view's own, as (name, yaw
 # offset deg, pitch deg, horizontal span deg or None = the lidar's own). Back / left / right are
 # level; up / down look straight up / down with a 180 deg span, so the six views cover the whole
@@ -417,6 +418,12 @@ class RampWindows:
         # --ramp-reach-bonus: T1 ENTERED on the current tick per env (on_tick clears it) - the
         # "you reached the ramp" event of --ramp-reward dist (a skip enters the new T1 too)
         self.tick_enter = np.zeros(n, np.int64)
+        # --ramp-touch (set_touch): a target is REACHED on the first physical CONTACT with its
+        # piece, not on entering its padded box - touched = T1's piece touched since T1 became T1,
+        # tick_touch = that event on the current tick (note_touch clears and sets it)
+        self.touch = False
+        self.touched = np.zeros(n, bool)
+        self.tick_touch = np.zeros(n, np.int64)
         self.p_zlow = {q: float(min(float(self.tp[f][:, 2].min()) for f in fs))
                        for q, fs in self.pfaces.items()}
         # window shifts since the policy last read them (take_passes, once per decision):
@@ -489,6 +496,46 @@ class RampWindows:
         L = self._blim[p]
         return (ok & (a >= L[:, 0]) & (a <= L[:, 1]) & (b >= L[:, 2]) & (b <= L[:, 3])
                 & (o[:, 2] >= L[:, 4]) & (o[:, 2] <= L[:, 5]))
+
+    def set_touch(self, on: bool) -> None:
+        """--ramp-touch: REACHING a target = the first physical CONTACT with its piece (the tick's
+        collision telemetry, RampVocab.classify: its plane, its normal, inside its footprint), not
+        entering the box 48 u past its validated contacts. The box still drives the window (enter /
+        pass / skip); the contact decides the reach event (tick_touch, the reach bonus), the
+        arrow's switch to T2 and the sequence's completion. The 2026-10-06 uf2 run completed the
+        sequence 9/9 by clipping the bottom of S19's padded box from the pit and never touched S19
+        (landing_check: 0 contacts in the 1.2 s before it fell to its death)"""
+        self.touch = bool(on)
+        self.touched[:] = False
+        self.tick_touch[:] = 0
+
+    def note_touch(self, counts, normals, points, ducked, live=None) -> None:
+        """--ramp-touch, once per tick AFTER on_tick (so against the window this tick's shifts
+        left): envs whose telemetry holds a contact with a surface of T1's piece become TOUCHED
+        (tick_touch 1 on that tick); T1 the LAST target of a sequence completes it (seq_done).
+        counts / normals / points as SurfCore.get_touch returns them, ducked (N,) the hulls"""
+        self.tick_touch[:] = 0
+        if not self.touch:
+            return
+        counts = np.asarray(counts)
+        cand = (counts > 0) & ~self.touched & (self.t1 >= 0)
+        if live is not None:
+            cand &= np.asarray(live, bool)
+        rows = np.flatnonzero(cand)
+        if not len(rows):
+            return
+        sid = self.voc.classify(counts[rows], np.asarray(normals)[rows],
+                                np.asarray(points)[rows], np.asarray(ducked)[rows])
+        ok = sid >= 0
+        pc = np.where(ok, self.pmap[np.clip(sid, 0, len(self.pmap) - 1)], -2)
+        hit = (pc == self.pmap[self.t1[rows]][:, None]).any(axis=1)
+        for i in rows[hit]:
+            self.touched[i] = True
+            self.tick_touch[i] = 1
+            self.stats["touches"] = self.stats.get("touches", 0) + 1
+            sq = self._seq_of(i)
+            if sq is not None and self.seq_k[i] == len(sq) - 1:
+                self.seq_done[i] = True            # --ramp-sequence: the LAST target TOUCHED
 
     def set_sequence(self, seq):
         """--ramp-sequence: a PREDEFINED target list (surface ids, in order) replaces the planner.
@@ -864,6 +911,7 @@ class RampWindows:
             self.v0p[i] = 1.0
             self.v0t[i] = 0.5
             self.entered[i] = False
+            self.touched[i] = False
             self.source[i] = src[n]
             self.n_capt[i] = 0
             self.n_skip[i] = 0
@@ -902,12 +950,17 @@ class RampWindows:
             self.entered[i] = True
             self.tick_enter[i] += 1
             sq = self._seq_of(i)
-            if sq is not None and self.seq_k[i] == len(sq) - 1:
+            if sq is not None and self.seq_k[i] == len(sq) - 1 and not self.touch:
                 self.seq_done[i] = True            # --ramp-sequence: the LAST target entered
             if int(i) not in changed:
                 changed[int(i)] = None             # the ride line, built below
         # out of T1's box after entering it: T1 PASSED - the window shifts
         for i in np.flatnonzero(self.entered & ~in1 & live):
+            if self.touch and not self.touched[i]:
+                # --ramp-touch: left the box WITHOUT touching the ramp - not passed; T1 stays
+                # the target (a graze of its box is no progress), the box may be entered again
+                self.entered[i] = False
+                continue
             self.n_capt[i] += 1
             self.stats["rides"] += 1
             # --ramp-exit-bonus: the exit's energy, as the height it could climb to above the
@@ -946,7 +999,7 @@ class RampWindows:
             if k < len(sq):
                 self.t1[i] = sq[k]
                 self.t2[i] = sq[k + 1] if k + 1 < len(sq) else NONE
-                if riding and k == len(sq) - 1:
+                if riding and k == len(sq) - 1 and not self.touch:
                     self.seq_done[i] = True
                 ln = self._line(int(i), p, v, bool(riding))
             else:
@@ -972,6 +1025,7 @@ class RampWindows:
         self.v0p[i] = v_t1
         self.v0t[i] = v_t2
         self.entered[i] = bool(riding)
+        self.touched[i] = False                    # --ramp-touch: the new T1 is not touched yet
         self.tick_pass[i] += 1
         self.pass_acc[i] += 1
         return ln
@@ -1012,7 +1066,8 @@ class RampWindows:
         idx = np.arange(self.N) if idx is None else np.asarray(idx, np.int64).reshape(-1)
         origin = np.asarray(origin, np.float64).reshape(-1, 3)
         yaw = np.radians(np.asarray(yaw_deg, np.float64).reshape(-1))
-        tgt = np.where(self.entered[idx], self.t2[idx], self.t1[idx])
+        reached = self.touched if self.touch else self.entered     # --ramp-touch: on CONTACT
+        tgt = np.where(reached[idx], self.t2[idx], self.t1[idx])
         q = np.full((len(idx), 3), np.nan)
         for s in np.unique(tgt):
             s = int(s)
@@ -1104,7 +1159,9 @@ class RampWindows:
                 f"pieces by closest approach of the {self.horizon:g} s ballistic arc, each as "
                 f"its surface furthest along the piece's axis; T2 off T1's ride; T1 entered "
                 f"inside its piece's box, passed on leaving it (boxes {BOX_MARGIN:g} u past the "
-                f"validated contacts); channel fade {self.fade_ticks * self.tick_ms / 1000.0:g} s")
+                f"validated contacts); channel fade {self.fade_ticks * self.tick_ms / 1000.0:g} s"
+                + ("; a target is REACHED on the first CONTACT with its piece, not on entering "
+                   "its box (--ramp-touch)" if self.touch else ""))
 
 
 class RampPlanner:
@@ -1117,13 +1174,17 @@ class RampPlanner:
 
     def __init__(self, vocab, n_envs: int, finish_box, tick_ms: float, *, topk: int, horizon: float,
                  fade: float, gravity: float = 800.0, line_cap: int = 768, seed: int = 0,
-                 goal_field=None, sequence=None, pairs=None):
+                 goal_field=None, sequence=None, pairs=None, touch: bool = False):
         self.vocab = vocab
         kw = dict(topk=topk, horizon=horizon, fade=fade, gravity=gravity, line_cap=line_cap,
                   goal_field=goal_field)
         self.windows = RampWindows(vocab, n_envs, finish_box, tick_ms,
                                    rng=np.random.default_rng(int(seed)), **kw)
         self.eval_windows = RampWindows(vocab, 1, finish_box, tick_ms, deterministic=True, **kw)
+        # --ramp-touch: reached = touched, on both
+        self.touch = bool(touch)
+        self.windows.set_touch(self.touch)
+        self.eval_windows.set_touch(self.touch)
         # --ramp-sequence: the predefined target list, on both
         self.sequence = None if sequence is None else [int(s) for s in sequence]
         if self.sequence is not None:
@@ -1382,7 +1443,7 @@ def make_ramp_hooks(windows, vocab, core, ev: dict, *, line=None):
     # event per change, [row, prev, T1, T2, tau at that row, fade start of prev, fade start of
     # T1] - the channel's values at row k are the fade of tau + (k - row) (slot_values); rows are
     # the episode's own tick index
-    rec = {"t0": None, "events": [], "seq_kill": False}
+    rec = {"t0": None, "events": [], "seq_kill": False, "touches": []}
 
     def _snap(row):
         rec["events"] = _snap_event(windows, row, rec["events"])
@@ -1400,6 +1461,7 @@ def make_ramp_hooks(windows, vocab, core, ev: dict, *, line=None):
         rec["t0"] = None
         rec["events"] = []
         rec["seq_kill"] = False
+        rec["touches"] = []
         _snap(0)
         if line is not None:
             line.set_lines(np.array([0]), [ln])
@@ -1429,6 +1491,11 @@ def make_ramp_hooks(windows, vocab, core, ev: dict, *, line=None):
         ev["off"] += int(windows.offtarget(cnt[:1], nrm[:1], org)[0])
         idx, lines = windows.on_tick(None, org, sv["velocity"][:1].astype(np.float64),
                                      np.zeros(1, bool))
+        if windows.touch:
+            # --ramp-touch: the contact decides the reach and the completion
+            windows.note_touch(cnt[:1], nrm[:1], _pts[:1], np.asarray(sv["ducked"][:1]))
+            if windows.tick_touch[0]:
+                rec["touches"].append([int(t) - int(rec["t0"]), int(windows.t1[0])])
         if windows.tick_exit_h[0] > 0.0:
             ev["exit_h"].append(float(windows.tick_exit_h[0]))
         if len(idx):
@@ -1447,6 +1514,9 @@ def make_ramp_hooks(windows, vocab, core, ev: dict, *, line=None):
 
     def episode_end(ep):
         out = {"events": list(rec["events"]), "fade_ticks": float(windows.fade_ticks)}
+        if windows.touch:
+            # --ramp-touch: [row, target] of every target TOUCHED, in order
+            out["touches"] = list(rec["touches"])
         if windows._seq_of(0) is not None:
             out.update({"sequence": list(windows._seq_of(0)), "seq_stage": windows.seq_stage(0),
                         "seq_done": bool(rec["seq_kill"])})

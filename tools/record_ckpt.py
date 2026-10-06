@@ -1596,7 +1596,10 @@ def main(argv=None, build_only: bool = False, device=None):
                                    sequence=([int(x) for x in
                                               str(cfg.get("ramp_sequence")).split(",") if x]
                                              if cfg.get("ramp_sequence") else None),
-                                   pairs=_pairs)
+                                   pairs=_pairs,
+                                   # --ramp-touch: MIRRORED - reached = touched (the eval's
+                                   # success and the arrow)
+                                   touch=bool(int(cfg.get("ramp_touch") or 0)))
                 print(_rpl.describe())
                 lidar = TargetLidar(lidar, TargetMask(str(_vocp), zones["end"], device),
                                     _rpl.eval_windows,

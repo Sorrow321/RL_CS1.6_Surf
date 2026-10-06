@@ -5159,6 +5159,14 @@ def main() -> None:
                          "ones here I get a reward'). A checkpoint without it is widened by one "
                          "ZERO column (its own function at step 0). 0 (default) = off. "
                          "ckpt restores")
+    ap.add_argument("--ramp-touch", type=int, default=None, choices=(0, 1),
+                    help="--goal-planner ramps: 1 = a target is REACHED on the first physical "
+                         "CONTACT with its piece (the tick's collision telemetry classified by "
+                         "the vocabulary: its plane, its normal, inside its footprint) - the "
+                         "reach bonus, the arrow's switch to T2 and a --ramp-sequence's "
+                         "completion all wait for it; entering the padded box still drives the "
+                         "window. 0 (default) = the box alone (a box graze completed uf2's "
+                         "sequence without touching S19, 2026-10-06). ckpt restores")
     ap.add_argument("--ramp-obs-vec", type=int, default=None, choices=(0, 1),
                     help="--goal-planner ramps: 1 = four more scalar-side observation columns (the "
                          "LAST): the ARROW to the next ramp to reach (T1, or T2 once T1 is entered) - "
@@ -6969,7 +6977,7 @@ def main() -> None:
         for _k in ("ramp_vocab", "target_channel", "ramp_topk", "ramp_horizon", "ramp_fade",
                    "ramp_reward", "ramp_offtarget_pen", "ramp_obs_pass", "ramp_sequence",
                    "ramp_sequence_source", "target_views", "ramp_exit_bonus", "ramp_pairs",
-                   "ramp_reach_bonus", "ramp_obs_vec"):
+                   "ramp_reach_bonus", "ramp_obs_vec", "ramp_touch"):
             if _k == "ramp_sequence" and flag_given("--ramp-pairs"):
                 continue      # --ramp-pairs replaces a checkpoint's global sequence (one map's ids)
             if _k == "ramp_pairs" and flag_given("--ramp-sequence"):
@@ -8520,7 +8528,7 @@ def main() -> None:
                 ("ramp_vocab", "target_channel", "ramp_topk", "ramp_horizon", "ramp_fade",
                  "ramp_reward", "ramp_offtarget_pen", "ramp_obs_pass", "ramp_sequence",
                  "ramp_sequence_source", "target_views", "ramp_exit_bonus", "ramp_pairs",
-                 "ramp_reach_bonus", "ramp_obs_vec")
+                 "ramp_reach_bonus", "ramp_obs_vec", "ramp_touch")
                 if flag_given(f"--{_k.replace('_', '-')}")]
         if _set:
             raise SystemExit(f"{', '.join(_set)} without --goal-planner ramps")
@@ -8534,6 +8542,7 @@ def main() -> None:
         args.ramp_exit_bonus = None
         args.ramp_reach_bonus = None
         args.ramp_obs_vec = None
+        args.ramp_touch = None
         args.ramp_pairs = None
     # --ramp-reward pass: +1 per window shift, added to the per-tick reward after the goal system's
     # step; the arc shaping is off (arc_scale 0 below)
@@ -10971,7 +10980,7 @@ def main() -> None:
                     line_cap=min(768, int(route.pts.shape[1]) if route is not None else 768),
                     seed=int(args.seed) + 9091 + 7 * _si,
                     goal_field=(_lgf(_gfs) if _gfs else None), sequence=RSEQ,
-                    pairs=RPAIRS_OF.get(_s.name))
+                    pairs=RPAIRS_OF.get(_s.name), touch=bool(int(args.ramp_touch or 0)))
             _ramp_planner = RPLANNERS[slots[0].name]
         planner = ((_ramp_planner if RPLAN else prim_planner if PPLAN
                     else FinishRef(slots[0].goal_box) if PLPLAN
@@ -12567,7 +12576,8 @@ def main() -> None:
                                "target_views": int(args.target_views or 1),
                                "ramp_exit_bonus": float(args.ramp_exit_bonus or 0.0),
                                "ramp_reach_bonus": float(args.ramp_reach_bonus or 0.0),
-                               "ramp_obs_vec": int(args.ramp_obs_vec or 0)})
+                               "ramp_obs_vec": int(args.ramp_obs_vec or 0),
+                               "ramp_touch": int(args.ramp_touch or 0)})
         if RPAIRS_OF:
             # --ramp-pairs: MIRRORED by record_ckpt.py (each map's pairs are its eval spawns); the
             # provenance of every map's pairs rides with every checkpoint, and a demo-derived one

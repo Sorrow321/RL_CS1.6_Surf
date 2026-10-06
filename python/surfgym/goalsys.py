@@ -1016,11 +1016,16 @@ class GoalSystem:
             _t2 = time.perf_counter()
             # the boxes: positions only
             li, lines = P.windows.on_tick(None, org, sv["velocity"].astype(np.float64), e_s)
+            if P.windows.touch:
+                # --ramp-touch: the reach event (and the sequence's completion) is the first
+                # CONTACT with T1's piece, against the window this tick's shifts left
+                P.windows.note_touch(cnt, nrm, _pts, np.asarray(sv["ducked"]), ~e_s)
             # --ramp-reward pass: this tick's window shifts per env (+1 each, added by the
             # trainer); --ramp-exit-bonus: this tick's pass exits' energy heights (u)
             self.ramp_pass[sl] = P.windows.tick_pass
             self.ramp_exit[sl] = P.windows.tick_exit_h
-            self.ramp_enter[sl] = P.windows.tick_enter
+            self.ramp_enter[sl] = (P.windows.tick_touch if P.windows.touch
+                                   else P.windows.tick_enter)
             if self.want_dist:
                 # --ramp-reward dist: the distance to the window AFTER this tick's shifts; the
                 # trainer pays its difference only while T1 is unchanged
@@ -1276,8 +1281,12 @@ class GoalSystem:
         if self.ramps:
             rs = self._pop_ramp_stats()
             ne = max(int(rs["episodes"]), 1)
+            _touch = any(S.planner.windows.touch for S in self._rs)
             pnote += (f"  rides/ep {rs['rides'] / ne:.2f} skips/ep {rs['skips'] / ne:.2f} "
-                      f"holds/ep {rs.get('holds', 0) / ne:.2f} "
+                      + (f"touches/ep {rs.get('touches', 0) / ne:.2f} max rides "
+                         f"{max(rs['ride_hist']) if rs['ride_hist'] else 0} "
+                         if _touch else "")
+                      + f"holds/ep {rs.get('holds', 0) / ne:.2f} "
                       + (f"SEQUENCE done {rs.get('seq_done', 0)}/{rs['episodes']} "
                          if self._ramp_seq_mode() else "")
                       + (f"PAIR-LOOKUP MISSES {rs['pair_miss']} "
