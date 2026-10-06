@@ -34666,3 +34666,39 @@ Tested by putting the WR's own positions through OUR rules: the sequence, `--ram
 * Novelty off, `--target-kl 0.05 --save-best 1`, 6e9 steps, evals every 50M from the map start.
 * **The only change against S17U is the practice** (~1,100 episodes per iteration instead of ~650; half of them start just before the S18 exit or the S19 landing).
 * **What counts:** list position 5 (S20) in training or in a greedy eval from the map start.
+
+## 2026-10-06 09:04 (machine clock) - S17P stopped (own-state pit practice: no S20 in ~1.4M episodes); S20 BENCH: from the WR's pre-S19 states our policy reaches S20 5/20, from our own pre-S19 states 0/20 at any speed - the blocker is the ROUTE into S19, not the S19->S20 move
+
+**uf2SEQ_WRdiagS17P** (S17U's state + 50% own-state pit spawns; 1.42B -> 2.17B, 07:58-09:04):
+* **0 S20 touches** (list position 5) in ~1.4 million training episodes; greedy evals 4/4 in most evals.
+* T stayed at the cap 4.0, and the base sigmas shrank to 0.015 / 0.017.
+* Stopped: stationary, best stage 4 for 1.17B steps of the schedule.
+
+**Three generic local-exploration levers all failed at S19 -> S20:**
+* int-match novelty destabilized the landing (ledger 06:4x).
+* The plateau temperature was cancelled by the policy shrinking its own sigma.
+* Own-state practice at the transition discovered nothing new.
+
+**S20 BENCH** (ANALYSIS ONLY, CLAUDE.md section 0: WR states measure which skill is missing and are never training data). Policy: uf2SEQ_WRdiagS17N0/ckpt_final (600M), greedy, 20 episodes each, with the list started at the spawn's point (record_ckpt `--ramp-sequence`, an analysis override, this commit):
+
+| spawned from | list shown | touched S19 | touched S20 |
+|---|---|---|---|
+| WR states t ~7.0-7.6 s (apex S of S19 -> back onto its front; uf2_pitwindow[380:431]) | 19, 20, ... | 20/20 | **5/20** |
+| WR states on S18 t ~5.9-6.3 s ([275:321]) | 18, 19, 20, ... | 2/20 (11 touch nothing: off its own line) | 0/20 |
+| OWN states 0.3-0.8 s before its S19 landing (k=3 cut), velocity x1.00 | 19, 20, ... | 20/20 | 0/20 |
+| same, velocity x1.15 | | 19/20 | 0/20 |
+| same, velocity x1.30 | | 6/20 | 0/20 |
+| same, velocity x1.50 | | 1/20 | 0/20 |
+
+**Reading:**
+* **The S19 -> S20 move exists in the policy given the WR's entry:** 5/20 touch S20 although no training episode ever did.
+* **Our own approach never yields S20 at any speed.** Speeding it up only makes it miss S19.
+* **The blocker is the ROUTE into S19.** The WR flies past S19's low south end and lands on its south-facing front at ~1,065 u/s. Ours brushes the crest from the pit side at ~650 u/s.
+* **Our reward points the other way.** The dist shaping and the arrow point at S19's NEAREST contact, the crest on the pit side, so they pull toward the brush; the touch counts it as reaching S19.
+* **Finding the detour is a multi-second change of route,** which per-step noise does not produce.
+
+**Proposed next step (for the user):** search in the simulator from the policy's OWN pre-S18 / pre-S19 states:
+* a policy-guided population or MCTS search, like the skate expert loop and beam_tas, whose objective is the ramp list (touch S19, then S20);
+* any line it finds is distilled back.
+* This is the "automatic search" the user named as the next step, aimed first at this one transition.
+* Alternative, less principled: make "reaching" a ramp require a sustained ride, so the crest brush stops counting.
