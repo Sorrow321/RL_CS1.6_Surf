@@ -34589,3 +34589,44 @@ Tested by putting the WR's own positions through OUR rules: the sequence, `--ram
 * **The read:** S17K lost the landing 160M after this checkpoint and S17T ~100M after its first landing. If N0 holds the landing well past +160M, the novelty drift is the leading cause. If it collapses the same way, it is not.
 * One seed, so a hold is suggestive, not proof.
 * Trainer pid 50084 (launched 06:09:42); first training lines 4 touched in ~95% of episodes. A stability test: holding at 4 IS the measurement, so the stationary rule reads it as a hold, not a failure.
+
+## 2026-10-06 06:49 (machine clock) - S17N0: with the novelty OFF the S19 landing held for 351M steps (novelty-on runs lost it after 100-160M): the auto-scaled novelty is the leading cause; the S20 blocker is a map teleport after a low-energy landing (the WR lands on S19's front after a faster S18 exit); --unstuck-reach stage; uf2SEQ_WRdiagS17U overnight
+
+**uf2SEQ_WRdiagS17N0, the novelty-off test: the landing HELD.**
+* Run: S17K's setup resumed from its ckpt_beststage (249M) with `--int-coef 0 --int-match 0`, 249M -> 600M (06:09-06:39).
+* **Greedy evals:** 4 targets touched in every eval (14 evals), with a few single episodes at 3, once at 2.
+* **Training landing share:** 84-96% throughout. It dipped at 393M (59%) and 536M (75%) and recovered both times.
+
+| run | novelty | S19 landing lost |
+|---|---|---|
+| S17T | int-match 0.2 | ~100M after it was first learned |
+| S17K | int-match 0.2 (KL guard on) | 160M after the 249M checkpoint |
+| **S17N0** | **off** | **never in 351M steps** |
+
+* One seed, but a clear contrast: **the auto-scaled novelty is the leading cause of both landing losses.**
+* The mechanism: the bonus is coef / sqrt(visits) on entering a 256 u cell, and int-match had grown coef to ~530. So a never-visited cell paid up to ~500 for one entry, more than the whole extrinsic return. Cutting S18 short heads into rare cells.
+* **Lesson for --int-match:** matching the TOTAL novelty to a share of the reward does not bound the PER-CELL bonus. As the familiar cells saturate, the payout for a rare cell grows without limit.
+
+**But S17N0 never touched S20 either, and nor did any run with novelty.**
+* **How landing episodes end:** they touch S19 at ~6.4 s and fly on ~0.75 s at ~630 u/s, still rising, toward +x+y. They end "fail" in mid-air at about (-2370, -2940, z ~380), inside trigger_teleport *7's box (world AABB [-2896,-3952,-1060]..[-1456,208,613]): a map teleport, so a failure under `--teleport-fail`. There is no contact before it.
+* **S19 geometry:** contact origins x -2298..-2059, y -3276..-2937, z 88..458, normal (0, -0.74, 0.68). It rises toward the north and faces south; its crest is at y ~ -2937, z ~458.
+* **The WR's route** (ANALYSIS of the record):
+  * leaves S18 at 6.52 s at (-2020, -2958, -586), |v| 1,617 (vz 1,237);
+  * flies past S19's low SOUTH end (apex z 229 at y -3372, 7.40 s);
+  * turns back onto S19's south-facing FRONT, touching it at 7.91 s at |v| 1,065 heading 160 (west);
+  * surfs up and takes off over the crest at z ~460-540;
+  * arcs north (apex z ~585) and drops onto S20 at 9.19 s.
+* **Our landing is a different move:** it leaves S18 ~300 u earlier along the ramp at |v| ~1,440 (vz ~1,050). It reaches S19's crest area from the north at ~650 u/s, just under the height the WR passes there, and drifts into the teleport.
+* It also reaches the pit ~0.7 s ahead of the WR on a shorter line.
+* **So the S20 blocker is the S18 exit energy and the side S19 is met from.** Learning the WR's move needs a different S18 exit, and with a view sigma of ~0.035 every attempt is nearly the same line.
+
+**`--unstuck-reach stage` (cc08aa9):** the plateau-driven exploration temperature (`--unstuck`, docs/unstuck.md) now watches the ramp-sequence stage: the most targets an episode of the iteration touched.
+* When the stage stops improving, T rises. T scales the rollout's view sigma and logits by 1 + T, and the update scores the same tempered distribution.
+* On a new best stage, T halves every period.
+* No reward jackpot is involved, unlike the novelty.
+
+**uf2SEQ_WRdiagS17U** (overnight):
+* RESUMED from S17N0/ckpt_final (600M; novelty off, landing stable), with `--unstuck --unstuck-reach stage --unstuck-patience 5e7` (the stage has sat at 4 since 249M, so T starts rising after 50M steps) and otherwise the defaults (rate 0.5 per 1e8, cap 4, eps 0.5 targets).
+* Plus `--int-coef 0 --int-match 0 --target-kl 0.05 --save-best 1`, the full 17-target WR sequence, `--ramp-touch 1`, 60 s episodes, 1,024 envs, `--steps 6e9`, `--record-every 50e6`.
+* **What counts:** the first greedy eval or training episode that touches S20 (stage 5), and the stage after that.
+* Trainer pid 48648 (launched 06:47:27), compiled; record gate passed.
