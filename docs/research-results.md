@@ -34295,3 +34295,41 @@ Every run file is in runs/skWR_final.
 * **Status:** LABELLED DEMO DIAGNOSTIC. The target sequence is read off the WR (CLAUDE.md section 0; the user asked for it). Checkpoints are demo_contaminated, never a recipe base.
 * **Smoke** (8 iterations, 854.6M -> 863M): reward/ep 227 -> 405; rides>=2 ~99.9%; 0 sequence completions (as before).
 * **The measure:** entering the final S19 after S18 (SEQUENCE done / eval stage 4). Then the lateral miss distance to S19 after S18, against V6NP's ~170 u.
+
+## 2026-10-06 03:41 (machine clock) - uf2SEQ_WRdiagDIST: the dense Euclidean reward pulls the pit exit UNDER S19 - better aim, less height, 0 landings
+
+**Evals, from the start** (9 greedy episodes each; tool: scratchpad uf2_pit_evals.py). "After S18" is everything after the window turned to the final S19.
+
+| step | done | closest to S19 after S18 (median, min) | top z after S18 |
+|---|---|---|---|
+| 855.6M (= V6NP) | 0/9 | 188, 177 | +199 |
+| 880-956M | 0/9 | 764-1785 (lost the climb) | -611..-930 |
+| 981M-1.06B | 0/9 | 514-601 | -367..-398 |
+| 1.08-1.13B | 0/9 | 290-362 | -181..+10 |
+| 1.16B | 0/9 | 204, 191 | -6 |
+| 1.18B | 0/9 | 112, 91 | +3 |
+| **1.21B** | 0/9 | **104, 84** | **+1** |
+
+* **Training completions:** 0-3 per ~1,100 episodes (0-0.3%).
+
+**What the agent does** (eval 1.21B, episode 0):
+
+* It leaves S18 at z -558 with vz 945 and ~1,100 u/s horizontal.
+* It flies a strafing arc with NO contact: vz falls exactly 8 per tick throughout, so there is no ceiling hit.
+* It peaks at z ~0. It passes 104 u from S19's LOWEST contact origins (z 93, at (-2,059, -3,272)) from BELOW, 0.2 s before the apex.
+* It then falls back into the pit and dies.
+* A trace straight up from the apex is clear for 600 u. S19 is above it, and on the POV it looks like flying into a ceiling.
+
+**Reading:**
+
+* The straight-line distance to S19 is smallest at S19's lowest edge, and that edge can be approached from underneath. The dense reward taught exactly that: lateral aim improved, 177 -> 84 u.
+* The V6NP base, by contrast, climbed to z ~+200 and missed sideways.
+* Landing needs reaching the contact origins from ABOVE the ramp, which the Euclidean measure does not distinguish.
+* Not a success-counting bug: S19's box starts at z 40 and the apex is z 0-26, so 0/9 is real.
+* Not a box exploit either.
+
+**Proposed fix** (asked the user): measure the distance THROUGH OPEN AIR rather than straight.
+
+* A free-space geodesic field to each target's contact origins, the same BFS the map's goal field uses, baked per target.
+* The path from under S19 then goes around its edge and onto its top surface, so climbing over the edge pays and the underside does not.
+* It is generic: no map constant.
