@@ -9181,6 +9181,7 @@ def main() -> None:
         if not 0.0 < float(args.archive_frac) < 1.0:
             raise SystemExit("--archive-frac must be in (0, 1)")
     SPAWN_STATES = None
+    SS_SEQK = [None]           # --spawn-states .npz with seq_k: each state's sequence start
     if args.spawn_states:
         if args.maps:
             raise SystemExit("--spawn-states is single-map")
@@ -9190,6 +9191,16 @@ def main() -> None:
         from surfgym.core import STATE_DTYPE as _SD
         def _load_spawn_states(_path):
             _a = np.load(_path, allow_pickle=False)
+            if str(_path).endswith(".npz"):
+                # tools/stage_states.py: {states, seq_k}: own states, each with the index of the
+                # --ramp-sequence it starts at
+                _z = _a
+                _a = _z["states"]
+                SS_SEQK[0] = (np.asarray(_z["seq_k"], np.int64) if "seq_k" in _z.files
+                              else None)
+                if SS_SEQK[0] is not None and len(SS_SEQK[0]) != len(_a):
+                    raise SystemExit(f"--spawn-states {_path}: {len(SS_SEQK[0])} seq_k for "
+                                     f"{len(_a)} states")
             if _a.dtype != _SD or _a.ndim != 1 or len(_a) < 1:
                 raise SystemExit(f"--spawn-states {_path}: a 1-D STATE_DTYPE array is "
                                  f"needed, got {_a.dtype} {_a.shape}")
@@ -9198,6 +9209,9 @@ def main() -> None:
             _a["stuck_ticks"] = 0
             return _a
         SPAWN_STATES = _load_spawn_states(args.spawn_states)
+        if SS_SEQK[0] is not None and not (args.goal_planner == "ramps" and args.ramp_sequence):
+            raise SystemExit("--spawn-states with seq_k starts a --ramp-sequence part way: it "
+                             "needs --goal-planner ramps --ramp-sequence")
         # the file is RE-READ when its mtime changes (checked every 20 iterations): an outer
         # loop (a fresh edge archive of the current policy) can refresh the own-state pool
         # without restarting the run; replace it atomically (write + rename)
@@ -10995,6 +11009,14 @@ def main() -> None:
                     goal_field=(_lgf(_gfs) if _gfs else None), sequence=RSEQ,
                     pairs=RPAIRS_OF.get(_s.name), touch=bool(int(args.ramp_touch or 0)))
             _ramp_planner = RPLANNERS[slots[0].name]
+            if SPAWN_STATES is not None and SS_SEQK[0] is not None:
+                # --spawn-states with seq_k: an own state starts the sequence where it was cut
+                _ramp_planner.windows.set_seq_starts(SPAWN_STATES["origin"], SS_SEQK[0])
+                _ks, _kn = np.unique(SS_SEQK[0], return_counts=True)
+                print("--spawn-states: sequence starts per own state "
+                      + " ".join(f"k{int(k)}(T1 S{RSEQ[int(k)]}):{int(n)}"
+                                 for k, n in zip(_ks, _kn))
+                      + "; the map start and the eval start the list at 0")
         planner = ((_ramp_planner if RPLAN else prim_planner if PPLAN
                     else FinishRef(slots[0].goal_box) if PLPLAN
                     else None) or BFSPlanner.for_core(
@@ -15729,6 +15751,8 @@ def main() -> None:
                 if _mt != SS_MTIME:
                     SPAWN_STATES = _load_spawn_states(args.spawn_states)
                     SS_MTIME = _mt
+                    if RPLAN and SS_SEQK[0] is not None:
+                        _ramp_planner.windows.set_seq_starts(SPAWN_STATES["origin"], SS_SEQK[0])
                     print(f"--spawn-states: re-read {len(SPAWN_STATES):,} own states from "
                           f"{args.spawn_states} at step {global_step:,}", flush=True)
             except (OSError, ValueError) as _e:

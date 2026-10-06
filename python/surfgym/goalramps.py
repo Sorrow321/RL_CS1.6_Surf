@@ -406,6 +406,9 @@ class RampWindows:
         # from each spawn state by pair_lookup (origin -> [t1, t2] or None)
         self.env_seq = [None] * n
         self.pair_lookup = None
+        # --spawn-states with seq_k (a --ramp-sequence run): origin -> the index of the sequence
+        # the spawn starts at (None: the list's start) - set_seq_starts
+        self.seq_start_lookup = None
         self.source = np.full(n, NONE, np.int64)       # the surface an env spawned on
         self.n_capt = np.zeros(n, np.int64)            # takeoffs (= completed rides) this episode
         self.n_skip = np.zeros(n, np.int64)
@@ -425,6 +428,10 @@ class RampWindows:
         self.touched = np.zeros(n, bool)
         self.tick_touch = np.zeros(n, np.int64)
         self.n_touch = np.zeros(n, np.int64)           # targets touched this episode
+        # the furthest point of a --ramp-sequence an episode TOUCHED: 1 + the list index of its
+        # deepest touched target (a spawn part way along the list - set_seq_starts - is measured
+        # on the same scale as one from the start); 0 = nothing touched yet
+        self.k_reach = np.zeros(n, np.int64)
         # --unstuck-reach stage: the most targets any episode SETTLED since the last read reached
         # (touched under --ramp-touch, else passed); -1 = none settled
         self.iter_best = -1
@@ -537,10 +544,25 @@ class RampWindows:
             self.touched[i] = True
             self.tick_touch[i] = 1
             self.n_touch[i] += 1
+            self.k_reach[i] = max(int(self.k_reach[i]), int(self.seq_k[i]) + 1)
             self.stats["touches"] = self.stats.get("touches", 0) + 1
             sq = self._seq_of(i)
             if sq is not None and self.seq_k[i] == len(sq) - 1:
                 self.seq_done[i] = True            # --ramp-sequence: the LAST target TOUCHED
+
+    def set_seq_starts(self, origins, ks) -> None:
+        """--spawn-states with seq_k: an env spawned at one of `origins` (exact pool rows, matched
+        by _origin_key) starts the --ramp-sequence at index ks[j] instead of 0 - the policy's OWN
+        state cut LEAD s before its own contact with that target (tools/stage_states.py); every
+        other spawn (the map start, an eval) starts the list at 0. None clears it"""
+        if origins is None:
+            self.seq_start_lookup = None
+            return
+        table = {_origin_key(o): int(k) for o, k in zip(np.asarray(origins), np.asarray(ks))}
+
+        def lookup(p, _t=table):
+            return _t.get(_origin_key(p))
+        self.seq_start_lookup = lookup
 
     def set_sequence(self, seq):
         """--ramp-sequence: a PREDEFINED target list (surface ids, in order) replaces the planner.
@@ -890,10 +912,17 @@ class RampWindows:
                     self.stats["pair_miss"] = self.stats.get("pair_miss", 0) + 1
             sq = self._seq_of(i)
             if sq is not None:
-                # --ramp-sequence / --ramp-pairs: the list's first two targets, never a draw
-                t1 = sq[0]
-                t2 = sq[1] if len(sq) > 1 else NONE
-                self.seq_k[i] = 0
+                # --ramp-sequence / --ramp-pairs: the list's first two targets, never a draw - or,
+                # for an own state spawned with a sequence START (set_seq_starts), the two at it
+                k0 = 0
+                if self.seq_start_lookup is not None and self.env_seq[i] is None:
+                    _k = self.seq_start_lookup(p)
+                    if _k is not None and 0 <= int(_k) < len(sq):
+                        k0 = int(_k)
+                        self.stats["seq_starts"] = self.stats.get("seq_starts", 0) + 1
+                t1 = sq[k0]
+                t2 = sq[k0 + 1] if len(sq) > k0 + 1 else NONE
+                self.seq_k[i] = k0
                 self.seq_done[i] = False
                 self.holding[i] = False
                 self.visited[i] = set(ex)
@@ -918,6 +947,7 @@ class RampWindows:
             self.entered[i] = False
             self.touched[i] = False
             self.n_touch[i] = 0
+            self.k_reach[i] = 0
             self.source[i] = src[n]
             self.n_capt[i] = 0
             self.n_skip[i] = 0
@@ -1133,13 +1163,22 @@ class RampWindows:
             self.stats["seq_done"] += int(self._seq_of(i) is not None and self.seq_done[i])
             r = int(self.n_capt[i])
             self.stats["ride_hist"][r] = self.stats["ride_hist"].get(r, 0) + 1
-            self.iter_best = max(self.iter_best,
-                                 int(self.n_touch[i]) if self.touch else r)
+            self.iter_best = max(self.iter_best, self._reached(i))
             if self.touch:
                 # --ramp-touch: targets TOUCHED per SETTLED episode (the honest count: the
-                # per-tick "touches" stat spans episodes that settle in a later iteration)
+                # per-tick "touches" stat spans episodes that settle in a later iteration) -
+                # in a --ramp-sequence run the list position reached (_reached)
+                _r = self._reached(i)
                 h = self.stats.setdefault("touch_hist", {})
-                h[int(self.n_touch[i])] = h.get(int(self.n_touch[i]), 0) + 1
+                h[_r] = h.get(_r, 0) + 1
+
+    def _reached(self, i) -> int:
+        """how far env i's episode got: under --ramp-touch the list position of its deepest
+        touched target in a --ramp-sequence run (k_reach), else the targets it touched; without
+        --ramp-touch the targets it passed"""
+        if self.touch:
+            return int(self.k_reach[i]) if self._seq_of(i) is not None else int(self.n_touch[i])
+        return int(self.n_capt[i])
 
     def pop_iter_best(self) -> float:
         """--unstuck-reach stage: the most targets an episode settled since the last call reached

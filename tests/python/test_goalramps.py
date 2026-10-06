@@ -1409,3 +1409,62 @@ def test_pop_iter_best_is_the_deepest_settled_episode_then_restarts(voc):
     w.settle([0], [False])                               # env 0: two targets touched
     assert w.pop_iter_best() == 2.0
     assert np.isnan(w.pop_iter_best())
+
+
+def test_a_seq_start_spawns_part_way_along_the_sequence(voc):
+    """--spawn-states with seq_k: an own state registered with set_seq_starts starts the
+    --ramp-sequence at its index (T1 / T2 the targets there); any other spawn starts at 0"""
+    v, _bsp, _ = voc
+    w = _windows(v)
+    w.set_sequence([0, 1, 2])
+    mid = np.array([[1000.0, 1500.0, 400.0]])
+    w.set_seq_starts(mid, [1])
+    w.spawn([0], mid, np.array([[1500.0, 0.0, 0.0]]))
+    assert w.seq_k[0] == 1 and w.t1[0] == 1 and w.t2[0] == 2
+    w.spawn([1], *_state(APPROACH, n=1))
+    assert w.seq_k[1] == 0 and w.t1[1] == 0 and w.t2[1] == 1
+    w.set_seq_starts(None, None)
+    w.spawn([0], mid, np.array([[1500.0, 0.0, 0.0]]))
+    assert w.seq_k[0] == 0 and w.t1[0] == 0
+
+
+def test_stage_states_cuts_the_state_before_the_kth_touch():
+    """tools/stage_states.cut: per episode and lead, the state LEAD before the k-th touch, its
+    seq_k = k; an episode short of touch k gives none"""
+    sys.path.insert(0, str(ROOT / "tools"))
+    import stage_states as ss
+    dt = np.dtype([("origin", np.float32, 3), ("tick", np.int32)])
+    ep0 = np.zeros(300, dt)
+    ep0["tick"] = np.arange(300)
+    ep1 = np.zeros(100, dt)
+    ep1["tick"] = np.arange(100)
+    touches = [[[20, 19], [120, 17], [250, 18]], [[30, 19]]]
+    st, ks, rep = ss.cut(touches, [ep0, ep1], [2], [0.3, 0.5], 10.0)
+    assert list(ks) == [2, 2] and list(st["tick"]) == [220, 200]
+    st, ks, rep = ss.cut(touches, [ep0, ep1], [0], [0.1], 10.0)
+    assert list(st["tick"]) == [10, 20] and list(ks) == [0, 0]
+
+
+def test_a_part_way_spawn_reports_its_list_position_not_its_touch_count(voc):
+    """--ramp-touch in a --ramp-sequence run: the stage an episode reached is the list position of
+    its deepest touched target, so an own state spawned at k = 1 that touches targets 1 and 2
+    reached 3 - the same scale as an episode from the start"""
+    v, _bsp, _ = voc
+    w = _windows(v)
+    w.set_sequence([0, 1, 2])
+    w.set_touch(True)
+    w.set_seq_starts(np.array([[1000.0, 1500.0, 400.0]]), [1])
+    w.spawn([0], np.array([[1000.0, 1500.0, 400.0]]), np.array([[1500.0, 0.0, 0.0]]))
+    w.spawn([1], *_state(APPROACH, n=1))
+    n_ = np.array([0.0, -1.0, 0.0])
+    duck = np.zeros(2, np.int64)
+    _tick(w, ON1, APPROACH)
+    w.note_touch(*_touches([(ON1[0], n_), None]), duck)      # env 0 touches target index 1
+    assert w.k_reach[0] == 2 and w.n_touch[0] == 1
+    _tick(w, MID, APPROACH)                                   # leaves ramp 1's box: passed
+    _tick(w, ON2, APPROACH)
+    w.note_touch(*_touches([(ON2[0], n_), None]), duck)      # ... and index 2, the last
+    assert w.k_reach[0] == 3 and w.seq_done[0]
+    w.settle([0, 1], [True, False])
+    assert w.stats["touch_hist"] == {3: 1, 0: 1}
+    assert w.pop_iter_best() == 3.0

@@ -1292,7 +1292,8 @@ class GoalSystem:
             ne = max(int(rs["episodes"]), 1)
             _touch = any(S.planner.windows.touch for S in self._rs)
             pnote += (f"  rides/ep {rs['rides'] / ne:.2f} skips/ep {rs['skips'] / ne:.2f} "
-                      + (("touched per episode " + " ".join(
+                      + ((("reached per episode " if self._ramp_seq_mode() else
+                            "touched per episode ") + " ".join(
                           f"{k}:{v}" for k, v in sorted(rs.get("touch_hist", {}).items())) + " ")
                          if _touch else "")
                       + f"holds/ep {rs.get('holds', 0) / ne:.2f} "
