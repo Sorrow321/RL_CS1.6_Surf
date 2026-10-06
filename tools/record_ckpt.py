@@ -632,6 +632,11 @@ def main(argv=None, build_only: bool = False, device=None):
                          "i.e. what rollout/ep_rew_mean averages over; "
                          "reservoir = the ckpt's respawn buffer — states "
                          "agents ACTUALLY reached, i.e. the live frontier)")
+    ap.add_argument("--ramp-sequence", default=None,
+                    help="ANALYSIS ONLY: replace the checkpoint's --ramp-sequence for this "
+                         "recording (comma list of target surfaces) - a bench that spawns the "
+                         "policy part way along its list (with --spawn-states) and must show it "
+                         "the targets from THAT point; never used to make training data")
     ap.add_argument("--spawn-states", default=None,
                     help="a STATE_DTYPE .npy (a demo spine, or a window of "
                          "one cut from a --dump-states dump by "
@@ -1596,8 +1601,10 @@ def main(argv=None, build_only: bool = False, device=None):
                                    goal_field=_lgf(_gfp),
                                    # --ramp-sequence: MIRRORED - the same predefined target list
                                    sequence=([int(x) for x in
-                                              str(cfg.get("ramp_sequence")).split(",") if x]
-                                             if cfg.get("ramp_sequence") else None),
+                                              str(args.ramp_sequence
+                                                  or cfg.get("ramp_sequence")).split(",") if x]
+                                             if (args.ramp_sequence
+                                                 or cfg.get("ramp_sequence")) else None),
                                    pairs=_pairs,
                                    # --ramp-touch: MIRRORED - reached = touched (the eval's
                                    # success and the arrow)
