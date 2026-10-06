@@ -34264,3 +34264,34 @@ Every run file is in runs/skWR_final.
   * Search line: 72.64 s (runs/skWR_cap2000/planner_72.64s).
   * Video: runs/skWR_cap2000/agent_vs_human_wr_v4_music.mp4.
 * **The proposed next step stays open:** DAgger-style planning from the policy's own states in the first third of the route.
+
+## 2026-10-06 03:10 (machine clock) - back to surf: unitfarmer2's pit exit with a DENSE distance reward (--ramp-reward dist); uf2SEQ_WRdiagDIST launched
+
+**The user** (wrapping up skate_laby, back to the ramp graph):
+
+* The planner/executor split stays the direction: search over ramps, and the policy executes ramp-to-ramp transitions.
+* Simplify: take unitfarmer2's WR ramp sequence, its hardest transition (into the pit and up out of it, which the agent never learned), and make the reward continuous. Their words: "Euclidean distance from the agent to the ramp, maybe with minus sign, plus the bonus for reaching".
+* Follow-up: a GRU/LSTM for the transitions.
+
+**Built** (8c88dc1):
+
+* **`--ramp-reward dist`.** Potential shaping on the Euclidean distance from the agent's origin to T1, measured to the nearest validated contact origin of T1's piece (RampWindows.t1_dist).
+  * Scale: 100 per 1,500 u, the arc's.
+  * Paid as the per-tick DIFFERENCE only while T1 is the same target and the row did not end. A window shift or a new episode re-anchors at zero.
+  * The user's raw per-tick -d would make dying early pay: an episode that ends stops the charges.
+  * The arc pays nothing in this mode.
+* **`--ramp-reach-bonus K`:** +K on the tick a target is entered (RampWindows.tick_enter).
+* Mirrored TRAIN_ONLY in record_ckpt. Test: tests/python/test_goalramps.py::test_t1_dist_and_the_reach_event (44/44 pass).
+* **Fixed on the way.** TargetLidar now defines conv_channels / frame_size.
+  * The --obs-views commit (b7b1c8a, 2026-10-01) gave GpuLidar those attributes.
+  * The wrapper's __getattr__ then answered with the wrapped lidar's 1 channel. Every target-channel run since then built a 1-channel conv and refused its own checkpoints.
+
+**Why it may fix the pit.** The best pit run (uf2SEQ_WRdiagV6NP, 2026-09-28) climbs out of the pit after S18 HIGHER than S19 (z ~190-210) but misses S19's footprint by ~170 u laterally. The arc pays progress ALONG its line, so a lateral miss costs it little; the Euclidean distance charges it directly.
+
+**uf2SEQ_WRdiagDIST:**
+
+* **Setup:** launch_local resume of runs/uf2SEQ_WRdiagV6NP/ckpt_latest.pt (854.6M), MAP surf_unitfarmer2 (maps_pool).
+* **Flags:** V6NP's exactly (sequence 19,17,18,19 from the WR, exit bonus 50, int-match 0.2, int-view 0, six target views, pinhole, ep 20 s, spawn at the map start), plus `--ramp-reward dist --ramp-reach-bonus 25`. Evals every 25M; --steps 2.5e9.
+* **Status:** LABELLED DEMO DIAGNOSTIC. The target sequence is read off the WR (CLAUDE.md section 0; the user asked for it). Checkpoints are demo_contaminated, never a recipe base.
+* **Smoke** (8 iterations, 854.6M -> 863M): reward/ep 227 -> 405; rides>=2 ~99.9%; 0 sequence completions (as before).
+* **The measure:** entering the final S19 after S18 (SEQUENCE done / eval stage 4). Then the lateral miss distance to S19 after S18, against V6NP's ~170 u.
