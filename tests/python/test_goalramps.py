@@ -1386,3 +1386,26 @@ def test_ramp_touch_counts_touched_targets_per_settled_episode(voc):
     assert w.stats["touch_hist"] == {2: 1, 0: 1}
     w.spawn([0], *_state(APPROACH, n=1))
     assert w.n_touch[0] == 0
+
+
+def test_pop_iter_best_is_the_deepest_settled_episode_then_restarts(voc):
+    """--unstuck-reach stage: the most targets an episode SETTLED since the last read touched
+    (--ramp-touch) - NaN when none settled - and each read restarts the tally"""
+    v, _bsp, _ = voc
+    w = _windows(v)
+    w.set_sequence([0, 1, 2])
+    w.set_touch(True)
+    w.spawn([0, 1], *_state(APPROACH))
+    assert np.isnan(w.pop_iter_best())
+    n_ = np.array([0.0, -1.0, 0.0])
+    duck = np.zeros(2, np.int64)
+    _tick(w, ON0)
+    w.note_touch(*_touches([(ON0[0], n_), None]), duck)
+    _tick(w, AWAY)
+    _tick(w, ON1)
+    w.note_touch(*_touches([(ON1[0], n_), None]), duck)
+    w.settle([1], [False])                               # env 1: nothing touched
+    assert w.pop_iter_best() == 0.0
+    w.settle([0], [False])                               # env 0: two targets touched
+    assert w.pop_iter_best() == 2.0
+    assert np.isnan(w.pop_iter_best())

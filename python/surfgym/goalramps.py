@@ -425,6 +425,9 @@ class RampWindows:
         self.touched = np.zeros(n, bool)
         self.tick_touch = np.zeros(n, np.int64)
         self.n_touch = np.zeros(n, np.int64)           # targets touched this episode
+        # --unstuck-reach stage: the most targets any episode SETTLED since the last read reached
+        # (touched under --ramp-touch, else passed); -1 = none settled
+        self.iter_best = -1
         self.p_zlow = {q: float(min(float(self.tp[f][:, 2].min()) for f in fs))
                        for q, fs in self.pfaces.items()}
         # window shifts since the policy last read them (take_passes, once per decision):
@@ -1130,11 +1133,19 @@ class RampWindows:
             self.stats["seq_done"] += int(self._seq_of(i) is not None and self.seq_done[i])
             r = int(self.n_capt[i])
             self.stats["ride_hist"][r] = self.stats["ride_hist"].get(r, 0) + 1
+            self.iter_best = max(self.iter_best,
+                                 int(self.n_touch[i]) if self.touch else r)
             if self.touch:
                 # --ramp-touch: targets TOUCHED per SETTLED episode (the honest count: the
                 # per-tick "touches" stat spans episodes that settle in a later iteration)
                 h = self.stats.setdefault("touch_hist", {})
                 h[int(self.n_touch[i])] = h.get(int(self.n_touch[i]), 0) + 1
+
+    def pop_iter_best(self) -> float:
+        """--unstuck-reach stage: the most targets an episode settled since the last call reached
+        (touched under --ramp-touch, else passed) - NaN if none settled - and the tally restarts"""
+        b, self.iter_best = self.iter_best, -1
+        return float(b) if b >= 0 else float("nan")
 
     def pop_stats(self) -> dict:
         s = self.stats

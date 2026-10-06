@@ -5956,7 +5956,7 @@ def main() -> None:
     ap.add_argument("--unstuck-int", type=int, default=None, choices=[0, 1],
                     help="--unstuck: intrinsic coefficient x (1+T) and the "
                          "count decay; default 1")
-    ap.add_argument("--unstuck-reach", default=None, choices=["res", "alive"],
+    ap.add_argument("--unstuck-reach", default=None, choices=["res", "alive", "stage"],
                     help="--unstuck: WHICH progress measure the plateau "
                          "detector watches. res (default) = the respawn "
                          "reservoir's deepest reach (or the arc reach); "
@@ -9257,6 +9257,9 @@ def main() -> None:
     # per-iteration schedule are gated on this
     BACKWARD = bool(args.respawn_backward)
     if UNSTUCK:
+        if args.unstuck_reach == "stage" and args.unstuck_eps is None:
+            # --unstuck-reach stage reads TARGETS, not map units: one more target is progress
+            args.unstuck_eps = 0.5
         for _k, _v in (("unstuck_eps", 500.0), ("unstuck_patience", 2e8),
                        ("unstuck_rate", 0.5), ("unstuck_max", 4.0),
                        ("unstuck_count_decay", 0.5),
@@ -14590,6 +14593,16 @@ def main() -> None:
                   + (f"; only TRUE-START episodes count ({len(UR.start_origins)} map "
                      f"spawn point(s), {UR.start_radius:.0f} u, |v| < {UR.start_speed:.0f})"
                      if UR.start_origins is not None else ""))
+        elif args.unstuck_reach == "stage":
+            # --unstuck-reach stage (2026-10-06): a --ramp-sequence run's progress is how far
+            # along its target list an episode gets, not a geodesic depth
+            if not (RPLAN and goalsys is not None and (RSEQ is not None or args.ramp_pairs)):
+                raise SystemExit("--unstuck-reach stage watches the ramp-sequence stage: it "
+                                 "needs --goal-planner ramps with --ramp-sequence / --ramp-pairs")
+            print("--unstuck-reach stage: the plateau detector watches the most targets an "
+                  "episode of the iteration "
+                  + ("TOUCHED (--ramp-touch)" if int(args.ramp_touch or 0) else "passed")
+                  + f"; one more target is progress (eps {args.unstuck_eps:g})")
         elif respawn is None and not (isinstance(reward_fn, RaceReward)
                                       and reward_fn.arc is not None):
             raise SystemExit("--unstuck has no progress measure to watch: "
@@ -17434,7 +17447,10 @@ def main() -> None:
             _T_used = unstuck_T
             _res_prog = float("nan")
             _reach_row = []
-            if UR is not None:
+            if args.unstuck_reach == "stage":
+                # --unstuck-reach stage: the most targets an episode of this iteration reached
+                _res_prog = goalsys.pop_stage_best()
+            elif UR is not None:
                 # --unstuck-reach alive: the iteration's deepest point that
                 # was still alive `hold` later replaces the reservoir reading
                 _res_prog, _reach_n = UR.pop()
@@ -17471,7 +17487,8 @@ def main() -> None:
                             + (f"->{_T_next:.2f}"
                                if abs(_T_next - _T_used) >= 5e-3 else "")
                             + f" stuck {unstuck_sched.stuck_steps / 1e6:,.1f}M"
-                            + (f" best {_ub:,.0f}u" if _ub == _ub else "")
+                            + ((f" best stage {_ub:.0f}" if args.unstuck_reach == "stage"
+                                else f" best {_ub:,.0f}u") if _ub == _ub else "")
                             + (f" reach {_res_prog:,.0f}u/{_reach_n}"
                                if UR is not None and _res_prog == _res_prog else ""))
         arch_row = []

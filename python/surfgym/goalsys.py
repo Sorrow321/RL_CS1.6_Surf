@@ -931,6 +931,13 @@ class GoalSystem:
                 out[m] = S.planner.windows.pass_flags(idx[m] - S.lo)
         return out
 
+    def pop_stage_best(self) -> float:
+        """--unstuck-reach stage: the most targets any episode of any map slot reached since the
+        last call (RampWindows.pop_iter_best), NaN if none settled"""
+        vals = [S.planner.windows.pop_iter_best() for S in self._rs]
+        vals = [v for v in vals if v == v]
+        return max(vals) if vals else float("nan")
+
     def ramp_slot(self, name=None):
         """the RampSlot of map `name` (None / a single-map run: the first)"""
         if name is None or len(self._rs) == 1:
