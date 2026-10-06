@@ -34552,3 +34552,40 @@ Tested by putting the WR's own positions through OUR rules: the sequence, `--ram
 
 **uf2SEQ_WRdiagS17K:** S17T's exact setup, again from VECNS@198M, plus `--target-kl 0.05` (stops at 0.075: the normal 0.01-0.05 updates pass, a 0.42 spike is cut) and `--save-best 1`. `--steps 5e9`, `--record-every 50e6`, local 5090.
 * Trainer pid 52292 (launched 05:43:00); the guard stopped its first update (kl 0.0859, epoch 3); record gate passed.
+
+## 2026-10-06 06:10 (machine clock) - S17K lost the S19 landing again (~410-421M, no KL spike): the policy now leaves S18 ~0.35 s early; the extrinsic reward prefers the landing by ~64/episode; suspect the int-match novelty (coefficient 0.25 -> ~530); uf2SEQ_WRdiagS17N0 (novelty OFF) launched as the test
+
+**The user (2026-10-06 ~06:00):** "we flew up from the pit, and then the reward stopped growing, which is somewhat expected. But then we have a regression at the end ... after like 420 million ... You should search for it."
+
+**uf2SEQ_WRdiagS17K, training** (per SETTLED episode, the touched-targets histogram e68203c added):
+* From ~223M to ~408M, 90-95% of training episodes touched 4 targets, i.e. landed on S19. That share fell to 0 by 421M, and reward fell from ~365 to ~260.
+* The landing had flickered before and recovered each time: 219M, 244M, 253M, 316M, 332M, 353M.
+* **No single big update caused it this time:** the KL guard cut 11 of 25 updates around 420M (largest attempted kl 0.188), so the policy was pushed in one direction across many updates.
+* **Greedy evals** were still at 4/4 at 400M. The run was stopped at ~490M (06:09), stationary at 3 since ~420M.
+
+**What changed in the behavior** (12 stochastic episodes each: ckpt_beststage = 249M vs ckpt_latest = 473M):
+
+| | leaves S17 | leaves S18 | speed off S18 (horizontal / vertical) | max z after | result |
+|---|---|---|---|---|---|
+| 249M | 4.17-4.27 s, 1,630-1,690 u/s | 5.56-5.67 s, y -2,557..-2,722 | 971-998 / 1,007-1,074 u/s | 256-426 | 12/12 land on S19 |
+| 473M | 4.31-4.40 s, 1,487-1,566 u/s | 5.16-5.31 s, y -1,827..-1,916 | 763-858 / 844-905 u/s | -101..-33 | 0/12; die at z ~-970 |
+
+* The regressed policy leaves S18 ~0.35 s EARLIER, ~700-800 u less of the U-turn ride, with less energy, and cannot climb to S19.
+
+**Is the extrinsic reward to blame? No.** The task's own reward replayed from these positions (score_episodes.py: dist shaping, reach 25, off-target 1, time 0.005):
+* 249M: mean **294.9**. Per T1 segment: S19 +58, S17 +49, S18 +31, S19 +54, S20 +8, plus 4 x 25 reach.
+* 473M: mean **231.1**. The same first three segments; the S19 climb only +22; 3 x 25 reach.
+* The regressed policy is WORSE under the extrinsic reward by ~64 per episode, and its intrinsic novelty is lower too (int ~45 vs ~60 per episode). PPO moved to a worse policy and could not find the narrow landing again: the view sigma is 0.031-0.036 by then.
+
+**Suspect: the --int-match novelty.**
+* int-match rescales the count-novelty coefficient every iteration so that total novelty tracks 0.2 x the rest of the reward.
+* As the landing path's cells saturate, the coefficient grows. It went from 0.25 at launch to **~390 at 274M and ~530 at 403M**, just before the collapse.
+* The bonus is coef / sqrt(visits) on entering a 256 u cell, so a cell never visited is worth up to ~500 for ONE entry, more than the whole extrinsic return (~300).
+* A line that leaves the familiar path, such as cutting S18 short into rarely visited cells, is pulled hard. That is consistent with the persistent push the KL guard kept cutting.
+* Not yet shown causally.
+
+**Test: uf2SEQ_WRdiagS17N0.**
+* S17K's exact setup resumed from ckpt_beststage (249M, lands 12/12), with `--int-coef 0 --int-match 0` (novelty OFF), to 600M, evals every 25M.
+* **The read:** S17K lost the landing 160M after this checkpoint and S17T ~100M after its first landing. If N0 holds the landing well past +160M, the novelty drift is the leading cause. If it collapses the same way, it is not.
+* One seed, so a hold is suggestive, not proof.
+* Trainer pid 50084 (launched 06:09:42); first training lines 4 touched in ~95% of episodes. A stability test: holding at 4 IS the measurement, so the stationary rule reads it as a hold, not a failure.
