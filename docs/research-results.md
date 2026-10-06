@@ -34397,3 +34397,44 @@ Checks:
 * **Watched for a false completion:** any completion that enters S19's box from BELOW without contact. Box occupancy is not the physical event (Codex 2026-10-05).
 * **Stop rule:** stationary for 10 minutes after the first stage-3 eval, or a regression like DIST's.
 * Trainer pid 48072 (launched 04:03:28), log runs/uf2SEQ_WRdiagVEC_launch.txt; dashboard http://localhost:8600.
+
+## 2026-10-06 04:33 (machine clock) - normals + SimBa folded into the uf2 pit run (the user); uf2SEQ_WRdiagVEC stopped at 218M (stage 3 from scratch by 51M); --simba at 2,048 envs breaks torch.compile; uf2SEQ_WRdiagVECNS launched at 1,024 envs
+
+**The user (2026-10-06, ~04:15):** fold in the recent ablation winners: "renders of normals helps and also the change of the network to ... include the layer norms also helps so I think these things should be incorporated to our training as well". The winners are the ones the ledger calls winners:
+* `--obs-normal 1`: the hit face's ego-frame normal, 3 image channels. It was the only clear positive of the observation screen (2026-09-30/10-01).
+* `--simba 1`: pre-LN residual towers plus LayerNorm on the image embedding. It was the first architecture change ahead of both controls (2026-10-03).
+
+Both were measured on cannonball at 1,024 envs (NRM1K, lnSIMBA), and this run uses 1,024 envs too. 2,048 was tried first and did not work:
+
+* **`--simba` at 2,048 envs on this configuration breaks torch.compile.** The trainer's compile warm-up raised `RuntimeError('Function CompiledFunctionBackward returned an invalid gradient at index 38 - got [448] but expected shape compatible with [1, 448]')`. It fell back to the eager update and ran at ~28k steps/s, against ~112k for the same run without `--simba` / `--obs-normal`.
+* The [1, 448] tensor is most likely a value head's weight (Linear(448 -> 1)) behind SimBa's final LayerNorm. lnSIMBA compiled fine at 1,024 envs (minibatch 8,192 rows), and so did this exact configuration at 1,024 envs (168 s of autotune). It looks like an inductor bug in the weight-gradient lowering at a 16,384-row minibatch. It is not fixed here.
+* **Watch for it:** any `--simba` run at 2,048 envs must be checked for the "torch.compile failed ... eager update" line, and run.json then says `compile: false`.
+* 1,024 envs is the ablations' own setting. The env sweep found it a wash in wall clock and better per step.
+
+**uf2SEQ_WRdiagVEC (the previous entry) was stopped at 218M (04:21)**, because both changes alter the tensor shapes and so need a new scratch run.
+
+Its evals, 9 greedy episodes each (stage = targets of [19, 17, 18, 19] passed):
+
+| steps | stages | closest to S19 after S18 (typical / best) | top z after S18 |
+|---|---|---|---|
+| 26M | all 0 | - | - |
+| 51M | all 3 | 687 / 676 u | -596 |
+| 77M | 2 x6, 0 x3 | - | - |
+| 102M | 3 x7, 2 x2 | 1,571 / 1,477 u | -783 |
+| 127M | all 3 | 1,108 / 1,084 u | -625 |
+| 152M | all 3 | 1,190 / 1,145 u | -670 |
+| 177M | all 3 | 986 / 916 u | -545 |
+| 202M | all 3 | 816 / 724 u | -606 |
+
+* From SCRATCH, the one-camera + arrow run learned the first three targets (S19 -> S17 -> S18, into the pit and through the U-turn) by 51M steps, and held them in every eval from 127M on.
+* The climb out after S18 was still 700-1,100 u short of S19, and the top z stayed 550-800 u under the rim.
+* 0 landings.
+
+**uf2SEQ_WRdiagVECNS:** uf2SEQ_WRdiagVEC's exact flags plus `--obs-normal 1 --simba 1 --envs 1024`, from scratch, on the local 5090:
+* The image has 5 channels: depth, normal x3, the target channel.
+* It is the same labelled demo diagnostic: the target list comes from the WR, so the checkpoints are demo_contaminated and the weights are clean.
+* Smokes with these flags passed: 8.4M steps at 2,048 envs (eager) including the record gate, and 3.1M steps at 1,024 envs (compiled).
+* `--steps 1.2e9`, with the same watch list and stop rule as uf2SEQ_WRdiagVEC.
+* **The comparison that counts** is the step at which it first holds stage 3 against VEC's 51M / 127M, and then the climb after S18.
+  * It is one seed each, and the env count differs too (1,024 vs 2,048: double the update density per step), so only a large difference means anything.
+* Trainer pid 22548 (launched 04:32:59), log runs/uf2SEQ_WRdiagVECNS_launch.txt; dashboard http://localhost:8600.
