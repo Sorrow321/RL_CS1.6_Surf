@@ -34916,3 +34916,30 @@ From each line's S18 touch:
 
 * All three use --spawn-states-frac 0.5 with SELF_STATES=1 (the files are the arms' own recordings), and no critic warm-up (same reward).
 * The comparisons are R3C (control) and R3P (static practice) for R3CF / R3P2, and R3S for R3SF.
+
+## 2026-10-07 08:35 (machine clock) - the S20 -> S22 wall is a kill sheet reached too slowly; the scratch arm PARKS at S18; uf2R3S -> uf2R3SN (edge novelty)
+
+**Why no arm reaches S22 (measurement only):** `trigger_teleport *18` is a horizontal kill sheet at z = 160 over x -3456..-896, y -2400..-448. S22's contact origins (x -3374..-3186, z -602..-152) lie UNDER it.
+* **The WR goes around the sheet.** It leaves S20 at ~1,000 u/s, passes the sheet's west edge at (-3552, -1181, z 179) at +2.0 s, then drops under it onto S22 at +2.5 s. Its distance to S22 falls monotonically (1513 -> 1005 -> 654 -> 379 -> 12), so the route potential is not deceptive here.
+* **Every greedy episode of every arm instead falls through the sheet** about 3.5 s after the S20 touch, too slow to reach the edge.
+* **The agents are creeping toward the edge.** Per greedy eval, speed leaving S20 and the westmost x before the sheet:
+
+| arm | eval | speed leaving S20 | westmost x before the sheet |
+|---|---|---|---|
+| uf2R3C (control) | 892M | 756-803 u/s | -3257..-3314 |
+| | 993M | 786-815 | -3318..-3360 |
+| uf2R3CF (local, frontier loop) | 884M | 773-802 | -3281..-3323 |
+| | 934M | 812-827 | -3360..-3382 |
+| | 985M | 800-810 | -3308..-3345 |
+| uf2R3P (static practice) | 892-993M | 652-728 | -3141..-3263 |
+| uf2R3P2 (frontier loop) | 792-892M | 633-708 | -3116..-3260 |
+
+* **The gradient is weak.** 100 u further west lowers d(S22) at death by only ~24 u, worth ~1.6 reward.
+
+**The from-scratch arm parks.** uf2R3S's greedy episodes, every eval 401-601M, 60 s truncations: S19 -> S17 -> S18 in ~4.6 s, then the agent stops at (-2035, -2985, z -572), 710-730 u from S19, at 4-220 u/s for the rest of the episode. Training is stall-killed at ~29 s, 94-99%.
+* **Why:** under --ramp-reward route the target becomes S19 at the S18 touch. Every way out of the pit first moves away from S19 (the climb loops) and is charged at 0.0667/u, while a death is free. The closest reachable point to S19 is therefore a local optimum.
+* **The S17N0 lineage learned this transition under --ramp-reward dist.** There T1 was kept until S18's box exit and each switch re-anchored at zero, so riding S18 away from S19 was never charged.
+* **uf2R3S stopped at 667M** (stationary at S18 since ~100M; CLAUDE.md: stationary = failed). Its box now runs **uf2R3SN:** R3S's checkpoint, --int-coef 0.25 --int-match 0 --int-mode edge --int-view 0 --int-speed 0 --critic-warmup 10.
+  * The novelty is edge mode: directed transitions between 256 u position cells, so turning or changing speed in place pays nothing. The coefficient is FIXED (no int-match runaway), and nothing in it comes from the map.
+  * Its local driver was killed BEFORE the trainer this time; the box was re-registered with the new harvest spec.
+* **uf2R3SF** (the frontier loop on the same lineage) is at 322M and still parked; its loop keeps cutting S17/S18.
