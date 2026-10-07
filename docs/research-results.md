@@ -34702,3 +34702,41 @@ Tested by putting the WR's own positions through OUR rules: the sequence, `--ram
 * any line it finds is distilled back.
 * This is the "automatic search" the user named as the next step, aimed first at this one transition.
 * Alternative, less principled: make "reaching" a ramp require a sustained ride, so the crest brush stops counting.
+
+## 2026-10-07 05:38 (machine clock) - the pit-exit reward, drawn: our reward ranks the agent's S18->S19->S20 line above the WR's until the WR touches S20 (a valley between the lines); three generic causes; artifact https://claude.ai/artifact/HVi6PQnKvBLVam3qpAbuzs
+
+**The user (2026-10-07):** "it's quite a standard RL task ... why does it not try to go higher, try to go lower? ... Maybe the reward is bad ... visualize the reward ... during this transition".
+
+**Method.** Per-tick extrinsic reward replayed from positions through the training rules (scratchpad reward_paths.py):
+* --ramp-reward dist (100 per 1,500 u of Euclidean distance to the target's nearest validated contact), reach 25, off-target 1, time 0.005, --ramp-touch, the 17-target sequence.
+* Paths: the agent's greedy S17N0@600M eval episode, and the WR (analysis only).
+* The field is the reward still to collect toward S19 and toward S20 on y-z and x-y slices. The teleport is trigger *7 via zones.hull_probe, the simulator's own HULL-1 trigger test.
+* Figures and page: scratchpad rfield/, published as an artifact.
+
+**Per target (shaping / reach):**
+
+| target | agent | WR | distance when it becomes the target (agent / WR) |
+|---|---|---|---|
+| first S19 | +58.3 / 25 | +58.5 / 25 | 918 / 970 |
+| S17 | +50.3 / 25 | +60.3 / 25 | 800 / 940 |
+| S18 | +33.5 / 25 | +30.3 / 25 | 560 / 518 |
+| **S19 again** | **+56.5 / 25** | **+36.8 / 25** | **922 / 708** |
+| S20 | +17.5, then the teleport (free) | +22.9 / 25 | 827 / 478 |
+
+**From the S18 exit on, the agent's line is ahead at EVERY instant until the WR touches S20 (2.63 s): +96 at the agent's death vs the WR's +116 only at the S20 touch.** A partial move toward the WR's line therefore scores LOWER than the current line; only the complete move pays.
+
+**Three generic causes:**
+1. **The potential re-anchors at every window switch.** The new target's shaping is paid from wherever the switch happens, so leaving S18 early and far from S19 (922 vs 708 u) earns ~14 more. The 2026-10-06 regressions also left S18 early.
+2. **T1 stays S19 until its BOX exit.** Lifting off S19 toward S20, which is the WR's move, is charged as moving away from S19. Both lines dip after the touch.
+3. **No death charge.**
+   * A thin teleport sheet runs along S19's crest line (y ~ -2930 at z 380). The WR crosses that line at z ~520; the agent at ~380 dies.
+   * The S20 potential is ~25-30 still to collect at both heights, so it does not ask for the higher crossing.
+   * Dying keeps every unit of shaping collected.
+* The WR's detour, looping south past S19's low end before landing on its front, is charged by the nearest-point pull: its cumulative reward falls 39 -> 31 over 0.5-1.0 s.
+
+**Correction to the 2026-10-06 description:** our agent does NOT brush S19's crest from the pit side. Both lines touch S19's LOW end and ride up its face. The agent's ride is slower and lower and drifts west into the sheet.
+
+**Proposed fixes (generic, not implemented):**
+* switch the target at the TOUCH, not at the box exit;
+* one fixed potential reference per target, so distance created at the switch is not paid;
+* the death charge, i.e. the terminal correction for PBRS under termination (Grzes 2017).
