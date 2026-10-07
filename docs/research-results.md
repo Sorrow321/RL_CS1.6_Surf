@@ -35197,3 +35197,20 @@ From each line's S18 touch:
 * A raised sigma floor is the other candidate. It needs a flag (it changes the stochastic policy of a resumed checkpoint), so it is not run tonight.
 
 **uf2R3P2** (vast, frac 0.5, floor k=5): 6 (S22) in 9/9 at 1.899B, 1.950B and 2.000B; 6 in ~94% of training episodes. Stable since the monotone restart.
+
+## 2026-10-07 13:28 (machine clock) - --lr 1e-4 STOPS THE COLLAPSE: uf2R3CV6 reaches S36 (11 of 17) from the map start in 9/9
+
+**uf2R3CV6** (R3CV3's best at 1.977B, **--lr 1e-4**, everything else as the collapsed R3CV5 / R3CV3 setups):
+
+| step | greedy evals from the map start (list position, 9 episodes) |
+|---|---|
+| 1.977B | 10 in 8/9 |
+| 2.027B | 11 (S36) in 6/9 |
+| 2.078B | 11 in 8/9 |
+| **2.128B** | **11 in 9/9** |
+
+* **Training:** list position 11 in 244-247 of ~300 settled episodes at 2.10-2.13B; rew 658 -> 728 -> 678 (it was ~390 at S25); yaw/pitch sigma 0.024/0.029-0.031.
+* **The update size is back to normal:** approx_kl mostly 0.01-0.07, and --target-kl 0.05 cut 0/25 and 3/25 updates (max 0.111), against 25/25 with first-minibatch KL 3-30 under lr 3e-4.
+* **The loop moved the frontier forward:** at 2.060B, 22/33 own map-start episodes reached 10 touches and 8 reached 11, so k=10 and stages {9, 10} (before S35 / S36).
+* **This supports the step-size reading of the collapses:** at lr 3e-4 one Adam step was too big for a nearly deterministic policy (sigma ~0.025). The collapses were not the practice distribution's fault. 150M steps is short, so stability is to be confirmed.
+* **Tonight's furthest line from the map start:** S19 -> S17 -> S18 -> S19 -> S20 -> S22 -> S25 -> S30 -> S33 -> S35 -> S36, i.e. 11 of the 17 WR targets.
