@@ -34949,3 +34949,28 @@ From each line's S18 touch:
 * **uf2R3SN** (int-coef 0.25) paid **0.01 novelty per episode**: a no-op. 0.25 is the race reward's calibration, made for 100 shaping over the start's 30,343 u geodesic (0.0033/u).
 * **The route reward pays 100/1,500 u = 0.0667/u, 20x that.** So a fresh 256 u cell paid ~1/70 of the shaping charged for 256 u of retreat from the target.
 * **uf2R3SN5** runs the same arm with **--int-coef 5** (= 0.25 x the ratio of the two per-unit shaping scales, a generic rule, nothing read off the map), from R3S's checkpoint on the same box, at 08:37.
+
+## 2026-10-07 09:18 (machine clock) - the S20 -> S22 creep stalls ~50 u short of the sheet's edge; uf2R3P -> uf2R3CV (frontier loop + velocity jitter)
+
+**Greedy evals (5 episodes shown per eval), speed leaving S20 and the westmost x before the kill sheet** (edge x -3456; the WR clears it at -3552 having left S20 at ~1,000 u/s):
+
+| arm | eval | speed leaving S20 | westmost x before the sheet |
+|---|---|---|---|
+| uf2R3C | 993M | 786-815 u/s | -3318..-3360 |
+| | 1.245B | 839-847 | -3364..-3398 |
+| | 1.295B | 819-848 | -3339..-3405 |
+| uf2R3P | 1.90-2.00B | 826-857 | -3325..-3390 |
+| uf2R3CF | 1.29-1.39B | 799-824 | -3349..-3386 |
+| uf2R3P2 | 1.09B | 783-803 | -3300..-3342 |
+
+* Two evals dipped: R3C at 1.194B (3/5 without S20) and R3P2 at 1.044B (5/5 without S20). Both recovered.
+* **No arm has touched list position 6 (S22) in training.** The westmost x has hovered around -3340..-3405 for ~300M steps. The route reward barely separates dying at -3400 from dying at -3300 (~1.6 reward), so nothing pulls the line the last ~50-120 u.
+* **uf2R3SN5** (edge novelty 5) is at 1.01B, still parked at S18 (stall-killed, len ~2,940); its novelty has decayed to 0.55/episode.
+* **uf2R3SF** is at 471M, parked.
+
+**uf2R3CV replaces uf2R3P** on box 54588915 (R3P stopped at 2.08B; its driver was killed before its trainer).
+* **Weights:** uf2R3C@1.3207B (md5 8cb4272a...).
+* **Practice starts:** the frontier loop (ae7daef) with **--vel-scale 1.0 1.3**. Every own state cut before the S19/S20 touches has its velocity multiplied by U(1.0, 1.3): 192 states, speeds p10/p50/p90 606/1,014/1,602.
+* **Why:** Florensa-style start-state perturbation. The frontier is also met faster than the policy reaches it, so the critic can learn what more energy is worth at S20, and that value can pull speed upstream.
+* **The rule is generic** (a scale band on the policy's own states, nothing from the map or the record). It is still a perturbation of the start distribution, so this is an analysis arm until it repeats elsewhere.
+* --spawn-states-frac 0.5, SELF_STATES=1, no critic warm-up.
