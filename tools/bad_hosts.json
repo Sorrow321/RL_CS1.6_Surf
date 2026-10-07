@@ -2554,6 +2554,24 @@
       "detail": "instance 52828907 (RTX 5090, offer 30940766): running after 33 s, then 'Connection refused' on ssh5.vast.ai:28906 for the 60 s readiness wait and the deploy's ssh recon (23:55-23:57); released by the queue before it was blocked",
       "run": "ch3v2SJ_b200",
       "reason": "ssh"
+    },
+    {
+      "ip": null,
+      "machine_id": 57734,
+      "host_id": null,
+      "reason": "gpu_capped",
+      "date": "2026-10-07",
+      "detail": "RTX 4090 power-limited to 300 W of the 500 W default (60%); bf16 GEMM 133 TFLOPS, HBM copy 914 GB/s, sm 2070 MHz at 82 W under load; gpu_health UNHEALTHY. Instance 54585323 (Romania, $0.363/h), released by the box driver before it could be blocked.",
+      "run": "uf2R2P (overnight 2026-10-07)"
+    },
+    {
+      "ip": null,
+      "machine_id": 118106,
+      "host_id": null,
+      "reason": "unreliable",
+      "date": "2026-10-07",
+      "detail": "RTX 4090 BUSY at deploy: 8,372 MiB already in use by another process (a foreign tenant); gpu_health could not judge it. Instance 54585327 (Hungary, $0.441/h), released by the box driver before it could be blocked.",
+      "run": "uf2R2U (overnight 2026-10-07)"
     }
   ],
   "known_good": [

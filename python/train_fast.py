@@ -5191,6 +5191,13 @@ def main() -> None:
                          "or the next one's after a skip) - the 'you reached the ramp' event of "
                          "--ramp-reward dist (the user, 2026-10-06). 0 (default) = off. "
                          "ckpt restores")
+    ap.add_argument("--ramp-route-flat", type=float, default=None,
+                    help="--ramp-reward route: a FLAT ZONE of this many units around every target "
+                         "- the route potential's distance term is max(0, d - R), and the fixed "
+                         "target-to-target lengths take the same max(0, gap - R), so moving around "
+                         "near a ramp before landing on it is neither paid nor charged (the user, "
+                         "2026-10-07: 'the reward should be less sharp nearby this surf'). 0 / unset "
+                         "= off. ckpt restores")
     ap.add_argument("--ramp-death-charge", type=float, default=None,
                     help="--ramp-reward dist / route: a DEATH (an episode that ends, not by a "
                          "success, not by the time limit) gives back KAPPA x the distance shaping "
@@ -6994,7 +7001,8 @@ def main() -> None:
         for _k in ("ramp_vocab", "target_channel", "ramp_topk", "ramp_horizon", "ramp_fade",
                    "ramp_reward", "ramp_offtarget_pen", "ramp_obs_pass", "ramp_sequence",
                    "ramp_sequence_source", "target_views", "ramp_exit_bonus", "ramp_pairs",
-                   "ramp_reach_bonus", "ramp_obs_vec", "ramp_touch", "ramp_death_charge"):
+                   "ramp_reach_bonus", "ramp_obs_vec", "ramp_touch", "ramp_death_charge",
+                   "ramp_route_flat"):
             if _k == "ramp_sequence" and flag_given("--ramp-pairs"):
                 continue      # --ramp-pairs replaces a checkpoint's global sequence (one map's ids)
             if _k == "ramp_pairs" and flag_given("--ramp-sequence"):
@@ -8545,7 +8553,8 @@ def main() -> None:
                 ("ramp_vocab", "target_channel", "ramp_topk", "ramp_horizon", "ramp_fade",
                  "ramp_reward", "ramp_offtarget_pen", "ramp_obs_pass", "ramp_sequence",
                  "ramp_sequence_source", "target_views", "ramp_exit_bonus", "ramp_pairs",
-                 "ramp_reach_bonus", "ramp_obs_vec", "ramp_touch", "ramp_death_charge")
+                 "ramp_reach_bonus", "ramp_obs_vec", "ramp_touch", "ramp_death_charge",
+                 "ramp_route_flat")
                 if flag_given(f"--{_k.replace('_', '-')}")]
         if _set:
             raise SystemExit(f"{', '.join(_set)} without --goal-planner ramps")
@@ -8561,6 +8570,7 @@ def main() -> None:
         args.ramp_obs_vec = None
         args.ramp_touch = None
         args.ramp_death_charge = None
+        args.ramp_route_flat = None
         args.ramp_pairs = None
     # --ramp-reward pass: +1 per window shift, added to the per-tick reward after the goal system's
     # step; the arc shaping is off (arc_scale 0 below)
@@ -8618,6 +8628,9 @@ def main() -> None:
     if RROUTE and not (int(args.ramp_touch or 0) and (args.ramp_sequence or args.ramp_pairs)):
         raise SystemExit("--ramp-reward route measures the route along a target LIST and switches "
                          "at the TOUCH: it needs --ramp-touch 1 and --ramp-sequence / --ramp-pairs")
+    RFLAT = float(args.ramp_route_flat or 0.0) if RPLAN else 0.0
+    if RFLAT and not RROUTE:
+        raise SystemExit("--ramp-route-flat flattens the ROUTE potential: it needs --ramp-reward route")
     if RDC and not RDIST:
         raise SystemExit("--ramp-death-charge gives back the distance shaping: it needs "
                          "--ramp-reward dist or route")
@@ -11040,6 +11053,14 @@ def main() -> None:
                     goal_field=(_lgf(_gfs) if _gfs else None), sequence=RSEQ,
                     pairs=RPAIRS_OF.get(_s.name), touch=bool(int(args.ramp_touch or 0)))
             _ramp_planner = RPLANNERS[slots[0].name]
+            if RFLAT:
+                # --ramp-route-flat: the flat zone around every target, on every map's windows
+                for _rp in RPLANNERS.values():
+                    _rp.windows.set_route_flat(RFLAT)
+                    _rp.eval_windows.set_route_flat(RFLAT)
+                print(f"--ramp-route-flat {RFLAT:g}: the route potential is flat within "
+                      f"{RFLAT:g} u of each target (distance term max(0, d - {RFLAT:g}), the "
+                      f"fixed target-to-target lengths likewise)")
             if SPAWN_STATES is not None and SS_SEQK[0] is not None:
                 # --spawn-states with seq_k: an own state starts the sequence where it was cut
                 _ramp_planner.windows.set_seq_starts(SPAWN_STATES["origin"], SS_SEQK[0])
@@ -12644,7 +12665,8 @@ def main() -> None:
                                "ramp_reach_bonus": float(args.ramp_reach_bonus or 0.0),
                                "ramp_obs_vec": int(args.ramp_obs_vec or 0),
                                "ramp_touch": int(args.ramp_touch or 0),
-                               "ramp_death_charge": float(args.ramp_death_charge or 0.0)})
+                               "ramp_death_charge": float(args.ramp_death_charge or 0.0),
+                               "ramp_route_flat": float(args.ramp_route_flat or 0.0)})
         if RPAIRS_OF:
             # --ramp-pairs: MIRRORED by record_ckpt.py (each map's pairs are its eval spawns); the
             # provenance of every map's pairs rides with every checkpoint, and a demo-derived one
@@ -14243,7 +14265,7 @@ def main() -> None:
     # --ramp-reward dist: per env the last tick's distance to T1 and that T1 (the trainer's own state,
     # carried across iterations; NaN / -1 = re-anchor on the next tick)
     rd_prev = np.full(N, np.nan, np.float64)
-    from surfgym.goalramps import dist_shaping_step
+    from surfgym.goalramps import dist_shaping_step, shaping_prev
     # --ramp-death-charge: per env the distance shaping its episode collected so far, and per
     # report period [deaths, -, net shaping given back at deaths]
     rd_bank = np.zeros(N, np.float64)
@@ -16202,7 +16224,12 @@ def main() -> None:
                             rd_dc[0] += int(_death.sum())
                             rd_dc[2] += float(np.where(_death, _pay, 0.0).sum())
                         r = r + _pay.astype(np.float32)
-                        rd_prev[:] = _dn
+                        # an ended row's _dn is the RESPAWN measured against the ENDED
+                        # episode's list position (goalsys.assign draws the new windows only
+                        # after this tick's reward): under route it re-anchors, or the next tick
+                        # charges back the ended episode's whole route - inside a decision, onto
+                        # that episode's own final decision (gr.shaping_prev, 2026-10-07)
+                        rd_prev[:] = shaping_prev(_dn, _ended, RROUTE)
                         rd_t1[:] = _tn
                     if RREACH and r is not None:
                         # --ramp-reach-bonus: this tick's target entries (an ended row enters none)

@@ -1495,6 +1495,78 @@ def test_route_dist_switches_at_the_touch_and_is_continuous_there(voc):
     assert abs(after - (d1 + L[1])) < 1e-6               # ... but the route measures to ramp 1
 
 
+def test_route_flat_zone_flattens_near_a_target_and_keeps_the_touch_switch_neutral(voc):
+    """--ramp-route-flat R: within R of the next target the route potential is flat (distance term
+    max(0, d - R)), the fixed lengths take max(0, gap - R), R = 0 is the plain route, and touching
+    T1 at its point closest to T2 still switches without a jump"""
+    v, _bsp, _ = voc
+    w = _windows(v)
+    w.set_sequence([0, 1, 2])
+    w.set_touch(True)
+    w.spawn([0, 1], *_state(APPROACH))
+    near = np.array([1000.0, -300.0, 250.0])                   # 280 u in front of ramp 0
+    pos = np.stack([near, APPROACH[0]])
+    base = w.route_dist(pos)
+    L0 = w._route_suffix([0, 1, 2]).copy()
+    w.set_route_flat(500.0)
+    flat = w.route_dist(pos)
+    Lf = w._route_suffix([0, 1, 2])
+    assert np.allclose(Lf[:2], L0[:2] - np.array([1000.0, 500.0]), atol=1e-6) and Lf[2] == 0.0
+    assert abs(flat[0] - Lf[0]) < 1e-6                         # inside the zone: no distance term
+    d_app = float(w.t1_dist(pos)[1])
+    assert abs(flat[1] - (d_app - 500.0 + Lf[0])) < 1e-6        # outside: R less
+    _tick(w, ON0)
+    before = w.route_dist(np.stack([ON0[0], APPROACH[0]]))[0]
+    w.note_touch(*_touches([(ON0[0], np.array([0.0, -1.0, 0.0])), None]), np.zeros(2, np.int64))
+    after = w.route_dist(np.stack([ON0[0], APPROACH[0]]))[0]
+    assert abs(after - before) < 120.0                          # the switch stays continuous
+    w.set_route_flat(0.0)
+    assert abs(w.route_dist(pos)[1] - base[1]) < 1e-6           # R = 0 is the plain route again
+    with pytest.raises(ValueError):
+        w.set_route_flat(-1.0)
+
+
+def test_route_re_anchors_an_ended_row_instead_of_charging_the_next_episode(voc):
+    """the trainer's order: an ended row's route length is measured at the RESPAWN against the
+    ended episode's list position, and the goal system draws the new windows only afterwards.
+    Carried as the next tick's prev that charged the new episode's first tick about the whole
+    route the ended episode covered (a terminal charge once summed into the ended decision);
+    gr.shaping_prev re-anchors the row so that tick pays nothing. dist keeps its value."""
+    v, _bsp, _ = voc
+    w = _windows(v)
+    w.set_sequence([0, 1, 2])
+    w.set_touch(True)
+    w.spawn([0, 1], *_state(APPROACH))
+    _tick(w, ON0)
+    n_ = np.array([0.0, -1.0, 0.0])
+    w.note_touch(*_touches([(ON0[0], n_), None]), np.zeros(2, np.int64))
+    _tick(w, ON1)
+    w.note_touch(*_touches([(ON1[0], n_), None]), np.zeros(2, np.int64))
+    L = w._route_suffix([0, 1, 2])
+    # the episode ends: the core has respawned env 0 at APPROACH, the windows are the old ones
+    ended = np.array([True, False])
+    w.settle(np.array([0]), np.array([False]))
+    pos = np.stack([APPROACH[0], APPROACH[0]])
+    dn_end = w.route_dist(pos)
+    w.spawn([0], APPROACH[0][None], APPROACH[1][None])          # goalsys.assign, after the reward
+    dn_new = w.route_dist(pos)
+    # the stale value measures the respawn to ramp 2 plus L[2]: short of the new episode's
+    # route by the list it had covered, less the respawn's extra distance to ramp 2
+    d0 = w.tt[0].query(APPROACH[0][None])[0][0]
+    d2 = w.tt[2].query(APPROACH[0][None])[0][0]
+    assert abs(dn_end[0] - (d2 + L[2])) < 1e-6 and abs(dn_new[0] - (d0 + L[0])) < 1e-6
+    zero = np.zeros(2, bool)
+    stale, _ = gr.dist_shaping_step(dn_end, dn_new, w.t1, w.t1, zero, zero, np.zeros(2), 0.1,
+                                    True, 0.0)
+    assert stale[0] < -40.0                                     # what the old trainer charged
+    prev = gr.shaping_prev(dn_end, ended, True)
+    assert np.isnan(prev[0]) and prev[1] == dn_end[1]
+    pay, _ = gr.dist_shaping_step(prev, dn_new, w.t1, w.t1, zero, zero, np.zeros(2), 0.1, True, 0.0)
+    assert pay[0] == 0.0 and pay[1] == 0.0
+    keep = gr.shaping_prev(dn_end, ended, False)
+    assert np.array_equal(keep, dn_end) and keep is not dn_end
+
+
 def test_dist_shaping_step_pays_across_switches_only_in_route_mode_and_charges_deaths():
     """gr.dist_shaping_step: dist re-anchors at a T1 change, route pays across it; an ended row is
     paid nothing; a death gives back kappa x its episode's bank; every ended row's bank restarts"""

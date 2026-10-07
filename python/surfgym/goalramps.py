@@ -435,9 +435,11 @@ class RampWindows:
         # --unstuck-reach stage: the most targets any episode SETTLED since the last read reached
         # (touched under --ramp-touch, else passed); -1 = none settled
         self.iter_best = -1
-        # --ramp-reward route: the fixed target-to-target lengths and their suffix sums, cached
+        # --ramp-reward route: the fixed target-to-target lengths and their suffix sums, cached;
+        # route_flat (--ramp-route-flat): the flat zone around a target, set_route_flat
         self._gap_cache = {}
         self._suffix_cache = {}
+        self.route_flat = 0.0
         self.p_zlow = {q: float(min(float(self.tp[f][:, 2].min()) for f in fs))
                        for q, fs in self.pfaces.items()}
         # window shifts since the policy last read them (take_passes, once per decision):
@@ -1199,14 +1201,26 @@ class RampWindows:
             self._gap_cache[key] = best
         return self._gap_cache[key]
 
+    def set_route_flat(self, r: float) -> None:
+        """--ramp-route-flat R (the user, 2026-10-07: "the reward should be less sharp nearby
+        this surf"): within R of a target the route potential is FLAT - its distance term is
+        max(0, d - R) - so manoeuvring near a ramp before landing on it (the WR loops 124-241 u
+        from S19's low end) is not charged; the fixed target-to-target lengths take the same
+        max(0, gap - R), so a switch at the touch still pays nothing for free"""
+        r = float(r)
+        if not np.isfinite(r) or r < 0.0:
+            raise ValueError(f"--ramp-route-flat must be finite and >= 0, got {r!r}")
+        self.route_flat = r
+        self._suffix_cache = {}
+
     def _route_suffix(self, seq) -> np.ndarray:
         """L[k] = the fixed lengths from target k to the end of the list, sum of _piece_gap over
-        consecutive pairs (L[last] = 0)"""
+        consecutive pairs (L[last] = 0), each less the flat zone (max(0, gap - route_flat))"""
         key = tuple(int(s) for s in seq)
         if key not in self._suffix_cache:
             L = np.zeros(len(key), np.float64)
             for k in range(len(key) - 2, -1, -1):
-                L[k] = L[k + 1] + self._piece_gap(key[k], key[k + 1])
+                L[k] = L[k + 1] + max(0.0, self._piece_gap(key[k], key[k + 1]) - self.route_flat)
             self._suffix_cache[key] = L
         return self._suffix_cache[key]
 
@@ -1240,7 +1254,7 @@ class RampWindows:
             for f in (self.pfaces.get(q, [s]) if q is not None else [s]):
                 if f in self.tt:
                     d = np.minimum(d, self.tt[f].query(origin[idx])[0])
-            out[idx] = d + rest[idx]
+            out[idx] = np.maximum(d - self.route_flat, 0.0) + rest[idx]
         return out
 
     def pop_iter_best(self) -> float:
@@ -1522,6 +1536,20 @@ class TargetLidar:
                                           ducked))
             ch = torch.stack(chs, dim=-1).to(img.dtype)
         return torch.cat([img, ch], dim=-1)
+
+
+def shaping_prev(cur, ended, route):
+    """the value the NEXT tick's dist_shaping_step measures from: this tick's, except that under
+    route an ENDED row re-anchors (NaN). Its value was measured at the respawn position against
+    the ENDED episode's list position - the goal system draws the new episode's windows only
+    after the tick's reward - so carrying it charged the new episode's first tick about the whole
+    route the ended one had covered, and inside a decision that tick is summed into the ended
+    episode's final decision: an unintended terminal charge (2026-10-07). dist needs no
+    re-anchor: a new episode's T1 differs, or is the same ramp measured from the same spawn."""
+    cur = np.asarray(cur, np.float64)
+    if not route:
+        return cur.copy()
+    return np.where(np.asarray(ended, bool), np.nan, cur)
 
 
 def dist_shaping_step(prev, cur, t_prev, t_cur, ended, death, bank, scale, route, kappa):
