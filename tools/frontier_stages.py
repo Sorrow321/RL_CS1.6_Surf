@@ -100,7 +100,7 @@ def record(ck, map_path, episodes, ep_ticks, work, python, tag, stochastic):
 
 
 def build(ckpt, map_path, out, source, episodes, leads, ep_ticks, work, python, seed,
-          vel_scale=(1.0, 1.0), greedy=1):
+          vel_scale=(1.0, 1.0), greedy=1, floor=None):
     """record `ckpt`, cut its frontier, write `out` atomically -> a one-line report (or None).
     `greedy` greedy episodes join the stochastic ones (2026-10-07: a policy whose greedy line
     reached S25 9/9 recorded 32 stochastic episodes that stopped at S19, and the frontier moved
@@ -117,6 +117,12 @@ def build(ckpt, map_path, out, source, episodes, leads, ep_ticks, work, python, 
         if g is not None:
             touches, eps = touches + g[0], eps + g[1]
     k_max, stages = frontier_stages(touches)
+    if floor is not None and (k_max is None or k_max < floor):
+        # --monotone: the frontier never moves back. A collapse the loop followed back onto the
+        # stages before S19 (list positions 0 and 3) fed jittered fast S19 approaches - the
+        # ramp whose crest is a kill sheet - and three runs lost the map start (2026-10-07); the
+        # map-start share keeps the early targets, the practice stays at the deepest one
+        return f"recorded frontier k={k_max} < the floor k={floor}: {out} kept (monotone)"
     hist = {}
     for t in touches:
         hist[len(t)] = hist.get(len(t), 0) + 1
@@ -133,6 +139,7 @@ def build(ckpt, map_path, out, source, episodes, leads, ep_ticks, work, python, 
              vel_scale=np.asarray(vel_scale, np.float32))
     os.replace(tmp, out)
     per = {int(k): int((ks == k).sum()) for k in np.unique(ks)}
+    build.last_k = int(k_max)
     vs = "" if tuple(vel_scale) == (1.0, 1.0) else f", velocity x U{tuple(vel_scale)}"
     return (f"touches per episode {dict(sorted(hist.items()))} -> frontier k={k_max}, "
             f"stages {per}{vs} -> {out}")
@@ -181,6 +188,10 @@ def main(argv=None):
                     help="multiply every cut state's velocity by U(LO, HI) (1 1 = off)")
     ap.add_argument("--greedy", type=int, default=1,
                     help="greedy episodes recorded with the stochastic ones (0 = off)")
+    ap.add_argument("--monotone", action="store_true",
+                    help="the frontier never moves back: a recording shallower than the deepest "
+                         "frontier written so far keeps the file (the floor starts at the file's "
+                         "own deepest seq_k when it exists)")
     ap.add_argument("--pid-file", default=None, help="exit when this trainer is gone")
     ap.add_argument("--once", action="store_true")
     ap.add_argument("--python", default=sys.executable)
@@ -202,6 +213,14 @@ def main(argv=None):
         return
     ck = Path(args.run) / "ckpt_latest.pt"
     last_mt, last_t, n = None, 0.0, 0
+    floor = None
+    if args.monotone and out.exists():
+        try:
+            floor = int(np.max(np.load(out)["seq_k"]))
+        except (OSError, KeyError, ValueError):
+            floor = None
+    if args.monotone:
+        print(f"[{time.strftime('%H:%M:%S')}] --monotone: frontier floor k={floor}", flush=True)
     print(f"[{time.strftime('%H:%M:%S')}] frontier loop on {ck} -> {out} ({args.episodes} "
           f"episodes, leads {args.leads}, at most every {args.every_min:g} min)", flush=True)
     while True:
@@ -215,8 +234,12 @@ def main(argv=None):
         if mt is not None and mt != last_mt and time.time() - last_t >= args.every_min * 60.0:
             time.sleep(20)                       # let the trainer finish writing it
             n += 1
+            build.last_k = None
             rep = build(ck, args.map, out, source, args.episodes, args.leads, args.ep_ticks,
-                        work, args.python, n, args.vel_scale, args.greedy)
+                        work, args.python, n, args.vel_scale, args.greedy,
+                        floor if args.monotone else None)
+            if args.monotone and build.last_k is not None:
+                floor = max(floor if floor is not None else -1, build.last_k)
             print(f"[{time.strftime('%H:%M:%S')}] step {ckpt_step(work / 'frontier_ckpt.pt'):,}:"
                   f" {rep}", flush=True)
             last_mt, last_t = mt, time.time()
