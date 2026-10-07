@@ -34796,3 +34796,24 @@ Tested by putting the WR's own positions through OUR rules: the sequence, `--ram
 * **The charge, as built, punishes progress, not dying.** Stopped at ~763M (06:28).
 
 **uf2SEQ_WRdiagS17R2:** the same checkpoint and flags with `--ramp-death-charge 0`, i.e. fixes 1 (switch at the touch) and 2 (the fixed route potential) only.
+
+## 2026-10-07 06:39 (machine clock) - overnight vast fleet (the user: "work autonomously for around eight hours ... deploy parallel jobs to vast boxes"): four single-4090 arms on the route reward
+
+**uf2SEQ_WRdiagS17R2, local 5090, route reward without the death charge.** It holds the S19 landing after the critic warm-up: 85-95% of training episodes reach list position 4, and reward 91 -> 97 by 610M. No collapse, unlike S17R.
+
+**The fleet.** Four single RTX 4090s (verified hosts, $0.35-0.44/h, under the 0.45 cap), raced as 5 offers with race_safe.sh; all 5 were up in 34-149 s. The fifth (spare2, m151648) was released healthy and not blocked.
+* **4090s, not single 3090s (a deviation from CLAUDE.md section 1):** the 3090 market had 0 offers with >= 8 physical cores per GPU tonight. Of 28 offers, 16 were blocklisted, 5 were above the cap, and the rest had 4-6 physical cores, the CPU-starved shape that made 8x3090 lose.
+* The arms are compared with EACH OTHER on steps and stage (all on 4090s), never on wall clock; the 4090 control makes that possible.
+
+| arm | box | what it adds to the route reward |
+|---|---|---|
+| uf2R2C | 54585335 (m14205, HU) | nothing: the control (S17R2's setup on a 4090) |
+| uf2R2P | 54585323 (m57734, RO) | own-state pit practice: `--spawn-states runs/research/uf2_stage/uf2_stage23_n0.npz --spawn-states-frac 0.5` (SELF_STATES=1; S17N0's own states before its S18 touch / S19 landing) |
+| uf2R2U | 54585327 (m118106, HU) | plateau temperature: `--unstuck --unstuck-reach stage --unstuck-patience 5e7` |
+| uf2RS | 54585332 (m28307, JP) | the whole recipe FROM SCRATCH: normals + SimBa + 1,024 envs + one camera + target channel + arrow + touch + route |
+
+* **The three resumed arms** start from runs/research/uf2_route/ckpt_S17N0_590M.pt with `--critic-warmup 20`, through run_arm.sh ARM_RESUME (box_arm_v7.sh MODE=resume), BUDGET 2.5e9, evals every 50M.
+* **Shared:** the 17-target WR sequence (labelled demo diagnostic), `--ramp-touch 1`, novelty off, `--target-kl 0.05 --save-best 1`.
+* **uf2RS** goes through run_arm.sh SCRATCH with POT=off, BUDGET 3e9.
+* **Payload:** runs/research/uf2_deploy/uf2_payload.tar.gz (61.7 MB, md5 2060253c553bdb6f3ada789704121a06): the map + caches, the vocabulary, the checkpoint and the spawn file. restamp_maps.py runs on maps/ and maps_pool/.
+* **Safety:** registry deadlines 420 min with a harvest spec; dashboards tunnelled to local ports 8611-8614.
