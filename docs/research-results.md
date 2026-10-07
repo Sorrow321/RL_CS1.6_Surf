@@ -34943,3 +34943,9 @@ From each line's S18 touch:
   * The novelty is edge mode: directed transitions between 256 u position cells, so turning or changing speed in place pays nothing. The coefficient is FIXED (no int-match runaway), and nothing in it comes from the map.
   * Its local driver was killed BEFORE the trainer this time; the box was re-registered with the new harvest spec.
 * **uf2R3SF** (the frontier loop on the same lineage) is at 322M and still parked; its loop keeps cutting S17/S18.
+
+## 2026-10-07 08:38 (machine clock) - uf2R3SN replaced by uf2R3SN5: the novelty coefficient on the route reward's scale
+
+* **uf2R3SN** (int-coef 0.25) paid **0.01 novelty per episode**: a no-op. 0.25 is the race reward's calibration, made for 100 shaping over the start's 30,343 u geodesic (0.0033/u).
+* **The route reward pays 100/1,500 u = 0.0667/u, 20x that.** So a fresh 256 u cell paid ~1/70 of the shaping charged for 256 u of retreat from the target.
+* **uf2R3SN5** runs the same arm with **--int-coef 5** (= 0.25 x the ratio of the two per-unit shaping scales, a generic rule, nothing read off the map), from R3S's checkpoint on the same box, at 08:37.
