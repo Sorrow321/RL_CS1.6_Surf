@@ -35171,3 +35171,29 @@ From each line's S18 touch:
 **uf2R3P2** (vast, monotone floor k=5, frac 0.5) holds: evals 6 / 5 / 6 / 5 at 1.698-1.849B; 6 (S22) in ~90% of training episodes.
 
 **uf2R3CV5** (local, 12:30): R3CV3's best (1.977B) with **--target-kl 0.02** (was 0.05), one stabiliser, smaller policy steps. Otherwise as R3CV3: frac 0.25 and the monotone jitter loop with floor k=9. Its initial file from the best checkpoint: 24/33 map-start episodes at 10 touches, so stages {8, 9} (before S33 / S35), 72 + 72.
+
+## 2026-10-07 13:02 (machine clock) - --target-kl 0.02 did not stop the collapse; the KL explodes in the FIRST minibatch (a collapsed sigma); uf2R3CV6 (--lr 1e-4)
+
+**uf2R3CV5** (R3CV3's best, --target-kl 0.02) greedy evals from the map start:
+
+| step | list position reached (9 episodes) |
+|---|---|
+| 1.977B | 10 in 9/9 |
+| 2.027B | 3-4 |
+| 2.078B | 2-3 |
+| 2.128B | 0 |
+| 2.178B | 0-1 |
+
+* The training reward fell to -11 by 2.197B.
+* **The trainer's own early-stop log:** "25/25 updates stopped early (at epoch.minibatch 1.2 ...; kl 3.422 max)" and later "kl 30.096 max".
+* **So the KL is huge after the FIRST minibatch step** of every update; a stricter --target-kl cannot help.
+* **A KL of 3-30 from one Adam step at lr 3e-4 means a collapsed action sigma.** The view heads' yaw sigma is ~0.02-0.03, and KL ~ (mean shift / sigma)^2, so the smallest step reshapes the policy, and the chaotic dynamics do the rest.
+* The trainer's floor is log sigma >= -5 (sigma >= 0.0067), so nothing stopped the shrinking.
+* The jittered frontier practice demands precision; it plausibly drives sigma down and supplies large, coherent advantages.
+* Stopped at ~2.2B.
+
+**uf2R3CV6** (local, 13:01): R3CV3's best (1.977B) with **--lr 1e-4** (from 3e-4; "optimizer lr: 0.0003 (ckpt state) -> 0.0001") and --target-kl 0.05. Otherwise as R3CV5: frac 0.25, the monotone jitter loop, floor k=9, file {8, 9}.
+* It tests the step-size mechanism.
+* A raised sigma floor is the other candidate. It needs a flag (it changes the stochastic policy of a resumed checkpoint), so it is not run tonight.
+
+**uf2R3P2** (vast, frac 0.5, floor k=5): 6 (S22) in 9/9 at 1.899B, 1.950B and 2.000B; 6 in ~94% of training episodes. Stable since the monotone restart.
