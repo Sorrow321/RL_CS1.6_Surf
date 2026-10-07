@@ -34884,3 +34884,35 @@ From each line's S18 touch:
 **An ops error, mine.** I first relaunched R3C/R3P/R3U/R3S on the four 4090 boxes (kill the old trainer, pull, launch) while their original box_arm_v7.sh drivers were still running locally. Each driver's wait loop saw its trainer exit and RELEASED its box (harvest + destroy), so all four boxes were gone within two minutes, ~07:08.
 * The first R3S launch had also died at startup: its run_arm.sh SCRATCH launch lacked POT=off, and --obs-potential is refused with --goals; that is the likely cause, as the box is gone.
 * Lesson in memory: kill a box's driver BEFORE replacing its arm.
+
+## 2026-10-07 07:55 (machine clock) - S20 from the map start: the fixed route reward alone does it; flat zone and temperature behind; the frontier loop
+
+**On 7de51de, matched steps after the 589.8M resume** (S17N0@589.8M with --critic-warmup 20; all RTX 5090 except where noted). The control, the corrected route reward with nothing else, learned S19 -> S20 first:
+
+| arm | greedy evals from the map start (S20 = list position 5) | training episodes touching S20 | fate |
+|---|---|---|---|
+| uf2R3C, control | 640M 0/9 (all 4); **691M 9/9; 741M 9/9** | 79.7% (716M bucket), 91.4% (741M), 88.4% (767M); rew 365-379 | running |
+| uf2R3P, own-state pit practice (static uf2_stage23_n0) | 691M 4/9, **741M 9/9** | 0.5% (713M), 18.0% (733M), 42.4% (754M). Half its episodes start in the pit, so the share is not comparable. | running |
+| uf2R3U, plateau temperature | 0/9 at every eval to 741M | 0% to 741M, 1.9% (767M) | stopped 07:52 (behind the control at matched steps; box harvested + released by its driver) |
+| uf2SEQ_WRdiagS17F, --ramp-route-flat 256 (local) | 0/9 at every eval to 892M | 0% to 892M (2 single episodes at ~681M) | stopped 07:51 |
+| uf2R3S, from scratch | - | reaches S18 (list position 3) in ~97% of episodes from ~100M, then **stalls**: 94-99% stall-killed at ~29 s, rew ~195, to 195M | running |
+
+* **The hidden terminal charge was the blocker at S19.** With it removed, PPO moved from the low S19 ride to a line that clears the teleport sheet and touches S20 in ~100M steps, from the same checkpoint that sat at S19 for 230M steps under the bug (S17R2).
+* **R3P's 741M greedy episodes** touch S20 at ~8.2 s and all 9 die at 11.1-11.4 s, ending near (-3160, -1220, z ~185) at ~1,130 u/s. Max z rose from 334 (590M) to 741 (741M). That is the next transition: S20 -> S22.
+* **The flat zone at 256 u is a NEGATIVE.** S19 -> S20 is a 486 u gap, and a 256 u flat zone removes over half of the pull toward S20. 300M steps after the resume the policy still rides S19 low, while the control left it at ~100M. The user's "less sharp" idea is not needed once the bug is gone, and at this radius it hurts.
+* **Temperature (--unstuck stage)** is slower than the control at matched steps; it never needed to fire.
+
+**tools/frontier_stages.py (b6b0f12, 350d987): return-then-explore at the policy's OWN frontier, refreshed while it trains.**
+* --spawn-states already re-reads its file when the mtime changes. On every new checkpoint (at most every 10 min) the loop records 32 stochastic episodes from the map start with --dump-states.
+* The frontier = the deepest list position touched (k_max). It cuts the policy's own states 0.3/0.5/0.8 s before the touches at k_max-1 and k_max, balances the two stages, and replaces the file atomically.
+* Nothing is read off the map or the record: it is the automatic form of the hand-cut stage files.
+* Unit-tested. On Windows the pid probe uses tasklist: os.kill(pid, 0) is TerminateProcess there and would kill the trainer.
+
+| frontier arm | start | initial stage file (own states) | where |
+|---|---|---|---|
+| uf2R3P2 | R3P@741.3M (ckpt_beststage, md5 a08c3254...) | stages 3/4 from 48 own episodes (40 touched S20); the loop's first refresh at 748.7M: 31/32 touch S20 -> k=4, 96+96 | vast 54591944 (m58908) |
+| uf2R3SF | R3S@221.8M (md5 4c8f883e...) | k=2 frontier: 93 states before S17 + 93 before S18 | vast 54592923 (m137988, AU) |
+| uf2R3CF | R3C@782.8M (md5 977bb9fe...) | k=4: 96 + 96 (26/32 own episodes touch S20) | local 5090, loop in a hidden window |
+
+* All three use --spawn-states-frac 0.5 with SELF_STATES=1 (the files are the arms' own recordings), and no critic warm-up (same reward).
+* The comparisons are R3C (control) and R3P (static practice) for R3CF / R3P2, and R3S for R3SF.
