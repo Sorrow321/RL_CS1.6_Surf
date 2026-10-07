@@ -34817,3 +34817,70 @@ Tested by putting the WR's own positions through OUR rules: the sequence, `--ram
 * **uf2RS** goes through run_arm.sh SCRATCH with POT=off, BUDGET 3e9.
 * **Payload:** runs/research/uf2_deploy/uf2_payload.tar.gz (61.7 MB, md5 2060253c553bdb6f3ada789704121a06): the map + caches, the vocabulary, the checkpoint and the spawn file. restamp_maps.py runs on maps/ and maps_pool/.
 * **Safety:** registry deadlines 420 min with a harvest spec; dashboards tunnelled to local ports 8611-8614.
+
+## 2026-10-07 07:16 (machine clock) - the route reward carried a hidden terminal charge (a reset-order bug, fixed in 7de51de); the WR line under the corrected reward; the fleet relaunched on 5090s
+
+**The user (2026-10-07):** "it's worth measuring like what our reward would be if we moved the same way as the world record ... if it appears that there is a gap, then I think uh, the gap needs to be flattened ... either time pressure is smaller ... or uh, the reward should be less sharp nearby this uh, surf."
+
+**What the measurement found first was a BUG.** Replaying S17N0's own eval line through the route reward gives ~255-277 per episode. The trainer logged ~97 for the same behaviour (S17R2: 98% of episodes at list position 4). The dist reward agrees with its replay to within a few units (~300 vs 310).
+* **Mechanism:** goalsys measures an ENDED row's route length at the RESPAWN position, but against the ENDED episode's list position, because goalsys.assign draws the new windows only after the tick's reward. The trainer carried that value as the next tick's prev.
+* **The cost:** the next tick paid scale x (stale - new route length). That charged back about the whole route the ended episode had covered.
+* **Where PPO saw it:** the episode-return log booked the charge on the NEW episode. The decision sum r_acc booked it on the ENDED episode's own final decision (done=True) whenever the episode ended before the decision's last tick, i.e. on ~3/4 of all episode ends (deaths, successes, truncations). So it was a terminal charge nobody asked for, roughly kappa ~0.75 x the route covered, on top of S17R's explicit one.
+* **Proof** (the same frozen actor, S17N0@589.8M under --critic-warmup):
+
+  | | logged reward | warm-up value loss |
+  |---|---|---|
+  | buggy | 82.6 | 203 |
+  | fixed | 248.6 | 2.4 |
+
+* **The fix:** gr.shaping_prev re-anchors an ended row (NaN) under route, so the new episode's first tick pays nothing, as dist always did. dist is untouched. Tested: test_route_re_anchors_an_ended_row_instead_of_charging_the_next_episode (58/58).
+
+**Everything on the route reward before 7de51de trained on this charge:** S17R, S17R2, uf2R2C, uf2R2P, uf2R2U, uf2RS. What it did to them:
+* **uf2R2C** (route control, 4090) collapsed at ~610M from reaching list position 4 (rew ~90) to stopping at position 2 (rew ~150). By ~650M it stopped at position 3 (rew ~127).
+  * Stopping early pays most because the stale value is measured from the spawn: the charge after a position-2 end is small (S18 is far from the spawn), and after a position-4 end it is ~the whole route.
+* **uf2RS** (scratch) converged by 25M steps onto touching only position 1 (S19) and dying near S17 (rew ~135, len ~400).
+* **uf2R2P** fell from 73% to 43% of episodes at position 4 by 632M.
+* **S17R2** (local) held position 4 at 98% with rew ~97 to 818M, and never touched S20.
+* These runs measured the bug, not the route reward. Their logs are in runs/research/uf2R2C, uf2R2P, uf2R2U, uf2RS and runs/uf2SEQ_WRdiagS17R2.
+
+**The user's measurement, on the corrected reward.** Per-tick replay (scratchpad reward_paths_v2.py --route) of the WR line (runs/research/uf2_wr/surf_unitfarmer2.jsonl:0) and S17N0's line (runs/uf2SEQ_WRdiagS17N0/traj_0576716800.jsonl:0). Cumulative reward at each touch, with the shaping charged inside the segment that ends there:
+
+| line | S19 (pos 1) | S17 (pos 2) | S18 (pos 3) | S19 (pos 4) | S20 (pos 5) |
+|---|---|---|---|---|---|
+| agent | 69.6 @2.25 s (-15.2) | 161.4 @3.46 s (-0.8) | 144.7 @4.75 s (-79.4) | 255.5 @6.37 s (-29.4) | dies @7.16 s, 277.5 |
+| WR | 69.4 @2.99 s (-18.3) | 165.7 @4.17 s (0.0) | 151.8 @5.82 s (-83.8) | 280.2 @7.91 s (-13.9) | 318.1 @9.19 s (-25.9) |
+
+From each line's S18 touch:
+
+| line | +0.5 s | +1.0 s | +1.5 s | +2.0 s | +2.5 s | +3.0 s |
+|---|---|---|---|---|---|---|
+| agent | 43.2 | 85.7 | 110.6 | 120.3 | dead at +2.41 s with 132.8 | - |
+| WR | 42.2 | 87.2 | 98.6 | 105.6 | 139.4 | 151.1 |
+
+* **The gap that remains is small and timing-shaped.** The WR trails by at most ~15 (at +2.0 s), because its S19 touch comes 0.47 s later after its S18 touch, then leads from +2.5 s.
+* **Time pressure is negligible:** 0.5 per second, i.e. ~0.24 for that delay.
+* **The WR's detour near S19 costs LESS than the agent's own line:** 13.9 against 29.4 of charges in the S18 -> S19 segment.
+* **The largest charge on BOTH lines is S17 -> S18 (~80).** The route potential points straight at S18 (closest pieces 328 u apart), and both real lines swing out. Both pass it.
+* **With --ramp-route-flat 256:** the WR's S18 -> S19 charges fall 13.9 -> 7.5, the agent's stay at 29.5, and S17 -> S18 is unchanged (its excursion is far wider than 256 u). Every gap pays 256 u x 0.0667 = 17.1 less.
+
+**--ramp-route-flat R (7de51de)**, the user's "less sharp nearby this surf":
+* Within R of the next target, the route potential's distance term is max(0, d - R), and the fixed lengths take max(0, gap - R). A touch at the closest point still switches without a jump.
+* **R = 256** is set at the scale of the WR's measured 124-241 u excursion near S19. It is read off the record, so this is an ANALYSIS arm inside the already-labelled demo diagnostic, not a recipe constant (rule 0b). If it moves the policy, the next question is a generic rule for R.
+
+**Arms on the fixed code (all RTX 5090; 7de51de):**
+
+| arm | where | what it adds to the fixed route reward |
+|---|---|---|
+| uf2SEQ_WRdiagS17F | local 5090, started 07:08 | --ramp-route-flat 256 |
+| uf2R3C | vast 54588910 (m58908, US-CA) | nothing: the control |
+| uf2R3P | vast 54588915 (m48076, US-IL) | own-state pit practice, as R2P (SELF_STATES=1) |
+| uf2R3U | vast 54588918 (m17066, US-PA) | plateau temperature, as R2U |
+| uf2R3S | vast 54588913 (m151905, TW) | the whole recipe from scratch, as RS (POT=off) |
+
+* The resumed arms start from runs/research/uf2_route/ckpt_S17N0_590M.pt with --critic-warmup 20; the scratch arm runs from nothing. Flags are otherwise as uf2R2*.
+* **S17F's start:** 99.3% of episodes at position 4 and rew 185 -> 229 by 643M; position 5 (S20) 0.0%.
+* **Why 5090s (a deviation from CLAUDE.md section 1):** 0 single 3090s and 1 single 4090 passed the >= 8 physical cores/GPU filter. Five 5090s at $0.486-0.563/h (cap 0.60) were raced and all five came up in 18-166 s; the spare (54588920) was deployed as load and is released once four arms train. The local arm is a 5090 too, so all five arms share one card type.
+
+**An ops error, mine.** I first relaunched R3C/R3P/R3U/R3S on the four 4090 boxes (kill the old trainer, pull, launch) while their original box_arm_v7.sh drivers were still running locally. Each driver's wait loop saw its trainer exit and RELEASED its box (harvest + destroy), so all four boxes were gone within two minutes, ~07:08.
+* The first R3S launch had also died at startup: its run_arm.sh SCRATCH launch lacked POT=off, and --obs-potential is refused with --goals; that is the likely cause, as the box is gone.
+* Lesson in memory: kill a box's driver BEFORE replacing its arm.
