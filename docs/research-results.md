@@ -34991,3 +34991,33 @@ From each line's S18 touch:
 * **uf2R3P2** (R3P lineage) had sat at S20 without one S22 episode from 741M to ~1.1B under the plain frontier loop, a near-copy of the local uf2R3CF's condition. At 1,178,599,424 its loop was restarted with **--vel-scale 1.0 1.3**, a second lineage for the jitter.
   * The restart lost its old loop and the remote shell to a grep self-match, the same trap as before (memory updated). The trainer was untouched; the new loop was launched in a separate call.
 * **uf2R3CF** (local) stays the no-jitter frontier-loop comparison on R3C's lineage; uf2R3C stays the control.
+
+## 2026-10-07 09:37 (machine clock) - S22 FROM THE MAP START: uf2R3CV greedy 9/9 at 1.472B; the jitter replicates on R3P2; R3SF switched to it
+
+**uf2R3CV greedy evals from the map start (no boost; the evals never use the spawn file):**
+
+| step | list position reached by the 9 greedy episodes |
+|---|---|
+| 1.321B | 5 in 8/9 |
+| 1.372B | 5 in 8/9 |
+| 1.422B | 5 in 9/9 |
+| **1.472B** | **6 (S22) in 9/9** |
+| 1.522B | 5 in 8/9, 4 in 1/9 |
+
+* The 1.472B weights are saved: runs/research/uf2_r3cv/ckpt_R3CV_1472M.pt (the box's ckpt_beststage, md5 dee1a608...).
+* **Training S25 (position 7)** rose to 85% of episodes at 1.509-1.520B (rew ~390, len ~1,140).
+* **Then an unstable stretch from ~1.520B:** approx_kl 0.04-0.07 on most updates, 19/25 updates stopped early by --target-kl (max 0.137), rew 390 -> 230, and the 1.522B eval fell back to S20. It is the pattern of a new skill entering a region whose value the critic does not know yet; watching whether it recovers.
+* The frontier loop's last refresh (1.456B) still saw k=4 (32/32 own map-start episodes at S20). The next refresh sees S22/S25, so the practice frontier moves forward.
+
+**The jitter replicates on a second lineage.** uf2R3P2 (R3P's weights, plain frontier loop: no S22 episode in 741M -> 1.18B) was switched to --vel-scale 1.0 1.3 at 1.1786B. Training episodes at S22 within 30M steps:
+
+| step | episodes at S22, of ~700 |
+|---|---|
+| 1.192B | 3 |
+| 1.197B | 12 |
+| 1.203B | 28 |
+| 1.208B | 65 |
+
+**The no-jitter arms are still without S22:** uf2R3C (control) and uf2R3CF (frontier loop, local), ~400-700M steps after their S20 breakthroughs.
+
+**uf2R3SF** (the scratch lineage, parked at S18) had its frontier loop switched to --vel-scale 1.0 1.3 at 506M. The old loop was killed by exact pid in its own ssh call and the new one launched in a separate call.
