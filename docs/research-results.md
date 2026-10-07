@@ -35251,3 +35251,16 @@ Every box is gone and the registry is empty.
 | ckpt_R3CV3_best (1.977B) | S35 8/9 |
 
 uf2R3CV6/ckpt_beststage.pt holds S36 9/9.
+
+## 2026-10-07 16:28 (machine clock) - uf2R3CV6 stopped at 3.49B at the user's request; final checkpoints saved
+
+* **Greedy evals from the map start, 3.13-3.49B:** 11 (S36) in 9/9 at most evals, with single dips: 5 at 3.235B; 2-3 at 3.437B; 11 in 8/9 at 3.487B.
+* **S36 held for ~1.4B steps with recoveries, but it never reached list position 12 (S37).**
+* **Saved, md5-checked:**
+
+  | file | step | greedy from the map start | md5 |
+  |---|---|---|---|
+  | runs/research/uf2_r3cv/ckpt_R3CV6_best.pt | 2.128B | S36 9/9 | 4575bd13... |
+  | runs/research/uf2_r3cv/ckpt_R3CV6_latest.pt | 3.492B | - | d30b6510... |
+
+* The trainer, its frontier loop and the wrapper were stopped by exact pid. No vast boxes are rented.
