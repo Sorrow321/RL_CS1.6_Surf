@@ -35083,3 +35083,36 @@ From each line's S18 touch:
 * One greedy episode is now recorded with the stochastic ones; its states are the policy's own as much as the sampled ones. The frontier is therefore at least as deep as the greedy line.
 * A check with 8 stochastic + 1 greedy episodes on R3CV@1.623B gives k=6 (S25), stages {5, 6}.
 * All four running loops (local R3CV2; vast R3CV, R3P2, R3SF) were restarted on deba13d: listed, killed by exact pid, relaunched, each in its own call.
+
+## 2026-10-07 11:49 (machine clock) - three jitter runs COLLAPSED to touching nothing; the monotone frontier (5f833d1); restarts from the best checkpoints
+
+**The collapses (greedy evals from the map start):**
+
+| arm | greedy evals | training episodes touching nothing |
+|---|---|---|
+| uf2R3CV (frac 0.5) | 2.83-2.93B: 0 targets in 9/9 | 606-632 of ~760 (rew ~38) |
+| uf2R3CV2 (frac 0.25) | S25 9/9 at 1.674-1.825B, then 1 at 1.976B, then 0 at 2.03-2.13B | 519-674 |
+
+* **uf2R3P2** had touched nothing at 1.346B earlier and recovered: S22 8/9 at 1.547B, S20 at 1.648B.
+* **The collapsed greedy line** flies from the spawn straight into S19's crest kill sheet without touching S19, dying at ~2.7 s.
+
+**What preceded each collapse:** the frontier loop had put practice on the stages before an S19 touch, with velocity jitter (S19 is list position 0 AND 3):
+
+| arm | stages practised before the collapse | what moved them there |
+|---|---|---|
+| uf2R3P2 | {3, 4} since 1.18B | its frontier at S20 |
+| uf2R3CV2 | {2, 3} (the 10:39 file) | 32 stochastic episodes stopping at S19 while the greedy line held S25 9/9 |
+| uf2R3CV, final collapse | {0, 1} (09:02, 2.62B) | the loop followed an earlier dip back |
+
+* **Hypothesis (not proven):** jittered, faster-than-ever S19 approaches teach a fast S19 dive. Unlike at S20 / S22, more speed at S19 is lethal (the crest kill sheet). The greedy line then uses the dive from the spawn, the map-start episodes die before any touch, and the loop finds nothing to cut.
+* **The no-jitter arms never collapsed this way:** the control held S20 9/9 for 1.2B steps, and the static k2/k3 practice (R3P) held S20 for 1.4B steps.
+
+**--monotone (5f833d1):** the frontier never moves back. A recording shallower than the deepest frontier written so far keeps the file; the floor starts at the file's own deepest seq_k. The map-start share keeps the early targets, and practice stays at the deepest one. Combined with --greedy 1, a frontier past S20 never cuts S19 states again.
+
+**Restarts, all with the jitter loop --vel-scale 1.0 1.3 --greedy 1 --monotone:**
+
+| arm | from | practice frac | initial frontier | where |
+|---|---|---|---|---|
+| uf2R3CV3 | R3CV2's ckpt_beststage@1.674B (mean eval stage 7.00; md5 ea6c141f...) | 0.25 | k=6: stages {5, 6} (before S22 / S25), 87 + 87 own states (29/33 episodes at 7 touches) | local 5090, 11:26 |
+| uf2R3CV4 | R3CV@1.623B (md5 73e84377...) | 0.25 | k=6: {5, 6}, 45 + 45 | vast 54588915 (replaces the collapsed R3CV), 11:48, registry +108 min |
+| uf2R3P2 (same run) | - | 0.5 | loop restarted --monotone; file re-cut from its own ckpt_beststage@1.497B (S22 9/9): k=5, {4, 5} (before S20 / S22), 93 + 93 | vast 54591944 |
