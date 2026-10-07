@@ -34974,3 +34974,20 @@ From each line's S18 touch:
 * **Why:** Florensa-style start-state perturbation. The frontier is also met faster than the policy reaches it, so the critic can learn what more energy is worth at S20, and that value can pull speed upstream.
 * **The rule is generic** (a scale band on the policy's own states, nothing from the map or the record). It is still a perturbation of the start distribution, so this is an analysis arm until it repeats elsewhere.
 * --spawn-states-frac 0.5, SELF_STATES=1, no critic warm-up.
+
+## 2026-10-07 09:26 (machine clock) - uf2R3CV meets S22 in training within minutes; uf2R3P2 switched to the same velocity jitter
+
+* **uf2R3CV** (frontier loop + velocity x U(1.0, 1.3), from R3C@1.3207B): training episodes at list position 6 (S22) appear at 1.344B and grow.
+
+  | step | episodes at S22 (position 6) | episodes at S25 (position 7) |
+  |---|---|---|
+  | 1.344B | 1 | 0 |
+  | 1.391B | 3 | 0 |
+  | 1.399B | 24 | 0 |
+  | 1.407B | 132 of ~700 | 2 (first ever) |
+
+  * **The greedy evals from the map start (no boost) still stop at S20:** 1.321B and 1.372B, 8/9 at position 5.
+  * These S22 episodes are most likely the boosted practice starts. The frontier loop records from the map start WITHOUT the boost, so it moves the practice frontier only once the policy reaches S22 by itself.
+* **uf2R3P2** (R3P lineage) had sat at S20 without one S22 episode from 741M to ~1.1B under the plain frontier loop, a near-copy of the local uf2R3CF's condition. At 1,178,599,424 its loop was restarted with **--vel-scale 1.0 1.3**, a second lineage for the jitter.
+  * The restart lost its old loop and the remote shell to a grep self-match, the same trap as before (memory updated). The trainer was untouched; the new loop was launched in a separate call.
+* **uf2R3CF** (local) stays the no-jitter frontier-loop comparison on R3C's lineage; uf2R3C stays the control.
