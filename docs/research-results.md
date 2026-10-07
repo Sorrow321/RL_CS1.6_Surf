@@ -34775,3 +34775,24 @@ Tested by putting the WR's own positions through OUR rules: the sequence, `--ram
 * **The question:** with the valley removed, does PPO move from the low S19 ride to a line that clears the teleport sheet and touches S20 (list position 5)?
 * **Read:** training "reached per episode" (5+), greedy evals from the map start, and the death-charge line.
 * Trainer pid 8396; compiled; record gate passed.
+
+## 2026-10-07 06:29 (machine clock) - uf2SEQ_WRdiagS17R COLLAPSED under --ramp-death-charge 1 (the agent learned to stall in the pit to avoid deaths); stopped; uf2SEQ_WRdiagS17R2 = route reward WITHOUT the death charge
+
+**uf2SEQ_WRdiagS17R** (route + death charge 1, from S17N0@589.8M; 590M -> 763M):
+* **During the 20-update critic warm-up (actor frozen):** 83-95% of training episodes landed on S19, and greedy eval 590M touched 4 in 6 of 9 episodes.
+* **Once the actor was unfrozen it fell apart within ~20M steps.**
+
+| step | reached per episode (list position: count) | episode length (ticks) | reward |
+|---|---|---|---|
+| 600M | 4: 821, 3: 91 | 725 | 92.5 |
+| 608M | 4: 57, 3: 256, 2: 493 | 624 | 52.4 |
+| 617M | 4: 1, 3: 25, 2: 674 | 717 | 46.0 |
+| 622M on | 2 almost only | 1,655 -> 2,800-2,970 | ~35 |
+
+* **The agent now stalls in the pit.** After touching S19 and S17 it goes no further, and the stall rule ends the episode at ~28 s.
+* **Greedy evals:** 640M, 691M and 741M touched 2 in 9/9.
+* **The death-charge log:** 8.0 per death early on, then 95.7 per death at 730M.
+* **Why:** the full route was worth MORE per episode (4 x 25 reach - time ~ 96, against ~36 for the stall). But the charge lands as a lump on the actions just before a death. With lambda 0.95 those are the climb to S19 and the landing, so PPO learned to avoid progress that ends in a death, and every path here ends in one.
+* **The charge, as built, punishes progress, not dying.** Stopped at ~763M (06:28).
+
+**uf2SEQ_WRdiagS17R2:** the same checkpoint and flags with `--ramp-death-charge 0`, i.e. fixes 1 (switch at the touch) and 2 (the fixed route potential) only.
