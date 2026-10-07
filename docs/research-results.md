@@ -35116,3 +35116,22 @@ From each line's S18 touch:
 | uf2R3CV3 | R3CV2's ckpt_beststage@1.674B (mean eval stage 7.00; md5 ea6c141f...) | 0.25 | k=6: stages {5, 6} (before S22 / S25), 87 + 87 own states (29/33 episodes at 7 touches) | local 5090, 11:26 |
 | uf2R3CV4 | R3CV@1.623B (md5 73e84377...) | 0.25 | k=6: {5, 6}, 45 + 45 | vast 54588915 (replaces the collapsed R3CV), 11:48, registry +108 min |
 | uf2R3P2 (same run) | - | 0.5 | loop restarted --monotone; file re-cut from its own ckpt_beststage@1.497B (S22 9/9): k=5, {4, 5} (before S20 / S22), 93 + 93 | vast 54591944 |
+
+## 2026-10-07 11:50 (machine clock) - training episodes past S25: S30, S33, S35 (uf2R3CV3); the monotone floor holds
+
+**uf2R3CV3** (local; monotone jitter loop, frac 0.25) practises from before S22 / S25. Its training histograms (list position: episodes, of ~600):
+
+| step | S30 (8) | S33 (9) | S35 (10) |
+|---|---|---|---|
+| 1.744B | 3 | 0 | 0 |
+| 1.831B | 23 | 0 | 0 |
+| 1.839B | 30 | 10 | 0 |
+| 1.847B | 12 | 29 | 7 |
+
+* That is 10 of the 17 targets in training. These are mostly the boosted practice starts.
+* **The greedy line from the map start went back to S20:** 7 in 8/9 at 1.674B, then 5 in 9/9 at 1.725B, 1.775B and 1.826B.
+* **The --monotone floor held** at 1.763B: the recording reached k=4 < floor 6, so the file was kept. Practice therefore did not follow the greedy dip back to S19 states. The map-start share (75%) has to recover S20 -> S22 itself.
+
+**uf2R3CV4** (vast, from R3CV@1.623B, same setup): 7 (S25) in 371 of ~440 training episodes at 1.636B, rew 409.
+
+**uf2R3P2** (vast, monotone, floor k=5): 6 (S22) in 616 of ~728 at 1.714B. Its loop at 1.673B: 28/33 own episodes at S22.
