@@ -34740,3 +34740,38 @@ Tested by putting the WR's own positions through OUR rules: the sequence, `--ram
 * switch the target at the TOUCH, not at the box exit;
 * one fixed potential reference per target, so distance created at the switch is not paid;
 * the death charge, i.e. the terminal correction for PBRS under termination (Grzes 2017).
+
+## 2026-10-07 06:08 (machine clock) - the three reward fixes implemented (--ramp-reward route + --ramp-death-charge); S17N0's final checkpoint sits in a dip (55% vs 90% landing frozen); uf2SEQ_WRdiagS17R launched from its 589.8M weights
+
+**The user (2026-10-07):** "Yeah, let's do it" - the three fixes proposed with the pit-exit reward field.
+
+**`--ramp-reward route` + `--ramp-death-charge` (cf9dd58):**
+1. **The shaping target switches at the TOUCH.** It is the next unreached target: T2 from the touch of T1, under `--ramp-touch`. Lifting off a touched ramp toward the next one is paid, not charged.
+   * Side effect: the target is S19 already while the agent rides S18 (S18 touched), so riding S18 further toward S19, as the WR does, is now paid.
+2. **The potential is the ROUTE LENGTH still ahead.** It is the Euclidean distance to that target plus the FIXED target-to-target lengths of the rest of the list (the shortest distance between consecutive pieces' validated contacts).
+   * It is paid across switches, so a switch earns nothing for distance the agent created. Touching T1 far from T2 is charged at the touch; touching at the point closest to T2 is neutral.
+3. **`--ramp-death-charge 1`:** a death gives back the distance shaping its episode collected. Successes and truncations keep it.
+* `gr.dist_shaping_step` is unit-tested; tests 56/56.
+
+**Smoke** (from S17N0/ckpt_final, 600M, 14M steps):
+* route and the charge run, at 20.8 shaping given back per death;
+* the critic warm-up has explained variance 0.96-0.97;
+* the record gate passes.
+
+**Found on the way: S17N0's ckpt_final (600M) sits at the start of a transient dip.**
+* A frozen-actor resume (--critic-warmup, so the weights are exactly the checkpoint's) lands on S19 in only **55-58%** of training episodes. The identical numbers came out with and without the new reward flags, so the reward is not involved.
+* Its ckpt_latest (589.8M) lands in **89-90%**.
+* Training-time landing shares are volatile (S17N0's own log has 59-75% dips that recover), so a checkpoint taken at an arbitrary step can be a dip.
+* The run resumes the 589.8M weights, copied to runs/research/uf2_route/ckpt_S17N0_590M.pt (md5 41ea38fdb85fa7a8bfb39eb3b314b3ef).
+
+**uf2SEQ_WRdiagS17R:**
+* Resumed from runs/research/uf2_route/ckpt_S17N0_590M.pt.
+* Flags:
+  * `--ramp-reward route --ramp-death-charge 1 --critic-warmup 20`;
+  * the 17-target WR sequence (labelled demo diagnostic), `--ramp-touch 1`;
+  * novelty off (`--int-coef 0 --int-match 0`), `--target-kl 0.05 --save-best 1`;
+  * 60 s episodes, 1,024 envs, `--steps 3e9`, `--record-every 50e6`.
+* No temperature and no pit spawns: the reward change alone.
+* **The question:** with the valley removed, does PPO move from the low S19 ride to a line that clears the teleport sheet and touches S20 (list position 5)?
+* **Read:** training "reached per episode" (5+), greedy evals from the map start, and the death-charge line.
+* Trainer pid 8396; compiled; record gate passed.
