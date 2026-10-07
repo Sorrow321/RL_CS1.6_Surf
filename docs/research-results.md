@@ -35059,3 +35059,27 @@ From each line's S18 touch:
 **uf2R3CV2** (local 5090, 10:14): from R3CV@1.623B, the frontier loop with --vel-scale 1.0 1.3 and **--spawn-states-frac 0.25** (half R3CV's practice share). It tests whether a smaller practice share keeps the early targets while the frontier moves.
 * The initial file is k=6: stages {5, 6} = before S22 / S25, 33 + 33 states. The checkpoint's own 32 map-start episodes reach 5 touches in 21 and 7 in 11.
 * Its first eval: mean stage 6.56.
+
+## 2026-10-07 10:49 (machine clock) - the practice share: 0.25 holds S25 where 0.5 collapsed; R3P2 at S22 9/9; the next wall S25 -> S30; the frontier records a greedy episode too
+
+**Greedy evals from the map start (list position, 9 episodes):**
+
+| arm | what it is | evals |
+|---|---|---|
+| **uf2R3CV2** (local) | R3CV@1.623B + jitter loop, **--spawn-states-frac 0.25** | **7 (S25) in 9/9 at 1.674B, 1.724B, 1.775B and 1.825B**: four in a row, no collapse |
+| uf2R3CV | frac 0.5 | 5 at 2.278B / 2.328B, 7 in 9/9 at 2.378B (oscillating) |
+| uf2R3P2 | R3P lineage, jitter since 1.18B | 4/5 mixed (1.396B), 5 in 9/9 (1.447B), **6 (S22) in 9/9 (1.497B)**: the jitter result repeats on the second lineage |
+| uf2R3C | the control | 5 (S20) in 9/9 through 1.899B; no S22 in ~1.2B steps since its S20 breakthrough. **Stopped** (stationary; the stationary line is its result) |
+| uf2R3SF | scratch + loop, jitter since 506M | parked at S18 through 686M. **Stopped** (stationary) |
+
+* The stopped arms' drivers harvest their logs and release the boxes.
+
+**The S25 -> S30 wall (measurement only):**
+* **The WR** leaves S25 at 1,467 u/s, is at z 288 one second later and touches S30 (y 3,117..3,598, z -494..229) at +2.0 s.
+* **R3CV2's greedy line** (1.825B) leaves S25 at ~1,100-1,120 u/s and is at z 121-193 / 714-757 u/s at +1 s. It reaches y ~2,992 (short of S30's 3,117) at +2 s, slides down the face there and dies in the floor kill sheet *8 (z -767) at ~16.5 s.
+* The same shape as S22: too little speed off the previous ramp.
+
+**The frontier recorder now includes greedy episodes** (deba13d, --greedy 1 by default). R3CV2's loop had recorded 32 stochastic episodes that stopped at S19 (stages 2/3) while the greedy line reached S25 in 9/9, and moved the practice back three stages.
+* One greedy episode is now recorded with the stochastic ones; its states are the policy's own as much as the sampled ones. The frontier is therefore at least as deep as the greedy line.
+* A check with 8 stochastic + 1 greedy episodes on R3CV@1.623B gives k=6 (S25), stages {5, 6}.
+* All four running loops (local R3CV2; vast R3CV, R3P2, R3SF) were restarted on deba13d: listed, killed by exact pid, relaunched, each in its own call.
