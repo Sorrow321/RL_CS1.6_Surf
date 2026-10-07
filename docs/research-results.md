@@ -35144,3 +35144,30 @@ From each line's S18 touch:
 * **Manual intervention at 1.904B:** stage 4 = 57 own states 0.3/0.5/0.8 s before the S20 touch, jittered U(1.0, 1.3), was added to the file. The cut is from the loop's 1.849B recording (32 stochastic + 1 greedy, 31 at 5 touches). The file is now {4, 5, 6} = before S20 / S22 / S25, 57 each, with no S19 states.
   * The trainer re-read it at 1.904B. The monotone loop keeps the file until a map-start recording reaches S25 again.
   * The generic form of this ("practise from the greedy line's frontier up to the deepest frontier") is not in the tool yet.
+
+## 2026-10-07 12:31 (machine clock) - S35 FROM THE MAP START (uf2R3CV3 greedy 8/9 at 1.977B), then both R3CV lines collapsed again; uf2R3CV5 (--target-kl 0.02)
+
+**uf2R3CV3** (local), after stage 4 was added at 1.904B:
+
+| step | greedy evals from the map start (list position, 9 episodes) |
+|---|---|
+| 1.926B | mean stage 7.89 |
+| **1.977B** | **10 (S35) in 8/9, 4 in 1/9 (mean 9.33)** |
+| 2.027B | 2 |
+| 2.077B | 5 |
+| 2.128B | 1 |
+
+* That is **10 of the 17 targets**, the furthest any policy has flown from the map start in this program.
+* The weights: runs/research/uf2_r3cv/ckpt_R3CV3_best.pt (md5 08708afd...).
+* Its loop at 2.010B: 25/33 own map-start episodes at 10 touches, 1 at 11, so frontier k=10 and stages {9, 10}.
+
+**uf2R3CV4** (vast, R3CV@1.623B, monotone floor k=6, practice only {5, 6} = before S22 / S25, never S19) **ALSO collapsed:**
+* greedy 3 at 1.926B, then 0 at 1.976-2.077B; 1,480-1,605 of ~1,660 training episodes touch nothing.
+* **So the "practice before S19" hypothesis is wrong, or not the whole story.**
+* Every collapse so far happened under jittered practice; no arm without practice starts ever collapsed (R3C held S20 for 1.2B steps).
+* **The likelier mechanism is plain interference.** Gradients from the deep practice starts move shared weights, and the opening drifts. Its exploration noise is tiny (yaw sigma ~0.03) and the dynamics are chaotic, so it drifts until the greedy line misses S19 entirely.
+* uf2R3CV4 was harvested and released (10:28Z); its tunnel was stopped.
+
+**uf2R3P2** (vast, monotone floor k=5, frac 0.5) holds: evals 6 / 5 / 6 / 5 at 1.698-1.849B; 6 (S22) in ~90% of training episodes.
+
+**uf2R3CV5** (local, 12:30): R3CV3's best (1.977B) with **--target-kl 0.02** (was 0.05), one stabiliser, smaller policy steps. Otherwise as R3CV3: frac 0.25 and the monotone jitter loop with floor k=9. Its initial file from the best checkpoint: 24/33 map-start episodes at 10 touches, so stages {8, 9} (before S33 / S35), 72 + 72.
