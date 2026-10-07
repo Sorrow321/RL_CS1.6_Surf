@@ -74,31 +74,48 @@ def jitter_speed(states, lo, hi, rng):
     return out
 
 
-def build(ckpt, map_path, out, source, episodes, leads, ep_ticks, work, python, seed,
-          vel_scale=(1.0, 1.0)):
-    """record `ckpt`, cut its frontier, write `out` atomically -> a one-line report (or None)"""
-    work.mkdir(parents=True, exist_ok=True)
-    ck = work / "frontier_ckpt.pt"
-    shutil.copyfile(ckpt, ck)                   # never read a checkpoint while it is rewritten
-    traj, dump = work / "frontier_rec.jsonl", work / "frontier_rec_states.npz"
+def record(ck, map_path, episodes, ep_ticks, work, python, tag, stochastic):
+    """one record_ckpt.py run with --dump-states -> (touches, eps, tick_ms) or None"""
+    traj, dump = work / f"frontier_rec_{tag}.jsonl", work / f"frontier_rec_{tag}_states.npz"
     for p in (traj, dump):
         if p.exists():
             p.unlink()
     cmd = [python, str(ROOT / "tools" / "record_ckpt.py"), str(ck), "--map", str(map_path),
-           "--episodes", str(episodes), "--ep-ticks", str(ep_ticks), "--stochastic",
-           "--dump-states", str(dump), "--out", str(traj)]
+           "--episodes", str(episodes), "--ep-ticks", str(ep_ticks),
+           "--dump-states", str(dump), "--out", str(traj)] + (["--stochastic"] if stochastic else [])
     r = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True)
     if r.returncode != 0 or not traj.exists() or not dump.exists():
         tail = (r.stdout + r.stderr).strip().splitlines()[-3:]
-        print(f"[{time.strftime('%H:%M:%S')}] record failed rc {r.returncode}: {' | '.join(tail)}",
-              flush=True)
+        print(f"[{time.strftime('%H:%M:%S')}] record ({tag}) failed rc {r.returncode}: "
+              f"{' | '.join(tail)}", flush=True)
         return None
     touches, tick_ms = episode_touches(traj)
     z = np.load(dump, allow_pickle=False)
     eps = [z[k] for k in sorted(z.files)]
     if len(eps) != len(touches):
-        print(f"{len(eps)} dumped episodes for {len(touches)} recorded ones - skipped", flush=True)
+        print(f"{len(eps)} dumped episodes for {len(touches)} recorded ones ({tag}) - skipped",
+              flush=True)
         return None
+    return touches, eps, tick_ms
+
+
+def build(ckpt, map_path, out, source, episodes, leads, ep_ticks, work, python, seed,
+          vel_scale=(1.0, 1.0), greedy=1):
+    """record `ckpt`, cut its frontier, write `out` atomically -> a one-line report (or None).
+    `greedy` greedy episodes join the stochastic ones (2026-10-07: a policy whose greedy line
+    reached S25 9/9 recorded 32 stochastic episodes that stopped at S19, and the frontier moved
+    back three stages); their states are the policy's own as much as the sampled ones"""
+    work.mkdir(parents=True, exist_ok=True)
+    ck = work / "frontier_ckpt.pt"
+    shutil.copyfile(ckpt, ck)                   # never read a checkpoint while it is rewritten
+    rec = record(ck, map_path, episodes, ep_ticks, work, python, "stoch", True)
+    if rec is None:
+        return None
+    touches, eps, tick_ms = rec
+    if greedy > 0:
+        g = record(ck, map_path, greedy, ep_ticks, work, python, "greedy", False)
+        if g is not None:
+            touches, eps = touches + g[0], eps + g[1]
     k_max, stages = frontier_stages(touches)
     hist = {}
     for t in touches:
@@ -162,6 +179,8 @@ def main(argv=None):
     ap.add_argument("--every-min", type=float, default=10.0)
     ap.add_argument("--vel-scale", type=float, nargs=2, default=[1.0, 1.0],
                     help="multiply every cut state's velocity by U(LO, HI) (1 1 = off)")
+    ap.add_argument("--greedy", type=int, default=1,
+                    help="greedy episodes recorded with the stochastic ones (0 = off)")
     ap.add_argument("--pid-file", default=None, help="exit when this trainer is gone")
     ap.add_argument("--once", action="store_true")
     ap.add_argument("--python", default=sys.executable)
@@ -178,7 +197,7 @@ def main(argv=None):
     if args.once:
         ck = Path(args.ckpt) if args.ckpt else Path(args.run) / "ckpt_latest.pt"
         rep = build(ck, args.map, out, source, args.episodes, args.leads, args.ep_ticks, work,
-                    args.python, 0, args.vel_scale)
+                    args.python, 0, args.vel_scale, args.greedy)
         print(f"[{time.strftime('%H:%M:%S')}] step {ckpt_step(ck):,}: {rep}", flush=True)
         return
     ck = Path(args.run) / "ckpt_latest.pt"
@@ -197,7 +216,7 @@ def main(argv=None):
             time.sleep(20)                       # let the trainer finish writing it
             n += 1
             rep = build(ck, args.map, out, source, args.episodes, args.leads, args.ep_ticks,
-                        work, args.python, n, args.vel_scale)
+                        work, args.python, n, args.vel_scale, args.greedy)
             print(f"[{time.strftime('%H:%M:%S')}] step {ckpt_step(work / 'frontier_ckpt.pt'):,}:"
                   f" {rep}", flush=True)
             last_mt, last_t = mt, time.time()
