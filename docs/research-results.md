@@ -35021,3 +35021,41 @@ From each line's S18 touch:
 **The no-jitter arms are still without S22:** uf2R3C (control) and uf2R3CF (frontier loop, local), ~400-700M steps after their S20 breakthroughs.
 
 **uf2R3SF** (the scratch lineage, parked at S18) had its frontier loop switched to --vel-scale 1.0 1.3 at 506M. The old loop was killed by exact pid in its own ssh call and the new one launched in a separate call.
+
+## 2026-10-07 10:15 (machine clock) - S25 FROM THE MAP START (uf2R3CV greedy 9/9 at 1.623B); collapse-and-recovery cycles; uf2R3CV2 (practice share 0.25)
+
+**uf2R3CV greedy evals from the map start:**
+
+| step | list position reached by the 9 episodes |
+|---|---|
+| 1.472B | 6 (S22) 9/9 |
+| 1.522B | 5 (S20) 8/9 |
+| 1.572B | 5 / 6 |
+| **1.623B** | **7 (S25) 9/9** |
+| 1.674B | 2 (S17) 9/9 |
+| 1.724-1.875B | 3 (S18) |
+| 1.925B | 5 (S20) 9/9 |
+| 1.976B | 7 (S25) 7/9, 5 in 2/9 |
+
+* That is 7 of the 17 targets. The 1.623B weights: runs/research/uf2_r3cv/ckpt_R3CV_1623M.pt (md5 73e84377...).
+* **The frontier loop FOLLOWED the collapse and the recovery.** Its own map-start recordings:
+
+  | step | episode depth (touches) | frontier | practice stages |
+  |---|---|---|---|
+  | 1.747B | 3 in 32/32 | k=2 | {1, 2} |
+  | 1.907B | 4 in 32/32 | k=3 | {2, 3} |
+
+  So practice moved back to where the policy failed, then forward again. In training, S25 is at 55-70% of episodes at 1.97-1.99B (rew ~390).
+
+**The other frontier arms are unstable too:**
+* **uf2R3P2** (jitter since 1.18B): its greedy eval at 1.346B touched NOTHING. 9/9 flew from the spawn straight into the kill sheet on S19's crest, the death the program solved weeks ago, at 2.7 s. Training episodes are spread over positions 1-5 at ~1.37B.
+* **uf2R3CF** (frontier loop without jitter, local): its evals dipped to 4 at 1.74B and returned to 5 at 1.84B. Its loop moved back to k=2 at 1.733B. It never touched S22 in ~1.05B steps and was stopped at ~1.85B.
+* **The control uf2R3C has stayed at 5 (S20) 9/9** through 1.65B.
+* No bug found in the spawn matching: the file reload and the pool rebuild happen in the same iteration, before any reset.
+* **Likely cause:** interference between the practice starts and the map start. S19 is BOTH list position 0 (from the spawn) and 3 (from the pit), the jittered k=3 states teach fast S19 approaches, and the R3P2 collapse is exactly a fast dive at the first S19.
+
+**uf2R3SN5 stopped** (parked at S18, ~550M steps stationary; novelty decayed to ~0.5/episode). Box harvested and released 08:12Z; its stale local tunnel was stopped.
+
+**uf2R3CV2** (local 5090, 10:14): from R3CV@1.623B, the frontier loop with --vel-scale 1.0 1.3 and **--spawn-states-frac 0.25** (half R3CV's practice share). It tests whether a smaller practice share keeps the early targets while the frontier moves.
+* The initial file is k=6: stages {5, 6} = before S22 / S25, 33 + 33 states. The checkpoint's own 32 map-start episodes reach 5 touches in 21 and 7 in 11.
+* Its first eval: mean stage 6.56.
