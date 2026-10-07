@@ -115,11 +115,20 @@ def ckpt_step(path):
 
 
 def alive(pid_file):
+    """is the trainer in pid_file running? NEVER os.kill(pid, 0) on Windows: there any signal but
+    the two console events is TerminateProcess - the probe would kill the trainer"""
     try:
         pid = int(Path(pid_file).read_text().strip())
+    except (OSError, ValueError):
+        return False
+    if os.name == "nt":
+        r = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/NH"], capture_output=True,
+                           text=True)
+        return str(pid) in r.stdout
+    try:
         os.kill(pid, 0)
         return True
-    except (OSError, ValueError):
+    except OSError:
         return False
 
 
