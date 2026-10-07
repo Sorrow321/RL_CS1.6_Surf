@@ -35135,3 +35135,12 @@ From each line's S18 touch:
 **uf2R3CV4** (vast, from R3CV@1.623B, same setup): 7 (S25) in 371 of ~440 training episodes at 1.636B, rew 409.
 
 **uf2R3P2** (vast, monotone, floor k=5): 6 (S22) in 616 of ~728 at 1.714B. Its loop at 1.673B: 28/33 own episodes at S22.
+
+## 2026-10-07 11:57 (machine clock) - uf2R3CV3: practice reaches S36 while the map-start line sits at S20; stage 4 (before S20) added to its file by hand
+
+* **uf2R3CV3's training episodes now reach list position 11 (S36):** 10 (S35) in 52-67 and 11 (S36) in 27-39 of ~550 at 1.884-1.894B (rew ~380). They are the practice starts from before S22 / S25.
+* **Its greedy line from the map start is at S20:** 5 in 9/9 at 1.725, 1.775, 1.826 and 1.876B.
+* **The practice never covers the S20 -> S22 kill-sheet crossing.** The stage-5 states are cut AFTER it, under the sheet. The --monotone floor (k=6) correctly refused to move back to {3, 4}, whose stage 3 is the dangerous second S19, but that also kept the crossing out of practice.
+* **Manual intervention at 1.904B:** stage 4 = 57 own states 0.3/0.5/0.8 s before the S20 touch, jittered U(1.0, 1.3), was added to the file. The cut is from the loop's 1.849B recording (32 stochastic + 1 greedy, 31 at 5 touches). The file is now {4, 5, 6} = before S20 / S22 / S25, 57 each, with no S19 states.
+  * The trainer re-read it at 1.904B. The monotone loop keeps the file until a map-start recording reaches S25 again.
+  * The generic form of this ("practise from the greedy line's frontier up to the deepest frontier") is not in the tool yet.
