@@ -1035,8 +1035,11 @@ class GoalSystem:
                                    else P.windows.tick_enter)
             if self.want_dist:
                 # --ramp-reward dist: the distance to the window AFTER this tick's shifts; the
-                # trainer pays its difference only while T1 is unchanged
-                self.ramp_dist[sl] = P.windows.t1_dist(org)
+                # trainer pays its difference only while T1 is unchanged. --ramp-reward route:
+                # the route length still ahead (RampWindows.route_dist), paid across switches
+                self.ramp_dist[sl] = (P.windows.route_dist(org)
+                                      if getattr(self, "route_mode", False)
+                                      else P.windows.t1_dist(org))
                 self.ramp_t1[sl] = P.windows.t1
             if seq:
                 # the last target entered - end the episode; it settles as a success on the next

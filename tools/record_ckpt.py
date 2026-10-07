@@ -82,6 +82,8 @@ class _RouteProbe:
 TRAIN_ONLY = frozenset({
     # --target-kl: PPO's early stop inside the update; a recording runs no update
     "target_kl",
+    # --ramp-death-charge: a training reward term (the eval pays no reward)
+    "ramp_death_charge",
     # --speed-pot: a training reward term (potential-based speed shaping); a recording pays nothing
     "speed_pot",
     # --min-speed-kill / --min-speed-grace: a TRAINING kill rule (force_fail below a speed

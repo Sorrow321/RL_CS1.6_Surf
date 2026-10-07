@@ -435,6 +435,9 @@ class RampWindows:
         # --unstuck-reach stage: the most targets any episode SETTLED since the last read reached
         # (touched under --ramp-touch, else passed); -1 = none settled
         self.iter_best = -1
+        # --ramp-reward route: the fixed target-to-target lengths and their suffix sums, cached
+        self._gap_cache = {}
+        self._suffix_cache = {}
         self.p_zlow = {q: float(min(float(self.tp[f][:, 2].min()) for f in fs))
                        for q, fs in self.pfaces.items()}
         # window shifts since the policy last read them (take_passes, once per decision):
@@ -1180,6 +1183,66 @@ class RampWindows:
             return int(self.k_reach[i]) if self._seq_of(i) is not None else int(self.n_touch[i])
         return int(self.n_capt[i])
 
+    # ------------------------------------------------------------- --ramp-reward route
+    def _piece_gap(self, a, b) -> float:
+        """the fixed length between two consecutive targets: the shortest distance between the
+        validated contact origins of a's piece and b's piece (cached; a property of the map)"""
+        key = (int(a), int(b))
+        if key not in self._gap_cache:
+            fa = [f for f in self.pfaces.get(self._pof.get(int(a)), [int(a)]) if f in self.tt]
+            fb = [f for f in self.pfaces.get(self._pof.get(int(b)), [int(b)]) if f in self.tt]
+            best = np.inf
+            for f in fa:
+                pa = np.asarray(self.tp[f], np.float64)
+                for g in fb:
+                    best = min(best, float(self.tt[g].query(pa)[0].min()))
+            self._gap_cache[key] = best
+        return self._gap_cache[key]
+
+    def _route_suffix(self, seq) -> np.ndarray:
+        """L[k] = the fixed lengths from target k to the end of the list, sum of _piece_gap over
+        consecutive pairs (L[last] = 0)"""
+        key = tuple(int(s) for s in seq)
+        if key not in self._suffix_cache:
+            L = np.zeros(len(key), np.float64)
+            for k in range(len(key) - 2, -1, -1):
+                L[k] = L[k + 1] + self._piece_gap(key[k], key[k + 1])
+            self._suffix_cache[key] = L
+        return self._suffix_cache[key]
+
+    def route_dist(self, origin):
+        """--ramp-reward route: (N,) the route length still ahead of each env - the Euclidean
+        distance to its NEXT UNREACHED target (T1, or T2 once T1 is touched: the target switches at
+        the contact) plus the fixed lengths between the remaining targets of its list. NaN without
+        a list or past its end. Its potential (-scale x this) is continuous at a switch when the
+        touch happens at the point of T1 closest to T2, and charges the distance a switch creates
+        elsewhere - so nothing is paid for where the previous target was left."""
+        origin = np.asarray(origin, np.float64).reshape(-1, 3)
+        out = np.full(self.N, np.nan, np.float64)
+        tgt = np.full(self.N, NONE, np.int64)
+        rest = np.zeros(self.N, np.float64)
+        for i in range(self.N):
+            sq = self._seq_of(i)
+            if sq is None:
+                continue
+            k = int(self.seq_k[i]) + (1 if (self.touch and self.touched[i]) else 0)
+            if k >= len(sq):
+                continue
+            tgt[i] = int(sq[k])
+            rest[i] = self._route_suffix(sq)[k]
+        for s in np.unique(tgt):
+            s = int(s)
+            if s == NONE:
+                continue
+            idx = np.flatnonzero(tgt == s)
+            q = self._pof.get(s)
+            d = np.full(len(idx), np.inf)
+            for f in (self.pfaces.get(q, [s]) if q is not None else [s]):
+                if f in self.tt:
+                    d = np.minimum(d, self.tt[f].query(origin[idx])[0])
+            out[idx] = d + rest[idx]
+        return out
+
     def pop_iter_best(self) -> float:
         """--unstuck-reach stage: the most targets an episode settled since the last call reached
         (touched under --ramp-touch, else passed) - NaN if none settled - and the tally restarts"""
@@ -1459,6 +1522,27 @@ class TargetLidar:
                                           ducked))
             ch = torch.stack(chs, dim=-1).to(img.dtype)
         return torch.cat([img, ch], dim=-1)
+
+
+def dist_shaping_step(prev, cur, t_prev, t_cur, ended, death, bank, scale, route, kappa):
+    """one physics tick of --ramp-reward dist / route for N envs -> (pay, bank).
+    dist: scale x the drop of the distance to T1, paid only while T1 is unchanged (a switch
+    re-anchors at zero); route: the drop of the route length still ahead, paid across switches
+    too (the potential is continuous). An ENDED row is paid nothing (its state is already the
+    respawn). --ramp-death-charge kappa: a DEATH row gives back kappa x the shaping its episode
+    collected (the bank); every ended row's bank restarts at 0."""
+    prev = np.asarray(prev, np.float64)
+    cur = np.asarray(cur, np.float64)
+    ended = np.asarray(ended, bool)
+    ok = ~ended & np.isfinite(prev) & np.isfinite(cur)
+    if not route:
+        ok &= np.asarray(t_prev) == np.asarray(t_cur)
+    pay = np.where(ok, scale * (prev - np.where(np.isfinite(cur), cur, 0.0)), 0.0)
+    bank = np.asarray(bank, np.float64) + pay
+    if kappa:
+        pay = pay - np.where(np.asarray(death, bool), kappa * bank, 0.0)
+    bank = np.where(ended, 0.0, bank)
+    return pay, bank
 
 
 def make_vec_feed(windows):

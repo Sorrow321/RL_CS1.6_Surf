@@ -5191,7 +5191,14 @@ def main() -> None:
                          "or the next one's after a skip) - the 'you reached the ramp' event of "
                          "--ramp-reward dist (the user, 2026-10-06). 0 (default) = off. "
                          "ckpt restores")
-    ap.add_argument("--ramp-reward", default=None, choices=("arc", "pass", "dist"),
+    ap.add_argument("--ramp-death-charge", type=float, default=None,
+                    help="--ramp-reward dist / route: a DEATH (an episode that ends, not by a "
+                         "success, not by the time limit) gives back KAPPA x the distance shaping "
+                         "its episode collected - with 1 a dying episode nets zero shaping, the "
+                         "terminal correction for potential shaping under termination (Grzes "
+                         "2017). Successes and truncations keep theirs. 0 / unset = off. ckpt "
+                         "restores")
+    ap.add_argument("--ramp-reward", default=None, choices=("arc", "pass", "dist", "route"),
                     help="--goal-planner ramps: the reward. arc (default) = signed arc progress "
                          "along the window line (100 per 1,500 u, the line re-laid at every "
                          "window change); pass = +1 for every target PASSED - each window shift "
@@ -6987,7 +6994,7 @@ def main() -> None:
         for _k in ("ramp_vocab", "target_channel", "ramp_topk", "ramp_horizon", "ramp_fade",
                    "ramp_reward", "ramp_offtarget_pen", "ramp_obs_pass", "ramp_sequence",
                    "ramp_sequence_source", "target_views", "ramp_exit_bonus", "ramp_pairs",
-                   "ramp_reach_bonus", "ramp_obs_vec", "ramp_touch"):
+                   "ramp_reach_bonus", "ramp_obs_vec", "ramp_touch", "ramp_death_charge"):
             if _k == "ramp_sequence" and flag_given("--ramp-pairs"):
                 continue      # --ramp-pairs replaces a checkpoint's global sequence (one map's ids)
             if _k == "ramp_pairs" and flag_given("--ramp-sequence"):
@@ -8538,7 +8545,7 @@ def main() -> None:
                 ("ramp_vocab", "target_channel", "ramp_topk", "ramp_horizon", "ramp_fade",
                  "ramp_reward", "ramp_offtarget_pen", "ramp_obs_pass", "ramp_sequence",
                  "ramp_sequence_source", "target_views", "ramp_exit_bonus", "ramp_pairs",
-                 "ramp_reach_bonus", "ramp_obs_vec", "ramp_touch")
+                 "ramp_reach_bonus", "ramp_obs_vec", "ramp_touch", "ramp_death_charge")
                 if flag_given(f"--{_k.replace('_', '-')}")]
         if _set:
             raise SystemExit(f"{', '.join(_set)} without --goal-planner ramps")
@@ -8553,6 +8560,7 @@ def main() -> None:
         args.ramp_reach_bonus = None
         args.ramp_obs_vec = None
         args.ramp_touch = None
+        args.ramp_death_charge = None
         args.ramp_pairs = None
     # --ramp-reward pass: +1 per window shift, added to the per-tick reward after the goal system's
     # step; the arc shaping is off (arc_scale 0 below)
@@ -8600,7 +8608,21 @@ def main() -> None:
     ROFF = float(args.ramp_offtarget_pen) if RPLAN and args.ramp_offtarget_pen else 0.0
     # --ramp-reward dist: potential shaping on the Euclidean distance to T1 (100 per 1,500 u, the
     # arc's scale times --race-shaping), its difference paid per tick while T1 is unchanged
-    RDIST = RPLAN and args.ramp_reward == "dist"
+    RDIST = RPLAN and args.ramp_reward in ("dist", "route")
+    # --ramp-reward route (the user, 2026-10-07, after the pit-exit reward field): the potential is
+    # the route length still ahead - the distance to the NEXT UNREACHED target (the switch happens
+    # at the touch) plus the fixed target-to-target lengths of the rest of the list - paid across
+    # switches, so a switch pays nothing for the distance it creates
+    RROUTE = RPLAN and args.ramp_reward == "route"
+    RDC = float(args.ramp_death_charge or 0.0) if RPLAN else 0.0
+    if RROUTE and not (int(args.ramp_touch or 0) and (args.ramp_sequence or args.ramp_pairs)):
+        raise SystemExit("--ramp-reward route measures the route along a target LIST and switches "
+                         "at the TOUCH: it needs --ramp-touch 1 and --ramp-sequence / --ramp-pairs")
+    if RDC and not RDIST:
+        raise SystemExit("--ramp-death-charge gives back the distance shaping: it needs "
+                         "--ramp-reward dist or route")
+    if RDC and (not np.isfinite(RDC) or RDC < 0.0):
+        raise SystemExit(f"--ramp-death-charge must be finite and >= 0, got {RDC!r}")
     RD_SCALE = ((100.0 / 1500.0) * (float(args.race_shaping) if args.race_shaping is not None
                                     else 1.0)) if RDIST else 0.0
     # --ramp-reach-bonus: K per target entered on the tick
@@ -8611,13 +8633,22 @@ def main() -> None:
                              "tick; --reward-per-decision would drop them silently")
         if not np.isfinite(RREACH) or RREACH < 0.0:
             raise SystemExit(f"--ramp-reach-bonus must be finite and >= 0, got {RREACH!r}")
-    if RDIST:
+    if RROUTE:
+        print(f"--ramp-reward route: potential shaping on the ROUTE LENGTH still ahead (the "
+              f"Euclidean distance to the next unreached target - T2 from the touch of T1 - plus "
+              f"the fixed target-to-target lengths of the rest of the list) at {RD_SCALE:.6g}/u, "
+              f"paid across target switches; the arc pays nothing"
+              + (f"; +{RREACH:g} per target touched" if RREACH else ""))
+    elif RDIST:
         print(f"--ramp-reward dist: potential shaping on the Euclidean distance to T1 at "
               f"{RD_SCALE:.6g}/u (100 per {100.0 / RD_SCALE:,.0f} u), re-anchored at every window "
               f"shift and episode boundary; the arc pays nothing"
               + (f"; +{RREACH:g} per target entered" if RREACH else ""))
     elif RREACH:
         print(f"--ramp-reach-bonus: +{RREACH:g} per target entered")
+    if RDC:
+        print(f"--ramp-death-charge {RDC:g}: a death gives back {RDC:g} x the distance shaping "
+              "its episode collected (successes and truncations keep it)")
     if RPLAN:
         print(f"--goal-planner ramps: off-target ramp contact "
               + (f"charged {ROFF:g} per tick" if ROFF else "logged, not charged"))
@@ -12612,7 +12643,8 @@ def main() -> None:
                                "ramp_exit_bonus": float(args.ramp_exit_bonus or 0.0),
                                "ramp_reach_bonus": float(args.ramp_reach_bonus or 0.0),
                                "ramp_obs_vec": int(args.ramp_obs_vec or 0),
-                               "ramp_touch": int(args.ramp_touch or 0)})
+                               "ramp_touch": int(args.ramp_touch or 0),
+                               "ramp_death_charge": float(args.ramp_death_charge or 0.0)})
         if RPAIRS_OF:
             # --ramp-pairs: MIRRORED by record_ckpt.py (each map's pairs are its eval spawns); the
             # provenance of every map's pairs rides with every checkpoint, and a demo-derived one
@@ -14211,6 +14243,11 @@ def main() -> None:
     # --ramp-reward dist: per env the last tick's distance to T1 and that T1 (the trainer's own state,
     # carried across iterations; NaN / -1 = re-anchor on the next tick)
     rd_prev = np.full(N, np.nan, np.float64)
+    from surfgym.goalramps import dist_shaping_step
+    # --ramp-death-charge: per env the distance shaping its episode collected so far, and per
+    # report period [deaths, -, net shaping given back at deaths]
+    rd_bank = np.zeros(N, np.float64)
+    rd_dc = [0, 0.0, 0.0]
     rd_t1 = np.full(N, -1, np.int64)
     if args.goals:
         from surfgym.goalsys import GoalSystem, RampSlot
@@ -14460,6 +14497,8 @@ def main() -> None:
                                 if RPLAN else {}))
         if RDIST:
             goalsys.want_dist = True
+            # --ramp-reward route: the route length still ahead instead of the distance to T1
+            goalsys.route_mode = bool(RROUTE)
         if args.goal_obs == "fanline":
             # --goal-obs fanline: the cameras draw the goal system's lines
             slots[0].lidar.line = goalsys.line
@@ -16143,12 +16182,26 @@ def main() -> None:
                         # --ramp-reward dist: the drop of the Euclidean distance to T1 since the
                         # last tick, paid only while T1 is the same target and the row did not
                         # end (an ended row's state is already the respawn); a window shift or a
-                        # new episode re-anchors at zero instantaneous reward
+                        # new episode re-anchors at zero instantaneous reward. route: the drop of
+                        # the route length still ahead, paid across switches.
+                        # --ramp-death-charge: a death gives back kappa x its episode's shaping
                         _dn = goalsys.ramp_dist
                         _tn = goalsys.ramp_t1
-                        _ok = (~(done | trunc).astype(bool) & (_tn == rd_t1)
-                               & np.isfinite(_dn) & np.isfinite(rd_prev))
-                        r = r + np.where(_ok, RD_SCALE * (rd_prev - _dn), 0.0).astype(np.float32)
+                        _ended = (done | trunc).astype(bool)
+                        _death = None
+                        if RDC:
+                            _succ = fleet.goal_hits().astype(bool)
+                            if gmask is not None:
+                                _succ = _succ | np.asarray(gmask, bool)
+                            _death = done.astype(bool) & ~trunc.astype(bool) & ~_succ
+                        _pay, rd_bank = dist_shaping_step(
+                            rd_prev, _dn, rd_t1, _tn, _ended,
+                            _death if _death is not None else np.zeros(len(_ended), bool),
+                            rd_bank, RD_SCALE, RROUTE, RDC)
+                        if RDC:
+                            rd_dc[0] += int(_death.sum())
+                            rd_dc[2] += float(np.where(_death, _pay, 0.0).sum())
+                        r = r + _pay.astype(np.float32)
                         rd_prev[:] = _dn
                         rd_t1[:] = _tn
                     if RREACH and r is not None:
@@ -17314,6 +17367,11 @@ def main() -> None:
                          + " ".join(f"{e + 1}.{k + 1}" for e, k, _ in _h[-8:])
                          + f"; kl {max(x for _, _, x in _h):.3f} max)" if _h else ""))
                 tkl_acc[:3] = [0, 0, []]
+        if RDC and it_no % 25 == 0 and D.is_main and rd_dc[0]:
+            # --ramp-death-charge: what the deaths gave back over the last 25 iterations
+            print(f"--ramp-death-charge: {rd_dc[0]:,} deaths in 25 iterations gave back "
+                  f"{-rd_dc[2]:,.0f} of distance shaping ({-rd_dc[2] / rd_dc[0]:.1f} per death)")
+            rd_dc[:] = [0, 0.0, 0.0]
         # diagnostics hoisted out of the inner loop (plan step 12c): the
         # per-minibatch float() syncs fired 256x/iteration and only the
         # last survived; one fleet-mean read reports the same numbers

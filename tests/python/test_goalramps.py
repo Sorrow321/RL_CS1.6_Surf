@@ -1468,3 +1468,44 @@ def test_a_part_way_spawn_reports_its_list_position_not_its_touch_count(voc):
     w.settle([0, 1], [True, False])
     assert w.stats["touch_hist"] == {3: 1, 0: 1}
     assert w.pop_iter_best() == 3.0
+
+
+def test_route_dist_switches_at_the_touch_and_is_continuous_there(voc):
+    """--ramp-reward route: the route length still ahead is the distance to the NEXT UNREACHED
+    target plus the fixed target-to-target lengths after it; touching T1 at its point closest to
+    T2 leaves it unchanged (the ramps stand 3,000 u apart), and the switch to T2 happens at the
+    touch, not at the box exit"""
+    v, _bsp, _ = voc
+    w = _windows(v)
+    w.set_sequence([0, 1, 2])
+    w.set_touch(True)
+    w.spawn([0, 1], *_state(APPROACH))
+    L = w._route_suffix([0, 1, 2])
+    assert abs(L[0] - 6000.0) < 60.0 and abs(L[1] - 3000.0) < 30.0 and L[2] == 0.0
+    r0 = w.route_dist(np.stack([APPROACH[0], APPROACH[0]]))
+    assert abs(r0[0] - (float(w.t1_dist(np.stack([APPROACH[0], APPROACH[0]]))[0]) + L[0])) < 1e-6
+    _tick(w, ON0)
+    before = w.route_dist(np.stack([ON0[0], APPROACH[0]]))[0]
+    n_ = np.array([0.0, -1.0, 0.0])
+    w.note_touch(*_touches([(ON0[0], n_), None]), np.zeros(2, np.int64))
+    after = w.route_dist(np.stack([ON0[0], APPROACH[0]]))[0]
+    assert abs(after - before) < 120.0                   # continuous at the touch
+    assert w.t1[0] == 0                                  # the window still holds ramp 0 ...
+    d1 = w.tt[1].query(ON0[0][None])[0][0]
+    assert abs(after - (d1 + L[1])) < 1e-6               # ... but the route measures to ramp 1
+
+
+def test_dist_shaping_step_pays_across_switches_only_in_route_mode_and_charges_deaths():
+    """gr.dist_shaping_step: dist re-anchors at a T1 change, route pays across it; an ended row is
+    paid nothing; a death gives back kappa x its episode's bank; every ended row's bank restarts"""
+    prev = np.array([100.0, 100.0, 100.0, 100.0])
+    cur = np.array([90.0, 90.0, 50.0, 50.0])
+    tp = np.array([1, 1, 1, 1])
+    tc = np.array([1, 2, 1, 1])
+    ended = np.array([False, False, True, True])
+    death = np.array([False, False, True, False])
+    bank = np.array([0.0, 0.0, 30.0, 30.0])
+    pay, b = gr.dist_shaping_step(prev, cur, tp, tc, ended, death, bank, 0.5, False, 1.0)
+    assert list(pay) == [5.0, 0.0, -30.0, 0.0] and list(b) == [5.0, 0.0, 0.0, 0.0]
+    pay, b = gr.dist_shaping_step(prev, cur, tp, tc, ended, death, bank, 0.5, True, 0.0)
+    assert list(pay) == [5.0, 5.0, 0.0, 0.0] and list(b) == [5.0, 5.0, 0.0, 0.0]
