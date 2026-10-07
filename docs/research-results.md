@@ -35214,3 +35214,40 @@ From each line's S18 touch:
 * **The loop moved the frontier forward:** at 2.060B, 22/33 own map-start episodes reached 10 touches and 8 reached 11, so k=10 and stages {9, 10} (before S35 / S36).
 * **This supports the step-size reading of the collapses:** at lr 3e-4 one Adam step was too big for a nearly deterministic policy (sigma ~0.025). The collapses were not the practice distribution's fault. 150M steps is short, so stability is to be confirmed.
 * **Tonight's furthest line from the map start:** S19 -> S17 -> S18 -> S19 -> S20 -> S22 -> S25 -> S30 -> S33 -> S35 -> S36, i.e. 11 of the 17 WR targets.
+
+## 2026-10-07 13:57 (machine clock) - end of the overnight session: from S19 to S36 (11 of 17 WR targets) from the map start; summary
+
+**uf2R3CV6 (lr 1e-4) holds S36:** greedy 11 in 9/9 at 2.229B, 2.279B and 2.329B (and in the 2.380B eval). 11 in ~80-90% of training episodes, rew ~600-760, approx_kl 0.006-0.03. It stays running locally with its monotone jitter loop (trainer pid 33944, loop log runs/uf2R3CV6_frontier.log).
+
+**The next wall, S36 -> S37 (measurement only):**
+* **The WR** leaves S36 at its EAST end (3535, 170, z 42) at 1,316 u/s and is on S37 (x 2209..3069, z -688..-406) one second later at (3028, -537, z -335).
+* **R3CV6's greedy line** leaves S36 at its WEST end (2796, 180, z 5) at ~1,100 u/s. It dies 0.76 s later at (2611, -464, z -188), inside kill volume *10, ~250 u above S37.
+
+**The night, in order:**
+1. **The user's question** (what the route reward pays the WR's way of flying) first exposed a reset-order BUG, fixed in 7de51de. Every route episode end carried a hidden terminal charge of about its own route. On the corrected reward the WR line trails the agent's by at most ~15 (a 0.47 s later S19 touch), time pressure is worth ~0.24, and the biggest charge on both lines is the S17 -> S18 swing (~80).
+2. **The flat zone** (--ramp-route-flat 256, the user's "less sharp nearby the surf") was a NEGATIVE: the control left S19 for S20 in ~100M steps, and the flat-zone run stayed at S19 for 300M.
+3. **S20 -> S22 and S25 -> S30 are speed-limited kill sheets.** Own-state frontier practice with a velocity jitter of 1.0-1.3 (tools/frontier_stages.py) crossed them: S22 9/9 (1.472B), S25 9/9 (1.623B), S35 8/9 (1.977B), S36 9/9 (2.128B). It replicated on a second lineage (R3P2: S22 9/9).
+4. **The collapses were the step size, not the curriculum:** lr 3e-4 against a yaw sigma of ~0.025 gave a first-minibatch KL of 3-30, so --target-kl could not help. lr 1e-4 stopped them.
+5. **From scratch, the route reward parks the agent at S18.** Fixed-coefficient edge novelty (0.25, then 5) and jittered frontier practice did not move it in 300-600M steps each.
+
+**Rule-0b status:** the frontier loop's rule is generic (the policy's own deepest touches, the same constants on any map), and so are --greedy and --monotone. The velocity band 1.0-1.3 and lr 1e-4 are single constants. The ramp SEQUENCE itself is read off the WR record, so everything here remains the labelled demo diagnostic, and no checkpoint of it is a recipe result.
+
+**Vast cost of the night:** ~$12, roughly as follows:
+
+| boxes | hours | cost |
+|---|---|---|
+| four 4090s (the void R2 arms) | ~0.5 | ~$0.9 |
+| 5090s (R3C, R3S, R3P, R3U, R3P2, R3SF + spares) | 0.6-6.1 each | ~$11 |
+
+Every box is gone and the registry is empty.
+
+**The best checkpoints** (runs/research/uf2_r3cv/, md5-checked):
+
+| checkpoint | greedy from the map start |
+|---|---|
+| ckpt_R3CV_1472M | S22 9/9 |
+| ckpt_R3CV_1623M | S25 9/9 |
+| ckpt_R3CV2_1674M | S25 |
+| ckpt_R3CV3_best (1.977B) | S35 8/9 |
+
+uf2R3CV6/ckpt_beststage.pt holds S36 9/9.
