@@ -22,3 +22,16 @@ def test_balance_resamples_every_stage_to_the_largest():
     out, k = fs.balance(st, ks, np.random.default_rng(0))
     assert (k == 3).sum() == 5 and (k == 4).sum() == 5
     assert set(out[k == 4]) <= {5, 6} and sorted(out[k == 3]) == [0, 1, 2, 3, 4]
+
+
+def test_vel_scale_multiplies_velocity_and_one_one_is_exact():
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "python"))
+    from surfgym.core import STATE_DTYPE
+    st = np.zeros(50, STATE_DTYPE)
+    st["velocity"] = np.array([100.0, -200.0, 50.0], np.float32)
+    rng = np.random.default_rng(0)
+    assert fs.jitter_speed(st, 1.0, 1.0, rng) is st
+    out = fs.jitter_speed(st, 1.0, 1.3, rng)
+    f = out["velocity"][:, 0] / 100.0
+    assert np.all((f >= 1.0) & (f <= 1.3)) and f.std() > 0.01
+    assert np.allclose(out["velocity"][:, 1], -200.0 * f) and np.allclose(st["velocity"][:, 0], 100.0)

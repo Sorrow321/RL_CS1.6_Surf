@@ -63,7 +63,19 @@ def balance(states, ks, rng):
     return np.concatenate(rows), np.concatenate(out_k)
 
 
-def build(ckpt, map_path, out, source, episodes, leads, ep_ticks, work, python, seed):
+def jitter_speed(states, lo, hi, rng):
+    """--vel-scale LO HI: every state's velocity x U(LO, HI) (Florensa-style start-state
+    perturbation: the frontier is also met FASTER than the policy reaches it today, so its value
+    can tell what more energy there is worth). 1 1 = the exact states"""
+    if lo == 1.0 and hi == 1.0:
+        return states
+    out = states.copy()
+    out["velocity"] = out["velocity"] * rng.uniform(lo, hi, len(out)).astype(np.float32)[:, None]
+    return out
+
+
+def build(ckpt, map_path, out, source, episodes, leads, ep_ticks, work, python, seed,
+          vel_scale=(1.0, 1.0)):
     """record `ckpt`, cut its frontier, write `out` atomically -> a one-line report (or None)"""
     work.mkdir(parents=True, exist_ok=True)
     ck = work / "frontier_ckpt.pt"
@@ -96,13 +108,17 @@ def build(ckpt, map_path, out, source, episodes, leads, ep_ticks, work, python, 
     st, ks, _rep = cut(touches, eps, stages, leads, tick_ms or 10.0)
     if st is None:
         return f"frontier k={k_max}: nothing to cut - {out} kept"
-    st, ks = balance(st, ks, np.random.default_rng(seed))
+    rng = np.random.default_rng(seed)
+    st, ks = balance(st, ks, rng)
+    st = jitter_speed(st, float(vel_scale[0]), float(vel_scale[1]), rng)
     tmp = Path(str(out) + ".tmp.npz")
-    np.savez(tmp, states=st, seq_k=ks, source=str(source))
+    np.savez(tmp, states=st, seq_k=ks, source=str(source),
+             vel_scale=np.asarray(vel_scale, np.float32))
     os.replace(tmp, out)
     per = {int(k): int((ks == k).sum()) for k in np.unique(ks)}
+    vs = "" if tuple(vel_scale) == (1.0, 1.0) else f", velocity x U{tuple(vel_scale)}"
     return (f"touches per episode {dict(sorted(hist.items()))} -> frontier k={k_max}, "
-            f"stages {per} -> {out}")
+            f"stages {per}{vs} -> {out}")
 
 
 def ckpt_step(path):
@@ -144,6 +160,8 @@ def main(argv=None):
     ap.add_argument("--leads", type=float, nargs="+", default=[0.3, 0.5, 0.8])
     ap.add_argument("--ep-ticks", type=int, default=6000)
     ap.add_argument("--every-min", type=float, default=10.0)
+    ap.add_argument("--vel-scale", type=float, nargs=2, default=[1.0, 1.0],
+                    help="multiply every cut state's velocity by U(LO, HI) (1 1 = off)")
     ap.add_argument("--pid-file", default=None, help="exit when this trainer is gone")
     ap.add_argument("--once", action="store_true")
     ap.add_argument("--python", default=sys.executable)
@@ -160,7 +178,7 @@ def main(argv=None):
     if args.once:
         ck = Path(args.ckpt) if args.ckpt else Path(args.run) / "ckpt_latest.pt"
         rep = build(ck, args.map, out, source, args.episodes, args.leads, args.ep_ticks, work,
-                    args.python, 0)
+                    args.python, 0, args.vel_scale)
         print(f"[{time.strftime('%H:%M:%S')}] step {ckpt_step(ck):,}: {rep}", flush=True)
         return
     ck = Path(args.run) / "ckpt_latest.pt"
@@ -179,7 +197,7 @@ def main(argv=None):
             time.sleep(20)                       # let the trainer finish writing it
             n += 1
             rep = build(ck, args.map, out, source, args.episodes, args.leads, args.ep_ticks,
-                        work, args.python, n)
+                        work, args.python, n, args.vel_scale)
             print(f"[{time.strftime('%H:%M:%S')}] step {ckpt_step(work / 'frontier_ckpt.pt'):,}:"
                   f" {rep}", flush=True)
             last_mt, last_t = mt, time.time()
