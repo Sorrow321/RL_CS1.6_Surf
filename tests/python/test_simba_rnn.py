@@ -80,3 +80,54 @@ def test_trainer_scores_the_view_in_the_sequence_step():
     assert "split_view(" in body and "logprob_entropy_view(" in body
     call = src[src.index("loss, pg, vl, el, logp = mb_step_seq("):][:600]
     assert "f_z=f_z" in call
+
+
+def test_widen_for_rnn_keys_adam_state_by_name_under_view_continuous():
+    """A feed-forward --view-continuous checkpoint warm-started onto --rnn gru (2026-10-08): the
+    view head is registered AFTER the GRU, so Adam's index-keyed moments are re-keyed by name -
+    the view head keeps its own moments, the GRU starts with none, the towers' moments are
+    zero-padded, the optimizer loads, and the first forward is the old policy's."""
+    import copy
+
+    def mk(rnn):
+        for scal in range(10, 80):
+            try:
+                return tf.Policy(scal + 64 * 32 * 3, 64, 32, emb=64, hidden=32, in_ch=3,
+                                 simba=True, rnn=rnn, rnn_size=16, view_continuous=True,
+                                 view_absolute="velocity")
+            except AssertionError:
+                continue
+        raise AssertionError("no obs_dim fits")
+
+    torch.manual_seed(2)
+    ff = mk("none")
+    opt = torch.optim.Adam(ff.parameters(), lr=1e-3, eps=1e-5)
+    s, img = torch.randn(6, tf.N_SCALAR), torch.rand(6, 64 * 32 * 3)
+    lg, v = ff.forward_split(s, img)
+    (lg.square().mean() + v.square().mean()).backward()
+    opt.step()
+    ck = {"policy": copy.deepcopy(ff.state_dict()), "optimizer": copy.deepcopy(opt.state_dict())}
+    ff_names = [n for n, _ in ff.named_parameters()]
+    old_view = ck["optimizer"]["state"][ff_names.index("view_head.weight")]["exp_avg"].clone()
+
+    torch.manual_seed(3)
+    rr = mk("gru")
+    assert tf.widen_for_rnn(ck, rr) > 0
+    rr.load_state_dict(ck["policy"])
+    opt2 = torch.optim.Adam(rr.parameters(), lr=1e-3, eps=1e-5)
+    opt2.load_state_dict(ck["optimizer"])            # raises on a shape / count mismatch
+    by_name = dict(rr.named_parameters())
+    st = opt2.state
+    assert torch.equal(st[by_name["view_head.weight"]]["exp_avg"], old_view)
+    for n in ("gru.weight_ih_l0", "gru.weight_hh_l0", "gru.bias_ih_l0", "gru.bias_hh_l0"):
+        assert by_name[n] not in st or not st[by_name[n]]
+    assert st[by_name["pi.0.weight"]]["exp_avg"].shape == by_name["pi.0.weight"].shape
+    with torch.no_grad():
+        a, va = ff.forward_split(s, img)
+        b, vb, _ = rr.forward_split(s, img, torch.randn(6, 16))
+    # zero-padded columns change the matmul's summation order, not its value
+    assert torch.allclose(a, b, atol=1e-6, rtol=0) and torch.allclose(va, vb, atol=1e-6, rtol=0)
+    # one optimizer step runs on the widened model (no stale-shape moments anywhere)
+    lg2, v2, _ = rr.forward_split(s, img, torch.zeros(6, 16))
+    (lg2.square().mean() + v2.square().mean()).backward()
+    opt2.step()

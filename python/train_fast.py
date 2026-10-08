@@ -1558,14 +1558,31 @@ def widen_for_rnn(ck, policy):
     zero-pad applies unchanged: with those columns at zero the resumed
     policy computes exactly its old function on its first forward, however
     the (fresh, untrained) GRU state happens to look. The GRU's own tensors
-    are taken from the freshly initialised model, and because the module
-    is registered last its parameters are appended to Adam's group with no
-    moments - exactly what fresh parameters have. Returns the number of
+    are taken from the freshly initialised model and join Adam's group with
+    no moments - exactly what fresh parameters have. Returns the number of
     tensors touched; 0 means the checkpoint is already recurrent.
+
+    Adam's state is keyed by parameter INDEX, and the GRU is not always the
+    last module: under --view-continuous the view head and its log-std are
+    registered after it (2026-10-08). The feed-forward checkpoint's
+    parameters are this policy's without the gru.* tensors, in order, so its
+    indices are re-keyed BY NAME before widen_for_route pads the moments,
+    and the group's index list is kept in model order (load_state_dict
+    pairs the saved list with the model's parameters positionally).
     """
     sd = ck.get("policy") or {}
     if policy.gru is None or any(k.startswith("gru.") for k in sd):
         return 0
+    names = [nm for nm, _ in policy.named_parameters()]
+    at = {nm: j for j, nm in enumerate(names)}
+    remap = {i: at[nm] for i, nm in
+             enumerate(nm for nm in names if not nm.startswith("gru."))}
+    opt = ck.get("optimizer") or {}
+    if any(i != j for i, j in remap.items()):
+        opt["state"] = {remap.get(int(k), int(k)): v
+                        for k, v in (opt.get("state") or {}).items()}
+        for g in opt.get("param_groups", []):
+            g["params"] = [remap.get(int(i), int(i)) for i in g.get("params", [])]
     n = widen_for_route(ck, policy, flag="--rnn")
     fresh = policy.state_dict()
     for k in fresh:
@@ -1573,9 +1590,9 @@ def widen_for_rnn(ck, policy):
             sd[k] = fresh[k].detach().cpu().clone()
             n += 1
     n_params = len(list(policy.parameters()))
-    for g in (ck.get("optimizer") or {}).get("param_groups", []):
-        have = [int(i) for i in g.get("params", [])]
-        g["params"] = have + [i for i in range(n_params) if i not in set(have)]
+    for g in opt.get("param_groups", []):
+        have = {int(i) for i in g.get("params", [])}
+        g["params"] = sorted(have | set(range(n_params)))
     return n
 
 
