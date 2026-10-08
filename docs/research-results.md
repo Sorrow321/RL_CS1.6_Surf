@@ -35327,3 +35327,31 @@ uf2R3CV6/ckpt_beststage.pt holds S36 9/9.
   * So far the evidence says the recipe, not the capacity, is what moved; one seed per size, and the bigger ones may still catch up.
 * **The 76M w4 runs at 23.5k fps on the 4090, the same as on the H100.** Both runs captured the CUDA graph, so it is not an eager fallback. The likely cost is the PPO update at that width: a steeper drop than params suggest (w3 at 43M keeps ~107k).
 * **The frontier recorder had no thread cap:** record_ckpt's numba pool sized itself off the host's nproc (144 on the w4b box) and took ~14 cores per refresh (memory: numba-pools). All five loops were restarted at 21:12 with NUMBA_NUM_THREADS=8 OMP_NUM_THREADS=8 (pids listed, killed by exact pid, relaunched in separate calls). The monotone floors were kept: x1 2, c8 0, w2 3, w3 2, w4b 0.
+
+## 2026-10-08 22:34 (machine clock) - scaling sweep hour 3: no size reaches S22; 43M parked in the pit -> GRU arm; deep-tower arm; x1 -> practice share 0.5
+
+**Time-to-gate at 22:14** (M steps; first iteration with >= 10% of settled training episodes at list position >= k; 1 = S19 ... 4 = the pit exit, 5 = S20, 6 = S22):
+
+| arm | params | steps | fps | 1 | 2 | 3 | 4 | 5 | 6 | greedy best |
+|---|---|---|---|---|---|---|---|---|---|---|
+| uf2SCx1 | 4.8M | 1,158M | 175k | 6 | 11 | 25 | 250 | 325 | - | 5 (S20) |
+| uf2SCc8 (wide CNN) | 13.6M | 289M | 44k | 7 | 14 | 31 | **165** | **252** | - | 4 |
+| uf2SCw2 | 19.0M | 794M | 121k | 6 | 14 | 30 | 214 | 298 | - | 5 |
+| uf2SCw3 | 42.8M | 712M | 107k | 7 | 19 | 29 | - | - | - | 3 |
+| uf2SCw4b | 76.0M | 239M | 56k | 15 | 27 | 49 | - | - | - | 3 |
+
+* **The early gates get slower with size.** Gate 2 at 11 / 14 / 14 / 19 / 27M for 4.8 / 13.6 / 19 / 43 / 76M is a log-log slope of about +0.33; gate 3 about +0.24. Per wall-clock it is worse, because fps also falls with size.
+* **The pit exit (gate 4) is not ordered by size.** 13.6M wide CNN 165M, 19M 214M, 4.8M 250M; 43M none by 712M, 76M none by 239M. Both large arms are PARKED: stall share 93-99%, episodes ~29.6 s (the 30 s stall rule), every episode at list position 3 (S18). One seed each.
+* **S22 (gate 6): no arm has had a single S22 training episode.** x1 sat at S20 from 325M to 1.394B (1.07B steps) with the jittered frontier practice running.
+* **Throughput rose after the recorder thread cap** (21:12): c8 16.6k -> 44k fps, w4b 23.5k -> 56k, x1 112k -> 175k. The earlier "c8 is GPU-bound at ~16k" was the recorder taking the CPU.
+* **Greedy evals swing between checkpoints**, e.g. x1: 601M 3 in 9/9, 701M 4-5, 801M 5 in 9/9, 901M 2 in 9/9, 1,102M 4-5. The frontier loop's map-start recordings dipped the same way from 608M to 1.19B (k 1-3 < floor 4), so the practice file kept the 468M states until the 1.34B refresh ({5: 33}). Not a recorder fault: 8/8 stochastic recordings of x1@1.367B reach S20 and die ~10.8 s in, at the S20 -> S22 sheet.
+
+**Wave 2 (22:24-22:34), all on vast:**
+
+* **uf2SCw3 stopped at 712M** (parked in the pit for over an hour: the stationary rule). Its driver was killed first, then its frontier loop and trainer by exact PID. Logs in runs/research/uf2SCw3/ and runs/research/scale/uf2SCw3/.
+* **uf2SCgru** on w3's box (54890884, 5090): the x1 recipe from scratch + **--rnn gru --rnn-size 256** (the GRU between the SimBa trunk and the towers, truncated BPTT over T=128). The seed spawn file was restored on the box first (md5 347af48a...; w3's loop had overwritten it with w3's states).
+  * Code 6f140ac: --rnn was refused with --view-continuous because the GRU's sequence loss scored only the categorical heads. seq_loss now takes mb_step's view branch (split_view + logprob_entropy_view on the stored z). Rollout, evals and the recorder already carried h. Test: the sequence re-run reproduces the rollout draw's log-prob (tests/python/test_simba_rnn.py). Also repaired test_rnn_policy's fake core.
+  * 44k fps, GPU-bound (94% utilisation; the feed-forward arms are under 10%): the sequence update is not CUDA-graphed. About 1B steps by morning.
+* **uf2SCd8**: --tower-depth 8 (14.4M) from scratch on a new 5090 (54907218, m142720, $0.594/h), 147k fps. The race's other offer (54907214, m52214) sat in "loading" for 330 s: blocklisted (network) and destroyed.
+* **uf2SCx1 -> uf2SCx1f5**: x1@1.394B (md5 f5219c88...) resumed with **--spawn-states-frac 0.5**, one knob. Everything else is the same, including lr 1e-4 and the jitter loop (floor k=4; stages {3, 4} from its own 1.34B recording). **Why:** both of the night's S22 breakthroughs (uf2R3CV, uf2R3P2, 2026-10-07) ran at frac 0.5 AND lr 3e-4; the sweep runs 0.25 and 1e-4. If 0.5 alone brings S22, the share is the knob; if not, lr is next.
+* **uf2SCc8 and uf2SCw2 stay on the sweep recipe** as the S20 controls. uf2SCw4b continues (76M, parked at 239M; x1 needed 250M for the pit).
