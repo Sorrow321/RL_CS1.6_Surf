@@ -35355,3 +35355,43 @@ uf2R3CV6/ckpt_beststage.pt holds S36 9/9.
 * **uf2SCd8**: --tower-depth 8 (14.4M) from scratch on a new 5090 (54907218, m142720, $0.594/h), 147k fps. The race's other offer (54907214, m52214) sat in "loading" for 330 s: blocklisted (network) and destroyed.
 * **uf2SCx1 -> uf2SCx1f5**: x1@1.394B (md5 f5219c88...) resumed with **--spawn-states-frac 0.5**, one knob. Everything else is the same, including lr 1e-4 and the jitter loop (floor k=4; stages {3, 4} from its own 1.34B recording). **Why:** both of the night's S22 breakthroughs (uf2R3CV, uf2R3P2, 2026-10-07) ran at frac 0.5 AND lr 3e-4; the sweep runs 0.25 and 1e-4. If 0.5 alone brings S22, the share is the knob; if not, lr is next.
 * **uf2SCc8 and uf2SCw2 stay on the sweep recipe** as the S20 controls. uf2SCw4b continues (76M, parked at 239M; x1 needed 250M for the pit).
+
+## 2026-10-08 23:07 (machine clock) - S22 on a from-scratch lineage at practice share 0.5; the bigger nets are unstable at lr 1e-4 -> width-scaled lr arms; a GRU A/B at the frontier
+
+**uf2SCx1f5** (x1@1.394B, **--spawn-states-frac 0.5**, lr 1e-4, everything else the sweep recipe) - S22 (list position 6) training episodes per iteration (of ~670):
+
+| step | S22 | S25 |
+|---|---|---|
+| 1.39-1.56B | 0-7 | 0 |
+| 1.577B | 19 | 0 |
+| 1.587B | 64 | 0 |
+| 1.593B | 147 | 0 |
+| 1.615B | 198 (30%) | 1-2 (first) |
+
+* A collapse blip at 1.564-1.574B (rew ~100, 862 episodes ending at position 1 in one iteration) recovered within ~15M steps; S22 grew right after it.
+* Greedy evals from the map start: 5 (S20) in 9/9 at 1.646B. The greedy line has not taken S22 yet.
+* **Base rate on the 0.25 recipe** (S22 episodes over each whole run): x1 118 (first at 1.283B, about one per iteration late), w2 88 (first at 339M), c8 1. The crossing had begun at 0.25; the 0.5 share amplified it to 30% within ~200M steps. Last night's R3P2 went from 3 to 65 per iteration in 30M steps at 0.5 and lr 3e-4.
+
+**At lr 1e-4 the bigger nets are unstable or parked:**
+* **uf2SCc8** (13.6M wide CNN) collapsed from ~350M: rew 280 -> 22-110, 40-80% of episodes end before the first touch (crawl up to 83%), many updates at kl 0.0001-0.0007; greedy 0-1 at 401M. **Stopped at 496M** (collapsed ~55 min).
+* **uf2SCw2** (19M) oscillates: S20 at 805-826M, collapses at 847-889M and 1,015M, back to S19/S20 at 1.08-1.12B; greedy 4 in 9/9 at 1.102B.
+* uf2SCx1 (4.8M) was stable: rew ~290-300 at S20 from 800M on.
+* **Two pit modes.** x1, w2, c8 and d8 DIE trying the exit (tr/st/cr 0/0/0) and found it at 165-250M. w3, w4b and the scratch GRU PARK: they crawl until the 30 s stall kill (st 90-99%, len ~2,960) and none has found the exit (w3 to 798M, w4b to 376M, gru to ~280M). This recipe has no death charge and no fail penalty.
+* **uf2SCw4b stopped at 376M** (parked since ~200M).
+* uf2SCd8 (14.4M, --tower-depth 8) exited the pit at 192M (gates 6 / 12 / 44 / 192M), ahead of x1's 250M.
+
+**Width-scaled lr, the scaling test the fixed-lr sweep was not:** lr = 1e-4 / width multiple, from scratch, otherwise the sweep recipe (frac 0.25):
+
+| arm | params | lr | box |
+|---|---|---|---|
+| uf2SCw2lr | 19.0M | 5e-5 | c8's 4090 (54890894) |
+| uf2SCw3lr | 42.8M | 3.3e-5 | new 4090 (54911127, m56333, $0.497/h) |
+| uf2SCw4lr | 76.0M | 2.5e-5 | w4b's 4090 (54896304) |
+
+* Before each relaunch: driver killed by PID, then the frontier loop by PID; the seed spawn file (md5 347af48a) restored on the box; record gates passed.
+
+**The GRU at the frontier, an A/B against uf2SCx1f5:** **uf2SCx1f5g** = x1@1.394B (md5 f5219c88) widened onto --rnn gru --rnn-size 256, frac 0.5, lr 1e-4. "feed-forward checkpoint widened (10 tensors ...) - function-identical" at step 1,394,081,792. Its practice file was rebuilt from the same checkpoint (frontier_stages --once: k=4, stages {3: 99, 4: 99}, md5 ef087333) because x1f5's start file had been overwritten by its loop. Box 54911130 (5090, m39913, $0.55/h; the race's second offer, kept instead of destroyed).
+* Code 6331697: widen_for_rnn re-keys Adam's moments BY NAME. Under --view-continuous the view head is registered after the GRU, so the old index-keyed pairing gave the GRU the view head's moments (widen_for_route's shape check stopped it with a SystemExit). Test added.
+* The scratch GRU (uf2SCgru) continues: gates 7 / 13 / 27M (x1: 6 / 11 / 25), parked at S18 from ~150M. Its early 44k fps was a startup transient: 130-143k fps since, GPU 16%.
+
+**Fleet: 8 boxes, ~$4.1/h, deadlines 05:10-05:20.** x1f5, x1f5g, w2, gru, d8, w2lr, w3lr, w4lr.
