@@ -35264,3 +35264,28 @@ uf2R3CV6/ckpt_beststage.pt holds S36 9/9.
   | runs/research/uf2_r3cv/ckpt_R3CV6_latest.pt | 3.492B | - | d30b6510... |
 
 * The trainer, its frontier loop and the wrapper were stopped by exact pid. No vast boxes are rented.
+
+## 2026-10-08 20:28 (machine clock) - overnight SCALING SWEEP (the user: "increase the model size ... 10 times ... launch it on some fat box ... maybe fit a small scaling law ... if it doesn't work, then try the LSTM or GRU"); five sizes from scratch on vast
+
+**The question:** is network capacity the bottleneck? Today's policy is 4.8M parameters: the conv trunk's three layers are 16/32/64 channels (~25k kernel weights), the 2048->512 Linear holds 1.05M, and the two SimBa towers hold 1.86M each.
+
+**Arms**, all from SCRATCH with the same recipe:
+* the WR 17-target sequence (labelled demo diagnostic), the fixed route reward, --ramp-touch, +25 per touch;
+* --obs-normal 1 --simba 1, one camera + target channel + arrow, 1,024 envs;
+* --lr 1e-4 (the stabiliser of 2026-10-07), --target-kl 0.05, --save-best;
+* the frontier loop (tools/frontier_stages.py --vel-scale 1.0 1.3 --greedy 1 --monotone, --spawn-states-frac 0.25), seeded with the map spawn (k=0);
+* SELF_STATES=1, POT=off. Registry 540 min with harvest, so the boxes self-terminate ~05:25.
+
+| arm | size flags | params | GPU (machine) |
+|---|---|---|---|
+| uf2SCx1 | (base: emb 512, hidden 448, conv-mult 1) | 4.8M | RTX 5090 (m64949) |
+| uf2SCc8 | --conv-mult 8 (conv 128/256/512) | 13.6M | RTX 4090 (m14205) |
+| uf2SCw2 | --emb 1024 --hidden 896 --conv-mult 2 | 19.0M | RTX 4090 (m22721) |
+| uf2SCw3 | --emb 1536 --hidden 1344 --conv-mult 3 | 42.8M | RTX 5090 (m68290) |
+| uf2SCw4 | --emb 2048 --hidden 1792 --conv-mult 4 | 76.0M | H100 SXM (m151547, $2.55/h) |
+
+* **The comparison is at matched training STEPS** (sample efficiency, the scaling-law axis). Throughput is reported per arm.
+* **The yardstick:** the scratch x1 parked at S18 (list position 3) in 2026-10-07's uf2R3S. Escaping that pit (position 4) is the event that would say capacity matters.
+* **The deep-tower axis** (--tower-depth 8, 14.4M) lost its box: one 4090 never left "loading" and was blocked and destroyed. It is the first candidate for the next wave.
+
+**GRU prepared for the next wave:** --simba with --rnn gru is now allowed (a6e8096; a CPU test covers the forward and the state reaching the actor).
