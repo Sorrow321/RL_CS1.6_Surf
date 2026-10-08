@@ -332,10 +332,13 @@ def test_widen_for_rnn_warm_starts_function_identically():
 
 class _FakeCore:
     """Just enough of SurfCore for _TorchPolicyBase._net: the per-env tick
-    counter reset_env zeroes."""
+    counter reset_env zeroes (and the pitch ceiling the wrapper has read
+    off its core since --view-continuous)."""
 
     def __init__(self, n):
+        from types import SimpleNamespace
         self.states_view = {"tick": np.zeros(n, np.int64)}
+        self.config = SimpleNamespace(pitch_rate_max_deg=10.0)
 
 
 def test_eval_wrapper_carries_the_state_and_zeroes_it_on_a_tick_reset():

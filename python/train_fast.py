@@ -9076,8 +9076,13 @@ def main() -> None:
     # shipped. The combinations refused here need real design (docs/
     # contyaw.md): each of them either reads the yaw BIN (yaw-cond, act-hist)
     # or draws whole action rows outside the policy (bursts, chunk codes),
-    # and --frame-stack/--rnn carry per-env inference state the planner and
-    # the transplant do not clone.
+    # and --frame-stack carries per-env inference state the planner and the
+    # transplant do not clone. --rnn is allowed in the TRAINER (2026-10-08):
+    # the rollout draws the view off the GRU's logits like any other, the
+    # eval wrappers carry h through _net, and mb_step_seq scores the stored
+    # z with logprob_entropy_view exactly as mb_step does; the offline
+    # planner tools (beam_tas branching, dagger relabelling) still do not
+    # clone h, so an --rnn checkpoint is not a planner seed.
     VIEWC = bool(args.view_continuous)
     if VIEWC:
         _bad = []
@@ -9089,8 +9094,6 @@ def main() -> None:
             _bad.append("--act-hist")
         if int(args.frame_stack or 0) > 1:
             _bad.append("--frame-stack")
-        if RNN:
-            _bad.append("--rnn")
         if float(args.ez_eps or 0.0) > 0.0:
             _bad.append("--ez-eps")
         if int(args.spawn_burst or 0) > 0:
@@ -15070,12 +15073,20 @@ def main() -> None:
 
     def seq_loss(feat, g, f_scal, f_act, f_logp, f_adv, f_ret, idx, ent_coef,
                  adv_mean=None, adv_std=None, f_air=None, f_jblk=None,
-                 f_priv=None):
+                 f_priv=None, f_z=None, f_temp=None, f_tempv=None):
         with amp:
             logits, value = policy.heads(
                 feat, f_scal[idx], g,
                 priv=(None if f_priv is None else f_priv[idx]))
-            padded = packer.pad(logits.float())
+            if VIEWC:
+                # --view-continuous, the --rnn half of mb_step's branch: the
+                # categorical slice pads as before, the two means go to the
+                # Gaussian term below (f_temp / f_tempv are None under --rnn:
+                # --unstuck and --curiosity-cond are refused with it)
+                cat, mu = split_view(logits.float())
+                padded = packer.pad(cat)
+            else:
+                padded = packer.pad(logits.float())
             if YCOND:
                 # PLACE 2 of 4 for --yaw-cond, the --rnn half (same
                 # argument as mb_step: the STORED yaw, before the masks)
@@ -15086,7 +15097,14 @@ def main() -> None:
                 padded = MASKS.add_mask(
                     padded, None if f_air is None else f_air[idx],
                     None if f_jblk is None else f_jblk[idx])
-            logp, ent = logprob_entropy_padded(padded, f_act[idx])
+            if VIEWC:
+                # the joint over the categorical heads and the Gaussian
+                # density of the STORED z, as in mb_step
+                logp, ent = logprob_entropy_view(
+                    padded, f_act[idx], mu, policy.log_std(), f_z[idx],
+                    PITCH_ENT, f_temp, f_tempv)
+            else:
+                logp, ent = logprob_entropy_padded(padded, f_act[idx])
             value = value.float()
         ratio = torch.exp(logp - f_logp[idx])
         a = f_adv[idx]
@@ -15103,16 +15121,19 @@ def main() -> None:
 
     def mb_step_seq(f_scal, f_img, f_act, f_logp, f_adv, f_ret, idx, ent_coef,
                     f_age=None, adv_mean=None, adv_std=None, f_air=None,
-                    f_jblk=None, f_priv=None, *, envs, seg):
+                    f_jblk=None, f_priv=None, f_z=None, f_temp=None,
+                    f_tempv=None, *, envs, seg):
         # `envs` (B,) the minibatch's env ids in idx order, `seg` the
         # SeqPlan cut from b_done_np[:, envs]. seq_trunk/seq_loss are looked
         # up at call time, so the compile block below can rebind them. The
         # recurrence sits between them in fp32 on `feat` (fp32: autocast's
         # cat promotes) and its output joins the towers under autocast.
+        # f_z / f_temp / f_tempv: --view-continuous only (mb_step's meaning).
         feat = seq_trunk(f_scal, f_img, idx, f_age)
         g = policy.gru_sequence(feat, b_h0[envs], seg)
         return seq_loss(feat, g, f_scal, f_act, f_logp, f_adv, f_ret, idx,
-                        ent_coef, adv_mean, adv_std, f_air, f_jblk, f_priv)
+                        ent_coef, adv_mean, adv_std, f_air, f_jblk, f_priv,
+                        f_z, f_temp, f_tempv)
 
     MB = T * N // args.minibatches            # constant: the compiled shape
     if args.train_stride > 1 and (T // args.train_stride) * N < MB:
@@ -15152,6 +15173,7 @@ def main() -> None:
                         None if b_air is None else b_air.reshape(-1),
                         None if b_jblk is None else b_jblk.reshape(-1),
                         b_priv.reshape(T * N, PRIV) if PRIV else None,
+                        b_z.reshape(T * N, NZ) if VIEWC else None,
                         envs=torch.arange(_B, device=device),
                         seg=gru_segments(np.zeros((T, _B), bool), device),
                         )[0].backward()
@@ -17303,8 +17325,8 @@ def main() -> None:
                         ent_t, f_age,
                         None if a_mean is None else a_mean[k_mb],
                         None if a_std is None else a_std[k_mb],
-                        f_air, f_jblk, f_priv,
-                        envs=env_perm[_e], seg=plans[k_mb])
+                        f_air, f_jblk, f_priv, f_z=f_z, f_temp=temp_t,
+                        f_tempv=tempv_t, envs=env_perm[_e], seg=plans[k_mb])
                 else:
                     loss, pg, vl, el, logp = mb_step(
                         f_scal, f_img, f_act, f_logp, f_adv, f_ret, idx,
