@@ -35395,3 +35395,42 @@ uf2R3CV6/ckpt_beststage.pt holds S36 9/9.
 * The scratch GRU (uf2SCgru) continues: gates 7 / 13 / 27M (x1: 6 / 11 / 25), parked at S18 from ~150M. Its early 44k fps was a startup transient: 130-143k fps since, GPU 16%.
 
 **Fleet: 8 boxes, ~$4.1/h, deadlines 05:10-05:20.** x1f5, x1f5g, w2, gru, d8, w2lr, w3lr, w4lr.
+
+## 2026-10-09 00:03 (machine clock) - from scratch on the sweep recipe: the 8-deep tower reaches S25 in training and the 19M net takes S22 in greedy evals 9/9; the GRU crosses S22 ~4x sooner at matched steps; one box lost to the host
+
+**Time-to-gate (M steps, >= 10% of training episodes at list position >= k; 5 = S20, 6 = S22, 7 = S25), from scratch, frac 0.25, lr 1e-4:**
+
+| arm | params | 4 (pit) | 5 | 6 | 7 | greedy evals |
+|---|---|---|---|---|---|---|
+| uf2SCx1 | 4.8M | 250 | 325 | - (1.405B) | - | 5 in 9/9 |
+| uf2SCw2 | 19.0M | 214 | 298 | **1,244** | - | **6 (S22) in 9/9 at 1.503B** |
+| **uf2SCd8** (--tower-depth 8) | 14.4M | 192 | 441 | **690** | **893** | 5 in 7/9 at 902M |
+
+* d8: S22 first at 539M; S25 70 of ~640 episodes at 892M; a dip at 905-908M (rew 176-206, kl ~0.0001) recovered within ~4M steps; S25 at 4-6% at 911M. Its frontier loop still records k=3 from the map start (stochastic episodes stop at the pit exit), so its practice states are pit-exit states; the S22/S25 episodes are its own runs through.
+* One seed each. Depth is the only axis that has beaten x1 past S20 on the sweep recipe; width at lr 1e-4 got S22 only at 19M and only late.
+
+**The GRU at the frontier, A/B from the same start** (x1@1.394B, frac 0.5, the same practice states rebuilt with --once): share of training episodes at S22 or beyond, at matched steps after 1.394B:
+
+| steps after | uf2SCx1f5 (feed-forward) | uf2SCx1f5g (GRU 256) |
+|---|---|---|
+| 50M | 0.1% | 8.5% |
+| 75M | 0.1% | 24.5% |
+| 100M | 0.1% | 31.3% |
+| 125M | 0.2% | 36.3% |
+| 200M | 19.1% | - |
+| 250M | 32.5% | - |
+
+* **Gate 6 (S22 >= 10%): GRU at +49M, feed-forward at +192M** (about 4x in steps). One seed each; the feed-forward rise came right after its collapse blip at +170M. Both greedy at S20 9/9.
+* x1f5g runs at ~51k fps (12-core 5090 plus the GRU), x1f5 ran ~210k: per wall-clock the two crossed at about the same time.
+
+**uf2SCx1f5 is lost.** Its box (54890885, m64949) was STOPPED from the host side at ~23:30 (intended_status stopped; not issued by us); a restart was refused ("required resources currently unavailable" - the GPU was re-rented). The machine was blocklisted (unreliable) and the instance destroyed. Its logs and evals to 1.660B were fetched at 22:55; its checkpoints are gone.
+
+**uf2SCgru (GRU from scratch) stopped at ~900M - prematurely.** It had parked at S18 from ~150M (stall 90-99%) and began exiting the pit at ~892M (position 4 in 10-15% of episodes, stall share 96% -> 70%), i.e. gate 4 at ~896M against x1's 250M. I stopped it 8M steps into the exit to reuse the box. Its 891.8M checkpoint is saved: runs/research/uf2SCgru/ckpt_latest.pt (md5 1f31cce9...).
+
+**Width-scaled lr, early gates** (from scratch; lr 1e-4 / width multiple): w2lr 7 / 15 / 27M at 303M, w3lr 7 / 14 / 29M at 281M, **w4lr 7 / 14 / 35M** at 194M, against the fixed-lr w4b's 15 / 27 / 49M. The smaller lr makes the 76M net faster on the early gates, not slower. No pit exit yet (x1: 250M).
+
+**New arms (00:00):**
+* **uf2SCd16**: --tower-depth 16 (~27M) from scratch, sweep recipe, on a new 4090 (54918099, m14205, $0.449/h): the third depth point (2 / 8 / 16). The race's other offer (54918086, m49923) came up at 135 s, after the first, and was destroyed unblocked.
+* **uf2SCd8g**: the second GRU A/B. d8@1.014B (md5 219eec37) widened onto --rnn gru 256 ("10 tensors ... function-identical"), frac 0.25, lr 1e-4, d8's own practice file (k=3, stages {2: 87, 3: 87}, md5 e12d8c77); on the scratch GRU's 5090 (54890884). d8 continues as its feed-forward partner.
+
+**Fleet: 9 boxes, ~$4.6/h, deadlines 05:10-05:20.** x1f5g, d8, d8g, d16, w2, w2lr, w3lr, w4lr.
