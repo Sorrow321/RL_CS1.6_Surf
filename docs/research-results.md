@@ -35434,3 +35434,58 @@ uf2R3CV6/ckpt_beststage.pt holds S36 9/9.
 * **uf2SCd8g**: the second GRU A/B. d8@1.014B (md5 219eec37) widened onto --rnn gru 256 ("10 tensors ... function-identical"), frac 0.25, lr 1e-4, d8's own practice file (k=3, stages {2: 87, 3: 87}, md5 e12d8c77); on the scratch GRU's 5090 (54890884). d8 continues as its feed-forward partner.
 
 **Fleet: 9 boxes, ~$4.6/h, deadlines 05:10-05:20.** x1f5g, d8, d8g, d16, w2, w2lr, w3lr, w4lr.
+
+## 2026-10-09 01:36 (machine clock) - the GRU gives the 8-deep tower nothing at matched steps; the x1 GRU lineage reaches S22 in greedy evals; every net above 19M parks at the pit at either lr; every box is CPU-bound (GPU 2-61% busy)
+
+**Corrections to the 00:03 entry.** Its fleet line said "9 boxes, ~$4.6/h" and listed eight: the fleet was 8 boxes, ~$4.0/h. The 16-deep tower is **27.34M** parameters counted from its checkpoint (towers 13.12M each, conv 1.08M), as that entry said; the "~21M" I reported to the user at 00:05 was wrong.
+
+**The GRU on the 8-deep tower, A/B from d8@1.014B** (practice share 0.25; both arms' frontier loops on k=4, stages {3, 4}, since 1.023B for d8g and 1.171B for d8, and stuck there because their greedy recordings stop at k=3). Share of training episodes reaching S25 or beyond, per 50M-step bin:
+
+| bin start | uf2SCd8 (feed-forward) | uf2SCd8g (GRU 256) |
+|---|---|---|
+| 1.00B | 7.6% | 7.0% |
+| 1.10B | 11.0% | 3.8% |
+| 1.20B | 3.2% | 4.2% |
+| 1.30B | 6.5% | 4.9% |
+| 1.40B | 12.3% | 5.3% |
+| 1.50B | **0.0%** | 5.1% |
+| 1.60B | 0.0% | 7.1% |
+| 1.70B | 0.0% | 2.2% |
+| 1.80B | 0.0% | - |
+
+* S30: no episode in either arm. Greedy from the map start: d8 4 (pit exit) in 9/9 from 1.30B on (5 = S20 at 0.80-1.00B); d8g 4 in 9/9 at every eval since 1.11B.
+* d8's S25 share fell from 11-12% to exactly 0.0% within one 50M bin at 1.50B and stayed there for 300M steps, with its practice file unchanged since 1.17B: the policy lost the S22 transition from its own practice states, not the states.
+* **Verdict: no GRU gain on the deep tower.** d8g sat below d8 to 1.45B and above it after d8's collapse; it never beat d8's best (12.3%). One seed each.
+
+**The x1 GRU lineage (uf2SCx1f5g, x1@1.394B + GRU 256, frac 0.5):** S22 share flat at 29-35% of training episodes from 1.49B to 1.817B, S25 0.0-0.1%. **Greedy from the start: S22 in at least 5/9 episodes first at 1.797B.** Its feed-forward partner x1f5 had S20 9/9 when its box was lost at 1.646B, so this is beyond the control's horizon, not a matched-step lead.
+
+**Its box was CPU-starved, not GPU-bound:** RTX 5090 on a Xeon E5-2670 v3 (Haswell, 2.3 GHz, 23-CPU quota), GPU 2% busy, 52.7k steps/s against 174-190k on the other 5090s. The 00:03 entry put it down to the core count and the GRU; d8g, a GRU arm on an 8-core Ryzen 7 9700X, runs 174k. I blocklisted machine 39913 (cpu_bound), harvested ckpt_latest (1,815,609,344 steps, md5 3abe26b0), the logs and the evals into runs/research/uf2SCx1f5g/, and destroyed the box at 01:22 (confirmed gone).
+
+**Width-scaled lr and the 16-deep tower: all park.** At 01:04: w2lr 708M, w3lr 699M, w4lr 463M, d16 348M; position 3 (S18) in 97-99% of training episodes, stall share 97-99%, crawl 98-99%, length ~2,960 ticks (the 30 s stall kill). Fixed-lr w2 (19M) exited at 214M, d8 (14.4M) at 192M. Tonight every net above 19M parks at the pit, at either lr (w3 and w4b at 1e-4 too); at 19M the scaled lr parks and the fixed lr does not. A parked net can still get out late: the scratch GRU exited at ~896M.
+
+**uf2SCw2 (19M, lr 1e-4) at 2.10B:** S22 share 7.6% at 1.2B, 69.8% at 1.6B, back to ~11% from 1.8B on; S25 0.0-0.1% throughout. Greedy best 6 (S22, 9/9 at 1.503B); latest 5 in 9/9 at 2.103B.
+
+**Throughput is set by the CPU, not the GPU.** GPU busy is the mean of 10 nvidia-smi samples over 5 s at ~01:10; the CFS quota is in CPUs (threads):
+
+| arm | params | card | CPU (quota) | GPU busy | steps/s |
+|---|---|---|---|---|---|
+| x1f5g | 5.6M (GRU) | 5090 | Xeon E5-2670 v3, 2.3 GHz (23) | 2% | 52.7k |
+| d8 | 14.4M | 5090 | Ryzen 9 7950X (30.7) | 26% | 190k |
+| d8g | 15.2M (GRU) | 5090 | Ryzen 7 9700X (15.4) | 27% | 174k |
+| w2 | 19.0M | 4090 | Threadripper PRO 5955WX (15.4) | 16% | 125k |
+| w2lr | 19.0M | 4090 | EPYC 7C13 (20.5) | 25% | 90k |
+| d16 | 27.3M | 4090 | EPYC 7C13 (20.5) | 24% | 83k |
+| w3lr | 42.8M | 4090 | AMD engineering sample (46.1) | 61% | 91k |
+| w4lr | 76.0M | 4090 | Xeon Platinum 8352V, 2.1 GHz (17.3) | 54% | 59k |
+
+* The same 19M net on the same card: 125k on the Threadripper, 90k on the EPYC. Up to ~27M the GPU is idle 73-98% of the time and the per-core CPU speed sets the rate; at 43-76M the GPU's share rises to 54-61%.
+* Every arm so far ran at OMP 16 (my driver's THREADS default), not the trainer's own rule (half the CFS quota, capped at 32: 7-23 on these boxes). On four boxes that is more OpenMP threads than half the quota. The new arms use the rule.
+
+**New arms:**
+* **uf2SCd4**: --tower-depth 4 (~8.0M) from scratch, sweep recipe (frac 0.25, lr 1e-4), on a 5090 (54929005, m48076, Threadripper 9960X, $0.562/h, OMP 8): the fourth depth point (2 / 4 / 8 / 16). 99M steps at 01:33, 190k steps/s.
+* **uf2SCc4**: --conv-mult 4 from scratch, the same recipe, on a 4090 (54929928, m145426, Ryzen 9 7900X, $0.457/h, OMP 12): the middle conv point (1 / 4 / 8).
+* **uf2SCx1f5gB**: uf2SCx1f5g resumed from its harvested 1,815,609,344-step checkpoint (md5 3abe26b0; GRU 256, frac 0.5, lr 1e-4) with its practice file rebuilt from that checkpoint (frontier_stages --once: k=4, stages {3: 99, 4: 99}, md5 29794c8a), on a 4090 (54929929, m22032, EPYC 7513, $0.422/h, OMP 8). The pre-launch record gate passed; its frontier loop starts at floor k=4.
+* Each new box got the seed or practice file checked by md5, its frontier loop (d8's exact command) and a dashboard tunnel (8632 / 8633 / 8634).
+* Race losers still loading at 330 s, blocklisted (network) and destroyed: 54928996 (m138352), 54928999 (m145975, a containerd write error) and 54929924 (m149524).
+
+**Fleet: 10 boxes, ~$4.9/h (d8, d8g, d16, d4, w2, w2lr, w3lr, w4lr, c4, x1f5gB), deadlines 05:09-05:24.**

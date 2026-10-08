@@ -2599,6 +2599,42 @@
       "detail": "running instance stopped by the host side at ~23:30 2026-10-08 (intended_status stopped, not issued by us); restart refused 'required resources currently unavailable' - the GPU was re-rented; uf2SCx1f5 checkpoints lost",
       "run": "",
       "reason": "unreliable"
+    },
+    {
+      "ip": "175.121.93.64",
+      "machine_id": 39913,
+      "host_id": 90277,
+      "date": "2026-10-09",
+      "detail": "RTX 5090 on Xeon E5-2670 v3 (Haswell 2.3 GHz, 23-CPU quota): 52.7k steps/s at GPU util 2% vs 174-190k on Zen 4/5 5090s with the same trainer (uf2 scaling sweep, 2026-10-09)",
+      "run": "",
+      "reason": "cpu_bound"
+    },
+    {
+      "ip": "96.241.29.99",
+      "machine_id": 138352,
+      "host_id": 293320,
+      "date": "2026-10-09",
+      "detail": "not running after 330s (loading): 2.7.1-cuda12.8-cudnn9-runtime: Pulling from pytorch/pytorch\nf557aa5ee224: Pulling fs layer\nc612795a91a4: Pulling fs layer",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "96.234.107.51",
+      "machine_id": 145975,
+      "host_id": 617499,
+      "date": "2026-10-09",
+      "detail": "not running after 330s (loading): failed to copy: failed to send write: write /var/lib/docker/containerd/io.containerd.content.v1.content/ingest/c2bbd9c9ed2748d623cce56dcdc41941289e8bfcca6ac1ada",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "62.218.148.163",
+      "machine_id": 149524,
+      "host_id": 433014,
+      "date": "2026-10-09",
+      "detail": "not running after 330s (loading): ",
+      "run": "",
+      "reason": "network"
     }
   ],
   "known_good": [
