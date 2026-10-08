@@ -644,8 +644,11 @@ class Policy(nn.Module):
         # --simba / --split-trunk (the user, 2026-10-03): LayerNorm'd residual towers; a second
         # image encoder for the value
         self.simba, self.split_trunk = bool(simba), bool(split_trunk)
-        if self.simba and (self.trunk != "plain" or self.dropout > 0.0 or self.rnn != "none"):
-            raise SystemExit("--simba is built on the plain trunk, without --dropout or --rnn")
+        # --simba + --rnn gru (2026-10-08): the GRU output is appended to each tower's input and
+        # the SimBa tower's first Linear is already sized feat + extra + rnn_size, so nothing in
+        # the towers depends on whether h is there (tests/python/test_simba_rnn.py)
+        if self.simba and (self.trunk != "plain" or self.dropout > 0.0):
+            raise SystemExit("--simba is built on the plain trunk, without --dropout")
         if self.split_trunk and (self.rnn != "none" or int(plan_film or 0)
                                  or self.trunk != "plain"):
             raise SystemExit("--split-trunk gives the value its own plain trunk; not with --rnn "
