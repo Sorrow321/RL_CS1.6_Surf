@@ -2572,6 +2572,33 @@
       "date": "2026-10-07",
       "detail": "RTX 4090 BUSY at deploy: 8,372 MiB already in use by another process (a foreign tenant); gpu_health could not judge it. Instance 54585327 (Hungary, $0.441/h), released by the box driver before it could be blocked.",
       "run": "uf2R2U (overnight 2026-10-07)"
+    },
+    {
+      "ip": "85.195.201.222",
+      "machine_id": 151792,
+      "host_id": 233636,
+      "date": "2026-10-08",
+      "detail": "not running after 330s (loading): ",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "212.85.84.41",
+      "machine_id": 52214,
+      "host_id": 93447,
+      "date": "2026-10-08",
+      "detail": "not running after 330s (loading): ",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "107.159.55.113",
+      "machine_id": 64949,
+      "host_id": 464257,
+      "date": "2026-10-08",
+      "detail": "running instance stopped by the host side at ~23:30 2026-10-08 (intended_status stopped, not issued by us); restart refused 'required resources currently unavailable' - the GPU was re-rented; uf2SCx1f5 checkpoints lost",
+      "run": "",
+      "reason": "unreliable"
     }
   ],
   "known_good": [
