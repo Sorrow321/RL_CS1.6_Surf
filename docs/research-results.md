@@ -35289,3 +35289,22 @@ uf2R3CV6/ckpt_beststage.pt holds S36 9/9.
 * **The deep-tower axis** (--tower-depth 8, 14.4M) lost its box: one 4090 never left "loading" and was blocked and destroyed. It is the first candidate for the next wave.
 
 **GRU prepared for the next wave:** --simba with --rnn gru is now allowed (a6e8096; a CPU test covers the forward and the state reaching the actor).
+
+## 2026-10-08 21:06 (machine clock) - scaling sweep, first ~40 min: the 19M arm exits the pit in TRAINING; the run is CPU-bound, the H100 is the slowest box; w4 moved to a 4090
+
+| arm | params | steps | fps | time-to-gate (first step with >= 10% of settled episodes at list position >= k), k = 1 / 2 / 3 / 4 | greedy evals |
+|---|---|---|---|---|---|
+| uf2SCx1 | 4.8M | 181M | 84k (5090 m64949) | 6M / 11M / 25M / - | 3 (S18) 9/9 at 101M |
+| uf2SCc8 | 13.6M | 28M | 13.6k (4090) | 7M / 14M / - / - | - |
+| **uf2SCw2** | 19.0M | 219M | 104k (4090 m22721) | 6M / 14M / 30M / **214M** | 3 9/9 at 201M |
+| uf2SCw3 | 42.8M | 217M | 100k (5090 m68290) | 7M / 19M / 29M / - | 3 9/9 at 201M |
+| uf2SCw4 | 76.0M | 54M | 24k (H100) | 15M / 35M / - / - | - |
+
+* **uf2SCw2 is the first FROM-SCRATCH policy whose training episodes leave the pit** (list position 4, the second S19) in >= 10% of an iteration, at 214M. Its greedy line is still at S18, and one seed at one step is not yet a size effect: x1 and w3 have the same recipe and are at 181M / 217M.
+
+**Throughput: the trainer is CPU-bound, not GPU-bound**, up to at least the 43M network (this answers "maybe the bottleneck is not the GPU but the CPUs"):
+* **w3 (43M)** runs at 100k fps on a 5090, faster than x1 (4.8M, 84k) on another 5090. The two boxes differ in CPU.
+* **The H100 box ran at 24k fps with GPU utilisation 8%.** Its container has 20 threads of a Xeon Platinum 8468 (10 physical cores), the trainer had ~14 cores busy, and the host's load average read 21-24. The env physics on a slow server CPU is the bottleneck, so a datacenter GPU buys nothing here.
+* **Only the wide CNN (c8, conv 128/256/512) is GPU-bound:** 13.6k fps on a 4090.
+
+**Move:** w4 (76M) restarted from scratch as **uf2SCw4b** on a 4090 (m151648, $0.462/h) at 21:04. The H100 trainer was stopped at 54M; its driver pulled the logs and released the box at 21:06 ($2.55/h saved), and its tunnel was stopped. The fleet is 2x 5090 + 3x 4090, ~$2.47/h.
