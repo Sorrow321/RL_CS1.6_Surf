@@ -35308,3 +35308,22 @@ uf2R3CV6/ckpt_beststage.pt holds S36 9/9.
 * **Only the wide CNN (c8, conv 128/256/512) is GPU-bound:** 13.6k fps on a 4090.
 
 **Move:** w4 (76M) restarted from scratch as **uf2SCw4b** on a 4090 (m151648, $0.462/h) at 21:04. The H100 trainer was stopped at 54M; its driver pulled the logs and released the box at 21:06 ($2.55/h saved), and its tunnel was stopped. The fleet is 2x 5090 + 3x 4090, ~$2.47/h.
+
+## 2026-10-08 21:13 (machine clock) - FROM SCRATCH PAST THE PIT TO S20: the 4.8M control (uf2SCx1), not a bigger network
+
+**Report at 21:10** (time-to-gate in M steps, list positions 1 / 2 / 3 / 4 / 5):
+
+| arm | params | steps | fps | gates (M steps) | greedy |
+|---|---|---|---|---|---|
+| **uf2SCx1** | 4.8M | 306M | 112k | 6 / 11 / 25 / **250** / (5 at >= 5% of training at 21:09) | **at 301M: [4, 4, 5, 5, 5, 5, 5, 5, 5], S20 in 7/9 from the map start** |
+| uf2SCw2 | 19.0M | 286M | 106k | 6 / 14 / 30 / 214 / - | 3 at 201M |
+| uf2SCw3 | 42.8M | 292M | 107k | 7 / 19 / 29 / - / - | 3 at 201M |
+| uf2SCc8 | 13.6M | 44M | 16.6k | 7 / 14 / 31 / - / - | - |
+| uf2SCw4b | 76.0M | 7.9M | 23.5k | - | - |
+
+* **The first from-scratch policy to leave the pit and reach S20 from the map start is the SMALLEST network.**
+  * The 2026-10-07 scratch runs at lr 3e-4 parked at S18 for 600M+ steps: uf2R3S (no loop), uf2R3SN5 (novelty) and uf2R3SF (the loop added at 221M).
+  * This recipe adds **lr 1e-4** and **the frontier loop from step 0** (--greedy, --monotone, jitter 1.0-1.3, frac 0.25).
+  * So far the evidence says the recipe, not the capacity, is what moved; one seed per size, and the bigger ones may still catch up.
+* **The 76M w4 runs at 23.5k fps on the 4090, the same as on the H100.** Both runs captured the CUDA graph, so it is not an eager fallback. The likely cost is the PPO update at that width: a steeper drop than params suggest (w3 at 43M keeps ~107k).
+* **The frontier recorder had no thread cap:** record_ckpt's numba pool sized itself off the host's nproc (144 on the w4b box) and took ~14 cores per refresh (memory: numba-pools). All five loops were restarted at 21:12 with NUMBA_NUM_THREADS=8 OMP_NUM_THREADS=8 (pids listed, killed by exact pid, relaunched in separate calls). The monotone floors were kept: x1 2, c8 0, w2 3, w3 2, w4b 0.
