@@ -35525,3 +35525,44 @@ Then it collapsed. Share of training episodes past the pit, per 50M bin: 98% (40
 * No arm has an S30 episode.
 
 **Fleet: 10 boxes, ~$4.9/h (d8, d8g, d16, c16, w2, w2lr, c2, w4lr, c4, x1f5gB), deadlines 05:09-05:25.**
+
+## 2026-10-09 04:05 (machine clock) - the vast account ran out of credit at ~03:56 and vast stopped all ten boxes; destroyed unharvested at 04:02-04:03 (the last ~80 min of every run is lost). Final: conv x2 leaves the pit at 186M; conv x16 and dense width x2 park; across 16 from-scratch arms, bigger nets park more often, and conv width is the one knob that speeds the pit exit
+
+**What happened.** At ~03:56 all ten instances, on ten different machines, went to exited within three minutes. vastai show instance gave intended_status stopped; vastai show user gave credit 0, balance -0.17. A restart of 54929928 was refused ("Required resources are currently unavailable, state change queued"). This is the account, not the hosts, so nothing was blocklisted. I did not add credit (the user's decision). Under the running-or-destroyed rule I destroyed all ten through fleet_watchdog release --no-harvest at 04:02-04:03 (each "confirmed gone"; vastai show instances empty; registry empty), and stopped the eleven local tunnels, the drivers and the waiters by exact PID.
+
+**Lost:** everything after the last fetch - 02:38-02:40 for d8 (2.92B), w2 (2.82B), w2lr (1.27B), w4lr (0.80B), d16 (0.87B), c4 (0.66B) and x1f5gB (2.18B); 03:26 for c2 (0.20B), c16 (0.10B) and e2 (0.34B). That is ~80 min of logs and greedy evals per arm, and every final checkpoint; under --ramp-sequence-source demo none of those could be a base. **Kept:** d4 and w3lr complete to their retirement (02:53); d8g complete to 2.84B with its checkpoint (2,821,718,016 steps, 15.30M, md5 6eee7800) in runs/research/uf2SCd8g/; the earlier saves (x1_resume f5219c88, d8_resume 219eec37, x1f5g_resume 3abe26b0).
+
+**Since 02:57:**
+* **uf2SCc2** (--conv-mult 2, 5.93M counted from its checkpoint): pit exit at 186M (training share past the pit 0.4% at 170M, 10.8% at 180M, 61% at 190M); greedy 4 (pit exit) in 7/7 episodes of the 201M eval; ~100k steps/s on the AMD engineering-sample 4090 box.
+* **uf2SCc16** (--conv-mult 16, 26.45M): parked from 75-100M (stall 94%, crawl 95%, length 2,863 ticks in the 100M bin); GPU-bound, 100% busy at 46-52k steps/s on the 5090 - the only GPU-bound arm of the night. Censored at 100M.
+* **uf2SCe2** (--emb 1024 --hidden 896, conv x1, 16.94M; replaced d8g on its 5090 at 03:00): parked from ~75M through 337M (stall 94-97%, crawl 94-97%); 214k steps/s on the Ryzen 7 9700X.
+* **uf2SCd8g** retired at 03:00 at 2.84B: no S25 since 1.9B.
+
+**Final pit-exit table** (M steps to >= 10% of training episodes past the pit; from scratch, the sweep recipe, lr 1e-4 unless noted; one seed each; "parked" = position 3 in nearly every training episode, crawling to the 30 s stall kill, with the last step seen):
+
+| arm | change from x1 | params | pit exit | S20 | S22 |
+|---|---|---|---|---|---|
+| x1 | - | 4.8M | 250 | 325 | none by 1,405 |
+| gru | + GRU 256 | 5.6M | 895 | - | - |
+| c2 | conv x2 | 5.9M | 186 | none by 200 | - |
+| d4 | tower depth 4 | 8.0M | parked >1,277 | - | - |
+| c4 | conv x4 | 8.3M | 184 | 247 | 603 |
+| c8 | conv x8 | 13.6M | 165 | 252 | none by 526 |
+| d8 | tower depth 8 | 14.4M | 192 | 441 | 690 (S25 at 893) |
+| e2 | emb/hidden x2 | 16.9M | parked >337 | - | - |
+| w2 | emb/hidden x2 + conv x2 | 19.0M | 214 | 298 | 1,244 |
+| w2lr | w2 at lr 5e-5 | 19.0M | parked >1,274 | - | - |
+| c16 | conv x16 | 26.4M | parked >100 | - | - |
+| d16 | tower depth 16 | 27.3M | parked >870 | - | - |
+| w3 | x3 + conv x3 | 42.8M | parked >798 | - | - |
+| w3lr | w3 at lr 3.3e-5 | 42.8M | parked >1,302 | - | - |
+| w4b | x4 + conv x4 | 76.0M | parked >387 | - | - |
+| w4lr | w4 at lr 2.5e-5 | 76.0M | 658 | none by 801 | - |
+
+* **Out of the pit by 250M:** 5 of 7 arms under 15M; 1 of 4 at 15-30M (c16 parked when last seen at 100M); 0 of 4 above 30M (w4lr late, at 658M). Parking is the common failure, and it gets more common with size. (uf2SCw4 on the H100 was CPU-bound at 24k steps/s and stopped at 51M; not counted.)
+* **Conv width is the one knob whose arms leave the pit sooner:** x1 250, x2 186, x4 184, x8 165 (steps ~ params^-0.33, R^2 0.71, 4 points; the x1-to-x2 step carries most of it), x16 parked at 100M. Dense width alone (e2) parked; with conv x2 added (w2) it left at 214M.
+* **No arm reached S30. S25 appeared only in d8 and d8g training**, from practice spawns, and was gone by 1.5B / 1.9B.
+* **GRU** (the user's memory idea): from scratch it parked until 895M (x1: 250M). On x1's lineage at the S20 frontier it reached S22 at +49M steps against +192M for its feed-forward partner, and took S22 greedy (6/9 at 2.168B), but S25 stayed at 0.0-0.1% of training episodes. On the 8-deep tower it gave nothing at matched steps.
+* **Throughput is set by the CPU up to ~27M parameters** (GPU 2-27% busy; the same 19M net ran 125k steps/s on a Threadripper PRO 5955WX and 90k on an EPYC 7C13, same card). Only the conv x16 net was GPU-bound. The practice loop's recorder also takes up to ~37 cores for minutes per rebuild.
+
+**Lesson (ops):** check vastai show user credit at every check-in and project it against the fleet's burn rate; a credit run-out stops every box at once and takes every unharvested result with it.
