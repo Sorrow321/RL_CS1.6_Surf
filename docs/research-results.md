@@ -35489,3 +35489,39 @@ uf2R3CV6/ckpt_beststage.pt holds S36 9/9.
 * Race losers still loading at 330 s, blocklisted (network) and destroyed: 54928996 (m138352), 54928999 (m145975, a containerd write error) and 54929924 (m149524).
 
 **Fleet: 10 boxes, ~$4.9/h (d8, d8g, d16, d4, w2, w2lr, w3lr, w4lr, c4, x1f5gB), deadlines 05:09-05:24.**
+
+## 2026-10-09 02:57 (machine clock) - conv channels are the one capacity axis whose every member leaves the pit, sooner the bigger (x1 250M, x4 184M, x8 165M: steps ~ params^-0.40); conv x4 takes S22 from scratch at 603M, the earliest tonight, then collapses at 637M; the 76M scaled-lr net leaves the pit at 658M; depth 4 and the 43M scaled-lr net retired parked, their boxes now run conv x16 and conv x2
+
+**uf2SCc4** (--conv-mult 4, 8.31M, lr 1e-4, the sweep recipe; Ryzen 9 7900X 4090, OMP 12, 146k steps/s). Time to gate (>= 10% of training episodes): S19 6M, S17 13M, S18 26M, pit exit 184M, S20 247M, **S22 603M** - the earliest S22 of any from-scratch arm tonight (d8 690M, w2 1,244M, x1 none by 1.405B). Greedy from the map start: 5 (S20) in 9/9 at 601M. Practice-loop floor k=4 (stages {3, 4}) since 302M.
+
+Then it collapsed. Share of training episodes past the pit, per 50M bin: 98% (400-550M), 68% (600M), 25% (650M). At 635.4M one update ran at kl 0.0605 (under the 1.5 x 0.05 early stop); over the next 5M steps the mean episode reward fell from 323 to 86, and the episodes went from mostly reaching positions 4-6 to mostly 0-1 (dying before or at the first S19). At 786M it has not come back (reward 103-118, crawl 15%).
+
+**Pit exit (M steps to >= 10% of training episodes) by capacity family, one seed per point:**
+
+| family (lr 1e-4 unless noted) | params | pit exit | fit |
+|---|---|---|---|
+| conv channels, --conv-mult 1 / 4 / 8 | 4.8 / 8.3 / 13.6M | 250 / 184 / 165 | steps ~ params^-0.40 (R^2 0.94, 3 points) |
+| width (emb, hidden, conv x1-x4 together) | 4.8 / 19 / 42.8 / 76M | 250 / 214 / parked >798 / parked >387 | - |
+| width, lr 1e-4 / width multiple | 4.8 / 19 / 42.8 / 76M | 250 / parked >1,274 / parked >1,302 / 658 | - |
+| tower depth 2 / 4 / 8 / 16 | 4.8 / 8.0 / 14.4 / 27.3M | 250 / parked >1,277 / 192 / parked >870 | - |
+
+* S20 in the conv family: 325 / 247 / 252M (params^-0.25, R^2 0.72). The early gates go the other way in every family (S17: params^+0.07 to +0.31): a bigger net is a little slower to the first ramps and, in the conv family only, faster through the pit.
+* The conv family is the only one in which every member has left the pit. Two of its points are missing; see the new arms below.
+
+**Collapses are common, and a KL spike does not predict them.** scratchpad collapse_scan.py flags a collapse where the mean reward over the next 8 training lines is below half the mean over the previous 32 (previous mean > 100): 22 onsets across the night (x1 5, w2 6, d8 4, c4 2, and one each in c8, x1f5, w4lr, w3lr, d4). Of the 6,051 lines with kl > 0.05 (above --target-kl 0.05 but under its 1.5x stop), 0.347% fall within the 4 lines before an onset, against 0.310% of all 35,468 lines: no enrichment, and three onsets follow a max kl below 0.001. The detector is crude (it cannot tell a policy collapse from a change of the practice file), but it gives no reason to expect a tighter KL stop to fix this.
+
+**uf2SCw4lr** (76M, lr 2.5e-5) left the pit at 658M, the first net above 19M to do so tonight: 97.7% of training episodes past the pit and 1.3% at S20 at 800M; greedy 4 in 9/9 at 802M.
+
+**Retired parked at 02:53** (logs, run.json and evals kept in runs/research/<arm>/ and runs/research/scale/<arm>/; checkpoints not pulled, as they will never be a base): uf2SCd4 at 1.277B (position 3 in every training episode from 600M, stall 94-97%, crawl 98%, length ~2,900 ticks) and uf2SCw3lr at 1.302B (stall 92-95%, crawl 95-96%). Each box's local driver was stopped first. The boxes now run the two missing conv points, from scratch with the same recipe. The seed spawn file was restored and md5-checked (347af48a), because the old practice loops had overwritten it in place.
+* **uf2SCc16** (--conv-mult 16: 256 / 512 / 1,024 channels, ~26.4M by layer count) on the 5090 (54929005, TR 9960X, OMP 8): 35k steps/s at 5M, GPU 28% busy.
+* **uf2SCc2** (--conv-mult 2, ~5.9M) on the 4090 (54911127, OMP 23): 62k steps/s at 8M, still rising.
+* Both passed the record gate; each box runs its own practice loop from floor k=0, registered to ~05:13.
+
+**The frontier arms** (training shares; position 6 = S22, 7 = S25):
+* uf2SCd8 at 2.92B: S20 92-97% from 2.2B; S22 and S25 0.0% since 1.5B. Greedy 5 in 9/9 at 2.905B.
+* uf2SCd8g at 2.69B: S25 4.2% in the 1.8B bin, 0.0% from 1.9B. Training is still 86-99% past the pit, but greedy is 1 in 9/9 at 2.675B (the deterministic policy dies at the first drop).
+* uf2SCx1f5gB at 2.18B: S22 34-70% of training episodes from 1.8B, S25 0.0-0.1%. Greedy 6 (S22) in 6/9 at 2.168B. Floor k=5 (stages {4, 5}) since 2.126B; 85k steps/s on the EPYC 7513 at OMP 8.
+* uf2SCw2 at 2.82B: S22 8-12% from 2.0B, S25 0.0%. Greedy 5 in 9/9.
+* No arm has an S30 episode.
+
+**Fleet: 10 boxes, ~$4.9/h (d8, d8g, d16, c16, w2, w2lr, c2, w4lr, c4, x1f5gB), deadlines 05:09-05:25.**
