@@ -34,6 +34,7 @@ import hashlib
 import json
 import os
 import shlex
+import shutil
 import subprocess
 import sys
 import time
@@ -66,8 +67,12 @@ def die(msg: str, code: int = 2):
 
 
 # ------------------------------------------------------------------ vast ------
+# the CLI lives in ~/.local/bin on the agent host, which only LOGIN shells put on PATH
+VASTAI = shutil.which("vastai") or str(Path.home() / ".local" / "bin" / "vastai")
+
+
 def vast(*args, raw=True, timeout=120, check=True):
-    cmd = ["vastai", *args] + (["--raw"] if raw else [])
+    cmd = [VASTAI, *args] + (["--raw"] if raw else [])
     env = dict(os.environ, PYTHONIOENCODING="utf-8")
     r = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=timeout,
                        encoding="utf-8", errors="replace")

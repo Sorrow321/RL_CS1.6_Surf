@@ -21,6 +21,8 @@ set -euo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 export AR_HOME="${AR_HOME:-$HOME/ar}"
 export RLSURF_FLEET_DIR="$AR_HOME/fleet"
+# claude and vastai live in ~/.local/bin, which only login shells put on PATH
+export PATH="$HOME/.local/bin:$AR_HOME/venv/bin:$PATH"
 PY="${AR_PY:-$AR_HOME/venv/bin/python}"
 mkdir -p "$AR_HOME/fleet"
 MAXB=$("$PY" -c "import json;print(json.load(open('$REPO/autoresearch/config.json'))['max_boxes'])")

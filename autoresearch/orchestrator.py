@@ -33,7 +33,8 @@ CFG = json.loads((REPO / "autoresearch" / "config.json").read_text(encoding="utf
 AR_HOME = Path(os.environ.get("AR_HOME", str(Path.home() / "ar")))
 STATE = AR_HOME / "state.json"
 TMUX = os.environ.get("AR_TMUX", "ar")
-CLAUDE = os.environ.get("AR_CLAUDE", "claude")
+CLAUDE = os.environ.get("AR_CLAUDE") or shutil.which("claude") or str(
+    Path.home() / ".local" / "bin" / "claude")
 POLL_S = 60
 TRAILERS = ("\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>\n"
             "Claude-Session: https://claude.ai/code/session_01LCSvrZRGWfECSRc6zpr4x7")
@@ -76,7 +77,8 @@ def save_state(st):
 def agent_env(st, slot) -> dict:
     # `python` is the venv's (numpy, CPU torch, the built core): Ubuntu has no bare `python`,
     # and the system python3 has none of the packages
-    path = f"{AR_HOME / 'venv' / 'bin'}:{os.environ.get('PATH', '/usr/bin:/bin')}"
+    path = (f"{AR_HOME / 'venv' / 'bin'}:{Path.home() / '.local' / 'bin'}:"
+            f"{os.environ.get('PATH', '/usr/bin:/bin')}")
     return {"AR_HOME": str(AR_HOME), "AR_AGENT": slot["agent"], "AR_ROUND": str(st["round"]),
             "AR_START": str(st["started"]), "RLSURF_FLEET_DIR": str(AR_HOME / "fleet"),
             "PYTHONIOENCODING": "utf-8", "PATH": path}

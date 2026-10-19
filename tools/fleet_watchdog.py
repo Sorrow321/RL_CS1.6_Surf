@@ -51,6 +51,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 import threading
@@ -175,7 +176,10 @@ def vast(*a, timeout=120):
     """Run the vast CLI. PYTHONIOENCODING is not optional: the user's console
     is cp1251 and the CLI's own output crashes on encode without it."""
     env = dict(os.environ, PYTHONIOENCODING="utf-8")
-    return subprocess.run(["vastai", *a], capture_output=True, text=True,
+    # ~/.local/bin (pip --user) is on PATH only in login shells; a daemon started from a
+    # non-login shell would otherwise be blind - and a blind watchdog acts on nothing
+    exe = shutil.which("vastai") or str(Path.home() / ".local" / "bin" / "vastai")
+    return subprocess.run([exe, *a], capture_output=True, text=True,
                           env=env, timeout=timeout,
                           encoding="utf-8", errors="replace")
 
