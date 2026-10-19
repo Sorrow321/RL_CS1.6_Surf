@@ -161,9 +161,14 @@ def launch(st, slot, resume=False) -> None:
 
 
 def session_alive(slot) -> bool:
+    """The window runs `bash .ar_launch.sh; echo SESSION ENDED; sleep 86400`, so the pane shows
+    `sleep` exactly when the session has exited. The process NAME of a live session is useless:
+    the native installer's binary is ~/.local/share/claude/versions/<version>."""
     r = sh(["tmux", "list-panes", "-t", f"{TMUX}:b{slot['k']}", "-F",
             "#{pane_current_command}"], check=False)
-    return r.returncode == 0 and any(c in r.stdout for c in ("claude", "node"))
+    if r.returncode != 0 or not r.stdout.strip():
+        return False
+    return r.stdout.strip().splitlines()[0] != "sleep"
 
 
 def send(slot, text: str) -> None:
