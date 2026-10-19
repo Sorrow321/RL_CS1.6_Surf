@@ -74,9 +74,12 @@ def save_state(st):
 
 
 def agent_env(st, slot) -> dict:
+    # `python` is the venv's (numpy, CPU torch, the built core): Ubuntu has no bare `python`,
+    # and the system python3 has none of the packages
+    path = f"{AR_HOME / 'venv' / 'bin'}:{os.environ.get('PATH', '/usr/bin:/bin')}"
     return {"AR_HOME": str(AR_HOME), "AR_AGENT": slot["agent"], "AR_ROUND": str(st["round"]),
             "AR_START": str(st["started"]), "RLSURF_FLEET_DIR": str(AR_HOME / "fleet"),
-            "PYTHONIOENCODING": "utf-8"}
+            "PYTHONIOENCODING": "utf-8", "PATH": path}
 
 
 # ------------------------------------------------------------------ slots -----
