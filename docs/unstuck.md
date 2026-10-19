@@ -300,7 +300,7 @@ base table a decay would desynchronise), a non-race reward, and
 | `--unstuck-period` | 1e8 steps | the period every rate is per (a smoke knob) |
 | `--unstuck-temp` / `-ent` / `-int` | 1 / 1 / 1 | the three effects, individually |
 | `--unstuck-temp-heads` | all | which heads the sampling temperature reaches |
-| `--unstuck-reach` | res | the progress measure: `res` = the reservoir's reach (or the arc reach); `alive` = the deepest point an episode reached and was still alive `--unstuck-hold` later (2026-09-13, below) |
+| `--unstuck-reach` | res | the progress measure: `res` = the reservoir's reach (or the arc reach); `alive` = the deepest point an episode reached and was still alive `--unstuck-hold` later (2026-09-13, below); `eval` = the greedy eval's frontier, read once per `--record-every` (2026-10-18, below) |
 | `--unstuck-hold` | 3 s | `alive`: how long an episode must survive past a point for it to count |
 | `--unstuck-reach-spawn-d` | off | `alive`: count only episodes that spawned at geodesic >= this (start-anchored) |
 
@@ -451,6 +451,51 @@ ride in the config like every other unstuck knob and a flagless resume
 restores them. `res` (the default) is the shipped behaviour bit for bit.
 Pinned by `tests/python/test_unstuck_reach.py` (4 unit cases on the
 tracker, one CPU smoke with a 48-tick cap so the platform envs time out).
+
+## The eval frontier: `--unstuck-reach eval` (2026-10-18)
+
+The reservoir reading lagged the greedy line on surf_src_sidistic and kept
+the schedule cold. sidGEOu's greedy evals sat at the same wall from 982M to
+1.56B steps (best d 77,455-77,472 u, all 9 episodes dying in the same place),
+but under the default 10 s harvest margin the reservoir only fills from the
+first ~9 s of the line. Its deepest state came from a few episodes that
+survived 10 s or more after a fall. As those accumulated, the deepest state
+crept forward past `eps` four times: 16,256 u at 725M, 18,154 at 936M, 19,440
+at 1,155M and 19,970 at 1,427M, every reading still short of the eval's death
+point. Each creep restarted the 2e8-step patience, so T peaked at 0.39 and was
+0.15 when the run stopped. Fed the eval instead, the same schedule would have
+started rising at about 1.18B and stood near 1.9.
+
+`--unstuck-reach eval` feeds the detector the greedy recording's FRONTIER:
+`race_frontier`, the deepest per-episode `d at spawn - min d` of the
+recording. That is `race/eval_progress`'s own quantity, taken as a maximum
+instead of a mean, so the share of episodes reaching a gate (consistency)
+cannot reset patience and only the line itself can.
+
+* **One reading per recording.** The eval runs after the detector in the
+  same iteration, so the next iteration consumes the reading. Between evals
+  there is no reading. The patience window is in steps, so `--record-every`
+  must be well under `--unstuck-patience`: the scratch preset's 75e6 against
+  2e8 is fine, the resume preset's 250e6 is not.
+* **The arc reach is ignored** under `eval`: like the reservoir's, it is a
+  training-rollout measure.
+* **The step line** of every eval prints `frontier <u>`, and `unstuck/best`
+  logs the best frontier.
+* **A resume that changes the measure re-seeds** (`UnstuckSchedule.reseed`,
+  any pair of measures). The stored bests were taken on the old measure and
+  are dropped, and the patience window restarts at the resume step. T and the
+  decay clock are kept because they describe the weights. A checkpoint from
+  before `--unstuck-reach` existed counts as `res`. A resume on the same
+  measure is untouched.
+* **Its limit is the field's.** A greedy death-dive into goal-adjacent
+  airspace still reads as frontier, exactly as it does for
+  `race/eval_progress`. `alive` is the measure that cuts a fall's last
+  seconds off, and it reads training rollouts instead.
+
+Pinned in `tests/python/test_unstuck_reach.py`: `race_frontier` /
+`race_progress` on a hand recording, `reseed`, and a CPU smoke that resumes
+a `res` checkpoint under `eval`, re-seeds and logs the frontier as
+`unstuck/best`.
 
 ## Not done / open
 

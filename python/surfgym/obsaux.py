@@ -80,11 +80,12 @@ from __future__ import annotations
 
 import numpy as np
 
-__all__ = ["ACT_FEAT", "CMP_FEAT", "ObsAux", "yaw_hist_table",
-           "pitch_hist_table"]
+__all__ = ["ACT_FEAT", "CMP_FEAT", "ObsAux", "PotRate", "make_pot_rate_feed",
+           "yaw_hist_table", "pitch_hist_table"]
 
 ACT_FEAT = 6          # one decision -> six numbers, one per action head
 CMP_FEAT = 5          # ego downhill (fwd, left, up) + d/d0 + |grad|
+PRATE_UNIT = 1000.0   # --obs-pot-rate in 1000 u/s, the velocity scalars' own unit
 
 # Multiples of the optimal-strafe turn rate, used when cfg.yaw_adaptive.
 # Mirrors src/env.c K_BINS exactly (the C table is the authority; this is a
@@ -335,6 +336,63 @@ class ObsAux:
         in (see ``note_ticks``).  One call per DECISION."""
         self.note_ticks(tick)
         return self.features(pos, yaw_deg)
+
+
+class PotRate:
+    """``--obs-pot-rate`` (user, 2026-10-19): ONE column, the rate at which the
+    shaping potential changes along the player's velocity,
+
+        rate = -grad d . v / 1000      (1000 u/s, the velocity scalars' unit)
+
+    i.e. how fast the field's distance is falling right now: positive while
+    flying down the field, negative while climbing it, 0 across it.  It is the
+    LAST column of the scalar half (after ``--obs-surf``), not part of the
+    ObsAux block, so a checkpoint without it grows onto it by the trailing
+    zero-pad.
+
+    The gradient is the compass's own: ``ObsAux.compass_features`` at yaw 0
+    gives the unit downhill direction in the WORLD frame and ``|grad d|``
+    clipped to [0, 1], and their product is the gradient this column dots
+    with v.  So a geodesic field (``|grad d| = 1`` along a real path) gives
+    exactly the speed along the path, and a flat, undefined or unreachable
+    point reads 0 - the compass's own rules, from the same code, so the two
+    columns cannot drift apart.  Stateless: no latch, no history, nothing to
+    reset at an episode start.
+    """
+
+    def __init__(self, n_envs: int, field):
+        self.n = int(n_envs)
+        self._aux = ObsAux(self.n, k=0, field=field)
+        if not self._aux.compass:
+            raise ValueError("--obs-pot-rate needs a distance field")
+        self._yaw0 = np.zeros(self.n, np.float64)
+        self._cmp = np.zeros((self.n, CMP_FEAT), np.float32)
+        self._out = np.zeros(self.n, np.float32)
+
+    def features(self, pos, vel, out=None) -> np.ndarray:
+        """(n, 3) world positions + (n, 3) world velocities (u/s) -> (n,)
+        float32.  `pos` must be the WHOLE fleet (see ``ObsAux._sample``)."""
+        c = self._aux.compass_features(pos, self._yaw0, out=self._cmp,
+                                       latch=False)
+        v = np.asarray(vel, np.float64).reshape(-1, 3)
+        res = self._out if out is None else out
+        res[:] = ((c[:, 0] * v[:, 0] + c[:, 1] * v[:, 1] + c[:, 2] * v[:, 2])
+                  * c[:, 4] / PRATE_UNIT)
+        return res
+
+
+def make_pot_rate_feed(field):
+    """The eval wrappers' ``prate_fn(core, n)``: the rate off the core's live
+    origin and velocity, from the same class the rollout drives."""
+    st = {"p": None}
+
+    def feed(core, n):
+        p = st["p"]
+        if p is None or p.n != n:
+            p = st["p"] = PotRate(n, field)
+        sv = core.states_view
+        return p.features(sv["origin"], sv["velocity"]).copy()
+    return feed
 
 
 def _cell_of(field) -> float:

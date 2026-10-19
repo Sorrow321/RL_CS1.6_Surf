@@ -13,10 +13,17 @@ once cannot pin T at its cap (docs/unstuck.md, "The alive reach").
     the config carries the three keys, progress.csv gains unstuck/reach and
     unstuck/reach_n, the step line prints the reach, and a flagless resume
     restores the mode.
+(c) `--unstuck-reach eval` (2026-10-18): race_frontier is the deepest
+    episode of a recording where race_progress is the mean of the same
+    per-episode numbers; UnstuckSchedule.reseed drops the bests, keeps T
+    and restarts patience; a CPU smoke resumes a `res` checkpoint under
+    `eval`, re-seeds, prints the frontier on the greedy line and logs it as
+    unstuck/best on the next iteration.
 """
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -27,7 +34,8 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "python"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from train_fast import AliveReach                              # noqa: E402
+from train_fast import (AliveReach, UnstuckSchedule,          # noqa: E402
+                        race_frontier, race_progress)
 from test_unstuck import ABS, TRAIN, _csv, _run, _train         # noqa: E402
 from test_view_continuous import SMOKE_FLAGS, needs_run         # noqa: E402
 
@@ -164,3 +172,110 @@ def test_alive_reach_smoke_runs_logs_and_resumes():
     assert len(rows2) == 1 and "unstuck/reach" in rows2[0]
     for dd in (d, ROOT / "runs" / run2):
         shutil.rmtree(dd, ignore_errors=True)
+
+
+# ==========================================================================
+# (c) --unstuck-reach eval
+# ==========================================================================
+class _XField:
+    """d = 1000 - x: progress is how far +x an episode got."""
+
+    def sample(self, pos):
+        return 1000.0 - np.atleast_2d(np.asarray(pos, np.float64))[:, 0]
+
+
+def _traj(path, episodes):
+    """A recording in the recorder's layout: a header, per-tick rows
+    [tick, x, y, z, ...], an end footer per episode."""
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(json.dumps({"map": "toy", "tick_ms": 10.0}) + "\n")
+        for xs in episodes:
+            for t, x in enumerate(xs):
+                f.write(json.dumps([t, float(x), 0.0, 0.0, 0.0, 0.0, 0.0]) + "\n")
+            f.write(json.dumps({"end": "fail", "ticks": len(xs)}) + "\n")
+
+
+def test_race_frontier_is_the_deepest_episode_and_progress_the_mean(tmp_path):
+    p = tmp_path / "traj.jsonl"
+    # 300 u; out 100 and back to 50 (min d counts, not the last); 0 u
+    _traj(p, [[0, 100, 200, 300], [0, 100, 50], [0, 0, 0]])
+    f = _XField()
+    assert race_frontier(p, f) == 300.0
+    assert race_progress(p, f) == (300.0 + 100.0 + 0.0) / 3
+    q = tmp_path / "empty.jsonl"
+    q.write_text(json.dumps({"map": "toy"}) + "\n", encoding="utf-8")
+    assert np.isnan(race_frontier(q, f)) and np.isnan(race_progress(q, f))
+
+
+def test_reseed_drops_the_bests_keeps_T_and_restarts_patience():
+    s = UnstuckSchedule(eps=500, patience=1000, rate=1.0, tmax=4.0,
+                        period=1000, step=0)
+    s.observe(0, res_prog=20000.0)
+    s.observe(3000, res_prog=20000.0)
+    assert s.T == 3.0 and s.stuck_steps == 3000
+    s.reseed(3000)
+    assert np.isnan(s.best_res) and np.isnan(s.best_arc)
+    assert s.T == 3.0 and s.stuck_steps == 0 and s.best_step == 3000
+    # a LOWER reading than the old measure's best is the new baseline: an
+    # improvement, so T cools for a period ...
+    T, _ = s.observe(4000, res_prog=19000.0)
+    assert s.best == 19000.0 and s.stuck_steps == 0 and T == 1.5
+    # ... and heats up again once the new measure stalls past patience
+    T, _ = s.observe(6000, res_prog=19100.0)
+    assert s.stuck_steps == 2000 and T == 3.5
+
+
+@needs_run
+def test_eval_reach_smoke_reseeds_a_res_checkpoint_and_logs_the_frontier():
+    chk = _run([sys.executable, "-c",
+                "import torch; assert not torch.cuda.is_available()"], 300)
+    assert chk.returncode == 0, chk.stderr
+    run = "cya_evreach"
+    _train(run, ABS + ["--unstuck", "--unstuck-patience", "0",
+                       "--unstuck-period", "2048", "--unstuck-rate", "1",
+                       "--unstuck-max", "2"], steps="6144")
+    d = ROOT / "runs" / run
+    cfg = json.loads((d / "run.json").read_text(encoding="utf-8"))["config"]
+    assert cfg["unstuck_reach"] == "res"
+    T0 = torch_load_T(d / "ckpt_final.pt")
+    # resume under the eval frontier: the measure changed, so it re-seeds
+    run2 = "cya_evreach_re"
+    shutil.rmtree(ROOT / "runs" / run2, ignore_errors=True)
+    r2 = _run([sys.executable, "-u", str(TRAIN), "--run", run2, "--ckpt",
+               str(d / "ckpt_final.pt")] + SMOKE_FLAGS
+              + ["--steps", "12288", "--unstuck-reach", "eval"])
+    assert r2.returncode == 0, r2.stdout[-4000:] + r2.stderr[-4000:]
+    out = r2.stdout
+    assert "--unstuck-reach eval: the plateau detector watches the greedy eval's frontier" in out
+    assert ("--unstuck-reach eval (the checkpoint watched res): its best reading "
+            "is dropped and the patience window restarts at 6,144; "
+            f"T stays {T0:.3f}") in out
+    m = re.search(r"frontier +(-?[0-9.]+)u", out)
+    assert m, out[-3000:]
+    cfg2 = json.loads((ROOT / "runs" / run2 / "run.json").read_text(
+        encoding="utf-8"))["config"]
+    assert cfg2["unstuck_reach"] == "eval"
+    rows2 = _csv(run2)
+    assert len(rows2) == 3
+    # iteration 1 runs before its own eval: no reading yet, no best; the
+    # next iteration consumes the frontier the eval printed
+    assert rows2[0]["unstuck/best"] == ""
+    assert abs(float(rows2[1]["unstuck/best"]) - float(m.group(1))) <= 0.5
+    assert int(rows2[1]["unstuck/stuck_steps"]) == 0
+    # a resume on the SAME measure does not re-seed
+    run3 = "cya_evreach_re2"
+    shutil.rmtree(ROOT / "runs" / run3, ignore_errors=True)
+    r3 = _run([sys.executable, "-u", str(TRAIN), "--run", run3, "--ckpt",
+               str(ROOT / "runs" / run2 / "ckpt_final.pt")] + SMOKE_FLAGS
+              + ["--steps", "14336"])
+    assert r3.returncode == 0, r3.stdout[-4000:] + r3.stderr[-4000:]
+    assert "unstuck_reach=eval" in r3.stdout
+    assert "the checkpoint watched" not in r3.stdout
+    for dd in (d, ROOT / "runs" / run2, ROOT / "runs" / run3):
+        shutil.rmtree(dd, ignore_errors=True)
+
+
+def torch_load_T(path):
+    import torch
+    return float(torch.load(path, map_location="cpu",
+                            weights_only=False)["unstuck"]["T"])

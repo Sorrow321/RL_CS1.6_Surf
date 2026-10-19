@@ -207,6 +207,10 @@ class RespawnBuffer:
                  min_speed: float = 0.0,
                  success_margin: bool = False) -> None:
         self.n = int(n_envs)
+        # --respawn-novel: a per-env bool array (NovelSpawnSampler.novel_env). An episode whose
+        # flag is True when it ends is DISCARDED, never harvested, so a novel spawn's flight can
+        # never become anyone's spawn. None = every episode is harvested, byte for byte as before
+        self.skip = None
         # --plan-return (surfgym/goalprimplan.py): origins (k, 3) -> per-state sampling weights for
         # build_pool's reservoir draw (Go-Explore's "return", count-based over the policy's own
         # states). None = the draw that shipped (binned or uniform), byte for byte
@@ -360,7 +364,9 @@ class RespawnBuffer:
                 if (success is not None and bool(success[i])
                         and not self.success_margin):
                     cutoff = self._tick[i]
-                if self.goal_k is None:
+                if self.skip is not None and bool(self.skip[i]):
+                    pass        # --respawn-novel: a novel spawn's episode
+                elif self.goal_k is None:
                     self._out.extend((self._iter_tick, int(i), row)
                                      for t, row in self._pend[i]
                                      if t <= cutoff)
@@ -1654,3 +1660,381 @@ class BackwardSpawnSampler(FrontierSpawnSampler):
                     st["min"], st["median"], st["p90"], st["max"], st["n"],
                     st["shell_frac"], st["hull_reject"],
                     st.get("spd_med", float("nan"))))
+
+
+class NovelSpawnSampler:
+    """``--respawn-novel`` (user, 2026-10-19): respawn the agent where it has
+    NOT been, never past its own best potential, with a velocity it really
+    had.
+
+    The user's ask, verbatim: *"we cannot teleport forward, but we can be
+    respawned in any position where we haven't been, but the potential is no
+    bigger than our biggest potential. So, for example, [...] in some of our
+    rollouts, we could be in the point where our potential equals to 10.
+    That means that we can be respawned in any position where the potential
+    is also 10 or less with the same velocity that we had in our existing
+    rollout. [...] maybe it would be a better idea to kind of make it
+    non-uniform, so like we're spawning closer to frontier, [...] closer to
+    place where we died, but just in a different place basically."*
+
+    A novel row is one of the policy's OWN reservoir states moved to a point
+    it has never been. The state keeps its velocity, view, duck state and
+    keys.
+
+    * **Source.** ``shell_frac`` of the rows come from the deepest
+      ``shell_width`` of the reservoir by field distance, i.e. the states
+      nearest where the agent dies. The rest are flattened over the field
+      distance across the whole reservoir, so a missed turn near the start
+      is reachable too.
+    * **Displacement.** A uniform direction on the sphere and a distance
+      ``U(r_lo, r_hi)``. Up to ``tries`` candidates are drawn per source; a
+      source with no survivor is dropped.
+    * **The new point must pass four gates:**
+      * carry a finite potential (the field's reachable set);
+      * be no deeper than the deepest point a REAL episode has reached
+        (``d >= d_best``, i.e. potential <= the best potential);
+      * lie in a cell (``cell`` u) whose 3 x 3 x 3 neighbourhood of the visit
+        grid no training env has entered;
+      * fit the standing player hull (``core.trace(q, q, hull=0)``, the
+        frontier sampler's rule).
+
+    **Not a teleport forward.** A REAL episode is one spawned at the map
+    start or from the reservoir, never from a novel row. Only real episodes
+    move ``d_best``. A novel episode is never harvested into the reservoir
+    (the trainer points ``RespawnBuffer.skip`` at :attr:`novel_env`), so its
+    flight cannot become anyone's spawn. The reservoir and the ceiling
+    therefore move only through what the policy learns, never through where
+    a novel row put it.
+
+    A novel episode is recognised by its spawn ORIGIN. The C reset copies a
+    pool row byte for byte (``src/env.c`` ``reset_env``, spawn_mode 2), and
+    the post-step view of an ended env is that spawn, so
+    :meth:`note_spawns` looks the origin up in the keys of the live and the
+    previous pool.
+    """
+
+    def __init__(self, core, field, n_envs: int, cell: float = 128.0,
+                 radius: tuple = (256.0, 2048.0), shell_frac: float = 0.5,
+                 shell_width: float = 0.25, tries: int = 8, bins: int = 32,
+                 d0: float = 0.0, window: float = 0.0, seed: int = 73) -> None:
+        self.core = core
+        self.field = field
+        self.n = int(n_envs)
+        self.cell = float(cell)
+        self.r_lo, self.r_hi = float(radius[0]), float(radius[1])
+        if not (self.cell > 0.0 and 0.0 <= self.r_lo <= self.r_hi):
+            raise ValueError(f"--respawn-novel: cell {cell}, radius {radius}")
+        self.shell_frac = float(np.clip(shell_frac, 0.0, 1.0))
+        self.shell_width = float(np.clip(shell_width, 1e-3, 1.0))
+        self.tries = max(1, int(tries))
+        self.bins = max(2, int(bins))
+        self.d0 = float(d0)                  # reporting only (progress = d0 - d)
+        self.rng = np.random.default_rng(int(seed))
+        nz, ny, nx = field.grid.shape
+        self.mins = np.asarray(field.mins, np.float64)
+        span = np.array([nx, ny, nz], np.float64) * float(field.cell)
+        self.dims = np.maximum(1, np.ceil(span / self.cell)).astype(np.int64)
+        # the visit grid over the field's own box, (z, y, x) like the field
+        self.visit = np.zeros((int(self.dims[2]), int(self.dims[1]),
+                               int(self.dims[0])), bool)
+        # --respawn-novel-window W (env steps): "visited" = entered within the last W..2W
+        # steps (two grids, rolled every W), so a cell the CURRENT policy no longer goes to
+        # becomes novel again; 0 = ever visited. Without it the near-random fleet of the
+        # first few million steps marks the whole start region for good - including the
+        # turn the converged policy never takes, which is the case this exists for
+        self.window = float(window)
+        self.visit_prev = np.zeros_like(self.visit)
+        self._w_start = None
+        self._lim = float(field.reach_max) - 0.5 * float(field.cell)
+        self.d_best = float("inf")
+        # True while env i is flying an episode that spawned from a novel row
+        self.novel_env = np.zeros(self.n, bool)
+        self._keys = frozenset()
+        self._keys_prev = frozenset()
+        # counters, cumulative
+        self.offered = 0
+        self.rej_field = 0
+        self.rej_ceiling = 0
+        self.rej_visited = 0
+        self.rej_hull = 0
+        self.hull_tested = 0
+        self.src_dry = 0
+        self.kept = 0
+        self.spawned = 0
+        self.spawned_novel = 0
+        self._w_sp = 0
+        self._w_nov = 0
+        self._last = None
+
+    # -- per decision: visits and the ceiling --------------------------------
+    def _cells(self, p: np.ndarray) -> np.ndarray:
+        return np.floor((p - self.mins) / self.cell).astype(np.int64)
+
+    def observe(self, pos) -> None:
+        """This slot's (n, 3) positions, once per decision. The REAL envs mark
+        their cells and their deepest field distance lowers ``d_best``. A
+        novel episode marks nothing: "where we haven't been" is where the
+        policy does not go ON ITS OWN, so a blind spot stays on offer until
+        the policy's own episodes reach it, instead of being used up by the
+        spawns that show it."""
+        p = np.asarray(pos, np.float64).reshape(-1, 3)
+        if len(p) != self.n:
+            raise ValueError(f"novel sampler wants {self.n} envs, got {len(p)}")
+        real = ~self.novel_env
+        ix = self._cells(p)
+        ok = np.all((ix >= 0) & (ix < self.dims), axis=1) & real
+        if ok.any():
+            self.visit[ix[ok, 2], ix[ok, 1], ix[ok, 0]] = True
+        if real.any():
+            d = np.asarray(self.field.sample(p[real]), np.float64)
+            d = d[d < self._lim]
+            if len(d):
+                self.d_best = min(self.d_best, float(d.min()))
+
+    def roll(self, step: int) -> bool:
+        """Once per iteration with the global step: every ``window`` steps the live
+        grid becomes the previous one and a fresh grid starts. True on a roll."""
+        if self.window <= 0.0:
+            return False
+        if self._w_start is None:
+            self._w_start = int(step)
+            return False
+        if int(step) - self._w_start < self.window:
+            return False
+        self.visit_prev = self.visit
+        self.visit = np.zeros_like(self.visit_prev)
+        self._w_start = int(step)
+        return True
+
+    def note_spawns(self, states, ended) -> None:
+        """Tag the episodes that just started: novel iff the spawn origin is
+        one of the novel rows of the live or the previous pool. Call it AFTER
+        the reservoir's ``observe`` of the same tick, which harvests the
+        ENDED episodes under their own tags."""
+        e = np.flatnonzero(np.asarray(ended, bool))
+        if not len(e):
+            return
+        self.spawned += len(e)
+        self._w_sp += len(e)
+        if not self._keys and not self._keys_prev:
+            self.novel_env[e] = False
+            return
+        org = np.ascontiguousarray(np.asarray(states["origin"])[e], np.float32)
+        for j, i in enumerate(e):
+            k = org[j].tobytes()
+            self.novel_env[i] = (k in self._keys) or (k in self._keys_prev)
+        nv = int(self.novel_env[e].sum())
+        self.spawned_novel += nv
+        self._w_nov += nv
+
+    def pop_share(self) -> float:
+        """The share of episodes that started from a novel row since the
+        last call (NaN when none started)."""
+        sp, nv = self._w_sp, self._w_nov
+        self._w_sp = self._w_nov = 0
+        return (nv / sp) if sp else float("nan")
+
+    # -- sampling -------------------------------------------------------------
+    def _near_visited(self, p: np.ndarray) -> np.ndarray:
+        """True where any cell of the 3 x 3 x 3 block around ``p`` was
+        entered, so an accepted point is at least one cell clear of every
+        visited one."""
+        ix = self._cells(p)
+        hit = np.zeros(len(p), bool)
+        seen = (self.visit | self.visit_prev) if self.window > 0.0 else self.visit
+        gx, gy, gz = (int(v) for v in self.dims)
+        for dz in (-1, 0, 1):
+            jz = np.clip(ix[:, 2] + dz, 0, gz - 1)
+            for dy in (-1, 0, 1):
+                jy = np.clip(ix[:, 1] + dy, 0, gy - 1)
+                for dx in (-1, 0, 1):
+                    jx = np.clip(ix[:, 0] + dx, 0, gx - 1)
+                    hit |= seen[jz, jy, jx]
+        return hit
+
+    def _flatten_pick(self, vals: np.ndarray, m: int) -> np.ndarray:
+        """``m`` indices into ``vals``, uniform over ``self.bins`` equal bins
+        of its range, then uniform inside the bin (FrontierSpawnSampler's
+        rule): coverage uniform in PROGRESS, not in reservoir density."""
+        if m <= 0 or not len(vals):
+            return np.empty(0, np.int64)
+        lo, hi = float(vals.min()), float(vals.max())
+        span = max(hi - lo, 1e-6)
+        b = np.clip(((vals - lo) / span * self.bins).astype(np.int64),
+                    0, self.bins - 1)
+        order = np.argsort(b, kind="stable")
+        bs = b[order]
+        _, start, cnt = np.unique(bs, return_index=True, return_counts=True)
+        pick_b = self.rng.integers(0, len(cnt), m)
+        within = (self.rng.random(m) * cnt[pick_b]).astype(np.int64)
+        return order[start[pick_b] + np.minimum(within, cnt[pick_b] - 1)]
+
+    def _sources(self, reservoir, m: int):
+        """(idx into the reservoir store, is-shell flags)."""
+        k = int(reservoir.size)
+        org = np.asarray(reservoir._store[:k]["origin"], np.float64)
+        d = np.asarray(self.field.sample(org), np.float64)
+        valid = np.flatnonzero(d < self._lim)
+        if not len(valid) or m <= 0:
+            return np.empty(0, np.int64), np.empty(0, bool)
+        dv = d[valid]
+        n_sh = int(round(m * self.shell_frac))
+        sh = valid[dv <= np.quantile(dv, self.shell_width)]
+        pick_sh = (sh[self.rng.integers(0, len(sh), n_sh)]
+                   if n_sh and len(sh) else np.empty(0, np.int64))
+        pick_bd = valid[self._flatten_pick(dv, m - len(pick_sh))]
+        idx = np.concatenate([pick_sh, pick_bd])
+        flag = np.zeros(len(idx), bool)
+        flag[:len(pick_sh)] = True
+        return idx, flag
+
+    def sample_states(self, n: int, reservoir) -> np.ndarray:
+        """(m,) STATE_DTYPE, ``m <= n``: a starved round returns short."""
+        n = int(n)
+        if (n <= 0 or reservoir is None or reservoir.size == 0
+                or not np.isfinite(self.d_best)):
+            self._last = None
+            return np.zeros(0, dtype=STATE_DTYPE)
+        rows, moved, dd, shell = [], [], [], 0
+        for _ in range(4):
+            need = n - sum(len(r) for r in rows)
+            if need <= 0:
+                break
+            src, is_sh = self._sources(reservoir, int(need * 1.5) + 16)
+            if not len(src):
+                break
+            base = reservoir._store[src].copy()
+            p0 = np.asarray(base["origin"], np.float64)
+            t = self.tries
+            u = self.rng.normal(size=(len(src), t, 3))
+            u /= np.maximum(np.linalg.norm(u, axis=2, keepdims=True), 1e-9)
+            r = self.rng.uniform(self.r_lo, self.r_hi, (len(src), t, 1))
+            cand = (p0[:, None, :] + u * r).reshape(-1, 3)
+            self.offered += len(cand)
+            d = np.asarray(self.field.sample(cand), np.float64)
+            ok_f = d < self._lim
+            ok_c = d >= self.d_best
+            vis = self._near_visited(cand)
+            self.rej_field += int((~ok_f).sum())
+            self.rej_ceiling += int((ok_f & ~ok_c).sum())
+            self.rej_visited += int((ok_f & ok_c & vis).sum())
+            good = (ok_f & ok_c & ~vis).reshape(len(src), t)
+            # the hull last, on the survivors only (3-4 us a trace)
+            fit = np.zeros(good.shape, bool)
+            for j, c in zip(*np.nonzero(good)):
+                q = cand[j * t + c]
+                fit[j, c] = not self.core.trace(q, q, hull=0).startsolid
+            self.hull_tested += int(good.sum())
+            self.rej_hull += int((good & ~fit).sum())
+            ok2 = good & fit
+            has = np.flatnonzero(ok2.any(axis=1))
+            self.src_dry += int(len(src) - len(has))
+            has = has[:need]
+            if not len(has):
+                continue
+            first = ok2[has].argmax(axis=1)
+            ci = has * t + first
+            out = base[has].copy()
+            out["origin"] = cand[ci].astype(np.float32)
+            # the engine re-derives contact on the first tick; a conveyor /
+            # water state belongs to the old position
+            out["onground"] = -1
+            out["basevelocity"] = 0.0
+            out["base_vel_flag"] = 0
+            out["waterjumptime"] = 0.0
+            out["seg_hint"] = 0
+            rows.append(out)
+            moved.append(np.linalg.norm(cand[ci] - p0[has], axis=1))
+            dd.append(d[ci])
+            shell += int(is_sh[has].sum())
+        out = (np.concatenate(rows) if rows
+               else np.zeros(0, dtype=STATE_DTYPE))
+        self.kept += len(out)
+        if not len(out):
+            self._last = None
+            return out
+        self._last = (np.concatenate(dd), np.concatenate(moved), shell,
+                      np.hypot(out["velocity"][:, 0], out["velocity"][:, 1]))
+        return out
+
+    def mix(self, pool: np.ndarray, n_fresh: int, n_novel: int,
+            reservoir) -> np.ndarray:
+        """Overwrite ``n_novel`` RESERVOIR rows of an already-built pool
+        (``[fresh (n_fresh), reservoir (rest)]``; the env resets by uniform
+        pool draw, so counts are the probabilities and the map-start share
+        is untouched) and remember the new rows' origins as the keys."""
+        n_novel = int(min(max(n_novel, 0), len(pool) - int(n_fresh)))
+        rows = (self.sample_states(n_novel, reservoir) if n_novel > 0
+                else np.zeros(0, dtype=STATE_DTYPE))
+        self._keys_prev = self._keys
+        org = np.ascontiguousarray(rows["origin"], np.float32)
+        self._keys = frozenset(org[i].tobytes() for i in range(len(rows)))
+        if not len(rows):
+            return pool
+        out = np.array(pool, dtype=STATE_DTYPE, copy=True)
+        out[int(n_fresh):int(n_fresh) + len(rows)] = rows
+        return out
+
+    # -- persistence ------------------------------------------------------------
+    def state_dict(self) -> dict:
+        return {"visit": np.packbits(self.visit.reshape(-1)),
+                "visit_prev": np.packbits(self.visit_prev.reshape(-1)),
+                "w_start": self._w_start,
+                "shape": tuple(int(v) for v in self.visit.shape),
+                "cell": self.cell, "d_best": float(self.d_best)}
+
+    def load_state_dict(self, st) -> bool:
+        """False (nothing restored) when the grid does not match."""
+        if (tuple(st.get("shape", ())) != self.visit.shape
+                or float(st.get("cell", -1.0)) != self.cell):
+            return False
+        n = int(np.prod(self.visit.shape))
+        self.visit = np.unpackbits(np.asarray(st["visit"], np.uint8))[:n] \
+            .astype(bool).reshape(self.visit.shape)
+        if st.get("visit_prev") is not None:
+            self.visit_prev = np.unpackbits(np.asarray(st["visit_prev"], np.uint8))[:n] \
+                .astype(bool).reshape(self.visit.shape)
+        self._w_start = st.get("w_start")
+        self.d_best = float(st.get("d_best", float("inf")))
+        return True
+
+    # -- diagnostics ---------------------------------------------------------
+    def stats(self) -> dict:
+        off = max(self.offered, 1)
+        out = {"d_best": self.d_best,
+               "ceiling": ((self.d0 - self.d_best)
+                           if (self.d0 > 0.0 and np.isfinite(self.d_best))
+                           else float("nan")),
+               "visited": int(((self.visit | self.visit_prev) if self.window > 0.0
+                                else self.visit).sum()),
+               "rej_field": self.rej_field / off,
+               "rej_ceiling": self.rej_ceiling / off,
+               "rej_visited": self.rej_visited / off,
+               "hull_reject": self.rej_hull / max(self.hull_tested, 1),
+               "novel_share": ((self.spawned_novel / self.spawned)
+                               if self.spawned else 0.0)}
+        if self._last is not None and len(self._last[0]):
+            dd, mv, sh, spd = self._last
+            pr = (self.d0 - dd) if self.d0 > 0.0 else -dd
+            out.update({"n": int(len(dd)), "prog_med": float(np.median(pr)),
+                        "prog_p90": float(np.percentile(pr, 90)),
+                        "moved_med": float(np.median(mv)),
+                        "shell": sh / len(dd),
+                        "spd_med": float(np.median(spd))})
+        return out
+
+    def line(self, tag: str = "") -> str:
+        st = self.stats()
+        head = ("novel{}: ceiling {:,.0f}u of progress, {:,} cells visited "
+                "({:g}u), episodes from novel rows {:.1%}".format(
+                    tag, st["ceiling"] if st["ceiling"] == st["ceiling"] else 0.0,
+                    st["visited"], self.cell, st["novel_share"]))
+        rej = ("; rejected so far: off-field {:.0%} past-ceiling {:.0%} visited {:.0%} "
+               "hull {:.1%}".format(st["rej_field"], st["rej_ceiling"],
+                                    st["rej_visited"], st["hull_reject"]))
+        if "n" not in st:
+            return head + "; no rows this iteration" + rej
+        return head + ("; {:,} rows: progress med {:,.0f}u p90 {:,.0f}u, moved "
+                       "med {:,.0f}u, shell {:.0%}, speed med {:,.0f}".format(
+                           st["n"], st["prog_med"], st["prog_p90"],
+                           st["moved_med"], st["shell"], st["spd_med"])) + rej

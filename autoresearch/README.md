@@ -1,0 +1,84 @@
+# autoresearch: fork-and-flush on surf_src_sidistic
+
+An unattended research loop on the agent host (the droplet, no GPU). It runs the method of
+Cai et al. 2026, "Fork-and-Flush: Escaping Idea Basins in Autoresearch Agents"
+(arXiv 2610.07447), toward one goal: **pass sidistic from the true start**, champion-free
+and generic (CLAUDE.md sections 0 and 0b).
+
+## How it works
+
+* **Rounds.** Each round forks **4 branch agents** from one workspace: a git commit plus the
+  protected incumbent checkpoint and eval. Every branch is a fresh Claude Code session
+  ("flush") in its own slot (`~/ar/wt/b1..b4`) on its own branch (`ar/r<round>b<k>`).
+* **Schedule.** Rounds last **24 h** and there are **3**, at 0 / 24 / 48 h. That is the
+  paper's fixed 33% / 66% schedule with K = 4. Change `rounds` in `config.json` to extend.
+* **Selection.** At a round's end every branch is scored by `autoresearch/score.py`. A
+  branch's score is its best greedy eval from the true start. The winner's branch head seeds
+  the next round. The losers are archived (`~/ar/archive/r<n>/`) and pruned.
+* **Inside a round.** Each agent follows `autoresearch/PROTOCOL.md`:
+  * it rents at most one GPU box through `autoresearch/box.py`;
+  * it runs ablations of at most 30 min first and up to 6 h when promising;
+  * it pushes its code to its branch so boxes can clone it;
+  * it harvests to `~/ar/runs/<agent>/`;
+  * it writes `RESULT.json` and appends to `autoresearch/NOTES.md`.
+* **The lead.** A fifth session, `ar-lead`, has no box. It watches everything and answers
+  your questions.
+
+## Hard limits (config.json, enforced in code)
+
+* **Cards.** RTX 3090 / 3090 Ti / 4080 / 5080 first, cheapest of those; then 4090; then 5090.
+* **Price caps:**
+
+  | Card | Max $/h |
+  |---|---|
+  | 3090, 3090 Ti, 4080 | 0.30 |
+  | 5080 | 0.38 |
+  | 4090 | 0.45 |
+  | 5090 | 0.60 |
+
+* **Boxes.** Single GPU only, at most 4 live boxes, one per agent.
+* **Enforcement.** `box.py` refuses any rental outside these limits. The fleet watchdog
+  destroys any instance on the account that breaks them, whoever rented it. It needs two
+  consecutive sightings before acting.
+* **Budget pacing.** No new box once the credit falls to the $10 reserve. The fleet's burn
+  rate may not exceed (credit - reserve) / hours left until hour 72.
+* **Deadlines.** Every box has a watchdog deadline (`box.py rent --hours`, `box.py extend`).
+* **Readiness.** A box must be running within 5.5 min of creation and reachable by ssh within
+  90 s after that; otherwise it is blocklisted and destroyed.
+
+## Watching it
+
+* **Claude app or claude.ai/code -> Code.** Every session connects to Remote Control at
+  start-up: `ar-lead`, and `ar-r<round>b<k>` for the branches. Open one and write to it.
+  Ask `ar-lead` for the overall picture.
+* `ssh steam@<host>`, then `tmux attach -t ar`. Ctrl-b w lists the windows (watchdog, orch,
+  lead, b1..b4); Ctrl-b d detaches.
+* `cat ~/ar/status.md`, which is refreshed every 5 min. `tail ~/ar/orchestrator.log`.
+* `python autoresearch/box.py status` shows the boxes, their cost and the budget.
+
+## Controlling it
+
+| Command | Effect |
+|---|---|
+| `python autoresearch/orchestrator.py wrapup` | end the current round early, gracefully |
+| `python autoresearch/orchestrator.py stop` | release every box, end every branch session, stop |
+| `rm ~/ar/STOP && bash autoresearch/start.sh` | resume after a stop (state.json keeps the round) |
+
+## One-time setup on the agent host (done by the setup session, 2026-10-20)
+
+* **Python.**
+  * The venv `~/ar/venv` holds numpy, CPU torch, scipy, numba, opencv-headless, pytest and
+    vastai.
+  * The C core is built (`build.sh`).
+* **Maps.** `maps/surf_src_sidistic.*` (bsp + baked caches) is copied into the main checkout,
+  and `~/ar/maps/sidistic_maps.tar.gz` holds the copy that boxes receive.
+* **Incumbent.** `~/ar/incumbent/` is round 0: sidEM2cap2surfGR at 749.7M, plus the surf
+  run's progress.csv as a reference.
+* **Claude Code** (`~/.claude/settings.json`): `permissions.defaultMode: "auto"` and
+  `remoteControlAtStartup: true`. Log in once with `claude auth login` (a claude.ai account;
+  Remote Control does not work with an API key). The five working directories (main checkout,
+  b1..b4) are trusted once.
+* **vast.** The API key is in `~/.config/vastai/vast_api_key`. This machine's ssh key is on
+  the vast account.
+* **One daemon per account.** Run the fleet watchdog daemon only here while this runs.
+  Another daemon with a different registry destroys this fleet's boxes.

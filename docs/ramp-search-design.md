@@ -224,3 +224,112 @@ outcome of command B) and disagrees on what the design is FOR and on the order:
 - **Four verdicts kept separate:** extractor / contact validity, line-transport proposal value,
   learned command following, and the final flat self-route recipe (from the true start, repeated on
   a second map with unchanged constants).
+
+## 10. The witness search exists: optimal control in the exact engine (2026-10-16 night; ledger for the numbers)
+
+The 2026-09-28 question was how a planner tells "the executor is too weak" from "the transition is
+impossible". The answer then was a WITNESS SEARCH: an executor-independent action search from the
+same exact state. It now exists, as sampling-based optimal control run in the C core itself. The
+core is deterministic, steps ~6M player-ticks/s on 16 CPU threads and needs no gradients, so
+bang-bang keys are no obstacle.
+
+**The tools (all CPU, all generic: no constant read off a map):**
+- `tools/cem_bench.py`: open-loop cross-entropy method from one exact state. Controls per knot:
+  A / D and the view yaw offset from the live velocity heading. Objectives: height, energy, field.
+- `tools/mpc_bench.py`: closed-loop receding-horizon CEM (MPC). Plan ~1.2 s ahead, execute ~8
+  ticks, replan warm-started.
+- `tools/go_cem.py`: a Go-Explore archive (cell = position x horizontal heading, keeping its most
+  energetic state) whose expansion step is that CEM, or with `--mpc-exec` an MPC flight. It is
+  scored on novelty plus energy gain and has the full key set including jump.
+- `tools/go_cem_route.py`: rebuilds any archived state from its expansion lineage and replays it
+  from the spawn in a fresh engine (0.00 u error measured, open-loop and MPC).
+
+**What it found on unitfarmer2, from analysis-bench states (the record never enters an
+objective):**
+- **The pit climb.** Open-loop CEM, 4.4 s of compute: z -876 -> 664. The record's own climb is a
+  half-degree, every-tick manoeuvre that a 40 ms policy and binned search both miss.
+- **The energy-building fall off the platform.** 1,417 u of energy height in 1.6 s against the
+  record's 1,376, in 2 s of compute.
+- **The U-turn through the pit's bowl** above a kill floor. Here open-loop CEM keeps 869 u where
+  the record keeps 1,118, while MPC keeps 1,161-1,250 in 0.6 s of compute per 2.5 s of flight.
+  **Long precise segments need closed-loop replanning, not one long open-loop plan.**
+
+**What the global search taught.** Each is a generic defect. 1-3 are fixed and verified; 4-5 were being tested when the night ended. No explorer has yet left unitfarmer2's start pit from the spawn.
+1. An archive cell that keeps its EARLIEST arrival throws away a later, more energetic state, so
+   energy gains smaller than a bin never chain. Keep the most energetic one instead: at one
+   position and heading, more energy dominates.
+2. The explorer's action set lacked the jump. On the ground speed caps at 250 u/s; in the air it
+   does not, and every archive stayed at ground-speed energy until the jump was added. **Give the
+   search the agent's full action space before blaming its objective.**
+3. Open-loop expansions leave the archive in DOOMED states: the right energy with the wrong
+   direction, where every plan dies within 1.2 s. Hence the MPC expansions.
+4. Energy dominance is OPTIMISTIC about contact losses still to come. A steep fall past a ramp
+   holds more energy than the surfing state on it, only because it has not landed yet, so it wins
+   the cell. Hence `--vbins`: the velocity's vertical angle joins the cell key.
+5. Novelty is indifferent to energy wherever everything is new. Started ON the record's line at
+   the ramp landing (an analysis bench), the novelty-only explorer left it at once. With an
+   explicit energy term in the MPC planner's score it followed the line into the bowl, still
+   106-469 u of energy short of the record. The objective must say what the map is about:
+   keeping energy. That is generic to surf, not to this map.
+
+**How it slots into this design:**
+- Section 5's "independent fixed-budget primitive / action search" is cem_bench / mpc_bench with a
+  contact objective: "first contact with ramp B, alive, maximise energy at contact".
+- Energy dominance orders the exact-state nodes. Energy rises only by strafing: at most 900 to
+  |v|^2 per frame, i.e. 80 u/s of energy height at a 7 ms tick and 56 u/s at 10 ms, independent
+  of speed. It falls only to contacts.
+- Section 6's generations train the executor on the search's own segments. Those are witnesses
+  of our own search, never human data, and the ledger names their provenance (CLAUDE.md
+  section 0).
+
+**The momentum-aware potential is a value, not a field.** An energy-gated geodesic field (BFS
+through voxels below the energy height) equals the plain field on unitfarmer2 to 0.1%: the pit
+exit is energetically reachable straight from the platform. What the dive buys is the direction
+and horizontal speed the bowl converts the fall into, a 6D quantity. Only search (exact) or a
+value learned from the search's own states (amortised) represents it. Such a value, used as the
+terminal cost of a short MPC, is how the search would see past the pit's dip (POLO / TD-MPC); the
+geodesic field cannot.
+
+## 11. The sequence-free ramp search finds unitfarmer2's pit exit by itself (2026-10-17; ledger 13:21-15:53)
+
+**What was built** (all CPU, no training, and no human input to any search):
+- **`tools/ramp_mpc.py`: one EDGE.** Receding-horizon CEM in the exact engine: "touch piece B alive, with the most energy" (section 5's fixed-budget primitive), scored in one energy currency (`--score soft`).
+  - Modes: an analysis bench from a record's states, a chain from the true spawn along a given sequence (a harness), and DFS backtracking.
+- **`tools/ramp_search.py`: the GRAPH.**
+  - Nodes are exact touch states reached from the true spawn by witnessed edges. Every node replays from the spawn to 0.00 u.
+  - `--workers N` processes feed one tree. On a 32-thread box, 4 workers at OMP_NUM_THREADS=8 fly 3.4x the flights per hour: the core's OpenMP step is faster at 8 threads than at 32.
+  - The tree is saved every 20 min, and `<out>.stop` ends a run with a full save.
+  - `--resume` re-flies every saved node before continuing.
+
+**The answer to "does it find the pit route without the record's order?"**
+- **Yes.** spawn -> S2 -> S17 -> S18 -> S19 at 18.6 min (run 2, 4 workers). It replays from the spawn in 840 ticks to 0.000 u.
+  - The record's order is S19 -> S17 -> S18 -> S19. The search's route skips the record's first S19, but it is the same pit loop: down to z -880 and back up onto S19.
+- **With the first allocation** (every node flies to every piece before any retry), it found the descent in the record's order at 106 min and flew the exit once in 150 min.
+
+**Allocation lessons** (each generic, each measured on unitfarmer2, and still to be shown on a second map):
+1. **Uniform widening wastes the budget.**
+   - 82% of the compute went to flights that stalled toward pieces the node could not reach.
+   - Fix: progressive widening (Couetoux 2011), with 2 + sqrt(N) pieces open at a node with N flights, plus retries of the pairs that came closest.
+2. **A piece-pair prior shared across states must never be pessimistic.** One failed S18 -> S19 flight from one S18 state buried S19 for every S18 state (run 2a).
+3. **...nor promote near misses.** The exit node spent 32 flights on near-missed floors before trying the next ramp. Only TOUCHED piece pairs move up.
+4. **A retry whose touch lands in a cell held by a more energetic node is wasted.** Close that pair.
+5. **Novelty alone farms floors.** Even with Go-Explore counts x the node's energy rank, the floor-route nodes took 35% of run 2's compute.
+
+**The wall after the exit is ENERGY, and it is the edge solver's** (benches from the record's states, ruler only):
+- **The threshold.** S19 -> S20 needs about 850-900 u of energy height at the S19 touch: 3/3 flights at 900, 0/3 at 800. The search's exit has 618, the record 1,127.
+- **The budget.** Over the pit the record loses 65 u net; our edges lose 430-620.
+- **Where it goes.**
+  - Strafing: about half the record's power. Mean gain per strafing tick is 150-290 of 900, against the record's 425. Braking offsets come on 20% of ticks vs 10%, and W is held on 23% vs 7%.
+  - Landings: 2-3x harder (S19 -> S17 loses 282 vs 91).
+  - The first edge: the solver hops on the platform for ~5 s, where the record falls at 1.6 s and strafes +190 on the way down.
+- **What was tried.** None of these fixes it: a 7 ms tick, strafe-unit offsets, W priors, 2-3 s horizons.
+
+**What this means for the design:**
+- Section 5's "implicit planner first" now exists. It finds the hidden route of the uf2 exploration benchmark without the human sequence.
+- The edges it can witness are too wasteful to chain past S20. That is the low-level control that RL already does well.
+- So section 6's generations are next:
+  1. The executor (RL) trains on the search's own route and states.
+  2. It returns more energetic states.
+  3. The search extends the route from those (expert iteration).
+- This needs the user's rule-0 confirmation: the routes and states are our own search's, never a human's.
+- The trainer's `--ramp-sequence-source` accepts only demo/self today; a `search` provenance would be added with that confirmation.

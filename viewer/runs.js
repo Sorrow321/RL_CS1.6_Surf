@@ -166,7 +166,13 @@ var DESC = {
   'loop/greedy_best_s': 'Expert loop: best greedy finish time from the start line this round (s).',
   'loop/greedy_mean_s': 'Expert loop: mean greedy finish time from the start line this round (s).',
   'loop/planner_s': 'Expert loop: the planner\'s line time at round start (s).',
-  'loop/finishes_of_9': 'Expert loop: greedy finishes out of 9 start-line episodes.'
+  'loop/finishes_of_9': 'Expert loop: greedy finishes out of 9 start-line episodes.',
+  'aug/mirror_frac': '--aug-mirror: share of the training fleet flying the MIRROR IMAGE of the map this iteration (should sit at the flag\'s P).',
+  'aug/kl': '--aug-drop/--aug-noise/--aug-shift (DrAC): KL between the policy on the clean frame and on the augmented frame, mean over the update. Falling = the policy is learning to ignore the corruption.',
+  'aug/v_mse': 'DrAC: (V(augmented frame) - V(clean frame))^2, mean over the update. Falling = the critic is learning to ignore the corruption.',
+  'race/eval_progress_mirror': '--eval-mirror: race/eval_progress of the same greedy eval flown on the MIRROR IMAGE of the map. For a policy that never trained mirrored, a held-out map with the same physics, route and difficulty: the generalisation gap is eval_progress minus this.',
+  'race/eval_finishes_mirror': '--eval-mirror: greedy eval episodes that finished the MIRROR IMAGE of the map.',
+  'race/map_pct_mirror': '--eval-mirror: race/map_pct (share of the route covered) of the greedy eval on the MIRROR IMAGE of the map.'
 };
 function baseKey(k) { return k.replace(/\.[A-Za-z0-9_.-]+$/, ''); }
 function groupOf(k) { var i = k.indexOf('/'); return i < 0 ? k : k.slice(0, i); }
@@ -710,6 +716,19 @@ function renderCharts() {
   });
   var axis = activeAxis(names);
   renderChips(keys);
+  // a hidden family is said in words above the charts (the struck-through
+  // chip alone was missed: "the reward disappeared", 2026-10-18)
+  var hidCount = {};
+  keys.forEach(function (k) {
+    var g = groupOf(k);
+    if (st.hideGroup[g]) hidCount[g] = (hidCount[g] || 0) + 1;
+  });
+  var hidG = Object.keys(hidCount);
+  var hidNote = hidG.length
+    ? '<div class="hidnote">Hidden chart families (saved in this browser): ' +
+      hidG.map(function (g) { return g + ' (' + hidCount[g] + ')'; }).join(', ') +
+      '<button id="showall">show all</button></div>'
+    : '';
   keys = keys.filter(function (k) {
     if (st.hideGroup[groupOf(k)]) return false;
     if (isPerMap(k) && !mapMatch(tagOf(k))) return false;
@@ -718,16 +737,17 @@ function renderCharts() {
   renderLegend(keys);
   var agg = keys.filter(function (k) { return !isPerMap(k); });
   var per = keys.filter(isPerMap);
-  var sig = axis + '#' + names.join(',') + '#' + keys.join(',');
+  var sig = axis + '#' + names.join(',') + '#' + keys.join(',') + '#' + hidG.join(',');
 
   if (sig !== chartSig) {
     destroyCharts();
     chartSig = sig;
     if (!keys.length) {
-      host.innerHTML = '<div class="empty">No metrics logged for this run.</div>';
+      host.innerHTML = hidNote + '<div class="empty">No metrics logged for this run.</div>';
+      wireShowAll();
       return;
     }
-    host.innerHTML =
+    host.innerHTML = hidNote +
       (agg.length ? '<div id="charts">' + agg.map(cell).join('') + '</div>' : '') +
       (per.length
         ? '<details id="permap"' +
@@ -750,6 +770,7 @@ function renderCharts() {
         drawInto(charts[k], k, names, axis);
       });
     });
+    wireShowAll();
     var det = document.getElementById('permap');
     if (det) {
       det.addEventListener('toggle', function () {
@@ -771,6 +792,19 @@ function renderCharts() {
   });
   Array.prototype.forEach.call(host.querySelectorAll('button.lg'), function (b) {
     b.classList.toggle('on', !!st.log[b.dataset.k]);
+  });
+}
+
+// the hidden-families note's button: un-hide every family (a saved
+// preference, like the chips it resets)
+function wireShowAll() {
+  var b = document.getElementById('showall');
+  if (!b) return;
+  b.addEventListener('click', function () {
+    st.hideGroup = {};
+    saveState();
+    chipSig = '';
+    renderCharts();
   });
 }
 

@@ -1,0 +1,70 @@
+{
+  "_doc": "Fork-and-flush autoresearch on surf_src_sidistic (arXiv 2610.07447). Read autoresearch/README.md. Every number here is a HARD limit that box.py, the orchestrator and the fleet watchdog enforce; change it here, nowhere else.",
+  "goal": "Pass surf_src_sidistic from the TRUE map start (greedy eval): finish it, then finish it faster. Champion-free and generic (CLAUDE.md sections 0 and 0b).",
+  "map": "maps/surf_src_sidistic.bsp",
+  "field": "maps/surf_src_sidistic.goal_32.npz",
+  "branches_per_round": 4,
+  "round_hours": 24,
+  "rounds": 3,
+  "wrapup_minutes": 40,
+  "max_agents": 5,
+  "max_boxes": 4,
+  "ablation_minutes_first": 30,
+  "ablation_minutes_max": 360,
+  "budget_reserve_usd": 10.0,
+  "budget_end_hours": 72,
+  "gpu_tiers": [
+    [
+      "RTX_3090",
+      "RTX_3090_Ti",
+      "RTX_4080",
+      "RTX_5080"
+    ],
+    [
+      "RTX_4090"
+    ],
+    [
+      "RTX_5090"
+    ]
+  ],
+  "max_dph": {
+    "RTX_3090": 0.3,
+    "RTX_3090_Ti": 0.3,
+    "RTX_4080": 0.3,
+    "RTX_5080": 0.38,
+    "RTX_4090": 0.45,
+    "RTX_5090": 0.6
+  },
+  "offer_query": "num_gpus=1 cuda_vers>=12.8 reliability>0.98 inet_down>300 rentable=true disk_space>60 cpu_cores_effective>=16 verified=true",
+  "image": "pytorch/pytorch:2.7.1-cuda12.8-cudnn9-devel",
+  "disk_gb": 60,
+  "ready_running_s": 330,
+  "ready_ssh_s": 90,
+  "box_hours_default": 2.0,
+  "incumbent_recipe": [
+    "--envs",
+    "1024",
+    "--obs-normal",
+    "1",
+    "--simba",
+    "1",
+    "--ep-ticks",
+    "30000",
+    "--unstuck",
+    "--unstuck-reach",
+    "eval",
+    "--respawn-margin",
+    "2",
+    "--unstuck-max",
+    "2",
+    "--obs-surf",
+    "1",
+    "--surf-bonus",
+    "0.3",
+    "--obs-compass",
+    "1",
+    "--obs-pot-rate",
+    "1"
+  ],
+  "start_d": 97768.0
+}

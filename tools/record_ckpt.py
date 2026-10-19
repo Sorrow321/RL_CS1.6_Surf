@@ -94,6 +94,11 @@ TRAIN_ONLY = frozenset({
     # --spawn-states: a share of the TRAINING spawn pool drawn from a file of own states; a
     # recording spawns at the map start like the trainer's eval
     "spawn_states", "spawn_states_frac",
+    # --respawn-novel: a share of the TRAINING spawn pool moved to where the agent has never
+    # been; a recording spawns at the map start like the trainer's eval
+    "respawn_novel", "respawn_novel_frac", "respawn_novel_shell", "respawn_novel_shell_width",
+    "respawn_novel_radius", "respawn_novel_cell", "respawn_novel_tries",
+    "respawn_novel_window",
     # --ramp-reward: what the TRAINING reward pays in the ramp-window task (arc progress, or +1
     # per target passed); a recording computes no training reward
     "ramp_reward",
@@ -383,6 +388,12 @@ TRAIN_ONLY = frozenset({
     "crl", "crl_critic", "crl_history", "crl_gamma", "crl_updates",
     "crl_batch", "crl_lr", "crl_repr", "crl_hidden", "crl_lse",
     "crl_v_samples", "crl_goal", "crl_inputs",
+    # --aug-mirror (surfgym/mirror.py): which TRAINING episodes flew the mirror image;
+    # evals and recordings fly the real map unless --mirror below asks otherwise.
+    # --eval-mirror: an extra eval the trainer runs. The DrAC block (--aug-drop /
+    # --aug-noise / --aug-shift / --aug-coef, surfgym/augment.py) augments frames
+    # inside the UPDATE only; a rollout never sees an augmented frame
+    "aug_mirror", "eval_mirror", "aug_drop", "aug_noise", "aug_shift", "aug_coef",
 })
 
 
@@ -622,6 +633,14 @@ def main(argv=None, build_only: bool = False, device=None):
     ap.add_argument("--stochastic", action="store_true",
                     help="sample actions instead of argmax — what "
                          "rollout/ep_rew_mean actually measures")
+    ap.add_argument("--mirror", action="store_true",
+                    help="fly the LEFT-RIGHT MIRROR IMAGE of the map (surfgym/mirror.py): "
+                         "the policy reads the reflected observation and its yaw / side "
+                         "key are reflected on the way to the engine. For a checkpoint "
+                         "trained without --aug-mirror it is a held-out map with the "
+                         "real map's exact physics and route; the trajectory holds the "
+                         "REAL states, so every route tool scores it unchanged. The "
+                         "header says mirror: 1")
     ap.add_argument("--cc-T", type=float, default=None,
                     help="--curiosity-cond checkpoints: evaluate the family "
                          "member at this exploration weight T (fed as the "
@@ -2007,6 +2026,24 @@ def main(argv=None, build_only: bool = False, device=None):
     # off the eval windows (goalramps.make_vec_feed), exactly as the trainer's eval does
     if int(cfg.get("ramp_obs_vec") or 0):
         route_dim += 4
+    # --obs-surf: the surfing flag, ONE column LAST of all (after the arrow), fed per decision by
+    # surfgym.surfflag - the same tracker class the trainer's rollout drives (built below, once
+    # act_every is known)
+    want_surf = int(cfg.get("obs_surf") or 0)
+    if want_surf:
+        route_dim += 1
+        print(f"--obs-surf: the surfing flag is obs column {core.obs_dim + route_dim - 1}")
+    # --obs-pot-rate: the rate of the shaping potential along the velocity, ONE column after the
+    # surfing flag, off the map's own goal field by surfgym.obsaux.PotRate - the class the
+    # trainer's rollout drives (the trainer refuses it under --goals, so gf is the field)
+    want_prate = int(cfg.get("obs_pot_rate") or 0)
+    if want_prate:
+        if gf is None:
+            raise SystemExit("this ckpt uses --obs-pot-rate but has no goal field to "
+                             "read the gradient from")
+        route_dim += 1
+        print(f"--obs-pot-rate: the potential's rate along the velocity is obs column "
+              f"{core.obs_dim + route_dim - 1}")
     if args.cold_policy is not None:
         # --cold-policy: the trainer's own step-0 draw (train_fast seeds torch, then builds)
         torch.manual_seed(int(args.cold_policy))
@@ -2207,6 +2244,21 @@ def main(argv=None, build_only: bool = False, device=None):
         print("--yaw-cond: the side key is drawn from p(side | yaw bin) "
               "(from the checkpoint config)")
     act_every = int(cfg.get("act_every", 1))
+    # --obs-surf: the flag's feed on this core's physics, at the trainer's mean tick and K;
+    # make_surf_feed makes a fresh tracker per call (one per wrapper)
+    surf_fn = None
+    if want_surf:
+        from surfgym.surfflag import make_surf_feed
+
+        def _new_surf_feed():
+            _ph = core.config.phys
+            return make_surf_feed(_ph.sv_gravity, TICK.ms, act_every,
+                                  vmax=float(_ph.sv_maxvelocity))
+        surf_fn = _new_surf_feed()
+    prate_fn = None
+    if want_prate:
+        from surfgym.obsaux import make_pot_rate_feed
+        prate_fn = make_pot_rate_feed(gf)
     # --obs-reward ckpts read a side-channel value from scalar slot 12 that
     # the core does not produce. Without feeding it here the recording hands
     # the policy absolute position (magnitude ~10) where it expects
@@ -2545,13 +2597,27 @@ def main(argv=None, build_only: bool = False, device=None):
                 return out
 
         cls = _ValueTapCls
+    _mirror = None
+    if args.mirror:
+        # the mirror image (surfgym/mirror.py): the row's frame must be ONE camera frame,
+        # and the arrow (--ramp-obs-vec) is the last four columns of the scalar half
+        if stack > 1:
+            raise SystemExit("--mirror: not with a --frame-stack checkpoint")
+        from surfgym.mirror import layout_for
+        _mirror = layout_for(lidar, gps=bool(cfg.get("gps", True)),
+                             rvec0=(policy.scal_dim - 4 - (1 if want_surf else 0)
+                                    - (1 if want_prate else 0)
+                                    if vec_fn is not None else -1))
+        print("--mirror: the policy flies the MIRROR IMAGE of the map - "
+              + _mirror.describe())
+        header_extra["mirror"] = 1
     _pol = cls(policy, HeadPacker(device), device, lidar, core,
                act_every, stack, extra_slot=extra_slot,
                extra_fn=extra_fn, route=route,
                latch_fn=latch_fn, pitch_fixed=pitch_fixed,
                aux=obs_aux, masks=masks, cc_fn=cc_fn,
                keys_hold=keys_hold, ratchet_fn=ratchet_fn, pass_fn=pass_fn,
-               vec_fn=vec_fn)
+               vec_fn=vec_fn, mirror=_mirror, surf_fn=surf_fn, prate_fn=prate_fn)
     if locals().get("_psearch") is not None:
         # --plan-search M (--goal-planner primlearn): a scratch core of M envs built like this one,
         # its own fan line, and a fresh greedy wrapper of the SAME executor per simulation
@@ -2587,7 +2653,9 @@ def main(argv=None, build_only: bool = False, device=None):
                          extra_slot=extra_slot, extra_fn=extra_fn, route=_l,
                          latch_fn=latch_fn, pitch_fixed=pitch_fixed, aux=obs_aux,
                          masks=masks, cc_fn=cc_fn, keys_hold=keys_hold,
-                         ratchet_fn=ratchet_fn, pass_fn=pass_fn, vec_fn=vec_fn)
+                         ratchet_fn=ratchet_fn, pass_fn=pass_fn, vec_fn=vec_fn,
+                         surf_fn=(_new_surf_feed() if want_surf else None),
+                         prate_fn=(make_pot_rate_feed(gf) if want_prate else None))
         if int(args.plan_scratch) > 0:
             # --plan-scratch: the pieces only - the tool that asked flies them itself
             from types import SimpleNamespace as _NS

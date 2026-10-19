@@ -564,7 +564,10 @@ def test_flag_off_is_bit_identical_to_the_trainer_before_unstuck(mode):
 UNSTUCK_KEYS = ("unstuck", "unstuck_eps", "unstuck_patience", "unstuck_rate",
                 "unstuck_max", "unstuck_reset", "unstuck_count_decay",
                 "unstuck_period", "unstuck_temp", "unstuck_ent", "unstuck_int",
-                "unstuck_temp_heads")
+                "unstuck_temp_heads",
+                # --unstuck-reach and its knobs (2026-09-13), written with the rest
+                "unstuck_reach", "unstuck_reach_start_only", "unstuck_hold",
+                "unstuck_reach_spawn_d")
 
 
 def _assert_on_at_T0_is_off(off: Path, on: Path):
@@ -580,8 +583,12 @@ def _assert_on_at_T0_is_off(off: Path, on: Path):
     assert {k: v for k, v in cn.items() if k not in UNSTUCK_KEYS} == co
     ro, rn = _csv(off.name), _csv(on.name)
     assert len(ro) == len(rn) == 3
-    assert list(rn[0]) == list(ro[0]) + ["unstuck/T", "unstuck/stuck_steps",
-                                         "unstuck/best"]
+    # the three unstuck/* columns, in order (the dip/* block written since
+    # then follows them, so they are no longer the header's last three)
+    hn = list(rn[0])
+    assert [k for k in hn if not k.startswith("unstuck/")] == list(ro[0])
+    assert [k for k in hn if k.startswith("unstuck/")] == [
+        "unstuck/T", "unstuck/stuck_steps", "unstuck/best"]
     for x, y in zip(ro, rn):
         for k in x:
             if k != "time/fps":

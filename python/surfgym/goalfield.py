@@ -65,7 +65,7 @@ from pathlib import Path
 
 import numpy as np
 
-from .vision import _map_sig, slab_occupancy
+from .vision import _map_sig, pane_tag, slab_occupancy
 
 
 def _build_fast_sample():
@@ -473,9 +473,11 @@ def build_goal_field(core, zone, cell: float, cache_dir=None,
     box = np.round(np.asarray(zone["mins"] + zone["maxs"], np.float64), 1)
     # the non-directional signature is unchanged on purpose — a stale-cache
     # miss here costs a 10-minute GPU bake per map
+    # pane_tag: "" unless the map has a pane the slab grid now draws apart
+    # from its AABB (vision.thin_panes), so only those maps re-bake
     sig = (f"g{_GOAL_BUILDER_VERSION}_{'k2_' if mask_kill else ''}"
            f"{f'd{_GRAVITY_RULE_VERSION}_' if gravity_dir else ''}"
-           f"{_map_sig(bsp)}_" + "_".join(f"{v:g}" for v in box))
+           f"{_map_sig(bsp)}_" + "_".join(f"{v:g}" for v in box) + pane_tag(core))
     cache = Path(cache_dir) if cache_dir else bsp.parent
     tag = f"{'g' if gravity_dir else ''}{'k' if mask_kill else ''}"
     cache_file = cache / f"{bsp.stem}.goal{tag}_{cell:g}.npz"

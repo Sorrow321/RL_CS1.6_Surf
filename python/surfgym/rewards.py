@@ -1071,6 +1071,11 @@ class RaceReward:
         self.surf_dvz = 1.0                      # u/s of vertical give-back
         self.surf_hspd = 0.0                     # optional speed floor, u/s
         self._vz = None
+        # the core's sv_maxvelocity (set in on_reset): pm.c clamps every
+        # velocity axis to it, so a fall PINNED at -vmax stops losing vz and
+        # the test above would read it as support (2026-10-19; surfgym/
+        # surfflag.py excludes it the same way). 0 = no exclusion
+        self._vmax = 0.0
         # diagnostics the arm is read on (CLAUDE.md: a bonus whose paid
         # fraction saturates is measuring a farm, not the behaviour)
         self.surf_paid_ticks = 0.0
@@ -1212,6 +1217,7 @@ class RaceReward:
         # seconds conversion in this class takes.
         self._vz = v0[:, 2].astype(np.float64).copy()
         self._g_tick = float(core.config.phys.sv_gravity) * self.tick_ms * 1e-3
+        self._vmax = float(getattr(core.config.phys, "sv_maxvelocity", 0.0) or 0.0)
         self._spd_prev = None        # --speed-pot re-anchors on the first call
         self._best = self._d.copy()
         if self.sr:
@@ -1573,6 +1579,9 @@ class RaceReward:
             dev = (vz - self._vz) + self._g_tick * float(self.every)
             airborne = _states(core)["onground"] == -1
             supported = airborne & (dev > self.surf_dvz)
+            if self._vmax > 0.0:
+                # a fall pinned at the -sv_maxvelocity clamp is free fall, not support
+                supported = supported & (vz > -(self._vmax - 0.5))
             if self.surf_hspd > 0.0:
                 # optional guard (OFF by default, its own arm): a bonus with
                 # no speed floor invites "slide gently forever"

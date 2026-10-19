@@ -35566,3 +35566,1347 @@ Then it collapsed. Share of training episodes past the pit, per 50M bin: 98% (40
 * **Throughput is set by the CPU up to ~27M parameters** (GPU 2-27% busy; the same 19M net ran 125k steps/s on a Threadripper PRO 5955WX and 90k on an EPYC 7C13, same card). Only the conv x16 net was GPU-bound. The practice loop's recorder also takes up to ~37 cores for minutes per rebuild.
 
 **Lesson (ops):** check vastai show user credit at every check-in and project it against the fleet's burn rate; a credit run-out stops every box at once and takes every unharvested result with it.
+
+## 2026-10-16 02:31 (machine clock) - mirror-image training and DrAC image augmentation IMPLEMENTED (not trained yet); the mirror image is a held-out map, and dencNRM1K flies 88.6% of cannonball but 2.4% of its mirror image
+
+**The user (2026-10-16):** the model "memorizes every basically point of view in every map" and does not understand what a ramp is; try augmentation on cannonball: "mirror the like the image left to the right", "select some portion of pixels ... 20% or 30% randomly, and just paint them ... black", "a little bit of noise", "shift ... the whole image and on the left ... just some padding". Then: "Just implement, don't run train yet."
+
+**Mirroring is not an image trick; done right it is a second map.** Flipping the frame alone would pay the policy for steering left into a right turn. GoldSrc movement is reflection-symmetric: src/pm.c builds the wish direction from forward*fmove + right*smove with right = (sin yaw, -cos yaw) at roll 0, so the reflected trajectory is the one flown with the yaw AND the side key reflected. A policy that reads the reflected observation, and whose yaw and side key are reflected on the way to the engine, is exactly an agent flying the mirror-image map: same ramps, same speeds, same reward (the geodesic field is reflection-invariant), every turn the other way. The real state stays the real map, so the reward, the novelty counts and the reservoir do not change, and every route tool scores a mirrored flight unchanged.
+
+**Code** (uncommitted on petrusnight):
+
+* surfgym/mirror.py: the reflection of a row (image columns reversed; the --obs-normal LEFT channel, the lateral velocity (obs 1) and the yaw rate (obs 10) negated; with --gps also sin yaw and y; the --ramp-obs-vec arrow's left component) and of the engine row (side bin i -> 2 - i, view yaw -> -yaw).
+* `--aug-mirror P`: each TRAINING episode (spawn, autoreset, reservoir respawn) flies the mirror image with probability P; the flag is redrawn per episode, and the truncation bootstrap reflects s_T by the ended episode's flag. Needs --view-continuous; refuses the fan, --act-hist / --obs-compass, --chunk, --frame-stack, --obs-views, --rnn.
+* `--eval-mirror 1`: every eval also flies the greedy policy on the mirror image (traj_<step>_mirror.jsonl; race/eval_progress_mirror, race/eval_finishes_mirror, race/map_pct_mirror). For a policy trained without --aug-mirror it is a held-out map with the training map's exact physics, route and difficulty.
+* `record_ckpt.py --mirror`: the same, for any checkpoint (header "mirror": 1).
+* `--aug-drop / --aug-noise / --aug-shift / --aug-coef` (surfgym/augment.py): image augmentation as DrAC (Raileanu et al., NeurIPS 2021): PPO stays on the clean frames and the loss adds 0.1 x (KL(pi(s) || pi(aug s)) + (V(aug s) - V(s))^2) with the clean outputs as fixed targets; rollouts and evals see clean frames. Feeding augmented frames into PPO's own ratio (RAD) is what DrAC showed hurts PPO. The drop zeroes whole pixels (all channels), the shift is an edge-replicated translation of up to K px per axis, the noise is N(0, sigma^2) on every channel; the view's sigma is detached in the KL.
+* Logged: aug/mirror_frac, aug/kl, aug/v_mse (CSV, the step line "drac kl"), the mirrored eval's line "greedy[MIRROR]". The dashboard labels mirror trajectories "MIRROR-image map".
+* All six keys are written to run.json only when on and declared TRAIN_ONLY in record_ckpt.py. No tensor shape changes: a checkpoint resumes with or without them.
+
+**Tests** (CPU only, nothing on the GPU):
+
+* tests/python/test_mirror_aug.py, 10 pass. The physics claim on the real core (cannonball, open air, 80 ticks of random then held-strafe commands from one state): the reflected commands fly the reflected trajectory to 0.02 u and the reflected velocity, with forward / vertical speed equal and lateral velocity and yaw rate negated at every tick. Also the row reflection (an exact involution), the engine row, the eval wrapper end to end on a real Policy, the shift / drop / noise, and the DrAC terms (zero on identical outputs; no gradient into the target or into sigma).
+* tests/python/test_mirror_aug_smoke.py, 3 pass, the trainer's CPU harness (64 envs, 16x8 camera, the recipe's channels): mirror + eval-mirror + DrAC train, eval, log and record end to end (aug/mirror_frac 0.52-0.58 at P 0.5); with every flag off the trainer is bit-identical to HEAD's (config, progress.csv, eval trajectories, weights, Adam moments); --aug-mirror on the discrete bins is refused.
+* Related existing suites: 215 pass; 5 fail, all on source strings that drifted before this change (RATCHET_COL, an f_temp count, the curiosity CSV tail, two env.c pins).
+
+**The mirror image as a held-out map, on an existing checkpoint.** dencNRM1K/ckpt_final.pt (760M from scratch, depth + potential + normal, 1,024 envs, no demo), record_ckpt on the CPU, 3 greedy episodes each, eval_honesty --order-only 16:
+
+| map | corridor progress (3 episodes) | ends |
+|---|---|---|
+| cannonball | 205,312 / 205,312 / 205,312 u (88.6%, the known wall) | dive at the wall, 71-72 s |
+| its mirror image | 5,632 / 5,632 / 5,888 u (2.4-2.5%) | dead at 17.9 / 13.1 / 8.8 s |
+
+Same weights, same physics, same route. On the mirror image the policy flies the real line for its first ~5.4 s (within 500 u of the real flight), then at the point the real flight passes at 5.2 s and 1,762 u/s it loses its speed, crawls at 36-215 u/s and fails. **The first ramp transfers; everything after it is memorized views.** Caveats: one checkpoint, 3 episodes, the CPU march rather than the GPU kernels the run trained on.
+
+**Not run, waiting for the user's go:** the cannonball arms on the observation-screen protocol (scratch_ablate + --obs-normal 1 --simba 1 --envs 1024, 0.76e9, one seed each), all with --eval-mirror 1: a control, DrAC (--aug-drop 0.25 --aug-noise 0.05 --aug-shift 2), and --aug-mirror 0.5. Read on the 97k / wall steps for the real map, and on race/eval_progress_mirror for the held-out map.
+
+## 2026-10-16 03:39 (machine clock) - 15-minute augmentation ablations (augCTL / augDRAC / augMIR): neither the control nor DrAC transfers to the mirror image at all; DrAC keeps per-step pace on the real map at 0.65x throughput; the mirror arm learns both copies at about half the per-map pace
+
+**The user (2026-10-16):** "Let's run short ablations, 15 min each. Just usual geodesic reward."
+
+**Runs.** Local RTX 5090, back to back, from scratch, seed 0, one each, 15 minutes of training from the first step line (stopped by exact pid; scratchpad driver arm15.py): `tools/launch_local.ps1 scratch_ablate` (race reward on the geodesic field, reservoir 0.9 / margin 10, int-coef 0.25 / view 8 / speed 3, abs view, keys-hold, potential norm + curtain) + `--envs 1024 --obs-normal 1 --simba 1 --eval-mirror 1 --record-every 50e6`:
+
+* augDRAC 02:46-03:01: + `--aug-drop 0.25 --aug-noise 0.05 --aug-shift 2` (DrAC, coef 0.1).
+* augMIR 03:06-03:21: + `--aug-mirror 0.5`.
+* augCTL 03:22-03:37: nothing else.
+
+All three record gates passed and all three compiled (no eager fallback). The user's games shared the GPU during at least the first arm, so read step-matched.
+
+**Scored** with eval_honesty's ORDER-ONLY corridor progress (window 16) per eval, 9 greedy episodes, on the real map and on its mirror image (mean / max, units along the route):
+
+| step | augCTL real | augCTL mirror | augDRAC real | augDRAC mirror | augMIR real | augMIR mirror |
+|---|---|---|---|---|---|---|
+| 51M | 9,219 / 9,679 | 2,330 / 2,522 | 19,332 / 19,785 | 2,488 / 2,536 | 8,296 / 9,586 | 6,457 / 7,404 |
+| 101M | 17,883 / 22,248 | 2,375 / 2,497 | 24,877 / 26,334 | 4,593 / 5,191 | 14,506 / 15,232 | 15,016 / 15,459 |
+| 152M | 28,658 / 40,966 | 2,446 / 2,501 | 28,451 / 31,276 | 2,749 / 2,816 | 16,623 / 22,629 | 19,278 / 22,372 |
+| 202M | 45,091 / 49,985 | 2,240 / 2,304 | 55,789 / 57,112 | 3,382 / 5,396 | 18,695 / 23,616 | 24,097 / 29,345 |
+| 252M | 70,370 / 72,912 | 2,248 / 2,304 | - | - | 26,292 / 27,264 | 32,015 / 39,251 |
+| 303M | 88,327 / 101,120 | 2,259 / 2,304 | - | - | 39,406 / 49,558 | 46,688 / 49,449 |
+| 353M | 101,126 / 115,776 | 2,309 / 2,331 | - | - | - | - |
+
+| arm | steps in 15 min | median instantaneous steps/s | 97k gate |
+|---|---|---|---|
+| augCTL | 360M | 451k | 303M (the same step as lnSIMBA 302M and dencNRM1K 303M) |
+| augDRAC | 243M | 292k (0.65x) | not reached |
+| augMIR | 306M | 378k (0.84x; its mirror evals run longer) | not reached |
+
+**Reading.**
+
+* **No transfer to the mirror image from a single-map policy, with or without pixel augmentation.** The control's mirror progress sits at 2.2-2.5k u (the first ~1% of the route) at every eval while its real-map progress climbs 9k -> 101k; DrAC's mirror reaches 2.5-4.6k (best 5.4k). Dropout, noise and shift do not stop the network memorising which way each room turns.
+* **DrAC on the real map, step-matched:** ahead of the control at 3 of 4 evals (19.3k vs 9.2k at 51M, 24.9k vs 17.9k at 101M, 55.8k vs 45.1k at 202M; equal at 152M). These marks sit on the gate ladder (~17k, ~26k, ~48k), so this reads "no per-step cost", not a gain. It costs 35% of the throughput (the second forward / backward in the update), so on the wall clock it is behind.
+* **The mirror arm learns both copies in parallel,** the mirror copy slightly ahead of the real one (1.0-1.3x from 101M on). Per copy it gets half the episodes; at 303M total (~150M per copy) it holds 39k / 47k, against the control's 29k at 152M (but 45k at 202M): no clear transfer between the two copies at this budget.
+* Single seed, 15-minute marks, early in the gate ladder. 0 finishes and 0 wall crossings anywhere.
+
+Artifacts: runs/augCTL, runs/augDRAC, runs/augMIR (traj_<step>.jsonl real, traj_<step>_mirror.jsonl mirror); scores in runs/research/mirror_probe/aug15_scores.json.
+
+## 2026-10-16 05:29 (machine clock) - optimal control instead of RL, night 1 (the user: "it's almost a classic control ... maybe the whole reinforcement learning is not needed"): the engine replays the record exactly; the pit climb is a half-degree, every-tick manoeuvre; exhaustive (position x velocity) search dies in the pit; the cross-entropy method finds the climb in 4 s
+
+All CPU (the C core, 16 threads), no training, no GPU. The unitfarmer2 world record (runs/research/uf2_wr) is used ONLY as a measuring stick and as an analysis-bench start state (CLAUDE.md section 0); it never enters an objective.
+
+**1. Energy is the right state variable.** Energy height z + |v|^2/2g along the records: cannonball stays within 9,700-10,930 u for its first 46 s while the player drops 10,000 u and reaches ~3,900 u/s; unitfarmer2's pit dive keeps 1,100-1,330 u through a 2,000 u descent and the climb out. Strafing adds 10-25% over a run; ramp contacts and ground friction take it away.
+
+**2. The engine is exact.** The record's own usercmds through core.play_step at their own frame times (7/8 ms) reproduce it to 0-4 u over 3 s. At a constant 7 ms tick they still reproduce both the dive (from 3.0 s) and the climb (from 6.0 s) to 3-19 u over 4 s; at 8 ms the climb fails, at 10 ms both fail within 2 s. **The record's line is tick-specific; benches run at 7 ms.**
+
+**3. What the record does in the pit:** A or D held (bang-bang, switched at specific instants) with the view within 0.75 deg (median) / 2.2 deg (p90) of the velocity heading. Fed through the trainer's --view-absolute velocity mode with the offset measured against the LIVE engine velocity, it replays to 11-19 u. Rounded to {0, +-0.5, +-1, +-2, +-3, +-5} deg it still flies both segments; {0, +-1, +-2, +-4} or anything coarser dies on the climb; holding each command for 2 ticks (14 ms) already breaks the dive and 3 ticks kills the climb. **The record's pit climb is a half-degree, every-tick manoeuvre** - the precision class random exploration and a 40 ms decision rate make hard.
+
+**4. Exhaustive search over (position x velocity) cells** (tools/kino_search.py: node = 64 u cell x heading x vertical-speed bin x contact, Pareto labels over (arrival time, energy); an edge holds one of 9 controls until the node changes; Dijkstra by game time from the spawn; every edge is the C core) follows the record's dive at matching energy to ~3 s and then loses it; every branch dies by ~10 s of game time (1.1M nodes, 8M edges). Started from the record's own pit-bottom state (bench) it still never climbs out (gap > 270 u of energy height by 6.8 s, at 10 ms and at 7 ms). **Binned exhaustive search cannot express the climb.**
+
+**5. Local optimal control can.** tools/cem_bench.py: the cross-entropy method over a 2.4 s open-loop sequence (side key + view offset from the live velocity, knots every 28 ms, 4,096 candidates per round), objective "end as high as possible, alive", started from the record's pit-bottom state, the record's inputs never read: **it climbs from z -876 to z 664 in 4.4 s of compute** (the record is at z 573 at that time; median |offset| 1.4 deg). From the TRUE spawn with a 9 s horizon and the geodesic field as objective it creeps along the platform and never dives: the field's dip along the record lasts from ~3.2 s to ~8.3 s (to -7.2% progress), longer than an optimiser that is paid on the field can look past.
+
+**6. Running now:** tools/go_cem.py - a Go-Explore archive over (position x energy height) whose explorer is CEM with a NOVELTY objective (archive-new cells visited alive), from the spawn, no reward, no demo; tools/go_cem_route.py rebuilds and replays any route it finds.
+
+## 2026-10-16 07:05 (machine clock) - optimal control, night 1 continued: the Go-Explore + CEM explorer fills the unitfarmer2 pit (13,554 cells) and never leaves it; the binding constraint is ENERGY (it arrives ~280-390 u of energy height below the record), and an earliest-arrival archive cannot chain sub-bin energy gains; v2 keeps the most energetic state per cell
+
+
+All CPU, no training. The record (runs/research/uf2_wr) is a measuring stick only (CLAUDE.md section 0).
+
+**go_cem v1 on unitfarmer2, 90 min from the true spawn** (`python -u tools/go_cem.py --map maps_pool/surf_unitfarmer2.bsp --out runs/research/kino/gocem_uf2 --minutes 90`; cell = 192 u position x 96 u energy-height bin, each cell keeps its EARLIEST arrival, CEM 2,048 x 10 rounds over 2 s per expansion, score = archive-new cells visited alive): 4,990 expansions, **13,554 cells, all of them inside the start pit** (x -2,900..-1,500, y -3,900..200, z -980..1,192), latest arrival 10.0 s of game time, **best progress 4.6% (reached by expansion ~750, then flat for 70 min), 0 goals**. The archive saturates: +0..5 cells per 10 expansions for the last hour.
+
+**Why it stays in the pit: energy.** Per record time, the best archive energy height (z + |v|^2/2g) within 200 u of the record's position (tools: scratchpad gocem_cover.py):
+
+| record t (s) | record z | record energy | archive best | gap |
+|---|---|---|---|---|
+| 1.5 | 1,229 | 1,302 | 1,208 | +94 |
+| 2.5 | 911 | 1,356 | 1,041 | +315 |
+| 4.0 | -388 | 1,294 | 902 | +392 |
+| 6.0 | -876 | 1,118 | 835 | +283 |
+| 8.5 | 584 | 1,112 | 1,045 | +67 |
+| 9.0 | 516 | 1,141 | none within 200 u | - |
+
+The archive's maximum energy anywhere is 1,208 (the spawn is 1,188). The record gains +120 u on the way down from the platform, 1,256 at 1.2 s to 1,376 at 2.9 s, by AIR-STRAFING DURING THE FREE FALL: one jump at ~1.25 s, then A/D alternating with the view within a few degrees of the swinging velocity heading, hspeed 297 -> 486. That rate, ~75 u/s, is the theoretical ceiling of 30^2/2 x 143 fps / 800 = 80 u/s of energy height at a 7 ms tick. The archive never does it, and so it reaches the pit bottom ~280 u short of the record. Its best climb state (z 603, speed 846, energy 1,045, at the record's 8.5 s position) lands on a flat ledge at z 548 and loses its speed: a CEM run from it with the field objective (3 s) ends at z 204, progress 4.2%.
+
+**Why the v1 archive cannot fix that itself (a design defect, generic):** a cell keeps its earliest arrival, so a later state with MORE energy in the same 96 u bin is thrown away. Energy gains smaller than one bin per 2 s expansion therefore never chain. In the pit, the record gains ~25 u/s by surfing, i.e. ~50 u per expansion, less than a bin.
+
+**v2 (running, 75 min, runs/research/kino/gocem2_uf2):** the same tool with `--key pos-heading --rep energy --novelty energy --select fresh`. A cell is position x 4 horizontal-heading sectors and keeps its MOST ENERGETIC state; at one position and heading, more energy dominates, because energy is raised only by skill and lost only to contacts. Score = new cells + per known cell visited alive its energy gain / 96 u, clipped to [0, 1]. Pick weight = 1/sqrt(1 + picks since the cell was created or raised by > 24 u). With default flags the patched tool reproduces v1 bit for bit (every array of a 21-expansion archive equal). A 3-minute smoke run already raised the platform cells to 1,227-1,248 (ground prestrafe speed), but not yet the fall.
+
+## 2026-10-16 07:12 (machine clock) - optimal control, night 1 side results: the record gains its pit energy by AIR-STRAFING DURING THE FALL off the platform (+120 u at ~75 u/s, the 80 u/s physical ceiling at 7 ms); CEM finds it in 2 s when asked for energy (+128 u); an energy-gated geodesic field is identical to the plain one on unitfarmer2 (null)
+
+
+CPU benches plus one GPU BFS bake (desktop GPU idle, no trainer running). The record is a measuring stick and a bench start state only (CLAUDE.md section 0).
+
+**1. Where the record's energy comes from (unitfarmer2, runs/research/uf2_wr frames):** 0-1.0 s: ground prestrafe with W+D, the view sweeping -106 -> -131 deg, hspeed 272 u/s. ~1.25 s: one hop at the platform edge (vz -106 -> +248). 1.3-2.9 s: pure AIR STRAFE while falling 670 u (A/D alternating, no W, the view within a few degrees of the swinging velocity heading), hspeed 297 -> 486, **energy height 1,256 -> 1,376 (+120 u, ~75 u/s)**. 3.0 s: landing on the ramp costs 86 u. Over the whole run the record's energy stays at 1,000-1,380 for the first 26 s and ~560-750 after, which makes the map an energy budget.
+
+**Why ~75 u/s:** with sv_airaccelerate 100 the per-frame add is capped at 30 u/s, so a wishdir perpendicular to v gives |v'|^2 = |v|^2 + 900 exactly (the optimum of |v|^2 + 900 - |v|^2 cos^2 theta). Energy height therefore grows at 900/2 x fps / g = 450 x 143 / 800 = **80 u/s at a 7 ms tick (56 u/s at 10 ms), independent of speed**, whenever the player is airborne and strafing. In the trainer's --view-absolute velocity mode that optimum is view offset 0 with A or D held, and W held kills the gain.
+
+**2. CEM finds that strafe when asked for energy.** `tools/cem_bench.py --objective energy --horizon 1.6 --bench-demo <record> --bench-time 1.3` (2,048 x 20 rounds, ~2 s of compute): it ends at **1,417 u of energy height, against the record's 1,376** over the same 1.6 s, with median |offset| 0.38 deg and 27 side switches. From the spawn (speed 0) with the same tool, but no W key in its action set, it only reaches 1,201: ground speed is the cap there.
+
+**3. An energy-gated geodesic field does not remove the start dip (null, generic idea retired for this map).** The BFS of build_goal_field runs over voxels with centre z <= E for caps E = 900..1,700 in 50 u steps (scratchpad energy_field.py, 0.9 s per cap on the GPU). It is read along the record through the smallest cap >= the frame's energy + 16 u. **Identical to the plain field to 0.1% at every 0.5 s of the first 16 s; worst dip +2,510 u for both.** No free voxel exists above z 1,300 on this map, and the caps below the record's energy remove 0.2-1.5% of voxels, none on the platform-to-exit geodesic. The pit exit (z ~480 on the west wall) is energetically reachable straight from the platform by falling. What the record's dive buys is the DIRECTION and horizontal speed the pit ramps convert the fall into, which no position x energy field can represent. A momentum-aware potential needs the velocity direction: a 6D object that only search or a learned value can supply.
+
+## 2026-10-16 07:43 (machine clock) - optimal control, night 1: the explorer could not gain energy because its action set had NO JUMP (every v2-v4 archive capped at 1,253 u of energy height = ground speed); with --jump it reaches 1,348 in 30 s and beats the record's energy along its first 4 s; two jump arms running
+
+
+All CPU, two explorers sharing the 16-core box. The record is a measuring stick only (CLAUDE.md section 0). All runs: `python -u tools/go_cem.py --map maps_pool/surf_unitfarmer2.bsp ...`, 7 ms tick, 2 s CEM horizon. tools/go_cem.py grew options v2-v5. Each option was checked bit-identical to the previous code when off: every array of an 11-31-expansion archive equal.
+
+| run | flags beyond v1 | stopped at | expansions | cells | max energy height | best progress |
+|---|---|---|---|---|---|---|
+| gocem2_uf2 (v2) | `--key pos-heading --rep energy --novelty energy --select fresh` | 21 min (replaced) | ~770 | 4,218 | 1,247 | 4.5% |
+| gocem3_uf2 (v3) | v2 + `--ecell 32` (energy gains weigh 3x) | 38 min (replaced) | 1,080 | 4,353 | 1,253 | 4.7% |
+| gocem4_uf2 (v4) | v3 + `--energy-coef 1 --pop 512 --iters 4` (cheap expansions, ~5x the rate) | 16 min (replaced) | 3,430 | 1,337 | 1,253 | 3.2% |
+
+**None of them ever held a state above 1,253 u of energy height, anywhere.** The spawn is 1,188 and ground speed caps at 250 u/s, i.e. 1,188 + 250^2/1600 = 1,227. The record reaches 1,376 by 2.9 s.
+
+**The cause was the explorer's ACTION SET, not its scoring.** Every archive state near the record's 1.0-2.0 s positions is ON THE GROUND (onground 0) at 250 u/s, walking down the platform's gentle slope (z 1,188 -> 1,164). The record hops once at 1.25 s and flies over that slope, air-strafing from 297 to 486 u/s. Air acceleration has no speed cap; ground acceleration does. Without the jump key the explorer cannot leave the ground before the drop, and the archives' later dives start ~150 u short.
+
+**v5: `--jump`** adds the jump key, a per-knot Bernoulli refit like the others (initial p 0.1; the engine's jump is edge-triggered and keeps the 1.2 x maxspeed bhop cap). It is the agent's own action space, the same on every map. A 3-minute smoke run with v4's flags + `--jump`: max energy 1,272 at the FIRST expansion and 1,348 after 30 s. Along the record's path it matches or beats the record up to 4 s: 1,300 at the record's 1.0 s position vs 1,234; 1,351 at its 3.0 s position vs 1,290; 1,236 at 4.0 s vs 1,294. go_cem_route.py replays jump archives exactly (0.00 u over 6.94 s).
+
+**Running now (60 min each, from ~07:43):** gocem5a_uf2 (v4 flags + `--jump`, i.e. with `--energy-coef 1`) and gocem5b_uf2 (the same without `--energy-coef`). The pair differs in that one variable.
+
+## 2026-10-16 08:06 (machine clock) - optimal control, night 1: with the jump the explorer flies the record's dive at record energy, but its pit-entry states are DOOMED (right energy, wrong direction: every plan dies within 1.2 s); closed-loop MPC (1.2 s lookahead, replan every 8 ticks) carries the record's state through the U-turn at 1,161-1,250 u where open-loop CEM keeps 869; the explorer's expansions are now MPC flights
+
+
+All CPU. The record is a measuring stick and a bench start state only (CLAUDE.md section 0). New measurement-only tool (scratchpad pit_exit_check.py): cells outside the pit's box (the extent of v1's archive, which filled the pit). It also gives, per record time, the best archive energy among states within 200 u that MOVE THE SAME WAY (velocity cosine > 0.8). The plain nearest-position check conflated the record's dive with its climb through the same x, y.
+
+**1. The jump arms (v5, 2 s open-loop expansions, 512 x 4; each stopped at the default 5,000-expansion cap, after ~22 min):**
+
+| run | flags | cells | outside the pit | same-motion energy, record 3.0 s / 4.0 s / 4.5 s / 6.0 s (record: 1,290 / 1,294 / 1,208 / 1,118) |
+|---|---|---|---|---|
+| gocem5a_uf2 | v4 + `--jump` (with `--energy-coef 1`) | 1,700 | 0 | 1,384 / 1,267 / none / none |
+| gocem5b_uf2 | the same without `--energy-coef` | 4,941 | 0 | 1,384 / 1,279 / 722 / 421 |
+
+With the jump, the explorer flies the record's dive at the record's energy, or above it, down to the 4.0 s point. `--energy-coef 1` made it conservative: it never enters the pit bottom. Without the term it enters, but loses ~500-1,000 u between the record's 4.0 s and 4.5 s points.
+
+**2. Why: the archive's pit-entry states are DOOMED.** At the record's 4.0 s point the record has turned around in the bowl: horizontal 1,137 u/s north, vz -1,172. v5b's best same-motion state there has the same energy but falls steeply: horizontal 567, vz -1,565. From that state (cell 1075), and from its best state at the 3.5 s point (cell 299), **every candidate of a 512 x 4 plan dies within 1.2 s** (the pit bottom is a kill teleport), and a 2,048 x 25 open-loop CEM over 2.5 s finds no survivor either. Energy dominance keeps them, because a doomed state with more energy beats a viable one with less. **Energy alone does not capture viability; the direction of velocity relative to the surfaces matters.**
+
+**3. Open-loop vs closed-loop through the U-turn (bench from the record's 3.5 s state, energy objective, 2.5 s):**
+- **Open-loop CEM:** keeps 869 u at 28 ms knots (2,048 x 25), the record 1,118. At 14 ms or 7 ms knots no random candidate survives round 0, so CEM cannot even start.
+- **tools/mpc_bench.py (new, receding-horizon CEM):** plans 1.2 s ahead from the CURRENT state, executes the first N ticks, replans warm-started. With 1,024 x 6 and N = 4 it keeps 1,170-1,250 u the whole way, ending at 1,250 vs the record's 1,118, in 13.4 s of compute. Its heights track the record's within 0-16 u at every 0.5 s. With the CPU idle, 256 x 3 at N = 8 keeps 1,161-1,209 u in **0.6 s of compute per 2.5 s of flight**.
+- **What breaks it:** a 0.6-0.8 s plan horizon dies at 0.95 s (it cannot see the kill floor coming), and N = 16 stalls or loses 300+ u. **Precision segments need closed-loop replanning every ~8 ticks with ~1.2 s lookahead, not one long open-loop plan.**
+
+**4. go_cem v6, `--mpc-exec N --mpc-plan S --mpc-iters I`:** every expansion is such a closed-loop flight of --horizon seconds. The plan score is novelty + energy gain over the archive, where this flight's own cells no longer count as novel, minus 1,000 for a plan that dies within its horizon. Expansions store per-tick controls (saved knot = 1). go_cem_route.py replays them unchanged: 0.00 u error on two MPC archive states (4.03 s and 8.21 s routes). The open-loop path is bit-identical to v5: every array and every log line of a 31-expansion archive is equal.
+
+**Running now (75 min each, from 08:05, 8 threads each):** gocem6a_uf2 (`--pop 256`) and gocem6b_uf2 (`--pop 512`). Both use `--key pos-heading --rep energy --novelty energy --select fresh --ecell 32 --jump --mpc-exec 8 --mpc-plan 1.2 --mpc-iters 3 --expansions 100000`.
+
+## 2026-10-16 09:00 (machine clock) - optimal control, night 1: the explorer's high-energy pit states are DOOMED because energy dominance is optimistic about contact losses still to come (a steep fall past a ramp outranks the surfing state); novelty alone leaves the record's line even when started on it; an explicit energy term in the MPC planner makes it follow the line into the bowl (bench), still ~250-470 u short
+
+
+All CPU. The record is a measuring stick and a bench start state only (CLAUDE.md section 0). Every bench below is an ANALYSIS BENCH: nothing is trained, the record's inputs are never read, and its runs are labelled BENCH.
+
+**1. MPC expansions (v6) carry the dive deeper but still do not leave the pit.** gocem6b_uf2 (`--pop 512`, MPC 8/1.2/3) at 33 min: 1,510 expansions, 4,579 cells, 0 outside the pit. Same-motion energy at the record's 4.5 / 5.0 / 6.0 s points: **1,193** / 758 / 639 (record 1,208 / 1,202 / 1,118). Every open-loop archive had at most 722-832 at 4.5 s. gocem6a_uf2 (`--pop 256`) was stopped at 26 min: 1,640 expansions, 4,169 cells, 832 at 4.5 s. gocem6c_uf2 (`--select fresh-lift`, a new option: fresh weight x (1 + cells within 2 cells' radius more than one --ecell lower)) was stopped at 21 min: 630 expansions, 2,802 cells, 800 at 4.5 s. The lift selection is no better at matched time.
+
+**2. The archive's high-energy dive states are doomed, and energy dominance is why.** Energy MPC (512 x 4, 1.2 s lookahead, replan every 4 ticks) from v6b's best same-motion states:
+
+| record point | v6b state's energy | its velocity (x, y, z) / the record's | energy MPC from it |
+|---|---|---|---|
+| 3.0 s | 1,375 (record 1,290) | (-78, -495, -1,102) / (129, -777, -847) | DIED after 1.48 s |
+| 3.5 s | 1,284 | (-59, -604, -1,214) / (-638, -939, -771) | no plan survives 1.2 s |
+| 4.0 s | 1,279 | (-161, 589, -1,599) / (155, 1,137, -1,172) | DIED after 2.43 s |
+| 4.25 s | 1,138 | | loses 300 u in 0.3 s, then stops dead on the pit floor (speed 52) |
+| 4.5 s | 1,193 | | loses 230 u in 0.3 s, then stops dead (speed 3) |
+
+The archive's state at the ramp landing (3.0 s) has MORE energy than the record because it is still FREE-FALLING past the ramp: it has not yet paid the landing (the record loses 86 u landing there). **Energy dominance is optimistic about contact losses still to come.** In one (position x heading) cell, a steep fall (velocity vertical angle -66 deg) beats the surfing state (-47 deg) and can overwrite it, even though both pass the "same motion" test (cosine 0.93).
+
+**3. `--vbins K` (new option):** the cell key also gets the velocity's vertical angle in K equal bins over -90..90 deg, so a surf and a steep fall at the same spot are different cells. gocem7_uf2 (v6b + `--vbins 5`) at 17 min: 230 expansions, 2,927 cells (more cells per position, so slower coverage), 1,082 at 3.5 s, nothing at 4.0-6.0 s yet.
+
+**4. The explorer's own objective leaves the line even when it starts ON it (bench).** gocem7_BENCH30_uf2 is v7 started from the record's state at 3.0 s (its ramp landing). At 10 min: 170 expansions, 1,796 cells, nothing along the record's path after 3.0 s, and the pit-bottom states stopped dead (energy -613 to -695). Energy-objective MPC from the record's 3.5 s state follows the record's heights within 16 u (entry above). **When every nearby cell is new, novelty is indifferent to energy, and the energy-preserving line is one of many equally novel plans.**
+
+**5. With an explicit energy term the explorer follows the line from the bench state.** gocem8_BENCH30_uf2 is the bench of point 4 + `--energy-coef 1`: the MPC planner's score adds (energy at the plan's end - now) / 32 u. At 10 min (270 expansions, 2,223 cells), same-motion energy at the record's 3.5 / 4.0 / 4.5 / 5.0 / 5.5 / 6.0 s points is 1,171 / 1,108 / 966 / 940 / 711 / 649. Without the term it had nothing past 3.0 s. It still loses 250-470 u against the record (1,277 / 1,294 / 1,208 / 1,202 / 1,124 / 1,118) and against pure energy MPC from the record's 3.5 s state (1,174 at 4.5 s, 1,215 at 5.5 s), and nothing has left the pit.
+
+**Running (8 threads each):** gocem6b_uf2 (to ~09:20), gocem7_uf2 (`--vbins 5`, to ~09:27), gocem8_BENCH30_uf2 (to ~09:25) and gocem8_uf2 (v7 + `--energy-coef 1` from the TRUE spawn, to ~09:40).
+
+## 2026-10-16 09:40 (machine clock) - optimal control, night 1, final: local optimal control YES (CEM/MPC fly the climb, the energy fall-strafe and the bowl U-turn in seconds); global search from the spawn NO - seven explorer versions, none leaves the unitfarmer2 pit; all lose 200-600 u in the bowl; proposal: novelty at the high level, energy-maximising MPC at the low level (the ramp-search split)
+
+
+All CPU, nothing trained, the record a measuring stick and bench start only (CLAUDE.md section 0). Final numbers for the runs of the 08:0x and 08:5x entries. Correction to the 08:5x entry, point 5: the energy-term bench's shortfall against the record was 106-469 u (106 at 3.5 s, 469 at 6.0 s), not "250-470".
+
+**Every explorer, final (unitfarmer2, from the TRUE spawn unless marked BENCH).** "Same-motion energy" = the best archive energy height within 200 u of the record's position at that record time, among states moving the same way (velocity cosine > 0.8). The record has 1,294 / 1,208 / 1,118 at its 4.0 / 4.5 / 6.0 s points.
+
+| run | what it adds | minutes | expansions | cells | outside the pit | same-motion energy 4.0 / 4.5 / 6.0 s |
+|---|---|---|---|---|---|---|
+| gocem_uf2 (v1) | position x energy-bin cells, earliest arrival, open-loop CEM | 90 | 4,990 | 13,554 | 0 | 902 / 812 / none |
+| gocem5b_uf2 | energy dominance, energy novelty, jump, cheap open-loop | 22 | 5,000 | 4,941 | 0 | 1,279 / 722 / 421 |
+| gocem6b_uf2 | + MPC flights (512 x 3, 1.2 s plan, replan every 8 ticks) | 75 | 2,493 | 5,215 | 0 | 1,282 / **1,193** / 671 |
+| gocem7_uf2 | + `--vbins 5` | 55 | 897 | 6,838 | 0 | 1,235 / 774 / -504 |
+| gocem8_uf2 | + `--energy-coef 1` in the MPC score | 50 | 1,129 | 7,233 | 0 | **1,336** / 1,025 / 595 |
+| gocem8_BENCH30_uf2 | v8 started from the record's 3.0 s state | 35 | 848 | 5,179 | 0 | 1,108 / 976 / 723 |
+
+Figure (labelled, colorblind-safe): runs/research/kino/uf2_explorers_energy.png.
+
+**Verdict for the night: local optimal control YES, global search from the spawn NO (not yet).** Every variant reaches the bowl at the record's energy (v8 holds more than the record down to the 4.0 s point) and loses 200-600 u in the bowl's next second. Nothing leaves the pit, even from the record's own ramp-landing state (BENCH). Pure energy MPC from the record's 3.5 s state does keep 1,161-1,250 u through the same bowl, and height-objective CEM does climb out from the record's pit-bottom state. **The precise line exists and the local optimiser can fly it; a single scalar mixing novelty with energy pulls the low-level controller off it.**
+
+**Design consequence (proposal, not run):** novelty must live at the HIGH level and energy at the LOW level. Choose WHERE to go next by novelty over (ramp or region, entry energy): the archive. Fly THERE with an energy-maximising MPC whose objective is "reach target T alive with the most energy". That is docs/ramp-search-design.md's split, with MPC as section 5's witness search (section 10 there now records tonight's tools and lessons). All constants stay generic: the 1.2 s plan, replanning every 8 ticks, 512 x 3, 192 u cells, 4 headings.
+
+## 2026-10-17 09:12 (machine clock) - the reach-ramp MPC (tools/ramp_mpc.py), the first step of the sequence-free ramp search: from the record's states most uf2 transitions fly; from the TRUE spawn the chain replays exactly and reaches S19 -> S17 -> S18, then fails the climb out of the pit on ENERGY; generic solver defects found, and a one-currency energy score that halves the bowl's loss
+
+
+All CPU (the C core), no training, no GPU.
+
+**Provenance.** The test sequence is 19,17,18,19,20,22,25,30,33,35,36,37,39,42,43,47,14, read off the record by runs/uf2R3CV6's `--ramp-sequence` (source demo). It is a TEST HARNESS only. It measures whether the transitions can be flown, and nothing written here may become a training input (CLAUDE.md section 0). Bench starts are record states; the record's inputs are never read.
+
+**The tool: tools/ramp_mpc.py.** It has no map constants. One edge = "touch target piece B alive, with the most energy height", flown by receding-horizon CEM in the engine.
+- **CEM:** 512 x 3, a 1.2 s plan, 8 ticks executed per replan, knots of 4 ticks. Controls: side key, forward key, jump, view offset from the velocity heading.
+- **Touch:** the first contact with B's piece under the trainer's `--ramp-touch` rule (RampVocab.classify on the core's collision telemetry).
+- **Rollout:** every candidate plan is followed by a 2 s HOMING rollout: view offset 0, plus the side key that turns the velocity toward B's nearest contact origin, i.e. the strafe that both turns and gains speed.
+- **Viability:** a touch counts only if the player survives the 1 s after it.
+- **Replay:** chains replay from the spawn to 0.00 u.
+
+tools/ramp_search.py, the sequence-free search over ramp pieces (37 on uf2), is written but not yet run.
+
+**1. Bench from the record's touch states** (starting 5 frames before each touch).
+- 10 ms, all 16 edges: 10 touched; the last, S47, flew straight into the finish zone. Most arrival energies are below the record's, e.g. S17 -> S18 896 vs 1,134. S20 -> S22 timed out.
+- 7 ms, edges 0-4: all touched. S17 -> S18 653 vs 1,134; S20 -> S22 555 vs 1,219.
+- **The edges are flyable, but two of them cost far more energy than the record pays:** the pit's bowl and S20 -> S22.
+
+**2. Chain from the TRUE spawn, 10 ms.**
+
+| Step | Our arrival energy | Record |
+|---|---|---|
+| S19 (3.1-3.6 s) | 1,066-1,148 | ~1,290, after its landing, at 7 ms |
+| S17 | 888-992 | 1,299 |
+| S18 | 115-470 | 1,134 |
+
+- The climb from S18 back to S19 then fails: timeouts.
+- Backtracking (3 entries per edge, 80-150 flights) hits the same wall on every branch.
+- The trace shows why. Our run enters S17 moving 750 u/s along it (the record: 1,093), slides to the bowl floor, and loses ~700 u in 0.3 s. The record carves north along S17's bottom edge and swings around the wedge's north end onto S18.
+
+**3. Generic defects found in the solver, and their fixes:**
+- **Bench starts inside the ramp.** A record frame can sit inside the ramp as far as the engine is concerned: stuck, then fail within 5 ticks. Fix: start 5 frames earlier.
+- **Incoherent random plans.** With keys drawn independently per knot, 0 of 1,536 plans survive on a ramp above a kill floor. Fix: held keys (p 0.8), AR(1) view noise, and ranking by survival time when every plan dies.
+- **Doomed touches.** A touch can be alive yet doomed (S17's bottom, above the kill floor). Fix: the touch must survive 1 s.
+- **Too cautious to leave the platform.** A 1,000 u penalty when the rollout dies keeps the MPC on the spawn platform: 6 of 7 configurations timed out. Fix: penalty 0, after which 3/3 reach S19 at 10 ms.
+- **Any touch beats any carve.** Under the LEXICOGRAPHIC score, any touch outranks every non-touch, so it takes a 200 u touch over a 1,100 u carve. Fix: `--score soft`, ONE energy currency: a touch is worth its energy + 300; no touch is worth energy - 0.2 x distance to go. On the bowl edge this gives:
+  - from our own S17 state: S18 at **685-697 u** over 3 seeds, was -280..470;
+  - from the record's S17 state: **973**, was 653-896, against the record's 1,134; the climb on to S19 then lands at 1,037 (record 1,127).
+  - From our own S18 state (~690 u), the climb still times out.
+- **Tried and rejected:** scoring a touch by the energy 1 s after it, walking toward B in the rollout when on the ground, energy weights 3 and 5, a bigger CEM (1,024 x 6), and a 2 s plan.
+
+**Running now:** dfs10soft_uf2 (the soft score, backtracking, 80 flights).
+
+## 2026-10-17 10:32 (machine clock) - the reach-ramp chain CLIMBS OUT OF THE unitfarmer2 PIT from the true spawn with our own controls (harness sequence; the pit exit at 7.94 s vs the record's 7.91 s; exact replay), then stops at S20 on ENERGY (exit 550-710 u vs the record's 1,127); four more solver variants, none passes S20; stopped by the agreed rule
+
+
+All CPU, no training. The record's ramp sequence is a TEST HARNESS only (provenance as in the 09:12 entry; CLAUDE.md section 0). Every chain below starts at the TRUE spawn, flies our own controls, and replays from the spawn to 0.00 u. All runs use 10 ms, `--passive-death 0` and backtracking.
+
+| run | solver | pit exit (second S19 touch) | energy at the exit | S20 |
+|---|---|---|---|---|
+| dfs10_uf2 | lex score, 512 x 3 | never (9 S17 entries; S18 at 115-470 u) | - | - |
+| dfs10soft_uf2 | `--score soft` | **YES**: 4 branches, the fastest at **7.94 s** (record 7.91 s) | 546-581 | died / timeout |
+| pitE_B_big | soft + 1,024 x 6 | YES, 6 branches | 661-709 | died / timeout |
+| pitE_C_lowbonus | soft, touch bonus 150, distance weight 0.1 | no | - | - |
+| pitE_D_both (stopped at 21 flights) | B + C | no; S19 entry 1,221, S18 872-877, climbs time out | - | - |
+| dfs10strafe_uf2 | soft + 1,024 x 6 + `--off-units strafe` | YES, 1 branch | 666 | died / timeout |
+
+**Notes:**
+- **dfs10soft_uf2 is the first time our own controls climb out of unitfarmer2's pit from the spawn.** It is still harness-driven: the order of ramps came from the record.
+- **`--off-units strafe`** (new option): the sampled view offset is in units of the strafe angle asin(30/|v_h|), the offset past which an air strafe adds no speed.
+  - Why it was tried: the executed offsets had medians of 1.05-1.35 deg at 1,000-4,000 u/s, at or past that angle (1.7 deg at 1,000 u/s, 1.1 at 1,500, 0.86 at 2,000).
+  - What it bought: the S19 entry energy rose to 1,202 (record ~1,290).
+  - What it did not buy: a better pit exit.
+
+**Verdict (the stopping rule set at the user's check-in):** the transitions can be flown, out of the pit. The energy cannot yet be kept.
+- Every edge loses 100-250 u more than the record's line. We leave the pit with ~550-710 u against the record's 1,127.
+- S19 -> S20 fails from every exit state. This is the same wall as the RL arms' "teleport after a low-energy landing".
+- No run passed S20, so this line is stopped here.
+
+**Open:**
+- tools/ramp_search.py, the sequence-free search: does it find spawn -> S19 -> S17 -> S18 -> S19 WITHOUT the record's order?
+- The S20 energy wall: the 7 ms tick? Here the first edge was unreliable, 0 of 5 runs reached S19.
+
+## 2026-10-17 13:21 (machine clock) - the ramp search WITHOUT the record's order (tools/ramp_search.py, run 1, `--alloc round`, 150 min): it finds the pit descent spawn -> S19 -> S17 -> S18 in the record's order by itself, and does not climb out; 82% of the compute went to flights that never closed 50 u on their target
+
+
+All CPU, no training, 10 ms tick, from the TRUE spawn of unitfarmer2. **No record input:** the record's sequence was passed as `--ruler`, which only counts how much of it a route matches, for the log. No record state, sequence or input reaches the search. The goal field is used for reporting only.
+
+Command: `python -u tools/ramp_search.py --map maps_pool/surf_unitfarmer2.bsp --vocab runs/research/ramps_mesh_surf_unitfarmer2.npz --minutes 150 --score soft --passive-death 0 --ruler 19,17,18,19,20,22,25,30,33,35,36,37,39,42,43,47,14 --out runs/research/rampmpc/search_uf2`. Everything else is at its default: edge solver 512 x 3, 1.2 s plan, exec 8, knot 4, edge timeout 8 s, stall abort 3 s, 8 headings, dom-eps 10, pair-tries 2, arc 3 s.
+
+| quantity | value |
+|---|---|
+| flights | 680: 27 touches, 501 stalled, 94 died, 58 timeouts |
+| compute | 150 min, of which stalled flights 122.6 min (**82%**), timeouts 22.4, touches 2.9, deaths 2.3 |
+| nodes | 19 (8 pieces) |
+| deepest in the record's order | **n14 = S2 -> S19 -> S17 -> S18** (ruler 3/17), created at 106 min |
+| best goal-field progress | n13 = S4 -> S20 (3.9%), 6.78 s of game time, E 636; replays to 0.00 u |
+
+**What it found by itself:**
+- **The record's pit descent, in the record's order**: S19 at 7.3 min (E 1,143), S17 at 7.6 min (a better entry at 52 min, E 1,075), S18 at 106 min (E 703).
+- **The exit S18 -> S19 was flown ONCE**, from n14. It stalled at 4.8 s and was never retried.
+- **A way onto S20 that skips the pit**: drop onto S4 (a floor at z 548), then step onto S20 at E 636. Landing on the floor costs about 500 u of energy height. The record keeps it by landing on ramps.
+
+**Energy against the record (ruler only):**
+
+| touch | record | search | edge loss, record | edge loss, search |
+|---|---|---|---|---|
+| S19 (first) | 1,382 | 1,143 (n6) | +190 in 3.0 s (spawn 1,192) | -47 in 6.3 s |
+| S17 | 1,299 | 1,075 (n11) | -83 | -68 |
+| S18 | 1,134 | 703 (n14) | -165 | **-372** |
+
+**Why it stopped there (the ALLOCATION, not the search space):**
+- Every node flew to every one of the 36 other pieces, in arc order, before any pair got a second flight. At pair-tries 2 that is 72 flights per node.
+- The node choice was lexicographic on the piece's node count. So a node on a piece reached once took every flight until it was exhausted: n15 on S3 took 72 flights (23 min).
+- n3 (S17 straight from the spawn) died within 0.09 s on all 72 of its flights.
+
+**Figure:** runs/research/rampmpc/search_uf2_tree.png (left: the start region top-down, with the pieces labelled with their z range; right: the tree in depth x energy, every node labelled, the record's touch energies drawn as hollow squares, ruler only). This run did not save node positions.
+
+**Verdict:** partial. Without the record's order, the search finds the record's descent into the pit in 106 min. It does not climb out, and the exit edge got one flight.
+
+**Next:** `--alloc pw`, same edge solver:
+- Progressive widening (Couetoux et al. 2011): a node with N flights has opened at most 2 + sqrt(N) pieces.
+- Retries go to the pairs whose flights came closest. A pair that never closed 50 u is closed.
+- Node choice by Go-Explore count weights, 1/sqrt(touches on its piece) / sqrt(1 + flights).
+- A node whose first 3 flights all die within 0.25 s is dropped.
+- Dominance only within 512 u.
+
+**Correction (2026-10-17 13:21) to the 13:21 heading:** the 82% went to flights that STALLED, i.e. that made no 50 u of progress toward their target for 3 s. Many of them had closed some distance first: they stalled at 4-6 s, not at the first check at 3.1 s. So "never closed 50 u" in the heading overstates it.
+
+## 2026-10-17 13:56 (machine clock) - why the search's edges lose energy: our MPC strafes at about half the record's power and brakes twice as often; a strafe-unit offset clipped at +/-1.5 flies the record-state S20 -> S22 edge 4 of 4 times (degrees 3 of 4), but loses on the pit's S17 -> S18; an ANALYSIS bench, no training
+
+
+**Provenance.** The record is a measuring stick only (CLAUDE.md section 0):
+- the bench starts from its states, 5 frames before each of its touches;
+- the strafe statistics read its frames;
+- nothing here is a training input.
+
+**1. Strafe quality (physics check first).**
+- The yaw a tick used is paired with the velocity that tick started from. For the record that is the same frame's simvel; for our states, the previous state. Predicted gain |v_h|^2 += 900 - c^2 (none for c >= 30, pm.c) correlates 1.000 with the observed change in free air, for both.
+- With u = c / 30 (the strafe unit: u in [-1, 1] gains, u > 1 does nothing, u < -1 brakes):
+
+| strafing ticks (A/D held, no W, \|v_h\| > 300) | median u | u < -1 (braking) | mean gain per tick (of 900) |
+|---|---|---|---|
+| record, first 13.5 s | -0.10 | 9.7% | 425 |
+| dfs10soft_uf2 (degrees, 512 x 3) | -0.13 | 20.4% | -188 |
+| dfs10strafe_uf2 (strafe units, clip 4) | -0.32 | 22.2% | 290 |
+| pitE_B_big (degrees, 1,024 x 6) | -0.22 | 18.7% | 150 |
+
+- W is held on 23% of ticks in dfs10soft against 7% for the record. W in the air gives no gain.
+- Impacts (ticks losing > 2 u), record vs dfs10soft: S19 -> S17 -91 vs -282; S17 -> S18 -127 vs -190; S18 -> S19 -29 vs -71.
+- Strafe gains per edge: +45/+24/+84 vs +19/+13/+18.
+
+**2. Bench from the record's states** (`--score soft --passive-death 0`, 512 x 3, 10 ms, 3 retries per edge; seeds 0-3 for the two main settings, seed 0 for the others; E at the touch, record in brackets):
+
+| edge (record E) | degrees (search default) | strafe units, clip 1.5, W prior 0.1 | strafe, clip 4 (seed 0) | strafe, clip 1 (seed 0) |
+|---|---|---|---|---|
+| S19 -> S17 (1,299) | 4/4 in 4 flights, mean 1,105 | 4/4 in 4, mean 1,124 (741-1,272) | 949 | 363 |
+| S17 -> S18 (1,134) | 4/4 in 4, mean 983 | 4/4 in **8**, mean 921 | 1,033 (3 flights) | timeout x3 |
+| S18 -> S19 (1,127) | 4/4 in 4, mean 1,011 | 4/4 in 5, mean 1,002 | timeout x3 | timeout x3 |
+| S19 -> S20 (1,151) | 4/4 in 4, mean 1,070 | 4/4 in 4, mean **1,118** | 1,087 | 1,117 |
+| S20 -> S22 (1,219) | 3/4 in **8**, mean 951 | **4/4 in 5**, mean **1,065** | timeout x3 | timeout x3 |
+
+**Notes:**
+- **Clipping at +/-1 (no braking turns) cripples the pit.** It is the record's 10%: turns past u = -1 are needed.
+- **No setting is better everywhere.** Clip 1.5 + W 0.1 wins on the open edges (S19 -> S20 +48, S20 -> S22 +114 and reliable). It loses 62 u on the pit's S17 -> S18 and needs a second flight there on every seed.
+- **S20 -> S22 traced** (runs/research/rampmpc/edge_S20_S22_trace.png, degrees, seed 0):
+  - The MPC climbs to z 765 over the top of S20 and lands on the S5 floor (z 452), losing 310 u in one tick. It then falls onto S22 at 870.
+  - The record stays below z 512 and gains 70 u by strafing on the way.
+
+**Verdict:** the energy gap is the edge solver. It turns too sharply with braking offsets, holds W, and lands hard. Neither offset parameterisation closes it: both stay 100-250 u under the record on the hard edges. The search keeps degrees for now. Run 2 (`--alloc pw`, 4 workers) is still running with the run-1 solver.
+
+## 2026-10-17 14:19 (machine clock) - interim, the search climbs out of the unitfarmer2 pit BY ITSELF: run 2 (`--alloc pw`, 4 workers) flies spawn -> S2 -> S17 -> S18 -> S19 at 18.6 min, with no record input
+
+- **What it is.** The first pit exit found without the record's order, its states or its inputs. The record was a `--ruler` for the log only.
+  - The route skips the record's first S19 touch: it drops from the platform straight onto S17. It is still the pit loop: down to S17/S18 (z -880..-595) and back up onto S19 (z 88..484).
+  - The ruler counts only the record's prefix in order, so it shows 1/17. That undercounts what happened.
+- **Numbers:** node 24, E 618 at the S19 touch, 4.3 s of compute for that edge (the record leaves the pit with 1,127). The exact replay check runs when the run saves (at 150 min).
+- **Command:** `OMP_NUM_THREADS=8 python -u tools/ramp_search.py --map maps_pool/surf_unitfarmer2.bsp --vocab runs/research/ramps_mesh_surf_unitfarmer2.npz --minutes 150 --score soft --passive-death 0 --alloc pw --pair-tries 3 --workers 4 --ruler <record sequence> --out runs/research/rampmpc/search_pw_uf2`.
+  - The edge solver is run 1's.
+  - The allocation is progressive widening, plus an OPTIMISTIC piece-pair prior: the first launch (run 2a, log `search_pw_uf2_aborted.log`) buried S18 -> S19 for every S18 node after one failed flight, and was stopped at 25 min.
+  - Node weights: Go-Explore counts per cell (piece x heading) x (0.5 + 0.5 x energy rank).
+  - A node is dropped when its first 3 flights all die within 0.25 s.
+- **Exit attempts:** before the touch, 8 S18 -> S19 flights came within 5-30% of their starting distance and stalled. From our own harness chain's S18 state (E 658), 2 of 4 seeds touch S19; the other two arrive ~80 u under its lowest contact origin.
+
+## 2026-10-17 14:52 (machine clock) - how much energy S19 -> S20 needs: about 850-900 u at the S19 touch (ANALYSIS bench); the search's exit has 618, so the wall after the pit is an energy budget of about 300 u
+
+**Method.** Start from the record's state 5 frames before its second S19 touch (ruler only):
+- scale the speed to a target energy height, keeping position and direction;
+- fly S19 -> S20 with the search's edge solver (degrees, 512 x 3, soft, 8 s timeout, 3 s stall abort), seeds 0-2.
+
+| entry E (\|v\|) | S19 -> S20 |
+|---|---|
+| 700 (680 u/s) | stalled x3 |
+| 800 (789) | stalled x3 |
+| 900 (884) | TOUCH x3 (888-892) |
+| 1,000 (971) | TOUCH x3 (961-966) |
+| 1,125, the record (1,069) | TOUCH x3 (1,093-1,126) |
+
+**The budget from the spawn (E 1,192) to the exit**, record vs our MPC (bench and chains, ruler only):
+
+| edge | record | ours |
+|---|---|---|
+| fall to S19 | +190 (3 s of air strafe at ~131 fps) | ~0 (1,131-1,185 at S19) |
+| S19 -> S17 | -83 | -68 to -150 |
+| S17 -> S18 | -165 | -270 to -372 |
+| S18 -> S19 | -7 | -86 to -115 |
+| **total** | **-65** | **-430 to -620** |
+
+**Notes:**
+- To keep 850-900 at the exit, the whole pit may cost at most ~300 u.
+- At 10 ms a perfect strafe gains at most 56 u/s (vs 80 at the record's 7.6 ms). So the first edge alone can give at most ~170 of the record's 190 at this tick.
+
+**Verdict:** the next wall is quantified. The search finds the order of ramps; its edges are about 350-550 u too wasteful to continue past S20.
+
+## 2026-10-17 15:19 (machine clock) - the first edge is the solver's worst: from the spawn it bunny-hops on the platform for ~5 s before falling to S19 (6.5 s, -54 u), where the record falls at 1.6 s and strafes +190 in 3 s; neither a 7 ms tick, nor strafe units, nor a 2-3 s horizon fixes it
+
+**Spawn -> S19, with the search's edge solver** (512 x 3, soft, 8 s timeout, 3 s stall; seeds 0-2; E at the S19 touch; the record lands at 2.99 s with 1,382, ruler only):
+
+| setting | S19 touched | E at the touch |
+|---|---|---|
+| degrees, 10 ms | 1/3 (6.50 s) | 1,138 |
+| strafe units clip 1.5, W prior 0.1 | 1/3 (6.40 s) | 1,153 |
+| degrees, 7 ms tick | 1/3 (4.54 s) | 1,168 |
+| strafe 1.5 + W 0.1, 7 ms | 0/3 | - |
+| plan 2.0 s | 2/3 (3.79, 4.43 s) | 1,096, 1,068 |
+| plan 2.0 s + homing 3.0 s | 0/3 | - |
+| plan 3.0 s | 0/3 | - |
+
+**The trace** (runs/research/rampmpc/first_edge_trace.png, degrees, seed 1):
+- The solver stays on the platform for 4.9 s and circles near the spawn. Energy rises 1,192 -> ~1,260 by hopping; the jump key is pressed on 180 ticks and W held on 26%.
+- It falls off the south edge at ~5 s and lands on S19 at 6.5 s, losing ~120 u in that one impact.
+- The record leaves the platform at 1.6 s and gains +140 in the 1.4 s fall.
+
+**Why:** the plan (1.2 s) plus the homing rollout (2 s of air-strafe keys, which do not walk on the ground) cannot see that walking to the edge and strafing down pays. So the score's energy-at-plan-end term pays for hopping in place. Longer horizons make CEM's sampling worse, not better.
+
+**Verdict:** the edge solver is the weak part of the ramp search. Parameter tweaks do not fix it; it needs a better low-level controller.
+
+## 2026-10-17 15:53 (machine clock) - run 2 final: the pit exit replays from the spawn to 0.000 u; the tree is fully expanded at 112 min with that ONE exit; nothing reaches S20 after the pit
+
+**The exit, verified.** Node 24 = S2 -> S17 -> S18 -> S19 (chain n1 -> n7 -> n8 -> n24).
+- Replayed from the spawn in a fresh engine from runs/research/rampmpc/search_pw_uf2_nodes.npz: 840 ticks (8.40 s of game time), 0.000 u error at the touch state.
+- E along it: 1,190 (S2) -> 995 (S17) -> 704 (S18) -> 618 (S19). The record (ruler only): 1,299 at S17, 1,134 at S18, 1,127 out of the pit.
+
+| run 2 | value |
+|---|---|
+| flights | 1,697 in 112.5 min, 4 workers (449 worker-minutes) |
+| outcomes | 76 touches, 1,370 stalled (79% of compute), 168 timeouts (18%), 83 died |
+| nodes | 30 (8 pieces); none new after minute 32; "every node is fully expanded" at 112.5 min (pair-tries 3) |
+| pit exits | 1 (n24, at 18.6 min) |
+| flights from S17/S18 nodes to S19 | 21: 1 touch, 19 stalled, 1 died |
+| flights from S17/S18 nodes to S20 | 25: none touched |
+| best energy per piece | S17 1,043, S18 1,126 (n26 = S2 -> S19 -> S18), S19 1,185, S20 591 (only via the floors S3/S4) |
+| compute sinks | floor-route nodes n23 (S20 after S3, 41 min), n21 (S3, 36 min), n13 (S4, 28 min), n10/n12 (S20 after S4, 51 min): **35% of the compute** |
+
+**Notes:**
+- **The exit came from the WEAKER entry.** n8 (S18 at 704) exited. The 1,126 S18 state (n26) flew to S19 3 times and stalled each time; it reaches S19's lower edge from the wrong side.
+- **Run 2a's lesson held.** Every S18 node got its S19 flights.
+- **Figure:** runs/research/rampmpc/search_pw_uf2_tree.png. The exit route is solid, and each node is labelled n<id> S<surface>, with the record's touch energies as hollow squares (ruler only).
+
+**Verdict:**
+- Option 1's question: **yes**. The sequence-free search finds the pit exit by itself, from the true spawn, and the replay verifies it.
+- It does not pass S20. The energy budget (14:52 entry) says S20 needs about 850-900 u at the S19 touch, and the search's exit has 618.
+
+**Started at 15:53:** run 3 (unitfarmer2 from scratch, the final allocation: touched-only piece prior, dominated pairs closed, `--refine-iters 6`) and run 4 (surf_petrus_lite, identical flags, the second-map check). 2 workers each, 150 min.
+
+**Correction (2026-10-17 15:54) to the 15:53 entry:** n26's 3 flights to S19 came no closer than 279-442 u to S19's contact origins (progress 0.64-0.77). "It reaches S19's lower edge from the wrong side" was not measured for n26. That was the harness-state probe of 14:19, where 2 of 4 flights arrived ~80 u under S19's lowest contact origin.
+
+## 2026-10-17 18:47 - Runs 3 and 4: no pit exit on uf2, 5.9% on petrus; in both a feasible pair was closed too early
+
+**Run 3** (unitfarmer2 from scratch, final pw allocation, 150 min x 2 workers = 300 worker-min; 963 flights, 31 nodes):
+- **No pit exit**: no S19/S20 node after S17/S18. All 38 flights from S17/S18 nodes to S19/S20 failed.
+- **It reached run 2's pre-exit state.** n29 (S2 -> S17 -> S18, E 720; run 2's n8: E 704) flew S19 three times, missing by 77, 88 and 68 u (progress 0.95-0.96). Then `--pair-tries 3` closed the pair.
+- **Waste**: 82% of the compute went to stalled flights. 237 first flights at arc rank 8+ touched nothing.
+- **Best routes**: S4 -> S20 (field-best) and S19 -> S18 -> S17 (n26, E 752, the deepest by the ruler).
+
+**Near-miss bench** (scratchpad `near_miss_bench.py`). It uses the search's own edge solver and args, flies from the node's exact saved state, 20 seeds per cell, and uses search data only:
+
+| state -> S19 | iters 3 | iters 6 |
+|---|---|---|
+| run 2 n8 (S2>S17>S18, E 704) | 13/20 | 16/20 |
+| run 3 n29 (S2>S17>S18, E 720) | 3/20 | 3/20 |
+
+- Three flights on a 15%-per-flight state find the exit 39% of the time.
+- More CEM iterations do not help that state. More independent flights do.
+
+**Run 4** (surf_petrus_lite, identical flags; 1,381 flights, 365 nodes, 26 pieces):
+- **Best field progress 5.9%** (n262: S1 S10 S17 S28 S31 S35).
+- **Depth without progress.** The deepest routes (depth 15) bounce among S28/S30/S31/S33/S35, with energy falling to -340.
+- **Ruler: the RL policy's OWN recording** (`runs/research/petrus_viz/traj_1752956928.jsonl`, best progress 68.8%):
+  - Its route is S1 -> S114 -> S29 -> S136 -> S147 -> S36 -> S37 -> S150 ...
+  - It keeps E 525-610 through the first 26% of the field.
+  - The search reached S1, the S113/S114 piece and the S29/S116 piece. It never reached S136.
+- **Heading.** The search's best touch on the S113/S114 piece is n22 (spawn -> S113, E 651), heading WEST (-173 deg). The policy's S114 touch heads EAST (-29 deg, E 610). The search's east-heading nodes on that piece have E 135-275.
+- **The policy's own transition was flown once.** S1 -> S113 (from n1) stalled at 156 u of 204: it closed 48 u, and the 50 u rule closed the pair.
+  - Bench from n1's exact state: 2/6 touches at the search's flags (E 661-665, headings 61 and -57 deg), and 3/6 with `--ground-homing 1`.
+- **Engine probe** (scratchpad `probe_test.py`: 512 random rollouts of 3 s from the search's prior distribution, with collisions):
+  - From the policy's S114 touch, 21/512 rollouts touch the S29/S116 piece first, at E up to 555. The free-fall arc ranks S29 9th from that state; the probe ranks it 1st.
+  - From n22: arc 16th, probe 7th, no touches.
+
+**Common cause: feasible pairs get too few independent flights, and hopeless pieces get too many.**
+- **First flights by arc rank (touches/flights):**
+
+| run | r0 | r1 | r2 | r3 | r4-7 | r8-15 | r16+ |
+|---|---|---|---|---|---|---|---|
+| uf2 run 2 | 15/30 | 1/27 | 4/26 | 2/23 | 8/74 | 0/144 | 0/341 |
+| uf2 run 3 | 16/31 | 1/29 | 3/26 | 0/16 | 6/60 | 0/89 | 0/148 |
+| petrus | 253/297 | 180/224 | 103/147 | 86/116 | 93/167 | 41/69 | 3/9 |
+
+- **Retries before any touch, by the best earlier progress** (pooled, runs 2-4): < 0.3: 10/1,130; 0.3-0.5: 7/351; 0.5-0.7: 3/128; 0.7-0.8: 2/69; 0.8-0.9: 1/14; >= 0.9: 1/5.
+
+**The change: `--alloc bayes` in `tools/ramp_search.py`.** Other modes are unchanged.
+- **One touch estimate per (node, piece) pair**: (m x prior + touches + sum of progress^8 over failed flights) / (m + flights).
+- **The prior** is the first-flight touch rate of the pair's arc-rank bucket, learned over the whole tree; it starts at 1/(2 + rank).
+- **Constants**: `--prior-m 2 --near-pow 8 --p-min 0.02 --max-tries 12 --refine-w 0.5`, the same on every map.
+- **It replaces** the widening schedule, the 50 u rule and `--pair-tries`.
+- **Smoke test**: petrus, 4 min, 2 workers; the learned rank prior was r0 0.56, r1 0.67.
+
+**Started now:** run 5 (unitfarmer2) and run 6 (petrus). They differ from runs 3/4 only in `--alloc bayes`; 150 min x 2 workers each.
+
+**Figures:** `runs/research/rampmpc/search_pw3_uf2_tree.png` and `runs/research/rampmpc/search_pw_petrus_tree.png`.
+
+## 2026-10-17 21:27 - Runs 5 and 6 (`--alloc bayes`): no pit exit on unitfarmer2 (its one S19 touch heads back into the pit), petrus 5.9% -> 6.7% (S136 at E -48); what still fails is a one-flight dominated close and the free-fall arc's candidate order
+
+**Flags.** Runs 3/4's flags plus `--alloc bayes` (`--prior-m 2 --near-pow 8 --p-min 0.02 --max-tries 12 --refine-w 0.5`): 2 workers, 150 min, and the same constants on both maps. Launcher: scratchpad `launch_runs56.sh`.
+
+**Run 5 (unitfarmer2):**
+- 733 flights, 30 nodes (8 pieces), 216 worker-minutes. "Every node is fully expanded" came at 108.3 min, so 42 min x 2 workers went unused.
+- Outcomes: stalled 647 (92% of compute), touch 47, died 26, timeout 13.
+- **First flights by arc rank** (touches/flights): r0 9/30, r1 2/26, r2 5/29, r3 0/19, r4-7 0/15, r8-15 0/9, r16+ 0/6.
+  - The learned prior closed ranks 3+ after 49 first flights; run 3 spent 313 there.
+  - But r4-7 paid 8/74 in run 2 and 6/60 in run 3. Fifteen misses at a true 10% happen 21% of the time. The posterior MEAN of 0/15, (0 + 2/6)/17 = 0.0196, is already under `--p-min 0.02`.
+- **One S19 touch at the exit's height, and it is not an exit.**
+  - n28 = spawn -> S18 -> S17 -> S19, found at 89.6 min, E 692 at (-2324, -3271, 93). That is 72 u from run 2's exit touch at (-2253, -3279, 85).
+  - It replays from the spawn in a fresh engine to 0.000 u (796 ticks; scratchpad `replay_any.py`).
+  - It moves WEST (-177 deg), back over the pit. Run 2's exit moved east (+11 deg).
+  - Of n28's 12 flights, the 3 that landed back on S17/S18 survived (touches at 1.36-1.42 s). All 9 aimed at S3 or S20 DIED at 1.58 s, with progress 0.00-0.01.
+  - Run 2's exit n24 flew 108 flights to 36 pieces: 85 lived 4 s or more, 17 died. Best progress was 0.75 (S5), and 0.55 for S20.
+  - `analyze_search.py` counts n28 as a "pit exit" (S19/S20 after S17/S18), so that test is a proxy that can be fooled. From here on, an exit is a touch whose onward flights live.
+- **Why run 2's exit chain never formed.**
+  - n1 (S2, E 1,190) flew S17 once, at 1.3 min. The touch had E 703 and was dominated by n2 (spawn -> S17, E 726), and the dominated-close rule closed the pair after that one flight.
+  - S2 -> S18 went the same way: E 984, dominated by n5 (1,060).
+  - The S2 -> S17 touch energy varies widely from flight to flight: 506, 995 and 950 in run 2; 1,028, 1,017 and 518 in run 3; 703 in run 5. Run 2's exit chain started from the 995 touch.
+- Flights from S17/S18 nodes to S19/S20: 109 (1 touch, n28), against run 3's 38. So run 5 gave more retries, but from states that are not run 2's pre-exit state.
+
+**Run 6 (surf_petrus_lite):**
+- 1,108 flights, 289 nodes, 27 pieces, 300 worker-minutes (the full 150 min). Outcomes: touch 674 (47% of compute), stalled 424 (52%), died 9, timeout 1.
+- **Best field progress 6.7%** (run 4: 5.9%). n284 = S10 -> S116 -> S31 -> S33 -> S136, E -48, 8.56 s of game time; it replays to 0.000 u (856 ticks).
+- **The transition that run 4's rule had closed now gets its flights.**
+  - S1 -> S113 got 6 flights from n1 (1 touch, after 5 stalls) and 3 from n2 (3 touches).
+  - One result is n3 = S1 -> S113, E 676, heading -60 deg. The policy's own S114 touch (ruler only) has E 610 and heading -29 deg. In run 4, the best east-heading state on that piece had 275.
+- **The next transition was never flown.**
+  - The four high-energy S113 nodes are n3 (676), n25 (665), n156 (672) and n187 (658). None of them flew to the S29/S116 piece, which the policy takes next (S114 610 -> S29 597).
+  - From those nodes the free-fall arc ranks that piece 9th, 16th, 16th and 13th. Their 7-14 flights each went to ranks 0-7 (n3: S3 x4, S10 x3, S11 x2, S2 x1).
+  - Low ranks pay so well on petrus (r0 158/195, r1 211/257) that a rank-0 pair keeps p_hat 0.32 after three stalls. A fresh rank-8-15 pair gets 0.27.
+  - The engine probe (18:47 entry) ranks that piece 1st from the policy's S114 touch.
+- **Policy route vs the tree** (best search energy per piece; policy values in brackets):
+
+| piece | S1 | S113/S114 | S29/S116 | S136 | S147 (field 11.2%) and later |
+|---|---|---|---|---|---|
+| search | 549 | 676 | 258 | -48 | never |
+| policy | 538 | 610 | 597 | 525 | flown |
+
+**Verdict.**
+- `--alloc bayes` removed the 50 u rule and the 3-try cap. On petrus that bought the transition they had closed: S1 -> S113 at E 676, heading east.
+- Two failure modes remain, and both are generic:
+  1. **Closing on one observation.** A dominated touch closes its pair, but a pair's touch energy varies by about 500 u between flights (uf2 S2 -> S17: 506-1,028). The p_min cut uses the posterior mean, so 15 misses close a bucket that pays 10%.
+  2. **The candidate order.** The free-fall arc ignores surfing. On petrus the policy's next ramp ranks 9-16, behind low ranks that pay well.
+- Neither fix touches the energy wall. Run 2's real exit had 618 where S20 needs 850-900 (14:52 entry), and run 6's S136 has -48 where the policy has 525.
+- **Option 1, the tally so far:** the sequence-free search found the pit exit in 1 of 3 runs (run 2). Runs 3 and 5 did not.
+
+**Figures:** `runs/research/rampmpc/search_bayes_uf2_tree.png` and `runs/research/rampmpc/search_bayes_petrus_tree.png`.
+- The solid line is the S17/S18-then-S19/S20 route (uf2) or the deepest route (petrus). The dash-dot line is the route with the best field progress.
+- On trees of more than 60 nodes, only the nodes of those two routes are labelled.
+
+## 2026-10-18 01:11 (machine clock) - CORRECTION: surf_src_sidistic's finish IS reachable; the "unreachable" verdict (round 19 xSID, 2026-08-23, and verify_maps) is a voxel artifact; its saved finish box is also stale
+
+**What the engine says** (the C core's own hull traces, no voxels; scripts in the session scratchpad, sid/):
+- Exact player-hull flood fill from inside the finish shaft (32 u lattice; an edge is a clear standing-hull trace both ways): it reaches the lower route's slab component in 0.3 s, through func_wall \*160 at (2,640, 384, z 1,200 -> 1,168).
+- func_wall \*160 (AABB x 2,464..2,864, y -704..704, z 1,190..1,194, above the finish funnel): vertical standing-hull traces pass at x 2,464..2,640, |y| 384..640. These are two openings; 28% of the AABB is open to point traces.
+- func_wall \*150 (AABB x -9,032..-9,016, y -736..736, z 5,856..6,320, in the far-west wall between the upper route and the turnaround room) has a round opening. The standing-hull centre passes at y -192..176, z 5,936..6,240: 382 horizontal traces, both ways, from the start's slab component to the lower route's.
+- Down the finish shaft: standing and ducked traces from z 1,000 to 150, at 5 points, all reach the finish trigger.
+
+**Why the voxels disagree:**
+- `vision.slab_occupancy` fills every THIN solid brush entity (min AABB extent <= 20 u) as its whole AABB ("axis-aligned panes"). \*150 and \*160 are panes with holes, so the model seals both openings.
+- These two panes are the only seals between the start's component and the finish's. The round-19 reads were measured on the filled panes: "seal 7 cells = 224 u, real wall" and "a 64 u wall is a wall".
+- verify_maps' permissive centre-sampled check said reachable (`permissive_reachable: true`), and it was right.
+- The same occupancy feeds the goal field (d0 came back as the unreachable sentinel) and `build_sdf`, which GpuLidar's depth renderer marches. So on sidistic the camera also draws both openings as walls.
+
+**The finish box:**
+- maps/surf_src_sidistic.zones.json (2026-08-23 01:48) predates detect_zones' origin-brush fix. `load_zones` keeps it because the bsp signature still matches.
+- Its end box is z -336..-328. The finish trigger \*162 carries origin "0 0 512", and `detect_zones` today returns z 176..184.
+- The stale box sits on top of the end teleport \*114 (z -384..-336, target endtele), 512 u below the real finish.
+- The other 2 auto zone files with a bsp beside them match a fresh detection.
+
+**Map facts:**
+- Seven stage curtains (sgcp_1..7, trigger_teleports with no target).
+- Start trigger: the curtain at x 8,063, z 14,976..15,168. Finish: the bottom of a 176 x 176 u shaft.
+- WR 115.99 s (krs, 2024-07-28, speedrun.eu, the only record).
+- One of the 2 spawns is in solid; map_spawn_pool has dropped it since 2026-09-24.
+
+**The same rule on other maps** (read-only survey of all 126 bsp in maps/ and maps_pool/, 5 s; point traces across each thin entity's AABB on a 16 u grid; flagged at >= 5% open):
+- None with holes: cannonball (104 thin entities), petrus_lite, src_petrus, utopia, celestial (+b2, b3), unitfarmer1.
+- unitfarmer2: two small func_doors (\*4, \*5, 91 x 91 u), 24% open.
+- 20 pool maps have holed panes, among them:
+  - journey_cut \*25: 68% of a 2,432 x 208 u wall;
+  - secret_passage \*67/\*68: 25% of a 1,600 x 5,120 u floor;
+  - freeland \*12 (26%);
+  - quickfizz \*17 (54%);
+  - lastdrop and lastway;
+  - skyscrapers_final.
+- A second defect in the same loop: it ignores the entity's origin key, so origin-brush panes are drawn near the world origin. Examples: ski_2's func_door_rotating \*19, 42 func_wall_toggle each on bgc_final and floatstation(_nosc), skyscrapers_final \*52.
+
+**Nothing was changed** (no code, cache or zone file); it waits for the user.
+- **Proposed fix:** keep the AABB fill for a hole-free pane, so the benchmark maps' caches stay bit-identical. Rasterise the real collision only where the pane has holes, and apply the origin.
+- **Then:** rebake sidistic (round 19 timed it at 23 s at cell 32 and 268 s at cell 16) and re-extract its zones.json. After that sidistic is a usable held-out map with a human finish.
+
+## 2026-10-18 03:04 (machine clock) - sidistic follow-up: the WR demo flies through both "walls" the voxel model seals
+
+**Source:** speedrun.eu demo 47250 (krs, 115.99 s, 2024-07-28), downloaded to the session scratchpad and parsed with tools/demo/parse_hldemo.py. **Analysis only (CLAUDE.md section 0); nothing from it enters a run.**
+- The demo header names the server's map surf_src_sidistic_b2.
+- The bsp inside speedrun.eu's own download for surf_src_sidistic is byte-identical to ours: 4,226,124 bytes, md5 73468d431f875d81e3e33944a20facec.
+
+**What the human does at the two panes:**
+- **func_wall \*150, the porthole wall (x -9,032..-9,016):** at t 77.81 s the hull crosses x = -9,024 at y -2, z 5,985, inside the hole's player window (y -192..176, z 5,936..6,240). It is flying west at 1,276 u/s and goes on to x -12,677. It comes back east under the pane at t 85.10 s (z 3,684).
+- **func_wall \*160, the plate (z 1,190..1,194):** at t 115.26 s the hull rises up through it at x 2,564, y 429, inside the opening (x 2,464..2,640, |y| 384..640), with vz about +820 u/s. It climbs to z ~1,600, nearly stops over the shaft (194 u/s at t 116.5 s) and free-falls down it at x ~2,950, y ~0.
+
+**Finish:**
+- The hull enters the origin-corrected finish trigger \*162 (z 176..184) at t 118.138 s. It left the start box at t 2.213 s, which gives 115.93 s against the board's 115.99 s.
+- The stale zones.json box (z -336..-328) is touched for one frame, at t 118.449 s, just before the end teleport sends the player to (6,246, 4,876, 261).
+
+**The human's path in OUR bsp:** frame-to-frame hull traces over all 15,796 steps, with the stand or duck hull taken from the demo's view height.
+- All are clear except 20, including both pane crossings.
+- The 20 form two short spots, t 14.30-14.38 s and t 105.46-105.58 s. At both the view height says standing under a ceiling 18-22 u above the hull centre; the duck hull is clear.
+- Unresolved, and the demo's duck state is suspect: its usercmds never carry IN_DUCK or IN_JUMP (the only bits set are 512, 1024, 2048, 4096 and 32768), yet its view height is ducked for 1,834 frames.
+- Neither spot is near \*150 or \*160.
+
+**Verdict:** both panes are open in the game, on a human finish, in the same map file. This confirms the 01:11 correction. Still nothing changed in code, caches or zone files.
+
+## 2026-10-18 04:49 (machine clock) - PANE FIX applied: a thin pane the player can cross keeps its real solid, and the origin key is applied; sidistic re-baked, its finish is REACHABLE (d at the spawn 97,768 u); the human record measured in the new field
+
+**The user asked for it** ("Yeah, do it") after the 01:11 and 03:04 entries. Uncommitted, branch petrusnight.
+
+**Code:**
+- python/surfgym/vision.py gains thin_panes, pane_tag and rasterize_thin_panes. A pane is a solid brush entity (SOLID_ENT_CLASSES minus NOTSOLID conveyors) whose AABB's smallest extent is <= 20 u.
+  - Each pane is placed with its entity's origin key, as src/bsp.c already did for physics.
+  - A pane is CROSSABLE when a standing or ducked player hull passes through its plane inside its footprint. One point-hull sampling of the mid-plane on an 8 u grid finds the open points; a hull trace across the pane at each open point decides.
+  - A non-crossable pane is filled as its AABB exactly as before. A crossable pane marks only the voxels where a dense sampling of its own box (4 u in-plane, <= 1 u through its thickness) finds solid.
+- Cache signatures: slabocc, sdf, the goal field (goalfield.build_goal_field), the faceid grid (GpuLidar) and train_sgcrl's mirror of the goal signature append pane_tag. It is "_tp1" only on a map with a moved or crossable pane. Every other map keeps its signature, so its caches stay valid.
+- tools/verify_maps.py calls the same function instead of its own copy of the loop.
+
+**Bit-identity** (old loop vs new function on a zero grid, every bsp in maps/ and maps_pool/, 126 maps):
+- **82 untagged maps give identical grids, 0 mismatches.** These include cannonball (104 panes), petrus_lite, src_petrus, utopia, celestial (+b2, b3) and unitfarmer1.
+- 44 maps are tagged and re-bake on their next use. 23 of them carry the same 42 origin-keyed func_wall_toggle panes (bgc_final, bom, budna, chess, enterprise, floatstation(_nosc), looping_tutorial, ph_*, very_nice, vrx, ...).
+- **unitfarmer2 is tagged.** Its two invisible healing func_doors (\*4 and \*5, 91 x 91 u plates at z 1,248..1,264 over the start room) are crossable. Its new goal_32, baked into a scratch dir only, against the field every uf2 run used:
+  - 19 voxels inside those plates become reachable, and 9 change by up to 20 u;
+  - along the WR line (5,061 frames) the largest difference is 0.00 u, and d at the start box is 30,234.2 u in both.
+  - It is a one-time re-bake, nothing else. maps_pool's uf2 caches were not touched.
+- Classification costs 0.00-0.97 s per map (cannonball 0.14 s); it is memoised per process.
+- Tests: test_vision_clip, test_blackout and test_goalfield_fastpath pass (23).
+
+**sidistic re-bake** (local 5090; old caches copied to the session scratchpad, sid_old_caches/):
+- zones.json re-extracted with zones.py --force. End z 176..184.017 (the origin-corrected \*162); start unchanged.
+- slabocc_32 took 2.9 s, sdf_32 9.4 s and goal_32 128.8 s (2,880 sweeps, 4,537,524 reachable voxels, max geodesic 97,957 u).
+- **d at the spawn is 97,768 u: REACHABLE.** The 2026-08-23 field had the spawn at the sentinel.
+- The slab grid's free space has 2 components; the spawn and the finish are both in component 1.
+
+**The new field along the human record.** WR demo 47250, analysis only (section 0); frames to t 118.44 s, before the end teleport; tool: scratchpad sid/potential_human.py. d goes from 97,675 u to 0 u, and 0 frames sit on unreachable voxels. Over the run d falls 115,255 u and rises 17,986 u.
+
+A dip is a stretch where the human is above its own best-so-far d. The seven deeper than 1,000 u are each recovered in 2.2-3.9 s:
+
+| dip | t (s) | depth (u) | reward units (100/d0) | between |
+|---|---|---|---|---|
+| 1 | 24.6-26.8 | 1,959 | 2.01 | CP1-CP2 |
+| 2 | 27.9-31.2 | 1,978 | 2.03 | CP1-CP2 |
+| 3 | 54.8-57.9 | 2,690 | 2.75 | CP3-CP4 |
+| 4 | 63.6-65.9 | 1,334 | 1.37 | CP4-CP5 |
+| 5 | 90.2-93.8 | 2,906 | 2.97 | CP5-CP6 |
+| 6 | 107.0-110.9 | 2,214 | 2.27 | CP6-CP7 |
+| 7 | 112.4-115.0 | 1,411 | 1.44 | CP7-finish: east past the shaft to x 4,044, back west, then up through \*160's opening |
+
+- CP = the map's sgcp_N curtains, trigger_teleports with no destination, which the core ignores (src/env.c, GoldSrc parity). The human crosses CP1-CP7 at 19.70, 35.14, 45.95, 61.74, 72.85, 97.11 and 111.11 s.
+- **Reference, same tool on the current fields and WR demos:** unitfarmer2 has ONE dip, 3,023 u = 9.96 reward units over 5.6 s (the pit). Cannonball has ONE dip, 6,316 u = 3.18 units over 4.1 s (the 88% wall).
+
+**Verdict:** the field is usable on sidistic and is mostly monotone along the human's line, but it is not dip-free. It has seven dips, each about as deep in reward units as cannonball's wall (1.4-3.0 against 3.18), and none as deep as unitfarmer2's pit (9.96). Whether an agent's own line needs them is open; the run in the next entry tests it.
+
+## 2026-10-18 04:54 (machine clock) - LAUNCH sidGEO: surf_src_sidistic from scratch, the geodesic recipe plus normals and SimBa, local 5090
+
+**The user asked for it:** "launch a like normal run just with a geodesic reward ... that includes all our recent research like normals, layer normalizations". This is the first run ever on sidistic. It became possible only with the pane fix in the previous entry.
+
+**Launch:** `$env:MAP = "C:\RL_Surf\maps\surf_src_sidistic.bsp"; tools\launch_local.ps1 scratch_ablate sidGEO --envs 1024 --obs-normal 1 --simba 1 --ep-ticks 30000 --steps 4e9`.
+- scratch_ablate is run_arm.sh's SCRATCH set: --reward race, --race-dist geodesic, the abs continuous view, --keys-hold, --obs-potential norm with the curtain, --act-every 4, --int-coef 0.25 --int-view 8 --int-speed 3, --respawn-frac 0.9 --respawn-margin 10, --n-steps 128, lr 3e-4, gamma 0.9995 and --teleport-fail. run.json confirms every flag.
+- **Overrides, all stated:**
+  - --obs-normal 1 --simba 1: the user's 2026-10-06 directive for new scratch runs;
+  - --envs 1024: SimBa does not compile at 2048, and the observation screen measured these at 1024;
+  - --ep-ticks 30000 (300 s): the default 120 s cap is barely above the 115.99 s human record, so it would truncate any finish slower than about 120 s;
+  - --steps 4e9.
+- **Unchanged on purpose:** --maxvel 4000 and the 10 ms tick, the recipe's constants on every map. Every human demo we hold (cannonball, petrus, unitfarmer2, sidistic) ran on servers with sv_maxvelocity 3500 at about 131 fps. Any finish gets re-recorded at --maxvel 3500 before it is reported against the record.
+- **Provenance:** from nothing. No demo, BC or route file (all None in run.json). The WR demo only measured the field.
+
+**Startup:**
+- Trainer pid 48024. torch.compile compiled the minibatch step in 34 s (no eager fallback).
+- The face-id grid was baked at startup (1,704,756 surface voxels).
+- The trainer read start geodesic 97,768 u and the finish box z 176..184.017.
+- The record gate PASSED: greedy, stoch, mixed and the POV render in 24 s.
+- At 26M steps: 265k steps/s, so the 4e9 budget is about 4.2 h.
+
+**What to watch:**
+- Which checkpoint curtain (sgcp_1..7) the greedy evals stall at, and the geodesic d they reach (scratchpad sid/run_digest.py).
+- Dips 1-2, between CP1 and CP2 at 24.6-31.2 s of the human's run, are the first of the field's seven 1.4-3.0-unit dips.
+
+## 2026-10-18 05:21 (machine clock) - sidGEO at 855M: every greedy episode dies at the first gate (4.6% of the field, 5 s in) since 227M
+
+- **Greedy evals:** 12 evals from 1M to 831M. All 9 episodes of every eval from 227M on end at (11,311..11,411, -987..-951, 13,024..13,065) after 5.0-5.2 s. Best d is 93,201 u (4.7% of the field); no checkpoint curtain is crossed.
+- **How they die:** the agent leaves the first ramp over its SOUTH edge (y about -980) and free-falls, gaining height loss at vz -755 to -1,155 u/s, into fail teleport \*125 / \*117 (x 9,856..12,448, z 12,736..13,264, target sidstart). The human passes the same x and z at y about -135 (t 6.5 s).
+- This is not one of the field's dips: the human line has none before 24 s. Falling off the edge LOWERS d (the geodesic counts open air as passable), so the shaping pays the fall until the net ends the episode.
+- **Training line at 855M:**
+  - rew 1.93, len 524, explained variance 0.990;
+  - view sigma 0.033 / 0.021, down from 0.30 at the start, so yaw exploration has collapsed;
+  - intrinsic reward 0.02 per episode;
+  - the reservoir holds 11,807 states, and its deepest is at 99.617% of d0, i.e. 0.4% into the map. Episodes end 5 s in, and --respawn-margin 10 harvests only states >= 10 s before an episode's end, so nothing near the gate can enter it: the round-18 margin cap again.
+  - 517k steps/s.
+- **Not changed:** the run continues on the user's recipe. The generic options that address this, both from the allowed list: --respawn-margin 2 (the round-18 fix) and --unstuck (the plateau temperature behind the celestial and cannonball passes). Offered to the user.
+
+## 2026-10-18 05:28 (machine clock) - sidGEO STOPPED at 1.055B (user: "let's try the unstuck"); relaunch sidGEOu = the same recipe + --unstuck, from scratch
+
+**sidGEO final:** 14 greedy evals, last at 982M. Every eval from 227M on ends all 9 episodes at the first gate: 4.7% of the field (best d 93,196 u), 5 s in, no checkpoint curtain crossed. The trainer (pid 48024) was stopped by exact PID at 1,055,391,744 steps; its directory is kept.
+
+**The user's reading, measured:** "this is not the hard part of the map ... there is a ramp just to the left ... the agent just doesn't take it. It just falls and dies. I don't think that there is a dip of potential field of any meaningful value."
+- **Correct.** The human's line has no dip there. Its largest excursion above its own best in the first 24 s is 95 u = 0.10 reward units.
+- What the field does instead is pay the FALL faster than the ramp. Agent d against human d at the same time:
+
+| t (s) | agent d (u) | human d (u) |
+|---|---|---|
+| 2.0 | 97,011 | 97,597 |
+| 3.0 | 95,997 | 97,051 |
+| 4.0 | 94,627 | 96,171 |
+| 4.5 | 93,814 | 95,540 |
+| 5.0 | dead | 94,880 |
+| 6.5 | dead | 93,210 |
+
+- The cut through open air over fail net \*125 / \*117 lowers d faster than the human's ramp until about 6.5 s. The episode then ends at the net, and the death costs nothing beyond the lost future.
+- That is a local optimum of the shaping under termination, not a dip. --death-charge (Grzes 2017's correction) is the principled fix if --unstuck does not move it.
+
+**Launch:** `tools\launch_local.ps1 scratch_ablate sidGEOu --envs 1024 --obs-normal 1 --simba 1 --ep-ticks 30000 --steps 4e9 --unstuck`, local 5090, from nothing.
+- --unstuck uses its defaults: T rises 0.5 per 1e8 steps after 2e8 steps without a 500 u gain of the reservoir's min-depth reach, capped at 4, and halves per period on a new best. T scales the sampling sigma and logits, the entropy coefficient, the intrinsic coefficient, and decays the novelty counts x0.5 per period.
+- Caveat: under --respawn-margin 10 the reservoir cannot harvest near a 5 s death, so its depth stays near the start and T will start rising at about 2e8 steps whatever the evals do. That is acceptable as a plateau trigger. --respawn-margin 2 was offered and NOT added (the user picked unstuck only).
+
+## 2026-10-18 05:55 (machine clock) - sidGEOu (--unstuck) PASSES the first gate: 4.7% -> 20.7% of the field by 755M; sidGEO sat at 4.7% from 227M to 1.055B without it
+
+**Greedy evals** (all 9 episodes move together, median about the best):
+
+| step | best d (u) | % of the field | longest (s) |
+|---|---|---|---|
+| 378M | 93,220 | 4.7 | 5 |
+| 454M | 92,467 | 5.4 | 7 |
+| 529M | 88,852 | 9.1 | 10 |
+| 605M | 84,979 | 13.1 | 13 |
+| 680M | 82,283 | 15.8 | 14 |
+| 755M | 77,524 | 20.7 | 20 |
+
+No checkpoint curtain has been crossed yet; the human crosses CP1 at 19.7 s, at about the same d.
+
+**The unstuck trace** (progress.csv):
+- The reservoir min-depth reach sat at 95 u (the margin-10 cap, as predicted), so T started rising at 2e8: 0.08 at 219M, 0.63 at 328M, 1.17 at 437M.
+- Around 450M the reach jumped to 738 u, and T has halved per period since: 0.96 at 491M, 0.45 at 600M, 0.14 at 770M. Meanwhile the reach went to 3,465, then 14,371, then 16,256 u.
+- Training ep_rew_mean went from 1.72 (stuck, 437M) to 9.64 (764M), and ep_len from 556 to 1,448.
+
+**Where it dies now:** the 755M episodes end at 14-20 s, spread over six fail teleports between x 1,247 and 5,826 (\*15 "no_jump", \*79, \*89, \*93, \*116, \*123, all targeting sidstart). That is the stretch before CP1.
+
+**Verdict so far:** --unstuck, at its defaults and with the same flags as every other map, is the difference between a policy frozen at the first gate (sidGEO, view sigma 0.03) and one that passes it in about 250M steps of rising temperature. One seed, one map; it has not reached a hard part yet.
+
+## 2026-10-18 06:22 (machine clock) - sidGEOu at 1.40B: second gate at 20.8% since about 982M; why unstuck/T stayed low
+
+- **The gate:** at 1,359M, 8 of 9 greedy episodes end at 18.3-18.6 s at (1,220..1,239, -60..-36, 12,856..12,873), flying west at about 1,150 u/s.
+  - That is the TOP of fail teleport \*89 (x 1,184..3,010, z 12,512..12,866): the hull is 30-45 u too low, about 40 u short of the box's west end.
+  - The human passes the same x at z 13,241 (CP1 at 19.7 s), after climbing at +576 u/s around 19 s.
+  - The field does not charge that climb: the human's d falls 78,700 -> 77,132 from 18.0 to 19.7 s.
+- **Why T did not rise** (the user saw it flat): --unstuck's progress measure is the RESERVOIR's min-depth reach (training-side), not the greedy eval.
+  - The reach kept creeping more than 500 u at a time: 16,256 (735M), 18,154 (943M), 19,440 (1,185M). Each gain reset the 2e8 patience clock and halved T, so T sat at 0.03-0.10 while the greedy line stood still.
+  - The stochastic training rollouts edge a little further than the greedy line, and their states enter the reservoir.
+  - At 1,393M the clock passed 2e8 again (238M), and T is rising: 0.217, then 0.254 at 1,400M.
+- **A design gap, not a bug:** the trigger watches a training-side frontier that can creep while the eval frontier is flat. Options for the user: wait (T climbs 0.5 per 1e8 steps), or a generic change of the measure to the greedy eval's best progress. That would be a recipe change, so it is not done.
+
+## 2026-10-18 06:30 (machine clock) - sidGEOu STOPPED by the user at 1.56B ("Turn off train for now")
+
+- Trainer pid 57476 was stopped by exact PID at 1,560,805,376 logged steps. runs/sidGEOu/ckpt_latest.pt was written 35 s before the stop, so the run can be resumed from it.
+- **Final:** the best greedy progress is 20.8% of the field (d 77,455 u, first reached at 982M). The last full eval (1,510M) is still 20.8%, 9/9 dying at about 18.5 s on the top of fail teleport \*89. 0 finishes, no checkpoint curtain crossed.
+- **unstuck at the stop:** T 0.153, stuck 135M, reach 19,970 u. The reach crept past its best by more than 500 u again (19,440 -> 19,970, around 1.43B), which reset the clock a third time while the greedy line stood still. This confirms the measure gap in the previous entry.
+- **Summary of the two sidistic runs** (same recipe, --unstuck the only difference): without it, frozen at 4.7% for 0.8B steps; with it, 20.8% at 1.56B, held at the second gate by the trigger's own measure.
+
+## 2026-10-18 08:06 (machine clock) - sidGEOu second gate re-measured: CORRECTION of the 06:22 entry (the hole is ~400 u above the agent's line; the reservoir is not ahead of the greedy line)
+
+- **Correction 1, the size of the gate:** "the hull is 30-45 u too low" measured the clearance over fail teleport \*89, which is a slanted strip at the wall's base. Clearing it would only put the agent into solid wall.
+  - The real gate is a hole in the wall at x 1,104..1,184: y -64..48, z ~13,198..13,314 (for the player's centre, ducked: y -48..32, z 13,216..13,296). Fail plate \*7 sits on its sill (z 13,184).
+  - The agent reaches the wall at z 12,856..12,874, so it is 350-430 u below the hole. Probed with the core's own trigger test and hull traces (scratchpad wall2/probe.py).
+- **The approach** is an A-frame surf ramp (ridge at y ~0, top z ~12,880, faces ~51 deg). It ends at x ~1,584, about 400 u before the wall.
+  - The human (WR demo, analysis only) lands on the ramp's -y face at x ~2,300 (18.5 s) and steers back INTO it (vy -134 -> +609). The slope turns that sideways speed into climb (vz -509 -> +680; horizontal speed 1,238 -> 980 u/s), and the human passes the hole at z 13,241 (19.70 s).
+  - The agent (9/9 evals at 1,510M) lands on the same face moving away from the ridge (vy -506, 17.75 s), rides it to the ramp's end, leaves with vz +100..150 and dies on the strip at 18.3-18.5 s. Its speed is the human's (about 1,200 u/s) and it gets there about 1 s earlier, so this is not a speed problem.
+- **Correction 2, the reservoir creep:** "the stochastic training rollouts edge a little further than the greedy line" is wrong.
+  - The reservoir's deepest state is SHORT of the greedy death point (reach 19,810 vs 20,297).
+  - Its deep tail is a handful of odd states from episodes that stayed alive 10 s after a fall. The deepest is at (1,800, -149, 12,740), moving backwards at 261 u/s on the ramp's side.
+  - Among the checkpoint's 20,000 newest reservoir states: median reach 3,638, p99 8,284 (the first ~9 s of the line), 12 states at or above 18,000, 0 past the wall.
+  - The 10 s harvest margin keeps the reservoir about 10 s of flight behind the wall, so respawns never practise the ramp's end.
+- **No training sample has been past the wall.** In ckpt_latest's novelty visit counts (256 u cells; about the last 50M steps survive the 0.5 decays), every cell from the hole onward is 0, and so is the cell in front of the hole at its height (x 1,248..1,504, z 13,176..13,432). The training win rate was 0.00% for the whole run.
+- **Diagnosis, why there is no attempt:**
+  - Exploration: the cut-back is a ~35-40 deg heading change held for ~0.4 s, but the yaw sigma is 0.045 (~1 deg per 40 ms decision) at T 0.15-0.39 since 755M.
+  - Reward: the field pays the hole only ~340 u (0.35 reward units) more than the death point (d 77,471 at death, 77,112 at the hole). At the same x, the hole's height is worth 285 u (0.29). Death costs nothing extra (fail_pen 0, no death charge), and the payoff lies past the hole, where no sample has been.
+  - Not blindness: the POV frames of traj_1359478784 show the hole as a few far pixels at the top of the depth image, and as the potential channel's darkest spot, from ~16 s.
+- **Had the plateau measure been the greedy eval** (flat within 500 u since 982M), T would have started rising at ~1.18B and been ~1.9 at the stop instead of 0.15.
+
+## 2026-10-18 09:32 (machine clock) - sidGEOu RESUMED as sidGEOuEM2 = (A) --unstuck-reach eval [new code] + (B) --respawn-margin 2 (user: "Ok do A and B")
+
+**Why (the 08:06 entry).**
+- sidGEOu's greedy evals have sat at its second wall since 982M. Its unstuck T still stayed at 0.15-0.39.
+- T stayed low because the measure, the reservoir's min-depth reach, crept past eps four times on odd long-survival states.
+- The 10 s harvest margin also kept 99% of respawns in the first ~9 s of the 18.3 s line, so no training episode ever practised the ramp before the wall.
+
+**A, the code (uncommitted, branch petrusnight).** `train_fast.py --unstuck-reach eval`:
+- **The measure.** The plateau detector reads `race_frontier`: the deepest per-episode (d at spawn - min d) of each greedy recording. That is race/eval_progress's own quantity, taken as a max instead of a mean, so consistency cannot reset patience.
+  - One reading per --record-every, consumed by the next iteration. The arc reach is ignored under eval.
+  - Each eval's step line prints `frontier <u>`, and unstuck/best logs the best frontier.
+- **The re-seed.** `UnstuckSchedule.reseed`: a resume whose --unstuck-reach differs from the checkpoint's drops the stored bests and restarts patience at the resume step. T and the decay clock are kept.
+  - It covers any pair of measures. A res -> alive resume had the same latent bug: it compared alive readings against a reservoir best.
+- **The default `res` is untouched.** test_flag_on_at_T0_is_bit_identical_to_flag_off passes in both bins and abs: config, every CSV value, eval trajectory bytes, weights, Adam moments and novelty counts.
+- **Tests.** tests/python/test_unstuck_reach.py gains three:
+  - race_frontier / race_progress on a hand recording;
+  - reseed;
+  - a CPU smoke that resumes a res checkpoint under eval, re-seeds and logs the frontier.
+  - All 8 pass. docs/unstuck.md gains the section "The eval frontier". record_ckpt.py already lists unstuck_reach as TRAIN_ONLY, and there is no new config key.
+- **Test maintenance found on the way.** The T0 identity test had been failing since 2026-09-13: its key filter lacked the four unstuck_reach* keys, and its header check broke once the dip/* block followed the unstuck/* columns. Both are fixed in the test, which now passes.
+- **Two failures are left, both pre-existing and not touched.**
+  - test_trainer_rollout_and_update_share_the_wrappers_tempered_helpers counts 3 `f_temp=temp_t, f_tempv=tempv_t` sites, not 2, since 6f140ac (2026-10-08, --rnn).
+  - test_unstuck_smoke_T_rises_scales_the_coefficients_and_resumes cannot run here: runs/cya_unstuck is a symlink into C:/RL_Surf_dev, rmtree refuses it, and the trainer then refuses the occupied run directory.
+
+**B.** --respawn-margin 2, round 18's constant (xMARGIN). Nothing else changes.
+
+**Launch.**
+- The command: `MAP=C:/RL_Surf/maps/surf_src_sidistic.bsp tools/launch_local.ps1 resume C:/RL_Surf/runs/sidGEOu/ckpt_latest.pt sidGEOuEM2 --envs 1024 --unstuck-reach eval --respawn-margin 2 --record-every 75e6 --steps 3e9`.
+- Local 5090, trainer pid 42972. The record gate PASSED: greedy, stoch, mixed and the POV render.
+- Budget ~1 h: 3e9 total, ~1.45B steps at ~410k fps.
+- **Source.** runs/sidGEOu/ckpt_latest.pt, md5 6c1547a9248b93313b3b8c614a51beeb, step 1,547,173,888.
+  - Trained from scratch on sidistic with normals + SimBa + --unstuck (res).
+  - demo_file and spawn_states are null: no demo, no spawn-state file.
+- **Config diff against sidGEOu.** respawn_margin 10 -> 2, unstuck_reach res -> eval, steps 4e9 -> 3e9, nothing else. --record-every 75e6 overrides the resume preset's 250e6, which is coarser than the 2e8 patience.
+- **A first launch at 09:22 went out at 2048 envs.** The resume preset does not pass --envs, and the trainer does not restore it.
+  - Its torch.compile failed (`CompiledFunctionBackward returned an invalid gradient at index 38 - got [448] but expected shape compatible with [1, 448]`) and fell back to eager at ~50k fps.
+  - 20 earlier SimBa runs, 17 of them resumes at 1024 envs, all compiled. So the failure tracks the env count, not this change.
+  - It was stopped by exact PID: the trainer 54936, its record gate 1096 and the recorders 55736 / 52680. Its directory was moved to the scratchpad (aborted_sidGEOuEM2_envs2048).
+  - Its one eval read a frontier of 20,302 u, and the schedule took it as the new baseline (stuck 0, then counting), as designed.
+- **The relaunch at 1024 envs** compiled in 56 s. Its first eval read a frontier of 20,307 u (best d 77,461).
+
+**Expected if the frontier does not move.**
+- T halves from 0.17 while inside patience, then starts rising at ~1.75B.
+- It reaches ~1 at 1.94B, ~2 at 2.14B, and the cap of 4 at 2.54B.
+- A frontier gain of more than 500 u halves T per period.
+
+**Watched per eval:**
+- the frontier and the death point;
+- episodes AT THE HOLE (x 1,040..1,200, y -90..70, z 13,180..13,340: a measurement box only, never in training) and CP1;
+- the training win rate, read together with the reservoir min-depth (the 2 s margin's trivial-win trap).
+
+**Generic check.** A's measure is the standing metric's own quantity and needs nothing from the map. B is a round-18 constant. The same flags would run unchanged on any map.
+
+**Correction (2026-10-18 09:32, machine clock) to the 09:32 entry:** "20 earlier SimBa runs, 17 of them resumes" is wrong. Recounted from runs/*/run.json and the launch logs: 20 earlier SimBa runs, **14** of them resumes, all 14 at 1024 envs and compiled. The conclusion (the compile failure tracks the 2048-env count) stands.
+
+## 2026-10-18 09:58 (machine clock) - sidGEOuEM2 PASSES THE WINDOW: 9/9 greedy episodes through the gate-2 hole and over CP1 at 2,076M (A + B, first check-in)
+
+**Frontier.**
+- The greedy eval frontier was flat at 20,300-20,307 u from the resume (1,548M) through 2,001M: 9/9 episodes died at fail strip *89 at 18.4 s.
+- Eval 2,076M: **9/9 pass the hole and cross CP1**. The frontier is 26,429 u (27.0% of the field), episodes last 24-25 s, and there are 0 finishes.
+- Eval 2,152M: 8/9 pass, frontier 26,815 u. Eval 2,227M: 8/9 pass, best d 70,909 u (27.5% of the field).
+- Measured by the scratchpad digest (wall2/run_digest2.py): a measurement box at the hole plus the sgcp_1 curtain. The box never enters training.
+
+**The move it learned is the human's cut-back.** Eval 2,076M, episode 0, against the 2,001M line:
+- **Before:** it lands at x 1,697 moving away from the ridge, flies flat at vz +56..+216 and dies at 18.40 s.
+- **After:** it lands further back (x 2,328 at 18.0 s), then steers +y across the ridge. Between 18.0 and 18.8 s, vy goes -39 -> +419 -> +685 and vz goes -239 -> +497 -> +814, while horizontal speed drops 1,351 -> 869. It climbs from z 12,687 to 13,288.
+- **The human's line:** vy -134 -> +609, vz -509 -> +680, horizontal 1,238 -> 980.
+- **The crossing:** all 9 episodes cross the wall plane (x = 1,150) at y -15..-21, z 13,273-13,310 (the hole is y -64..48, z 13,198..13,314), at t 19.20-19.36 s. The human crosses at 19.70 s.
+- Figure: scratchpad wall2/sid_window_passed.png.
+
+**T and the reservoir: the order of events.**
+- **1,548-1,750M:** B was on and T sat at 0.17 -> 0.05 inside the re-seeded patience. With B, the reservoir reached the wall at once (reach 19,810 -> 20,066 u by 1,602M; the eval death is at 20,300). No rollout got past it.
+- **1,750M:** T starts rising, 0.5 per 1e8 steps.
+- **1,957M:** the first reservoir state lies past the old wall (reach 20,714 u), with T at 1.08.
+- **2,038-2,079M:** the reservoir fills in past the hole (21,883 -> 25,165 u) with T at 1.49-1.65.
+- **2,076M:** the greedy eval passes. T was 1.68 when it was read, and has been halving since the new best (0.59 at 2,228M).
+- Under B alone, about 400M steps at T < 0.2 produced no pass. The pass followed about 200M steps of T > 1.
+- **One run cannot separate A from B:** it is A on top of B, and B was not run alone at a high T. But the old measure would have kept T at about 0.15 here, and the reservoir reading it watched never moved by 500 u in 1,602-1,957M.
+
+**Trivial-win check (the 2 s margin's trap):** the training win rate stays 0.00% throughout, and reservoir min-depth is 74.0-74.4% (reach about 25,000 u), still far from the goal.
+
+**The new wall.** Evals 2,152M, 2,227M and 2,302M end in 'fail' at 24.6-24.8 s at x 3,000-3,330, z 11,100-11,220, on both lanes (y about +870 and about -920), falling at vz about -1,390 with horizontal speed about 1,440. One or two episodes per eval still die early: at 14.8 s at x about 5,850, z 12,900-12,960 (before the window), at 19.4 s, or at 21.1 s.
+
+The schedule's next step: patience from 2,076M runs out at about 2,276M, then T rises again from about 0.5. The run ends at 3.0B.
+
+## 2026-10-18 10:38 (machine clock) - sidGEOuEM2 FINAL at 3.0B: the window gate stays passed; the next wall (CP1 -> CP2) held for 924M steps with T back up to 3.5
+
+**End of run.** 3,000,500,224 steps at 10:21 (53 min wall clock, 467k steps/s average). Clean finish: ckpt_final.pt saved, no traceback, nothing left running.
+
+**Result.**
+- **Window (gate 2): PASSED.** Every eval from 2,076M on sent some episodes through the hole and over CP1: 9, 8, 8, 8, 8, 4, 6, 5, 4, 9, 8, 6 and 6 of 9 (2,076M -> 2,982M).
+- **Next wall: HELD.** No eval crossed CP2. The frontier reached only 27,148 u (best d 70,621 u, 27.8% of the field) at 2,982M.
+- **Finishes:** 0. The training win rate was 0.00% throughout, and reservoir min-depth ended at 73.4%.
+
+**The new wall.** A 'fail' at 24.6-26 s, at x 3,000-4,500, z 11,000-11,300, on both lanes (y about +/-900), falling at vz about -1,390 with horizontal speed about 1,440 u/s. A few eval episodes run 40-53 s; evals do not stall-kill.
+
+**The schedule after the pass:**
+
+| Steps | T | Note |
+|---|---|---|
+| 2.10B | 1.43 | halving after the new best |
+| 2.20B | 0.71 | |
+| 2.30B | 0.54 | patience ran out about 2,276M |
+| 2.40B | 1.04 | rising, 0.5 per 1e8 |
+| 2.60B | 2.04 | |
+| 2.90B | 3.54 | |
+| 2,982M | | frontier 27,148 > 26,429 + 500: counted as a new best |
+| 3.0B | 3.49 | |
+
+**What the run says about the mechanism:**
+- **The eval frontier creeps too, but slowly.** At the second wall it drifted 26,429 -> 27,148 u in 900M steps as the death point moved along x 3,000-4,500, and it crossed eps once. The reservoir reading crossed it four times in 700M steps.
+- **High T costs the greedy line consistency.** Passes at the window fell from 8-9/9 (T up to about 1.5) to 4-6/9 at T 1.3-3.5.
+- **The policy partly cancels T.** Its own view sigma shrank from 0.045 to 0.021, so the tempered sigma was about 0.094 at T 3.5.
+
+**Verdict.**
+- A + B unstuck sidistic's gate 2: the human's cut-back, learned from the policy's own reservoir with no demo.
+- Gate 3 was not passed in 924M steps, about 600M of them at T > 1.
+- One run, A on top of B.
+- The checkpoint runs/sidGEOuEM2/ckpt_final.pt is resumable with the same flags.
+
+## 2026-10-18 10:43 (machine clock) - sidGEOuEM2 CONTINUED from ckpt_final (3.0B) with the same A + B flags, to 8e9 (~3 h) (user: "the method helps to unstuck ... let's keep doing this")
+
+**Launch.**
+- The command: `MAP=C:/RL_Surf/maps/surf_src_sidistic.bsp tools/launch_local.ps1 resume C:/RL_Surf/runs/sidGEOuEM2/ckpt_final.pt sidGEOuEM2 --envs 1024 --unstuck-reach eval --respawn-margin 2 --record-every 75e6 --steps 8e9`.
+- Local 5090, trainer pid 53716, started 10:41:51. The record gate PASSED (greedy, stoch, mixed and POV). It compiled in 45 s.
+- It writes into the same run directory, so progress.csv continues and the dashboard shows one curve. The first segment's trainer log is kept as runs/sidGEOuEM2/launch_seg1_0929-1021.txt.
+- Config diff against sidGEOu: respawn_margin 2, unstuck_reach eval, steps 8e9; nothing else.
+- The schedule state was restored without a re-seed, because the measure is unchanged: T 3.477, stuck 17.8M, best 27,148 u, 27 count decays.
+
+**Expected if the frontier stays flat.**
+- T halves inside the patience window that started at 2,982M, falling to ~1.0 at ~3.18B.
+- It then rises 0.5 per 1e8 to the cap of 4 at ~3.78B, and holds there until the frontier gains more than 500 u.
+
+**Watched per eval:**
+- CP2 crossings and the death point of the 24.7 s wall (x 3,000-4,500, z ~11,200);
+- whether the window pass count holds;
+- the training win rate together with reservoir min-depth.
+
+## 2026-10-18 11:26 (machine clock) - sidGEOuEM2 continuation, check-in 1 (3.93B): T pinned at its cap of 4 and the greedy line REGRESSING; the CP1 -> CP2 wall still unbroken
+
+**Evals since the resume.**
+
+| Steps | T | Window | Frontier | Note |
+|---|---|---|---|---|
+| 3,001-3,379M | 3.5 -> 1.07 -> 2.1 | 5-9/9 | ~27.5% | dying at the 24.7 s wall (x ~3,040, z ~11,200) |
+| 3,454M | ~2.3 | 2/9 | | one 87 s episode |
+| 3,530M | ~2.7 | 0/9 | 10.4% | dies at 11 s, x ~10,800 |
+| 3,605M | ~3.1 | 9/9 | 27.3% | recovered |
+| 3,681M | ~3.5 | 7/9 | 28.0% | best d ever 70,409 u; frontier 27,359, which is NOT > 27,148 + 500 |
+| 3,756M | 4.0 | 0/9 | 15.0% | dies at x 6,500-8,200, z 11,700-12,100, before the window |
+| 3,831M | 4.0 | 0/9 | 15.2% | |
+| 3,907M | 4.0 | 0/9 | 16.0% | one episode alive for the whole 300 s cap |
+
+- No eval has crossed CP2 since 2,076M: 1.8B steps, more than 1.4B of them at T > 1.
+- The training win rate is 0.00%, and reservoir min-depth is 73.7% (the reservoir still holds post-window states).
+- The fps column is a running average; it is lower because of desktop load and the compile.
+
+**Reading.**
+- The schedule has no way down from the cap. T falls only on a new all-time best (+500 u), and a degrading greedy line cannot make one, so T stays at 4.
+- At T >= ~2.5 the greedy line oscillates; at 4 it lost the window for three evals in a row.
+- This repeats the cannonball episode (gbCANunstuck3, T pinned at 1.0), which was resolved by a `--no-unstuck` consolidation at T = 0: gbCANunstuck3c, +200M, 48/48 finish, then gbCANfin3, the from-start finish.
+
+**Protection.** ckpt_final.pt (3.0B, md5 99cbabd1...) is copied to runs/sidGEOuEM2/ckpt_3000500224.pt, because this segment's own final save would overwrite it. ckpt_2547515392.pt is still there, and the trainer adds ckpt_4e9 etc. on its 1e9 cadence.
+
+**Decision pending with the user.** The run continues as asked. The proposal is a T = 0 consolidation (`--no-unstuck`, ~200-400M steps), then unstuck again; or analyse the CP2 wall first, analysis only, like gate 2.
+
+## 2026-10-18 11:57 (machine clock) - sidGEOuEM2 continuation, check-in 2 (4.80B): the window pass partly back (unstable), CP2 still never crossed, T pinned at 4
+
+**Evals 4,360M -> 4,737M.**
+- The window was passed 3, 8, 8, 8, 0 and 5 of 9. The frontier ranged 24.5-27.4%, with 15.4% at 4,662M.
+- No eval has crossed CP2. The best frontier is still 27,359 u (3,681M), short of 27,148 + 500, so T stays at 4.0 (stuck 1,820M).
+- Several eval episodes run the full 300 s (alive, no progress; evals do not stall-kill).
+- The training win rate is 0.00%, and reservoir min-depth is 73.6%.
+
+**Reading.** The greedy line at T = 4 oscillates between the window line and an earlier death, instead of collapsing for good. The CP2 wall has now held for 2.7B steps since the window was first passed, about 2.3B of them at T > 1. The run continues to 8e9 as asked; the consolidation (`--no-unstuck`) proposal stands.
+
+## 2026-10-19 11:25 (machine clock) - sidGEOuEM2 continuation ENDED at 4.85B by a PC restart (2026-10-18 11:58:51; System event 1074, RuntimeBroker.exe = the Start-menu restart, on behalf of the user), not by the trainer
+
+**Final state.**
+- The last progress row and ckpt_latest.pt are at 4,847,566,848 steps (11:58). run.json has no `finished`, and the log has no traceback and no done line.
+- T was pinned at 4.0 (stuck 1,865M), with the best frontier still 27,148 u (best d 70,409 u at 3,681M, 28.0%).
+- The last evals passed the window 8, 8, 8, 0, 5 and 2 of 9 (4,435M -> 4,812M), and CP2 was never crossed.
+- Training win rate 0.00%, reservoir min-depth 73.6%.
+
+**Checkpoints:** ckpt_3000500224.pt (the end of the first segment, passing the window), ckpt_4000841728.pt, and ckpt_latest.pt at 4.85B.
+
+**Verdict for the continuation (1.85B steps).** Unstuck with the eval frontier never broke the CP1 -> CP2 wall. At T >= ~2.5 the greedy line oscillated, and at the cap of 4 it lost the window for stretches.
+
+## 2026-10-19 11:32 (machine clock) - sidEM2cap2: FROM SCRATCH, the current sidistic method (unstuck watching the eval frontier + --respawn-margin 2) with T capped at 2 instead of 4; no other change (user: "first, let's bound the T by 2 instead of 4 and just start from scratch ... No other changes")
+
+**Launch.**
+- The command: `MAP=C:/RL_Surf/maps/surf_src_sidistic.bsp tools/launch_local.ps1 scratch_ablate sidEM2cap2 --envs 1024 --obs-normal 1 --simba 1 --ep-ticks 30000 --steps 4e9 --unstuck --unstuck-reach eval --respawn-margin 2 --unstuck-max 2`. That is sidGEOu's scratch line plus the three method flags.
+- Local 5090, trainer pid 43012, started 2026-10-19 11:30:08. It compiled in 58 s, and the record gate PASSED (greedy, stoch, mixed and POV).
+- Budget: 4e9 steps, about 2.6 h at ~430k steps/s.
+- The startup line confirms: "T rises 0.5 per 100,000,000 steps after 200,000,000 steps without a 500u improvement, cap 2"; eval frontier, one reading per 75M steps; harvested >= 2 s before the episode end.
+
+**Config diff against sidGEOu** (the only scratch reference on this map): respawn_margin 10 -> 2, unstuck_reach res -> eval, unstuck_max 4 -> 2. Nothing else; steps are 4e9 in both.
+
+**How to read it.**
+- The evals land on the same steps as sidGEOu's (same envs and iteration size, --record-every 75e6), so the comparison is exact at matched steps.
+- The reference line: sidGEOu passed gate 1 at about 450M and reached the window wall (20.8%) by 755-982M. The A + B lineage passed the window at 2,076M of total steps, but A and B were only switched on at 1.55B.
+- **Not a single-variable test.** A + B have never run from scratch at cap 4, so a gap against sidGEOu mixes A, B and the cap. A scratch A + B cap-4 twin is the control if the cap's own effect matters.
+
+**Watched:** gates and steps-to-gate, the window (AT THE HOLE / CP1), whether T reaches 2 and what the greedy line does there, and the training win rate with reservoir min-depth.
+
+## 2026-10-19 12:19 (machine clock) - sidEM2cap2 check-in 1 (1.07B): BEHIND sidGEOu at matched steps; trapped at 5.6-5.8% in a side branch since 454M; T at its new cap of 2 since ~1.06B
+
+**Matched-step evals** (best % of the field; sidGEOu in brackets). The two runs are identical through 378M (4.6-4.7%), then:
+
+| Steps | sidEM2cap2 | T | sidGEOu | T |
+|---|---|---|---|---|
+| 454M | 5.8% | 0.88 | 5.4% | 1.24 |
+| 529M | 5.6% | 0.53 | 9.1% | 0.74 |
+| 605M | 5.7% | 0.31 | 13.1% | 0.44 |
+| 680M | 5.6% | 0.35 | 15.8% | 0.26 |
+| 755M | 5.6% | 0.73 | 20.7% | 0.15 |
+| 831-1,057M | 5.6-5.7% | 1.10 -> 2.00 | 20.8% | ~0.05 |
+
+**The trap.**
+- From 454M on, every greedy episode ends 'fail' at 6.1-6.8 s, at (x 12,205, y 593-906, z 13,300-13,304), flying +y at ~1,400 u/s with vz +150..+250: a side branch off the first ramp into a fail volume. This is not sidGEO's net *125 at (11,355, -951, 13,031).
+- sidGEOu at 454M was on another branch, (11,614, 398, 12,881), and passed gate 1 on the next eval.
+- The eval measure counted the branch's +1,100 u (4.7% -> 5.8%) as a new best. That restarted patience and halved T (0.88 -> 0.31) when sidGEOu, under the reservoir measure, sat at T 1.24 and escaped.
+- T came back from ~0.65B, reached 2.0 (the new cap) at ~1.06B, and the trap holds so far.
+
+**Other diagnostics:** ep_len 379 decisions, stall_frac 0, training win rate 0.00%, reservoir min-depth 94.7%.
+
+**Reading so far.** The cap is not tested yet: T only reached 2 at 1.06B. What stands out is a measure effect, the eval frontier rewarding a dead-end branch and cooling T. The next check-in shows whether T = 2 gets out.
+
+## 2026-10-19 12:35 (machine clock) - NEW `--obs-surf`: a binary "riding a surfable face" observation column (user: "an additional observation that is a binary flag, 1 when the agent is surfing ... and some additional reward for surfing"); plus a --surf-bonus fix (falls pinned at the velocity clamp no longer pay); built and tested, not yet run
+
+**Why.** The 15 core scalars carry "on walkable ground" (slot 4) but nothing that separates riding a ramp from free fall: both are airborne in the engine (pm.c sets onground only at n_z >= 0.7). The policy had to infer surfing from the image and from vz across decisions.
+
+**What (uncommitted, petrusnight).**
+
+- **The test.** `python/surfgym/surfflag.py` `SurfFlag` applies --surf-bonus's contact test over one decision (K ticks) instead of one tick:
+  - airborne at both ends of the decision (this also drops a jump's take-off);
+  - `(vz - vz_prev) + g*dt*K > 1 u/s`, which is exactly 0 in free fall, 0 on a near-vertical wall and negative under a ceiling;
+  - vz above the -sv_maxvelocity clamp;
+  - 0 on an episode's first decision.
+- **One class for every consumer.** The rollout (`fill_vision`, reset with `ended_acc` next to obs_aux / keys), the three in-trainer evals (greedy, stoch, mirror) and record_ckpt all use it. The evals and the recorder find episode starts off the core's tick counter, as --keys-hold and --rnn do. The truncation bootstrap carries the last decision's flag.
+- **Layout and checkpoints.** The flag is the LAST column of the scalar side, after the ramp arrow. `obs_surf: 1` is dumped only when set. A resume restores it, refuses `--obs-surf 0` on a checkpoint that has it, and zero-widens a plain checkpoint onto it.
+- **The recorder** mirrors it: route_dim + 1, a fresh feed per wrapper, and the mirror layout's arrow offset corrected for the extra column.
+- **The --surf-bonus fix.** `RaceReward` now excludes vz at the -sv_maxvelocity clamp from "supported". pm.c clamps each axis, so a long fall pinned at -4000 u/s stops losing vz and the per-tick test read it as support: it paid the bonus, and skipped --dive-pen. On sidistic about 5 s of free fall reaches the clamp. This only matters with --surf-bonus or --dive-pen > 0, so every default run is unchanged. A core without sv_maxvelocity keeps the old test.
+
+**Tests.**
+- `tests/python/test_obs_surf.py`: 6 unit cases (the band over a decision, reset, the eval tick-counter rule, the feed, the bonus clamp and its no-vmax fallback) and one CPU smoke (one more column, dump, restore, refusal, widen, record_ckpt). All pass.
+- `tests/python/test_surf_bonus.py`: 10/10 still pass.
+- **Flag-off bit-identity** against a byte copy of the trainer saved before the first edit, on the CPU smoke: config (222 keys), every CSV value except fps, the eval trajectory bytes, all 23 weight tensors and the Adam moments are equal.
+
+**Not run yet.** The GPU is on sidEM2cap2 until about 4e9.
+
+## 2026-10-19 13:05 (machine clock) - sidEM2cap2 check-in 2 (2.49B): out of the side-branch trap at ~1.5B after ~400M steps at the T = 2 cap; WINDOW PASSED from scratch at 1,661M (9/9 by 1,888M); now at the CP1 -> CP2 wall, T back at 2, window holding 6-7/9
+
+**Evals** (best % of the field, the hole count, T):
+
+| Steps | Best | Hole | T | Note |
+|---|---|---|---|---|
+| 1,359M | 5.6% | 0/9 | 2.00 | still in the trap |
+| 1,435M | 6.0% | 0/9 | 2.00 | |
+| 1,510M | 13.8% | 0/9 | 2.00 | out |
+| 1,586M | 16.0% | 0/9 | 1.19 | |
+| 1,661M | 22.3% | 1/9 | 0.70 | CP1 crossed |
+| 1,737M | 24.9% | 5/9 | 0.42 | |
+| 1,812M | 27.1% | 8/9 | 0.25 | |
+| 1,888M | 27.3% | 9/9 | 0.15 | |
+| 1,963-2,190M | 27.4-27.5% | 8-9/9 | 0.09 -> 0.94 | |
+| 2,265M | 27.4% | 4/9 | 1.32 | |
+| 2,341M | 26.4% | 3/9 | 1.70 | |
+| 2,416M | 27.4% | 7/9 | 2.00 | |
+| 2,492M | 27.4% | 6/9 | 2.00 | |
+
+- The best frontier is 26,834 u (2,265M). CP2 has not been crossed.
+- Training win rate 0.00%, reservoir min-depth 73.6%.
+
+**Against the references.**
+- sidGEOu (scratch, cap 4, old measure) sat at 20.8% from 755M and never passed the window on its own.
+- The cap-4 A + B lineage passed the window at 2,076M total steps, but A and B were switched on only at 1.55B.
+- So from scratch, cap 2 with A + B reached the window pass about 400M steps sooner in total steps. The histories differ, so this is not a clean cap comparison.
+- At its cap of 2 the greedy window pass holds at 6-7/9, against 0/9 for three evals in a row at T = 4 in the continuation.
+
+The run continues to 4e9.
+
+## 2026-10-19 13:22 (machine clock) - sidEM2cap2 STOPPED by the user at 2.905B; sidEM2cap2surf LAUNCHED = sidEM2cap2 + --obs-surf 1 + --surf-bonus 0.3, from scratch (user: "stop the current run and launch the next one with the changes that we made")
+
+**sidEM2cap2 final.**
+- The trainer (pid 43012) was stopped by exact PID at 13:19. The last progress row is 2,905,079,808. Checkpoints: ckpt_1000341504, ckpt_2000683008, ckpt_latest (13:19).
+- Evals 2,492-2,869M: 27.4-27.5% of the field, window passed 6, 4, 2, 6, 5 and 3 of 9, CP2 never crossed. T was at the cap of 2 from ~2.4B. The best frontier is still 26,542 u by the eval measure (best d 70,934 u).
+- **Summary.** The run left its first-ramp side-branch trap at ~1.5B after ~400M steps at T = 2, and passed the window at 1,661M (9/9 at 1,888M). It held 27.4% at the CP1 -> CP2 wall for ~1B steps, with the window pass oscillating 2-9/9 at T = 1.3-2.
+
+**sidEM2cap2surf launch.**
+- The command: `MAP=C:/RL_Surf/maps/surf_src_sidistic.bsp tools/launch_local.ps1 scratch_ablate sidEM2cap2surf --envs 1024 --obs-normal 1 --simba 1 --ep-ticks 30000 --steps 4e9 --unstuck --unstuck-reach eval --respawn-margin 2 --unstuck-max 2 --obs-surf 1 --surf-bonus 0.3`.
+- Local 5090, trainer pid 35392, started 13:20:02. It compiled in 49 s.
+- The record gate PASSED (greedy, stoch, mixed and POV). That is the recorder's first live --obs-surf checkpoint.
+- **Config diff against sidEM2cap2:** obs_surf (absent -> 1), surf_bonus 0.0 -> 0.3; nothing else.
+- Startup: "--obs-surf: obs column 22" (15 core + 7 keys-hold columns). The step line reads "surf 1.6%/dive 98.4%" at iteration 3: the share of airborne ticks the bonus pays.
+- **The bonus.** 0.3/s, below the 0.5/s time penalty, so parking on a ramp is net negative. It uses the fixed contact test (no pay at the velocity clamp). There is no --dive-pen, because the user asked for a surfing reward only.
+- **Two changes at once** (the observation and the reward), as asked.
+- **Reference:** sidEM2cap2's evals land on the same steps (cmp_runs.py).
+
+**Watched:** time-to-gate against sidEM2cap2 (first-ramp trap at 0.45-1.5B, window at 1.66B), surf_paid_frac (it must not saturate, which would be a farm), and the window pass and CP2.
+
+## 2026-10-19 14:08 (machine clock) - sidEM2cap2surf check-in 1 (1.24B): out of the first-ramp side-branch trap at 1,133M, ~380M steps BEFORE sidEM2cap2 (1,510M) at matched steps; 15.9% at 1,208M
+
+**Matched-step evals** (best % of the field; sidEM2cap2 second; T in brackets).
+
+| Steps | sidEM2cap2surf | sidEM2cap2 | Note |
+|---|---|---|---|
+| 76-378M | 4.4-4.7% | 4.4-4.7% | the same in both |
+| 454M | 4.7% | 5.8% | the cap-2 run enters the +y side branch |
+| 529M | 5.8% | 5.6% | the surf run enters the same branch one eval later |
+| 605-1,057M | 5.6-5.7% | 5.6-5.7% | both trapped; T climbs to 2 in both by ~1.06B |
+| 1,133M | **10.5%** (T 2.00) | 5.6% (T 2.00) | |
+| 1,208M | **15.9%** (T 1.19, cooling after the new best) | 5.7% (T 2.00) | |
+
+- sidEM2cap2 escaped only at 1,510M (13.8%).
+- **Training side at 1.24B:** surf_paid 23.9% of airborne ticks, win 0.00%, reservoir min-depth 84.1%, stall_frac 0.14%.
+- **The user's question (13:48)** was whether to raise the bonus because "it just falls into the pit".
+- **The scales measured** on the 680M greedy line: shaping +5.6, time -3.2, surf bonus +0.5 per 6.3 s episode.
+  - The trainer's guard caps the bonus below the 0.5/s time penalty.
+  - In the opening the human surfs 22-27% of frames against the agent's 25%, so the share of surfing is not what separates the lines.
+- **Reading.** One seed. Through 1.06B the two runs were indistinguishable at matched steps. The escape came one eval after T reached 2 in this run, against ~450M steps at T = 2 in the cap-2 run. That is suggestive, not established. The window (cap-2: 1,661M) is the next mark.
+
+## 2026-10-19 14:44 (machine clock) - sidEM2cap2surf check-in 2 (1.87B): WINDOW PASSED at 1,359M (9/9 at 1,586M), ~300M steps before sidEM2cap2 at every mark; now at the same CP1 -> CP2 wall
+
+**Marks against sidEM2cap2** (matched steps, same eval cadence):
+
+| Mark | sidEM2cap2surf | sidEM2cap2 |
+|---|---|---|
+| Out of the first-ramp side branch | 1,133M | 1,510M |
+| First window pass / CP1 | 1,359M (4/9) | 1,661M (1/9) |
+| 9/9 through the hole | 1,586M | 1,888M |
+
+**After the window.**
+- The surf run held 24.5-24.6% from 1,435M to 1,737M with the window at 5-9/9, then 26.0% at 1,812M.
+- The full-length episodes die 'fail' at 24.3-25.3 s at x 4,267-4,490, z ~11,930, on both lanes (y -1,121..+1,063), falling at vz -900..-1,130. It is the same CP1 -> CP2 wall where sidEM2cap2 died at x 3,000-4,500, z ~11,200. The surf run dies ~700 u higher, which is why it reads 26.0% against 27.4%.
+- One 1,812M episode regressed to a 13.7 s death at (5,832, 23, 12,944).
+
+**Training side (1.87B):** surf_paid 25.9% of airborne ticks (no farm), win 0.00%, reservoir min-depth 74.6%, T 0.63 and rising (stuck 59M since the 1,812M best).
+
+**Reading.** One seed. The surf observation plus the 0.3/s bonus reached each gate ~300-380M steps sooner, while the two runs were indistinguishable through 1.06B. CP2 is the open question; no run has crossed it.
+
+## 2026-10-19 16:21 (machine clock) - sidEM2cap2surf FINAL (4.0B): CP2 never crossed; the same 27.5% wall as sidEM2cap2, reached ~300M steps sooner and held 1.5B steps at T = 2
+
+**End of run.** It reached 4,000M steps at 16:06 (`ckpt_final.pt`).
+- Best greedy frontier: field d 70,883 u (27.5% of the field) at 3,775M. sidEM2cap2's best was 70,915 u (27.5%) at 2,567M, so both runs stopped at the same wall.
+- 0 finishes; win rate 0.00% throughout.
+
+**The last 1.5B steps.**
+- Every eval read 27.0-27.5%, with the window at 5-9/9 per eval. At T 4 the cap-4 lineage swung 0-9/9 here.
+- T sat at the 2.0 cap from 2,460M to the end, and no new best came after 1,888M (2,112M steps stuck).
+- Training side at 4.0B: surf_paid 27.2% of airborne ticks (dive 72.8%), reservoir min-depth 73.7%, novelty 1.47 per episode.
+
+**The wall** (ANALYSIS ONLY; `cp2_wall.py` on the 3,775M and 3,926M evals, which is 17 of 18 episodes; the 18th died earlier at 21.6 s).
+- **Where it dies.** Every episode ends 'fail' at 25.2-25.7 s at x 3,007-3,113, y -937..+297, z 11,168-11,224. Its field minimum is at the death point itself (d 70,883-71,319).
+- **How it arrives.** It is diving: |v| 1,680-2,030 u/s, vz -1,350..-1,425. It surfs 3-8% of its last 3 s, so this is free fall, not a ramp ride. That agrees with the user's "it just falls into the pit".
+- **The human at the same spot.** The record passes within 255-550 u of the same point at t 27.4 s. It is at the same speed (1,836 u/s) but level (vz -141 at 27.5 s) and ~250 u higher (z 11,469 at x 2,882).
+- **Where the human's height comes from.** The human takes a detour.
+  - At 24.5 s it is at (4,041, 661, 11,814). It turns EAST, away from the goal, to (5,554, 454, 11,079) at 25.5 s.
+  - It rides a ramp there: 68%, 36% and 62% surf frames in the half-seconds ending at 25.5, 26.0 and 26.5 s.
+  - It comes back west, climbing (vz +260..+422 at 26.5-27.0 s), over the agent's death point. It crosses sgcp_2 at 35.1 s.
+- **That detour is a field dip.** It is the 1,958 u dip (2.0 reward units, t 24.6-26.8 s) among the seven measured on the human line on 10-18. The field charges for the turn east and pays for the straight dive west, which is the line the agent flies.
+
+**Reading.** One seed.
+- --obs-surf + --surf-bonus 0.3 got to the CP1 wall ~300M steps sooner and held the window more steadily at T = 2. It bought nothing at CP2.
+- CP2 is the same kind of gate as the first one: a detour the field charges for. It is not a gap in surfing skill. 1.5B steps at T = 2 never sampled the turn east.
+
+## 2026-10-19 16:25 (machine clock) - sidEM2cap2surfGR launched: sidEM2cap2surf + --obs-compass 1 (the field gradient, existing) + --obs-pot-rate 1 (NEW: its derivative along the velocity); from scratch, local 5090
+
+**The ask (user, 2026-10-19).** "Take the derivative of the potential along the velocity of the player ... compute the gradient of the potential field in this point and expose it as an observation ... dot product the velocity and this gradient ... and expose this as well."
+
+**What was built.**
+- **The gradient already existed** as `--obs-compass 1` (2026-08).
+  - Five columns: the ego-frame downhill unit vector, d/d0, and |grad d| clipped to [0, 1].
+  - It is a one-cell central difference on the field RaceReward shapes on, and it reads zero on the unreachable sentinel.
+- **NEW `--obs-pot-rate 1`** adds one column, -grad d . v / 1000 (in 1000 u/s).
+  - It is computed from the compass's own gradient (`surfgym.obsaux.PotRate`).
+  - It is the last column of the scalar half, after `--obs-surf`.
+  - A resume restores the flag, refuses `--obs-pot-rate 0`, and zero-widens a plain checkpoint onto it.
+  - It is refused with `--goals`, without `--reward race`, and with `--route-critic-only`.
+  - The truncation bootstrap rebuilds it from the terminal row's position and velocity.
+  - `record_ckpt` mirrors it. Documented in `docs/obs_potential.md`.
+- **Verification.**
+  - Flag off, bit-identical to the pre-edit trainer: config (222 keys), progress.csv, eval trajectory bytes, weights and Adam moments.
+  - `tests/python/test_obs_pot_rate.py` passes 6/6: 5 unit tests plus a CPU smoke. The smoke covers the +7-column widen with surf and compass, the config dump, a flagless restore, refusing `--obs-pot-rate 0`, zero-widening a plain checkpoint, and a recording.
+  - The test_obs_surf unit tests pass 6/6.
+  - `test_obsaux.py` has 2 failures that predate this change: a stale source-string check on N_ROUTE, and a fake core with no `.config`, which the trainer has read since 09-06.
+  - The record gate passed on the first ckpt_latest: greedy, stochastic, mixed and POV recordings in 24 s.
+
+**The new column on the CP2 wall lines** (ANALYSIS ONLY, `wall_rate.py`).
+- The agent's dive reads +1.5..+1.7 all the way to the pit. In its last ~1.5 s its velocity is within cos 0.96-0.97 of the downhill direction.
+- The human's turn east reads -1.71..-1.87 at 25.0-25.5 s, then +1.64..+1.90 on the way back.
+- So the column makes the dip visible, but the reward still charges for it.
+
+**Launch.**
+- Command: `MAP=maps/surf_src_sidistic.bsp tools/launch_local.ps1 scratch_ablate sidEM2cap2surfGR --envs 1024 --obs-normal 1 --simba 1 --ep-ticks 30000 --steps 4e9 --unstuck --unstuck-reach eval --respawn-margin 2 --unstuck-max 2 --obs-surf 1 --surf-bonus 0.3 --obs-compass 1 --obs-pot-rate 1`
+- Started 16:22 as trainer pid 35500 on the local RTX 5090. torch.compile took 27 s; no bake.
+- The config differs from sidEM2cap2surf only in obs_compass and obs_pot_rate.
+- Columns: compass 15-19, keys 20-26, surf 27, rate 28.
+- Two observation changes at once, as asked: the gradient, and its derivative along v.
+- Reference: sidEM2cap2surf at matched steps (trap exit 1,133M, window 1,359M, 9/9 at 1,586M, CP2 never).
+
+## 2026-10-19 16:54 (machine clock) - sidEM2cap2surfGR stopped at ~658M by the user (compass + derivative "did not work that well"); its last two evals were AHEAD of sidEM2cap2surf: out of the first-ramp trap at 529M against 1,133M
+
+**Stopped at 16:54** by the user's call ("the compass idea and the derivative, I wouldn't say it worked that well ... the beginning of the map is very easy because the model just needs to turn left to take the ramp, but it doesn't do it"). The trainer (pid 35500) reached ~658M. ckpt_latest at 648.5M is resumable, with its unstuck schedule, reservoir and novelty counts.
+
+**Its matched-step evals against sidEM2cap2surf** (best % of the field):
+
+| Steps | sidEM2cap2surfGR | sidEM2cap2surf |
+|---|---|---|
+| 76-454M | 4.4-4.7% | 4.4-4.7% |
+| 529M | **8.8%** | 5.8% |
+| 605M | **15.4%** | 5.7% |
+
+- At its last two evals it was AHEAD: out of the first-ramp side branch at 529M, where the surf run stayed trapped until 1,133M. That was not yet visible when the user looked (it read 4.7% through 454M).
+- One seed. Two observation changes at once. Stopped before the window, so the lead is recorded but untested.
+
+## 2026-10-19 16:55 (machine clock) - NEW --respawn-novel (user): own reservoir states moved to where the agent has never been, never deeper than its real best, same velocity; sidEM2cap2surfNV launched from scratch, local 5090
+
+**The ask (user, 2026-10-19).** "We cannot teleport forward, but we can be respawned in any position where we haven't been, but the potential is no bigger than our biggest potential ... with the same velocity that we had in our existing rollout ... make it non-uniform, so like we're spawning closer to frontier ... closer to place where we died, but just in a different place." The user's case is sidistic's first ramp: "it just needs to turn left to take the ramp, but it doesn't do it ... it can be basically teleported on top of the ramp."
+
+**What was built** (`surfgym.respawn.NovelSpawnSampler`, `docs/respawn_novel.md`). A novel row is one of the policy's OWN reservoir states moved to a point it has never been. It keeps the state's velocity, view, duck state and keys.
+- **Sources.** Half come from the deepest quarter of the reservoir by field distance (nearest where it dies). The rest are flattened over progress.
+- **Move.** A uniform direction and a distance U(256, 2048) u, with 8 tries per source.
+- **Gates.** The moved point must:
+  - lie on the reachable set;
+  - be no deeper than the deepest point a REAL episode (map start or reservoir) has reached, i.e. potential <= the best potential;
+  - lie in a 128 u visit cell whose 3x3x3 block no training env has ever entered;
+  - fit the standing hull.
+- **Share.** 50% of the non-start pool. The map-start share is untouched.
+- **No forward teleport.**
+  - Novel episodes are never harvested (`RespawnBuffer.skip`) and never move the ceiling, so the reservoir and the ceiling move only through what the policy learns.
+  - A novel episode is recognised by its spawn origin. The C reset copies the pool row byte for byte, which was checked on the engine.
+- **Generic.** The same constants on every map. Only the field, the policy's own visits and its own states are used: no demo, no map constant.
+
+**Verification.**
+- Flag off, bit-identical to the pre-edit trainer: config (222 keys), progress.csv, eval trajectory bytes, weights and Adam moments.
+- `tests/python/test_respawn_novel.py` passes 10/10:
+  - every gate holds on every row on the real petrus field and geometry;
+  - the source's velocity, view and duck are kept;
+  - the shell share is as asked;
+  - the ceiling moves only with real envs;
+  - tags work and the reservoir skips novel episodes;
+  - the real reset lands on the pool origin byte for byte;
+  - checkpoint round trip;
+  - the TRAIN_ONLY keys;
+  - a CPU trainer smoke on a seeded reservoir: 1,843 novel rows per pool, a novel-start share > 0, the state saved and restored by a bare resume, and record_ckpt reads the checkpoint;
+  - refusals.
+- The respawn suites (frontier, binned, min-speed, backward, random; 84 tests) still pass.
+- Probe on sidistic, using the finished sidEM2cap2surf reservoir:
+  - 1,843 rows in 0.03 s, moved a median of 1,064 u;
+  - progress median 21.6% and p90 26.1% against the 27.5% ceiling;
+  - rejections: 56% off-field, 2% past the ceiling, 21% visited, 16% hull.
+
+**Launch.**
+- Command: `MAP=maps/surf_src_sidistic.bsp tools/launch_local.ps1 scratch_ablate sidEM2cap2surfNV --envs 1024 --obs-normal 1 --simba 1 --ep-ticks 30000 --steps 4e9 --unstuck --unstuck-reach eval --respawn-margin 2 --unstuck-max 2 --obs-surf 1 --surf-bonus 0.3 --respawn-novel`
+- Started 16:54 on the local RTX 5090, from scratch.
+- One change against sidEM2cap2surf. The compass and the derivative are not included (the user's call).
+- Reference marks at matched steps:
+
+  | Mark | sidEM2cap2surf | sidEM2cap2surfGR |
+  |---|---|---|
+  | First-ramp trap exit | 1,133M | 529M |
+  | Window | 1,359M | - |
+  | 9/9 | 1,586M | - |
+  | CP2 | never | - |
+
+- Watched: novel/share, novel/ceiling and win rate next to reservoir min-depth, which is the trap guard.
+
+## 2026-10-19 16:56 (machine clock) - CORRECTION: sidEM2cap2surfGR was at 758M when stopped and had PASSED THE WINDOW at 755M (7/9, 27.2%), ~600M steps before sidEM2cap2surf
+
+**Correction to the entry above.** The stop entry used progress.csv as it stood at 16:50. When the trainer was stopped at 16:54 it was at 758M, not ~658M, and two more evals had landed.
+
+| Steps | sidEM2cap2surfGR | sidEM2cap2surf |
+|---|---|---|
+| 680M | 21.0% | 5.6% |
+| 755M | **27.2%, CP1, 7/9 through the hole (the window)** | 5.6% |
+
+- The surf run passed the window only at 1,359M. So compass + derivative reached the window ~600M steps sooner, and at that point stood at the CP2-wall level (27.2%, frontier 26,615 u) that the surf run reached only at ~1.8B.
+- The last checkpoint, `runs/sidEM2cap2surfGR/ckpt_latest.pt`, is at 749,731,840, 6M steps before the passing eval. It is resumable.
+- One seed and two observation changes at once. But a 600M-step lead at two consecutive marks is far outside the 0.4% early-mark agreement measured between identical configs.
+- Reported to the user; whether to resume it is the user's call.
+
+## 2026-10-19 17:02 (machine clock) - --respawn-novel FIX: "visited" was ever-visited and blocked everything (0-3 rows per pool through 105M); now a 10M-step recency window and only REAL episodes mark the grid; sidEM2cap2surfNV stopped, sidEM2cap2surfNV2 launched
+
+**What went wrong with the first launch.**
+- sidEM2cap2surfNV produced 0-3 novel rows per pool through 105M steps, against the ~1,843 asked for. Only 0.2-0.4% of episodes started from one.
+- Its sampler marked 1,772 visit cells by 53M and 2,354 by 105M, while the ceiling rose to only 5,038 u (5.2%).
+- The cause was "ever visited". The near-random fleet of the first few million steps entered every cell of the region under the ceiling and marked it for good. That includes the turn a converged policy never takes, which is exactly the case the user built this for.
+
+**The fix:** two rules.
+- **Recency window:** `--respawn-novel-window 1e7`. There are two grids, rolled every 10M env steps, so "visited" means entered within the last 10-20M steps. A cell the current policy no longer goes to becomes novel again.
+- **Only REAL episodes mark the grid.** A novel episode's flight marks nothing, so a blind spot stays on offer until the policy's own episodes reach it. Otherwise the spawns that show it would use it up.
+- Both are covered by tests (`test_the_window_forgets_what_the_policy_stopped_visiting`, and the real-only marking in `test_the_ceiling_moves_only_with_real_envs`).
+- Flag off is still bit-identical to the pre-edit trainer.
+- The detail line now prints the cumulative rejection shares even when an iteration makes no rows.
+
+**Relaunch.**
+- sidEM2cap2surfNV was stopped at ~110M (by exact pid). The new run is **sidEM2cap2surfNV2**, the same command plus the new default window, from scratch, on the local 5090.
+- The first run's directory is kept as the record of the failure.
+
+## 2026-10-19 17:30 (machine clock) - sidEM2cap2surfNV2 check-in 1 (761M): out of the first-ramp trap at 755M (surf 1,133M, compass 529M); novel rows ~1,830 per pool, 45% of episodes
+
+**Matched-step evals** (best % of the field; T in brackets).
+
+| Steps | sidEM2cap2surfNV2 | sidEM2cap2surf | sidEM2cap2surfGR |
+|---|---|---|---|
+| 227M | **5.7%** (trap reached) | 4.7% | 4.6% |
+| 454M | 5.7% (T 0.13) | 4.7% | 4.7% |
+| 529M | 5.7% (T 0.51) | 5.8% | 8.8% (GR out) |
+| 680M | 5.7% (T 1.26) | 5.6% | 21.0% |
+| 755M | **10.5%** (T 1.64, out) | 5.6% | 27.2% (window) |
+
+- NV2 reached the first-ramp side branch (5.7%) by 227M, earlier than either reference, and sat there until 755M. The surf run exited at 1,133M, the compass run at 529M.
+- The exit came one eval after T rose past ~1.3-1.6, as it did in the other two runs (surf at T 2.0, GR at T 1.26). So this exit is not separable from the unstuck schedule.
+
+**The mechanism (detail lines at 682M and 734M).**
+- 1,828-1,839 novel rows per pool, and 44.9% of episodes start from one.
+- Rows are moved a median of 955-1,073 u. Their progress is median 2.6-3.1k u, with p90 at 3.8k u (682M) and 9.6k u (734M). The ceiling rose 6,795 to 9,926 u, and the shell share is 46-49%.
+- Cumulative rejections: 61-62% off the reachable set, 18% visited, 16% hull, 10% past the ceiling.
+- Training ep_len is 346 ticks (3.5 s), against ~800-1,200 for the references at this stage: many novel episodes end fast.
+
+**Reading.** One seed. The novel spawns did not get out of the first trap sooner than the compass run, and how far ahead of the surf run they are is tied up with T. The window and CP2 are the next marks.

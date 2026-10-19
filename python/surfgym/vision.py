@@ -61,6 +61,7 @@ except ImportError:                       # pragma: no cover
 
 __all__ = ["GpuLidar", "LidarPotential", "build_sdf", "map_occupancy",
            "slab_occupancy", "pick_cell", "grid_dims", "SOLID_ENT_CLASSES",
+           "thin_panes", "pane_tag", "rasterize_thin_panes",
            "POTENTIAL_MODES", "POTENTIAL_SCALE_REL", "POTENTIAL_NORM_EPS",
            "POTENTIAL_NORM_CLIP", "POTENTIAL_NORM_MIN_VALID",
            "POTENTIAL_LOG_SCALE", "POTENTIAL_LOG_CLIP"]
@@ -1403,6 +1404,17 @@ _OCC_SEMANTICS = "o2"      # base occupancy content (o2: conveyor fix); the
                            # alone cannot see a solid-set change in the C code
 _PLAYER_SEMANTICS = "p1"   # vision_clip: the PLAYER-hull grid (CLIP brushes,
                            # core.occupancy_grid(player=True)); own cache files
+_PANE_SEMANTICS = "tp1"    # thin panes: the origin key is applied, and a pane the
+                           # PLAYER can cross keeps its sampled solid, not its AABB.
+                           # Only a map that has such a pane carries the tag
+                           # (pane_tag), so every other map's caches stay valid
+#: a solid brush entity whose AABB is at most this thin (u) is a "pane"
+PANE_MAX_THICK = 20.0
+_PANE_PROBE = 8.0          # u: the crossing probe's in-plane grid
+_PANE_FINE = 4.0           # u: a crossable pane's in-plane rasterization grid
+#: the standing (hull 0) and ducked (hull 1) boxes' half-extents
+_PLAYER_HALF = {0: (16.0, 16.0, 36.0), 1: (16.0, 16.0, 18.0)}
+_PANE_MEMO = {}
 
 
 def _map_sig(bsp: Path) -> str:
@@ -1455,6 +1467,139 @@ def grid_dims(core, cell: float):
     return mins, nx, ny, nz
 
 
+def _pane_crossable(core, bmn, bmx) -> bool:
+    """Can a standing or ducked player hull pass through this pane's plane
+    anywhere inside its footprint? One point-hull sampling of the mid-plane
+    on a _PANE_PROBE grid finds the open points (a hole the hull fits
+    through holds several), and a hull trace across the pane at each open
+    point decides; True on the first clean crossing."""
+    a = int(np.argmin(bmx - bmn))
+    u, w = [k for k in range(3) if k != a]
+    s = _PANE_PROBE
+    pm = np.empty(3)
+    pm[a] = 0.5 * (bmn[a] + bmx[a]) - 0.5 * s
+    pm[u] = bmn[u] - 0.5 * s
+    pm[w] = bmn[w] - 0.5 * s
+    n = [1, 1, 1]
+    n[u] = int(np.floor((bmx[u] - bmn[u]) / s)) + 1
+    n[w] = int(np.floor((bmx[w] - bmn[w]) / s)) + 1
+    for iz, iy, ix in np.argwhere(core.occupancy_grid(pm, s, n[0], n[1], n[2]) == 0):
+        p = pm + (np.array((ix, iy, iz)) + 0.5) * s
+        for hull in (0, 1):
+            h = _PLAYER_HALF[hull][a] + 1.0
+            st, en = p.copy(), p.copy()
+            st[a], en[a] = bmn[a] - h, bmx[a] + h
+            tr = core.trace(st, en, hull=hull)
+            if not tr.startsolid and not tr.allsolid and tr.fraction >= 0.999:
+                return True
+    return False
+
+
+def thin_panes(core):
+    """The map's thin solid brush entities ("panes": SOLID_ENT_CLASSES minus
+    NOTSOLID conveyors, min AABB extent <= PANE_MAX_THICK), each a dict with
+    ``mins`` / ``maxs`` (the model's box plus the entity's origin key, where
+    src/bsp.c places it), ``moved`` (the origin key is not zero) and
+    ``crossable`` (:func:`_pane_crossable`). Memoised per map signature."""
+    from .zones import parse_bsp
+    bsp = Path(core.bsp_path)
+    key = (str(bsp.resolve()), _map_sig(bsp))
+    if key in _PANE_MEMO:
+        return _PANE_MEMO[key]
+    entities, bboxes = parse_bsp(bsp)
+    panes = []
+    for ent in entities:
+        model = ent.get("model", "")
+        if (ent.get("classname") == "func_conveyor"
+                and int(float(ent.get("spawnflags", 0))) & 2):
+            continue   # SF_CONVEYOR_NOTSOLID: SOLID_NOT in GoldSrc (src/bsp.c)
+        if ent.get("classname") not in SOLID_ENT_CLASSES or not model.startswith("*"):
+            continue
+        try:
+            mi = int(model[1:])
+        except ValueError:
+            continue
+        if mi >= len(bboxes):
+            continue
+        bmn, bmx = np.asarray(bboxes[mi][0], np.float64), np.asarray(bboxes[mi][1], np.float64)
+        if float((bmx - bmn).min()) > PANE_MAX_THICK:
+            continue
+        org = np.zeros(3)
+        vals = ent.get("origin", "").split()
+        if len(vals) == 3:
+            org = np.array([float(v) for v in vals])
+        bmn, bmx = bmn + org, bmx + org
+        panes.append({"model": mi, "mins": bmn, "maxs": bmx,
+                      "moved": bool(np.any(org != 0)),
+                      "crossable": _pane_crossable(core, bmn, bmx)})
+    _PANE_MEMO[key] = panes
+    return panes
+
+
+def pane_tag(core) -> str:
+    """``"_tp1"`` when some pane rasterizes differently from the AABB-at-
+    the-model's-box rule that came before (it is moved by its origin key or
+    the player can cross it), else ``""``. Every cache built on
+    :func:`slab_occupancy` appends it to its signature, so exactly the maps
+    whose grid changed miss their caches and every other map's cache stays
+    valid bit for bit."""
+    return (f"_{_PANE_SEMANTICS}"
+            if any(p["moved"] or p["crossable"] for p in thin_panes(core)) else "")
+
+
+def _rasterize_crossable_pane(core, occ, mins, cell, bmn, bmx, player):
+    """A crossable pane's own solid: every voxel holding ANY solid sample of
+    the pane's box (a _PANE_FINE in-plane grid, <= 1 u apart through its
+    thickness) turns solid, the rest keep the lattice's value. A hole the
+    player passes stays open; a gap narrower than a voxel still seals."""
+    nz, ny, nx = occ.shape
+    a = int(np.argmin(bmx - bmn))
+    u, w = [k for k in range(3) if k != a]
+    f = min(_PANE_FINE, cell / 4.0)
+    ext = bmx - bmn
+    pm = np.empty(3)
+    pm[u] = bmn[u] + 0.5 - 0.5 * f         # samples from 0.5 u inside the box
+    pm[w] = bmn[w] + 0.5 - 0.5 * f
+    n = [1, 1, 1]
+    n[u] = int(np.floor(max(ext[u] - 1.0, 0.0) / f)) + 1
+    n[w] = int(np.floor(max(ext[w] - 1.0, 0.0) / f)) + 1
+    ns = max(1, int(np.ceil(ext[a])))
+    for k in range(ns):
+        pm[a] = bmn[a] + (k + 0.5) * ext[a] / ns - 0.5 * f
+        g = core.occupancy_grid(pm, f, n[0], n[1], n[2], player=player) != 0
+        hit = np.argwhere(g)                                  # rows (iz, iy, ix)
+        if not len(hit):
+            continue
+        pts = pm + (hit[:, ::-1] + 0.5) * f                   # (x, y, z)
+        ijk = np.floor((pts - mins) / cell).astype(int)
+        ok = np.all((ijk >= 0) & (ijk < [nx, ny, nz]), axis=1)
+        ijk = ijk[ok]
+        occ[ijk[:, 2], ijk[:, 1], ijk[:, 0]] = 1
+
+
+def rasterize_thin_panes(core, occ, mins, cell, player: bool = False) -> int:
+    """Draw the thin panes into ``occ`` ([nz, ny, nx], in place) and return
+    how many there are. A pane the player cannot cross is filled as its
+    whole AABB: the lattice threads past a 1 u pane, and this is the rule
+    every cache before _PANE_SEMANTICS was built with. A crossable pane gets
+    :func:`_rasterize_crossable_pane` instead: filling its AABB sealed the
+    hole the player flies through (surf_src_sidistic's porthole wall and
+    the plate over its finish shaft, which made its finish unreachable in
+    the goal field and drew phantom walls into the depth image)."""
+    nz, ny, nx = occ.shape
+    panes = thin_panes(core)
+    for p in panes:
+        bmn, bmx = p["mins"], p["maxs"]
+        if p["crossable"]:
+            _rasterize_crossable_pane(core, occ, mins, cell, bmn, bmx, player)
+            continue
+        lo = np.maximum(np.floor((bmn - mins) / cell - 0.001), 0).astype(int)
+        hi = np.minimum(np.ceil((bmx - mins) / cell + 0.001),
+                        [nx, ny, nz]).astype(int)
+        occ[lo[2]:hi[2], lo[1]:hi[1], lo[0]:hi[0]] = 1
+    return len(panes)
+
+
 def map_occupancy(core, cell: float = 16.0, cache_dir=None):
     """Sample (or load) the map's solid-occupancy voxel grid.
 
@@ -1503,7 +1648,8 @@ def slab_occupancy(core, cell: float = 16.0, cache_dir=None, player: bool = Fals
     of a few pool maps. On a map with no player-only solid the grid is
     identical. Cached apart, ``slaboccp_<cell>.npz``."""
     bsp = Path(core.bsp_path)
-    sig = f"{_map_sig(bsp)}_{_SDF_SEMANTICS}" + (f"_{_PLAYER_SEMANTICS}" if player else "")
+    sig = (f"{_map_sig(bsp)}_{_SDF_SEMANTICS}{pane_tag(core)}"
+           + (f"_{_PLAYER_SEMANTICS}" if player else ""))
     cache = Path(cache_dir) if cache_dir else bsp.parent
     cache_file = cache / f"{bsp.stem}.{'slaboccp' if player else 'slabocc'}_{cell:g}.npz"
     if cache_file.exists():
@@ -1530,29 +1676,16 @@ def slab_occupancy(core, cell: float = 16.0, cache_dir=None, player: bool = Fals
             else:
                 occ |= core.occupancy_grid(mins + off, cell, nx, ny, nz)
 
-    # thin solid entities: exact AABB rasterization (axis-aligned panes)
-    from .zones import parse_bsp
-    entities, bboxes = parse_bsp(bsp)
-    n_thin = 0
-    for ent in entities:
-        model = ent.get("model", "")
-        if (ent.get("classname") == "func_conveyor"
-                and int(float(ent.get("spawnflags", 0))) & 2):
-            continue   # SF_CONVEYOR_NOTSOLID: SOLID_NOT in GoldSrc (src/bsp.c)
-        if ent.get("classname") in SOLID_ENT_CLASSES and model.startswith("*"):
-            mi = int(model[1:])
-            if mi >= len(bboxes):
-                continue
-            bmn, bmx = np.asarray(bboxes[mi][0]), np.asarray(bboxes[mi][1])
-            if float((bmx - bmn).min()) > 20.0:
-                continue
-            lo = np.maximum(np.floor((bmn - mins) / cell - 0.001), 0).astype(int)
-            hi = np.minimum(np.ceil((bmx - mins) / cell + 0.001),
-                            [nx, ny, nz]).astype(int)
-            occ[lo[2]:hi[2], lo[1]:hi[1], lo[0]:hi[0]] = 1
-            n_thin += 1
+    # thin solid entities: exact AABB rasterization (axis-aligned panes),
+    # or the sampled solid of a pane the player can cross
+    n_thin = rasterize_thin_panes(core, occ, mins, cell, player=player)
     if n_thin:
-        print(f"slab occupancy: rasterized {n_thin} thin solid entities")
+        panes = thin_panes(core)
+        n_cross = sum(p["crossable"] for p in panes)
+        n_moved = sum(p["moved"] for p in panes)
+        extra = (f" ({n_cross} crossable by the player, sampled; {n_moved} placed by their"
+                 f" origin key)" if n_cross or n_moved else "")
+        print(f"slab occupancy: rasterized {n_thin} thin solid entities{extra}")
     np.savez_compressed(cache_file, occ=occ, mins=mins, sig=np.str_(sig))
     return occ, mins
 
@@ -1572,7 +1705,8 @@ def build_sdf(core, cell: float = 16.0, cache_dir=None, player: bool = False):
     from scipy.ndimage import distance_transform_edt
 
     bsp = Path(core.bsp_path)
-    sig = f"{_map_sig(bsp)}_{_SDF_SEMANTICS}" + (f"_{_PLAYER_SEMANTICS}" if player else "")
+    sig = (f"{_map_sig(bsp)}_{_SDF_SEMANTICS}{pane_tag(core)}"
+           + (f"_{_PLAYER_SEMANTICS}" if player else ""))
     cache = Path(cache_dir) if cache_dir else bsp.parent
     cache_file = cache / f"{bsp.stem}.{'sdfp' if player else 'sdf'}_{cell:g}.npz"
     if cache_file.exists():
@@ -2223,7 +2357,8 @@ class GpuLidar:
             else:
                 self.texmap = TextureMap.for_lidar(
                     core.bsp_path, self.sdf_flat, (self.nz, self.ny, self.nx), self.mins_f,
-                    self.cell, f"{_map_sig(Path(core.bsp_path))}_{_SDF_SEMANTICS}",
+                    self.cell,
+                    f"{_map_sig(Path(core.bsp_path))}_{_SDF_SEMANTICS}{pane_tag(core)}",
                     self.device)
             # --obs-slope: ONE channel (the facing normal's angle with +Z); the others three;
             # the internal edge source four (the normal and the exact plane depth)

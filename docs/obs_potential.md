@@ -449,3 +449,49 @@ says: the gate cleared and the step it was cleared at, `tools/eval_honesty.py
 * `tools/demo/potential_view.py` has no norm column (its third column is
   the min-max stretch, not this encoding); `tools/render_pov.py` has no
   potential panel.
+
+## The potential at the player: `--obs-compass` + `--obs-pot-rate` (2026-10-19)
+
+The user asked for two more observations: the gradient of the potential field
+at the player, and its derivative along the player's velocity (the gradient
+dotted with the velocity).
+
+* **The gradient already existed** as `--obs-compass 1` (`surfgym/obsaux.py`,
+  2026-08). It gives five columns: the downhill direction as an ego-frame unit
+  vector (forward, left, up), `d/d0`, and `|grad d|` clipped to [0, 1]. The
+  last of the three is the magnitude that goes with the direction. A central
+  difference one field cell wide is taken on the field RaceReward shapes on.
+  The columns are zero on the unreachable sentinel. Its one earlier arm,
+  xW1COMP (cannonball, wave 1), read NEGATIVE (46.9k vs 78.3k at 2.0B). That
+  is a single seed under the gate-ladder caveat, so it is not a verdict on the
+  feature.
+* **`--obs-pot-rate 1`** is new. It adds ONE column,
+  `rate = -grad d . v / 1000`, in thousands of u/s (the velocity scalars' unit).
+  The rate is positive while the player flies down the field, negative while
+  it climbs the field, and 0 when it moves across the field.
+  * `surfgym.obsaux.PotRate` computes it from the compass's own code: the
+    downhill unit vector at yaw 0 (the world frame) times the clipped
+    `|grad d|`. So the two columns cannot disagree, and a geodesic field gives
+    exactly the speed along the path.
+  * It is stateless.
+  * It is the LAST column of the scalar half, after `--obs-surf`:
+    `[15 core | fan | latch | aux (act-hist, compass) | T | keys | ratchet | pass | rvec | surf | rate]`.
+  * Like `--obs-surf`, a resume restores the flag, refuses `--obs-pot-rate 0`,
+    and zero-widens a plain checkpoint onto it.
+  * It is refused with `--goals` (the per-env goal field is not wired),
+    without `--reward race`, and with `--route-critic-only`.
+  * The truncation bootstrap rebuilds it from the terminal row's position and
+    velocity.
+  * The reflection used by `--aug-mirror` / `--eval-mirror` leaves a dot
+    product unchanged, so the mirror does not touch it.
+  * `record_ckpt.py` mirrors it.
+* **Tests** are in `tests/python/test_obs_pot_rate.py`:
+  * exact answers on linear fields in any direction (slope 1, slope 0.5,
+    slope 2 clipped to 1);
+  * 0 on the sentinel;
+  * per-map fields in a two-map fleet;
+  * the eval feed;
+  * a CPU smoke covering widen, dump, restore, refuse, grow and record.
+* **Flag-off bit-identity** against the trainer as it stood before the change:
+  the config, `progress.csv`, the eval trajectory, the weights and the Adam
+  moments all match.

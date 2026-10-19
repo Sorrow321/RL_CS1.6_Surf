@@ -59,13 +59,18 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-REG = ROOT / "runs" / "fleet.json"
-LOG = ROOT / "runs" / "fleet_watchdog.log"
+# RLSURF_FLEET_DIR: where the registry and the log live. Unset = <this checkout>/runs, as it
+# always was. The autoresearch agents work in git WORKTREES, each with its own runs/, and a box
+# registered into a worktree's registry is invisible to the daemon - which then destroys it as
+# unregistered four minutes later. They all point this at one directory instead.
+_FLEET_DIR = Path(os.environ.get("RLSURF_FLEET_DIR") or (ROOT / "runs"))
+REG = _FLEET_DIR / "fleet.json"
+LOG = _FLEET_DIR / "fleet_watchdog.log"
 
 POLL_S = 30.0   # tighter, so READY_S=90 is detected at 90-120s
 # An instance may exist for this long unclaimed: the window between
 # `vastai create` returning and the agent registering the id.
-GRACE_S = 240.0
+GRACE_S = float(os.environ.get("RLSURF_GRACE_S") or 240.0)
 # Not "running" within this long after creation = it never came up. The
 # agent-facing rule is 60 s; this is the backstop for an agent that walked
 # away, so it is deliberately looser.
@@ -84,7 +89,7 @@ GRACE_S = 240.0
 # an ABANDONED box, not the readiness rule - the agent-facing rule is still
 # 60 s - so it costs nothing to be generous, and a slow registry on a big
 # image genuinely exceeds seven minutes.
-READY_S = 90.0   # CLAUDE.md rule 1: ready in 60s or it dies. This
+READY_S = float(os.environ.get("RLSURF_READY_S") or 90.0)   # CLAUDE.md rule 1: ready in 60s or it dies. This
                  # was 1200 - a TWENTY MINUTE grace on a 60-SECOND
                  # rule, so the watchdog could never enforce it and
                  # a box that never opened ssh billed for 11 minutes
@@ -93,7 +98,33 @@ READY_S = 90.0   # CLAUDE.md rule 1: ready in 60s or it dies. This
                  # watchdog killed a LIVE trainer) still gates this,
                  # so a box that ever reached `running` is never
                  # killed by readiness - only by its deadline.
-MAX_BOXES = 12       # user-set 2026-08-23 (4 -> 6 -> 12); plus the local GPU
+MAX_BOXES = int(os.environ.get("RLSURF_MAX_BOXES") or 12)   # user-set 2026-08-23 (4 -> 6 -> 12)
+
+# RLSURF_POLICY=<path to autoresearch/config.json>: the HARD rental policy, enforced on every
+# instance on the account whoever rented it - one GPU, a card named in max_dph, at or below its
+# $/h cap, and no more than MAX_BOXES live (the youngest beyond the cap go). A breach seen on two
+# consecutive sweeps is destroyed (a single observation is not evidence). Unset = no policy.
+POLICY = None
+if os.environ.get("RLSURF_POLICY"):
+    POLICY = json.loads(Path(os.environ["RLSURF_POLICY"]).read_text(encoding="utf-8"))
+_POLICY_SEEN: dict = {}           # iid -> consecutive sweeps seen breaching the policy
+
+
+def policy_breach(inst):
+    """None, or why this instance breaks the rental policy."""
+    if POLICY is None:
+        return None
+    caps = POLICY.get("max_dph") or {}
+    name = (inst.get("gpu_name") or "").strip().replace(" ", "_")
+    n = int(inst.get("num_gpus") or 0)
+    dph = float(inst.get("dph_total") or 0.0)
+    if n != 1:
+        return f"{n} GPUs (single-GPU boxes only)"
+    if name not in caps:
+        return f"{name or '?'} is not an allowed card"
+    if dph > float(caps[name]) + 0.005:
+        return f"{name} at {dph:.3f} $/h, above its {caps[name]:.2f} cap"
+    return None
 
 # ------------------------------------------------------------- harvesting ---
 # A rented box takes its disk with it, so a result is only real once it is on
@@ -559,6 +590,27 @@ def sweep() -> int:
     if len(live) > MAX_BOXES:
         log(f"!! {len(live)} instances live, cap is {MAX_BOXES}")
     killed = 0
+    if POLICY is not None:
+        over = set()
+        if len(live) > MAX_BOXES:
+            by_age = sorted(live, key=lambda i: created_at(i) or 0.0)
+            over = {str(i.get("id")) for i in by_age[MAX_BOXES:]}
+        keep = []
+        for inst in live:
+            iid = str(inst.get("id"))
+            why = policy_breach(inst) or (f"beyond the {MAX_BOXES}-box cap" if iid in over
+                                          else None)
+            if why is None:
+                _POLICY_SEEN.pop(iid, None)
+                keep.append(inst)
+                continue
+            _POLICY_SEEN[iid] = _POLICY_SEEN.get(iid, 0) + 1
+            if _POLICY_SEEN[iid] < 2:
+                log(f"   {iid} breaks the rental policy ({why}) - once; waiting for a second sighting")
+                keep.append(inst)
+                continue
+            killed += destroy(iid, f"POLICY: {why} (label {inst.get('label') or '?'})")
+        live = keep
     updates = {}
     for inst in live:
         iid = str(inst.get("id"))

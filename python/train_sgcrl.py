@@ -712,11 +712,11 @@ def load_measure_field(core, zone, cell: float, run_dir: Path, device: str):
     The cache next to the map is read when its signature matches; a missing
     or stale one is baked into <run>/field_cache/, never next to the map."""
     from surfgym import goalfield as gfm
-    from surfgym.vision import _map_sig
+    from surfgym.vision import _map_sig, pane_tag
     bsp = Path(core.bsp_path)
     box = np.round(np.asarray(list(zone["mins"]) + list(zone["maxs"]), np.float64), 1)
     sig = (f"g{gfm._GOAL_BUILDER_VERSION}_{_map_sig(bsp)}_"
-           + "_".join(f"{v:g}" for v in box))
+           + "_".join(f"{v:g}" for v in box) + pane_tag(core))
     cache = bsp.parent / f"{bsp.stem}.goal_{cell:g}.npz"
     if cache.exists():
         try:

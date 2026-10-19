@@ -109,12 +109,13 @@ from surfgym.core import STATE_DTYPE
 from surfgym.dipmeter import DIP_KEYS
 from surfgym.goalfield import build_goal_field
 from surfgym.mapfleet import HeldoutSlot, MapFleet, MapSlot
-from surfgym.obsaux import ACT_FEAT, CMP_FEAT, ObsAux
+from surfgym.obsaux import ACT_FEAT, CMP_FEAT, ObsAux, PotRate, make_pot_rate_feed
+from surfgym.surfflag import SurfFlag, g_step_of, make_surf_feed
 from surfgym.privfeat import PRIV_DIM, PRIV_FEATURES, PrivFeat, velocity_from_obs
 from surfgym.record import record_rollout
 from surfgym.bc import BCDataset
 from surfgym.respawn import (BackwardSpawnSampler, DemoCurriculum,
-                             FrontierSpawnSampler,
+                             FrontierSpawnSampler, NovelSpawnSampler,
                              RandomSpawnSampler, RespawnBuffer)
 from surfgym.rewards import (CC_BUCKETS, CC_P0, CC_TEMP_GAIN, CC_TMAX,
                              CC_TMIN, AcroCoverageReward, BlendedReward,
@@ -131,6 +132,7 @@ from surfgym.view import (K_MAX, LOG_STD_INIT, OFF_ALPHA, OFF_MAX,
                           view_mode_code)
 from surfgym import keyshold
 from surfgym.keyshold import KeysHold, nvec_with_keep
+from surfgym.mirror import mirror_actions_
 from surfgym.vision import GpuLidar, LidarPotential, pick_cell
 from surfgym.zones import load_zones
 
@@ -2631,9 +2633,25 @@ class _TorchPolicyBase:
                  extra_slot: int = -1, extra_fn=None, route=None,
                  latch_fn=None, pitch_fixed=None, aux=None, masks=None,
                  priv_fn=None, cc_fn=None, ratchet_fn=None,
-                 keys_hold=False, pass_fn=None, vec_fn=None):
+                 keys_hold=False, pass_fn=None, vec_fn=None, mirror=None,
+                 surf_fn=None, prate_fn=None):
         self.policy, self.packer, self.device = policy, packer, device
+        # --obs-surf: surfgym.surfflag.make_surf_feed(...) - the LAST column of the scalar
+        # half, the same tracker class the rollout drives. None without the flag
+        self.surf_fn = surf_fn
+        # --obs-pot-rate: surfgym.obsaux.make_pot_rate_feed(field) - the column after the
+        # surfing flag, the same PotRate class the rollout drives. None without the flag. A
+        # dot product of the velocity and the gradient is unchanged by a reflection, so the
+        # mirror leaves it alone
+        self.prate_fn = prate_fn
         self.lidar, self.core = lidar, core
+        # --eval-mirror / record_ckpt --mirror: a surfgym.mirror.Mirror - every row this
+        # wrapper builds is reflected and every engine row it emits is reflected back, i.e.
+        # the policy flies the MIRROR IMAGE of the map. None (every other caller) touches
+        # nothing. The engine-frame action history cannot follow a reflected policy.
+        self.mirror = mirror
+        if mirror is not None and (aux is not None or route is not None):
+            raise ValueError("mirror: not with the route fan or --act-hist / --obs-compass")
         # --pitch-fixed: the trainer pins the states' pitch column before
         # every render, so an eval that did not would aim these weights
         # somewhere they were never trained to look. None = off.
@@ -2736,6 +2754,10 @@ class _TorchPolicyBase:
         # one the trainer built with the same pitch_rate_core.
         self.view = None
         self.view_continuous = bool(getattr(policy, "view_continuous", False))
+        if self.mirror is not None and (not self.view_continuous
+                                        or self.yaw_table is not None):
+            raise ValueError("mirror: needs a --view-continuous policy (the yaw bins and "
+                             "the yaw-conditioned side head are not reflected)")
         # --view-absolute rides in the policy like the flag does: the
         # wrapper hands the mode to view_from_z_t and the core it drives
         # was built with the matching view_mode (train_fast / record_ckpt)
@@ -2784,6 +2806,10 @@ class _TorchPolicyBase:
                 # BEFORE aux.push, which records what the engine is about to
                 # receive - the rollout's own order.
                 self.keys.resolve(self._held)
+            if self.mirror is not None:
+                # the mirror image: the engine row reflects back, after the resolve
+                # (the held keys stay in the policy's frame - the rollout's order)
+                mirror_actions_(self._held, self.view)
             if self.aux is not None:
                 # AFTER _decide, so the row the policy just read carried the
                 # history as of the PREVIOUS decisions - the rollout's order
@@ -2889,6 +2915,19 @@ class _TorchPolicyBase:
             t = torch.cat([t, torch.as_tensor(
                 self.vec_fn(self.core, t.shape[0]), dtype=torch.float32,
                 device=self.device).reshape(-1, 4)], dim=1)
+        if self.surf_fn is not None:
+            # --obs-surf: LAST of the scalar half, after the arrow - exactly where fill_vision
+            # writes it and where widen_for_obs pads a checkpoint onto it. _obs runs once per
+            # DECISION, the cadence the K-tick contact test is defined on
+            t = torch.cat([t, torch.as_tensor(
+                self.surf_fn(self.core, t.shape[0]), dtype=torch.float32,
+                device=self.device).reshape(-1, 1)], dim=1)
+        if self.prate_fn is not None:
+            # --obs-pot-rate: LAST of the scalar half, after the surfing flag - exactly where
+            # fill_vision writes it and where widen_for_obs pads a checkpoint onto it
+            t = torch.cat([t, torch.as_tensor(
+                self.prate_fn(self.core, t.shape[0]), dtype=torch.float32,
+                device=self.device).reshape(-1, 1)], dim=1)
         if self.lidar is not None:
             if self.pitch_fixed is not None:
                 self.core.set_pitch(self.pitch_fixed)
@@ -2909,6 +2948,9 @@ class _TorchPolicyBase:
             if self._stack > 1:
                 depth = self._push_frame(depth, sv["tick"])
             t = torch.cat([t, depth], dim=1)
+        if self.mirror is not None:
+            # the mirror image of the whole row, as the --aug-mirror rollout builds it
+            self.mirror.obs_(t)
         return t
 
     def _mask_air(self, obs):
@@ -3252,6 +3294,18 @@ class UnstuckSchedule:
         where there is no reservoir reading."""
         return self.best_res if self.best_res == self.best_res else self.best_arc
 
+    def reseed(self, step: int) -> None:
+        """A resume that changes --unstuck-reach: the stored bests were
+        taken on the OLD measure and mean nothing on the new one, so they
+        are dropped (the next reading is the new baseline) and the patience
+        window restarts at ``step``. T and the decay clock are kept - they
+        describe the weights, not the measure."""
+        self.best_res = float("nan")
+        self.best_arc = float("nan")
+        self.best_step = int(step)
+        self.last_step = int(step)
+        self.stuck_steps = 0
+
     def state_dict(self) -> dict:
         return {k: getattr(self, k) for k in self.KEYS}
 
@@ -3445,6 +3499,22 @@ def race_progress(traj_path: Path, field) -> float:
     recording's episodes — the race-relevant eval number. The freestyle
     eval/path metric is undirected horizontal wander: a spawn dive that
     races 0u of track still 'walks' thousands of units."""
+    per_ep = race_progress_eps(traj_path, field)
+    return float(np.mean(per_ep)) if per_ep else float("nan")
+
+
+def race_frontier(traj_path: Path, field) -> float:
+    """--unstuck-reach eval: the greedy frontier, the DEEPEST per-episode
+    progress of a recording (race_progress's quantity, maxed instead of
+    averaged), so the plateau detector moves with the line and not with the
+    share of episodes that reach it."""
+    per_ep = race_progress_eps(traj_path, field)
+    return float(max(per_ep)) if per_ep else float("nan")
+
+
+def race_progress_eps(traj_path: Path, field) -> list:
+    """Per-episode geodesic progress (d at spawn - min d reached, map units)
+    of a recording, in recording order."""
     rows, per_ep = [], []
     with open(traj_path, encoding="utf-8") as f:
         for line in f:
@@ -3458,7 +3528,7 @@ def race_progress(traj_path: Path, field) -> float:
                 d = field.sample(a[:, 1:4])
                 per_ep.append(float(d[0] - d.min()))
                 rows = []
-    return float(np.mean(per_ep)) if per_ep else float("nan")
+    return per_ep
 
 
 def _seg_hits_box(pts, box):
@@ -4145,6 +4215,43 @@ def main() -> None:
                     help="CONSISTENT dropout after every tower activation: one "
                          "mask per rollout, shared by the sampling and its update "
                          "(evals run the full network). ckpt restores")
+    ap.add_argument("--aug-mirror", type=float, default=None,  # 0 = off
+                    help="P: every TRAINING episode (spawn, autoreset, reservoir respawn) "
+                         "is flown in the LEFT-RIGHT MIRROR IMAGE of the map with "
+                         "probability P (the user, 2026-10-16). The policy sees the "
+                         "reflected observation (image columns reversed, the normal's "
+                         "left component, lateral velocity and yaw rate negated) and "
+                         "its yaw / side key are reflected on the way to the engine; "
+                         "GoldSrc movement is reflection-symmetric, so that IS the "
+                         "mirror-image map, same physics, same reward "
+                         "(surfgym/mirror.py). Evals stay on the real map. Needs "
+                         "--view-continuous; refuses the route fan, --act-hist / "
+                         "--obs-compass, --chunk, --frame-stack, --obs-views. "
+                         "ckpt restores")
+    ap.add_argument("--eval-mirror", type=int, default=None, choices=(0, 1),
+                    help="1 = every eval also flies the greedy policy on the MIRROR "
+                         "IMAGE of the map (traj_<step>_mirror.jsonl; "
+                         "race/eval_progress_mirror, race/eval_finishes_mirror, "
+                         "race/map_pct_mirror). For a policy trained without "
+                         "--aug-mirror that is a held-out map with the training map's "
+                         "exact physics, route and difficulty. Single map, no DDP. "
+                         "ckpt restores")
+    ap.add_argument("--aug-drop", type=float, default=None,  # 0 = off
+                    help="DrAC augmentation in the UPDATE (surfgym/augment.py): each "
+                         "pixel of the image (all channels) is zeroed with this "
+                         "probability. ckpt restores")
+    ap.add_argument("--aug-noise", type=float, default=None,  # 0 = off
+                    help="DrAC augmentation in the UPDATE: N(0, sigma^2) added to every "
+                         "image channel. ckpt restores")
+    ap.add_argument("--aug-shift", type=int, default=None,  # 0 = off
+                    help="DrAC augmentation in the UPDATE: the image shifted by a random "
+                         "integer in [-K, K] pixels on each axis, edge pixels replicated "
+                         "into the gap. ckpt restores")
+    ap.add_argument("--aug-coef", type=float, default=None,
+                    help="DrAC's alpha_r (default 0.1, the paper's): loss += coef x "
+                         "(KL(pi(s) || pi(aug s)) + (V(aug s) - V(s))^2), the clean "
+                         "frame's policy and value as fixed targets; rollouts and evals "
+                         "see clean frames. ckpt restores")
     ap.add_argument("--gamma", type=float, default=None)   # 0.995; ckpt restores
     ap.add_argument("--gae", type=float, default=None)     # 0.95; ckpt restores
     ap.add_argument("--clip", type=float, default=None)    # 0.2; ckpt restores
@@ -4961,6 +5068,26 @@ def main() -> None:
                          "Zeros on the field's unreachable sentinel. Follows "
                          "whichever field RaceReward shapes on, so a "
                          "--goal-reward euclid/geo run points at the GOAL")
+    ap.add_argument("--obs-surf", type=int, default=None, choices=(0, 1),
+                    help="append ONE column: 1 while the player rides a "
+                         "surfable face, else 0 (surfgym/surfflag.py; user, "
+                         "2026-10-19). The 15 core scalars cannot tell "
+                         "ramp-riding from free fall (both are airborne in "
+                         "the engine). The test is --surf-bonus's contact "
+                         "test over one decision: airborne at both ends and "
+                         "vz gave back more than free fall would, below the "
+                         "velocity clamp. LAST column of the scalar side; "
+                         "shape-changing, so a resume restores it, refuses "
+                         "dropping it, and zero-widens a checkpoint onto it")
+    ap.add_argument("--obs-pot-rate", type=int, default=None, choices=(0, 1),
+                    help="append ONE column: the rate the shaping potential "
+                         "changes along the velocity, -grad d . v / 1000 "
+                         "(surfgym/obsaux.PotRate; user, 2026-10-19) - "
+                         "positive while flying down the field. The gradient "
+                         "is --obs-compass's own (same code, world frame); "
+                         "pair the two flags to see the gradient as well. "
+                         "LAST column of the scalar side (after --obs-surf); "
+                         "shape-changing like --obs-surf")
     # --- goal conditioning (surfgym/goalsys.py, research-plan-goalcond.md)
     ap.add_argument("--goals", type=int, default=None, choices=(0, 1),
                     help="1 = per-env sphere goals from the agent's own "
@@ -5990,7 +6117,8 @@ def main() -> None:
     ap.add_argument("--unstuck-int", type=int, default=None, choices=[0, 1],
                     help="--unstuck: intrinsic coefficient x (1+T) and the "
                          "count decay; default 1")
-    ap.add_argument("--unstuck-reach", default=None, choices=["res", "alive", "stage"],
+    ap.add_argument("--unstuck-reach", default=None,
+                    choices=["res", "alive", "stage", "eval"],
                     help="--unstuck: WHICH progress measure the plateau "
                          "detector watches. res (default) = the respawn "
                          "reservoir's deepest reach (or the arc reach); "
@@ -6002,7 +6130,12 @@ def main() -> None:
                          "reading saturates on dives and on window spawns "
                          "and pinned T at its cap for whole runs "
                          "(2026-09-13); logged as unstuck/reach, "
-                         "unstuck/reach_n.")
+                         "unstuck/reach_n. eval = the GREEDY EVAL's "
+                         "frontier, the deepest (d at spawn - min d) any "
+                         "eval episode reached, read once per "
+                         "--record-every (2026-10-18: sidGEOu's reservoir "
+                         "reach crept past eps four times while its evals "
+                         "were flat, so T never rose).")
     ap.add_argument("--unstuck-reach-start-only", action="store_true",
                     help="--unstuck-reach alive: count only TRUE-START episodes, "
                          "identified by their first tick (within 128 u of a map "
@@ -6262,6 +6395,47 @@ def main() -> None:
     ap.add_argument("--respawn-backward-floor", type=float, default=None,
                     help="--respawn-backward: nearest admitted distance to "
                          "the goal, u (default 256: outside the trigger)")
+    # --- --respawn-novel (user, 2026-10-19; surfgym.respawn.NovelSpawnSampler)
+    ap.add_argument("--respawn-novel", action="store_true", default=None,
+                    help="replace --respawn-novel-frac of the RESERVOIR rows "
+                         "of the spawn pool by the policy's own reservoir "
+                         "states MOVED to where it has never been (a visit "
+                         "grid of --respawn-novel-cell u, one cell of "
+                         "clearance), never deeper than the deepest point a "
+                         "REAL episode (map start or reservoir) reached - "
+                         "potential <= the best potential - keeping their "
+                         "velocity, view and keys. A novel episode is never "
+                         "harvested into the reservoir and never moves the "
+                         "ceiling, so it cannot teleport the run forward. "
+                         "Needs the reservoir (--respawn-frac > 0)")
+    ap.add_argument("--respawn-novel-frac", type=float, default=None,
+                    help="--respawn-novel: share of the NON-start pool "
+                         "(default 0.5)")
+    ap.add_argument("--respawn-novel-shell", type=float, default=None,
+                    help="--respawn-novel: share of the moved states taken "
+                         "from the deepest --respawn-novel-shell-width of the "
+                         "reservoir, nearest where the agent dies; the rest "
+                         "are flattened over progress (default 0.5)")
+    ap.add_argument("--respawn-novel-shell-width", type=float, default=None,
+                    help="--respawn-novel: the deep shell as a quantile of "
+                         "the reservoir's field distances (default 0.25)")
+    ap.add_argument("--respawn-novel-radius", type=float, nargs=2,
+                    default=None, metavar=("MIN", "MAX"),
+                    help="--respawn-novel: how far a state is moved, u, "
+                         "uniform in [MIN, MAX] along a uniform direction "
+                         "(default 256 2048)")
+    ap.add_argument("--respawn-novel-cell", type=float, default=None,
+                    help="--respawn-novel: the visit grid's cell, u; a moved "
+                         "state must sit in a cell whose 3x3x3 block no "
+                         "training env has entered (default 128)")
+    ap.add_argument("--respawn-novel-tries", type=int, default=None,
+                    help="--respawn-novel: displacements tried per source "
+                         "state (default 8)")
+    ap.add_argument("--respawn-novel-window", type=float, default=None,
+                    help="--respawn-novel: 'visited' means entered within the last "
+                         "W..2W env steps (two grids rolled every W), so a place the "
+                         "current policy no longer goes to is novel again; 0 = ever "
+                         "visited (default 1e7)")
     ap.add_argument("--int-view", type=int, default=None,
                     help="yaw sectors in the novelty count key (0 = off; "
                          "8 = 45-degree sectors). Position-only counts are "
@@ -7213,6 +7387,14 @@ def main() -> None:
             if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
                 setattr(args, _k, float(ck_cfg[_k]))
                 restored.append(f"{_k}={getattr(args, _k):g}")
+        # --aug-mirror / --eval-mirror / the DrAC block: training-time only (no tensor
+        # shape moves, a checkpoint resumes with or without them), restored so a plain
+        # resume continues the arm it came from
+        for _k, _ty in (("aug_mirror", float), ("eval_mirror", int), ("aug_drop", float),
+                        ("aug_noise", float), ("aug_shift", int), ("aug_coef", float)):
+            if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
+                setattr(args, _k, _ty(ck_cfg[_k]))
+                restored.append(f"{_k}={getattr(args, _k):g}")
         for _k in ("int_move_gate", "int_dwell", "int_speed_cum", "int_speed_weight_up"):
             if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
                 setattr(args, _k, bool(ck_cfg[_k]))
@@ -7260,6 +7442,24 @@ def main() -> None:
                 and ck_cfg.get("respawn_frontier_uniform")):
             args.respawn_frontier_uniform = True
             restored.append("respawn_frontier_uniform")
+        # --respawn-novel: a spawn DISTRIBUTION, restored like the frontier
+        if args.respawn_novel is None and ck_cfg.get("respawn_novel"):
+            args.respawn_novel = True
+            restored.append("respawn_novel")
+        for _nk in ("respawn_novel_frac", "respawn_novel_shell",
+                    "respawn_novel_shell_width", "respawn_novel_cell"):
+            if getattr(args, _nk) is None and ck_cfg.get(_nk) is not None:
+                setattr(args, _nk, float(ck_cfg[_nk]))
+        if (args.respawn_novel_radius is None
+                and ck_cfg.get("respawn_novel_radius")):
+            args.respawn_novel_radius = [
+                float(v) for v in ck_cfg["respawn_novel_radius"]]
+        if (args.respawn_novel_tries is None
+                and ck_cfg.get("respawn_novel_tries") is not None):
+            args.respawn_novel_tries = int(ck_cfg["respawn_novel_tries"])
+        if (args.respawn_novel_window is None
+                and ck_cfg.get("respawn_novel_window") is not None):
+            args.respawn_novel_window = float(ck_cfg["respawn_novel_window"])
         # --respawn-backward: a spawn DISTRIBUTION, restored like the frontier
         if args.respawn_backward is None and ck_cfg.get("respawn_backward"):
             args.respawn_backward = True
@@ -7582,6 +7782,28 @@ def main() -> None:
                 "of the compass would shift its five columns and feed the "
                 "checkpoint's weights permuted inputs. Resume at "
                 f"--act-hist {_ck_hist}, or start a fresh run")
+        # --obs-surf: the same growth rule. Restored when the flag is absent,
+        # refused when it would drop the trained column, and ADDED to a
+        # checkpoint by widen_for_obs' trailing zero-pad (it is LAST).
+        _ck_surf = int(ck_cfg.get("obs_surf") or 0)
+        if args.obs_surf is None and _ck_surf:
+            args.obs_surf = _ck_surf
+            restored.append(f"obs_surf={args.obs_surf}")
+        if _ck_surf and not int(args.obs_surf or 0):
+            raise SystemExit(
+                "this checkpoint was trained with --obs-surf 1: dropping the "
+                "column would feed its weights a row one short. Resume "
+                "without --obs-surf 0, or start a fresh run")
+        # --obs-pot-rate: the same rule, one column further out
+        _ck_prate = int(ck_cfg.get("obs_pot_rate") or 0)
+        if args.obs_pot_rate is None and _ck_prate:
+            args.obs_pot_rate = _ck_prate
+            restored.append(f"obs_pot_rate={args.obs_pot_rate}")
+        if _ck_prate and not int(args.obs_pot_rate or 0):
+            raise SystemExit(
+                "this checkpoint was trained with --obs-pot-rate 1: dropping "
+                "the column would feed its weights a row one short. Resume "
+                "without --obs-pot-rate 0, or start a fresh run")
         # --priv-critic changes the SHAPE of value_head and adds the priv
         # MLP, so a resume has to agree with the checkpoint on it. Restoring
         # it silently (like route_critic_only above) is right for a bare
@@ -7997,6 +8219,18 @@ def main() -> None:
         args.wd = 0.0
     if args.dropout is None:
         args.dropout = 0.0
+    for _k, _v in (("aug_mirror", 0.0), ("eval_mirror", 0), ("aug_drop", 0.0),
+                   ("aug_noise", 0.0), ("aug_shift", 0)):
+        if getattr(args, _k) is None:
+            setattr(args, _k, _v)
+    if args.aug_coef is None:
+        args.aug_coef = 0.1
+    if not 0.0 <= float(args.aug_mirror) <= 1.0:
+        raise SystemExit(f"--aug-mirror {args.aug_mirror:g}: a probability, 0..1")
+    if not 0.0 <= float(args.aug_drop) < 1.0:
+        raise SystemExit(f"--aug-drop {args.aug_drop:g}: a pixel share, 0 <= p < 1")
+    if float(args.aug_noise) < 0.0 or int(args.aug_shift) < 0 or float(args.aug_coef) < 0.0:
+        raise SystemExit("--aug-noise / --aug-shift / --aug-coef must be >= 0")
     if args.clip is None:
         args.clip = 0.2
     if args.ent is None:
@@ -8103,6 +8337,17 @@ def main() -> None:
         args.respawn_frontier_uniform = False
     if args.respawn_backward is None:
         args.respawn_backward = False
+    if args.respawn_novel is None:
+        args.respawn_novel = False
+    for _nk, _nv in (("respawn_novel_frac", 0.5),
+                     ("respawn_novel_shell", 0.5),
+                     ("respawn_novel_shell_width", 0.25),
+                     ("respawn_novel_cell", 128.0),
+                     ("respawn_novel_radius", [256.0, 2048.0]),
+                     ("respawn_novel_tries", 8),
+                     ("respawn_novel_window", 1e7)):
+        if getattr(args, _nk) is None:
+            setattr(args, _nk, _nv)
     for _bk, _bv in (("respawn_backward_start", 0.05),
                      ("respawn_backward_step", 0.05),
                      ("respawn_backward_rate", 0.2),
@@ -8377,8 +8622,33 @@ def main() -> None:
         args.act_hist = 0
     if args.obs_compass is None:
         args.obs_compass = 0
+    if args.obs_surf is None:
+        args.obs_surf = 0
+    if args.obs_pot_rate is None:
+        args.obs_pot_rate = 0
     args.act_hist = max(0, int(args.act_hist))
     args.obs_compass = int(bool(args.obs_compass))
+    args.obs_surf = int(bool(args.obs_surf))
+    args.obs_pot_rate = int(bool(args.obs_pot_rate))
+    if args.obs_surf and args.route_critic_only:
+        raise SystemExit("--route-critic-only sends the whole scalar-side "
+                         "block to the critic, so the --obs-surf flag would "
+                         "never reach the actor it is for")
+    if args.obs_pot_rate and args.route_critic_only:
+        raise SystemExit("--route-critic-only sends the whole scalar-side "
+                         "block to the critic, so the --obs-pot-rate column "
+                         "would never reach the actor it is for")
+    if args.obs_pot_rate and args.reward != "race":
+        # the compass's refusal: no race reward, no field to differentiate
+        raise SystemExit("--obs-pot-rate reads the shaping distance field, "
+                         "which only --reward race builds (got "
+                         f"--reward {args.reward})")
+    if args.obs_pot_rate and args.goals:
+        # under --goals the shaped field is per env (GoalDistField, row-aligned
+        # to envs and re-centred per eval episode); this column reads each map
+        # slot's own field, so it is refused rather than fed the wrong one
+        raise SystemExit("--obs-pot-rate reads each map's own shaping field; "
+                         "it is not wired for --goals")
     if args.act_hist > 16:
         raise SystemExit(f"--act-hist {args.act_hist}: 16 decisions is "
                          "already 96 scalar columns; the cap is there to "
@@ -10524,6 +10794,49 @@ def main() -> None:
                   f"{args.respawn_binned}), the shell OFF once the cap "
                   f"reaches d0, finishes harvested with the "
                   f"{args.respawn_margin:g} s margin like deaths")
+    # --respawn-novel (user, 2026-10-19): the policy's own reservoir states MOVED to where it has
+    # never been, never deeper than its real best (surfgym.respawn.NovelSpawnSampler). One
+    # sampler per map: the visit grid and the ceiling are map coordinates
+    NOVEL = bool(args.respawn_novel)
+    if NOVEL:
+        if respawn is None or args.respawn_frac <= 0.0:
+            raise SystemExit("--respawn-novel needs the reservoir (--respawn-frac > 0): "
+                             "the moved states are the policy's own reservoir states")
+        for _bad, _why in ((args.respawn_random, "--respawn-random"),
+                           (args.respawn_frontier, "--respawn-frontier"),
+                           (args.respawn_backward, "--respawn-backward"),
+                           (demo is not None, "--demo-file"),
+                           (bool(args.goals), "--goals"),
+                           (D.enabled, "DDP (the visit grid and the ceiling are per rank)")):
+            if _bad:
+                raise SystemExit(f"--respawn-novel is not wired with {_why}")
+        for _i, slot in enumerate(slots):
+            _fld = (slot.reward_field if slot.reward_field is not None
+                    else slot.goal_field)
+            if _fld is None or not hasattr(_fld, "grid"):
+                raise SystemExit("--respawn-novel needs the geodesic goal field "
+                                 "(--reward race --race-dist geodesic)")
+            slot.novel = NovelSpawnSampler(
+                slot.core, _fld, slot.hi - slot.lo,
+                cell=float(args.respawn_novel_cell),
+                radius=tuple(float(v) for v in args.respawn_novel_radius),
+                shell_frac=float(args.respawn_novel_shell),
+                shell_width=float(args.respawn_novel_shell_width),
+                tries=int(args.respawn_novel_tries),
+                d0=float(slot.rf_d0 or 0.0),
+                window=float(args.respawn_novel_window), seed=73 + 101 * _i)
+            # a novel spawn's episode is DISCARDED at its end, never harvested
+            slot.respawn.skip = slot.novel.novel_env
+        print(f"respawn NOVEL: {args.respawn_novel_frac:.0%} of the non-start pool = own "
+              f"reservoir states moved {args.respawn_novel_radius[0]:g}-"
+              f"{args.respawn_novel_radius[1]:g} u along a uniform direction to a "
+              f"{args.respawn_novel_cell:g} u cell no training env has entered (one cell of "
+              f"clearance; 'entered' = within the last "
+              f"{args.respawn_novel_window / 1e6:g}-{2 * args.respawn_novel_window / 1e6:g}M "
+              f"steps, 0 = ever), no deeper than the deepest point a REAL episode reached; "
+              f"velocity, view and keys kept; {args.respawn_novel_shell:.0%} of the sources "
+              f"from the deepest {args.respawn_novel_shell_width:.0%} of the reservoir, the "
+              f"rest flattened over progress; novel episodes are never harvested")
     if args.respawn_backward:
         for _i, slot in enumerate(slots):
             _fld = (slot.reward_field if slot.reward_field is not None
@@ -10965,7 +11278,14 @@ def main() -> None:
     # --ramp-obs-vec: the arrow to the next ramp, four columns LAST of all - after the pass flag -
     # so a checkpoint without it grows onto it by widen_for_obs' trailing zero-pad
     N_RVEC = 4 if (RPLAN and int(args.ramp_obs_vec or 0)) else 0
-    N_ROUTE = N_FAN + N_LATCH + N_AUX + N_CC + N_KEYS + N_RATCHET + N_PASS + N_RVEC
+    # --obs-surf: the surfing flag, ONE column LAST of all - after the arrow - so a checkpoint
+    # without it grows onto it by widen_for_obs' trailing zero-pad (surfgym/surfflag.py)
+    N_SURF = 1 if int(args.obs_surf or 0) else 0
+    # --obs-pot-rate: the rate of the shaping potential along the velocity, ONE column LAST of
+    # all - after the surfing flag - by the same trailing-widen rule (surfgym/obsaux.PotRate)
+    N_PRATE = 1 if int(args.obs_pot_rate or 0) else 0
+    N_ROUTE = (N_FAN + N_LATCH + N_AUX + N_CC + N_KEYS + N_RATCHET + N_PASS + N_RVEC
+               + N_SURF + N_PRATE)
     # column of the --race-latch flag, and the first column of the aux block.
     # With no aux block LATCH_COL is N_SCALAR + N_ROUTE - 1 exactly as before.
     LATCH_COL = N_SCALAR + N_FAN + N_LATCH - 1
@@ -10975,9 +11295,34 @@ def main() -> None:
     CC_COL = N_SCALAR + N_FAN + N_LATCH + N_AUX + N_CC - 1
     # --keys-hold: the 7-wide block, between the T column and the ratchet gap
     KEYS0 = N_SCALAR + N_FAN + N_LATCH + N_AUX + N_CC
-    RATCHET_COL = N_SCALAR + N_ROUTE - N_RVEC - N_PASS - 1
-    PASS_COL = N_SCALAR + N_ROUTE - N_RVEC - 1
-    RVEC0 = N_SCALAR + N_ROUTE - N_RVEC
+    RATCHET_COL = N_SCALAR + N_ROUTE - N_PRATE - N_SURF - N_RVEC - N_PASS - 1
+    PASS_COL = N_SCALAR + N_ROUTE - N_PRATE - N_SURF - N_RVEC - 1
+    RVEC0 = N_SCALAR + N_ROUTE - N_PRATE - N_SURF - N_RVEC
+    SURF_COL = N_SCALAR + N_ROUTE - N_PRATE - 1
+    PRATE_COL = N_SCALAR + N_ROUTE - 1
+    if N_SURF:
+        print(f"--obs-surf: obs column {SURF_COL} = 1 while riding a surfable face "
+              "(airborne at both ends of the decision, vz gave back more than free fall, "
+              "below the velocity clamp), else 0 (surfgym/surfflag.py)")
+    if N_PRATE:
+        print(f"--obs-pot-rate: obs column {PRATE_COL} = -grad d . v / 1000, the rate the "
+              "shaping potential changes along the velocity (+ = flying down the field; "
+              "the compass's gradient, 0 off the reachable set; surfgym/obsaux.PotRate)")
+
+    def eval_prate_feed(slot):
+        """--obs-pot-rate: a feed on the eval slot's own shaping field; None without the
+        flag (PotRate is stateless, so one feed per wrapper is only tidiness)."""
+        if not N_PRATE:
+            return None
+        return make_pot_rate_feed(slot.reward_field)
+
+    def eval_surf_feed(core):
+        """--obs-surf: a FRESH feed per recording (its tracker's first decision reads 0),
+        on the recorded core's own physics; None without the flag."""
+        if not N_SURF:
+            return None
+        _ph = core.config.phys
+        return make_surf_feed(_ph.sv_gravity, TICK.ms, K, vmax=float(_ph.sv_maxvelocity))
     if N_RVEC:
         print(f"--ramp-obs-vec: obs columns {RVEC0}..{RVEC0 + N_RVEC - 1} = the arrow to the next "
               "ramp (unit vector forward / left / up in the view's frame, length / 2,000 u)")
@@ -10988,6 +11333,60 @@ def main() -> None:
         print(f"{KeysHold(1).describe()}; obs columns "
               f"{KEYS0}..{KEYS0 + N_KEYS - 1}; policy heads {NVEC} "
               f"(engine {NVEC_CORE})")
+    # ---- --aug-mirror / --eval-mirror (surfgym/mirror.py) and DrAC (surfgym/augment.py) ----
+    # The mirror reflects the ROW the policy reads and the engine row it writes; every block
+    # of the row whose meaning a reflection changes has to be reflected with it, so the ones
+    # nobody taught surfgym/mirror.py are refused rather than silently fed unreflected.
+    MIRROR_P = float(args.aug_mirror)
+    EVAL_MIRROR = bool(int(args.eval_mirror))
+    MIRROR = None
+    if MIRROR_P > 0.0 or EVAL_MIRROR:
+        _mw = "--aug-mirror" if MIRROR_P > 0.0 else "--eval-mirror"
+        _why = [why for bad, why in (
+            (not VIEWC, "the discrete yaw bins (needs --view-continuous)"),
+            (N_FAN > 0, "the route / goal fan (its lateral offsets)"),
+            (N_AUX > 0, "--act-hist / --obs-compass (engine-frame history, ego compass)"),
+            (H > 0, "--chunk"),
+            (STACK > 1, "--frame-stack"),
+            (int(args.obs_views) > 1, "--obs-views (a camera ring: left and right swap)"),
+            (YCOND, "--yaw-cond"),
+            (RNN, "--rnn (not wired)"),
+            (bool(args.goals), "--goals (per-env lines and goal views)"),
+            (int(getattr(lidar, "views", 1) or 1) > 1, "a multi-view target / goal channel"),
+        ) if bad]
+        if _why:
+            raise SystemExit(f"{_mw}: not with " + "; ".join(_why))
+        if EVAL_MIRROR and (MULTI or NHELD or D.enabled or args.goal_planner):
+            raise SystemExit("--eval-mirror is single-map, single-process, no goal planner "
+                             "(one extra greedy eval on the rank that writes progress.csv, "
+                             "without the planner's eval hooks)")
+        from surfgym.mirror import layout_for as _mirror_layout
+        MIRROR = _mirror_layout(lidar, gps=bool(args.gps),
+                                rvec0=(RVEC0 if N_RVEC else -1))
+        if MIRROR.frame != FRAME:
+            raise SystemExit(f"{_mw}: the mirror's frame {MIRROR.frame} != the row's {FRAME}")
+        print(f"{_mw}: " + (f"{MIRROR_P:.0%} of training episodes fly the MIRROR IMAGE of "
+                             "the map; " if MIRROR_P > 0.0 else "")
+              + ("every eval also flies it greedily; " if EVAL_MIRROR else "")
+              + MIRROR.describe())
+    AUG_ON = (float(args.aug_drop) > 0.0 or float(args.aug_noise) > 0.0
+              or int(args.aug_shift) > 0)
+    AUG_DROP, AUG_NOISE = float(args.aug_drop), float(args.aug_noise)
+    AUG_SHIFT, AUG_COEF = int(args.aug_shift), float(args.aug_coef)
+    augmod = AUG_SHAPE = None          # bound either way: mb_step closes over both
+    if AUG_ON:
+        if H > 0 or RNN or STACK > 1 or int(args.obs_views) > 1:
+            raise SystemExit("--aug-drop / --aug-noise / --aug-shift: not with --chunk, "
+                             "--rnn, --frame-stack or --obs-views (one camera frame, "
+                             "the flat minibatch step)")
+        if float(args.aug_coef) <= 0.0:
+            raise SystemExit("--aug-coef 0 with an augmentation on trains nothing on it")
+        from surfgym import augment as augmod
+        AUG_SHAPE = (int(lidar.H), int(lidar.W), int(lidar.channels))
+        if AUG_SHAPE[0] * AUG_SHAPE[1] * AUG_SHAPE[2] != FRAME:
+            raise SystemExit(f"--aug-*: the frame {AUG_SHAPE} != the row's {FRAME} columns")
+        print(augmod.describe(float(args.aug_drop), float(args.aug_noise),
+                              int(args.aug_shift), float(args.aug_coef)))
     # --race-arc: a route used by the REWARD, not by the observation. It is a
     # separate object from --route on purpose - the lookahead fan widens the
     # policy's input row and --race-arc must not, or the arm would be moving
@@ -11282,6 +11681,16 @@ def main() -> None:
                              f"the row was sized for {N_AUX}")
         print(obs_aux.describe() + f" -> obs columns "
               f"{AUX0}..{AUX0 + N_AUX - 1}")
+    # --obs-pot-rate: each map slot's own shaping field (--goals, the only per-env field, is
+    # refused above), so a multi-map fleet differentiates every env against ITS map
+    pot_rate = None
+    if N_PRATE:
+        _pr_field = [(_s.sl, _s.reward_field) for _s in slots]
+        for _sl, _f in _pr_field:
+            if _f is None:
+                raise SystemExit("--obs-pot-rate: this run has no shaping distance "
+                                 "field to read (no goal field was built)")
+        pot_rate = PotRate(N, _pr_field)
     SCAL = N_SCALAR + N_ROUTE                 # the whole scalar half of a row
     obs_dim = core.obs_dim + N_ROUTE + FRAME * STACK
     REWARD_SLOT = 12          # an absolute-position channel, hidden at gps=False
@@ -12061,6 +12470,12 @@ def main() -> None:
             if N_RVEC and not int(ck_cfg.get("ramp_obs_vec") or 0):
                 # the arrow is LAST: the exact trailing widen below
                 _grew.append("--ramp-obs-vec 1")
+            if N_SURF and not int(ck_cfg.get("obs_surf") or 0):
+                # the surfing flag is LAST of all: the exact trailing widen below
+                _grew.append("--obs-surf 1")
+            if N_PRATE and not int(ck_cfg.get("obs_pot_rate") or 0):
+                # the rate column is LAST of all, after the surfing flag
+                _grew.append("--obs-pot-rate 1")
             if CC and not int(ck_cfg.get("curiosity_cond") or 0):
                 # a plain checkpoint onto the T-conditioned family: the T
                 # column is LAST, so the zero-pad below is the exact
@@ -12968,6 +13383,18 @@ def main() -> None:
         meta["config"]["wd"] = float(args.wd)
     if float(args.dropout) > 0.0:
         meta["config"]["dropout"] = float(args.dropout)
+    # --aug-mirror / --eval-mirror / DrAC: written ONLY when on, so a control
+    # run's config dump is the pre-flag one (record_ckpt.py declares all six
+    # TRAIN_ONLY: none changes what a recording of the real map means)
+    if float(args.aug_mirror) > 0.0:
+        meta["config"]["aug_mirror"] = float(args.aug_mirror)
+    if int(args.eval_mirror):
+        meta["config"]["eval_mirror"] = 1
+    if AUG_ON:
+        meta["config"]["aug_drop"] = float(args.aug_drop)
+        meta["config"]["aug_noise"] = float(args.aug_noise)
+        meta["config"]["aug_shift"] = int(args.aug_shift)
+        meta["config"]["aug_coef"] = float(args.aug_coef)
     if args.goal_field_file:
         meta["config"]["goal_field_file"] = str(args.goal_field_file)
     if args.demo_file and float(args.demo_front_frac) > 0.0:
@@ -13039,6 +13466,26 @@ def main() -> None:
                                "archive_window": float(args.archive_window),
                                "archive_hold": float(args.archive_hold),
                                "archive_cap": int(args.archive_cap)})
+    # --obs-surf: written ONLY when set (a run without it dumps the config it
+    # always did); a resume restores it, and record_ckpt mirrors it
+    if N_SURF:
+        meta["config"]["obs_surf"] = 1
+    # --obs-pot-rate: the same - written only when set, restored by a resume, mirrored by
+    # record_ckpt
+    if N_PRATE:
+        meta["config"]["obs_pot_rate"] = 1
+    # --respawn-novel: a spawn DISTRIBUTION, written only when set (a control run's dump is
+    # unchanged) and in full, so a resume restores the same sampler
+    if NOVEL:
+        meta["config"].update({
+            "respawn_novel": 1,
+            "respawn_novel_frac": float(args.respawn_novel_frac),
+            "respawn_novel_shell": float(args.respawn_novel_shell),
+            "respawn_novel_shell_width": float(args.respawn_novel_shell_width),
+            "respawn_novel_radius": [float(v) for v in args.respawn_novel_radius],
+            "respawn_novel_cell": float(args.respawn_novel_cell),
+            "respawn_novel_tries": int(args.respawn_novel_tries),
+            "respawn_novel_window": float(args.respawn_novel_window)})
     # --unstuck: written ONLY when set (a control run's config dump stays
     # byte-identical); every knob rides along so a resume restores them
     if UNSTUCK:
@@ -13611,6 +14058,30 @@ def main() -> None:
         # visited, finishes (all / map-start spawns), the greedy eval.
         from surfgym.goaljump import JUMP_COLS as _JUMP_COLS
         CSV_COLS += list(_JUMP_COLS)
+    #   aug/mirror_frac   --aug-mirror: the share of the fleet flying the mirror image,
+    #                     averaged over the iteration's decisions (should sit at P)
+    #   aug/kl, aug/v_mse --aug-*: DrAC's G_pi = KL(pi(s) || pi(aug s)) and
+    #                     G_V = (V(aug s) - V(s))^2, mean over the update's minibatches
+    #   race/*_mirror     --eval-mirror: race/eval_progress, the number of greedy
+    #                     finishes and race/map_pct of the eval on the MIRROR IMAGE
+    # LAST, and only when on (a control run's header is the pre-flag one)
+    CSV_COLS += ((["aug/mirror_frac"] if MIRROR_P > 0.0 else [])
+                 + (["aug/kl", "aug/v_mse"] if AUG_ON else [])
+                 + (["race/eval_progress_mirror", "race/eval_finishes_mirror",
+                     "race/map_pct_mirror"] if EVAL_MIRROR else []))
+    # --respawn-novel, one block per map, LAST and only when on:
+    #   novel/ceiling   the deepest PROGRESS (d0 - d) a REAL episode (map start or
+    #                   reservoir, never a novel row) has reached: no novel row is deeper
+    #   novel/rows      novel rows in this iteration's pool
+    #   novel/prog_med  their median progress;  novel/moved_med  how far they were moved, u
+    #   novel/share     the share of the episodes that STARTED this iteration from one
+    #   novel/visited   visit-grid cells entered so far
+    if NOVEL:
+        for _s in slots:
+            _sfx = f".{_s.tag}" if MULTI else ""
+            CSV_COLS += [f"novel/ceiling{_sfx}", f"novel/rows{_sfx}",
+                         f"novel/prog_med{_sfx}", f"novel/moved_med{_sfx}",
+                         f"novel/share{_sfx}", f"novel/visited{_sfx}"]
     if D.is_main:                    # four append handles corrupt the file
         csv_path = out / "progress.csv"
         if csv_path.exists() and csv_path.stat().st_size:
@@ -13996,6 +14467,23 @@ def main() -> None:
     rvec_pin = (torch.zeros((N, N_RVEC), pin_memory=(device.type == "cuda"))
                 if N_RVEC else None)
     rvec_np = rvec_pin.numpy() if N_RVEC else None
+    # --obs-surf: the surfing flag's tracker (surfgym/surfflag.py, the same class the eval feeds
+    # drive), its pinned staging row, and the fleet-wide onground / vz it reads every decision
+    surf_flag = surf_pin = surf_np = surf_og = surf_vz = None
+    if N_SURF:
+        _ph0 = slots[0].core.config.phys
+        surf_flag = SurfFlag(N, g_step_of(_ph0.sv_gravity, TICK.ms, K), K,
+                             vmax=float(_ph0.sv_maxvelocity))
+        surf_pin = torch.zeros((N, 1), pin_memory=(device.type == "cuda"))
+        surf_np = surf_pin.numpy()[:, 0]
+        surf_og = np.zeros(N, np.int32)
+        surf_vz = np.zeros(N, np.float64)
+    # --obs-pot-rate: its pinned staging row and the fleet-wide velocity it reads every decision
+    prate_pin = prate_np = prate_vel = None
+    if N_PRATE:
+        prate_pin = torch.zeros((N, 1), pin_memory=(device.type == "cuda"))
+        prate_np = prate_pin.numpy()[:, 0]
+        prate_vel = np.zeros((N, 3), np.float64)
     # --priv-critic: one pinned (N, 10) staging block, filled in place off
     # the live core states and the reward object, then uploaded with the
     # rest of the per-decision traffic. static_priv is a STATIC buffer like
@@ -14053,6 +14541,11 @@ def main() -> None:
                 _sl.core.set_pitch(PITCH_PIN)
         fleet.fill_pose(vis_np)
         vis_gpu.copy_(vis_pin, non_blocking=True)
+        if NOVEL:
+            # --respawn-novel: every env marks its visit cell, and the REAL
+            # envs' deepest field distance lowers the ceiling
+            for _s in slots:
+                _s.novel.observe(vis_np[_s.sl, 0:3])
         # --route: the lookahead fan rides the SAME pose upload the renderer
         # needs, so it costs one argmin and no extra host->device traffic.
         # Speed comes from the scalar row (slot 3 = |v_xy|/1000), which the
@@ -14099,6 +14592,25 @@ def main() -> None:
             # respawn with its new window). 32 KB host->device at N=2048, off the graph
             rvec_np[:] = goalsys.target_vecs()
             dst[:, RVEC0:RVEC0 + N_RVEC].copy_(rvec_pin, non_blocking=True)
+        if N_SURF:
+            # --obs-surf: the flag for the state the policy is about to act on, against the
+            # previous decision's. fill_vision runs after the reward call and after
+            # surf_flag.reset(ended_acc), so a row that just started reads 0. The gravity step
+            # follows the tick (a --tick-ms-schedule moves it). 8 KB host->device, off the graph
+            for _sl in fleet.slots:
+                _sv = _sl.core.states_view
+                surf_og[_sl.lo:_sl.hi] = _sv["onground"]
+                surf_vz[_sl.lo:_sl.hi] = _sv["velocity"][:, 2]
+            surf_flag.g_step = g_step_of(slots[0].core.config.phys.sv_gravity, TICK.ms, K)
+            surf_flag.features(surf_og, surf_vz, out=surf_np)
+            dst[:, SURF_COL:SURF_COL + 1].copy_(surf_pin, non_blocking=True)
+        if N_PRATE:
+            # --obs-pot-rate at the pose this call renders from (vis_np, the whole fleet) and
+            # the velocity of the same instant. 8 KB host->device, off the graph
+            for _sl in fleet.slots:
+                prate_vel[_sl.lo:_sl.hi] = _sl.core.states_view["velocity"]
+            pot_rate.features(vis_np[:, 0:3], prate_vel, out=prate_np)
+            dst[:, PRATE_COL:PRATE_COL + 1].copy_(prate_pin, non_blocking=True)
         if N_CC:
             # --curiosity-cond: the T of the episode the state belongs to
             # (fill_vision runs AFTER the reward call, which redrew it for
@@ -14581,6 +15093,17 @@ def main() -> None:
     obs_pin.copy_(torch.from_numpy(obs_np))
     static_obs[:, :N_SCALAR].copy_(obs_pin, non_blocking=True)
     fill_vision(static_obs)
+    mir_np = mir_t = mir_rng = None
+    mir_frac_acc = [0.0, 0]        # aug/mirror_frac: the mirrored share, summed per decision
+    if MIRROR_P > 0.0:
+        # --aug-mirror: which side of the mirror each env's CURRENT episode is on. Drawn
+        # per episode from its own stream (rank-distinct, like the env seeds), so no other
+        # draw of the run moves; redrawn at every episode start, at the decision boundary
+        mir_rng = np.random.default_rng(
+            (int(args.seed) * 2654435761 + 104729 + D.rank) & 0x7FFFFFFFFFFFFFFF)
+        mir_np = mir_rng.random(N) < MIRROR_P
+        mir_t = torch.as_tensor(mir_np, device=device)
+        MIRROR.obs_(static_obs, mir_t)
     if args.obs_reward:
         static_obs[:, REWARD_SLOT] = 0.0     # no previous reward at reset
     if RNN:
@@ -14681,6 +15204,9 @@ def main() -> None:
     # CURRENT iteration's rollout runs at; the observe() call at the end of
     # each iteration sets the next one.
     unstuck_sched, unstuck_T, INT_BASE, UR = None, 0.0, None, None
+    # --unstuck-reach eval: the last greedy frontier not yet observed (NaN =
+    # no new reading)
+    unstuck_eval_reach = float("nan")
     if UNSTUCK:
         if args.unstuck_reach == "alive":
             if not slots[0].rf_d0:
@@ -14709,6 +15235,18 @@ def main() -> None:
                   "episode of the iteration "
                   + ("TOUCHED (--ramp-touch)" if int(args.ramp_touch or 0) else "passed")
                   + f"; one more target is progress (eps {args.unstuck_eps:g})")
+        elif args.unstuck_reach == "eval":
+            # --unstuck-reach eval (2026-10-18): the greedy eval's frontier,
+            # one reading per recording, consumed by the NEXT iteration's
+            # detector (the eval runs after it in the same iteration)
+            if slots[0].goal_field is None:
+                raise SystemExit("--unstuck-reach eval reads the greedy eval's "
+                                 "geodesic progress: it needs the race goal field")
+            print(f"--unstuck-reach eval: the plateau detector watches the greedy "
+                  f"eval's frontier (the deepest d at spawn - min d of "
+                  f"{args.eval_eps or 3} episodes), one reading per "
+                  f"{int(args.record_every):,} steps; eps {args.unstuck_eps:g}u, "
+                  f"patience {args.unstuck_patience:,.0f} steps")
         elif respawn is None and not (isinstance(reward_fn, RaceReward)
                                       and reward_fn.arc is not None):
             raise SystemExit("--unstuck has no progress measure to watch: "
@@ -14740,6 +15278,16 @@ def main() -> None:
                   + (f"{unstuck_sched.best:,.0f}u"
                      if unstuck_sched.best == unstuck_sched.best else "n/a")
                   + f", {unstuck_sched.n_decays} count decays so far")
+            # a resume that switches the measure: the stored best was taken
+            # on the old one (a checkpoint from before --unstuck-reach
+            # existed watched the reservoir)
+            _ck_reach = (ck.get("config") or {}).get("unstuck_reach") or "res"
+            if _ck_reach != args.unstuck_reach:
+                unstuck_sched.reseed(global_step)
+                print(f"--unstuck-reach {args.unstuck_reach} (the checkpoint "
+                      f"watched {_ck_reach}): its best reading is dropped and "
+                      f"the patience window restarts at {global_step:,}; "
+                      f"T stays {unstuck_sched.T:.3f}")
         unstuck_T = float(unstuck_sched.T)
         INT_BASE = [float(_s.reward_fn.int_coef) for _s in slots]
         if UNSTUCK_TEMP:
@@ -14799,6 +15347,16 @@ def main() -> None:
                   + (f" [{_s.tag}]" if MULTI else "") + f": margin +"
                   f"{_sc.T:.3f}, stuck {_sc.stuck_steps:,} steps, best "
                   + (f"{_sc.best:,.0f}u" if _sc.best == _sc.best else "n/a"))
+    if NOVEL and args.ckpt and ck.get("respawn_novel") is not None:
+        _rn = ck["respawn_novel"]
+        for _s in slots:
+            if isinstance(_rn, dict) and _s.tag in _rn:
+                _ok = _s.novel.load_state_dict(_rn[_s.tag])
+                print("restored --respawn-novel state"
+                      + (f" [{_s.tag}]" if MULTI else "")
+                      + (f": {int(_s.novel.visit.sum()):,} visited cells, ceiling d "
+                         f"{_s.novel.d_best:,.0f}u" if _ok
+                         else ": grid mismatch, starting a fresh visit grid"))
     if BACKWARD and args.ckpt and ck.get("respawn_backward") is not None:
         _rb = ck["respawn_backward"]
         for _s in slots:
@@ -14811,6 +15369,11 @@ def main() -> None:
                       f"({_s.backward.W / _s.backward.d0:.1%} of d0), "
                       f"{_s.backward.n_adv} advances")
     eval_fwd = eval_path = eval_speed = eval_prog = eval_fin = float("nan")
+    # --eval-mirror: (progress, finishes, % of the route) of the last greedy eval on the
+    # MIRROR IMAGE of the map; --aug-*: the last update's mean DrAC terms. Carried
+    # forward between evals / updates exactly like the eval_* values above
+    eval_mir = (float("nan"), float("nan"), float("nan"))
+    aug_kl_v = aug_vm_v = float("nan")
     # the two aggregates the multi-map run is judged on (see the eval block):
     # mean over maps of the % of that map's own route covered, and the
     # fraction of maps with at least one box finish; then the same two
@@ -14866,6 +15429,10 @@ def main() -> None:
             state["respawn_backward"] = {
                 _s.tag: _s.backward.state_dict()
                 for _s in slots if _s.backward is not None}
+        if NOVEL:
+            # --respawn-novel: the visit grid and the ceiling, per map - a resume that
+            # forgot them would call the whole beaten path "never visited"
+            state["respawn_novel"] = {_s.tag: _s.novel.state_dict() for _s in slots}
         if RETN:
             # the running (mu, sigma) IS part of the value function under
             # --ret-norm: without it the restored critic's outputs have no
@@ -14969,6 +15536,27 @@ def main() -> None:
             logits, value = policy.forward_split(
                 f_scal[idx], img,
                 priv=(None if f_priv is None else f_priv[idx]))
+            if AUG_ON:
+                # --aug-*: DrAC (surfgym/augment.py) - the same rows through the
+                # network on an augmented frame; the clean outputs are the fixed
+                # target, taken BEFORE the yaw-cond table or a mask touches them.
+                # AUG_ON is a Python constant: a control run traces the graph it
+                # always traced.
+                logits_a, value_a = policy.forward_split(
+                    f_scal[idx],
+                    augmod.augment_image(img, *AUG_SHAPE, AUG_DROP, AUG_NOISE,
+                                         AUG_SHIFT),
+                    priv=(None if f_priv is None else f_priv[idx]))
+                if VIEWC:
+                    _cs, _ms = split_view(logits.float())
+                    _ca, _ma = split_view(logits_a.float())
+                    aug_kl, aug_vm = augmod.drac_terms(
+                        packer.pad(_cs)[:, N_VIEW:], packer.pad(_ca)[:, N_VIEW:],
+                        value, value_a, _ms, _ma, policy.log_std())
+                else:
+                    aug_kl, aug_vm = augmod.drac_terms(
+                        packer.pad(logits.float()), packer.pad(logits_a.float()),
+                        value, value_a)
             if H > 0:
                 # the JOINT log-prob PPO's ratio is taken over:
                 #   log pi(code | s_chunk)  +  sum_h log p(a_h | dec[code, h])
@@ -15069,6 +15657,11 @@ def main() -> None:
             # 64 identical codes (that IS code collapse), decoder entropy
             # alone by one code the policy always picks.
             loss = loss - args.dec_ent * dl_ent.mean()
+        if AUG_ON:
+            # DrAC: L_PPO + alpha_r (G_pi + G_V); the two terms ride out for aug/*
+            loss = loss + AUG_COEF * (aug_kl + aug_vm)
+            return (loss, pg, vl, el, logp,
+                    torch.stack([aug_kl.detach(), aug_vm.detach()]))
         return loss, pg, vl, el, logp
 
     # ---- --rnn: the SEQUENCE minibatch step ---------------------------------
@@ -15959,6 +16552,18 @@ def main() -> None:
                             int(round((len(_rp) - _nf)
                                       * args.respawn_frontier_frac)),
                             _s.respawn)
+                    if _s.novel is not None:
+                        # --respawn-novel: out of the RESERVOIR rows too, so
+                        # the map-start share stays what it was. The visit
+                        # window rolls first (every --respawn-novel-window)
+                        _s.novel.roll(global_step)
+                        _nf = max(1, int(round(len(_rp)
+                                               * (1.0 - args.respawn_frac))))
+                        _rp = _s.novel.mix(
+                            _rp, _nf,
+                            int(round((len(_rp) - _nf)
+                                      * args.respawn_novel_frac)),
+                            _s.respawn)
                     _set_pool(_s, _rp)
             elif SPAWN_STATES is not None:
                 # --spawn-states before the reservoir fills: map starts + own states
@@ -16143,6 +16748,12 @@ def main() -> None:
                     b_kact[t].copy_(kact_pin, non_blocking=True)
                 if VIEWC:
                     np.copyto(view_np32, view_pin.numpy())
+                if mir_np is not None:
+                    # --aug-mirror: the policy acted in the mirror image, so its yaw and side
+                    # key reflect back on the way to the ENGINE - after the keys resolve, so
+                    # the held state stays in the policy's frame, and after b_act recorded
+                    # the policy-space draw PPO scores
+                    mirror_actions_(act_np32, view_np32 if VIEWC else None, mir_np)
                 if H > 0:
                     # the chunk's whole plan, host-side: the tick loop reads
                     # row _j//K out of it and needs no further GPU traffic
@@ -16478,8 +17089,35 @@ def main() -> None:
                                         ti, pos_np,
                                         np.degrees(np.arctan2(to[:, 7], to[:, 8]))),
                                     device=device))
+                            if N_SURF:
+                                # --obs-surf AT s_T: the flag of the last decision. The
+                                # truncation can fall inside a decision, where the K-tick test
+                                # is undefined, and surf_flag.reset runs only after this loop,
+                                # so .flag still holds the ended episode's value
+                                blocks.append(torch.as_tensor(
+                                    surf_flag.flag[ti], device=device).reshape(-1, 1))
+                            if N_PRATE:
+                                # --obs-pot-rate AT s_T: the reconstructed terminal pose and
+                                # the terminal velocity (obs 0/1 = velocity in the yaw frame
+                                # / 1000, 2 = vz / 1000; 7/8 = sin/cos yaw), at FULL fleet
+                                # width like the compass - every other row is a placeholder
+                                # (the previous decision's pose, zero velocity), discarded
+                                p_t = np.array(vis_np[:, 0:3], np.float64)
+                                v_t = np.zeros((N, 3), np.float64)
+                                p_t[ti] = pos_np
+                                v_t[ti, 0] = (to[:, 0] * to[:, 8] - to[:, 1] * to[:, 7]) * 1000.0
+                                v_t[ti, 1] = (to[:, 0] * to[:, 7] + to[:, 1] * to[:, 8]) * 1000.0
+                                v_t[ti, 2] = to[:, 2] * 1000.0
+                                blocks.append(torch.as_tensor(
+                                    pot_rate.features(p_t, v_t)[ti].copy(),
+                                    device=device).reshape(-1, 1))
                             blocks.append(vis)
                             full = torch.cat(blocks, dim=1)
+                            if mir_t is not None:
+                                # --aug-mirror: s_T belongs to the episode that just ENDED,
+                                # flown in the mirror iff its flag says so - the flags are
+                                # redrawn only at the decision boundary, after this
+                                MIRROR.obs_(full, mir_t[torch.as_tensor(ti, device=device)])
                             pv = None
                             if PRIV:
                                 # --priv-critic: V(s_T) needs the CRITIC's
@@ -16579,6 +17217,13 @@ def main() -> None:
                         stag = fleet.stagnant_mask()
                         fleet.observe_respawn(ended, stagnant=stag,
                                               success=gmask)
+                        if NOVEL and ended.any():
+                            # --respawn-novel: tag the episodes that just
+                            # started. AFTER the harvest above, which judged
+                            # the ENDED episodes under their own tags
+                            for _s in slots:
+                                _s.novel.note_spawns(_s.core.states_view,
+                                                     ended[_s.sl])
                         if goalsys is not None and ended.any():
                             goalsys.assign(np.flatnonzero(ended))
                         if track_bins and ended.any():
@@ -16781,6 +17426,12 @@ def main() -> None:
                     # bootstrap (which reads keys.boot) and BEFORE
                     # fill_vision.
                     keys.reset(ended_acc)
+                if surf_flag is not None:
+                    # --obs-surf: every episode start forgets the previous decision's vz (a
+                    # fresh spawn has nothing to compare with, so its first flag reads 0).
+                    # AFTER the truncation bootstrap (which reads surf_flag.flag) and BEFORE
+                    # fill_vision, like the two above
+                    surf_flag.reset(ended_acc)
                 if MACRO:
                     # --goal-planner learned / vocab: every env whose plan
                     # ended during this decision's ticks (completed, timed
@@ -16794,9 +17445,22 @@ def main() -> None:
                         _cut_np = np.zeros(N, np.float32)
                         _cut_np[_replanned] = 1.0
                         b_cut[t].copy_(torch.from_numpy(_cut_np).to(device, non_blocking=True))
+                if mir_np is not None:
+                    # --aug-mirror: every episode that starts here (autoreset, reservoir
+                    # respawn, stall kill) draws its own side of the mirror - AFTER the
+                    # truncation bootstrap reflected the ended episodes' s_T by their old
+                    # flags, BEFORE the fresh episodes' first observation is built
+                    _n_end = int(ended_acc.sum())
+                    if _n_end:
+                        mir_np[ended_acc] = mir_rng.random(_n_end) < MIRROR_P
+                        mir_t.copy_(torch.from_numpy(mir_np))
+                    mir_frac_acc[0] += float(mir_np.mean())
+                    mir_frac_acc[1] += 1
                 # b_done[t] is ended_acc already on the device — reuse it
                 # rather than paying a second host->device copy
                 fill_vision(static_obs, b_done[t] > 0 if ring is not None else None)
+                if mir_t is not None:
+                    MIRROR.obs_(static_obs, mir_t)
                 # optional tighter novelty-count window (--int-sync-every);
                 # t is rank-identical so the collective stays symmetric
                 if int_sync > 0 and (t + 1) % int_sync == 0 and t + 1 < T:
@@ -17277,6 +17941,7 @@ def main() -> None:
             sub_pool = (on_policy if sub_pool is None
                         else sub_pool[torch.isin(sub_pool, on_policy)])
         last_diag = None
+        aug_sum, aug_n = None, 0       # --aug-*: DrAC's (G_pi, G_V) over this update
         env_np = None
         # --critic-warmup: is THIS update a critic-only one? Counted in
         # updates from the start of this run, so a resume of a resume that
@@ -17345,7 +18010,7 @@ def main() -> None:
                         f_air, f_jblk, f_priv, f_z=f_z, f_temp=temp_t,
                         f_tempv=tempv_t, envs=env_perm[_e], seg=plans[k_mb])
                 else:
-                    loss, pg, vl, el, logp = mb_step(
+                    _mbo = mb_step(
                         f_scal, f_img, f_act, f_logp, f_adv, f_ret, idx,
                         ent_t, f_age, f_code, f_dmask,
                         None if a_mean is None else a_mean[k_mb],
@@ -17353,6 +18018,11 @@ def main() -> None:
                         f_air, f_jblk, f_priv, f_z=f_z, f_temp=temp_t,
                         f_tempv=tempv_t, f_cct=f_cct, f_bkt=f_bkt,
                         f_reti=f_reti)
+                    loss, pg, vl, el, logp = _mbo[:5]
+                    if AUG_ON:
+                        # --aug-*: (G_pi, G_V) summed over the update, one read per iteration
+                        aug_sum = _mbo[5] if aug_sum is None else aug_sum + _mbo[5]
+                        aug_n += 1
                 if warming:
                     # ONLY the value term, in the same units the joint loss
                     # weights it with, so the critic's effective step size is
@@ -17451,6 +18121,9 @@ def main() -> None:
                                     vl.detach(), pg.detach(), el.detach()])
                 D.all_reduce_mean_(diag)
                 kl, loss_v, loss_pi, loss_ent = diag.tolist()
+        if AUG_ON and aug_n:
+            # --aug-*: the update's MEAN DrAC terms (every minibatch, not the last)
+            aug_kl_v, aug_vm_v = (aug_sum / aug_n).tolist()
         if SR_ON and D.is_main and it_no % 50 == 1:
             # the mask share is the MEAN over the period's iterations:
             # episode ends are synchronised across envs, so one iteration
@@ -17601,6 +18274,10 @@ def main() -> None:
             if args.unstuck_reach == "stage":
                 # --unstuck-reach stage: the most targets an episode of this iteration reached
                 _res_prog = goalsys.pop_stage_best()
+            elif args.unstuck_reach == "eval":
+                # --unstuck-reach eval: the frontier of the last greedy
+                # recording, read once (between evals there is no reading)
+                _res_prog, unstuck_eval_reach = unstuck_eval_reach, float("nan")
             elif UR is not None:
                 # --unstuck-reach alive: the iteration's deepest point that
                 # was still alive `hold` later replaces the reservoir reading
@@ -17614,7 +18291,10 @@ def main() -> None:
                 if _mf == _mf and slots[0].rf_d0:
                     _res_prog = float(slots[0].rf_d0) * (1.0 - float(_mf))
             _arc_prog = float("nan")
-            if isinstance(reward_fn, RaceReward) and reward_fn.arc is not None:
+            if (args.unstuck_reach != "eval" and isinstance(reward_fn, RaceReward)
+                    and reward_fn.arc is not None):
+                # (eval watches the greedy line ALONE: the training arc reach
+                # is a rollout measure like the reservoir's)
                 _arc_prog = float(rs.get("arc_reach", float("nan")))
             _T_next, _decay_due = unstuck_sched.observe(
                 global_step, _res_prog, _arc_prog)
@@ -17798,6 +18478,29 @@ def main() -> None:
                         print(f"[{global_step:>13,d}] "
                               + _s.backward.line(
                                   f"[{_s.tag}]" if MULTI else ""))
+        # ---- --respawn-novel: the ceiling, this iteration's rows, the share ----
+        novel_note, novel_row = "", None
+        if NOVEL:
+            novel_row, _nn = [], []
+            for _s in slots:
+                _ns = _s.novel.stats()
+                _sh = _s.novel.pop_share()
+                _ce = _ns["ceiling"]
+                novel_row += [round(_ce, 1) if _ce == _ce else "",
+                              int(_ns.get("n", 0)),
+                              round(_ns["prog_med"], 1) if "prog_med" in _ns else "",
+                              round(_ns["moved_med"], 1) if "moved_med" in _ns else "",
+                              round(_sh, 4) if _sh == _sh else "",
+                              int(_ns["visited"])]
+                _nn.append("  novel{} ceil {:,.0f}u rows {:,} eps {}".format(
+                    f"[{_s.tag}]" if MULTI else "", _ce if _ce == _ce else 0.0,
+                    int(_ns.get("n", 0)),
+                    "{:.0%}".format(_sh) if _sh == _sh else "n/a"))
+            novel_note = "".join(_nn)
+            if it_no % 100 == 1:
+                for _s in slots:
+                    print(f"[{global_step:>13,d}] "
+                          + _s.novel.line(f"[{_s.tag}]" if MULTI else ""))
         # ---- --gate-boxes: this iteration's ramp visits, hit vs miss ------
         gate_note, gate_row = "", None
         if GATE is not None:
@@ -17989,7 +18692,9 @@ def main() -> None:
                                            vec_fn=(goalsys.eval_vec_feed(
                                                        _s.name if (RPLAN and MULTI)
                                                        else None)
-                                                   if N_RVEC else None)),
+                                                   if N_RVEC else None),
+                                           surf_fn=eval_surf_feed(_s.eval_core),
+                                           prate_fn=eval_prate_feed(_s)),
                                path, episodes=n_rec,
                                max_ticks=n_rec * args.ep_ticks,
                                seed=global_step & 0x7FFFFFFF,
@@ -18026,6 +18731,11 @@ def main() -> None:
                     if n_ep:
                         prog_note += (f"  cover {pct_sum / n_ep:5.1f}%"
                                       f"  box {n_box}/{n_ep}")
+                    if UNSTUCK and args.unstuck_reach == "eval" and not _s.heldout:
+                        # --unstuck-reach eval (single-map: --unstuck refuses
+                        # --maps): the next iteration's detector reads this
+                        unstuck_eval_reach = race_frontier(path, _s.goal_field)
+                        prog_note += f"  frontier {unstuck_eval_reach:7.0f}u"
                 if _s.heldout and _s.route is not None:
                     # the honest frontier on a held-out map that has a
                     # reference line (tools/eval_honesty.py --order-only 16)
@@ -18083,7 +18793,9 @@ def main() -> None:
                                                         if N_PASS else None),
                                                vec_fn=((lambda _c, n: np.zeros((n, 4),
                                                                                np.float32))
-                                                       if N_RVEC else None)),
+                                                       if N_RVEC else None),
+                                               surf_fn=eval_surf_feed(_s.eval_core),
+                                               prate_fn=eval_prate_feed(_s)),
                                    spath, episodes=n_rec,
                                    max_ticks=n_rec * args.ep_ticks,
                                    seed=global_step & 0x7FFFFFFF,
@@ -18093,6 +18805,61 @@ def main() -> None:
                         print(f"[{global_step:>13,d}] stoch : path "
                               f"{np.mean([e['path'] for e in sst]):7.0f}u"
                               f" -> {spath.name}")
+                if EVAL_MIRROR and not _s.heldout:
+                    # --eval-mirror: the SAME greedy eval, same seed, on the mirror image
+                    # of the map (surfgym/mirror.py). The trajectory holds the REAL states
+                    # (the agent flies the real map, perceived reflected), so every tool
+                    # that scores the real route scores this file unchanged
+                    mpath = out / f"traj_{global_step:010d}{sfx}_mirror.jsonl"
+                    _mv_stall = (None if _ev_stall is None
+                                 else make_eval_stall_hook(
+                                     _s.eval_core, _s.reward_fn.field,
+                                     _s.reward_fn.stall_ticks,
+                                     _s.reward_fn.stall_eps,
+                                     _s.reward_fn.every))
+                    record_rollout(_s.eval_core,
+                                   EVAL_GREEDY(policy, packer, device, _s.lidar,
+                                               _s.eval_core, K, STACK,
+                                               extra_slot=(REWARD_SLOT
+                                                           if args.obs_reward
+                                                           else -1),
+                                               extra_fn=_s.eval_reward_feed,
+                                               route=route,
+                                               latch_fn=_s.eval_latch_feed,
+                                               pitch_fixed=args.pitch_fixed,
+                                               aux=_s.eval_aux, masks=MASKS,
+                                               priv_fn=_s.eval_priv_feed,
+                                               cc_fn=_s.eval_cc_feed,
+                                               ratchet_fn=_s.eval_ratchet_feed,
+                                               keys_hold=args.keys_hold,
+                                               mirror=MIRROR,
+                                               surf_fn=eval_surf_feed(_s.eval_core),
+                                               prate_fn=eval_prate_feed(_s)),
+                                   mpath, episodes=n_rec,
+                                   max_ticks=n_rec * args.ep_ticks,
+                                   seed=global_step & 0x7FFFFFFF,
+                                   on_tick=_mv_stall,
+                                   header_extra={**_hdr, "mirror": 1})
+                    m_prog = m_fin = m_pct = float("nan")
+                    m_note = ""
+                    if _s.goal_field is not None:
+                        m_prog = race_progress(mpath, _s.goal_field)
+                        m_nfin, m_fins, m_best = eval_finish_times(mpath, _s.goal_field)
+                        m_psum, m_nep, m_box = race_coverage(mpath, _s.goal_field,
+                                                             _s.goal_box)
+                        m_fin = float(m_nfin)
+                        m_pct = m_psum / m_nep if m_nep else float("nan")
+                        if m_nfin:
+                            m_note = (f"  fin {m_nfin}/{n_rec} mean {m_fins:.2f}s "
+                                      f"best {m_best:.2f}s")
+                        if m_prog == m_prog:
+                            m_note += f"  track {m_prog:7.0f}u/{_s.d0:.0f}u"
+                        if m_nep:
+                            m_note += f"  cover {m_pct:5.1f}%  box {m_box}/{m_nep}"
+                    if _mv_stall is not None and _mv_stall.state["n"]:
+                        m_note += f"  stallkill {_mv_stall.state['n']}"
+                    eval_mir = (m_prog, m_fin, m_pct)
+                    print(f"[{global_step:>13,d}] greedy[MIRROR]:{m_note} -> {mpath.name}")
             # ONE collective, fixed (NMAPS, 10) shape - every row was
             # written by exactly one rank, so a SUM is the gather. After
             # this line the table is identical on every rank, which is the
@@ -18210,6 +18977,18 @@ def main() -> None:
             # the planner's (or the diet's) window (reset here) and its last
             # update / eval
             plan_note, plan_row = goalsys.learned.note_and_row()
+        # --aug-mirror / --aug-* / --eval-mirror: the trailing aug block (CSV_COLS order)
+        aug_row = []
+        if MIRROR_P > 0.0:
+            aug_row.append(round(mir_frac_acc[0] / mir_frac_acc[1], 4)
+                           if mir_frac_acc[1] else "")
+            mir_frac_acc[:] = [0.0, 0]
+        if AUG_ON:
+            aug_row += [round(v, 6) if v == v else "" for v in (aug_kl_v, aug_vm_v)]
+        if EVAL_MIRROR:
+            aug_row += [round(eval_mir[0], 1) if eval_mir[0] == eval_mir[0] else "",
+                        int(eval_mir[1]) if eval_mir[1] == eval_mir[1] else "",
+                        round(eval_mir[2], 3) if eval_mir[2] == eval_mir[2] else ""]
         if D.is_main:
             csv_w.writerow([global_step, round(rmean, 4), round(lmean, 1),
                             round(fps),
@@ -18315,7 +19094,11 @@ def main() -> None:
                            + (crl_row if crl_row is not None else [])
                            # plan/*, LAST and only under --goal-planner
                            # learned
-                           + (plan_row if plan_row is not None else []))
+                           + (plan_row if plan_row is not None else [])
+                           # aug/* and race/*_mirror, after everything (only when on)
+                           + aug_row
+                           # novel/*, after those (only under --respawn-novel)
+                           + (novel_row if novel_row is not None else []))
             csv_f.flush()
         race_note = ""
         if isinstance(reward_fn, RaceReward) and race_sr == race_sr:
@@ -18377,6 +19160,9 @@ def main() -> None:
             # the continuous heads are sharpening or blowing up
             _ls = policy.log_std().exp().tolist()
             hyg_note += "  sig " + "/".join(f"{_v:.3f}" for _v in _ls)
+        if AUG_ON and aug_kl_v == aug_kl_v:
+            # --aug-*: how far the augmented frame's answer still is from the clean one
+            hyg_note += f"  drac kl {aug_kl_v:.4f} v {aug_vm_v:.4f}"
         _dmx, _dfd = (dip_stats["max_survived_depth"],
                       dip_stats["fail_depth"])
         if _dmx == _dmx or _dfd == _dfd:
@@ -18394,7 +19180,7 @@ def main() -> None:
         print(f"step {global_step:>13,d}  rew {rmean:8.2f}  len {lmean:6.0f}  "
               f"fps {fps:,.0f}  kl {kl:.4f}  ent {ent_coef:.4f}"
               f"{hyg_note}{race_note}{front_note}{back_note}{gate_note}"
-              f"{unstuck_note}{cc_note}{crl_note}{imatch_note}")
+              f"{unstuck_note}{cc_note}{crl_note}{imatch_note}{novel_note}")
         tm.flush(it_no)
         if D.enabled:
             # C2 production asserts (docs/ddp-plan.md §5): cheap, exact,

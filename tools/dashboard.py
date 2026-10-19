@@ -447,6 +447,8 @@ def _loop_info(d: Path):
             steps = last_step
         pov = d / f"{p.stem}.pov.mp4"
         mode = "stoch" if p.stem.endswith("_stoch") else "greedy"
+        if p.stem.endswith("_mirror"):          # --eval-mirror: the mirror-image map
+            mode = "MIRROR-image map " + mode
         trajs.append({"file": f"/runs/{name}/{p.name}", "steps": steps,
                       "kb": p.stat().st_size // 1024, "mode": f"recorded {mode}",
                       "map": None,
@@ -886,6 +888,8 @@ def _run_info(d: Path):
             steps = -1
         pov = d / f"{p.stem}.pov.mp4"
         mode = "stoch" if p.stem.endswith("_stoch") else "greedy"
+        if p.stem.endswith("_mirror"):          # --eval-mirror: the mirror-image map
+            mode = "MIRROR-image map " + mode
         for tag in ("reservoir", "mixed", "ramp", "platform"):
             if f"_{tag}" in p.stem:                  # spawn-override records
                 mode = f"{tag}-spawns · {mode}"

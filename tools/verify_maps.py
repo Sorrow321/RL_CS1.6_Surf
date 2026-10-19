@@ -105,7 +105,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "python"))
 
 from surfgym import SurfCore, default_config                    # noqa: E402
-from surfgym.vision import SOLID_ENT_CLASSES, grid_dims, pick_cell  # noqa: E402
+from surfgym.vision import grid_dims, pick_cell, rasterize_thin_panes  # noqa: E402
 from surfgym.zones import detect_zones, parse_bsp               # noqa: E402
 
 # A directory of `<map>.zones.json` files to use INSTEAD of `detect_zones`.
@@ -149,29 +149,7 @@ def slab_occupancy_inline(core, cell, occ, mins, dims):
             off = np.zeros(3)
             off[axis] = k * step
             occ |= core.occupancy_grid(mins + off, cell, nx, ny, nz)
-    ents, bboxes = parse_bsp(core.bsp_path)
-    thin = 0
-    for ent in ents:
-        model = ent.get("model", "")
-        if (ent.get("classname") == "func_conveyor"
-                and int(float(ent.get("spawnflags", 0))) & 2):
-            continue                                  # SF_CONVEYOR_NOTSOLID
-        if ent.get("classname") not in SOLID_ENT_CLASSES or not model.startswith("*"):
-            continue
-        try:
-            mi = int(model[1:])
-        except ValueError:
-            continue
-        if mi >= len(bboxes):
-            continue
-        bmn, bmx = np.asarray(bboxes[mi][0]), np.asarray(bboxes[mi][1])
-        if float((bmx - bmn).min()) > 20.0:
-            continue                                  # thick: lattice-sample it
-        lo = np.maximum(np.floor((bmn - mins) / cell - .001), 0).astype(int)
-        hi = np.minimum(np.ceil((bmx - mins) / cell + .001),
-                        [nx, ny, nz]).astype(int)
-        occ[lo[2]:hi[2], lo[1]:hi[1], lo[0]:hi[0]] = 1
-        thin += 1
+    thin = rasterize_thin_panes(core, occ, mins, cell)
     return occ, thin
 
 
