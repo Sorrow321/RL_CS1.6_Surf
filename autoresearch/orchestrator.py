@@ -3,7 +3,7 @@
 A round forks config.branches_per_round branch agents from ONE workspace (a git commit + the
 protected incumbent). Each is a fresh Claude Code session ("flush") in its own slot directory
 (a git worktree, ~/ar/wt/b<k>) on its own branch ar/r<round>b<k>, with at most one GPU box.
-They run for config.round_hours, uncoordinated. At the end every branch is scored with
+They run for config.round_hours (12 h), uncoordinated. At the end every branch is scored with
 autoresearch/score.py (the best greedy eval from the true start its runs produced). The winner's
 branch head seeds the next round, and the losers are archived and pruned. The schedule is
 fixed, not plateau-triggered (the paper: plateau triggers are hard to tune and rarely fired).
@@ -143,6 +143,7 @@ def launch(st, slot, resume=False) -> None:
     cont = "--continue " if resume else ""
     script = (f"#!/bin/bash\ncd {shlex.quote(str(d))}\nexport {env}\n"
               f"exec nice -n 10 {CLAUDE} -n ar-{slot['agent']} {cont}--permission-mode auto "
+              f"--model {CFG['model']} --effort {CFG['effort']} "
               f"\"$(cat .ar_prompt.txt)\"\n")
     (d / ".ar_launch.sh").write_text(script, encoding="utf-8")
     os.chmod(d / ".ar_launch.sh", 0o755)

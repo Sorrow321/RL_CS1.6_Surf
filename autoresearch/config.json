@@ -4,8 +4,8 @@
   "map": "maps/surf_src_sidistic.bsp",
   "field": "maps/surf_src_sidistic.goal_32.npz",
   "branches_per_round": 4,
-  "round_hours": 24,
-  "rounds": 3,
+  "round_hours": 12,
+  "rounds": 6,
   "wrapup_minutes": 40,
   "max_agents": 5,
   "max_boxes": 4,
@@ -66,5 +66,7 @@
     "--obs-pot-rate",
     "1"
   ],
-  "start_d": 97768.0
+  "start_d": 97768.0,
+  "model": "claude-opus-5-5",
+  "effort": "max"
 }

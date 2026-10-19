@@ -10,8 +10,9 @@ and generic (CLAUDE.md sections 0 and 0b).
 * **Rounds.** Each round forks **4 branch agents** from one workspace: a git commit plus the
   protected incumbent checkpoint and eval. Every branch is a fresh Claude Code session
   ("flush") in its own slot (`~/ar/wt/b1..b4`) on its own branch (`ar/r<round>b<k>`).
-* **Schedule.** Rounds last **24 h** and there are **3**, at 0 / 24 / 48 h. That is the
-  paper's fixed 33% / 66% schedule with K = 4. Change `rounds` in `config.json` to extend.
+* **Schedule.** Rounds last **12 h** (user, 2026-10-20: 24 h is too long for one
+  lineage) and there are **6**, so 72 h in all. The schedule is fixed, as the paper advises,
+  with K = 4. Change `rounds` / `round_hours` in `config.json` to extend.
 * **Selection.** At a round's end every branch is scored by `autoresearch/score.py`. A
   branch's score is its best greedy eval from the true start. The winner's branch head seeds
   the next round. The losers are archived (`~/ar/archive/r<n>/`) and pruned.

@@ -24,6 +24,8 @@ export RLSURF_FLEET_DIR="$AR_HOME/fleet"
 PY="${AR_PY:-$AR_HOME/venv/bin/python}"
 mkdir -p "$AR_HOME/fleet"
 MAXB=$("$PY" -c "import json;print(json.load(open('$REPO/autoresearch/config.json'))['max_boxes'])")
+MODEL=$("$PY" -c "import json;print(json.load(open('$REPO/autoresearch/config.json'))['model'])")
+EFFORT=$("$PY" -c "import json;print(json.load(open('$REPO/autoresearch/config.json'))['effort'])")
 
 if pgrep -f "fleet_watchdog.py --daemon" >/dev/null; then
   echo "a fleet watchdog daemon is already running here: not starting a second one"
@@ -46,7 +48,8 @@ fi
 if ! tmux list-windows -t ar -F '#{window_name}' | grep -qx lead; then
   tmux new-window -d -t ar: -n lead -c "$REPO" \
     "export PATH=$AR_HOME/venv/bin:\$PATH AR_HOME=$AR_HOME RLSURF_FLEET_DIR=$AR_HOME/fleet; \
-nice -n 10 claude -n ar-lead --permission-mode auto \"\$(cat autoresearch/LEAD_PROMPT.txt)\"; sleep 86400"
+nice -n 10 claude -n ar-lead --permission-mode auto --model $MODEL --effort $EFFORT \
+\"\$(cat autoresearch/LEAD_PROMPT.txt)\"; sleep 86400"
 fi
 tmux list-windows -t ar -F '#{window_index} #{window_name}'
 echo "up. state: $AR_HOME/status.md   log: $AR_HOME/orchestrator.log"
