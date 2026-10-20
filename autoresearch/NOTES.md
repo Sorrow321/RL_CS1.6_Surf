@@ -778,3 +778,15 @@ physics as the sim (gravity 800, airaccelerate 100) except maxvelocity 3,500.
   **r2b2_t05** (18:10): resume of t1f3's ckpt_latest (7,949,778,944, md5 3da04170...) +
   `--unstuck-max 0.5`; novel frac 0.3 and the band settings restored; +1.5e9 steps; evals every 25M.
   Box extended to ~21:10 UTC.
+
+### 18:35 UTC: r2b2_t05 null; restart from the 6.354B checkpoint (r2b2_r635)
+
+* r2b2_t05 (T cap 0.5, 7.95-8.26B): 13 evals, all 27.3-27.5% (greedy line in the CP2 pit), training
+  ceiling flat at 29,098 u. Lowering T further did not free the line; no transient this time.
+* Since ~6.6B every checkpoint of this lineage (band64x -> t1 -> t1f3 -> t05) has a greedy line
+  locked into the pit dive, whatever T (2, 1, 0.5) and novel share (45%, 25%).
+* Restarted from the last checkpoint taken BEFORE the drift: band64x at 6,354,370,560 (the one the
+  16:05 bench measured: ramp vz max +1,180; its eval had 7/9 past the pit and one episode hitting the
+  thin wall 55 u below the lower opening). **r2b2_r635** (18:35) = that checkpoint (md5 16fe0cd0...,
+  T 2 at save) + `--unstuck-max 1 --respawn-novel-frac 0.3` (the T 2 -> 1 switch that produced the
+  28.841 eval and the ceiling jump, and the lower novel share), +1e9 steps, evals every 25M.
