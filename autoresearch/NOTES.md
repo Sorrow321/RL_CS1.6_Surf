@@ -582,3 +582,36 @@ checkpoint is taken from the BEST EVAL's run dir, so pull that run's ckpt_final.
   episode that dies at the window); with 0.5 s it is 0.5-1.5 s before (the slot's end, right
   before the shaft). Question: do respawns at the maneuver make the greedy line thread the
   window, and do training episodes go deeper into the room (novel ceiling > 28,174 u)?
+
+### r2b3_m05 result (13:35 UTC): no window crossing, stopped at 5.44B (337M steps)
+
+* Evals (best / median %): 5,177M 27.4/27.4, 5,252M 28.2/27.9, 5,328M 27.4/27.4 (most
+  episodes back on the OLD pit dive, -y lane, 24.7 s), 5,403M 27.9/27.3. No episode passes
+  the window; the novel ceiling stayed 28,174 u (no real episode went deeper).
+* Training side healthy (len 900-980, sigma 0.031); the reservoir's deepest state moved
+  72.03% -> 71.70% of d0 (progress 28.3% - the shaft): the reservoir now holds the maneuver's
+  start, and it still did not produce a crossing in ~300M steps. Margin alone: no.
+
+### CORRECTION: the room past the window is not a kill floor (kill shapes from the hull-1 clip tree)
+
+* The kill AABBs are broadphase boxes; `zones.hull_probe` gives the real shapes. *70 is only a
+  plate at z ~10,000-10,080; *20 is a plate at z ~10,400-10,470 spanning x 864-1,756 (the
+  room's floor west of x ~1,756, over a thin solid slab at z 10,404).
+* Under the shaft and the wall block a long surf ramp descends WEST: (2,464, 10,608) ->
+  (1,760, 9,968) (32 u voxels, both lanes and y = 0), under the room's floor slab, into an open
+  region (z ~9,970-10,380) that runs west under the wall block to the CP2 curtain
+  (x 768-816, z 10,060-11,300).
+* So the line past the slot is: shed height in the shaft (its bottom is kill *21 at z 10,690),
+  thread a window (z ~10,976-11,168, y +-(864-960)), drop steeply in the room's EAST part
+  (x 1,760-1,890, where *20 does not reach) onto the ramp, surf it down west, fly west under
+  the room to CP2 (30.9%). Training episodes reach 28.82% (x ~1,900 just inside the window)
+  and die - most likely flying too far west over *20 before they are low enough.
+  Renders: scratchpad sideview2.py (hull-1 kill containment), analysis only.
+
+### r2b3_t0: warm + `--unstuck-max 0` (the exploration temperature off) - launched 13:36 UTC
+
+* Same resume. T restored at 2 is capped to 0: sampling untempered, entropy coef 0.005 (from
+  0.015), intrinsic coef 0.25 (from 0.75), no count decay. Question: is T = 2 noise what keeps
+  the line from the precise drop/window (precision), or is it what found the CP2 line
+  (exploration)? First updates: approx_kl 1.0-3.1 (the untempered heads are ~3x sharper than
+  what the rollouts sampled for 2.7B steps).
