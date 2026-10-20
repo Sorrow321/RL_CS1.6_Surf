@@ -871,3 +871,11 @@ checkpoint is taken from the BEST EVAL's run dir, so pull that run's ckpt_final.
 * Incumbent checkpoint + `--time-pen 0.001 --surf-bonus 0 --critic-warmup 40` + archive spawns 0.3 +
   `--respawn-snap 0.25 --respawn-margin 0.5` + `--ez-eps 0.05 --ez-surf 0.5 --ez-front 0.1`, T 2 (restored),
   3.8B steps (to ~22:40 UTC). r2b4_fin (same without the reward change) was stopped at 5.16B after 60M steps.
+
+### 19:12 UTC - tp1 at 5,474M (+372M): main line holds; first real bowl surfs in a reservoir
+
+* Evals 28.220 / 28.198 / 28.235 / 28.056 / 27.964 (median 27.1-28.2%): `--time-pen 0.001` keeps the line,
+  where tp0's penalty 0 lost it (26.4). Stall 13%, crawl 29%.
+* Reservoir (newest 20k): low region 895 states, of which **4 fast and rising** (bowl surfs at the WR's surf
+  spot, e.g. (2,028, -462, 9,857) v (402, -863, +465)) + 36 slow hops; 1 fast-rising chamber state. Every
+  earlier reservoir had only slow hops there. Ceiling still the incumbent's 28,174 u.
