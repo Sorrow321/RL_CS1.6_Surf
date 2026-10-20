@@ -275,3 +275,15 @@ Fix: read the policy as pi(a | s, e_prev), with the AR(1) latent as exogenous st
 setting, not a recipe constant. The schedule counts STEPS, and on this 65k fps box the default 2e8
 patience is ~55 min of wall clock; the question is what correlated noise does at the recipe's T cap
 of 2 AT the wall. T rises 1.0 per 1e8 from 0.096: ~1 at ~990M, 2 at ~1.09B. Stop at 1,301M.
+
+### 04:25 UTC - arm 4 at 1.02B (T 1.28): the reservoir moves for the first time
+
+* T 0.16 -> 1.28 over 915M -> 1,019M; approx_kl 0.041-0.049 (iteration max <= 0.09): healthy
+  under heat, with 25% correlated envs.
+* `dip/max_survived_depth` chunk means 0.27-0.29 at T 0.2-0.4 -> 1.1-4.0 at T 0.9-1.2.
+* **Reservoir min-depth 74.50% -> 73.68% -> 73.57% of d0 once T passed ~1.1** (deepest
+  harvested state d ~71,930u). Never moved in arms 1-3 (74.3-74.6%). A state enters the reservoir
+  only if its episode lived >= 2 s after it, so training episodes now SURVIVE deeper at the wall.
+  The CP2 death point is d ~70,900-71,300 (72.5-72.9%), not yet passed.
+* Evals: 901.8M 27.40 (median 27.38), 977.3M 27.43 (median 27.33; the episodes switched to the
+  y ~ +840 lane). No crossing yet.
