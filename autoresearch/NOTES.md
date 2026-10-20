@@ -701,3 +701,19 @@ physics as the sim (gravity 800, airaccelerate 100) except maxvelocity 3,500.
   restored (band 0.05, tries 64, turn 90, shell 0.9/0.05, radius 256-3,072), +1.2e9 steps (to
   7.2B, ~95 min), evals every 25M. Watching: the training ceiling (real episodes past 28.82%), the
   greedy line entering the lower opening, and evals past 28.628.
+
+### 16:15 UTC: r2b2_band64x at 6.35B
+
+* Evals 6.0-6.35B: best **28.551** (6,027M); 3 consecutive collapses to ~15% (6,102-6,153M). The
+  collapse is a ramp at x ~6,800 (12.75-13.25 s): the agent turns UP so hard its horizontal speed
+  drops to ~0 and it stalls, where good evals keep 1,250-1,700 u/s through it. Plausibly
+  interference from the strong ramp turn-ups the cavity practice trains. Training ceiling flat.
+* The greedy line is closing on the cavity entry: at 6,354M episode 4 slides north along the block
+  face from the -y window and hits the thin wall at (2,512, 83, 10,715) - inside the lower
+  opening's y range, ~55 u below its bottom (ducked origin z >= ~10,770). Episodes 2 and 6 slide on
+  past the centre at z ~10,800.
+* Bench at 6.35B (ckpt_latest): ramp approach rose 9/11, **vz max +1,180** (6.0B: +845, the
+  human's +1,190), median life 3.66 s, best 27.43%; climb back/lane/west 3/3/3 (6.0B 7/6/5, 11
+  episodes each, noisy). The shaft and lower-opening sets give identical numbers for every
+  checkpoint (death in 0.6-0.9 s whatever the action: those demo states need an immediate turn), so
+  they are not informative; the greedy line is the entry's measure.
