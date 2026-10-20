@@ -331,3 +331,26 @@ steps/s. Measure it on your box in the first minute and size `--steps` to the ti
 * Bench v2 (scratchpad bench/corridor_east_py.npy: 64 own east-heading states moved to the
   +y corridor x 3,750-5,000, y 300-1,000, z 11,450-11,850; `xret` = how far west it comes
   back after the ramp) tracks the exit skill across checkpoints.
+
+### MILESTONE (04:50 UTC): ratchet + novel spawns, from scratch, FLY THE HUMAN'S CP2 LINE at 1,633M
+
+* r1b1_ratnovx eval 1,633M (score.py 28.553, best 28.55%, median 27.9%): 5 of 9 greedy
+  episodes reach the pit floor's west edge (x 2,587-2,608, z 11,349-11,436, 28.0 s, 27.95-27.98%)
+  and episode 6 passes it to x 2,224 (28.55%) before stopping dead and falling at 29.0 s.
+* Episode 6, against the human (ledger):
+  * 23.5-24.0 s: the usual U-turn at (4,673, -234, 12,344) -> heading west;
+  * 24.5 s: (4,121, -945, 11,666), v (1,162, 426, -1,078): it DROPS under the plate's level just
+    west of its edge (x < 4,194) and turns east again;
+  * 25.0-25.5 s: east through the corridor under *45 to (5,557, -350, 10,989);
+  * 26.0 s: (5,512, 466, 11,044), v (-1,376, 1,199, 34): the +y ramp turnaround
+    (human (5,554, 454, 11,079) at 25.5 s);
+  * 26.5-27.0 s: west CLIMBING, vz +305, +444 (human +260..+422);
+  * 27.5 s: (3,048, 838, 11,492), vz +44: LEVEL in the slot (human z ~11,469, vz -141);
+  * 28.0 s: (2,242, 886, 11,415): past the pit floor's west edge; 28.5 s: horizontal speed ~0
+    at x ~2,229 (an obstacle), falls, dies at (2,224, 815, 10,715).
+* The unstuck T was 1.76 at 1.40B and halved after this +1,029 u best (0.80 at 1.89B).
+* The CP2 curtain is still ahead (sgcp_2 at x 768-816, z 10,060-11,300); the next obstacle is
+  whatever stops the flight at x ~2,229.
+* How it came: ~1B steps at the wall with novel rows in the corridor (the turnaround is the
+  +y ramp's geometry) and the ratchet (no charge for the eastward leg). None of the warm arms
+  without the ratchet (nov, novezf: 800M at the wall between them) produced it.
