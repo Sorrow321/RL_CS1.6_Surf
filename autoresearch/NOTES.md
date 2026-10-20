@@ -863,3 +863,21 @@ physics as the sim (gravity 800, airaccelerate 100) except maxvelocity 3,500.
   (28.64%). That is ~750M steps after reaching the wall (~1.19B) vs ~980M for round 1's default
   sampler (ratnov, 651M -> 1,633M): consistent with the band helping dip-behind-the-frontier gates,
   one seed. The following evals (2.0-2.24B) fell back to 27.2-27.4%; T 1.14 and rising.
+
+### 22:40 UTC: from-scratch band lineage reaches 28.71%; per-run scores
+
+* r2b2_sband2 (1,335M -> 3,335M, band on): evals after the 1,940M pit crossing: 2,770M **28.555**,
+  3,148M **28.714** (the tunnel dive), 3,299M 28.507; others 24.7-27.7 (one 10.2 collapse). Training
+  ceiling 28,140 u (28.78%) by 3.19B. Final checkpoint local: runs/r2b2/r2b2_sband2/ckpt_final.pt
+  (3,335,520,256, md5 36256794...). Its greedy line crosses the CP2 pit (healthy), unlike the
+  warm lineage's after ~6.6B.
+* Whole scratch lineage vs round 1's ratnov (one seed each): trap exit ~230-300M (ratnov
+  302-378M), window ~990M (576M; 435M lost stalled under the band), CP2 wall ~1.19B (651M), pit
+  crossing ~1.94B (1,633M; ~750M at the wall vs ~980M), tunnel-dive 28.71% at 3.15B (ratnov 28.55%
+  at 1.63B, 28.63% at 4.92B).
+* Best eval per run (score.py --best): nfturn 28.308, band 27.385, band64 28.523, band64x 28.551,
+  **t1 28.841**, t1f3 28.367, t05 27.538, r635 28.374, sband 15.909, sbandx 20.838, sdef 27.352,
+  sband2 28.714.
+* Last run, **r2b2_sband3** (22:37): bare resume of sband2's final, evals every 25M, until wrap-up -
+  more greedy evals from the healthy scratch lineage (an eval above 28.841 would also make its
+  checkpoint the hand-on one).
