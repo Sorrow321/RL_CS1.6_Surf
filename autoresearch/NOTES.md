@@ -449,3 +449,23 @@ steps/s. Measure it on your box in the first minute and size `--steps` to the ti
   produce the CP2 crossing either: there is no lucky line to imitate.
 * Box 56864008 released 11:26 (pulled first; registry deadline had been extended to 12:21 after the
   operator's note that it matched wrapup_at with no harvest spec).
+
+### 2026-10-20 11:51 UTC - ROUND 1 WRAP-UP (r1b3, ROUND OVER)
+
+* **Final best: 27.517** - r1b3_nou's 1.403B greedy eval (9/9 at the CP2 pit, x 2,995-3,039), from a
+  from-scratch lineage on the incumbent recipe (r1b3_sou -> sou2 -> nou). Hand-on checkpoint:
+  ~/ar/runs/r1b3/r1b3_nou/ckpt_final.pt (step 1,500,512,256, md5 cccbfc6c595581767e6f6787455d3ec9),
+  at the CP2 wall with T ~0.3. 106 valid evals over 13 runs (all pulled to ~/ar/runs/r1b3/).
+* **Round lesson** (details in the 07:57 entry above, plus r1b3_ges / r1b3_gest since):
+  1. CP2 is a precision corridor entry from below (a ramp reversal ~3 s before the death), and the
+     goal field pays the dive at every tick until the detour is well along.
+  2. Every in-loop lever tried is null there: held view offsets, velocity-rotated and cell-uniform
+     frontier respawns (with a short-margin archive), T = 2, and Go-Explore + self-imitation
+     (1.6B steps). Reward-free search from the policy's own line saturates at the pit.
+  3. Held view offsets near the frontier are harmful (blocked the window 800M steps); SIL combined with
+     the unstuck SAMPLING temperature imitates high-temperature noise and wrecks the line.
+  4. Time-to-gate is seed-dominated (trap exit < 151M .. 1.5B across near-identical runs).
+* **For round 2:** the remaining generic route is search with the policy as the mover (it can surf
+  the turn-around ramp; random actions cannot), cells keyed with vertical velocity, a short harvest
+  margin, and its finds fed back by self-imitation (expert iteration) - or the planner (paused by the
+  user on 10-18). Boxes: none held; last box 56864008 released 11:26.
