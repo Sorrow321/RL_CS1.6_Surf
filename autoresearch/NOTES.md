@@ -822,3 +822,18 @@ physics as the sim (gravity 800, airaccelerate 100) except maxvelocity 3,500.
 * Extended (cleared the trap sooner): **r2b2_sbandx** = bare resume of sband's final (450,363,392,
   md5 ad134ffb...) to 1.05B, evals every 75M. Next gates: the window (ratnov passed at 576M; novel-only
   stalled there) and the CP2 wall (ratnov 651M).
+
+### 19:56 UTC: ...but the band recipe STALLS at the window from scratch; is the band the blocker?
+
+* r2b2_sbandx (450M -> 885M): every eval 20.8% (best) / 18.9-20.8% (median) from 451M to 828M; the
+  training ceiling 20,718 u (21.2%) flat since 493M; T rising (0 -> 1.17). ratnov (ratchet +
+  default novel) was at 20.8% at 453M and PASSED the window at 576M; round 1's novel-only (no
+  ratchet) stalled here from 500M to 1.02B. So with the frontier band the window behaves like it
+  did without the ratchet. One seed each. Stopped (behind ratnov at matched steps).
+* Hypothesis: the window is reached by cutting back into the A-frame ramp before it ends - a decision
+  seconds BEFORE the frontier - and the default sampler's flattened half (rows spread over the whole
+  map) is what showed it; the band keeps rows within 5% of d0 of the frontier only.
+* Test, no code: **r2b2_sdef** (19:56) = sbandx's checkpoint (884,998,144, md5 f18d4c98...) resumed
+  with the DEFAULT sampler (`--respawn-novel-band 0 --respawn-novel-turn 0 --respawn-novel-shell 0.5
+  --respawn-novel-shell-width 0.25 --respawn-novel-radius 256 2048 --respawn-novel-tries 8`), 450M
+  steps. If it passes the window soon, the band is the blocker at this kind of gate.
