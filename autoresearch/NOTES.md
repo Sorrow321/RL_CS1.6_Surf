@@ -804,3 +804,21 @@ physics as the sim (gravity 800, airaccelerate 100) except maxvelocity 3,500.
   --respawn-novel-turn 90 --respawn-novel-band 0.05 --respawn-novel-tries 64`, 450M steps, evals
   every 75M (round 1's marks). Question: do frontier-band novel rows clear the early gates sooner
   than ratnov (first-ramp trap exit 378M, window 576M, CP2 wall 651M)? One seed.
+
+### 19:30 UTC: from scratch, the band recipe leaves the first-ramp trap ~75M steps sooner (one seed)
+
+* r2b2_sband (0 -> 450M, ~250k steps/s): best-episode progress per greedy eval at round 1's marks:
+
+  | step | r2b2_sband (ratchet + novel + band/turn/shell/radius/tries) | ratnov (ratchet + novel) | novel only |
+  |---|---|---|---|
+  | 76M | 4.3% | - | 4.4% |
+  | 151M | 4.6% | - | 4.6% |
+  | 227M | 6.5% | ~4.6% | 4.6% |
+  | 302M | **12.2%** | 5.8% | 10.1% |
+  | 378M | 15.9% | 15.2% | 15.8% |
+
+  Training ceiling 18,183 u (18.6%) at 415M. The novel rows' progress median follows the frontier
+  (1.1k u at 20M -> 13.8k u at 415M); 1,843 rows per pool (the full request) early on.
+* Extended (cleared the trap sooner): **r2b2_sbandx** = bare resume of sband's final (450,363,392,
+  md5 ad134ffb...) to 1.05B, evals every 75M. Next gates: the window (ratnov passed at 576M; novel-only
+  stalled there) and the CP2 wall (ratnov 651M).
