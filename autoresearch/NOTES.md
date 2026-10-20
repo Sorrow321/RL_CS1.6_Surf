@@ -773,3 +773,23 @@ checkpoint is taken from the BEST EVAL's run dir, so pull that run's ckpt_final.
   the wall yet - the post-wall flights end inside the 0.5 s harvest margin.
 * Decision: EXTEND (PROTOCOL: a gate the incumbent never cleared, here on the training side for the first
   time in ~4B steps): bare resume of arch1's ckpt_final with the same archive spawns.
+
+### r2b4_arch1 / arch1x results (archive spawns, uniform draw) - discovery without learning
+
+* arch1 (16:20-16:47, 5.10-5.55B): evals 28.245 / 27.409 / 28.512 / 27.941 / 27.397 / 28.413. arch1x (bare
+  resume, 16:48-17:16, stopped at 5.99B): 27.479 / 28.049 / 27.797 / 27.410 / 28.298 / 27.439. The novel
+  ceiling stayed at 28,903 u from 5,344M on: two lucky post-wall flights early, none after 650M more steps.
+* Why (analysis bench, incumbent policy, greedy, from archive states picked by a region box - measurement
+  only): 0 of 24 archive chamber/pocket-rising states and 1 of 16 archive bowl surfs reach the antechamber.
+  Random-search states are mostly not ones the policy can finish from; a uniform draw over 323k rows finds
+  the few that are ~once per 200M steps, and nothing repeats them.
+
+### NEW: `--spawn-states-elite E` / `--spawn-states-gain G` (1c3b194)
+
+* `surfgym.respawn.SpawnElite`: every episode is tagged with the --spawn-states row it spawned from (exact
+  origin); a row whose episode beats its own spawn distance by G x d0 (default 0.02 = 1,955 u here) joins an
+  elite set for good; E of the file draws come uniformly from the elite rows. Go-Explore's priority on
+  promising starts / Florensa's "starts the policy can sometimes solve". Default off, byte-identical
+  (tests: unit, smoke + flagless resume, flag off vs the trainer before); TRAIN_ONLY in record_ckpt.
+* Arm r2b4_elite1 (17:18 UTC): resume of arch1x's ckpt_latest (5,988,941,824) + `--spawn-states-elite 0.5
+  --spawn-states-gain 0.02`, 900M steps.
