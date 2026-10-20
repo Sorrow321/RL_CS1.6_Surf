@@ -1936,15 +1936,20 @@ class NovelSpawnSampler:
             d = np.asarray(self.field.sample(cand), np.float64)
             ok_f = d < self._lim
             ok_c = d >= self.d_best
-            vis = self._near_visited(cand)
             self.rej_field += int((~ok_f).sum())
             self.rej_ceiling += int((ok_f & ~ok_c).sum())
             if self.band > 0.0:
                 ok_b = d <= self.d_best + self.band * self.d0
                 self.rej_band += int((ok_f & ok_c & ~ok_b).sum())
                 ok_c = ok_c & ok_b
-            self.rej_visited += int((ok_f & ok_c & vis).sum())
-            good = (ok_f & ok_c & ~vis).reshape(len(src), t)
+            # the 27-cell visit lookup only for the candidates the cheap gates kept: the same
+            # masks and counts as looking up all of them (most fail the field gate first)
+            pre = ok_f & ok_c
+            vis = np.zeros(len(cand), bool)
+            if pre.any():
+                vis[pre] = self._near_visited(cand[pre])
+            self.rej_visited += int((pre & vis).sum())
+            good = (pre & ~vis).reshape(len(src), t)
             # the hull last, on the survivors only (3-4 us a trace)
             fit = np.zeros(good.shape, bool)
             for j, c in zip(*np.nonzero(good)):
