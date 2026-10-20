@@ -871,3 +871,16 @@ r2b3_arch ckpt_final (5.55B), 6 stochastic + 2 greedy episodes, 8 s cap:
 
 * 450M steps. Watch: novel rows landing in the cavity / helix again (step line `novel ... rows`),
   archive cells climbing in the shaft from below, the room.
+
+### r2b3_own result (7.21 -> 7.66B, 18:03 UTC) and the long continuation r2b3_ownx
+
+* Evals (best %): 27.6, 27.9, 27.4, 27.4, 28.0, 27.9 - no gain. The flag works as intended:
+  the novel visit grid (128 u) in the helix box went from 74% visited (r2b3_archsx's ckpt) to
+  19%, below the shaft 63% -> 11%, cavity 45% -> 21%. But the novel sampler spreads its rows
+  over the whole map (half flattened over progress): row progress median ~12,900 u (13%), p90
+  ~23,000 u (23%), so few rows land on the helix. Archive: below the shaft 434 keys, cavity 40,
+  room 0; deepest real state 28.85%.
+* r2b3_ownx: bare continuation from r2b3_own's ckpt_final (7.66B), launched 18:04, to be
+  stopped ~23:15 for the harvest (box deadline 23:40). Why: every eval of these warm archive
+  runs is a chance at a deeper sill death (the archive's returns to the deepest cells - the
+  window tunnel at 28.85% - are what produced 28.643), and the helix may still be found.
