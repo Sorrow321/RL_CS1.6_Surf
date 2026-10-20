@@ -428,3 +428,17 @@ steps/s. Measure it on your box in the first minute and size `--steps` to the ti
   trap exit 529M) - and nowhere near ratnov (ratchet + novel): 15.2% at 378M, 20.8% at 453M.
 * So the early speedup comes from `--respawn-novel` (or needs both). One seed.
 * Ablation 2 launched 09:21: r1b1_novonly = GR recipe + `--respawn-novel`, no ratchet, 500M.
+
+### Ablation 2 (09:52 UTC): `--respawn-novel` ALONE gives the early gates
+
+* r1b1_novonly = the old incumbent recipe (GR) + `--respawn-novel`, no ratchet, from scratch,
+  500M (294k steps/s). Best-episode progress (mean): 76M 4.4% (4.3), 151M 4.6% (4.5),
+  227M 4.6% (4.6), **302M 10.1% (7.9) - out of the first-ramp trap**, 378M 15.8% (15.0),
+  453M 17.6% (16.2).
+* Matched marks (best %): 302M - GR 4.6 / ratchet-only 4.6 / novel-only **10.1** / both 5.8;
+  378M - 4.6 / 4.7 / **15.8** / 15.2; 453M - 4.6 / 4.6 / 17.6 / **20.8**.
+* Reading (one seed each): the novel spawns are what moves the first gates; the ratchet adds
+  nothing there. Whether the ratchet is needed for the CP2 pit crossing is the open question,
+  so the novel-only run is EXTENDED (it clears the trap sooner than GR at matched steps):
+  r1b1_novonlyx = bare resume to 2.1B (~11:25 UTC). The ratchet + novel lineage crossed the
+  pit at 1,633M (wall reached at ~651M).
