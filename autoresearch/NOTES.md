@@ -390,3 +390,24 @@ misleading: the agent's surviving lines pass through `*99`'s box.
   * The trainer re-reads `--spawn-states` when the file's mtime changes (every 20
     iterations; designed for an outer loop), so (b) is refreshed in place by an atomic
     `mv` on the box, without a restart.
+
+### 04:14 UTC: outer loop, iteration 1 - archive refreshed from C2's own states, swapped in live
+
+* **GE5** (local, 8 CPU-min, roots = Arm C2's deepest 3%, d <= 73,549; cell 128 x speed 8 x
+  view 8):
+  * 156,714 cells; best d 70,461 (27.93%);
+  * **767 slot-approach candidates** (west-heading, near-level, z 11,350-11,650,
+    x 3,300-4,300; the incumbent-rooted archive had 16), because the roots are now the
+    policy's own improved D-ramp exits;
+  * still nothing below 70,000.
+* **The swap:** fast-novel filter (d >= 70,883, novel vs the incumbent's visits,
+  >= 746 u/s) gives 57,000 states; merged with the previous file, 196,622 states, md5
+  88c04377....
+  * On the box it was `mv`'d over `runs/ge23_fastnovel.npy`; the original is kept as
+    `ge23_fastnovel.orig.npy`.
+  * The trainer logged `--spawn-states: re-read 196,622 own states ... at step
+    2,284,322,816`.
+  * NOTE: from that step on, r1b4_gs2's run.json names the old path, but the content is
+    the merged file.
+* **Evals since the last entry:** 2,128M frontier 26,907 u; 2,203M frontier 26,886 u
+  (about 27.50-27.52). Still the wall.
