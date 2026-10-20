@@ -937,3 +937,60 @@ r2b3_arch ckpt_final (5.55B), 6 stochastic + 2 greedy episodes, 8 s cap:
 * r2b3_ownx2: resume of r2b3_ownx's newest weights (9,472,835,584) for the rest of the box time
   (to ~23:15), the archive settings restored. Not a new idea: evals of the branch's best policy
   and a last chance at the helix.
+
+### r2b3_ownx2 (9.47 -> 10.88B) stopped 21:55 UTC; box released 21:57
+
+* Evals (best %): 27.5, 28.5, 27.4, 27.4, 27.5, 28.6, 28.5, 27.9, 27.5, 28.0, 27.4, 27.5, 27.3,
+  27.4, 28.0, 27.4, 27.4, 27.4, 27.4 - from ~10.2B mostly back on the old pit dive, approx_kl up
+  to ~0.2. Nothing above the 28.766 of r2b3_ownx.
+* Box 56903990 (RTX 5080, $0.388/h) ran 14:19-21:57 (~7.6 h, ~$3.0); box 56893794 12:55-13:59
+  (~$0.4). All runs pulled to /home/steam/ar/runs/r2b3/ (107 valid evals). Branch best by
+  score.py: r2b3_ownx/traj_8113881088.jsonl, 28.766; the run's newest weights:
+  r2b3_ownx/ckpt_latest.pt (step 9,472,835,584, md5 11bf38c0195ca4664c5689dbec6dbd2d). It carries
+  the archive state and the --respawn-rare* flags (a bare resume restores them).
+
+## ROUND 2 LESSON (r2b3) - written 21:58 UTC
+
+**Result:** best greedy eval from the true start **28.766** (r2b3_ownx at 8,114M; incumbent
+28.628). 0 finishes. The gain is a different death, not a new gate: the best episode bounces
+between the shaft's walls and flies INTO the window tunnel at window height, dying on its sill
+~180 u in, where every earlier best died at the tunnel's mouth.
+
+**What the wall at 28.6% is** (analysis only - traces, random rollouts, the WR demo):
+* The field routes the slot's exit through a 256 u window tunnel (origin box y 852-940,
+  z 10,992-11,152 standing) whose sill is a kill plate. From the slot (the gap over the kill cap
+  at z >= ~11,412) a single ballistic arc cannot thread it (proof in the notes); wall bounces in
+  the shaft get INTO it (the 28.766 episode) but, in 12,000 random continuations of that
+  episode, never through it. The greedy evals of every warm run die at the tunnel's mouth or sill.
+* The human does not use that entry: from the shaft he goes EAST through a centre gap in the
+  slot's end wall (y ~0, z ~11,000) into a cavity, rides a helix down and back up, comes back
+  through the gap climbing and crosses the window nearly level (vz -55), then the room, under it,
+  CP2 at 35.1 s (31%). That 3.5 s detour is the field's "dip 2".
+* A bench from the human's states (measurement only): the policy already flies EVERYTHING after
+  the centre gap (window -> room -> under the room -> ~30.1%, alive at 8 s); from the cavity and
+  from the helix it falls and dies. The one missing skill is the ~2.4 s helix ride, and the reward
+  has no signal along it (the ratchet pays nothing until the episode is back past its record).
+
+**What worked:** `--respawn-rare 0.5 --respawn-rare-arch 1` (new, generic: Go-Explore's per-cell
+archive of the states at which REAL episodes entered a cell, no pre-death margin, returns by
+1/sqrt(1 + N), half among the deepest quarter by field distance). Within 25M steps of a warm
+resume it put real episodes into the cavity and below the shaft for the first time (the
+incumbent's 3.5B steps there never had), and its returns to the deepest cells (the tunnel) are
+what produced the 28.6-28.77 evals. `--respawn-rare-own 1` (archive returns do not use up the
+novel rows) and `--respawn-rare-speed 3` (speed-keyed cells) are refinements; neither changed
+the reach.
+
+**What did not work (warm at the wall unless noted, 100M-2B steps each):** SIL 0.1 (sigma
+inflated by imitating T = 2 actions, line worse); `--respawn-margin 0.5` (no change);
+`--unstuck-max 0` (the CP2 line is lost - T = 2 keeps it); reservoir-weighted `--respawn-rare`
+(the reservoir holds nothing in the shaft); the archive FROM SCRATCH, with and without the
+own-flight flag (both still in the first-ramp trap at 378M where ratnov was at 15.2%: a wall
+tool, not a scratch default; one seed each).
+
+**For the next round:** the helix ride. The policy has every later piece; it needs practice
+states on the helix with a tangential velocity and some credit for the climb. Candidates: novel
+rows near the frontier with their velocity projected onto the nearest surface (surf-ready rows,
+generic), a reverse curriculum from the policy's own states once any real episode gets partway
+up the helix (the archive keeps them), or a search-based explorer (planning in the simulator
+from the archive's cavity states with the policy as a prior). The incumbent checkpoint
+(r2b3_ownx) already carries the archive state (`--respawn-rare*` restored on a bare resume).
