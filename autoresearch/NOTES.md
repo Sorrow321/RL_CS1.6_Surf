@@ -478,3 +478,17 @@ backward window's bin 11 (d >= 67,213) covers the stretch up to CP2.
   crossings in the reservoir), so a detour discovered at the U-turn under heat should be
   REINFORCED this time instead of dropped. Last configuration of the round; training stops ~11:00
   for the checkpoint pull and the wrap-up.
+
+### 10:12 UTC - r1b2_bwhT at T 2: the detour returns to the greedy line, intermittently
+
+| eval | score | median | what the greedy episodes do |
+|---|---|---|---|
+| 1,464.3M | 27.48 | 27.45% | the dive (24.4-24.8 s) |
+| 1,539.8M | 26.99 | 26.33% | the dive |
+| 1,615.3M | 27.33 | 26.37% | longest live ~28 s, dying EAST at (3811, -828, 10916) and (4539, -121, 10781): detour attempts failing on the ramp |
+| **1,690.8M** | **28.08** | **27.89%** | most episodes fly the detour, cross back over the old death point at z ~11,420 (south lane), and die at ~28.1 s around (2,560, -930) |
+| 1,766.3M | 27.28 | 27.15% | the dive again (24.8-25.1 s, north lane) |
+
+* T reached 2 at ~1.61B. The greedy detour came back ~80M steps later, as in arm 4 (~110M), but it
+  oscillates eval to eval. The reservoir floor holds at 67.4% (CP2 crossings in training).
+* No eval beats 28.49 yet. Training continues to ~11:25 (4 more evals), then the wrap-up.
