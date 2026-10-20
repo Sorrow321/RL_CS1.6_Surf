@@ -926,3 +926,14 @@ r2b3_arch ckpt_final (5.55B), 6 stochastic + 2 greedy episodes, 8 s cap:
   which are what drive the early gates (novel-only: 10.1% at 302M). With the own-flight flag
   the novel rows work as without the archive. 450M steps; compare with ratnov (5.8% at 302M,
   15.2% at 378M, 20.8% at 453M) and r2b3_scrarch (4.7% at 302M and 378M).
+
+### r2b3_scrown result (20:24 UTC): the own-flight flag does not fix the scratch slow start
+
+* 450M at 288k steps/s. Evals (best %): 1M 1.1, 76M 4.1, 151M 4.6, 227M 4.6, 302M 4.6, 378M 4.7 -
+  the first-ramp trap through 378M, like r2b3_scrarch (4.7%) and unlike ratnov (15.2% at 378M).
+  Two scratch runs with the archive both behind at matched steps (one seed each; the trap exit
+  is late on other seeds too: GR 529M) -> stopped (PROTOCOL). Verdict for the lineage: the
+  archive is a wall tool for warm runs, not a scratch default; incumbent_recipe unchanged.
+* r2b3_ownx2: resume of r2b3_ownx's newest weights (9,472,835,584) for the rest of the box time
+  (to ~23:15), the archive settings restored. Not a new idea: evals of the branch's best policy
+  and a last chance at the helix.
