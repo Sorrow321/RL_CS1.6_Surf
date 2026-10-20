@@ -319,3 +319,28 @@ Reservoir late-map rows (d < 74.5k) by x band (box-side probe `res_region.py`, n
 * T 2.00 from ~1.09B, approx_kl 0.04-0.08: the 25%-correlated draw stays healthy at the cap.
 * Extended (box to 08:47 UTC): this is the first arm whose training reaches the region the CP2
   detour needs. Plan: let it end at 1,301M, then continue from ckpt_final with the same flags.
+
+### 05:15 UTC - **arm 4 LEARNS THE CP2 DETOUR in the greedy line (1,203.8M, T 2)**
+
+Eval 1,203.8M: score 27.64, top episodes die at 28.4-28.7 s instead of 25.2 s. Episode 4, every
+0.3 s (record.py rows):
+* 23.5-24.1 s: the usual right air U-turn (D held), to (4262, -649, 12086) heading -178 deg.
+* **24.4-25.6 s: back EAST**, descending, accelerating 1,307 -> 1,878 u/s, to (5,633, -301, 11,038)
+  = the human's ramp, which the human reaches at (5,554, 454, 11,079) at 25.5 s.
+* **25.6-26.2 s: A held, a left turn ON THE RAMP** (heading 52 -> 108 -> 160 deg) at z 11,038-11,112
+  with no speed loss (1,850 u/s).
+* **26.5-27.7 s: back WEST climbing** (vz +277..+679), (3,846, 869, 11,469) at 27.1 s and
+  (2,976, 591, 11,588) at 27.7 s. That is past the old death point (x ~3,050, fail plane z ~11,200)
+  ~400 u above the plane, higher than the human (z 11,469 at x 2,882, 27.4 s).
+* 28.0-28.7 s: then it turns south (heading -85..-89 deg), curls back east, descends into the same
+  pit and dies at (3,188, -975, 11,153). The part AFTER the detour is unexplored: this is the new
+  frontier.
+* Training side: reservoir floor 73.6% -> **71.80% (d ~70,200)**, past the death point
+  (d ~70,900). Training episodes get beyond it and live >= 2 s more.
+
+**What did it:** correlated sampling noise (`--noise-tau 0.5`, 25% of envs) + the ratchet + the
+recipe's unstuck temperature at its cap of 2, from the incumbent's own weights (no demo, nothing
+map-specific). At T <= 0.3 the same noise only crept (arms 1-3); at T 2 the deviations last long
+enough to reach the ramp (04:48 probe), and ~110M steps later the greedy policy flies the
+detour. Timeline at the wall: T reached 2 at ~1.09B, the detour region was harvested by 1.12B,
+the greedy detour appeared at 1.20B.
