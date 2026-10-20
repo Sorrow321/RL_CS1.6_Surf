@@ -6294,6 +6294,10 @@ def main() -> None:
                          "member state. 0 = off, byte-identical; ckpt restores")
     ap.add_argument("--respawn-cells-size", type=float, default=None,  # 128 u
                     help="the position cube of --respawn-cells, u (default 128)")
+    ap.add_argument("--respawn-cells-band", type=float, default=None,  # 0 = off
+                    help="--respawn-cells: only reservoir states within this fraction of d0 of "
+                         "the reservoir's deepest progress take part in the cell draw (Go-Explore's "
+                         "furthest-level preference). 0 = every stored state; ckpt restores")
     ap.add_argument("--respawn-random", action="store_true", default=None,
                     help="race: replace the reservoir with UNIFORM RANDOM "
                          "reachable starts (docs/respawn_random.md). 5%% of "
@@ -7137,7 +7141,7 @@ def main() -> None:
             args.respawn_min_speed = float(ck_cfg["respawn_min_speed"])
             restored.append(f"respawn_min_speed={args.respawn_min_speed:g}")
         for _k in ("respawn_snap", "respawn_deep", "respawn_deep_q", "respawn_cells",
-                   "respawn_cells_size"):
+                   "respawn_cells_size", "respawn_cells_band"):
             if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
                 setattr(args, _k, float(ck_cfg[_k]))
                 restored.append(f"{_k}={float(ck_cfg[_k]):g}")
@@ -8504,6 +8508,12 @@ def main() -> None:
         raise SystemExit("--respawn-cells is a share of the reservoir draws, in [0, 1)")
     if not float(args.respawn_cells_size) > 0.0:
         raise SystemExit("--respawn-cells-size is a cube edge in u and must be > 0")
+    if args.respawn_cells_band is None:
+        args.respawn_cells_band = 0.0
+    if not 0.0 <= float(args.respawn_cells_band) <= 1.0:
+        raise SystemExit("--respawn-cells-band is a fraction of d0, in [0, 1]")
+    if float(args.respawn_cells_band) > 0.0 and not float(args.respawn_cells) > 0.0:
+        raise SystemExit("--respawn-cells-band needs --respawn-cells > 0")
     if float(args.respawn_cells) > 0.0 and float(args.respawn_deep) > 0.0:
         raise SystemExit("--respawn-cells and --respawn-deep both reshape the reservoir draw; "
                          "pick one")
@@ -10738,13 +10748,21 @@ def main() -> None:
                 raise SystemExit("--respawn-cells and --plan-return both reshape the reservoir "
                                  "draw; pick one")
             from surfgym.respawn import CellReturn
+            _band = float(args.respawn_cells_band)
             for _i, _s in enumerate(slots):
-                _s.respawn.cells = CellReturn(float(args.respawn_cells),
-                                              float(args.respawn_cells_size), seed=29 + 101 * _i)
+                if _band > 0.0 and _s.reward_field is None:
+                    raise SystemExit("--respawn-cells-band needs the race goal field")
+                _s.respawn.cells = CellReturn(
+                    float(args.respawn_cells), float(args.respawn_cells_size),
+                    seed=29 + 101 * _i, band=_band,
+                    dist_fn=(_s.reward_field.sample if _band > 0.0 else None),
+                    d0=(float(_s.rf_d0) if _band > 0.0 else 0.0))
             print(f"respawn: --respawn-cells {float(args.respawn_cells):g} - that share of the "
                   f"reservoir draws picks a {float(args.respawn_cells_size):g} u x velocity-class "
                   f"cell by 1/sqrt(1 + harvested + chosen), then a member state (Go-Explore's "
-                  f"return); the rest uniform")
+                  f"return); the rest uniform"
+                  + (f"; only states within {_band:g} x d0 of the reservoir's deepest progress"
+                     if _band > 0.0 else ""))
         if float(args.respawn_deep) > 0.0:
             # --respawn-deep: the reservoir draw weights its deepest quantile (by the race
             # field's distance) up to the requested share. Go-Explore's return to the
@@ -13096,6 +13114,8 @@ def main() -> None:
                        **({"respawn_cells": float(args.respawn_cells),
                            "respawn_cells_size": float(args.respawn_cells_size)}
                           if float(args.respawn_cells) > 0.0 else {}),
+                       **({"respawn_cells_band": float(args.respawn_cells_band)}
+                          if float(args.respawn_cells_band) > 0.0 else {}),
                        "respawn_binned": args.respawn_binned,
                        "respawn_random": args.respawn_random,
                        "respawn_random_start_frac": (

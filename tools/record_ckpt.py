@@ -103,7 +103,7 @@ TRAIN_ONLY = frozenset({
     # how its draw weights the deepest states; a recording spawns at the map start
     "respawn_snap", "respawn_deep", "respawn_deep_q",
     # --respawn-cells: the TRAINING reservoir draws a share by cell (Go-Explore's return)
-    "respawn_cells", "respawn_cells_size",
+    "respawn_cells", "respawn_cells_size", "respawn_cells_band",
     # --ramp-reward: what the TRAINING reward pays in the ramp-window task (arc progress, or +1
     # per target passed); a recording computes no training reward
     "ramp_reward",

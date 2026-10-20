@@ -151,17 +151,33 @@ def test_reservoir_realises_the_cell_share_and_checkpoints_the_counters():
     assert "cells" not in rb3.state_dict()
 
 
+def test_band_keeps_the_cell_draw_near_the_reservoir_frontier():
+    from surfgym.respawn import CellReturn
+    # "distance" = 10,000 - x: progress = x; frontier = the largest x
+    cr = CellReturn(0.5, 128.0, band=0.1, dist_fn=lambda o: 10000.0 - o[:, 0], d0=10000.0)
+    store = _rows(np.arange(100) * 100.0)              # progress 0 .. 9,900
+    cr.note_pushed(store)
+    idx = cr.draw(store, len(store), 5000, np.random.default_rng(2))
+    got = store["origin"][idx, 0]
+    assert got.min() >= 9900.0 - 1000.0                # within 0.1 x d0 of the frontier
+    assert len(np.unique(got)) > 5
+    import pytest as _pt
+    with _pt.raises(ValueError):
+        CellReturn(0.5, 128.0, band=0.1)               # a band needs the field
+
+
 # -- (b) smoke -----------------------------------------------------------------------------
 
 @needs_run
 def test_cells_run_log_and_a_flagless_resume_restores_them():
     run = "rcells_on"
     r = _train(run, ["--respawn-cells", "0.5", "--respawn-snap", "0.25", "--ep-ticks", "400",
-                     "--respawn-margin", "0.1"], steps="40960")
-    assert "--respawn-cells 0.5" in r.stdout
+                     "--respawn-margin", "0.1", "--respawn-cells-band", "0.05"], steps="40960")
+    assert "--respawn-cells 0.5" in r.stdout and "within 0.05 x d0" in r.stdout
     d = ROOT / "runs" / run
     cfg = json.loads((d / "run.json").read_text(encoding="utf-8"))["config"]
     assert cfg["respawn_cells"] == 0.5 and cfg["respawn_cells_size"] == 128.0
+    assert cfg["respawn_cells_band"] == 0.05
     ck = torch.load(d / "ckpt_final.pt", map_location="cpu", weights_only=False)
     assert "cells" in ck["respawn"] and len(ck["respawn"]["cells"]["keys"]) > 0
     run2 = "rcells_on_re"
@@ -170,6 +186,7 @@ def test_cells_run_log_and_a_flagless_resume_restores_them():
                str(d / "ckpt_final.pt")] + SMOKE + ["--steps", "8192"])
     assert r2.returncode == 0, r2.stdout[-4000:] + r2.stderr[-4000:]
     assert "respawn_cells=0.5" in r2.stdout and "--respawn-cells 0.5" in r2.stdout
+    assert "respawn_cells_band=0.05" in r2.stdout
     bad = _run([sys.executable, "-u", str(TRAIN), "--run", "rcells_bad"]
                + SMOKE + ["--steps", "2048", "--respawn-cells", "0.5", "--respawn-deep", "0.5"])
     assert bad.returncode != 0 and "pick one" in (bad.stdout + bad.stderr)

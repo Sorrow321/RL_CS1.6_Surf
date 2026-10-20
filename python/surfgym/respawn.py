@@ -42,9 +42,18 @@ class CellReturn:
     reached. No map constant: one cube size, one share.
     """
 
-    def __init__(self, share: float, size: float = 128.0, seed: int = 29) -> None:
+    def __init__(self, share: float, size: float = 128.0, seed: int = 29,
+                 band: float = 0.0, dist_fn=None, d0: float = 0.0) -> None:
         self.share = float(share)
         self.size = float(size)
+        # --respawn-cells-band: only states within band x d0 of the reservoir's deepest progress
+        # (d0 - d) take part in the cell draw - Go-Explore's "furthest level" preference, with
+        # the field's progress standing in for the level. 0 = every stored state
+        self.band = float(band)
+        self.dist_fn = dist_fn
+        self.d0 = float(d0)
+        if self.band > 0.0 and (dist_fn is None or not self.d0 > 0.0):
+            raise ValueError("CellReturn band needs dist_fn and d0")
         self.rng = np.random.default_rng(seed)
         self.seen: dict[int, int] = {}
         self.chosen: dict[int, int] = {}
@@ -72,14 +81,21 @@ class CellReturn:
         """``n`` indices into ``store[:size]``: a cell by weight, then a uniform member."""
         if n <= 0 or size <= 0:
             return np.zeros(0, np.int64)
-        k = self.keys(store[:size])
+        member = np.arange(size)
+        if self.band > 0.0:
+            d = np.asarray(self.dist_fn(store["origin"][:size]), np.float64)
+            prog = np.where(np.isfinite(d), self.d0 - d, -np.inf)
+            ok = prog >= prog.max() - self.band * self.d0
+            if ok.any():
+                member = member[ok]
+        k = self.keys(store[member])
         u, inv, cnt = np.unique(k, return_inverse=True, return_counts=True)
         w = np.array([1.0 / np.sqrt(1.0 + self.seen.get(c, 0) + self.chosen.get(c, 0))
                       for c in u.tolist()], np.float64)
         pick = rng.choice(len(u), n, p=w / w.sum())
         order = np.argsort(inv, kind="stable")
         start = np.cumsum(cnt) - cnt
-        idx = order[start[pick] + rng.integers(0, cnt[pick])]
+        idx = member[order[start[pick] + rng.integers(0, cnt[pick])]]
         pu, pn = np.unique(pick, return_counts=True)
         for c, m in zip(u[pu].tolist(), pn.tolist()):
             self.chosen[c] = self.chosen.get(c, 0) + m
