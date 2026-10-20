@@ -615,3 +615,48 @@ checkpoint is taken from the BEST EVAL's run dir, so pull that run's ckpt_final.
   the line from the precise drop/window (precision), or is it what found the CP2 line
   (exploration)? First updates: approx_kl 1.0-3.1 (the untempered heads are ~3x sharper than
   what the rollouts sampled for 2.7B steps).
+
+### r2b3_t0 result (13:57 UTC): NEGATIVE - without the temperature the CP2 line is lost
+
+* 450M steps (5.10 -> 5.55B, 280k steps/s). Evals (best / median %): 5,177M 27.4/27.2, then
+  5,252M, 5,328M, 5,403M, 5,478M all 27.4/27.4: every greedy episode back on the OLD pit dive.
+  approx_kl 0.4-3.1 per update for the first ~100M steps (the untempered heads are ~3x sharper
+  than what T = 2 sampled), the policy's own yaw sigma 0.032 -> 0.069, intrinsic 3 -> 0.6 /ep.
+* So T = 2 (unstuck's cap) is what keeps the human CP2 line alive in this lineage; precision
+  is not bought by turning it off. The box was released at 13:59 (56893794, ~1.1 h, ~$0.43).
+
+### The window is a DEAD END from the slot (collision traces + 21k random rollouts, analysis only)
+
+* Window clearance by `core.trace` (startsolid): origin y 852-940, z 10,992-11,152 standing
+  (10,976-11,168 ducked), and the tunnel through the wall is 256 u long (x 1,952-2,208). The
+  slot's exit to the shaft is a gap in a thin wall at x ~2,530-2,590, y +-(860-960), whose sill
+  carries kill *80/*64 at z 11,392: the hull must cross it above z ~11,412 (ducked).
+* Free fall cannot connect the two: leaving the gap at z >= 11,412 and reaching the tunnel mouth
+  288 u later at z <= 11,168 needs a mean slope >= 0.85, and then the 288 u through the tunnel
+  drop >= 244 u more against the 192 u the tunnel allows - for any horizontal speed, even
+  ducked (the parabola only makes the second half worse). Nothing in the shaft can lift the
+  player (vertical walls only clip).
+* Random shooting (scratchpad `autoresearch/analysis/sid_slot_shoot.py`, held usercmd
+  primitives through `SurfCore.play_step` with the live triggers, from the incumbent's OWN
+  greedy states): 12,000 rollouts from the slot (t 27.2-28.1 s, 3 s) and 9,000 from the CP2
+  ramp turnaround on (25.8-27.0 s, 5 s): **0 through the window, 0 below z 10,600, best
+  28.72%**, every deep one dying on the window's sill at its mouth (z ~10,971). The greedy
+  evals' 28.2-28.6% are exactly that death.
+* So the goal field routes through a gap that physics cannot fly from where the agent arrives
+  (the "free flight through open space" deception again), and the field-greedy line is stuck
+  on it. The human leaves the slot on a 3.3 s detour (dip 2, d +1,978 u) and needs 7.7 s from
+  the slot to CP2 against the field's ~3,200 u.
+* Visit counts of the incumbent (256 u cells, all envs incl. novel rows): the cavity east of
+  the slot's thin wall, the ramp under the room and the passage west toward CP2 (x ~1,000) are
+  all visited - by NOVEL episodes, which are never harvested and never move the ceiling. Real
+  episodes never get there. The only reachable cells never visited at all are past CP2.
+
+### Next: `--respawn-rare F` (new, generic): Go-Explore's return over the reservoir, per CELL
+
+* The reservoir draw is uniform over states, so it is spent on the main line; Go-Explore picks
+  the CELL to return to by 1/sqrt(1 + N). Here N = entries of REAL episodes into a 256 u
+  position cell (novel episodes not counted), a share F of the draw goes to cells by that weight
+  split evenly over the cell's states (no density bias), the rest stays uniform. Every spawn
+  is a state a real episode reached. Purpose: real episodes that wander off the field's line
+  (where the detour must start) get returned to and explored from, instead of drowned by the
+  main line.
