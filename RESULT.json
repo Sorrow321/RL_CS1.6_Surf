@@ -26,7 +26,8 @@
    "1"
   ],
   "resume_from": "r2b2_band64x ckpt_latest (6,725,042,176) <- band64 <- nfturn <- incumbent (5,100,797,952)",
-  "commit": "15716d6"
+  "commit": "15716d6",
+  "note": "ckpt_latest.pt is r2b2_t1's end (step 7,176,454,144, md5 92b7ddd202e0b09629f93e4ac2afdbe1), 426M steps after the best eval; ckpt_7128219648.pt (md5 7686c36f...) is also local"
  },
  "summary": "Best 28.841 (r2b2_t1 at 6,751M; incumbent 28.628): a greedy episode dives through the -y tunnel to its west end (the field route's physical limit ~28.8%). Analysis: the field route past 28.6% is closed; the WR demo (analysis only) shows a ~2,000 u dip into a cavity with a surf-ramp turnaround. New generic sampler options --respawn-novel-turn / --respawn-novel-band put ~85% of novel rows in that dip; the bench shows the return leg learned. With T capped at 1 the training ceiling jumped 28,205 -> 29,027 u (a real episode past the tunnel)."
 }

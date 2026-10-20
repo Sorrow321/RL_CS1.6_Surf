@@ -748,3 +748,9 @@ physics as the sim (gravity 800, airaccelerate 100) except maxvelocity 3,500.
 * Checkpoint pulled: runs/r2b2/r2b2_t1/ckpt_7128219648.pt (md5 7686c36f...), a stable copy taken
   on the box (box.py pull --ckpt failed: ckpt_latest is rewritten every 25M steps, faster than an
   80 MB copy from Argentina).
+* r2b2_t1 stopped at 7,176M (19 evals: 28.841 once, then 27.4-27.5 x13, one 14.8). Its end
+  checkpoint is local: runs/r2b2/r2b2_t1/ckpt_latest.pt (7,176,454,144, md5 92b7ddd2...).
+* **r2b2_t1f3** (17:12): resume of that checkpoint + `--respawn-novel-frac 0.3` (novel rows capped at
+  30% of the non-start pool: share ~25% instead of 40-48%), T cap 1 and the band settings restored,
+  +1.5e9 steps (to 8.68B). Purpose: give the start-anchored line more practice so the greedy line
+  crosses the CP2 pit again, while the cavity practice continues at ~60% of the dose.
