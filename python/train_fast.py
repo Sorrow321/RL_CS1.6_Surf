@@ -2099,9 +2099,13 @@ def sample_view(padded, mu, log_std, temp=None, temp_view=None):
 # (colored noise in PPO, Hollenstein et al. AAAI 2024; gSDE, Raffin et al.
 # CoRL 2021; here also on the key heads through a Gaussian copula).
 # --------------------------------------------------------------------------
-def ar1_step_(e, rho: float):
+def ar1_step_(e, rho):
     """In place: e <- rho * e + sqrt(1 - rho^2) * N(0, 1). A static buffer
-    the captured rollout graph replays; one randn_like, static shapes."""
+    the captured rollout graph replays; one randn_like, static shapes.
+    ``rho`` is a float, or a (rho, innovation scale) pair of tensors that
+    broadcast against ``e`` (--noise-tau-frac: rho 0 on the i.i.d. envs)."""
+    if isinstance(rho, tuple):
+        return e.mul_(rho[0]).add_(torch.randn_like(e) * rho[1])
     return e.mul_(rho).add_(torch.randn_like(e), alpha=math.sqrt(1.0 - rho * rho))
 
 
@@ -2111,7 +2115,7 @@ def gumbel_from_normal(e):
     return -torch.log((-torch.special.log_ndtr(e)).clamp_min(1e-30))
 
 
-def sample_padded_ar(padded, e_cat, rho: float, temp=None):
+def sample_padded_ar(padded, e_cat, rho, temp=None):
     """sample_padded with the Gumbel noise from the AR(1) latent ``e_cat``
     (same shape as ``padded``, advanced in place). The log-prob is the
     tempered distribution's, exactly as sample_padded returns it."""
@@ -2122,14 +2126,16 @@ def sample_padded_ar(padded, e_cat, rho: float, temp=None):
     return act, logp
 
 
-def sample_view_ar(padded, mu, log_std, e_cat, e_view, rho: float,
-                   temp=None, temp_view=None):
+def sample_view_ar(padded, mu, log_std, e_cat, e_view, rho,
+                   temp=None, temp_view=None, rho_view=None):
     """sample_view with both noises from AR(1) latents (``e_cat`` shaped
     like padded[:, N_VIEW:], ``e_view`` like mu, both advanced in place).
-    Same returns, and the same per-decision log-prob."""
+    Same returns, and the same per-decision log-prob. ``rho_view`` (None =
+    ``rho``) is the view latent's rho when ``rho`` is a per-env tensor pair
+    shaped for ``e_cat``."""
     cat, logp_c = sample_padded_ar(padded[:, N_VIEW:], e_cat, rho, temp)
     ls = _temper_log_std(log_std, temp if temp_view is None else temp_view)
-    z = mu + ls.exp() * ar1_step_(e_view, rho)
+    z = mu + ls.exp() * ar1_step_(e_view, rho if rho_view is None else rho_view)
     B = padded.shape[0]
     neutral = torch.full((B, N_VIEW), 0, dtype=cat.dtype, device=cat.device)
     neutral[:, 0] = NEUTRAL_ACT[0]
@@ -6099,6 +6105,17 @@ def main() -> None:
                          "PPO, Hollenstein et al. 2024). Greedy evals never "
                          "see it. 0/absent = off, byte-identical. ckpt "
                          "restores; record_ckpt TRAIN_ONLY")
+    ap.add_argument("--noise-tau-frac", type=float, default=None,  # 1.0
+                    help="--noise-tau: the FRACTION of training envs whose "
+                         "noise is AR(1) (spread evenly over the env index); "
+                         "the rest draw i.i.d. as without the flag. The "
+                         "marginal-log-prob update over-credits a sustained "
+                         "deviation on every decision of it, so an all-env "
+                         "AR(1) draw pushes the policy to collapse its own "
+                         "entropy (measured: kl 0.03 -> 0.39, yaw sigma "
+                         "halved in 126M steps); a fraction keeps the long "
+                         "deviations and dilutes that pressure by ~1/frac. "
+                         "Default 1 (every env). ckpt restores")
     ap.add_argument("--view-ou-period", type=int, default=0,
                     help="--view-ou-sigma: the CORRELATION TIME, in "
                          "DECISIONS. 0 (the default, and round 40's pnOU) "
@@ -8064,6 +8081,10 @@ def main() -> None:
                 and not flag_given("--noise-tau")):
             args.noise_tau = float(ck_cfg["noise_tau"])
             restored.append(f"noise_tau={args.noise_tau:g}")
+        if (ck_cfg.get("noise_tau_frac") is not None
+                and not flag_given("--noise-tau-frac")):
+            args.noise_tau_frac = float(ck_cfg["noise_tau_frac"])
+            restored.append(f"noise_tau_frac={args.noise_tau_frac:g}")
         # --unstuck rides in the checkpoint like the view flags: the flag
         # and every knob of it are restored when the CLI does not say
         # otherwise (the schedule's RUN STATE is restored further down)
@@ -13365,6 +13386,8 @@ def main() -> None:
     # --noise-tau: written ONLY when set, so a control's dump is unchanged
     if float(getattr(args, "noise_tau", 0.0) or 0.0) > 0.0:
         meta["config"]["noise_tau"] = float(args.noise_tau)
+        if args.noise_tau_frac is not None and float(args.noise_tau_frac) != 1.0:
+            meta["config"]["noise_tau_frac"] = float(args.noise_tau_frac)
     # --view-continuous: written ONLY when set, for the reason the masks
     # give - a control run's config dump stays byte-identical. It changes
     # what an action IS, so record_ckpt.py mirrors it.
@@ -14432,7 +14455,7 @@ def main() -> None:
     # graph. NOISE_TAU is a PYTHON constant: at 0 nothing is allocated and
     # step_compute traces the draw that shipped, op for op.
     NOISE_TAU = float(getattr(args, "noise_tau", 0.0) or 0.0)
-    noise_cat = noise_view = None
+    noise_cat = noise_view = noise_rho_view = None
     noise_rho = 0.0
     if NOISE_TAU < 0.0:
         raise SystemExit("--noise-tau must be >= 0")
@@ -14458,6 +14481,25 @@ def main() -> None:
               f"(lag-1 s correlation {noise_rho ** (1.0 / _dec_s):.3f}); the "
               "per-decision distribution and log-prob are the policy's own. "
               "Greedy evals are unaffected.")
+        NOISE_FRAC = (1.0 if args.noise_tau_frac is None
+                      else float(args.noise_tau_frac))
+        if not 0.0 < NOISE_FRAC <= 1.0:
+            raise SystemExit("--noise-tau-frac must be in (0, 1]")
+        noise_rho_view = None
+        if NOISE_FRAC < 1.0:
+            # per-env (rho, innovation scale): rho on an evenly spread
+            # round(N * frac) envs, 0 (a fresh N(0, 1) draw) on the rest
+            _i = torch.arange(N, device=device, dtype=torch.float64)
+            _corr = (torch.floor((_i + 1) * NOISE_FRAC)
+                     > torch.floor(_i * NOISE_FRAC)).float()
+            _r = _corr * noise_rho
+            _s = torch.sqrt(1.0 - _r * _r)
+            noise_rho = (_r.view(N, 1, 1), _s.view(N, 1, 1))
+            noise_rho_view = (_r.view(N, 1), _s.view(N, 1))
+            print(f"--noise-tau-frac {NOISE_FRAC:g}: {int(_corr.sum())} of {N} "
+                  "envs draw AR(1) noise, the rest i.i.d.")
+    elif args.noise_tau_frac is not None:
+        raise SystemExit("--noise-tau-frac without --noise-tau")
     # --unstuck: the sampling temperature 1 + T as a STATIC 0-d tensor the
     # schedule writes into between iterations. It is read inside the
     # captured rollout graph and by the compiled update - never a Python
@@ -14818,7 +14860,7 @@ def main() -> None:
             if NOISE_TAU > 0.0:
                 act, z, logp = sample_view_ar(padded, mu, policy.log_std(),
                                               noise_cat, noise_view, noise_rho,
-                                              temp_t, tempv_t)
+                                              temp_t, tempv_t, noise_rho_view)
             else:
                 act, z, logp = sample_view(padded, mu, policy.log_std(), temp_t,
                                            tempv_t)

@@ -131,6 +131,26 @@ def test_long_off_mode_runs_exist():
     assert best >= 25, best
 
 
+def test_per_env_rho_pair_correlates_only_the_chosen_envs():
+    """--noise-tau-frac: a (rho, innovation) tensor pair. rho-0 envs draw a
+    fresh N(0, 1) every step (lag-1 correlation 0), the others AR(1)."""
+    torch.manual_seed(6)
+    B, rho = 4000, 0.9
+    r = torch.zeros(B)
+    r[::2] = rho
+    pair = (r.view(B, 1), torch.sqrt(1.0 - r * r).view(B, 1))
+    e = torch.randn(B, 3)
+    xs = []
+    for _ in range(60):
+        xs.append(ar1_step_(e, pair).clone())
+    xs = torch.stack(xs)                                      # (T, B, 3)
+    assert abs(float(xs.std()) - 1.0) < 0.02
+    a, b = xs[:-1], xs[1:]
+    c_corr = float(torch.corrcoef(torch.stack([a[:, ::2].flatten(), b[:, ::2].flatten()]))[0, 1])
+    c_iid = float(torch.corrcoef(torch.stack([a[:, 1::2].flatten(), b[:, 1::2].flatten()]))[0, 1])
+    assert abs(c_corr - rho) < 0.02 and abs(c_iid) < 0.02
+
+
 def test_view_draw_marginal_and_logprob_match_the_update():
     torch.manual_seed(5)
     B, rho = 4096, 0.95
@@ -222,6 +242,7 @@ def test_trainer_flag_off_is_the_base_trainer_and_flag_on_trains():
         _train("nt_ctl_new", [])
         _train("nt_ctl_old", [], script="train_fast_prenoise.py")
         on = _train("nt_on", ["--noise-tau", "0.5"])
+        frac = _train("nt_frac", ["--noise-tau", "0.5", "--noise-tau-frac", "0.25"])
     finally:
         old.unlink(missing_ok=True)
     a, b = ROOT / "runs" / "nt_ctl_new", ROOT / "runs" / "nt_ctl_old"
@@ -244,5 +265,10 @@ def test_trainer_flag_off_is_the_base_trainer_and_flag_on_trains():
     assert con["noise_tau"] == 0.5
     assert "--noise-tau 0.5 s" in on.stdout and "rho 0.9231" in on.stdout
     assert _rows("nt_on") != _rows("nt_ctl_new")
-    for run in ("nt_ctl_new", "nt_ctl_old", "nt_on"):
+    assert "noise_tau_frac" not in con
+    cf = json.loads((ROOT / "runs" / "nt_frac" / "run.json").read_text(
+        encoding="utf-8"))["config"]
+    assert cf["noise_tau"] == 0.5 and cf["noise_tau_frac"] == 0.25
+    assert "--noise-tau-frac 0.25: 8 of 32 envs draw AR(1) noise" in frac.stdout
+    for run in ("nt_ctl_new", "nt_ctl_old", "nt_on", "nt_frac"):
         shutil.rmtree(ROOT / "runs" / run, ignore_errors=True)
