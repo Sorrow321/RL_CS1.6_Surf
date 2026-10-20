@@ -442,3 +442,30 @@ steps/s. Measure it on your box in the first minute and size `--steps` to the ti
   so the novel-only run is EXTENDED (it clears the trap sooner than GR at matched steps):
   r1b1_novonlyx = bare resume to 2.1B (~11:25 UTC). The ratchet + novel lineage crossed the
   pit at 1,633M (wall reached at ~651M).
+
+### Ablation 2 extended (r1b1_novonlyx, stopped 10:23 UTC): novel spawns WITHOUT the ratchet stall at the window
+
+* 500M -> 1.02B: every eval 20.3-20.8% (best) from 500M on - the window wall, exactly where
+  NV2 (surf + novel, no ratchet) stalled from ~1.0B to 1.41B. ratnov (ratchet + novel) passed
+  the window at 576M with T ~0; GR (neither) at 755M. Behind GR at matched steps from 755M ->
+  stopped (PROTOCOL). The box was released at 10:24 UTC (~9.7 h, ~$3.8).
+* Reading (one seed per arm): novel spawns move the first gate; WITHOUT the ratchet they stall
+  at the window (2 runs); WITH it the window falls at 576M and the CP2 pit at 1,633M. The
+  ratchet alone does nothing early. The combination is the recipe.
+
+### The obstacle past the CP2 slot, for the next round (analysis only)
+
+* Two thin fail plates below the slot's west end: kill *17 (x 1,952-2,208, y 832-960,
+  z ~10,950; the 4,917M best episode died on it) and kill *21 (x 2,208-2,528, full width,
+  z ~10,690; the 2,312M best died on it).
+* The field's steepest-descent route from the slot's end ((2,400, +-850, 11,450), d ~70,240):
+  diagonally down and toward the centre - (2,208, 850, 11,258), (2,048, 818, 11,066),
+  (1,856, 722, 10,874), (1,760, 530, 10,682) - then west along y ~0 at z ~10,400 through
+  x 1,632-864 and into the CP2 curtain (sgcp_2, x 768-816, z 10,060-11,300) at d ~67,500-67,750
+  (~31%). Mirror-identical from the -y lane.
+* So the wall at x 2,224 is an obstacle only above z ~11,300 (the route passes x 2,208 at
+  11,258), and the agent arrives level at 11,450-11,550. The next skill: start descending at
+  the pit floor's west edge (x 2,592; its top is 11,332) so as to pass x ~2,224 below
+  ~11,300, then steer to the centre between the plates. In free fall from level flight a
+  368 u approach loses only ~30 u, so it needs a downward velocity set up before the edge -
+  the human's dip 2 (27.9-31.2 s) is probably that set-up. Under the ratchet the dip is free.
