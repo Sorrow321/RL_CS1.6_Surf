@@ -187,7 +187,7 @@ TRAIN_ONLY = frozenset({
     "vf", "ent", "ent_final", "graphs", "compile", "bf16", "train_stride",
     "reward_per_decision", "eval_eps", "eval_greedy_only", "blend",
     # exploration: training-time only, a recording is greedy or samples pi
-    "ez_eps", "ez_max", "ez_mu", "ez_front",
+    "ez_eps", "ez_max", "ez_mu", "ez_front", "ez_surf",
     # --tail-weight (TailRL, arXiv 2609.02987): a per-EPISODE multiplier on
     # the GAE advantages inside the PPO update. It reweights a gradient; it
     # changes neither what an action means, nor what the policy observes,

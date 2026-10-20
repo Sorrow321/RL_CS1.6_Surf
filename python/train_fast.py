@@ -129,7 +129,7 @@ from surfgym.tailrl import tail_weights
 from surfgym.tick import episode_seconds
 from surfgym.view import (K_MAX, LOG_STD_INIT, OFF_ALPHA, OFF_MAX,
                           PITCH_ABS_HALF, PITCH_ABS_MID, WARP_ALPHA, n_z,
-                          view_mode_code)
+                          off_warp_inv, view_mode_code)
 from surfgym import keyshold
 from surfgym.keyshold import KeysHold, nvec_with_keep
 from surfgym.mirror import mirror_actions_
@@ -4323,6 +4323,13 @@ def main() -> None:
                     help="cap on ez-greedy burst length, in decisions")
     ap.add_argument("--ez-mu", type=float, default=None,       # 2.0
                     help="zeta exponent for ez-greedy burst length")
+    ap.add_argument("--ez-surf", type=float, default=None,     # 0 = off
+                    help="--ez-eps under --view-absolute velocity: this share of the bursts is "
+                         "the generic SURF / air-strafe input instead of a uniform action - one "
+                         "strafe key held (A or D, fifty-fifty), no forward key, no jump, no duck, "
+                         "the view K x atan(30/|v_h|) ahead of the velocity on the strafe side "
+                         "(K ~ U(0.5, 2) per burst): the committed input that rides a ramp or "
+                         "turns sharply in the air. 0/absent = off, byte-identical; ckpt restores")
     ap.add_argument("--ez-front", type=float, default=None,    # 0 = off
                     help="--ez-eps only at the FRONTIER (Go-Explore: explore "
                          "from where the policy's reach ends): a burst may "
@@ -7053,6 +7060,9 @@ def main() -> None:
         if args.ez_front is None and ck_cfg.get("ez_front"):
             args.ez_front = float(ck_cfg["ez_front"])
             restored.append(f"ez_front={args.ez_front:g}")
+        if args.ez_surf is None and ck_cfg.get("ez_surf"):
+            args.ez_surf = float(ck_cfg["ez_surf"])
+            restored.append(f"ez_surf={args.ez_surf:g}")
         if args.ez_max is None and ck_cfg.get("ez_max") is not None:
             args.ez_max = int(ck_cfg["ez_max"])
         if args.ez_mu is None and ck_cfg.get("ez_mu") is not None:
@@ -8341,6 +8351,16 @@ def main() -> None:
         args.ez_eps = 0.0
     if args.ez_front is None:
         args.ez_front = 0.0
+    if args.ez_surf is None:
+        args.ez_surf = 0.0
+    if float(args.ez_surf) != 0.0:
+        if not 0.0 < float(args.ez_surf) <= 1.0:
+            raise SystemExit("--ez-surf is a share of the bursts, in (0, 1]")
+        if float(args.ez_eps) <= 0.0:
+            raise SystemExit("--ez-surf shapes --ez-eps bursts: it needs --ez-eps > 0")
+        if not (args.view_continuous and str(args.view_absolute) == "velocity"):
+            raise SystemExit("--ez-surf holds a yaw LEAD over the velocity: it needs "
+                             "--view-continuous --view-absolute velocity")
     if float(args.ez_front) != 0.0:
         if not 0.0 < float(args.ez_front) <= 1.0:
             raise SystemExit("--ez-front must be in (0, 1]")
@@ -13370,6 +13390,9 @@ def main() -> None:
     # --ez-front: in the config ONLY when on, so the control's config is unchanged
     if float(args.ez_front or 0.0) > 0.0:
         meta["config"]["ez_front"] = float(args.ez_front)
+    # --ez-surf: likewise only when on
+    if float(args.ez_surf or 0.0) > 0.0:
+        meta["config"]["ez_surf"] = float(args.ez_surf)
     # --goal-planner primlearn: the planner's PPO / reward knobs and the uniform-first share,
     # ONLY then (record_ckpt.py: TRAIN_ONLY - a recording runs the stored planner greedily)
     if PLPLAN:
@@ -16976,6 +16999,30 @@ def main() -> None:
                                 uz = (torch.rand(nf, NZ, device=device)
                                       * 2.0 - 1.0).clamp_(-0.999, 0.999)
                                 ez_z[fresh] = torch.atanh(uz)
+                                if float(args.ez_surf) > 0.0:
+                                    # --ez-surf: this share of the new bursts is the surf /
+                                    # air-strafe input: one strafe key, no fwd / jump / duck,
+                                    # the view K x atan(30/|v_h|) ahead on the strafe side
+                                    fi = torch.nonzero(fresh).squeeze(1)
+                                    sp = fi[torch.rand(nf, device=device) < float(args.ez_surf)]
+                                    if len(sp):
+                                        _kh = 1 if NVEC[H_FWD] == 4 else 0   # keys-hold keep bin
+                                        left = torch.rand(len(sp), device=device) < 0.5
+                                        ez_act[sp, H_FWD] = 1 + _kh
+                                        ez_act[sp, H_SIDE] = torch.where(
+                                            left, torch.full_like(sp, 0 + _kh),
+                                            torch.full_like(sp, 2 + _kh))
+                                        ez_act[sp, H_JUMP] = 0
+                                        ez_act[sp, H_DUCK] = 0 + _kh
+                                        _v = np.asarray(slots[0].core.states_view["velocity"],
+                                                        np.float64)[sp.cpu().numpy()]
+                                        _lead = np.degrees(np.arctan2(30.0, np.maximum(
+                                            np.hypot(_v[:, 0], _v[:, 1]), 30.0)))
+                                        _lead *= np.random.uniform(0.5, 2.0, len(sp))
+                                        _lead *= np.where(left.cpu().numpy(), 1.0, -1.0)
+                                        ez_z[sp, 0] = torch.atanh(torch.as_tensor(
+                                            np.clip(off_warp_inv(_lead), -0.999, 0.999),
+                                            dtype=ez_z.dtype, device=device))
                     ez_only = ez_left > 0
                     live = ez_only
                     if args.spawn_burst > 0:
