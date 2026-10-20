@@ -879,3 +879,12 @@ checkpoint is taken from the BEST EVAL's run dir, so pull that run's ckpt_final.
 * Reservoir (newest 20k): low region 895 states, of which **4 fast and rising** (bowl surfs at the WR's surf
   spot, e.g. (2,028, -462, 9,857) v (402, -863, +465)) + 36 slow hops; 1 fast-rising chamber state. Every
   earlier reservoir had only slow hops there. Ceiling still the incumbent's 28,174 u.
+
+### r2b4_tp1 result (18:46-19:38 UTC, stopped at 5,895M) and the switch to tp1c
+
+* Evals 28.220 / 28.198 / 28.235 / 28.056 / 27.964 / 28.239 / 28.241 / 27.798 / **28.407** / 27.945: the line
+  holds under `--time-pen 0.001`. Reservoir at 5,895M: low region 926, **bowl surfs 11** (4 at 5,474M),
+  fast-rising chamber 4 (1), hole lane 0; ceiling 28,174 u (the incumbent's).
+* The bowl surfs are rare cells (fast + rising in that 128 u cube) a uniform draw almost never picks - what
+  --respawn-cells is for. r2b4_tp1c (19:39 UTC): resume of tp1's ckpt_latest (5,895,094,272) + `--respawn-cells
+  0.5 --respawn-cells-band 0.05`, everything else restored, 3.0B steps (to ~22:45).
