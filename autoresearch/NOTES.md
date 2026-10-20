@@ -909,3 +909,20 @@ r2b3_arch ckpt_final (5.55B), 6 stochastic + 2 greedy episodes, 8 s cap:
   entry is already too steep (exit ~10,950); wall contacts can turn the horizontal velocity but
   never undo the fall. So the bounce entry is a near-miss that buys a deeper sill death (up to
   ~28.9% at the tunnel's far end), probably not a crossing; the helix stays the way on.
+
+### r2b3_ownx stopped at ~9.48B (19:56 UTC); the archive idea at its cap
+
+* 7.66 -> 9.48B (1.8B steps). Evals (best %) after the 8,114M 28.766: 27.4-28.0 everywhere
+  (19 evals); archive reach unchanged (room 0, deepest real state 28.85%). The run's newest
+  weights pulled: r2b3_ownx/ckpt_latest.pt (md5 11bf38c0...) - the checkpoint of the branch's
+  best eval's run.
+* The archive idea (14:34 -> ~20:00, ~5.5 h of box time across arch / archx / archs / archsx /
+  own / ownx) is at its cap.
+
+### r2b3_scrown: FROM SCRATCH, recipe + `--respawn-rare 0.5 --respawn-rare-arch 1 --respawn-rare-own 1` - launched 19:57 UTC
+
+* Hypothesis for the first scratch test's slow start (4.7% at 378M vs ratnov's 15.2%): archive
+  returns marked the cells around the first-ramp trap as visited and pushed out the novel rows,
+  which are what drive the early gates (novel-only: 10.1% at 302M). With the own-flight flag
+  the novel rows work as without the archive. 450M steps; compare with ratnov (5.8% at 302M,
+  15.2% at 378M, 20.8% at 453M) and r2b3_scrarch (4.7% at 302M and 378M).
