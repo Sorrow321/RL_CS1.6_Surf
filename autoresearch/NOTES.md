@@ -103,3 +103,48 @@ The docs say how each one works and what it did.
 The 3090 is the reference card in CLAUDE.md (~0.75-0.9e9 steps/h on the older, smaller
 config). With SimBa + normals + the potential channel at 1024 envs, expect roughly 150-250k
 steps/s. Measure it on your box in the first minute and size `--steps` to the time.
+
+## Round 1, branch r1b3 - 2026-10-20 00:49 UTC (first entry)
+
+### The CP2 wall, measured on the incumbent's own evals (ANALYSIS ONLY, nothing enters training)
+
+* ref_surf 3,775M ep 1 (27.50%), the line after the window: the hole at x ~1,030 (19.75 s), a
+  turn south and back east along y ~-800, a ramp launch at x ~2,400 (22.1 s, vz -311 -> +476),
+  free flight up to z 12,360 at x 4,251 (23.5 s), then a MID-AIR U-turn (yaw 345 -> 201 in
+  0.75 s) at x ~4,600 and a straight dive west into the fail at (3,007, -909, 11,219), 25.19 s,
+  vz -1,352. All 9 episodes end there (x 3,007-3,113, z 11,172-11,224).
+* GR's 755M eval (the incumbent): the same wall (27.22%), plus earlier deaths at 22.5%
+  (x ~1,600, z ~11,600) and 25-26% (x 4,191-4,979, z 11,932-12,296).
+* CP2 (sgcp_2) is the plane x 768..816, z 10,060..11,300: 2,200 u WEST of the death point.
+* Hull traces (scratchpad geom.py, measurement only): the ramps the human turns around on
+  (ledger: (5,554, 454, 11,079) at 25.5 s) are at x 4,600-5,800, y about +-600, z 11,000-11,330,
+  normal_z 0.68. That is ~1,000 u BELOW the agent's U-turn altitude; above them (z 11,900-12,350)
+  x 4,900-5,800 is wall. So the crossing is a different line from ~22 s on (lower, to the side),
+  not a later U-turn. Several seconds of different behaviour.
+
+### What that rules out (reasoned from the ledger's numbers)
+
+* **Per-decision temperature.** The policy's view sigma is 0.02-0.045 in pre-tanh z, ~1 deg of
+  yaw offset; T = 2 doubles it. The surf run's 1.5B steps at T = 2 and the cap-4 lineage's 1.8B
+  at T = 4 had essentially no view exploration; only the keys were tempered.
+* **--death-charge.** With the recipe's 0.5/s time penalty, an episode that progresses at ~0.85
+  shaping units/s nets (0.85 (1 - kappa) - 0.5) per second, which is negative for kappa > ~0.4
+  (fast suicide, xNGS). At kappa 0.3 the dive at CP2 still beats 15 s of wandering into a stall
+  kill. Not tried.
+* **Spawning past the wall** (searched states, --respawn-frontier) is teleporting forward, which
+  the user ruled out for --respawn-novel. Not tried.
+
+### The plan
+
+1. Warm resume of the incumbent + `--view-ou-sigma 0.8 --view-ou-period 40` (existing code:
+   a per-env yaw offset c ~ N(0, 0.8) in pre-tanh z, held 40 decisions = 1.6 s, added to the
+   EXECUTED z only, so PPO stays on-policy). These are the constants gbCELou/gsCELou ran on
+   celestial, so nothing here is read off this map. At mu = 0, 0.8 is ~25 deg of held offset,
+   25x what T = 2 gives the view. Question: does committed view exploration at the wall put
+   training episodes past CP2 (reservoir reach, training frontier), and does the greedy line
+   follow, as it did at the window?
+2. `--view-ou-temp` (new): the OU sigma scaled by the unstuck temperature, sigma x T / T_max,
+   so committed exploration is OFF while the frontier moves and full at the cap. That is the
+   generic, from-scratch form of (1) if (1) shows anything.
+3. No box at 00:49: every offer under the caps is blocklisted or above the cap (3090s 0.381,
+   4090s 0.455). Retrying every wakeup.
