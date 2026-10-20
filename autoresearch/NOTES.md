@@ -433,3 +433,16 @@ misleading: the agent's surviving lines pass through `*99`'s box.
     reached, never past the policy's own best.
   * Swapped into C2 live at step 2,640,838,656. C3 resumes C2's final checkpoint with the
     same file.
+
+### 04:56 UTC: C2 final (2.75B), best score 27.544; C3 launched (the higher-dive spawns)
+
+* **Arm C2, r1b4_gs2**, 03:28-04:52, 1.0B steps at 198k steps/s:
+  * 14 evals between 26,822 and 26,909 u frontier;
+  * the best score is **27.544 (2,279M)**, this branch's best, scored the orchestrator's
+    way (`best_in` over every run dir): 37 valid evals;
+  * no CP2. ckpt_final md5 77a42ab2... was pulled.
+* **Arm C3, r1b4_gs3**, launched 04:53:
+  * resume of C2's ckpt_final with `--spawn-states runs/c3_spawns.npy --spawn-states-frac
+    0.4 --unstuck-max 1`;
+  * +1e9 steps, so it stops at 3.75B, about 06:20;
+  * box deadline 06:53.
