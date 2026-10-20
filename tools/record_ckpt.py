@@ -194,6 +194,7 @@ TRAIN_ONLY = frozenset({
     # arms): training-time start distribution and exploration only, never
     # what an action means or what the policy sees
     "spawn_burst", "spawn_burst_p", "spawn_burst_frac", "spawn_burst_uniform",
+    "spawn_burst_deep",
     "respawn_mode", "respawn_bins",
     "respawn_killsafe", "demo_file", "demo_window", "demo_rate",
     "demo_min_ep", "demo_grow",

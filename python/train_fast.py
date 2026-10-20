@@ -4323,6 +4323,16 @@ def main() -> None:
                          "velocity it is a yaw offset off_warp(u) in the "
                          "velocity frame, redrawn with the keys. ckpt "
                          "restores")
+    ap.add_argument("--spawn-burst-deep", type=float, default=None,  # 1.0
+                    help="--spawn-burst: burst only a respawn whose spawn "
+                         "point is among the DEEPEST Q of the policy's own "
+                         "reservoir by goal-field distance (Q = 1.0, the "
+                         "default, is every respawn). Go-Explore's 'explore "
+                         "from the frontier cells': the threshold is the "
+                         "reservoir's Q-quantile of d, re-read every "
+                         "iteration, so it follows the policy's frontier and "
+                         "needs nothing from the map. Single-map, needs the "
+                         "reservoir (--respawn-frac > 0). ckpt restores")
     ap.add_argument("--spawn-burst-uniform", action="store_true",
                     default=None,
                     help="--spawn-burst: draw each burst's length uniformly "
@@ -7354,6 +7364,10 @@ def main() -> None:
                 and ck_cfg.get("spawn_burst_frac") is not None):
             args.spawn_burst_frac = float(ck_cfg["spawn_burst_frac"])
             restored.append(f"spawn_burst_frac={args.spawn_burst_frac:g}")
+        if (args.spawn_burst_deep is None
+                and ck_cfg.get("spawn_burst_deep") is not None):
+            args.spawn_burst_deep = float(ck_cfg["spawn_burst_deep"])
+            restored.append(f"spawn_burst_deep={args.spawn_burst_deep:g}")
         if (args.spawn_burst_uniform is None
                 and ck_cfg.get("spawn_burst_uniform") is not None):
             args.spawn_burst_uniform = bool(ck_cfg["spawn_burst_uniform"])
@@ -8434,12 +8448,21 @@ def main() -> None:
         args.spawn_burst_frac = 1.0
     if args.spawn_burst_uniform is None:
         args.spawn_burst_uniform = False
+    if args.spawn_burst_deep is None:
+        args.spawn_burst_deep = 1.0
     if not 0.0 <= float(args.spawn_burst_frac) <= 1.0:
         raise SystemExit("--spawn-burst-frac must be in [0, 1]")
-    if ((float(args.spawn_burst_frac) != 1.0 or args.spawn_burst_uniform)
+    if not 0.0 < float(args.spawn_burst_deep) <= 1.0:
+        raise SystemExit("--spawn-burst-deep must be in (0, 1]")
+    if ((float(args.spawn_burst_frac) != 1.0 or args.spawn_burst_uniform
+         or float(args.spawn_burst_deep) != 1.0)
             and int(args.spawn_burst or 0) <= 0):
-        raise SystemExit("--spawn-burst-frac / --spawn-burst-uniform need "
-                         "--spawn-burst K > 0")
+        raise SystemExit("--spawn-burst-frac / --spawn-burst-uniform / "
+                         "--spawn-burst-deep need --spawn-burst K > 0")
+    if float(args.spawn_burst_deep) != 1.0 and (
+            args.maps or not float(args.respawn_frac or 0.0) > 0.0):
+        raise SystemExit("--spawn-burst-deep reads the single-map reservoir: "
+                         "no --maps, and --respawn-frac > 0")
     if args.respawn_killsafe is None:
         args.respawn_killsafe = 0
     if args.race_shaping is None:
@@ -13334,6 +13357,8 @@ def main() -> None:
         meta["config"]["spawn_burst_frac"] = float(args.spawn_burst_frac)
     if args.spawn_burst_uniform:
         meta["config"]["spawn_burst_uniform"] = 1
+    if float(args.spawn_burst_deep) != 1.0:
+        meta["config"]["spawn_burst_deep"] = float(args.spawn_burst_deep)
     if VIEWC:
         meta["config"]["view_continuous"] = 1
         # written ONLY when set, so an untreated control's config dump is
@@ -14264,6 +14289,13 @@ def main() -> None:
         if VIEWC:
             a[:, :N_VIEW] = SB_NEUTRAL_VIEW
         return a
+    # --spawn-burst-deep: the threshold (field distance) a respawn must be at
+    # or under to burst, refreshed per iteration from the reservoir; SB_DLIM
+    # keeps the unreachable sentinel out of the quantile
+    SB_DEEP = float(args.spawn_burst_deep) if args.spawn_burst > 0 else 1.0
+    SB_DLIM = (float(slots[0].goal_field.reach_max)
+               - 0.5 * float(slots[0].goal_field.cell)) if SB_DEEP < 1.0 else 0.0
+    sb_dq = float("inf")
     # per-env distance-bin of the CURRENT episode's start (-1 = unknown /
     # invalid), for attributing episode outcomes to start bins
     start_bin = np.full(N, -1, np.int64)
@@ -16491,6 +16523,21 @@ def main() -> None:
     while global_step < int(args.steps):
         it_no += 1
         tm.start_iter()
+        if SB_DEEP < 1.0:
+            # --spawn-burst-deep: this iteration's threshold, the reservoir's
+            # Q-quantile of field distance (a 20k subsample is plenty for a
+            # quantile); +inf while the reservoir is empty, so the first
+            # respawns burst like Q = 1
+            _rb = slots[0].respawn
+            _k = int(getattr(_rb, "size", 0) or 0) if _rb is not None else 0
+            if _k:
+                _o = np.asarray(_rb._store[:_k]["origin"], np.float64)
+                if _k > 20000:
+                    _o = _o[np.linspace(0, _k - 1, 20000).astype(np.int64)]
+                _dd = np.asarray(slots[0].goal_field.sample(_o), np.float64)
+                _dd = _dd[_dd < SB_DLIM]
+                sb_dq = (float(np.quantile(_dd, SB_DEEP)) if len(_dd)
+                         else float("inf"))
         if DROP_GEN is not None:
             # consistent dropout: ONE sub-network for this rollout AND the
             # update that consumes it (the ratio stays on-policy); the new
@@ -17456,6 +17503,20 @@ def main() -> None:
                         sb_left[just_reset] = 0
                         sb_new = sb_new & (torch.rand(N, device=device)
                                            < args.spawn_burst_frac)
+                    if SB_DEEP < 1.0:
+                        # --spawn-burst-deep: only a respawn at or past the
+                        # reservoir's Q-quantile of field distance explores.
+                        # The core has autoreset in place, so sv_view holds
+                        # the new episodes' spawn points now
+                        sb_left[just_reset] = 0
+                        _jr = np.flatnonzero(ended_acc)
+                        _deep = np.zeros(N, bool)
+                        if len(_jr):
+                            _dj = np.asarray(slots[0].goal_field.sample(
+                                np.asarray(sv_view["origin"][_jr], np.float64)),
+                                np.float64)
+                            _deep[_jr] = _dj <= sb_dq
+                        sb_new = sb_new & torch.from_numpy(_deep).to(device)
                     if args.spawn_burst_uniform:
                         # --spawn-burst-uniform: length ~ U{1..K}
                         sb_len = torch.randint(
@@ -19265,6 +19326,9 @@ def main() -> None:
         # burst rows (off-policy, out of the PPO pool); stdout only
         burst_note = (f"  burst {float(b_ez.float().mean()):.1%}"
                       if args.spawn_burst > 0 else "")
+        if SB_DEEP < 1.0:
+            burst_note += (f" (deep d<={sb_dq:,.0f}u)" if sb_dq < float("inf")
+                           else " (deep: reservoir empty)")
         print(f"step {global_step:>13,d}  rew {rmean:8.2f}  len {lmean:6.0f}  "
               f"fps {fps:,.0f}  kl {kl:.4f}  ent {ent_coef:.4f}"
               f"{hyg_note}{race_note}{front_note}{back_note}{gate_note}"

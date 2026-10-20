@@ -163,6 +163,19 @@ def test_burst_on_trains_fires_dumps_records_and_refuses():
                   + ["--steps", "512", "--spawn-burst-frac", "0.5"])
         assert r3.returncode != 0
         assert "need --spawn-burst K > 0" in r3.stdout + r3.stderr
+        # --spawn-burst-deep: once the reservoir holds states the threshold is
+        # its Q-quantile of field distance, printed on the step line
+        flags = [f for f in FLAGS]
+        flags[flags.index("--ep-ticks") + 1] = "300"
+        flags[flags.index("--respawn-margin") + 1] = "1"
+        shutil.rmtree(ROOT / "runs" / "sbv_deep", ignore_errors=True)
+        r4 = _run([sys.executable, "-u", str(TRAIN), "--run", "sbv_deep"] + flags
+                  + ["--steps", "12288", "--spawn-burst", "50", "--spawn-burst-p",
+                     "0.98", "--spawn-burst-uniform", "--spawn-burst-deep", "0.3"])
+        assert r4.returncode == 0, r4.stdout[-4000:] + r4.stderr[-4000:]
+        assert "(deep d<=" in r4.stdout, r4.stdout[-3000:]
+        cfg4 = json.loads((ROOT / "runs" / "sbv_deep" / "run.json").read_text(encoding="utf-8"))
+        assert cfg4.get("config", cfg4)["spawn_burst_deep"] == 0.3
     finally:
-        for r in (run, "sbv_bad"):
+        for r in (run, "sbv_bad", "sbv_deep"):
             shutil.rmtree(ROOT / "runs" / r, ignore_errors=True)
