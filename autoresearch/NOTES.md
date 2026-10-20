@@ -596,3 +596,17 @@ from the deepest quarter by d, half uniform. Loop mode re-roots on each new eval
   (here ~25 KB/s: >1.5 h). A 10-second `curl --max-time` from codeload.github.com in `wait_ready`
   (fail under ~1 MB/s, blocklist as "network") would catch it before any money is spent on a
   deploy. Worked around on this branch with a wrapper loop around `box.py rent` (scratchpad).
+
+### 14:30 UTC: box 56904907 (RTX 4090, Singapore, $0.375/h): GitHub codeload 14.8 MB/s, scp from here 1.6 MB/s
+
+### 14:45 UTC: r2b1_fa1 LAUNCHED - warm incumbent (5,100.8M) + `--spawn-states` archive (frac 0.2), 450M
+
+* `box.py launch --resume --steps 4.5e8 --self-states "..." -- --spawn-states
+  /root/RL_Surf/runs/r2b1_fa1_archive.npy --spawn-states-frac 0.2`; the archive (13,543 states,
+  survivor-gated, rooted at the incumbent's own eval) was built on the box in ~20 s
+  (870k sim ticks/s with 8 threads). Record gate passed; trainer pid 4328.
+* **Ops: the archive loop cannot share the box with the trainer.** Uncapped, the goal field's numba
+  sampler took every thread and the trainer fell to ~40k steps/s; capped at 2 threads and niced it
+  still fell to ~25k (OpenMP oversubscription: one descheduled trainer thread stalls every barrier).
+  Alone the trainer runs 252-326k steps/s on this 5950X. So this run uses the STATIC archive; a
+  refresh, if any, is built on the agent host and pushed.
