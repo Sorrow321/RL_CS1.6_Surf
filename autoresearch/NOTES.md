@@ -353,3 +353,17 @@ misleading: the agent's surviving lines pass through `*99`'s box.
   * that file is GE2 + GE3, 139,622 states, all d >= 70,883: no spawn past the policy's
     own best, the respawn-novel rule; md5 b807ba4f...;
   * it includes the higher-dive approach states up to the frontier.
+
+### 03:30 UTC: Arm C final (1.75B); Arm C2 launched
+
+* **Arm C, r1b4_gs**, 02:02-03:26, 1.0B steps at 198k steps/s average:
+  * evals 1,429M-1,731M scored 27.41 / **16.05** / 27.48 / 27.47 / 27.48;
+  * the frontier never left 26,8xx u; no CP2 crossing;
+  * the policy's own view sigma fell to 0.028 / 0.007 (the noise collapse r1b2 also saw).
+  * Its best score is 27.484, under Arm B's 27.489.
+* **Arm C2, r1b4_gs2**, launched 03:28 via box.py ssh + `SELF_STATES=1`:
+  * resume of `runs/r1b4_gs/ckpt_final.pt` with `--spawn-states runs/ge23_fastnovel.npy
+    --spawn-states-frac 0.4 --unstuck-max 1`;
+  * T clamped 2.0 -> 1.00 at the first update; +1e9 steps, so it stops at 2.75B, about
+    04:55;
+  * box deadline extended to 05:29 UTC.
