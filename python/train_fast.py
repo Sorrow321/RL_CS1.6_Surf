@@ -2143,6 +2143,97 @@ def sample_view_ar(padded, mu, log_std, e_cat, e_view, rho,
     return torch.cat([neutral, cat], dim=1), z, logp_c + gauss_logp(z, mu, ls)
 
 
+# --noise-tau-cond: EXACT credit for the correlated draw. The marginal score
+# above credits every decision of a sustained deviation with all of it
+# (e_t / sigma, of which rho * e_(t-1) was decided earlier), and that bias
+# ran the KL away (r1b2_ntr: 0.26 -> 1.64). Here the policy is read as
+# pi(a | s, e_(t-1)) - the noise latent is exogenous, AR(1) state the
+# behaviour conditions on - and each decision is scored by THAT density:
+#   view heads: z ~ N(mu + sigma * rho * e_prev, sigma^2 (1 - rho^2));
+#   key heads: one latent per head, u = Phi(e_t), the action is the bin
+#     whose CDF interval [C_(k-1), C_k) holds u (inverse-CDF sampling, so the
+#     marginal is still softmax), and
+#     P(k | e_prev) = Phi((ndtri(C_k) - rho e_prev) / s)
+#                   - Phi((ndtri(C_(k-1)) - rho e_prev) / s),  s = sqrt(1 - rho^2).
+# rho = 0 gives back the plain log-prob exactly (up to the ndtri round trip).
+_NDTRI_END = 8.0      # |ndtri| for a CDF end (Phi(8) rounds to 1 in fp32)
+
+
+def _log_diff_ndtr(lo, hi):
+    """log(Phi(hi) - Phi(lo)) for lo <= hi, from whichever tail is accurate."""
+    flip = lo > 0.0
+    a = torch.where(flip, -hi, lo)
+    b = torch.where(flip, -lo, hi)
+    la = torch.special.log_ndtr(a)
+    lb = torch.special.log_ndtr(b)
+    return lb + torch.log(-torch.expm1((la - lb).clamp_max(-1e-30)))
+
+
+def icdf_sample_cat(padded_t, e, nmax):
+    """(B, H, NPAD) tempered logits, (B, H) latents, (H,) last valid bin per
+    head -> (B, H) long: the first bin whose cumulative probability reaches
+    u = Phi(e). The clamp catches u above a CDF that sums to 1 - ulp."""
+    c = torch.cumsum(F.softmax(padded_t, dim=-1), dim=-1)
+    act = (c < torch.special.ndtr(e).unsqueeze(-1)).sum(-1)
+    return torch.minimum(act, nmax)
+
+
+def cond_logp_cat(padded_t, act, e_prev, rho, s):
+    """sum over heads of log P(act | e_prev) under icdf_sample_cat with
+    e_t ~ N(rho e_prev, s^2): (B, H, NPAD), (B, H) long, (B, H), and rho / s
+    broadcasting against (B, H). -> (B,)."""
+    p = F.softmax(padded_t, dim=-1)
+    pk = p.gather(-1, act.unsqueeze(-1)).squeeze(-1)
+    c_hi = torch.cumsum(p, dim=-1).gather(-1, act.unsqueeze(-1)).squeeze(-1)
+    c_lo = c_hi - pk
+    q_hi = torch.where(c_hi >= 1.0 - 1e-6, torch.full_like(c_hi, _NDTRI_END),
+                       torch.special.ndtri(c_hi.clamp(1e-7, 1.0 - 1e-7)))
+    q_lo = torch.where(c_lo <= 1e-6, torch.full_like(c_lo, -_NDTRI_END),
+                       torch.special.ndtri(c_lo.clamp(1e-7, 1.0 - 1e-7)))
+    m = rho * e_prev
+    return _log_diff_ndtr((q_lo - m) / s, (q_hi - m) / s).sum(-1)
+
+
+def cond_logp_view(z, mu, ls, e_prev, rho, s):
+    """log N(z; mu + sigma * rho * e_prev, (sigma * s)^2), summed over heads;
+    ``ls`` is the (tempered) log sigma, rho / s broadcast against z."""
+    return gauss_logp(z, mu + ls.exp() * rho * e_prev, ls + torch.log(s))
+
+
+def sample_view_cond(padded, mu, log_std, e_cat, e_view, ep_cat, ep_view,
+                     rho, s, nmax, temp=None, temp_view=None):
+    """The --noise-tau-cond rollout draw: copies the latents the decision is
+    conditioned on into ``ep_cat`` / ``ep_view``, advances ``e_cat`` (B, H) and
+    ``e_view`` (B, NZ) one AR(1) step with the per-env (B, 1) ``rho`` / ``s``,
+    draws the keys by inverse CDF and the view by z = mu + sigma e, and returns
+    the CONDITIONAL joint log-prob. Same return shape as sample_view."""
+    ep_cat.copy_(e_cat)
+    ep_view.copy_(e_view)
+    ar1_step_(e_cat, (rho, s))
+    ar1_step_(e_view, (rho, s))
+    pt = _temper_logits(padded[:, N_VIEW:], temp)
+    cat = icdf_sample_cat(pt, e_cat, nmax)
+    logp_c = cond_logp_cat(pt, cat, ep_cat, rho, s)
+    ls = _temper_log_std(log_std, temp if temp_view is None else temp_view)
+    z = mu + ls.exp() * e_view
+    B = padded.shape[0]
+    neutral = torch.full((B, N_VIEW), 0, dtype=cat.dtype, device=cat.device)
+    neutral[:, 0] = NEUTRAL_ACT[0]
+    neutral[:, 1] = NEUTRAL_ACT[1]
+    return (torch.cat([neutral, cat], dim=1), z,
+            logp_c + cond_logp_view(z, mu, ls, ep_view, rho, s))
+
+
+def cond_logp_view_joint(padded, actions, mu, log_std, z, ep_cat, ep_view, rho,
+                         s, temp=None, temp_view=None):
+    """The update's recomputation of sample_view_cond's log-prob from the
+    STORED action, z and conditioning latents (rho / s per row, (B, 1))."""
+    pt = _temper_logits(padded[:, N_VIEW:], temp)
+    ls = _temper_log_std(log_std, temp if temp_view is None else temp_view)
+    return (cond_logp_cat(pt, actions[:, N_VIEW:], ep_cat, rho, s)
+            + cond_logp_view(z, mu, ls, ep_view, rho, s))
+
+
 def logprob_entropy_view(padded, actions, mu, log_std, z,
                          pitch_ent: float = 1.0, temp=None, temp_view=None):
     """The update's recomputation under --view-continuous: the categorical
@@ -6116,6 +6207,19 @@ def main() -> None:
                          "halved in 126M steps); a fraction keeps the long "
                          "deviations and dilutes that pressure by ~1/frac. "
                          "Default 1 (every env). ckpt restores")
+    ap.add_argument("--noise-tau-cond", type=int, default=None,   # 0 = off
+                    choices=(0, 1),
+                    help="--noise-tau with EXACT credit (view-continuous, flat "
+                         "path): the key heads draw by inverse CDF from "
+                         "u = Phi(e) (one AR(1) latent per head; the marginal "
+                         "is still softmax) and every decision is scored by "
+                         "its log-prob CONDITIONAL on the previous latent - "
+                         "N(mu + sigma rho e_prev, sigma^2 (1 - rho^2)) on "
+                         "the view, the CDF-interval mass under "
+                         "N(rho e_prev, 1 - rho^2) on the keys - so only the "
+                         "decision that starts a deviation is credited with "
+                         "it, not every decision inside it (the marginal "
+                         "score's bias, which ran the KL away). ckpt restores")
     ap.add_argument("--view-ou-period", type=int, default=0,
                     help="--view-ou-sigma: the CORRELATION TIME, in "
                          "DECISIONS. 0 (the default, and round 40's pnOU) "
@@ -8085,6 +8189,10 @@ def main() -> None:
                 and not flag_given("--noise-tau-frac")):
             args.noise_tau_frac = float(ck_cfg["noise_tau_frac"])
             restored.append(f"noise_tau_frac={args.noise_tau_frac:g}")
+        if (ck_cfg.get("noise_tau_cond") is not None
+                and not flag_given("--noise-tau-cond")):
+            args.noise_tau_cond = int(ck_cfg["noise_tau_cond"])
+            restored.append(f"noise_tau_cond={args.noise_tau_cond:d}")
         # --unstuck rides in the checkpoint like the view flags: the flag
         # and every knob of it are restored when the CLI does not say
         # otherwise (the schedule's RUN STATE is restored further down)
@@ -13388,6 +13496,8 @@ def main() -> None:
         meta["config"]["noise_tau"] = float(args.noise_tau)
         if args.noise_tau_frac is not None and float(args.noise_tau_frac) != 1.0:
             meta["config"]["noise_tau_frac"] = float(args.noise_tau_frac)
+        if int(getattr(args, "noise_tau_cond", 0) or 0):
+            meta["config"]["noise_tau_cond"] = 1
     # --view-continuous: written ONLY when set, for the reason the masks
     # give - a control run's config dump stays byte-identical. It changes
     # what an action IS, so record_ckpt.py mirrors it.
@@ -14455,7 +14565,10 @@ def main() -> None:
     # graph. NOISE_TAU is a PYTHON constant: at 0 nothing is allocated and
     # step_compute traces the draw that shipped, op for op.
     NOISE_TAU = float(getattr(args, "noise_tau", 0.0) or 0.0)
+    NOISE_COND = bool(getattr(args, "noise_tau_cond", 0) or 0)
     noise_cat = noise_view = noise_rho_view = None
+    nc_cat = nc_epc = nc_epv = nc_rho = nc_s = nc_nmax = None
+    b_epc = b_epv = nc_rho_f = nc_s_f = None
     noise_rho = 0.0
     if NOISE_TAU < 0.0:
         raise SystemExit("--noise-tau must be >= 0")
@@ -14498,8 +14611,41 @@ def main() -> None:
             noise_rho_view = (_r.view(N, 1), _s.view(N, 1))
             print(f"--noise-tau-frac {NOISE_FRAC:g}: {int(_corr.sum())} of {N} "
                   "envs draw AR(1) noise, the rest i.i.d.")
+        if NOISE_COND:
+            for _flag, _on in (("no --view-continuous", not VIEWC),
+                               ("--rnn", bool(RNN)),
+                               ("--sil-coef", SIL_COEF > 0.0)):
+                if _on:
+                    raise SystemExit(
+                        f"--noise-tau-cond is not implemented with {_flag}: the "
+                        "conditional log-prob lives in the flat view-continuous "
+                        "draw and update (sample_view_cond / mb_step)")
+            # per-env (rho, s) as (N, 1) columns (rho 0 on the i.i.d. envs of
+            # --noise-tau-frac), ONE latent per key head, the latents each
+            # decision is conditioned on, and their per-decision record
+            _i = torch.arange(N, device=device, dtype=torch.float64)
+            _corr = (torch.floor((_i + 1) * NOISE_FRAC)
+                     > torch.floor(_i * NOISE_FRAC)).float()
+            nc_rho = (_corr * math.exp(-_dec_s / NOISE_TAU)).view(N, 1)
+            nc_s = torch.sqrt(1.0 - nc_rho * nc_rho)
+            _hc = NACT - N_VIEW
+            nc_cat = torch.randn((N, _hc), device=device, generator=_ng)
+            nc_epc = torch.zeros((N, _hc), device=device)
+            nc_epv = torch.zeros((N, NZ), device=device)
+            nc_nmax = torch.tensor([int(n) - 1 for n in NVEC[N_VIEW:]],
+                                   device=device, dtype=torch.long)
+            b_epc = torch.zeros((T, N, _hc), device=device)
+            b_epv = torch.zeros((T, N, NZ), device=device)
+            nc_rho_f = nc_rho.repeat(T, 1)          # (T*N, 1): row t*N + n -> env n
+            nc_s_f = nc_s.repeat(T, 1)
+            print("--noise-tau-cond: keys drawn by inverse CDF from u = Phi(e), "
+                  "every decision scored by its CONDITIONAL log-prob given the "
+                  "previous latent (exact credit: only the innovation is the "
+                  "decision's own)")
     elif args.noise_tau_frac is not None:
         raise SystemExit("--noise-tau-frac without --noise-tau")
+    elif NOISE_COND:
+        raise SystemExit("--noise-tau-cond without --noise-tau")
     # --unstuck: the sampling temperature 1 + T as a STATIC 0-d tensor the
     # schedule writes into between iterations. It is read inside the
     # captured rollout graph and by the compiled update - never a Python
@@ -14857,7 +15003,12 @@ def main() -> None:
             padded = packer.pad(cat)
             if ROLL_MASK is not None:
                 padded = ROLL_MASK(padded)
-            if NOISE_TAU > 0.0:
+            if NOISE_COND:
+                act, z, logp = sample_view_cond(padded, mu, policy.log_std(),
+                                                nc_cat, noise_view, nc_epc,
+                                                nc_epv, nc_rho, nc_s, nc_nmax,
+                                                temp_t, tempv_t)
+            elif NOISE_TAU > 0.0:
                 act, z, logp = sample_view_ar(padded, mu, policy.log_std(),
                                               noise_cat, noise_view, noise_rho,
                                               temp_t, tempv_t, noise_rho_view)
@@ -15672,7 +15823,8 @@ def main() -> None:
                 f_age=None, f_code=None, f_dmask=None,
                 adv_mean=None, adv_std=None, f_air=None, f_jblk=None,
                 f_priv=None, f_z=None, f_temp=None, f_tempv=None,
-                f_cct=None, f_bkt=None, f_reti=None):
+                f_cct=None, f_bkt=None, f_reti=None,
+                f_epc=None, f_epv=None, f_rho=None, f_srho=None):
         # f_temp / f_tempv: --unstuck's sampling temperatures (the static
         # tensors the rollout drew under: the categorical heads' and one per
         # Gaussian head), so pi_new is scored on the SAME tempered
@@ -15771,6 +15923,14 @@ def main() -> None:
                     logp, ent = logprob_entropy_view(
                         padded, f_act[idx], mu, policy.log_std(), f_z[idx],
                         PITCH_ENT, f_temp, f_tempv)
+                    if f_epc is not None:
+                        # --noise-tau-cond: the ratio is taken over the
+                        # CONDITIONAL density the rollout scored; the entropy
+                        # bonus stays the marginal's (the policy's own spread)
+                        logp = cond_logp_view_joint(
+                            padded, f_act[idx], mu, policy.log_std(), f_z[idx],
+                            f_epc[idx], f_epv[idx], f_rho[idx], f_srho[idx],
+                            f_temp, f_tempv)
                 else:
                     logp, ent = logprob_entropy_padded(padded, f_act[idx],
                                                        f_temp)
@@ -16013,6 +16173,9 @@ def main() -> None:
                            if CC_TEMP else None),
                     f_bkt=(torch.zeros(T * N, dtype=torch.long, device=device)
                            if CC_BKT else None),
+                    f_epc=(b_epc.reshape(T * N, -1) if NOISE_COND else None),
+                    f_epv=(b_epv.reshape(T * N, NZ) if NOISE_COND else None),
+                    f_rho=nc_rho_f, f_srho=nc_s_f,
                     )[0].backward()
             opt.zero_grad(set_to_none=True)
             print(f"torch.compile: minibatch step compiled in "
@@ -16888,6 +17051,10 @@ def main() -> None:
                 act_pin.copy_(static_act, non_blocking=True)
                 if VIEWC:
                     b_z[t].copy_(static_z)
+                    if NOISE_COND:
+                        # the latents decision t was conditioned on
+                        b_epc[t].copy_(nc_epc)
+                        b_epv[t].copy_(nc_epv)
                     view_pin.copy_(static_view, non_blocking=True)
                 if H > 0:
                     b_code[t].copy_(static_code)
@@ -18177,7 +18344,10 @@ def main() -> None:
                         None if a_std is None else a_std[k_mb],
                         f_air, f_jblk, f_priv, f_z=f_z, f_temp=temp_t,
                         f_tempv=tempv_t, f_cct=f_cct, f_bkt=f_bkt,
-                        f_reti=f_reti)
+                        f_reti=f_reti,
+                        f_epc=(b_epc.reshape(T * N, -1) if NOISE_COND else None),
+                        f_epv=(b_epv.reshape(T * N, NZ) if NOISE_COND else None),
+                        f_rho=nc_rho_f, f_srho=nc_s_f)
                     loss, pg, vl, el, logp = _mbo[:5]
                     if AUG_ON:
                         # --aug-*: (G_pi, G_V) summed over the update, one read per iteration

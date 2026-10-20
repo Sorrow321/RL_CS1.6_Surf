@@ -40,8 +40,10 @@ import torch                                                   # noqa: E402
 import torch.nn.functional as F                                # noqa: E402
 
 from train_fast import (N_VIEW, NACT, NPAD, NEG, ar1_step_,     # noqa: E402
-                        gumbel_from_normal, logprob_entropy_view,
-                        sample_padded_ar, sample_view_ar)
+                        cond_logp_cat, cond_logp_view_joint,
+                        gumbel_from_normal, icdf_sample_cat,
+                        logprob_entropy_view, sample_padded_ar,
+                        sample_view_ar, sample_view_cond)
 
 EULER = 0.5772156649015329
 
@@ -179,6 +181,105 @@ def test_view_draw_marginal_and_logprob_match_the_update():
 
 
 # ==========================================================================
+# --noise-tau-cond: inverse-CDF keys + the conditional (exact-credit) log-prob
+# ==========================================================================
+_HEADS = [[1.0, 0.0, -1.0, 0.2], [0.3, 0.1, -0.2, 0.0], [0.0, 0.4], [0.0, -0.3, 0.2]]
+_NMAX = torch.tensor([len(h) - 1 for h in _HEADS])
+
+
+def test_icdf_marginal_is_softmax_along_an_ar1_chain():
+    torch.manual_seed(7)
+    B, rho = 512, 0.9
+    padded = _padded(B, _HEADS)
+    e = torch.randn(B, len(_HEADS))
+    pair = (torch.full((B, 1), rho), torch.full((B, 1), math.sqrt(1 - rho * rho)))
+    acts = []
+    for _ in range(300):
+        acts.append(icdf_sample_cat(padded, ar1_step_(e, pair), _NMAX))
+    acts = torch.stack(acts)
+    for h, lg in enumerate(_HEADS):
+        want = F.softmax(torch.tensor(lg), -1)
+        got = torch.bincount(acts[..., h].flatten(), minlength=len(lg)).float()
+        assert int(acts[..., h].max()) < len(lg)
+        assert torch.allclose(got[:len(lg)] / got.sum(), want, atol=0.02), (h, got, want)
+
+
+def test_cond_logp_cat_rho0_is_the_plain_logprob_and_normalises():
+    torch.manual_seed(8)
+    B = 64
+    padded = _padded(B, _HEADS)
+    lsm = F.log_softmax(padded, -1)
+    ep = torch.randn(B, len(_HEADS)) * 1.5
+    zero, one = torch.zeros(B, 1), torch.ones(B, 1)
+    # rho = 0: exactly the categorical log-prob, head by head
+    for h, lg in enumerate(_HEADS):
+        for k in range(len(lg)):
+            act = torch.zeros(B, len(_HEADS), dtype=torch.long)
+            act[:, h] = k
+            got = cond_logp_cat(padded, act, ep, zero, one)
+            want = sum(lsm[:, j, int(act[0, j])] for j in range(len(_HEADS)))
+            assert torch.allclose(got, want, atol=2e-4), (h, k)
+    # rho > 0: each head's conditional sums to 1 over its bins
+    rho = torch.full((B, 1), 0.92)
+    s = torch.sqrt(1 - rho * rho)
+    for h, lg in enumerate(_HEADS):
+        tot = torch.zeros(B)
+        for k in range(len(lg)):
+            act = torch.zeros(B, len(_HEADS), dtype=torch.long)
+            act[:, h] = k
+            others = sum(cond_logp_cat(padded[:, j:j + 1], act[:, j:j + 1],
+                                       ep[:, j:j + 1], rho, s)
+                         for j in range(len(_HEADS)) if j != h)
+            tot += torch.exp(cond_logp_cat(padded, act, ep, rho, s) - others)
+        assert torch.allclose(tot, torch.ones(B), atol=1e-4), h
+
+
+def test_cond_logp_cat_matches_the_draw_given_the_previous_latent():
+    torch.manual_seed(9)
+    rho = 0.92
+    padded = _padded(1, _HEADS)
+    ep = torch.tensor([[0.3, -1.1, 2.0, 0.0]])
+    n = 400_000
+    e_new = rho * ep + math.sqrt(1 - rho * rho) * torch.randn(n, len(_HEADS))
+    acts = icdf_sample_cat(padded.expand(n, -1, -1), e_new, _NMAX)
+    r = torch.full((1, 1), rho)
+    s = torch.sqrt(1 - r * r)
+    for h, lg in enumerate(_HEADS):
+        freq = torch.bincount(acts[:, h], minlength=len(lg)).float() / n
+        for k in range(len(lg)):
+            a = torch.zeros(1, 1, dtype=torch.long)
+            a[0, 0] = k
+            p = float(torch.exp(cond_logp_cat(padded[:, h:h + 1], a, ep[:, h:h + 1], r, s)))
+            assert abs(float(freq[k]) - p) < 4e-3, (h, k, float(freq[k]), p)
+
+
+def test_sample_view_cond_logprob_is_the_updates_recomputation():
+    torch.manual_seed(10)
+    B, NZ = 256, 2
+    heads = [[0.0] * 15, [0.0] * 7] + _HEADS
+    padded = _padded(B, heads)
+    nmax = torch.tensor([len(h) - 1 for h in heads[N_VIEW:]])
+    mu = torch.randn(B, NZ) * 0.3
+    log_std = torch.tensor([-2.0, -1.0])
+    rho = torch.zeros(B, 1)
+    rho[::2] = 0.92
+    s = torch.sqrt(1 - rho * rho)
+    temp, tempv = torch.tensor(1.3), torch.tensor([1.3, 1.3])
+    e_cat, e_view = torch.randn(B, NACT - N_VIEW), torch.randn(B, NZ)
+    ep_cat, ep_view = torch.zeros_like(e_cat), torch.zeros_like(e_view)
+    for _ in range(5):
+        act, z, logp = sample_view_cond(padded, mu, log_std, e_cat, e_view, ep_cat,
+                                        ep_view, rho, s, nmax, temp, tempv)
+        lp2 = cond_logp_view_joint(padded, act, mu, log_std, z, ep_cat, ep_view,
+                                   rho, s, temp, tempv)
+        assert torch.allclose(logp, lp2, atol=1e-5)
+        # the i.i.d. rows (rho 0) score exactly the marginal joint
+        lpm, _ = logprob_entropy_view(padded, act, mu, log_std, z, temp=temp,
+                                      temp_view=tempv)
+        assert torch.allclose(logp[1::2], lpm[1::2], atol=5e-4)
+
+
+# ==========================================================================
 # (f): the trainer, flag off = the base commit's trainer, flag on = trains
 # ==========================================================================
 _env_dll = os.environ.get("SURFCORE_DLL")
@@ -243,6 +344,8 @@ def test_trainer_flag_off_is_the_base_trainer_and_flag_on_trains():
         _train("nt_ctl_old", [], script="train_fast_prenoise.py")
         on = _train("nt_on", ["--noise-tau", "0.5"])
         frac = _train("nt_frac", ["--noise-tau", "0.5", "--noise-tau-frac", "0.25"])
+        cond = _train("nt_cond", ["--noise-tau", "0.5", "--noise-tau-frac", "0.25",
+                                  "--noise-tau-cond", "1"])
     finally:
         old.unlink(missing_ok=True)
     a, b = ROOT / "runs" / "nt_ctl_new", ROOT / "runs" / "nt_ctl_old"
@@ -270,5 +373,11 @@ def test_trainer_flag_off_is_the_base_trainer_and_flag_on_trains():
         encoding="utf-8"))["config"]
     assert cf["noise_tau"] == 0.5 and cf["noise_tau_frac"] == 0.25
     assert "--noise-tau-frac 0.25: 8 of 32 envs draw AR(1) noise" in frac.stdout
-    for run in ("nt_ctl_new", "nt_ctl_old", "nt_on", "nt_frac"):
+    cc = json.loads((ROOT / "runs" / "nt_cond" / "run.json").read_text(
+        encoding="utf-8"))["config"]
+    assert cc["noise_tau_cond"] == 1 and cc["noise_tau_frac"] == 0.25
+    assert "--noise-tau-cond: keys drawn by inverse CDF" in cond.stdout
+    kl = [float(r["train/approx_kl"]) for r in _rows("nt_cond")]
+    assert all(math.isfinite(v) for v in kl), kl
+    for run in ("nt_ctl_new", "nt_ctl_old", "nt_on", "nt_frac", "nt_cond"):
         shutil.rmtree(ROOT / "runs" / run, ignore_errors=True)
