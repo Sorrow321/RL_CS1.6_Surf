@@ -205,6 +205,68 @@ def tell_early_wrapup(slot, now: float, wrapup_at: float) -> bool:
     return True
 
 
+DEADLINE_WARN_S = 1200   # a branch hears about its box's registry deadline this long before it
+
+
+def box_deadline_note(slot, now: float, round_end: float):
+    """The note for a branch whose box dies within DEADLINE_WARN_S, or None; records it.
+
+    The fleet watchdog destroys a box at its registry deadline, and a branch box has no harvest
+    spec, so a run not pulled by then is lost. On 2026-10-20 r1b2's box was due at 08:47, 17 min
+    into a 1e9-step run, and r1b3's at 11:50:38, the wrap-up minute; an operator's note saved
+    both. A deadline is announced once, and an extension (a new deadline) re-arms it. A deadline
+    after round_end needs no note: end_round releases the box anyway."""
+    try:
+        reg = json.loads((AR_HOME / "fleet" / "fleet.json").read_text(encoding="utf-8"))
+        mine = sorted((r["deadline"], iid) for iid, r in reg.items()
+                      if isinstance(r, dict) and r.get("label") == slot["agent"]
+                      and isinstance(r.get("deadline"), (int, float)))
+    except (OSError, ValueError, AttributeError):
+        return None
+    if not mine:
+        return None
+    dl, iid = mine[0]
+    if dl >= round_end or not dl - DEADLINE_WARN_S <= now < dl or slot.get("deadline_told") == dl:
+        return None
+    slot["deadline_told"] = dl
+    return (f"[orchestrator] Box deadline: your box {iid} expires at "
+            f"{time.strftime('%H:%M', time.gmtime(dl))} UTC, {(dl - now) / 60:.0f} min from now. "
+            "The fleet watchdog destroys it then, and whatever is not pulled dies with it. Extend "
+            "it (box.py extend) if a run should keep training, or pull and release it. (A harness "
+            "note, not a research instruction.)")
+
+
+STALL_S = 75 * 60        # a wakeup is at most 60 min away, so a live loop is never this quiet
+CLAUDE_PROJECTS = Path.home() / ".claude" / "projects"
+
+
+def session_quiet_s(slot, now: float):
+    """Seconds since the branch's Claude session last wrote its transcript, or None."""
+    proj = CLAUDE_PROJECTS / re.sub(r"[^A-Za-z0-9]", "-", str(slot["dir"]))
+    try:
+        newest = max(p.stat().st_mtime for p in proj.glob("*.jsonl"))
+    except (OSError, ValueError):            # no project dir or no transcript yet
+        return None
+    return now - newest
+
+
+def tell_stalled(slot, now: float, wrapup_at: float) -> bool:
+    """Whether to re-arm a branch whose session went quiet, recording that it was told.
+
+    A loop can die without a final RESULT.json: a wakeup that fires while the account is at its
+    usage limit does not run (on 2026-09-04 a rate limit stopped every agent and its timers for
+    50 min), or an agent stops scheduling. tmux still sees the session, so neither the restart
+    nor the early wrap-up check fires. Told at most once per STALL_S, and never in a session's
+    first STALL_S (a new round's session shares its project dir with the last round's)."""
+    quiet = session_quiet_s(slot, now)
+    if quiet is None or quiet < STALL_S or now >= wrapup_at:
+        return False
+    if now - slot.get("stall_told", 0) < STALL_S or now - slot.get("launched", 0) < STALL_S:
+        return False
+    slot["stall_told"] = now
+    return True
+
+
 def box_py(*args, env=None):
     e = dict(os.environ, AR_HOME=str(AR_HOME), RLSURF_FLEET_DIR=str(AR_HOME / "fleet"),
              PYTHONIOENCODING="utf-8", **(env or {}))
@@ -527,8 +589,10 @@ def cmd_run(a):
                 return
             start_round(st, st["next_base"])
         now = time.time()
+        wrapup_at = st["round_end"] - CFG["wrapup_minutes"] * 60
         for slot in st["slots"]:
-            if not slot["wrapup_sent"] and now >= st["round_end"] - CFG["wrapup_minutes"] * 60:
+            prompt = PROMPT.format(agent=slot["agent"], round=st["round"], rounds=CFG["rounds"])
+            if not slot["wrapup_sent"] and now >= wrapup_at:
                 send(slot, f"ROUND OVER for {slot['agent']}: do the Wrap-up in "
                            "autoresearch/PROTOCOL.md now (pull the best run with --ckpt, "
                            "final RESULT.json, NOTES.md, commit and push, release your box).")
@@ -539,12 +603,22 @@ def cmd_run(a):
                 slot["restarts"] += 1
                 log(f"{slot['agent']}: session gone - restart {slot['restarts']}")
                 launch(st, slot, resume=True)
-            elif tell_early_wrapup(slot, now, st["round_end"] - CFG["wrapup_minutes"] * 60):
-                send(slot, PROMPT.format(agent=slot["agent"], round=st["round"],
-                                         rounds=CFG["rounds"]))
-                left = (st["round_end"] - CFG["wrapup_minutes"] * 60 - now) / 3600
-                log(f"{slot['agent']}: RESULT.json final {left:.1f} h before wrapup_at - "
-                    "its loop re-armed (the round is not over)")
+                continue
+            elif tell_early_wrapup(slot, now, wrapup_at):
+                send(slot, prompt)
+                log(f"{slot['agent']}: RESULT.json final {(wrapup_at - now) / 3600:.1f} h "
+                    "before wrapup_at - its loop re-armed (the round is not over)")
+            elif tell_stalled(slot, now, wrapup_at):
+                send(slot, prompt)
+                log(f"{slot['agent']}: session quiet {session_quiet_s(slot, now) / 60:.0f} min "
+                    "before wrapup_at - its loop re-armed")
+            try:                       # advisory: a failure here must not stop the round
+                note = box_deadline_note(slot, now, st["round_end"])
+                if note:
+                    send(slot, note)
+                    log(f"{slot['agent']}: told its box dies within {DEADLINE_WARN_S // 60} min")
+            except Exception as e:     # noqa: BLE001
+                log(f"box deadline check failed for {slot['agent']}: {e}")
         save_state(st)
         if (AR_HOME / "WRAPUP").exists():
             (AR_HOME / "WRAPUP").unlink()

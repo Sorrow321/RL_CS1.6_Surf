@@ -9,6 +9,8 @@ blocklist into tools/bad_hosts.json, as one commit, without touching any working
 from __future__ import annotations
 
 import json
+import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -247,3 +249,52 @@ def test_a_branch_that_wraps_up_early_is_told_once(tmp_path):
     result(True)                                                               # says agent r1b3
     assert not orchestrator.tell_early_wrapup(fresh, early, wrapup_at)
     assert "never wrap up" in orchestrator.PROMPT
+
+
+def test_a_box_deadline_inside_the_round_is_told_once(tmp_path, monkeypatch):
+    """r1b2's box was due 17 min into a 1e9-step run, r1b3's at the wrap-up minute (2026-10-20)."""
+    monkeypatch.setattr(orchestrator, "AR_HOME", tmp_path)
+    (tmp_path / "fleet").mkdir()
+    now, round_end = 1_000_000.0, 1_000_000.0 + 3 * 3600
+    slot = {"agent": "r1b4", "dir": str(tmp_path / "b4")}
+
+    def reg(boxes):
+        (tmp_path / "fleet" / "fleet.json").write_text(json.dumps(
+            {iid: {"deadline": t, "label": lab} for iid, (lab, t) in boxes.items()}),
+            encoding="utf-8")
+
+    assert orchestrator.box_deadline_note(slot, now, round_end) is None        # no registry
+    reg({"56816052": ("r1b4", now + 3600), "56864008": ("r1b3", now + 600)})
+    assert orchestrator.box_deadline_note(slot, now, round_end) is None        # an hour away
+    note = orchestrator.box_deadline_note(slot, now + 2700, round_end)
+    assert "56816052" in note and "15 min" in note                             # 15 min away
+    assert orchestrator.box_deadline_note(slot, now + 2760, round_end) is None # told once
+    reg({"56816052": ("r1b4", now + 7200)})                                    # extended
+    assert orchestrator.box_deadline_note(slot, now + 2820, round_end) is None
+    assert "56816052" in orchestrator.box_deadline_note(slot, now + 6300, round_end)
+    reg({"56816052": ("r1b4", round_end + 60)})                                # after the round
+    assert orchestrator.box_deadline_note(slot, round_end - 300, round_end) is None
+    (tmp_path / "fleet" / "fleet.json").write_text("[]", encoding="utf-8")
+    assert orchestrator.box_deadline_note(slot, now, round_end) is None        # not a dict
+
+
+def test_a_quiet_session_is_rearmed(tmp_path, monkeypatch):
+    """A wakeup that fires at the usage limit never runs, and tmux still sees the session."""
+    monkeypatch.setattr(orchestrator, "CLAUDE_PROJECTS", tmp_path / "projects")
+    d = tmp_path / "ar" / "wt" / "b2"
+    slot = {"agent": "r1b2", "dir": str(d), "launched": 0.0}
+    now, wrapup_at = 1_000_000.0, 1_000_000.0 + 4 * 3600
+    assert not orchestrator.tell_stalled(slot, now, wrapup_at)                 # no transcript yet
+    proj = tmp_path / "projects" / re.sub(r"[^A-Za-z0-9]", "-", str(d))
+    proj.mkdir(parents=True)
+    t = proj / "session.jsonl"
+    t.write_text("{}\n", encoding="utf-8")
+    os.utime(t, (now - 600, now - 600))
+    assert not orchestrator.tell_stalled(slot, now, wrapup_at)                 # 10 min quiet
+    os.utime(t, (now - 80 * 60, now - 80 * 60))
+    assert orchestrator.tell_stalled(slot, now, wrapup_at)                     # 80 min quiet
+    assert not orchestrator.tell_stalled(slot, now + 60, wrapup_at)            # told once ...
+    assert orchestrator.tell_stalled(slot, now + orchestrator.STALL_S, wrapup_at)  # ... per STALL_S
+    assert not orchestrator.tell_stalled({**slot, "stall_told": 0}, wrapup_at, wrapup_at)
+    fresh = {"agent": "r2b2", "dir": str(d), "launched": now - 600}            # a new round
+    assert not orchestrator.tell_stalled(fresh, now, wrapup_at)
