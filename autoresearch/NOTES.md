@@ -691,3 +691,27 @@ checkpoint is taken from the BEST EVAL's run dir, so pull that run's ckpt_final.
   it lacks two steering links inside the detour: chamber fall -> bowl (a strafe into the surface the human
   catches at ~28.9 s) and bowl exit -> rising chamber (turn north-west earlier and lower). That is the
   textbook case for returning to its own rare detour states (cells) and letting RL fix the links.
+
+### r2b4_cells2: warm incumbent + `--respawn-cells 0.8 --respawn-cells-band 0.05` + 0.25 s / 0.5 s (14:40-15:08 UTC)
+
+* Evals (best / median): 5,101M 28.199/27.7, 5,177M 27.365/27.1, 5,252M 27.402/27.2, 5,328M 27.970/27.4,
+  5,403M 27.425/26.5, 5,479M 28.050/27.6. 0 finishes. No gain.
+* Reservoir (newest 20k): pocket 8, pillar centre hole 7 (2 rising), chamber 0, low region **574 (36
+  rising)** - but the "rising" ones are hops on the flat top of the low block (z ~10,080-10,100, |v_h|
+  < 80, vz +160..+240): a dead end, not the bowl surf. The band moves returns into the detour, into the
+  wrong states.
+* Link A is NOT a surface (WR line at 20 ms, 28.84-29.20 s: vz falls by exactly gravity, |v_h| ~1,720
+  constant while the heading swings 132 -> 234 degrees in 0.36 s): a sharp AIR turn - strafe key held,
+  view 1-2 degrees ahead of the velocity (wishdir ~91 degrees from v, so addspeed > 30 and the push is
+  ~60 u/s per frame). The 10 ms core allows up to ~8 degrees per tick at ~17 u/s of speed per tick, so it
+  is available to the policy; it is the same input as the bowl surf.
+* Ops: the box -> workstation path degraded at ~15:00 (10 KB/s, long streams dropped; the box's own
+  internet link 146 MB/s down / 6.5 MB/s up, the workstation's 84 MB/s). `box.py pull` fails with
+  EOFError; scratchpad chunkpull.sh (xz on the box, 64 KB slices over separate ssh calls, md5-checked)
+  works. Score and analyse on the box when possible.
+
+### r2b4_dc1: deep shell (0.5, q 0.05) + band cells (0.4, band 0.05) + 0.25 s / 0.5 s, warm incumbent (15:15 UTC)
+
+* deep1 put the pocket on spawn and the policy went east through the pillar hole on its own (3,985
+  pillar-hole/chamber states); band cells return to rare detour states. Together they should put the
+  policy in the chamber falling west - the start of link A - often.
