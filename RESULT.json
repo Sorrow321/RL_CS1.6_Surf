@@ -3,14 +3,14 @@
  "round": 1,
  "final": false,
  "best": {
-  "score": 27.335,
-  "eval_file": "/home/steam/ar/runs/r1b3/r1b3_ctl/traj_0825753600.jsonl",
+  "score": 27.443,
+  "eval_file": "/home/steam/ar/runs/r1b3/r1b3_ctl/traj_1052246016.jsonl",
   "run": "r1b3_ctl",
-  "step": 825753600,
-  "ckpt": null,
+  "step": 1052246016,
+  "ckpt": "/home/steam/ar/runs/r1b3/r1b3_ctl/ckpt_final.pt",
   "recipe": [],
   "resume_from": "/home/steam/ar/incumbent/ckpt.pt",
-  "commit": "3cf6aa4"
+  "commit": "fa26efb"
  },
- "summary": "01:45 UTC. Warm resumes of the incumbent (749.7M) on an RTX 4080. r1b3_ouw: --view-ou-sigma 0.8 --view-ou-period 40 on every env COLLAPSED the greedy line 25.4% -> 4.4% in 76M steps (stopped). r1b3_ctl: the unchanged recipe, the matched control, 27.2-27.3% at the CP2 wall. Built (default off, bit-identical when off): --view-ou-temp (offset sigma follows unstuck T), --view-ou-frac (share of windows offset), --view-ou-front (offsets only within F x d0 of the reservoir's deepest state). Next: the frontier-gated arm (sigma 0.8, period 40, front 0.05, frac 0.5) against r1b3_ctl."
+ "summary": "02:56 UTC. All warm from the incumbent (749.7M) on a 4080. Control r1b3_ctl (+ctl2 to 1.34B, T to 2): 27.2-27.4% every eval, best 27.443, 9/9 die in the CP2 pit. Ungated held view offsets (r1b3_ouw) collapse the line; frontier-gated off-policy offsets (r1b3_oufo) keep it but are NULL at CP2. A reward-free Go-Explore search from the policy's own 18-24.5 s states saturates at the pit (position-only cells are owned by diving states). CP2 needs a LEVEL entry into a corridor the line dives through. Running r1b3_vrot: --respawn-vel-rot 0.5 (fresh velocity direction for frontier-zone reservoir respawns, positions unchanged)."
 }

@@ -195,3 +195,39 @@ steps/s. Measure it on your box in the first minute and size `--steps` to the ti
 * **Next arm r1b3_ouf:** warm, `--view-ou-sigma 0.8 --view-ou-period 40 --view-ou-front 0.05
   --view-ou-frac 0.5`, 4e8 steps, against r1b3_ctl at matched steps. Training-side signal: mind
   below ~72.5% (states harvested past the pit); then the eval frontier past 27.5% / CP2.
+
+### 2026-10-20 02:55 UTC - gated OU null; Go-Explore search from the policy's own line stalls AT the pit; velocity-direction respawns launched
+
+* **r1b3_ctl final** (recipe unchanged, 750M -> 1.15B, 268k steps/s): every eval 27.2-27.4% (best
+  **27.443** at 1,052M), 9/9 die at x 3,100-3,180, y ~-900, z ~11,170 at 24.7-25.2 s. T rose to 1.06.
+  **r1b3_ctl2** (the same, continued 1.15 -> 1.34B, T reached the cap 2.0): 27.33 / 26.42 / 27.35,
+  reservoir mind 74.15% -> 73.47%, no crossing. GR at T = 2 behaves like the surf run at T = 2.
+* **r1b3_oufo** (`--view-ou-sigma 0.8 --view-ou-period 40 --view-ou-front 0.05 --view-ou-frac 0.5
+  --view-ou-offpol 1`, warm, 400M): training line intact (rew ~6.3, len ~990, matching the control),
+  ~25% of decisions inside the zone, ~9% offset and dropped. Evals 27.29-27.33%; mind 74.38%. NULL:
+  ~22M held-offset decisions at the wall, not one training episode past the pit.
+* **Go-Explore search (ANALYSIS ONLY; tools/explore_phase1.py, nothing enters training):** roots = 650
+  of the control policy's own greedy-line states at 18.0-24.5 s (record_ckpt --dump-states), 512 envs,
+  bursts of 100 decisions at 95% repeat, 256 u position cells. The archive saturated at 1,262 cells
+  in ~8 min / 16M exploration runs. Deepest state on the goal_32 field: d 70,484 (27.91%) at
+  (2,647, -997, 11,379), FALLING at vz -987. Every deep cell is a falling state at the pit. It explored
+  the whole room east (x to 6,224, z 10,780-13,445), including the human's turn-around ramps, but
+  only ever falling through them. Note: its progress print uses the stale goal_16.npz (Aug 23,
+  pre-pane-fix: "start distance 7447u"); score its archive with goal_32 instead.
+* **Why (measured, analysis only):** the archive keeps the FIRST state that enters a 256 u position
+  cell, and the key has no vertical velocity, so the corridor cells are owned by states diving
+  through them. The field (goal_32) along the human's line: its 24.5 s point 72,062; the turn-around
+  ramp (5,554, 454, 11,079) 73,630 (a 1,580 u dip); its level pass (2,882, 0, 11,469) 71,352, still
+  WORSE than the agent's death point 70,882; then (2,200, 0, 11,400) 70,828, the lower passage
+  (1,700, 0, 10,900) 69,214 and CP2 (792, 0, 10,700) 67,560. The shaping pays for the dive at
+  every tick until the detour is ~3 s along. The lethal surface the agent dies on is a floor at
+  z ~11,100-11,170 (point probes, scratchpad trigprobe.py); the brushes' AABBs are not the lethal
+  volumes.
+* **New: `--respawn-vel-rot P` (commit 31bdab4)** - a share P of the spawn pool's reservoir rows that
+  lie within `--respawn-vel-rot-front` F x d0 (0.05) of the reservoir's deepest state get a fresh
+  velocity DIRECTION: uniform heading, elevation U(-45, 45) deg, speed kept, view yaw turned with it.
+  The position is the policy's own (never past its real frontier). Florensa-style start-state
+  perturbation of HOW the agent moves where it already is. Default off; flag-off bit-identity proved
+  (6 tests). Launched as **r1b3_vrot** (P 0.5, F 0.05), warm from the incumbent, 400M, against
+  r1b3_ctl. Only ~2% of the reservoir rows fall in the zone x P (the uniform reservoir holds ~4% of
+  its states there), ~9 rotated episodes per iteration.
