@@ -193,7 +193,8 @@ TRAIN_ONLY = frozenset({
     # post-respawn random bursts / start-state selection modes (explore
     # arms): training-time start distribution and exploration only, never
     # what an action means or what the policy sees
-    "spawn_burst", "spawn_burst_p", "respawn_mode", "respawn_bins",
+    "spawn_burst", "spawn_burst_p", "spawn_burst_frac", "spawn_burst_uniform",
+    "respawn_mode", "respawn_bins",
     "respawn_killsafe", "demo_file", "demo_window", "demo_rate",
     "demo_min_ep", "demo_grow",
     # --demo-front-frac: the share of the curriculum's starts drawn from its

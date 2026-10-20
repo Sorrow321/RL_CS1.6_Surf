@@ -4313,6 +4313,22 @@ def main() -> None:
                          "exactly like ez-greedy bursts")
     ap.add_argument("--spawn-burst-p", type=float, default=None,  # 0.95
                     help="action repeat probability inside the spawn burst")
+    ap.add_argument("--spawn-burst-frac", type=float, default=None,  # 1.0
+                    help="--spawn-burst: the probability that a respawn gets "
+                         "a burst at all (1.0, the default, is every "
+                         "respawn as before). Under --view-continuous the "
+                         "burst also holds a random VIEW command: a uniform "
+                         "draw in the view head's tanh space (u in [-1, 1] "
+                         "per Gaussian head), so under --view-absolute "
+                         "velocity it is a yaw offset off_warp(u) in the "
+                         "velocity frame, redrawn with the keys. ckpt "
+                         "restores")
+    ap.add_argument("--spawn-burst-uniform", action="store_true",
+                    default=None,
+                    help="--spawn-burst: draw each burst's length uniformly "
+                         "in [1, --spawn-burst] decisions instead of always "
+                         "--spawn-burst, so short nudges and long committed "
+                         "excursions are both sampled. ckpt restores")
     ap.add_argument("--race-shaping", type=float, default=None,  # 1.0
                     help="multiplier on the geodesic potential shaping term "
                          "(and the speed-equiv potential, which shares its "
@@ -7334,6 +7350,14 @@ def main() -> None:
         if (args.spawn_burst_p is None
                 and ck_cfg.get("spawn_burst_p") is not None):
             args.spawn_burst_p = float(ck_cfg["spawn_burst_p"])
+        if (args.spawn_burst_frac is None
+                and ck_cfg.get("spawn_burst_frac") is not None):
+            args.spawn_burst_frac = float(ck_cfg["spawn_burst_frac"])
+            restored.append(f"spawn_burst_frac={args.spawn_burst_frac:g}")
+        if (args.spawn_burst_uniform is None
+                and ck_cfg.get("spawn_burst_uniform") is not None):
+            args.spawn_burst_uniform = bool(ck_cfg["spawn_burst_uniform"])
+            restored.append(f"spawn_burst_uniform={args.spawn_burst_uniform}")
         for _k, _cast in (("int_mode", str), ("int_edge_bits", int), ("int_rare", int),
                           ("int_rare_speed", float), ("dip_speed_coef", float),
                           ("dip_speed_margin", float), ("dip_speed_cap", float),
@@ -8406,6 +8430,16 @@ def main() -> None:
         args.spawn_burst = 0
     if args.spawn_burst_p is None:
         args.spawn_burst_p = 0.95
+    if args.spawn_burst_frac is None:
+        args.spawn_burst_frac = 1.0
+    if args.spawn_burst_uniform is None:
+        args.spawn_burst_uniform = False
+    if not 0.0 <= float(args.spawn_burst_frac) <= 1.0:
+        raise SystemExit("--spawn-burst-frac must be in [0, 1]")
+    if ((float(args.spawn_burst_frac) != 1.0 or args.spawn_burst_uniform)
+            and int(args.spawn_burst or 0) <= 0):
+        raise SystemExit("--spawn-burst-frac / --spawn-burst-uniform need "
+                         "--spawn-burst K > 0")
     if args.respawn_killsafe is None:
         args.respawn_killsafe = 0
     if args.race_shaping is None:
@@ -9383,8 +9417,9 @@ def main() -> None:
             _bad.append("--frame-stack")
         if float(args.ez_eps or 0.0) > 0.0:
             _bad.append("--ez-eps")
-        if int(args.spawn_burst or 0) > 0:
-            _bad.append("--spawn-burst")
+        # --spawn-burst IS implemented here: the burst holds a random view
+        # command (sb_z below) next to its random keys, and its rows leave the
+        # PPO pool through b_ez exactly as on the bins
         if _bad:
             raise SystemExit("--view-continuous is not implemented with "
                              + ", ".join(_bad) + " (docs/contyaw.md: these "
@@ -9631,7 +9666,10 @@ def main() -> None:
                            ("--yaw-cond", YCOND),
                            ("--maps", bool(args.maps)),
                            ("--ez-eps", bool(args.ez_eps)),
-                           ("--spawn-burst", bool(args.spawn_burst)),
+                           # --spawn-burst composes: its rows are uniform
+                           # random (T has nothing to temper) and leave the
+                           # PPO pool through b_ez, so every row the update
+                           # scores was drawn by the tempered sampler
                            ("--ddp", D.enabled)):
             if _on:
                 raise SystemExit(
@@ -13290,6 +13328,12 @@ def main() -> None:
     # --view-continuous: written ONLY when set, for the reason the masks
     # give - a control run's config dump stays byte-identical. It changes
     # what an action IS, so record_ckpt.py mirrors it.
+    # --spawn-burst-frac / --spawn-burst-uniform: written ONLY when set, so a
+    # run without them dumps the config it always did
+    if float(args.spawn_burst_frac) != 1.0:
+        meta["config"]["spawn_burst_frac"] = float(args.spawn_burst_frac)
+    if args.spawn_burst_uniform:
+        meta["config"]["spawn_burst_uniform"] = 1
     if VIEWC:
         meta["config"]["view_continuous"] = 1
         # written ONLY when set, so an untreated control's config dump is
@@ -14201,6 +14245,25 @@ def main() -> None:
     USE_BURST = args.ez_eps > 0.0 or args.spawn_burst > 0
     sb_left = torch.zeros(N, dtype=torch.long, device=device)
     sb_act = torch.zeros((N, NACT), dtype=torch.long, device=device)
+    # --view-continuous: the burst's held VIEW command as a pre-tanh z, drawn
+    # uniformly in the tanh space (u in [-1, 1] per Gaussian head) and turned
+    # into the core's view row by view_from_z_t like any policy draw. The yaw
+    # / pitch BIN columns of a burst row are held at NEUTRAL_ACT, as the
+    # policy's own rows are under the continuous view.
+    sb_z = (torch.zeros((N, NZ), device=device)
+            if (VIEWC and args.spawn_burst > 0) else None)
+    SB_NEUTRAL_VIEW = torch.tensor(NEUTRAL_ACT[:N_VIEW], device=device)
+
+    def sb_draw_z(n):
+        u = (torch.rand(n, NZ, device=device) * 2.0 - 1.0).clamp_(-0.999, 0.999)
+        return torch.atanh(u)
+
+    def sb_rand_act(n):
+        r = torch.rand(n, NACT, device=device)
+        a = (r * NVEC_T).long().clamp_(torch.zeros_like(NVEC_T), NVEC_T - 1)
+        if VIEWC:
+            a[:, :N_VIEW] = SB_NEUTRAL_VIEW
+        return a
     # per-env distance-bin of the CURRENT episode's start (-1 = unknown /
     # invalid), for attributing episode outcomes to start bins
     start_bin = np.full(N, -1, np.int64)
@@ -16684,13 +16747,19 @@ def main() -> None:
                         sb_live = sb_left > 0
                         redraw = sb_live & (torch.rand(N, device=device)
                                             >= args.spawn_burst_p)
-                        r = torch.rand(N, NACT, device=device)
-                        rnd_act = (r * NVEC_T).long().clamp_(
-                            torch.zeros_like(NVEC_T), NVEC_T - 1)
+                        rnd_act = sb_rand_act(N)
                         sb_act = torch.where(redraw.unsqueeze(1),
                                              rnd_act, sb_act)
                         # a spawn burst wins over a stale ez burst
                         static_act[sb_live] = sb_act[sb_live]
+                        if sb_z is not None:
+                            # the held view command, redrawn with the keys;
+                            # static_view is rewritten by the next graph
+                            # replay, so only the burst rows change
+                            sb_z = torch.where(redraw.unsqueeze(1),
+                                               sb_draw_z(N), sb_z)
+                            static_view[sb_live] = view_from_z_t(
+                                sb_z, VIEW_PITCH_MAX, VIEW_ABS)[sb_live]
                         sb_left[sb_live] -= 1
                         ez_only = ez_only & ~sb_live
                         live = live | sb_live
@@ -17379,14 +17448,29 @@ def main() -> None:
                     just_reset = b_done[t] > 0
                     ez_left[just_reset] = 0
                 if args.spawn_burst > 0:
-                    sb_left[just_reset] = args.spawn_burst
+                    sb_new = just_reset
+                    if args.spawn_burst_frac < 1.0:
+                        # --spawn-burst-frac: only this share of respawns
+                        # explores; the rest start on-policy at once (and a
+                        # burst the last episode died in is aborted)
+                        sb_left[just_reset] = 0
+                        sb_new = sb_new & (torch.rand(N, device=device)
+                                           < args.spawn_burst_frac)
+                    if args.spawn_burst_uniform:
+                        # --spawn-burst-uniform: length ~ U{1..K}
+                        sb_len = torch.randint(
+                            1, int(args.spawn_burst) + 1, (N,),
+                            device=device)
+                        sb_left[sb_new] = sb_len[sb_new]
+                    else:
+                        sb_left[sb_new] = args.spawn_burst
                     # the burst's first action is drawn uniformly NOW; later
                     # decisions keep it with prob spawn-burst-p
-                    r0 = torch.rand(N, NACT, device=device)
                     sb_act = torch.where(
-                        just_reset.unsqueeze(1),
-                        (r0 * NVEC_T).long().clamp_(
-                            torch.zeros_like(NVEC_T), NVEC_T - 1), sb_act)
+                        just_reset.unsqueeze(1), sb_rand_act(N), sb_act)
+                    if sb_z is not None:
+                        sb_z = torch.where(just_reset.unsqueeze(1),
+                                           sb_draw_z(N), sb_z)
                 obs_pin.copy_(torch.from_numpy(o2))
                 static_obs[:, :N_SCALAR].copy_(obs_pin, non_blocking=True)
                 if args.obs_reward:
@@ -19177,10 +19261,15 @@ def main() -> None:
                          + (f"@{dip_stats['fail_frac']:.0%}"
                             if dip_stats["fail_frac"]
                             == dip_stats["fail_frac"] else ""))
+        # --spawn-burst: the share of this rollout's decisions that were
+        # burst rows (off-policy, out of the PPO pool); stdout only
+        burst_note = (f"  burst {float(b_ez.float().mean()):.1%}"
+                      if args.spawn_burst > 0 else "")
         print(f"step {global_step:>13,d}  rew {rmean:8.2f}  len {lmean:6.0f}  "
               f"fps {fps:,.0f}  kl {kl:.4f}  ent {ent_coef:.4f}"
               f"{hyg_note}{race_note}{front_note}{back_note}{gate_note}"
-              f"{unstuck_note}{cc_note}{crl_note}{imatch_note}{novel_note}")
+              f"{unstuck_note}{cc_note}{crl_note}{imatch_note}{novel_note}"
+              f"{burst_note}")
         tm.flush(it_no)
         if D.enabled:
             # C2 production asserts (docs/ddp-plan.md §5): cheap, exact,
