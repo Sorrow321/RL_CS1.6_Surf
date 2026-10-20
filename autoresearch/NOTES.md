@@ -358,3 +358,53 @@ steps/s. Measure it on your box in the first minute and size `--steps` to the ti
   no longer cancels the value of reaching a never-seen (place, vertical motion), e.g. level in CP2's
   corridor, and the climb band separates that from diving through it. 30-min check against GR's
   marks (trap exit 529M, window 755M); stopped if behind. CPU smoke of the exact combination passed.
+
+### 2026-10-20 08:00 UTC - r1b3_isp stopped; ROUND 1 LESSON (r1b3) - box released
+
+* **r1b3_isp** (from scratch, recipe + `--int-split --int-climb 3 --int-view 0`): first-ramp trap exit
+  between 529M and 605M (GR: 529M), then 14.0% (13.6-13.8k u, a minor gate at x ~5,850 before the
+  window) at every eval from 755M to 1.359B, ~630M steps, T at the cap. Stopped at 1.39B by the rule
+  set at 07:30. Behind GR (window passed at 755M). Non-episodic novelty did not help it through a gate
+  the plain recipe passes; it never reached CP2, so its CP2 question stays open.
+* Box 56818185 (RTX 4080, 0.267 $/h, ~268k steps/s warm, 240-270k scratch) released at 07:56,
+  6.5 h of runs. Credit 98.5 at the end.
+
+#### What round 1 (r1b3) knows that round 0 did not
+
+1. **CP2's anatomy (analysis only, measured):** the passage west of the pit is a corridor ~220 u tall
+   between lethal volumes (*86 top z 11,332 below, *99 bottom z 11,552 above, x 2,528-3,680), entered
+   level from BELOW: the human comes up from a turn-around ramp (x 4,600-5,800, z ~11,000-11,330, under
+   the lethal plates *84 z 12,256 and *45 z 11,904) and levels at z 11,469. The agent's line launches
+   off the side ramps (x 2,200-2,900, y +-600, ~22 s) up to z 12,360 OVER those plates, U-turns
+   mid-air at x ~4,600 and dives through the band at -1,000..-1,400 u/s onto a lethal floor at
+   x ~3,000-3,100. The line splits ~3 s before the death. Three independently trained lineages (GR,
+   surf, r1b3's from-scratch one) die at the same point (x ~3,000-3,100, y ~-900, z ~11,200).
+   The goal field pays the dive at every tick until the human's detour is ~3 s along (its level pass
+   71,352 is WORSE than the death point 70,882); the kill-aware field keeps that dip.
+2. **Nulls at CP2 (each 400M warm, vs the control r1b3_ctl 27.2-27.44%):** held view offsets
+   (`--view-ou-*`: ungated collapses the line to 4.4%; frontier-gated off-policy: null), random
+   velocity directions at frontier respawns (`--respawn-vel-rot`), cell-uniform frontier respawns
+   (`--respawn-cells`, also from a 0.25 s-margin archive with exact returns), T = 2 on GR (ctl2).
+   Reward-free Go-Explore search from the policy's own 18-24.5 s states (position and position+vz
+   cells) saturates AT the pit in ~8 min. None put one training episode past the pit.
+3. **Held view offsets BLOCK the frontier.** A from-scratch checkpoint sat at the window for 800M
+   steps with the gated offsets live (T to 2); with them off it passed the window within ONE eval
+   period and reached CP2 (r1b3_nou). Do not use `--view-ou-*` near the frontier.
+4. **Time-to-gate is seed-dominated:** the first-ramp trap exit ranged < 151M .. 1,510M across six
+   near-identical recipe runs, the window 302M .. never-in-800M. One-seed time-to-gate comparisons of
+   from-scratch recipes need large effects (CLAUDE.md's gate-ladder warning, re-measured).
+5. **Best eval 27.517** (r1b3_nou 1.403B, 9/9 at the CP2 pit, x 2,995-3,039), from a FROM-SCRATCH
+   lineage on the incumbent recipe (r1b3_sou -> sou2 -> nou; ckpt_final 1.5B pulled to
+   ~/ar/runs/r1b3/r1b3_nou/ckpt_final.pt). It is the same wall as 27.5 - a few units deeper, not
+   progress.
+
+#### What to try next (my ranking)
+
+* CP2 is a precision entry that local noise, start perturbations and position-keyed archives do not
+  find. What is left in the generic space: search with the POLICY as the mover (it can ride the
+  turn-around ramp; random macro-actions cannot) from its own states, with velocity in the cell key
+  and a short harvest margin, and its finds fed back by self-imitation (expert iteration); or the
+  planner (paused by the user on 10-18) - the problem is the one 0c describes.
+* Tools this branch leaves (all default off, bit-identical off, tested): `--view-ou-temp/-frac/-front/
+  -offpol` (documented negative), `--respawn-vel-rot`, `--respawn-cells` (+ `-front`, `-margin`),
+  `explore_phase1 --cell-vz`. Scratchpad analysis scripts are not in the repo.
