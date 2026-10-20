@@ -1,5 +1,18 @@
-{"agent": "r1b1", "round": 1, "final": false,
- "best": {"score": 27.462, "eval_file": "/home/steam/ar/runs/r1b1/r1b1_nov/traj_1132462080.jsonl",
-          "run": "r1b1_nov", "step": 1132462080, "ckpt": "/home/steam/ar/runs/r1b1/r1b1_nov/ckpt_final.pt",
-          "recipe": ["--respawn-novel"], "resume_from": "/home/steam/ar/runs/r1b1/r1b1_ctl/ckpt_latest.pt", "commit": "2b845b3"},
- "summary": "All warm at the CP2 pit (27.4%); nothing has crossed CP2. --death-charge 1.0: negative. ez bursts everywhere: no crossing, line noisier. Plain control consolidates at the pit by 825M (wall checkpoint 905M). Nudge probe: short yaw deviations cannot cross (the line past the pit is a level slot between kill volumes, entered after a ramp turnaround east under a fail plate). --respawn-novel from the wall: the corridor under the plate and the east ramp get visited 20-400x more, evals 27.4-27.5% (best 27.462), still 0 visits past CP2. Running novel + frontier-only bursts (--ez-front, new)."}
+{
+ "agent": "r1b1",
+ "round": 1,
+ "final": false,
+ "best": {
+  "score": 27.462,
+  "eval_file": "/home/steam/ar/runs/r1b1/r1b1_nov/traj_1132462080.jsonl",
+  "run": "r1b1_nov",
+  "step": 1132462080,
+  "ckpt": "/home/steam/ar/runs/r1b1/r1b1_nov/ckpt_final.pt",
+  "recipe": [
+   "--respawn-novel"
+  ],
+  "resume_from": "/home/steam/ar/runs/r1b1/r1b1_ctl/ckpt_latest.pt",
+  "commit": "2b845b3"
+ },
+ "summary": "Warm arms at the CP2 pit (27.4%): DC negative; ez bursts no crossing; control consolidates by 825M; --respawn-novel reaches the corridor/ramp of the human's line 20-400x more but 0 crossings (best eval 27.462). Corridor bench: the policy turns west into the pit floor (shaping charges the eastward leg). FROM SCRATCH incumbent recipe + --respawn-novel + --race-ratchet: out of the first-ramp trap at 378M (GR 529M) at T~0, 20.8% at 453M (GR ~4.6%); extended to 2.5B to attack CP2."
+}
