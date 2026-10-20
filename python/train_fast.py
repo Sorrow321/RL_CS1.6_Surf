@@ -4072,6 +4072,33 @@ def episode_stats(traj_path: Path):
     return out
 
 
+def _respawn_snap_secs(args) -> float:
+    """Seconds between two reservoir snapshots of one episode: --respawn-snap when given,
+    else the cadence that shipped (0.25 s under --goals, 1 s otherwise)."""
+    if getattr(args, "respawn_snap", None) is not None:
+        return float(args.respawn_snap)
+    return 0.25 if args.goals else 1.0
+
+
+def deep_shell_weights(d: np.ndarray, share: float, q: float) -> np.ndarray:
+    """--respawn-deep: per-state draw weights over the reservoir (sum 1). The deepest
+    ``q`` quantile of the states by goal distance ``d`` (smaller = deeper; non-finite rows
+    never qualify) shares ``share`` of the mass equally, and every state - shell or not -
+    shares the other ``1 - share`` equally, so the shell's realised probability is
+    ``share + (1 - share) * |shell| / n``. ``share`` 0 is the uniform draw."""
+    d = np.asarray(d, np.float64)
+    n = len(d)
+    w = np.full(n, (1.0 - share) / max(n, 1), np.float64)
+    ok = np.isfinite(d)
+    if share <= 0.0 or not ok.any():
+        return w / w.sum() if w.sum() > 0 else np.full(n, 1.0 / max(n, 1))
+    k = max(1, int(round(q * int(ok.sum()))))
+    thr = np.partition(d[ok], k - 1)[k - 1]
+    shell = ok & (d <= thr)
+    w[shell] += share / int(shell.sum())
+    return w / w.sum()
+
+
 def main() -> None:
     # allow_abbrev=False: the launcher's demo guard matches exact spellings,
     # and argparse would otherwise accept --demo-f for --demo-file (GPT
@@ -6244,6 +6271,21 @@ def main() -> None:
                          "states are usually already doomed)")
     ap.add_argument("--respawn-reservoir", type=int, default=None,  # 100k
                     help="race: FIFO reservoir of respawnable states")
+    ap.add_argument("--respawn-snap", type=float, default=None,  # 1 s (0.25 s under --goals)
+                    help="race: SECONDS between two reservoir snapshots of one episode. "
+                         "With the 1 s default and a 2 s margin the last second an "
+                         "episode flew before the margin is sampled once at most, so "
+                         "the frontier a run dies at is ~never a spawn. Absent = the "
+                         "cadence that shipped, byte for byte; ckpt restores")
+    ap.add_argument("--respawn-deep", type=float, default=None,  # 0 = off
+                    help="race: share of the RESERVOIR draws taken uniformly from the "
+                         "reservoir's DEEPEST --respawn-deep-q quantile by goal-field "
+                         "distance (Go-Explore's return to the frontier, on the policy's "
+                         "own harvested states); the rest stay a uniform draw. 0 = off, "
+                         "byte-identical; ckpt restores")
+    ap.add_argument("--respawn-deep-q", type=float, default=None,  # 0.05
+                    help="the deep shell of --respawn-deep, as a quantile of the "
+                         "reservoir's states by goal distance (default 0.05)")
     ap.add_argument("--respawn-random", action="store_true", default=None,
                     help="race: replace the reservoir with UNIFORM RANDOM "
                          "reachable starts (docs/respawn_random.md). 5%% of "
@@ -7086,6 +7128,10 @@ def main() -> None:
         if args.respawn_min_speed is None and ck_cfg.get("respawn_min_speed") is not None:
             args.respawn_min_speed = float(ck_cfg["respawn_min_speed"])
             restored.append(f"respawn_min_speed={args.respawn_min_speed:g}")
+        for _k in ("respawn_snap", "respawn_deep", "respawn_deep_q"):
+            if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
+                setattr(args, _k, float(ck_cfg[_k]))
+                restored.append(f"{_k}={float(ck_cfg[_k]):g}")
         if args.respawn_binned is None and ck_cfg.get("respawn_binned") is not None:
             args.respawn_binned = int(ck_cfg["respawn_binned"])
             restored.append(f"respawn_binned={args.respawn_binned}")
@@ -8429,6 +8475,18 @@ def main() -> None:
         args.tail_bins = 16
     if args.respawn_min_speed is None:
         args.respawn_min_speed = 0.0
+    # --respawn-snap stays None when absent: None IS the shipped cadence (1 s, 0.25 s under
+    # --goals), and the config dump only names the key when it was set
+    if args.respawn_snap is not None and not float(args.respawn_snap) > 0.0:
+        raise SystemExit("--respawn-snap is a cadence in seconds and must be > 0")
+    if args.respawn_deep is None:
+        args.respawn_deep = 0.0
+    if args.respawn_deep_q is None:
+        args.respawn_deep_q = 0.05
+    if not 0.0 <= float(args.respawn_deep) < 1.0:
+        raise SystemExit("--respawn-deep is a share of the reservoir draws, in [0, 1)")
+    if not 0.0 < float(args.respawn_deep_q) <= 1.0:
+        raise SystemExit("--respawn-deep-q is a quantile of the reservoir, in (0, 1]")
     if args.respawn_mode is None:
         args.respawn_mode = "uniform"
     if args.respawn_bins is None:
@@ -10635,8 +10693,7 @@ def main() -> None:
                 # goal arms: successful episodes are ~1.5 s, so a 1 s
                 # snapshot cadence never harvests the goal-entry state
                 # (the deepest one); 0.25 s does
-                snap_every=TICK.secs_to_ticks(0.25 if args.goals else 1.0,
-                                              "round"),
+                snap_every=TICK.secs_to_ticks(_respawn_snap_secs(args), "round"),
                 min_speed=float(args.respawn_min_speed or 0.0),
                 # --respawn-frontier-uniform: finishes harvested like deaths
                 success_margin=bool(args.respawn_frontier_uniform
@@ -10648,6 +10705,29 @@ def main() -> None:
               f"episode end"
               + (f", {args.respawn_mode} over {respawn.bins} distance bins"
                  if respawn.dist_fn is not None else ""))
+        if args.respawn_snap is not None:
+            print(f"respawn: --respawn-snap {float(args.respawn_snap):g} s between two "
+                  f"snapshots of one episode (shipped: "
+                  f"{0.25 if args.goals else 1.0:g} s)")
+        if float(args.respawn_deep) > 0.0:
+            # --respawn-deep: the reservoir draw weights its deepest quantile (by the race
+            # field's distance) up to the requested share. Go-Explore's return to the
+            # frontier over the policy's OWN harvested states; nothing is moved or invented
+            if args.respawn_mode != "uniform" or args.respawn_binned:
+                raise SystemExit("--respawn-deep reweights the UNIFORM reservoir draw; it "
+                                 "does not compose with --respawn-mode / --respawn-binned")
+            if args.plan_return:
+                raise SystemExit("--respawn-deep and --plan-return both set the reservoir's "
+                                 "draw weights; pick one")
+            for _s in slots:
+                if _s.reward_field is None:
+                    raise SystemExit("--respawn-deep needs the race goal field (--reward race)")
+                _s.respawn.weight_fn = (
+                    lambda o, _f=_s.reward_field: deep_shell_weights(
+                        _f.sample(o), float(args.respawn_deep), float(args.respawn_deep_q)))
+            print(f"respawn: --respawn-deep {float(args.respawn_deep):g} - that share of the "
+                  f"reservoir draws comes from its deepest {float(args.respawn_deep_q):g} "
+                  f"quantile by goal distance, the rest uniform")
     else:
         respawn = None
     demo = None
@@ -12970,6 +13050,13 @@ def main() -> None:
                        "side_hold": args.side_hold,
                        "respawn_frac": args.respawn_frac,
                        "respawn_margin": args.respawn_margin,
+                       # --respawn-snap / --respawn-deep: named only when set, so a run
+                       # without them dumps the config that shipped
+                       **({"respawn_snap": float(args.respawn_snap)}
+                          if args.respawn_snap is not None else {}),
+                       **({"respawn_deep": float(args.respawn_deep),
+                           "respawn_deep_q": float(args.respawn_deep_q)}
+                          if float(args.respawn_deep) > 0.0 else {}),
                        "respawn_binned": args.respawn_binned,
                        "respawn_random": args.respawn_random,
                        "respawn_random_start_frac": (
@@ -16351,7 +16438,7 @@ def main() -> None:
         _pat = list(TICK.pattern)
         _stall_t = TICK.secs_to_ticks(args.stall_secs)
         _margin_t = TICK.secs_to_ticks(args.respawn_margin)
-        _snap_t = TICK.secs_to_ticks(0.25 if args.goals else 1.0, "round")
+        _snap_t = TICK.secs_to_ticks(_respawn_snap_secs(args), "round")
         _seen = set()
         for _s in slots + heldout:
             # one map can present the same core twice (a held-out slot's

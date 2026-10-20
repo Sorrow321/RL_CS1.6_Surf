@@ -521,3 +521,39 @@ checkpoint is taken from the BEST EVAL's run dir, so pull that run's ckpt_final.
   is code-identical to this head (only `autoresearch/config.json` differs).
 * Box 56813988 (RTX 5080 + 7950X3D, $0.388/h) ran 00:41-10:24 UTC, about 9.7 h / ~$3.8,
   released at 10:24; no box at wrap-up.
+
+## Round 2, branch r2b4 - 2026-10-20 12:58 UTC (box 56893447, RTX 5080, $0.309/h)
+
+### Where the incumbent stops, read off its own eval (analysis only)
+
+* Incumbent eval traj_4916772864 (score 28.628): 5 of 9 greedy episodes die at 27.45-27.95% in
+  the pit's kill-coated ramp just EAST of its west edge (x 2,600-2,810, z 11,280-11,370) after a
+  high arc out of the +y-ramp climb (apex z 11,800-11,860 at x ~3,500, then vz -600..-880);
+  ep1 (28.63%) flies a LOWER arc (apex z ~11,520), passes over the edge at z ~11,450, hits the
+  wall face at x ~2,237 (vx -1,574 -> +528), drops into the pocket behind it and dies on kill
+  *17 (2,139, 922, 10,980); 2 episodes die earlier (24.8 s, the old north/pit lines).
+* Geometry of the slot exit (stand-hull point tests + hull-1 kill tests, x-z sections at
+  y = 0 / 500 / 880): a pillar x 2,528-2,592 tops out at hull-centre z ~11,425 under a ceiling
+  that starts at hull-centre z ~11,488 for x <= 2,592 - a ~60 u window over the pillar; behind
+  it a pocket x 2,240-2,496 open down to the kill sheet *21 (z ~10,690); a wall x <= 2,208
+  from z ~11,170 up; under the wall a ~140 u tunnel (hull-centre z ~10,990-11,140) exists only
+  in the |y| ~830-960 lanes, floored by the kill strips *17 / *113. So the next gate is a
+  precise hop-drop-tunnel sequence (or a route I have not found), not a long flight.
+* **The reservoir never spawns there.** The incumbent checkpoint's reservoir (20,000 states):
+  progress percentiles p50 19.2%, p90 25.6%, p99 26.3%, max 27.97%; only **3 states >= 27%**
+  (0.015%). Cause: snapshots are taken once per second of an episode and only those >= 2 s
+  (`--respawn-margin`) before its end are harvested, so an episode that dies at 28% leaves
+  nothing deeper than ~26%. The decisive last 1-2 s before the frontier is practised only
+  by episodes that fly the whole run-up at T = 2 (the unstuck T at its cap since ~2.4B).
+* Novel rows do not fill it either: `novel/prog_med` 12-17% (half of the sources are flattened
+  over the whole reservoir), ceiling 28.1-28.2%.
+
+### NEW: `--respawn-snap S` and `--respawn-deep F` / `--respawn-deep-q Q`
+
+* `--respawn-snap`: seconds between two reservoir snapshots of an episode (absent = the shipped
+  1 s / 0.25 s under --goals). `--respawn-deep F`: F of the reservoir draws come uniformly from
+  its deepest Q quantile by goal distance (default Q 0.05), the rest uniform - Go-Explore's
+  "return to the frontier" over the policy's OWN harvested states (no moved or invented state).
+  Generic: three constants, no map quantity. Both restored on resume, TRAIN_ONLY in record_ckpt.
+* Tests: tests/python/test_respawn_deep.py (weights realise the share; a RespawnBuffer draw lands
+  it; CPU smoke + flagless resume restores; flag off bit-identical to the trainer before).

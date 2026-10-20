@@ -99,6 +99,9 @@ TRAIN_ONLY = frozenset({
     "respawn_novel", "respawn_novel_frac", "respawn_novel_shell", "respawn_novel_shell_width",
     "respawn_novel_radius", "respawn_novel_cell", "respawn_novel_tries",
     "respawn_novel_window",
+    # --respawn-snap / --respawn-deep: how often the TRAINING reservoir snapshots an episode and
+    # how its draw weights the deepest states; a recording spawns at the map start
+    "respawn_snap", "respawn_deep", "respawn_deep_q",
     # --ramp-reward: what the TRAINING reward pays in the ramp-window task (arc progress, or +1
     # per target passed); a recording computes no training reward
     "ramp_reward",
