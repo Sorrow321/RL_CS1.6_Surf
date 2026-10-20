@@ -916,3 +916,18 @@ checkpoint is taken from the BEST EVAL's run dir, so pull that run's ckpt_final.
   full finish from the bowl bottom, rising chamber 1/7 - no better than tp1, so the cell returns dilute rather
   than focus. r2b4_tp1d (20:20 UTC): tp1c's ckpt_latest (6,495,928,320) with `--respawn-cells 0
   --respawn-cells-band 0` (tp1's spawn mix again), 2.6B steps, to ~23:05.
+
+### 22:05 UTC - WR-state bench on tp1d (7,966M: ~2.9B steps under the corrected objective) - the loop is learned BACKWARD
+
+| WR state | incumbent | tp1 (5,895M) | tp1d (7,966M) |
+|---|---|---|---|
+| 28.9 s chamber fall | 0/7 survive | greedy survives, 1/6 climbs | 0/7 |
+| 29.2 s bowl entry | 0/7 surf | **6/7 surf** | 1/7 |
+| 29.5 s bowl bottom | climbs <= 27.5% | 1/6 to 29.59% | climbs <= 27.05% |
+| 30.0 s bowl exit (link B) | 27.3-27.5% | 27.4-27.7% | **27.5-28.83%** (link B emerging) |
+| 30.5 s rising chamber | greedy only | greedy + 2/6 | **7/7 to the antechamber** |
+| 31.0 / 31.4 s | 7/7 / 7/7 | 7/7 / 7/7 | 7/7 / 7/7 |
+
+* The finish from the rising chamber became robust and the bowl-exit turn (link B) is starting, while the
+  bowl entry learned by 5,895M was partly lost again: the parts of the loop trade off rather than add up in
+  2.9B steps. The greedy line from the true start still dives (evals 27.25-28.47).
