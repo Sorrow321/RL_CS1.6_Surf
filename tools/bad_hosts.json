@@ -2653,6 +2653,15 @@
       "detail": "autoresearch r1b3 2026-10-20 01:10: RTX 3090 Ti power limit 300 W of 450 W default (67%), bf16 GEMM 59 TFLOPS, sm 1350 MHz under load; gpu_health UNHEALTHY",
       "run": "",
       "reason": "gpu_capped"
+    },
+    {
+      "ip": "85.30.169.224",
+      "machine_id": 151048,
+      "host_id": 404614,
+      "date": null,
+      "detail": "autoresearch r2b4: not running after 330 s (status loading, )",
+      "run": "",
+      "reason": "unreliable"
     }
   ],
   "known_good": [

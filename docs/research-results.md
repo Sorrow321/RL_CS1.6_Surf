@@ -36910,3 +36910,76 @@ The run continues to 4e9.
 - Training ep_len is 346 ticks (3.5 s), against ~800-1,200 for the references at this stage: many novel episodes end fast.
 
 **Reading.** One seed. The novel spawns did not get out of the first trap sooner than the compass run, and how far ahead of the surf run they are is tied up with T. The window and CP2 are the next marks.
+
+## 2026-10-20 23:55 (machine clock) - autoresearch r2b4 (round 2): the CP2 slot wall on sidistic is a 7.5 s DETOUR LOOP with a hidden low-ramp surf; the time penalty makes every partial detour net-negative; Go-Explore return / archive / elite / surf-burst mechanisms (all generic, default off) and what each did
+
+**Setting.** Warm arms from the round-1 incumbent (r1b1_ratnovx2 ckpt_final, 5,100,797,952 steps, score 28.628:
+ratchet + novel spawns, stuck at the CP2 slot's west end since 1,633M). One RTX 5080 box (Utah, $0.31/h,
+263-314k steps/s). Score = autoresearch/score.py best greedy eval from the true start.
+
+**Where the wall is (analysis only).**
+- Greedy episodes die either in the pit's kill-coated ramp just east of its west edge (27.45-27.95%) or, the
+  best ones, in the wall hole at x 2,139-2,224 (28.6%).
+- Geometry (stand-hull point tests, hull-1 kill tests): the wall x <= 2,216 is solid z 10,608-11,568 except
+  two holes, hull-centre |y| 848-940 x z 10,996-11,156, 280 u long, floored by kill strips *17 / *113. The
+  pillar x 2,520-2,600 is passable on top only in those lanes, under a ceiling and over kill plates *80 /
+  *64: a 32 u window. A ballistic line from that window misses the hole's far corner (even ducked): the hole
+  has to be entered near the APEX of an arc from below.
+- Random-action Go-Explore in the real core (autoresearch/analysis/sid_go_search.py; archive of 128 u x
+  velocity-class cells, rooted at the checkpoint's own reservoir, up to 427k cells, with or without a surf
+  primitive) never gets a live state past 28.73%.
+- The WR demo (speedrun.eu 47250, re-downloaded, ANALYSIS ONLY): from the slot the human flies a 7.5 s loop -
+  over the pillar, a 180-degree wall-slide in the pocket, EAST through the pillar's centre hole, a U-turn in the
+  chamber under the pit ramp, a sharp air turn (strafe key + view 1-2 deg ahead of the velocity, 102 deg in
+  0.36 s at constant speed), a surf on the low block's face (vz -1,425 -> +1,293 in 0.7 s), back up and WEST
+  through the pillar hole rising, the apex inside the wall hole (z 11,138, vz +25), then the antechamber and
+  two more low surfs to CP2 at 35.14 s. Field progress dips 28.24% -> 26.25% -> 28.2% (the "dip 2").
+- Skill bench from WR states (diagnostic, section 0): the incumbent policy surfs the bowl from its bottom and
+  flies the finish from the rising pocket 7/7 (29.4-30.0%), also at T = 2; it dies within 0.3-1.1 s from the
+  first half (no air turn) and climbs too far east from the bowl exit. Two steering links are missing.
+
+**Why the objective blocks it.** `--time-pen 0.005` per tick = 0.5 units/s, 1 unit = 1% of d0: any stretch
+whose route progresses slower than 0.5% of the map per second loses reward. The loop makes 0.33%/s (+2.5 for
+-3.75 to CP2): dying at the wall is worth more, and every partial detour (air turn + bowl surf: ~+0.4 for
+~-1.5) is worse. Zeroing the penalty (and the surf bonus, which the trainer then refuses) degraded the warm
+policy's main line (tp0: 28.2 -> 26.4).
+
+**New flags (all default off, byte-identical when off, restored on resume, TRAIN_ONLY in record_ckpt; tests in
+tests/python/test_respawn_deep.py, test_respawn_cells.py).**
+- `--respawn-snap S`: reservoir snapshot cadence. `--respawn-deep F/-q Q`: F of reservoir draws from its
+  deepest Q quantile.
+- `--respawn-cells F` (+ `-size`, `-band B`): Go-Explore return - F of the reservoir draws pick a 128 u x
+  velocity-class cell by 1/sqrt(1 + harvested + chosen), optionally only within B x d0 of the frontier.
+- `--spawn-states-elite E` (+ `-gain G` / `-beyond B`): rows of an own-state file whose episode beat its spawn
+  by G x d0 (or got B x d0 past the greedy eval frontier) get E of the file draws.
+- `--ez-surf P`: P of the ez bursts are the committed surf / air-strafe input (strafe key held, view K x
+  atan(30/|v_h|) ahead on that side); checked on the core: a 2.15 deg/tick turn at constant 1,500 u/s.
+
+**Arms (warm, best eval / what moved).**
+
+| arm | change | best eval | note |
+|---|---|---|---|
+| deep1 | snap 0.25, margin 0.5, deep 0.5 / 5% | 28.297 | deep shell = doomed pocket states (crawl 50-60%) |
+| cells1 | whole-map cells 0.5 | **28.588** | returns diluted over 107k cells; detour got none |
+| cells2 | band cells 0.8 / 5% | 28.199 | low region filled with block-top hops |
+| dc1 | deep + band cells | 28.315 | chamber reached (2,786 states), never the bowl surf |
+| lowT | dc1 + T cap 0.25 | 28.294 | stopped early |
+| tp0 | dc1, no time pen / surf bonus | 28.220 | main line degraded to 26.4 |
+| arch1(x) | 30% spawns from the search archive | 28.512 | **ceiling 28.82% -> 29.56%: first real training episodes past the wall in ~4B steps**; no repeat |
+| elite1-3 | archive + elite (gain / beyond, T 2 / 0.25) | 28.388 | 0 of ~230k archive episodes past 29.05% |
+| ezs1 | elite3 + surf bursts at T 0.25 | 27.507 | flat 27.5% |
+| tp1 -> tp1c -> tp1d | incumbent + `--time-pen 0.001 --surf-bonus 0` + archive + surf bursts, T 2 (tp1c: + band cells) | 28.473 (tp1d) | line holds 4B steps; bench: finish from the rising chamber 1/7 -> 7/7, bowl entry 0/7 -> 6/7 -> 1/7, link B emerging |
+
+**Reading.** The wall is a hidden multi-step skill exactly of CLAUDE.md 0b's kind. The policy owns the parts
+(the bowl surf, the finish) but not the two links between them, and nothing in the objective pays for trying
+them (the time penalty charges every partial detour). Spawn-distribution mechanisms put the policy in the
+detour region but in the wrong states; a random-action archive rooted at its own states contains the right
+states too rarely and too imprecisely to finish from. The next mechanism needs either a search whose proposal
+is the policy itself (policy-guided population search in the simulator, phase-2 robustification on its own
+chain), or an objective that does not charge exploration of a detour (time penalty off until a finish, with a
+liveness term that keeps the main line from lingering).
+
+**Correction to the reading above (same round, measured):** penalty 0 is not the fix - on the warm policy it broke
+the main line (tp0: 26.4); a small uniform penalty, `--time-pen 0.001` with `--surf-bonus 0`, keeps the line
+(27.25-28.47 over 4B steps) and is the objective under which the policy started learning the loop (bench rows
+above). Start the next attempt from that objective. Branch best eval: r2b4_cells1 28.588 (incumbent 28.628).

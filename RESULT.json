@@ -1,7 +1,7 @@
 {
  "agent": "r2b4",
  "round": 2,
- "final": false,
+ "final": true,
  "best": {
   "score": 28.588,
   "eval_file": "/home/steam/ar/runs/r2b4/r2b4_cells1/traj_5478809600.jsonl",
@@ -16,8 +16,9 @@
    "--respawn-margin",
    "0.5"
   ],
-  "resume_from": "incumbent r1b1_ratnovx2/ckpt_final.pt (5,100,797,952)",
-  "commit": "38c3bce"
+  "resume_from": "incumbent r1b1_ratnovx2/ckpt_final.pt (5,100,797,952); warm, 450M steps",
+  "commit": "38c3bce",
+  "note": "ckpt_final.pt = the run's end at step 5,551,161,344, md5 c7df745fd9236aaa157a56ee1c579506 (pulled and verified locally before the box was released). Best eval 9 episodes: best 28.59%, median 27.71%, 0 finishes."
  },
- "summary": "CP2 slot wall (x 2,216): analysis (field, geometry, random-action Go-Explore up to 427k cells, WR demo for analysis only) shows a 7.5 s detour loop with a hidden low-ramp surf, and the recipe's objective (ratchet + time-pen 0.5/s) scores the dive into the hole +0.29 vs the perfect route +0.08 over the 20 s horizon: the policy is right to die. Warm arms: deep/cells/band-cells/archive/elite/surf-burst spawns all <= 28.588 (cells1, best); time-pen 0 broke the line (26.4); time-pen 0.001 keeps it (28.0-28.4) and its policy starts surfing the bowl (reservoir bowl surfs 0 -> 11). No crossing yet. New default-off flags: --respawn-snap/-deep/-cells(-band), --spawn-states-elite/-gain/-beyond, --ez-surf. Next: corrected objective + a way to practise the two missing links."
+ "summary": "No arm crossed the CP2 slot wall (x 2,216) from the true start; best 28.588 (cells1) vs incumbent 28.628. Analysis: the way on is a 7.5 s detour loop (WR demo, analysis only) with a hidden low-ramp surf, and the recipe's objective scores the dive into the wall hole +0.29 against the perfect route +0.08 over the 20 s horizon (--time-pen 0.005 = 0.5%/s of the map; the loop makes 0.33%/s) - the policy is right to die. --time-pen 0.001 (surf bonus 0, critic warmup) keeps the warm line (27.8-28.4; 0 broke it: 26.4) and, with archive spawns + surf bursts, the policy learned part of the loop backward (WR-state bench: finish from the rising chamber 1/7 -> 7/7, bowl surfs, link B emerging). Spawn mechanisms alone (deep, cells, band cells, archive, elite, low T, surf bursts) did not move evals. New default-off flags: --respawn-snap/-deep/-cells(-size,-band), --spawn-states-elite/-gain/-beyond, --ez-surf. Next: start from the corrected objective and train the two missing links (slot -> pillar hole east, bowl-exit turn)."
 }

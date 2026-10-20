@@ -940,3 +940,56 @@ checkpoint is taken from the BEST EVAL's run dir, so pull that run's ckpt_final.
 * Branch best eval: r2b4_cells1 traj_5478809600 **28.588** (ckpt_final 5,551,161,344, md5 c7df745f..., local).
   Then arch1 28.512, tp1d 28.473, tp1c 28.424, tp1 28.407.
 * Box 56893447 (RTX 5080, Utah, $0.309/h) released at 23:12 UTC after ~10.3 h.
+
+## ROUND 2 LESSON (r2b4) - written 2026-10-20 23:55 UTC
+
+**Result:** best greedy eval from the true start **28.588** (r2b4_cells1 at 5,479M; the incumbent is 28.628).
+0 finishes. No arm crossed the CP2 slot wall from the true start.
+
+**What the wall is (analysis; the WR demo used for analysis only):**
+* Past the slot, the wall x <= 2,216 has two 128 x 240 u holes (hull-centre |y| 848-940, z 10,996-11,156,
+  280 u long, kill-strip floors). A ballistic dive from the pillar window cannot thread one; the hole is
+  entered at the apex of an arc from below.
+* The human flies a 7.5 s loop (27.6 -> 35.1 s): pillar window -> 180-degree wall-slide in the pocket -> EAST
+  through the pillar's centre hole -> U-turn in the chamber -> a sharp air turn (strafe key + view 1-2 deg
+  ahead of the velocity, ~280 deg/s) -> a surf on the low block's face (vz -1,425 -> +1,293) -> back up and
+  WEST through the pillar hole -> apex inside the wall hole -> antechamber -> two more low surfs -> CP2.
+  Field progress dips 28.24 -> 26.25 -> 28.2%.
+* **The recipe's objective prefers the dive.** Discounted ratchet return from the slot: the incumbent's dive
+  +0.29; the perfect route -1.17 (antechamber) / -1.03 (CP2) / +0.08 (20 s horizon) at `--time-pen 0.005`.
+  At 0.001 the route wins (+1.48 to CP2, +5.13 at 20 s vs +0.63). A time penalty above a stretch's progress
+  rate (here 0.5% of the map per second vs the loop's 0.33%/s) makes that stretch unlearnable; before any
+  finish it only buys early deaths.
+
+**What worked, partly:**
+* `--time-pen 0.001 --surf-bonus 0 --critic-warmup 40` keeps the warm main line (evals 27.25-28.47 over 4B
+  steps; penalty 0 instead broke it: 26.4) and, with archive spawns + surf bursts, the policy learned part of
+  the detour BACKWARD (WR-state bench, incumbent -> tp1 (5.9B) -> tp1d (9.1B)): finish from the rising chamber
+  1/7 -> 3/7 -> **7/7**; bowl-exit turn (link B) 27.5% -> 28.8% best; bowl entry 0/7 -> 6/7 -> 1/7 (learned,
+  then partly lost). Not yet: the entry decision from the slot (east through the pillar hole), and all the
+  links at once.
+* r2b4_arch1 (30% spawns from a random-action Go-Explore archive rooted at the policy's own reservoir) gave
+  the first REAL training episodes past the wall in ~4B steps (ceiling 28.82 -> 29.56%), twice, never again.
+
+**What did not work (warm, 450M-1.2B each):** deepest-quantile reservoir spawns (doomed pocket states);
+whole-map and band-limited Go-Explore cell returns (diluted / wrong states); archive spawns with an elite
+set, by gain or past the eval frontier (0 of ~400k archive episodes through the wall); lower sampling
+temperature (T 0.25: the line stops at 27.5% and no longer dives); surf-primitive ez bursts at T 0.25.
+
+**New flags (default off, byte-identical off, restored on resume, TRAIN_ONLY in record_ckpt; tests in
+tests/python/test_respawn_deep.py and test_respawn_cells.py):** `--respawn-snap`, `--respawn-deep(-q)`,
+`--respawn-cells(-size, -band)`, `--spawn-states-elite(-gain, -beyond)`, `--ez-surf`. Tool:
+autoresearch/analysis/sid_go_search.py (Go-Explore with random / surf-primitive actions in the real core,
+analysis only).
+
+**For the next round:** keep the corrected time penalty (0.001, surf bonus 0) - the incumbent recipe's 0.005
+makes this wall (and any detour slower than 0.5% of the map per second) unlearnable. The open problem is the
+two links under an objective that no longer punishes them; the WR-state bench (diagnostic) measures each link
+directly. Untried generic tool: a policy-guided population search in the simulator (the policy as the
+proposal, cloning on progress / novelty), whose own rollouts would be a self-states curriculum. Hand-on
+checkpoints, local: runs/r2b4/r2b4_cells1/ckpt_final.pt (best eval, 5.55B, md5 c7df745f) and
+runs/r2b4/r2b4_tp1d/ckpt_final.pt (corrected-objective lineage, 9.10B, the detour skills above).
+
+**Ops:** one RTX 5080 box (56893447, Utah, $0.309/h, 264-314k steps/s), 12:54-23:12 UTC (~10.3 h, ~$3.2).
+The box -> workstation path degraded once (~10 KB/s, 15:00-17:20 UTC); scratchpad chunkpull.sh (xz on the
+box, 64 KB slices over separate ssh calls, md5-checked) worked around it.
