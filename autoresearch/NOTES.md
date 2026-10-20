@@ -160,3 +160,48 @@ steps/s. Measure it on your box in the first minute and size `--steps` to the ti
   The policy's yaw sigma is 0.05-0.1 rad per 40 ms decision and its draws are independent,
   so a committed ~1 s deviation from the U-turn has probability ~0. A burst holds one for
   up to 2.4 s.
+
+### r1b1_ez2: warm + `--ez-eps 0.02` (uniform bursts everywhere) - no crossing (2026-10-20 01:40 UTC)
+
+* 400M from the incumbent (749.7M -> 1.15B), ~7% of decisions burst rows (dropped from PPO).
+* Evals (score.py best / median): 750M 27.0/24.7, 825M 27.2/25.4, 901M 27.2/25.7,
+  977M 27.0/21.1, 1,052M **27.3**/24.4, 1,128M 24.6/22.5. Best 27.304 (beats the incumbent's
+  27.222 by the pit's width, no more). 0 finishes, no CP2 crossing.
+* Training ep_len fell ~1,100 -> ~470 decisions: the bursts kill episodes, and the greedy
+  line got LESS consistent (median 21-25% vs the control's 27.1% at 825M, below).
+* Novelty counts of the final checkpoint (256 u cells, summed over view x speed), against
+  the incumbent's: 0 visits past CP2 (x -500..700, z 9,000-11,400) in both; the lower
+  corridor under kill plate *45 (x 4,200-5,600, z 10,900-11,850) 21 -> 204 env-ticks. So
+  bursts DO reach the human's lower level, ~2 s of agent time per ~100M steps: far too rare,
+  and the reservoir (2 s pre-end margin, uniform over the main line) never keeps them.
+
+### Geometry of the CP2 wall (analysis only, kill volumes from the bsp)
+
+* The pit is kill *86 (AABB x 2,592-6,240, y +-1,152, z 10,752-11,332). The field's minimum
+  above it sits just over the top (d 70,847 at (3,050, -900, 11,400)); nothing below is
+  reachable. The field does NOT route through the fail: a kill-masked field
+  (`--race-kill-aware`) would not change the gradient here.
+* A thin fail plate, kill *45 (x 4,194-5,344, y +-1,152, z ~11,905), lies under the
+  agent's U-turn level (~12,000-12,400). Several ez2 greedy episodes die on it.
+* The human (ledger) is at (4,041, 661, 11,814) at 24.5 s: WEST of the plate's edge and
+  BELOW its level; then (5,554, 454, 11,079) at 25.5 s: under the plate, east, low. Then a
+  ramp, and back west over the pit top at z ~11,469 (137 u above *86's top).
+* So the missing line drops to a lower level west of the plate around 23.5-24 s and flies
+  east beneath it. The agent never leaves the upper level.
+
+### r1b1_ctl: plain warm control (incumbent recipe, no new flag)
+
+* 825M eval: best 27.3%, MEAN 27.1% across 9: the plain resume consolidates at the pit in
+  ~75M steps, where the DC arm read 24.6% and the burst arm 23.9% at the same step. Both
+  mechanisms cost consistency before the wall.
+* Used as the wall checkpoint for the next arms (every later warm arm branches from it).
+
+### NEW: `--ez-front B` (62086bc)
+
+* ez bursts may START only in envs whose progress (start geodesic - d) is within the top B
+  fraction of the reservoir's deepest progress (re-read per iteration). Go-Explore's "explore
+  from the frontier": the yield at the wall rises ~1/B-fold for the same eps, and the line
+  before the band runs undisturbed. Generic: one band constant B, no map quantity.
+* Tests: the band is live in a CPU smoke (step line `ez X% front>Y%`), the config carries
+  ez_front, a resume restores it, `--ez-front` without `--ez-eps` is refused; flag off is
+  bit-identical to the trainer before both ez changes.
