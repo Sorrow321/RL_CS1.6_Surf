@@ -762,3 +762,14 @@ checkpoint is taken from the BEST EVAL's run dir, so pull that run's ckpt_final.
   --respawn-snap 0.25 --respawn-margin 0.5`, original reward, SELF_STATES declared through box.py
   --self-states with that provenance. Watch: the novel ceiling (deepest REAL episode) and reservoir states
   west of the wall; a finish from an archive state is harvested (0.5 s margin) into the reservoir.
+
+### 16:37 UTC - arch1: FIRST REAL EPISODES PAST THE WALL (training side)
+
+* The novel ceiling (deepest point any REAL training episode reached; archive-spawned episodes count as
+  real) moved for the first time since 1,633M: 28,174 u (28.82%) -> 28,854 u at 5,337M -> **28,903 u
+  (29.56%) at 5,344M** - the antechamber west of the wall hole. Greedy evals not yet: 28.245 / 27.409 /
+  28.512 / 27.941 at 5,101-5,328M.
+* Reservoir (newest 20k, 16:36): low region 735 states (53 rising), chamber 139 (2 rising), nothing west of
+  the wall yet - the post-wall flights end inside the 0.5 s harvest margin.
+* Decision: EXTEND (PROTOCOL: a gate the incumbent never cleared, here on the training side for the first
+  time in ~4B steps): bare resume of arch1's ckpt_final with the same archive spawns.

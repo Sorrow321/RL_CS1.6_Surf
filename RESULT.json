@@ -19,5 +19,5 @@
   "resume_from": "incumbent r1b1_ratnovx2/ckpt_final.pt (5,100,797,952)",
   "commit": "38c3bce"
  },
- "summary": "Warm arms at the CP2 wall hole (x 2,216): deep1 (deepest-5% spawns) 28.297, cells1 (Go-Explore return over whole-map cells) 28.588 - both below the incumbent 28.628. Random-action Go-Explore never passes the hole; the WR demo (analysis only) shows a 7.5 s loop with a hidden low-ramp surf. Running: cells2 = cells restricted to 5% of d0 behind the reservoir frontier."
+ "summary": "Warm arms at the CP2 wall hole: deep1 28.297, cells1 28.588 (best), cells2/dc1/lowT/tp0 no gain (tp0, no time penalty, degraded to 26.5). arch1 = Go-Explore phase 2: 30% of spawns from a random+surf-primitive search archive rooted at the policy's own reservoir - the first REAL training episodes past the wall (ceiling 28.82% -> 29.56% at 5,344M); evals not yet. Extending arch1."
 }
