@@ -2,6 +2,24 @@
  "agent": "r2b4",
  "round": 2,
  "final": false,
- "best": null,
- "summary": "Round 2 started 12:33 UTC from the r1b1 incumbent (28.628, ratchet + novel spawns, stuck at the CP2 slot's west wall x 2,224). No eval of this branch yet."
+ "best": {
+  "score": 28.297,
+  "eval_file": "/home/steam/ar/runs/r2b4/r2b4_deep1/traj_5327814656.jsonl",
+  "run": "r2b4_deep1",
+  "step": 5327814656,
+  "ckpt": "/home/steam/ar/runs/r2b4/r2b4_deep1/ckpt_final.pt",
+  "recipe": [
+   "--respawn-snap",
+   "0.25",
+   "--respawn-margin",
+   "0.5",
+   "--respawn-deep",
+   "0.5",
+   "--respawn-deep-q",
+   "0.05"
+  ],
+  "resume_from": "incumbent r1b1_ratnovx2/ckpt_final.pt (5,100,797,952)",
+  "commit": "cc88240"
+ },
+ "summary": "deep1 (warm incumbent + deepest-5% reservoir spawns, 0.25 s snaps, 0.5 s margin): 28.297, below the incumbent 28.628 - the deep shell was doomed pocket states. Random-action Go-Explore from the policy's own states (4 searches, up to 421k cells) never passes the wall hole (max 28.73%). The WR demo (analysis only) shows a 7.5 s loop with a hidden surf in the low region; next: --respawn-cells (Go-Explore return by count-weighted cells over own states)."
 }

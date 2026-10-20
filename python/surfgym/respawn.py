@@ -24,7 +24,84 @@ import numpy as np
 
 from .core import STATE_DTYPE
 
-__all__ = ["RespawnBuffer", "DemoCurriculum", "RandomSpawnSampler"]
+__all__ = ["RespawnBuffer", "DemoCurriculum", "RandomSpawnSampler", "CellReturn"]
+
+
+class CellReturn:
+    """--respawn-cells: Go-Explore's RETURN step over the reservoir (Ecoffet et al. 2021).
+
+    The uniform reservoir draw mirrors visitation: the mastered line holds almost every stored
+    state, and a place the policy has reached only a few times - a side room off the route, the
+    bottom of a detour - is ~never a spawn. Here a ``share`` of the reservoir draws goes through
+    CELLS instead: a cell is a ``size`` u position cube x a velocity class (horizontal speed in
+    500 u/s buckets capped at 7, heading octant, vertical sign: falling / level / rising), drawn
+    with weight ``1 / sqrt(1 + seen + chosen)`` - ``seen`` the harvested states ever pushed into
+    the cell, ``chosen`` the spawns ever drawn from it - and then a uniform member state of the
+    cell is spawned. Rare cells get many returns, worn-out ones few, and the policy explores from
+    them with its own sampling. Nothing is moved or invented: every spawn is a state the policy
+    reached. No map constant: one cube size, one share.
+    """
+
+    def __init__(self, share: float, size: float = 128.0, seed: int = 29) -> None:
+        self.share = float(share)
+        self.size = float(size)
+        self.rng = np.random.default_rng(seed)
+        self.seen: dict[int, int] = {}
+        self.chosen: dict[int, int] = {}
+        self.last = {"cells": 0, "drawn": 0, "rare": 0.0}
+
+    def keys(self, rows) -> np.ndarray:
+        p = np.asarray(rows["origin"], np.float64)
+        v = np.asarray(rows["velocity"], np.float64)
+        c = np.floor(p / self.size).astype(np.int64) + 1024
+        hs = np.hypot(v[:, 0], v[:, 1])
+        sb = np.minimum(np.floor(hs / 500.0), 7).astype(np.int64)
+        hd = (np.floor((np.arctan2(v[:, 1], v[:, 0]) + np.pi) / (np.pi / 4.0))
+              .astype(np.int64)) % 8
+        vz = np.where(v[:, 2] < -150.0, 0, np.where(v[:, 2] > 150.0, 2, 1)).astype(np.int64)
+        return ((((c[:, 0] * 2048 + c[:, 1]) * 2048 + c[:, 2]) * 8 + sb) * 8 + hd) * 3 + vz
+
+    def note_pushed(self, rows) -> None:
+        if len(rows) == 0:
+            return
+        u, n = np.unique(self.keys(rows), return_counts=True)
+        for k, m in zip(u.tolist(), n.tolist()):
+            self.seen[k] = self.seen.get(k, 0) + m
+
+    def draw(self, store, size: int, n: int, rng) -> np.ndarray:
+        """``n`` indices into ``store[:size]``: a cell by weight, then a uniform member."""
+        if n <= 0 or size <= 0:
+            return np.zeros(0, np.int64)
+        k = self.keys(store[:size])
+        u, inv, cnt = np.unique(k, return_inverse=True, return_counts=True)
+        w = np.array([1.0 / np.sqrt(1.0 + self.seen.get(c, 0) + self.chosen.get(c, 0))
+                      for c in u.tolist()], np.float64)
+        pick = rng.choice(len(u), n, p=w / w.sum())
+        order = np.argsort(inv, kind="stable")
+        start = np.cumsum(cnt) - cnt
+        idx = order[start[pick] + rng.integers(0, cnt[pick])]
+        pu, pn = np.unique(pick, return_counts=True)
+        for c, m in zip(u[pu].tolist(), pn.tolist()):
+            self.chosen[c] = self.chosen.get(c, 0) + m
+        seen_drawn = np.array([self.seen.get(c, 0) for c in u[pick].tolist()], np.int64)
+        self.last = {"cells": int(len(u)), "drawn": int(n),
+                     "rare": float(np.mean(seen_drawn <= 10))}
+        return idx.astype(np.int64)
+
+    def state_dict(self) -> dict:
+        ks = np.array(sorted(set(self.seen) | set(self.chosen)), np.int64)
+        return {"keys": ks,
+                "seen": np.array([self.seen.get(k, 0) for k in ks.tolist()], np.int64),
+                "chosen": np.array([self.chosen.get(k, 0) for k in ks.tolist()], np.int64),
+                "share": self.share, "size": self.size}
+
+    def load_state_dict(self, d) -> bool:
+        if not isinstance(d, dict) or "keys" not in d or float(d.get("size", -1)) != self.size:
+            return False
+        ks = np.asarray(d["keys"], np.int64).tolist()
+        self.seen = {k: int(s) for k, s in zip(ks, np.asarray(d["seen"]).tolist()) if s}
+        self.chosen = {k: int(s) for k, s in zip(ks, np.asarray(d["chosen"]).tolist()) if s}
+        return True
 
 
 class DemoCurriculum:
@@ -215,6 +292,9 @@ class RespawnBuffer:
         # build_pool's reservoir draw (Go-Explore's "return", count-based over the policy's own
         # states). None = the draw that shipped (binned or uniform), byte for byte
         self.weight_fn = None
+        # --respawn-cells: a CellReturn that draws its share of the reservoir rows by cell
+        # (Go-Explore's return); None = the draw that shipped, byte for byte
+        self.cells = None
         # --respawn-frontier-uniform: a FINISHED episode is harvested with
         # the same pre-end margin as a death, instead of its whole chain.
         # The whole-chain rule exists for the --goals arms (2 s goal runs
@@ -493,6 +573,8 @@ class RespawnBuffer:
         k = len(rows)
         if k == 0:
             return
+        if self.cells is not None:
+            self.cells.note_pushed(rows)
         if self._goal is not None:
             if goals is None:
                 goals = np.full((k, 3), np.nan, np.float32)
@@ -743,6 +825,11 @@ class RespawnBuffer:
             w = np.where(np.isfinite(w) & (w > 0.0), w, 0.0)
             idx = (self.rng.choice(self._size, n_re, p=w / w.sum()) if w.sum() > 0.0
                    else self.rng.integers(0, self._size, n_re))
+        elif self.cells is not None:
+            # --respawn-cells: its share by cell (Go-Explore's return), the rest uniform
+            n_c = int(round(self.cells.share * n_re))
+            idx = np.concatenate([self.cells.draw(self._store, self._size, n_c, self.rng),
+                                  self.rng.integers(0, self._size, n_re - n_c)])
         else:
             idx = (self._binned_pick(n_re) if self._d is not None
                    else self.rng.integers(0, self._size, n_re))
@@ -782,6 +869,8 @@ class RespawnBuffer:
         pos = (self._head - take) % self.cap
         idx = (pos + np.arange(take)) % self.cap
         d = {"states": self._store[idx].copy(), "map_id": self.map_id}
+        if self.cells is not None:
+            d["cells"] = self.cells.state_dict()
         if self._goal is not None:
             d["goals"] = self._goal[idx].copy()
             d["segs"] = self._seg[idx].copy()
@@ -813,6 +902,8 @@ class RespawnBuffer:
         for k, row in enumerate(arr):
             self._push(row, None if ds is None else float(ds[k]))
         self.harvested -= len(arr)               # loading is not harvesting
+        if self.cells is not None and not self.cells.load_state_dict(d.get("cells")):
+            self.cells.note_pushed(arr)          # no counters saved: the restored states count
 
     @property
     def size(self) -> int:

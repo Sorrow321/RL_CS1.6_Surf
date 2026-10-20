@@ -570,3 +570,72 @@ checkpoint is taken from the BEST EVAL's run dir, so pull that run's ckpt_final.
   ratnovx2/ratnovx3 2.5-5.9B, best 28.0-28.6%, frontier frozen at 27,916 u since 1,633M.
   Promising = an eval past 28.63% (x < 2,208, z < 11,140 or beyond), or the reservoir's min
   depth moving past 72.03% of d0 (27.97% progress).
+
+### r2b4_deep1 result (5.10B -> 5.55B, 13:01-13:28 UTC): NEGATIVE, stopped at its budget
+
+* Evals (score.py best / median): 5,101M 28.200/27.7, 5,177M 27.332/27.2, 5,252M 28.207/27.5,
+  5,328M **28.297**/27.3, 5,403M 27.925/22.4, 5,479M 28.089/27.6. 0 finishes; below the
+  incumbent's 28.628 and in the band of the incumbent's own continuation (ratnovx3 28.0-28.5).
+* The reservoir's deepest state moved 27.97% -> 28.25-28.33%, but the novel ceiling (deepest
+  REAL episode) stayed at 28,174 u for all 450M steps: with ~24% of all spawns on the deepest 5%,
+  no training episode went deeper. `race/crawl_frac` 8-13% -> 50-60%: the deep shell is the
+  pocket behind the x 2,224 wall face - states that hit the wall and fall at |v_h| < 300 (an
+  air-strafer from rest gains ~30 u/s along its wish direction, so they are doomed).
+* Lesson: "deepest by field distance" selects doomed states whenever the field's descent runs
+  into a dead end beside the route. Do not run --respawn-deep at this wall again.
+
+### CAN'T, not WON'T: random-action Go-Explore from the policy's own frontier (analysis only)
+
+* Tool: `autoresearch/analysis/sid_go_search.py` (new): Go-Explore's explore phase with RANDOM
+  held macro-actions (velocity-frame yaw targets off_warp(u), keys, duck, jump; 4-40 ticks each) in
+  the real core (teleport_fail on), rooted at a checkpoint's own reservoir states, archive of
+  128 u x 500 u/s cells (`--fine`: x heading octant x vz sign), count-weighted selection.
+  On the 32-thread box: 8,192 envs x 200 ticks x 300 rounds in 63 s.
+* Runs, roots = the incumbent's reservoir: local 2,048 x 300 ticks x 60 rounds (12k cells);
+  box 8,192 x 200 x 300 (22.5k cells, roots >= 20%); box `--fine` 8,192 x 150 x 600 (200k+
+  cells, roots >= 22%). **Deepest live state 28.66-28.73%, always at the mouth of the wall hole
+  (x 2,086-2,225, |y| ~870-900, z ~10,940-11,030) falling at vz -850..-930.**
+* Geometry that explains it (stand-hull point tests, hull-1 kill tests): the wall x <= 2,216 is
+  solid z 10,608-11,568 except two holes, hull-centre |y| 848-940 x z 10,996-11,156, 280 u long
+  (x 2,216 -> 1,936), floored by kill strips *17 / *113. The pillar x 2,520-2,600 in those lanes
+  carries kill plates *80 / *64 on top under a ceiling: a 32 u window (hull-centre z
+  11,444-11,476). A ballistic line from the pillar window to the hole's top corner continues
+  ~2 u BELOW the hole's far bottom corner even ducked, so no dive from the slot threads it; the
+  hole has to be entered near the apex of an arc (|vz| < ~300). The rest of the middle level is
+  sealed: the pocket floor is kill *21, the pillar's other hole (y ~0, z 10,832-11,072) leads to
+  a chamber under the pit ramp that drops into a lower corridor, and that corridor is cut off from
+  the west by a 45-degree slab (normal (-0.71, 0, 0.71): walkable, not surfable) - the field
+  jumps 71,500 -> 68,950 across it.
+* Downstream is easy: own states moved just WEST of the hole (heading west at ~1,330 u/s) fly to
+  29.0-30.3% with the incumbent policy (16 stoch + 4 greedy, spawn_bench). So passing the hole is
+  worth ~+1.5% at once, ~+2.4% at CP2.
+
+### The human's line past the slot, from the WR demo (ANALYSIS ONLY - section 0; nothing enters training)
+
+* Source: speedrun.eu demo 47250 (krs, 115.99 s), re-downloaded to the session scratchpad and parsed
+  with tools/demo/parse_hldemo.py; times are demo seconds (10 ms rows). It is a 7.5 s LOOP, not a dive:
+  * 27.0-27.6 s: the -y lane slot (y ~ -910), z 11,440-11,480, level, 1,834 u/s west.
+  * 27.7 s: over the pillar in the lane window (2,509, -903, 11,423).
+  * 27.8-28.3 s: a wall-slide in the pocket turns the velocity 180 degrees at ~1,720 u/s
+    (west -> north along the x 2,224 face -> east), dropping to z ~11,100.
+  * 28.4 s: EAST through the pillar's centre hole (2,591, 14, 11,012).
+  * 28.5-29.0 s: a U-turn in the chamber under the pit ramp, falling (vz -950..-1,345).
+  * 29.1-29.9 s: falls to z ~9,790 at (1,969, 74) and SURFS a curved low ramp: vz -1,425 -> +1,293
+    in 0.7 s, |v_h| up to 2,112, heading turned south then east (side key held, the view 1-2 deg
+    ahead of the velocity - the plain surf input).
+  * 30.0-30.4 s: rises east back into the chamber; 30.5-31.0 s: curves north and passes WEST
+    through the pillar's centre hole again, still rising.
+  * 31.5 s: the APEX (vz +25) at (2,185, 914, 11,138) - inside the +y wall hole - then through it:
+    (1,920, 943, 11,126) at 31.7 s.
+  * 32.8 s: lands on the block top (1,435, -250, 10,737), U-turns, drops off under the block, surfs
+    another low ramp (vz -1,208 -> +1,190 at 34.3-35.0 s) and rises into CP2 at 35.14 s.
+* Field progress along it: 28.24% at 27.9 s, DOWN to 26.25% at 29.4 s (the "dip 2"), back to 28.2%
+  at 31.2 s, 30.4% at CP2. The field shows none of the climb: it is CLAUDE.md 0b's case of a hidden
+  ramp skill.
+* So my ballistic finding stands: the hole is entered at the apex of an arc from BELOW, and the arc
+  comes from a surf in the low region the policy only ever falls through. Random actions (with or
+  without a surf primitive: `--surf-p 0.5`, 421k cells) never chain the loop.
+* Which generic mechanism this points at: the policy CAN surf; it never practises in the rare cells
+  of the detour (the chamber, the low region), because the reservoir draw mirrors visitation and the
+  2 s margin drops the last seconds of every fall. Go-Explore's return over its own states, with
+  count-weighted cells instead of depth, is the textbook fix - `--respawn-cells` below.

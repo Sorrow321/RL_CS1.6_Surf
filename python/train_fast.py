@@ -6286,6 +6286,14 @@ def main() -> None:
     ap.add_argument("--respawn-deep-q", type=float, default=None,  # 0.05
                     help="the deep shell of --respawn-deep, as a quantile of the "
                          "reservoir's states by goal distance (default 0.05)")
+    ap.add_argument("--respawn-cells", type=float, default=None,  # 0 = off
+                    help="race: share of the RESERVOIR draws taken by CELL - Go-Explore's "
+                         "return (surfgym.respawn.CellReturn): a --respawn-cells-size u position "
+                         "cube x a velocity class (speed bucket, heading octant, vertical sign) "
+                         "is drawn with weight 1/sqrt(1 + harvested + chosen), then a uniform "
+                         "member state. 0 = off, byte-identical; ckpt restores")
+    ap.add_argument("--respawn-cells-size", type=float, default=None,  # 128 u
+                    help="the position cube of --respawn-cells, u (default 128)")
     ap.add_argument("--respawn-random", action="store_true", default=None,
                     help="race: replace the reservoir with UNIFORM RANDOM "
                          "reachable starts (docs/respawn_random.md). 5%% of "
@@ -7128,7 +7136,8 @@ def main() -> None:
         if args.respawn_min_speed is None and ck_cfg.get("respawn_min_speed") is not None:
             args.respawn_min_speed = float(ck_cfg["respawn_min_speed"])
             restored.append(f"respawn_min_speed={args.respawn_min_speed:g}")
-        for _k in ("respawn_snap", "respawn_deep", "respawn_deep_q"):
+        for _k in ("respawn_snap", "respawn_deep", "respawn_deep_q", "respawn_cells",
+                   "respawn_cells_size"):
             if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
                 setattr(args, _k, float(ck_cfg[_k]))
                 restored.append(f"{_k}={float(ck_cfg[_k]):g}")
@@ -8487,6 +8496,17 @@ def main() -> None:
         raise SystemExit("--respawn-deep is a share of the reservoir draws, in [0, 1)")
     if not 0.0 < float(args.respawn_deep_q) <= 1.0:
         raise SystemExit("--respawn-deep-q is a quantile of the reservoir, in (0, 1]")
+    if args.respawn_cells is None:
+        args.respawn_cells = 0.0
+    if args.respawn_cells_size is None:
+        args.respawn_cells_size = 128.0
+    if not 0.0 <= float(args.respawn_cells) < 1.0:
+        raise SystemExit("--respawn-cells is a share of the reservoir draws, in [0, 1)")
+    if not float(args.respawn_cells_size) > 0.0:
+        raise SystemExit("--respawn-cells-size is a cube edge in u and must be > 0")
+    if float(args.respawn_cells) > 0.0 and float(args.respawn_deep) > 0.0:
+        raise SystemExit("--respawn-cells and --respawn-deep both reshape the reservoir draw; "
+                         "pick one")
     if args.respawn_mode is None:
         args.respawn_mode = "uniform"
     if args.respawn_bins is None:
@@ -10709,6 +10729,22 @@ def main() -> None:
             print(f"respawn: --respawn-snap {float(args.respawn_snap):g} s between two "
                   f"snapshots of one episode (shipped: "
                   f"{0.25 if args.goals else 1.0:g} s)")
+        if float(args.respawn_cells) > 0.0:
+            # --respawn-cells: Go-Explore's return over the policy's own harvested states
+            if args.respawn_mode != "uniform" or args.respawn_binned:
+                raise SystemExit("--respawn-cells reshapes the UNIFORM reservoir draw; it does "
+                                 "not compose with --respawn-mode / --respawn-binned")
+            if args.plan_return:
+                raise SystemExit("--respawn-cells and --plan-return both reshape the reservoir "
+                                 "draw; pick one")
+            from surfgym.respawn import CellReturn
+            for _i, _s in enumerate(slots):
+                _s.respawn.cells = CellReturn(float(args.respawn_cells),
+                                              float(args.respawn_cells_size), seed=29 + 101 * _i)
+            print(f"respawn: --respawn-cells {float(args.respawn_cells):g} - that share of the "
+                  f"reservoir draws picks a {float(args.respawn_cells_size):g} u x velocity-class "
+                  f"cell by 1/sqrt(1 + harvested + chosen), then a member state (Go-Explore's "
+                  f"return); the rest uniform")
         if float(args.respawn_deep) > 0.0:
             # --respawn-deep: the reservoir draw weights its deepest quantile (by the race
             # field's distance) up to the requested share. Go-Explore's return to the
@@ -13057,6 +13093,9 @@ def main() -> None:
                        **({"respawn_deep": float(args.respawn_deep),
                            "respawn_deep_q": float(args.respawn_deep_q)}
                           if float(args.respawn_deep) > 0.0 else {}),
+                       **({"respawn_cells": float(args.respawn_cells),
+                           "respawn_cells_size": float(args.respawn_cells_size)}
+                          if float(args.respawn_cells) > 0.0 else {}),
                        "respawn_binned": args.respawn_binned,
                        "respawn_random": args.respawn_random,
                        "respawn_random_start_frac": (
@@ -16732,6 +16771,11 @@ def main() -> None:
                     wins = res.bin_win.sum()
                     print(f"  {res.last_info}  |  outcome-tracked eps "
                           f"{ep.sum():,.0f}  wins {wins:,.1f}")
+                if res.cells is not None:
+                    _cl = res.cells.last
+                    print(f"  cells: {_cl['cells']:,} in the reservoir, {len(res.cells.seen):,} "
+                          f"ever harvested; last draw {_cl['drawn']:,} rows, "
+                          f"{_cl['rare']:.0%} from cells harvested <= 10 times")
         if demo is not None and it_no % 100 == 1 and demo.last_info:
             print(f"  {demo.last_info}  |  demo-tracked eps "
                   f"{demo.ep.sum():,.0f}  wins {demo.win.sum():,.1f}")
