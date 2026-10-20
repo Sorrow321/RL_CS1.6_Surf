@@ -732,3 +732,19 @@ physics as the sim (gravity 800, airaccelerate 100) except maxvelocity 3,500.
 * **r2b2_t1** (16:38): bare resume of band64x's ckpt_latest (6,725,042,176, md5 0f30157f...) with
   `--unstuck-max 1` (T 2 -> 1; everything else restored, incl. the novel band settings), +1.5e9
   steps (to 8.2B, ~2 h), evals every 25M. Box extended to 19:37 UTC.
+
+### 17:10 UTC: r2b2_t1 (T cap 1) - 28.841 and the first real episode past the tunnel
+
+* T dropped 2 -> 1 at the resume (6,725M); approx_kl 0.26-0.37 for the first updates, ~0.1 after.
+* **Eval 6,751M: score 28.841** (best 28.84%, median 28.2%): above the incumbent's 28.628. Episode 8
+  goes through the -y window, turns in the shaft and dives into the -y tunnel heading west at
+  1,156 u/s, dying on *113 at its far west end (1,966, -904, 10,981) at 28.24 s - the field route's
+  physical limit (~28.8%), reached for the first time.
+* **Training ceiling 28,205 -> 29,027 u (29.69%) at ~6,751M**: a REAL episode (map start or
+  reservoir) got past the tunnel, the first ever on this lineage. Flat since.
+* But the greedy line then settled into the CP2 pit: 13 consecutive evals 6,776-7,078M at 27.4-27.5%
+  (death at ~24.5 s on the -y side, x ~3,100), then one collapse to 14.8% (7,103M). Novel share
+  40-48% of episodes.
+* Checkpoint pulled: runs/r2b2/r2b2_t1/ckpt_7128219648.pt (md5 7686c36f...), a stable copy taken
+  on the box (box.py pull --ckpt failed: ckpt_latest is rewritten every 25M steps, faster than an
+  80 MB copy from Argentina).
