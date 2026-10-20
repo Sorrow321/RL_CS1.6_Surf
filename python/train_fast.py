@@ -6445,6 +6445,12 @@ def main() -> None:
     ap.add_argument("--respawn-novel-tries", type=int, default=None,
                     help="--respawn-novel: displacements tried per source "
                          "state (default 8)")
+    ap.add_argument("--respawn-novel-turn", type=float, default=None,
+                    help="--respawn-novel: turn each novel row's horizontal velocity and "
+                         "view yaw together by U(-T, T) degrees (speed, vertical speed and "
+                         "the view's offset from the heading kept), so a state moved to a "
+                         "new place is not stuck with the heading it had at the old one; "
+                         "the rows' positions are exactly those of T = 0 (default 0 = off)")
     ap.add_argument("--respawn-novel-window", type=float, default=None,
                     help="--respawn-novel: 'visited' means entered within the last "
                          "W..2W env steps (two grids rolled every W), so a place the "
@@ -7477,6 +7483,9 @@ def main() -> None:
         if (args.respawn_novel_window is None
                 and ck_cfg.get("respawn_novel_window") is not None):
             args.respawn_novel_window = float(ck_cfg["respawn_novel_window"])
+        if (args.respawn_novel_turn is None
+                and ck_cfg.get("respawn_novel_turn") is not None):
+            args.respawn_novel_turn = float(ck_cfg["respawn_novel_turn"])
         # --respawn-backward: a spawn DISTRIBUTION, restored like the frontier
         if args.respawn_backward is None and ck_cfg.get("respawn_backward"):
             args.respawn_backward = True
@@ -8376,7 +8385,8 @@ def main() -> None:
                      ("respawn_novel_cell", 128.0),
                      ("respawn_novel_radius", [256.0, 2048.0]),
                      ("respawn_novel_tries", 8),
-                     ("respawn_novel_window", 1e7)):
+                     ("respawn_novel_window", 1e7),
+                     ("respawn_novel_turn", 0.0)):
         if getattr(args, _nk) is None:
             setattr(args, _nk, _nv)
     for _bk, _bv in (("respawn_backward_start", 0.05),
@@ -10858,7 +10868,8 @@ def main() -> None:
                 shell_width=float(args.respawn_novel_shell_width),
                 tries=int(args.respawn_novel_tries),
                 d0=float(slot.rf_d0 or 0.0),
-                window=float(args.respawn_novel_window), seed=73 + 101 * _i)
+                window=float(args.respawn_novel_window), seed=73 + 101 * _i,
+                turn=float(args.respawn_novel_turn))
             # a novel spawn's episode is DISCARDED at its end, never harvested
             slot.respawn.skip = slot.novel.novel_env
         print(f"respawn NOVEL: {args.respawn_novel_frac:.0%} of the non-start pool = own "
@@ -10870,7 +10881,9 @@ def main() -> None:
               f"steps, 0 = ever), no deeper than the deepest point a REAL episode reached; "
               f"velocity, view and keys kept; {args.respawn_novel_shell:.0%} of the sources "
               f"from the deepest {args.respawn_novel_shell_width:.0%} of the reservoir, the "
-              f"rest flattened over progress; novel episodes are never harvested")
+              f"rest flattened over progress; novel episodes are never harvested"
+              + (f"; heading (velocity and view yaw) turned by U(-{args.respawn_novel_turn:g}, "
+                 f"{args.respawn_novel_turn:g}) deg" if args.respawn_novel_turn > 0.0 else ""))
     if args.respawn_backward:
         for _i, slot in enumerate(slots):
             _fld = (slot.reward_field if slot.reward_field is not None
@@ -13523,6 +13536,8 @@ def main() -> None:
             "respawn_novel_cell": float(args.respawn_novel_cell),
             "respawn_novel_tries": int(args.respawn_novel_tries),
             "respawn_novel_window": float(args.respawn_novel_window)})
+        if args.respawn_novel_turn > 0.0:
+            meta["config"]["respawn_novel_turn"] = float(args.respawn_novel_turn)
     # --unstuck: written ONLY when set (a control run's config dump stays
     # byte-identical); every knob rides along so a resume restores them
     if UNSTUCK:

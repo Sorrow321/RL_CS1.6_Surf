@@ -98,7 +98,7 @@ TRAIN_ONLY = frozenset({
     # been; a recording spawns at the map start like the trainer's eval
     "respawn_novel", "respawn_novel_frac", "respawn_novel_shell", "respawn_novel_shell_width",
     "respawn_novel_radius", "respawn_novel_cell", "respawn_novel_tries",
-    "respawn_novel_window",
+    "respawn_novel_window", "respawn_novel_turn",
     # --ramp-reward: what the TRAINING reward pays in the ramp-window task (arc progress, or +1
     # per target passed); a recording computes no training reward
     "ramp_reward",

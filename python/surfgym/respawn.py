@@ -1716,7 +1716,8 @@ class NovelSpawnSampler:
     def __init__(self, core, field, n_envs: int, cell: float = 128.0,
                  radius: tuple = (256.0, 2048.0), shell_frac: float = 0.5,
                  shell_width: float = 0.25, tries: int = 8, bins: int = 32,
-                 d0: float = 0.0, window: float = 0.0, seed: int = 73) -> None:
+                 d0: float = 0.0, window: float = 0.0, seed: int = 73,
+                 turn: float = 0.0) -> None:
         self.core = core
         self.field = field
         self.n = int(n_envs)
@@ -1730,6 +1731,17 @@ class NovelSpawnSampler:
         self.bins = max(2, int(bins))
         self.d0 = float(d0)                  # reporting only (progress = d0 - d)
         self.rng = np.random.default_rng(int(seed))
+        # --respawn-novel-turn T (degrees): each row's horizontal velocity and view yaw are
+        # turned together by U(-T, T), so the speed, the vertical speed and the view's offset
+        # from the heading are kept and only the heading is new. A source's velocity belongs to
+        # where it was: moved 1-2 km it can point straight into a wall or away from the way on
+        # (sidistic's CP2 cavity: the rows there inherit the corridor's +x heading). Its own
+        # generator, so the rows' positions are exactly the T = 0 rows; 0 = off, no draw
+        self.turn = float(turn)
+        if not (0.0 <= self.turn <= 180.0):
+            raise ValueError(f"--respawn-novel-turn {turn}: degrees in [0, 180]")
+        self.turn_rng = (np.random.default_rng([int(seed), 7919])
+                         if self.turn > 0.0 else None)
         nz, ny, nx = field.grid.shape
         self.mins = np.asarray(field.mins, np.float64)
         span = np.array([nx, ny, nz], np.float64) * float(field.cell)
@@ -1943,6 +1955,15 @@ class NovelSpawnSampler:
             out["base_vel_flag"] = 0
             out["waterjumptime"] = 0.0
             out["seg_hint"] = 0
+            if self.turn_rng is not None:
+                ang = self.turn_rng.uniform(-self.turn, self.turn, len(out))
+                c, s_ = np.cos(np.radians(ang)), np.sin(np.radians(ang))
+                vx = out["velocity"][:, 0].astype(np.float64)
+                vy = out["velocity"][:, 1].astype(np.float64)
+                out["velocity"][:, 0] = (c * vx - s_ * vy).astype(np.float32)
+                out["velocity"][:, 1] = (s_ * vx + c * vy).astype(np.float32)
+                out["yaw"] = np.mod(out["yaw"].astype(np.float64) + ang,
+                                    360.0).astype(np.float32)
             rows.append(out)
             moved.append(np.linalg.norm(cand[ci] - p0[has], axis=1))
             dd.append(d[ci])
