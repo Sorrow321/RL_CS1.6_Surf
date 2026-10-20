@@ -142,7 +142,8 @@ class CellHash:
     """
 
     def __init__(self, mins, maxs, cell: float = 256.0, view: int = 0,
-                 speed: int = 0, speed_max: float = 3500.0) -> None:
+                 speed: int = 0, speed_max: float = 3500.0, vz: int = 0,
+                 vz_max: float = 1500.0) -> None:
         self.mins = np.asarray(mins, np.float64)
         self.cell = float(cell)
         self.view = int(view)
@@ -150,12 +151,19 @@ class CellHash:
         self.dims = tuple(int(np.ceil((float(maxs[i]) - self.mins[i]) / self.cell)) + 1
                           for i in range(3))
         self.speed_bin = float(speed_max) / max(1, self.speed)
+        # --cell-vz: vertical-velocity buckets over [-vz_max, vz_max]. A place a
+        # run dives through and the same place crossed level are different
+        # states on a surf map; with position-only keys the first (diving)
+        # visit owns the cell and every later return restores it
+        self.vz = int(vz)
+        self.vz_max = float(vz_max)
+        self.vz_bin = 2.0 * self.vz_max / max(1, self.vz)
 
     @property
     def capacity(self) -> int:
         """Number of distinct keys this hash can produce."""
         n = self.dims[0] * self.dims[1] * self.dims[2]
-        return n * max(1, self.view) * max(1, self.speed)
+        return n * max(1, self.view) * max(1, self.speed) * max(1, self.vz)
 
     def keys(self, states: np.ndarray) -> np.ndarray:
         """STATE_DTYPE array of any shape -> int64 keys of the same shape."""
@@ -177,6 +185,11 @@ class CellHash:
             sb = (np.hypot(v[..., 0], v[..., 1]) // self.speed_bin).astype(np.int64)
             np.clip(sb, 0, self.speed - 1, out=sb)
             key = key * self.speed + sb
+        if self.vz > 0:
+            vzb = ((states["velocity"][..., 2].astype(np.float64) + self.vz_max)
+                   // self.vz_bin).astype(np.int64)
+            np.clip(vzb, 0, self.vz - 1, out=vzb)
+            key = key * self.vz + vzb
         return key
 
 
@@ -764,7 +777,8 @@ def explore(args) -> int:
 
     mins, maxs = core.map_bounds()
     hasher = CellHash(mins, maxs, cell=args.cell, view=args.cell_view,
-                      speed=args.cell_speed, speed_max=args.cell_speed_max)
+                      speed=args.cell_speed, speed_max=args.cell_speed_max,
+                      vz=args.cell_vz, vz_max=args.cell_vz_max)
     arch = Archive(hasher, max_cells=args.max_cells)
     rk = hasher.keys(roots)
     for j in range(len(roots)):
@@ -774,6 +788,7 @@ def explore(args) -> int:
     print(f"map {bsp.stem} | envs {n} | cell {args.cell:g}u"
           f"{f' x view{args.cell_view}' if args.cell_view else ''}"
           f"{f' x speed{args.cell_speed}' if args.cell_speed else ''}"
+          f"{f' x vz{args.cell_vz}' if args.cell_vz else ''}"
           f" | grid {hasher.dims} ({hasher.capacity:,} keys)")
     print(f"burst {args.decisions} decisions x {act_every} ticks "
           f"({ticks} ticks = {ticks * cfg.phys.msec / 1000:.1f}s) | "
@@ -1056,6 +1071,8 @@ def meta_dict(args, bsp, hasher, arch, it, n_goal, extra=None) -> dict:
         "cell_view": args.cell_view,
         "cell_speed": args.cell_speed,
         "cell_speed_max": args.cell_speed_max,
+        "cell_vz": args.cell_vz,
+        "cell_vz_max": args.cell_vz_max,
         "grid_dims": list(hasher.dims),
         "grid_mins": [float(v) for v in hasher.mins],
         "envs": args.envs,
@@ -1621,6 +1638,13 @@ def build_parser() -> argparse.ArgumentParser:
                          "place at a new speed is arguably a new state")
     ap.add_argument("--cell-speed-max", type=float, default=3500.0,
                     help="top of the speed-bucket range")
+    ap.add_argument("--cell-vz", type=int, default=0,
+                    help="vertical-velocity buckets folded into the cell key over "
+                         "[-cell-vz-max, cell-vz-max] (0 = off): a place dived "
+                         "through and the same place crossed level are different "
+                         "states")
+    ap.add_argument("--cell-vz-max", type=float, default=1500.0,
+                    help="half-range of the vz buckets, u/s")
     ap.add_argument("--decisions", type=int, default=100,
                     help="exploration burst length, k in the paper "
                          "(100 for Atari, 30 for robotics)")
