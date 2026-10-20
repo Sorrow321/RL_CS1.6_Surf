@@ -419,3 +419,12 @@ steps/s. Measure it on your box in the first minute and size `--steps` to the ti
   `--respawn-novel`), from scratch, 500M (`box.py launch --no-recipe` + the old flags). Question:
   does the ratchet alone give ratnov's early gates (first-ramp trap exit 378M, window ~500M;
   GR 529M / 755M)? One seed; the 30-min early mark is the comparable one (CLAUDE.md).
+
+### Ablation 1 (09:20 UTC): `--race-ratchet` ALONE does not give the early gates
+
+* r1b1_ratonly = the old incumbent recipe (GR) + `--race-ratchet`, no novel spawns, from scratch,
+  500M (306k steps/s). Best-episode progress per eval: 76M 4.4%, 151M 4.6%, 227M 4.6%,
+  302M 4.6%, 378M 4.7%, 453M 4.6%. Still at the first gate at 453M, like GR (4.6% to 454M,
+  trap exit 529M) - and nowhere near ratnov (ratchet + novel): 15.2% at 378M, 20.8% at 453M.
+* So the early speedup comes from `--respawn-novel` (or needs both). One seed.
+* Ablation 2 launched 09:21: r1b1_novonly = GR recipe + `--respawn-novel`, no ratchet, 500M.
