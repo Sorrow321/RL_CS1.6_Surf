@@ -95,7 +95,7 @@ TRAIN_ONLY = frozenset({
     # recording spawns at the map start like the trainer's eval
     "spawn_states", "spawn_states_frac",
     # --spawn-states-elite / -gain: how the TRAINING pool weights that file's rows
-    "spawn_states_elite", "spawn_states_gain",
+    "spawn_states_elite", "spawn_states_gain", "spawn_states_beyond",
     # --respawn-novel: a share of the TRAINING spawn pool moved to where the agent has never
     # been; a recording spawns at the map start like the trainer's eval
     "respawn_novel", "respawn_novel_frac", "respawn_novel_shell", "respawn_novel_shell_width",

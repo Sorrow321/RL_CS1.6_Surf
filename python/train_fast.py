@@ -6630,6 +6630,11 @@ def main() -> None:
     ap.add_argument("--spawn-states-gain", type=float, default=None,    # 0.02
                     help="--spawn-states-elite: the gain past its own spawn, as a fraction of d0, "
                          "that makes a row elite (default 0.02)")
+    ap.add_argument("--spawn-states-beyond", type=float, default=None,  # 0 = the gain rule
+                    help="--spawn-states-elite: instead of the gain rule, a row is elite iff its "
+                         "episode got this fraction of d0 PAST the greedy eval's frontier (the "
+                         "--unstuck reach) - further than the policy gets from the true start. "
+                         "0 = the gain rule; ckpt restores")
     ap.add_argument("--archive-frac", type=float, default=None,   # 0 = off
                     help="survivor-gated predecessor archive: the share of the "
                          "spawn pool replaced each iteration by archive rows - "
@@ -7150,7 +7155,7 @@ def main() -> None:
             restored.append(f"respawn_min_speed={args.respawn_min_speed:g}")
         for _k in ("respawn_snap", "respawn_deep", "respawn_deep_q", "respawn_cells",
                    "respawn_cells_size", "respawn_cells_band", "spawn_states_elite",
-                   "spawn_states_gain"):
+                   "spawn_states_gain", "spawn_states_beyond"):
             if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
                 setattr(args, _k, float(ck_cfg[_k]))
                 restored.append(f"{_k}={float(ck_cfg[_k]):g}")
@@ -8533,6 +8538,12 @@ def main() -> None:
         raise SystemExit("--spawn-states-gain is a fraction of d0 and must be > 0")
     if float(args.spawn_states_elite) > 0.0 and not args.spawn_states:
         raise SystemExit("--spawn-states-elite needs --spawn-states")
+    if args.spawn_states_beyond is None:
+        args.spawn_states_beyond = 0.0
+    if float(args.spawn_states_beyond) > 0.0 and not (float(args.spawn_states_elite) > 0.0
+                                                       and args.unstuck):
+        raise SystemExit("--spawn-states-beyond needs --spawn-states-elite and --unstuck (its "
+                         "frontier is the unstuck reach)")
     if float(args.respawn_cells) > 0.0 and float(args.respawn_deep) > 0.0 \
             and float(args.respawn_cells) + float(args.respawn_deep) >= 1.0:
         raise SystemExit("--respawn-cells + --respawn-deep: the cell share is taken first and "
@@ -10768,8 +10779,11 @@ def main() -> None:
             SS_ELITE = SpawnElite(len(SPAWN_STATES), slots[0].n, float(args.spawn_states_elite),
                                   float(args.spawn_states_gain) * float(slots[0].rf_d0))
             print(f"--spawn-states-elite {float(args.spawn_states_elite):g}: that share of the "
-                  f"file's draws from rows whose episode beat their own spawn by "
-                  f"{float(args.spawn_states_gain):g} x d0 ({SS_ELITE.gain_u:,.0f} u)")
+                  f"file's draws from rows whose episode "
+                  + (f"got {float(args.spawn_states_beyond):g} x d0 past the greedy eval's "
+                     f"frontier (the unstuck reach)" if float(args.spawn_states_beyond) > 0.0
+                     else f"beat their own spawn by {float(args.spawn_states_gain):g} x d0 "
+                          f"({SS_ELITE.gain_u:,.0f} u)"))
         if float(args.respawn_cells) > 0.0:
             # --respawn-cells: Go-Explore's return over the policy's own harvested states
             if args.respawn_mode != "uniform" or args.respawn_binned:
@@ -13150,6 +13164,8 @@ def main() -> None:
                        **({"spawn_states_elite": float(args.spawn_states_elite),
                            "spawn_states_gain": float(args.spawn_states_gain)}
                           if float(args.spawn_states_elite) > 0.0 else {}),
+                       **({"spawn_states_beyond": float(args.spawn_states_beyond)}
+                          if float(args.spawn_states_beyond) > 0.0 else {}),
                        "respawn_binned": args.respawn_binned,
                        "respawn_random": args.respawn_random,
                        "respawn_random_start_frac": (
@@ -16710,6 +16726,12 @@ def main() -> None:
                 _pos = SS_RNG.choice(len(_pool), _m, replace=False)
                 _pool = _pool.copy()
                 if SS_ELITE is not None:
+                    if float(args.spawn_states_beyond) > 0.0:
+                        # --spawn-states-beyond: elite = past the greedy eval's frontier
+                        _pf = unstuck_sched.best if unstuck_sched is not None else float("nan")
+                        SS_ELITE.ref_d = (float(slots[0].rf_d0) - (_pf + float(
+                            args.spawn_states_beyond) * float(slots[0].rf_d0))
+                            if _pf == _pf else None)
                     _rows = SS_ELITE.draw(SS_RNG, _m)
                     _pool[_pos] = SPAWN_STATES[_rows]
                     SS_ELITE.set_pool(_rows, SPAWN_STATES["origin"][_rows])

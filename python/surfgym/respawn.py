@@ -51,6 +51,9 @@ class SpawnElite:
         self._keys_prev: dict[bytes, int] = {}
         self.n_ep = 0          # finished episodes that started from a file row
         self.n_hit = 0         # of those, the ones that cleared the gain
+        # absolute rule (--spawn-states-beyond): when set, a row is elite iff its episode reached
+        # a goal distance <= ref_d (the caller keeps it at "past the greedy eval's frontier")
+        self.ref_d: float | None = None
 
     def draw(self, rng, m: int) -> np.ndarray:
         """``m`` file rows: ``share`` of them from the elite set (when it is not empty)."""
@@ -83,7 +86,8 @@ class SpawnElite:
             r = int(self.row_env[i])
             if r >= 0:
                 self.n_ep += 1
-                if self.start_d[i] - self.best_d[i] >= self.gain_u:
+                if (self.best_d[i] <= self.ref_d if self.ref_d is not None
+                        else self.start_d[i] - self.best_d[i] >= self.gain_u):
                     self.n_hit += 1
                     if not self.is_elite[r]:
                         self.is_elite[r] = True

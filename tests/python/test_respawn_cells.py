@@ -317,3 +317,18 @@ def test_spawn_elite_runs_and_a_flagless_resume_restores_it(tmp_path):
     assert "spawn_states_elite=0.5" in r2.stdout and "restored --spawn-states-elite" in r2.stdout
     for dd in (d, ROOT / "runs" / run2):
         shutil.rmtree(dd, ignore_errors=True)
+
+
+def test_spawn_elite_beyond_rule_promotes_only_past_the_reference():
+    from surfgym.respawn import SpawnElite
+    se = SpawnElite(n_rows=4, n_envs=2, share=0.5, gain_u=100.0)
+    se.ref_d = 4000.0                      # "past the eval frontier" = d <= 4,000
+    org = np.zeros((4, 3), np.float32)
+    org[:, 0] = np.arange(4) * 1000.0
+    se.set_pool(np.arange(4), org)
+    now = np.array([org[1], org[2]], np.float32)
+    se.tick(np.array([5000.0, 4100.0]), np.array([True, True]), now)
+    # row 1 gains 900 u but stays above 4,000; row 2 gains only 150 u but gets below it
+    se.tick(np.array([4100.0, 3950.0]), np.zeros(2, bool), now)
+    se.tick(np.array([4200.0, 4000.0]), np.array([True, True]), now)
+    assert se.elite == [2]
