@@ -283,6 +283,29 @@ def start_round(st, base: str) -> None:
     save_state(st)
 
 
+def ckpt_step(path: Path):
+    """The training step a checkpoint was saved at (its global_step), or None. The file came
+    from a rented box, so it is never unpickled (and torch.load's weights_only mode refuses
+    the trainer's checkpoints anyway, which hold numpy arrays): the step is the integer that
+    follows the top-level "global_step" key in the pickle's opcode stream. Nothing executes."""
+    import pickletools
+    import zipfile
+    ints = ("BININT", "BININT1", "BININT2", "LONG1", "LONG4", "INT", "LONG")
+    try:
+        with zipfile.ZipFile(path) as z:
+            data = z.read(next(n for n in z.namelist() if n.split("/")[-1] == "data.pkl"))
+        after_key = False
+        for op, arg, _ in pickletools.genops(data):
+            if after_key and op.name in ("BINPUT", "LONG_BINPUT", "MEMOIZE"):
+                continue
+            if after_key:
+                return int(arg) if op.name in ints else None
+            after_key = "UNICODE" in op.name and arg == "global_step"
+    except Exception as e:                       # noqa: BLE001 - informational only
+        log(f"  (cannot read the step of {path}: {type(e).__name__}: {str(e)[:120]})")
+    return None
+
+
 def score_branch(agent: str) -> dict:
     sys.path.insert(0, str(REPO / "autoresearch"))
     import score as scorer
@@ -347,11 +370,21 @@ def end_round(st, final=False) -> None:
             for f in ("progress.csv", "run.json"):
                 if (ev.parent / f).exists():
                     shutil.copy2(ev.parent / f, new / f)
+            # the checkpoint handed on is the best run's NEWEST one, usually later than its
+            # best eval (r1b1_ratnovx: best eval 1,633M, ckpt_latest ~2.5B): say both steps,
+            # so the next round does not expect the checkpoint to reproduce the score
+            eval_step = int(ev.stem.split("_")[1])
+            ck_step = ckpt_step(new / "ckpt.pt") if ck.exists() else None
             st["incumbent"] = {"score": win["score"], "agent": win["agent"], "round": r,
                                "eval": str(new / ev.name), "dir": str(new),
                                "ckpt": str(new / "ckpt.pt") if ck.exists() else None,
+                               "eval_step": eval_step,
+                               "ckpt_from": f"{ev.parent.name}/{ck.name}" if ck.exists() else None,
+                               "ckpt_step": ck_step,
                                "commit": win["head"], "best": win["best"]}
-            log(f"  NEW INCUMBENT {win['agent']} score {win['score']}")
+            log(f"  NEW INCUMBENT {win['agent']} score {win['score']}: eval at step "
+                f"{eval_step:,}; ckpt {ev.parent.name}/{ck.name} at step "
+                f"{f'{ck_step:,}' if ck_step is not None else 'unknown'}")
         st["next_base"] = win["head"]
         log(f"  WINNER {win['agent']} ({win['score']}): round {r + 1} forks {win['head'][:10]}")
     else:

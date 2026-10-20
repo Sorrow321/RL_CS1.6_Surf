@@ -110,3 +110,30 @@ def test_the_operator_harness_over_the_winner(repo, tmp_path):
 def test_nothing_to_restore_returns_the_base_itself(repo):
     # the operator's own head already carries its harness and every block
     assert orchestrator.harness_base(repo["main"], repo=repo["dir"]) == repo["main"]
+
+
+def test_ckpt_step_reads_the_step_without_unpickling(tmp_path, monkeypatch):
+    """The next incumbent's checkpoint is the best run's newest one, usually later than its best
+    eval (r1b1_ratnovx: best eval at 1,633M, ckpt_latest ~2.5B), so the round says both steps.
+    The file comes from a rented box: its step is read off the pickle's opcodes."""
+    torch = pytest.importorskip("torch")
+    np = pytest.importorskip("numpy")
+    monkeypatch.setattr(orchestrator, "AR_HOME", tmp_path / "ar")
+
+    class Boom:
+        def __reduce__(self):            # unpickling this would run code
+            return (exec, ("raise SystemExit('unpickled')",))
+
+    for step in (749_731_840, 2_500_170_752):        # BININT and LONG1 encodings
+        p = tmp_path / f"ckpt_{step}.pt"
+        torch.save({"policy": {"w": torch.zeros(3)}, "optimizer": {"state": {}, "param_groups":
+                    [{"lr": 1e-4, "step": 7}]}, "global_step": step,
+                    "config": {"envs": 1024}, "reservoir": np.arange(4.0), "x": Boom()}, p)
+        assert orchestrator.ckpt_step(p) == step
+    bad = tmp_path / "not_a_ckpt.pt"
+    bad.write_bytes(b"truncated")
+    assert orchestrator.ckpt_step(bad) is None
+    # a real trainer checkpoint, when this machine has the incumbent's
+    real = ROOT / "runs" / "sidEM2cap2surfGR" / "ckpt_latest.pt"
+    if real.exists():
+        assert orchestrator.ckpt_step(real) == 749_731_840
