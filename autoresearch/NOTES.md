@@ -582,3 +582,17 @@ from the deepest quarter by d, half uniform. Loop mode re-roots on each new eval
   lower level 711. So the output always draws half its rows from the deepest quarter by d.
 * Boxes: no eligible offer 13:24-13:45 (the one under-cap 3090 is blocklisted); a 4090 at 0.401
   appeared at 13:37 and was gone a minute later. A background `box.py rent` retries every 60 s.
+
+### 13:54 UTC: box 56900550 (RTX 4090, i9-13900K 32 threads, $0.401/h, Indonesia), rented by the retry loop
+* 14:20 UTC: box 56900550 RELEASED and blocklisted (machine 147270): its deploy sat in the GitHub
+  clone for 25 min - codeload.github.com 21-29 KB/s, scp from this host < 133 KB/s (16 MB not done
+  in 120 s), while download.pytorch.org gave 37.8 MB/s. ~$0.18 lost. The renter now checks GitHub
+  throughput right after rent and blocklists + releases a box under 1 MB/s.
+
+### Harness issue (r2b1, 2026-10-20 14:20 UTC)
+
+* `box.py rent` judges readiness by `running` + ssh only. A box whose route to GitHub (and to the
+  agent host) is throttled passes, and `deploy_box.sh` then clones ~170 MB from GitHub at its speed
+  (here ~25 KB/s: >1.5 h). A 10-second `curl --max-time` from codeload.github.com in `wait_ready`
+  (fail under ~1 MB/s, blocklist as "network") would catch it before any money is spent on a
+  deploy. Worked around on this branch with a wrapper loop around `box.py rent` (scratchpad).
