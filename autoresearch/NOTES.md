@@ -881,3 +881,6 @@ physics as the sim (gravity 800, airaccelerate 100) except maxvelocity 3,500.
 * Last run, **r2b2_sband3** (22:37): bare resume of sband2's final, evals every 25M, until wrap-up -
   more greedy evals from the healthy scratch lineage (an eval above 28.841 would also make its
   checkpoint the hand-on one).
+* 23:41 UTC: r2b2_sband3 stopped at ~4.12B (32 evals, best 28.753 = the 3,336M resume eval; then
+  28.55-28.58 x3, the greedy line drifting into the pit (27.2-27.5) and back (28.2-28.58 at the
+  end)). Box 56901034 released at 23:41 (~9.7 h, ~$3.9).
