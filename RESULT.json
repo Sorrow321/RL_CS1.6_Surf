@@ -3,11 +3,11 @@
  "round": 2,
  "final": false,
  "best": {
-  "score": 28.523,
-  "eval_file": "/home/steam/ar/runs/r2b2/r2b2_band64/traj_5878841344.jsonl",
-  "run": "r2b2_band64",
-  "step": 5878841344,
-  "ckpt": "/home/steam/ar/runs/r2b2/r2b2_band64/ckpt_latest.pt",
+  "score": 28.551,
+  "eval_file": "/home/steam/ar/runs/r2b2/r2b2_band64x/traj_6027214848.jsonl",
+  "run": "r2b2_band64x",
+  "step": 6027214848,
+  "ckpt": "/home/steam/ar/runs/r2b2/r2b2_band64x/ckpt_latest.pt",
   "recipe": [
    "--respawn-novel-shell",
    "0.9",
@@ -23,7 +23,7 @@
    "--respawn-novel-tries",
    "64"
   ],
-  "resume_from": "r2b2_nfturn ckpt_final (5,551,161,344) <- incumbent ckpt (5,100,797,952)",
+  "resume_from": "r2b2_band64 ckpt_final (6,001,524,736) <- r2b2_nfturn final <- incumbent",
   "commit": "15716d6"
  },
  "summary": "Best 28.523 (arm 2b), incumbent 28.628. The field's route past 28.6% is physically closed (asymptote ~28.75%); the WR demo (analysis only) shows the real route: a ~2,000 u dip into a cavity, a surf-ramp turnaround, a climb back level into the tunnel. New generic sampler options --respawn-novel-turn / --respawn-novel-band (+ a 3-6x sampler speed-up) put ~85% of novel rows in that dip. Bench (demo states, measurement only): after 450M steps of it the policy flies the return leg from the climb into the room 5/11 (29.9%); the entry and the ramp turn-up are still missing. Extended: r2b2_band64x to 7.2B."
