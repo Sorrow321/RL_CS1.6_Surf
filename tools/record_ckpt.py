@@ -238,6 +238,10 @@ TRAIN_ONLY = frozenset({
     # Greedy evals never see it and a recording is greedy, so it cannot
     # change a recorded trajectory - TRAIN_ONLY by construction.
     "view_ou_sigma", "view_ou_period",
+    # --noise-tau: the ROLLOUT draw's noise is AR(1) instead of i.i.d.; the
+    # per-decision distribution is the policy's own and greedy evals never
+    # draw at all - TRAIN_ONLY by the same argument as the view offset.
+    "noise_tau",
     # --death-charge is a TERMINAL charge only ("no per-step tax, no goal
     # charge"), so like fail_pen/success_bonus it has no per-call value for
     # the --obs-reward slot to mirror - the episode ends where it applies.

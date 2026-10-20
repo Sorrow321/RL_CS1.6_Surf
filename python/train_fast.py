@@ -2083,6 +2083,60 @@ def sample_view(padded, mu, log_std, temp=None, temp_view=None):
     return torch.cat([neutral, cat], dim=1), z, logp_c + gauss_logp(z, mu, ls)
 
 
+# --------------------------------------------------------------------------
+# --noise-tau: TEMPORALLY CORRELATED sampling noise. Every head's noise is a
+# stationary AR(1) process instead of a fresh draw per decision:
+#
+#     e_t = rho * e_(t-1) + sqrt(1 - rho^2) * xi_t,   xi_t ~ N(0, 1)
+#
+# so e_t is N(0, 1) at every decision (lag-k correlation rho^k) and the
+# action drawn from it has EXACTLY the policy's per-decision distribution:
+# the Gaussian view heads take z = mu + sigma * e_t, the categorical heads
+# take the Gumbel-max sample with g = -log(-log Phi(e_t)), a standard Gumbel
+# for any e_t ~ N(0, 1). The log-prob each decision stores is therefore the
+# one it always was, and the update is untouched. What changes is that a
+# draw away from the mode PERSISTS for ~tau seconds instead of one decision
+# (colored noise in PPO, Hollenstein et al. AAAI 2024; gSDE, Raffin et al.
+# CoRL 2021; here also on the key heads through a Gaussian copula).
+# --------------------------------------------------------------------------
+def ar1_step_(e, rho: float):
+    """In place: e <- rho * e + sqrt(1 - rho^2) * N(0, 1). A static buffer
+    the captured rollout graph replays; one randn_like, static shapes."""
+    return e.mul_(rho).add_(torch.randn_like(e), alpha=math.sqrt(1.0 - rho * rho))
+
+
+def gumbel_from_normal(e):
+    """A standard-normal latent -> a standard Gumbel, -log(-log Phi(e)),
+    through log_ndtr so neither tail rounds to log(0)."""
+    return -torch.log((-torch.special.log_ndtr(e)).clamp_min(1e-30))
+
+
+def sample_padded_ar(padded, e_cat, rho: float, temp=None):
+    """sample_padded with the Gumbel noise from the AR(1) latent ``e_cat``
+    (same shape as ``padded``, advanced in place). The log-prob is the
+    tempered distribution's, exactly as sample_padded returns it."""
+    padded = _temper_logits(padded, temp)
+    act = (padded + gumbel_from_normal(ar1_step_(e_cat, rho))).argmax(-1)
+    lsm = F.log_softmax(padded, dim=-1)
+    logp = lsm.gather(-1, act.unsqueeze(-1)).squeeze(-1).sum(-1)
+    return act, logp
+
+
+def sample_view_ar(padded, mu, log_std, e_cat, e_view, rho: float,
+                   temp=None, temp_view=None):
+    """sample_view with both noises from AR(1) latents (``e_cat`` shaped
+    like padded[:, N_VIEW:], ``e_view`` like mu, both advanced in place).
+    Same returns, and the same per-decision log-prob."""
+    cat, logp_c = sample_padded_ar(padded[:, N_VIEW:], e_cat, rho, temp)
+    ls = _temper_log_std(log_std, temp if temp_view is None else temp_view)
+    z = mu + ls.exp() * ar1_step_(e_view, rho)
+    B = padded.shape[0]
+    neutral = torch.full((B, N_VIEW), 0, dtype=cat.dtype, device=cat.device)
+    neutral[:, 0] = NEUTRAL_ACT[0]
+    neutral[:, 1] = NEUTRAL_ACT[1]
+    return torch.cat([neutral, cat], dim=1), z, logp_c + gauss_logp(z, mu, ls)
+
+
 def logprob_entropy_view(padded, actions, mu, log_std, z,
                          pitch_ent: float = 1.0, temp=None, temp_view=None):
     """The update's recomputation under --view-continuous: the categorical
@@ -6029,6 +6083,22 @@ def main() -> None:
                          "sigma at the origin. 0 = OFF and bit-identical "
                          "(the offset is not added at all). PITCH is never "
                          "offset, and greedy evals never see it.")
+    ap.add_argument("--noise-tau", type=float, default=None,     # 0 = off
+                    help="ROLLOUT sampling noise as a stationary AR(1) "
+                         "process with this correlation time in SECONDS "
+                         "(rho = exp(-decision_secs / tau) per decision) "
+                         "instead of a fresh draw every decision, on EVERY "
+                         "head: the view heads' Gaussian noise directly, the "
+                         "key heads' Gumbel noise through Phi (a Gaussian "
+                         "copula). Each decision's action keeps exactly the "
+                         "policy's distribution and log-prob, so the update "
+                         "is unchanged; what changes is that a draw away "
+                         "from the mode persists ~tau s instead of 40 ms - "
+                         "i.i.d. noise cannot hold a deviation for the 25 "
+                         "decisions a 1 s manoeuvre needs (colored noise in "
+                         "PPO, Hollenstein et al. 2024). Greedy evals never "
+                         "see it. 0/absent = off, byte-identical. ckpt "
+                         "restores; record_ckpt TRAIN_ONLY")
     ap.add_argument("--view-ou-period", type=int, default=0,
                     help="--view-ou-sigma: the CORRELATION TIME, in "
                          "DECISIONS. 0 (the default, and round 40's pnOU) "
@@ -7989,6 +8059,11 @@ def main() -> None:
                 and not flag_given("--view-ou-period")):
             args.view_ou_period = int(ck_cfg["view_ou_period"])
             restored.append(f"view_ou_period={args.view_ou_period:d}")
+        # --noise-tau: rollout behaviour, restored for the same reason
+        if (ck_cfg.get("noise_tau") is not None
+                and not flag_given("--noise-tau")):
+            args.noise_tau = float(ck_cfg["noise_tau"])
+            restored.append(f"noise_tau={args.noise_tau:g}")
         # --unstuck rides in the checkpoint like the view flags: the flag
         # and every knob of it are restored when the CLI does not say
         # otherwise (the schedule's RUN STATE is restored further down)
@@ -13287,6 +13362,9 @@ def main() -> None:
         print(f"--yaw-cond: side-key head conditioned on the sampled yaw "
               f"bin, {NVEC[H_YAW]}x{NVEC[H_SIDE]} additive table "
               "(zero-initialised)")
+    # --noise-tau: written ONLY when set, so a control's dump is unchanged
+    if float(getattr(args, "noise_tau", 0.0) or 0.0) > 0.0:
+        meta["config"]["noise_tau"] = float(args.noise_tau)
     # --view-continuous: written ONLY when set, for the reason the masks
     # give - a control run's config dump stays byte-identical. It changes
     # what an action IS, so record_ckpt.py mirrors it.
@@ -14349,6 +14427,37 @@ def main() -> None:
               f"the EXECUTED z only (the stored z and therefore PPO's ratio "
               f"are untouched - the identity is per-decision, so it holds "
               f"at any correlation time). Greedy evals are unaffected.")
+    # --noise-tau: the AR(1) latents every head's sampling noise is read
+    # from, STATIC buffers advanced in place inside the captured rollout
+    # graph. NOISE_TAU is a PYTHON constant: at 0 nothing is allocated and
+    # step_compute traces the draw that shipped, op for op.
+    NOISE_TAU = float(getattr(args, "noise_tau", 0.0) or 0.0)
+    noise_cat = noise_view = None
+    noise_rho = 0.0
+    if NOISE_TAU < 0.0:
+        raise SystemExit("--noise-tau must be >= 0")
+    if NOISE_TAU > 0.0:
+        for _flag, _on in (("--chunk", H > 0), ("--yaw-cond", bool(YCOND)),
+                           ("--crl", bool(CRL)),
+                           ("--tick-ms-schedule", bool(args.tick_ms_schedule))):
+            if _on:
+                raise SystemExit(
+                    f"--noise-tau is not implemented with {_flag}: it replaces "
+                    "the flat per-decision draw (sample_padded / sample_view) "
+                    "and its rho is fixed from ONE decision interval")
+        _dec_s = KH * TICK.ms * 1e-3
+        noise_rho = math.exp(-_dec_s / NOISE_TAU)
+        _ng = torch.Generator(device=device)
+        _ng.manual_seed(int(args.seed) + 31337 + 1000 * int(D.rank))
+        noise_cat = torch.randn((N, NACT - (N_VIEW if VIEWC else 0), NPAD),
+                                device=device, generator=_ng)
+        noise_view = (torch.randn((N, NZ), device=device, generator=_ng)
+                      if VIEWC else None)
+        print(f"--noise-tau {NOISE_TAU:g} s: every head's sampling noise is "
+              f"AR(1), rho {noise_rho:.4f} per {_dec_s * 1e3:.1f} ms decision "
+              f"(lag-1 s correlation {noise_rho ** (1.0 / _dec_s):.3f}); the "
+              "per-decision distribution and log-prob are the policy's own. "
+              "Greedy evals are unaffected.")
     # --unstuck: the sampling temperature 1 + T as a STATIC 0-d tensor the
     # schedule writes into between iterations. It is read inside the
     # captured rollout graph and by the compiled update - never a Python
@@ -14706,8 +14815,13 @@ def main() -> None:
             padded = packer.pad(cat)
             if ROLL_MASK is not None:
                 padded = ROLL_MASK(padded)
-            act, z, logp = sample_view(padded, mu, policy.log_std(), temp_t,
-                                       tempv_t)
+            if NOISE_TAU > 0.0:
+                act, z, logp = sample_view_ar(padded, mu, policy.log_std(),
+                                              noise_cat, noise_view, noise_rho,
+                                              temp_t, tempv_t)
+            else:
+                act, z, logp = sample_view(padded, mu, policy.log_std(), temp_t,
+                                           tempv_t)
             static_act.copy_(act)
             # STORED z is the un-offset draw, so logp above is exactly the
             # behaviour policy's log-density of the EXECUTED action and the
@@ -14729,7 +14843,11 @@ def main() -> None:
             else:
                 if ROLL_MASK is not None:
                     padded = ROLL_MASK(padded)
-                act, logp = sample_padded(padded, temp_t)
+                if NOISE_TAU > 0.0:
+                    act, logp = sample_padded_ar(padded, noise_cat, noise_rho,
+                                                 temp_t)
+                else:
+                    act, logp = sample_padded(padded, temp_t)
             static_act.copy_(act)
         static_logp.copy_(logp)
         if INT_SPLIT:
