@@ -205,3 +205,30 @@ steps/s. Measure it on your box in the first minute and size `--steps` to the ti
 * Tests: the band is live in a CPU smoke (step line `ez X% front>Y%`), the config carries
   ez_front, a resume restores it, `--ez-front` without `--ez-eps` is refused; flag off is
   bit-identical to the trainer before both ez changes.
+
+### WON'T vs CAN'T at the CP2 pit: a nudge probe says CAN'T for short yaw deviations (01:50 UTC)
+
+* Wall checkpoint = r1b1_ctl's ckpt_latest, step 905,445,376, md5 f7642e59...; its 901M eval
+  is 9/9 at the pit (best/median 27.4%, score 27.392). Kept at
+  `/home/steam/ar/runs/r1b1/r1b1_ctl/ckpt_latest.pt`.
+* Probe (scratchpad nudge_sweep.py around `record_ckpt.py --nudge-*`, ANALYSIS ONLY): one
+  greedy episode per config, the yaw held at a velocity-frame offset (abs 0/+-45/+-90/135)
+  or the policy's own offset shifted (+-30/+-60) for 12 or 25 decisions (0.48/1.0 s) from
+  tick 2250, 2325 or 2400 (22.5-24.0 s), then the policy flies free. 60 nudges + the base.
+* **No nudge crosses.** The base reaches 27.37% (pit, 25.2 s); the best nudges equal it
+  (abs+0 = "keep straight": the U-turn comes from the curved surface, not the aim). The rest
+  die EARLIER on the fail volumes around: kill *99 (x 2,528-3,680, z 11,552-11,972) at
+  23.4-23.5 s, a fail at z ~12,280-12,300 at 24.0 s, plate *45 (z ~11,905) at 24.5 s.
+* **The geometry that explains it** (kill AABBs): the line past the pit is a SLOT between
+  the pit floor *86 (top z 11,332) and the ceilings *99 (bottom 11,552) / *45 (11,905). The
+  human flies it level (vz -141 at z ~11,469) after a ramp turnaround EAST under *45; the
+  agent enters it from above, diving from ~12,300 after its U-turn, and free fall cannot
+  arrest a 800+ u descent. So the crossing needs being UNDER the plate heading east, or in
+  the slot heading west and level - states the policy has never been in. Short
+  perturbations of its own line (nudges, ez bursts) cannot produce that; they die on the
+  surrounding fail volumes first.
+* Consequence for mechanisms: perturbing the policy's actions at the wall is the wrong
+  lever; putting it into the unvisited states next to its frontier (with plausible
+  velocities) is the right one. That is what the user's `--respawn-novel` does (own
+  frontier states moved to unvisited cells, velocity kept), never tried at CP2 (NV2 stalled
+  at the window). Next arm: r1b1_nov = wall checkpoint + `--respawn-novel` (defaults).
