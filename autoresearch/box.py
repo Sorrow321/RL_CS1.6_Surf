@@ -237,8 +237,11 @@ def ssh_target(rec: dict):
 
 
 def ssh(rec: dict, cmd: str, timeout=600, check=False) -> subprocess.CompletedProcess:
+    # stdin=DEVNULL: an ssh that inherits stdin swallows whatever the caller's shell had queued
+    # (a `bash -s` heredoc lost every command after the first box.py call that way)
     r = subprocess.run(["ssh", *SSH_OPTS, *ssh_target(rec), cmd], capture_output=True,
-                       text=True, timeout=timeout, encoding="utf-8", errors="replace")
+                       stdin=subprocess.DEVNULL, text=True, timeout=timeout,
+                       encoding="utf-8", errors="replace")
     if check and r.returncode != 0:
         raise RuntimeError(f"ssh failed ({r.returncode}): {r.stderr.strip()[-400:]}")
     return r
@@ -404,7 +407,7 @@ def cmd_deploy(a):
     log(f"{a.agent}: deploying {a.branch} to box {rec['id']}")
     r = subprocess.run(["bash", str(REPO / "tools" / "deploy_box.sh"), str(rec["port"]),
                         rec["host"]], env=env, capture_output=True, text=True, timeout=3600,
-                       encoding="utf-8", errors="replace")
+                       stdin=subprocess.DEVNULL, encoding="utf-8", errors="replace")
     tail = "\n".join((r.stdout + r.stderr).strip().splitlines()[-25:])
     print(tail)
     if r.returncode != 0:
@@ -430,8 +433,9 @@ def push_ckpt(rec: dict, ck: Path) -> None:
     if not ck.exists():
         die(f"no checkpoint at {ck}")
     want = md5(ck)
-    subprocess.run(["scp", *SSH_OPTS, "-q", "-P", str(rec["port"]), str(ck),
-                    f"root@{rec['host']}:/root/RL_Surf/runs_ckpt.pt"], check=True, timeout=1800)
+    subprocess.run(["scp", "-o", "BatchMode=yes", *SSH_OPTS, "-q", "-P", str(rec["port"]), str(ck),
+                    f"root@{rec['host']}:/root/RL_Surf/runs_ckpt.pt"], check=True, timeout=1800,
+                   stdin=subprocess.DEVNULL)
     got = ssh(rec, "md5sum /root/RL_Surf/runs_ckpt.pt | cut -d' ' -f1", check=True).stdout.strip()
     if got != want:
         die(f"checkpoint md5 on the box {got} != {want} (TRUNCATED transfer)")
@@ -440,7 +444,12 @@ def push_ckpt(rec: dict, ck: Path) -> None:
 
 def cmd_ssh(a):
     rec = need_rec(a.agent)
-    r = ssh(rec, " ".join(a.cmd), timeout=a.timeout)
+    cmd = list(a.cmd)
+    if cmd and cmd[0] == "--":
+        cmd = cmd[1:]
+    if not cmd:
+        die("box.py ssh --agent X -- <command>")
+    r = ssh(rec, " ".join(cmd), timeout=a.timeout)
     sys.stdout.write(r.stdout)
     sys.stderr.write(r.stderr)
     sys.exit(r.returncode)
@@ -493,7 +502,7 @@ def cmd_pull(a):
               f"grep -E '^traj_[0-9]+[.]jsonl$' | sed 's#^#{a.run}/#')")
     with open(dst / "_pull.tgz", "wb") as fh:
         r = subprocess.run(["ssh", *SSH_OPTS, *ssh_target(rec), remote], stdout=fh,
-                           stderr=subprocess.PIPE, timeout=1800)
+                           stdin=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=1800)
     if r.returncode != 0:
         log(f"!! {a.agent}: pull of {a.run} failed: {r.stderr.decode(errors='replace')[-300:]}")
     import tarfile
@@ -510,7 +519,7 @@ def cmd_pull(a):
         r = ssh(rec, f"md5sum /root/RL_Surf/runs/{a.run}/{ck} | cut -d' ' -f1")
         want = r.stdout.strip()
         if want:
-            subprocess.run(["scp", *SSH_OPTS, "-q", "-P", str(rec["port"]),
+            subprocess.run(["scp", "-o", "BatchMode=yes", *SSH_OPTS, "-q", "-P", str(rec["port"]),
                             f"{src}/{a.run}/{ck}", str(dst / ck)], timeout=1800)
             got = md5(dst / ck) if (dst / ck).exists() else ""
             if got != want:
