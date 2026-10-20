@@ -854,3 +854,7 @@ physics as the sim (gravity 800, airaccelerate 100) except maxvelocity 3,500.
   --respawn-novel-shell-width 0.05 --respawn-novel-radius 256 3072 --respawn-novel-tries 64`), 2e9
   steps. Question: does the band cross the CP2 pit (a dip just behind the frontier, like the cavity)
   faster than the default sampler did in round 1 (ratnov: ~1B steps at the wall, 651M -> 1,633M)?
+* 20:55 UTC, r2b2_sband2 at 1.79B (~460M steps of band at the CP2 wall, ~600M since reaching it):
+  evals 27.2-27.4% (one 24.6%), training ceiling flat at 27,318 u (27.94%), T back at its cap 2.
+  No pit crossing yet - not faster than round 1's default sampler so far (ratnov: ~1B steps at the
+  wall). Runs to ~3.3B (~22:40 UTC).
