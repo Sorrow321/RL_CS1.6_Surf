@@ -1011,3 +1011,12 @@ r2b3_ownx ckpt_latest, stochastic, 6 s cap:
 * Reading: generic surf-aligned rows would put practice states on the helix that the archive
   (real states, falling) and the novel rows (velocity kept) do not; the ride itself would still
   have to be learned from them. A candidate for the next round, with that caveat.
+
+### 22:08 UTC: code state at the end of the round
+
+* `--respawn-rare F` (+ `-cell`, `-arch`, `-speed`, `-own`): tests/python/test_respawn_rare.py -
+  6 unit tests, 4 CPU trainer smokes (reservoir weighting, archive, speed keys, own-flight; each
+  with a flagless resume), a resume that turns the archive off (`--respawn-rare 0`), and the
+  flag-off bit-identity test against the trainer before the flag (config, progress.csv, eval
+  bytes, weights) - re-run on the final code at 22:08: passed.
+* No box (released 21:57); nothing running.
