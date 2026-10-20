@@ -12,13 +12,41 @@ then `AR_BRANCH.json` (who you are, your deadlines, the incumbent). Then start w
   eval so far). Each fork starts with a FRESH context. That is the "flush", and it is the
   point: independent runs stall in different "idea basins", and a fresh context escapes the
   one the previous lineage was in.
-* You do not talk to the other branches. You are not asked to "be different" either (the
-  paper measured that directive: it does not help). Do the best research you can.
+* You do not talk to the other branches, and you do not read what they do (see
+  **Independence** below). You are not asked to "be different" either (the paper measured
+  that directive: it does not help). Do the best research you can.
 * At the round's end the orchestrator scores every branch with `autoresearch/score.py`. That
   score is the best greedy eval from the TRUE map start that your runs produced this round.
   The winner's branch head seeds the next round's four forks. The other branches are archived
   and pruned. So what you leave in this branch (code, NOTES.md, RESULT.json) is what the next
   round inherits if you win.
+
+## Independence: read only your own branch
+
+Ideas cross between lineages only at the round boundary, through the winner's workspace. So
+read only:
+
+* your worktree (this branch: its code, NOTES.md, RESULT.json, AR_BRANCH.json) and its git
+  history;
+* your runs (`$AR_HOME/runs/$AR_AGENT/`) and your box (`box.py status --agent $AR_AGENT`,
+  `box.py budget`);
+* the incumbent (`$AR_HOME/incumbent/`).
+
+Never read, list or grep any of these:
+
+* another branch's worktree (`$AR_HOME/wt/b<k>`), runs (`$AR_HOME/runs/<agent>`) or box
+  record;
+* another branch's git branch (an `ar/*` ref that is not yours);
+* another branch's tmux window or Claude transcript;
+* the archive of earlier rounds (`$AR_HOME/archive/`);
+* the orchestrator's files: `$AR_HOME/status.md`, `state.json`, `orchestrator.log`. They are
+  the user's and the operator's view of every branch.
+
+This holds even when the goal is to avoid repeating another branch's idea. Two branches trying
+one idea is a cost the method accepts. Copying the leader mid-round only pulls a branch into
+the leader's idea basin. In round 1, r1b4 read the other branches' status and notes and spent
+its last six hours on the leader's recipe, and it finished below the leader. A losing branch's
+findings are archived, not inherited: that is the flush.
 
 ## The goal and the one number
 
@@ -84,9 +112,9 @@ final before `wrapup_at`.
 * **Boxes.** One box per agent, single GPU only, and consumer RTX cards under the
   config.max_dph caps (3090 first, then 4090, then 5090; cheaper cards that do the job, like
   the 5080, are fine). No datacenter cards, ever. box.py and the watchdog enforce this.
-* **Watching.** The user watches through Claude Remote Control and `~/ar/status.md`. That
-  replaces CLAUDE.md's per-box dashboard tunnel. A dashboard on the box is optional, and no
-  tunnel is needed.
+* **Watching.** The user watches through Claude Remote Control and `~/ar/status.md` (the
+  user's view, which you do not read: see Independence). That replaces CLAUDE.md's per-box
+  dashboard tunnel. A dashboard on the box is optional, and no tunnel is needed.
 * **Budget.** The total is the vast credit; box.py paces it to config.budget_end_hours.
 
 ## Code changes
@@ -141,8 +169,8 @@ python autoresearch/box.py release --agent $AR_AGENT
   your analysis with the box released, unless you are about to launch again.
 * If `rent` refuses on budget, the fleet is spending faster than the money lasts. Do analysis
   or coding and try later. Never work around it.
-* Your box id is in `$AR_HOME/boxes/$AR_AGENT.json` and `box.py status`. Keep it in NOTES.md
-  too.
+* Your box id is in `$AR_HOME/boxes/$AR_AGENT.json` and `box.py status --agent $AR_AGENT`. Keep
+  it in NOTES.md too.
 * A bad box (gpu_health fails, or the trainer runs far under ~150k steps/s on the incumbent
   recipe) is blocklisted with `python tools/vast_pick.py --block <id> --reason ... --detail ...`
   BEFORE you release it. That writes your branch's `tools/bad_hosts.json`. The orchestrator
@@ -179,7 +207,7 @@ python autoresearch/box.py release --agent $AR_AGENT
 2. Score it. Write `RESULT.json` with `"final": true` and the summary.
 3. Append the round's lesson to NOTES.md: what worked, what did not, the numbers.
 4. `git add -A && git commit` (trailers) `&& git push origin ar/$AR_AGENT`.
-5. `box.py release --agent $AR_AGENT`, and confirm with `box.py status`.
+5. `box.py release --agent $AR_AGENT`, and confirm with `box.py status --agent $AR_AGENT`.
 6. Stop scheduling wakeups. The orchestrator ends this session at the deadline.
 
 ## Talking to the user
