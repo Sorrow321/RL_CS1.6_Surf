@@ -628,3 +628,16 @@ misleading: the agent's surviving lines pass through `*99`'s box.
   * same `--race-ratchet --respawn-novel --unstuck-patience 5e7 --unstuck-rate 1.0`, plus
     **`--unstuck-max 1`**, so T halves from 1.74 and cannot climb past 1;
   * +1.4e9 steps, to ~10:45, leaving the wrap-up window.
+
+### 09:05 UTC: consolidation did not hold the route; back to T 2 for the last ~1.7 h
+
+* **r1b4_irn2** (from the 1.072B snapshot, T cap 1), 08:40-09:01:
+  * evals 1,073M-1,299M: frontier 26,545 / 26,806 / 26,806 / 26,904 u, all at the wall;
+  * even the resumed snapshot's own first eval went to the wall, so the 1,052M route
+    episodes (2/9) were a transient of the T ~ 2 phase. At T <= 1 the greedy line is
+    stable at the dive.
+* **r1b4_irn3**, launched 09:03:
+  * resume of irn2's latest (1,311.2M) with the same flags and `--unstuck-max 2` (fast
+    heating: T 1 -> 2 within ~100M steps);
+  * +1.2e9 steps, to ~10:52.
+  * Reason: the route only appeared at T ~ 2, and the round's score is the best single eval.
