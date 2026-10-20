@@ -521,3 +521,49 @@ checkpoint is taken from the BEST EVAL's run dir, so pull that run's ckpt_final.
   is code-identical to this head (only `autoresearch/config.json` differs).
 * Box 56813988 (RTX 5080 + 7950X3D, $0.388/h) ran 00:41-10:24 UTC, about 9.7 h / ~$3.8,
   released at 10:24; no box at wrap-up.
+
+## Round 2, branch r2b1 - 2026-10-20 13:30 UTC: what lies past the CP2 slot (analysis only, no box)
+
+All measured locally with the C core (hull traces, one-tick trigger probes, batched searches)
+from the incumbent's OWN best greedy eval (traj_4916772864, episode 1, 28.63%). Map coordinates
+below are measurements, never a reward, spawn rule or schedule (CLAUDE.md 0b).
+
+### The geometry (+y lane, y ~896; the -y lane is its mirror)
+
+* **"The slot's west end" is a HOLE in a wall** ("hole 1", x 2,512-2,600): standing-hull centre
+  window z 11,430-11,482 (48 u), ducked 11,412-11,500, ~96 u wide in y; kill plate *80 on its sill.
+* Behind it a **box room** (x 2,228-2,504, full width y +-1,100, z 10,728-11,482) with a kill floor
+  (*21). Its west wall (the "x 2,224 wall") has a **tunnel** at the same y (x 1,940-2,212, centre
+  window z 10,994-11,162 standing / 10,976-11,180 ducked, kill floor *17) into a west room
+  (x < 1,940). The room's east wall also has a **low centre hole** (|y| < ~60, z 10,792-11,080)
+  into a **cavity under the pit-floor ramp** (x 2,620-3,020) that drops into a lower level.
+* **Kill triggers are thin plates, not their AABBs** (trigger_contains tests the brush): the pit
+  "*86" kills only on its sloped floor surface; (3,050, 0, 11,300) and the low hole are safe air.
+* **The goal field routes hole 1 -> room -> tunnel, and that line is ballistically infeasible.**
+  Exit hole 1 at z >= 11,412 (ducked), enter the tunnel at z <= 11,180 after 292 u of x, stay
+  >= 10,976 for its 284 u: drop >= 232 at x+292 but <= 436 at x+576 needs a drop ratio <= 1.88,
+  and any free-fall arc gives >= 1.97 (576/292, its linear limit). Air acceleration cannot add
+  vertical speed and cannot add speed along the motion (wishspeed 30), so no keys fix it.
+* The field's "dead-end" zone: the cavity + lower level read d 70,700-72,500 (higher than hole 1's
+  70,400); the field's low zone (< 69,700) is under the room / west room, separated from it by a
+  45-degree slab (x 2,436 -> 2,100, z 10,576 -> 10,240).
+
+### Searches (simulator, random action segments, from the policy's own states)
+
+* Random shooting (300 plans x 3 start ticks in the slot): best 28.58%, nothing past x 2,200.
+* CEM (1,024 x 10 iterations from tick 2,790): brakes at hole 1 to ~600 u/s, falls into the
+  tunnel mouth, dies on its floor at x 2,111 (28.68%): exactly the ballistic dead end.
+* Go-Explore from the line (cells 128 u x speed): 13.8k-24.8k cells, reaches the room (389),
+  the low hole (72), the cavity (158), the lower level (1,981, down to z 9,560, west to x 1,576),
+  the upper level (1.8k-3.8k) - but no cell with d below the episode's own best.
+* From 4,000 random roots in the dead-end zone: the only paths below d 69,700 enter the tunnel
+  and die inside. The way past is not found by random actions; the human's dip 2 (27.9-31.2 s,
+  +1,978 u in the field) says the real line is a ~3 s detour the field charges.
+
+### Next: a generic Go-Explore spawn source (tools/frontier_archive.py)
+
+Roots = the last 6 s of every episode of the newest greedy eval (the policy's own frontier, by
+rule); cells 128 u x 400 u/s speed buckets; random action segments in the batched core; output an
+atomic STATE_DTYPE file for the trainer's existing `--spawn-states` (re-read when it changes; a
+spawn-state episode is a REAL episode: harvested into the reservoir, marks the novelty grid), half
+from the deepest quarter by d, half uniform. Loop mode re-roots on each new eval. No map constant.
