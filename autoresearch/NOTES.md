@@ -256,3 +256,24 @@ steps/s. Measure it on your box in the first minute and size `--steps` to the ti
   among reservoir states within F x d0 (`--respawn-cells-front`, 0.05) of the deepest one. The
   policy is the explorer. Default off; 11 tests incl. flag-off identity. Launched **r1b3_cells**
   (S 0.5, F 0.05, warm, 400M): 1,843 rows per pool over 83-89 zone cells.
+
+### 2026-10-20 04:00 UTC - cells NULL; kill-aware field keeps the dip; from-scratch recipe test launched
+
+* **r1b3_cells** (`--respawn-cells 0.5 --respawn-cells-front 0.05`, warm, 400M): 1,843 rows per pool
+  drawn uniformly over 207-227 zone cells; ~45% of episodes start at the wall (train rew ~4.5, len
+  ~700). Evals 25.8 / 27.3 / 27.4 / 27.44 / 27.41 / 27.41%; mind 74.0-74.4%. NULL.
+* **Kill-aware field (ANALYSIS, `build_goal_field(mask_kill=True)`, 131 kill volumes masked, baked on
+  the box in 258 s, cached as maps/surf_src_sidistic.goalk_32.npz there):** every distance shifts by
+  ~+1,000 u and CP2's structure is unchanged: the human's ramp is still a +1,564 u dip (74,629 vs
+  73,065), and the agent's death point (71,894) still beats the human's level pass (72,361).
+  `--race-kill-aware` cannot help here.
+* **Tally at CP2 (all warm from the incumbent, 400M each, vs r1b3_ctl):** ungated held view offsets
+  (collapse), gated off-policy held offsets, random velocity directions at frontier respawns,
+  cell-uniform frontier respawns: 0 training episodes past the pit in ~1.3B steps. The control at
+  T = 2 (ctl2): same. Search (position and position+vz cells): saturates at the pit.
+* **r1b3_sou (launched 03:56):** FROM SCRATCH, the incumbent recipe + `--view-ou-sigma 0.8
+  --view-ou-period 40 --view-ou-front 0.05 --view-ou-frac 0.5 --view-ou-offpol 1 --view-ou-temp 1`.
+  T-scaled, frontier-gated, off-policy held view offsets: zero while the eval frontier moves, half
+  the 1.6 s windows offset (sigma up to 0.8 at T = 2) inside 5% of d0 of the reservoir's frontier
+  when stuck. The question is the early gates, which were turns the policy would not commit to (the
+  first ramp "just has to turn left"). GR reference: trap exit 529M, window 755M.

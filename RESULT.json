@@ -3,14 +3,19 @@
  "round": 1,
  "final": false,
  "best": {
-  "score": 27.443,
-  "eval_file": "/home/steam/ar/runs/r1b3/r1b3_ctl/traj_1052246016.jsonl",
-  "run": "r1b3_ctl",
-  "step": 1052246016,
+  "score": 27.444,
+  "eval_file": "/home/steam/ar/runs/r1b3/r1b3_cells/traj_0976748544.jsonl",
+  "run": "r1b3_cells",
+  "step": 976748544,
   "ckpt": "/home/steam/ar/runs/r1b3/r1b3_ctl/ckpt_final.pt",
-  "recipe": [],
+  "recipe": [
+   "--respawn-cells",
+   "0.5",
+   "--respawn-cells-front",
+   "0.05"
+  ],
   "resume_from": "/home/steam/ar/incumbent/ckpt.pt",
-  "commit": "fa26efb"
+  "commit": "eaaa52b"
  },
- "summary": "02:56 UTC. All warm from the incumbent (749.7M) on a 4080. Control r1b3_ctl (+ctl2 to 1.34B, T to 2): 27.2-27.4% every eval, best 27.443, 9/9 die in the CP2 pit. Ungated held view offsets (r1b3_ouw) collapse the line; frontier-gated off-policy offsets (r1b3_oufo) keep it but are NULL at CP2. A reward-free Go-Explore search from the policy's own 18-24.5 s states saturates at the pit (position-only cells are owned by diving states). CP2 needs a LEVEL entry into a corridor the line dives through. Running r1b3_vrot: --respawn-vel-rot 0.5 (fresh velocity direction for frontier-zone reservoir respawns, positions unchanged)."
+ "summary": "04:00 UTC. Five generic mechanisms tested warm at the CP2 wall (from the incumbent, 4080, matched vs control r1b3_ctl 27.2-27.4%): ungated held view offsets (collapse), frontier-gated off-policy offsets, random velocity directions at frontier respawns, cell-uniform frontier respawns - all NULL (best 27.444, reservoir never past the pit). Reward-free Go-Explore search from the policy's own line (position and position+vz cells) saturates at the pit; the kill-aware field keeps the same dip. CP2 = a line split at the ~22 s launch ramp under two lethal plates. Now: from-scratch recipe + T-scaled frontier-gated held offsets (r1b3_sou) against GR's trap-exit 529M / window 755M."
 }
