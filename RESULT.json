@@ -1,7 +1,7 @@
 {
  "agent": "r1b3",
  "round": 1,
- "final": true,
+ "final": false,
  "best": {
   "score": 27.517,
   "eval_file": "/home/steam/ar/runs/r1b3/r1b3_nou/traj_1402994688.jsonl",
@@ -16,5 +16,5 @@
   "resume_from": "r1b3_sou2/ckpt_final.pt (lineage r1b3_sou 0-600M -> r1b3_sou2 600M-1.1B -> r1b3_nou 1.1-1.5B, all from scratch)",
   "commit": "5279cce"
  },
- "summary": "Best 27.517 (r1b3_nou 1.403B): a FROM-SCRATCH lineage on the incumbent recipe, at the same CP2 pit as 27.5. CP2 measured: a ~220 u corridor between lethal volumes entered level from below after a ramp reversal; the agent's line launches over two lethal plates and dives through the band ~3 s after the split; the field pays the dive. Null at CP2 (400M warm each, vs control 27.2-27.44): held view offsets (ungated collapses to 4.4%), velocity-rotated frontier respawns, cell-uniform frontier respawns (incl. a 0.25 s-margin archive), T=2; reward-free Go-Explore search saturates at the pit; the kill-aware field keeps the dip. Held offsets BLOCKED the window for 800M steps (off: passed in one eval). int-split+climb key from scratch stalled at 14%. Next: search with the policy as the mover + self-imitation, or the planner."
+ "summary": "Best 27.517 (r1b3_nou 1.403B): a FROM-SCRATCH lineage on the incumbent recipe, at the same CP2 pit as 27.5. CP2 measured: a ~220 u corridor between lethal volumes entered level from below after a ramp reversal; the agent's line launches over two lethal plates and dives through the band ~3 s after the split; the field pays the dive. Null at CP2 (400M warm each, vs control 27.2-27.44): held view offsets (ungated collapses to 4.4%), velocity-rotated frontier respawns, cell-uniform frontier respawns (incl. a 0.25 s-margin archive), T=2; reward-free Go-Explore search saturates at the pit; the kill-aware field keeps the dip. Held offsets BLOCKED the window for 800M steps (off: passed in one eval). int-split+climb key from scratch stalled at 14%. Next: search with the policy as the mover + self-imitation, or the planner. 08:05: round continues (wrap-up is at 11:50): next = Go-Explore in the loop + self-imitation at CP2."
 }

@@ -408,3 +408,17 @@ steps/s. Measure it on your box in the first minute and size `--steps` to the ti
 * Tools this branch leaves (all default off, bit-identical off, tested): `--view-ou-temp/-frac/-front/
   -offpol` (documented negative), `--respawn-vel-rot`, `--respawn-cells` (+ `-front`, `-margin`),
   `explore_phase1 --cell-vz`. Scratchpad analysis scripts are not in the repo.
+
+### 2026-10-20 08:45 UTC - the round continues (wrap-up is 11:50): Go-Explore in the loop + self-imitation at CP2
+
+* RESULT.json set back to `final: false` (the 07:57 wrap-up was early; the round runs to wrapup_at).
+* **Next arm r1b3_ges:** resume r1b3_nou's 1.5B ckpt (from scratch, at the CP2 wall, offsets off) +
+  `--respawn-cells 0.5 --respawn-cells-front 0.05 --respawn-cells-margin 0.25 --respawn-vel-rot 0.5
+  --sil-coef 0.1`. Why: r1b3_gec made the policy explore from rare frontier states, but anything rare
+  it found was averaged away by PPO's on-policy step; SIL (Oh et al. 2018, existing flag) replays every
+  transition whose return beat the critic, so a single lucky line past the pit would be imitated
+  instead of diluted (expert iteration with the policy as both mover and student). CPU smoke of the
+  exact combination: SIL buffer filling (~20k rows), loss finite, cells / vrot shares as configured.
+* Read: mind below ~72.5% (a harvested state past the pit) and `sil gain` falling as the critic
+  catches up; the eval frontier past 27.6% / CP2. A side effect to watch: SIL can also make the
+  dive itself creep west (a deeper death, not a crossing) - judged by CP2, not by the score.
