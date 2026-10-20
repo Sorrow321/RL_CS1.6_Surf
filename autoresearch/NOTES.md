@@ -804,3 +804,12 @@ checkpoint is taken from the BEST EVAL's run dir, so pull that run's ckpt_final.
   frontier (the --unstuck eval reach, re-read every pool build). r2b4_elite2 (17:42): resume of arch1x's
   ckpt_latest (5,988,941,824) + `--spawn-states-elite 0.5 --spawn-states-beyond 0.005` (elite = reached
   29.05%, i.e. through the wall hole), 1.2B steps.
+
+### r2b4_elite2 (beyond rule, T 2, 17:42-18:06 UTC, stopped at 6,386M): 0 elite rows in 400M steps
+
+* Evals 27.459 / 27.966 / 27.948 / 27.971 / 28.388 / 27.320. 0 of 163,558 archive-spawned episodes reached
+  29.05% (0.5% of d0 past the eval frontier); ceiling still arch1's 28,903 u.
+* The finish needs precision the training temperature does not give: at T = 2 (exec-temp 3) the rising-
+  chamber WR state finishes 0/8 where greedy finishes. Next: the same with `--unstuck-max 0.25`.
+
+### r2b4_elite3 (18:08 UTC): elite2's checkpoint + `--unstuck-max 0.25` (T clamped 2 -> 0.25), 1.0B steps
