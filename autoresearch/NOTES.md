@@ -776,3 +776,20 @@ into the session scratchpad. Field progress in brackets.
   centre gap. So the archive returns the agent to the right PLACE, not yet with the speed / line
   the ride needs.
 * Kept running (bare continuation to 7.55B, ~16:50 UTC); idea cap 6 h from 14:34.
+
+### r2b3_archx stopped at 6.22B (15:47 UTC): the archive stage stalled
+
+* Evals 5.55-6.16B (best %): 27.4, 28.0, 27.5, 27.4, 27.4, 28.0, 28.2, 27.2, 27.4 - no new gate.
+  Archive at 6.20B: 3,929 cells, 62M entries; below the shaft still 212 cells (417k entries),
+  cavity 13, centre gap 6, room 0; deepest real state 28.81% since 5.40B; novel ceiling
+  28,193 u. ~1.1B steps in archive mode: the detour region is visited heavily, the climb never.
+* The human's climb (demo, analysis only) is a helix: from the cavity down half a turn around
+  a centre near (2,370, 100) at r ~400-450 u to z ~9,800, then up the other half to the centre
+  gap at z ~10,930 and across the shaft into the window - entered at ~2,200 u/s.
+
+### r2b3_archs: + `--respawn-rare-speed 3` (d67d1cb), warm from r2b3_archx's ckpt_latest (6.22B) - launched 15:49 UTC
+
+* Archive cells keyed by (256 u position, horizontal-speed bucket of 1,333 u/s - the recipe's own
+  --int-speed 3 binning): a fast state in a cell no longer shares the ring and the count with
+  the slow ones that dominate it (archived states in the helix box were median 937 u/s). The
+  archive restarts empty (other keys). 450M steps.
