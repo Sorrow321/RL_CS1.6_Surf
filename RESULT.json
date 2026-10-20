@@ -17,5 +17,5 @@
   "resume_from": "incumbent ckpt.pt (r1b1_ratnovx2 ckpt_final, 5,100,797,952)",
   "commit": "873f51e"
  },
- "summary": "15:06 UTC: r2b1_fa1 = warm incumbent + 20% spawns from tools/frontier_archive.py (survivor-gated Go-Explore rooted at the policy's own eval frontier): 450M, best 28.322 (below the incumbent 28.628), training ceiling unchanged at 28.82%, no crossing. Analysis: past the CP2 slot the field routes hole 1 -> box room -> tunnel, which is ballistically infeasible (drop ratio); simulator searches reach the room, cavity, lower and upper levels but nothing deeper. Next: stronger search (depth-ranked selection, heading cells) on the box to see if any route exists."
+ "summary": "15:47 UTC: fa1 (warm + 20% archive spawns, depth-weighted) 28.322, no crossing. The WR demo (analysis only) shows the way past the CP2 slot: a hard turn in the room, east through a low centre hole into a pocket under the pit ramp, a carve on a lower-level wedge to launch back up, re-entering the room rising into the tunnel's apex. Bench: the incumbent passes the tunnel from that rising state (29.4-30%) but lacks every pocket skill. New: --spawn-states-novel + --spawn-states-gate survived (archive spawns only where the policy has not survived). Running r2b1_fas (warm, 30%, 450M)."
 }

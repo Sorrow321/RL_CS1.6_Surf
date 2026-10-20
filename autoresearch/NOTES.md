@@ -672,3 +672,19 @@ The archive's rows are drawn only from states whose 3x3x3 visit block no real ep
 harvested): the blind spot stays on offer until the policy's own line reaches it. Physically
 flown states (the archive) instead of moved states (novel rows keep a teleported velocity).
 No map constant: the gate is the novelty grid; the archive is rooted at the policy's own eval.
+
+### 15:47 UTC: r2b1_fas LAUNCHED - warm incumbent + archive spawns gated to where the policy has NOT survived
+
+* Box 56914220: RTX 3090 + Threadripper PRO 5955WX (32 threads), $0.187/h, Alabama; GitHub 15 MB/s.
+  ~204k steps/s on the resume (GPU ~27%).
+* Archive (on the box, 20 s): `frontier_archive.py --roots <incumbent eval> --batches 300
+  --headings 8 --shell 0 --cap 30000` -> 80,660 cells, 30,000 written uniformly.
+* `box.py launch --resume --steps 4.5e8 -- --spawn-states .../r2b1_fas_archive.npy
+  --spawn-states-frac 0.3 --spawn-states-novel --spawn-states-gate survived` (commit c1b0d85).
+  At start 11,908 of 30,000 archive states lie outside the reservoir's survived blocks; novel +
+  archive episodes are ~52% of all.
+* Prediction from the incumbent's own 20k-state reservoir (local, 13.5k-cell archive): every cell of
+  the room (99/102), the low hole, the cavity, the lower level and the tunnel is outside the survived
+  blocks - the pocket is ~17% of the candidates (the upper level ~50%), ~10x fa1's exposure.
+* Reading: the evals (does the greedy line change) and a pocket bench of the newest checkpoint (do
+  archive-spawned pocket states learn to climb back to d < 70,000).
