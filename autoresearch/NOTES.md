@@ -446,3 +446,18 @@ misleading: the agent's surviving lines pass through `*99`'s box.
     0.4 --unstuck-max 1`;
   * +1e9 steps, so it stops at 3.75B, about 06:20;
   * box deadline 06:53.
+
+### 05:10 UTC: outer loop, iteration 2 - archive from C2's final states, swapped into C3
+
+* **GE6** (local, 8 CPU-min, roots = C2-final's deepest 3%, d <= 73,524; 1.45M runs):
+  * 188,092 cells; best d **70,431 (27.96%)**; 2,358 cells past the old frontier, 81 below
+    70,500; none below 70,000.
+  * Each iteration rooted at the improved policy reaches slightly deeper: 70,755 / 70,483 /
+    70,461 / 70,431 (GE2 incumbent-rooted, GE3 Arm C, GE5 C2 at 2.1B, GE6 C2 final).
+* **The swap:** `tools/ge_spawns.py spawns` over GE2+GE3+GE5+GE6, with the incumbent's
+  visits / speed / d_best as the reference and chains to each archive's 300 deepest cells
+  x30. That gives 336,807 rows (19% deep-chain approaches), md5 d3ea144b....
+  * `mv`'d over C3's `runs/c3_spawns.npy`; the original is kept as `c3_spawns.orig.npy`.
+  * Re-read at step 2,917,662,720.
+* **C3 evals:** 2,751M / 2,826M / 2,902M = 26,841 / 26,903 / 26,879 u frontier. No change in
+  the greedy dive yet.
