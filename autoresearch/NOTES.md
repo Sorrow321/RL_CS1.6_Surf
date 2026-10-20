@@ -814,3 +814,16 @@ r2b3_arch ckpt_final (5.55B), 6 stochastic + 2 greedy episodes, 8 s cap:
   needs surfing skill, and the reward has no signal along it: under the ratchet the helix
   (27.6 -> 26.3 -> 27.5%) pays nothing until the episode is back past its record (the window,
   28.6%), ~3 s later.
+
+### r2b3_archs result (16:24 UTC): speed-keyed cells change nothing at this wall
+
+* 6.22 -> 6.67B (450M). Evals (best %): 27.2, 28.0, 27.4, 27.9, 28.0, 28.2. Archive (6,445
+  keys): below the shaft 366 keys, cavity 24, centre gap 14, room 0; deepest real state
+  28.85% (window tunnel, sill height) - the same reach as the position-only archive.
+* ckpt_final (6,672,089,088) left on the box for a later warm continuation.
+
+### r2b3_scrarch: FROM SCRATCH, incumbent recipe + `--respawn-rare 0.5 --respawn-rare-arch 1` - launched 16:25 UTC
+
+* 450M steps (30 min). Matched-step reference = r1b1's ratnov (the same recipe without the
+  archive): best-episode progress 5.8% at 302M, 15.2% at 378M (trap exit), 20.8% at 453M
+  (window wall), window passed 576M, CP2 wall 651M, CP2 pit crossed 1,633M.
