@@ -40,9 +40,11 @@ def _commit(repo, msg):
 
 
 def _bh(*mids):
+    """A blocklist; an entry is a machine id, or (machine id, detail) for a second incident."""
+    rows = [m if isinstance(m, tuple) else (m, str(m)) for m in mids]
     return json.dumps({"_README": ["list"], "blocked": [
-        {"ip": None, "machine_id": m, "host_id": None, "reason": "unreliable", "detail": str(m)}
-        for m in mids]}, indent=2) + "\n"
+        {"ip": None, "machine_id": m, "host_id": None, "reason": "unreliable", "detail": d}
+        for m, d in rows]}, indent=2) + "\n"
 
 
 @pytest.fixture
@@ -63,7 +65,7 @@ def repo(tmp_path, monkeypatch):
     _git(r, "checkout", "-q", "-b", "win")
     _write(r, "python/train.py", "t1 (the agent's work)\n")
     _write(r, "autoresearch/box.py", "an agent's edit\n")
-    _write(r, "tools/bad_hosts.json", _bh(1, 2))
+    _write(r, "tools/bad_hosts.json", _bh(1, (1, "the same machine, a second incident"), 2))
     win = _commit(r, "agent")
     _git(r, "checkout", "-q", "main")
     _write(r, "autoresearch/box.py", "v2 (the operator's fix)\n")
@@ -91,9 +93,12 @@ def test_the_operator_harness_over_the_winner(repo, tmp_path):
     assert _show(repo, fork, "autoresearch/box.py") == "v2 (the operator's fix)"
     assert _show(repo, fork, "autoresearch/config.json") == '{"cap": 0.40}'
     assert _show(repo, fork, "python/train.py") == "t1 (the agent's work)"
-    # the blocklist is the union, the winner's entries first, each machine once
+    # the blocklist is the union: the winner's list exactly (both incidents on machine 1),
+    # then the slot's one new entry; its verbatim copy of machine 2 is not added twice
     bh = json.loads(_show(repo, fork, "tools/bad_hosts.json"))
-    assert [e["machine_id"] for e in bh["blocked"]] == [1, 2, 3]
+    assert [e["machine_id"] for e in bh["blocked"]] == [1, 1, 2, 3]
+    theirs = json.loads(_show(repo, repo["win"], "tools/bad_hosts.json"))
+    assert bh["blocked"][:3] == theirs["blocked"]
     # plumbing only: the main checkout's HEAD, index and working tree are untouched
     assert _git(repo["dir"], "rev-parse", "HEAD") == repo["main"]
     assert _git(repo["dir"], "status", "--porcelain") == ""

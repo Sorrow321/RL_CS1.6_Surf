@@ -186,18 +186,12 @@ def _ar_start() -> float:
 
 
 # ------------------------------------------------------------- the offers -----
-def _block_key(e: dict):
-    """One machine is one entry, whoever blocked it: machine_id, else host_id, else ip."""
-    for k in ("machine_id", "host_id", "ip"):
-        if e.get(k):
-            return (k, e[k])
-    return None
-
-
-def merged_blocklist(sources) -> dict:
-    """The union of several blocklists (paths, or already-parsed dicts), the first entry per
-    machine winning. The first readable source's other keys (its _README) are kept."""
-    out, seen = None, set()
+def merged_blocklist(sources, lists=("blocked", "known_good")) -> dict:
+    """The union of several blocklists (paths, or already-parsed dicts). The first readable
+    source is kept exactly; a later one adds only the entries it does not already hold
+    verbatim, so the same machine blocked twice for two reasons stays two entries (the
+    history is the point of the file) while re-merging the same lists adds nothing."""
+    out, seen = None, {k: set() for k in lists}
     for src in sources:
         if isinstance(src, dict):
             data = src
@@ -207,13 +201,20 @@ def merged_blocklist(sources) -> dict:
             except (OSError, ValueError):
                 continue
         if out is None:
-            out = dict(data, blocked=[])
-        for e in data.get("blocked", []):
-            k = _block_key(e)
-            if k is not None and k not in seen:
-                seen.add(k)
-                out["blocked"].append(e)
-    return out or {"blocked": []}
+            out = json.loads(json.dumps(data))
+            for k in lists:
+                seen[k].update(json.dumps(e, sort_keys=True) for e in out.get(k, []))
+            continue
+        for k in lists:
+            for e in data.get(k, []):
+                key = json.dumps(e, sort_keys=True)
+                if key not in seen[k]:
+                    seen[k].add(key)
+                    out.setdefault(k, []).append(e)
+    if out is None:
+        return {"blocked": []}
+    out.setdefault("blocked", [])
+    return out
 
 
 def sync_shared_blocklist(paths=()) -> int:

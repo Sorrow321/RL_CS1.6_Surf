@@ -136,21 +136,25 @@ def test_the_fleet_blocklist_is_shared(monkeypatch, tmp_path):
     each read only its own branch's list."""
     monkeypatch.setattr(box, "AR_HOME", tmp_path)
     b2, b3 = tmp_path / "b2.json", tmp_path / "b3.json"
-    b2.write_text(json.dumps(_blocklist(68144, 11, readme="b2")), encoding="utf-8")
-    b3.write_text(json.dumps(_blocklist(68144, 12, readme="b3")), encoding="utf-8")
-    assert box.sync_shared_blocklist([b2, b3]) == 3
+    l2, l3 = _blocklist(7, 68144, 11, readme="b2"), _blocklist(7, 68144, 12, readme="b3")
+    l3["blocked"][1]["detail"] = "r1b3 rented it too"   # a second incident on the same machine
+    b2.write_text(json.dumps(l2), encoding="utf-8")
+    b3.write_text(json.dumps(l3), encoding="utf-8")
+    assert box.sync_shared_blocklist([b2, b3]) == 5
     shared = json.loads((tmp_path / "bad_hosts.json").read_text(encoding="utf-8"))
-    assert [e["machine_id"] for e in shared["blocked"]] == [68144, 11, 12]
+    # the first list exactly, then what the second adds: its verbatim copy of machine 7 is
+    # dropped, its own report on 68144 is kept (the history is the point of the file)
+    assert [e["machine_id"] for e in shared["blocked"]] == [7, 68144, 11, 68144, 12]
     assert shared["_README"] == ["b2"]            # the first source's header is kept
     # idempotent: a second pass rewrites nothing
     before = (tmp_path / "bad_hosts.json").stat().st_mtime_ns
-    assert box.sync_shared_blocklist([b2, b3]) == 3
+    assert box.sync_shared_blocklist([b2, b3]) == 5
     assert (tmp_path / "bad_hosts.json").stat().st_mtime_ns == before
     # and every agent's box.py skips it on top of its own branch's list
     mids, _, _ = box.blocked_keys()
     own = json.loads((box.REPO / "tools" / "bad_hosts.json").read_text(encoding="utf-8"))
     own_mids = {e["machine_id"] for e in own["blocked"] if e.get("machine_id")}
-    assert mids == own_mids | {68144, 11, 12}
+    assert mids == own_mids | {7, 68144, 11, 12}
     # an unreadable shared list never blocks renting: the branch's own list still applies
     (tmp_path / "bad_hosts.json").write_text("{not json", encoding="utf-8")
     mids, _, _ = box.blocked_keys()
