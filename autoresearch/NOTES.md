@@ -388,3 +388,22 @@ the greedy detour appeared at 1.20B.
 * **Lesson for the recipe:** fast re-heating after a breakthrough destroys it. The unstuck
   schedule needs a consolidation window after a new best (the default 2e8 patience gives it;
   the 5e7 warm instrument does not).
+
+### 07:05 UTC - the T=0 consolidation ALSO dropped the detour: it is a VALUE problem; arm 5 = goex spawns
+
+* r1b2_cons (the 28.49 weights + --no-unstuck): 1,279.3M (resume) 28.05, with 2/9 episodes doing
+  the detour (28.1% / 28.0% at 28.5 s). At **1,354.8M: 27.44, 9/9 back to the 25 s dive.**
+* So it is not (only) temperature. As executed now, the detour dies ~4 s later than the dive and
+  ~700 u further: +0.7 units of progress against ~2 units of extra time penalty (0.5/s). PPO is
+  right to prefer the dive until the section AFTER the detour is survivable. The detour pays only
+  when followed by more progress (the human reaches sgcp_2 6 s later).
+* Training does reach that section (reservoir floor 71.8%, d ~70,200), but uniform reservoir
+  sampling spawns there ~0.1% of the time.
+* **Arm 5 r1b2_gx** = ckpt_1278738432.pt + `--respawn-mode goex` (Go-Explore 1/sqrt(seen+1)
+  weights over 16 distance bins of ~6,100u; the deepest bin holds the whole CP2 area including the
+  post-detour states; CLAUDE.md lists goex as implemented but never tested on top of
+  --respawn-margin 2) + the recipe's DEFAULT unstuck schedule restored (`--unstuck-patience 2e8
+  --unstuck-rate 0.5`: T cools after a new best instead of re-heating within 100M). Ratchet and
+  noise_tau 0.5 / frac 0.25 kept. Resume eval 1,279.3M: frontier 27,843u (a new unstuck best), so
+  T halves from 2. Top goex bins: 11, 12, 13 (the deepest). Stop at 2.28B (stopped before the
+  wrap-up).
