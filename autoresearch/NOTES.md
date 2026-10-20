@@ -995,7 +995,7 @@ up the helix (the archive keeps them), or a search-based explorer (planning in t
 from the archive's cavity states with the policy as a prior). The incumbent checkpoint
 (r2b3_ownx) already carries the archive state (`--respawn-rare*` restored on a bare resume).
 
-### Surf-aligned states from geometry alone (bench, measurement only, 22:10 UTC)
+### Surf-aligned states from geometry alone (bench, measurement only, 22:03 UTC)
 
 `autoresearch/analysis/sid_surf_states.py`: states 30-90 u off a solid surface (SDF), hull-checked,
 on the field's reachable set, with |v| 1,500-2,200 along a random horizontal direction projected
