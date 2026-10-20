@@ -3,22 +3,24 @@
  "round": 2,
  "final": false,
  "best": {
-  "score": 28.643,
-  "eval_file": "/home/steam/ar/runs/r2b3/r2b3_archsx/traj_7125598208.jsonl",
-  "run": "r2b3_archsx",
-  "step": 7125598208,
-  "ckpt": "/home/steam/ar/runs/r2b3/r2b3_archsx/ckpt_latest.pt",
+  "score": 28.766,
+  "eval_file": "/home/steam/ar/runs/r2b3/r2b3_ownx/traj_8113881088.jsonl",
+  "run": "r2b3_ownx",
+  "step": 8113881088,
+  "ckpt": "/home/steam/ar/runs/r2b3/r2b3_ownx/ckpt_latest.pt (re-pulled at the end of the run)",
   "recipe": [
    "--respawn-rare",
    "0.5",
    "--respawn-rare-arch",
    "1",
    "--respawn-rare-speed",
-   "3"
+   "3",
+   "--respawn-rare-own",
+   "1"
   ],
-  "resume_from": "incumbent 5.10B -> r2b3_arch (+archive) 5.55B -> r2b3_archx 6.22B -> r2b3_archs (+speed keys) 6.67B -> r2b3_archsx",
-  "commit": "d67d1cb",
-  "note": "ckpt_latest = step ~7,21B (the run was stopped, no ckpt_final), md5 19059be9c49ecfbec5fcdf1fb5e6de46; the best episode dies on the window's sill 30 u deeper than the incumbent's (x 2,149): same failure mode, marginally deeper"
+  "resume_from": "incumbent 5.10B -> r2b3_arch 5.55B -> r2b3_archx 6.22B -> r2b3_archs 6.67B -> r2b3_archsx 7.21B -> r2b3_own 7.66B -> r2b3_ownx",
+  "commit": "80a105c",
+  "note": "the best episode bounces between the shaft's walls and flies INTO the window tunnel at window height (vx ~-1,030, vz ~-750), dying on the sill ~180 u in: a new entry, not yet fast/level enough to cross"
  },
  "summary": "Warm arms at the incumbent's wall (CP2 slot exit): SIL, margin 0.5, T=0, reservoir-weighted --respawn-rare: no gain. Analysis: the field routes through a window free fall cannot thread; the human (demo, analysis only) detours through a centre gap, a cavity and a helix, entering the window from below; a bench from the human's states shows the policy already flies everything after the gap (to 30.1%) - the helix ride is the missing skill. NEW --respawn-rare-arch (Go-Explore per-cell archive of REAL states, no margin): real episodes reach the cavity and below the shaft for the first time; best eval 28.643 (r2b3_archsx 7,126M, a sill death 30 u deeper). From scratch the archive gave no early-gate gain (one seed). Next: --respawn-rare-own (archive returns stop blocking the novel rows)."
 }
