@@ -33,6 +33,29 @@ never returns there.
   drawn changes. The ceiling of `--respawn-novel` and the harvest rules are unchanged.
 * One cell size and one share, the same on every map; no map quantity.
 
+## `--respawn-rare-arch 1`: Go-Explore's archive (no pre-death margin)
+
+The reservoir only holds states harvested `--respawn-margin` (2 s) before an episode's end, so
+where every real episode dies within 2 s of arriving - sidistic's shaft past the CP2 slot - it
+holds nothing, and no return can start there. With the archive on:
+
+* every REAL env that flies into a cell (not a respawn: a jump over 512 u between two
+  decisions is not flight) writes its state into that cell's ring (4 states, oldest
+  overwritten), with no margin;
+* the share F of the spawn rows that are neither map starts nor novel rows is drawn from the
+  archive: a cell by `1 / sqrt(1 + N)` - half of those draws among the deepest quarter of the
+  archived cells by field distance (the frontier, as the novel sampler's deep shell), the rest
+  among all archived cells - then one state of its ring, speed scaled like a reservoir row. The
+  reservoir draw itself stays uniform;
+* a return lands in its cell, so N grows with every return: a cell that leads nowhere (a doomed
+  state) stops being drawn, which is what replaces the margin.
+
+A simulator check of the idea (analysis only, `autoresearch/analysis/sid_goexplore_probe.py`):
+from the policy's own greedy states in the CP2 slot, an archive of (128 u cell x heading x speed
+x climb) with `1 / sqrt(1 + chosen)` returns and 1 s of random held actions found the cavity
+behind the slot's end wall - the first piece of the human's way on, which no uniform-draw
+training episode had ever reached - after ~10,000 returns (~0.6M ticks).
+
 ## Read-out
 
 * Step line: `rare eff E/C N n` - the draw spread over E effective cells of the C cells the
@@ -52,3 +75,4 @@ Refused without the reservoir (`--respawn-frac 0`) and with `--respawn-binned`,
 |---|---|---|
 | `--respawn-rare` | 0 (off) | share F of the reservoir draw that goes by cell rarity |
 | `--respawn-rare-cell` | 256 | the position cell, u |
+| `--respawn-rare-arch` | 0 | 1 = draw the share from the margin-free per-cell archive |

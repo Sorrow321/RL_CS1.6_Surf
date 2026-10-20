@@ -93,6 +93,46 @@ def test_state_round_trip_and_bad_share():
 
 # 4 s episodes, a 0.1 s margin and a 3,000-state reservoir: the trainer rebuilds the spawn pool
 # from the reservoir only past 2,000 states, which these settings reach after ~400k steps
+def _states(pos, vel=(100.0, 0.0, 0.0)):
+    from surfgym.core import STATE_DTYPE
+    st = np.zeros(len(pos), dtype=STATE_DTYPE)
+    st["origin"] = np.asarray(pos, np.float32)
+    st["velocity"] = np.asarray(vel, np.float32)
+    return st
+
+
+def test_archive_captures_real_flown_entries_and_mixes_into_the_tail():
+    d_fn = lambda p: np.asarray(p, np.float64)[:, 0]      # "field distance" = x
+    r = RareCellReturn((0.0, 0.0, 0.0), (1000.0, 1000.0, 1000.0), 3, cell=100.0,
+                       frac=1.0, arch=True, ring=2, dist_fn=d_fn, seed=1)
+    p0 = np.array([[50, 50, 50], [150, 50, 50], [250, 50, 50]], float)
+    r.observe(p0, real=np.array([True, True, True]), states=_states(p0))
+    assert r.n_blocks == 0                                # first decision: no previous position
+    p1 = p0 + [100.0, 0.0, 0.0]                           # flown into the next cell
+    r.observe(p1, real=np.array([True, False, True]), states=_states(p1))
+    assert r.n_blocks == 2 and r.captured == 2            # the novel env is not archived
+    p2 = p1.copy()
+    p2[2] = [850.0, 850.0, 850.0]                         # a respawn jump: counted, not archived
+    r.observe(p2, real=np.array([True, True, True]), states=_states(p2))
+    assert r.n_blocks == 2 and r.counts[r.keys(p2[2:])[0]] == 1
+    pool = _states(np.zeros((10, 3)))
+    out = r.mix(pool, 4)
+    assert np.all(out["origin"][:6] == 0.0)               # the front of the pool is untouched
+    tail = out["origin"][6:]
+    assert np.all(np.isin(tail[:, 0], [150.0, 350.0]))    # archived states only
+    assert np.all(np.abs(out["velocity"][6:, 0] - 100.0) <= 10.0 + 1e-3)
+    # the shell: half the draws come from the deepest quarter by distance (x 150 here)
+    r.shell_frac, r.shell_width = 1.0, 0.25
+    out = r.mix(_states(np.zeros((40, 3))), 40)
+    assert np.all(out["origin"][:, 0] == 150.0)
+    d = r.state_dict()
+    r2 = RareCellReturn((0.0, 0.0, 0.0), (1000.0, 1000.0, 1000.0), 3, cell=100.0,
+                        frac=1.0, arch=True, ring=2, dist_fn=d_fn)
+    assert r2.load_state_dict(d) and r2.n_blocks == 2
+    assert np.array_equal(r2.store[:4], r.store[:4]) and np.array_equal(r2.counts, r.counts)
+    assert r2.block_of[r.block_cell[0]] == 0 and r2.block_of[r.block_cell[1]] == 1
+
+
 RARE = ["--ep-ticks", "400", "--respawn-margin", "0.1", "--respawn-reservoir", "3000",
         "--respawn-novel"]
 LONG = "450560"
@@ -131,6 +171,34 @@ def test_rare_draw_runs_logs_checkpoints_and_resumes():
                + ["--steps", "2048", "--respawn-rare", "0.5", "--respawn-binned", "1"])
     assert bad.returncode != 0 and "--respawn-rare is not wired with" in (bad.stdout + bad.stderr)
     for dd in (d, ROOT / "runs" / run2, ROOT / "runs" / "rare_bad"):
+        shutil.rmtree(dd, ignore_errors=True)
+
+
+@needs_run
+def test_rare_archive_runs_checkpoints_and_resumes():
+    run = "rare_arch"
+    r = _train(run, RARE + ["--respawn-rare", "0.5", "--respawn-rare-arch", "1"], steps=LONG)
+    assert "respawn RARE ARCHIVE: 50% of the non-start, non-novel spawn rows" in r.stdout
+    assert re.search(r"  rare eff [0-9,]+/[0-9,]+ N [0-9,]+", r.stdout), r.stdout[-3000:]
+    assert re.search(r"archive [0-9,]+ cells / [0-9,]+ states captured, [1-9][0-9,]* spawned",
+                     r.stdout), r.stdout[-3000:]
+    d = ROOT / "runs" / run
+    cfg = json.loads((d / "run.json").read_text(encoding="utf-8"))["config"]
+    assert cfg["respawn_rare"] == 0.5 and cfg["respawn_rare_arch"] == 1
+    ck = torch.load(d / "ckpt_final.pt", map_location="cpu", weights_only=False)
+    rr = next(iter(ck["respawn_rare"].values()))
+    assert len(rr["arch_cell"]) > 0 and len(rr["arch_store"]) == 4 * len(rr["arch_cell"])
+    run2 = "rare_arch_re"
+    shutil.rmtree(ROOT / "runs" / run2, ignore_errors=True)
+    r2 = _run([sys.executable, "-u", str(TRAIN), "--run", run2, "--ckpt",
+               str(d / "ckpt_final.pt")] + SMOKE + ["--respawn-reservoir", "3000",
+                                                    "--steps", "471040"])
+    assert r2.returncode == 0, r2.stdout[-4000:] + r2.stderr[-4000:]
+    assert "respawn_rare_arch" in r2.stdout and "RARE ARCHIVE" in r2.stdout
+    bad = _run([sys.executable, "-u", str(TRAIN), "--run", "rare_arch_bad"] + SMOKE
+               + ["--steps", "2048", "--respawn-rare-arch", "1"])
+    assert bad.returncode != 0 and "needs --respawn-rare > 0" in (bad.stdout + bad.stderr)
+    for dd in (d, ROOT / "runs" / run2, ROOT / "runs" / "rare_arch_bad"):
         shutil.rmtree(dd, ignore_errors=True)
 
 

@@ -2062,8 +2062,14 @@ class RareCellReturn:
     * One cell size and one share, the same on every map; no map quantity.
     """
 
+    # --respawn-rare-arch: a move longer than this between two decisions is a respawn or a
+    # teleport, not flight (maxvel 4,000 u/s x 40 ms = 160 u), so the state is not archived
+    JUMP = 512.0
+
     def __init__(self, mins, maxs, n_envs: int, cell: float = 256.0,
-                 frac: float = 0.5) -> None:
+                 frac: float = 0.5, arch: bool = False, ring: int = 4,
+                 dist_fn=None, shell_frac: float = 0.5, shell_width: float = 0.25,
+                 seed: int = 89) -> None:
         self.cell = float(cell)
         self.frac = float(frac)
         if not (self.cell > 0.0 and 0.0 < self.frac <= 1.0):
@@ -2076,6 +2082,37 @@ class RareCellReturn:
         self.prev = np.full(self.n, -1, np.int64)
         self.entries = 0                       # cumulative real entries counted
         self._last = None                      # (cells, eff cells, rare-draw N median)
+        # --respawn-rare-arch: Go-Explore's ARCHIVE - per cell a ring of the states at which
+        # REAL envs entered it, kept with no pre-death margin (a cell that leads nowhere is
+        # returned to, its N grows with every return, and it stops being drawn)
+        self.arch = bool(arch)
+        self.ring = max(1, int(ring))
+        self.dist_fn = dist_fn
+        self.shell_frac = float(np.clip(shell_frac, 0.0, 1.0))
+        self.shell_width = float(np.clip(shell_width, 1e-3, 1.0))
+        self.rng = np.random.default_rng(int(seed))
+        self.prev_pos = None
+        self.block_of = None
+        if self.arch:
+            self.block_of = np.full(len(self.counts), -1, np.int64)
+            self._alloc(4096)
+            self.n_blocks = 0
+            self.captured = 0
+            self.spawned_arch = 0
+
+    def _alloc(self, cap: int) -> None:
+        """(Re)size the archive to ``cap`` cell blocks of ``ring`` states, keeping the old ones."""
+        old = getattr(self, "store", None)
+        st = np.zeros(cap * self.ring, dtype=STATE_DTYPE)
+        fill = np.zeros(cap, np.int64)
+        pos = np.zeros(cap, np.int64)
+        bcell = np.zeros(cap, np.int64)
+        bd = np.full(cap, np.inf, np.float64)
+        if old is not None:
+            k = len(self.fill)
+            st[:k * self.ring] = old
+            fill[:k], pos[:k], bcell[:k], bd[:k] = self.fill, self.pos, self.block_cell, self.block_d
+        self.store, self.fill, self.pos, self.block_cell, self.block_d = st, fill, pos, bcell, bd
 
     def keys(self, pos) -> np.ndarray:
         p = np.asarray(pos, np.float64).reshape(-1, 3)
@@ -2083,10 +2120,13 @@ class RareCellReturn:
                      0, self.dims - 1)
         return ix[:, 0] + self.dims[0] * (ix[:, 1] + self.dims[1] * ix[:, 2])
 
-    def observe(self, pos, real=None) -> None:
+    def observe(self, pos, real=None, states=None) -> None:
         """This slot's (n, 3) positions, once per decision: count the REAL envs
-        that entered a cell since the previous decision."""
-        k = self.keys(pos)
+        that entered a cell since the previous decision. With the archive on,
+        ``states`` (this slot's state rows, ``STATE_DTYPE``) gives the entering
+        real envs' states, archived unless the move was a respawn jump."""
+        p = np.asarray(pos, np.float64).reshape(-1, 3)
+        k = self.keys(p)
         if len(k) != self.n:
             raise ValueError(f"rare-cell return wants {self.n} envs, got {len(k)}")
         ent = k != self.prev
@@ -2095,7 +2135,75 @@ class RareCellReturn:
         if ent.any():
             np.add.at(self.counts, k[ent], 1)
             self.entries += int(ent.sum())
+            if self.arch and states is not None and self.prev_pos is not None:
+                flown = ent & (np.linalg.norm(p - self.prev_pos, axis=1) < self.JUMP)
+                if flown.any():
+                    self._capture(np.flatnonzero(flown), k, states)
         self.prev = k
+        if self.arch:
+            self.prev_pos = p.copy()
+
+    def _capture(self, envs: np.ndarray, k: np.ndarray, states) -> None:
+        """Write the entering envs' states into their cells' rings (one env per cell per call)."""
+        cells, first = np.unique(k[envs], return_index=True)
+        envs = envs[first]
+        new = self.block_of[cells] < 0
+        if new.any():
+            nn = int(new.sum())
+            if self.n_blocks + nn > len(self.fill):
+                self._alloc(max(2 * len(self.fill), self.n_blocks + nn))
+            ids = np.arange(self.n_blocks, self.n_blocks + nn)
+            self.block_of[cells[new]] = ids
+            self.block_cell[ids] = cells[new]
+            if self.dist_fn is not None:
+                org = np.asarray(states["origin"][envs[new]], np.float64)
+                self.block_d[ids] = np.asarray(self.dist_fn(org), np.float64)
+            self.n_blocks += nn
+        b = self.block_of[cells]
+        self.store[b * self.ring + self.pos[b]] = states[envs]
+        self.pos[b] = (self.pos[b] + 1) % self.ring
+        self.fill[b] = np.minimum(self.fill[b] + 1, self.ring)
+        self.captured += len(b)
+
+    def mix(self, pool: np.ndarray, n_rows: int, vel_scale=(0.9, 1.1)) -> np.ndarray:
+        """``--respawn-rare-arch``: overwrite the LAST ``n_rows`` rows of an already-built pool
+        (the reservoir part; novel rows are written at its front) with archived states: a cell
+        by ``1 / sqrt(1 + N)`` - half of the draws among the deepest ``shell_width`` of the
+        archived cells by field distance, the rest among all - then one of its ring's states,
+        its speed scaled like a reservoir row's."""
+        n_rows = int(min(max(n_rows, 0), len(pool)))
+        if not self.arch or n_rows == 0 or self.n_blocks == 0:
+            return pool
+        nb = self.n_blocks
+        w = 1.0 / np.sqrt(1.0 + self.counts[self.block_cell[:nb]].astype(np.float64))
+        n_sh = int(round(n_rows * self.shell_frac)) if self.dist_fn is not None else 0
+        pick = []
+        if n_sh > 0:
+            d = self.block_d[:nb]
+            ok = np.isfinite(d)
+            if ok.any():
+                thr = np.quantile(d[ok], self.shell_width)
+                sh = np.flatnonzero(ok & (d <= thr))
+                ws = w[sh]
+                pick.append(sh[self.rng.choice(len(sh), n_sh, p=ws / ws.sum())])
+            else:
+                n_sh = 0
+        n_all = n_rows - n_sh
+        if n_all > 0:
+            pick.append(self.rng.choice(nb, n_all, p=w / w.sum()))
+        b = np.concatenate(pick)
+        slot = self.rng.integers(0, self.fill[b])
+        rows = self.store[b * self.ring + slot].copy()
+        scale = self.rng.uniform(vel_scale[0], vel_scale[1], len(rows)).astype(np.float32)
+        rows["velocity"] = rows["velocity"] * scale[:, None]
+        out = np.array(pool, dtype=STATE_DTYPE, copy=True)
+        out[len(out) - len(rows):] = rows
+        self.spawned_arch += len(rows)
+        share = np.bincount(np.searchsorted(np.unique(b), b))
+        self._last = (int(len(np.unique(b))), float(len(b) ** 2 / np.sum(share ** 2)),
+                      float(np.mean(self.counts[self.block_cell[b]])),
+                      float(np.median(self.counts[self.block_cell[b]])))
+        return out
 
     def weights(self, origins) -> np.ndarray:
         """Per-state draw probabilities for the reservoir's ``origins``
@@ -2118,6 +2226,9 @@ class RareCellReturn:
 
     def stats(self) -> dict:
         out = {"entries": self.entries, "counted_cells": int((self.counts > 0).sum())}
+        if self.arch:
+            out.update({"arch_cells": int(self.n_blocks), "captured": int(self.captured),
+                        "arch_spawned": int(self.spawned_arch)})
         if self._last is not None:
             out.update({"cells": self._last[0], "eff": self._last[1],
                         "n_draw": self._last[2], "n_med": self._last[3]})
@@ -2127,6 +2238,9 @@ class RareCellReturn:
         st = self.stats()
         head = (f"rare{tag}: {st['counted_cells']:,} cells entered by real episodes "
                 f"({self.cell:g}u), {st['entries']:,} entries")
+        if self.arch:
+            head += (f", archive {st['arch_cells']:,} cells / {st['captured']:,} states "
+                     f"captured, {st['arch_spawned']:,} spawned")
         if "cells" not in st:
             return head + "; no draw yet"
         return head + (f"; reservoir over {st['cells']:,} cells, draw spread over "
@@ -2134,8 +2248,15 @@ class RareCellReturn:
                        f"(cell median {st['n_med']:,.0f})")
 
     def state_dict(self) -> dict:
-        return {"counts": self.counts.copy(), "dims": self.dims.copy(),
-                "cell": self.cell, "entries": int(self.entries)}
+        d = {"counts": self.counts.copy(), "dims": self.dims.copy(),
+             "cell": self.cell, "entries": int(self.entries)}
+        if self.arch:
+            nb = self.n_blocks
+            d.update({"ring": self.ring, "arch_store": self.store[:nb * self.ring].copy(),
+                      "arch_fill": self.fill[:nb].copy(), "arch_pos": self.pos[:nb].copy(),
+                      "arch_cell": self.block_cell[:nb].copy(),
+                      "arch_d": self.block_d[:nb].copy()})
+        return d
 
     def load_state_dict(self, d) -> bool:
         if not isinstance(d, dict) or d.get("counts") is None:
@@ -2146,4 +2267,14 @@ class RareCellReturn:
             return False
         self.counts = np.asarray(d["counts"], np.int64).copy()
         self.entries = int(d.get("entries", 0))
+        if self.arch and d.get("arch_cell") is not None and int(d.get("ring", -1)) == self.ring:
+            nb = len(d["arch_cell"])
+            if nb > len(self.fill):
+                self._alloc(nb)
+            self.store[:nb * self.ring] = d["arch_store"]
+            self.fill[:nb], self.pos[:nb] = d["arch_fill"], d["arch_pos"]
+            self.block_cell[:nb], self.block_d[:nb] = d["arch_cell"], d["arch_d"]
+            self.block_of[:] = -1
+            self.block_of[self.block_cell[:nb]] = np.arange(nb)
+            self.n_blocks = nb
         return True
