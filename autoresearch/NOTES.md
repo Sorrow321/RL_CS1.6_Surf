@@ -612,3 +612,19 @@ misleading: the agent's surviving lines pass through `*99`'s box.
 * **Reading:** this is the human's maneuver, done by the greedy policy. What remains is the
   slot's west end (the thin wall's opening) and the corridor beyond. The arm keeps running
   to its budget (~11:00).
+
+### 08:42 UTC: the route came and went at T 2; consolidating from the snapshot that flew it
+
+* **r1b4_irn after the 27.93% eval:**
+  * evals 1,127M / 1,203M / 1,279M scored 27.23 / 26.48 / 27.45; the greedy line slid back
+    to the wall and earlier deaths;
+  * reservoir min-depth back to 73.42% (from 72.01%), so the post-death-point states were
+    lost;
+  * T back at the cap of 2 (stuck 279M). The high-T wobble again: the route was found but
+    not held.
+* **Stopped at ~1.33B.** Consolidation arm **r1b4_irn2**, launched 08:40:
+  * resume of `runs/irn_snap1.pt`: r1b4_irn at 1,072.2M, md5 8a1abba2..., ~20M steps after
+    the eval that flew the route in 2/9 episodes, T 1.74;
+  * same `--race-ratchet --respawn-novel --unstuck-patience 5e7 --unstuck-rate 1.0`, plus
+    **`--unstuck-max 1`**, so T halves from 1.74 and cannot climb past 1;
+  * +1.4e9 steps, to ~10:45, leaving the wrap-up window.
