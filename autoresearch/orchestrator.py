@@ -131,7 +131,9 @@ def prepare_slot(st, k: int, base: str) -> dict:
 
 PROMPT = ("/loop You are fork-and-flush branch agent {agent} (round {round} of {rounds}) on "
           "surf_src_sidistic. Your identity, deadlines and the incumbent are in AR_BRANCH.json. "
-          "On EVERY wakeup: re-read AR_BRANCH.json (if now >= wrapup_at, do only the Wrap-up), "
+          "On EVERY wakeup: re-read AR_BRANCH.json (if now >= wrapup_at, do only the Wrap-up; "
+          "before wrapup_at never wrap up or stop this loop: stopping a run does not end the "
+          "round, so if RESULT.json says final, set it back to false and start your next idea), "
           "follow autoresearch/PROTOCOL.md exactly (read it and CLAUDE.md now if this is your "
           "first wakeup, then autoresearch/NOTES.md), keep RESULT.json and autoresearch/NOTES.md "
           "current, and schedule the next wakeup (20-30 min while a run trains).")
@@ -176,6 +178,30 @@ def send(slot, text: str) -> None:
     win = f"{TMUX}:b{slot['k']}"
     sh(["tmux", "send-keys", "-t", win, "-l", text], check=False)
     sh(["tmux", "send-keys", "-t", win, "Enter"], check=False)
+
+
+EARLY_S = 1800      # RESULT.json final this long before wrapup_at is an early wrap-up
+
+
+def tell_early_wrapup(slot, now: float, wrapup_at: float) -> bool:
+    """Whether to re-arm a branch that wrapped up early, recording that it was told.
+
+    r1b3 (2026-10-20) stopped a run at 07:57, took that for the end of its round, did the
+    Wrap-up and stopped its loop, and its slot sat idle for the 3.9 h left before wrapup_at.
+    A branch is told once each time its RESULT.json goes final more than EARLY_S before
+    wrapup_at; RESULT.json back at final false re-arms the check."""
+    try:
+        res = json.loads((Path(slot["dir"]) / "RESULT.json").read_text(encoding="utf-8"))
+        final = res.get("final") is True
+    except (OSError, ValueError, AttributeError):
+        return False
+    if not final:
+        slot["early_told"] = False
+        return False
+    if slot.get("early_told") or now >= wrapup_at - EARLY_S:
+        return False
+    slot["early_told"] = True
+    return True
 
 
 def box_py(*args, env=None):
@@ -512,6 +538,12 @@ def cmd_run(a):
                 slot["restarts"] += 1
                 log(f"{slot['agent']}: session gone - restart {slot['restarts']}")
                 launch(st, slot, resume=True)
+            elif tell_early_wrapup(slot, now, st["round_end"] - CFG["wrapup_minutes"] * 60):
+                send(slot, PROMPT.format(agent=slot["agent"], round=st["round"],
+                                         rounds=CFG["rounds"]))
+                left = (st["round_end"] - CFG["wrapup_minutes"] * 60 - now) / 3600
+                log(f"{slot['agent']}: RESULT.json final {left:.1f} h before wrapup_at - "
+                    "its loop re-armed (the round is not over)")
         save_state(st)
         if (AR_HOME / "WRAPUP").exists():
             (AR_HOME / "WRAPUP").unlink()

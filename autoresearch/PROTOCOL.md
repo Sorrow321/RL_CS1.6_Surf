@@ -46,6 +46,12 @@ You run inside `/loop` (self-paced). Every wakeup:
    Wake sooner only while you are actively building or a launch is in flight. One waiter,
    no polling loops, no Monitor spam: the user pays for every wakeup.
 
+Stopping a run does not end your round. Until `wrapup_at`, a failed idea is written down and
+followed by the next one (your ranking in NOTES.md, or a new idea). Release the box while you
+analyse or build, but keep the loop going: an early Wrap-up leaves this branch's slot empty for
+the rest of the round. The orchestrator re-arms the loop of a branch whose RESULT.json says
+final before `wrapup_at`.
+
 ## Experiments: short first, long only when earned
 
 * **First test of any idea: at most 30 min of box time.** On a 3090 the incumbent recipe
@@ -167,7 +173,7 @@ python autoresearch/box.py release --agent $AR_AGENT
  "summary": "<= 10 lines: what you tried, what it did at matched steps, what to try next"}
 ```
 
-## Wrap-up (at `wrapup_at`, or when a message says ROUND OVER)
+## Wrap-up (at `wrapup_at`, or when a message says ROUND OVER; never before)
 
 1. Launch nothing new. Pull the best run, with its checkpoint (`--ckpt`).
 2. Score it. Write `RESULT.json` with `"final": true` and the summary.

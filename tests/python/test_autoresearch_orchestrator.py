@@ -215,3 +215,31 @@ def test_the_winners_recipe_travels_with_it(tmp_path, monkeypatch):
     monkeypatch.setitem(orchestrator.CFG, "lineage_keys", [])
     fork = orchestrator.harness_base(win, repo=r, since=base)
     assert json.loads(_git(r, "show", f"{fork}:autoresearch/config.json"))["incumbent_recipe"] == ["--b"]
+
+
+def test_a_branch_that_wraps_up_early_is_told_once(tmp_path):
+    """r1b3 (2026-10-20) wrapped up at 07:57 with wrapup_at at 11:50 and its slot sat idle."""
+    slot = {"agent": "r1b3", "dir": str(tmp_path)}
+    wrapup_at = 100_000.0
+    early = wrapup_at - 4 * 3600
+
+    def result(final):
+        (tmp_path / "RESULT.json").write_text(json.dumps({"agent": "r1b3", "final": final}),
+                                              encoding="utf-8")
+
+    assert not orchestrator.tell_early_wrapup(slot, early, wrapup_at)          # no RESULT.json
+    result(False)
+    assert not orchestrator.tell_early_wrapup(slot, early, wrapup_at)          # still working
+    result(True)
+    assert orchestrator.tell_early_wrapup(slot, early, wrapup_at)              # wrapped up early
+    assert not orchestrator.tell_early_wrapup(slot, early + 60, wrapup_at)     # told once
+    result(False)                                                              # it carried on
+    assert not orchestrator.tell_early_wrapup(slot, early + 120, wrapup_at)
+    result(True)                                                               # and went final again
+    assert orchestrator.tell_early_wrapup(slot, early + 180, wrapup_at)
+    slot["early_told"] = False
+    late = wrapup_at - orchestrator.EARLY_S
+    assert not orchestrator.tell_early_wrapup(slot, late, wrapup_at)           # a normal Wrap-up
+    (tmp_path / "RESULT.json").write_text("[1, 2]", encoding="utf-8")
+    assert not orchestrator.tell_early_wrapup(slot, early, wrapup_at)          # not a dict
+    assert "never wrap up" in orchestrator.PROMPT
