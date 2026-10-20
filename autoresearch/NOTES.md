@@ -422,3 +422,18 @@ steps/s. Measure it on your box in the first minute and size `--steps` to the ti
 * Read: mind below ~72.5% (a harvested state past the pit) and `sil gain` falling as the critic
   catches up; the eval frontier past 27.6% / CP2. A side effect to watch: SIL can also make the
   dive itself creep west (a deeper death, not a crossing) - judged by CP2, not by the score.
+
+### 2026-10-20 09:19 UTC - r1b3_ges (Go-Explore + SIL) DEGRADES the line; relaunched as r1b3_gest with the sampling temperature off
+
+* **r1b3_ges** (nou's 1.5B ckpt + cells 0.5 / front 0.05 / margin 0.25 + vel-rot 0.5 + `--sil-coef 0.1`,
+  3090, stopped at ~1.82B): evals 27.51 / 27.49 / **16.05** / 27.37 (median 14.6) / **20.53**%; mind
+  73.7-73.8%, nothing past the pit; SIL buffer at its 50k cap every rollout (~40% of transitions beat
+  the critic), SIL loss rising 2.3 -> 3.8 as T rose 1.6 -> 2.0. The arm without SIL (gec) held
+  27.3-27.5%, so SIL is what broke the line.
+* **Why (a bad interaction, not a SIL verdict):** under `--unstuck` the rollout draws the view from
+  N(mu, (1+T) sigma) and SIL scores those stored z under the UNTEMPERED policy, so at T = 2 it imitates
+  high-temperature noise with large gradients. Anyone combining `--sil-coef` with `--unstuck` should
+  either turn the sampling temperature off or score SIL rows under the temperature they were drawn at.
+* **r1b3_gest (launched 09:17):** the same + `--unstuck-temp 0` (T still scales the entropy and novelty
+  coefficients, no longer the sampling), so SIL imitates the policy's own on-distribution actions and
+  the frontier diversity comes from the cell / rotation starts. +1.6B budget; runs to the wrap-up.
