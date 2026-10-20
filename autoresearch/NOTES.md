@@ -268,3 +268,29 @@ misleading: the agent's surviving lines pass through `*99`'s box.
     archive (provenance above, no demo).
   * Watch the reservoir min-depth: it falls below 72.5% only when a training episode
     passes the slot and lives 2 s more. Then the eval frontier.
+
+### 02:30 UTC: Arm C at 1.03B (25 min) - first sign of learning in the D-ramp region; extended
+
+* **Evals** (frontier u / score): 25,009 / 25.58, 26,737 / 27.35, 26,768 / 27.38,
+  26,800 / 27.41 (750M-976M). Still at the wall.
+* **Reservoir:** min-depth 74.28% -> 73.92%. The checkpoint's 20k-state sample holds 125
+  lower-room states (98 heading west, 0 east); the deepest is d 72,432. No training episode
+  has passed the slot.
+* **Probe 4 rerun on Arm C's 1,027.6M checkpoint** (same 14 fast east-heading starts near
+  the D-ramp):
+
+  | | incumbent | Arm C |
+  |---|---|---|
+  | episodes that come back west | 0/14 | 6/14 (after 15-29% ramp contact) |
+  | best d reached | 72,134 | 71,428-71,850 (x ~3,470-3,780) |
+  | how it ends | fail floor | still the fail floor |
+
+  * Arm C arrives too low (z ~11,000; it needs ~11,450) and too slow (~900 u/s).
+  * Mean d_min over the 14: 72,670 (incumbent) -> 72,290 (Arm C).
+* **Decision:** extend to the full 1e9-step budget (stops at 1.75B, ~03:30 UTC).
+  * The criterion is a sub-skill that is moving, not a gate yet.
+  * T is starting to rise (patience used up at 1.03B), so exploration increases.
+  * Box deadline extended to 04:29 UTC.
+* **Ops:** `box.py pull --ckpt` truncated twice today (r1b2 and r1b4): the trainer rewrites
+  ckpt_latest.pt mid-copy. `cp` it to a snapshot on the box first, then scp the snapshot and
+  check its md5.
