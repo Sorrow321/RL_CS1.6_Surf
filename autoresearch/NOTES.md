@@ -231,3 +231,28 @@ steps/s. Measure it on your box in the first minute and size `--steps` to the ti
   (6 tests). Launched as **r1b3_vrot** (P 0.5, F 0.05), warm from the incumbent, 400M, against
   r1b3_ctl. Only ~2% of the reservoir rows fall in the zone x P (the uniform reservoir holds ~4% of
   its states there), ~9 rotated episodes per iteration.
+
+### 2026-10-20 03:28 UTC - vel-rot NULL; vz-keyed search saturates at the pit too; cell-uniform frontier respawns launched
+
+* **r1b3_vrot** (`--respawn-vel-rot 0.5 --respawn-vel-rot-front 0.05`, warm, stopped at 1.033B):
+  the rotated share grew 2% -> 14% of reservoir rows as the zone filled; evals 27.0 / 27.4 / 27.4 /
+  27.4% (best 27.427); mind 74.15-74.51% throughout. NULL: ~280M steps of random velocity
+  directions at the policy's own frontier positions, no training episode past the pit.
+  (It ran at ~94k steps/s for ~15 min while a CPU search shared the box: on this 4080 box a
+  concurrent 8-thread search cuts the trainer ~3x. Do not share the CPUs.)
+* **Search, vz-keyed** (`explore_phase1 --cell-vz 6`, new, commit 4bf7dc5; 8 threads, 20 min, 5.5M
+  runs, same 650 roots): 4,566 cells (vs 1,262 position-only), saturated by ~3 min (4,005) ->
+  4,288 at 19 min. Deepest d 70,453 (27.94%), again every deep state FALLING (vz ~-1,000) at
+  x ~2,630. Random macro-actions do not find a level corridor entry even when level states own
+  their own cells.
+* **The plates (bsp AABBs + point probes, ANALYSIS ONLY):** thin lethal plates *84 (z 12,256,
+  x 3,686-4,476) and *45 (z 11,904, x 4,194-5,344) lie under the agent's apex and U-turn; the
+  human's 24.5 s point (4,041, 661, 11,814) is BELOW *45, i.e. the human reaches the turn-around
+  ramps (x 4,600-5,800, z 11,000-11,330) under the plates. So the line splits at the ~22 s launch
+  ramp (the agent launches up to z 12,360), ~3 s before the death. A short perturbation at the
+  U-turn cannot produce it, which fits every null so far.
+* **New: `--respawn-cells S` (commit 7b954d7)** - Go-Explore SELECTION over the policy's own states:
+  a share S of the reservoir rows drawn uniformly over cells (256 u x 6 vz x 4 horizontal speed)
+  among reservoir states within F x d0 (`--respawn-cells-front`, 0.05) of the deepest one. The
+  policy is the explorer. Default off; 11 tests incl. flag-off identity. Launched **r1b3_cells**
+  (S 0.5, F 0.05, warm, 400M): 1,843 rows per pool over 83-89 zone cells.
