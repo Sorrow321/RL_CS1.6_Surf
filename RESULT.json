@@ -3,19 +3,18 @@
  "round": 1,
  "final": false,
  "best": {
-  "score": 27.444,
-  "eval_file": "/home/steam/ar/runs/r1b3/r1b3_cells/traj_0976748544.jsonl",
-  "run": "r1b3_cells",
-  "step": 976748544,
-  "ckpt": "/home/steam/ar/runs/r1b3/r1b3_ctl/ckpt_final.pt",
+  "score": 27.517,
+  "eval_file": "/home/steam/ar/runs/r1b3/r1b3_nou/traj_1402994688.jsonl",
+  "run": "r1b3_nou",
+  "step": 1402994688,
+  "ckpt": "/home/steam/ar/runs/r1b3/r1b3_nou/ckpt_final.pt",
   "recipe": [
-   "--respawn-cells",
-   "0.5",
-   "--respawn-cells-front",
-   "0.05"
+   "(config.incumbent_recipe, from scratch)",
+   "--view-ou-sigma",
+   "0"
   ],
-  "resume_from": "/home/steam/ar/incumbent/ckpt.pt",
-  "commit": "eaaa52b"
+  "resume_from": "r1b3_sou2/ckpt_final.pt (lineage r1b3_sou 0-600M -> r1b3_sou2 600M-1.1B -> r1b3_nou 1.1-1.5B, all from scratch)",
+  "commit": "d8d552e"
  },
- "summary": "04:00 UTC. Five generic mechanisms tested warm at the CP2 wall (from the incumbent, 4080, matched vs control r1b3_ctl 27.2-27.4%): ungated held view offsets (collapse), frontier-gated off-policy offsets, random velocity directions at frontier respawns, cell-uniform frontier respawns - all NULL (best 27.444, reservoir never past the pit). Reward-free Go-Explore search from the policy's own line (position and position+vz cells) saturates at the pit; the kill-aware field keeps the same dip. CP2 = a line split at the ~22 s launch ramp under two lethal plates. Now: from-scratch recipe + T-scaled frontier-gated held offsets (r1b3_sou) against GR's trap-exit 529M / window 755M."
+ "summary": "05:55 UTC. Best 27.517 from a FROM-SCRATCH lineage: incumbent recipe + T-scaled frontier-gated held view offsets (r1b3_sou, at the window by 302M while the offsets were still off at T=0 - run variance), stuck at the window 800M steps once the offsets fired (r1b3_sou2, T to 2), then with the offsets OFF it passed the window in <75M and reached the CP2 wall (r1b3_nou, 27.5% at 1.40B). Warm CP2 arms from the incumbent: held offsets, velocity rotation, cell-uniform respawns all NULL (27.2-27.44%). The offsets BLOCK learning at the frontier (clear negative). CP2 needs a level entry into a ~220 u corridor from below (a ramp reversal); reward-free search cannot find it either."
 }

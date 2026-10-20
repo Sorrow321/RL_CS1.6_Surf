@@ -326,3 +326,20 @@ steps/s. Measure it on your box in the first minute and size `--steps` to the ti
   A quick pass says the offsets were BLOCKING the cut-back. Note for resumes: a checkpoint carrying
   the OU flags refuses `--view-ou-sigma 0` alone (the restored period/temp/frac/front/offpol each
   need a sigma) - pass all six.
+
+### 2026-10-20 05:56 UTC - THE HELD OFFSETS WERE BLOCKING THE WINDOW: with them off the stuck checkpoint passes in < 75M steps; new branch best 27.517 (from scratch)
+
+* **r1b3_nou** (sou2's 1.1B ckpt, every `--view-ou-*` off, T 2 restored, +400M): evals 1.101B 20.76 ->
+  **1.177B 24.45 (CP1, through the hole)** -> 1.252B 27.44 -> 1.327B 27.45 -> **1.403B 27.517** ->
+  1.478B 27.50; mind 74.4%, T falling 2.0 -> 0.3 after the new best. The same checkpoint had sat at
+  the window for 800M steps with the offsets live (sou2, gew). So the frontier-gated off-policy held
+  offsets did not just fail to help: they BLOCKED the cut-back the plain T = 2 rollouts learn in one
+  eval period. Likely mechanism: 10-15% of the zone's decisions (the zone being the window) left the
+  PPO pool and the rest learned around 1.6 s offset windows. **Do not use `--view-ou-*` at the frontier.**
+* **The lineage r1b3_sou -> sou2 -> nou is from scratch** (the incumbent recipe; the OU flags were
+  inert at T = 0 to ~500M, live 500M-1.1B, off after): first-ramp trap < 151M, window wall 302M,
+  through the window 1.177B, CP2 wall 1.25B, best eval **27.517 at 1.403B** (branch best, above the
+  round-0 best 27.5). Its 1.5B ckpt_final is pulled: runs/r1b3/r1b3_nou/ckpt_final.pt.
+* **r1b3_gec (launched 05:55):** that checkpoint (at the CP2 wall, OU off) + `--respawn-cells 0.5
+  --respawn-cells-front 0.05 --respawn-cells-margin 0.25 --respawn-vel-rot 0.5` (Go-Explore in the
+  loop without the offsets), +400M.
