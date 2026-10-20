@@ -411,3 +411,25 @@ misleading: the agent's surviving lines pass through `*99`'s box.
     the merged file.
 * **Evals since the last entry:** 2,128M frontier 26,907 u; 2,203M frontier 26,886 u
   (about 27.50-27.52). Still the wall.
+
+### 04:45 UTC: the slot from the archive's best approaches - still too low; aiming C3 at the higher dive
+
+* **C2 evals** 2,354M-2,581M: frontier 26,844-26,890 u, flat. Reservoir min-depth 73.85%.
+* **Probe 5** (C2's 2.6B snapshot, md5 39469b96...):
+  * 14 starts at GE5's fastest slot-approach states: z 11,351-11,377, heading west at
+    ~1,229 u/s, vz -214..+89, x 3,550-4,060.
+  * All die in 0.4-0.8 s on the lower sheet at x ~3,050-3,180, z ~11,140-11,200 (d_min
+    70,953-71,121).
+  * They are ~250 u too low and too slow. The human crosses x 2,882 at z 11,469, level at
+    1,836 u/s, having left the D-ramp at ~1,800 u/s while climbing (vz +260..+422).
+  * The policy's own D-ramp exits run ~900 u/s and ~500 u lower. That speed-and-height gap
+    will not close this round at the rate it is closing now.
+* **C3 aims at the reachable gain instead: the HIGHER DIVE** (GE3/GE5 best chains, 27.91-27.93%;
+  r1b2's 27.90).
+  * Spawn file `c3_spawns.npy` (md5 7a1bcdba...): the 196,622 broad states plus the chains
+    to the 300 deepest cells of GE3 and GE5, kept at d >= 70,883 (1,041 approach states,
+    weighted x30, 13.7% of the file).
+  * The selection is generic: approaches to the deepest points the policy-rooted search
+    reached, never past the policy's own best.
+  * Swapped into C2 live at step 2,640,838,656. C3 resumes C2's final checkpoint with the
+    same file.
