@@ -359,3 +359,13 @@ the greedy detour appeared at 1.20B.
   EVAL'S run directory (ckpt_final.pt, else ckpt_latest.pt) and ignores RESULT.json's ckpt. The
   milestone ckpt_<step>.pt one update before the best eval must therefore be placed there.
 * This box's upload is ~35 KB/s right now: an 80 MB ckpt takes ~40 min. Pull checkpoints early.
+
+### 06:15 UTC - pulling checkpoints over a throttled link
+
+* `box.py pull --ckpt` timed out at its 30-min scp limit with 56 of 80 MB (31 KB/s) and left a
+  truncated ckpt_final.pt (removed). The throttle is PER CONNECTION: splitting the file on the box
+  (`split -b 8M -d ckpt part_`) and fetching the 10 parts in parallel (`rsync --partial`, retries)
+  took 297 s with matching md5.
+* `runs/r1b2/r1b2_nth/ckpt_latest.pt` is now a copy of ckpt_1278738432.pt (md5 9dc75cd9...), the
+  weights one update before the 28.49 eval (CKPT_NOTE.txt says so). That is what the orchestrator
+  hands on from this directory.

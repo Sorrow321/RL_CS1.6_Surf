@@ -7,8 +7,8 @@
   "eval_file": "/home/steam/ar/runs/r1b2/r1b2_nth/traj_1279262720.jsonl",
   "run": "r1b2_nth",
   "step": 1279262720,
-  "ckpt": "/home/steam/ar/runs/r1b2/r1b2_nth/ckpt_final.pt",
-  "ckpt_note": "box has ckpt_1278738432.pt = one PPO update before this eval; ckpt_final.pt is 1,301.3M (22M later), pulling",
+  "ckpt": "/home/steam/ar/runs/r1b2/r1b2_nth/ckpt_latest.pt",
+  "ckpt_note": "copy of the milestone ckpt_1278738432.pt, one PPO update before the 28.49 eval (see CKPT_NOTE.txt in the run dir)",
   "recipe": [
    "--race-ratchet",
    "--noise-tau",
@@ -21,7 +21,9 @@
    "1.0"
   ],
   "resume_from": "incumbent 749.7M (ede4be9a) -> r1b2_ntf 901.3M -> r1b2_nth",
-  "commit": "c330cdc"
+  "commit": "c330cdc",
+  "ckpt_step": 1278738432,
+  "ckpt_md5": "9dc75cd94f6eb7a2effbef6dbb409ba4"
  },
  "summary": "CP2 death = a deliberate air U-turn (D held 1.5 s); the human flies ~1 s more east to a ramp. Built --noise-tau (AR(1)-correlated sampling noise, per-decision distribution unchanged), --noise-tau-frac, --noise-tau-cond (exact conditional credit). All-env noise ran the KL away (arms 1-2); 25% of envs keeps KL at the iid level (arm 3). Arm 4 = that + ratchet + unstuck T heated to its cap 2 at the wall: training reaches the human's detour region by 1.12B and the GREEDY policy flies the CP2 detour (east, ramp turn, climb back over the old death point at z 11,588) from 1.20B; 28.49 at 1.279B (dies ~1,000 u further west at 29.2 s). Continuing (r1b2_nth2)."
 }
