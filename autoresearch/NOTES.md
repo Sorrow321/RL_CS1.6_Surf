@@ -563,3 +563,28 @@ misleading: the agent's surviving lines pass through `*99`'s box.
     the human's CP2 line), now on a policy with ~2.4B steps of D-ramp practice.
 * **Box:** deadline extended to 11:39 UTC; it must be extended past 11:50, or pulled before
   then, for the wrap-up. Credit $99.28, fleet burn $1.14/h.
+
+### 07:47 UTC: C6 stopped; last arm = INCUMBENT + ratchet + respawn-novel + fast T heating
+
+* **Arm C6, r1b4_rn6** (ratchet + respawn-novel on my lineage), 07:14-07:45, 4.34B -> 4.64B:
+  * evals at frontier 26,766-26,853 u, no crossing.
+* **Reservoir census** (CP2-region states in the checkpoint's 20k reservoir sample; the
+  lower room, x > 3,200 and z < 11,850, is a measurement box only):
+
+  | arm | lower room | of which heading east | D-ramp |
+  |---|---|---|---|
+  | C2 (GE spawns, potential) | 263 | 0 | 219 |
+  | C5 (GE spawns + ratchet) | 825 | 56 | 561 |
+  | C6 (novel + ratchet) | 2 | 0 | 1 |
+
+  * Novel episodes are never harvested, and C6's own episodes do not go there. The
+    ratchet plus HARVESTED practice states (C5) put the most lower-room experience into
+    the reservoir, but C5 still did not cross in 860M steps.
+  * My lineage's view sigma has collapsed to 0.029 (the incumbent's is 0.046).
+* **Last arm, r1b4_irn**, launched 07:45 by `box.py launch --resume`:
+  * the incumbent checkpoint (749.7M, md5 ede4be9a) + `--race-ratchet --respawn-novel
+    --unstuck-patience 5e7 --unstuck-rate 1.0`;
+  * that is r1b1's mechanism pair (it crossed CP2 from scratch at 1,633M) plus r1b2's fast
+    T heating (its warm crossing came ~300M steps after the heating), from a policy neither
+    entrenched by my 2.4B potential-shaped D-ramp steps nor noise-collapsed;
+  * +2.2e9 steps, to ~11:00 UTC; box deadline 11:39 (to extend for the wrap-up).
