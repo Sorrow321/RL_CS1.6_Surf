@@ -1,0 +1,3 @@
+{"agent": "r1b2", "round": 1, "final": false,
+ "best": null,
+ "summary": "No eval yet. Diagnosis: at the CP2 wall the agent holds D for 1.5 s (a deliberate air U-turn toward the goal) and dives into the fail; the human flies straight ~1 s more to a ramp. i.i.d. sampling cannot produce ~25 consecutive off-mode decisions, so built --noise-tau (AR(1)-correlated sampling noise, per-decision distribution and log-prob unchanged). Next: warm resume of the incumbent with --noise-tau 0.5 at the CP2 wall (30 min), then --race-ratchet. First box was power-capped (blocked); waiting for an offer under the caps."}

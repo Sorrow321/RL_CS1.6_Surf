@@ -103,3 +103,49 @@ The docs say how each one works and what it did.
 The 3090 is the reference card in CLAUDE.md (~0.75-0.9e9 steps/h on the older, smaller
 config). With SimBa + normals + the potential channel at 1024 envs, expect roughly 150-250k
 steps/s. Measure it on your box in the first minute and size `--steps` to the time.
+
+## 2026-10-20 01:07 UTC - r1b2 (round 1): what the CP2 death IS, and --noise-tau
+
+### The CP2 wall is a deliberate air U-turn (ANALYSIS of our own evals, no demo used)
+
+Read from `ref_surf/traj_3775397888.jsonl` (9/9 episodes die at 25.2-25.7 s, x 3,007-3,113,
+z 11,17x-11,22x) with a per-tick dump (scratchpad tool `uturn.py`; the row format is
+`record.py`'s: [t, x,y,z, vx,vy,vz, yaw, buttons, onground, progress, reward, pitch, fwd, side]):
+
+* 22.0-23.0 s: the agent flies EAST (heading +8 to +60 deg) at ~1,450-1,800 u/s, rising.
+* **23.0-24.5 s: it holds D (side bin "D") on every tick with the view at +1.2 deg off the
+  velocity (= atan(30/|v|), the per-frame strafe optimum under --yaw-adaptive): a maximal
+  right air-strafe turn, heading +60 -> -178 deg (~240 deg in 1.5 s), vz +431 -> -769.**
+* 24.5-25.3 s: west, falling, into the fail at x ~3,050. The field d falls the whole way
+  (72,890 at 24.0 s -> 70,947 at 25.2 s): the U-turn is exactly what the field gradient asks for.
+* The human (round 0 notes) instead keeps going east to a ramp at x ~5,500 and turns ON the ramp.
+  So the missing behaviour is "do NOT turn for ~1 s" = ~25 consecutive off-mode key decisions.
+  Under i.i.d. sampling with P(D) ~ 0.9 that is ~0.1^25 = 1e-25 per attempt; temperature cannot
+  fix it (it scales per-step noise, not its duration). That is why 1.5-2.3B steps at T = 2-4 never
+  sampled the turn east.
+* `dip/max_survived_depth` at the CP2 wall (surf run, 1.8-4.0B) is 0.2-0.4 reward units
+  (once 1.58); the detour needs ~2.0. The FIRST-trap exit coincided with max_survived_depth
+  jumping to 7.27 (GR at 508M, surf at 1,119M): that exit was a big dip survived.
+
+### --noise-tau SECONDS (new, commit 12aede7, default off, bit-identical)
+
+Every head's rollout sampling noise becomes a stationary AR(1) process, rho = exp(-decision_s /
+tau) per decision: the view heads' Gaussian eps directly, the key heads' Gumbel through
+g = -log(-log Phi(e)) (Gaussian copula). Each decision's action has EXACTLY the policy's
+(tempered) distribution and the stored log-prob is unchanged, so the PPO update is untouched;
+only the duration of a deviation changes (~tau s instead of 40 ms). Published basis: colored
+noise in PPO (Hollenstein et al., AAAI 2024), gSDE (Raffin et al., CoRL 2021). Generic: one
+constant in seconds, nothing from the map. Test: `tests/python/test_noise_tau.py` (marginals =
+softmax / N(mu, sigma), log-prob = the update's recomputation, persistence, 25-decision off-mode
+runs at P(mode) 0.9, flag-off trainer bit-identical to 877a2a6 on a CPU sidistic smoke).
+Composes with --unstuck (the temperature still scales the logits / sigma).
+Refused with --chunk, --yaw-cond, --crl, --tick-ms-schedule.
+
+### Boxes
+
+* 00:44-00:59 nothing under the caps (3090 0.38, 4090 0.455, 5080 0.56 $/h); another branch had
+  the one cheap 5080.
+* 00:59 got 56815694 (RTX 3090 Ti, 0.242 $/h, machine 68144): deploy step 6/6 gpu_health
+  UNHEALTHY (power limit 300 of 450 W, sm 1,380 MHz under load, 60 TFLOPS bf16). Blocked
+  (`gpu_capped`) and released at 01:04 per CLAUDE.md section 1. box.py prints the tail of
+  stdout+stderr, so a deploy failure shows only ssh banners: run gpu_health by hand to see it.
