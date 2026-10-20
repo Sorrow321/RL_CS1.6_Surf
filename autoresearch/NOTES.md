@@ -369,3 +369,22 @@ the greedy detour appeared at 1.20B.
 * `runs/r1b2/r1b2_nth/ckpt_latest.pt` is now a copy of ckpt_1278738432.pt (md5 9dc75cd9...), the
   weights one update before the 28.49 eval (CKPT_NOTE.txt says so). That is what the orchestrator
   hands on from this directory.
+
+### 06:37 UTC - the continuation FORGOT the detour at T 2; consolidation from the 28.49 weights
+
+* r1b2_nth2 (arm 4's 1,301.3M ckpt_final, same flags, the fast schedule re-heated T to 2 within
+  ~100M steps of the 1,279M best):
+  * 1,301.8M: 15.36 (all 9 die before the window, ~15.5 s);
+  * 1,377.3M: 27.46 and 1,452.8M: 27.44, back to the OLD U-turn dive (die 24.9-25.1 s at
+    x ~3,050);
+  * reservoir floor back to 73.5% (from 71.8%).
+  At a sustained T 2 the policy found the detour (1.20-1.28B) and then lost it ~100M steps later:
+  the high-T oscillation sidGEOuEM2 showed at T >= 2.5. PPO at T 2 optimises the TEMPERED
+  policy; the greedy mode drifts.
+* **r1b2_cons** = ckpt_1278738432.pt (the weights behind 28.49) + `--no-unstuck` (T 0, the
+  cannonball consolidation recipe: gbCANunstuck3c) with the ratchet and noise_tau 0.5 / frac 0.25
+  kept; --ckpt-every 75e6; stop at 1,578.7M. The aim is a greedy line that flies the detour
+  reliably, before heating again to explore past it.
+* **Lesson for the recipe:** fast re-heating after a breakthrough destroys it. The unstuck
+  schedule needs a consolidation window after a new best (the default 2e8 patience gives it;
+  the 5e7 warm instrument does not).
