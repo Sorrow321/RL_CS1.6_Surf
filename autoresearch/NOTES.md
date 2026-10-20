@@ -717,3 +717,18 @@ physics as the sim (gravity 800, airaccelerate 100) except maxvelocity 3,500.
   episodes each, noisy). The shaft and lower-opening sets give identical numbers for every
   checkpoint (death in 0.6-0.9 s whatever the action: those demo states need an immediate turn), so
   they are not informative; the greedy line is the entry's measure.
+
+### 16:40 UTC: r2b2_band64x stopped at 6.73B; r2b2_t1 (T cap 1) launched
+
+* band64x 6.0-6.73B: 29 evals, best **28.551** (6,027M); 5 collapses to ~15% (the x ~6,800 ramp
+  stall) and one at 25.1%. Training ceiling 28,187 -> 28,205 u: no real episode entered the cavity.
+* The greedy line DRIFTS: at 6,455M 8 of 9 episodes pass the window into the shaft (best 28.54%,
+  several end on the shaft floor at x 2,512, y -337..-541, i.e. near the lower opening's wall); at
+  6,631-6,706M 7-8 of 9 die in the CP2 pit again at ~24.5 s (27.3%).
+* Diagnosis so far: the cavity's return leg is learned from novel rows, the ramp turn-up is nearly
+  the human's, but the remaining pieces (ramp -> climb, the entry through the lower opening) are
+  precision skills, and the unstuck T has been pinned at its cap 2 since ~2.4B (the eval reach has
+  not improved by 500 u). At T 2 the keys are sampled from logits/3 and the yaw sigma is x3.
+* **r2b2_t1** (16:38): bare resume of band64x's ckpt_latest (6,725,042,176, md5 0f30157f...) with
+  `--unstuck-max 1` (T 2 -> 1; everything else restored, incl. the novel band settings), +1.5e9
+  steps (to 8.2B, ~2 h), evals every 25M. Box extended to 19:37 UTC.
