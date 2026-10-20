@@ -546,3 +546,20 @@ misleading: the agent's surviving lines pass through `*99`'s box.
 * **Plan:** if no crossing by ~07:20, restart as C6 = C5's latest + `--respawn-novel`. That
   is r1b1's other ingredient: an ONLINE novelty spawn that follows the policy, where my
   file is static.
+
+### 07:17 UTC: C5 final (no crossing in ~860M ratchet steps); C6 = my lineage + ratchet + `--respawn-novel` (r1b1's combination, warm)
+
+* **Arm C5, r1b4_gr5**, 05:57-07:13, 3.47B -> 4.34B:
+  * evals at frontier 26,679-26,904 u, best score 27.49; reservoir min-depth 73.5%;
+  * training survived dips up to 1.81 units, yet no episode passed the slot;
+  * T at the cap of 2 for ~660M steps. Stopped by exact pid; snapshot `runs/gr5_last.pt`.
+* **Arm C6, r1b4_rn6**, launched 07:14:
+  * resume of `runs/gr5_last.pt` (ratchet restored) with `--respawn-novel --race-ratchet
+    --unstuck-max 2`;
+  * `--spawn-states ''` switches off the restored Go-Explore file. The trainer restores it
+    from the checkpoint when the flag is None; an empty string disables it.
+  * `--sil-coef 0`; +2.5e9 steps.
+  * This is r1b1's from-scratch combination (ratchet + online novelty spawns, 1,633M to fly
+    the human's CP2 line), now on a policy with ~2.4B steps of D-ramp practice.
+* **Box:** deadline extended to 11:39 UTC; it must be extended past 11:50, or pulled before
+  then, for the wrap-up. Credit $99.28, fleet burn $1.14/h.
