@@ -294,3 +294,30 @@ misleading: the agent's surviving lines pass through `*99`'s box.
 * **Ops:** `box.py pull --ckpt` truncated twice today (r1b2 and r1b4): the trainer rewrites
   ckpt_latest.pt mid-copy. `cp` it to a snapshot on the box first, then scp the snapshot and
   check its md5.
+
+### 03:05 UTC: Arm C at 1.39B (T 1.88) - evals flat, but the D-ramp sub-skill keeps improving
+
+* **Evals** 1,052M-1,354M, scores 27.44 / 27.45 / **27.48** / 27.47 / 27.41:
+  * frontier 26,798-26,868 u; no CP2;
+  * the eval median fell to 20.6% at 1,354M as T rose to 1.88 (the high-T oscillation the
+    round-0 lineage saw).
+* **Reservoir** min-depth 73.79%: no training episode passed the slot.
+* **Probe 4 again** (same 14 fast east-heading D-ramp starts):
+
+  | checkpoint | comes back west | mean survival | mean d_min |
+  |---|---|---|---|
+  | incumbent | 0/14 | 1.5 s | 72,670 |
+  | Arm C 1.03B | 6/14 | 1.5 s | 72,290 |
+  | Arm C 1.39B | 11/14 | 2.2 s (max 4.2 s) | 71,900 |
+
+  * All 14 still die on the fail floor at x 3,500-4,300, z ~10,800-11,000: at the slot's
+    east end, about 450 u too low.
+  * The gradient is real: a better ride gets further west before dying, which pays field
+    progress, and that leads to the slot.
+* **Other branches** (status.md):
+  * r1b2 has 27.90 from `--noise-tau 0.5` (AR(1)-correlated sampling noise). Its CP2 death
+    point moved 500 u west and 190 u up, near the slot's west end, without crossing.
+  * r1b1 and r1b3 are at 27.44-27.46.
+* **Plan:** when Arm C ends (1.75B, ~03:28) resume it from ckpt_final with the same flags
+  (Arm C2, +1e9). Promotion criterion: the probe's mean d_min keeps falling, or the
+  reservoir's min-depth moves below 72.5% (a slot pass in training).
