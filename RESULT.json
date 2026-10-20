@@ -19,5 +19,5 @@
   "resume_from": "incumbent r1b1_ratnovx2/ckpt_final.pt (5,100,797,952)",
   "commit": "38c3bce"
  },
- "summary": "Warm arms at the CP2 wall hole: deep1 28.297, cells1 28.588 (best), cells2/dc1/lowT/tp0 no gain (tp0, no time penalty, degraded to 26.5). arch1 = Go-Explore phase 2: 30% of spawns from a random+surf-primitive search archive rooted at the policy's own reservoir - the first REAL training episodes past the wall (ceiling 28.82% -> 29.56% at 5,344M); evals not yet. Extending arch1."
+ "summary": "CP2 slot wall (x 2,216): analysis (field, geometry, random-action Go-Explore up to 427k cells, WR demo for analysis only) shows a 7.5 s detour loop with a hidden low-ramp surf, and the recipe's objective (ratchet + time-pen 0.5/s) scores the dive into the hole +0.29 vs the perfect route +0.08 over the 20 s horizon: the policy is right to die. Warm arms: deep/cells/band-cells/archive/elite/surf-burst spawns all <= 28.588 (cells1, best); time-pen 0 broke the line (26.4); time-pen 0.001 keeps it (28.0-28.4) and its policy starts surfing the bowl (reservoir bowl surfs 0 -> 11). No crossing yet. New default-off flags: --respawn-snap/-deep/-cells(-band), --spawn-states-elite/-gain/-beyond, --ez-surf. Next: corrected objective + a way to practise the two missing links."
 }
