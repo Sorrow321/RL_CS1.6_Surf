@@ -492,3 +492,59 @@ backward window's bin 11 (d >= 67,213) covers the stretch up to CP2.
 * T reached 2 at ~1.61B. The greedy detour came back ~80M steps later, as in arm 4 (~110M), but it
   oscillates eval to eval. The reservoir floor holds at 67.4% (CP2 crossings in training).
 * No eval beats 28.49 yet. Training continues to ~11:25 (4 more evals), then the wrap-up.
+
+## 2026-10-20 11:10 UTC - r1b2 ROUND 1 LESSON (fork-and-flush, 12 h, one RTX 3090 at 69k steps/s)
+
+**Score: 28.492** (`runs/r1b2/r1b2_nth/traj_1279262720.jsonl`: best episode 28.49%, CP1; 0
+finishes). Incumbent was 27.22, best-ever 27.5. Hand-on weights: `runs/r1b2/r1b2_nth/ckpt_latest.pt`
+= ckpt_1278738432.pt (md5 9dc75cd9...), one PPO update before that eval.
+
+### What CP2 is, and what passes it
+1. **The CP2 death is a deliberate air U-turn.** From ~23.5 s the agent holds D at the strafe
+   optimum toward the goal and dives into the fail. The human flies straight ~1 s more, east to a
+   ramp at (5,554, 454, 11,079), turns on the ramp, and climbs back west over the pit. That is ~25
+   consecutive off-mode key decisions: i.i.d. sampling never produces it at any temperature
+   (1.5-2.3B steps at T 2-4 in round 0).
+2. **Temporally correlated sampling noise finds it.** `--noise-tau 0.5` (AR(1) noise on every
+   head, each decision's distribution and log-prob unchanged) on 25% of envs (`--noise-tau-frac
+   0.25`), plus `--race-ratchet`, plus the unstuck temperature at its cap of 2:
+   * the reservoir fills with states in the detour region (x 4.5-6.5k, z ~11.0-11.6k) within
+     ~30M steps of T reaching 2;
+   * the GREEDY policy flies the full detour ~110M steps later (east, ramp turn at 1,850 u/s,
+     climb back over the old death point at z 11,588);
+   * 28.49 at 1.279B (arm 4). At T <= 0.3 the same noise only crept (27.90, arm 1).
+3. **All-env correlated noise runs the KL away** (arms 1-2: iteration means 0.03 -> 1.64, single
+   updates to 10.6). Cause: the marginal-log-prob update credits every decision of a sustained
+   deviation with all of it. A 25% fraction keeps the KL at the i.i.d. level (0.04-0.08, even at
+   T 2). `--noise-tau-cond` (exact conditional credit: inverse-CDF keys, innovation-credited view)
+   is implemented and CPU-tested but was NEVER run on a box.
+
+### Why the detour does not stick, and what fixes that
+4. **Every continuation dropped the greedy detour within ~75M steps**: fast re-heat, T 0
+   consolidation, goex, the 16-bin backward window, and the 64-bin window from the 28.49 weights.
+   Reason: as flown it gains ~1,036u (1.06 units) over the dive but costs ~4 s x 0.5 = 2.0 units
+   of time penalty, so PPO is right to drop it until the section after it pays.
+5. **Frontier spawns teach that section fast.** `--respawn-mode backward --respawn-bins 64` puts
+   90% of spawns in the 2 deepest occupied bins (d 68.7-71.8k). In ~90M steps, 13k of the newest 20k
+   reservoir states were past the old death point, and the deepest were past the sgcp_2 curtain at
+   **32.46%** (arm 7).
+6. Half true starts + that window + T 2 (r1b2_bwhT): the greedy detour comes back (1.69B: 28.08,
+   median 27.89%, most episodes crossing back over the death point), then oscillates eval to eval
+   (27.3, 24.2, 26.5, 27.3). At T 2 the greedy mode drifts.
+
+### What to try next (round 2)
+* Warm from the 28.49 weights. Keep frontier spawns (64-bin backward window) AND enough true starts,
+  but hold T moderate (~1) instead of 2, or try `--noise-tau-cond 1` (unbiased credit) to stop the
+  oscillation. The pieces exist separately: the detour from the start (arm 4) and the CP2 crossing
+  from the frontier (arm 7); the task is to make one policy do both.
+* goex is a MISFIT under 90% reservoir spawns: it up-weights rarely-VISITED bins, which are the
+  early ones (its top bins were 14-15). For the frontier, use `--respawn-mode backward` with
+  fine bins.
+* The fast unstuck schedule (patience 5e7, rate 1.0) is a warm instrument for a slow box. It
+  destroys a fresh breakthrough by re-heating within 100M steps; the default 2e8 patience gives a
+  consolidation window.
+* Get a fast box: this 3090 sat on a 2014 dual Xeon (69k steps/s, GPU 6% busy). The config's
+  5950X box ran ~194k. Throughput was the binding constraint all round.
+* Slow links: `box.py pull --ckpt` times out at 30 min. Split the ckpt on the box and fetch the
+  parts in parallel (rsync --partial), and stop the trainer before pulling ckpt_latest (it is
+  rewritten every 60 s, not atomically).
