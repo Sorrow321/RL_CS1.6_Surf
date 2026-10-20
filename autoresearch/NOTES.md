@@ -344,3 +344,18 @@ map-specific). At T <= 0.3 the same noise only crept (arms 1-3); at T 2 the devi
 enough to reach the ramp (04:48 probe), and ~110M steps later the greedy policy flies the
 detour. Timeline at the wall: T reached 2 at ~1.09B, the detour region was harvested by 1.12B,
 the greedy detour appeared at 1.20B.
+
+### 05:48 UTC - arm 4 final: **28.49 at 1,279.3M** (new best of the program); continuation r1b2_nth2
+
+* 1,279.3M eval: score 28.49, best 28.49% at 29.2 s ending (2265, 856, 10719); second 28.2% at
+  29.9 s (2615, 489, 9574); median 27.07%. The detour line now clears the old death point and dies
+  ~1,000 u further west and lower. Still CP1: sgcp_2 is ~6 s further (the human crosses it at 35.1 s).
+* The 1,279M frontier (27,856u) beat the best (26,720 + 500): T is cooling (2.0 -> 1.72 at 1,301M).
+  Novelty income jumped to 2.3/episode (was ~0.3): training episodes are in new cells.
+* Arm 4 ended at 1,301.3M (69k steps/s average). **Continuation r1b2_nth2** = ckpt_final, same
+  restored flags (ratchet, noise_tau 0.5, frac 0.25, unstuck patience 5e7 / rate 1.0), --ckpt-every
+  75e6, stop at 2.5B (it will be stopped before the wrap-up).
+* **Hand-on note for the wrap-up:** the orchestrator takes the next incumbent's ckpt from the BEST
+  EVAL'S run directory (ckpt_final.pt, else ckpt_latest.pt) and ignores RESULT.json's ckpt. The
+  milestone ckpt_<step>.pt one update before the best eval must therefore be placed there.
+* This box's upload is ~35 KB/s right now: an 80 MB ckpt takes ~40 min. Pull checkpoints early.

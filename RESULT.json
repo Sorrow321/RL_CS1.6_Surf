@@ -3,19 +3,25 @@
  "round": 1,
  "final": false,
  "best": {
-  "score": 27.9,
-  "eval_file": "/home/steam/ar/runs/r1b2/r1b2_nt05/traj_0901251072.jsonl",
-  "run": "r1b2_nt05",
-  "step": 901251072,
-  "ckpt": "/home/steam/ar/runs/r1b2/r1b2_nt05/ckpt_latest.pt",
-  "ckpt_step": 925368320,
-  "ckpt_md5": "29b902d094eb2228c6bc425c40d211a4",
+  "score": 28.492,
+  "eval_file": "/home/steam/ar/runs/r1b2/r1b2_nth/traj_1279262720.jsonl",
+  "run": "r1b2_nth",
+  "step": 1279262720,
+  "ckpt": "/home/steam/ar/runs/r1b2/r1b2_nth/ckpt_final.pt",
+  "ckpt_note": "box has ckpt_1278738432.pt = one PPO update before this eval; ckpt_final.pt is 1,301.3M (22M later), pulling",
   "recipe": [
+   "--race-ratchet",
    "--noise-tau",
-   "0.5"
+   "0.5",
+   "--noise-tau-frac",
+   "0.25",
+   "--unstuck-patience",
+   "5e7",
+   "--unstuck-rate",
+   "1.0"
   ],
-  "resume_from": "/home/steam/ar/incumbent/ckpt.pt (749.7M, md5 ede4be9a)",
-  "commit": "12aede7"
+  "resume_from": "incumbent 749.7M (ede4be9a) -> r1b2_ntf 901.3M -> r1b2_nth",
+  "commit": "c330cdc"
  },
- "summary": "CP2 death = a deliberate air U-turn (D held 1.5 s); the human flies ~1 s more east to a ramp. Built --noise-tau (AR(1)-correlated sampling noise, per-decision distribution unchanged), --noise-tau-frac (only a fraction of envs correlated) and --noise-tau-cond (exact conditional credit). Arm 1 (warm, all envs): 27.90 at 901M (CP2 death point crept west/up) but KL ran away; arm 3 (ratchet + 25% envs) keeps KL at the iid level; arm 4 (same + T heated to 2): training episodes now reach the human's detour region (x 4.5-6.5k, z ~11.0-11.6k) and survive there, no return past the death point yet, greedy 27.4. Continuing arm 4. Best ckpt is 24M steps after its eval."
+ "summary": "CP2 death = a deliberate air U-turn (D held 1.5 s); the human flies ~1 s more east to a ramp. Built --noise-tau (AR(1)-correlated sampling noise, per-decision distribution unchanged), --noise-tau-frac, --noise-tau-cond (exact conditional credit). All-env noise ran the KL away (arms 1-2); 25% of envs keeps KL at the iid level (arm 3). Arm 4 = that + ratchet + unstuck T heated to its cap 2 at the wall: training reaches the human's detour region by 1.12B and the GREEDY policy flies the CP2 detour (east, ramp turn, climb back over the old death point at z 11,588) from 1.20B; 28.49 at 1.279B (dies ~1,000 u further west at 29.2 s). Continuing (r1b2_nth2)."
 }
