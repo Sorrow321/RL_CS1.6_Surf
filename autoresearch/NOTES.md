@@ -252,3 +252,33 @@ steps/s. Measure it on your box in the first minute and size `--steps` to the ti
   `--race-ratchet` would remove (a), but it adds an observation column (widenable, yet
   PROTOCOL forbids shape flags on a resume), so it can only be tested from scratch.
 * The unstuck T was rising through this run (no +500 u eval best since 825M): ~1.5 at 1.3B.
+
+### r1b1_novezf: nov checkpoint + `--respawn-novel --ez-eps 0.04 --ez-front 0.15` - worse line, no crossing (02:55 UTC)
+
+* 1,305M -> 1,705M. Bursts 2.1-2.4% of decisions (band from 22.0-22.2% progress), novel
+  43-44% of episodes; the unstuck T rose 1.47 -> 2.0 (cap; no +500 u eval best since 825M).
+* Evals (best / median): 1,306M 26.8/25.7, 1,381M 27.1/16.1, 1,457M 25.6/16.1,
+  1,532M 26.2/24.8, 1,608M 26.9/22.2, 1,683M 27.3/26.9. No crossing; the greedy line got
+  LESS consistent (T 2 + bursts + novel). Not worth repeating.
+
+### Corridor bench: from the corridor heading east, the policy turns WEST at once and falls
+
+* ANALYSIS ONLY (scratchpad bench/corridor_bench.py + corridor_east.npy): 64 of the nov
+  checkpoint's OWN deep reservoir states heading east (vx > 800, progress > 22.5%) moved,
+  velocity kept, to random reachable points in the corridor under plate *45
+  (x 3,750-5,200, y +-900, z 11,450-11,850) - the kind of row --respawn-novel makes.
+  `record_ckpt --spawn-states`, 16 stochastic + 4 greedy, 15 s cap.
+* 17/20 die in 1.2-2.8 s (median 1.8 s) in the pit floor (*86, z 10,790-11,280), ending
+  WEST of where they started (x 2,840-4,280): the policy reverses toward the field's
+  descent and drops. 3/20 reach the ramp area (x > 5,300, z < 11,600); one survives the
+  whole 15 s there (at z ~10,850, below *86's top: the ramp lies outside the kill brush).
+  **0/20 come back west through the slot.** Best progress 27.66% (an episode that flew
+  west at slot level and fell 250 u short of the floor's west edge at x 2,592).
+* So the gap is two things: the policy turns toward the field instead of going to the
+  ramp (the stock shaping CHARGES the eastward leg: the dip), and it has no ramp-turnaround
+  skill. `--race-ratchet` removes the charge (detours free) - but it adds an obs column,
+  so it is tested FROM SCRATCH: r1b1_ratnov = incumbent recipe + `--respawn-novel`
+  + `--race-ratchet`, 500M (30 min) first test against GR's gates (trap exit 529M,
+  window 755M). PROTOCOL: extend only if it clears a gate sooner.
+* The bench needs the box idle (record_ckpt is CPU-bound): ~2 min for 20 episodes idle,
+  ~4 min for 3 episodes beside a trainer.
