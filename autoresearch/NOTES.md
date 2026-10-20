@@ -309,3 +309,20 @@ steps/s. Measure it on your box in the first minute and size `--steps` to the ti
   --respawn-cells-margin 0.25 --respawn-vel-rot 0.5 --respawn-vel-rot-front 0.05` (+ the restored
   offsets). Cell rows: 1,843 per pool over ~730-760 cells of the 0.25 s-margin archive, returned
   EXACTLY (no rotation, commit 7d4e8d2); ~10% of the other reservoir rows rotated. +400M.
+
+### 2026-10-20 05:31 UTC - Go-Explore in the loop (r1b3_gew) NULL at the window; offsets-off diagnostic launched
+
+* **r1b3_gew** (sou2's 1.1B ckpt + `--respawn-cells 0.5 --respawn-cells-front 0.05
+  --respawn-cells-margin 0.25 --respawn-vel-rot 0.5`, with the restored offsets, 400M): 1,000-1,070
+  frontier cells returned exactly each pool, ~10% rotated rows, T 2. Evals 20.79 / 20.94 / 20.76 /
+  20.86 / 20.73 / 20.76%; mind 79.44-79.47% throughout. NULL: no state past the hole in 400M.
+* All 9 episodes of this lineage die at the same window wall as sidGEOu: (1,206-1,277, -21..-133,
+  12,811-12,904) at 18.7-19.5 s, on top of fail *89, vy -100..-590 (moving AWAY from the ridge
+  after landing on the A-frame: the cut-back not taken).
+* **The confound:** every run of this lineage (sou, sou2, gew) carried the held offsets, and it is the
+  only lineage stuck at the window at T = 2; GR / surf / cap2 passed it with T alone. **r1b3_nou**
+  (launched 05:29): sou2's ckpt with every `--view-ou-*` OFF (`--view-ou-sigma 0 --view-ou-period 0
+  --view-ou-temp 0 --view-ou-frac 1 --view-ou-front 0 --view-ou-offpol 0`; T 2 restored), +400M.
+  A quick pass says the offsets were BLOCKING the cut-back. Note for resumes: a checkpoint carrying
+  the OU flags refuses `--view-ou-sigma 0` alone (the restored period/temp/frac/front/offpol each
+  need a sigma) - pass all six.
