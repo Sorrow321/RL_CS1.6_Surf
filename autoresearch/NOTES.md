@@ -741,3 +741,24 @@ checkpoint is taken from the BEST EVAL's run dir, so pull that run's ckpt_final.
   trainer refuses a bonus at or above the time penalty (farmable by parking on a ramp).
 * Arm r2b4_tp0 (launched 15:59): dc1's spawns + `--time-pen 0 --surf-bonus 0 --critic-warmup 40` (actor frozen
   for the first 21M steps while the critic re-fits). One change against dc1.
+
+### r2b4_tp0 result (15:54-16:22 UTC): NEGATIVE - the main line degrades without the per-second terms
+
+* dc1's spawns + `--time-pen 0 --surf-bonus 0 --critic-warmup 40`. Evals (best / median): 5,101M 28.220/28.2,
+  5,177M 28.074/27.4, 5,252M 28.028/26.6, 5,328M 27.112/26.4, 5,403M 26.396/26.3, 5,479M 26.517/26.4.
+  Stall kills 25% (dc1 9%): with nothing charging time, episodes linger. Novel ceiling unchanged.
+* So the time-penalty arithmetic above is right about WHY partial detours are punished, but zeroing the
+  penalty is the wrong fix on a warm policy (it un-learns its flight). Not repeated.
+
+### Go-Explore phase 2 from the phase-1 archive: r2b4_arch1 (launched 16:20 UTC)
+
+* The surf-primitive archive (gs_surf, 427k cells, rooted at the incumbent's own reservoir >= 22%) holds
+  1,746 rising chamber/pocket states and 774 bowl surfs (vz up to +1,203) - the states from which the
+  WR-state bench shows the policy flies the finish. Selection rule (generic): every archive state within
+  5% of d0 of the archive frontier whose CellReturn cell (128 u x speed x heading x vertical sign) the
+  policy's own harvest never filled (tp0's counters): 323,334 states, all 1,746 + 774 among them
+  (scratchpad build_archive_spawns2.py; the region counts are for the notes, not a selection rule).
+* Arm: incumbent recipe (restored) + `--spawn-states runs/archive_spawns_cells.npy --spawn-states-frac 0.3
+  --respawn-snap 0.25 --respawn-margin 0.5`, original reward, SELF_STATES declared through box.py
+  --self-states with that provenance. Watch: the novel ceiling (deepest REAL episode) and reservoir states
+  west of the wall; a finish from an archive state is harvested (0.5 s margin) into the reservoir.
