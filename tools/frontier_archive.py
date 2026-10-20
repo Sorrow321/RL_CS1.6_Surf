@@ -122,22 +122,34 @@ def roots_from_traj(path, template, secs=6.0, every=10):
     return np.array(out, dtype=template.dtype)
 
 
-def cell_keys(origin, velocity, cell):
-    """int64 key per row: (x, y, z) cell of ``cell`` u and the horizontal-speed bucket."""
+def cell_keys(origin, velocity, cell, headings=0):
+    """int64 key per row: (x, y, z) cell of ``cell`` u, the horizontal-speed bucket and, with
+    ``headings`` > 0, the horizontal heading in that many sectors (one bucket below 100 u/s)."""
     o = np.asarray(origin, np.float64)
     v = np.asarray(velocity, np.float64)
     c = np.floor(o / cell).astype(np.int64) + (1 << 15)
-    sp = np.minimum(np.sqrt(v[:, 0] ** 2 + v[:, 1] ** 2) // SPD_BUCKET,
-                    SPD_MAX_BUCKET).astype(np.int64)
-    return (c[:, 0] & 0xFFFF) | ((c[:, 1] & 0xFFFF) << 16) | ((c[:, 2] & 0xFFFF) << 32) | (sp << 48)
+    hs = np.sqrt(v[:, 0] ** 2 + v[:, 1] ** 2)
+    sp = np.minimum(hs // SPD_BUCKET, SPD_MAX_BUCKET).astype(np.int64)
+    k = (c[:, 0] & 0xFFFF) | ((c[:, 1] & 0xFFFF) << 16) | ((c[:, 2] & 0xFFFF) << 32) | (sp << 48)
+    if headings:
+        az = np.floor((np.arctan2(v[:, 1], v[:, 0]) + np.pi) / (2 * np.pi) * headings)
+        az = np.where(hs >= 100.0, np.clip(az, 0, headings - 1) + 1, 0).astype(np.int64)
+        k = k | (az << 52)
+    return k
 
 
 class FrontierArchive:
-    def __init__(self, core, field, cell=128.0, horizon=200, seed=0, hold_secs=0.5):
+    def __init__(self, core, field, cell=128.0, horizon=200, seed=0, hold_secs=0.5,
+                 headings=0, depth_rank=0.0):
         self.core = core
         self.field = field
         self.cell = float(cell)
         self.horizon = int(horizon)
+        self.headings = int(headings)
+        # Go-Explore's score weighting, scale-free: a cell's count weight is multiplied by
+        # 1 / (1 + rank / (depth_rank * cells)), rank 0 = the deepest cell by goal-field d
+        # (0 = count weighting only)
+        self.depth_rank = float(depth_rank)
         # survivor gating: a state is admitted only once its flight has stayed alive this many
         # ticks after it (a whole number of CHECK_EVERY periods), so a cell is never a state
         # that is already falling onto a fail
@@ -161,7 +173,7 @@ class FrontierArchive:
         d = self.field.sample(st["origin"].astype(np.float64))
         ok = d < self.field.reach_max - 0.5 * self.field.cell
         st, d = st[ok], d[ok]
-        keys = cell_keys(st["origin"], st["velocity"], self.cell)
+        keys = cell_keys(st["origin"], st["velocity"], self.cell, self.headings)
         keys, first = np.unique(keys, return_index=True)
         new = np.array([k not in self.known for k in keys.tolist()], bool)
         if not new.any():
@@ -185,6 +197,10 @@ class FrontierArchive:
         if not len(self.states):
             return 0
         w = 1.0 / np.sqrt(1.0 + self.chosen)
+        if self.depth_rank > 0:
+            rank = np.empty(len(self.d), np.float64)
+            rank[np.argsort(self.d, kind="stable")] = np.arange(len(self.d))
+            w = w / (1.0 + rank / max(1.0, self.depth_rank * len(self.d)))
         pick = self.rng.choice(len(self.states), self.n, p=w / w.sum())
         np.add.at(self.chosen, pick, 1)
         core, rng, n = self.core, self.rng, self.n
@@ -320,6 +336,10 @@ def main(argv=None):
     ap.add_argument("--envs", type=int, default=1024)
     ap.add_argument("--cell", type=float, default=128.0)
     ap.add_argument("--horizon", type=int, default=200)
+    ap.add_argument("--headings", type=int, default=0,
+                    help="heading sectors in the cell key (0 = position x speed only)")
+    ap.add_argument("--depth-rank", type=float, default=0.0,
+                    help="weight cells by 1/(1 + rank_by_d / (this x cells)); 0 = count only")
     ap.add_argument("--hold-secs", type=float, default=0.5,
                     help="survivor gating: admit a state once its flight lived this long after it")
     ap.add_argument("--batches", type=int, default=150, help="batches before the first write")
@@ -333,7 +353,7 @@ def main(argv=None):
     field_path = a.field or str(Path(a.map).with_suffix("")) + ".goal_32.npz"
     core, field = build(a.map, field_path, a.envs, a.threads)
     arch = FrontierArchive(core, field, cell=a.cell, horizon=a.horizon, seed=a.seed,
-                           hold_secs=a.hold_secs)
+                           hold_secs=a.hold_secs, headings=a.headings, depth_rank=a.depth_rank)
     seen = set()
     for p in a.roots:
         r = roots_from_traj(p, arch.template, a.secs, a.every)

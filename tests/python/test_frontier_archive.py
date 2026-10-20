@@ -121,3 +121,14 @@ def test_survivor_gating_admits_nothing_from_a_doomed_root(tmp_path):
     arch0 = fa.FrontierArchive(core, field, cell=128.0, horizon=80, seed=2, hold_secs=0.0)
     arch0.add_roots(fa.roots_from_traj(p, arch0.template, 6.0, 10))
     assert arch0.hold_checks == 1
+
+
+def test_heading_buckets_split_directions_only_when_asked():
+    o = np.zeros((3, 3))
+    v = np.array([[500, 0, 0], [-500, 0, 0], [50, -40, 0]], np.float64)
+    k0 = fa.cell_keys(o, v, 128.0)
+    assert k0[0] == k0[1]                 # same cell, same speed bucket: one key without headings
+    k8 = fa.cell_keys(o, v, 128.0, headings=8)
+    assert k8[0] != k8[1]
+    assert (k8[2] >> 52) == 0             # below 100 u/s: the stationary sector
+    assert k8[0] & ((1 << 52) - 1) == k0[0]
