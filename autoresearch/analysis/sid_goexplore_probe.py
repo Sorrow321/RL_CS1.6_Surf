@@ -151,6 +151,11 @@ def main():
             if dead:
                 break
         if (it + 1) % 2000 == 0:
+            # climbed back through the centre gap into the shaft: x < 2,520, z 10,850-11,200, vz > 0
+            gap_up = sum(1 for kk, v in arch.items()
+                         if v[0].origin[0] < 2520 and 10850 < v[0].origin[2] < 11200
+                         and v[0].velocity[2] > 0 and abs(v[0].origin[1]) < 1000)
+            print(f"           climbing in the shaft (x<2520, z 10850-11200, vz>0): {gap_up}", flush=True)
             low = sum(1 for kk, v in arch.items() if v[0].origin[2] < 10600)
             print(f"iter {it + 1:6d}  cells {len(arch):6d}  best {best:6.2f}%  cells below z 10600: "
                   f"{low}  ticks {ticks:,}  {time.time() - t0:.0f}s", flush=True)

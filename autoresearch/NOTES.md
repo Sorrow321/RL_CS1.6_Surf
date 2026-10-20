@@ -793,3 +793,24 @@ into the session scratchpad. Field progress in brackets.
   --int-speed 3 binning): a fast state in a cell no longer shares the ring and the count with
   the slow ones that dominate it (archived states in the helix box were median 937 u/s). The
   archive restarts empty (other keys). 450M steps.
+
+### WON'T vs CAN'T on the helix (bench from the human's states - MEASUREMENT ONLY, 16:00 UTC)
+
+`record_ckpt --spawn-states` with single demo states (scratchpad helix/h_*.npy), policy =
+r2b3_arch ckpt_final (5.55B), 6 stochastic + 2 greedy episodes, 8 s cap:
+
+| spawned at the human's state at | outcome |
+|---|---|
+| 28.4 s (through the centre gap into the cavity) | 8/8 fall and die at the bottom kill (z ~9,577) in 1.1 s |
+| 29.4 s (helix bottom) | climb a little (z ~10,350), fall back, die (z ~9,565) in 1.5-3 s |
+| 30.2 s (climbing the helix) | reach the centre gap's height but east of it (x ~2,840), fall, die |
+| **30.8 s (through the gap, climbing into the shaft)** | **8/8 go through the window, cross the room, go under it toward CP2: 29.5-30.1%, 2 alive at 8 s near x 1,100** |
+
+* So the policy already flies everything after the centre gap (learned from novel rows and
+  the archive returns). The one missing skill is the ~2.4 s helix ride from the cavity down
+  and back up to the gap.
+* Random archive-and-return exploration seeded at the human's own 28.4/28.6 s states (probe,
+  20,000 returns, 0.8M ticks): 4,278 cells, 0 states climbing back into the shaft. The ride
+  needs surfing skill, and the reward has no signal along it: under the ratchet the helix
+  (27.6 -> 26.3 -> 27.5%) pays nothing until the episode is back past its record (the window,
+  28.6%), ~3 s later.
