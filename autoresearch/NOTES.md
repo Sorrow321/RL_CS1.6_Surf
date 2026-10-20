@@ -734,3 +734,28 @@ into the session scratchpad. Field progress in brackets.
 * Leading indicator to read off its checkpoint: archive cells in the cavity (x 2,580-2,990,
   z 10,700-11,250) or below the shaft (z < 10,600, x 1,700-2,900) = real episodes on the
   detour.
+
+### r2b3_arch at 5.40B (14:53 UTC): real episodes on the detour for the first time - EXTENDED
+
+* Evals (best / median %): 5,177M 28.0/27.5, 5,252M 27.4/27.4, 5,328M 28.3/27.9 - the greedy line
+  is the incumbent's (window mouth), no new gate yet.
+* The archive (real envs only, `autoresearch/analysis/sid_arch_regions.py` on the box's
+  ckpt_latest): 3,658 cells, 461k archive spawns so far.
+
+  | region (measurement boxes only) | 5,126M (25M in) | 5,400M (300M in) |
+  |---|---|---|
+  | shaft lower (x 2,210-2,520, z 10,700-11,150) | 41 cells | 37 cells, 25k entries |
+  | centre gap area | 4 cells | 6 cells, 6.4k entries |
+  | cavity behind the slot's end wall | 8 cells | 12 cells, 3.7k entries |
+  | below the shaft (z 9,500-10,650) | 180 cells | 212 cells, 131k entries |
+  | room | 0 | 0 |
+
+  Deepest archived real states: 28.75-28.81% INSIDE both windows' tunnels (x ~2,000, z
+  10,976-10,990, the sill height) - the incumbent's novel ceiling was the same 28.82%.
+* So within 25M steps the per-cell archive returns brought REAL episodes into the cavity and
+  below the shaft, which no real episode had reached in the incumbent's 3.5B steps at this wall
+  (its ceiling and visit counts above). The missing piece is the human's climb back up and level
+  entry into the window. PROTOCOL: a qualitatively new reach at the wall, so extended:
+  continuation r2b3_archx (bare resume of r2b3_arch's ckpt_final, archive restored), ~2B steps,
+  box deadline 17:54 UTC.
+* Flag-off identity re-tested after the archive edits: passed (6:49 on this machine).
