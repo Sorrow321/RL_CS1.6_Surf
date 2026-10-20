@@ -437,3 +437,15 @@ steps/s. Measure it on your box in the first minute and size `--steps` to the ti
 * **r1b3_gest (launched 09:17):** the same + `--unstuck-temp 0` (T still scales the entropy and novelty
   coefficients, no longer the sampling), so SIL imitates the policy's own on-distribution actions and
   the frontier diversity comes from the cell / rotation starts. +1.6B budget; runs to the wrap-up.
+
+### 2026-10-20 11:26 UTC - r1b3_gest (Go-Explore + SIL, sampling temperature off) NULL at CP2 over 1.6B steps; box released
+
+* **r1b3_gest** (nou's 1.5B ckpt + cells 0.5 / front 0.05 / margin 0.25 + vel-rot 0.5 + `--sil-coef
+  0.1 --unstuck-temp 0`, RTX 3090 0.268 $/h, 1.5B -> 3.1B): with the sampling temperature off SIL is
+  stable (loss -0.08..-0.28, buffer at its 50k cap) and the line HOLDS (best episode 27.2-27.5% at
+  21 of 22 evals, best 27.51 at 2.33B; one at 26.8%), unlike r1b3_ges. But mind stayed 73.5-73.9%
+  and no eval or harvested state got past the pit in 1.6B steps at T = 2. NULL. So self-imitation of
+  the policy's own above-baseline transitions, on top of Go-Explore starts at the frontier, does not
+  produce the CP2 crossing either: there is no lucky line to imitate.
+* Box 56864008 released 11:26 (pulled first; registry deadline had been extended to 12:21 after the
+  operator's note that it matched wrapup_at with no harvest spec).
