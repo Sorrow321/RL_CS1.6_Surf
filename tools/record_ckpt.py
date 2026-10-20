@@ -244,6 +244,7 @@ TRAIN_ONLY = frozenset({
     # --respawn-vel-rot: a spawn-pool perturbation of the training reservoir;
     # a recording starts at the map start, so it never sees it
     "respawn_vel_rot", "respawn_vel_rot_front", "respawn_cells", "respawn_cells_front",
+    "respawn_cells_margin",
     # --death-charge is a TERMINAL charge only ("no per-step tax, no goal
     # charge"), so like fail_pen/success_bonus it has no per-call value for
     # the --obs-reward slot to mirror - the episode ends where it applies.

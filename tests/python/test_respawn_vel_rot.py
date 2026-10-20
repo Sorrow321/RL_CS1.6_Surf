@@ -167,6 +167,9 @@ def test_cells_expression_in_the_trainer():
         assert frag in src, frag
     rec = (ROOT / "tools" / "record_ckpt.py").read_text(encoding="utf-8")
     assert '"respawn_cells", "respawn_cells_front",' in rec
+    assert '"respawn_cells_margin",' in rec
+    assert "res = _s.respawn if cellres is None else cellres" in src
+    assert "cellres.flush_harvest()" in src
 
 
 @needs_run
@@ -174,6 +177,7 @@ def test_cells_expression_in_the_trainer():
     (["--respawn-cells", "0.5", "--respawn-frac", "0"], "it needs --respawn-frac > 0"),
     (["--respawn-cells", "2"], "--respawn-cells must be in [0, 1]"),
     (["--respawn-cells", "0.5", "--respawn-frontier"], "not implemented with --respawn-frontier"),
+    (["--respawn-cells-margin", "0.25"], "--respawn-cells-margin without --respawn-cells"),
 ])
 def test_cells_refusals(extra, msg):
     shutil.rmtree(ROOT / "runs" / "r1b3_cells_refuse", ignore_errors=True)

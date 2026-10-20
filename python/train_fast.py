@@ -6861,6 +6861,16 @@ def main() -> None:
                     help="--respawn-cells: only states within F x d0 of the "
                          "reservoir's deepest state; 0 = the whole reservoir. "
                          "Default 0.05")
+    ap.add_argument("--respawn-cells-margin", type=float, default=None,
+                    help="--respawn-cells: draw the cell rows from a SECOND "
+                         "reservoir that harvests every 0.25 s and keeps "
+                         "states down to this many seconds before an "
+                         "episode's end (the main reservoir keeps "
+                         "--respawn-margin, 2 s in the recipe). States that "
+                         "die soon after - a fall onto a ramp the policy has "
+                         "never ridden - become eligible roots. Absent = the "
+                         "main reservoir (as before). ckpt restores; "
+                         "record_ckpt TRAIN_ONLY")
     ap.add_argument("--int-coef", type=float, default=None,       # 0 = off
                     help="race: count-based intrinsic novelty — "
                          "int_coef/sqrt(visits) on entering a 256u map cell, "
@@ -7589,6 +7599,10 @@ def main() -> None:
                 and ck_cfg.get("respawn_cells_front") is not None):
             args.respawn_cells_front = float(ck_cfg["respawn_cells_front"])
             restored.append(f"respawn_cells_front={args.respawn_cells_front:g}")
+        if (args.respawn_cells_margin is None
+                and ck_cfg.get("respawn_cells_margin") is not None):
+            args.respawn_cells_margin = float(ck_cfg["respawn_cells_margin"])
+            restored.append(f"respawn_cells_margin={args.respawn_cells_margin:g}")
         if ck_cfg.get("blend"):
             if args.blend_start is None:
                 args.blend_start = float(ck_cfg["blend"][0])
@@ -13423,6 +13437,8 @@ def main() -> None:
         meta["config"]["respawn_cells"] = float(args.respawn_cells)
         meta["config"]["respawn_cells_front"] = float(
             0.05 if args.respawn_cells_front is None else args.respawn_cells_front)
+        if args.respawn_cells_margin is not None:
+            meta["config"]["respawn_cells_margin"] = float(args.respawn_cells_margin)
     if VIEWC:
         meta["config"]["view_continuous"] = 1
         # written ONLY when set, so an untreated control's config dump is
@@ -14656,7 +14672,8 @@ def main() -> None:
                            ("--respawn-backward", bool(args.respawn_backward)),
                            ("--respawn-random", bool(args.respawn_random)),
                            ("--respawn-frontier", bool(args.respawn_frontier)),
-                           ("--respawn-novel", bool(args.respawn_novel))):
+                           ("--respawn-novel", bool(args.respawn_novel)),
+                           ("--ddp", D.enabled)):
             if _on:
                 raise SystemExit(f"--respawn-cells is not implemented with "
                                  f"{_flag}: it redraws the plain reservoir rows "
@@ -14667,6 +14684,22 @@ def main() -> None:
                  if CELLS_FRONT > 0.0 else "") + ", not uniformly over states")
     cell_rng = np.random.default_rng(int(args.seed) + 27182)
     cell_n = [0, 0]        # rows drawn / distinct cells they were drawn from
+    # --respawn-cells-margin: the cell rows' own reservoir (single map: slot 0)
+    cellres = None
+    if CELLS > 0.0 and args.respawn_cells_margin is not None:
+        if float(args.respawn_cells_margin) < 0.0:
+            raise SystemExit("--respawn-cells-margin must be >= 0")
+        cellres = RespawnBuffer(
+            slots[0].n, reservoir=int(args.respawn_reservoir or 100000),
+            margin_ticks=TICK.secs_to_ticks(float(args.respawn_cells_margin)),
+            map_id=slots[0].name, snap_every=TICK.secs_to_ticks(0.25, "round"),
+            seed=23 + 7919)
+        print(f"--respawn-cells-margin {float(args.respawn_cells_margin):g}: the cell rows "
+              f"come from a second reservoir snapshotting every 0.25 s and keeping states "
+              f"down to {float(args.respawn_cells_margin):g} s before an episode's end")
+    elif args.respawn_cells_margin is not None:
+        raise SystemExit("--respawn-cells-margin without --respawn-cells: nothing draws "
+                         "from that reservoir")
 
     def cell_rows(_s, rp):
         """--respawn-cells on one freshly built pool: the first S of the
@@ -14677,7 +14710,7 @@ def main() -> None:
         n_fresh = max(1, int(round(len(rp) * (1.0 - args.respawn_frac))))
         k = int(round((len(rp) - n_fresh) * CELLS))
         cell_n[0] = cell_n[1] = 0
-        res = _s.respawn
+        res = _s.respawn if cellres is None else cellres
         if k <= 0 or res is None or res.size < 2:
             return rp
         st = res._store[:res.size]
@@ -17595,6 +17628,11 @@ def main() -> None:
                         stag = fleet.stagnant_mask()
                         fleet.observe_respawn(ended, stagnant=stag,
                                               success=gmask)
+                        if cellres is not None:
+                            # --respawn-cells-margin: the cell rows' own
+                            # short-margin reservoir, same states and masks
+                            cellres.observe(slots[0].core.states_view, ended,
+                                            stagnant=stag, success=gmask)
                         if NOVEL and ended.any():
                             # --respawn-novel: tag the episodes that just
                             # started. AFTER the harvest above, which judged
@@ -18188,6 +18226,9 @@ def main() -> None:
             _res = _s.respawn
             if _res is None:
                 continue
+            if cellres is not None:
+                # --respawn-cells-margin: single map, no DDP - straight in
+                cellres.flush_harvest()
             h_rows, h_ticks, h_envs = _res.drain_harvest()
             if ANCHOR and _s.frontier is not None and len(h_rows):
                 # --respawn-frontier-anchor: the reservoir keeps only what
