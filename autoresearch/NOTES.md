@@ -846,3 +846,28 @@ r2b3_arch ckpt_final (5.55B), 6 stochastic + 2 greedy episodes, 8 s cap:
   shaft, the window tunnel at 28.85%), and the policy already flies everything after the centre
   gap (bench above); the helix ride is the one missing link, learnable only from those returns.
   Box deadline extended to 20:26 UTC.
+
+### r2b3_archsx (6.67 -> 7.21B, stopped 17:28 UTC): eval 28.643 at 7,126M - the branch best
+
+* Evals (best %): 27.9, 27.4, 28.5, 27.9, 27.5, 28.2, **28.6 (28.643)**, 27.4. The 28.643
+  episode dies on the window's sill 30 u deeper than the incumbent's best (x 2,149 vs 2,139..2,181):
+  the same failure, marginally deeper, so it beats 28.628 by 0.015 without a new gate.
+* Archive at 7.13B: below the shaft 416 keys, cavity 30, centre gap 11, room 0; deepest real
+  state 28.85%. Checkpoint pulled: runs/r2b3/r2b3_archsx/ckpt_latest.pt (step ~7.21B,
+  md5 19059be9...).
+
+### The archive / novel-row conflict, and `--respawn-rare-own 1` (80a105c)
+
+* The novel rows may only go where no REAL episode went in the last 10-20M steps. Archive
+  returns are real, so once the archive works the cavity / under-shaft region, the novel rows
+  are pushed out of it - and the novel rows are what taught the incumbent policy everything
+  after the centre gap (the bench). Under the ratchet a novel row on the helix is also PAID for
+  climbing (its record starts at its own spawn d), which no archive return in the cavity is.
+* `--respawn-rare-own 1`: an episode started from an archive row (tagged by spawn origin, the
+  novel sampler's own rule) does not mark the novel visit grid; it still lowers the ceiling.
+  Tests: unit (tagging, own-flight mask) + CPU trainer smoke with resume (3 min).
+
+### r2b3_own: warm from r2b3_archsx (7.21B) + `--respawn-rare-own 1` - launched 17:30 UTC
+
+* 450M steps. Watch: novel rows landing in the cavity / helix again (step line `novel ... rows`),
+  archive cells climbing in the shaft from below, the room.
