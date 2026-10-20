@@ -522,7 +522,7 @@ checkpoint is taken from the BEST EVAL's run dir, so pull that run's ckpt_final.
 * Box 56813988 (RTX 5080 + 7950X3D, $0.388/h) ran 00:41-10:24 UTC, about 9.7 h / ~$3.8,
   released at 10:24; no box at wrap-up.
 
-## Round 2, branch r2b1 - 2026-10-20 13:30 UTC: what lies past the CP2 slot (analysis only, no box)
+## Round 2, branch r2b1 - 2026-10-20 13:25 UTC: what lies past the CP2 slot (analysis only, no box)
 
 All measured locally with the C core (hull traces, one-tick trigger probes, batched searches)
 from the incumbent's OWN best greedy eval (traj_4916772864, episode 1, 28.63%). Map coordinates
@@ -567,3 +567,18 @@ rule); cells 128 u x 400 u/s speed buckets; random action segments in the batche
 atomic STATE_DTYPE file for the trainer's existing `--spawn-states` (re-read when it changes; a
 spawn-state episode is a REAL episode: harvested into the reservoir, marks the novelty grid), half
 from the deepest quarter by d, half uniform. Loop mode re-roots on each new eval. No map constant.
+
+### 13:45 UTC: the archive's spawn quality, measured with the incumbent policy (record_ckpt --spawn-states)
+
+* Ungated archive (22.4k cells): the incumbent, spawned stochastically in 24 of its wall-zone
+  states (room / tunnel / low hole / cavity / lower level), died in 1-224 ticks (most < 50): the
+  states were mostly ALREADY falling onto a fail (vz -700..-1,300 above the lower floor *90).
+* Survivor gating (a state is admitted only once its flight stayed alive 0.5 s after it, the
+  trainer's predecessor-archive rule): 13.8k cells in 100 batches; the same test (32 episodes)
+  lasts 55-600 ticks (3 truncated at 6 s), best 28.33% - nothing deeper than the incumbent's
+  28.63%, as expected for an untrained region.
+* Gated composition: half the cells are the level ABOVE the slot (z > 11,580: big, safe, a dead end
+  in the field: d 71,600-77,000), a quarter the pit airspace; room 102, tunnel 351, cavity 122,
+  lower level 711. So the output always draws half its rows from the deepest quarter by d.
+* Boxes: no eligible offer 13:24-13:45 (the one under-cap 3090 is blocklisted); a 4090 at 0.401
+  appeared at 13:37 and was gone a minute later. A background `box.py rent` retries every 60 s.
