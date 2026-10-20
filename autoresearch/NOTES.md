@@ -588,3 +588,27 @@ misleading: the agent's surviving lines pass through `*99`'s box.
     T heating (its warm crossing came ~300M steps after the heating), from a policy neither
     entrenched by my 2.4B potential-shaped D-ramp steps nor noise-collapsed;
   * +2.2e9 steps, to ~11:00 UTC; box deadline 11:39 (to extend for the wrap-up).
+
+### 08:16 UTC: the last arm flies the D-ramp route in the greedy line (27.93%)
+
+* **r1b4_irn** (incumbent + `--race-ratchet --respawn-novel --unstuck-patience 5e7
+  --unstuck-rate 1.0`), evals 750M-1,052M:
+  * scores 25.41 / 27.36 / 27.36 / 27.28 / **27.93** (1,052M: frontier 27,302 u);
+  * training side at 1.06B: reservoir min-depth **72.01%** (below 72.5%, so training
+    episodes passed the old death point and lived 2 s more); novel ceiling 28,013 u
+    (28.65%); training survives dips up to 2.14 units.
+* **The 1,052M eval's best episode (ep 4):**
+
+  | t (s) | x | z | what happens |
+  |---|---|---|---|
+  | 23.5-24.0 | ~4,600 | 12,300 | the usual upper turnaround |
+  | 24.75 | - | - | turns back EAST |
+  | 25.5 | 5,028 | 11,014 | in the lower room, 1,824 u/s |
+  | 25.5-26.5 | to apex 5,723 | - | rides the D-ramp round (vy +1,764 at the apex) and exits west at ~1,790 u/s, the human's exit speed |
+  | 27.0-28.0 | to 3,200 | 11,623 | climbs (vz +600) to slot height |
+  | after 28.0 | - | - | veers SOUTH (vy -1,400) while descending; dies at (2,663, -876, 11,373), the slot's narrow end: 27.93% |
+
+  * Episode 1 does the same route (27.46%).
+* **Reading:** this is the human's maneuver, done by the greedy policy. What remains is the
+  slot's west end (the thin wall's opening) and the corridor beyond. The arm keeps running
+  to its budget (~11:00).
