@@ -759,3 +759,20 @@ into the session scratchpad. Field progress in brackets.
   continuation r2b3_archx (bare resume of r2b3_arch's ckpt_final, archive restored), ~2B steps,
   box deadline 17:54 UTC.
 * Flag-off identity re-tested after the archive edits: passed (6:49 on this machine).
+
+### r2b3_archx at 5.95B (15:31 UTC): the detour region is explored, the climb is not found yet
+
+* Evals since the continuation started (best / median %): 5,552M 27.4/27.4, 5,627M 28.0/26.4,
+  5,703M 27.5/26.4, 5,778M 27.4/27.4, 5,854M 27.4/27.3, 5,929M 28.0/27.9 - the greedy line
+  flips between the window mouth and the old pit dive, as in the incumbent's late evals.
+* Archive at 5,965M: 3,879 cells, 48M real entries; below the shaft 212 cells (338k entries),
+  cavity 13, centre gap 7, room 0; deepest real state still 28.81% (window tunnel, sill
+  height); novel ceiling 28,174 -> 28,190 u.
+* Why no climb yet (archived states, `arch_speeds.py` on the box): below the shaft |v| median
+  1,106 u/s (p90 1,730), in the box where the human rides the curved surface under the cavity
+  median 937 u/s (max 1,907); the ~2,000 u/s states are falling past it at the shaft's sides
+  (y ~+-1,000); 81 climbing states, the highest at z ~10,400 with |v| ~700. The human enters
+  that surface at ~2,200 u/s from the cavity dive and rides ~270 deg around and 1,100 u up to the
+  centre gap. So the archive returns the agent to the right PLACE, not yet with the speed / line
+  the ride needs.
+* Kept running (bare continuation to 7.55B, ~16:50 UTC); idea cap 6 h from 14:34.
