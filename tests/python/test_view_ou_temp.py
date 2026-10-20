@@ -302,3 +302,40 @@ def test_front_smoke_zone_opens_once_the_reservoir_holds_a_state():
     cfg = json.loads((ROOT / "runs" / run / "run.json").read_text(encoding="utf-8"))["config"]
     assert cfg["view_ou_front"] == 0.05 and cfg["view_ou_frac"] == 0.5
     shutil.rmtree(ROOT / "runs" / run, ignore_errors=True)
+
+
+# ----------------------------------------------------- (g) --view-ou-offpol
+def test_offpol_expression_in_the_trainer():
+    src = TRAIN.read_text(encoding="utf-8")
+    assert 'ap.add_argument("--view-ou-offpol", type=int, default=None, choices=(0, 1)' in src
+    # the mask is the offset the decision EXECUTED, recorded beside the stored z
+    assert "b_ouoff[t].copy_(ou_c[:, 0] != 0.0)" in src
+    assert "_ou_on = (~b_ouoff.reshape(-1)).nonzero(as_tuple=False).squeeze(-1)" in src
+    assert '"view_ou_offpol",' in (ROOT / "tools" / "record_ckpt.py").read_text(encoding="utf-8")
+
+
+@needs_run
+def test_offpol_refusal_without_sigma():
+    shutil.rmtree(ROOT / "runs" / "r1b3_ou_offpol_refuse", ignore_errors=True)
+    r = _run([sys.executable, "-u", str(TRAIN), "--run", "r1b3_ou_offpol_refuse"] + SMOKE
+             + ["--steps", "1024", "--record-every", "1e12", "--view-ou-offpol", "1"],
+             timeout=600)
+    shutil.rmtree(ROOT / "runs" / "r1b3_ou_offpol_refuse", ignore_errors=True)
+    assert r.returncode != 0
+    assert "--view-ou-offpol without --view-ou-sigma" in (r.stdout + r.stderr)
+
+
+@needs_run
+def test_offpol_smoke_drops_the_offset_rows_and_only_them():
+    run = "r1b3_ou_offpol_smoke"
+    r = _train(run, ["--ep-ticks", "300", "--respawn-margin", "0.3",
+                     "--view-ou-sigma", "0.8", "--view-ou-period", "4",
+                     "--view-ou-front", "0.05", "--view-ou-frac", "0.5",
+                     "--view-ou-offpol", "1"], steps="32768")
+    drops = [float(x) for x in re.findall(r"ou-drop (\d+\.\d)%", r.stdout)]
+    zones = re.findall(r"ouF (\S+)u in (\d+\.\d)%", r.stdout)
+    assert drops and drops[0] == 0.0 and zones[0][0] == "nan"   # no zone, nothing dropped
+    assert max(drops) > 20.0                                    # zone open, ~p of the rows
+    cfg = json.loads((ROOT / "runs" / run / "run.json").read_text(encoding="utf-8"))["config"]
+    assert cfg["view_ou_offpol"] == 1
+    shutil.rmtree(ROOT / "runs" / run, ignore_errors=True)

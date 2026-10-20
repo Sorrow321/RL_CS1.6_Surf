@@ -6093,6 +6093,17 @@ def main() -> None:
                          "reservoir (--respawn-frac > 0); single map. "
                          "0/absent = off. ckpt restores; record_ckpt "
                          "TRAIN_ONLY")
+    ap.add_argument("--view-ou-offpol", type=int, default=None, choices=(0, 1),
+                    help="--view-ou-sigma: decisions EXECUTED with a non-zero "
+                         "held offset are dropped from the PPO pool (actor and "
+                         "critic), exactly like ez-greedy burst rows, so the "
+                         "policy learns only from its own clean decisions; the "
+                         "offset windows still shape learning through the "
+                         "states they reach, the reservoir they feed and the "
+                         "returns of the clean decisions whose GAE runs across "
+                         "them. 0/absent = off (offset rows train as before, "
+                         "on-policy w.r.t. N(mu + c, sigma)). ckpt restores; "
+                         "record_ckpt TRAIN_ONLY")
     # --unstuck: plateau-driven exploration temperature (docs/unstuck.md).
     # Default OFF and byte-identical when off. Every value default None so
     # a resume restores the checkpoint's own settings; resolved below.
@@ -8041,6 +8052,10 @@ def main() -> None:
                 and not flag_given("--view-ou-front")):
             args.view_ou_front = float(ck_cfg["view_ou_front"])
             restored.append(f"view_ou_front={args.view_ou_front:g}")
+        if (ck_cfg.get("view_ou_offpol") is not None
+                and not flag_given("--view-ou-offpol")):
+            args.view_ou_offpol = int(ck_cfg["view_ou_offpol"])
+            restored.append(f"view_ou_offpol={args.view_ou_offpol:d}")
         # --unstuck rides in the checkpoint like the view flags: the flag
         # and every knob of it are restored when the CLI does not say
         # otherwise (the schedule's RUN STATE is restored further down)
@@ -13357,6 +13372,8 @@ def main() -> None:
                 meta["config"]["view_ou_frac"] = float(args.view_ou_frac)
             if float(getattr(args, "view_ou_front", 0.0) or 0.0) > 0.0:
                 meta["config"]["view_ou_front"] = float(args.view_ou_front)
+            if int(getattr(args, "view_ou_offpol", 0) or 0) > 0:
+                meta["config"]["view_ou_offpol"] = 1
         print("--view-continuous: yaw and pitch are squashed Gaussians "
               "(z ~ N(mu(s), sigma), K = warp(tanh z), pitch = tanh z * "
               f"{float(core.config.pitch_rate_max_deg):g} deg/tick); "
@@ -14424,6 +14441,18 @@ def main() -> None:
     ou_front_d = float("nan")
     ou_front_np = np.zeros(N, bool) if OU_FRONT > 0.0 else None
     ou_front_n = [0, 0]
+    # --view-ou-offpol: a Python constant; off, no buffer exists and the pool
+    # is the one that shipped
+    OU_OFFPOL = bool(int(getattr(args, "view_ou_offpol", 0) or 0))
+    if OU_OFFPOL and OU_SIG <= 0.0:
+        raise SystemExit("--view-ou-offpol without --view-ou-sigma: no decision "
+                         "is ever offset")
+    if OU_OFFPOL and RNN:
+        raise SystemExit("--view-ou-offpol drops ROWS from the PPO pool; --rnn "
+                         "trains whole sequences")
+    b_ouoff = (torch.zeros((T, N), dtype=torch.bool, device=device)
+               if OU_OFFPOL else None)
+    ou_off_share = 0.0
     ou_c = ou_sig_t = ou_left = ou_period_t = None
     if OU_SIG > 0.0:
         ou_sig_t = torch.zeros(NZ, device=device)
@@ -14463,6 +14492,9 @@ def main() -> None:
         if OU_FRAC < 1.0:
             print(f"--view-ou-frac {OU_FRAC:g}: each redraw gives the env an "
                   f"offset with probability {OU_FRAC:g}, else 0 for that window")
+        if OU_OFFPOL:
+            print("--view-ou-offpol: decisions executed with a non-zero offset "
+                  "are dropped from the PPO pool (actor and critic)")
         if OU_FRONT > 0.0:
             print(f"--view-ou-front {OU_FRONT:g}: an offset is drawn only for "
                   f"envs within {OU_FRONT:g} x d0 of the reservoir's deepest "
@@ -16860,6 +16892,10 @@ def main() -> None:
                 act_pin.copy_(static_act, non_blocking=True)
                 if VIEWC:
                     b_z[t].copy_(static_z)
+                    if b_ouoff is not None:
+                        # --view-ou-offpol: the offset THIS decision executed
+                        # (the redraw for the next one comes after the step)
+                        b_ouoff[t].copy_(ou_c[:, 0] != 0.0)
                     view_pin.copy_(static_view, non_blocking=True)
                 if H > 0:
                     b_code[t].copy_(static_code)
@@ -18089,6 +18125,13 @@ def main() -> None:
             on_policy = (~b_ez.reshape(-1)).nonzero(as_tuple=False).squeeze(-1)
             sub_pool = (on_policy if sub_pool is None
                         else sub_pool[torch.isin(sub_pool, on_policy)])
+        if b_ouoff is not None:
+            # --view-ou-offpol: rows executed under a held offset leave the
+            # pool like burst rows; the clean rows keep their GAE across them
+            _ou_on = (~b_ouoff.reshape(-1)).nonzero(as_tuple=False).squeeze(-1)
+            sub_pool = (_ou_on if sub_pool is None
+                        else sub_pool[torch.isin(sub_pool, _ou_on)])
+            ou_off_share = 1.0 - _ou_on.numel() / float(T * N)
         last_diag = None
         aug_sum, aug_n = None, 0       # --aug-*: DrAC's (G_pi, G_V) over this update
         env_np = None
@@ -19282,6 +19325,8 @@ def main() -> None:
                     # decisions inside it this rollout
                     race_note += (f"  ouF {ou_front_d:,.0f}u in "
                                   f"{ou_front_n[0] / max(1, ou_front_n[1]):.1%}")
+                if OU_OFFPOL:
+                    race_note += f"  ou-drop {ou_off_share:.1%}"
         if isinstance(reward_fn, RaceReward) and reward_fn.arc is not None:
             # the anti-farming read-out: arc GAINED per episode (what the
             # shaping actually paid), the deepest arc any episode REACHED,
