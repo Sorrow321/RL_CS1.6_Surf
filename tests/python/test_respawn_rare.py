@@ -317,6 +317,28 @@ def test_rare_own_runs_and_restores():
         shutil.rmtree(dd, ignore_errors=True)
 
 
+@needs_run
+def test_a_resume_can_turn_the_archive_off():
+    """A checkpoint trained with the archive (and its sub-flags) resumes bare with all of them
+    restored, and resumes with --respawn-rare 0 with none of them (no refusal)."""
+    run = "rare_offswitch"
+    _train(run, ["--respawn-novel", "--respawn-rare", "0.5", "--respawn-rare-arch", "1",
+                 "--respawn-rare-own", "1", "--respawn-rare-speed", "3"], steps="8192")
+    ck = ROOT / "runs" / run / "ckpt_final.pt"
+    r1 = _run([sys.executable, "-u", str(TRAIN), "--run", run + "_bare", "--ckpt", str(ck)]
+              + SMOKE + ["--steps", "12288"])
+    assert r1.returncode == 0, r1.stdout[-3000:] + r1.stderr[-3000:]
+    assert "RARE ARCHIVE" in r1.stdout and "RARE OWN" in r1.stdout
+    r2 = _run([sys.executable, "-u", str(TRAIN), "--run", run + "_off", "--ckpt", str(ck)]
+              + SMOKE + ["--steps", "12288", "--respawn-rare", "0"])
+    assert r2.returncode == 0, r2.stdout[-3000:] + r2.stderr[-3000:]
+    assert "respawn RARE" not in r2.stdout
+    cfg = json.loads((ROOT / "runs" / (run + "_off") / "run.json").read_text(encoding="utf-8"))
+    assert not any(k.startswith("respawn_rare") for k in cfg["config"])
+    for suffix in ("", "_bare", "_off"):
+        shutil.rmtree(ROOT / "runs" / (run + suffix), ignore_errors=True)
+
+
 def _pre_change_trainer(dst: Path):
     """train_fast.py of the last first-parent commit before --respawn-rare."""
     r = subprocess.run(["git", "rev-list", "--first-parent", "--max-count=200", "HEAD"],

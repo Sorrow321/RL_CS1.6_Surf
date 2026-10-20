@@ -7514,18 +7514,21 @@ def main() -> None:
         if args.respawn_rare is None and ck_cfg.get("respawn_rare"):
             args.respawn_rare = float(ck_cfg["respawn_rare"])
             restored.append(f"respawn_rare={args.respawn_rare:g}")
-        if (args.respawn_rare_cell is None
-                and ck_cfg.get("respawn_rare_cell") is not None):
-            args.respawn_rare_cell = float(ck_cfg["respawn_rare_cell"])
-        if args.respawn_rare_arch is None and ck_cfg.get("respawn_rare_arch"):
-            args.respawn_rare_arch = int(ck_cfg["respawn_rare_arch"])
-            restored.append("respawn_rare_arch")
-        if args.respawn_rare_own is None and ck_cfg.get("respawn_rare_own"):
-            args.respawn_rare_own = int(ck_cfg["respawn_rare_own"])
-            restored.append("respawn_rare_own")
-        if args.respawn_rare_speed is None and ck_cfg.get("respawn_rare_speed"):
-            args.respawn_rare_speed = int(ck_cfg["respawn_rare_speed"])
-            restored.append(f"respawn_rare_speed={args.respawn_rare_speed}")
+        # the sub-flags ride with the share: a resume that turns the archive off
+        # (--respawn-rare 0) does not inherit them (they would refuse a 0 share)
+        if float(args.respawn_rare or 0.0) > 0.0:
+            if (args.respawn_rare_cell is None
+                    and ck_cfg.get("respawn_rare_cell") is not None):
+                args.respawn_rare_cell = float(ck_cfg["respawn_rare_cell"])
+            if args.respawn_rare_arch is None and ck_cfg.get("respawn_rare_arch"):
+                args.respawn_rare_arch = int(ck_cfg["respawn_rare_arch"])
+                restored.append("respawn_rare_arch")
+            if args.respawn_rare_own is None and ck_cfg.get("respawn_rare_own"):
+                args.respawn_rare_own = int(ck_cfg["respawn_rare_own"])
+                restored.append("respawn_rare_own")
+            if args.respawn_rare_speed is None and ck_cfg.get("respawn_rare_speed"):
+                args.respawn_rare_speed = int(ck_cfg["respawn_rare_speed"])
+                restored.append(f"respawn_rare_speed={args.respawn_rare_speed}")
         # --respawn-backward: a spawn DISTRIBUTION, restored like the frontier
         if args.respawn_backward is None and ck_cfg.get("respawn_backward"):
             args.respawn_backward = True

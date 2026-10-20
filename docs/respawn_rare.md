@@ -79,6 +79,12 @@ marks the novel visit grid; it still lowers the novel ceiling (it is real).
 Refused without the reservoir (`--respawn-frac 0`) and with `--respawn-binned`,
 `--respawn-mode` other than uniform, `--plan-return`, `--respawn-random`, `--goals` and DDP.
 
+## On a resume
+
+A bare resume restores the share, the cell size, `-arch`, `-speed`, `-own` and the counts (and the
+archive). `--respawn-rare 0` on a resume turns the whole mechanism off: the sub-flags are restored
+only while the share is > 0.
+
 ## Flags
 
 | flag | default | meaning |
