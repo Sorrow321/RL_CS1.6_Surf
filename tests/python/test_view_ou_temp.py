@@ -251,3 +251,54 @@ def test_frac_smoke_dump_and_note():
     cfg = json.loads((ROOT / "runs" / run / "run.json").read_text(encoding="utf-8"))["config"]
     assert cfg["view_ou_frac"] == 0.25
     shutil.rmtree(ROOT / "runs" / run, ignore_errors=True)
+
+
+# ------------------------------------------------------ (f) --view-ou-front
+def test_front_gate_is_inside_the_zone_and_none_before_the_reservoir_exists():
+    import numpy as np
+    d = np.array([70_000.0, 77_000.0, 77_600.0, 97_768.0, 1e9])
+    out = np.zeros(d.shape, bool)
+    np.less_equal(d, (0.743 + 0.05) * 97_768.0, out=out)          # edge 77,529 u
+    assert out.tolist() == [True, True, False, False, False]
+    np.less_equal(d, float("nan"), out=out)                        # empty reservoir
+    assert not out.any()
+
+
+def test_front_expression_in_the_trainer():
+    src = TRAIN.read_text(encoding="utf-8")
+    assert 'ap.add_argument("--view-ou-front", type=float, default=None' in src
+    assert "ou_front_d = (float((_mdf + OU_FRONT) * slots[0].rf_d0)" in src
+    assert "np.less_equal(_dz, ou_front_d, out=ou_front_np)" in src
+    assert '"view_ou_front",' in (ROOT / "tools" / "record_ckpt.py").read_text(encoding="utf-8")
+
+
+@needs_run
+@pytest.mark.parametrize("extra,msg", [
+    (["--view-ou-front", "0.05"], "--view-ou-front without --view-ou-sigma"),
+    (["--view-ou-sigma", "0.8", "--view-ou-front", "0.05", "--respawn-frac", "0"],
+     "it needs --respawn-frac > 0"),
+])
+def test_front_refusals(extra, msg):
+    shutil.rmtree(ROOT / "runs" / "r1b3_ou_front_refuse", ignore_errors=True)
+    r = _run([sys.executable, "-u", str(TRAIN), "--run", "r1b3_ou_front_refuse"] + SMOKE
+             + ["--steps", "1024", "--record-every", "1e12"] + extra, timeout=600)
+    shutil.rmtree(ROOT / "runs" / "r1b3_ou_front_refuse", ignore_errors=True)
+    assert r.returncode != 0
+    assert msg in (r.stdout + r.stderr)
+
+
+@needs_run
+def test_front_smoke_zone_opens_once_the_reservoir_holds_a_state():
+    """3 s episodes and a 0.3 s margin, so the reservoir harvests within the
+    smoke: the zone edge is NaN (nobody in it) until then, and every env sits
+    inside (mind + 0.05) x d0 afterwards (they never leave the start)."""
+    run = "r1b3_ou_front_smoke"
+    r = _train(run, ["--ep-ticks", "300", "--respawn-margin", "0.3",
+                     "--view-ou-sigma", "0.8", "--view-ou-period", "4",
+                     "--view-ou-front", "0.05", "--view-ou-frac", "0.5"], steps="32768")
+    zones = re.findall(r"ouF (\S+)u in (\d+\.\d)%", r.stdout)
+    assert zones and zones[0] == ("nan", "0.0")
+    assert any(z != "nan" and float(share) > 0.0 for z, share in zones[1:]), zones
+    cfg = json.loads((ROOT / "runs" / run / "run.json").read_text(encoding="utf-8"))["config"]
+    assert cfg["view_ou_front"] == 0.05 and cfg["view_ou_frac"] == 0.5
+    shutil.rmtree(ROOT / "runs" / run, ignore_errors=True)

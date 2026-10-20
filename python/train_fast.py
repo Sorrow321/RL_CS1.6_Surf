@@ -6079,6 +6079,20 @@ def main() -> None:
                          "episodes 3-4x (r1b3_ouw, 2026-10-20). 1.0/absent = "
                          "every redraw (as before, op for op). ckpt restores; "
                          "record_ckpt TRAIN_ONLY")
+    ap.add_argument("--view-ou-front", type=float, default=None,
+                    help="--view-ou-sigma, FRONTIER-GATED: a redraw gives the "
+                         "env an offset only while its current d is within "
+                         "F x d0 of the reservoir's deepest state (the "
+                         "policy's own frontier, re-read once per rollout), "
+                         "so the line before the wall flies clean and the "
+                         "committed exploration lands where the policy dies. "
+                         "Ungated, --view-ou-sigma 0.8 collapsed sidistic's "
+                         "greedy line from 25.4%% to 4.4%% in 76M steps "
+                         "(r1b3_ouw). Composes with --view-ou-frac (thinning "
+                         "inside the zone) and --view-ou-temp. Needs the "
+                         "reservoir (--respawn-frac > 0); single map. "
+                         "0/absent = off. ckpt restores; record_ckpt "
+                         "TRAIN_ONLY")
     # --unstuck: plateau-driven exploration temperature (docs/unstuck.md).
     # Default OFF and byte-identical when off. Every value default None so
     # a resume restores the checkpoint's own settings; resolved below.
@@ -8023,6 +8037,10 @@ def main() -> None:
                 and not flag_given("--view-ou-frac")):
             args.view_ou_frac = float(ck_cfg["view_ou_frac"])
             restored.append(f"view_ou_frac={args.view_ou_frac:g}")
+        if (ck_cfg.get("view_ou_front") is not None
+                and not flag_given("--view-ou-front")):
+            args.view_ou_front = float(ck_cfg["view_ou_front"])
+            restored.append(f"view_ou_front={args.view_ou_front:g}")
         # --unstuck rides in the checkpoint like the view flags: the flag
         # and every knob of it are restored when the CLI does not say
         # otherwise (the schedule's RUN STATE is restored further down)
@@ -13337,6 +13355,8 @@ def main() -> None:
             if (getattr(args, "view_ou_frac", None) is not None
                     and float(args.view_ou_frac) < 1.0):
                 meta["config"]["view_ou_frac"] = float(args.view_ou_frac)
+            if float(getattr(args, "view_ou_front", 0.0) or 0.0) > 0.0:
+                meta["config"]["view_ou_front"] = float(args.view_ou_front)
         print("--view-continuous: yaw and pitch are squashed Gaussians "
               "(z ~ N(mu(s), sigma), K = warp(tanh z), pitch = tanh z * "
               f"{float(core.config.pitch_rate_max_deg):g} deg/tick); "
@@ -14385,6 +14405,25 @@ def main() -> None:
     if OU_FRAC < 1.0 and OU_SIG <= 0.0:
         raise SystemExit("--view-ou-frac without --view-ou-sigma: there is no "
                          "offset to thin out")
+    # --view-ou-front: a Python constant; at 0 (absent) nothing below runs
+    OU_FRONT = float(getattr(args, "view_ou_front", 0.0) or 0.0)
+    if OU_FRONT < 0.0:
+        raise SystemExit("--view-ou-front must be >= 0")
+    if OU_FRONT > 0.0:
+        if OU_SIG <= 0.0:
+            raise SystemExit("--view-ou-front without --view-ou-sigma: there is "
+                             "no offset to gate")
+        if float(args.respawn_frac or 0.0) <= 0.0:
+            raise SystemExit("--view-ou-front reads the reservoir's deepest "
+                             "state: it needs --respawn-frac > 0")
+        if MULTI:
+            raise SystemExit("--view-ou-front is single-map (one field, one "
+                             "reservoir frontier)")
+    # the zone's outer edge in u (NaN until the reservoir holds a state: no
+    # env is in it then), and the zone share counters for the step line
+    ou_front_d = float("nan")
+    ou_front_np = np.zeros(N, bool) if OU_FRONT > 0.0 else None
+    ou_front_n = [0, 0]
     ou_c = ou_sig_t = ou_left = ou_period_t = None
     if OU_SIG > 0.0:
         ou_sig_t = torch.zeros(NZ, device=device)
@@ -14424,6 +14463,10 @@ def main() -> None:
         if OU_FRAC < 1.0:
             print(f"--view-ou-frac {OU_FRAC:g}: each redraw gives the env an "
                   f"offset with probability {OU_FRAC:g}, else 0 for that window")
+        if OU_FRONT > 0.0:
+            print(f"--view-ou-front {OU_FRONT:g}: an offset is drawn only for "
+                  f"envs within {OU_FRONT:g} x d0 of the reservoir's deepest "
+                  f"state (re-read every rollout); elsewhere 0")
 
     def set_ou_temp(T: float) -> None:
         """--view-ou-temp: the held yaw offset's sigma at plateau temperature
@@ -16703,6 +16746,13 @@ def main() -> None:
         if SR_SELECT:
             sr_eps_list.clear()
             sr_seg.fill(0)
+        if OU_FRONT > 0.0:
+            # --view-ou-front: the zone this rollout explores in, off the
+            # reservoir's deepest state (mapfleet refreshes it on a cadence)
+            _mdf = fleet.reservoir_min_depth()
+            ou_front_d = (float((_mdf + OU_FRONT) * slots[0].rf_d0)
+                          if _mdf == _mdf and slots[0].rf_d0 else float("nan"))
+            ou_front_n[0] = ou_front_n[1] = 0
         # ---------------- rollout ----------------
         t_roll = tm.now()
         with torch.no_grad():
@@ -17429,6 +17479,19 @@ def main() -> None:
                                               device=ou_c.device,
                                               generator=ou_gen)
                                    < OU_FRAC).to(_fresh.dtype)
+                    if OU_FRONT > 0.0:
+                        # --view-ou-front: only envs inside the frontier zone
+                        # (NaN edge -> none); the state each new window starts in
+                        _s0 = slots[0]
+                        _fz = (_s0.reward_field if _s0.reward_field is not None
+                               else _s0.goal_field)
+                        _dz = _fz.sample(np.asarray(_s0.core.states_view["origin"],
+                                                    np.float64))
+                        np.less_equal(_dz, ou_front_d, out=ou_front_np)
+                        ou_front_n[0] += int(ou_front_np.sum())
+                        ou_front_n[1] += N
+                        _fresh *= torch.from_numpy(ou_front_np).to(
+                            device=_fresh.device, dtype=_fresh.dtype).unsqueeze(1)
                     ou_c.copy_(torch.where(_redraw.unsqueeze(1), _fresh, ou_c))
                 if RNN:
                     # decision t+1 is the first of a new episode for the
@@ -19214,6 +19277,11 @@ def main() -> None:
                 _rmd = fleet.reservoir_min_depth()
                 race_note += (f"  res {fleet.reservoir_size():,}"
                               + (f" mind {_rmd:.3%}" if _rmd == _rmd else ""))
+                if OU_FRONT > 0.0:
+                    # --view-ou-front: the zone edge and the share of env-
+                    # decisions inside it this rollout
+                    race_note += (f"  ouF {ou_front_d:,.0f}u in "
+                                  f"{ou_front_n[0] / max(1, ou_front_n[1]):.1%}")
         if isinstance(reward_fn, RaceReward) and reward_fn.arc is not None:
             # the anti-farming read-out: arc GAINED per episode (what the
             # shaping actually paid), the deepest arc any episode REACHED,
