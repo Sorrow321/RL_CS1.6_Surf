@@ -700,3 +700,37 @@ into the session scratchpad. Field progress in brackets.
   strafe east through the centre gap. Its novel episodes have flown the cavity, the region under
   the shaft and the passage toward CP2 (visit counts above), so the later pieces may be partly
   learned already; nothing has ever brought a real episode from the slot into the cavity.
+
+### r2b3_rare result (14:33 UTC): flat, stopped at 5.28B (180M steps)
+
+* Evals (best / median %): 5,177M 27.3/27.3, 5,252M 27.9/27.4. Training: crawl share 17% ->
+  33-41%, reservoir min-depth 72.03% -> 72.35% (shallower), reservoir spread over ~1,200 cells
+  (from 456), draw over ~210 effective cells.
+* Why it cannot work at this wall: it only re-weights the RESERVOIR, and the reservoir holds no
+  state in the shaft or near the window (every real episode dies there < 2 s after arriving).
+
+### A Go-Explore probe in the simulator finds the cavity (analysis only, 14:25 UTC)
+
+* `autoresearch/analysis/sid_goexplore_probe.py`: archive of (128 u cell x 4 headings x 3 speed x
+  climb) holding the deepest state per cell, returns by 1/sqrt(1 + chosen), 1 s of random held
+  usercmd primitives per return, live triggers; seeded with the incumbent's OWN greedy states at
+  26.0-28.0 s (ep 1 of its 4,917M eval). 30,000 returns (1.7M ticks, 2.7 min of CPU):
+  12,146 cells, the first cells below z 10,600 after ~10,000 returns, 292 by the end - the
+  cavity and the space under the shaft, i.e. the human's first piece. Best progress stayed
+  28.59%: random actions do not surf the ramp below back up to the window.
+* So: returns that can START inside the shaft find the way into the cavity cheaply; the trainer
+  never returns there because of the reservoir's margin.
+
+### r2b3_arch: warm + `--respawn-rare 0.5 --respawn-rare-arch 1` (c2062d5) - launched 14:34 UTC
+
+* The archive mode of --respawn-rare: per 256 u cell a ring of 4 states at which REAL envs FLEW
+  into it (a > 512 u jump between decisions is a respawn and is not archived), no pre-death
+  margin; 50% of the non-start, non-novel spawn rows come from it (~22% of all spawns), cells by
+  1/sqrt(1 + N), half of them among the deepest quarter of archived cells by field distance.
+  Returns land in their cell, so N grows with each return and a doomed cell stops being drawn
+  (what replaces the margin). Tests: archive unit test (real-only capture, jump filter, tail
+  rows, shell, round trip) and a CPU trainer smoke with resume (3 min).
+* First lines: archive draw over ~447 effective cells of ~617, mean N ~19.
+* Leading indicator to read off its checkpoint: archive cells in the cavity (x 2,580-2,990,
+  z 10,700-11,250) or below the shaft (z < 10,600, x 1,700-2,900) = real episodes on the
+  detour.
