@@ -407,3 +407,18 @@ the greedy detour appeared at 1.20B.
   noise_tau 0.5 / frac 0.25 kept. Resume eval 1,279.3M: frontier 27,843u (a new unstuck best), so
   T halves from 2. Top goex bins: 11, 12, 13 (the deepest). Stop at 2.28B (stopped before the
   wrap-up).
+
+### 07:34 UTC - arm 5 (goex) dropped the detour again, and goex targets the WRONG bins here; arm 6 = backward window
+
+* r1b2_gx: 1,279.3M (resume) 28.48 (2/9 detour), **1,354.8M 27.44, 9/9 dive** - the same 75M-step
+  loss as the consolidation.
+* **goex is a misfit for a 90%-reservoir run:** its weight 1/sqrt(seen+1) counts the episodes that
+  VISITED a bin, and with 90% mid-map spawns the rarely-visited bins are the EARLY ones. At
+  1,365M the top-weight bins were 14, 15, 13 (near the start), the opposite of the frontier.
+* **Arm 6 r1b2_bw** = ckpt_1278738432.pt + `--respawn-mode backward` (Salimans & Chen's
+  moving window over the reservoir's distance bins: the 2 occupied bins nearest the goal,
+  advancing only on finishes, so it stays put here) + the default unstuck schedule. The window
+  is bins [11, 12] = d 67.2k-79.4k = 18.8-31.3% of the field: the window gate, CP1, the CP2
+  wall and the post-detour states. 90% of episodes spawn there; the 10% true starts keep the
+  early map. The aim is to practise the section AFTER the detour until the detour is worth its
+  ~4 s.
