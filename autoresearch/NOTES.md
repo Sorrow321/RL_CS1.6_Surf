@@ -813,3 +813,18 @@ checkpoint is taken from the BEST EVAL's run dir, so pull that run's ckpt_final.
   chamber WR state finishes 0/8 where greedy finishes. Next: the same with `--unstuck-max 0.25`.
 
 ### r2b4_elite3 (18:08 UTC): elite2's checkpoint + `--unstuck-max 0.25` (T clamped 2 -> 0.25), 1.0B steps
+
+### r2b4_elite3 (T 0.25, 18:08-18:15 UTC, stopped at 6,499M): still 0 elite rows
+
+* Evals 27.361 / 27.514. 0 of 229,797 archive-spawned episodes reached 29.05% across elite2 + elite3.
+  The archive's useful rows are too rare and too imprecise for the policy to finish from in training.
+
+### NEW: `--ez-surf P` (0f69161) - the committed surf / air-strafe input as an ez burst
+
+* A share P of the --ez-eps bursts holds: one strafe key, no fwd / jump / duck, the view K x atan(30/|v_h|)
+  ahead of the velocity on the strafe side, K ~ U(0.5, 2). Checked on the core at 1,500 u/s (gravity 0):
+  strafe-left with a +1 deg lead turns the velocity 2.15 deg/tick counter-clockwise at constant speed (86 deg
+  in 40 ticks), strafe-right with -1 deg mirrors it, the crossed pairings barely turn. This is link A (the
+  WR's 0.36 s turn into the bowl) and the bowl surf input; a uniform burst almost never holds it.
+* Arm r2b4_ezs1 (18:17 UTC): resume of elite3's ckpt_latest (6,498,549,760; archive spawns + elite rule +
+  T 0.25 restored) + `--ez-eps 0.05 --ez-surf 0.5 --ez-front 0.1` (bursts only past 25.6% progress), 1.2B.
