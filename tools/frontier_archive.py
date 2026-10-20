@@ -208,12 +208,15 @@ class FrontierArchive:
             acts[:, 5] = dk
             view[:, 0] = yaw
             _, _, done, trunc, _ = core.step(acts, view=view)
-            st = core.get_states()
             alive &= ~(done.astype(bool) | trunc.astype(bool))
             alive &= t < hmax
             self.sim_ticks += int(alive.sum())
-            if t % CHECK_EVERY == CHECK_EVERY - 1 and alive.any():
-                added += self._admit(st[alive])
+            if t % CHECK_EVERY == CHECK_EVERY - 1:
+                # the states are read every CHECK_EVERY ticks: admissions, and the heading a new
+                # segment's yaw is drawn around (at most CHECK_EVERY - 1 ticks old)
+                st = core.get_states()
+                if alive.any():
+                    added += self._admit(st[alive])
             if not alive.any():
                 break
         self.batches += 1

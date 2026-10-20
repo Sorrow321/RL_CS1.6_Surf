@@ -11,3 +11,6 @@ Both run ON THE BOX from /root/RL_Surf (copy the .py files and the .npy there), 
   way --respawn-novel moves them; `sid_corridor_east.npy` both lanes, `_py.npy` the +y lane)
   and report how far east it gets, whether it reaches the ramp (x > 5,300) and how far west
   it comes back (`xret`). Map coordinates are measurement boxes only.
+* `sid_r1_incumbent_traj_4916772864.jsonl` - the round-1 incumbent's own best greedy eval
+  (r1b1_ratnovx2 at 4,917M, 9 episodes from the true start, best 28.63%): the root source for
+  `tools/frontier_archive.py` on a box (the policy's OWN states, not a demo).
