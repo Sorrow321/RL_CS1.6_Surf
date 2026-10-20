@@ -306,3 +306,28 @@ steps/s. Measure it on your box in the first minute and size `--steps` to the ti
   (to 2.5B, ~2 h). Purpose: reach the CP2 wall and test ratchet + novel spawns there - the
   combination the corridor bench pointed at (spawns in the dip + no charge for the eastward
   leg to the ramp).
+
+### The ramp turnaround EXISTS on the +y side; the exit is too low (analysis, 04:30 UTC)
+
+* Traced the corridor-bench episodes that reached x > 5,300 (nov checkpoint):
+  * **-y side** (start (4,669, -6, 11,515), v (1,029, -793, 243)): hits a wall at x ~5,650
+    at t = 1.0 s, loses all speed, crawls there 14 s sinking from z 11,400 to 10,930. Not a ramp.
+  * **+y side** (start (4,769, 799, 11,501), v (1,676, -139, 177)): the ramp at x ~5,480,
+    y ~970 turns it round in ~0.7 s - v (753, -1,401, -223) at 0.5 s, then (-1,483, 443, -623)
+    at 1.0 s and (-1,488, -622, -162) at 1.5 s at (4,182, 611, 11,094): heading WEST at
+    1,490 u/s. It is too LOW and descending and dies at x 4,047, z 10,914 (2.1 s).
+* The human (ledger) is on the +y side too: (4,041, 661, 11,814) at 24.5 s,
+  (5,554, 454, 11,079) at 25.5 s, then back west CLIMBING (vz +260..+422) to cross the slot
+  at z ~11,469. So the turnaround is the map's geometry, not a precision trick; the missing
+  skill is the exit: leave the ramp climbing, high enough for the slot under *99
+  (z 11,332-11,552 at x 2,528-3,680).
+* There is a smooth reward gradient toward it: after the turnaround, the further west the
+  agent flies before the pit floor takes it, the more progress (both stock and ratchet).
+  Best seen so far: x 2,840 / 27.66% (250 u short of the floor's west edge at 2,592).
+* So the rate-limiting parts are (1) how often an episode starts or arrives in the +y
+  corridor heading east (novel rows from east-heading sources, ~23-23.5 s of the line) and
+  (2) the main line's run-up: the human drops under the plate's level WEST of its edge
+  (x < 4,194) at ~24 s on the +y side; the agent climbs over to its U-turn instead.
+* Bench v2 (scratchpad bench/corridor_east_py.npy: 64 own east-heading states moved to the
+  +y corridor x 3,750-5,000, y 300-1,000, z 11,450-11,850; `xret` = how far west it comes
+  back after the ramp) tracks the exit skill across checkpoints.
