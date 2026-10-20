@@ -287,3 +287,13 @@ of 2 AT the wall. T rises 1.0 per 1e8 from 0.096: ~1 at ~990M, 2 at ~1.09B. Stop
   The CP2 death point is d ~70,900-71,300 (72.5-72.9%), not yet passed.
 * Evals: 901.8M 27.40 (median 27.38), 977.3M 27.43 (median 27.33; the episodes switched to the
   y ~ +840 lane). No crossing yet.
+
+**04:30 reservoir probe (`tools/res_probe.py runs/r1b2_nth/ckpt_latest.pt`, run on the box; it
+prints the deepest harvested states of a ckpt's reservoir):**
+* At 1,023M, 3,146 of the newest 20,000 reservoir rows are deeper than d 72,800 (the old
+  floor). They span x 3,693-4,793, y 390-1,136, z 11,019-12,301.
+* The deepest 25 rows sit at x 3,700-4,130, y 580-970, z 11,450-11,830: heading south
+  (-30..-150 deg), falling (vz -500..-1,260), 1,000-1,360 u/s horizontal.
+* That is near where the human is at 24.5 s, (4,041, 661, 11,814), and ~600 u BELOW the
+  agent's habitual U-turn (z ~12,390). The exploration under heat reaches the human's line, and
+  the 977M greedy eval switched to the same north lane.
