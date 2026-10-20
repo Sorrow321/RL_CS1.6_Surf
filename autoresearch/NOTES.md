@@ -790,3 +790,17 @@ physics as the sim (gravity 800, airaccelerate 100) except maxvelocity 3,500.
   thin wall 55 u below the lower opening). **r2b2_r635** (18:35) = that checkpoint (md5 16fe0cd0...,
   T 2 at save) + `--unstuck-max 1 --respawn-novel-frac 0.3` (the T 2 -> 1 switch that produced the
   28.841 eval and the ceiling jump, and the lower novel share), +1e9 steps, evals every 25M.
+
+### 19:00 UTC: r2b2_r635 null; from-scratch test of the band recipe (r2b2_sband)
+
+* r2b2_r635 (6.354B + T cap 1 + novel frac 0.3, to 6.66B): first eval 28.374 (the 6.354B policy
+  itself), then 11 of 12 evals at 27.3-27.9% - under T <= 1 the greedy line goes to the pit dive
+  within 25M steps from this checkpoint too (the 28.841 transient was not reproduced).
+* Conclusion for the warm lineage this round: since ~6.6B (and at once under T <= 1) the greedy line
+  commits to the CP2 pit dive while the stochastic policy keeps crossing (training ceiling 29.76%).
+  Max over evals so far: 28.841 (r2b2_t1, the field route's tunnel dive at its limit).
+* **r2b2_sband** (19:02): FROM SCRATCH, the incumbent recipe (ratchet + novel) +
+  `--respawn-novel-shell 0.9 --respawn-novel-shell-width 0.05 --respawn-novel-radius 256 3072
+  --respawn-novel-turn 90 --respawn-novel-band 0.05 --respawn-novel-tries 64`, 450M steps, evals
+  every 75M (round 1's marks). Question: do frontier-band novel rows clear the early gates sooner
+  than ratnov (first-ramp trap exit 378M, window 576M, CP2 wall 651M)? One seed.
