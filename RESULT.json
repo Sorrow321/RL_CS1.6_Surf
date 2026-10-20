@@ -3,21 +3,26 @@
  "round": 1,
  "final": false,
  "best": {
-  "score": 27.926,
-  "eval_file": "/home/steam/ar/runs/r1b4/r1b4_irn/traj_1052246016.jsonl",
-  "run": "r1b4_irn",
-  "step": 1052246016,
-  "ckpt": null,
+  "score": 27.975,
+  "eval_file": "/home/steam/ar/runs/r1b4/r1b4_irn3/traj_2368733184.jsonl",
+  "run": "r1b4_irn3",
+  "step": 2368733184,
+  "ckpt": "/home/steam/ar/runs/r1b4/r1b4_irn3/ckpt_2311585792.pt",
+  "ckpt_step": 2311585792,
+  "ckpt_md5": "e7b57dfb58c97cc934f827519e83a4d4",
+  "ckpt_final": "/home/steam/ar/runs/r1b4/r1b4_irn3/ckpt_final.pt (2,511,339,520; md5 03829b5b454eced5bffa3caeaa9a6245)",
   "recipe": [
    "--race-ratchet",
    "--respawn-novel",
    "--unstuck-patience",
    "5e7",
    "--unstuck-rate",
-   "1.0"
+   "1.0",
+   "--unstuck-max",
+   "2"
   ],
-  "resume_from": "/home/steam/ar/incumbent/ckpt.pt (749.7M, md5 ede4be9a)",
-  "commit": "48cf258"
+  "resume_from": "incumbent 749.7M (ede4be9a) -> r1b4_irn (to 1.072B) -> r1b4_irn2 (T cap 1, to 1.311B) -> r1b4_irn3",
+  "commit": "6e2bb57"
  },
  "summary": "CP2 wall anatomy (analysis only): steep U-ramp exit + air U-turn + dive into a slanted fail sheet; the open way is a low exit, a speed-keeping ride round a curved D-ramp, and a level pass west through a ~220 u slot. Probes + policy-guided Go-Explore spawns taught the D-ramp ride slowly under the stock potential (2.4B steps, flat evals 27.4-27.54). Other branches showed --race-ratchet unlocks CP2; my lineage + ratchet did not cross in 860M steps (entrenched, sigma collapsed). Last arm r1b4_irn = incumbent + --race-ratchet + --respawn-novel + fast unstuck heating: at 1,052M the GREEDY policy flies the D-ramp route in 2/9 episodes (ride at ~1,800 u/s, climbs to slot height) and dies at the slot's narrow end: 27.93%. Running to ~11:00."
 }

@@ -652,3 +652,14 @@ misleading: the agent's surviving lines pass through `*99`'s box.
   stays 27.926 (irn 1,052M).
 * **Plan:** the run ends ~10:52 (budget); then pull, score, release the box, final
   RESULT.json and notes before 11:50.
+
+### 10:59 UTC: irn3 final - new best 27.975; last stretch r1b4_irn4 until the wrap-up
+
+* **r1b4_irn3** (1.311B -> 2.511B, T 2, ratchet + respawn-novel + fast heating):
+  * 16 evals; the best is **27.975 at 2,368M** (frontier 27,350 u), with 27.836 (1,538M)
+    and 27.828 (1,915M) next. The route-type episodes recur every few evals at T 2.
+  * Checkpoints pulled with md5 checked: ckpt_2311585792.pt (e7b57dfb..., 57M steps
+    before the best eval) and ckpt_final.pt (03829b5b...).
+  * Branch best over 88 valid evals: 27.975.
+* **r1b4_irn4**: resume of irn3's ckpt_final with the same flags, +520M steps, to ~11:47 (the
+  wrap-up starts 11:50). Box deadline 12:22.
