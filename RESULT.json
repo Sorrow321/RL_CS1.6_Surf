@@ -1,7 +1,7 @@
 {
  "agent": "r1b4",
  "round": 1,
- "final": false,
+ "final": true,
  "best": {
   "score": 27.975,
   "eval_file": "/home/steam/ar/runs/r1b4/r1b4_irn3/traj_2368733184.jsonl",
@@ -21,8 +21,8 @@
    "--unstuck-max",
    "2"
   ],
-  "resume_from": "incumbent 749.7M (ede4be9a) -> r1b4_irn (to 1.072B) -> r1b4_irn2 (T cap 1, to 1.311B) -> r1b4_irn3",
-  "commit": "6e2bb57"
+  "resume_from": "incumbent ckpt 749.7M (md5 ede4be9a) -> r1b4_irn (to 1.072B, cap 2) -> r1b4_irn2 (cap 1, to 1.311B) -> r1b4_irn3 (cap 2)",
+  "commit": "5783b58"
  },
- "summary": "CP2 wall anatomy (analysis only): steep U-ramp exit + air U-turn + dive into a slanted fail sheet; the open way is a low exit, a speed-keeping ride round a curved D-ramp, and a level pass west through a ~220 u slot. Probes + policy-guided Go-Explore spawns taught the D-ramp ride slowly under the stock potential (2.4B steps, flat evals 27.4-27.54). Other branches showed --race-ratchet unlocks CP2; my lineage + ratchet did not cross in 860M steps (entrenched, sigma collapsed). Last arm r1b4_irn = incumbent + --race-ratchet + --respawn-novel + fast unstuck heating: at 1,052M the GREEDY policy flies the D-ramp route in 2/9 episodes (ride at ~1,800 u/s, climbs to slot height) and dies at the slot's narrow end: 27.93%. Running to ~11:00."
+ "summary": "Best 27.975 (95 valid evals): warm incumbent + --race-ratchet + --respawn-novel + fast unstuck heating; the greedy policy flies the human's CP2 detour (D-ramp ride at ~1,800 u/s, climb to slot height) and dies at the slot's narrow end. Found the CP2 anatomy (analysis only: low exit, curved D-ramp ride, ~220 u slot; tools/fail_probe.py) and, with CPU won't/can't probes, that the ride is a skill to practise. Under the stock potential, policy-guided Go-Explore spawns (tools/ge_spawns.py + explore_phase1 rooted at the policy's own frontier) improved the ride but never crossed in 2.4B steps (27.4-27.54); --respawn-novel alone and the new --spawn-burst (continuous view, deepest-reservoir gate) were flat. The ratchet is the enabler (r1b1/r1b2 found it first); an over-trained lineage + ratchet did not cross, fresh from the incumbent did in ~300M steps. At T 2 the route comes and goes; T<=1 loses it. Next: stabilise the route (SIL on route episodes, a T schedule that consolidates after an eval gain), then the slot's west end and the corridor to CP2 (30.9%)."
 }

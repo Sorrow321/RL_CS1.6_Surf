@@ -663,3 +663,66 @@ misleading: the agent's surviving lines pass through `*99`'s box.
   * Branch best over 88 valid evals: 27.975.
 * **r1b4_irn4**: resume of irn3's ckpt_final with the same flags, +520M steps, to ~11:47 (the
   wrap-up starts 11:50). Box deadline 12:22.
+
+## Round 1, r1b4 - THE ROUND'S LESSON (wrap-up, 2026-10-20 11:53 UTC)
+
+**Best score: 27.975** (`runs/r1b4/r1b4_irn3/traj_2368733184.jsonl, 2,368.7M steps`): the greedy policy flies the human's CP2 detour (D-ramp ride
+at ~1,800 u/s, climb to slot height) and dies at the slot's narrow end. r1b1 (28.63) and r1b2
+(28.49) got further this round with the same ingredient (the ratchet).
+
+**What worked**
+* `--race-ratchet` + an exploration spawn mechanism + T near 2, warm from the incumbent:
+  r1b4_irn = incumbent + `--race-ratchet --respawn-novel --unstuck-patience 5e7 --unstuck-rate 1.0`
+  flew the route in the greedy line at 1,052M (2/9 episodes, 27.93%), ~300M steps after
+  resuming. The ratchet is the enabler: under the stock potential every eastward step of the
+  detour is a negative reward, GAE turns the detour's actions negative, and the policy is
+  pushed off the route before it can complete it once.
+* Analysis instruments (all map-free code, measurement only): `tools/fail_probe.py` (where a hull
+  dies, from the core's trigger test - fail AABBs mislead), CPU `record_ckpt --spawn-states`
+  won't/can't probes, `tools/explore_phase1.py --roots-spine` rooted at the policy's own
+  deepest reservoir states (covers a gate's free space in minutes), `tools/ge_spawns.py`.
+
+**What did not**
+* `--respawn-novel` alone, warm (Arm A): 27.44, flat.
+* `--spawn-burst` under the continuous view (new code, Arm B): 27.49, flat. Random held bursts
+  from the policy's states rarely reach the lower room and never ride the D-ramp.
+* Policy-guided Go-Explore spawns under the STOCK potential (Arms C-C4, 2.4B steps): the D-ramp
+  sub-skill improved monotonically on a fixed probe (0 -> 6 -> 11 -> 13 of 14 starts come back
+  west; d_min 72,670 -> 71,790) but the exits stayed ~2x too slow / ~500 u too low; evals flat
+  27.4-27.54. SIL on top (C4): flat.
+* My long lineage + ratchet (C5, 860M steps; C6 + respawn-novel, 300M): no crossing. That lineage's
+  view sigma had collapsed (0.029 vs the incumbent's 0.046) and its 2.4B potential-shaped steps
+  had entrenched the dive. Start from a less-trained checkpoint when changing the reward.
+* T capped at 1 (consolidation from the snapshot that flew the route): the route vanished from
+  the greedy line. At T 2 it comes and goes (27.84 at 1,538M in irn3).
+
+**For the next round**
+* The route is IN the ratchet-trained policy at T ~ 2 but not stable. Ideas: SIL on the route
+  episodes (positive under the ratchet), a T schedule that holds T high for training but
+  consolidates once the eval frontier moves, more envs on the CP2 approach.
+* The next precision gate is the slot's west end (the thin wall's opening at x ~2,450) and the
+  corridor to CP2 (30.9%); then the field's dip 2 (27.9-31.2 s on the human line).
+* Ops: never run CPU-heavy tools on the training box (Go-Explore cut the trainer 185k -> 31k/s);
+  snapshot ckpt_latest on the box before scp (the trainer rewrites it mid-copy); a bash background
+  job ignores SIGINT; `pgrep -f` with the pattern in your own command line matches itself.
+
+**Final numbers (r1b4, round 1)**
+
+| arm | what | best score |
+|---|---|---|
+| A r1b4_nv | warm + `--respawn-novel` | 27.437 |
+| B r1b4_sb | warm + `--spawn-burst` (new, continuous view, deepest-3% gate) | 27.489 |
+| C-C4 r1b4_gs* | warm + policy-guided Go-Explore spawns, stock potential; C4 + SIL | 27.544 (C2) |
+| C5 r1b4_gr5 | the C lineage + `--race-ratchet` | 27.490 |
+| C6 r1b4_rn6 | the C lineage + ratchet + `--respawn-novel` | 27.466 |
+| r1b4_irn / irn2 / irn3 / irn4 | INCUMBENT + ratchet + `--respawn-novel` + fast heating (irn2: T cap 1) | 27.926 / 27.518 / **27.975** / 27.679 |
+
+* 95 valid greedy evals in all, 0 finishes, CP2 never entered: the best episodes die at the slot's
+  narrow end, ~600 u short of the wall gap (28.1%).
+* **Code on this branch:**
+  * `--spawn-burst` for `--view-continuous` + `--unstuck`, with `--spawn-burst-frac`,
+    `--spawn-burst-uniform` and `--spawn-burst-deep`. Flag-off bit-identical, pinned by
+    `tests/python/test_spawn_burst_viewc.py`.
+  * `tools/ge_spawns.py` (policy-guided Go-Explore spawn files).
+  * `tools/fail_probe.py` (fail-zone painter, analysis only).
+* **Box:** vast 56816052 (RTX 3090, 0.187 $/h, ~11 h, ~$2.1), released at wrap-up.
