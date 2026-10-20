@@ -521,3 +521,61 @@ checkpoint is taken from the BEST EVAL's run dir, so pull that run's ckpt_final.
   is code-identical to this head (only `autoresearch/config.json` differs).
 * Box 56813988 (RTX 5080 + 7950X3D, $0.388/h) ran 00:41-10:24 UTC, about 9.7 h / ~$3.8,
   released at 10:24; no box at wrap-up.
+
+## Round 2, branch r2b2 - 2026-10-20 13:25 UTC: the 28.6% wall is the asymptote of an infeasible field route
+
+All analysis only (CLAUDE.md sections 0 / 0b); scripts in the session scratchpad, numbers here.
+No box could be rented from 12:55 to 13:25 UTC (every offer under config.max_dph was either
+blocklisted or a cent over the cap), so this was done on the local CPU.
+
+### Geometry past the CP2 slot (hull traces, kill AABBs + hull_probe, the goal field)
+
+* The slot (between the *86 kill layer below and the *99 kill ceiling above) ends at a THIN WALL at
+  x 2,512-2,576. Its openings (ducked-hull origin):
+  * the **upper windows**, |y| 850-938, z ~11,400-11,490, with the no_jump kill plates *80 / *64 on
+    their sills (raw z 11,392-11,394);
+  * a **lower opening**, |y| < 110, z ~10,770-11,100, into a closed CAVITY under the pit's slab.
+* West of the wall: a **shaft** x 2,208-2,496 (hull centre), full width in y, closed on top
+  (solid at z ~11,520), kill floor *21 (raw z 10,688). Its only west exits are two **tunnels**
+  under a solid block (block bottom z ~11,216-11,232): |y| 850-938, ducked origin z
+  10,964-11,180, 256 u long (x 1,952-2,208), floored by the no_jump kill plates *17 / *113 (raw
+  z 10,944-10,958). Beyond: a room (x 1,168-1,936) whose floor is kill *20 (raw z ~10,432, x
+  848-1,772), a pillar (x 848-1,168, z 10,400-11,232), and the CP2 area (x 200-830) reachable only
+  UNDER *20 / the pillar (z < 10,396) - the field's route: tunnel -> room -> drop east of x 1,772
+  -> west at z ~10,300-10,400 -> CP2 (~31%) -> 39% further on.
+* *86 is NOT a box: it is a thin kill layer on a sloped slab (from (2,600, 11,350) down to
+  (3,400, 11,050), then flat at 10,776 to x 5,700); the slab is solid below it east of x 3,032.
+* The cavity (x 2,580-3,036 at y ~0, z 9,564-11,100) is sealed except through the lower opening:
+  *70's kill ramp on the west (thin solid, kill on its upper-west face, its top end meets the
+  shaft floor), vertical walls east, kill floor *90 (z ~9,560). It holds one non-kill platform
+  (x ~2,220-2,412 at y 0, top z ~10,050). Field progress in it 25.6-27.3%, i.e. up to ~2,000 u
+  of d above the window - the size of the human's dip 2 (1,978 u, 27.9-31.2 s).
+
+### The tunnel cannot be entered from the upper window by free flight
+
+* Window (ducked origin z <= ~11,490) -> tunnel ceiling (<= 11,180 at x 2,208) needs >= 310 u
+  of drop in 384 u of x; the tunnel then allows <= 204 u of drop in 288 u. With constant
+  horizontal speed, gravity makes "drop >= 310 in the first 4/7 of the path, <= 514 over all
+  of it" infeasible for ANY entry vz (the quadratic constraints have no solution).
+* Brute force with the C core, 12,090 straight ducked flights from x 2,600, y 895 over z
+  11,380-11,500, vz -2,400..+600, |v| 300-3,200: **best 28.79%, none past x 1,984**; with the
+  vz the slot allows (>= -600): **best 28.74%** (z 11,470, vz -600, |v| 950 - slower and
+  steeper than the agent's 1,570 u/s, -337).
+* Random macro-action search (yaw offset, keys, duck held 1-10 decisions) from the policy's own
+  8 deepest reservoir states: 13% pass the window, 2e-4 get under the block, 0 of 35k exit the
+  tunnel. Iterated Go-Explore (cells 64 u x speed bucket x vz sign, count-based selection,
+  400 x 512 rollouts, 69k cells): best 28.67%; every archived state inside the tunnel's x range
+  falls at 800-900 u/s; no state rises anywhere in the shaft.
+* **So the lineage's wall at 28.6% is the asymptote of the field's route, which is physically
+  closed: the best any policy can score on it is ~28.74-28.8% (dying on *17's west end; the
+  training ceiling is 28.82%).** The incumbent's 28.63% episode enters the window at 1,570 u/s,
+  vz -337. The real route is something else (the human's dip 2 suggests the cavity; I found no
+  exit from it).
+
+### What novel rows look like at this wall (the incumbent checkpoint's own sampler state)
+
+* d_best 69,594.5 (ceiling 28.82%). Of 28k sampled rows only 1.5% land at >= 27% progress;
+  those in the room / cavity carry EASTWARD velocities (median vx +885..+1,163: their sources
+  are the corridor-east states under *45), i.e. pointed away from the way on.
+* The reservoir (20k states) has median progress 19%, p90 25.6%, max 28.0%: with the 2 s
+  harvest margin it never holds states in the last 2 s before the window.
