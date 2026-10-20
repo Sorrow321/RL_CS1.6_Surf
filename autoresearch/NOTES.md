@@ -522,7 +522,7 @@ checkpoint is taken from the BEST EVAL's run dir, so pull that run's ckpt_final.
 * Box 56813988 (RTX 5080 + 7950X3D, $0.388/h) ran 00:41-10:24 UTC, about 9.7 h / ~$3.8,
   released at 10:24; no box at wrap-up.
 
-## Round 2, branch r2b3 - 2026-10-20 13:05 UTC (box 56893794, RTX 5080, $0.388/h, machine 150677)
+## Round 2, branch r2b3 - 2026-10-20 13:01 UTC (box 56893794, RTX 5080, $0.388/h, machine 150677)
 
 ### The frontier, precisely (analysis only: voxel grid, kill AABBs from the bsp, the field)
 
@@ -560,3 +560,25 @@ checkpoint is taken from the BEST EVAL's run dir, so pull that run's ckpt_final.
 * Caveat seen at once: with 1024 envs x 128 decisions per rollout, ~131k rows qualify and the
   50k buffer is REFILLED every iteration (`sil 50,000 rows +50000`), so this is
   advantage-filtered imitation of the latest rollout, not a long memory of rare successes.
+
+### r2b3_sil result (13:08 UTC): NEGATIVE, stopped at 5.20B (99M steps)
+
+* Evals (score.py): 5,101M (the checkpoint's own first eval) 28.200 (best 28.2%, median
+  27.6%); 5,177M **27.529** (best 27.5%, median 25.9%, three greedy episodes now die at
+  15-17 s on the first half of the map).
+* Training side, monotone in the wrong direction within 75M steps: episode length ~950 ->
+  ~610 decisions, reservoir min-depth 72.03% -> 73.35% (the deepest harvested state got
+  SHALLOWER), the policy's own yaw sigma 0.032 -> 0.046. SIL scores the stored actions under
+  the UNTEMPERED policy while they were drawn at T = 2 (sigma x 3), so its log-likelihood term
+  pulls sigma up; and the 50k buffer is refilled by every rollout (top 50k of ~131k qualifying
+  rows), so it is short-memory advantage-filtered imitation, not a replay of rare successes.
+* Not worth repeating as is under --unstuck T = 2. A frontier-filtered, temperature-aware SIL
+  would be a different mechanism.
+
+### r2b3_m05: warm + `--respawn-margin 0.5` - launched 13:07 UTC
+
+* Same resume, 450M steps (to 5.55B). The reservoir's snapshots are 1 s apart, so with the
+  2 s margin the deepest harvested state is 2-3 s before a death (the slot at 26-27 s for an
+  episode that dies at the window); with 0.5 s it is 0.5-1.5 s before (the slot's end, right
+  before the shaft). Question: do respawns at the maneuver make the greedy line thread the
+  window, and do training episodes go deeper into the room (novel ceiling > 28,174 u)?
