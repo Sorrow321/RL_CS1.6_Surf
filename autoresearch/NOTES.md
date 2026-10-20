@@ -677,3 +677,27 @@ physics as the sim (gravity 800, airaccelerate 100) except maxvelocity 3,500.
   `--respawn-novel-band 0.05 --respawn-novel-tries 64` (shell 0.9 / width 0.05 / radius 256-3,072 /
   turn 90 restored), 450M steps. First readings: 530-730 rows per pool, 10-16% of episodes novel,
   progress median 26.2%: ~3x arm 1's cavity dose.
+
+### 15:40 UTC: arm 2b (r2b2_band64) - the cavity return leg is LEARNED (bench); extended
+
+* r2b2_band64 = arm 1's final (5,551M) + `--respawn-novel-band 0.05 --respawn-novel-tries 64`, to
+  6,001.5M (avg 217k steps/s). Novel rows 530-1,840 per pool, 10-46% of episodes (rising as the
+  sampler found more cells), progress median 26.0%: most of them in the cavity.
+* Evals: 27.4-28.5, best **28.523** (5,879M), three collapses to ~15% (5,652M, 5,702M, 5,727M: the
+  greedy line breaks at 13-15%, recovered by the next eval). Training ceiling 28,184 -> 28,187 u.
+* The greedy line CHANGED: at 5,853M three episodes go through the -y window and slide north along
+  the block face toward the shaft's centre (the human's move at 28.0 s), then fall to the shaft
+  floor (*21) ~160 u west of the lower opening instead of turning east into it. The incumbent dove
+  into the tunnel lane instead.
+* Cavity bench, arm 2b's final vs before (MEASUREMENT ONLY, demo states):
+  * ramp approach: rose 10/11 (incumbent 2, arm 1 6), vz max 845, median life 2.60 s (0.55 / 1.02);
+  * climb: **back 7/11, tunnel lane 6/11, west of the tunnel 5/11, best 29.92%** (incumbent 1/1/0,
+    arm 1 0/0/0): from the human's climb states the policy now flies the return leg into the room;
+  * shaft and lower opening: still 0 (the entry into the cavity and the drop to the ramp).
+* So cavity practice from frontier-band novel rows teaches the dip's return leg in ~450M steps.
+  What is still missing is the entry and the strong turn-up on the ramp (vz +845 vs the human's
+  +1,190). **Extended** (PROTOCOL: a gate the incumbent never cleared, measured by the bench):
+  r2b2_band64x = bare resume of arm 2b's final (6,001,524,736, md5 28e03931...), all novel settings
+  restored (band 0.05, tries 64, turn 90, shell 0.9/0.05, radius 256-3,072), +1.2e9 steps (to
+  7.2B, ~95 min), evals every 25M. Watching: the training ceiling (real episodes past 28.82%), the
+  greedy line entering the lower opening, and evals past 28.628.
