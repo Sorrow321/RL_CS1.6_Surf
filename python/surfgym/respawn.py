@@ -1717,7 +1717,7 @@ class NovelSpawnSampler:
                  radius: tuple = (256.0, 2048.0), shell_frac: float = 0.5,
                  shell_width: float = 0.25, tries: int = 8, bins: int = 32,
                  d0: float = 0.0, window: float = 0.0, seed: int = 73,
-                 turn: float = 0.0) -> None:
+                 turn: float = 0.0, band: float = 0.0) -> None:
         self.core = core
         self.field = field
         self.n = int(n_envs)
@@ -1742,6 +1742,16 @@ class NovelSpawnSampler:
             raise ValueError(f"--respawn-novel-turn {turn}: degrees in [0, 180]")
         self.turn_rng = (np.random.default_rng([int(seed), 7919])
                          if self.turn > 0.0 else None)
+        # --respawn-novel-band B: a moved state must also sit within B x d0 of the ceiling in
+        # potential (d_best <= d <= d_best + B d0): "closer to the frontier" in the field's own
+        # units, not in space. Space alone is not enough where a map folds: the unvisited air
+        # near the frontier's sources is mostly EARLIER track (sidistic's CP2 sources put the
+        # rows at a median 17% of progress for a 28.8% ceiling); the band keeps the dips just
+        # behind the frontier and drops the rest. 0 = off (no gate, as shipped)
+        self.band = float(band)
+        if self.band < 0.0 or (self.band > 0.0 and not self.d0 > 0.0):
+            raise ValueError(f"--respawn-novel-band {band}: needs >= 0 and the map's d0")
+        self.rej_band = 0
         nz, ny, nx = field.grid.shape
         self.mins = np.asarray(field.mins, np.float64)
         span = np.array([nx, ny, nz], np.float64) * float(field.cell)
@@ -1929,6 +1939,10 @@ class NovelSpawnSampler:
             vis = self._near_visited(cand)
             self.rej_field += int((~ok_f).sum())
             self.rej_ceiling += int((ok_f & ~ok_c).sum())
+            if self.band > 0.0:
+                ok_b = d <= self.d_best + self.band * self.d0
+                self.rej_band += int((ok_f & ok_c & ~ok_b).sum())
+                ok_c = ok_c & ok_b
             self.rej_visited += int((ok_f & ok_c & vis).sum())
             good = (ok_f & ok_c & ~vis).reshape(len(src), t)
             # the hull last, on the survivors only (3-4 us a trace)
@@ -2032,6 +2046,7 @@ class NovelSpawnSampler:
                "rej_ceiling": self.rej_ceiling / off,
                "rej_visited": self.rej_visited / off,
                "hull_reject": self.rej_hull / max(self.hull_tested, 1),
+               **({"rej_band": self.rej_band / off} if self.band > 0.0 else {}),
                "novel_share": ((self.spawned_novel / self.spawned)
                                if self.spawned else 0.0)}
         if self._last is not None and len(self._last[0]):
@@ -2053,6 +2068,8 @@ class NovelSpawnSampler:
         rej = ("; rejected so far: off-field {:.0%} past-ceiling {:.0%} visited {:.0%} "
                "hull {:.1%}".format(st["rej_field"], st["rej_ceiling"],
                                     st["rej_visited"], st["hull_reject"]))
+        if "rej_band" in st:
+            rej += " (outside the band {:.0%})".format(st["rej_band"])
         if "n" not in st:
             return head + "; no rows this iteration" + rej
         return head + ("; {:,} rows: progress med {:,.0f}u p90 {:,.0f}u, moved "

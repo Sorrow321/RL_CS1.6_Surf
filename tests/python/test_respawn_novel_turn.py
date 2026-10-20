@@ -133,3 +133,46 @@ def test_a_turn_outside_0_180_is_refused(bad):
 def test_the_recorder_treats_the_flag_as_training_only():
     src = (ROOT / "tools" / "record_ckpt.py").read_text(encoding="utf-8")
     assert '"respawn_novel_turn"' in src
+
+
+# --------------------------------------------------------------------------
+# --respawn-novel-band B: rows only within B x d0 of the ceiling in potential
+# --------------------------------------------------------------------------
+@needs_sid
+def test_band_zero_is_the_shipped_sampler_byte_for_byte(core, field, reservoir):
+    a = _rows(core, field, reservoir, d0=97768.0)
+    b = _rows(core, field, reservoir, d0=97768.0, band=0.0)
+    assert len(a) > 100 and a.tobytes() == b.tobytes()
+
+
+@needs_sid
+def test_every_banded_row_is_near_the_ceiling_in_potential(core, field, reservoir):
+    s = NovelSpawnSampler(core, field, 4, seed=5, d0=97768.0, band=0.05, tries=32)
+    store = reservoir._store[:reservoir.size]
+    s.d_best = float(np.quantile(field.sample(np.asarray(store["origin"], np.float64)), 0.2))
+    rows = s.sample_states(400, reservoir)
+    assert len(rows) > 20, len(rows)
+    d = field.sample(np.asarray(rows["origin"], np.float64))
+    assert (d >= s.d_best - 1e-3).all()
+    assert (d <= s.d_best + 0.05 * 97768.0 + 1e-3).all(), "a row outside the band"
+    assert s.rej_band > 0 and "outside the band" in s.line()
+    # off: the line and the stats say nothing about a band
+    off = NovelSpawnSampler(core, field, 4, seed=5, d0=97768.0)
+    assert "rej_band" not in off.stats() and "band" not in off.line()
+
+
+def test_a_band_without_d0_or_below_zero_is_refused():
+    class _F:
+        grid = np.zeros((2, 2, 2), np.float32)
+        mins = (0.0, 0.0, 0.0)
+        cell = 32.0
+        reach_max = 1e9
+    with pytest.raises(ValueError):
+        NovelSpawnSampler(None, _F(), 4, band=0.05)            # d0 = 0
+    with pytest.raises(ValueError):
+        NovelSpawnSampler(None, _F(), 4, band=-0.1, d0=1000.0)
+
+
+def test_the_recorder_treats_the_band_as_training_only():
+    src = (ROOT / "tools" / "record_ckpt.py").read_text(encoding="utf-8")
+    assert '"respawn_novel_band"' in src

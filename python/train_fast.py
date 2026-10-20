@@ -6451,6 +6451,12 @@ def main() -> None:
                          "the view's offset from the heading kept), so a state moved to a "
                          "new place is not stuck with the heading it had at the old one; "
                          "the rows' positions are exactly those of T = 0 (default 0 = off)")
+    ap.add_argument("--respawn-novel-band", type=float, default=None,
+                    help="--respawn-novel: a moved state must also lie within B x the map's "
+                         "start geodesic of the ceiling in potential (d_best <= d <= d_best + "
+                         "B d0) - near the frontier in the field's units, which keeps the dips "
+                         "just behind it and drops the earlier track a folded map puts next "
+                         "to it (default 0 = off)")
     ap.add_argument("--respawn-novel-window", type=float, default=None,
                     help="--respawn-novel: 'visited' means entered within the last "
                          "W..2W env steps (two grids rolled every W), so a place the "
@@ -7486,6 +7492,9 @@ def main() -> None:
         if (args.respawn_novel_turn is None
                 and ck_cfg.get("respawn_novel_turn") is not None):
             args.respawn_novel_turn = float(ck_cfg["respawn_novel_turn"])
+        if (args.respawn_novel_band is None
+                and ck_cfg.get("respawn_novel_band") is not None):
+            args.respawn_novel_band = float(ck_cfg["respawn_novel_band"])
         # --respawn-backward: a spawn DISTRIBUTION, restored like the frontier
         if args.respawn_backward is None and ck_cfg.get("respawn_backward"):
             args.respawn_backward = True
@@ -8386,7 +8395,8 @@ def main() -> None:
                      ("respawn_novel_radius", [256.0, 2048.0]),
                      ("respawn_novel_tries", 8),
                      ("respawn_novel_window", 1e7),
-                     ("respawn_novel_turn", 0.0)):
+                     ("respawn_novel_turn", 0.0),
+                     ("respawn_novel_band", 0.0)):
         if getattr(args, _nk) is None:
             setattr(args, _nk, _nv)
     for _bk, _bv in (("respawn_backward_start", 0.05),
@@ -10869,7 +10879,8 @@ def main() -> None:
                 tries=int(args.respawn_novel_tries),
                 d0=float(slot.rf_d0 or 0.0),
                 window=float(args.respawn_novel_window), seed=73 + 101 * _i,
-                turn=float(args.respawn_novel_turn))
+                turn=float(args.respawn_novel_turn),
+                band=float(args.respawn_novel_band))
             # a novel spawn's episode is DISCARDED at its end, never harvested
             slot.respawn.skip = slot.novel.novel_env
         print(f"respawn NOVEL: {args.respawn_novel_frac:.0%} of the non-start pool = own "
@@ -10883,7 +10894,9 @@ def main() -> None:
               f"from the deepest {args.respawn_novel_shell_width:.0%} of the reservoir, the "
               f"rest flattened over progress; novel episodes are never harvested"
               + (f"; heading (velocity and view yaw) turned by U(-{args.respawn_novel_turn:g}, "
-                 f"{args.respawn_novel_turn:g}) deg" if args.respawn_novel_turn > 0.0 else ""))
+                 f"{args.respawn_novel_turn:g}) deg" if args.respawn_novel_turn > 0.0 else "")
+              + (f"; only within {args.respawn_novel_band:g} x d0 of the ceiling in potential"
+                 if args.respawn_novel_band > 0.0 else ""))
     if args.respawn_backward:
         for _i, slot in enumerate(slots):
             _fld = (slot.reward_field if slot.reward_field is not None
@@ -13538,6 +13551,8 @@ def main() -> None:
             "respawn_novel_window": float(args.respawn_novel_window)})
         if args.respawn_novel_turn > 0.0:
             meta["config"]["respawn_novel_turn"] = float(args.respawn_novel_turn)
+        if args.respawn_novel_band > 0.0:
+            meta["config"]["respawn_novel_band"] = float(args.respawn_novel_band)
     # --unstuck: written ONLY when set (a control run's config dump stays
     # byte-identical); every knob rides along so a resume restores them
     if UNSTUCK:
