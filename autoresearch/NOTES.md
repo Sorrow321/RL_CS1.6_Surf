@@ -196,3 +196,23 @@ learning from a detour that only half works and (b) drives the noise collapse ab
 column zero-padded on resume (6 tensors widened, function-identical at step 0). Restored unstuck T
 0.081, best 27,280u. Stop at 1,325M; judged at its 30-min mark (~02:56 UTC). One mechanism added on
 top of arm 1, so the attribution is "ratchet given noise-tau".
+
+### 02:52 UTC - arm 2 first read (r1b2_ntr: arm 1's 925M + --race-ratchet, noise_tau 0.5)
+
+| eval | score | best | median | CP | note |
+|---|---|---|---|---|---|
+| 925.9M (resume = arm 1's weights) | 27.18 | 27.18% | 16.76% | 1 | 3 of 9 episodes die early |
+| 1,001.4M | 27.32 | 27.32% | 27.22% | 1 | 9/9 at the CP2 dive, x 3,16x-3,22x, z ~11,150 |
+
+* approx_kl 0.2-0.6 is mostly a UNITS effect, not instability: the Gaussian head's KL scales
+  as (d mu / sigma)^2 and sigma halved (0.043 -> 0.021), so the same mean steps read ~4x larger.
+  The evals are steady.
+* T 0.05, stuck 105M at 1,007M: the recipe's own schedule starts heating at ~1.10B (patience 2e8)
+  and reaches ~1.1 by the run's end (1,325M). Hypothesis being watched: the CP2 deviation needs
+  correlated noise AND a temperature that makes "not D" likely per decision; at T 2 the side
+  head's mode loses ~2/3 of its logit gap.
+* Milestone ckpts land ONE iteration before the eval they shadow (ckpt_1000865792.pt vs
+  traj_1001390080: --ckpt-every counts from 0, --record-every from the resume's first eval);
+  one PPO update apart, close enough to hand on.
+* --noise-tau-frac F (65e340c): AR(1) on round(N*F) evenly spread envs, i.i.d. on the rest, to
+  dilute the entropy-collapse pressure ~1/F. Built and smoked, not yet run on a box.
