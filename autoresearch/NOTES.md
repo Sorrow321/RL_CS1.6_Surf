@@ -405,3 +405,17 @@ steps/s. Measure it on your box in the first minute and size `--steps` to the ti
 * State of the lineage at 4.46B: the greedy line crosses the CP2 pit by the human's route in
   most evals (means 25-28%), and stops at the slot's west wall (x 2,224) - frontier 27,919 u
   (28.56%) unchanged since 1,633M, T at the cap 2 since ~2.4B.
+
+### 08:55 UTC: the ratchet + novel recipe at its 6 h cap (5.9B); ablation launched
+
+* r1b1_ratnovx2 (2.5-5.1B) best eval 4,917M score **28.628** (best 28.63%, median 27.7%): the
+  episode crosses the pit and the slot, hits the x 2,224 wall at 28.25 s, bounces and falls
+  (dies at (2,139, 922, 10,980), 28.8 s). r1b1_ratnovx3 (5.1-5.9B, the last of the idea's 6 h):
+  best 28.467 (5,554M), means 23-28%. The frontier has not moved by +500 u since 1,633M; T at
+  the cap 2 since ~2.4B. Branch score (orchestrator's best_in over every pulled run): 28.628,
+  105/105 valid evals; the next incumbent checkpoint is r1b1_ratnovx2/ckpt_final.pt
+  (5,100,797,952; md5 3cc658ed...), local.
+* Ablation **r1b1_ratonly** (08:52): the OLD incumbent recipe + `--race-ratchet` only (no
+  `--respawn-novel`), from scratch, 500M (`box.py launch --no-recipe` + the old flags). Question:
+  does the ratchet alone give ratnov's early gates (first-ramp trap exit 378M, window ~500M;
+  GR 529M / 755M)? One seed; the 30-min early mark is the comparable one (CLAUDE.md).
