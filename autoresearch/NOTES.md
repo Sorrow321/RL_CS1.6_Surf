@@ -169,3 +169,29 @@ steps/s. Measure it on your box in the first minute and size `--steps` to the ti
   gpu_health UNHEALTHY); blocklisted (machine 68144) and released per CLAUDE.md. Since then no
   offer under the caps: the 3090s at 0.269 / 0.381 are blocklisted hosts, 4090s start at 0.455.
   A background waiter retries every 3 min and deploys on success.
+
+### 2026-10-20 01:47 UTC - box up; r1b3_ouw (ungated OU) is a clear NEGATIVE; control running; --view-ou-front built
+
+* **Box:** vast 56818185, RTX 4080 16 GB, 0.267 $/h, 32 threads, ssh -p 40030 root@46.231.69.36.
+  Healthy. Resume runs ~230-250k steps/s (GPU 99% busy: this card is GPU-bound, unlike the
+  CPU-bound 3090s). 4e8 steps = ~27-30 min.
+* **r1b3_ouw** = warm resume of the incumbent (749.7M) + `--view-ou-sigma 0.8 --view-ou-period 40`
+  (celestial's constants), every env, every window. Training episodes fell from ~1,070 to ~300
+  decisions and ep reward from ~7 to ~0.3 immediately. First greedy eval (825.75M): **4.4%**
+  (frontier 4,378 u, dying at the first ramp), from 25.4% at 750M. The reservoir lost its deep
+  states (mind 74.3% -> 76.0%) as short perturbed episodes refilled it. Stopped at 847M. Same
+  verdict as pnOU (petrus) and gbCELou (celestial): a held 10-60 deg view error on every env
+  wrecks a precise line. Scores 25.42 (750M), 4.48 (825M).
+* **r1b3_ctl** = the same resume with the recipe unchanged (the matched control for every warm
+  arm; nobody had run GR past 758M). Evals 750M 27.18, 825M **27.335** (CP1, at the CP2 wall).
+  Training rew ~7.2, len ~1,090, mind 74.24%, T 0.14 and falling.
+* **Built for the next arm** (commits 6f9a5d3, 3cf6aa4; default off, flag-off bit-identity
+  re-proved, 17 tests in tests/python/test_view_ou_temp.py):
+  * `--view-ou-frac p`: a redraw gives an offset with probability p, else exactly 0 for that window.
+  * `--view-ou-front F`: a redraw gives an offset only if the env's current d is within F x d0 of
+    the reservoir's deepest state (re-read every rollout). The line before the wall flies clean;
+    the committed exploration lands where the policy dies. Step line: `ouF <edge>u in <share>`.
+    No map constant: the zone is the policy's own frontier plus a round 5% of d0.
+* **Next arm r1b3_ouf:** warm, `--view-ou-sigma 0.8 --view-ou-period 40 --view-ou-front 0.05
+  --view-ou-frac 0.5`, 4e8 steps, against r1b3_ctl at matched steps. Training-side signal: mind
+  below ~72.5% (states harvested past the pit); then the eval frontier past 27.5% / CP2.

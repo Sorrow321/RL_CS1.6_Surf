@@ -1,3 +1,16 @@
-{"agent": "r1b3", "round": 1, "final": false,
- "best": null,
- "summary": "00:49 UTC: no run yet. Measured the CP2 wall on the incumbent's own evals: a mid-air U-turn at x~4,600 then a dive into the fail at x~3,000; the turn-around ramps are ~1,000 u lower at x 4,600-5,800. Per-decision temperature gives the view ~1 deg of exploration, so the plan is committed (held 1.6 s) yaw-offset exploration (--view-ou-sigma 0.8 --view-ou-period 40, existing code) warm from the incumbent, then a T-scaled version (--view-ou-temp) for from-scratch runs. Waiting for a box under the caps."}
+{
+ "agent": "r1b3",
+ "round": 1,
+ "final": false,
+ "best": {
+  "score": 27.335,
+  "eval_file": "/home/steam/ar/runs/r1b3/r1b3_ctl/traj_0825753600.jsonl",
+  "run": "r1b3_ctl",
+  "step": 825753600,
+  "ckpt": null,
+  "recipe": [],
+  "resume_from": "/home/steam/ar/incumbent/ckpt.pt",
+  "commit": "3cf6aa4"
+ },
+ "summary": "01:45 UTC. Warm resumes of the incumbent (749.7M) on an RTX 4080. r1b3_ouw: --view-ou-sigma 0.8 --view-ou-period 40 on every env COLLAPSED the greedy line 25.4% -> 4.4% in 76M steps (stopped). r1b3_ctl: the unchanged recipe, the matched control, 27.2-27.3% at the CP2 wall. Built (default off, bit-identical when off): --view-ou-temp (offset sigma follows unstuck T), --view-ou-frac (share of windows offset), --view-ou-front (offsets only within F x d0 of the reservoir's deepest state). Next: the frontier-gated arm (sigma 0.8, period 40, front 0.05, frac 0.5) against r1b3_ctl."
+}
