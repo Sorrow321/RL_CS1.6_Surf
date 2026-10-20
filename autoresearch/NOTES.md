@@ -583,7 +583,7 @@ checkpoint is taken from the BEST EVAL's run dir, so pull that run's ckpt_final.
   before the shaft). Question: do respawns at the maneuver make the greedy line thread the
   window, and do training episodes go deeper into the room (novel ceiling > 28,174 u)?
 
-### r2b3_m05 result (13:35 UTC): no window crossing, stopped at 5.44B (337M steps)
+### r2b3_m05 result (13:31 UTC): no window crossing, stopped at 5.44B (337M steps)
 
 * Evals (best / median %): 5,177M 27.4/27.4, 5,252M 28.2/27.9, 5,328M 27.4/27.4 (most
   episodes back on the OLD pit dive, -y lane, 24.7 s), 5,403M 27.9/27.3. No episode passes
@@ -608,7 +608,7 @@ checkpoint is taken from the BEST EVAL's run dir, so pull that run's ckpt_final.
   and die - most likely flying too far west over *20 before they are low enough.
   Renders: scratchpad sideview2.py (hull-1 kill containment), analysis only.
 
-### r2b3_t0: warm + `--unstuck-max 0` (the exploration temperature off) - launched 13:36 UTC
+### r2b3_t0: warm + `--unstuck-max 0` (the exploration temperature off) - launched 13:30 UTC
 
 * Same resume. T restored at 2 is capped to 0: sampling untempered, entropy coef 0.005 (from
   0.015), intrinsic coef 0.25 (from 0.75), no count decay. Question: is T = 2 noise what keeps
