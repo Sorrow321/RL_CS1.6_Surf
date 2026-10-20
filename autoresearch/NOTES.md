@@ -768,3 +768,13 @@ physics as the sim (gravity 800, airaccelerate 100) except maxvelocity 3,500.
   the GREEDY line, and it bootstraps through the reservoir (a real episode entering the cavity is
   harvested >= 2 s before its end, i.e. inside the cavity, and becomes a real spawn there). Kept
   running unchanged.
+
+### 18:10 UTC: r2b2_t1f3 stopped at 7.95B; r2b2_t05 (T cap 0.5)
+
+* t1f3 7.18-7.95B (31 evals): 27.3-28.4 (one 28.367), the greedy line dying in the CP2 pit in
+  almost every eval; training ceiling flat at 29,098 u since 7.27B (~670M steps).
+* The only change that moved anything recently was lowering the unstuck temperature cap: 2 -> 1
+  gave the 28.841 eval within 25M steps and +893 u of ceiling. So one more step:
+  **r2b2_t05** (18:10): resume of t1f3's ckpt_latest (7,949,778,944, md5 3da04170...) +
+  `--unstuck-max 0.5`; novel frac 0.3 and the band settings restored; +1.5e9 steps; evals every 25M.
+  Box extended to ~21:10 UTC.
