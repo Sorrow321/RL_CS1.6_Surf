@@ -3,16 +3,17 @@
  "round": 1,
  "final": false,
  "best": {
-  "score": 27.462,
-  "eval_file": "/home/steam/ar/runs/r1b1/r1b1_nov/traj_1132462080.jsonl",
-  "run": "r1b1_nov",
-  "step": 1132462080,
-  "ckpt": "/home/steam/ar/runs/r1b1/r1b1_nov/ckpt_final.pt",
+  "score": 27.501,
+  "eval_file": "/home/steam/ar/runs/r1b1/r1b1_ratnovx/traj_1180172288.jsonl",
+  "run": "r1b1_ratnovx",
+  "step": 1180172288,
+  "ckpt": "/home/steam/ar/runs/r1b1/r1b1_ratnovx/ckpt_latest.pt",
   "recipe": [
-   "--respawn-novel"
+   "--respawn-novel",
+   "--race-ratchet"
   ],
-  "resume_from": "/home/steam/ar/runs/r1b1/r1b1_ctl/ckpt_latest.pt",
-  "commit": "2b845b3"
+  "resume_from": "/home/steam/ar/runs/r1b1/r1b1_ratnov/ckpt_final.pt (scratch run r1b1_ratnov, 500M)",
+  "commit": "d86be7d"
  },
- "summary": "Warm arms at the CP2 pit (27.4%): DC negative; ez bursts no crossing; control consolidates by 825M; --respawn-novel reaches the corridor/ramp of the human's line 20-400x more but 0 crossings (best eval 27.462). Corridor bench: the policy turns west into the pit floor (shaping charges the eastward leg). FROM SCRATCH incumbent recipe + --respawn-novel + --race-ratchet: out of the first-ramp trap at 378M (GR 529M) at T~0, 20.8% at 453M (GR ~4.6%); extended to 2.5B to attack CP2."
+ "summary": "FROM SCRATCH incumbent recipe + --respawn-novel + --race-ratchet: trap exit 378M (GR 529M) at T~0, window 576M (GR 755M), CP2 wall 651M (GR ~850M, surf ~1.9B); at the wall 27.3-27.5% (best 27.501 at 1,180M), 0 training visits past CP2 by 934M. Warm arms at the pit: DC negative, ez bursts nothing, --respawn-novel reaches the human's corridor/ramp but no crossing; nudge probe: short deviations cannot cross (slot between kill volumes needs a ramp turnaround east). Extension running to 2.5B."
 }
