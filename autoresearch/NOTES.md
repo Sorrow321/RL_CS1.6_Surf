@@ -641,3 +641,14 @@ misleading: the agent's surviving lines pass through `*99`'s box.
     heating: T 1 -> 2 within ~100M steps);
   * +1.2e9 steps, to ~10:52.
   * Reason: the route only appeared at T ~ 2, and the round's score is the best single eval.
+
+### 09:33 UTC: irn3 at T 2 - route-type evals recur
+
+* **r1b4_irn3 evals** 1,312M-1,538M: frontier 26,902 / 25,192 / 26,777 / **27,215 u**; the
+  1,538M eval scores **27.836**.
+* **Training side:** survives dips up to 2.18 units (the D-ramp detour size); reservoir
+  min-depth 73.34%; novel ceiling 28,077 u.
+* At T 2 the greedy line oscillates between the dive and the detour attempts. The best
+  stays 27.926 (irn 1,052M).
+* **Plan:** the run ends ~10:52 (budget); then pull, score, release the box, final
+  RESULT.json and notes before 11:50.
