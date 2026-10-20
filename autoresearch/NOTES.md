@@ -931,3 +931,12 @@ checkpoint is taken from the BEST EVAL's run dir, so pull that run's ckpt_final.
 * The finish from the rising chamber became robust and the bowl-exit turn (link B) is starting, while the
   bowl entry learned by 5,895M was partly lost again: the parts of the loop trade off rather than add up in
   2.9B steps. The greedy line from the true start still dives (evals 27.25-28.47).
+
+### r2b4_tp1d result (20:20-23:03 UTC, 6,496M -> 9,096M) and box release
+
+* 35 evals, best **28.473** (7,553M), the rest 27.25-28.41; 0 finishes, novel ceiling 28,174 u throughout.
+  ckpt_final (9,096,396,800) pulled to runs/r2b4/r2b4_tp1d/ - the most advanced detour skills of the round
+  (bench above: the finish from the rising chamber 7/7), though not the branch's best eval.
+* Branch best eval: r2b4_cells1 traj_5478809600 **28.588** (ckpt_final 5,551,161,344, md5 c7df745f..., local).
+  Then arch1 28.512, tp1d 28.473, tp1c 28.424, tp1 28.407.
+* Box 56893447 (RTX 5080, Utah, $0.309/h) released at 23:12 UTC after ~10.3 h.
