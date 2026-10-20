@@ -294,3 +294,18 @@ steps/s. Measure it on your box in the first minute and size `--steps` to the ti
   trap exit, 0.26-0.70 when passed); this run arrived with T = 0 and stalled, which fits "T passes the
   window". Continued as **r1b3_sou2** (resume of ckpt_final, every flag restored, +500M): a pass at
   T < ~1 would credit the offsets; a pass only at T >= 1 would not.
+
+### 2026-10-20 05:06 UTC - r1b3_sou2: held offsets do NOT pass the window either (T to the cap, sigma 0.8, 450M steps); Go-Explore-in-the-loop launched on that stuck checkpoint
+
+* **r1b3_sou2** (resume of r1b3_sou's 600M ckpt, +500M, every flag restored): T 0.48 -> 1.0 at
+  ~700M -> 2.0 (cap) at ~900M; `ou` 0.195 -> 0.8; ~10-15% of rows offset and dropped. Evals 600M-978M:
+  20.30 / 20.29 / 20.26 / 20.31 / 20.26 / 20.32k u (20.7-20.8%), mind 79.3-79.8%. NULL at the window
+  in 800M steps since arriving (302M), 450M of them with T >= 0.5 and the offsets live. GR / surf /
+  cap2 passed this gate with T alone 75-300M steps after arriving, so the frontier-gated held
+  offsets did not help and may have hurt (10-15% of the zone's rows leave the PPO pool).
+  **Verdict on `--view-ou-*`: null at the window from scratch, null at CP2 warm; destructive ungated.**
+* **r1b3_gew (launched 05:03)** - Go-Explore in the loop, on that stuck checkpoint (a known-passable
+  gate with an 800M-step stuck record): `--respawn-cells 0.5 --respawn-cells-front 0.05
+  --respawn-cells-margin 0.25 --respawn-vel-rot 0.5 --respawn-vel-rot-front 0.05` (+ the restored
+  offsets). Cell rows: 1,843 per pool over ~730-760 cells of the 0.25 s-margin archive, returned
+  EXACTLY (no rotation, commit 7d4e8d2); ~10% of the other reservoir rows rotated. +400M.
