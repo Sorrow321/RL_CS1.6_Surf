@@ -374,3 +374,20 @@ steps/s. Measure it on your box in the first minute and size `--steps` to the ti
 * **Continuation r1b1_ratnovx2**: bare resume of that checkpoint, same recipe, 2.6e9 steps
   (to 5.1B, ~08:00 UTC; the idea's 6 h cap from 02:53 ends 08:53). Watching for: CP2 crossings,
   the frontier past x 2,224, and whether the greedy line consolidates on the new line.
+
+### 06:25 UTC: ratnovx2 at 3.48B; the obstacle after the slot is a DESCENT (analysis only)
+
+* Evals 2.5-3.4B (best % / mean %): 27.2-28.3 / 23-28; 3,331M has mean 28.0% (most episodes
+  fly the slot), best 28.3%. No new best past 1,633M's 28.55%; T at the cap 2 since ~2.4B.
+  Reservoir min-depth 71.714% (deepest harvested state 28.3% progress).
+* Geometry at the slot's west end (y +800 lane, hull traces + the goal field):
+  * a hull trace west at the slot height (z 11,450) stops at x 2,224 on a wall facing +x -
+    exactly where the episodes die (vx -1,400 -> 0 at 28.5 s);
+  * the pit's kill floor *86 ends at x 2,592, so below the slot level west of it is open;
+  * the field descends DOWN then west there: d 70,142-70,213 at z 11,400 (x 2,200-2,400),
+    ~69,957 at z 11,200, 69,210 at (2,000, 800, 10,600), 69,124-69,910 at x 1,200-1,800,
+    z 10,600-11,200 (x 2,000 is solid above z ~10,700).
+* So the next skill is to leave the slot's level once past the floor's west edge and drop
+  ~400-800 u before x ~2,224. The kill floor is a trigger (not drawn in the depth image), so
+  the policy must learn where it ends from experience; the novel rows' ceiling (28.8%) now
+  reaches past it. Under the ratchet the drop is paid (d falls), so it is a gradient, not a dip.
