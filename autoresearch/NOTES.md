@@ -660,3 +660,18 @@ checkpoint is taken from the BEST EVAL's run dir, so pull that run's ckpt_final.
   is a state a real episode reached. Purpose: real episodes that wander off the field's line
   (where the detour must start) get returned to and explored from, instead of drowned by the
   main line.
+
+### r2b3_rare: warm + `--respawn-rare 0.5` (new, aafa685) - launched 14:21 UTC (box 56903990, RTX 5080, $0.388/h)
+
+* Code: `surfgym.respawn.RareCellReturn` + trainer wiring, docs/respawn_rare.md,
+  tests/python/test_respawn_rare.py (3 unit tests; a CPU smoke with novel rows on in which the
+  draw is live, logs, checkpoints and a flagless resume restores the share and the counts; the
+  conflicting reservoir draws are refused; flag off bit-identical to the parent trainer: config,
+  progress.csv, eval bytes, weights - 4 min on this machine).
+* Resume of the incumbent (5,100,797,952), 450M steps. Counts start at zero (not in the
+  incumbent ckpt). First lines: `rare eff 140/586 N 576` - the draw spreads over ~140 effective
+  cells of the ~590 the reservoir stands in.
+* Expected shape (computed on the incumbent's own 20k reservoir with its novelty counts as a
+  stand-in for N): the rare half of the draw takes progress 5-10% from 1% to 16%, 10-15% from
+  0.2% to 5%, 15-20% from 38% to 10%, 25-27% from 19% to 25%; the reservoir holds almost
+  nothing at 27-28% (3 of 20k states: the 2 s margin keeps the slot out).
