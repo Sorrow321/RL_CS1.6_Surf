@@ -359,7 +359,7 @@ steps/s. Measure it on your box in the first minute and size `--steps` to the ti
   corridor, and the climb band separates that from diving through it. 30-min check against GR's
   marks (trap exit 529M, window 755M); stopped if behind. CPU smoke of the exact combination passed.
 
-### 2026-10-20 08:00 UTC - r1b3_isp stopped; ROUND 1 LESSON (r1b3) - box released
+### 2026-10-20 07:57 UTC - r1b3_isp stopped; ROUND 1 LESSON (r1b3) - box released
 
 * **r1b3_isp** (from scratch, recipe + `--int-split --int-climb 3 --int-view 0`): first-ramp trap exit
   between 529M and 605M (GR: 529M), then 14.0% (13.6-13.8k u, a minor gate at x ~5,850 before the
