@@ -548,3 +548,8 @@ finishes). Incumbent was 27.22, best-ever 27.5. Hand-on weights: `runs/r1b2/r1b2
 * Slow links: `box.py pull --ckpt` times out at 30 min. Split the ckpt on the box and fetch the
   parts in parallel (rsync --partial), and stop the trainer before pulling ckpt_latest (it is
   rewritten every 60 s, not atomically).
+
+**Final evals of the round (r1b2_bwhT, stopped 11:25 UTC):** 1,917.3M 26.48 (detour attempts dying
+east at x ~5,000), 1,992.8M 27.31, 2,068.3M 27.43 (dive). Branch total: 37 valid evals. Best is
+**28.492** (r1b2_nth, 1,279.3M); hand-on = runs/r1b2/r1b2_nth/ckpt_latest.pt (md5 9dc75cd9...).
+Box 56818837 released at the wrap-up.

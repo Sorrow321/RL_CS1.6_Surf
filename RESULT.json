@@ -1,7 +1,7 @@
 {
  "agent": "r1b2",
  "round": 1,
- "final": false,
+ "final": true,
  "best": {
   "score": 28.492,
   "eval_file": "/home/steam/ar/runs/r1b2/r1b2_nth/traj_1279262720.jsonl",
@@ -25,5 +25,5 @@
   "ckpt_step": 1278738432,
   "ckpt_md5": "9dc75cd94f6eb7a2effbef6dbb409ba4"
  },
- "summary": "CP2 death = a deliberate air U-turn; the human flies ~1 s more east to a ramp. Built --noise-tau (AR(1)-correlated sampling noise), --noise-tau-frac, --noise-tau-cond. Arm 4 (ratchet + 25%-env noise + unstuck T heated to 2, warm at the wall): the greedy policy learns the CP2 detour, 28.49 at 1.279B. Every continuation drops the detour within 75M steps (it costs ~2 units of time penalty for ~1 unit of progress until the section after it pays). Arm 7 (backward-window spawns at the frontier, 64 bins): training episodes reach 32.46% (past sgcp_2) by 1.37B; greedy still dives. Continuing at 50% true starts."
+ "summary": "CP2 death = a deliberate air U-turn; the human flies ~1 s more east to a ramp and turns on it. Built --noise-tau (AR(1)-correlated sampling noise, per-decision distribution and log-prob unchanged), --noise-tau-frac, --noise-tau-cond (exact conditional credit, CPU-tested only). Best: warm incumbent -> ratchet + noise-tau on 25% of envs + unstuck T heated to 2: the GREEDY policy learns the CP2 detour (east, ramp turn, climb back over the old death point), 28.49 at 1.279B (incumbent 27.22). All-env noise runs the KL away. The detour is dropped within 75M steps by every continuation (it costs ~2 units of time penalty for ~1 unit of progress until the post-detour section pays); a 64-bin backward-window spawn curriculum teaches that section (training reaches 32.46%, past sgcp_2). Next: combine both at moderate T or with --noise-tau-cond, on a faster box (this one ran 69k steps/s)."
 }
