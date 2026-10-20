@@ -793,3 +793,14 @@ checkpoint is taken from the BEST EVAL's run dir, so pull that run's ckpt_final.
   (tests: unit, smoke + flagless resume, flag off vs the trainer before); TRAIN_ONLY in record_ckpt.
 * Arm r2b4_elite1 (17:18 UTC): resume of arch1x's ckpt_latest (5,988,941,824) + `--spawn-states-elite 0.5
   --spawn-states-gain 0.02`, 900M steps.
+
+### r2b4_elite1 (gain rule, 17:18-17:41 UTC, stopped at ~6.35B): the elite set fills with the wrong rows
+
+* Evals 27.459 / 27.945 / 27.980 / 27.873 / 27.934: no gain; ceiling unchanged at 28,903 u.
+* 1,422 elite rows after ~350M steps; 49,452 of 166,881 file-row episodes (30%) beat their spawn by 2% of d0.
+  "Beat your own spawn" is met by any archive state behind the frontier from which the policy simply flies
+  its normal line - that is not Go-Explore's "promising" (got further than before).
+* NEW `--spawn-states-beyond B` (7d826db): an elite row must have reached B x d0 past the greedy eval's
+  frontier (the --unstuck eval reach, re-read every pool build). r2b4_elite2 (17:42): resume of arch1x's
+  ckpt_latest (5,988,941,824) + `--spawn-states-elite 0.5 --spawn-states-beyond 0.005` (elite = reached
+  29.05%, i.e. through the wall hole), 1.2B steps.
