@@ -35,8 +35,10 @@ WHAT (no map constant anywhere; the same constants on every map):
     own predecessor archive does (--archive-hold). Without it, measured on sidistic, the archive
     was mostly states already falling onto a fail (the incumbent spawned in 24 of them died in
     1-224 ticks, median ~20).
-  * OUTPUT - up to --cap rows, half drawn from the deepest quarter of the archive by goal-field d
-    (the shell nearest the goal, as --respawn-novel's deep shell), half uniformly; written
+  * OUTPUT - min(--cap, cells) rows, half drawn from the deepest quarter of the archive by
+    goal-field d (the shell nearest the goal, as --respawn-novel's deep shell), half uniformly
+    (a big safe dead end - on sidistic the level above the slot, half the gated cells - must not
+    outweigh the frontier); written
     atomically (tmp + rename) so the trainer never reads a half-written file. Root cells are
     excluded: the reservoir already holds the policy's own line.
 
@@ -242,18 +244,19 @@ class FrontierArchive:
         return added
 
     def output(self, cap=20000, shell=0.5, shell_width=0.25):
-        """Up to ``cap`` non-root rows: ``shell`` of them from the deepest ``shell_width`` of the
-        archive by d, the rest uniform (with replacement only if the archive is smaller)."""
+        """``min(cap, cells)`` non-root rows: ``shell`` of them drawn from the deepest
+        ``shell_width`` of the archive by goal-field d (with replacement when that shell is
+        smaller), the rest uniformly. The trainer draws uniformly from the file, so the split
+        is what keeps a large, safe dead end from outweighing the frontier."""
         idx = np.flatnonzero(~self.is_root)
         if not len(idx):
             return np.zeros(0, self.template.dtype)
-        if len(idx) <= cap:
-            return self.states[idx].copy()
+        n = min(int(cap), len(idx))
         d = self.d[idx]
         deep = idx[d <= np.quantile(d, shell_width)]
-        k_deep = min(len(deep), int(round(cap * shell)))
-        a = self.rng.choice(deep, k_deep, replace=False)
-        b = self.rng.choice(idx, cap - k_deep, replace=False)
+        k_deep = int(round(n * shell))
+        a = self.rng.choice(deep, k_deep, replace=len(deep) < k_deep)
+        b = self.rng.choice(idx, n - k_deep, replace=False)
         return self.states[np.concatenate([a, b])].copy()
 
 

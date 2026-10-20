@@ -85,15 +85,19 @@ def test_explore_grows_the_archive_with_valid_states(tmp_path):
         arch.explore()
     assert len(arch.states) > n0
     out = arch.output(cap=10 ** 6)
-    assert out.dtype == arch.template.dtype and len(out) == int((~arch.is_root).sum())
+    n_cells = int((~arch.is_root).sum())
+    assert out.dtype == arch.template.dtype and len(out) == n_cells
+    # half the rows come from the deepest quarter by d
+    dd = field.sample(out["origin"].astype(np.float64))
+    q25 = np.quantile(arch.d[~arch.is_root], 0.25)
+    assert (dd <= q25 + 1e-6).mean() >= 0.5
     d = field.sample(out["origin"].astype(np.float64))
     assert (d < field.reach_max - 0.5 * field.cell).all()
     for s in out[:20]:
         o = tuple(float(x) for x in s["origin"])
         assert not core.trace(o, o, hull=1 if s["ducked"] else 0).startsolid
-    # the cap draws half from the deepest quarter by d
     small = arch.output(cap=4)
-    assert len(small) == 4 if (~arch.is_root).sum() > 4 else True
+    assert len(small) == min(4, n_cells)
     fa.write_atomic(tmp_path / "a.npy", out)
     assert np.load(tmp_path / "a.npy").dtype == out.dtype
 
