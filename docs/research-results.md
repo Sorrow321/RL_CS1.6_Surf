@@ -36910,3 +36910,45 @@ The run continues to 4e9.
 - Training ep_len is 346 ticks (3.5 s), against ~800-1,200 for the references at this stage: many novel episodes end fast.
 
 **Reading.** One seed. The novel spawns did not get out of the first trap sooner than the compass run, and how far ahead of the surf run they are is tied up with T. The window and CP2 are the next marks.
+
+## 2026-10-20 02:34 (machine clock) - AUTORESEARCH launched: fork-and-flush (arXiv 2610.07447) on sidistic, 4 branch agents x 12 h rounds on the droplet, vast boxes through autoresearch/box.py
+
+**The ask (user, 2026-10-20).**
+- Autonomous research to pass sidistic, using fork-and-flush (Cai et al. 2026, arXiv 2610.07447).
+- At most 5 agents, 1 GPU box each, every agent tracking its box id.
+- Ablations under 30 min first, up to 6 h if promising.
+- vast credit $106. About 3 days, extendable. Code goes via the repo.
+- 3090 > 4090 > 5090, cheaper cards that work are fine, no datacenter or multi-GPU cards, hard price caps.
+- Claude Remote Control to watch, Opus 5.5 at max effort, rounds shortened from 24 h to 12 h.
+
+**What runs.**
+- Host: the user's DigitalOcean droplet `steam@104.248.19.233`: 4 vCPU / 8 GB, resized tonight; 4 GB swap added; no GPU; it also hosts his CS 1.6 server.
+- The orchestrator (`autoresearch/orchestrator.py`, K = 4, 12 h x 6 rounds) forks 4 fresh-context Claude Code sessions per round. Each is in a worktree slot `~/ar/wt/b<k>` on branch `ar/r<n>b<k>`.
+- They follow `autoresearch/PROTOCOL.md`.
+- Every round ends with `autoresearch/score.py`: the best greedy eval from the true start, graded on the goal field, rejecting any eval that does not start at the spawn. The winner's head seeds the next round, and the losers are archived to `~/ar/archive/`.
+- A fifth session, `ar-lead`, holds no box and answers the user.
+- Every session is on Remote Control (`remoteControlAtStartup`), in auto mode, on `claude-opus-5-5 --effort max`.
+- Round 1 forks `877a2a6` from 00:30 to 12:30. The incumbent is sidEM2cap2surfGR's ckpt at 749.7M (score 27.22; the best eval anyone has is 27.5).
+
+**Rental guard rails, in code.**
+- `autoresearch/box.py` is the only door. It enforces:
+  - the whitelist (3090 / 3090 Ti / 4080 / 5080, then 4090, then 5090) and the caps (0.30 / 0.30 / 0.30 / 0.40 / 0.45 / 0.60 $/h);
+  - a single GPU, one box per agent, at most 4 boxes;
+  - the budget pace: credit - $10 reserve, over the hours left to 72;
+  - readiness within 330 s, or the host is blocklisted;
+  - immediate watchdog registration.
+- The fleet watchdog runs on the droplet with `RLSURF_POLICY`. It destroys any instance on the account that breaks the policy, whoever rented it (new; 4 tests).
+
+**Verified before the agents started.**
+- A real rent: a 3090, ready and reachable by ssh in 39 s.
+- A full pipeline on a second box: deploy in 1 min, the incumbent recipe launched through the record gate, then pull, score and release (destroy verified).
+- Bugs found and fixed on the way:
+  - box.py's ssh swallowed stdin;
+  - the `--` separator;
+  - `~/.local/bin` missing from non-login shells;
+  - the orchestrator's liveness test: the claude binary is named after its version.
+- **Throughput.** A 3090 with 16 effective threads trained the incumbent recipe at ~36k steps/s with the GPU 1% busy. The trainer is CPU-bound: omp = half the container quota = 7.
+- A 3090 on a Ryzen 9 5950X (32 threads, quota 30.7, omp 15) reached **~194k steps/s**, 45% of the 5090 PC.
+- So offers now need >= 32 effective threads at >= 2.5 GHz. Only 2-3 offers under the caps passed that night, so the 4 branches will queue for boxes.
+- The 5080 cap went 0.38 -> 0.40, admitting a 5080 on a 5.8 GHz 7950X3D at 0.388.
+- **First minutes:** all four agents came up on Opus 5.5 at max effort, in auto mode, reading the ledger and the CP2-wall analysis. None was stuck on a prompt.
