@@ -428,3 +428,21 @@ x 768-816, y -1168..1168, z 10,060-11,300, center d 67,568 = **30.9% progress**.
 36.9%, sgcp_4 55.0%, sgcp_5 62.3%, sgcp_6 88.2%, sgcp_7 96.5%. The 28.49 episode died at
 (2265, 856, 10719), heading for it, ~1,500 u east of the curtain and 2.4% of progress short. The
 backward window's bin 11 (d >= 67,213) covers the stretch up to CP2.
+
+### 08:03 UTC - arm 6 (16-bin backward) dropped the detour too; arm 7 = 64-bin backward window
+
+* r1b2_bw: 1,279.3M 28.22 (the detour in 2/9; one detour episode reached 28.2% at 32.0 s),
+  **1,354.8M 27.39, 9/9 dive**. Fourth continuation in a row to lose the detour within 75M steps
+  (fast heat, T 0, goex, 16-bin backward).
+* **The arithmetic is robust:** the detour as executed gains ~1,036u (1.06 units) over the dive
+  and pays 4.0 s x 0.5 = 2.0 units of time penalty, so PPO drops it every time. It sticks only once
+  the section after it pays >= ~2,000u more, i.e. once the agent survives the post-detour descent
+  toward sgcp_2 (30.9%).
+* The 16-bin window holds only 55 reservoir rows past the death point (d < 70,900; 1.4% of bin
+  11). A cluster sits at (2,530, 110, 10,810) with |v| < 170: the agent LANDS on a surface after
+  the detour and stalls there, ~1,700 u east of the sgcp_2 curtain.
+* **Arm 7 r1b2_bw64** = ckpt_1278738432.pt + `--respawn-mode backward --respawn-bins 64` + the
+  default unstuck schedule. The window is bins [45, 46] = d 68,742-71,798: the last ~900 u before
+  the death point plus every reservoir state past it. 90% of episodes start AT the frontier; the
+  10% true starts keep the line from the start. This is the last arm of the round (~3.2 h of box
+  time left before the wrap-up).
