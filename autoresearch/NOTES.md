@@ -530,3 +530,19 @@ misleading: the agent's surviving lines pass through `*99`'s box.
 * **r1b2's timeline as a yardstick** (its public notes): T reached 2 at ~1.09B, the detour
   region was harvested by 1.12B, the greedy detour appeared at 1.20B. C5's T reached 2 at
   ~3.67B.
+
+### 06:50 UTC: C5 at 4.01B (~540M steps with the ratchet, T at 2 ~350M steps): still the wall; deep-chain spawns dropped
+
+* **Evals** 3,772M-3,998M: frontier 26,766-26,847 u (no crossing). Reservoir min-depth
+  73.53%; training survives dips up to 1.47 units.
+* **Why drop the deep chains:**
+  * 19% of the spawn file was the higher-dive approach chains. Under the ratchet the higher
+    dive still earns better records (70,431) than the standard dive, so those states pull
+    the policy toward a dive variant, not toward the D-ramp route the other branches found.
+  * Swapped live to the broad set only: `tools/ge_spawns.py spawns` over GE2/3/5/6 with no
+    chains, 273,027 rows, md5 4fad4182....
+  * Re-read at step 4,024,434,688. The previous content is kept on the box as
+    `c4_content_backup.npy`.
+* **Plan:** if no crossing by ~07:20, restart as C6 = C5's latest + `--respawn-novel`. That
+  is r1b1's other ingredient: an ONLINE novelty spawn that follows the policy, where my
+  file is static.
