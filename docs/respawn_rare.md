@@ -56,6 +56,16 @@ x climb) with `1 / sqrt(1 + chosen)` returns and 1 s of random held actions foun
 behind the slot's end wall - the first piece of the human's way on, which no uniform-draw
 training episode had ever reached - after ~10,000 returns (~0.6M ticks).
 
+## `--respawn-rare-own 1`: archive returns do not use up the novel rows
+
+With `--respawn-novel`, a novel row may only be placed in a cell no REAL episode entered
+recently ("where the policy does not go on its own"). An archive return IS real, so once the
+archive works a frontier region (sidistic: the cavity and the space under the shaft past the
+CP2 slot) every cell there counts as visited and the novel rows - the mechanism that taught the
+incumbent policy the segment after that region - are pushed out of it. With this flag an episode
+that started from an archive row (tagged by spawn origin, the novel sampler's own rule) no longer
+marks the novel visit grid; it still lowers the novel ceiling (it is real).
+
 ## Read-out
 
 * Step line: `rare eff E/C N n` - the draw spread over E effective cells of the C cells the
@@ -76,3 +86,5 @@ Refused without the reservoir (`--respawn-frac 0`) and with `--respawn-binned`,
 | `--respawn-rare` | 0 (off) | share F of the reservoir draw that goes by cell rarity |
 | `--respawn-rare-cell` | 256 | the position cell, u |
 | `--respawn-rare-arch` | 0 | 1 = draw the share from the margin-free per-cell archive |
+| `--respawn-rare-speed` | 0 | archive cells keyed by B horizontal-speed buckets too (the --int-speed binning) |
+| `--respawn-rare-own` | 0 | 1 = archive returns do not mark the novel visit grid |
