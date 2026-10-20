@@ -391,3 +391,17 @@ steps/s. Measure it on your box in the first minute and size `--steps` to the ti
   ~400-800 u before x ~2,224. The kill floor is a trigger (not drawn in the depth image), so
   the policy must learn where it ends from experience; the novel rows' ceiling (28.8%) now
   reaches past it. Under the ratchet the drop is paid (d falls), so it is a gradient, not a dip.
+
+### 07:25 UTC: incumbent_recipe updated; what the next round inherits
+
+* `autoresearch/config.json` `incumbent_recipe` now ends with `--respawn-novel --race-ratchet`
+  (the r1b1_ratnov recipe). box.py prepends it to every SCRATCH launch; a resume restores both
+  from the checkpoint (the ratchet adds obs column 27 - never pass it to a resume of a
+  checkpoint without it, PROTOCOL's shape rule; a checkpoint WITH it restores it bare).
+  Nothing else in config.json changed.
+* The orchestrator takes the next incumbent checkpoint from the best eval's run directory
+  (`ckpt_final.pt`, else `ckpt_latest.pt`). The best eval is in r1b1_ratnovx2, so its final
+  checkpoint (5.1B) is pulled there at the end of the run.
+* State of the lineage at 4.46B: the greedy line crosses the CP2 pit by the human's route in
+  most evals (means 25-28%), and stops at the slot's west wall (x 2,224) - frontier 27,919 u
+  (28.56%) unchanged since 1,633M, T at the cap 2 since ~2.4B.
