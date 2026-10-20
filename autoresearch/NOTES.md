@@ -409,7 +409,7 @@ steps/s. Measure it on your box in the first minute and size `--steps` to the ti
   -offpol` (documented negative), `--respawn-vel-rot`, `--respawn-cells` (+ `-front`, `-margin`),
   `explore_phase1 --cell-vz`. Scratchpad analysis scripts are not in the repo.
 
-### 2026-10-20 08:45 UTC - the round continues (wrap-up is 11:50): Go-Explore in the loop + self-imitation at CP2
+### 2026-10-20 08:41 UTC - the round continues (wrap-up is 11:50): Go-Explore in the loop + self-imitation at CP2
 
 * RESULT.json set back to `final: false` (the 07:57 wrap-up was early; the round runs to wrapup_at).
 * **Next arm r1b3_ges:** resume r1b3_nou's 1.5B ckpt (from scratch, at the CP2 wall, offsets off) +
