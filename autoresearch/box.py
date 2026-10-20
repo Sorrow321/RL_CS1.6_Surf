@@ -15,6 +15,9 @@ Every limit comes from autoresearch/config.json and is enforced HERE, before mon
   the box destroyed, and the next offer tried (CLAUDE.md section 1).
 * Every box is registered with tools/fleet_watchdog.py (deadline = --hours) the moment it
   exists, so the daemon destroys it if the agent forgets; `extend` pushes the deadline.
+* The blocklist is the branch's tools/bad_hosts.json plus the fleet's $AR_HOME/bad_hosts.json
+  (the orchestrator folds every branch's list into it), and config.cpu_exclude drops host CPUs
+  that starve the physics step whatever clock vast reports for them.
 
     python autoresearch/box.py budget
     python autoresearch/box.py offers
@@ -22,6 +25,8 @@ Every limit comes from autoresearch/config.json and is enforced HERE, before mon
     python autoresearch/box.py deploy  --agent r1b2 --branch ar/r1b2
     python autoresearch/box.py ssh     --agent r1b2 -- "nvidia-smi"
     python autoresearch/box.py launch  --agent r1b2 --run r1b2_x1 --steps 4e8 -- --extra-flag 1
+    python autoresearch/box.py launch  ... --self-states "<how the file came from the policy's
+                                       own states>" -- --spawn-states runs/x.npy
     python autoresearch/box.py pull    --agent r1b2 --run r1b2_x1 [--ckpt]
     python autoresearch/box.py extend  --agent r1b2 --hours 1
     python autoresearch/box.py release --agent r1b2
@@ -33,6 +38,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -182,8 +188,58 @@ def _ar_start() -> float:
 
 
 # ------------------------------------------------------------- the offers -----
+def merged_blocklist(sources, lists=("blocked", "known_good")) -> dict:
+    """The union of several blocklists (paths, or already-parsed dicts). The first readable
+    source is kept exactly; a later one adds only the entries it does not already hold
+    verbatim, so the same machine blocked twice for two reasons stays two entries (the
+    history is the point of the file) while re-merging the same lists adds nothing."""
+    out, seen = None, {k: set() for k in lists}
+    for src in sources:
+        if isinstance(src, dict):
+            data = src
+        else:
+            try:
+                data = json.loads(Path(src).read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+        if out is None:
+            out = json.loads(json.dumps(data))
+            for k in lists:
+                seen[k].update(json.dumps(e, sort_keys=True) for e in out.get(k, []))
+            continue
+        for k in lists:
+            for e in data.get(k, []):
+                key = json.dumps(e, sort_keys=True)
+                if key not in seen[k]:
+                    seen[k].add(key)
+                    out.setdefault(k, []).append(e)
+    if out is None:
+        return {"blocked": []}
+    out.setdefault("blocked", [])
+    return out
+
+
+def sync_shared_blocklist(paths=()) -> int:
+    """Fold `paths` into $AR_HOME/bad_hosts.json, the list every agent's box.py reads on top of
+    its own branch's: a machine one agent proved bad is skipped by all of them (two agents
+    rented the same power-capped 3090 Ti on 2026-10-20). Returns the entry count."""
+    shared = AR_HOME / "bad_hosts.json"
+    data = merged_blocklist([shared, *paths])
+    text = json.dumps(data, indent=2) + "\n"
+    old = shared.read_text(encoding="utf-8") if shared.exists() else None
+    if text != old:
+        # a writer-unique temp name, then an atomic rename: a lost race only delays an entry to
+        # the orchestrator's next pass, which re-reads every branch's list
+        tmp = shared.with_name(f".bad_hosts.{os.getpid()}.tmp")
+        tmp.write_text(text, encoding="utf-8")
+        tmp.replace(shared)
+    return len(data["blocked"])
+
+
 def blocked_keys():
-    data = json.loads((REPO / "tools" / "bad_hosts.json").read_text(encoding="utf-8"))
+    # the branch's own list must parse; the fleet's shared one is best effort
+    own = json.loads((REPO / "tools" / "bad_hosts.json").read_text(encoding="utf-8"))
+    data = merged_blocklist([own, AR_HOME / "bad_hosts.json"])
     mids, hids, ips = set(), set(), set()
     for e in data.get("blocked", []):
         if e.get("machine_id"):
@@ -197,8 +253,9 @@ def blocked_keys():
 
 def offers(exclude_machines=()) -> list:
     """Every acceptable offer, best first: (tier, $/h). Nothing outside the whitelist, the
-    caps or the blocklist is ever returned."""
+    caps, the blocklist or config.cpu_exclude is ever returned."""
     mids, hids, ips = blocked_keys()
+    cpu_bad = [re.compile(p) for p in CFG.get("cpu_exclude", [])]
     out = []
     for tier, names in enumerate(CFG["gpu_tiers"]):
         for name in names:
@@ -223,10 +280,14 @@ def offers(exclude_machines=()) -> list:
                         or o.get("public_ipaddr") in ips
                         or o.get("machine_id") in exclude_machines):
                     continue
+                cpu = (o.get("cpu_name") or "").strip()
+                if any(p.search(cpu) for p in cpu_bad):
+                    continue
                 out.append({"tier": tier, "gpu": name, "dph": dph, "id": o["id"],
                             "machine_id": o.get("machine_id"), "host_id": o.get("host_id"),
                             "cores": o.get("cpu_cores_effective"), "ram_gb": round((o.get("cpu_ram") or 0) / 1024),
-                            "inet_down": o.get("inet_down"), "where": o.get("geolocation", "")})
+                            "inet_down": o.get("inet_down"), "where": o.get("geolocation", ""),
+                            "cpu": cpu})
     out.sort(key=lambda o: (o["tier"], o["dph"]))
     return out
 
@@ -266,7 +327,7 @@ def cmd_budget(a):
 def cmd_offers(a):
     for o in offers()[:a.n]:
         print(f"tier {o['tier']}  {o['gpu']:12s} {o['dph']:.3f} $/h  offer {o['id']}  "
-              f"machine {o['machine_id']}  {o['cores']} thr  {o['ram_gb']}G  "
+              f"machine {o['machine_id']}  {o['cores']} thr {o['cpu']}  {o['ram_gb']}G  "
               f"{o['inet_down']:.0f} Mb/s  {o['where']}")
 
 
@@ -350,6 +411,7 @@ def cmd_rent(a):
             subprocess.run([sys.executable, str(REPO / "tools" / "vast_pick.py"), "--block",
                             str(iid), "--reason", "unreliable", "--detail",
                             f"autoresearch {agent}: {why}"], capture_output=True, text=True)
+            sync_shared_blocklist([REPO / "tools" / "bad_hosts.json"])
             destroy(iid, why)
             watchdog("release", str(iid), "--no-harvest")
             archive_rec(agent, rec, why)
@@ -467,6 +529,14 @@ def cmd_launch(a):
     recipe = [] if a.no_recipe else list(CFG["incumbent_recipe"])
     env = (f"MAP={shlex.quote(CFG['map'])} BUDGET={shlex.quote(str(int(float(a.steps))))} "
            f"RECORD_EVERY={shlex.quote(a.record_every)} ")
+    if a.self_states is not None:
+        # run_arm.sh refuses --spawn-states / --demo-file / --bc-file without SELF_STATES=1,
+        # the declaration that the file came from the POLICY'S OWN states (CLAUDE.md section
+        # 0); the declaration is recorded with the run, so it has to say how
+        if len(a.self_states.strip()) < 20:
+            die("--self-states takes the file's provenance: how it was built from the "
+                "policy's own states (no demo), in a sentence")
+        env += "SELF_STATES=1 "
     if a.resume:
         env += "CKPT=runs_ckpt.pt ARM_RESUME=1 "
         # a resume restores every shape-changing flag from the checkpoint and REFUSES a
@@ -482,8 +552,11 @@ def cmd_launch(a):
     print("\n".join((r.stdout + r.stderr).strip().splitlines()[-30:]))
     if r.returncode != 0:
         die(f"launch failed (exit {r.returncode})", code=6)
-    rec.setdefault("runs", []).append({"run": a.run, "t": time.time(), "steps": a.steps,
-                                       "flags": recipe + extra, "resume": bool(a.resume)})
+    run = {"run": a.run, "t": time.time(), "steps": a.steps, "flags": recipe + extra,
+           "resume": bool(a.resume)}
+    if a.self_states is not None:
+        run["self_states"] = a.self_states
+    rec.setdefault("runs", []).append(run)
     save_rec(a.agent, rec)
 
 
@@ -511,20 +584,33 @@ def cmd_pull(a):
             name = Path(m.name).name
             if m.isfile() and (name in ("run.json", "progress.csv", a.run + "_launch.txt")
                                or (name.startswith("traj_") and name.endswith(".jsonl"))):
-                with tf.extractfile(m) as fsrc, open(dst / name, "wb") as fout:
-                    fout.write(fsrc.read())
+                with tf.extractfile(m) as fsrc:
+                    data = fsrc.read()            # read whole before the old copy is replaced
+                (dst / name).write_bytes(data)
     (dst / "_pull.tgz").unlink(missing_ok=True)
     if a.ckpt:
         ck = "ckpt_final.pt" if a.final else "ckpt_latest.pt"
         r = ssh(rec, f"md5sum /root/RL_Surf/runs/{a.run}/{ck} | cut -d' ' -f1")
         want = r.stdout.strip()
         if want:
-            subprocess.run(["scp", "-o", "BatchMode=yes", *SSH_OPTS, "-q", "-P", str(rec["port"]),
-                            f"{src}/{a.run}/{ck}", str(dst / ck)], timeout=1800)
-            got = md5(dst / ck) if (dst / ck).exists() else ""
+            # into a .part first: a timed-out or dropped scp leaves a truncated file, and under
+            # the real name it replaced the good copy pulled earlier, which the round end then
+            # hands on as the next incumbent (r1b2's box ran at 31 KB/s on 2026-10-20)
+            part = dst / (ck + ".part")
+            part.unlink(missing_ok=True)
+            try:
+                subprocess.run(["scp", "-o", "BatchMode=yes", *SSH_OPTS, "-q", "-P",
+                                str(rec["port"]), f"{src}/{a.run}/{ck}", str(part)],
+                               stdin=subprocess.DEVNULL, timeout=1800)
+            except subprocess.TimeoutExpired:
+                log(f"!! {a.agent}: scp of {a.run}/{ck} timed out after 30 min")
+            got = md5(part) if part.exists() else ""
             if got != want:
-                log(f"!! {a.agent}: {ck} md5 {got} != {want} on the box (truncated pull)")
+                part.unlink(missing_ok=True)
+                kept = "the copy pulled earlier is kept" if (dst / ck).exists() else "none kept"
+                log(f"!! {a.agent}: {ck} md5 {got} != {want} on the box (truncated pull); {kept}")
             else:
+                part.replace(dst / ck)
                 log(f"{a.agent}: pulled {a.run}/{ck} (md5 {want})")
     n = len(list(dst.glob("traj_*.jsonl")))
     log(f"{a.agent}: pulled {a.run} -> {dst} ({n} eval trajectories)")
@@ -608,6 +694,9 @@ def main(argv=None):
                    help="ARM_RESUME from runs_ckpt.pt (push it with deploy --ckpt)")
     p.add_argument("--no-recipe", action="store_true",
                    help="do not prepend config.incumbent_recipe")
+    p.add_argument("--self-states", default=None, metavar="PROVENANCE",
+                   help="SELF_STATES=1 for run_arm.sh: the --spawn-states (or similar) file "
+                        "was built from the policy's OWN states; say how (it is recorded)")
     p.add_argument("extra", nargs=argparse.REMAINDER)
     p.set_defaults(fn=cmd_launch)
     p = sub.add_parser("pull")

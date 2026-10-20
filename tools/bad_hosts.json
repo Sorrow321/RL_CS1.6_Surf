@@ -2635,6 +2635,24 @@
       "detail": "not running after 330s (loading): ",
       "run": "",
       "reason": "network"
+    },
+    {
+      "ip": "171.235.173.155",
+      "machine_id": 68144,
+      "host_id": 466625,
+      "date": "2026-10-20",
+      "detail": "autoresearch r1b2 2026-10-20: RTX 3090 Ti power limit 300 W of 450 W default (67%), sm 1380 MHz under load at 277 W, bf16 GEMM 60 TFLOPS; gpu_health UNHEALTHY",
+      "run": "",
+      "reason": "gpu_capped"
+    },
+    {
+      "ip": "171.235.173.155",
+      "machine_id": 68144,
+      "host_id": 466625,
+      "date": "2026-10-20",
+      "detail": "autoresearch r1b3 2026-10-20 01:10: RTX 3090 Ti power limit 300 W of 450 W default (67%), bf16 GEMM 59 TFLOPS, sm 1350 MHz under load; gpu_health UNHEALTHY",
+      "run": "",
+      "reason": "gpu_capped"
     }
   ],
   "known_good": [

@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -130,7 +131,9 @@ def prepare_slot(st, k: int, base: str) -> dict:
 
 PROMPT = ("/loop You are fork-and-flush branch agent {agent} (round {round} of {rounds}) on "
           "surf_src_sidistic. Your identity, deadlines and the incumbent are in AR_BRANCH.json. "
-          "On EVERY wakeup: re-read AR_BRANCH.json (if now >= wrapup_at, do only the Wrap-up), "
+          "On EVERY wakeup: re-read AR_BRANCH.json (if now >= wrapup_at, do only the Wrap-up; "
+          "before wrapup_at never wrap up or stop this loop: stopping a run does not end the "
+          "round, so if RESULT.json says final, set it back to false and start your next idea), "
           "follow autoresearch/PROTOCOL.md exactly (read it and CLAUDE.md now if this is your "
           "first wakeup, then autoresearch/NOTES.md), keep RESULT.json and autoresearch/NOTES.md "
           "current, and schedule the next wakeup (20-30 min while a run trains).")
@@ -177,6 +180,93 @@ def send(slot, text: str) -> None:
     sh(["tmux", "send-keys", "-t", win, "Enter"], check=False)
 
 
+EARLY_S = 1800      # RESULT.json final this long before wrapup_at is an early wrap-up
+
+
+def tell_early_wrapup(slot, now: float, wrapup_at: float) -> bool:
+    """Whether to re-arm a branch that wrapped up early, recording that it was told.
+
+    r1b3 (2026-10-20) stopped a run at 07:57, took that for the end of its round, did the
+    Wrap-up and stopped its loop, and its slot sat idle for the 3.9 h left before wrapup_at.
+    A branch is told once each time its RESULT.json goes final more than EARLY_S before
+    wrapup_at; RESULT.json back at final false re-arms the check. Only the branch's own file
+    counts: a new round's fork starts with the winner's committed RESULT.json, final and all."""
+    try:
+        res = json.loads((Path(slot["dir"]) / "RESULT.json").read_text(encoding="utf-8"))
+        final = res.get("final") is True and res.get("agent") == slot["agent"]
+    except (OSError, ValueError, AttributeError):
+        return False
+    if not final:
+        slot["early_told"] = False
+        return False
+    if slot.get("early_told") or now >= wrapup_at - EARLY_S:
+        return False
+    slot["early_told"] = True
+    return True
+
+
+DEADLINE_WARN_S = 1200   # a branch hears about its box's registry deadline this long before it
+
+
+def box_deadline_note(slot, now: float, round_end: float):
+    """The note for a branch whose box dies within DEADLINE_WARN_S, or None; records it.
+
+    The fleet watchdog destroys a box at its registry deadline, and a branch box has no harvest
+    spec, so a run not pulled by then is lost. On 2026-10-20 r1b2's box was due at 08:47, 17 min
+    into a 1e9-step run, and r1b3's at 11:50:38, the wrap-up minute; an operator's note saved
+    both. A deadline is announced once, and an extension (a new deadline) re-arms it. A deadline
+    after round_end needs no note: end_round releases the box anyway."""
+    try:
+        reg = json.loads((AR_HOME / "fleet" / "fleet.json").read_text(encoding="utf-8"))
+        mine = sorted((r["deadline"], iid) for iid, r in reg.items()
+                      if isinstance(r, dict) and r.get("label") == slot["agent"]
+                      and isinstance(r.get("deadline"), (int, float)))
+    except (OSError, ValueError, AttributeError):
+        return None
+    if not mine:
+        return None
+    dl, iid = mine[0]
+    if dl >= round_end or not dl - DEADLINE_WARN_S <= now < dl or slot.get("deadline_told") == dl:
+        return None
+    slot["deadline_told"] = dl
+    return (f"[orchestrator] Box deadline: your box {iid} expires at "
+            f"{time.strftime('%H:%M', time.gmtime(dl))} UTC, {(dl - now) / 60:.0f} min from now. "
+            "The fleet watchdog destroys it then, and whatever is not pulled dies with it. Extend "
+            "it (box.py extend) if a run should keep training, or pull and release it. (A harness "
+            "note, not a research instruction.)")
+
+
+STALL_S = 75 * 60        # a wakeup is at most 60 min away, so a live loop is never this quiet
+CLAUDE_PROJECTS = Path.home() / ".claude" / "projects"
+
+
+def session_quiet_s(slot, now: float):
+    """Seconds since the branch's Claude session last wrote its transcript, or None."""
+    proj = CLAUDE_PROJECTS / re.sub(r"[^A-Za-z0-9]", "-", str(slot["dir"]))
+    try:
+        newest = max(p.stat().st_mtime for p in proj.glob("*.jsonl"))
+    except (OSError, ValueError):            # no project dir or no transcript yet
+        return None
+    return now - newest
+
+
+def tell_stalled(slot, now: float, wrapup_at: float) -> bool:
+    """Whether to re-arm a branch whose session went quiet, recording that it was told.
+
+    A loop can die without a final RESULT.json: a wakeup that fires while the account is at its
+    usage limit does not run (on 2026-09-04 a rate limit stopped every agent and its timers for
+    50 min), or an agent stops scheduling. tmux still sees the session, so neither the restart
+    nor the early wrap-up check fires. Told at most once per STALL_S, and never in a session's
+    first STALL_S (a new round's session shares its project dir with the last round's)."""
+    quiet = session_quiet_s(slot, now)
+    if quiet is None or quiet < STALL_S or now >= wrapup_at:
+        return False
+    if now - slot.get("stall_told", 0) < STALL_S or now - slot.get("launched", 0) < STALL_S:
+        return False
+    slot["stall_told"] = now
+    return True
+
+
 def box_py(*args, env=None):
     e = dict(os.environ, AR_HOME=str(AR_HOME), RLSURF_FLEET_DIR=str(AR_HOME / "fleet"),
              PYTHONIOENCODING="utf-8", **(env or {}))
@@ -184,13 +274,121 @@ def box_py(*args, env=None):
                           capture_output=True, text=True, env=e, timeout=900)
 
 
+# ----------------------------------------------------------------- harness ----
+def slot_blocklists() -> list:
+    return sorted((AR_HOME / "wt").glob("b*/tools/bad_hosts.json"))
+
+
+def _box():
+    p = str(REPO / "autoresearch")
+    if p not in sys.path:
+        sys.path.insert(0, p)
+    import box
+    return box
+
+
+def sync_blocklists() -> int:
+    """Every branch's tools/bad_hosts.json (and the main checkout's) into the fleet's shared
+    $AR_HOME/bad_hosts.json, which box.py reads on top of the branch's own list."""
+    return _box().sync_shared_blocklist([REPO / "tools" / "bad_hosts.json", *slot_blocklists()])
+
+
+def harness_base(base: str, repo: Path = REPO, blocklists=(), since: str | None = None) -> str:
+    """The commit a round forks: `base` (the winner's head) with config.harness_files restored
+    from the main checkout's HEAD and the fleet's blocklist folded into tools/bad_hosts.json.
+
+    The harness is the operator's, as in the paper: a branch cannot carry its own caps,
+    grader or rules into the next round, and the operator's fixes reach every round instead
+    of stopping at the round base they were not in. Git plumbing on a private index, so no
+    working tree is touched; returns `base` itself when nothing differs.
+
+    config.lineage_keys of config.json are the lineage's, not the operator's: the winner's
+    value travels with it when the winner changed it since `since` (the round base it forked
+    from). r1b1 made its scratch recipe the incumbent_recipe, and restoring the operator's
+    config.json would have silently dropped those flags from every round-2 scratch launch."""
+    box = _box()
+    head = git("rev-parse", "HEAD", cwd=repo).stdout.strip()
+    AR_HOME.mkdir(parents=True, exist_ok=True)
+    idx = AR_HOME / f".harness.{os.getpid()}.index"
+    env = dict(os.environ, GIT_INDEX_FILE=str(idx))
+
+    def g(*args, check=True, stdin=None):
+        r = subprocess.run(["git", *args], cwd=repo, env=env, capture_output=True, text=True,
+                           input=stdin, timeout=120)
+        if check and r.returncode != 0:
+            raise RuntimeError(f"git {' '.join(args)}: {r.stderr.strip()[-300:]}")
+        return r.stdout
+
+    def entry(rev, path):        # (mode, blob) of path at rev, or None
+        out = g("ls-tree", rev, "--", path).strip()
+        return tuple(out.split("\t")[0].split()[::2]) if out else None
+
+    try:
+        g("read-tree", base)
+        changed = []
+        for path in CFG.get("harness_files", []):
+            mine = entry(head, path)
+            if mine is None or mine == entry(base, path):
+                continue
+            g("update-index", "--add", "--cacheinfo", f"{mine[0]},{mine[1]},{path}")
+            changed.append(path)
+        cfg = "autoresearch/config.json"
+        if cfg in changed and CFG.get("lineage_keys"):
+            def load(rev):
+                try:
+                    return json.loads(g("show", f"{rev}:{cfg}", check=False) or "{}")
+                except ValueError:
+                    return {}
+            ours, theirs = load(head), load(base)
+            was = load(since) if since else ours
+            kept = [k for k in CFG["lineage_keys"]
+                    if k in theirs and theirs[k] != was.get(k) and theirs[k] != ours.get(k)]
+            if kept:
+                ours.update({k: theirs[k] for k in kept})
+                blob = g("hash-object", "-w", "--stdin",
+                         stdin=json.dumps(ours, indent=2) + "\n").strip()
+                g("update-index", "--add", "--cacheinfo", f"100644,{blob},{cfg}")
+                if (entry(base, cfg) or ("", ""))[1] == blob:
+                    changed.remove(cfg)              # that is the winner's config.json as is
+                else:
+                    changed[changed.index(cfg)] = f"{cfg} (the lineage's {', '.join(kept)} kept)"
+        if blocklists:
+            bh = "tools/bad_hosts.json"
+            have = g("show", f"{base}:{bh}", check=False)
+            try:
+                theirs = [json.loads(have)] if have else []
+            except ValueError:
+                theirs = []
+            text = json.dumps(box.merged_blocklist([*theirs, *blocklists]), indent=2) + "\n"
+            if text != have:
+                blob = g("hash-object", "-w", "--stdin", stdin=text).strip()
+                g("update-index", "--add", "--cacheinfo", f"100644,{blob},{bh}")
+                changed.append(bh)
+        if not changed:
+            return base
+        tree = g("write-tree").strip()
+        msg = (f"autoresearch: the operator's harness at {head[:10]} over {base[:10]}\n\n"
+               + "\n".join(f"* {p}" for p in changed) + TRAILERS)
+        return g("commit-tree", tree, "-p", base, "-m", msg).strip()
+    finally:
+        idx.unlink(missing_ok=True)
+
+
 # ------------------------------------------------------------------ rounds ----
 def start_round(st, base: str) -> None:
+    try:
+        sync_blocklists()
+        fork = harness_base(base, blocklists=[AR_HOME / "bad_hosts.json"], since=st.get("base"))
+    except Exception as e:      # noqa: BLE001 - the round still starts, on the plain base
+        log(f"!! harness overlay failed ({e}); the round forks {base[:10]} as it is")
+        fork = base
+    if fork != base:
+        log(f"harness overlay: {base[:10]} -> {fork[:10]}")
     st["round"] += 1
     st["round_start"] = time.time()
     st["round_end"] = st["round_start"] + CFG["round_hours"] * 3600
-    st["base"] = base
-    st["slots"] = [prepare_slot(st, k, base) for k in range(1, CFG["branches_per_round"] + 1)]
+    st["base"] = fork
+    st["slots"] = [prepare_slot(st, k, fork) for k in range(1, CFG["branches_per_round"] + 1)]
     save_state(st)
     log(f"ROUND {st['round']} of {CFG['rounds']}: {len(st['slots'])} forks of {base[:10]} until "
         f"{time.strftime('%Y-%m-%d %H:%M', time.localtime(st['round_end']))}")
@@ -198,6 +396,57 @@ def start_round(st, base: str) -> None:
         launch(st, slot)
         time.sleep(20)         # do not start four sessions in the same second
     save_state(st)
+
+
+def ckpt_step(path: Path):
+    """The training step a checkpoint was saved at (its global_step), or None. The file came
+    from a rented box, so it is never unpickled (and torch.load's weights_only mode refuses
+    the trainer's checkpoints anyway, which hold numpy arrays): the step is the integer that
+    follows the top-level "global_step" key in the pickle's opcode stream. Nothing executes."""
+    import pickletools
+    import zipfile
+    ints = ("BININT", "BININT1", "BININT2", "LONG1", "LONG4", "INT", "LONG")
+    try:
+        with zipfile.ZipFile(path) as z:
+            data = z.read(next(n for n in z.namelist() if n.split("/")[-1] == "data.pkl"))
+        after_key = False
+        for op, arg, _ in pickletools.genops(data):
+            if after_key and op.name in ("BINPUT", "LONG_BINPUT", "MEMOIZE"):
+                continue
+            if after_key:
+                return int(arg) if op.name in ints else None
+            after_key = "UNICODE" in op.name and arg == "global_step"
+    except Exception as e:                       # noqa: BLE001 - informational only
+        log(f"  (cannot read the step of {path}: {type(e).__name__}: {str(e)[:120]})")
+    return None
+
+
+def ckpt_complete(path: Path) -> bool:
+    """Every member of the checkpoint's zip is there and matches its CRC, and it names its
+    step. A pull that timed out or dropped leaves a truncated file under the real name; this
+    catches it without unpickling anything."""
+    import zipfile
+    try:
+        with zipfile.ZipFile(path) as z:
+            if z.testzip() is not None:
+                return False
+    except Exception:                            # noqa: BLE001 - any failure means incomplete
+        return False
+    return ckpt_step(path) is not None
+
+
+def handon_ckpt(run_dir: Path):
+    """The checkpoint a run hands on: ckpt_final.pt, else ckpt_latest.pt, else its newest
+    ckpt_<step>.pt milestone, whichever is the first COMPLETE one; None if none is."""
+    milestones = sorted(((int(m.group(1)), p) for p in run_dir.glob("ckpt_*.pt")
+                         if (m := re.fullmatch(r"ckpt_(\d+)\.pt", p.name))), reverse=True)
+    for p in [run_dir / "ckpt_final.pt", run_dir / "ckpt_latest.pt"] + [p for _, p in milestones]:
+        if not p.exists():
+            continue
+        if ckpt_complete(p):
+            return p
+        log(f"  !! {run_dir.name}/{p.name} is truncated or damaged: not handed on")
+    return None
 
 
 def score_branch(agent: str) -> dict:
@@ -251,12 +500,11 @@ def end_round(st, final=False) -> None:
             new.mkdir(parents=True, exist_ok=True)
             ev = Path(win["best"]["file"])
             shutil.copy2(ev, new / ev.name)
-            ck = ev.parent / "ckpt_latest.pt"
-            for name in ("ckpt_final.pt", "ckpt_latest.pt"):
-                if (ev.parent / name).exists():
-                    ck = ev.parent / name
-                    break
-            if ck.exists():
+            ck = handon_ckpt(ev.parent)
+            if ck is None:
+                log(f"  !! no complete checkpoint in {ev.parent}: incumbent/ckpt.pt stays the "
+                    "previous round's")
+            else:
                 shutil.copy2(ck, new / "ckpt.pt")
                 link = AR_HOME / "incumbent" / "ckpt.pt"
                 link.unlink(missing_ok=True)
@@ -264,11 +512,24 @@ def end_round(st, final=False) -> None:
             for f in ("progress.csv", "run.json"):
                 if (ev.parent / f).exists():
                     shutil.copy2(ev.parent / f, new / f)
+            # the checkpoint handed on is the best run's NEWEST one, usually later than its
+            # best eval (r1b1_ratnovx: best eval 1,633M, ckpt_latest ~2.5B): say both steps,
+            # so the next round does not expect the checkpoint to reproduce the score
+            eval_step = int(ev.stem.split("_")[1])
+            if ck is not None:
+                ck_path, ck_from = str(new / "ckpt.pt"), f"{ev.parent.name}/{ck.name}"
+            else:
+                ck_path = inc.get("ckpt")
+                ck_from = f"the previous incumbent's (no complete checkpoint in {ev.parent.name})"
+            ck_step = ckpt_step(Path(ck_path)) if ck_path else None
             st["incumbent"] = {"score": win["score"], "agent": win["agent"], "round": r,
                                "eval": str(new / ev.name), "dir": str(new),
-                               "ckpt": str(new / "ckpt.pt") if ck.exists() else None,
+                               "ckpt": ck_path, "eval_step": eval_step,
+                               "ckpt_from": ck_from, "ckpt_step": ck_step,
                                "commit": win["head"], "best": win["best"]}
-            log(f"  NEW INCUMBENT {win['agent']} score {win['score']}")
+            log(f"  NEW INCUMBENT {win['agent']} score {win['score']}: eval at step "
+                f"{eval_step:,}; ckpt {ck_from} at step "
+                f"{f'{ck_step:,}' if ck_step is not None else 'unknown'}")
         st["next_base"] = win["head"]
         log(f"  WINNER {win['agent']} ({win['score']}): round {r + 1} forks {win['head'][:10]}")
     else:
@@ -328,8 +589,10 @@ def cmd_run(a):
                 return
             start_round(st, st["next_base"])
         now = time.time()
+        wrapup_at = st["round_end"] - CFG["wrapup_minutes"] * 60
         for slot in st["slots"]:
-            if not slot["wrapup_sent"] and now >= st["round_end"] - CFG["wrapup_minutes"] * 60:
+            prompt = PROMPT.format(agent=slot["agent"], round=st["round"], rounds=CFG["rounds"])
+            if not slot["wrapup_sent"] and now >= wrapup_at:
                 send(slot, f"ROUND OVER for {slot['agent']}: do the Wrap-up in "
                            "autoresearch/PROTOCOL.md now (pull the best run with --ckpt, "
                            "final RESULT.json, NOTES.md, commit and push, release your box).")
@@ -340,6 +603,22 @@ def cmd_run(a):
                 slot["restarts"] += 1
                 log(f"{slot['agent']}: session gone - restart {slot['restarts']}")
                 launch(st, slot, resume=True)
+                continue
+            elif tell_early_wrapup(slot, now, wrapup_at):
+                send(slot, prompt)
+                log(f"{slot['agent']}: RESULT.json final {(wrapup_at - now) / 3600:.1f} h "
+                    "before wrapup_at - its loop re-armed (the round is not over)")
+            elif tell_stalled(slot, now, wrapup_at):
+                send(slot, prompt)
+                log(f"{slot['agent']}: session quiet {session_quiet_s(slot, now) / 60:.0f} min "
+                    "before wrapup_at - its loop re-armed")
+            try:                       # advisory: a failure here must not stop the round
+                note = box_deadline_note(slot, now, st["round_end"])
+                if note:
+                    send(slot, note)
+                    log(f"{slot['agent']}: told its box dies within {DEADLINE_WARN_S // 60} min")
+            except Exception as e:     # noqa: BLE001
+                log(f"box deadline check failed for {slot['agent']}: {e}")
         save_state(st)
         if (AR_HOME / "WRAPUP").exists():
             (AR_HOME / "WRAPUP").unlink()
@@ -353,6 +632,10 @@ def cmd_run(a):
                 write_status(st)
             except Exception as e:     # noqa: BLE001 - status is cosmetic
                 log(f"status failed: {e}")
+            try:
+                sync_blocklists()
+            except Exception as e:     # noqa: BLE001 - the next pass retries
+                log(f"blocklist sync failed: {e}")
             last_status = now
         time.sleep(POLL_S)
 

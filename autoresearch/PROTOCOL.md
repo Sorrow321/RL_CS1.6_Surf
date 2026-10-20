@@ -12,13 +12,41 @@ then `AR_BRANCH.json` (who you are, your deadlines, the incumbent). Then start w
   eval so far). Each fork starts with a FRESH context. That is the "flush", and it is the
   point: independent runs stall in different "idea basins", and a fresh context escapes the
   one the previous lineage was in.
-* You do not talk to the other branches. You are not asked to "be different" either (the
-  paper measured that directive: it does not help). Do the best research you can.
+* You do not talk to the other branches, and you do not read what they do (see
+  **Independence** below). You are not asked to "be different" either (the paper measured
+  that directive: it does not help). Do the best research you can.
 * At the round's end the orchestrator scores every branch with `autoresearch/score.py`. That
   score is the best greedy eval from the TRUE map start that your runs produced this round.
   The winner's branch head seeds the next round's four forks. The other branches are archived
   and pruned. So what you leave in this branch (code, NOTES.md, RESULT.json) is what the next
   round inherits if you win.
+
+## Independence: read only your own branch
+
+Ideas cross between lineages only at the round boundary, through the winner's workspace. So
+read only:
+
+* your worktree (this branch: its code, NOTES.md, RESULT.json, AR_BRANCH.json) and its git
+  history;
+* your runs (`$AR_HOME/runs/$AR_AGENT/`) and your box (`box.py status --agent $AR_AGENT`,
+  `box.py budget`);
+* the incumbent (`$AR_HOME/incumbent/`).
+
+Never read, list or grep any of these:
+
+* another branch's worktree (`$AR_HOME/wt/b<k>`), runs (`$AR_HOME/runs/<agent>`) or box
+  record;
+* another branch's git branch (an `ar/*` ref that is not yours);
+* another branch's tmux window or Claude transcript;
+* the archive of earlier rounds (`$AR_HOME/archive/`);
+* the orchestrator's files: `$AR_HOME/status.md`, `state.json`, `orchestrator.log`. They are
+  the user's and the operator's view of every branch.
+
+This holds even when the goal is to avoid repeating another branch's idea. Two branches trying
+one idea is a cost the method accepts. Copying the leader mid-round only pulls a branch into
+the leader's idea basin. In round 1, r1b4 read the other branches' status and notes and spent
+its last six hours on the leader's recipe, and it finished below the leader. A losing branch's
+findings are archived, not inherited: that is the flush.
 
 ## The goal and the one number
 
@@ -45,6 +73,12 @@ You run inside `/loop` (self-paced). Every wakeup:
 5. Schedule the next wakeup with ScheduleWakeup. While a run trains, wake every 20-30 min.
    Wake sooner only while you are actively building or a launch is in flight. One waiter,
    no polling loops, no Monitor spam: the user pays for every wakeup.
+
+Stopping a run does not end your round. Until `wrapup_at`, a failed idea is written down and
+followed by the next one (your ranking in NOTES.md, or a new idea). Release the box while you
+analyse or build, but keep the loop going: an early Wrap-up leaves this branch's slot empty for
+the rest of the round. The orchestrator re-arms the loop of a branch whose RESULT.json says
+final before `wrapup_at`.
 
 ## Experiments: short first, long only when earned
 
@@ -78,9 +112,9 @@ You run inside `/loop` (self-paced). Every wakeup:
 * **Boxes.** One box per agent, single GPU only, and consumer RTX cards under the
   config.max_dph caps (3090 first, then 4090, then 5090; cheaper cards that do the job, like
   the 5080, are fine). No datacenter cards, ever. box.py and the watchdog enforce this.
-* **Watching.** The user watches through Claude Remote Control and `~/ar/status.md`. That
-  replaces CLAUDE.md's per-box dashboard tunnel. A dashboard on the box is optional, and no
-  tunnel is needed.
+* **Watching.** The user watches through Claude Remote Control and `~/ar/status.md` (the
+  user's view, which you do not read: see Independence). That replaces CLAUDE.md's per-box
+  dashboard tunnel. A dashboard on the box is optional, and no tunnel is needed.
 * **Budget.** The total is the vast credit; box.py paces it to config.budget_end_hours.
 
 ## Code changes
@@ -95,6 +129,16 @@ Work on YOUR branch (`ar/$AR_AGENT`, already checked out in this worktree):
 3. Commit with the trailers from CLAUDE.md / the session, then `git push origin ar/$AR_AGENT`.
    Boxes clone from GitHub, so a box can only run what is pushed.
 4. Deploy THAT commit: `box.py deploy --agent $AR_AGENT --branch ar/$AR_AGENT`.
+
+**The harness is the operator's.** The files in `config.harness_files` (CLAUDE.md, this
+protocol, box.py, score.py, orchestrator.py, config.json, the watchdog, deploy_box.sh,
+vast_pick.py, gpu_health.py and their tests) are restored from the operator's branch at the
+start of every round. An edit you make to one does not reach the next round. One exception:
+`config.json`'s `lineage_keys` (`incumbent_recipe`) are the lineage's. Change the recipe there,
+and if your branch wins, your value is the next round's scratch default. If a harness file
+blocks you, work around it on your branch and write it in NOTES.md under a "Harness issue"
+heading; the operator reads those. `autoresearch/NOTES.md`, the trainer, the tools and the tests are
+yours, and they travel with your branch if it wins.
 
 ## Boxes: one per agent, and box.py is the only door
 
@@ -111,6 +155,11 @@ python autoresearch/box.py release --agent $AR_AGENT
 
 * `launch` prepends the incumbent recipe (`config.incumbent_recipe`) to your extra flags, and
   later flags win. `--no-recipe` gives a bare scratch preset.
+* A spawn-state file built from the policy's OWN states (its reservoir, its greedy line, an
+  archive rooted at them) is passed with `launch --self-states "<how it was built>" --
+  --spawn-states <file>`. That sets run_arm.sh's SELF_STATES=1 and records your sentence with
+  the run. Never launch around `launch` (box.py ssh + run_arm.sh): the run then never reaches
+  your box record.
 * Never call `vastai create`/`destroy` yourself. The fleet watchdog destroys any instance that:
   * is not a single allowed RTX card under its price cap;
   * is above the box cap;
@@ -120,14 +169,28 @@ python autoresearch/box.py release --agent $AR_AGENT
   your analysis with the box released, unless you are about to launch again.
 * If `rent` refuses on budget, the fleet is spending faster than the money lasts. Do analysis
   or coding and try later. Never work around it.
-* Your box id is in `$AR_HOME/boxes/$AR_AGENT.json` and `box.py status`. Keep it in NOTES.md
-  too.
+* Your box id is in `$AR_HOME/boxes/$AR_AGENT.json` and `box.py status --agent $AR_AGENT`. Keep
+  it in NOTES.md too.
+* A bad box (gpu_health fails, or the trainer runs far under ~150k steps/s on the incumbent
+  recipe) is blocklisted with `python tools/vast_pick.py --block <id> --reason ... --detail ...`
+  BEFORE you release it. That writes your branch's `tools/bad_hosts.json`. The orchestrator
+  folds every branch's list into `$AR_HOME/bad_hosts.json` within 5 minutes, and `box.py`
+  skips both lists, so no other agent rents that machine. `config.cpu_exclude` already drops
+  the old Xeon E5/E7 hosts, which vast lists at their turbo clock.
 
 ## Harvest, score, record
 
 * Before releasing a box, pull every run you may want to cite:
   `box.py pull --agent $AR_AGENT --run <run>`. Add `--ckpt` for the one you might hand on.
 * Score: `python autoresearch/score.py --best $AR_HOME/runs/$AR_AGENT/<run>/`.
+* The next round's incumbent checkpoint is the winning eval's run's `ckpt_final.pt`, or its
+  `ckpt_latest.pt` if there is no final one, or its newest `ckpt_<step>.pt`, as pulled to
+  `$AR_HOME/runs/`: the first of those that is complete (a truncated or damaged file is
+  skipped). That is the run's NEWEST weights, usually later than its best eval.
+  `AR_BRANCH.json`'s incumbent gives `eval_step` and `ckpt_step`. Before you compare against
+  the incumbent's score, read the checkpoint's own first eval.
+* `box.py pull --ckpt` downloads to `<ckpt>.part` and replaces the copy already pulled only
+  when the md5 matches the box's, so a pull that times out on a slow link loses nothing.
 * `RESULT.json` (worktree root, read by the orchestrator, rewritten whenever the best moves):
 
 ```json
@@ -138,13 +201,13 @@ python autoresearch/box.py release --agent $AR_AGENT
  "summary": "<= 10 lines: what you tried, what it did at matched steps, what to try next"}
 ```
 
-## Wrap-up (at `wrapup_at`, or when a message says ROUND OVER)
+## Wrap-up (at `wrapup_at`, or when a message says ROUND OVER; never before)
 
 1. Launch nothing new. Pull the best run, with its checkpoint (`--ckpt`).
 2. Score it. Write `RESULT.json` with `"final": true` and the summary.
 3. Append the round's lesson to NOTES.md: what worked, what did not, the numbers.
 4. `git add -A && git commit` (trailers) `&& git push origin ar/$AR_AGENT`.
-5. `box.py release --agent $AR_AGENT`, and confirm with `box.py status`.
+5. `box.py release --agent $AR_AGENT`, and confirm with `box.py status --agent $AR_AGENT`.
 6. Stop scheduling wakeups. The orchestrator ends this session at the deadline.
 
 ## Talking to the user
