@@ -1,4 +1,4 @@
-"""--respawn-vel-rot: a share of the spawn pool's reservoir rows inside the frontier zone
+"""--respawn-vel-rot (and --respawn-cells): a share of the spawn pool's reservoir rows inside the frontier zone
 get a fresh velocity DIRECTION (uniform heading, elevation U(-45, 45) deg), speed kept,
 the view yaw turned by the same heading change.
 
@@ -130,3 +130,55 @@ def test_flag_off_is_bit_identical_to_the_parent_trainer():
         parent.unlink(missing_ok=True)
         for dd in (a, b):
             shutil.rmtree(ROOT / "runs" / dd, ignore_errors=True)
+
+
+# ------------------------------------------------------------ --respawn-cells
+def _cell_keys(o, v):
+    """The trainer's cell key, verbatim."""
+    q = np.floor(o / 256.0).astype(np.int64)
+    vzb = np.clip(((v[:, 2] + 1500.0) // 500.0).astype(np.int64), 0, 5)
+    spb = np.clip((np.hypot(v[:, 0], v[:, 1]) // 875.0).astype(np.int64), 0, 3)
+    return (((q[:, 0] * 4096 + q[:, 1]) * 4096 + q[:, 2]) * 6 + vzb) * 4 + spb
+
+
+def test_cell_key_splits_place_by_vz_and_speed_and_the_draw_is_uniform_over_cells():
+    o = np.array([[3000, 0, 11450]] * 3 + [[-3000, -700, 11450]], np.float64)
+    v = np.array([[-1400, 0, -1000], [-1400, 0, 0], [-300, 0, 0], [-1400, 0, 0]], np.float64)
+    k = _cell_keys(o, v)
+    assert len(set(k.tolist())) == 4            # dive / level / slow-level / a negative-x place
+    # 900 states of one common cell, 100 of a rare one: each cell gets half the draws
+    rng = np.random.default_rng(0)
+    o2 = np.vstack([np.tile([3000, 0, 11450], (900, 1)), np.tile([3000, 0, 11450], (100, 1))])
+    v2 = np.vstack([np.tile([-1400, 0, -1000], (900, 1)), np.tile([-1400, 0, 0], (100, 1))])
+    key = _cell_keys(o2.astype(np.float64), v2.astype(np.float64))
+    _u, inv, cnt = np.unique(key, return_inverse=True, return_counts=True)
+    w = 1.0 / cnt[inv].astype(np.float64)
+    pick = rng.choice(len(key), size=20000, p=w / w.sum())
+    assert abs((pick >= 900).mean() - 0.5) < 0.02
+
+
+def test_cells_expression_in_the_trainer():
+    src = TRAIN.read_text(encoding="utf-8")
+    for frag in ('ap.add_argument("--respawn-cells", type=float, default=None',
+                 "key = (((q[:, 0] * 4096 + q[:, 1]) * 4096 + q[:, 2]) * 6 + vzb) * 4 + spb",
+                 "w = 1.0 / cnt[inv].astype(np.float64)",
+                 "rp[n_fresh:n_fresh + k] = rows",
+                 "if CELLS > 0.0:\n                        _rp = cell_rows(_s, _rp)"):
+        assert frag in src, frag
+    rec = (ROOT / "tools" / "record_ckpt.py").read_text(encoding="utf-8")
+    assert '"respawn_cells", "respawn_cells_front",' in rec
+
+
+@needs_run
+@pytest.mark.parametrize("extra,msg", [
+    (["--respawn-cells", "0.5", "--respawn-frac", "0"], "it needs --respawn-frac > 0"),
+    (["--respawn-cells", "2"], "--respawn-cells must be in [0, 1]"),
+    (["--respawn-cells", "0.5", "--respawn-frontier"], "not implemented with --respawn-frontier"),
+])
+def test_cells_refusals(extra, msg):
+    shutil.rmtree(ROOT / "runs" / "r1b3_cells_refuse", ignore_errors=True)
+    r = _run([sys.executable, "-u", str(TRAIN), "--run", "r1b3_cells_refuse"] + SMOKE
+             + ["--steps", "1024", "--record-every", "1e12"] + extra, timeout=600)
+    shutil.rmtree(ROOT / "runs" / "r1b3_cells_refuse", ignore_errors=True)
+    assert r.returncode != 0
+    assert msg in (r.stdout + r.stderr)

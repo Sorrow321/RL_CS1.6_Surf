@@ -6843,6 +6843,24 @@ def main() -> None:
                          "within F x d0 of the reservoir's deepest state are "
                          "eligible (the policy's own frontier zone); 0 = every "
                          "reservoir row. Default 0.05")
+    ap.add_argument("--respawn-cells", type=float, default=None,
+                    help="race reservoir, Go-Explore SELECTION over the policy's "
+                         "own states: a share S of every spawn pool's "
+                         "reservoir rows is drawn UNIFORMLY OVER CELLS instead "
+                         "of uniformly over states - a cell is a 256 u "
+                         "position cell x 6 vertical-velocity buckets "
+                         "(+-1,500 u/s) x 4 horizontal-speed buckets (0..3,500 "
+                         "u/s) - among the reservoir states inside the "
+                         "frontier zone (--respawn-cells-front). A rare way of "
+                         "being near the wall (lower, slower, climbing) is "
+                         "practised as often as the line's common dive; the "
+                         "policy itself explores from it. Perturbed like any "
+                         "reservoir row (--respawn-speed, pitch jitter). "
+                         "0/absent = off. ckpt restores; record_ckpt TRAIN_ONLY")
+    ap.add_argument("--respawn-cells-front", type=float, default=None,
+                    help="--respawn-cells: only states within F x d0 of the "
+                         "reservoir's deepest state; 0 = the whole reservoir. "
+                         "Default 0.05")
     ap.add_argument("--int-coef", type=float, default=None,       # 0 = off
                     help="race: count-based intrinsic novelty — "
                          "int_coef/sqrt(visits) on entering a 256u map cell, "
@@ -7563,6 +7581,14 @@ def main() -> None:
             args.respawn_vel_rot_front = float(ck_cfg["respawn_vel_rot_front"])
             restored.append(f"respawn_vel_rot_front="
                             f"{args.respawn_vel_rot_front:g}")
+        if (args.respawn_cells is None
+                and ck_cfg.get("respawn_cells") is not None):
+            args.respawn_cells = float(ck_cfg["respawn_cells"])
+            restored.append(f"respawn_cells={args.respawn_cells:g}")
+        if (args.respawn_cells_front is None
+                and ck_cfg.get("respawn_cells_front") is not None):
+            args.respawn_cells_front = float(ck_cfg["respawn_cells_front"])
+            restored.append(f"respawn_cells_front={args.respawn_cells_front:g}")
         if ck_cfg.get("blend"):
             if args.blend_start is None:
                 args.blend_start = float(ck_cfg["blend"][0])
@@ -13392,6 +13418,11 @@ def main() -> None:
         meta["config"]["respawn_vel_rot"] = float(args.respawn_vel_rot)
         meta["config"]["respawn_vel_rot_front"] = float(
             0.05 if args.respawn_vel_rot_front is None else args.respawn_vel_rot_front)
+    if float(args.respawn_cells or 0.0) > 0.0:
+        # --respawn-cells: written ONLY when set
+        meta["config"]["respawn_cells"] = float(args.respawn_cells)
+        meta["config"]["respawn_cells_front"] = float(
+            0.05 if args.respawn_cells_front is None else args.respawn_cells_front)
     if VIEWC:
         meta["config"]["view_continuous"] = 1
         # written ONLY when set, so an untreated control's config dump is
@@ -14605,6 +14636,79 @@ def main() -> None:
         rp["yaw"][rows] = np.mod(rp["yaw"][rows].astype(np.float64)
                                  + (head - head0), 360.0).astype(np.float32)
         vr_n[0] = int(len(pick))
+        return rp
+    # --respawn-cells: a Python constant; at 0 (absent) nothing below runs and
+    # its RNG is never drawn from
+    CELLS = float(args.respawn_cells or 0.0)
+    if not 0.0 <= CELLS <= 1.0:
+        raise SystemExit("--respawn-cells must be in [0, 1]")
+    if CELLS > 0.0 and args.respawn_cells_front is None:
+        args.respawn_cells_front = 0.05
+    CELLS_FRONT = float(args.respawn_cells_front or 0.0) if CELLS > 0.0 else 0.0
+    if CELLS_FRONT < 0.0:
+        raise SystemExit("--respawn-cells-front must be >= 0")
+    if CELLS > 0.0:
+        if float(args.respawn_frac or 0.0) <= 0.0:
+            raise SystemExit("--respawn-cells draws RESERVOIR rows: it needs "
+                             "--respawn-frac > 0")
+        for _flag, _on in (("--maps", MULTI), ("--goals", bool(args.goals)),
+                           ("--demo-file", bool(args.demo_file)),
+                           ("--respawn-backward", bool(args.respawn_backward)),
+                           ("--respawn-random", bool(args.respawn_random)),
+                           ("--respawn-frontier", bool(args.respawn_frontier)),
+                           ("--respawn-novel", bool(args.respawn_novel))):
+            if _on:
+                raise SystemExit(f"--respawn-cells is not implemented with "
+                                 f"{_flag}: it redraws the plain reservoir rows "
+                                 "of a single-map pool")
+        print(f"--respawn-cells {CELLS:g}: that share of the reservoir rows is "
+              "drawn uniformly over (256 u cell x 6 vz x 4 speed) cells"
+              + (f" within {CELLS_FRONT:g} x d0 of the reservoir's deepest state"
+                 if CELLS_FRONT > 0.0 else "") + ", not uniformly over states")
+    cell_rng = np.random.default_rng(int(args.seed) + 27182)
+    cell_n = [0, 0]        # rows drawn / distinct cells they were drawn from
+
+    def cell_rows(_s, rp):
+        """--respawn-cells on one freshly built pool: the first S of the
+        reservoir rows (build_pool's draws are i.i.d., so which ones does not
+        matter) are replaced by states drawn uniformly over cells among the
+        reservoir's frontier-zone states, perturbed like build_pool's rows.
+        In place; returns rp."""
+        n_fresh = max(1, int(round(len(rp) * (1.0 - args.respawn_frac))))
+        k = int(round((len(rp) - n_fresh) * CELLS))
+        cell_n[0] = cell_n[1] = 0
+        res = _s.respawn
+        if k <= 0 or res is None or res.size < 2:
+            return rp
+        st = res._store[:res.size]
+        cand = np.arange(res.size)
+        if CELLS_FRONT > 0.0:
+            _mdf = fleet.reservoir_min_depth()
+            if not (_mdf == _mdf and _s.rf_d0):
+                return rp
+            _fz = _s.reward_field if _s.reward_field is not None else _s.goal_field
+            cand = np.flatnonzero(_fz.sample(st["origin"].astype(np.float64))
+                                  <= (_mdf + CELLS_FRONT) * float(_s.rf_d0))
+            if len(cand) < 2:
+                return rp
+        o = st["origin"][cand].astype(np.float64)
+        v = st["velocity"][cand].astype(np.float64)
+        q = np.floor(o / 256.0).astype(np.int64)
+        vzb = np.clip(((v[:, 2] + 1500.0) // 500.0).astype(np.int64), 0, 5)
+        spb = np.clip((np.hypot(v[:, 0], v[:, 1]) // 875.0).astype(np.int64), 0, 3)
+        key = (((q[:, 0] * 4096 + q[:, 1]) * 4096 + q[:, 2]) * 6 + vzb) * 4 + spb
+        _u, inv, cnt = np.unique(key, return_inverse=True, return_counts=True)
+        w = 1.0 / cnt[inv].astype(np.float64)
+        pick = cand[cell_rng.choice(len(cand), size=k, p=w / w.sum())]
+        rows = st[pick].copy()
+        lo, hi = (float(x) for x in args.respawn_speed)
+        rows["velocity"] = rows["velocity"] * cell_rng.uniform(lo, hi, k).astype(
+            np.float32)[:, None]
+        if args.fix_pitch is None:
+            rows["pitch"] = np.clip(rows["pitch"] + cell_rng.uniform(
+                -5.0, 5.0, k).astype(np.float32), -70.0, 30.0)
+        rp[n_fresh:n_fresh + k] = rows
+        cell_n[0], cell_n[1] = int(k), int(len(_u))
         return rp
     # --unstuck: the sampling temperature 1 + T as a STATIC 0-d tensor the
     # schedule writes into between iterations. It is read inside the
@@ -16823,6 +16927,8 @@ def main() -> None:
                             int(round((len(_rp) - _nf)
                                       * args.respawn_novel_frac)),
                             _s.respawn)
+                    if CELLS > 0.0:
+                        _rp = cell_rows(_s, _rp)
                     if VEL_ROT > 0.0:
                         _rp = vel_rot_rows(_s, _rp)
                     _set_pool(_s, _rp)
@@ -19435,6 +19541,10 @@ def main() -> None:
                     # --respawn-vel-rot: rotated rows / reservoir rows of the
                     # last pool built
                     race_note += f"  vrot {vr_n[0] / max(1, vr_n[1]):.1%}"
+                if CELLS > 0.0:
+                    # --respawn-cells: rows drawn uniformly over cells, and
+                    # how many distinct cells the zone held
+                    race_note += f"  cells {cell_n[0]}/{cell_n[1]}c"
         if isinstance(reward_fn, RaceReward) and reward_fn.arc is not None:
             # the anti-farming read-out: arc GAINED per episode (what the
             # shaping actually paid), the deepest arc any episode REACHED,
