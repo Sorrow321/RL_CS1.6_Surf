@@ -754,3 +754,17 @@ physics as the sim (gravity 800, airaccelerate 100) except maxvelocity 3,500.
   30% of the non-start pool: share ~25% instead of 40-48%), T cap 1 and the band settings restored,
   +1.5e9 steps (to 8.68B). Purpose: give the start-anchored line more practice so the greedy line
   crosses the CP2 pit again, while the cavity practice continues at ~60% of the dose.
+
+### 17:45 UTC: r2b2_t1f3 at 7.57B
+
+* Evals 7.18-7.55B (16): 24.2-28.0, mostly 27.4-27.5. The greedy line has lost round 1's
+  corridor-east detour: it U-turns at ~23.5 s and keeps diving west into the CP2 pit (dies at
+  ~24.5 s, x ~3,076, -y side), where the incumbent turns east again at ~24.4 s, drops under *45 and
+  uses the +y ramp. Lowering the novel share to ~25% did not bring it back in ~400M steps.
+* Training ceiling 29,027 -> 29,098 u (29.76%): stochastic real episodes keep getting past the tunnel
+  now and then. Under T 1 (t1 + t1f3, ~850M steps) the ceiling moved +893 u; under T 2 (band64x,
+  730M) +18 u.
+* Reading: the remaining path to a score above the field-route limit (~28.84) is the cavity route in
+  the GREEDY line, and it bootstraps through the reservoir (a real episode entering the cavity is
+  harvested >= 2 s before its end, i.e. inside the cavity, and becomes a real spawn there). Kept
+  running unchanged.
