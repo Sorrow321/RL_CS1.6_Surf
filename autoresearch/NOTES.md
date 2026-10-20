@@ -827,3 +827,22 @@ r2b3_arch ckpt_final (5.55B), 6 stochastic + 2 greedy episodes, 8 s cap:
 * 450M steps (30 min). Matched-step reference = r1b1's ratnov (the same recipe without the
   archive): best-episode progress 5.8% at 302M, 15.2% at 378M (trap exit), 20.8% at 453M
   (window wall), window passed 576M, CP2 wall 651M, CP2 pit crossed 1,633M.
+
+### r2b3_scrarch result (16:53 UTC): from scratch the archive does NOT speed up the first gate
+
+* 450M steps at 284k steps/s. Evals (best %): 1M 1.1, 76M 4.4, 151M 4.5, 227M 4.6, 302M 4.7,
+  378M 4.7 - still in the first-ramp trap at 378M, where ratnov (the same recipe without the
+  archive) was out of it (15.2%) and at the window wall by 453M (20.8%). One seed and the trap
+  exit is a coin flip on this lineage (GR 529M, ratnov 378M, novel-only 302M), so not a verdict,
+  but no acceleration. A likely cost: from scratch everything is rare, so 22% of the spawns
+  spread over the whole explored map instead of the main line.
+* So the archive is a WALL tool for now (warm, at a detour the reservoir cannot reach), not a
+  scratch default. Not extended; config.incumbent_recipe unchanged.
+
+### r2b3_archsx: warm continuation of r2b3_archs (6.67B -> up to 9.67B) - launched 16:55 UTC
+
+* Bare resume (speed-keyed archive restored: 6,524 keys, 26M entries). Why keep training this
+  idea (cap 6 h from 14:34): the archive keeps real episodes on the detour (cavity, below the
+  shaft, the window tunnel at 28.85%), and the policy already flies everything after the centre
+  gap (bench above); the helix ride is the one missing link, learnable only from those returns.
+  Box deadline extended to 20:26 UTC.
