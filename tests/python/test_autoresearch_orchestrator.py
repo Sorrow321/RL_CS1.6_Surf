@@ -169,3 +169,49 @@ def test_handon_skips_a_truncated_or_damaged_checkpoint(tmp_path, monkeypatch):
     assert orchestrator.handon_ckpt(run) is None
     save("ckpt_final.pt", 3000)
     assert orchestrator.handon_ckpt(run) == run / "ckpt_final.pt"
+
+
+def test_the_winners_recipe_travels_with_it(tmp_path, monkeypatch):
+    """r1b1 (2026-10-20) made its scratch recipe config.json's incumbent_recipe; restoring the
+    operator's config.json would have dropped --respawn-novel --race-ratchet from every round-2
+    scratch launch while its NOTES.md said box.py prepends them. The lineage's keys travel with
+    the winner when it changed them; everything else in config.json is the operator's."""
+    r = tmp_path / "repo"
+    r.mkdir()
+    _git(r, "init", "-q", "-b", "main")
+    _git(r, "config", "user.name", "t")
+    _git(r, "config", "user.email", "t@example.invalid")
+    _git(r, "config", "core.autocrlf", "false")
+
+    def cfg(cap, recipe):
+        return json.dumps({"cap": cap, "incumbent_recipe": recipe}, indent=2) + "\n"
+
+    _write(r, "autoresearch/config.json", cfg(0.30, ["--a"]))
+    base = _commit(r, "round base")
+    _git(r, "checkout", "-q", "-b", "win")
+    _write(r, "autoresearch/config.json", cfg(0.99, ["--a", "--ratchet"]))   # its recipe, its cap
+    win = _commit(r, "the winner")
+    _git(r, "checkout", "-q", "-b", "same", base)
+    _write(r, "python/train.py", "work\n")
+    same = _commit(r, "a winner that left the recipe alone")
+    _git(r, "checkout", "-q", "main")
+    _write(r, "autoresearch/config.json", cfg(0.40, ["--b"]))             # the operator's
+    _commit(r, "operator")
+    monkeypatch.setattr(orchestrator, "AR_HOME", tmp_path / "ar")
+    monkeypatch.setitem(orchestrator.CFG, "harness_files", ["autoresearch/config.json"])
+    monkeypatch.setitem(orchestrator.CFG, "lineage_keys", ["incumbent_recipe"])
+
+    fork = orchestrator.harness_base(win, repo=r, since=base)
+    assert json.loads(_git(r, "show", f"{fork}:autoresearch/config.json")) == {
+        "cap": 0.40, "incumbent_recipe": ["--a", "--ratchet"]}
+    assert "incumbent_recipe kept" in _git(r, "log", "-1", "--format=%B", fork)
+    # a second pass changes nothing
+    assert orchestrator.harness_base(fork, repo=r, since=base) == fork
+    # a winner that did not touch the recipe gets the operator's, and the operator's cap
+    fork = orchestrator.harness_base(same, repo=r, since=base)
+    assert json.loads(_git(r, "show", f"{fork}:autoresearch/config.json")) == {
+        "cap": 0.40, "incumbent_recipe": ["--b"]}
+    # without lineage_keys the whole file is the operator's, as before
+    monkeypatch.setitem(orchestrator.CFG, "lineage_keys", [])
+    fork = orchestrator.harness_base(win, repo=r, since=base)
+    assert json.loads(_git(r, "show", f"{fork}:autoresearch/config.json"))["incumbent_recipe"] == ["--b"]

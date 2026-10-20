@@ -99,9 +99,11 @@ Work on YOUR branch (`ar/$AR_AGENT`, already checked out in this worktree):
 **The harness is the operator's.** The files in `config.harness_files` (CLAUDE.md, this
 protocol, box.py, score.py, orchestrator.py, config.json, the watchdog, deploy_box.sh,
 vast_pick.py, gpu_health.py and their tests) are restored from the operator's branch at the
-start of every round. An edit you make to one does not reach the next round. If one blocks
-you, work around it on your branch and write it in NOTES.md under a "Harness issue" heading;
-the operator reads those. `autoresearch/NOTES.md`, the trainer, the tools and the tests are
+start of every round. An edit you make to one does not reach the next round. One exception:
+`config.json`'s `lineage_keys` (`incumbent_recipe`) are the lineage's. Change the recipe there,
+and if your branch wins, your value is the next round's scratch default. If a harness file
+blocks you, work around it on your branch and write it in NOTES.md under a "Harness issue"
+heading; the operator reads those. `autoresearch/NOTES.md`, the trainer, the tools and the tests are
 yours, and they travel with your branch if it wins.
 
 ## Boxes: one per agent, and box.py is the only door

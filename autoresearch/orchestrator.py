@@ -204,14 +204,19 @@ def sync_blocklists() -> int:
     return _box().sync_shared_blocklist([REPO / "tools" / "bad_hosts.json", *slot_blocklists()])
 
 
-def harness_base(base: str, repo: Path = REPO, blocklists=()) -> str:
+def harness_base(base: str, repo: Path = REPO, blocklists=(), since: str | None = None) -> str:
     """The commit a round forks: `base` (the winner's head) with config.harness_files restored
     from the main checkout's HEAD and the fleet's blocklist folded into tools/bad_hosts.json.
 
     The harness is the operator's, as in the paper: a branch cannot carry its own caps,
     grader or rules into the next round, and the operator's fixes reach every round instead
     of stopping at the round base they were not in. Git plumbing on a private index, so no
-    working tree is touched; returns `base` itself when nothing differs."""
+    working tree is touched; returns `base` itself when nothing differs.
+
+    config.lineage_keys of config.json are the lineage's, not the operator's: the winner's
+    value travels with it when the winner changed it since `since` (the round base it forked
+    from). r1b1 made its scratch recipe the incumbent_recipe, and restoring the operator's
+    config.json would have silently dropped those flags from every round-2 scratch launch."""
     box = _box()
     head = git("rev-parse", "HEAD", cwd=repo).stdout.strip()
     AR_HOME.mkdir(parents=True, exist_ok=True)
@@ -238,6 +243,26 @@ def harness_base(base: str, repo: Path = REPO, blocklists=()) -> str:
                 continue
             g("update-index", "--add", "--cacheinfo", f"{mine[0]},{mine[1]},{path}")
             changed.append(path)
+        cfg = "autoresearch/config.json"
+        if cfg in changed and CFG.get("lineage_keys"):
+            def load(rev):
+                try:
+                    return json.loads(g("show", f"{rev}:{cfg}", check=False) or "{}")
+                except ValueError:
+                    return {}
+            ours, theirs = load(head), load(base)
+            was = load(since) if since else ours
+            kept = [k for k in CFG["lineage_keys"]
+                    if k in theirs and theirs[k] != was.get(k) and theirs[k] != ours.get(k)]
+            if kept:
+                ours.update({k: theirs[k] for k in kept})
+                blob = g("hash-object", "-w", "--stdin",
+                         stdin=json.dumps(ours, indent=2) + "\n").strip()
+                g("update-index", "--add", "--cacheinfo", f"100644,{blob},{cfg}")
+                if (entry(base, cfg) or ("", ""))[1] == blob:
+                    changed.remove(cfg)              # that is the winner's config.json as is
+                else:
+                    changed[changed.index(cfg)] = f"{cfg} (the lineage's {', '.join(kept)} kept)"
         if blocklists:
             bh = "tools/bad_hosts.json"
             have = g("show", f"{base}:{bh}", check=False)
@@ -264,7 +289,7 @@ def harness_base(base: str, repo: Path = REPO, blocklists=()) -> str:
 def start_round(st, base: str) -> None:
     try:
         sync_blocklists()
-        fork = harness_base(base, blocklists=[AR_HOME / "bad_hosts.json"])
+        fork = harness_base(base, blocklists=[AR_HOME / "bad_hosts.json"], since=st.get("base"))
     except Exception as e:      # noqa: BLE001 - the round still starts, on the plain base
         log(f"!! harness overlay failed ({e}); the round forks {base[:10]} as it is")
         fork = base

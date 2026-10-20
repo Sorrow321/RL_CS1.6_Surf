@@ -59,6 +59,10 @@
     "tests/python/test_fleet_watchdog_policy.py"
   ],
   "_harness_files_doc": "The operator's files: at the start of every round orchestrator.py restores them from the main checkout's HEAD over the winner's head, so a branch cannot carry its own caps, grader or rules forward, and the operator's fixes reach every round. autoresearch/NOTES.md is NOT one of them: it is the lineage's memory and travels with the winner. tools/bad_hosts.json is merged instead (the union of every branch's list).",
+  "lineage_keys": [
+    "incumbent_recipe"
+  ],
+  "_lineage_keys_doc": "Keys of this file that belong to the lineage, not the operator: when the winner changed one during its round, its value travels into the next round's config.json (r1b1 made its scratch recipe the incumbent_recipe on 2026-10-20). Everything else here is restored from the operator's HEAD.",
   "image": "pytorch/pytorch:2.7.1-cuda12.8-cudnn9-devel",
   "disk_gb": 60,
   "ready_running_s": 330,
