@@ -715,3 +715,29 @@ checkpoint is taken from the BEST EVAL's run dir, so pull that run's ckpt_final.
 * deep1 put the pocket on spawn and the policy went east through the pillar hole on its own (3,985
   pillar-hole/chamber states); band cells return to rare detour states. Together they should put the
   policy in the chamber falling west - the start of link A - often.
+
+### r2b4_dc1 result (15:15-15:44 UTC): no gain
+
+* Evals (best / median): 5,101M 28.247/27.7, 5,177M 27.982/27.2, 5,252M 27.371/27.3, 5,328M 27.964/27.8,
+  5,403M 27.597/26.5, 5,479M 28.315/27.4. Reservoir: pillar hole 1,466 (127 rising), chamber 2,786, low
+  region 109 (0 rising) - deep1's picture: the policy reaches the chamber and never does link A.
+
+### Temperature is not the blocker (diagnostic bench at the training temperature, `--exec-temp 3` = 1 + T)
+
+* At T = 2 the finish still holds: from the 31.0 s WR state 7/8 reach the antechamber, from 31.4 s 8/8;
+  the bowl surf from 29.5 s is unchanged (vz +990..+1,170). r2b4_lowT (dc1 + `--unstuck-max 0.25`) was
+  stopped at 5.18B after two evals (28.294, 27.264; kl 0.26 while it re-adapted).
+
+### THE TIME PENALTY MAKES THE LOOP NET-NEGATIVE (the WON'T is in the objective)
+
+* `--time-pen 0.005` per tick = 0.5 reward units per second; 1 unit = 1% of d0 (scale 100/d0). Any stretch
+  whose best route progresses slower than **0.5% of the map per second** loses reward. The human's loop from
+  the slot (27.6 s, 27.9%) to CP2 (35.14 s, 30.4%) is +2.5 units for -3.75 units of time; to the
+  antechamber it is +0.8 for -2.0. Under ratchet + time penalty, DYING at the wall is better than the loop,
+  and every partial detour (link A + the bowl surf: ~+0.4 for ~-1.5) is worse still. No spawn rule fixes
+  an objective that prefers the death.
+* Generic, map-free correction: no per-second terms until the map has been finished - the time penalty's
+  job (finish faster) only starts once something finishes. `--surf-bonus` (0.3/s) has to go with it: the
+  trainer refuses a bonus at or above the time penalty (farmable by parking on a ramp).
+* Arm r2b4_tp0 (launched 15:59): dc1's spawns + `--time-pen 0 --surf-bonus 0 --critic-warmup 40` (actor frozen
+  for the first 21M steps while the critic re-fits). One change against dc1.
