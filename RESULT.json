@@ -3,11 +3,11 @@
  "round": 2,
  "final": false,
  "best": {
-  "score": 28.265,
-  "eval_file": "/home/steam/ar/runs/r2b2/r2b2_nfturn/traj_5101322240.jsonl",
+  "score": 28.308,
+  "eval_file": "/home/steam/ar/runs/r2b2/r2b2_nfturn/traj_5252317184.jsonl",
   "run": "r2b2_nfturn",
-  "step": 5101322240,
-  "ckpt": null,
+  "step": 5252317184,
+  "ckpt": "/home/steam/ar/runs/r2b2/r2b2_nfturn/ckpt_latest.pt",
   "recipe": [
    "--respawn-novel-shell",
    "0.9",
@@ -20,7 +20,7 @@
    "90"
   ],
   "resume_from": "/home/steam/ar/incumbent/ckpt.pt (r1b1_ratnovx2 ckpt_final, 5,100,797,952)",
-  "commit": "2af7500"
+  "commit": "4626387"
  },
- "summary": "Arm 1 r2b2_nfturn running (warm, incumbent + frontier-focused novel rows + new --respawn-novel-turn 90). Analysis: the field's route past 28.6% (window -> shaft -> tunnel) is physically closed (best 28.74-28.79%); the WR demo (analysis only) shows the real route dips ~2,000 u into a cavity under the pit slab and surfs a ramp there to climb back into the tunnel level. Frontier-focused novel settings put ~20% of novel rows in that cavity (vs 3.8%)."
+ "summary": "Best 28.308 (arm 1, below the incumbent's 28.628). Analysis: the field's route past 28.6% is physically closed (asymptote 28.74-28.79%); the WR demo (analysis only) shows the real route dips ~2,000 u into a cavity under the pit slab and surfs a ramp there to climb back level into the tunnel. Arm 1 (frontier-focused novel rows + new --respawn-novel-turn) gave ~4% of episodes in the cavity: no frontier move in 450M. Bench: the policies rise off the ramp too weakly; from the human's climb states the incumbent reaches the tunnel lane 1/11. Now arm 2b: new --respawn-novel-band 0.05 (rows only near the frontier in potential) + tries 64 -> ~10-13% of episodes in the cavity."
 }

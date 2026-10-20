@@ -640,3 +640,40 @@ physics as the sim (gravity 800, airaccelerate 100) except maxvelocity 3,500.
   3072` + `--respawn-novel-turn 90`, 450M steps, evals every 25M. It measures AT the wall: does
   practice in the cavity (now ~20% of novel rows) produce the ramp turnaround and a ceiling past
   28.82%? First readings: ~780 novel rows per pool, 17-22% of episodes from novel rows.
+
+### 15:00 UTC: arm 1 (r2b2_nfturn) - no frontier move; bench; the band; arm 2b
+
+* **Arm 1 result** (5,101M -> 5,551M, 450M steps, avg 206k steps/s on the 4090 + 5950X box; the
+  instantaneous rate is ~300k, evals with 300 s truncated episodes eat the rest): 18 evals, best
+  **28.308** (5,252M), the rest 27.3-28.3 plus ONE collapse at 5,403M (9/9 episodes turn back east
+  at ~10.3 s, 10.7%; the next eval recovered). The training ceiling moved 28,174 -> 28,184 u (+10).
+  At matched steps the incumbent's own continuation (r1b1_ratnovx3, 5.1-5.9B) had a best of 28.467,
+  so the arm is not better. In training the frontier-focused rows had a progress median of ~17%
+  (p90 26%): on this folded map the unvisited air near the CP2 sources is mostly EARLIER track.
+* **Cavity bench** (cavity_bench.py on the box, MEASUREMENT ONLY: record_ckpt --spawn-states from
+  WR-demo states, 8 stochastic + 3 greedy per set; "rose" = vz > 300 in the cavity, "back" = west
+  through the lower opening, "lane" = in the tunnel lane):
+
+  | start set | incumbent best / rose / back / lane | arm 1 final |
+  |---|---|---|
+  | shaft (27.85-28.15 s) | 28.26% / 0 / 0 / 0 | 28.26% / 0 / 0 / 0 |
+  | lower opening (28.45-28.6 s) | 27.54% / 0 / 0 / 0 | 27.54% / 0 / 0 / 0 |
+  | ramp approach (29.15-29.25 s) | 26.77% / 2 / 0 / 0 | 26.51% / 6 / 0 / 0 |
+  | climb (30.0-30.5 s) | **28.84% / 11 / 1 / 1** | 27.53% / 11 / 0 / 0 |
+
+  So from the human's CLIMB states the incumbent already reaches the tunnel lane once in 11; the
+  missing piece is the strong turn-up on the ramp (vz +1,200 for the human, +480..+680 for both
+  policies). Arm 1's cavity practice made rising off the ramp more frequent (6/11 vs 2/11).
+* **NEW `--respawn-novel-band B`** (commit c45ebfe): novel rows only within B x d0 of the ceiling in
+  potential (d_best <= d <= d_best + B d0); 0 = off. With B = 0.05 the rows' progress median is
+  26.2% and ~85% land in the cavity. In-sampler the band cut the yield to ~200 rows per pool at
+  tries 16 (3-4% of episodes, the same cavity dose as arm 1), so:
+* **Sampler speed-up** (commit 15716d6): the 27-cell visit lookup ran on every candidate (0.48 of
+  0.79 s per call); now only on those that passed the cheap gates. Byte-identical rows, stats and
+  log line versus the original respawn.py (3 iterations x 2 configs on the incumbent's state);
+  tries 64 is now ~0.3 s per call.
+* r2b2_band (band 0.05, tries 16) ran 44M steps (evals 25.8 / 27.4) and was replaced by
+  **r2b2_band64** (14:58 UTC): resume of arm 1's final (5,551,161,344, md5 d38eb2f7...) +
+  `--respawn-novel-band 0.05 --respawn-novel-tries 64` (shell 0.9 / width 0.05 / radius 256-3,072 /
+  turn 90 restored), 450M steps. First readings: 530-730 rows per pool, 10-16% of episodes novel,
+  progress median 26.2%: ~3x arm 1's cavity dose.
