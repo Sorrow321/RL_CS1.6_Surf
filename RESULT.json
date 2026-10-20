@@ -3,5 +3,5 @@
  "round": 2,
  "final": false,
  "best": null,
- "summary": "Round 2 start (12:34 UTC): no eval yet. No box available under the price caps since 12:55 (retrying each wakeup). Analysis of the incumbent's wall at 28.6%: past the CP2 slot the route is a second window (x ~2,544, 38-74 u tall) -> a 320 u shaft (must drop 250+ u, needs braking) -> a ~100 u-wide tunnel under a block (y +-880) -> a room -> under kill floor *20 -> CP2 (~31%). Random macro-action search from the policy's own deepest reservoir states: 13% pass the window, 2e-4 get under the block, 0/15k exit the tunnel. Next: iterated Go-Explore search to test reachability, then the first warm arm."
+ "summary": "Arm 1 r2b2_nfturn running (warm, incumbent + frontier-focused novel rows + new --respawn-novel-turn 90). Analysis: the field's route past 28.6% (window -> shaft -> tunnel) is physically closed (best 28.74-28.79%); the WR demo (analysis only) shows the real route dips ~2,000 u into a cavity under the pit slab and surfs a ramp there to climb back into the tunnel level. Frontier-focused novel settings put ~20% of novel rows in that cavity (vs 3.8%)."
 }

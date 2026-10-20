@@ -614,3 +614,29 @@ physics as the sim (gravity 800, airaccelerate 100) except maxvelocity 3,500.
   (`--respawn-novel-shell 0.9 --respawn-novel-shell-width 0.05`) put 20.6% of novel rows in the
   cavity, and a 3,072 u radius also reaches the ramp's area (2.2% of rows west of it vs 0.03%).
   Measured offline on the incumbent checkpoint's own sampler state (no training).
+
+### 14:10 UTC: box 56901034 (RTX 4090 + Ryzen 9 5950X, $0.401/h, Argentina) and arm 1
+
+* No box passed box.py's filters from 12:55 to 13:54 (every offer under config.max_dph was over the
+  cap by ~$0.001 or blocklisted). A background loop retrying `box.py rent` every 3 min got this one.
+* **Harness issue (tools/gpu_health.py):** no RTX 4090 reference, so the power-cap heuristic (350 W
+  of a 500 W default) failed the deploy. Measured on the box: bf16 GEMM 153 TFLOPS (93% of the 4090's
+  165 dense spec), copy 918 GB/s, 2,400 MHz under load at 190 W (the cap never binds). Added a 4090
+  reference on this branch (165 TFLOPS / 857 GB/s / 2,520 MHz, the 5080 entry's method); the
+  operator's copy will not have it next round.
+* **NEW `--respawn-novel-turn T`** (commit 4626387): a novel row's horizontal velocity and view yaw
+  turned together by U(-T, T) deg (speed, vz, view offset kept); its own RNG, so the rows' positions
+  are exactly the T = 0 rows; 0 = off (no draw, config dump unchanged). 6 CPU unit tests
+  (tests/python/test_respawn_novel_turn.py). Why: the cavity's novel rows inherit +x headings from
+  their sources (the corridor-east states), and the bench below shows the ramp needs an approach
+  along it.
+* Bench (measurement only, BENCH_ONLY states from the WR demo, record_ckpt --spawn-states, CPU):
+  placed at the human's ramp-approach state (2,129, 551, 9,992) v (-903, -1,451, -1,541), the
+  incumbent policy surfs the ramp in 1 of 3 episodes (vy -2,209, then turns up to vz +464..+604,
+  heading east) but stays low and dies on *90 after 2.4 s; 2 of 3 fall off it at once. The skill is
+  partly there; it has never practised in the cavity.
+* **Arm 1, r2b2_nfturn** (14:06 UTC): WARM resume of the incumbent (5,100,797,952) + frontier-focused
+  novel rows `--respawn-novel-shell 0.9 --respawn-novel-shell-width 0.05 --respawn-novel-radius 256
+  3072` + `--respawn-novel-turn 90`, 450M steps, evals every 25M. It measures AT the wall: does
+  practice in the cavity (now ~20% of novel rows) produce the ramp turnaround and a ceiling past
+  28.82%? First readings: ~780 novel rows per pool, 17-22% of episodes from novel rows.
