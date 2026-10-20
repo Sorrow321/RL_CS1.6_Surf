@@ -282,3 +282,27 @@ steps/s. Measure it on your box in the first minute and size `--steps` to the ti
   window 755M). PROTOCOL: extend only if it clears a gate sooner.
 * The bench needs the box idle (record_ckpt is CPU-bound): ~2 min for 20 episodes idle,
   ~4 min for 3 episodes beside a trainer.
+
+### r1b1_ratnov: FROM SCRATCH, incumbent recipe + `--respawn-novel` + `--race-ratchet` - AHEAD of GR; EXTENDED (03:25 UTC)
+
+* Launched 02:53 on the 5080 box, 500M steps (30 min at 285k steps/s), commit 99b20f4-era code
+  (no new flag: both mechanisms exist). Obs: ratchet gap column 27, surf 28, pot-rate 29.
+* Matched-step evals (score.py best-episode progress; GR = the incumbent's own scratch run):
+
+  | step | ratnov | GR |
+  |---|---|---|
+  | 302M | 5.8% (in the first-ramp trap) | ~4.6% |
+  | 378M | **15.2%** (out of the trap) | ~4.6% (exits at 529M) |
+  | 453M | **20.8%** (at the window wall, median 19.0%) | ~4.6% (19.4% mean only at 680M) |
+
+* **It left the first-ramp trap with the unstuck T at ~0** (T 0.03, stuck 42M at 496M), where
+  every earlier run exited only once T had risen past ~1.3 (GR at 529M with T 1.26; surf,
+  cap-2, NV2 alike). The trap was the field paying a fall off the first ramp's side branch;
+  the ratchet stops charging the turn back onto the ramp and the novel rows show the ramp.
+  One seed, but ~150-225M steps ahead at two consecutive marks.
+* **EXTENDED** (PROTOCOL: clears a gate sooner than the incumbent at matched steps):
+  r1b1_ratnovx = bare resume of ratnov's ckpt_final (500,170,752; md5 48d9cee1...), the
+  ratchet and novel spawns restored from the checkpoint (no flag passed), 2e9 more steps
+  (to 2.5B, ~2 h). Purpose: reach the CP2 wall and test ratchet + novel spawns there - the
+  combination the corridor bench pointed at (spawns in the dip + no charge for the eastward
+  leg to the ramp).
