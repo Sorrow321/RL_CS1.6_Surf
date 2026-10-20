@@ -1,3099 +1,3108 @@
 {
-  "_README": [
-    "Rental blocklist. vast.ai OFFER ids churn every listing, so entries key on",
-    "the stable machine_id / host_id; ip is recorded as a fallback for boxes we",
-    "only ever saw by ssh address. tools/vast_pick.py filters search results",
-    "through this file, and tools/deploy_box.sh prints the entry to paste when",
-    "gpu_health.py fails.",
-    "",
-    "Two failure classes we have actually hit, neither visible in the listing:",
-    "  gpu_capped - right GPU model, but SW Power Cap pins the clocks. Measured",
-    "    166 TFLOPS bf16 vs 234 on a healthy 5090 (71%), and -lgc is denied",
-    "    inside the container, so it cannot be fixed from our side.",
-    "  cpu_bound  - GPU is fine but the host CPU path collapses under the env",
-    "    step + python reward loop. Scratch training is CPU-bound, so this only",
-    "    shows up on scratch runs: one 256-core host sustained ~300k steps/s",
-    "    where healthy boxes do 560-780k. Fine for warm/update-bound work,",
-    "    useless for wall-clock experiments.",
-    "",
-    "Add an entry the moment a box is judged bad, before destroying it - the",
-    "identifiers are gone from `vastai show instances` once it is destroyed."
-  ],
-  "blocked": [
-    {
-      "ip": "81.166.162.13",
-      "machine_id": null,
-      "host_id": null,
-      "reason": "gpu_capped",
-      "date": "2026-08-17",
-      "detail": "bf16 GEMM 166 TFLOPS vs ref 234 (71%); HBM 1460 GB/s; SW Power Cap active; sm pinned 1987 MHz. Trained at 175k fps vs 540k on healthy boxes.",
-      "run": "wG999 (round 13)"
-    },
-    {
-      "ip": "81.166.173.12",
-      "machine_id": null,
-      "host_id": null,
-      "reason": "gpu_capped",
-      "date": "2026-08-17",
-      "detail": "same signature as 81.166.162.13, likely the same host: 166 TFLOPS (71%), SW Power Cap active.",
-      "run": "wCOMBO / wFK5 / sG999i05 (rounds 13-14)"
-    },
-    {
-      "ip": "89.221.67.172",
-      "machine_id": null,
-      "host_id": null,
-      "reason": "cpu_bound",
-      "date": "2026-08-18",
-      "detail": "GPU healthy (94% FLOPS, 1518 GB/s) but 256-core host collapses on scratch workloads: env 751 ms + reward_py 635 ms per iter vs 166/373 on a healthy box; ~220-300k steps/s vs 560-780k. Warm/update-bound runs were fine, which masked it.",
-      "run": "marathon12h (ok warm) / sREPRO_s3 (bad scratch)"
-    },
-    {
-      "ip": "213.96.60.239",
-      "machine_id": null,
-      "host_id": null,
-      "reason": "no_cuda",
-      "date": "2026-08-16",
-      "detail": "driver did not expose CUDA; rejected at recon.",
-      "run": "-"
-    },
-    {
-      "ip": "79.160.189.79",
-      "machine_id": null,
-      "host_id": null,
-      "reason": "no_cuda",
-      "date": "2026-08-16",
-      "detail": "driver did not expose CUDA; rejected at recon.",
-      "run": "-"
-    },
-    {
-      "ip": "213.224.31.105",
-      "machine_id": null,
-      "host_id": null,
-      "reason": "gpu_capped",
-      "date": "2026-08-16",
-      "detail": "capped card found at recon.",
-      "run": "-"
-    },
-    {
-      "ip": "209.146.116.50",
-      "machine_id": 141580,
-      "host_id": 402342,
-      "date": "2026-08-21",
-      "detail": "image pull still incomplete after ~25 min (pytorch devel image); replaced before it ever became usable",
-      "run": "yaw-adaptive experiment (never started)",
-      "reason": "network"
-    },
-    {
-      "ip": "192.234.50.233",
-      "machine_id": 117864,
-      "host_id": 366851,
-      "date": "2026-08-21",
-      "detail": "48 cores but only 122k steps/s at $0.55/h = $1.25 per 1e9 steps, the worst value measured; core count did not predict throughput",
-      "run": "round 15 cost measurement",
-      "reason": "cpu_bound"
-    },
-    {
-      "ip": "199.68.217.31",
-      "machine_id": 48954,
-      "host_id": 296571,
-      "date": "2026-08-21",
-      "detail": "stuck in loading >40min, ssh closes connection; second such box today",
-      "run": "",
-      "reason": "unreliable"
-    },
-    {
-      "ip": "104.63.238.130",
-      "machine_id": 140733,
-      "host_id": 346497,
-      "date": "2026-08-21",
-      "detail": "2x5090 Ryzen 7950X, driver 595.71.05: NCCL all_reduce dies with CUDA illegal memory access on plain bench (2 ranks); solo update 4x slow with 20.6% IQR spread despite P0 clocks and passing gpu_health",
-      "run": "",
-      "reason": "unreliable"
-    },
-    {
-      "ip": "137.175.22.196",
-      "machine_id": 39565,
-      "host_id": 155125,
-      "date": null,
-      "detail": "GitHub TLS handshake fails (gnutls), clone impossible; sibling instance on same IP fine",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "137.175.76.24",
-      "machine_id": 84216,
-      "host_id": 443829,
-      "date": null,
-      "detail": "drops SSH mid-transfer repeatedly (tar harvest died twice); slow box-to-box",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "174.164.26.93",
-      "machine_id": 10134,
-      "host_id": 22965,
-      "date": null,
-      "detail": "still pulling image at 63s (60s readiness rule)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "70.54.34.6",
-      "machine_id": 56698,
-      "host_id": 79869,
-      "date": null,
-      "detail": "still loading at 63s (60s readiness rule)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "5.199.239.202",
-      "machine_id": 51355,
-      "host_id": 221174,
-      "date": null,
-      "detail": "still loading at 63s (60s readiness rule)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "61.71.33.195",
-      "machine_id": 33061,
-      "host_id": 116365,
-      "date": null,
-      "detail": "still loading at 63s (60s readiness rule)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "191.223.212.127",
-      "machine_id": 60926,
-      "host_id": 155385,
-      "date": null,
-      "detail": "scp stalled: 0.05s CPU in 25 min for a 234MB push; ssh control channel starved to silence during transfer; clone crawled at ~150KB/s-1MB/s",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "57.132.208.22",
-      "machine_id": 128688,
-      "host_id": 302304,
-      "date": null,
-      "detail": "still loading at 63s (60s readiness rule)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "209.227.188.123",
-      "machine_id": 8078,
-      "host_id": 3483,
-      "date": null,
-      "detail": "still loading at 69s (60s readiness rule)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "57.132.208.22",
-      "machine_id": 130609,
-      "host_id": 302304,
-      "date": null,
-      "detail": "still loading / ssh refused at 98s (60s readiness rule)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "125.190.184.215",
-      "machine_id": 143874,
-      "host_id": 133266,
-      "date": "2026-08-22",
-      "detail": "xMINIRACE 2026-08-22: still loading at 134s from create, missed the 60s readiness rule",
-      "run": "xMINIRACE",
-      "reason": "unreliable"
-    },
-    {
-      "ip": "94.27.141.47",
-      "machine_id": 114019,
-      "host_id": 513695,
-      "date": "2026-08-22",
-      "detail": "xMINIRACE 2026-08-22: still loading at 134s from create, missed the 60s readiness rule",
-      "run": "xMINIRACE",
-      "reason": "unreliable"
-    },
-    {
-      "ip": "83.194.197.209",
-      "machine_id": 128224,
-      "host_id": 551866,
-      "date": null,
-      "detail": "3090 SW power cap 250W of 350W default; sm 1080MHz under load, 61 TFLOPS bf16, nvidia-smi -pl denied in container (round 18 xMARGIN)",
-      "run": "",
-      "reason": "gpu_capped"
-    },
-    {
-      "ip": "194.228.55.129",
-      "machine_id": 34330,
-      "host_id": 3497,
-      "date": null,
-      "detail": "xMARGIN 2026-08-22: workstation->box scp 16MB took 105s = 0.16 MB/s (a France box measured 2.6 MB/s from the same workstation minutes earlier); 230MB of ckpt+caches would be 24 min of a 60 min budget. Card itself is fine (350/350W) and this machine is also in known_good from xSP - treat as a path/upstream defect, re-test before trusting",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "109.87.158.217",
-      "machine_id": 141130,
-      "host_id": 440416,
-      "date": null,
-      "detail": "xMARGIN 2026-08-22: ssh 'Permission denied (publickey)' still at ~110s from create, missed the 60s readiness rule",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "154.64.230.50",
-      "machine_id": 41367,
-      "host_id": 228989,
-      "date": "2026-08-22",
-      "detail": "slow start: still 'loading' 4 min after create, readiness window is 60 s; lost the xG1 race",
-      "run": "xG1 (round 19) race losers",
-      "reason": "unreliable"
-    },
-    {
-      "ip": "207.102.87.207",
-      "machine_id": 54785,
-      "host_id": 48012,
-      "date": "2026-08-22",
-      "detail": "slow start: still pulling the image 4 min after create, readiness window is 60 s; lost the xG1 race",
-      "run": "xG1 (round 19) race losers",
-      "reason": "unreliable"
-    },
-    {
-      "ip": "192.220.55.116",
-      "machine_id": 53867,
-      "host_id": 344939,
-      "date": null,
-      "detail": "container refuses account ssh keys (vastai attach ssh says already associated, ssh still Permission denied); box sat at 0% GPU util unreachable",
-      "run": "",
-      "reason": "unreliable"
-    },
-    {
-      "ip": "45.76.92.209",
-      "machine_id": 142143,
-      "host_id": 547233,
-      "date": "2026-08-22",
-      "detail": "slow start: still pulling the image past the 60 s readiness window; lost the xG1 race",
-      "run": "xG1 (round 19) race losers",
-      "reason": "unreliable"
-    },
-    {
-      "ip": "216.234.102.170",
-      "machine_id": 137644,
-      "host_id": 36058,
-      "date": "2026-08-22",
-      "detail": "slow start: no status past the 60 s readiness window; lost the xG1 race",
-      "run": "xG1 (round 19) race losers",
-      "reason": "unreliable"
-    },
-    {
-      "ip": "70.69.192.6",
-      "machine_id": 15569,
-      "host_id": 93197,
-      "date": null,
-      "detail": "still loading at 95s while a sibling was running (60s readiness rule)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "45.42.128.201",
-      "machine_id": 56206,
-      "host_id": 78532,
-      "date": null,
-      "detail": "still loading at 95s while a sibling was running (60s readiness rule)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "115.36.243.0",
-      "machine_id": 144217,
-      "host_id": 544446,
-      "reason": "unreliable",
-      "date": "2026-08-22",
-      "detail": "instance 48419202 sat in actual_status=loading for >90 s after create (direct port never opened); failed the 60-second readiness rule.",
-      "run": "xTP010 (round 19 time_pen ladder)"
-    },
-    {
-      "ip": "70.9.106.136",
-      "machine_id": 145955,
-      "host_id": 623721,
-      "reason": "unreliable",
-      "date": "2026-08-22",
-      "detail": "instance 48421968 still actual_status=loading at 74 s after create (image pull unfinished, direct port -1); failed the 60-second readiness rule.",
-      "run": "xCSPD (round 19 contact-pen on the latch finisher)"
-    },
-    {
-      "ip": "79.112.108.70",
-      "machine_id": 12131,
-      "host_id": 73118,
-      "reason": "unreliable",
-      "date": "2026-08-22",
-      "detail": "instance 48422104 still actual_status=loading at 68 s after create (direct port never opened); failed the 60-second readiness rule.",
-      "run": "xCSPD (round 19 contact-pen on the latch finisher)"
-    },
-    {
-      "ip": "50.7.159.181",
-      "machine_id": 10442,
-      "host_id": 57427,
-      "date": "2026-08-22",
-      "detail": "xNOSHP: actual_status=loading, direct_port_start=-1 at 125s after create (60s readiness rule)",
-      "run": "xNOSHP (round 19, --race-shaping 0 on the latch finisher)",
-      "reason": "unreliable"
-    },
-    {
-      "ip": "77.28.137.74",
-      "machine_id": 13866,
-      "host_id": 70700,
-      "date": "2026-08-22",
-      "detail": "xNOSHP: actual_status=loading, direct_port_start=-1 at 125s after create (60s readiness rule)",
-      "run": "xNOSHP (round 19, --race-shaping 0 on the latch finisher)",
-      "reason": "unreliable"
-    },
-    {
-      "ip": "108.212.129.15",
-      "machine_id": 143971,
-      "host_id": 392601,
-      "date": null,
-      "detail": "xFPEN race: still actual_status=loading with direct_port_start=-1 at 65s after create",
-      "run": "",
-      "reason": "unreliable"
-    },
-    {
-      "ip": "38.162.131.8",
-      "machine_id": 109150,
-      "host_id": 79725,
-      "date": null,
-      "detail": "still pulling the 10 GB image at 3.5 min; direct port never opened (60 s readiness rule)",
-      "run": "",
-      "reason": "unreliable"
-    },
-    {
-      "ip": "78.141.73.191",
-      "machine_id": 139376,
-      "host_id": 440607,
-      "date": null,
-      "detail": "still pulling the 10GB image at 90s+ (created 01:49:4x, layers incomplete at 01:51:21); machine 139376 host 440607",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "178.164.79.201",
-      "machine_id": 145137,
-      "host_id": null,
-      "date": "2026-08-23",
-      "detail": "still pulling the image at 104 s (created 01:54:09, Pull-complete loop through 01:55:53); 60 s readiness rule",
-      "run": "xSID",
-      "reason": "network"
-    },
-    {
-      "ip": "70.30.252.209",
-      "machine_id": 21327,
-      "host_id": null,
-      "date": "2026-08-23",
-      "detail": "still pulling the image at 75 s (created 01:56:58, layers still downloading 01:58:10); 60 s readiness rule",
-      "run": "xSID",
-      "reason": "network"
-    },
-    {
-      "ip": "82.178.70.219",
-      "machine_id": 12552,
-      "host_id": 80344,
-      "date": null,
-      "detail": "race loser: running at 75s but ssh publickey denied, then host-key-verification-failed at 130s",
-      "run": "",
-      "reason": "unreliable"
-    },
-    {
-      "ip": "89.221.67.138",
-      "machine_id": 41710,
-      "host_id": 229807,
-      "date": null,
-      "detail": "race loser: still pulling the image at 130s, ssh connection refused",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "223.167.245.91",
-      "machine_id": 58086,
-      "host_id": 108684,
-      "date": null,
-      "detail": "not ready in 60s: still 'Verifying Checksum' on the image pull at 65s (machine 58086, Shanghai)",
-      "run": "",
-      "reason": "unreliable"
-    },
-    {
-      "ip": "108.76.208.51",
-      "machine_id": 143861,
-      "host_id": 198030,
-      "date": null,
-      "detail": "not ready in 60s: still downloading the image at 65s (machine 143861, Kentucky)",
-      "run": "",
-      "reason": "unreliable"
-    },
-    {
-      "ip": "78.108.102.110",
-      "machine_id": 32152,
-      "host_id": 127232,
-      "date": null,
-      "detail": "still loading 90s after create; round 20 race, 3090 $0.694/h",
-      "run": "",
-      "reason": "unreliable"
-    },
-    {
-      "ip": "163.142.222.112",
-      "machine_id": 64274,
-      "host_id": 451840,
-      "date": null,
-      "detail": "still loading 2.5min after create (image pull); 60s readiness window missed",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "220.130.209.121",
-      "machine_id": 36991,
-      "host_id": 102063,
-      "date": null,
-      "detail": "still loading 2.5min after create (image pull, Verifying Checksum); 60s readiness window missed",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "70.70.153.119",
-      "machine_id": 14477,
-      "host_id": 85492,
-      "date": null,
-      "detail": "still loading 2.5min after create (image pull); 60s readiness window missed",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "142.127.68.223",
-      "machine_id": 45608,
-      "host_id": 139807,
-      "date": null,
-      "detail": "still loading 66s+ after create (image pull); 60s readiness window missed",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "92.98.4.115",
-      "machine_id": 147488,
-      "host_id": 153828,
-      "date": null,
-      "detail": "still loading 66s+ after create (image pull); 60s readiness window missed",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "92.98.4.115",
-      "machine_id": 147218,
-      "host_id": 153828,
-      "date": null,
-      "detail": "still loading 66s+ after create (image pull); 60s readiness window missed",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "108.240.82.27",
-      "machine_id": 136818,
-      "host_id": 558496,
-      "date": null,
-      "detail": "still loading 68s+ after create (image pull); 60s readiness window missed",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "137.175.76.24",
-      "machine_id": 113571,
-      "host_id": 483833,
-      "date": null,
-      "detail": "still loading 68s+ after create (image pull); 60s readiness window missed",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "153.198.91.116",
-      "machine_id": 7118,
-      "host_id": 35779,
-      "date": null,
-      "detail": "still 'loading' 2.5 min after create, readiness window is 60 s",
-      "run": "",
-      "reason": "unreliable"
-    },
-    {
-      "ip": "77.104.167.148",
-      "machine_id": 38668,
-      "host_id": 166946,
-      "date": null,
-      "detail": "still 'loading' 2.5 min after create, readiness window is 60 s",
-      "run": "",
-      "reason": "unreliable"
-    },
-    {
-      "ip": "143.109.167.245",
-      "machine_id": 114484,
-      "host_id": 430738,
-      "date": null,
-      "detail": "ssh connection refused 2 min after create; 60 s readiness window",
-      "run": "",
-      "reason": "unreliable"
-    },
-    {
-      "ip": "115.246.55.146",
-      "machine_id": 68109,
-      "host_id": 159579,
-      "date": null,
-      "detail": "ssh connection refused 2 min after create; 60 s readiness window",
-      "run": "",
-      "reason": "unreliable"
-    },
-    {
-      "ip": "77.48.24.249",
-      "machine_id": 26017,
-      "host_id": 135723,
-      "date": null,
-      "detail": "ssh refused 5.5 min after create; 60 s readiness window",
-      "run": "",
-      "reason": "unreliable"
-    },
-    {
-      "ip": "137.175.76.24",
-      "machine_id": 138174,
-      "host_id": 410852,
-      "date": "2026-08-23",
-      "detail": "still 'loading' at 95s past create; docker pull failed: Get https://registry-1.docker.io/v2/ read tcp ... connection reset by peer",
-      "run": "round 21 xNS sweep",
-      "reason": "network"
-    },
-    {
-      "ip": "95.153.57.4",
-      "machine_id": 43803,
-      "host_id": 305845,
-      "date": null,
-      "detail": "container never started: 'failed to create shim task: OCI runtime create failed', status stuck at 'created' 2m+, ssh connection refused. NOTE machine 43803 was concurrently running a healthy 3090 (48481420), so this may be oversubscription rather than a permanent defect",
-      "run": "",
-      "reason": "unreliable"
-    },
-    {
-      "ip": "204.111.33.136",
-      "machine_id": 146873,
-      "host_id": 120878,
-      "date": "2026-08-23",
-      "detail": "4x3090 offer 48305729 (m146873, EPYC 7702P): all 4 rented GPUs already 100% busy with a FOREIGN tenant's processes (1.3-3.4 GB each) at deploy time; gpu_health refused to measure, update phase 2.7x a clean 3090 box. dlperf 87.5 vs 146 for peer 4x3090 offers was the listing-side tell.",
-      "run": "cpubench (multi-GPU CPU characterisation)",
-      "reason": "unreliable"
-    },
-    {
-      "ip": "142.111.146.204",
-      "machine_id": 78080,
-      "host_id": 155385,
-      "date": "2026-08-23",
-      "detail": "4x3090 offer 35580414 (m78080, EPYC 7K62, Malaysia): all 4 cards POWER-CAPPED at 180W of the 3090's 350W. Under load sm 660-1065 MHz (vs 1620-1755 on a healthy 3090 box), 30-35 TFLOPS bf16 and 574-764 GB/s HBM vs 69-73 TFLOPS / 840 GB/s. PPO update phase 705 ms vs 434 on an identical-GPU box. gpu_health prints VERDICT healthy because it carries no 3090 reference - read the TFLOPS/W numbers, not the verdict.",
-      "run": "cpubench",
-      "reason": "gpu_capped"
-    },
-    {
-      "ip": "82.67.158.138",
-      "machine_id": 143793,
-      "host_id": 563291,
-      "date": null,
-      "detail": "SW Power Cap Active: 330W enforced of 420W default (79%); measured 841 GB/s (100% of ref) and 72 TFLOPS (105%) - capped but AT reference, blocked per CLAUDE.md rule 1 anyway",
-      "run": "",
-      "reason": "gpu_capped"
-    },
-    {
-      "ip": "185.89.252.43",
-      "machine_id": 140159,
-      "host_id": 558902,
-      "date": null,
-      "detail": "SW Power Cap Active: 300W enforced of 370W default (81%); measured 838 GB/s (100% of ref) and 68 TFLOPS (98%) - capped but AT reference, blocked per CLAUDE.md rule 1 anyway",
-      "run": "",
-      "reason": "gpu_capped"
-    },
-    {
-      "ip": "154.64.230.67",
-      "machine_id": 135788,
-      "host_id": 399360,
-      "date": null,
-      "detail": "downlink collapsed to ~90 KB/s: 81 MB of a 144 MB map shard in 15 min while five peer boxes took under 60 s for comparable payloads; GPU itself healthy (840 GB/s, 72 TFLOPS)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "38.49.42.46",
-      "machine_id": 148206,
-      "host_id": 155383,
-      "date": "2026-08-24",
-      "detail": "8x3090 m148206: container never starts - 'OCI runtime create failed: failed to inject CDI devices: unresolvable CDI devices .../gpu=7: unknown', stuck in 'created' for 2+ min across the whole window. Same machine round 22 could not bring up (22 min on Verifying Checksum). Only 8 GPUs of the 8 are advertised; gpu7 is not resolvable to the runtime.",
-      "run": "round23-scale8",
-      "reason": "no_cuda"
-    },
-    {
-      "ip": "204.111.33.136",
-      "machine_id": 146873,
-      "host_id": 120878,
-      "date": null,
-      "detail": "4x3090 offer 48305729 machine 146873: foreign tenant pid 781451 pinning all 4 GPUs at 100% / 1293MiB each, not in our namespace; gpu_health UNHEALTHY",
-      "run": "",
-      "reason": "unreliable"
-    },
-    {
-      "ip": "142.111.146.204",
-      "machine_id": 78080,
-      "host_id": 155385,
-      "date": null,
-      "detail": "4x3090 offer 35580423 machine 78080 Malaysia: power limit 180W of 370W (49%), SM 660MHz under load, bf16 30 TFLOPS vs 69 ref (43%), HBM 629 of 840 GB/s; SW Power Cap active on all 4",
-      "run": "",
-      "reason": "gpu_capped"
-    },
-    {
-      "ip": "175.155.64.224",
-      "machine_id": 27908,
-      "host_id": 124072,
-      "date": null,
-      "detail": "4x3090 offer 47776193 machine 27908 Sichuan: ssh never opened; stuck 8+ min on docker layer be6076e121b5 Verifying Checksum",
-      "run": "",
-      "reason": "unreliable"
-    },
-    {
-      "ip": "47.253.235.80",
-      "machine_id": 146316,
-      "host_id": 557452,
-      "date": "2026-08-24",
-      "detail": "4x5090 m146316: running at 44s but sshd never opened; Connection closed through t=61s; 60s rule",
-      "run": "",
-      "reason": "unreliable"
-    },
-    {
-      "ip": "31.11.81.28",
-      "machine_id": 48612,
-      "host_id": 315683,
-      "date": "2026-08-24",
-      "detail": "4x3090 m48612 recheck 2026-08-24: host power limit 300/350W, GPU1 60 TF bf16 = 87% ref with SW Power Cap active (others 95-97%); supersedes the earlier known-good entry",
-      "run": "",
-      "reason": "gpu_capped"
-    },
-    {
-      "ip": "34.222.4.102",
-      "machine_id": 147307,
-      "host_id": 557452,
-      "date": "2026-08-24",
-      "detail": "4x5090 slice m147307: still loading (image pull) at 60s; machine known-good as 8x5090 - readiness failure of the slice template, not a hardware defect",
-      "run": "",
-      "reason": "unreliable"
-    },
-    {
-      "ip": "179.255.148.147",
-      "machine_id": 146391,
-      "host_id": 314664,
-      "date": "2026-08-24",
-      "detail": "4x4090 still loading (cold image pull) at 60s; not a hardware defect - pinned pytorch image uncached",
-      "run": "",
-      "reason": "unreliable"
-    },
-    {
-      "ip": "60.250.87.179",
-      "machine_id": 40461,
-      "host_id": 109790,
-      "date": "2026-08-24",
-      "detail": "4x4090 still loading (cold image pull) at 60s; not a hardware defect - pinned pytorch image uncached",
-      "run": "",
-      "reason": "unreliable"
-    },
-    {
-      "ip": "85.218.235.6",
-      "machine_id": 101699,
-      "host_id": 57929,
-      "date": "2026-08-24",
-      "detail": "4x4090 still loading (cold image pull) at 60s; not a hardware defect - pinned pytorch image uncached",
-      "run": "",
-      "reason": "unreliable"
-    },
-    {
-      "ip": null,
-      "machine_id": 138268,
-      "host_id": null,
-      "date": "2026-08-24",
-      "detail": "2x3090 Quebec: sshd never opened in 19 min (status stuck loading); daemon killed it at READY_S - hand-added, instance gone",
-      "run": "",
-      "reason": "unreliable"
-    },
-    {
-      "ip": null,
-      "machine_id": 59159,
-      "host_id": null,
-      "date": "2026-08-24",
-      "detail": "2x3090 HK: image pull exceeded the 5-min trial window (international link); daemon killed at ready_secs=330; not a hardware defect",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "machine_id": 46769,
-      "host_id": null,
-      "ip": "141.195.21.72",
-      "reason": "unreliable",
-      "detail": "r27grid box C (instance 48693699, Norway 8x-3090 fractional): host offline 55+ min mid-run, returned, then destroyed; also nproc=256 fractional-host numba exposure",
-      "when": "2026-08-25"
-    },
-    {
-      "machine_id": 12863,
-      "host_id": null,
-      "ip": "38.44.165.4",
-      "reason": "cpu_bound",
-      "detail": "r27grid box A (instance 48693695, Kansas): GPU healthy (115% GEMM) but env-step CPU path ~130k steps/s marginal vs 390-430k on peers, ~0.5e9 steps/h; also bounced a create with success:false phantom earlier same day",
-      "when": "2026-08-26"
-    },
-    {
-      "machine_id": 95613,
-      "host_id": null,
-      "ip": null,
-      "instance_id": 49633614,
-      "gpu": "RTX 3090",
-      "reason": "network",
-      "detail": "readiness: still pulling the image 93 s after create (Spain, ES, 2026-09-02 race); ids recorded from the listing after destroy",
-      "when": "2026-09-02T09:57:55Z"
-    },
-    {
-      "machine_id": 57139,
-      "host_id": null,
-      "ip": null,
-      "instance_id": 49633617,
-      "gpu": "RTX 3090",
-      "reason": "network",
-      "detail": "readiness: still pulling the image 93 s after create (Quebec, CA, 2026-09-02 race); ids recorded from the listing after destroy",
-      "when": "2026-09-02T09:57:55Z"
-    },
-    {
-      "machine_id": 28676,
-      "host_id": null,
-      "ip": null,
-      "instance_id": 49730951,
-      "gpu": "RTX 3090",
-      "reason": "network",
-      "detail": "readiness: still pulling the image 86 s after create (Germany, DE, 2026-09-03 race); recorded by hand after destroy",
-      "when": "2026-09-03T08:38:31Z"
-    },
-    {
-      "machine_id": 112545,
-      "host_id": null,
-      "ip": null,
-      "instance_id": 49730954,
-      "gpu": "RTX 3090",
-      "reason": "network",
-      "detail": "readiness: still pulling the image 86 s after create (Florida, US, 2026-09-03 race); recorded by hand after destroy",
-      "when": "2026-09-03T08:38:31Z"
-    },
-    {
-      "ip": "184.144.255.144",
-      "machine_id": 19251,
-      "host_id": 79466,
-      "date": null,
-      "detail": "readiness: still loading 4 min after create; listing showed a duplicate ssh port (wave1 3090 race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "141.11.90.211",
-      "machine_id": 137510,
-      "host_id": 566749,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave wave1-4090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "38.117.87.51",
-      "machine_id": 51618,
-      "host_id": 213498,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave wave1-4090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "38.117.87.53",
-      "machine_id": 144730,
-      "host_id": 213498,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave wave1-4090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "142.112.39.215",
-      "machine_id": 10029,
-      "host_id": 1256,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave wave1-4090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "116.127.115.27",
-      "machine_id": 21032,
-      "host_id": 121148,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave wave1-4090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "147.102.5.224",
-      "machine_id": 51215,
-      "host_id": 283684,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave wave1-4090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "75.152.94.140",
-      "machine_id": 16103,
-      "host_id": 90137,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave wave1-4090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "217.171.200.22",
-      "machine_id": 26628,
-      "host_id": 85684,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave wave1-4090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "71.104.167.38",
-      "machine_id": 146057,
-      "host_id": 87213,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave wave1-4090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "95.253.220.115",
-      "machine_id": 31352,
-      "host_id": 92578,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave wave1-4090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "180.189.55.38",
-      "machine_id": 142902,
-      "host_id": 406325,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave wave1-5090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "180.189.55.43",
-      "machine_id": 143391,
-      "host_id": 406325,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave wave1-5090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "50.32.125.187",
-      "machine_id": 49616,
-      "host_id": 80954,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave wave1-5090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "107.206.71.138",
-      "machine_id": 147713,
-      "host_id": 197906,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave wave1-5090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "42.113.51.8",
-      "machine_id": 145381,
-      "host_id": 95374,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_5090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "50.35.57.149",
-      "machine_id": 42685,
-      "host_id": 206415,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_5090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "70.59.117.52",
-      "machine_id": 50922,
-      "host_id": 362094,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_5090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "195.224.35.250",
-      "machine_id": 58187,
-      "host_id": 135666,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill1-RTX_4090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "108.253.245.121",
-      "machine_id": 63452,
-      "host_id": 415145,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill1-RTX_4090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "185.229.26.83",
-      "machine_id": 13803,
-      "host_id": 70711,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill1-RTX_4090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "136.59.129.136",
-      "machine_id": 9204,
-      "host_id": 34742,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill1-RTX_4090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "74.113.233.93",
-      "machine_id": 145698,
-      "host_id": 315182,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill2-RTX_3090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "173.76.86.147",
-      "machine_id": 147618,
-      "host_id": 307067,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill2-RTX_3090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "45.77.214.165",
-      "machine_id": 50178,
-      "host_id": 346079,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill3-RTX_5090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "machine_id": 23132,
-      "host_id": null,
-      "ip": null,
-      "instance_id": 49805253,
-      "gpu": "RTX 5090",
-      "reason": "gpu_capped",
-      "detail": "tools/gpu_health.py --all: VERDICT below spec at deploy (wave1 fill0, 2026-09-04); destroyed before the blocklist entry, recorded by hand",
-      "when": "2026-09-04T00:43:25Z"
-    },
-    {
-      "ip": "64.38.158.67",
-      "machine_id": 53591,
-      "host_id": 102082,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_5090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "114.34.26.236",
-      "machine_id": 137085,
-      "host_id": 1801,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_5090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "178.156.229.221",
-      "machine_id": 146107,
-      "host_id": 213578,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill1-RTX_5090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "178.43.210.175",
-      "machine_id": 35203,
-      "host_id": 227461,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill1-RTX_5090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "212.31.111.185",
-      "machine_id": 141838,
-      "host_id": 296299,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill2-RTX_5090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "62.198.7.58",
-      "machine_id": 57827,
-      "host_id": 407571,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill2-RTX_5090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "61.219.11.140",
-      "machine_id": 147151,
-      "host_id": 385709,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill3-RTX_5090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "38.65.92.36",
-      "machine_id": 96679,
-      "host_id": 467312,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill3-RTX_5090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "90.95.69.181",
-      "machine_id": 79565,
-      "host_id": 439309,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_4090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "175.155.64.146",
-      "machine_id": 25706,
-      "host_id": 135676,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_4090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "145.236.167.14",
-      "machine_id": 75121,
-      "host_id": 501595,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_4090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "79.161.122.162",
-      "machine_id": 105866,
-      "host_id": 112691,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_4090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "189.79.25.23",
-      "machine_id": 19702,
-      "host_id": 56767,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill1-RTX_4090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "176.122.176.17",
-      "machine_id": 147859,
-      "host_id": 531491,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill1-RTX_4090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "198.55.59.60",
-      "machine_id": 38674,
-      "host_id": 259493,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill1-RTX_4090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "174.116.164.194",
-      "machine_id": 24573,
-      "host_id": 89091,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill2-RTX_4090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "50.173.30.254",
-      "machine_id": 4749,
-      "host_id": 24953,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_3090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "49.49.136.137",
-      "machine_id": 146890,
-      "host_id": 394880,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_3090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "65.108.94.15",
-      "machine_id": 148234,
-      "host_id": 420532,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_3090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "104.12.231.85",
-      "machine_id": 142650,
-      "host_id": 64907,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill2-RTX_3090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "209.137.222.125",
-      "machine_id": 55895,
-      "host_id": 401967,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_4090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "23.158.136.85",
-      "machine_id": 57250,
-      "host_id": 256524,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_4090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "87.197.111.68",
-      "machine_id": 137723,
-      "host_id": 461212,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill1-RTX_4090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "82.76.142.167",
-      "machine_id": 147588,
-      "host_id": 605119,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_5090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "109.95.207.230",
-      "machine_id": 41881,
-      "host_id": 230808,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_5090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "50.115.148.16",
-      "machine_id": 136006,
-      "host_id": 545344,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_5090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "162.249.226.242",
-      "machine_id": 55862,
-      "host_id": 90577,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_5090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "198.53.64.194",
-      "machine_id": 25132,
-      "host_id": 18,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_5090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "79.117.25.247",
-      "machine_id": 45007,
-      "host_id": 309734,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill1-RTX_5090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "85.10.218.46",
-      "machine_id": 36376,
-      "host_id": 62819,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill1-RTX_5090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "45.32.91.205",
-      "machine_id": 148412,
-      "host_id": 553680,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill2-RTX_5090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "71.185.123.214",
-      "machine_id": 100489,
-      "host_id": 508830,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill2-RTX_5090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "154.68.174.226",
-      "machine_id": 54715,
-      "host_id": 154140,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill3-RTX_5090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "108.39.26.2",
-      "machine_id": 132465,
-      "host_id": 70142,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "90.224.159.6",
-      "machine_id": 141927,
-      "host_id": 20317,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "62.77.252.125",
-      "machine_id": 145261,
-      "host_id": 514605,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "47.199.120.88",
-      "machine_id": 144483,
-      "host_id": 577134,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "93.91.156.85",
-      "machine_id": 40773,
-      "host_id": 214845,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "24.196.244.156",
-      "machine_id": 147024,
-      "host_id": 356741,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave heldout)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "151.177.225.95",
-      "machine_id": 58488,
-      "host_id": 446098,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave heldout)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "72.38.200.117",
-      "machine_id": 137730,
-      "host_id": 208522,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave heldout)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "86.127.236.182",
-      "machine_id": 16571,
-      "host_id": 87485,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave heldout)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "135.131.174.76",
-      "machine_id": 36542,
-      "host_id": 110266,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_5090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "81.183.231.113",
-      "machine_id": 44336,
-      "host_id": 81036,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_5090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "81.183.231.113",
-      "machine_id": 30024,
-      "host_id": 81036,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_5090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "81.183.231.113",
-      "machine_id": 40229,
-      "host_id": 81036,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_5090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "91.203.49.76",
-      "machine_id": 53102,
-      "host_id": 103274,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill1-RTX_4090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "60.53.150.159",
-      "machine_id": 138228,
-      "host_id": 86991,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill1-RTX_4090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "98.191.113.12",
-      "machine_id": 48161,
-      "host_id": 111892,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill1-RTX_4090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "81.167.235.66",
-      "machine_id": 12764,
-      "host_id": 78459,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill1-RTX_4090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "94.27.179.20",
-      "machine_id": 83029,
-      "host_id": 443714,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill2-RTX_5090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "88.91.74.67",
-      "machine_id": 30550,
-      "host_id": 86812,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill3-RTX_4090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "92.180.27.84",
-      "machine_id": 55266,
-      "host_id": 33035,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill3-RTX_4090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "92.180.27.84",
-      "machine_id": 55957,
-      "host_id": 33035,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill3-RTX_4090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "69.176.92.107",
-      "machine_id": 41465,
-      "host_id": 60400,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill3-RTX_4090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "143.131.225.132",
-      "machine_id": 30407,
-      "host_id": 96250,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_4090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "162.198.38.16",
-      "machine_id": 137593,
-      "host_id": 394046,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_4090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "45.81.32.13",
-      "machine_id": 48630,
-      "host_id": 46431,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_4090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "45.81.32.55",
-      "machine_id": 51069,
-      "host_id": 46431,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_4090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "50.175.95.210",
-      "machine_id": 31219,
-      "host_id": 96690,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_4090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "98.142.241.142",
-      "machine_id": 123134,
-      "host_id": 208874,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill1-RTX_4090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "213.97.25.93",
-      "machine_id": 43132,
-      "host_id": 255824,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill1-RTX_4090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "1.193.138.167",
-      "machine_id": 57509,
-      "host_id": 115630,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill2-RTX_4090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "207.216.48.74",
-      "machine_id": 13428,
-      "host_id": 55313,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill2-RTX_4090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "192.165.134.28",
-      "machine_id": 54250,
-      "host_id": 382033,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_5090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "108.255.76.60",
-      "machine_id": 55913,
-      "host_id": 71705,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_5090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "149.248.21.7",
-      "machine_id": 141821,
-      "host_id": 371998,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill2-RTX_5090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "77.52.212.57",
-      "machine_id": 55696,
-      "host_id": 404114,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill2-RTX_5090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "47.186.21.5",
-      "machine_id": 14909,
-      "host_id": 79986,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_4090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "71.175.237.103",
-      "machine_id": 52827,
-      "host_id": 47308,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill1-RTX_5090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "73.224.139.60",
-      "machine_id": 56143,
-      "host_id": 334262,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill1-RTX_5090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "50.118.185.90",
-      "machine_id": 145599,
-      "host_id": 623333,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_5090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "179.185.24.59",
-      "machine_id": 146669,
-      "host_id": 614268,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_5090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "5.199.157.208",
-      "machine_id": 144653,
-      "host_id": 511129,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_5090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "89.205.113.140",
-      "machine_id": 34046,
-      "host_id": 125276,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_5090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "79.117.120.96",
-      "machine_id": 25239,
-      "host_id": 130210,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_4090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "115.73.222.24",
-      "machine_id": 35959,
-      "host_id": 55116,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_4090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "61.32.91.194",
-      "machine_id": 147672,
-      "host_id": 403004,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_5090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "82.67.110.96",
-      "machine_id": 54278,
-      "host_id": 80960,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_5090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "74.211.99.207",
-      "machine_id": 144282,
-      "host_id": 526342,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "31.13.237.164",
-      "machine_id": 57636,
-      "host_id": 269644,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "64.64.224.51",
-      "machine_id": 103782,
-      "host_id": 392559,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "38.244.145.196",
-      "machine_id": 58866,
-      "host_id": 149408,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "113.199.208.59",
-      "machine_id": 142108,
-      "host_id": 571938,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill2-RTX_5090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "70.29.117.18",
-      "machine_id": 145277,
-      "host_id": 353487,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill3-RTX_4090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "220.135.0.171",
-      "machine_id": 56842,
-      "host_id": 416420,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "166.113.52.39",
-      "machine_id": 30840,
-      "host_id": 138436,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_5090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "181.173.81.80",
-      "machine_id": 31027,
-      "host_id": 142157,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill1-RTX_4090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "78.44.170.162",
-      "machine_id": 9586,
-      "host_id": 58623,
-      "date": null,
-      "detail": "readiness: not answering ssh 72 s after create (wave fill3-RTX_4090)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "180.70.178.129",
-      "machine_id": 50121,
-      "host_id": 365619,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "37.142.193.243",
-      "machine_id": 48618,
-      "host_id": 354394,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "81.109.160.130",
-      "machine_id": 41599,
-      "host_id": 296778,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "78.69.105.254",
-      "machine_id": 141275,
-      "host_id": 589561,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "192.183.184.93",
-      "machine_id": 38382,
-      "host_id": 254084,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "83.195.246.217",
-      "machine_id": 120270,
-      "host_id": 393491,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "162.142.111.64",
-      "machine_id": 148275,
-      "host_id": 553824,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "142.204.97.21",
-      "machine_id": 49714,
-      "host_id": 357545,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status running (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "75.39.162.228",
-      "machine_id": 141586,
-      "host_id": 593316,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "209.121.195.117",
-      "machine_id": 77714,
-      "host_id": 502537,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "103.116.53.7",
-      "machine_id": 58329,
-      "host_id": 436065,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status running (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "51.174.193.83",
-      "machine_id": 146083,
-      "host_id": 633266,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "87.62.96.196",
-      "machine_id": 142042,
-      "host_id": 566763,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status running (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "188.252.233.2",
-      "machine_id": 136902,
-      "host_id": 562916,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "103.9.41.92",
-      "machine_id": 55898,
-      "host_id": 410494,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "72.253.18.253",
-      "machine_id": 144582,
-      "host_id": 620288,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status running (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "99.192.58.220",
-      "machine_id": 140447,
-      "host_id": 562109,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "13.140.9.125",
-      "machine_id": 52642,
-      "host_id": 138577,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "201.188.64.199",
-      "machine_id": 67809,
-      "host_id": 292781,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "116.122.206.233",
-      "machine_id": 53711,
-      "host_id": 80057,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "66.114.157.224",
-      "machine_id": 17049,
-      "host_id": 96607,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "96.3.252.118",
-      "machine_id": 58012,
-      "host_id": 370680,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "24.242.49.213",
-      "machine_id": 147380,
-      "host_id": 302468,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "108.180.151.167",
-      "machine_id": 10236,
-      "host_id": 61966,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "193.143.121.109",
-      "machine_id": 137884,
-      "host_id": 8725,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "38.114.84.170",
-      "machine_id": 146572,
-      "host_id": 264868,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "62.218.148.163",
-      "machine_id": 137316,
-      "host_id": 362838,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "70.68.84.2",
-      "machine_id": 135913,
-      "host_id": 78432,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "183.89.209.74",
-      "machine_id": 35777,
-      "host_id": 166741,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "159.48.242.14",
-      "machine_id": 19205,
-      "host_id": 4535,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "69.156.18.56",
-      "machine_id": 56343,
-      "host_id": 417260,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "1.233.92.34",
-      "machine_id": 146159,
-      "host_id": 623526,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "37.191.108.170",
-      "machine_id": 148237,
-      "host_id": 507980,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "171.101.232.241",
-      "machine_id": 136815,
-      "host_id": 95290,
-      "date": null,
-      "detail": "gpu_health below spec (exit_scratch)",
-      "run": "",
-      "reason": "gpu_capped"
-    },
-    {
-      "ip": "85.51.24.78",
-      "machine_id": 140371,
-      "host_id": 581612,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "193.77.94.83",
-      "machine_id": 143279,
-      "host_id": 353680,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "216.227.169.74",
-      "machine_id": 141325,
-      "host_id": 554011,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status None (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "103.119.82.252",
-      "machine_id": 145620,
-      "host_id": 554895,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "222.230.13.166",
-      "machine_id": 7543,
-      "host_id": 45726,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status running (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "64.90.9.69",
-      "machine_id": 144733,
-      "host_id": 513108,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "58.8.190.245",
-      "machine_id": 116834,
-      "host_id": 92795,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "78.186.168.198",
-      "machine_id": 131560,
-      "host_id": 343268,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "59.127.5.172",
-      "machine_id": 13815,
-      "host_id": 69403,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status exited (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "199.126.134.31",
-      "machine_id": 35948,
-      "host_id": 195919,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "185.194.59.64",
-      "machine_id": 142365,
-      "host_id": 274752,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "108.26.251.160",
-      "machine_id": 147027,
-      "host_id": 637654,
-      "date": null,
-      "detail": "gpu_health below spec (exit_scratch)",
-      "run": "",
-      "reason": "gpu_capped"
-    },
-    {
-      "ip": "190.111.198.202",
-      "machine_id": 143521,
-      "host_id": 70317,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "133.165.145.17",
-      "machine_id": 138339,
-      "host_id": 6631,
-      "date": null,
-      "detail": "gpu_health below spec (exit_scratch)",
-      "run": "",
-      "reason": "gpu_capped"
-    },
-    {
-      "ip": "193.251.39.219",
-      "machine_id": 142599,
-      "host_id": 69666,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "172.218.118.138",
-      "machine_id": 42580,
-      "host_id": 197411,
-      "date": null,
-      "detail": "gpu_health below spec (exit_scratch)",
-      "run": "",
-      "reason": "gpu_capped"
-    },
-    {
-      "ip": "202.79.96.144",
-      "machine_id": 55681,
-      "host_id": 51650,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "70.187.30.25",
-      "machine_id": 31480,
-      "host_id": 114718,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status loading (cyRATCH race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "38.7.207.219",
-      "machine_id": 147887,
-      "host_id": 646429,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status loading (cyRATCH race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "83.39.120.73",
-      "machine_id": 146645,
-      "host_id": 640603,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status loading (cyRATCH race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "79.161.30.134",
-      "machine_id": 5629,
-      "host_id": 1276,
-      "date": null,
-      "detail": "gpu_health below spec (cyRATCH)",
-      "run": "",
-      "reason": "gpu_capped"
-    },
-    {
-      "ip": "84.50.156.21",
-      "machine_id": 57182,
-      "host_id": 86295,
-      "date": null,
-      "detail": "readiness: no ssh 72-95 s after create, status running (cyRATCH race)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "instance": 50670621,
-      "machine_id": 145795,
-      "host_id": 549946,
-      "reason": "network",
-      "detail": "readiness: status created 300 s after create, direct=False (mmANCHU race 2026-09-12)",
-      "when": "2026-09-12"
-    },
-    {
-      "instance": 50672466,
-      "machine_id": 38389,
-      "host_id": 175463,
-      "reason": "network",
-      "detail": "readiness: status created 300 s after create, direct=False (mmANCHU race 2026-09-12)",
-      "when": "2026-09-12"
-    },
-    {
-      "instance": 50672471,
-      "machine_id": 51888,
-      "host_id": 310671,
-      "reason": "network",
-      "detail": "readiness: status loading 300 s after create, direct=False (mmANCHU race 2026-09-12)",
-      "when": "2026-09-12"
-    },
-    {
-      "instance": 50676448,
-      "machine_id": 52134,
-      "host_id": 289817,
-      "reason": "network",
-      "detail": "readiness: status created 300 s after create with the plain cuda image (mmANCHU race 2026-09-12)",
-      "when": "2026-09-12"
-    },
-    {
-      "instance": 50676454,
-      "machine_id": 44251,
-      "host_id": 289647,
-      "reason": "network",
-      "detail": "readiness: status created 300 s after create with the plain cuda image (mmANCHU race 2026-09-12)",
-      "when": "2026-09-12"
-    },
-    {
-      "ip": "121.167.252.172",
-      "machine_id": 146025,
-      "host_id": 387422,
-      "date": null,
-      "detail": "readiness: not running 300 s after create (loading )",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "217.210.63.12",
-      "machine_id": 146201,
-      "host_id": 596524,
-      "date": null,
-      "detail": "readiness: not running 300 s after create (loading )",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "95.3.33.46",
-      "machine_id": 103058,
-      "host_id": 39788,
-      "date": null,
-      "detail": "readiness: loading with status_msg 'could not resolve host: cloud.vast.ai' (host DNS broken), 2026-09-13",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "175.155.64.191",
-      "machine_id": 29558,
-      "host_id": 135676,
-      "date": null,
-      "detail": "readiness: not running 300 s after create (loading 5c5eec8ebf45: Verifying Checksum)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "82.78.205.80",
-      "machine_id": 9105,
-      "host_id": 25192,
-      "date": null,
-      "detail": "readiness: not running 300 s after create (loading c612795a91a4: Pull complete)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "137.175.76.24",
-      "machine_id": 144419,
-      "host_id": 483833,
-      "date": null,
-      "detail": "readiness: not running 300 s after create (loading f557aa5ee224: Pull complete)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "180.189.55.43",
-      "machine_id": 149083,
-      "host_id": 406325,
-      "date": null,
-      "detail": "readiness: not running 300 s after create (loading #7 55.72 Get:22 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libkmo)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "108.41.48.36",
-      "machine_id": 59068,
-      "host_id": 388199,
-      "date": null,
-      "detail": "2026-09-14 04:10: running for 35 min, ssh refused on proxy ssh3:11630 and direct 108.41.48.36:42487 twice",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "223.75.129.75",
-      "machine_id": 144241,
-      "host_id": 600850,
-      "date": null,
-      "detail": "readiness: not running 300 s after create (loading f557aa5ee224: Pull complete)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "103.127.133.109",
-      "machine_id": 139040,
-      "host_id": 412133,
-      "date": null,
-      "detail": "readiness: not running 300 s after create (loading #5 DONE 3.4s)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "142.115.153.129",
-      "machine_id": 28714,
-      "host_id": 105356,
-      "date": null,
-      "detail": "readiness: not running 300 s after create (loading )",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "75.129.98.31",
-      "machine_id": 36331,
-      "host_id": 54354,
-      "date": null,
-      "detail": "readiness: not running 300 s after create (loading #6 6.272 Fetched 48.6 MB in 4s (11.7 MB/s)\n#6 6.272 Reading package lists...)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "14.234.172.15",
-      "machine_id": 149368,
-      "host_id": 675994,
-      "date": "2026-09-25",
-      "detail": "pip install of scipy/numpy/opencv/numba hung 32 min with 3 s CPU during deploy (2026-09-25 16:23-16:56); machine 149368 Vietnam",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "machine_id": 145957,
-      "host_id": null,
-      "date": "2026-09-25",
-      "detail": "GPU0 BUSY with 6200 MiB in use at deploy (a foreign tenant); gpu_health VERDICT UNHEALTHY; instance 52606365 (New Jersey 5090, offer 52451769) destroyed by the driver before it could be blocked - entered by hand from the offer's machine id",
-      "run": "mzq_v1",
-      "reason": "unreliable"
-    },
-    {
-      "ip": "187.212.155.132",
-      "machine_id": 149904,
-      "host_id": 567567,
-      "date": null,
-      "detail": "readiness: not running 300 s after create (loading 66274a3d5205: Verifying Checksum\n66274a3d5205: Download complete)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "92.138.166.13",
-      "machine_id": 105973,
-      "host_id": 86027,
-      "date": "2026-09-26",
-      "detail": "went offline ~10 min after a healthy deploy (2026-09-26 04:12): vast actual_status offline on 4 polls over 80 s with gpu/cpu util 0, ssh proxy ssh1.vast.ai:39176 refused, direct 92.138.166.13:50032 timed out",
-      "run": "pl3lvl_b050",
-      "reason": "network"
-    },
-    {
-      "ip": "27.77.189.193",
-      "machine_id": 53974,
-      "host_id": 173122,
-      "date": "2026-09-26",
-      "detail": "readiness: not running 300 s after create (loading #7 92.58 Get:88 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libdw1)",
-      "run": "v1ri_b050",
-      "reason": "network"
-    },
-    {
-      "ip": null,
-      "machine_id": 31389,
-      "host_id": null,
-      "date": "2026-09-26",
-      "detail": "gpu_health UNHEALTHY at deploy (instance 52708286, RTX 4090): bf16 GEMM 143 TFLOPS, HBM 916 GB/s, SM 2250 MHz at 109 W of 350 W under load; released by the box queue before it was blocked, entered by hand from the race log's machine id",
-      "run": "v1ri_b100",
-      "reason": "gpu_capped"
-    },
-    {
-      "ip": "207.5.241.27",
-      "machine_id": 148805,
-      "host_id": 654284,
-      "date": null,
-      "detail": "readiness: not running 300 s after create (loading )",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": null,
-      "machine_id": 46808,
-      "host_id": null,
-      "date": "2026-09-26",
-      "detail": "instance 52734386: running after 196 s, then 'Permission denied (publickey)' at the deploy's ssh recon (13:04); released by the queue before it was blocked",
-      "run": "v5_b200",
-      "reason": "ssh"
-    },
-    {
-      "ip": null,
-      "machine_id": 42709,
-      "host_id": null,
-      "date": "2026-09-26",
-      "detail": "instance 52828907 (RTX 5090, offer 30940766): running after 33 s, then 'Connection refused' on ssh5.vast.ai:28906 for the 60 s readiness wait and the deploy's ssh recon (23:55-23:57); released by the queue before it was blocked",
-      "run": "ch3v2SJ_b200",
-      "reason": "ssh"
-    },
-    {
-      "ip": null,
-      "machine_id": 57734,
-      "host_id": null,
-      "reason": "gpu_capped",
-      "date": "2026-10-07",
-      "detail": "RTX 4090 power-limited to 300 W of the 500 W default (60%); bf16 GEMM 133 TFLOPS, HBM copy 914 GB/s, sm 2070 MHz at 82 W under load; gpu_health UNHEALTHY. Instance 54585323 (Romania, $0.363/h), released by the box driver before it could be blocked.",
-      "run": "uf2R2P (overnight 2026-10-07)"
-    },
-    {
-      "ip": null,
-      "machine_id": 118106,
-      "host_id": null,
-      "reason": "unreliable",
-      "date": "2026-10-07",
-      "detail": "RTX 4090 BUSY at deploy: 8,372 MiB already in use by another process (a foreign tenant); gpu_health could not judge it. Instance 54585327 (Hungary, $0.441/h), released by the box driver before it could be blocked.",
-      "run": "uf2R2U (overnight 2026-10-07)"
-    },
-    {
-      "ip": "85.195.201.222",
-      "machine_id": 151792,
-      "host_id": 233636,
-      "date": "2026-10-08",
-      "detail": "not running after 330s (loading): ",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "212.85.84.41",
-      "machine_id": 52214,
-      "host_id": 93447,
-      "date": "2026-10-08",
-      "detail": "not running after 330s (loading): ",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "107.159.55.113",
-      "machine_id": 64949,
-      "host_id": 464257,
-      "date": "2026-10-08",
-      "detail": "running instance stopped by the host side at ~23:30 2026-10-08 (intended_status stopped, not issued by us); restart refused 'required resources currently unavailable' - the GPU was re-rented; uf2SCx1f5 checkpoints lost",
-      "run": "",
-      "reason": "unreliable"
-    },
-    {
-      "ip": "175.121.93.64",
-      "machine_id": 39913,
-      "host_id": 90277,
-      "date": "2026-10-09",
-      "detail": "RTX 5090 on Xeon E5-2670 v3 (Haswell 2.3 GHz, 23-CPU quota): 52.7k steps/s at GPU util 2% vs 174-190k on Zen 4/5 5090s with the same trainer (uf2 scaling sweep, 2026-10-09)",
-      "run": "",
-      "reason": "cpu_bound"
-    },
-    {
-      "ip": "96.241.29.99",
-      "machine_id": 138352,
-      "host_id": 293320,
-      "date": "2026-10-09",
-      "detail": "not running after 330s (loading): 2.7.1-cuda12.8-cudnn9-runtime: Pulling from pytorch/pytorch\nf557aa5ee224: Pulling fs layer\nc612795a91a4: Pulling fs layer",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "96.234.107.51",
-      "machine_id": 145975,
-      "host_id": 617499,
-      "date": "2026-10-09",
-      "detail": "not running after 330s (loading): failed to copy: failed to send write: write /var/lib/docker/containerd/io.containerd.content.v1.content/ingest/c2bbd9c9ed2748d623cce56dcdc41941289e8bfcca6ac1ada",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "62.218.148.163",
-      "machine_id": 149524,
-      "host_id": 433014,
-      "date": "2026-10-09",
-      "detail": "not running after 330s (loading): ",
-      "run": "",
-      "reason": "network"
-    }
-  ],
-  "known_good": [
-    {
-      "ip": "95.253.220.115",
-      "machine_id": null,
-      "host_id": null,
-      "date": "2026-08-17",
-      "detail": "96-100% FLOPS, 1518 GB/s; sustained 824k steps/s on a full 8e9 scratch run (fastest measured).",
-      "run": "wFK2 / sREPRO_s3 / sG999i05_ext"
-    },
-    {
-      "ip": "81.183.225.11",
-      "machine_id": null,
-      "host_id": null,
-      "date": "2026-08-18",
-      "detail": "92% FLOPS, 1517 GB/s; healthy.",
-      "run": "wG999 / sG999"
-    },
-    {
-      "ip": "137.175.76.24",
-      "machine_id": 138999,
-      "host_id": 483833,
-      "date": "2026-08-21",
-      "detail": "23c 5090, 201k steps/s = $0.65 per 1e9 steps; best value measured so far",
-      "run": "round 15 cost measurement"
-    },
-    {
-      "ip": "178.43.173.42",
-      "machine_id": 41760,
-      "host_id": 227461,
-      "date": "2026-08-21",
-      "detail": "96c 5090, ran sYAWc to 5.8e9 without issue",
-      "run": "sYAWc"
-    },
-    {
-      "ip": "209.226.246.174",
-      "machine_id": 123668,
-      "host_id": 450573,
-      "date": "2026-08-21",
-      "detail": "4x3090 EPYC 7502: healthy GPUs (840GB/s, 71TF bf16), solo 2474ms/iter champion cfg; GeForce P2P off -> NCCL SHM 1.7GB/s, DDP 4rk 1.73x / 2rk 1.43x; NCCL_SHM_USE_CUDA_MEMCPY deadlocks trainer; full C1-C3 DDP validation passed here 2026-08-21",
-      "run": ""
-    },
-    {
-      "ip": "137.175.22.196",
-      "machine_id": 39565,
-      "host_id": 155125,
-      "date": null,
-      "detail": "3090, 172-227k fps on xEZ arm, 99% util, healthy",
-      "run": ""
-    },
-    {
-      "ip": "192.220.55.116",
-      "machine_id": 53867,
-      "host_id": 344939,
-      "date": null,
-      "detail": "3090, 148k fps xGE arm, healthy full hour",
-      "run": ""
-    },
-    {
-      "ip": "59.127.5.172",
-      "machine_id": 13815,
-      "host_id": 69403,
-      "date": null,
-      "detail": "3090, 221k fps xBIN arm, healthy hour",
-      "run": ""
-    },
-    {
-      "ip": "173.239.92.155",
-      "machine_id": 143878,
-      "host_id": 74292,
-      "date": null,
-      "detail": "3090, 297k fps, ran xSC/xSC2/xSC2c arms flawlessly ~4h",
-      "run": ""
-    },
-    {
-      "ip": "209.227.188.123",
-      "machine_id": 7777,
-      "host_id": 3483,
-      "date": null,
-      "detail": "3090, xSC2b arm healthy",
-      "run": ""
-    },
-    {
-      "ip": "154.64.230.67",
-      "machine_id": 135788,
-      "host_id": 399360,
-      "date": null,
-      "detail": "3090, xSC3 arm healthy",
-      "run": ""
-    },
-    {
-      "ip": "173.239.92.155",
-      "machine_id": 143878,
-      "host_id": 74292,
-      "date": null,
-      "detail": "3090, 264k steps/s sustained for a full 800M-step hour on xROUTE; 2.67 MB/s scp; healthy 841GB/s 73TF",
-      "run": ""
-    },
-    {
-      "ip": "86.127.236.182",
-      "machine_id": 16571,
-      "host_id": 87485,
-      "date": "2026-08-22",
-      "detail": "21c 3090, Spain, 5.5 Gbps down: ssh-ready 31.5 s after create (the only candidate of four that beat the 60 s rule - the others were still pulling the devel image at 70-150 s); 231,246 steps/s sustained for a full 2.0e9-step run, 841 GB/s HBM, 69 TFLOPS bf16, 1,665 MHz, 324 W of 350 W",
-      "run": "xCSPD (round 19 contact-pen on the latch finisher)"
-    },
-    {
-      "ip": "86.127.236.182",
-      "machine_id": 16571,
-      "host_id": 87485,
-      "date": "2026-08-23",
-      "detail": "3090 m16571: supplied 4 of 6 boxes in round 21 with no failed candidate; both first two \"running\" at the first status poll (<=60s of create, image cached); 276,634 / 278,547 / 258,398 / 238,274 steps/s sustained over full 800M-step scratch hours; 840 GB/s HBM, 70-73 TFLOPS bf16, EPYC 7B13",
-      "run": "round 21 xNS64MB8/xNS128MB32/xNS32/xNS16"
-    },
-    {
-      "ip": "86.127.236.182",
-      "machine_id": 16571,
-      "host_id": 87485,
-      "date": "2026-08-23",
-      "detail": "4x3090 EPYC 7B13 (m16571): 4/4 GPUs healthy 840 GB/s, 69-73 TFLOPS bf16; ready <2 min; DDPx4 3.38x aggregate over 1 rank",
-      "run": "cpubench (multi-GPU CPU characterisation)"
-    },
-    {
-      "ip": "31.11.81.28",
-      "machine_id": 48612,
-      "host_id": 315683,
-      "date": "2026-08-23",
-      "detail": "4x3090 TR 3960X (m48612): 4/4 healthy 840 GB/s, 61-68 TFLOPS bf16, whole machine (gpu_frac 1.0); ready ~4 min",
-      "run": "cpubench (multi-GPU CPU characterisation)"
-    },
-    {
-      "ip": "65.109.137.0",
-      "machine_id": 3824,
-      "host_id": 20210,
-      "date": "2026-08-23",
-      "detail": "4x3090 EPYC 7282 16c/32t (m3824, Finland): 4/4 healthy 862 GB/s, 71 TFLOPS bf16, 350W, whole machine; ready ~5 min. Only 8 threads/GPU - DDPx4 starves at OMP>4/rank",
-      "run": "cpubench (multi-GPU CPU characterisation)"
-    },
-    {
-      "ip": "195.70.60.91",
-      "machine_id": 5855,
-      "host_id": 38488,
-      "date": "2026-08-23",
-      "detail": "1x3090 EPYC 7282 quarter-box (m5855): healthy 842 GB/s, 71 TFLOPS bf16, 315W of 330; ran the full envs ladder; cgroup quota 7.68 CPU vs nproc 32 - OMP 8 beats the cores/2 default by 21.7%",
-      "run": "round22-scaling"
-    },
-    {
-      "ip": "209.226.246.174",
-      "machine_id": 123668,
-      "host_id": 450573,
-      "date": "2026-08-23",
-      "detail": "4x3090 EPYC 7502 (m123668, 42.7 eff cores, gpu_frac 0.67, $0.707/h): 4/4 healthy 840 GB/s 69-71 TFLOPS bf16 290-316W of 350; 1.30M steps/s aggregate at 32,768 envs/rank T=32 = $0.151 per 1e9 steps, the cheapest 4x measured",
-      "run": "round22-scaling"
-    },
-    {
-      "ip": "202.122.49.242",
-      "machine_id": 67803,
-      "host_id": 458442,
-      "date": "2026-08-23",
-      "detail": "4x A100 SXM4 80GB (m67803, EPYC 7713, 61.4 CPU quota, 2 TB RAM, NVLink NV12 all-to-all, $4.908/h): 1764 GB/s, 239-270 TFLOPS bf16 at 400W; 2.54M steps/s at 4x32,768 envs T=32, allreduce only 27.9 ms",
-      "run": "round22-scaling"
-    },
-    {
-      "ip": "34.222.4.102",
-      "machine_id": 147307,
-      "host_id": 557452,
-      "date": "2026-08-23",
-      "detail": "8x5090 2x EPYC 7B12 256t 472G whole machine (m147307, $3.201/h): 8/8 healthy 1517-1524 GB/s, 230-238 TFLOPS bf16; 8-rank DDP 5.05M steps/s at 32,768 envs/rank. CAVEAT: any rank count BELOW 8 (2 and 4, six attempts, P2P/SHM off, both NUMA halves, overlap off) aborts in the NCCL watchdog with a CUDA error - only the full-8 config runs",
-      "run": "round22-scaling"
-    },
-    {
-      "ip": "154.64.230.67",
-      "machine_id": 136705,
-      "host_id": 185086,
-      "date": "2026-08-24",
-      "detail": "8x3090 2x Xeon E5-2673 v4 40c/80t 251G whole machine (m136705, $1.0133/h = $0.127/gpu-h): 8/8 healthy 836-839 GB/s 68-73 TFLOPS bf16 277-329W of 350. 8-rank DDP 1.63M steps/s at 65,536 envs/rank T=32 = $0.172 per 1e9, LOSES to 4x3090's $0.151. Only 5 PHYSICAL cores per GPU: env 1703ms at 1 rank vs 472ms on a 4x3090 EPYC 7502 box, 8-rank efficiency 68.0%. 65,536 envs/rank fits at 22.29G of 24. Image layers cache after a failed pull - the retry was running in 75s.",
-      "run": "round23-scale8"
-    },
-    {
-      "ip": "83.54.28.112",
-      "machine_id": 95613,
-      "host_id": 5477,
-      "date": null,
-      "detail": "1x3090 EPYC 7B12, 32 eff cores; gpu_health 100%/106%; scratch cannonball 324k fps @act3, 402k @act4",
-      "run": ""
-    },
-    {
-      "ip": "222.230.13.166",
-      "machine_id": 7543,
-      "host_id": 45726,
-      "date": "2026-08-24",
-      "detail": "2x3090 Ryzen 9 5950X 16c/32t 125GB (m7543, Japan): both cards 844/841 GB/s, 74/75 TFLOPS bf16 (107-109% of ref); ready <60s; sustained 661,545 steps/s for a full 2.4e9-step hour on a 5-map DDP run. NOTE cgroup quota 30 < nproc 32 - ddp_launch reads the quota now",
-      "run": "mmSMOKE (multi-map DDP integration smoke)"
-    },
-    {
-      "ip": "180.189.55.43",
-      "machine_id": 148838,
-      "host_id": 406325,
-      "date": null,
-      "detail": "2026-09-13: came up in ~140 s with the runtime image under the 5-min rule (old 72-s block obsolete)",
-      "run": ""
-    },
-    {
-      "ip": "180.189.55.43",
-      "machine_id": 148966,
-      "host_id": 406325,
-      "date": null,
-      "detail": "2026-09-13: came up in ~140 s with the runtime image under the 5-min rule (old 72-s block obsolete)",
-      "run": ""
-    },
-    {
-      "ip": "180.189.55.43",
-      "machine_id": 148892,
-      "host_id": 406325,
-      "date": null,
-      "detail": "2026-09-13: came up in ~140 s with the runtime image under the 5-min rule (old 72-s block obsolete)",
-      "run": ""
-    },
-    {
-      "ip": "180.189.55.38",
-      "machine_id": 142849,
-      "host_id": 406325,
-      "date": null,
-      "detail": "2026-09-13 20:55: up in 33-241 s with the runtime image (obsolete 72-s block)",
-      "run": ""
-    },
-    {
-      "ip": "180.189.55.43",
-      "machine_id": 149075,
-      "host_id": 406325,
-      "date": null,
-      "detail": "2026-09-13 20:55: up in 33-241 s with the runtime image (obsolete 72-s block)",
-      "run": ""
-    },
-    {
-      "ip": "180.189.55.43",
-      "machine_id": 144910,
-      "host_id": 406325,
-      "date": null,
-      "detail": "2026-09-13 20:55: up in 33-241 s with the runtime image (obsolete 72-s block)",
-      "run": ""
-    },
-    {
-      "ip": "1.34.114.64",
-      "machine_id": 53714,
-      "host_id": 116365,
-      "date": null,
-      "detail": "2026-09-13 20:55: up in 33-241 s with the runtime image (obsolete 72-s block)",
-      "run": ""
-    },
-    {
-      "ip": "174.119.98.154",
-      "machine_id": 22032,
-      "host_id": 107464,
-      "date": null,
-      "detail": "2026-09-13 20:55: up in 33-241 s with the runtime image (obsolete 72-s block)",
-      "run": ""
-    },
-    {
-      "ip": "38.246.237.140",
-      "machine_id": 123713,
-      "host_id": 208874,
-      "date": null,
-      "detail": "2026-09-13 20:55: up in 33-241 s with the runtime image (obsolete 72-s block)",
-      "run": ""
-    },
-    {
-      "ip": "174.116.164.194",
-      "machine_id": 24573,
-      "host_id": 89091,
-      "date": null,
-      "detail": "2026-09-13 20:55: up in 33-241 s with the runtime image (obsolete 72-s block)",
-      "run": ""
-    },
-    {
-      "ip": "137.175.76.24",
-      "machine_id": 140297,
-      "host_id": 483833,
-      "date": null,
-      "detail": "2026-09-13 20:55: up in 33-241 s with the runtime image (obsolete 72-s block)",
-      "run": ""
-    },
-    {
-      "ip": "137.175.76.24",
-      "machine_id": 141012,
-      "host_id": 483833,
-      "date": null,
-      "detail": "2026-09-14 01:35: up in 26-292 s with the runtime image",
-      "run": ""
-    },
-    {
-      "ip": "180.189.55.43",
-      "machine_id": 145154,
-      "host_id": 406325,
-      "date": null,
-      "detail": "2026-09-14 01:35: up in 26-292 s with the runtime image",
-      "run": ""
-    },
-    {
-      "ip": "180.189.55.38",
-      "machine_id": 55483,
-      "host_id": 406325,
-      "date": null,
-      "detail": "2026-09-14 01:35: up in 26-292 s with the runtime image",
-      "run": ""
-    },
-    {
-      "ip": "180.189.55.38",
-      "machine_id": 100698,
-      "host_id": 406325,
-      "date": null,
-      "detail": "2026-09-14 01:35: up in 26-292 s with the runtime image",
-      "run": ""
-    },
-    {
-      "ip": "154.64.230.67",
-      "machine_id": 51464,
-      "host_id": 296571,
-      "date": null,
-      "detail": "2026-09-14 01:35: up in 26-292 s with the runtime image",
-      "run": ""
-    },
-    {
-      "ip": "45.77.214.165",
-      "machine_id": 48177,
-      "host_id": 346079,
-      "date": null,
-      "detail": "2026-09-14 01:35: up in 26-292 s with the runtime image",
-      "run": ""
-    },
-    {
-      "ip": "103.158.243.210",
-      "machine_id": 145814,
-      "host_id": 550251,
-      "date": null,
-      "detail": "2026-09-14 01:35: up in 26-292 s with the runtime image",
-      "run": ""
-    },
-    {
-      "ip": "70.69.192.6",
-      "machine_id": 16346,
-      "host_id": 93197,
-      "date": null,
-      "detail": "2026-09-14 01:35: up in 26-292 s with the runtime image",
-      "run": ""
-    },
-    {
-      "ip": "207.102.87.207",
-      "machine_id": 33755,
-      "host_id": 48012,
-      "date": null,
-      "detail": "2026-09-14 01:35: up in 26-292 s with the runtime image",
-      "run": ""
-    },
-    {
-      "ip": "38.117.87.46",
-      "machine_id": 51613,
-      "host_id": 213498,
-      "date": null,
-      "detail": "2026-09-14 01:35: up in 26-292 s with the runtime image",
-      "run": ""
-    },
-    {
-      "ip": "137.175.76.24",
-      "machine_id": 142020,
-      "host_id": 410852,
-      "date": null,
-      "detail": "2026-09-14 03:15: up in 51-82 s (runtime image)",
-      "run": ""
-    },
-    {
-      "ip": "137.175.76.24",
-      "machine_id": 58908,
-      "host_id": 434909,
-      "date": null,
-      "detail": "2026-09-14 03:15: up in 51-82 s (runtime image)",
-      "run": ""
-    },
-    {
-      "ip": "180.189.55.43",
-      "machine_id": 143240,
-      "host_id": 406325,
-      "date": null,
-      "detail": "2026-09-14 03:15: up in 51-82 s (runtime image)",
-      "run": ""
-    },
-    {
-      "ip": "137.175.76.24",
-      "machine_id": 144172,
-      "host_id": 410852,
-      "date": null,
-      "detail": "2026-09-14 04:05: up in 43-255 s (runtime image)",
-      "run": ""
-    },
-    {
-      "ip": "137.175.76.24",
-      "machine_id": 141012,
-      "host_id": 483833,
-      "date": null,
-      "detail": "2026-09-14 04:05: up in 43-255 s (runtime image)",
-      "run": ""
-    },
-    {
-      "ip": "180.189.55.38",
-      "machine_id": 100698,
-      "host_id": 406325,
-      "date": null,
-      "detail": "2026-09-14 04:05: up in 43-255 s (runtime image)",
-      "run": ""
-    },
-    {
-      "ip": "180.189.55.43",
-      "machine_id": 144923,
-      "host_id": 406325,
-      "date": null,
-      "detail": "2026-09-14 04:05: up in 43-255 s (runtime image)",
-      "run": ""
-    },
-    {
-      "ip": "89.221.67.178",
-      "machine_id": 150078,
-      "host_id": 229807,
-      "date": null,
-      "detail": "2026-09-14 04:05: up in 43-255 s (runtime image)",
-      "run": ""
-    },
-    {
-      "ip": "84.50.156.13",
-      "machine_id": 142284,
-      "host_id": 549680,
-      "date": null,
-      "detail": "2026-09-14 04:05: up in 43-255 s (runtime image)",
-      "run": ""
-    },
-    {
-      "ip": "174.119.98.154",
-      "machine_id": 22032,
-      "host_id": 107464,
-      "date": null,
-      "detail": "2026-09-14 04:05: up in 43-255 s (runtime image)",
-      "run": ""
-    },
-    {
-      "ip": "38.117.87.38",
-      "machine_id": 51751,
-      "host_id": 213498,
-      "date": null,
-      "detail": "2026-09-14 04:05: up in 43-255 s (runtime image)",
-      "run": ""
-    },
-    {
-      "ip": "38.117.87.40",
-      "machine_id": 51606,
-      "host_id": 213498,
-      "date": null,
-      "detail": "2026-09-14 04:05: up in 43-255 s (runtime image)",
-      "run": ""
-    }
-  ],
-  "in_flight": []
+ "_README": [
+  "Rental blocklist. vast.ai OFFER ids churn every listing, so entries key on",
+  "the stable machine_id / host_id; ip is recorded as a fallback for boxes we",
+  "only ever saw by ssh address. tools/vast_pick.py filters search results",
+  "through this file, and tools/deploy_box.sh prints the entry to paste when",
+  "gpu_health.py fails.",
+  "",
+  "Two failure classes we have actually hit, neither visible in the listing:",
+  "  gpu_capped - right GPU model, but SW Power Cap pins the clocks. Measured",
+  "    166 TFLOPS bf16 vs 234 on a healthy 5090 (71%), and -lgc is denied",
+  "    inside the container, so it cannot be fixed from our side.",
+  "  cpu_bound  - GPU is fine but the host CPU path collapses under the env",
+  "    step + python reward loop. Scratch training is CPU-bound, so this only",
+  "    shows up on scratch runs: one 256-core host sustained ~300k steps/s",
+  "    where healthy boxes do 560-780k. Fine for warm/update-bound work,",
+  "    useless for wall-clock experiments.",
+  "",
+  "Add an entry the moment a box is judged bad, before destroying it - the",
+  "identifiers are gone from `vastai show instances` once it is destroyed."
+ ],
+ "blocked": [
+  {
+   "ip": "81.166.162.13",
+   "machine_id": null,
+   "host_id": null,
+   "reason": "gpu_capped",
+   "date": "2026-08-17",
+   "detail": "bf16 GEMM 166 TFLOPS vs ref 234 (71%); HBM 1460 GB/s; SW Power Cap active; sm pinned 1987 MHz. Trained at 175k fps vs 540k on healthy boxes.",
+   "run": "wG999 (round 13)"
+  },
+  {
+   "ip": "81.166.173.12",
+   "machine_id": null,
+   "host_id": null,
+   "reason": "gpu_capped",
+   "date": "2026-08-17",
+   "detail": "same signature as 81.166.162.13, likely the same host: 166 TFLOPS (71%), SW Power Cap active.",
+   "run": "wCOMBO / wFK5 / sG999i05 (rounds 13-14)"
+  },
+  {
+   "ip": "89.221.67.172",
+   "machine_id": null,
+   "host_id": null,
+   "reason": "cpu_bound",
+   "date": "2026-08-18",
+   "detail": "GPU healthy (94% FLOPS, 1518 GB/s) but 256-core host collapses on scratch workloads: env 751 ms + reward_py 635 ms per iter vs 166/373 on a healthy box; ~220-300k steps/s vs 560-780k. Warm/update-bound runs were fine, which masked it.",
+   "run": "marathon12h (ok warm) / sREPRO_s3 (bad scratch)"
+  },
+  {
+   "ip": "213.96.60.239",
+   "machine_id": null,
+   "host_id": null,
+   "reason": "no_cuda",
+   "date": "2026-08-16",
+   "detail": "driver did not expose CUDA; rejected at recon.",
+   "run": "-"
+  },
+  {
+   "ip": "79.160.189.79",
+   "machine_id": null,
+   "host_id": null,
+   "reason": "no_cuda",
+   "date": "2026-08-16",
+   "detail": "driver did not expose CUDA; rejected at recon.",
+   "run": "-"
+  },
+  {
+   "ip": "213.224.31.105",
+   "machine_id": null,
+   "host_id": null,
+   "reason": "gpu_capped",
+   "date": "2026-08-16",
+   "detail": "capped card found at recon.",
+   "run": "-"
+  },
+  {
+   "ip": "209.146.116.50",
+   "machine_id": 141580,
+   "host_id": 402342,
+   "date": "2026-08-21",
+   "detail": "image pull still incomplete after ~25 min (pytorch devel image); replaced before it ever became usable",
+   "run": "yaw-adaptive experiment (never started)",
+   "reason": "network"
+  },
+  {
+   "ip": "192.234.50.233",
+   "machine_id": 117864,
+   "host_id": 366851,
+   "date": "2026-08-21",
+   "detail": "48 cores but only 122k steps/s at $0.55/h = $1.25 per 1e9 steps, the worst value measured; core count did not predict throughput",
+   "run": "round 15 cost measurement",
+   "reason": "cpu_bound"
+  },
+  {
+   "ip": "199.68.217.31",
+   "machine_id": 48954,
+   "host_id": 296571,
+   "date": "2026-08-21",
+   "detail": "stuck in loading >40min, ssh closes connection; second such box today",
+   "run": "",
+   "reason": "unreliable"
+  },
+  {
+   "ip": "104.63.238.130",
+   "machine_id": 140733,
+   "host_id": 346497,
+   "date": "2026-08-21",
+   "detail": "2x5090 Ryzen 7950X, driver 595.71.05: NCCL all_reduce dies with CUDA illegal memory access on plain bench (2 ranks); solo update 4x slow with 20.6% IQR spread despite P0 clocks and passing gpu_health",
+   "run": "",
+   "reason": "unreliable"
+  },
+  {
+   "ip": "137.175.22.196",
+   "machine_id": 39565,
+   "host_id": 155125,
+   "date": null,
+   "detail": "GitHub TLS handshake fails (gnutls), clone impossible; sibling instance on same IP fine",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "137.175.76.24",
+   "machine_id": 84216,
+   "host_id": 443829,
+   "date": null,
+   "detail": "drops SSH mid-transfer repeatedly (tar harvest died twice); slow box-to-box",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "174.164.26.93",
+   "machine_id": 10134,
+   "host_id": 22965,
+   "date": null,
+   "detail": "still pulling image at 63s (60s readiness rule)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "70.54.34.6",
+   "machine_id": 56698,
+   "host_id": 79869,
+   "date": null,
+   "detail": "still loading at 63s (60s readiness rule)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "5.199.239.202",
+   "machine_id": 51355,
+   "host_id": 221174,
+   "date": null,
+   "detail": "still loading at 63s (60s readiness rule)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "61.71.33.195",
+   "machine_id": 33061,
+   "host_id": 116365,
+   "date": null,
+   "detail": "still loading at 63s (60s readiness rule)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "191.223.212.127",
+   "machine_id": 60926,
+   "host_id": 155385,
+   "date": null,
+   "detail": "scp stalled: 0.05s CPU in 25 min for a 234MB push; ssh control channel starved to silence during transfer; clone crawled at ~150KB/s-1MB/s",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "57.132.208.22",
+   "machine_id": 128688,
+   "host_id": 302304,
+   "date": null,
+   "detail": "still loading at 63s (60s readiness rule)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "209.227.188.123",
+   "machine_id": 8078,
+   "host_id": 3483,
+   "date": null,
+   "detail": "still loading at 69s (60s readiness rule)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "57.132.208.22",
+   "machine_id": 130609,
+   "host_id": 302304,
+   "date": null,
+   "detail": "still loading / ssh refused at 98s (60s readiness rule)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "125.190.184.215",
+   "machine_id": 143874,
+   "host_id": 133266,
+   "date": "2026-08-22",
+   "detail": "xMINIRACE 2026-08-22: still loading at 134s from create, missed the 60s readiness rule",
+   "run": "xMINIRACE",
+   "reason": "unreliable"
+  },
+  {
+   "ip": "94.27.141.47",
+   "machine_id": 114019,
+   "host_id": 513695,
+   "date": "2026-08-22",
+   "detail": "xMINIRACE 2026-08-22: still loading at 134s from create, missed the 60s readiness rule",
+   "run": "xMINIRACE",
+   "reason": "unreliable"
+  },
+  {
+   "ip": "83.194.197.209",
+   "machine_id": 128224,
+   "host_id": 551866,
+   "date": null,
+   "detail": "3090 SW power cap 250W of 350W default; sm 1080MHz under load, 61 TFLOPS bf16, nvidia-smi -pl denied in container (round 18 xMARGIN)",
+   "run": "",
+   "reason": "gpu_capped"
+  },
+  {
+   "ip": "194.228.55.129",
+   "machine_id": 34330,
+   "host_id": 3497,
+   "date": null,
+   "detail": "xMARGIN 2026-08-22: workstation->box scp 16MB took 105s = 0.16 MB/s (a France box measured 2.6 MB/s from the same workstation minutes earlier); 230MB of ckpt+caches would be 24 min of a 60 min budget. Card itself is fine (350/350W) and this machine is also in known_good from xSP - treat as a path/upstream defect, re-test before trusting",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "109.87.158.217",
+   "machine_id": 141130,
+   "host_id": 440416,
+   "date": null,
+   "detail": "xMARGIN 2026-08-22: ssh 'Permission denied (publickey)' still at ~110s from create, missed the 60s readiness rule",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "154.64.230.50",
+   "machine_id": 41367,
+   "host_id": 228989,
+   "date": "2026-08-22",
+   "detail": "slow start: still 'loading' 4 min after create, readiness window is 60 s; lost the xG1 race",
+   "run": "xG1 (round 19) race losers",
+   "reason": "unreliable"
+  },
+  {
+   "ip": "207.102.87.207",
+   "machine_id": 54785,
+   "host_id": 48012,
+   "date": "2026-08-22",
+   "detail": "slow start: still pulling the image 4 min after create, readiness window is 60 s; lost the xG1 race",
+   "run": "xG1 (round 19) race losers",
+   "reason": "unreliable"
+  },
+  {
+   "ip": "192.220.55.116",
+   "machine_id": 53867,
+   "host_id": 344939,
+   "date": null,
+   "detail": "container refuses account ssh keys (vastai attach ssh says already associated, ssh still Permission denied); box sat at 0% GPU util unreachable",
+   "run": "",
+   "reason": "unreliable"
+  },
+  {
+   "ip": "45.76.92.209",
+   "machine_id": 142143,
+   "host_id": 547233,
+   "date": "2026-08-22",
+   "detail": "slow start: still pulling the image past the 60 s readiness window; lost the xG1 race",
+   "run": "xG1 (round 19) race losers",
+   "reason": "unreliable"
+  },
+  {
+   "ip": "216.234.102.170",
+   "machine_id": 137644,
+   "host_id": 36058,
+   "date": "2026-08-22",
+   "detail": "slow start: no status past the 60 s readiness window; lost the xG1 race",
+   "run": "xG1 (round 19) race losers",
+   "reason": "unreliable"
+  },
+  {
+   "ip": "70.69.192.6",
+   "machine_id": 15569,
+   "host_id": 93197,
+   "date": null,
+   "detail": "still loading at 95s while a sibling was running (60s readiness rule)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "45.42.128.201",
+   "machine_id": 56206,
+   "host_id": 78532,
+   "date": null,
+   "detail": "still loading at 95s while a sibling was running (60s readiness rule)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "115.36.243.0",
+   "machine_id": 144217,
+   "host_id": 544446,
+   "reason": "unreliable",
+   "date": "2026-08-22",
+   "detail": "instance 48419202 sat in actual_status=loading for >90 s after create (direct port never opened); failed the 60-second readiness rule.",
+   "run": "xTP010 (round 19 time_pen ladder)"
+  },
+  {
+   "ip": "70.9.106.136",
+   "machine_id": 145955,
+   "host_id": 623721,
+   "reason": "unreliable",
+   "date": "2026-08-22",
+   "detail": "instance 48421968 still actual_status=loading at 74 s after create (image pull unfinished, direct port -1); failed the 60-second readiness rule.",
+   "run": "xCSPD (round 19 contact-pen on the latch finisher)"
+  },
+  {
+   "ip": "79.112.108.70",
+   "machine_id": 12131,
+   "host_id": 73118,
+   "reason": "unreliable",
+   "date": "2026-08-22",
+   "detail": "instance 48422104 still actual_status=loading at 68 s after create (direct port never opened); failed the 60-second readiness rule.",
+   "run": "xCSPD (round 19 contact-pen on the latch finisher)"
+  },
+  {
+   "ip": "50.7.159.181",
+   "machine_id": 10442,
+   "host_id": 57427,
+   "date": "2026-08-22",
+   "detail": "xNOSHP: actual_status=loading, direct_port_start=-1 at 125s after create (60s readiness rule)",
+   "run": "xNOSHP (round 19, --race-shaping 0 on the latch finisher)",
+   "reason": "unreliable"
+  },
+  {
+   "ip": "77.28.137.74",
+   "machine_id": 13866,
+   "host_id": 70700,
+   "date": "2026-08-22",
+   "detail": "xNOSHP: actual_status=loading, direct_port_start=-1 at 125s after create (60s readiness rule)",
+   "run": "xNOSHP (round 19, --race-shaping 0 on the latch finisher)",
+   "reason": "unreliable"
+  },
+  {
+   "ip": "108.212.129.15",
+   "machine_id": 143971,
+   "host_id": 392601,
+   "date": null,
+   "detail": "xFPEN race: still actual_status=loading with direct_port_start=-1 at 65s after create",
+   "run": "",
+   "reason": "unreliable"
+  },
+  {
+   "ip": "38.162.131.8",
+   "machine_id": 109150,
+   "host_id": 79725,
+   "date": null,
+   "detail": "still pulling the 10 GB image at 3.5 min; direct port never opened (60 s readiness rule)",
+   "run": "",
+   "reason": "unreliable"
+  },
+  {
+   "ip": "78.141.73.191",
+   "machine_id": 139376,
+   "host_id": 440607,
+   "date": null,
+   "detail": "still pulling the 10GB image at 90s+ (created 01:49:4x, layers incomplete at 01:51:21); machine 139376 host 440607",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "178.164.79.201",
+   "machine_id": 145137,
+   "host_id": null,
+   "date": "2026-08-23",
+   "detail": "still pulling the image at 104 s (created 01:54:09, Pull-complete loop through 01:55:53); 60 s readiness rule",
+   "run": "xSID",
+   "reason": "network"
+  },
+  {
+   "ip": "70.30.252.209",
+   "machine_id": 21327,
+   "host_id": null,
+   "date": "2026-08-23",
+   "detail": "still pulling the image at 75 s (created 01:56:58, layers still downloading 01:58:10); 60 s readiness rule",
+   "run": "xSID",
+   "reason": "network"
+  },
+  {
+   "ip": "82.178.70.219",
+   "machine_id": 12552,
+   "host_id": 80344,
+   "date": null,
+   "detail": "race loser: running at 75s but ssh publickey denied, then host-key-verification-failed at 130s",
+   "run": "",
+   "reason": "unreliable"
+  },
+  {
+   "ip": "89.221.67.138",
+   "machine_id": 41710,
+   "host_id": 229807,
+   "date": null,
+   "detail": "race loser: still pulling the image at 130s, ssh connection refused",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "223.167.245.91",
+   "machine_id": 58086,
+   "host_id": 108684,
+   "date": null,
+   "detail": "not ready in 60s: still 'Verifying Checksum' on the image pull at 65s (machine 58086, Shanghai)",
+   "run": "",
+   "reason": "unreliable"
+  },
+  {
+   "ip": "108.76.208.51",
+   "machine_id": 143861,
+   "host_id": 198030,
+   "date": null,
+   "detail": "not ready in 60s: still downloading the image at 65s (machine 143861, Kentucky)",
+   "run": "",
+   "reason": "unreliable"
+  },
+  {
+   "ip": "78.108.102.110",
+   "machine_id": 32152,
+   "host_id": 127232,
+   "date": null,
+   "detail": "still loading 90s after create; round 20 race, 3090 $0.694/h",
+   "run": "",
+   "reason": "unreliable"
+  },
+  {
+   "ip": "163.142.222.112",
+   "machine_id": 64274,
+   "host_id": 451840,
+   "date": null,
+   "detail": "still loading 2.5min after create (image pull); 60s readiness window missed",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "220.130.209.121",
+   "machine_id": 36991,
+   "host_id": 102063,
+   "date": null,
+   "detail": "still loading 2.5min after create (image pull, Verifying Checksum); 60s readiness window missed",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "70.70.153.119",
+   "machine_id": 14477,
+   "host_id": 85492,
+   "date": null,
+   "detail": "still loading 2.5min after create (image pull); 60s readiness window missed",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "142.127.68.223",
+   "machine_id": 45608,
+   "host_id": 139807,
+   "date": null,
+   "detail": "still loading 66s+ after create (image pull); 60s readiness window missed",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "92.98.4.115",
+   "machine_id": 147488,
+   "host_id": 153828,
+   "date": null,
+   "detail": "still loading 66s+ after create (image pull); 60s readiness window missed",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "92.98.4.115",
+   "machine_id": 147218,
+   "host_id": 153828,
+   "date": null,
+   "detail": "still loading 66s+ after create (image pull); 60s readiness window missed",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "108.240.82.27",
+   "machine_id": 136818,
+   "host_id": 558496,
+   "date": null,
+   "detail": "still loading 68s+ after create (image pull); 60s readiness window missed",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "137.175.76.24",
+   "machine_id": 113571,
+   "host_id": 483833,
+   "date": null,
+   "detail": "still loading 68s+ after create (image pull); 60s readiness window missed",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "153.198.91.116",
+   "machine_id": 7118,
+   "host_id": 35779,
+   "date": null,
+   "detail": "still 'loading' 2.5 min after create, readiness window is 60 s",
+   "run": "",
+   "reason": "unreliable"
+  },
+  {
+   "ip": "77.104.167.148",
+   "machine_id": 38668,
+   "host_id": 166946,
+   "date": null,
+   "detail": "still 'loading' 2.5 min after create, readiness window is 60 s",
+   "run": "",
+   "reason": "unreliable"
+  },
+  {
+   "ip": "143.109.167.245",
+   "machine_id": 114484,
+   "host_id": 430738,
+   "date": null,
+   "detail": "ssh connection refused 2 min after create; 60 s readiness window",
+   "run": "",
+   "reason": "unreliable"
+  },
+  {
+   "ip": "115.246.55.146",
+   "machine_id": 68109,
+   "host_id": 159579,
+   "date": null,
+   "detail": "ssh connection refused 2 min after create; 60 s readiness window",
+   "run": "",
+   "reason": "unreliable"
+  },
+  {
+   "ip": "77.48.24.249",
+   "machine_id": 26017,
+   "host_id": 135723,
+   "date": null,
+   "detail": "ssh refused 5.5 min after create; 60 s readiness window",
+   "run": "",
+   "reason": "unreliable"
+  },
+  {
+   "ip": "137.175.76.24",
+   "machine_id": 138174,
+   "host_id": 410852,
+   "date": "2026-08-23",
+   "detail": "still 'loading' at 95s past create; docker pull failed: Get https://registry-1.docker.io/v2/ read tcp ... connection reset by peer",
+   "run": "round 21 xNS sweep",
+   "reason": "network"
+  },
+  {
+   "ip": "95.153.57.4",
+   "machine_id": 43803,
+   "host_id": 305845,
+   "date": null,
+   "detail": "container never started: 'failed to create shim task: OCI runtime create failed', status stuck at 'created' 2m+, ssh connection refused. NOTE machine 43803 was concurrently running a healthy 3090 (48481420), so this may be oversubscription rather than a permanent defect",
+   "run": "",
+   "reason": "unreliable"
+  },
+  {
+   "ip": "204.111.33.136",
+   "machine_id": 146873,
+   "host_id": 120878,
+   "date": "2026-08-23",
+   "detail": "4x3090 offer 48305729 (m146873, EPYC 7702P): all 4 rented GPUs already 100% busy with a FOREIGN tenant's processes (1.3-3.4 GB each) at deploy time; gpu_health refused to measure, update phase 2.7x a clean 3090 box. dlperf 87.5 vs 146 for peer 4x3090 offers was the listing-side tell.",
+   "run": "cpubench (multi-GPU CPU characterisation)",
+   "reason": "unreliable"
+  },
+  {
+   "ip": "142.111.146.204",
+   "machine_id": 78080,
+   "host_id": 155385,
+   "date": "2026-08-23",
+   "detail": "4x3090 offer 35580414 (m78080, EPYC 7K62, Malaysia): all 4 cards POWER-CAPPED at 180W of the 3090's 350W. Under load sm 660-1065 MHz (vs 1620-1755 on a healthy 3090 box), 30-35 TFLOPS bf16 and 574-764 GB/s HBM vs 69-73 TFLOPS / 840 GB/s. PPO update phase 705 ms vs 434 on an identical-GPU box. gpu_health prints VERDICT healthy because it carries no 3090 reference - read the TFLOPS/W numbers, not the verdict.",
+   "run": "cpubench",
+   "reason": "gpu_capped"
+  },
+  {
+   "ip": "82.67.158.138",
+   "machine_id": 143793,
+   "host_id": 563291,
+   "date": null,
+   "detail": "SW Power Cap Active: 330W enforced of 420W default (79%); measured 841 GB/s (100% of ref) and 72 TFLOPS (105%) - capped but AT reference, blocked per CLAUDE.md rule 1 anyway",
+   "run": "",
+   "reason": "gpu_capped"
+  },
+  {
+   "ip": "185.89.252.43",
+   "machine_id": 140159,
+   "host_id": 558902,
+   "date": null,
+   "detail": "SW Power Cap Active: 300W enforced of 370W default (81%); measured 838 GB/s (100% of ref) and 68 TFLOPS (98%) - capped but AT reference, blocked per CLAUDE.md rule 1 anyway",
+   "run": "",
+   "reason": "gpu_capped"
+  },
+  {
+   "ip": "154.64.230.67",
+   "machine_id": 135788,
+   "host_id": 399360,
+   "date": null,
+   "detail": "downlink collapsed to ~90 KB/s: 81 MB of a 144 MB map shard in 15 min while five peer boxes took under 60 s for comparable payloads; GPU itself healthy (840 GB/s, 72 TFLOPS)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "38.49.42.46",
+   "machine_id": 148206,
+   "host_id": 155383,
+   "date": "2026-08-24",
+   "detail": "8x3090 m148206: container never starts - 'OCI runtime create failed: failed to inject CDI devices: unresolvable CDI devices .../gpu=7: unknown', stuck in 'created' for 2+ min across the whole window. Same machine round 22 could not bring up (22 min on Verifying Checksum). Only 8 GPUs of the 8 are advertised; gpu7 is not resolvable to the runtime.",
+   "run": "round23-scale8",
+   "reason": "no_cuda"
+  },
+  {
+   "ip": "204.111.33.136",
+   "machine_id": 146873,
+   "host_id": 120878,
+   "date": null,
+   "detail": "4x3090 offer 48305729 machine 146873: foreign tenant pid 781451 pinning all 4 GPUs at 100% / 1293MiB each, not in our namespace; gpu_health UNHEALTHY",
+   "run": "",
+   "reason": "unreliable"
+  },
+  {
+   "ip": "142.111.146.204",
+   "machine_id": 78080,
+   "host_id": 155385,
+   "date": null,
+   "detail": "4x3090 offer 35580423 machine 78080 Malaysia: power limit 180W of 370W (49%), SM 660MHz under load, bf16 30 TFLOPS vs 69 ref (43%), HBM 629 of 840 GB/s; SW Power Cap active on all 4",
+   "run": "",
+   "reason": "gpu_capped"
+  },
+  {
+   "ip": "175.155.64.224",
+   "machine_id": 27908,
+   "host_id": 124072,
+   "date": null,
+   "detail": "4x3090 offer 47776193 machine 27908 Sichuan: ssh never opened; stuck 8+ min on docker layer be6076e121b5 Verifying Checksum",
+   "run": "",
+   "reason": "unreliable"
+  },
+  {
+   "ip": "47.253.235.80",
+   "machine_id": 146316,
+   "host_id": 557452,
+   "date": "2026-08-24",
+   "detail": "4x5090 m146316: running at 44s but sshd never opened; Connection closed through t=61s; 60s rule",
+   "run": "",
+   "reason": "unreliable"
+  },
+  {
+   "ip": "31.11.81.28",
+   "machine_id": 48612,
+   "host_id": 315683,
+   "date": "2026-08-24",
+   "detail": "4x3090 m48612 recheck 2026-08-24: host power limit 300/350W, GPU1 60 TF bf16 = 87% ref with SW Power Cap active (others 95-97%); supersedes the earlier known-good entry",
+   "run": "",
+   "reason": "gpu_capped"
+  },
+  {
+   "ip": "34.222.4.102",
+   "machine_id": 147307,
+   "host_id": 557452,
+   "date": "2026-08-24",
+   "detail": "4x5090 slice m147307: still loading (image pull) at 60s; machine known-good as 8x5090 - readiness failure of the slice template, not a hardware defect",
+   "run": "",
+   "reason": "unreliable"
+  },
+  {
+   "ip": "179.255.148.147",
+   "machine_id": 146391,
+   "host_id": 314664,
+   "date": "2026-08-24",
+   "detail": "4x4090 still loading (cold image pull) at 60s; not a hardware defect - pinned pytorch image uncached",
+   "run": "",
+   "reason": "unreliable"
+  },
+  {
+   "ip": "60.250.87.179",
+   "machine_id": 40461,
+   "host_id": 109790,
+   "date": "2026-08-24",
+   "detail": "4x4090 still loading (cold image pull) at 60s; not a hardware defect - pinned pytorch image uncached",
+   "run": "",
+   "reason": "unreliable"
+  },
+  {
+   "ip": "85.218.235.6",
+   "machine_id": 101699,
+   "host_id": 57929,
+   "date": "2026-08-24",
+   "detail": "4x4090 still loading (cold image pull) at 60s; not a hardware defect - pinned pytorch image uncached",
+   "run": "",
+   "reason": "unreliable"
+  },
+  {
+   "ip": null,
+   "machine_id": 138268,
+   "host_id": null,
+   "date": "2026-08-24",
+   "detail": "2x3090 Quebec: sshd never opened in 19 min (status stuck loading); daemon killed it at READY_S - hand-added, instance gone",
+   "run": "",
+   "reason": "unreliable"
+  },
+  {
+   "ip": null,
+   "machine_id": 59159,
+   "host_id": null,
+   "date": "2026-08-24",
+   "detail": "2x3090 HK: image pull exceeded the 5-min trial window (international link); daemon killed at ready_secs=330; not a hardware defect",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "machine_id": 46769,
+   "host_id": null,
+   "ip": "141.195.21.72",
+   "reason": "unreliable",
+   "detail": "r27grid box C (instance 48693699, Norway 8x-3090 fractional): host offline 55+ min mid-run, returned, then destroyed; also nproc=256 fractional-host numba exposure",
+   "when": "2026-08-25"
+  },
+  {
+   "machine_id": 12863,
+   "host_id": null,
+   "ip": "38.44.165.4",
+   "reason": "cpu_bound",
+   "detail": "r27grid box A (instance 48693695, Kansas): GPU healthy (115% GEMM) but env-step CPU path ~130k steps/s marginal vs 390-430k on peers, ~0.5e9 steps/h; also bounced a create with success:false phantom earlier same day",
+   "when": "2026-08-26"
+  },
+  {
+   "machine_id": 95613,
+   "host_id": null,
+   "ip": null,
+   "instance_id": 49633614,
+   "gpu": "RTX 3090",
+   "reason": "network",
+   "detail": "readiness: still pulling the image 93 s after create (Spain, ES, 2026-09-02 race); ids recorded from the listing after destroy",
+   "when": "2026-09-02T09:57:55Z"
+  },
+  {
+   "machine_id": 57139,
+   "host_id": null,
+   "ip": null,
+   "instance_id": 49633617,
+   "gpu": "RTX 3090",
+   "reason": "network",
+   "detail": "readiness: still pulling the image 93 s after create (Quebec, CA, 2026-09-02 race); ids recorded from the listing after destroy",
+   "when": "2026-09-02T09:57:55Z"
+  },
+  {
+   "machine_id": 28676,
+   "host_id": null,
+   "ip": null,
+   "instance_id": 49730951,
+   "gpu": "RTX 3090",
+   "reason": "network",
+   "detail": "readiness: still pulling the image 86 s after create (Germany, DE, 2026-09-03 race); recorded by hand after destroy",
+   "when": "2026-09-03T08:38:31Z"
+  },
+  {
+   "machine_id": 112545,
+   "host_id": null,
+   "ip": null,
+   "instance_id": 49730954,
+   "gpu": "RTX 3090",
+   "reason": "network",
+   "detail": "readiness: still pulling the image 86 s after create (Florida, US, 2026-09-03 race); recorded by hand after destroy",
+   "when": "2026-09-03T08:38:31Z"
+  },
+  {
+   "ip": "184.144.255.144",
+   "machine_id": 19251,
+   "host_id": 79466,
+   "date": null,
+   "detail": "readiness: still loading 4 min after create; listing showed a duplicate ssh port (wave1 3090 race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "141.11.90.211",
+   "machine_id": 137510,
+   "host_id": 566749,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave wave1-4090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "38.117.87.51",
+   "machine_id": 51618,
+   "host_id": 213498,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave wave1-4090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "38.117.87.53",
+   "machine_id": 144730,
+   "host_id": 213498,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave wave1-4090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "142.112.39.215",
+   "machine_id": 10029,
+   "host_id": 1256,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave wave1-4090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "116.127.115.27",
+   "machine_id": 21032,
+   "host_id": 121148,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave wave1-4090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "147.102.5.224",
+   "machine_id": 51215,
+   "host_id": 283684,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave wave1-4090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "75.152.94.140",
+   "machine_id": 16103,
+   "host_id": 90137,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave wave1-4090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "217.171.200.22",
+   "machine_id": 26628,
+   "host_id": 85684,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave wave1-4090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "71.104.167.38",
+   "machine_id": 146057,
+   "host_id": 87213,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave wave1-4090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "95.253.220.115",
+   "machine_id": 31352,
+   "host_id": 92578,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave wave1-4090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "180.189.55.38",
+   "machine_id": 142902,
+   "host_id": 406325,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave wave1-5090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "180.189.55.43",
+   "machine_id": 143391,
+   "host_id": 406325,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave wave1-5090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "50.32.125.187",
+   "machine_id": 49616,
+   "host_id": 80954,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave wave1-5090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "107.206.71.138",
+   "machine_id": 147713,
+   "host_id": 197906,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave wave1-5090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "42.113.51.8",
+   "machine_id": 145381,
+   "host_id": 95374,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_5090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "50.35.57.149",
+   "machine_id": 42685,
+   "host_id": 206415,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_5090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "70.59.117.52",
+   "machine_id": 50922,
+   "host_id": 362094,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_5090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "195.224.35.250",
+   "machine_id": 58187,
+   "host_id": 135666,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill1-RTX_4090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "108.253.245.121",
+   "machine_id": 63452,
+   "host_id": 415145,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill1-RTX_4090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "185.229.26.83",
+   "machine_id": 13803,
+   "host_id": 70711,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill1-RTX_4090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "136.59.129.136",
+   "machine_id": 9204,
+   "host_id": 34742,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill1-RTX_4090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "74.113.233.93",
+   "machine_id": 145698,
+   "host_id": 315182,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill2-RTX_3090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "173.76.86.147",
+   "machine_id": 147618,
+   "host_id": 307067,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill2-RTX_3090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "45.77.214.165",
+   "machine_id": 50178,
+   "host_id": 346079,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill3-RTX_5090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "machine_id": 23132,
+   "host_id": null,
+   "ip": null,
+   "instance_id": 49805253,
+   "gpu": "RTX 5090",
+   "reason": "gpu_capped",
+   "detail": "tools/gpu_health.py --all: VERDICT below spec at deploy (wave1 fill0, 2026-09-04); destroyed before the blocklist entry, recorded by hand",
+   "when": "2026-09-04T00:43:25Z"
+  },
+  {
+   "ip": "64.38.158.67",
+   "machine_id": 53591,
+   "host_id": 102082,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_5090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "114.34.26.236",
+   "machine_id": 137085,
+   "host_id": 1801,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_5090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "178.156.229.221",
+   "machine_id": 146107,
+   "host_id": 213578,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill1-RTX_5090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "178.43.210.175",
+   "machine_id": 35203,
+   "host_id": 227461,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill1-RTX_5090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "212.31.111.185",
+   "machine_id": 141838,
+   "host_id": 296299,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill2-RTX_5090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "62.198.7.58",
+   "machine_id": 57827,
+   "host_id": 407571,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill2-RTX_5090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "61.219.11.140",
+   "machine_id": 147151,
+   "host_id": 385709,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill3-RTX_5090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "38.65.92.36",
+   "machine_id": 96679,
+   "host_id": 467312,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill3-RTX_5090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "90.95.69.181",
+   "machine_id": 79565,
+   "host_id": 439309,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_4090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "175.155.64.146",
+   "machine_id": 25706,
+   "host_id": 135676,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_4090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "145.236.167.14",
+   "machine_id": 75121,
+   "host_id": 501595,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_4090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "79.161.122.162",
+   "machine_id": 105866,
+   "host_id": 112691,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_4090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "189.79.25.23",
+   "machine_id": 19702,
+   "host_id": 56767,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill1-RTX_4090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "176.122.176.17",
+   "machine_id": 147859,
+   "host_id": 531491,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill1-RTX_4090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "198.55.59.60",
+   "machine_id": 38674,
+   "host_id": 259493,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill1-RTX_4090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "174.116.164.194",
+   "machine_id": 24573,
+   "host_id": 89091,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill2-RTX_4090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "50.173.30.254",
+   "machine_id": 4749,
+   "host_id": 24953,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_3090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "49.49.136.137",
+   "machine_id": 146890,
+   "host_id": 394880,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_3090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "65.108.94.15",
+   "machine_id": 148234,
+   "host_id": 420532,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_3090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "104.12.231.85",
+   "machine_id": 142650,
+   "host_id": 64907,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill2-RTX_3090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "209.137.222.125",
+   "machine_id": 55895,
+   "host_id": 401967,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_4090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "23.158.136.85",
+   "machine_id": 57250,
+   "host_id": 256524,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_4090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "87.197.111.68",
+   "machine_id": 137723,
+   "host_id": 461212,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill1-RTX_4090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "82.76.142.167",
+   "machine_id": 147588,
+   "host_id": 605119,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_5090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "109.95.207.230",
+   "machine_id": 41881,
+   "host_id": 230808,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_5090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "50.115.148.16",
+   "machine_id": 136006,
+   "host_id": 545344,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_5090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "162.249.226.242",
+   "machine_id": 55862,
+   "host_id": 90577,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_5090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "198.53.64.194",
+   "machine_id": 25132,
+   "host_id": 18,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_5090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "79.117.25.247",
+   "machine_id": 45007,
+   "host_id": 309734,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill1-RTX_5090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "85.10.218.46",
+   "machine_id": 36376,
+   "host_id": 62819,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill1-RTX_5090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "45.32.91.205",
+   "machine_id": 148412,
+   "host_id": 553680,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill2-RTX_5090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "71.185.123.214",
+   "machine_id": 100489,
+   "host_id": 508830,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill2-RTX_5090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "154.68.174.226",
+   "machine_id": 54715,
+   "host_id": 154140,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill3-RTX_5090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "108.39.26.2",
+   "machine_id": 132465,
+   "host_id": 70142,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "90.224.159.6",
+   "machine_id": 141927,
+   "host_id": 20317,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "62.77.252.125",
+   "machine_id": 145261,
+   "host_id": 514605,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "47.199.120.88",
+   "machine_id": 144483,
+   "host_id": 577134,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "93.91.156.85",
+   "machine_id": 40773,
+   "host_id": 214845,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "24.196.244.156",
+   "machine_id": 147024,
+   "host_id": 356741,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave heldout)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "151.177.225.95",
+   "machine_id": 58488,
+   "host_id": 446098,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave heldout)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "72.38.200.117",
+   "machine_id": 137730,
+   "host_id": 208522,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave heldout)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "86.127.236.182",
+   "machine_id": 16571,
+   "host_id": 87485,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave heldout)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "135.131.174.76",
+   "machine_id": 36542,
+   "host_id": 110266,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_5090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "81.183.231.113",
+   "machine_id": 44336,
+   "host_id": 81036,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_5090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "81.183.231.113",
+   "machine_id": 30024,
+   "host_id": 81036,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_5090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "81.183.231.113",
+   "machine_id": 40229,
+   "host_id": 81036,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_5090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "91.203.49.76",
+   "machine_id": 53102,
+   "host_id": 103274,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill1-RTX_4090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "60.53.150.159",
+   "machine_id": 138228,
+   "host_id": 86991,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill1-RTX_4090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "98.191.113.12",
+   "machine_id": 48161,
+   "host_id": 111892,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill1-RTX_4090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "81.167.235.66",
+   "machine_id": 12764,
+   "host_id": 78459,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill1-RTX_4090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "94.27.179.20",
+   "machine_id": 83029,
+   "host_id": 443714,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill2-RTX_5090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "88.91.74.67",
+   "machine_id": 30550,
+   "host_id": 86812,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill3-RTX_4090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "92.180.27.84",
+   "machine_id": 55266,
+   "host_id": 33035,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill3-RTX_4090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "92.180.27.84",
+   "machine_id": 55957,
+   "host_id": 33035,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill3-RTX_4090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "69.176.92.107",
+   "machine_id": 41465,
+   "host_id": 60400,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill3-RTX_4090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "143.131.225.132",
+   "machine_id": 30407,
+   "host_id": 96250,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_4090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "162.198.38.16",
+   "machine_id": 137593,
+   "host_id": 394046,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_4090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "45.81.32.13",
+   "machine_id": 48630,
+   "host_id": 46431,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_4090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "45.81.32.55",
+   "machine_id": 51069,
+   "host_id": 46431,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_4090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "50.175.95.210",
+   "machine_id": 31219,
+   "host_id": 96690,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_4090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "98.142.241.142",
+   "machine_id": 123134,
+   "host_id": 208874,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill1-RTX_4090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "213.97.25.93",
+   "machine_id": 43132,
+   "host_id": 255824,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill1-RTX_4090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "1.193.138.167",
+   "machine_id": 57509,
+   "host_id": 115630,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill2-RTX_4090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "207.216.48.74",
+   "machine_id": 13428,
+   "host_id": 55313,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill2-RTX_4090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "192.165.134.28",
+   "machine_id": 54250,
+   "host_id": 382033,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_5090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "108.255.76.60",
+   "machine_id": 55913,
+   "host_id": 71705,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_5090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "149.248.21.7",
+   "machine_id": 141821,
+   "host_id": 371998,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill2-RTX_5090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "77.52.212.57",
+   "machine_id": 55696,
+   "host_id": 404114,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill2-RTX_5090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "47.186.21.5",
+   "machine_id": 14909,
+   "host_id": 79986,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_4090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "71.175.237.103",
+   "machine_id": 52827,
+   "host_id": 47308,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill1-RTX_5090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "73.224.139.60",
+   "machine_id": 56143,
+   "host_id": 334262,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill1-RTX_5090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "50.118.185.90",
+   "machine_id": 145599,
+   "host_id": 623333,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_5090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "179.185.24.59",
+   "machine_id": 146669,
+   "host_id": 614268,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_5090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "5.199.157.208",
+   "machine_id": 144653,
+   "host_id": 511129,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_5090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "89.205.113.140",
+   "machine_id": 34046,
+   "host_id": 125276,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_5090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "79.117.120.96",
+   "machine_id": 25239,
+   "host_id": 130210,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_4090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "115.73.222.24",
+   "machine_id": 35959,
+   "host_id": 55116,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_4090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "61.32.91.194",
+   "machine_id": 147672,
+   "host_id": 403004,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_5090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "82.67.110.96",
+   "machine_id": 54278,
+   "host_id": 80960,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_5090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "74.211.99.207",
+   "machine_id": 144282,
+   "host_id": 526342,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "31.13.237.164",
+   "machine_id": 57636,
+   "host_id": 269644,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "64.64.224.51",
+   "machine_id": 103782,
+   "host_id": 392559,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "38.244.145.196",
+   "machine_id": 58866,
+   "host_id": 149408,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "113.199.208.59",
+   "machine_id": 142108,
+   "host_id": 571938,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill2-RTX_5090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "70.29.117.18",
+   "machine_id": 145277,
+   "host_id": 353487,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill3-RTX_4090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "220.135.0.171",
+   "machine_id": 56842,
+   "host_id": 416420,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "166.113.52.39",
+   "machine_id": 30840,
+   "host_id": 138436,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_5090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "181.173.81.80",
+   "machine_id": 31027,
+   "host_id": 142157,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill1-RTX_4090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "78.44.170.162",
+   "machine_id": 9586,
+   "host_id": 58623,
+   "date": null,
+   "detail": "readiness: not answering ssh 72 s after create (wave fill3-RTX_4090)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "180.70.178.129",
+   "machine_id": 50121,
+   "host_id": 365619,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "37.142.193.243",
+   "machine_id": 48618,
+   "host_id": 354394,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "81.109.160.130",
+   "machine_id": 41599,
+   "host_id": 296778,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "78.69.105.254",
+   "machine_id": 141275,
+   "host_id": 589561,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "192.183.184.93",
+   "machine_id": 38382,
+   "host_id": 254084,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "83.195.246.217",
+   "machine_id": 120270,
+   "host_id": 393491,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "162.142.111.64",
+   "machine_id": 148275,
+   "host_id": 553824,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "142.204.97.21",
+   "machine_id": 49714,
+   "host_id": 357545,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status running (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "75.39.162.228",
+   "machine_id": 141586,
+   "host_id": 593316,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "209.121.195.117",
+   "machine_id": 77714,
+   "host_id": 502537,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "103.116.53.7",
+   "machine_id": 58329,
+   "host_id": 436065,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status running (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "51.174.193.83",
+   "machine_id": 146083,
+   "host_id": 633266,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "87.62.96.196",
+   "machine_id": 142042,
+   "host_id": 566763,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status running (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "188.252.233.2",
+   "machine_id": 136902,
+   "host_id": 562916,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "103.9.41.92",
+   "machine_id": 55898,
+   "host_id": 410494,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "72.253.18.253",
+   "machine_id": 144582,
+   "host_id": 620288,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status running (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "99.192.58.220",
+   "machine_id": 140447,
+   "host_id": 562109,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "13.140.9.125",
+   "machine_id": 52642,
+   "host_id": 138577,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "201.188.64.199",
+   "machine_id": 67809,
+   "host_id": 292781,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "116.122.206.233",
+   "machine_id": 53711,
+   "host_id": 80057,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "66.114.157.224",
+   "machine_id": 17049,
+   "host_id": 96607,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "96.3.252.118",
+   "machine_id": 58012,
+   "host_id": 370680,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "24.242.49.213",
+   "machine_id": 147380,
+   "host_id": 302468,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "108.180.151.167",
+   "machine_id": 10236,
+   "host_id": 61966,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "193.143.121.109",
+   "machine_id": 137884,
+   "host_id": 8725,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "38.114.84.170",
+   "machine_id": 146572,
+   "host_id": 264868,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "62.218.148.163",
+   "machine_id": 137316,
+   "host_id": 362838,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "70.68.84.2",
+   "machine_id": 135913,
+   "host_id": 78432,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "183.89.209.74",
+   "machine_id": 35777,
+   "host_id": 166741,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "159.48.242.14",
+   "machine_id": 19205,
+   "host_id": 4535,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "69.156.18.56",
+   "machine_id": 56343,
+   "host_id": 417260,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "1.233.92.34",
+   "machine_id": 146159,
+   "host_id": 623526,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "37.191.108.170",
+   "machine_id": 148237,
+   "host_id": 507980,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "171.101.232.241",
+   "machine_id": 136815,
+   "host_id": 95290,
+   "date": null,
+   "detail": "gpu_health below spec (exit_scratch)",
+   "run": "",
+   "reason": "gpu_capped"
+  },
+  {
+   "ip": "85.51.24.78",
+   "machine_id": 140371,
+   "host_id": 581612,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "193.77.94.83",
+   "machine_id": 143279,
+   "host_id": 353680,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "216.227.169.74",
+   "machine_id": 141325,
+   "host_id": 554011,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status None (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "103.119.82.252",
+   "machine_id": 145620,
+   "host_id": 554895,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "222.230.13.166",
+   "machine_id": 7543,
+   "host_id": 45726,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status running (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "64.90.9.69",
+   "machine_id": 144733,
+   "host_id": 513108,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "58.8.190.245",
+   "machine_id": 116834,
+   "host_id": 92795,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "78.186.168.198",
+   "machine_id": 131560,
+   "host_id": 343268,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "59.127.5.172",
+   "machine_id": 13815,
+   "host_id": 69403,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status exited (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "199.126.134.31",
+   "machine_id": 35948,
+   "host_id": 195919,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "185.194.59.64",
+   "machine_id": 142365,
+   "host_id": 274752,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "108.26.251.160",
+   "machine_id": 147027,
+   "host_id": 637654,
+   "date": null,
+   "detail": "gpu_health below spec (exit_scratch)",
+   "run": "",
+   "reason": "gpu_capped"
+  },
+  {
+   "ip": "190.111.198.202",
+   "machine_id": 143521,
+   "host_id": 70317,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "133.165.145.17",
+   "machine_id": 138339,
+   "host_id": 6631,
+   "date": null,
+   "detail": "gpu_health below spec (exit_scratch)",
+   "run": "",
+   "reason": "gpu_capped"
+  },
+  {
+   "ip": "193.251.39.219",
+   "machine_id": 142599,
+   "host_id": 69666,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "172.218.118.138",
+   "machine_id": 42580,
+   "host_id": 197411,
+   "date": null,
+   "detail": "gpu_health below spec (exit_scratch)",
+   "run": "",
+   "reason": "gpu_capped"
+  },
+  {
+   "ip": "202.79.96.144",
+   "machine_id": 55681,
+   "host_id": 51650,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "70.187.30.25",
+   "machine_id": 31480,
+   "host_id": 114718,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status loading (cyRATCH race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "38.7.207.219",
+   "machine_id": 147887,
+   "host_id": 646429,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status loading (cyRATCH race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "83.39.120.73",
+   "machine_id": 146645,
+   "host_id": 640603,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status loading (cyRATCH race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "79.161.30.134",
+   "machine_id": 5629,
+   "host_id": 1276,
+   "date": null,
+   "detail": "gpu_health below spec (cyRATCH)",
+   "run": "",
+   "reason": "gpu_capped"
+  },
+  {
+   "ip": "84.50.156.21",
+   "machine_id": 57182,
+   "host_id": 86295,
+   "date": null,
+   "detail": "readiness: no ssh 72-95 s after create, status running (cyRATCH race)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "instance": 50670621,
+   "machine_id": 145795,
+   "host_id": 549946,
+   "reason": "network",
+   "detail": "readiness: status created 300 s after create, direct=False (mmANCHU race 2026-09-12)",
+   "when": "2026-09-12"
+  },
+  {
+   "instance": 50672466,
+   "machine_id": 38389,
+   "host_id": 175463,
+   "reason": "network",
+   "detail": "readiness: status created 300 s after create, direct=False (mmANCHU race 2026-09-12)",
+   "when": "2026-09-12"
+  },
+  {
+   "instance": 50672471,
+   "machine_id": 51888,
+   "host_id": 310671,
+   "reason": "network",
+   "detail": "readiness: status loading 300 s after create, direct=False (mmANCHU race 2026-09-12)",
+   "when": "2026-09-12"
+  },
+  {
+   "instance": 50676448,
+   "machine_id": 52134,
+   "host_id": 289817,
+   "reason": "network",
+   "detail": "readiness: status created 300 s after create with the plain cuda image (mmANCHU race 2026-09-12)",
+   "when": "2026-09-12"
+  },
+  {
+   "instance": 50676454,
+   "machine_id": 44251,
+   "host_id": 289647,
+   "reason": "network",
+   "detail": "readiness: status created 300 s after create with the plain cuda image (mmANCHU race 2026-09-12)",
+   "when": "2026-09-12"
+  },
+  {
+   "ip": "121.167.252.172",
+   "machine_id": 146025,
+   "host_id": 387422,
+   "date": null,
+   "detail": "readiness: not running 300 s after create (loading )",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "217.210.63.12",
+   "machine_id": 146201,
+   "host_id": 596524,
+   "date": null,
+   "detail": "readiness: not running 300 s after create (loading )",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "95.3.33.46",
+   "machine_id": 103058,
+   "host_id": 39788,
+   "date": null,
+   "detail": "readiness: loading with status_msg 'could not resolve host: cloud.vast.ai' (host DNS broken), 2026-09-13",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "175.155.64.191",
+   "machine_id": 29558,
+   "host_id": 135676,
+   "date": null,
+   "detail": "readiness: not running 300 s after create (loading 5c5eec8ebf45: Verifying Checksum)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "82.78.205.80",
+   "machine_id": 9105,
+   "host_id": 25192,
+   "date": null,
+   "detail": "readiness: not running 300 s after create (loading c612795a91a4: Pull complete)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "137.175.76.24",
+   "machine_id": 144419,
+   "host_id": 483833,
+   "date": null,
+   "detail": "readiness: not running 300 s after create (loading f557aa5ee224: Pull complete)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "180.189.55.43",
+   "machine_id": 149083,
+   "host_id": 406325,
+   "date": null,
+   "detail": "readiness: not running 300 s after create (loading #7 55.72 Get:22 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libkmo)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "108.41.48.36",
+   "machine_id": 59068,
+   "host_id": 388199,
+   "date": null,
+   "detail": "2026-09-14 04:10: running for 35 min, ssh refused on proxy ssh3:11630 and direct 108.41.48.36:42487 twice",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "223.75.129.75",
+   "machine_id": 144241,
+   "host_id": 600850,
+   "date": null,
+   "detail": "readiness: not running 300 s after create (loading f557aa5ee224: Pull complete)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "103.127.133.109",
+   "machine_id": 139040,
+   "host_id": 412133,
+   "date": null,
+   "detail": "readiness: not running 300 s after create (loading #5 DONE 3.4s)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "142.115.153.129",
+   "machine_id": 28714,
+   "host_id": 105356,
+   "date": null,
+   "detail": "readiness: not running 300 s after create (loading )",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "75.129.98.31",
+   "machine_id": 36331,
+   "host_id": 54354,
+   "date": null,
+   "detail": "readiness: not running 300 s after create (loading #6 6.272 Fetched 48.6 MB in 4s (11.7 MB/s)\n#6 6.272 Reading package lists...)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "14.234.172.15",
+   "machine_id": 149368,
+   "host_id": 675994,
+   "date": "2026-09-25",
+   "detail": "pip install of scipy/numpy/opencv/numba hung 32 min with 3 s CPU during deploy (2026-09-25 16:23-16:56); machine 149368 Vietnam",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "machine_id": 145957,
+   "host_id": null,
+   "date": "2026-09-25",
+   "detail": "GPU0 BUSY with 6200 MiB in use at deploy (a foreign tenant); gpu_health VERDICT UNHEALTHY; instance 52606365 (New Jersey 5090, offer 52451769) destroyed by the driver before it could be blocked - entered by hand from the offer's machine id",
+   "run": "mzq_v1",
+   "reason": "unreliable"
+  },
+  {
+   "ip": "187.212.155.132",
+   "machine_id": 149904,
+   "host_id": 567567,
+   "date": null,
+   "detail": "readiness: not running 300 s after create (loading 66274a3d5205: Verifying Checksum\n66274a3d5205: Download complete)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "92.138.166.13",
+   "machine_id": 105973,
+   "host_id": 86027,
+   "date": "2026-09-26",
+   "detail": "went offline ~10 min after a healthy deploy (2026-09-26 04:12): vast actual_status offline on 4 polls over 80 s with gpu/cpu util 0, ssh proxy ssh1.vast.ai:39176 refused, direct 92.138.166.13:50032 timed out",
+   "run": "pl3lvl_b050",
+   "reason": "network"
+  },
+  {
+   "ip": "27.77.189.193",
+   "machine_id": 53974,
+   "host_id": 173122,
+   "date": "2026-09-26",
+   "detail": "readiness: not running 300 s after create (loading #7 92.58 Get:88 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libdw1)",
+   "run": "v1ri_b050",
+   "reason": "network"
+  },
+  {
+   "ip": null,
+   "machine_id": 31389,
+   "host_id": null,
+   "date": "2026-09-26",
+   "detail": "gpu_health UNHEALTHY at deploy (instance 52708286, RTX 4090): bf16 GEMM 143 TFLOPS, HBM 916 GB/s, SM 2250 MHz at 109 W of 350 W under load; released by the box queue before it was blocked, entered by hand from the race log's machine id",
+   "run": "v1ri_b100",
+   "reason": "gpu_capped"
+  },
+  {
+   "ip": "207.5.241.27",
+   "machine_id": 148805,
+   "host_id": 654284,
+   "date": null,
+   "detail": "readiness: not running 300 s after create (loading )",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": null,
+   "machine_id": 46808,
+   "host_id": null,
+   "date": "2026-09-26",
+   "detail": "instance 52734386: running after 196 s, then 'Permission denied (publickey)' at the deploy's ssh recon (13:04); released by the queue before it was blocked",
+   "run": "v5_b200",
+   "reason": "ssh"
+  },
+  {
+   "ip": null,
+   "machine_id": 42709,
+   "host_id": null,
+   "date": "2026-09-26",
+   "detail": "instance 52828907 (RTX 5090, offer 30940766): running after 33 s, then 'Connection refused' on ssh5.vast.ai:28906 for the 60 s readiness wait and the deploy's ssh recon (23:55-23:57); released by the queue before it was blocked",
+   "run": "ch3v2SJ_b200",
+   "reason": "ssh"
+  },
+  {
+   "ip": null,
+   "machine_id": 57734,
+   "host_id": null,
+   "reason": "gpu_capped",
+   "date": "2026-10-07",
+   "detail": "RTX 4090 power-limited to 300 W of the 500 W default (60%); bf16 GEMM 133 TFLOPS, HBM copy 914 GB/s, sm 2070 MHz at 82 W under load; gpu_health UNHEALTHY. Instance 54585323 (Romania, $0.363/h), released by the box driver before it could be blocked.",
+   "run": "uf2R2P (overnight 2026-10-07)"
+  },
+  {
+   "ip": null,
+   "machine_id": 118106,
+   "host_id": null,
+   "reason": "unreliable",
+   "date": "2026-10-07",
+   "detail": "RTX 4090 BUSY at deploy: 8,372 MiB already in use by another process (a foreign tenant); gpu_health could not judge it. Instance 54585327 (Hungary, $0.441/h), released by the box driver before it could be blocked.",
+   "run": "uf2R2U (overnight 2026-10-07)"
+  },
+  {
+   "ip": "85.195.201.222",
+   "machine_id": 151792,
+   "host_id": 233636,
+   "date": "2026-10-08",
+   "detail": "not running after 330s (loading): ",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "212.85.84.41",
+   "machine_id": 52214,
+   "host_id": 93447,
+   "date": "2026-10-08",
+   "detail": "not running after 330s (loading): ",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "107.159.55.113",
+   "machine_id": 64949,
+   "host_id": 464257,
+   "date": "2026-10-08",
+   "detail": "running instance stopped by the host side at ~23:30 2026-10-08 (intended_status stopped, not issued by us); restart refused 'required resources currently unavailable' - the GPU was re-rented; uf2SCx1f5 checkpoints lost",
+   "run": "",
+   "reason": "unreliable"
+  },
+  {
+   "ip": "175.121.93.64",
+   "machine_id": 39913,
+   "host_id": 90277,
+   "date": "2026-10-09",
+   "detail": "RTX 5090 on Xeon E5-2670 v3 (Haswell 2.3 GHz, 23-CPU quota): 52.7k steps/s at GPU util 2% vs 174-190k on Zen 4/5 5090s with the same trainer (uf2 scaling sweep, 2026-10-09)",
+   "run": "",
+   "reason": "cpu_bound"
+  },
+  {
+   "ip": "96.241.29.99",
+   "machine_id": 138352,
+   "host_id": 293320,
+   "date": "2026-10-09",
+   "detail": "not running after 330s (loading): 2.7.1-cuda12.8-cudnn9-runtime: Pulling from pytorch/pytorch\nf557aa5ee224: Pulling fs layer\nc612795a91a4: Pulling fs layer",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "96.234.107.51",
+   "machine_id": 145975,
+   "host_id": 617499,
+   "date": "2026-10-09",
+   "detail": "not running after 330s (loading): failed to copy: failed to send write: write /var/lib/docker/containerd/io.containerd.content.v1.content/ingest/c2bbd9c9ed2748d623cce56dcdc41941289e8bfcca6ac1ada",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "62.218.148.163",
+   "machine_id": 149524,
+   "host_id": 433014,
+   "date": "2026-10-09",
+   "detail": "not running after 330s (loading): ",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "171.235.173.155",
+   "machine_id": 68144,
+   "host_id": 466625,
+   "date": "2026-10-20",
+   "detail": "autoresearch r1b3 2026-10-20 01:10: RTX 3090 Ti power limit 300 W of 450 W default (67%), bf16 GEMM 59 TFLOPS, sm 1350 MHz under load; gpu_health UNHEALTHY",
+   "run": "",
+   "reason": "gpu_capped"
+  }
+ ],
+ "known_good": [
+  {
+   "ip": "95.253.220.115",
+   "machine_id": null,
+   "host_id": null,
+   "date": "2026-08-17",
+   "detail": "96-100% FLOPS, 1518 GB/s; sustained 824k steps/s on a full 8e9 scratch run (fastest measured).",
+   "run": "wFK2 / sREPRO_s3 / sG999i05_ext"
+  },
+  {
+   "ip": "81.183.225.11",
+   "machine_id": null,
+   "host_id": null,
+   "date": "2026-08-18",
+   "detail": "92% FLOPS, 1517 GB/s; healthy.",
+   "run": "wG999 / sG999"
+  },
+  {
+   "ip": "137.175.76.24",
+   "machine_id": 138999,
+   "host_id": 483833,
+   "date": "2026-08-21",
+   "detail": "23c 5090, 201k steps/s = $0.65 per 1e9 steps; best value measured so far",
+   "run": "round 15 cost measurement"
+  },
+  {
+   "ip": "178.43.173.42",
+   "machine_id": 41760,
+   "host_id": 227461,
+   "date": "2026-08-21",
+   "detail": "96c 5090, ran sYAWc to 5.8e9 without issue",
+   "run": "sYAWc"
+  },
+  {
+   "ip": "209.226.246.174",
+   "machine_id": 123668,
+   "host_id": 450573,
+   "date": "2026-08-21",
+   "detail": "4x3090 EPYC 7502: healthy GPUs (840GB/s, 71TF bf16), solo 2474ms/iter champion cfg; GeForce P2P off -> NCCL SHM 1.7GB/s, DDP 4rk 1.73x / 2rk 1.43x; NCCL_SHM_USE_CUDA_MEMCPY deadlocks trainer; full C1-C3 DDP validation passed here 2026-08-21",
+   "run": ""
+  },
+  {
+   "ip": "137.175.22.196",
+   "machine_id": 39565,
+   "host_id": 155125,
+   "date": null,
+   "detail": "3090, 172-227k fps on xEZ arm, 99% util, healthy",
+   "run": ""
+  },
+  {
+   "ip": "192.220.55.116",
+   "machine_id": 53867,
+   "host_id": 344939,
+   "date": null,
+   "detail": "3090, 148k fps xGE arm, healthy full hour",
+   "run": ""
+  },
+  {
+   "ip": "59.127.5.172",
+   "machine_id": 13815,
+   "host_id": 69403,
+   "date": null,
+   "detail": "3090, 221k fps xBIN arm, healthy hour",
+   "run": ""
+  },
+  {
+   "ip": "173.239.92.155",
+   "machine_id": 143878,
+   "host_id": 74292,
+   "date": null,
+   "detail": "3090, 297k fps, ran xSC/xSC2/xSC2c arms flawlessly ~4h",
+   "run": ""
+  },
+  {
+   "ip": "209.227.188.123",
+   "machine_id": 7777,
+   "host_id": 3483,
+   "date": null,
+   "detail": "3090, xSC2b arm healthy",
+   "run": ""
+  },
+  {
+   "ip": "154.64.230.67",
+   "machine_id": 135788,
+   "host_id": 399360,
+   "date": null,
+   "detail": "3090, xSC3 arm healthy",
+   "run": ""
+  },
+  {
+   "ip": "173.239.92.155",
+   "machine_id": 143878,
+   "host_id": 74292,
+   "date": null,
+   "detail": "3090, 264k steps/s sustained for a full 800M-step hour on xROUTE; 2.67 MB/s scp; healthy 841GB/s 73TF",
+   "run": ""
+  },
+  {
+   "ip": "86.127.236.182",
+   "machine_id": 16571,
+   "host_id": 87485,
+   "date": "2026-08-22",
+   "detail": "21c 3090, Spain, 5.5 Gbps down: ssh-ready 31.5 s after create (the only candidate of four that beat the 60 s rule - the others were still pulling the devel image at 70-150 s); 231,246 steps/s sustained for a full 2.0e9-step run, 841 GB/s HBM, 69 TFLOPS bf16, 1,665 MHz, 324 W of 350 W",
+   "run": "xCSPD (round 19 contact-pen on the latch finisher)"
+  },
+  {
+   "ip": "86.127.236.182",
+   "machine_id": 16571,
+   "host_id": 87485,
+   "date": "2026-08-23",
+   "detail": "3090 m16571: supplied 4 of 6 boxes in round 21 with no failed candidate; both first two \"running\" at the first status poll (<=60s of create, image cached); 276,634 / 278,547 / 258,398 / 238,274 steps/s sustained over full 800M-step scratch hours; 840 GB/s HBM, 70-73 TFLOPS bf16, EPYC 7B13",
+   "run": "round 21 xNS64MB8/xNS128MB32/xNS32/xNS16"
+  },
+  {
+   "ip": "86.127.236.182",
+   "machine_id": 16571,
+   "host_id": 87485,
+   "date": "2026-08-23",
+   "detail": "4x3090 EPYC 7B13 (m16571): 4/4 GPUs healthy 840 GB/s, 69-73 TFLOPS bf16; ready <2 min; DDPx4 3.38x aggregate over 1 rank",
+   "run": "cpubench (multi-GPU CPU characterisation)"
+  },
+  {
+   "ip": "31.11.81.28",
+   "machine_id": 48612,
+   "host_id": 315683,
+   "date": "2026-08-23",
+   "detail": "4x3090 TR 3960X (m48612): 4/4 healthy 840 GB/s, 61-68 TFLOPS bf16, whole machine (gpu_frac 1.0); ready ~4 min",
+   "run": "cpubench (multi-GPU CPU characterisation)"
+  },
+  {
+   "ip": "65.109.137.0",
+   "machine_id": 3824,
+   "host_id": 20210,
+   "date": "2026-08-23",
+   "detail": "4x3090 EPYC 7282 16c/32t (m3824, Finland): 4/4 healthy 862 GB/s, 71 TFLOPS bf16, 350W, whole machine; ready ~5 min. Only 8 threads/GPU - DDPx4 starves at OMP>4/rank",
+   "run": "cpubench (multi-GPU CPU characterisation)"
+  },
+  {
+   "ip": "195.70.60.91",
+   "machine_id": 5855,
+   "host_id": 38488,
+   "date": "2026-08-23",
+   "detail": "1x3090 EPYC 7282 quarter-box (m5855): healthy 842 GB/s, 71 TFLOPS bf16, 315W of 330; ran the full envs ladder; cgroup quota 7.68 CPU vs nproc 32 - OMP 8 beats the cores/2 default by 21.7%",
+   "run": "round22-scaling"
+  },
+  {
+   "ip": "209.226.246.174",
+   "machine_id": 123668,
+   "host_id": 450573,
+   "date": "2026-08-23",
+   "detail": "4x3090 EPYC 7502 (m123668, 42.7 eff cores, gpu_frac 0.67, $0.707/h): 4/4 healthy 840 GB/s 69-71 TFLOPS bf16 290-316W of 350; 1.30M steps/s aggregate at 32,768 envs/rank T=32 = $0.151 per 1e9 steps, the cheapest 4x measured",
+   "run": "round22-scaling"
+  },
+  {
+   "ip": "202.122.49.242",
+   "machine_id": 67803,
+   "host_id": 458442,
+   "date": "2026-08-23",
+   "detail": "4x A100 SXM4 80GB (m67803, EPYC 7713, 61.4 CPU quota, 2 TB RAM, NVLink NV12 all-to-all, $4.908/h): 1764 GB/s, 239-270 TFLOPS bf16 at 400W; 2.54M steps/s at 4x32,768 envs T=32, allreduce only 27.9 ms",
+   "run": "round22-scaling"
+  },
+  {
+   "ip": "34.222.4.102",
+   "machine_id": 147307,
+   "host_id": 557452,
+   "date": "2026-08-23",
+   "detail": "8x5090 2x EPYC 7B12 256t 472G whole machine (m147307, $3.201/h): 8/8 healthy 1517-1524 GB/s, 230-238 TFLOPS bf16; 8-rank DDP 5.05M steps/s at 32,768 envs/rank. CAVEAT: any rank count BELOW 8 (2 and 4, six attempts, P2P/SHM off, both NUMA halves, overlap off) aborts in the NCCL watchdog with a CUDA error - only the full-8 config runs",
+   "run": "round22-scaling"
+  },
+  {
+   "ip": "154.64.230.67",
+   "machine_id": 136705,
+   "host_id": 185086,
+   "date": "2026-08-24",
+   "detail": "8x3090 2x Xeon E5-2673 v4 40c/80t 251G whole machine (m136705, $1.0133/h = $0.127/gpu-h): 8/8 healthy 836-839 GB/s 68-73 TFLOPS bf16 277-329W of 350. 8-rank DDP 1.63M steps/s at 65,536 envs/rank T=32 = $0.172 per 1e9, LOSES to 4x3090's $0.151. Only 5 PHYSICAL cores per GPU: env 1703ms at 1 rank vs 472ms on a 4x3090 EPYC 7502 box, 8-rank efficiency 68.0%. 65,536 envs/rank fits at 22.29G of 24. Image layers cache after a failed pull - the retry was running in 75s.",
+   "run": "round23-scale8"
+  },
+  {
+   "ip": "83.54.28.112",
+   "machine_id": 95613,
+   "host_id": 5477,
+   "date": null,
+   "detail": "1x3090 EPYC 7B12, 32 eff cores; gpu_health 100%/106%; scratch cannonball 324k fps @act3, 402k @act4",
+   "run": ""
+  },
+  {
+   "ip": "222.230.13.166",
+   "machine_id": 7543,
+   "host_id": 45726,
+   "date": "2026-08-24",
+   "detail": "2x3090 Ryzen 9 5950X 16c/32t 125GB (m7543, Japan): both cards 844/841 GB/s, 74/75 TFLOPS bf16 (107-109% of ref); ready <60s; sustained 661,545 steps/s for a full 2.4e9-step hour on a 5-map DDP run. NOTE cgroup quota 30 < nproc 32 - ddp_launch reads the quota now",
+   "run": "mmSMOKE (multi-map DDP integration smoke)"
+  },
+  {
+   "ip": "180.189.55.43",
+   "machine_id": 148838,
+   "host_id": 406325,
+   "date": null,
+   "detail": "2026-09-13: came up in ~140 s with the runtime image under the 5-min rule (old 72-s block obsolete)",
+   "run": ""
+  },
+  {
+   "ip": "180.189.55.43",
+   "machine_id": 148966,
+   "host_id": 406325,
+   "date": null,
+   "detail": "2026-09-13: came up in ~140 s with the runtime image under the 5-min rule (old 72-s block obsolete)",
+   "run": ""
+  },
+  {
+   "ip": "180.189.55.43",
+   "machine_id": 148892,
+   "host_id": 406325,
+   "date": null,
+   "detail": "2026-09-13: came up in ~140 s with the runtime image under the 5-min rule (old 72-s block obsolete)",
+   "run": ""
+  },
+  {
+   "ip": "180.189.55.38",
+   "machine_id": 142849,
+   "host_id": 406325,
+   "date": null,
+   "detail": "2026-09-13 20:55: up in 33-241 s with the runtime image (obsolete 72-s block)",
+   "run": ""
+  },
+  {
+   "ip": "180.189.55.43",
+   "machine_id": 149075,
+   "host_id": 406325,
+   "date": null,
+   "detail": "2026-09-13 20:55: up in 33-241 s with the runtime image (obsolete 72-s block)",
+   "run": ""
+  },
+  {
+   "ip": "180.189.55.43",
+   "machine_id": 144910,
+   "host_id": 406325,
+   "date": null,
+   "detail": "2026-09-13 20:55: up in 33-241 s with the runtime image (obsolete 72-s block)",
+   "run": ""
+  },
+  {
+   "ip": "1.34.114.64",
+   "machine_id": 53714,
+   "host_id": 116365,
+   "date": null,
+   "detail": "2026-09-13 20:55: up in 33-241 s with the runtime image (obsolete 72-s block)",
+   "run": ""
+  },
+  {
+   "ip": "174.119.98.154",
+   "machine_id": 22032,
+   "host_id": 107464,
+   "date": null,
+   "detail": "2026-09-13 20:55: up in 33-241 s with the runtime image (obsolete 72-s block)",
+   "run": ""
+  },
+  {
+   "ip": "38.246.237.140",
+   "machine_id": 123713,
+   "host_id": 208874,
+   "date": null,
+   "detail": "2026-09-13 20:55: up in 33-241 s with the runtime image (obsolete 72-s block)",
+   "run": ""
+  },
+  {
+   "ip": "174.116.164.194",
+   "machine_id": 24573,
+   "host_id": 89091,
+   "date": null,
+   "detail": "2026-09-13 20:55: up in 33-241 s with the runtime image (obsolete 72-s block)",
+   "run": ""
+  },
+  {
+   "ip": "137.175.76.24",
+   "machine_id": 140297,
+   "host_id": 483833,
+   "date": null,
+   "detail": "2026-09-13 20:55: up in 33-241 s with the runtime image (obsolete 72-s block)",
+   "run": ""
+  },
+  {
+   "ip": "137.175.76.24",
+   "machine_id": 141012,
+   "host_id": 483833,
+   "date": null,
+   "detail": "2026-09-14 01:35: up in 26-292 s with the runtime image",
+   "run": ""
+  },
+  {
+   "ip": "180.189.55.43",
+   "machine_id": 145154,
+   "host_id": 406325,
+   "date": null,
+   "detail": "2026-09-14 01:35: up in 26-292 s with the runtime image",
+   "run": ""
+  },
+  {
+   "ip": "180.189.55.38",
+   "machine_id": 55483,
+   "host_id": 406325,
+   "date": null,
+   "detail": "2026-09-14 01:35: up in 26-292 s with the runtime image",
+   "run": ""
+  },
+  {
+   "ip": "180.189.55.38",
+   "machine_id": 100698,
+   "host_id": 406325,
+   "date": null,
+   "detail": "2026-09-14 01:35: up in 26-292 s with the runtime image",
+   "run": ""
+  },
+  {
+   "ip": "154.64.230.67",
+   "machine_id": 51464,
+   "host_id": 296571,
+   "date": null,
+   "detail": "2026-09-14 01:35: up in 26-292 s with the runtime image",
+   "run": ""
+  },
+  {
+   "ip": "45.77.214.165",
+   "machine_id": 48177,
+   "host_id": 346079,
+   "date": null,
+   "detail": "2026-09-14 01:35: up in 26-292 s with the runtime image",
+   "run": ""
+  },
+  {
+   "ip": "103.158.243.210",
+   "machine_id": 145814,
+   "host_id": 550251,
+   "date": null,
+   "detail": "2026-09-14 01:35: up in 26-292 s with the runtime image",
+   "run": ""
+  },
+  {
+   "ip": "70.69.192.6",
+   "machine_id": 16346,
+   "host_id": 93197,
+   "date": null,
+   "detail": "2026-09-14 01:35: up in 26-292 s with the runtime image",
+   "run": ""
+  },
+  {
+   "ip": "207.102.87.207",
+   "machine_id": 33755,
+   "host_id": 48012,
+   "date": null,
+   "detail": "2026-09-14 01:35: up in 26-292 s with the runtime image",
+   "run": ""
+  },
+  {
+   "ip": "38.117.87.46",
+   "machine_id": 51613,
+   "host_id": 213498,
+   "date": null,
+   "detail": "2026-09-14 01:35: up in 26-292 s with the runtime image",
+   "run": ""
+  },
+  {
+   "ip": "137.175.76.24",
+   "machine_id": 142020,
+   "host_id": 410852,
+   "date": null,
+   "detail": "2026-09-14 03:15: up in 51-82 s (runtime image)",
+   "run": ""
+  },
+  {
+   "ip": "137.175.76.24",
+   "machine_id": 58908,
+   "host_id": 434909,
+   "date": null,
+   "detail": "2026-09-14 03:15: up in 51-82 s (runtime image)",
+   "run": ""
+  },
+  {
+   "ip": "180.189.55.43",
+   "machine_id": 143240,
+   "host_id": 406325,
+   "date": null,
+   "detail": "2026-09-14 03:15: up in 51-82 s (runtime image)",
+   "run": ""
+  },
+  {
+   "ip": "137.175.76.24",
+   "machine_id": 144172,
+   "host_id": 410852,
+   "date": null,
+   "detail": "2026-09-14 04:05: up in 43-255 s (runtime image)",
+   "run": ""
+  },
+  {
+   "ip": "137.175.76.24",
+   "machine_id": 141012,
+   "host_id": 483833,
+   "date": null,
+   "detail": "2026-09-14 04:05: up in 43-255 s (runtime image)",
+   "run": ""
+  },
+  {
+   "ip": "180.189.55.38",
+   "machine_id": 100698,
+   "host_id": 406325,
+   "date": null,
+   "detail": "2026-09-14 04:05: up in 43-255 s (runtime image)",
+   "run": ""
+  },
+  {
+   "ip": "180.189.55.43",
+   "machine_id": 144923,
+   "host_id": 406325,
+   "date": null,
+   "detail": "2026-09-14 04:05: up in 43-255 s (runtime image)",
+   "run": ""
+  },
+  {
+   "ip": "89.221.67.178",
+   "machine_id": 150078,
+   "host_id": 229807,
+   "date": null,
+   "detail": "2026-09-14 04:05: up in 43-255 s (runtime image)",
+   "run": ""
+  },
+  {
+   "ip": "84.50.156.13",
+   "machine_id": 142284,
+   "host_id": 549680,
+   "date": null,
+   "detail": "2026-09-14 04:05: up in 43-255 s (runtime image)",
+   "run": ""
+  },
+  {
+   "ip": "174.119.98.154",
+   "machine_id": 22032,
+   "host_id": 107464,
+   "date": null,
+   "detail": "2026-09-14 04:05: up in 43-255 s (runtime image)",
+   "run": ""
+  },
+  {
+   "ip": "38.117.87.38",
+   "machine_id": 51751,
+   "host_id": 213498,
+   "date": null,
+   "detail": "2026-09-14 04:05: up in 43-255 s (runtime image)",
+   "run": ""
+  },
+  {
+   "ip": "38.117.87.40",
+   "machine_id": 51606,
+   "host_id": 213498,
+   "date": null,
+   "detail": "2026-09-14 04:05: up in 43-255 s (runtime image)",
+   "run": ""
+  }
+ ],
+ "in_flight": []
 }
