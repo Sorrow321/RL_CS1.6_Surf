@@ -514,3 +514,19 @@ misleading: the agent's surviving lines pass through `*99`'s box.
   * box deadline 08:58.
   * The bet: a policy that already practised the D-ramp ride for 2.4B steps, now with the
     detour uncharged, passes the slot and goes further than 28.55%.
+
+### 06:27 UTC: C5 at 3.73B (~260M steps with the ratchet, T 2): evals still at the wall; the D-ramp probe changed
+
+* **Evals** 3,470M-3,696M: frontier 26,865-26,875 u. Reservoir min-depth 73.49% (slightly
+  deeper). Training survives dips up to 1.12 units.
+* **Probe 4 on C5's 3.73B snapshot** (md5 998e049c...): survival is longer under the
+  ratchet.
+  * Times 4.5 / 4.3 / 4.2 / **26.8** / 2.3 / 4.9 / 3.1 / 2.3 / 7.4 / 5.0 / 4.4 / 5.8 / 4.4 /
+    3.3 s: mean ~5.9 s, against 2.8 s for C2.
+  * One start lived 26.8 s exploring the lower room instead of diving.
+  * Best d_min 71,112 at (3,126, 1,070, 11,160): closer to the slot, still ~200-300 u low.
+  * Reading: the ratchet removes the dive's pay-for-progress, so the policy stays and
+    explores where the potential used to push it into the pit.
+* **r1b2's timeline as a yardstick** (its public notes): T reached 2 at ~1.09B, the detour
+  region was harvested by 1.12B, the greedy detour appeared at 1.20B. C5's T reached 2 at
+  ~3.67B.
