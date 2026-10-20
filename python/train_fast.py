@@ -4287,7 +4287,11 @@ def main() -> None:
                          "policy loss (they are off-policy), so PPO stays "
                          "sound; their effect reaches the policy through the "
                          "states they discover and the returns of the "
-                         "on-policy steps around them. ckpt restores")
+                         "on-policy steps around them. Under "
+                         "--view-continuous the burst holds a uniform draw "
+                         "of the yaw z (tanh uniform on (-1, 1)) and of the "
+                         "key heads; the pitch stays the policy's. ckpt "
+                         "restores")
     ap.add_argument("--ez-max", type=int, default=None,        # 60 decisions
                     help="cap on ez-greedy burst length, in decisions")
     ap.add_argument("--ez-mu", type=float, default=None,       # 2.0
@@ -5973,7 +5977,7 @@ def main() -> None:
                          "from a checkpoint that carries it; a DISCRETE "
                          "checkpoint needs tools/transplant_view.py first. "
                          "Excludes --yaw-cond, --chunk, --act-hist, "
-                         "--frame-stack, --rnn, --ez-eps, --spawn-burst")
+                         "--frame-stack, --rnn, --spawn-burst")
     ap.add_argument("--view-absolute", choices=["velocity", "world"],
                     default=None,
                     help="with --view-continuous: the view row is an "
@@ -9362,7 +9366,10 @@ def main() -> None:
     # trace time, so a control run compiles and captures the graph that
     # shipped. The combinations refused here need real design (docs/
     # contyaw.md): each of them either reads the yaw BIN (yaw-cond, act-hist)
-    # or draws whole action rows outside the policy (bursts, chunk codes),
+    # or draws whole action rows outside the policy (spawn bursts, chunk codes),
+    # --ez-eps is allowed (2026-10-20): its burst holds a uniform draw of the
+    # yaw z and of the key heads, the pitch stays the policy's, and the rows
+    # are dropped from the PPO pool by b_ez exactly as on the bins.
     # and --frame-stack carries per-env inference state the planner and the
     # transplant do not clone. --rnn is allowed in the TRAINER (2026-10-08):
     # the rollout draws the view off the GRU's logits like any other, the
@@ -9381,8 +9388,6 @@ def main() -> None:
             _bad.append("--act-hist")
         if int(args.frame_stack or 0) > 1:
             _bad.append("--frame-stack")
-        if float(args.ez_eps or 0.0) > 0.0:
-            _bad.append("--ez-eps")
         if int(args.spawn_burst or 0) > 0:
             _bad.append("--spawn-burst")
         if _bad:
@@ -9626,11 +9631,13 @@ def main() -> None:
             raise SystemExit("--unstuck reads the race reward's progress "
                              "measures (reservoir depth, arc reach): it "
                              "needs --reward race")
+        # --ez-eps is allowed (2026-10-20): its burst rows are drawn
+        # untempered, but they never reach mb_step (b_ez drops them from the
+        # PPO pool), so every scored row is still a tempered draw
         for _flag, _on in (("--rnn", args.rnn not in (None, "none")),
                            ("--chunk", bool(args.chunk)),
                            ("--yaw-cond", YCOND),
                            ("--maps", bool(args.maps)),
-                           ("--ez-eps", bool(args.ez_eps)),
                            ("--spawn-burst", bool(args.spawn_burst)),
                            ("--ddp", D.enabled)):
             if _on:
@@ -9639,7 +9646,7 @@ def main() -> None:
                     "tempered draw and its log-prob live in sample_padded / "
                     "sample_view and mb_step (the flat single-map paths); "
                     "a sequence loss, a chunk code, a conditioned side key, "
-                    "an out-of-policy burst or a DDP count sync would "
+                    "a spawn burst or a DDP count sync would "
                     "silently run untempered or desynchronise")
         if not 0.0 <= float(args.unstuck_count_decay) <= 1.0:
             raise SystemExit("--unstuck-count-decay must be in [0, 1]")
@@ -14194,6 +14201,10 @@ def main() -> None:
     ez_left = torch.zeros(N, dtype=torch.long, device=device)
     ez_act = torch.zeros((N, NACT), dtype=torch.long, device=device)
     b_ez = torch.zeros((T, N), dtype=torch.bool, device=device)
+    # --ez-eps under --view-continuous: the burst's held yaw z (every z
+    # column but the last, which is the pitch and stays the policy's)
+    ez_z = (torch.zeros((N, NZ), device=device)
+            if VIEWC and args.ez_eps > 0.0 else None)
     NVEC_T = torch.tensor(NVEC, device=device)
     # Go-Explore post-return exploration state (--spawn-burst): decisions
     # left in each env's post-respawn random burst and the current held
@@ -16675,6 +16686,18 @@ def main() -> None:
                             r = torch.rand(nf, NACT, device=device)
                             ez_act[fresh] = (r * NVEC_T).long().clamp_(
                                 torch.zeros_like(NVEC_T), NVEC_T - 1)
+                            if ez_z is not None:
+                                # the view heads are Gaussians in z: tanh(z)
+                                # uniform on (-1, 1) is uniform over the
+                                # policy's own squashed range (a yaw offset
+                                # warped like the policy's, |off| < 10 deg
+                                # half the time), and the two unused yaw /
+                                # pitch BIN columns stay neutral
+                                ez_act[fresh, 0] = NEUTRAL_ACT[0]
+                                ez_act[fresh, 1] = NEUTRAL_ACT[1]
+                                uz = (torch.rand(nf, NZ, device=device)
+                                      * 2.0 - 1.0).clamp_(-0.999, 0.999)
+                                ez_z[fresh] = torch.atanh(uz)
                     ez_only = ez_left > 0
                     live = ez_only
                     if args.spawn_burst > 0:
@@ -16696,6 +16719,16 @@ def main() -> None:
                         live = live | sb_live
                     if bool(ez_only.any()):
                         static_act[ez_only] = ez_act[ez_only]
+                        if ez_z is not None:
+                            # the held yaw z replaces the drawn one; the
+                            # pitch column keeps this decision's draw, and
+                            # the core's command is re-derived from the row
+                            # (b_z records it, the pool drops it)
+                            zr = static_z[ez_only]
+                            zr[:, :NZ - 1] = ez_z[ez_only, :NZ - 1]
+                            static_z[ez_only] = zr
+                            static_view[ez_only] = view_from_z_t(
+                                zr, VIEW_PITCH_MAX, VIEW_ABS)
                         ez_left[ez_only] -= 1
                     b_ez[t].copy_(live)
                     if MASKS.on:
@@ -19160,6 +19193,10 @@ def main() -> None:
             # the continuous heads are sharpening or blowing up
             _ls = policy.log_std().exp().tolist()
             hyg_note += "  sig " + "/".join(f"{_v:.3f}" for _v in _ls)
+        if USE_BURST:
+            # the share of this rollout's decisions that were burst rows,
+            # i.e. what the PPO pool dropped
+            hyg_note += f"  ez {float(b_ez.float().mean()):.1%}"
         if AUG_ON and aug_kl_v == aug_kl_v:
             # --aug-*: how far the augmented frame's answer still is from the clean one
             hyg_note += f"  drac kl {aug_kl_v:.4f} v {aug_vm_v:.4f}"
