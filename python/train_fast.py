@@ -6568,6 +6568,12 @@ def main() -> None:
     ap.add_argument("--spawn-states-frac", type=float, default=None,
                     help="with --spawn-states: the share of the spawn pool it replaces, in "
                          "(0, 1)")
+    ap.add_argument("--spawn-states-gate", choices=("visits", "survived"), default=None,
+                    help="with --spawn-states-novel: the cells a row's 3x3x3 block must avoid - "
+                         "'visits' (default) the novel visit grid (entered by a real episode), "
+                         "'survived' the reservoir's cells (a real episode's states it then "
+                         "survived the harvest margin past: where the policy is competent, not "
+                         "where it fell through). ckpt restores")
     ap.add_argument("--spawn-states-novel", action="store_true", default=None,
                     help="with --spawn-states and --respawn-novel: draw the file's rows only "
                          "from states whose 3x3x3 visit block no REAL episode entered within "
@@ -7380,6 +7386,9 @@ def main() -> None:
         if args.spawn_states_novel is None and ck_cfg.get("spawn_states_novel"):
             args.spawn_states_novel = True
             restored.append("spawn_states_novel")
+        if args.spawn_states_gate is None and ck_cfg.get("spawn_states_gate"):
+            args.spawn_states_gate = str(ck_cfg["spawn_states_gate"])
+            restored.append(f"spawn_states_gate={args.spawn_states_gate}")
         if args.demo_window is None and ck_cfg.get("demo_window") is not None:
             args.demo_window = int(ck_cfg["demo_window"])
         if args.demo_rate is None and ck_cfg.get("demo_rate") is not None:
@@ -9604,6 +9613,9 @@ def main() -> None:
     # episodes have not been - the novel gate on states that were really flown there
     SS_NOVEL = bool(args.spawn_states_novel)
     SS_NOVEL_STAT = [0, 0]                 # candidates last iteration, rows in the file
+    SS_GATE = args.spawn_states_gate or "visits"
+    if args.spawn_states_gate is not None and not SS_NOVEL:
+        raise SystemExit("--spawn-states-gate needs --spawn-states-novel")
     if SS_NOVEL:
         if SPAWN_STATES is None:
             raise SystemExit("--spawn-states-novel needs --spawn-states")
@@ -9611,8 +9623,12 @@ def main() -> None:
             raise SystemExit("--spawn-states-novel needs --respawn-novel: its visit grid "
                              "(the cells REAL episodes entered) is the gate")
         print("--spawn-states-novel: the spawn-states rows are drawn only from states whose "
-              "3x3x3 visit block no real episode entered within the novel window; their "
-              "episodes count as novel ones (no visit marks, no ceiling, never harvested)")
+              + ("3x3x3 visit block no real episode entered within the novel window"
+                 if SS_GATE == "visits" else
+                 "3x3x3 block holds no reservoir state (gate 'survived': where the policy has "
+                 "not survived the harvest margin)")
+              + "; their episodes count as novel ones (no visit marks, no ceiling, never "
+                "harvested)")
     # CLAUDE.md section 0: HUMAN DEMOS NEVER TRAIN THE AGENT. Every
     # spawn-state / imitation / route source - given as a flag OR restored
     # from a checkpoint - must be declared policy-derived by the operator
@@ -13539,6 +13555,8 @@ def main() -> None:
     # --spawn-states-novel: written only when set
     if SS_NOVEL:
         meta["config"]["spawn_states_novel"] = 1
+        if SS_GATE != "visits":
+            meta["config"]["spawn_states_gate"] = SS_GATE
     if NOVEL:
         meta["config"].update({
             "respawn_novel": 1,
@@ -16545,7 +16563,9 @@ def main() -> None:
                 if SS_NOVEL and getattr(_slot, "novel", None) is not None:
                     # --spawn-states-novel: only the file's states in blocks the policy's own
                     # episodes have not entered; their episodes are novel episodes
-                    _rows, _nc = _slot.novel.pick_unvisited(SPAWN_STATES, _m)
+                    _seen = (_slot.novel.survived_grid(_slot.respawn)
+                             if SS_GATE == "survived" else None)
+                    _rows, _nc = _slot.novel.pick_unvisited(SPAWN_STATES, _m, _seen)
                     SS_NOVEL_STAT[0], SS_NOVEL_STAT[1] = _nc, len(SPAWN_STATES)
                     if len(_rows):
                         _pool[_pos[:len(_rows)]] = _rows

@@ -1835,13 +1835,15 @@ class NovelSpawnSampler:
         return (nv / sp) if sp else float("nan")
 
     # -- sampling -------------------------------------------------------------
-    def _near_visited(self, p: np.ndarray) -> np.ndarray:
+    def _near_visited(self, p: np.ndarray, seen: np.ndarray | None = None) -> np.ndarray:
         """True where any cell of the 3 x 3 x 3 block around ``p`` was
         entered, so an accepted point is at least one cell clear of every
-        visited one."""
+        visited one. ``seen``: another grid of the same shape instead of the
+        visit grid (--spawn-states-gate survived)."""
         ix = self._cells(p)
         hit = np.zeros(len(p), bool)
-        seen = (self.visit | self.visit_prev) if self.window > 0.0 else self.visit
+        if seen is None:
+            seen = (self.visit | self.visit_prev) if self.window > 0.0 else self.visit
         gx, gy, gz = (int(v) for v in self.dims)
         for dz in (-1, 0, 1):
             jz = np.clip(ix[:, 2] + dz, 0, gz - 1)
@@ -1976,16 +1978,32 @@ class NovelSpawnSampler:
         return out
 
     # -- --spawn-states-novel: a file's states, only where the policy has not been -------
-    def pick_unvisited(self, states: np.ndarray, m: int):
+    def survived_grid(self, reservoir) -> np.ndarray:
+        """The cells of the reservoir's states: the policy's own states it then survived at least
+        the harvest margin past (a reservoir row is a real episode's state cut that long before
+        its end), i.e. where the policy is COMPETENT rather than where it merely passed - an
+        episode falling through a pocket to its death marks the visit grid there, not this."""
+        g = np.zeros_like(self.visit)
+        k = int(getattr(reservoir, "size", 0) or 0)
+        if k:
+            ix = self._cells(np.asarray(reservoir._store[:k]["origin"], np.float64))
+            ok = np.all((ix >= 0) & (ix < self.dims), axis=1)
+            g[ix[ok, 2], ix[ok, 1], ix[ok, 0]] = True
+        return g
+
+    def pick_unvisited(self, states: np.ndarray, m: int, seen: np.ndarray | None = None):
         """(rows, n_candidates): ``m`` rows drawn uniformly (with replacement when fewer) from
         the ``states`` whose 3 x 3 x 3 visit block no REAL episode has entered within the
         window - the same "where we haven't been" gate as a novel row, applied to states that
-        were really flown there (a frontier archive) instead of moved there. No candidate:
-        no rows. The caller tags the episodes with ``add_keys`` so they mark nothing."""
+        were really flown there (a frontier archive) instead of moved there; with ``seen``
+        (``survived_grid``) the block is clear of the cells the policy SURVIVED in instead. No
+        candidate: no rows. The caller tags the episodes with ``add_keys`` so they mark
+        nothing."""
         m = int(m)
         if m <= 0 or states is None or not len(states):
             return np.zeros(0, dtype=STATE_DTYPE), 0
-        cand = np.flatnonzero(~self._near_visited(np.asarray(states["origin"], np.float64)))
+        cand = np.flatnonzero(~self._near_visited(np.asarray(states["origin"], np.float64),
+                                                  seen))
         if not len(cand):
             return np.zeros(0, dtype=STATE_DTYPE), 0
         return states[cand[self.rng.integers(0, len(cand), m)]].copy(), int(len(cand))

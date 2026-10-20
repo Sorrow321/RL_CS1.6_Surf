@@ -210,3 +210,41 @@ def test_flag_off_is_bit_identical_to_the_trainer_before_the_change(tmp_path):
         assert torch.equal(sa["policy"][k], sb["policy"][k]), k
     for dd in (a, b):
         shutil.rmtree(dd, ignore_errors=True)
+
+
+@needs_sid
+def test_the_survived_gate_uses_the_reservoir_cells_not_the_visit_grid():
+    core, field = _core(), _field()
+    s = NovelSpawnSampler(core, field, 4, seed=4)
+    rows = _reachable_rows(core, field, 400, seed=9)
+    res = RespawnBuffer(4, reservoir=1000, map_id="surf_src_sidistic")
+    res.push_many(rows[:150])
+    g = s.survived_grid(res)
+    ix = s._cells(np.asarray(rows["origin"][:150], np.float64))
+    assert g[ix[:, 2], ix[:, 1], ix[:, 0]].all() and int(g.sum()) <= 150
+    # the visit grid marks everything, the reservoir only the first 150: the survived gate still
+    # offers the rest, the visits gate offers nothing
+    s.visit[:] = True
+    none, _ = s.pick_unvisited(rows, 50)
+    assert len(none) == 0
+    got, nc = s.pick_unvisited(rows, 50, g)
+    assert len(got) == 50 and nc > 0
+    assert not s._near_visited(np.asarray(got["origin"], np.float64), g).any()
+
+
+@needs_run
+def test_the_survived_gate_trains_and_is_recorded(tmp_path):
+    f = _states_file(tmp_path)
+    run = "ssnovel_surv"
+    r = _train(run, ["--spawn-states", str(f), "--spawn-states-frac", "0.5",
+                     "--spawn-states-novel", "--spawn-states-gate", "survived"])
+    assert "gate 'survived'" in r.stdout
+    assert re.search(r"--spawn-states-novel: [0-9,]+ of 600 file states", r.stdout)
+    cfg = json.loads((ROOT / "runs" / run / "run.json").read_text(encoding="utf-8"))["config"]
+    assert cfg["spawn_states_gate"] == "survived" and cfg["spawn_states_novel"] == 1
+    bad = _run([sys.executable, "-u", str(TRAIN), "--run", "ssnovel_gbad"] + SMOKE + FILL
+               + ["--steps", "2048", "--spawn-states", str(f), "--spawn-states-frac", "0.5",
+                  "--spawn-states-gate", "survived"])
+    assert bad.returncode != 0 and "needs --spawn-states-novel" in (bad.stdout + bad.stderr)
+    for dd in (ROOT / "runs" / run, ROOT / "runs" / "ssnovel_gbad"):
+        shutil.rmtree(dd, ignore_errors=True)
