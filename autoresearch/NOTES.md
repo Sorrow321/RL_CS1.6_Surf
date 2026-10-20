@@ -321,3 +321,35 @@ misleading: the agent's surviving lines pass through `*99`'s box.
 * **Plan:** when Arm C ends (1.75B, ~03:28) resume it from ckpt_final with the same flags
   (Arm C2, +1e9). Promotion criterion: the probe's mean d_min keeps falling, or the
   reservoir's min-depth moves below 72.5% (a slot pass in training).
+
+### 03:16 UTC: Go-Explore rooted at Arm C's own states, a higher-dive variant, the high-T wobble
+
+* **GE3** (local, 6 CPU-min, roots = Arm C's deepest 3% of its reservoir, cell 128 x speed 8
+  x view 8):
+  * 182,934 cells; best d **70,483 (27.91%)**, deeper than the incumbent-rooted archives
+    (70,731-70,755); 1,956 cells past the old frontier.
+  * The best chain is NOT the D-ramp route. It is a HIGHER DIVE: from the upper room it
+    passes x 3,000 at z ~11,600 (the agent's line is at ~11,224 there), reaches (2,653,
+    -883, 11,330) at vz -988, and dies on the lower sheet at the wedge's narrow end, 20-50 u
+    too low.
+  * This matches r1b2's noise-tau result (27.90: the death point 500 u west and 190 u up).
+* **The geometry past the slot** (core probe, x 400-4,000):
+  * a free corridor at z ~10,900-11,550 for x 1,500-2,400, under the `*75` plate (z 11,552),
+    then a descent to CP2 (x 768-816);
+  * fail plates on the corridor floor (z ~10,690-10,960) and the slanted `*70`.
+  * A steep dive through the slot would have to clear those as well.
+* **Physics of the higher dive:** in free flight only horizontal speed is controllable.
+  From (3,039, 11,598) with vz -740, clearing z 11,350 at x 2,600 needs ~1,500 u/s; the
+  archive state has 1,230.
+* **GE4** (focused search, 3,000 roots at d 70,483-70,978, cell 64, 2 s bursts, 3 min,
+  1.77M runs): EVERY run died. Nothing below 70,500. Random actions cannot clear the narrow
+  end; stopped.
+* **Arm C's high-T wobble:** at T = 2 the greedy line oscillates. Evals 1,429M / 1,505M /
+  1,580M = 26,802 / **15,692** / 26,871 u frontier.
+* **Next, Arm C2:**
+  * resume Arm C's final checkpoint (1.75B) with `--unstuck-max 1` (on resume T is clamped
+    to the new cap at the next stuck update) and `--spawn-states runs/ge23_fastnovel.npy
+    --spawn-states-frac 0.4`;
+  * that file is GE2 + GE3, 139,622 states, all d >= 70,883: no spawn past the policy's
+    own best, the respawn-novel rule; md5 b807ba4f...;
+  * it includes the higher-dive approach states up to the frontier.
