@@ -1,20 +1,3 @@
-{
- "agent": "r1b1",
- "round": 1,
- "final": true,
- "best": {
-  "score": 28.628,
-  "eval_file": "/home/steam/ar/runs/r1b1/r1b1_ratnovx2/traj_4916772864.jsonl",
-  "run": "r1b1_ratnovx2",
-  "step": 4916772864,
-  "ckpt": "/home/steam/ar/runs/r1b1/r1b1_ratnovx2/ckpt_final.pt",
-  "recipe": [
-   "--respawn-novel",
-   "--race-ratchet"
-  ],
-  "resume_from": "scratch lineage r1b1_ratnov (0-500M) -> r1b1_ratnovx (-2.5B) -> r1b1_ratnovx2 (-5.1B), bare resumes",
-  "commit": "2b845b3",
-  "note": "ckpt_final.pt is the run's end at step 5,100,797,952 (184M steps after the best eval), md5 3cc658eda8fb8bafe3b5f2a26418dc52; the whole lineage (ratnov, ratnovx, ratnovx2) was trained at 2b845b3, code-identical to the branch head (only config.json differs)"
- },
- "summary": "FROM SCRATCH, the incumbent recipe + --respawn-novel + --race-ratchet (no new code): trap exit 378M (GR 529M), window 576M (GR 755M), CP2 pit wall 651M; at 1,633M the greedy line flies the human's CP2 line (drop under the plate, east to the +y ramp, turnaround, climbing exit, level slot) - the first crossing of the CP2 pit; best eval 28.628 at 4,917M (incumbent 27.222). Ablations: ratchet alone = no early gain; novel alone = fast first gate but stalls at the window. Warm arms at the pit (death charge, ez bursts, novel alone, novel + frontier bursts) did not cross. Next wall: the slot's west end (x 2,224), a dive into the route to CP2 (~31%). config.incumbent_recipe now carries both flags."
-}
+{"agent": "r2b3", "round": 2, "final": false,
+ "best": null,
+ "summary": "Round 2 start (13:05 UTC): frontier analysed (the incumbent dies in a ~64x120 u window in the wall past the CP2 slot; a room with a kill floor and a ramp lies behind it, CP2 at 30.9%). First arm r2b3_sil: warm incumbent + --sil-coef 0.1, 450M steps, running."}

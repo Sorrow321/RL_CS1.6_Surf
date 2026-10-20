@@ -521,3 +521,42 @@ checkpoint is taken from the BEST EVAL's run dir, so pull that run's ckpt_final.
   is code-identical to this head (only `autoresearch/config.json` differs).
 * Box 56813988 (RTX 5080 + 7950X3D, $0.388/h) ran 00:41-10:24 UTC, about 9.7 h / ~$3.8,
   released at 10:24; no box at wrap-up.
+
+## Round 2, branch r2b3 - 2026-10-20 13:05 UTC (box 56893794, RTX 5080, $0.388/h, machine 150677)
+
+### The frontier, precisely (analysis only: voxel grid, kill AABBs from the bsp, the field)
+
+* The incumbent's best eval (4,917M, ep 1, 28.63%) does NOT stop at a plain wall: past the pit
+  floor's west edge it drops into a 256 u shaft (x 2,240-2,496, open from z ~10,700 to the
+  slot), hits the wall at (2,224, 1,002, 11,360) at 28.3 s, bounces and dies at
+  (2,139, 922, 10,980) - INSIDE a window in that wall, on its sill plate.
+* The wall at x ~1,950-2,210 is solid from z 10,656 to 11,520 at every y except two windows,
+  y +-(864..960), z ~10,976-11,168 (~96 x 192 u in the 32 u voxels). Their sills are kill
+  plates *17 / *113 (x 1,952-2,208, z 10,944-10,958). For a standing hull the origin window is
+  ~64 u (y) x ~120 u (z). Kill plates *80 / *64 (x 2,528-2,592, y +-(832-960), z 11,392) cap
+  the column at the shaft's east edge - ep 3/4/7/8 of that eval die there or on the pit floor
+  (*86) just east of it. The shaft's bottom is kill *21 (z 10,688).
+* Past the windows: a room x ~1,216-1,952, y +-1,120, z 10,632-11,168 over a kill floor
+  (*70, top z 10,632). Its west wall carries a ~45 deg ramp face (y +-352, x 1,440 at z 10,660
+  -> x ~1,300 at z 10,800). CP2 (x 768-816) is beyond that wall; the passage the field takes is
+  low (z ~10,100-10,370 under the wall block, x 864-1,280).
+* Field progress: window 28.58%, room 28.8-29.2%, CP2 30.9%. The novel ceiling of the
+  incumbent (deepest REAL training episode) is 28,174 u = 28.82%: training episodes DO get
+  through a window into the room, and die there (within ~0.2-0.5 s).
+* So the wall is a precision maneuver (shed ~350 u of height in the 368 u between the column
+  and the wall, then thread a ~64 x 120 u window) followed by a room whose floor is an
+  invisible kill. The respawn margin (2 s) keeps every state within 2 s of a death out of the
+  reservoir, so no training episode ever STARTS at the window or in the room.
+* The incumbent run at its end: T at the cap 2 since ~2.4B, unstuck best 27,916 u (eval),
+  novel ceiling 28,174 u, reservoir (20k states) d min 70,427 / p10 72,728 / median 78,979.
+  Control for every warm arm here: r1b1's own continuation ratnovx3 (5.1-5.9B): best 28.467,
+  means 23-28%, no window crossing in ~800M steps.
+
+### r2b3_sil: warm + `--sil-coef 0.1` (Oh et al. 2018, existing flag) - launched 12:58 UTC
+
+* Resume of the incumbent ckpt (5,100,797,952, md5 3cc658ed...), 450M steps (to 5.55B), all
+  else restored. Measuring AT the wall: do the rare window-threading training episodes (the
+  ones that beat V) become the greedy line?
+* Caveat seen at once: with 1024 envs x 128 decisions per rollout, ~131k rows qualify and the
+  50k buffer is REFILLED every iteration (`sil 50,000 rows +50000`), so this is
+  advantage-filtered imitation of the latest rollout, not a long memory of rare successes.
