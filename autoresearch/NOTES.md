@@ -884,3 +884,76 @@ physics as the sim (gravity 800, airaccelerate 100) except maxvelocity 3,500.
 * 23:41 UTC: r2b2_sband3 stopped at ~4.12B (32 evals, best 28.753 = the 3,336M resume eval; then
   28.55-28.58 x3, the greedy line drifting into the pit (27.2-27.5) and back (28.2-28.58 at the
   end)). Box 56901034 released at 23:41 (~9.7 h, ~$3.9).
+
+## ROUND 2 LESSON (r2b2) - written 2026-10-20 23:55 UTC
+
+**Result:** best greedy eval from the true start **28.841** (r2b2_t1 at 6,751M; incumbent 28.628). 0 finishes.
+The best episode dives through the -y tunnel to its far west end (1,966, -904, 10,981): the physical
+limit of the field's route (~28.8%). Hand-on checkpoint: runs/r2b2/r2b2_t1/ckpt_latest.pt
+(7,176,454,144, md5 92b7ddd2...) - its GREEDY line dies in the CP2 pit (27.4%) although stochastic
+training episodes reach 29.76%; read its own first eval before comparing.
+
+**What the wall at 28.6% is** (analysis only; see the 13:25 / 13:45 entries):
+* The field's route past the CP2 slot (upper window x 2,544 -> 320 u shaft -> tunnel under a block,
+  floored by kill plates *17 / *113) is physically CLOSED: for any entry vz and any non-increasing
+  horizontal speed the window -> tunnel transition misses by >= 28 u (ducked hull); 12,090
+  brute-force straight flights top out at 28.79%; ~280k random / Go-Explore rollouts found nothing.
+* The human (WR demo 47250, analysis only) dips ~2,000 u into a CAVITY under the pit slab through a
+  LOWER opening (y ~0, z ~10,770-11,100), surfs a ramp at its bottom (normal (-0.759, 0, 0.651),
+  x ~1,950-2,150, z ~9,790-10,050: arrive moving south ~2,000 u/s, strafe up it), climbs back out
+  through the lower opening and enters the tunnel LEVEL (31.5 s), then the room, under *20, CP2 at
+  ~35.1 s. Same gate type as the CP2 pit: a dip the field calls worse plus a ramp turnaround.
+
+**What worked:**
+* NEW generic novel-sampler options (default off, byte-identical when off, 10 unit tests):
+  `--respawn-novel-band B` (novel rows only within B x d0 of the ceiling in potential) and
+  `--respawn-novel-turn T` (heading + view yaw turned by U(-T, T)); plus a byte-identical sampler
+  speed-up (visit lookup only on gate survivors, 0.8 -> 0.2 s per call), which makes tries 64
+  affordable. With band 0.05 ~85% of novel rows land in the cavity (defaults: ~4%).
+* Bench (demo states, measurement only): after ~450M steps of band practice the policy flies the
+  cavity's return leg from the human's climb states into the room 5/11 (best 29.92%; incumbent 0/11)
+  and rises off the ramp 9-10/11 (incumbent 2/11), vz +1,180 (human +1,190).
+* Lowering the unstuck T cap 2 -> 1 on that checkpoint gave, within 25M steps, the 28.841 eval and
+  the first real episodes past the tunnel (training ceiling 28,205 -> 29,027 -> 29,098 u).
+* From scratch the band recipe left the first-ramp trap ~75M sooner than round 1 (12.2% vs 5.8% at
+  302M) and crossed the CP2 pit after ~750M steps at the wall (ratnov ~980M).
+
+**What did not work:**
+* Every warm checkpoint after ~6.6B has a greedy line locked into the CP2 pit dive (it drops round
+  1's corridor-east detour), under T 2, 1 and 0.5 and novel shares 45% / 25%; restarting from the
+  pre-drift 6.354B checkpoint with T 1 relocked within 25M steps. The stochastic policy keeps
+  crossing - a greedy-vs-stochastic gap, likely a mean between two modes of the yaw Gaussian.
+* From scratch the band STALLED at the window (20.8%, 435M steps) where round 1 passed at 576M; the
+  default sampler got through within ~105M steps (confounded by T rising). The window's decision lies
+  seconds BEFORE the frontier, outside the band. Net from scratch: tunnel dive 28.71% at 3.15B vs
+  ratnov 28.55% at 1.63B.
+* Frontier-focused shell/radius without the band (arm 1): rows at a median 17% of progress (the map
+  folds: the air near the CP2 sources is earlier track); null.
+
+**For the next round:**
+* The way on is known (the cavity dip); the band teaches its pieces. Use the band for dips just
+  behind the frontier, NOT as a global default (it blocks gates whose decision is earlier); a generic
+  blend (band on the deep-shell rows only, the flattened half unbanded) is the untested middle.
+* The greedy line is the bottleneck: training reaches 29.76% stochastically, evals sit at 27.4%.
+  Something that consolidates the stochastic successes into the mean (self-imitation with the
+  TEMPERED log-prob - the shipped --sil-coef scores T > 0 samples untempered and would inflate sigma)
+  or a policy that can hold two yaw modes is the next lever.
+* Diagnostics worth reusing: the cavity bench (record_ckpt --spawn-states from demo states, measurement
+  only; its shaft / lower-opening sets die whatever the action - only ramp / climb inform), the
+  free-flight bound, the hull-trace / flood-fill passage checks.
+
+**Ops:** no box passed box.py's filters for an hour (12:55-13:54); a background `box.py rent` retry
+loop got box 56901034 (RTX 4090 + 5950X, $0.401/h, ~210-300k steps/s), released 23:41 (~9.7 h,
+~$3.9). gpu_health needed an RTX 4090 reference (harness issue; branch-local fix). `box.py pull
+--ckpt` fails on a running run (ckpt_latest is rewritten faster than an 80 MB copy): copy it to a
+stable ckpt_<step>.pt on the box first. Never `pkill -f` a pattern that appears in your own command
+line (it killed my local shell twice).
+
+## Wrap-up (r2b2) - 2026-10-20 23:55 UTC
+
+* Final: RESULT.json `"final": true`, score **28.841** (r2b2_t1, eval traj_6750732288, re-scored at
+  wrap-up: 9 episodes, best 28.84%, median 28.21%, 0 finishes, CP1, 18/19 valid evals in the run).
+* Hand-on checkpoint: runs/r2b2/r2b2_t1/ckpt_latest.pt (7,176,454,144, md5 92b7ddd202e0b09629f93e4ac2afdbe1),
+  pulled while the run was stopped and md5-checked again at wrap-up; also local:
+  r2b2_t1/ckpt_7128219648.pt and r2b2_sband2/ckpt_final.pt (from-scratch lineage, 3,335,520,256).
+* Box 56901034 released at 23:41 UTC; no box at wrap-up.
