@@ -207,3 +207,50 @@ def test_score_rejects_an_eval_that_does_not_start_at_the_map_start(tmp_path):
     p.write_text("\n".join(bad) + "\n", encoding="utf-8")
     s = score.score_file(p)
     assert s["score"] is None and "not the map start" in s["error"]
+
+
+def test_a_truncated_ckpt_pull_keeps_the_copy_already_pulled(monkeypatch, tmp_path):
+    """r1b2's box ran at 31 KB/s on 2026-10-20: the scp of an 80 MB checkpoint timed out at its
+    30 min with 56 MB and left the truncated file under the real name, over the good copy."""
+    import hashlib
+    import io
+    import subprocess
+    import tarfile
+    monkeypatch.setattr(box, "AR_HOME", tmp_path)
+    monkeypatch.setattr(box, "BOXES", tmp_path / "boxes")
+    box.save_rec("r1b2", {"agent": "r1b2", "id": 42, "gpu": "RTX_3090", "dph": 0.2,
+                          "created": 0, "host": "h", "port": 1})
+    on_box = b"the box's checkpoint " * 50
+    dst = tmp_path / "runs" / "r1b2" / "r1b2_nth"
+    dst.mkdir(parents=True)
+    (dst / "ckpt_latest.pt").write_bytes(b"the good copy pulled earlier")
+    monkeypatch.setattr(box, "ssh", lambda rec, cmd, **k: subprocess.CompletedProcess(
+        cmd, 0, hashlib.md5(on_box).hexdigest() + "\n", ""))
+    scp = {"mode": "drop"}
+
+    def fake_run(args, **k):
+        if args[0] == "ssh":                     # the tar stream: one greedy eval
+            buf = io.BytesIO()
+            with tarfile.open(fileobj=buf, mode="w:gz") as tf:
+                data = b'{"header": 1}\n'
+                ti = tarfile.TarInfo("r1b2_nth/traj_0000000001.jsonl")
+                ti.size = len(data)
+                tf.addfile(ti, io.BytesIO(data))
+            k["stdout"].write(buf.getvalue())
+            return subprocess.CompletedProcess(args, 0, b"", b"")
+        assert args[0] == "scp", args
+        Path(args[-1]).write_bytes(on_box if scp["mode"] == "whole" else on_box[:300])
+        if scp["mode"] == "timeout":
+            raise subprocess.TimeoutExpired(args, 1800)
+        return subprocess.CompletedProcess(args, 0 if scp["mode"] == "whole" else 1, b"", b"")
+
+    monkeypatch.setattr(box.subprocess, "run", fake_run)
+    for mode in ("drop", "timeout"):
+        scp["mode"] = mode
+        box.main(["pull", "--agent", "r1b2", "--run", "r1b2_nth", "--ckpt"])
+        assert (dst / "ckpt_latest.pt").read_bytes() == b"the good copy pulled earlier", mode
+        assert not (dst / "ckpt_latest.pt.part").exists()
+    assert (dst / "traj_0000000001.jsonl").read_bytes() == b'{"header": 1}\n'
+    scp["mode"] = "whole"
+    box.main(["pull", "--agent", "r1b2", "--run", "r1b2_nth", "--ckpt"])
+    assert (dst / "ckpt_latest.pt").read_bytes() == on_box

@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -306,6 +307,34 @@ def ckpt_step(path: Path):
     return None
 
 
+def ckpt_complete(path: Path) -> bool:
+    """Every member of the checkpoint's zip is there and matches its CRC, and it names its
+    step. A pull that timed out or dropped leaves a truncated file under the real name; this
+    catches it without unpickling anything."""
+    import zipfile
+    try:
+        with zipfile.ZipFile(path) as z:
+            if z.testzip() is not None:
+                return False
+    except Exception:                            # noqa: BLE001 - any failure means incomplete
+        return False
+    return ckpt_step(path) is not None
+
+
+def handon_ckpt(run_dir: Path):
+    """The checkpoint a run hands on: ckpt_final.pt, else ckpt_latest.pt, else its newest
+    ckpt_<step>.pt milestone, whichever is the first COMPLETE one; None if none is."""
+    milestones = sorted(((int(m.group(1)), p) for p in run_dir.glob("ckpt_*.pt")
+                         if (m := re.fullmatch(r"ckpt_(\d+)\.pt", p.name))), reverse=True)
+    for p in [run_dir / "ckpt_final.pt", run_dir / "ckpt_latest.pt"] + [p for _, p in milestones]:
+        if not p.exists():
+            continue
+        if ckpt_complete(p):
+            return p
+        log(f"  !! {run_dir.name}/{p.name} is truncated or damaged: not handed on")
+    return None
+
+
 def score_branch(agent: str) -> dict:
     sys.path.insert(0, str(REPO / "autoresearch"))
     import score as scorer
@@ -357,12 +386,11 @@ def end_round(st, final=False) -> None:
             new.mkdir(parents=True, exist_ok=True)
             ev = Path(win["best"]["file"])
             shutil.copy2(ev, new / ev.name)
-            ck = ev.parent / "ckpt_latest.pt"
-            for name in ("ckpt_final.pt", "ckpt_latest.pt"):
-                if (ev.parent / name).exists():
-                    ck = ev.parent / name
-                    break
-            if ck.exists():
+            ck = handon_ckpt(ev.parent)
+            if ck is None:
+                log(f"  !! no complete checkpoint in {ev.parent}: incumbent/ckpt.pt stays the "
+                    "previous round's")
+            else:
                 shutil.copy2(ck, new / "ckpt.pt")
                 link = AR_HOME / "incumbent" / "ckpt.pt"
                 link.unlink(missing_ok=True)
@@ -374,16 +402,19 @@ def end_round(st, final=False) -> None:
             # best eval (r1b1_ratnovx: best eval 1,633M, ckpt_latest ~2.5B): say both steps,
             # so the next round does not expect the checkpoint to reproduce the score
             eval_step = int(ev.stem.split("_")[1])
-            ck_step = ckpt_step(new / "ckpt.pt") if ck.exists() else None
+            if ck is not None:
+                ck_path, ck_from = str(new / "ckpt.pt"), f"{ev.parent.name}/{ck.name}"
+            else:
+                ck_path = inc.get("ckpt")
+                ck_from = f"the previous incumbent's (no complete checkpoint in {ev.parent.name})"
+            ck_step = ckpt_step(Path(ck_path)) if ck_path else None
             st["incumbent"] = {"score": win["score"], "agent": win["agent"], "round": r,
                                "eval": str(new / ev.name), "dir": str(new),
-                               "ckpt": str(new / "ckpt.pt") if ck.exists() else None,
-                               "eval_step": eval_step,
-                               "ckpt_from": f"{ev.parent.name}/{ck.name}" if ck.exists() else None,
-                               "ckpt_step": ck_step,
+                               "ckpt": ck_path, "eval_step": eval_step,
+                               "ckpt_from": ck_from, "ckpt_step": ck_step,
                                "commit": win["head"], "best": win["best"]}
             log(f"  NEW INCUMBENT {win['agent']} score {win['score']}: eval at step "
-                f"{eval_step:,}; ckpt {ev.parent.name}/{ck.name} at step "
+                f"{eval_step:,}; ckpt {ck_from} at step "
                 f"{f'{ck_step:,}' if ck_step is not None else 'unknown'}")
         st["next_base"] = win["head"]
         log(f"  WINNER {win['agent']} ({win['score']}): round {r + 1} forks {win['head'][:10]}")

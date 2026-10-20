@@ -148,10 +148,13 @@ python autoresearch/box.py release --agent $AR_AGENT
   `box.py pull --agent $AR_AGENT --run <run>`. Add `--ckpt` for the one you might hand on.
 * Score: `python autoresearch/score.py --best $AR_HOME/runs/$AR_AGENT/<run>/`.
 * The next round's incumbent checkpoint is the winning eval's run's `ckpt_final.pt`, or its
-  `ckpt_latest.pt` if there is no final one, as pulled to `$AR_HOME/runs/`. That is the run's
-  NEWEST weights, usually later than its best eval. `AR_BRANCH.json`'s incumbent gives
-  `eval_step` and `ckpt_step`. Before you compare against the incumbent's score, read the
-  checkpoint's own first eval.
+  `ckpt_latest.pt` if there is no final one, or its newest `ckpt_<step>.pt`, as pulled to
+  `$AR_HOME/runs/`: the first of those that is complete (a truncated or damaged file is
+  skipped). That is the run's NEWEST weights, usually later than its best eval.
+  `AR_BRANCH.json`'s incumbent gives `eval_step` and `ckpt_step`. Before you compare against
+  the incumbent's score, read the checkpoint's own first eval.
+* `box.py pull --ckpt` downloads to `<ckpt>.part` and replaces the copy already pulled only
+  when the md5 matches the box's, so a pull that times out on a slow link loses nothing.
 * `RESULT.json` (worktree root, read by the orchestrator, rewritten whenever the best moves):
 
 ```json

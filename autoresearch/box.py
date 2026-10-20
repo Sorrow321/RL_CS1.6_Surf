@@ -584,20 +584,33 @@ def cmd_pull(a):
             name = Path(m.name).name
             if m.isfile() and (name in ("run.json", "progress.csv", a.run + "_launch.txt")
                                or (name.startswith("traj_") and name.endswith(".jsonl"))):
-                with tf.extractfile(m) as fsrc, open(dst / name, "wb") as fout:
-                    fout.write(fsrc.read())
+                with tf.extractfile(m) as fsrc:
+                    data = fsrc.read()            # read whole before the old copy is replaced
+                (dst / name).write_bytes(data)
     (dst / "_pull.tgz").unlink(missing_ok=True)
     if a.ckpt:
         ck = "ckpt_final.pt" if a.final else "ckpt_latest.pt"
         r = ssh(rec, f"md5sum /root/RL_Surf/runs/{a.run}/{ck} | cut -d' ' -f1")
         want = r.stdout.strip()
         if want:
-            subprocess.run(["scp", "-o", "BatchMode=yes", *SSH_OPTS, "-q", "-P", str(rec["port"]),
-                            f"{src}/{a.run}/{ck}", str(dst / ck)], timeout=1800)
-            got = md5(dst / ck) if (dst / ck).exists() else ""
+            # into a .part first: a timed-out or dropped scp leaves a truncated file, and under
+            # the real name it replaced the good copy pulled earlier, which the round end then
+            # hands on as the next incumbent (r1b2's box ran at 31 KB/s on 2026-10-20)
+            part = dst / (ck + ".part")
+            part.unlink(missing_ok=True)
+            try:
+                subprocess.run(["scp", "-o", "BatchMode=yes", *SSH_OPTS, "-q", "-P",
+                                str(rec["port"]), f"{src}/{a.run}/{ck}", str(part)],
+                               stdin=subprocess.DEVNULL, timeout=1800)
+            except subprocess.TimeoutExpired:
+                log(f"!! {a.agent}: scp of {a.run}/{ck} timed out after 30 min")
+            got = md5(part) if part.exists() else ""
             if got != want:
-                log(f"!! {a.agent}: {ck} md5 {got} != {want} on the box (truncated pull)")
+                part.unlink(missing_ok=True)
+                kept = "the copy pulled earlier is kept" if (dst / ck).exists() else "none kept"
+                log(f"!! {a.agent}: {ck} md5 {got} != {want} on the box (truncated pull); {kept}")
             else:
+                part.replace(dst / ck)
                 log(f"{a.agent}: pulled {a.run}/{ck} (md5 {want})")
     n = len(list(dst.glob("traj_*.jsonl")))
     log(f"{a.agent}: pulled {a.run} -> {dst} ({n} eval trajectories)")

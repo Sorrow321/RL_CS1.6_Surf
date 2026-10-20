@@ -137,3 +137,35 @@ def test_ckpt_step_reads_the_step_without_unpickling(tmp_path, monkeypatch):
     real = ROOT / "runs" / "sidEM2cap2surfGR" / "ckpt_latest.pt"
     if real.exists():
         assert orchestrator.ckpt_step(real) == 749_731_840
+
+
+def test_handon_skips_a_truncated_or_damaged_checkpoint(tmp_path, monkeypatch):
+    """A pull that timed out leaves a truncated file under the real name (r1b2, 31 KB/s,
+    2026-10-20); the round end must not copy it to incumbent/ckpt.pt."""
+    torch = pytest.importorskip("torch")
+    monkeypatch.setattr(orchestrator, "AR_HOME", tmp_path / "ar")
+    run = tmp_path / "r1b2_nth"
+    run.mkdir()
+
+    def save(name, step):
+        torch.save({"policy": {"w": torch.arange(50_000, dtype=torch.float32)},
+                    "global_step": step}, run / name)
+        return run / name
+
+    whole = save("ckpt_final.pt", 3000).read_bytes()
+    (run / "ckpt_final.pt").write_bytes(whole[:len(whole) // 2])        # truncated pull
+    bad = bytearray(save("ckpt_latest.pt", 2500).read_bytes())
+    bad[len(bad) // 2] ^= 0xFF                                         # one damaged byte
+    (run / "ckpt_latest.pt").write_bytes(bytes(bad))
+    save("ckpt_1000.pt", 1000)
+    save("ckpt_2000.pt", 2000)
+    (run / "ckpt_2000.pt.part").write_bytes(b"partial")
+    assert not orchestrator.ckpt_complete(run / "ckpt_final.pt")
+    assert not orchestrator.ckpt_complete(run / "ckpt_latest.pt")
+    assert orchestrator.handon_ckpt(run) == run / "ckpt_2000.pt"
+    (run / "ckpt_2000.pt").unlink()
+    assert orchestrator.handon_ckpt(run) == run / "ckpt_1000.pt"
+    (run / "ckpt_1000.pt").unlink()
+    assert orchestrator.handon_ckpt(run) is None
+    save("ckpt_final.pt", 3000)
+    assert orchestrator.handon_ckpt(run) == run / "ckpt_final.pt"
