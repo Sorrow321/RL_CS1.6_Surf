@@ -31,7 +31,7 @@
     "RTX_3090": 0.3,
     "RTX_3090_Ti": 0.3,
     "RTX_4080": 0.3,
-    "RTX_5080": 0.38,
+    "RTX_5080": 0.4,
     "RTX_4090": 0.45,
     "RTX_5090": 0.6
   },
@@ -69,5 +69,5 @@
   "start_d": 97768.0,
   "model": "claude-opus-5-5",
   "effort": "max",
-  "_offer_query_doc": "Scratch training here is CPU-bound: the trainer takes half the container's CPUs for physics. A 16-thread 3090 box ran the incumbent recipe at ~36k steps/s (2026-10-20, smoke_x1) against ~420k on the 5090 PC, so boxes need >= 32 effective threads on a fast CPU."
+  "_offer_query_doc": "Scratch training here is CPU-bound: the trainer takes half the container's CPUs for physics. A 16-thread 3090 box ran the incumbent recipe at ~36k steps/s (2026-10-20, smoke_x1) against ~420k on the 5090 PC, so boxes need >= 32 effective threads on a fast CPU. Measured the same night on a 3090 + Ryzen 9 5950X box (32 threads, quota 30.7 CPUs, omp 15): ~194k steps/s, GPU 30% busy."
 }
