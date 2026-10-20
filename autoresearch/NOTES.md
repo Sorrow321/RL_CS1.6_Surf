@@ -297,3 +297,25 @@ prints the deepest harvested states of a ckpt's reservoir):**
 * That is near where the human is at 24.5 s, (4,041, 661, 11,814), and ~600 u BELOW the
   agent's habitual U-turn (z ~12,390). The exploration under heat reaches the human's line, and
   the 977M greedy eval switched to the same north lane.
+
+### 04:48 UTC - arm 4 at T 2 (1.12B): training episodes FLY THE DETOUR REGION; no return yet
+
+Reservoir late-map rows (d < 74.5k) by x band (box-side probe `res_region.py`, newest 20k rows):
+
+| x band | arm 3 @ 900.7M (T 0.10) | arm 4 @ 1,120M (T 2.0) |
+|---|---|---|
+| 3,500-4,000 | 2,161 rows, z 12,163-12,481 | 1,539 rows, z 11,799-12,491 |
+| 4,000-4,500 | 60 rows, z >= 12,374, all heading east | 237 rows, z 11,119-12,494 |
+| 4,500-5,000 | 0 | 114 rows, z 10,978-12,379, 32% heading east |
+| 5,000-5,500 | 0 | 46 rows, z 11,012-11,633, 46% heading east |
+| 5,500-6,500 | 0 | 24 rows, z 10,984-11,475, 54% heading east |
+
+* The human's detour is (4,041, 661, 11,814) at 24.5 s -> (5,554, 454, 11,079) at 25.5 s, then a
+  ramp ride back west. Under heat with correlated noise, training episodes now reach x 4,500-6,500
+  at z ~11,000-11,600 and SURVIVE >= 2 s there (harvested), half of them already heading back west.
+  At low T nothing east of x 4,500 and nothing below z 12,160 was ever harvested.
+* No episode has come back west past the death point yet (reservoir floor 73.48-73.63%, d ~71,840;
+  the death point is d ~70,900), and the greedy line still dives (1,052.8M: 27.43).
+* T 2.00 from ~1.09B, approx_kl 0.04-0.08: the 25%-correlated draw stays healthy at the cap.
+* Extended (box to 08:47 UTC): this is the first arm whose training reaches the region the CP2
+  detour needs. Plan: let it end at 1,301M, then continue from ckpt_final with the same flags.
