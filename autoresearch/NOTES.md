@@ -469,3 +469,44 @@ steps/s. Measure it on your box in the first minute and size `--steps` to the ti
   ~11,300, then steer to the centre between the plates. In free fall from level flight a
   368 u approach loses only ~30 u, so it needs a downward velocity set up before the edge -
   the human's dip 2 (27.9-31.2 s) is probably that set-up. Under the ratchet the dip is free.
+
+## ROUND 1 LESSON (r1b1) - written 10:30 UTC
+
+**Result:** best greedy eval from the true start **28.628** (r1b1_ratnovx2 at 4,917M; incumbent
+27.222, best before the round 27.5). 0 finishes. The CP2 pit - the wall every run since 10-18
+died at (27.5%) - is crossed by the human's own line, champion-free, from scratch.
+
+**The recipe that did it** (now `config.incumbent_recipe`): the round-0 incumbent recipe
+(GR: unstuck eval-frontier, margin 2, cap 2, surf flag + bonus, compass, pot-rate)
+**+ `--respawn-novel` + `--race-ratchet`**, from scratch, defaults, no new code:
+* first-ramp trap exit 378M (GR 529M), at T ~0; window 576M (GR 755M); CP2 pit wall 651M
+  (GR ~850M, surf ~1.9B); after ~1B steps at the wall the greedy line flies the human's
+  route at 1,633M (drop under plate *45, east to the +y ramp, turnaround, climbing exit,
+  level through the slot between kill *86 and *99) - 28.55%, then 28.0-28.6% at most evals
+  from 2.1B to 5.9B.
+* Ablations (one seed each, from scratch, 500M): ratchet ALONE = GR (stuck at 4.6% to 453M);
+  novel ALONE = fast first gate (10.1% at 302M) but stalls at the window (20.8% to 1.02B,
+  as NV2 did). Neither half alone; the pair.
+
+**What did not work (warm, at the CP2 pit, 300-400M each):** `--death-charge 1.0` (prefers an
+earlier death - north wall, 24.7%); ez-greedy bursts everywhere (`--ez-eps 0.02`, new code
+for the continuous view: no crossing, line noisier); `--respawn-novel` alone from the wall
+(visits the corridor/ramp 20-400x more, no crossing); novel + frontier-only bursts
+(`--ez-front`, new) at T 2 (noisier, no crossing).
+
+**Diagnostics worth reusing** (`autoresearch/analysis/`): the nudge sweep (WON'T vs CAN'T: no
+short yaw deviation crosses CP2) and the corridor bench (from the corridor heading east the
+policy turned west into the pit floor; the +y ramp turns it round by geometry; the exit was
+too low). Both pointed at the ratchet: the stock field charged the eastward leg.
+
+**Where the lineage stops:** the slot's west end (28.6%): a wall at x 2,224 above z ~11,300,
+fail plates *17 / *21 below; the field route dives diagonally to the centre and runs west at
+z ~10,400 into CP2 (~31%). The frontier has not moved by +500 u since 1,633M (T at the cap 2
+since ~2.4B). Next round: start from the incumbent checkpoint (5.1B, has the ratchet column -
+a bare resume restores both flags) or from scratch with the new recipe (~0.65B to the wall,
+~1.6B to the pit crossing on this box).
+
+**Ops:** the RTX 5080 + 7950X3D box ran the recipe at 270-306k steps/s (vs ~194k on a 3090 +
+5950X); `tools/gpu_health.py` needed a 5080 reference (added). `score.py --best <agent dir>`
+does not recurse into runs; the orchestrator passes each run dir (fine). The next incumbent
+checkpoint is taken from the BEST EVAL's run dir, so pull that run's ckpt_final.
