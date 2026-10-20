@@ -6471,6 +6471,12 @@ def main() -> None:
                          "quarter of the archived cells by field distance) instead of "
                          "weighting the reservoir draw. 0/absent = the reservoir weighting; "
                          "ckpt restores")
+    ap.add_argument("--respawn-rare-speed", type=int, default=None,
+                    help="--respawn-rare-arch: key the archive's cells by (position, "
+                         "horizontal-speed bucket) with B buckets of 4000/B u/s - the "
+                         "--int-speed binning - so a fast state is not a slow one's cell "
+                         "(Go-Explore's cell representation); 0/1/absent = position only; "
+                         "ckpt restores")
     ap.add_argument("--int-view", type=int, default=None,
                     help="yaw sectors in the novelty count key (0 = off; "
                          "8 = 45-degree sectors). Position-only counts are "
@@ -7508,6 +7514,9 @@ def main() -> None:
         if args.respawn_rare_arch is None and ck_cfg.get("respawn_rare_arch"):
             args.respawn_rare_arch = int(ck_cfg["respawn_rare_arch"])
             restored.append("respawn_rare_arch")
+        if args.respawn_rare_speed is None and ck_cfg.get("respawn_rare_speed"):
+            args.respawn_rare_speed = int(ck_cfg["respawn_rare_speed"])
+            restored.append(f"respawn_rare_speed={args.respawn_rare_speed}")
         # --respawn-backward: a spawn DISTRIBUTION, restored like the frontier
         if args.respawn_backward is None and ck_cfg.get("respawn_backward"):
             args.respawn_backward = True
@@ -8416,6 +8425,8 @@ def main() -> None:
         args.respawn_rare_cell = 256.0
     if args.respawn_rare_arch is None:
         args.respawn_rare_arch = 0
+    if args.respawn_rare_speed is None:
+        args.respawn_rare_speed = 0
     for _bk, _bv in (("respawn_backward_start", 0.05),
                      ("respawn_backward_step", 0.05),
                      ("respawn_backward_rate", 0.2),
@@ -10918,6 +10929,9 @@ def main() -> None:
         if respawn is None or args.respawn_frac <= 0.0:
             raise SystemExit("--respawn-rare needs the reservoir (--respawn-frac > 0): the "
                              "returns are the policy's own reservoir states")
+        if int(args.respawn_rare_speed or 0) > 1 and not args.respawn_rare_arch:
+            raise SystemExit("--respawn-rare-speed keys the archive's cells: needs --respawn-rare "
+                             "> 0 --respawn-rare-arch 1")
         for _bad, _why in ((bool(args.respawn_binned) or args.respawn_mode != "uniform",
                             "--respawn-binned / --respawn-mode (another reservoir draw)"),
                            (int(getattr(args, "plan_return", 0) or 0) > 0,
@@ -10937,12 +10951,17 @@ def main() -> None:
                                      dist_fn=(_fld.sample if (_fld is not None
                                                               and hasattr(_fld, "grid"))
                                               else None),
-                                     seed=89 + 101 * _i)
+                                     seed=89 + 101 * _i,
+                                     speed_buckets=max(1, int(args.respawn_rare_speed)))
             if not args.respawn_rare_arch:
                 _s.respawn.weight_fn = _s.rare.weights
         if args.respawn_rare_arch:
             print(f"respawn RARE ARCHIVE: {args.respawn_rare:.0%} of the non-start, non-novel "
-                  f"spawn rows from Go-Explore's archive - per {args.respawn_rare_cell:g} u cell a "
+                  f"spawn rows from Go-Explore's archive - per {args.respawn_rare_cell:g} u cell"
+                  + (f" x {int(args.respawn_rare_speed)} speed buckets of "
+                     f"{4000.0 / int(args.respawn_rare_speed):,.0f} u/s"
+                     if int(args.respawn_rare_speed) > 1 else "")
+                  + f" a "
                   f"ring of {_s.rare.ring} states at which REAL envs entered it, no pre-death "
                   f"margin; cells by 1/sqrt(1 + N) (N = entries of REAL episodes), half among the "
                   f"deepest quarter of the archived cells by field distance")
@@ -10953,6 +10972,11 @@ def main() -> None:
                   f"uniform")
     elif int(args.respawn_rare_arch or 0):
         raise SystemExit("--respawn-rare-arch needs --respawn-rare > 0 (its share)")
+    if int(args.respawn_rare_speed or 0) > 1 and not (RARE and args.respawn_rare_arch):
+        raise SystemExit("--respawn-rare-speed keys the archive's cells: needs --respawn-rare > 0 "
+                         "--respawn-rare-arch 1")
+    if int(args.respawn_rare_speed or 0) < 0:
+        raise SystemExit("--respawn-rare-speed is a bucket count >= 0")
     if args.respawn_backward:
         for _i, slot in enumerate(slots):
             _fld = (slot.reward_field if slot.reward_field is not None
@@ -13612,6 +13636,8 @@ def main() -> None:
             "respawn_rare_cell": float(args.respawn_rare_cell)})
         if args.respawn_rare_arch:
             meta["config"]["respawn_rare_arch"] = int(args.respawn_rare_arch)
+        if int(args.respawn_rare_speed) > 1:
+            meta["config"]["respawn_rare_speed"] = int(args.respawn_rare_speed)
     # --unstuck: written ONLY when set (a control run's config dump stays
     # byte-identical); every knob rides along so a resume restores them
     if UNSTUCK:

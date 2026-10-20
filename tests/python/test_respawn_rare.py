@@ -133,6 +133,28 @@ def test_archive_captures_real_flown_entries_and_mixes_into_the_tail():
     assert r2.block_of[r.block_cell[0]] == 0 and r2.block_of[r.block_cell[1]] == 1
 
 
+def test_speed_buckets_split_a_cell_by_horizontal_speed():
+    r = RareCellReturn((0.0, 0.0, 0.0), (1000.0, 1000.0, 1000.0), 2, cell=100.0,
+                       frac=1.0, arch=True, ring=2, speed_buckets=3, seed=2)
+    assert r.speed_bin == 4000.0 / 3 and len(r.counts) == 3 * int(np.prod(r.dims))
+    p0 = np.array([[50, 50, 50], [50, 50, 50]], float)
+    r.observe(p0, real=None, states=_states(p0, vel=(0.0, 0.0, 0.0)))
+    p1 = np.array([[150, 50, 50], [150, 50, 50]], float)
+    st = _states(p1)
+    st["velocity"][0] = (200.0, 0.0, -900.0)          # slow horizontally (vz does not count)
+    st["velocity"][1] = (1500.0, 800.0, 0.0)          # |v_xy| 1,700: the middle bucket
+    r.observe(p1, real=None, states=st)
+    k = r.skeys(p1, st["velocity"])
+    assert k[0] != k[1] and r.counts[k[0]] == 1 and r.counts[k[1]] == 1
+    assert r.n_blocks == 2                             # one archived cell per speed bucket
+    with pytest.raises(ValueError):
+        RareCellReturn((0.0, 0.0, 0.0), (1000.0, 1000.0, 1000.0), 2, speed_buckets=3)
+    d = r.state_dict()
+    r1 = RareCellReturn((0.0, 0.0, 0.0), (1000.0, 1000.0, 1000.0), 2, cell=100.0,
+                        frac=1.0, arch=True, ring=2)
+    assert not r1.load_state_dict(d)                   # other cell keys: refused, fresh
+
+
 RARE = ["--ep-ticks", "400", "--respawn-margin", "0.1", "--respawn-reservoir", "3000",
         "--respawn-novel"]
 LONG = "450560"
@@ -199,6 +221,35 @@ def test_rare_archive_runs_checkpoints_and_resumes():
                + ["--steps", "2048", "--respawn-rare-arch", "1"])
     assert bad.returncode != 0 and "needs --respawn-rare > 0" in (bad.stdout + bad.stderr)
     for dd in (d, ROOT / "runs" / run2, ROOT / "runs" / "rare_arch_bad"):
+        shutil.rmtree(dd, ignore_errors=True)
+
+
+@needs_run
+def test_rare_archive_speed_buckets_run_and_restore():
+    run = "rare_arch_spd"
+    r = _train(run, RARE + ["--respawn-rare", "0.5", "--respawn-rare-arch", "1",
+                            "--respawn-rare-speed", "3"], steps=LONG)
+    assert "x 3 speed buckets of 1,333 u/s" in r.stdout
+    assert re.search(r"archive [0-9,]+ cells / [0-9,]+ states captured, [1-9][0-9,]* spawned",
+                     r.stdout), r.stdout[-3000:]
+    d = ROOT / "runs" / run
+    cfg = json.loads((d / "run.json").read_text(encoding="utf-8"))["config"]
+    assert cfg["respawn_rare_speed"] == 3
+    ck = torch.load(d / "ckpt_final.pt", map_location="cpu", weights_only=False)
+    rr = next(iter(ck["respawn_rare"].values()))
+    assert rr["speed_buckets"] == 3 and len(rr["arch_cell"]) > 0
+    run2 = "rare_arch_spd_re"
+    shutil.rmtree(ROOT / "runs" / run2, ignore_errors=True)
+    r2 = _run([sys.executable, "-u", str(TRAIN), "--run", run2, "--ckpt",
+               str(d / "ckpt_final.pt")] + SMOKE + ["--respawn-reservoir", "3000",
+                                                    "--steps", "471040"])
+    assert r2.returncode == 0, r2.stdout[-4000:] + r2.stderr[-4000:]
+    assert "respawn_rare_speed=3" in r2.stdout and "restored --respawn-rare counts" in r2.stdout
+    bad = _run([sys.executable, "-u", str(TRAIN), "--run", "rare_spd_bad"] + SMOKE
+               + ["--steps", "2048", "--respawn-rare", "0.5", "--respawn-rare-speed", "3"])
+    assert bad.returncode != 0 and "needs --respawn-rare > 0 --respawn-rare-arch 1" in (
+        bad.stdout + bad.stderr)
+    for dd in (d, ROOT / "runs" / run2, ROOT / "runs" / "rare_spd_bad"):
         shutil.rmtree(dd, ignore_errors=True)
 
 

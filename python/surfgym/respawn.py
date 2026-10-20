@@ -2069,15 +2069,21 @@ class RareCellReturn:
     def __init__(self, mins, maxs, n_envs: int, cell: float = 256.0,
                  frac: float = 0.5, arch: bool = False, ring: int = 4,
                  dist_fn=None, shell_frac: float = 0.5, shell_width: float = 0.25,
-                 seed: int = 89) -> None:
+                 seed: int = 89, speed_buckets: int = 1) -> None:
         self.cell = float(cell)
         self.frac = float(frac)
         if not (self.cell > 0.0 and 0.0 < self.frac <= 1.0):
             raise ValueError(f"--respawn-rare: cell {cell}, share {frac}")
+        # --respawn-rare-speed B: the cell is (position, horizontal-speed bucket of 4000/B u/s),
+        # the buckets of --int-speed B; 1 = position only (needs the states, so archive mode)
+        self.speed_buckets = max(1, int(speed_buckets))
+        if self.speed_buckets > 1 and not arch:
+            raise ValueError("--respawn-rare-speed keys the ARCHIVE's cells: needs the archive")
+        self.speed_bin = 4000.0 / self.speed_buckets
         self.mins = np.asarray(mins, np.float64).reshape(3)
         span = np.asarray(maxs, np.float64).reshape(3) - self.mins
         self.dims = (np.maximum(1, np.ceil(span / self.cell)).astype(np.int64) + 1)
-        self.counts = np.zeros(int(np.prod(self.dims)), np.int64)
+        self.counts = np.zeros(int(np.prod(self.dims)) * self.speed_buckets, np.int64)
         self.n = int(n_envs)
         self.prev = np.full(self.n, -1, np.int64)
         self.entries = 0                       # cumulative real entries counted
@@ -2120,13 +2126,25 @@ class RareCellReturn:
                      0, self.dims - 1)
         return ix[:, 0] + self.dims[0] * (ix[:, 1] + self.dims[1] * ix[:, 2])
 
+    def skeys(self, pos, vel) -> np.ndarray:
+        """The cell key with the speed bucket (``speed_buckets`` > 1): position key x B + the
+        horizontal-speed bucket, the --int-speed binning."""
+        k = self.keys(pos)
+        if self.speed_buckets == 1:
+            return k
+        v = np.asarray(vel, np.float64).reshape(-1, 3)
+        sb = np.clip((np.hypot(v[:, 0], v[:, 1]) // self.speed_bin).astype(np.int64),
+                     0, self.speed_buckets - 1)
+        return k * self.speed_buckets + sb
+
     def observe(self, pos, real=None, states=None) -> None:
         """This slot's (n, 3) positions, once per decision: count the REAL envs
         that entered a cell since the previous decision. With the archive on,
         ``states`` (this slot's state rows, ``STATE_DTYPE``) gives the entering
         real envs' states, archived unless the move was a respawn jump."""
         p = np.asarray(pos, np.float64).reshape(-1, 3)
-        k = self.keys(p)
+        k = (self.skeys(p, states["velocity"]) if (self.speed_buckets > 1 and states is not None)
+             else self.keys(p))
         if len(k) != self.n:
             raise ValueError(f"rare-cell return wants {self.n} envs, got {len(k)}")
         ent = k != self.prev
@@ -2249,7 +2267,8 @@ class RareCellReturn:
 
     def state_dict(self) -> dict:
         d = {"counts": self.counts.copy(), "dims": self.dims.copy(),
-             "cell": self.cell, "entries": int(self.entries)}
+             "cell": self.cell, "entries": int(self.entries),
+             "speed_buckets": int(self.speed_buckets)}
         if self.arch:
             nb = self.n_blocks
             d.update({"ring": self.ring, "arch_store": self.store[:nb * self.ring].copy(),
@@ -2263,6 +2282,7 @@ class RareCellReturn:
             return False
         if (float(d.get("cell", -1.0)) != self.cell
                 or not np.array_equal(np.asarray(d.get("dims")), self.dims)
+                or int(d.get("speed_buckets", 1)) != self.speed_buckets
                 or len(d["counts"]) != len(self.counts)):
             return False
         self.counts = np.asarray(d["counts"], np.int64).copy()
