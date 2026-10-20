@@ -7,13 +7,14 @@
   "eval_file": "/home/steam/ar/runs/r1b1/r1b1_ratnovx/traj_1633157120.jsonl",
   "run": "r1b1_ratnovx",
   "step": 1633157120,
-  "ckpt": null,
+  "ckpt": "/home/steam/ar/runs/r1b1/r1b1_ratnovx/ckpt_final.pt",
   "recipe": [
    "--respawn-novel",
    "--race-ratchet"
   ],
   "resume_from": "scratch (r1b1_ratnov 0-500M, then r1b1_ratnovx bare resume)",
-  "commit": "3afbbc5"
+  "commit": "3afbbc5",
+  "note": "ckpt_final is 2,500,329,472 (md5 f845951c...), the run's end; the 1,633M eval's own weights were not kept"
  },
  "summary": "FROM SCRATCH incumbent recipe + --respawn-novel + --race-ratchet (r1b1_ratnov -> r1b1_ratnovx): trap exit 378M (GR 529M), window 576M (GR 755M), CP2 pit wall 651M; at 1,633M the greedy line FLIES THE HUMAN'S CP2 LINE (drop under the plate, east to the +y ramp, turnaround, climbing exit, level slot at z ~11,490): 5/9 reach the pit floor's west edge x ~2,600, one past it to x 2,224 = 28.55% (score 28.553, first progress past the CP2 pit). Earlier warm arms (DC, ez bursts, novel alone) did not cross. Extending."
 }

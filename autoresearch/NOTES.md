@@ -354,3 +354,23 @@ steps/s. Measure it on your box in the first minute and size `--steps` to the ti
 * How it came: ~1B steps at the wall with novel rows in the corridor (the turnaround is the
   +y ramp's geometry) and the ratchet (no charge for the eastward leg). None of the warm arms
   without the ratchet (nov, novezf: 800M at the wall between them) produced it.
+
+### r1b1_ratnovx end (2.5B) and continuation r1b1_ratnovx2 (05:25 UTC)
+
+* Evals after the milestone (best / median): 1,708M 27.5/27.0, 1,784M 27.5/27.4, 1,860M 27.5/27.5,
+  1,935M 27.2/27.1, 2,011M 27.5/22.6, 2,086M 27.4/26.4, **2,162M 28.0/27.9**, 2,237M 27.3/27.2,
+  **2,313M 28.3/27.4**, 2,388M 27.4/25.6. The greedy line flips between the old pit dive and the
+  human's line; T back at the cap 2 by 2.4B (no +500 u best after 1,633M).
+* Training side: reservoir min-depth 72.165% at 2.42B (deepest harvested state 27.8% progress,
+  past the old pit death at 27.5%): training episodes now survive past the pit edge for >= 2 s.
+* The line is flown on BOTH lanes (the map is mirror-symmetric in y): 2,162M episodes die at
+  the floor's west edge on the -y side too (x 2,576-2,635, y -859..-959, z 11,345-11,415).
+* **The next obstacle:** the 2,313M best episode flies the slot level (z 11,543-11,562 at x
+  3,445-3,096, vz ~0) and at 28.5 s hits something facing east at x ~2,224 (y ~700-900,
+  z ~11,320-11,450): vx -1,399 -> 0, deflected to -y, falls. The human's dip 2 (27.9-31.2 s,
+  1,978 u) starts right here, and CP2 (sgcp_2, x 768-816, z 10,060-11,300) is 7 s further.
+* Checkpoint kept: /home/steam/ar/runs/r1b1/r1b1_ratnovx/ckpt_final.pt (2,500,329,472,
+  md5 f845951c...). ckpt_1500512256.pt is on the box.
+* **Continuation r1b1_ratnovx2**: bare resume of that checkpoint, same recipe, 2.6e9 steps
+  (to 5.1B, ~08:00 UTC; the idea's 6 h cap from 02:53 ends 08:53). Watching for: CP2 crossings,
+  the frontier past x 2,224, and whether the greedy line consolidates on the new line.
