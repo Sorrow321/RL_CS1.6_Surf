@@ -836,7 +836,16 @@ class RespawnBuffer:
                         np.zeros(n0, np.int32))
             return start_pool
         n_re = pool_size - n_fresh
-        if self.weight_fn is not None:
+        if self.weight_fn is not None and self.cells is not None:
+            # --respawn-deep + --respawn-cells: the cell share by cell, the rest through the
+            # weights (the deep shell and its uniform remainder)
+            n_c = int(round(self.cells.share * n_re))
+            w = np.asarray(self.weight_fn(self._store["origin"][:self._size]), np.float64)
+            w = np.where(np.isfinite(w) & (w > 0.0), w, 0.0)
+            rest = (self.rng.choice(self._size, n_re - n_c, p=w / w.sum()) if w.sum() > 0.0
+                    else self.rng.integers(0, self._size, n_re - n_c))
+            idx = np.concatenate([self.cells.draw(self._store, self._size, n_c, self.rng), rest])
+        elif self.weight_fn is not None:
             w = np.asarray(self.weight_fn(self._store["origin"][:self._size]), np.float64)
             w = np.where(np.isfinite(w) & (w > 0.0), w, 0.0)
             idx = (self.rng.choice(self._size, n_re, p=w / w.sum()) if w.sum() > 0.0

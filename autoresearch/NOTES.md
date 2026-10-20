@@ -670,3 +670,24 @@ checkpoint is taken from the BEST EVAL's run dir, so pull that run's ckpt_final.
   <= 10 times - side falls all over the map - and the detour got NO returns (table above).
 * Next: r2b4_cells2 = `--respawn-cells 0.8 --respawn-cells-band 0.05` (cells within 5% of d0 of the
   reservoir's frontier: the pocket, the pillar hole, the chamber, the low region, the run-up).
+
+### Skill bench from the human's line (DIAGNOSTIC ONLY - section 0 allows measuring from demo states, never training)
+
+* Incumbent checkpoint, 1 greedy + 6 stochastic episodes (record_ckpt --spawn-states, 8 s cap, no yaw
+  jitter) from single WR-line states. best progress / 'A' = reached the antechamber west of the wall:
+
+  | WR state | what it is | result |
+  |---|---|---|
+  | 28.4 s | pillar centre hole, heading east | 7/7 die in ~1.1 s, 27.57% |
+  | 28.9 s | chamber, falling west (-1,452, 926, -1,265) | 7/7 die in 0.6 s: no turn, ballistic into the y 1,136 side, down to the floor kill |
+  | 29.2 s | bowl entry | 7/7 die in 0.3-0.6 s |
+  | 29.5 s | bowl bottom (-100, -2,003, -117) | SURFS: vz up to +1,190..+1,250, 2-4 s, best 26.6-27.5% |
+  | 30.0 s | bowl exit, rising east | climbs too far east (x ~2,820), misses the pillar hole, 27.3-27.5% |
+  | 30.5 s | chamber, rising north | greedy **29.83% A**; stochastic 1/7 past 28.3% |
+  | 31.0 s | pocket, rising north | **7/7 A**, 29.43-29.76% |
+  | 31.4 s | approaching the wall hole | **7/7 A**, 29.32-29.97% |
+
+* So the policy already owns the bowl surf and the finish (rising pocket -> wall hole apex -> antechamber);
+  it lacks two steering links inside the detour: chamber fall -> bowl (a strafe into the surface the human
+  catches at ~28.9 s) and bowl exit -> rising chamber (turn north-west earlier and lower). That is the
+  textbook case for returning to its own rare detour states (cells) and letting RL fix the links.

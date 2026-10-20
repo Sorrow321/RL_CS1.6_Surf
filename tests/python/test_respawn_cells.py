@@ -151,6 +151,23 @@ def test_reservoir_realises_the_cell_share_and_checkpoints_the_counters():
     assert "cells" not in rb3.state_dict()
 
 
+def test_cells_and_deep_shell_compose():
+    from surfgym.respawn import CellReturn, RespawnBuffer
+    from train_fast import deep_shell_weights
+    rb = RespawnBuffer(4, reservoir=4000, margin_ticks=0, snap_every=1, seed=7)
+    rb.cells = CellReturn(0.3, 128.0)
+    rb.weight_fn = lambda o: deep_shell_weights(-o[:, 0].astype(np.float64), 0.5, 0.05)
+    store = np.concatenate([_rows(np.full(3800, 10.0)), _rows(np.arange(200) * 256.0 + 1000.0)])
+    rb.push_many(store)
+    pool = rb.build_pool(_rows([-5000.0] * 8), pool_size=20000, fresh_frac=0.10)
+    re = pool[pool["origin"][:, 0] > -4000.0]
+    # cell share 0.3 (rare cells nearly always), deep share 0.5 of the rest (the 5% largest x =
+    # 200 of the rare rows), the remainder uniform (5% rare)
+    rare = float(np.mean(re["origin"][:, 0] >= 1000.0))
+    want = 0.3 * 0.99 + 0.7 * (0.5 + 0.5 * 0.05)
+    assert abs(rare - want) < 0.03, (rare, want)
+
+
 def test_band_keeps_the_cell_draw_near_the_reservoir_frontier():
     from surfgym.respawn import CellReturn
     # "distance" = 10,000 - x: progress = x; frontier = the largest x
@@ -189,7 +206,7 @@ def test_cells_run_log_and_a_flagless_resume_restores_them():
     assert "respawn_cells_band=0.05" in r2.stdout
     bad = _run([sys.executable, "-u", str(TRAIN), "--run", "rcells_bad"]
                + SMOKE + ["--steps", "2048", "--respawn-cells", "0.5", "--respawn-deep", "0.5"])
-    assert bad.returncode != 0 and "pick one" in (bad.stdout + bad.stderr)
+    assert bad.returncode != 0 and "must stay < 1" in (bad.stdout + bad.stderr)
     for dd in (d, ROOT / "runs" / run2, ROOT / "runs" / "rcells_bad"):
         shutil.rmtree(dd, ignore_errors=True)
 

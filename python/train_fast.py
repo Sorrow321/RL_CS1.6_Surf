@@ -8514,9 +8514,10 @@ def main() -> None:
         raise SystemExit("--respawn-cells-band is a fraction of d0, in [0, 1]")
     if float(args.respawn_cells_band) > 0.0 and not float(args.respawn_cells) > 0.0:
         raise SystemExit("--respawn-cells-band needs --respawn-cells > 0")
-    if float(args.respawn_cells) > 0.0 and float(args.respawn_deep) > 0.0:
-        raise SystemExit("--respawn-cells and --respawn-deep both reshape the reservoir draw; "
-                         "pick one")
+    if float(args.respawn_cells) > 0.0 and float(args.respawn_deep) > 0.0 \
+            and float(args.respawn_cells) + float(args.respawn_deep) >= 1.0:
+        raise SystemExit("--respawn-cells + --respawn-deep: the cell share is taken first and "
+                         "the deep shell's share applies to the rest; their sum must stay < 1")
     if args.respawn_mode is None:
         args.respawn_mode = "uniform"
     if args.respawn_bins is None:
