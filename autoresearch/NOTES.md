@@ -994,3 +994,20 @@ generic), a reverse curriculum from the policy's own states once any real episod
 up the helix (the archive keeps them), or a search-based explorer (planning in the simulator
 from the archive's cavity states with the policy as a prior). The incumbent checkpoint
 (r2b3_ownx) already carries the archive state (`--respawn-rare*` restored on a bare resume).
+
+### Surf-aligned states from geometry alone (bench, measurement only, 22:10 UTC)
+
+`autoresearch/analysis/sid_surf_states.py`: states 30-90 u off a solid surface (SDF), hull-checked,
+on the field's reachable set, with |v| 1,500-2,200 along a random horizontal direction projected
+onto the surface plane - what a generic "surf-aligned novel row" would spawn. Policy =
+r2b3_ownx ckpt_latest, stochastic, 6 s cap:
+
+* In a box under the shaft / room that also covers the space WEST of the diagonal ramp (field
+  29.1-29.5%, past the window): 32 episodes, 13 go on west under the room toward CP2, best
+  30.33% - the policy flies the post-window route from generic states too. 0 climb into the shaft.
+* Restricted to the helix side (below / east of the diagonal ramp z = 9,968 + 0.909 (x - 1,760)):
+  40 episodes, 0 climb into the shaft, 0 windows; best gain +1.2% (26.2 -> 27.4%, up to
+  z 11,085 - near the gap's height); 5 alive at the cap.
+* Reading: generic surf-aligned rows would put practice states on the helix that the archive
+  (real states, falling) and the novel rows (velocity kept) do not; the ride itself would still
+  have to be learned from them. A candidate for the next round, with that caveat.
