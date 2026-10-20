@@ -461,3 +461,28 @@ misleading: the agent's surviving lines pass through `*99`'s box.
   * Re-read at step 2,917,662,720.
 * **C3 evals:** 2,751M / 2,826M / 2,902M = 26,841 / 26,903 / 26,879 u frontier. No change in
   the greedy dive yet.
+
+### 05:30 UTC: C3 stopped (flat); fast entries are rare; C4 = C3 + self-imitation (SIL)
+
+* **Arm C3, r1b4_gs3**, 04:53-05:27, 2.75B -> 3.14B:
+  * the evals' frontier stayed at 26,841-26,903 u, all 9 episodes at the wall each time;
+  * best score 27.517 (2,826M);
+  * the higher-dive approach states (deep chains, live since 2.64B and 19% of the file since
+    2.92B) did not move the greedy dive in ~500M steps.
+  * Stopped by exact pid at 3,141.5M; the latest checkpoint was snapshotted on the box as
+    `runs/gs3_last.pt`.
+* **Fast lower-room entries are rare** (CPU, scratchpad `entries.py`):
+  * random held bursts from C2-final's own CP2-region reservoir states (200 sources x 32);
+  * only 6 of 6,400 enter the lower room heading east above 900 u/s, all at x ~5,000,
+    1,150-1,255 u/s.
+  * So bursts would not supply the fast, policy-speed D-ramp entries either.
+* **SIL smoke** (CPU, sidistic; continuous view + keys-hold + potential + unstuck +
+  spawn-states + `--sil-coef 0.1`, with SELF_STATES=1 for the trainer's own section-0
+  guard): runs.
+* **Arm C4, r1b4_gs4**, launched 05:27:
+  * resume of `runs/gs3_last.pt` with the same spawn file (the c4 content), `--unstuck-max 1`
+    and **`--sil-coef 0.1`**.
+  * Why: SIL learns from transitions whose return beat the critic. The best D-ramp
+    attempts (further west before dying) and the higher dives are exactly the near-misses
+    whose on-policy advantage is a thin gradient.
+  * +1.5e9 steps, so it stops at 4.64B, about 07:35. Box deadline 07:58.
