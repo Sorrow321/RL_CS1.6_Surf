@@ -858,3 +858,8 @@ physics as the sim (gravity 800, airaccelerate 100) except maxvelocity 3,500.
   evals 27.2-27.4% (one 24.6%), training ceiling flat at 27,318 u (27.94%), T back at its cap 2.
   No pit crossing yet - not faster than round 1's default sampler so far (ratnov: ~1B steps at the
   wall). Runs to ~3.3B (~22:40 UTC).
+* 21:22 UTC, r2b2_sband2 at 2.27B: the band lineage CROSSED THE CP2 PIT. Eval 1,940M: 28.228 (best
+  28.2%, median 28.0% - most greedy episodes past the pit); training ceiling 27,318 -> 27,998 u
+  (28.64%). That is ~750M steps after reaching the wall (~1.19B) vs ~980M for round 1's default
+  sampler (ratnov, 651M -> 1,633M): consistent with the band helping dip-behind-the-frontier gates,
+  one seed. The following evals (2.0-2.24B) fell back to 27.2-27.4%; T 1.14 and rising.
