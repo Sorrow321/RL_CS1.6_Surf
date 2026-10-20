@@ -232,3 +232,23 @@ steps/s. Measure it on your box in the first minute and size `--steps` to the ti
   velocities) is the right one. That is what the user's `--respawn-novel` does (own
   frontier states moved to unvisited cells, velocity kept), never tried at CP2 (NV2 stalled
   at the window). Next arm: r1b1_nov = wall checkpoint + `--respawn-novel` (defaults).
+
+### r1b1_nov: wall checkpoint + `--respawn-novel` (defaults) - explores the right region, no crossing (02:20 UTC)
+
+* 905M -> 1,305M (400M, ~24 min at 282k steps/s). Novel rows 1,816-1,843 per pool, 43-46%
+  of episodes; ceiling 27,284-27,330 u (27.9-28.0%).
+* Evals (score.py best / median): 906M 27.5/27.3, 981M 27.4/27.4, 1,057M 27.5/27.4,
+  1,132M **27.5**/27.4 (score 27.462, this branch's best), 1,208M 27.4/16.1, 1,283M 27.4/27.4.
+  The greedy line stays at the pit, consistently; 0 finishes.
+* Visit counts (256 u cells), control at 905M -> nov at 1,305M:
+  lower corridor under plate *45 (x 4,200-5,600, z 10,900-11,850) 9,005 visits / 8 cells
+  -> **181,358 / 252 of 280 cells**; east ramp area (x 5,300-6,200, z 10,700-11,400)
+  63 -> **26,993 / 160 of 200**; past CP2 (x -500..700, z 9,000-11,400) **0 -> 0**.
+* Reading: novel spawns put the agent where the human's line goes (under the plate, at the
+  ramp) 20-400x more often than anything else tried, but in 400M steps no episode turned the
+  ramp into a level flight west through the slot. Two candidate reasons: (a) the stock
+  shaping charges the eastward leg in the corridor (the dip), so the policy learns to turn
+  west at once into the pit floor; (b) the ramp turnaround is a skill still to learn.
+  `--race-ratchet` would remove (a), but it adds an observation column (widenable, yet
+  PROTOCOL forbids shape flags on a resume), so it can only be tested from scratch.
+* The unstuck T was rising through this run (no +500 u eval best since 825M): ~1.5 at 1.3B.
