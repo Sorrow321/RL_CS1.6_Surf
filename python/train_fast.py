@@ -6067,6 +6067,18 @@ def main() -> None:
                          "own redraw. Needs --view-ou-sigma > 0 and "
                          "--unstuck. 0/absent = off (the fixed sigma, as "
                          "before). ckpt restores; record_ckpt TRAIN_ONLY")
+    ap.add_argument("--view-ou-frac", type=float, default=None,
+                    help="--view-ou-sigma: the probability that a REDRAW gives "
+                         "the env an offset at all (else exactly 0 for that "
+                         "window). Each window of --view-ou-period decisions "
+                         "(or episode) is an exploring one with probability p "
+                         "and a clean one otherwise, so most of the fleet "
+                         "flies the policy's own line while a share of it "
+                         "commits to a held deviation; a held offset of 10-60 "
+                         "deg on EVERY env shortened sidistic's training "
+                         "episodes 3-4x (r1b3_ouw, 2026-10-20). 1.0/absent = "
+                         "every redraw (as before, op for op). ckpt restores; "
+                         "record_ckpt TRAIN_ONLY")
     # --unstuck: plateau-driven exploration temperature (docs/unstuck.md).
     # Default OFF and byte-identical when off. Every value default None so
     # a resume restores the checkpoint's own settings; resolved below.
@@ -8007,6 +8019,10 @@ def main() -> None:
                 and not flag_given("--view-ou-temp")):
             args.view_ou_temp = int(ck_cfg["view_ou_temp"])
             restored.append(f"view_ou_temp={args.view_ou_temp:d}")
+        if (ck_cfg.get("view_ou_frac") is not None
+                and not flag_given("--view-ou-frac")):
+            args.view_ou_frac = float(ck_cfg["view_ou_frac"])
+            restored.append(f"view_ou_frac={args.view_ou_frac:g}")
         # --unstuck rides in the checkpoint like the view flags: the flag
         # and every knob of it are restored when the CLI does not say
         # otherwise (the schedule's RUN STATE is restored further down)
@@ -13318,6 +13334,9 @@ def main() -> None:
                 meta["config"]["view_ou_period"] = int(args.view_ou_period)
             if int(getattr(args, "view_ou_temp", 0) or 0) > 0:
                 meta["config"]["view_ou_temp"] = 1
+            if (getattr(args, "view_ou_frac", None) is not None
+                    and float(args.view_ou_frac) < 1.0):
+                meta["config"]["view_ou_frac"] = float(args.view_ou_frac)
         print("--view-continuous: yaw and pitch are squashed Gaussians "
               "(z ~ N(mu(s), sigma), K = warp(tanh z), pitch = tanh z * "
               f"{float(core.config.pitch_rate_max_deg):g} deg/tick); "
@@ -14357,6 +14376,15 @@ def main() -> None:
     OU_TMAX = float(args.unstuck_max) if OU_TEMP else 1.0
     if OU_TEMP and not OU_TMAX > 0.0:
         raise SystemExit("--view-ou-temp needs --unstuck-max > 0")
+    # --view-ou-frac: a Python constant; at 1.0 (or absent) the redraw is the
+    # expression that shipped, op for op, and no extra RNG is consumed
+    OU_FRAC = (1.0 if getattr(args, "view_ou_frac", None) is None
+               else float(args.view_ou_frac))
+    if not 0.0 < OU_FRAC <= 1.0:
+        raise SystemExit("--view-ou-frac must be in (0, 1]")
+    if OU_FRAC < 1.0 and OU_SIG <= 0.0:
+        raise SystemExit("--view-ou-frac without --view-ou-sigma: there is no "
+                         "offset to thin out")
     ou_c = ou_sig_t = ou_left = ou_period_t = None
     if OU_SIG > 0.0:
         ou_sig_t = torch.zeros(NZ, device=device)
@@ -14366,6 +14394,9 @@ def main() -> None:
         ou_gen = torch.Generator(device=device)
         ou_gen.manual_seed(int(args.seed) + 90210 + 1000 * int(D.rank))
         ou_c = torch.randn(N, NZ, device=device, generator=ou_gen) * ou_sig_t
+        if OU_FRAC < 1.0:
+            ou_c *= (torch.rand(N, 1, device=device, generator=ou_gen)
+                     < OU_FRAC).to(ou_c.dtype)
         if OU_PERIOD > 0:
             # decisions left on this env's held offset. A redraw restarts
             # it at K; envs are desynchronised by their own episode ends,
@@ -14390,6 +14421,9 @@ def main() -> None:
                   f"{OU_SIG:g} x min(T, {OU_TMAX:g}) / {OU_TMAX:g} - 0 while the "
                   f"eval frontier moves, {OU_SIG:g} at the cap; a held offset "
                   f"keeps its draw until its own redraw")
+        if OU_FRAC < 1.0:
+            print(f"--view-ou-frac {OU_FRAC:g}: each redraw gives the env an "
+                  f"offset with probability {OU_FRAC:g}, else 0 for that window")
 
     def set_ou_temp(T: float) -> None:
         """--view-ou-temp: the held yaw offset's sigma at plateau temperature
@@ -17387,11 +17421,15 @@ def main() -> None:
                         _redraw = _redraw | (ou_left <= 0)
                         ou_left.copy_(torch.where(_redraw, ou_period_t,
                                                   ou_left))
-                    ou_c.copy_(torch.where(
-                        _redraw.unsqueeze(1),
-                        torch.randn(ou_c.shape, device=ou_c.device,
-                                    generator=ou_gen) * ou_sig_t,
-                        ou_c))
+                    _fresh = torch.randn(ou_c.shape, device=ou_c.device,
+                                         generator=ou_gen) * ou_sig_t
+                    if OU_FRAC < 1.0:
+                        # --view-ou-frac: a clean window with prob 1 - p
+                        _fresh *= (torch.rand((ou_c.shape[0], 1),
+                                              device=ou_c.device,
+                                              generator=ou_gen)
+                                   < OU_FRAC).to(_fresh.dtype)
+                    ou_c.copy_(torch.where(_redraw.unsqueeze(1), _fresh, ou_c))
                 if RNN:
                     # decision t+1 is the first of a new episode for the
                     # ended rows: zero their state (stream-ordered after the

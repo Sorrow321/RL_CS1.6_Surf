@@ -240,7 +240,7 @@ TRAIN_ONLY = frozenset({
     "view_ou_sigma", "view_ou_period",
     # --view-ou-temp scales that offset's sigma by --unstuck's T: the same
     # rollout-only behaviour, so TRAIN_ONLY by the same argument
-    "view_ou_temp",
+    "view_ou_temp", "view_ou_frac",
     # --death-charge is a TERMINAL charge only ("no per-step tax, no goal
     # charge"), so like fail_pen/success_bonus it has no per-call value for
     # the --obs-reward slot to mirror - the episode ends where it applies.

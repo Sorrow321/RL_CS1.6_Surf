@@ -10,9 +10,12 @@ absent nothing reads it.
 (c) CPU smoke (sidistic, tiny net): T rises under a short patience and the
     step line's "ou" column follows 0.8 x T / 4; the config dump carries
     view_ou_temp; a flagless resume restores it;
-(d) flag-off identity: --view-ou-sigma WITHOUT --view-ou-temp (the touched
-    init path) reproduces the parent commit's trainer - config dump,
-    progress.csv (timing columns excluded), the greedy eval trajectory bytes.
+(d) flag-off identity: --view-ou-sigma WITHOUT --view-ou-temp / --view-ou-frac
+    (the touched init and redraw paths) reproduces the parent commit's trainer
+    - config dump, progress.csv (timing columns excluded), the greedy eval
+    trajectory bytes.
+(e) --view-ou-frac p: a redraw gives an offset with probability p, else exactly
+    0 for that window; the trainer's expression, the refusals, the dump.
 """
 from __future__ import annotations
 
@@ -149,20 +152,24 @@ def test_smoke_sigma_follows_T_dump_and_flagless_resume():
 
 # --------------------------------------------------- (d) flag-off bit identity
 def _parent_trainer() -> Path | None:
-    """HEAD~1's train_fast.py when HEAD carries this flag (HEAD's otherwise),
-    written beside the live one so its relative imports resolve."""
-    ref = "HEAD"
-    r = subprocess.run(["git", "-C", str(ROOT), "show", "HEAD:python/train_fast.py"],
-                       capture_output=True, text=True, encoding="utf-8", errors="replace")
-    if r.returncode == 0 and "--view-ou-temp" in r.stdout:
-        ref = "HEAD~1"
-        r = subprocess.run(["git", "-C", str(ROOT), "show", f"{ref}:python/train_fast.py"],
-                           capture_output=True, text=True, encoding="utf-8", errors="replace")
-    if r.returncode != 0 or not r.stdout or "--view-ou-temp" in r.stdout:
+    """The newest first-parent commit's train_fast.py that has NEITHER flag
+    (--view-ou-temp, --view-ou-frac), written beside the live one so its
+    relative imports resolve; None when git cannot serve one."""
+    r = subprocess.run(["git", "-C", str(ROOT), "rev-list", "--first-parent",
+                        "--max-count=60", "HEAD"], capture_output=True, text=True)
+    if r.returncode != 0:
         return None
-    p = ROOT / "python" / "_train_fast_parent_for_ou_temp_test.py"
-    p.write_text(r.stdout, encoding="utf-8")
-    return p
+    for ref in r.stdout.split():
+        g = subprocess.run(["git", "-C", str(ROOT), "show", f"{ref}:python/train_fast.py"],
+                           capture_output=True, text=True, encoding="utf-8", errors="replace")
+        if g.returncode != 0 or not g.stdout:
+            continue
+        if "--view-ou-temp" in g.stdout or "--view-ou-frac" in g.stdout:
+            continue
+        p = ROOT / "python" / "_train_fast_parent_for_ou_temp_test.py"
+        p.write_text(g.stdout, encoding="utf-8")
+        return p
+    return None
 
 
 @needs_run
@@ -195,3 +202,52 @@ def test_flag_off_is_bit_identical_to_the_parent_trainer():
         parent.unlink(missing_ok=True)
         for dd in (a, b):
             shutil.rmtree(ROOT / "runs" / dd, ignore_errors=True)
+
+
+# ------------------------------------------------------- (e) --view-ou-frac
+def test_frac_thins_the_redraws_to_p_and_leaves_the_rest_exactly_zero():
+    import torch
+    g = torch.Generator().manual_seed(3)
+    n, p, sig = 200_000, 0.25, torch.tensor([0.8, 0.0])
+    fresh = torch.randn((n, 2), generator=g) * sig
+    fresh *= (torch.rand((n, 1), generator=g) < p).to(fresh.dtype)
+    live = fresh[:, 0] != 0.0
+    assert abs(float(live.float().mean()) - p) < 0.01
+    assert torch.all(fresh[:, 1] == 0.0)                     # pitch never offset
+    assert abs(float(fresh[live, 0].std()) - 0.8) < 0.01     # the kept ones are N(0, sigma)
+
+
+def test_frac_expression_in_the_trainer_and_off_is_the_old_redraw():
+    src = TRAIN.read_text(encoding="utf-8")
+    assert 'ap.add_argument("--view-ou-frac", type=float, default=None' in src
+    assert "if OU_FRAC < 1.0:" in src
+    # the shipped redraw survives as the p = 1 path: draw, then where()
+    assert "ou_c.copy_(torch.where(_redraw.unsqueeze(1), _fresh, ou_c))" in src
+    assert '"view_ou_temp", "view_ou_frac",' in (ROOT / "tools" / "record_ckpt.py") \
+        .read_text(encoding="utf-8")
+
+
+@needs_run
+@pytest.mark.parametrize("extra,msg", [
+    (["--view-ou-sigma", "0.8", "--view-ou-frac", "0"], "--view-ou-frac must be in (0, 1]"),
+    (["--view-ou-frac", "0.5"], "--view-ou-frac without --view-ou-sigma"),
+])
+def test_frac_refusals(extra, msg):
+    shutil.rmtree(ROOT / "runs" / "r1b3_ou_frac_refuse", ignore_errors=True)
+    r = _run([sys.executable, "-u", str(TRAIN), "--run", "r1b3_ou_frac_refuse"] + SMOKE
+             + ["--steps", "1024", "--record-every", "1e12"] + extra, timeout=600)
+    shutil.rmtree(ROOT / "runs" / "r1b3_ou_frac_refuse", ignore_errors=True)
+    assert r.returncode != 0
+    assert msg in (r.stdout + r.stderr)
+
+
+@needs_run
+def test_frac_smoke_dump_and_note():
+    run = "r1b3_ou_frac_smoke"
+    r = _train(run, ["--view-ou-sigma", "0.8", "--view-ou-period", "4",
+                     "--view-ou-frac", "0.25"], steps="2048")
+    assert "--view-ou-frac 0.25: each redraw gives the env an offset with probability 0.25" \
+        in r.stdout
+    cfg = json.loads((ROOT / "runs" / run / "run.json").read_text(encoding="utf-8"))["config"]
+    assert cfg["view_ou_frac"] == 0.25
+    shutil.rmtree(ROOT / "runs" / run, ignore_errors=True)
