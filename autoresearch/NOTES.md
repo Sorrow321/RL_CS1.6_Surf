@@ -510,3 +510,14 @@ a bare resume restores both flags) or from scratch with the new recipe (~0.65B t
 5950X); `tools/gpu_health.py` needed a 5080 reference (added). `score.py --best <agent dir>`
 does not recurse into runs; the orchestrator passes each run dir (fine). The next incumbent
 checkpoint is taken from the BEST EVAL's run dir, so pull that run's ckpt_final.
+
+## Wrap-up (r1b1) - 2026-10-20 11:52 UTC
+
+* Final: RESULT.json `"final": true`, score **28.628** (r1b1_ratnovx2, eval traj_4916772864,
+  re-scored at wrap-up: 9 episodes, best 28.63%, median 27.72%, 0 finishes). Hand-on
+  checkpoint: `runs/r1b1/r1b1_ratnovx2/ckpt_final.pt` (step 5,100,797,952, md5
+  3cc658eda8fb8bafe3b5f2a26418dc52), pulled before the box was released and md5-checked again.
+* The whole best lineage (ratnov -> ratnovx -> ratnovx2) was trained at commit 2b845b3, which
+  is code-identical to this head (only `autoresearch/config.json` differs).
+* Box 56813988 (RTX 5080 + 7950X3D, $0.388/h) ran 00:41-10:24 UTC, about 9.7 h / ~$3.8,
+  released at 10:24; no box at wrap-up.

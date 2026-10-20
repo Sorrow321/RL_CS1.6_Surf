@@ -1,7 +1,7 @@
 {
  "agent": "r1b1",
  "round": 1,
- "final": false,
+ "final": true,
  "best": {
   "score": 28.628,
   "eval_file": "/home/steam/ar/runs/r1b1/r1b1_ratnovx2/traj_4916772864.jsonl",
