@@ -2,6 +2,20 @@
  "agent": "r2b1",
  "round": 2,
  "final": false,
- "best": null,
- "summary": "13:45 UTC: no run yet (no eligible GPU offer since 13:24; renter retrying). Analysis: past the CP2 slot the field routes hole 1 -> box room -> tunnel, ballistically infeasible; simulator Go-Explore from the policy's own states reaches the room, cavity, lower and upper levels but nothing deeper. Built tools/frontier_archive.py (Go-Explore rooted at the policy's own greedy-eval frontier, survivor-gated, half the output from the deepest quarter by d) -> --spawn-states. Next: warm resume of the incumbent + archive spawns (frac 0.2), 30-min first test."
+ "best": {
+  "score": 28.322,
+  "eval_file": "/home/steam/ar/runs/r2b1/r2b1_fa1/traj_5478809600.jsonl",
+  "run": "r2b1_fa1",
+  "step": 5478809600,
+  "ckpt": "/home/steam/ar/runs/r2b1/r2b1_fa1/ckpt_final.pt (on the box; not pulled)",
+  "recipe": [
+   "--spawn-states",
+   "<frontier archive>",
+   "--spawn-states-frac",
+   "0.2"
+  ],
+  "resume_from": "incumbent ckpt.pt (r1b1_ratnovx2 ckpt_final, 5,100,797,952)",
+  "commit": "873f51e"
+ },
+ "summary": "15:06 UTC: r2b1_fa1 = warm incumbent + 20% spawns from tools/frontier_archive.py (survivor-gated Go-Explore rooted at the policy's own eval frontier): 450M, best 28.322 (below the incumbent 28.628), training ceiling unchanged at 28.82%, no crossing. Analysis: past the CP2 slot the field routes hole 1 -> box room -> tunnel, which is ballistically infeasible (drop ratio); simulator searches reach the room, cavity, lower and upper levels but nothing deeper. Next: stronger search (depth-ranked selection, heading cells) on the box to see if any route exists."
 }

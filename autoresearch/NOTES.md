@@ -610,3 +610,17 @@ from the deepest quarter by d, half uniform. Loop mode re-roots on each new eval
   still fell to ~25k (OpenMP oversubscription: one descheduled trainer thread stalls every barrier).
   Alone the trainer runs 252-326k steps/s on this 5950X. So this run uses the STATIC archive; a
   refresh, if any, is built on the agent host and pushed.
+
+### r2b1_fa1 RESULT (15:06 UTC): warm incumbent + 20% frontier-archive spawns, 450M - NO CROSSING
+
+* 5,100.8M -> 5,551.2M (450M, 235k steps/s avg on the 4090/5950X box). Evals (score.py best /
+  median): 5,101M 28.30/27.8 (the checkpoint's own first eval), 5,177M 27.33/27.2, 5,252M
+  28.31/28.2, 5,328M 27.83/27.4, 5,403M 27.76/26.5, **5,479M 28.322**/28.2. 0 finishes, CP1.
+* Training: the novel ceiling (deepest REAL episode, archive-spawned ones included) stayed at
+  28,174 u (28.82%) the whole run; unstuck T 2, frontier best 27,916 u unchanged; ep_len ~750-900.
+  So 300k+ episodes from survivor-gated archive states in the room, the tunnel, the cavity, the
+  lower and upper levels found nothing deeper than the incumbent's own line - the same as the
+  random-action searches. Matched-step reference: the incumbent's own continuation (ratnovx3,
+  5.1-5.9B) scored 28.47 best; fa1 is in that band, slightly below. Stopped at its budget.
+* Local search: 1,000 count-only gated batches from the incumbent's eval saturate at 17.9k cells,
+  d min 69,982 (28.42%) - nothing deeper.
