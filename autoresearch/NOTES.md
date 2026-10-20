@@ -888,3 +888,23 @@ checkpoint is taken from the BEST EVAL's run dir, so pull that run's ckpt_final.
 * The bowl surfs are rare cells (fast + rising in that 128 u cube) a uniform draw almost never picks - what
   --respawn-cells is for. r2b4_tp1c (19:39 UTC): resume of tp1's ckpt_latest (5,895,094,272) + `--respawn-cells
   0.5 --respawn-cells-band 0.05`, everything else restored, 3.0B steps (to ~22:45).
+
+### 20:15 UTC - the corrected objective TEACHES the detour (WR-state bench, diagnostic only)
+
+* Same bench as above (1 greedy + 6 stochastic per WR state, 8 s cap), tp1's ckpt_latest (5,895,094,272: the
+  incumbent + 800M steps of `--time-pen 0.001 --surf-bonus 0` + archive spawns + surf bursts) vs the incumbent.
+  Progress >= 28.7% with x < 1,936 = through the wall (the 26.7% "A" entries are the low dead-end pockets):
+
+  | WR state | incumbent | tp1 |
+  |---|---|---|
+  | 28.9 s chamber fall (link A starts) | 7/7 die in 0.6 s | greedy survives 8 s; 1/6 climbs (vz +977) |
+  | 29.2 s bowl entry | 7/7 die in 0.3-0.6 s | **6/7 surf the bowl** (vz +830..+1,101, 3-7 s) |
+  | 29.5 s bowl bottom | climbs to <= 27.5% | climbs; **1/6 flies the whole finish to 29.59%** |
+  | 30.0 s bowl exit | 27.3-27.5% | 27.4-27.7% (link B still missing) |
+  | 30.5 s rising chamber | greedy 29.83%, 0/6 stochastic | greedy 29.66%, **2/6** stochastic (29.09, 29.85%) |
+  | 31.0 / 31.4 s | 7/7 / 7/7 | 7/7 / 7/7 |
+
+* So in 800M steps the policy learned the bowl entry and part of link A - the half of the loop the incumbent
+  never did - under an objective that stops charging the detour. Still missing: the entry decision from the
+  slot (east through the pillar hole instead of the dive) and link B at the bowl exit; the greedy line from
+  the true start still dives (evals 27.8-28.4).
