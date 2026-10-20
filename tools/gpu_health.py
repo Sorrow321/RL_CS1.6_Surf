@@ -31,6 +31,11 @@ REFERENCE = {
     # measured across three healthy vast 4x3090 boxes, 2026-08-23; the
     # power-capped box on the same day read 30-35 TFLOPS
     "NVIDIA GeForce RTX 3090": {"gbps": 840.0, "tflops": 69.0, "sm_mhz": 1695},
+    # vast box 56813988 (7950X3D), 2026-10-20: 112 TFLOPS is the 5080's dense
+    # bf16 spec with fp32 accumulate, and 816 GB/s is 85% of its 960 GB/s, the
+    # same copy ratio as the 5090 reference. Its 250 W of 360 W power limit did
+    # not bind (90 W under the GEMM), so the reference decides, not the cap
+    "NVIDIA GeForce RTX 5080": {"gbps": 816.0, "tflops": 112.0, "sm_mhz": 2745},
 }
 
 
