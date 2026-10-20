@@ -103,3 +103,60 @@ The docs say how each one works and what it did.
 The 3090 is the reference card in CLAUDE.md (~0.75-0.9e9 steps/h on the older, smaller
 config). With SimBa + normals + the potential channel at 1024 envs, expect roughly 150-250k
 steps/s. Measure it on your box in the first minute and size `--steps` to the time.
+
+## Round 1, branch r1b1 - 2026-10-20 01:06 UTC (box 56813988, RTX 5080 + 7950X3D, $0.388/h)
+
+### The box
+
+* vast instance 56813988, RTX 5080 on a Ryzen 9 7950X3D (32 threads, quota 30.7 CPUs), $0.388/h.
+  The incumbent recipe resumed at 1024 envs runs **250-265k steps/s** there (GPU 20% busy,
+  CPU 88%): 75M steps per ~5 min, so 350M is ~25 min.
+* `tools/gpu_health.py` had no RTX 5080 reference, so its power-cap heuristic (250 W of 360 W)
+  failed every 5080 at deploy. Measured on this box: bf16 GEMM 112 TFLOPS (the card's spec) and
+  816 GB/s copy (85% of 960, the 5090 reference's ratio). Added as the 5080 reference (7281e2f).
+
+### The incumbent checkpoint is already AT the CP2 wall
+
+* Its 755M eval: 2/9 episodes die in the CP2 pit (x 3,243-3,293, z 11,111-11,149, 25.2-25.6 s,
+  27.1-27.2%); the rest die earlier (14.9-24.4 s). So a warm resume measures at CP2 at once.
+* The agent's line near CP2 (surf run 3,775M, GR 755M, the same in both): east along y ~ 0 at
+  23.5 s (4,273, 28, 12,381, vx +1,383), then a hard right U-turn on a curved surface
+  (24.0 s: v (-186, -1,468); 24.5 s: v (-1,487, -60)), then west and down into the pit.
+  The human (ledger) is at (4,041, 661, 11,814) at 24.5 s - the +y side, lower - and goes
+  on EAST to (5,554, 454, 11,079) before coming back west over the pit.
+
+### r1b1_dc1: warm + `--death-charge 1.0` - NEGATIVE
+
+* Resume of the incumbent (749.7M) with the existing Grzes-2017 charge: a death gives back
+  Phi(last state), the progress since the MAP start (stock arithmetic, not the spawn).
+* 350M budget, stopped at 1.01B (by pid). Evals (score.py): 750M 26.0, 825M 24.7, 901M 24.7,
+  977M 24.7 (best episode). 0 finishes.
+* **What it did:** within ~75M steps the greedy line changed. All 9 episodes now end at the
+  SAME point, (3,664, 1,136, ~12,003) at 24.0-24.6 s: at 23.5 s the agent turns NORTH
+  (v (0, 1,027, 53)), stops dead against a wall at y 1,136 and falls into a fail. The pit
+  U-turn is gone, replaced by an earlier death.
+* **Why:** with kappa 1 the shaping nets ~0 over any episode that dies, so with the time
+  penalty kept the objective prefers the EARLIER death (24.2 s vs 25.4 s saves ~0.6 units).
+  The charge did move the route at the decision point (KL 0.09 on the first updates), but
+  toward suicide, not toward the detour. This is the round-27 xNGS collapse seen locally.
+  Training reward -12.8 at the resume -> +0.6 by 1.0B as the critic absorbed the charge;
+  reservoir min-depth 74.3% -> 76.1% (the deep states stopped being harvested).
+* Verdict: do not run `--death-charge 1.0` with the time penalty on this map. Untested:
+  kappa 1 with `--time-pen 0` (the discount then favours LATE deaths).
+
+### NEW: `--ez-eps` under `--view-continuous` and `--unstuck` (cba79e8)
+
+* ez-greedy (Dabney et al. 2021) existed for the bins and was refused under the continuous
+  view and under --unstuck. Now: a burst starts with prob eps per decision, lasts
+  n ~ zeta(mu) decisions (cap --ez-max), holds a uniform draw of the YAW z (tanh(z) uniform
+  on (-1, 1), so the offset is warped like the policy's: |off| < 10 deg half the time,
+  up to 180) and of the four key heads; the pitch stays the policy's. Burst rows are dropped
+  from the PPO pool (b_ez), as on the bins. The step line prints `ez X%`, the dropped share.
+* Generic: no map constant; one rate, one zeta exponent, one cap.
+* Tests (tests/python/test_ez_viewc.py, CPU, sidistic): the abs-view + keys-hold + unstuck
+  smoke bursts and resumes (ez_eps restored); flag off is bit-identical to the pre-change
+  trainer (config, progress.csv, eval bytes, weights).
+* Why it is the next arm: 1.5B steps at T = 2 never sampled the human's continuation east.
+  The policy's yaw sigma is 0.05-0.1 rad per 40 ms decision and its draws are independent,
+  so a committed ~1 s deviation from the U-turn has probability ~0. A burst holds one for
+  up to 2.4 s.

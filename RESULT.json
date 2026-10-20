@@ -1,0 +1,5 @@
+{"agent": "r1b1", "round": 1, "final": false,
+ "best": {"score": 26.011, "eval_file": "/home/steam/ar/runs/r1b1/r1b1_dc1/traj_0750256128.jsonl",
+          "run": "r1b1_dc1", "step": 750256128, "ckpt": null,
+          "recipe": ["--death-charge", "1.0"], "resume_from": "/home/steam/ar/incumbent/ckpt.pt", "commit": "7281e2f"},
+ "summary": "Warm from the incumbent (already at the CP2 wall). --death-charge 1.0: negative - the greedy line switched to an earlier death (north wall, 24.7%) because the charge plus time penalty prefers dying sooner. Now testing ez-greedy bursts under the continuous view (new, cba79e8), warm, --ez-eps 0.02."}
