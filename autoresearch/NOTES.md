@@ -149,3 +149,18 @@ Refused with --chunk, --yaw-cond, --crl, --tick-ms-schedule.
   UNHEALTHY (power limit 300 of 450 W, sm 1,380 MHz under load, 60 TFLOPS bf16). Blocked
   (`gpu_capped`) and released at 01:04 per CLAUDE.md section 1. box.py prints the tail of
   stdout+stderr, so a deploy failure shows only ssh banners: run gpu_health by hand to see it.
+
+### 01:35 UTC - arm 1 launched: r1b2_nt05 = warm incumbent + --noise-tau 0.5 (measures AT the CP2 wall)
+
+* Box 56818837, RTX 3090 0.218 $/h, machine 148800, `ssh -p 40783 root@71.218.106.223`.
+  **CPU: dual Xeon E5-2699 v3 (Haswell 2014), 72 threads -> only ~70k steps/s** (GPU 6% busy,
+  trainer 5,700% CPU, omp 32). This is the slow-CPU class CLAUDE.md warns about; it passed the
+  offer filter (>= 32 threads, >= 2.5 GHz). 30 min = ~126M steps here, not 3-4e8.
+* Command: `box.py launch --agent r1b2 --run r1b2_nt05 --resume --steps 4e8 -- --noise-tau 0.5`
+  (incumbent ckpt 749.7M md5 ede4be9a..., stop at 1,149.7M, evals every 75M). Restored unstuck
+  state: T 0.274, best 20,546u (the first eval after the resume, 750.3M, read 25,464u).
+* Log line: `rho 0.9231 per 40.0 ms decision (lag-1 s correlation 0.135)`, CUDA graph captured.
+* Watch: CP2 in greedy evals; training-side `dip` (max survived setback, reward units; ~0.5 at
+  resume, the CP2 detour needs ~2) and `mind` (reservoir's deepest state, 74.28% of d0 at
+  resume; a training episode that survives 2 s past the death point d ~70.9k would push it
+  under ~72.5%).
