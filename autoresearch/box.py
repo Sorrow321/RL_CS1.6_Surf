@@ -15,6 +15,9 @@ Every limit comes from autoresearch/config.json and is enforced HERE, before mon
   the box destroyed, and the next offer tried (CLAUDE.md section 1).
 * Every box is registered with tools/fleet_watchdog.py (deadline = --hours) the moment it
   exists, so the daemon destroys it if the agent forgets; `extend` pushes the deadline.
+* The blocklist is the branch's tools/bad_hosts.json plus the fleet's $AR_HOME/bad_hosts.json
+  (the orchestrator folds every branch's list into it), and config.cpu_exclude drops host CPUs
+  that starve the physics step whatever clock vast reports for them.
 
     python autoresearch/box.py budget
     python autoresearch/box.py offers
@@ -33,6 +36,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -182,8 +186,57 @@ def _ar_start() -> float:
 
 
 # ------------------------------------------------------------- the offers -----
+def _block_key(e: dict):
+    """One machine is one entry, whoever blocked it: machine_id, else host_id, else ip."""
+    for k in ("machine_id", "host_id", "ip"):
+        if e.get(k):
+            return (k, e[k])
+    return None
+
+
+def merged_blocklist(sources) -> dict:
+    """The union of several blocklists (paths, or already-parsed dicts), the first entry per
+    machine winning. The first readable source's other keys (its _README) are kept."""
+    out, seen = None, set()
+    for src in sources:
+        if isinstance(src, dict):
+            data = src
+        else:
+            try:
+                data = json.loads(Path(src).read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+        if out is None:
+            out = dict(data, blocked=[])
+        for e in data.get("blocked", []):
+            k = _block_key(e)
+            if k is not None and k not in seen:
+                seen.add(k)
+                out["blocked"].append(e)
+    return out or {"blocked": []}
+
+
+def sync_shared_blocklist(paths=()) -> int:
+    """Fold `paths` into $AR_HOME/bad_hosts.json, the list every agent's box.py reads on top of
+    its own branch's: a machine one agent proved bad is skipped by all of them (two agents
+    rented the same power-capped 3090 Ti on 2026-10-20). Returns the entry count."""
+    shared = AR_HOME / "bad_hosts.json"
+    data = merged_blocklist([shared, *paths])
+    text = json.dumps(data, indent=2) + "\n"
+    old = shared.read_text(encoding="utf-8") if shared.exists() else None
+    if text != old:
+        # a writer-unique temp name, then an atomic rename: a lost race only delays an entry to
+        # the orchestrator's next pass, which re-reads every branch's list
+        tmp = shared.with_name(f".bad_hosts.{os.getpid()}.tmp")
+        tmp.write_text(text, encoding="utf-8")
+        tmp.replace(shared)
+    return len(data["blocked"])
+
+
 def blocked_keys():
-    data = json.loads((REPO / "tools" / "bad_hosts.json").read_text(encoding="utf-8"))
+    # the branch's own list must parse; the fleet's shared one is best effort
+    own = json.loads((REPO / "tools" / "bad_hosts.json").read_text(encoding="utf-8"))
+    data = merged_blocklist([own, AR_HOME / "bad_hosts.json"])
     mids, hids, ips = set(), set(), set()
     for e in data.get("blocked", []):
         if e.get("machine_id"):
@@ -197,8 +250,9 @@ def blocked_keys():
 
 def offers(exclude_machines=()) -> list:
     """Every acceptable offer, best first: (tier, $/h). Nothing outside the whitelist, the
-    caps or the blocklist is ever returned."""
+    caps, the blocklist or config.cpu_exclude is ever returned."""
     mids, hids, ips = blocked_keys()
+    cpu_bad = [re.compile(p) for p in CFG.get("cpu_exclude", [])]
     out = []
     for tier, names in enumerate(CFG["gpu_tiers"]):
         for name in names:
@@ -223,10 +277,14 @@ def offers(exclude_machines=()) -> list:
                         or o.get("public_ipaddr") in ips
                         or o.get("machine_id") in exclude_machines):
                     continue
+                cpu = (o.get("cpu_name") or "").strip()
+                if any(p.search(cpu) for p in cpu_bad):
+                    continue
                 out.append({"tier": tier, "gpu": name, "dph": dph, "id": o["id"],
                             "machine_id": o.get("machine_id"), "host_id": o.get("host_id"),
                             "cores": o.get("cpu_cores_effective"), "ram_gb": round((o.get("cpu_ram") or 0) / 1024),
-                            "inet_down": o.get("inet_down"), "where": o.get("geolocation", "")})
+                            "inet_down": o.get("inet_down"), "where": o.get("geolocation", ""),
+                            "cpu": cpu})
     out.sort(key=lambda o: (o["tier"], o["dph"]))
     return out
 
@@ -266,7 +324,7 @@ def cmd_budget(a):
 def cmd_offers(a):
     for o in offers()[:a.n]:
         print(f"tier {o['tier']}  {o['gpu']:12s} {o['dph']:.3f} $/h  offer {o['id']}  "
-              f"machine {o['machine_id']}  {o['cores']} thr  {o['ram_gb']}G  "
+              f"machine {o['machine_id']}  {o['cores']} thr {o['cpu']}  {o['ram_gb']}G  "
               f"{o['inet_down']:.0f} Mb/s  {o['where']}")
 
 
@@ -350,6 +408,7 @@ def cmd_rent(a):
             subprocess.run([sys.executable, str(REPO / "tools" / "vast_pick.py"), "--block",
                             str(iid), "--reason", "unreliable", "--detail",
                             f"autoresearch {agent}: {why}"], capture_output=True, text=True)
+            sync_shared_blocklist([REPO / "tools" / "bad_hosts.json"])
             destroy(iid, why)
             watchdog("release", str(iid), "--no-harvest")
             archive_rec(agent, rec, why)

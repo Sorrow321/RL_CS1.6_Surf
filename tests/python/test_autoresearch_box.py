@@ -1,7 +1,10 @@
 """autoresearch/box.py: the rental gate (user, 2026-10-20). The vast CLI is mocked; nothing rents.
 
-* offers: whitelisted single-GPU RTX cards under their cap, blocklisted hosts out, in the
-  user's order (3090-class tier first, cheapest first, then 4090, then 5090);
+* offers: whitelisted single-GPU RTX cards under their cap, blocklisted hosts and the CPUs in
+  config.cpu_exclude out, in the user's order (3090-class tier first, cheapest first, then
+  4090, then 5090);
+* the blocklist is shared: every branch's list folds into $AR_HOME/bad_hosts.json, which
+  every agent's box.py reads on top of its own;
 * rent refuses a second box for the same agent, a box over the fleet cap, and a box the
   budget pace cannot afford;
 * score.py rejects an eval that does not start at the map start.
@@ -107,6 +110,51 @@ def test_the_reserve(market):
     market["credit"] = 9.0
     with pytest.raises(SystemExit):
         box.main(["rent", "--agent", "r1b4", "--dry-run"])
+
+
+def test_offers_drop_the_excluded_cpus(monkeypatch):
+    # vast lists a Haswell E5-2696 v3 at its 3.8 GHz turbo, so cpu_ghz cannot catch it
+    xeon = dict(_offer(1, "RTX_3090", 0.18), cpu_name="Xeon® E5-2699 v3 ")
+    ryzen = dict(_offer(2, "RTX_3090", 0.25), cpu_name="AMD Ryzen 9 5950X 16-Core Processor")
+    monkeypatch.setattr(box, "vast", lambda *a, **k: [xeon, ryzen]
+                        if a[:3] == ("search", "offers", f"gpu_name=RTX_3090 {box.CFG['offer_query']}")
+                        else [])
+    monkeypatch.setattr(box, "blocked_keys", lambda: (set(), set(), set()))
+    got = box.offers()
+    assert [o["id"] for o in got] == [2], got
+    assert got[0]["cpu"].startswith("AMD Ryzen 9 5950X")
+
+
+def _blocklist(*mids, readme="branch"):
+    return {"_README": [readme], "blocked": [
+        {"ip": None, "machine_id": m, "host_id": None, "reason": "gpu_capped", "detail": f"m{m}"}
+        for m in mids]}
+
+
+def test_the_fleet_blocklist_is_shared(monkeypatch, tmp_path):
+    """Two agents rented the same power-capped 3090 Ti (machine 68144) on 2026-10-20 because
+    each read only its own branch's list."""
+    monkeypatch.setattr(box, "AR_HOME", tmp_path)
+    b2, b3 = tmp_path / "b2.json", tmp_path / "b3.json"
+    b2.write_text(json.dumps(_blocklist(68144, 11, readme="b2")), encoding="utf-8")
+    b3.write_text(json.dumps(_blocklist(68144, 12, readme="b3")), encoding="utf-8")
+    assert box.sync_shared_blocklist([b2, b3]) == 3
+    shared = json.loads((tmp_path / "bad_hosts.json").read_text(encoding="utf-8"))
+    assert [e["machine_id"] for e in shared["blocked"]] == [68144, 11, 12]
+    assert shared["_README"] == ["b2"]            # the first source's header is kept
+    # idempotent: a second pass rewrites nothing
+    before = (tmp_path / "bad_hosts.json").stat().st_mtime_ns
+    assert box.sync_shared_blocklist([b2, b3]) == 3
+    assert (tmp_path / "bad_hosts.json").stat().st_mtime_ns == before
+    # and every agent's box.py skips it on top of its own branch's list
+    mids, _, _ = box.blocked_keys()
+    own = json.loads((box.REPO / "tools" / "bad_hosts.json").read_text(encoding="utf-8"))
+    own_mids = {e["machine_id"] for e in own["blocked"] if e.get("machine_id")}
+    assert mids == own_mids | {68144, 11, 12}
+    # an unreadable shared list never blocks renting: the branch's own list still applies
+    (tmp_path / "bad_hosts.json").write_text("{not json", encoding="utf-8")
+    mids, _, _ = box.blocked_keys()
+    assert mids == own_mids
 
 
 FIELD = ROOT / "maps" / "surf_src_sidistic.goal_32.npz"

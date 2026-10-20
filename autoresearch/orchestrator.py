@@ -184,13 +184,96 @@ def box_py(*args, env=None):
                           capture_output=True, text=True, env=e, timeout=900)
 
 
+# ----------------------------------------------------------------- harness ----
+def slot_blocklists() -> list:
+    return sorted((AR_HOME / "wt").glob("b*/tools/bad_hosts.json"))
+
+
+def _box():
+    p = str(REPO / "autoresearch")
+    if p not in sys.path:
+        sys.path.insert(0, p)
+    import box
+    return box
+
+
+def sync_blocklists() -> int:
+    """Every branch's tools/bad_hosts.json (and the main checkout's) into the fleet's shared
+    $AR_HOME/bad_hosts.json, which box.py reads on top of the branch's own list."""
+    return _box().sync_shared_blocklist([REPO / "tools" / "bad_hosts.json", *slot_blocklists()])
+
+
+def harness_base(base: str, repo: Path = REPO, blocklists=()) -> str:
+    """The commit a round forks: `base` (the winner's head) with config.harness_files restored
+    from the main checkout's HEAD and the fleet's blocklist folded into tools/bad_hosts.json.
+
+    The harness is the operator's, as in the paper: a branch cannot carry its own caps,
+    grader or rules into the next round, and the operator's fixes reach every round instead
+    of stopping at the round base they were not in. Git plumbing on a private index, so no
+    working tree is touched; returns `base` itself when nothing differs."""
+    box = _box()
+    head = git("rev-parse", "HEAD", cwd=repo).stdout.strip()
+    AR_HOME.mkdir(parents=True, exist_ok=True)
+    idx = AR_HOME / f".harness.{os.getpid()}.index"
+    env = dict(os.environ, GIT_INDEX_FILE=str(idx))
+
+    def g(*args, check=True, stdin=None):
+        r = subprocess.run(["git", *args], cwd=repo, env=env, capture_output=True, text=True,
+                           input=stdin, timeout=120)
+        if check and r.returncode != 0:
+            raise RuntimeError(f"git {' '.join(args)}: {r.stderr.strip()[-300:]}")
+        return r.stdout
+
+    def entry(rev, path):        # (mode, blob) of path at rev, or None
+        out = g("ls-tree", rev, "--", path).strip()
+        return tuple(out.split("\t")[0].split()[::2]) if out else None
+
+    try:
+        g("read-tree", base)
+        changed = []
+        for path in CFG.get("harness_files", []):
+            mine = entry(head, path)
+            if mine is None or mine == entry(base, path):
+                continue
+            g("update-index", "--add", "--cacheinfo", f"{mine[0]},{mine[1]},{path}")
+            changed.append(path)
+        if blocklists:
+            bh = "tools/bad_hosts.json"
+            have = g("show", f"{base}:{bh}", check=False)
+            try:
+                theirs = [json.loads(have)] if have else []
+            except ValueError:
+                theirs = []
+            text = json.dumps(box.merged_blocklist([*theirs, *blocklists]), indent=2) + "\n"
+            if text != have:
+                blob = g("hash-object", "-w", "--stdin", stdin=text).strip()
+                g("update-index", "--add", "--cacheinfo", f"100644,{blob},{bh}")
+                changed.append(bh)
+        if not changed:
+            return base
+        tree = g("write-tree").strip()
+        msg = (f"autoresearch: the operator's harness at {head[:10]} over {base[:10]}\n\n"
+               + "\n".join(f"* {p}" for p in changed) + TRAILERS)
+        return g("commit-tree", tree, "-p", base, "-m", msg).strip()
+    finally:
+        idx.unlink(missing_ok=True)
+
+
 # ------------------------------------------------------------------ rounds ----
 def start_round(st, base: str) -> None:
+    try:
+        sync_blocklists()
+        fork = harness_base(base, blocklists=[AR_HOME / "bad_hosts.json"])
+    except Exception as e:      # noqa: BLE001 - the round still starts, on the plain base
+        log(f"!! harness overlay failed ({e}); the round forks {base[:10]} as it is")
+        fork = base
+    if fork != base:
+        log(f"harness overlay: {base[:10]} -> {fork[:10]}")
     st["round"] += 1
     st["round_start"] = time.time()
     st["round_end"] = st["round_start"] + CFG["round_hours"] * 3600
-    st["base"] = base
-    st["slots"] = [prepare_slot(st, k, base) for k in range(1, CFG["branches_per_round"] + 1)]
+    st["base"] = fork
+    st["slots"] = [prepare_slot(st, k, fork) for k in range(1, CFG["branches_per_round"] + 1)]
     save_state(st)
     log(f"ROUND {st['round']} of {CFG['rounds']}: {len(st['slots'])} forks of {base[:10]} until "
         f"{time.strftime('%Y-%m-%d %H:%M', time.localtime(st['round_end']))}")
@@ -353,6 +436,10 @@ def cmd_run(a):
                 write_status(st)
             except Exception as e:     # noqa: BLE001 - status is cosmetic
                 log(f"status failed: {e}")
+            try:
+                sync_blocklists()
+            except Exception as e:     # noqa: BLE001 - the next pass retries
+                log(f"blocklist sync failed: {e}")
             last_status = now
         time.sleep(POLL_S)
 

@@ -96,6 +96,14 @@ Work on YOUR branch (`ar/$AR_AGENT`, already checked out in this worktree):
    Boxes clone from GitHub, so a box can only run what is pushed.
 4. Deploy THAT commit: `box.py deploy --agent $AR_AGENT --branch ar/$AR_AGENT`.
 
+**The harness is the operator's.** The files in `config.harness_files` (CLAUDE.md, this
+protocol, box.py, score.py, orchestrator.py, config.json, the watchdog, deploy_box.sh,
+vast_pick.py, gpu_health.py and their tests) are restored from the operator's branch at the
+start of every round. An edit you make to one does not reach the next round. If one blocks
+you, work around it on your branch and write it in NOTES.md under a "Harness issue" heading;
+the operator reads those. `autoresearch/NOTES.md`, the trainer, the tools and the tests are
+yours, and they travel with your branch if it wins.
+
 ## Boxes: one per agent, and box.py is the only door
 
 ```
@@ -122,6 +130,12 @@ python autoresearch/box.py release --agent $AR_AGENT
   or coding and try later. Never work around it.
 * Your box id is in `$AR_HOME/boxes/$AR_AGENT.json` and `box.py status`. Keep it in NOTES.md
   too.
+* A bad box (gpu_health fails, or the trainer runs far under ~150k steps/s on the incumbent
+  recipe) is blocklisted with `python tools/vast_pick.py --block <id> --reason ... --detail ...`
+  BEFORE you release it. That writes your branch's `tools/bad_hosts.json`. The orchestrator
+  folds every branch's list into `$AR_HOME/bad_hosts.json` within 5 minutes, and `box.py`
+  skips both lists, so no other agent rents that machine. `config.cpu_exclude` already drops
+  the old Xeon E5/E7 hosts, which vast lists at their turbo clock.
 
 ## Harvest, score, record
 
