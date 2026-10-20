@@ -908,3 +908,11 @@ checkpoint is taken from the BEST EVAL's run dir, so pull that run's ckpt_final.
   never did - under an objective that stops charging the detour. Still missing: the entry decision from the
   slot (east through the pillar hole instead of the dive) and link B at the bowl exit; the greedy line from
   the true start still dives (evals 27.8-28.4).
+
+### r2b4_tp1c (19:39-20:18 UTC, stopped at 6,496M): band cells do not help the detour
+
+* Evals 27.875 / 28.319 / 28.424 / 28.304 / 27.934 / 28.383 (line holds). Reservoir bowl surfs fell 11 -> 1,
+  rising chamber 4 -> 0. WR-state bench at 6,408M: bowl entry 5/7 surf, chamber fall back to 7/7 deaths, no
+  full finish from the bowl bottom, rising chamber 1/7 - no better than tp1, so the cell returns dilute rather
+  than focus. r2b4_tp1d (20:20 UTC): tp1c's ckpt_latest (6,495,928,320) with `--respawn-cells 0
+  --respawn-cells-band 0` (tp1's spawn mix again), 2.6B steps, to ~23:05.
