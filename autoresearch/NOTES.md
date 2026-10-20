@@ -277,3 +277,20 @@ steps/s. Measure it on your box in the first minute and size `--steps` to the ti
   the 1.6 s windows offset (sigma up to 0.8 at T = 2) inside 5% of d0 of the reservoir's frontier
   when stuck. The question is the early gates, which were turns the policy would not commit to (the
   first ramp "just has to turn left"). GR reference: trap exit 529M, window 755M.
+
+### 2026-10-20 04:36 UTC - r1b3_sou (scratch, recipe + T-scaled gated held offsets): at the window by 302M, held by T = 0; continued as r1b3_sou2
+
+* **r1b3_sou** (from scratch, 600M, RTX 4080 ~272k steps/s): the eval frontier read 1,156 / 4,497 /
+  **8,232** (151M) / **14,644** (227M) / **20,424** (302M) / 20,271 / 20,301 / 20,309 u. Against GR at
+  matched steps it is ~380M steps ahead: GR's frontier best was 4,337 u from 76M to 529M (8,573 at
+  529M), 15,061 at 605M, 20,546 at 680M. **The mechanism did nothing in that phase:** the frontier
+  kept moving, so T stayed 0.00 and `ou` 0.000 (no offset, no dropped row) until ~500M. It is run-to-run
+  variance (one seed, a different card): the first-ramp trap exit has now ranged from < 151M to
+  1,510M across five runs of near-identical recipes. Record it as noise, not evidence.
+* It then sat at the window wall (20.3-20.4k u, 20.8%) from 302M; T rose from ~500M (0.48 at 600M,
+  `ou` 0.195, 15% of rows offset and dropped).
+* **The window is the cleaner test of held offsets:** its pass is a held 35-40 deg cut-back for ~0.4 s.
+  GR / surf / cap2 passed it 75-150M steps after arriving, with T still elevated (decaying from the
+  trap exit, 0.26-0.70 when passed); this run arrived with T = 0 and stalled, which fits "T passes the
+  window". Continued as **r1b3_sou2** (resume of ckpt_final, every flag restored, +500M): a pass at
+  T < ~1 would credit the offsets; a pass only at T >= 1 would not.
