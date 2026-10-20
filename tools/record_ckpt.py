@@ -241,6 +241,9 @@ TRAIN_ONLY = frozenset({
     # --view-ou-temp scales that offset's sigma by --unstuck's T: the same
     # rollout-only behaviour, so TRAIN_ONLY by the same argument
     "view_ou_temp", "view_ou_frac", "view_ou_front", "view_ou_offpol",
+    # --respawn-vel-rot: a spawn-pool perturbation of the training reservoir;
+    # a recording starts at the map start, so it never sees it
+    "respawn_vel_rot", "respawn_vel_rot_front",
     # --death-charge is a TERMINAL charge only ("no per-step tax, no goal
     # charge"), so like fail_pen/success_bonus it has no per-call value for
     # the --obs-reward slot to mirror - the episode ends where it applies.

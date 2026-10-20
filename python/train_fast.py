@@ -6822,6 +6822,27 @@ def main() -> None:
                     help="race: spawn speed multiplier range for respawned "
                          "states; e.g. 1.0 1.5 practices speed-gated jumps "
                          "at up to +50%% entry speed")
+    ap.add_argument("--respawn-vel-rot", type=float, default=None,
+                    help="race reservoir: the share P of the RESERVOIR rows of "
+                         "every spawn pool, among those inside the frontier "
+                         "zone (--respawn-vel-rot-front), whose velocity "
+                         "DIRECTION is redrawn: a uniform heading and an "
+                         "elevation uniform in +-45 deg, speed kept, the view "
+                         "yaw turned with it. The position stays the policy's "
+                         "own harvested one (never deeper than its real "
+                         "frontier), so nothing is teleported forward; what "
+                         "changes is HOW the agent is moving there - the "
+                         "thing a wall like sidistic's CP2 needs (a level "
+                         "entry into a corridor its line only ever dives "
+                         "through). Start-state perturbation of the policy's "
+                         "own states (Florensa et al. 2017; the round-29 "
+                         "speed band did the magnitude). 0/absent = off. "
+                         "ckpt restores; record_ckpt TRAIN_ONLY")
+    ap.add_argument("--respawn-vel-rot-front", type=float, default=None,
+                    help="--respawn-vel-rot: only reservoir rows whose d is "
+                         "within F x d0 of the reservoir's deepest state are "
+                         "eligible (the policy's own frontier zone); 0 = every "
+                         "reservoir row. Default 0.05")
     ap.add_argument("--int-coef", type=float, default=None,       # 0 = off
                     help="race: count-based intrinsic novelty — "
                          "int_coef/sqrt(visits) on entering a 256u map cell, "
@@ -7533,6 +7554,15 @@ def main() -> None:
             args.respawn_speed = [float(v) for v in ck_cfg["respawn_speed"]]
             restored.append(f"respawn_speed={args.respawn_speed[0]:g}-"
                             f"{args.respawn_speed[1]:g}")
+        if (args.respawn_vel_rot is None
+                and ck_cfg.get("respawn_vel_rot") is not None):
+            args.respawn_vel_rot = float(ck_cfg["respawn_vel_rot"])
+            restored.append(f"respawn_vel_rot={args.respawn_vel_rot:g}")
+        if (args.respawn_vel_rot_front is None
+                and ck_cfg.get("respawn_vel_rot_front") is not None):
+            args.respawn_vel_rot_front = float(ck_cfg["respawn_vel_rot_front"])
+            restored.append(f"respawn_vel_rot_front="
+                            f"{args.respawn_vel_rot_front:g}")
         if ck_cfg.get("blend"):
             if args.blend_start is None:
                 args.blend_start = float(ck_cfg["blend"][0])
@@ -13357,6 +13387,11 @@ def main() -> None:
     # --view-continuous: written ONLY when set, for the reason the masks
     # give - a control run's config dump stays byte-identical. It changes
     # what an action IS, so record_ckpt.py mirrors it.
+    if float(args.respawn_vel_rot or 0.0) > 0.0:
+        # --respawn-vel-rot: written ONLY when set (a control's dump is unchanged)
+        meta["config"]["respawn_vel_rot"] = float(args.respawn_vel_rot)
+        meta["config"]["respawn_vel_rot_front"] = float(
+            0.05 if args.respawn_vel_rot_front is None else args.respawn_vel_rot_front)
     if VIEWC:
         meta["config"]["view_continuous"] = 1
         # written ONLY when set, so an untreated control's config dump is
@@ -14504,6 +14539,73 @@ def main() -> None:
         """--view-ou-temp: the held yaw offset's sigma at plateau temperature
         T, OU_SIG x min(T, cap) / cap. Read by the NEXT redraw only."""
         ou_sig_t[0] = OU_SIG * min(max(float(T), 0.0), OU_TMAX) / OU_TMAX
+    # --respawn-vel-rot: a Python constant; at 0 (absent) the pool is the one
+    # that shipped, and its RNG is never drawn from
+    VEL_ROT = float(args.respawn_vel_rot or 0.0)
+    if not 0.0 <= VEL_ROT <= 1.0:
+        raise SystemExit("--respawn-vel-rot must be in [0, 1]")
+    if VEL_ROT > 0.0 and args.respawn_vel_rot_front is None:
+        args.respawn_vel_rot_front = 0.05
+    VEL_ROT_FRONT = float(args.respawn_vel_rot_front or 0.0) if VEL_ROT > 0.0 else 0.0
+    if VEL_ROT_FRONT < 0.0:
+        raise SystemExit("--respawn-vel-rot-front must be >= 0")
+    if VEL_ROT > 0.0:
+        if float(args.respawn_frac or 0.0) <= 0.0:
+            raise SystemExit("--respawn-vel-rot rotates RESERVOIR rows: it needs "
+                             "--respawn-frac > 0")
+        for _flag, _on in (("--maps", MULTI), ("--goals", bool(args.goals)),
+                           ("--demo-file", bool(args.demo_file)),
+                           ("--respawn-backward", bool(args.respawn_backward)),
+                           ("--respawn-random", bool(args.respawn_random)),
+                           ("--respawn-frontier", bool(args.respawn_frontier)),
+                           ("--respawn-novel", bool(args.respawn_novel))):
+            if _on:
+                raise SystemExit(f"--respawn-vel-rot is not implemented with "
+                                 f"{_flag}: it rotates the plain reservoir rows "
+                                 "of a single-map pool")
+        print(f"--respawn-vel-rot {VEL_ROT:g}: that share of the reservoir rows "
+              + (f"within {VEL_ROT_FRONT:g} x d0 of the reservoir's deepest state "
+                 if VEL_ROT_FRONT > 0.0 else "")
+              + "gets a fresh velocity direction (uniform heading, elevation "
+              "U(-45, 45) deg, speed kept, view yaw turned with it)")
+    vr_rng = np.random.default_rng(int(args.seed) + 31337)
+    vr_n = [0, 0]          # rows rotated / reservoir rows, last pool built
+
+    def vel_rot_rows(_s, rp):
+        """--respawn-vel-rot on one freshly built pool: the rows after the
+        map-start share are the reservoir's; a share of those inside the
+        frontier zone get a new velocity direction (speed kept, view yaw
+        turned by the same heading change). In place; returns rp."""
+        n_fresh = max(1, int(round(len(rp) * (1.0 - args.respawn_frac))))
+        re = rp[n_fresh:]
+        vr_n[0], vr_n[1] = 0, len(re)
+        if not len(re):
+            return rp
+        elig = np.ones(len(re), bool)
+        if VEL_ROT_FRONT > 0.0:
+            _mdf = fleet.reservoir_min_depth()
+            if not (_mdf == _mdf and _s.rf_d0):
+                return rp
+            _fz = _s.reward_field if _s.reward_field is not None else _s.goal_field
+            elig = (_fz.sample(re["origin"].astype(np.float64))
+                    <= (_mdf + VEL_ROT_FRONT) * float(_s.rf_d0))
+        pick = np.flatnonzero(elig & (vr_rng.random(len(re)) < VEL_ROT))
+        if not len(pick):
+            return rp
+        v = re["velocity"][pick].astype(np.float64)
+        spd = np.linalg.norm(v, axis=1)
+        head0 = np.degrees(np.arctan2(v[:, 1], v[:, 0]))
+        head = vr_rng.uniform(-180.0, 180.0, len(pick))
+        elev = np.radians(vr_rng.uniform(-45.0, 45.0, len(pick)))
+        hr = np.radians(head)
+        nv = np.stack([np.cos(elev) * np.cos(hr), np.cos(elev) * np.sin(hr),
+                       np.sin(elev)], axis=1) * spd[:, None]
+        rows = n_fresh + pick
+        rp["velocity"][rows] = nv.astype(np.float32)
+        rp["yaw"][rows] = np.mod(rp["yaw"][rows].astype(np.float64)
+                                 + (head - head0), 360.0).astype(np.float32)
+        vr_n[0] = int(len(pick))
+        return rp
     # --unstuck: the sampling temperature 1 + T as a STATIC 0-d tensor the
     # schedule writes into between iterations. It is read inside the
     # captured rollout graph and by the compiled update - never a Python
@@ -16721,6 +16823,8 @@ def main() -> None:
                             int(round((len(_rp) - _nf)
                                       * args.respawn_novel_frac)),
                             _s.respawn)
+                    if VEL_ROT > 0.0:
+                        _rp = vel_rot_rows(_s, _rp)
                     _set_pool(_s, _rp)
             elif SPAWN_STATES is not None:
                 # --spawn-states before the reservoir fills: map starts + own states
@@ -19327,6 +19431,10 @@ def main() -> None:
                                   f"{ou_front_n[0] / max(1, ou_front_n[1]):.1%}")
                 if OU_OFFPOL:
                     race_note += f"  ou-drop {ou_off_share:.1%}"
+                if VEL_ROT > 0.0:
+                    # --respawn-vel-rot: rotated rows / reservoir rows of the
+                    # last pool built
+                    race_note += f"  vrot {vr_n[0] / max(1, vr_n[1]):.1%}"
         if isinstance(reward_fn, RaceReward) and reward_fn.arc is not None:
             # the anti-farming read-out: arc GAINED per episode (what the
             # shaping actually paid), the deepest arc any episode REACHED,
