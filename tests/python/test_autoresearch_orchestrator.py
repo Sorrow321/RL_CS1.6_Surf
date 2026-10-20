@@ -242,4 +242,8 @@ def test_a_branch_that_wraps_up_early_is_told_once(tmp_path):
     assert not orchestrator.tell_early_wrapup(slot, late, wrapup_at)           # a normal Wrap-up
     (tmp_path / "RESULT.json").write_text("[1, 2]", encoding="utf-8")
     assert not orchestrator.tell_early_wrapup(slot, early, wrapup_at)          # not a dict
+    # a new round's fork starts with the winner's committed RESULT.json, final and all
+    fresh = {"agent": "r2b3", "dir": str(tmp_path)}
+    result(True)                                                               # says agent r1b3
+    assert not orchestrator.tell_early_wrapup(fresh, early, wrapup_at)
     assert "never wrap up" in orchestrator.PROMPT

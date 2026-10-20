@@ -189,10 +189,11 @@ def tell_early_wrapup(slot, now: float, wrapup_at: float) -> bool:
     r1b3 (2026-10-20) stopped a run at 07:57, took that for the end of its round, did the
     Wrap-up and stopped its loop, and its slot sat idle for the 3.9 h left before wrapup_at.
     A branch is told once each time its RESULT.json goes final more than EARLY_S before
-    wrapup_at; RESULT.json back at final false re-arms the check."""
+    wrapup_at; RESULT.json back at final false re-arms the check. Only the branch's own file
+    counts: a new round's fork starts with the winner's committed RESULT.json, final and all."""
     try:
         res = json.loads((Path(slot["dir"]) / "RESULT.json").read_text(encoding="utf-8"))
-        final = res.get("final") is True
+        final = res.get("final") is True and res.get("agent") == slot["agent"]
     except (OSError, ValueError, AttributeError):
         return False
     if not final:
