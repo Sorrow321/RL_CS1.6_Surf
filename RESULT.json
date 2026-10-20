@@ -1,3 +1,7 @@
 {"agent": "r2b3", "round": 2, "final": false,
- "best": null,
- "summary": "Round 2 start (13:05 UTC): frontier analysed (the incumbent dies in a ~64x120 u window in the wall past the CP2 slot; a room with a kill floor and a ramp lies behind it, CP2 at 30.9%). First arm r2b3_sil: warm incumbent + --sil-coef 0.1, 450M steps, running."}
+ "best": {"score": 28.249, "eval_file": "/home/steam/ar/runs/r2b3/r2b3_rare/traj_5101322240.jsonl",
+          "run": "r2b3_rare", "step": 5101322240, "ckpt": null,
+          "recipe": ["--respawn-rare", "0.5"], "resume_from": "incumbent r1b1_ratnovx2 ckpt_final (5,100,797,952)",
+          "commit": "aafa685",
+          "note": "this eval is the resumed incumbent checkpoint's own first eval (no training yet); nothing past the incumbent so far"},
+ "summary": "Warm arms at the incumbent's wall (CP2 slot exit, 28.2-28.6%): SIL 0.1 (worse, stopped), --respawn-margin 0.5 (no change), --unstuck-max 0 (loses the CP2 line: 27.4% everywhere), --respawn-rare 0.5 reservoir weighting (new; flat). Analysis: the field routes through a window that free fall cannot thread from the slot (traces + 21k random rollouts); the human (demo, analysis only) goes through a centre gap into a cavity, surfs a ramp below and enters the window climbing. A simulator Go-Explore probe from the agent's own states finds the cavity in ~10k returns. Running: r2b3_arch = warm + --respawn-rare 0.5 --respawn-rare-arch 1 (new: margin-free per-cell archive of real states, Go-Explore returns)."}
