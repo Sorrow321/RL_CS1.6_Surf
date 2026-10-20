@@ -903,3 +903,9 @@ r2b3_arch ckpt_final (5.55B), 6 stochastic + 2 greedy episodes, 8 s cap:
   (bench above).
 * Checkpoint pulled as insurance (r2b3_ownx/ckpt_latest.pt at 19:00, md5 c3856fb1...); the run
   continues.
+* Feasibility (analysis only, `sid_slot_shoot.py` from the 8,114M ep 0's OWN states at 27.6 /
+  27.8 / 28.0 / 28.1 s, 3,000 random held-primitive rollouts each, 2 s): 0 cross the tunnel;
+  best 28.79% (x ~2,003 on the sill). At 28.1 s (2,302, 864, 11,200), v (-1,055, 169, -669) the
+  entry is already too steep (exit ~10,950); wall contacts can turn the horizontal velocity but
+  never undo the fall. So the bounce entry is a near-miss that buys a deeper sill death (up to
+  ~28.9% at the tunnel's far end), probably not a crossing; the helix stays the way on.
