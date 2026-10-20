@@ -639,3 +639,34 @@ checkpoint is taken from the BEST EVAL's run dir, so pull that run's ckpt_final.
   of the detour (the chamber, the low region), because the reservoir draw mirrors visitation and the
   2 s margin drops the last seconds of every fall. Go-Explore's return over its own states, with
   count-weighted cells instead of depth, is the textbook fix - `--respawn-cells` below.
+
+### NEW: `--respawn-cells F` (+ `--respawn-cells-size`, `--respawn-cells-band B`) - Go-Explore's return
+
+* `surfgym.respawn.CellReturn`: F of the reservoir draws pick a cell (128 u position cube x velocity
+  class: |v_h| in 500 u/s buckets, heading octant, vertical sign) with weight
+  1/sqrt(1 + harvested + chosen), then a uniform member state; the rest stay uniform. Counters ride
+  in the reservoir's checkpoint payload. `--respawn-cells-band B`: only states within B x d0 of the
+  reservoir's own deepest progress take part (Go-Explore's furthest-level preference). Default off,
+  byte-identical (tests/python/test_respawn_cells.py: unit, smoke + flagless resume, flag off vs the
+  trainer before - all pass). TRAIN_ONLY in record_ckpt.
+
+### Detour states in the reservoirs (scratchpad lowregion.py, the checkpoint's newest 20k states)
+
+| reservoir | pocket | pillar centre hole (rising) | chamber | low region (rising) |
+|---|---|---|---|---|
+| incumbent (2 s margin, 1 s snaps) | 0 | 0 | 0 | 0 |
+| deep1 (0.5 s, 0.25 s, deepest-5% spawns) | 9 | 1,171 (114) | 2,705 | 109 (1) |
+| cells1 (0.5 s, 0.25 s, whole-map cells 0.5) | 4 | 0 | 0 | 0 |
+
+* So the policy DOES go east through the pillar's centre hole and down the chamber when it is spawned
+  in the pocket (deep1) - the first two steps of the human's loop come for free. The missing step is
+  the surf on the low block's face (normal z ~0.53, i.e. surfable) that turns the fall into a climb.
+
+### r2b4_cells1: warm incumbent + `--respawn-cells 0.5 --respawn-snap 0.25 --respawn-margin 0.5` (14:10-14:38 UTC)
+
+* Evals (best / median): 5,101M 28.221/27.9, 5,177M 27.335/27.2, 5,252M 28.234/28.2, 5,328M
+  27.350/27.3, 5,403M 28.298/27.7, 5,479M **28.588**/27.7. 0 finishes; novel ceiling unchanged.
+* Whole-map cells dilute: 107k cells ever harvested, 72-83% of the cell draws from cells harvested
+  <= 10 times - side falls all over the map - and the detour got NO returns (table above).
+* Next: r2b4_cells2 = `--respawn-cells 0.8 --respawn-cells-band 0.05` (cells within 5% of d0 of the
+  reservoir's frontier: the pocket, the pillar hole, the chamber, the low region, the run-up).
