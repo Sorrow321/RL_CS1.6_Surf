@@ -688,3 +688,38 @@ No map constant: the gate is the novelty grid; the archive is rooted at the poli
   blocks - the pocket is ~17% of the candidates (the upper level ~50%), ~10x fa1's exposure.
 * Reading: the evals (does the greedy line change) and a pocket bench of the newest checkpoint (do
   archive-spawned pocket states learn to climb back to d < 70,000).
+
+### r2b1_fas RESULT (16:15 UTC): survived-gated archive spawns - NO CROSSING, pocket skill not learned
+
+* 5,100.8M -> ~5,430M (329M, stopped: no signal). Evals best/median: 5,101M 28.41/28.0 (the
+  checkpoint's own first eval), 5,177M 27.97, 5,252M 27.45, 5,328M 28.22, 5,403M 28.30. 0 finishes.
+* Mid-run (5,142M) the spawn file was swapped from the 8-heading archive (80,660 cells; only 320 of
+  the 30,000 written states in the pocket) to the 13,543-state gated archive (864 pocket states).
+* **Pocket bench** (ANALYSIS: 40 stochastic episodes from the archive's pocket states, 8 s; climb-out =
+  d < 70,200): incumbent 0/40 (median gain 0 u, life 0.9 s); fas at 5,369M 0/40 (max gain 184 u).
+  31/40 simply fall to the lower floor: the archive's pocket states are SLOW (1 of 864 near the
+  wedge face above 800 u/s) - random actions do not keep the ~1,700 u/s the carve needs. The pocket
+  has to be entered at the main line's own speed (through the low hole from the room), which only
+  the policy's own flight supplies.
+
+### BUG FOUND AND FIXED (5fd3b2e): the predecessor archive replayed --respawn-novel flights as real spawns
+
+* r2b1_pa (warm + `--archive-frac 0.2 --int-rare 2 --archive-hold 0.5`, alongside the recipe's
+  `--respawn-novel`): the real-episode ceiling jumped 28,174 -> 29,310 u (28.8 -> 30.0%) within 3M
+  steps and the reservoir min-depth fell 72.0 -> 70.5% - not learning: `PredecessorArchive.observe`
+  ignored the novel tag, so a novel episode (started from a MOVED state, e.g. in the room's lower
+  half with the slot's westward velocity) flew through the tunnel, entered rare cells, and its
+  run-up was committed and replayed as a REAL spawn: teleport-forward, which --respawn-novel exists
+  to forbid ("we cannot teleport forward"; novel flights are never harvested by the reservoir).
+* Fix: observe(skip=novel_env): novel envs take no snapshots, no rare entries, pending prefixes
+  dropped. Without --respawn-novel nothing changes (bit-identical, tests/python/test_archive_novel_skip).
+  With the fix (r2b1_pa2) the ceiling stays at 28,174 u and the archive fills with real run-ups.
+* One useful fact from the leak: a state in the room's lower half moving WEST at tunnel height
+  passes the tunnel (as the bench's rising state does) - the pocket detour is only the way to get
+  that state from the main line.
+* r2b1_pa killed at 5,132M (leaky, results discarded); a plain control r2b1_ctl ran 5,101-5,137M
+  while the fix was written (stopped; not a result).
+
+### 16:28 UTC: r2b1_pa2 LAUNCHED - warm incumbent + predecessor archive (fixed), 450M
+* `--archive-frac 0.2 --int-rare 2 --archive-hold 0.5` (rows = the policy's own 3 s run-ups before a
+  rare cell entry it survived 0.5 s past). Same 3090 box.
