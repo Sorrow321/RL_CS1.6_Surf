@@ -465,3 +465,16 @@ backward window's bin 11 (d >= 67,213) covers the stretch up to CP2.
   to practise the dive-or-detour decision with the post-detour value now learned; half frontier
   spawns). The window re-anchored at the new deepest bins [43, 44] = d 65.7k-68.7k (CP2 and
   beyond). T 1.04, cooling.
+
+### 08:56 UTC - r1b2_bwh: greedy still dives at T ~0.6; r1b2_bwhT = the same + arm 4's fast heating
+
+* r1b2_bwh (50% true starts, 64-bin backward window at [43, 44]): 1,374.2M 27.43 and 1,449.7M 27.48,
+  9/9 at the U-turn dive (24.6-24.8 s). Survived dips fell back to 0.3-0.6: the true starts at
+  T 0.56-0.73 do not try the detour. Reservoir floor 67.2% (d ~65,700): the frontier half keeps
+  the CP2 crossing alive in training.
+* Box deadline extended to 12:10 UTC after an operator warning (it was 08:47).
+* **r1b2_bwhT** = its 1,463.8M ckpt + `--unstuck-patience 5e7 --unstuck-rate 1.0` (arm 4's warm
+  heating: T from 0.56 to the cap 2 in ~145M steps). The post-detour value now exists (CP2
+  crossings in the reservoir), so a detour discovered at the U-turn under heat should be
+  REINFORCED this time instead of dropped. Last configuration of the round; training stops ~11:00
+  for the checkpoint pull and the wrap-up.
