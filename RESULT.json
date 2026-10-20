@@ -1,7 +1,7 @@
 {
  "agent": "r2b3",
  "round": 2,
- "final": false,
+ "final": true,
  "best": {
   "score": 28.766,
   "eval_file": "/home/steam/ar/runs/r2b3/r2b3_ownx/traj_8113881088.jsonl",
@@ -20,7 +20,7 @@
   ],
   "resume_from": "incumbent 5.10B -> r2b3_arch 5.55B -> r2b3_archx 6.22B -> r2b3_archs 6.67B -> r2b3_archsx 7.21B -> r2b3_own 7.66B -> r2b3_ownx",
   "commit": "80a105c",
-  "note": "ckpt_latest = the run's newest weights (step ~9.48B, stopped 19:56, md5 11bf38c0195ca4664c5689dbec6dbd2d); the best episode bounces between the shaft's walls and flies INTO the window tunnel at window height, dying on the sill ~180 u in"
+  "note": "ckpt_latest = the run's newest weights, step 9,472,835,584, md5 11bf38c0195ca4664c5689dbec6dbd2d (the run was stopped, no ckpt_final); it carries the archive state and --respawn-rare 0.5 -arch 1 -speed 3 -own 1 (a bare resume restores them; --respawn-rare 0 turns them off). The best episode bounces between the shaft's walls and flies INTO the window tunnel at window height, dying on its sill ~180 u in."
  },
  "summary": "Warm at the incumbent's wall (CP2 slot exit): SIL, margin 0.5, T=0, reservoir-weighted --respawn-rare: no gain. Analysis (traces, random rollouts, WR demo for analysis only): the field routes through a window tunnel the slot cannot fly into level; the human detours through a centre gap, a cavity and a helix and enters it climbing; a bench shows the policy already flies everything after the gap (to ~30%) - the helix ride is the missing skill. NEW --respawn-rare-arch (Go-Explore per-cell archive of REAL states, no margin) + -own/-speed: real episodes reach the cavity/below the shaft for the first time; best eval 28.766 (r2b3_ownx 8,114M: a wall-bounce entry into the window tunnel, dying on its sill). From scratch the archive gave no early-gate gain (2 runs, one seed each): a wall tool, recipe unchanged. Next: practice states on the helix (surf-aligned novel rows, reverse curriculum from own partial climbs, or simulator search)."
 }

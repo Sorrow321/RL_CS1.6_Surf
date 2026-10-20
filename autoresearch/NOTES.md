@@ -1020,3 +1020,15 @@ r2b3_ownx ckpt_latest, stochastic, 6 s cap:
   flag-off bit-identity test against the trainer before the flag (config, progress.csv, eval
   bytes, weights) - re-run on the final code at 22:08: passed.
 * No box (released 21:57); nothing running.
+
+## Wrap-up (r2b3) - 2026-10-20 23:54 UTC
+
+* Final: RESULT.json `"final": true`, score **28.766** (r2b3_ownx, eval traj_8113881088, re-scored
+  at wrap-up: 9 episodes, best 28.77%, median 27.04%, 0 finishes; incumbent 28.628). 107 valid
+  evals across the branch's runs.
+* Hand-on checkpoint: `runs/r2b3/r2b3_ownx/ckpt_latest.pt` (step 9,472,835,584, md5
+  11bf38c0195ca4664c5689dbec6dbd2d), pulled with an md5 check before the box was released. It
+  was trained at 80a105c (code-identical to this head apart from the resume switch and docs).
+* Boxes: 56893794 (12:55-13:59) and 56903990 (14:19-21:57), RTX 5080 $0.388/h, ~$3.4 in all; no
+  box at wrap-up.
+* The round's lesson is above ("ROUND 2 LESSON (r2b3)").
