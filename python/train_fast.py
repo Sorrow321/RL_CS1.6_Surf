@@ -14624,6 +14624,9 @@ def main() -> None:
         frontier zone get a new velocity direction (speed kept, view yaw
         turned by the same heading change). In place; returns rp."""
         n_fresh = max(1, int(round(len(rp) * (1.0 - args.respawn_frac))))
+        # rows --respawn-cells just drew stay EXACT (Go-Explore returns to the
+        # state itself); cell_n[0] is 0 whenever --respawn-cells is off
+        n_fresh += int(cell_n[0])
         re = rp[n_fresh:]
         vr_n[0], vr_n[1] = 0, len(re)
         if not len(re):
