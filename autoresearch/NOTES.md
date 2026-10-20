@@ -343,3 +343,18 @@ steps/s. Measure it on your box in the first minute and size `--steps` to the ti
 * **r1b3_gec (launched 05:55):** that checkpoint (at the CP2 wall, OU off) + `--respawn-cells 0.5
   --respawn-cells-front 0.05 --respawn-cells-margin 0.25 --respawn-vel-rot 0.5` (Go-Explore in the
   loop without the offsets), +400M.
+
+### 2026-10-20 06:23 UTC - Go-Explore in the loop NULL at CP2 too; last experiment: non-episodic novelty keyed on climb (from scratch)
+
+* **r1b3_gec** (nou's 1.5B ckpt at the CP2 wall, offsets off, `--respawn-cells 0.5 --respawn-cells-front
+  0.05 --respawn-cells-margin 0.25 --respawn-vel-rot 0.5`, 400M): ~2,000 frontier cells returned
+  exactly per pool, ~14-16% rotated rows, T back to the cap 2.0. Evals 27.51 / 27.48 / 27.51 / 27.30 /
+  27.51 / 27.52%; mind 74.6% -> 73.7% (the reservoir crept ~1 s further along the same dive, still
+  before the pit). NULL. Every in-loop exploration lever built this round is now null at CP2.
+* **r1b3_isp (launched 06:20), from scratch:** the incumbent recipe + `--int-split --int-climb 3
+  --int-view 0`. Burda et al. 2019's two-head critic (the count bonus in its own non-episodic stream,
+  gamma_I 0.99 per decision, A = A_E + A_I), with the novelty key = 256 u cell x 3 horizontal-speed x
+  3 climb-angle bands (no view sectors, so turning in place earns nothing). The idea: a dive that dies
+  no longer cancels the value of reaching a never-seen (place, vertical motion), e.g. level in CP2's
+  corridor, and the climb band separates that from diving through it. 30-min check against GR's
+  marks (trap exit 529M, window 755M); stopped if behind. CPU smoke of the exact combination passed.
