@@ -119,6 +119,11 @@ python autoresearch/box.py release --agent $AR_AGENT
 
 * `launch` prepends the incumbent recipe (`config.incumbent_recipe`) to your extra flags, and
   later flags win. `--no-recipe` gives a bare scratch preset.
+* A spawn-state file built from the policy's OWN states (its reservoir, its greedy line, an
+  archive rooted at them) is passed with `launch --self-states "<how it was built>" --
+  --spawn-states <file>`. That sets run_arm.sh's SELF_STATES=1 and records your sentence with
+  the run. Never launch around `launch` (box.py ssh + run_arm.sh): the run then never reaches
+  your box record.
 * Never call `vastai create`/`destroy` yourself. The fleet watchdog destroys any instance that:
   * is not a single allowed RTX card under its price cap;
   * is above the box cap;

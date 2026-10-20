@@ -125,6 +125,30 @@ def test_offers_drop_the_excluded_cpus(monkeypatch):
     assert got[0]["cpu"].startswith("AMD Ryzen 9 5950X")
 
 
+def test_launch_declares_self_states_with_its_provenance(monkeypatch, tmp_path):
+    """r1b4 had to bypass `launch` (box.py ssh + run_arm.sh) to pass SELF_STATES=1 for a
+    policy-rooted Go-Explore spawn file, and the run never reached its box record."""
+    monkeypatch.setattr(box, "AR_HOME", tmp_path)
+    monkeypatch.setattr(box, "BOXES", tmp_path / "boxes")
+    box.save_rec("r1b4", {"agent": "r1b4", "id": 42, "gpu": "RTX_3090", "dph": 0.2,
+                          "created": 0, "host": "h", "port": 1})
+    sent = []
+    monkeypatch.setattr(box, "ssh", lambda rec, cmd, **k: sent.append(cmd) or
+                        box.subprocess.CompletedProcess(cmd, 0, "", ""))
+    why = "Go-Explore archive rooted at the incumbent's own reservoir, no demo"
+    box.main(["launch", "--agent", "r1b4", "--run", "r1b4_gs", "--resume", "--self-states", why,
+              "--", "--spawn-states", "runs/ge.npy"])
+    assert "SELF_STATES=1 " in sent[-1] and "--spawn-states runs/ge.npy" in sent[-1]
+    assert box.load_rec("r1b4")["runs"][-1]["self_states"] == why
+    # without the declaration run_arm.sh is left to refuse the file, as it always did
+    box.main(["launch", "--agent", "r1b4", "--run", "r1b4_x", "--resume"])
+    assert "SELF_STATES" not in sent[-1]
+    assert "self_states" not in box.load_rec("r1b4")["runs"][-1]
+    # and a declaration has to say something
+    with pytest.raises(SystemExit):
+        box.main(["launch", "--agent", "r1b4", "--run", "r1b4_y", "--self-states", "mine"])
+
+
 def _blocklist(*mids, readme="branch"):
     return {"_README": [readme], "blocked": [
         {"ip": None, "machine_id": m, "host_id": None, "reason": "gpu_capped", "detail": f"m{m}"}

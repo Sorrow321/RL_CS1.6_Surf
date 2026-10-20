@@ -25,6 +25,8 @@ Every limit comes from autoresearch/config.json and is enforced HERE, before mon
     python autoresearch/box.py deploy  --agent r1b2 --branch ar/r1b2
     python autoresearch/box.py ssh     --agent r1b2 -- "nvidia-smi"
     python autoresearch/box.py launch  --agent r1b2 --run r1b2_x1 --steps 4e8 -- --extra-flag 1
+    python autoresearch/box.py launch  ... --self-states "<how the file came from the policy's
+                                       own states>" -- --spawn-states runs/x.npy
     python autoresearch/box.py pull    --agent r1b2 --run r1b2_x1 [--ckpt]
     python autoresearch/box.py extend  --agent r1b2 --hours 1
     python autoresearch/box.py release --agent r1b2
@@ -527,6 +529,14 @@ def cmd_launch(a):
     recipe = [] if a.no_recipe else list(CFG["incumbent_recipe"])
     env = (f"MAP={shlex.quote(CFG['map'])} BUDGET={shlex.quote(str(int(float(a.steps))))} "
            f"RECORD_EVERY={shlex.quote(a.record_every)} ")
+    if a.self_states is not None:
+        # run_arm.sh refuses --spawn-states / --demo-file / --bc-file without SELF_STATES=1,
+        # the declaration that the file came from the POLICY'S OWN states (CLAUDE.md section
+        # 0); the declaration is recorded with the run, so it has to say how
+        if len(a.self_states.strip()) < 20:
+            die("--self-states takes the file's provenance: how it was built from the "
+                "policy's own states (no demo), in a sentence")
+        env += "SELF_STATES=1 "
     if a.resume:
         env += "CKPT=runs_ckpt.pt ARM_RESUME=1 "
         # a resume restores every shape-changing flag from the checkpoint and REFUSES a
@@ -542,8 +552,11 @@ def cmd_launch(a):
     print("\n".join((r.stdout + r.stderr).strip().splitlines()[-30:]))
     if r.returncode != 0:
         die(f"launch failed (exit {r.returncode})", code=6)
-    rec.setdefault("runs", []).append({"run": a.run, "t": time.time(), "steps": a.steps,
-                                       "flags": recipe + extra, "resume": bool(a.resume)})
+    run = {"run": a.run, "t": time.time(), "steps": a.steps, "flags": recipe + extra,
+           "resume": bool(a.resume)}
+    if a.self_states is not None:
+        run["self_states"] = a.self_states
+    rec.setdefault("runs", []).append(run)
     save_rec(a.agent, rec)
 
 
@@ -668,6 +681,9 @@ def main(argv=None):
                    help="ARM_RESUME from runs_ckpt.pt (push it with deploy --ckpt)")
     p.add_argument("--no-recipe", action="store_true",
                    help="do not prepend config.incumbent_recipe")
+    p.add_argument("--self-states", default=None, metavar="PROVENANCE",
+                   help="SELF_STATES=1 for run_arm.sh: the --spawn-states (or similar) file "
+                        "was built from the policy's OWN states; say how (it is recorded)")
     p.add_argument("extra", nargs=argparse.REMAINDER)
     p.set_defaults(fn=cmd_launch)
     p = sub.add_parser("pull")
