@@ -4296,6 +4296,16 @@ def main() -> None:
                     help="cap on ez-greedy burst length, in decisions")
     ap.add_argument("--ez-mu", type=float, default=None,       # 2.0
                     help="zeta exponent for ez-greedy burst length")
+    ap.add_argument("--ez-front", type=float, default=None,    # 0 = off
+                    help="--ez-eps only at the FRONTIER (Go-Explore: explore "
+                         "from where the policy's reach ends): a burst may "
+                         "start only in an env whose progress (start "
+                         "geodesic - d) is within the top B fraction of the "
+                         "reservoir's deepest progress, re-read once per "
+                         "iteration. B in (0, 1]; 1 = anywhere past the "
+                         "start. Needs --ez-eps and the respawn reservoir, "
+                         "one map. 0/absent = off, byte-identical. ckpt "
+                         "restores")
     ap.add_argument("--respawn-mode",
                     choices=["uniform", "goex", "florensa", "backward"],
                     default=None,
@@ -6973,6 +6983,9 @@ def main() -> None:
         if args.ez_eps is None and ck_cfg.get("ez_eps") is not None:
             args.ez_eps = float(ck_cfg["ez_eps"])
             restored.append(f"ez_eps={args.ez_eps:g}")
+        if args.ez_front is None and ck_cfg.get("ez_front"):
+            args.ez_front = float(ck_cfg["ez_front"])
+            restored.append(f"ez_front={args.ez_front:g}")
         if args.ez_max is None and ck_cfg.get("ez_max") is not None:
             args.ez_max = int(ck_cfg["ez_max"])
         if args.ez_mu is None and ck_cfg.get("ez_mu") is not None:
@@ -8253,6 +8266,20 @@ def main() -> None:
         args.train_stride = 1
     if args.ez_eps is None:
         args.ez_eps = 0.0
+    if args.ez_front is None:
+        args.ez_front = 0.0
+    if float(args.ez_front) != 0.0:
+        if not 0.0 < float(args.ez_front) <= 1.0:
+            raise SystemExit("--ez-front must be in (0, 1]")
+        if float(args.ez_eps) <= 0.0:
+            raise SystemExit("--ez-front restricts where --ez-eps bursts "
+                             "start: it needs --ez-eps > 0")
+        if args.maps:
+            raise SystemExit("--ez-front reads one map's reservoir and "
+                             "start geodesic: it is single-map")
+        if args.reward != "race":
+            raise SystemExit("--ez-front reads the race reward's per-env "
+                             "geodesic: it needs --reward race")
     if args.ez_max is None:
         args.ez_max = 60
     if args.ez_mu is None:
@@ -13144,6 +13171,9 @@ def main() -> None:
     # --arc-death-charge: in the config ONLY when on, so the control's config is unchanged
     if float(args.arc_death_charge or 0.0) > 0.0:
         meta["config"]["arc_death_charge"] = float(args.arc_death_charge)
+    # --ez-front: in the config ONLY when on, so the control's config is unchanged
+    if float(args.ez_front or 0.0) > 0.0:
+        meta["config"]["ez_front"] = float(args.ez_front)
     # --goal-planner primlearn: the planner's PPO / reward knobs and the uniform-first share,
     # ONLY then (record_ckpt.py: TRAIN_ONLY - a recording runs the stored planner greedily)
     if PLPLAN:
@@ -14205,6 +14235,12 @@ def main() -> None:
     # column but the last, which is the pitch and stays the policy's)
     ez_z = (torch.zeros((N, NZ), device=device)
             if VIEWC and args.ez_eps > 0.0 else None)
+    # --ez-front: bursts start only inside the frontier band. ez_thr is the
+    # band's d threshold (+inf = no band yet), re-read once per iteration
+    # off the reservoir; ez_band is the per-env mask on the device
+    EZF = float(args.ez_front or 0.0) > 0.0 and args.ez_eps > 0.0
+    ez_thr = float("inf")
+    ez_band = torch.ones(N, dtype=torch.bool, device=device) if EZF else None
     NVEC_T = torch.tensor(NVEC, device=device)
     # Go-Explore post-return exploration state (--spawn-burst): decisions
     # left in each env's post-respawn random burst and the current held
@@ -16632,6 +16668,14 @@ def main() -> None:
         if SR_SELECT:
             sr_eps_list.clear()
             sr_seg.fill(0)
+        if EZF:
+            # the frontier band of --ez-front: progress P_f = d0 * (1 -
+            # min-depth) is the reservoir's deepest; a burst may start where
+            # progress >= (1 - B) * P_f, i.e. d <= d0 - (1 - B) * P_f
+            _mf = fleet.reservoir_min_depth()
+            _d0f = float(fleet.slots[0].rf_d0 or 0.0)
+            ez_thr = (_d0f - (1.0 - float(args.ez_front)) * _d0f * (1.0 - _mf)
+                      if (_mf == _mf and _d0f > 0.0) else float("inf"))
         # ---------------- rollout ----------------
         t_roll = tm.now()
         with torch.no_grad():
@@ -16678,6 +16722,11 @@ def main() -> None:
                         # not a jitter).
                         fresh = (ez_left == 0) & (torch.rand(N, device=device)
                                                   < args.ez_eps)
+                        if EZF and reward_fn._d is not None:
+                            # only envs inside the frontier band may start one
+                            ez_band.copy_(torch.from_numpy(
+                                reward_fn._d <= ez_thr), non_blocking=True)
+                            fresh &= ez_band
                         nf = int(fresh.sum())
                         if nf:
                             u = torch.rand(nf, device=device).clamp_(1e-6, 1.0)
@@ -19197,6 +19246,10 @@ def main() -> None:
             # the share of this rollout's decisions that were burst rows,
             # i.e. what the PPO pool dropped
             hyg_note += f"  ez {float(b_ez.float().mean()):.1%}"
+            if EZF and ez_thr != float("inf"):
+                # where the --ez-front band starts, in % of the start geodesic
+                _d0f = float(fleet.slots[0].rf_d0 or 0.0)
+                hyg_note += f" front>{100.0 * (1.0 - ez_thr / _d0f):.1f}%"
         if AUG_ON and aug_kl_v == aug_kl_v:
             # --aug-*: how far the augmented frame's answer still is from the clean one
             hyg_note += f"  drac kl {aug_kl_v:.4f} v {aug_vm_v:.4f}"

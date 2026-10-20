@@ -10,6 +10,8 @@ as on the bins.
 (a) CPU smoke on sidistic (abs view, keys-hold, unstuck at its defaults):
     bursts run, the step line reports a non-zero burst share, the config
     carries ez_eps, and a flagless resume restores it.
+(c) --ez-front B: bursts start only inside the frontier band (progress within
+    the top B of the reservoir's deepest), re-read once per iteration.
 (b) flag off: the trainer before this change and after it give the same
     config, progress.csv (fps aside), eval trajectory bytes and weights on
     the same smoke - ez_eps 0 never enters the burst code.
@@ -107,6 +109,34 @@ def test_ez_bursts_run_under_the_abs_view_and_unstuck_and_resume():
         shutil.rmtree(dd, ignore_errors=True)
 
 
+@needs_run
+def test_ez_front_bands_the_burst_starts_and_resumes():
+    """--ez-front 0.5: bursts start only in the top half of the reservoir's
+    reach. A 4 s episode cap and a 0.1 s harvest margin fill the reservoir
+    (1 s snapshots) inside the smoke, so the band is live (the step line prints
+    where it starts), the config carries the key and a flagless resume
+    restores it; --ez-front without --ez-eps is refused."""
+    run = "ezviewc_front"
+    r = _train(run, ["--ez-eps", "0.5", "--ez-max", "8", "--ez-front", "0.5",
+                     "--ep-ticks", "400", "--respawn-margin", "0.1"],
+               steps="40960")
+    assert re.search(r"  ez +[0-9.]+% front>[0-9.]+%", r.stdout), r.stdout[-3000:]
+    d = ROOT / "runs" / run
+    cfg = json.loads((d / "run.json").read_text(encoding="utf-8"))["config"]
+    assert cfg["ez_front"] == 0.5 and cfg["ez_eps"] == 0.5
+    run2 = "ezviewc_front_re"
+    shutil.rmtree(ROOT / "runs" / run2, ignore_errors=True)
+    r2 = _run([sys.executable, "-u", str(TRAIN), "--run", run2, "--ckpt",
+               str(d / "ckpt_final.pt")] + SMOKE + ["--steps", "8192"])
+    assert r2.returncode == 0, r2.stdout[-4000:] + r2.stderr[-4000:]
+    assert "ez_front=0.5" in r2.stdout
+    bad = _run([sys.executable, "-u", str(TRAIN), "--run", "ezviewc_front_bad"]
+               + SMOKE + ["--steps", "2048", "--ez-front", "0.5"])
+    assert bad.returncode != 0 and "needs --ez-eps > 0" in (bad.stdout + bad.stderr)
+    for dd in (d, ROOT / "runs" / run2, ROOT / "runs" / "ezviewc_front_bad"):
+        shutil.rmtree(dd, ignore_errors=True)
+
+
 def _pre_change_trainer(dst: Path):
     """train_fast.py of the last first-parent commit before this change."""
     r = subprocess.run(["git", "rev-list", "--first-parent", "--max-count=200",
@@ -115,7 +145,7 @@ def _pre_change_trainer(dst: Path):
     for ref in (r.stdout.split() if r.returncode == 0 else ()):
         s = subprocess.run(["git", "show", f"{ref}:python/train_fast.py"],
                            capture_output=True, cwd=str(ROOT))
-        if s.returncode == 0 and b"ez_z = (" not in s.stdout:
+        if s.returncode == 0 and b"ez_z = (" not in s.stdout and b"--ez-front" not in s.stdout:
             dst.write_bytes(s.stdout)
             return ref
     return None
