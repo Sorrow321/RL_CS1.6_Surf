@@ -1,5 +1,5 @@
 {"agent": "r1b1", "round": 1, "final": false,
- "best": {"score": 27.304, "eval_file": "/home/steam/ar/runs/r1b1/r1b1_ez2/traj_1052246016.jsonl",
-          "run": "r1b1_ez2", "step": 1052246016, "ckpt": null,
-          "recipe": ["--ez-eps", "0.02"], "resume_from": "/home/steam/ar/incumbent/ckpt.pt", "commit": "cba79e8"},
- "summary": "Warm from the incumbent (at the CP2 pit). --death-charge 1.0: negative (switched to an earlier death). ez-greedy bursts under the continuous view (new, cba79e8) --ez-eps 0.02: 27.0-27.3% at the pit, no crossing in 400M, greedy line noisier. Running a plain warm control for matched steps and a wall checkpoint; next: frontier-only bursts (--ez-front, new)."}
+ "best": {"score": 27.392, "eval_file": "/home/steam/ar/runs/r1b1/r1b1_ctl/traj_0901251072.jsonl",
+          "run": "r1b1_ctl", "step": 901251072, "ckpt": "/home/steam/ar/runs/r1b1/r1b1_ctl/ckpt_latest.pt",
+          "recipe": [], "resume_from": "/home/steam/ar/incumbent/ckpt.pt", "commit": "cba79e8"},
+ "summary": "Warm from the incumbent. --death-charge 1.0: negative (earlier death). ez-greedy bursts under the continuous view (new) --ez-eps 0.02: 27.3% max, no crossing, line noisier. Plain warm control consolidates at the CP2 pit by 825M (9/9 at 27.4% at 901M; ckpt 905M = the wall checkpoint). No arm has crossed CP2. Next: won't-vs-can't nudge probe at the pit, then frontier-only bursts (--ez-front, new) from the wall checkpoint."}
