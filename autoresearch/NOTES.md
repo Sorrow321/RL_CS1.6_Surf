@@ -486,3 +486,31 @@ misleading: the agent's surviving lines pass through `*99`'s box.
     attempts (further west before dying) and the higher dives are exactly the near-misses
     whose on-policy advantage is a thin gradient.
   * +1.5e9 steps, so it stops at 4.64B, about 07:35. Box deadline 07:58.
+
+### 06:00 UTC: CP2 IS PASSABLE WITH THE RATCHET (r1b1 and r1b2, public status.md); C4 stopped; C5 = my ramp-practised lineage + `--race-ratchet`
+
+* **Other branches' public results** (status.md / RESULT.json, read 05:56):
+  * **r1b1, 28.553**: FROM SCRATCH, incumbent recipe + `--respawn-novel` + `--race-ratchet`.
+    At 1,633M its greedy line flies the human's CP2 line (drop under the plate, east to the
+    +y ramp, turnaround, climbing exit, level slot at z ~11,490).
+  * **r1b2, 28.492**: warm, `--race-ratchet` + correlated noise on 25% of envs + unstuck T
+    heated to 2. Its greedy policy flies the same detour from 1.20B.
+  * The common factor is **`--race-ratchet`**: only new progress records pay, so the D-ramp
+    detour (1,958 u uphill in the field) is no longer charged step by step.
+* **My mistake, for the record:** I discounted the ratchet. I argued that a failed detour
+  still nets less than the dive, which is true in total return. But under the stock
+  potential every eastward step has a NEGATIVE reward, so GAE drives the eastward actions'
+  advantages negative and the policy is pushed away from the detour before it can ever
+  succeed. My Arms C-C4 practised the D-ramp under that charge for ~2.4B steps and only
+  crept closer.
+* **Arm C4, r1b4_gs4** (SIL 0.1), 05:27-05:56, 3.14B -> 3.47B:
+  * evals at frontier 26,851-26,904 u, flat;
+  * stopped by exact pid; snapshot `runs/gs4_last.pt`.
+* **Arm C5, r1b4_gr5**, launched 05:57:
+  * resume of `runs/gs4_last.pt` (3.47B) with `--race-ratchet` (record-gap column 27 zero-
+    widened into 6 tensors, function-identical at step 0), the same Go-Explore spawn file at
+    0.4, `--unstuck-max 2` and `--sil-coef 0`;
+  * +2e9 steps, so it stops at 5.47B, about 08:50;
+  * box deadline 08:58.
+  * The bet: a policy that already practised the D-ramp ride for 2.4B steps, now with the
+    detour uncharged, passes the slot and goes further than 28.55%.
