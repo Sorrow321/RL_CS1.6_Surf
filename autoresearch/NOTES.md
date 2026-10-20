@@ -367,3 +367,26 @@ misleading: the agent's surviving lines pass through `*99`'s box.
   * T clamped 2.0 -> 1.00 at the first update; +1e9 steps, so it stops at 2.75B, about
     04:55;
   * box deadline extended to 05:29 UTC.
+
+### 04:03 UTC: Arm C2 at 2.08B - best score 27.523; the D-ramp ride still improving; an outer loop
+
+* **Evals** 1,750M-2,052M scored 27.41 / 27.43 / 27.47 / **27.52** / 27.49. The 1,977M eval
+  (frontier 26,909 u) is this branch's best: 27.523. No CP2. Reservoir min-depth 73.85%;
+  T 1.00, as capped.
+* **Probe 4 on C2's 2.09B snapshot** (md5 a6594840...):
+
+  | checkpoint | comes back west | mean survival | mean d_min | best d_min |
+  |---|---|---|---|---|
+  | Arm C 1.39B | 11/14 | 2.2 s | 71,900 | - |
+  | Arm C2 2.09B | 13/14 | 2.8 s | 71,790 | 71,340 at (3,308, 537, 11,099) |
+
+  * Its exits now arrive ~100-400 u below the slot's lower edge at x 3,300-3,900.
+  * Steady but slowing: ~100-400 u of d_min per 0.7B steps.
+* **Method from here: alternate the two halves of policy-guided Go-Explore.**
+  * (a) Grow the archive from the policy's NEWEST deepest reservoir states (its improved
+    D-ramp exits are better starting points than random ones).
+  * (b) Train with spawns from that archive, filtered to d >= the policy's own best
+    (never a forward teleport).
+  * The trainer re-reads `--spawn-states` when the file's mtime changes (every 20
+    iterations; designed for an outer loop), so (b) is refreshed in place by an atomic
+    `mv` on the box, without a restart.

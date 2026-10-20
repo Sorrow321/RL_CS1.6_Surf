@@ -1,0 +1,25 @@
+{
+ "agent": "r1b4",
+ "round": 1,
+ "final": false,
+ "best": {
+  "score": 27.523,
+  "eval_file": "/home/steam/ar/runs/r1b4/r1b4_gs2/traj_1977090048.jsonl",
+  "run": "r1b4_gs2",
+  "step": 1977090048,
+  "ckpt": "/home/steam/ar/runs/r1b4/r1b4_gs2/ckpt_snap.pt",
+  "ckpt_step": 2091909120,
+  "ckpt_md5": "a65948404f79aeceba3011a61cb62c0f",
+  "recipe": [
+   "--spawn-states",
+   "runs/ge23_fastnovel.npy",
+   "--spawn-states-frac",
+   "0.4",
+   "--unstuck-max",
+   "1"
+  ],
+  "resume_from": "/home/steam/ar/runs/r1b4/r1b4_gs/ckpt_final.pt (Arm C, 1.75B; itself warm from the incumbent with --spawn-states runs/ge2_fastnovel.npy 0.3)",
+  "commit": "48cf258"
+ },
+ "summary": "CP2 wall anatomy (analysis only): steep U-ramp exit + air U-turn + dive into a slanted fail sheet; the open way is a low exit, east to a curved D-ramp, a speed-keeping ride round it, and a level pass west through a ~220 u slot (needs vz>=0 at z 11,450-11,650 and >=1,400 u/s at x 3,600; no air U-turn can do it). CPU probes (incumbent): lower-room starts air-turn back and die; D-ramp starts touch the ramp but lose speed and fall: the ride is an unlearned skill. Arm A warm+--respawn-novel: 27.44 best, flat. Arm B warm+--spawn-burst (new: continuous view, deepest-3% gate): 27.49 best, flat. Go-Explore phase 1 rooted at the policy's own CP2 states covers the lower room/D-ramp (85k/32k cells) in 1.5 box-min but never threads the slot. Arm C running: warm + --spawn-states from that archive's fast novel states (30% of spawns) = practice the D-ramp from physically consistent starts."
+}
