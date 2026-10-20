@@ -148,3 +148,24 @@ steps/s. Measure it on your box in the first minute and size `--steps` to the ti
    generic, from-scratch form of (1) if (1) shows anything.
 3. No box at 00:49: every offer under the caps is blocklisted or above the cap (3090s 0.381,
    4090s 0.455). Retrying every wakeup.
+
+### 2026-10-20 01:14 UTC - `--view-ou-temp` built (commit cb0d58e), box trouble
+
+* **What:** under `--unstuck`, the held yaw offset of `--view-ou-sigma` gets sigma
+  `--view-ou-sigma x min(T, --unstuck-max) / --unstuck-max`. T = 0 (frontier moving): no offset;
+  T at the cap: the full sigma. `set_ou_temp` runs wherever the schedule moves T; a held offset
+  keeps its draw until its own redraw. The step line prints `ou <sigma>` after the unstuck T.
+  Refused without `--view-ou-sigma > 0` or without `--unstuck`. ckpt restores; record_ckpt
+  TRAIN_ONLY.
+* **Tests:** `tests/python/test_view_ou_temp.py`, 6/6 on CPU (5.6 min): the formula, the refusals,
+  a sidistic CPU smoke (T 0 -> 0.5 -> 1.0 -> 1.5 and `ou` 0 -> 0.10 -> 0.20 -> 0.30 = 0.8 T/4), the
+  config dump, a flagless resume restoring it, and flag-off bit-identity against the parent
+  trainer with `--view-ou-sigma 0.8 --view-ou-period 4` on (config, every progress.csv value,
+  the greedy eval trajectory bytes).
+* `tests/python/test_view_ou_sigma.py`: 14/15. `test_period_needs_a_sigma` fails at HEAD too: it
+  launches the default 2048-env trainer on CPU, which this 8 GB host OOM-kills (exit 137) before
+  the guard it tests. Environmental, not touched.
+* **Boxes:** 01:06 a 3090 Ti at 0.242 $/h came up power-capped (300 of 450 W, 59 bf16 TFLOPS,
+  gpu_health UNHEALTHY); blocklisted (machine 68144) and released per CLAUDE.md. Since then no
+  offer under the caps: the 3090s at 0.269 / 0.381 are blocklisted hosts, 4090s start at 0.455.
+  A background waiter retries every 3 min and deploys on success.
