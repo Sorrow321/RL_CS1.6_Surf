@@ -164,3 +164,35 @@ Refused with --chunk, --yaw-cond, --crl, --tick-ms-schedule.
   resume, the CP2 detour needs ~2) and `mind` (reservoir's deepest state, 74.28% of d0 at
   resume; a training episode that survives 2 s past the death point d ~70.9k would push it
   under ~72.5%).
+
+### 02:25 UTC - arm 1 result (r1b2_nt05, warm + --noise-tau 0.5, 750M -> 925M) and arm 2 launched
+
+| eval | score | best | median | CP | deepest end |
+|---|---|---|---|---|---|
+| 750.3M (resume) | 26.05 | 26.04% | 24.94% | 1 | 24.4 s at (4265, 768, 11932) |
+| 825.8M | 27.28 | 27.28% | 27.16% | 1 | 25.5 s at (3199, -899, 11165): the CP2 dive |
+| **901.3M** | **27.90** | **27.90%** | 27.29% | 1 | **26.3 s at (2654, -909, 11341)**: 500 u further west, 190 u higher |
+
+* 27.90 beats the incumbent (27.22) and the best eval anyone had (27.5), but it is a CREEP of the
+  CP2 death point, not a crossing (CP still 1). sidGEOuEM2 crept the same way to 28.0% (3,681M).
+* Training side: `dip/max_survived_depth` spikes of 2.0-2.65 reward units (809M, 840M, 872M,
+  877M) and 7.12 (916M) against ~0.4-0.6 in the incumbent run; the reservoir's deepest state did
+  NOT move (mind 74.3-74.6%), so no training episode got past the CP2 death point.
+* **Cost: the policy collapses its own noise against the correlated draw.** entropy_loss
+  -1.13 -> +0.67 (about 1.8 nats lost), yaw sigma 0.041 -> 0.021 in 126M steps, approx_kl climbing
+  0.03 -> 0.07 -> 0.13 -> 0.19 -> 0.22 -> 0.39 (incumbent run ~0.05). Likely cause: a
+  sustained deviation that loses ground is charged the field dip on every one of its ~12
+  correlated decisions, so "noise is costly" arrives ~tau/40ms times stronger than under i.i.d.
+  noise and the entropy bonus (0.005 x (1+T), T 0.27 -> 0.11) cannot hold it.
+* Weights: `runs/r1b2/r1b2_nt05/ckpt_latest.pt` = step 925,368,320 (md5 29b902d0...), 24M steps
+  AFTER the 27.90 eval (ckpt_latest is rewritten every 60 s, so the 901M weights are gone).
+  Pull lesson: `box.py pull --ckpt` while the trainer runs can grab a half-written ckpt_latest.pt
+  (md5 taken, then the file rewritten): stop the trainer first, or pull a milestone ckpt.
+
+**Arm 2: r1b2_ntr = arm 1's 925.4M weights + --race-ratchet (noise_tau 0.5 restored from the
+ckpt) + --ckpt-every 75e6** (milestone ckpts aligned with the 75M evals, so the best eval's weights
+exist). Why the ratchet now: it makes lost ground free, which is exactly the charge that (a) blocks
+learning from a detour that only half works and (b) drives the noise collapse above. Ratchet
+column zero-padded on resume (6 tensors widened, function-identical at step 0). Restored unstuck T
+0.081, best 27,280u. Stop at 1,325M; judged at its 30-min mark (~02:56 UTC). One mechanism added on
+top of arm 1, so the attribution is "ratchet given noise-tau".

@@ -1,3 +1,21 @@
-{"agent": "r1b2", "round": 1, "final": false,
- "best": null,
- "summary": "No eval yet. Diagnosis: at the CP2 wall the agent holds D for 1.5 s (a deliberate air U-turn toward the goal) and dives into the fail; the human flies straight ~1 s more to a ramp. i.i.d. sampling cannot produce ~25 consecutive off-mode decisions, so built --noise-tau (AR(1)-correlated sampling noise, per-decision distribution and log-prob unchanged). Next: warm resume of the incumbent with --noise-tau 0.5 at the CP2 wall (30 min), then --race-ratchet. First box was power-capped (blocked); waiting for an offer under the caps."}
+{
+ "agent": "r1b2",
+ "round": 1,
+ "final": false,
+ "best": {
+  "score": 27.9,
+  "eval_file": "/home/steam/ar/runs/r1b2/r1b2_nt05/traj_0901251072.jsonl",
+  "run": "r1b2_nt05",
+  "step": 901251072,
+  "ckpt": "/home/steam/ar/runs/r1b2/r1b2_nt05/ckpt_latest.pt",
+  "ckpt_step": 925368320,
+  "ckpt_md5": "29b902d094eb2228c6bc425c40d211a4",
+  "recipe": [
+   "--noise-tau",
+   "0.5"
+  ],
+  "resume_from": "/home/steam/ar/incumbent/ckpt.pt (749.7M, md5 ede4be9a)",
+  "commit": "12aede7"
+ },
+ "summary": "Diagnosis: at the CP2 wall the agent holds D 1.5 s (an air U-turn toward the goal) and dives into the fail; the human flies straight ~1 s more to a ramp. Built --noise-tau (AR(1)-correlated sampling noise, per-decision distribution/log-prob unchanged). Arm 1 (warm incumbent + --noise-tau 0.5, 750M->925M on a 70k fps box): 27.90 at 901M (CP2 death point crept 500 u west / 190 u up; no CP2 crossing); survived setbacks up to 2.6 units in training, but the policy collapses its own entropy (yaw sigma halved, kl 0.03->0.39). Arm 2 running: arm 1's weights + --race-ratchet (detours free). ckpt is 24M steps after the best eval."
+}
