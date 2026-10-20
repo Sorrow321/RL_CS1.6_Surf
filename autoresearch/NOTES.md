@@ -422,3 +422,9 @@ the greedy detour appeared at 1.20B.
   wall and the post-detour states. 90% of episodes spawn there; the 10% true starts keep the
   early map. The aim is to practise the section AFTER the detour until the detour is worth its
   ~4 s.
+
+**Where CP2 is (map measurement, `score.curtains()` sampled on the field):** sgcp_2 is a curtain at
+x 768-816, y -1168..1168, z 10,060-11,300, center d 67,568 = **30.9% progress**. sgcp_3 is at
+36.9%, sgcp_4 55.0%, sgcp_5 62.3%, sgcp_6 88.2%, sgcp_7 96.5%. The 28.49 episode died at
+(2265, 856, 10719), heading for it, ~1,500 u east of the curtain and 2.4% of progress short. The
+backward window's bin 11 (d >= 67,213) covers the stretch up to CP2.
