@@ -837,3 +837,20 @@ physics as the sim (gravity 800, airaccelerate 100) except maxvelocity 3,500.
   with the DEFAULT sampler (`--respawn-novel-band 0 --respawn-novel-turn 0 --respawn-novel-shell 0.5
   --respawn-novel-shell-width 0.25 --respawn-novel-radius 256 2048 --respawn-novel-tries 8`), 450M
   steps. If it passes the window soon, the band is the blocker at this kind of gate.
+
+### 20:25 UTC: the default sampler unblocks the window at once (confounded by T); band again at the CP2 wall
+
+* **r2b2_sdef** (885M -> 1,335M, default sampler): training ceiling 20,718 -> 23,971 u at ~990M
+  (~105M steps after the switch), then 26,233 (1,053M), 27,116 (1,116M), 27,318 (1,284M). Greedy
+  evals: 20.8% (885M), 20.9% (961M), **25.0%** (1,037M, CP1), 26.0% (1,112M), **27.3%** (1,188M, the
+  CP2 wall), 27.4% (1,263M).
+* Confound: the unstuck T was rising when the switch happened (1.17 -> 1.90 at 1,032M, then halving
+  on the new bests), and earlier window passages coincided with T > 1.3. So "the band blocks gates
+  whose decision lies before the frontier" is likely, not proven.
+* Combined scratch lineage so far (one seed): trap exit ~230-300M (ratnov 302-378M), window ~990M
+  (ratnov 576M; 435M of it stalled under the band), CP2 wall ~1.19B (ratnov 651M).
+* **r2b2_sband2** (20:24): sdef's final (1,335,361,536, md5 25a0396d...) resumed WITH the band again
+  (`--respawn-novel-band 0.05 --respawn-novel-turn 90 --respawn-novel-shell 0.9
+  --respawn-novel-shell-width 0.05 --respawn-novel-radius 256 3072 --respawn-novel-tries 64`), 2e9
+  steps. Question: does the band cross the CP2 pit (a dip just behind the frontier, like the cavity)
+  faster than the default sampler did in round 1 (ratnov: ~1B steps at the wall, 651M -> 1,633M)?
