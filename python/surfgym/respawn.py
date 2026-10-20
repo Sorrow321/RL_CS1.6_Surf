@@ -1770,19 +1770,24 @@ class NovelSpawnSampler:
     def _cells(self, p: np.ndarray) -> np.ndarray:
         return np.floor((p - self.mins) / self.cell).astype(np.int64)
 
-    def observe(self, pos) -> None:
+    def observe(self, pos, own=None) -> None:
         """This slot's (n, 3) positions, once per decision. The REAL envs mark
         their cells and their deepest field distance lowers ``d_best``. A
         novel episode marks nothing: "where we haven't been" is where the
         policy does not go ON ITS OWN, so a blind spot stays on offer until
         the policy's own episodes reach it, instead of being used up by the
-        spawns that show it."""
+        spawns that show it. ``own`` (``--respawn-rare-own``): only these real
+        envs mark the visit grid - an episode returned to an archived state
+        by ``--respawn-rare-arch`` did not fly there on its own - while every
+        real env still lowers the ceiling. None = every real env, as before."""
         p = np.asarray(pos, np.float64).reshape(-1, 3)
         if len(p) != self.n:
             raise ValueError(f"novel sampler wants {self.n} envs, got {len(p)}")
         real = ~self.novel_env
         ix = self._cells(p)
         ok = np.all((ix >= 0) & (ix < self.dims), axis=1) & real
+        if own is not None:
+            ok &= np.asarray(own, bool)
         if ok.any():
             self.visit[ix[ok, 2], ix[ok, 1], ix[ok, 0]] = True
         if real.any():
@@ -2105,6 +2110,11 @@ class RareCellReturn:
             self.n_blocks = 0
             self.captured = 0
             self.spawned_arch = 0
+            # --respawn-rare-own: which envs fly an episode that started from an archive row
+            # (tagged by spawn ORIGIN, the novel sampler's rule), for the novel visit grid
+            self.arch_env = np.zeros(self.n, bool)
+            self._keys = frozenset()
+            self._keys_prev = frozenset()
 
     def _alloc(self, cap: int) -> None:
         """(Re)size the archive to ``cap`` cell blocks of ``ring`` states, keeping the old ones."""
@@ -2217,6 +2227,9 @@ class RareCellReturn:
         out = np.array(pool, dtype=STATE_DTYPE, copy=True)
         out[len(out) - len(rows):] = rows
         self.spawned_arch += len(rows)
+        self._keys_prev = self._keys
+        org = np.ascontiguousarray(rows["origin"], np.float32)
+        self._keys = frozenset(org[i].tobytes() for i in range(len(rows)))
         share = np.bincount(np.searchsorted(np.unique(b), b))
         self._last = (int(len(np.unique(b))), float(len(b) ** 2 / np.sum(share ** 2)),
                       float(np.mean(self.counts[self.block_cell[b]])),
@@ -2241,6 +2254,20 @@ class RareCellReturn:
         self._last = (int(len(u)), float(1.0 / np.sum(share ** 2)), n_draw,
                       float(np.median(self.counts[u])))
         return p
+
+    def note_spawns(self, states, ended) -> None:
+        """Tag the episodes that just started: from an archive row iff the spawn origin is one
+        of the archive rows of the live or the previous pool (``NovelSpawnSampler`` rule)."""
+        e = np.flatnonzero(np.asarray(ended, bool))
+        if not len(e) or not self.arch:
+            return
+        if not self._keys and not self._keys_prev:
+            self.arch_env[e] = False
+            return
+        org = np.ascontiguousarray(np.asarray(states["origin"])[e], np.float32)
+        for j, i in enumerate(e):
+            k = org[j].tobytes()
+            self.arch_env[i] = (k in self._keys) or (k in self._keys_prev)
 
     def stats(self) -> dict:
         out = {"entries": self.entries, "counted_cells": int((self.counts > 0).sum())}

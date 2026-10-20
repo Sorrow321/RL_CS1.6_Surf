@@ -6471,6 +6471,12 @@ def main() -> None:
                          "quarter of the archived cells by field distance) instead of "
                          "weighting the reservoir draw. 0/absent = the reservoir weighting; "
                          "ckpt restores")
+    ap.add_argument("--respawn-rare-own", type=int, default=None, choices=(0, 1),
+                    help="--respawn-rare-arch with --respawn-novel: an episode returned to an "
+                         "archived state does not mark the novel sampler's visit grid ('where "
+                         "the policy goes ON ITS OWN'), so the novel rows keep showing the "
+                         "region the archive returns work in; it still lowers the novel "
+                         "ceiling. 0/absent = off; ckpt restores")
     ap.add_argument("--respawn-rare-speed", type=int, default=None,
                     help="--respawn-rare-arch: key the archive's cells by (position, "
                          "horizontal-speed bucket) with B buckets of 4000/B u/s - the "
@@ -7514,6 +7520,9 @@ def main() -> None:
         if args.respawn_rare_arch is None and ck_cfg.get("respawn_rare_arch"):
             args.respawn_rare_arch = int(ck_cfg["respawn_rare_arch"])
             restored.append("respawn_rare_arch")
+        if args.respawn_rare_own is None and ck_cfg.get("respawn_rare_own"):
+            args.respawn_rare_own = int(ck_cfg["respawn_rare_own"])
+            restored.append("respawn_rare_own")
         if args.respawn_rare_speed is None and ck_cfg.get("respawn_rare_speed"):
             args.respawn_rare_speed = int(ck_cfg["respawn_rare_speed"])
             restored.append(f"respawn_rare_speed={args.respawn_rare_speed}")
@@ -8427,6 +8436,8 @@ def main() -> None:
         args.respawn_rare_arch = 0
     if args.respawn_rare_speed is None:
         args.respawn_rare_speed = 0
+    if args.respawn_rare_own is None:
+        args.respawn_rare_own = 0
     for _bk, _bv in (("respawn_backward_start", 0.05),
                      ("respawn_backward_step", 0.05),
                      ("respawn_backward_rate", 0.2),
@@ -10977,6 +10988,13 @@ def main() -> None:
                          "--respawn-rare-arch 1")
     if int(args.respawn_rare_speed or 0) < 0:
         raise SystemExit("--respawn-rare-speed is a bucket count >= 0")
+    if int(args.respawn_rare_own or 0) and not (RARE and args.respawn_rare_arch and NOVEL):
+        raise SystemExit("--respawn-rare-own keeps archive returns out of the NOVEL visit grid: "
+                         "needs --respawn-rare > 0 --respawn-rare-arch 1 --respawn-novel")
+    RARE_OWN = bool(int(args.respawn_rare_own or 0))
+    if RARE_OWN:
+        print("respawn RARE OWN: episodes returned to an archived state do not mark the novel "
+              "visit grid (they still lower the novel ceiling)")
     if args.respawn_backward:
         for _i, slot in enumerate(slots):
             _fld = (slot.reward_field if slot.reward_field is not None
@@ -13638,6 +13656,8 @@ def main() -> None:
             meta["config"]["respawn_rare_arch"] = int(args.respawn_rare_arch)
         if int(args.respawn_rare_speed) > 1:
             meta["config"]["respawn_rare_speed"] = int(args.respawn_rare_speed)
+        if int(args.respawn_rare_own):
+            meta["config"]["respawn_rare_own"] = int(args.respawn_rare_own)
     # --unstuck: written ONLY when set (a control run's config dump stays
     # byte-identical); every knob rides along so a resume restores them
     if UNSTUCK:
@@ -14717,7 +14737,11 @@ def main() -> None:
             # --respawn-novel: every env marks its visit cell, and the REAL
             # envs' deepest field distance lowers the ceiling
             for _s in slots:
-                _s.novel.observe(vis_np[_s.sl, 0:3])
+                if RARE_OWN:
+                    # --respawn-rare-own: an archive return did not fly there on its own
+                    _s.novel.observe(vis_np[_s.sl, 0:3], ~_s.rare.arch_env)
+                else:
+                    _s.novel.observe(vis_np[_s.sl, 0:3])
         if RARE:
             # --respawn-rare: the REAL envs' cell entries (a novel episode is not counted);
             # under --respawn-rare-arch the entering envs' states go into the archive
@@ -17462,6 +17486,9 @@ def main() -> None:
                             for _s in slots:
                                 _s.novel.note_spawns(_s.core.states_view,
                                                      ended[_s.sl])
+                                if RARE_OWN:
+                                    _s.rare.note_spawns(_s.core.states_view,
+                                                        ended[_s.sl])
                         if goalsys is not None and ended.any():
                             goalsys.assign(np.flatnonzero(ended))
                         if track_bins and ended.any():

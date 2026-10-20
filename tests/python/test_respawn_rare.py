@@ -155,6 +155,43 @@ def test_speed_buckets_split_a_cell_by_horizontal_speed():
     assert not r1.load_state_dict(d)                   # other cell keys: refused, fresh
 
 
+def test_archive_returns_are_tagged_and_kept_out_of_the_novel_visit_grid():
+    r = RareCellReturn((0.0, 0.0, 0.0), (1000.0, 1000.0, 1000.0), 3, cell=100.0,
+                       frac=1.0, arch=True, ring=1, seed=3)
+    p0 = np.array([[50, 50, 50], [150, 50, 50], [250, 50, 50]], float)
+    r.observe(p0, states=_states(p0))
+    p1 = p0 + [0.0, 100.0, 0.0]
+    r.observe(p1, states=_states(p1))
+    out = r.mix(_states(np.zeros((6, 3)) + 999.0), 2)
+    arch_rows = out[4:]
+    # envs 0 and 2 start new episodes: env 0 from an archive row, env 2 from elsewhere
+    st = _states(np.array([[0, 0, 0]] * 3, float))
+    st[0] = arch_rows[0]
+    st["origin"][2] = (999.0, 999.0, 999.0)
+    r.note_spawns(st, np.array([True, False, True]))
+    assert r.arch_env.tolist() == [True, False, False]
+    # the novel sampler's own-flight mask: the archive return marks no cell, the others do
+    from surfgym.respawn import NovelSpawnSampler
+
+    class _F:
+        def __init__(self):
+            self.grid = np.zeros((4, 4, 4), np.float32)
+            self.mins = np.zeros(3)
+            self.cell = 256.0
+            self.reach_max = 1e9
+
+        def sample(self, p):
+            return np.full(len(np.atleast_2d(p)), 500.0, np.float32)
+
+    nv = NovelSpawnSampler(None, _F(), 3, cell=128.0)
+    pos = np.array([[100, 100, 100], [400, 100, 100], [700, 100, 100]], float)
+    nv.observe(pos, own=~r.arch_env)
+    assert int(nv.visit.sum()) == 2 and nv.d_best == 500.0
+    nv2 = NovelSpawnSampler(None, _F(), 3, cell=128.0)
+    nv2.observe(pos)
+    assert int(nv2.visit.sum()) == 3
+
+
 RARE = ["--ep-ticks", "400", "--respawn-margin", "0.1", "--respawn-reservoir", "3000",
         "--respawn-novel"]
 LONG = "450560"
@@ -250,6 +287,33 @@ def test_rare_archive_speed_buckets_run_and_restore():
     assert bad.returncode != 0 and "needs --respawn-rare > 0 --respawn-rare-arch 1" in (
         bad.stdout + bad.stderr)
     for dd in (d, ROOT / "runs" / run2, ROOT / "runs" / "rare_spd_bad"):
+        shutil.rmtree(dd, ignore_errors=True)
+
+
+@needs_run
+def test_rare_own_runs_and_restores():
+    run = "rare_own"
+    r = _train(run, RARE + ["--respawn-rare", "0.5", "--respawn-rare-arch", "1",
+                            "--respawn-rare-own", "1"], steps=LONG)
+    assert "respawn RARE OWN:" in r.stdout
+    assert re.search(r"archive [0-9,]+ cells / [0-9,]+ states captured, [1-9][0-9,]* spawned",
+                     r.stdout), r.stdout[-3000:]
+    d = ROOT / "runs" / run
+    cfg = json.loads((d / "run.json").read_text(encoding="utf-8"))["config"]
+    assert cfg["respawn_rare_own"] == 1
+    run2 = "rare_own_re"
+    shutil.rmtree(ROOT / "runs" / run2, ignore_errors=True)
+    r2 = _run([sys.executable, "-u", str(TRAIN), "--run", run2, "--ckpt",
+               str(d / "ckpt_final.pt")] + SMOKE + ["--respawn-reservoir", "3000",
+                                                    "--steps", "471040"])
+    assert r2.returncode == 0, r2.stdout[-4000:] + r2.stderr[-4000:]
+    assert "respawn_rare_own" in r2.stdout and "respawn RARE OWN:" in r2.stdout
+    bad = _run([sys.executable, "-u", str(TRAIN), "--run", "rare_own_bad"] + SMOKE
+               + ["--steps", "2048", "--respawn-rare", "0.5", "--respawn-rare-arch", "1",
+                  "--respawn-rare-own", "1"])
+    assert bad.returncode != 0 and "needs --respawn-rare > 0 --respawn-rare-arch 1 --respawn-novel" in (
+        bad.stdout + bad.stderr)
+    for dd in (d, ROOT / "runs" / run2, ROOT / "runs" / "rare_own_bad"):
         shutil.rmtree(dd, ignore_errors=True)
 
 

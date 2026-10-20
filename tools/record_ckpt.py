@@ -102,6 +102,7 @@ TRAIN_ONLY = frozenset({
     # --respawn-rare: which of the policy's own reservoir states the TRAINING spawn pool returns
     # to (Go-Explore's per-cell weight); a recording spawns at the map start like the eval
     "respawn_rare", "respawn_rare_cell", "respawn_rare_arch", "respawn_rare_speed",
+    "respawn_rare_own",
     # --ramp-reward: what the TRAINING reward pays in the ramp-window task (arc progress, or +1
     # per target passed); a recording computes no training reward
     "ramp_reward",
