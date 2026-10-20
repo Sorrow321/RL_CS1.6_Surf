@@ -843,3 +843,31 @@ checkpoint is taken from the BEST EVAL's run dir, so pull that run's ckpt_final.
 * Incumbent checkpoint (T 2 restored - the only temperature that ever produced through-the-wall training
   episodes, arch1) + archive spawns 0.3 + `--respawn-snap 0.25 --respawn-margin 0.5` + `--ez-eps 0.05
   --ez-surf 0.5 --ez-front 0.1`; 4.0B steps (to ~22:50 UTC).
+
+### THE OBJECTIVE PREFERS THE DIVE - measured (18:45 UTC; WR line used for ANALYSIS ONLY)
+
+* Discounted return the trainer optimises (ratchet: scale x new records, minus `--time-pen` per tick,
+  gamma 0.9995 per tick = 20 s horizon), from the same slot moment (27.90% progress):
+
+  | time_pen / tick (per s) | incumbent's dive to its death (28.63%) | human route to antechamber / CP2 / CP3 / 20 s |
+  |---|---|---|
+  | 0.005 (0.50/s, the recipe) | **+0.29** | -1.17 / -1.03 / -0.57 / **+0.08** |
+  | 0.003 (0.30/s) | +0.46 | -0.43 / +0.22 / +1.83 / +2.61 |
+  | 0.002 (0.20/s) | +0.55 | -0.06 / +0.85 / +3.03 / +3.87 |
+  | 0.001 (0.10/s) | +0.63 | +0.32 / +1.48 / +4.23 / +5.13 |
+  | 0 | +0.72 | +0.69 / +2.11 / +5.44 / +6.40 |
+
+* **Under the recipe's objective the dive is strictly better than even the PERFECT route at every horizon up
+  to 20 s.** No exploration mechanism can make the policy keep the loop, because the loop is worse. That is
+  why ~4B steps of every kind of exploration at this wall changed nothing: WON'T, not (only) CAN'T.
+* The surf bonus (0.3/s) would add to both; the trainer requires it strictly below the time penalty.
+* Generic reading: a time penalty larger than the progress rate of a stretch of the winning route makes that
+  stretch unlearnable. The penalty is there to shorten finishes; before any finish it only buys early deaths.
+  tp0 (penalty 0) degraded the warm main line (episodes linger: stall kills 25%), so the final arm keeps a
+  small uniform urgency instead.
+
+### r2b4_tp1 (18:46 UTC): the objective-corrected final arm
+
+* Incumbent checkpoint + `--time-pen 0.001 --surf-bonus 0 --critic-warmup 40` + archive spawns 0.3 +
+  `--respawn-snap 0.25 --respawn-margin 0.5` + `--ez-eps 0.05 --ez-surf 0.5 --ez-front 0.1`, T 2 (restored),
+  3.8B steps (to ~22:40 UTC). r2b4_fin (same without the reward change) was stopped at 5.16B after 60M steps.
