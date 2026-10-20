@@ -15416,8 +15416,14 @@ def main() -> None:
             if rare is None:
                 return
             goal = np.asarray(fleet.goal_hits(), bool)
+            # --respawn-novel: a novel episode started from a MOVED state and is never
+            # harvested (NovelSpawnSampler), so its run-up must not become an archive row
+            # either - without this the archive replayed teleported flights as real spawns
+            # (2026-10-20 r2b1_pa: the real-episode ceiling jumped 28.8 -> 30.0% in 3M steps)
+            _nv = getattr(_s0, "novel", None)
             ARCH.observe(_s0.core.states_view, rare, ended,
-                         np.asarray(done, bool) & ~goal)
+                         np.asarray(done, bool) & ~goal,
+                         None if _nv is None else _nv.novel_env)
     if (FRONTIER and frontier_sched is not None and args.ckpt
             and ck.get("respawn_frontier") is not None):
         # --respawn-frontier-grow: same reason --unstuck restores its own.

@@ -47,6 +47,7 @@ class PredecessorArchive:
         self.n_rare = 0
         self.n_commit = 0
         self.n_discard = 0
+        self.n_skip = 0                 # pending prefixes dropped: a novel episode
         self.rows_committed = 0
         self.total_commits = 0
 
@@ -69,11 +70,22 @@ class PredecessorArchive:
         self.total_commits += 1
 
     def observe(self, states: np.ndarray, rare: np.ndarray, ended: np.ndarray,
-                died: np.ndarray) -> None:
+                died: np.ndarray, skip=None) -> None:
+        """``skip`` (bool per env, optional): envs whose episode must never become a row - a
+        --respawn-novel episode, which started from a MOVED state (never harvested by the
+        reservoir either, so its flight can never become anyone's spawn). They take no
+        snapshots and no rare entries, and a pending prefix of theirs is dropped."""
         ended = np.asarray(ended, bool)
         died = np.asarray(died, bool)
         rare = np.asarray(rare, bool)
         live = ~ended
+        if skip is not None:
+            skip = np.asarray(skip, bool)
+            for i in np.flatnonzero(skip):
+                if int(i) in self.pending:
+                    self.pending.pop(int(i))
+                    self.n_skip += 1
+            live = live & ~skip
         # 1. prefixes whose hold has elapsed while the env is still alive
         if self.pending:
             for i in list(self.pending):
