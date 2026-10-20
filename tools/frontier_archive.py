@@ -280,7 +280,12 @@ def newest_eval(run_dir):
 
 def build(map_path, field_path, envs, threads=None):
     if threads:
-        os.environ.setdefault("OMP_NUM_THREADS", str(threads))
+        # HARD caps, set before the core and numba load: the goal field's sampler is numba
+        # parallel=True and the core is OpenMP, and both default to every thread of the box -
+        # beside a trainer that starves it (measured on a 5950X: the trainer fell to ~40k
+        # steps/s with an uncapped archive loop, ~326k without it)
+        os.environ["OMP_NUM_THREADS"] = str(int(threads))
+        os.environ["NUMBA_NUM_THREADS"] = str(int(threads))
     from surfgym.core import SurfCore, default_config
     from surfgym.goalfield import load_goal_field
     cfg = default_config(int(envs), lidar_w=0, lidar_h=0, max_episode_ticks=10 ** 8,
