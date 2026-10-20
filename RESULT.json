@@ -2,6 +2,25 @@
  "agent": "r2b2",
  "round": 2,
  "final": false,
- "best": null,
+ "best": {
+  "score": 28.265,
+  "eval_file": "/home/steam/ar/runs/r2b2/r2b2_nfturn/traj_5101322240.jsonl",
+  "run": "r2b2_nfturn",
+  "step": 5101322240,
+  "ckpt": null,
+  "recipe": [
+   "--respawn-novel-shell",
+   "0.9",
+   "--respawn-novel-shell-width",
+   "0.05",
+   "--respawn-novel-radius",
+   "256",
+   "3072",
+   "--respawn-novel-turn",
+   "90"
+  ],
+  "resume_from": "/home/steam/ar/incumbent/ckpt.pt (r1b1_ratnovx2 ckpt_final, 5,100,797,952)",
+  "commit": "2af7500"
+ },
  "summary": "Arm 1 r2b2_nfturn running (warm, incumbent + frontier-focused novel rows + new --respawn-novel-turn 90). Analysis: the field's route past 28.6% (window -> shaft -> tunnel) is physically closed (best 28.74-28.79%); the WR demo (analysis only) shows the real route dips ~2,000 u into a cavity under the pit slab and surfs a ramp there to climb back into the tunnel level. Frontier-focused novel settings put ~20% of novel rows in that cavity (vs 3.8%)."
 }
