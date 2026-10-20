@@ -579,3 +579,38 @@ blocklisted or a cent over the cap), so this was done on the local CPU.
   are the corridor-east states under *45), i.e. pointed away from the way on.
 * The reservoir (20k states) has median progress 19%, p90 25.6%, max 28.0%: with the 2 s
   harvest margin it never holds states in the last 2 s before the window.
+
+### 13:45 UTC: the human's route past the wall (WR demo 47250, ANALYSIS ONLY - section 0)
+
+Downloaded from speedrun.eu (/demos/47250/download, surf_src_sidistic.dem, 8.6 MB) and parsed with
+tools/demo/parse_hldemo.py; nothing from it enters a run (no states, lines, boxes, constants). Same
+physics as the sim (gravity 800, airaccelerate 100) except maxvelocity 3,500.
+
+| t (s) | position | velocity | what |
+|---|---|---|---|
+| 27.50 | (2,882, -910, 11,469) | (-1,833, -94, -141) | slot, -y lane, heading west |
+| 27.75 | (2,429, -872, 11,408) | (-1,640, 814, -342) | through the -y upper window |
+| 28.00 | (2,236, -521, 11,300) | (-30, 1,717, -537) | slides NORTH along the block face |
+| 28.25 | (2,353, -117, 11,140) | (1,220, 1,211, -738) | turns EAST in the shaft |
+| 28.50 | (2,705, 122, 10,929) | (1,012, 1,389, -938) | through the LOWER opening into the cavity |
+| 29.00 | (2,450, 799, 10,354) | (-1,713, 163, -1,340) | falling under the shaft floor |
+| 29.30-29.85 | (2,087, 484, 9,926) -> (2,152, -490, 10,002) | (-1,057, -1,590, -1,234) -> (1,020, -1,027, 1,190) | SURFS a ramp at the cavity's bottom: normal (-0.759, 0, 0.651), the west face of a block, x ~1,950-2,150, z ~9,790-10,050; lands moving south at ~2,000 u/s and strafes up it |
+| 30.75 | (2,524, 20, 10,893) | (-853, 1,011, 629) | back WEST through the lower opening, RISING |
+| 31.50 | (2,198, 908, 11,137) | (-1,208, 599, 33) | enters the +y tunnel LEVEL |
+| 31.75-33.0 | room: (1,865, 939, 11,120) ... (1,428, -167, 10,736) | | surfs the room's east-facing ramp at y ~0 |
+| 33.75-34.0 | (1,845, 660, 10,372) -> (1,501, 791, 10,155) | | drops east of *20's end, flies west under it |
+| 34.50 | (1,112, 236, 9,730) | vz -112 -> +1,186 | another ramp at the void's bottom |
+| ~35.1 | (~780, -540, ~10,200) | | CP2 |
+
+* So the route IS a dip: ~2.4 s inside the cavity, d up to ~2,000 u above the window's (the
+  ledger's dip 2), with a surf-ramp turnaround that converts the fall into the rise that makes the
+  tunnel reachable level. The free-flight bound above is right; the ramp is what changes vz.
+* My random / Go-Explore search reached the cavity's bottom region (3,805 cells below z 10,000) but
+  never produced a single rising state there: hitting that ramp moving ALONG it (south, ~2,000 u/s)
+  and turning up it is the hidden skill.
+* It is the same kind of gate as the CP2 pit (dip into a space the field calls worse, ramp
+  turnaround, climbing exit), which ratchet + novel spawns solved in round 1 after ~1B steps at the
+  wall. Here the defaults put ~0.2% of novel rows near the cavity: frontier-focused settings
+  (`--respawn-novel-shell 0.9 --respawn-novel-shell-width 0.05`) put 20.6% of novel rows in the
+  cavity, and a 3,072 u radius also reaches the ramp's area (2.2% of rows west of it vs 0.03%).
+  Measured offline on the incumbent checkpoint's own sampler state (no training).
