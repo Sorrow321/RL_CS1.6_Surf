@@ -828,3 +828,18 @@ checkpoint is taken from the BEST EVAL's run dir, so pull that run's ckpt_final.
   WR's 0.36 s turn into the bowl) and the bowl surf input; a uniform burst almost never holds it.
 * Arm r2b4_ezs1 (18:17 UTC): resume of elite3's ckpt_latest (6,498,549,760; archive spawns + elite rule +
   T 0.25 restored) + `--ez-eps 0.05 --ez-surf 0.5 --ez-front 0.1` (bursts only past 25.6% progress), 1.2B.
+
+### r2b4_ezs1 (surf bursts at T 0.25, 18:17-18:40 UTC, stopped at ~6.85B): no signal
+
+* Evals 27.503 / 27.507 / 27.491 / 27.495 / 27.315 - the T 0.25 policy stops at the pit edge (27.5%) and no
+  longer dives into the hole; 0 of 397,223 archive-spawned episodes reached 29.05%; ceiling unchanged.
+* Correction to the archive bench above: its "antechamber" box (x < 1,936, z 10,000-11,200) also contains the
+  dead-end low pockets near (1,900, +-300, 10,000-10,066) at ~26% progress - the "1 of 16" bowl success was
+  one of those. Measured honestly (progress >= 28.7%), archive starts essentially never lead the policy
+  through the wall. Use a progress threshold, not a box, for any such count.
+
+### r2b4_fin (18:43 UTC): the final long arm
+
+* Incumbent checkpoint (T 2 restored - the only temperature that ever produced through-the-wall training
+  episodes, arch1) + archive spawns 0.3 + `--respawn-snap 0.25 --respawn-margin 0.5` + `--ez-eps 0.05
+  --ez-surf 0.5 --ez-front 0.1`; 4.0B steps (to ~22:50 UTC).
