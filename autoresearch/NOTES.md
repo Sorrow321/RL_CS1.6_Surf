@@ -233,3 +233,24 @@ deviation is credited with the whole deviation (score e_t/sigma instead of the i
 --noise-tau-frac 0.25 --ckpt-every 75e6` (256 of 1,024 envs AR(1), the rest i.i.d.). Box redeployed on
 c330cdc with the incumbent ckpt (md5 ede4be9a). Stop at 1,149.7M. Watch: KL staying near the i.i.d.
 level, the window re-pass, CP2.
+
+### 03:27 UTC - --noise-tau-cond (2265c67): the exact-credit version of the correlated draw
+
+The bias in --noise-tau's update: the stored log-prob is the MARGINAL one, so the score of each
+decision is e_t / sigma = (rho e_prev + sqrt(1-rho^2) xi_t) / sigma - it credits the decision with
+the part of the deviation that EARLIER decisions' noise caused. A sustained deviation is credited
+~1/(1-rho) times (13x at tau 0.5 s); arms 1-2 ran the KL away.
+Fix: read the policy as pi(a | s, e_prev), with the AR(1) latent as exogenous state.
+* View heads: z ~ N(mu + sigma rho e_prev, sigma^2 (1 - rho^2)).
+* Key heads: ONE latent per head, u = Phi(e), and the action is the bin whose CDF interval
+  holds u (inverse-CDF sampling, so the marginal is still softmax). Its probability is
+  Phi((ndtri(C_k) - rho e_prev)/s) - Phi((ndtri(C_(k-1)) - rho e_prev)/s), with s = sqrt(1-rho^2).
+* Only the decision whose innovation STARTS a deviation is credited with it. rho = 0 (the i.i.d.
+  envs of --noise-tau-frac) is exactly the plain log-prob, and the entropy bonus stays the
+  marginal's.
+* Cost: in correlated envs most decisions have conditional P ~ 1 (the latent sits deep inside
+  its interval), so their policy gradient is ~0. The i.i.d. envs and the boundary decisions
+  carry the learning, while the correlated envs mainly explore. That is why it pairs with
+  --noise-tau-frac.
+* Tests (12 in test_noise_tau.py) include a Monte Carlo check of the conditional against the
+  draw, and the rollout/update log-prob identity.
