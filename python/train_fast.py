@@ -116,7 +116,7 @@ from surfgym.record import record_rollout
 from surfgym.bc import BCDataset
 from surfgym.respawn import (BackwardSpawnSampler, DemoCurriculum,
                              FrontierSpawnSampler, NovelSpawnSampler,
-                             RandomSpawnSampler, RespawnBuffer)
+                             RandomSpawnSampler, RareCellReturn, RespawnBuffer)
 from surfgym.rewards import (CC_BUCKETS, CC_P0, CC_TEMP_GAIN, CC_TMAX,
                              CC_TMIN, AcroCoverageReward, BlendedReward,
                              CoverageSpeedReward, ForwardProgressReward,
@@ -6450,6 +6450,19 @@ def main() -> None:
                          "W..2W env steps (two grids rolled every W), so a place the "
                          "current policy no longer goes to is novel again; 0 = ever "
                          "visited (default 1e7)")
+    # --- --respawn-rare (autoresearch r2b3, 2026-10-20; surfgym.respawn.RareCellReturn)
+    ap.add_argument("--respawn-rare", type=float, default=None,
+                    help="Go-Explore's RETURN over the reservoir, per CELL: a share F "
+                         "in (0, 1] of the reservoir draw goes to position cells "
+                         "(--respawn-rare-cell u) by 1/sqrt(1 + N), N = the entries of "
+                         "REAL episodes into the cell (a --respawn-novel episode is not "
+                         "counted), split evenly over the reservoir states standing in "
+                         "the cell; the rest stays uniform over states. Every spawn is "
+                         "a state a real episode reached. Needs the reservoir "
+                         "(--respawn-frac > 0). 0/absent = off, byte-identical; ckpt "
+                         "restores")
+    ap.add_argument("--respawn-rare-cell", type=float, default=None,
+                    help="--respawn-rare: the position cell, u (default 256)")
     ap.add_argument("--int-view", type=int, default=None,
                     help="yaw sectors in the novelty count key (0 = off; "
                          "8 = 45-degree sectors). Position-only counts are "
@@ -7477,6 +7490,13 @@ def main() -> None:
         if (args.respawn_novel_window is None
                 and ck_cfg.get("respawn_novel_window") is not None):
             args.respawn_novel_window = float(ck_cfg["respawn_novel_window"])
+        # --respawn-rare: a spawn DISTRIBUTION, restored like the novel rows
+        if args.respawn_rare is None and ck_cfg.get("respawn_rare"):
+            args.respawn_rare = float(ck_cfg["respawn_rare"])
+            restored.append(f"respawn_rare={args.respawn_rare:g}")
+        if (args.respawn_rare_cell is None
+                and ck_cfg.get("respawn_rare_cell") is not None):
+            args.respawn_rare_cell = float(ck_cfg["respawn_rare_cell"])
         # --respawn-backward: a spawn DISTRIBUTION, restored like the frontier
         if args.respawn_backward is None and ck_cfg.get("respawn_backward"):
             args.respawn_backward = True
@@ -8379,6 +8399,10 @@ def main() -> None:
                      ("respawn_novel_window", 1e7)):
         if getattr(args, _nk) is None:
             setattr(args, _nk, _nv)
+    if args.respawn_rare is None:
+        args.respawn_rare = 0.0
+    if args.respawn_rare_cell is None:
+        args.respawn_rare_cell = 256.0
     for _bk, _bv in (("respawn_backward_start", 0.05),
                      ("respawn_backward_step", 0.05),
                      ("respawn_backward_rate", 0.2),
@@ -10871,6 +10895,34 @@ def main() -> None:
               f"velocity, view and keys kept; {args.respawn_novel_shell:.0%} of the sources "
               f"from the deepest {args.respawn_novel_shell_width:.0%} of the reservoir, the "
               f"rest flattened over progress; novel episodes are never harvested")
+    # --respawn-rare (autoresearch r2b3, 2026-10-20): Go-Explore's return over the reservoir,
+    # per CELL, counted on REAL episodes (surfgym.respawn.RareCellReturn). One counter per map:
+    # the cells are map coordinates
+    RARE = float(args.respawn_rare or 0.0) > 0.0
+    if RARE:
+        if not 0.0 < float(args.respawn_rare) <= 1.0:
+            raise SystemExit("--respawn-rare is a share of the reservoir draw, in (0, 1]")
+        if respawn is None or args.respawn_frac <= 0.0:
+            raise SystemExit("--respawn-rare needs the reservoir (--respawn-frac > 0): the "
+                             "returns are the policy's own reservoir states")
+        for _bad, _why in ((bool(args.respawn_binned) or args.respawn_mode != "uniform",
+                            "--respawn-binned / --respawn-mode (another reservoir draw)"),
+                           (int(getattr(args, "plan_return", 0) or 0) > 0,
+                            "--plan-return (the planner's own return weights)"),
+                           (args.respawn_random, "--respawn-random"),
+                           (bool(args.goals), "--goals"),
+                           (D.enabled, "DDP (the counts are per rank)")):
+            if _bad:
+                raise SystemExit(f"--respawn-rare is not wired with {_why}")
+        for _s in slots:
+            _mn, _mx = _s.core.map_bounds()
+            _s.rare = RareCellReturn(_mn, _mx, _s.hi - _s.lo,
+                                     cell=float(args.respawn_rare_cell),
+                                     frac=float(args.respawn_rare))
+            _s.respawn.weight_fn = _s.rare.weights
+        print(f"respawn RARE: {args.respawn_rare:.0%} of the reservoir draw by Go-Explore's "
+              f"per-cell 1/sqrt(1 + N) ({args.respawn_rare_cell:g} u position cells, N = entries "
+              f"of REAL episodes, split evenly over the cell's states), the rest uniform")
     if args.respawn_backward:
         for _i, slot in enumerate(slots):
             _fld = (slot.reward_field if slot.reward_field is not None
@@ -13523,6 +13575,11 @@ def main() -> None:
             "respawn_novel_cell": float(args.respawn_novel_cell),
             "respawn_novel_tries": int(args.respawn_novel_tries),
             "respawn_novel_window": float(args.respawn_novel_window)})
+    # --respawn-rare: written only when set (a control run's dump is unchanged)
+    if RARE:
+        meta["config"].update({
+            "respawn_rare": float(args.respawn_rare),
+            "respawn_rare_cell": float(args.respawn_rare_cell)})
     # --unstuck: written ONLY when set (a control run's config dump stays
     # byte-identical); every knob rides along so a resume restores them
     if UNSTUCK:
@@ -14119,6 +14176,16 @@ def main() -> None:
             CSV_COLS += [f"novel/ceiling{_sfx}", f"novel/rows{_sfx}",
                          f"novel/prog_med{_sfx}", f"novel/moved_med{_sfx}",
                          f"novel/share{_sfx}", f"novel/visited{_sfx}"]
+    # --respawn-rare, one block per map, after novel/* and only when on:
+    #   rare/cells     cells counted (entered by a REAL episode) so far
+    #   rare/res_cells cells the reservoir's states stand in at the last draw
+    #   rare/eff       the draw's effective number of cells, 1 / sum(share^2)
+    #   rare/n_draw    the draw-weighted mean entry count N of the drawn cells
+    if RARE:
+        for _s in slots:
+            _sfx = f".{_s.tag}" if MULTI else ""
+            CSV_COLS += [f"rare/cells{_sfx}", f"rare/res_cells{_sfx}",
+                         f"rare/eff{_sfx}", f"rare/n_draw{_sfx}"]
     if D.is_main:                    # four append handles corrupt the file
         csv_path = out / "progress.csv"
         if csv_path.exists() and csv_path.stat().st_size:
@@ -14593,6 +14660,11 @@ def main() -> None:
             # envs' deepest field distance lowers the ceiling
             for _s in slots:
                 _s.novel.observe(vis_np[_s.sl, 0:3])
+        if RARE:
+            # --respawn-rare: the REAL envs' cell entries (a novel episode is not counted)
+            for _s in slots:
+                _s.rare.observe(vis_np[_s.sl, 0:3],
+                                None if _s.novel is None else ~_s.novel.novel_env)
         # --route: the lookahead fan rides the SAME pose upload the renderer
         # needs, so it costs one argmin and no extra host->device traffic.
         # Speed comes from the scalar row (slot 3 = |v_xy|/1000), which the
@@ -15404,6 +15476,16 @@ def main() -> None:
                       + (f": {int(_s.novel.visit.sum()):,} visited cells, ceiling d "
                          f"{_s.novel.d_best:,.0f}u" if _ok
                          else ": grid mismatch, starting a fresh visit grid"))
+    if RARE and args.ckpt and ck.get("respawn_rare") is not None:
+        _rr = ck["respawn_rare"]
+        for _s in slots:
+            if isinstance(_rr, dict) and _s.tag in _rr:
+                _ok = _s.rare.load_state_dict(_rr[_s.tag])
+                print("restored --respawn-rare counts"
+                      + (f" [{_s.tag}]" if MULTI else "")
+                      + (f": {int((_s.rare.counts > 0).sum()):,} cells, "
+                         f"{_s.rare.entries:,} entries" if _ok
+                         else ": grid mismatch, starting fresh counts"))
     if BACKWARD and args.ckpt and ck.get("respawn_backward") is not None:
         _rb = ck["respawn_backward"]
         for _s in slots:
@@ -15480,6 +15562,10 @@ def main() -> None:
             # --respawn-novel: the visit grid and the ceiling, per map - a resume that
             # forgot them would call the whole beaten path "never visited"
             state["respawn_novel"] = {_s.tag: _s.novel.state_dict() for _s in slots}
+        if RARE:
+            # --respawn-rare: the real-entry counts, per map - a resume that forgot them
+            # would call every cell rare for its first iterations
+            state["respawn_rare"] = {_s.tag: _s.rare.state_dict() for _s in slots}
         if RETN:
             # the running (mu, sigma) IS part of the value function under
             # --ret-norm: without it the restored critic's outputs have no
@@ -18583,6 +18669,24 @@ def main() -> None:
                 for _s in slots:
                     print(f"[{global_step:>13,d}] "
                           + _s.novel.line(f"[{_s.tag}]" if MULTI else ""))
+        # ---- --respawn-rare: where the per-cell return draw went ----
+        rare_note, rare_row = "", None
+        if RARE:
+            rare_row, _rn2 = [], []
+            for _s in slots:
+                _rs = _s.rare.stats()
+                rare_row += [int(_rs["counted_cells"]), int(_rs.get("cells", 0)),
+                             round(_rs["eff"], 1) if "eff" in _rs else "",
+                             round(_rs["n_draw"], 1) if "n_draw" in _rs else ""]
+                _rn2.append("  rare{} eff {} N {}".format(
+                    f"[{_s.tag}]" if MULTI else "",
+                    f"{_rs['eff']:,.0f}/{_rs['cells']:,}" if "eff" in _rs else "n/a",
+                    f"{_rs['n_draw']:,.0f}" if "n_draw" in _rs else "n/a"))
+            rare_note = "".join(_rn2)
+            if it_no % 100 == 1:
+                for _s in slots:
+                    print(f"[{global_step:>13,d}] "
+                          + _s.rare.line(f"[{_s.tag}]" if MULTI else ""))
         # ---- --gate-boxes: this iteration's ramp visits, hit vs miss ------
         gate_note, gate_row = "", None
         if GATE is not None:
@@ -19180,7 +19284,9 @@ def main() -> None:
                            # aug/* and race/*_mirror, after everything (only when on)
                            + aug_row
                            # novel/*, after those (only under --respawn-novel)
-                           + (novel_row if novel_row is not None else []))
+                           + (novel_row if novel_row is not None else [])
+                           # rare/*, after those (only under --respawn-rare)
+                           + (rare_row if rare_row is not None else []))
             csv_f.flush()
         race_note = ""
         if isinstance(reward_fn, RaceReward) and race_sr == race_sr:
@@ -19270,7 +19376,7 @@ def main() -> None:
         print(f"step {global_step:>13,d}  rew {rmean:8.2f}  len {lmean:6.0f}  "
               f"fps {fps:,.0f}  kl {kl:.4f}  ent {ent_coef:.4f}"
               f"{hyg_note}{race_note}{front_note}{back_note}{gate_note}"
-              f"{unstuck_note}{cc_note}{crl_note}{imatch_note}{novel_note}")
+              f"{unstuck_note}{cc_note}{crl_note}{imatch_note}{novel_note}{rare_note}")
         tm.flush(it_no)
         if D.enabled:
             # C2 production asserts (docs/ddp-plan.md §5): cheap, exact,

@@ -2038,3 +2038,112 @@ class NovelSpawnSampler:
                        "med {:,.0f}u, shell {:.0%}, speed med {:,.0f}".format(
                            st["n"], st["prog_med"], st["prog_p90"],
                            st["moved_med"], st["shell"], st["spd_med"])) + rej
+
+
+class RareCellReturn:
+    """``--respawn-rare F``: Go-Explore's RETURN over the policy's own reservoir, per CELL.
+
+    Go-Explore (Ecoffet et al. 2021) picks the cell to return to with weight
+    ``1 / sqrt(1 + N)``, N the cell's visit count, and it picks a CELL, not a state:
+    the reservoir stores states in proportion to the time spent in a cell, so a
+    per-state weight makes the most visited cells draw the most spawns (the
+    ``--plan-return 1`` density bias, ledger 2026-09-26). Here:
+
+    * **N counts entries of REAL envs** into a position cell (``cell`` u, position
+      only): a cell change between two decisions, which includes a respawn landing
+      in a new cell. An env flying a ``--respawn-novel`` episode is not counted
+      (pass ``real``), so "rare" means where the policy's own episodes rarely go,
+      not where a novel row put it.
+    * **The draw.** A share ``frac`` of the reservoir draw goes to cells by
+      ``1 / sqrt(1 + N)``, split evenly over the reservoir states standing in each
+      cell; the rest stays uniform over states, the draw that shipped, so the main
+      line keeps its practice. Nothing is moved and nothing is invented: every spawn
+      is a state a real episode reached and survived ``--respawn-margin`` past.
+    * One cell size and one share, the same on every map; no map quantity.
+    """
+
+    def __init__(self, mins, maxs, n_envs: int, cell: float = 256.0,
+                 frac: float = 0.5) -> None:
+        self.cell = float(cell)
+        self.frac = float(frac)
+        if not (self.cell > 0.0 and 0.0 < self.frac <= 1.0):
+            raise ValueError(f"--respawn-rare: cell {cell}, share {frac}")
+        self.mins = np.asarray(mins, np.float64).reshape(3)
+        span = np.asarray(maxs, np.float64).reshape(3) - self.mins
+        self.dims = (np.maximum(1, np.ceil(span / self.cell)).astype(np.int64) + 1)
+        self.counts = np.zeros(int(np.prod(self.dims)), np.int64)
+        self.n = int(n_envs)
+        self.prev = np.full(self.n, -1, np.int64)
+        self.entries = 0                       # cumulative real entries counted
+        self._last = None                      # (cells, eff cells, rare-draw N median)
+
+    def keys(self, pos) -> np.ndarray:
+        p = np.asarray(pos, np.float64).reshape(-1, 3)
+        ix = np.clip(np.floor((p - self.mins) / self.cell).astype(np.int64),
+                     0, self.dims - 1)
+        return ix[:, 0] + self.dims[0] * (ix[:, 1] + self.dims[1] * ix[:, 2])
+
+    def observe(self, pos, real=None) -> None:
+        """This slot's (n, 3) positions, once per decision: count the REAL envs
+        that entered a cell since the previous decision."""
+        k = self.keys(pos)
+        if len(k) != self.n:
+            raise ValueError(f"rare-cell return wants {self.n} envs, got {len(k)}")
+        ent = k != self.prev
+        if real is not None:
+            ent &= np.asarray(real, bool)
+        if ent.any():
+            np.add.at(self.counts, k[ent], 1)
+            self.entries += int(ent.sum())
+        self.prev = k
+
+    def weights(self, origins) -> np.ndarray:
+        """Per-state draw probabilities for the reservoir's ``origins``
+        (``RespawnBuffer.weight_fn``): ``(1 - frac) / K`` uniform plus ``frac``
+        times the cell's share ``(1/sqrt(1+N_c)) / sum_c'`` split over its states."""
+        k = self.keys(origins)
+        K = len(k)
+        if K == 0:
+            return np.zeros(0, np.float64)
+        u, inv, cnt = np.unique(k, return_inverse=True, return_counts=True)
+        wc = 1.0 / np.sqrt(1.0 + self.counts[u].astype(np.float64))
+        pc = wc / wc.sum()                                   # per cell, sums to 1
+        p = (1.0 - self.frac) / K + self.frac * pc[inv] / cnt[inv]
+        # the cells' total draw share (uniform part + rare part) for the read-out
+        share = (1.0 - self.frac) * cnt / K + self.frac * pc
+        n_draw = float(np.sum(share * self.counts[u]))      # draw-weighted mean N
+        self._last = (int(len(u)), float(1.0 / np.sum(share ** 2)), n_draw,
+                      float(np.median(self.counts[u])))
+        return p
+
+    def stats(self) -> dict:
+        out = {"entries": self.entries, "counted_cells": int((self.counts > 0).sum())}
+        if self._last is not None:
+            out.update({"cells": self._last[0], "eff": self._last[1],
+                        "n_draw": self._last[2], "n_med": self._last[3]})
+        return out
+
+    def line(self, tag: str = "") -> str:
+        st = self.stats()
+        head = (f"rare{tag}: {st['counted_cells']:,} cells entered by real episodes "
+                f"({self.cell:g}u), {st['entries']:,} entries")
+        if "cells" not in st:
+            return head + "; no draw yet"
+        return head + (f"; reservoir over {st['cells']:,} cells, draw spread over "
+                       f"{st['eff']:,.0f} effective cells, draw-weighted N {st['n_draw']:,.0f} "
+                       f"(cell median {st['n_med']:,.0f})")
+
+    def state_dict(self) -> dict:
+        return {"counts": self.counts.copy(), "dims": self.dims.copy(),
+                "cell": self.cell, "entries": int(self.entries)}
+
+    def load_state_dict(self, d) -> bool:
+        if not isinstance(d, dict) or d.get("counts") is None:
+            return False
+        if (float(d.get("cell", -1.0)) != self.cell
+                or not np.array_equal(np.asarray(d.get("dims")), self.dims)
+                or len(d["counts"]) != len(self.counts)):
+            return False
+        self.counts = np.asarray(d["counts"], np.int64).copy()
+        self.entries = int(d.get("entries", 0))
+        return True

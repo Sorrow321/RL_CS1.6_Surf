@@ -92,7 +92,7 @@ class MapSlot:
                  "reward_field", "goal_box", "d0", "rf_d0", "cell",
                  "goal_cell",
                  "reward_fn", "respawn", "rand_spawn", "frontier", "backward",
-                 "novel",
+                 "novel", "rare",
                  "pool", "plat_pool",
                  "eval_core",
                  "map_center", "eval_reward_feed", "eval_latch_feed", "tag",
@@ -141,6 +141,9 @@ class MapSlot:
         # --respawn-novel: own states moved to where the agent has never
         # been, never past its best potential (respawn.py)
         self.novel = None
+        # --respawn-rare: Go-Explore's per-cell return over the reservoir,
+        # counts of REAL episodes (respawn.RareCellReturn)
+        self.rare = None
         self.pool = None
         self.plat_pool = None
         self.eval_core = None
