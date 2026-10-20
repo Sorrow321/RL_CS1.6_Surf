@@ -24,7 +24,89 @@ import numpy as np
 
 from .core import STATE_DTYPE
 
-__all__ = ["RespawnBuffer", "DemoCurriculum", "RandomSpawnSampler", "CellReturn"]
+__all__ = ["RespawnBuffer", "DemoCurriculum", "RandomSpawnSampler", "CellReturn", "SpawnElite"]
+
+
+class SpawnElite:
+    """--spawn-states-elite: Go-Explore's priority on PROMISING starts over a --spawn-states file.
+
+    A file of the policy's own states (an archive rooted at its reservoir) is drawn uniformly, and
+    most of its rows lead nowhere the policy can follow. Here every episode is tagged with the file
+    row it spawned from (by its exact spawn origin, the way --respawn-novel tags its rows); its best
+    goal distance is tracked; and a row whose episode beats its own spawn distance by ``gain_u``
+    joins the ELITE set for good. ``share`` of the file draws then come uniformly from the elite
+    rows (while there are any), the rest stay uniform over the whole file. Generic: one share, one
+    gain (a fraction of the map, set by the caller), no map quantity."""
+
+    def __init__(self, n_rows: int, n_envs: int, share: float, gain_u: float) -> None:
+        self.n_rows = int(n_rows)
+        self.share = float(share)
+        self.gain_u = float(gain_u)
+        self.is_elite = np.zeros(self.n_rows, bool)
+        self.elite: list[int] = []
+        self.row_env = np.full(int(n_envs), -1, np.int64)
+        self.start_d = np.zeros(int(n_envs), np.float64)
+        self.best_d = np.full(int(n_envs), np.inf)
+        self._keys: dict[bytes, int] = {}
+        self._keys_prev: dict[bytes, int] = {}
+        self.n_ep = 0          # finished episodes that started from a file row
+        self.n_hit = 0         # of those, the ones that cleared the gain
+
+    def draw(self, rng, m: int) -> np.ndarray:
+        """``m`` file rows: ``share`` of them from the elite set (when it is not empty)."""
+        n_e = int(round(self.share * m)) if self.elite else 0
+        rows = rng.integers(0, self.n_rows, m - n_e)
+        if n_e:
+            el = np.asarray(self.elite, np.int64)
+            rows = np.concatenate([el[rng.integers(0, len(el), n_e)], rows])
+        return rows
+
+    def set_pool(self, rows, origins) -> None:
+        """The file rows written into this iteration's pool, keyed by exact spawn origin (the
+        previous pool's keys are kept: an env may still reset from it this tick)."""
+        self._keys_prev = self._keys
+        org = np.ascontiguousarray(np.asarray(origins, np.float32))
+        self._keys = {org[j].tobytes(): int(r) for j, r in enumerate(np.asarray(rows).tolist())}
+
+    def tick(self, d_now, ended, origins_now) -> None:
+        """Once per physics tick: ``d_now`` the post-step goal distance of every env (an ended
+        env's row is already its NEW spawn), ``ended`` the envs whose episodes ended this tick."""
+        d_now = np.asarray(d_now, np.float64)
+        ended = np.asarray(ended, bool)
+        live = ~ended
+        np.minimum(self.best_d, np.where(live, d_now, np.inf), out=self.best_d)
+        e = np.flatnonzero(ended)
+        if not len(e):
+            return
+        org = np.ascontiguousarray(np.asarray(origins_now, np.float32)[e])
+        for j, i in enumerate(e.tolist()):
+            r = int(self.row_env[i])
+            if r >= 0:
+                self.n_ep += 1
+                if self.start_d[i] - self.best_d[i] >= self.gain_u:
+                    self.n_hit += 1
+                    if not self.is_elite[r]:
+                        self.is_elite[r] = True
+                        self.elite.append(r)
+            k = org[j].tobytes()
+            self.row_env[i] = self._keys.get(k, self._keys_prev.get(k, -1))
+            self.start_d[i] = d_now[i]
+            self.best_d[i] = d_now[i]
+
+    def state_dict(self) -> dict:
+        return {"n_rows": self.n_rows, "elite": np.asarray(self.elite, np.int64),
+                "n_ep": self.n_ep, "n_hit": self.n_hit}
+
+    def load_state_dict(self, d) -> bool:
+        if not isinstance(d, dict) or int(d.get("n_rows", -1)) != self.n_rows:
+            return False
+        for r in np.asarray(d.get("elite", []), np.int64).tolist():
+            if 0 <= r < self.n_rows and not self.is_elite[r]:
+                self.is_elite[r] = True
+                self.elite.append(int(r))
+        self.n_ep = int(d.get("n_ep", 0))
+        self.n_hit = int(d.get("n_hit", 0))
+        return True
 
 
 class CellReturn:

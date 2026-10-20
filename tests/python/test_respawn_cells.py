@@ -257,3 +257,63 @@ def test_flag_off_is_bit_identical_to_the_trainer_before_the_change():
         assert torch.equal(sa["policy"][k], sb["policy"][k]), k
     for dd in (a, b):
         shutil.rmtree(dd, ignore_errors=True)
+
+
+# -- --spawn-states-elite (Go-Explore's priority on promising starts) ------------------------
+
+def test_spawn_elite_tags_by_origin_and_promotes_on_gain():
+    from surfgym.respawn import SpawnElite
+    se = SpawnElite(n_rows=10, n_envs=3, share=0.5, gain_u=100.0)
+    rng = np.random.default_rng(0)
+    assert not se.elite and len(se.draw(rng, 20)) == 20          # no elite: uniform
+    org = np.zeros((10, 3), np.float32)
+    org[:, 0] = np.arange(10) * 1000.0
+    se.set_pool(np.arange(10), org)
+    # envs 0 and 1 start episodes from rows 5 and 7 (their origins), env 2 from a non-file row
+    now = np.array([org[5], org[7], [99.0, 0, 0]], np.float32)
+    se.tick(np.array([5000.0, 5000.0, 5000.0]), np.array([True, True, True]), now)
+    assert se.row_env.tolist() == [5, 7, -1]
+    # env 0 gains 150 u, env 1 gains 50 u, env 2 gains 500 u (not a file row)
+    se.tick(np.array([4850.0, 4950.0, 4500.0]), np.zeros(3, bool), now)
+    se.tick(np.array([4900.0, 4990.0, 4600.0]), np.array([True, True, True]), now)
+    assert se.elite == [5] and se.n_ep == 2 and se.n_hit == 1
+    rows = se.draw(np.random.default_rng(1), 1000)
+    assert abs(float(np.mean(rows == 5)) - (0.5 + 0.5 / 10)) < 0.05
+    se2 = SpawnElite(n_rows=10, n_envs=3, share=0.5, gain_u=100.0)
+    assert se2.load_state_dict(se.state_dict()) and se2.elite == [5]
+    assert not SpawnElite(n_rows=11, n_envs=3, share=0.5, gain_u=100.0).load_state_dict(se.state_dict())
+
+
+@needs_run
+def test_spawn_elite_runs_and_a_flagless_resume_restores_it(tmp_path):
+    from surfgym.core import STATE_DTYPE, SurfCore
+    core = SurfCore(str(SID))
+    core.reset(0)
+    st = core.get_states()[:1].copy()
+    rows = np.repeat(st, 64)
+    rows["origin"][:, 0] += np.arange(64, dtype=np.float32) * 0.5    # distinct exact origins
+    f = tmp_path / "own.npy"
+    np.save(f, rows.astype(STATE_DTYPE))
+    run = "relite_on"
+    shutil.rmtree(ROOT / "runs" / run, ignore_errors=True)
+    env = dict(_env(), SELF_STATES="1")
+    r = subprocess.run([sys.executable, "-u", str(TRAIN), "--run", run] + SMOKE
+                       + ["--steps", "16384", "--spawn-states", str(f), "--spawn-states-frac", "0.3",
+                          "--spawn-states-elite", "0.5", "--ep-ticks", "400"],
+                       capture_output=True, text=True, env=env, cwd=str(ROOT), timeout=1800)
+    assert r.returncode == 0, r.stdout[-4000:] + r.stderr[-4000:]
+    assert "--spawn-states-elite 0.5" in r.stdout
+    d = ROOT / "runs" / run
+    cfg = json.loads((d / "run.json").read_text(encoding="utf-8"))["config"]
+    assert cfg["spawn_states_elite"] == 0.5 and cfg["spawn_states_gain"] == 0.02
+    ck = torch.load(d / "ckpt_final.pt", map_location="cpu", weights_only=False)
+    assert "spawn_elite" in ck and ck["spawn_elite"]["n_rows"] == 64
+    run2 = "relite_re"
+    shutil.rmtree(ROOT / "runs" / run2, ignore_errors=True)
+    r2 = subprocess.run([sys.executable, "-u", str(TRAIN), "--run", run2, "--ckpt",
+                         str(d / "ckpt_final.pt")] + SMOKE + ["--steps", "8192"],
+                        capture_output=True, text=True, env=env, cwd=str(ROOT), timeout=1800)
+    assert r2.returncode == 0, r2.stdout[-4000:] + r2.stderr[-4000:]
+    assert "spawn_states_elite=0.5" in r2.stdout and "restored --spawn-states-elite" in r2.stdout
+    for dd in (d, ROOT / "runs" / run2):
+        shutil.rmtree(dd, ignore_errors=True)

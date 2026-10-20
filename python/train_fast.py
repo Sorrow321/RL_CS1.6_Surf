@@ -6622,6 +6622,14 @@ def main() -> None:
     ap.add_argument("--spawn-states-frac", type=float, default=None,
                     help="with --spawn-states: the share of the spawn pool it replaces, in "
                          "(0, 1)")
+    ap.add_argument("--spawn-states-elite", type=float, default=None,   # 0 = off
+                    help="with --spawn-states: this share of the file's draws comes uniformly from "
+                         "ELITE rows - rows whose episode beat its own spawn distance by "
+                         "--spawn-states-gain x d0 (surfgym.respawn.SpawnElite, Go-Explore's "
+                         "priority on promising starts). 0 = off, byte-identical; ckpt restores")
+    ap.add_argument("--spawn-states-gain", type=float, default=None,    # 0.02
+                    help="--spawn-states-elite: the gain past its own spawn, as a fraction of d0, "
+                         "that makes a row elite (default 0.02)")
     ap.add_argument("--archive-frac", type=float, default=None,   # 0 = off
                     help="survivor-gated predecessor archive: the share of the "
                          "spawn pool replaced each iteration by archive rows - "
@@ -7141,7 +7149,8 @@ def main() -> None:
             args.respawn_min_speed = float(ck_cfg["respawn_min_speed"])
             restored.append(f"respawn_min_speed={args.respawn_min_speed:g}")
         for _k in ("respawn_snap", "respawn_deep", "respawn_deep_q", "respawn_cells",
-                   "respawn_cells_size", "respawn_cells_band"):
+                   "respawn_cells_size", "respawn_cells_band", "spawn_states_elite",
+                   "spawn_states_gain"):
             if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
                 setattr(args, _k, float(ck_cfg[_k]))
                 restored.append(f"{_k}={float(ck_cfg[_k]):g}")
@@ -8514,6 +8523,16 @@ def main() -> None:
         raise SystemExit("--respawn-cells-band is a fraction of d0, in [0, 1]")
     if float(args.respawn_cells_band) > 0.0 and not float(args.respawn_cells) > 0.0:
         raise SystemExit("--respawn-cells-band needs --respawn-cells > 0")
+    if args.spawn_states_elite is None:
+        args.spawn_states_elite = 0.0
+    if args.spawn_states_gain is None:
+        args.spawn_states_gain = 0.02
+    if not 0.0 <= float(args.spawn_states_elite) < 1.0:
+        raise SystemExit("--spawn-states-elite is a share of the file's draws, in [0, 1)")
+    if not float(args.spawn_states_gain) > 0.0:
+        raise SystemExit("--spawn-states-gain is a fraction of d0 and must be > 0")
+    if float(args.spawn_states_elite) > 0.0 and not args.spawn_states:
+        raise SystemExit("--spawn-states-elite needs --spawn-states")
     if float(args.respawn_cells) > 0.0 and float(args.respawn_deep) > 0.0 \
             and float(args.respawn_cells) + float(args.respawn_deep) >= 1.0:
         raise SystemExit("--respawn-cells + --respawn-deep: the cell share is taken first and "
@@ -9639,6 +9658,7 @@ def main() -> None:
         if not 0.0 < float(args.archive_frac) < 1.0:
             raise SystemExit("--archive-frac must be in (0, 1)")
     SPAWN_STATES = None
+    SS_ELITE = None            # --spawn-states-elite (built once the race field exists)
     SS_SEQK = [None]           # --spawn-states .npz with seq_k: each state's sequence start
     if args.spawn_states:
         if args.maps:
@@ -10740,6 +10760,16 @@ def main() -> None:
             print(f"respawn: --respawn-snap {float(args.respawn_snap):g} s between two "
                   f"snapshots of one episode (shipped: "
                   f"{0.25 if args.goals else 1.0:g} s)")
+        if float(args.spawn_states_elite) > 0.0:
+            # --spawn-states-elite: rows of the own-state file that led somewhere get priority
+            if MULTI or slots[0].reward_field is None:
+                raise SystemExit("--spawn-states-elite is single-map and needs the race goal field")
+            from surfgym.respawn import SpawnElite
+            SS_ELITE = SpawnElite(len(SPAWN_STATES), slots[0].n, float(args.spawn_states_elite),
+                                  float(args.spawn_states_gain) * float(slots[0].rf_d0))
+            print(f"--spawn-states-elite {float(args.spawn_states_elite):g}: that share of the "
+                  f"file's draws from rows whose episode beat their own spawn by "
+                  f"{float(args.spawn_states_gain):g} x d0 ({SS_ELITE.gain_u:,.0f} u)")
         if float(args.respawn_cells) > 0.0:
             # --respawn-cells: Go-Explore's return over the policy's own harvested states
             if args.respawn_mode != "uniform" or args.respawn_binned:
@@ -13117,6 +13147,9 @@ def main() -> None:
                           if float(args.respawn_cells) > 0.0 else {}),
                        **({"respawn_cells_band": float(args.respawn_cells_band)}
                           if float(args.respawn_cells_band) > 0.0 else {}),
+                       **({"spawn_states_elite": float(args.spawn_states_elite),
+                           "spawn_states_gain": float(args.spawn_states_gain)}
+                          if float(args.spawn_states_elite) > 0.0 else {}),
                        "respawn_binned": args.respawn_binned,
                        "respawn_random": args.respawn_random,
                        "respawn_random_start_frac": (
@@ -15541,6 +15574,11 @@ def main() -> None:
                   + (f" [{_s.tag}]" if MULTI else "") + f": margin +"
                   f"{_sc.T:.3f}, stuck {_sc.stuck_steps:,} steps, best "
                   + (f"{_sc.best:,.0f}u" if _sc.best == _sc.best else "n/a"))
+    if SS_ELITE is not None and args.ckpt and ck.get("spawn_elite") is not None:
+        _ok = SS_ELITE.load_state_dict(ck["spawn_elite"])
+        print(f"restored --spawn-states-elite: {len(SS_ELITE.elite):,} elite rows" if _ok
+              else "--spawn-states-elite: the checkpoint's elite rows are for another file; "
+                   "starting empty")
     if NOVEL and args.ckpt and ck.get("respawn_novel") is not None:
         _rn = ck["respawn_novel"]
         for _s in slots:
@@ -15627,6 +15665,8 @@ def main() -> None:
             # --respawn-novel: the visit grid and the ceiling, per map - a resume that
             # forgot them would call the whole beaten path "never visited"
             state["respawn_novel"] = {_s.tag: _s.novel.state_dict() for _s in slots}
+        if SS_ELITE is not None:
+            state["spawn_elite"] = SS_ELITE.state_dict()
         if RETN:
             # the running (mu, sigma) IS part of the value function under
             # --ret-norm: without it the restored critic's outputs have no
@@ -16641,6 +16681,12 @@ def main() -> None:
                 if _mt != SS_MTIME:
                     SPAWN_STATES = _load_spawn_states(args.spawn_states)
                     SS_MTIME = _mt
+                    if SS_ELITE is not None:
+                        # row indices of the old file mean nothing in the new one
+                        from surfgym.respawn import SpawnElite
+                        SS_ELITE = SpawnElite(len(SPAWN_STATES), slots[0].n, SS_ELITE.share,
+                                              SS_ELITE.gain_u)
+                        print("--spawn-states-elite: the file changed; elite set emptied")
                     if RPLAN and SS_SEQK[0] is not None:
                         _ramp_planner.windows.set_seq_starts(SPAWN_STATES["origin"], SS_SEQK[0])
                     print(f"--spawn-states: re-read {len(SPAWN_STATES):,} own states from "
@@ -16663,7 +16709,12 @@ def main() -> None:
                 _m = int(round(len(_pool) * float(args.spawn_states_frac)))
                 _pos = SS_RNG.choice(len(_pool), _m, replace=False)
                 _pool = _pool.copy()
-                _pool[_pos] = SPAWN_STATES[SS_RNG.integers(0, len(SPAWN_STATES), _m)]
+                if SS_ELITE is not None:
+                    _rows = SS_ELITE.draw(SS_RNG, _m)
+                    _pool[_pos] = SPAWN_STATES[_rows]
+                    SS_ELITE.set_pool(_rows, SPAWN_STATES["origin"][_rows])
+                else:
+                    _pool[_pos] = SPAWN_STATES[SS_RNG.integers(0, len(SPAWN_STATES), _m)]
             _slot.core.set_spawn_pool(_pool)
         for _s in slots:
             if demo is not None:
@@ -16792,6 +16843,10 @@ def main() -> None:
                     wins = res.bin_win.sum()
                     print(f"  {res.last_info}  |  outcome-tracked eps "
                           f"{ep.sum():,.0f}  wins {wins:,.1f}")
+                if SS_ELITE is not None:
+                    print(f"  spawn elite: {len(SS_ELITE.elite):,} rows of {SS_ELITE.n_rows:,}; "
+                          f"{SS_ELITE.n_hit:,} of {SS_ELITE.n_ep:,} file-row episodes beat their "
+                          f"spawn by {SS_ELITE.gain_u:,.0f} u")
                 if res.cells is not None:
                     _cl = res.cells.last
                     print(f"  cells: {_cl['cells']:,} in the reservoir, {len(res.cells.seen):,} "
@@ -17458,6 +17513,12 @@ def main() -> None:
                             for _s in slots:
                                 _s.novel.note_spawns(_s.core.states_view,
                                                      ended[_s.sl])
+                        if SS_ELITE is not None:
+                            # --spawn-states-elite: score the ended episodes against their
+                            # file row, tag the new ones (single-map: slot 0 is the fleet)
+                            _sv = slots[0].core.states_view
+                            SS_ELITE.tick(slots[0].reward_field.sample(_sv["origin"]),
+                                          ended, _sv["origin"])
                         if goalsys is not None and ended.any():
                             goalsys.assign(np.flatnonzero(ended))
                         if track_bins and ended.any():
