@@ -93,7 +93,7 @@ TRAIN_ONLY = frozenset({
     "min_speed_kill", "min_speed_grace", "min_speed_secs",
     # --spawn-states: a share of the TRAINING spawn pool drawn from a file of own states; a
     # recording spawns at the map start like the trainer's eval
-    "spawn_states", "spawn_states_frac",
+    "spawn_states", "spawn_states_frac", "spawn_states_novel",
     # --respawn-novel: a share of the TRAINING spawn pool moved to where the agent has never
     # been; a recording spawns at the map start like the trainer's eval
     "respawn_novel", "respawn_novel_frac", "respawn_novel_shell", "respawn_novel_shell_width",

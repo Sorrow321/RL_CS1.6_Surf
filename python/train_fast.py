@@ -6568,6 +6568,13 @@ def main() -> None:
     ap.add_argument("--spawn-states-frac", type=float, default=None,
                     help="with --spawn-states: the share of the spawn pool it replaces, in "
                          "(0, 1)")
+    ap.add_argument("--spawn-states-novel", action="store_true", default=None,
+                    help="with --spawn-states and --respawn-novel: draw the file's rows only "
+                         "from states whose 3x3x3 visit block no REAL episode entered within "
+                         "the novel window (the novel gate, on states really flown there - "
+                         "tools/frontier_archive.py), and count their episodes as NOVEL ones "
+                         "(they mark no cell, move no ceiling, are never harvested). No "
+                         "candidate: the pool keeps its rows. ckpt restores")
     ap.add_argument("--archive-frac", type=float, default=None,   # 0 = off
                     help="survivor-gated predecessor archive: the share of the "
                          "spawn pool replaced each iteration by archive rows - "
@@ -7370,6 +7377,9 @@ def main() -> None:
         if args.spawn_states_frac is None and ck_cfg.get("spawn_states_frac") is not None:
             args.spawn_states_frac = float(ck_cfg["spawn_states_frac"])
             restored.append(f"spawn_states_frac={args.spawn_states_frac:g}")
+        if args.spawn_states_novel is None and ck_cfg.get("spawn_states_novel"):
+            args.spawn_states_novel = True
+            restored.append("spawn_states_novel")
         if args.demo_window is None and ck_cfg.get("demo_window") is not None:
             args.demo_window = int(ck_cfg["demo_window"])
         if args.demo_rate is None and ck_cfg.get("demo_rate") is not None:
@@ -9590,6 +9600,19 @@ def main() -> None:
               f"(exact states, clocks zeroed; re-read when the file changes)")
     elif args.spawn_states_frac is not None and flag_given("--spawn-states-frac"):
         raise SystemExit("--spawn-states-frac without --spawn-states")
+    # --spawn-states-novel (2026-10-20, r2b1): the file's rows only where the policy's own
+    # episodes have not been - the novel gate on states that were really flown there
+    SS_NOVEL = bool(args.spawn_states_novel)
+    SS_NOVEL_STAT = [0, 0]                 # candidates last iteration, rows in the file
+    if SS_NOVEL:
+        if SPAWN_STATES is None:
+            raise SystemExit("--spawn-states-novel needs --spawn-states")
+        if not args.respawn_novel:
+            raise SystemExit("--spawn-states-novel needs --respawn-novel: its visit grid "
+                             "(the cells REAL episodes entered) is the gate")
+        print("--spawn-states-novel: the spawn-states rows are drawn only from states whose "
+              "3x3x3 visit block no real episode entered within the novel window; their "
+              "episodes count as novel ones (no visit marks, no ceiling, never harvested)")
     # CLAUDE.md section 0: HUMAN DEMOS NEVER TRAIN THE AGENT. Every
     # spawn-state / imitation / route source - given as a flag OR restored
     # from a checkpoint - must be declared policy-derived by the operator
@@ -13513,6 +13536,9 @@ def main() -> None:
         meta["config"]["obs_pot_rate"] = 1
     # --respawn-novel: a spawn DISTRIBUTION, written only when set (a control run's dump is
     # unchanged) and in full, so a resume restores the same sampler
+    # --spawn-states-novel: written only when set
+    if SS_NOVEL:
+        meta["config"]["spawn_states_novel"] = 1
     if NOVEL:
         meta["config"].update({
             "respawn_novel": 1,
@@ -16516,7 +16542,16 @@ def main() -> None:
                 _m = int(round(len(_pool) * float(args.spawn_states_frac)))
                 _pos = SS_RNG.choice(len(_pool), _m, replace=False)
                 _pool = _pool.copy()
-                _pool[_pos] = SPAWN_STATES[SS_RNG.integers(0, len(SPAWN_STATES), _m)]
+                if SS_NOVEL and getattr(_slot, "novel", None) is not None:
+                    # --spawn-states-novel: only the file's states in blocks the policy's own
+                    # episodes have not entered; their episodes are novel episodes
+                    _rows, _nc = _slot.novel.pick_unvisited(SPAWN_STATES, _m)
+                    SS_NOVEL_STAT[0], SS_NOVEL_STAT[1] = _nc, len(SPAWN_STATES)
+                    if len(_rows):
+                        _pool[_pos[:len(_rows)]] = _rows
+                        _slot.novel.add_keys(_rows)
+                else:
+                    _pool[_pos] = SPAWN_STATES[SS_RNG.integers(0, len(SPAWN_STATES), _m)]
             _slot.core.set_spawn_pool(_pool)
         for _s in slots:
             if demo is not None:
@@ -18583,6 +18618,9 @@ def main() -> None:
                 for _s in slots:
                     print(f"[{global_step:>13,d}] "
                           + _s.novel.line(f"[{_s.tag}]" if MULTI else ""))
+                if SS_NOVEL:
+                    print(f"[{global_step:>13,d}] --spawn-states-novel: {SS_NOVEL_STAT[0]:,} "
+                          f"of {SS_NOVEL_STAT[1]:,} file states in unvisited blocks")
         # ---- --gate-boxes: this iteration's ramp visits, hit vs miss ------
         gate_note, gate_row = "", None
         if GATE is not None:

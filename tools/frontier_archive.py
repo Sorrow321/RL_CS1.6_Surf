@@ -346,6 +346,9 @@ def main(argv=None):
     ap.add_argument("--write-every", type=int, default=50, help="batches between writes (loop)")
     ap.add_argument("--minutes", type=float, default=0.0, help="loop this long (0 = one pass)")
     ap.add_argument("--cap", type=int, default=20000)
+    ap.add_argument("--shell", type=float, default=0.5,
+                    help="share of the output drawn from the deepest quarter by d (0 = uniform "
+                         "over cells: let the trainer's --spawn-states-novel gate choose)")
     ap.add_argument("--threads", type=int, default=2)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--d0", type=float, default=None, help="start geodesic, for the report only")
@@ -376,7 +379,7 @@ def main(argv=None):
             print(f"batch {arch.batches}: +{add}  {report(arch, d0)}  "
                   f"{arch.sim_ticks / max(1e-9, time.time() - t0):,.0f} sim ticks/s", flush=True)
         if arch.batches >= a.batches and arch.batches - last_w >= (a.write_every if last_w else 0):
-            out = arch.output(a.cap)
+            out = arch.output(a.cap, shell=a.shell)
             write_atomic(a.out, out)
             last_w = arch.batches
             print(f"wrote {len(out):,} states to {a.out} at batch {arch.batches}", flush=True)

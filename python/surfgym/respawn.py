@@ -1975,6 +1975,31 @@ class NovelSpawnSampler:
         out[int(n_fresh):int(n_fresh) + len(rows)] = rows
         return out
 
+    # -- --spawn-states-novel: a file's states, only where the policy has not been -------
+    def pick_unvisited(self, states: np.ndarray, m: int):
+        """(rows, n_candidates): ``m`` rows drawn uniformly (with replacement when fewer) from
+        the ``states`` whose 3 x 3 x 3 visit block no REAL episode has entered within the
+        window - the same "where we haven't been" gate as a novel row, applied to states that
+        were really flown there (a frontier archive) instead of moved there. No candidate:
+        no rows. The caller tags the episodes with ``add_keys`` so they mark nothing."""
+        m = int(m)
+        if m <= 0 or states is None or not len(states):
+            return np.zeros(0, dtype=STATE_DTYPE), 0
+        cand = np.flatnonzero(~self._near_visited(np.asarray(states["origin"], np.float64)))
+        if not len(cand):
+            return np.zeros(0, dtype=STATE_DTYPE), 0
+        return states[cand[self.rng.integers(0, len(cand), m)]].copy(), int(len(cand))
+
+    def add_keys(self, rows: np.ndarray) -> None:
+        """Count ``rows`` (already written into this iteration's pool) as novel rows: an episode
+        that starts from one is a NOVEL episode (marks no visit cell, moves no ceiling, is
+        never harvested), so the blind spot stays on offer until the policy's own episodes
+        reach it. Call it after ``mix`` of the same iteration."""
+        if rows is None or not len(rows):
+            return
+        org = np.ascontiguousarray(rows["origin"], np.float32)
+        self._keys = self._keys | frozenset(org[i].tobytes() for i in range(len(rows)))
+
     # -- persistence ------------------------------------------------------------
     def state_dict(self) -> dict:
         return {"visit": np.packbits(self.visit.reshape(-1)),

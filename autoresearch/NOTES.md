@@ -624,3 +624,51 @@ from the deepest quarter by d, half uniform. Loop mode re-roots on each new eval
   5.1-5.9B) scored 28.47 best; fa1 is in that band, slightly below. Stopped at its budget.
 * Local search: 1,000 count-only gated batches from the incumbent's eval saturate at 17.9k cells,
   d min 69,982 (28.42%) - nothing deeper.
+
+### 15:27 UTC: the human's line past the CP2 slot (WR demo, ANALYSIS ONLY - CLAUDE.md section 0)
+
+The demo (speedrun.eu demo 47250, `https://speedrun.eu/demos/47250/download`, parsed with
+`tools/demo/parse_hldemo.py`; server airaccelerate 100 like ours, maxvelocity 3,500, 131 fps)
+was used to SEE the route, never in any run. Times are the demo's:
+
+| t (s) | where | what |
+|---|---|---|
+| 27.6 | hole 1, -y lane (2,691, -919, 11,450), v (-1,835, -58, -225) | the agent's own line |
+| 27.7-28.0 | the room | hard turn: -x -> +y in 0.3 s, |v| 1,837 -> 1,717 (reaches the west wall at x 2,236) |
+| 28.3-28.4 | the LOW CENTRE HOLE (2,591, 14, 11,012), v (1,453, 915, -864) | heading EAST, out of the room, into the cavity under the pit ramp |
+| 28.6-29.2 | cavity -> lower level | U-turn (north, then west), falling: (2,602, 748, 10,478) v (-1,452, 926, -1,265) |
+| 29.2-29.9 | the lower level's wedge (its sloped west face, ~51 deg, x 1,830-2,220, z 9,590-10,070) | drops over its top edge, carves along the face (v (-100, -2,003, -117) at 29.5 s), launches off the top heading EAST and UP: vz -1,425 -> +1,293 |
+| 30.0-30.7 | the shaft | rising, turning north then west |
+| 30.8 | the low centre hole again (2,481, 80, 10,927), v (-720, 1,113, +585) | WEST and RISING, back into the room |
+| 31.0-31.5 | the room | rising curve to the +y tunnel mouth (2,185, 914, 11,138), v (-1,235, 541, +25): at its apex |
+| 31.6-31.8 | the tunnel | through at ~1,345 u/s, z ~11,120 |
+| 35.2 | CP2 curtain (x ~790) | |
+
+* So the "dip 2" (+1,978 u in the field) is the trip into the cavity/lower level, which the field
+  rates worse (d 70,700-72,500), to get the UPWARD velocity that makes the tunnel enterable.
+* **Correction to my 13:25 analysis:** I capped lateral air acceleration at 30 u/s per tick. Wrong:
+  with the wish direction a few degrees past perpendicular, addspeed = 30 + |v| sin(delta) and
+  accelspeed = airaccel x wishspeed x frametime (250 at 10 ms), so at 1,800 u/s one tick turns ~8
+  deg for ~13 u/s of speed (90 deg in ~0.11 s, ~8% speed). The room maneuvers are feasible. The
+  ballistic statement stands (hole 1 -> tunnel by free fall alone is impossible: the drop ratio).
+
+### Diagnostic bench: the incumbent spawned at the human's states (measurement only, never gradient)
+
+`record_ckpt --spawn-states` with one human state per run, 1 greedy + 3 stochastic, 7 s:
+* 27.6 (hole 1), 28.4 (low hole heading east), 28.9 (cavity): dies on the room floor / the lower
+  floor, 26.7-28.6%.
+* 29.5 (on the wedge), 29.9 (launch): climbs a little (d to 70,881-71,422), dies or crawls.
+* **30.8 (rising west through the low hole), 31.2, 31.5: passes the tunnel - 29.4-30.0%** (dies
+  later in the west room on plate *20, short of CP2 at ~31%).
+* So the policy HAS the room -> tunnel skill from a rising entry; it lacks everything before it:
+  the turn into the low hole, the dive, the wedge carve and the climb back - all in a pocket the
+  goal field rates worse than the wall. That is why fa1 failed: its archive output was half
+  "deepest by d", which is exactly NOT the pocket, so only ~0.5% of episodes started there.
+
+### Next mechanism: `--spawn-states-novel` (generic)
+
+The archive's rows are drawn only from states whose 3x3x3 visit block no real episode entered
+(the --respawn-novel gate), and their episodes count as novel (no visit marks, no ceiling, never
+harvested): the blind spot stays on offer until the policy's own line reaches it. Physically
+flown states (the archive) instead of moved states (novel rows keep a teleported velocity).
+No map constant: the gate is the novelty grid; the archive is rooted at the policy's own eval.
