@@ -1,0 +1,3 @@
+{"agent": "r1b3", "round": 1, "final": false,
+ "best": null,
+ "summary": "00:49 UTC: no run yet. Measured the CP2 wall on the incumbent's own evals: a mid-air U-turn at x~4,600 then a dive into the fail at x~3,000; the turn-around ramps are ~1,000 u lower at x 4,600-5,800. Per-decision temperature gives the view ~1 deg of exploration, so the plan is committed (held 1.6 s) yaw-offset exploration (--view-ou-sigma 0.8 --view-ou-period 40, existing code) warm from the incumbent, then a T-scaled version (--view-ou-temp) for from-scratch runs. Waiting for a box under the caps."}

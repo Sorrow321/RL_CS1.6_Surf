@@ -6053,6 +6053,20 @@ def main() -> None:
                          "phase-locked: every redraw restarts that env's own "
                          "countdown, and episodes end at different times, so "
                          "the fleet's offsets stay independent.")
+    ap.add_argument("--view-ou-temp", type=int, default=None, choices=(0, 1),
+                    help="--view-ou-sigma under --unstuck: the held offset's "
+                         "sigma FOLLOWS the plateau temperature T, sigma_eff "
+                         "= --view-ou-sigma x min(T, --unstuck-max) / "
+                         "--unstuck-max. So the committed exploration is "
+                         "OFF while the eval frontier moves (T = 0) and "
+                         "reaches --view-ou-sigma at the cap, where "
+                         "per-decision tempering has run out (the view's own "
+                         "sigma is ~0.03 in z, ~1 deg; T = 2 doubles that). "
+                         "A redraw uses the sigma current at that decision; "
+                         "an offset already held keeps its draw until its "
+                         "own redraw. Needs --view-ou-sigma > 0 and "
+                         "--unstuck. 0/absent = off (the fixed sigma, as "
+                         "before). ckpt restores; record_ckpt TRAIN_ONLY")
     # --unstuck: plateau-driven exploration temperature (docs/unstuck.md).
     # Default OFF and byte-identical when off. Every value default None so
     # a resume restores the checkpoint's own settings; resolved below.
@@ -7989,6 +8003,10 @@ def main() -> None:
                 and not flag_given("--view-ou-period")):
             args.view_ou_period = int(ck_cfg["view_ou_period"])
             restored.append(f"view_ou_period={args.view_ou_period:d}")
+        if (ck_cfg.get("view_ou_temp") is not None
+                and not flag_given("--view-ou-temp")):
+            args.view_ou_temp = int(ck_cfg["view_ou_temp"])
+            restored.append(f"view_ou_temp={args.view_ou_temp:d}")
         # --unstuck rides in the checkpoint like the view flags: the flag
         # and every knob of it are restored when the CLI does not say
         # otherwise (the schedule's RUN STATE is restored further down)
@@ -13298,6 +13316,8 @@ def main() -> None:
             meta["config"]["view_ou_sigma"] = float(args.view_ou_sigma)
             if int(getattr(args, "view_ou_period", 0) or 0) > 0:
                 meta["config"]["view_ou_period"] = int(args.view_ou_period)
+            if int(getattr(args, "view_ou_temp", 0) or 0) > 0:
+                meta["config"]["view_ou_temp"] = 1
         print("--view-continuous: yaw and pitch are squashed Gaussians "
               "(z ~ N(mu(s), sigma), K = warp(tanh z), pitch = tanh z * "
               f"{float(core.config.pitch_rate_max_deg):g} deg/tick); "
@@ -14323,10 +14343,26 @@ def main() -> None:
     if OU_PERIOD and OU_SIG <= 0.0:
         raise SystemExit("--view-ou-period without --view-ou-sigma: there is "
                          "no offset to resample")
+    # --view-ou-temp: the offset's sigma follows --unstuck's T (set_ou_temp
+    # below, called wherever the schedule moves T). A Python constant, so
+    # with the flag off nothing below reads it and the run is the one that
+    # shipped.
+    OU_TEMP = bool(int(getattr(args, "view_ou_temp", 0) or 0))
+    if OU_TEMP and OU_SIG <= 0.0:
+        raise SystemExit("--view-ou-temp scales --view-ou-sigma's held offset: "
+                         "it needs --view-ou-sigma > 0 (and --view-continuous)")
+    if OU_TEMP and not UNSTUCK:
+        raise SystemExit("--view-ou-temp scales the held offset by --unstuck's "
+                         "plateau temperature: it needs --unstuck")
+    OU_TMAX = float(args.unstuck_max) if OU_TEMP else 1.0
+    if OU_TEMP and not OU_TMAX > 0.0:
+        raise SystemExit("--view-ou-temp needs --unstuck-max > 0")
     ou_c = ou_sig_t = ou_left = ou_period_t = None
     if OU_SIG > 0.0:
         ou_sig_t = torch.zeros(NZ, device=device)
-        ou_sig_t[0] = OU_SIG            # yaw only; pitch is never offset
+        # yaw only; pitch is never offset. Under --view-ou-temp the schedule
+        # writes it (T is not restored yet): 0 until set_ou_temp runs
+        ou_sig_t[0] = 0.0 if OU_TEMP else OU_SIG
         ou_gen = torch.Generator(device=device)
         ou_gen.manual_seed(int(args.seed) + 90210 + 1000 * int(D.rank))
         ou_c = torch.randn(N, NZ, device=device, generator=ou_gen) * ou_sig_t
@@ -14349,6 +14385,16 @@ def main() -> None:
               f"the EXECUTED z only (the stored z and therefore PPO's ratio "
               f"are untouched - the identity is per-decision, so it holds "
               f"at any correlation time). Greedy evals are unaffected.")
+        if OU_TEMP:
+            print(f"--view-ou-temp: the offset's sigma follows --unstuck's T, "
+                  f"{OU_SIG:g} x min(T, {OU_TMAX:g}) / {OU_TMAX:g} - 0 while the "
+                  f"eval frontier moves, {OU_SIG:g} at the cap; a held offset "
+                  f"keeps its draw until its own redraw")
+
+    def set_ou_temp(T: float) -> None:
+        """--view-ou-temp: the held yaw offset's sigma at plateau temperature
+        T, OU_SIG x min(T, cap) / cap. Read by the NEXT redraw only."""
+        ou_sig_t[0] = OU_SIG * min(max(float(T), 0.0), OU_TMAX) / OU_TMAX
     # --unstuck: the sampling temperature 1 + T as a STATIC 0-d tensor the
     # schedule writes into between iterations. It is read inside the
     # captured rollout graph and by the compiled update - never a Python
@@ -15292,6 +15338,8 @@ def main() -> None:
         INT_BASE = [float(_s.reward_fn.int_coef) for _s in slots]
         if UNSTUCK_TEMP:
             set_unstuck_temp(unstuck_T)
+        if OU_TEMP:
+            set_ou_temp(unstuck_T)
         if UNSTUCK_INT:
             for _s, _b in zip(slots, INT_BASE):
                 _s.reward_fn.int_coef = _b * (1.0 + unstuck_T)
@@ -18307,6 +18355,8 @@ def main() -> None:
                       f"non-zero)")
             if UNSTUCK_TEMP:
                 set_unstuck_temp(_T_next)
+            if OU_TEMP:
+                set_ou_temp(_T_next)
             if UNSTUCK_INT:
                 for _s, _b in zip(slots, INT_BASE):
                     _s.reward_fn.int_coef = _b * (1.0 + _T_next)
@@ -18322,6 +18372,9 @@ def main() -> None:
                                 else f" best {_ub:,.0f}u") if _ub == _ub else "")
                             + (f" reach {_res_prog:,.0f}u/{_reach_n}"
                                if UR is not None and _res_prog == _res_prog else ""))
+            if OU_TEMP:
+                # the sigma the NEXT redraws use (set_ou_temp above)
+                unstuck_note += f" ou {float(ou_sig_t[0]):.3f}"
         arch_row = []
         if ARCH is not None:
             _as = ARCH.pop_stats()
