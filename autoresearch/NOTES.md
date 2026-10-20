@@ -446,3 +446,22 @@ backward window's bin 11 (d >= 67,213) covers the stretch up to CP2.
   the death point plus every reservoir state past it. 90% of episodes start AT the frontier; the
   10% true starts keep the line from the start. This is the last arm of the round (~3.2 h of box
   time left before the wrap-up).
+
+### 08:31 UTC - **arm 7: training episodes CROSS CP2** (reservoir to 32.46%); greedy still dives; continuation at 50% true starts
+
+* r1b2_bw64 evals: 1,279.3M (resume) 28.17 (best episode 28.2% at 30.3 s, ending (1952, 720, 9563));
+  1,354.8M 27.25 (dive).
+* **Training side, `res_post.py` at 1,368.9M:**
+  * 13,213 of the newest 20,000 reservoir rows are past the old death point (d < 70,900),
+    against 55 in the 16-bin arm.
+  * The deepest are **(-663, -82, 9,960) d 66,029 = 32.46%** and (-608, -80, 10,756), both PAST
+    the sgcp_2 curtain (x 768-816).
+  * Rows at x 482-712, d 67.3-67.7k (30.8-31.2%) sit at the curtain.
+  Spawning at the frontier (64-bin window = d 68.7k-71.8k) taught the post-detour descent and the
+  CP2 crossing in ~90M steps.
+* The greedy line from the start still dives. The U-turn decision states (d ~72.5-73.3k, bin 47)
+  were outside the window, and only the 10% true starts practised them.
+* **Continuation r1b2_bwh** = r1b2_bw64's 1,373.6M ckpt + `--respawn-frac 0.5` (half true starts
+  to practise the dive-or-detour decision with the post-detour value now learned; half frontier
+  spawns). The window re-anchored at the new deepest bins [43, 44] = d 65.7k-68.7k (CP2 and
+  beyond). T 1.04, cooling.
