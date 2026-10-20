@@ -884,3 +884,22 @@ r2b3_arch ckpt_final (5.55B), 6 stochastic + 2 greedy episodes, 8 s cap:
   stopped ~23:15 for the harvest (box deadline 23:40). Why: every eval of these warm archive
   runs is a chance at a deeper sill death (the archive's returns to the deepest cells - the
   window tunnel at 28.85% - are what produced 28.643), and the helix may still be found.
+
+### 19:00 UTC: r2b3_ownx eval 8,114M = 28.766 - a BOUNCE ENTRY into the window tunnel (branch best)
+
+* The best episode (ep 0) enters the shaft over the gap at 27.6 s (2,463, 841, 11,435), hits the
+  window wall and the shaft's sides (27.7-28.1 s: v (-1,482, 724) -> (548, 1,345) -> (1,148,
+  -564) -> (-551, -1,026) -> (-1,055, 169)), i.e. it sheds height while the bounces turn its
+  velocity back WEST, then flies into the window tunnel at window height (28.2 s: (2,203, 892,
+  11,129), v (-1,015, 176, -749)) and dies on the sill ~180 u in (2,023, 863, 10,981): 28.77%.
+* This corrects the "dead end" analysis above: that proof assumed ONE ballistic arc from the
+  gap. Wall contacts in the shaft break it. Crossing needs, at the tunnel mouth, roughly
+  (|vz| t + 400 t^2) <= z_entry - 10,994 with t = 256 / |vx| (standing hull), e.g. |vx| >=
+  ~1,250 at the top edge with |vz| <= ~645. The episode had |vx| ~1,030, vz ~-750 at z 11,129.
+* The archive's tunnel states (17 real states, `tunnel_states.py` on the box): inside the tunnel
+  at x ~1,970-2,010, |vx| 950-1,190, vz ~-900: ballistic exit 10,900-10,951, i.e. 45-95 u short
+  of the sill. The ratchet pays every unit deeper into the tunnel, so the pressure is toward
+  higher / faster entries; one crossing reaches the room, which the policy already flies
+  (bench above).
+* Checkpoint pulled as insurance (r2b3_ownx/ckpt_latest.pt at 19:00, md5 c3856fb1...); the run
+  continues.
