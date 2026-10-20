@@ -557,3 +557,16 @@ checkpoint is taken from the BEST EVAL's run dir, so pull that run's ckpt_final.
   Generic: three constants, no map quantity. Both restored on resume, TRAIN_ONLY in record_ckpt.
 * Tests: tests/python/test_respawn_deep.py (weights realise the share; a RespawnBuffer draw lands
   it; CPU smoke + flagless resume restores; flag off bit-identical to the trainer before).
+
+### r2b4_deep1: warm incumbent + `--respawn-snap 0.25 --respawn-margin 0.5 --respawn-deep 0.5 --respawn-deep-q 0.05` (launched 13:01 UTC)
+
+* Box 56893447 (RTX 5080, Utah, $0.309/h): **314k steps/s** instantaneous on the resumed recipe.
+* WARM, measuring AT the wall: resume of `$AR_HOME/incumbent/ckpt.pt` (5,100,797,952; md5
+  3cc658ed...), +450M steps (to 5.55B, ~24 min). Commit cc88240. All recipe flags restored from
+  the checkpoint (T = 2 at its cap, novel spawns, ratchet).
+* Question: does putting ~25% of all spawns on the deepest 5% of a 0.25 s / 0.5 s-margin
+  reservoir (the slot exit, 27-28.6%) let the policy find the pillar-pocket-tunnel line that
+  3.5B steps of run-up-only practice did not? Reference = the incumbent's own continuation:
+  ratnovx2/ratnovx3 2.5-5.9B, best 28.0-28.6%, frontier frozen at 27,916 u since 1,633M.
+  Promising = an eval past 28.63% (x < 2,208, z < 11,140 or beyond), or the reservoir's min
+  depth moving past 72.03% of d0 (27.97% progress).
