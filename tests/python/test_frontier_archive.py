@@ -96,3 +96,24 @@ def test_explore_grows_the_archive_with_valid_states(tmp_path):
     assert len(small) == 4 if (~arch.is_root).sum() > 4 else True
     fa.write_atomic(tmp_path / "a.npy", out)
     assert np.load(tmp_path / "a.npy").dtype == out.dtype
+
+
+@pytest.mark.skipif(not MAP.exists() or not FIELD.exists(), reason="sidistic map/field absent")
+def test_survivor_gating_admits_nothing_from_a_doomed_root(tmp_path):
+    # a root falling at 1,300 u/s 130 u above the lower level's fail floor (z 9,536-9,544) dies
+    # within ~0.1 s whatever the keys: with a 0.5 s hold nothing it reaches may become a cell
+    core, field = fa.build(MAP, FIELD, envs=16, threads=1)
+    arch = fa.FrontierArchive(core, field, cell=128.0, horizon=80, seed=2, hold_secs=0.5)
+    assert arch.hold_checks == 13            # 0.5 s at 10 ms = 50 ticks, in 4-tick checks
+    rows = [_row(t, (2800.0, 0.0, 9700.0), (0, 0, -1300)) for t in range(10)]
+    p = tmp_path / "traj_0000000400.jsonl"
+    _write_traj(p, [rows])
+    n0 = arch.add_roots(fa.roots_from_traj(p, arch.template, 6.0, 10))
+    assert n0 >= 1
+    for _ in range(3):
+        assert arch.explore() == 0
+    assert len(arch.states) == n0
+    # without the hold (one check) the same flights do admit their last instants
+    arch0 = fa.FrontierArchive(core, field, cell=128.0, horizon=80, seed=2, hold_secs=0.0)
+    arch0.add_roots(fa.roots_from_traj(p, arch0.template, 6.0, 10))
+    assert arch0.hold_checks == 1

@@ -27,10 +27,14 @@ WHAT (no map constant anywhere; the same constants on every map):
     is on the goal field's reachable set (finite d) are admitted.
   * EXPLORE - each batch picks --envs cells with weight 1 / sqrt(1 + times chosen) (count-based,
     reward-free), restores them into a batched core and flies random action segments (4-24 ticks;
-    the yaw target is the velocity heading + N(0, 45 deg) or uniform; fwd/side/duck random) for up
-    to --horizon ticks, admitting every new cell an alive env enters (checked every 4 ticks). The
-    core runs the trainer's physics and fail rules (teleport_fail; kill triggers, water, kill_z,
-    5 blocked ticks).
+    the yaw target is the velocity heading + N(0, 45 deg) or uniform; fwd/side/duck random) for
+    --horizon ticks. The core runs the trainer's physics and fail rules (teleport_fail; kill
+    triggers, water, kill_z, 5 blocked ticks).
+  * SURVIVOR GATING - a state (read every 4 ticks) is admitted to its cell only once its flight has
+    stayed alive --hold-secs (0.5 s) after it; the run-up to a death is discarded, as the trainer's
+    own predecessor archive does (--archive-hold). Without it, measured on sidistic, the archive
+    was mostly states already falling onto a fail (the incumbent spawned in 24 of them died in
+    1-224 ticks, median ~20).
   * OUTPUT - up to --cap rows, half drawn from the deepest quarter of the archive by goal-field d
     (the shell nearest the goal, as --respawn-novel's deep shell), half uniformly; written
     atomically (tmp + rename) so the trainer never reads a half-written file. Root cells are
@@ -127,11 +131,16 @@ def cell_keys(origin, velocity, cell):
 
 
 class FrontierArchive:
-    def __init__(self, core, field, cell=128.0, horizon=200, seed=0):
+    def __init__(self, core, field, cell=128.0, horizon=200, seed=0, hold_secs=0.5):
         self.core = core
         self.field = field
         self.cell = float(cell)
         self.horizon = int(horizon)
+        # survivor gating: a state is admitted only once its flight has stayed alive this many
+        # ticks after it (a whole number of CHECK_EVERY periods), so a cell is never a state
+        # that is already falling onto a fail
+        hold = float(hold_secs) * 1000.0 / float(getattr(core, "tick_ms", 10.0) or 10.0)
+        self.hold_checks = max(1, int(math.ceil(hold / CHECK_EVERY)))
         self.rng = np.random.default_rng(seed)
         self.n = core.num_envs
         core.reset(0)
@@ -188,7 +197,10 @@ class FrontierArchive:
         acts = np.zeros((n, 6), np.int32)
         acts[:, 1] = 3
         view = np.zeros((n, 2), np.float32)
-        hmax = rng.integers(max(8, self.horizon // 8), self.horizon + 1, n)
+        K = self.hold_checks
+        ring = np.zeros((K, n), self.template.dtype)     # pending states, one per check
+        ring_ok = np.zeros((K, n), bool)                  # written by a live env, not yet dead
+        c = 0
         st = core.get_states()
         added = 0
         for t in range(self.horizon):
@@ -208,15 +220,22 @@ class FrontierArchive:
             acts[:, 5] = dk
             view[:, 0] = yaw
             _, _, done, trunc, _ = core.step(acts, view=view)
-            alive &= ~(done.astype(bool) | trunc.astype(bool))
-            alive &= t < hmax
+            died = (done.astype(bool) | trunc.astype(bool)) & alive
+            if died.any():
+                ring_ok[:, died] = False                  # its pending states were doomed
+            alive &= ~died
             self.sim_ticks += int(alive.sum())
             if t % CHECK_EVERY == CHECK_EVERY - 1:
                 # the states are read every CHECK_EVERY ticks: admissions, and the heading a new
                 # segment's yaw is drawn around (at most CHECK_EVERY - 1 ticks old)
                 st = core.get_states()
-                if alive.any():
-                    added += self._admit(st[alive])
+                slot = c % K
+                surv = ring_ok[slot] & alive              # written K checks ago, still alive
+                if surv.any():
+                    added += self._admit(ring[slot][surv])
+                ring[slot] = st
+                ring_ok[slot] = alive
+                c += 1
             if not alive.any():
                 break
         self.batches += 1
@@ -293,6 +312,8 @@ def main(argv=None):
     ap.add_argument("--envs", type=int, default=1024)
     ap.add_argument("--cell", type=float, default=128.0)
     ap.add_argument("--horizon", type=int, default=200)
+    ap.add_argument("--hold-secs", type=float, default=0.5,
+                    help="survivor gating: admit a state once its flight lived this long after it")
     ap.add_argument("--batches", type=int, default=150, help="batches before the first write")
     ap.add_argument("--write-every", type=int, default=50, help="batches between writes (loop)")
     ap.add_argument("--minutes", type=float, default=0.0, help="loop this long (0 = one pass)")
@@ -303,7 +324,8 @@ def main(argv=None):
     a = ap.parse_args(argv)
     field_path = a.field or str(Path(a.map).with_suffix("")) + ".goal_32.npz"
     core, field = build(a.map, field_path, a.envs, a.threads)
-    arch = FrontierArchive(core, field, cell=a.cell, horizon=a.horizon, seed=a.seed)
+    arch = FrontierArchive(core, field, cell=a.cell, horizon=a.horizon, seed=a.seed,
+                           hold_secs=a.hold_secs)
     seen = set()
     for p in a.roots:
         r = roots_from_traj(p, arch.template, a.secs, a.every)
