@@ -675,3 +675,28 @@ checkpoint is taken from the BEST EVAL's run dir, so pull that run's ckpt_final.
   stand-in for N): the rare half of the draw takes progress 5-10% from 1% to 16%, 10-15% from
   0.2% to 5%, 15-20% from 38% to 10%, 25-27% from 19% to 25%; the reservoir holds almost
   nothing at 27-28% (3 of 20k states: the 2 s margin keeps the slot out).
+
+### The human's way past the slot (WR demo 47250, ANALYSIS ONLY - nothing from it enters training)
+
+Re-downloaded from speedrun.eu (`/demos/47250/download`), parsed with tools/demo/parse_hldemo.py
+into the session scratchpad. Field progress in brackets.
+
+| t (s) | where | what |
+|---|---|---|
+| 27.4-27.6 | slot, y -905, z ~11,460, v (-1,835, 0, -65..-225) | the agent's line exactly (other lane) [27.5-27.9%] |
+| 27.8-28.0 | (2,349, -818, 11,388) -> (2,236, -504, 11,295) | enters the shaft over the gap's kill cap, HITS the window wall and slides along it toward y = 0, v (2, +1,717, -545) |
+| 28.2-28.4 | (2,310, -171, 11,169) -> (2,591, 14, 11,012) | strafe-turns EAST and goes through a CENTRE GAP in the slot's thin end wall (x ~2,530, y ~-60..130, z ~10,800-11,000) into the cavity behind it [28.24% -> 27.6%] |
+| 28.6-29.4 | cavity -> (2,001, 276, 9,826) | falls through the cavity and turns west, down to z ~9,800 under the shaft [26.3%] |
+| 29.6-30.8 | (1,983, -123, 9,805) -> (2,481, 80, 10,927) | surfs a ramp there UP (vz +390..+1,225), east, then back west through the same centre gap into the shaft, climbing |
+| 31.0-31.6 | (2,412, 332, 11,027) -> (2,054, 944, 11,136) | climbs across the shaft and goes through the WINDOW nearly level (vz -55, vx -1,344) [28.6%] |
+| 31.8-33.0 | room -> (1,435, -250, 10,737) | crosses the room, rides its west wall's 45 deg ramp [29.2%] |
+| 33.2-34.6 | -> (1,085, 53, 9,742) | down under the room [30.1%] |
+| 34.8-35.6 | -> (352, -505, 10,656) | climbs west through CP2 (35.14 s) [31.2%] |
+
+* So the window is entered only from BELOW, climbing, after a 3.5 s detour through the cavity
+  and a ramp under the shaft: exactly the dip the field charges (27.6 -> 26.3% and back). It
+  confirms the free-fall analysis: from above, no line threads it.
+* The pieces the agent lacks are the first ones, in REAL episodes: wall-slide toward the centre,
+  strafe east through the centre gap. Its novel episodes have flown the cavity, the region under
+  the shaft and the passage toward CP2 (visit counts above), so the later pieces may be partly
+  learned already; nothing has ever brought a real episode from the slot into the cavity.
