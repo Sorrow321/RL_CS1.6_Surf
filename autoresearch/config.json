@@ -35,7 +35,7 @@
     "RTX_4090": 0.45,
     "RTX_5090": 0.6
   },
-  "offer_query": "num_gpus=1 cuda_vers>=12.8 reliability>0.98 inet_down>300 rentable=true disk_space>60 cpu_cores_effective>=16 verified=true",
+  "offer_query": "num_gpus=1 cuda_vers>=12.8 reliability>0.98 inet_down>300 rentable=true disk_space>60 cpu_cores_effective>=32 cpu_ghz>=2.5 verified=true",
   "image": "pytorch/pytorch:2.7.1-cuda12.8-cudnn9-devel",
   "disk_gb": 60,
   "ready_running_s": 330,
@@ -68,5 +68,6 @@
   ],
   "start_d": 97768.0,
   "model": "claude-opus-5-5",
-  "effort": "max"
+  "effort": "max",
+  "_offer_query_doc": "Scratch training here is CPU-bound: the trainer takes half the container's CPUs for physics. A 16-thread 3090 box ran the incumbent recipe at ~36k steps/s (2026-10-20, smoke_x1) against ~420k on the 5090 PC, so boxes need >= 32 effective threads on a fast CPU."
 }
