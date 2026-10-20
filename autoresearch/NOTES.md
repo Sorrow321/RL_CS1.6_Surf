@@ -216,3 +216,20 @@ top of arm 1, so the attribution is "ratchet given noise-tau".
   one PPO update apart, close enough to hand on.
 * --noise-tau-frac F (65e340c): AR(1) on round(N*F) evenly spread envs, i.i.d. on the rest, to
   dilute the entropy-collapse pressure ~1/F. Built and smoked, not yet run on a box.
+
+### 03:18 UTC - arm 2 stopped (KL runaway); arm 3 = incumbent + ratchet + noise-tau 0.5 on 25% of envs
+
+**Arm 2 verdict (r1b2_ntr, 925M -> 1,128M, 203M steps):** evals 27.18 / 27.32 / 27.20, all 9/9 at the
+CP2 dive (x ~3,2xx, z ~11,15x); no crossing, no creep. **approx_kl ran away**: iteration means
+0.26 -> 0.39 -> 0.52 -> 0.97 -> 1.41 -> 1.64, single updates up to 10.6 (the i.i.d. recipe runs
+0.02-0.05). Sigma had stopped shrinking (0.021 -> 0.025), so this part is NOT the sigma-units
+effect: the trust region was gone. Stopped before a collapse. Weights kept on the box:
+ckpt_1000865792.pt / ckpt_1076363264.pt (one update before the 1,001M / 1,077M evals).
+**Reading:** over ~370M steps (arms 1+2) the all-env AR(1) draw with the MARGINAL log-prob drove the
+policy steadily into a high-KL regime. The mechanism is biased: each decision of a sustained
+deviation is credited with the whole deviation (score e_t/sigma instead of the innovation's).
+
+**Arm 3 (r1b2_ntf), from the HEALTHY incumbent (749.7M, kl ~0.05):** `--race-ratchet --noise-tau 0.5
+--noise-tau-frac 0.25 --ckpt-every 75e6` (256 of 1,024 envs AR(1), the rest i.i.d.). Box redeployed on
+c330cdc with the incumbent ckpt (md5 ede4be9a). Stop at 1,149.7M. Watch: KL staying near the i.i.d.
+level, the window re-pass, CP2.
