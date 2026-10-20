@@ -423,7 +423,7 @@ steps/s. Measure it on your box in the first minute and size `--steps` to the ti
   catches up; the eval frontier past 27.6% / CP2. A side effect to watch: SIL can also make the
   dive itself creep west (a deeper death, not a crossing) - judged by CP2, not by the score.
 
-### 2026-10-20 09:19 UTC - r1b3_ges (Go-Explore + SIL) DEGRADES the line; relaunched as r1b3_gest with the sampling temperature off
+### 2026-10-20 09:18 UTC - r1b3_ges (Go-Explore + SIL) DEGRADES the line; relaunched as r1b3_gest with the sampling temperature off
 
 * **r1b3_ges** (nou's 1.5B ckpt + cells 0.5 / front 0.05 / margin 0.25 + vel-rot 0.5 + `--sil-coef 0.1`,
   3090, stopped at ~1.82B): evals 27.51 / 27.49 / **16.05** / 27.37 (median 14.6) / **20.53**%; mind
