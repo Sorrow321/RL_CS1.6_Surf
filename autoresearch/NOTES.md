@@ -254,3 +254,24 @@ Fix: read the policy as pi(a | s, e_prev), with the AR(1) latent as exogenous st
   --noise-tau-frac.
 * Tests (12 in test_noise_tau.py) include a Monte Carlo check of the conditional against the
   draw, and the rollout/update log-prob identity.
+
+### 03:57 UTC - arm 3 verdict (r1b2_ntf, incumbent + ratchet + noise-tau 0.5 on 25% of envs) and arm 4
+
+| eval | score | best | median | CP | note |
+|---|---|---|---|---|---|
+| 750.3M (resume) | 24.80 | 24.80% | 22.27% | 1 | |
+| 825.8M | 27.33 | 27.33% | 27.26% | 1 | 9/9 at the CP2 dive; same as arm 1 at 825M (27.28) |
+| 901.3M | 27.39 | 27.39% | ~24.5% mean | 1 | frontier 26,783u |
+
+* **Training health: frac 0.25 fixes the runaway at low T.** approx_kl stays at 0.055-0.062
+  (iteration max 0.08-0.13) for all 150M steps, the i.i.d. level, against arm 1's 0.03 -> 0.39
+  over the same span. Entropy drifts -1.28 -> -0.88 (arm 1: -1.13 -> +0.67), about 4.5x slower,
+  as the 1/frac dilution predicts.
+* No CP2 crossing; T cooled to 0.10 after the window re-pass (825M, a new frontier best), so the
+  wall was explored at near-greedy temperature the whole time.
+
+**Arm 4 (r1b2_nth) = arm 3's 901.3M weights + `--unstuck-patience 5e7 --unstuck-rate 1.0
+--ckpt-every 75e6`** (ratchet, noise_tau 0.5, frac 0.25 restored). This is a warm-measurement
+setting, not a recipe constant. The schedule counts STEPS, and on this 65k fps box the default 2e8
+patience is ~55 min of wall clock; the question is what correlated noise does at the recipe's T cap
+of 2 AT the wall. T rises 1.0 per 1e8 from 0.096: ~1 at ~990M, 2 at ~1.09B. Stop at 1,301M.
