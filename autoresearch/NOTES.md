@@ -1813,3 +1813,19 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
   novel rows ~900 u past the real ceiling, against the user's never-past-our-best rule). The
   sampler saves its field's d0 and resets on a mismatch; the trainer resets older states when
   the config's field differs. Tests: tests/python/test_novel_ceiling_field.py.
+
+### 18:36 UTC: c6 stopped (11.39B); r4b4_c7 = warm switch to the kill-aware shaping field
+
+* r4b4_c6 (11.00-11.39B): evals 59.96-60.52 every time (one 54.8), ceiling flat at 59,250 u.
+* **r4b4_c7** (18:34): c6's ckpt_latest (11,392,253,952, md5 625cdf95...) + `--race-kill-aware 1`
+  (+ --ckpt-every 1e8; bursts, T cap 0.25, eval-parallel / idle, greedy rows restored), code
+  48165e3, budget 3e9. Log: "race: kill-aware start geodesic 98888u (standard 97768u)",
+  "--respawn-novel: the reward field differs from the checkpoint's, so its ceiling is
+  re-measured from real episodes" (re-measured to 59,448 u of masked progress in the first
+  iteration). The eval metric and score.py stay on the standard field.
+* record_ckpt check on the box (a copy of the checkpoint with race_kill_aware 1): "--race-kill-
+  aware mirrored: the observation features read the kill-masked field", loaded from the cache,
+  recorded fine.
+* 30-min test. Pass: the greedy line holds (best evals ~60%) and the ceiling / greedy line get
+  through the window and the hole (standard-field progress > 61%). Fail: the line degrades for
+  several evals -> back to c6's checkpoint (plain field; the ceiling re-measures again).
