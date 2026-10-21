@@ -91,7 +91,9 @@
     "--obs-compass",
     "1",
     "--obs-pot-rate",
-    "1"
+    "1",
+    "--respawn-novel",
+    "--race-ratchet"
   ],
   "start_d": 97768.0,
   "model": "claude-opus-5-5",

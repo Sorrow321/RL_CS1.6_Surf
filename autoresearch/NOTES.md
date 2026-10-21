@@ -1349,3 +1349,13 @@ line (it killed my local shell twice).
   (ends at (-476, -97, 9,933)). Next obstacle: the passage further west - the thin wall *145 (x ~-928,
   z 10,136-10,288) with the kill plate *104 on its top (z ~10,320) and the kill plate *43 under it
   (z ~10,100, x -1,388..-944); the field's route continues at z ~10,050-10,120 to x ~-1,940.
+
+### Harness issue (r3b3): the lineage recipe lost round 1's novel + ratchet
+
+* `autoresearch/config.json` `incumbent_recipe` (a lineage key) at the start of round 3 was the
+  round-0 GR recipe WITHOUT `--respawn-novel --race-ratchet`, although r1b1 added them in round 1
+  (its 07:25 UTC note) and they are the validated scratch pair. Presumably round 2's winner did not
+  change the key, so the operator's value came back. A `box.py launch` without `--resume` therefore
+  ran the old GR recipe. Restored on this branch (08:10 UTC): the recipe now ends with
+  `--respawn-novel --race-ratchet`. My warm-validated flags (time-pen 0, greedy spawns, int-real-only,
+  T cap) are NOT in it - they are untested from scratch.
