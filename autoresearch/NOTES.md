@@ -1632,3 +1632,13 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
   the last re-arm (cadence-free: 15 s without 32 u of progress kills). RaceReward, the eval hook and
   record_ckpt's mirror; saved / restored / mirrored; off = the shipped rule. Generic: no map constant.
   Tests: tests/python/test_stall_cum.py. With it, --eval-stall becomes the intended "stuck episode" cut.
+
+### 21:18 UTC: still no box (since 12:50); one rented at 15:22 failed readiness
+
+* The retry loop caught one offer under the caps in 8.5 h: a 3090 at $0.188 (machine 150399, Romania) at
+  15:22; it was still loading the image ("Unpacking rsync") after 330 s, so box.py blocklisted and
+  destroyed it (committed to tools/bad_hosts.json). Every other attempt: no offer under the caps.
+* So this branch has trained nothing this round. Its evals are the incumbent checkpoint's own greedy line
+  run on the local CPU (fp32): 34.359 with --eval-stall (the per-tick rule's cut, above) and 47.495 with
+  --eval-par alone (5 of 9 die at 47.4% at ~55 s; the same weights read ~54.5% on the GPU: bf16 vs fp32
+  changes a chaotic line, as round 3's CPU probes also saw).
