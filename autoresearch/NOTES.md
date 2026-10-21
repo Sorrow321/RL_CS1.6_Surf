@@ -1069,3 +1069,35 @@ later, x ~0.9) trims the time-pen-0 margin but keeps the median detour ahead (~2
   cannot select a line that is never tried.
 
 * (Correction: the heading above should read 02:27 UTC - the time was typed, not taken from `date`.)
+
+### 03:16 UTC: training temperatures don't sample the detour either; NEW --sil-burst-only / --sil-view-mse (6b6dcc0)
+
+* More local CPU recordings of the incumbent from the true start (`record_ckpt --stochastic
+  --exec-temp`, which is the trainer's tempered draw: exec-temp 2 = unstuck T 1, 3 = T 2):
+  * T 1: 10/10 end at the CP2 pit or just before it (8 at 27.1-27.3% at 24.9-25.5 s, 2 at 24.6%),
+    0 detours;
+  * T 2: 10/10 collapse at 4-15% (5-15 s): after 1.5B steps at T <= 1 the policy cannot fly at
+    T 2 any more.
+  So no training temperature samples the corridor-east detour from the start. Arm 1 can only
+  flip the decision through the novel rows in the corridor and the value function's gradient
+  toward them (plausible under time-pen 0: a slightly lower / more eastern line would score
+  higher once V(corridor) is learned), not through sampling it.
+* What would sample it: ez bursts (held uniform yaw z + keys for n ~ zeta(2) decisions;
+  --ez-front B restricts them to the frontier band). But their rows are dropped from PPO, and
+  PPO's clipped ratio cannot learn a held action far in the tail anyway (pi_new / pi_old ~ 0), so a
+  burst that finds a better line changes the reservoir, never the policy (round 1's ez arms: more
+  states in the corridor, no crossing).
+* **NEW** (commit 6b6dcc0, default off, byte-identical off - pinned with SIL off and SIL on,
+  tests/python/test_sil_burst.py, 7 CPU tests on sidistic, 3.4 min):
+  * `--sil-burst-only 1`: the SIL buffer takes ONLY burst rows with R > V. Self-imitation has no
+    ratio and works on any behaviour's data (Oh et al. 2018): the bursts that beat the critic are
+    learned, the rest ignored. Lifts --sil-coef's refusal of the bursts.
+  * `--sil-view-mse 1`: a buffered view action is scored by 1/2 (tanh mu - tanh z)^2 on every
+    view head but the pitch, instead of the Gaussian log-density (whose gradient on a burst's
+    uniform-tanh z is (z - mu)/sigma^2, ~300x normal at sigma 0.04, and inflates sigma). It moves
+    the MEAN, which is what the greedy eval executes; the keys keep their log-prob.
+  * Generic: one burst rate, one band, one SIL coefficient; no map quantity.
+* Plan: arm 1 (time-pen 0 alone) runs first as the clean objective test; if its greedy line is
+  still in the pit after ~200-300M steps, arm 2 continues from it with `--ez-eps 0.04 --ez-front
+  0.15 --sil-coef 0.1 --sil-burst-only 1 --sil-view-mse 1` (explore at the frontier, imitate what
+  works, under an objective that no longer pays for the pit dive).
