@@ -1372,3 +1372,11 @@ cavity (entry speed, ramp vz) and complete the loop? 30 min first.
 * Every gate ~125-175M steps before round 1's best scratch run, with the unstuck T still at 0.00 (no
   plateau long enough to warm it). Next: the CP2 pit crossing (ratnov 1,633M; the warm tp0 test flipped
   the detour in 50M once the time penalty was gone).
+
+### 08:18 UTC: r3b2_sfull at 766M - at the CP2 wall since 479M (pit dive, no detour yet)
+
+* 12 evals 479-755M: 27.30-27.42% best, medians 25.5-27.4%: every greedy episode dives into the CP2 pit at
+  ~25.5 s (no E flag). T warming (0.44, stuck 287M); training ceiling 27,346 u (27.97%).
+* Expected: the warm tp0 test flipped in 50M steps because its policy already had round 1's detour (the
+  penalty only made it worse than the dive); from scratch the detour has to be discovered first. ratnov
+  needed ~1B steps at this wall (651M -> 1,633M); at that pace sfull would cross at ~1.5B (~10:00 UTC).
