@@ -1232,3 +1232,23 @@ window, C = inside the cavity under the pit slab, T = tunnel lane, R = room; ana
 * 06:18 UTC, r3b1_scr: 529M 16.0%, 604M **21.1%** (window wall), 680M 21.1%, 755M **26.9%** (past the window, CP1),
   831M **27.2%** (at the CP2 pit wall); training ceiling 27,289 u (27.9%). ratnov: window passed 576M, CP2 wall
   651M. So ~100-180M behind ratnov at both gates (one seed each). Watching for the CP2 pit crossing (ratnov 1,633M).
+
+### 06:45 UTC: scratch test stopped at the CP2 wall; incumbent_recipe updated; warm arm with SIL (r3b1_sil)
+
+* r3b1_scr stopped at ~1.14B (pulled with its ckpt_latest): 906-1,133M frontier 26,576-26,664 u
+  (27.2-27.3%, the CP2 pit wall) for ~300M steps, training ceiling 27,350 u (28.0%), no crossing.
+  ratnov needed ~1B steps at this wall (crossed 1,633M). From scratch the crossing needs the corridor-east
+  detour to be DISCOVERED first (novel rows + ratchet, as in round 1); the reward fix only makes it
+  preferred once found (warm: 150M steps). Summary, one seed: the fix keeps the early gates (trap ~420M,
+  window ~720M, CP2 wall ~830M; ~100-180M behind ratnov at each, ahead of GR); pit crossing untested.
+* **`incumbent_recipe` (config.json, the lineage key) now:** the round-0 GR recipe with `--unstuck-max 0`
+  and `--surf-bonus 0`, plus `--respawn-novel --race-ratchet --fail-pen 10 --eval-stall 1`. That is
+  ratnov (round 1's scratch recipe that crossed the CP2 pit, whose novel + ratchet flags the harness
+  restore had dropped) + the reward fix. Warm evidence: 28.84 -> 32.74 in 1.7B steps from the incumbent;
+  scratch evidence: early gates intact. A scratch launch with box.py now gets all of it.
+* **r3b1_sil** (06:43): resume of ifpx's ckpt_latest (8,898,215,936, md5 e1bbc8eb...) + `--sil-coef 0.1`
+  (Oh et al. 2018; defaults buffer 50k, 4 x 512 rows per epoch; T 0 so the untempered scoring is exact),
+  the four flags restored/passed. Question: does self-imitation of the rare passes under the slab past
+  CP2 break the 540M-step plateau (frontier 32.0-32.7%)? The buffer is replaced every rollout
+  (`sil 50,000 rows +50000`: 131k rows per rollout, about half with R > V), so it amplifies each rollout's
+  best transitions rather than remembering old ones. 30-40 min first; stop if the line breaks.
