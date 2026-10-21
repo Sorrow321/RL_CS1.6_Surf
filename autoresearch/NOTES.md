@@ -1134,3 +1134,28 @@ line (it killed my local shell twice).
   pit-locked greedy line out in ~1.5B steps; if removing the per-second charge does, the charge is
   the lock. Generic: no per-second penalty while nothing finishes (the discount sets the pace),
   one constant for every map.
+
+### 02:26 UTC: arm 3 (time-pen 0) - the greedy line leaves the pit at once and ENTERS THE CAVITY
+
+* r3b3_tp0 evals (score.py best / median): 3,736M 27.421 / 27.3 (the pit-locked checkpoint itself);
+  **3,761M 27.958 / 27.0 (7/9 past the pit, 25M steps after the 10.5M-step critic warmup)**;
+  3,786M 27.979; 3,811M 26.770 (4 episodes alive at the 300 s cap on the corridor / +y ramp area:
+  no time charge, no eval stall rule); 3,836M 28.224 / 28.2; 3,862M 28.246 / 28.2.
+* 3,836M, all 9 greedy episodes: pit crossing -> +y window -> best at (2,250-2,270, ~740, ~11,420)
+  at 27.8-28.1 s inside the shaft -> down to the thin wall (x 2,512) at shaft-floor height; **3 of
+  9 go through the LOWER OPENING into the cavity** and die on its kill floor *90 at (2,596-2,673,
+  -77..-103, ~9,567) after 31.2-43.5 s; one ends at the opening's bottom edge (2,511, -113, 10,717).
+  The human's route (WR demo, analysis only): window -> shaft -> lower opening -> cavity -> a surf
+  ramp at its bottom (x ~1,950-2,150, z ~9,790-10,050) -> back out through the opening rising ->
+  tunnel level at 31.5 s. No greedy eval of this lineage had entered the opening before (round 2's
+  closest hit the wall 55 u below it).
+* Training: `dip/max_survived_depth` back at 2.23 (the detour), p90 0.82 (more dips survived);
+  ep_len 600 -> 871 decisions; int/ep 0.3 -> 1.3 (real episodes reach new keys again); T 0.74 ->
+  1.37 (no new eval best yet, rising).
+* So the per-second charge WAS the lock: with it the slow detour and the cavity dip were worth
+  less than an early death; without it the same weights cross the pit within 25M steps and walk
+  into the dip. Generic reading: a time penalty with termination and no death cost prices any
+  slow stretch below dying; while nothing finishes, the discount alone should set the pace.
+* EXTENDED (a gate the incumbent never cleared: the greedy line in the cavity). What is missing:
+  the ramp at the cavity's bottom and the rising exit - the pieces round 2's bench showed the band
+  practice teaches from the human's states.
