@@ -1090,3 +1090,19 @@ window, C = inside the cavity under the pit slab, T = tunnel lane, R = room; ana
   `--unstuck-max 0 --fail-pen 10 --eval-stall 1 --surf-bonus 0`, 1.2e9 steps (to 4.83B). Without the
   bonus every non-finishing trajectory is (discounted progress) - 10, so stalling, dying and failed
   attempts are all equal and only progress (the climb-out past the window's record) beats them.
+
+### 02:00 UTC: arm 3 (fpns: fail-pen 10, NO surf bonus) - farm gone, the line goes back to the tunnel
+
+* r3b1_fpns 3,627M -> ~3,830M. Training stall share 0.48 -> 0.08 (the farm is gone).
+* Evals: 3,628-3,703M 28.26-28.28 (still entering the cavity, stall-killed); from **3,728M the greedy
+  line no longer enters the cavity**: 7-8 of 9 go through the +y window and die at the +y tunnel's
+  EAST end (x 2,205-2,230, z 10,715-11,060), 28.55-28.57% (best 28.571 at 3,753M / 3,778M).
+* Why: without the bonus a cavity stall is a flat -10, a tunnel attempt is -10 + 0.3% progress, so the
+  cavity is chosen only once the climb-out pays. The training ceiling has not moved (29,110 u) since
+  fail-pen began (~370M steps): no real episode climbs out. The climb-out is the bottleneck.
+* So fail-pen fixes the incentive (the pit detour is now worth +1.39 and the line keeps it in every
+  eval since 3.34B) but does not create the skill. Arm 4 moves to the incumbent checkpoint (7.18B),
+  whose lineage practised the cavity ~2.6B steps (band), reached a 29.76% training ceiling under T 1
+  and flew the return leg from climb states in round 2's bench.
+* **Arm 4, r3b1_ifp** (02:00): incumbent ckpt (7,176,454,144, md5 92b7ddd2...) + `--unstuck-max 0
+  --fail-pen 10 --eval-stall 1 --surf-bonus 0`, 600M steps, evals every 25M.
