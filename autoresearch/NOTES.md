@@ -1790,3 +1790,26 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
   (`--goal-field-file`'s "the obs channel keeps the free-space field" message is stale - the
   renderer gets `slot.reward_field` too). So it is a from-scratch experiment (or needs a
   reward-only decoupling). Baking `goalk_32` on the box GPU now (analysis, c6 unaffected).
+
+### 18:28 UTC: the kill-aware field at the bowl (analysis), and a fix for warm field changes
+
+* `goalk_32` baked on the box in 192 s (131 kill volumes hull-masked, 117,110 voxels -> wall;
+  start d 98,888 vs 97,768). Field values (progress on the plain d0, plain / kill-aware): the
+  WEST valley (x <= -700) 60.0-60.5 / 58.8-59.4 (~1,100 u worse); the EAST valley (x >= -600)
+  60.3-60.8 / 60.2-60.7 (~140 u); over the plate the masked graph routes only through the hole.
+* Along the agent's own greedy line (c6 11,200M best episode) kill-aware minus plain is an
+  almost constant offset: 1,120 u at the start, 872 u from 44 s to 72 s, 1,075 u in the west
+  valley at 76 s. Total ratchet payment over the line 59,153 u (plain) vs 59,262 u (masked).
+  So a warm switch leaves the learned line's rewards nearly unchanged and changes the bowl:
+  crossing the window into the east valley pays ~0.9 units, the west valley's gradient points
+  at the window, and a fall onto plate *53 is no longer paid (~0.7 before). Observations move
+  only near kill volumes (the potential channel is per-frame standardised; constant offsets
+  vanish). Ledger: S2 (kill-aware) warm on cannonball's frontier = null differential (walls
+  1 and 3 were jump skills), shelved "for maps where the gradient provably" routes through a
+  fail net - which is what this bowl is.
+* NEW (fix): the --respawn-novel ceiling is a distance in the REWARD field. A resume that
+  changes the field (--race-kill-aware, --goal-field-file) now re-measures it from real
+  episodes instead of keeping the saved number (in the masked field the stale d would let
+  novel rows ~900 u past the real ceiling, against the user's never-past-our-best rule). The
+  sampler saves its field's d0 and resets on a mismatch; the trainer resets older states when
+  the config's field differs. Tests: tests/python/test_novel_ceiling_field.py.

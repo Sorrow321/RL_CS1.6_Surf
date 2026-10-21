@@ -15598,9 +15598,22 @@ def main() -> None:
                   + (f"{_sc.best:,.0f}u" if _sc.best == _sc.best else "n/a"))
     if NOVEL and args.ckpt and ck.get("respawn_novel") is not None:
         _rn = ck["respawn_novel"]
+        # the novel ceiling is a distance in the REWARD field: a resume that changes that field
+        # (--race-kill-aware, --goal-field-file) re-measures it from real episodes (the sampler
+        # also checks its saved d0; a state saved before that key existed is caught here)
+        _rf_changed = (int(ck_cfg.get("race_kill_aware") or 0) != int(args.race_kill_aware or 0)
+                       or str(ck_cfg.get("goal_field_file") or "")
+                       != str(args.goal_field_file or ""))
         for _s in slots:
             if isinstance(_rn, dict) and _s.tag in _rn:
                 _ok = _s.novel.load_state_dict(_rn[_s.tag])
+                # a finite saved ceiling that loaded as inf: the sampler's own d0 check reset it
+                _d0_reset = (_ok and not np.isfinite(_s.novel.d_best)
+                             and np.isfinite(float(_rn[_s.tag].get("d_best", float("inf")))))
+                if _ok and (_rf_changed or _d0_reset):
+                    _s.novel.reset_ceiling()
+                    print("--respawn-novel: the reward field differs from the checkpoint's, so "
+                          "its ceiling is re-measured from real episodes (visits kept)")
                 print("restored --respawn-novel state"
                       + (f" [{_s.tag}]" if MULTI else "")
                       + (f": {int(_s.novel.visit.sum()):,} visited cells, ceiling d "

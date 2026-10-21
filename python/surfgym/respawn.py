@@ -2017,11 +2017,12 @@ class NovelSpawnSampler:
 
     # -- persistence ------------------------------------------------------------
     def state_dict(self) -> dict:
+        # d0 (the reward field's start distance) fingerprints the field d_best is measured in
         return {"visit": np.packbits(self.visit.reshape(-1)),
                 "visit_prev": np.packbits(self.visit_prev.reshape(-1)),
                 "w_start": self._w_start,
                 "shape": tuple(int(v) for v in self.visit.shape),
-                "cell": self.cell, "d_best": float(self.d_best)}
+                "cell": self.cell, "d_best": float(self.d_best), "d0": float(self.d0)}
 
     def load_state_dict(self, st) -> bool:
         """False (nothing restored) when the grid does not match."""
@@ -2036,7 +2037,18 @@ class NovelSpawnSampler:
                 .astype(bool).reshape(self.visit.shape)
         self._w_start = st.get("w_start")
         self.d_best = float(st.get("d_best", float("inf")))
+        # the ceiling is a DISTANCE in the reward field: saved under another field (another
+        # start distance) it is not this field's ceiling, so it is re-measured from the real
+        # episodes (a stale d could put rows past the real ceiling). The visits are positions
+        # and stay. A state without d0 is checked by the caller (reset_ceiling)
+        d0 = st.get("d0")
+        if d0 is not None and self.d0 > 0.0 and abs(float(d0) - self.d0) > 0.5:
+            self.reset_ceiling()
         return True
+
+    def reset_ceiling(self) -> None:
+        """Forget ``d_best``: no novel row until a real episode reports its distance again."""
+        self.d_best = float("inf")
 
     # -- diagnostics ---------------------------------------------------------
     def stats(self) -> dict:

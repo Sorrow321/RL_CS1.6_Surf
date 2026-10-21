@@ -229,7 +229,7 @@ TRAIN_ONLY = frozenset({
     # spawn-distribution knobs: --spawn selects the pool we record from
     "respawn_frac", "respawn_margin", "respawn_binned", "respawn_reservoir",
     "respawn_min_speed",
-    "respawn_speed", "race_kill_aware",
+    "respawn_speed",
     # reward TERMS. These shape training but are not observed by the policy
     # -- except under --obs-reward, where the fed value is shaping-only and
     # omits the intrinsic bonus (~0.007/decision vs shaping's ~0.023). That
@@ -1139,6 +1139,10 @@ def main(argv=None, build_only: bool = False, device=None):
         gcell = float(gc)
 
     gf = None
+    # rf: the field the OBSERVATION features read (the trainer's slot.reward_field): the
+    # potential channel, the compass, the pot-rate column and the ratchet gap. It is gf unless
+    # --race-kill-aware masked the shaping field (mirrored below)
+    rf = None
     # --obs-compass on a --goal-reward euclid/geo ckpt: the per-env
     # distance field the compass reads, re-centred on every goal by
     # _goal_meta below. Bound for real further down, next to ObsAux.
@@ -1164,6 +1168,18 @@ def main(argv=None, build_only: bool = False, device=None):
             gf = blur_goal_field(gf, float(cfg["race_field_blur"]))
             print(f"--race-field-blur {float(cfg['race_field_blur']):g} mirrored "
                   "(the potential channel renders the blurred field)")
+        rf = gf
+        if (cfg.get("race_kill_aware") and cfg.get("race_dist") != "euclid"
+                and not cfg.get("race_ground")):
+            # --race-kill-aware: MIRRORED. In training the shaping field (kill volumes walled
+            # off) is also what the potential channel, the compass, the pot-rate column and the
+            # ratchet gap read (train_fast passes slot.reward_field to all four); the spawn yaw
+            # stays on the standard field there too (race_start_pool below)
+            rf = build_goal_field(core, zones["end"], cell=gcell, mask_kill=True)
+            if cfg.get("race_field_blur"):
+                rf = blur_goal_field(rf, float(cfg["race_field_blur"]))
+            print("--race-kill-aware mirrored: the observation features read the kill-masked "
+                  "field")
         core.set_goal_box(zones["end"]["mins"], zones["end"]["maxs"])
 
     def race_start_pool():
@@ -1269,7 +1285,7 @@ def main(argv=None, build_only: bool = False, device=None):
                      pinhole=bool(cfg.get("pinhole", 0)),
                      normals=bool(cfg.get("normals", 0)),
                      potential=LidarPotential.from_cfg(
-                         cfg, gf, core, device, Path(map_path).stem),
+                         cfg, rf, core, device, Path(map_path).stem),
                      vision_clip=bool(vclip),
                      # --depth-enc: MIRRORED (what every depth pixel means; dual = 2 channels)
                      depth_enc=str(cfg.get("depth_enc") or "legacy"),
@@ -1986,7 +2002,7 @@ def main(argv=None, build_only: bool = False, device=None):
                     geo=(gf if cfg.get("goal_reward") == "geo" else None))
                 cmp_goal_field = aux_field
             else:
-                aux_field = gf
+                aux_field = rf
         obs_aux = ObsAux(core.num_envs, k=hist_k, field=aux_field,
                          yaw_adaptive=bool(cfg.get("yaw_adaptive")))
         route_dim += obs_aux.n_features
@@ -2270,7 +2286,7 @@ def main(argv=None, build_only: bool = False, device=None):
     prate_fn = None
     if want_prate:
         from surfgym.obsaux import make_pot_rate_feed
-        prate_fn = make_pot_rate_feed(gf)
+        prate_fn = make_pot_rate_feed(rf)
     # --obs-reward ckpts read a side-channel value from scalar slot 12 that
     # the core does not produce. Without feeding it here the recording hands
     # the policy absolute position (magnitude ~10) where it expects
@@ -2310,12 +2326,12 @@ def main(argv=None, build_only: bool = False, device=None):
         if gf is None:
             raise SystemExit("this ckpt uses --race-ratchet but has no goal "
                              "field to recompute the record gap from")
-        _rd0 = float(np.mean(gf.sample(map_spawn_pool(core)["origin"])))
+        _rd0 = float(np.mean(rf.sample(map_spawn_pool(core)["origin"])))
         print(f"--race-ratchet: record gap normalised by the start "
               f"geodesic {_rd0:,.0f}u")
         _rs = {"rec": None, "tick": None}
 
-        def ratchet_fn(c, _f=gf, _d0=_rd0):
+        def ratchet_fn(c, _f=rf, _d0=_rd0):
             sv = c.states_view
             d = _f.sample(sv["origin"]).astype(np.float64)
             tick = np.asarray(sv["tick"], np.int64).copy()
@@ -2667,7 +2683,7 @@ def main(argv=None, build_only: bool = False, device=None):
                          masks=masks, cc_fn=cc_fn, keys_hold=keys_hold,
                          ratchet_fn=ratchet_fn, pass_fn=pass_fn, vec_fn=vec_fn,
                          surf_fn=(_new_surf_feed() if want_surf else None),
-                         prate_fn=(make_pot_rate_feed(gf) if want_prate else None))
+                         prate_fn=(make_pot_rate_feed(rf) if want_prate else None))
         if int(args.plan_scratch) > 0:
             # --plan-scratch: the pieces only - the tool that asked flies them itself
             from types import SimpleNamespace as _NS
