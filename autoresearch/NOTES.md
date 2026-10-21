@@ -1321,3 +1321,21 @@ cavity (entry speed, ramp vz) and complete the loop? 30 min first.
   best; two episodes at 32.73/32.84% loitering 80-85 s after the wall), 32.34, 32.48. Training crawl share
   24% -> 6%, novelty 1.4 -> 0.49 per episode: the move gate removed the farm. The wall after CP2 holds
   (T at its cap 1, stuck 922M; training ceiling 32,856 u).
+
+### 06:50 UTC: wall bench (measurement) -> gt4 stopped; FROM-SCRATCH test of the round's recipe (r3b2_sfull)
+
+* Bench (gt4 9,533M, local CPU): greedy recording 9/9 through the loop (32.26-32.54%); 495 tail states;
+  48 stochastic T 1 episodes from them: **5 get under the wall** (x < -740 below z 10,650) but at only
+  ~500-620 u/s west while falling ~-1,000 u/s, and land/die at z ~9,720 (or hover on a ledge at ~10,000)
+  within ~1 s; best 32.82%, none past 32.9%. The field route goes on WEST at z 10,100-10,500 to x ~-1,800
+  first. So the gate needs a fast, shallow dive under the wall - a new multi-part skill, like the cavity.
+* gt4 stopped at 9,599,188,992 (12 evals, best 32.839); its checkpoint, the best eval's run, is local:
+  runs/r3b2/r3b2_gt4/ckpt_latest.pt (md5 bc10bd85...) - the hand-on candidate.
+* **r3b2_sfull** (06:49, from scratch, 2.5e9 budget, evals every 25M): config.json's incumbent_recipe +
+  `--respawn-novel --race-ratchet` (round 1's core, lost from config.json in the round-2 harness restore)
+  + this round's `--time-pen 0 --surf-bonus 0 --greedy-tail-frac 0.15 --respawn-min-speed 300
+  --int-move-gate`; no band, T cap 2. Matched-step references (best-episode %): ratnov (round 1, ratchet +
+  novel, time penalty on): 5.8 / 15.2 / 20.8 at 302 / 378 / 453M, window 576M, CP2 wall 651M, CP2 pit
+  crossing 1,633M; r2b2_sband: 12.2 at 302M, window ~990M, pit crossing ~1.94B. Question: does the round's
+  recipe cross the gates sooner from scratch (in particular the CP2 pit, where the warm test flipped in
+  50M steps once the penalty was gone)?
