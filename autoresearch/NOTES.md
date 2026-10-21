@@ -1897,3 +1897,12 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
   best. Hand-on: the best eval (63.484) is in r4b4_c7, so the next round's checkpoint comes from
   that run's pulled files; only c7's ckpt_12694061056.pt (md5 497bd88a..., the snapshot c8
   continues from, evals 61.1 / 61.0) is pulled there - not c7's regressed latest.
+
+### 23:13 UTC: 64.333 (c8, 13,726M) - past CP5 and *31
+
+* r4b4_c8 (T cap 0.1) 13.50-13.73B: 57.8, 62.494, 60.3, 28.3 (collapse), 57.7, 60.5, 28.5, 60.4,
+  61.9, **64.333** (13,726M, CP5): episode 5 through the bowl, CP5, over kill floor *31 and on to
+  (-3,716, -87, 5,262) at 80.2 s heading west at 1,446 u/s, falling (vz -1,018) into a kill - the
+  human passes x -3,418..-4,288 at z 5,558-5,713 (74.0-74.5 s), ~300-450 u higher. Masked ceiling
+  64,827 -> 66,972 u; T 0.084 on the new eval best. The best eval is now in r4b4_c8: the hand-on
+  checkpoint is c8's (pulled at wrap-up).
