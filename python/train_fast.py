@@ -6678,6 +6678,12 @@ def main() -> None:
                          "priority proportional to (R - V)_+")
     ap.add_argument("--sil-ent", type=float, default=None,        # 0
                     help="--sil-coef: entropy coefficient inside the SIL term")
+    ap.add_argument("--sil-temper", type=int, default=None, choices=(0, 1),  # 0
+                    help="--sil-coef: 1 = score the buffer rows at the rollout's "
+                         "SAMPLING temperature (--unstuck's 1 + T, the same tempered "
+                         "measure PPO's ratio uses), so a row drawn at sigma x (1+T) "
+                         "does not read as a (1+T)-sigma outlier and push log_std up; "
+                         "0 = untempered (the shipped SIL, byte-identical)")
     # --- --crl: single-goal contrastive RL (surfgym/crl.py) -----------------
     # CPPO (arXiv 2605.13554) on SGCRL (2408.05804) / CRL (2206.07568): the
     # advantage is Q(s,a,g*) - E_pi Q(s,.,g*) from a contrastive critic, g*
@@ -7109,7 +7115,7 @@ def main() -> None:
             args.tail_weight = float(ck_cfg["tail_weight"])
             restored.append(f"tail_weight={args.tail_weight:g}")
         for _k, _cast in (("sil_coef", float), ("sil_buffer", int), ("sil_batches", int),
-                          ("sil_batch_size", int), ("sil_ent", float)):
+                          ("sil_batch_size", int), ("sil_ent", float), ("sil_temper", int)):
             if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
                 setattr(args, _k, _cast(ck_cfg[_k]))
                 restored.append(f"{_k}={ck_cfg[_k]}")
@@ -13345,6 +13351,9 @@ def main() -> None:
             "sil_batches": int(args.sil_batches if args.sil_batches is not None else 4),
             "sil_batch_size": int(args.sil_batch_size if args.sil_batch_size is not None else 512),
             "sil_ent": float(args.sil_ent if args.sil_ent is not None else 0.0)})
+        if int(args.sil_temper or 0):
+            # --sil-temper: only written when on, so the flag-off dump is the shipped one
+            meta["config"]["sil_temper"] = 1
     if YCOND:
         meta["config"]["yaw_cond"] = 1
         print(f"--yaw-cond: side-key head conditioned on the sampled yaw "
@@ -14311,6 +14320,9 @@ def main() -> None:
     SIL_BATCHES = int(args.sil_batches if args.sil_batches is not None else 4)
     SIL_BS = int(args.sil_batch_size if args.sil_batch_size is not None else 512)
     SIL_ENT = float(args.sil_ent if args.sil_ent is not None else 0.0)
+    SIL_TEMPER = bool(int(args.sil_temper or 0))
+    if SIL_TEMPER and not SIL_COEF > 0.0:
+        raise SystemExit("--sil-temper 1 tempers the --sil-coef replay: set --sil-coef > 0")
     tail_eps: list[tuple] = []
     tail_seg = np.zeros(N, np.int64)
     #   tail_bin   the goal-distance bin each env's CURRENT episode spawned
@@ -15567,20 +15579,32 @@ def main() -> None:
         print(f"--sil-coef {SIL_COEF:g}: buffer {SIL_CAP:,} rows, {SIL_BATCHES} x {SIL_BS} "
               f"rows per epoch, entropy {SIL_ENT:g}; rows kept when R > V(s), sampled in "
               f"proportion to (R - V)_+, V refreshed on sampling (docs/sil.md)")
+        if SIL_TEMPER:
+            if CC_TEMP:
+                raise SystemExit("--sil-temper with --cc-temp-scale: that temperature is "
+                                 "per ENV, and a buffer row has no env")
+            print("--sil-temper 1: buffer rows scored at the rollout's sampling temperature "
+                  + ("(the --unstuck T tensors PPO's ratio reads)" if temp_t is not None
+                     else "- NONE here (no --unstuck temperature), so it is the untempered SIL"))
+        # --sil-temper: the tensors (or None = untempered, the shipped call)
+        SIL_TEMP = temp_t if SIL_TEMPER else None
+        SIL_TEMPV = tempv_t if SIL_TEMPER else None
 
         def sil_step(s_scal, s_img, s_act, s_ret, s_z=None, s_priv=None):
             """Oh et al.'s loss on a buffer minibatch, scored through the same
-            padded / view log-prob helpers as mb_step, untempered (no ratio)."""
+            padded / view log-prob helpers as mb_step, untempered (no ratio)
+            unless --sil-temper (then at the rollout's current temperature)."""
             with amp:
                 logits, value = policy.forward_split(s_scal, s_img, priv=s_priv)
                 if VIEWC:
                     cat, mu = split_view(logits.float())
                     padded = packer.pad(cat)
                     logp, ent = logprob_entropy_view(padded, s_act, mu, policy.log_std(),
-                                                     s_z, PITCH_ENT, None, None)
+                                                     s_z, PITCH_ENT, SIL_TEMP, SIL_TEMPV)
                 else:
                     padded = packer.pad(logits.float())
-                    logp, ent = logprob_entropy_padded(padded, s_act)
+                    logp, ent = (logprob_entropy_padded(padded, s_act) if SIL_TEMP is None
+                                 else logprob_entropy_padded(padded, s_act, SIL_TEMP))
                 value = value.float()
             return sil_loss_terms(logp, ent, value, s_ret, SIL_ENT)
     sil_loss_t = None

@@ -77,3 +77,31 @@ below the critic, detaches the gap in the policy term and its value term
 raises `V`; the CPU smoke runs, logs the columns, prints the note and
 resumes; and the flag-off trainer reproduces the parent commit's trainer on
 the toy set (config dump, CSV header, every non-timing column).
+
+## `--sil-temper 1`: score the replay at the rollout's temperature (2026-10-21, r3b2)
+
+Under `--unstuck` the rollout draws the view heads from `N(mu, (sigma (1+T))^2)` and the
+keys from `softmax(logits / (1+T))`, and PPO's ratio scores every row under that tempered
+measure (docs/unstuck.md). The SIL step above scores its replayed rows UNTEMPERED, so a row
+drawn at `sigma (1+T)` reads as a `(1+T)`-sigma outlier: per row the imitation gradient on
+`log_std` is `-((z - mu)^2 / sigma^2 - 1)`, which averages `-((1+T)^2 - 1)` (-3 at T = 1).
+Gradient descent therefore raises sigma on every SIL minibatch, whatever the rows' content.
+
+`--sil-temper 1` hands the SAME temperature tensors (`temp_t` / `tempv_t`, the ones
+`mb_step` reads) to `logprob_entropy_view` / `logprob_entropy_padded` inside `sil_step`, so
+a replayed row is scored under the distribution that drew it: no net push on `log_std` from
+sampling noise; the mean is still pulled toward the imitated action, `(1+T)^2` times more
+gently per row. The temperature is the CURRENT one (rows drawn a few iterations earlier at
+a slightly different T are scored at today's), which is exact whenever T sits at its cap.
+
+* Default 0 = the shipped call (`SIL_TEMP is None`); the config key is only written when on;
+  a flagless resume restores it; `--sil-temper 1` without `--sil-coef` is refused, and so is
+  `--cc-temp-scale` (its temperature is per env; a buffer row has none). Without an
+  `--unstuck` temperature it is the untempered SIL (the trainer says so).
+* TRAIN_ONLY in `tools/record_ckpt.py`.
+* Pinned (`tests/python/test_sil_temper.py`): rows drawn at temperature `1+T` push `log_std`
+  up by `(1+T)^2 - 1` untempered and by ~0 tempered (T = 0.5, 1, 2), both pull `mu` toward
+  the imitated z (tempered `(1+T)^2` x weaker); the sidistic CPU smoke with `--unstuck`
+  forced hot runs, prints the note, dumps `sil_temper` and resumes it; the flag is refused
+  without `--sil-coef` and absent from the dump when off; `--sil-coef` without the flag is
+  bit-identical to the pre-flag trainer (config, every non-timing progress.csv column).

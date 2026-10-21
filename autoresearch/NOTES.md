@@ -991,3 +991,29 @@ Tags each greedy eval episode with the route stages it reached after t = 22 s: E
 *45: the detour), S (slot past the pit floor), W (shaft), C (cavity), R (rising in the cavity),
 T (tunnel), M (room). Incumbent evals: 6,751M = 9/9 E, 5 W, 1 C, 1 T (the 28.84% tunnel dive);
 6,776M = 0/9 E (all pit dives at 24.3 s).
+
+### The arithmetic on the incumbent's own greedy episodes (01:05 UTC, local CPU)
+
+Ratchet shaping recomputed from the goal field along each greedy episode from t = 22 s (the eval
+reward column is not recorded), discounted at 0.9995/tick, against 0.5/s of time penalty:
+
+| eval (r2b2_t1) | route | ratchet shaping from 22 s (disc.) | time from 22 s | net with the penalty |
+|---|---|---|---|---|
+| 6,751M (9/9 detour) | E + slot/shaft, 27.8-28.8% | +2.7..+3.7 | 5.5-6.9 s = -2.8..-3.5 | **-0.1..+0.6** |
+| 6,776M (9/9 pit dive) | dive, 27.3-27.4% | +2.5..+2.6 | 2.3-2.5 s = -1.2 | **+1.3..+1.4** |
+
+So under the reward the incumbent trained on, its pit dive is worth ~1 unit MORE than the detour it
+had flown 25M steps earlier: the switch was the optimiser doing its job. Without the time penalty the
+detour is worth +0.2..+1.2 more than the dive.
+
+### `--sil-temper` (new, default off)
+
+* SIL scored its replayed rows untempered; at T = 1 that is a mean push of -3 per row on d(loss)/d(log_std),
+  i.e. sigma inflation on every SIL minibatch. `--sil-temper 1` scores the rows with the same temperature
+  tensors PPO's ratio uses. docs/sil.md; tests/python/test_sil_temper.py (math at T = 0.5/1/2, sidistic
+  CPU smoke + resume, refusal, flag-off bit identity vs the pre-flag trainer). TRAIN_ONLY in record_ckpt.
+
+### Ops: no box (00:54-01:05 UTC)
+
+`box.py rent` refused from 00:54 ("no offer passes (whitelist, caps, blocklist)"); a background loop
+retries every 3 min for up to 3 h (session scratchpad rent_loop.sh).
