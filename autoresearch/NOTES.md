@@ -1067,3 +1067,5 @@ later, x ~0.9) trims the time-pen-0 margin but keeps the median detour ahead (~2
   start at T 0; arm 1 relies on the training noise (T 1: yaw sigma x2, keys logits / 2) and the
   novel rows in the corridor to find it again. That is the arm's main risk: a better objective
   cannot select a line that is never tried.
+
+* (Correction: the heading above should read 02:27 UTC - the time was typed, not taken from `date`.)
