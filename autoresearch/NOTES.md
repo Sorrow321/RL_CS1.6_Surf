@@ -1028,3 +1028,24 @@ line (it killed my local shell twice).
   success, runs `box.py deploy --ckpt $AR_HOME/incumbent/ckpt.pt` and `box.py launch --resume
   --run r3b4_tp0 --steps 4e8 --record-every 25e6 -- --time-pen 0 --surf-bonus 0` back to back, so
   the box never idles.
+
+### 01:50 UTC: the reward claim checked on real trajectories (incumbent eval 6,751M, all 9 took the detour)
+
+Reward earned AFTER t = 23.5 s (the bifurcation; the record there is ~25.5%), per episode: ratchet
+progress gained, time at 0.5/s, surf bonus (estimated from vz support, ~0.3-0.4):
+
+| ep | ends | progress | +gain | -time | +surf | net now | net time-pen 0 |
+|---|---|---|---|---|---|---|---|
+| 0 | 27.73 s | 27.84% | +2.28 | -2.12 | +0.40 | +0.56 | +2.28 |
+| 1 | 28.33 s | 28.21% | +2.58 | -2.42 | +0.38 | +0.54 | +2.58 |
+| 3 | 27.77 s | 27.88% | +1.89 | -2.13 | +0.39 | +0.14 | +1.89 |
+| 4 | 27.53 s | 27.98% | +2.47 | -2.02 | +0.40 | +0.85 | +2.47 |
+| 6 | 28.92 s | 28.21% (cavity) | +2.31 | -2.71 | +0.37 | -0.03 | +2.31 |
+| 8 | 28.24 s | 28.84% (tunnel) | +3.32 | -2.37 | +0.33 | +1.28 | +3.32 |
+| 2, 5, 7 | | 28.21 / 27.96 / 28.42 | | | | +0.59 / +0.51 / +0.47 | +2.57 / +2.15 / +2.54 |
+
+The pit dive from the same point (dies at ~24.5 s at 27.4%, the r2b2_t1 evals after 6,776M): +1.88 gain
+- 0.5 time + ~0.1 surf = **+1.48 now**, +1.88 at time-pen 0. So under the current reward the pit dive
+beats EVERY detour episode of the lineage's best eval, the 28.84% tunnel dive included (+1.28); with
+the time penalty off, 8 of 9 detours beat it and one ties. Discounting (the detour's gain comes 1-4 s
+later, x ~0.9) trims the time-pen-0 margin but keeps the median detour ahead (~2.1 vs ~1.8).
