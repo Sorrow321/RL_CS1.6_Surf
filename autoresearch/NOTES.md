@@ -1229,3 +1229,20 @@ line (it killed my local shell twice).
 * The training ceiling's d (65,627) sits past the block: x -850..-1,170, z 9,770-10,500 (lower,
   west). So a real training episode has already found the way around and down; every earlier gate
   of this lineage went ceiling-first, greedy line 100-400M steps later.
+
+### 04:45 UTC: r3b3_t1 holds but does not pass the block; frontier-only bursts (r3b3_ezf)
+
+* r3b3_t1 (T cap 1) 4,536-5,115M, ~23 evals: frontier 30,943-31,827 u (31.6-32.6%) every eval,
+  deaths at 37-41 s at the kill-wrapped block; the training ceiling flat at 32,141 u since ~4.48B
+  (~640M steps). Stopped at ~5.12B; snapshots ckpt_4636278784 ... ckpt_5036834816 on the box.
+* Reading: at T <= 1 the stochastic policy no longer generates the ~200 u sideways / upward offset
+  the block needs (one real episode did, at ~4.48B under T ~1); raising T for the whole policy
+  breaks the precise earlier line (T > 1.5, above). What is needed is exploration only at the
+  frontier.
+* **r3b3_ezf** (04:44): resume of r3b3_t1/ckpt_5036834816.pt (md5 e820b0fc...) + round 1's
+  `--ez-eps 0.05 --ez-front 0.04` (ez-greedy bursts - a uniform yaw z and random keys held for
+  n ~ zeta(2) decisions, cap 60 - that may START only where progress >= (1 - 0.04) x the
+  reservoir's deepest progress, i.e. past ~31.3% here = the last ~1 s before the block; burst rows
+  are dropped from PPO) + `--ckpt-every 1e8`; everything else restored (T cap 1, time-pen 0,
+  greedy spawns, int-real-only, band). 400M steps first. Step line: `ez 1.2-1.5% front>31.3%`;
+  approx_kl 0.29-0.46 on the first updates (watch).
