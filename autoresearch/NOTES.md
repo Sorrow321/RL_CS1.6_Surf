@@ -1306,3 +1306,17 @@ window, C = inside the cavity under the pit slab, T = tunnel lane, R = room; ana
   ckpt_latest (1,136,656,384, md5 139a3451...), same flags, budget 1.2e9 (to 2.34B), evals every 75M. Does
   the reward-fix recipe (now config.json's default) cross the CP2 pit from scratch, and when (ratnov
   1,633M, sband2 ~1.94B)?
+
+### 09:27 UTC: scratch recipe at the CP2 pit: no crossing by 1.93B at T 0; resumed with the T schedule (r3b1_scrT)
+
+* r3b1_scrx (1.14B -> 1.93B, T 0): 11 evals, frontier 26,722-26,812 u (27.3-27.4%): the greedy line dies in the
+  CP2 pit (+y side, x ~3,060-3,180, 24.8-25.1 s); training ceiling exactly flat at 27,349.5 u. So ~1.1B steps
+  at the wall without a crossing; ratnov crossed after ~1.0B there (651M -> 1,633M), sband2 after ~0.75B.
+* The confound I see: ratnov's crossing came with the unstuck T at ~1.8 (it had risen at the wall), while my
+  scratch recipe pins T at 0. T 0 was right WARM (precision on routes the policy already had: the pit lock and
+  the tunnel); at a NEW wall the crossing needs discovery, and T is the only action-level exploration left once
+  the time penalty no longer pays for detours. Untested combination: the reward fix + the default T schedule.
+* **r3b1_scrT** (09:24): resume of scrx's ckpt_latest (1,934,098,432, md5 f5a8f28e...) + `--unstuck-max 2`
+  (fail-pen 10, surf-bonus 0, eval-stall restored/passed). T starts rising ~200M steps after the last +500 u
+  best (stuck 117M at the resume), reaching 2 at ~2.42B. Runs to the wrap-up. If it crosses at high T, the
+  recipe should keep the T schedule (cap 2) with the fix; config.json is set at the wrap-up from this result.
