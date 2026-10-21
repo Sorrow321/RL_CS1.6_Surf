@@ -82,6 +82,8 @@ class _RouteProbe:
 TRAIN_ONLY = frozenset({
     # --target-kl: PPO's early stop inside the update; a recording runs no update
     "target_kl",
+    # --diag-head-kl: a log line about the update; a recording runs no update
+    "diag_head_kl",
     # --ramp-death-charge: a training reward term (the eval pays no reward)
     "ramp_death_charge",
     # --ramp-route-flat: the shape of the training reward's potential

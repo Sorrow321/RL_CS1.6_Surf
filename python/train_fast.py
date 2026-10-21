@@ -4210,6 +4210,16 @@ def main() -> None:
                          "sigma at 0.034, and never found it again (2026-10-06). One host sync "
                          "per minibatch. Unset / 0 = off (bit-identical). Not restored from a "
                          "checkpoint")
+    ap.add_argument("--diag-head-kl", type=int, default=None,
+                    help="every N updates, print PPO's drift PER ACTION HEAD over the whole "
+                         "update (--view-continuous only): mean(old - new log-prob) of the "
+                         "stored actions for the keys joint, each Gaussian head (yaw, pitch), "
+                         "the mean shift in old sigmas, and the share of rows whose ratio ends "
+                         "outside 1 +- clip with and without the pitch head. One minibatch of "
+                         "rows, scored before and after the update with no grad and its own RNG. "
+                         "approx_kl read 3-55 per update at the unstuck T cap 0.5 (r3b3) with the "
+                         "pitch sigma at 0.0067 in z: this says which head that is. Unset / 0 = "
+                         "off (bit-identical). Not restored from a checkpoint")
     ap.add_argument("--wd", type=float, default=None,      # 0 = Adam, bit-identical
                     help="decoupled weight decay (AdamW); 0 keeps plain Adam. ckpt restores")
     ap.add_argument("--dropout", type=float, default=None,  # 0 = off
@@ -13504,6 +13514,9 @@ def main() -> None:
     if float(args.target_kl or 0.0) > 0.0:
         # --target-kl: an optimizer setting, recorded for provenance (TRAIN_ONLY in record_ckpt)
         meta["config"]["target_kl"] = float(args.target_kl)
+    if int(args.diag_head_kl or 0) > 0:
+        # --diag-head-kl: a log line only, recorded for provenance (TRAIN_ONLY in record_ckpt)
+        meta["config"]["diag_head_kl"] = int(args.diag_head_kl)
     if args.split_trunk:
         meta["config"]["split_trunk"] = 1
     if args.obs_views > 1:
@@ -15859,6 +15872,23 @@ def main() -> None:
                     torch.stack([aug_kl.detach(), aug_vm.detach()]))
         return loss, pg, vl, el, logp
 
+    def head_kl_probe(f_scal, f_img, f_act, f_z, f_age, f_priv, idx, f_temp, f_tempv):
+        """--diag-head-kl: the live policy's log-probs of the STORED actions on rows idx, split
+        by head (no grad, eager): (keys joint (B,), Gaussian per head (B, n_z), mu (B, n_z),
+        tempered log sigma (n_z,)). The same measure mb_step's joint is taken under."""
+        with torch.no_grad():
+            with amp:
+                img = (f_img[idx] if STACK == 1 else
+                       stack_from_buffer(f_img, idx, f_age[idx], STACK, N, PRO))
+                logits, _ = policy.forward_split(
+                    f_scal[idx], img, priv=(None if f_priv is None else f_priv[idx]))
+            cat, mu = split_view(logits.float())
+            lpc, _ = logprob_entropy_padded(packer.pad(cat)[:, N_VIEW:],
+                                            f_act[idx][:, N_VIEW:], f_temp)
+            ls = _temper_log_std(policy.log_std(), f_temp if f_tempv is None else f_tempv)
+            lpg = (-0.5 * ((f_z[idx] - mu) / ls.exp()).pow(2) - ls - 0.5 * LOG2PI)
+        return lpc.float(), lpg.float(), mu.float(), ls.float()
+
     # ---- --rnn: the SEQUENCE minibatch step ---------------------------------
     # A minibatch is B = N/minibatches whole envs x all T decisions, in
     # time-major row order (idx = t*N + env), so every flat buffer is gathered
@@ -16620,6 +16650,18 @@ def main() -> None:
     if TKL > 0.0:
         print(f"--target-kl {TKL:g}: an update stops once its approx KL exceeds {1.5 * TKL:g}")
     tkl_acc = [0, 0, [], 0]           # updates, stops, the stops' (epoch, mb, kl), stops ever
+    HEAD_KL = int(args.diag_head_kl or 0)
+    if HEAD_KL < 0:
+        raise SystemExit(f"--diag-head-kl must be >= 0, got {HEAD_KL}")
+    if HEAD_KL and not (VIEWC and H == 0 and not YCOND and not MASKS.on and not RNN):
+        raise SystemExit("--diag-head-kl reads the --view-continuous heads of the plain "
+                         "(no --chunk / --yaw-cond / --mask-* / --rnn) policy")
+    hk_gen = None
+    if HEAD_KL:
+        # its own generator: the probe rows never move perm_gen or the global RNG
+        hk_gen = torch.Generator(device=device)
+        hk_gen.manual_seed(20261021 + D.rank)
+        print(f"--diag-head-kl {HEAD_KL}: per-head drift of the update every {HEAD_KL} updates")
     while global_step < int(args.steps):
         it_no += 1
         tm.start_iter()
@@ -18187,6 +18229,15 @@ def main() -> None:
         # state stay bit-identical to the resumed checkpoint (kl / losses
         # log 0)
         tkl_hit = None                 # --target-kl: (epoch, minibatch, kl) of an early stop
+        hk = None
+        if HEAD_KL and it_no % HEAD_KL == 0 and not FREEZE and not warming:
+            # --diag-head-kl: one minibatch of rows scored BEFORE the update (rows the PPO pool
+            # holds: on-policy only when ez bursts dropped some)
+            _pool = (torch.arange(T * N, device=device) if sub_pool is None else sub_pool)
+            _pi = _pool[torch.randperm(_pool.numel(), device=device,
+                                       generator=hk_gen)[:min(mb, _pool.numel())]]
+            hk = (_pi, head_kl_probe(f_scal, f_img, f_act, f_z, f_age, f_priv, _pi,
+                                     temp_t, tempv_t))
         for _ep in range(0 if FREEZE else args.epochs):
             if tkl_hit is not None:
                 break
@@ -18324,6 +18375,29 @@ def main() -> None:
                 if rnd is not None:
                     rnd.train_step(f_scal[idx])   # tiny MLP, outside compile
                 last_diag = (idx, logp, vl, pg, el)
+        if hk is not None and D.is_main:
+            # --diag-head-kl: the same rows AFTER the update. kl_h = mean(old - new) per head;
+            # dmu in OLD sigmas; clip% = rows whose ratio now lies outside 1 +- clip, for the
+            # joint PPO uses and for the joint without the last Gaussian (pitch); err = the
+            # before-probe against the rollout's own f_logp (eager vs captured graph)
+            _pi, (_c0, _g0, _m0, _l0) = hk
+            _c1, _g1, _m1, _l1 = head_kl_probe(f_scal, f_img, f_act, f_z, f_age, f_priv,
+                                               _pi, temp_t, tempv_t)
+            _dc, _dg = _c1 - _c0, _g1 - _g0
+            _lj = _dc + _dg.sum(-1)
+            _ln = _dc + _dg[:, :-1].sum(-1)
+            _lo, _hi = math.log(1.0 - args.clip), math.log(1.0 + args.clip)
+            _cfj = float(((_lj < _lo) | (_lj > _hi)).float().mean())
+            _cfn = float(((_ln < _lo) | (_ln > _hi)).float().mean())
+            _klh = (-_dg).mean(0).tolist()
+            _dmu = ((_m1 - _m0).abs() / _l0.exp()).mean(0).tolist()
+            _err = float((_c0 + _g0.sum(-1) - f_logp[_pi].float()).abs().mean())
+            print(f"head-kl it {it_no} step {global_step:,}: keys {float(-_dc.mean()):.4f}  "
+                  + "  ".join(f"z{_j} {_k:.4f}" for _j, _k in enumerate(_klh))
+                  + "  |dmu|/sig " + "/".join(f"{_v:.2f}" for _v in _dmu)
+                  + f"  clip% joint {_cfj:.1%} no-last {_cfn:.1%}"
+                  + "  sig " + "/".join(f"{_v:.4f}" for _v in _l1.exp().tolist())
+                  + f"  joint kl {float(-_lj.mean()):.4f}  err {_err:.1e}")
         if TKL > 0.0:
             # --target-kl: one line per 25 updates with how often and where the update stopped
             tkl_acc[0] += 1
