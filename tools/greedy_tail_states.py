@@ -44,43 +44,6 @@ def episode_ends(jsonl: Path) -> list[dict]:
     return out
 
 
-def cut_tails(dump: dict, ends: list[dict], secs: float, skip: float, every: int,
-              max_secs: float, min_speed: float = 0.0) -> tuple[np.ndarray, list[str]]:
-    rows, notes = [], []
-    for i, tr in enumerate(ends):
-        key = f"ep_{i:04d}"
-        if key not in dump:
-            notes.append(f"{key}: missing from the dump")
-            continue
-        st = dump[key]
-        tms = tr.get("tick_ms")
-        if tms is None:
-            raise SystemExit("the trajectory header carries no tick_ms (refusing to assume 10 ms)")
-        hz = 1000.0 / tms
-        n = len(st)
-        if tr.get("end") != "fail":
-            notes.append(f"{key}: end {tr.get('end')} - skipped")
-            continue
-        if n / hz > max_secs:
-            notes.append(f"{key}: {n / hz:.1f} s > {max_secs:g} s - skipped")
-            continue
-        hi = max(0, n - int(round(skip * hz)))
-        lo = max(0, n - int(round(secs * hz)))
-        if hi <= lo:
-            notes.append(f"{key}: too short")
-            continue
-        keep = st[lo:hi:every]
-        if min_speed > 0.0:
-            # the reservoir's --respawn-min-speed rule: a stalled state seeds stalled spawns
-            v = keep["velocity"].astype(np.float64)
-            keep = keep[np.sqrt((v * v).sum(1)) >= min_speed]
-        rows.append(keep)
-        notes.append(f"{key}: {n / hz:.2f} s, kept ticks {lo}..{hi} every {every} ({len(keep)} rows)")
-    if not rows:
-        return np.empty(0), notes
-    return np.concatenate(rows), notes
-
-
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("dump", help="record_ckpt --dump-states .npz")
@@ -98,9 +61,15 @@ def main(argv=None):
                     help="refuse to write fewer rows (keeps the previous file in place)")
     a = ap.parse_args(argv)
     from surfgym.core import STATE_DTYPE
+    from surfgym.greedy_tail import cut_tails      # the trainer's --greedy-tail-frac cut
     dump = dict(np.load(a.dump, allow_pickle=False))
     ends = episode_ends(Path(a.jsonl))
-    rows, notes = cut_tails(dump, ends, a.secs, a.skip, a.every, a.max_secs, a.min_speed)
+    tms = {e.get("tick_ms") for e in ends}
+    if not ends or None in tms or len(tms) != 1:
+        raise SystemExit("the trajectory headers carry no (single) tick_ms: refusing to assume 10 ms")
+    eps = [(dump[f"ep_{i:04d}"], e.get("end")) for i, e in enumerate(ends) if f"ep_{i:04d}" in dump]
+    rows, notes = cut_tails(eps, 1000.0 / tms.pop(), a.secs, a.skip, a.every, a.max_secs,
+                            a.min_speed)
     for s in notes:
         print("  " + s)
     if len(rows) < a.min_rows:

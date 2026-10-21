@@ -6586,6 +6586,25 @@ def main() -> None:
     ap.add_argument("--spawn-states-frac", type=float, default=None,
                     help="with --spawn-states: the share of the spawn pool it replaces, in "
                          "(0, 1)")
+    # --- greedy-tail spawns (2026-10-21, autoresearch r3b2; surfgym/greedy_tail.py) ---------
+    ap.add_argument("--greedy-tail-frac", type=float, default=None,     # 0 = off
+                    help="the share of every training spawn pool drawn from the policy's OWN "
+                         "greedy line just before it fails: the last --greedy-tail-secs of each "
+                         "FAILED episode of the trainer's own periodic greedy eval from the true "
+                         "start (full core states, refreshed at every eval). Go-Explore's return "
+                         "to the deployed policy's frontier: where its greedy line dies is where "
+                         "the training spawns. In (0, 1); 0 = off. Single-map; not with "
+                         "--spawn-states (the same pool slot). ckpt restores")
+    ap.add_argument("--greedy-tail-secs", type=float, default=None,     # 3.0
+                    help="--greedy-tail-frac: seconds before a failed eval episode's end the "
+                         "tail starts at")
+    ap.add_argument("--greedy-tail-skip", type=float, default=None,     # 0.25
+                    help="--greedy-tail-frac: the last seconds before the end left out (doomed)")
+    ap.add_argument("--greedy-tail-every", type=int, default=None,      # 5
+                    help="--greedy-tail-frac: keep every k-th tick of the tail")
+    ap.add_argument("--greedy-tail-min-speed", type=float, default=None,  # 300
+                    help="--greedy-tail-frac: drop tail states slower than this (u/s, 3-D |v|; "
+                         "the --respawn-min-speed rule: a stalled state seeds stalled spawns)")
     ap.add_argument("--archive-frac", type=float, default=None,   # 0 = off
                     help="survivor-gated predecessor archive: the share of the "
                          "spawn pool replaced each iteration by archive rows - "
@@ -7397,6 +7416,12 @@ def main() -> None:
         if args.spawn_states_frac is None and ck_cfg.get("spawn_states_frac") is not None:
             args.spawn_states_frac = float(ck_cfg["spawn_states_frac"])
             restored.append(f"spawn_states_frac={args.spawn_states_frac:g}")
+        for _k, _cast in (("greedy_tail_frac", float), ("greedy_tail_secs", float),
+                          ("greedy_tail_skip", float), ("greedy_tail_every", int),
+                          ("greedy_tail_min_speed", float)):
+            if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
+                setattr(args, _k, _cast(ck_cfg[_k]))
+                restored.append(f"{_k}={ck_cfg[_k]}")
         if args.demo_window is None and ck_cfg.get("demo_window") is not None:
             args.demo_window = int(ck_cfg["demo_window"])
         if args.demo_rate is None and ck_cfg.get("demo_rate") is not None:
@@ -9630,6 +9655,39 @@ def main() -> None:
               f"(exact states, clocks zeroed; re-read when the file changes)")
     elif args.spawn_states_frac is not None and flag_given("--spawn-states-frac"):
         raise SystemExit("--spawn-states-frac without --spawn-states")
+    # --greedy-tail-frac (surfgym/greedy_tail.py): the policy's own greedy-eval tails, cut after
+    # every eval, take the --spawn-states slot of the pool (SPAWN_STATES) at this share
+    GT_FRAC = float(args.greedy_tail_frac or 0.0)
+    GT_SECS = float(args.greedy_tail_secs if args.greedy_tail_secs is not None else 3.0)
+    GT_SKIP = float(args.greedy_tail_skip if args.greedy_tail_skip is not None else 0.25)
+    GT_EVERY = int(args.greedy_tail_every if args.greedy_tail_every is not None else 5)
+    GT_MINSPD = float(args.greedy_tail_min_speed if args.greedy_tail_min_speed is not None
+                      else 300.0)
+    SS_FRAC = float(args.spawn_states_frac) if args.spawn_states else GT_FRAC
+    if GT_FRAC > 0.0:
+        if not GT_FRAC < 1.0:
+            raise SystemExit("--greedy-tail-frac is a share of the spawn pool, in (0, 1)")
+        if args.spawn_states:
+            raise SystemExit("--greedy-tail-frac with --spawn-states: both take the same share "
+                             "of the spawn pool; use one")
+        if args.maps:
+            raise SystemExit("--greedy-tail-frac is single-map")
+        if D.enabled:
+            raise SystemExit("--greedy-tail-frac is single-process: the eval that feeds it runs "
+                             "on one rank, and the other ranks' pools would differ")
+        if not (GT_SECS > GT_SKIP >= 0.0) or GT_EVERY < 1 or GT_MINSPD < 0.0:
+            raise SystemExit("--greedy-tail-secs > --greedy-tail-skip >= 0, "
+                             "--greedy-tail-every >= 1, --greedy-tail-min-speed >= 0")
+        from surfgym.greedy_tail import TailCapture, cut_tails
+        print(f"--greedy-tail-frac {GT_FRAC:g}: that share of every training spawn pool from the "
+              f"policy's OWN greedy eval from the true start - the last {GT_SECS:g} s (to "
+              f"{GT_SKIP:g} s) before each FAILED episode's end, every {GT_EVERY} ticks, states "
+              f"under {GT_MINSPD:g} u/s dropped; re-cut at every eval (none before the first)")
+    else:
+        for _f in ("--greedy-tail-secs", "--greedy-tail-skip", "--greedy-tail-every",
+                   "--greedy-tail-min-speed"):
+            if flag_given(_f):
+                raise SystemExit(f"{_f} without --greedy-tail-frac")
     # CLAUDE.md section 0: HUMAN DEMOS NEVER TRAIN THE AGENT. Every
     # spawn-state / imitation / route source - given as a flag OR restored
     # from a checkpoint - must be declared policy-derived by the operator
@@ -13119,6 +13177,10 @@ def main() -> None:
                        "spawn_states": args.spawn_states,
                        "spawn_states_frac": (float(args.spawn_states_frac)
                                              if args.spawn_states else None),
+                       # --greedy-tail-frac: only written when on (the flag-off dump is unchanged)
+                       **({"greedy_tail_frac": GT_FRAC, "greedy_tail_secs": GT_SECS,
+                           "greedy_tail_skip": GT_SKIP, "greedy_tail_every": GT_EVERY,
+                           "greedy_tail_min_speed": GT_MINSPD} if GT_FRAC > 0.0 else {}),
                        "demo_window": (args.demo_window
                                        if args.demo_file else None),
                        "demo_rate": (args.demo_rate
@@ -16558,7 +16620,7 @@ def main() -> None:
         fleet.set_step(global_step)   # authoritative (survives resume)
         t_pool = tm.now()
 
-        if SPAWN_STATES is not None and it_no % 20 == 0:
+        if SPAWN_STATES is not None and args.spawn_states and it_no % 20 == 0:
             # --spawn-states: re-read a refreshed file (an outer archive loop replaced it)
             try:
                 _mt = os.path.getmtime(args.spawn_states)
@@ -16584,7 +16646,7 @@ def main() -> None:
                 # the map-start pool before the reservoir fills, is tiled up to it first)
                 if len(_pool) < 4096:
                     _pool = np.resize(_pool, 4096)
-                _m = int(round(len(_pool) * float(args.spawn_states_frac)))
+                _m = int(round(len(_pool) * SS_FRAC))
                 _pos = SS_RNG.choice(len(_pool), _m, replace=False)
                 _pool = _pool.copy()
                 _pool[_pos] = SPAWN_STATES[SS_RNG.integers(0, len(SPAWN_STATES), _m)]
@@ -18813,6 +18875,11 @@ def main() -> None:
                         _s.reward_fn.stall_ticks, _s.reward_fn.stall_eps,
                         _s.reward_fn.every)
                     _ev_tick = chain_ticks(_ev_tick, _ev_stall)
+                _gt_cap = None
+                if GT_FRAC > 0.0 and not _s.heldout:
+                    # --greedy-tail-frac: env 0's full core states of THIS eval
+                    _gt_cap = TailCapture()
+                    _ev_tick = chain_ticks(_ev_tick, _gt_cap)
                 record_rollout(_s.eval_core,
                                EVAL_GREEDY(policy, packer, device,
                                            (goalsys.ramp_slot(_s.name).eval_ball
@@ -18862,6 +18929,21 @@ def main() -> None:
                 ev_tab[_i, 8] = _v
                 ev_tab[_i, 9] = 1.0
                 prog_note = ""
+                if _gt_cap is not None:
+                    # --greedy-tail-frac: the tails of this eval's failed episodes become the
+                    # pool share until the next eval (too few rows: the previous ones stay)
+                    _gt_rows, _ = cut_tails(_gt_cap.episodes, 1000.0 / TICK.ms, GT_SECS,
+                                            GT_SKIP, GT_EVERY, min_speed=GT_MINSPD)
+                    _gt_nf = sum(1 for _e in _gt_cap.episodes if _e[1] == "fail")
+                    if len(_gt_rows) >= 20:
+                        _gt_rows = _gt_rows.copy()
+                        _gt_rows["tick"] = 0
+                        _gt_rows["stuck_ticks"] = 0
+                        SPAWN_STATES = _gt_rows
+                        prog_note += f"  gtail {len(_gt_rows)} rows/{_gt_nf} fails"
+                    else:
+                        prog_note += (f"  gtail kept {0 if SPAWN_STATES is None else len(SPAWN_STATES)}"
+                                      f" ({len(_gt_rows)} new rows)")
                 p_prog = p_fin = float("nan")
                 p_nfin = 0
                 if _s.goal_field is not None:

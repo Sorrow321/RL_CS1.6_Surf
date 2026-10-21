@@ -3,10 +3,10 @@
  "round": 3,
  "final": false,
  "best": {
-  "score": 32.384,
-  "eval_file": "/home/steam/ar/runs/r3b2/r3b2_gt2/traj_8525971456.jsonl",
+  "score": 32.799,
+  "eval_file": "/home/steam/ar/runs/r3b2/r3b2_gt2/traj_8601468928.jsonl",
   "run": "r3b2_gt2",
-  "step": 8525971456,
+  "step": 8601468928,
   "ckpt": "/home/steam/ar/runs/r3b2/r3b2_gt2/ckpt_latest.pt",
   "recipe": [
    "--time-pen",
@@ -23,5 +23,5 @@
   "resume_from": "warm lineage: incumbent ckpt (r2b2_t1 ckpt_latest, 7,176,454,144) -> r3b2_tp0 (+ --time-pen 0 --surf-bonus 0, to 7,576M) -> r3b2_tp0x (to 7,740M) -> r3b2_gt (+ greedy-tail spawns 15%, to 7,972M) -> r3b2_gt2 (+ --respawn-min-speed 300); the spawn-states file is refreshed every 20 min from the run's own greedy recording (autoresearch/analysis/greedy_tail_loop.sh)",
   "commit": "a33cb45"
  },
- "summary": "H1: the 0.5/s time penalty made every dip detour worth less than the quick death it replaces; --time-pen 0 --surf-bonus 0 restored the CP2 detour in 50M steps and sent the greedy line into the cavity. Greedy-tail spawns (15% of spawns from the policy's own last 3 s before failure, refreshed every 20 min) + --respawn-min-speed 300: the greedy line learned the cavity loop (entry at the human's speed, ramp take-off +1,266, climb-out) and since 8,476M flies it through the tunnel into the room: best 32.384 (8,526M, CP2 entered), 7/9 episodes past 31.8% at 8,551-8,576M; incumbent 28.841. --speed-pot 2 was negative (priced out the cavity)."
+ "summary": "H1: the 0.5/s time penalty made every dip detour worth less than the quick death it replaces; --time-pen 0 --surf-bonus 0 restored the CP2 detour in 50M steps and sent the greedy line into the cavity. Greedy-tail spawns (15% of spawns from the policy's own last 3 s before failure, refreshed every 20 min) + --respawn-min-speed 300: the greedy line learned the cavity loop (entry at the human's speed, ramp take-off +1,266, climb-out) and since 8,476M flies it through the tunnel into the room: best 32.799 (8,601M, CP2 entered), 9/9 episodes through the loop at 8,627M; incumbent 28.841. --speed-pot 2 was negative (priced out the cavity)."
 }

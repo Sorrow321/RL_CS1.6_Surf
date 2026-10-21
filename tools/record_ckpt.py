@@ -96,6 +96,10 @@ TRAIN_ONLY = frozenset({
     # --spawn-states: a share of the TRAINING spawn pool drawn from a file of own states; a
     # recording spawns at the map start like the trainer's eval
     "spawn_states", "spawn_states_frac",
+    # --greedy-tail-frac: a share of the TRAINING spawn pool from the trainer's own greedy-eval
+    # tails; a recording spawns at the map start like the trainer's eval
+    "greedy_tail_frac", "greedy_tail_secs", "greedy_tail_skip", "greedy_tail_every",
+    "greedy_tail_min_speed",
     # --respawn-novel: a share of the TRAINING spawn pool moved to where the agent has never
     # been; a recording spawns at the map start like the trainer's eval
     "respawn_novel", "respawn_novel_frac", "respawn_novel_shell", "respawn_novel_shell_width",
