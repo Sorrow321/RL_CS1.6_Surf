@@ -1018,3 +1018,13 @@ line (it killed my local shell twice).
   (r2b2_t1 after 6,751M: 13 evals at 27.4-27.5; t1f3 / t05: 27.3-28.4, pit-locked). Prediction:
   within ~100-300M steps the greedy line leaves the pit dive (evals >= 28%), and then cavity
   entries in the greedy line.
+
+### 00:58 UTC: no box under the caps; retry loop
+
+* 00:54 `box.py rent` refused: nothing passes the whitelist + caps. Market at 00:57 (look only): the
+  cheapest single 4090s are $0.455-0.468/h (cap 0.45), 5090s $0.669+ (cap 0.60), 5080 $0.667 (cap
+  0.40), a 3090 $0.535 (cap 0.30). Same as round 2's first hour.
+* A background loop (scratchpad rent_loop.sh) retries `box.py rent --hours 2` every 3 min and, on
+  success, runs `box.py deploy --ckpt $AR_HOME/incumbent/ckpt.pt` and `box.py launch --resume
+  --run r3b4_tp0 --steps 4e8 --record-every 25e6 -- --time-pen 0 --surf-bonus 0` back to back, so
+  the box never idles.
