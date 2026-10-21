@@ -1587,3 +1587,20 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
   not built yet.
 * tests/python/test_eval_parallel.py: all 8 pass on CPU (the flag-off identity run took 18 min
   on the loaded host).
+
+### 14:10 UTC: NEW `--eval-idle-secs S` (with --eval-parallel)
+
+* An eval episode whose best field distance has not dropped by > 32 u for S seconds ends
+  `trunc` (its trailer carries `idle: 1`, the header `eval_idle_s`): the greedy episodes that
+  stop at ~63 s and live to the 300 s cap no longer set the eval's length (~40 s -> ~15 s at
+  S = 60). Its best progress is what it had reached, so score.py reads the same number; the
+  greedy-line pool treats it like any truncated episode (best-progress anchor). Default 0 =
+  off, ckpt restores, config key only when on, record_ckpt TRAIN_ONLY, refused without
+  --eval-parallel.
+* Tests (test_eval_parallel.py, now 10, all pass): a never-dropping field cuts every running
+  episode after exactly S ticks as trunc/idle; a field dropping 40 u per call gives the
+  byte-identical file of an uncapped recording; the trainer smoke runs idle-capped parallel
+  evals (some trailers idle), the config carries it and a bare resume restores it; refused
+  without --eval-parallel; flag-off bit-identical to the pre-change trainer.
+* c2 at 8,990M: 54.674 (median 54.1%) with T at the 0.25 cap - where c1 (cap 0.5) had
+  collapsed to 42.6%. One seed each.

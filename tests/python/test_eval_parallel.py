@@ -152,6 +152,38 @@ def test_a_wall_budget_truncates_the_open_episodes(tmp_path):
         record_rollout_parallel(_core(2, _pool(2)), _Pol(), pp, episodes=3)
 
 
+@needs_run
+def test_the_idle_cap_ends_an_episode_with_no_new_best_as_trunc(tmp_path):
+    """--eval-idle-secs: a field that never drops ends every still-running episode after
+    exactly ``idle_ticks`` rows as ``trunc`` with ``idle: 1``; a field that drops by more
+    than the 32 u threshold every tick never triggers it."""
+    from surfgym.record import record_rollout_parallel
+    pool = _pool(4)
+    flat = tmp_path / "flat.jsonl"
+    summ = record_rollout_parallel(_core(4, pool, ticks=2000), _Pol(), flat, episodes=4,
+                                   seed=2, idle_ticks=30,
+                                   d_fn=lambda o: np.full(len(o), 5000.0))
+    for (h, rows, tr), sm in zip(_episodes(flat), summ):
+        if tr["end"] == "trunc":
+            assert len(rows) == tr["ticks"] == 30 and tr["idle"] == 1 and sm["idle"] == 1
+        else:
+            assert tr["ticks"] < 30 and "idle" not in tr
+    # dropping 40 u per call: never idle (the reference run has no cap at all)
+    ref = tmp_path / "ref.jsonl"
+    record_rollout_parallel(_core(4, pool, ticks=200), _Pol(), ref, episodes=4, seed=2)
+    cnt = {"k": 0}
+
+    def falling(o):
+        cnt["k"] += 1
+        return np.full(len(o), 1e6 - 40.0 * cnt["k"])
+    run = tmp_path / "run.jsonl"
+    record_rollout_parallel(_core(4, pool, ticks=200), _Pol(), run, episodes=4, seed=2,
+                            idle_ticks=5, d_fn=falling)
+    assert run.read_bytes() == ref.read_bytes()
+    with pytest.raises(ValueError):
+        record_rollout_parallel(_core(2, _pool(2)), _Pol(), flat, idle_ticks=5)
+
+
 # ==========================================================================
 # (b) the greedy-line pool's per-env hook
 # ==========================================================================
@@ -222,7 +254,7 @@ def _cfg(run):
 
 
 PAR_SMOKE = ["--respawn-reservoir", "5000", "--record-every", "4096", "--eval-eps", "3",
-             "--eval-parallel", "1", "--unstuck", "--unstuck-reach", "eval",
+             "--eval-parallel", "1", "--eval-idle-secs", "1", "--unstuck", "--unstuck-reach", "eval",
              "--obs-compass", "1", "--obs-surf", "1", "--surf-bonus", "0",
              "--obs-pot-rate", "1", "--race-ratchet", "--time-pen", "0",
              "--ep-ticks", "600"]
@@ -245,12 +277,19 @@ def test_the_trainer_runs_parallel_evals_builds_the_greedy_pool_and_resumes():
     trajs = sorted((ROOT / "runs" / run).glob("traj_*.jsonl"))
     trajs = [t for t in trajs if re.fullmatch(r"traj_\d+\.jsonl", t.name)]
     assert len(trajs) >= 2
+    n_idle = 0
     for t in trajs:
         eps = _episodes(t)
         assert [e[0]["episode"] for e in eps] == [0, 1, 2]
         for h, rows, tr in eps:
             assert len(rows) == tr["ticks"] <= 600 and tr["end"] in ("fail", "trunc", "done")
-    assert _cfg(run)["eval_parallel"] == 1
+            assert h["eval_idle_s"] == 1.0
+            n_idle += int(tr.get("idle", 0))
+            if tr.get("idle"):
+                assert tr["end"] == "trunc" and tr["ticks"] >= 100
+    assert n_idle > 0       # an untrained greedy policy stalls inside a 6 s episode
+    assert "--eval-idle-secs 1: an eval episode with no new best" in out
+    assert _cfg(run)["eval_parallel"] == 1 and _cfg(run)["eval_idle_secs"] == 1.0
     ck = torch.load(ROOT / "runs" / run / "ckpt_final.pt", map_location="cpu",
                     weights_only=False)
     assert ck["respawn_greedy"]["rows"].dtype == STATE_DTYPE
@@ -261,9 +300,9 @@ def test_the_trainer_runs_parallel_evals_builds_the_greedy_pool_and_resumes():
                str(ROOT / "runs" / run / "ckpt_final.pt")] + SMOKE
               + ["--record-every", "4096", "--eval-eps", "3", "--steps", "20480"])
     assert r2.returncode == 0, r2.stdout[-4000:] + r2.stderr[-4000:]
-    assert "eval_parallel=1" in r2.stdout
+    assert "eval_parallel=1" in r2.stdout and "eval_idle_secs=1" in r2.stdout
     assert "--eval-parallel: the greedy eval's 3 episodes" in r2.stdout
-    assert _cfg(run2)["eval_parallel"] == 1
+    assert _cfg(run2)["eval_parallel"] == 1 and _cfg(run2)["eval_idle_secs"] == 1.0
     # the recorder reads the checkpoint (the record gate's own backend)
     rec = ROOT / "runs" / run / "rec_par.jsonl"
     r3 = _run([sys.executable, "-u", str(ROOT / "tools" / "record_ckpt.py"),
@@ -276,12 +315,15 @@ def test_the_trainer_runs_parallel_evals_builds_the_greedy_pool_and_resumes():
 
 @needs_run
 @pytest.mark.parametrize("extra,msg", [
-    (["--eval-stall", "1"], "--eval-parallel is not implemented with --eval-stall"),
-    (["--eval-mirror", "1"], "--eval-parallel is not implemented with --eval-mirror"),
+    (["--eval-parallel", "1", "--eval-stall", "1"],
+     "--eval-parallel is not implemented with --eval-stall"),
+    (["--eval-parallel", "1", "--eval-mirror", "1"],
+     "--eval-parallel is not implemented with --eval-mirror"),
+    (["--eval-idle-secs", "30"], "--eval-idle-secs S needs S >= 0 and --eval-parallel 1"),
 ])
 def test_untested_eval_paths_are_refused(extra, msg):
     r = _run([sys.executable, "-u", str(TRAIN), "--run", "evpar_bad"] + SMOKE
-             + ["--steps", "2048", "--eval-parallel", "1"] + extra)
+             + ["--steps", "2048"] + extra)
     shutil.rmtree(ROOT / "runs" / "evpar_bad", ignore_errors=True)
     assert r.returncode != 0 and msg in r.stdout + r.stderr, r.stdout[-2000:]
 

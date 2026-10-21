@@ -107,6 +107,9 @@ TRAIN_ONLY = frozenset({
     # --eval-parallel: the trainer's greedy eval runs its episodes side by side on a
     # multi-env eval core; a recording here is its own rollout and records nothing else
     "eval_parallel",
+    # --eval-idle-secs: when the trainer's parallel greedy eval stops recording an episode
+    # that has stopped progressing; a recording here plays its own episodes to their end
+    "eval_idle_secs",
     # --ramp-reward: what the TRAINING reward pays in the ramp-window task (arc progress, or +1
     # per target passed); a recording computes no training reward
     "ramp_reward",

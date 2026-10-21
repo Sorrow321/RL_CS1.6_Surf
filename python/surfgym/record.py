@@ -249,6 +249,9 @@ def record_rollout_parallel(
     on_tick: Optional[Callable[[int, np.ndarray, np.ndarray, np.ndarray, np.ndarray], None]] = None,
     episode_meta: Optional[Callable[[int], Dict[str, Any]]] = None,
     header_extra: Optional[Dict[str, Any]] = None,
+    idle_ticks: int = 0,
+    d_fn: Optional[Callable[[np.ndarray], np.ndarray]] = None,
+    idle_eps: float = 32.0,
 ) -> List[Dict[str, Any]]:
     """``record_rollout`` with the episodes run SIDE BY SIDE: env ``i`` of ``core`` plays
     episode ``i`` (its FIRST episode after the reset), all of them at once, and the file
@@ -266,7 +269,13 @@ def record_rollout_parallel(
     (``None`` = until every recorded episode ends; the core's own episode cap truncates
     each one); an episode still open when it runs out ends ``trunc``. ``on_tick`` is
     called once per tick with every env's pre-step snapshot, exactly as in
-    ``record_rollout``. Returns one summary per recorded episode, in env order."""
+    ``record_rollout``. Returns one summary per recorded episode, in env order.
+
+    ``idle_ticks`` > 0 with ``d_fn`` (origins (k, 3) -> field distance, non-finite = off the
+    field) is ``--eval-idle-secs``: an episode whose best distance has not dropped by more
+    than ``idle_eps`` for ``idle_ticks`` ticks ends ``trunc`` (the recording stops spending
+    ticks on it) and its trailer carries ``"idle": 1``. Its best progress is whatever it had
+    reached; 0 (the default) records every episode to its own end."""
     n_env = int(core.num_envs)
     n = n_env if episodes is None else int(episodes)
     if not 1 <= n <= n_env:
@@ -307,6 +316,12 @@ def record_rollout_parallel(
     ep_return = [0.0] * n
     best_progress = [0.0] * n
     ends: List[Optional[str]] = [None] * n
+    idle = [False] * n
+    idle_ticks = int(idle_ticks or 0)
+    if idle_ticks > 0 and d_fn is None:
+        raise ValueError("record_rollout_parallel: idle_ticks needs d_fn")
+    best_d = np.full(n, np.inf)
+    last_gain = np.zeros(n, np.int64)
     open_ = list(range(n))
     total_ticks = 0
     while open_ and (max_ticks is None or total_ticks < max_ticks):
@@ -319,6 +334,15 @@ def record_rollout_parallel(
             obs, rewards, done, trunc, terminal_obs = core.step(actions, view=view)
         if on_tick is not None:
             on_tick(total_ticks, states, rewards, done, trunc)
+        if idle_ticks > 0:
+            _o = np.asarray(open_, np.int64)
+            _d = np.asarray(d_fn(np.asarray(states["origin"][_o], np.float64)), np.float64)
+            _d = np.where(np.isfinite(_d), _d, np.inf)
+            for _i, _dv in zip(open_, _d):
+                if _dv < best_d[_i] - idle_eps or not np.isfinite(best_d[_i]):
+                    if np.isfinite(_dv):
+                        best_d[_i] = _dv
+                        last_gain[_i] = ep_ticks[_i]
         still = []
         for i in open_:
             s0 = states[i]
@@ -354,6 +378,9 @@ def record_rollout_parallel(
                                else "fail")
                 else:
                     ends[i] = "trunc"
+            elif idle_ticks > 0 and ep_ticks[i] - last_gain[i] >= idle_ticks:
+                ends[i] = "trunc"          # --eval-idle-secs: no new best for the window
+                idle[i] = True
             else:
                 still.append(i)
         open_ = still
@@ -373,6 +400,8 @@ def record_rollout_parallel(
                 "ticks": ep_ticks[i],
                 "best_progress": _round(best_progress[i], 2),
             }
+            if idle[i]:
+                trailer["idle"] = 1
             if _ee is not None:
                 trailer.update(_ee(i) or {})
             f.write(json.dumps(trailer, separators=(",", ":")) + "\n")

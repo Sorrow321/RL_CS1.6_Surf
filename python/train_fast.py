@@ -5776,6 +5776,13 @@ def main() -> None:
                          "sequential eval was 45-49%% of a sidistic run's wall clock once "
                          "episodes lived to the 300 s cap). 0 = off (default); ckpt "
                          "restores")
+    ap.add_argument("--eval-idle-secs", type=float, default=None,
+                    help="with --eval-parallel 1: an eval episode whose best field distance "
+                         "has not dropped by more than 32 u for this many seconds ends "
+                         "'trunc' (trailer idle: 1; the header carries eval_idle_s), so a "
+                         "greedy line that stops and lives on no longer sets the eval's "
+                         "length. Its best progress is what it had reached. 0 = off "
+                         "(default); ckpt restores")
     ap.add_argument("--ckpt-every", type=float, default=10e6)
     ap.add_argument("--save-best", type=int, default=0, choices=(0, 1),
                     help="single-map race runs: after every greedy eval with finishes, save "
@@ -7459,7 +7466,7 @@ def main() -> None:
         # resume continues the arm it came from
         for _k, _ty in (("aug_mirror", float), ("eval_mirror", int), ("aug_drop", float),
                         ("aug_noise", float), ("aug_shift", int), ("aug_coef", float),
-                        ("eval_parallel", int)):
+                        ("eval_parallel", int), ("eval_idle_secs", float)):
             if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
                 setattr(args, _k, _ty(ck_cfg[_k]))
                 restored.append(f"{_k}={getattr(args, _k):g}")
@@ -8305,7 +8312,8 @@ def main() -> None:
     if args.dropout is None:
         args.dropout = 0.0
     for _k, _v in (("aug_mirror", 0.0), ("eval_mirror", 0), ("aug_drop", 0.0),
-                   ("aug_noise", 0.0), ("aug_shift", 0), ("eval_parallel", 0)):
+                   ("aug_noise", 0.0), ("aug_shift", 0), ("eval_parallel", 0),
+                   ("eval_idle_secs", 0.0)):
         if getattr(args, _k) is None:
             setattr(args, _k, _v)
     if args.aug_coef is None:
@@ -12460,6 +12468,13 @@ def main() -> None:
         print(f"--eval-parallel: the greedy eval's {EVAL_N} episodes run side by side on an "
               f"{EVAL_N}-env eval core (env i plays episode i; same file format, same "
               "platform-pool spawn draw per episode)")
+    EVAL_IDLE_S = float(args.eval_idle_secs or 0.0)
+    if EVAL_IDLE_S < 0.0 or (EVAL_IDLE_S > 0.0 and not EVAL_PAR):
+        raise SystemExit("--eval-idle-secs S needs S >= 0 and --eval-parallel 1 (it is the "
+                         "parallel recorder's rule)")
+    if EVAL_IDLE_S > 0.0:
+        print(f"--eval-idle-secs {EVAL_IDLE_S:g}: an eval episode with no new best (> 32 u "
+              f"down the field) for {EVAL_IDLE_S:g} s ends 'trunc' (idle: 1 in its trailer)")
     retn = ReturnNorm()
     if RETN:
         print(f"--ret-norm: the critic predicts NORMALIZED returns "
@@ -13579,6 +13594,9 @@ def main() -> None:
         # --eval-parallel: written ONLY when on (a flag-off run.json is the control's byte
         # for byte); record_ckpt.py declares it TRAIN_ONLY (it changes no recorded state)
         meta["config"]["eval_parallel"] = 1
+    if float(args.eval_idle_secs or 0.0) > 0.0:
+        # --eval-idle-secs: written ONLY when on, like eval_parallel (TRAIN_ONLY in record_ckpt)
+        meta["config"]["eval_idle_secs"] = float(args.eval_idle_secs)
     if AUG_ON:
         meta["config"]["aug_drop"] = float(args.aug_drop)
         meta["config"]["aug_noise"] = float(args.aug_noise)
@@ -18942,6 +18960,15 @@ def main() -> None:
                                            if EVAL_PAR else GREEDY.hook())
                 # --eval-parallel: the n_rec episodes side by side, env i = episode i
                 _ev_rec = record_rollout_parallel if EVAL_PAR else record_rollout
+                _ev_kw = {}
+                if EVAL_IDLE_S > 0.0 and _s.goal_field is not None:
+                    # --eval-idle-secs: the parallel recorder's idle cap on this map's field
+                    _hdr = dict(_hdr, eval_idle_s=EVAL_IDLE_S)
+
+                    def _idle_d(o, _f=_s.goal_field):
+                        _d = np.asarray(_f.sample(o), np.float64)
+                        return np.where(_d < _f.reach_max - 0.5 * _f.cell, _d, np.inf)
+                    _ev_kw = {"idle_ticks": TICK.secs_to_ticks(EVAL_IDLE_S), "d_fn": _idle_d}
                 _ev_sum = _ev_rec(_s.eval_core,
                                EVAL_GREEDY(policy, packer, device,
                                            (goalsys.ramp_slot(_s.name).eval_ball
@@ -18981,7 +19008,7 @@ def main() -> None:
                                max_ticks=n_rec * args.ep_ticks,
                                seed=global_step & 0x7FFFFFFF,
                                on_tick=_ev_tick, episode_meta=_ev_meta,
-                               header_extra=_hdr)
+                               header_extra=_hdr, **_ev_kw)
                 if _rg_cap:
                     _tpat = tuple(getattr(_s.eval_core, "tick_pattern",
                                           (int(_s.eval_core.config.phys.msec),)))
