@@ -3,29 +3,16 @@
  "round": 3,
  "final": false,
  "best": {
-  "score": 27.486,
-  "eval_file": "/home/steam/ar/runs/r3b4/r3b4_tpsb/traj_7176978432.jsonl",
-  "run": "r3b4_tpsb",
-  "step": 7176978432,
-  "ckpt": null,
+  "score": 27.71,
+  "eval_file": "/home/steam/ar/runs/r3b4/r3b4_ctl/traj_1661468672.jsonl",
+  "run": "r3b4_ctl",
+  "step": 1661468672,
+  "ckpt": "/home/steam/ar/runs/r3b4/r3b4_ctl/ckpt_latest.pt (pulled at the end of the run)",
   "recipe": [
-   "--time-pen",
-   "0",
-   "--surf-bonus",
-   "0",
-   "--ez-eps",
-   "0.04",
-   "--ez-front",
-   "0.15",
-   "--sil-coef",
-   "0.1",
-   "--sil-burst-only",
-   "1",
-   "--sil-view-mse",
-   "1"
+   "(config.incumbent_recipe, unchanged: the same-box control)"
   ],
-  "resume_from": "incumbent ckpt (r2b2_t1, 7,176,454,144)",
+  "resume_from": null,
   "commit": "c39a439"
  },
- "summary": "Round 3 (r3b4), box from 04:48 (5090). Arms: warm incumbent + time-pen 0 + bursts + NEW burst-SIL (no flip of the CP2 pit dive, 27.49 = resume eval); scratch time-pen 0 (parks on a floor at 16%: the per-second term is a suicide-vs-parking dilemma); scratch + burst SIL (trap exit on pace, stuck at the window 1.1B, regressed under T 2). Running r3b4_scc: scratch with the T-conditioned family (--curiosity-cond) instead of the unstuck T, so exploration never touches the scored greedy (T=0) member. Best so far 27.486 (below the incumbent's 28.841)."
+ "summary": "Round 3 (r3b4), box from 04:48 (5090). Scratch arms vs a SAME-BOX control: time-pen 0 parks at 16% (suicide-vs-parking dilemma of the per-second term), burst SIL (new --sil-burst-only/--sil-view-mse) ~100-125M behind at the trap and window and never passed the window, curiosity-cond family never left the trap; warm incumbent + time-pen 0 + bursts did not flip the CP2 pit dive. The control (incumbent recipe, scratch) passes the window at 856M, reaches CP2 at 957M and at 1.66B flies the corridor-east detour in 5/9 greedy episodes: best 27.710, still climbing to wrap-up. Below the incumbent's 28.841."
 }

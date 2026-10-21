@@ -1334,3 +1334,9 @@ later, x ~0.9) trims the time-pen-0 margin but keeps the median detour ahead (~2
   CP2 wall by **~957M** (27.2%; ratnov 651M), then 27.1-27.4% to 1,108M (T 0.17, training ceiling 27,253 u).
   Same pattern as ratnov, ~300M later past the window. Running on: ratnov crossed the pit ~1B steps after
   reaching the wall.
+* 09:34 UTC, r3b4_ctl at 1.71B: evals 1,208-1,560M 27.0-27.45% (pit dives), then the detour appears in
+  the greedy line: 1,611M 3/9 and **1,661M 5/9 episodes go under plate *45 to the east ramp** (evsum tags
+  under45 + ramp+), turn round and die in the pit floor's east part (x ~4,950, z ~10,785) or short of the
+  floor's west edge in the slot; best **27.710** (1,661M, ep 7 at 29.0 s) - this branch's best eval.
+  Training ceiling 28,082 u (28.72%): stochastic episodes past the pit. T 2.00 (stuck 653M) - some
+  episodes degrade (16% deaths at 1,611M). The stage just before ratnov's 1,633M crossing.
