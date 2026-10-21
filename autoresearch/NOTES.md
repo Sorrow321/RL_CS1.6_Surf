@@ -1214,3 +1214,18 @@ line (it killed my local shell twice).
   +1.5e9 steps. Everything else restored (time-pen 0, surf-bonus 0, greedy spawns 0.15,
   int-real-only, band novel rows, ratchet). Question: at T <= 1 does the line hold and get past the
   x ~-700 wall? r3b3_tp0x was stopped at ~4,840M (its last snapshot ckpt_4836556800 is on the box).
+
+### 04:15 UTC: r3b3_t1 (T cap 1) holds the CP2 line; the obstacle at x ~-700 is a kill-wrapped block
+
+* r3b3_t1 evals 4,587-4,763M: frontier 31,567-31,815 u (32.3-32.5%) every eval, deaths at 37-38 s
+  (one wobble at 4,788M: 31,036, six deaths at 28 s). T held at 1.00. So the cap keeps the line;
+  no eval past the wall yet; training ceiling flat at 32,141 u since ~4.48B.
+* Geometry (bsp entities, ANALYSIS ONLY): at x -720..-464, |y| <= 128 a block (func_wall *144, z
+  10,580-10,764) wrapped in kill teleports - *124 (its volume), *34 / *35 (no_jump) plates on its top
+  at z 10,768-10,802 (|y| <= 160), *66 under it; a kill floor *112 at z ~10,578 over x -784..-144,
+  |y| <= 736; further west a thin wall *145 (x ~-928, z 10,136-10,288) with a kill plate *104 on top
+  (z ~10,320) and a kill plate *43 at z ~10,100 (x -1,388..-944). The greedy line flies west at
+  |y| < 145, z ~10,800-10,900, straight into the block's kill wrap.
+* The training ceiling's d (65,627) sits past the block: x -850..-1,170, z 9,770-10,500 (lower,
+  west). So a real training episode has already found the way around and down; every earlier gate
+  of this lineage went ceiling-first, greedy line 100-400M steps later.
