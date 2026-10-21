@@ -1196,3 +1196,21 @@ line (it killed my local shell twice).
   ~34.8 s through CP2 (sgcp_2, x 768-816) climbing -> west at z ~10,900 (35.75-36.25 s) -> **stops
   at x ~-700 at 36.5 s (v ~0 horizontally) and falls to a kill at z ~10,613**. 8 of 9 episodes die
   there (x -671..-711, |y| < 145).
+
+### 03:50 UTC: r3b3_tp0x regressed when the unstuck T climbed past ~1.5; restart at T cap 1 (r3b3_t1)
+
+* r3b3_tp0x evals 4,463-4,815M: 32.512, **32.760** (4,488M, best 32.76%, CP2 - the branch's best),
+  32.518, 32.537, 32.546, 32.212, 32.292 (median 28.0), then **27.924, 27.662, 27.245, 24.276,
+  27.313, 31.222, 28.238, 28.347** (4,639-4,815M: the greedy line back at the CP2 approach / pit).
+* The unstuck T over the run (progress.csv): 1.72 at the resume -> 0.39 (4,350M) after the 4.15-4.20B
+  bests, then rising (no +500 u eval best after 31,626 u at ~4.20B: 32.76% was only +200 u) ->
+  1.05 (4,500M), 1.30 (4,550M), 1.55 (4,600M), 1.80 (4,650M), 2.00 from 4,700M. The evals were
+  32.3-32.8 while T was 0.39-1.3 and collapsed when it passed ~1.5-1.8.
+* So with the time penalty gone, LOW T no longer breaks the line (arm 2's collapse at T ~0.4 was the
+  time-penalty basin); HIGH T does (the noise destroys the precise CP2 sequence in the training
+  distribution). Round 2 also had its best line at T cap 1.
+* **r3b3_t1** (03:49): resume of r3b3_tp0x/ckpt_4536139776.pt (md5 378e14a3..., inside the good
+  window: evals 32.52-32.55 around it; restored T 1.23) + `--unstuck-max 1 --ckpt-every 1e8`,
+  +1.5e9 steps. Everything else restored (time-pen 0, surf-bonus 0, greedy spawns 0.15,
+  int-real-only, band novel rows, ratchet). Question: at T <= 1 does the line hold and get past the
+  x ~-700 wall? r3b3_tp0x was stopped at ~4,840M (its last snapshot ckpt_4836556800 is on the box).
