@@ -48,15 +48,21 @@ def as_truncated(summaries, idx) -> list:
 
 
 class GreedyLinePool:
-    def __init__(self, frac: float, window=(0.5, 5.0), seed: int = 0):
+    def __init__(self, frac: float, window=(0.5, 5.0), seed: int = 0, stuck: int = 0):
         frac = float(frac)
         if not 0.0 < frac < 1.0:
             raise ValueError(f"--respawn-greedy F needs 0 < F < 1, got {frac!r}")
         lo, hi = (float(v) for v in window)
         if not 0.0 <= lo < hi:
             raise ValueError(f"--respawn-greedy-window LO HI needs 0 <= LO < HI, got {lo!r} {hi!r}")
+        if int(stuck) < 0:
+            raise ValueError(f"--respawn-greedy-stuck N needs N >= 0, got {stuck!r}")
         self.frac = frac
         self.lo, self.hi = lo, hi
+        # --respawn-greedy-stuck N: also N evenly spaced states of each episode's STALLED
+        # stretch (its best-progress tick to its end) - where the deployed line wanders once it
+        # stops gaining. 0 = off: the pool is the two anchors' windows, as before
+        self.stuck = int(stuck)
         self.rng = np.random.default_rng(int(seed))
         self.rows = np.zeros(0, STATE_DTYPE)
         self.info = {"eps": 0, "fail": 0, "deaths_s": []}
@@ -146,6 +152,10 @@ class GreedyLinePool:
                     if tb < n - hi_t and tb > 0:
                         idx.append(np.arange(max(0, tb - hi_t), tb + 1))
                         stops.append(round(tb / per_s, 2))
+                        if self.stuck > 0:
+                            # the stalled stretch after the stop, evenly spaced
+                            idx.append(np.unique(np.linspace(
+                                tb, n - 1, num=min(self.stuck, n - tb)).astype(np.int64)))
             if idx:
                 keep.append(ep[np.unique(np.concatenate(idx))])
                 n_used += 1
