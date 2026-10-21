@@ -1881,3 +1881,14 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
   weights; if c7's latest still stops at the dip, pull the snapshot whose evals were better
   (ckpt_12694061056: the evals around it 61.08 / 60.99; ckpt_12093227008 sits 29M steps
   before the 63.484 eval) and say so here.
+
+### 21:24 UTC: c7 stopped (12.98B); r4b4_c8 = consolidation from the 12.69B snapshot, T cap 0.1
+
+* r4b4_c7 (11.39 -> 12.98B, kill-aware): best 63.484 (12,123M, CP5); its last ~10 evals stopped at
+  the 57.7% dip turnaround. Snapshots ckpt_11492392960 ... ckpt_12894339072 + ckpt_latest stay on
+  the box; c7's evals and progress pulled.
+* **r4b4_c8** (21:22): c7's ckpt_12694061056 (md5 497bd88a...; the evals around it 61.08 / 60.99)
+  + `--unstuck-max 0.1` (T 0.25 -> 0.1; kill-aware, bursts, greedy rows, eval-parallel / idle
+  restored), to wrap-up. Why: 2.8 h left, the line wobbles between 57.7 and 61.5 at T 0.25;
+  consolidating it (more evals through the bowl and CP5) raises the chance of a new best and
+  leaves a better hand-on checkpoint. Round 3's precision gates also moved at lower T.
