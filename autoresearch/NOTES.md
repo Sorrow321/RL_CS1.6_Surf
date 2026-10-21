@@ -1136,3 +1136,33 @@ window, C = inside the cavity under the pit slab, T = tunnel lane, R = room; ana
   the lower opening (arriving at z ~11,100-11,150, the opening's top is ~11,100); 1 of 4 entered and
   parked on the platform. The entry itself is a precision move with a ~50 u tolerance (round 2's 6.35B
   missed it by 55 u, below). Benches only with the box idle.
+
+### 03:20 UTC: BREAKTHROUGH - arm 4's greedy line goes THROUGH the tunnel into the room: 29.955
+
+* r3b1_ifp (incumbent ckpt + `--unstuck-max 0 --fail-pen 10 --eval-stall 1 --surf-bonus 0`, 7,176M ->
+  7,777M, done; avg 142k steps/s with evals). Evals after the tunnel-dive phase:
+
+  | step | score | greedy episodes past the tunnel (into the room) |
+  |---|---|---|
+  | 7,554M | 29.595 | 1 / 9 |
+  | 7,579M | 29.721 | 1 / 9 |
+  | 7,605M | 29.789 | 2 / 9 |
+  | 7,655M | **29.904** | **6 / 9** (median 29.71%) |
+  | 7,730M | **29.955** | 4 / 9 |
+
+  Unstuck best (eval frontier) 27,916 -> 28,934 u; training ceiling 29,395 -> 29,537 u (30.21%).
+* **How it gets through** (7,730M, episode 1): at the -y window (27.4-27.8 s) it bounces off the window
+  frame (v flips (-1,062, -1,293) -> (838, -1,274) -> (1,147, 642) -> (-553, 1,066)), which kills its
+  horizontal speed to ~1,195 u/s and sets up the descent; it reaches the tunnel's east end at z 11,169
+  (ceiling ~11,180) with vz -690, loses only 154 u over the tunnel and leaves it at x 1,952, z ~11,000
+  (28.1 s). Round 2's "physically closed" bound assumed free flight at constant horizontal speed; a
+  collision breaks that assumption. The cavity is NOT needed for this passage.
+* Then the room (28.2 s), a curve north (vy +970..+1,180), the drop east of *20's end (x 1,778-1,819),
+  west under *20, and death at the void's bottom, z ~9,565-9,860, x 1,268-1,583 (29.2-29.3 s). The human
+  hits a ramp there at (1,112, 236, 9,730) at 34.5 s and turns up (vz -112 -> +1,186): the next skill.
+* Why fail-pen did it: under the old reward a tunnel dive that dies at the tunnel's end had banked all
+  its progress and lost nothing by dying; with death charged as never finishing, only SURVIVAL past the
+  tunnel beats it, and the policy found a survivable line within ~50M steps of reaching the limit.
+* Checkpoint: /home/steam/ar/runs/r3b1/r3b1_ifp/ckpt_final.pt (7,776,763,904, md5 51e191d1...), pulled.
+* **r3b1_ifpx** (03:14): bare resume of that checkpoint, same flags, +1.5e9 steps (to 9.28B), evals every
+  25M. EXTENDED per PROTOCOL: a gate nobody cleared (the tunnel -> room) and a +1.1 lead.
