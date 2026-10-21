@@ -1352,3 +1352,7 @@ later, x ~0.9) trims the time-pen-0 margin but keeps the median detour ahead (~2
   evals every 25M until wrap-up. Round 2's r2b2_t1 did exactly this at the same stage (detour learned,
   pit crossing not in the greedy line, T pinned at 2) and got 28.841 within 25M steps: T 2 degrades the
   greedy line, and the stochastic policy here already gets past the pit (ceiling 28.7%).
+* 10:27 UTC, r3b4_ctlt1 (T cap 1 from 2,217M): resume eval 26.41, then **27.711** at 2,242M (the
+  branch's best by 0.001), then 14 evals at 27.30-27.54 (median 27.2-27.5): the greedy line settled into
+  the CP2 pit dive - round 2's r2b2_t1 pattern (a transient, then the dive), without the crossing.
+  T 1.00; training ceiling 28,113 u (28.76%). Left running for more eval draws until wrap-up.

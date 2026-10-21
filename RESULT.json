@@ -3,15 +3,17 @@
  "round": 3,
  "final": false,
  "best": {
-  "score": 27.71,
-  "eval_file": "/home/steam/ar/runs/r3b4/r3b4_ctl/traj_1661468672.jsonl",
-  "run": "r3b4_ctl",
-  "step": 1661468672,
-  "ckpt": "/home/steam/ar/runs/r3b4/r3b4_ctl/ckpt_latest.pt (pulled at the end of the run)",
+  "score": 27.711,
+  "eval_file": "/home/steam/ar/runs/r3b4/r3b4_ctlt1/traj_2242379776.jsonl",
+  "run": "r3b4_ctlt1",
+  "step": 2242379776,
+  "ckpt": "/home/steam/ar/runs/r3b4/r3b4_ctlt1/ckpt_latest.pt (pulled at wrap-up)",
   "recipe": [
-   "(config.incumbent_recipe, unchanged: the same-box control)"
+   "(config.incumbent_recipe from scratch: the same-box control r3b4_ctl to 2.217B)",
+   "--unstuck-max",
+   "1"
   ],
-  "resume_from": null,
+  "resume_from": "r3b4_ctl/ckpt_latest.pt (2,216,689,664, md5 8e08239d...)",
   "commit": "c39a439"
  },
  "summary": "Round 3 (r3b4), box from 04:48 (5090). Scratch arms vs a SAME-BOX control: time-pen 0 parks at 16% (suicide-vs-parking dilemma of the per-second term), burst SIL (new --sil-burst-only/--sil-view-mse) ~100-125M behind at the trap and window and never passed the window, curiosity-cond family never left the trap; warm incumbent + time-pen 0 + bursts did not flip the CP2 pit dive. The control (incumbent recipe, scratch) passes the window at 856M, reaches CP2 at 957M and at 1.66B flies the corridor-east detour in 5/9 greedy episodes: best 27.710, still climbing to wrap-up. Below the incumbent's 28.841."
