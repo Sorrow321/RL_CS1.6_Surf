@@ -1846,3 +1846,13 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
 * Kept running: the line re-learns ~2-5% per 25M steps (44.5% at +230M), the score's best
   (60.548) is safe, and c6 had sat at the window for ~1.5B steps. If the line is back near
   60% by ~20:00 the masked field's window gradient gets its test; if not, revert to c6.
+
+### 19:27 UTC: c7 recovered to 60.5% and its training ceiling went past the hole
+
+* r4b4_c7 evals 11.62-11.90B: 44.5, 49.0, 56.0, 42.7, 56.0, 57.8, 57.7, 5.5 (a collapse), 47.3,
+  58.5, **60.492** (11,871M, the bowl again), 57.6. The line came back in ~480M steps.
+* **Masked-field training ceiling 59,740 -> 61,023 u** (of the masked start 98,888): d_best
+  ~37,865 masked ~= 37,730 standard = **~61.4% on the standard field, past the hole** - the
+  first real training episode beyond the bowl's 60.6% in ~2B steps (c4-c6 never moved it).
+  The greedy line has not followed yet (best greedy episodes still stop in the west valley at
+  60.5%). Extended (a gate the plain-field runs never cleared in training): c7 runs on.
