@@ -1281,3 +1281,12 @@ cavity (entry speed, ramp vz) and complete the loop? 30 min first.
   (x -1,724 -> +115, 35.0-37.0%). So this gate is "start descending before the wall" - a gradient under
   the ratchet (d falls as the agent drops), not a dip; the greedy tails (34.5-37 s of the line) and the
   novel band (rows within 5% of d0 behind the 32.9% ceiling) both sit on it.
+
+### 05:15 UTC: r3b2_gt3 at 8.92B - the loop is the greedy line's default; the wall after CP2 holds
+
+* 9 evals (8,715-8,916M): 32.32-32.57 (best **32.567**), 7-9/9 episodes through the loop in every eval,
+  all dying at the wall after CP2 (~37 s). The in-trainer tail re-cuts 475-495 rows from 9 failed
+  episodes at every eval.
+* Training ceiling 32,856 u (33.6%): stochastic episodes already get under that wall (the field's descent
+  path passes 33.6% at ~(-1,450, 10,120)). The eval frontier has not beaten 32,067 + 500 u for 313M
+  steps, so T is warming again (0.28 -> 0.67).
