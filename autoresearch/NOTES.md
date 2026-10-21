@@ -1305,3 +1305,16 @@ line (it killed my local shell twice).
   int-real-only, ez off - all restored), +1.5e9 steps, evals every 25M. The block gate is moving
   (one eval episode under it at 5,639M; retries at ~40 s); the planned from-scratch test of the
   recipe waits until it stalls.
+
+### 06:45 UTC: r3b3_t05x stalls at the block; concentrated greedy-line practice (r3b3_gw)
+
+* r3b3_t05x 5,937-6,240M (12 evals): frontier 31,041-31,862 u, no eval above 32.775; ceiling flat at
+  32,177 u. Stopped; snapshot ckpt_6237978624 (md5 6add4a8b...).
+* Why the gate is slow (from the probe): at the training temperature most attempts from the CP2
+  area die before the block, and the default greedy window (5..0.5 s before the death) puts only
+  ~1/9 of its rows within ~1 s of the block -> ~2% of spawns practise the gate itself.
+* **r3b3_gw** (06:44): resume of that snapshot + `--respawn-greedy 0.3 --respawn-greedy-window 0.25
+  2.0` (30% of the non-start rows from 2..0.25 s before each greedy death / best-progress stop) +
+  `--ckpt-every 1e8`; everything else restored (T cap 0.5, time-pen 0, ...). 400M first.
+* Its resume eval (the snapshot, 6,238M): deaths at 32-290 s - the line now often SURVIVES at the
+  block for 47-290 s (best-progress stops at 36.1-41.8 s) instead of dying there.
