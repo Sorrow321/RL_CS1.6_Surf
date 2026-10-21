@@ -36,6 +36,11 @@ REFERENCE = {
     # same copy ratio as the 5090 reference. Its 250 W of 360 W power limit did
     # not bind (90 W under the GEMM), so the reference decides, not the cap
     "NVIDIA GeForce RTX 5080": {"gbps": 816.0, "tflops": 112.0, "sm_mhz": 2745},
+    # vast box 57125445 (France), 2026-10-21 (r4b2): 97 TFLOPS is the 4080's dense bf16
+    # spec with fp32 accumulate (measured 90 = 93%), 610 GB/s is 85% of its 717 GB/s (the
+    # 5080 / 5090 copy ratio; measured 601). Its 245 W of 340 W limit did not bind (96 W
+    # and 2,400 MHz under the GEMM), so the reference decides, not the cap
+    "NVIDIA GeForce RTX 4080": {"gbps": 610.0, "tflops": 97.0, "sm_mhz": 2505},
 }
 
 
