@@ -1415,3 +1415,77 @@ line (it killed my local shell twice).
   48.775, 49.808, 50.125, 50.613, 47.630, 50.637, 50.598, **50.827 (8,441M)**; all CP3; medians
   16-49.5% (the line wobbles while the frontier moves). Training ceiling 53,121 u (54.3%); reservoir
   min depth 47.35%; T 0.09; 190k steps/s.
+
+### 11:57 UTC: the last continuation - 54.674
+
+* r3b3_gwx2 8,466-8,819M: 50.571, 54.040, 44.516, 50.574, 50.496, 54.166, 53.778, 48.863, 54.378, 54.321,
+  **54.674 (8,718M, median 47.4%)**, 54.585, 54.636, 54.591, 54.468; all CP3. Ended at 8,838,971,392 (avg
+  168k steps/s); ckpt_final pulled by a direct scp (box.py pull --ckpt hung twice, 10 min and 6.5 min, with no
+  scp child; a plain scp took 12 s) and md5-checked: d3d06fb18e15b261bba72d0740bfdab3.
+
+## ROUND 3 LESSON (r3b3) - written at wrap-up
+
+**Result:** best greedy eval from the true start **54.674** (r3b3_gwx2 at 8,717,860,864; incumbent 28.841): CP3,
+the greedy line past the human's whole CP2 sequence, a kill-wrapped block and a thin wall past CP2, CP3 and the
+descending legs beyond. 0 finishes. Hand-on checkpoint: /home/steam/ar/runs/r3b3/r3b3_gwx2/ckpt_final.pt (8,838,971,392, md5 d3d06fb1...).
+
+**The lineage of the best run** (warm, from round 2's from-scratch band checkpoint r2b2_sband2, 3.336B; T cap 2):
+sgir (+ --respawn-greedy 0.15 --int-real-only 1; 29.823 once, then pit-locked) -> tp0 (+ --time-pen 0
+--surf-bonus 0 --critic-warmup 20) -> tp0x -> t1 (T cap 1, from the 4,536M snapshot) -> ezf (+ frontier ez bursts,
+null) -> t05 (T cap 0.5, bursts off) -> t05x -> gw (--respawn-greedy 0.3 --respawn-greedy-window 0.25 2.0) -> gwx ->
+gwx2 (bare resumes).
+
+**What worked (in order of effect):**
+1. **`--time-pen 0 --surf-bonus 0`** (warm, with a 20-update critic warmup). Under the 0.5/s time penalty a slow
+   stretch is worth less than dying early: the CP2 detour (2.8 s at no progress) netted -0.6 vs the pit dive, the
+   cavity dip (~3.5 s) -1.75. The greedy line drifted between modes and locked into the pit in every warm lineage
+   (rounds 1-2, arm 2). Removing the charge on the pit-locked checkpoint: the greedy line crossed the pit 25M steps
+   after the warmup, entered the cavity by ~100M, flew the human's cavity route at ~380M (30.35%), CP2 at ~400M
+   (31.8%). The trainer refuses a surf bonus >= the time penalty (farmable), hence --surf-bonus 0.
+2. **The unstuck T capped low (0.5).** Without the time penalty the line held at T 0.4-1.3 and broke when T climbed
+   past ~1.5 (4.6B: evals 32.5 -> 24-28). At T 1 the stochastic policy could not even reach the post-CP2 block from
+   its own pre-block greedy states (probe: 0/24), so training hardly practised the gate.
+3. **Greedy-line spawns concentrated at the greedy line's failure** (NEW --respawn-greedy F
+   --respawn-greedy-window LO HI): F of the non-start spawn rows are the policy's own greedy-eval states from HI to LO s
+   before each failed greedy episode's end (or its best-progress stop), rebuilt every eval. With 0.15 / 5..0.5 s the
+   block did not move in ~1.7B steps; with 0.3 / 2..0.25 s the training ceiling moved past it in ~230M steps and the
+   greedy line followed after ~550M - then the gates past it fell one per ~150-300M steps (32.8 -> 35.4 -> 39.4 ->
+   42.6 -> 47.9 -> 50.8 -> 54.7).
+
+**What did not work / caveats:**
+* Greedy-line spawns where the policy's sampling never succeeds from the greedy states are useless (arm 1, the CP2
+  pit under the time penalty: 0/30 crossings in a probe; one flip in 8 evals). They need a frontier the stochastic
+  policy can sometimes pass.
+* Frontier-only ez bursts (--ez-eps 0.05 --ez-front 0.04) at the block: null in 250M (a burst cannot change altitude
+  in the air; the band starts after the ramp that sets it).
+* --int-real-only (NEW): on a warm start the restored count table already holds the novel rows' visits, so it mostly
+  stopped paying novel-row episodes (int/ep 1.16 -> 0.26); its effect is not separated from the greedy spawns.
+* approx_kl read 0.6-14 per update at T 0.5 (vs 0.03-0.24 at T 1) with the line and returns intact - not explained.
+* --sil-tempered / --sil-top (NEW, CPU-tested) never ran on the box.
+
+**For the next round:**
+* Start from the hand-on checkpoint (bare resume restores every flag above). Watch T: keep the cap at 0.5; a T rise
+  past ~1.5 broke the line. Keep evals every 25M and --ckpt-every 1e8 (good weights get overwritten otherwise).
+* The open science: does the recipe work FROM SCRATCH? Untested: --time-pen 0 --surf-bonus 0 + T cap 0.5-1 +
+  --respawn-greedy 0.3 --respawn-greedy-window 0.25 2.0 on top of the lineage's scratch recipe (now
+  `config.incumbent_recipe` = GR + --respawn-novel --race-ratchet, restored this round - harness note above). The
+  ledger's cannonball result (--time-pen 0 from scratch was slower, 0.6x) is a different regime.
+* Finishes will need speed again: the time term of the score only exists after a finish; reintroduce a time cost
+  then (generic: per-second penalty only once the policy finishes).
+
+**Ops:** box 56978070 (RTX 4090 + Ryzen 9 5950X, $0.375/h, machine 29449), 01:16-12:06 UTC (~10.8 h, ~$4); 140-240k
+steps/s depending on the greedy-row share and eval lengths. Two offers failed readiness and were blocklisted by
+box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-states from the policy's own states
+(greedy-pool rows in ck["respawn_greedy"]) were the decisive diagnostics (~5 min each).
+
+## Wrap-up (r3b3) - 2026-10-21 12:06 UTC
+
+* Final: RESULT.json `"final": true`, score **54.674** (r3b3_gwx2, eval traj_8717860864: 9 episodes, best 54.67%,
+  median 47.36%, 0 finishes, CP3). Per-run bests (score.py): g15 28.380, sgir 29.823, tp0 30.348, tp0x 32.760,
+  t1 32.6, ezf 32.6, t05 32.775, t05x 32.6, gw 32.814, gwx 47.906, **gwx2 54.674**.
+* Hand-on checkpoint: /home/steam/ar/runs/r3b3/r3b3_gwx2/ckpt_final.pt (8,838,971,392, md5
+  d3d06fb18e15b261bba72d0740bfdab3); also local: r3b3_gwx/ckpt_final.pt (8,138,522,624, md5 0798b81f...),
+  r3b3_tp0/ckpt_final.pt, r3b3_sgir/ckpt_final.pt.
+* Branch head: code commit c24b11b (--respawn-greedy, --int-real-only, --sil-tempered, --sil-top) + notes,
+  config.json incumbent_recipe with --respawn-novel --race-ratchet restored.
+* Box 56978070 released at wrap-up.
