@@ -1357,3 +1357,18 @@ cavity (entry speed, ramp vz) and complete the loop? 30 min first.
   left at ~T 0 too, at 302-378M). Training: rew ~4.9, ceiling 15,696 u, reservoir min-depth 84.3%.
   Next gates to watch: the window (ratnov 20.8% at 453M, through at 576M), the CP2 wall (651M) and the
   CP2 pit (1,633M).
+
+### 07:50 UTC: r3b2_sfull at 489M - window at 453M, CP2 wall at 479M (round 1: 576M / 651M)
+
+| step | sfull best (median) | ratnov | sband |
+|---|---|---|---|
+| 302M | 15.7% | 5.8% | 12.2% |
+| 353M | 18.6% | - | - |
+| 378M | 20.7% (16.1) | 15.2% | 15.9% |
+| 403-428M | 20.9-21.0% (the window wall) | - | - |
+| **453M** | **22.4%, CP1** (through the window) | 20.8% (window at 576M) | stalled at 20.8% to 885M |
+| **479M** | **27.3% (25.5)**: at the CP2 wall | CP2 wall at 651M | ~1.19B |
+
+* Every gate ~125-175M steps before round 1's best scratch run, with the unstuck T still at 0.00 (no
+  plateau long enough to warm it). Next: the CP2 pit crossing (ratnov 1,633M; the warm tp0 test flipped
+  the detour in 50M once the time penalty was gone).
