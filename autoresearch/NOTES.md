@@ -1892,3 +1892,8 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
   restored), to wrap-up. Why: 2.8 h left, the line wobbles between 57.7 and 61.5 at T 0.25;
   consolidating it (more evals through the bowl and CP5) raises the chance of a new best and
   leaves a better hand-on checkpoint. Round 3's precision gates also moved at lower T.
+* 21:51 UTC: c8 (T cap 0.1) evals 12.69-12.95B: 61.574, 60.412, 61.093, 60.406, 60.150, 47.178,
+  60.399, 61.500, 60.516, 61.504, 57.789 - steadier than c7's last stretch (ten 57.7s), no new
+  best. Hand-on: the best eval (63.484) is in r4b4_c7, so the next round's checkpoint comes from
+  that run's pulled files; only c7's ckpt_12694061056.pt (md5 497bd88a..., the snapshot c8
+  continues from, evals 61.1 / 61.0) is pulled there - not c7's regressed latest.

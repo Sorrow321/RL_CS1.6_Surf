@@ -7,7 +7,7 @@
   "eval_file": "/home/steam/ar/runs/r4b4/r4b4_c7/traj_12122587136.jsonl",
   "run": "r4b4_c7",
   "step": 12122587136,
-  "ckpt": "/home/steam/ar/runs/r4b4/r4b4_c7/ckpt_final.pt or ckpt_latest.pt (pull at wrap-up)",
+  "ckpt": "/home/steam/ar/runs/r4b4/r4b4_c7/ckpt_12694061056.pt (c7's snapshot 571M steps after the best eval, md5 497bd88a3b6dfb3c53c14a293228734f: its evals 61.1 / 61.0; c7's own latest regressed to 57.7 and is NOT pulled; r4b4_c8 continues from this snapshot at T cap 0.1)",
   "recipe": [
    "--respawn-greedy",
    "0.3",
