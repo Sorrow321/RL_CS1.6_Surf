@@ -3,10 +3,10 @@
  "round": 3,
  "final": false,
  "best": {
-  "score": 35.443,
-  "eval_file": "/home/steam/ar/runs/r3b3/r3b3_gwx/traj_7016022016.jsonl",
+  "score": 39.435,
+  "eval_file": "/home/steam/ar/runs/r3b3/r3b3_gwx/traj_7418675200.jsonl",
   "run": "r3b3_gwx",
-  "step": 7016022016,
+  "step": 7418675200,
   "ckpt": "/home/steam/ar/runs/r3b3/r3b3_gwx/ckpt_latest.pt",
   "recipe": [
    "--respawn-greedy",
@@ -26,5 +26,5 @@
   "resume_from": "r2b2_sband2 (3,335,520,256) -> r3b3_sgir (+ --respawn-greedy 0.15 --int-real-only 1) -> r3b3_tp0 (+ --time-pen 0 --surf-bonus 0, critic warmup 20) -> r3b3_tp0x (bare) -> r3b3_t1 (from tp0x ckpt_4536139776, --unstuck-max 1) -> r3b3_ezf (from t1 ckpt_5036834816, + --ez-eps 0.05 --ez-front 0.04) -> r3b3_t05 (from ezf ckpt_5337251840, --unstuck-max 0.5, ez off) -> r3b3_t05x (bare, to 6,238M) -> r3b3_gw (from t05x ckpt_6237978624, --respawn-greedy 0.3 --respawn-greedy-window 0.25 2.0) -> r3b3_gwx (bare, from gw ckpt_final 6,638,010,368)",
   "commit": "c24b11b"
  },
- "summary": "Best 35.443 (r3b3_gwx eval 7,016M, CP2): a greedy episode passes the kill-wrapped block past CP2 and the thin wall beyond it and follows the field's descending route to (-1,575, -298, 9,006) at 45.7 s; evals 33.7-35.4 since 6.97B, training ceiling 35.8%. What did it: concentrated greedy-line spawns at the block (--respawn-greedy 0.3 --respawn-greedy-window 0.25 2.0) at T cap 0.5 on the time-penalty-free lineage. Key findings: (1) the 0.5/s time penalty priced slow detours/dips below an early death; --time-pen 0 --surf-bonus 0 freed a pit-locked checkpoint (28.2 -> 30.35 -> 32.5); (2) without it the line holds at T 0.4-1.3, breaks above 1.5, and at T 1 cannot even reach the block -> T cap 0.5. New code: --respawn-greedy (+ window), --int-real-only, --sil-tempered, --sil-top."
+ "summary": "Best 39.435 (r3b3_gwx eval 7,418M, CP3; evals 37.4-39.4 since 7.32B, medians up to 37.8%): past CP2 the greedy line passes a kill-wrapped block and a thin wall and follows the field's descending zig-zag into CP3; training ceiling 42.5%. What did it: (1) --time-pen 0 --surf-bonus 0 (the 0.5/s time penalty priced the slow CP2 detour and the cavity dip below an early death; removing it freed a pit-locked checkpoint: 28.2 -> 30.35 -> 32.5); (2) T cap 0.5 (the line breaks at T > 1.5; at T 1 the stochastic policy cannot reach the block); (3) concentrated greedy-line spawns (--respawn-greedy 0.3 --respawn-greedy-window 0.25 2.0: the policy's own greedy states 2..0.25 s before each greedy death) on top of the round-2 band novel rows + ratchet + --int-real-only."
 }

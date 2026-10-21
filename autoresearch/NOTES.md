@@ -1372,3 +1372,13 @@ line (it killed my local shell twice).
 * The concentrated greedy-line pool (30%, 2..0.25 s before each greedy death) did what the default
   window did not: ~550M steps after it started the gate fell, ceiling first (6.46B), greedy line
   after (6.97B).
+
+### 09:04 UTC: MILESTONE - 39.435, CP3
+
+* r3b3_gwx evals 7,117-7,419M: 34.521, 35.353, 35.337, 34.533, 31.954, 34.535, 35.812, 34.522,
+  **37.370 (7,318M, CP3)**, 38.190, **39.396**, 38.603 (median 37.8%), **39.435 (7,419M)** - CP3
+  (sgcp_3) in every eval since 7.32B. Training ceiling 35,021 -> 41,587 u (42.5%); reservoir min
+  depth 60.76% (39.2% progress); T 0.21-0.25.
+* After ~1.5B steps at the block, the gates past it fell in ~400M: the thin wall, the descending
+  zig-zag, CP3. The field's route continues to ~46% at (5,232, -752, 8,520) in my steepest-descent
+  trace.
