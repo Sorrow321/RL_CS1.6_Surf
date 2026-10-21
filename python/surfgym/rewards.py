@@ -906,6 +906,10 @@ class RaceReward:
         # lingering drains a key at the call rate ("faster drain").
         self.int_move_gate = bool(int_move_gate)
         self.int_dwell = bool(int_dwell)
+        # --int-real-only: a per-env bool array (the novel sampler's novel_env, updated in
+        # place as episodes start); a True env is neither paid nor counted by the novelty
+        # bonus. None (the default) is the shipped code path, op for op.
+        self.int_skip = None
         # --int-speed-cum: a visit at speed bin k also counts every lower bin
         # of the same key (a place crossed fast is a place crossed at every
         # slower speed too); only a faster-than-ever crossing is a first visit
@@ -1679,6 +1683,8 @@ class RaceReward:
                 self.rare_entry[:] = False
             # ended ticks are masked exactly like the cell mode below
             moved = (pc != self._prev_pos) & ~ended
+            if self.int_skip is not None:
+                moved &= ~self.int_skip
             if moved.any():
                 mi = np.flatnonzero(moved)
                 keys = self._edge_keys(self._prev_pos[mi], pc[mi])
@@ -1725,6 +1731,8 @@ class RaceReward:
                 moved = (pc_gate != self._prev_pos) & ~ended
             else:
                 moved = (cell != self._prev_cell) & ~ended
+            if self.int_skip is not None:
+                moved &= ~self.int_skip
             if moved.any():
                 mi = np.flatnonzero(moved)
                 mc = cell[mi]
@@ -1758,6 +1766,8 @@ class RaceReward:
                 # the envs that did not enter this call still occupy a key:
                 # count it (the entrants were counted above)
                 stay = ~ended & ~moved
+                if self.int_skip is not None:
+                    stay &= ~self.int_skip
                 if stay.any():
                     sc = cell[stay]
                     self._count_keys(sc)

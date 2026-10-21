@@ -6504,6 +6504,12 @@ def main() -> None:
                     help="every reward call counts the novelty key each live env is IN "
                          "(not only entries): lingering drains a key at the call rate. "
                          "ckpt restores")
+    ap.add_argument("--int-real-only", type=int, default=None, choices=(0, 1),
+                    help="--respawn-novel + --int-coef: 1 = an episode started from a NOVEL "
+                         "row is neither paid nor counted by the count-based novelty bonus "
+                         "(the novel sampler's own rule for its visit grid), so a place only "
+                         "novel rows have shown stays novel for the policy's REAL episodes. "
+                         "0 = off (default); ckpt restores")
     ap.add_argument("--int-heading", type=int, default=None,    # 0 = off
                     help="sectors of the velocity's horizontal heading in the "
                          "novelty count key (the view yaw is --int-view). ckpt restores")
@@ -7506,6 +7512,10 @@ def main() -> None:
         if (args.respawn_novel_band is None
                 and ck_cfg.get("respawn_novel_band") is not None):
             args.respawn_novel_band = float(ck_cfg["respawn_novel_band"])
+        # --int-real-only: part of the reward, restored like the other novelty knobs
+        if args.int_real_only is None and ck_cfg.get("int_real_only") is not None:
+            args.int_real_only = int(ck_cfg["int_real_only"])
+            restored.append(f"int_real_only={args.int_real_only}")
         # --respawn-greedy: a spawn DISTRIBUTION, restored like the novel rows
         if args.respawn_greedy is None and ck_cfg.get("respawn_greedy") is not None:
             args.respawn_greedy = float(ck_cfg["respawn_greedy"])
@@ -8417,6 +8427,8 @@ def main() -> None:
                      ("respawn_novel_band", 0.0)):
         if getattr(args, _nk) is None:
             setattr(args, _nk, _nv)
+    if args.int_real_only is None:
+        args.int_real_only = 0
     if args.respawn_greedy is None:
         args.respawn_greedy = 0.0
     if args.respawn_greedy_window is None:
@@ -12362,6 +12374,20 @@ def main() -> None:
             # to meter and nothing to allocate
             dip=False)
 
+    if int(args.int_real_only):
+        # --int-real-only: an episode started from a novel row is neither paid nor counted by
+        # the novelty bonus - the reward reads the novel sampler's per-env tag in place
+        if not NOVEL or not float(args.int_coef or 0.0) > 0.0:
+            raise SystemExit("--int-real-only 1 needs --respawn-novel and --int-coef > 0: it "
+                             "keeps novel-row episodes out of the novelty counts")
+        if not all(isinstance(_s.reward_fn, RaceReward) for _s in slots):
+            raise SystemExit("--int-real-only needs --reward race")
+        for _s in slots:
+            _s.reward_fn.int_skip = _s.novel.novel_env
+        print("--int-real-only: episodes started from novel rows are neither paid nor "
+              "counted by the novelty bonus (only REAL episodes - map start and reservoir - "
+              "use up a key's novelty)")
+
     # per-decision reward path: only RaceReward knows how to telescope
     rpd = bool(args.reward_per_decision) and isinstance(reward_fn, RaceReward)
 
@@ -13599,6 +13625,8 @@ def main() -> None:
             meta["config"]["respawn_novel_turn"] = float(args.respawn_novel_turn)
         if args.respawn_novel_band > 0.0:
             meta["config"]["respawn_novel_band"] = float(args.respawn_novel_band)
+    if int(args.int_real_only):
+        meta["config"]["int_real_only"] = 1
     # --respawn-greedy: written ONLY when on (a control run's config dump stays byte-identical)
     if GREEDY is not None:
         meta["config"]["respawn_greedy"] = float(GREEDY.frac)

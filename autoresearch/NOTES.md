@@ -993,3 +993,33 @@ line (it killed my local shell twice).
   reached `running` in 330 s; box.py blocklisted and destroyed it. Since then no offer passes
   (cheapest 4090 $0.455 vs cap 0.45; 3090 $0.535 vs 0.30; 5090 $0.669 vs 0.60). A background
   `box.py rent` retry loop runs every 3 min.
+
+### 01:20 UTC: box 56978070 (RTX 4090 + Ryzen 9 5950X, $0.375/h, machine 29449); arm 1 launched
+
+* Rent loop: a 4090 at $0.429 (Texas, machine 136954) reached `running` but no ssh in 90 s ->
+  blocklisted and destroyed by box.py (01:11); box 56978070 READY at 01:16.
+* Local check before launch (record_ckpt on the incumbent ckpt, 2 greedy episodes, CPU): one dies
+  in the CP2 pit at 24.55 s (27.36%), one STOPS at 17.4% at 17.36 s and crawls to the 300 s cap
+  (evals never stall-kill). So the pool also keeps the 5 s before an episode's best-progress tick
+  when that lies > 5 s before its end (commit 4b13bb5).
+* **r3b3_g15** (01:20): warm resume of the incumbent ckpt (r2b2_t1 end, 7,176,454,144, md5
+  92b7ddd2...; T cap 1, band novel rows and everything else restored) + `--respawn-greedy 0.15`,
+  400M steps, evals every 25M. It tests the greedy line AT the CP2 pit: the incumbent's own
+  continuations (round 2's t1f3 / t05 / r635, ~1.4B steps) kept the greedy line in the pit at
+  27.3-27.5% in ~60 evals (one 28.367). First eval (the checkpoint itself, 7,177M): 9/9 fail,
+  deaths at 21.5-24.4 s (8 of 9 at the pit) and one at 102.6 s that stopped at 21.9 s; pool 4,101
+  states, 553 of the 3,686 non-start rows per pool.
+
+### 01:30 UTC: r3b3_g15 first evals; a probe from the greedy line's own states
+
+* Evals (score.py best / median, deaths): 7,177M 27.495 / 27.5 (the checkpoint itself: 8/9 at the
+  pit at 24.3-24.4 s); 7,202M 27.344 / 27.3 (9/9 at the pit); **7,227M 28.380 / 27.8 (8/9 past
+  the pit: deaths at 27.3-28.5 s)**; 7,252M back in the pit (deaths 24.1-24.3 s, two at
+  19.5/20.2 s). So the greedy line flips modes at the pit; whether greedy-line practice
+  consolidates the crossing is what the rest of the 400M decides.
+* Probe (local CPU, ANALYSIS ONLY, `record_ckpt --spawn-states --stochastic --exec-temp 2` = the
+  training temperature at T 1): from the incumbent ckpt's OWN greedy-line states at 20.0, 21.0,
+  22.0, 22.5, 23.0, 23.5 s (episode that dies in the pit at 24.55 s), 30 episodes: **0 cross**
+  (best 27.24-27.39%, all fail). So before any training the crossing is not reachable by
+  sampling noise from the greedy line itself; the 7,227M flip came from the policy changing at
+  those states within ~50M steps.

@@ -102,6 +102,8 @@ TRAIN_ONLY = frozenset({
     # --respawn-greedy: a share of the TRAINING spawn pool drawn from the last greedy eval's
     # states before each death; a recording spawns at the map start like the trainer's eval
     "respawn_greedy", "respawn_greedy_window",
+    # --int-real-only: which TRAINING episodes the novelty bonus pays and counts
+    "int_real_only",
     # --ramp-reward: what the TRAINING reward pays in the ramp-window task (arc progress, or +1
     # per target passed); a recording computes no training reward
     "ramp_reward",
