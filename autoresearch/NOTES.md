@@ -1212,3 +1212,22 @@ later, x ~0.9) trims the time-pen-0 margin but keeps the median detour ahead (~2
   harvested state at 19.0%; 353k steps/s average). **r3b4_s0tpx** launched 05:37: bare resume of its
   ckpt_final (600,309,760, md5 d1484e6c...) to 2.0B, evals every 75M, `--time-pen 0 --surf-bonus 0`
   passed again explicitly (they are restored anyway). Box deadline 08:32.
+
+### 06:06 UTC: time-pen 0 from scratch is a PARKING basin - s0tpx stopped at 1.05B (kill criterion)
+
+* r3b4_s0tpx (600M -> 1,053M): evals 676M-978M all 16.0% (best) / 15.9-16.0% (median), one 19.0% at
+  601M; the partial eval at 1,054M (7 episodes, cut by the stop) reached 20.8% (the window wall) as T
+  rose to 1.23. Kill criterion (window passed by ~900M; ratnov: wall 453M, passed 576M) met.
+* What the greedy policy does at 16%: a record at 14.5 s (x 5,872, z 13,112), then it flies back and
+  forth, lands on a floor at x ~6,900-8,080, z ~12,130 by 20 s and PARKS there - hops at 0-90 u/s -
+  until the 300 s cap: 6 of 9 eval episodes truncated at 300 s (training: stall-kill share 42%, crawl
+  26%; the lineage's runs had ~6% stalls). Evals at the cap also cut throughput 353k -> 268k steps/s.
+* So the per-second term is a dilemma, not a bug: WITH it, death ends the cost, and the agent dives
+  at a dip wall (the CP2 pit, measured above); WITHOUT it, a floor costs nothing, the stall kill (15 s,
+  training only) makes parking worth exactly what dying is worth, and the greedy policy parks. Neither
+  objective makes the agent EXPLORE at a wall; that has to come from the exploration machinery (T,
+  novel rows, bursts). (A fail charge of c/(1-gamma) with the time penalty is the same objective as
+  time-pen 0 up to the finish bonus - parking and dying both cost exactly -c/(1-gamma) - so it would park
+  too.) Same verdict as the ledger's xTP0 ("no urgency"), now with the mechanism: parking.
+* Do not run `--time-pen 0` from scratch on this lineage. Warm at the CP2 wall it did not park (the
+  pit dive is quick) but did not flip the line either (arm 2).
