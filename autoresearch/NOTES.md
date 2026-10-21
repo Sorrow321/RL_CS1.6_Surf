@@ -1276,3 +1276,18 @@ window, C = inside the cavity under the pit slab, T = tunnel lane, R = room; ana
   further down the shaft, to (-785, 301, 9,716) at 34.4 s; median 32.2%); training ceiling 32,067 -> 32,102 u.
   Not a gate passage (the ceiling is flat); kept running to the wrap-up. Stable copy
   runs/r3b1/r3b1_nf7/ckpt_9466544128.pt (md5 dca2d809...). Box extended to 12:06 UTC.
+
+### 07:49 UTC: why the agent parks on the shaft floor - the velocity-frame view at low speed (src/env.c)
+
+* `--view-absolute velocity` (core view_mode 1): the yaw target is heading(v_h) + cmd, recomputed every
+  tick, but **below 100 u/s the base is the CURRENT yaw** (surf_yaw_delta_abs), so the command becomes a
+  per-tick delta clamped to yaw_rate_max_deg. A policy that outputs its usual surf offset (~10-30 deg) at
+  standstill therefore SPINS (up to the ceiling every tick) instead of holding a heading. The policy
+  almost never flies below 100 u/s, so it never learned near-zero commands there.
+* That fits what the greedy episodes do after dropping straight down the shaft past CP2 (vx -> 0 at the
+  wall x ~-704): |v| < 100, crawling in random directions, no westward exit, death at ~43 s.
+* Consequence: on this map the realistic way through is to KEEP SPEED (under the slab, x -420..-700 at
+  z 10,000-10,500, then west), not to restart from the shaft floor. In general, any gate that leaves the
+  agent at a standstill is hard for this action space; a core fix (e.g. keep the last heading as the base
+  when slow) changes the physics ABI and every checkpoint's behaviour, so it is a round-level decision,
+  not a drive-by.
