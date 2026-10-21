@@ -1477,3 +1477,8 @@ cavity (entry speed, ramp vz) and complete the loop? 30 min first.
   intended exploration.
 * Safety copies of the scratch line's weights (local, md5-verified): runs/r3b2/r3b2_sfull/ckpt_1863843840.pt
   (048daebb...), ckpt_2265448448.pt (d0aaadc1...); the final one is pulled at wrap-up.
+
+### 11:47 UTC: r3b2_sfull past the ~42.5% gate: 44.66 (2,366M), 46.21 (2,391M), **47.855** (2,442M)
+
+* Evals 2,291-2,442M: 42.63, 42.56, 42.61, 44.66, 46.21, 45.27, **47.855** (medians 32-44.7%). The wander
+  at ~42.5% lasted ~300M steps (2.06-2.34B) before the line found the way on; T had just started warming.
