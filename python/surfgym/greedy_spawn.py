@@ -14,7 +14,10 @@ What. Every greedy eval's episodes are captured through the eval's ``on_tick`` h
 eval core's pre-step STATE_DTYPE snapshot of env 0, exactly what ``record_ckpt.py
 --dump-states`` writes). For each episode that ended in a FAIL, the states from ``hi``
 down to ``lo`` seconds before its last tick are kept (default 5.0 .. 0.5 s; the last
-half second is mostly past saving). Each iteration ``frac`` of the pool's NON-start rows
+half second is mostly past saving); and for a FAIL or a truncated episode whose best
+field progress came more than ``hi`` s before its end (a line that got stuck - evals
+never stall-kill - or lost ground long before dying), the ``hi`` seconds up to that
+best tick. Each iteration ``frac`` of the pool's NON-start rows
 - the reservoir TAIL, so the map-start rows at the head and the novel rows right after
 them are untouched - are replaced by uniform draws from those states, clocks zeroed
 (``tick``, ``stuck_ticks``) as ``--spawn-states`` does. The pool is rebuilt at every
@@ -69,26 +72,46 @@ class GreedyLinePool:
                 self._cur = []
         return on_tick
 
-    def build(self, summaries, tick_ms: float) -> dict:
+    def build(self, summaries, tick_ms: float, d_fn=None) -> dict:
         """Rebuild the pool from the recording just captured. ``summaries`` is
         record_rollout's return (one trailer per episode, in order); ``tick_ms`` the eval
-        core's realised mean tick. -> the build's stats."""
+        core's realised mean tick. -> the build's stats.
+
+        Two anchors per episode that did not finish:
+        * a FAIL's last tick: the states HI..LO s before it (the decisions that led to
+          the death; the last LO s are mostly past saving);
+        * with ``d_fn`` (origins (n, 3) -> field distance, non-finite = off the field),
+          the tick of the episode's BEST progress (its minimum d) when that lies more than
+          HI s before the end: the states HI..0 s before it. That is where a line that
+          got STUCK (a truncated episode: evals never stall-kill) or that lost ground
+          long before dying stopped making progress."""
         eps = list(self._eps)
         if self._cur:                      # an episode cut by the recording budget
             eps.append(np.array(self._cur, dtype=STATE_DTYPE))
         self._eps, self._cur = [], []
         per_s = 1000.0 / float(tick_ms)
         lo_t, hi_t = int(round(self.lo * per_s)), int(round(self.hi * per_s))
-        keep, deaths = [], []
+        keep, deaths, stops, n_used = [], [], [], 0
         for i, ep in enumerate(eps):
             end = summaries[i].get("end") if i < len(summaries) else None
-            if end != "fail" or not len(ep):
+            n = len(ep)
+            if end not in ("fail", "trunc") or not n:
                 continue
-            a, b = max(0, len(ep) - hi_t), max(0, len(ep) - lo_t)
-            if b <= a:
-                continue
-            keep.append(ep[a:b])
-            deaths.append(round(len(ep) / per_s, 2))
+            idx = []
+            if end == "fail" and n - lo_t > max(0, n - hi_t):
+                idx.append(np.arange(max(0, n - hi_t), n - lo_t))
+                deaths.append(round(n / per_s, 2))
+            if d_fn is not None:
+                d = np.asarray(d_fn(np.asarray(ep["origin"], np.float64)), np.float64)
+                d = np.where(np.isfinite(d), d, np.inf)
+                if np.isfinite(d).any():
+                    tb = int(np.argmin(d))
+                    if tb < n - hi_t and tb > 0:
+                        idx.append(np.arange(max(0, tb - hi_t), tb + 1))
+                        stops.append(round(tb / per_s, 2))
+            if idx:
+                keep.append(ep[np.unique(np.concatenate(idx))])
+                n_used += 1
         if keep:
             rows = np.concatenate(keep).astype(STATE_DTYPE, copy=True)
             rows["tick"] = 0
@@ -96,7 +119,7 @@ class GreedyLinePool:
         else:
             rows = np.zeros(0, STATE_DTYPE)
         self.rows = rows
-        self.info = {"eps": len(eps), "fail": len(keep), "deaths_s": deaths}
+        self.info = {"eps": len(eps), "fail": n_used, "deaths_s": deaths, "stops_s": stops}
         return dict(self.info, rows=self.size)
 
     # -- the pool ------------------------------------------------------------
@@ -114,12 +137,13 @@ class GreedyLinePool:
         return out
 
     def line(self) -> str:
-        d = self.info["deaths_s"]
+        d, b = self.info["deaths_s"], self.info.get("stops_s", [])
         return ("greedy-line pool: {:,} own states from {}/{} failed greedy episodes "
-                "(deaths at {} s; {:g}..{:g} s before each), {:.0%} of the non-start pool"
+                "(deaths at {} s, {:g}..{:g} s before each; best-progress stops at {} s), "
+                "{:.0%} of the non-start pool"
                 .format(self.size, self.info["fail"], self.info["eps"],
-                        ", ".join(f"{v:.1f}" for v in d) if d else "-",
-                        self.hi, self.lo, self.frac))
+                        ", ".join(f"{v:.1f}" for v in d) if d else "-", self.hi, self.lo,
+                        ", ".join(f"{v:.1f}" for v in b) if b else "-", self.frac))
 
     # -- persistence ---------------------------------------------------------
     def state_dict(self) -> dict:

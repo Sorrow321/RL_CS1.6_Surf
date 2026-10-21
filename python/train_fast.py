@@ -18880,7 +18880,14 @@ def main() -> None:
                 if _rg_cap:
                     _tpat = tuple(getattr(_s.eval_core, "tick_pattern",
                                           (int(_s.eval_core.config.phys.msec),)))
-                    GREEDY.build(_ev_sum, float(sum(_tpat)) / len(_tpat))
+                    _gfld = _s.goal_field
+
+                    def _rg_d(o, _f=_gfld):
+                        # the field distance, off-field (the unreachable sentinel) -> inf
+                        _d = np.asarray(_f.sample(o), np.float64)
+                        return np.where(_d < _f.reach_max - 0.5 * _f.cell, _d, np.inf)
+                    GREEDY.build(_ev_sum, float(sum(_tpat)) / len(_tpat),
+                                 d_fn=None if _gfld is None else _rg_d)
                     print(f"[{global_step:>13,d}] " + GREEDY.line())
                 st = episode_stats(path)
                 _f = float(np.mean([e["fwd_max"] for e in st])) if st else 0.0

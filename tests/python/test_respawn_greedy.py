@@ -84,6 +84,37 @@ def test_build_keeps_hi_to_lo_seconds_before_each_failed_end():
     assert np.array_equal(p2.rows["origin"], eps[0][0:800]["origin"])
 
 
+def test_the_best_progress_anchor_catches_a_stuck_line_and_an_early_loss():
+    """With the field: a truncated episode that stopped progressing at tick 1,700 gives
+    the 5 s up to that tick; a fail whose best came at tick 500 of 2,000 gives both the
+    last 5..0.5 s and the 5 s up to its best (a 0-tick best adds nothing); a fail whose
+    best is its death adds only the end window."""
+    best_at = {1: 1700, 2: 500, 3: 10**9}
+
+    def d_fn(o):
+        tag = np.floor(o[:, 0] / 1e5)
+        t = o[:, 0] - tag * 1e5
+        tb = np.array([best_at[int(g)] for g in tag], np.float64)
+        d = np.abs(t - tb) + 1000.0             # decreasing to the best tick, then rising
+        d[tag == 1] = np.where(t[tag == 1] > 1700, 1000.0 + 1.0, d[tag == 1])
+        return d
+    p = GreedyLinePool(0.2, window=(0.5, 5.0))
+    stuck, early, plain = _ep(3000, 1), _ep(2000, 2), _ep(900, 3)
+    _feed(p, [stuck, early, plain])
+    st = p.build([{"end": "trunc"}, {"end": "fail"}, {"end": "fail"}], tick_ms=10.0,
+                 d_fn=d_fn)
+    want = np.concatenate([stuck[1200:1701], early[0:501], early[1500:1950], plain[400:850]])
+    assert p.size == len(want) == 501 + 501 + 450 + 450
+    assert np.array_equal(p.rows["origin"], want["origin"])
+    assert st["fail"] == 3 and st["deaths_s"] == [20.0, 9.0] and st["stops_s"] == [17.0, 5.0]
+    assert "best-progress stops at 17.0, 5.0 s" in p.line()
+    # off the field everywhere (non-finite d): no best anchor, the end anchor stands
+    q = GreedyLinePool(0.2, window=(0.5, 5.0))
+    _feed(q, [_ep(2000, 2)])
+    q.build([{"end": "fail"}], tick_ms=10.0, d_fn=lambda o: np.full(len(o), np.inf))
+    assert q.size == 450
+
+
 def test_done_and_truncated_episodes_add_nothing_and_an_empty_pool_mixes_nothing():
     p = GreedyLinePool(0.3)
     _feed(p, [_ep(900, 1), _ep(900, 2)])
