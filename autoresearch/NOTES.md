@@ -1137,7 +1137,7 @@ window, C = inside the cavity under the pit slab, T = tunnel lane, R = room; ana
   parked on the platform. The entry itself is a precision move with a ~50 u tolerance (round 2's 6.35B
   missed it by 55 u, below). Benches only with the box idle.
 
-### 03:20 UTC: BREAKTHROUGH - arm 4's greedy line goes THROUGH the tunnel into the room: 29.955
+### 03:17 UTC: BREAKTHROUGH - arm 4's greedy line goes THROUGH the tunnel into the room: 29.955
 
 * r3b1_ifp (incumbent ckpt + `--unstuck-max 0 --fail-pen 10 --eval-stall 1 --surf-bonus 0`, 7,176M ->
   7,777M, done; avg 142k steps/s with evals). Evals after the tunnel-dive phase:
