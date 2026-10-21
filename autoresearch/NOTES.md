@@ -1311,3 +1311,22 @@ later, x ~0.9) trims the time-pen-0 margin but keeps the median detour ahead (~2
   every 50M, until wrap-up. It calibrates ratnov's 576M window passage (my arms stalled at the window
   for 0.5-1B: recipe noise or harm?) and, if it follows ratnov (CP2 wall ~0.65B, pit crossing ~1.6B,
   tunnel dive 28.5%), it is this branch's best shot at a score and a fresh, not pit-locked checkpoint.
+
+### 08:39 UTC: the same-box control is FASTER than every arm - the arms' verdicts flip to "behind"
+
+* r3b4_ctl (incumbent recipe, no change, from scratch, this 5090, evals every 50M), best-episode %:
+  50M 2.8, 101M 4.5, 151M 4.6, **201M 10.0** (out of the first-ramp trap), 252M 11.0, 302M 16.0,
+  353M 19.0, **403M 20.9** (window wall), 453M 20.8, 504M 20.8, 554M 20.8; T 0.00 at 592M (stuck 188M).
+
+  | gate (one seed each) | control (here) | ratnov (r1, 5080) | ssb burst SIL | s0tp time-pen 0 | scc curiosity-cond |
+  |---|---|---|---|---|---|
+  | out of the trap | ~200M | 302-378M | ~302M | ~378M | not by 586M |
+  | at the window wall | 403M | 453M | 529M | ~1.05B | - |
+  | window passed | ? (wall at 592M) | 576M | not by 1.7B | not by 1.05B | - |
+
+* So against their own control, all three scratch treatments are BEHIND at matched steps (burst SIL by
+  ~100-125M at both gates and never passed the window; time-pen 0 by ~180M and ~650M; curiosity-cond
+  never left the trap). One seed each and the gate ladder is noisy, but the direction is the same three
+  times. Comparing only to round 1's ratnov had made burst SIL look "on pace".
+* The control keeps running to wrap-up: if it follows ratnov (pit crossing ~1.6B, tunnel dive 28.5%)
+  it gives this branch its best score and a healthy checkpoint.
