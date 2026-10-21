@@ -5836,6 +5836,12 @@ def main() -> None:
                          "telescopes, so it moves credit in time without changing which run is "
                          "best (the user, 2026-10-04, skate_laby: 'lost speed on turns'). "
                          "A checkpoint restores it. 0 = off")
+    ap.add_argument("--speed-pot-charge", type=int, default=None, choices=(0, 1),  # 0
+                    help="--speed-pot: 1 = a FAILED episode's last call is charged the potential "
+                         "it still holds (Phi = 0 at a terminal, Grzes 2017; the refund "
+                         "--speed-equiv already makes), so a fast death is no longer free and "
+                         "'accelerate and die' stops paying; finishes and truncations keep it. "
+                         "0 = the shipped term. A checkpoint restores it")
     ap.add_argument("--surf-bonus", type=float, default=None,     # 0 = off
                     help="race (round 40, pnSURF): REWARD UNITS PER SECOND "
                          "paid while the player is riding a surfable face. "
@@ -7032,6 +7038,9 @@ def main() -> None:
         if args.speed_pot is None and ck_cfg.get("speed_pot") is not None:
             args.speed_pot = float(ck_cfg["speed_pot"])
             restored.append(f"speed_pot={args.speed_pot:g}")
+        if args.speed_pot_charge is None and ck_cfg.get("speed_pot_charge") is not None:
+            args.speed_pot_charge = int(ck_cfg["speed_pot_charge"])
+            restored.append(f"speed_pot_charge={args.speed_pot_charge}")
         if args.speed_coef is None and ck_cfg.get("speed_coef") is not None:
             args.speed_coef = float(ck_cfg["speed_coef"])
             restored.append(f"speed_coef={args.speed_coef:g}")
@@ -8314,6 +8323,11 @@ def main() -> None:
         args.speed_coef = 0.0
     if args.speed_pot is None:
         args.speed_pot = 0.0
+    if args.speed_pot_charge is None:
+        args.speed_pot_charge = 0
+    if int(args.speed_pot_charge) and not float(args.speed_pot) > 0.0:
+        raise SystemExit("--speed-pot-charge 1 charges the --speed-pot potential at a death: "
+                         "set --speed-pot > 0")
     if args.surf_bonus is None:
         args.surf_bonus = 0.0
     if args.dive_pen is None:
@@ -12251,6 +12265,7 @@ def main() -> None:
             # --speed-pot: a potential in reward units per 1000 u/s - no tick scaling (a change of
             # Phi is the same whatever the tick); training slots only, like speed_coef
             _s.reward_fn.speed_pot = float(args.speed_pot)
+            _s.reward_fn.speed_pot_charge = bool(int(args.speed_pot_charge))
             _s.reward_fn.surf_bonus = SURF_BONUS_T
             _s.reward_fn.dive_pen = DIVE_PEN_T
             _s.reward_fn.surf_hspd = float(args.surf_hspd)
@@ -12970,6 +12985,8 @@ def main() -> None:
                                       if args.reward == "race" else None),
                        **({"speed_pot": float(args.speed_pot)}
                           if args.reward == "race" and args.speed_pot else {}),
+                       **({"speed_pot_charge": 1}
+                          if args.reward == "race" and int(args.speed_pot_charge) else {}),
                        "surf_bonus": (args.surf_bonus
                                       if args.reward == "race" else None),
                        "dive_pen": (args.dive_pen

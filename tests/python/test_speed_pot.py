@@ -82,3 +82,71 @@ def test_the_trainer_carries_it_and_the_recorder_accepts_it():
                 str(CANNONBALL), "--episodes", "1", "--out", str(d / "rec.jsonl")])
     assert rec.returncode == 0, rec.stdout[-3000:] + rec.stderr[-3000:]
     shutil.rmtree(d, ignore_errors=True)
+
+
+# ------------------------------------------------- --speed-pot-charge (2026-10-21, r3b2)
+def _rrc(k, charge=True):
+    rr, core = _rr(k)
+    rr.speed_pot_charge = charge
+    return rr, core
+
+
+def test_charge_a_failed_episode_nets_minus_k_v0():
+    """With the charge, a death costs the potential still held, so the whole episode's speed
+    term is -K v0 (Phi = 0 at the terminal) whatever was flown: a fast death is not free."""
+    rr, core = _rrc(K)
+    vs = [1500.0, 1700.0, 1100.0, 2400.0, 1800.0]
+    paid = sum(float(_step(rr, _at_speed(core, v))[0]) for v in vs)
+    paid += float(_step(rr, _at_speed(core, 300.0), done=1)[0])   # the fatal call (row = respawn)
+    assert paid == pytest.approx(-K * vs[0] / 1000.0, abs=1e-4)
+
+
+def test_charge_two_deaths_at_different_speeds_net_the_same():
+    tot = []
+    for v_end in (2400.0, 700.0):
+        rr, core = _rrc(K)
+        paid = sum(float(_step(rr, _at_speed(core, v))[0]) for v in (1500.0, 1600.0, v_end))
+        paid += float(_step(rr, _at_speed(core, 0.0), done=1)[0])
+        tot.append(paid)
+    assert tot[0] == pytest.approx(tot[1], abs=1e-4)
+
+
+def test_charge_spares_finishes_and_truncations_and_off_is_the_shipped_term():
+    for kw in ({"done": 1, "goal": 1}, {"trunc": 1}):
+        rr, core = _rrc(K)
+        _step(rr, _at_speed(core, 1800.0))
+        r_end = float(_step(rr, _at_speed(core, 0.0), **kw)[0])
+        assert r_end == pytest.approx(50.0 if kw.get("goal") else 0.0, abs=1e-5)
+    a, ca = _rrc(K, charge=False)
+    b, cb = _rr(K)
+    for v, done in ((1500.0, 0), (1800.0, 0), (0.0, 1), (600.0, 0)):
+        assert float(_step(a, _at_speed(ca, v), done=done)[0]) == \
+            pytest.approx(float(_step(b, _at_speed(cb, v), done=done)[0]), abs=1e-7)
+
+
+def test_charge_trainer_smoke_dumps_resumes_and_refuses_without_the_pot():
+    """sidistic CPU smoke: --speed-pot 2 --speed-pot-charge 1 runs, the config carries both, a
+    flagless resume restores the charge, and the charge alone is refused."""
+    import json
+    import shutil
+    from test_ez_viewc import SMOKE, TRAIN, _run, _train, needs_run as _sid
+    if _sid.args[0]:           # the skipif condition: no sidistic + field + core here
+        pytest.skip("needs the built core + sidistic and its prebaked goal field")
+    run = "spotc_on"
+    _train(run, ["--time-pen", "0", "--speed-pot", "2", "--speed-pot-charge", "1"], steps="4096")
+    d = ROOT / "runs" / run
+    cfg = json.loads((d / "run.json").read_text(encoding="utf-8"))["config"]
+    assert cfg["speed_pot"] == 2.0 and cfg["speed_pot_charge"] == 1
+    r2 = _run([sys.executable, "-u", str(TRAIN), "--run", run + "_re", "--ckpt",
+               str(d / "ckpt_final.pt")] + SMOKE + ["--steps", "6144"])
+    assert r2.returncode == 0, r2.stdout[-3000:] + r2.stderr[-3000:]
+    assert "speed_pot_charge=1" in r2.stdout
+    bad = _run([sys.executable, "-u", str(TRAIN), "--run", "spotc_bad"] + SMOKE
+               + ["--steps", "2048", "--speed-pot-charge", "1"])
+    assert bad.returncode != 0 and "--speed-pot-charge 1 charges" in (bad.stdout + bad.stderr)
+    off = "spotc_off"
+    _train(off, ["--time-pen", "0", "--speed-pot", "2"], steps="2048")
+    cfg_off = json.loads((ROOT / "runs" / off / "run.json").read_text(encoding="utf-8"))["config"]
+    assert "speed_pot_charge" not in cfg_off
+    for x in (run, run + "_re", "spotc_bad", off):
+        shutil.rmtree(ROOT / "runs" / x, ignore_errors=True)

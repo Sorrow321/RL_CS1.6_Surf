@@ -1033,6 +1033,14 @@ class RaceReward:
         # 0 = off (the block is skipped). Set by the trainer on training slots, like speed_coef.
         self.speed_pot = 0.0
         self._spd_prev = None
+        # --speed-pot-charge (2026-10-21): a FAILED episode's last call is charged the potential it
+        # still holds, speed_pot * |v_xy| / 1000 before the fatal step (Grzes 2017's Phi = 0 at a
+        # terminal, the rule speed_equiv's refund already follows). Without it the potential is
+        # kept at death, so a fast death is free and every speed loss before one is charged:
+        # "accelerate and die" pays. Not on a finish, not on truncation (the bootstrap carries
+        # the potential). False = the shipped term, untouched.
+        self.speed_pot_charge = False
+        self._spd_last = None
         # --surf-bonus / --dive-pen (round 40, pnSURF): "surfing = good,
         # diving = bad" as a dense per-tick term. Both are REWARD UNITS PER
         # SECOND on the flag; the trainer converts to per-tick. 0/0 is off
@@ -1557,6 +1565,9 @@ class RaceReward:
             dv = s - self._spd_prev
             dv[ended] = 0.0
             r += ((self.speed_pot / 1000.0) * dv).astype(np.float32)
+            if self.speed_pot_charge:
+                # the pre-step speed: an ended row's post-step state is the next spawn's
+                self._spd_last = self._spd_prev
             self._spd_prev = s.copy()
         if self.dip_speed_coef > 0.0 and self._rec is not None and self.arc is None:
             # `_rec` already holds this state's record (updated above), so
@@ -1624,6 +1635,12 @@ class RaceReward:
                         ).astype(np.float32)
         if self.fail_pen > 0.0:
             r[done.astype(bool) & ~goal] -= self.fail_pen
+        if self.speed_pot > 0.0 and self.speed_pot_charge and self._spd_last is not None:
+            # --speed-pot-charge: Phi = 0 at a failure (see __init__); after the ended-row wipe
+            dead = done.astype(bool) & ~goal
+            if dead.any():
+                r[dead] -= ((self.speed_pot / 1000.0)
+                            * self._spd_last[dead]).astype(np.float32)
         if self.ng in (1, 2):
             # terminal potential charge, computed from the LAST pre-death
             # distance (self._dc): the post-step states of ended rows are

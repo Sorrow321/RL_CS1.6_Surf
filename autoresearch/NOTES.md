@@ -1130,3 +1130,23 @@ termination (the last speed is kept at death), and at the incumbent's CP2 speeds
 |v_xy| ~1,450, the detour at ~1,000) K 10 would pay the pit dive ~4.5 more than the detour, re-locking
 it; at K 2 the detour still wins by ~0.3-0.9. Question: does the greedy line keep speed into the
 cavity (entry speed, ramp vz) and complete the loop? 30 min first.
+
+### 02:45 UTC: r3b2_sp2 (speed-pot 2) at +170M - the window is flown at the human's speed; the turn into the cavity is lost
+
+| step | score | routes |
+|---|---|---|
+| 7,741M | 27.377 | 7 deaths at ~24.3%, 2 pit dives (the first update under the new term) |
+| 7,766-7,816M | 27.96-27.97 | 7-8 E, no shaft |
+| 7,841M | 28.402 | **9/9 ESW**: window at |v_xy| 1,786-1,826, min after it 1,637-1,787 (tp0: 1,259 then ~1,000) |
+| 7,866M | 28.520 | 2 ESW, 2 ES, 5 earlier deaths |
+| 7,892M | 28.267 | 1 ESWC, 1 ES, 7 E |
+
+* In 100M steps the term taught what the shaft bench said was missing: the slot -> window -> slide north
+  is now flown at 1,750-1,800 u/s (the human's 1,717-1,835). But the 7,841M episodes slide north
+  across the WHOLE shaft (past the lower opening at y ~ 0) and fall onto the shaft floor *21 at
+  y +830..+1,003, |v_xy| ~1,750: the slow turn east into the opening was charged as a speed loss and
+  dropped; the fast one is not found yet. Cavity entries 0 in 5 of 6 evals (tp0x: 2-5 per eval).
+* The as-built term keeps the last speed at death (no refund, unlike the trainer's own speed_equiv
+  term, whose comment calls the refund "load-bearing: without it accelerate-and-die farms the speed
+  credit"), so a fast floor death is free and a platform landing (losing ~1,700 u/s) costs ~3.4.
+* Box extended to 05:39 UTC.
