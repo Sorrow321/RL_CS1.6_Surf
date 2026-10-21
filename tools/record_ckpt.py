@@ -105,6 +105,9 @@ TRAIN_ONLY = frozenset({
     # --eval-patience: the TRAINER's eval-time cost rule (cut an eval episode that stopped
     # gaining); a recording runs every episode to its own --ep-ticks, the honest full line
     "eval_patience",
+    # --eval-parallel: how the TRAINER schedules its eval episodes (side by side on a wider
+    # eval core); a recording flies its own episodes, the policy and the starts are the same
+    "eval_parallel",
     # --int-real-only: which TRAINING episodes the novelty bonus pays and counts
     "int_real_only",
     # --ramp-reward: what the TRAINING reward pays in the ramp-window task (arc progress, or +1

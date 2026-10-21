@@ -113,7 +113,7 @@ from surfgym.mapfleet import HeldoutSlot, MapFleet, MapSlot
 from surfgym.obsaux import ACT_FEAT, CMP_FEAT, ObsAux, PotRate, make_pot_rate_feed
 from surfgym.surfflag import SurfFlag, g_step_of, make_surf_feed
 from surfgym.privfeat import PRIV_DIM, PRIV_FEATURES, PrivFeat, velocity_from_obs
-from surfgym.record import record_rollout
+from surfgym.record import record_rollout, record_rollout_parallel
 from surfgym.bc import BCDataset
 from surfgym.respawn import (BackwardSpawnSampler, DemoCurriculum,
                              FrontierSpawnSampler, NovelSpawnSampler,
@@ -3832,6 +3832,49 @@ def make_eval_patience_hook(core, field, patience_ticks, eps=32.0, env=0):
     return hook
 
 
+def make_eval_patience_hook_par(core, field, patience_ticks, n_envs, eps=32.0):
+    """make_eval_patience_hook for a recording whose episodes run SIDE BY SIDE
+    (--eval-parallel, record_rollout_parallel): env i's FIRST episode is episode i, the
+    same cumulative rule per env, and an env is let go once that episode ends (the core
+    autoresets it in place; the recorder no longer records it). ``hook.state["killed"]``
+    holds the episode (= env) indices the rule ended, in kill order."""
+    n = int(n_envs)
+    lim = float(field.reach_max) - 0.5 * float(field.cell)
+    st = {"ref": None, "best": None, "since": np.zeros(n, np.int64),
+          "live": np.ones(n, bool), "n": 0, "killed": []}
+
+    def hook(t, states, rewards, done, trunc):
+        live = st["live"]
+        live &= ~(np.asarray(done[:n], bool) | np.asarray(trunc[:n], bool))
+        if patience_ticks <= 0 or not live.any():
+            return
+        d = np.asarray(field.sample(
+            core.states_view["origin"][:n].astype(np.float64)), np.float64)
+        d = np.where(d < lim, d, np.inf)
+        if st["ref"] is None:            # the first tick of every episode: arm them
+            st["ref"], st["best"] = d.copy(), d.copy()
+            return
+        best = np.minimum(st["best"], d)
+        st["best"] = best
+        gain = best < st["ref"] - eps
+        st["ref"] = np.where(gain, best, st["ref"])
+        since = st["since"]
+        since[gain] = 0
+        since[~gain & live] += 1
+        kill = live & (since >= patience_ticks)
+        if kill.any():
+            since[kill] = 0              # re-arm: one kill per window
+            st["n"] += int(kill.sum())
+            st["killed"].extend(int(i) for i in np.flatnonzero(kill)
+                                if int(i) not in st["killed"])
+            m = np.zeros(core.num_envs, np.uint8)
+            m[:n] = kill
+            core.force_fail(m)
+
+    hook.state = st
+    return hook
+
+
 def chain_ticks(*hooks):
     """Compose record_rollout on_tick callbacks (None entries dropped)."""
     live = [h for h in hooks if h is not None]
@@ -6281,6 +6324,14 @@ def main() -> None:
                          "line that is still gaining. The greedy-line pool treats a cut "
                          "episode as the truncated one it would have been. 0 = off; ckpt "
                          "restores")
+    ap.add_argument("--eval-parallel", type=int, default=None, choices=(0, 1),
+                    help="1 = run the greedy eval's --eval-eps episodes SIDE BY SIDE on an "
+                         "eval core of that many envs (surfgym.record."
+                         "record_rollout_parallel), one batched forward per decision "
+                         "instead of one per episode: the eval costs its longest episode, "
+                         "not the sum. Same file format, same start distribution (every "
+                         "env starts at the map start). Single map, greedy-only evals. "
+                         "0 = off (today); ckpt restores")
     ap.add_argument("--eval-stall", type=int, default=0,
                     help="1 = apply the TRAINING stall rule to eval episodes "
                          "too (same --stall-secs window, same 32u threshold, "
@@ -7154,6 +7205,10 @@ def main() -> None:
             # --eval-patience: an eval CONDITION, carried across a resume like eval_stall
             args.eval_patience = float(ck_cfg["eval_patience"])
             restored.append(f"eval_patience={args.eval_patience:g}")
+        if args.eval_parallel is None and ck_cfg.get("eval_parallel") is not None:
+            # --eval-parallel: an eval CONDITION, carried across a resume like eval_patience
+            args.eval_parallel = int(ck_cfg["eval_parallel"])
+            restored.append(f"eval_parallel={args.eval_parallel:d}")
         if args.ret_norm is None and ck_cfg.get("ret_norm") is not None:
             # --ret-norm changes what the VALUE HEAD MEANS (normalized
             # returns, not returns). Resuming without it would read the
@@ -8519,6 +8574,23 @@ def main() -> None:
         args.eval_patience = 0.0
     if args.eval_patience < 0.0:
         raise SystemExit(f"--eval-patience SECS needs SECS >= 0, got {args.eval_patience:g}")
+    if args.eval_parallel is None:
+        args.eval_parallel = 0
+    if args.eval_parallel:
+        # the side-by-side recorder serves the plain greedy eval of ONE map; every other
+        # eval path drives the eval core one episode at a time (env 0)
+        _bad = [f for f, on in (("--eval-stall", args.eval_stall),
+                                ("--eval-mirror", int(args.eval_mirror or 0)),
+                                ("--goal-planner", args.goal_planner),
+                                ("--goals", getattr(args, "goals", None)),
+                                ("--maps", getattr(args, "maps", None)),
+                                ("--heldout-maps", getattr(args, "heldout_maps", None)))
+                if on]
+        if not args.eval_greedy_only:
+            _bad.append("evals without --eval-greedy-only")
+        if _bad:
+            raise SystemExit("--eval-parallel 1 runs the single-map greedy eval only; not with "
+                             + ", ".join(_bad))
     for _bk, _bv in (("respawn_backward_start", 0.05),
                      ("respawn_backward_step", 0.05),
                      ("respawn_backward_rate", 0.2),
@@ -11097,6 +11169,9 @@ def main() -> None:
     # every rank, not rank 0's slice). Rank r therefore builds eval cores
     # only for the maps it owns - a second SurfCore per map on every rank is
     # the one place replication would actually cost real memory.
+    # --eval-parallel: the eval core's width (0 = off: the one-env core of every other run)
+    N_EVAL_PAR = (int(args.eval_eps or (3 if args.reward == "race" else 5))
+                  if args.eval_parallel else 0)
     for _i, slot in enumerate(slots):
         slot.eval_rank = _i % D.world_size
         if not D.enabled:
@@ -11108,7 +11183,8 @@ def main() -> None:
             slot.eval_core = None
             continue
         ec = SurfCore(slot.bsp, default_config(
-            num_envs=1, spawn_mode=2, max_episode_ticks=args.ep_ticks,
+            # --eval-parallel: one env per eval episode (record_rollout_parallel)
+            num_envs=(N_EVAL_PAR or 1), spawn_mode=2, max_episode_ticks=args.ep_ticks,
             water_fail=1,
             yaw_adaptive=1 if args.yaw_adaptive else 0, yaw_blend=float(args.yaw_blend), side_hold_ticks=int(args.side_hold),
             sv_maxvelocity=args.maxvel, sv_friction=float(args.sv_friction),
@@ -12616,7 +12692,7 @@ def main() -> None:
                                 else None))
                 else:
                     _ef = _s.reward_field
-            _s.eval_aux = ObsAux(1, k=int(args.act_hist or 0), field=_ef,
+            _s.eval_aux = ObsAux(N_EVAL_PAR or 1, k=int(args.act_hist or 0), field=_ef,
                                  yaw_adaptive=bool(args.yaw_adaptive))
 
     global_step = 0
@@ -13730,6 +13806,9 @@ def main() -> None:
     # --eval-patience: written ONLY when on, like the greedy pool above
     if EVAL_PATIENCE:
         meta["config"]["eval_patience"] = float(args.eval_patience)
+    # --eval-parallel: written ONLY when on, like the patience rule above
+    if N_EVAL_PAR:
+        meta["config"]["eval_parallel"] = 1
     # --unstuck: written ONLY when set (a control run's config dump stays
     # byte-identical); every knob rides along so a resume restores them
     if UNSTUCK:
@@ -18982,16 +19061,34 @@ def main() -> None:
                 # --eval-patience: the eval-time cost rule, a fresh hook per recording,
                 # on the field the score and the greedy pool read; the header says so
                 _ev_pat, _ghdr = None, _hdr
+                if N_EVAL_PAR:
+                    # --eval-parallel: the header says the episodes ran side by side
+                    _ghdr = {**_ghdr, "eval_parallel": 1}
                 if EVAL_PATIENCE and _s.goal_field is not None:
-                    _ghdr = {**_hdr, "eval_patience": float(args.eval_patience)}
-                    _ev_pat = make_eval_patience_hook(_s.eval_core, _s.goal_field,
-                                                      EVAL_PATIENCE)
+                    _ghdr = {**_ghdr, "eval_patience": float(args.eval_patience)}
+                    _ev_pat = (make_eval_patience_hook_par(_s.eval_core, _s.goal_field,
+                                                           EVAL_PATIENCE, N_EVAL_PAR)
+                               if N_EVAL_PAR else
+                               make_eval_patience_hook(_s.eval_core, _s.goal_field,
+                                                       EVAL_PATIENCE))
                     _ev_tick = chain_ticks(_ev_tick, _ev_pat)
                 _rg_cap = GREEDY is not None and not _s.heldout
                 if _rg_cap:
-                    # --respawn-greedy: keep this recording's states (env 0, pre-step)
-                    _ev_tick = chain_ticks(_ev_tick, GREEDY.hook())
-                _ev_sum = record_rollout(_s.eval_core,
+                    # --respawn-greedy: keep this recording's states (env 0, pre-step; every
+                    # env's first episode under --eval-parallel)
+                    _ev_tick = chain_ticks(_ev_tick, GREEDY.hook(N_EVAL_PAR))
+
+                def _rec_par(core_, pol_, path_, episodes, max_ticks, seed, on_tick,
+                             episode_meta, header_extra):
+                    # --eval-parallel: the side-by-side recorder (no per-episode meta: the
+                    # goal planner is refused with the flag); each env's episode is capped
+                    # by the core's own --ep-ticks
+                    assert episode_meta is None
+                    return record_rollout_parallel(core_, pol_, path_, episodes, seed=seed,
+                                                   max_ticks=int(args.ep_ticks) + 1,
+                                                   on_tick=on_tick,
+                                                   header_extra=header_extra)
+                _ev_sum = (_rec_par if N_EVAL_PAR else record_rollout)(_s.eval_core,
                                EVAL_GREEDY(policy, packer, device,
                                            (goalsys.ramp_slot(_s.name).eval_ball
                                             if (goalsys is not None and RPLAN

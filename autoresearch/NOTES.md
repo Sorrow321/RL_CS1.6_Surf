@@ -1489,3 +1489,91 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
 * Branch head: code commit c24b11b (--respawn-greedy, --int-real-only, --sil-tempered, --sil-top) + notes,
   config.json incumbent_recipe with --respawn-novel --race-ratchet restored.
 * Box 56978070 released at wrap-up.
+
+## Round 4, branch r4b3 - 2026-10-21 13:15 UTC
+
+### Box
+
+* 12:50-13:15 UTC: no offer under the caps (cheapest 4090 $0.51 vs 0.45, 5090 $0.75 vs 0.60, 3090
+  $0.53 outside the old Xeons vs 0.30); a `box.py rent` retry loop (every 3 min) got **box 57057785,
+  RTX 3090 on a 32-thread 5.1 GHz host, $0.268/h, machine 151065 (Missouri)**, READY at 13:15.
+  Deploy (branch + incumbent ckpt, md5 d3d06fb1...) took 2 min.
+
+### Evals were HALF of round 3's wall time (measured)
+
+* The incumbent run r3b3_gwx2 logs a cumulative fps; elapsed = steps / fps per row gives the
+  per-iteration time: median 1.60 s per 524,288-step iteration = **328k steps/s while training**,
+  but the 30 greedy evals took **2,003 of 4,168 s (48%)**: 67 s each on average, 105-143 s late in
+  the run. So the run averaged 168k steps/s.
+* Why: with `--time-pen 0` the greedy line often stops somewhere safe and lives to the 300 s cap.
+  The 54.674 eval (traj_8717860864) holds 174,626 ticks: 5 of its 9 episodes ran the full 300 s
+  (their best progress came at 13.5-127 s). An eval runs its 9 episodes one after another on a
+  1-env core.
+
+### The training stall rule kills legitimate flight on this config (measured, not changed yet)
+
+* `--reward-per-decision` is off, so RaceReward runs EVERY TICK with `every = 1`: the 15 s stall
+  timer re-arms only on a tick whose field distance beats the running best by > 32 u in that ONE
+  10 ms tick, i.e. **~3,200 u/s straight down the field** (maxvelocity 4,000). CLAUDE.md documents
+  the threshold as per DECISION ("scale it with the decision rate"); per tick it should be ~8.
+* Offline on the 54.674 eval (the training rule replayed on each greedy episode): the greedy line
+  has only 3-9 such ticks in its first 42 s, and the rule would kill **every** episode at
+  42.4-43.1 s / **34.3%** (two at 15.0 s). At 16, 10.7, 8 or 4 u per tick it kills nothing before
+  each episode's own best. Training's `race/stall_frac` was 0.35-0.49 (that share of training
+  episodes ends by this kill).
+* So training episodes live at most ~15 s past their last near-max-speed dive; from-start training
+  episodes die at ~34%, and the greedy-line pool (eval states, evals never stall-kill) is what feeds
+  training past that point. Candidate fix: `--stall-eps 8` (= 32 u per 4-tick decision). It changes
+  the training objective (no artificial termination of slow but correct flight), so it is an arm,
+  tested against a control at matched steps.
+* `--eval-stall 1` (the existing mirror of that rule for evals) would therefore cut the 54.674 eval
+  to **34.45** - never use it on this config.
+
+### NEW `--eval-patience SECS` (commit 6eaeecf)
+
+* Ends a greedy EVAL episode once its best field progress has not grown by 32 u over SECS seconds -
+  CUMULATIVE (best vs the best at the last re-arm), so a line that is still gaining at any rate,
+  retries included, is never cut. Offline on the 54.674 eval: 10 / 15 / 20 / 30 s keep every
+  episode's best (54.67) at 32 / 34 / 35 / **39%** of the ticks. The greedy-line pool reads a cut
+  episode as the truncated one it would have been (only its best-progress anchor; as_truncated).
+* Default off, config key written only when on, restored on resume, TRAIN_ONLY for record_ckpt.
+  11 tests (tests/python/test_eval_patience.py), incl. a CPU smoke on sidistic and flag-off
+  bit-identity against the pre-change trainer (config, csv, eval bytes, weights).
+
+### r4b3_ctl (launched 13:20 UTC): the incumbent's own continuation, cheap evals
+
+* Bare resume of the incumbent ckpt (r3b3_gwx2 final, 8,838,971,392) + `--eval-patience 30
+  --ckpt-every 1e8`, 600M steps, evals every 25M. Everything else restored (greedy rows 0.3 /
+  0.25-2.0 s, T cap 0.5, time-pen 0, band novel rows, ratchet, int-real-only). It is the control
+  for the stall-eps arm and banks evals meanwhile. Reservoir at the resume: min d 44,325 (54.7%).
+
+### Even with patience, evals are ~half the wall time on this box: NEW `--eval-parallel 1`
+
+* r4b3_ctl on box 57057785: **226k steps/s while training**, but the evals with `--eval-patience 30`
+  still took 72-116 s each (patience cut 4 of 9 episodes; the rest ran 40-80 s): average 105k
+  steps/s over the first 75M. An eval tick costs ~1.6 ms here: one batch-1 GPU forward per
+  decision (kernel-launch latency, not arithmetic) plus the Python loop, and the 9 episodes run
+  one after another on a 1-env core.
+* `--eval-parallel 1`: the eval core gets --eval-eps envs and the episodes run SIDE BY SIDE
+  (surfgym.record.record_rollout_parallel; env i's FIRST episode is episode i; one batched
+  forward per decision for all of them), the file is written afterwards in the same format.
+  The eval then costs its longest episode, not the sum. Same start distribution (every env
+  starts at the map's own spawn points, the eval core's pool). The greedy-line pool and the
+  patience rule have side-by-side versions (GreedyLinePool.hook(n), make_eval_patience_hook_par).
+  Single map, greedy-only evals; refused with --eval-stall / --eval-mirror / --goal-planner /
+  --maps. Header and config say `eval_parallel: 1`. Tests (tests/python/test_eval_parallel.py):
+  one episode on a 1-env core is record_rollout BYTE FOR BYTE; N side by side each from a map
+  spawn, first episode only; the pool's capture = each episode's rows; per-env patience; the
+  trainer smoke (header, config, resume restore, refusals). Flag off: the eval-patience
+  bit-identity test (trainer before both changes vs after) covers it.
+
+### 13:53 UTC: r4b3_ctl at 9.08B - 54.793 (CP3); the ceiling moved when T reached 0.3-0.5
+
+* Evals 8,839-9,066M (score.py best): 50.581 (the resume eval), 54.637, 54.565, 50.593, 54.536,
+  54.668, **54.793 (8,990M, median 47.7%)**, 54.582, 54.329, 50.711. The 54.6-54.8% episodes stop
+  at ~63 s near (-700..-814, +-50, 8,220-8,320) heading north at ~900 u/s, then wander and die
+  7-35 s later at z ~7,260-7,620.
+* Training ceiling 54,406 u (55.65%, flat since round 3) -> 55,206 (+144M) -> **56,388 u (57.68%,
+  +176M)**, while the unstuck T climbed 0.06 -> 0.29 -> 0.5 (cap): the stuck counter passed 200M
+  at ~+72M. Same pattern as round 3: gates open when T rises, and the 0.5 cap keeps the line.
+* Throughput: 226k steps/s training-only, 121k average (evals with patience: 18-116 s each).

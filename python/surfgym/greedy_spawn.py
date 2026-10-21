@@ -69,11 +69,30 @@ class GreedyLinePool:
         return int(len(self.rows))
 
     # -- capture -------------------------------------------------------------
-    def hook(self):
+    def hook(self, n_envs: int = 0):
         """A fresh ``on_tick(t, states, rewards, done, trunc)`` for ONE eval recording:
         it keeps env 0's pre-step snapshot every tick and closes an episode on done or
-        trunc (record_rollout's own rule), so episode i aligns with trailer i."""
+        trunc (record_rollout's own rule), so episode i aligns with trailer i.
+
+        ``n_envs`` > 0: the recording runs its episodes side by side
+        (record_rollout_parallel) - env i's FIRST episode is episode i, captured until
+        it ends; the env's later ticks (the core autoresets it in place) are ignored."""
         self._eps, self._cur = [], []
+        if n_envs > 0:
+            cur = [[] for _ in range(int(n_envs))]
+            eps = [None] * int(n_envs)
+            live = np.ones(int(n_envs), bool)
+            self._par = (eps, cur)
+
+            def on_tick_par(t, states, rewards, done, trunc):
+                for i in np.flatnonzero(live):
+                    cur[i].append(states[i].copy())
+                    if bool(done[i]) or bool(trunc[i]):
+                        eps[i] = np.array(cur[i], dtype=STATE_DTYPE)
+                        cur[i] = []
+                        live[i] = False
+            return on_tick_par
+        self._par = None
 
         def on_tick(t, states, rewards, done, trunc):
             self._cur.append(states[0].copy())
@@ -95,9 +114,17 @@ class GreedyLinePool:
           HI s before the end: the states HI..0 s before it. That is where a line that
           got STUCK (a truncated episode: evals never stall-kill) or that lost ground
           long before dying stopped making progress."""
-        eps = list(self._eps)
-        if self._cur:                      # an episode cut by the recording budget
-            eps.append(np.array(self._cur, dtype=STATE_DTYPE))
+        par = getattr(self, "_par", None)
+        if par is not None:
+            # side by side: episode i is env i's first episode (one still running when the
+            # recording stopped is what it captured so far)
+            eps = [e if e is not None else np.array(c, dtype=STATE_DTYPE)
+                   for e, c in zip(*par)]
+            self._par = None
+        else:
+            eps = list(self._eps)
+            if self._cur:                      # an episode cut by the recording budget
+                eps.append(np.array(self._cur, dtype=STATE_DTYPE))
         self._eps, self._cur = [], []
         per_s = 1000.0 / float(tick_ms)
         lo_t, hi_t = int(round(self.lo * per_s)), int(round(self.hi * per_s))
