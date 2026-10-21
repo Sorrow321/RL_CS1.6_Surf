@@ -1882,7 +1882,7 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
   (ckpt_12694061056: the evals around it 61.08 / 60.99; ckpt_12093227008 sits 29M steps
   before the 63.484 eval) and say so here.
 
-### 21:24 UTC: c7 stopped (12.98B); r4b4_c8 = consolidation from the 12.69B snapshot, T cap 0.1
+### 21:22 UTC: c7 stopped (12.98B); r4b4_c8 = consolidation from the 12.69B snapshot, T cap 0.1
 
 * r4b4_c7 (11.39 -> 12.98B, kill-aware): best 63.484 (12,123M, CP5); its last ~10 evals stopped at
   the 57.7% dip turnaround. Snapshots ckpt_11492392960 ... ckpt_12894339072 + ckpt_latest stay on
