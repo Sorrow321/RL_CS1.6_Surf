@@ -1290,3 +1290,14 @@ cavity (entry speed, ramp vz) and complete the loop? 30 min first.
 * Training ceiling 32,856 u (33.6%): stochastic episodes already get under that wall (the field's descent
   path passes 33.6% at ~(-1,450, 10,120)). The eval frontier has not beaten 32,067 + 500 u for 313M
   steps, so T is warming again (0.28 -> 0.67).
+
+### 05:42 UTC: r3b2_gt3 at 9.14B - the wall after CP2 holds (~700M steps)
+
+* Evals 8,941-9,117M: 32.567, 28.267, 32.258, 28.602, 32.200, 32.547, 32.760, **32.774** (gt3 best; the
+  round's best stays gt2's 32.799). Two evals (8,966M, 9,017M) fell back to deaths before the window and
+  recovered. T back at its cap 1.00 (stuck 540M); training ceiling flat at 32,856 u (33.6%).
+* Why the wall is hard (geometry from the line): off the void-bottom ramp at vz ~+1,200 the agent peaks at
+  z ~11,000 near x -330 and flies level; the field's way on is below ~10,600 at x -720..-980. From level
+  flight at ~1,100 u/s free fall loses only ~50 u over those 0.35 s, so the descent has to start well
+  before the apex (a lower take-off or an early dive): a trajectory choice ~1-2 s upstream of the
+  failure, inside the 3 s tail window.
