@@ -1872,11 +1872,12 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
   onto the plate pays nothing. One seed, one gate - but the plain-field arms (c4 bare, c5 ez
   bursts, c6 bare: ~1.5B steps at the gate) never moved the training ceiling at all.
 
-### 21:18 UTC: c7 after CP5 - the line wobbles back
+### 21:19 UTC: c7 after CP5 - the line wobbles back
 
 * r4b4_c7 12.15-12.95B: evals 60.4-61.5 until ~12.70B (61.516 at 12,601M), then ten in a row at
   57.7-57.8% (the 64-66 s dip turnaround) from 12.75B; masked ceiling flat at 64,827 u since
   ~12.12B; T at the 0.25 cap (stuck 847M). The CP5 eval (63.484) was one high point.
 * Hand-on plan for wrap-up: the next round's checkpoint is the best eval's run's newest pulled
   weights; if c7's latest still stops at the dip, pull the snapshot whose evals were better
-  (ckpt_12166..., evals 60.4%) and say so here.
+  (ckpt_12694061056: the evals around it 61.08 / 60.99; ckpt_12093227008 sits 29M steps
+  before the 63.484 eval) and say so here.
