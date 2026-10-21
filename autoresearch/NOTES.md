@@ -1252,3 +1252,22 @@ window, C = inside the cavity under the pit slab, T = tunnel lane, R = room; ana
   CP2 break the 540M-step plateau (frontier 32.0-32.7%)? The buffer is replaced every rollout
   (`sil 50,000 rows +50000`: 131k rows per rollout, about half with R > V), so it amplifies each rollout's
   best transitions rather than remembering old ones. 30-40 min first; stop if the line breaks.
+
+### 07:21 UTC: SIL null at the post-CP2 plateau; the gate anatomy; arm r3b1_nf7 (novel share 0.7)
+
+* r3b1_sil (8,898M -> 9,214M, `--sil-coef 0.1`): 13 evals, frontier 31,444-32,006 u (best 9,049M 32.736,
+  equal to the round's best), training ceiling 32,046 -> 32,067 u. The line holds and consolidates (mean
+  "track" 29-32%), the gate does not move. SIL neutral; dropped so the hand-on checkpoint carries no
+  untested flag.
+* **The gate, from the greedy episodes that "pass" the wall** (8,356M ep 8, 8,557M ep 2): after the CP2
+  climb they fly OVER a slab (z 10,600-10,700 at x -500..-700) at z ~10,900, hit the shaft's west wall at
+  x ~-704 (vx -> 0), fall straight down the shaft to its floor at z ~9,890 (32.5-32.7%), then park or crawl
+  with |v| < 100 and die at ~43 s. The field says the way on is WEST from there (x -1,000..-1,100 open at
+  z 9,700-10,500, d 65.3-65.5k) and also UNDER the slab (x -420..-700, z 10,000-10,500 open, d 65.9-66.2k):
+  descend before x ~-420 and fly west under the slab keeping speed. The ratchet pays only ~0.2 units for
+  being lower at x -420, so it is a discovery problem again; those under-slab cells are unvisited and
+  inside the novel band (d >= d_best), so novel rows can land there.
+* **r3b1_nf7** (07:19): resume of r3b1_sil's ckpt_latest (9,214,361,600, md5 c5ff80a2...) +
+  `--sil-coef 0 --respawn-novel-frac 0.7` (the four reward flags restored/passed): novel share of episodes
+  ~45% -> ~60% (2,580 rows per pool). Question: does more frontier-band practice break the plateau (1.1B
+  steps without a gain)? 30-40 min first.
