@@ -1571,3 +1571,18 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
   --diag-heads 10 --ckpt-every 1e8` (~100M steps: the per-head diagnostic at the real minibatch, the
   new eval cost); phase 2 = its final + `--pitch-std-min 0.05` if the pitch dominates the shared
   gradient / the KL.
+
+### 14:05 UTC: the 54.7% gate against the WR demo (ANALYSIS ONLY, CLAUDE.md section 0)
+
+* Demo 47250 re-downloaded to the scratchpad and parsed (tools/demo/parse_hldemo.py); nothing from it
+  enters a run. Our field along it: the human passes 54.7% at ~61.6 s, the agent (8,718M ep 3) at 63.5 s.
+* Same place, different side: from the westward run at x ~650-850, z ~7,220-7,320 (human 60.0 s, |v_h|
+  1,936; agent 61.5 s, 1,591) the HUMAN turns +y and climbs (60.5 s: v (-476, +1,416, +951)), tops out at
+  (-1,303, 229, 8,642) at 62.0 s still flying west at ~1,100 u/s and goes on west (56.9% at 63.5 s). The
+  AGENT turns -y (62.0 s: v (-717, -1,407, +272)), climbs the -y side to (-818, 13, 8,382) with |v_h| 849
+  and vx -199, and falls back east into the bowl. The training ceiling (55.6%) sits ~0.5 s further along
+  the human's line, so stochastic episodes get over the top now and then.
+* What follows (human): dip 4 (63.6-65.9 s): west to (-4,477, 815, 7,098), turn EAST and climb (vz +1,179)
+  back to x ~-1,600 at 68 s (59%), zig-zags around x -1,100..-150, z 6,300-7,400 (69-71 s, ~60%), down to z
+  ~5,700-5,900 at 72.5-73 s heading west (62.7%), then the long west leg to the porthole wall *150 at x
+  -9,024 (t 77.8 s, ~71%: a hole y -192..176, z 5,936..6,240, crossed at 1,276 u/s).
