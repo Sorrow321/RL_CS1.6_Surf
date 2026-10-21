@@ -1228,3 +1228,7 @@ window, C = inside the cavity under the pit slab, T = tunnel lane, R = room; ana
   the early gates. Training: ceiling 15,642 u at 494M, 210k steps/s (fewer, shorter evals than warm).
 * Extended (budget 1.5B already set) to ~1.4B: the recipe question is the CP2 pit, which ratnov crossed
   only at 1,633M (the old reward made the detour barely worth it: -0.5 units vs the pit dive).
+
+* 06:18 UTC, r3b1_scr: 529M 16.0%, 604M **21.1%** (window wall), 680M 21.1%, 755M **26.9%** (past the window, CP1),
+  831M **27.2%** (at the CP2 pit wall); training ceiling 27,289 u (27.9%). ratnov: window passed 576M, CP2 wall
+  651M. So ~100-180M behind ratnov at both gates (one seed each). Watching for the CP2 pit crossing (ratnov 1,633M).
