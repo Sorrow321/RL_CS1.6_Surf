@@ -1314,3 +1314,10 @@ cavity (entry speed, ramp vz) and complete the loop? 30 min first.
 * **r3b2_gt4** (06:12): gt3's 9,318,694,912 checkpoint (md5 9eabbf6c...) + `--int-move-gate` (existing,
   generic: novelty paid only when the POSITION cell changes, "anti-farming"); greedy tail 0.15, speed floor
   300, time_pen 0, T restored. gt3 ran 8,714-9,319M, best 32.774.
+
+### 06:40 UTC: r3b2_gt4 (move gate) - hover farming gone, new best 32.839
+
+* gt4 9,319-9,521M (10 evals): 31.81, 32.80, 32.57, 32.30, 32.78, 32.44, **32.839** (9,470M, the round's
+  best; two episodes at 32.73/32.84% loitering 80-85 s after the wall), 32.34, 32.48. Training crawl share
+  24% -> 6%, novelty 1.4 -> 0.49 per episode: the move gate removed the farm. The wall after CP2 holds
+  (T at its cap 1, stuck 922M; training ceiling 32,856 u).
