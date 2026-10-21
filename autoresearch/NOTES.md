@@ -1050,3 +1050,26 @@ line (it killed my local shell twice).
   at the window / tunnel at 28.5-29.1 s, the best at the -y tunnel's far west end (1,966, -893,
   10,985), the field route's physical limit). +0.005 over the incumbent: eval noise, not
   progress, but it is this branch's best eval for now.
+
+### 01:45 UTC: arm 2 at 3.43B - one real episode past the tunnel at 3,354M; NEW --sil-tempered
+
+* **r3b3_sgir training ceiling 28,202 -> 29,301 u (29.97%) at ~3,354M, 18M steps after the
+  resume** - beyond round 2's best ceiling (29,098 u, warm lineage under T 1). The field's
+  d = 68,467 isosurface lies at x ~944-1,552, z ~9,670-10,340: under the room, past *20's end,
+  on the way to CP2 (x ~790). So a REAL episode (start, reservoir or greedy row - never a novel
+  row) flew the cavity route and beyond. The control (round 2's sband3, bare resume of the same
+  checkpoint, ~0.8B steps) never moved the ceiling past 28.78%. One event so far (flat to 3.43B).
+* Greedy evals 3,361M / 3,386M / 3,411M: frontier 27,651 / 28,142 / 28,193 u; deaths at the window
+  / tunnel 28.1-29.0 s. The unstuck T decays (1.94 -> 1.02: the resume eval was a +500 u best).
+  `int` per episode 1.16 -> 0.33 (novel episodes no longer paid). Reservoir min depth 71.25% ->
+  71.80% (the deepest harvested state got shallower).
+* Why a cavity route is hard to adopt even when it is found (arithmetic, not measured): under the
+  ratchet the dip has no shaping charge, but the time penalty (0.5 / s) charges ~1.75 for its
+  ~3.5 s against +0.3 for the tunnel dive; the critic values the route only if it has seen
+  progress AFTER it, which real episodes almost never reach. The real-only novelty pull (0.25 /
+  sqrt(N + 1) per new cell x yaw x speed key, x(1+T) under unstuck_int) is what offsets it.
+* NEW `--sil-tempered 1` (commit 9dc81ee): the shipped `--sil-coef` scores T > 0 samples under the
+  untempered policy (minimising that NLL inflates sigma toward the tempered spread and flattens the
+  keys); with the flag the buffer is scored under the current temp_t / tempv_t (exact for the
+  rows of this iteration - a 50k buffer holds about one iteration's R > V rows). 3 tests; flag off
+  bit-identical.
