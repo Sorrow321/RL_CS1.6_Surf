@@ -957,3 +957,64 @@ line (it killed my local shell twice).
   pulled while the run was stopped and md5-checked again at wrap-up; also local:
   r2b2_t1/ckpt_7128219648.pt and r2b2_sband2/ckpt_final.pt (from-scratch lineage, 3,335,520,256).
 * Box 56901034 released at 23:41 UTC; no box at wrap-up.
+
+## Round 3, branch r3b4 - 2026-10-21 00:52 UTC
+
+### Harness issue: the round-3 restore dropped the lineage's incumbent_recipe
+
+* `autoresearch/config.json` at this round's base (852b183, "the operator's harness over 063a56d")
+  had `incumbent_recipe` WITHOUT `--respawn-novel --race-ratchet`, although 063a56d (r2b2's head)
+  and the round-2 base both carried them. The lineage key is carried only "when the winner changed
+  one during its round" (r1b1 changed it in round 1; r2b2 did not touch it in round 2), so the
+  round-3 restore fell back to the operator's value. A `box.py launch` from scratch would have run
+  the round-0 recipe (no ratchet, no novel spawns) without saying so.
+* Restored on this branch (the two flags appended; nothing else changed). Operator: the carry rule
+  should take the WINNER's value whenever it differs from the operator's, not only when it changed
+  during the winner's round.
+
+### The objective pays for dying at a dip wall (analysis, numbers from the incumbent's eval)
+
+* Reward per second under the lineage recipe: ratchet progress +1 per 1% of d0 (978 u of new
+  record), time penalty -0.5/s (0.005/tick), surf bonus +0.3/s while supported, no fail penalty
+  (fail_pen 0, death is an absorbing state worth 0). So a stretch of route pays only if it makes
+  more than 0.5% of d0 per second (489 u/s of geodesic record); a dip makes ~0 for seconds, and a
+  death ends the time penalty.
+* At the CP2 pit bifurcation (~23.5-24.4 s): the pit dive dies at ~24.5 s with 27.4%; the
+  corridor-east detour + slot + tunnel dive dies at 28.25 s with up to 28.84% (incumbent eval
+  6,751M ep 8). Detour minus dive: +1.44 progress - 1.87 time (3.74 s) + ~0.3 surf = **-0.1 to
+  -0.4**: the reward PREFERS the pit dive, before any noise. That is the warm lineage's drift into
+  the pit dive (r2b2: every checkpoint after ~6.6B, under T 2, 1 and 0.5).
+* The cavity route vs the tunnel dive: the human reaches CP2 (~31%) at ~35.1 s; the tunnel dive
+  ends at 28.25 s with 28.84%. +2.16 progress - 3.4 time (6.85 s) + ~0.6 surf = **about -0.7**:
+  even a PERFECT cavity route to CP2 returns less than dying in the tunnel. Only flight well past
+  CP2 would pay it back, beyond the 20 s discount horizon. The objective actively discourages the
+  skill the score needs; only the novelty bonus pulls toward it.
+* Why this is generic and not a tuning remark: before the first finish, a per-tick cost c with a
+  free death is EXACTLY a reward for dying sooner (any dying trajectory's return is
+  sum(gamma^k r_k) - c(1 - gamma^t)/(1 - gamma), so the time penalty differs between two dying
+  lines only by when they die). Its "urgency" IS the suicide incentive until something finishes.
+  With a fail charge equal to c/(1 - gamma) (= 10 units here) every dying trajectory is shifted by
+  the same constant and the time penalty stops ranking lines - the same policy as time-pen 0, plus
+  an extra +10 on a finish. Under the ratchet the time penalty is therefore the only thing that
+  charges a detour, and it charges it in favour of death.
+* With `--time-pen 0` (and `--surf-bonus 0`: the trainer refuses a surf bonus at or above the
+  per-second time cost, since parking on a ramp would be farmable), urgency comes from gamma alone
+  (0.9995/tick: progress 1 s later is worth 0.95x), all rewards are >= 0 and death only forfeits
+  future reward. The same two decisions become: detour - dive = +1.44 x ~0.86 = **+1.2**; cavity
+  to CP2 - tunnel dive = +2.16 x ~0.72 = **+1.6**. Both flip to the side the score needs.
+* Known cost (ledger, cannonball xTP0, no ratchet, from scratch): time-pen 0 lost urgency there
+  (eval plateau 0.6x control, peak speed 1,780 vs 2,340 u/s). That was stock telescoping shaping,
+  where the death point is fixed and the time penalty's only lever was "get there faster"; under
+  the ratchet at a dip wall the lever is "die here". Untested in this regime.
+
+### Arm 1 plan: r3b4_tp0 = WARM incumbent + `--time-pen 0 --surf-bonus 0`
+
+* Measures AT the wall (CLAUDE.md: the stuck checkpoint is one tool): does removing the death
+  incentive bring the greedy line back across the CP2 pit and into the cavity? Resume of
+  `$AR_HOME/incumbent/ckpt.pt` (r2b2_t1 end, 7,176,454,144, md5 92b7ddd2...; T cap 1 and the
+  novel-band settings restored bare), evals every 25M. No new code: two reward constants, which a
+  resume takes from the CLI over the checkpoint.
+* Comparison at matched steps: the incumbent's own continuations from this checkpoint's lineage
+  (r2b2_t1 after 6,751M: 13 evals at 27.4-27.5; t1f3 / t05: 27.3-28.4, pit-locked). Prediction:
+  within ~100-300M steps the greedy line leaves the pit dive (evals >= 28%), and then cavity
+  entries in the greedy line.
