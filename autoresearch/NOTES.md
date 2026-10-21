@@ -1746,3 +1746,20 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
   deepest state below 39.43% (states inside the drop), then the greedy line past 60.57%.
   Generic: one constant in seconds (the round-18 lesson: the margin, not the sampling rule, capped
   the reservoir); the caveat is the trivial-win harvest near a goal, which needs finishes.
+
+### 16:50 UTC: arm G (--respawn-margin 1) - NULL; main line back on the validated config (r4b3_main2)
+
+* **G = r4b3_m1** (10,296.0M -> 10,596.4M, 300M, 184k steps/s): every eval 60.54-60.57% again;
+  reservoir min depth 39.428% (unchanged to the third decimal), ceiling 60,907 u (unchanged since
+  ~9.97B). So in this window no training episode passes the stop AND lives > 1 s past it: the
+  margin was not the binding constraint, the passes themselves are (too) rare now.
+* The greedy episodes do not die after the stop: they drift west at the ramp's height (z ~7,100,
+  to x ~-1,600) and are cut by the patience rule 30 s later - they never take the drop.
+* F + G: 600M steps at this gate with no change in any frontier measure; neither hurt the line.
+  Total at the 60.57% stop: ~850M steps (since ~9.74B).
+* **r4b3_main2** (16:46): G's final (10,596,384,768, md5 b2707815...) + `--front-temp 0
+  --respawn-margin 2` - back to r4b3_kst5x's validated config (stall_eps 5, keys-only T cap 0.5,
+  patience, side-by-side evals, greedy rows 0.3), 2e9 steps.
+* Probe running locally (ANALYSIS ONLY): record_ckpt from G's own greedy-pool states (1,809 states,
+  59.7-60.6% progress, the 2 s before each greedy stop) - greedy x8, sampled at temperature 1 x16
+  and 2 x16, 8 s each: does any rollout from the stop survive the drop?
