@@ -1890,3 +1890,12 @@ own greedy-line pool (1,809 STATE_DTYPE rows, 59.7-60.6% progress, the 2 s befor
 * r4b3_band15 12,589-12,866M: 82.0k u at 12,689M (83.9%), then **84.244 (12,840M, median 82.9%)** and
   84.234; reservoir deepest 84.6% (min depth 15.38%), ceiling 83,029 u (84.9%), T 0.5 -> 0.12.
   Box extended to 23:17 UTC.
+
+### 20:45 UTC: a wobble at T 0.5 (the line fell back to 57.8% for ~150M steps, then returned)
+
+* r4b3_band15 12,891-13,193M: evals at 56.5k u (57.8%, the corridor-drop stop of 10.0B) from 12,966M
+  to 13,117M, then 67,479 (13,142M) and 80.8k u (82.6%) again at 13,167-13,193M. The reservoir's
+  deepest state stayed at 82.1% (min depth 17.90%) throughout - training's frontier did not move
+  back, only the greedy line. T at the 0.5 cap since the last +500 u eval gain (82,015 u, 12,689M).
+  Branch best unchanged (84.244, 61 valid evals in this run). Same pattern as round 3's wobbles at
+  the cap.
