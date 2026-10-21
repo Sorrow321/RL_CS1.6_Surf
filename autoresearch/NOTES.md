@@ -997,7 +997,7 @@ rows, which do not need action noise) should move the greedy line onto the preci
 * Matched reference: r2b2_sband3 (the same checkpoint, bare resume at T 2): best 28.753 at the
   resume eval, then 28.55-28.58 with the line drifting into the pit and back.
 
-### 01:20 UTC: arm 1 (r3b1_t0, T 0) - one great eval, then the pit lock; the TIME PENALTY explains it
+### 01:00 UTC: arm 1 (r3b1_t0, T 0) - one great eval, then the pit lock; the TIME PENALTY explains it
 
 * r3b1_t0 = r2b2_sband2 final + `--unstuck-max 0`, 3,336M -> 3,428M (stopped by pid). ~150-200k
   steps/s on the 3090 + 5950X box (fps column still ramping).
@@ -1025,7 +1025,7 @@ rows, which do not need action noise) should move the greedy line onto the preci
   `--fail-pen 10` tests (round 27, cannonball, scratch 3 h, one seed each, 4.3x for vs 8.7x against)
   sat inside a 5-9x noise floor; never tested warm at a dip gate.
 
-### Arm 2, r3b1_fp10 (01:18 UTC): r2b2_sband2 final + `--unstuck-max 0 --fail-pen 10`
+### Arm 2, r3b1_fp10 (00:59 UTC): r2b2_sband2 final + `--unstuck-max 0 --fail-pen 10`
 
 * Same start as arm 1, one added flag. 400M steps, evals every 25M. Expect: the critic re-fits (deaths
   -10) for ~10-30M steps; then the greedy line should keep the corridor-east detour (it is worth +1.39
