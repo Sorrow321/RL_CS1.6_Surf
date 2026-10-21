@@ -3,11 +3,11 @@
  "round": 3,
  "final": false,
  "best": {
-  "score": 29.955,
-  "eval_file": "/home/steam/ar/runs/r3b1/r3b1_ifp/traj_7730626560.jsonl",
-  "run": "r3b1_ifp",
-  "step": 7730626560,
-  "ckpt": "/home/steam/ar/runs/r3b1/r3b1_ifp/ckpt_final.pt",
+  "score": 30.233,
+  "eval_file": "/home/steam/ar/runs/r3b1/r3b1_ifpx/traj_8003780608.jsonl",
+  "run": "r3b1_ifpx",
+  "step": 8003780608,
+  "ckpt": "/home/steam/ar/runs/r3b1/r3b1_ifpx/ckpt_8054112256.pt",
   "recipe": [
    "--unstuck-max",
    "0",
@@ -18,8 +18,8 @@
    "--surf-bonus",
    "0"
   ],
-  "resume_from": "incumbent ckpt (r2b2_t1 end, 7,176,454,144, md5 92b7ddd2...) + the flags above (novel band settings and ratchet restored); ckpt_final 7,776,763,904 md5 51e191d16ae185157d9f0206d51edf85",
+  "resume_from": "incumbent ckpt (r2b2_t1 end, 7,176,454,144) + the flags above -> r3b1_ifp (to 7,776,763,904, ckpt_final md5 51e191d1...) -> r3b1_ifpx (bare continuation, same flags). Stable copy ckpt_8054112256.pt md5 6dd1c99a...; the run's ckpt_final.pt is pulled when it ends.",
   "commit": "852b183"
  },
- "summary": "Round 3 (r3b1): 29.955 (incumbent 28.841): the greedy line gets THROUGH the -y tunnel into the room (6/9 at 7,655M), first time on this map. Diagnosis: with 0.5 units/s of time penalty and free death, dying is optimal at every dip gate (the CP2 pit dive beats the detour + tunnel dive by 0.5 units; a tunnel dive that dies at its end is as good as surviving). Fix (generic, from the trainer's constants): --fail-pen 10 = time_pen/(1-gamma), death = never finishing, so the objective is discounted progress + survival; with --surf-bonus 0 (the bonus is a farm in that frame) and T 0 (--unstuck-max 0). Incumbent ckpt + those flags: pit lock gone in ~150M steps, tunnel dive at its limit (28.85) by 330M, through the tunnel into the room by 380M (29.6-29.95), training ceiling 30.2%. Continuing (r3b1_ifpx)."
+ "summary": "Round 3 (r3b1): 30.233 (incumbent 28.841): the greedy line flies through the -y tunnel, the room, under *20 to the void's bottom (x ~900-1,250), first time past 28.9% on this map. Diagnosis: with 0.5 units/s of time penalty and free death, dying is optimal at every dip gate (CP2 pit dive beats detour+tunnel dive by 0.5 units; a dive that dies at the tunnel end loses nothing). Fix (generic, from the trainer's own constants): --fail-pen 10 = time_pen/(1-gamma) (death = never finishing; objective = discounted progress + survival), --surf-bonus 0 (a farm in that frame), T 0 (--unstuck-max 0), --eval-stall 1 (evals blocked training). Incumbent ckpt + those flags: pit lock gone in ~150M steps, tunnel passed by a bounce at the window (~380M), void bottom by ~830M; training ceiling 31.6%. Continuing r3b1_ifpx."
 }
