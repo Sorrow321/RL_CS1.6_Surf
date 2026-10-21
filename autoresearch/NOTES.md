@@ -996,3 +996,38 @@ rows, which do not need action noise) should move the greedy line onto the preci
   (band 0.05, turn 90, shell 0.9 / 0.05, radius 256-3,072, tries 64). 30 min first.
 * Matched reference: r2b2_sband3 (the same checkpoint, bare resume at T 2): best 28.753 at the
   resume eval, then 28.55-28.58 with the line drifting into the pit and back.
+
+### 01:20 UTC: arm 1 (r3b1_t0, T 0) - one great eval, then the pit lock; the TIME PENALTY explains it
+
+* r3b1_t0 = r2b2_sband2 final + `--unstuck-max 0`, 3,336M -> 3,428M (stopped by pid). ~150-200k
+  steps/s on the 3090 + 5950X box (fps column still ramping).
+* Evals (score / median): 3,336M 28.554 / 28.44 (the checkpoint itself); **3,361M 28.834 / 28.77**
+  (6 of 9 fly the +y tunnel dive to its far end, x 1,955-2,096: the most consistent greedy line yet);
+  3,386M 27.463 / 27.44 and 3,411M 27.458 / 27.45: **all 9 die in the CP2 pit** (x ~3,030, 24.4 s).
+* Training ceiling (novel/ceiling) 28,178 -> 28,948 u within ~3M steps of T 0 and 29,168 u
+  (29.83%) by 3.36B: lower noise lets stochastic episodes through the cavity at once. Yaw sigma rose
+  0.029 -> 0.053 in 90M steps at T 0 (the entropy coef fell 0.015 -> 0.005, so it is PPO's own push);
+  approx_kl 0.3-0.8 for the first ~60M steps.
+* **Why the line locks into the pit (arithmetic on the reward, not a guess):** r = 100/d0 per unit
+  of geodesic record gain - 0.005 per tick (0.5 units/s), and death costs NOTHING. Pit dive: dies at
+  24.4 s with 27.45%. Detour + tunnel dive: dies at 28.2 s with 28.84% = +1.39 progress - 3.8 s x
+  0.5 = **-0.51 units vs the pit dive**. So once the critic is accurate the pit dive IS the optimum,
+  and lower noise makes the critic accurate faster: round 2's T 1 / T 0.5 / restart arms all relocked
+  into the pit within ~25-50M steps. At the window the same sum makes even a PERFECT cavity route
+  (window 28.6% at 27.5 s -> CP2 31% at 35.1 s) net -1.4 vs the tunnel dive's -0.1, unless the policy
+  can continue far past CP2. The time penalty with free death is a suicide incentive at every dip gate.
+* The principled fix (generic, from the trainer's own constants): charge a death the value of the
+  time penalty forever, c / (1 - gamma) = 0.005 / (1 - 0.9995) = **10.0** per tick (= 0.02 / (1 -
+  0.9995^4) per decision). Then every non-finishing trajectory's return is (sum of discounted
+  progress) - 10, i.e. the objective becomes "discounted progress", dying gains nothing, and a
+  finish is worth +10 more. Equivalent to `--time-pen 0` (which the trainer refuses with the surf
+  bonus, rightly: in that frame the 0.3/s surf bonus is a positive per-second reward). The ledger's
+  `--fail-pen 10` tests (round 27, cannonball, scratch 3 h, one seed each, 4.3x for vs 8.7x against)
+  sat inside a 5-9x noise floor; never tested warm at a dip gate.
+
+### Arm 2, r3b1_fp10 (01:18 UTC): r2b2_sband2 final + `--unstuck-max 0 --fail-pen 10`
+
+* Same start as arm 1, one added flag. 400M steps, evals every 25M. Expect: the critic re-fits (deaths
+  -10) for ~10-30M steps; then the greedy line should keep the corridor-east detour (it is worth +1.39
+  over the pit dive now) and the tunnel dive should lose to the cavity attempt whenever the cavity's
+  success rate times its extra progress beats 0.24.
