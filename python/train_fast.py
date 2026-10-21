@@ -3745,7 +3745,7 @@ class ReturnNorm:
                            self.SIGMA_MAX)
 
 
-def make_eval_stall_hook(core, field, stall_ticks, stall_eps, every, env=0):
+def make_eval_stall_hook(core, field, stall_ticks, stall_eps, every, env=0, cum=False):
     """``record_rollout`` on_tick that applies TRAINING's stall rule.
 
     CLAUDE.md: "Evals do NOT stall-kill. Training does." ``core.force_fail``
@@ -3772,7 +3772,7 @@ def make_eval_stall_hook(core, field, stall_ticks, stall_eps, every, env=0):
     (the indices of the episodes it ended, counted from 0 in the recording),
     so --respawn-greedy can tell a stall kill from a death.
     """
-    st = {"best": None, "since": 0, "phase": 0, "n": 0, "ep": 0, "killed": []}
+    st = {"best": None, "since": 0, "phase": 0, "n": 0, "ep": 0, "killed": [], "anchor": None}
 
     def hook(t, states, rewards, done, trunc):
         if bool(done[env]) or bool(trunc[env]):
@@ -3792,13 +3792,23 @@ def make_eval_stall_hook(core, field, stall_ticks, stall_eps, every, env=0):
         best = st["best"]
         if best is None:                 # first call of the episode: arm it
             st["best"] = d
+            st["anchor"] = d
             return
-        if d < best - stall_eps:
-            st["best"] = d
-            st["since"] = 0
-            return
-        st["best"] = min(best, d)
-        st["since"] += every
+        if cum:
+            # --stall-cum (RaceReward's mirror): the running best against the last re-arm's
+            st["best"] = min(best, d)
+            if st["best"] < st["anchor"] - stall_eps:
+                st["anchor"] = st["best"]
+                st["since"] = 0
+                return
+            st["since"] += every
+        else:
+            if d < best - stall_eps:
+                st["best"] = d
+                st["since"] = 0
+                return
+            st["best"] = min(best, d)
+            st["since"] += every
         if st["since"] >= stall_ticks:
             st["since"] = 0              # re-arm, exactly like pop_stall_mask
             st["n"] += 1
@@ -5966,6 +5976,18 @@ def main() -> None:
                          "re-arms the timer) instead of the field distance, which on a detour "
                          "map kills every episode that follows the route (Codex, 2026-09-27). "
                          "0 = the field, byte-identical. ckpt restores")
+    ap.add_argument("--stall-cum", type=int, default=None, choices=(0, 1),
+                    help="race: 1 = the stall timer re-arms once the episode's running best "
+                         "has improved by more than --stall-eps IN TOTAL since the last re-arm "
+                         "(cadence-free: 15 s without 32 u of progress), instead of in ONE call. "
+                         "The shipped per-call rule is called every TICK without "
+                         "--reward-per-decision, where a call moves <= ~23 u, so only near-wall "
+                         "corner switches of the trilinear field re-arm it: on sidistic it "
+                         "'stalls' every episode flying the greedy line at ~42.5 s (34%%) "
+                         "whatever its progress (a FAIL: no bootstrap), and the 3 s harvest gate "
+                         "(stagnant_mask) reads open-air flight as stuck. Also the --eval-stall "
+                         "rule. 0 / unset = the shipped rule (bit-identical). Saved in the "
+                         "config, restored on resume, mirrored by record_ckpt.py")
     ap.add_argument("--stall-eps", type=float, default=None,      # 32
                     help="race: how much a SINGLE decision must improve the "
                          "episode's best distance to re-arm the stall timer. "
@@ -7159,6 +7181,11 @@ def main() -> None:
         if args.stall_arc is None and ck_cfg.get("stall_arc") is not None:
             args.stall_arc = int(ck_cfg["stall_arc"])
             restored.append(f"stall_arc={args.stall_arc}")
+        if args.stall_cum is None and ck_cfg.get("stall_cum") is not None:
+            # --stall-cum: the same contract as the other stall settings (the episode ends
+            # it decides are part of what the critic learned)
+            args.stall_cum = int(ck_cfg["stall_cum"])
+            restored.append(f"stall_cum={args.stall_cum}")
         if args.max_step is None and ck_cfg.get("max_step") is not None:
             args.max_step = float(ck_cfg["max_step"])
             restored.append(f"max_step={args.max_step:g}")
@@ -12422,6 +12449,8 @@ def main() -> None:
                 arc_death_charge=float(args.arc_death_charge or 0.0),
                 # --stall-arc: the stall detector watches the route arc
                 stall_arc=bool(args.stall_arc),
+                # --stall-cum: the cumulative (cadence-free) re-arm rule
+                stall_cum=bool(int(args.stall_cum or 0)),
                 # --race-ratchet: the record rule, and THIS map's start
                 # geodesic as the observation column's normaliser
                 ratchet=bool(args.race_ratchet), ratchet_d0=_s.rf_d0,
@@ -12518,6 +12547,7 @@ def main() -> None:
             ng=args.race_ng, ng_gamma=GAMMA_T, ng_d0=_s.rf_d0,
             ratchet=bool(args.race_ratchet), ratchet_d0=_s.rf_d0,
             tick_ms=TICK.ms,
+            stall_cum=bool(int(args.stall_cum or 0)),
             # eval-only slot: __call__ is never reached, so there is no dip
             # to meter and nothing to allocate
             dip=False)
@@ -13624,6 +13654,12 @@ def main() -> None:
     if EVAL_PAR:
         # --eval-par: written ONLY when set (a control's config dump is unchanged)
         meta["config"]["eval_par"] = 1
+    if int(args.stall_cum or 0):
+        # --stall-cum: written ONLY when set
+        meta["config"]["stall_cum"] = 1
+        print("--stall-cum: the stall timer re-arms on a CUMULATIVE improvement of the "
+              "episode's running best by more than --stall-eps since the last re-arm (15 s "
+              "without that much progress kills, at any call cadence)")
     # --obs-potential: written ONLY when set (a control run's config dump
     # stays byte-identical to the pre-flag trainer's). The mode string is
     # what a resume restores and record_ckpt.py mirrors; the per-map start
@@ -19129,17 +19165,20 @@ def main() -> None:
                             "stall_ticks": int(_s.reward_fn.stall_ticks),
                             "stall_eps": float(_s.reward_fn.stall_eps),
                             "stall_every": int(_s.reward_fn.every)}
+                    if _s.reward_fn.stall_cum:
+                        _hdr["stall_cum"] = 1     # --stall-cum: the cumulative re-arm rule
                     if EVAL_PAR:
                         # --eval-par: one stall rule per env (episode i = env i)
                         _ev_stall = par_stall_hook([make_eval_stall_hook(
                             _s.eval_core, _s.reward_fn.field,
                             _s.reward_fn.stall_ticks, _s.reward_fn.stall_eps,
-                            _s.reward_fn.every, env=_e) for _e in range(n_rec)])
+                            _s.reward_fn.every, env=_e, cum=_s.reward_fn.stall_cum)
+                            for _e in range(n_rec)])
                     else:
                         _ev_stall = make_eval_stall_hook(
                             _s.eval_core, _s.reward_fn.field,
                             _s.reward_fn.stall_ticks, _s.reward_fn.stall_eps,
-                            _s.reward_fn.every)
+                            _s.reward_fn.every, cum=_s.reward_fn.stall_cum)
                     _ev_tick = chain_ticks(_ev_tick, _ev_stall)
                 _rg_cap = GREEDY is not None and not _s.heldout
                 if _rg_cap:
@@ -19284,7 +19323,7 @@ def main() -> None:
                                      _s.eval_core, _s.reward_fn.field,
                                      _s.reward_fn.stall_ticks,
                                      _s.reward_fn.stall_eps,
-                                     _s.reward_fn.every))
+                                     _s.reward_fn.every, cum=_s.reward_fn.stall_cum))
                     record_rollout(_s.eval_core,
                                    EVAL_SAMPLE(policy, packer, device,
                                                _s.lidar, _s.eval_core, K,
@@ -19325,7 +19364,7 @@ def main() -> None:
                                      _s.eval_core, _s.reward_fn.field,
                                      _s.reward_fn.stall_ticks,
                                      _s.reward_fn.stall_eps,
-                                     _s.reward_fn.every))
+                                     _s.reward_fn.every, cum=_s.reward_fn.stall_cum))
                     record_rollout(_s.eval_core,
                                    EVAL_GREEDY(policy, packer, device, _s.lidar,
                                                _s.eval_core, K, STACK,

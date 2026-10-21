@@ -659,8 +659,18 @@ class RaceReward:
                  frontier_anchor_speed: float = 0.0,
                  int_split: bool = False,
                  sr: bool = False, sr_eps: float = 0.0,
-                 sr_select: bool = False) -> None:
+                 sr_select: bool = False, stall_cum: bool = False) -> None:
         self.field = field
+        # --stall-cum: the stall timer re-arms once the episode's running best has improved by
+        # more than stall_eps IN TOTAL since the last re-arm, instead of in ONE call. The shipped
+        # per-call rule depends on the call cadence: called every TICK (every=1, the default
+        # without --reward-per-decision), a call moves <= ~23 u at full speed, so on the smooth
+        # trilinear field only near-wall corner switches ever clear 32 u - every episode flying
+        # the incumbent's greedy line on sidistic was "stalled" 15 s after ~27.5 s (at ~34%)
+        # whatever its progress, and stagnant_mask (the 3 s harvest gate) read most open-air
+        # flight as stuck. False = the shipped rule, op for op.
+        self.stall_cum = bool(stall_cum)
+        self._anchor: np.ndarray | None = None
         # --race-sr: Sibling Rivalry (Trott et al. 2019). Envs (2k, 2k+1) are
         # siblings; an episode's anti-goal is the sibling's most recent
         # terminal position, and the shaping potential is -d_eff with
@@ -1282,6 +1292,8 @@ class RaceReward:
             self._arc_off = np.zeros(n, np.int64)
             if self.stall_arc:
                 self._best = -np.asarray(self.arc.arc, np.float64).copy()
+        if self.stall_cum:
+            self._anchor = self._best.copy()     # --stall-cum: the last re-arm's best
         if self.int_coef > 0.0:
             mins, maxs = core.map_bounds()
             self._mins = mins.astype(np.float64)
@@ -1814,8 +1826,14 @@ class RaceReward:
             self._sr_de = self._sr_de_of(dc, pos)
         # --stall-arc: the route arc is the progress coordinate (ended rows are re-armed below)
         sd = (-np.asarray(self.arc.arc, np.float64) if self.stall_arc else d)
-        improved = sd < self._best - self.stall_eps
-        self._best = np.minimum(self._best, sd)
+        if self.stall_cum:
+            # --stall-cum: the running best against the best at the last re-arm
+            self._best = np.minimum(self._best, sd)
+            improved = self._best < self._anchor - self.stall_eps
+            self._anchor = np.where(improved, self._best, self._anchor)
+        else:
+            improved = sd < self._best - self.stall_eps
+            self._best = np.minimum(self._best, sd)
         self._since = np.where(improved, 0, self._since + self.every)
         if self.d_latch > 0.0:
             self._latched |= d <= self.d_latch
@@ -1856,6 +1874,8 @@ class RaceReward:
                 self._arc_off[ended] = 0
             self._best[ended] = (-np.asarray(self.arc.arc, np.float64)[ended] if self.stall_arc
                                  else d[ended])
+            if self.stall_cum:
+                self._anchor[ended] = self._best[ended]
             if self._vz is not None:
                 # --surf-bonus / --dive-pen: the vz tracker re-anchors on
                 # the fresh spawn, or the first tick of every new episode

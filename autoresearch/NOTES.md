@@ -1611,3 +1611,24 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
   on blocklisted machine 137730 (no ssh at readiness, earlier round); 16:51 only a 3090 Ti at $0.241 on a
   Xeon E5-2696 v3 (config.cpu_exclude). Two other branches got boxes around 13:15. Nothing to work around
   (the caps are the user's); the branch's code and plan are ready (NOTES above) for whenever one comes.
+
+### 18:10 UTC: the training stall rule kills good flight at ~42.5 s; `--eval-stall` unusable as shipped; NEW `--stall-cum`
+
+* CPU eval of the incumbent checkpoint with `--eval-par 1 --eval-stall 1` (r4b1_cpueval, 8,838,971,648):
+  all 9 episodes "fail" at 37.7-42.9 s at 31.9-34.4% (score 34.359, 7 stall kills), where the same
+  weights fly to ~54% at 63 s without the eval rule.
+* Why (offline replay of the rule on the incumbent's own best eval, 8,718M, scratchpad stallsim.py): the
+  race stall rule re-arms only when ONE call improves the running best by > 32 u, and without
+  --reward-per-decision RaceReward is called every TICK (every=1): a tick moves <= ~23 u at full speed, so
+  on the smooth trilinear field only near-wall corner switches ever re-arm it. Replayed per tick it kills
+  EVERY greedy episode that flies the line at 42.4-43.1 s (34.3%), including the ones that reach 54.7% at
+  63 s; replayed per decision (every 4 ticks) or as "15 s without 32 u of cumulative progress" it kills
+  only the stuck ones (15 s after their best: ep3 at 78.4 s, best 63.5 s).
+* So in TRAINING every episode is a FAIL (no bootstrap) ~15 s after its last near-wall jump, whatever its
+  progress (stall_frac 36-46% in the incumbent run; ep_len ~40 s), and `stagnant_mask` (the 3 s reservoir
+  harvest gate, the same `_since`) reads open-air flight as stuck - consistent with the reservoir's
+  concentration at wall-dense regions (median 25.6% progress, p90 29.3% at 8.84B).
+* NEW `--stall-cum 1`: the timer re-arms once the running best has improved by > --stall-eps IN TOTAL since
+  the last re-arm (cadence-free: 15 s without 32 u of progress kills). RaceReward, the eval hook and
+  record_ckpt's mirror; saved / restored / mirrored; off = the shipped rule. Generic: no map constant.
+  Tests: tests/python/test_stall_cum.py. With it, --eval-stall becomes the intended "stuck episode" cut.

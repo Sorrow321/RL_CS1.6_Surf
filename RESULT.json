@@ -2,6 +2,18 @@
  "agent": "r4b1",
  "round": 4,
  "final": false,
- "best": null,
- "summary": "Round 4 (r4b1), 13:55 UTC: no box yet (no offer under the caps since 12:50; rent retried every 60 s). Built, CPU-tested, pushed: (1) --pitch-std-min / --diag-heads - the pitch sigma has sat at the 0.0067 clamp since round 1 (1/sigma score-function noise on the shared actor; joint PPO ratio, kl 2-23); (2) --eval-stall-aware greedy pool and (3) --eval-par (eval episodes side by side): the incumbent run spent 49% of its wall time (up to 143 s per eval at the end) in sequential batch-1 evals. Plan: resume the incumbent (54.674) with --eval-stall 1 --eval-par 1 --diag-heads, then the pitch floor."
+ "best": {
+  "score": 47.495,
+  "eval_file": "/home/steam/ar/runs/r4b1/r4b1_cpueval2/traj_8838971648.jsonl",
+  "run": "r4b1_cpueval2",
+  "step": 8838971648,
+  "ckpt": "/home/steam/ar/incumbent/r3/ckpt.pt",
+  "recipe": [
+   "--eval-par",
+   "1"
+  ],
+  "resume_from": "incumbent r3 ckpt (r3b3_gwx2 final, 8,838,971,392); CPU, 1 iteration of 256 steps: the incumbent's own greedy line, fp32 on CPU",
+  "commit": "5bc7558"
+ },
+ "summary": "Round 4 (r4b1), 18:15 UTC: NO BOX since 12:50 (no offer under the caps). Branch evals so far are the incumbent checkpoint's own greedy line evaluated on CPU (47.495 with --eval-par; GPU evals of the same weights read ~54.5). Built, tested, pushed: --pitch-std-min/--diag-heads (pitch = 96% of the shared actor gradient, measured), --eval-par (9 eval episodes side by side; evals were 49% of the incumbent run's wall time), --stall-cum (the per-tick stall rule kills every greedy-line episode at ~42.5 s whatever its progress; cumulative re-arm fixes it). Plan when a box comes: incumbent + --pitch-std-min 0.05 --stall-cum 1 --eval-stall 1 --eval-par 1 --critic-warmup 20."
 }

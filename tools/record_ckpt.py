@@ -2472,10 +2472,15 @@ def main(argv=None, build_only: bool = False, device=None):
         _stall_eps = TICK.per_tick(_stall_eps)
         header_extra = {"eval_stall": 1, "stall_ticks": _stall_ticks,
                         "stall_eps": _stall_eps, "stall_every": _stall_every}
-        _ss = {"best": None, "since": 0, "phase": 0, "n": 0}
+        # --stall-cum is MIRRORED: the run's training kill re-armed on a cumulative improvement
+        _stall_cum = bool(int(cfg.get("stall_cum") or 0))
+        if _stall_cum:
+            header_extra["stall_cum"] = 1
+        _ss = {"best": None, "since": 0, "phase": 0, "n": 0, "anchor": None}
 
         def stall_hook(t, states, rewards, done, trunc, _c=core, _f=gf,
-                       _tk=_stall_ticks, _eps=_stall_eps, _ev=_stall_every):
+                       _tk=_stall_ticks, _eps=_stall_eps, _ev=_stall_every,
+                       _cum=_stall_cum):
             if bool(done[0]) or bool(trunc[0]):
                 _ss["best"] = None
                 _ss["since"] = 0
@@ -2492,13 +2497,22 @@ def main(argv=None, build_only: bool = False, device=None):
             best = _ss["best"]
             if best is None:
                 _ss["best"] = d
+                _ss["anchor"] = d
                 return
-            if d < best - _eps:
+            if _cum:
+                _ss["best"] = min(best, d)
+                if _ss["best"] < _ss["anchor"] - _eps:
+                    _ss["anchor"] = _ss["best"]
+                    _ss["since"] = 0
+                    return
+                _ss["since"] += _ev
+            elif d < best - _eps:
                 _ss["best"] = d
                 _ss["since"] = 0
                 return
-            _ss["best"] = min(best, d)
-            _ss["since"] += _ev
+            else:
+                _ss["best"] = min(best, d)
+                _ss["since"] += _ev
             if _ss["since"] >= _tk:
                 _ss["since"] = 0     # re-arm, exactly like pop_stall_mask
                 _ss["n"] += 1
