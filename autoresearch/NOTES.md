@@ -1742,7 +1742,7 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
 * So the dive is learned; the gate is the window (CP4's kind: ~700M steps at it this round).
   Field progress is flat across it (60.4-60.5%), so only exploration finds it.
 
-### 17:53 UTC: why the window does not pull (analysis only, c4 10.26B checkpoint)
+### 17:44 UTC: why the window does not pull (analysis only, c4 10.26B checkpoint)
 
 * Critic V(s) at spawn (record_ckpt --dump-value): the human's east-valley states (BENCH ONLY)
   median **0.73**; the policy's own bowl states median **1.10**. So the critic values the east
