@@ -1184,3 +1184,15 @@ line (it killed my local shell twice).
 * **r3b3_tp0x** (02:52): bare resume of that checkpoint (every flag restored), +1.5e9 steps,
   evals every 25M, snapshots every 1e8. Next gate: the ramp at the void's bottom up to CP2 (~31%),
   then the human's 39% further on.
+
+### 03:20 UTC: r3b3_tp0x - every greedy eval enters CP2; best 32.556; the next wall at x ~-700
+
+* Evals 4,136M-4,463M (score.py): 31.788 (the 4,135M checkpoint itself, CP2), then 32.348, 32.518,
+  32.307, 32.550, 32.522, 32.532, 32.324, 32.538, 32.518, 32.518, 32.322, **32.556** (4,438M,
+  median 32.4%), 32.512; all CP2, medians 31.2-32.4%. (traj_4488429568 was still being written:
+  32.76 on 8 episodes.) Training ceiling 32,141 u (32.9%); reservoir min depth 67.24%; T 0.99.
+* The line past the void (4,438M episode 0): 33.75 s (1,089, -263, 9,824) at the void's bottom ->
+  34.0-34.5 s the void-bottom ramp turns it up (vz +56 -> +993 -> +1,121; the human's at 34.5 s) ->
+  ~34.8 s through CP2 (sgcp_2, x 768-816) climbing -> west at z ~10,900 (35.75-36.25 s) -> **stops
+  at x ~-700 at 36.5 s (v ~0 horizontally) and falls to a kill at z ~10,613**. 8 of 9 episodes die
+  there (x -671..-711, |y| < 145).
