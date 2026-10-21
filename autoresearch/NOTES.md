@@ -1291,3 +1291,18 @@ window, C = inside the cavity under the pit slab, T = tunnel lane, R = room; ana
   agent at a standstill is hard for this action space; a core fix (e.g. keep the last heading as the base
   when slow) changes the physics ABI and every checkpoint's behaviour, so it is a round-level decision,
   not a drive-by.
+
+### 08:20 UTC: nf7 stopped at the plateau (9.76B); the scratch test resumed (r3b1_scrx)
+
+* r3b1_nf7 9,215M -> 9,757M: frontier 31,203-32,101 u, best 9,366M 32.834; ceiling 32,067 -> 32,102 u. The
+  plateau at the post-CP2 slab has now lasted ~1.4B steps (since 8.36B) through plain, SIL and novel-share
+  0.7 continuations. Stopped; ckpt_latest.pt pulled (9,756,999,680, md5 d3da4f2f...): the hand-on
+  candidate (the best eval's run, newest weights; no ckpt_final because it was stopped).
+* What the gate needs (greedy traces): the void-ramp turn-up launches the agent to z ~10,900 (vz +960..+1,120
+  at CP2), too high for the passage under the slab (z < ~10,550 at x -420); vz is set by the ramp exit (air
+  control only steers), so it needs a LOWER ramp exit - a precision skill with a weak reward signal (~0.2 units
+  for being lower at x -420), unlikely to fall in the time left.
+* So the box goes to the open recipe question instead: **r3b1_scrx** (08:18) = resume of r3b1_scr's
+  ckpt_latest (1,136,656,384, md5 139a3451...), same flags, budget 1.2e9 (to 2.34B), evals every 75M. Does
+  the reward-fix recipe (now config.json's default) cross the CP2 pit from scratch, and when (ratnov
+  1,633M, sband2 ~1.94B)?
