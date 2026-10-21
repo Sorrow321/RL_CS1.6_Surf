@@ -3,11 +3,11 @@
  "round": 4,
  "final": false,
  "best": {
-  "score": 84.546,
-  "eval_file": "/home/steam/ar/runs/r4b3/r4b3_band15/traj_13645643776.jsonl",
-  "run": "r4b3_band15",
-  "step": 13645643776,
-  "ckpt": "/home/steam/ar/runs/r4b3/r4b3_band15/ckpt_final.pt",
+  "score": 85.021,
+  "eval_file": "/home/steam/ar/runs/r4b3/r4b3_band15x/traj_13921943552.jsonl",
+  "run": "r4b3_band15x",
+  "step": 13921943552,
+  "ckpt": "/home/steam/ar/runs/r4b3/r4b3_band15x/ckpt_final.pt",
   "recipe": [
    "--stall-eps",
    "5",
@@ -24,9 +24,9 @@
    "--ckpt-every",
    "1e8"
   ],
-  "resume_from": "incumbent r3b3_gwx2/ckpt_final.pt (8,838,971,392) -> r4b3_ctl (+ --eval-patience 30) -> r4b3_keys (+ --eval-parallel 1 --unstuck-temp-heads keys) -> r4b3_kst5 (+ --stall-eps 5 --critic-warmup 20) -> r4b3_kst5x -> r4b3_ft1 (+ --front-temp 1 --front-band 0.03, null) -> r4b3_m1 (+ --respawn-margin 1, null) -> r4b3_main2 (--front-temp 0 --respawn-margin 2) -> r4b3_stuck (+ --respawn-greedy-stuck 200) -> r4b3_band15 (+ --respawn-novel-band 0.15)",
+  "resume_from": "incumbent r3b3_gwx2/ckpt_final.pt (8,838,971,392) -> r4b3_ctl (+ --eval-patience 30) -> r4b3_keys (+ --eval-parallel 1 --unstuck-temp-heads keys) -> r4b3_kst5 (+ --stall-eps 5 --critic-warmup 20) -> r4b3_kst5x -> r4b3_ft1 (+ --front-temp 1 --front-band 0.03, null) -> r4b3_m1 (+ --respawn-margin 1, null) -> r4b3_main2 (--front-temp 0 --respawn-margin 2) -> r4b3_stuck (+ --respawn-greedy-stuck 200) -> r4b3_band15 (+ --respawn-novel-band 0.15) -> r4b3_band15x (bare resume of r4b3_band15 ckpt_final 13,682,343,936, md5 d78738c7...; --record-every 12.5e6)",
   "commit": "3ea2710",
-  "note": "ckpt_final.pt = r4b3_band15's end, step 13,682,343,936, md5 d78738c723d25d4418b27b778392f0a0 (37M steps after the best eval), pulled by scp and md5-checked. The continuation r4b3_band15x (evals every 12.5M) runs to ~23:45."
+  "note": "r4b3_band15x runs until ~23:50; its final checkpoint is pulled at wrap-up. Fallback hand-on checkpoint: r4b3_band15/ckpt_final.pt (13,682,343,936, md5 d78738c723d25d4418b27b778392f0a0, local)."
  },
- "summary": "Best 84.546 (r4b3_band15 at 13,645M, CP5, median 84.2%; incumbent 54.674). Warm on the incumbent: (1) NEW eval-only speedups --eval-patience 30 + --eval-parallel 1 (evals were half the wall time; ~1.5x steps/h); (2) --unstuck-temp-heads keys (all-heads T 0.5 broke the line); (3) --stall-eps 5 (the stall rule ran per TICK: 32u in 10 ms, killing 30-50% of training episodes; ledger skate_laby fix) -> 54.6 to 60.6 in ~600M; (4) at the 60.57% stop (a dive past kill plates, ~1.6B steps) a lucky episode set the ceiling to 70.3%, which starved the band novel rows (band anchored to the ceiling): --respawn-novel-band 0.15 restored them and the greedy line passed within ~100M (63 -> 72.6), then 82.7 by 12.26B and 84.5 by 13.65B. Also NEW --respawn-greedy-stuck (stalled-stretch greedy states) and --front-temp (null); arms F/G nulls."
+ "summary": "Best 85.021 (r4b3_band15x at 13,922M, CP5, median 84.5%; incumbent 54.674). Warm on the incumbent: (1) NEW eval-only speedups --eval-patience 30 + --eval-parallel 1 (evals were half the wall time; ~1.5x steps/h); (2) --unstuck-temp-heads keys (all-heads T 0.5 broke the line); (3) --stall-eps 5 (the stall rule ran per TICK: 32u in 10 ms, killing 30-50% of training episodes; ledger skate_laby fix) -> 54.6 to 60.6 in ~600M; (4) at the 60.57% stop (a dive past kill plates, ~1.6B steps) a lucky episode set the ceiling to 70.3%, which starved the band novel rows (band anchored to the ceiling): --respawn-novel-band 0.15 restored them and the greedy line passed within ~100M (63 -> 72.6), then 82.7 by 12.26B and 85.0 by 13.92B. Also NEW --respawn-greedy-stuck (stalled-stretch greedy states) and --front-temp (null); arms F/G nulls."
 }

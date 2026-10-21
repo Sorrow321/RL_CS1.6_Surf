@@ -1908,3 +1908,10 @@ own greedy-line pool (1,809 STATE_DTYPE rows, 59.7-60.6% progress, the 2 s befor
 * **r4b3_band15x** (21:28): bare resume of that final, `--record-every 12.5e6` (twice the evals: a fresher
   greedy-line pool and more samples of the max, for ~15% of the steps), 1.35e9 steps (ends ~23:45,
   before the 00:09 wrap-up).
+
+### 21:59 UTC: 85.021 (r4b3_band15x)
+
+* r4b3_band15x 13,683-13,947M (evals every 12.5M; 151k steps/s average vs 226k training-only - the
+  greedy episodes now fly ~95 s + the 30 s patience window, so a side-by-side eval costs ~25-30 s):
+  frontier 82.6-83.1k u every eval, **85.021 (13,922M, median 84.5%)**. Reservoir deepest 85.1% (min
+  depth 14.89%), ceiling 83,253 u (85.2%), T 0.5 (no +500 u eval best since 82,659 u at 13,645M).
