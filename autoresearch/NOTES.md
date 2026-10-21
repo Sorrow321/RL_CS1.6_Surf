@@ -1144,3 +1144,11 @@ later, x ~0.9) trims the time-pen-0 margin but keeps the median detour ahead (~2
   their value is more likely downstream (the cavity, where the band's novel rows already put the
   agent). The detour itself has to come from the value gradient the novel rows create in the
   corridor (under time-pen 0 the corridor is finally worth more than the pit).
+
+### 04:49 UTC: box 56999701 (RTX 5090 + Ryzen 9 7950X3D, $0.569/h live, Minnesota)
+
+* Rented at 04:48 by the retry loop (the storage-aware price filter let it through: live price
+  $0.569 <= 0.60 cap, the watchdog accepted it). READY in ~1 min, deploying ar/r3b4 with the
+  incumbent checkpoint, then **r3b4_tpsb** launches (resume, 400M, evals every 25M):
+  `--time-pen 0 --surf-bonus 0 --ez-eps 0.04 --ez-front 0.15 --sil-coef 0.1 --sil-burst-only 1
+  --sil-view-mse 1`.
