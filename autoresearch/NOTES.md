@@ -1213,3 +1213,12 @@ cavity (entry speed, ramp vz) and complete the loop? 30 min first.
 * Greedy-tail spawns in the cavity now carry their own ratchet record (the spawn's d), so climbing
   from the ramp exit (26.3%) toward the opening (27.4%) and into the shaft is PAID for them: the dense
   gradient for exactly the missing piece. Kept running.
+
+### 04:00 UTC: r3b2_gt2 at 8.32B - THE TRAINING CEILING MOVES: 29,204 -> 30,571 u (31.27%)
+
+* `novel/ceiling` (the deepest d any training episode reached) was 29,204 u (29.87%) from tp0 (~7.3B)
+  to 8.28B, then 29,871 u at 8,281M and **30,571 u (31.27%) at 8,306M**: stochastic training episodes
+  now complete the cavity loop and get past the field route's 28.8% limit (the room / under *20 /
+  toward CP2 at ~31%). The greedy line has not followed yet: evals 8,123-8,299M are 27.99-28.55 (best
+  28.549 at 8,174M), with 6/9 rising cavity attempts at 8,224M and some evals falling back to E-only.
+* Box extended to ~07:30 UTC.
