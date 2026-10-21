@@ -1872,3 +1872,15 @@ own greedy-line pool (1,809 STATE_DTYPE rows, 59.7-60.6% progress, the 2 s befor
   81.399, 81.874, 82.366, 82.145, **82.674 (12,261M, median 82.1%)**; all CP5, all 9 episodes end
   "fail" now (no stalls). Reservoir min depth 17.93% (deepest 82.1%), ceiling 82,465 u (84.3%),
   T 0.02, 183k steps/s.
+
+### 19:48 UTC: 82.851; the next stop at 82.7% (92.5 s), measured
+
+* r4b3_band15 12,287-12,564M: evals 80.8-81.0k u every time (82.7-82.85%), best **82.851 (12,437M)**,
+  medians 53-82%; T back at the 0.5 cap (no +500 u eval best for ~300M), reservoir deepest 82.06%,
+  ceiling 82,493 u (84.4%).
+* The stop (bsp entities, ANALYSIS ONLY): 8 of 9 greedy episodes die at ~92.5 s at (-5,110..-5,180,
+  -540..-570, 4,430-4,530) moving (+1,150, -600, -550): they surf over func_wall *152 (x -5,876..-4,976,
+  z 4,477-4,792) at y ~-560 - inside the y range of the small kill block *85 (x -5,056..-4,928,
+  y -704..-448, z 4,544-4,672) - and fall onto kill *122 (x -5,856..-5,024, top z 4,456) before its
+  east end. The field's route goes on east at |y| < 448 between *85 and its mirror *51 and drops to
+  a level at z ~4,244 (83.7-85.3%, x -4,490..-2,890).
