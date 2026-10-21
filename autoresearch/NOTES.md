@@ -1884,3 +1884,9 @@ own greedy-line pool (1,809 STATE_DTYPE rows, 59.7-60.6% progress, the 2 s befor
   y -704..-448, z 4,544-4,672) - and fall onto kill *122 (x -5,856..-5,024, top z 4,456) before its
   east end. The field's route goes on east at |y| < 448 between *85 and its mirror *51 and drops to
   a level at z ~4,244 (83.7-85.3%, x -4,490..-2,890).
+
+### 20:17 UTC: the 82.7% stop falls after ~400M steps - 84.244
+
+* r4b3_band15 12,589-12,866M: 82.0k u at 12,689M (83.9%), then **84.244 (12,840M, median 82.9%)** and
+  84.234; reservoir deepest 84.6% (min depth 15.38%), ceiling 83,029 u (84.9%), T 0.5 -> 0.12.
+  Box extended to 23:17 UTC.
