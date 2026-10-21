@@ -1178,3 +1178,16 @@ window, C = inside the cavity under the pit slab, T = tunnel lane, R = room; ana
 * Training: ceiling 29,537 -> **30,901 u (31.6%)**, reservoir min-depth 69.6% (its deepest state now at
   30.4% progress, past the room), stall share 0.09-0.15, yaw sigma ~0.07, kl 0.15-0.35.
 * Stable checkpoint copy pulled: runs/r3b1/r3b1_ifpx/ckpt_8054112256.pt (md5 6dd1c99a...).
+
+### 04:15 UTC: r3b1_ifpx passes CP2 - 32.237 (7/9 greedy episodes at 31.95-32.2% at 8,255M)
+
+* Evals 8,154-8,331M: frontier 31,243-31,518 u in 7 of 8; best **8,281M 32.237** (max CP 2), 8,255M
+  32.191 with **7 of 9 at 31.95-32.19%** (median 32.01%). Training ceiling 31,941 u (32.7%), reservoir
+  min-depth 68.2%. One kl spike to 1.47 at 8,345M (watch).
+* The line past the room (8,255M episode 2): the void-bottom ramp at 30.0-30.6 s ((1,060-1,119,
+  +424..-457, 9,710-9,887), vy -1,540 then vz +961..+1,118: the human's turn-up), a climb west through
+  CP2 (x ~800 at 31.0 s, 2.5 s AHEAD of the WR demo's ~35.1 s: the tunnel bounce skips the human's 3.5 s
+  cavity loop), level flight at z ~10,780-10,840 at ~800 u/s, a wall at x ~-420 at 32.6 s, a drop onto a
+  kill at (-416, -158, 10,603). The field says the way on is LOWER: solid at z 10,600 west of x ~-500,
+  open at z 10,500 (d 65.7-66.3k, descending west). Next skill: be below ~10,550 before x ~-420.
+* Stable checkpoint copy pulled: runs/r3b1/r3b1_ifpx/ckpt_8344567808.pt (md5 3cdf391f...).
