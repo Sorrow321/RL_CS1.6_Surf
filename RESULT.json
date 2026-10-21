@@ -3,19 +3,23 @@
  "round": 3,
  "final": false,
  "best": {
-  "score": 29.823,
-  "eval_file": "/home/steam/ar/runs/r3b3/r3b3_sgir/traj_3436707840.jsonl",
-  "run": "r3b3_sgir",
-  "step": 3436707840,
-  "ckpt": "/home/steam/ar/runs/r3b3/r3b3_sgir/ckpt_final.pt",
+  "score": 30.348,
+  "eval_file": "/home/steam/ar/runs/r3b3/r3b3_tp0/traj_4113563648.jsonl",
+  "run": "r3b3_tp0",
+  "step": 4113563648,
+  "ckpt": "/home/steam/ar/runs/r3b3/r3b3_tp0/ckpt_final.pt",
   "recipe": [
    "--respawn-greedy",
    "0.15",
    "--int-real-only",
-   "1"
+   "1",
+   "--time-pen",
+   "0",
+   "--surf-bonus",
+   "0"
   ],
-  "resume_from": "r2b2_sband2/ckpt_final.pt (round 2's from-scratch band lineage, 3,335,520,256, md5 36256794...; recipe ratchet + novel + band 0.05 / turn 90 / shell 0.9 / width 0.05 / radius 256-3072 / tries 64, T cap 2)",
-  "commit": "21f9053"
+  "resume_from": "r2b2_sband2/ckpt_final.pt (3,335,520,256) -> r3b3_sgir (+ --respawn-greedy 0.15 --int-real-only 1, to 3,735,552,000) -> r3b3_tp0 (+ --time-pen 0 --surf-bonus 0 --critic-warmup 20)",
+  "commit": "c24b11b"
  },
- "summary": "Best 29.823 (r3b3_sgir eval 3,436M: greedy episode past the tunnel via shaft-wall redirections; recipe r2b2_sband2 + --respawn-greedy 0.15 + --int-real-only 1); then that line collapsed into the CP2 pit. Key finding: the 0.5/s time penalty prices the slow pit detour and the cavity dip below an early death. Arm 3 (--time-pen 0 --surf-bonus 0 --critic-warmup 20 on the pit-locked checkpoint): the greedy line crosses the pit 25M steps after the warmup and by 3,836M 3/9 greedy episodes enter the CAVITY through the lower opening (the human's route) - never seen before; they die on its floor (scores 27.4-28.2 so far). Extending; next skill: the ramp and exit."
+ "summary": "Best 30.348 (r3b3_tp0 eval 4,113M; median 30.2%, 6/9 greedy episodes past 30%): the greedy line flies the human's cavity route (window -> shaft -> lower opening -> cavity -> back out -> tunnel -> room -> under *20) into the void under the room, ~70 u short of the CP2 curtain. Key finding: the 0.5/s time penalty priced the slow CP2 detour and the cavity dip below an early death; removing it (--time-pen 0 --surf-bonus 0, critic warmup) on a pit-locked checkpoint freed the greedy line within 25M steps and it learned the cavity in ~350M. Base: r2b2_sband2 + --respawn-greedy 0.15 (spawns on the policy's own greedy line before each death) + --int-real-only 1 (29.823 earlier, then pit-locked). Next: the ramp at the void's bottom up to CP2."
 }

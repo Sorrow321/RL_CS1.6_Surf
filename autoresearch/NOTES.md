@@ -1159,3 +1159,28 @@ line (it killed my local shell twice).
 * EXTENDED (a gate the incumbent never cleared: the greedy line in the cavity). What is missing:
   the ramp at the cavity's bottom and the rising exit - the pieces round 2's bench showed the band
   practice teaches from the human's states.
+
+### 02:52 UTC: MILESTONE - 30.348, the greedy MEDIAN past 30% by the human's cavity route
+
+* r3b3_tp0 (time-pen 0) evals 3.89-4.04B: 28.22-28.26 (the greedy line in the shaft / cavity,
+  deaths at 32-37 s - inside the dip progress is BELOW the tunnel's 28.8%); 4,063M 28.569; 4,088M
+  29.562 (one episode out of the tunnel to (1,758, -528, 10,480) at 33.6 s); **4,113M 30.348 (best
+  30.35%, median 30.2%, 6/9 past 30%)**.
+* 4,113M, the episodes past 30%: they reach the void under the room - best points (880-1,150,
+  -178..-577, 9,824-9,999) at 34.7-35.0 s (two alive at the 300 s cap there) - the human's 34.5 s
+  position is (1,112, 236, 9,730), where a ramp at the void's bottom turns his fall into a climb to
+  CP2 (sgcp_2, x 768-816, z 10,060-11,300) at ~35.1 s. Episode 8 hangs at (880, -587, 9,976), ~70 u
+  short of the curtain in x and ~80 u under its bottom.
+* Training ceiling 29,400 -> 30,375 u (31.07%) by 4.11B; reservoir min depth 70.33% (and 67,813 u
+  = 30.6% at the extension's start); T back at the cap 2; ep_len 1,011 decisions; stall share 28%
+  (episodes that stop progressing are killed at 15 s in training).
+* So in ~380M steps after the warmup, with the per-second charge gone, the greedy line went from
+  pit-locked (27.4%) to the human's whole CP2 sequence: corridor-east detour, +y ramp turnaround,
+  slot, window, shaft, lower opening, cavity, back out, tunnel, room, under *20. The band novel
+  rows (85% in the cavity), the greedy-line pool (now at the cavity / void deaths) and the
+  reservoir all kept training at the frontier.
+* Final ckpt /home/steam/ar/runs/r3b3/r3b3_tp0/ckpt_final.pt (4,135,583,744, md5 aae269ee...),
+  pulled; snapshots ckpt_3835691008 / 3935830016 / 4035969024 on the box.
+* **r3b3_tp0x** (02:52): bare resume of that checkpoint (every flag restored), +1.5e9 steps,
+  evals every 25M, snapshots every 1e8. Next gate: the ramp at the void's bottom up to CP2 (~31%),
+  then the human's 39% further on.
