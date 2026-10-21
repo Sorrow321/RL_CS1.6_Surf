@@ -1258,3 +1258,18 @@ later, x ~0.9) trims the time-pen-0 margin but keeps the median detour ahead (~2
   ez_eps 0.04, ez_front 0.15 checked in the log), to 5.6B, evals every 50M. Box extended to 12:09.
   Read-outs: window passage (ratnov 576M), CP2 wall (651M), CP2 pit crossing (ratnov 1,633M; r2b2's
   band lineage ~1.94B), the tunnel dive (28.5-28.8%).
+
+### 07:09 UTC: r3b4_ssbx at 1.15B - stuck at the window wall (500M+), T at its cap 2
+
+* Evals 601M-1,104M: best 20.7-21.0% every time (the window wall); median 20.6-20.8% until ~1.0B, then
+  19.2 / 16.1 as T reached 2 (at 1,104M three episodes die at 8% and three at 16%: the T-2 behaviour
+  policy degrades the greedy line, as in round 2). Training ceiling 21,871 u (22.4%: stochastic
+  episodes do get through the hole). Burst SIL: +369 rows/iteration, gain 0.02 - bursts rarely beat
+  the critic now.
+* Closest greedy episodes: x 1,200-1,392 at z 12,809-13,152 by 19.1-19.5 s, the best 46 u under the
+  hole's bottom (hole z 13,198-13,314 at x ~1,150).
+* Against the references: ratnov passed at 576M (T ~0); novel-only stalled here to 1.02B (stopped);
+  NV2 stalled 1.0-1.41B; the round-0 surf / cap-2 runs passed at 1,359M / 1,661M with T near 2. So the
+  burst SIL did not help this gate (one seed). Kept running: if it passes by ~1.5B and follows ratnov's
+  ~1B at the CP2 wall, the tunnel dive lands before wrap-up - this branch's realistic best score and a
+  healthy (not pit-locked) checkpoint.
