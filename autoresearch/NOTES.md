@@ -1271,3 +1271,8 @@ window, C = inside the cavity under the pit slab, T = tunnel lane, R = room; ana
   `--sil-coef 0 --respawn-novel-frac 0.7` (the four reward flags restored/passed): novel share of episodes
   ~45% -> ~60% (2,580 rows per pool). Question: does more frontier-band practice break the plateau (1.1B
   steps without a gain)? 30-40 min first.
+
+* 07:48 UTC, r3b1_nf7 (novel share ~60%) 9,215-9,467M: frontier 31,570-32,101 u; **9,366M 32.834** (one episode drops
+  further down the shaft, to (-785, 301, 9,716) at 34.4 s; median 32.2%); training ceiling 32,067 -> 32,102 u.
+  Not a gate passage (the ceiling is flat); kept running to the wrap-up. Stable copy
+  runs/r3b1/r3b1_nf7/ckpt_9466544128.pt (md5 dca2d809...). Box extended to 12:06 UTC.
