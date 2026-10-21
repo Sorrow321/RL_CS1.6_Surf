@@ -1231,3 +1231,27 @@ cavity (entry speed, ramp vz) and complete the loop? 30 min first.
   (**1,266** / 10,868 at (2,843, -1,011), moving WEST at 1,370 u/s). The human leaves the ramp at +1,190.
   So the take-off strength is solved within ~400M steps of greedy-tail practice; the last miss is the
   y-alignment of the apex with the lower opening (|y| < 110 at x 2,512-2,576). No change to the run.
+
+### 04:35 UTC: MILESTONE - the greedy line flies the cavity loop and passes CP2: score 32.384 (incumbent 28.841)
+
+| step | score | median | episodes past the tunnel (T M flags) |
+|---|---|---|---|
+| 8,476M | **32.123** | 28.50 | 2 (31.97, 32.12%) |
+| 8,501M | 28.850 | 28.41 | 1 |
+| 8,526M | **32.384** | 28.78 | **5** (32.27-32.38%), CP2 entered |
+| 8,551M | 32.383 | 32.26 | 7 |
+| 8,576M | 32.323 | 32.26 | 7 |
+
+* The route (8,526M ep 7, the human's in every stage): lower opening WEST at 30.5 s (2,641, 52, 10,825)
+  -> up into the -y tunnel level at 31.25-31.5 s (z 11,154-11,164) -> the room (x 1,723 -> 1,436) ->
+  surf, drop east of *20 and west under it (z 10,400 -> 9,995) -> the ramp at the void's bottom
+  (1,103, 243, 9,743) at 34.25 s, out at vz +1,204 -> west through CP2 (x ~800) at ~35 s -> dies at
+  (-482, 76, 10,632) at 37.4 s. All five loop finishers die within (-660..-480, 76..143, z 10,630-10,840):
+  the next gate.
+* The unstuck T started cooling on the new eval best (best 31,406 u; T 1.00 -> 0.45 by 8,592M); training
+  ceiling 32,118 u (32.85%); reservoir min-depth 71.7% -> 67.2%.
+* Safety copy: runs/r3b2/r3b2_gt2/ckpt_8599896064.pt (md5 c98339c7...), local; the same file on the box.
+* The recipe that did it, from the incumbent checkpoint: `--time-pen 0 --surf-bonus 0` (the objective),
+  then 15% of spawns from the policy's own greedy tail (last 3 s before each failure, refreshed every
+  20 min; tools/greedy_tail_states.py + autoresearch/analysis/greedy_tail_loop.sh) with
+  `--respawn-min-speed 300`; 1.35B steps from 7.18B (tp0 0.4B, tp0x 0.16B, gt 0.23B, gt2 0.55B so far).

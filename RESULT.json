@@ -3,19 +3,25 @@
  "round": 3,
  "final": false,
  "best": {
-  "score": 28.839,
-  "eval_file": "/home/steam/ar/runs/r3b2/r3b2_tp0/traj_7327973376.jsonl",
-  "run": "r3b2_tp0",
-  "step": 7327973376,
-  "ckpt": "/home/steam/ar/runs/r3b2/r3b2_tp0/ckpt_latest.pt",
+  "score": 32.384,
+  "eval_file": "/home/steam/ar/runs/r3b2/r3b2_gt2/traj_8525971456.jsonl",
+  "run": "r3b2_gt2",
+  "step": 8525971456,
+  "ckpt": "/home/steam/ar/runs/r3b2/r3b2_gt2/ckpt_latest.pt",
   "recipe": [
    "--time-pen",
    "0",
    "--surf-bonus",
-   "0"
+   "0",
+   "--spawn-states",
+   "runs/gt_states_r3b2_gt.npy",
+   "--spawn-states-frac",
+   "0.15",
+   "--respawn-min-speed",
+   "300"
   ],
-  "resume_from": "incumbent ckpt (r2b2_t1 ckpt_latest, 7,176,454,144, md5 92b7ddd2), bare resume + the flags above",
-  "commit": "08b1be0"
+  "resume_from": "warm lineage: incumbent ckpt (r2b2_t1 ckpt_latest, 7,176,454,144) -> r3b2_tp0 (+ --time-pen 0 --surf-bonus 0, to 7,576M) -> r3b2_tp0x (to 7,740M) -> r3b2_gt (+ greedy-tail spawns 15%, to 7,972M) -> r3b2_gt2 (+ --respawn-min-speed 300); the spawn-states file is refreshed every 20 min from the run's own greedy recording (autoresearch/analysis/greedy_tail_loop.sh)",
+  "commit": "a33cb45"
  },
- "summary": "H1 confirmed: the 0.5/s time penalty made the CP2 pit dive worth ~1 unit more than the east detour. Warm incumbent + --time-pen 0 --surf-bonus 0 (tp0/tp0x): detour 9/9 in 100M steps, tunnel dive 28.839 (incumbent 28.841), 2-5/9 slow cavity entries. --speed-pot 2 made the window fast but priced out the cavity (negative). Greedy-tail spawns (15% of spawns from the policy's own last 3 s before failure, refreshed every 20 min; r3b2_gt): 7/9 greedy cavity entries at the human's speed, ramp take-off vz up to +977, best apex 220 u below the exit. Now r3b2_gt2 = gt + --respawn-min-speed 300 (stalled states were flooding the reservoir)."
+ "summary": "H1: the 0.5/s time penalty made every dip detour worth less than the quick death it replaces; --time-pen 0 --surf-bonus 0 restored the CP2 detour in 50M steps and sent the greedy line into the cavity. Greedy-tail spawns (15% of spawns from the policy's own last 3 s before failure, refreshed every 20 min) + --respawn-min-speed 300: the greedy line learned the cavity loop (entry at the human's speed, ramp take-off +1,266, climb-out) and since 8,476M flies it through the tunnel into the room: best 32.384 (8,526M, CP2 entered), 7/9 episodes past 31.8% at 8,551-8,576M; incumbent 28.841. --speed-pot 2 was negative (priced out the cavity)."
 }
