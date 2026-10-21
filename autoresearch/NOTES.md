@@ -1706,3 +1706,19 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
   temperature (per-row records b_ftk / b_ftv; logprob_entropy_view takes a per-row view
   temperature). 10 tests incl. flag-off bit-identity. Not deployed yet: the next arm when the main
   line stalls (yaw exploration only where the line ends, which keys-only T no longer gives).
+
+### 15:50 UTC: the main line stops at 60.57%; arm F = `--front-temp 1 --front-band 0.03` (r4b3_ft1)
+
+* r4b3_kst5x 9,668-9,970M: evals 60.411, 60.538, 60.569, 60.561, 60.558, (33.538), 60.560, 60.576,
+  (57.747), 60.559, **60.584 (9,945M, median 60.57%)**, 60.532 - from ~9.74B every eval's best and
+  often its median end at 60.56-60.58%: the 9 greedy episodes stop at ~75-78 s at (-629..-667,
+  -42..-55, 6,990-7,016) moving -y at 1,270-1,466 u/s, then wander and die at 81-108 s. The field
+  route from there drops steeply (z 6,950 -> 6,566 by x -836, -> 5,766 by x -1,444, kill *24 /
+  *53 / *49 alongside). Training ceiling 59,244 -> 60,907 u (62.3%): training episodes pass it.
+  The +500 u eval rule saw no new best since 58,788 u (9,568M), so T went back to the 0.5 cap.
+* Stopped at 9,995,550,720 (ckpt kept on the box as runs_ckpt_main.pt, md5 9b1e687d...).
+* **F = r4b3_ft1** (15:50): that checkpoint + `--front-temp 1 --front-band 0.03` (every head at
+  temperature 2 for envs at >= 97% of the reservoir's deepest progress = 58.8% here; the others keep
+  keys-only T 0.5), 300M steps. Step line: `fronttemp 8-9% >58.8%`. Question: does yaw exploration
+  at the stop (the 25 Hz policy's own sigma is 0.07) get the greedy line down the drop sooner than
+  the main line, whose ceiling already leads by 1.7%?
