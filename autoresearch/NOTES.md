@@ -1339,3 +1339,21 @@ cavity (entry speed, ramp vz) and complete the loop? 30 min first.
   crossing 1,633M; r2b2_sband: 12.2 at 302M, window ~990M, pit crossing ~1.94B. Question: does the round's
   recipe cross the gates sooner from scratch (in particular the CP2 pit, where the warm test flipped in
   50M steps once the penalty was gone)?
+
+### 07:23 UTC: r3b2_sfull (from scratch) leaves the first-ramp trap at ~200M - ~175M steps before round 1
+
+| step | r3b2_sfull | ratnov (r1, ratchet + novel) | r2b2_sband (band) |
+|---|---|---|---|
+| 76M | 4.4% | - | 4.3% |
+| 151M | 7.1% | - | 4.6% |
+| 177M | 10.4% | - | - |
+| 202M | **15.3%** | - | - |
+| 227M | 15.5% | ~4.6% | 6.5% |
+| 277M | 15.6% | - | - |
+| 302M | | 5.8% | 12.2% |
+| 378M | | 15.2% | 15.9% |
+
+* Out of the trap with the unstuck T still at 0.00 (round 0's exits all needed T > 1.3; round 1's ratnov
+  left at ~T 0 too, at 302-378M). Training: rew ~4.9, ceiling 15,696 u, reservoir min-depth 84.3%.
+  Next gates to watch: the window (ratnov 20.8% at 453M, through at 576M), the CP2 wall (651M) and the
+  CP2 pit (1,633M).
