@@ -1031,3 +1031,26 @@ rows, which do not need action noise) should move the greedy line onto the preci
   -10) for ~10-30M steps; then the greedy line should keep the corridor-east detour (it is worth +1.39
   over the pit dive now) and the tunnel dive should lose to the cavity attempt whenever the cavity's
   success rate times its extra progress beats 0.24.
+
+### 01:15 UTC: arm 2 (fail-pen 10) - the greedy line ENTERS THE CAVITY (first time on this lineage)
+
+Evals (score / median; flags per episode from the measurement script: W = through the upper
+window, C = inside the cavity under the pit slab, T = tunnel lane, R = room; analysis geometry only):
+
+| step | score / median | what the 9 greedy episodes do |
+|---|---|---|
+| 3,336M | 28.590 / 28.50 | the checkpoint itself: 5 W, the rest die before the window |
+| 3,361M | 28.431 / 27.04 | most stay alive 38-94 s in the corridor under *45 (z ~10,780): no death = no -10 |
+| 3,386M | 28.533 / 27.18 | same, alive 65-234 s |
+| 3,411M | 28.496 / 28.24 | **8/9 W + C**: through the window, into the cavity, alive 29-39 s, then the floor *90 |
+| 3,436M | 28.256 / 28.24 | **9/9 W + C**, alive 31-121 s in the cavity |
+
+* The tunnel dive is gone: it is a certain death (-10 + 0.24) and the cavity is not. The greedy line
+  has learned the human's ENTRY (window -> shaft -> lower opening -> cavity) within ~75M steps.
+  Missing: the climb back west out of the cavity to the tunnel level (the progress payoff).
+* Evals have no stall kill, so a greedy episode can stay in the cavity for minutes; in training the
+  stall kill ends it after 15 s (42% of training episodes stall-killed at 3.46B, vs 3-18% in arm 1).
+* Watch: with the time penalty neutralised, the 0.3/s surf bonus is a NET POSITIVE reward (the A-frame
+  of the equivalence above: in that frame surfing in place earns 0.3/s until the stall kill, ~3 units
+  over 15 s). A cavity surf farm competes with the climb-out. If the line parks in the cavity,
+  `--surf-bonus 0` is the next arm. Yaw sigma 0.031 -> 0.061 by 3.46B.
