@@ -1482,3 +1482,74 @@ cavity (entry speed, ramp vz) and complete the loop? 30 min first.
 
 * Evals 2,291-2,442M: 42.63, 42.56, 42.61, 44.66, 46.21, 45.27, **47.855** (medians 32-44.7%). The wander
   at ~42.5% lasted ~300M steps (2.06-2.34B) before the line found the way on; T had just started warming.
+
+## ROUND 3 LESSON (r3b2) - written 2026-10-21 12:05 UTC
+
+**Result:** best greedy eval from the true start **53.920** (r3b2_sfull, FROM SCRATCH, at 2,491,940,864 steps;
+incumbent 28.841). The greedy line flies the human's cavity loop (the dip the field route cannot see), the
+-y tunnel, the room, the void-bottom ramp, CP2, a second dip under the wall after CP2, CP3, and on to 53.9% (median 44.7%). 0 finishes.
+
+**The recipe (now config.json's incumbent_recipe, the next round's scratch default):** the old recipe with
+`--surf-bonus 0`, plus `--respawn-novel --race-ratchet` (round 1's core, which the round-2 harness restore
+had dropped from config.json) and this round's `--time-pen 0 --greedy-tail-frac 0.15 --respawn-min-speed 300
+--int-move-gate`. From scratch on one RTX 3090 (~146k steps/s with evals): first-ramp trap 200M (round 1:
+302-378M), window 453M (576M), CP2 wall 479M (651M), CP2 pit 982M (1,633M), greedy cavity entries 1.03B
+(never), the cavity loop 1.26B, the warm frontier (32.8) 1.54B, past the wall after CP2 1.59B, CP3 1.91B, 42.5% 2.06B (a ~300M
+wander there), 47.9% 2.44B, **53.9% at 2.49B** (still climbing when the 2.5e9 budget ended).
+
+**What each part does (measured this round):**
+1. `--time-pen 0 --surf-bonus 0`: the 0.5/s time penalty made every dip detour worth less than the quick
+   death it replaces (the incumbent's own greedy episodes: from 22 s the CP2 pit dive nets ~+1.35 units,
+   the east detour -0.1..+0.6). Warm, without it, the greedy line went back to the detour in 50M steps
+   (0/9 -> 9/9) and started entering the cavity. The surf bonus must go with it (farmable otherwise).
+2. Greedy-tail spawns (`--greedy-tail-frac 0.15`, new, in-trainer): 15% of every spawn pool from the
+   policy's OWN greedy eval, the last 3 s before each failure. The reservoir had <1% of its states where
+   the greedy line dies. Warm: 7/9 cavity entries at the human's speed within 230M steps (no speed term),
+   the loop in the greedy line at +740M. A tail spawn carries its own ratchet record, so inside a dip the
+   climb back is paid for it: the dense gradient the start line lacks.
+3. `--respawn-min-speed 300`: the tails fed the reservoir agents hovering in the lower opening / on the
+   cavity platform (31% of its frontier states slow, crawl share 9% -> 25%); the floor removed them.
+4. `--int-move-gate`: with no time penalty, a parked agent turning its view farmed count novelty past CP2
+   (crawl 24%, greedy episodes parking for 300 s); novelty paid only for a new position cell fixed it
+   (crawl 6%).
+
+**What did not work:**
+* `--speed-pot 2` (warm): the window was flown at the human's speed within 100M steps, but the cavity was
+  priced out (the slow turn into the opening is a charged speed loss, a fast death keeps its potential):
+  fast shaft-floor deaths, best 28.52. New `--speed-pot-charge` (Phi = 0 at a failure) removes the
+  die-fast part; untested in training.
+* The warm lineage (gt2-gt4) stalled at the wall after CP2 for ~1.1B steps (32.84); the scratch line
+  passed it in ~350M. One seed each - but a fresh network did not inherit the old line's habits.
+* Lowering T does not help precision at a dip (bench: T 0 no better than T 1). SIL not run
+  (`--sil-temper` built and parked: its one earlier run consolidated crawl entries).
+
+**New code (default off, byte-identical when off, tested on CPU):** `--greedy-tail-frac` (+ -secs/-skip/
+-every/-min-speed; surfgym/greedy_tail.py, docs/greedy_tail.md, tests/python/test_greedy_tail.py),
+`--speed-pot-charge`, `--sil-temper`; tools/greedy_tail_states.py and autoresearch/analysis/
+greedy_tail_loop.sh (offline twin); autoresearch/analysis/sid_eval_route.py (route stages E S W C R T M)
+and sid_shaft_bench.py (stochastic bench from the policy's own greedy states).
+
+**Where it stops:** nowhere yet - the last two evals were 48.9 and 53.9, so the line was still moving when the
+budget ended (it had wandered ~300M steps at ~42.5% before that).
+
+**For the next round:** start from the hand-on checkpoint (r3b2_sfull/ckpt_final.pt, a from-scratch line at
+2.5B, md5 8fc06d03...: resume it bare - every flag is in its config) or from scratch with the recipe (~3 h to 36%); watch the crawl share (stalled states /
+novelty farming are the recipe's failure mode without a time penalty); open: --speed-pot-charge, the
+recipe on a second map (CLAUDE.md 0b: a winner repeats on a second map with no constant changed).
+
+**Ops:** box 56976711 (RTX 3090 + Threadripper PRO 5955WX, $0.187/h, Alabama), 01:02 to wrap-up, one deploy
+plus one in-place redeploy (28 s, runs/ kept); no box offers 00:54-01:01 (retry loop). Harness issue:
+the round-2 harness restore dropped config.json's lineage key incumbent_recipe's `--respawn-novel
+--race-ratchet`.
+
+## Wrap-up (r3b2) - 2026-10-21 12:05 UTC
+
+* Final: RESULT.json `"final": true`, score **53.920** (r3b2_sfull, eval traj_2491940864, re-scored at wrap-up:
+  9 episodes, best 53.92%, median 44.73%, CP3, 0 finishes; 100/100 valid evals in the run).
+* Hand-on checkpoint: runs/r3b2/r3b2_sfull/ckpt_final.pt (step 2,500,329,472, md5
+  8fc06d03678848eb4799e71395b8f244), pulled after the run ended and md5-checked against the box. Also local:
+  its ckpt_latest.pt (2,491,940,864, b1cba349...), ckpt_2265448448.pt, ckpt_1863843840.pt; the warm line's
+  r3b2_gt4/ckpt_latest.pt (9,599,188,992, bc10bd85...) and r3b2_gt2/ckpt_latest.pt (8,714,190,848).
+* The scratch line was trained at commit 82dda58 (the deployed head); config.json's incumbent_recipe now holds
+  exactly its flags.
+* Box 56976711 (RTX 3090, $0.187/h) ran 01:02-12:05 UTC (~11 h, ~$2.1), released at wrap-up.

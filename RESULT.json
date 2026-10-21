@@ -1,18 +1,50 @@
 {
  "agent": "r3b2",
  "round": 3,
- "final": false,
+ "final": true,
  "best": {
-  "score": 47.855,
-  "eval_file": "/home/steam/ar/runs/r3b2/r3b2_sfull/traj_2441609216.jsonl",
+  "score": 53.92,
+  "eval_file": "/home/steam/ar/runs/r3b2/r3b2_sfull/traj_2491940864.jsonl",
   "run": "r3b2_sfull",
-  "step": 2441609216,
-  "ckpt": "/home/steam/ar/runs/r3b2/r3b2_sfull/ckpt_latest.pt",
+  "step": 2491940864,
+  "ckpt": "/home/steam/ar/runs/r3b2/r3b2_sfull/ckpt_final.pt",
   "recipe": [
-   "config.json incumbent_recipe (now: ... --surf-bonus 0 ... --respawn-novel --race-ratchet --time-pen 0 --greedy-tail-frac 0.15 --respawn-min-speed 300 --int-move-gate)"
+   "--envs",
+   "1024",
+   "--obs-normal",
+   "1",
+   "--simba",
+   "1",
+   "--ep-ticks",
+   "30000",
+   "--unstuck",
+   "--unstuck-reach",
+   "eval",
+   "--respawn-margin",
+   "2",
+   "--unstuck-max",
+   "2",
+   "--obs-surf",
+   "1",
+   "--surf-bonus",
+   "0",
+   "--obs-compass",
+   "1",
+   "--obs-pot-rate",
+   "1",
+   "--respawn-novel",
+   "--race-ratchet",
+   "--time-pen",
+   "0",
+   "--greedy-tail-frac",
+   "0.15",
+   "--respawn-min-speed",
+   "300",
+   "--int-move-gate"
   ],
   "resume_from": null,
-  "commit": "82dda58"
+  "commit": "82dda58",
+  "note": "FROM SCRATCH (no checkpoint): the flags above are exactly config.json's incumbent_recipe after this round. ckpt_final.pt is the run's end, step 2,500,329,472, md5 8fc06d03678848eb4799e71395b8f244 (local, md5-checked against the box); 100/100 evals valid."
  },
- "summary": "FROM SCRATCH, the round's recipe (ratchet + novel spawns + --time-pen 0 --surf-bonus 0 + greedy-tail spawns --greedy-tail-frac 0.15 (new) + --respawn-min-speed 300 + --int-move-gate) passes every gate of this lineage and more: trap 200M, window 453M, CP2 wall 479M, CP2 pit 982M (round 1: 1,633M), the cavity loop 1.26B, past the wall after CP2 1.59B, CP3 1.91B, ~42.5% by 2.06B, best 47.855 at 2.44B (incumbent 28.841). Warm from the incumbent the same mechanisms gave 32.839 and stopped at the wall after CP2. H1: the 0.5/s time penalty made every dip detour worth less than the quick death it replaces. --speed-pot 2 was negative."
+ "summary": "FROM SCRATCH, best 53.920 (r3b2_sfull at 2.49B; incumbent 28.841): ratchet + novel spawns + --time-pen 0 --surf-bonus 0 + greedy-tail spawns (--greedy-tail-frac 0.15, new) + --respawn-min-speed 300 + --int-move-gate. Gates: trap 200M, window 453M, CP2 wall 479M, CP2 pit 982M (round 1: 1,633M), the cavity loop 1.26B, the wall after CP2 1.59B, CP3 1.91B, 42.5% 2.06B, 53.9% 2.49B, still climbing. Why: the 0.5/s time penalty made every dip detour worth less than the quick death it replaces (measured on the incumbent's greedy episodes); greedy-tail spawns put 15% of episodes where the deployed greedy line fails (the reservoir had <1% there). Warm from the incumbent the same mechanisms gave 32.839 and stalled at the wall after CP2. --speed-pot 2 was negative (priced out the cavity). Next: continue the scratch line (ckpt_final) and test the recipe on a second map."
 }
