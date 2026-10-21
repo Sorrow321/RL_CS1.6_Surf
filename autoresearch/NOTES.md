@@ -1166,3 +1166,15 @@ window, C = inside the cavity under the pit slab, T = tunnel lane, R = room; ana
 * Checkpoint: /home/steam/ar/runs/r3b1/r3b1_ifp/ckpt_final.pt (7,776,763,904, md5 51e191d1...), pulled.
 * **r3b1_ifpx** (03:14): bare resume of that checkpoint, same flags, +1.5e9 steps (to 9.28B), evals every
   25M. EXTENDED per PROTOCOL: a gate nobody cleared (the tunnel -> room) and a +1.1 lead.
+
+### 03:45 UTC: r3b1_ifpx (continuation) - 30.233, the greedy line reaches the void's bottom
+
+* Evals 7,777-8,054M (12): frontier 29,250-29,560 u in 11 of 12 (the room and beyond), best
+  **8,004M 30.233** / 8,029M 30.230: episodes fly the tunnel, the room, the drop east of *20 and west
+  under it to the void's bottom - (893, -905, 9,570) at 32.4 s, (1,067, -369, 9,809) alive to 36.4 s,
+  (1,122, 71, 9,887) - i.e. AT the human's next ramp ((1,112, 236, 9,730) at 34.5 s). About 2 of 9 per
+  eval get there; 3-4 still die at the tunnel's east end (28.6%), 1-2 at an early fail at ~15 s
+  (x ~3,500, z ~13,000, 18.4%).
+* Training: ceiling 29,537 -> **30,901 u (31.6%)**, reservoir min-depth 69.6% (its deepest state now at
+  30.4% progress, past the room), stall share 0.09-0.15, yaw sigma ~0.07, kl 0.15-0.35.
+* Stable checkpoint copy pulled: runs/r3b1/r3b1_ifpx/ckpt_8054112256.pt (md5 6dd1c99a...).
