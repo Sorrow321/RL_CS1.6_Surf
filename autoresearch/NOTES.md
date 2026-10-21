@@ -1191,3 +1191,22 @@ window, C = inside the cavity under the pit slab, T = tunnel lane, R = room; ana
   kill at (-416, -158, 10,603). The field says the way on is LOWER: solid at z 10,600 west of x ~-500,
   open at z 10,500 (d 65.7-66.3k, descending west). Next skill: be below ~10,550 before x ~-420.
 * Stable checkpoint copy pulled: runs/r3b1/r3b1_ifpx/ckpt_8344567808.pt (md5 3cdf391f...).
+
+### 05:13 UTC: ifpx plateau at 32.0-32.7% (stopped at 8.90B); harness issue; from-scratch test of the reward fix
+
+* r3b1_ifpx 8,381-8,885M (21 evals): frontier 31,400-32,031 u, no gain past the 8,356M best (32,005 u,
+  score 32.736) for ~540M steps; training ceiling flat at 32,030-32,046 u (32.8%). The greedy line
+  consolidates (its mean "track" rises to 30-31%) but the next gate - the lower passage west of the
+  wall at x ~-420 (open below z ~10,550) - is passed only by the odd episode (to x -550..-896, z ~9,900).
+  Stopped at 8,898,215,936; ckpt_latest.pt pulled (md5 e1bbc8eb...; fail_pen 10, surf_bonus 0,
+  unstuck_max 0, eval_stall 1 in its config). Best eval 8,356M 32.736.
+* **Harness issue (config.json lineage key lost):** round 1 added `--respawn-novel --race-ratchet` to
+  `incumbent_recipe` (ca6bb63), but the operator's round-start restore (c14ffb1, again 852b183) rewrote
+  config.json whole, so the recipe box.py prepends is the round-0 GR recipe again. Scratch launches must
+  pass the two flags explicitly (r2b2's did); the lineage_keys merge did not happen.
+* **r3b1_scr** (05:10): FROM SCRATCH, GR recipe (prepended) + `--respawn-novel --race-ratchet` (= round 1's
+  ratnov, default novel sampler) + `--fail-pen 10 --surf-bonus 0 --unstuck-max 0 --eval-stall 1`, evals
+  every 75M (round 1's marks). Matched references (one seed each): ratnov trap exit 302-378M (5.8% at
+  302M, 15.2% at 378M), window ~576M, CP2 wall 651M, pit crossing 1,633M; GR trap 529M, window 755M.
+  First test 30 min. Question: does the reward fix hold from scratch (the early gates), and does it
+  cross the CP2 pit sooner than ratnov?
