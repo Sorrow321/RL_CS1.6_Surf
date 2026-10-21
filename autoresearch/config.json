@@ -83,7 +83,7 @@
     "--respawn-margin",
     "2",
     "--unstuck-max",
-    "0",
+    "2",
     "--obs-surf",
     "1",
     "--surf-bonus",

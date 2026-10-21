@@ -1320,3 +1320,22 @@ window, C = inside the cavity under the pit slab, T = tunnel lane, R = room; ana
   (fail-pen 10, surf-bonus 0, eval-stall restored/passed). T starts rising ~200M steps after the last +500 u
   best (stuck 117M at the resume), reaching 2 at ~2.42B. Runs to the wrap-up. If it crosses at high T, the
   recipe should keep the T schedule (cap 2) with the fix; config.json is set at the wrap-up from this result.
+
+### 09:57 UTC: the T schedule crosses the CP2 pit from scratch within ~150M steps of T rising; recipe keeps it
+
+* r3b1_scrT (resume of scrx at 1,934M, the only change `--unstuck-max 0 -> 2`; fail-pen 10, surf-bonus 0):
+  T stayed 0 until 2.02B (patience), then rose 0.5 per 1e8 steps. Training ceiling, flat at 27,349.5 u for the
+  whole T-0 run (1.1B steps at the wall), moved at **2.17B (T 0.77)**: 27,375 -> 28,035 (2.18B, T 0.83) ->
+  28,104 (2.21B, T 0.96) -> **29,082 u (29.75%) at 2.25B (T 1.01)**: real episodes past the pit, the slot, the
+  window and the tunnel. Greedy eval **2,237M: 28.215** (2 of 9 through the window; the line crossed the pit).
+  T then halves on the new best (0.67 at 2.31B). Stall share rose 0.07 -> 0.3-0.4 at T ~1 (noisy episodes).
+* So, matched on one checkpoint at one wall: **T 0 never crossed in 1.1B steps; T rising crossed within
+  ~150M steps of T reaching ~0.8.** With ratnov's crossing (T ~1.8) this says the temperature is what
+  DISCOVERS the CP2 detour from scratch, and the reward fix is what makes a discovered route WORTH keeping
+  (warm: pit lock gone at T 0 in 150M steps). They do different jobs at different times, and the default
+  unstuck schedule already sequences them: T rises only after 200M steps without a +500 u eval gain and
+  halves per 1e8 steps after each gain.
+* **`incumbent_recipe` corrected:** `--unstuck-max 2` (the default schedule) instead of 0, with `--fail-pen 10
+  --surf-bonus 0 --eval-stall 1 --respawn-novel --race-ratchet`. The warm lineage (the hand-on checkpoint)
+  carries unstuck_max 0 in its config: a bare resume keeps T 0 (right for precision at known routes); pass
+  `--unstuck-max 2` to a resume that sits at a NEW wall for a long time (it worked here).
