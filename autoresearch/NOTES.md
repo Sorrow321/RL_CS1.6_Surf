@@ -1527,3 +1527,32 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
   mean).
 * Eval overhead is small: r3b3_gwx2 averaged 167.9k steps/s over its run vs a median 177k per
   iteration (evals ~5%), so `--eval-stall` would buy little and is not used.
+
+### Harness issue (r4b2): no box under the caps for the round's first hour+
+
+* 12:50-14:05 UTC: no single-GPU offer passing `config.offer_query` (>= 32 threads, verified,
+  reliability > 0.98, ...) was under `config.max_dph`: cheapest 3090 $0.40 (cap 0.30), 4090 $0.74
+  (0.45), 5090 $0.76 (0.60); at 12:50 one 4090 was at $0.469. Two other boxes were rented at
+  ~$0.19-0.28 meanwhile (fleet burn 0.47 $/h), so cheap offers appear briefly and go to the first
+  poller. My `box.py rent` loop now retries every ~45 s.
+* The local CPU cannot stand in: a 32-env resume of the incumbent on this host's 4 vCPU did not
+  finish ONE iteration in 25 min (the per-head KL probe had to wait for a box).
+
+### 14:50 UTC: the 54.7% wall, measured (analysis only; still no box)
+
+* The incumbent's best eval (traj_8717860864): episodes 1-4 fly west at z ~7,200-7,600, |v_h|
+  1,600-1,700 u/s, reach x ~0 at ~62 s, CLIMB (vz +500..+800) to z ~8,100-8,380 at x -450..-818
+  while |v_h| falls to ~850-1,000 - and at the top their velocity points NORTH (best point
+  (-818, 13, 8,382), v (-199, 825, 19)), not west where the field's route continues ((-880, -48,
+  8,456) d 44,204 -> (-1,872, -48, 8,168) d 43,012). Then they turn back east and either die
+  (67-71 s) or wander to the 300 s cap around x 1,000-2,000, z ~7,100.
+* The training ceiling (54,406 u = 55.65%) is ~950 u past the greedy best: some stochastic
+  training episode crested and flew ~700 u west. So the gate is passable; it is rare.
+* Probe (record_ckpt --spawn-states from the checkpoint's OWN greedy-line pool, the 416 rows past
+  53% progress = the climb; --stochastic --exec-temp 1.065 = training at T 0.065; 15 s cap,
+  16 episodes): best 54.58%, median 54.22%, 0/16 past 54.7%, 0/16 west of x -1,100. At the
+  training temperature the policy does not crest from its own approach states.
+* Same probe with the pitch sigma x7.46 (`--exec-view-scale 1,7.46` = sigma 0.05, what
+  `--pitch-sigma-min 0.05` would sample; 8 episodes before a 20 min timeout): best 54.63%, median
+  54.33%, 0/8 past 54.7%, 7/8 alive at the 15 s cap (vs 8/16). The camera jitter of the floor does
+  not hurt the stochastic policy at the wall; it does not cross either.
