@@ -101,7 +101,7 @@ TRAIN_ONLY = frozenset({
     "respawn_novel_window", "respawn_novel_turn", "respawn_novel_band",
     # --respawn-greedy: a share of the TRAINING spawn pool drawn from the last greedy eval's
     # states before each death; a recording spawns at the map start like the trainer's eval
-    "respawn_greedy", "respawn_greedy_window",
+    "respawn_greedy", "respawn_greedy_window", "respawn_greedy_speed",
     # --int-real-only: which TRAINING episodes the novelty bonus pays and counts
     "int_real_only",
     # --eval-parallel: the trainer's greedy eval runs its episodes side by side on a

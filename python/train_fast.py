@@ -6613,6 +6613,15 @@ def main() -> None:
                     metavar=("LO", "HI"),
                     help="--respawn-greedy: keep the states from HI down to LO seconds before "
                          "each failed greedy episode's last tick (default 0.5 5.0)")
+    ap.add_argument("--respawn-greedy-speed", type=float, nargs=2, default=None,
+                    metavar=("LO", "HI"),
+                    help="--respawn-greedy: each greedy-line spawn row's velocity is scaled by "
+                         "U(LO, HI) (its own RNG: the rows are the unscaled pool's). At an "
+                         "energy-gated failure (a climb or a jump the line reaches too slow) "
+                         "the boosted rows are the ones that get through, so the critic learns "
+                         "what arriving faster there is worth (respawn.py's --respawn-speed "
+                         "argument, on the states the greedy line fails from). Default off; "
+                         "ckpt restores")
     ap.add_argument("--archive-frac", type=float, default=None,   # 0 = off
                     help="survivor-gated predecessor archive: the share of the "
                          "spawn pool replaced each iteration by archive rows - "
@@ -7552,6 +7561,10 @@ def main() -> None:
         if (args.respawn_greedy_window is None
                 and ck_cfg.get("respawn_greedy_window") is not None):
             args.respawn_greedy_window = [float(v) for v in ck_cfg["respawn_greedy_window"]]
+        if (args.respawn_greedy_speed is None
+                and ck_cfg.get("respawn_greedy_speed") is not None):
+            args.respawn_greedy_speed = [float(v) for v in ck_cfg["respawn_greedy_speed"]]
+            restored.append("respawn_greedy_speed={:g}-{:g}".format(*args.respawn_greedy_speed))
         # --respawn-backward: a spawn DISTRIBUTION, restored like the frontier
         if args.respawn_backward is None and ck_cfg.get("respawn_backward"):
             args.respawn_backward = True
@@ -10979,12 +10992,18 @@ def main() -> None:
         try:
             GREEDY = GreedyLinePool(float(args.respawn_greedy),
                                     window=tuple(args.respawn_greedy_window),
-                                    seed=int(args.seed) + 9191)
+                                    seed=int(args.seed) + 9191,
+                                    speed=(None if args.respawn_greedy_speed is None
+                                           else tuple(args.respawn_greedy_speed)))
         except ValueError as _e:
             raise SystemExit(str(_e))
         print(f"respawn GREEDY: {GREEDY.frac:.0%} of the non-start pool = the policy's own "
               f"greedy-eval states from {GREEDY.hi:g} to {GREEDY.lo:g} s before each failed "
-              f"episode's end (rebuilt at every eval; clocks zeroed; real episodes, harvested)")
+              f"episode's end (rebuilt at every eval; clocks zeroed; real episodes, harvested)"
+              + ("" if GREEDY.speed is None else
+                 "; velocity x U({:g}, {:g})".format(*GREEDY.speed)))
+    elif args.respawn_greedy_speed is not None:
+        raise SystemExit("--respawn-greedy-speed needs --respawn-greedy")
     if args.respawn_backward:
         for _i, slot in enumerate(slots):
             _fld = (slot.reward_field if slot.reward_field is not None
@@ -13703,6 +13722,8 @@ def main() -> None:
     if GREEDY is not None:
         meta["config"]["respawn_greedy"] = float(GREEDY.frac)
         meta["config"]["respawn_greedy_window"] = [float(GREEDY.lo), float(GREEDY.hi)]
+        if GREEDY.speed is not None:
+            meta["config"]["respawn_greedy_speed"] = [float(v) for v in GREEDY.speed]
     # --unstuck: written ONLY when set (a control run's config dump stays
     # byte-identical); every knob rides along so a resume restores them
     if UNSTUCK:

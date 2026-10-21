@@ -38,7 +38,7 @@ from .core import STATE_DTYPE
 
 
 class GreedyLinePool:
-    def __init__(self, frac: float, window=(0.5, 5.0), seed: int = 0):
+    def __init__(self, frac: float, window=(0.5, 5.0), seed: int = 0, speed=None):
         frac = float(frac)
         if not 0.0 < frac < 1.0:
             raise ValueError(f"--respawn-greedy F needs 0 < F < 1, got {frac!r}")
@@ -48,6 +48,16 @@ class GreedyLinePool:
         self.frac = frac
         self.lo, self.hi = lo, hi
         self.rng = np.random.default_rng(int(seed))
+        # --respawn-greedy-speed LO HI: each mixed row's velocity x U(LO, HI), drawn from its
+        # OWN generator so the rows themselves are exactly the unscaled pool's (None = off)
+        self.speed = None
+        if speed is not None:
+            slo, shi = (float(v) for v in speed)
+            if not 0.0 < slo <= shi:
+                raise ValueError(f"--respawn-greedy-speed LO HI needs 0 < LO <= HI, got "
+                                 f"{slo!r} {shi!r}")
+            self.speed = (slo, shi)
+            self.speed_rng = np.random.default_rng(int(seed) + 7)
         self.rows = np.zeros(0, STATE_DTYPE)
         self.info = {"eps": 0, "fail": 0, "deaths_s": []}
         self.mixed = 0
@@ -166,6 +176,12 @@ class GreedyLinePool:
             return pool
         out = np.array(pool, dtype=STATE_DTYPE, copy=True)
         out[len(out) - n:] = self.rows[self.rng.integers(0, self.size, n)]
+        if self.speed is not None:
+            # the energy a state carries is what an energy-gated failure lacks: the boosted
+            # rows show the critic what arriving faster there is worth (respawn.py's
+            # vel_scale argument, applied to the states the greedy line fails from)
+            sc = self.speed_rng.uniform(self.speed[0], self.speed[1], n).astype(np.float32)
+            out["velocity"][len(out) - n:] *= sc[:, None]
         self.mixed = n
         return out
 
@@ -176,7 +192,9 @@ class GreedyLinePool:
                 "{:.0%} of the non-start pool"
                 .format(self.size, self.info["fail"], self.info["eps"],
                         ", ".join(f"{v:.1f}" for v in d) if d else "-", self.hi, self.lo,
-                        ", ".join(f"{v:.1f}" for v in b) if b else "-", self.frac))
+                        ", ".join(f"{v:.1f}" for v in b) if b else "-", self.frac)
+                + ("" if self.speed is None else
+                   ", velocity x U({:g}, {:g})".format(*self.speed)))
 
     # -- persistence ---------------------------------------------------------
     def state_dict(self) -> dict:

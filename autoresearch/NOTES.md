@@ -1647,3 +1647,17 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
   So at an energy gate the policy has the skills and lacks the speed; above-1 `--respawn-speed`
   (reservoir rows) or a velocity boost on the greedy-line rows would put the critic where a
   fast arrival pays. Not run: the line passed CP4 on its own.
+
+### 15:20 UTC: 57.721 (c4, 9,592M) - past CP4 into the 64-66 s dip
+
+* r4b4_c4 (bare resume of c3's 9,566M snapshot) evals: 54.891 (the snapshot), **57.721**
+  (9,592M, CP4): ep 3 goes through the window, west over kill *95, drops and turns back EAST
+  in the human's 64-66 s dip (best 57.72% at (-2,830, 222, 7,621), 67.2 s, v (710, -520, -951))
+  but is DESCENDING where the human climbs out (66 s: vz +1,179), dies at (-2,883, -486, 6,507).
+  Others: in *95 just past the window (55.7-55.9%, z ~8,200 at x -1,640..-1,820: too low after
+  the window, *95 spans x -2,112..-1,184 below z 8,386), on the sill (55.0%), and at earlier
+  gates (34.2-34.5% at x ~-2,030; 48.7-48.9% at x ~4,000-4,200). T 0.16.
+* NEW (built, CPU-tested, not yet run): `--respawn-greedy-speed LO HI` - the greedy-line
+  rows' velocities x U(LO, HI) on their own RNG (rows identical to the unscaled pool's),
+  default off, ckpt restores, record_ckpt TRAIN_ONLY, needs --respawn-greedy. For the next
+  energy-gated stall (the probes: x1.25 turns 0/50 into 1/16-4/16).
