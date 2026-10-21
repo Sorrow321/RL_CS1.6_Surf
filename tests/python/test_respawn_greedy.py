@@ -273,10 +273,12 @@ def _seeded_ckpt(run0):
     return d0, seeded
 
 
-# the evals stall-kill (--eval-stall 1 --stall-secs 2) so the smoke's untrained greedy
-# policy ends its eval episodes as FAILS inside a 30 s cap, and evals run every 4,096 steps
+# the evals stall-kill (--eval-stall 1 --stall-secs 6) so the smoke's untrained greedy
+# policy ends its eval episodes inside a 30 s cap, and evals run every 4,096 steps. A stall
+# kill is a STOP to the pool (its best-progress window, test_greedy_stall.py), so the window
+# is longer than the default 5 s HI: the stop anchor needs the best > HI s before the end
 GREEDY_SMOKE = ["--respawn-reservoir", "5000", "--record-every", "4096", "--eval-eps", "2",
-                "--eval-stall", "1", "--stall-secs", "2"]
+                "--eval-stall", "1", "--stall-secs", "6"]
 
 
 @needs_run

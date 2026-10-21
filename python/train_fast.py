@@ -3767,15 +3767,18 @@ def make_eval_stall_hook(core, field, stall_ticks, stall_eps, every, env=0):
 
     The kill is ``core.force_fail``, i.e. the episode ends as a FAIL on the
     next tick, which is what training does. Returns the hook; ``hook.state``
-    carries ``n`` (kills issued) for the caller to report.
+    carries ``n`` (kills issued) for the caller to report, and ``killed``
+    (the indices of the episodes it ended, counted from 0 in the recording),
+    so --respawn-greedy can tell a stall kill from a death.
     """
-    st = {"best": None, "since": 0, "phase": 0, "n": 0}
+    st = {"best": None, "since": 0, "phase": 0, "n": 0, "ep": 0, "killed": []}
 
     def hook(t, states, rewards, done, trunc):
         if bool(done[env]) or bool(trunc[env]):
             st["best"] = None
             st["since"] = 0
             st["phase"] = 0
+            st["ep"] += 1
             return
         if stall_ticks <= 0:
             return
@@ -3798,6 +3801,7 @@ def make_eval_stall_hook(core, field, stall_ticks, stall_eps, every, env=0):
         if st["since"] >= stall_ticks:
             st["since"] = 0              # re-arm, exactly like pop_stall_mask
             st["n"] += 1
+            st["killed"].append(st["ep"])
             m = np.zeros(core.num_envs, np.uint8)
             m[env] = 1
             core.force_fail(m)
@@ -19124,6 +19128,13 @@ def main() -> None:
                         # the field distance, off-field (the unreachable sentinel) -> inf
                         _d = np.asarray(_f.sample(o), np.float64)
                         return np.where(_d < _f.reach_max - 0.5 * _f.cell, _d, np.inf)
+                    if _ev_stall is not None:
+                        # --eval-stall: an episode the stall rule ended is a FAIL in the
+                        # trailer but not a death; the pool keeps only its best-progress
+                        # window (the stop), never the seconds before the kill
+                        for _ki in _ev_stall.state["killed"]:
+                            if _ki < len(_ev_sum):
+                                _ev_sum[_ki]["stall"] = True
                     GREEDY.build(_ev_sum, float(sum(_tpat)) / len(_tpat),
                                  d_fn=None if _gfld is None else _rg_d)
                     print(f"[{global_step:>13,d}] " + GREEDY.line())

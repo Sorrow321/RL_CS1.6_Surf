@@ -1540,3 +1540,19 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
 * record_rollout records env 0's 9 episodes one after another; with no eval stall rule the cycling
   episodes run to the 300 s cap. The 8,718M eval was 1,746 s of game time (174,600 ticks, ~43,650
   policy decisions at batch 1) - to be timed on the box against the ~25M training steps between evals.
+
+### 13:30 UTC: the evals took HALF the incumbent run's wall time (progress.csv arithmetic)
+
+* `time/fps` in progress.csv is the CUMULATIVE average since the launch, so the wall time at each row is
+  (step - launch step) / fps. For r3b3_gwx2 (8.14-8.84B, 4,168 s): rows of 524k steps take a median 1.6 s
+  (**328k steps/s instantaneous** on the 4090 + 5950X box), and the 30 rows that straddle an eval take
+  24-82 s more: **2,040 s of 4,168 s (49%) went to the 28 greedy evals**, so the run averaged 168k.
+* Why: the eval core has ONE env (num_envs=1) and record_rollout records its 9 episodes one after another
+  at batch 1, and evals never stall-kill, so the episodes that cycle in the bowl run to the 300 s cap
+  (the 8,718M eval: 1,746 s of game time, ~43,650 decisions, ~1 ms each).
+* Fix in hand: `--eval-stall 1` (training's own rule: a fail 15 s after the last 32 u improvement of the
+  episode's best; it can only LOWER an eval's max progress, never raise it). On the 8,718M eval it would
+  have cut ~1,746 s to ~600 s of game time. NEW (this commit): the stall hook lists the episodes it
+  killed and --respawn-greedy treats those as STOPS (best-progress window only), not deaths - the seconds
+  before a stall kill are bowl-cycling, not the decisions that led to a death.
+* Untried, larger: a parallel eval (9 envs, one episode each: cost max(len) instead of sum(len)).

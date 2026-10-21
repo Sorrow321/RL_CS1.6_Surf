@@ -84,7 +84,10 @@ class GreedyLinePool:
           the tick of the episode's BEST progress (its minimum d) when that lies more than
           HI s before the end: the states HI..0 s before it. That is where a line that
           got STUCK (a truncated episode: evals never stall-kill) or that lost ground
-          long before dying stopped making progress."""
+          long before dying stopped making progress.
+        A summary with ``"stall": True`` (a FAIL issued by --eval-stall's rule, set by the
+        trainer from the stall hook's kill list) takes the second anchor only: the seconds
+        before a stall kill are the stall, not the decisions that led to a death."""
         eps = list(self._eps)
         if self._cur:                      # an episode cut by the recording budget
             eps.append(np.array(self._cur, dtype=STATE_DTYPE))
@@ -94,11 +97,14 @@ class GreedyLinePool:
         keep, deaths, stops, n_used = [], [], [], 0
         for i, ep in enumerate(eps):
             end = summaries[i].get("end") if i < len(summaries) else None
+            # --eval-stall: a FAIL the stall rule issued is a stop, not a death - only the
+            # best-progress anchor below applies to it
+            stalled = bool(summaries[i].get("stall")) if i < len(summaries) else False
             n = len(ep)
             if end not in ("fail", "trunc") or not n:
                 continue
             idx = []
-            if end == "fail" and n - lo_t > max(0, n - hi_t):
+            if end == "fail" and not stalled and n - lo_t > max(0, n - hi_t):
                 idx.append(np.arange(max(0, n - hi_t), n - lo_t))
                 deaths.append(round(n / per_s, 2))
             if d_fn is not None:
