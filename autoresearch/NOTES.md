@@ -1106,3 +1106,33 @@ window, C = inside the cavity under the pit slab, T = tunnel lane, R = room; ana
   and flew the return leg from climb states in round 2's bench.
 * **Arm 4, r3b1_ifp** (02:00): incumbent ckpt (7,176,454,144, md5 92b7ddd2...) + `--unstuck-max 0
   --fail-pen 10 --eval-stall 1 --surf-bonus 0`, 600M steps, evals every 25M.
+
+### 02:55 UTC: arm 4 (r3b1_ifp: incumbent + T 0 + fail-pen 10 + no surf bonus) - leaves the pit, tunnel dive at its limit, 28.851
+
+* Evals 7,177-7,302M: the incumbent's pit lock (frontier ~26,900 u, 27.5%). From **7,328M** the line
+  takes the detour again (fail-pen makes the pit dive a certain -10); 7,353M **28.840**, 7,378M 28.768,
+  7,403M 28.829, 7,454M 28.848, **7,504M 28.851** (best; 6 of 9 through the -y window into the tunnel,
+  the best at x 1,953 = the tunnel's far end). Same physical limit as the incumbent's 28.841.
+* Training ceiling (real episodes) 29,027 -> 29,291 -> **29,395 u (30.07%)** by 7.50B: deeper than any
+  run before. Reservoir min-depth 72.2-73.8% (its deepest state ~27-28% progress: the reservoir holds
+  nothing at the window or in the cavity, see below). Yaw sigma 0.041 -> 0.075 (T 0 runs all do this).
+* The greedy line does NOT try the cavity here: without the surf bonus a cavity attempt only beats the
+  tunnel's +0.6 units if the climb-out succeeds often (p x ~2 units > 0.6).
+
+### Why the reservoir never holds frontier states (read off surfgym/respawn.py)
+
+* One snapshot per second per episode; on episode end the snapshots older than the 2 s margin are
+  pushed; novel-spawn episodes are never harvested; "stagnant" envs (no record gain) are never
+  snapshotted; a 100k FIFO ring that turns over every ~10M steps; uniform sampling.
+* So the window / shaft / cavity (the last 2 s of every tunnel-dive or failed-cavity episode) never enters
+  it, and a rare real climb-out is sampled at ~1/100k and gone within ~10M steps. Cavity practice comes
+  from the synthetic novel rows only (positions moved to unvisited cells, velocities from the reservoir's
+  deepest states, i.e. from the slot ~2 s earlier, heading turned +-90 deg).
+
+### Climb-out bench on the box (measurement only, the policy's own greedy states): too expensive beside a trainer
+
+* `record_ckpt --dump-states` of fp10x's checkpoint (3,627M), 4 greedy episodes with eval-stall: 10 min
+  wall, 162 CPU-minutes, with the trainer running. 3 of 4 died at ~28.45 s on the thin wall just ABOVE
+  the lower opening (arriving at z ~11,100-11,150, the opening's top is ~11,100); 1 of 4 entered and
+  parked on the platform. The entry itself is a precision move with a ~50 u tolerance (round 2's 6.35B
+  missed it by 55 u, below). Benches only with the box idle.
