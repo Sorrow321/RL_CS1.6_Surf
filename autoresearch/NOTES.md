@@ -1562,3 +1562,32 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
   signature (0/24 from the pre-block greedy states at T 1) and still fell to concentrated
   greedy-line practice: ceiling past it ~230M steps after the pool started, greedy line ~550M -
   the policy LEARNS at those states; sampling alone does not show the way.
+
+### 23:30 UTC: box at last (57125445, RTX 4080 + Ryzen 9 7950X, $0.241/h, France); the per-head KL MEASURED
+
+* Rented 23:19 UTC after ~10.5 h of refusals. gpu_health failed it: no RTX 4080 reference, and the
+  245 W of 340 W cap was then "treated as a defect". Measured 90 TFLOPS bf16 (93% of the 4080's
+  97 dense spec) and 601 GB/s at 96 W / 2,400 MHz - the cap never binds. **Harness issue:** added a
+  4080 reference on this branch (commit fd71f34), like the 5080 (r1b1) and 4090 (r2b2) ones.
+* **r4b2_kl0** = bare resume of the incumbent (8,838,971,392) + `--diag-head-kl 2`, 15M steps
+  (stopped by me). 14 readings, every 2 updates, over the WHOLE update (64 minibatch steps):
+
+  | head | KL old->new per update | mean shift (old sigmas) |
+  |---|---|---|
+  | keys (joint of 4 categorical) | 0.001-0.003 | - |
+  | yaw (z0, sigma 0.064 tempered) | 0.005-0.05 | 0.08-0.10 |
+  | **pitch (z1, sigma 0.0072)** | **0.16-1.39 (mean ~0.5)** | 0.25-0.38 |
+  | joint (what PPO clips) | 0.16-1.44 | - |
+
+  Rows whose ratio ends outside 1 +- 0.2: **joint 30-42% (mean ~34%), without the pitch head
+  7-12% (mean ~9%)**. So ~95% of PPO's KL and ~3/4 of its clipped rows come from the camera head.
+* **r4b2_pf** = resume of the SAME checkpoint + `--pitch-sigma-min 0.05 --diag-head-kl 2`
+  (sigma 0.0067 -> 0.05; "raw pitch log sigma -5.0015 lifted to -2.9957"). First update a transient
+  (yaw KL 0.85, joint 1.1), then: keys 0.004-0.007, yaw 0.017-0.064, pitch 0.005-0.025, joint
+  0.029-0.093; clipped rows joint 17-21%, without pitch 14-18%. **The control heads' clipped share
+  roughly doubles (9% -> 16%) and their KL rises ~2x: PPO now moves the keys/yaw about twice as
+  far per update instead of spending the trust region on the camera.** Whether that learns faster
+  is untested (no time left this round): a matched-step test from this checkpoint is the next
+  round's first arm if this branch's code survives.
+* The eval right after the first update: kl0 53,305 u (54.5%), pf 49,445 u (50.6%) - one eval each,
+  inside the eval-to-eval spread of this checkpoint (the incumbent's last 15 evals: 44.5-54.7).

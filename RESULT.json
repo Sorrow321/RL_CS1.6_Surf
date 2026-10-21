@@ -2,6 +2,18 @@
  "agent": "r4b2",
  "round": 4,
  "final": false,
- "best": null,
- "summary": "Round 4 (r4b2), 19:33 UTC: NO BOX all round so far - no single-GPU offer passing config.offer_query was under config.max_dph since 12:50 UTC (rent retried every ~30 s; 3090s >= $0.40, 4090s >= $0.50-0.67, 5090s >= $0.76). Done without a box: found that the incumbent's camera-only pitch head sits at the LOG_STD_MIN clamp (sigma 0.0067 in z, raw log sigma below the clamp) so the joint PPO ratio turns on it (r3b3's approx_kl 3-55/update); NEW --diag-head-kl N and --pitch-sigma-min S (off = bit-identical, 10 CPU tests); CPU probes from the policy's own pre-wall states: 0/36 crest the 54.7% ramp at T 0.065-0.5, and a 0.05 pitch floor's camera jitter does not hurt there. Plan if a box comes: resume the incumbent + --pitch-sigma-min 0.05 --diag-head-kl 10, evals every 25M."
+ "best": {
+  "score": 54.521,
+  "eval_file": "/home/steam/ar/runs/r4b2/r4b2_kl0/traj_8839495680.jsonl",
+  "run": "r4b2_kl0",
+  "step": 8839495680,
+  "ckpt": null,
+  "recipe": [
+   "--diag-head-kl",
+   "2"
+  ],
+  "resume_from": "incumbent r3b3_gwx2/ckpt_final.pt (8,838,971,392, md5 d3d06fb1...)",
+  "commit": "fd71f34"
+ },
+ "summary": "Round 4 (r4b2): no box from 12:50 to 23:19 UTC (no offer under the caps). Then, on an RTX 4080 (needed a gpu_health 4080 reference, harness issue), MEASURED the defect found offline: on the incumbent, the camera-only pitch head (sigma at the LOG_STD_MIN clamp, 0.0067) carries ~95% of PPO's per-update KL (pitch 0.16-1.39 vs yaw 0.005-0.05, keys 0.002) and 3/4 of the clipped rows (34% joint vs 9% without pitch). NEW --pitch-sigma-min 0.05 (off = bit-identical) cuts the joint KL to 0.03-0.09 and lets the keys/yaw use the trust region (their clipped share 9% -> 16%). Best eval 54.521 (bare resume's first eval; incumbent 54.674). Next: a matched-step test of the floor from the incumbent."
 }
