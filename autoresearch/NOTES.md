@@ -1107,7 +1107,7 @@ window, C = inside the cavity under the pit slab, T = tunnel lane, R = room; ana
 * **Arm 4, r3b1_ifp** (02:00): incumbent ckpt (7,176,454,144, md5 92b7ddd2...) + `--unstuck-max 0
   --fail-pen 10 --eval-stall 1 --surf-bonus 0`, 600M steps, evals every 25M.
 
-### 02:55 UTC: arm 4 (r3b1_ifp: incumbent + T 0 + fail-pen 10 + no surf bonus) - leaves the pit, tunnel dive at its limit, 28.851
+### 02:45 UTC: arm 4 (r3b1_ifp: incumbent + T 0 + fail-pen 10 + no surf bonus) - leaves the pit, tunnel dive at its limit, 28.851
 
 * Evals 7,177-7,302M: the incumbent's pit lock (frontier ~26,900 u, 27.5%). From **7,328M** the line
   takes the detour again (fail-pen makes the pit dive a certain -10); 7,353M **28.840**, 7,378M 28.768,
