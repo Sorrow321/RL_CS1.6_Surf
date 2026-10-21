@@ -1101,3 +1101,25 @@ later, x ~0.9) trims the time-pen-0 margin but keeps the median detour ahead (~2
   still in the pit after ~200-300M steps, arm 2 continues from it with `--ez-eps 0.04 --ez-front
   0.15 --sil-coef 0.1 --sil-burst-only 1 --sil-view-mse 1` (explore at the frontier, imitate what
   works, under an objective that no longer pays for the pit dive).
+
+### 03:56 UTC: Harness issue - the watchdog kills boxes the offer filter let through
+
+* 03:44 box 56992886 (RTX 3090, machine 148400, listed $0.258/h) came up READY and was DESTROYED by
+  the fleet watchdog 30 s later: "POLICY: RTX_3090 at 0.309 $/h, above its 0.30 cap". The watchdog
+  prices the LIVE instance (`dph_total` including the storage of the 60 GB disk box.py asks for),
+  box.py's offer filter prices the OFFER (`dph_total` with a minimal disk). Storage is
+  disk_gb x storage_cost ($/GB/month) / 730 h: here ~+$0.05/h. So any offer within ~$0.02-0.05 of
+  its cap is rented, deployed into and destroyed - and that band is exactly where the cheapest
+  boxes sit tonight.
+* Workaround on this branch (autoresearch/box.py offers(): the cap is tested against
+  max(offer dph_total, dph_base + disk_gb x storage_cost / 730)): it only ever rents LESS, never
+  above a cap. Operator: the same estimate belongs in the operator's box.py.
+* Also: that machine (148400) is the one that failed readiness at 01:28 and was "blocklisted"
+  without reaching the list (the earlier harness issue), so the pick came back to it.
+* Arm order changed: box time is the scarce resource tonight (first box after 3 h, lost to the
+  above), and the CPU recordings say nothing samples the detour, so the next box runs
+  **r3b4_tpsb** = incumbent + `--time-pen 0 --surf-bonus 0 --ez-eps 0.04 --ez-front 0.15
+  --sil-coef 0.1 --sil-burst-only 1 --sil-view-mse 1` first (400M, evals every 25M); the
+  ablations (time-pen 0 alone, bursts + SIL alone) follow if it moves the line. CPU pre-flight of
+  exactly this resume (incumbent checkpoint, 16 envs, 3 iterations): all flags accepted, unstuck /
+  novel / reservoir state restored, the SIL burst buffer and the front band live.

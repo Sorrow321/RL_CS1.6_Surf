@@ -274,6 +274,14 @@ def offers(exclude_machines=()) -> list:
                 if norm_gpu(o.get("gpu_name")) != name:
                     continue
                 dph = float(o.get("dph_total") or 99.0)
+                # r3b4 workaround (NOTES.md, "Harness issue", 2026-10-21): the watchdog prices
+                # the LIVE instance, whose dph_total carries the storage of the disk we ask for
+                # (disk_gb x storage_cost $/GB/month / 730 h), while an offer's dph_total does
+                # not - box 56992886 listed 0.258 and billed 0.309 against the 0.30 cap, and was
+                # destroyed 30 s after it came up. Estimate the instance's price instead.
+                dph = max(dph, float(o.get("dph_base") or 0.0)
+                          + float(CFG.get("disk_gb") or 0.0)
+                          * float(o.get("storage_cost") or 0.0) / 730.0)
                 if dph > cap:
                     continue
                 if (o.get("machine_id") in mids or o.get("host_id") in hids
