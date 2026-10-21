@@ -26,8 +26,13 @@ import torch
 
 class SILBuffer:
     def __init__(self, cap: int, device, img_dtype, scal_dim: int, frame: int,
-                 nact: int, nz: int = 0, priv: int = 0, seed: int = 0):
+                 nact: int, nz: int = 0, priv: int = 0, seed: int = 0, top: int = 0):
         self.cap = max(1, int(cap))
+        # --sil-top K: admit at most the K largest-gain rows of each rollout (0 = every
+        # R > V row, the shipped rule). A rollout's R > V rows outnumber a 50k buffer, so
+        # without it the buffer is rewritten every iteration and a rare success is replayed
+        # for one iteration only; with K it persists for about cap / K iterations.
+        self.top = max(0, int(top))
         self.device = device
         self.scal = torch.zeros((self.cap, int(scal_dim)), device=device)
         self.img = torch.zeros((self.cap, int(frame)), device=device, dtype=img_dtype)
@@ -61,10 +66,11 @@ class SILBuffer:
         n = int(keep.numel())
         if n == 0:
             return 0
-        if n > self.cap:
-            top = torch.topk(gain[keep], self.cap).indices
+        lim = self.cap if self.top <= 0 else min(self.cap, self.top)
+        if n > lim:
+            top = torch.topk(gain[keep], lim).indices
             keep = keep[top]
-            n = self.cap
+            n = lim
         rows = self._slots(n)
         self.scal[rows] = scal[keep].to(self.scal.dtype)
         self.img[rows] = img[keep].to(self.img.dtype)

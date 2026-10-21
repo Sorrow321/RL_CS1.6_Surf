@@ -6695,6 +6695,11 @@ def main() -> None:
                          "priority proportional to (R - V)_+")
     ap.add_argument("--sil-ent", type=float, default=None,        # 0
                     help="--sil-coef: entropy coefficient inside the SIL term")
+    ap.add_argument("--sil-top", type=int, default=None,          # 0 = every R > V row
+                    help="--sil-coef: admit at most the K largest-gain (R - V) rows of each "
+                         "rollout into the buffer, so a rare success stays in it for about "
+                         "--sil-buffer / K iterations instead of being overwritten by the next "
+                         "rollout's R > V rows (0 = the shipped rule: all of them)")
     ap.add_argument("--sil-tempered", type=int, default=None, choices=(0, 1),
                     help="--sil-coef under --unstuck: 1 = score the buffer's actions under the "
                          "CURRENT sampling temperature (sigma x (1+T), logits / (1+T)) - the "
@@ -7132,7 +7137,8 @@ def main() -> None:
             args.tail_weight = float(ck_cfg["tail_weight"])
             restored.append(f"tail_weight={args.tail_weight:g}")
         for _k, _cast in (("sil_coef", float), ("sil_buffer", int), ("sil_batches", int),
-                          ("sil_batch_size", int), ("sil_ent", float), ("sil_tempered", int)):
+                          ("sil_batch_size", int), ("sil_ent", float), ("sil_tempered", int),
+                          ("sil_top", int)):
             if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
                 setattr(args, _k, _cast(ck_cfg[_k]))
                 restored.append(f"{_k}={ck_cfg[_k]}")
@@ -13425,6 +13431,8 @@ def main() -> None:
             "sil_ent": float(args.sil_ent if args.sil_ent is not None else 0.0)})
         if int(args.sil_tempered or 0):
             meta["config"]["sil_tempered"] = 1
+        if int(args.sil_top or 0) > 0:
+            meta["config"]["sil_top"] = int(args.sil_top)
     if YCOND:
         meta["config"]["yaw_cond"] = 1
         print(f"--yaw-cond: side-key head conditioned on the sampled yaw "
@@ -15658,8 +15666,13 @@ def main() -> None:
         if SIL_TEMPERED and CC_TEMP:
             raise SystemExit("--sil-tempered with --cc-temp-scale: the keys temperature is per "
                              "env there and the SIL buffer does not keep it")
+        if int(args.sil_top or 0) < 0:
+            raise SystemExit("--sil-top K >= 0 (0 = every R > V row)")
         SIL = SILBuffer(SIL_CAP, device, b_img.dtype, SCAL, FRAME, NACT, nz=NZ, priv=PRIV,
-                        seed=int(args.seed) + 4242)
+                        seed=int(args.seed) + 4242, top=int(args.sil_top or 0))
+        if SIL.top:
+            print(f"--sil-top {SIL.top}: at most {SIL.top} rows per rollout join the buffer "
+                  f"(the largest gains), so a row stays about {SIL_CAP // SIL.top} iterations")
         if SIL_TEMPERED:
             print("--sil-tempered: buffer rows are scored under the CURRENT sampling "
                   "temperature (sigma x (1+T), logits / (1+T))"
@@ -15686,8 +15699,8 @@ def main() -> None:
                     logp, ent = logprob_entropy_padded(padded, s_act, s_temp)
                 value = value.float()
             return sil_loss_terms(logp, ent, value, s_ret, SIL_ENT)
-    elif SIL_TEMPERED:
-        raise SystemExit("--sil-tempered needs --sil-coef > 0")
+    elif SIL_TEMPERED or int(args.sil_top or 0):
+        raise SystemExit("--sil-tempered / --sil-top need --sil-coef > 0")
     sil_loss_t = None
 
     def mb_step(f_scal, f_img, f_act, f_logp, f_adv, f_ret, idx, ent_coef,

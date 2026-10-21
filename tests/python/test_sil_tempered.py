@@ -44,7 +44,25 @@ def test_the_tempered_gaussian_score_does_not_push_sigma_up():
 
 def test_the_recorder_treats_the_flag_as_training_only():
     src = (ROOT / "tools" / "record_ckpt.py").read_text(encoding="utf-8")
-    assert '"sil_tempered"' in src
+    assert '"sil_tempered"' in src and '"sil_top"' in src
+
+
+def test_sil_top_admits_only_the_largest_gains_and_they_persist():
+    sys.path.insert(0, str(ROOT / "python"))
+    from surfgym.sil import SILBuffer
+    b = SILBuffer(100, "cpu", torch.float32, 3, 4, 6, top=10)
+    ret = torch.arange(1000, dtype=torch.float32)
+    n = b.add(torch.zeros(1000, 3), torch.zeros(1000, 4), torch.zeros(1000, 6, dtype=torch.long),
+              ret, torch.zeros(1000))
+    assert n == 10 and b.size == 10
+    assert sorted(b.ret[:10].tolist()) == list(range(990, 1000))
+    for _ in range(5):                      # five ordinary rollouts later the big ones remain
+        b.add(torch.zeros(1000, 3), torch.zeros(1000, 4), torch.zeros(1000, 6, dtype=torch.long),
+              torch.full((1000,), 5.0), torch.zeros(1000))
+    assert b.size == 60 and float(b.ret[:60].max()) == 999.0
+    off = SILBuffer(100, "cpu", torch.float32, 3, 4, 6)
+    assert off.add(torch.zeros(1000, 3), torch.zeros(1000, 4),
+                   torch.zeros(1000, 6, dtype=torch.long), ret, torch.zeros(1000)) == 100
 
 
 @needs_run
@@ -53,20 +71,23 @@ def test_tempered_sil_runs_under_unstuck_and_resumes():
     shutil.rmtree(ROOT / "runs" / run, ignore_errors=True)
     r = _run([sys.executable, "-u", str(TRAIN), "--run", run] + SMOKE
              + ["--steps", "6144", "--unstuck", "--unstuck-reach", "eval",
-                "--sil-coef", "0.1", "--sil-tempered", "1"])
+                "--sil-coef", "0.1", "--sil-tempered", "1", "--sil-top", "64"])
     assert r.returncode == 0, r.stdout[-4000:] + r.stderr[-4000:]
     assert "--sil-tempered: buffer rows are scored under the CURRENT sampling" in r.stdout
     d = ROOT / "runs" / run
     cfg = json.loads((d / "run.json").read_text(encoding="utf-8"))["config"]
-    assert cfg["sil_tempered"] == 1 and cfg["sil_coef"] == 0.1
+    assert cfg["sil_tempered"] == 1 and cfg["sil_coef"] == 0.1 and cfg["sil_top"] == 64
+    assert "--sil-top 64: at most 64 rows per rollout" in r.stdout
     run2 = "siltemp_on_re"
     shutil.rmtree(ROOT / "runs" / run2, ignore_errors=True)
     r2 = _run([sys.executable, "-u", str(TRAIN), "--run", run2, "--ckpt",
                str(d / "ckpt_final.pt")] + SMOKE + ["--steps", "8192"])
     assert r2.returncode == 0, r2.stdout[-4000:] + r2.stderr[-4000:]
     assert "sil_tempered=1" in r2.stdout and "--sil-tempered: buffer rows" in r2.stdout
+    assert "sil_top=64" in r2.stdout
     bad = _run([sys.executable, "-u", str(TRAIN), "--run", "siltemp_bad"] + SMOKE
                + ["--steps", "2048", "--sil-tempered", "1"])
-    assert bad.returncode != 0 and "--sil-tempered needs --sil-coef > 0" in bad.stdout + bad.stderr
+    assert bad.returncode != 0 and "--sil-tempered / --sil-top need --sil-coef > 0" in (
+        bad.stdout + bad.stderr)
     for dd in (d, ROOT / "runs" / run2, ROOT / "runs" / "siltemp_bad"):
         shutil.rmtree(dd, ignore_errors=True)
