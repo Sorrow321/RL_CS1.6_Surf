@@ -1222,3 +1222,12 @@ cavity (entry speed, ramp vz) and complete the loop? 30 min first.
   toward CP2 at ~31%). The greedy line has not followed yet: evals 8,123-8,299M are 27.99-28.55 (best
   28.549 at 8,174M), with 6/9 rising cavity attempts at 8,224M and some evals falling back to E-only.
 * Box extended to ~07:30 UTC.
+
+### 04:15 UTC: r3b2_gt2 at 8.44B - ramp take-off reaches the human's; apexes now above the opening, misaligned
+
+* Training ceiling 30,571 -> **31,000 u (31.71%)**.
+* Greedy risers per eval (vz max off the ramp / best apex): 8,324M 2 (996 / 10,413), 8,350M 5 (1,025 /
+  10,492), 8,375M 3 (1,132 / 10,675), 8,400M 6 (1,166 / **10,943** at (2,744, 626)), 8,425M 2
+  (**1,266** / 10,868 at (2,843, -1,011), moving WEST at 1,370 u/s). The human leaves the ramp at +1,190.
+  So the take-off strength is solved within ~400M steps of greedy-tail practice; the last miss is the
+  y-alignment of the apex with the lower opening (|y| < 110 at x 2,512-2,576). No change to the run.
