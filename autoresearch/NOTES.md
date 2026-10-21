@@ -1150,3 +1150,27 @@ cavity (entry speed, ramp vz) and complete the loop? 30 min first.
   term, whose comment calls the refund "load-bearing: without it accelerate-and-die farms the speed
   credit"), so a fast floor death is free and a platform landing (losing ~1,700 u/s) costs ~3.4.
 * Box extended to 05:39 UTC.
+
+### 02:50 UTC: sp2 verdict (speed-pot 2) - NEGATIVE for the cavity; arm r3b2_gt (greedy-tail spawns)
+
+* sp2, 7,740-8,010M (270M steps): evals 27.4-28.52 (best **28.520**); from 7,917M on 8/9 greedy
+  episodes fly slot -> window -> slide north at ~1,750 u/s and die on the shaft floor (28.4%); 1 cavity
+  entry in 11 evals. Bench on its 7,909M weights (same method as tp0's): only 2/9 greedy episodes reach
+  the shaft, and from their 72 states **1/40** stochastic episodes enters the cavity (tp0: 17/40), median
+  life 0.93 s. The term made the speed but priced the cavity out: the slow turn into the opening is a
+  charged speed loss, and the fast floor death keeps its potential (free).
+* NEW `--speed-pot-charge 1` (c621d1d, default off): Phi = 0 at a failure (the potential still held is
+  charged on the fatal call), the refund speed_equiv already makes. With it a failed episode's speed
+  term totals -K v0 whatever was flown (unit-tested), so a fast death is no longer free; what is left is
+  the discount's (1 - gamma) K |v| residual, i.e. a mild "alive and fast" preference. Not run yet: by the
+  arithmetic it makes the floor death and the cavity entry roughly even (the floor death keeps +0.2 of
+  ratchet progress), so it does not by itself create a reason to enter the cavity.
+* **r3b2_gt** (02:48): tp0x's 7,740,063,744 checkpoint (no speed term) + `--spawn-states
+  runs/gt_states_r3b2_gt.npy --spawn-states-frac 0.15`: 15% of every spawn pool from the policy's OWN
+  greedy line, the last 3 s (to 0.25 s) before each failed episode's end (tools/greedy_tail_states.py,
+  first file from tp0's final: 440 states from 8 episodes, CP2 ramp turnaround -> slot -> window ->
+  shaft), refreshed every 20 min from this run's ckpt_latest by
+  autoresearch/analysis/greedy_tail_loop.sh (local record_ckpt --dump-states, atomic replace; the trainer
+  re-reads on mtime). Why: the reservoir holds only ~0.9% of its states past 26.5%, so the entry
+  maneuver is practised by the 10% start episodes and little else; this puts ~13% of all episodes at the
+  deployed policy's own failure point. Generic: no map quantity (a tail length, a share, a cadence).
