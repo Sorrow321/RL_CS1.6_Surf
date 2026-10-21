@@ -1906,3 +1906,6 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
   human passes x -3,418..-4,288 at z 5,558-5,713 (74.0-74.5 s), ~300-450 u higher. Masked ceiling
   64,827 -> 66,972 u; T 0.084 on the new eval best. The best eval is now in r4b4_c8: the hand-on
   checkpoint is c8's (pulled at wrap-up).
+* 23:40 UTC: c8 13.75-14.00B: 60.5, 60.3, 63.575, 61.4, 66.076, 60.4, **68.260** (13,928M, CP5),
+  21.0 (a collapse), 60.5, 60.5. Masked ceiling 69,224 u, T 0.012: after the bowl the gates past
+  CP5 now fall one per ~50-100M steps.
