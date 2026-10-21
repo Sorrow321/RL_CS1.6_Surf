@@ -1602,3 +1602,12 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
 * The CPU run is ~18 steps/s (an iteration per ~15 min), so only the one line; stopped. Ops lesson again:
   a `ps | grep <pattern> | kill` whose own command line contains the pattern (here an `rm runs/<run>` in
   the same command) kills the calling shell.
+
+### Harness issue / ops (r4b1): no box under the caps for 4+ hours (12:50-16:52 UTC and counting)
+
+* `box.py rent` retried every 60 s from 12:50 UTC; every attempt REFUSED ("no offer passes whitelist,
+  caps, blocklist"). Market snapshots (offer_query + allowed cards): 12:50 cheapest 4090 $0.508 (cap 0.45),
+  3090 $0.534 (cap 0.30), 5090 $0.75 (cap 0.60); 14:01 4090 $0.469, 3090 $0.401; 15:20 one 3090 at $0.269
+  on blocklisted machine 137730 (no ssh at readiness, earlier round); 16:51 only a 3090 Ti at $0.241 on a
+  Xeon E5-2696 v3 (config.cpu_exclude). Two other branches got boxes around 13:15. Nothing to work around
+  (the caps are the user's); the branch's code and plan are ready (NOTES above) for whenever one comes.
