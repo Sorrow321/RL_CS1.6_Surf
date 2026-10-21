@@ -1741,3 +1741,20 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
   path that is clear on our map (no blocked segment 69.5-72 s with the standing hull).
 * So the dive is learned; the gate is the window (CP4's kind: ~700M steps at it this round).
   Field progress is flat across it (60.4-60.5%), so only exploration finds it.
+
+### 17:53 UTC: why the window does not pull (analysis only, c4 10.26B checkpoint)
+
+* Critic V(s) at spawn (record_ckpt --dump-value): the human's east-valley states (BENCH ONLY)
+  median **0.73**; the policy's own bowl states median **1.10**. So the critic values the east
+  valley BELOW the bowl, though a dive from there pays ~2-2.5 units.
+* Offline replay of the run's own novel sampler (checkpoint state, 4 x 1,843 rows): **28.5% of
+  novel rows land in the east valley** (x -439..-98, z 6,919-7,399, |v_h| ~920) - the sampler
+  finds the unvisited side. From those rows the policy dives through the hole **4/16** (61.4-62.5%)
+  and dies on kill plates *53 / *23 or the block otherwise (stochastic at exec-temp 1.25).
+  25% x ~2.5 units ~= 0.6-0.7: the critic is RIGHT about the east valley as the policy flies it.
+  The bowl's 1.1 comes from greedy / reservoir rows spawned low in the bowl that the ratchet
+  pays for climbing back to 60.5%.
+* So the window gate is two-stage: (1) the dive from the east valley must become reliable
+  (taught by novel rows, ~3% of all episodes dive through as novel episodes, which never move
+  the ceiling); (2) only then is the window crossing worth more than staying, and a chance
+  crossing gets reinforced. Unboosted, T 1 and x1.25-1.5 probes from the bowl: 0 crossings.
