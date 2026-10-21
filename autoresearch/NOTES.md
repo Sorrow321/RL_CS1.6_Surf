@@ -1764,7 +1764,7 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
   59.7-60.6% progress, the 2 s before each greedy stop) - greedy x8, sampled at temperature 1 x16
   and 2 x16, 8 s each: does any rollout from the stop survive the drop?
 
-### 17:20 UTC: the 60.57% gate, measured in the simulator (ANALYSIS ONLY: own states, no demo)
+### 17:04 UTC: the 60.57% gate, measured in the simulator (ANALYSIS ONLY: own states, no demo)
 
 Scripts: session scratchpad probe/ (macro_search.py, stage_search.py, lane_drop.py); states = G's
 own greedy-line pool (1,809 STATE_DTYPE rows, 59.7-60.6% progress, the 2 s before each greedy stop).
