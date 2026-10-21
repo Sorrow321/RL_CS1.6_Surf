@@ -1197,3 +1197,19 @@ cavity (entry speed, ramp vz) and complete the loop? 30 min first.
 * **r3b2_gt2** (03:16): gt's 7,971,799,040 checkpoint (md5 e20344d1...) + the same greedy-tail spawns +
   `--respawn-min-speed 300`; the tail file also drops < 300 u/s states (tools/greedy_tail_states.py
   --min-speed, the same rule); refresh loop restarted for gt2.
+
+### 03:45 UTC: r3b2_gt2 at 8.12B - the greedy line flies the loop's skeleton; the apex misses the opening
+
+* Evals 7,972-8,098M: **7-9 of 9 greedy episodes enter the cavity in every eval** (scores 28.23-28.30:
+  the tunnel dive is no longer flown, and a cavity attempt that fails dies at ~28.2%). Training crawl
+  17% (gt 25%), stall 18-23%.
+* The best attempts (7,972M ep 3/4, 8,098M ep 1) fly the human's loop: opening at 28.2-28.4 s ->
+  west under the shaft floor at ~1,320 u/s -> onto the ramp moving SOUTH at 1,909 u/s (the human's
+  ~1,900) -> surf up and out east at vz +928..980 -> curve north -> **apex z 10,793 at (2,742, 142)**
+  (7,972M ep 3): above the lower opening's ~10,770 and at its y, but ~200 u EAST of it and moving
+  north, so it misses and falls along the cavity's north wall. The human reaches the opening at
+  (2,524, 20, 10,893) moving WEST and still climbing (+629), which carries it to the +y tunnel's
+  height (z ~11,137) by 31.5 s. Missing: a stronger take-off (~+1,190) and turning west at the apex.
+* Greedy-tail spawns in the cavity now carry their own ratchet record (the spawn's d), so climbing
+  from the ramp exit (26.3%) toward the opening (27.4%) and into the shaft is PAID for them: the dense
+  gradient for exactly the missing piece. Kept running.
