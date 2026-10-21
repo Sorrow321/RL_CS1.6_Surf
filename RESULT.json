@@ -1,33 +1,16 @@
 {
- "agent": "r2b2",
- "round": 2,
- "final": true,
+ "agent": "r3b1",
+ "round": 3,
+ "final": false,
  "best": {
-  "score": 28.841,
-  "eval_file": "/home/steam/ar/runs/r2b2/r2b2_t1/traj_6750732288.jsonl",
-  "run": "r2b2_t1",
-  "step": 6750732288,
-  "ckpt": "/home/steam/ar/runs/r2b2/r2b2_t1/ckpt_latest.pt",
-  "recipe": [
-   "--respawn-novel-shell",
-   "0.9",
-   "--respawn-novel-shell-width",
-   "0.05",
-   "--respawn-novel-radius",
-   "256",
-   "3072",
-   "--respawn-novel-turn",
-   "90",
-   "--respawn-novel-band",
-   "0.05",
-   "--respawn-novel-tries",
-   "64",
-   "--unstuck-max",
-   "1"
-  ],
-  "resume_from": "warm lineage: incumbent ckpt (r1b1_ratnovx2 final, 5,100,797,952) -> r2b2_nfturn (to 5,551M) -> r2b2_band64 (to 6,001M) -> r2b2_band64x (to 6,725M) -> r2b2_t1 (to 7,176M), bare resumes plus the flags above",
-  "commit": "15716d6",
-  "note": "ckpt_latest.pt is r2b2_t1's end (step 7,176,454,144, md5 92b7ddd202e0b09629f93e4ac2afdbe1), 426M steps after the best eval; its greedy line dies in the CP2 pit (27.4%) while stochastic training episodes reach 29.76%. A healthier warm start is r2b2_sband2/ckpt_final.pt (from-scratch lineage, 3,335,520,256, md5 36256794..., evals 28.5-28.75)."
+  "score": 28.834,
+  "eval_file": "/home/steam/ar/runs/r3b1/r3b1_t0/traj_3361210368.jsonl",
+  "run": "r3b1_t0",
+  "step": 3361210368,
+  "ckpt": "/home/steam/ar/runs/r3b1/r3b1_t0/ckpt_latest.pt",
+  "recipe": ["--unstuck-max", "0"],
+  "resume_from": "r2b2_sband2/ckpt_final.pt (3,335,520,256, md5 36256794...; from-scratch band lineage, band/turn/shell/radius/tries restored)",
+  "commit": "852b183"
  },
- "summary": "Best 28.841 (incumbent 28.628): a greedy tunnel dive to the field route's physical limit. Analysis: the field route past 28.6% is closed (free-flight bound + 12k brute-force flights: max 28.79%); the WR demo (analysis only) shows the real route, a ~2,000 u dip into a cavity with a surf-ramp turnaround. New generic novel-sampler options --respawn-novel-band / --respawn-novel-turn (+ a byte-identical 3-6x sampler speed-up) put ~85% of novel rows in that dip; a bench shows the return leg learned (climb -> room 5/11). T cap 2->1 gave the 28.841 eval and the first real episodes past the tunnel (ceiling 29.76%), but the warm greedy line then locked into the CP2 pit dive. From scratch the band clears the trap and the CP2 pit sooner than round 1 but stalls at the window. Next: band only for dips behind the frontier, and fix the greedy-vs-stochastic gap."
+ "summary": "Round 3 (r3b1): hypothesis - the greedy line avoids precise routes because the critic values them under the noisy unstuck temperature (T at its cap 2: keys from logits/3, yaw sigma x3). Arm 1 = r2b2_sband2 final + --unstuck-max 0: within 25M steps 6/9 greedy episodes fly the tunnel dive to the field route's physical limit (median 28.77%, best 28.83%) and the stochastic ceiling jumps 28,178 -> 29,168 u (29.83%). Not yet the cavity route."
 }
