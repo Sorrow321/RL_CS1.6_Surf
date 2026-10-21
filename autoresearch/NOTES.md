@@ -1353,3 +1353,21 @@ window, C = inside the cavity under the pit slab, T = tunnel lane, R = room; ana
 * Idea for the next round (generic, untested): let the unstuck schedule also COOL when the training ceiling
   (real episodes) leads the greedy eval frontier by more than eps - discovery has happened, consolidation is
   what is missing - instead of heating further until the eval moves.
+
+### 11:21 UTC: FROM SCRATCH the two-phase recipe flies the HUMAN'S CAVITY ROUTE: r3b1_scrC 29.628
+
+* r3b1_scrC (scrT's 2,972M checkpoint, T 2 -> **0**; fail-pen 10, surf-bonus 0): evals 2,972-3,073M 26.9-28.0%
+  (frontier), then 3,098M 28,128 u, 3,123M 28,142, 3,174M 28,173, **3,224M 28,967 u = score 29.628**; training
+  ceiling 29,082 -> 29,312 u (29.98%) at 3.24B.
+* The 3,224M eval, per episode (W window, C cavity, T tunnel lane, R room; climb = max z after the cavity's deep
+  point, BACK = west through the lower opening above z 10,760): two episodes **W C T R** - into the cavity,
+  the ramp turn-up at vz +1,295..+1,349 (the human's +1,190), back out through the lower opening (z 11,140-11,176),
+  into the tunnel and the room (29.51%, 29.63%); three more W C ... BACK (out of the cavity, then the shaft or the
+  tunnel). That is the human's 28-31.5 s dip-and-climb (round 2's analysis: "the real route", which no greedy
+  line had flown), found champion-free FROM SCRATCH. The warm lineage instead found the window-frame bounce
+  into the tunnel (a different, shorter line); both reach the room.
+* The sequence that did it, one seed: ratnov + fail-pen 10 + surf-bonus 0, T 0 to the CP2 wall (1.1B steps
+  stuck), the default T schedule at the wall (T rising crossed the pit within ~150M steps of T ~0.8; real
+  episodes to 29.75%), then T 0 again (greedy line through the pit, the cavity and the tunnel within ~250M
+  steps). Scratch lineage by steps: 29.63% at 3.22B vs round 1's ratnov 28.55% (1.63B) / 28.63% (4.92B) and
+  round 2's sband2 28.71% (3.15B).
