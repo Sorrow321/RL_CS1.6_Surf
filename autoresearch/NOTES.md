@@ -957,3 +957,42 @@ line (it killed my local shell twice).
   pulled while the run was stopped and md5-checked again at wrap-up; also local:
   r2b2_t1/ckpt_7128219648.pt and r2b2_sband2/ckpt_final.pt (from-scratch lineage, 3,335,520,256).
 * Box 56901034 released at 23:41 UTC; no box at wrap-up.
+
+## Round 3, branch r3b1 - 2026-10-21 00:46 UTC: box, warm start, first arm
+
+### The box
+
+* vast instance 56975104, RTX 3090 on a Ryzen 9 5950X (32 threads), $0.268/h, Missouri
+  (the only offer under the caps at 00:44). Deadline 3 h at rent, extended as needed.
+* First deploy failed: `ar/r3b1` was not on GitHub yet (`fatal: 'origin/ar/r3b1' is not a
+  commit`). Push the branch BEFORE `box.py deploy`.
+
+### The two warm starts (checkpoint state, read on CPU)
+
+| checkpoint | step | unstuck T | yaw log_std | greedy line | training ceiling |
+|---|---|---|---|---|---|
+| incumbent (r2b2_t1 end) | 7,176,454,144 | 1.0 (cap 1) | -3.195 (sigma 0.041) | dies in the CP2 pit (27.4%) | 29,098 u (29.76%) |
+| r2b2_sband2 final (named in the inherited RESULT.json) | 3,335,520,256 | 2.0 (cap 2) | -3.567 (sigma 0.028) | crosses the pit, tunnel dive 28.5-28.75% | 28,140 u (28.78%) |
+
+* Sampling noise at T: yaw sigma x (1 + T), keys sampled from logits / (1 + T), entropy
+  bonus x (1 + T), intrinsic coef x (1 + T). Effective yaw sigma ~0.08 in both (0.041 x 2,
+  0.028 x 3). For a key at p = 0.98 under T = 0, T = 1 gives 0.80 and T = 2 gives ~0.6:
+  at the cap the training episodes press the wrong key ~40% of the decisions where the
+  greedy line is sure. T has been at its cap for most of the last 5B steps of this lineage.
+
+### Hypothesis for this round
+
+The greedy line picks the safe option at every precision gate (the pit dive over the
+corridor-east detour, the tunnel dive over the cavity) because the CRITIC values each option
+under the noisy training policy: a maneuver that succeeds, say, 30% of the time at T 2 is
+worth less than a sure dive, although the noiseless greedy policy could fly it. Round 2's
+only fast moves came from LOWERING T (cap 2 -> 1: the 28.841 eval and the ceiling jump within
+25M steps). If this is right, consolidation at T ~ 0 (exploration supplied by the novel band
+rows, which do not need action noise) should move the greedy line onto the precise routes.
+
+### Arm 1, r3b1_t0: r2b2_sband2 final + `--unstuck-max 0` (T 0 from the second iteration)
+
+* Warm start from the healthy-greedy checkpoint (3,335,520,256); band settings restored from it
+  (band 0.05, turn 90, shell 0.9 / 0.05, radius 256-3,072, tries 64). 30 min first.
+* Matched reference: r2b2_sband3 (the same checkpoint, bare resume at T 2): best 28.753 at the
+  resume eval, then 28.55-28.58 with the line drifting into the pit and back.
