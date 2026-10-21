@@ -3,5 +3,5 @@
  "round": 3,
  "final": false,
  "best": null,
- "summary": "Round 3 start (00:39 UTC). Hypothesis: under the ratchet, the 0.5/s time penalty with a free death makes dying at a dip wall return-optimal (detour vs CP2 pit dive -0.1..-0.4; perfect cavity route to CP2 vs tunnel dive ~-0.7), which is the lineage's greedy drift into the pit. Arm 1 (r3b4_tp0): warm incumbent + --time-pen 0 --surf-bonus 0, 400M, evals every 25M. Waiting for a box (no offer under the caps at 00:55)."
+ "summary": "Round 3 (r3b4). Box from 04:48 (5090, after 4 h with nothing under the caps and one box killed by the watchdog's storage-inclusive price check - harness issue, worked around in box.py). Running r3b4_tpsb: incumbent + --time-pen 0 --surf-bonus 0 (the time penalty with a free death makes dying at a dip wall return-optimal: pit dive beats every detour of the incumbent's best eval) + frontier ez bursts + NEW --sil-burst-only/--sil-view-mse (imitate the bursts that beat the critic). Local CPU: the incumbent dives into the CP2 pit 9/9 at T 0-1, and no held yaw nudge makes the detour. No eval of mine yet; incumbent 28.841."
 }

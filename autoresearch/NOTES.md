@@ -1152,3 +1152,11 @@ later, x ~0.9) trims the time-pen-0 margin but keeps the median detour ahead (~2
   incumbent checkpoint, then **r3b4_tpsb** launches (resume, 400M, evals every 25M):
   `--time-pen 0 --surf-bonus 0 --ez-eps 0.04 --ez-front 0.15 --sil-coef 0.1 --sil-burst-only 1
   --sil-view-mse 1`.
+
+### 04:53 UTC: r3b4_tpsb launched (04:52, trainer pid 4174 on box 56999701)
+
+* Record gate passed (source checkpoint greedy + POV; first ckpt_latest greedy / stoch / mixed). Resumed
+  at 7,176,454,144, stop at 7,576,454,144. Step line in the first minutes: bursts 3.3-4.5% of
+  decisions (front band from 21.5-22.0% progress), T 1.00 (restored), SIL buffer +1,300-1,800 burst
+  rows per iteration at mean gain ~0.2 (probably inflated while the critic adapts to the time-pen
+  change: V was trained with -0.5/s), novel 41-45% of episodes, ev +0.98.
