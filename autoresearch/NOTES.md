@@ -1301,3 +1301,16 @@ cavity (entry speed, ramp vz) and complete the loop? 30 min first.
   flight at ~1,100 u/s free fall loses only ~50 u over those 0.35 s, so the descent has to start well
   before the apex (a lower take-off or an early dive): a trajectory choice ~1-2 s upstream of the
   failure, inside the 3 s tail window.
+
+### 06:13 UTC: hover farming after CP2 -> r3b2_gt4 with `--int-move-gate`
+
+* gt3 9.14-9.32B: evals 31.7-32.57; more and more greedy episodes reach 31.1-31.9% at ~36 s, turn back EAST
+  and park for the rest of the 300 s on the void-bottom ramp's face (x ~880-990, z ~9,770-9,990, |v_xy|
+  ~30 u/s, airborne). Training crawl share rose with T: T 0.1 -> 1.0 took novelty per episode 0.7 ->
+  1.0-2.5 and crawl 9-13% -> 17-26%. Reading: with no time penalty, a parked agent that turns its view
+  collects count novelty on fresh (cell x view x speed) keys, which the count decay at T > 0 keeps
+  refreshing, and that can out-earn the ~0.4 units of progress for trying the wall. (Correlation, not
+  proof.)
+* **r3b2_gt4** (06:12): gt3's 9,318,694,912 checkpoint (md5 9eabbf6c...) + `--int-move-gate` (existing,
+  generic: novelty paid only when the POSITION cell changes, "anti-farming"); greedy tail 0.15, speed floor
+  300, time_pen 0, T restored. gt3 ran 8,714-9,319M, best 32.774.
