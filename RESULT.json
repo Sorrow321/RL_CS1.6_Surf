@@ -1,20 +1,21 @@
 {
  "agent": "r3b4",
  "round": 3,
- "final": false,
+ "final": true,
  "best": {
-  "score": 28.541,
-  "eval_file": "/home/steam/ar/runs/r3b4/r3b4_ctlt1/traj_2846359552.jsonl",
+  "score": 28.687,
+  "eval_file": "/home/steam/ar/runs/r3b4/r3b4_ctlt1/traj_4255645696.jsonl",
   "run": "r3b4_ctlt1",
-  "step": 2846359552,
-  "ckpt": "/home/steam/ar/runs/r3b4/r3b4_ctlt1/ckpt_latest.pt (pulled at wrap-up)",
+  "step": 4255645696,
+  "ckpt": "/home/steam/ar/runs/r3b4/r3b4_ctlt1/ckpt_latest.pt",
   "recipe": [
-   "(config.incumbent_recipe from scratch: the same-box control r3b4_ctl to 2.217B)",
+   "(config.incumbent_recipe, unchanged, from scratch: r3b4_ctl 0 -> 2,216,689,664)",
    "--unstuck-max",
    "1"
   ],
-  "resume_from": "r3b4_ctl/ckpt_latest.pt (2,216,689,664, md5 8e08239d...)",
-  "commit": "c39a439"
+  "resume_from": "r3b4_ctl/ckpt_latest.pt (2,216,689,664, md5 8e08239d00d7038fe70d312c6259dcf5): the same-box from-scratch control, T cap lowered 2 -> 1",
+  "commit": "c39a439",
+  "note": "ckpt_latest.pt is r3b4_ctlt1's end (step 4,314,890,240, md5 1ad44d48b7f38c3d7cf88cc1074f8907), a from-scratch lineage that flies the CP2 detour (7/9 greedy episodes at 4,256M), not pit-locked like the round-2 incumbent; its greedy line still flips between the detour and the pit dive from eval to eval (most evals 27.3-27.5)."
  },
- "summary": "Round 3 (r3b4), box from 04:48 (5090). Scratch arms vs a SAME-BOX control: time-pen 0 parks at 16% (suicide-vs-parking dilemma of the per-second term), burst SIL (new --sil-burst-only/--sil-view-mse) ~100-125M behind at the trap and window and never passed the window, curiosity-cond family never left the trap; warm incumbent + time-pen 0 + bursts did not flip the CP2 pit dive. The control (incumbent recipe, scratch) passes the window at 856M, reaches CP2 at 957M and at 1.66B flies the corridor-east detour in 5/9 greedy episodes: best 27.710, still climbing to wrap-up. Below the incumbent's 28.841."
+ "summary": "Best 28.687 (below the incumbent's 28.841): the UNCHANGED recipe from scratch on a 5090 (same-box control) + T cap 2->1 at 2.2B; 7/9 greedy episodes fly the CP2 detour, the best enters the +y tunnel. Box only from 04:48. Against that control, every treatment lost: --time-pen 0 parks at 16% (the per-second term is a suicide-vs-parking dilemma; with it the pit dive beats every detour), NEW burst-only SIL (--sil-burst-only/--sil-view-mse, off by default) 100-125M behind and never passed the window, --curiosity-cond never left the trap; warm incumbent + time-pen 0 + bursts did not unlock the pit dive. Analysis: the incumbent dives 9/9 at T 0-1, no held yaw nudge makes the detour (a surfing skill on the U-turn face). Next: the cavity dip; T 2 damages the greedy line; harness: price filter must include disk storage."
 }

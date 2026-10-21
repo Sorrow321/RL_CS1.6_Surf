@@ -1361,3 +1361,62 @@ later, x ~0.9) trims the time-pen-0 margin but keeps the median detour ahead (~2
   floor *21 (z ~10,715-10,720, x 2,224-2,243) at 28.38-28.54%. Every other eval 2.27-3.20B: 27.3-27.5 (the pit
   dive) - the line flips between the two from eval to eval, as in rounds 1-2. So the unchanged recipe from
   scratch reached round 1's tunnel-dive stage at ~2.85B on this box (ratnov: 28.55 at 1.63B).
+
+## ROUND 3 LESSON (r3b4) - written 12:03 UTC
+
+**Result:** best greedy eval from the true start **28.687** (r3b4_ctlt1 at 4,256M: 7/9 greedy episodes fly the CP2
+detour and the slot, the best enters the +y tunnel and dies at (2,096, 873, 10,977); an earlier eval at 2,846M
+scored 28.541 with 3 episodes into the shaft). Below the incumbent's 28.841
+(the field route's physical limit). 0 finishes. The box came only at 04:48 (4 h with nothing under the caps, one
+box destroyed by the watchdog's storage-inclusive price check), so ~7 h of training.
+
+**What the arms showed (one seed each, against a SAME-BOX control - the control mattered):**
+* The same-box control (the unchanged incumbent recipe from scratch, r3b4_ctl): trap exit ~200M, window wall
+  403M, window passed ~856M, CP2 wall ~957M, the detour in the greedy line by 1.66B, the pit crossed in an eval
+  at 2.85B and 4.26B (after T cap 2 -> 1 at 2.22B). Faster than round 1's ratnov (5080) at the first two gates, slower at
+  the window. Measured only against ratnov, burst SIL had looked "on pace"; against its own control it is behind.
+* `--time-pen 0 --surf-bonus 0` (the death incentive removed): warm at the CP2 wall it did not flip the incumbent's
+  pit dive in 270M (with bursts + burst SIL); from scratch it PARKED at 16% (greedy episodes hop on a floor for
+  the full 300 s; 42% stall-kills in training; window ~650M behind the control). The per-second term is a
+  dilemma: with it, death ends the cost and the agent dives at dip walls (the pit dive beats every detour of the
+  incumbent's best eval under the shipped reward, checked on its trajectories); without it, parking is free and
+  the stall kill makes it worth exactly what dying is worth. Neither objective explores; that has to come from
+  the exploration machinery. A fail charge of c/(1 - gamma) is the same objective as time-pen 0 up to the finish
+  bonus. Do not run time-pen 0 from scratch.
+* NEW `--sil-burst-only` / `--sil-view-mse` (6b6dcc0, default off, bit-identical off, 7 CPU tests): self-imitation
+  of exactly the ez bursts that beat the critic (PPO drops burst rows and its ratio cannot learn a far-tail held
+  action), view imitated by a bounded squared error on the squashed command. From scratch with ez-front bursts:
+  ~100-125M behind the control at the trap and the window wall, never passed the window in 1.1B steps,
+  regressed under T 2. No evidence it helps; keep it off.
+* `--curiosity-cond` (Agent57 family, existing flag) in place of the unstuck T: never left the first-ramp trap in
+  586M (the control left it at 200M). Without the plateau-driven temperature the trap holds.
+* The unstuck T at its cap 2 degrades the GREEDY line (the window-wall line fell back to 19% in ssbx; the
+  control's evals sat at the pit dive under T 2); T cap 2 -> 1 gave a transient (27.71) and, 0.6-2.0B later, the
+  28.54 and 28.69 crossing evals - the greedy line flips between the dive and the detour from eval to eval.
+
+**Analysis that holds (local CPU, analysis only):** the incumbent (7.18B) dives into the CP2 pit 9/9 from the true
+start at T 0 and T 1 and collapses at 4-15% at T 2; a nudge sweep (held yaw +-45..180 deg or +-60 offset for 1 s
+from 22.5 s / 23.25 s) produces the detour 0/18 times (before the U-turn it drops onto plate *45, during it nothing
+changes): the detour is a surfing skill on the curved U-turn face, not an aim. The warm incumbent is pit-locked; a
+fresh scratch lineage re-learns the detour.
+
+**For the next round:**
+* Hand-on checkpoint: r3b4_ctlt1's newest weights (a healthy scratch lineage that flies the CP2 detour, not
+  pit-locked) - an alternative to the pit-locked incumbent.
+* The scratch recipe is unchanged (my treatments all lost to the control). The way on past 28.84% is still the
+  cavity dip (round 2); the greedy line's eval-to-eval flipping and T's damage to it are the levers worth work.
+* Ops: price filter must include the disk's storage (box.py workaround on this branch); hosts that never start
+  are not blocklisted (vast_pick looks the instance up after it vanished).
+
+## Wrap-up (r3b4) - 2026-10-21 12:03 UTC
+
+* Final: RESULT.json `"final": true`, score **28.687** (r3b4_ctlt1, eval traj_4255645696, re-scored at wrap-up:
+  9 episodes, best 28.69%, median 27.75%, 0 finishes, CP1; 84/84 valid evals in the run). Per-run bests:
+  ctlt1 28.687, ctl 27.710, tpsb 27.486, ssbx 20.982, ssb 20.866, s0tpx 20.777, s0tp 16.061, scc 5.744.
+* Hand-on checkpoint: runs/r3b4/r3b4_ctlt1/ckpt_latest.pt (step 4,314,890,240, md5
+  1ad44d48b7f38c3d7cf88cc1074f8907), pulled after the trainer was stopped and md5-checked; also local:
+  runs/r3b4/r3b4_ctl/ckpt_latest.pt (2,216,689,664, md5 8e08239d...), the control before the T switch.
+* The final lineage (ctl -> ctlt1) trained at commit c39a439 (code identical to 6b6dcc0 for the trainer; the
+  new SIL flags were off).
+* Box 56999701 (RTX 5090 + 7950X3D, $0.569/h) ran 04:48-12:02 UTC (~7.2 h, ~$4.1), released at 12:02;
+  "r3b4: no box" confirmed.
