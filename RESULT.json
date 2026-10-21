@@ -3,19 +3,27 @@
  "round": 4,
  "final": false,
  "best": {
-  "score": 54.793,
-  "eval_file": "/home/steam/ar/runs/r4b3/r4b3_ctl/traj_8990490624.jsonl",
-  "run": "r4b3_ctl",
-  "step": 8990490624,
-  "ckpt": "/home/steam/ar/runs/r4b3/r4b3_ctl/ckpt_latest.pt",
+  "score": 55.065,
+  "eval_file": "/home/steam/ar/runs/r4b3/r4b3_kst5/traj_9417785344.jsonl",
+  "run": "r4b3_kst5",
+  "step": 9417785344,
+  "ckpt": "/home/steam/ar/runs/r4b3/r4b3_kst5/ckpt_latest.pt",
   "recipe": [
+   "--stall-eps",
+   "5",
+   "--unstuck-temp-heads",
+   "keys",
    "--eval-patience",
    "30",
+   "--eval-parallel",
+   "1",
+   "--critic-warmup",
+   "20",
    "--ckpt-every",
    "1e8"
   ],
-  "resume_from": "incumbent r3b3_gwx2/ckpt_final.pt (8,838,971,392; every recipe flag restored: --respawn-greedy 0.3 --respawn-greedy-window 0.25 2.0 --int-real-only 1 --time-pen 0 --surf-bonus 0 --unstuck-max 0.5, band novel rows, ratchet)",
-  "commit": "6eaeecf"
+  "resume_from": "incumbent r3b3_gwx2/ckpt_final.pt (8,838,971,392) -> r4b3_ctl (+ --eval-patience 30) -> r4b3_keys (from r4b3_ctl ckpt 9,141,485,568; + --eval-parallel 1 --unstuck-temp-heads keys) -> r4b3_kst5 (from r4b3_keys final 9,341,763,584; + --stall-eps 5 --critic-warmup 20)",
+  "commit": "08a5e5f"
  },
- "summary": "r4b3_ctl = the incumbent's own continuation + NEW --eval-patience 30 (evals were 48% of round 3's wall time: 5 of 9 greedy episodes lived to the 300 s cap without the time penalty; the cumulative rule keeps every episode's best at 39% of the ticks). 54.793 at 8,990M (CP3), training ceiling 54,406 -> 56,388 u by 9.08B. Found: the training stall rule runs per TICK here (32u in one 10 ms tick = 3,200 u/s down the field), kills 30-49% of training episodes and would cut the 54.7% eval at 34.3% (--eval-stall must never be used here). Next: --eval-parallel (9 eval episodes side by side, one batched forward per decision), then --stall-eps 8 vs this control at matched steps."
+ "summary": "Best 55.065 (r4b3_kst5 at 9,418M, CP4; incumbent 54.674). Warm on the incumbent: (1) NEW eval-only speedups --eval-patience 30 and --eval-parallel 1 (evals were half the wall time: 72-116 s -> 13-28 s each; 121k -> ~185k steps/s); (2) --unstuck-temp-heads keys (T 0.5 on all heads switched the greedy line to the +y mirror lane dying at 50%; keys-only kept the 54% line in 4/8 evals vs 1/8); (3) --stall-eps 5: the training stall rule runs per TICK here (32u in 10 ms = 3,200 u/s), killing 30-50% of training episodes (ledger: same pathology on skate_laby, fixed by 5). With it the reservoir's deepest state moved 54.7% -> 56.9% within 77M steps and the greedy line reached CP4. Next: extend kst5; --front-temp (yaw+keys temperature only at the frontier) is built and under test."
 }

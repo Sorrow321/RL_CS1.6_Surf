@@ -1577,3 +1577,105 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
   +176M)**, while the unstuck T climbed 0.06 -> 0.29 -> 0.5 (cap): the stuck counter passed 200M
   at ~+72M. Same pattern as round 3: gates open when T rises, and the 0.5 cap keeps the line.
 * Throughput: 226k steps/s training-only, 121k average (evals with patience: 18-116 s each).
+
+### 14:03 UTC: r4b3_ctl stopped at 9.14B; the main line now runs side-by-side evals (r4b3_par)
+
+* r4b3_ctl's last evals 9,066-9,141M: 50.711, 50.893, 49.969, 47.534 (best episode), medians 47-49%:
+  the 54.6-54.8% episodes disappeared while T sat at its 0.5 cap (since ~9.02B) and the training
+  ceiling moved to 57.7%. Round 3 saw the same wobble while a gate opened ("medians 16-49.5%
+  (the line wobbles while the frontier moves)"). Branch best stays 54.793 (8,990M).
+  ckpt_latest (9,141,485,568, md5 e413d903...) pulled to runs/r4b3/r4b3_ctl/.
+* `box.py deploy` on a box whose GPU is training fails at tools/gpu_health.py (it measures GEMM
+  TFLOPS on the busy card and calls it capped) - the checkout is already updated by then
+  (git fetch + checkout -B); the health check passed on the idle card at the first deploy.
+  Harness issue, not a bad box: never blocklist on a deploy-time health failure while training.
+* **r4b3_par** (14:02): resume of that checkpoint + `--eval-parallel 1 --ckpt-every 1e8 --timing`
+  (eval-patience 30 restored), 300M steps. First evals: 11-20 s each (was 72-116 s).
+* `--timing` profile (median of 30 iterations, 2,344 ms per 524,288-step iteration): update (GPU)
+  965 ms; rollout 1,272 ms = reward_py **487** (RaceReward runs every TICK: 512 calls/iter, ~0.95 ms
+  each for 1,024 envs), vis_cpu 306, sync_copy 315, lidar 204, rollout_fwd 148, env (physics) 126,
+  pool 77, respawn 27. The Python reward is now the biggest CPU phase.
+
+### 14:06 UTC: the per-tick stall rule is a KNOWN pathology (ledger 2026-10-03, skate_laby) - arm = `--stall-eps 5`
+
+* docs/research-results.md, "skate_laby: the STALL RULE killed every healthy training episode at
+  15 s (it is checked per TICK). --stall-eps 5; skLABY10": same cause as above (without
+  --reward-per-decision the detector is called every tick, so it needs > 3,200 u/s of field progress
+  in one tick). There `--stall-eps 5` (500 u/s per tick, "the speed floor's rate") on a warm resume
+  took training ep_len 1,580 -> 4,700-7,300 ticks, the pool's deepest state 63% -> 98.5% of the
+  route and the training win rate 0% -> 1.92% within 18M steps. "On cannonball the rule rarely
+  fires ... slow or flat maps are where it bites."
+* sidistic's training stall_frac is 0.29-0.49 (r4b3_ctl), i.e. it bites here too. The arm uses the
+  ledger's constant 5 (one constant for every map, CLAUDE.md 0b; on the 54.67 eval any value 4-16
+  kills nothing before an episode's own best).
+* Also in that ledger area: `--reward-per-decision` cuts reward_py ~3x (validated warm, not from
+  scratch); here it would save ~330 of 2,344 ms per iteration and make the stall rule per decision.
+  A later throughput lever (it changes the novelty dwell counting and the diagnostics' cadence).
+
+### 14:22 UTC: arm A (r4b3_par, control with side-by-side evals) - the greedy line switched to a 50% route at T 0.5
+
+* r4b3_par = r4b3_ctl's 9,141,485,568 checkpoint + `--eval-parallel 1`, 186.6M steps (stopped).
+  Throughput 180k steps/s average, 225k training-only: evals now 13-28 s each (were 72-116 s).
+* Evals (score.py best): 50.572, **54.396** (9,167M), 50.056, 50.558, 50.734, 50.623, 50.308, 52.503.
+  Training ceiling flat at 56,388 u (57.68%) the whole segment; T at its 0.5 cap (stuck counter
+  423-604M); novel rows per pool swinging 152-1,654 (share 4-43%); stall_frac 0.24-0.48.
+* What changed in the greedy line: at 9,167M two episodes still reach 54.4% at ~63.9 s via
+  (-650, -45, 8,113); from 9,217M 7 of 9 episodes take ANOTHER route and fall to a floor at
+  (2,500-2,900, +700..+1,100, z ~6,930) at ~61.5 s = 50.0-50.6%. A mode switch, not a general
+  decay; it began within ~50M steps of T reaching 0.5 on ALL heads (yaw sigma x1.5).
+* docs/unstuck.md (cannonball measurements): the yaw sigma is the fragile component (x1.5 halves the
+  flight, x2 kills it); the keys temperature buys the most diversity per unit of progress lost and
+  is the only knob that reached never-seen cells. The lineage runs `--unstuck-temp-heads all`.
+
+### 14:20 UTC: arm C = r4b3_keys - `--unstuck-temp-heads keys` from the same 9.141B checkpoint
+
+* Bare resume + `--eval-parallel 1 --ckpt-every 1e8 --unstuck-temp-heads keys`, 200M steps. T 0.5
+  (restored) now tempers the four key heads only; the yaw / pitch sigma stay the learned ones.
+
+### 14:24 UTC: the "50% route" is the +y MIRROR LANE of the same line (analysis)
+
+* r4b3_par 9,167M ep 0 (54.4%) vs 9,217M ep 0 (50.1%), positions every second: identical line to
+  ~52 s (within 180-560 u), then they split into the map's two y-mirror lanes at (6,945, -386) vs
+  (6,666, +63): the -y episode is at (2,141, -305, 7,432) at 61 s and reaches 54% at 63 s; the +y
+  episode is at (2,920, 909, 7,071) at 61 s - ~360 u lower, ~780 u further east - and falls onto the
+  floor at z ~6,930 (50.0%). The map is y-symmetric (round 1 saw the CP2 line flown on both lanes),
+  so this is a precision gap between lanes, not a route choice: which lane an episode drifts into at
+  ~52 s decides 50% vs 54%. A policy that is not mirror-equivariant learns each lane separately.
+
+### 14:51 UTC: arm C result; two trainers on one box do NOT work; arm B2 = keys-only + `--stall-eps 5`
+
+* **C (r4b3_keys)**, 9,141.5M -> 9,341.8M (200M, avg 187k steps/s): evals 47.680, **54.594**, 54.358,
+  48.785, 54.431, 54.387, 50.840, 50.806 - 4 of 8 at 54.4-54.6% where the control A (all heads at
+  T 0.5) had 1 of 8 over the same steps from the same checkpoint (medians 44.6-53.7 vs 46.3-50.0).
+  The training ceiling stayed at 56,388 u in both. The learned yaw sigma drifted 0.047 -> 0.071 under
+  C (the unstuck entropy bonus x(1+T) still acts on it). One seed: C keeps the line better, it does
+  not move the gate. Kept as the main line's setting (keys-only tempering, as docs/unstuck.md
+  measured).
+* The gate: from the frontier (-650, 100, 8,200, 54.4%) the field's route runs west through a slot
+  at z ~8,400-8,520 between kill plate *1 (z 8,512, x -1,182..-1,058) / a func_wall *147 with a kill
+  strip *136 on its east face (x ~-1,080, z 8,512-8,704) and the kill brushes *100 / *95 / *92 below
+  (tops z 8,386 / 8,066), out to x ~-3,114 (57.45% - the training ceiling is 57.68%), then back east
+  lower (59-61%) and on to ~65% by x -4,550. The greedy episodes reach the slot's mouth at ~64 s
+  heading north/south at ~900 u/s and never turn into it. No training episode has passed 57.68%
+  since ~9.02B.
+* Tried two trainers at once on the box (C2 = C's bare continuation and B2 below, both from C's
+  final): load average 66 on 32 threads, GPU 3%, ~2-22k steps/s each - each trainer keeps ~26
+  threads busy (16 OpenMP + numpy/torch). Killed C2 after ~12 min; never run two trainers on one box.
+* **B2 (r4b3_kst5)** (14:39): C's final (9,341,763,584, md5 8688df4f...) + `--stall-eps 5
+  --critic-warmup 20 --ckpt-every 1e8` (keys-only T, side-by-side evals, patience restored), 200M.
+  Reference: C's own 200M (the same config without the stall change, from 9.14B).
+
+### 14:57 UTC: arm B2 (keys-only + `--stall-eps 5`) MOVES the frontier - 55.065, CP4
+
+* r4b3_kst5 (from r4b3_keys' final 9,341,763,584), first 77M steps: evals (score.py) 54.400 (the
+  checkpoint itself), 54.632 (median 54.5%), 54.995 (CP4, median 54.6%), **55.065 (9,418M, CP4)** -
+  the line enters CP4 (sgcp_4) for the first time on this lineage.
+* Training side: stall_frac 0.35-0.50 -> 0.14-0.19, ep_len 900-1,200 -> 1,150-1,550 decisions,
+  reward per episode 6-7 -> 7.5-11. **The reservoir's deepest state moved 54.7% -> 56.9% of d0
+  (min depth 45.3% -> 43.1%) in 77M steps** - it sat at 45.3-45.5% through A's and C's 200M each -
+  and the training ceiling 56,388 -> 56,575 u. Same mechanism as the ledger's skate fix (pool's
+  deepest 63% -> 98.5%): training episodes past the frontier are no longer killed 15 s after their
+  last 3,200 u/s tick, so the 2 s harvest margin keeps states further down the line.
+* Matched-step summary (one seed per arm, from 9.14B / 9.34B): A (all heads T 0.5) ceiling flat,
+  evals <= 54.4 (1 of 8 at 54.4); C (keys only) ceiling flat, evals <= 54.6 (4 of 8); B2 = C +
+  stall-eps 5: deepest reservoir state +2.2% of d0 and CP4 within 77M. Kept as the main line.
