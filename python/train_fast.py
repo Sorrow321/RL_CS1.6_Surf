@@ -6678,6 +6678,23 @@ def main() -> None:
                          "priority proportional to (R - V)_+")
     ap.add_argument("--sil-ent", type=float, default=None,        # 0
                     help="--sil-coef: entropy coefficient inside the SIL term")
+    ap.add_argument("--sil-burst-only", type=int, default=None, choices=(0, 1),  # 0
+                    help="--sil-coef: buffer ONLY the out-of-policy burst rows "
+                         "(--ez-eps / --spawn-burst, the b_ez mask) whose return "
+                         "target beat the critic. The bursts explore with held "
+                         "random actions; the ones that did better than the policy "
+                         "was expected to are imitated, so a rare success moves the "
+                         "policy (PPO drops burst rows, and its ratio could not learn "
+                         "from them anyway). Lifts --sil-coef's refusal of the "
+                         "bursts. 0 = off")
+    ap.add_argument("--sil-view-mse", type=int, default=None, choices=(0, 1),   # 0
+                    help="--view-continuous + --sil-coef: score a buffered view "
+                         "action by a BOUNDED squared error on the squashed command, "
+                         "1/2 (tanh mu - tanh z)^2 over every view head but the last "
+                         "(the pitch, which the physics never reads), instead of the "
+                         "Gaussian log-density, whose gradient on a far burst z is "
+                         "(z - mu)/sigma^2 and which inflates sigma. The key heads "
+                         "keep their log-prob. 0 = off")
     # --- --crl: single-goal contrastive RL (surfgym/crl.py) -----------------
     # CPPO (arXiv 2605.13554) on SGCRL (2408.05804) / CRL (2206.07568): the
     # advantage is Q(s,a,g*) - E_pi Q(s,.,g*) from a contrastive critic, g*
@@ -7109,7 +7126,8 @@ def main() -> None:
             args.tail_weight = float(ck_cfg["tail_weight"])
             restored.append(f"tail_weight={args.tail_weight:g}")
         for _k, _cast in (("sil_coef", float), ("sil_buffer", int), ("sil_batches", int),
-                          ("sil_batch_size", int), ("sil_ent", float)):
+                          ("sil_batch_size", int), ("sil_ent", float),
+                          ("sil_burst_only", int), ("sil_view_mse", int)):
             if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
                 setattr(args, _k, _cast(ck_cfg[_k]))
                 restored.append(f"{_k}={ck_cfg[_k]}")
@@ -13345,6 +13363,11 @@ def main() -> None:
             "sil_batches": int(args.sil_batches if args.sil_batches is not None else 4),
             "sil_batch_size": int(args.sil_batch_size if args.sil_batch_size is not None else 512),
             "sil_ent": float(args.sil_ent if args.sil_ent is not None else 0.0)})
+        # written only when on, so a SIL run without them dumps the config it always did
+        if int(args.sil_burst_only or 0):
+            meta["config"]["sil_burst_only"] = 1
+        if int(args.sil_view_mse or 0):
+            meta["config"]["sil_view_mse"] = 1
     if YCOND:
         meta["config"]["yaw_cond"] = 1
         print(f"--yaw-cond: side-key head conditioned on the sampled yaw "
@@ -14311,6 +14334,17 @@ def main() -> None:
     SIL_BATCHES = int(args.sil_batches if args.sil_batches is not None else 4)
     SIL_BS = int(args.sil_batch_size if args.sil_batch_size is not None else 512)
     SIL_ENT = float(args.sil_ent if args.sil_ent is not None else 0.0)
+    SIL_BURST = bool(int(args.sil_burst_only or 0))
+    SIL_VMSE = bool(int(args.sil_view_mse or 0))
+    if (SIL_BURST or SIL_VMSE) and SIL_COEF <= 0.0:
+        raise SystemExit("--sil-burst-only / --sil-view-mse without --sil-coef: there "
+                         "is no self-imitation buffer for them to shape")
+    if SIL_BURST and not USE_BURST:
+        raise SystemExit("--sil-burst-only without --ez-eps or --spawn-burst: there are "
+                         "no burst rows to imitate")
+    if SIL_VMSE and not VIEWC:
+        raise SystemExit("--sil-view-mse needs --view-continuous (it replaces the view "
+                         "heads' Gaussian log-density)")
     tail_eps: list[tuple] = []
     tail_seg = np.zeros(N, np.int64)
     #   tail_bin   the goal-distance bin each env's CURRENT episode spawned
@@ -15554,7 +15588,9 @@ def main() -> None:
         from surfgym.sil import SILBuffer, sil_loss_terms
         for _flag, _on in (("--rnn", RNN), ("--chunk", H > 0), ("--ddp", D.enabled),
                            ("--frame-stack > 1", STACK > 1), ("the action masks", MASKS.on),
-                           ("--yaw-cond", YCOND), ("--ez-eps / --spawn-burst", USE_BURST)):
+                           ("--yaw-cond", YCOND),
+                           ("--ez-eps / --spawn-burst (without --sil-burst-only)",
+                            USE_BURST and not SIL_BURST)):
             if _on:
                 raise SystemExit(f"--sil-coef is not implemented with {_flag}: the SIL "
                                  "step re-scores stored rows through the flat single-map "
@@ -15567,13 +15603,29 @@ def main() -> None:
         print(f"--sil-coef {SIL_COEF:g}: buffer {SIL_CAP:,} rows, {SIL_BATCHES} x {SIL_BS} "
               f"rows per epoch, entropy {SIL_ENT:g}; rows kept when R > V(s), sampled in "
               f"proportion to (R - V)_+, V refreshed on sampling (docs/sil.md)")
+        if SIL_BURST:
+            print("--sil-burst-only: only BURST rows (b_ez) enter the buffer - the held "
+                  "random actions that beat the critic are imitated, on-policy rows are "
+                  "left to PPO")
+        if SIL_VMSE:
+            print("--sil-view-mse: the view heads are imitated by 1/2 (tanh mu - tanh z)^2 "
+                  "on every head but the pitch (bounded; sigma untouched), the keys by "
+                  "their log-prob")
 
         def sil_step(s_scal, s_img, s_act, s_ret, s_z=None, s_priv=None):
             """Oh et al.'s loss on a buffer minibatch, scored through the same
             padded / view log-prob helpers as mb_step, untempered (no ratio)."""
             with amp:
                 logits, value = policy.forward_split(s_scal, s_img, priv=s_priv)
-                if VIEWC:
+                if VIEWC and SIL_VMSE:
+                    # --sil-view-mse: the keys by their log-prob, the squashed view
+                    # command (all heads but the pitch) by a bounded squared error
+                    cat, mu = split_view(logits.float())
+                    padded = packer.pad(cat)
+                    logp, ent = logprob_entropy_padded(padded[:, N_VIEW:], s_act[:, N_VIEW:])
+                    logp = logp - 0.5 * (torch.tanh(mu[:, :-1])
+                                         - torch.tanh(s_z[:, :-1])).pow(2).sum(-1)
+                elif VIEWC:
                     cat, mu = split_view(logits.float())
                     padded = packer.pad(cat)
                     logp, ent = logprob_entropy_view(padded, s_act, mu, policy.log_std(),
@@ -17997,7 +18049,8 @@ def main() -> None:
             # so f_img's rows are exactly the T*N decisions)
             with torch.no_grad():
                 sil_kept = SIL.add(f_scal, f_img, f_act, f_ret, b_val.reshape(-1),
-                                   z=f_z, priv=f_priv)
+                                   z=f_z, priv=f_priv,
+                                   mask=b_ez.reshape(-1) if SIL_BURST else None)
             sil_loss_t = None
         # --int-split: the intrinsic return, raw (V_I is never normalised)
         f_reti = ret_i.reshape(-1) if INT_SPLIT else None

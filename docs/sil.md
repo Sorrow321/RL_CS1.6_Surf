@@ -77,3 +77,22 @@ below the critic, detaches the gap in the policy term and its value term
 raises `V`; the CPU smoke runs, logs the columns, prints the note and
 resumes; and the flag-off trainer reproduces the parent commit's trainer on
 the toy set (config dump, CSV header, every non-timing column).
+
+## `--sil-burst-only` / `--sil-view-mse` (2026-10-21, autoresearch r3b4)
+
+Exploration by held random bursts (`--ez-eps`, `--ez-front`), consolidation by imitating
+exactly the bursts that beat the critic. Both default off; with them absent the trainer is
+byte-identical (pinned with SIL off and with SIL on, `tests/python/test_sil_burst.py`).
+
+* `--sil-burst-only 1`: the buffer takes ONLY the burst rows (`b_ez`) with `R > V`. PPO drops
+  burst rows, and its clipped ratio could not learn from a held action far out in the policy's
+  tail anyway (`pi_new / pi_old ~ 0` there), so before this a burst that found a better line
+  moved the reservoir, never the policy. SIL has no ratio and works on any behaviour's data
+  (Oh et al. 2018), so the successful bursts are learned and the failed ones are ignored
+  (`(R - V)_+ = 0`). Lifts `--sil-coef`'s refusal of the bursts.
+* `--sil-view-mse 1` (`--view-continuous`): a buffered view action is scored by
+  `1/2 (tanh mu - tanh z)^2` over every view head but the last (the pitch, which the physics
+  never reads) instead of the Gaussian log-density. A burst's yaw z is uniform in tanh space, so
+  the log-density's gradient `(z - mu) / sigma^2` is ~300x a typical one at the learned sigma
+  (0.04) and inflates sigma; the squared error on the squashed command is bounded and moves the
+  MEAN, which is what a greedy eval executes. The key heads keep their log-prob.

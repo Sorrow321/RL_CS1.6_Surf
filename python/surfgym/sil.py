@@ -51,12 +51,17 @@ class SILBuffer:
         return idx
 
     @torch.no_grad()
-    def add(self, scal, img, act, ret, val, z=None, priv=None) -> int:
+    def add(self, scal, img, act, ret, val, z=None, priv=None, mask=None) -> int:
         """Keep every row whose return target beats the critic (R > V);
         returns how many were kept. If more than the capacity qualify, the
-        largest gains win."""
+        largest gains win. ``mask`` (bool, one per row; None = every row)
+        restricts the candidates first - the trainer's --sil-burst-only
+        passes the burst rows."""
         gain = ret - val
-        keep = torch.nonzero(gain > 0, as_tuple=False).squeeze(-1)
+        ok = gain > 0
+        if mask is not None:
+            ok = ok & mask.to(device=ok.device, dtype=torch.bool)
+        keep = torch.nonzero(ok, as_tuple=False).squeeze(-1)
         self.n_offered += int(ret.numel())
         n = int(keep.numel())
         if n == 0:
