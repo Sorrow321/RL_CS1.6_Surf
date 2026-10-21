@@ -1296,3 +1296,18 @@ later, x ~0.9) trims the time-pen-0 margin but keeps the median detour ahead (~2
   Flags: --no-recipe + --envs 1024 --obs-normal 1 --simba 1 --ep-ticks 30000 --respawn-margin 2
   --obs-surf 1 --surf-bonus 0.3 --obs-compass 1 --obs-pot-rate 1 --respawn-novel --race-ratchet
   --curiosity-cond.
+
+### 08:12 UTC: r3b4_scc stopped (first-ramp trap through 586M); same-box CONTROL r3b4_ctl launched
+
+* r3b4_scc (curiosity-cond family instead of the unstuck T): evals 76M 4.3, 151M 4.6, then 5.7% at every
+  eval 227M-529M (the first-ramp trap); training ceiling 6,352 u (6.5%) at 586M. Every other scratch run
+  of the recipe left the trap by 302-378M (ratnov, ssb, s0tp, sband, novel-only), so the family is BEHIND
+  at matched steps: without the plateau-driven temperature the trap held. Stopped at ~0.59B. (The family
+  as built: T = 0 half the time, keys temperature at most 1.5 at T 2 against the unstuck's x3; the trap
+  exits of every earlier run coincided with T rising - here nothing rises.)
+* All my scratch verdicts so far compare against round 1's ONE ratnov seed on another box (5080).
+  CLAUDE.md: "a scratch arm's only reference is its own control, so the control is not optional."
+  **r3b4_ctl** (08:09): config.incumbent_recipe from scratch, NO change, same 5090 box, 4e9 steps, evals
+  every 50M, until wrap-up. It calibrates ratnov's 576M window passage (my arms stalled at the window
+  for 0.5-1B: recipe noise or harm?) and, if it follows ratnov (CP2 wall ~0.65B, pit crossing ~1.6B,
+  tunnel dive 28.5%), it is this branch's best shot at a score and a fresh, not pit-locked checkpoint.
