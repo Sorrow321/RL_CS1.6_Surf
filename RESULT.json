@@ -3,10 +3,10 @@
  "round": 3,
  "final": false,
  "best": {
-  "score": 27.711,
-  "eval_file": "/home/steam/ar/runs/r3b4/r3b4_ctlt1/traj_2242379776.jsonl",
+  "score": 28.541,
+  "eval_file": "/home/steam/ar/runs/r3b4/r3b4_ctlt1/traj_2846359552.jsonl",
   "run": "r3b4_ctlt1",
-  "step": 2242379776,
+  "step": 2846359552,
   "ckpt": "/home/steam/ar/runs/r3b4/r3b4_ctlt1/ckpt_latest.pt (pulled at wrap-up)",
   "recipe": [
    "(config.incumbent_recipe from scratch: the same-box control r3b4_ctl to 2.217B)",

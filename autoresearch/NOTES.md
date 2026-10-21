@@ -1356,3 +1356,8 @@ later, x ~0.9) trims the time-pen-0 margin but keeps the median detour ahead (~2
   branch's best by 0.001), then 14 evals at 27.30-27.54 (median 27.2-27.5): the greedy line settled into
   the CP2 pit dive - round 2's r2b2_t1 pattern (a transient, then the dive), without the crossing.
   T 1.00; training ceiling 28,113 u (28.76%). Left running for more eval draws until wrap-up.
+* 11:01 UTC, r3b4_ctlt1 at 3.23B: **eval 2,846M = 28.541** (best 28.54%, median 28.0%): 5/9 greedy episodes
+  fly the corridor-east detour, the +y ramp and the slot; 3 pass the thin wall into the shaft and die on its kill
+  floor *21 (z ~10,715-10,720, x 2,224-2,243) at 28.38-28.54%. Every other eval 2.27-3.20B: 27.3-27.5 (the pit
+  dive) - the line flips between the two from eval to eval, as in rounds 1-2. So the unchanged recipe from
+  scratch reached round 1's tunnel-dive stage at ~2.85B on this box (ratnov: 28.55 at 1.63B).
