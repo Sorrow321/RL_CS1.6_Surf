@@ -1273,3 +1273,26 @@ later, x ~0.9) trims the time-pen-0 margin but keeps the median detour ahead (~2
   burst SIL did not help this gate (one seed). Kept running: if it passes by ~1.5B and follows ratnov's
   ~1B at the CP2 wall, the tunnel dive lands before wrap-up - this branch's realistic best score and a
   healthy (not pit-locked) checkpoint.
+
+### 07:42 UTC: ssbx stopped at 1.70B (regressed); r3b4_scc - the T-conditioned family instead of the unstuck T
+
+* r3b4_ssbx 1.15B -> 1.70B: evals 1,255-1,658M best 19.0-19.1% (one 20.7 at 1,305M and 1,356M) - the
+  greedy line REGRESSED from the window wall (20.7-21.0) to dying before it (x ~3,0xx, z ~13,5xx at
+  17.7-18 s) while T sat at its cap 2 (stuck 1.17B steps); training ceiling flat at 21,871 u since 1.1B.
+  Stopped. Verdict on burst SIL from scratch (one seed): trap exit at the recipe's usual pace, window
+  not passed in 1.1B steps where ratnov passed at 576M - no help, maybe harm.
+* Pattern across this round and round 2: the unstuck T at 2 makes the BEHAVIOUR policy explore and the
+  GREEDY line worse (r2b2: lowering T 2 -> 1 gave the 28.841 eval; here T 2 pulled the window-wall line
+  back to 19%). The score reads only the greedy line.
+* **r3b4_scc** (07:41): from scratch, the lineage recipe with `--curiosity-cond` IN PLACE OF the unstuck
+  schedule (refused together: two temperatures on the keys heads). Agent57's design, an existing flag:
+  one network, T an observation column (obs col 20 here); every episode draws T = 0 (p 0.5) or
+  log-uniform [0.05, 2]; reward = shaping x (1 - T/2) + novelty x T (the T = 0 member gets the plain
+  race reward, no novelty); keys temperature 1 + 0.25 T; advantages normalised per T bucket; the
+  greedy evals run the T = 0 member. So exploration lives in the T > 0 members and never in the line
+  that is scored. CPU smoke on sidistic with the full recipe: runs (cc col 20, keys 21-27, ratchet 28,
+  surf 29, pot-rate 30); box record gate passed. 600M first test, evals every 75M, matched against
+  ratnov / ssb / s0tp.
+  Flags: --no-recipe + --envs 1024 --obs-normal 1 --simba 1 --ep-ticks 30000 --respawn-margin 2
+  --obs-surf 1 --surf-bonus 0.3 --obs-compass 1 --obs-pot-rate 1 --respawn-novel --race-ratchet
+  --curiosity-cond.

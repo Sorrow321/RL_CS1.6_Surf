@@ -27,5 +27,5 @@
   "resume_from": "incumbent ckpt (r2b2_t1, 7,176,454,144)",
   "commit": "c39a439"
  },
- "summary": "Round 3 (r3b4). Box only from 04:48 (5090). Arm 2 r3b4_tpsb (warm incumbent + --time-pen 0 --surf-bonus 0 + frontier bursts + NEW burst-only SIL): 270M steps, evals 26.9-27.5, line still in the CP2 pit and noisier - no flip; best 27.486 is the incumbent's own resume eval. Now r3b4_s0tp: FROM SCRATCH, ratnov recipe + --time-pen 0 --surf-bonus 0 (hypothesis: the time penalty with a free death makes dying at dip walls return-optimal; tested where the line is still being formed), 600M first test against round 1/2 gates."
+ "summary": "Round 3 (r3b4), box from 04:48 (5090). Arms: warm incumbent + time-pen 0 + bursts + NEW burst-SIL (no flip of the CP2 pit dive, 27.49 = resume eval); scratch time-pen 0 (parks on a floor at 16%: the per-second term is a suicide-vs-parking dilemma); scratch + burst SIL (trap exit on pace, stuck at the window 1.1B, regressed under T 2). Running r3b4_scc: scratch with the T-conditioned family (--curiosity-cond) instead of the unstuck T, so exploration never touches the scored greedy (T=0) member. Best so far 27.486 (below the incumbent's 28.841)."
 }
