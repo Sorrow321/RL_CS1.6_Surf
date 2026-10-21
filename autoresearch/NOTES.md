@@ -1679,3 +1679,17 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
 * Matched-step summary (one seed per arm, from 9.14B / 9.34B): A (all heads T 0.5) ceiling flat,
   evals <= 54.4 (1 of 8 at 54.4); C (keys only) ceiling flat, evals <= 54.6 (4 of 8); B2 = C +
   stall-eps 5: deepest reservoir state +2.2% of d0 and CP4 within 77M. Kept as the main line.
+
+### 15:11 UTC: B2 end - 57.720 (CP4), median 56.9%; extended as the main line (r4b3_kst5x)
+
+* r4b3_kst5 9,342-9,542M (200M; avg 120k steps/s - the first ~12 min shared the CPU with the
+  killed C2 trainer): evals 54.400, 54.632, 54.995, 55.065, 54.587, 54.933, **57.720 (9,493M)**,
+  57.188 (9,518M, median 56.9%: 7 of 9 episodes past the old 54.6% stop). Training ceiling 57,282 u
+  (58.6%), reservoir min depth 42.16% (deepest state 57.8%), T 0.5 -> 0.36 (the eval bests halve it).
+* ckpt_final.pt (9,542,041,600, md5 f6bed432...) copied by scp and md5-checked: box.py pull --ckpt
+  took ckpt_latest.pt (md5 9347a05a..., the 60 s save before the final).
+* **r4b3_kst5x** (15:09): bare resume of that final (stall_eps 5, keys-only T cap 0.5, patience,
+  side-by-side evals, greedy rows 0.3 restored - checked in the log), 2e9 steps, evals every 25M,
+  snapshots every 1e8.
+* --front-temp: the trainer smoke ran clean but its step-line note sat inside the --ez-eps block
+  (never printed without bursts); moved out, test rerun pending.
