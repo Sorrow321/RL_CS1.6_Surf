@@ -1808,3 +1808,12 @@ own greedy-line pool (1,809 STATE_DTYPE rows, 59.7-60.6% progress, the 2 s befor
   (10,862,723,072, md5 0098433e...) + `--respawn-greedy-stuck 200`, 2e9 steps: the pool went
   1,783 -> 3,375 states (stalled stretches from the stops at 73.7-77.7 s). Read-out: reservoir
   deepest below 39.43%, ceiling past 61,025 u, evals past 60.6%.
+
+### 17:37 UTC: r4b3_stuck +269M - the training ceiling moves to 63.49% (the lane dive)
+
+* r4b3_stuck 10,863-11,132M: training ceiling 61,025 -> **62,068 u (63.49%)** - flat at 60,907-61,025
+  for ~870M steps under F, G and main2 - i.e. a real training episode now dives into a side lane to
+  the value the simulator predicted for it (62.5-63.6% before the kill floor). Reservoir min depth
+  39.430 -> 39.421% (the dives die within ~1.3 s, inside the 2 s margin, as expected). Greedy evals
+  still 60.56-60.57% (9 evals). Running on (2e9 budget); the lineage's gates went ceiling first,
+  greedy line 100-550M steps later.
