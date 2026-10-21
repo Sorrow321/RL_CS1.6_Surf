@@ -1185,3 +1185,26 @@ later, x ~0.9) trims the time-pen-0 margin but keeps the median detour ahead (~2
   pit crossing 1,633M; novel-only 302M 10.1 / 378M 15.8 / 453M 17.6; r2b2_sband 302M 12.2 / 378M 15.9.
   On this 5090 (~1.2B steps/h) a promising run can reach round 1's pit crossing (1.6B) in ~1.5 h and
   still have hours at the cavity.
+
+### 05:32 UTC: r3b4_s0tp first test (0 -> 600M): early gates at ratnov's pace, within seed noise
+
+* 359k steps/s on the 5090 + 7950X3D (1024 envs, evals every 75M) - 1.3B steps/h.
+* Best-episode % per greedy eval, matched against the round-1/2 scratch runs (one seed each):
+
+  | step | s0tp (time-pen 0, surf 0) | ratnov (r1, same recipe with the time pen + surf bonus) | novel only | r2b2_sband |
+  |---|---|---|---|---|
+  | 76M | 2.4 | - | 4.4 | 4.3 |
+  | 151M | 4.1 | - | 4.6 | 4.6 |
+  | 227M | 4.5 | ~4.6 | 4.6 | 6.5 |
+  | 302M | 4.6 (first-ramp trap) | 5.8 | 10.1 | 12.2 |
+  | 378M | **10.2** (out of the trap) | 15.2 | 15.8 | 15.9 |
+  | 453M | 15.8 | 20.8 (window wall) | 17.6 | - |
+
+* It leaves the trap in the same 75M interval as ratnov (T 0.05: not the temperature) and then trails it
+  by ~75M (~4 min here). So removing the per-second terms does not cost the early gates beyond seed
+  noise; it does not buy them either. The question the arm exists for is the dip walls (the CP2 pit at
+  ~651M-1.6B for ratnov, then the cavity), which a 30-min test cannot reach.
+* Extension with kill criteria (stated before looking): bare resume to 2.0B (~70 min). Stop if the
+  window (20.8% -> CP1) is not passed by ~900M (ratnov 576M) or the CP2 wall (27.4%) not reached by
+  ~1.2B (ratnov 651M). The read-out at the wall: does it cross the pit sooner than ratnov (1,633M), and
+  does its greedy line stay on the detour instead of drifting into the dive.
