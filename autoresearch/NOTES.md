@@ -1327,3 +1327,14 @@ line (it killed my local shell twice).
   wobble, the next evals are back), 31.805, 31.992, 32.425.
 * **Training ceiling 32,177 -> 33,096 u (33.85%)** within ~230M steps: real training episodes now
   get ~900 u past the block. Every earlier gate went ceiling first, greedy line next.
+
+### 07:40 UTC: r3b3_gw end; extension r3b3_gwx
+
+* r3b3_gw 6,238-6,638M (17 evals): best 32.814 (its resume eval), the rest 31.7-32.7 (frontier
+  31,038-32,007 u); training ceiling 33,096 u (33.85%) since ~6.46B; avg 141k steps/s (the 30% greedy
+  rows make short episodes; long eval episodes at the block cost time too). Final ckpt
+  runs/r3b3_gw/ckpt_final.pt (6,638,010,368, md5 aef2aa51...).
+* **r3b3_gwx** (07:38): bare resume of that final (greedy 0.3 / window 0.25-2.0, T cap 0.5, time-pen 0,
+  int-real-only restored), +1.5e9 steps. If the greedy line has not followed the ceiling by ~08:30,
+  the next arm adds `--sil-coef 0.1 --sil-tempered 1 --sil-top 256` to consolidate the training
+  passes. Box deadline 10:37 UTC.
