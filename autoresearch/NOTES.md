@@ -1231,3 +1231,13 @@ later, x ~0.9) trims the time-pen-0 margin but keeps the median detour ahead (~2
   too.) Same verdict as the ledger's xTP0 ("no urgency"), now with the mechanism: parking.
 * Do not run `--time-pen 0` from scratch on this lineage. Warm at the CP2 wall it did not park (the
   pit dive is quick) but did not flip the line either (arm 2).
+
+### 06:10 UTC: r3b4_ssb launched - from scratch, the lineage recipe + frontier bursts + burst SIL
+
+* Question: do held random bursts at the frontier, consolidated by imitating the bursts that beat the
+  critic (`--ez-eps 0.04 --ez-front 0.15 --sil-coef 0.1 --sil-burst-only 1 --sil-view-mse 1`, new
+  code 6b6dcc0), clear the "committed deviation" gates sooner than ratnov (same recipe, no bursts): the
+  first-ramp trap (turn onto the ramp; ratnov 302-378M), the window (cut back into the A-frame ramp;
+  ratnov wall 453M, passed 576M), later the CP2 pit (ratnov 1,633M). Reward unchanged (time penalty and
+  surf bonus kept). 600M first test, evals every 75M. Kill: no earlier trap exit and no earlier window
+  than ratnov by 600M.
