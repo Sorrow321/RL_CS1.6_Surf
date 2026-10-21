@@ -1586,3 +1586,19 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
   back to x ~-1,600 at 68 s (59%), zig-zags around x -1,100..-150, z 6,300-7,400 (69-71 s, ~60%), down to z
   ~5,700-5,900 at 72.5-73 s heading west (62.7%), then the long west leg to the porthole wall *150 at x
   -9,024 (t 77.8 s, ~71%: a hole y -192..176, z 5,936..6,240, crossed at 1,276 u/s).
+
+### 14:55 UTC: MEASURED - the pitch head is 96% of the shared actor gradient (CPU diag on the incumbent)
+
+* `--diag-heads 1` on a CPU resume of the incumbent checkpoint (8,838,971,392; restored T 0.06; 64 envs x
+  64 decisions, ONE 4,096-row minibatch, 4 epochs; the real network, the real sampler state), first update:
+  `|grad| shared actor keys 0.244 yaw 0.253 pitch 1.16 (pitch 96% of the norm) | kl keys 0.0037 yaw 0.0045
+  pitch 0.0516 | clip joint 30.9% w/o pitch 11.3% | sig 0.0642/0.0072 (tempered)`.
+* So on the conv trunk + pi tower the pitch's noise is 4.6x the yaw's and 4.8x the keys' gradient (~92% of
+  Adam's second moment there), the pitch is 86% of the update's KL, and it nearly triples the share of
+  rows whose joint ratio is clipped. At the box's 8,192-row minibatch the noise share drops a little
+  (noise ~1/sqrt(rows)); it stays dominant.
+* With `--pitch-std-min 0.05` the pitch term scales by ~0.0072/0.053 -> ~0.16 (comparable to keys / yaw),
+  and its KL per unit of mean drift by ~1/54.
+* The CPU run is ~18 steps/s (an iteration per ~15 min), so only the one line; stopped. Ops lesson again:
+  a `ps | grep <pattern> | kill` whose own command line contains the pattern (here an `rm runs/<run>` in
+  the same command) kills the calling shell.
