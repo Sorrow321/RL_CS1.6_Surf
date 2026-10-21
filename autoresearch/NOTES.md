@@ -1429,3 +1429,24 @@ cavity (entry speed, ramp vz) and complete the loop? 30 min first.
 * From nothing to the warm lineage's best frontier in 1.54B steps (the warm line took 7.18B + 1.29B). For
   the next round: the recipe now in config.json reproduces this round's result from scratch on one 3090
   in ~3 h; the warm checkpoint and a scratch one are both at the wall after CP2.
+
+### 10:21 UTC: r3b2_sfull (from scratch) PASSES the wall after CP2: 33.6 at 1.59B -> **36.046** at 1.84B
+
+| step | score | median |
+|---|---|---|
+| 1,586M | 33.602 | 32.33 |
+| 1,636M | 34.260 | 34.06 |
+| 1,686M | 34.433 | 34.17 |
+| 1,787M | 34.501 | 34.43 |
+| 1,812M | 35.484 | 32.32 |
+| 1,838M | **36.046** | 34.30 |
+
+* The way past (1,838M ep 3): at 36.3-36.7 s the agent bounces off the wall at x ~-615 (vx -1,036 ->
+  +838), drops under it to (-887, 10,158), loops on a ramp below (down to z 9,781 moving east at 1,351,
+  back up at vz +894), then flies WEST climbing beneath the wall (x -455 -> -1,462, z 10,263-10,475 at
+  38.7-40.3 s) onto the field's descent path, on to x -2,048 at 41.9 s, down to z ~9,120 and east along
+  it; dies at (-921, 335, 9,007) at 45.3 s (36.05%). Another dip + ramp maneuver the field does not
+  show, found by the scratch line in ~350M steps at that wall - the warm lineage (gt2-gt4, ~1.1B steps
+  there) did not find it.
+* Training ceiling 36,622 u (37.5%); T 0.01 (it cools on each new best). The best eval's run is now
+  r3b2_sfull: its newest checkpoint is the hand-on candidate (pulled at wrap-up).

@@ -3,24 +3,16 @@
  "round": 3,
  "final": false,
  "best": {
-  "score": 32.839,
-  "eval_file": "/home/steam/ar/runs/r3b2/r3b2_gt4/traj_9470214144.jsonl",
-  "run": "r3b2_gt4",
-  "step": 9470214144,
-  "ckpt": "/home/steam/ar/runs/r3b2/r3b2_gt4/ckpt_latest.pt",
+  "score": 36.046,
+  "eval_file": "/home/steam/ar/runs/r3b2/r3b2_sfull/traj_1837629440.jsonl",
+  "run": "r3b2_sfull",
+  "step": 1837629440,
+  "ckpt": "/home/steam/ar/runs/r3b2/r3b2_sfull/ckpt_latest.pt",
   "recipe": [
-   "--time-pen",
-   "0",
-   "--surf-bonus",
-   "0",
-   "--greedy-tail-frac",
-   "0.15",
-   "--respawn-min-speed",
-   "300",
-   "--int-move-gate"
+   "config.json incumbent_recipe (now: ... --surf-bonus 0 ... --respawn-novel --race-ratchet --time-pen 0 --greedy-tail-frac 0.15 --respawn-min-speed 300 --int-move-gate)"
   ],
-  "resume_from": "warm lineage: incumbent ckpt (r2b2_t1 ckpt_latest, 7,176,454,144) -> r3b2_tp0 (+ --time-pen 0 --surf-bonus 0) -> tp0x -> gt (+ greedy-tail spawns 15%, external refresh) -> gt2 (+ --respawn-min-speed 300) -> gt3 (in-trainer --greedy-tail-frac 0.15) -> gt4 (+ --int-move-gate, from 9,318,694,912)",
+  "resume_from": null,
   "commit": "82dda58"
  },
- "summary": "H1: the 0.5/s time penalty made every dip detour worth less than the quick death it replaces. Recipe: --time-pen 0 --surf-bonus 0 + greedy-tail spawns (--greedy-tail-frac 0.15, new: 15% of spawns from the policy's own greedy eval, the last 3 s before each failure) + --respawn-min-speed 300 + --int-move-gate. Warm (from the incumbent): the greedy line flies the human's cavity loop, through the tunnel, the room and CP2, 7-9/9 per eval; best 32.839 (gt4 9,470M; incumbent 28.841); stops at the wall after CP2. From scratch (r3b2_sfull, + ratchet + novel): trap 200M, window 453M, CP2 wall 479M, CP2 pit crossed 982M (round 1: 1,633M), greedy cavity entries at 1.03B. --speed-pot 2 was negative."
+ "summary": "FROM SCRATCH, the round's recipe (ratchet + novel spawns + --time-pen 0 --surf-bonus 0 + greedy-tail spawns --greedy-tail-frac 0.15 (new) + --respawn-min-speed 300 + --int-move-gate) passes every gate of this lineage and one more: trap 200M, window 453M, CP2 wall 479M, CP2 pit 982M (round 1: 1,633M), the cavity loop 1.26B, the wall after CP2 at ~1.59B, best 36.046 at 1.84B (incumbent 28.841). Warm from the incumbent the same mechanisms gave 32.839 and stopped at that wall. H1: the 0.5/s time penalty made every dip detour worth less than the quick death it replaces. --speed-pot 2 was negative."
 }
