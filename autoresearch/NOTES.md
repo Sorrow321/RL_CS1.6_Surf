@@ -1482,7 +1482,7 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
 
 * Final: RESULT.json `"final": true`, score **54.674** (r3b3_gwx2, eval traj_8717860864: 9 episodes, best 54.67%,
   median 47.36%, 0 finishes, CP3). Per-run bests (score.py): g15 28.380, sgir 29.823, tp0 30.348, tp0x 32.760,
-  t1 32.6, ezf 32.6, t05 32.775, t05x 32.6, gw 32.814, gwx 47.906, **gwx2 54.674**.
+  t1 32.554, ezf 32.651, t05 32.775, t05x 32.589, gw 32.814, gwx 47.906, **gwx2 54.674**.
 * Hand-on checkpoint: /home/steam/ar/runs/r3b3/r3b3_gwx2/ckpt_final.pt (8,838,971,392, md5
   d3d06fb18e15b261bba72d0740bfdab3); also local: r3b3_gwx/ckpt_final.pt (8,138,522,624, md5 0798b81f...),
   r3b3_tp0/ckpt_final.pt, r3b3_sgir/ckpt_final.pt.
