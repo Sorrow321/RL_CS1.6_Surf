@@ -1791,3 +1791,20 @@ own greedy-line pool (1,809 STATE_DTYPE rows, 59.7-60.6% progress, the 2 s befor
   ceiling 60,907 -> 61,025 u (62.4%). The missing piece is a multi-second commitment, which no
   per-decision noise produced here (keys T 0.5, all heads at temperature 2 in F, the probe at
   temperature 2) - CLAUDE.md 0c's case for a slower decision layer.
+
+### 17:13 UTC: NEW `--respawn-greedy-stuck N` (commit 3ea2710); main line r4b3_stuck
+
+* The greedy-line pool keeps the 2 s before each greedy DEATH and before each best-progress STOP,
+  never what the deployed line does after it stops gaining. At the 60.57% stop that is exactly
+  where it wanders: west above the side lanes for 30 s (then --eval-patience cuts it), the place a
+  dive gains ~3%. With N > 0 each episode whose best-progress tick lies before its last HI s also
+  adds N evenly spaced states from that tick to its end: return-then-explore on the greedy line.
+  Default 0; restored on resume; config only when on; TRAIN_ONLY for record_ckpt; refused without
+  --respawn-greedy. Tests: tests/python/test_respawn_greedy_stuck.py (pool contents, refusals,
+  trainer wiring + resume). Flag off: test_eval_patience's bit-identity test - the trainer before
+  this round (584a7ad) vs this one with every new flag off - passes (config, csv, eval bytes,
+  weights), which covers all four of this round's flags.
+* r4b3_main2 (10,596-10,863M) evals all 60.55-60.58%; stopped. **r4b3_stuck** (17:12): its latest
+  (10,862,723,072, md5 0098433e...) + `--respawn-greedy-stuck 200`, 2e9 steps: the pool went
+  1,783 -> 3,375 states (stalled stretches from the stops at 73.7-77.7 s). Read-out: reservoir
+  deepest below 39.43%, ceiling past 61,025 u, evals past 60.6%.
