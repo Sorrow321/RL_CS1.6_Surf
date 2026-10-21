@@ -1687,3 +1687,21 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
   slowly (~900 u/s). The human passes the same region at 69-72 s in a LOOP: (-1,110, 108, 6,593)
   69 s -> (-899, -658, 7,403) 70 s -> (-140, 146, 7,277) 71 s -> (-647, -125, 6,259) 72 s ->
   (-1,940, -242, 5,924) 73 s (62.7%) - flat in field progress for ~2 s (59.9-60.1%).
+
+### 16:35 UTC: c4 at the bowl (~60.5%): a 150 u hole in a kill floor (analysis only)
+
+* c4 evals 9.97-10.20B: 60.253, 60.392, 58.837, 54.545, 54.968, 57.673, 54.752, 54.951, 60.441,
+  **60.480** (10,196M). Ceiling 59,247 u (60.6%) flat since ~9.85B; T back at the 0.25 cap
+  (stuck ~400M). The latest greedy pool (10.25B eval) holds mostly 47-50% deaths (a wobble).
+* The gate: from ~72 s the agent bounces around a bowl (x -1,650..-700, z 6,580-7,680) for 10+ s.
+  Kill plate *53 (AABB x -960..-416, |y| <= 960, z 6,464-6,468) has ONE gap: dropping a player
+  straight down on a 50 u grid survives z 6,466 only for x -800..-700, |y| <= 50 (~150 u
+  square around (-750, 0)). The human dives through it at ~71.7 s at ~1,200 u/s and leaves west
+  at z ~5,730-5,920 through CP5 (sgcp_5, x -1,728..-1,696, z 5,600-6,432; kill floor *31 at
+  z 5,600 below). The plain field ignores kill triggers, so its gradient points DOWN over the
+  whole plate: every drop but the hole kills, and the policy has learned not to drop at all.
+* Probe (c4 10,258M ckpt, its 201 greedy-pool rows in the bowl, stochastic at exec-temp 1.25):
+  **0/16 go below z 6,430**; 15/16 are still bouncing in the bowl after 8 s (min z 6,527-6,617).
+  A precision-drop gate (round 3's block was one: ~550M steps once the concentrated greedy
+  window ran). A kill-aware field would point at the hole but changes the potential channel
+  and compass the policy reads (not on a warm run).
