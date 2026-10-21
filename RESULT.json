@@ -3,14 +3,23 @@
  "round": 3,
  "final": false,
  "best": {
-  "score": 28.834,
-  "eval_file": "/home/steam/ar/runs/r3b1/r3b1_t0/traj_3361210368.jsonl",
-  "run": "r3b1_t0",
-  "step": 3361210368,
-  "ckpt": "/home/steam/ar/runs/r3b1/r3b1_t0/ckpt_latest.pt",
-  "recipe": ["--unstuck-max", "0"],
-  "resume_from": "r2b2_sband2/ckpt_final.pt (3,335,520,256, md5 36256794...; from-scratch band lineage, band/turn/shell/radius/tries restored)",
+  "score": 28.851,
+  "eval_file": "/home/steam/ar/runs/r3b1/r3b1_ifp/traj_7504134144.jsonl",
+  "run": "r3b1_ifp",
+  "step": 7504134144,
+  "ckpt": "/home/steam/ar/runs/r3b1/r3b1_ifp/ckpt_final.pt",
+  "recipe": [
+   "--unstuck-max",
+   "0",
+   "--fail-pen",
+   "10",
+   "--eval-stall",
+   "1",
+   "--surf-bonus",
+   "0"
+  ],
+  "resume_from": "incumbent ckpt (r2b2_t1 end, 7,176,454,144, md5 92b7ddd2...) + the flags above (novel band settings and ratchet restored)",
   "commit": "852b183"
  },
- "summary": "Round 3 (r3b1): hypothesis - the greedy line avoids precise routes because the critic values them under the noisy unstuck temperature (T at its cap 2: keys from logits/3, yaw sigma x3). Arm 1 = r2b2_sband2 final + --unstuck-max 0: within 25M steps 6/9 greedy episodes fly the tunnel dive to the field route's physical limit (median 28.77%, best 28.83%) and the stochastic ceiling jumps 28,178 -> 29,168 u (29.83%). Not yet the cavity route."
+ "summary": "Round 3 (r3b1). Diagnosis: with 0.5 units/s of time penalty and free death, dying in the CP2 pit beats the detour+tunnel dive by 0.5 units, so every warm line relocked into the pit. Fix: --fail-pen 10 = time_pen/(1-gamma), i.e. death = never finishing (the objective becomes discounted progress); needs --surf-bonus 0 (the bonus becomes a farm in that frame) and T 0 (--unstuck-max 0; noise at T 2 made precise routes look bad). Incumbent ckpt + those flags: the greedy line leaves the pit within ~150M steps and flies the tunnel dive to its limit (28.851 at 7,504M, 6/9 past the window), training ceiling 29,027 -> 29,395 u (30.07%). With the surf bonus kept, the greedy line ENTERED the cavity (the human's route) 9/9 but parked (farm). Missing: the climb-out from the cavity (vz off the ramp too low)."
 }
