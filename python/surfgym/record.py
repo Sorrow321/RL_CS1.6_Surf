@@ -46,7 +46,7 @@ import numpy as np
 from .core import SURF_IN_DUCK, SURF_IN_JUMP, SurfCore, phys_to_dict
 from .tick import header_fields
 
-__all__ = ["record_rollout"]
+__all__ = ["record_rollout", "record_rollout_parallel"]
 
 # Completion heuristic: the +50 completion bonus (the ABI-6 obs no longer
 # carries a frac-remaining feature to probe).
@@ -235,4 +235,146 @@ def record_rollout(
             summaries.append({**trailer, "ep_return": _round(ep_return, 4)})
             episode += 1
 
+    return summaries
+
+
+def record_rollout_parallel(
+    core: SurfCore,
+    policy: Any,
+    path: Union[str, os.PathLike],
+    episodes: Optional[int] = None,
+    max_ticks: Optional[int] = None,
+    *,
+    seed: Optional[int] = 0,
+    on_tick: Optional[Callable[[int, np.ndarray, np.ndarray, np.ndarray, np.ndarray], None]] = None,
+    episode_meta: Optional[Callable[[int], Dict[str, Any]]] = None,
+    header_extra: Optional[Dict[str, Any]] = None,
+) -> List[Dict[str, Any]]:
+    """``record_rollout`` with the episodes run SIDE BY SIDE: env ``i`` of ``core`` plays
+    episode ``i`` (its FIRST episode after the reset), all of them at once, and the file
+    holds them in env order - the same header / row / trailer format, row for row what
+    ``record_rollout`` writes for an episode from the same spawn state.
+
+    Why (``--eval-parallel``, autoresearch r4b4, 2026-10-21): the trainer's greedy eval
+    ran its 9 episodes one after another on a 1-env core, so an eval with a few episodes
+    alive at the 300 s cap took 90-150 s of a ~125 s eval cycle - 45-49% of the box's
+    wall clock was a single env stepping while every other core idled.
+
+    ``episodes`` (default ``core.num_envs``) envs are recorded (the rest, if any, are
+    stepped and ignored); an env whose recorded episode has ended keeps stepping (the
+    core autoresets it) and is no longer written. ``max_ticks`` is the WALL tick budget
+    (``None`` = until every recorded episode ends; the core's own episode cap truncates
+    each one); an episode still open when it runs out ends ``trunc``. ``on_tick`` is
+    called once per tick with every env's pre-step snapshot, exactly as in
+    ``record_rollout``. Returns one summary per recorded episode, in env order."""
+    n_env = int(core.num_envs)
+    n = n_env if episodes is None else int(episodes)
+    if not 1 <= n <= n_env:
+        raise ValueError(f"record_rollout_parallel: episodes must be in 1..{n_env} "
+                         f"(the core's envs), got {episodes}")
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    map_name = Path(core.bsp_path).stem
+    tick_pat = tuple(getattr(core, "tick_pattern", (int(core.config.phys.msec),)))
+    nominal_msec = int(getattr(core, "nominal_msec", core.config.phys.msec))
+    phys = phys_to_dict(core.config.phys)
+    phys["msec"] = nominal_msec
+    header_base = {
+        "map": map_name,
+        "tick_ms": nominal_msec,
+        "phys": phys,
+    }
+    header_base.update(header_fields(float(sum(tick_pat)) / len(tick_pat),
+                                     tick_pat, 0))
+    if header_extra:
+        header_base.update(header_extra)
+
+    if seed is not None:
+        obs = core.reset(seed)
+    else:
+        obs = np.zeros((core.num_envs, core.obs_dim), dtype=np.float32)
+    headers = []
+    for i in range(n):
+        header = {**header_base, "episode": i}
+        if len(tick_pat) > 1:
+            # every recorded episode starts on the reset's tick, so on the same phase
+            header["tick_phase"] = int(getattr(core, "tick_phase", 0))
+        if episode_meta is not None:
+            header.update(episode_meta(i) or {})
+        headers.append(header)
+    lines: List[List[str]] = [[] for _ in range(n)]
+    ep_ticks = [0] * n
+    ep_return = [0.0] * n
+    best_progress = [0.0] * n
+    ends: List[Optional[str]] = [None] * n
+    open_ = list(range(n))
+    total_ticks = 0
+    while open_ and (max_ticks is None or total_ticks < max_ticks):
+        states = core.get_states()  # pre-step snapshot (s_t)
+        actions = policy.act(obs)
+        view = getattr(policy, "view", None)
+        if view is None:
+            obs, rewards, done, trunc, terminal_obs = core.step(actions)
+        else:
+            obs, rewards, done, trunc, terminal_obs = core.step(actions, view=view)
+        if on_tick is not None:
+            on_tick(total_ticks, states, rewards, done, trunc)
+        still = []
+        for i in open_:
+            s0 = states[i]
+            r0 = float(rewards[i])
+            ep_return[i] += r0
+            best_progress[i] = max(
+                best_progress[i], float(s0["best_progress"]), float(s0["progress"])
+            )
+            buttons = (SURF_IN_JUMP if actions[i, 4] else 0) | (
+                SURF_IN_DUCK if actions[i, 5] else 0
+            )
+            ox, oy, oz = (float(v) for v in s0["origin"])
+            vx, vy, vz = (float(v) for v in s0["velocity"])
+            line = [
+                ep_ticks[i],
+                _round(ox, 2), _round(oy, 2), _round(oz, 2),
+                _round(vx, 2), _round(vy, 2), _round(vz, 2),
+                _round(float(s0["yaw"]), 2),
+                int(buttons),
+                int(int(s0["onground"]) >= 0),
+                _round(float(s0["progress"]), 2),
+                _round(r0, 5),
+                _round(float(s0["pitch"]), 2),
+                int(actions[i, 2]),
+                int(actions[i, 3]),
+            ]
+            lines[i].append(json.dumps(line, separators=(",", ":")))
+            ep_ticks[i] += 1
+            if done[i] or trunc[i]:
+                if done[i]:
+                    ends[i] = ("done" if (r0 >= _DONE_BONUS_MIN
+                                          or bool(np.asarray(core.goal_hits)[i]))
+                               else "fail")
+                else:
+                    ends[i] = "trunc"
+            else:
+                still.append(i)
+        open_ = still
+        total_ticks += 1
+    for i in open_:
+        ends[i] = "trunc"  # recording budget exhausted mid-episode
+
+    summaries: List[Dict[str, Any]] = []
+    _ee = getattr(episode_meta, "episode_end", None) if episode_meta is not None else None
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        for i in range(n):
+            f.write(json.dumps(headers[i], separators=(",", ":")) + "\n")
+            for ln in lines[i]:
+                f.write(ln + "\n")
+            trailer = {
+                "end": ends[i],
+                "ticks": ep_ticks[i],
+                "best_progress": _round(best_progress[i], 2),
+            }
+            if _ee is not None:
+                trailer.update(_ee(i) or {})
+            f.write(json.dumps(trailer, separators=(",", ":")) + "\n")
+            summaries.append({**trailer, "ep_return": _round(ep_return[i], 4)})
     return summaries

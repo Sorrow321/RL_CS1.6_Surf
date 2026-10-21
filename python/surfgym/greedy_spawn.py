@@ -53,6 +53,8 @@ class GreedyLinePool:
         self.mixed = 0
         self._eps: list = []
         self._cur: list = []
+        # --eval-parallel: per-env capture (None = the sequential hook's lists above)
+        self._par = None
 
     @property
     def size(self) -> int:
@@ -64,12 +66,36 @@ class GreedyLinePool:
         it keeps env 0's pre-step snapshot every tick and closes an episode on done or
         trunc (record_rollout's own rule), so episode i aligns with trailer i."""
         self._eps, self._cur = [], []
+        self._par = None
 
         def on_tick(t, states, rewards, done, trunc):
             self._cur.append(states[0].copy())
             if bool(done[0]) or bool(trunc[0]):
                 self._eps.append(np.array(self._cur, dtype=STATE_DTYPE))
                 self._cur = []
+        return on_tick
+
+    def hook_parallel(self, n: int):
+        """The capture for ``record_rollout_parallel`` (``--eval-parallel``): env ``i``'s
+        pre-step snapshots until ITS first episode ends (done or trunc), so episode ``i``
+        of the capture aligns with trailer ``i`` of that recording, exactly as ``hook``
+        aligns them for the one-env sequential recording. An episode still open when
+        ``build`` runs (a recording budget cut it) is kept as it stands."""
+        n = int(n)
+        self._eps, self._cur = [], []
+        cur = [[] for _ in range(n)]
+        fin = [None] * n
+        self._par = (cur, fin)
+
+        def on_tick(t, states, rewards, done, trunc):
+            end = np.asarray(done, bool)[:n] | np.asarray(trunc, bool)[:n]
+            for i in range(n):
+                if fin[i] is not None:
+                    continue
+                cur[i].append(states[i].copy())
+                if end[i]:
+                    fin[i] = np.array(cur[i], dtype=STATE_DTYPE)
+                    cur[i] = []
         return on_tick
 
     def build(self, summaries, tick_ms: float, d_fn=None) -> dict:
@@ -85,9 +111,16 @@ class GreedyLinePool:
           HI s before the end: the states HI..0 s before it. That is where a line that
           got STUCK (a truncated episode: evals never stall-kill) or that lost ground
           long before dying stopped making progress."""
-        eps = list(self._eps)
-        if self._cur:                      # an episode cut by the recording budget
-            eps.append(np.array(self._cur, dtype=STATE_DTYPE))
+        if self._par is not None:
+            # --eval-parallel: one episode per env, in env order (= the trailers' order)
+            cur, fin = self._par
+            eps = [f if f is not None else np.array(c, dtype=STATE_DTYPE)
+                   for c, f in zip(cur, fin)]
+            self._par = None
+        else:
+            eps = list(self._eps)
+            if self._cur:                      # an episode cut by the recording budget
+                eps.append(np.array(self._cur, dtype=STATE_DTYPE))
         self._eps, self._cur = [], []
         per_s = 1000.0 / float(tick_ms)
         lo_t, hi_t = int(round(self.lo * per_s)), int(round(self.hi * per_s))

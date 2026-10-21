@@ -1489,3 +1489,60 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
 * Branch head: code commit c24b11b (--respawn-greedy, --int-real-only, --sil-tempered, --sil-top) + notes,
   config.json incumbent_recipe with --respawn-novel --race-ratchet restored.
 * Box 56978070 released at wrap-up.
+
+## Round 4, branch r4b4 - 2026-10-21 13:03 UTC: warm continuation of the incumbent
+
+### Box and first run
+
+* Box 57055117: RTX 3090 on a Threadripper PRO 5955WX (32 threads, quota 30.7 CPUs), $0.187/h,
+  Alabama (machine 143360). Rented 12:54 (first attempt), deployed 12:56, registry deadline 4 h.
+* **r4b4_c1** (12:57): bare resume of the incumbent (r3b3_gwx2 ckpt_final, 8,838,971,392, md5
+  d3d06fb1...; every flag restored: time-pen 0, surf-bonus 0, T cap 0.5, greedy spawns 0.3 /
+  0.25-2.0 s, int-real-only, band novel rows, ratchet) + `--ckpt-every 1e8`, evals every 25M,
+  budget 3e9. Purpose: push the frontier (the lineage was still gaining ~1% per 100M steps when
+  round 3 ended). Resume state: reservoir min depth 45.3%, novel ceiling 54,745 u (56.0%),
+  unstuck T 0.06, best 53,454 u.
+
+### Where the incumbent's greedy line stops (eval 8,718M, analysis)
+
+* 4/9 episodes reach 54.2-54.7% at 62.5-63.5 s around (-450..-820, ~0, 8,120-8,380), heading
+  NORTH at only ~800-1,000 u/s, then turn back east, fall to (1,500-1,560, ~180, ~7,140) and live
+  there to the 300 s cap (or fail). The others: 44-47% (fails), and two STUCK early (1.7% for
+  300 s; 16% from 13.5 s) - the greedy line still has early stop modes.
+* WR demo (47250, re-downloaded and parsed this round; ANALYSIS ONLY): the human passes the same
+  stretch ~1.5 s earlier and faster: 60.0 s (664, -113, 7,217) |v_h| 1,936 -> 60.5 s turns north
+  CLIMBING (84, 407, 7,588) v (-476, 1,416, 951) -> crests at z ~8,642 at (-1,303, 229) at 62.0 s
+  with |v_h| ~1,100 -> west and down to (-3,708, 660, 8,003) at 64 s (57.0%) -> a DIP (64-65 s:
+  56.97 -> 55.6%, a turnaround at (-4,477, 815, 7,098) heading back east) -> 57.1% at 66 s ->
+  59.9% at 69 s -> a flat stretch to 71 s -> 62.7% at 73 s ... 74.0% at 82 s, 84% at 90 s, a
+  dip at 91-93 s, 91% at 100 s, a fall/dip at 108-110 s, finish at ~118 s.
+* The agent climbs the same rise on the -y side, arriving slower (|v_h| 1,579 at 62.0 s vs the
+  human's 1,936 at 60.0 s), crests ~260 u lower (8,382) at ~850 u/s and turns back.
+
+### 13:31 UTC: the sequential greedy eval eats HALF the box; NEW `--eval-parallel`
+
+* Reconstructed per-iteration wall time from progress.csv (step / cumulative fps): on this box
+  r4b4_c1 trains at ~200k steps/s between evals, but each greedy eval takes **89-153 s** (one
+  env, the 9 episodes one after another, up to 300 s of game time each; the line now often
+  survives to the cap) against ~125 s of training per 25M-step cycle. The incumbent's own run
+  (r3b3_gwx2) is the same: **324k steps/s while training, 168k overall, evals 49.3% of the
+  wall clock**. So since the greedy line started living long, half of every box-hour went to a
+  single env stepping while ~30 cores idled.
+* NEW `--eval-parallel 1` (default off; ckpt restores; config key only when on;
+  record_ckpt TRAIN_ONLY): the eval core gets `--eval-eps` envs and
+  `surfgym.record.record_rollout_parallel` plays episode i on env i, all at once, writing the
+  same file format in env order. `GreedyLinePool.hook_parallel` captures env i until ITS
+  episode ends. Eval cost becomes the LONGEST episode instead of the SUM of them (expected
+  ~5x shorter evals; ~1.6-1.8x more training per box-hour). Generic: no map quantity, no
+  change to what an eval measures (each episode is still one draw from the platform pool +
+  the core's spawn yaw jitter, greedy policy from the true start). Refused with every eval
+  path / obs feed not checked per env (stochastic eval, --eval-mirror, --eval-stall, --maps,
+  DDP, --goals, --chunk, --rnn, --frame-stack, --obs-reward, --race-latch,
+  --curiosity-cond, --ramp-obs-*, the route fan, --priv-critic).
+* Tests (tests/python/test_eval_parallel.py, CPU): episode i of a parallel recording is LINE
+  FOR LINE the sequential recording of one episode from env i's spawn state (6 envs, 6
+  different spawns; spawn yaw jitter off in the test cores - it is drawn per env); a wall
+  budget truncates; the per-env hook keeps exactly what the sequential hook keeps and is the
+  recorded trajectory row for row; a sidistic trainer smoke (3 parallel evals, greedy pool
+  built from 3/3, config, a bare resume restores the flag, record_ckpt reads the ckpt); the
+  refusals; flag off bit-identical to the pre-change trainer.

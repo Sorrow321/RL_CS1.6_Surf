@@ -104,6 +104,9 @@ TRAIN_ONLY = frozenset({
     "respawn_greedy", "respawn_greedy_window",
     # --int-real-only: which TRAINING episodes the novelty bonus pays and counts
     "int_real_only",
+    # --eval-parallel: the trainer's greedy eval runs its episodes side by side on a
+    # multi-env eval core; a recording here is its own rollout and records nothing else
+    "eval_parallel",
     # --ramp-reward: what the TRAINING reward pays in the ramp-window task (arc progress, or +1
     # per target passed); a recording computes no training reward
     "ramp_reward",

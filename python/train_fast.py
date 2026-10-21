@@ -113,7 +113,7 @@ from surfgym.mapfleet import HeldoutSlot, MapFleet, MapSlot
 from surfgym.obsaux import ACT_FEAT, CMP_FEAT, ObsAux, PotRate, make_pot_rate_feed
 from surfgym.surfflag import SurfFlag, g_step_of, make_surf_feed
 from surfgym.privfeat import PRIV_DIM, PRIV_FEATURES, PrivFeat, velocity_from_obs
-from surfgym.record import record_rollout
+from surfgym.record import record_rollout, record_rollout_parallel
 from surfgym.bc import BCDataset
 from surfgym.respawn import (BackwardSpawnSampler, DemoCurriculum,
                              FrontierSpawnSampler, NovelSpawnSampler,
@@ -5767,6 +5767,15 @@ def main() -> None:
                     help="skip the stochastic eval recording (A/B arms: no "
                          "verdict reads it, and it taxes the surviving, "
                          "long-episode policies the most)")
+    ap.add_argument("--eval-parallel", type=int, default=None, choices=(0, 1),
+                    help="1 = the greedy eval's --eval-eps episodes run SIDE BY SIDE on an "
+                         "--eval-eps-env eval core (env i plays episode i; "
+                         "surfgym.record.record_rollout_parallel) instead of one after "
+                         "another on one env. Same file format, same per-episode spawn "
+                         "draw from the platform pool; only the wall clock changes (the "
+                         "sequential eval was 45-49%% of a sidistic run's wall clock once "
+                         "episodes lived to the 300 s cap). 0 = off (default); ckpt "
+                         "restores")
     ap.add_argument("--ckpt-every", type=float, default=10e6)
     ap.add_argument("--save-best", type=int, default=0, choices=(0, 1),
                     help="single-map race runs: after every greedy eval with finishes, save "
@@ -7449,7 +7458,8 @@ def main() -> None:
         # shape moves, a checkpoint resumes with or without them), restored so a plain
         # resume continues the arm it came from
         for _k, _ty in (("aug_mirror", float), ("eval_mirror", int), ("aug_drop", float),
-                        ("aug_noise", float), ("aug_shift", int), ("aug_coef", float)):
+                        ("aug_noise", float), ("aug_shift", int), ("aug_coef", float),
+                        ("eval_parallel", int)):
             if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
                 setattr(args, _k, _ty(ck_cfg[_k]))
                 restored.append(f"{_k}={getattr(args, _k):g}")
@@ -8295,7 +8305,7 @@ def main() -> None:
     if args.dropout is None:
         args.dropout = 0.0
     for _k, _v in (("aug_mirror", 0.0), ("eval_mirror", 0), ("aug_drop", 0.0),
-                   ("aug_noise", 0.0), ("aug_shift", 0)):
+                   ("aug_noise", 0.0), ("aug_shift", 0), ("eval_parallel", 0)):
         if getattr(args, _k) is None:
             setattr(args, _k, _v)
     if args.aug_coef is None:
@@ -11023,6 +11033,11 @@ def main() -> None:
     # every rank, not rank 0's slice). Rank r therefore builds eval cores
     # only for the maps it owns - a second SurfCore per map on every rank is
     # the one place replication would actually cost real memory.
+    # --eval-parallel: one env per eval episode (they run side by side); 1 = the
+    # sequential eval every run before the flag recorded
+    EVAL_PAR = bool(int(args.eval_parallel))
+    EVAL_N = (int(args.eval_eps or (3 if args.reward == "race" else 5))
+              if EVAL_PAR else 1)
     for _i, slot in enumerate(slots):
         slot.eval_rank = _i % D.world_size
         if not D.enabled:
@@ -11034,7 +11049,7 @@ def main() -> None:
             slot.eval_core = None
             continue
         ec = SurfCore(slot.bsp, default_config(
-            num_envs=1, spawn_mode=2, max_episode_ticks=args.ep_ticks,
+            num_envs=EVAL_N, spawn_mode=2, max_episode_ticks=args.ep_ticks,
             water_fail=1,
             yaw_adaptive=1 if args.yaw_adaptive else 0, yaw_blend=float(args.yaw_blend), side_hold_ticks=int(args.side_hold),
             sv_maxvelocity=args.maxvel, sv_friction=float(args.sv_friction),
@@ -12426,6 +12441,25 @@ def main() -> None:
     # every rank).
     RETN = bool(args.ret_norm)
     EVAL_STALL = bool(args.eval_stall)
+    if EVAL_PAR:
+        # --eval-parallel drives the greedy eval through record_rollout_parallel and the
+        # greedy-line pool's per-env hook; every other eval path and every obs feed that
+        # was never checked per env on a multi-env eval core is refused, not guessed
+        for _bad, _why in ((not args.eval_greedy_only, "the stochastic eval (pass "
+                            "--eval-greedy-only)"),
+                           (EVAL_MIRROR, "--eval-mirror"), (EVAL_STALL, "--eval-stall"),
+                           (MULTI or bool(heldout), "--maps / --heldout-maps"),
+                           (D.enabled, "DDP"), (bool(args.goals), "--goals"),
+                           (H > 0, "--chunk"), (RNN, "--rnn"), (STACK > 1, "--frame-stack"),
+                           (bool(args.obs_reward), "--obs-reward"), (N_LATCH > 0, "--race-latch"),
+                           (CC, "--curiosity-cond"), (N_PASS + N_RVEC > 0, "--ramp-obs-*"),
+                           (route is not None, "the route fan"),
+                           (bool(args.priv_critic), "--priv-critic")):
+            if _bad:
+                raise SystemExit(f"--eval-parallel is not implemented with {_why}")
+        print(f"--eval-parallel: the greedy eval's {EVAL_N} episodes run side by side on an "
+              f"{EVAL_N}-env eval core (env i plays episode i; same file format, same "
+              "platform-pool spawn draw per episode)")
     retn = ReturnNorm()
     if RETN:
         print(f"--ret-norm: the critic predicts NORMALIZED returns "
@@ -12536,7 +12570,7 @@ def main() -> None:
                                 else None))
                 else:
                     _ef = _s.reward_field
-            _s.eval_aux = ObsAux(1, k=int(args.act_hist or 0), field=_ef,
+            _s.eval_aux = ObsAux(EVAL_N, k=int(args.act_hist or 0), field=_ef,
                                  yaw_adaptive=bool(args.yaw_adaptive))
 
     global_step = 0
@@ -13541,6 +13575,10 @@ def main() -> None:
         meta["config"]["aug_mirror"] = float(args.aug_mirror)
     if int(args.eval_mirror):
         meta["config"]["eval_mirror"] = 1
+    if int(args.eval_parallel):
+        # --eval-parallel: written ONLY when on (a flag-off run.json is the control's byte
+        # for byte); record_ckpt.py declares it TRAIN_ONLY (it changes no recorded state)
+        meta["config"]["eval_parallel"] = 1
     if AUG_ON:
         meta["config"]["aug_drop"] = float(args.aug_drop)
         meta["config"]["aug_noise"] = float(args.aug_noise)
@@ -18898,9 +18936,13 @@ def main() -> None:
                     _ev_tick = chain_ticks(_ev_tick, _ev_stall)
                 _rg_cap = GREEDY is not None and not _s.heldout
                 if _rg_cap:
-                    # --respawn-greedy: keep this recording's states (env 0, pre-step)
-                    _ev_tick = chain_ticks(_ev_tick, GREEDY.hook())
-                _ev_sum = record_rollout(_s.eval_core,
+                    # --respawn-greedy: keep this recording's states (env 0, pre-step;
+                    # --eval-parallel: env i's until its episode ends)
+                    _ev_tick = chain_ticks(_ev_tick, GREEDY.hook_parallel(n_rec)
+                                           if EVAL_PAR else GREEDY.hook())
+                # --eval-parallel: the n_rec episodes side by side, env i = episode i
+                _ev_rec = record_rollout_parallel if EVAL_PAR else record_rollout
+                _ev_sum = _ev_rec(_s.eval_core,
                                EVAL_GREEDY(policy, packer, device,
                                            (goalsys.ramp_slot(_s.name).eval_ball
                                             if (goalsys is not None and RPLAN

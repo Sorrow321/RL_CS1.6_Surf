@@ -2,6 +2,29 @@
  "agent": "r4b4",
  "round": 4,
  "final": false,
- "best": null,
- "summary": "Round 4 start (12:50 UTC): no eval yet. Plan: warm resume of the incumbent (r3b3_gwx2 ckpt_final, 8.839B, 54.674) to push the frontier; rent loop running (no offer under the caps at 12:55)."
+ "best": {
+  "score": 54.95,
+  "eval_file": "/home/steam/ar/runs/r4b4/r4b4_c1/traj_8889827328.jsonl",
+  "run": "r4b4_c1",
+  "step": 8889827328,
+  "ckpt": "/home/steam/ar/runs/r4b4/r4b4_c1/ckpt_latest.pt",
+  "recipe": [
+   "--respawn-greedy",
+   "0.3",
+   "--respawn-greedy-window",
+   "0.25",
+   "2.0",
+   "--int-real-only",
+   "1",
+   "--time-pen",
+   "0",
+   "--surf-bonus",
+   "0",
+   "--unstuck-max",
+   "0.5"
+  ],
+  "resume_from": "incumbent r3b3_gwx2/ckpt_final.pt (8,838,971,392, md5 d3d06fb1...), bare resume + --ckpt-every 1e8",
+  "commit": "3818712"
+ },
+ "summary": "r4b4_c1 = bare warm resume of the incumbent (all flags restored), evals every 25M. 8,890M eval: 54.950 (best 55.0%, median 54.6%, CP3). The gate ahead: a climb at ~62-63 s that the agent reaches ~350 u/s slower than the human and crests ~260 u lower."
 }
