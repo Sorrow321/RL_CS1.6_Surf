@@ -1123,3 +1123,24 @@ later, x ~0.9) trims the time-pen-0 margin but keeps the median detour ahead (~2
   ablations (time-pen 0 alone, bursts + SIL alone) follow if it moves the line. CPU pre-flight of
   exactly this resume (incumbent checkpoint, 16 envs, 3 iterations): all flags accepted, unstuck /
   novel / reservoir state restored, the SIL burst buffer and the front band live.
+
+### 04:39 UTC: nudge sweep on the incumbent (local CPU, analysis only): no held yaw deviation makes the detour
+
+* autoresearch/analysis/sid_cp2_nudge_sweep.py (round 1's), the incumbent (7,176M), seed 0, 1 greedy
+  episode per nudge, yaw held at an absolute heading (+-45, +-90, +-135, 180) or offset +-60 from the
+  policy's own command for 25 decisions (1 s):
+
+  | nudge start | outcome (9 nudges each) |
+  |---|---|
+  | none (base) | pit dive, 24.19 s, 27.47% |
+  | tick 2250 (22.5 s) | 9/9 die on kill plate *45 (z ~11,925, x 4,354-5,129) at 23.2-23.6 s, 25.3-25.9% |
+  | tick 2325 (23.25 s) | 9/9 still die in the pit at 24.2 s, 27.27-27.37% (no effect) |
+
+* So a held view yaw cannot produce the detour from this line: before the U-turn it drops the agent
+  onto the plate, during it it changes nothing. Round 1's milestone detour came out of the U-turn
+  LOW (z 11,666 at x 4,121, west of the plate's edge) and kept turning back east under the plate -
+  a surfing skill on the curved U-turn face (keys pressed into the surface for ~180 deg more), not
+  an aim. The bursts of arm 2 randomise the keys too, but expect a low yield at the bifurcation;
+  their value is more likely downstream (the cavity, where the band's novel rows already put the
+  agent). The detour itself has to come from the value gradient the novel rows create in the
+  corridor (under time-pen 0 the corridor is finally worth more than the pit).
