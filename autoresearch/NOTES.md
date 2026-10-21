@@ -1763,3 +1763,31 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
 * Probe running locally (ANALYSIS ONLY): record_ckpt from G's own greedy-pool states (1,809 states,
   59.7-60.6% progress, the 2 s before each greedy stop) - greedy x8, sampled at temperature 1 x16
   and 2 x16, 8 s each: does any rollout from the stop survive the drop?
+
+### 17:20 UTC: the 60.57% gate, measured in the simulator (ANALYSIS ONLY: own states, no demo)
+
+Scripts: session scratchpad probe/ (macro_search.py, stage_search.py, lane_drop.py); states = G's
+own greedy-line pool (1,809 STATE_DTYPE rows, 59.7-60.6% progress, the 2 s before each greedy stop).
+* **Policy probe** (record_ckpt --spawn-states, 8 s each): greedy 0/8, sampled at temperature 1
+  0/16 and at temperature 2 0/16 get past 60.6%; all 40 are ALIVE at 8 s, drifting west / down to
+  x -1,050..-1,630, z 6,500-7,400. A WON'T, not a CAN'T-survive.
+* **Random held macros on the raw core** (yaw offset U(-120, 120) from the velocity heading, random
+  fwd / side / duck / 20% jump, 3 macros of 0.4-2 s, 6 s): 1,536 rollouts, best 60.59%, and every
+  one past 60.57% dies within 0.1 s; most die within ~0.4 s. The stop is a local maximum of the
+  field ringed by kill volumes (the ramp's wrap *24, plates *53 / *36 at z 6,464 under x
+  -1,056..-416).
+* **Five-stage survivor search** (each stage restarts from the previous stage's survivors at 6 s):
+  survivors gather on a ledge just west of *36 at (-1,070, -60, ~6,500-6,600), 59.97%; nothing past
+  60.6% in 5 stages. Below the ledge is kill box *49 (x -1,216..-576, |y| <= 508, z 5,632-6,050).
+* **Hand-placed drops over the side lanes** (x -1,100..-1,550, |y| 560-600, z 6,300, moving west at
+  300-900 u/s, forward held): **62.5-63.6% of progress** before dying on the kill floor *31 (z 5,600)
+  at ~1.3 s; the westward ones cross the CP5 curtain (*137, x -1,712, |y| <= 624, z 5,600-6,432) on
+  the way. The field's "level route" at z ~5,766 is air 166 u above that floor.
+* So the next 3% of score is a two-part move the 25 Hz policy never strings together: get west of
+  x ~-1,216 above a side lane (|y| ~560-620; the greedy line does drift up there after the stop),
+  THEN dive. The ratchet pays the dive even though it dies. The rest of the stage (not dying on
+  *31 after CP5) is a further skill - presumably a surf surface lower down, not found here.
+* Novel rows ARE in the region: prog_med ~60,000 u (61.4%), 1,843 per pool, 40-50% of episodes;
+  ceiling 60,907 -> 61,025 u (62.4%). The missing piece is a multi-second commitment, which no
+  per-decision noise produced here (keys T 0.5, all heads at temperature 2 in F, the probe at
+  temperature 2) - CLAUDE.md 0c's case for a slower decision layer.
