@@ -2,6 +2,30 @@
  "agent": "r3b4",
  "round": 3,
  "final": false,
- "best": null,
- "summary": "Round 3 (r3b4). Box from 04:48 (5090, after 4 h with nothing under the caps and one box killed by the watchdog's storage-inclusive price check - harness issue, worked around in box.py). Running r3b4_tpsb: incumbent + --time-pen 0 --surf-bonus 0 (the time penalty with a free death makes dying at a dip wall return-optimal: pit dive beats every detour of the incumbent's best eval) + frontier ez bursts + NEW --sil-burst-only/--sil-view-mse (imitate the bursts that beat the critic). Local CPU: the incumbent dives into the CP2 pit 9/9 at T 0-1, and no held yaw nudge makes the detour. No eval of mine yet; incumbent 28.841."
+ "best": {
+  "score": 27.486,
+  "eval_file": "/home/steam/ar/runs/r3b4/r3b4_tpsb/traj_7176978432.jsonl",
+  "run": "r3b4_tpsb",
+  "step": 7176978432,
+  "ckpt": null,
+  "recipe": [
+   "--time-pen",
+   "0",
+   "--surf-bonus",
+   "0",
+   "--ez-eps",
+   "0.04",
+   "--ez-front",
+   "0.15",
+   "--sil-coef",
+   "0.1",
+   "--sil-burst-only",
+   "1",
+   "--sil-view-mse",
+   "1"
+  ],
+  "resume_from": "incumbent ckpt (r2b2_t1, 7,176,454,144)",
+  "commit": "c39a439"
+ },
+ "summary": "Round 3 (r3b4). Box only from 04:48 (5090). Arm 2 r3b4_tpsb (warm incumbent + --time-pen 0 --surf-bonus 0 + frontier bursts + NEW burst-only SIL): 270M steps, evals 26.9-27.5, line still in the CP2 pit and noisier - no flip; best 27.486 is the incumbent's own resume eval. Now r3b4_s0tp: FROM SCRATCH, ratnov recipe + --time-pen 0 --surf-bonus 0 (hypothesis: the time penalty with a free death makes dying at dip walls return-optimal; tested where the line is still being formed), 600M first test against round 1/2 gates."
 }

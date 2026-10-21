@@ -1160,3 +1160,28 @@ later, x ~0.9) trims the time-pen-0 margin but keeps the median detour ahead (~2
   decisions (front band from 21.5-22.0% progress), T 1.00 (restored), SIL buffer +1,300-1,800 burst
   rows per iteration at mean gain ~0.2 (probably inflated while the critic adapts to the time-pen
   change: V was trained with -0.5/s), novel 41-45% of episodes, ev +0.98.
+
+### 05:09 UTC: arm 2 (r3b4_tpsb) stopped at ~7.44B - no flip; from-scratch time-pen 0 launched
+
+* r3b4_tpsb (incumbent + time-pen 0 + surf 0 + ez-front 0.04/0.15 + burst SIL 0.1 + view MSE), 7,177M ->
+  ~7,444M (~270M steps, 17 min, ~265k steps/s on the 5090 with evals every 25M). 11 evals (score.py best %):
+  7,177M 27.49 (the incumbent's own line), 7,202M 26.85, 7,227M 27.27, 7,252M 27.31, 7,278M 27.32,
+  7,303M 27.28, 7,328M 27.22, 7,353M 27.18, 7,378M 27.19, 7,403M 27.17, 7,429M 27.32. Every eval's best
+  episode is the CP2 pit dive; the line got NOISIER (more episodes dying at 22.6-23.8 s on plate *45 /
+  at z ~12,276; one episode at 7,227M went under the plate to the east ramp and died there).
+  Matched-step control (the incumbent's own continuations, pit-locked, T <= 1): 27.3-27.5. So no better.
+* Training side: novel ceiling flat at 29,027 u; dip fail fraction 0.75 (incumbent 0.34): without the
+  time penalty most episodes now END inside a setback instead of diving out of it; burst SIL rows
+  +1.3-1.8k per iteration, mean gain 0.23 -> 0.12 as the critic re-learned values without the
+  time penalty.
+* Reading: the reward change makes the detour better, but from this checkpoint nothing in ~270M steps
+  sampled it into the greedy line (the CPU recordings and the nudge sweep said as much). The warm
+  checkpoint's commitment is the obstacle; the objective's effect has to be tested where the line is
+  still being formed.
+* **r3b4_s0tp** (05:08, from scratch): config.incumbent_recipe (GR + --respawn-novel --race-ratchet,
+  i.e. round 1's ratnov) + `--time-pen 0 --surf-bonus 0`, 600M, evals every 75M (round 1/2's marks).
+  Verified on the box: time_pen 0, surf_bonus 0, ratchet, novel defaults, margin 2, unstuck eval cap 2.
+  Matched marks (best-episode %): ratnov 302M 5.8 / 378M 15.2 / 453M 20.8, window 576M, CP2 wall 651M,
+  pit crossing 1,633M; novel-only 302M 10.1 / 378M 15.8 / 453M 17.6; r2b2_sband 302M 12.2 / 378M 15.9.
+  On this 5090 (~1.2B steps/h) a promising run can reach round 1's pit crossing (1.6B) in ~1.5 h and
+  still have hours at the cavity.
