@@ -1271,3 +1271,13 @@ cavity (entry speed, ramp vz) and complete the loop? 30 min first.
 * **r3b2_gt3** (04:48): gt2's final + `--greedy-tail-frac 0.15 --spawn-states ''` (clears the file
   restored from gt2's config); everything else restored (time_pen 0, surf 0, respawn-min-speed 300, T).
   First eval: `gtail 495 rows/9 fails`, mean progress 31.5%. Budget +2e9.
+
+### The gate after CP2 (analysis, 04:56 UTC)
+
+* The loop finishers fly west past CP2 LEVEL at z ~10,835 and ~1,170 u/s and stop dead on a wall at
+  x ~ -720 (|v_xy| 1,169 -> 0 at 36.65 s, 8,702M ep 5), then fall and die at z ~10,610 (32.3-32.55%).
+* The goal field's steepest descent from that point goes WEST AND DOWN under the wall: (-978, -65,
+  10,530) 32.97%, (-1,449, 10,123) 33.59%, (-1,815, 9,821) 34.59%, then back east low at z ~9,520
+  (x -1,724 -> +115, 35.0-37.0%). So this gate is "start descending before the wall" - a gradient under
+  the ratchet (d falls as the agent drops), not a dip; the greedy tails (34.5-37 s of the line) and the
+  novel band (rows within 5% of d0 behind the 32.9% ceiling) both sit on it.
