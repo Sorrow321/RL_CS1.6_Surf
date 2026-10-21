@@ -1380,3 +1380,21 @@ cavity (entry speed, ramp vz) and complete the loop? 30 min first.
 * Expected: the warm tp0 test flipped in 50M steps because its policy already had round 1's detour (the
   penalty only made it worse than the dive); from scratch the detour has to be discovered first. ratnov
   needed ~1B steps at this wall (651M -> 1,633M); at that pace sfull would cross at ~1.5B (~10:00 UTC).
+
+### 08:51 UTC: r3b2_sfull FROM SCRATCH crosses the CP2 pit at ~980M and enters the cavity at ~1.03B
+
+| gate (best greedy episode) | r3b2_sfull (this round's recipe) | ratnov (r1, ratchet + novel) | r2b2 scratch (band) |
+|---|---|---|---|
+| first-ramp trap exit | ~200M (15.3%) | 302-378M | ~230-300M |
+| window / CP1 | 453M (22.4%) | 576M | ~990M |
+| CP2 wall | 479M (27.3%) | 651M | ~1.19B |
+| east detour in the greedy line | 931M | - | - |
+| **CP2 pit crossed** | **982M** (28.41%, 5/9 E, 2 to the shaft) | 1,633M | ~1.94B |
+| **greedy cavity entries / rising** | **1,032M / 1,032-1,057M** | never | never |
+| training ceiling past 28.8% | 29,034 u (29.70%) by 1.08B | - | 28.78% max |
+
+* Evals 931-1,057M: 27.40, 27.35, 28.41, 28.22, 28.23, 28.26; T rose to 0.76 at the wall (stuck ~400M)
+  and the crossing came with it, as the old exits did. ~500M steps at the CP2 wall vs ratnov's ~980M.
+* So the round's recipe (ratchet + novel + no time penalty / surf bonus + greedy tails + speed floor +
+  move gate) is not a warm-only effect: from scratch it reaches the cavity in ~1.0B steps, which the
+  lineage's warm checkpoints needed 7.3B for.
