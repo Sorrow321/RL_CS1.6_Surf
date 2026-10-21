@@ -1411,3 +1411,12 @@ cavity (entry speed, ramp vz) and complete the loop? 30 min first.
   (ca6bb63), although incumbent_recipe is a lineage key that should travel with the winner; round 2's and
   round 3's scratch launches through box.py therefore ran without the lineage's two core mechanisms
   unless the agent passed them by hand. Worth checking that the orchestrator carries lineage_keys over.
+
+### 09:18 UTC: r3b2_sfull FROM SCRATCH flies the cavity loop at 1.26B: 30.244, then 31.901
+
+* Evals 1,082-1,233M: 28.25-28.59, 5-8/9 greedy cavity entries rising off the ramp every eval (the warm
+  lineage's state at ~8.3B); **1,259M: 30.244** (median 29.93%: most episodes through the loop, the tunnel
+  and the room), **1,284M: 31.901** (one at 31.90%). Training ceiling 31,903 u (32.6%); T 0.54.
+* The full chain from nothing: first-ramp trap 200M, window 453M, CP2 wall 479M, CP2 pit 982M, cavity
+  entries 1.03B, the cavity loop in the greedy line 1.26B. The lineage got there warm after 7.18B (round
+  1-2) + 1.30B (this round) steps; round 1's scratch recipe crossed only the CP2 pit, at 1,633M.
