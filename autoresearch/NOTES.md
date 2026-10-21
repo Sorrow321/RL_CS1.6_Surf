@@ -1865,3 +1865,10 @@ own greedy-line pool (1,809 STATE_DTYPE rows, 59.7-60.6% progress, the 2 s befor
   restart; the stalled-stretch pool (--respawn-greedy-stuck 200) had run ~820M steps before it, and
   the gate had absorbed ~1.6B steps in total. The band-starvation mechanism itself is measured (rows
   1,843 -> 39-91 when the ceiling jumped ahead, back to 1,843 at band 0.15).
+
+### 19:20 UTC: 82.674 - the line runs on past the gate (one gate per ~50-100M steps)
+
+* r4b3_band15 12,035-12,261M: evals 72.2 (median 72.1), **79.277** (12,110M, median 78.1), 81.262,
+  81.399, 81.874, 82.366, 82.145, **82.674 (12,261M, median 82.1%)**; all CP5, all 9 episodes end
+  "fail" now (no stalls). Reservoir min depth 17.93% (deepest 82.1%), ceiling 82,465 u (84.3%),
+  T 0.02, 183k steps/s.
