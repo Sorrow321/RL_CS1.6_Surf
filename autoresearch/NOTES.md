@@ -1722,3 +1722,27 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
   keys-only T 0.5), 300M steps. Step line: `fronttemp 8-9% >58.8%`. Question: does yaw exploration
   at the stop (the 25 Hz policy's own sigma is 0.07) get the greedy line down the drop sooner than
   the main line, whose ceiling already leads by 1.7%?
+
+### 16:25 UTC: arm F (--front-temp 1, band 0.03) - NULL at the 60.57% stop; why the reservoir cannot pass it; arm G = `--respawn-margin 1`
+
+* **F = r4b3_ft1** (9,995.6M -> 10,296.0M, 300M, 179k steps/s): 12 evals, every one 60.54-60.57%
+  (57.8 once), medians 56.7-60.5% - the line held (front-temp did not break it) but never passed.
+  Training ceiling flat at 60,907 u (62.3%), reservoir min depth flat at 39.427% (deepest state
+  exactly the greedy stop, 60.57%), T 0.5 (keys). `fronttemp` 8-26% of envs in the band.
+* The stop, measured (bsp entities, ANALYSIS ONLY): the agent rides a ramp (func_wall *148, kill
+  wrap *24, x -952..-296, z 6,656-7,264) to (-650, -50, 7,000) at ~75 s. Under it lie kill plates
+  *53 (x -960..-416, |y| <= 960) and *36 (x -1,056..-960) at z ~6,464, then a kill box *49
+  (x -1,216..-576, |y| <= 508, z 5,632-6,050) and the kill floor *31 at z 5,600; the field's route
+  drops through the plates' x range (it ignores triggers) to a level at z ~5,766 going west through
+  CP5 (*137, x -1,712, |y| <= 624). Training episodes reach 62.3% (z ~5,900 at x ~-1,316) - i.e.
+  they drop ~1,200 u (~1.7 s of free fall) and die.
+* **Why nothing past the stop enters the reservoir:** the reservoir snapshots each episode once per
+  second and keeps only snapshots >= `--respawn-margin` (2 s) before the episode's end
+  (surfgym/respawn.py observe). An episode that passes the stop and dies ~1.7 s later contributes
+  nothing past it, so the deepest state stays at the stop (39.427% for 600M+ steps), the spawns
+  never start inside the drop, and the critic only ever sees "drop -> death within 2 s".
+* **G = r4b3_m1** (16:22): F's final (10,295,967,744, md5 cf6621c7...) + `--respawn-margin 1` (all
+  else restored, front-temp kept so G differs from F in one knob), 300M. Read-out: the reservoir's
+  deepest state below 39.43% (states inside the drop), then the greedy line past 60.57%.
+  Generic: one constant in seconds (the round-18 lesson: the margin, not the sampling rule, capped
+  the reservoir); the caveat is the trivial-win harvest near a goal, which needs finishes.
