@@ -1489,3 +1489,54 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
 * Branch head: code commit c24b11b (--respawn-greedy, --int-real-only, --sil-tempered, --sil-top) + notes,
   config.json incumbent_recipe with --respawn-novel --race-ratchet restored.
 * Box 56978070 released at wrap-up.
+
+## Round 4, branch r4b1 - 2026-10-21 13:18 UTC: the pitch head is at the clamp floor; the frontier at 54.7%
+
+### No box yet
+
+* 12:50-13:18 UTC: no offer passes box.py (cheapest 4090 $0.508 vs cap 0.45, 3090 $0.534 vs 0.30, 5090
+  $0.75 vs 0.60). A background `box.py rent` retry loop runs (every 60 s).
+
+### The pitch head's sigma has sat at the LOG_STD_MIN clamp since round 1 (analysis, CPU)
+
+* `view_std.log_std` of every incumbent checkpoint (yaw / pitch sigma, pre-tanh z):
+  r0 (750M) 0.046 / 0.025; r1 (5.1B) 0.031 / **0.0067**; r2 (7.2B) 0.041 / **0.0067**; r3 (8.84B) 0.060 /
+  **0.0067** (raw -5.0015, below the clamp: zero gradient, pinned). Under --view-absolute the pitch has no
+  physics effect, its entropy term is 0 (--pitch-entropy 0, added after the bonus inflated it to the cap)
+  and nothing holds it up, so PPO drove it to the floor LOG_STD_MIN = -5 (0.0067).
+* Why it may matter (arithmetic, not yet measured on a real run): (1) the pitch mean shares the pi tower
+  (and the conv trunk) with the yaw and the keys; its score-function gradient per row is a*eps/sigma_t, so
+  at sigma 0.0067 it is ~9x the yaw's (0.06) and ~100x a key head's, and since the pitch noise does not
+  change the return it is pure noise - Adam's second moment on the shared parameters is then dominated by
+  it and the useful (yaw/keys) step shrinks by roughly that ratio; (2) the PPO ratio is the JOINT density
+  (logprob_entropy_view adds the pitch Gaussian), so a pitch-mean drift of one sigma - 0.0067 z, ~0.3 deg
+  of camera - moves every row's ratio: approx_kl in the incumbent run (r3b3_gwx2) had medians 6-14 per
+  update at 8.39-8.59B (T 0.03-0.13; max 167), 0.2-0.5 later; at T 1-2 (r1, r2) 0.05-0.09 (the tempered
+  sigma is 2-3x larger). A CPU smoke (sigmas 0.30 / 0.05) already measured the pitch at 92% of the shared
+  actor gradient norm.
+* NEW (a8f075e): `--pitch-std-min S` (a floor on the pitch sigma: non-persistent buffer, the raw parameter
+  projected up to it, restored on resume, mirrored by record_ckpt; off = bit-identical) and
+  `--diag-heads N` (prints only: every N updates the per-head norm of the surrogate's gradient on the
+  shared actor parameters, the per-head KL after the update, the joint ratio's clip fraction with and
+  without the pitch term). 8 CPU tests (tests/python/test_pitch_std_min.py).
+* Plan: the bare continuation of the incumbent with `--diag-heads 25` measures the real shares at the
+  real minibatch (8,192 rows); if the pitch dominates, an arm with `--pitch-std-min 0.05` from a snapshot.
+
+### Where the incumbent's greedy line stops (54.67%, eval 8,718M)
+
+* Best episodes reach 54.2-54.7% at 62.5-63.5 s at (-454..-818, -32..85, 8,117-8,382), then turn back and
+  cycle in a bowl (x -800..2,200, z 7,000-8,000) to the 300 s cap (4 of 9 truncated) or fall.
+* Episode 3: west at |v_h| 1,590-1,690 u/s through 59.5-61.5 s, then at 62.0 s (127, -154, 7,554) a hard
+  turn (vy -1,407) and |v_h| drops to ~800; it climbs to z 8,382 at x -818 (63.5 s) heading +y with vx
+  only -199, and falls back east. The field's route from there goes WEST at z 8,100-8,260: (-1,616, -48,
+  8,264) 55.7%, (-2,544, -48, 8,104) 56.7%, (-2,928, -48, 7,784) 57.7%, then down and back east. So the
+  gate is reaching the top with westward speed. The run's training ceiling (54,406 u = 55.6%) is ~1% past.
+* The field route beyond (steepest descent, no local minimum by construction): long straight legs west at
+  z ~5,770-6,020 (x -2,800 -> -12,270, 64-74%), down to z ~4,360 and back east to x ~-2,200 (75-86%),
+  then shorter zig-zags to the finish (2,896, -48, 232).
+
+### Evals are sequential and long
+
+* record_rollout records env 0's 9 episodes one after another; with no eval stall rule the cycling
+  episodes run to the 300 s cap. The 8,718M eval was 1,746 s of game time (174,600 ticks, ~43,650
+  policy decisions at batch 1) - to be timed on the box against the ~25M training steps between evals.
