@@ -1246,3 +1246,38 @@ line (it killed my local shell twice).
   are dropped from PPO) + `--ckpt-every 1e8`; everything else restored (T cap 1, time-pen 0,
   greedy spawns, int-real-only, band). 400M steps first. Step line: `ez 1.2-1.5% front>31.3%`;
   approx_kl 0.29-0.46 on the first updates (watch).
+
+### 05:10 UTC: r3b3_ezf null so far; the block, measured with hull traces (analysis only)
+
+* r3b3_ezf 5,037-5,289M (10 evals): frontier 30,655-31,843 u, deaths 37-38 s at the block, training
+  ceiling flat at 32,141 u. Bursts 0.9-1.5% of decisions (front > 31.3-31.4%); approx_kl 0.29-0.46
+  per update throughout (round 1's ez arms also logged high kl; the dropped burst rows are probably
+  still in the kl estimate). The band starts AFTER the void-bottom ramp, and a burst cannot change
+  altitude in the air (pitch has no physics effect), so it cannot fix a line that is too low/high.
+* Westward hull traces (standing and ducked) at y 0 / +-300: a WALL at x ~-768 (hull centre)
+  spanning z 10,600-10,950 at every y; at z 10,500-10,540 a wall at x -128 (the space under the kill
+  floor *112 is closed from the east). The greedy line descends to z ~10,773 by x -700 (36.5 s), so
+  its feet (z ~10,737) clip the block's top (func_wall *144, top z 10,764) and it dies on the block's
+  kill plates (*35 at z 10,800, |y| <= 160) or falls to the kill floor *112 (z 10,578). The field's
+  route drops from (-624, 16, 10,856) to (-784, -48, 10,472): down WEST of the block, under the
+  wall's lower edge, without touching *112 - a precision drop.
+* In the 5,136M snapshot's greedy pool several episodes STOP at 36.1-36.5 s and live on for
+  40-220 s (the line sometimes ends somewhere safe at the block instead of dying).
+
+### 05:25 UTC: probe - at the training temperature the policy cannot even reach the block; T cap 0.5 (r3b3_t05)
+
+* Probe (local CPU, ANALYSIS ONLY): 24 of the policy's OWN pre-block greedy states (the 5,136M
+  snapshot's greedy-line pool, x 250-660 after CP2, progress 30.5-32.4%), `record_ckpt
+  --spawn-states --stochastic --exec-temp 2` (= training at T 1): **0/24 reach the block** (best
+  31.75%; most die at x -124..+211, z 10,350-10,600) - while the greedy line from the same states
+  reaches it (32.5%). So under T 1 the precise post-CP2 line breaks before the gate and training
+  hardly practises the gate at all; the noise that helped earlier gates now hides this one.
+* r3b3_ezf stopped at ~5.34B (snapshot ckpt_5337251840, md5 4c3efd22...): 12 evals 30.7-31.8k u,
+  ceiling flat.
+* **r3b3_t05** (05:12): resume of that snapshot + `--unstuck-max 0.5 --ez-eps 0 --ez-front 0
+  --ckpt-every 1e8`, 600M steps. Evals 5,337-5,413M: frontier 30,968-31,797 u (the line holds);
+  several greedy episodes now live to 40-43 s at the block; ceiling 32,141 -> 32,154 u.
+* ANOMALY: approx_kl 0.6-14 per update in r3b3_t05 (0.04-0.24 in t1 / ezf, 0.03-0.15 in tp0x)
+  without visible damage to the greedy line or the returns. The reported kl is (logp_old - logp_new)
+  on the last minibatch after the whole update; a likely source is the pitch head (sigma 0.007, no
+  physics effect, no entropy term) at the sharper temp 1.5 - not verified. Watch the evals, not kl.
