@@ -1926,3 +1926,8 @@ own greedy-line pool (1,809 STATE_DTYPE rows, 59.7-60.6% progress, the 2 s befor
 * r4b3_band15x 14,212-14,463M: **91.458 (14,287M, CP6, median 86.6%)**, then 90.3-91.4% in several evals
   (88,327 / 89,134 / 89,329 u); the unstuck tracker's best 89,417 u. Reservoir deepest 91.6% (min
   depth 8.43%), ceiling 89,568 u (91.6%), T 0.03. ~8.5% of the map left.
+
+### 23:22 UTC: 92.150
+
+* r4b3_band15x 14,475-14,715M: evals 89.5-90.1k u (91.5-92.2%) in most, **92.150 (14,715M, CP6, median
+  87.9%)**; reservoir deepest 91.8%, ceiling 90,806 u (92.9%), T 0.36. The run's budget ends ~23:55.
