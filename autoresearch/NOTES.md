@@ -1827,7 +1827,7 @@ own greedy-line pool (1,809 STATE_DTYPE rows, 59.7-60.6% progress, the 2 s befor
   (19 evals to 11,417M) - the line has not followed yet. Gates of this lineage went ceiling first,
   greedy line 100-550M steps later.
 
-### 18:05 UTC: CORRECTION to the 17:37 entry (attribution)
+### 18:03 UTC: CORRECTION to the 17:37 entry (attribution)
 
 * r4b3_stuck's own progress.csv starts at ceiling 62,068 u (its first row, +0.5M): the move
   61,025 -> 62,068 happened in r4b3_main2's last ~90M steps (10,772-10,863M, before
