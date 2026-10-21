@@ -1915,3 +1915,8 @@ own greedy-line pool (1,809 STATE_DTYPE rows, 59.7-60.6% progress, the 2 s befor
   greedy episodes now fly ~95 s + the 30 s patience window, so a side-by-side eval costs ~25-30 s):
   frontier 82.6-83.1k u every eval, **85.021 (13,922M, median 84.5%)**. Reservoir deepest 85.1% (min
   depth 14.89%), ceiling 83,253 u (85.2%), T 0.5 (no +500 u eval best since 82,659 u at 13,645M).
+
+### 22:26 UTC: 85.430 (median 85.4%)
+
+* r4b3_band15x 13,960-14,199M: frontier 83.1-83.5k u, **85.430 (14,186M, median 85.4%)**; training
+  ceiling 86,692 u (88.7%), reservoir deepest 85.4%, T 0.16; 153k steps/s with evals every 12.5M.
