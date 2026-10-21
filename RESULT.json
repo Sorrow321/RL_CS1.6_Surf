@@ -3,10 +3,10 @@
  "round": 3,
  "final": false,
  "best": {
-  "score": 28.846,
-  "eval_file": "/home/steam/ar/runs/r3b3/r3b3_sgir/traj_3336044544.jsonl",
+  "score": 29.823,
+  "eval_file": "/home/steam/ar/runs/r3b3/r3b3_sgir/traj_3436707840.jsonl",
   "run": "r3b3_sgir",
-  "step": 3336044544,
+  "step": 3436707840,
   "ckpt": "/home/steam/ar/runs/r3b3/r3b3_sgir/ckpt_latest.pt",
   "recipe": [
    "--respawn-greedy",
@@ -17,5 +17,5 @@
   "resume_from": "r2b2_sband2/ckpt_final.pt (round 2's from-scratch band lineage, 3,335,520,256, md5 36256794...; recipe ratchet + novel + band 0.05 / turn 90 / shell 0.9 / width 0.05 / radius 256-3072 / tries 64, T cap 2)",
   "commit": "21f9053"
  },
- "summary": "Best 28.846 is the resume eval of r2b2_sband2's checkpoint itself (tunnel dive to its far west end, the field route's physical limit; +0.005 over the incumbent = eval noise, not progress). New: --respawn-greedy F (spawns on the policy's own greedy-eval line 0.5-5 s before each death; on the incumbent ckpt it flipped the greedy line across the CP2 pit once in 8 evals, no consolidation: 28.380 best) and --int-real-only (novel-row episodes neither pay nor count the novelty bonus, so the cavity stays novel for real episodes). Arm 2 (sband2 + both) running."
+ "summary": "Best 29.823 (r3b3_sgir eval 3,436M): a greedy episode from the true start past the tunnel - +y window, two wall redirections inside the shaft that drop it ~260 u, into the +y tunnel at z 11,149 (under its 11,180 ceiling), out into the room at 28.4 s, down east of *20's end and west under it to x 1,373, z 9,637 (dies falling at 29.5 s). Not the human's cavity route; round 2's 'closed' bound assumed straight flights. Recipe: warm resume of r2b2_sband2 (3.336B) + --respawn-greedy 0.15 (spawns on the policy's own greedy-eval line 0.5-5 s before each death) + --int-real-only 1 (novel-row episodes neither pay nor count the novelty bonus). Training ceiling 28,202 -> 29,301 u within 18M steps; control (round 2's bare resume of the same file, 0.8B) never passed 28.78%. 8/9 episodes of that eval still die in the CP2 pit. Arm 1 (incumbent + greedy spawns): one pit crossing in 8 evals, null."
 }

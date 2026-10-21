@@ -1073,3 +1073,27 @@ line (it killed my local shell twice).
   keys); with the flag the buffer is scored under the current temp_t / tempv_t (exact for the
   rows of this iteration - a 50k buffer holds about one iteration's R > V rows). 3 tests; flag off
   bit-identical.
+
+### 01:50 UTC: MILESTONE - a greedy eval past the tunnel: 29.823 (r3b3_sgir at 3,436M)
+
+* Eval 3,436,707,840 (100M steps after the resume): **score 29.823** (best 29.82%, median 27.4%).
+  Episode 1, against the field route's physical limit (~28.8%):
+  * 23.0-26.0 s: the corridor-east detour (U-turn 23.5 s, under *45, +y ramp turnaround at
+    (5,576-5,687, -309..157, ~11,000) at 25.5-25.75 s), west climbing, level in the slot at
+    27.25 s (3,196, 877, 11,473);
+  * 27.75 s: through the +y upper window (2,319, 863, 11,411), v (-1,622, 639, -324);
+  * 28.00 s: (2,406, 1,046, 11,305), v (735, -1,128, -524) - redirected EAST by the shaft's wall;
+  * 28.25 s: (2,197, 886, 11,149), v (-1,243, -34, -724) - redirected west again, now INSIDE the
+    +y tunnel's height range (ducked origin z 10,964-11,180);
+  * 28.50 s: (1,890, 844, 10,943) - out of the tunnel's west end (x 1,952) into the room;
+  * 29.00 s: (1,812, 316, 10,381) - below *20's level EAST of its end (x 1,772), as the human does
+    at 33.75 s; 29.25 s: (1,585, 268, 10,026) flying west under *20;
+  * dies at 29.49 s at (1,373, 290, 9,637), vz -1,716 (the human uses a ramp at the void's bottom
+    near (1,112, 236, 9,730) at 34.5 s to turn the fall into a climb).
+* So the shaft is NOT closed: two wall redirections inside it (~0.5 s) lose ~260 u of height while
+  staying in the shaft, which a straight flight cannot (round 2's bound and its 12k brute-force
+  flights were straight). Not the human's cavity route, ~3 s faster to the room.
+* The other 8 episodes of that eval died in the CP2 pit (27.4%); 3,461M: 28.798 (median 27.4%).
+  The greedy line is unstable between the pit dive and the crossing.
+* PROTOCOL: a gate the incumbent never cleared -> the arm is extended when its 400M end (3,735M)
+  is reached (bare resume restores --respawn-greedy and --int-real-only).
