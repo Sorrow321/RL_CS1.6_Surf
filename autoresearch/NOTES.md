@@ -1371,3 +1371,70 @@ window, C = inside the cavity under the pit slab, T = tunnel lane, R = room; ana
   episodes to 29.75%), then T 0 again (greedy line through the pit, the cavity and the tunnel within ~250M
   steps). Scratch lineage by steps: 29.63% at 3.22B vs round 1's ratnov 28.55% (1.63B) / 28.63% (4.92B) and
   round 2's sband2 28.71% (3.15B).
+
+## ROUND 3 LESSON (r3b1) - written 2026-10-21 11:59 UTC
+
+**Result:** best greedy eval from the true start **32.834** (r3b1_nf7 at 9,366M; incumbent 28.841; 0 finishes). The
+greedy line passes CP2 (7 of 9 episodes at 31.95-32.2% by 8,255M) and stops at a slab ~1.5 s later. Hand-on
+checkpoint: runs/r3b1/r3b1_nf7/ckpt_latest.pt (9,756,999,680, md5 d3da4f2f...; fail_pen 10, surf_bonus 0,
+unstuck_max 0, eval_stall 1, respawn_novel_frac 0.7 in its config, so a bare resume restores them). From scratch the
+same reward reached **32.098** (r3b1_scrC at 3,476M; ckpt_latest 3,500,670,976 md5 c0c2e090... also pulled).
+
+**The finding: the reward made dying optimal at every dip gate.** r = 100/d0 per unit of record gain - 0.005 per
+tick (0.5 units/s), and death cost nothing. The CP2 pit dive (27.45% at 24.4 s) beat the detour + tunnel dive (28.84%
+at 28.2 s) by 0.5 units; a tunnel dive that dies at the tunnel's end loses nothing. So every warm line relocked into
+the pit as soon as its critic was accurate (round 2's T 1 / T 0.5 / restart arms, my T-0 arm 1). This was computable
+from the trainer's constants; check that arithmetic at any wall before adding exploration.
+
+**The fix (generic):** `--fail-pen 10` = time_pen / (1 - gamma) per tick: a death is charged as never finishing, so
+every non-finishing trajectory scores (discounted progress) - 10. That is the same objective as `--time-pen 0`.
+It needs `--surf-bonus 0`: in that frame the 0.3/s bonus is a farm (measured: 48% of training episodes stall-killed,
+the greedy line parked in the cavity). It also needs `--eval-stall 1`, or long-surviving greedy episodes block training
+for minutes per eval.
+
+**Warm, from the incumbent, at T 0** (`--unstuck-max 0`):
+* pit lock gone in ~150M steps;
+* tunnel dive at its limit by ~330M (28.85);
+* THROUGH the tunnel by ~380M (29.95): a bounce off the window frame. Round 2's "physically closed" bound assumed
+  free flight at constant horizontal speed.
+* the void bottom by ~830M (30.23), CP2 by ~980M (32.24), 32.76 at 1.46B;
+* then a plateau at the post-CP2 slab for ~1.4B steps: plain, `--sil-coef 0.1` (neutral), novel share 0.7 (+0.1).
+
+**From scratch** (ratnov + the fix):
+* Early gates intact: trap ~420M, window ~720M, CP2 wall ~830M, ~100-180M behind ratnov at each.
+* At T 0, NO CP2 crossing in 1.1B steps at the wall.
+* With the default T schedule at that wall, T rising crossed it within ~150M steps of T ~0.8 (training ceiling
+  27.97% -> 29.75%).
+* T then climbed back to 2 (no eval gain) and the greedy line drifted into the pit again.
+* T 0 consolidated it: through the pit, the HUMAN'S CAVITY ROUTE (the ramp turn-up at vz +1,300 to +1,376, back out
+  through the lower opening, the tunnel, the room) and past CP2 within ~500M steps: 32.098 at 3.48B. Rounds 1-2 got
+  28.55-28.71% from scratch.
+
+**Lessons for the next round:**
+1. Temperature discovers, the death charge keeps. T (the unstuck schedule) is what finds a new route at a wall;
+   T 0 + `--fail-pen 10` is what makes the greedy line commit to it.
+2. The schedule heats whenever the greedy eval stalls, even after training episodes have found the way. That
+   happened in scrT and round 2's T-2 drift. Untested, generic: cool T when the training ceiling (real episodes)
+   leads the eval frontier by more than eps.
+3. The post-CP2 gate: the void-ramp turn-up launches the agent to z ~10,900. It flies over a slab, hits the shaft
+   wall at x ~-704 and drops to the shaft floor with v ~0. There the velocity-frame view turns any command into a
+   per-tick spin (below 100 u/s the base is the current yaw, src/env.c), so it parks and dies. The way on is UNDER
+   the slab (x -420..-700 at z 10,000-10,500, then west), so it needs a lower ramp exit.
+4. Benches beside a running trainer are too expensive (record_ckpt: ~160 CPU-minutes for 4 greedy episodes).
+
+**Recipe (config.json `incumbent_recipe`, the lineage key):** GR + `--unstuck-max 2 --surf-bonus 0 --respawn-novel
+--race-ratchet --fail-pen 10 --eval-stall 1`. **Harness issue:** the round-start restore of config.json had dropped
+round 1's `--respawn-novel --race-ratchet`; check the recipe next round.
+
+**What did not work:** T 0 alone (one good eval, then the pit relock). Fail-pen with the surf bonus (cavity farm).
+Fail-pen without the bonus on the sband2 lineage (back to the tunnel's east end). SIL 0.1 at the slab plateau. The
+climb-out bench on the box (cost).
+
+## Wrap-up (r3b1)
+
+* Final: RESULT.json `"final": true`, score **32.834** (r3b1_nf7, eval traj_9365880832, re-scored at wrap-up: 9
+  episodes, best 32.83%, median 32.2%, CP2, 0 finishes).
+* Hand-on checkpoint: runs/r3b1/r3b1_nf7/ckpt_latest.pt (9,756,999,680, md5 d3da4f2f51af7487aa2000960c65cbdf),
+  pulled while the run was stopped and md5-checked again at wrap-up.
+* Box 56975104 (RTX 3090 + Ryzen 9 5950X, $0.268/h) ran 00:45-11:51 UTC (~11.1 h, ~$3.0); released at 11:51; no box
+  at wrap-up.

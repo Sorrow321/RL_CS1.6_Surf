@@ -1,7 +1,7 @@
 {
  "agent": "r3b1",
  "round": 3,
- "final": false,
+ "final": true,
  "best": {
   "score": 32.834,
   "eval_file": "/home/steam/ar/runs/r3b1/r3b1_nf7/traj_9365880832.jsonl",
@@ -20,8 +20,8 @@
    "--respawn-novel-frac",
    "0.7"
   ],
-  "resume_from": "incumbent ckpt (r2b2_t1 end, 7,176,454,144) + --unstuck-max 0 --fail-pen 10 --eval-stall 1 --surf-bonus 0 -> r3b1_ifp (to 7,777M) -> r3b1_ifpx (to 8,898M) -> r3b1_sil (+ --sil-coef 0.1, to 9,214M, neutral) -> r3b1_nf7 (--sil-coef 0 --respawn-novel-frac 0.7). Stopped at 9,756,999,680: ckpt_latest.pt md5 d3da4f2f... (pulled); also ckpt_9466544128.pt.",
+  "resume_from": "warm lineage: incumbent ckpt (r2b2_t1 end, 7,176,454,144) + --unstuck-max 0 --fail-pen 10 --eval-stall 1 --surf-bonus 0 -> r3b1_ifp (to 7,776,763,904) -> r3b1_ifpx (to 8,898,215,936) -> r3b1_sil (+ --sil-coef 0.1, to 9,214,361,600; neutral) -> r3b1_nf7 (--sil-coef 0 --respawn-novel-frac 0.7, stopped at 9,756,999,680). Hand-on: r3b1_nf7/ckpt_latest.pt md5 d3da4f2f51af7487aa2000960c65cbdf (all five flags in its config; a bare resume restores them).",
   "commit": "852b183"
  },
- "summary": "Round 3 (r3b1): 32.834 (incumbent 28.841): the greedy line passes CP2 (7/9 episodes at 31.95-32.2% at 8,255M), through the -y tunnel (a bounce at the window), the room, under *20, the void-bottom ramp. Diagnosis: with 0.5 units/s of time penalty and free death, dying is optimal at every dip gate. Fix (generic, the trainer's own constants): --fail-pen 10 = time_pen/(1-gamma) (death = never finishing), --surf-bonus 0 (a farm in that frame), T 0 (--unstuck-max 0), --eval-stall 1. From the incumbent ckpt: pit lock gone in ~150M steps, tunnel ~380M, void bottom ~830M, CP2 ~980M; training ceiling 32.7%. Continuing r3b1_ifpx."
+ "summary": "32.834 (incumbent 28.841): the greedy line passes CP2 (7/9 episodes at 31.95-32.2%) and stops at a slab ~1.5 s later. Key finding: with 0.5 units/s of time penalty and free death, dying was optimal at every dip gate (the CP2 pit dive beat detour+tunnel dive by 0.5 units). Fix, generic from the trainer's constants: --fail-pen 10 = time_pen/(1-gamma) (death = never finishing), with --surf-bonus 0 (a farm otherwise) and --eval-stall 1. Warm from the incumbent at T 0: pit lock gone in ~150M steps, through the tunnel by a window-frame bounce (~380M), CP2 by ~980M, then a ~1.4B-step plateau at the post-CP2 slab (SIL 0.1 neutral, novel share 0.7 +0.1). From scratch the same reward + the default T schedule: T 0 stalls at the CP2 pit (1.1B steps); T rising crosses it in ~150M steps; T 0 again consolidates the greedy line through the HUMAN's cavity route and past CP2: 32.098 at 3.48B (r3b1_scrC, ckpt pulled). Lesson: temperature discovers, the death charge keeps. config.json incumbent_recipe = ratnov + fail-pen 10, surf-bonus 0, eval-stall 1, unstuck-max 2. Next: the slab past CP2 needs a lower exit off the void ramp (velocity-frame view spins below 100 u/s, so the shaft-floor restart is hopeless); try cooling T when the training ceiling leads the eval frontier."
 }
