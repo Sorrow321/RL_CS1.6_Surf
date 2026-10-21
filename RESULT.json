@@ -3,10 +3,10 @@
  "round": 4,
  "final": false,
  "best": {
-  "score": 60.253,
-  "eval_file": "/home/steam/ar/runs/r4b3/r4b3_kst5x/traj_9668395008.jsonl",
+  "score": 60.584,
+  "eval_file": "/home/steam/ar/runs/r4b3/r4b3_kst5x/traj_9945219072.jsonl",
   "run": "r4b3_kst5x",
-  "step": 9668395008,
+  "step": 9945219072,
   "ckpt": "/home/steam/ar/runs/r4b3/r4b3_kst5x/ckpt_final.pt",
   "recipe": [
    "--stall-eps",
@@ -26,5 +26,5 @@
   "commit": "4b71ca4",
   "note": "r4b3_kst5x is running (2e9 budget); its checkpoint is pulled when it ends or at wrap-up. The run that reached 57.720 (r4b3_kst5) has ckpt_final.pt local (md5 f6bed432...)."
  },
- "summary": "Best 60.253 (r4b3_kst5x at 9,668M, CP4; incumbent 54.674). Warm on the incumbent: (1) NEW eval-only speedups --eval-patience 30 + --eval-parallel 1 (evals were half the wall time: 72-116 s -> 13-28 s each; 121k -> ~185k steps/s); (2) --unstuck-temp-heads keys (T 0.5 on all heads switched the greedy line to the +y mirror lane dying at 50%; keys-only kept the 54% line 4/8 evals vs 1/8); (3) --stall-eps 5: the training stall rule runs per TICK here (32u in 10 ms = 3,200 u/s) and killed 30-50% of training episodes (ledger: same pathology on skate_laby, fixed by 5). With it the reservoir's deepest state moved 54.7% -> 57.8% in 200M steps and the greedy line went 54.4 -> 55.1 (CP4) -> 57.7. Running: r4b3_kst5x (bare resume, 2e9). Built and under test: --front-temp (all heads tempered only at the frontier)."
+ "summary": "Best 60.584 (r4b3_kst5x at 9,945M, CP4, median 60.57%; incumbent 54.674). Warm on the incumbent: (1) NEW eval-only speedups --eval-patience 30 + --eval-parallel 1 (evals were half the wall time: 72-116 s -> 13-28 s each; 121k -> ~185k steps/s); (2) --unstuck-temp-heads keys (T 0.5 on all heads switched the greedy line to the +y mirror lane dying at 50%; keys-only kept the 54% line 4/8 evals vs 1/8); (3) --stall-eps 5: the training stall rule runs per TICK here (32u in 10 ms = 3,200 u/s) and killed 30-50% of training episodes (ledger: same pathology on skate_laby, fixed by 5). With it the reservoir's deepest state moved 54.7% -> 57.8% in 200M steps and the greedy line went 54.4 -> 55.1 (CP4) -> 57.7. Running: r4b3_kst5x (bare resume, 2e9). Built and under test: --front-temp (all heads tempered only at the frontier)."
 }
