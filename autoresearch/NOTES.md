@@ -1241,3 +1241,20 @@ later, x ~0.9) trims the time-pen-0 margin but keeps the median detour ahead (~2
   ratnov wall 453M, passed 576M), later the CP2 pit (ratnov 1,633M). Reward unchanged (time penalty and
   surf bonus kept). 600M first test, evals every 75M. Kill: no earlier trap exit and no earlier window
   than ratnov by 600M.
+
+### 06:41 UTC: r3b4_ssb first test (0 -> 600M) and its extension r3b4_ssbx
+
+* r3b4_ssb (scratch, recipe + bursts + burst SIL), 319k steps/s. Best-episode % per eval:
+  76M 3.9, 151M 4.5, 227M 5.9, **302M 12.8** (out of the first-ramp trap), 378M 15.6, 453M 17.6,
+  **529M 20.9** (5/9 at the window wall, x ~1,200-1,385, z 12,690-12,890, 300-400 u under the hole).
+  Against ratnov (same recipe without bursts): trap exit sooner (12.8 vs 5.8 at 302M), window wall
+  ~75M later (ratnov 20.8 at 453M, passed 576M). sband (r2) and novel-only (r1) also left the trap by
+  302M (12.2, 10.1), so the early trap exit is within the spread of the recipe's seeds, not a clear
+  burst effect. It passed the 16% floor where time-pen 0 parked. Burst SIL at 600M: buffer full (50k),
+  +690 rows/iteration, gain 0.07; bursts 1.7-2.5% of decisions.
+* **Extended** (it cleared the first gate sooner than ratnov at matched steps, and a healthy scratch
+  lineage at the CP2 pit is this round's best use of the fast box): r3b4_ssbx = bare resume of ssb's
+  ckpt_final (600,309,760, md5 e1a905e6...), every flag restored (sil_burst_only=1, sil_view_mse=1,
+  ez_eps 0.04, ez_front 0.15 checked in the log), to 5.6B, evals every 50M. Box extended to 12:09.
+  Read-outs: window passage (ratnov 576M), CP2 wall (651M), CP2 pit crossing (ratnov 1,633M; r2b2's
+  band lineage ~1.94B), the tunnel dive (28.5-28.8%).
