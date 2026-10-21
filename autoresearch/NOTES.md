@@ -1489,3 +1489,41 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
 * Branch head: code commit c24b11b (--respawn-greedy, --int-real-only, --sil-tempered, --sil-top) + notes,
   config.json incumbent_recipe with --respawn-novel --race-ratchet restored.
 * Box 56978070 released at wrap-up.
+
+## Round 4, branch r4b2 - 2026-10-21 13:35 UTC: the pitch head's sigma sits at the clamp
+
+### Box
+
+* No offer passed box.py's filters from 12:50 to 13:35 UTC (3090s with >= 32 threads were $0.375+,
+  4090s $0.469+, 5090s $0.75+; the cheap ones are Xeon E5 or < 32 threads). A background
+  `box.py rent` retry loop runs every ~1 min. Two other branches got boxes meanwhile (burn 0.47 $/h).
+
+### A PPO defect in this lineage's checkpoint: the camera head decides the clipping
+
+* The incumbent (r3b3_gwx2 ckpt_final, 8.84B) has `view_std.log_std = [-2.809 (yaw), -5.0015
+  (pitch)]`. The trainer clamps log sigma to [LOG_STD_MIN, LOG_STD_MAX] = [-5, 1], so the pitch
+  head's effective sigma is the clamp's floor, 0.0067 in z, and its raw parameter sits BELOW the
+  clamp, where its gradient is zero (the same failure the pitch CAP's projection was written for,
+  on the other side). Pitch only aims the depth camera (target = -20 + 50 tanh z deg; the greedy
+  line moves it -30..-2.5 deg, ~0.5 deg/tick); its entropy term is off under --view-absolute, so
+  PPO shrank it to the floor.
+* Why it matters: PPO's ratio is the JOINT over keys + yaw + pitch. A drift of the pitch mean by k
+  of its sigmas puts log r = k eps - k^2/2 on every row: at k = 3 (a 1-degree camera change)
+  92% of rows have r < 0.8 - clipped (A < 0) or weighted ~0 (A > 0) for EVERY head - and the rest
+  carry r >> 1 with the 1/sigma^2 pitch gradient. r3b3's approx_kl (mean old - new log-prob on the
+  last minibatch) read 0.6-55 per update at T 0.02-0.5 (k ~ 10 at kl 50) against 0.03-0.24 at T 1
+  (sigma x2 under the tempered sampling). So late minibatches of each update probably train mostly
+  on the camera head's noise. NOT yet measured per head.
+* NEW `--diag-head-kl N` (commit 18663bf): every N updates one line - per-head mean(old - new
+  log-prob) over the whole update (keys joint, yaw, pitch), mean shift in old sigmas, the share of
+  rows whose ratio ends outside 1 +- clip for the joint and for the joint without pitch, and the
+  before-probe's error against the rollout's own log-prob (7.5e-9 on CPU). Log only, TRAIN_ONLY,
+  bit-identical off. 4 CPU tests.
+* NEW `--pitch-sigma-min S` (commit f6fd5db): a floor on the pitch head's sigma, kept by the same
+  projection as its cap (raw log sigma lifted to log S after every optimizer step and on resume);
+  config-saved, restored on resume, TRAIN_ONLY (the floor lives in the stored weights),
+  bit-identical off. 6 CPU tests. Generic: one constant in z for a head that has no physics effect
+  on any map. At S = 0.05 the camera target jitters <= 2.5 deg in training (greedy evals use the
+  mean).
+* Eval overhead is small: r3b3_gwx2 averaged 167.9k steps/s over its run vs a median 177k per
+  iteration (evals ~5%), so `--eval-stall` would buy little and is not used.
