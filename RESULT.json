@@ -3,10 +3,10 @@
  "round": 3,
  "final": false,
  "best": {
-  "score": 28.851,
-  "eval_file": "/home/steam/ar/runs/r3b1/r3b1_ifp/traj_7504134144.jsonl",
+  "score": 29.955,
+  "eval_file": "/home/steam/ar/runs/r3b1/r3b1_ifp/traj_7730626560.jsonl",
   "run": "r3b1_ifp",
-  "step": 7504134144,
+  "step": 7730626560,
   "ckpt": "/home/steam/ar/runs/r3b1/r3b1_ifp/ckpt_final.pt",
   "recipe": [
    "--unstuck-max",
@@ -18,8 +18,8 @@
    "--surf-bonus",
    "0"
   ],
-  "resume_from": "incumbent ckpt (r2b2_t1 end, 7,176,454,144, md5 92b7ddd2...) + the flags above (novel band settings and ratchet restored)",
+  "resume_from": "incumbent ckpt (r2b2_t1 end, 7,176,454,144, md5 92b7ddd2...) + the flags above (novel band settings and ratchet restored); ckpt_final 7,776,763,904 md5 51e191d16ae185157d9f0206d51edf85",
   "commit": "852b183"
  },
- "summary": "Round 3 (r3b1). Diagnosis: with 0.5 units/s of time penalty and free death, dying in the CP2 pit beats the detour+tunnel dive by 0.5 units, so every warm line relocked into the pit. Fix: --fail-pen 10 = time_pen/(1-gamma), i.e. death = never finishing (the objective becomes discounted progress); needs --surf-bonus 0 (the bonus becomes a farm in that frame) and T 0 (--unstuck-max 0; noise at T 2 made precise routes look bad). Incumbent ckpt + those flags: the greedy line leaves the pit within ~150M steps and flies the tunnel dive to its limit (28.851 at 7,504M, 6/9 past the window), training ceiling 29,027 -> 29,395 u (30.07%). With the surf bonus kept, the greedy line ENTERED the cavity (the human's route) 9/9 but parked (farm). Missing: the climb-out from the cavity (vz off the ramp too low)."
+ "summary": "Round 3 (r3b1): 29.955 (incumbent 28.841): the greedy line gets THROUGH the -y tunnel into the room (6/9 at 7,655M), first time on this map. Diagnosis: with 0.5 units/s of time penalty and free death, dying is optimal at every dip gate (the CP2 pit dive beats the detour + tunnel dive by 0.5 units; a tunnel dive that dies at its end is as good as surviving). Fix (generic, from the trainer's constants): --fail-pen 10 = time_pen/(1-gamma), death = never finishing, so the objective is discounted progress + survival; with --surf-bonus 0 (the bonus is a farm in that frame) and T 0 (--unstuck-max 0). Incumbent ckpt + those flags: pit lock gone in ~150M steps, tunnel dive at its limit (28.85) by 330M, through the tunnel into the room by 380M (29.6-29.95), training ceiling 30.2%. Continuing (r3b1_ifpx)."
 }
