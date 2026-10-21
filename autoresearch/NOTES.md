@@ -1255,3 +1255,19 @@ cavity (entry speed, ramp vz) and complete the loop? 30 min first.
   then 15% of spawns from the policy's own greedy tail (last 3 s before each failure, refreshed every
   20 min; tools/greedy_tail_states.py + autoresearch/analysis/greedy_tail_loop.sh) with
   `--respawn-min-speed 300`; 1.35B steps from 7.18B (tp0 0.4B, tp0x 0.16B, gt 0.23B, gt2 0.55B so far).
+
+### 04:52 UTC: gt2 -> gt3 with the in-trainer `--greedy-tail-frac` (82dda58)
+
+* gt2 (7,972-8,714M) evals after the milestone: 8,601M **32.799** (best; one episode loitered at 32.80%
+  for 300 s), 8,627M 32.356 with **9/9** through the loop, 8,652M 32.541, 8,677M 32.550, 8,702M 32.548:
+  the greedy line now dies at the next gate just past CP2 (x -480..-660, z ~10,630-10,840, ~37 s).
+  T 0.28 by 8,662M (cooling on the new bests), training ceiling 32,143 u. gt2's final checkpoint is local:
+  runs/r3b2/r3b2_gt2/ckpt_latest.pt (8,714,190,848, md5 fa2db453...) - the best eval's run.
+* NEW `--greedy-tail-frac F` (82dda58, docs/greedy_tail.md, tests/python/test_greedy_tail.py): the same
+  mechanism inside the trainer - a record_rollout hook keeps the full states of the trainer's OWN
+  greedy eval, and the last 3 s (to 0.25 s) of each failed episode, every 5 ticks, >= 300 u/s, replace F
+  of every spawn pool until the next eval (every 25M steps instead of the external loop's 20 min, and
+  no dependence on this session). Box redeployed in place (28 s; runs/ kept).
+* **r3b2_gt3** (04:48): gt2's final + `--greedy-tail-frac 0.15 --spawn-states ''` (clears the file
+  restored from gt2's config); everything else restored (time_pen 0, surf 0, respawn-min-speed 300, T).
+  First eval: `gtail 495 rows/9 fails`, mean progress 31.5%. Budget +2e9.
