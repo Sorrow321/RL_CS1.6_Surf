@@ -1208,3 +1208,7 @@ later, x ~0.9) trims the time-pen-0 margin but keeps the median detour ahead (~2
   window (20.8% -> CP1) is not passed by ~900M (ratnov 576M) or the CP2 wall (27.4%) not reached by
   ~1.2B (ratnov 651M). The read-out at the wall: does it cross the pit sooner than ratnov (1,633M), and
   does its greedy line stay on the detour instead of drifting into the dive.
+* 05:38 UTC: s0tp ended at 600.3M (529M eval 16.1%; reservoir min-depth 80.96% = deepest
+  harvested state at 19.0%; 353k steps/s average). **r3b4_s0tpx** launched 05:37: bare resume of its
+  ckpt_final (600,309,760, md5 d1484e6c...) to 2.0B, evals every 75M, `--time-pen 0 --surf-bonus 0`
+  passed again explicitly (they are restored anyway). Box deadline 08:32.
