@@ -1420,3 +1420,12 @@ cavity (entry speed, ramp vz) and complete the loop? 30 min first.
 * The full chain from nothing: first-ramp trap 200M, window 453M, CP2 wall 479M, CP2 pit 982M, cavity
   entries 1.03B, the cavity loop in the greedy line 1.26B. The lineage got there warm after 7.18B (round
   1-2) + 1.30B (this round) steps; round 1's scratch recipe crossed only the CP2 pit, at 1,633M.
+
+### 09:46 UTC: r3b2_sfull from scratch reaches the warm frontier at 1.5B: best 32.824 (warm best 32.839)
+
+* Evals 1,309-1,536M: 32.28, 31.82, 32.32, 32.47, 32.59, 32.58, 32.44, 32.52, 32.60, **32.824** (1,536M):
+  7-9/9 greedy episodes through the loop, the room and CP2 in every eval, dying at the same wall after
+  CP2 as the warm runs. Training ceiling 33,000 u (33.75%); T 0.10.
+* From nothing to the warm lineage's best frontier in 1.54B steps (the warm line took 7.18B + 1.29B). For
+  the next round: the recipe now in config.json reproduces this round's result from scratch on one 3090
+  in ~3 h; the warm checkpoint and a scratch one are both at the wall after CP2.
