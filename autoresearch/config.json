@@ -93,7 +93,11 @@
     "--obs-pot-rate",
     "1",
     "--respawn-novel",
-    "--race-ratchet"
+    "--race-ratchet",
+    "--eval-parallel",
+    "1",
+    "--eval-idle-secs",
+    "60"
   ],
   "start_d": 97768.0,
   "model": "claude-opus-5-5",

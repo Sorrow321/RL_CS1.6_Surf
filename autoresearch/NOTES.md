@@ -1767,3 +1767,9 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
   bursts 0.05 / front 0.04, T cap 0.25, eval-parallel, idle 60, greedy 0.3 / 0.25-2 s all
   restored; budget 3.3e9 (to ~00:00). Box extended to 00:39 UTC. The window gate is left to the
   machinery (novel rows already teach the east valley's dive; the crossing has to follow).
+* 17:5x UTC: `config.json` `incumbent_recipe` (the lineage key) now ends with `--eval-parallel 1
+  --eval-idle-secs 60` - pure wall-clock flags (training unchanged, evals 4-7x shorter), so the
+  next round's SCRATCH launches get them by default (run_arm.sh's scratch line already passes
+  --eval-greedy-only, which --eval-parallel needs). A from-scratch CPU smoke with the full
+  recipe + both flags: 3 parallel evals written, clean exit. Resumes are unaffected (box.py
+  passes only --envs; a checkpoint carrying the flags restores them).
