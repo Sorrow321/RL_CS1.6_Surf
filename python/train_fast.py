@@ -1098,6 +1098,11 @@ class Policy(nn.Module):
             moved = int((p > hi).sum())
             if moved:
                 p.copy_(torch.minimum(p, hi))
+            # --pitch-sigma-min: the floor buffer exists only under the flag (-inf on the yaw
+            # heads); lifted silently, the count stays the cap's
+            lo = getattr(self.view_std, "log_std_lo", None)
+            if lo is not None:
+                p.copy_(torch.maximum(p, lo))
         return moved
 
     def _value(self, t, priv):
@@ -6024,6 +6029,16 @@ def main() -> None:
                          "log 0.5. The planner, plan_to_bc, expert_dagger, "
                          "line_fragility and --bc-file all read the mode "
                          "from the checkpoint.")
+    ap.add_argument("--pitch-sigma-min", type=float, default=None,
+                    help="--view-absolute: a FLOOR on the pitch head's sigma (in z), kept by the "
+                         "same projection as its log 0.5 cap (the raw log sigma is lifted to "
+                         "log S after every optimizer step and once on resume). Pitch only aims "
+                         "the camera, so with its entropy term off PPO drives its sigma to the "
+                         "LOG_STD_MIN clamp (r3b3's checkpoint: raw log sigma -5.0015, sigma "
+                         "0.0067 = 0.3 deg of target, gradient dead below the clamp) and the "
+                         "joint ratio then turns on a camera head: a 1-degree drift of its mean "
+                         "is 3 sigma. Saved in the config and restored on resume; 0 / unset = "
+                         "off (bit-identical)")
     ap.add_argument("--pitch-entropy", type=float, default=None,
                     help="--view-continuous: the PITCH head's share of the "
                          "entropy bonus (its Gaussian entropy is multiplied "
@@ -8063,6 +8078,9 @@ def main() -> None:
                 and not flag_given("--pitch-entropy")):
             args.pitch_entropy = float(ck_cfg["pitch_entropy"])
             restored.append(f"pitch_entropy={args.pitch_entropy:g}")
+        if args.pitch_sigma_min is None and ck_cfg.get("pitch_sigma_min"):
+            args.pitch_sigma_min = float(ck_cfg["pitch_sigma_min"])
+            restored.append(f"pitch_sigma_min={args.pitch_sigma_min:g}")
         # --view-ou-sigma is rollout BEHAVIOUR, not shape, but a resume that
         # silently dropped it would change the exploration mid-run without
         # saying so - the Round 17 failure class. Restored like the rest.
@@ -9518,6 +9536,15 @@ def main() -> None:
                          "entropy: it needs --view-continuous")
     if PITCH_ENT < 0.0:
         raise SystemExit("--pitch-entropy must be >= 0")
+    # --pitch-sigma-min: None / 0 = off; the floor's log, applied by Policy.project_log_std
+    PITCH_SIG_MIN = float(args.pitch_sigma_min or 0.0)
+    if PITCH_SIG_MIN != 0.0:
+        if not VIEW_ABS:
+            raise SystemExit("--pitch-sigma-min floors the --view-absolute pitch head: it needs "
+                             "--view-continuous --view-absolute")
+        if not (math.exp(LOG_STD_MIN) <= PITCH_SIG_MIN <= math.exp(PITCH_LOG_STD_MAX_ABS)):
+            raise SystemExit(f"--pitch-sigma-min must lie in [{math.exp(LOG_STD_MIN):.4f}, 0.5] "
+                             f"(the clamp and the pitch cap), got {PITCH_SIG_MIN!r}")
     # --int-mode / --archive-*: None = the flag-off constants
     if args.int_mode is None:
         args.int_mode = "cell"
@@ -12081,6 +12108,19 @@ def main() -> None:
                     drop_depth=bool(args.obs_no_depth),
                     simba=bool(args.simba),
                     split_trunk=bool(args.split_trunk)).to(device)
+    if PITCH_SIG_MIN:
+        # --pitch-sigma-min: the pitch head's (the last Gaussian's) log sigma floor beside its
+        # cap, a NON-persistent buffer like the cap (the state_dict keys do not change), kept
+        # by Policy.project_log_std after every optimizer step and once on resume
+        policy.view_std.register_buffer(
+            "log_std_lo", torch.as_tensor([float("-inf")] * (policy.n_z - 1)
+                                          + [math.log(PITCH_SIG_MIN)],
+                                          dtype=torch.float32, device=device),
+            persistent=False)
+        policy.project_log_std()
+        print(f"--pitch-sigma-min {PITCH_SIG_MIN:g}: the pitch head's sigma is floored at "
+              f"{PITCH_SIG_MIN:g} in z (log {math.log(PITCH_SIG_MIN):.3f}; target jitter "
+              f"<= {50.0 * PITCH_SIG_MIN:.2f} deg at z = 0)")
     R = policy.rnn_size                    # 0 without --rnn
     # (c) action noise rank-DISTINCT, and set BEFORE the graph capture: the
     #     Gumbel rand_like runs inside the captured graph, whose philox seed
@@ -12753,6 +12793,8 @@ def main() -> None:
                   "value_head from this run's fresh init, their Adam moments zeroed) - the "
                   "actor and the shared trunk are the checkpoint's")
         policy.load_state_dict(ck["policy"])
+        if PITCH_SIG_MIN:
+            _ls0 = float(policy.view_std.log_std[-1])
         if VIEW_ABS:
             _mv = policy.project_log_std()
             if _mv:
@@ -12761,6 +12803,10 @@ def main() -> None:
                       f"projected under it; sig now "
                       + "/".join(f"{v:.3f}" for v in
                                  policy.log_std().exp().tolist()))
+        if PITCH_SIG_MIN and _ls0 < math.log(PITCH_SIG_MIN):
+            print(f"--pitch-sigma-min: the checkpoint's raw pitch log sigma {_ls0:.4f} lifted to "
+                  f"{math.log(PITCH_SIG_MIN):.4f}; sig now "
+                  + "/".join(f"{v:.4f}" for v in policy.log_std().exp().tolist()))
         opt.load_state_dict(ck["optimizer"])
         n_re = relayout_optimizer_state(opt)
         if n_re:
@@ -13477,6 +13523,8 @@ def main() -> None:
                   f"{_how}; pitch target = -20 + 50 tanh z (core view_mode "
                   f"{int(core.config.view_mode)})")
             meta["config"]["pitch_entropy"] = PITCH_ENT
+            if PITCH_SIG_MIN:
+                meta["config"]["pitch_sigma_min"] = PITCH_SIG_MIN
             _pe = ("OFF" if PITCH_ENT == 0.0
                    else "scaled by %g" % PITCH_ENT)
             print(f"--pitch-entropy {PITCH_ENT:g}: the pitch head's entropy "

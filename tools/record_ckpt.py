@@ -84,6 +84,9 @@ TRAIN_ONLY = frozenset({
     "target_kl",
     # --diag-head-kl: a log line about the update; a recording runs no update
     "diag_head_kl",
+    # --pitch-sigma-min: the floor is applied to the raw log sigma the checkpoint stores (the
+    # projection runs after every optimizer step), so a recording reads it from the weights
+    "pitch_sigma_min",
     # --ramp-death-charge: a training reward term (the eval pays no reward)
     "ramp_death_charge",
     # --ramp-route-flat: the shape of the training reward's potential
