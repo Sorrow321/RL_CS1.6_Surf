@@ -1829,3 +1829,20 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
 * 30-min test. Pass: the greedy line holds (best evals ~60%) and the ceiling / greedy line get
   through the window and the hole (standard-field progress > 61%). Fail: the line degrades for
   several evals -> back to c6's checkpoint (plain field; the ceiling re-measures again).
+
+### 18:58 UTC: c7 - the warm kill-aware switch COLLAPSED the greedy line, then it re-learns
+
+* r4b4_c7 evals (standard field, score.py): **1.937** (11,393M = the c6 weights under the new
+  observations, 0.5M steps in), 5.863, 32.525, 34.549, 34.043, 34.536, 37.448, 42.820, 42.818,
+  44.491 (11,619M). Training: explained variance -0.20 on the first update, 0.96 at 11.43B,
+  0.99 from 11.47B; reward per episode 1.5 -> 7.2; the masked-field ceiling 59,448 -> 59,740 u.
+* So my "observations move only near kill volumes" reading was WRONG for the policy: the same
+  weights went from 60.5% to 1.9% the moment the observation features switched fields. The
+  likely culprit is the potential channel's "unreachable +3" pixels: 117k voxels next to kill
+  volumes became walls, kill plates lie under ramps and floors all over the map, and a ray that
+  samples one cell short of its hit near one now reads +3 instead of a distance (the compass,
+  pot-rate and ratchet columns only shift by ~1%). Lesson: a reward-field change on a warm run
+  must not touch the observation features (decouple them) - or it is a from-scratch arm.
+* Kept running: the line re-learns ~2-5% per 25M steps (44.5% at +230M), the score's best
+  (60.548) is safe, and c6 had sat at the window for ~1.5B steps. If the line is back near
+  60% by ~20:00 the masked field's window gradient gets its test; if not, revert to c6.
