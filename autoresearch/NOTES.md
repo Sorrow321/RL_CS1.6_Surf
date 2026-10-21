@@ -1097,3 +1097,40 @@ line (it killed my local shell twice).
   The greedy line is unstable between the pit dive and the crossing.
 * PROTOCOL: a gate the incumbent never cleared -> the arm is extended when its 400M end (3,735M)
   is reached (bare resume restores --respawn-greedy and --int-real-only).
+* Caveat on attribution (01:50): the novelty count table is RESTORED from the checkpoint, and in
+  round 2 the novel rows counted, so on this warm start the cavity's novelty is already spent:
+  `--int-real-only` here mostly stops paying novel-row episodes (int/ep 1.16 -> 0.26), it does not
+  re-open the cavity's novelty. The greedy-line pool (15% of spawns at the window / tunnel deaths)
+  is the more likely cause; the unstuck T decay (1.94 -> 0.65 after the resume eval's +500 u best)
+  is a possible confound, though round 2's sband3 resumed the same file with the same tracker.
+  An ablation (greedy spawns alone) would settle it.
+
+### 02:12 UTC: arm 2 end - the greedy line collapsed into the pit; the time penalty is the likely cause; arm 3
+
+* **r3b3_sgir 3.34-3.74B, 16 evals** (score.py): 28.846, 28.283, 28.784, 28.837, **29.823**, 28.798,
+  28.823, 28.799, 28.811, 28.792 (medians 28.2-28.6 until 3.41B, then 27.4), then 6 evals all 9/9 in
+  the CP2 pit (27.45-27.49) from 3,587M. Training ceiling 29,400 u (30.07%). Final ckpt
+  /home/steam/ar/runs/r3b3/r3b3_sgir/ckpt_final.pt (3,735,552,000, md5 8a883449...). The weights
+  behind the 29.823 eval (3,436M) were NOT kept (ckpt_latest moves on; --ckpt-every was 1e9):
+  arm 3 saves every 1e8.
+* Training curves: `dip/max_survived_depth` ~2.2 units (the corridor-east detour is a 2-unit dip)
+  until ~3.66B, then 0.46-0.9: the policy stopped flying the detour. The unstuck T decayed 1.94 ->
+  0.26 (3.63B) after the resume eval's +500 u best, then rose again; the eval MEDIAN fell into the
+  pit at ~3.44B (T ~1.0), the best episode at ~3.58B (T ~0.4). surf share 30% -> 23%, dive 70% -> 77%.
+* **The time-penalty arithmetic at this wall** (reward units: 1% of progress = 1, time penalty
+  0.005/tick = 0.5/s): the pit dive reaches 27.4% at 24.5 s and dies. The crossing reaches 27.4% only
+  at ~27.3 s (the detour is a slow dip: 2.8 s x 0.5 = -1.4), then +1.4 to the tunnel dive's end at
+  28.5 s (-0.6 time) -> net **-0.6 vs the pit dive**; crossing + the 29.8% zig-zag: about -0.1. So
+  with nothing learned beyond the tunnel, dying early in the pit pays at least as much as crossing:
+  the policy is indifferent-to-negative about the crossing, and the greedy line drifts between modes
+  (round 2's warm lineage, arm 1, arm 2 alike). The cavity (~3.5 s of dip) costs -1.75 the same way.
+  Ledger, cannonball from scratch: `--time-pen 0` had no suicide basin but less urgency (0.6x its
+  control); this is the warm regime at a slow detour, a different question.
+* **r3b3_tp0** (02:11): resume of r3b3_sgir/ckpt_final.pt (pit-locked) + `--time-pen 0 --surf-bonus 0
+  --critic-warmup 20 --ckpt-every 1e8` (everything else restored: greedy spawns 0.15,
+  int-real-only, band novel rows, ratchet, unstuck). `--surf-bonus 0` because the trainer refuses a
+  surf bonus >= the time penalty (farmable by parking on a ramp; the bonus paid ~0.08/s on
+  average). 400M steps. Discriminating: round 2's T / novel-share / restart tweaks never pulled a
+  pit-locked greedy line out in ~1.5B steps; if removing the per-second charge does, the charge is
+  the lock. Generic: no per-second penalty while nothing finishes (the discount sets the pace),
+  one constant for every map.
