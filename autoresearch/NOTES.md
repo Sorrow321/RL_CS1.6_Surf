@@ -1720,3 +1720,24 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
   0/16); a burst can release the keys or turn off a ramp, which round 3's block (an altitude
   problem) could not use. Pass criterion: the training ceiling past 61% (through the hole)
   within ~300M steps; else back to the c4 recipe.
+
+### 17:42 UTC: the bowl gate is a WINDOW in a divider (analysis); c5 null so far
+
+* r4b4_c5 (frontier ez bursts) 10.60-10.83B: evals 60.41-60.55 (best **60.548**, 10,775M) with
+  the usual wobbles (47.6, 49.2); training ceiling flat at 59,247 u (60.6%) for ~230M steps.
+  Bursts 1.3% of decisions, front > 58.1%; the greedy line no worse than c4's.
+* Energy is NOT the bowl's gate: the bowl states x1.25 / x1.5 -> 0/12 and 0/12 through the hole
+  (they reach further east, x -475 / -336, and stay in the bowl).
+* Geometry (hull traces): the bowl is two valleys split by a thin SLANTED divider (x ~-300 at
+  z 7,500 -> -500 at 7,100 -> -700 at 6,900 -> -900 at 6,700, gone by 6,550); the hole in kill
+  plate *53 is just east of its foot. A standing hull crosses the divider eastward only through
+  a WINDOW at y -50..+50, z ~7,340-7,380, x ~-300 (or under its foot, a ~180 u slot over the
+  kill plate). The visit grid of the 10.26B checkpoint: real episodes cover x -1,800..-520 at
+  every height; the east valley (x > -500) is entirely unvisited.
+* Bench (MEASUREMENT ONLY, demo states, never training): from the human's states at 70.3-71.4 s
+  (x -140..-487, east side and the window) the CURRENT policy dives through the hole 7/12 (to
+  62.3-62.65%, then dies on kill floor *31 at z 5,600); from x -487 (west of the window) 0/2.
+  The human goes through the window at 70.80 s, (-302, -13, 7,385), v (1,151, 359, -455), on a
+  path that is clear on our map (no blocked segment 69.5-72 s with the standing hull).
+* So the dive is learned; the gate is the window (CP4's kind: ~700M steps at it this round).
+  Field progress is flat across it (60.4-60.5%), so only exploration finds it.
