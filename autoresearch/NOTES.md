@@ -1210,3 +1210,21 @@ window, C = inside the cavity under the pit slab, T = tunnel lane, R = room; ana
   302M, 15.2% at 378M), window ~576M, CP2 wall 651M, pit crossing 1,633M; GR trap 529M, window 755M.
   First test 30 min. Question: does the reward fix hold from scratch (the early gates), and does it
   cross the CP2 pit sooner than ratnov?
+
+### 05:50 UTC: scratch test r3b1_scr - first-ramp trap exit by 453M; extended toward the CP2 pit
+
+* Best-episode progress per greedy eval (score.py frontier), against round 1's references (one seed each):
+
+  | step | r3b1_scr (ratnov + fail-pen 10, no surf bonus, T 0) | ratnov | novel only | GR |
+  |---|---|---|---|---|
+  | 76M | 1.8% | - | 4.4% | - |
+  | 151M | 2.5% | - | 4.6% | - |
+  | 227M | 4.1% | ~4.6% | 4.6% | - |
+  | 302M | 4.6% | 5.8% | 10.1% | 4.6% |
+  | 378M | 6.3% | **15.2%** | 15.8% | 4.6% |
+  | 453M | **15.4%** (out of the trap) | 20.8% | 17.6% | 4.6% |
+
+* Trap exit between 378M and 453M: ~75M behind ratnov, ahead of GR (529M); the reward fix does not break
+  the early gates. Training: ceiling 15,642 u at 494M, 210k steps/s (fewer, shorter evals than warm).
+* Extended (budget 1.5B already set) to ~1.4B: the recipe question is the CP2 pit, which ratnov crossed
+  only at 1,633M (the old reward made the detour barely worth it: -0.5 units vs the pit dive).
