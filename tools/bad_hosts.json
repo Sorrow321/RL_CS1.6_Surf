@@ -2680,6 +2680,15 @@
       "detail": "autoresearch r3b3: running but no ssh within 90 s",
       "run": "",
       "reason": "unreliable"
+    },
+    {
+      "ip": "5.14.168.11",
+      "machine_id": 150399,
+      "host_id": 679678,
+      "date": null,
+      "detail": "autoresearch r4b1: not running after 330 s (status loading, #7 8.627 Preparing to unpack .../02-rsync_3.2.7-0ubuntu0.22.04.7_amd64.deb ...\r\n#7 8.633 Unpacking rsync (3.2.7-0ubuntu0)",
+      "run": "",
+      "reason": "unreliable"
     }
   ],
   "known_good": [
