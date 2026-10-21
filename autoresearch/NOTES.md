@@ -1631,7 +1631,7 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
   the incumbent's own run had KL phases of 2-55. Cause not found; the estimator is
   mean(logp_old - logp_new) on the last minibatch.
 
-### 15:14 UTC: MILESTONE - 56.116, CP4 (c3, 9,544M); boosted-energy probes; c4 continues
+### 15:16 UTC: MILESTONE - 56.116, CP4 (c3, 9,544M); boosted-energy probes; c4 continues
 
 * r4b4_c3 9,443-9,544M: 47.17, 49.83, 54.59, 54.83, **56.116** (9,544M, CP4, median 54.6%):
   episode 8 goes through the CP4 window and reaches (-2,112, 441, 8,103) at 64.8 s (56.12%),
