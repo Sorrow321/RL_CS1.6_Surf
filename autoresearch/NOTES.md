@@ -1049,3 +1049,21 @@ The pit dive from the same point (dies at ~24.5 s at 27.4%, the r2b2_t1 evals af
 beats EVERY detour episode of the lineage's best eval, the 28.84% tunnel dive included (+1.28); with
 the time penalty off, 8 of 9 detours beat it and one ties. Discounting (the detour's gain comes 1-4 s
 later, x ~0.9) trims the time-pen-0 margin but keeps the median detour ahead (~2.1 vs ~1.8).
+
+### 02:45 UTC: still no box; the incumbent's start line, measured on the local CPU
+
+* Market: the only offers under the caps are two 3090s that are blocklisted from earlier rounds
+  (machines 151048, 137730). Two 3090 rentals of mine failed readiness (status None after 330 s:
+  56978826 on machine 148400, 56981325 on 153789).
+* **Harness issue:** box.py logged "blocklisting machine 148400 / 153789" but neither reached
+  tools/bad_hosts.json nor $AR_HOME/bad_hosts.json: `vast_pick.py --block <instance>` looks the
+  instance up in `vastai show instances`, an instance that never got a status is not listed, and the
+  error is swallowed (capture_output). So a host that never starts is not blocklisted and the next
+  rent can pick it again (5.5 min lost each time).
+* The incumbent checkpoint (7,176M) from the true start, `record_ckpt` on this machine's CPU
+  (32 s per episode, worktree maps are symlinks into the main checkout, no bake): greedy 1/1 and
+  plain-sampled (its own sigma: yaw 0.041 in z) **8/8 dive into the CP2 pit at 24.3-24.7 s,
+  27.0-27.5%**; not one takes the corridor-east detour. So the detour is not even sampled from the
+  start at T 0; arm 1 relies on the training noise (T 1: yaw sigma x2, keys logits / 2) and the
+  novel rows in the corridor to find it again. That is the arm's main risk: a better objective
+  cannot select a line that is never tried.
