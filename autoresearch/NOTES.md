@@ -1688,7 +1688,7 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
   69 s -> (-899, -658, 7,403) 70 s -> (-140, 146, 7,277) 71 s -> (-647, -125, 6,259) 72 s ->
   (-1,940, -242, 5,924) 73 s (62.7%) - flat in field progress for ~2 s (59.9-60.1%).
 
-### 16:35 UTC: c4 at the bowl (~60.5%): a 150 u hole in a kill floor (analysis only)
+### 16:29 UTC: c4 at the bowl (~60.5%): a 150 u hole in a kill floor (analysis only)
 
 * c4 evals 9.97-10.20B: 60.253, 60.392, 58.837, 54.545, 54.968, 57.673, 54.752, 54.951, 60.441,
   **60.480** (10,196M). Ceiling 59,247 u (60.6%) flat since ~9.85B; T back at the 0.25 cap
