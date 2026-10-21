@@ -1339,3 +1339,17 @@ window, C = inside the cavity under the pit slab, T = tunnel lane, R = room; ana
   --surf-bonus 0 --eval-stall 1 --respawn-novel --race-ratchet`. The warm lineage (the hand-on checkpoint)
   carries unstuck_max 0 in its config: a bare resume keeps T 0 (right for precision at known routes); pass
   `--unstuck-max 2` to a resume that sits at a NEW wall for a long time (it worked here).
+
+### 10:54 UTC: scratch at T 2 again degrades the greedy line; last test r3b1_scrC (consolidate at T 0)
+
+* r3b1_scrT 2.31-2.92B: after the crossing the eval frontier stayed 27.6-27.8k u (28.2-28.4%), no +500 u gain,
+  so the schedule took T back up to the cap (2.0 by ~2.9B); the greedy line then degraded (2,840M 27.9%,
+  2,916M 27.4%: back in the pit) while the training ceiling stayed at 29,082 u (29.75%). Round 2's T-2 drift
+  again: the schedule lowers T only on an EVAL gain, not when training episodes discover something.
+* **r3b1_scrC** (10:52): scrT's ckpt_latest (2,971,664,384, md5 454d881c..., T 2 at save) + `--unstuck-max 0`
+  (fail-pen 10, surf-bonus 0, eval-stall), evals every 25M, until the wrap-up. The full two-phase sequence
+  from scratch: T discovered the pit route and real episodes reach 29.75%; does T 0 under the fixed reward now
+  consolidate the greedy line through it (the warm arm needed ~150-380M steps)?
+* Idea for the next round (generic, untested): let the unstuck schedule also COOL when the training ceiling
+  (real episodes) leads the greedy eval frontier by more than eps - discovery has happened, consolidation is
+  what is missing - instead of heating further until the eval moves.
