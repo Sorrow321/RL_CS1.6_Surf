@@ -1382,3 +1382,9 @@ line (it killed my local shell twice).
 * After ~1.5B steps at the block, the gates past it fell in ~400M: the thin wall, the descending
   zig-zag, CP3. The field's route continues to ~46% at (5,232, -752, 8,520) in my steepest-descent
   trace.
+
+### 09:32 UTC: 42.6% - the greedy median follows
+
+* r3b3_gwx evals 7,444-7,645M: 39.439, **41.998**, **42.081**, 39.450, 39.453, 39.406, 39.434,
+  **42.613 (7,620M)**, **42.497 (7,645M, median 42.4%)**; all CP3. Training ceiling 41,961 u (42.9%);
+  reservoir min depth 57.23% (42.8% progress); T 0.04 (the eval bests keep halving it).
