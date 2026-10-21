@@ -1747,7 +1747,7 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
   Generic: one constant in seconds (the round-18 lesson: the margin, not the sampling rule, capped
   the reservoir); the caveat is the trivial-win harvest near a goal, which needs finishes.
 
-### 16:50 UTC: arm G (--respawn-margin 1) - NULL; main line back on the validated config (r4b3_main2)
+### 16:49 UTC: arm G (--respawn-margin 1) - NULL; main line back on the validated config (r4b3_main2)
 
 * **G = r4b3_m1** (10,296.0M -> 10,596.4M, 300M, 184k steps/s): every eval 60.54-60.57% again;
   reservoir min depth 39.428% (unchanged to the third decimal), ceiling 60,907 u (unchanged since
