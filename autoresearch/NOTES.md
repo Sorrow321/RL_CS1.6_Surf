@@ -1899,3 +1899,12 @@ own greedy-line pool (1,809 STATE_DTYPE rows, 59.7-60.6% progress, the 2 s befor
   back, only the greedy line. T at the 0.5 cap since the last +500 u eval gain (82,015 u, 12,689M).
   Branch best unchanged (84.244, 61 valid evals in this run). Same pattern as round 3's wobbles at
   the cap.
+
+### 21:30 UTC: r4b3_band15 end (13.68B) - 84.546; continuation r4b3_band15x (evals every 12.5M)
+
+* r4b3_band15 13,218-13,682M: evals back at 80.8-82.7k u after the wobble, **84.546 (13,645M, median
+  84.2%)**; 80 valid evals in the run (11,682-13,682M, 185k steps/s). ckpt_final (13,682,343,936, md5
+  d78738c7...) pulled by scp and md5-checked: the hand-on checkpoint if no later eval beats this one.
+* **r4b3_band15x** (21:28): bare resume of that final, `--record-every 12.5e6` (twice the evals: a fresher
+  greedy-line pool and more samples of the max, for ~15% of the steps), 1.35e9 steps (ends ~23:45,
+  before the 00:09 wrap-up).
