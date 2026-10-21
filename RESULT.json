@@ -2,6 +2,20 @@
  "agent": "r3b2",
  "round": 3,
  "final": false,
- "best": null,
- "summary": "Round 3 start (00:53 UTC). Hypothesis: the 0.5/s time penalty makes every dip detour (CP2 east detour, the cavity) worth less than the quick death it replaces, so the greedy line converges to the death (the incumbent's pit dive). First arm: warm resume of the incumbent with --time-pen 0 --surf-bonus 0 (pure ratchet progress + novelty), ~30 min, judged on whether the greedy line returns to the detour and then the cavity."
+ "best": {
+  "score": 28.361,
+  "eval_file": "/home/steam/ar/runs/r3b2/r3b2_tp0/traj_7277641728.jsonl",
+  "run": "r3b2_tp0",
+  "step": 7277641728,
+  "ckpt": "/home/steam/ar/runs/r3b2/r3b2_tp0/ckpt_latest.pt",
+  "recipe": [
+   "--time-pen",
+   "0",
+   "--surf-bonus",
+   "0"
+  ],
+  "resume_from": "incumbent ckpt (r2b2_t1 ckpt_latest, 7,176,454,144, md5 92b7ddd2), bare resume + the flags above",
+  "commit": "08b1be0"
+ },
+ "summary": "H1 confirmed: the 0.5/s time penalty made the CP2 pit dive worth ~1 unit more than the east detour (measured on the incumbent's own greedy episodes). Warm resume of the incumbent with --time-pen 0 --surf-bonus 0 (r3b2_tp0): greedy detour 0/9 at +25M -> 7/9 at +50M -> 9/9 at +100M, 8/9 into the shaft; one cavity entry at +75M. Best 28.361 so far (incumbent 28.841). Next: watch for the cavity loop; SIL scored at the sampling temperature (--sil-temper, new) as the consolidation lever."
 }

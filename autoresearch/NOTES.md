@@ -1017,3 +1017,32 @@ detour is worth +0.2..+1.2 more than the dive.
 
 `box.py rent` refused from 00:54 ("no offer passes (whitelist, caps, blocklist)"); a background loop
 retries every 3 min for up to 3 h (session scratchpad rent_loop.sh).
+
+### 01:06 UTC: box 56976711 (RTX 3090 + Threadripper PRO 5955WX, 32 thr, $0.187/h, Alabama); arm r3b2_tp0
+
+* Rented 01:02 by the retry loop; deployed ar/r3b2 @ 08b1be0 with the incumbent checkpoint
+  (r2b2_t1 ckpt_latest, 7,176,454,144, md5 92b7ddd2...). Watchdog deadline 03:02 UTC.
+* **r3b2_tp0** (01:05): WARM resume of the incumbent + `--time-pen 0 --surf-bonus 0`, everything else
+  restored (ratchet, novel band 0.05 / tries 64 / turn 90 / shell 0.9-0.05 / radius 256-3,072 / frac 0.5,
+  unstuck T cap 1 (at the cap: stuck 5.5B steps), int 0.25), 400M steps, evals every 25M. Measures AT
+  the wall: does the greedy line go back to the detour (classifier E) and on to the cavity (C/R/T/M)?
+  First step lines: rew 5 -> 8-14 per episode (no penalty), len ~790 decisions, T 1.00.
+
+### 01:20 UTC: r3b2_tp0 - the time penalty WAS the CP2 lock: the greedy line flips back in 50M steps
+
+Greedy evals (classifier: E detour, S slot, W shaft, C cavity; best/median %):
+
+| step | +M | score | median | routes (9 episodes) |
+|---|---|---|---|---|
+| 7,177M | 0 (the incumbent itself) | 27.493 | 27.46 | 9 pit dives at 24.4 s |
+| 7,202M | 25 | 27.405 | 27.25 | 6 pit dives, 3 earlier deaths |
+| 7,227M | 50 | 28.266 | 27.96 | **7 E**, 1 ESW |
+| 7,252M | 75 | 28.241 | 28.00 | 8 E, 3 ESW, **1 ESWC** (cavity entry) |
+| 7,277M | 100 | **28.361** | 28.25 | **9 E, 8 ESW** |
+
+* The incumbent lineage at matched steps (r2b2_t1f3, 7.18-7.95B, same checkpoint, time penalty on):
+  27.3-28.4 with the greedy line in the pit at almost every eval. Here the detour is back in 50M steps
+  and the shaft is reached by 8/9 at 100M. Training: reservoir min-depth 74.69% -> 71.79% (deeper
+  harvests), novel ceiling 29,027 -> 29,204 u (new training best, 29.87%), int 1.3 -> 1.9/ep.
+* One eval episode lived 255.7 s (26.4%): with no time penalty a greedy episode can loiter; evals never
+  stall-kill (CLAUDE.md), training does (15 s).
