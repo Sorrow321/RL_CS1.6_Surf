@@ -1556,3 +1556,9 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
   `--pitch-sigma-min 0.05` would sample; 8 episodes before a 20 min timeout): best 54.63%, median
   54.33%, 0/8 past 54.7%, 7/8 alive at the 15 s cap (vs 8/16). The camera jitter of the floor does
   not hurt the stochastic policy at the wall; it does not cross either.
+* And at the unstuck cap's temperature (`--exec-temp 1.5` = T 0.5, 12 episodes): best 54.68%,
+  median 54.30%, 0/12 past 54.7%, 0/12 west of x -1,100. So 0/36 crests from the policy's own
+  approach states at T 0.065-0.5, with either pitch sigma. Round 3's block gate had the same
+  signature (0/24 from the pre-block greedy states at T 1) and still fell to concentrated
+  greedy-line practice: ceiling past it ~230M steps after the pool started, greedy line ~550M -
+  the policy LEARNS at those states; sampling alone does not show the way.
