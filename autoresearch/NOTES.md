@@ -1758,3 +1758,12 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
   (taught by novel rows, ~3% of all episodes dive through as novel episodes, which never move
   the ceiling); (2) only then is the window crossing worth more than staying, and a chance
   crossing gets reinforced. Unboosted, T 1 and x1.25-1.5 probes from the bowl: 0 crossings.
+
+### 17:47 UTC: c5 end (11.0B); r4b4_c6 = bare resume, to wrap-up
+
+* r4b4_c5 (frontier ez bursts, 10.60-11.00B, 154k steps/s): best 60.548; training ceiling
+  59,247 -> 59,250 u (no crossing); greedy line unchanged (60.0-60.5 in good evals).
+* **r4b4_c6** (17:47): bare resume of c5's ckpt_final (10,998,513,664, md5 2e01350c...): ez
+  bursts 0.05 / front 0.04, T cap 0.25, eval-parallel, idle 60, greedy 0.3 / 0.25-2 s all
+  restored; budget 3.3e9 (to ~00:00). Box extended to 00:39 UTC. The window gate is left to the
+  machinery (novel rows already teach the east valley's dive; the crossing has to follow).
