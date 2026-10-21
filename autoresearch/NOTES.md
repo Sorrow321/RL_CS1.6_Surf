@@ -1388,3 +1388,12 @@ line (it killed my local shell twice).
 * r3b3_gwx evals 7,444-7,645M: 39.439, **41.998**, **42.081**, 39.450, 39.453, 39.406, 39.434,
   **42.613 (7,620M)**, **42.497 (7,645M, median 42.4%)**; all CP3. Training ceiling 41,961 u (42.9%);
   reservoir min depth 57.23% (42.8% progress); T 0.04 (the eval bests keep halving it).
+
+### 10:02 UTC: 42.804; the greedy line consistent to 42.6%
+
+* r3b3_gwx evals 7,670-7,872M: 42.640, 42.640, 42.580, 42.587, 42.630, 42.630, 42.654, 42.610,
+  **42.804 (7,871M)**; medians 42.5-42.6% in most evals. Training ceiling 46,048 u (47.1%); reservoir
+  min depth 55.64%; T 0.04 -> 0.39 (no +500 u eval best since ~7.62B).
+* Where the 7,871M episodes stop (all on the field route's descending eastward legs past CP3):
+  (-2,003, ~190, 9,763) at 42.6 s (34.4%), (2,269, -217, 8,505) at 47.7 s (39.4%), and the best at
+  (5,296, -560, 8,854) at 56.8 s (42.8%, the route point (5,296, -560, 8,904)); then a fall.

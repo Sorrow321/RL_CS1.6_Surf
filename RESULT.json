@@ -3,10 +3,10 @@
  "round": 3,
  "final": false,
  "best": {
-  "score": 42.613,
-  "eval_file": "/home/steam/ar/runs/r3b3/r3b3_gwx/traj_7620001792.jsonl",
+  "score": 42.804,
+  "eval_file": "/home/steam/ar/runs/r3b3/r3b3_gwx/traj_7871660032.jsonl",
   "run": "r3b3_gwx",
-  "step": 7620001792,
+  "step": 7871660032,
   "ckpt": "/home/steam/ar/runs/r3b3/r3b3_gwx/ckpt_latest.pt",
   "recipe": [
    "--respawn-greedy",
@@ -26,5 +26,5 @@
   "resume_from": "r2b2_sband2 (3,335,520,256) -> r3b3_sgir (+ --respawn-greedy 0.15 --int-real-only 1) -> r3b3_tp0 (+ --time-pen 0 --surf-bonus 0, critic warmup 20) -> r3b3_tp0x (bare) -> r3b3_t1 (from tp0x ckpt_4536139776, --unstuck-max 1) -> r3b3_ezf (from t1 ckpt_5036834816, + --ez-eps 0.05 --ez-front 0.04) -> r3b3_t05 (from ezf ckpt_5337251840, --unstuck-max 0.5, ez off) -> r3b3_t05x (bare, to 6,238M) -> r3b3_gw (from t05x ckpt_6237978624, --respawn-greedy 0.3 --respawn-greedy-window 0.25 2.0) -> r3b3_gwx (bare, from gw ckpt_final 6,638,010,368)",
   "commit": "c24b11b"
  },
- "summary": "Best 42.613 (r3b3_gwx eval 7,620M, CP3; evals 39.4-42.6 since 7.42B, a median of 42.4% at 7,645M): past CP2 the greedy line passes a kill-wrapped block and a thin wall and follows the field's descending zig-zag into CP3; training ceiling 42.5%. What did it: (1) --time-pen 0 --surf-bonus 0 (the 0.5/s time penalty priced the slow CP2 detour and the cavity dip below an early death; removing it freed a pit-locked checkpoint: 28.2 -> 30.35 -> 32.5); (2) T cap 0.5 (the line breaks at T > 1.5; at T 1 the stochastic policy cannot reach the block); (3) concentrated greedy-line spawns (--respawn-greedy 0.3 --respawn-greedy-window 0.25 2.0: the policy's own greedy states 2..0.25 s before each greedy death) on top of the round-2 band novel rows + ratchet + --int-real-only."
+ "summary": "Best 42.804 (r3b3_gwx eval 7,871M, CP3; evals 42.6-42.8 since 7.62B with medians 42.5-42.6%; training ceiling 47.1%): past CP2 the greedy line passes a kill-wrapped block and a thin wall and follows the field's descending zig-zag into CP3; training ceiling 42.5%. What did it: (1) --time-pen 0 --surf-bonus 0 (the 0.5/s time penalty priced the slow CP2 detour and the cavity dip below an early death; removing it freed a pit-locked checkpoint: 28.2 -> 30.35 -> 32.5); (2) T cap 0.5 (the line breaks at T > 1.5; at T 1 the stochastic policy cannot reach the block); (3) concentrated greedy-line spawns (--respawn-greedy 0.3 --respawn-greedy-window 0.25 2.0: the policy's own greedy states 2..0.25 s before each greedy death) on top of the round-2 band novel rows + ratchet + --int-real-only."
 }
