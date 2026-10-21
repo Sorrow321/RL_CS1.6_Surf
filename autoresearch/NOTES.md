@@ -1648,7 +1648,7 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
   (reservoir rows) or a velocity boost on the greedy-line rows would put the critic where a
   fast arrival pays. Not run: the line passed CP4 on its own.
 
-### 15:20 UTC: 57.721 (c4, 9,592M) - past CP4 into the 64-66 s dip
+### 15:19 UTC: 57.721 (c4, 9,592M) - past CP4 into the 64-66 s dip
 
 * r4b4_c4 (bare resume of c3's 9,566M snapshot) evals: 54.891 (the snapshot), **57.721**
   (9,592M, CP4): ep 3 goes through the window, west over kill *95, drops and turns back EAST
