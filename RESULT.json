@@ -3,10 +3,10 @@
  "round": 3,
  "final": false,
  "best": {
-  "score": 36.046,
-  "eval_file": "/home/steam/ar/runs/r3b2/r3b2_sfull/traj_1837629440.jsonl",
+  "score": 42.516,
+  "eval_file": "/home/steam/ar/runs/r3b2/r3b2_sfull/traj_2064121856.jsonl",
   "run": "r3b2_sfull",
-  "step": 1837629440,
+  "step": 2064121856,
   "ckpt": "/home/steam/ar/runs/r3b2/r3b2_sfull/ckpt_latest.pt",
   "recipe": [
    "config.json incumbent_recipe (now: ... --surf-bonus 0 ... --respawn-novel --race-ratchet --time-pen 0 --greedy-tail-frac 0.15 --respawn-min-speed 300 --int-move-gate)"
@@ -14,5 +14,5 @@
   "resume_from": null,
   "commit": "82dda58"
  },
- "summary": "FROM SCRATCH, the round's recipe (ratchet + novel spawns + --time-pen 0 --surf-bonus 0 + greedy-tail spawns --greedy-tail-frac 0.15 (new) + --respawn-min-speed 300 + --int-move-gate) passes every gate of this lineage and one more: trap 200M, window 453M, CP2 wall 479M, CP2 pit 982M (round 1: 1,633M), the cavity loop 1.26B, the wall after CP2 at ~1.59B, best 36.046 at 1.84B (incumbent 28.841). Warm from the incumbent the same mechanisms gave 32.839 and stopped at that wall. H1: the 0.5/s time penalty made every dip detour worth less than the quick death it replaces. --speed-pot 2 was negative."
+ "summary": "FROM SCRATCH, the round's recipe (ratchet + novel spawns + --time-pen 0 --surf-bonus 0 + greedy-tail spawns --greedy-tail-frac 0.15 (new) + --respawn-min-speed 300 + --int-move-gate) passes every gate of this lineage and more: trap 200M, window 453M, CP2 wall 479M, CP2 pit 982M (round 1: 1,633M), the cavity loop 1.26B, past the wall after CP2 1.59B, CP3 1.91B, best 42.516 at 2.06B (median 42.4; incumbent 28.841). Warm from the incumbent the same mechanisms gave 32.839 and stopped at the wall after CP2. H1: the 0.5/s time penalty made every dip detour worth less than the quick death it replaces. --speed-pot 2 was negative."
 }

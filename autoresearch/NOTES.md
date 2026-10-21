@@ -1450,3 +1450,18 @@ cavity (entry speed, ramp vz) and complete the loop? 30 min first.
   there) did not find it.
 * Training ceiling 36,622 u (37.5%); T 0.01 (it cools on each new best). The best eval's run is now
   r3b2_sfull: its newest checkpoint is the hand-on candidate (pulled at wrap-up).
+
+### 10:51 UTC: r3b2_sfull at 2.11B - CP3 at 1.91B, **42.516** at 2.06B (median 42.4)
+
+| step | score | median | CP |
+|---|---|---|---|
+| 1,863M | 36.382 | 36.13 | 2 |
+| 1,913M | 37.124 | 36.89 | **3** |
+| 1,989M | 39.124 | 37.90 | 3 |
+| 2,014M | 39.408 | 32.32 | 3 |
+| 2,064M | **42.516** | **42.44** | 3 |
+| 2,089M | 42.492 | 42.41 | 3 |
+
+* Two greedy evals in a row with the median at 42.4%: nearly every episode now flies to ~42.5%. Training
+  ceiling 41,809 u (42.8%), reservoir min-depth 57.5%, T 0.00 (it cools on every new best and has not had
+  200M steps of plateau since ~1.6B).
