@@ -6695,6 +6695,12 @@ def main() -> None:
                          "priority proportional to (R - V)_+")
     ap.add_argument("--sil-ent", type=float, default=None,        # 0
                     help="--sil-coef: entropy coefficient inside the SIL term")
+    ap.add_argument("--sil-tempered", type=int, default=None, choices=(0, 1),
+                    help="--sil-coef under --unstuck: 1 = score the buffer's actions under the "
+                         "CURRENT sampling temperature (sigma x (1+T), logits / (1+T)) - the "
+                         "distribution they were drawn from, exact for this iteration's rows - "
+                         "so imitating tempered samples moves the mean without inflating sigma "
+                         "or flattening the keys. 0 = the shipped untempered score (default)")
     # --- --crl: single-goal contrastive RL (surfgym/crl.py) -----------------
     # CPPO (arXiv 2605.13554) on SGCRL (2408.05804) / CRL (2206.07568): the
     # advantage is Q(s,a,g*) - E_pi Q(s,.,g*) from a contrastive critic, g*
@@ -7126,7 +7132,7 @@ def main() -> None:
             args.tail_weight = float(ck_cfg["tail_weight"])
             restored.append(f"tail_weight={args.tail_weight:g}")
         for _k, _cast in (("sil_coef", float), ("sil_buffer", int), ("sil_batches", int),
-                          ("sil_batch_size", int), ("sil_ent", float)):
+                          ("sil_batch_size", int), ("sil_ent", float), ("sil_tempered", int)):
             if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
                 setattr(args, _k, _cast(ck_cfg[_k]))
                 restored.append(f"{_k}={ck_cfg[_k]}")
@@ -13417,6 +13423,8 @@ def main() -> None:
             "sil_batches": int(args.sil_batches if args.sil_batches is not None else 4),
             "sil_batch_size": int(args.sil_batch_size if args.sil_batch_size is not None else 512),
             "sil_ent": float(args.sil_ent if args.sil_ent is not None else 0.0)})
+        if int(args.sil_tempered or 0):
+            meta["config"]["sil_tempered"] = 1
     if YCOND:
         meta["config"]["yaw_cond"] = 1
         print(f"--yaw-cond: side-key head conditioned on the sampled yaw "
@@ -14389,6 +14397,7 @@ def main() -> None:
     SIL_BATCHES = int(args.sil_batches if args.sil_batches is not None else 4)
     SIL_BS = int(args.sil_batch_size if args.sil_batch_size is not None else 512)
     SIL_ENT = float(args.sil_ent if args.sil_ent is not None else 0.0)
+    SIL_TEMPERED = bool(int(args.sil_tempered or 0))
     tail_eps: list[tuple] = []
     tail_seg = np.zeros(N, np.int64)
     #   tail_bin   the goal-distance bin each env's CURRENT episode spawned
@@ -15646,27 +15655,39 @@ def main() -> None:
                                  "none of those change it")
         if SIL_BS <= 0 or SIL_BATCHES <= 0 or SIL_CAP <= 0:
             raise SystemExit("--sil-batch-size, --sil-batches and --sil-buffer must be > 0")
+        if SIL_TEMPERED and CC_TEMP:
+            raise SystemExit("--sil-tempered with --cc-temp-scale: the keys temperature is per "
+                             "env there and the SIL buffer does not keep it")
         SIL = SILBuffer(SIL_CAP, device, b_img.dtype, SCAL, FRAME, NACT, nz=NZ, priv=PRIV,
                         seed=int(args.seed) + 4242)
+        if SIL_TEMPERED:
+            print("--sil-tempered: buffer rows are scored under the CURRENT sampling "
+                  "temperature (sigma x (1+T), logits / (1+T))"
+                  + ("" if UNSTUCK_TEMP else "; no --unstuck temperature here, so this is "
+                     "the untempered score"))
         print(f"--sil-coef {SIL_COEF:g}: buffer {SIL_CAP:,} rows, {SIL_BATCHES} x {SIL_BS} "
               f"rows per epoch, entropy {SIL_ENT:g}; rows kept when R > V(s), sampled in "
               f"proportion to (R - V)_+, V refreshed on sampling (docs/sil.md)")
 
-        def sil_step(s_scal, s_img, s_act, s_ret, s_z=None, s_priv=None):
+        def sil_step(s_scal, s_img, s_act, s_ret, s_z=None, s_priv=None,
+                     s_temp=None, s_tempv=None):
             """Oh et al.'s loss on a buffer minibatch, scored through the same
-            padded / view log-prob helpers as mb_step, untempered (no ratio)."""
+            padded / view log-prob helpers as mb_step, untempered (no ratio)
+            unless --sil-tempered hands the sampling temperatures in."""
             with amp:
                 logits, value = policy.forward_split(s_scal, s_img, priv=s_priv)
                 if VIEWC:
                     cat, mu = split_view(logits.float())
                     padded = packer.pad(cat)
                     logp, ent = logprob_entropy_view(padded, s_act, mu, policy.log_std(),
-                                                     s_z, PITCH_ENT, None, None)
+                                                     s_z, PITCH_ENT, s_temp, s_tempv)
                 else:
                     padded = packer.pad(logits.float())
-                    logp, ent = logprob_entropy_padded(padded, s_act)
+                    logp, ent = logprob_entropy_padded(padded, s_act, s_temp)
                 value = value.float()
             return sil_loss_terms(logp, ent, value, s_ret, SIL_ENT)
+    elif SIL_TEMPERED:
+        raise SystemExit("--sil-tempered needs --sil-coef > 0")
     sil_loss_t = None
 
     def mb_step(f_scal, f_img, f_act, f_logp, f_adv, f_ret, idx, ent_coef,
@@ -18250,7 +18271,8 @@ def main() -> None:
                     _sl, _sraw = sil_step(SIL.scal[_si], SIL.img[_si], SIL.act[_si],
                                           SIL.ret[_si],
                                           None if SIL.z is None else SIL.z[_si],
-                                          None if SIL.priv is None else SIL.priv[_si])
+                                          None if SIL.priv is None else SIL.priv[_si],
+                                          *((temp_t, tempv_t) if SIL_TEMPERED else ()))
                     SIL.refresh(_si, _sraw)
                     loss = loss + SIL_COEF * _sl
                     sil_loss_t = _sl.detach()
