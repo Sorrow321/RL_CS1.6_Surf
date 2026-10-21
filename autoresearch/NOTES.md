@@ -1023,3 +1023,30 @@ line (it killed my local shell twice).
   (best 27.24-27.39%, all fail). So before any training the crossing is not reachable by
   sampling noise from the greedy line itself; the 7,227M flip came from the policy changing at
   those states within ~50M steps.
+
+### 01:40 UTC: r3b3_g15 stopped (null at the pit); arm 2 r3b3_sgir on the scratch band checkpoint
+
+* **r3b3_g15** (incumbent ckpt + `--respawn-greedy 0.15`, 7,176M -> 7,353M, 8 evals): 27.495,
+  27.344, **28.380** (7,227M, 8/9 past the pit), 27.414, 27.435, 27.461, 27.411, 27.466 (all 9 in
+  the pit at 24.2-24.6 s). The one crossing did not repeat in 125M steps -> stopped. Reading, with
+  the probe above: from the greedy line's own pre-death states the policy's sampling (T 1) never
+  produces the east turn (0/30), so practising exactly there has no successes to learn from; the
+  pit-locked greedy line is a basin, not an under-trained state. Greedy-line spawns need a
+  frontier where the stochastic policy sometimes succeeds from the greedy states.
+* NEW `--int-real-only 1` (commit 21f9053): the count-based novelty bonus counted EVERY env, so
+  the cavity's novelty (85% of banded novel rows land there) was used up by novel-row episodes
+  and a real episode finding the way in from the main line earned almost nothing. With the flag
+  RaceReward reads the novel sampler's per-env tag as `int_skip`: novel-row episodes are neither
+  paid nor counted (entry and dwell). The novel sampler's own rule for its visit grid. 7 tests.
+* **r3b3_sgir** (01:37): warm resume of **r2b2_sband2/ckpt_final.pt** (round 2's from-scratch
+  band lineage, 3,335,520,256, md5 36256794...; T cap 2, band rows etc. restored) +
+  `--respawn-greedy 0.15 --int-real-only 1`, 400M steps, evals every 25M. Why this checkpoint
+  (the lineage file r2b2's RESULT.json names as the healthier warm start): its greedy line crosses
+  the pit and dives the tunnel, so the greedy-line pool sits at the window / tunnel and the
+  novelty pull is tested at the cavity. Control = round 2's r2b2_sband3 (bare resume of the same
+  file, ~0.8B steps): best 28.753 (its resume eval), then 28.2-28.58 and pit drifts; training
+  ceiling 28.78%.
+* Its first eval (the checkpoint itself, 3,336M): **28.846** (best 28.85%, median 28.4%; 7/9 die
+  at the window / tunnel at 28.5-29.1 s, the best at the -y tunnel's far west end (1,966, -893,
+  10,985), the field route's physical limit). +0.005 over the incumbent: eval noise, not
+  progress, but it is this branch's best eval for now.

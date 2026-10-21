@@ -3,14 +3,19 @@
  "round": 3,
  "final": false,
  "best": {
-  "score": null,
-  "eval_file": null,
-  "run": null,
-  "step": null,
-  "ckpt": null,
-  "recipe": [],
-  "resume_from": null,
-  "commit": "5baf825"
+  "score": 28.846,
+  "eval_file": "/home/steam/ar/runs/r3b3/r3b3_sgir/traj_3336044544.jsonl",
+  "run": "r3b3_sgir",
+  "step": 3336044544,
+  "ckpt": "/home/steam/ar/runs/r3b3/r3b3_sgir/ckpt_latest.pt",
+  "recipe": [
+   "--respawn-greedy",
+   "0.15",
+   "--int-real-only",
+   "1"
+  ],
+  "resume_from": "r2b2_sband2/ckpt_final.pt (round 2's from-scratch band lineage, 3,335,520,256, md5 36256794...; recipe ratchet + novel + band 0.05 / turn 90 / shell 0.9 / width 0.05 / radius 256-3072 / tries 64, T cap 2)",
+  "commit": "21f9053"
  },
- "summary": "No eval yet. Built --respawn-greedy F (commit 5baf825): a share of the training spawn pool drawn from the policy's OWN greedy-eval states 0.5-5 s before each death, rebuilt at every eval (DAgger on the deployed line; round 2's greedy line sat in the CP2 pit while the stochastic policy crossed). First arm: warm resume of the incumbent (7.176B) + --respawn-greedy 0.15, 30 min, once a box is under the price caps (none at 00:48-01:05 UTC)."
+ "summary": "Best 28.846 is the resume eval of r2b2_sband2's checkpoint itself (tunnel dive to its far west end, the field route's physical limit; +0.005 over the incumbent = eval noise, not progress). New: --respawn-greedy F (spawns on the policy's own greedy-eval line 0.5-5 s before each death; on the incumbent ckpt it flipped the greedy line across the CP2 pit once in 8 evals, no consolidation: 28.380 best) and --int-real-only (novel-row episodes neither pay nor count the novelty bonus, so the cavity stays novel for real episodes). Arm 2 (sband2 + both) running."
 }
