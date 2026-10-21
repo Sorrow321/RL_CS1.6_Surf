@@ -1397,3 +1397,14 @@ line (it killed my local shell twice).
 * Where the 7,871M episodes stop (all on the field route's descending eastward legs past CP3):
   (-2,003, ~190, 9,763) at 42.6 s (34.4%), (2,269, -217, 8,505) at 47.7 s (39.4%), and the best at
   (5,296, -560, 8,854) at 56.8 s (42.8%, the route point (5,296, -560, 8,904)); then a fall.
+
+### 10:32 UTC: 47.906 - median 47.7%; last continuation r3b3_gwx2
+
+* r3b3_gwx 7,897-8,123M: 42.672, **47.534 (7,922M)**, 46.808, 46.515, 46.895, 47.005, 32.109 (one
+  CP2 wobble), 47.649, 47.888, **47.906 (8,123M, median 47.7%)**; all CP3. Training ceiling 46,934 u
+  (48.0%); reservoir min depth 54.46%. r3b3_gwx ended at 8,138,522,624 (avg 151k steps/s); its
+  ckpt_final (md5 0798b81f...) is pulled to /home/steam/ar/runs/r3b3/r3b3_gwx/ckpt_final.pt.
+* So from 32.8% (6.6B) the concentrated greedy-line recipe went 35.4 (7.02B), 39.4 (7.37B), 42.6
+  (7.62B), 47.5 (7.92B): one gate per ~150-300M steps once the block fell.
+* **r3b3_gwx2** (10:31): bare resume of that final, +7e8 steps (sized to end before the 11:58
+  wrap-up), evals every 25M.

@@ -3,11 +3,11 @@
  "round": 3,
  "final": false,
  "best": {
-  "score": 42.804,
-  "eval_file": "/home/steam/ar/runs/r3b3/r3b3_gwx/traj_7871660032.jsonl",
+  "score": 47.906,
+  "eval_file": "/home/steam/ar/runs/r3b3/r3b3_gwx/traj_8123318272.jsonl",
   "run": "r3b3_gwx",
-  "step": 7871660032,
-  "ckpt": "/home/steam/ar/runs/r3b3/r3b3_gwx/ckpt_latest.pt",
+  "step": 8123318272,
+  "ckpt": "/home/steam/ar/runs/r3b3/r3b3_gwx/ckpt_final.pt",
   "recipe": [
    "--respawn-greedy",
    "0.3",
@@ -24,7 +24,8 @@
    "0.5"
   ],
   "resume_from": "r2b2_sband2 (3,335,520,256) -> r3b3_sgir (+ --respawn-greedy 0.15 --int-real-only 1) -> r3b3_tp0 (+ --time-pen 0 --surf-bonus 0, critic warmup 20) -> r3b3_tp0x (bare) -> r3b3_t1 (from tp0x ckpt_4536139776, --unstuck-max 1) -> r3b3_ezf (from t1 ckpt_5036834816, + --ez-eps 0.05 --ez-front 0.04) -> r3b3_t05 (from ezf ckpt_5337251840, --unstuck-max 0.5, ez off) -> r3b3_t05x (bare, to 6,238M) -> r3b3_gw (from t05x ckpt_6237978624, --respawn-greedy 0.3 --respawn-greedy-window 0.25 2.0) -> r3b3_gwx (bare, from gw ckpt_final 6,638,010,368)",
-  "commit": "c24b11b"
+  "commit": "c24b11b",
+  "note": "ckpt_final.pt = r3b3_gwx's end, step 8,138,522,624, md5 0798b81f012b257ad621baaeb3e789be (15M steps after the best eval), pulled."
  },
- "summary": "Best 42.804 (r3b3_gwx eval 7,871M, CP3; evals 42.6-42.8 since 7.62B with medians 42.5-42.6%; training ceiling 47.1%): past CP2 the greedy line passes a kill-wrapped block and a thin wall and follows the field's descending zig-zag into CP3; training ceiling 42.5%. What did it: (1) --time-pen 0 --surf-bonus 0 (the 0.5/s time penalty priced the slow CP2 detour and the cavity dip below an early death; removing it freed a pit-locked checkpoint: 28.2 -> 30.35 -> 32.5); (2) T cap 0.5 (the line breaks at T > 1.5; at T 1 the stochastic policy cannot reach the block); (3) concentrated greedy-line spawns (--respawn-greedy 0.3 --respawn-greedy-window 0.25 2.0: the policy's own greedy states 2..0.25 s before each greedy death) on top of the round-2 band novel rows + ratchet + --int-real-only."
+ "summary": "Best 47.906 (r3b3_gwx eval 8,123M, CP3, median 47.7%; incumbent 28.841): the greedy line flies the human's whole CP2 sequence, a kill-wrapped block and a thin wall past CP2, CP3 and the descending legs beyond. What did it, on r2b2's scratch band lineage: (1) --time-pen 0 --surf-bonus 0 (the 0.5/s time penalty priced the slow CP2 detour and the cavity dip below an early death; removing it freed a pit-locked checkpoint within 25M steps: 28.2 -> 30.35 -> 32.5); (2) the unstuck T capped at 0.5 (the line breaks at T > 1.5, and at T 1 the stochastic policy cannot even reach the block); (3) greedy-line spawns concentrated near the greedy line's deaths (--respawn-greedy 0.3 --respawn-greedy-window 0.25 2.0): the block fell after ~550M steps, then 32.8 -> 47.9 in ~1.5B. Plus --int-real-only. New code: --respawn-greedy (+window), --int-real-only, --sil-tempered, --sil-top (SIL untested on the box)."
 }
