@@ -1573,3 +1573,17 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
   `--eval-parallel 1 --unstuck-max 0.25 --ckpt-every 1e8`, evals every 25M, budget 3e9. A
   matched comparison with c1 (same start): eval-parallel changes no training dynamics, so the
   difference is the T cap (0.5 -> 0.25) and the ~1.7x wall-clock rate. Code 888db88.
+
+### 13:56 UTC: --eval-parallel measured on the box
+
+* Eval iterations (wall s, from progress.csv): c1 (sequential) 45-279 s, typically 90-175 s;
+  c2 (parallel) 39-41 s - now the LONGEST episode (a 300 s trunc = 30,000 ticks at ~1.3 ms per
+  9-env tick, mostly the per-decision GPU latency) instead of the sum. Eval share of wall clock
+  52% -> ~24% at steady state; overall rate 98k -> ~150k steps/s on this 3090 (training itself
+  201k/s in both). c2 evals so far: 50.962 (the checkpoint itself), 54.277, 54.333, 54.552
+  (median 50.8%); T 0.04.
+* What is left of the eval cost is episodes that STOP and live to the 300 s cap. An idle cap
+  (end an eval episode as "trunc" after ~60 s without a new best) would cut it to ~10% more;
+  not built yet.
+* tests/python/test_eval_parallel.py: all 8 pass on CPU (the flag-off identity run took 18 min
+  on the loaded host).
