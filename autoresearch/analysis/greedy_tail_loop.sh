@@ -28,7 +28,7 @@ while [ "$(date +%s)" -lt "$end" ]; do
     seed=$(( $(date +%s) % 100000 ))
     if nice -n 15 timeout 900 python tools/record_ckpt.py "$W/snap.pt" --episodes 9 --seed $seed \
          --ep-ticks 6000 --dump-states "$W/g.npz" --out "$W/g.jsonl" > "$W/rec.log" 2>&1 \
-       && python tools/greedy_tail_states.py "$W/g.npz" "$W/g.jsonl" "$W/tail.npy" --secs 3 --every 5 | tail -1; then
+       && python tools/greedy_tail_states.py "$W/g.npz" "$W/g.jsonl" "$W/tail.npy" --secs 3 --every 5 --min-speed ${GT_MIN_SPEED:-300} | tail -1; then
       scp -q -o BatchMode=yes -o StrictHostKeyChecking=no -P $PORT "$W/tail.npy" root@$HOST:/root/RL_Surf/$TARGET.new \
         && $SSH "cd /root/RL_Surf && mv $TARGET.new $TARGET && ls -la $TARGET" 2>/dev/null | grep -v Welcome
       python autoresearch/analysis/sid_eval_route.py "$W/g.jsonl" 2>/dev/null | cut -c1-240

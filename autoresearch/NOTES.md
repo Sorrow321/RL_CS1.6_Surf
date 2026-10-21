@@ -1174,3 +1174,26 @@ cavity (entry speed, ramp vz) and complete the loop? 30 min first.
   re-reads on mtime). Why: the reservoir holds only ~0.9% of its states past 26.5%, so the entry
   maneuver is practised by the 10% start episodes and little else; this puts ~13% of all episodes at the
   deployed policy's own failure point. Generic: no map quantity (a tail length, a share, a cadence).
+
+### 03:25 UTC: r3b2_gt - greedy-tail spawns move the greedy line INTO the cavity at speed (7/9), 220 u short
+
+* gt (7,740-7,972M, 230M steps), evals: 28.26, 28.355, 28.273, 28.456, 28.221, 28.185, 27.945,
+  **28.762** (7,917M: a 28.76% tunnel dive), then 7,942M **6/9 ESWC** (one rising) and 7,967M **7/9
+  ESWC**: the most cavity entries of any greedy eval so far (tp0x 2-5, sp2 0-1).
+* Those entries are the human's entry at nearly the human's speed, with NO speed term: through the
+  lower opening at |v_xy| 1,530-1,660 (human 1,718; tp0 ~1,000), under the shaft floor at 1,150-1,540,
+  onto the ramp's SOUTH end (x 1,940-2,220, y ~ -720, z 9,750-10,070), rising at vz +485..+977; their
+  highest point after the ramp is z 9,963-10,547 against the lower opening's ~10,770: the best (7,967M
+  ep 4, vz +977, z 10,547) is ~220 u short. Episodes live 31-35 s (3-6 s in the cavity). The last
+  missing piece is the turn-up strength (~+1,150 needed; the human +1,190, sweeping the ramp's middle
+  from y +484 to -490 where these hit its south end).
+* Side effect found and fixed: training crawl share (episodes with mean |v_xy| < 300) 9% -> 25%. Not the
+  tail spawns themselves (a local bench of 24 from the file: 1 crawl, lives 0.3-2.8 s) but what they
+  feed the reservoir: states past 26.5% progress 179 -> 1,696 (good) of which 31% slow (bad) - agents
+  hovering in the lower opening (393 states, x ~2,600, z ~10,810) and on the cavity platform (137),
+  harvested again and again until the 15 s stall kill and respawned from. 94% of them are < 300 u/s in
+  3-D too, so the existing `--respawn-min-speed` (its help: "the deep bins fill with stalled arrivals
+  otherwise") catches them.
+* **r3b2_gt2** (03:16): gt's 7,971,799,040 checkpoint (md5 e20344d1...) + the same greedy-tail spawns +
+  `--respawn-min-speed 300`; the tail file also drops < 300 u/s states (tools/greedy_tail_states.py
+  --min-speed, the same rule); refresh loop restarted for gt2.

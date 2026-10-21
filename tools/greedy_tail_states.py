@@ -45,7 +45,7 @@ def episode_ends(jsonl: Path) -> list[dict]:
 
 
 def cut_tails(dump: dict, ends: list[dict], secs: float, skip: float, every: int,
-              max_secs: float) -> tuple[np.ndarray, list[str]]:
+              max_secs: float, min_speed: float = 0.0) -> tuple[np.ndarray, list[str]]:
     rows, notes = [], []
     for i, tr in enumerate(ends):
         key = f"ep_{i:04d}"
@@ -69,8 +69,13 @@ def cut_tails(dump: dict, ends: list[dict], secs: float, skip: float, every: int
         if hi <= lo:
             notes.append(f"{key}: too short")
             continue
-        rows.append(st[lo:hi:every])
-        notes.append(f"{key}: {n / hz:.2f} s, kept ticks {lo}..{hi} every {every}")
+        keep = st[lo:hi:every]
+        if min_speed > 0.0:
+            # the reservoir's --respawn-min-speed rule: a stalled state seeds stalled spawns
+            v = keep["velocity"].astype(np.float64)
+            keep = keep[np.sqrt((v * v).sum(1)) >= min_speed]
+        rows.append(keep)
+        notes.append(f"{key}: {n / hz:.2f} s, kept ticks {lo}..{hi} every {every} ({len(keep)} rows)")
     if not rows:
         return np.empty(0), notes
     return np.concatenate(rows), notes
@@ -86,13 +91,16 @@ def main(argv=None):
     ap.add_argument("--every", type=int, default=5, help="keep every k-th tick")
     ap.add_argument("--max-secs", type=float, default=120.0,
                     help="skip episodes longer than this (a loiter's end is not a failure point)")
+    ap.add_argument("--min-speed", type=float, default=0.0,
+                    help="drop states slower than this (u/s, 3-D |v|, the reservoir's "
+                         "--respawn-min-speed rule); 0 = keep all")
     ap.add_argument("--min-rows", type=int, default=50,
                     help="refuse to write fewer rows (keeps the previous file in place)")
     a = ap.parse_args(argv)
     from surfgym.core import STATE_DTYPE
     dump = dict(np.load(a.dump, allow_pickle=False))
     ends = episode_ends(Path(a.jsonl))
-    rows, notes = cut_tails(dump, ends, a.secs, a.skip, a.every, a.max_secs)
+    rows, notes = cut_tails(dump, ends, a.secs, a.skip, a.every, a.max_secs, a.min_speed)
     for s in notes:
         print("  " + s)
     if len(rows) < a.min_rows:
