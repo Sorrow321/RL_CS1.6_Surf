@@ -1826,3 +1826,13 @@ own greedy-line pool (1,809 STATE_DTYPE rows, 59.7-60.6% progress, the 2 s befor
   (4% of episodes: the band moved past the cells the sampler had). Greedy evals still 60.55-60.57%
   (19 evals to 11,417M) - the line has not followed yet. Gates of this lineage went ceiling first,
   greedy line 100-550M steps later.
+
+### 18:05 UTC: CORRECTION to the 17:37 entry (attribution)
+
+* r4b3_stuck's own progress.csv starts at ceiling 62,068 u (its first row, +0.5M): the move
+  61,025 -> 62,068 happened in r4b3_main2's last ~90M steps (10,772-10,863M, before
+  --respawn-greedy-stuck), not under the stuck pool as written at 17:37. Under the stuck pool the
+  ceiling sat at 62,068 until +549.5M, then 63,629 and 68,703 within half a million steps (the
+  breakthrough), with the reservoir's deepest state 60.6% -> 68.6% at the same time. ~1.6B steps at
+  this gate in all (9.74B -> 11.41B: kst5x, F, G, main2, stuck); whether the stalled-stretch pool
+  caused it is NOT shown (one seed, no control over the same steps).
