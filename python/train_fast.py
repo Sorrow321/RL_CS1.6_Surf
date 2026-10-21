@@ -2105,6 +2105,17 @@ def logprob_entropy_view(padded, actions, mu, log_std, z,
                                            actions[:, N_VIEW:], temp)
     ls = _temper_log_std(log_std, temp if temp_view is None else temp_view)
     logp = logp_c + gauss_logp(z, mu, ls)
+    if ls.dim() > 1:
+        # --front-temp: one view temperature PER ROW ((B, n_z) log sigma), so the Gaussian
+        # entropy is per row too, the pitch head being the LAST column (with one temperature
+        # for every row - the branches below - ls is (n_z,) and this is never reached)
+        h = 0.5 + 0.5 * LOG2PI + ls
+        if pitch_ent == 1.0:
+            return logp, ent_c + h.sum(-1)
+        ent = ent_c + h[..., :-1].sum(-1)
+        if pitch_ent != 0.0:
+            ent = ent + float(pitch_ent) * h[..., -1]
+        return logp, ent
     if pitch_ent == 1.0:
         return logp, ent_c + gauss_entropy(ls)
     ent = ent_c + gauss_entropy(ls[:-1])
@@ -6228,6 +6239,19 @@ def main() -> None:
                          "checkpoint (docs/unstuck.md): pitch tempering is a "
                          "free no-op, yaw tempering is the fragile part and "
                          "keys buys the most diversity per progress lost.")
+    ap.add_argument("--front-temp", type=float, default=None,      # 0 = off
+                    help="T_F > 0: a PER-ENV sampling temperature. An env whose progress "
+                         "(start geodesic - d) is inside the frontier band (--front-band) "
+                         "samples EVERY head at 1 + T_F (sigma x, logits /); every other env "
+                         "keeps the global temperature (the --unstuck schedule on its "
+                         "--unstuck-temp-heads, or none). PPO scores each row under the "
+                         "temperature it was drawn at. Exploration where the line ends, the "
+                         "precise line kept everywhere before it. Needs --view-continuous and "
+                         "the reservoir; 0 = off (today); ckpt restores")
+    ap.add_argument("--front-band", type=float, default=None,      # 0.04
+                    help="--front-temp: the band B - an env is at the frontier when its "
+                         "progress >= (1 - B) x the reservoir's deepest progress (the "
+                         "--ez-front band); re-read every iteration")
     ap.add_argument("--unstuck-ent", type=int, default=None, choices=[0, 1],
                     help="--unstuck: entropy coefficient x (1+T); default 1")
     ap.add_argument("--unstuck-int", type=int, default=None, choices=[0, 1],
@@ -7143,6 +7167,14 @@ def main() -> None:
         if args.ez_front is None and ck_cfg.get("ez_front"):
             args.ez_front = float(ck_cfg["ez_front"])
             restored.append(f"ez_front={args.ez_front:g}")
+        # --front-temp / --front-band: the rollout's sampling distribution, restored like the
+        # --unstuck temperature it sits on
+        if args.front_temp is None and ck_cfg.get("front_temp"):
+            args.front_temp = float(ck_cfg["front_temp"])
+            restored.append(f"front_temp={args.front_temp:g}")
+        if args.front_band is None and ck_cfg.get("front_band"):
+            args.front_band = float(ck_cfg["front_band"])
+            restored.append(f"front_band={args.front_band:g}")
         if args.ez_max is None and ck_cfg.get("ez_max") is not None:
             args.ez_max = int(ck_cfg["ez_max"])
         if args.ez_mu is None and ck_cfg.get("ez_mu") is not None:
@@ -8449,6 +8481,29 @@ def main() -> None:
         args.train_stride = 1
     if args.ez_eps is None:
         args.ez_eps = 0.0
+    if args.front_temp is None:
+        args.front_temp = 0.0
+    if args.front_band is None:
+        args.front_band = 0.04
+    if float(args.front_temp) != 0.0:
+        _bad = [f for f, on in (("--maps", args.maps),
+                                ("--rnn", args.rnn not in (None, "none")),
+                                ("--chunk", args.chunk),
+                                ("DDP", int(os.environ.get("WORLD_SIZE", "1")) > 1),
+                                ("--sil-coef", float(args.sil_coef or 0.0) > 0.0),
+                                ("--cc-temp-scale", args.cc_temp_scale),
+                                ("--crl", getattr(args, "crl", None)),
+                                ("--yaw-cond", args.yaw_cond),
+                                ("--respawn-frac 0", float(args.respawn_frac or 0.0) <= 0.0))
+                if on]
+        if float(args.front_temp) < 0.0 or not 0.0 < float(args.front_band) <= 1.0:
+            raise SystemExit("--front-temp T_F needs T_F > 0 and --front-band B in (0, 1]")
+        if not args.view_continuous or args.reward != "race":
+            _bad.append("a run without --view-continuous and --reward race")
+        if _bad:
+            raise SystemExit("--front-temp (a per-env temperature on the flat single-map "
+                             "rollout, read off the reservoir) is not implemented with "
+                             + ", ".join(_bad))
     if args.ez_front is None:
         args.ez_front = 0.0
     if float(args.ez_front) != 0.0:
@@ -13809,6 +13864,10 @@ def main() -> None:
     # --eval-parallel: written ONLY when on, like the patience rule above
     if N_EVAL_PAR:
         meta["config"]["eval_parallel"] = 1
+    # --front-temp: written ONLY when on
+    if float(args.front_temp or 0.0) > 0.0:
+        meta["config"]["front_temp"] = float(args.front_temp)
+        meta["config"]["front_band"] = float(args.front_band)
     # --unstuck: written ONLY when set (a control run's config dump stays
     # byte-identical); every knob rides along so a resume restores them
     if UNSTUCK:
@@ -14703,6 +14762,8 @@ def main() -> None:
         UNSTUCK_MASK_VIEW = torch.tensor(_mv, device=device)
 
     def set_unstuck_temp(T: float) -> None:
+        # --front-temp: the global T the out-of-band envs keep (set_front_temp reads it)
+        FRONT_BASE[0] = float(T)
         if temp_t is not None:
             temp_t.fill_(1.0 + float(T) * UNSTUCK_MASK_CAT)
         if tempv_t is not None:
@@ -14730,6 +14791,50 @@ def main() -> None:
         cct_np[:] = cc_temp_block(
             cc_keys_temp(reward_fn.cc_T(), args.cc_temp_gain), VIEWC)
         temp_t.copy_(cct_pin.view(N, CC_TEMP_S, 1), non_blocking=True)
+    # --front-temp: a PER-ENV temperature in the same two static slots - (N, 1, 1) for the four
+    # key heads, (N, n_z) for the view heads - that the host rewrites before every decision
+    # (set_front_temp, in fill_vision) from where each env is against the frontier band: inside
+    # it every head at 1 + T_F, outside it the global --unstuck temperature on its heads (1 when
+    # there is none). The captured rollout graph reads them through the same sample_view call;
+    # the update scores each row at the temperature it was drawn at (b_ftk / b_ftv, like b_cct).
+    FRONT = float(args.front_temp or 0.0) > 0.0
+    FRONT_BASE = [0.0]                   # the global T (set_unstuck_temp writes it)
+    front_thr = float("inf")             # d at the band's edge, re-read every iteration
+    front_share = float("nan")
+    b_ftk = b_ftv = None
+    if FRONT:
+        temp_t = torch.ones((N, 1, 1), device=device)
+        tempv_t = torch.ones((N, NZ), device=device)
+        _pm = device.type == "cuda"
+        ftk_pin = torch.ones((N,), pin_memory=_pm)
+        ftv_pin = torch.ones((N, NZ), pin_memory=_pm)
+        ftk_np, ftv_np = ftk_pin.numpy(), ftv_pin.numpy()
+        b_ftk = torch.ones((T, N, 1, 1), device=device)
+        b_ftv = torch.ones((T, N, NZ), device=device)
+        _f_mask_cat = float(UNSTUCK_MASK_CAT) if UNSTUCK_TEMP else 0.0
+        _f_mask_view = (UNSTUCK_MASK_VIEW.detach().cpu().numpy().astype(np.float32)
+                        if (UNSTUCK_TEMP and UNSTUCK_MASK_VIEW is not None)
+                        else np.zeros(NZ, np.float32))
+        _f_hot = 1.0 + float(args.front_temp)
+        print(f"--front-temp {args.front_temp:g}: an env whose progress is >= "
+              f"(1 - {args.front_band:g}) x the reservoir's deepest samples every head at "
+              f"{_f_hot:g}; the others keep "
+              + (f"the --unstuck T on heads '{UNSTUCK_HEADS}'" if UNSTUCK_TEMP
+                 else "temperature 1")
+              + "; PPO scores each row at its own temperature")
+
+    def set_front_temp() -> None:
+        """--front-temp: this decision's per-env temperatures from the band (reward_fn._d is
+        the post-step distance of every env, the new spawn's for an env that just ended)."""
+        nonlocal front_share
+        d = reward_fn._d
+        band = (np.zeros(N, bool) if d is None else (np.asarray(d) <= front_thr))
+        tb = FRONT_BASE[0]
+        ftk_np[:] = np.where(band, _f_hot, 1.0 + tb * _f_mask_cat)
+        ftv_np[:] = np.where(band[:, None], _f_hot, 1.0 + tb * _f_mask_view[None, :])
+        temp_t.copy_(ftk_pin.view(N, 1, 1), non_blocking=True)
+        tempv_t.copy_(ftv_pin, non_blocking=True)
+        front_share = float(band.mean())
     # --rnn: the per-env recurrent state. static_h is the state ENTERING the
     # next decision - the graphed step reads it and writes the state leaving
     # the decision back into it; the rollout loop then zeroes the rows whose
@@ -14954,6 +15059,9 @@ def main() -> None:
             dst[:, CC_COL:CC_COL + 1].copy_(cc_pin, non_blocking=True)
             if CC_TEMP:
                 set_cc_temp()
+        if FRONT:
+            # --front-temp: the temperatures the NEXT decision samples at, from the band
+            set_front_temp()
         if N_AUX:
             # the history as of the decision about to be made (its rows were
             # zeroed for every env that just ended) and the compass at the
@@ -15869,7 +15977,7 @@ def main() -> None:
                 f_age=None, f_code=None, f_dmask=None,
                 adv_mean=None, adv_std=None, f_air=None, f_jblk=None,
                 f_priv=None, f_z=None, f_temp=None, f_tempv=None,
-                f_cct=None, f_bkt=None, f_reti=None):
+                f_cct=None, f_bkt=None, f_reti=None, f_ctv=None):
         # f_temp / f_tempv: --unstuck's sampling temperatures (the static
         # tensors the rollout drew under: the categorical heads' and one per
         # Gaussian head), so pi_new is scored on the SAME tempered
@@ -15882,6 +15990,9 @@ def main() -> None:
         # rows' T bucket for --cc-buckets' per-bucket advantage moments.
         if f_cct is not None:
             f_temp = f_cct[idx]
+        if f_ctv is not None:
+            # --front-temp: the view heads' per-row record, (rows, n_z), gathered the same way
+            f_tempv = f_ctv[idx]
         with amp:
             # STACK/N/PRO are Python constants, so the branch is decided at
             # trace time and inductor still sees one static-shaped graph
@@ -16207,7 +16318,9 @@ def main() -> None:
                     f_z=(b_z.reshape(T * N, NZ) if VIEWC else None),
                     f_temp=temp_t, f_tempv=tempv_t,
                     f_cct=(b_cct.reshape(T * N, CC_TEMP_S, 1)
-                           if CC_TEMP else None),
+                           if CC_TEMP else b_ftk.reshape(T * N, 1, 1)
+                           if FRONT else None),
+                    f_ctv=(b_ftv.reshape(T * N, NZ) if FRONT else None),
                     f_bkt=(torch.zeros(T * N, dtype=torch.long, device=device)
                            if CC_BKT else None),
                     )[0].backward()
@@ -16983,6 +17096,12 @@ def main() -> None:
         if SR_SELECT:
             sr_eps_list.clear()
             sr_seg.fill(0)
+        if FRONT:
+            # --front-temp: the band edge (the --ez-front rule below, with --front-band)
+            _mf = fleet.reservoir_min_depth()
+            _d0f = float(fleet.slots[0].rf_d0 or 0.0)
+            front_thr = (_d0f - (1.0 - float(args.front_band)) * _d0f * (1.0 - _mf)
+                         if (_mf == _mf and _d0f > 0.0) else float("inf"))
         if EZF:
             # the frontier band of --ez-front: progress P_f = d0 * (1 -
             # min-depth) is the reservoir's deepest; a burst may start where
@@ -17122,6 +17241,10 @@ def main() -> None:
                     # the per-env keys temperature THIS decision was drawn
                     # under: the update scores the row at the same one
                     b_cct[t].copy_(temp_t)
+                if FRONT:
+                    # --front-temp: the same record, both slots
+                    b_ftk[t].copy_(temp_t)
+                    b_ftv[t].copy_(tempv_t)
                 act_pin.copy_(static_act, non_blocking=True)
                 if VIEWC:
                     b_z[t].copy_(static_z)
@@ -18257,6 +18380,11 @@ def main() -> None:
         # rows' T bucket, read off the very column the policy saw
         # (torch.bucketize right=True == cc_bucket_of's searchsorted)
         f_cct = b_cct.reshape(T * N, CC_TEMP_S, 1) if CC_TEMP else None
+        f_ctv = None
+        if FRONT:
+            # --front-temp: each row at the temperatures its decision was drawn at
+            f_cct = b_ftk.reshape(T * N, 1, 1)
+            f_ctv = b_ftv.reshape(T * N, NZ)
         f_bkt = (torch.bucketize(f_scal[:, CC_COL].contiguous(), CC_EDGES_T,
                                  right=True) if CC_BKT else None)
         if RETN and not FREEZE:
@@ -18414,7 +18542,7 @@ def main() -> None:
                         None if a_std is None else a_std[k_mb],
                         f_air, f_jblk, f_priv, f_z=f_z, f_temp=temp_t,
                         f_tempv=tempv_t, f_cct=f_cct, f_bkt=f_bkt,
-                        f_reti=f_reti)
+                        f_reti=f_reti, **({"f_ctv": f_ctv} if FRONT else {}))
                     loss, pg, vl, el, logp = _mbo[:5]
                     if AUG_ON:
                         # --aug-*: (G_pi, G_V) summed over the update, one read per iteration
@@ -19612,6 +19740,12 @@ def main() -> None:
                 # where the --ez-front band starts, in % of the start geodesic
                 _d0f = float(fleet.slots[0].rf_d0 or 0.0)
                 hyg_note += f" front>{100.0 * (1.0 - ez_thr / _d0f):.1f}%"
+        if FRONT:
+            # --front-temp: the share of envs inside the band at the last decision, and the
+            # band's edge in progress
+            hyg_note += (f"  fronttemp {front_share:.0%}"
+                         + (f">{100.0 * (1.0 - front_thr / float(fleet.slots[0].rf_d0)):.1f}%"
+                            if front_thr != float("inf") else ""))
         if AUG_ON and aug_kl_v == aug_kl_v:
             # --aug-*: how far the augmented frame's answer still is from the clean one
             hyg_note += f"  drac kl {aug_kl_v:.4f} v {aug_vm_v:.4f}"
