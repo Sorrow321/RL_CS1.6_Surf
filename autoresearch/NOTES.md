@@ -1071,3 +1071,22 @@ window, C = inside the cavity under the pit slab, T = tunnel lane, R = room; ana
   EXTENDED per PROTOCOL: the greedy line clears a gate no earlier greedy eval cleared (the entry
   into the cavity: window -> shaft -> lower opening). The sband2 checkpoint is kept on the box as
   ckpt_sband2.pt.
+
+### 01:38 UTC: fp10x (fail-pen + eval-stall, 3.46-3.63B) - cavity entry held, no climb-out; a surf farm; arm 3 = no surf bonus
+
+* Evals 3,462-3,613M (7): every one 28.25-28.29% (score 28.249-28.287), 7-9 of 9 episodes
+  stall-killed: the greedy line enters the cavity every time and parks there (the platform or the
+  floor). Climb metric: max z after the deep point 10,287-10,299 in almost every episode, vz max
+  48-416 (fp10 at 3.41-3.44B: 10,289-10,597, vz 550-980) - the turn-up got WEAKER.
+* Training: stall-killed share 0.39-0.50 (arm 1: 0.03-0.18), surf_paid_frac 0.32-0.41 (the
+  control measures 0.23-0.25 on this map; 0.196 at fp10x's first row), training ceiling flat at
+  29,110 u since fp10 began, entropy -1.73 -> -2.25 (yaw sigma 0.061 -> 0.073).
+* Reading: under fail-pen 10 the surf bonus is a FARM. Charged -10 at death, surfing in place until
+  the stall kill refunds 0.3 of the 0.5/s time cost (~3 units over 15 s vs dying at once), so a
+  climb attempt that fails more than ~3/4 of the time is worth LESS than surfing out the 15 s.
+  This is exactly the frame the trainer's guard refuses (`--time-pen 0` with a surf bonus), entered
+  by the equivalent door (fail-pen = time_pen / (1 - gamma)).
+* **Arm 3, r3b1_fpns** (01:37): resume of fp10x's ckpt_latest (3,627,024,384, md5 b1342657...) +
+  `--unstuck-max 0 --fail-pen 10 --eval-stall 1 --surf-bonus 0`, 1.2e9 steps (to 4.83B). Without the
+  bonus every non-finishing trajectory is (discounted progress) - 10, so stalling, dying and failed
+  attempts are all equal and only progress (the climb-out past the window's record) beats them.
