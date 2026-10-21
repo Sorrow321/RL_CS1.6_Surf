@@ -1604,3 +1604,46 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
   without --eval-parallel; flag-off bit-identical to the pre-change trainer.
 * c2 at 8,990M: 54.674 (median 54.1%) with T at the 0.25 cap - where c1 (cap 0.5) had
   collapsed to 42.6%. One seed each.
+
+### 15:06 UTC: c3 at the CP4 window; probes say the gate is ENERGY-limited (analysis only)
+
+* r4b4_c3 (c2's 9,065M ckpt + `--eval-idle-secs 60`, T cap 0.25, eval-parallel) to 9.45B:
+  evals 54.78, 54.56, 54.59, **54.89** (9,141M), 50.60, 54.62, 54.83, 48.68, 48.80, 48.73,
+  54.81, 44.06, 50.95, 54.53, 47.17 - the best episode is always at the CP4 sill (54.5-54.9%),
+  the medians wobble 32-54% (deaths at 31.8% / 44% / 47-51% too). **Training ceiling 54,794 ->
+  56,532 u (57.8%) at ~9.2B**: a real episode got through CP4 and past the human's 64-65 s
+  turnaround. Idle-capped parallel evals: 20-30 s each.
+* Probe 1 (local CPU, record_ckpt --spawn-states --stochastic --exec-temp 1.25 = training
+  at T 0.25, c2's 9,065M ckpt): from the 175 greedy-pool rows within ~2 s of the CP4 death
+  (x -1,000..-342, z 7,903-8,508, |v_h| 805-887): **0/24 pass**; all die on the sill plate
+  at z ~8,501-8,508. Probe 2: from the policy's own greedy states 1.5-3 s and 3-4.5 s before
+  the stop (x 247-4,995, |v_h| ~1,670): **0/16 and 0/6 pass** (best 54.76%).
+* So the concentrated greedy window cannot teach this gate (no successes to learn from, the
+  round-3 lesson), and even 4.5 s upstream the policy's sampled lines arrive too slow. The
+  human reaches the climb at |v_h| 1,936 vs the agent's 1,580-1,690 (+15-22%).
+* The generic lever already in the trainer: `--respawn-speed LO HI` scales reservoir spawn
+  velocities ("above-1 ranges are a deliberate curriculum tool: speed-gated jumps can be
+  practiced at make-it speed ... the value of the boosted states then pulls the upstream line
+  faster", respawn.py). Ledger: 1.0-2.0 cracked cannonball's wall #1 warm (1.15B), diluted a
+  young scratch policy. Next: probe boosted states (x1.25), then an arm with 0.9-1.3.
+* approx_kl grew from ~0.5 (c2 start) to 30-300 (c3) while the sigmas stayed put (yaw 0.05,
+  pitch 0.007) and the greedy camera pitch is stable across evals (median -16..-18 deg);
+  the incumbent's own run had KL phases of 2-55. Cause not found; the estimator is
+  mean(logp_old - logp_new) on the last minibatch.
+
+### 15:14 UTC: MILESTONE - 56.116, CP4 (c3, 9,544M); boosted-energy probes; c4 continues
+
+* r4b4_c3 9,443-9,544M: 47.17, 49.83, 54.59, 54.83, **56.116** (9,544M, CP4, median 54.6%):
+  episode 8 goes through the CP4 window and reaches (-2,112, 441, 8,103) at 64.8 s (56.12%),
+  then dies; ep 7 dies on the sill at (-1,156, 417, 8,532). T fell 0.25 -> 0.22 (the +500 u
+  eval best reset the tracker). About 700M steps at the window from 8.84B (c1+c2+c3), ~350M
+  after the training ceiling passed it (~9.2B): ceiling first, greedy line next, again.
+* I stopped c3 at 9.557B to start a boosted-spawn arm one eval too late to see the 56.1; the
+  9,566,158,848 snapshot (after that eval) is on the box. **r4b4_c4** (15:13) = bare resume of it
+  (T cap 0.25, eval-parallel, idle 60, greedy 0.3 / 0.25-2 s all restored), budget 2.5e9.
+* Energy probes (analysis only, c2's 9,065M ckpt, stochastic at exec-temp 1.25): own pre-gate
+  greedy states x1.25 velocity -> **1/16 pass** (56.4%); own approach states 1.5-3 s before
+  the stop x1.25 -> **4/16 pass** (best 57.8% = the training ceiling); unboosted 0/50 in all.
+  So at an energy gate the policy has the skills and lacks the speed; above-1 `--respawn-speed`
+  (reservoir rows) or a velocity boost on the greedy-line rows would put the critic where a
+  fast arrival pays. Not run: the line passed CP4 on its own.

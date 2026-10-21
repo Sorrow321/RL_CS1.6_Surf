@@ -3,11 +3,11 @@
  "round": 4,
  "final": false,
  "best": {
-  "score": 54.95,
-  "eval_file": "/home/steam/ar/runs/r4b4/r4b4_c1/traj_8889827328.jsonl",
-  "run": "r4b4_c1",
-  "step": 8889827328,
-  "ckpt": "/home/steam/ar/runs/r4b4/r4b4_c1/ckpt_latest.pt",
+  "score": 56.116,
+  "eval_file": "/home/steam/ar/runs/r4b4/r4b4_c3/traj_9544138752.jsonl",
+  "run": "r4b4_c3",
+  "step": 9544138752,
+  "ckpt": "/home/steam/ar/runs/r4b4/r4b4_c3/ckpt_latest.pt (to pull at wrap-up; box has ckpt_9566158848.pt)",
   "recipe": [
    "--respawn-greedy",
    "0.3",
@@ -21,10 +21,14 @@
    "--surf-bonus",
    "0",
    "--unstuck-max",
-   "0.5"
+   "0.25",
+   "--eval-parallel",
+   "1",
+   "--eval-idle-secs",
+   "60"
   ],
-  "resume_from": "incumbent r3b3_gwx2/ckpt_final.pt (8,838,971,392, md5 d3d06fb1...), bare resume + --ckpt-every 1e8",
-  "commit": "3818712"
+  "resume_from": "incumbent r3b3_gwx2/ckpt_final.pt (8,838,971,392) -> r4b4_c2 (+ --eval-parallel 1 --unstuck-max 0.25) -> r4b4_c3 (c2's 9,065M ckpt + --eval-idle-secs 60)",
+  "commit": "aee01a9"
  },
- "summary": "Warm continuation of the incumbent. c1 (bare resume): 54.950 at 8,890M, then the greedy line regressed to ~42.5% as the unstuck T hit its 0.5 cap (int/ep x3, 60-70% stall kills). NEW --eval-parallel (the 9 greedy eval episodes side by side; the sequential eval was 45-52% of the wall clock) and --eval-idle-secs (stop recording an eval episode after 60 s with no new best): ~1.6-1.8x training per box-hour, same eval semantics, 10 CPU tests. c2 (incumbent ckpt + eval-parallel + T cap 0.25): line holds at the CP4 window (54.67-54.82). c3 continues c2 with the idle cap. Gate: CP4 window sill (~20-40 u too low)."
+ "summary": "56.116 (r4b4_c3 eval 9,544M, CP4: the greedy line through the CP4 window to 56.1%). Warm continuation of the incumbent with T cap 0.25 (c1 at cap 0.5 collapsed to 42.5% when T rose) and NEW --eval-parallel / --eval-idle-secs (the sequential greedy eval was 45-52% of the wall clock; now evals ~20-30 s, ~1.5x training per box-hour, same eval semantics, 10 CPU tests). Probes: the CP4 window is energy-gated - 0/50 passes from the policy's own pre-gate states, 4/16 from the approach with velocity x1.25 (--respawn-speed above 1 is the trainer's tool for that; untested here). c4 continues c3 from its 9.566B snapshot."
 }
