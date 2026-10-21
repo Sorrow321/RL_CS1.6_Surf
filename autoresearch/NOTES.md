@@ -1836,3 +1836,20 @@ own greedy-line pool (1,809 STATE_DTYPE rows, 59.7-60.6% progress, the 2 s befor
   breakthrough), with the reservoir's deepest state 60.6% -> 68.6% at the same time. ~1.6B steps at
   this gate in all (9.74B -> 11.41B: kst5x, F, G, main2, stuck); whether the stalled-stretch pool
   caused it is NOT shown (one seed, no control over the same steps).
+
+### 18:27 UTC: the breakthrough did not hold; one lucky episode DISABLED the band novel rows; band 0.15
+
+* r4b3_stuck to 11,682M: the reservoir's deepest state went back 31.43% -> 39.42% (the 68.6% states
+  were replaced within ~250M steps, nothing re-harvested them); ceiling stays 68,703 u (70.27%);
+  greedy evals 60.55-60.57% throughout (29 evals since 10.86B).
+* **A weakness of `--respawn-novel-band B`**: the band is anchored to the all-time CEILING (rows only
+  at d_best <= d <= d_best + B d0). One stochastic episode put the ceiling at 70.27%, so with B 0.05
+  the band was 65.3-70.3% - ~5% of d0 AHEAD of the reservoir's real frontier (60.6%) - and moved
+  states from frontier sources (radius <= 3,072 u) almost never land there: novel rows fell from
+  1,843 per pool (40-50% of episodes) to 39-91 (0-4%). The novel practice around the gate stopped
+  exactly when a breakthrough had just been seen.
+* **r4b3_band15** (18:25): r4b3_stuck's latest (11,682,185,216, md5 b02a81b4...) + `--respawn-novel-band
+  0.15` (everything else restored, incl. --respawn-greedy-stuck 200): band 55.3-70.3%, covering the
+  real frontier again; rows back to 1,843 per pool, 36-48% of episodes within the first iterations.
+  For the lineage: a band anchored to the reservoir's deepest state (or a decaying ceiling) would
+  not have this failure mode - an untested design note, not code.
