@@ -1556,3 +1556,18 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
   killed and --respawn-greedy treats those as STOPS (best-progress window only), not deaths - the seconds
   before a stall kill are bowl-cycling, not the decisions that led to a death.
 * Untried, larger: a parallel eval (9 envs, one episode each: cost max(len) instead of sum(len)).
+
+### 13:45 UTC: NEW `--eval-par 1` - the greedy eval's episodes side by side
+
+* The eval core gets --eval-eps envs (one episode each, one batched policy call per decision);
+  `surfgym.record.record_rollout_par` writes the same file format (episode i = env i, so score.py and
+  episode_stats read it unchanged); `GreedyLinePool.hook_par` captures env i until its first episode
+  ends; under --eval-stall one stall hook per env (`par_stall_hook`). An eval then costs its LONGEST
+  episode instead of the sum (at the 8,718M eval: 300 s instead of 1,746 s of game time; with
+  --eval-stall ~140 s). Refused with several maps, held-out maps, --goal-planner, --eval-mirror,
+  --obs-reward, --race-latch, --route, --rnn, --chunk, --goals. Saved in the config only when on,
+  restored on resume, TRAIN_ONLY for record_ckpt. Tests: tests/python/test_eval_par.py.
+* Launch plan when a box comes: phase 1 = bare resume of the incumbent + `--eval-stall 1 --eval-par 1
+  --diag-heads 10 --ckpt-every 1e8` (~100M steps: the per-head diagnostic at the real minibatch, the
+  new eval cost); phase 2 = its final + `--pitch-std-min 0.05` if the pitch dominates the shared
+  gradient / the KL.

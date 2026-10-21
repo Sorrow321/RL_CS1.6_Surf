@@ -53,6 +53,7 @@ class GreedyLinePool:
         self.mixed = 0
         self._eps: list = []
         self._cur: list = []
+        self._par = None           # hook_par's (per-env captures, live flags)
 
     @property
     def size(self) -> int:
@@ -64,12 +65,31 @@ class GreedyLinePool:
         it keeps env 0's pre-step snapshot every tick and closes an episode on done or
         trunc (record_rollout's own rule), so episode i aligns with trailer i."""
         self._eps, self._cur = [], []
+        self._par = None
 
         def on_tick(t, states, rewards, done, trunc):
             self._cur.append(states[0].copy())
             if bool(done[0]) or bool(trunc[0]):
                 self._eps.append(np.array(self._cur, dtype=STATE_DTYPE))
                 self._cur = []
+        return on_tick
+
+    def hook_par(self, n: int):
+        """``hook`` for record_rollout_par (--eval-par): env ``i``'s pre-step snapshots
+        until ITS first episode ends, so episode i (env i) aligns with trailer i. An
+        episode the recording budget cut is closed by ``build``, still in env order."""
+        n = int(n)
+        cur = [[] for _ in range(n)]
+        live = [True] * n
+        self._eps, self._cur = [], []
+        self._par = (cur, live)
+
+        def on_tick(t, states, rewards, done, trunc):
+            for i in range(n):
+                if live[i]:
+                    cur[i].append(states[i].copy())
+                    if bool(done[i]) or bool(trunc[i]):
+                        live[i] = False
         return on_tick
 
     def build(self, summaries, tick_ms: float, d_fn=None) -> dict:
@@ -88,9 +108,14 @@ class GreedyLinePool:
         A summary with ``"stall": True`` (a FAIL issued by --eval-stall's rule, set by the
         trainer from the stall hook's kill list) takes the second anchor only: the seconds
         before a stall kill are the stall, not the decisions that led to a death."""
-        eps = list(self._eps)
-        if self._cur:                      # an episode cut by the recording budget
-            eps.append(np.array(self._cur, dtype=STATE_DTYPE))
+        if self._par is not None:
+            # hook_par: one episode per env, in env order (= the recording's episode order)
+            eps = [np.array(c, dtype=STATE_DTYPE) for c in self._par[0]]
+            self._par = None
+        else:
+            eps = list(self._eps)
+            if self._cur:                      # an episode cut by the recording budget
+                eps.append(np.array(self._cur, dtype=STATE_DTYPE))
         self._eps, self._cur = [], []
         per_s = 1000.0 / float(tick_ms)
         lo_t, hi_t = int(round(self.lo * per_s)), int(round(self.hi * per_s))

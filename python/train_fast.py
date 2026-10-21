@@ -86,6 +86,7 @@ os.environ.setdefault("OMP_NUM_THREADS", _default_omp_threads())
 
 import argparse
 import csv
+import functools
 import hashlib
 import json
 import math
@@ -113,7 +114,7 @@ from surfgym.mapfleet import HeldoutSlot, MapFleet, MapSlot
 from surfgym.obsaux import ACT_FEAT, CMP_FEAT, ObsAux, PotRate, make_pot_rate_feed
 from surfgym.surfflag import SurfFlag, g_step_of, make_surf_feed
 from surfgym.privfeat import PRIV_DIM, PRIV_FEATURES, PrivFeat, velocity_from_obs
-from surfgym.record import record_rollout
+from surfgym.record import record_rollout, record_rollout_par
 from surfgym.bc import BCDataset
 from surfgym.respawn import (BackwardSpawnSampler, DemoCurriculum,
                              FrontierSpawnSampler, NovelSpawnSampler,
@@ -3810,6 +3811,28 @@ def make_eval_stall_hook(core, field, stall_ticks, stall_eps, every, env=0):
     return hook
 
 
+def par_stall_hook(hooks):
+    """--eval-par: the per-env stall hooks of a side-by-side recording, chained. ``.state``
+    reads like one sequential hook's over the RECORDED episodes (episode i = env i's first):
+    ``killed`` the episodes it ended, ``n`` how many; kills in an env's later, unrecorded
+    episodes are not counted."""
+    def hook(t, states, rewards, done, trunc):
+        for h in hooks:
+            h(t, states, rewards, done, trunc)
+
+    class _State:
+        def __getitem__(self, k):
+            killed = [i for i, h in enumerate(hooks) if 0 in h.state["killed"]]
+            if k == "killed":
+                return killed
+            if k == "n":
+                return len(killed)
+            raise KeyError(k)
+
+    hook.state = _State()
+    return hook
+
+
 def chain_ticks(*hooks):
     """Compose record_rollout on_tick callbacks (None entries dropped)."""
     live = [h for h in hooks if h is not None]
@@ -5803,6 +5826,15 @@ def main() -> None:
                     help="skip the stochastic eval recording (A/B arms: no "
                          "verdict reads it, and it taxes the surviving, "
                          "long-episode policies the most)")
+    ap.add_argument("--eval-par", type=int, default=None, choices=(0, 1),
+                    help="1 = the greedy eval runs its --eval-eps episodes SIDE BY SIDE on an "
+                         "eval core with that many envs (one episode per env, one batched "
+                         "policy call per decision; surfgym.record.record_rollout_par writes "
+                         "the same file format), so an eval costs its LONGEST episode instead "
+                         "of the SUM of them. The 9 sequential batch-1 episodes took 49%% of "
+                         "the r3b3_gwx2 run's wall time. The spawns are the eval core's own "
+                         "draws, as before. 0 / unset = the shipped sequential eval "
+                         "(bit-identical). Saved in the config, restored on resume")
     ap.add_argument("--ckpt-every", type=float, default=10e6)
     ap.add_argument("--save-best", type=int, default=0, choices=(0, 1),
                     help="single-map race runs: after every greedy eval with finishes, save "
@@ -7138,6 +7170,10 @@ def main() -> None:
             # measures, half way through, with nothing in the log saying so.
             args.eval_stall = int(ck_cfg["eval_stall"])
             restored.append(f"eval_stall={args.eval_stall:d}")
+        if args.eval_par is None and ck_cfg.get("eval_par") is not None:
+            # --eval-par: the same contract (how the eval runs its episodes)
+            args.eval_par = int(ck_cfg["eval_par"])
+            restored.append(f"eval_par={args.eval_par:d}")
         if args.ret_norm is None and ck_cfg.get("ret_norm") is not None:
             # --ret-norm changes what the VALUE HEAD MEANS (normalized
             # returns, not returns). Resuming without it would read the
@@ -11099,6 +11135,26 @@ def main() -> None:
     # every rank, not rank 0's slice). Rank r therefore builds eval cores
     # only for the maps it owns - a second SurfCore per map on every rank is
     # the one place replication would actually cost real memory.
+    # --eval-par: the greedy eval's episodes side by side, one per env of the eval core
+    EVAL_PAR = bool(int(args.eval_par or 0))
+    N_EVAL_ENVS = 1
+    if EVAL_PAR:
+        _par_bad = [n for n, on in (("--maps (several maps)", MULTI),
+                                    ("--heldout-maps", bool(args.heldout_maps)),
+                                    ("--goal-planner", bool(args.goal_planner)),
+                                    ("--eval-mirror", bool(args.eval_mirror)),
+                                    ("--obs-reward", bool(args.obs_reward)),
+                                    ("--race-latch", float(args.race_latch or 0.0) > 0.0),
+                                    ("--route", bool(args.route)),
+                                    ("--rnn", args.rnn != "none"),
+                                    ("--chunk", int(args.chunk or 0) > 0),
+                                    ("--goals", int(args.goals or 0) > 0)) if on]
+        if _par_bad:
+            raise SystemExit("--eval-par runs the plain single-map greedy eval side by side; "
+                             "not with " + ", ".join(_par_bad))
+        N_EVAL_ENVS = max(1, int(args.eval_eps or (3 if args.reward == "race" else 5)))
+        print(f"--eval-par: the greedy eval flies its {N_EVAL_ENVS} episodes side by side "
+              f"(an eval core of {N_EVAL_ENVS} envs, one episode each)")
     for _i, slot in enumerate(slots):
         slot.eval_rank = _i % D.world_size
         if not D.enabled:
@@ -11110,7 +11166,7 @@ def main() -> None:
             slot.eval_core = None
             continue
         ec = SurfCore(slot.bsp, default_config(
-            num_envs=1, spawn_mode=2, max_episode_ticks=args.ep_ticks,
+            num_envs=N_EVAL_ENVS, spawn_mode=2, max_episode_ticks=args.ep_ticks,
             water_fail=1,
             yaw_adaptive=1 if args.yaw_adaptive else 0, yaw_blend=float(args.yaw_blend), side_hold_ticks=int(args.side_hold),
             sv_maxvelocity=args.maxvel, sv_friction=float(args.sv_friction),
@@ -12616,7 +12672,7 @@ def main() -> None:
                                 else None))
                 else:
                     _ef = _s.reward_field
-            _s.eval_aux = ObsAux(1, k=int(args.act_hist or 0), field=_ef,
+            _s.eval_aux = ObsAux(N_EVAL_ENVS, k=int(args.act_hist or 0), field=_ef,
                                  yaw_adaptive=bool(args.yaw_adaptive))
 
     global_step = 0
@@ -13565,6 +13621,9 @@ def main() -> None:
                       f"at {PITCH_STD_MIN:g} (log {np.log(PITCH_STD_MIN):.3f}; the shipped "
                       f"clamp is {np.exp(LOG_STD_MIN):.4f}); sig now "
                       + "/".join(f"{v:.4f}" for v in policy.log_std().exp().tolist()))
+    if EVAL_PAR:
+        # --eval-par: written ONLY when set (a control's config dump is unchanged)
+        meta["config"]["eval_par"] = 1
     # --obs-potential: written ONLY when set (a control run's config dump
     # stays byte-identical to the pre-flag trainer's). The mode string is
     # what a resume restores and record_ckpt.py mirrors; the per-map start
@@ -19070,16 +19129,29 @@ def main() -> None:
                             "stall_ticks": int(_s.reward_fn.stall_ticks),
                             "stall_eps": float(_s.reward_fn.stall_eps),
                             "stall_every": int(_s.reward_fn.every)}
-                    _ev_stall = make_eval_stall_hook(
-                        _s.eval_core, _s.reward_fn.field,
-                        _s.reward_fn.stall_ticks, _s.reward_fn.stall_eps,
-                        _s.reward_fn.every)
+                    if EVAL_PAR:
+                        # --eval-par: one stall rule per env (episode i = env i)
+                        _ev_stall = par_stall_hook([make_eval_stall_hook(
+                            _s.eval_core, _s.reward_fn.field,
+                            _s.reward_fn.stall_ticks, _s.reward_fn.stall_eps,
+                            _s.reward_fn.every, env=_e) for _e in range(n_rec)])
+                    else:
+                        _ev_stall = make_eval_stall_hook(
+                            _s.eval_core, _s.reward_fn.field,
+                            _s.reward_fn.stall_ticks, _s.reward_fn.stall_eps,
+                            _s.reward_fn.every)
                     _ev_tick = chain_ticks(_ev_tick, _ev_stall)
                 _rg_cap = GREEDY is not None and not _s.heldout
                 if _rg_cap:
-                    # --respawn-greedy: keep this recording's states (env 0, pre-step)
-                    _ev_tick = chain_ticks(_ev_tick, GREEDY.hook())
-                _ev_sum = record_rollout(_s.eval_core,
+                    # --respawn-greedy: keep this recording's states (env 0, pre-step;
+                    # --eval-par: env i's until its first episode ends)
+                    _ev_tick = chain_ticks(_ev_tick, GREEDY.hook_par(n_rec) if EVAL_PAR
+                                           else GREEDY.hook())
+                _ev_rec = (functools.partial(record_rollout_par, max_ticks=args.ep_ticks)
+                           if EVAL_PAR else
+                           functools.partial(record_rollout, max_ticks=n_rec * args.ep_ticks,
+                                             episode_meta=_ev_meta))
+                _ev_sum = _ev_rec(_s.eval_core,
                                EVAL_GREEDY(policy, packer, device,
                                            (goalsys.ramp_slot(_s.name).eval_ball
                                             if (goalsys is not None and RPLAN
@@ -19115,9 +19187,8 @@ def main() -> None:
                                            surf_fn=eval_surf_feed(_s.eval_core),
                                            prate_fn=eval_prate_feed(_s)),
                                path, episodes=n_rec,
-                               max_ticks=n_rec * args.ep_ticks,
                                seed=global_step & 0x7FFFFFFF,
-                               on_tick=_ev_tick, episode_meta=_ev_meta,
+                               on_tick=_ev_tick,
                                header_extra=_hdr)
                 if _rg_cap:
                     _tpat = tuple(getattr(_s.eval_core, "tick_pattern",

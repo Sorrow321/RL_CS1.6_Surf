@@ -3,5 +3,5 @@
  "round": 4,
  "final": false,
  "best": null,
- "summary": "Round 4 start (12:49 UTC): no box yet (no offer under the caps; rent retried every 3 min). Built --pitch-std-min / --diag-heads (a8f075e): the pitch head's sigma has sat at the 0.0067 clamp since round 1 and its 1/sigma score-function gradient may dominate the shared actor tower and the joint PPO ratio (incumbent run's approx_kl 2-23). Plan: bare-resume the incumbent (54.674) with --diag-heads, then test the floor."
+ "summary": "Round 4 (r4b1), 13:55 UTC: no box yet (no offer under the caps since 12:50; rent retried every 60 s). Built, CPU-tested, pushed: (1) --pitch-std-min / --diag-heads - the pitch sigma has sat at the 0.0067 clamp since round 1 (1/sigma score-function noise on the shared actor; joint PPO ratio, kl 2-23); (2) --eval-stall-aware greedy pool and (3) --eval-par (eval episodes side by side): the incumbent run spent 49% of its wall time (up to 143 s per eval at the end) in sequential batch-1 evals. Plan: resume the incumbent (54.674) with --eval-stall 1 --eval-par 1 --diag-heads, then the pitch floor."
 }

@@ -46,7 +46,7 @@ import numpy as np
 from .core import SURF_IN_DUCK, SURF_IN_JUMP, SurfCore, phys_to_dict
 from .tick import header_fields
 
-__all__ = ["record_rollout"]
+__all__ = ["record_rollout", "record_rollout_par"]
 
 # Completion heuristic: the +50 completion bonus (the ABI-6 obs no longer
 # carries a frac-remaining feature to probe).
@@ -235,4 +235,114 @@ def record_rollout(
             summaries.append({**trailer, "ep_return": _round(ep_return, 4)})
             episode += 1
 
+    return summaries
+
+
+def record_rollout_par(
+    core: SurfCore,
+    policy: Any,
+    path: Union[str, os.PathLike],
+    episodes: int,
+    max_ticks: Optional[int] = None,
+    *,
+    seed: Optional[int] = 0,
+    on_tick: Optional[Callable[[int, np.ndarray, np.ndarray, np.ndarray, np.ndarray], None]] = None,
+    header_extra: Optional[Dict[str, Any]] = None,
+) -> List[Dict[str, Any]]:
+    """``record_rollout`` with the episodes run SIDE BY SIDE: env ``i`` of a core with at
+    least ``episodes`` envs flies episode ``i``, every env is stepped together (one policy
+    call per tick for all of them), and each env's FIRST episode is recorded; the file is
+    then written in ``record_rollout``'s format, episode 0 first, so every reader of an eval
+    file (score.py, episode_stats, the viewer) reads it unchanged. The wall time is the
+    LONGEST episode's instead of the SUM of the episodes' (--eval-par).
+
+    An env whose first episode has ended keeps being stepped (the core autoresets it) and is
+    no longer recorded. ``max_ticks`` caps the recording in ticks (every still-running
+    episode then ends ``trunc``); ``on_tick`` sees every env's pre-step state, as in
+    record_rollout. Returns the summaries in episode (= env) order."""
+    n = int(episodes)
+    if n < 1:
+        raise ValueError(f"episodes must be >= 1, got {episodes}")
+    if int(core.num_envs) < n:
+        raise ValueError(f"record_rollout_par: {n} episodes need >= {n} envs, the core "
+                         f"has {core.num_envs}")
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tick_pat = tuple(getattr(core, "tick_pattern", (int(core.config.phys.msec),)))
+    nominal_msec = int(getattr(core, "nominal_msec", core.config.phys.msec))
+    phys = phys_to_dict(core.config.phys)
+    phys["msec"] = nominal_msec
+    header_base = {"map": Path(core.bsp_path).stem, "tick_ms": nominal_msec, "phys": phys}
+    header_base.update(header_fields(float(sum(tick_pat)) / len(tick_pat), tick_pat, 0))
+    if header_extra:
+        header_base.update(header_extra)
+    if seed is not None:
+        obs = core.reset(seed)
+    else:
+        obs = np.zeros((core.num_envs, core.obs_dim), dtype=np.float32)
+    rows: List[List[str]] = [[] for _ in range(n)]
+    ends: List[Optional[str]] = [None] * n
+    rets = [0.0] * n
+    bests = [0.0] * n
+    phase0 = [int(getattr(core, "tick_phase", 0))] * n
+    live = np.ones(n, bool)
+    total = 0
+    while live.any():
+        states = core.get_states()
+        actions = policy.act(obs)
+        view = getattr(policy, "view", None)
+        if view is None:
+            obs, rewards, done, trunc, _ = core.step(actions)
+        else:
+            obs, rewards, done, trunc, _ = core.step(actions, view=view)
+        if on_tick is not None:
+            on_tick(total, states, rewards, done, trunc)
+        total += 1
+        for i in np.flatnonzero(live):
+            s0 = states[i]
+            r0 = float(rewards[i])
+            rets[i] += r0
+            bests[i] = max(bests[i], float(s0["best_progress"]), float(s0["progress"]))
+            buttons = ((SURF_IN_JUMP if actions[i, 4] else 0)
+                       | (SURF_IN_DUCK if actions[i, 5] else 0))
+            ox, oy, oz = (float(v) for v in s0["origin"])
+            vx, vy, vz = (float(v) for v in s0["velocity"])
+            rows[i].append(json.dumps([
+                len(rows[i]),
+                _round(ox, 2), _round(oy, 2), _round(oz, 2),
+                _round(vx, 2), _round(vy, 2), _round(vz, 2),
+                _round(float(s0["yaw"]), 2),
+                int(buttons),
+                int(int(s0["onground"]) >= 0),
+                _round(float(s0["progress"]), 2),
+                _round(r0, 5),
+                _round(float(s0["pitch"]), 2),
+                int(actions[i, 2]),
+                int(actions[i, 3]),
+            ], separators=(",", ":")))
+            if done[i] or trunc[i]:
+                if done[i]:
+                    ends[i] = ("done" if (r0 >= _DONE_BONUS_MIN
+                                          or bool(np.asarray(core.goal_hits)[i]))
+                               else "fail")
+                else:
+                    ends[i] = "trunc"
+                live[i] = False
+        if max_ticks is not None and total >= max_ticks:
+            for i in np.flatnonzero(live):
+                ends[i] = "trunc"
+            live[:] = False
+    summaries: List[Dict[str, Any]] = []
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        for i in range(n):
+            header = {**header_base, "episode": i}
+            if len(tick_pat) > 1:
+                header["tick_phase"] = phase0[i]
+            f.write(json.dumps(header, separators=(",", ":")) + "\n")
+            for line in rows[i]:
+                f.write(line + "\n")
+            trailer = {"end": ends[i], "ticks": len(rows[i]),
+                       "best_progress": _round(bests[i], 2)}
+            f.write(json.dumps(trailer, separators=(",", ":")) + "\n")
+            summaries.append({**trailer, "ep_return": _round(rets[i], 4)})
     return summaries
