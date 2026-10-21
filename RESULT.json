@@ -26,5 +26,5 @@
   "resume_from": "incumbent r3b3_gwx2/ckpt_final.pt (8,838,971,392, md5 d3d06fb1...), bare resume + --ckpt-every 1e8",
   "commit": "3818712"
  },
- "summary": "r4b4_c1 = bare warm resume of the incumbent (all flags restored), evals every 25M. 8,890M eval: 54.950 (best 55.0%, median 54.6%, CP3). The gate ahead: a climb at ~62-63 s that the agent reaches ~350 u/s slower than the human and crests ~260 u lower."
+ "summary": "Warm continuation of the incumbent. c1 (bare resume): 54.950 at 8,890M, then the greedy line regressed to ~42.5% as the unstuck T hit its 0.5 cap (int/ep x3, 60-70% stall kills). NEW --eval-parallel (the 9 greedy eval episodes side by side; the sequential eval was 45-52% of the wall clock) and --eval-idle-secs (stop recording an eval episode after 60 s with no new best): ~1.6-1.8x training per box-hour, same eval semantics, 10 CPU tests. c2 (incumbent ckpt + eval-parallel + T cap 0.25): line holds at the CP4 window (54.67-54.82). c3 continues c2 with the idle cap. Gate: CP4 window sill (~20-40 u too low)."
 }
