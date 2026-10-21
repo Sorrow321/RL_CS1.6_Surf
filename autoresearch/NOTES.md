@@ -1340,3 +1340,15 @@ later, x ~0.9) trims the time-pen-0 margin but keeps the median detour ahead (~2
   floor's west edge in the slot; best **27.710** (1,661M, ep 7 at 29.0 s) - this branch's best eval.
   Training ceiling 28,082 u (28.72%): stochastic episodes past the pit. T 2.00 (stuck 653M) - some
   episodes degrade (16% deaths at 1,611M). The stage just before ratnov's 1,633M crossing.
+
+### 10:04 UTC: control stopped at 2.22B (no pit crossing under T 2); last move r3b4_ctlt1 = T cap 1
+
+* r3b4_ctl 1.71B -> 2.22B: evals 26.8-27.45% best (the detour episodes still die in the pit floor);
+  T pinned at 2 since ~1.2B (stuck 1.16B steps, eval best 26,704 u never beaten by +500); training
+  ceiling flat at 28,082 u since ~1.7B. Its checkpoint is pulled locally (runs/r3b4/r3b4_ctl/
+  ckpt_latest.pt, step 2,216,689,664, md5 8e08239d...) - the branch's best eval (27.710 at 1,661M) is in
+  this run's directory, so this is the hand-on checkpoint unless a later eval wins.
+* **r3b4_ctlt1** (10:03): bare resume of that checkpoint with `--unstuck-max 1` (T 2 -> 1; nothing else),
+  evals every 25M until wrap-up. Round 2's r2b2_t1 did exactly this at the same stage (detour learned,
+  pit crossing not in the greedy line, T pinned at 2) and got 28.841 within 25M steps: T 2 degrades the
+  greedy line, and the stochastic policy here already gets past the pit (ceiling 28.7%).
