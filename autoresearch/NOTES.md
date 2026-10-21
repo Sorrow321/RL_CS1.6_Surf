@@ -1295,3 +1295,13 @@ line (it killed my local shell twice).
 * Training ceiling 32,154 u (flat since the restart). approx_kl still 0.9-5.6 per update with the
   line intact. Decision: extend r3b3_t05 (the gate is moving) instead of the planned from-scratch
   test.
+
+### 06:14 UTC: r3b3_t05 end (5.94B) and its extension r3b3_t05x
+
+* r3b3_t05 5,337-5,937M (24 evals): best **32.775** (5,639M); the rest 30.9-32.6 (frontier
+  30,947-32,044 u), every eval CP2; training ceiling 32,141 -> 32,177 u. Final ckpt
+  runs/r3b3_t05/ckpt_final.pt (5,937,561,600, md5 42721461...); snapshots every 1e8 on the box.
+* **r3b3_t05x** (06:13): bare resume of that final (T cap 0.5, time-pen 0, surf-bonus 0, greedy 0.15,
+  int-real-only, ez off - all restored), +1.5e9 steps, evals every 25M. The block gate is moving
+  (one eval episode under it at 5,639M; retries at ~40 s); the planned from-scratch test of the
+  recipe waits until it stalls.
