@@ -1856,3 +1856,18 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
   first real training episode beyond the bowl's 60.6% in ~2B steps (c4-c6 never moved it).
   The greedy line has not followed yet (best greedy episodes still stop in the west valley at
   60.5%). Extended (a gate the plain-field runs never cleared in training): c7 runs on.
+
+### 19:55 UTC: MILESTONE - 63.484, CP5: the kill-aware field cracked the bowl
+
+* r4b4_c7 evals 11.92-12.15B: 57.7, 60.2, 59.9, 55.9, 60.2, 54.9, 60.3, 60.2, **63.484** (12,123M,
+  CP5), 60.4. Episode 3: through the divider's window and the hole in plate *53, through CP5
+  (sgcp_5, x ~-1,700) heading west at ~1,500 u/s, and down onto kill floor *31 (z 5,600) at
+  (-2,666, -326, 5,642) at 78.8 s (the human stays at z ~5,700-5,920 there: 73 s (-1,940, -242,
+  5,924), 74 s (-3,418, 388, 5,713)). Masked training ceiling 64,827 u; the unstuck T fell to 0.18
+  on the new eval best.
+* So after ~2B steps stuck at 60.5% on the plain field, the warm switch to --race-kill-aware
+  took the greedy line through the bowl ~730M steps later (480M of them re-learning the line it
+  had lost to the observation shift). Mechanism, as analysed at 18:20-18:28: the masked graph
+  routes only through the window and the hole, so crossing the window pays ~0.9 and a fall
+  onto the plate pays nothing. One seed, one gate - but the plain-field arms (c4 bare, c5 ez
+  bursts, c6 bare: ~1.5B steps at the gate) never moved the training ceiling at all.

@@ -3,11 +3,11 @@
  "round": 4,
  "final": false,
  "best": {
-  "score": 60.548,
-  "eval_file": "/home/steam/ar/runs/r4b4/r4b4_c5/traj_10775166976.jsonl",
-  "run": "r4b4_c5",
-  "step": 10775166976,
-  "ckpt": "/home/steam/ar/runs/r4b4/r4b4_c5/ckpt_final.pt (pull at wrap-up)",
+  "score": 63.484,
+  "eval_file": "/home/steam/ar/runs/r4b4/r4b4_c7/traj_12122587136.jsonl",
+  "run": "r4b4_c7",
+  "step": 12122587136,
+  "ckpt": "/home/steam/ar/runs/r4b4/r4b4_c7/ckpt_final.pt or ckpt_latest.pt (pull at wrap-up)",
   "recipe": [
    "--respawn-greedy",
    "0.3",
@@ -29,10 +29,12 @@
    "--ez-eps",
    "0.05",
    "--ez-front",
-   "0.04"
+   "0.04",
+   "--race-kill-aware",
+   "1"
   ],
-  "resume_from": "incumbent r3b3_gwx2/ckpt_final.pt (8,838,971,392) -> r4b4_c2 (+ --eval-parallel 1 --unstuck-max 0.25) -> r4b4_c3 (+ --eval-idle-secs 60) -> r4b4_c4 (bare, from c3's 9.566B snapshot) -> r4b4_c5 (+ --ez-eps 0.05 --ez-front 0.04)",
-  "commit": "aee01a9"
+  "resume_from": "incumbent r3b3_gwx2/ckpt_final.pt (8,838,971,392) -> r4b4_c2 (+ --eval-parallel 1 --unstuck-max 0.25) -> r4b4_c3 (+ --eval-idle-secs 60) -> r4b4_c4 (bare) -> r4b4_c5 (+ --ez-eps 0.05 --ez-front 0.04) -> r4b4_c6 (bare) -> r4b4_c7 (+ --race-kill-aware 1, from c6's 11,392,253,952)",
+  "commit": "48165e3"
  },
- "summary": "60.548 (r4b4_c5 eval 10,775M, CP4; the warm lineage 54.674 -> 56.1 (CP4 window) -> 57.9 -> 60.5 (bowl) with T cap 0.25). NEW --eval-parallel / --eval-idle-secs: the sequential greedy eval was 45-52% of the wall clock; now ~1.5-1.8x training per box-hour (also in the lineage's scratch recipe). The bowl (60.5%): a window in a divider + a 150 u hole in a kill plate; the plain field pays for dying on the plate and gives the window no gradient. c7 = warm switch to --race-kill-aware: the line collapsed to 1.9% (the potential channel's unreachable pixels moved), re-learned to 60.5% in ~480M steps, and its training ceiling passed the hole (~61.4%) - the greedy line has yet to follow."
+ "summary": "63.484 (r4b4_c7 eval 12,123M, CP5: through the bowl's window and the hole in its kill floor). Warm continuation of the incumbent (54.674): T cap 0.25 (cap 0.5 collapsed the line), CP4 window at 9.54B (56.1), the 64-66 s dip (57.9 -> 60.5), the bowl stuck ~2B steps at 60.5 on the plain field. --race-kill-aware (kill volumes walled off in the shaping graph) gave the window a gradient and stopped paying for falls onto the plate: the warm switch first collapsed the line to 1.9% (the observation features read the same field), re-learned to 60.5% in ~480M steps, ceiling past the hole, greedy CP5 ~730M after the switch. NEW --eval-parallel / --eval-idle-secs (~1.5-1.8x training per box-hour, in the scratch recipe); novel ceiling re-measured on a reward-field change; record_ckpt mirrors the kill-aware field."
 }
