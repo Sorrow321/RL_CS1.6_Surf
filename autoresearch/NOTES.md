@@ -1773,3 +1773,20 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
   --eval-greedy-only, which --eval-parallel needs). A from-scratch CPU smoke with the full
   recipe + both flags: 3 parallel evals written, clean exit. Resumes are unaffected (box.py
   passes only --envs; a checkpoint carrying the flags restores them).
+
+### 18:21 UTC: c6 holds at the bowl; the kill-unaware field pays for dying on the plate
+
+* r4b4_c6 (bare resume of c5, bursts on) 11.00-11.25B: evals 60.47-60.52 (one 54.8), medians up
+  to 60.5%; ceiling flat at 59,250 u (60.6%), stuck 1.45B steps, T at the 0.25 cap.
+* Why stage 1 (a reliable dive from the east valley) is slow: the shaping field ignores kill
+  triggers, so its value over kill plate *53 is ~61.0-61.1% (BELOW the hole's rim in d): a
+  fall onto the plate is paid ~+0.6-0.8 before the death, a dive through the hole ~+2.3. The
+  precise dive is only ~3x better than dying, and 75% of east-valley novel episodes die there.
+  A kill-aware potential (`--race-kill-aware`, kill volumes as walls in the goal graph: the
+  family of the Grzes death charge CLAUDE.md lists as generic) would route only through the
+  hole and stop paying for the plate.
+* But on a WARM run it is not a reward-only change: the potential image channel, the compass,
+  the pot-rate column and the ratchet's record-gap column all read `slot.reward_field`
+  (`--goal-field-file`'s "the obs channel keeps the free-space field" message is stale - the
+  renderer gets `slot.reward_field` too). So it is a from-scratch experiment (or needs a
+  reward-only decoupling). Baking `goalk_32` on the box GPU now (analysis, c6 unaffected).
