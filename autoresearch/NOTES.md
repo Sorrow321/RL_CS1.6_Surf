@@ -1398,3 +1398,16 @@ cavity (entry speed, ramp vz) and complete the loop? 30 min first.
 * So the round's recipe (ratchet + novel + no time penalty / surf bonus + greedy tails + speed floor +
   move gate) is not a warm-only effect: from scratch it reaches the cavity in ~1.0B steps, which the
   lineage's warm checkpoints needed 7.3B for.
+
+### 08:55 UTC: incumbent_recipe updated (config.json, the lineage key)
+
+* New scratch default: the old recipe with `--surf-bonus 0`, plus `--respawn-novel --race-ratchet` (round
+  1's core) and this round's `--time-pen 0 --greedy-tail-frac 0.15 --respawn-min-speed 300
+  --int-move-gate` - exactly r3b2_sfull's flags (box.py launch prepends it; run_arm.sh's scratch
+  `--time-pen 0.005` comes before it and loses). Evidence: r3b2_sfull from scratch, every gate sooner
+  than the lineage's best scratch run, CP2 pit at 982M vs 1,633M, cavity entries at 1.03B.
+* **Harness issue:** the round-2 harness restore (commit c14ffb1, "the operator's harness at ... over
+  7da4860e78") left config.json's incumbent_recipe WITHOUT r1b1's `--respawn-novel --race-ratchet`
+  (ca6bb63), although incumbent_recipe is a lineage key that should travel with the winner; round 2's and
+  round 3's scratch launches through box.py therefore ran without the lineage's two core mechanisms
+  unless the agent passed them by hand. Worth checking that the orchestrator carries lineage_keys over.
