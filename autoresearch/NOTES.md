@@ -1693,3 +1693,16 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
   snapshots every 1e8.
 * --front-temp: the trainer smoke ran clean but its step-line note sat inside the --ez-eps block
   (never printed without bursts); moved out, test rerun pending.
+
+### 15:22 UTC: r4b3_kst5x - 60.253; --front-temp built and tested
+
+* r4b3_kst5x (bare resume of kst5's final) evals 9,543-9,668M: 57.752 (the resume eval), **60.130**
+  (9,568M), 56.935, 59.941, 59.956, **60.253 (9,668M)**; all CP4. Training ceiling 59,244 u (60.6%),
+  reservoir min depth 39.53% (deepest 60.5%), T 0.15 (decaying on the new eval bests), 175k steps/s.
+  The line passed the corridor's west end (kill plate *92) and the drop at x ~-3,100.
+* NEW `--front-temp T_F --front-band B` (commit 4b71ca4): a per-env sampling temperature - every
+  head at 1 + T_F inside the frontier band (progress >= (1 - B) x the reservoir's deepest, the
+  --ez-front band), the global --unstuck T on its heads elsewhere; PPO scores each row at its own
+  temperature (per-row records b_ftk / b_ftv; logprob_entropy_view takes a per-row view
+  temperature). 10 tests incl. flag-off bit-identity. Not deployed yet: the next arm when the main
+  line stalls (yaw exploration only where the line ends, which keys-only T no longer gives).
