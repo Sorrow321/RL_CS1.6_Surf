@@ -1281,3 +1281,17 @@ line (it killed my local shell twice).
   without visible damage to the greedy line or the returns. The reported kl is (logp_old - logp_new)
   on the last minibatch after the whole update; a likely source is the pitch head (sigma 0.007, no
   physics effect, no entropy term) at the sharper temp 1.5 - not verified. Watch the evals, not kl.
+
+### 05:52 UTC: r3b3_t05 - 32.775; the greedy line starts to get past the block
+
+* Evals 5,438-5,715M: 32.545, ..., 32.634 (5,589M), **32.775** (5,639M, median 32.2%), 32.581
+  (5,715M); every eval CP2. Episode 2 of 5,639M: best 32.78% at 37.7 s at (-745, -39, 10,286) - WEST
+  of the block and BELOW the kill floor's level (*112 at z 10,578), the field's way (it lives to
+  143 s and ends at (-192, 297, 9,715)).
+* New behaviour: many greedy episodes now die at ~40.5 s instead of ~37 s because at ~36.3 s they
+  turn back EAST at the block (v (828, -815) at 36.5 s), fall back to the void-bottom ramp (38.25 s,
+  z 9,689), climb it again and make a second westward approach (block again at ~40.3 s). With no
+  time penalty a retry is free.
+* Training ceiling 32,154 u (flat since the restart). approx_kl still 0.9-5.6 per update with the
+  line intact. Decision: extend r3b3_t05 (the gate is moving) instead of the planned from-scratch
+  test.
