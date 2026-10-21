@@ -1664,3 +1664,13 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
 * 15:25 UTC: c4 evals 57.782, 57.867, **57.878** (9,667M) - the best episode reaches the dip
   every eval now. All flag-off identity checks pass with --eval-parallel, --eval-idle-secs and
   --respawn-greedy-speed off (config, csv, eval bytes, weights vs the pre-change trainer).
+* The dip gate (c4 9,667M best episode vs the WR demo, analysis only): the agent clears the
+  window at 64.0 s (z 8,577), flies west to (-2,914, 811, 8,177) at 66.0 s (the human was there
+  at 63.5 s), then TURNS BACK at x ~-3,200 (66.5 s, v (494, -1,085, -532)) and stops dead
+  against something at (-2,768, 27, 7,645) (67.0 s, v_h 0) and falls to a kill at z ~6,500.
+  The human keeps going west to (-4,477, 815, 7,098) (65.0 s), ~1,300 u further and ~900 u
+  lower, turns there and climbs out east (66.0 s vz +1,179). The human's line loses 1.35% of
+  field progress on the way west (56.97 -> 55.62%): the field says turn early. A direction
+  gate (WON'T), the CP2-detour kind - the ratchet makes the detour free and novel rows in the
+  band (>= 52.9%) can show the far ramp; the training ceiling (57.9%) has not passed it yet.
+  Box extended to 20:26 UTC.
