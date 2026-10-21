@@ -1661,3 +1661,6 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
   rows' velocities x U(LO, HI) on their own RNG (rows identical to the unscaled pool's),
   default off, ckpt restores, record_ckpt TRAIN_ONLY, needs --respawn-greedy. For the next
   energy-gated stall (the probes: x1.25 turns 0/50 into 1/16-4/16).
+* 15:25 UTC: c4 evals 57.782, 57.867, **57.878** (9,667M) - the best episode reaches the dip
+  every eval now. All flag-off identity checks pass with --eval-parallel, --eval-idle-secs and
+  --respawn-greedy-speed off (config, csv, eval bytes, weights vs the pre-change trainer).
