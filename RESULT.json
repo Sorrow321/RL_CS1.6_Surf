@@ -1,33 +1,16 @@
 {
- "agent": "r2b2",
- "round": 2,
- "final": true,
+ "agent": "r3b3",
+ "round": 3,
+ "final": false,
  "best": {
-  "score": 28.841,
-  "eval_file": "/home/steam/ar/runs/r2b2/r2b2_t1/traj_6750732288.jsonl",
-  "run": "r2b2_t1",
-  "step": 6750732288,
-  "ckpt": "/home/steam/ar/runs/r2b2/r2b2_t1/ckpt_latest.pt",
-  "recipe": [
-   "--respawn-novel-shell",
-   "0.9",
-   "--respawn-novel-shell-width",
-   "0.05",
-   "--respawn-novel-radius",
-   "256",
-   "3072",
-   "--respawn-novel-turn",
-   "90",
-   "--respawn-novel-band",
-   "0.05",
-   "--respawn-novel-tries",
-   "64",
-   "--unstuck-max",
-   "1"
-  ],
-  "resume_from": "warm lineage: incumbent ckpt (r1b1_ratnovx2 final, 5,100,797,952) -> r2b2_nfturn (to 5,551M) -> r2b2_band64 (to 6,001M) -> r2b2_band64x (to 6,725M) -> r2b2_t1 (to 7,176M), bare resumes plus the flags above",
-  "commit": "15716d6",
-  "note": "ckpt_latest.pt is r2b2_t1's end (step 7,176,454,144, md5 92b7ddd202e0b09629f93e4ac2afdbe1), 426M steps after the best eval; its greedy line dies in the CP2 pit (27.4%) while stochastic training episodes reach 29.76%. A healthier warm start is r2b2_sband2/ckpt_final.pt (from-scratch lineage, 3,335,520,256, md5 36256794..., evals 28.5-28.75)."
+  "score": null,
+  "eval_file": null,
+  "run": null,
+  "step": null,
+  "ckpt": null,
+  "recipe": [],
+  "resume_from": null,
+  "commit": "5baf825"
  },
- "summary": "Best 28.841 (incumbent 28.628): a greedy tunnel dive to the field route's physical limit. Analysis: the field route past 28.6% is closed (free-flight bound + 12k brute-force flights: max 28.79%); the WR demo (analysis only) shows the real route, a ~2,000 u dip into a cavity with a surf-ramp turnaround. New generic novel-sampler options --respawn-novel-band / --respawn-novel-turn (+ a byte-identical 3-6x sampler speed-up) put ~85% of novel rows in that dip; a bench shows the return leg learned (climb -> room 5/11). T cap 2->1 gave the 28.841 eval and the first real episodes past the tunnel (ceiling 29.76%), but the warm greedy line then locked into the CP2 pit dive. From scratch the band clears the trap and the CP2 pit sooner than round 1 but stalls at the window. Next: band only for dips behind the frontier, and fix the greedy-vs-stochastic gap."
+ "summary": "No eval yet. Built --respawn-greedy F (commit 5baf825): a share of the training spawn pool drawn from the policy's OWN greedy-eval states 0.5-5 s before each death, rebuilt at every eval (DAgger on the deployed line; round 2's greedy line sat in the CP2 pit while the stochastic policy crossed). First arm: warm resume of the incumbent (7.176B) + --respawn-greedy 0.15, 30 min, once a box is under the price caps (none at 00:48-01:05 UTC)."
 }

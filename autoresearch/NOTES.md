@@ -957,3 +957,39 @@ line (it killed my local shell twice).
   pulled while the run was stopped and md5-checked again at wrap-up; also local:
   r2b2_t1/ckpt_7128219648.pt and r2b2_sband2/ckpt_final.pt (from-scratch lineage, 3,335,520,256).
 * Box 56901034 released at 23:41 UTC; no box at wrap-up.
+
+## Round 3, branch r3b3 - 2026-10-21 01:05 UTC: greedy-line spawns (--respawn-greedy)
+
+### The idea
+
+* The score is the GREEDY eval, and the greedy policy (mean yaw, argmax keys) is never executed in
+  training: the behaviour policy samples at the unstuck temperature (T 1-2: sigma x2-3, logits/2-3)
+  and the reservoir is harvested from those stochastic episodes. So the states the greedy line
+  reaches just before it dies can be states training seldom visits with that position AND
+  velocity. Round 2's warm lineage is the case: stochastic episodes crossed the CP2 pit (training
+  ceiling 29.76%) while ~60 greedy evals over 1.5B steps dived into it (27.4%), whatever T or the
+  novel share. DAgger (Ross et al. 2011): train on the states the DEPLOYED policy visits.
+* NEW `--respawn-greedy F [--respawn-greedy-window LO HI]` (commit 5baf825,
+  `python/surfgym/greedy_spawn.py`): every greedy eval's episodes are captured through the eval's
+  on_tick hook (the eval core's pre-step STATE_DTYPE snapshots, what record_ckpt --dump-states
+  writes); for each FAILED episode the states from HI to LO s before its last tick are kept
+  (default 5.0..0.5 s); each iteration F of the pool's non-start rows (the reservoir TAIL: the
+  start rows and the novel rows after them are kept) are replaced by uniform draws from them,
+  clocks zeroed. Rebuilt at every eval, so it follows the greedy line to its next death; an eval
+  with no failed episode empties it. Episodes from these rows are REAL (harvested, move the novel
+  ceiling): the states were reached from the map start by the policy itself.
+* Generic: policy-derived states (CLAUDE.md section 0 lists "windows cut from its own greedy
+  line" as allowed), two constants in seconds, no map quantity (section 0b).
+* Tests (tests/python/test_respawn_greedy.py, 17 pass on CPU): the window per failed episode in
+  seconds, done/trunc add nothing, a new eval replaces the pool, the mix touches only the tail,
+  checkpoint round trip, refusals, the capture equals record_rollout's trajectory row for row on
+  the real core, a sidistic CPU smoke (resume onto a filled reservoir: pool built at every eval,
+  mixed, saved, restored by a bare resume, record_ckpt reads the checkpoint), and flag off is
+  bit-identical to the pre-change trainer (config, csv, eval bytes, weights).
+
+### Box
+
+* 00:48 UTC: the only offer under the caps (a 5090 at $0.567, New Jersey, machine 149861) never
+  reached `running` in 330 s; box.py blocklisted and destroyed it. Since then no offer passes
+  (cheapest 4090 $0.455 vs cap 0.45; 3090 $0.535 vs 0.30; 5090 $0.669 vs 0.60). A background
+  `box.py rent` retry loop runs every 3 min.
