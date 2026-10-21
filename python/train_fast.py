@@ -108,7 +108,7 @@ from surfgym import distributed
 from surfgym.core import STATE_DTYPE
 from surfgym.dipmeter import DIP_KEYS
 from surfgym.goalfield import build_goal_field
-from surfgym.greedy_spawn import GreedyLinePool
+from surfgym.greedy_spawn import GreedyLinePool, as_truncated
 from surfgym.mapfleet import HeldoutSlot, MapFleet, MapSlot
 from surfgym.obsaux import ACT_FEAT, CMP_FEAT, ObsAux, PotRate, make_pot_rate_feed
 from surfgym.surfflag import SurfFlag, g_step_of, make_surf_feed
@@ -3774,6 +3774,64 @@ def make_eval_stall_hook(core, field, stall_ticks, stall_eps, every, env=0):
     return hook
 
 
+def make_eval_patience_hook(core, field, patience_ticks, eps=32.0, env=0):
+    """``record_rollout`` on_tick for --eval-patience: end an EVAL episode whose best
+    field progress has not grown by ``eps`` units over ``patience_ticks`` physics ticks.
+
+    Why it exists. Without a time penalty the greedy line often stops somewhere safe
+    and lives to the --ep-ticks cap: on sidistic (r3b3_gwx2, 8.72B) 5 of 9 eval
+    episodes ran the full 300 s and the evals took 48% of the run's wall time (median
+    67 s each, up to 143 s). The training stall rule cannot be mirrored for this
+    (--eval-stall): with the reward computed every tick it needs a SINGLE tick that
+    beats the running best by 32 u (3,200 u/s down the field) and would have cut that
+    eval's best episode at 34.3% instead of 54.7%.
+
+    The rule here is CUMULATIVE: ``best`` is the episode's running minimum distance
+    and ``ref`` the best at the last re-arm; the clock re-arms when best < ref - eps
+    (any rate, as long as the best keeps moving) and the episode is killed once it has
+    run ``patience_ticks`` ticks without that. A line that is still gaining - however
+    slowly, retries included - is never cut. Off-field samples (the unreachable
+    sentinel) count as no progress. The kill is ``core.force_fail`` (the episode ends
+    on the next tick); ``hook.state`` carries ``n`` (kills) and ``killed`` (the
+    indices of the episodes, in recording order, that ended by it).
+    """
+    st = {"ref": None, "best": None, "since": 0, "ep": 0, "n": 0, "killed": []}
+    lim = float(field.reach_max) - 0.5 * float(field.cell)
+
+    def hook(t, states, rewards, done, trunc):
+        if bool(done[env]) or bool(trunc[env]):
+            st["ref"] = st["best"] = None
+            st["since"] = 0
+            st["ep"] += 1
+            return
+        if patience_ticks <= 0:
+            return
+        d = float(field.sample(
+            core.states_view["origin"][env:env + 1].astype(np.float64))[0])
+        if not d < lim:
+            d = float("inf")
+        if st["ref"] is None:            # first tick of the episode: arm it
+            st["ref"] = st["best"] = d
+            return
+        st["best"] = min(st["best"], d)
+        if st["best"] < st["ref"] - eps:
+            st["ref"] = st["best"]
+            st["since"] = 0
+            return
+        st["since"] += 1
+        if st["since"] >= patience_ticks:
+            st["since"] = 0              # re-arm: one kill per window
+            st["n"] += 1
+            if not st["killed"] or st["killed"][-1] != st["ep"]:
+                st["killed"].append(st["ep"])
+            m = np.zeros(core.num_envs, np.uint8)
+            m[env] = 1
+            core.force_fail(m)
+
+    hook.state = st
+    return hook
+
+
 def chain_ticks(*hooks):
     """Compose record_rollout on_tick callbacks (None entries dropped)."""
     live = [h for h in hooks if h is not None]
@@ -6215,6 +6273,14 @@ def main() -> None:
     ap.add_argument("--cc-temp-gain", type=float, default=None,  # 0.25
                     help="--curiosity-cond: the keys temperature's gain per "
                          "unit of T (default 0.25: 1.5 at T = 2)")
+    ap.add_argument("--eval-patience", type=float, default=None,   # 0 = off
+                    help="SECONDS: end a greedy EVAL episode once its best field progress "
+                         "has not grown by 32u (cumulative, any rate) for this long - the "
+                         "eval-time cost rule for lines that stop somewhere safe and would "
+                         "run to the --ep-ticks cap. Unlike --eval-stall it never cuts a "
+                         "line that is still gaining. The greedy-line pool treats a cut "
+                         "episode as the truncated one it would have been. 0 = off; ckpt "
+                         "restores")
     ap.add_argument("--eval-stall", type=int, default=0,
                     help="1 = apply the TRAINING stall rule to eval episodes "
                          "too (same --stall-secs window, same 32u threshold, "
@@ -7084,6 +7150,10 @@ def main() -> None:
             # measures, half way through, with nothing in the log saying so.
             args.eval_stall = int(ck_cfg["eval_stall"])
             restored.append(f"eval_stall={args.eval_stall:d}")
+        if args.eval_patience is None and ck_cfg.get("eval_patience") is not None:
+            # --eval-patience: an eval CONDITION, carried across a resume like eval_stall
+            args.eval_patience = float(ck_cfg["eval_patience"])
+            restored.append(f"eval_patience={args.eval_patience:g}")
         if args.ret_norm is None and ck_cfg.get("ret_norm") is not None:
             # --ret-norm changes what the VALUE HEAD MEANS (normalized
             # returns, not returns). Resuming without it would read the
@@ -8445,6 +8515,10 @@ def main() -> None:
         args.respawn_greedy = 0.0
     if args.respawn_greedy_window is None:
         args.respawn_greedy_window = [0.5, 5.0]
+    if args.eval_patience is None:
+        args.eval_patience = 0.0
+    if args.eval_patience < 0.0:
+        raise SystemExit(f"--eval-patience SECS needs SECS >= 0, got {args.eval_patience:g}")
     for _bk, _bv in (("respawn_backward_start", 0.05),
                      ("respawn_backward_step", 0.05),
                      ("respawn_backward_rate", 0.2),
@@ -12426,6 +12500,12 @@ def main() -> None:
     # every rank).
     RETN = bool(args.ret_norm)
     EVAL_STALL = bool(args.eval_stall)
+    # --eval-patience: the eval-time cost rule (make_eval_patience_hook), in physics ticks
+    EVAL_PATIENCE = (TICK.secs_to_ticks(float(args.eval_patience))
+                     if args.eval_patience > 0.0 else 0)
+    if EVAL_PATIENCE:
+        print(f"--eval-patience: a greedy eval episode ends once its best field progress "
+              f"has not grown by 32u for {args.eval_patience:g}s ({EVAL_PATIENCE:,} ticks)")
     retn = ReturnNorm()
     if RETN:
         print(f"--ret-norm: the critic predicts NORMALIZED returns "
@@ -13647,6 +13727,9 @@ def main() -> None:
     if GREEDY is not None:
         meta["config"]["respawn_greedy"] = float(GREEDY.frac)
         meta["config"]["respawn_greedy_window"] = [float(GREEDY.lo), float(GREEDY.hi)]
+    # --eval-patience: written ONLY when on, like the greedy pool above
+    if EVAL_PATIENCE:
+        meta["config"]["eval_patience"] = float(args.eval_patience)
     # --unstuck: written ONLY when set (a control run's config dump stays
     # byte-identical); every knob rides along so a resume restores them
     if UNSTUCK:
@@ -18896,6 +18979,14 @@ def main() -> None:
                         _s.reward_fn.stall_ticks, _s.reward_fn.stall_eps,
                         _s.reward_fn.every)
                     _ev_tick = chain_ticks(_ev_tick, _ev_stall)
+                # --eval-patience: the eval-time cost rule, a fresh hook per recording,
+                # on the field the score and the greedy pool read; the header says so
+                _ev_pat, _ghdr = None, _hdr
+                if EVAL_PATIENCE and _s.goal_field is not None:
+                    _ghdr = {**_hdr, "eval_patience": float(args.eval_patience)}
+                    _ev_pat = make_eval_patience_hook(_s.eval_core, _s.goal_field,
+                                                      EVAL_PATIENCE)
+                    _ev_tick = chain_ticks(_ev_tick, _ev_pat)
                 _rg_cap = GREEDY is not None and not _s.heldout
                 if _rg_cap:
                     # --respawn-greedy: keep this recording's states (env 0, pre-step)
@@ -18939,7 +19030,7 @@ def main() -> None:
                                max_ticks=n_rec * args.ep_ticks,
                                seed=global_step & 0x7FFFFFFF,
                                on_tick=_ev_tick, episode_meta=_ev_meta,
-                               header_extra=_hdr)
+                               header_extra=_ghdr)
                 if _rg_cap:
                     _tpat = tuple(getattr(_s.eval_core, "tick_pattern",
                                           (int(_s.eval_core.config.phys.msec),)))
@@ -18949,7 +19040,9 @@ def main() -> None:
                         # the field distance, off-field (the unreachable sentinel) -> inf
                         _d = np.asarray(_f.sample(o), np.float64)
                         return np.where(_d < _f.reach_max - 0.5 * _f.cell, _d, np.inf)
-                    GREEDY.build(_ev_sum, float(sum(_tpat)) / len(_tpat),
+                    GREEDY.build(_ev_sum if _ev_pat is None
+                                 else as_truncated(_ev_sum, _ev_pat.state["killed"]),
+                                 float(sum(_tpat)) / len(_tpat),
                                  d_fn=None if _gfld is None else _rg_d)
                     print(f"[{global_step:>13,d}] " + GREEDY.line())
                 st = episode_stats(path)
@@ -18996,6 +19089,8 @@ def main() -> None:
                     prog_note += f"  corridor MAX {_cm:8.0f}u"
                 if _ev_stall is not None and _ev_stall.state["n"]:
                     prog_note += f"  stallkill {_ev_stall.state['n']}"
+                if _ev_pat is not None and _ev_pat.state["n"]:
+                    prog_note += f"  patience-cut {len(_ev_pat.state['killed'])}"
                 if goalsys is not None:
                     prog_note += goalsys.eval_note()
                 print(f"[{global_step:>13,d}] greedy"

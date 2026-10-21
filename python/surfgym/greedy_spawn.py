@@ -37,6 +37,16 @@ import numpy as np
 from .core import STATE_DTYPE
 
 
+def as_truncated(summaries, idx) -> list:
+    """``summaries`` (record_rollout's per-episode trailers) with the episodes at ``idx``
+    marked ``end = "trunc"``. --eval-patience ends a greedy eval episode that stopped
+    gaining as a FAIL (core.force_fail); for the pool that episode is the STUCK line it
+    would have been without the rule (a truncated episode: only its best-progress anchor
+    counts), not a death with decisions to correct in the seconds before it."""
+    idx = set(int(i) for i in idx)
+    return [dict(s, end="trunc") if i in idx else s for i, s in enumerate(summaries)]
+
+
 class GreedyLinePool:
     def __init__(self, frac: float, window=(0.5, 5.0), seed: int = 0):
         frac = float(frac)
