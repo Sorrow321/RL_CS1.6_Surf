@@ -1054,3 +1054,20 @@ window, C = inside the cavity under the pit slab, T = tunnel lane, R = room; ana
   of the equivalence above: in that frame surfing in place earns 0.3/s until the stall kill, ~3 units
   over 15 s). A cavity surf farm competes with the climb-out. If the line parks in the cavity,
   `--surf-bonus 0` is the next arm. Yaw sigma 0.031 -> 0.061 by 3.46B.
+
+### 01:20 UTC: arm 2 evals blocked training; restarted with `--eval-stall 1` (r3b1_fp10x)
+
+* Once the greedy line parks in the cavity (on its one non-kill platform, x ~2,200-2,300,
+  z ~10,050-10,100, v ~0), eval episodes run to the 300 s cap: evals have no stall kill. Each eval
+  then took ~5 min and BLOCKED training (the trainer sat at step 3,461M from 01:11 to 01:16).
+* Climb metric (max z after first being deep in the cavity, z < 10,300): 10,286-10,597 at 3,436M
+  and 10,287-10,374 at 3,461M; vz max off the ramp 150-982 (human +1,190). The lower opening
+  needs z >= ~10,770, so the turn-up is ~200-500 u short. Most episodes now park on the platform.
+* `--eval-stall 1` applies the training stall rule (15 s without a 32 u gain on the best d) to
+  evals; the eval header records `eval_stall: 1`. The grader checks map, true start and >= 5
+  episodes, so these evals still count; a greedy episode parked for 15 s never moves again.
+* **r3b1_fp10x** (01:17): resume of fp10's ckpt_latest (3,461,873,664, md5 71e1f3ef...) +
+  `--unstuck-max 0 --fail-pen 10 --eval-stall 1`, 1.5e9 steps (to 4.96B), evals every 25M.
+  EXTENDED per PROTOCOL: the greedy line clears a gate no earlier greedy eval cleared (the entry
+  into the cavity: window -> shaft -> lower opening). The sband2 checkpoint is kept on the box as
+  ckpt_sband2.pt.
