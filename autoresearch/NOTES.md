@@ -1853,3 +1853,15 @@ own greedy-line pool (1,809 STATE_DTYPE rows, 59.7-60.6% progress, the 2 s befor
   real frontier again; rows back to 1,843 per pool, 36-48% of episodes within the first iterations.
   For the lineage: a band anchored to the reservoir's deepest state (or a decaying ceiling) would
   not have this failure mode - an untested design note, not code.
+
+### 18:53 UTC: MILESTONE - the greedy line passes the 60.57% gate: 72.615 (CP5), median 72.1%
+
+* r4b3_band15 (from 11,682M, band 0.15): evals 60.558, **63.356 (11,783M, CP5)**, **71.131**, 71.267,
+  70.352, 71.506, **72.615 (11,909M)**, 72.091 (median 71.0%), 72.097 (11,959M, **median 72.1%**: all 9
+  greedy episodes past the old stop). Reservoir min depth 38.69% -> 27.48% (deepest 72.5%),
+  ceiling 71,043 u, T 0.5 -> 0.13 (new eval bests), 180k steps/s.
+* So ~100M steps after the novel rows came back (1,843 per pool, 41% of episodes) the greedy line
+  went 60.57 -> 63.4 -> 71.1 -> 72.6. Attribution, one seed: the band was the visible change at this
+  restart; the stalled-stretch pool (--respawn-greedy-stuck 200) had run ~820M steps before it, and
+  the gate had absorbed ~1.6B steps in total. The band-starvation mechanism itself is measured (rows
+  1,843 -> 39-91 when the ceiling jumped ahead, back to 1,843 at band 0.15).
