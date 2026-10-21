@@ -2149,6 +2149,11 @@ def main(argv=None, build_only: bool = False, device=None):
               f"architecture at INITIALISATION - its trained weights are NOT loaded")
     else:
         policy.load_state_dict(ck["policy"])
+    if float(cfg.get("pitch_std_min") or 0.0) > 0.0:
+        # --pitch-std-min is MIRRORED: the floor is a non-persistent buffer, so the state_dict
+        # does not carry it, and a --stochastic recording samples the pitch from this sigma
+        policy.set_pitch_floor(float(cfg["pitch_std_min"]))
+        policy.project_log_std()
     policy.eval()
     if cfg.get("view_continuous"):
         _ls = policy.log_std().exp().tolist()

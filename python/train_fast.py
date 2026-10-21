@@ -1078,10 +1078,35 @@ class Policy(nn.Module):
         ls = self.view_std.log_std.clamp(LOG_STD_MIN, LOG_STD_MAX)
         if self.view_absolute is None:
             return ls
+        lo = getattr(self.view_std, "log_std_lo", None)
+        if lo is not None:
+            # --pitch-std-min: the per-head floor (Policy.set_pitch_floor);
+            # absent = the pre-flag expression below, op for op. where, not
+            # a tensor clamp: a tensor-bound clamp splits the gradient 0.5 /
+            # 0.5 at the bound (measured, torch 2.14), and the raw parameter
+            # sits exactly on the floor after a projection
+            ls = torch.clamp(ls, max=self.view_std.log_std_hi)
+            return torch.where(ls < lo, lo, ls)
         # clamp, not torch.minimum: at the cap itself minimum splits the
         # gradient 0.5/0.5 between its two equal inputs, clamp passes it
         # whole (the raw parameter sits exactly there after a projection)
         return torch.clamp(ls, max=self.view_std.log_std_hi)
+
+    def set_pitch_floor(self, std_min: float) -> None:
+        """--pitch-std-min: a floor on the PITCH head's sigma under
+        --view-absolute (the yaw head(s) keep LOG_STD_MIN). A NON-persistent
+        buffer like log_std_hi, so the state_dict keys do not change and a
+        checkpoint moves between the two settings freely; log_std() reads it
+        and project_log_std() keeps the raw parameter at or above it, so the
+        gradient through the clamp stays alive."""
+        if self.view_absolute is None or self.view_std is None:
+            raise SystemExit("--pitch-std-min needs --view-absolute")
+        lo = [LOG_STD_MIN] * (self.n_z - 1) + [float(np.log(float(std_min)))]
+        self.view_std.register_buffer(
+            "log_std_lo",
+            torch.as_tensor(lo, dtype=torch.float32,
+                            device=self.view_std.log_std.device),
+            persistent=False)
 
     def project_log_std(self) -> int:
         """--view-absolute: pull the RAW log sigma of every head back under
@@ -1089,6 +1114,7 @@ class Policy(nn.Module):
         parameter parked above a clamp has a zero gradient through it, so
         PPO could never shrink the pitch sigma again once the entropy bonus
         (or a checkpoint from before the cap) had pushed it past log 0.5.
+        Under --pitch-std-min the same for the floor, from below.
         -> the number of heads that were moved. No-op in delta mode."""
         if self.view_absolute is None:
             return 0
@@ -1098,6 +1124,12 @@ class Policy(nn.Module):
             moved = int((p > hi).sum())
             if moved:
                 p.copy_(torch.minimum(p, hi))
+            lo = getattr(self.view_std, "log_std_lo", None)
+            if lo is not None:
+                up = int((p < lo).sum())
+                if up:
+                    p.copy_(torch.maximum(p, lo))
+                moved += up
         return moved
 
     def _value(self, t, priv):
@@ -6023,6 +6055,24 @@ def main() -> None:
                          "the clamp, 2.718, by 3-8B steps on two seeds). "
                          "Written to the config only under --view-absolute "
                          "and restored on resume.")
+    ap.add_argument("--pitch-std-min", type=float, default=None,
+                    help="--view-absolute: a FLOOR on the PITCH head's sigma (pre-tanh z "
+                         "units; pitch target = -20 + 50 tanh z, so 0.05 is ~2.5 deg at z 0). "
+                         "With --pitch-entropy 0 nothing holds that sigma up, and on sidistic "
+                         "PPO drove it to the LOG_STD_MIN clamp (0.0067) by 5.1B steps and kept "
+                         "it there (every round-1..3 checkpoint): the head's score-function "
+                         "gradient on the shared actor tower then scales as 1/sigma, and the "
+                         "joint PPO ratio carries its log-density, so a pitch-mean drift of one "
+                         "sigma - on a head the physics never reads - moves every row's ratio. "
+                         "Unset / 0 = off (the shipped clamp, bit-identical). Saved in the "
+                         "config, restored on resume, mirrored by record_ckpt.py")
+    ap.add_argument("--diag-heads", type=int, default=0,
+                    help="DIAGNOSTIC, prints only (the update, its RNG and its numbers are "
+                         "unchanged): every N updates, on one strided minibatch of the rollout, "
+                         "the per-head (keys / yaw / pitch) norm of the PPO surrogate's gradient "
+                         "on the shared actor parameters (conv trunk + pi tower) before the "
+                         "update, and the per-head KL and the joint ratio's clip fraction after "
+                         "it. --view-continuous only. 0 = off. Not saved, not restored")
     ap.add_argument("--view-ou-sigma", type=float, default=0.0,
                     help="--view-continuous ROLLOUT-ONLY temporally "
                          "correlated view exploration (round 40, pnOU). The "
@@ -8053,6 +8103,12 @@ def main() -> None:
                 and not flag_given("--pitch-entropy")):
             args.pitch_entropy = float(ck_cfg["pitch_entropy"])
             restored.append(f"pitch_entropy={args.pitch_entropy:g}")
+        # --pitch-std-min: what the rollout samples the pitch from; a bare
+        # resume keeps it, passing the flag (0 included) replaces it
+        if (ck_cfg.get("pitch_std_min") is not None
+                and not flag_given("--pitch-std-min")):
+            args.pitch_std_min = float(ck_cfg["pitch_std_min"])
+            restored.append(f"pitch_std_min={args.pitch_std_min:g}")
         # --view-ou-sigma is rollout BEHAVIOUR, not shape, but a resume that
         # silently dropped it would change the exploration mid-run without
         # saying so - the Round 17 failure class. Restored like the rest.
@@ -9508,6 +9564,22 @@ def main() -> None:
                          "entropy: it needs --view-continuous")
     if PITCH_ENT < 0.0:
         raise SystemExit("--pitch-entropy must be >= 0")
+    # --pitch-std-min: 0 = off (no buffer, the shipped log_std() op for op)
+    PITCH_STD_MIN = float(args.pitch_std_min or 0.0)
+    if PITCH_STD_MIN != PITCH_STD_MIN or PITCH_STD_MIN < 0.0:
+        raise SystemExit(f"--pitch-std-min must be >= 0, got {args.pitch_std_min!r}")
+    if PITCH_STD_MIN > 0.0 and not VIEW_ABS:
+        raise SystemExit("--pitch-std-min floors the --view-absolute pitch head's sigma: "
+                         "it needs --view-continuous --view-absolute")
+    if PITCH_STD_MIN > 0.0 and np.log(PITCH_STD_MIN) > PITCH_LOG_STD_MAX_ABS:
+        raise SystemExit(f"--pitch-std-min {PITCH_STD_MIN:g} is above the pitch head's own "
+                         f"cap ({np.exp(PITCH_LOG_STD_MAX_ABS):g})")
+    DIAG_H = int(args.diag_heads or 0)
+    if DIAG_H < 0:
+        raise SystemExit("--diag-heads must be >= 0")
+    if DIAG_H and not VIEWC:
+        raise SystemExit("--diag-heads splits the --view-continuous heads: it needs "
+                         "--view-continuous")
     # --int-mode / --archive-*: None = the flag-off constants
     if args.int_mode is None:
         args.int_mode = "cell"
@@ -12071,6 +12143,10 @@ def main() -> None:
                     drop_depth=bool(args.obs_no_depth),
                     simba=bool(args.simba),
                     split_trunk=bool(args.split_trunk)).to(device)
+    if PITCH_STD_MIN > 0.0:
+        # --pitch-std-min: BEFORE the resume's load + projection (which then lifts a raw
+        # pitch log sigma parked under the floor) and before any graph capture
+        policy.set_pitch_floor(PITCH_STD_MIN)
     R = policy.rnn_size                    # 0 without --rnn
     # (c) action noise rank-DISTINCT, and set BEFORE the graph capture: the
     #     Gumbel rand_like runs inside the captured graph, whose philox seed
@@ -12745,7 +12821,13 @@ def main() -> None:
         policy.load_state_dict(ck["policy"])
         if VIEW_ABS:
             _mv = policy.project_log_std()
-            if _mv:
+            if _mv and PITCH_STD_MIN > 0.0:
+                print(f"--view-absolute: {_mv} view head(s) of the checkpoint "
+                      f"sat outside [the --pitch-std-min floor, the log sigma cap] - "
+                      f"projected into it; sig now "
+                      + "/".join(f"{v:.4f}" for v in
+                                 policy.log_std().exp().tolist()))
+            elif _mv:
                 print(f"--view-absolute: {_mv} view head(s) of the checkpoint "
                       f"sat above the log sigma cap (log 0.5 for pitch) - "
                       f"projected under it; sig now "
@@ -13472,6 +13554,13 @@ def main() -> None:
             print(f"--pitch-entropy {PITCH_ENT:g}: the pitch head's entropy "
                   f"term is {_pe} and its log sigma is capped at log 0.5 "
                   f"(sigma <= 0.5) in this mode")
+            if PITCH_STD_MIN > 0.0:
+                # written ONLY when set: a control's config dump is unchanged
+                meta["config"]["pitch_std_min"] = PITCH_STD_MIN
+                print(f"--pitch-std-min {PITCH_STD_MIN:g}: the pitch head's sigma is floored "
+                      f"at {PITCH_STD_MIN:g} (log {np.log(PITCH_STD_MIN):.3f}; the shipped "
+                      f"clamp is {np.exp(LOG_STD_MIN):.4f}); sig now "
+                      + "/".join(f"{v:.4f}" for v in policy.log_std().exp().tolist()))
     # --obs-potential: written ONLY when set (a control run's config dump
     # stays byte-identical to the pre-flag trainer's). The mode string is
     # what a resume restores and record_ckpt.py mirrors; the per-map start
@@ -16620,6 +16709,83 @@ def main() -> None:
     if TKL > 0.0:
         print(f"--target-kl {TKL:g}: an update stops once its approx KL exceeds {1.5 * TKL:g}")
     tkl_acc = [0, 0, [], 0]           # updates, stops, the stops' (epoch, mb, kl), stops ever
+
+    def diag_head_logps(idx, f_scal, f_img, f_act, f_z, f_priv, f_air, f_jblk, f_temp,
+                        f_tempv):
+        """--diag-heads: the joint log-prob mb_step differences, split into its parts
+        (keys = the categorical heads, then one column per Gaussian view head), EAGER, for
+        the rows idx under the current weights and the rollout's own temperature."""
+        with amp:
+            logits, _ = policy.forward_split(
+                f_scal[idx], f_img[idx], priv=(None if f_priv is None else f_priv[idx]))
+        cat, mu = split_view(logits.float())
+        padded = packer.pad(cat)
+        if MASKS.on:
+            padded = MASKS.add_mask(padded, None if f_air is None else f_air[idx],
+                                    None if f_jblk is None else f_jblk[idx])
+        lp_c, _ = logprob_entropy_padded(padded[:, N_VIEW:], f_act[idx][:, N_VIEW:], f_temp)
+        ls = _temper_log_std(policy.log_std(), f_temp if f_tempv is None else f_tempv)
+        lp_g = -0.5 * ((f_z[idx] - mu) / ls.exp()).pow(2) - ls - 0.5 * LOG2PI
+        return lp_c, lp_g
+
+    def diag_heads_pre(f_scal, f_img, f_act, f_z, f_priv, f_air, f_jblk, f_adv, f_temp,
+                       f_tempv):
+        """--diag-heads, BEFORE the update (the weights are pi_old): one strided minibatch
+        (no RNG drawn), the per-head gradient norms of the PPO surrogate at ratio 1 on the
+        shared actor parameters (conv trunk + pi tower) and on each head's own output row.
+        torch.autograd.grad accumulates nothing into .grad, so the update is untouched."""
+        idx = torch.arange(0, T * N, max(1, (T * N) // MB), device=device)[:MB]
+        _ft = f_temp if f_cct is None else f_cct[idx]
+        shared = [p for p in list(policy.conv.parameters()) + list(policy.pi.parameters())
+                  if p.requires_grad]
+        a = f_adv[idx].float()
+        a = (a - a.mean()) / (a.std() + 1e-8)
+        with torch.enable_grad():
+            lp_c, lp_g = diag_head_logps(idx, f_scal, f_img, f_act, f_z, f_priv, f_air,
+                                         f_jblk, _ft, f_tempv)
+            gn = ("yaw", "pitch") if lp_g.shape[1] == 2 else ("yaw_c", "yaw_s", "pitch")
+            parts = [("keys", lp_c)] + [(gn[j], lp_g[:, j]) for j in range(lp_g.shape[1])]
+            norms = {}
+            for k, lp in parts:
+                g = torch.autograd.grad(-(a * lp).mean(), shared, retain_graph=True,
+                                        allow_unused=True)
+                norms[k] = float(torch.sqrt(sum((x.float() ** 2).sum() for x in g
+                                                if x is not None)))
+        with torch.no_grad():
+            joint0 = lp_c + lp_g.sum(-1)
+            chk = float((joint0 - f_logp[idx]).abs().mean())
+        return idx, _ft, {k: lp.detach() for k, lp in parts}, norms, chk
+
+    def diag_heads_post(pre, f_scal, f_img, f_act, f_z, f_priv, f_air, f_jblk, f_tempv):
+        """--diag-heads, AFTER the update: the same rows under the new weights -> one
+        printed line (per-head KL = mean(logp_old - logp_new), the joint ratio's clip
+        fraction with and without the pitch term, the tempered sigmas)."""
+        idx, _ft, lp0, norms, chk = pre
+        with torch.no_grad():
+            lp_c, lp_g = diag_head_logps(idx, f_scal, f_img, f_act, f_z, f_priv, f_air,
+                                         f_jblk, _ft, f_tempv)
+            names = list(lp0)
+            lp1 = {"keys": lp_c}
+            for j, k in enumerate(names[1:]):
+                lp1[k] = lp_g[:, j]
+            kl = {k: float((lp0[k] - lp1[k]).mean()) for k in names}
+            d = {k: lp1[k] - lp0[k] for k in names}
+            joint = sum(d.values())
+            nopitch = joint - d["pitch"]
+            c = float(args.clip)
+            cf = float(((joint.exp() - 1.0).abs() > c).float().mean())
+            cfn = float(((nopitch.exp() - 1.0).abs() > c).float().mean())
+            sig = _temper_log_std(policy.log_std(),
+                                  (_ft if f_tempv is None else f_tempv)).exp()
+            sig = [float(x) for x in sig.reshape(-1)[-lp_g.shape[1]:]]
+        tot = sum(v * v for v in norms.values()) ** 0.5
+        print(f"diag-heads it {it_no} step {global_step:,}: |grad| shared actor "
+              + " ".join(f"{k} {v:.3g}" for k, v in norms.items())
+              + f" (pitch {100.0 * norms['pitch'] / max(tot, 1e-12):.0f}% of the norm) | kl "
+              + " ".join(f"{k} {v:.4f}" for k, v in kl.items())
+              + f" | clip joint {100.0 * cf:.1f}% w/o pitch {100.0 * cfn:.1f}% | sig "
+              + "/".join(f"{s:.4f}" for s in sig) + f" | logp check {chk:.2e}")
+
     while global_step < int(args.steps):
         it_no += 1
         tm.start_iter()
@@ -18187,6 +18353,12 @@ def main() -> None:
         # state stay bit-identical to the resumed checkpoint (kl / losses
         # log 0)
         tkl_hit = None                 # --target-kl: (epoch, minibatch, kl) of an early stop
+        diag_pre = None
+        if (DIAG_H and not FREEZE and not warming and not RNN and H == 0 and STACK == 1
+                and D.is_main and (it_no - 1) % DIAG_H == 0):
+            # --diag-heads: measured on pi_old, before the first minibatch step
+            diag_pre = diag_heads_pre(f_scal, f_img, f_act, f_z, f_priv, f_air, f_jblk,
+                                      f_adv, temp_t, tempv_t)
         for _ep in range(0 if FREEZE else args.epochs):
             if tkl_hit is not None:
                 break
@@ -18324,6 +18496,9 @@ def main() -> None:
                 if rnd is not None:
                     rnd.train_step(f_scal[idx])   # tiny MLP, outside compile
                 last_diag = (idx, logp, vl, pg, el)
+        if diag_pre is not None:
+            diag_heads_post(diag_pre, f_scal, f_img, f_act, f_z, f_priv, f_air, f_jblk,
+                            tempv_t)
         if TKL > 0.0:
             # --target-kl: one line per 25 updates with how often and where the update stopped
             tkl_acc[0] += 1
