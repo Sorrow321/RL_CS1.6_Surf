@@ -1338,3 +1338,14 @@ line (it killed my local shell twice).
   int-real-only restored), +1.5e9 steps. If the greedy line has not followed the ceiling by ~08:30,
   the next arm adds `--sil-coef 0.1 --sil-tempered 1 --sil-top 256` to consolidate the training
   passes. Box deadline 10:37 UTC.
+
+### 08:08 UTC: r3b3_gwx - the greedy line gets past the block's west side; best 32.823
+
+* Evals 6,638-6,840M: **32.823** (6,638M, the gw final's own eval), 32.582, 31.990, 32.597, 32.798,
+  32.793, 32.795, 32.806, 32.816 - the 32.8% band is now the typical best episode (was ~32.5%).
+  Training ceiling 33,096 -> 33,204 u (33.96%); 125k steps/s.
+* 6,814M episode 0: best 32.81% at 41.3 s at (-789, 35, 10,304) - west of the block and down, the
+  field's way - then it drifts back east under the kill floor *112 and stays alive to the 300 s cap
+  (ends at (-476, -97, 9,933)). Next obstacle: the passage further west - the thin wall *145 (x ~-928,
+  z 10,136-10,288) with the kill plate *104 on its top (z ~10,320) and the kill plate *43 under it
+  (z ~10,100, x -1,388..-944); the field's route continues at z ~10,050-10,120 to x ~-1,940.
