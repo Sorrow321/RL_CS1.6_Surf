@@ -1920,3 +1920,9 @@ own greedy-line pool (1,809 STATE_DTYPE rows, 59.7-60.6% progress, the 2 s befor
 
 * r4b3_band15x 13,960-14,199M: frontier 83.1-83.5k u, **85.430 (14,186M, median 85.4%)**; training
   ceiling 86,692 u (88.7%), reservoir deepest 85.4%, T 0.16; 153k steps/s with evals every 12.5M.
+
+### 22:54 UTC: 91.458 - CP6
+
+* r4b3_band15x 14,212-14,463M: **91.458 (14,287M, CP6, median 86.6%)**, then 90.3-91.4% in several evals
+  (88,327 / 89,134 / 89,329 u); the unstuck tracker's best 89,417 u. Reservoir deepest 91.6% (min
+  depth 8.43%), ceiling 89,568 u (91.6%), T 0.03. ~8.5% of the map left.
