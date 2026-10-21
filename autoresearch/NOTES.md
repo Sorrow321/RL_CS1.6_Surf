@@ -1817,3 +1817,12 @@ own greedy-line pool (1,809 STATE_DTYPE rows, 59.7-60.6% progress, the 2 s befor
   39.430 -> 39.421% (the dives die within ~1.3 s, inside the 2 s margin, as expected). Greedy evals
   still 60.56-60.57% (9 evals). Running on (2e9 budget); the lineage's gates went ceiling first,
   greedy line 100-550M steps later.
+
+### 18:03 UTC: r4b3_stuck - TRAINING breaks the 60.57% gate (reservoir deepest 68.6%, ceiling 70.3%)
+
+* r4b3_stuck at 11,428M (+566M): reservoir min depth 39.42% -> **31.43%** (the deepest harvested
+  state is now at 68.6% progress, past CP5), training ceiling 62,068 -> **68,703 u (70.27%)**, train
+  ep_len 2,383 decisions, reward 15.2 per episode, int 3.4 / episode; novel rows fell to 91 per pool
+  (4% of episodes: the band moved past the cells the sampler had). Greedy evals still 60.55-60.57%
+  (19 evals to 11,417M) - the line has not followed yet. Gates of this lineage went ceiling first,
+  greedy line 100-550M steps later.
