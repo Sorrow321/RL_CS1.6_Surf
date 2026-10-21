@@ -1591,3 +1591,20 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
   round's first arm if this branch's code survives.
 * The eval right after the first update: kl0 53,305 u (54.5%), pf 49,445 u (50.6%) - one eval each,
   inside the eval-to-eval spread of this checkpoint (the incumbent's last 15 evals: 44.5-54.7).
+
+### 23:47 UTC: r4b2_pf (the floor) - 54.881, three evals in a row above the incumbent
+
+* r4b2_pf (incumbent 8.84B + `--pitch-sigma-min 0.05 --diag-head-kl 2`), evals (score.py best /
+  median): 8,839M 50.573 / 32.2, 8,865M 50.405 / 44.5, 8,890M 50.440 / 44.3, 8,915M 47.778 / 34.4,
+  **8,940M 54.704 / 54.4, 8,965M 54.790 / 49.3, 8,990M 54.881 / 54.7**. The incumbent's own last 15
+  evals were 44.5-54.674 with its best eval's median at 47.4%; here 5 of 9 episodes reach 54.7-54.9%
+  at 63.5 s, the crest of the ramp at x -912..-984 (the incumbent's best stopped at x -818). Still
+  north-bound at the top, not over it.
+* Training ceiling 54,406 -> 55,175 u (56.4%) in ~150M steps; unstuck T rose 0.06 -> 0.43 (no +500 u
+  eval best yet: 53,656 u vs 53,454). 143k steps/s on the 4080 + 7950X.
+* Over the whole run the update stays sane: joint KL 0.012-0.04, pitch 0.002-0.01, clipped rows
+  joint 17-19% / keys+yaw 13-15% (bare resume: 0.16-1.44, 34% / 9%). The yaw sigma fell 0.060 ->
+  0.048 in 150M steps (PPO now moves it too).
+* One seed, ~150M steps: consistent with "the camera head was throttling the control heads", not
+  proof. The comparison is the incumbent's own continuation at the same wall (r3b3_gwx2's last
+  ~400M: ceiling 53,121 -> 54,406 u, evals 44.5-54.7).

@@ -3,17 +3,19 @@
  "round": 4,
  "final": false,
  "best": {
-  "score": 54.521,
-  "eval_file": "/home/steam/ar/runs/r4b2/r4b2_kl0/traj_8839495680.jsonl",
-  "run": "r4b2_kl0",
-  "step": 8839495680,
-  "ckpt": null,
+  "score": 54.881,
+  "eval_file": "/home/steam/ar/runs/r4b2/r4b2_pf/traj_8990490624.jsonl",
+  "run": "r4b2_pf",
+  "step": 8990490624,
+  "ckpt": "/home/steam/ar/runs/r4b2/r4b2_pf/ckpt_latest.pt (pulled at wrap-up)",
   "recipe": [
+   "--pitch-sigma-min",
+   "0.05",
    "--diag-head-kl",
    "2"
   ],
   "resume_from": "incumbent r3b3_gwx2/ckpt_final.pt (8,838,971,392, md5 d3d06fb1...)",
   "commit": "fd71f34"
  },
- "summary": "Round 4 (r4b2): no box from 12:50 to 23:19 UTC (no offer under the caps). Then, on an RTX 4080 (needed a gpu_health 4080 reference, harness issue), MEASURED the defect found offline: on the incumbent, the camera-only pitch head (sigma at the LOG_STD_MIN clamp, 0.0067) carries ~95% of PPO's per-update KL (pitch 0.16-1.39 vs yaw 0.005-0.05, keys 0.002) and 3/4 of the clipped rows (34% joint vs 9% without pitch). NEW --pitch-sigma-min 0.05 (off = bit-identical) cuts the joint KL to 0.03-0.09 and lets the keys/yaw use the trust region (their clipped share 9% -> 16%). Best eval 54.521 (bare resume's first eval; incumbent 54.674). Next: a matched-step test of the floor from the incumbent."
+ "summary": "Round 4 (r4b2): no box 12:50-23:19 UTC (no offer under the caps). Then (RTX 4080; gpu_health needed a 4080 reference, harness issue) MEASURED the defect found offline: on the incumbent the camera-only pitch head (sigma at the LOG_STD_MIN clamp, 0.0067) carries ~95% of PPO per-update KL (pitch 0.16-1.39 vs yaw 0.005-0.05, keys 0.002) and 3/4 of the clipped rows (34% joint vs 9% without pitch). NEW --pitch-sigma-min 0.05 (off = bit-identical): joint KL 0.012-0.09, keys/yaw clipped share 9% -> 13-16%; warm from the incumbent it scored 54.704, 54.790, 54.881 in three consecutive evals (median 54.7%) within ~150M steps, ceiling 55.6% -> 56.4%. Next: keep the floor on (bare resume restores it); test it from scratch."
 }
