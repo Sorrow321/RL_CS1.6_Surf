@@ -1046,3 +1046,87 @@ Greedy evals (classifier: E detour, S slot, W shaft, C cavity; best/median %):
   harvests), novel ceiling 29,027 -> 29,204 u (new training best, 29.87%), int 1.3 -> 1.9/ep.
 * One eval episode lived 255.7 s (26.4%): with no time penalty a greedy episode can loiter; evals never
   stall-kill (CLAUDE.md), training does (15 s).
+
+### 01:40 UTC: r3b2_tp0 at 7.42B - the tunnel-dive limit, then greedy cavity entries
+
+| step | score | median | routes |
+|---|---|---|---|
+| 7,303M | 27.533 | 26.66 | 9 E, dying at 26.5-27.5 (a weak eval) |
+| 7,328M | **28.839** | 28.23 | 8 ESW, **1 ESWT = 28.84%** (the tunnel dive at its physical limit; incumbent 28.841) |
+| 7,353M | 28.581 | 28.18 | 6 ESW, 3 early deaths |
+| 7,378M | 28.812 | 28.21 | 6 ESW, 2 ESWT |
+| 7,403M | 28.497 | 28.27 | 5 ESW, **2 ESWC** (cavity entries) |
+
+* The two cavity entries fly the human's move: -y window at ~27.3/28.25 s, slide NORTH along the
+  block face (v (221..508, 1,164..1,369, -333..-445)), turn east through the LOWER opening at
+  y ~ -120..+16, z 10,822-10,910 (human: (2,705, 122, 10,929) at 28.5 s). Then both turn back west
+  falling: one lands on the cavity's platform (x 2,180-2,350, z ~10,050-10,120), loses all speed
+  and hovers there 230 s (an eval never stall-kills); the other slides west off it at 600 u/s and
+  falls past the ramp region (x 1,955 at z 10,005) to the cavity floor (*90). The human swings NORTH
+  (y +800 at 29.0 s) around the platform and meets the ramp moving south at ~2,000 u/s. So the
+  entry is learned; the ramp approach is the missing piece.
+* Loitering: with no time penalty 1-2 greedy episodes per eval live 66-300 s (cavity platform,
+  first ramp); evals cost ~44 s each (~27% of wall clock at a 25M cadence). Training stall share
+  7% -> 15% (the 15 s kill), no other cost seen.
+* SIL is NOT the next lever: its one run (uf2DCSIL, ledger 2026-09-14) "consolidates the entry it
+  already had" - here that would be the platform crawl. Kept built (`--sil-temper`) but parked.
+* Next: bare continuation r3b2_tp0x (+1.5B), and a stochastic bench from the policy's own greedy
+  window/shaft states (measurement: how often does the T 1 policy complete the cavity loop?).
+
+### 01:58 UTC: r3b2_tp0 end (7.58B): the policy now PREFERS the cavity to the tunnel dive
+
+| step | score | routes (9 episodes) |
+|---|---|---|
+| 7,429M | 28.295 | **5 ESWC**, 3 ESW, 1 E |
+| 7,454M | 28.181 | 1 ESW, 3 E, 5 early deaths (a weak eval) |
+| 7,479M | 28.332 | 3 ESWC, 4 ESW; two 300 s loiterers near the start (1.6%, 4.7%) |
+| 7,504M | 28.316 | 3 ESWC, 4 ESW |
+| 7,529M | 28.249 | 2 ESWC, 5 ESW |
+| 7,554M | 28.321 | 2 ESWC, 4 ESW |
+
+* No greedy episode rises in the cavity, comes back west or reaches a tunnel (no R/B/T/M after C);
+  the tunnel dive (28.8%) has gone from the greedy line, so evals sit at 28.2-28.3. Several cavity
+  entries hover on the platform for the full 300 s.
+* tp0 = 400M steps, 01:05-01:55 (~50 min with startup and evals). Final checkpoint
+  runs/r3b2/r3b2_tp0/ckpt_final.pt (7,576,485,888, md5 5e79bf98...), local.
+* **r3b2_tp0x** (01:55): bare resume of it (time_pen 0 / surf_bonus 0 restored, everything else as
+  tp0), +1.5e9 steps, evals every 25M. Extended because the arm cleared the CP2 pit gate in 50M steps
+  where the incumbent's own continuation (r2b2_t1f3 / t05, 0.9B steps) never re-crossed it, and it
+  enters the cavity, a gate no greedy eval of this lineage had entered more than once.
+
+### 02:20 UTC: shaft bench (measurement only) - the loop fails for want of SPEED; arm r3b2_sp2
+
+**Bench** (`autoresearch/analysis/sid_shaft_bench.py`, local CPU, tp0 final 7,576M): a greedy recording
+with full states (9/9 reach the shaft, 1 enters the cavity), 324 states cut from 1.0 s before to 0.8 s
+after each shaft entry (the policy's OWN greedy line), then 40 stochastic episodes of 8 s each:
+
+| sampling | cavity | rose (vz > 300 under the shaft floor) | back west / tunnel / room / > 28.84% | best vz | entry speed (median) |
+|---|---|---|---|---|---|
+| T 1 (`--exec-temp 2`, the trainer's) | 17/40 | 3 | **0 / 0 / 0 / 0** | +1,063 | 811 u/s |
+| T 0 (untempered) | 12/40 | 1 | 0 / 0 / 0 / 0 | +1,044 | 1,008 u/s |
+
+* Risers hit the ramp's ends (x ~2,130-2,190, y +-700, z ~10,000) and come down on the platform: from z
+  ~10,000 the lower opening (ducked origin >= ~10,770) needs vz >= ~1,150 (vz^2 / 2g, g 800). The
+  human leaves the ramp at +1,190. Temperature is not the lever (T 0 is no better).
+* **Speed is the deficit** (horizontal u/s, agent ep 4 of the 7,403M eval vs the WR demo, analysis
+  only): slot 1,693 vs 1,835; through the -y window 1,259 (loses 434 on the frame) vs 1,831 (already
+  turning north); sliding north along the block face 1,185-1,148 vs 1,717; lower opening 999 vs 1,718;
+  after the reversal in the cavity 865 vs 1,721. r2b2's bench from the demo's own ramp-approach states
+  (~1,900 u/s) had the band-trained policy rise to +1,180, so the turn-up exists when the approach is
+  fast; the approach is not. Nothing pays for keeping speed into the cavity (a dip under the ratchet)
+  until the loop completes, which never happens from a slow entry.
+* Reservoir check (tp0 final's saved 20k sample): only 0.9% of states lie past 26.5% progress (slot,
+  window, shaft, cavity), 22 on the platform (no dead-end flood); `respawn_binned` is 0 (uniform over
+  states), and 16 distance bins would lump 25-31% into one bin, so binning is not a targeted fix.
+* tp0x (7,576-7,740M): evals 28.22-28.54 (best **28.542**), 2-3 cavity entries per eval, 0 loops,
+  training ceiling flat at 29,204 u; 1-2 greedy episodes per eval hover for 300 s (cavity platform,
+  first ramp at 1.7-4.5%). Stopped at 7,740,063,744 (ckpt kept on the box as
+  runs/r3b2_tp0x/ckpt_7740063744.pt, md5 23dd3425...).
+
+**r3b2_sp2** (02:18): that checkpoint + `--speed-pot 2` (existing generic term: Phi = K |v_xy| / 1000 paid
+as its change per call, so a speed loss at a wall or in a turn is charged when it happens; the user's
+skate_laby arm skLABY14, K 10, took 79.70 -> 75.96 s). K 2, not 10: the term is not invariant under
+termination (the last speed is kept at death), and at the incumbent's CP2 speeds (pit dive dies at
+|v_xy| ~1,450, the detour at ~1,000) K 10 would pay the pit dive ~4.5 more than the detour, re-locking
+it; at K 2 the detour still wins by ~0.3-0.9. Question: does the greedy line keep speed into the
+cavity (entry speed, ramp vz) and complete the loop? 30 min first.
