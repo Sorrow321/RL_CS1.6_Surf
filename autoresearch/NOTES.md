@@ -1318,3 +1318,12 @@ line (it killed my local shell twice).
   `--ckpt-every 1e8`; everything else restored (T cap 0.5, time-pen 0, ...). 400M first.
 * Its resume eval (the snapshot, 6,238M): deaths at 32-290 s - the line now often SURVIVES at the
   block for 47-290 s (best-progress stops at 36.1-41.8 s) instead of dying there.
+
+### 07:12 UTC: r3b3_gw - the training ceiling moves past the block; best 32.814
+
+* r3b3_gw (30% greedy rows, 2..0.25 s window) 6,238-6,465M: evals 32.814 (the resume eval of the
+  6,238M snapshot - the branch's best), 31.747, 31.948, 32.473, 32.427, 31.981, 32.654 (median 22.4:
+  5 episodes died at 21.2-21.5 s near the window / CP1, x ~1,320-1,460, z ~11,700-11,830 - a one-eval
+  wobble, the next evals are back), 31.805, 31.992, 32.425.
+* **Training ceiling 32,177 -> 33,096 u (33.85%)** within ~230M steps: real training episodes now
+  get ~900 u past the block. Every earlier gate went ceiling first, greedy line next.

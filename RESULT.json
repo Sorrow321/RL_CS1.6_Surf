@@ -3,14 +3,17 @@
  "round": 3,
  "final": false,
  "best": {
-  "score": 32.775,
-  "eval_file": "/home/steam/ar/runs/r3b3/r3b3_t05/traj_5639766016.jsonl",
-  "run": "r3b3_t05",
-  "step": 5639766016,
-  "ckpt": "/home/steam/ar/runs/r3b3/r3b3_t05/ckpt_latest.pt",
+  "score": 32.814,
+  "eval_file": "/home/steam/ar/runs/r3b3/r3b3_gw/traj_6238502912.jsonl",
+  "run": "r3b3_gw",
+  "step": 6238502912,
+  "ckpt": "/home/steam/ar/runs/r3b3/r3b3_gw/ckpt_latest.pt",
   "recipe": [
    "--respawn-greedy",
-   "0.15",
+   "0.3",
+   "--respawn-greedy-window",
+   "0.25",
+   "2.0",
    "--int-real-only",
    "1",
    "--time-pen",
@@ -20,8 +23,8 @@
    "--unstuck-max",
    "0.5"
   ],
-  "resume_from": "r2b2_sband2 (3,335,520,256) -> r3b3_sgir (+ --respawn-greedy 0.15 --int-real-only 1) -> r3b3_tp0 (+ --time-pen 0 --surf-bonus 0, critic warmup 20) -> r3b3_tp0x (bare) -> r3b3_t1 (from tp0x ckpt_4536139776, --unstuck-max 1) -> r3b3_ezf (from t1 ckpt_5036834816, + --ez-eps 0.05 --ez-front 0.04) -> r3b3_t05 (from ezf ckpt_5337251840, --unstuck-max 0.5, ez off)",
+  "resume_from": "r2b2_sband2 (3,335,520,256) -> r3b3_sgir (+ --respawn-greedy 0.15 --int-real-only 1) -> r3b3_tp0 (+ --time-pen 0 --surf-bonus 0, critic warmup 20) -> r3b3_tp0x (bare) -> r3b3_t1 (from tp0x ckpt_4536139776, --unstuck-max 1) -> r3b3_ezf (from t1 ckpt_5036834816, + --ez-eps 0.05 --ez-front 0.04) -> r3b3_t05 (from ezf ckpt_5337251840, --unstuck-max 0.5, ez off) -> r3b3_t05x (bare, to 6,238M) -> r3b3_gw (from t05x ckpt_6237978624, --respawn-greedy 0.3 --respawn-greedy-window 0.25 2.0)",
   "commit": "c24b11b"
  },
- "summary": "Best 32.775 (r3b3_t05 eval 5,639M, CP2): the greedy line flies the human's whole CP2 sequence and is now working on a kill-wrapped block past CP2 (one eval episode got under it to x -745, z 10,286). Key findings: (1) the 0.5/s time penalty priced the slow CP2 detour and the cavity dip below an early death; --time-pen 0 --surf-bonus 0 freed a pit-locked checkpoint within 25M steps (28.2 -> 30.35 -> 32.5 in ~800M steps); (2) without it the line holds at T 0.4-1.3 and breaks at T > 1.5; at T 1 the stochastic policy cannot even reach the block (0/24 probe), so T cap 0.5 now. New code: --respawn-greedy, --int-real-only, --sil-tempered, --sil-top."
+ "summary": "Best 32.814 (r3b3_gw eval 6,238M, CP2): the greedy line flies the human's whole CP2 sequence and works on a kill-wrapped block past CP2. Concentrating the greedy-line spawns at the block (30% of non-start rows, 2..0.25 s before each greedy death) moved the training ceiling 32,177 -> 33,096 u (33.85%) in ~230M steps. Key findings: (1) the 0.5/s time penalty priced the slow CP2 detour and the cavity dip below an early death; --time-pen 0 --surf-bonus 0 freed a pit-locked checkpoint within 25M steps (28.2 -> 30.35 -> 32.5); (2) without it the line holds at T 0.4-1.3, breaks above 1.5, and at T 1 cannot even reach the block -> T cap 0.5. New code: --respawn-greedy, --int-real-only, --sil-tempered, --sil-top."
 }
