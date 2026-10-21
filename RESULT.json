@@ -3,10 +3,10 @@
  "round": 4,
  "final": false,
  "best": {
-  "score": 57.878,
-  "eval_file": "/home/steam/ar/runs/r4b4/r4b4_c4/traj_9667346432.jsonl",
+  "score": 60.452,
+  "eval_file": "/home/steam/ar/runs/r4b4/r4b4_c4/traj_9818341376.jsonl",
   "run": "r4b4_c4",
-  "step": 9667346432,
+  "step": 9818341376,
   "ckpt": "/home/steam/ar/runs/r4b4/r4b4_c4/ckpt_latest.pt (pull at wrap-up)",
   "recipe": [
    "--respawn-greedy",
@@ -30,5 +30,5 @@
   "resume_from": "incumbent r3b3_gwx2/ckpt_final.pt (8,838,971,392) -> r4b4_c2 (+ --eval-parallel 1 --unstuck-max 0.25) -> r4b4_c3 (+ --eval-idle-secs 60) -> r4b4_c4 (bare resume of c3's 9,566,158,848 snapshot)",
   "commit": "aee01a9"
  },
- "summary": "57.878 (r4b4_c4 eval 9,667M, CP4; 57.7-57.9 in every eval since 9,592M; c3 first passed the CP4 window at 9,544M, 56.116). Warm continuation of the incumbent with T cap 0.25 (c1 at cap 0.5 collapsed to 42.5% when T rose) and NEW --eval-parallel / --eval-idle-secs (the sequential greedy eval was 45-52% of the wall clock; now evals ~20-30 s, ~1.5x training per box-hour, same eval semantics, 10 CPU tests). Probes: the CP4 window is energy-gated - 0/50 passes from the policy's own pre-gate states, 4/16 from the approach with velocity x1.25 (--respawn-speed above 1 is the trainer's tool for that; untested here). c4 continues c3 from its 9.566B snapshot."
+ "summary": "60.452 (r4b4_c4 eval 9,818M, CP4, median 60.3%: through the 64-66 s dip ~150M steps after reaching it; c3 first passed the CP4 window at 9,544M, 56.116). Warm continuation of the incumbent with T cap 0.25 (c1 at cap 0.5 collapsed to 42.5% when T rose) and NEW --eval-parallel / --eval-idle-secs (the sequential greedy eval was 45-52% of the wall clock; now evals ~20-30 s, ~1.5x training per box-hour, same eval semantics, 10 CPU tests). Probes: the CP4 window is energy-gated - 0/50 passes from the policy's own pre-gate states, 4/16 from the approach with velocity x1.25 (--respawn-speed above 1 is the trainer's tool for that; untested here). c4 continues c3 from its 9.566B snapshot."
 }

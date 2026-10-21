@@ -1674,3 +1674,16 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
   gate (WON'T), the CP2-detour kind - the ratchet makes the detour free and novel rows in the
   band (>= 52.9%) can show the far ramp; the training ceiling (57.9%) has not passed it yet.
   Box extended to 20:26 UTC.
+
+### 15:53 UTC: 60.452 (c4, 9,818M) - the 64-66 s dip fell in ~150M steps
+
+* r4b4_c4 9,692-9,944M: 57.786, 57.514, 16.008 (one collapse: all 9 stuck at 16%), 47.515,
+  57.797, **60.452** (9,818M, median 60.3%), 59.956, 60.393, 60.051, 47.471, 60.286. Training
+  ceiling 56,614 -> 59,247 u (60.6%); T 0.07; ~165k steps/s overall.
+* The direction gate (turn back at x -3,200 vs the human's far ramp at -4,477) fell ~150M steps
+  after the line first reached it: the ratchet + band novel rows, as at the CP2 detour, much
+  faster here (round 1 needed ~1B).
+* New frontier: ~60.4% at ~75 s around (-710..-810, -120..315, 6,930-7,080), heading south-west
+  slowly (~900 u/s). The human passes the same region at 69-72 s in a LOOP: (-1,110, 108, 6,593)
+  69 s -> (-899, -658, 7,403) 70 s -> (-140, 146, 7,277) 71 s -> (-647, -125, 6,259) 72 s ->
+  (-1,940, -242, 5,924) 73 s (62.7%) - flat in field progress for ~2 s (59.9-60.1%).
