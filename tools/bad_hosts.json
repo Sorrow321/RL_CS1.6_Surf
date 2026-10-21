@@ -2653,6 +2653,24 @@
       "detail": "autoresearch r1b3 2026-10-20 01:10: RTX 3090 Ti power limit 300 W of 450 W default (67%), bf16 GEMM 59 TFLOPS, sm 1350 MHz under load; gpu_health UNHEALTHY",
       "run": "",
       "reason": "gpu_capped"
+    },
+    {
+      "ip": "85.30.169.224",
+      "machine_id": 151048,
+      "host_id": 404614,
+      "date": null,
+      "detail": "autoresearch r2b4: not running after 330 s (status loading, )",
+      "run": "",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "103.148.45.237",
+      "machine_id": 147270,
+      "host_id": 147822,
+      "date": "2026-10-20",
+      "detail": "autoresearch r2b1 2026-10-20: GitHub clone 21-29 KB/s (14 MB in 8 min, deploy stuck in clone 25 min), scp from the agent host < 133 KB/s (16 MB unfinished in 120 s), while download.pytorch.org gives 37.8 MB/s; RTX 4090 / i9-13900K, Indonesia",
+      "run": "",
+      "reason": "network"
     }
   ],
   "known_good": [
