@@ -1721,7 +1721,7 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
   problem) could not use. Pass criterion: the training ceiling past 61% (through the hole)
   within ~300M steps; else back to the c4 recipe.
 
-### 17:42 UTC: the bowl gate is a WINDOW in a divider (analysis); c5 null so far
+### 17:36 UTC: the bowl gate is a WINDOW in a divider (analysis); c5 null so far
 
 * r4b4_c5 (frontier ez bursts) 10.60-10.83B: evals 60.41-60.55 (best **60.548**, 10,775M) with
   the usual wobbles (47.6, 49.2); training ceiling flat at 59,247 u (60.6%) for ~230M steps.
