@@ -957,3 +957,37 @@ line (it killed my local shell twice).
   pulled while the run was stopped and md5-checked again at wrap-up; also local:
   r2b2_t1/ckpt_7128219648.pt and r2b2_sband2/ckpt_final.pt (from-scratch lineage, 3,335,520,256).
 * Box 56901034 released at 23:41 UTC; no box at wrap-up.
+
+## Round 3, branch r3b2 - 2026-10-21 00:53 UTC: the time penalty makes every dip worth less than a death
+
+### The arithmetic (no run needed)
+
+* Reward units: shaping 100/d0, so 1% of progress = 1 unit; `--time-pen 0.005` per tick = **0.5 units
+  per second**; `--surf-bonus 0.3` = 0.3/s while supported; novelty ~1.3 per episode (the incumbent's
+  step line). At the incumbent's end an episode averages rew ~5 = shaping ~+17, time ~-16, surf ~+2.6,
+  int ~+1.3: the time penalty is the second-largest term.
+* Death ends the time penalty (terminal value 0, no death charge). So from any state, flying on is
+  worth more than dying only if it earns more than 0.5% of d0 per second it lasts.
+* **CP2 pit (round 1's gate):** the pit dive dies at ~24.5 s with 27.4%; the east detour (round 1's
+  1,633M line) dies at ~29 s with 27.98-28.55%. +0.6..1.2 units of progress for ~4 s = -2.0 units of
+  time: **the detour is worth ~1 unit LESS than the pit dive** under this reward, even before its risk.
+  The warm lineage's greedy line went back to the pit dive (r2b2: every checkpoint after ~6.6B, under
+  T 2/1/0.5); the classifier below shows it switching within 25M steps (6,751M: 9/9 detour; 6,776M:
+  9/9 pit dive).
+* **Cavity (the way past 28.8%):** window -> cavity -> ramp -> back through the lower opening -> tunnel
+  -> room is ~4 s at zero progress under the ratchet (-2.0 units) for +2.2% to CP2 (~31%). Worth less
+  than the tunnel dive (+0.4 in 0.5 s) unless the agent flies well past CP2. Same sign as the pit.
+* Without the time penalty (and without the surf bonus, which would then be farmable - the trainer
+  refuses a bonus at or above the penalty), every per-step reward under the ratchet is >= 0, so
+  surviving is never worse than dying, and both detours beat their quick deaths whenever they reach
+  further. Urgency is left to gamma (0.9995/tick: a reward 1 s later is worth 0.95).
+* Prior evidence (ledger): xTP0 (`--time-pen 0`, cannonball, from scratch) lost early pace (0.6x of its
+  control, peak speed 1,780 vs 2,340 u/s). Never tested warm at a dip gate, which is where the
+  penalty bites.
+
+### Tool: `autoresearch/analysis/sid_eval_route.py` (measurement only)
+
+Tags each greedy eval episode with the route stages it reached after t = 22 s: E (east under plate
+*45: the detour), S (slot past the pit floor), W (shaft), C (cavity), R (rising in the cavity),
+T (tunnel), M (room). Incumbent evals: 6,751M = 9/9 E, 5 W, 1 C, 1 T (the 28.84% tunnel dive);
+6,776M = 0/9 E (all pit dives at 24.3 s).
