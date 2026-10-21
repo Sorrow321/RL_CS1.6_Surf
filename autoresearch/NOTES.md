@@ -1408,3 +1408,10 @@ line (it killed my local shell twice).
   (7.62B), 47.5 (7.92B): one gate per ~150-300M steps once the block fell.
 * **r3b3_gwx2** (10:31): bare resume of that final, +7e8 steps (sized to end before the 11:58
   wrap-up), evals every 25M.
+
+### 11:04 UTC: 50.827
+
+* r3b3_gwx2 (bare resume of gwx's final) evals 8,139-8,441M: 47.793, 47.715, 47.775, 48.913, 49.811,
+  48.775, 49.808, 50.125, 50.613, 47.630, 50.637, 50.598, **50.827 (8,441M)**; all CP3; medians
+  16-49.5% (the line wobbles while the frontier moves). Training ceiling 53,121 u (54.3%); reservoir
+  min depth 47.35%; T 0.09; 190k steps/s.
