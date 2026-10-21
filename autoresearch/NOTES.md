@@ -1705,3 +1705,18 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
   A precision-drop gate (round 3's block was one: ~550M steps once the concentrated greedy
   window ran). A kill-aware field would point at the hole but changes the potential channel
   and compass the policy reads (not on a warm run).
+
+### 17:01 UTC: c4 stopped at the bowl (10.60B); r4b4_c5 = frontier-only ez bursts (30-min test)
+
+* r4b4_c4 (9.566 -> 10.598B, ~1.05B steps, ~165k steps/s overall): CP4 -> the dip -> the bowl;
+  best **60.508** (10,548M). Since ~9.85B every good eval stops at 60.4-60.5% in the bowl
+  (others wobble to 47-58%, medians 28-60%); training ceiling flat at 59,247 u (60.6%) for
+  ~730M steps; T at the 0.25 cap (stuck 766M). Snapshots ckpt_9666297856 ... ckpt_10567548928
+  and ckpt_latest (10,598,481,920) on the box.
+* **r4b4_c5** (16:59): c4's latest + `--ez-eps 0.05 --ez-front 0.04` (round 1's ez-greedy for
+  the continuous view: a burst holds a uniform yaw z and random keys for n ~ zeta(2) decisions,
+  cap 60, rows dropped from PPO; may start only past 58.1% progress, i.e. in the loop / bowl),
+  400M steps. Why: the hole needs a DROP at the right spot and the policy never drops (probe
+  0/16); a burst can release the keys or turn off a ramp, which round 3's block (an altitude
+  problem) could not use. Pass criterion: the training ceiling past 61% (through the hole)
+  within ~300M steps; else back to the c4 recipe.
