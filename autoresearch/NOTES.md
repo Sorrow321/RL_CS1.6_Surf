@@ -1330,3 +1330,7 @@ later, x ~0.9) trims the time-pen-0 margin but keeps the median detour ahead (~2
   times. Comparing only to round 1's ratnov had made burst SIL look "on pace".
 * The control keeps running to wrap-up: if it follows ratnov (pit crossing ~1.6B, tunnel dive 28.5%)
   it gives this branch its best score and a healthy checkpoint.
+* 09:06 UTC, r3b4_ctl at 1.15B: window passed at **~856M** (22.5%, CP1; ratnov 576M), 906M 26.8%,
+  CP2 wall by **~957M** (27.2%; ratnov 651M), then 27.1-27.4% to 1,108M (T 0.17, training ceiling 27,253 u).
+  Same pattern as ratnov, ~300M later past the window. Running on: ratnov crossed the pit ~1B steps after
+  reaching the wall.
