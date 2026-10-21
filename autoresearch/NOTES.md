@@ -1359,3 +1359,16 @@ line (it killed my local shell twice).
   ran the old GR recipe. Restored on this branch (08:10 UTC): the recipe now ends with
   `--respawn-novel --race-ratchet`. My warm-validated flags (time-pen 0, greedy spawns, int-real-only,
   T cap) are NOT in it - they are untested from scratch.
+
+### 08:36 UTC: MILESTONE - 35.443; past the block and the thin wall, down the field's route
+
+* r3b3_gwx evals 6,865-7,092M: 31.2-32.9 until 6.94B, then **33.655 (6,966M), 33.678, 35.443
+  (7,016M), 34.531, 32.580, 34.558 (7,092M)**; medians ~32% (most episodes still die at the block).
+* 7,016M episode 8: best 35.44% at 45.7 s at (-1,575, -298, 9,006) - west past the block, past the
+  thin wall *145 (x ~-928), west to x ~-1,900, then down the field's descending route (the route at
+  (-1,616, -304, 9,352) is 35.25%); episode 5 reaches (-2,021, -272, 10,060) at 42.3 s (the route's
+  western turn). Training ceiling 33,204 -> 35,021 u (35.82%); reservoir min depth 64.75% (35.25%
+  progress); T 0.5 -> 0.21 (the new eval bests halve it).
+* The concentrated greedy-line pool (30%, 2..0.25 s before each greedy death) did what the default
+  window did not: ~550M steps after it started the gate fell, ceiling first (6.46B), greedy line
+  after (6.97B).
