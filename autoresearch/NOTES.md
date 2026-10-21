@@ -1546,3 +1546,30 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
   recorded trajectory row for row; a sidistic trainer smoke (3 parallel evals, greedy pool
   built from 3/3, config, a bare resume restores the flag, record_ckpt reads the ckpt); the
   refusals; flag off bit-identical to the pre-change trainer.
+
+### 13:47 UTC: r4b4_c1 stopped (9.10B); the CP4 window; r4b4_c2 launched (eval-parallel + T cap 0.25)
+
+* **r4b4_c1** (bare resume of the incumbent, 8.839 -> 9.103B, 11 evals): 54.518, 54.649,
+  **54.950** (8,890M, median 54.6%), 54.657, then 47.530, 50.963 (medians ~32%), 42.577,
+  42.485, 42.629 (every episode STOPS alive at ~42.5% at 50-57 s and lives to the 300 s cap),
+  47.935, 50.782. Training ceiling 54,745 -> 55,033 u (+288 u in 264M steps).
+* What changed with the regression (trainer log): the unstuck T rose from 0.05 (8.92B,
+  stuck 200M) to its 0.5 cap (9.01B); novelty counts halved (decay #83, 8.95B); int reward per
+  episode 0.65 -> 1.5-1.95; training episodes stall-killed 28-34% -> 55-72%; ep_len 930 ->
+  1,600-1,740 decisions; novel rows 1,843 -> 393 per pool. The first bad eval (8,940M) came at
+  T ~0.17, so T is not the whole story (a wobble, then amplified). A greedy line that stops at
+  42.5% also moves the greedy-line pool (30% of spawns) off the frontier, so the gate stops
+  being practised - a loop the unstuck mechanism feeds.
+* **The gate (analysis, bsp entities):** the line dies at the **CP4 window**. sgcp_4 (*136) is
+  a curtain at x -1,088..-1,072, |y| <= 480, z 8,512-8,704 in front of func_wall *147 (x
+  -1,152..-1,088, |y| <= 848, z 8,512-8,704); kill *1 is a plate on its sill (x -1,182..-1,058,
+  |y| <= 960, z 8,512-8,514); kill *107 a ceiling plate at z ~8,980; kills *100 / *95 fill the
+  space below (z <= 8,386). The 8,890M best episode reached (-1,036, 39, 8,530) heading west
+  at 839 u/s and died on the sill ~20-40 u too low. The launch: the agent leaves the ramp
+  with vz ~+819 at z ~7,963 (peak ~8,382-8,530); the human with vz ~+996 at z ~8,152
+  (peak ~8,770) and passes at z ~8,640. Training episodes do pass it (ceiling 56.0-56.3% >
+  CP4's ~55.1%).
+* **r4b4_c2** (13:47): the incumbent checkpoint again (8,838,971,392, md5 d3d06fb1...) +
+  `--eval-parallel 1 --unstuck-max 0.25 --ckpt-every 1e8`, evals every 25M, budget 3e9. A
+  matched comparison with c1 (same start): eval-parallel changes no training dynamics, so the
+  difference is the T cap (0.5 -> 0.25) and the ~1.7x wall-clock rate. Code 888db88.
