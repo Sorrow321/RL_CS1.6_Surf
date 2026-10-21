@@ -1465,3 +1465,15 @@ cavity (entry speed, ramp vz) and complete the loop? 30 min first.
 * Two greedy evals in a row with the median at 42.4%: nearly every episode now flies to ~42.5%. Training
   ceiling 41,809 u (42.8%), reservoir min-depth 57.5%, T 0.00 (it cools on every new best and has not had
   200M steps of plateau since ~1.6B).
+
+### 11:23 UTC: r3b2_sfull at 2.27B - the gate at ~42.5% (past CP3) is a WANDER, not a death
+
+* Evals 2,114-2,265M: 42.47-42.66 (best **42.655** at 2,165M), medians 42.4-42.6. In the 2,165M eval 5 of 9
+  greedy episodes reach 42.5-42.65% and then roam an open region around x 3,000-5,300, |y| < 330, z
+  7,750-8,220 at 200-1,000 u/s for the rest of the 300 s (the eval never stall-kills); the other 3 that
+  get there die in it after 56-142 s. So the next gate is "find the way on" from a big open area: the
+  policy keeps flying (no death) but nothing it tries beats the record; T has just started warming
+  (stuck 200M). With --int-move-gate, novelty still pays for moving between cells there, which is the
+  intended exploration.
+* Safety copies of the scratch line's weights (local, md5-verified): runs/r3b2/r3b2_sfull/ckpt_1863843840.pt
+  (048daebb...), ckpt_2265448448.pt (d0aaadc1...); the final one is pulled at wrap-up.
