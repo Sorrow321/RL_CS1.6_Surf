@@ -2639,3 +2639,6 @@ basement and only near the funnel wall in shape).
   turned rows there are what the climb-back then fails on. A second-order effect of the novel sampler's visit grid:
   any new exploration that visits frontier cells pushes novel rows back. A turn variant would need its rows kept out
   of the novel visit count.
+* The trainer is DETERMINISTIC for a given checkpoint + flags + seed: r6b1_bank2's evals at 17,419M / 17,432M are
+  byte-for-byte r6b1_bank's (98.217 / 98.200). A restart for more greedy-eval samples should change --seed, or it
+  replays the same checkpoints.
