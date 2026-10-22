@@ -3,10 +3,10 @@
  "round": 5,
  "final": false,
  "best": {
-  "score": 98.246,
-  "eval_file": "/home/steam/ar/runs/r5b4/r5b4_ps05/traj_15796797440.jsonl",
+  "score": 98.249,
+  "eval_file": "/home/steam/ar/runs/r5b4/r5b4_ps05/traj_16174284800.jsonl",
   "run": "r5b4_ps05",
-  "step": 15796797440,
+  "step": 16174284800,
   "ckpt": "/home/steam/ar/runs/r5b4/r5b4_ps05/ckpt_latest.pt",
   "recipe": [
    "--pitch-sigma-min",

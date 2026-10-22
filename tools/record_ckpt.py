@@ -241,7 +241,7 @@ TRAIN_ONLY = frozenset({
     "fail_pen", "speed_coef", "int_coef", "int_view", "rnd_coef",
     "speed_equiv", "int_speed", "int_climb", "int_heading", "int_speed_weight",
     "int_move_gate", "int_dwell", "int_speed_cum", "int_speed_weight_up",
-    "wd", "dropout", "race_sr", "sr_eps_frac", "sr_select", "goal_field_file",
+    "wd", "dropout", "race_sr", "sr_eps_frac", "sr_select",
     # --surf-bonus / --dive-pen / --surf-hspd (round 40, pnSURF): per-tick
     # REWARD terms computed from the engine's own velocity and onground,
     # with no observation column and no RNG draw, so a recording reproduces
@@ -1142,6 +1142,7 @@ def main(argv=None, build_only: bool = False, device=None):
         gcell = float(gc)
 
     gf = None
+    ogf = None          # the field the OBSERVATIONS read (gf unless --goal-field-file)
     # --obs-compass on a --goal-reward euclid/geo ckpt: the per-env
     # distance field the compass reads, re-centred on every goal by
     # _goal_meta below. Bound for real further down, next to ObsAux.
@@ -1168,6 +1169,25 @@ def main(argv=None, build_only: bool = False, device=None):
             print(f"--race-field-blur {float(cfg['race_field_blur']):g} mirrored "
                   "(the potential channel renders the blurred field)")
         core.set_goal_box(zones["end"]["mins"], zones["end"]["maxs"])
+        if cfg.get("goal_field_file"):
+            # --goal-field-file: MIRRORED for what the policy SEES. The trainer's potential
+            # channel, compass, pot-rate and ratchet gap all read the shaping field the file
+            # names (slot.reward_field); the spawn yaw stays on the free-space field there too
+            from surfgym.goalfield import load_goal_field
+            _gff = Path(str(cfg["goal_field_file"]))
+            if not _gff.is_absolute():
+                _gff = ROOT / _gff
+            if not _gff.exists():
+                raise SystemExit(f"this ckpt shaped (and observed) on --goal-field-file "
+                                 f"{cfg['goal_field_file']}, which is not here: rebuild it "
+                                 f"(tools/bake_nocut_field.py for a goalc_ field) rather than "
+                                 f"record under the free-space field")
+            ogf = load_goal_field(_gff)
+            print(f"--goal-field-file {cfg['goal_field_file']} mirrored: the observation "
+                  f"channels read it")
+
+    if ogf is None:
+        ogf = gf
 
     def race_start_pool():
         raw = map_spawn_pool(core)
@@ -1272,7 +1292,7 @@ def main(argv=None, build_only: bool = False, device=None):
                      pinhole=bool(cfg.get("pinhole", 0)),
                      normals=bool(cfg.get("normals", 0)),
                      potential=LidarPotential.from_cfg(
-                         cfg, gf, core, device, Path(map_path).stem),
+                         cfg, ogf, core, device, Path(map_path).stem),
                      vision_clip=bool(vclip),
                      # --depth-enc: MIRRORED (what every depth pixel means; dual = 2 channels)
                      depth_enc=str(cfg.get("depth_enc") or "legacy"),
@@ -1989,7 +2009,7 @@ def main(argv=None, build_only: bool = False, device=None):
                     geo=(gf if cfg.get("goal_reward") == "geo" else None))
                 cmp_goal_field = aux_field
             else:
-                aux_field = gf
+                aux_field = ogf
         obs_aux = ObsAux(core.num_envs, k=hist_k, field=aux_field,
                          yaw_adaptive=bool(cfg.get("yaw_adaptive")))
         route_dim += obs_aux.n_features
@@ -2277,7 +2297,7 @@ def main(argv=None, build_only: bool = False, device=None):
     prate_fn = None
     if want_prate:
         from surfgym.obsaux import make_pot_rate_feed
-        prate_fn = make_pot_rate_feed(gf)
+        prate_fn = make_pot_rate_feed(ogf)
     # --obs-reward ckpts read a side-channel value from scalar slot 12 that
     # the core does not produce. Without feeding it here the recording hands
     # the policy absolute position (magnitude ~10) where it expects
@@ -2317,12 +2337,12 @@ def main(argv=None, build_only: bool = False, device=None):
         if gf is None:
             raise SystemExit("this ckpt uses --race-ratchet but has no goal "
                              "field to recompute the record gap from")
-        _rd0 = float(np.mean(gf.sample(map_spawn_pool(core)["origin"])))
+        _rd0 = float(np.mean(ogf.sample(map_spawn_pool(core)["origin"])))
         print(f"--race-ratchet: record gap normalised by the start "
               f"geodesic {_rd0:,.0f}u")
         _rs = {"rec": None, "tick": None}
 
-        def ratchet_fn(c, _f=gf, _d0=_rd0):
+        def ratchet_fn(c, _f=ogf, _d0=_rd0):
             sv = c.states_view
             d = _f.sample(sv["origin"]).astype(np.float64)
             tick = np.asarray(sv["tick"], np.int64).copy()
@@ -2674,7 +2694,7 @@ def main(argv=None, build_only: bool = False, device=None):
                          masks=masks, cc_fn=cc_fn, keys_hold=keys_hold,
                          ratchet_fn=ratchet_fn, pass_fn=pass_fn, vec_fn=vec_fn,
                          surf_fn=(_new_surf_feed() if want_surf else None),
-                         prate_fn=(make_pot_rate_feed(gf) if want_prate else None))
+                         prate_fn=(make_pot_rate_feed(ogf) if want_prate else None))
         if int(args.plan_scratch) > 0:
             # --plan-scratch: the pieces only - the tool that asked flies them itself
             from types import SimpleNamespace as _NS
