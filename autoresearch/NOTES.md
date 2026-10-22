@@ -2279,3 +2279,15 @@ safety classifier; simulator probes from the policy's own states answered the sa
   --respawn-novel-vrand-band 0.01 --respawn-novel-vrand-speed 1.0 1.5`: 553 frontier rows per pool at
   1.0-1.5x their own speed + 1,290 moved rows. 300M first. Read-out: novel-row wins from the boosted
   frontier rows, then the ceiling / greedy evals past the holes.
+
+### 06:47 UTC: r5b2_vs (frontier rows at 1.0-1.5x speed) - no change in 300M; continued as r5b2_vsx
+
+* **r5b2_vs** (16.619 -> 16.919B, 300M, 167k steps/s): 24 evals 86.8-98.25 (mostly 98.0-98.25, wobbles
+  to 96.7 / 86.8 as in the control), novel ceiling flat at 96,306 u, reservoir deepest 98.06% (mind
+  1.939%); training wins ~6% at 2.1 s (the shaft rows; no sign of longer wins from the boosted frontier
+  rows). Final ckpt pulled: runs/r5b2/r5b2_vs/ckpt_final.pt (16,919,298,048, md5 c08236de...).
+* Four arms at the hole gate (front-temp, vrand, global respawn-speed, frontier respawn-speed), 300M
+  each: none moved the ceiling or the greedy line past 98.28%. The score is capped near the room's
+  best cells (d ~1,672 under the holes = 98.29%) unless a greedy episode launches into the shaft.
+* **r5b2_vsx** (06:44): bare resume of vs's final (vrand 0.3 at 1.0-1.5x restored), 1.5e9 - it is the
+  main line from here (it does not hurt the line, and it keeps the boosted frontier practice).
