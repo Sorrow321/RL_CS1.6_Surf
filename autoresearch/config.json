@@ -91,12 +91,6 @@
     "--obs-compass",
     "1",
     "--obs-pot-rate",
-    "1",
-    "--respawn-novel",
-    "--race-ratchet",
-    "--eval-patience",
-    "30",
-    "--eval-parallel",
     "1"
   ],
   "start_d": 97768.0,
