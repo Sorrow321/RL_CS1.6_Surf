@@ -2681,3 +2681,5 @@ basement and only near the funnel wall in shape).
 * Lottery policy for the rest of the round: a restart from the incumbent stays at CP7 for ~3-11 evals before the
   wobble (steer2 11, bank3 5, turn2 3), so restarting with a new seed whenever the line drops to CP6 yields more CP7
   evals than waiting it out. r6b1_turn3 (18:50 UTC): seed 3, 54-episode evals every 6.25M, turn + steer kept.
+* 19:16 UTC: r6b1_turn3 (seed 3) - 7 CP7 evals (98.179-98.283, 54 episodes each) over 17,419-17,457M, CP6 from
+  17,463M; reset to the incumbent as r6b1_turn4 (seed 4). An eval cycle (6.25M steps + a 54-episode eval) is ~2 min.
