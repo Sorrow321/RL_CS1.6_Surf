@@ -2404,3 +2404,41 @@ pattern that is in your own command line.
   the energy of round 5's east-ramp finishes; the direct flight is energetically possible but needs a steep,
   inward rise through a hole that the line never makes (its passes under the holes: east while falling,
   west while rising; the one rise through the -y hole came at |v_h| 340-520).
+
+### 14:20 UTC: r6b2_ctl (control) and NEW --respawn-backward-mix; arm r6b2_bmix
+
+* **r6b2_ctl** = bare resume of the incumbent (17,418,944,512) + `--record-every 6.25e6 --ckpt-every 1e8`,
+  13:57-14:12 UTC (~107M steps, ~130k steps/s with evals): 17 evals, 98.11-98.25 (CP7) for the first 12,
+  then 96.7 (CP6) for 5; best **98.245** (17,438M). Stopped to free the box. Same picture as round 5's
+  continuations (96.7-98.35, no basement exit). Its best eval is pulled to runs/r6b2/r6b2_ctl/.
+* **NEW `--respawn-backward-mix F`** (commit cd381b0, default off): the existing `--respawn-backward`
+  sampler (Salimans-Chen backward curriculum on the map's own geodesic field, no demo: positions with
+  distance to the goal in [floor, start x d0], velocity U(lo, hi) u/s along the field's descent with 15 deg
+  heading noise and elevation clamped to [-60, +30] deg, the view along it) supplies F of the non-start
+  pool rows at a FIXED band, placed right after the --respawn-novel quota and before the --respawn-greedy
+  tail. Their episodes are tagged through the novel sampler's keys (never harvested, no visit marks, never
+  lower the novel ceiling, no novelty under --int-real-only) and counted on their own (step line `bmix rows
+  N fin W/E`, csv bmix/rows, bmix/prog_med, bmix/ended, bmix/finished). The pure --respawn-backward pool
+  was not usable here: it is exclusive with --respawn-novel and --respawn-greedy (the lineage's line keepers)
+  and implies binned reservoir draws.
+  Tests (tests/python/test_respawn_backward_mix.py, CPU, sidistic): 3 unit (tags, outcome count, key
+  lifetime, no-backward-keys identity, rows in the band at the asked speed and elevation), the trainer smoke
+  (mix count = round(0.2 x 3,686), step line, csv, config, bare resume, record_ckpt), 3 refusals, and flag
+  OFF bit-identical to the pre-change trainer on a seeded reservoir with --respawn-novel on (config, csv,
+  eval bytes, weights).
+* Why: the last gate's success (over the funnel rim) has never been observed by a REAL episode in ~3.5B
+  steps, so nothing values the precondition (a fast, steep, inward rise through a basement hole) and nothing
+  upstream learns to carry the energy. Goal-anchored rows at speed let the policy and the critic see the
+  final stretch succeed from many states; the line then has a value gradient to connect to. Generic: the
+  map's own field, one band fraction, one speed prior, no map constant.
+* Sampler measured offline (nocut field, W 5% of d0 = 4,984 u, shell 0): rows land at d 1,557-3,794 (the
+  shell 0 setting leaves the far 25% of the band out: body [256, 3,802]), ~8% at d 1,300-1,700 (the room,
+  rising toward the rim), ~18% at 1,700-2,200 (holes, room, basement), the rest in the basement / corridor
+  and air above; almost none at d < 1,557 (the funnel and shaft are ~2.4k voxels of the band's ~340k, and the
+  sampler draws random voxels before flattening in d, so tiny-volume bins starve). The novel rows already
+  cover the funnel descent (trivial wins).
+* **r6b2_bmix** (14:15 UTC): resume of the incumbent + `--respawn-backward-mix 0.2 --respawn-backward-shell 0
+  --respawn-novel-frac 0.3 --ckpt-every 1e8`, evals every 6.25M, 3e9 budget. Pool per iteration: 410 map
+  starts, 1,106 novel, 737 backward, 737 reservoir, 1,106 greedy rows. 153k steps/s. Read-outs: bmix fin/E
+  (the policy learning the final stretch from the rows), the novel ceiling (98,260 u = d_best 1,415: a REAL
+  episode over the rim moves it), the greedy evals (> 98.349 or a finish).
