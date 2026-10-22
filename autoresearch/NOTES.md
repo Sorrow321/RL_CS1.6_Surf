@@ -2238,3 +2238,13 @@ safety classifier; simulator probes from the policy's own states answered the sa
   above ~86-96% and the best episode still reaching the lower lane (>= 98%).
 * Ops note: I killed the trainer with a pgrep -f pattern over ssh that also matched my own ssh shell; it took
   the lower pid (the trainer) by luck. Use the known pid (box.py status / the launch log) next time.
+
+### 06:55 UTC: T cap 0.1 consolidates the line - 98.283, every eval in the lower lane
+
+* r5b3_t01 evals: 98.223 (15,924M, the resume eval), **98.283 (15,949M)**, 98.101 (median 95.8%), 98.089: 4/4 evals
+  reach the lower lane past the second wall (vs ~1 in 3 under T 0.5), medians 86.8-95.8% (T 0.5: 26.6-86.5%).
+  T 0.10, stuck 752M (the +500 u rule needs 96,363 u), training win 24-27%, ceiling 96,098 u (98.29%).
+* 15,949M: 3/9 reach the lane at ~120-122 s (best (2,638, 389, 1,164), then it sits in the lane to the patience
+  cut at 151.7 s); 5/9 stall at a new spot ~87.7% ((-630..-710, -370..-480, 3,600-3,750) at ~100.5 s, alive
+  30 s more); 1 at 71%.
+* Box deadline extended to 10:54 UTC. Credit $56.0 (fleet burn $1.52/h).

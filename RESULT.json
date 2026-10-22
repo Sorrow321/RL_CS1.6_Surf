@@ -3,20 +3,22 @@
  "round": 5,
  "final": false,
  "best": {
-  "score": 98.254,
-  "eval_file": "/home/steam/ar/runs/r5b3/r5b3_main2/traj_15697182720.jsonl",
-  "run": "r5b3_main2",
-  "step": 15697182720,
-  "ckpt": "/home/steam/ar/runs/r5b3/r5b3_main2/ckpt_latest.pt (15,923,675,136, md5 65b25a03...; the run's last weights)",
+  "score": 98.283,
+  "eval_file": "/home/steam/ar/runs/r5b3/r5b3_t01/traj_15949365248.jsonl",
+  "run": "r5b3_t01",
+  "step": 15949365248,
+  "ckpt": "/home/steam/ar/runs/r5b3/r5b3_t01/ckpt_latest.pt (to be pulled; r5b3_main2/ckpt_latest.pt 15,923,675,136 md5 65b25a03... is local)",
   "recipe": [
    "bare resume of the incumbent",
    "--ckpt-every",
    "1e8",
    "--record-every",
-   "25e6"
+   "25e6",
+   "--unstuck-max",
+   "0.1"
   ],
-  "resume_from": "incumbent r4b3_band15x/ckpt_final.pt (15,032,385,536) -> r5b3_main (evals every 12.5M) -> r5b3_main2 (bare resume of r5b3_main's ckpt_latest 15,570,829,312, evals every 25M)",
+  "resume_from": "incumbent r4b3_band15x/ckpt_final.pt (15,032,385,536) -> r5b3_main (12.5M evals) -> r5b3_main2 (25M evals) -> r5b3_t01 (bare resume of r5b3_main2's ckpt_latest 15,923,675,136 + --unstuck-max 0.1)",
   "commit": "ec1ea69 (code = 3ea2710)"
  },
- "summary": "Main line on box 57138137 (RTX 3090 + EPYC 7302P, $0.60/h): bare resumes of the incumbent, no training change. Best eval 98.254 (r5b3_main2 at 15,697M, CP7) vs incumbent 94.668: the greedy line passed the 95% slit, the hole in kill *10, CP7, the first thin wall's gap and the underpass of the second wall. Evals every 25M instead of 12.5M: 69k vs 42k steps/s overall on this CPU-bound box. Left: a surf climb out of the lower lane (probe 0/32) into the funnel. Medians ~86.5% at T 0.5 (keys)."
+ "summary": "Main line on box 57138137 (RTX 3090 + EPYC 7302P, $0.60/h): bare resumes of the incumbent. Best eval 98.283 (r5b3_t01 at 15,949M, CP7) vs incumbent 94.668: past the 95% slit, the hole in kill *10, CP7, the first thin wall's gap, under the second wall into the lower lane. Two changes: evals every 25M (69k vs 42k steps/s on this CPU-bound box) and --unstuck-max 0.1 (at the 0.5 cap the greedy line broke - medians 27-86%; at 0.1 every eval reaches the lower lane, medians 87-96%). Left: the surf climb out of the lower lane into the funnel (probe 0/32)."
 }
