@@ -2537,3 +2537,15 @@ basement and only near the funnel wall in shape).
   round 3 did for time-pen 0). Steer bursts kept (cheap: 2-4% of rows dropped) to explore line variations the speed
   term can then select.
 * Box 57226380 extended to 21:24 UTC.
+
+### 15:50 UTC: r6b1_sp5 (`--speed-pot 5`) - NEGATIVE: the greedy line falls back to CP6 at once
+
+* 17,419M -> 17,572M (153M steps, ~105k steps/s with evals every 12.5M). Evals (score.py): 98.245 (the checkpoint,
+  frozen actor), 98.121 (end of the 20-update critic warmup), then **ten evals in a row at 96.73-96.78% (CP6)**: the
+  greedy line now stops before CP7 (the chimney / corridor entry), the old 98% basement line is gone.
+* Training side: stall share 24-31% -> 0-1%, crawl 30-39% -> 3-4% (agents keep flying), training wins (novel-row
+  shaft drops) ~25% -> 1.5% (dropping into the shaft kills the horizontal speed the potential pays for), reservoir
+  deepest state 98.0% -> 96.6%, yaw sigma 0.076 -> 0.065; novel ceiling unchanged (d 1,414).
+* Reading: on this map the precise gates near the end (the chimney drop, the shaft) each cost horizontal speed, and a
+  potential charged on |v_xy| at K = 5 prices them above the little progress they pay locally; the critic does not
+  carry the repayment. skate_laby's positive (a flat speed course) does not transfer. Not repeated.
