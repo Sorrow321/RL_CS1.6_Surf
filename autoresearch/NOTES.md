@@ -2696,3 +2696,7 @@ basement and only near the funnel wall in shape).
 * 22:13 UTC: r6b1_turn7 back in CP7 since 17,513M (frontier ~96,000-96,050u); no eval above 98.347 yet; kept.
 * 23:00 UTC: r6b1_turn7 (seed 7) - CP7 from 17,513M to ~17,650M (~22 evals, best 98.347 at 17,438M, then 98.27-98.29),
   CP6 wobble from ~17,658M; reset as r6b1_turn8 (seed 8).
+* **23:26 UTC: 98.418 - above the incumbent's 98.349.** r6b1_turn8 (seed 8), its FIRST eval (traj_17419468800, step
+  17,419,468,800 = the incumbent's weights after one PPO iteration, 54 episodes): episode 2 rose through the -y hole to
+  (2,664, -281, 1,222) at 124.4 s - the incumbent's 98.349 rise height (z 1,220) but nearer the centre (y -281 vs -351),
+  where the score's field is lower. Next evals 98.312-98.328 (CP7), then the usual dip; reset to seed 9.
