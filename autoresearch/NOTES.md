@@ -2288,3 +2288,25 @@ safety classifier; simulator probes from the policy's own states answered the sa
 
 * Evals 16,376-16,452M: 96.85 (the resume eval), 98.11, 98.13, 86.5; training ceiling 96,125 u (98.32%) flat;
   fronttemp 4-5% of envs in the band (> 97.8%); training win 23-27% (novel rows past the climb).
+
+### 09:31 UTC: the final gate measured - a rare launch through a 190 u gap into a closed chimney (ANALYSIS ONLY)
+
+* The finish sits at the bottom of a CLOSED CHIMNEY (killprobe slices at x 2,900 / y 0 / y 450 / y 600): x ~2,500-3,400,
+  |y| < ~650, open from z ~1,250 up past z 5,300 (west wall = a solid block at x <= ~2,450 from z ~1,600 to 5,300+;
+  the field inside grows with height, d ~ z - 230, so nothing enters from above). Its floor is kill *61 (z ~1,200,
+  |y| ~100-650) with two holes: the funnel/shaft at |y| < ~50 and a gap at x ~2,492-2,684, |y| ~336-650, right
+  east of the second thin wall. So the ONLY way in from the lower lane is to rise ~300-400 u through that gap
+  (origin z ~900-1,000 -> > ~1,260) and then carry ~300-450 u east over *61 into the funnel.
+* The gap has no surface to launch from: the lane floor is flat (z ~900 at |y| ~450) and the inner 48 deg ramp
+  (|y| ~336-496, z ~840-1,020) throws you INWARD, under the slab that carries *61 (|y| < ~336 from x ~2,444).
+* **Macro search** (scratchpad climb/macro_climb.py on the raw core with the trainer's physics): 2,048 rollouts of 3
+  random held macros (yaw offset U(-120, 120) in the velocity frame, random fwd / side, 20% jump, 20% duck, 6 s)
+  from the policy's OWN lane states (92 reservoir states + 104 greedy-eval arrivals just past the underpass,
+  1,000-1,300 u/s): **0 finishes, 1 above z 1,260 (max 1,265), 0 over *61**. The policy probe at 05:36 had 2/32
+  reaching z ~1,350 at x ~2,507 (both fell back). So the field's route (it rises at x 2,448 -> 2,640) is
+  physically almost closed at these speeds - round 2's "infeasible field route" pattern again; the way in
+  is a precise launch at the gap, presumably from a faster arrival under the second wall.
+* Meanwhile training spends 20-29% of its episodes on novel rows placed INSIDE the chimney (d >= d_best, unvisited)
+  that fall into the funnel and finish in ~2.3 s: the critic knows the chimney pays +50, the policy never gets
+  there from the lane. A generic lever for the next round: novelty over (position x velocity direction) cells,
+  so that novel rows land in the visited lane with novel (upward) velocities and practise the rise.
