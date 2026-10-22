@@ -2697,3 +2697,12 @@ Standing-hull solid tests (`core.trace(p, p, hull=0).startsolid`) and kill hulls
 * With 5.5 h left: **r6b3_front7** (19:2x) = bare resume of front6's last checkpoint (18,792,054,784, md5
   70895ca6..., runs/r6b3_front6/ckpt_stop.pt on the box) with `--record-every 6.25e6`: the same training (the
   climb practice continues) and twice the greedy samples per step. Box extended to 22:28 UTC.
+
+### 20:05 UTC: r6b3_front7 at 19.03B; greedy census across the round
+
+* r6b3_front7 (front6's config, evals every 6.25M), 18,792M -> 19,031M: 35 evals, best 98.266, 0 finishes.
+* Greedy census (basement entries / eval episodes, room entries): gs 42/153, 2; sil 22/126, 0; front 51/198, 0;
+  front2 85/306, 0; front3 64/234, 0; front4 61/288, 1; fsil 23/153, 0; front6 47/189, 0 (vz under a hole p50 347,
+  max 688 - the highest); front7 40/315, 0 (13%, vz p50 124). The deployed line reaches the basement in 13-28% of
+  its episodes depending on the checkpoint and has entered the room twice this round, never above z ~1,220.
+* Box 57223179 extended to 01:04 UTC (credit $38.65).
