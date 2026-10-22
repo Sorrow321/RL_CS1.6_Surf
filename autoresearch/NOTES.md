@@ -2473,3 +2473,28 @@ pattern that is in your own command line.
   skill (approach low along the ramp, turn up-slope, pull outward), not energy.** The line's passes: the first
   falls onto the +y face (turns into down-slope motion, outward); the return leg surfs the -y face westward near
   its TOP (|y| ~410, z ~950) under the hole - too high on the face for a pull-out.
+
+### 15:16 UTC: r6b2_bmix stopped (null at the gate); NEW --respawn-greedy-turn / --respawn-greedy-speed; arm r6b2_gpt
+
+* **r6b2_bmix** 17,419-17,904M (~485M steps, ~137k steps/s with evals every 6.25M): 76 evals 96.7-98.26 (CP7 with
+  CP6 wobbles), best **98.259** (17,822M, median 98.2%); 0 finishes; novel ceiling unchanged (stale, see above);
+  backward-row episodes finished 50-70% (all from inside the chamber). Final weights on the box as
+  runs/r6b2_bmix/ckpt_stop.pt (17,903,910,912, md5 f94f5f2f...). Verdict: goal-anchored rows at speed teach the
+  chamber -> funnel part (which the novel rows already taught), not the way in; they did not disturb the line.
+* **NEW `--respawn-greedy-turn T` / `--respawn-greedy-speed LO HI`** (commit bad9a55, default off): each mixed
+  greedy-line row (the policy's own states before its greedy deaths / stops and along its stalled stretches -
+  here the basement loop) has its horizontal velocity and view yaw turned together by U(-T, T) deg and its
+  velocity scaled by U(LO, HI); its own RNG, so the rows drawn are the unperturbed ones. Real episodes
+  (harvested). Generic: two constants, the policy's own states. Tests: tests/python/test_respawn_greedy_perturb.py
+  (5 unit, trainer smoke + resume + refusal, flag-off bit-identity vs the pre-change trainer with greedy rows on).
+* Why: the hole entry needs the agent low on a basement ramp face under a hole, moving up-slope at >= ~1,300 u/s,
+  and then an outward strafe; the greedy loop surfs those faces along x (near their top, or falling onto them),
+  never up-slope from low. Turning its own basement states' headings by up to 90 deg and scaling their speed
+  x1-1.5 puts training episodes in those up-slope states; `--front-temp 1 --front-band 0.005` (round 4's flag:
+  every head at temperature 2 for envs at >= 99.5% of the reservoir's deepest progress = the passage bottom and
+  the basement) makes the outward strafe likelier there. The rest of the line keeps keys-only T 0.2.
+* **r6b2_gpt** (15:14 UTC): resume of r6b2_bmix's ckpt_stop (17,903,910,912; bmix 0.2 restored) +
+  `--respawn-greedy-turn 90 --respawn-greedy-speed 1.0 1.5 --front-temp 1 --front-band 0.005 --ckpt-every 1e8`,
+  evals every 6.25M. A combination at the frontier (state nudges + action temperature), not one knob: this is
+  the last round and the gate has absorbed ~4B steps. Read-outs: the novel ceiling (any real episode over the
+  rim moves it below 1,415), the reservoir's deepest state (mind 1.98% now = the basement), the greedy evals.
