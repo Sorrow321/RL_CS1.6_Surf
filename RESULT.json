@@ -1,21 +1,22 @@
 {
  "agent": "r4b2",
  "round": 4,
- "final": false,
+ "final": true,
  "best": {
-  "score": 54.881,
-  "eval_file": "/home/steam/ar/runs/r4b2/r4b2_pf/traj_8990490624.jsonl",
+  "score": 56.219,
+  "eval_file": "/home/steam/ar/runs/r4b2/r4b2_pf/traj_9040822272.jsonl",
   "run": "r4b2_pf",
-  "step": 8990490624,
-  "ckpt": "/home/steam/ar/runs/r4b2/r4b2_pf/ckpt_latest.pt (pulled at wrap-up)",
+  "step": 9040822272,
+  "ckpt": "/home/steam/ar/runs/r4b2/r4b2_pf/ckpt_latest.pt",
   "recipe": [
    "--pitch-sigma-min",
    "0.05",
    "--diag-head-kl",
    "2"
   ],
-  "resume_from": "incumbent r3b3_gwx2/ckpt_final.pt (8,838,971,392, md5 d3d06fb1...)",
-  "commit": "fd71f34"
+  "resume_from": "incumbent r3b3_gwx2/ckpt_final.pt (8,838,971,392, md5 d3d06fb18e15b261bba72d0740bfdab3)",
+  "commit": "fd71f34",
+  "note": "ckpt_latest.pt = r4b2_pf's end, step 9,182,380,032, md5 e7d9ab7d053a0cd17f7e5a012ec83cea (141M steps after the best eval), pulled after the trainer was stopped and md5-checked; its config carries pitch_sigma_min 0.05 (a bare resume restores it)."
  },
- "summary": "Round 4 (r4b2): no box 12:50-23:19 UTC (no offer under the caps). Then (RTX 4080; gpu_health needed a 4080 reference, harness issue) MEASURED the defect found offline: on the incumbent the camera-only pitch head (sigma at the LOG_STD_MIN clamp, 0.0067) carries ~95% of PPO per-update KL (pitch 0.16-1.39 vs yaw 0.005-0.05, keys 0.002) and 3/4 of the clipped rows (34% joint vs 9% without pitch). NEW --pitch-sigma-min 0.05 (off = bit-identical): joint KL 0.012-0.09, keys/yaw clipped share 9% -> 13-16%; warm from the incumbent it scored 54.704, 54.790, 54.881 in three consecutive evals (median 54.7%) within ~150M steps, ceiling 55.6% -> 56.4%. Next: keep the floor on (bare resume restores it); test it from scratch."
+ "summary": "Best 56.219 (r4b2_pf eval 9,041M, CP4; incumbent 54.674): the greedy line crests the 54.7% ramp and flies ~1,300 u west on the field's route. No box from 12:50 to 23:19 UTC (no offer under the caps), so ~50 min of training in all. What did it: a PPO defect found offline and measured on the box - the camera-only pitch head's sigma sat at the LOG_STD_MIN clamp (0.0067), so it carried ~95% of the per-update KL (pitch 0.16-1.39 vs yaw 0.005-0.05, keys 0.002) and 3/4 of the clipped rows (34% joint vs 9% without pitch). NEW --pitch-sigma-min 0.05 (projected floor; off = bit-identical): joint KL 0.01-0.09, keys/yaw clipped share 9% -> 13-16%; warm from the incumbent: 54.704/54.790/54.881 within 150M steps, 56.219 at +200M, ceiling 55.6% -> 56.4%. One seed, warm only. Next: continue it (bare resume restores the floor); test the floor from scratch; NEW --diag-head-kl N for the per-head readout."
 }

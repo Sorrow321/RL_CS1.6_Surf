@@ -1608,3 +1608,67 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
 * One seed, ~150M steps: consistent with "the camera head was throttling the control heads", not
   proof. The comparison is the incumbent's own continuation at the same wall (r3b3_gwx2's last
   ~400M: ceiling 53,121 -> 54,406 u, evals 44.5-54.7).
+
+### 00:12 UTC: r4b2_pf end - 56.219, CP4 (the ramp crest falls)
+
+* r4b2_pf, all 15 evals (score.py best / median): 50.573, 50.405, 50.440, 47.778, 54.704, 54.790,
+  54.881, 54.633, **56.219 (9,040,822,272, CP4, median 32.2%)**, 42.439, 50.039, 50.428, 54.597,
+  54.759, 54.760. Stopped at 9,182,380,032 by me (round over).
+* The 56.219 episode crests the 54.7% ramp and flies west on the field's route: best 56.22% at
+  65.7 s at (-2,170, 314, 8,090) (the route passes (-1,872, -48, 8,168) at 56.0%), then falls. The
+  other 8 episodes of that eval die earlier (32% at the post-CP2 block, 42-48% on the descending
+  legs): the greedy line still wobbles. The evals after it are back at the crest (54.6-54.8%).
+
+## ROUND 4 LESSON (r4b2) - written at wrap-up
+
+**Result:** best greedy eval from the true start **56.219** (r4b2_pf at 9,040,822,272, CP4; incumbent 54.674).
+0 finishes. Hand-on checkpoint: /home/steam/ar/runs/r4b2/r4b2_pf/ckpt_latest.pt (9,182,380,032, md5
+e7d9ab7d053a0cd17f7e5a012ec83cea; config pitch_sigma_min 0.05, restored by a bare resume).
+
+**Only ~50 min of box time** (no offer under config.max_dph from 12:50 to 23:19 UTC - harness issue above), so
+the round's result is one mechanism, found offline and confirmed on the box:
+
+**The defect: the camera head ran PPO's trust region.** Under --view-absolute the pitch head only aims the depth
+camera and its entropy term is off, so PPO shrank its sigma to the trainer's LOG_STD_MIN clamp (raw log sigma
+-5.0015 at 8.84B: sigma 0.0067 in z = 0.3 deg of camera target, gradient dead below the clamp). PPO's ratio is
+the joint over keys + yaw + pitch, so a sub-degree drift of the camera target decides which rows are clipped for
+EVERY head. Measured with NEW `--diag-head-kl 2` on a bare resume of the incumbent (14 readings over whole
+updates): KL per update keys 0.001-0.003, yaw 0.005-0.05, **pitch 0.16-1.39**; rows outside 1 +- clip **34%
+joint vs 9% without the pitch head**. r3b3's approx_kl of 3-55 per update was this.
+
+**The fix: NEW `--pitch-sigma-min 0.05`** (the pitch head's log sigma projected up to log 0.05 after every
+optimizer step and on resume; config-saved and restored; TRAIN_ONLY; off = bit-identical; 6 CPU tests).
+Same checkpoint: joint KL 0.01-0.09, pitch 0.002-0.025, rows clipped 17-21% joint / 13-18% keys+yaw - the control
+heads get about twice the effective update. Warm from the incumbent: three evals above 54.674 within 150M steps
+(54.704, 54.790, 54.881, median 54.7%), then 56.219 (CP4) at +200M; training ceiling 54,406 -> 55,175 u. Camera
+jitter in training <= 2.5 deg; a CPU probe at the wall showed it does not hurt the stochastic policy (54.63% vs
+54.58%). One seed, warm, ~350M steps: consistent with the defect being a brake on learning, not proof.
+
+**For the next round:**
+* Continue from the hand-on checkpoint with a bare resume (it restores the floor and every r3b3 flag). Keep evals
+  every 25M and --ckpt-every 1e8.
+* The floor is generic (one constant in z for a head with no physics effect on any map) and should be tested FROM
+  SCRATCH: every scratch run under --view-absolute eventually drives the pitch sigma to the clamp. It is not in
+  config.incumbent_recipe yet (warm-validated only, like r3b3's flags).
+* The yaw sigma fell 0.060 -> 0.048 in 350M steps with the floor (PPO now moves it); watch it - the same clamp
+  waits for it at 0.0067.
+* `--diag-head-kl N` is the readout; also usable for any future head (it reports every Gaussian head and the
+  keys joint).
+* The 54.7% wall (analysis): a ramp climb at x ~-800 where the greedy line tops out heading north; 0/36 CPU
+  probes from the policy's own approach states crest it at T 0.065-0.5, yet with the floor the greedy line
+  crested once within ~200M steps.
+
+**Ops:** box 57125445 (RTX 4080 + Ryzen 9 7950X, $0.241/h, France), 23:19 UTC to wrap-up, ~143k steps/s.
+tools/gpu_health.py needed an RTX 4080 reference (branch-local, commit fd71f34). The rent loop that finally got
+it retried `box.py rent` every ~30 s for 10.5 h. Local CPU (4 vCPU) cannot run even one 32-env iteration in 25
+min; record_ckpt probes (~5-12 min each) are its limit.
+
+## Wrap-up (r4b2) - 2026-10-22 00:12 UTC
+
+* Final: RESULT.json `"final": true`, score **56.219** (r4b2_pf, eval traj_9040822272: 9 episodes, best 56.22%,
+  median 32.18%, 0 finishes, CP4). Per-run bests (score.py --best): r4b2_kl0 54.521 (1 eval), **r4b2_pf 56.219**
+  (15/15 valid).
+* Hand-on checkpoint: /home/steam/ar/runs/r4b2/r4b2_pf/ckpt_latest.pt (9,182,380,032, md5
+  e7d9ab7d053a0cd17f7e5a012ec83cea), pulled after the trainer was stopped, md5-checked.
+* Code at the head: --diag-head-kl (18663bf), --pitch-sigma-min (f6fd5db), gpu_health RTX 4080 reference (fd71f34).
+* Box 57125445 released at wrap-up.
