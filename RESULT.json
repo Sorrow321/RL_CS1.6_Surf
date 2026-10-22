@@ -3,11 +3,11 @@
  "round": 5,
  "final": false,
  "best": {
-  "score": 98.145,
-  "eval_file": "/home/steam/ar/runs/r5b1/r5b1_gspdx/traj_15345909760.jsonl",
+  "score": 98.157,
+  "eval_file": "/home/steam/ar/runs/r5b1/r5b1_gspdx/traj_15446573056.jsonl",
   "run": "r5b1_gspdx",
-  "step": 15345909760,
-  "ckpt": "/home/steam/ar/runs/r5b1/r5b1_gspdx/ckpt_final.pt (when pulled; else r5b1_gspd/ckpt_final.pt)",
+  "step": 15446573056,
+  "ckpt": "box: runs/r5b1_gspdx/ckpt_15432941568.pt (snapshot 14M steps before the eval); gspdx was stopped at 15.708B after regressing - its ckpt_latest is the regressed policy",
   "recipe": [
    "--respawn-greedy-speed",
    "1.0",
@@ -18,5 +18,5 @@
   "resume_from": "incumbent r4b3_band15x/ckpt_final.pt (15,032,385,536) -> r5b1_gspd (+ --respawn-greedy-speed 1.0 1.5, evals every 12.5M) -> r5b1_gspdx (bare resume of gspd's ckpt_final 15,332,802,560, md5 59a5a533...)",
   "commit": "3763775"
  },
- "summary": "Round 5 (r5b1). The 95.2% gate is a kill-topped wall in a slot over a block, cleared only with carried speed (WR ~1,300-1,550 u/s at the climb; the policy 600-950). NEW --respawn-greedy-speed LO HI: the greedy-line rows replayed x U(LO, HI) faster. Arm r5b1_gspd (incumbent 15.03B + speed 1.0-1.5, 3090 Japan, from 03:19): the greedy line passed the wall at ~15.15B (+110M steps; incumbent stuck at the wall), 96.5 (median 95.8%), CP7 at 15.184B (97.064), through the tunnel to 98.1% at 15.27-15.32B: 98.124 (ckpt_final 15,332,802,560, md5 59a5a533...); continuation r5b1_gspdx: 98.145 at 15,346M (4/9 at 98%). Training ceiling 98.24%, reservoir deepest 97.9%, 7.7% of training episodes finish. Extending as the main line. Also fixed a numba thread cliff on many-core hosts (13 ms -> 0.02 ms per field sample)."
+ "summary": "Round 5 (r5b1). The 95.2% gate (a kill-topped wall in a slot, cleared only with carried speed) fell to NEW --respawn-greedy-speed LO HI (greedy-line rows replayed x U(LO,HI) faster): r5b1_gspd (incumbent 15.03B + 1.0-1.5) passed it in ~110M steps -> 96.5 -> CP7 97.064 -> 98.124 (through the tunnel and the bowl to the east-end turn). Continuation r5b1_gspdx: 98.157 at 15.447B, then REGRESSED (episodes past 90%: 44% -> 11%; an 86.6% speed-dependent climb took over), hypothesis: scaling DAgger rows at failures the line passes elsewhere. NEW --respawn-greedy-speed-band B (scale only rows within B d0 of the deepest failure): arm r5b1_band (gspd final 15.333B + band 0.05) from 04:31. No finish yet: the last gate is the return from the east-end turn to the funnel top. Also fixed a numba thread cliff on many-core hosts."
 }
