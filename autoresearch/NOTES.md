@@ -2248,3 +2248,14 @@ safety classifier; simulator probes from the policy's own states answered the sa
   cut at 151.7 s); 5/9 stall at a new spot ~87.7% ((-630..-710, -370..-480, 3,600-3,750) at ~100.5 s, alive
   30 s more); 1 at 71%.
 * Box deadline extended to 10:54 UTC. Credit $56.0 (fleet burn $1.52/h).
+
+### 07:25 UTC: the greedy line runs the lower lane, U-turns and climbs - in the wrong room
+
+* r5b3_t01 evals 16,025-16,126M: 98.114, 98.162, 98.077, 98.079, 94.553 (medians 86.5-92.4%); ceiling 96,125 u (98.32%).
+* 16,075M eps 4 / 8 (the same line): under the second wall at 115.1 s ((2,494, 492, 1,047), 98.05-98.07%), EAST along
+  the outer lane at ~1,500 u/s and z ~750-1,000 to x ~3,900, a rising U-turn at the lane's closed east end
+  (z 742 -> 1,077, vz up to +507; x >= 3,500 is roofed above z ~1,300), back WEST along the -y lane under the
+  second wall into the room, and there a surf climb to its ceiling (z 1,545 at x ~2,400, 119.1 s) that leads
+  nowhere; then down onto kill *3 or the room floor. So the climb exists in the policy, in the room west of the
+  wall; the way on needs it in the open outer lane at x ~2,500-3,300 (the field pays it there: d ~2,120-2,145 at
+  z 1,000 -> ~1,640-1,740 at z 1,300-1,450), then inward over kill *61 to the funnel.
