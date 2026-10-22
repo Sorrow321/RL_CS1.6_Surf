@@ -2715,3 +2715,12 @@ pattern that is in your own command line.
   h_E at the turn ~1,910 (the scripted bench says ~2,350 clears the rim). Front-perturb finishes 0 at this energy.
 * Training the entry at the energy the line actually has (x1.0-1.3) made the GREEDY line do it 7x more often
   (per episode) and higher than training it at x1.4-2.0 did. Running on to the end of the round.
+
+### 21:44 UTC: r6b2_tp3 at +460M - 98.421; greedy entries 6 in 666, one climbing the chamber's east ramp
+
+* r6b2_tp3 20.19-20.65B: greedy chamber entries **6 of 666** episodes (apex z 1,291, 1,308, 1,337, 1,356, 1,363,
+  **1,465**); best eval **98.421** (20,614,479,872), 98.417 (20,230M), 98.397 (20,557M). All entries take the same
+  route: up the -y ramp face heading west-inward (vy +400-680, vz +430-740), an outward strafe at x ~2,500-2,550
+  (vy flips to -750..-930), up through the -y hole, then EAST along the chamber's -y side at ~900 u/s. The z 1,465
+  episode reaches the chamber's sloped east wall and climbs it (x 3,243 -> 3,311, z 1,252 -> 1,328, then 1,465):
+  round 5's east-ramp hypothesis, flown by the greedy policy - with h_E ~1,780-1,920, short of the rim.

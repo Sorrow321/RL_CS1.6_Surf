@@ -3,10 +3,10 @@
  "round": 6,
  "final": false,
  "best": {
-  "score": 98.417,
-  "eval_file": "/home/steam/ar/runs/r6b2/r6b2_tp3/traj_20230701056.jsonl",
+  "score": 98.421,
+  "eval_file": "/home/steam/ar/runs/r6b2/r6b2_tp3/traj_20614479872.jsonl",
   "run": "r6b2_tp3",
-  "step": 20230701056,
+  "step": 20614479872,
   "ckpt": null,
   "ckpt_note": "r6b2_tp3 is still training; its newest checkpoint is pulled at wrap-up.",
   "recipe": [
@@ -33,5 +33,5 @@
   "resume_from": "r6b2_tp2 (20,186,136,576) <- tp1 <- fp6 <- fp5 <- fp4 <- fp3 <- fp2 <- fp <- gpt <- bmix <- incumbent r5b4_ncy (17,418,944,512)",
   "commit": "fee9839"
  },
- "summary": "Round 6 r6b2. Best eval 98.417 (r6b2_tp3 at 20.231B; incumbent 98.349): the greedy line surfs up the basement ramp, rises through a hole into the sealed funnel chamber (apex z 1,337) and flies east to the funnel's outer wall - the first greedy chamber entries of the lineage (0 in 3,036 greedy episodes before front-perturb training; tp3: 4 in 333). Not over the rim: the line arrives with h_E ~1,900 where ~2,350 is needed. NEW (default off, bit-identical, tested): --respawn-front-perturb (own frontier-band reservoir states, heading turned, speed scaled, + counters; at x1.4-2.0 it gave 94 real training finishes, at x1.0-1.3 it made the greedy line enter), --respawn-backward-mix, --respawn-greedy-turn/-speed. Running: r6b2_tp3 to the end of the round."
+ "summary": "Round 6 r6b2. Best eval 98.421 (r6b2_tp3 at 20.614B; incumbent 98.349): the greedy line surfs up the basement ramp, rises through a hole into the sealed funnel chamber (apex z 1,337) and flies east to the funnel's outer wall - the first greedy chamber entries of the lineage (0 in 3,036 greedy episodes before front-perturb training; tp3: 6 in 666, up to z 1,465 on the chamber's east ramp). Not over the rim: the line arrives with h_E ~1,900 where ~2,350 is needed. NEW (default off, bit-identical, tested): --respawn-front-perturb (own frontier-band reservoir states, heading turned, speed scaled, + counters; at x1.4-2.0 it gave 94 real training finishes, at x1.0-1.3 it made the greedy line enter), --respawn-backward-mix, --respawn-greedy-turn/-speed. Running: r6b2_tp3 to the end of the round."
 }
