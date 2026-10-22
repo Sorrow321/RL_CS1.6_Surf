@@ -3,11 +3,11 @@
  "round": 5,
  "final": false,
  "best": {
-  "score": 98.204,
-  "eval_file": "/home/steam/ar/runs/r5b2/r5b2_x1/traj_15397814272.jsonl",
+  "score": 98.225,
+  "eval_file": "/home/steam/ar/runs/r5b2/r5b2_x1/traj_15724969984.jsonl",
   "run": "r5b2_x1",
-  "step": 15397814272,
-  "ckpt": null,
+  "step": 15724969984,
+  "ckpt": "/home/steam/ar/runs/r5b2/r5b2_x1/ckpt_15633219584.pt",
   "recipe": [
    "--record-every",
    "12.5e6",
@@ -15,11 +15,11 @@
    "1e8"
   ],
   "resume_from": "incumbent r4b3_band15x/ckpt_final.pt (15,032,385,536, md5 cb1dbce4...) bare resume",
-  "commit": "5dc2529",
-  "best_progress_pct": 98.2,
-  "median_progress_pct": 96.67,
+  "commit": "666c1dc",
+  "best_progress_pct": 98.22,
+  "median_progress_pct": 98.11,
   "finishes": 0,
   "max_cp": 7
  },
- "summary": "Round 5 (r5b2): box 57141550 (RTX 4080 + 7950X, $0.251/h); r5b2_x1 = bare resume of the incumbent (15.03B, every flag restored), evals every 12.5M. Best 98.204 (CP7) at 15,398M: the line passed the slot over kill plate *28 (~15.2B, 96.7%, median 96.6%), then CP7 at 15.39B; the best episodes reach the room between kill plates *61 (z 1,200) and *3 (z 664) at ~118-128 s and die on *3 instead of finding its 160 u hole at (2,960, 0) above the finish. Training: win 23% (near-goal spawns, 2.9 s), reservoir deepest 98.2%."
+ "summary": "Round 5 (r5b2): box 57141550 (RTX 4080 + 7950X, $0.251/h); r5b2_x1 = bare resume of the incumbent (15.03B, every flag restored), evals every 12.5M. Best 98.223 (CP7) at 15,826M: past the slot over kill plate *28 (~15.2B) and CP7 (15.39B); the line now stops in the lower room under func_wall *160 (98.1-98.2%). The finish route (mapped): surf a side ramp in that room and launch UP through one of *160's two holes (x 2,482-2,670, |y| 370-686) into the sealed final shaft, then east over kill *61 into the funnel/tube. No real episode has gone up a hole yet; T at its 0.5 cap (wobbles)."
 }

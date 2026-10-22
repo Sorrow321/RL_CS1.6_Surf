@@ -2148,7 +2148,7 @@ safety classifier; simulator probes from the policy's own states answered the sa
   from them), but no REAL episode has come closer than d_best 1,617 u (novel ceiling 98.35%),
   reservoir deepest 98.21%.
 
-### 03:30 UTC: the last 1.8% mapped (hull traces + hull_probe + the field; ANALYSIS ONLY)
+### 03:13 UTC: the last 1.8% mapped (hull traces + hull_probe + the field; ANALYSIS ONLY)
 
 * The finish is at the bottom of a sealed system: a TUBE (x 2,872-3,048, |y| <= 88, z -384..1,250;
   finish trigger *162 at z 176-184, the endtele teleport at its bottom) under a FUNNEL that opens
