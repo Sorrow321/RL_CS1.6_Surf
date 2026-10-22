@@ -9,14 +9,20 @@
   "step": 18565562368,
   "ckpt": "/home/steam/ar/runs/r6b3/r6b3_fsil/ckpt_latest.pt",
   "recipe": [
-   "--respawn-front",
-   "0.15",
+   "--sil-coef",
+   "0.1",
+   "--sil-tempered",
+   "1",
+   "--sil-top",
+   "256",
+   "--sil-success",
+   "1",
    "--ckpt-every",
    "1e8",
    "--record-every",
    "12.5e6"
   ],
-  "resume_from": "incumbent r5b4_ncy ckpt_latest (17,418,944,512, md5 7256a1cf...) -> r6b3_front (bare resume + --respawn-front 0.15, pre-advance-gate code)",
+  "resume_from": "incumbent (17,418,944,512) -> r6b3_front2 (--respawn-front 0.15, advance gate) -> r6b3_front3 (--respawn-front-band 0.02, from 17,834,180,608) -> r6b3_front4 (--respawn-front-cross 1, from 18,149,277,696) -> r6b3_fsil (+ SIL 0.1 tempered top 256 --sil-success 1, from 18,539,872,256)",
   "commit": "d8479d6e292b41755dee23604f099d26a34ead38"
  },
  "summary": "Round 6 (r6b3). Best eval 98.276 (CP7, 0 finishes; incumbent 98.349). MILESTONE: NEW --respawn-front (spawn rows from the 2 s before real training episodes reach the frontier, kept even if they die; + --respawn-front-advance / -cross / -finish refinements) gave the first REAL training finish of the lineage at 17.74B (~322M steps after the incumbent): basement hole -> the room's east slope -> over the funnel's east rim -> shaft. The greedy line never followed in ~1.4B more steps: it reaches the basement in ~20% of eval episodes and climbs (rarely) only after energy-wasting loops (E ~1,400 vs ~1,600+ needed at the east slope top); even the sampled policy cannot repeat its own crossings from their starts (0/24). Nulls: --respawn-greedy-speed 1-2, SIL (all R>V rows, and --sil-success: finishing episodes only) both hurt the line; frontier share 0.4 regressed the main line. Final arm: r6b3_front7 (front config, evals every 6.25M)."
