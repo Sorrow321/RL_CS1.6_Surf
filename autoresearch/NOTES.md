@@ -2733,3 +2733,9 @@ Standing-hull solid tests (`core.trace(p, p, hull=0).startsolid`) and kill hulls
   crossing states and finish captures are rare, so it is slow, but it is there.
 * **r6b3_fspd** (20:1x): resume of front7's checkpoint + `--respawn-front-speed 1.0 1.4 --ckpt-every 1e8` (frontier
   0.15, crossing, finish gate, band 0.02, advance 0.0015 restored), evals every 12.5M, until the wrap-up.
+
+### 20:44 UTC: r6b3_fspd at ~19.35B
+
+* +240M steps: 20 evals 97.97-98.23, 0 finishes; the finish-gated capture counter 430 -> 437 (7 crossings of
+  episodes that went on to FINISH, against 0 in front6's 252M steps without the boost - the boosted replays do
+  reach the finish now and then). Greedy census: 42/180 basement, 0 room entries, vz under a hole p50 180 / max 608.
