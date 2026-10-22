@@ -3,12 +3,14 @@
  "round": 5,
  "final": false,
  "best": {
-  "score": 98.236,
-  "eval_file": "/home/steam/ar/runs/r5b4/r5b4_t02/traj_15697707008.jsonl",
-  "run": "r5b4_t02",
-  "step": 15697707008,
-  "ckpt": "/home/steam/ar/runs/r5b4/r5b4_t02/ckpt_latest.pt",
+  "score": 98.246,
+  "eval_file": "/home/steam/ar/runs/r5b4/r5b4_ps05/traj_15796797440.jsonl",
+  "run": "r5b4_ps05",
+  "step": 15796797440,
+  "ckpt": "/home/steam/ar/runs/r5b4/r5b4_ps05/ckpt_latest.pt",
   "recipe": [
+   "--pitch-sigma-min",
+   "0.05",
    "--unstuck-max",
    "0.2",
    "--ckpt-every",
@@ -16,8 +18,8 @@
    "--record-every",
    "12.5e6"
   ],
-  "resume_from": "r5b4_main/ckpt_15432941568.pt (md5 4485efac...) <- bare resume of the incumbent r4b3_band15x/ckpt_final.pt (15,032,385,536, md5 cb1dbce4...)",
-  "commit": "feab5d4"
+  "resume_from": "r5b4_t02/ckpt_15733358592.pt (md5 e3998f36...) <- r5b4_main/ckpt_15432941568.pt <- incumbent r4b3_band15x/ckpt_final.pt (15,032,385,536)",
+  "commit": "b6eb04a"
  },
  "summary": "r5b4_main (bare resume of the incumbent 94.668, evals every 12.5M) reached 98.231 at 15,448M (CP7): the greedy line passed the wall slit and the chimney; it decayed once the unstuck T climbed to 0.5. r5b4_t02 = its 15.433B snapshot + --unstuck-max 0.2: best 98.236 (15,698M, median 98.1%). 0 finishes: the line loops on a basement ramp under the last wall but exits ~250 u too low to reach the opening into the room above the 120 u finish shaft. Building --pitch-sigma-min (PPO's joint ratio is dominated by the pitch head sitting on the sigma floor: approx_kl 1-22)."
 }

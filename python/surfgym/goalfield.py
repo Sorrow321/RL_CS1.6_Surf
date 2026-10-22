@@ -303,7 +303,8 @@ def _surface_support(solid, torch, out=None):
 
 
 def _bfs_geodesic(occ, seed, cell: float, gravity_dir: bool = False,
-                  device="cuda", max_sweeps: int = 8000, verbose: bool = True):
+                  device="cuda", max_sweeps: int = 8000, verbose: bool = True,
+                  no_corner_cut: bool = False):
     """Multi-source geodesic over the free voxels of ``occ`` (nz, ny, nx),
     seeded at ``seed`` (bool, same shape). Returns
     ``(d, reach_max, sweeps)``: a torch float32 grid in map units holding
@@ -325,7 +326,17 @@ def _bfs_geodesic(occ, seed, cell: float, gravity_dir: bool = False,
     directional field is still metres-of-track and still telescopes.
 
     ``device="cpu"`` never queries CUDA — the selftests must not touch a GPU
-    a trainer is using."""
+    a trainer is using.
+
+    ``no_corner_cut``: a DIAGONAL step (2 or 3 nonzero offset components)
+    relaxes only when every voxel inside the step's bounding box other than
+    its two ends is free - the usual grid rule against cutting corners. The
+    26-neighbour wavefront otherwise slips between two solid voxels that
+    touch only along an edge, i.e. THROUGH a one-voxel-thick slanted wall: on
+    surf_src_sidistic the finish funnel's walls read ~300 u shorter from
+    outside than the real way over their rim (autoresearch r5b4,
+    2026-10-22). Face steps are untouched, so every passage at least one
+    voxel wide along an axis stays open. Off: the shipped graph."""
     import torch
 
     if str(device).startswith("cpu"):
@@ -369,12 +380,33 @@ def _bfs_geodesic(occ, seed, cell: float, gravity_dir: bool = False,
                   f"{int(support.sum()):,} / {support.numel():,} voxels "
                   f"surface-adjacent")
 
+    cpad = cut = None
+    if no_corner_cut:
+        # solid, padded with SOLID: outside the sampled box a corner is a wall
+        cpad = torch.ones((nz + 2, ny + 2, nx + 2), dtype=torch.bool, device=dev)
+        cpad[1:-1, 1:-1, 1:-1] = solid
+        cut = torch.empty_like(solid)
+        if verbose:
+            print("goal graph: no corner cutting (a diagonal step needs every "
+                  "intermediate voxel of its box free)")
+
     def relax():
         dpad[1:-1, 1:-1, 1:-1].copy_(d)
         for (oz, oy, ox), w in zip(offsets, weights):
             src = dpad[1 + oz:1 + oz + nz, 1 + oy:1 + oy + ny,
                        1 + ox:1 + ox + nx]
             torch.add(src, w, out=scratch)
+            if no_corner_cut and (oz != 0) + (oy != 0) + (ox != 0) >= 2:
+                cut.zero_()
+                for pz in (0, oz):
+                    for py in (0, oy):
+                        for px in (0, ox):
+                            if (pz, py, px) in ((0, 0, 0), (oz, oy, ox)):
+                                continue
+                            torch.logical_or(
+                                cut, cpad[1 + pz:1 + pz + nz, 1 + py:1 + py + ny,
+                                          1 + px:1 + px + nx], out=cut)
+                scratch.masked_fill_(cut, INF)
             if gravity_dir and oz > 0:
                 # the player would be climbing A -> A+off here: legal only
                 # along geometry, so kill the edge where NEITHER end is
@@ -448,7 +480,8 @@ def kill_window(k, mins, cell, shape):
 
 def build_goal_field(core, zone, cell: float, cache_dir=None,
                      device="cuda", mask_kill: bool = False,
-                     gravity_dir: bool = False) -> GoalField:
+                     gravity_dir: bool = False,
+                     no_corner_cut: bool = False) -> GoalField:
     """Build (or load) the geodesic distance field toward ``zone``
     (``{"mins": [...], "maxs": [...]}``, map units).
 
@@ -466,7 +499,11 @@ def build_goal_field(core, zone, cell: float, cache_dir=None,
     paints an off-route pit as the global minimum of the shaping potential.
     Combines with ``mask_kill``; each combination gets its own cache
     (``goal_`` / ``goalk_`` / ``goalg_`` / ``goalgk_``), so the plain fields
-    every finished arm was trained against stay bit-identical."""
+    every finished arm was trained against stay bit-identical.
+
+    ``no_corner_cut`` (:func:`_bfs_geodesic`): diagonal steps may not squeeze
+    past a solid voxel of their box - no wavefront through one-voxel-thick
+    slanted walls. Its own cache (``goalc_``), so off changes nothing."""
     import torch
 
     bsp = Path(core.bsp_path)
@@ -477,9 +514,11 @@ def build_goal_field(core, zone, cell: float, cache_dir=None,
     # from its AABB (vision.thin_panes), so only those maps re-bake
     sig = (f"g{_GOAL_BUILDER_VERSION}_{'k2_' if mask_kill else ''}"
            f"{f'd{_GRAVITY_RULE_VERSION}_' if gravity_dir else ''}"
+           f"{'c1_' if no_corner_cut else ''}"
            f"{_map_sig(bsp)}_" + "_".join(f"{v:g}" for v in box) + pane_tag(core))
     cache = Path(cache_dir) if cache_dir else bsp.parent
-    tag = f"{'g' if gravity_dir else ''}{'k' if mask_kill else ''}"
+    tag = (f"{'g' if gravity_dir else ''}{'k' if mask_kill else ''}"
+           f"{'c' if no_corner_cut else ''}")
     cache_file = cache / f"{bsp.stem}.goal{tag}_{cell:g}.npz"
     if cache_file.exists():
         z = np.load(cache_file, allow_pickle=False)
@@ -527,7 +566,7 @@ def build_goal_field(core, zone, cell: float, cache_dir=None,
     seed[lo[2]:hi[2] + 1, lo[1]:hi[1] + 1, lo[0]:hi[0] + 1] = True
 
     d, reach_max, _ = _bfs_geodesic(occ, seed, cell, gravity_dir=gravity_dir,
-                                    device=device)
+                                    device=device, no_corner_cut=no_corner_cut)
     del seed, occ
 
     # solid + unreachable stay at the sentinel — sampling renormalizes over
