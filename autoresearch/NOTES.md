@@ -2672,3 +2672,14 @@ pattern that is in your own command line.
 * tp1 so far (+210M, 0.1/s time penalty): basement-entry h_E median 2,270 (no rise); front-perturb finishes 25 in
   22,906 (fp6: 5 in 28,997); the line reaches the basement in 85 of 306 eval episodes. Box 57219728 extended to
   23:23 UTC.
+
+### 19:50 UTC: r6b2_tp1 end; r6b2_tpg = + greedy-row nudges
+
+* r6b2_tp1 (19.56-19.97B, ~410M): 65 evals, best **98.329** (the chamber entry above), the other 64 at 96.7-98.26;
+  greedy chamber entries 1 in 585 episodes; front-perturb finishes 42 in 45,509; basement-entry h_E median 2,270
+  (the 0.1/s time penalty did not raise it). Weights: runs/r6b2_tp1/ckpt_stop.pt on the box (19,955,974,144, md5
+  6838c110...).
+* **r6b2_tpg** (19:49 UTC): that checkpoint + `--respawn-greedy-turn 60 --respawn-greedy-speed 1.0 1.4` (everything
+  else restored: time-pen 0.001, front-perturb 0.25 / band 1% / turn 90 / x1.4-2.0, front-temp 1 / 1%, novel 0.2,
+  backward-mix 0.1, greedy 0.25): in the basement mode the greedy pool is the line's own basement loop, so nudging
+  those rows trains the entry from the states the greedy line is actually in.
