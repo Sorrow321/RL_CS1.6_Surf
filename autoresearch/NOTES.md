@@ -2225,7 +2225,7 @@ safety classifier; simulator probes from the policy's own states answered the sa
   98.14, 96.7, 96.8; best of the run **98.237** (15,973M). Training ceiling 96,149 -> 96,435 u (98.64%) by
   16.11B; training win 29% (2.1 s episodes from spawns near the funnel). T 0.5.
 
-### 06:47 UTC: the funnel gate is a missing CLIMB skill, not speed (two CPU benches on bandx's 16.389B checkpoint)
+### 06:35 UTC: the funnel gate is a missing CLIMB skill, not speed (two CPU benches on bandx's 16.389B checkpoint)
 
 * Own states: the checkpoint's greedy pool after the 16,376M eval holds 1,274 rows on the return (x > 2,300,
   > 96%: the east-end turn at x ~4,100, the return at ~3,200, the funnel base at ~2,760). Sampled at the
