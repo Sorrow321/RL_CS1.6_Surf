@@ -2557,3 +2557,14 @@ pattern that is in your own command line.
 * **r6b2_fp2** (16:39): bare resume of r6b2_fp's ckpt_stop (18,558,746,624, md5 1ecb66e5...), every flag
   restored, evals every 6.25M. First iterations: 28-37 front-perturb episodes end per iteration, 0 finishes,
   deepest 97,606-97,673 u (the basement).
+
+### 17:02 UTC: r6b2_fp2 counters - the policy enters the chamber from perturbed rows at ~0.07%, never finishes
+
+* r6b2_fp2 18.56-18.73B (336 iterations, ~176M steps): 17,558 front-perturb episodes ended, **0 finished**; 13
+  iterations had an episode reach chamber depth (best progress >= 97,760 u; max 98,107 u = d 1,568, mid-chamber
+  toward the funnel) - ~0.07% of the episodes, vs 0.35% for random held actions from the same kind of rows: the
+  policy's own choices (at temperature 2 in the band) steer AWAY from entries. Per 50 iterations: 1, 1, 1, 2, 5,
+  1, 2 entries - no trend. Evals 96.7-98.29 (best 98.294), the CP6 wobble again.
+* The arithmetic of a finish from perturbed rows: ~0.03% of them are in the ideal state x ~8% pull-out x ~5%
+  over the rim (scripted: 156 of 3,017 entries) x the funnel step = ~1e-6 per row: no learning signal at ~50k
+  front-perturb episodes per hour. The 18.318B ceiling jump (a real finish) was a one-off.
