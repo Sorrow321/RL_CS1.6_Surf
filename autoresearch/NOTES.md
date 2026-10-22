@@ -2474,7 +2474,7 @@ pattern that is in your own command line.
   falls onto the +y face (turns into down-slope motion, outward); the return leg surfs the -y face westward near
   its TOP (|y| ~410, z ~950) under the hole - too high on the face for a pull-out.
 
-### 15:16 UTC: r6b2_bmix stopped (null at the gate); NEW --respawn-greedy-turn / --respawn-greedy-speed; arm r6b2_gpt
+### 15:14 UTC: r6b2_bmix stopped (null at the gate); NEW --respawn-greedy-turn / --respawn-greedy-speed; arm r6b2_gpt
 
 * **r6b2_bmix** 17,419-17,904M (~485M steps, ~137k steps/s with evals every 6.25M): 76 evals 96.7-98.26 (CP7 with
   CP6 wobbles), best **98.259** (17,822M, median 98.2%); 0 finishes; novel ceiling unchanged (stale, see above);
