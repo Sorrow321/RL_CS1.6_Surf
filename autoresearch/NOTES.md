@@ -2176,3 +2176,23 @@ safety classifier; simulator probes from the policy's own states answered the sa
   vs stopped at 86-88%, and the 98% frontier (the funnel return).
 * Box: the box's checkout was updated with git (fetch + checkout -B, deploy_box.sh's own commands) instead of
   `box.py deploy`, whose GPU health check fails on a busy GPU (r4 harness note); Python-only change.
+
+### 04:56 UTC: the band fixes the regression (matched steps) - r5b1_band becomes the main line
+
+* Same start (gspd's final, 15.333B), 18 evals each over 15.333-15.55B (162 greedy episodes each):
+
+  | arm | episodes past 90% | at the 98% frontier | stopped at 85.5-89% | mean best per eval |
+  |---|---|---|---|---|
+  | r5b1_gspdx (every greedy row x U(1, 1.5)) | 21% | 9% | 42% | 95.09 |
+  | **r5b1_band** (only rows within 0.05 d0 of the deepest) | **38%** | **20%** | **24%** | **97.87** |
+
+  band evals: 98.06, 98.09, 98.08, 96.74, 98.06, 98.08, 98.04, 98.07, 98.09, 98.105 (15,447M: 5/9 at 98%,
+  median 98.05), 98.12, 98.02, 98.13, 98.13, 98.15, 96.70, 98.154 (15,535M, median 96.7). One seed per arm,
+  but the gap holds across all 18 evals: scaling the speed of the DAgger rows at failures the line passes
+  in other episodes was the regression. The frontier (98.1-98.15%, the return from the east-end turn) has
+  not moved in either arm; the greedy episodes there now stop near (2,550-2,750, +-370, 1,050-1,100) with
+  ~0 horizontal speed and hover until patience cuts them - below the funnel rim (~1,550), at the foot of
+  the ramp the human surfs up at ~1,500 u/s (vz +1,005, 115.0 s). The speed rows at the frontier target
+  exactly this; T 0.36 and rising (no +500 u eval best since 15.27B).
+* r5b1_band ends at 15.633B; a chained relaunch bare-resumes it as **r5b1_bandx** (3e9 steps, evals every
+  12.5M; band + speed restored).
