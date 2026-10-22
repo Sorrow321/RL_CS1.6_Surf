@@ -2309,3 +2309,13 @@ safety classifier; simulator probes from the policy's own states answered the sa
   The branch's best stays m1's 98.329 (17,036M). Training: ceiling flat at 98.64% since ~16.1B, win 31-32%
   (2.3-2.4 s: near-funnel novel rows), reservoir p10 ~4,900 u, T 0.2 (stuck 2.5B steps).
 * Runs to ~11:40, then wrap-up (12:19).
+
+### 11:41 UTC: r5b1_m1x end (19.085B): the plateau held, no finish; last run r5b1_m1y until the wrap-up
+
+* m1x 17.24 -> 19.085B (148 valid evals): best 98.263 (18,268M); the typical eval reaches 98.1-98.25 with 3-8/9 at
+  the frontier, with 96.7% bowl-mode stretches and 2 transient collapses (28.2%, 42.9%: all 9 at an early gate for
+  one eval). Training ceiling flat at 96,437 u (98.64%) since ~16.1B; T 0.2 (stuck 3.7B steps); training win
+  14-32% (~2.2 s near-funnel novel rows). No real episode and no eval climbed the funnel ramp.
+* ckpt_final 19,085,656,064 (md5 193fc1f4...) pulled to runs/r5b1/r5b1_m1x/: the alternative warm start (same
+  config as m1's final, ~1.85B more steps at the frontier).
+* r5b1_m1y (11:34): bare resume of that final, 3.5e8 steps, ends ~12:11 (more evals at the frontier until the wrap-up).
