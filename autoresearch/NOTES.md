@@ -2704,7 +2704,7 @@ pattern that is in your own command line.
   so the last hours train the entry - and the drift toward the funnel after it - at the energy the line has. With
   the 0.1/s penalty, entering and dying beats looping in the basement.
 
-### 21:14 UTC: r6b2_tp3 - **98.417**, above the incumbent; greedy chamber entries 4 in 333
+### 21:13 UTC: r6b2_tp3 - **98.417**, above the incumbent; greedy chamber entries 4 in 333
 
 * r6b2_tp3 (front-perturb at x1.0-1.3, band 0.5%, turn 90; time-pen 0.001; front-temp 1 / 1%), 20.19-20.42B (~230M):
   **greedy chamber entries 4 of 333 episodes** (apex z 1,291-1,356; tp1 1 of 585 at z 1,288; 0 of 3,036 before
