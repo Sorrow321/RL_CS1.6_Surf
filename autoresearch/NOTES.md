@@ -2611,3 +2611,24 @@ basement and only near the funnel wall in shape).
   longest episode, so 3x the samples of the greedy line per eval for little wall time; score.py takes the best
   episode, >= 5 required). Evals every 12.5M. The incumbent's 98.349 was one episode's hole rise to z 1,220 out of ~200
   evals x 9; this arm draws ~3x more episodes per hour from the same policy family.
+
+### 17:05 UTC: r6b1_silst (steer bursts + `--sil-coef 0.05 --sil-top 64 --sil-fix-sigma 1 --sil-steer-only 1 --sil-tempered 1`) - unstable, stopped after 8M steps
+
+* NEW `--sil-steer-only` (commit 4914f06): only steer-burst rows enter the SIL buffer (self-imitation of the steers that
+  beat the critic). In practice the SIL loss ran away in 6 updates - loss 53 -> 86 -> 104 -> 132 -> 879 -> 1,169, top
+  gains 0.25 -> 4.9, approx_kl 0.2-0.43 per update (0.02-0.05 normally); sigma held (fix-sigma works).
+* Two causes, both worth knowing before anyone runs SIL on this lineage:
+  1. steer bursts also fire in NOVEL-row episodes (the band covers the room above the funnel), whose trivial shaft wins
+     give R - V of ~35 and fill the top-K - so "steer-only" still imitates novel trivial wins; a real-only filter (the
+     novel sampler's per-env tag per decision) is needed.
+  2. the imitated yaw is many sigmas from the mean: near straight flight d(offset)/dz = 3.5 deg per z unit, so a 19 deg
+     steer is ~5.4 z units = **~72 sigma** (yaw sigma 0.075) and -log pi ~ 2,600 - any Gaussian log-likelihood
+     imitation of a committed steer is a violent pull on the mean. A bounded (Huber-on-z) imitation loss would be needed.
+* Not pursued further this round (the target it could teach - the low-energy pop-up into the room, 98.4-98.5% on the
+  score's leaky field - is worth ~0.1 point).
+* r6b1_bank2 (17:06 UTC) relaunched: incumbent + steer bursts + 27-episode evals every 12.5M.
+* Basement behaviour of the greedy line (27-episode eval of r6b1_bank, 14 of 27 reached the basement; the incumbent's
+  98.349 eval, 5 of 9): every episode either FLIES one loop and dies within 5-8 s (fly share 0.7-1.0) or HOVERS on a
+  ledge under the hole (hover share 0.66-0.98, dozens of tiny vx reversals) until the 30 s patience cut - so a longer
+  --eval-patience adds hovering, not attempts. The 98.349 rise was a rarer slower SECOND loop (|v| ~900-1,000, return
+  leg at z ~800-850) that turned east under the -y hole while rising (vz +536).
