@@ -3,19 +3,26 @@
  "round": 5,
  "final": false,
  "best": {
-  "score": 98.278,
-  "eval_file": "/home/steam/ar/runs/r5b2/r5b2_vr/traj_16894132224.jsonl",
-  "run": "r5b2_vr",
-  "step": 16894132224,
-  "ckpt": "/home/steam/ar/runs/r5b2/r5b2_vr/ckpt_final.pt",
-  "recipe": [],
-  "resume_from": null,
-  "commit": "cac4eec",
+  "score": 98.282,
+  "eval_file": "/home/steam/ar/runs/r5b2/r5b2_m/traj_17197170688.jsonl",
+  "run": "r5b2_m",
+  "step": 17197170688,
+  "ckpt": null,
+  "recipe": [
+   "--record-every",
+   "12.5e6",
+   "--ckpt-every",
+   "1e8",
+   "--respawn-novel-vrand",
+   "0"
+  ],
+  "resume_from": "r5b2_vsx ckpt_latest (17,158,897,664, md5 8ca9225e) <- r5b2_vs <- r5b2_x2 <- r5b2_x1 final (16.54B) <- incumbent r4b3_band15x (15.03B)",
+  "commit": "53ac3df",
   "best_progress_pct": 98.28,
-  "median_progress_pct": 95.9,
+  "median_progress_pct": 98.02,
   "finishes": 0,
   "best_finish_s": null,
   "max_cp": 7
  },
- "summary": "Round 5 (r5b2): box 57141550 (RTX 4080 + 7950X, $0.251/h). r5b2_x1 = bare resume of the incumbent (15.03 -> 16.54B): 98.25 (CP7) - past the slot over kill plate *28 and CP7; then the last gate: the finish shaft is entered only UP through two holes in func_wall *160 from a dead-end room, and the funnel rim above the tube needs a launch with vz >= ~650 (the line's ramp states give <= 600; a random-macro search finishes only from 1.0-1.5x faster states). Arms at the gate (300M each): front-temp null, NEW --respawn-novel-vrand 0.4 null (98.278), --respawn-speed 1.0 1.5 harmful. Now r5b2_vs = NEW --respawn-novel-vrand-speed 1.0 1.5 (frontier rows only at make-it speed)."
+ "summary": "Round 5 (r5b2): box 57141550 (RTX 4080 + 7950X, $0.251/h). r5b2_x1 = bare resume of the incumbent (15.03 -> 16.54B): past the slot over kill plate *28 and CP7 (98.25); then the last gate: the finish shaft is entered only UP through two holes in func_wall *160 from a dead-end room, and the funnel rim above the tube needs vz >= ~650 at the hole. Arms at the gate (300M each): front-temp, vrand (NEW), global respawn-speed, frontier respawn-speed (NEW), speed-pot - none passed; 3 cost the line. Best 98.282 (r5b2_m, the main line in the incumbent's config, 17,197M). The greedy line's launches have the vz but leave the ramp at |y| <= 381 (the holes start at ~370-400)."
 }
