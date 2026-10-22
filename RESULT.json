@@ -2,6 +2,21 @@
  "agent": "r5b1",
  "round": 5,
  "final": false,
- "best": null,
- "summary": "Round 5 start (01:00 UTC). Plan: bare-resume the incumbent (r4b3_band15x final, 15.03B, 94.668, CP6) as the main line with evals every 12.5M, and work on the last ~5.3% (field route east from (123,-607,2018) through kill plates *28/*52/*10 to CP7 at x ~1,640 and the drop to the finish at x ~2,900). No box yet: no offer under the caps at 01:05 UTC, rent retry loop running."
+ "best": {
+  "score": 94.396,
+  "eval_file": "/home/steam/ar/runs/r5b1/r5b1_gspd/traj_15045492736.jsonl",
+  "run": "r5b1_gspd",
+  "step": 15045492736,
+  "ckpt": "/home/steam/ar/runs/r5b1/r5b1_gspd/ckpt_latest.pt",
+  "recipe": [
+   "--respawn-greedy-speed",
+   "1.0",
+   "1.5",
+   "--ckpt-every",
+   "1e8"
+  ],
+  "resume_from": "incumbent r4b3_band15x/ckpt_final.pt (15,032,385,536, md5 cb1dbce4...); bare resume + --respawn-greedy-speed 1.0 1.5, evals every 12.5M",
+  "commit": "3763775"
+ },
+ "summary": "Round 5 (r5b1). The 95.2% gate is a kill-topped wall in a slot over a block, cleared only with carried speed (WR crosses at ~1,300-1,550 u/s, the policy arrives at 600-950; probes: speed-boosted own states reach the wall, unboosted never). NEW --respawn-greedy-speed LO HI (greedy-line rows replayed x U(LO,HI) faster). Arm r5b1_gspd (incumbent + speed 1.0-1.5) running since 03:19 on a 3090 (Japan): first evals 94.34 / 94.40, median ~93% (7/9 at the wall). Fixed a numba thread cliff on many-core hosts (13 ms -> 0.02 ms per field sample; the first launch stalled in its eval). Below the incumbent (94.668) so far."
 }
