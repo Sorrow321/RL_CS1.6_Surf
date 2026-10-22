@@ -6801,6 +6801,10 @@ def main() -> None:
                     metavar=("LO", "HI"),
                     help="--respawn-front: keep the states from HI down to LO seconds before each "
                          "qualifying record (default 0 2)")
+    ap.add_argument("--respawn-front-finish", type=int, default=None, choices=(0, 1),
+                    help="--respawn-front: 1 = a captured window joins the pool only if its episode then "
+                         "FINISHES (held per env until the episode ends); turning it on over a "
+                         "checkpoint without it drops the restored pool. Default 0")
     ap.add_argument("--respawn-front-cross", type=int, default=None, choices=(0, 1),
                     help="--respawn-front: 1 = a record qualifies only if the window STARTS outside the "
                          "band (the arrival into the frontier, not what follows inside it); turning it "
@@ -7811,6 +7815,8 @@ def main() -> None:
             args.respawn_front_advance = float(ck_cfg["respawn_front_advance"])
         if args.respawn_front_cross is None and ck_cfg.get("respawn_front_cross") is not None:
             args.respawn_front_cross = int(ck_cfg["respawn_front_cross"])
+        if args.respawn_front_finish is None and ck_cfg.get("respawn_front_finish") is not None:
+            args.respawn_front_finish = int(ck_cfg["respawn_front_finish"])
         # --respawn-backward: a spawn DISTRIBUTION, restored like the frontier
         if args.respawn_backward is None and ck_cfg.get("respawn_backward"):
             args.respawn_backward = True
@@ -8769,6 +8775,8 @@ def main() -> None:
         args.respawn_front_advance = 0.0015
     if args.respawn_front_cross is None:
         args.respawn_front_cross = 0
+    if args.respawn_front_finish is None:
+        args.respawn_front_finish = 0
     if args.respawn_greedy_speed is None:
         args.respawn_greedy_speed = [1.0, 1.0]
     if (tuple(float(v) for v in args.respawn_greedy_speed) != (1.0, 1.0)
@@ -11372,7 +11380,8 @@ def main() -> None:
                                     window=tuple(args.respawn_front_window),
                                     seed=int(args.seed) + 7717,
                                     advance=float(args.respawn_front_advance),
-                                    cross=bool(args.respawn_front_cross))
+                                    cross=bool(args.respawn_front_cross),
+                                    finish=bool(args.respawn_front_finish))
         except ValueError as _e:
             raise SystemExit(str(_e))
         FROWS_FIELD = _ffld
@@ -11381,7 +11390,9 @@ def main() -> None:
               f"{FROWS.band:g} x d0 = {FROWS.band * FROWS.d0:,.0f} u of the ceiling"
               + (f" after an advance >= {FROWS.advance * FROWS.d0:,.0f} u over the window"
                  if FROWS.advance > 0.0 else "")
-              + ("; crossings INTO the band only" if FROWS.cross else "") + f" (real "
+              + ("; crossings INTO the band only" if FROWS.cross else "")
+              + ("; held until the episode ends, kept only if it FINISHES" if FROWS.finish else "")
+              + f" (real "
               f"episodes only; kept even when the episode dies right after; clocks zeroed; "
               f"real episodes, harvested)")
     if args.respawn_backward:
@@ -14101,6 +14112,8 @@ def main() -> None:
         meta["config"]["respawn_front_advance"] = float(FROWS.advance)
         if FROWS.cross:
             meta["config"]["respawn_front_cross"] = 1
+        if FROWS.finish:
+            meta["config"]["respawn_front_finish"] = 1
     # --eval-patience: written ONLY when on, like the greedy pool above
     if EVAL_PATIENCE:
         meta["config"]["eval_patience"] = float(args.eval_patience)
@@ -16055,8 +16068,10 @@ def main() -> None:
         if GREEDY.load_state_dict(ck["respawn_greedy"]):
             print(f"restored --respawn-greedy state: {GREEDY.line()}")
     if FROWS is not None and args.ckpt and ck.get("respawn_front") is not None:
-        if FROWS.cross and not int((ck.get("config") or {}).get("respawn_front_cross") or 0):
-            # the pool was built under the other rule: start it empty
+        _fcfg = ck.get("config") or {}
+        if FROWS.cross and not int(_fcfg.get("respawn_front_cross") or 0):
+            # the pool was built under another rule: start it empty. (--respawn-front-finish only
+            # filters NEW captures, so a crossing pool it inherits is kept as the bootstrap)
             print("--respawn-front-cross switched on over a checkpoint built without it: the "
                   "restored frontier pool is dropped (it starts empty)")
         elif FROWS.load_state_dict(ck["respawn_front"]):
@@ -18032,7 +18047,9 @@ def main() -> None:
                                 _fs0.core.states_view, FROWS_FIELD.sample,
                                 (~_fs0.novel.novel_env) if NOVEL else np.ones(N, bool),
                                 ended,
-                                ceiling=(_fs0.novel.d_best if NOVEL else None))
+                                ceiling=(_fs0.novel.d_best if NOVEL else None),
+                                finished=(fleet.goal_hits().astype(bool)
+                                          if FROWS.finish else None))
                         if goalsys is not None and ended.any():
                             goalsys.assign(np.flatnonzero(ended))
                         if track_bins and ended.any():

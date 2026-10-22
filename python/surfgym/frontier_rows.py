@@ -37,7 +37,8 @@ from .core import STATE_DTYPE
 class FrontierRowPool:
     def __init__(self, n_envs: int, frac: float, band: float, d0: float, tick_ms: float,
                  every: int = 4, window=(0.0, 2.0), cooldown: float = 0.5, cap: int = 20000,
-                 min_rows: int = 200, seed: int = 0, advance: float = 0.0, cross: bool = False):
+                 min_rows: int = 200, seed: int = 0, advance: float = 0.0, cross: bool = False,
+                 finish: bool = False):
         frac = float(frac)
         if not 0.0 < frac < 1.0:
             raise ValueError(f"--respawn-front F needs 0 < F < 1, got {frac!r}")
@@ -61,6 +62,13 @@ class FrontierRowPool:
         # real episodes finish, the band holds the easy part (round 6: every finishing episode gave
         # ~4 "fall down the finish shaft" windows, flooding the pool); crossings keep the climb
         self.cross = bool(cross)
+        # --respawn-front-finish 1: a captured window is held per env and joins the pool only if
+        # that episode then FINISHES (the last capture before the finish); otherwise it is dropped.
+        # The rows are then approaches known to lead to the finish, not every lucky arrival
+        # (round 6: replaying all crossings into the finish room, the policy - greedy or sampled -
+        # entered the room 0 times in 24 tries from their starts)
+        self.finish = bool(finish)
+        self.pending = [None] * int(n_envs)
         self.n = int(n_envs)
         self.frac, self.band, self.d0 = frac, float(band), float(d0)
         self.lo, self.hi = lo, hi
@@ -90,7 +98,7 @@ class FrontierRowPool:
         return int(len(self.rows))
 
     # -- per tick --------------------------------------------------------------
-    def observe(self, states, d_fn, real, ended, ceiling=None) -> int:
+    def observe(self, states, d_fn, real, ended, ceiling=None, finished=None) -> int:
         """Once per physics tick, AFTER the step: ``states`` the (n,) post-step STATE_DTYPE view
         (an ended env's row is already its next episode's spawn), ``d_fn`` origins (n, 3) -> the
         field distance (non-finite = off the field; called on snapshot ticks only), ``real`` (n,)
@@ -99,6 +107,14 @@ class FrontierRowPool:
         own running min). -> states added."""
         ended = np.asarray(ended, bool)
         if ended.any():
+            if self.finish:
+                fin = (np.zeros(self.n, bool) if finished is None
+                       else np.asarray(finished, bool))
+                for i in np.flatnonzero(ended):
+                    if fin[i] and self.pending[i] is not None:
+                        self._push(self.pending[i])
+                        self.captured += 1
+                    self.pending[i] = None
             self.fill[ended] = 0
             self.ep_best[ended] = np.inf
         self._tick += 1
@@ -133,8 +149,12 @@ class FrontierRowPool:
         for i in np.flatnonzero(go):
             back = np.arange(self.k_hi, self.k_lo - 1, -1)     # oldest first
             idx = (int(self.fill[i]) - 1 - back) % self.R
-            self._push(self.ring[i, idx])
             self.last_cap[i] = snap_no
+            if self.finish:
+                # held until the episode ends: committed on a finish, dropped otherwise
+                self.pending[i] = self.ring[i, idx].copy()
+                continue
+            self._push(self.ring[i, idx])
             self.captured += 1
             added += len(idx)
         return added
@@ -175,7 +195,8 @@ class FrontierRowPool:
                         self.hi, self.lo,
                         (", advance >= {:,.0f} u".format(self.advance * self.d0)
                          if self.advance > 0.0 else "")
-                        + (", crossings into the band only" if self.cross else ""), self.frac))
+                        + (", crossings into the band only" if self.cross else "")
+                        + (", finishing episodes only" if self.finish else ""), self.frac))
 
     # -- persistence -------------------------------------------------------------
     def state_dict(self) -> dict:

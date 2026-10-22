@@ -53,7 +53,7 @@ class _Drive:
         self.dsched = [lambda k: 5000.0] * n
         self.real = np.ones(n, bool)
 
-    def tick(self, ended=None, ceiling=None):
+    def tick(self, ended=None, ceiling=None, finished=None):
         ended = np.zeros(self.n, bool) if ended is None else np.asarray(ended, bool)
         self.k[ended] = 0
         st = np.zeros(self.n, STATE_DTYPE)
@@ -62,7 +62,8 @@ class _Drive:
         st["tick"] = self.k + 3
         st["stuck_ticks"] = 2
         d = np.array([self.dsched[e](self.k[e]) for e in range(self.n)])
-        out = self.p.observe(st, lambda o: d, self.real, ended, ceiling=ceiling)
+        out = self.p.observe(st, lambda o: d, self.real, ended, ceiling=ceiling,
+                             finished=finished)
         self.k += 1
         return out
 
@@ -169,6 +170,23 @@ def test_the_cross_gate_keeps_the_arrival_into_the_band_only():
     assert "crossings into the band only" in p.line()
 
 
+def test_the_finish_gate_commits_a_window_only_when_its_episode_finishes():
+    p = _pool(n=2, cooldown=0.04, cross=True, finish=True)
+    dr = _Drive(p, 2)
+    dr.dsched[0] = lambda k: max(0.0, 2000.0 - 20.0 * k)
+    dr.dsched[1] = lambda k: max(0.0, 2000.0 - 20.0 * k)
+    for _ in range(120):
+        dr.tick(ceiling=1000.0)
+    assert p.size == 0 and p.captured == 0           # held, not committed
+    assert p.pending[0] is not None and p.pending[1] is not None
+    # env 0's episode finishes, env 1's dies on the same tick
+    dr.tick(ended=[True, True], ceiling=1000.0, finished=[True, False])
+    assert p.captured == 1 and p.size == 11
+    assert (p.rows["origin"][:, 1] == 0).all()        # env 0's window only
+    assert p.pending[0] is None and p.pending[1] is None
+    assert "finishing episodes only" in p.line()
+
+
 def test_an_episode_end_restarts_the_ring_and_the_record():
     p = _pool(n=1, cooldown=0.04)
     dr = _Drive(p, 1)
@@ -269,6 +287,20 @@ def test_the_trainer_wires_restores_and_refuses_it():
     assert "crossings INTO the band only" in r4.stdout
     assert "the restored frontier pool is dropped" in r4.stdout
     assert _cfg(run3)["respawn_front_cross"] == 1
+    run4 = "front_finish"
+    shutil.rmtree(ROOT / "runs" / run4, ignore_errors=True)
+    r5 = _run([sys.executable, "-u", str(TRAIN), "--run", run4, "--ckpt",
+               str(ROOT / "runs" / run3 / "ckpt_final.pt")] + SMOKE + GREEDY_SMOKE
+              + ["--steps", "18432", "--respawn-front-finish", "1"])
+    assert r5.returncode == 0, r5.stdout[-4000:] + r5.stderr[-4000:]
+    assert "kept only if it FINISHES" in r5.stdout
+    # the finish gate filters new captures only: the crossing pool it inherits is kept
+    assert "the restored frontier pool is dropped" not in r5.stdout
+    assert "restored --respawn-front state" in r5.stdout
+    cf = _cfg(run4)
+    assert cf["respawn_front_finish"] == 1 and cf["respawn_front_cross"] == 1
+    shutil.rmtree(ROOT / "runs" / run4, ignore_errors=True)
+    shutil.rmtree(ROOT / "runs" / run3, ignore_errors=True)
     shutil.rmtree(ROOT / "runs" / run3, ignore_errors=True)
     r3 = _run([sys.executable, "-u", str(TRAIN), "--run", "front_bad"] + SMOKE
               + ["--steps", "2048", "--respawn-frac", "0", "--respawn-front", "0.1"])
