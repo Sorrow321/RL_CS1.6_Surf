@@ -2635,3 +2635,22 @@ Standing-hull solid tests (`core.trace(p, p, hull=0).startsolid`) and kill hulls
   (band 0.02, advance 0.0015, frac 0.15 restored; the old shaft-fall pool dropped, the pool starts empty),
   3e9 budget, evals every 12.5M. Captures now: windows that start in the basement (d > 1,993 u) and end in
   the room (d <= 1,993): the climbs through the holes.
+
+### 17:58 UTC: r6b3_front4 stopped (no greedy climb); r6b3_fsil = front4's checkpoint + NEW `--sil-success 1`
+
+* r6b3_front4 (crossing rule), 18,149M -> ~18,540M: 430 crossing captures (20,000 states: climbs out of the
+  basement into the room), evals 88.1-98.27, 0 greedy finishes. Greedy census: 41/189 episodes reached the
+  basement, 1 entered the room; the max vz under a hole per basement episode rose to p50 341 / p90 547 /
+  max 628 (front3: p50 ~0, p90 441) - the deployed line starts to rise under the holes. Its one room entry
+  (18,401M ep 3, 98.27%): a reversal at the west end (2,208, -420, 928), then east through the -y hole at
+  550-610 u/s with E ~1,400 (vz 482 -> 0 at the hole's top), back into the basement. The training climbs
+  that finish go up on the FIRST return leg with E ~1,860-2,190; the greedy line loops first and climbs
+  late with ~500-800 less E. Checkpoint 18,539,872,256 (md5 95002530...) kept on the box as
+  runs/r6b3_front4/ckpt_stop.pt.
+* NEW `--sil-success 1` (commit d8479d6): SIL admits only rows of REAL episodes (never a novel row's) that
+  reach the FINISH inside the rollout (per-decision end / finish / novel-tag masks, success_rows() walks
+  each env backward). Round 2's lesson ("consolidate the stochastic successes into the mean") with the
+  shipped R > V rule's failure (r6b3_sil: imitating the main line's good rows broke it) avoided.
+* **r6b3_fsil** (17:5x): resume of front4's checkpoint + `--sil-coef 0.1 --sil-tempered 1 --sil-top 256
+  --sil-success 1 --ckpt-every 1e8` (frontier rows with the crossing rule restored), 3e9 budget, evals every
+  12.5M. Box extended (deadline ~23:05 UTC).
