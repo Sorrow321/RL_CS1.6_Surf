@@ -2087,7 +2087,7 @@ safety classifier; simulator probes from the policy's own states answered the sa
   exits when the instance is not listed - the machine stays rentable and the next attempt picks it
   again; box.py could record the offer's machine_id / host_id itself.
 
-### 02:40 UTC: the arm's premise, measured (analysis only, CPU)
+### 02:37 UTC: the arm's premise, measured (analysis only, CPU)
 
 * From the checkpoint's OWN greedy-pool states >= 92% (396 rows: the 2 s before the greedy deaths,
   mostly in the turnaround room x -1,700..-1,300, z 2,200-2,940) with velocity x1.5, sampled at the
