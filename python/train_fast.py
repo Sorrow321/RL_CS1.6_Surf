@@ -481,7 +481,8 @@ class Policy(nn.Module):
                  int_split: bool = False, dropout: float = 0.0,
                  plan_film: int = 0, film_dim: int = 0,
                  views: int = 1, views_scale: int = 1, drop_depth: bool = False,
-                 simba: bool = False, split_trunk: bool = False):
+                 simba: bool = False, split_trunk: bool = False,
+                 pitch_sigma_min: float = 0.0):
         super().__init__()
         # --priv-critic (asymmetric actor-critic, Pinto et al. 2017): the
         # CRITIC additionally reads a privileged state block the simulator
@@ -842,6 +843,22 @@ class Policy(nn.Module):
             _hi = (None if self.view_absolute is None else
                    [LOG_STD_MAX] * (self.n_z - 1) + [PITCH_LOG_STD_MAX_ABS])
             self.view_std = _ViewLogStd(self.n_z, float(LOG_STD_INIT), _hi)
+            # --pitch-sigma-min S (--view-absolute only; 0 = off, no buffer, the pre-flag
+            # log_std() op for op): a FLOOR on the pitch head's sigma. The pitch moves only
+            # the camera, it has no entropy term and its sigma sits on the global floor
+            # (exp(LOG_STD_MIN) = 0.0067), where one Adam step that shifts its mean by ~1 deg
+            # is several nats of the JOINT log-ratio PPO clips on - approx_kl 1-22 per update
+            # with the yaw sigma at 0.07 (autoresearch r5b4, 2026-10-22). Non-persistent like
+            # log_std_hi: the state_dict keys do not change.
+            if float(pitch_sigma_min or 0.0) > 0.0:
+                if self.view_absolute is None:
+                    raise SystemExit("--pitch-sigma-min needs --view-absolute (the pitch "
+                                     "head is the last view head only there)")
+                self.view_std.register_buffer(
+                    "log_std_lo", torch.as_tensor(
+                        [LOG_STD_MIN] * (self.n_z - 1)
+                        + [float(np.log(float(pitch_sigma_min)))], dtype=torch.float32),
+                    persistent=False)
         else:
             self.view_head = None
             self.view_std = None
@@ -1081,6 +1098,11 @@ class Policy(nn.Module):
         # clamp, not torch.minimum: at the cap itself minimum splits the
         # gradient 0.5/0.5 between its two equal inputs, clamp passes it
         # whole (the raw parameter sits exactly there after a projection)
+        lo = getattr(self.view_std, "log_std_lo", None)
+        if lo is not None:
+            # --pitch-sigma-min: the per-head floor (a Python-level branch, so the
+            # flag-off graph is the line below, unchanged)
+            return torch.clamp(ls, min=lo, max=self.view_std.log_std_hi)
         return torch.clamp(ls, max=self.view_std.log_std_hi)
 
     def project_log_std(self) -> int:
@@ -1098,6 +1120,14 @@ class Policy(nn.Module):
             moved = int((p > hi).sum())
             if moved:
                 p.copy_(torch.minimum(p, hi))
+            lo = getattr(self.view_std, "log_std_lo", None)
+            if lo is not None:
+                # --pitch-sigma-min: a raw parameter parked under the floor has a zero
+                # gradient through the clamp, so it is lifted onto it (the same argument)
+                up = int((p < lo).sum())
+                if up:
+                    p.copy_(torch.maximum(p, lo))
+                    moved += up
         return moved
 
     def _value(self, t, priv):
@@ -6135,6 +6165,16 @@ def main() -> None:
                          "the clamp, 2.718, by 3-8B steps on two seeds). "
                          "Written to the config only under --view-absolute "
                          "and restored on resume.")
+    ap.add_argument("--pitch-sigma-min", type=float, default=None,  # 0 = off
+                    help="--view-absolute: a FLOOR on the pitch head's sigma (z units; pitch "
+                         "target = -20 + 50 tanh z deg). The pitch moves only the camera and "
+                         "has no entropy term, so its sigma sits on the global floor 0.0067; "
+                         "there one optimizer step that moves its mean ~1 deg is several nats "
+                         "of the JOINT log-ratio PPO clips on (approx_kl 1-22 per update, "
+                         "autoresearch r5b4). E.g. 0.05 (~2.5 deg of rollout camera jitter) "
+                         "cuts that sensitivity ~56x. The greedy action (the mean) is "
+                         "unchanged. 0 / unset = off (bit-identical). Config + restored on "
+                         "resume; record_ckpt mirrors it.")
     ap.add_argument("--view-ou-sigma", type=float, default=0.0,
                     help="--view-continuous ROLLOUT-ONLY temporally "
                          "correlated view exploration (round 40, pnOU). The "
@@ -8220,6 +8260,10 @@ def main() -> None:
                 and not flag_given("--pitch-entropy")):
             args.pitch_entropy = float(ck_cfg["pitch_entropy"])
             restored.append(f"pitch_entropy={args.pitch_entropy:g}")
+        if (ck_cfg.get("pitch_sigma_min") is not None
+                and not flag_given("--pitch-sigma-min")):
+            args.pitch_sigma_min = float(ck_cfg["pitch_sigma_min"])
+            restored.append(f"pitch_sigma_min={args.pitch_sigma_min:g}")
         # --view-ou-sigma is rollout BEHAVIOUR, not shape, but a resume that
         # silently dropped it would change the exploration mid-run without
         # saying so - the Round 17 failure class. Restored like the rest.
@@ -9724,6 +9768,15 @@ def main() -> None:
                          "entropy: it needs --view-continuous")
     if PITCH_ENT < 0.0:
         raise SystemExit("--pitch-entropy must be >= 0")
+    # --pitch-sigma-min: the pitch head's sigma floor (0 = off); a Python constant
+    PITCH_SIG_MIN = float(args.pitch_sigma_min or 0.0)
+    if PITCH_SIG_MIN != 0.0:
+        if not VIEW_ABS:
+            raise SystemExit("--pitch-sigma-min needs --view-absolute (the pitch head is the "
+                             "last view head only there)")
+        if not float(np.exp(LOG_STD_MIN)) < PITCH_SIG_MIN < float(np.exp(PITCH_LOG_STD_MAX_ABS)):
+            raise SystemExit(f"--pitch-sigma-min must lie in ({float(np.exp(LOG_STD_MIN)):.4f}, "
+                             f"0.5) (the global floor and the pitch cap)")
     # --int-mode / --archive-*: None = the flag-off constants
     if args.int_mode is None:
         args.int_mode = "cell"
@@ -12284,6 +12337,7 @@ def main() -> None:
                     priv_hidden=int(args.priv_hidden),
                     yaw_cond=YCOND, view_continuous=VIEWC,
                     view_absolute=VIEW_ABS,
+                    pitch_sigma_min=PITCH_SIG_MIN,
                     obs_fourier=int(args.obs_fourier or 0),
                     int_split=INT_SPLIT,
                     dropout=float(args.dropout),
@@ -12976,8 +13030,10 @@ def main() -> None:
             _mv = policy.project_log_std()
             if _mv:
                 print(f"--view-absolute: {_mv} view head(s) of the checkpoint "
-                      f"sat above the log sigma cap (log 0.5 for pitch) - "
-                      f"projected under it; sig now "
+                      f"sat above the log sigma cap (log 0.5 for pitch)"
+                      + (f" or under the --pitch-sigma-min floor ({PITCH_SIG_MIN:g})"
+                         if PITCH_SIG_MIN > 0.0 else "")
+                      + " - projected onto it; sig now "
                       + "/".join(f"{v:.3f}" for v in
                                  policy.log_std().exp().tolist()))
         opt.load_state_dict(ck["optimizer"])
@@ -13701,6 +13757,13 @@ def main() -> None:
             print(f"--pitch-entropy {PITCH_ENT:g}: the pitch head's entropy "
                   f"term is {_pe} and its log sigma is capped at log 0.5 "
                   f"(sigma <= 0.5) in this mode")
+            if PITCH_SIG_MIN > 0.0:
+                # written ONLY when set: a control run's config dump is unchanged
+                meta["config"]["pitch_sigma_min"] = PITCH_SIG_MIN
+                print(f"--pitch-sigma-min {PITCH_SIG_MIN:g}: the pitch head's sigma is "
+                      f"floored at {PITCH_SIG_MIN:g} (global floor "
+                      f"{float(np.exp(LOG_STD_MIN)):.4f}); sig now "
+                      + "/".join(f"{v:.3f}" for v in policy.log_std().exp().tolist()))
     # --obs-potential: written ONLY when set (a control run's config dump
     # stays byte-identical to the pre-flag trainer's). The mode string is
     # what a resume restores and record_ckpt.py mirrors; the per-map start

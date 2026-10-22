@@ -2150,7 +2150,11 @@ def main(argv=None, build_only: bool = False, device=None):
                     # --view-absolute: the mode rides in the policy (the
                     # wrappers read policy.view_absolute) and world mode
                     # has a third Gaussian head, so the strict load needs it
-                    view_absolute=(cfg.get("view_absolute") or None)
+                    view_absolute=(cfg.get("view_absolute") or None),
+                    # --pitch-sigma-min: MIRRORED - the pitch head's sigma floor is
+                    # what a stochastic recording samples the camera with (the
+                    # greedy mean does not depend on it)
+                    pitch_sigma_min=float(cfg.get("pitch_sigma_min") or 0.0)
                     ).to(device)
     say("loading policy", 29)
     if args.cold_policy is not None:
