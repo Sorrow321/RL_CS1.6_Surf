@@ -6923,6 +6923,12 @@ def main() -> None:
                          "distribution they were drawn from, exact for this iteration's rows - "
                          "so imitating tempered samples moves the mean without inflating sigma "
                          "or flattening the keys. 0 = the shipped untempered score (default)")
+    ap.add_argument("--sil-fix-sigma", type=int, default=None, choices=(0, 1),
+                    help="--sil-coef: 1 = the SIL policy term scores the view heads with the "
+                         "Gaussians' log-sigma DETACHED, so imitating an action far from the "
+                         "mean (a --steer-eps burst's executed yaw) moves the MEAN only and "
+                         "never inflates the one global sigma every state samples from. 0 = "
+                         "the shipped score (default)")
     # --- --crl: single-goal contrastive RL (surfgym/crl.py) -----------------
     # CPPO (arXiv 2605.13554) on SGCRL (2408.05804) / CRL (2206.07568): the
     # advantage is Q(s,a,g*) - E_pi Q(s,.,g*) from a contrastive critic, g*
@@ -7392,7 +7398,7 @@ def main() -> None:
             restored.append(f"tail_weight={args.tail_weight:g}")
         for _k, _cast in (("sil_coef", float), ("sil_buffer", int), ("sil_batches", int),
                           ("sil_batch_size", int), ("sil_ent", float), ("sil_tempered", int),
-                          ("sil_top", int)):
+                          ("sil_top", int), ("sil_fix_sigma", int)):
             if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
                 setattr(args, _k, _cast(ck_cfg[_k]))
                 restored.append(f"{_k}={ck_cfg[_k]}")
@@ -13832,6 +13838,8 @@ def main() -> None:
             meta["config"]["sil_tempered"] = 1
         if int(args.sil_top or 0) > 0:
             meta["config"]["sil_top"] = int(args.sil_top)
+        if int(args.sil_fix_sigma or 0):
+            meta["config"]["sil_fix_sigma"] = 1
     if YCOND:
         meta["config"]["yaw_cond"] = 1
         print(f"--yaw-cond: side-key head conditioned on the sampled yaw "
@@ -14835,6 +14843,7 @@ def main() -> None:
     SIL_BS = int(args.sil_batch_size if args.sil_batch_size is not None else 512)
     SIL_ENT = float(args.sil_ent if args.sil_ent is not None else 0.0)
     SIL_TEMPERED = bool(int(args.sil_tempered or 0))
+    SIL_FIX_SIGMA = bool(int(args.sil_fix_sigma or 0))
     tail_eps: list[tuple] = []
     tail_seg = np.zeros(N, np.int64)
     #   tail_bin   the goal-distance bin each env's CURRENT episode spawned
@@ -16134,7 +16143,8 @@ def main() -> None:
         for _flag, _on in (("--rnn", RNN), ("--chunk", H > 0), ("--ddp", D.enabled),
                            ("--frame-stack > 1", STACK > 1), ("the action masks", MASKS.on),
                            ("--yaw-cond", YCOND),
-                           ("--ez-eps / --spawn-burst / --steer-eps", USE_BURST)):
+                           ("--ez-eps / --spawn-burst",
+                            args.ez_eps > 0.0 or args.spawn_burst > 0)):
             if _on:
                 raise SystemExit(f"--sil-coef is not implemented with {_flag}: the SIL "
                                  "step re-scores stored rows through the flat single-map "
@@ -16171,15 +16181,19 @@ def main() -> None:
                 if VIEWC:
                     cat, mu = split_view(logits.float())
                     padded = packer.pad(cat)
-                    logp, ent = logprob_entropy_view(padded, s_act, mu, policy.log_std(),
+                    _sls = policy.log_std()
+                    if SIL_FIX_SIGMA:
+                        # --sil-fix-sigma: imitate through the mean only
+                        _sls = _sls.detach()
+                    logp, ent = logprob_entropy_view(padded, s_act, mu, _sls,
                                                      s_z, PITCH_ENT, s_temp, s_tempv)
                 else:
                     padded = packer.pad(logits.float())
                     logp, ent = logprob_entropy_padded(padded, s_act, s_temp)
                 value = value.float()
             return sil_loss_terms(logp, ent, value, s_ret, SIL_ENT)
-    elif SIL_TEMPERED or int(args.sil_top or 0):
-        raise SystemExit("--sil-tempered / --sil-top need --sil-coef > 0")
+    elif SIL_TEMPERED or int(args.sil_top or 0) or SIL_FIX_SIGMA:
+        raise SystemExit("--sil-tempered / --sil-top / --sil-fix-sigma need --sil-coef > 0")
     sil_loss_t = None
 
     def mb_step(f_scal, f_img, f_act, f_logp, f_adv, f_ret, idx, ent_coef,

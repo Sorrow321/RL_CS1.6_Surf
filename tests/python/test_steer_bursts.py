@@ -72,10 +72,12 @@ def test_steer_bursts_band_config_resume_and_refusals():
     assert "steer_eps=0.5" in r2.stdout
     cfg2 = json.loads((ROOT / "runs" / run2 / "run.json").read_text(encoding="utf-8"))["config"]
     assert cfg2["steer_front"] == 0.5 and cfg2["steer_dy"] == 60.0 and cfg2["steer_hold"] == [2, 6]
+    shutil.rmtree(ROOT / "runs" / "steer_bad", ignore_errors=True)
     bad = _run([sys.executable, "-u", str(TRAIN), "--run", "steer_bad"]
                + SMOKE + ["--steps", "2048", "--steer-front", "0.5"])
     assert bad.returncode != 0 and "needs --steer-eps > 0" in (bad.stdout + bad.stderr)
     nov = [a for a in SMOKE if a not in ("--view-absolute", "velocity")]
+    shutil.rmtree(ROOT / "runs" / "steer_bad", ignore_errors=True)
     bad2 = _run([sys.executable, "-u", str(TRAIN), "--run", "steer_bad"]
                 + nov + ["--steps", "2048", "--steer-eps", "0.1"])
     assert bad2.returncode != 0 and "--view-absolute velocity" in (bad2.stdout + bad2.stderr)
@@ -125,4 +127,39 @@ def test_flag_off_is_bit_identical_to_the_trainer_before_the_change():
     for k in sa["policy"]:
         assert torch.equal(sa["policy"][k], sb["policy"][k]), k
     for dd in (a, b):
+        shutil.rmtree(dd, ignore_errors=True)
+
+
+@needs_run
+def test_sil_runs_with_steer_bursts_and_fix_sigma_holds_the_spread():
+    """--sil-coef is allowed with --steer-eps (the rows carry the policy's own keys and the
+    executed yaw z) and still refused with --ez-eps; --sil-fix-sigma detaches the Gaussians'
+    log-sigma in the SIL term (config key, resume, refusal without --sil-coef)."""
+    run = "steer_sil"
+    r = _train(run, ["--steer-eps", "0.5", "--steer-dy", "60", "--steer-hold", "2", "6",
+                     "--sil-coef", "0.1", "--sil-top", "64", "--sil-fix-sigma", "1",
+                     "--ep-ticks", "400", "--respawn-margin", "0.1"], steps="20480")
+    assert "--sil-coef 0.1" in r.stdout, r.stdout[-3000:]
+    d = ROOT / "runs" / run
+    cfg = json.loads((d / "run.json").read_text(encoding="utf-8"))["config"]
+    assert cfg["sil_fix_sigma"] == 1 and cfg["sil_coef"] == 0.1 and cfg["steer_eps"] == 0.5
+    sys.path.insert(0, str(ROOT / "tools"))
+    import record_ckpt
+    record_ckpt.audit_cfg(cfg)
+    run2 = "steer_sil_re"
+    shutil.rmtree(ROOT / "runs" / run2, ignore_errors=True)
+    r2 = _run([sys.executable, "-u", str(TRAIN), "--run", run2, "--ckpt",
+               str(d / "ckpt_final.pt")] + SMOKE + ["--steps", "8192"])
+    assert r2.returncode == 0, r2.stdout[-4000:] + r2.stderr[-4000:]
+    assert "sil_fix_sigma=1" in r2.stdout
+    shutil.rmtree(ROOT / "runs" / "steer_bad", ignore_errors=True)
+    bad = _run([sys.executable, "-u", str(TRAIN), "--run", "steer_bad"]
+               + SMOKE + ["--steps", "2048", "--ez-eps", "0.1", "--sil-coef", "0.1"])
+    assert bad.returncode != 0 and "--sil-coef is not implemented with --ez-eps" in (
+        bad.stdout + bad.stderr)
+    shutil.rmtree(ROOT / "runs" / "steer_bad", ignore_errors=True)
+    bad2 = _run([sys.executable, "-u", str(TRAIN), "--run", "steer_bad"]
+                + SMOKE + ["--steps", "2048", "--sil-fix-sigma", "1"])
+    assert bad2.returncode != 0 and "need --sil-coef > 0" in (bad2.stdout + bad2.stderr)
+    for dd in (d, ROOT / "runs" / run2, ROOT / "runs" / "steer_bad"):
         shutil.rmtree(dd, ignore_errors=True)
