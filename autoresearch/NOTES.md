@@ -2082,3 +2082,27 @@ AABBs of the kill triggers are broadphase only (zones.kill_zones' own warning); 
 * Training ceiling 93,052 -> **94,320 u (96.47%)** at ~15.10B: d 3,448 is the lower corridor at x ~1,200 - a
   REAL episode got over the slit and down the chimney. stall_frac 0.2 -> 0.29-0.41, T 0.09, evals every ~80 s
   (12.5M steps; ~156k steps/s average, ~226k training-only).
+
+### 02:05 UTC: r5b4_main - the greedy line passes the wall slit and the chimney: 98.123, CP7
+
+* Evals 15,108-15,297M (score.py best / median): 94.527, **95.924** (15,121M), 96.132, 96.496, 96.494 (median
+  96.3), 96.865, 96.662, 92.347, 96.836 (median 96.6), 96.649, **98.093 (15,234M, CP7)**, **98.123 (15,247M,
+  median 96.6%)**, 98.088, 98.119, 98.059, 96.718. So ~130M steps after the training ceiling passed the slit
+  (15.10B) the greedy line did too, and ~120M later it was past the chimney, the corridor and CP7.
+* Training: ceiling 96,091 u (98.29%), T 0.02, stall 0.15-0.22, `race/success_rate` 0.19-0.26 with finish times
+  2.5-2.7 s - NOVEL-row trivial wins: the band admits d >= d_best (1,677 u) anywhere in the field's reachable
+  set, which includes the open room high above the finish funnel; a row there falls down the shaft. They teach
+  the shaft descent; they are not the route (no real episode has gone past 98.29%).
+* **Where the 98.1% episodes stop** (15,247M ep 0 / ep 6): at (2,445-2,469, 370-387, 1,053-1,074) at 116.5-117 s,
+  then they fall onto the basement's kill floor (z ~708). Geometry (hull traces, ANALYSIS ONLY): the corridor
+  (z 1,240-1,560) ends at a wall at x ~2,440 that spans z ~1,160-1,640; under it a passage leads down into a
+  BASEMENT (z ~720-1,120, x 2,000-3,240, kill floor ~700, sloped surfaces at |y| ~300-700). The finish SHAFT
+  (x 2,880-2,960, |y| <= ~40, z 120-1,240) is walled off from the basement; it is entered from a FUNNEL ROOM
+  above (mouth at z ~1,560: x 2,760-3,120, |y| <= 200, narrowing to the shaft at z ~1,240). The field's route
+  from the stop: (2,544, 368, 1,128) -> (2,640, 336, 1,224) -> (2,736, 240, 1,320) -> (2,800, 144, 1,384) ->
+  (2,896, 48, 1,352) -> straight down the shaft: a ~310 u CLIMB out of the basement through an opening near
+  x 2,500-2,650, |y| ~350, into the funnel room. From the corridor end the route is a U: dip from z ~1,400 to
+  ~1,160 under the wall, climb back to ~1,400. Free flight cannot climb, so a basement surface has to turn the
+  fall into a rise - the CP2-cavity kind of gate (dip + ramp turnaround), which took ~380M steps once the time
+  penalty was gone (round 3).
+* Local copy: runs/r5b4/r5b4_main/ckpt_15232663552.pt (md5 c39c37bd...), 14M steps before the first 98.1% eval.

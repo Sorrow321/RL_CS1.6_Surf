@@ -3,10 +3,10 @@
  "round": 5,
  "final": false,
  "best": {
-  "score": 94.893,
-  "eval_file": "/home/steam/ar/runs/r5b4/r5b4_main/traj_15070658560.jsonl",
+  "score": 98.123,
+  "eval_file": "/home/steam/ar/runs/r5b4/r5b4_main/traj_15246819328.jsonl",
   "run": "r5b4_main",
-  "step": 15070658560,
+  "step": 15246819328,
   "ckpt": "/home/steam/ar/runs/r5b4/r5b4_main/ckpt_latest.pt",
   "recipe": [
    "--ckpt-every",
@@ -17,5 +17,5 @@
   "resume_from": "incumbent r4b3_band15x/ckpt_final.pt (15,032,385,536, md5 cb1dbce4...), bare resume (every flag restored)",
   "commit": "feab5d4"
  },
- "summary": "r5b4_main = bare resume of the incumbent (94.668) on box 57138676 (RTX 3090, $0.281/h), evals every 12.5M. Best 94.893 at 15,071M (median 93.1%, CP6, 0 finishes). The frontier: the greedy line climbs out of a kill-floored pocket at ~94.5% and hits a wall at x ~500 whose top gap is 35 u for the standing origin (75 u ducked); past it a chimney near y 0, a corridor past CP7 and a ~120 u shaft to the finish (hull traces + true kill hulls, analysis only)."
+ "summary": "r5b4_main = bare resume of the incumbent (94.668) on box 57138676 (RTX 3090, $0.281/h), evals every 12.5M. Best 98.123 at 15,247M (CP7, median 96.6%, 0 finishes): the greedy line passed the wall slit (35 u gap) and the chimney ~200M steps after the training ceiling did (95.2 -> 96.5% at ~15.10B). Next: the corridor/funnel and the ~120 u shaft to the finish."
 }
