@@ -2531,3 +2531,19 @@ Standing-hull solid tests (`core.trace(p, p, hull=0).startsolid`) and kill hulls
   real training episode has climbed out of the basement, through the room and over the rim's height - and
   never into the funnel (d < ~1,300). Those episodes die within ~1 s on the room's kill floor, so the
   reservoir (2 s margin) never keeps a state of theirs (deepest reservoir state d ~2,000, the basement).
+
+### r6b3_sil (SIL 0.1, tempered, top 256) - stopped: worse line, no climb
+
+* 17,419M -> ~17,580M (~160M steps, 14 evals): best 98.227, eval mean (race/eval_progress) 70,059 u vs the
+  incumbent's 78,045 +- ~10k; the last four evals 43-60k with medians 23.9-45.6% (deaths at the CP2 area and
+  later); sil/mean_gain 0.98 -> 0.71 (the critic caught up, as docs/sil.md says it should), approx_kl
+  0.03-0.07, the pitch sigma 0.053 -> 0.062. Novel ceiling unchanged (98,260 u), no room entry in the greedy
+  line. The R > V rows are mostly the main line's own good stretches, and imitating them did not
+  consolidate the rare climbs; it destabilised earlier gates instead. Stopped.
+
+### r6b3_front (15:11 UTC): incumbent + NEW `--respawn-front 0.15` (band 0.003 x d0 = 299 u, window 0-2 s)
+
+* Bare resume of the incumbent (runs_ckpt.pt, 17,418,944,512) + `--respawn-front 0.15 --ckpt-every 1e8`,
+  evals every 12.5M, commit ec2923c. Captures fire when a real episode sets an episode record with
+  d <= d_best + 299 = 1,714 u (the room well above the holes, the rim) after >= 2 s of flight; the pool
+  mixes once it holds 200 states. Step line: `front <pool>x<mixed> (<captures> cap)`.

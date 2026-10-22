@@ -2,6 +2,23 @@
  "agent": "r6b3",
  "round": 6,
  "final": false,
- "best": null,
- "summary": "Round 6 start (13:36 UTC). Incumbent 98.349 (r5b4_ncy, CP7, 0 finishes). Plan: the finish needs a basement climb at speed; first arm = warm resume of the incumbent + NEW --respawn-greedy-speed LO HI (greedy-line spawn rows, i.e. the basement states where the greedy line dies, with velocity x U(LO, HI)). Box: first rental had a foreign GPU tenant (blocklisted, released); retrying."
+ "best": {
+  "score": 98.276,
+  "eval_file": "/home/steam/ar/runs/r6b3/r6b3_gs/traj_17457217536.jsonl",
+  "run": "r6b3_gs",
+  "step": 17457217536,
+  "ckpt": "/home/steam/ar/runs/r6b3/r6b3_gs/ckpt_latest.pt",
+  "recipe": [
+   "--respawn-greedy-speed",
+   "1.0",
+   "2.0",
+   "--ckpt-every",
+   "1e8",
+   "--record-every",
+   "12.5e6"
+  ],
+  "resume_from": "incumbent r5b4_ncy ckpt_latest (17,418,944,512, md5 7256a1cf...) -> r6b3_gs (bare resume + --respawn-greedy-speed 1.0 2.0)",
+  "commit": "5728f4f1150de00feb1bb5b3c7a5dc6eea71bbf5"
+ },
+ "summary": "Round 6 (r6b3). Best 98.276 (r6b3_gs at 17,457M, CP7, 0 finishes; incumbent 98.349). Arms from the incumbent ckpt: (1) NEW --respawn-greedy-speed 1.0 2.0 (greedy-line spawn rows x1-2 speed): neutral on the line, no climb in 200M; (2) SIL (--sil-coef 0.1 --sil-tempered 1 --sil-top 256): eval mean 70k vs the incumbent's 78k+-10k, no climb - stopped; (3) NEW --respawn-front 0.15 (spawn rows from the 2 s before each real training episode's record near the ceiling d_best 1,415 = above the funnel rim; those episodes die within 1 s and the reservoir never kept them): running. Analysis: the finish room is a closed tall box entered only through two basement holes; CEM from the line's own passage states reaches vz <= ~550-630 under a hole even at 2x speed (control-limited, not energy-limited)."
 }
