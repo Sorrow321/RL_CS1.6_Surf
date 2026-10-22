@@ -2687,3 +2687,13 @@ Standing-hull solid tests (`core.trace(p, p, hull=0).startsolid`) and kill hulls
   bootstrap. The pool's capture counter now counts finishing climbs.
 * **r6b3_front6** (18:5x): resume of front4's checkpoint (18,539,872,256, md5 95002530...) + `--respawn-front-finish 1
   --ckpt-every 1e8` (frontier 0.15, crossing rule, band 0.02, advance 0.0015 restored), 3e9 budget.
+
+### 19:28 UTC: r6b3_front6 -> r6b3_front7 (same config, evals every 6.25M)
+
+* r6b3_front6 (finish-gated captures), 18,540M -> 18,792M (+252M): evals 87.96-98.26, mostly CP7 (the line back at
+  front4's level after front5's pit regression), 0 greedy finishes; the capture counter stayed at 430 - no
+  real training episode with a crossing into the room finished in 252M steps (the inherited crossing windows
+  were replayed all along). So finishes from a crossing are much rarer than the crossings themselves.
+* With 5.5 h left: **r6b3_front7** (19:2x) = bare resume of front6's last checkpoint (18,792,054,784, md5
+  70895ca6..., runs/r6b3_front6/ckpt_stop.pt on the box) with `--record-every 6.25e6`: the same training (the
+  climb practice continues) and twice the greedy samples per step. Box extended to 22:28 UTC.
