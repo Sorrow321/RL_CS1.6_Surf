@@ -2544,3 +2544,16 @@ pattern that is in your own command line.
   hole -> chamber -> over the rim -> funnel -> finish. One event (the ceiling is a minimum); the trainer has no
   per-source finish counter. Reservoir deepest unchanged (2.01%; a finish within ~2 s of the basement leaves
   only basement states >= 2 s before its end). Evals so far 98.06-98.14 (the line wobbling; no entry yet).
+
+### 16:41 UTC: r6b2_fp at +270M; counters added (r6b2_fp2)
+
+* r6b2_fp 18.28-18.56B (~276M steps, 130k steps/s): 44 evals, best 98.277 (18,351M); the greedy line spent ~15
+  evals in the CP6 mode (dies on the corridor kill plate at (1,460, -370, 1,230), ~110 s) and came back to the
+  basement (98.18). Its frontier band grew from 252 to ~3,500 reservoir states (d <= 2,487 u): front-perturb
+  episodes are harvested, so basement states with new headings / energy now fill the band.
+* NEW counters for `--respawn-front-perturb` (commit fee9839; counters only): its episodes are tagged by spawn
+  origin and each iteration logs `fpert fin W/E best Xu` (csv fpert/ended, fpert/finished, fpert/best_prog). A
+  chamber entry reads best >= ~97,760 u (d <= ~1,915 above a hole), a finish 99,675.
+* **r6b2_fp2** (16:39): bare resume of r6b2_fp's ckpt_stop (18,558,746,624, md5 1ecb66e5...), every flag
+  restored, evals every 6.25M. First iterations: 28-37 front-perturb episodes end per iteration, 0 finishes,
+  deepest 97,606-97,673 u (the basement).
