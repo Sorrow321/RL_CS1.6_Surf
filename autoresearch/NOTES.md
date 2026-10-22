@@ -2549,3 +2549,29 @@ basement and only near the funnel wall in shape).
 * Reading: on this map the precise gates near the end (the chimney drop, the shaft) each cost horizontal speed, and a
   potential charged on |v_xy| at K = 5 prices them above the little progress they pay locally; the critic does not
   carry the repayment. skate_laby's positive (a flat speed course) does not transfer. Not repeated.
+
+### 16:10 UTC: CEM from the HUMAN's launch states (measurement only) - the policy CAN finish from there with a steer
+
+* Same CEM tool, box idle between arms, roots = the human's states (bench roots only, never training): **114.8 s
+  (2,858, 555, 797) v (-1,420, -385, 408) - 9 finishes in 30 iterations x 1,024 rollouts** (1-2 per iteration,
+  iterations 1-8 and 15, crest z 1,600; i.e. ~1e-3 of random 12 x 0.24 s yaw-offset schedules with the policy's OWN
+  keys); 114.6 s (3,162, 588, 763) v (-1,545, -40, 43): 0 finishes, best nocut d 1,491, max z 1,582; 114.4 s: none.
+* So the whip and the crest are reachable by the current policy plus a committed steer from a launch-quality state,
+  at a low rate; what the policy never does is ARRIVE at such a state (its return leg is ~150 u higher and ~200 u/s
+  slower), and from 0.2 s earlier the rate is already below 1e-3.
+* Its own east leg is that state reversed: the incumbent's 98.349 episode at 116.29-116.49 s is at (2,976-3,266,
+  562-593, 756-790) moving EAST at 1,388-1,479 u/s on the +y side ramp; the human's return leg at 114.6 s is at
+  (3,162, 588, 763) moving WEST at 1,545. Same place, same height, same speed, opposite heading.
+
+### r6b1_steer2 (15:52 UTC): the steer arm again, evals every 12.5M - flat
+
+* Incumbent + the same steer bursts. 17,419-17,520M (100M): evals 97.949 (the checkpoint), 98.157, 98.103, 98.221,
+  98.167, 98.118, 98.121, 98.136 (CP7, medians 49-98%); novel ceiling 98,260u unchanged; burst rows 2.7%.
+
+### NEW --respawn-turn T --respawn-turn-front B (commit pending): the policy's own states, turned
+* Every pool refresh, the non-start spawn rows inside the frontier band (the --ez-front rule, default B 0.01) get
+  their horizontal velocity and view yaw turned by U(-T, T) deg (own RNG; position, |v_xy|, vz and every other field
+  kept; map-start rows never touched). Off = no draw (bit-identical). Generic: two constants - "return, then explore"
+  with the exploration put into the start state's direction: a ramp the policy only rode one way, ridden back.
+* Here it turns the policy's own fast, low east-leg states into launch-approach states it has never flown (the
+  CEM above: from such states a committed steer finishes at ~1e-3), with the steer bursts kept to explore the launch.

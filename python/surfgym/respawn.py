@@ -2081,3 +2081,26 @@ class NovelSpawnSampler:
                        "med {:,.0f}u, shell {:.0%}, speed med {:,.0f}".format(
                            st["n"], st["prog_med"], st["prog_p90"],
                            st["moved_med"], st["shell"], st["spd_med"])) + rej
+
+
+def turn_rows_in_band(pool: np.ndarray, n_start: int, d: np.ndarray, thr: float,
+                      deg: float, rng) -> tuple:
+    """--respawn-turn: rows ``n_start:`` of a spawn pool whose goal-field distance ``d``
+    (one per row from ``n_start`` on) is <= ``thr`` get their horizontal velocity and view
+    yaw turned by one U(-deg, deg) angle each; ``|v_xy|``, vz, the position and every other
+    field are kept, the map-start rows ``:n_start`` are never touched. Returns (a copy of the
+    pool, how many rows were turned). ``rng`` is the caller's own generator, so the pool's
+    other draws are unchanged."""
+    out = np.array(pool, copy=True)
+    sel = int(n_start) + np.flatnonzero(np.asarray(d, np.float64) <= float(thr))
+    if not len(sel):
+        return out, 0
+    th = np.radians(rng.uniform(-float(deg), float(deg), len(sel)))
+    c, s = np.cos(th), np.sin(th)
+    vx = out["velocity"][sel, 0].astype(np.float64)
+    vy = out["velocity"][sel, 1].astype(np.float64)
+    out["velocity"][sel, 0] = (c * vx - s * vy).astype(np.float32)
+    out["velocity"][sel, 1] = (s * vx + c * vy).astype(np.float32)
+    out["yaw"][sel] = (np.mod(out["yaw"][sel].astype(np.float64) + np.degrees(th) + 180.0,
+                              360.0) - 180.0).astype(np.float32)
+    return out, int(len(sel))

@@ -7059,6 +7059,17 @@ def main() -> None:
                     help="race: spawn speed multiplier range for respawned "
                          "states; e.g. 1.0 1.5 practices speed-gated jumps "
                          "at up to +50%% entry speed")
+    ap.add_argument("--respawn-turn", type=float, default=None,     # 0 = off
+                    help="race: rotate the horizontal velocity AND the view yaw of every "
+                         "non-start spawn row inside the frontier band (--respawn-turn-front) "
+                         "by U(-T, T) degrees, re-drawn every pool refresh, from its own RNG "
+                         "(0 = off: no draw, the shipped pool). The policy's own states at "
+                         "their own positions and speeds, in a new direction: a ramp it only "
+                         "ever rode one way, ridden back (Go-Explore's return-then-explore "
+                         "with the exploration put into the start state). ckpt restores")
+    ap.add_argument("--respawn-turn-front", type=float, default=None,  # 0.01
+                    help="--respawn-turn: the band, the --ez-front rule (progress >= (1 - B) x "
+                         "the reservoir's deepest, re-read every refresh); default 0.01")
     ap.add_argument("--int-coef", type=float, default=None,       # 0 = off
                     help="race: count-based intrinsic novelty — "
                          "int_coef/sqrt(visits) on entering a 256u map cell, "
@@ -7823,6 +7834,11 @@ def main() -> None:
                 float(v) for v in ck_cfg["respawn_backward_speed"]]
         if args.respawn_speed is None and ck_cfg.get("respawn_speed"):
             args.respawn_speed = [float(v) for v in ck_cfg["respawn_speed"]]
+        if args.respawn_turn is None and ck_cfg.get("respawn_turn"):
+            args.respawn_turn = float(ck_cfg["respawn_turn"])
+            restored.append(f"respawn_turn={args.respawn_turn:g}")
+            if args.respawn_turn_front is None and ck_cfg.get("respawn_turn_front"):
+                args.respawn_turn_front = float(ck_cfg["respawn_turn_front"])
             restored.append(f"respawn_speed={args.respawn_speed[0]:g}-"
                             f"{args.respawn_speed[1]:g}")
         if ck_cfg.get("blend"):
@@ -8931,6 +8947,19 @@ def main() -> None:
         args.race_kill_aware = 0
     if args.respawn_speed is None:
         args.respawn_speed = [0.9, 1.1]
+    if args.respawn_turn is None:
+        args.respawn_turn = 0.0
+    if args.respawn_turn_front is None:
+        args.respawn_turn_front = 0.01
+    if float(args.respawn_turn) != 0.0:
+        if not 0.0 < float(args.respawn_turn) <= 180.0:
+            raise SystemExit("--respawn-turn T must be in (0, 180] degrees")
+        if not 0.0 < float(args.respawn_turn_front) <= 1.0:
+            raise SystemExit("--respawn-turn-front must be in (0, 1]")
+        if args.reward != "race" or args.maps or float(args.respawn_frac or 0.0) <= 0.0:
+            raise SystemExit("--respawn-turn rotates the respawn reservoir's pool rows inside "
+                             "the race reward's frontier band: it needs --reward race, one "
+                             "map and --respawn-frac > 0")
     if args.lidar_w is None:
         args.lidar_w = LIDAR_W
     if args.lidar_h is None:
@@ -13683,6 +13712,10 @@ def main() -> None:
     # --ez-front: in the config ONLY when on, so the control's config is unchanged
     if float(args.ez_front or 0.0) > 0.0:
         meta["config"]["ez_front"] = float(args.ez_front)
+    # --respawn-turn: in the config ONLY when on
+    if float(args.respawn_turn or 0.0) > 0.0:
+        meta["config"]["respawn_turn"] = float(args.respawn_turn)
+        meta["config"]["respawn_turn_front"] = float(args.respawn_turn_front)
     # --steer-*: in the config ONLY when on, so the control's config is unchanged
     if float(args.steer_eps or 0.0) > 0.0:
         meta["config"].update({"steer_eps": float(args.steer_eps),
@@ -14807,6 +14840,11 @@ def main() -> None:
     steer_thr = float("inf")
     steer_band = torch.ones(N, dtype=torch.bool, device=device) if STEERF else None
     USE_BURST = args.ez_eps > 0.0 or args.spawn_burst > 0 or STEER
+    # --respawn-turn: its own RNG (the pool's other draws are untouched) and the last
+    # refresh's count of turned rows for the step line
+    TURN = float(args.respawn_turn or 0.0) > 0.0
+    turn_rng = np.random.default_rng(int(args.seed) + 9191) if TURN else None
+    turn_note = ""
     sb_left = torch.zeros(N, dtype=torch.long, device=device)
     sb_act = torch.zeros((N, NACT), dtype=torch.long, device=device)
     # per-env distance-bin of the CURRENT episode's start (-1 = unknown /
@@ -17262,6 +17300,23 @@ def main() -> None:
                         # map-start rows and the novel rows after them are kept
                         _rp = GREEDY.mix(_rp, max(1, int(round(
                             len(_rp) * (1.0 - args.respawn_frac)))))
+                    if TURN:
+                        # --respawn-turn: every non-start row inside the frontier band
+                        # (the --ez-front rule) gets its horizontal velocity and view yaw
+                        # turned by U(-T, T) deg; the map-start rows are never touched
+                        _mf = fleet.reservoir_min_depth()
+                        _d0f = float(_s.rf_d0 or 0.0)
+                        if _mf == _mf and _d0f > 0.0:
+                            _thr = _d0f - (1.0 - float(args.respawn_turn_front)) * _d0f * (1.0 - _mf)
+                            _nf = max(1, int(round(len(_rp) * (1.0 - args.respawn_frac))))
+                            _fld = (_s.reward_field if _s.reward_field is not None
+                                    else _s.goal_field)
+                            from surfgym.respawn import turn_rows_in_band
+                            _rp, _nt = turn_rows_in_band(
+                                _rp, _nf, _fld.sample(_rp["origin"][_nf:]), _thr,
+                                float(args.respawn_turn), turn_rng)
+                            turn_note = (f"  turn {_nt}/{len(_rp) - _nf} "
+                                         f">{100.0 * (1.0 - _thr / _d0f):.1f}%")
                     _set_pool(_s, _rp)
             elif SPAWN_STATES is not None:
                 # --spawn-states before the reservoir fills: map starts + own states
@@ -20005,6 +20060,9 @@ def main() -> None:
                 # where the --steer-front band starts (the dropped share is the ez figure)
                 _d0f = float(fleet.slots[0].rf_d0 or 0.0)
                 hyg_note += f" steer>{100.0 * (1.0 - steer_thr / _d0f):.1f}%"
+        if TURN:
+            # --respawn-turn: rows turned at the last pool refresh / non-start rows, and the band
+            hyg_note += turn_note
         if FRONT:
             # --front-temp: the share of envs inside the band at the last decision, and the
             # band's edge in progress

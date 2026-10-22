@@ -163,3 +163,77 @@ def test_sil_runs_with_steer_bursts_and_fix_sigma_holds_the_spread():
     assert bad2.returncode != 0 and "need --sil-coef > 0" in (bad2.stdout + bad2.stderr)
     for dd in (d, ROOT / "runs" / run2, ROOT / "runs" / "steer_bad"):
         shutil.rmtree(dd, ignore_errors=True)
+
+
+@needs_run
+def test_respawn_turn_config_resume_and_refusals():
+    """--respawn-turn T --respawn-turn-front B: config only when on, a flagless resume restores
+    both, and the refusals. (The rotation itself is unit-tested below: the pool refresh it
+    runs in needs 2,000 reservoir states, which a CPU smoke does not reach; the box run's step
+    line `turn X/Y >Z%` shows it live.)"""
+    run = "turn_on"
+    r = _train(run, ["--respawn-turn", "180", "--respawn-turn-front", "0.5"], steps="6144")
+    d = ROOT / "runs" / run
+    cfg = json.loads((d / "run.json").read_text(encoding="utf-8"))["config"]
+    assert cfg["respawn_turn"] == 180.0 and cfg["respawn_turn_front"] == 0.5
+    sys.path.insert(0, str(ROOT / "tools"))
+    import record_ckpt
+    record_ckpt.audit_cfg(cfg)
+    run2 = "turn_on_re"
+    shutil.rmtree(ROOT / "runs" / run2, ignore_errors=True)
+    r2 = _run([sys.executable, "-u", str(TRAIN), "--run", run2, "--ckpt",
+               str(d / "ckpt_final.pt")] + SMOKE + ["--steps", "8192"])
+    assert r2.returncode == 0, r2.stdout[-4000:] + r2.stderr[-4000:]
+    assert "respawn_turn=180" in r2.stdout
+    cfg2 = json.loads((ROOT / "runs" / run2 / "run.json").read_text(encoding="utf-8"))["config"]
+    assert cfg2["respawn_turn_front"] == 0.5
+    shutil.rmtree(ROOT / "runs" / "turn_bad", ignore_errors=True)
+    bad = _run([sys.executable, "-u", str(TRAIN), "--run", "turn_bad"]
+               + SMOKE + ["--steps", "2048", "--respawn-turn", "270"])
+    assert bad.returncode != 0 and "(0, 180]" in (bad.stdout + bad.stderr)
+    for dd in (d, ROOT / "runs" / run2, ROOT / "runs" / "turn_bad"):
+        shutil.rmtree(dd, ignore_errors=True)
+
+
+def test_turn_rows_in_band_turns_only_band_rows_after_the_start_share():
+    from surfgym.core import STATE_DTYPE
+    from surfgym.respawn import turn_rows_in_band
+    n = 10
+    pool = np.zeros(n, STATE_DTYPE)
+    pool["velocity"][:, 0] = 1000.0
+    pool["velocity"][:, 2] = -300.0
+    pool["yaw"] = 0.0
+    pool["origin"][:, 0] = np.arange(n)
+    d = np.array([5.0, 50.0, 5.0, 50.0, 5.0, 50.0, 5.0, 50.0])     # rows 2..9
+    out, k = turn_rows_in_band(pool, 2, d, 10.0, 180.0, np.random.default_rng(0))
+    assert k == 4 and out is not pool
+    turned = 2 + np.flatnonzero(d <= 10.0)
+    kept = np.setdiff1d(np.arange(n), turned)
+    assert np.array_equal(out[kept], pool[kept])            # start share + out-of-band rows
+    assert np.allclose(np.hypot(out["velocity"][turned, 0], out["velocity"][turned, 1]), 1000.0,
+                       atol=1e-3)
+    assert np.allclose(out["velocity"][turned, 2], -300.0)
+    assert np.array_equal(out["origin"], pool["origin"])
+    # the yaw turned by the same angle as the velocity heading
+    head = np.degrees(np.arctan2(out["velocity"][turned, 1], out["velocity"][turned, 0]))
+    dyaw = (out["yaw"][turned] - head + 180.0) % 360.0 - 180.0
+    assert np.allclose(dyaw, 0.0, atol=1e-3)
+    assert not np.allclose(head, 0.0)                       # something actually turned
+    # nothing in band: an unchanged copy
+    out2, k2 = turn_rows_in_band(pool, 2, d, 1.0, 180.0, np.random.default_rng(0))
+    assert k2 == 0 and np.array_equal(out2, pool)
+
+
+def test_respawn_turn_rotation_arithmetic():
+    """The rotation the trainer applies: velocity (vx, vy) and yaw turned by the same angle;
+    a 180 deg turn reverses the heading and keeps |v_xy| and vz."""
+    th = np.radians(np.array([180.0, 90.0, -45.0]))
+    vx, vy = np.array([1000.0, 0.0, 500.0]), np.array([0.0, 800.0, 500.0])
+    c, sn = np.cos(th), np.sin(th)
+    nx, ny = c * vx - sn * vy, sn * vx + c * vy
+    assert np.allclose(np.hypot(nx, ny), np.hypot(vx, vy))
+    assert np.allclose([nx[0], ny[0]], [-1000.0, 0.0], atol=1e-6)
+    assert np.allclose([nx[1], ny[1]], [-800.0, 0.0], atol=1e-6)
+    yaw = np.array([170.0, 0.0, -170.0])
+    ny_ = np.mod(yaw + np.degrees(th) + 180.0, 360.0) - 180.0
+    assert np.allclose(ny_, [-10.0, 90.0, 145.0])
