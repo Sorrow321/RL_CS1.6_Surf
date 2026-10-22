@@ -2582,3 +2582,20 @@ pattern that is in your own command line.
   front-temp 1 / 0.005, novel 0.2, backward-mix 0.1 restored). Practice the end at make-it energy so that the
   critic learns that energy in the basement is worth a finish (the --respawn-speed rationale, now aimed at the
   frontier band and with the heading turn that the yield test says lifts entries above the rim).
+
+### 17:29 UTC: r6b2_fp3 - 94 FINISHES from energy-boosted frontier rows; the band drifted into the chamber; fp4
+
+* **r6b2_fp3** (18.75-18.94B, 360 iterations, ~190M steps): 28,737 front-perturb episodes ended, **94 finished**
+  (block of 50 iterations: 0, **59**, 32, 1, 2, 0, 0, 0); chamber-depth episodes in 281 of 360 iterations (vs 13
+  of 336 in fp2 at x1.0-1.5). Around 18.78-18.83B ~1.4% of the front-perturb episodes finished: from the
+  basement with x1.4-2.0 energy the policy (at temperature 2) gets through a hole, over the rim and into the
+  funnel. Evals unchanged (best 98.253; the greedy line in the CP6 mode for the last ~10).
+* **Why the finishes stopped:** front-perturb episodes are harvested, so the entries put chamber / hole states
+  in the reservoir: its deepest state went 1.99% -> 1.46-1.74% of d0, and the band (progress >= 99.5% of the
+  deepest) shrank from d <= 2,469 u (the basement ramps) to d <= 2,038-2,221 (the holes): the rows moved off
+  the ramps where the finishes start, and the front-temp band with them (97.5% -> 97.8-98.0%). The frontier
+  follows success - the generic intent - but here it left before the skill was learned.
+* **r6b2_fp4** (17:29): bare resume of fp3's last checkpoint (18,942,525,440, md5 6e18c191...) with
+  `--respawn-front-perturb-band 0.01 --front-band 0.01` (everything else restored: front-perturb 0.35, turn 90,
+  speed 1.4-2.0, front-temp 1, novel 0.2, backward-mix 0.1, greedy 0.25). With the deepest state at ~1.7% the
+  band is d <= ~2,700 u: passage, basement, holes.
