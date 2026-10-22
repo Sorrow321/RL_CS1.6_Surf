@@ -2268,7 +2268,7 @@ AABBs of the kill triggers are broadphase only (zones.kill_zones' own warning); 
   surfing the east ramp, and both the greedy loop's passes under the holes head the wrong way (the first pass falls
   heading east, the return leg rises heading west into the room's west wall).
 
-### 06:43 UTC: r5b4_ncy - 98.349, a greedy episode up through the basement hole; the surf-macro search also stalls
+### 06:44 UTC: r5b4_ncy - 98.349, a greedy episode up through the basement hole; the surf-macro search also stalls
 
 * r5b4_ncy (T cap 0.2 again, 16,764-16,984M): the line is consistent (medians 98.1% in most evals); **98.349**
   (16,903M) - episode 5 rose through the -y hole to (2,631, -351, 1,220) at 123.7 s, above the room's floor, and died
