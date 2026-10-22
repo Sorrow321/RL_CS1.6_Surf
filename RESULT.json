@@ -7,14 +7,19 @@
   "eval_file": "/home/steam/ar/runs/r5b2/r5b2_x1/traj_15951462400.jsonl",
   "run": "r5b2_x1",
   "step": 15951462400,
-  "ckpt": "/home/steam/ar/runs/r5b2/r5b2_x1/ckpt_15633219584.pt",
-  "recipe": [],
-  "resume_from": null,
-  "commit": "8814b80",
+  "ckpt": "/home/steam/ar/runs/r5b2/r5b2_x1/ckpt_latest.pt",
+  "recipe": [
+   "--record-every",
+   "12.5e6",
+   "--ckpt-every",
+   "1e8"
+  ],
+  "resume_from": "incumbent r4b3_band15x/ckpt_final.pt (15,032,385,536, md5 cb1dbce4...) bare resume",
+  "commit": "7b644d5",
   "best_progress_pct": 98.25,
   "median_progress_pct": 98.06,
   "finishes": 0,
   "max_cp": 7
  },
- "summary": "Round 5 (r5b2): box 57141550 (RTX 4080 + 7950X, $0.251/h); r5b2_x1 = bare resume of the incumbent (15.03B, every flag restored), evals every 12.5M. Best 98.223 (CP7) at 15,826M: past the slot over kill plate *28 (~15.2B) and CP7 (15.39B); the line now stops in the lower room under func_wall *160 (98.1-98.2%). The finish route (mapped): surf a side ramp in that room and launch UP through one of *160's two holes (x 2,482-2,670, |y| 370-686) into the sealed final shaft, then east over kill *61 into the funnel/tube. No real episode has gone up a hole yet; T at its 0.5 cap (wobbles)."
+ "summary": "Round 5 (r5b2): box 57141550 (RTX 4080 + 7950X, $0.251/h). r5b2_x1 = bare resume of the incumbent (15.03B -> 16.54B): best 98.253 (CP7, 16,165M) - past the slot over kill plate *28 (~15.2B) and CP7 (15.39B); then ~1.15B steps at the last gate: the finish shaft is entered only UP through two holes in func_wall *160 from a dead-end room (surf a side ramp, launch ~230 u). Training ceiling 98.50% (a few real episodes went up). Testing r5b2_ft = + --front-temp 1 --front-band 0.015 (exploration only in the last ~5 s before the room), 300M from 16.54B."
 }
