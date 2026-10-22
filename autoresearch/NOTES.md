@@ -2769,3 +2769,14 @@ stochastic (keys temp 1.2 = training) x6 per set:
 * The 98.357 episode (ep 5): best 98.36% at (2,596, -336, 1,271), v (169, -256, -130) - the -y hole-edge rise
   ~50 u higher than any before (the incumbent's 98.349 peaked at z ~1,220-1,226), then down onto the room
   floor's kill layer at (2,593, -361, 1,220). One episode; whether the path spawns raised it is not shown.
+
+### 22:55 UTC: 98.444 - the first greedy episode INTO the room
+
+* r6b4_lrg eval 18,048,614,400: **98.444** (best 98.44%, median 96.7%). Episode 6 went through the -y hole and
+  ended at (2,848, -303, 1,237), v (-122, 627, -172): east of the hole's x range (2,490-2,670), inside the room
+  above its floor level, heading for the funnel - the archive paths' route (r6b4_lrg's 5% spawn share), never
+  flown by a greedy episode before. Every earlier best (98.33-98.36, incl. the incumbent's 98.349) was a rise
+  NEXT to the hole onto the room floor's kill layer.
+* r6b4_lrg 18,055-18,143M: 15 more evals, all CP7 (98.12-98.26), medians 96.7-98.2%.
+* Plan to the wrap-up: keep r6b4_lrg sampling until ~00:45; pull its newest static ckpt_<step>.pt snapshot from
+  ~23:30 (the link moves ~80 MB in ~50 min), then the last evals.
