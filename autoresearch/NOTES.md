@@ -2626,3 +2626,12 @@ Standing-hull solid tests (`core.trace(p, p, hull=0).startsolid`) and kill hulls
   band (d 2 s earlier > the band's edge): the crossing INTO the frontier, i.e. the climb out of the basement
   through a hole (the band edge 1,993 u lies at the holes' top, z ~1,200), never the fall that follows.
   Switching it on over a checkpoint built without it drops the restored pool.
+
+### 17:14 UTC: r6b3_front4 = front3's checkpoint + `--respawn-front-cross 1` (commit 0e7d060)
+
+* r6b3_front3 stopped at ~18,150M (its checkpoint 18,149,277,696, md5 3255b3f1..., runs/r6b3_front3/ckpt_stop.pt);
+  best eval 98.263, 0 greedy finishes.
+* r6b3_front4 (box 57223179, 17:1x): resume of that checkpoint + `--respawn-front-cross 1 --ckpt-every 1e8`
+  (band 0.02, advance 0.0015, frac 0.15 restored; the old shaft-fall pool dropped, the pool starts empty),
+  3e9 budget, evals every 12.5M. Captures now: windows that start in the basement (d > 1,993 u) and end in
+  the room (d <= 1,993): the climbs through the holes.
