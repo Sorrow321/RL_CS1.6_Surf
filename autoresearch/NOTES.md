@@ -2291,3 +2291,11 @@ safety classifier; simulator probes from the policy's own states answered the sa
   best cells (d ~1,672 under the holes = 98.29%) unless a greedy episode launches into the shaft.
 * **r5b2_vsx** (06:44): bare resume of vs's final (vrand 0.3 at 1.0-1.5x restored), 1.5e9 - it is the
   main line from here (it does not hurt the line, and it keeps the boosted frontier practice).
+* Launch attempts in the greedy evals (analysis of 95 room episodes, r5b2_vs + x1's last evals): 26
+  rise near the holes (x 2,440-2,720, vz > 300, z 980-1,180) - surfing the side ramp WESTWARD at
+  ~1,100-1,250 u/s and flying off its top edge with vz ~+500 - but at |y| <= ~380 (median of the max
+  |y| 379): over *160's solid centre strip (hull |y| < ~354), the holes start at |y| ~370-400. The
+  up-slope velocity of a 45 deg ramp carries the agent toward the centre as it rises; the random-macro
+  successes held a side key (strafe outward) right after leaving the ramp. So the line is ~50-100 u
+  from going up a hole; the attempts mostly survive afterwards (median 28.6 s to the episode end), so
+  they sit in the greedy pool's best-progress window, not in the death window.
