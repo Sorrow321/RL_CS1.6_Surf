@@ -3,10 +3,10 @@
  "round": 5,
  "final": false,
  "best": {
-  "score": 94.963,
-  "eval_file": "/home/steam/ar/runs/r5b3/r5b3_main/traj_15045492736.jsonl",
+  "score": 96.084,
+  "eval_file": "/home/steam/ar/runs/r5b3/r5b3_main/traj_15083241472.jsonl",
   "run": "r5b3_main",
-  "step": 15045492736,
+  "step": 15083241472,
   "ckpt": "/home/steam/ar/runs/r5b3/r5b3_main/ckpt_latest.pt (not pulled yet)",
   "recipe": [
    "bare resume of the incumbent",
@@ -18,5 +18,5 @@
   "resume_from": "incumbent r4b3_band15x/ckpt_final.pt (15,032,385,536, md5 cb1dbce4...)",
   "commit": "ec1ea69 (code = 3ea2710)"
  },
- "summary": "Main line r5b3_main (01:30 UTC) = bare resume of the incumbent on box 57138137 (RTX 3090 + EPYC 7302P, $0.60/h, only ~84k steps/s training-only, CPU-bound). Eval 2 (15,045M): 94.963 (best 95.0%, median 86.6%) > incumbent 94.668. Training finishes now and then from near-end spawns (win ~1%). Next: watch for the first greedy finish; switch to a faster box if one appears under the caps."
+ "summary": "Main line r5b3_main (01:30 UTC) = bare resume of the incumbent on box 57138137 (RTX 3090 + EPYC 7302P, $0.60/h, ~84k steps/s training-only). Eval 15,083M: 96.084 (best 96.1%, median 94.6%) > incumbent 94.668: the line passed the 95% gate (a 30-45 u slit over a thin wall with a kill strip; training ceiling 95.18% -> 96.56%). Next: the first greedy finish; switch to a faster box if one appears under the caps."
 }

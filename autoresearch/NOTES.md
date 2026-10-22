@@ -2080,3 +2080,21 @@ safety classifier; simulator probes from the policy's own states answered the sa
   d >= d_best, i.e. at or before the slit, with turned velocities): some pass the slit and fall to the
   finish in a few seconds. Real episodes never pass (d_best has not moved since round 4). So the post-slit
   part is being learned from novel rows; the missing skill is the higher climb into the slit.
+
+### 01:58 UTC: r5b3_main passes the slit - 96.084; the next stop is a hole in kill plate *10
+
+* Evals 15,058-15,096M (score.py): 94.940, 95.083, **96.084 (15,083M, median 94.6%)**, 95.153 (median 94.5%).
+  Training ceiling 93,052 -> **94,409 u (96.56%)**: d_best 3,359 = the field route at ~(1,328, -272, 1,512),
+  i.e. BELOW kill plate *10 - a real training episode has already dropped through the hole (next bullet).
+  Unstuck best 93,940 u, T 0.15 -> 0.09.
+* The 96.08% episode (15,083M ep 7): from (-753, 595, 1,771) at 108.2 s it climbs on the +y side to
+  (425, 402, 2,290) at 109.5 s, crosses the wall at x ~500 at z ~2,295, descends east and dies at
+  (1,279, 280, 1,834) at 110.7 s, vz -865: on *10 (z ~1,792), just outside the only opening.
+* The opening (killprobe x-y maps at z 1,760 / 1,830, standing origin): x ~1,084-1,244, |y| <= ~192 - the
+  inside of func_wall *157, a hollow block (walls at x ~1,016-1,048 and |y| ~256; a solid lid at z ~1,930
+  with kill *40 on top). From y 0 the space east of the block above *10 (x 1,056-1,664, z 1,836-1,900) is
+  free, so the way in is from the east, under the lid, then down the shaft (x 1,088-1,248, z 1,580-1,840)
+  into the lower room (z < 1,550), CP7, the finish shaft.
+* Most other greedy episodes now die at the slit's west side (x 330-480, z 2,089-2,107: too low, kill floor
+  *28), and 2-3 per eval earlier (86.8% at (-1,700, -200, 3,750), 72-73% at x ~-11,100..-11,550, 59.9%,
+  3.8% at the first ramp).
