@@ -3,11 +3,11 @@
  "round": 6,
  "final": false,
  "best": {
-  "score": 98.276,
-  "eval_file": "/home/steam/ar/runs/r6b3/r6b3_front/traj_17645961216.jsonl",
-  "run": "r6b3_front",
-  "step": 17645961216,
-  "ckpt": "/home/steam/ar/runs/r6b3/r6b3_front/ckpt_latest.pt",
+  "score": 98.294,
+  "eval_file": "/home/steam/ar/runs/r6b3/r6b3_fsil/traj_18565562368.jsonl",
+  "run": "r6b3_fsil",
+  "step": 18565562368,
+  "ckpt": "/home/steam/ar/runs/r6b3/r6b3_fsil/ckpt_latest.pt",
   "recipe": [
    "--respawn-front",
    "0.15",
@@ -17,7 +17,7 @@
    "12.5e6"
   ],
   "resume_from": "incumbent r5b4_ncy ckpt_latest (17,418,944,512, md5 7256a1cf...) -> r6b3_front (bare resume + --respawn-front 0.15, pre-advance-gate code)",
-  "commit": "ec2923ce82b42f17baaac7fb5ffa3b682104f068"
+  "commit": "d8479d6e292b41755dee23604f099d26a34ead38"
  },
- "summary": "Round 6 (r6b3). Best eval 98.276 (CP7, 0 finishes; incumbent 98.349). MILESTONE: with NEW --respawn-front (spawn rows from the 2 s before each real training episode's arrival near the ceiling, kept even if it dies; --respawn-front-advance 0.0015 keeps arrivals, not crawls) a REAL training episode finished the map at 17.74B (~322M steps after the incumbent; the ceiling had sat just above the funnel rim since round 5): basement hole -> the room's east slope -> over the funnel's east rim -> shaft. The greedy line has not followed yet; r6b3_front3 continues from that checkpoint with band 0.02 (the band hangs off the all-time ceiling, now 0). Nulls: --respawn-greedy-speed 1-2 (neutral), SIL 0.1 tempered (worse line). Analysis: the finish room is a closed tall box reached only through two basement holes; random macros cannot make the climb even at 2x speed."
+ "summary": "Round 6 (r6b3). Best eval 98.276 (CP7, 0 finishes; incumbent 98.349). MILESTONE: NEW --respawn-front (spawn rows from the 2 s before real training episodes reach the frontier, kept even if they die; + --respawn-front-advance / -cross / -finish refinements) gave the first REAL training finish of the lineage at 17.74B (~322M steps after the incumbent): basement hole -> the room's east slope -> over the funnel's east rim -> shaft. The greedy line never followed in ~1.4B more steps: it reaches the basement in ~20% of eval episodes and climbs (rarely) only after energy-wasting loops (E ~1,400 vs ~1,600+ needed at the east slope top); even the sampled policy cannot repeat its own crossings from their starts (0/24). Nulls: --respawn-greedy-speed 1-2, SIL (all R>V rows, and --sil-success: finishing episodes only) both hurt the line; frontier share 0.4 regressed the main line. Final arm: r6b3_front7 (front config, evals every 6.25M)."
 }
