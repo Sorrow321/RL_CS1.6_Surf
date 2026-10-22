@@ -7,7 +7,7 @@
   "eval_file": "/home/steam/ar/runs/r6b2/r6b2_gpt/traj_17961058304.jsonl",
   "run": "r6b2_gpt",
   "step": 17961058304,
-  "ckpt": "/home/steam/ar/runs/r6b2/r6b2_gpt/ckpt_stop.pt",
+  "ckpt": "/home/steam/ar/runs/r6b2/r6b2_gpt/ckpt_latest.pt",
   "recipe": [
    "--respawn-greedy-turn",
    "90",
