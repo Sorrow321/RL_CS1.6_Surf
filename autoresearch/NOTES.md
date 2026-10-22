@@ -2599,3 +2599,17 @@ pattern that is in your own command line.
   `--respawn-front-perturb-band 0.01 --front-band 0.01` (everything else restored: front-perturb 0.35, turn 90,
   speed 1.4-2.0, front-temp 1, novel 0.2, backward-mix 0.1, greedy 0.25). With the deepest state at ~1.7% the
   band is d <= ~2,700 u: passage, basement, holes.
+
+### 17:58 UTC: r6b2_fp4 (band 1%) null; the greedy line's energy has not moved in any run; r6b2_fp5
+
+* **r6b2_fp4** (18.94-19.12B, 334 iterations): 26,452 front-perturb episodes, **0 finishes**; its band (d <= 2,683
+  u) held ~5,000 states with median progress ~97,730 u (the hole region, harvested entries) - the ramp states
+  that fp3's finishes started from were a minority. Greedy line mostly in the CP6 mode (10 basement episodes in
+  30 evals), best 98.183.
+* Greedy-line energy (eval episodes that reach the basement, h_E = z + |v|^2/1600): median at the basement
+  entry ctl 2,340 / bmix 2,310 / gpt 2,396 / fp 2,386 / fp2 2,349 / fp3 2,342; the max in the second half of the
+  basement stay falls to ~1,080 (median) in every run - no run has made the line carry or pump energy. That is
+  what a greedy finish needs (x1.4 speed = h_E ~3,400).
+* **r6b2_fp5** (17:54): fp4's last checkpoint (19,119,210,496, md5 1366d98c...) + `--respawn-front-perturb 0.25
+  --respawn-front-perturb-speed 1.6 2.4` (band 1%, turn 90, front-temp 1 / 1% restored): a smaller dose for the
+  line, more energy for the rows.
