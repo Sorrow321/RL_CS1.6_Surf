@@ -2268,3 +2268,18 @@ safety classifier; simulator probes from the policy's own states answered the sa
   fell 100-550M steps after that); if no climb by then, an arm with --front-temp (round 4's per-env temperature
   near the frontier; null at the 60.57% gate, harmless to the line) for the rest of the round. The branch score
   is a max over evals, so an arm cannot lose the 98.283 already banked.
+
+### 08:24 UTC: r5b3_t01 stopped (lane plateau); arm r5b3_ft = + --front-temp 1 --front-band 0.004
+
+* r5b3_t01 15,924-16,376M (18 evals, all valid): best **98.283** (15,949M); since then 94.6-98.2, e.g. 16,352M best
+  98.18% with **median 98.1%** (most episodes in the lower lane). Training ceiling 96,125 u (98.32%) - flat at
+  98.27-98.32% for ~1B steps (since ~15.32B): no real episode has climbed out of the lane. Stopped at
+  16,375,611,392 (pid kill; ckpt_latest md5 24632a59..., pulled - the hand-on candidate: the branch best is in
+  this run).
+* **r5b3_ft**: bare resume of that checkpoint (T cap 0.1 restored) + `--front-temp 1 --front-band 0.004`: every
+  head at temperature 2 for envs whose progress >= 0.996 x the reservoir's deepest (~97.9%: the room's east
+  half, the underpass, the lane, the upper area); T 0.1 on the keys elsewhere. Why: the gate is a ramp launch at
+  speed right after the underpass (~840 u/s up a 48 deg ramp), a per-decision steering skill that never shows
+  up at T 0.1; round 4's null with this flag was at a gate that needed a multi-second commitment. The banked
+  98.283 cannot be lost (the score is a max over evals). Read-out: the training ceiling past 98.32% (a real
+  episode out of the lane), then the greedy line.
