@@ -2610,3 +2610,19 @@ Standing-hull solid tests (`core.trace(p, p, hull=0).startsolid`) and kill hulls
   r6b3_front2's last checkpoint (17,834,180,608, ckpt_stop.pt md5 f1ab65fc..., pulled to
   runs/r6b3/r6b3_front2/) with `--respawn-front-band 0.02` (d <= 1,993 u: room arrivals and finish
   approaches; the basement and the passage stay outside), everything else restored, 3e9 budget.
+
+### 17:06 UTC: r6b3_front3 (band 0.02) - training finishes continue, the greedy line does not climb; the pool floods with shaft falls
+
+* r6b3_front3, 17,834M -> ~18,110M (+275M): evals 82.9-98.3 (best 98.263), no finish. Greedy-line census
+  over every eval of this round (a basement entry = x > 2,200, z 650-1,150; a room entry = x 2,490-3,420,
+  |y| < 680, z 1,180-2,500 after the basement): gs 42 / 153 episodes reached the basement, 2 entered the
+  room (z <= 1,205); sil 22/126, 0; front 51/198, 0; front2 85/306, 0; front3 31/171, 0. So the deployed
+  line reaches the basement in ~20-28% of episodes (the rest die at 86-97%: the line's own consistency,
+  eval mean ~78k as in round 5) and has never climbed out since the round started.
+* The frontier pool with band 0.02 (d <= 1,993 u, ceiling 0): 3,120 captures by 18.11B, mostly windows of the
+  FALL DOWN THE FINISH SHAFT (every finishing training episode records a new best d every snapshot while it
+  falls, so it gives ~4 captures 0.5 s apart) - the easy part again, not the climb.
+* NEW (pending tests): `--respawn-front-cross 1` - a capture also needs the window to START outside the
+  band (d 2 s earlier > the band's edge): the crossing INTO the frontier, i.e. the climb out of the basement
+  through a hole (the band edge 1,993 u lies at the holes' top, z ~1,200), never the fall that follows.
+  Switching it on over a checkpoint built without it drops the restored pool.
