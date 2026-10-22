@@ -2186,3 +2186,19 @@ safety classifier; simulator probes from the policy's own states answered the sa
   first, greedy line 100-550M steps later. Training wins 25-28% at ~2.5 s (novel rows in the shaft).
 * box.py pull re-tars every eval of the run each time (105 files, minutes); pulling with rsync of
   the new traj files instead (scratchpad qpull.sh).
+
+### 04:23 UTC: r5b2_x1 stopped at 16.54B; arm r5b2_ft = `--front-temp 1 --front-band 0.015`
+
+* r5b2_x1 (15.03 -> 16.54B, 1.51B steps, avg ~170k steps/s): best **98.253** (score.py, 16,165M);
+  ~1.15B steps at the hole gate (since 15.39B): evals 98.1-98.25 with wobbles (T at its 0.5 cap since
+  ~15.68B); novel ceiling 96,151 -> 96,306 u (98.50%, d_best 1,462: real episodes have been up a hole
+  a few times); reservoir deepest 98.11-98.23% (the shaft entries die within the 2 s margin - after a
+  hole the floor east of x ~2,710 is kill *61). Greedy line: enters the room at ~115.5 s falling
+  (vz ~-850) right under the holes; one 16,442M episode rose to (2,638, 368, 1,095) at vz +72 at
+  121.7 s - ~135 u short of the hole's top.
+* The greedy pool already covers the approach (the 2 s before each best-progress stop at ~115.6 s)
+  and the room (stuck states), so the missing piece is exploration at the launch.
+* **r5b2_ft** (04:21): resume of r5b2_x1's ckpt_latest (16,542,859,264, md5 aedabd64...) +
+  `--front-temp 1 --front-band 0.015` (every head at temperature 2 for envs at >= 98.5% of the
+  reservoir's deepest progress = 96.6%: the last ~5 s before the room; ~1% of envs at a time), 300M.
+  Read-out vs r5b2_x1's own last 300M: the novel ceiling (d_best), reservoir deepest, evals > 98.3%.
