@@ -2524,7 +2524,7 @@ pattern that is in your own command line.
   real episodes; placed after the novel / backward-mix quotas, before the greedy tail. Unlike the greedy pool
   it always holds the basement (the reservoir's deepest states are there whatever the last greedy eval did).
 
-### 16:15 UTC: r6b2_fp - the first REAL finish of the lineage (novel ceiling -> d0), from perturbed frontier rows
+### 16:08 UTC: r6b2_fp - the first REAL finish of the lineage (novel ceiling -> d0), from perturbed frontier rows
 
 * r6b2_gpt (17.90-18.28B, 61 evals): best 98.308; no chamber entry in an eval. Stopped; weights on the box as
   runs/r6b2_gpt/ckpt_stop.pt (18,282,446,848, md5 751fdcbb...), also local.
