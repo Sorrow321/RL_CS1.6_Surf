@@ -102,6 +102,7 @@ TRAIN_ONLY = frozenset({
     # --respawn-greedy: a share of the TRAINING spawn pool drawn from the last greedy eval's
     # states before each death; a recording spawns at the map start like the trainer's eval
     "respawn_greedy", "respawn_greedy_window", "respawn_greedy_stuck",
+    "respawn_greedy_turn", "respawn_greedy_speed",
     # --eval-patience: the TRAINER's eval-time cost rule (cut an eval episode that stopped
     # gaining); a recording runs every episode to its own --ep-ticks, the honest full line
     "eval_patience",

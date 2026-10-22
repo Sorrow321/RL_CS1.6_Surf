@@ -2443,7 +2443,7 @@ pattern that is in your own command line.
   (the policy learning the final stretch from the rows), the novel ceiling (98,260 u = d_best 1,415: a REAL
   episode over the rim moves it), the greedy evals (> 98.349 or a finish).
 
-### 15:05 UTC: r6b2_bmix at +210M - learns the chamber, not the hole; the hole entry measured (analysis only)
+### 15:03 UTC: r6b2_bmix at +210M - learns the chamber, not the hole; the hole entry measured (analysis only)
 
 * r6b2_bmix 17.42-17.63B: evals 96.7-98.25 (CP7 / CP6 wobble, like the control); backward-row episodes finish
   19-33 of 34-60 per iteration (50-70%); basement-entry energy of the greedy line unchanged (median h_E 2,230-2,360

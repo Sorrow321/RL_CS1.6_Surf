@@ -6795,6 +6795,16 @@ def main() -> None:
                          "where the deployed line wanders once it stops gaining, so training "
                          "returns there and explores (Go-Explore's return-then-explore on the "
                          "greedy line). 0 = off; ckpt restores")
+    ap.add_argument("--respawn-greedy-turn", type=float, default=None,   # 0 = off
+                    help="--respawn-greedy: turn each mixed greedy row's horizontal velocity "
+                         "and view yaw together by U(-T, T) deg (the policy's own frontier "
+                         "states, nudged in heading; the rows drawn are the unperturbed ones). "
+                         "0 = off; ckpt restores")
+    ap.add_argument("--respawn-greedy-speed", type=float, nargs=2, default=None,
+                    metavar=("LO", "HI"),
+                    help="--respawn-greedy: scale each mixed greedy row's velocity by "
+                         "U(LO, HI) (the policy's own frontier states with more or less "
+                         "energy). Off by default; ckpt restores")
     ap.add_argument("--respawn-greedy-window", type=float, nargs=2, default=None,
                     metavar=("LO", "HI"),
                     help="--respawn-greedy: keep the states from HI down to LO seconds before "
@@ -7772,6 +7782,14 @@ def main() -> None:
                 and ck_cfg.get("respawn_greedy_stuck") is not None):
             args.respawn_greedy_stuck = int(ck_cfg["respawn_greedy_stuck"])
             restored.append(f"respawn_greedy_stuck={args.respawn_greedy_stuck}")
+        if (args.respawn_greedy_turn is None
+                and ck_cfg.get("respawn_greedy_turn") is not None):
+            args.respawn_greedy_turn = float(ck_cfg["respawn_greedy_turn"])
+            restored.append(f"respawn_greedy_turn={args.respawn_greedy_turn:g}")
+        if (args.respawn_greedy_speed is None
+                and ck_cfg.get("respawn_greedy_speed") is not None):
+            args.respawn_greedy_speed = [float(v) for v in ck_cfg["respawn_greedy_speed"]]
+            restored.append("respawn_greedy_speed={:g}-{:g}".format(*args.respawn_greedy_speed))
         # --respawn-backward: a spawn DISTRIBUTION, restored like the frontier
         if args.respawn_backward is None and ck_cfg.get("respawn_backward"):
             args.respawn_backward = True
@@ -8724,6 +8742,12 @@ def main() -> None:
     if int(args.respawn_greedy_stuck) and not float(args.respawn_greedy or 0.0) > 0.0:
         raise SystemExit("--respawn-greedy-stuck adds to --respawn-greedy's pool: it needs "
                          "--respawn-greedy F > 0")
+    if args.respawn_greedy_turn is None:
+        args.respawn_greedy_turn = 0.0
+    if ((float(args.respawn_greedy_turn) > 0.0 or args.respawn_greedy_speed is not None)
+            and not float(args.respawn_greedy or 0.0) > 0.0):
+        raise SystemExit("--respawn-greedy-turn / --respawn-greedy-speed perturb "
+                         "--respawn-greedy's rows: they need --respawn-greedy F > 0")
     if args.eval_patience is None:
         args.eval_patience = 0.0
     if args.eval_patience < 0.0:
@@ -11338,14 +11362,20 @@ def main() -> None:
             GREEDY = GreedyLinePool(float(args.respawn_greedy),
                                     window=tuple(args.respawn_greedy_window),
                                     seed=int(args.seed) + 9191,
-                                    stuck=int(args.respawn_greedy_stuck or 0))
+                                    stuck=int(args.respawn_greedy_stuck or 0),
+                                    turn=float(args.respawn_greedy_turn or 0.0),
+                                    speed=args.respawn_greedy_speed)
         except ValueError as _e:
             raise SystemExit(str(_e))
         print(f"respawn GREEDY: {GREEDY.frac:.0%} of the non-start pool = the policy's own "
               f"greedy-eval states from {GREEDY.hi:g} to {GREEDY.lo:g} s before each failed "
               f"episode's end (rebuilt at every eval; clocks zeroed; real episodes, harvested)"
               + (f"; + {GREEDY.stuck} evenly spaced states of each episode's stalled stretch "
-                 f"(best-progress tick -> end)" if GREEDY.stuck else ""))
+                 f"(best-progress tick -> end)" if GREEDY.stuck else "")
+              + (f"; heading (velocity and view yaw) turned by U(-{GREEDY.turn:g}, "
+                 f"{GREEDY.turn:g}) deg" if GREEDY.turn > 0.0 else "")
+              + (f"; velocity scaled by U({GREEDY.speed[0]:g}, {GREEDY.speed[1]:g})"
+                 if GREEDY.speed is not None else ""))
     if args.respawn_backward:
         for _i, slot in enumerate(slots):
             _fld = (slot.reward_field if slot.reward_field is not None
@@ -14054,6 +14084,10 @@ def main() -> None:
         meta["config"]["respawn_greedy_window"] = [float(GREEDY.lo), float(GREEDY.hi)]
         if GREEDY.stuck:
             meta["config"]["respawn_greedy_stuck"] = int(GREEDY.stuck)
+        if GREEDY.turn > 0.0:
+            meta["config"]["respawn_greedy_turn"] = float(GREEDY.turn)
+        if GREEDY.speed is not None:
+            meta["config"]["respawn_greedy_speed"] = [float(v) for v in GREEDY.speed]
     # --eval-patience: written ONLY when on, like the greedy pool above
     if EVAL_PATIENCE:
         meta["config"]["eval_patience"] = float(args.eval_patience)

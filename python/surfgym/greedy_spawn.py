@@ -48,7 +48,8 @@ def as_truncated(summaries, idx) -> list:
 
 
 class GreedyLinePool:
-    def __init__(self, frac: float, window=(0.5, 5.0), seed: int = 0, stuck: int = 0):
+    def __init__(self, frac: float, window=(0.5, 5.0), seed: int = 0, stuck: int = 0,
+                 turn: float = 0.0, speed=None):
         frac = float(frac)
         if not 0.0 < frac < 1.0:
             raise ValueError(f"--respawn-greedy F needs 0 < F < 1, got {frac!r}")
@@ -57,12 +58,25 @@ class GreedyLinePool:
             raise ValueError(f"--respawn-greedy-window LO HI needs 0 <= LO < HI, got {lo!r} {hi!r}")
         if int(stuck) < 0:
             raise ValueError(f"--respawn-greedy-stuck N needs N >= 0, got {stuck!r}")
+        if not 0.0 <= float(turn) <= 180.0:
+            raise ValueError(f"--respawn-greedy-turn T needs 0 <= T <= 180, got {turn!r}")
+        if speed is not None:
+            speed = tuple(float(v) for v in speed)
+            if not (len(speed) == 2 and 0.0 < speed[0] <= speed[1]):
+                raise ValueError(f"--respawn-greedy-speed LO HI needs 0 < LO <= HI, got {speed!r}")
         self.frac = frac
         self.lo, self.hi = lo, hi
         # --respawn-greedy-stuck N: also N evenly spaced states of each episode's STALLED
         # stretch (its best-progress tick to its end) - where the deployed line wanders once it
         # stops gaining. 0 = off: the pool is the two anchors' windows, as before
         self.stuck = int(stuck)
+        # --respawn-greedy-turn T / --respawn-greedy-speed LO HI: each mixed row's horizontal
+        # velocity and view yaw turned together by U(-T, T) deg and its velocity scaled by
+        # U(LO, HI) - the policy's own frontier states, nudged in heading and energy. Their
+        # own RNG, so the rows DRAWN are exactly the unperturbed ones; off = no draw at all
+        self.turn = float(turn)
+        self.speed = speed
+        self._prng = np.random.default_rng(int(seed) + 7717)
         self.rng = np.random.default_rng(int(seed))
         self.rows = np.zeros(0, STATE_DTYPE)
         self.info = {"eps": 0, "fail": 0, "deaths_s": []}
@@ -179,9 +193,29 @@ class GreedyLinePool:
             self.mixed = 0
             return pool
         out = np.array(pool, dtype=STATE_DTYPE, copy=True)
-        out[len(out) - n:] = self.rows[self.rng.integers(0, self.size, n)]
+        out[len(out) - n:] = self.perturb(self.rows[self.rng.integers(0, self.size, n)])
         self.mixed = n
         return out
+
+    def perturb(self, rows: np.ndarray) -> np.ndarray:
+        """``rows`` with --respawn-greedy-turn / --respawn-greedy-speed applied (a copy);
+        the rows themselves when both are off."""
+        if self.turn <= 0.0 and self.speed is None:
+            return rows
+        rows = np.array(rows, dtype=STATE_DTYPE, copy=True)
+        n = len(rows)
+        v = rows["velocity"].astype(np.float64)
+        if self.turn > 0.0:
+            a = self._prng.uniform(-self.turn, self.turn, n)
+            c, s_ = np.cos(np.radians(a)), np.sin(np.radians(a))
+            vx, vy = v[:, 0].copy(), v[:, 1].copy()
+            v[:, 0] = c * vx - s_ * vy
+            v[:, 1] = s_ * vx + c * vy
+            rows["yaw"] = (rows["yaw"].astype(np.float64) + a).astype(np.float32)
+        if self.speed is not None:
+            v *= self._prng.uniform(self.speed[0], self.speed[1], n)[:, None]
+        rows["velocity"] = v.astype(np.float32)
+        return rows
 
     def line(self) -> str:
         d, b = self.info["deaths_s"], self.info.get("stops_s", [])
