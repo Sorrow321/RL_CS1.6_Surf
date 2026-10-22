@@ -2095,3 +2095,23 @@ safety classifier; simulator probes from the policy's own states answered the sa
   u/s horizontal but vz -294 and dies on the plate at (370, -21, 2,087) - the first eval episode in
   the slot. Three episodes park early (14.7% at 16 s, 31.8%, 41.6% at 52 s, horizontal speed
   50-70 u/s): time-pen 0 and fail_pen 0 make parking and dying both worth 0 to the objective.
+
+### 02:10 UTC: r5b2_x1 at 15.14B - the greedy line now reaches the gate in most episodes
+
+* Evals 15,033-15,121M (score.py): 92.977, 94.932, 94.856, 94.856, **95.115** (15,083M, median
+  94.5%), 94.569, 94.561, 94.548 (median 94.5%). 5-6 of 9 greedy episodes now reach 94.5-95.1% at
+  ~108-109 s (the incumbent's best eval had 1 of 9 past 91%).
+* At 15,121M five episodes arrive at (148-176, +549..566, 1,983-2,038) at 1,050-1,460 u/s
+  horizontal (the incumbent's ep 8: ~600) with vz 0..+190 - just past the end of the side surf
+  ramp, beside the chevron block, 70-120 u under the height the slot needs (hull above z ~2,102
+  before x ~250, where *28 spans the full width). They fall into the gap beside the block onto
+  kill floor *39. Two episodes at 15,083M got INTO the slot ((437, -207, 2,147) at 1,398 u/s, vz
+  -248; (480, -454, 2,217) at 292 u/s) and sank onto the plate.
+* y-z sections (x -600 / -100 / 150 / 400): the middle room's "rails" are inward-facing ~45 deg
+  surf ramps at |y| ~650-900 (z ~1,700 -> ~1,950 at the wall), ending at x ~-150; the block
+  (|y| < 250 at x -100, < 550 at x 150, full width from x ~250) is capped by *28; the kill ceiling
+  is *32 / *52 (z ~2,300 at x -600, 2,420 over the slot). The climb needs the ramp to redirect
+  speed upward: at 45 deg up-slope speed s gives vz 0.71 s, so ~700 u/s up-slope at the ramp top
+  clears the plate's edge.
+* Training: reservoir deepest 94.59% (mind 5.406%), novel ceiling 95.18% (unchanged since round
+  4), T 0.07, ~145k steps/s average (evals ~40%).

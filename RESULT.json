@@ -3,10 +3,10 @@
  "round": 5,
  "final": false,
  "best": {
-  "score": 94.932,
-  "eval_file": "/home/steam/ar/runs/r5b2/r5b2_x1/traj_15045492736.jsonl",
+  "score": 95.115,
+  "eval_file": "/home/steam/ar/runs/r5b2/r5b2_x1/traj_15083241472.jsonl",
   "run": "r5b2_x1",
-  "step": 15045492736,
+  "step": 15083241472,
   "ckpt": null,
   "recipe": [
    "--record-every",
@@ -15,11 +15,11 @@
    "1e8"
   ],
   "resume_from": "incumbent r4b3_band15x/ckpt_final.pt (15,032,385,536, md5 cb1dbce4...) bare resume",
-  "commit": "677b3dd",
-  "best_progress_pct": 94.93,
-  "median_progress_pct": 88.04,
+  "commit": "483a6ce",
+  "best_progress_pct": 95.11,
+  "median_progress_pct": 94.51,
   "finishes": 0,
   "max_cp": 6
  },
- "summary": "Round 5 (r5b2): box 57141550 (RTX 4080 + 7950X, $0.251/h) since 01:50 UTC; r5b2_x1 = bare resume of the incumbent (r4b3_band15x 15.03B, every flag restored), evals every 12.5M. 15,045M: 94.932 (best episode gets above kill plate *28 at 1,080 u/s, too low, dies on it). Gate: the climb from the middle room into the slot over *28. Next if it stalls: --respawn-speed 1.0 1.5."
+ "summary": "Round 5 (r5b2): box 57141550 (RTX 4080 + 7950X, $0.251/h); r5b2_x1 = bare resume of the incumbent (15.03B, every flag restored), evals every 12.5M. Best 95.115 at 15,083M (median 94.5%: 6/9 greedy episodes reach the 94.5-95.1% gate at ~109 s). The gate: from the middle room's side surf ramps (|y| 650-900, top z ~1,950) into the slot over kill plate *28 (hull z 2,102-2,380); the line now arrives at 1,050-1,460 u/s but ~70-120 u too low. Next if it stalls: --respawn-speed 1.0 1.5."
 }
