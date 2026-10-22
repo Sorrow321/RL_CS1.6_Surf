@@ -2706,3 +2706,16 @@ Standing-hull solid tests (`core.trace(p, p, hull=0).startsolid`) and kill hulls
   max 688 - the highest); front7 40/315, 0 (13%, vz p50 124). The deployed line reaches the basement in 13-28% of
   its episodes depending on the checkpoint and has entered the room twice this round, never above z ~1,220.
 * Box 57223179 extended to 01:04 UTC (credit $38.65).
+
+### 20:08 UTC: probe - the second half (east slope -> over the rim -> funnel) is not learned either
+
+* ANALYSIS ONLY, local CPU, front4's checkpoint (18,539,872,256): 89 east-slope arrival windows from front2's pool
+  (windows ending at x > 3,300, z > 1,300; their end E p10/p50/p90 1,391/1,461/1,560); the top half by end-E, 0.6 s
+  before the arrival (45 states, x p50 3,329, z p50 1,365, |v| p50 638, E p50 1,618). record_ckpt --spawn-states,
+  8 s cap: greedy 0/10 finishes, never above the rim (max z 1,448-1,554); sampled (keys temp 1.2) 0/10 finishes,
+  1/10 briefly above the rim (z 1,581).
+* With the crossing probe (0/24 room entries from the crossing windows' starts): neither half of the finish is a
+  repeatable skill of the policy - the training finishes (front2, 17.74B on) were rare lucky sequences, and the
+  energy at the east slope's top (~1,450-1,620) is at the edge of what the rim needs (~1,600-1,700+).
+* r6b3_fsil's checkpoint (the run of the round's best eval, 98.294 at 18,565M) pulled: runs/r6b3/r6b3_fsil/
+  ckpt_latest.pt (18,779,471,872, md5 96ac1e47...).
