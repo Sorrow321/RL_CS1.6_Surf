@@ -2521,3 +2521,13 @@ Standing-hull solid tests (`core.trace(p, p, hull=0).startsolid`) and kill hulls
   three lucky first evals; the arm is NEUTRAL on the line and NULL on the gate (no ceiling move, no room
   entry in the greedy line). r6b3_sil's first 6 evals: mean 76,854, same band.
 * Read arms against this spread (eval mean ~78k +- 10k, best episode 96.7-98.35%) - not against one eval.
+
+### What the novel ceiling d_best 1,415 u is (the corrected goalc field, ANALYSIS ONLY)
+
+* goalc d in the finish room (x-z slices): above the -y hole (y -500) z 1,200: 1,858-2,010; z 1,500: 1,708
+  (min near x 2,900-3,000); at y -250, z 1,600: 1,463; at y 0 above the rim (z 1,600): 1,368-1,476, inside
+  the funnel (z 1,500): 1,268; the shaft below: 968 (z 1,200) -> 568 (z 800).
+* So d 1,415 is the space right ABOVE THE FUNNEL RIM (e.g. (2,800, 0, 1,600) = 1,408): since round 5 some
+  real training episode has climbed out of the basement, through the room and over the rim's height - and
+  never into the funnel (d < ~1,300). Those episodes die within ~1 s on the room's kill floor, so the
+  reservoir (2 s margin) never keeps a state of theirs (deepest reservoir state d ~2,000, the basement).
