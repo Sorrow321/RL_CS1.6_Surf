@@ -2689,6 +2689,15 @@
       "detail": "autoresearch r4b1: not running after 330 s (status loading, #7 8.627 Preparing to unpack .../02-rsync_3.2.7-0ubuntu0.22.04.7_amd64.deb ...\r\n#7 8.633 Unpacking rsync (3.2.7-0ubuntu0)",
       "run": "",
       "reason": "unreliable"
+    },
+    {
+      "ip": null,
+      "machine_id": 152482,
+      "host_id": 570868,
+      "date": "2026-10-22",
+      "detail": "autoresearch r5b1: box 57138833 (RTX 5080, NL, offer 57138695) not running after 330 s (status None); box.py's automatic --block failed because the instance never appeared in `vast show instances` - entry added by hand",
+      "run": "",
+      "reason": "unreliable"
     }
   ],
   "known_good": [
