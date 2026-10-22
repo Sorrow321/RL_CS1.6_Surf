@@ -2658,3 +2658,15 @@ basement and only near the funnel wall in shape).
 * 54-episode evals: the greedy-line pool now holds ~17,000 states (54 episodes' failure windows) against ~2,000-3,800
   at 9 episodes; the share of spawns it gives is unchanged (30% of non-start rows), its spread over the map is wider.
   Possibly a contributor to the wobble, not shown.
+* bank3's other readings matched the turn arm's once its line slipped to CP6: novel-row progress median 97,350 ->
+  95,050-95,400u and training wins 0.21 -> 0.08-0.10. Those were consequences of the greedy line's wobble (the greedy
+  pool and the novel sources follow the line), not of the turn operator - so the turn is not shown to hurt anything.
+
+### 17:50 UTC: r6b1_turn2 = the finish attempt, given the correction
+
+* NEW `--respawn-turn-frac p` (commit 3d03c42; default 1 = the previous behaviour draw for draw): each in-band row is
+  turned with probability p, so a harvested state that WORKED (a launch) is still practised as reached half the time -
+  with p = 1 every in-band row was re-randomised on every refresh, including any success.
+* Incumbent + `--respawn-turn 180 --respawn-turn-front 0.01 --respawn-turn-frac 0.5` + the steer bursts + `--seed 2`
+  + 27-episode evals every 12.5M. Read-out: the novel ceiling (d 1,414 nocut since round 5). Plan: keep it while the
+  ceiling has a chance (~2-3 h); if it has not moved by ~20:30 UTC, bank evals over fresh seeds to the wrap-up.
