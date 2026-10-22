@@ -2568,3 +2568,17 @@ pattern that is in your own command line.
 * The arithmetic of a finish from perturbed rows: ~0.03% of them are in the ideal state x ~8% pull-out x ~5%
   over the rim (scripted: 156 of 3,017 entries) x the funnel step = ~1e-6 per row: no learning signal at ~50k
   front-perturb episodes per hour. The 18.318B ceiling jump (a real finish) was a one-off.
+
+### 17:05 UTC: ENERGY is the limit of the hole entry (yield experiment); r6b2_fp3 = more energy, bigger dose
+
+* Chamber-entry yield of gpt's frontier-band rows under random held actions (ANALYSIS ONLY, 16,384 each):
+  turned +-90 deg at x1.0 speed: **2 (0.012%)**, max z 1,301; x U(1.4, 1.6), no turn: **77 (0.47%)**, max z
+  1,386; turned +-90 + x U(1.4, 1.6): **83 (0.51%)**, max z **1,715** (above the rim); turned +-90 + x U(1.8, 2.2):
+  **114 (0.70%)**, max z **2,474**. None passes over the funnel opening (random actions do not steer to it).
+  So the line's basement energy (h_E ~2,100-2,400) is what keeps the chamber shut: x1.5 speed (h_E ~3,400-3,700,
+  what the line still had at ~105 s before it bled it away) opens it, and the heading turn adds height.
+* **r6b2_fp3** (17:04 UTC): bare resume of r6b2_fp2's last checkpoint (18,748,538,880, md5 24faabda...) +
+  `--respawn-front-perturb 0.35 --respawn-front-perturb-speed 1.4 2.0 --respawn-greedy 0.25` (band 0.005, turn 90,
+  front-temp 1 / 0.005, novel 0.2, backward-mix 0.1 restored). Practice the end at make-it energy so that the
+  critic learns that energy in the basement is worth a finish (the --respawn-speed rationale, now aimed at the
+  frontier band and with the heading turn that the yield test says lifts entries above the rim).
