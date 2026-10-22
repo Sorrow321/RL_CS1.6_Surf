@@ -2613,3 +2613,21 @@ pattern that is in your own command line.
 * **r6b2_fp5** (17:54): fp4's last checkpoint (19,119,210,496, md5 1366d98c...) + `--respawn-front-perturb 0.25
   --respawn-front-perturb-speed 1.6 2.4` (band 1%, turn 90, front-temp 1 / 1% restored): a smaller dose for the
   line, more energy for the rows.
+
+### 18:24 UTC: r6b2_fp5 (x1.6-2.4) - 3 finishes in 19k; fp3's burst dissected; r6b2_fp6 (band 3%: the energy-loss stretch)
+
+* **r6b2_fp5** (19.12-19.33B, 371 iterations): 19,148 front-perturb episodes, 3 finished; the greedy line back in
+  the basement mode in most evals (109 basement episodes in 31 evals), best 98.289; basement-entry energy
+  unchanged (median h_E 2,379).
+* **fp3's finish burst, iteration by iteration:** 18.7947-18.8130B (~18M steps), 1-9 finishes per iteration
+  (peak 4-9 of ~90 = **5-9%**), while the reservoir's deepest state was at 1.55% (d 1,547) and the band was
+  d ~1,547-2,030 u: the hole and chamber-entry states harvested from fresh entries, boosted x1.4-2.0. The rate
+  then decayed within ~15M steps while the band held, and to ~0 when the band widened again. So from fast states
+  in the holes the end-game (over the rim, into the funnel) is learnable at several percent; what the greedy
+  line lacks is the energy to get there - it loses ~1,100 u of h_E between the chimney (~110 s, ~3,200 u) and
+  the basement (~2,100 u), which is the whole deficit.
+* **r6b2_fp6** (18:22 UTC): fp5's last checkpoint (19,325,779,968, md5 805f2b3b...) + `--respawn-front-perturb
+  0.3 --respawn-front-perturb-band 0.03 --respawn-front-perturb-speed 1.3 1.8 --respawn-front-perturb-turn 60`
+  (front-temp 1 / 1% restored): the band now spans the chimney, the deep dip, the corridor, the passage, the
+  basement and the holes (d <= ~4,700 u, from ~110 s of the line), so the critic can learn what energy is worth
+  along the stretch where the line loses it. The last research arm of the round.
