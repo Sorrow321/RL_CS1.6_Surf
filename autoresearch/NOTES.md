@@ -2314,3 +2314,13 @@ safety classifier; simulator probes from the policy's own states answered the sa
   final section and for gaining it on the room's ramps (pumping) is the generic lever (no map
   quantity; one constant). K 5: a 300 u/s loss costs 1.5 units (1% of progress = 1 unit). The banked
   score cannot drop; a disrupted line only costs eval samples.
+* Room statistics of the greedy evals (scratchpad hole/roomstats.py; launch attempt = rising at vz >
+  300 at x 2,440-2,720, z 980-1,180): r5b2_vs - 54 of 216 episodes reach the room, entry |v| median
+  1,384 u/s, 20 attempts with max vz median 447 / p90 647, max |y| p90 381; r5b2_vsx - 35/180, entry
+  1,407, 15 attempts, vz median 505 / p90 679, |y| p90 381; ft/vr similar (vz p90 up to 762). Shaft
+  entries 0 in every run. So the vertical speed is often ENOUGH for the funnel rim (>= ~650); the miss
+  is |y|: every attempt leaves the ramp at its top inner edge (|y| <= ~381) moving inward, and the
+  hole needs the hull at |y| >= ~370-400 all the way up through *160 (z 1,154 -> 1,230). The ramp
+  faces outward-up, so riding up it means moving inward; the way through is to come off the slope
+  lower (|y| ~450-600) by strafing outward while rising (that is what the random-macro successes held:
+  a side key in the first segment) - a precise air-control skill, not a speed problem alone.
