@@ -2151,7 +2151,7 @@ safety classifier; simulator probes from the policy's own states answered the sa
 * Evals' medians sit at ~86.6% in many evals (3-4 of 9 episodes stop at the 86.6% stop, x ~-2,000, z
   ~4,000, ~98 s): the consistency gap for the finish fraction later.
 
-### 04:33 UTC: r5b1_gspdx REGRESSED (all rows scaled) -> NEW `--respawn-greedy-speed-band B`; arm r5b1_band
+### 04:34 UTC: r5b1_gspdx REGRESSED (all rows scaled) -> NEW `--respawn-greedy-speed-band B`; arm r5b1_band
 
 * r5b1_gspdx (bare resume of gspd's final, every greedy row x U(1, 1.5)), 15.333B -> 15.708B (stopped):
   evals 93.0, **98.145 (15,346M, 4/9 at 98%)**, 98.107, 87.7, 98.06, **98.157 (15,447M)**, 98.09, 87.8, 95.1,
