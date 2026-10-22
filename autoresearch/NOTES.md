@@ -2055,7 +2055,7 @@ safety classifier; simulator probes from the policy's own states answered the sa
   cluster at ~105-109 s: x -1,540..-1,480 z 2,230-2,810 (92-93%), and the best two at (260..427, -43..413,
   ~2,095) at 108.6 s (94.7-95.0%). Training wins ~1% (e.g. "win 1.11% @ 3.1 s": spawns ~3 s from the end).
 
-### 02:05 UTC: the 95% gate, measured (ANALYSIS ONLY: own states + the simulator, no demo)
+### 01:51 UTC: the 95% gate, measured (ANALYSIS ONLY: own states + the simulator, no demo)
 
 * **Probe** (local CPU, `record_ckpt --spawn-states`, the incumbent ckpt): from its 48 deepest reservoir states
   (92.96-94.54%), 20 s each: greedy **0/8** finish (best 95.08%), sampled **0/16** (best 95.07%). The best
