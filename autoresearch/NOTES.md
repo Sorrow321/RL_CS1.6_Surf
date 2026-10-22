@@ -2261,3 +2261,15 @@ safety classifier; simulator probes from the policy's own states answered the sa
   and the trainer runs the novel mix after the frontier mix - with `--respawn-novel` (frac 0.5) and the
   frontier's default frac 0.5 every frontier row is overwritten by a novel row (the greedy rows then take
   the tail). A frontier arm here needs the two to write disjoint slices first.
+
+### 07:13 UTC: bandx wobbled into a 96.7% mode at T 0.5; arm r5b1_t02 (T cap 0.2)
+
+* bandx 16.39-16.80B: frontier evals 98.1-98.25 (**98.250 at 16,666M, median 98.09**: 6/9 at 98%), then from
+  ~16.70B the line fell into a 96.7% mode (episodes drop into the bowl at ~110 s and do not swing out;
+  evals 96.73-96.76 with medians 31.8-96.7, one 86.8). T at its 0.5 cap for ~1.5B stuck steps (no +500 u
+  eval best since 15.27B); training ceiling flat at 98.64%; training win 19-29% (near-funnel novel rows).
+* T 0.5 has not produced the funnel climb (no sampling temperature does, 06:35/06:41 benches) and it thins the
+  frontier episodes (05:33 table). The lineage lowered the cap before for the same reason (2 -> 1 -> 0.5,
+  rounds 2-3). **r5b1_t02** (07:11): bandx's 16,634,609,664 snapshot (md5 2db66abb..., the start of its best
+  stretch) + `--unstuck-max 0.2` (T 0.5 -> 0.2 at the first iteration: `T = min(tmax, ...)` while stuck),
+  3e8 steps. Control: bandx's own continuation from the same snapshot (above).
