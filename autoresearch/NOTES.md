@@ -2410,3 +2410,21 @@ pattern that is in your own command line.
 * Perfect air strafing adds 900 to |v|^2 per 10 ms tick whatever the speed (wishspeed cap 30), i.e.
   +56 of E per second of strafing - a 10 s stretch of good strafing is +560 of E. With time-pen 0 nothing
   in the reward asks for it.
+
+### NEW `--respawn-greedy-speed LO HI` (commit 0fda1d2)
+
+* Each greedy-line spawn row (`--respawn-greedy`) gets its velocity scaled by U(LO, HI), direction kept:
+  `--respawn-speed`'s curriculum ("speed-gated jumps can be practiced at make-it speed before the policy
+  has learned to CARRY that speed") applied where the greedy line fails instead of uniformly over the
+  reservoir (round 5's rs15 boosted the RESERVOIR rows 1.0-1.5 for 1.66B steps - the reservoir is spread
+  over the whole map, so ~2% of those rows were near the gate; the ceiling never moved).
+* The incumbent checkpoint's greedy pool: 3,847 rows; ~1,800 are the 2 s before each episode's
+  best-progress stop = the CORRIDOR approach into the basement (x 1,700-2,450, z 1,250-1,600, |v| p50
+  ~1,250); 1,933 sit in the basement but are mostly stalled (|vh| p50 64, the stuck stretches). With
+  greedy rows at 30% of the non-start pool, ~13% of all training episodes would start on the corridor
+  approach with up to 2x its speed (E ~3,400 instead of ~2,400 at the basement entry).
+* Own generator, so the rows drawn are exactly the unscaled ones; 1 1 = off (no draw); config only when
+  on; restored on resume; TRAIN_ONLY for record_ckpt; refused without --respawn-greedy. 8 tests
+  (tests/python/test_respawn_greedy_speed.py) incl. flag-off bit-identity vs the pre-change trainer with
+  --respawn-greedy 0.25 on (config, csv, eval bytes, weights, the saved pool).
+* Generic: one range on the policy's own failure states, no map quantity.
