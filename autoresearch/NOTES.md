@@ -2496,3 +2496,22 @@ basement and only near the funnel wall in shape).
   the same 4/6 finishes.
 * Reference for this arm: round 5's ~3.8B steps at this gate, novel ceiling flat at d 1,414u (nocut) and evals
   96.7-98.35. Read-out: the novel ceiling below 1,414 (a real episode over the rim) and evals above 98.349.
+
+### CEM over steer schedules from the policy's OWN basement-entry states (ANALYSIS ONLY, 15:10 UTC)
+
+* Tool: scratchpad cem_steer.py (record_ckpt's build() with the eval core widened to N envs; one root state per run =
+  the pool's single state, so every env starts there; env i adds a K-segment piecewise-constant offset schedule
+  (deg, SEG decisions per segment) to the policy's own sampled yaw offset, then the policy flies free; objective =
+  min goal-field d of the rollout, a finish counts -1e4; CEM refits a Gaussian to the elites). Roots = the incumbent's
+  own greedy eval (traj_16903045120) at each episode's basement entry (x ~2,445, |v| 1,334-1,402), full states
+  rebuilt from a greedy-pool template row. ~1 s per 512-env iteration on the 3090 beside the trainer.
+* Run 1 (score's OLD field, 512 envs, 25 iterations, 16 x 0.24 s): roots ep5 / ep7 / ep1 -> best **98.53 / 98.48 /
+  98.37%**, 0 finishes, max z 1,243-1,307 (the unperturbed policy from the same roots: 98.11%). The best schedule
+  (ep5) is a POP-UP on the first contact after the entry: within 0.6 s the agent bounces off the launch wall at
+  (2,806, 370, 993) with vz +681, rises through the +y hole (E/g 2,272 -> ~1,440: most energy lost in the bounce),
+  drifts into the room at z ~1,280 toward the funnel and dies there - 98.52% only because the OLD field leaks
+  through the funnel's outer wall. A local optimum of a deceptive objective, far below the energy the rim needs
+  (E/g >= ~2,150).
+* So committed steering of the policy's own line does reach the room (above the incumbent's 98.349 on the score's
+  field) - but the cheap way, not the finish. Run 2 (queued): the NO-CORNER-CUT field as the objective (no leak), 1,024
+  envs, 40 iterations, 20 x 0.24 s, 8 s rollouts.
