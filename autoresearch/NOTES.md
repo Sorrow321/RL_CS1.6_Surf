@@ -2209,3 +2209,18 @@ safety classifier; simulator probes from the policy's own states answered the sa
 * bandx (from 15.633B, T 0.5): evals 96.8, 86.7, 96.9, 96.7, 97.6, 96.7, 96.9, 96.8, 96.7, 96.7, 93.1,
   96.7, **98.233 (15,860M; 3/9 at 98%: the best episode reaches (2,659, -400, 1,143) at 122.6 s)**, 88.0,
   98.191. The frontier inches toward the funnel's x (2,750-3,000).
+
+### 05:57 UTC: the funnel gate is the east-end turn's carried speed (WR analysis); bandx 98.237
+
+* WR demo (analysis only), 113.4-116.8 s: the human turns at the east end (x ~4,040) at 1,470-1,500 u/s, comes
+  back west LOW (z ~763-772, y ~580) at **1,540 u/s**, catches a curved ramp at x ~2,750-2,860 (vz +408 ->
+  +1,005), spirals up and round (vx -917 -> +914 over 0.4 s) to the funnel rim (2,973, 289, 1,575) at 116.0 s
+  with ~940 u/s left (1,540^2 - 940^2 = 2 g x 930 u: the climb is paid by the speed), slides over the funnel
+  centre and drops straight down at (2,960, -40) to the finish (~118.2 s).
+* The policy's 98% episodes come back west HIGHER (z ~900-1,100) at ~1,000-1,100 u/s: at most
+  1,000^2 / 2g = 625 u of climb - not enough for the ~550-830 u to the rim plus the slide over it. They
+  stop under the funnel at (2,550-2,760, +-350, ~1,050) or pass under it. Same class as the wall: speed
+  carried through a turn that the reward field does not show.
+* bandx 15.95-16.11B: 98.16, 98.14 (16,011M: 5/9 at 98.1%, median 98.07), 98.08, 98.10, 98.19, 98.15, 98.13,
+  98.14, 96.7, 96.8; best of the run **98.237** (15,973M). Training ceiling 96,149 -> 96,435 u (98.64%) by
+  16.11B; training win 29% (2.1 s episodes from spawns near the funnel). T 0.5.
