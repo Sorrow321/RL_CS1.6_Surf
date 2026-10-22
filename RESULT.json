@@ -3,10 +3,10 @@
  "round": 5,
  "final": false,
  "best": {
-  "score": 96.628,
-  "eval_file": "/home/steam/ar/runs/r5b3/r5b3_main/traj_15158738944.jsonl",
+  "score": 97.006,
+  "eval_file": "/home/steam/ar/runs/r5b3/r5b3_main/traj_15209070592.jsonl",
   "run": "r5b3_main",
-  "step": 15158738944,
+  "step": 15209070592,
   "ckpt": "/home/steam/ar/runs/r5b3/r5b3_main/ckpt_latest.pt (not pulled yet)",
   "recipe": [
    "bare resume of the incumbent",
@@ -18,5 +18,5 @@
   "resume_from": "incumbent r4b3_band15x/ckpt_final.pt (15,032,385,536, md5 cb1dbce4...)",
   "commit": "ec1ea69 (code = 3ea2710)"
  },
- "summary": "Main line r5b3_main (01:30 UTC) = bare resume of the incumbent on box 57138137 (RTX 3090 + EPYC 7302P, $0.60/h, ~84k steps/s training-only). Best eval 15,158M: 96.628 (best 96.6%, median 96.0%) vs incumbent 94.668: past the 95% slit (a 30-45 u gap over a thin wall) and the hole in kill plate *10; now dies falling out of the shaft below it (needs eastward speed toward CP7). Training ceiling 97.05%. Next: the first greedy finish."
+ "summary": "Main line r5b3_main (01:30 UTC) = bare resume of the incumbent on box 57138137 (RTX 3090 + EPYC 7302P, $0.60/h, ~84k steps/s training-only). Best eval 15,209M: 97.006 (CP7, median 96.7%) vs incumbent 94.668: past the 95% slit, the hole in kill plate *10, the wall at CP7; 3/9 die on kill *50 just past CP7 (~40 u too low). Training ceiling 98.1%, training wins 5-9% (novel rows near the end). Next: the first greedy finish."
 }

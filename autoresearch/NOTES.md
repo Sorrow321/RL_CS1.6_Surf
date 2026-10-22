@@ -2112,3 +2112,18 @@ safety classifier; simulator probes from the policy's own states answered the sa
   (the field route passes at y ~-464), over kill *50 (z ~1,312, x 1,632-2,432), then the finish shaft at
   x ~2,896. Leaving the hole at ~470 u/s east is too slow: the agent drops below z ~1,348 within ~140 u.
 * Snapshot ckpt_15132524544.pt (md5 0b91d40f...) copied to runs/r5b3/r5b3_main/ as insurance (scp 10 s).
+
+### 02:50 UTC: 97.006 (CP7); training wins 5-9%; the last stretch measured
+
+* Evals 15,184-15,247M: 96.669, 96.542, **97.006 (15,209M, CP7, median 96.7%)**, 96.703, 96.724, 96.681. Training
+  ceiling 95,909 u (98.1%), training win 5-9% (episodes 3-4 s long: novel rows placed near the finish shaft -
+  novel episodes never move d_best, which is why the ceiling stays below 100% while they finish). T 0.03.
+* 15,209M: 3/9 greedy episodes pass the CP7 wall (*159, x 1,640-1,656, |y| <= 448) on its +y side and die at
+  (1,646-1,662, 553-579, 1,352) at 110.3-110.6 s, vz -348: on kill *50 (z ~1,312), ~40 u too low.
+* The rest of the route (killprobe x-y maps at z 1,240 / 1,400 and x-z slices at y 500 / -464): over *50
+  (x 1,644-1,964) at z >= ~1,350; a thin wall at x ~1,952-1,984 (z ~1,250-1,540, ceiling ~1,572) with ONE
+  gap at |y| <~ 200; a room x 2,016-2,432 (floor ~870-1,124); a second thin wall at x ~2,432-2,464 over the
+  whole width from z ~1,140 up - open only BELOW it (origin z ~900-1,104); then the area above kill *61
+  (z ~1,200) and *3 (z ~656-672) and the finish shaft, a tube at x ~2,850-3,070, |y| < ~100, down to the
+  finish box (z 176-184). Training's d_best 1,859 sits at the passage under the second wall.
+* Box deadline extended to 06:50 UTC.
