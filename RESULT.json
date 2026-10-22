@@ -3,10 +3,10 @@
  "round": 5,
  "final": false,
  "best": {
-  "score": 95.115,
-  "eval_file": "/home/steam/ar/runs/r5b2/r5b2_x1/traj_15083241472.jsonl",
+  "score": 98.204,
+  "eval_file": "/home/steam/ar/runs/r5b2/r5b2_x1/traj_15397814272.jsonl",
   "run": "r5b2_x1",
-  "step": 15083241472,
+  "step": 15397814272,
   "ckpt": null,
   "recipe": [
    "--record-every",
@@ -15,11 +15,11 @@
    "1e8"
   ],
   "resume_from": "incumbent r4b3_band15x/ckpt_final.pt (15,032,385,536, md5 cb1dbce4...) bare resume",
-  "commit": "483a6ce",
-  "best_progress_pct": 95.11,
-  "median_progress_pct": 94.51,
+  "commit": "5dc2529",
+  "best_progress_pct": 98.2,
+  "median_progress_pct": 96.67,
   "finishes": 0,
-  "max_cp": 6
+  "max_cp": 7
  },
- "summary": "Round 5 (r5b2): box 57141550 (RTX 4080 + 7950X, $0.251/h); r5b2_x1 = bare resume of the incumbent (15.03B, every flag restored), evals every 12.5M. Best 95.115 at 15,083M (median 94.5%: 6/9 greedy episodes reach the 94.5-95.1% gate at ~109 s). The gate: from the middle room's side surf ramps (|y| 650-900, top z ~1,950) into the slot over kill plate *28 (hull z 2,102-2,380); the line now arrives at 1,050-1,460 u/s but ~70-120 u too low. Next if it stalls: --respawn-speed 1.0 1.5."
+ "summary": "Round 5 (r5b2): box 57141550 (RTX 4080 + 7950X, $0.251/h); r5b2_x1 = bare resume of the incumbent (15.03B, every flag restored), evals every 12.5M. Best 98.204 (CP7) at 15,398M: the line passed the slot over kill plate *28 (~15.2B, 96.7%, median 96.6%), then CP7 at 15.39B; the best episodes reach the room between kill plates *61 (z 1,200) and *3 (z 664) at ~118-128 s and die on *3 instead of finding its 160 u hole at (2,960, 0) above the finish. Training: win 23% (near-goal spawns, 2.9 s), reservoir deepest 98.2%."
 }

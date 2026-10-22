@@ -2115,3 +2115,17 @@ safety classifier; simulator probes from the policy's own states answered the sa
   clears the plate's edge.
 * Training: reservoir deepest 94.59% (mind 5.406%), novel ceiling 95.18% (unchanged since round
   4), T 0.07, ~145k steps/s average (evals ~40%).
+
+### 02:35 UTC: r5b2_x1 - the *28 slot falls (96.7%), then CP7: 98.204
+
+* Evals 15,133-15,423M: 94.5-95.1 until ~15.27B, then **96.641** (15,285M), 96.6-96.7 with medians up
+  to 96.7% (15,335-15,360M), then **CP7: 98.117 (15,385M), 98.204 (15,398M)**, 98.113, 98.099.
+  The slot over *28 took ~240M steps of this run (the incumbent sat at it since ~14.99B).
+* 96.7% stop: (1,436-1,449, -294..-332, 1,134-1,230) at ~110.8 s, vz ~-1,370 - falling past the
+  pillar room; the 98.0-98.2% episodes go on to the room UNDER kill plate *61 (z 1,200) and over
+  kill plate *3 (z 656-672): bests at (2,455-2,639, -492..+304, 959-1,105) at 116-128 s, then they
+  die on *3 at x 2,191 / 2,810 / 3,264. The only way down is *3's 160 x 160 u hole at x
+  2,880-3,040, |y| < 80, straight above the finish box (z 176-184).
+* Training: race/success_rate 23% at a 2.9 s mean finish time (spawns just above the goal - the
+  trivial-win harvest; it is also how the value of the shaft reaches the critic), reservoir deepest
+  98.2% (mind 1.776%), novel ceiling 98.26%, T 0.01, ~168k steps/s average.
