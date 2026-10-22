@@ -2509,3 +2509,15 @@ stochastic (keys temp 1.2 = training) x6 per set:
   DEEPEST row are scaled (d0 = the field at the eval episodes' own start; the mask is rebuilt with the pool
   and saved with it). The early-failure windows stay plain DAgger rows. Tests added to
   tests/python/test_respawn_greedy_speed.py.
+
+### 15:36 UTC: arm 2 (r6b4_gsb) - the boost only at the frontier
+
+* More noise from the human's post-kick states (keys temperature 2 / 3, yaw sigma x2 / x3, all heads at 2):
+  0/50 into the hole. The turn has to be learned on the policy's own line.
+* **r6b4_gsb** (15:33): warm resume of the incumbent (17,418,944,512) + `--respawn-greedy-speed 1.0 1.5
+  --respawn-greedy-speed-band 0.02 --respawn-greedy-stuck 0 --ckpt-every 1e8`, evals every 12.5M (half the
+  eval cost of arm 1: ~45-60 s per eval on this EPYC host), budget 3e9. First rebuild: 1,019 of 2,256 greedy
+  rows boosted (the basement / corridor approach; the early-failure windows plain).
+* Ops: the box's link to here is ~29 KB/s (an 8.5 MB eval took 5 min), so evals are scored ON THE BOX
+  (scratchpad work/rscore.sh) and only the best is pulled; an ~80 MB checkpoint needs ~45 min - start the
+  final pull well before wrap-up.

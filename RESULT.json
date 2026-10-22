@@ -2,6 +2,25 @@
  "agent": "r6b4",
  "round": 6,
  "final": false,
- "best": null,
- "summary": "Round 6: box 57226494 (3090, $0.35/h) from 14:41 after ~1 h without passing offers. Arm 1 r6b4_gs15 (14:50): incumbent + NEW --respawn-greedy-speed 1.0 1.5 (greedy-line spawn rows' velocity x U(1,1.5); round 5's --respawn-speed never reached these rows) + --respawn-greedy-stuck 0 (the stalled stretches were the policy hovering on basement ledges). Why (WR demo, measurement only; it replays exactly in our sim): the finish needs a wide low U-turn keeping ~1,500 u/s, the outer-low west lane onto a 43 deg kick surface (vz +1,000), up the hole, over the funnel rim; the greedy line comes back west ~180 u inside/higher at 1,200-1,300 u/s."
+ "best": {
+  "score": 98.236,
+  "eval_file": "/home/steam/ar/runs/r6b4/r6b4_gs15/traj_17425760256.jsonl",
+  "run": "r6b4_gs15",
+  "step": 17425760256,
+  "ckpt": null,
+  "recipe": [
+   "--respawn-greedy-speed",
+   "1.0",
+   "1.5",
+   "--respawn-greedy-stuck",
+   "0",
+   "--ckpt-every",
+   "1e8",
+   "--record-every",
+   "6.25e6"
+  ],
+  "resume_from": "incumbent r5b4_ncy/ckpt_latest.pt (17,418,944,512)",
+  "commit": "9e16010"
+ },
+ "summary": "Round 6 (r6b4). Box 57226494 (3090, $0.35/h, slow link) from 14:41. WR demo (measurement only; replays exactly in our sim): the finish is a kick ramp on the basement's west leg at ~1,545 u/s -> vz +1,000 -> up a hole -> over the funnel rim. Bench (demo states): the incumbent finishes 9/9 from inside the hole, 0/50 from just after the kick even with 2-3x noise; its own best episode already flies the ramp-and-turn shape at ~1,000 u/s and reaches only the hole's edge: ENERGY is missing. NEW --respawn-greedy-speed LO HI (+ --respawn-greedy-speed-band B). Arm 1 r6b4_gs15 (boost on every greedy row): best 98.236, the upstream line degraded (early-failure rows boosted) -> stopped. Arm 2 r6b4_gsb (15:33): boost only within 0.02 d0 of the pool's deepest row."
 }
