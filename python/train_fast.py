@@ -83,6 +83,13 @@ def _cgroup_cpu_quota():
 
 
 os.environ.setdefault("OMP_NUM_THREADS", _default_omp_threads())
+# numba's parallel pool (the goal field's fused sampler, surfgym/goalfield.py) defaults to EVERY
+# host thread and ignores the CFS quota. On a 128-thread host with a 61-CPU quota (vast box
+# 57148363, 2026-10-22) one sample() of 9 points took 13 ms at 128 threads and 0.02 ms at 30:
+# the eval (tens of thousands of single-env ticks, each sampling the field) never finished, and
+# the launch gate killed the run after 900 s. The sampler is bit-identical at any thread count
+# (each output depends on one input point), so the team is sized like OpenMP's.
+os.environ.setdefault("NUMBA_NUM_THREADS", os.environ["OMP_NUM_THREADS"])
 
 import argparse
 import csv
@@ -10850,7 +10857,7 @@ def main() -> None:
     core = slots[0].core
     pool = slots[0].pool
     print(f"pool({args.spawn}) {len(pool)} | envs {N} | {device} | "
-          f"omp={os.environ['OMP_NUM_THREADS']} | "
+          f"omp={os.environ['OMP_NUM_THREADS']} numba={os.environ.get('NUMBA_NUM_THREADS')} | "
           f"graphs={use_graphs} bf16={use_bf16}"
           + (f" | maps {NMAPS} x {PER} envs" if MULTI else "")
           + (f" | pitch fixed {args.fix_pitch:g}" if args.fix_pitch is not None else "")

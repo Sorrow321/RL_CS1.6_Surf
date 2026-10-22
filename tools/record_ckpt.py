@@ -16,6 +16,12 @@ import json
 import time
 import ast
 from pathlib import Path
+import os
+
+# numba's parallel pool (the goal field's sampler) defaults to every HOST thread and ignores a
+# container's CPU quota: 13 ms per sample() at 128 threads vs 0.02 ms at 30 on a 128-thread host
+# with a 61-CPU quota (train_fast.py, 2026-10-22). Results are bit-identical at any thread count.
+os.environ.setdefault("NUMBA_NUM_THREADS", str(max(1, min(32, (os.cpu_count() or 8) // 2))))
 
 ROOT = Path(__file__).resolve().parent.parent
 import sys
