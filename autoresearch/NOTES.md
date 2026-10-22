@@ -2719,3 +2719,17 @@ Standing-hull solid tests (`core.trace(p, p, hull=0).startsolid`) and kill hulls
   energy at the east slope's top (~1,450-1,620) is at the edge of what the rim needs (~1,600-1,700+).
 * r6b3_fsil's checkpoint (the run of the round's best eval, 98.294 at 18,565M) pulled: runs/r6b3/r6b3_fsil/
   ckpt_latest.pt (18,779,471,872, md5 96ac1e47...).
+
+### 20:16 UTC: r6b3_front7 stopped; LAST ARM r6b3_fspd = front7's checkpoint + NEW `--respawn-front-speed 1.0 1.4`
+
+* r6b3_front7, 18,792M -> ~19,107M: 50 evals at 6.25M spacing, best 98.266, 0 finishes. Checkpoint 19,107,151,872
+  (md5 54b6c974...) kept on the box as runs/r6b3_front7/ckpt_stop.pt.
+* NEW `--respawn-front-speed LO HI` (commit c44f33f): each frontier row's velocity x U(LO, HI), its own generator,
+  1 1 = off; tests: a unit test, the trainer wiring (+ refusal without --respawn-front), flag-off bit-identity.
+  Why: both probes show the policy reaches the east slope's top with E ~1,450-1,620 and the rim needs ~1,600-1,700+;
+  x1.0-1.4 on the window starts (|v| ~900) adds up to ~490 of E, so the replayed approaches can clear the rim, the
+  finish gets practised, and the critic sees what speed in the room is worth. Caveat: with --respawn-front-finish the
+  captured windows of boosted episodes can be boosted again when replayed (compounding); the FIFO holds 20k inherited
+  crossing states and finish captures are rare, so it is slow, but it is there.
+* **r6b3_fspd** (20:1x): resume of front7's checkpoint + `--respawn-front-speed 1.0 1.4 --ckpt-every 1e8` (frontier
+  0.15, crossing, finish gate, band 0.02, advance 0.0015 restored), evals every 12.5M, until the wrap-up.
