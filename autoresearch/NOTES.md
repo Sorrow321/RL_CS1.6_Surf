@@ -1909,3 +1909,61 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
 * 23:40 UTC: c8 13.75-14.00B: 60.5, 60.3, 63.575, 61.4, 66.076, 60.4, **68.260** (13,928M, CP5),
   21.0 (a collapse), 60.5, 60.5. Masked ceiling 69,224 u, T 0.012: after the bowl the gates past
   CP5 now fall one per ~50-100M steps.
+
+## ROUND 4 LESSON (r4b4) - written at wrap-up
+
+**Result:** best greedy eval from the true start **68.260** (r4b4_c8 at 13,927,710,720; incumbent 54.674): CP5,
+through the CP4 window, the 64-66 s dip, the bowl (a window in a divider + a hole in a kill floor), CP5, kill floor
+*31 and on to x ~-7,200. 0 finishes. Hand-on checkpoint: /home/steam/ar/runs/r4b4/r4b4_c8/ckpt_latest.pt
+(14,305,198,080, md5 a830179fbce4f27dc10544625c7d2d31; c8's last evals ~60.5, its best 68.26 at 13.93B).
+
+**The lineage of the best run** (warm, from the round-3 incumbent 8,838,971,392): c2 (+ --eval-parallel 1
+--unstuck-max 0.25) -> c3 (+ --eval-idle-secs 60) -> c4 (bare) -> c5 (+ --ez-eps 0.05 --ez-front 0.04) -> c6 (bare)
+-> c7 (+ --race-kill-aware 1, from c6's 11.39B) -> c8 (c7's 12.69B snapshot + --unstuck-max 0.1).
+Per-run bests: c1 54.950, c2 54.818, c3 56.116, c4 60.564, c5 60.548, c6 60.517, c7 63.484, **c8 68.260**.
+
+**What worked (in order of effect):**
+1. **`--race-kill-aware 1` at a gate behind a kill floor.** The plain shaping field ignores kill triggers: at the
+   bowl (60.5%) it routes straight down through kill plate *53 (a fatal fall onto it pays ~0.7) and gives the
+   divider's window no gradient (flat 60.4-60.5%). c4 (bare), c5 (frontier ez bursts) and c6 (bare), ~2B steps,
+   never moved the training ceiling. The kill-masked graph routes only through the window (+~0.9 units for
+   crossing it) and the hole: ceiling past the hole ~400M steps after the line had re-learned, greedy CP5 at +730M
+   (63.5), and the gates past CP5 then fell one per ~50-100M steps (64.3, 66.1, 68.3 at 13.73-13.93B).
+2. **`--eval-parallel 1 --eval-idle-secs 60` (NEW, wall clock only).** The sequential greedy eval was 45-52% of
+   every box-hour once the line lived long (r3b3_gwx2 as well: 324k steps/s training, 168k overall). Evals
+   90-280 s -> 20-30 s, ~1.5-1.8x training per box-hour, the same scores (episode i of a parallel eval is line for
+   line the sequential one from the same spawn; flag-off bit-identical). In the lineage's scratch recipe now.
+3. **Unstuck T capped at 0.25 (warm).** At the 0.5 cap (c1) the line collapsed to 42.5% while T rose (int x(1+T),
+   60-70% stall kills, the greedy pool drifting off the frontier); at 0.25 (c2/c3) it held at CP4 and crossed.
+4. **Probes before arms** (local CPU, record_ckpt --spawn-states, measurement only): CP4 was energy-gated (0/50 own
+   states; 1/16-4/16 with velocity x1.25); the bowl was NOT (x1.25/x1.5: 0/24) but a window (hull traces) + a hole
+   (drop grid); the critic valued the east valley BELOW the bowl (novel rows there died 75% on the plate) - which
+   pointed at the shaping field rather than at exploration.
+
+**What did not work / caveats:**
+* The warm kill-aware switch first COLLAPSED the line to 1.9%: the potential channel, compass, pot-rate column and
+  ratchet gap all read the shaping field, and the masked field's unreachable pixels changed the image near every
+  kill volume. ~480M steps to re-learn the line. Next time decouple the observation field from the shaping field
+  for a warm switch, or start kill-aware from scratch.
+* Frontier-only ez bursts (c5) and velocity boosts did nothing at the bowl. Greedy lines wobble after every gate
+  (c7 slid back to the 57.7% dip for ten evals; c8 at T 0.1 too, then broke through again): the best evals are
+  single episodes.
+* One seed per arm; the kill-aware result is one gate on one map (on cannonball it was null at jump-skill walls).
+
+**New code (default off, CPU-tested):** --eval-parallel, --eval-idle-secs, --respawn-greedy-speed LO HI (velocity
+boost on the greedy-line rows, for energy gates; never run in training), the novel ceiling re-measured when the
+reward field changes, record_ckpt mirrors --race-kill-aware.
+
+**For the next round:** a bare resume of the hand-on checkpoint keeps race_kill_aware=1, T cap 0.1, ez bursts,
+eval-parallel/idle and the greedy rows. The goalk_32 cache is not in the maps tarball: the first launch (and the
+record gate) bakes it (~3 min of GPU, 192 s measured). Where the line stops at 68.3%: falling at (-7,195, -343,
+5,248) heading west at ~1,600 u/s at 82 s (the human is at x ~-6,500..-8,000, z 5,440-5,735 at 76-77 s).
+**Ops:** box 57055117 (RTX 3090 + Threadripper PRO 5955WX, $0.187/h, Alabama), 12:54-00:14 UTC (~11.3 h, ~$2.1),
+~200k steps/s training, ~155-165k overall with parallel evals.
+
+## Wrap-up (r4b4) - 2026-10-22 00:15 UTC
+
+* Final: RESULT.json `"final": true`, score **68.260** (r4b4_c8, eval traj_13927710720: CP5, 9 episodes, 0 finishes).
+* Hand-on: r4b4_c8/ckpt_latest.pt (14,305,198,080, md5 a830179f...), pulled after the run was stopped and
+  md5-checked. Also local: r4b4_c7/ckpt_12694061056.pt (the snapshot c8 started from), r4b4_c2/ckpt_latest.pt.
+* Box 57055117 released at 00:14 UTC (`box.py status`: no box).

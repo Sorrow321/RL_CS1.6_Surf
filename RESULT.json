@@ -1,13 +1,13 @@
 {
  "agent": "r4b4",
  "round": 4,
- "final": false,
+ "final": true,
  "best": {
   "score": 68.26,
   "eval_file": "/home/steam/ar/runs/r4b4/r4b4_c8/traj_13927710720.jsonl",
   "run": "r4b4_c8",
   "step": 13927710720,
-  "ckpt": "/home/steam/ar/runs/r4b4/r4b4_c8/ckpt_final.pt or ckpt_latest.pt (pulled at wrap-up)",
+  "ckpt": "/home/steam/ar/runs/r4b4/r4b4_c8/ckpt_latest.pt",
   "recipe": [
    "--respawn-greedy",
    "0.3",
@@ -34,7 +34,8 @@
    "1"
   ],
   "resume_from": "incumbent r3b3_gwx2/ckpt_final.pt (8,838,971,392) -> r4b4_c2 (+ --eval-parallel 1 --unstuck-max 0.25) -> r4b4_c3 (+ --eval-idle-secs 60) -> r4b4_c4 (bare) -> r4b4_c5 (+ --ez-eps 0.05 --ez-front 0.04) -> r4b4_c6 (bare) -> r4b4_c7 (+ --race-kill-aware 1) -> r4b4_c8 (c7's 12,694,061,056 snapshot + --unstuck-max 0.1)",
-  "commit": "48165e3"
+  "commit": "48165e3",
+  "note": "ckpt_latest.pt = r4b4_c8 at 14,305,198,080 (377M steps after the best eval), md5 a830179fbce4f27dc10544625c7d2d31, pulled after the run was stopped and md5-checked; carries race_kill_aware=1, unstuck_max 0.1, ez bursts, eval_parallel/idle (a bare resume restores them). The goalk_32 kill-aware cache is baked at first use (~3 min GPU)."
  },
- "summary": "68.260 (r4b4_c8 eval 13,928M, CP5; 64.3 at 13,726M, 66.1 at 13,877M; c7 first reached CP5 at 12,123M, 63.484: through the bowl's window and the hole in its kill floor). Warm continuation of the incumbent (54.674): T cap 0.25 (cap 0.5 collapsed the line), CP4 window at 9.54B (56.1), the 64-66 s dip (57.9 -> 60.5), the bowl stuck ~2B steps at 60.5 on the plain field. --race-kill-aware (kill volumes walled off in the shaping graph) gave the window a gradient and stopped paying for falls onto the plate: the warm switch first collapsed the line to 1.9% (the observation features read the same field), re-learned to 60.5% in ~480M steps, ceiling past the hole, greedy CP5 ~730M after the switch. NEW --eval-parallel / --eval-idle-secs (~1.5-1.8x training per box-hour, in the scratch recipe); novel ceiling re-measured on a reward-field change; record_ckpt mirrors the kill-aware field."
+ "summary": "Best 68.260 (r4b4_c8 eval 13,928M, CP5; incumbent 54.674): warm continuation that went through the CP4 window, the 64-66 s dip, the bowl and on past CP5 / kill floor *31. What did it: (1) --race-kill-aware 1: the plain shaping field routes through kill plates (pays for fatal falls) and gave the bowl's divider window no gradient - ~2B steps stuck at 60.5 (bare, ez bursts) never moved the ceiling; the masked field took the line through in ~730M steps, then a gate per ~50-100M steps (63.5, 64.3, 66.1, 68.3). The warm switch first collapsed the line to 1.9% (the observation features read the same field) and re-learned in ~480M steps. (2) NEW --eval-parallel / --eval-idle-secs: the sequential eval was 45-52% of the wall clock; ~1.5-1.8x training per box-hour, same scores (in the scratch recipe now). (3) unstuck T cap 0.25 -> 0.1 (0.5 collapsed the line). Untested: --respawn-greedy-speed (built for energy gates); decoupling the observation field from a kill-aware shaping field for warm switches."
 }
