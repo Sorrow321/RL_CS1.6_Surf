@@ -2694,3 +2694,5 @@ basement and only near the funnel wall in shape).
 * 21:47 UTC: r6b1_turn7 (seed 7) - 98.347 again (17,438M; ties turn4's best, 0.002 under the incumbent), CP7 with
   brief dips; kept running.
 * 22:13 UTC: r6b1_turn7 back in CP7 since 17,513M (frontier ~96,000-96,050u); no eval above 98.347 yet; kept.
+* 23:00 UTC: r6b1_turn7 (seed 7) - CP7 from 17,513M to ~17,650M (~22 evals, best 98.347 at 17,438M, then 98.27-98.29),
+  CP6 wobble from ~17,658M; reset as r6b1_turn8 (seed 8).
