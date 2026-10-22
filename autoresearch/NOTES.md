@@ -2545,7 +2545,7 @@ pattern that is in your own command line.
   per-source finish counter. Reservoir deepest unchanged (2.01%; a finish within ~2 s of the basement leaves
   only basement states >= 2 s before its end). Evals so far 98.06-98.14 (the line wobbling; no entry yet).
 
-### 16:41 UTC: r6b2_fp at +270M; counters added (r6b2_fp2)
+### 16:39 UTC: r6b2_fp at +270M; counters added (r6b2_fp2)
 
 * r6b2_fp 18.28-18.56B (~276M steps, 130k steps/s): 44 evals, best 98.277 (18,351M); the greedy line spent ~15
   evals in the CP6 mode (dies on the corridor kill plate at (1,460, -370, 1,230), ~110 s) and came back to the
