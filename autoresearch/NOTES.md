@@ -2097,7 +2097,7 @@ safety classifier; simulator probes from the policy's own states answered the sa
   rows create the slot experience training lacks; flying OVER the wall is what training must learn
   from it.
 
-### 03:17 UTC: box 57148363 (RTX 3090, Japan, $0.348/h) - and a numba thread cliff on many-core hosts (FIXED, 3763775)
+### 03:16 UTC: box 57148363 (RTX 3090, Japan, $0.348/h) - and a numba thread cliff on many-core hosts (FIXED, 3763775)
 
 * Rented at 02:53 after 30 attempts (machine 48881: EPYC 7B12, 128 host threads, cgroup quota 61.4
   CPUs, 377 GB RAM). Deploy took 2 min (ckpt md5 verified on the box).
