@@ -2498,3 +2498,28 @@ pattern that is in your own command line.
   evals every 6.25M. A combination at the frontier (state nudges + action temperature), not one knob: this is
   the last round and the gate has absorbed ~4B steps. Read-outs: the novel ceiling (any real episode over the
   rim moves it below 1,415), the reservoir's deepest state (mind 1.98% now = the basement), the greedy evals.
+
+### 15:57 UTC: r6b2_gpt so far; the policy cannot pull out even from ideal states (bench); NEW --respawn-front-perturb
+
+* **r6b2_gpt** (bmix ckpt + greedy rows turned +-90 deg and x U(1, 1.5) + front-temp 1 in the last 0.5% band),
+  17.90-18.16B, 52 evals: best **98.308** (17,961M, median 98.1%); the line is in the basement mode in most evals
+  (best points at the holes' inner edges, (2,614-2,638, +-331..373, 1,073-1,167), at ~0-100 u/s) with a CP6
+  stretch (96.7%, 18.06-18.12B). No chamber entry; reservoir deepest 1.98% (unchanged).
+* The greedy pool follows the greedy line's failures: at bmix's end it held 0 basement states (that eval's
+  episodes stopped at the slit, 108-110 s), so greedy-row perturbation only reaches the basement while the line
+  is in its basement mode.
+* **Bench (ANALYSIS ONLY, hand-placed up-slope states, never trained on):** the bmix policy from 72 ideal states
+  (|y| 550-580 on either face under a hole, up-slope 1,600-1,900 u/s, vx 0-600, looking along the velocity):
+  greedy 0/16 chamber entries; stochastic at temperature 2 (= front-temp 1) 1/16 (it reached z 1,685, above the
+  rim; no finish). Constant random actions from such states enter ~9% of the time (scripted grid). So the policy
+  has no pull-out: even in the ideal state the greedy action keeps surfing, and the entries come from noise.
+  Two things have to happen in training: episodes in up-slope states low on a face under a hole (state
+  perturbation of the line's own basement states), and noise there (frontier temperature), until successes
+  teach the pull-out.
+* Deepest-2% reservoir states of the saved 20k subset are mostly the corridor (16% basement); 24 perturbed
+  episodes from them at temperature 2: 0 entries.
+* **NEW `--respawn-front-perturb F`** (+ `-band B` 0.005, `-turn T` 90, `-speed LO HI` 1.0 1.5; default off):
+  F of the non-start rows are the policy's own reservoir states from its frontier band (field progress >=
+  (1 - B) x the reservoir's deepest), kept in place, heading turned and speed scaled as above, clocks zeroed,
+  real episodes; placed after the novel / backward-mix quotas, before the greedy tail. Unlike the greedy pool
+  it always holds the basement (the reservoir's deepest states are there whatever the last greedy eval did).

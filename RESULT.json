@@ -3,25 +3,28 @@
  "round": 6,
  "final": false,
  "best": {
-  "score": 98.259,
-  "eval_file": "/home/steam/ar/runs/r6b2/r6b2_bmix/traj_17822121984.jsonl",
-  "run": "r6b2_bmix",
-  "step": 17822121984,
+  "score": 98.308,
+  "eval_file": "/home/steam/ar/runs/r6b2/r6b2_gpt/traj_17961058304.jsonl",
+  "run": "r6b2_gpt",
+  "step": 17961058304,
   "ckpt": null,
   "recipe": [
-   "--respawn-backward-mix",
-   "0.2",
-   "--respawn-backward-shell",
-   "0",
-   "--respawn-novel-frac",
-   "0.3",
+   "--respawn-greedy-turn",
+   "90",
+   "--respawn-greedy-speed",
+   "1.0",
+   "1.5",
+   "--front-temp",
+   "1",
+   "--front-band",
+   "0.005",
    "--ckpt-every",
    "1e8",
    "--record-every",
    "6.25e6"
   ],
-  "resume_from": "incumbent r5b4_ncy/ckpt_latest.pt (17,418,944,512)",
-  "commit": "cd381b0"
+  "resume_from": "r6b2_bmix/ckpt_stop.pt (17,903,910,912; --respawn-backward-mix 0.2 restored) <- incumbent r5b4_ncy (17,418,944,512)",
+  "commit": "bad9a55"
  },
  "summary": "Round 6 r6b2. Control (bare resume): best 98.245. r6b2_bmix (NEW --respawn-backward-mix 0.2: goal-anchored rows from the map's own field at 1,000-2,500 u/s, mixed beside novel/greedy rows): 17.42-17.90B, 76 evals 96.7-98.26, best 98.259; backward rows finish 50-70% but only from inside the funnel chamber - 0 hole entries from basement states. Analysis: the funnel chamber is sealed except two floor holes; the hole entry is a skill (surf up the 49-deg basement ramp under the hole at >= 1,300-1,600 u/s, strafe outward at once): scripted test 3,017/58,800 entries, 156 over the rim, 6 finishes; the line has the energy (h_E ~2,300). Next arm r6b2_gpt (15:14): bmix checkpoint + NEW --respawn-greedy-turn 90 --respawn-greedy-speed 1.0 1.5 (own frontier states nudged in heading/energy) + --front-temp 1 --front-band 0.005."
 }
