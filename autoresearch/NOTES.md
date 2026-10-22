@@ -2147,3 +2147,30 @@ safety classifier; simulator probes from the policy's own states answered the sa
 * Training: win 19-23% at a 2.3-2.4 s mean (novel rows in the room, d >= d_best: the policy finishes
   from them), but no REAL episode has come closer than d_best 1,617 u (novel ceiling 98.35%),
   reservoir deepest 98.21%.
+
+### 03:30 UTC: the last 1.8% mapped (hull traces + hull_probe + the field; ANALYSIS ONLY)
+
+* The finish is at the bottom of a sealed system: a TUBE (x 2,872-3,048, |y| <= 88, z -384..1,250;
+  finish trigger *162 at z 176-184, the endtele teleport at its bottom) under a FUNNEL that opens
+  into a tall SHAFT (x 2,464-3,424, |y| <= 704, z 1,200-6,736 ceiling; four solid walls - a hull
+  scan of all of them found no opening, standing or ducked). The shaft's floor is world at x >=
+  2,864 and the 4 u func_wall *160 (z 1,190-1,194) at x 2,464-2,864; kill *61 (z 1,200-1,202) covers
+  the floor from x ~2,710 east except the funnel.
+* **The only way in: two holes in *160** (standing-hull origins x 2,482-2,670, |y| 370-686, one per
+  lane), not covered by *61. The field's sole connection between the shaft and the rest of the map
+  is exactly there (cells z 1,160 <-> 1,192, x 2,448-2,672); it is real, not a voxel leak.
+* Below *160 is the LOWER ROOM (the greedy line's 98.1-98.2% stop): entered from the west under the
+  wall at x 2,432-2,464 (origin z < 1,150; the wall spans z 1,186-1,580, the west area's ceiling is
+  ~1,580); kill floor *3 (z 656-672) - the tube is walled off at this level, so the room is a dead end
+  except UP through the holes. Its sides are outward-facing ~45 deg surf ramps (|y| ~420-700, tops at
+  |y| ~420, z ~1,000) running x ~2,300-2,800, under the holes.
+* So the finish needs: dive under the wall at x 2,432, surf a side ramp, launch UP ~230 u (vz >= ~600
+  at the ramp top) through the hole above it, then fly ~250-450 u east over *61 into the funnel at
+  (2,960, 0). The greedy line passes UNDER the holes at 116.4 s at (2,460-2,518, +-430..500,
+  1,050-1,075) falling at vz -850; its stalled stretches stand on the ramp tops.
+* Field: ramp top d ~1,823 -> the hole cells d ~1,640-1,664 -> funnel ~1,000 -> 0, so the climb is
+  paid under the ratchet (~0.2 units) before the +50 finish.
+* Training's 19-23% "wins" (2.3-2.9 s): novel rows placed inside the shaft above the holes
+  (d >= d_best = 1,617) fall into the funnel. No real episode has gone up a hole yet.
+* Probe (local CPU, the 15.633B snapshot, 16 of the greedy line's own room states, 5 s): greedy
+  0/16 and keys at temperature 1.5 0/16 rise into a hole; 11/16 stay standing on the ramp tops.
