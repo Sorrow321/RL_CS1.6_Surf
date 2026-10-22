@@ -2318,3 +2318,69 @@ safety classifier; simulator probes from the policy's own states answered the sa
   the lower lane - the first time in ~1.4B steps at this gate. Reservoir deepest still 98.25% (the episode did not
   live 2 s more), greedy evals 98.15-98.21% (the line is still in the lane). Too late to attribute (one event; the
   lane practice had also run ~1B steps), and too late to follow: ~55 min to wrap-up.
+
+## ROUND 5 LESSON (r5b3) - written at wrap-up, 2026-10-22 12:25 UTC
+
+**Result:** best greedy eval from the true start **98.283** (r5b3_t01 at 15,949,365,248 (eval traj_15949365248: best 98.28%, median 87.79%, CP7); incumbent 94.668): CP7, the
+greedy line past the 95% slit, the hole in kill *10, CP7's side, the first thin wall's gap and under the second thin
+wall into the lower lane; 0 finishes. Hand-on checkpoint: /home/steam/ar/runs/r5b3/r5b3_t01/ckpt_latest.pt (16,375,611,392, md5 24632a5934ecb287a37bae2b382d14c2; T cap 0.1 in its config).
+
+**Lineage of the best run** (warm, from the incumbent r4b3_band15x final, 15,032,385,536; no new trainer code, commit
+code = 3ea2710): r5b3_main (bare resume, evals every 12.5M) -> r5b3_main2 (evals every 25M; bare resume of main's
+ckpt_latest 15,570,829,312) -> r5b3_t01 (+ --unstuck-max 0.1; bare resume of main2's ckpt_latest 15,923,675,136) ->
+r5b3_ft (+ --front-temp 1 --front-band 0.004; bare resume of t01's ckpt_latest 16,375,611,392).
+
+**What worked:**
+1. **The bare resume itself** (the lineage recipe): 94.67 -> 95.0 (+13M steps) -> 96.08 (+50M, the slit) -> 96.63
+   (+126M, the hole) -> 97.01 (+176M, CP7) -> 98.05 (+240M, the first thin wall's gap) on the incumbent's own settings.
+2. **Evals every 25M on a CPU-bound box.** On the RTX 3090 + EPYC 7302P (Zen 2, 3.0 GHz, 84k steps/s training-only)
+   a 9-episode side-by-side greedy eval took ~130 s; at one per 12.5M the box spent ~50% of its time evaluating
+   (42k steps/s overall). At 25M: 63-69k overall (~1.6x).
+3. **--unstuck-max 0.1.** The plateau detector held T at its 0.5 cap (keys) for ~650M steps at the lane; meanwhile the
+   training frontier did not move and the greedy line broke: medians 93-97% at T ~0.01 -> 86.5% -> 27-60% (one
+   eval 9/9 back at the old CP2 area). Capping T at 0.1 restored it at once (resume eval 98.22%) and every eval since
+   reached the lower lane (medians 86-98%), incl. the branch best 98.283. Round 3's lesson again: low T consolidates
+   the greedy line; the default cap (0.5) is too high once the line is long.
+
+**What did not work / open:**
+* --front-temp 1 --front-band 0.004 (all heads at temperature 2 only past ~97.9% progress) at the lane: no climb in
+  ~830M (16.38B -> 17.21B; best 98.220) steps (evals 96.6-98.2, ceiling flat).
+* The last gate (measured, ANALYSIS ONLY - the 09:2x-09:4x entries above): the finish is at the bottom of a CLOSED chimney
+  (x ~2,500-3,400, |y| < ~650, z ~1,250 to 5,300+); from the lower lane the only way in is a rise of ~300-400 u
+  through a 190 u gap (x ~2,492-2,684, |y| ~336-650) right after the second wall, then ~300-450 u east over kill
+  *61 into the funnel. No surface launches you up there (flat floor; the lane's 48 deg ramp throws you inward under
+  *61's slab). 0/2,048 random held macros and 0/32 policy rollouts from the policy's own lane states finish; 3/2,080
+  got above z 1,260. Training's ceiling sat at 98.27-98.32% for ~1.4B steps. The field's route rises there as if the
+  player could fly (round 2's infeasible-field-route pattern).
+* Novel rows: d >= d_best and novel episodes never move d_best, so once real episodes stall below a gate whose far
+  side is unvisited, the band keeps placing rows PAST the gate: 20-29% of all training episodes were novel rows in
+  the chimney finishing in ~2.3 s (win rate 20-29%) while no real episode got there.
+
+**For the next round:**
+* Bare-resume the hand-on checkpoint (T cap 0.1 restored; pass --record-every 25e6 on a slow CPU box).
+* The gate needs a launch into the chimney. Generic candidates: novelty over (position x velocity-direction) cells, so
+  novel rows land in the VISITED lane with novel (upward) velocities and the rise is practised; or a faster arrival
+  under the second wall (a speed term once the line reaches the frontier). Do NOT expect T or per-decision noise to
+  find it (T 0.5, T 0.1 and front-temp all failed for ~1.4B steps).
+* Tools: autoresearch/analysis/sid_killprobe.py (kill/solid/free slices from the simulator's own trigger test - the
+  bsp AABBs hide the holes) and sid_macro_climb.py (random macros from the policy's own lane states).
+
+**Ops:** box 57138137 (RTX 3090 + EPYC 7302P 16-core, $0.599/h, machine 46086, Oklahoma), 01:20 -> 12:24 UTC;
+CPU-bound (84k steps/s training-only vs 226k on round 4's 5.1 GHz host). The market had nothing under the caps for
+the whole round (the operator raised the 3090-class caps to $0.65 mid-round; a 4090 + Threadripper at $0.457 sat
+just above the $0.45 cap). Stopping a run by pid and bare-resuming its ckpt_latest costs ~4 min (record gates +
+compile). Never pgrep -f a pattern that also appears in your own ssh command (use the known pid or the [t]rick).
+* Per-run bests (score.py): r5b3_main 98.052, r5b3_main2 98.254, **r5b3_t01 98.283**, r5b3_ft 98.220; 110/110 evals valid.
+  In r5b3_ft's last hour the training ceiling moved 98.34% -> 98.52% (a real episode into the chimney) - the gate
+  may be about to fall; the next round should watch the ceiling first.
+
+## Wrap-up (r5b3) - 2026-10-22 12:25 UTC
+
+* Final: RESULT.json `"final": true`, score **98.283** (r5b3_t01, eval traj_15949365248: 9 episodes, best 98.28%, median
+  87.79%, CP7, 0 finishes).
+* Hand-on checkpoint: /home/steam/ar/runs/r5b3/r5b3_t01/ckpt_latest.pt (16,375,611,392, md5 24632a5934ecb287a37bae2b382d14c2),
+  pulled after its trainer stopped and md5-checked. Also local: r5b3_main/ckpt_latest.pt (15,570,829,312),
+  r5b3_main2/ckpt_latest.pt (15,923,675,136), r5b3_ft/ckpt_latest.pt (17.21B, md5 e6ee8c6f...; front-temp in its config).
+* Code: every run of the round trained at the incumbent's code (3ea2710); this round's commits are notes, RESULT and the
+  two analysis scripts in autoresearch/analysis/.
+* Box 57138137 released at 12:24 UTC (`box.py status`: no box); ~11.1 h at $0.599/h.

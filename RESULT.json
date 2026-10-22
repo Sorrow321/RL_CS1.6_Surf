@@ -1,13 +1,13 @@
 {
  "agent": "r5b3",
  "round": 5,
- "final": false,
+ "final": true,
  "best": {
   "score": 98.283,
   "eval_file": "/home/steam/ar/runs/r5b3/r5b3_t01/traj_15949365248.jsonl",
   "run": "r5b3_t01",
   "step": 15949365248,
-  "ckpt": "/home/steam/ar/runs/r5b3/r5b3_t01/ckpt_latest.pt (16,375,611,392, md5 24632a59...; the run's last weights)",
+  "ckpt": "/home/steam/ar/runs/r5b3/r5b3_t01/ckpt_latest.pt",
   "recipe": [
    "bare resume of the incumbent",
    "--ckpt-every",
@@ -17,8 +17,9 @@
    "--unstuck-max",
    "0.1"
   ],
-  "resume_from": "incumbent r4b3_band15x/ckpt_final.pt (15,032,385,536) -> r5b3_main (12.5M evals) -> r5b3_main2 (25M evals) -> r5b3_t01 (bare resume of r5b3_main2's ckpt_latest 15,923,675,136 + --unstuck-max 0.1)",
-  "commit": "ec1ea69 (code = 3ea2710)"
+  "resume_from": "incumbent r4b3_band15x/ckpt_final.pt (15,032,385,536) -> r5b3_main (12.5M evals) -> r5b3_main2 (25M evals; bare resume of main's ckpt_latest 15,570,829,312) -> r5b3_t01 (bare resume of main2's ckpt_latest 15,923,675,136 + --unstuck-max 0.1)",
+  "commit": "ec1ea69 (code = 3ea2710; later commits are notes, analysis scripts and RESULT)",
+  "note": "ckpt_latest.pt = r5b3_t01's last weights, step 16,375,611,392, md5 24632a5934ecb287a37bae2b382d14c2 (426M steps after the best eval; T cap 0.1 in its config), pulled after the trainer stopped and md5-checked. Per-run bests: r5b3_main 98.052, r5b3_main2 98.254, r5b3_t01 98.283, r5b3_ft 98.220; 110/110 evals valid."
  },
- "summary": "Best 98.283 (r5b3_t01 at 15,949M, CP7; incumbent 94.668), warm, no new trainer code. Bare resumes of the incumbent took the greedy line through the 95% slit, the hole in kill *10, CP7, the first thin wall's gap and under the second wall into the lower lane (94.67 -> 98.05 in ~240M steps). Two changes paid: evals every 25M on this CPU-bound box (69k vs 42k steps/s) and --unstuck-max 0.1 (at the 0.5 cap the late line broke, medians 27-86%; at 0.1 every eval reached the lane, medians to 98%). Null so far: --front-temp 1 --front-band 0.004 at the lane. The last gate (measured): a rare ~300 u launch through a 190 u gap into the closed chimney above the finish - 0/2,048 random macros and 0/32 policy rollouts from the lane finish; training's ceiling flat at 98.3% for ~1.4B steps. Next: velocity-aware novelty (rows in the visited lane with novel upward velocities) or a faster underpass arrival."
+ "summary": "Best 98.283 (r5b3_t01 at 15,949M, CP7; incumbent 94.668), warm, no new trainer code. Bare resumes took the greedy line through the 95% slit, the hole in kill *10, CP7, the first thin wall's gap and under the second wall into the lower lane (94.67 -> 98.05 in ~240M steps). Paid: evals every 25M on a CPU-bound box (63-69k vs 42k steps/s) and --unstuck-max 0.1 (at the 0.5 cap the late line broke, medians 27-86%; at 0.1 every eval reached the lane, medians to 98%). Null: --front-temp 1 --front-band 0.004 at the lane (best 98.22, ~830M steps). The last gate (measured): a rare ~300 u launch through a 190 u gap into the closed chimney above the finish - 0/2,048 random macros and 0/32 policy rollouts from the lane finish; training's ceiling sat at 98.3% for ~1.4B steps and reached 98.52% (into the chimney) in the last hour. Next: bare-resume the hand-on ckpt; velocity-aware novelty so rows land in the visited lane with upward velocities; or a faster arrival under the second wall."
 }
