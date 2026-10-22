@@ -1185,6 +1185,12 @@ def main(argv=None, build_only: bool = False, device=None):
             ogf = load_goal_field(_gff)
             print(f"--goal-field-file {cfg['goal_field_file']} mirrored: the observation "
                   f"channels read it")
+        elif int(cfg.get("race_no_corner_cut") or 0):
+            # --race-no-corner-cut: MIRRORED the same way - the shaping field (the cached
+            # goalc_ bake) is what the potential channel, compass, pot-rate and gap read
+            ogf = build_goal_field(core, zones["end"], cell=gcell, no_corner_cut=True)
+            print("--race-no-corner-cut mirrored: the observation channels read the "
+                  "no-corner-cut field")
 
     if ogf is None:
         ogf = gf

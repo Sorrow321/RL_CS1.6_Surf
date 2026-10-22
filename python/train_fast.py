@@ -6981,6 +6981,17 @@ def main() -> None:
                          "the goal graph so the shaping gradient routes "
                          "around kill zones instead of through them (eval "
                          "progress still measured on the standard field)")
+    ap.add_argument("--race-no-corner-cut", type=int, default=None,
+                    choices=(0, 1),                # 0 = off; ckpt restores
+                    help="the SHAPING field is the goal graph WITHOUT corner cutting "
+                         "(surfgym.goalfield no_corner_cut: a diagonal wavefront step needs "
+                         "every intermediate voxel of its box free), so it cannot pass "
+                         "through one-voxel-thick slanted walls - sidistic's finish funnel "
+                         "read ~300 u shorter from outside than over its rim (r5b4). Baked "
+                         "once per map into <map>.goalc_<cell>.npz (~3 min on a GPU), then "
+                         "cached. The observation channels follow the shaping field as with "
+                         "--race-kill-aware; eval progress stays on the standard field. "
+                         "Config only when on; restored on resume; record_ckpt mirrors it.")
     ap.add_argument("--goal-field-file", default=None,   # ckpt restores
                     help="race: the SHAPING reward descends this GoalField npz (a "
                          "reachability-certified potential, tools/certify_field.py) "
@@ -7663,6 +7674,10 @@ def main() -> None:
         if args.race_kill_aware is None and ck_cfg.get("race_kill_aware") is not None:
             args.race_kill_aware = int(ck_cfg["race_kill_aware"])
             restored.append(f"race_kill_aware={args.race_kill_aware}")
+        if (args.race_no_corner_cut is None
+                and ck_cfg.get("race_no_corner_cut") is not None):
+            args.race_no_corner_cut = int(ck_cfg["race_no_corner_cut"])
+            restored.append(f"race_no_corner_cut={args.race_no_corner_cut}")
         if (args.respawn_reservoir is None
                 and ck_cfg.get("respawn_reservoir") is not None):
             args.respawn_reservoir = int(ck_cfg["respawn_reservoir"])
@@ -8628,6 +8643,12 @@ def main() -> None:
     if args.race_ground and (args.race_kill_aware or args.race_dist == "euclid"):
         raise SystemExit("--race-ground replaces the 3-D geodesic field: not with "
                          "--race-kill-aware or --race-dist euclid")
+    if args.race_no_corner_cut is None:
+        args.race_no_corner_cut = 0
+    if args.race_no_corner_cut and (args.race_ground or args.race_dist == "euclid"
+                                    or args.goal_field_file):
+        raise SystemExit("--race-no-corner-cut bakes the 3-D geodesic shaping field: not "
+                         "with --race-ground, --race-dist euclid or --goal-field-file")
     if args.sv_friction is None:
         args.sv_friction = 4.0   # GoldSrc stock; every run before the flag trained under this
     if args.sv_gravity is None:
@@ -10746,12 +10767,24 @@ def main() -> None:
                         goal_field = build_goal_field(core, goal_box,
                                                       cell=slot.goal_cell,
                                                       device=device)
-                if args.race_kill_aware:
+                if args.race_kill_aware and not args.race_no_corner_cut:
                     with D.rank0_first():
                         reward_field = build_goal_field(core, goal_box,
                                                         cell=slot.goal_cell,
                                                         device=device,
                                                         mask_kill=True)
+                if args.race_no_corner_cut:
+                    # --race-no-corner-cut: the shaping field without corner cutting
+                    # (combined with the kill mask when both are on)
+                    with D.rank0_first():
+                        reward_field = build_goal_field(
+                            core, goal_box, cell=slot.goal_cell, device=device,
+                            mask_kill=bool(args.race_kill_aware), no_corner_cut=True)
+                    if _i == 0:
+                        print("--race-no-corner-cut: the shaping field is the goal graph "
+                              "without corner cutting (cache "
+                              f"{Path(core.bsp_path).stem}.goal"
+                              f"{'k' if args.race_kill_aware else ''}c_{slot.goal_cell:g}.npz)")
             if args.race_field_blur > 0.0 and goal_field is not None:
                 from surfgym.goalfield import blur_goal_field
                 _same = reward_field is None or reward_field is goal_field
@@ -13840,6 +13873,9 @@ def main() -> None:
         meta["config"]["aug_coef"] = float(args.aug_coef)
     if args.goal_field_file:
         meta["config"]["goal_field_file"] = str(args.goal_field_file)
+    if args.race_no_corner_cut:
+        # written ONLY when set: a control run's config dump is unchanged
+        meta["config"]["race_no_corner_cut"] = 1
     if args.demo_file and float(args.demo_front_frac) > 0.0:
         # --demo-front-frac: dumped only when on (a flag-off run.json is the
         # control's byte for byte); a resume restores it
