@@ -2128,3 +2128,26 @@ AABBs of the kill triggers are broadphase only (zones.kill_zones' own warning); 
 * Ops: `box.py pull` re-tars every eval file each call (1.1 GB by 15.8B, ~60 files of 15-20 MB): replaced by an
   incremental scp of the new files (scratchpad ipull.sh). `pkill -f <pattern>` in a command line that contains the
   pattern killed my own shell once more (CLAUDE.md) - kill by pid.
+
+### 03:36 UTC: r5b4_t02 (T cap 0.2) - 98.236, still no basement exit; the KL anomaly is the PITCH head (measured)
+
+* r5b4_t02 (15,433M -> 15,752M, T 0.2): evals 98.1-98.2% best in most, medians 28-98% (still wobbly), best
+  **98.236** (15,698M, median 98.1%). No eval left the basement. T held the line no better than 0.5 did.
+* **What the greedy line does in the basement** (15,584-15,597M evals, 98.1% episodes): corridor (x 1,700-2,280,
+  z ~1,520 -> 1,320) -> down the passage under the last wall (x ~2,280-2,420, heading +x) -> lands on a ramp at the
+  basement floor (z ~770 at x ~2,900, vz -950 -> +74) -> east to x ~3,800-4,150 climbing to z ~1,000-1,100 ->
+  U-turn -> back west along y ~-450 climbing (vz +500..+840) -> passes x ~2,600 at z ~880-980 -> climbs back UP THE
+  PASSAGE into the corridor (x ~2,000-2,300, z 1,150-1,310) and dies there (~121.5 s). The field's way out is an
+  opening at x ~2,450-2,700, |y| ~250-400, z ~1,150-1,350 into the room above the funnel: the return leg of the loop
+  passes it ~250 u too low and ~100-200 u too far out in y.
+* **The approx_kl anomaly (rounds 3-5: 0.6-22 per update, "not explained")**: the pitch head's sigma sits on the
+  global floor exp(LOG_STD_MIN) = 0.0067 (no entropy term; pitch target = -20 + 50 tanh z deg, so 0.3 deg), and the
+  joint PPO log-ratio includes its Gaussian: a ~1 deg move of the pitch mean in one update is ~5 nats. NEW
+  `--pitch-sigma-min S` (commit b6eb04a; default off, bit-identical when off - tests/python/test_pitch_sigma_min.py,
+  7 tests incl. the trainer smoke, a resume restore, the record_ckpt audit and flag-off bit-identity vs the
+  pre-change trainer). **Measured on the box: resuming t02's 15,733M snapshot with `--pitch-sigma-min 0.05` took
+  approx_kl from 1.1-5.7 (t02's last updates) to 0.020-0.031 on the first updates.** So the reported KL - and the
+  clipping of the joint ratio PPO did on every row - was the pitch head. Whether learning gets faster is the arm.
+* **r5b4_ps05** (03:33): resume of r5b4_t02/ckpt_15733358592.pt (md5 e3998f36...) + `--pitch-sigma-min 0.05
+  --ckpt-every 1e8` (T cap 0.2 and everything else restored), evals every 12.5M. 30-min first test against t02's
+  own record from 15.43-15.75B (best 98.1-98.2, medians 28-98, no exit).
