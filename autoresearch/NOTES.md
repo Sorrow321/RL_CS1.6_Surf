@@ -2575,3 +2575,13 @@ basement and only near the funnel wall in shape).
   with the exploration put into the start state's direction: a ramp the policy only rode one way, ridden back.
 * Here it turns the policy's own fast, low east-leg states into launch-approach states it has never flown (the
   CEM above: from such states a committed steer finishes at ~1e-3), with the steer bursts kept to explore the launch.
+* r6b1_steer2 stopped at 17,557M (138M steps): 11 evals 97.95-98.22, best 98.221; ceiling unchanged.
+
+### r6b1_turn (16:19 UTC): incumbent + `--respawn-turn 180 --respawn-turn-front 0.01` + the steer bursts
+
+* Commit 5a6fad5 (box redeployed in 30 s now that pip is installed). Step line: `turn ~2,010/3,686 >97.0%` - ~55% of
+  the non-start spawn rows (most greedy-pool rows, the in-band novel and reservoir rows) are turned each refresh;
+  the band starts at 97.0% (nocut) progress, i.e. past CP7: the passage and the basement.
+* Read-out: the novel ceiling (98,260u = d 1,414 nocut, flat through round 5 and every arm so far) - a real episode
+  from a turned row that launches and crests moves it; then the greedy line (the lineage's gates went ceiling first,
+  greedy line 100-550M steps later).
