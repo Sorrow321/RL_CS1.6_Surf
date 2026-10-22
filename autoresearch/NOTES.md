@@ -2691,3 +2691,5 @@ basement and only near the funnel wall in shape).
 * 20:55 UTC: r6b1_turn5 (seed 5) - 9 CP7 evals (best 98.273), sliding from 17,476M; reset as r6b1_turn6 (seed 6).
 * 21:21 UTC: r6b1_turn6 (seed 6) - 8 CP7 evals (best 98.277), wobble from 17,469M; reset as r6b1_turn7 (seed 7). Box
   extended to cover the wrap-up.
+* 21:47 UTC: r6b1_turn7 (seed 7) - 98.347 again (17,438M; ties turn4's best, 0.002 under the incumbent), CP7 with
+  brief dips; kept running.
