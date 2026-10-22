@@ -2523,3 +2523,24 @@ pattern that is in your own command line.
   (1 - B) x the reservoir's deepest), kept in place, heading turned and speed scaled as above, clocks zeroed,
   real episodes; placed after the novel / backward-mix quotas, before the greedy tail. Unlike the greedy pool
   it always holds the basement (the reservoir's deepest states are there whatever the last greedy eval did).
+
+### 16:15 UTC: r6b2_fp - the first REAL finish of the lineage (novel ceiling -> d0), from perturbed frontier rows
+
+* r6b2_gpt (17.90-18.28B, 61 evals): best 98.308; no chamber entry in an eval. Stopped; weights on the box as
+  runs/r6b2_gpt/ckpt_stop.pt (18,282,446,848, md5 751fdcbb...), also local.
+* Exploration yield (ANALYSIS ONLY: the raw core, random held actions - two macros of a world yaw = velocity
+  heading + U(-180, 180) and random fwd / side keys, 4 s - from gpt's frontier-band reservoir rows, 16,384 each):
+  unperturbed rows **0 chamber entries**; turned U(-90, 90) and x U(1.0, 1.5) **58 (0.35%)**, max z 1,558;
+  turned U(-180, 180) and x U(1.0, 1.8) 71 (0.43%), max z 1,538; none over the rim. So the line's own basement
+  states cannot reach the chamber at all; nudged in heading and energy they can, low. Of the perturbed rows 88%
+  lie in the basement, 4.9% under a hole, 0.03% in the scripted ideal state.
+* **r6b2_fp** (16:02 UTC): resume of gpt's ckpt_stop + `--respawn-front-perturb 0.25` (band 0.005, turn 90, speed
+  1.0 1.5) `--respawn-greedy-turn 0 --respawn-greedy-speed 1 1` (greedy rows unperturbed again)
+  `--respawn-novel-frac 0.2 --respawn-backward-mix 0.1` (front-temp 1 / 0.005 restored). Pool per iteration:
+  410 starts, 737 novel, 369 backward-mix, 922 front-perturb (from 252 band states, d <= 2,486 u), 1,106 greedy.
+* **At 18,317,574,144 (~30M steps in) the novel ceiling jumped 98,260 -> 99,675 u = d0: a REAL episode reached
+  d = 0, i.e. the finish box.** Real episodes here are map starts, reservoir, greedy and front-perturb rows (novel
+  and backward-mix rows never move the ceiling), so this is almost certainly a front-perturb row: basement ->
+  hole -> chamber -> over the rim -> funnel -> finish. One event (the ceiling is a minimum); the trainer has no
+  per-source finish counter. Reservoir deepest unchanged (2.01%; a finish within ~2 s of the basement leaves
+  only basement states >= 2 s before its end). Evals so far 98.06-98.14 (the line wobbling; no entry yet).
