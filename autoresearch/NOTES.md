@@ -2670,3 +2670,20 @@ Standing-hull solid tests (`core.trace(p, p, hull=0).startsolid`) and kill hulls
 * **r6b3_front5** (18:2x): resume of front4's checkpoint (18,539,872,256, md5 95002530...) + `--respawn-front
   0.4 --ckpt-every 1e8` (crossing rule, band 0.02, advance 0.0015 restored; no SIL). At 0.4 the frontier block
   also overwrites ~700 of the novel block's rows (the trivial-win rows).
+
+### 18:57 UTC: probe - the policy cannot repeat its own crossings; front5 regressed; r6b3_front6 (finish-gated captures)
+
+* Probe (local CPU, ANALYSIS ONLY, front4's checkpoint): 364 crossing windows re-aligned from its pool (FIFO
+  wrapped at 21,930 added states; window starts x p50 3,222, z p50 1,028, |v| p50 900, E p50 1,522), record_ckpt
+  --spawn-states from the window STARTS (2 s before each crossing), 10 s cap: greedy 0/12 and sampled (keys temp
+  1.2) 0/12 entered the room (best d 1,973-2,160, most alive in the basement at 10 s). The captured crossings
+  are rare lucky arrivals, mostly at low energy, not a repeatable maneuver from those states.
+* r6b3_front5 (frontier share 0.4, 18,540M -> ~18,712M): the greedy line regressed - its last five evals end at
+  96.7%: episodes fall down the deep pit after the chimney (best at ~110 s at (1,440, -320..-383, 1,180-1,240),
+  v (0, -1,040, -1,350)) and die at its bottom instead of taking the ramp back up (fsil showed the same). Less
+  training on the main line costs earlier gates. Stopped.
+* NEW `--respawn-front-finish 1` (commit d953e85): a captured window is held per env and joins the pool only
+  if that episode FINISHES (the last capture before the finish); an inherited crossing pool is kept as the
+  bootstrap. The pool's capture counter now counts finishing climbs.
+* **r6b3_front6** (18:5x): resume of front4's checkpoint (18,539,872,256, md5 95002530...) + `--respawn-front-finish 1
+  --ckpt-every 1e8` (frontier 0.15, crossing rule, band 0.02, advance 0.0015 restored), 3e9 budget.
