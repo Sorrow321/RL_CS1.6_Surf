@@ -2249,3 +2249,21 @@ AABBs of the kill triggers are broadphase only (zones.kill_zones' own warning); 
   box) + `--unstuck-max 0.6 --ckpt-every 1e8` (keys-only temperature cap 0.2 -> 0.6; T rises to it within ~80M steps
   since the stuck counter is far past 200M). The score is the max over evals and the 98.2% episodes survived T 0.5
   in r5b4_main, so more key exploration in the basement costs little; with the pitch floor the KL stays sane.
+
+### 06:21 UTC: T 0.6 hurts; Go-Explore from own states tops out in the room; the room's EAST WALL IS A RAMP
+
+* **r5b4_t06** (keys T cap 0.6, 16,764-16,990M): within ~230M steps the best eval episodes fell from 98.2% (CP7,
+  the basement) to 96.7-97.4% (CP6 - the greedy line stops in the corridor). Stopped; the lineage's high-T lesson
+  again. **r5b4_ncy** (06:13): bare resume of r5b4_ncx at 16,764,108,800 (T cap 0.2, nocut field, pitch floor).
+* **Go-Explore in the simulator** (scratchpad macro/goexplore.py; archive cells 64 u x vz sign x |v|/400, rooted at
+  1,634 of the policy's own basement states, count + frontier-biased selection, random held macros, 200 iterations x
+  1,024 x 1.6 s, 25,764 cells): no finish, no rim crossing; best corrected-field d 1,990 -> 1,745 (plateau by
+  iteration ~20), highest state in the room z 1,353. Same place as training's ceiling.
+* **The room's geometry, completed** (hull maps x 2,400-5,160): the room (above the basement, x 2,460-3,420, |y| <=
+  680, floor = kill layer at ~1,200 except the two holes at x 2,490-2,670, |y| 400-680 and the funnel) is bounded on
+  the EAST by a SLOPED wall: x ~3,240 at z 1,250 -> ~3,300 at 1,300 -> ~3,360 at 1,350 -> ~3,420 at z 1,400-1,550,
+  i.e. a ~40 deg surface facing west-up = a surf ramp. Likely route (not verified): up through a hole heading EAST,
+  across the room at z ~1,300, up the east ramp past the funnel rim (z ~1,560), curve back west over the funnel
+  (x 2,760-3,150, |y| <= 190) and drop in. That explains why naive steering never climbs: the height comes from
+  surfing the east ramp, and both the greedy loop's passes under the holes head the wrong way (the first pass falls
+  heading east, the return leg rises heading west into the room's west wall).
