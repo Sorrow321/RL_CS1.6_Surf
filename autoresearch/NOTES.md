@@ -2181,3 +2181,19 @@ safety classifier; simulator probes from the policy's own states answered the sa
   1,156-1,252 between the wall and kill *61's west edge x ~2,764 at |y| ~500), then east above *61 into the
   funnel and down the shaft. In the lower lane the field gets worse going east (d ~1,840 at x 2,600 ->
   ~2,000 at x 2,900, z ~1,000) and better going up (d ~1,520-1,720 at z 1,350): no deceptive dip.
+
+### 05:25 UTC: r5b3_main2 at 69k steps/s overall (was 42k); the last gate is a climb out of the lower lane
+
+* r5b3_main2 (evals every 25M) 15,571-15,672M in ~24 min: **~69k steps/s overall vs 42k** with 12.5M evals.
+  Evals: 86.788 (the resume eval: 9/9 at or before the 86.8% gate), **97.140 (15,597M, CP7)**, 96.744, 96.725.
+  T 0.50 (cap), stuck 399M; training ceiling 96,092 u (98.29%); training win 18-20% (novel rows in the upper
+  area east of the second wall, ~2.5 s to the finish: d >= d_best puts them past the hard part, and novel
+  episodes never move d_best, so the band keeps placing them there).
+* The newest checkpoint's 40 deepest reservoir states (97.96-98.24%) are at x 2,445-2,846, y 229-486, z 900-1,154,
+  speeds 0-1,100: REAL training episodes already pass under the second wall and then stay in the lower lane.
+* Geometry east of the wall (y-z slices at x 2,560 / 2,650, x-z slices at y 160 / 400; the second wall has no
+  gap at its top - it runs into the ceiling at z ~1,585): the middle (|y| <~336) of the lower lane is roofed by
+  a slab at z ~1,160 with kill *61 on it (z ~1,176-1,224); the OUTER lanes (|y| ~336-704) are open to the sky,
+  each with a ~48 deg surf ramp on its inner side (from z ~840 at |y| ~496 up to ~1,020 at |y| ~336). So the
+  last gate is a surf climb out of the outer lane (>= ~270 u up, then east over *61 to the funnel at
+  x ~2,750-2,900): a skill the policy has, at a new place; the field pays it (d 1,840 -> ~1,520 going up).
