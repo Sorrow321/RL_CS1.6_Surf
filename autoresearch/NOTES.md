@@ -2267,3 +2267,13 @@ AABBs of the kill triggers are broadphase only (zones.kill_zones' own warning); 
   (x 2,760-3,150, |y| <= 190) and drop in. That explains why naive steering never climbs: the height comes from
   surfing the east ramp, and both the greedy loop's passes under the holes head the wrong way (the first pass falls
   heading east, the return leg rises heading west into the room's west wall).
+
+### 06:43 UTC: r5b4_ncy - 98.349, a greedy episode up through the basement hole; the surf-macro search also stalls
+
+* r5b4_ncy (T cap 0.2 again, 16,764-16,984M): the line is consistent (medians 98.1% in most evals); **98.349**
+  (16,903M) - episode 5 rose through the -y hole to (2,631, -351, 1,220) at 123.7 s, above the room's floor, and died
+  on its kill layer at the hole's edge; 98.272 (16,878M). First greedy episode out of the basement.
+* Surf-macro Go-Explore (small yaw offsets 0-30 deg with the matching strafe key, 75%; free turns 25%), seeded with the
+  first archive's 4,000 best cells, 220 iterations: no finish; best d 1,699; the highest room states (z ~1,353) sit
+  right above the -y hole at ~100 u/s (they rose slowly through it and stalled); one state ever got east of x 3,100
+  (z 1,222). Naive simulator search does not produce the fast eastward rise across the room to its east ramp.

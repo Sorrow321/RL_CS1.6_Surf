@@ -3,12 +3,14 @@
  "round": 5,
  "final": false,
  "best": {
-  "score": 98.249,
-  "eval_file": "/home/steam/ar/runs/r5b4/r5b4_ps05/traj_16174284800.jsonl",
-  "run": "r5b4_ps05",
-  "step": 16174284800,
-  "ckpt": "/home/steam/ar/runs/r5b4/r5b4_ps05/ckpt_latest.pt",
+  "score": 98.349,
+  "eval_file": "/home/steam/ar/runs/r5b4/r5b4_ncy/traj_16903045120.jsonl",
+  "run": "r5b4_ncy",
+  "step": 16903045120,
+  "ckpt": "/home/steam/ar/runs/r5b4/r5b4_ncy/ckpt_latest.pt",
   "recipe": [
+   "--race-no-corner-cut",
+   "1",
    "--pitch-sigma-min",
    "0.05",
    "--unstuck-max",
@@ -18,9 +20,8 @@
    "--record-every",
    "12.5e6"
   ],
-  "resume_from": "r5b4_t02/ckpt_15733358592.pt (md5 e3998f36...) <- r5b4_main/ckpt_15432941568.pt <- incumbent r4b3_band15x/ckpt_final.pt (15,032,385,536)",
-  "commit": "b6eb04a",
-  "ckpt_note": "r5b4_ps05's last weights, step 16,186,867,712, md5 b0b6b4004a75eff9319f2d022190d46c (pulled by scp, md5-checked)"
+  "resume_from": "r5b4_ncx/ckpt 16,764,108,800 (md5 10d7ed86...) <- r5b4_nc <- r5b4_ps05 <- r5b4_t02 <- r5b4_main snapshot 15.433B <- incumbent r4b3_band15x/ckpt_final.pt (15,032,385,536)",
+  "commit": "686f2ed"
  },
  "summary": "Bare resume of the incumbent (94.668) -> 98.231 (CP7) at 15.45B; T cap 0.2 -> 98.236; NEW --pitch-sigma-min 0.05 (the rounds-3-5 approx_kl anomaly was the pitch head on the sigma floor: kl 1-22 -> 0.02) -> 98.249 (16,174M, r5b4_ps05). 0 finishes: the greedy line loops in a basement under the last wall and must climb ~560 u through a hole into the room above the finish funnel; 3,072 random-macro rollouts from its own basement states never got over the rim. NEW --race-no-corner-cut (the 26-neighbour goal field leaked through the funnel's one-voxel slanted walls, a false minimum against the outer wall); r5b4_ncx trains on it now."
 }
