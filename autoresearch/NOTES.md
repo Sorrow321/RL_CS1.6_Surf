@@ -2378,3 +2378,35 @@ pattern that is in your own command line.
   (16,186,867,712), r5b4_main/ckpt_15232663552.pt.
 * Code: commit 686f2ed (--pitch-sigma-min, --race-no-corner-cut, record_ckpt mirrors) is the last code change; later
   commits are notes. Box 57138676 released at wrap-up.
+
+## Round 6, branch r6b3 - 2026-10-22 13:53 UTC
+
+### Box
+
+* 13:46 UTC: box 57219589 (RTX 5080 + 7950X3D, $0.40/h, machine 150677, Massachusetts) came up READY, but
+  deploy failed at gpu_health: the GPU sat at **100% util, 250 W, 670 MiB used with no process in our
+  container** (a foreign tenant on the card). Blocklisted by hand in tools/bad_hosts.json (machine 150677,
+  host 696527: `vast_pick.py --block` only takes gpu_capped / cpu_bound / no_cuda / unreliable / network as
+  reasons, and my `--reason foreign_tenant` call failed while the release in the same command line ran -
+  record the block FIRST and check it succeeded). Released 13:49; a `box.py rent` retry loop runs.
+
+### The incumbent's final stretch, measured on its own best eval (traj_16903045120, ANALYSIS ONLY)
+
+* Mechanical energy per unit mass in height units, E = z + |v|^2 / 1,600 (g = 800), along the 98.35%
+  episode (ep 5): wall slit 108.95 s E 3,288 (z 2,364, |v| 1,216); chimney 110.2-110.7 s 3,118 -> 2,940
+  (wall bounces); deep pit landing 111.2-111.7 s 2,819 -> 2,575; corridor 113.5-115.5 s 2,380-2,500;
+  basement entry landing 115.95-116.45 s -> 2,127 (vz -893 -> -84); first loop's west leg 118.2 s 2,106
+  (|v| 1,365 at z 941) - the first U-turn at x ~3,800 cost almost nothing; up the passage and back
+  1,836; second loop 122.2 s 1,452.
+* ep 5 is the one that rose through the -y hole: on its SECOND west leg it climbed toward the passage,
+  hit a surface at x ~2,390-2,405 that flipped vx (-488 -> +495 in 0.25 s with vz staying +490-560: a
+  collision, not a strafe - 3,000 u/s^2 is the air-strafe ceiling) and came back EAST RISING through the
+  -y hole at (2,502, -384, 1,175), |vh| 515 - and died on the room's kill floor at the hole's edge.
+* Round 5's feasibility probe: leaving a hole eastward at 900 u/s nothing crosses the funnel rim, at
+  1,300 15% do, at 1,700 40% (1/1,024 random-macro finishes), at 2,100 52% (4/1,024). With E 2,106 on the
+  first west leg, a lossless reversal would leave the hole (z ~1,230) at ~1,180 u/s; the corridor's
+  E 2,400-2,500 would give ~1,370-1,430 if nothing were lost on the way in. So the greedy line is near
+  but under the speed the climb needs, and it reaches the reversal only after loops that bleed energy.
+* Perfect air strafing adds 900 to |v|^2 per 10 ms tick whatever the speed (wishspeed cap 30), i.e.
+  +56 of E per second of strafing - a 10 s stretch of good strafing is +560 of E. With time-pen 0 nothing
+  in the reward asks for it.
