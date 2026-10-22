@@ -2631,3 +2631,13 @@ pattern that is in your own command line.
   (front-temp 1 / 1% restored): the band now spans the chimney, the deep dip, the corridor, the passage, the
   basement and the holes (d <= ~4,700 u, from ~110 s of the line), so the critic can learn what energy is worth
   along the stretch where the line loses it. The last research arm of the round.
+
+### 18:52 UTC: r6b2_fp6 at +230M - no change in the line's energy
+
+* r6b2_fp6 (band 3%: d <= ~4,770 u, 11,808 band states by 19.54B; x1.3-1.8, turn 60, F 0.3), 19.33-19.56B: 28,997
+  front-perturb episodes, 5 finished; greedy evals best 98.269, the basement reached by only 62 of 333 eval
+  episodes (fp5: 109 of 279 - the boosted rows in the chimney region seem to cost the line some CP6 failures);
+  **basement-entry energy unchanged** (median h_E 2,342, p90 2,446).
+* Over the round, nothing has changed the greedy line's basement energy (2,310-2,396 median in all nine runs);
+  the critic-driven route (practice the end at make-it energy so that energy acquires value upstream) has not
+  shown a first sign in ~1.3B steps of front-perturb training.
