@@ -2299,3 +2299,18 @@ safety classifier; simulator probes from the policy's own states answered the sa
   successes held a side key (strafe outward) right after leaving the ramp. So the line is ~50-100 u
   from going up a hole; the attempts mostly survive afterwards (median 28.6 s to the episode end), so
   they sit in the greedy pool's best-progress window, not in the death window.
+
+### 07:10 UTC: arm r5b2_sp = `--speed-pot 5` (potential-based speed shaping)
+
+* Local probe of r5b2_vs's final policy from the same 24 ramp states: 1.5x speed 0/24 into the shaft,
+  1.0x 1/24 (= x1's) - 300M of boosted frontier rows did not teach the launch.
+* r5b2_vsx (vs's bare continuation, 16.92 -> 17.16B): evals 98.13-98.23 (no new best), stopped at
+  17,158,897,664 (md5 8ca9225e...).
+* **r5b2_sp** (07:10): that checkpoint + `--respawn-novel-vrand 0 --speed-pot 5 --critic-warmup 20`,
+  300M first. `--speed-pot K` (ledger 2026-10-04, skate_laby: K 10 took a mature line 79.70 -> 75.96 s)
+  pays K x (gain in |v_xy|)/1000 per call and charges losses - it telescopes to K x (|v| end - |v|
+  start)/1000 per episode. Why here: the finish needs a launch with vz >= ~650 at the hole, the line
+  arrives with ~1,100-1,400 u/s and launches at ~+500; a dense term for carrying speed through the
+  final section and for gaining it on the room's ramps (pumping) is the generic lever (no map
+  quantity; one constant). K 5: a 300 u/s loss costs 1.5 units (1% of progress = 1 unit). The banked
+  score cannot drop; a disrupted line only costs eval samples.
