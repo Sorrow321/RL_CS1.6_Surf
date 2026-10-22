@@ -2657,7 +2657,7 @@ pattern that is in your own command line.
   Leading indicator: the greedy line's basement-entry h_E (2,310-2,396 in every run so far); also the line's
   health (basement-mode share) and the evals.
 
-### 19:25 UTC: MILESTONE - the greedy line enters the funnel chamber (98.329, r6b2_tp1); box extended
+### 19:26 UTC: MILESTONE - the greedy line enters the funnel chamber (98.329, r6b2_tp1); box extended
 
 * **r6b2_tp1 eval 19,723M: score 98.329** (best 98.33%, median 98.0%). Episode 3: west along the -y ramp at
   ~1,200 u/s (116.5-116.9 s), turns UP the face (117.0-117.5 s: vy +101 -> +661 inward, vz +103 -> +695), rises
