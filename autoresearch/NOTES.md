@@ -2683,3 +2683,5 @@ basement and only near the funnel wall in shape).
   evals than waiting it out. r6b1_turn3 (18:50 UTC): seed 3, 54-episode evals every 6.25M, turn + steer kept.
 * 19:16 UTC: r6b1_turn3 (seed 3) - 7 CP7 evals (98.179-98.283, 54 episodes each) over 17,419-17,457M, CP6 from
   17,463M; reset to the incumbent as r6b1_turn4 (seed 4). An eval cycle (6.25M steps + a 54-episode eval) is ~2 min.
+* 19:38 UTC r6b1_turn4 (seed 4): 11 evals, all CP7 so far (frontier 96,005-96,152u nocut); scores 98.29-98.31 and
+  **98.347 (17,469,800,448)** - 0.002 under the incumbent's 98.349 - and 98.313 (17,482M). Kept running (still CP7).

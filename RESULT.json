@@ -3,11 +3,11 @@
  "round": 6,
  "final": false,
  "best": {
-  "score": 98.308,
-  "eval_file": "/home/steam/ar/runs/r6b1/r6b1_turn2/traj_17532715008.jsonl",
-  "run": "r6b1_turn2",
-  "step": 17532715008,
-  "ckpt": "/home/steam/ar/runs/r6b1/r6b1_turn2/ckpt_latest.pt (pulled at wrap-up)",
+  "score": 98.347,
+  "eval_file": "/home/steam/ar/runs/r6b1/r6b1_turn4/traj_17469800448.jsonl",
+  "run": "r6b1_turn4",
+  "step": 17469800448,
+  "ckpt": "/home/steam/ar/runs/r6b1/r6b1_turn4/ckpt_latest.pt (pulled at wrap-up)",
   "recipe": [
    "--respawn-turn",
    "180",
@@ -25,9 +25,9 @@
    "3",
    "15",
    "--eval-eps",
-   "27",
+   "54",
    "--seed",
-   "2"
+   "4"
   ],
   "resume_from": "incumbent r5b4_ncy/ckpt_latest.pt (17,418,944,512)",
   "commit": "3d03c42"
