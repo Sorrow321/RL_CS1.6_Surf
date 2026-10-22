@@ -2006,3 +2006,49 @@ safety classifier; simulator probes from the policy's own states answered the sa
 * Code: the best lineage ran at commit 3ea2710 (--eval-patience, --eval-parallel, --front-temp,
   --respawn-greedy-stuck; flag-off bit-identical to the round's start); later commits are notes and config.
 * Box 57057785 released at 00:01 UTC (`box.py status`: no box).
+
+## Round 5, branch r5b2 - 2026-10-22 01:11 UTC
+
+### Box
+
+* 01:00-01:11 UTC: no offer passes box.py's caps (cheapest single-GPU offers under the offer query:
+  4090 $0.508 vs cap 0.45, 5080 $0.561 vs 0.40, 3090 $0.599 vs 0.30, 5090 $0.802 vs 0.60). A
+  `box.py rent` retry loop runs every 3 min.
+
+### The incumbent's best eval, read episode by episode (analysis only)
+
+* traj_14991491072 (score 94.668): the 9 greedy episodes start at the same point with the
+  eval's random initial view yaw (347-355 deg) and diverge from tick ~50. Bests: 94.67% (ep 8,
+  dies at 110.2 s), 91.70% (ep 6: stops at 104 s at (-1,340, ~0, ~2,500), hops in place until
+  patience cuts it at 134 s), 60.56% x4 (the round-4 ramp-end stop at ~72 s, (-670, -45, 6,990),
+  then die ~4 s later), 34.4% x2 (die at 42.5 s at (-2,000, 180, 9,763), round 3's old stop),
+  1.6% (ep 2: stuck at x ~9,224 near the start for 59 s). So the line is fragile at four
+  earlier points; finish_frac (10 x finishes/9) will need all of them robust.
+* Training at the end of round 4 already FINISHES now and then: race/success_rate 0.4-1.4% in
+  the last ~110M steps, race/finish_s 2.6-7.3 s (spawned within ~5,000 u of the goal - reservoir
+  or novel rows near the frontier). Reservoir deepest states 94.5% at (155, 578, 2,072) and
+  (-8, -766, 1,939) (both y lanes); novel d_best 4,716 u (ceiling 95.18%); unstuck T 0.15.
+
+### What is left: the last 5.3% (bsp kill volumes via hull_probe + the goal field)
+
+* **Gate A, the slot over kill plate *28** (z 2,064-2,066, x ~200..1,250 at |y| > 500; its left
+  edge is a chevron reaching x ~-200 at y 0; its right edge is notched back to x ~800 at y 0).
+  Ceiling: kill plate *52 (z 2,416-2,420, x -288..1,040) / *32 (sloped, x -880..-288). The
+  hull fits between z ~2,102 and ~2,380. ep 8 came in from the west under the plate's level at
+  600-900 u/s (peak z 2,106 at x -121, 109.2 s), fell, and died: it never got into the slot.
+  The field's route: (112, -592, 2,024) -> (304, -400, 2,216) -> (496, -272, 2,312) -> over the
+  plate -> past its right edge (880, -272, 1,992) -> down beside a kill-capped pillar (func_wall
+  *157 / *158, kill *40 / *59 / *10) -> (1,616, -528, 1,352) -> CP7 (sgcp_7, x 1,632-1,648,
+  z 1,312-1,600) over kill plate *50 (z 1,312).
+* **Gate B, the finish shaft**: kill plates *61 (z 1,200, x 2,464-3,424, |y| <= 704) and *3
+  (z 656-672, x 1,984-4,208) each have ONE hole of ~160 x 160 u (hull origin) at x ~2,880-3,040,
+  |y| < 80, one above the other; the finish box (x 2,872-3,048, |y| <= 88, z 176-184) is at the
+  shaft's bottom. The field's route: (2,736, -144, 1,384) -> (2,896, -48, 1,320) -> straight down.
+  A precision drop: arrive over the hole, brake in the air (~30 u/s per tick), fall ~1,100 u.
+
+### Plan
+
+* Arm 1 = the incumbent's bare continuation (every flag restored: stall_eps 5, keys-only T cap
+  0.5, greedy rows 0.3 / 0.25-2.0 s + stuck 200, band 0.15, ratchet, time-pen 0, patience 30,
+  side-by-side evals), evals every 12.5M, snapshots every 1e8 - the lineage moved a gate every
+  ~100-400M steps in round 4; it is also the control for anything later.
