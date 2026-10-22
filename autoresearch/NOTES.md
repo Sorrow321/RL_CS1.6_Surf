@@ -2380,3 +2380,16 @@ safety classifier; simulator probes from the policy's own states answered the sa
   not a reusable gesture - a learned policy needs fine control at exactly those states, or a search at
   decision time (planning in the simulator from the current state; CLAUDE.md 0c's planner exists for
   commitment problems like this one).
+
+### 11:57 UTC: r5b2_m end (19.76B); box released
+
+* **r5b2_m** (17.159 -> 19.759B, 2.6B steps, 172.6k steps/s average, the incumbent's config): 207 evals,
+  best **98.282** (17,197M), 134 reach the room (>= 98%), 63 stop at the 96.7% pillar drop, 10 earlier.
+  Room statistics: 371 of 1,863 eval episodes reach the room (entry |v| median 1,382 u/s), 106 launch
+  attempts (max vz median 508 / p90 738; max |y| p90 381), 0 shaft entries, 0 finishes. Training ceiling
+  96,350 -> 96,398 u (98.60%), unstuck T at its 0.5 cap throughout (no +500 u eval best since 15.4B).
+  ~3.0B steps at the hole gate in this lineage this round, the line unchanged at it.
+* Final checkpoint pulled and md5-checked: /home/steam/ar/runs/r5b2/r5b2_m/ckpt_final.pt
+  (19,759,366,144, md5 e12f8130ed0892d2a0d8c6f2e8c36a1a) - the hand-on checkpoint (the best eval's run).
+  Its config = the incumbent's (vrand off, no speed-pot, respawn-speed 0.9-1.1); a bare resume restores it.
+* Box 57141550 released at 11:56 UTC (box.py status: no box).

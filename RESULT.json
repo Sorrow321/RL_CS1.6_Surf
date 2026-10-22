@@ -7,7 +7,7 @@
   "eval_file": "/home/steam/ar/runs/r5b2/r5b2_m/traj_17197170688.jsonl",
   "run": "r5b2_m",
   "step": 17197170688,
-  "ckpt": null,
+  "ckpt": "/home/steam/ar/runs/r5b2/r5b2_m/ckpt_final.pt",
   "recipe": [
    "--record-every",
    "12.5e6",
@@ -17,7 +17,7 @@
    "0"
   ],
   "resume_from": "r5b2_vsx ckpt_latest (17,158,897,664, md5 8ca9225e) <- r5b2_vs <- r5b2_x2 <- r5b2_x1 final (16.54B) <- incumbent r4b3_band15x (15.03B)",
-  "commit": "53ac3df",
+  "commit": "402df14",
   "best_progress_pct": 98.28,
   "median_progress_pct": 98.02,
   "finishes": 0,
