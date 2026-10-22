@@ -2283,3 +2283,8 @@ safety classifier; simulator probes from the policy's own states answered the sa
   up at T 0.1; round 4's null with this flag was at a gate that needed a multi-second commitment. The banked
   98.283 cannot be lost (the score is a max over evals). Read-out: the training ceiling past 98.32% (a real
   episode out of the lane), then the greedy line.
+
+### 08:54 UTC: r5b3_ft (front-temp) at +100M - no climb yet
+
+* Evals 16,376-16,452M: 96.85 (the resume eval), 98.11, 98.13, 86.5; training ceiling 96,125 u (98.32%) flat;
+  fronttemp 4-5% of envs in the band (> 97.8%); training win 23-27% (novel rows past the climb).
