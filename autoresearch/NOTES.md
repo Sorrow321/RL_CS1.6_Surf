@@ -2670,3 +2670,6 @@ basement and only near the funnel wall in shape).
 * Incumbent + `--respawn-turn 180 --respawn-turn-front 0.01 --respawn-turn-frac 0.5` + the steer bursts + `--seed 2`
   + 27-episode evals every 12.5M. Read-out: the novel ceiling (d 1,414 nocut since round 5). Plan: keep it while the
   ceiling has a chance (~2-3 h); if it has not moved by ~20:30 UTC, bank evals over fresh seeds to the wrap-up.
+* 18:16 UTC r6b1_turn2 (17,419-17,558M): evals 98.250, 98.273, 98.215, then a CP6 wobble (96.465, 96.812, 97.105,
+  97.420, 96.727, 96.796) and back: **98.308 (17,532M, the round's best so far)**, 98.250, 98.230. The line wobbles out
+  and back by itself, as the correction says. Novel ceiling 98,260u unchanged; turned rows ~890 per refresh.

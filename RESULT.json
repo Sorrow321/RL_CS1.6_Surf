@@ -3,12 +3,18 @@
  "round": 6,
  "final": false,
  "best": {
-  "score": 98.27,
-  "eval_file": "/home/steam/ar/runs/r6b1/r6b1_steer/traj_17432051712.jsonl",
-  "run": "r6b1_steer",
-  "step": 17432051712,
-  "ckpt": null,
+  "score": 98.308,
+  "eval_file": "/home/steam/ar/runs/r6b1/r6b1_turn2/traj_17532715008.jsonl",
+  "run": "r6b1_turn2",
+  "step": 17532715008,
+  "ckpt": "/home/steam/ar/runs/r6b1/r6b1_turn2/ckpt_latest.pt (pulled at wrap-up)",
   "recipe": [
+   "--respawn-turn",
+   "180",
+   "--respawn-turn-front",
+   "0.01",
+   "--respawn-turn-frac",
+   "0.5",
    "--steer-eps",
    "0.03",
    "--steer-front",
@@ -17,10 +23,14 @@
    "90",
    "--steer-hold",
    "3",
-   "15"
+   "15",
+   "--eval-eps",
+   "27",
+   "--seed",
+   "2"
   ],
   "resume_from": "incumbent r5b4_ncy/ckpt_latest.pt (17,418,944,512)",
-  "commit": "7257b22"
+  "commit": "3d03c42"
  },
  "summary": "Round 6. WR demo (analysis only): the finish is a launch off the basement's west wall at ~1,500 u/s low on the return leg -> vz ~+1,000 -> up a hole -> crest z 1,600 -> funnel. Bench: incumbent finishes 4/6 from in-hole states, 0/28 from launch states; CEM (measurement): policy + committed yaw steer finishes ~1e-3 from the human's launch state, never from its own states (only a low-energy pop-up, 98.5% on the leaky score field). Arms: --steer-eps (NEW, frontier steer bursts) flat 98.1-98.27; --speed-pot 5 negative (line back to CP6, 96.8%). Now r6b1_turn: + --respawn-turn 180 (NEW: frontier spawn rows turned; the policy's own east leg reversed = the human's return leg)."
 }
