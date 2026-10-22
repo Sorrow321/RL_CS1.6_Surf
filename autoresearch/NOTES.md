@@ -2373,3 +2373,10 @@ safety classifier; simulator probes from the policy's own states answered the sa
   yaw sigma of 0.07 - unreachable by per-decision noise, rare even for uniform held bursts (ez's
   distribution is this search's: ~5e-6 per rollout at 1.0x, ~0.2% at 1.4x). So the launch is a
   specific large-offset manoeuvre, not a refinement of what the line already does.
+* **Does the launch generalise?** The two found plans, perturbed (yaw +-15 deg, durations +-0.06 s, keys
+  flipped with p 0.1, half mirrored for the other lane), applied from ALL 156 attempt states (80k
+  rollouts): shaft 1.45% (vs 0.58% random), but fast entries only 17 (0.021%), from 4 of 156 start states
+  (13 from the second plan's family, none mirrored). The high launch is a precise, STATE-SPECIFIC trick,
+  not a reusable gesture - a learned policy needs fine control at exactly those states, or a search at
+  decision time (planning in the simulator from the current state; CLAUDE.md 0c's planner exists for
+  commitment problems like this one).
