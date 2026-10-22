@@ -2199,3 +2199,16 @@ AABBs of the kill triggers are broadphase only (zones.kill_zones' own warning); 
   NOTE for any later resume of an r5b4_nc checkpoint on a NEW box: the field file is not in the maps tarball -
   rebuild it first: `python3 tools/bake_nocut_field.py --map maps/surf_src_sidistic.bsp` (~3 min on the GPU), or
   the trainer refuses ("--goal-field-file: ... not found").
+
+### 04:46 UTC: NEW --race-no-corner-cut 1; r5b4_ncx continues r5b4_nc on it
+
+* `--race-no-corner-cut 1` (commit 686f2ed, default off): bakes / loads `<map>.goalc_<cell>.npz`
+  (build_goal_field(no_corner_cut=True), ~3 min on a GPU, then cached) and shapes on it the way --race-kill-aware
+  does; refused with --goal-field-file / --race-ground / euclid; config only when on; restored on resume; record_ckpt
+  mirrors it. 3 tests (tests/python/test_race_no_corner_cut.py: trainer + resume + recorder, refusal, flag-off
+  bit-identity vs the pre-change trainer). Unlike --goal-field-file, a checkpoint carrying it resumes on any box.
+* r5b4_nc (16,134-16,210M, --goal-field-file): evals 86.5, 86.6 (frozen weights), then 98.18, 98.14, 98.14, 98.12,
+  96.71 - back at the basement; no finish.
+* **r5b4_ncx** (04:44): resume of r5b4_nc's checkpoint at 16,209,936,384 (md5 76006b45..., kept on the box as
+  runs/r5b4_nc/ckpt_stop.pt) + `--goal-field-file "" --race-no-corner-cut 1 --ckpt-every 1e8` - the SAME field (cache
+  hit, start geodesic 99,675 u), now under the robust flag. Pitch floor 0.05 and T cap 0.2 restored.
