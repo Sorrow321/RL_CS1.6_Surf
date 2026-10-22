@@ -2656,3 +2656,19 @@ pattern that is in your own command line.
   1.4 2.0 --respawn-front-perturb-turn 90` (front-temp 1 / 1%, novel 0.2, backward-mix 0.1, greedy 0.25 restored).
   Leading indicator: the greedy line's basement-entry h_E (2,310-2,396 in every run so far); also the line's
   health (basement-mode share) and the evals.
+
+### 19:25 UTC: MILESTONE - the greedy line enters the funnel chamber (98.329, r6b2_tp1); box extended
+
+* **r6b2_tp1 eval 19,723M: score 98.329** (best 98.33%, median 98.0%). Episode 3: west along the -y ramp at
+  ~1,200 u/s (116.5-116.9 s), turns UP the face (117.0-117.5 s: vy +101 -> +661 inward, vz +103 -> +695), rises
+  through the -y hole at (2,555, -506, 1,222) at 118.0 s, is ABOVE the slab at 118.1-118.3 s (apex z 1,288) and
+  skims east along the chamber floor to (2,955, -443, 1,254), dying at 118.77 s. Its h_E there is ~1,800: far
+  below the ~2,350+ a rise over the rim (z ~1,600) needs.
+* Greedy chamber entries over the round (episodes reaching x 2,480-3,408, |y| < 688, z > 1,250 - a measurement box,
+  never in training): ctl / bmix / gpt / fp / fp2 / fp3 / fp4 / fp5 **0 in 3,036 episodes**; fp6 1 in 351 (z 1,263,
+  19,345M, the 98.269 eval); tp1 1 in 324 (z 1,288, the 98.329 eval). So after ~1B steps of front-perturb training
+  (fp3-fp6: own frontier states turned and energy-boosted, which produced the training finishes) the greedy
+  policy has started to do the hole entry from its OWN states, at its own (too low) energy. One seed, two events.
+* tp1 so far (+210M, 0.1/s time penalty): basement-entry h_E median 2,270 (no rise); front-perturb finishes 25 in
+  22,906 (fp6: 5 in 28,997); the line reaches the basement in 85 of 306 eval episodes. Box 57219728 extended to
+  23:23 UTC.
