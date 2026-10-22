@@ -2685,3 +2685,6 @@ basement and only near the funnel wall in shape).
   17,463M; reset to the incumbent as r6b1_turn4 (seed 4). An eval cycle (6.25M steps + a 54-episode eval) is ~2 min.
 * 19:38 UTC r6b1_turn4 (seed 4): 11 evals, all CP7 so far (frontier 96,005-96,152u nocut); scores 98.29-98.31 and
   **98.347 (17,469,800,448)** - 0.002 under the incumbent's 98.349 - and 98.313 (17,482M). Kept running (still CP7).
+* 20:30 UTC: r6b1_turn4 (seed 4) - CP7 for ~28 evals (17,419-17,589M, two CP6 dips that recovered), best **98.347**
+  (17,469M), then CP6 from 17,595M; reset to the incumbent as r6b1_turn5 (seed 5). turn4's checkpoint (the best
+  eval's run) copied by scp + md5 check while the run is stopped.
