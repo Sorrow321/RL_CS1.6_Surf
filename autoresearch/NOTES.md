@@ -2442,3 +2442,34 @@ pattern that is in your own command line.
   starts, 1,106 novel, 737 backward, 737 reservoir, 1,106 greedy rows. 153k steps/s. Read-outs: bmix fin/E
   (the policy learning the final stretch from the rows), the novel ceiling (98,260 u = d_best 1,415: a REAL
   episode over the rim moves it), the greedy evals (> 98.349 or a finish).
+
+### 15:05 UTC: r6b2_bmix at +210M - learns the chamber, not the hole; the hole entry measured (analysis only)
+
+* r6b2_bmix 17.42-17.63B: evals 96.7-98.25 (CP7 / CP6 wobble, like the control); backward-row episodes finish
+  19-33 of 34-60 per iteration (50-70%); basement-entry energy of the greedy line unchanged (median h_E 2,230-2,360
+  vs the control's 2,200-2,400). Probe of its 17.62B snapshot (record_ckpt --spawn-states, greedy, 12 each): from
+  its own greedy-line basement states 0 chamber entries, 0 finishes; from backward rows in the basement at
+  1,800-2,500 u/s 0 / 0; at 1,000-1,500 u/s 1 entry (z 1,402), 0 finishes. So the backward finishes are rows that
+  start INSIDE the chamber and fall into the funnel (the novel rows already teach that); nothing teaches the way
+  into the chamber.
+* **The novel ceiling (d_best 1,415 u) is stale**: on the corrected field d 1,415 exists only above the funnel
+  opening (z ~1,650); it was set on the OLD field before round 5's switch (outside the funnel wall the old field
+  read ~1,300-1,400) and only ever decreases. It moves again only when a real episode is truly over the rim.
+* **Geometry (hull slices, ANALYSIS ONLY):** the space above the funnel is a sealed vertical CHAMBER: walls at
+  x 2,480 / 3,408 and |y| 688, identical in 64 directions at every height from 1,600 to 6,600, ceiling z 6,700;
+  its only openings are the two holes in its floor (x 2,500-2,660, |y| 390-660, z 1,140-1,250). Under each hole
+  the basement has a 49-degree RAMP running along x (x ~2,220-3,620): its face rises from the outer channel
+  (|y| ~620, z ~705, kill floor 700 outside it) to |y| 330 (z ~1,030), its inner side is vertical, and the slab
+  (z 1,140-1,250) covers |y| < 390. Moving up the face carries the agent INWARD, under the slab; the corridor-end
+  wall (x 2,420-2,460, z 1,150-1,550) closes the way west above the basement ceiling.
+* **The hole entry, scripted (ANALYSIS ONLY, hand-placed states, never trained on):** states on the -y face near
+  its foot under the hole (|y| 520-610, x 2,380-2,620) moving up-slope at u plus along-x vx, then a constant
+  world yaw (outward +-90 deg) with forward / side keys from tick t_d: 58,800 rollouts -> 3,017 enter the chamber,
+  156 pass over the funnel opening above the rim, 6 finish (no steering toward the funnel). By up-slope speed:
+  u 700 / 1,000: 0; 1,300: 8% (max z 1,439); 1,600: 9% (1,749); 1,900: 9% (2,122). Detaching at once (0-10 ticks)
+  and straight outward work best. So: surf up the ramp face under the hole at >= ~1,300-1,600 u/s, strafe
+  outward at once, rise vertically through the hole; then steer over the rim into the funnel. The energy for
+  u 1,600 at the foot is h_E ~2,340 - what the line already has at the basement entry. **The missing piece is a
+  skill (approach low along the ramp, turn up-slope, pull outward), not energy.** The line's passes: the first
+  falls onto the +y face (turns into down-slope motion, outward); the return leg surfs the -y face westward near
+  its TOP (|y| ~410, z ~950) under the hole - too high on the face for a pull-out.
