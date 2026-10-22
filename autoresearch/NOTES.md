@@ -2700,3 +2700,5 @@ basement and only near the funnel wall in shape).
   17,419,468,800 = the incumbent's weights after one PPO iteration, 54 episodes): episode 2 rose through the -y hole to
   (2,664, -281, 1,222) at 124.4 s - the incumbent's 98.349 rise height (z 1,220) but nearer the centre (y -281 vs -351),
   where the score's field is lower. Next evals 98.312-98.328 (CP7), then the usual dip; reset to seed 9.
+* 23:53 UTC: r6b1_turn9 (seed 9) - best 98.321, wobbling from 17,444M; reset as r6b1_turn10 (seed 10), the last run
+  before the wrap-up.
