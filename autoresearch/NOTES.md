@@ -2129,3 +2129,21 @@ safety classifier; simulator probes from the policy's own states answered the sa
 * Training: race/success_rate 23% at a 2.9 s mean finish time (spawns just above the goal - the
   trivial-win harvest; it is also how the value of the shaft reaches the critic), reservoir deepest
   98.2% (mind 1.776%), novel ceiling 98.26%, T 0.01, ~168k steps/s average.
+
+### 03:00 UTC: r5b2_x1 at 15.69B - the line sits at 98.1-98.2% (the final room); the gate measured
+
+* Evals 15,436-15,675M: 98.09-98.19 almost every time (medians up to 98.1%), one wobble (15,662M:
+  88.06, median 33.5%; 15,675M 96.95). ~300M steps at this gate so far; unstuck T back at its 0.5
+  cap (keys only; no +500 u eval best since 95,927 u).
+* The greedy line enters the room under kill plate *61 at its west edge at ~116.4 s:
+  (2,460-2,518, +430..500, 1,050-1,075), 1,100 u/s horizontal, vz ~-850 - then circles in the room
+  (z 750-1,000) and dies on kill plate *3 (z ~711) at ~121 s, or stops on something at ~z 1,070-1,150
+  and wanders until patience cuts it.
+* Room geometry (x-y at z 1,100 / 900 / 720): a thin centre wall along y ~0 from x ~1,860 to ~2,880
+  splits it into two lanes; the hole column (x 2,880-3,040, |y| < 80) is at the wall's EAST END;
+  at z ~900 there are rails at |y| ~380-450 (x 2,200-3,500) and at z 720 solid blocks at |y|
+  ~300-550 from x ~2,250. So the line must reach x ~2,960 and cut to y ~0 at the wall's end
+  before *3, from a lane at |y| ~450 with ~1 s of fall.
+* Training: win 19-23% at a 2.3-2.4 s mean (novel rows in the room, d >= d_best: the policy finishes
+  from them), but no REAL episode has come closer than d_best 1,617 u (novel ceiling 98.35%),
+  reservoir deepest 98.21%.
