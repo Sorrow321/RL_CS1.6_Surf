@@ -2057,6 +2057,15 @@ def off_warp_t(u):
             / float(np.expm1(b)))
 
 
+def z_from_off_t(off):
+    """The inverse of tanh-then-off_warp_t: a yaw OFFSET in degrees -> the pre-tanh z
+    (surfgym.view.off_warp_inv, then z_from_u with its U_CLIP)."""
+    b = OFF_ALPHA
+    off = off.clamp(-OFF_MAX, OFF_MAX)
+    u = (torch.sign(off) * torch.log1p(off.abs() / OFF_MAX * float(np.expm1(b))) / b)
+    return torch.atanh(u.clamp(-0.999, 0.999))
+
+
 def view_from_z_t(z, pitch_max: float, absolute=None):
     """(B, n_z) pre-tanh z -> (B, N_VIEW) float32 view row for the core.
     absolute None (the delta command): K = warp(tanh(z_yaw)), pitch =
@@ -4449,6 +4458,27 @@ def main() -> None:
                          "start. Needs --ez-eps and the respawn reservoir, "
                          "one map. 0/absent = off, byte-identical. ckpt "
                          "restores")
+    ap.add_argument("--steer-eps", type=float, default=None,   # 0 = off
+                    help="steer bursts: with this probability per decision an env "
+                         "with no burst running starts one - for n ~ U[--steer-hold] "
+                         "decisions it adds ONE offset dy ~ U(-D, D) degrees "
+                         "(--steer-dy) to the yaw offset the policy just sampled, and "
+                         "nothing else changes: the keys, the pitch and the policy's "
+                         "own steering stay its own. A committed steer the 25 Hz "
+                         "policy's iid noise never produces (an ez burst replaces the "
+                         "keys too, which kills a surf line). Burst rows are dropped "
+                         "from the PPO pool like ez rows (b_ez). Needs "
+                         "--view-continuous --view-absolute velocity. ckpt restores")
+    ap.add_argument("--steer-front", type=float, default=None,  # 0 = anywhere
+                    help="--steer-eps only in the frontier band, the --ez-front rule: "
+                         "progress >= (1 - B) x the reservoir's deepest, re-read once "
+                         "per iteration. B in (0, 1]. ckpt restores")
+    ap.add_argument("--steer-dy", type=float, default=None,     # 90 deg
+                    help="--steer-eps: the offset is U(-D, D) degrees (default 90)")
+    ap.add_argument("--steer-hold", type=int, nargs=2, default=None,  # 3 15
+                    metavar=("LO", "HI"),
+                    help="--steer-eps: a burst lasts U[LO, HI] decisions "
+                         "(default 3 15)")
     ap.add_argument("--respawn-mode",
                     choices=["uniform", "goex", "florensa", "backward"],
                     default=None,
@@ -7224,6 +7254,16 @@ def main() -> None:
         if args.ez_front is None and ck_cfg.get("ez_front"):
             args.ez_front = float(ck_cfg["ez_front"])
             restored.append(f"ez_front={args.ez_front:g}")
+        # --steer-*: the rollout's exploration, restored like --ez-eps
+        if args.steer_eps is None and ck_cfg.get("steer_eps"):
+            args.steer_eps = float(ck_cfg["steer_eps"])
+            restored.append(f"steer_eps={args.steer_eps:g}")
+            if args.steer_front is None and ck_cfg.get("steer_front"):
+                args.steer_front = float(ck_cfg["steer_front"])
+            if args.steer_dy is None and ck_cfg.get("steer_dy") is not None:
+                args.steer_dy = float(ck_cfg["steer_dy"])
+            if args.steer_hold is None and ck_cfg.get("steer_hold") is not None:
+                args.steer_hold = [int(v) for v in ck_cfg["steer_hold"]]
         # --front-temp / --front-band: the rollout's sampling distribution, restored like the
         # --unstuck temperature it sits on
         if args.front_temp is None and ck_cfg.get("front_temp"):
@@ -8591,6 +8631,41 @@ def main() -> None:
         args.ez_max = 60
     if args.ez_mu is None:
         args.ez_mu = 2.0
+    if args.steer_eps is None:
+        args.steer_eps = 0.0
+    if args.steer_front is None:
+        args.steer_front = 0.0
+    if args.steer_dy is None:
+        args.steer_dy = 90.0
+    if args.steer_hold is None:
+        args.steer_hold = [3, 15]
+    if float(args.steer_eps) > 0.0:
+        _bad = [f for f, on in (("--maps", args.maps),
+                                ("--chunk", args.chunk),
+                                ("--rnn", args.rnn not in (None, "none")))
+                if on]
+        if _bad:
+            raise SystemExit("--steer-eps (a held offset on the flat single-map rollout's "
+                             "yaw z) is not implemented with " + ", ".join(_bad))
+        if not args.view_continuous or args.view_absolute != "velocity":
+            raise SystemExit("--steer-eps offsets the yaw TARGET relative to the velocity "
+                             "heading: it needs --view-continuous --view-absolute velocity")
+        if not 0.0 < float(args.steer_eps) <= 1.0:
+            raise SystemExit("--steer-eps must be in (0, 1]")
+        if not 0.0 < float(args.steer_dy) <= 180.0:
+            raise SystemExit("--steer-dy must be in (0, 180]")
+        _lo, _hi = (int(v) for v in args.steer_hold)
+        if _lo < 1 or _hi < _lo:
+            raise SystemExit("--steer-hold LO HI needs 1 <= LO <= HI")
+        if float(args.steer_front) != 0.0:
+            if not 0.0 < float(args.steer_front) <= 1.0:
+                raise SystemExit("--steer-front must be in (0, 1]")
+            if args.reward != "race":
+                raise SystemExit("--steer-front reads the race reward's per-env "
+                                 "geodesic: it needs --reward race")
+    elif float(args.steer_front) != 0.0:
+        raise SystemExit("--steer-front restricts where --steer-eps bursts start: it "
+                         "needs --steer-eps > 0")
     if args.fail_pen is None:
         args.fail_pen = 0.0
     if args.speed_coef is None:
@@ -13602,6 +13677,12 @@ def main() -> None:
     # --ez-front: in the config ONLY when on, so the control's config is unchanged
     if float(args.ez_front or 0.0) > 0.0:
         meta["config"]["ez_front"] = float(args.ez_front)
+    # --steer-*: in the config ONLY when on, so the control's config is unchanged
+    if float(args.steer_eps or 0.0) > 0.0:
+        meta["config"].update({"steer_eps": float(args.steer_eps),
+                               "steer_front": float(args.steer_front),
+                               "steer_dy": float(args.steer_dy),
+                               "steer_hold": [int(v) for v in args.steer_hold]})
     # --goal-planner primlearn: the planner's PPO / reward knobs and the uniform-first share,
     # ONLY then (record_ckpt.py: TRAIN_ONLY - a recording runs the stored planner greedily)
     if PLPLAN:
@@ -14709,7 +14790,15 @@ def main() -> None:
     # Go-Explore post-return exploration state (--spawn-burst): decisions
     # left in each env's post-respawn random burst and the current held
     # action. Shares the b_ez off-policy mask/exclusion with ez-greedy.
-    USE_BURST = args.ez_eps > 0.0 or args.spawn_burst > 0
+    # --steer-eps: decisions left in each env's steer burst and its held offset (deg);
+    # --steer-front's band is the --ez-front rule, re-read once per iteration
+    STEER = float(args.steer_eps or 0.0) > 0.0
+    STEERF = STEER and float(args.steer_front or 0.0) > 0.0
+    steer_left = torch.zeros(N, dtype=torch.long, device=device) if STEER else None
+    steer_dy = torch.zeros(N, device=device) if STEER else None
+    steer_thr = float("inf")
+    steer_band = torch.ones(N, dtype=torch.bool, device=device) if STEERF else None
+    USE_BURST = args.ez_eps > 0.0 or args.spawn_burst > 0 or STEER
     sb_left = torch.zeros(N, dtype=torch.long, device=device)
     sb_act = torch.zeros((N, NACT), dtype=torch.long, device=device)
     # per-env distance-bin of the CURRENT episode's start (-1 = unknown /
@@ -16044,7 +16133,8 @@ def main() -> None:
         from surfgym.sil import SILBuffer, sil_loss_terms
         for _flag, _on in (("--rnn", RNN), ("--chunk", H > 0), ("--ddp", D.enabled),
                            ("--frame-stack > 1", STACK > 1), ("the action masks", MASKS.on),
-                           ("--yaw-cond", YCOND), ("--ez-eps / --spawn-burst", USE_BURST)):
+                           ("--yaw-cond", YCOND),
+                           ("--ez-eps / --spawn-burst / --steer-eps", USE_BURST)):
             if _on:
                 raise SystemExit(f"--sil-coef is not implemented with {_flag}: the SIL "
                                  "step re-scores stored rows through the flat single-map "
@@ -17229,6 +17319,12 @@ def main() -> None:
             _d0f = float(fleet.slots[0].rf_d0 or 0.0)
             ez_thr = (_d0f - (1.0 - float(args.ez_front)) * _d0f * (1.0 - _mf)
                       if (_mf == _mf and _d0f > 0.0) else float("inf"))
+        if STEERF:
+            # --steer-front: the same band rule with B = --steer-front
+            _mf = fleet.reservoir_min_depth()
+            _d0f = float(fleet.slots[0].rf_d0 or 0.0)
+            steer_thr = (_d0f - (1.0 - float(args.steer_front)) * _d0f * (1.0 - _mf)
+                         if (_mf == _mf and _d0f > 0.0) else float("inf"))
         # ---------------- rollout ----------------
         t_roll = tm.now()
         with torch.no_grad():
@@ -17332,6 +17428,36 @@ def main() -> None:
                             static_view[ez_only] = view_from_z_t(
                                 zr, VIEW_PITCH_MAX, VIEW_ABS)
                         ez_left[ez_only] -= 1
+                    if STEER:
+                        # --steer-eps: start bursts where none runs (inside the band
+                        # under --steer-front); a running one adds its held offset
+                        # to the yaw offset the policy just SAMPLED - keys, pitch
+                        # and the policy's own steering untouched. An env inside an
+                        # ez / spawn burst this decision is left to that burst.
+                        fresh_s = (steer_left == 0) & (torch.rand(N, device=device)
+                                                       < float(args.steer_eps))
+                        if STEERF and reward_fn._d is not None:
+                            steer_band.copy_(torch.from_numpy(
+                                reward_fn._d <= steer_thr), non_blocking=True)
+                            fresh_s &= steer_band
+                        ns = int(fresh_s.sum())
+                        if ns:
+                            steer_left[fresh_s] = torch.randint(
+                                int(args.steer_hold[0]), int(args.steer_hold[1]) + 1,
+                                (ns,), device=device)
+                            steer_dy[fresh_s] = ((torch.rand(ns, device=device) * 2.0
+                                                  - 1.0) * float(args.steer_dy))
+                        st_on = (steer_left > 0) & ~live
+                        if bool(st_on.any()):
+                            zr = static_z[st_on]
+                            off = off_warp_t(torch.tanh(zr[:, 0])) + steer_dy[st_on]
+                            zr[:, 0] = z_from_off_t(
+                                torch.remainder(off + 180.0, 360.0) - 180.0)
+                            static_z[st_on] = zr
+                            static_view[st_on] = view_from_z_t(zr, VIEW_PITCH_MAX,
+                                                               VIEW_ABS)
+                        steer_left.sub_((steer_left > 0).long())
+                        live = live | st_on
                     b_ez[t].copy_(live)
                     if MASKS.on:
                         # a burst action is drawn uniformly and never passed
@@ -18017,6 +18143,8 @@ def main() -> None:
                     # first decision of the freshly reset episodes.
                     just_reset = b_done[t] > 0
                     ez_left[just_reset] = 0
+                    if STEER:
+                        steer_left[just_reset] = 0
                 if args.spawn_burst > 0:
                     sb_left[just_reset] = args.spawn_burst
                     # the burst's first action is drawn uniformly NOW; later
@@ -19859,6 +19987,10 @@ def main() -> None:
                 # where the --ez-front band starts, in % of the start geodesic
                 _d0f = float(fleet.slots[0].rf_d0 or 0.0)
                 hyg_note += f" front>{100.0 * (1.0 - ez_thr / _d0f):.1f}%"
+            if STEERF and steer_thr != float("inf"):
+                # where the --steer-front band starts (the dropped share is the ez figure)
+                _d0f = float(fleet.slots[0].rf_d0 or 0.0)
+                hyg_note += f" steer>{100.0 * (1.0 - steer_thr / _d0f):.1f}%"
         if FRONT:
             # --front-temp: the share of envs inside the band at the last decision, and the
             # band's edge in progress

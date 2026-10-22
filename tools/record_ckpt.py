@@ -111,6 +111,9 @@ TRAIN_ONLY = frozenset({
     # --front-temp / --front-band: the TRAINING rollout's per-env sampling temperature; a
     # recording samples (or argmaxes) at its own --temp like every other tempered checkpoint
     "front_temp", "front_band",
+    # --steer-*: held offsets on the TRAINING rollout's yaw (exploration bursts, dropped
+    # from PPO); a recording flies the policy's own command
+    "steer_eps", "steer_front", "steer_dy", "steer_hold",
     # --int-real-only: which TRAINING episodes the novelty bonus pays and counts
     "int_real_only",
     # --ramp-reward: what the TRAINING reward pays in the ramp-window task (arc progress, or +1
