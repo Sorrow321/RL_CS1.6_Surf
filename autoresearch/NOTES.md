@@ -2583,7 +2583,7 @@ pattern that is in your own command line.
   critic learns that energy in the basement is worth a finish (the --respawn-speed rationale, now aimed at the
   frontier band and with the heading turn that the yield test says lifts entries above the rim).
 
-### 17:29 UTC: r6b2_fp3 - 94 FINISHES from energy-boosted frontier rows; the band drifted into the chamber; fp4
+### 17:30 UTC: r6b2_fp3 - 94 FINISHES from energy-boosted frontier rows; the band drifted into the chamber; fp4
 
 * **r6b2_fp3** (18.75-18.94B, 360 iterations, ~190M steps): 28,737 front-perturb episodes ended, **94 finished**
   (block of 50 iterations: 0, **59**, 32, 1, 2, 0, 0, 0); chamber-depth episodes in 281 of 360 iterations (vs 13
