@@ -2127,3 +2127,14 @@ safety classifier; simulator probes from the policy's own states answered the sa
   (z ~1,200) and *3 (z ~656-672) and the finish shaft, a tube at x ~2,850-3,070, |y| < ~100, down to the
   finish box (z 176-184). Training's d_best 1,859 sits at the passage under the second wall.
 * Box deadline extended to 06:50 UTC.
+
+### 03:18 UTC: 98.052 - through the first thin wall's gap; at the second wall
+
+* Evals 15,259-15,310M: 96.830, **98.052 (15,272M, CP7, median 96.7%)**, 96.730, 96.726, 96.746. Training ceiling
+  96,069 u (98.26%), unstuck best 95,863 u, T 0.02, training win 6.6-7.4% (2.7-2.8 s episodes).
+* The 98.05% episode (15,272M ep 0, a slower line: 96.6% only at 115.3 s): over *50 at z ~1,500, through the
+  first thin wall's gap at x ~1,930-2,060, y 175 -> 56, z ~1,500-1,470, then down to (2,410, -523, 1,158) at
+  116.8 s (98.05%) - ~50 u ABOVE the opening under the second wall (origin z <~1,104) - bounced back west
+  onto the room floor (z ~830 at x ~2,300) and crawled there until it fell at 137.7 s.
+* The other 6 at 96.7-96.9% die at ~111 s near (1,414-1,534, 298-463, 1,162-1,252): out of the hole and down
+  before CP7. Medians swing 60.6-96.7% between evals (the 34.4% / 60.6% / 72.5% / 86.8% gates recur).
