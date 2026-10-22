@@ -2259,3 +2259,12 @@ safety classifier; simulator probes from the policy's own states answered the sa
   nowhere; then down onto kill *3 or the room floor. So the climb exists in the policy, in the room west of the
   wall; the way on needs it in the open outer lane at x ~2,500-3,300 (the field pays it there: d ~2,120-2,145 at
   z 1,000 -> ~1,640-1,740 at z 1,300-1,450), then inward over kill *61 to the funnel.
+
+### 07:54 UTC: r5b3_t01 holds the lane, no climb yet
+
+* Evals 16,151-16,251M: 98.0-98.15% best episode every time (frontier 95,824-95,959 u), medians ~86-88%;
+  training ceiling 96,125 u (98.32%) unchanged; training win 28% (novel). ~4.4 h left at ~63k steps/s (~1B steps).
+* Plan: main line to ~09:30 UTC (the lane arrivals entered the greedy pool only ~300M steps ago - past gates
+  fell 100-550M steps after that); if no climb by then, an arm with --front-temp (round 4's per-env temperature
+  near the frontier; null at the 60.57% gate, harmless to the line) for the rest of the round. The branch score
+  is a max over evals, so an arm cannot lose the 98.283 already banked.
