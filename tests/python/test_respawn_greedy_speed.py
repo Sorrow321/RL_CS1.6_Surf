@@ -1,4 +1,5 @@
-"""--respawn-greedy-speed LO HI (2026-10-22, autoresearch r6b4): each greedy-line spawn row's
+"""--respawn-greedy-speed LO HI [--respawn-greedy-speed-band B] (2026-10-22, autoresearch r6b4): each
+greedy-line spawn row's
 velocity is scaled by U(LO, HI) when it is mixed into the training pool - what --respawn-speed
 does to the reservoir rows, which never reached the greedy rows (they are mixed in AFTER the
 reservoir's build_pool).
@@ -92,6 +93,66 @@ def test_bad_ranges_are_refused(speed):
         GreedyLinePool(0.3, window=(0.25, 2.0), speed=speed)
 
 
+def _feed(pool, eps, ends):
+    """Capture ``eps`` (lists of STATE_DTYPE rows) through the eval hook and build at 10 ms, with
+    the field distance = origin x."""
+    hook = pool.hook()
+    t = 0
+    for ep in eps:
+        for i in range(len(ep)):
+            hook(t, ep[i:i + 1], np.zeros(1), np.array([i == len(ep) - 1]), np.array([False]))
+            t += 1
+    return pool.build([{"end": e} for e in ends], 10.0,
+                      d_fn=lambda o: np.asarray(o, np.float64)[:, 0])
+
+
+def _line_ep(x0, x1, n=600):
+    rows = np.zeros(n, STATE_DTYPE)
+    rows["origin"][:, 0] = np.linspace(x0, x1, n).astype(np.float32)
+    rows["velocity"][:, 1] = 1000.0
+    return rows
+
+
+def test_the_band_boosts_only_the_rows_near_the_pools_deepest():
+    # A fails deep (x -> 500), B fails shallow (x -> 900); d0 = the start's x = 1000. The pool keeps
+    # 2..0.25 s before each death: A rows x 666..521, B rows x 933..904. Band 0.1 -> x <= 621
+    on = GreedyLinePool(0.5, window=(0.25, 2.0), seed=2, speed=(1.2, 1.5), speed_band=0.1)
+    st = _feed(on, [_line_ep(1000, 500), _line_ep(1000, 900)], ["fail", "fail"])
+    x = np.asarray(on.rows["origin"][:, 0], np.float64)
+    assert on.boost is not None and len(on.boost) == len(x)
+    assert np.array_equal(on.boost, x <= x.min() + 100.0 + 1e-3)
+    assert 100 < int(on.boost.sum()) < 140 and st["boost"] == int(on.boost.sum())
+    assert "within 0.1 d0 of the deepest" in on.line()
+    off = GreedyLinePool(0.5, window=(0.25, 2.0), seed=2)
+    _feed(off, [_line_ep(1000, 500), _line_ep(1000, 900)], ["fail", "fail"])
+    a, b = off.mix(_base(), 410), on.mix(_base(), 410)
+    n = on.mixed
+    assert np.array_equal(a["origin"], b["origin"])                 # same rows drawn
+    xs = np.asarray(b["origin"][-n:, 0], np.float64)
+    ratio = np.asarray(b["velocity"][-n:, 1], np.float64) / np.asarray(a["velocity"][-n:, 1])
+    near = xs <= x.min() + 100.0 + 1e-3
+    assert near.any() and (~near).any()
+    assert np.all(ratio[~near] == 1.0)
+    assert ratio[near].min() >= 1.2 - 1e-5 and ratio[near].max() <= 1.5 + 1e-5
+    # the mask survives a checkpoint; a pool restored without one boosts nothing until rebuilt
+    re = GreedyLinePool(0.5, window=(0.25, 2.0), seed=2, speed=(1.2, 1.5), speed_band=0.1)
+    assert re.load_state_dict(on.state_dict()) and np.array_equal(re.boost, on.boost)
+    bare = GreedyLinePool(0.5, window=(0.25, 2.0), seed=2, speed=(1.2, 1.5), speed_band=0.1)
+    assert bare.load_state_dict({"rows": on.rows, "info": on.info}) and bare.boost is None
+    c = bare.mix(_base(), 410)
+    assert np.array_equal(c["velocity"], a["velocity"])
+    # band 0 keeps the old behaviour: every row, no mask in the checkpoint
+    all_ = GreedyLinePool(0.5, window=(0.25, 2.0), seed=2, speed=(1.2, 1.5))
+    _feed(all_, [_line_ep(1000, 500), _line_ep(1000, 900)], ["fail", "fail"])
+    assert all_.boost is None and "boost" not in all_.state_dict()
+
+
+@pytest.mark.parametrize("kw", [dict(speed_band=0.05), dict(speed=(1.0, 1.5), speed_band=-0.1)])
+def test_bad_bands_are_refused(kw):
+    with pytest.raises(ValueError):
+        GreedyLinePool(0.3, window=(0.25, 2.0), **kw)
+
+
 def _cfg(run):
     return json.loads((ROOT / "runs" / run / "run.json").read_text(encoding="utf-8"))["config"]
 
@@ -104,11 +165,14 @@ def test_the_trainer_wires_restores_and_refuses_it():
     shutil.rmtree(ROOT / "runs" / run, ignore_errors=True)
     r = _run([sys.executable, "-u", str(TRAIN), "--run", run, "--ckpt", str(seeded)]
              + SMOKE + GREEDY_SMOKE + ["--steps", "10240", "--respawn-greedy", "0.25",
-                                       "--respawn-greedy-speed", "1.1", "1.4"])
+                                       "--respawn-greedy-speed", "1.1", "1.4",
+                                       "--respawn-greedy-speed-band", "0.02"])
     assert r.returncode == 0, r.stdout[-4000:] + r.stderr[-4000:]
-    assert "each row's velocity x U(1.1, 1.4)" in r.stdout
+    assert "each row's velocity x U(1.1, 1.4) - only the rows within 0.02 d0" in r.stdout
     assert re.search(r"greedy-line pool: [0-9,]+ own states", r.stdout)
+    assert re.search(r"for the [0-9,]+ rows within 0.02 d0 of the deepest", r.stdout)
     assert _cfg(run)["respawn_greedy_speed"] == [1.1, 1.4]
+    assert _cfg(run)["respawn_greedy_speed_band"] == 0.02
     run2 = "gspeed_on_re"
     shutil.rmtree(ROOT / "runs" / run2, ignore_errors=True)
     r2 = _run([sys.executable, "-u", str(TRAIN), "--run", run2, "--ckpt",
@@ -116,10 +180,15 @@ def test_the_trainer_wires_restores_and_refuses_it():
               + ["--steps", "14336"])
     assert r2.returncode == 0, r2.stdout[-4000:] + r2.stderr[-4000:]
     assert "respawn_greedy_speed=1.1-1.4" in r2.stdout
+    assert "respawn_greedy_speed_band=0.02" in r2.stdout
     assert _cfg(run2)["respawn_greedy_speed"] == [1.1, 1.4]
+    assert _cfg(run2)["respawn_greedy_speed_band"] == 0.02
     r3 = _run([sys.executable, "-u", str(TRAIN), "--run", "gspeed_bad"] + SMOKE
               + ["--steps", "2048", "--respawn-greedy-speed", "1.0", "1.5"])
     assert r3.returncode != 0 and "needs --respawn-greedy F > 0" in r3.stdout + r3.stderr
+    r4 = _run([sys.executable, "-u", str(TRAIN), "--run", "gspeed_bad"] + SMOKE
+              + ["--steps", "2048", "--respawn-greedy", "0.25", "--respawn-greedy-speed-band", "0.1"])
+    assert r4.returncode != 0 and "needs --respawn-greedy-speed LO HI" in r4.stdout + r4.stderr
     for dd in (d0, ROOT / "runs" / run, ROOT / "runs" / run2, ROOT / "runs" / "gspeed_bad"):
         shutil.rmtree(dd, ignore_errors=True)
 

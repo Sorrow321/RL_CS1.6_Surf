@@ -6790,6 +6790,11 @@ def main() -> None:
                          "U(LO, HI), what --respawn-speed does to the reservoir rows (which "
                          "never reached these rows): a speed-gated move is practised from the "
                          "policy's own line at make-it speed. Default off; ckpt restores")
+    ap.add_argument("--respawn-greedy-speed-band", type=float, default=None,   # 0 = every row
+                    help="--respawn-greedy-speed: scale only the greedy rows within B x d0 of the "
+                         "pool's DEEPEST row (d0 = the field at the eval episodes' start) - the "
+                         "frontier the line is stuck at; the rows cut before earlier failures stay "
+                         "plain DAgger rows. 0 = every row (default); ckpt restores")
     ap.add_argument("--archive-frac", type=float, default=None,   # 0 = off
                     help="survivor-gated predecessor archive: the share of the "
                          "spawn pool replaced each iteration by archive rows - "
@@ -7767,6 +7772,10 @@ def main() -> None:
                 and ck_cfg.get("respawn_greedy_speed") is not None):
             args.respawn_greedy_speed = [float(v) for v in ck_cfg["respawn_greedy_speed"]]
             restored.append("respawn_greedy_speed={:g}-{:g}".format(*args.respawn_greedy_speed))
+        if (args.respawn_greedy_speed_band is None
+                and ck_cfg.get("respawn_greedy_speed_band") is not None):
+            args.respawn_greedy_speed_band = float(ck_cfg["respawn_greedy_speed_band"])
+            restored.append(f"respawn_greedy_speed_band={args.respawn_greedy_speed_band:g}")
         # --respawn-backward: a spawn DISTRIBUTION, restored like the frontier
         if args.respawn_backward is None and ck_cfg.get("respawn_backward"):
             args.respawn_backward = True
@@ -8718,6 +8727,9 @@ def main() -> None:
     if args.respawn_greedy_speed is not None and not float(args.respawn_greedy or 0.0) > 0.0:
         raise SystemExit("--respawn-greedy-speed scales --respawn-greedy's rows: it needs "
                          "--respawn-greedy F > 0")
+    if float(args.respawn_greedy_speed_band or 0.0) > 0.0 and args.respawn_greedy_speed is None:
+        raise SystemExit("--respawn-greedy-speed-band bands --respawn-greedy-speed: it needs "
+                         "--respawn-greedy-speed LO HI")
     if args.eval_patience is None:
         args.eval_patience = 0.0
     if args.eval_patience < 0.0:
@@ -11279,7 +11291,8 @@ def main() -> None:
                                     seed=int(args.seed) + 9191,
                                     stuck=int(args.respawn_greedy_stuck or 0),
                                     speed=(None if args.respawn_greedy_speed is None
-                                           else tuple(args.respawn_greedy_speed)))
+                                           else tuple(args.respawn_greedy_speed)),
+                                    speed_band=float(args.respawn_greedy_speed_band or 0.0))
         except ValueError as _e:
             raise SystemExit(str(_e))
         print(f"respawn GREEDY: {GREEDY.frac:.0%} of the non-start pool = the policy's own "
@@ -11288,7 +11301,9 @@ def main() -> None:
               + (f"; + {GREEDY.stuck} evenly spaced states of each episode's stalled stretch "
                  f"(best-progress tick -> end)" if GREEDY.stuck else "")
               + ("" if GREEDY.speed is None else
-                 "; each row's velocity x U({:g}, {:g})".format(*GREEDY.speed)))
+                 "; each row's velocity x U({:g}, {:g})".format(*GREEDY.speed))
+              + ("" if not GREEDY.speed_band > 0.0 else
+                 f" - only the rows within {GREEDY.speed_band:g} d0 of the pool's deepest"))
     if args.respawn_backward:
         for _i, slot in enumerate(slots):
             _fld = (slot.reward_field if slot.reward_field is not None
@@ -13996,6 +14011,8 @@ def main() -> None:
             meta["config"]["respawn_greedy_stuck"] = int(GREEDY.stuck)
         if GREEDY.speed is not None:
             meta["config"]["respawn_greedy_speed"] = [float(v) for v in GREEDY.speed]
+        if GREEDY.speed_band > 0.0:
+            meta["config"]["respawn_greedy_speed_band"] = float(GREEDY.speed_band)
     # --eval-patience: written ONLY when on, like the greedy pool above
     if EVAL_PATIENCE:
         meta["config"]["eval_patience"] = float(args.eval_patience)

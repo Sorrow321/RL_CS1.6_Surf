@@ -2436,3 +2436,76 @@ in-room turn to the funnel and the stop.
   dropping them roughly doubles the share of moving approach states in the pool). Two knobs: the
   attribution is to the pair. Control = round 5's own continuations of this lineage at T 0.2
   (~2B steps: evals 98.2-98.35, novel ceiling flat).
+
+### 14:45 UTC: the human's finish replays EXACTLY in our simulator; the basement is a field dip
+
+* `SurfCore.play_step` with the demo's own usercmds (yaw, fwd/side, buttons, msec per frame) from the
+  demo state at 114.6 s reproduces the trajectory to 0.1-0.2 u for 1 s and goes down the finish shaft;
+  from 112.0 / 113.5 s the error stays <= 3-4 u to the finish. So the whole last stretch is plain
+  physics in our core (the sharp turn into the hole at 115.03-115.40 s is air-strafing with the wish
+  direction against the velocity, not a booster - the bsp has no trigger_push). The kick surface is in
+  our bsp where the human rides it: a 43 deg plane, normal (0, +0.73, +0.69), touched from 114.78 to
+  114.94 s; the human strafes INTO it (yaw rotating -178 -> -104 deg with strafe-left held) and is
+  launched off its top edge at (2,709, 407, 954) with vz +1,011.
+* Old-field progress along the lines (% of d0): the basement is a DIP - entry 98.02%, the human's
+  east-end U-turn 96.62% (d 3,306), the policy's 96.94-97.07%; the human's kick launch 98.06%, the
+  hole 98.23%, over the funnel 98.47-98.62%. The policy's best (98.35%, ep 5 of the incumbent eval)
+  came on its SECOND basement loop, up the -y hole.
+* The incumbent's ep 5 rides the human's outer-low lane ((3,119, 585, 765) at 116.4 s - the human's
+  point at 114.6 s) but heading EAST (it enters on the +y side); its U-turn (x <= 3,811, climbing to
+  z 1,054) brings it back west INSIDE and HIGH on the -y side (y -390..-423, z 937-994). The mirror of
+  the human's line would come back on the -y outer-low lane (y ~-585, z ~765).
+
+### 14:58 UTC: box 57226494 and arm 1 (r6b4_gs15)
+
+* Box 57226494: RTX 3090 on an AMD EPYC 7502 (64 threads, quota 61.4 CPUs), $0.35/h, machine 141910
+  (Thailand); the rent loop got it at 14:41 after ~1 h of no passing offers. Deploy 2 min (ckpt md5
+  7256a1cf... verified).
+* **Ops: the first launch's record gate TIMED OUT (420 s)**: the incumbent checkpoint carries
+  race_no_corner_cut=1, so record_ckpt bakes maps/surf_src_sidistic.goalc_32.npz on a new box before
+  its first recording, and that bake ran past the gate's timeout. Bake it first on a fresh box:
+  `python3 tools/bake_nocut_field.py --map maps/surf_src_sidistic.bsp` (cached after; here the gate's
+  own bake had just finished), then launch.
+* **r6b4_gs15** (14:50): warm resume of the incumbent (17,418,944,512) + `--respawn-greedy-speed 1.0
+  1.5 --respawn-greedy-stuck 0 --ckpt-every 1e8`, evals every 6.25M, budget 3e9. Everything else
+  restored (T cap 0.2 keys, nocut field, pitch floor, greedy 0.3 / 0.25-2.0 s, novel band 0.15, ...).
+  Greedy pool 2,256 states (was 3,847 with the stalled stretches), 1,106 rows per pool. ~130k steps/s
+  after startup. Read-outs: the reservoir's min depth (2.013% = d 2,006: states in the hole / room
+  harvested would lower it), the novel ceiling (98,260 = d 1,414: a real episode over the rim), real
+  finishes, and the greedy evals.
+
+### 15:25 UTC: the bench - the policy can finish from the hole; it lacks the kick-and-turn (MEASUREMENT ONLY)
+
+record_ckpt --spawn-states from the WR demo's states (scratchpad work/end_bench.py; the nocut field copied
+from the box into maps/ - gitignored, same bsp signature), incumbent checkpoint, 7 s episodes, greedy x3 +
+stochastic (keys temp 1.2 = training) x6 per set:
+
+| start set (demo s) | greedy finish | stochastic finish | what it does |
+|---|---|---|---|
+| over the funnel rim (115.95-116.25) | 2/3 | 5/6 | drops in (the novel-row trivial wins taught it) |
+| in the +y hole, rising (115.2-115.3; vz 810-900) | **3/3** | **6/6** | flies the room to the funnel, finishes in ~2.8 s |
+| just after the kick (114.95-115.05; vz ~1,000, heading SW) | 0/3 | 0/6 | never turns north into the hole: hits the basement ceiling (z 1,147-1,171) |
+| west leg, outer-low lane (114.45-114.8) | 0/3 | 0/6 | no kick |
+
+* From the post-kick states, more noise does not find the turn either: keys temperature 2 and 3, yaw sigma x2:
+  0/30 into the hole. The human's turn there is a held strafe-right with the view ~4 deg off the velocity
+  (wishdir ~94 deg from it: up to ~100 u/s per frame of lateral acceleration) - a small action the policy's
+  yaw mean simply does not choose there.
+* But the policy's OWN line already flies the move's shape: the incumbent's 98.349 episode (ep 5), second
+  basement loop at 122.4-123.6 s, climbs the kick ramp inward (vy +170..+560, vz up to +589 at x ~2,360),
+  air-strafes back outward and rises to the -y hole's inner edge, apex z 1,226 (dies on the room floor's
+  kill layer). Its west-leg speed is ~1,000 u/s against the human's ~1,545, so its launch vz is ~590
+  instead of ~1,010 (apex ~1,226 instead of ~1,600; the rim is ~1,560). Energy, not shape.
+
+### 15:25 UTC: arm 1 (r6b4_gs15) - the greedy line degraded; stopped
+
+* Evals (score.py, on the box): 98.222, 98.236, 98.161, 98.234, 98.126, 98.137, 98.051 (to 17,457M), then
+  96.838, 87.728, 96.804, 97.153, 96.907, 98.090, 96.729 (to 17,501M): new failures upstream - greedy deaths
+  at ~98 s (CP5, 87.7%) and best-progress stops at ~110 s (CP6, 96.8%). Reservoir min depth 2.013 -> 1.906%
+  (briefly) -> 2.06%; novel ceiling flat. Best 98.236 (< incumbent 98.349).
+* Likely cause: the boost hit EVERY greedy row, including the windows cut before the line's early failures
+  (25-75 s); those are the DAgger corrections that keep the upstream line, now practised 0-50% faster. So:
+* NEW `--respawn-greedy-speed-band B` (default 0 = every row): only the rows within B x d0 of the pool's
+  DEEPEST row are scaled (d0 = the field at the eval episodes' own start; the mask is rebuilt with the pool
+  and saved with it). The early-failure windows stay plain DAgger rows. Tests added to
+  tests/python/test_respawn_greedy_speed.py.
