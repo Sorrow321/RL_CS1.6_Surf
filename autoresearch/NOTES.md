@@ -2716,7 +2716,7 @@ pattern that is in your own command line.
 * Training the entry at the energy the line actually has (x1.0-1.3) made the GREEDY line do it 7x more often
   (per episode) and higher than training it at x1.4-2.0 did. Running on to the end of the round.
 
-### 21:44 UTC: r6b2_tp3 at +460M - 98.421; greedy entries 6 in 666, one climbing the chamber's east ramp
+### 21:41 UTC: r6b2_tp3 at +460M - 98.421; greedy entries 6 in 666, one climbing the chamber's east ramp
 
 * r6b2_tp3 20.19-20.65B: greedy chamber entries **6 of 666** episodes (apex z 1,291, 1,308, 1,337, 1,356, 1,363,
   **1,465**); best eval **98.421** (20,614,479,872), 98.417 (20,230M), 98.397 (20,557M). All entries take the same
