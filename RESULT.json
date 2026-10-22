@@ -7,7 +7,7 @@
   "eval_file": "/home/steam/ar/runs/r6b2/r6b2_gpt/traj_17961058304.jsonl",
   "run": "r6b2_gpt",
   "step": 17961058304,
-  "ckpt": null,
+  "ckpt": "/home/steam/ar/runs/r6b2/r6b2_gpt/ckpt_stop.pt",
   "recipe": [
    "--respawn-greedy-turn",
    "90",
@@ -24,7 +24,8 @@
    "6.25e6"
   ],
   "resume_from": "r6b2_bmix/ckpt_stop.pt (17,903,910,912; --respawn-backward-mix 0.2 restored) <- incumbent r5b4_ncy (17,418,944,512)",
-  "commit": "bad9a55"
+  "commit": "bad9a55",
+  "ckpt_note": "r6b2_gpt's last weights, step 18,282,446,848, md5 751fdcbbc742094b62b3f29f570a1042 (copied from the box after the run stopped; md5 matches). Its config carries race_no_corner_cut=1, pitch_sigma_min=0.05, unstuck_max=0.2, respawn_backward_mix=0.2, respawn_greedy_turn=90 / speed 1-1.5, front_temp=1 / front_band=0.005."
  },
  "summary": "Round 6 r6b2. Best eval 98.308 (r6b2_gpt). The last gate: the funnel chamber is sealed except two floor holes; the way in is a skill (surf up the 49-deg basement ramp under a hole, strafe outward) that is ENERGY-limited: from the line's own basement states random actions never enter (0/16k); with x1.4-2.2 speed 0.5-0.7% enter, up to z 2,474. NEW (default off, bit-identical, tested): --respawn-backward-mix, --respawn-greedy-turn/-speed, --respawn-front-perturb (own frontier-band reservoir states turned +-90 deg, speed-scaled) + counters. r6b2_fp3 (front-perturb 0.35, x1.4-2.0): 94 REAL training finishes from energy-boosted basement states (~1.4% at the peak), then the band drifted into the chamber (harvested entries) and they stopped; r6b2_fp4 (17:29) widens the band to 1%. Greedy evals unchanged (CP7 basement / CP6 wobble)."
 }
