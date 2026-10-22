@@ -2306,3 +2306,11 @@ AABBs of the kill triggers are broadphase only (zones.kill_zones' own warning); 
   every 6.25M, everything else restored (T cap 0.2, nocut field, pitch floor). Watch: the novel ceiling (d_best below
   1,415 = a real episode over the rim), the greedy line's 98% reach (boosted training could disturb the earlier
   precision gates).
+
+### 09:39 UTC: per-run bests (score.py --best); r5b4_rs15 so far
+
+* main 98.231 | t02 98.236 | ps05 98.249 | nc 98.176 | ncx 98.238 | **ncy 98.349** (traj_16903045120) | ncz 98.261 |
+  t06 98.218 | rs15 98.344 (traj_17728798720, ~18.19B). 0 finishes anywhere.
+* r5b4_rs15 (`--respawn-speed 1.0 1.5`, 17.63-18.19B, ~560M steps): the greedy line kept its 98% reach (evals 96.7-98.34,
+  medians up to 98.2%); the novel ceiling never moved (no real episode over the funnel rim). Boosted respawns alone
+  did not open the speed-gated climb in this window.
