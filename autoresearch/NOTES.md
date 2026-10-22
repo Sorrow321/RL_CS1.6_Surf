@@ -2363,3 +2363,13 @@ safety classifier; simulator probes from the policy's own states answered the sa
   states; an outward pop-off off the outward-facing slope; more speed into the room) - and measure it
   with this decomposition: entry rate and entry vz from the attempt states, then the finish rate from
   fast entries.
+* **What a fast entry looks like at 1.0x** (random-macro search, 4 x 98k rollouts from the attempt states:
+  2 entries at vz > 600 in ~400k): both start with a HARD BRAKE-REDIRECT on the ramp - yaw held
+  ~135-145 deg off the velocity heading with forward pressed for 0.22-0.34 s (looking back across the
+  ramp and accelerating against the along-ramp velocity), then a side key for 0.2-0.5 s:
+  (2,780, -489, 868) v (-1,303, 406, 426) -> shaft at 0.54 s (2,559, -380, 1,236) v (-94, 384, +623);
+  (3,055, -550, 803) v (-1,433, 207, 215) -> shaft at 0.70 s (2,640, -555, 1,235) v (-447, -557, +606).
+  In the policy's parameterisation a 140 deg offset is |u| ~0.89 (z ~1.4 pre-tanh) against its learned
+  yaw sigma of 0.07 - unreachable by per-decision noise, rare even for uniform held bursts (ez's
+  distribution is this search's: ~5e-6 per rollout at 1.0x, ~0.2% at 1.4x). So the launch is a
+  specific large-offset manoeuvre, not a refinement of what the line already does.
