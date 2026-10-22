@@ -7,8 +7,8 @@
   "eval_file": "/home/steam/ar/runs/r6b4/r6b4_lrg/traj_18048614400.jsonl",
   "run": "r6b4_lrg",
   "step": 18048614400,
-  "ckpt": null,
-  "ckpt_note": "pending: r6b4_lrg snapshot ckpt_18166579200.pt (pull in progress); fallbacks local: r6b4_lr/ckpt_latest.pt (17,966,301,184, md5 11037ec0..., the weights r6b4_lrg started from) and r6b4_ou/ckpt_latest.pt (17,808,490,496, md5 d839caf9...).",
+  "ckpt": "/home/steam/ar/runs/r6b4/r6b4_lrg/ckpt_18166579200.pt",
+  "ckpt_note": "r6b4_lrg's snapshot at 18,166,579,200 (md5 9bc6dce1790b4fedaafd2cfe8dfbd2f1, rsync, md5-checked against the box) - the newest weights of r6b4_lrg's good mode (its evals around it were all CP7; after 18.2B it wobbled and was rolled back to this snapshot as r6b4_lrg2). Config: the incumbent's + lr 5e-5, front_temp 3, front_band 0.012, front_heads yaw, front_ou 1.0, front_record 1, spawn_states runs/ge_path.npy (291 own-root Go-Explore archive-path states, not in the repo: autoresearch/analysis/sid_goexp_*.py rebuild them) at frac 0.05. Fallbacks local: r6b4_lr/ckpt_latest.pt (17,966,301,184, md5 11037ec0...), r6b4_ou/ckpt_latest.pt (17,808,490,496, md5 d839caf9...).",
   "recipe": [
    "--spawn-states",
    "runs/ge_path.npy",
