@@ -2644,3 +2644,17 @@ basement and only near the funnel wall in shape).
   replays the same checkpoints.
 * 17:13 UTC: **r6b1_bank3** = the same + `--seed 1 --eval-eps 54` (fresh checkpoints; a side-by-side eval costs ~1 s
   per extra episode on this box, so 54 episodes per eval is ~1,180 greedy episodes per hour against ~700 at 27).
+
+### 17:45 UTC: CORRECTION - the CP6 "regressions" are partly this checkpoint's own wobble
+
+* r6b1_bank3 (seed 1, steer bursts only, 54-episode evals) evals 17,419-17,545M: 98.222, 98.189, 98.246, 98.205,
+  98.249, 97.949, **96.748**, 98.194, **96.751, 96.746, 96.746** - the same CP6 stop (96.7-96.8%) the speed-pot and
+  turn arms fell into, without either change. Round 5's continuation of this very checkpoint also read "evals
+  96.7-98.35". The seed-0 steer arm (r6b1_steer2) simply stayed at CP7 for its 138M steps.
+* So the 15:50 / 16:55 verdicts overstate: the speed-pot arm (10 straight CP6 evals) and the turn arm (7 straight)
+  stayed down longer than the seed-1 control so far (3 of the last 4), but "the change broke the line" is not shown -
+  one seed each, and the control wobbles into the same stop. Their other readings stand (the novel ceiling never moved;
+  wins fell; the speed-pot's direct charge on the chimney / shaft drops).
+* 54-episode evals: the greedy-line pool now holds ~17,000 states (54 episodes' failure windows) against ~2,000-3,800
+  at 9 episodes; the share of spawns it gives is unchanged (30% of non-start rows), its spread over the map is wider.
+  Possibly a contributor to the wobble, not shown.
