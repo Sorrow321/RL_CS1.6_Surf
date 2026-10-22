@@ -2780,3 +2780,12 @@ stochastic (keys temp 1.2 = training) x6 per set:
 * r6b4_lrg 18,055-18,143M: 15 more evals, all CP7 (98.12-98.26), medians 96.7-98.2%.
 * Plan to the wrap-up: keep r6b4_lrg sampling until ~00:45; pull its newest static ckpt_<step>.pt snapshot from
   ~23:30 (the link moves ~80 MB in ~50 min), then the last evals.
+
+### 23:33 UTC: r6b4_lrg wobbled from 18.21B; rolled back to its 18.17B snapshot (r6b4_lrg2)
+
+* r6b4_lrg 18,168-18,250M: 98.264, 98.203, 98.316, 98.142, 98.156, 98.147, then 7 of 8 evals at the chimney stop
+  (96.70-96.80%). Best of the run 98.444 (18,048,614,400). Stopped at ~18.25B.
+* **r6b4_lrg2** (23:32): resume of r6b4_lrg's ckpt_18166579200.pt (md5 9bc6dce1...; its neighbouring evals were
+  all CP7) with the same flags restored (lr 5e-5, 5% own-root archive-path spawns, OU frontier yaw), evals
+  every 6.25M, until ~00:45. That snapshot is being pulled as the hand-on checkpoint (the newest weights of
+  r6b4_lrg's good mode).
