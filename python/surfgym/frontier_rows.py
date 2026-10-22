@@ -37,7 +37,7 @@ from .core import STATE_DTYPE
 class FrontierRowPool:
     def __init__(self, n_envs: int, frac: float, band: float, d0: float, tick_ms: float,
                  every: int = 4, window=(0.0, 2.0), cooldown: float = 0.5, cap: int = 20000,
-                 min_rows: int = 200, seed: int = 0):
+                 min_rows: int = 200, seed: int = 0, advance: float = 0.0):
         frac = float(frac)
         if not 0.0 < frac < 1.0:
             raise ValueError(f"--respawn-front F needs 0 < F < 1, got {frac!r}")
@@ -48,6 +48,14 @@ class FrontierRowPool:
             raise ValueError(f"--respawn-front-window LO HI needs 0 <= LO < HI, got {lo!r} {hi!r}")
         if not float(d0) > 0.0:
             raise ValueError("--respawn-front needs the map's start distance d0 > 0")
+        if float(advance) < 0.0:
+            raise ValueError(f"--respawn-front-advance A needs A >= 0, got {advance!r}")
+        # --respawn-front-advance A: a capture also needs the episode to have ADVANCED >= A x d0
+        # in field distance over the window (d HI s ago - d now): an arrival at the frontier, not
+        # a crawl along it. Without it a policy that creeps at the frontier (round 6: agents
+        # hanging at ~110 u/s on the finish room's east slope) re-captures its own crawl every
+        # cooldown and floods the pool with one dead-end spot. 0 = off
+        self.advance = float(advance)
         self.n = int(n_envs)
         self.frac, self.band, self.d0 = frac, float(band), float(d0)
         self.lo, self.hi = lo, hi
@@ -60,6 +68,7 @@ class FrontierRowPool:
         self.cap, self.min_rows = int(cap), int(min_rows)
         self.rng = np.random.default_rng([int(seed), 4243])
         self.ring = np.zeros((self.n, self.R), STATE_DTYPE)
+        self.ring_d = np.full((self.n, self.R), np.inf)
         self.fill = np.zeros(self.n, np.int64)                 # snapshots this episode
         self.ep_best = np.full(self.n, np.inf)
         self.last_cap = np.full(self.n, -10 ** 9, np.int64)
@@ -95,6 +104,7 @@ class FrontierRowPool:
         real = np.asarray(real, bool)
         slot = self.fill % self.R
         self.ring[np.arange(self.n), slot] = states
+        self.ring_d[np.arange(self.n), slot] = d
         self.fill += 1
         if real.any():
             self.ceiling = min(self.ceiling, float(d[real].min()))
@@ -107,6 +117,10 @@ class FrontierRowPool:
         # flew to)
         go = (rec & (d <= ceil + self.band * self.d0) & (self.fill >= self.R)
               & (snap_no - self.last_cap >= self.cool))
+        if self.advance > 0.0 and go.any():
+            # the oldest snapshot of the window is the one HI s ago (the ring holds R = k_hi + 1)
+            d_old = self.ring_d[np.arange(self.n), self.fill % self.R]
+            go &= (d_old - d) >= self.advance * self.d0
         added = 0
         for i in np.flatnonzero(go):
             back = np.arange(self.k_hi, self.k_lo - 1, -1)     # oldest first
@@ -148,9 +162,11 @@ class FrontierRowPool:
 
     def line(self) -> str:
         return ("frontier rows: {:,} own states ({:,} captures; ceiling d {:,.0f} u, band {:g} x d0 "
-                "= {:,.0f} u, {:g}..{:g} s before each record), {:.0%} of the non-start pool"
+                "= {:,.0f} u, {:g}..{:g} s before each record{}), {:.0%} of the non-start pool"
                 .format(self.size, self.captured, self.ceiling, self.band, self.band * self.d0,
-                        self.hi, self.lo, self.frac))
+                        self.hi, self.lo,
+                        (", advance >= {:,.0f} u".format(self.advance * self.d0)
+                         if self.advance > 0.0 else ""), self.frac))
 
     # -- persistence -------------------------------------------------------------
     def state_dict(self) -> dict:

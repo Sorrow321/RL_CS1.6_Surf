@@ -104,7 +104,7 @@ TRAIN_ONLY = frozenset({
     "respawn_greedy", "respawn_greedy_window", "respawn_greedy_stuck", "respawn_greedy_speed",
     # --respawn-front: a share of the TRAINING spawn pool drawn from the approach to the deepest
     # places real training episodes reached; a recording spawns at the map start like the eval
-    "respawn_front", "respawn_front_band", "respawn_front_window",
+    "respawn_front", "respawn_front_band", "respawn_front_window", "respawn_front_advance",
     # --eval-patience: the TRAINER's eval-time cost rule (cut an eval episode that stopped
     # gaining); a recording runs every episode to its own --ep-ticks, the honest full line
     "eval_patience",

@@ -6800,6 +6800,10 @@ def main() -> None:
                     metavar=("LO", "HI"),
                     help="--respawn-front: keep the states from HI down to LO seconds before each "
                          "qualifying record (default 0 2)")
+    ap.add_argument("--respawn-front-advance", type=float, default=None,
+                    help="--respawn-front: a record qualifies only if the episode ADVANCED >= A x d0 "
+                         "in field distance over the window (an arrival at the frontier, not a "
+                         "crawl along it); 0 = no such gate (default 0.0015)")
     ap.add_argument("--respawn-greedy-speed", type=float, nargs=2, default=None,
                     metavar=("LO", "HI"),
                     help="--respawn-greedy: scale each greedy-line row's velocity by U(LO, HI), "
@@ -7792,6 +7796,9 @@ def main() -> None:
         if (args.respawn_front_window is None
                 and ck_cfg.get("respawn_front_window") is not None):
             args.respawn_front_window = [float(v) for v in ck_cfg["respawn_front_window"]]
+        if (args.respawn_front_advance is None
+                and ck_cfg.get("respawn_front_advance") is not None):
+            args.respawn_front_advance = float(ck_cfg["respawn_front_advance"])
         # --respawn-backward: a spawn DISTRIBUTION, restored like the frontier
         if args.respawn_backward is None and ck_cfg.get("respawn_backward"):
             args.respawn_backward = True
@@ -8746,6 +8753,8 @@ def main() -> None:
         args.respawn_front_band = 0.003
     if args.respawn_front_window is None:
         args.respawn_front_window = [0.0, 2.0]
+    if args.respawn_front_advance is None:
+        args.respawn_front_advance = 0.0015
     if args.respawn_greedy_speed is None:
         args.respawn_greedy_speed = [1.0, 1.0]
     if (tuple(float(v) for v in args.respawn_greedy_speed) != (1.0, 1.0)
@@ -11347,13 +11356,16 @@ def main() -> None:
                                     tick_ms=float(_fs.core.tick_ms),
                                     every=int(args.act_every),
                                     window=tuple(args.respawn_front_window),
-                                    seed=int(args.seed) + 7717)
+                                    seed=int(args.seed) + 7717,
+                                    advance=float(args.respawn_front_advance))
         except ValueError as _e:
             raise SystemExit(str(_e))
         FROWS_FIELD = _ffld
         print(f"respawn FRONT: {FROWS.frac:.0%} of the non-start pool = the policy's own states "
               f"from {FROWS.hi:g} to {FROWS.lo:g} s before each new episode record within "
-              f"{FROWS.band:g} x d0 = {FROWS.band * FROWS.d0:,.0f} u of the ceiling (real "
+              f"{FROWS.band:g} x d0 = {FROWS.band * FROWS.d0:,.0f} u of the ceiling"
+              + (f" after an advance >= {FROWS.advance * FROWS.d0:,.0f} u over the window"
+                 if FROWS.advance > 0.0 else "") + f" (real "
               f"episodes only; kept even when the episode dies right after; clocks zeroed; "
               f"real episodes, harvested)")
     if args.respawn_backward:
@@ -14068,6 +14080,7 @@ def main() -> None:
         meta["config"]["respawn_front"] = float(FROWS.frac)
         meta["config"]["respawn_front_band"] = float(FROWS.band)
         meta["config"]["respawn_front_window"] = [float(FROWS.lo), float(FROWS.hi)]
+        meta["config"]["respawn_front_advance"] = float(FROWS.advance)
     # --eval-patience: written ONLY when on, like the greedy pool above
     if EVAL_PATIENCE:
         meta["config"]["eval_patience"] = float(args.eval_patience)

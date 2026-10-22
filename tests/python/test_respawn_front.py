@@ -126,6 +126,26 @@ def test_no_capture_without_full_window_non_real_outside_band_or_in_cooldown():
     assert r.captured == 0
 
 
+def test_the_advance_gate_keeps_arrivals_and_drops_crawls():
+    # band 0.01 x 10,000 = 100 u above the ceiling 1,000; advance 0.015 x 10,000 = 150 u over the
+    # 0.4 s window (10 snapshots = 40 ticks)
+    crawl = _pool(n=1, cooldown=0.04, advance=0.015)
+    dc = _Drive(crawl, 1)
+    dc.dsched[0] = lambda k: 1090.0 - 0.5 * k          # inside the band, creeping 20 u per window
+    for _ in range(400):
+        dc.tick(ceiling=1000.0)
+    assert crawl.captured == 0
+    arrive = _pool(n=1, cooldown=10.0, advance=0.015)
+    da = _Drive(arrive, 1)
+    da.dsched[0] = lambda k: max(1050.0, 3000.0 - 10.0 * k)   # 400 u per window, then a stop
+    for _ in range(400):
+        da.tick(ceiling=1000.0)
+    assert arrive.captured == 1                        # the arrival, once (cooldown 10 s)
+    assert "advance >= 150 u" in arrive.line()
+    with pytest.raises(ValueError):
+        _pool(advance=-0.1)
+
+
 def test_an_episode_end_restarts_the_ring_and_the_record():
     p = _pool(n=1, cooldown=0.04)
     dr = _Drive(p, 1)
@@ -208,7 +228,7 @@ def test_the_trainer_wires_restores_and_refuses_it():
     assert "  front " in r.stdout
     cfg = _cfg(run)
     assert cfg["respawn_front"] == 0.1 and cfg["respawn_front_band"] == 0.02
-    assert cfg["respawn_front_window"] == [0.0, 2.0]
+    assert cfg["respawn_front_window"] == [0.0, 2.0] and cfg["respawn_front_advance"] == 0.0015
     run2 = "front_on_re"
     shutil.rmtree(ROOT / "runs" / run2, ignore_errors=True)
     r2 = _run([sys.executable, "-u", str(TRAIN), "--run", run2, "--ckpt",
