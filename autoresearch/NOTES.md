@@ -2338,3 +2338,28 @@ safety classifier; simulator probes from the policy's own states answered the sa
 * **r5b2_m** (07:43): r5b2_vsx's ckpt_latest (17,158,897,664, md5 8ca9225e...) + `--respawn-novel-vrand
   0` (everything else restored: the incumbent's config), 2.6e9 steps until the wrap-up - the longest
   uninterrupted stretch at the gate since x1 (1.15B), evals every 12.5M. Box extended to 12:44 UTC.
+
+### 08:20 UTC: the finish decomposed - the policy already does the second half (ANALYSIS ONLY, own states)
+
+* **Launch states**: 156 of the greedy line's own states 0.2-0.6 s before each launch attempt (52 attempts
+  in the r5b2_ft / vs / vsx evals; scratchpad hole/attempts.py). Random held macros (5 segments, 4 s,
+  hole/search_att.py), 98k rollouts per speed scale:
+
+  | start speed | into the shaft | of those at vz > 600 | funnel |
+  |---|---|---|---|
+  | 1.0x (as flown) | 573 (0.58%) | 2 | 0 |
+  | 1.2x | 635 | 41 | 0 |
+  | 1.4x | 793 | 222 | 0 |
+
+  (from generic room states the entry rate was 0.07%: the attempts are the right place to start.)
+* **The policy from the fast entries** (x1 lineage, r5b2_vs's final; 24 of the 1.4x run's post-launch states:
+  in the shaft at x 2,480-2,668, |y| 379-477, z ~1,236, vz 601-760, |v_h| 38-703; 5 s): **greedy 2/24 and
+  stochastic 2/24 FINISH** (the rest 98.6-98.7%, under the funnel rim). The shaft -> funnel half is
+  learned (the moved novel rows that land in the shaft finish 20-28% in training).
+* So the remaining skill is the LAUNCH alone: leave the ramp under a hole (|y| >= ~400, x 2,482-2,670)
+  with vz >= ~600 at z 1,232. The line's attempts reach vz 650-760 below the hole but leave at the
+  ramp's top inner edge (|y| <= 381) and drift inward; the random-macro entries mostly arrive slow.
+  A mechanism for the next round should target exactly this (practice from the line's own attempt
+  states; an outward pop-off off the outward-facing slope; more speed into the room) - and measure it
+  with this decomposition: entry rate and entry vz from the attempt states, then the finish rate from
+  fast entries.
