@@ -1931,3 +1931,78 @@ own greedy-line pool (1,809 STATE_DTYPE rows, 59.7-60.6% progress, the 2 s befor
 
 * r4b3_band15x 14,475-14,715M: evals 89.5-90.1k u (91.5-92.2%) in most, **92.150 (14,715M, CP6, median
   87.9%)**; reservoir deepest 91.8%, ceiling 90,806 u (92.9%), T 0.36. The run's budget ends ~23:55.
+
+## ROUND 4 LESSON (r4b3) - written at wrap-up, 2026-10-22 00:11 UTC
+
+**Result:** best greedy eval from the true start **94.668** (r4b3_band15x at 14,991,491,072; incumbent 54.674): CP6,
+94.67% of d0, 0 finishes. Hand-on checkpoint: /home/steam/ar/runs/r4b3/r4b3_band15x/ckpt_final.pt (15,032,385,536,
+md5 cb1dbce40147741433b89728ed69fbd0).
+
+**Per-run bests (score.py):** ctl 54.793, par 54.396, keys 54.594, kst5 57.720, kst5x 60.584, ft1 60.565, m1 (evals not
+pulled; all ~60.55%), main2 60.581, stuck 60.573, band15 84.546, **band15x 94.668**.
+
+**Lineage of the best run** (warm, from the incumbent r3b3_gwx2 final, 8,838,971,392): r4b3_ctl (+ --eval-patience
+30) -> r4b3_keys (from ctl's 9.141B, + --eval-parallel 1 --unstuck-temp-heads keys) -> r4b3_kst5 (+ --stall-eps 5
+--critic-warmup 20) -> r4b3_kst5x -> r4b3_ft1 (+ --front-temp 1 --front-band 0.03, null) -> r4b3_m1 (+ --respawn-margin
+1, null) -> r4b3_main2 (--front-temp 0 --respawn-margin 2) -> r4b3_stuck (+ --respawn-greedy-stuck 200) -> r4b3_band15
+(+ --respawn-novel-band 0.15) -> r4b3_band15x (--record-every 12.5e6). A bare resume of the hand-on checkpoint restores
+every flag (stall_eps 5, keys-only T cap 0.5, patience, side-by-side evals, greedy rows 0.3 + stuck 200, band 0.15,
+ratchet, time-pen 0).
+
+**What worked (in order of effect):**
+1. **`--stall-eps 5`.** Without --reward-per-decision the race reward and its stall detector run every TICK, so the
+   15 s timer re-arms only on ONE 10 ms tick beating the running best by 32 u (~3,200 u/s down the field). It ended
+   30-50% of training episodes, killing slow but correct flight 15 s after the last fast dive - the ledger's
+   skate_laby pathology (2026-10-03), same fix. With it (on keys-only T) the reservoir's deepest state went 54.7 ->
+   56.9% in 77M steps (flat for 400M before) and the greedy line 54.6 -> 60.6% in ~600M.
+2. **Eval speedups (NEW, eval-only):** `--eval-patience 30` (end an eval episode whose best stopped gaining 32 u in
+   30 s, cumulative - never cuts a gaining line) and `--eval-parallel 1` (the eval's episodes side by side on an
+   N-env eval core, one batched forward per decision). Evals were 48% of round 3's wall time (5 of 9 greedy episodes
+   lived to the 300 s cap without the time penalty); now ~15-30%: 121k -> ~185k steps/s on a 3090. NEVER use
+   `--eval-stall 1` on this config: it mirrors the per-tick rule and would cut the 54.7% eval at 34.3%.
+3. **`--unstuck-temp-heads keys`.** T 0.5 on all heads (yaw sigma x1.5) switched the greedy line into the +y mirror
+   lane that dies at 50%; keys-only kept the 54% line in 4/8 evals vs 1/8 (docs/unstuck.md: the yaw sigma is the
+   fragile head, the keys explore best).
+4. **The 60.57% gate (~1.6B steps, 9.74B -> 11.41B).** A ramp ends where the field's straight route drops through
+   kill plates; the way on is a dive in a side lane (|y| ~560-620) west of x -1,216 (simulator: 62.5-63.6% before the
+   kill floor, via CP5). Probes from the policy's own pre-stop states: greedy 0/8, temperature 1 0/16, 2 0/16 past
+   60.6% - all alive and drifting (a WON'T); 1,536 random held macros and a 5-stage survivor search found nothing
+   past 60.6%. What moved it: a lucky training episode set the ceiling to 70.3%, which STARVED the band novel rows
+   (the band hangs off the all-time ceiling: rows 1,843 -> 39-91 per pool); `--respawn-novel-band 0.15` restored them
+   and the greedy line passed ~100M steps later (60.6 -> 63.4 -> 71.1 -> 72.6), with `--respawn-greedy-stuck 200`
+   (NEW: the greedy pool also keeps N states of each stalled stretch) running for ~820M steps before. One seed: the
+   band is the visible trigger; the stuck pool's share is unknown.
+5. **After the gate:** 72.6 -> 82.7 -> 84.5 -> 85.4 -> 91.5 (CP6) -> 94.7 in ~3.3B steps; gates fell every
+   ~100-400M steps, with wobbles at T 0.5 (the greedy line once fell back to 57.8% for ~150M; training's frontier
+   never did).
+
+**What did not work:** `--front-temp 1 --front-band 0.03` (NEW: every head at temperature 2 only for envs near the
+frontier, PPO scored per row) - null at the 60.57% stop in 300M, did not hurt the line. `--respawn-margin 1` - null
+(the passes were too rare, not the margin). Two trainers on one box - load 66 on 32 threads, ~2-22k steps/s each.
+
+**For the next round:**
+* Bare-resume the hand-on checkpoint; ~5.3% of the map is left, and once it finishes the score's time term needs a
+  time cost again (time-pen is 0 in this lineage).
+* The band novel rows are anchored to the all-time ceiling; anchored to the reservoir's deepest state (or a decaying
+  ceiling) they would not starve after one lucky episode - an untested design note.
+* Open: the recipe from scratch. The lineage's scratch recipe (config.json `incumbent_recipe`) gained only the
+  eval-only `--eval-patience 30 --eval-parallel 1`; --stall-eps 5, keys-only T, greedy rows + stuck, band 0.15 are
+  validated warm only.
+
+**Ops:** box 57057785 (RTX 3090, 32-thread 5.1 GHz host, $0.268/h, machine 151065), 13:15 -> 00:01 UTC (~10.8 h,
+~$2.9); 226k steps/s training-only. `box.py deploy` on a busy box fails its GPU health check AFTER updating the
+checkout (not a bad box - never blocklist on it). py-spy cannot attach in the container (no ptrace). Filter `ps` to your
+own worktree: other branches run tests on the same host. A WR-demo download for analysis was refused by the session's
+safety classifier; simulator probes from the policy's own states answered the same question.
+
+## Wrap-up (r4b3) - 2026-10-22 00:11 UTC
+
+* Final: RESULT.json `"final": true`, score **94.668** (r4b3_band15x, eval traj_14991491072: 9 episodes, best 94.67%,
+  median 60.56%, CP6, 0 finishes; 108/108 valid evals in the run).
+* Hand-on checkpoint: /home/steam/ar/runs/r4b3/r4b3_band15x/ckpt_final.pt (15,032,385,536, md5
+  cb1dbce40147741433b89728ed69fbd0), pulled by scp and md5-checked before the box was released. Also local:
+  r4b3_band15/ckpt_final.pt (13,682,343,936, md5 d78738c7...), r4b3_kst5/ckpt_final.pt, r4b3_ctl/ckpt_latest.pt,
+  r4b3_m1/ckpt_final.pt.
+* Code: the best lineage ran at commit 3ea2710 (--eval-patience, --eval-parallel, --front-temp,
+  --respawn-greedy-stuck; flag-off bit-identical to the round's start); later commits are notes and config.
+* Box 57057785 released at 00:01 UTC (`box.py status`: no box).
