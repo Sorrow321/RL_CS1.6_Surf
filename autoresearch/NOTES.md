@@ -2096,3 +2096,20 @@ safety classifier; simulator probes from the policy's own states answered the sa
   volumes); none crosses the wall. Unboosted states: 0/12 into the slot (02:15 entry). So the speed
   rows create the slot experience training lacks; flying OVER the wall is what training must learn
   from it.
+
+### 03:17 UTC: box 57148363 (RTX 3090, Japan, $0.348/h) - and a numba thread cliff on many-core hosts (FIXED, 3763775)
+
+* Rented at 02:53 after 30 attempts (machine 48881: EPYC 7B12, 128 host threads, cgroup quota 61.4
+  CPUs, 377 GB RAM). Deploy took 2 min (ckpt md5 verified on the box).
+* **First launch of r5b1_gspd failed**: the trainer compiled, ran ONE iteration, then made no progress
+  for 12 min (GPU 0%, ~57 threads spinning) and run_arm.sh's record gate killed it after 900 s without a
+  ckpt_latest.pt. Cause, measured on the box: numba's parallel pool (the goal field's fused sampler,
+  goalfield.py) defaults to every HOST thread (128) and ignores the CFS quota: one `GoalField.sample()`
+  of 9 points took **13 ms** at 128 threads, **0.015-0.03 ms** at 4-30 threads (cliff above the quota;
+  60 threads 0.037 ms). The first greedy eval (tens of thousands of 9-env ticks, each sampling the field
+  for the patience rule / pool / reward feed) could not finish.
+* Fix (commit 3763775): train_fast.py sets `NUMBA_NUM_THREADS = OMP_NUM_THREADS` (the quota-aware
+  size) unless set; record_ckpt.py caps it at min(32, cpus/2). The sampler is bit-identical at any
+  thread count, so no result changes; the startup line prints `numba=N`. On the 32-thread boxes of
+  rounds 1-4 numba ran 32 threads against a ~31-CPU quota: probably part of RaceReward's 0.95 ms per
+  tick there (r4 timing), unmeasured.
