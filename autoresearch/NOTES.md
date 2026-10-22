@@ -2150,3 +2150,16 @@ safety classifier; simulator probes from the policy's own states answered the sa
   y ~0 from x 1,950 to 2,878, floor ~870-900, *61 above). Above *61 a V funnel (ramps from x ~2,750 z 1,540 to
   x ~2,880 z 1,252) leads into the shaft top. So after the underpass of the second thin wall (origin z <~1,104)
   the way on is east along a lane at z ~900-1,100 to x ~2,950, then sideways into the shaft and down.
+
+### 04:17 UTC: plateau at the greedy line (96.7%) for ~200M steps; T starts to rise
+
+* Evals 15,372-15,461M: all 96.7-96.9% (best episode), medians 60.5-96.5%: the greedy line dies out of the
+  hole's shaft before CP7 (needs eastward speed at z ~1,450-1,580). Branch best stays 98.052 (15,272M).
+* Training ceiling 96,076 u (98.27%) flat since ~15.32B; reservoir deepest 97.75% (min depth 2.25%): real
+  training episodes regularly pass CP7 and reach the second wall's underpass, so the greedy pool's states at
+  the shaft have successes to learn from. Training win 10-11% (novel rows near the shaft, 2.6-2.8 s).
+* The unstuck tracker reached its 200M patience at 15.47B (no +500 u eval gain since 15.27B): T 0.01 now
+  rises 0.5 per 1e8 to its 0.5 cap (keys only). Round 4's gates opened while T rose to 0.3-0.5.
+* Market: still nothing under the caps (a 4090 + Threadripper PRO 7985WX at $0.457 vs the $0.45 cap).
+* Plan: keep the main line; if no new best by ~15.7B, an arm (candidates: a lower novel share - ~25% of the
+  novel rows are trivial finishes near the shaft -, a larger greedy-pool share, or tempered SIL).
