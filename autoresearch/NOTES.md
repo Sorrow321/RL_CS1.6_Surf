@@ -2278,7 +2278,7 @@ AABBs of the kill triggers are broadphase only (zones.kill_zones' own warning); 
   right above the -y hole at ~100 u/s (they rose slowly through it and stalled); one state ever got east of x 3,100
   (z 1,222). Naive simulator search does not produce the fast eastward rise across the room to its east ramp.
 
-### 07:33 UTC: CEM over macro sequences from the greedy line's corridor state - no route; r5b4_ncz (evals every 6.25M)
+### 07:31 UTC: CEM over macro sequences from the greedy line's corridor state - no route; r5b4_ncz (evals every 6.25M)
 
 * CEM (scratchpad macro/cem_route.py): 10 held macros (yaw offset, side, fwd, duck, duration), population 1,024, 64
   elites, 40 iterations, 7 s rollouts on the raw core from the greedy line's own state in the corridor ~1 s before
