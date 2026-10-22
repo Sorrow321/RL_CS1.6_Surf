@@ -2288,3 +2288,21 @@ AABBs of the kill triggers are broadphase only (zones.kill_zones' own warning); 
 * r5b4_ncy 16,764-17,419M: evals 96.7-98.35, best 98.349 (16,903M), no further hole passage. The line is consistent;
   what moves the score now is sampling it: **r5b4_ncz** (07:31) = bare resume of r5b4_ncy at 17,418,944,512 (md5
   7256a1cf...) with `--record-every 6.25e6` (~60% more evals for ~20% less training).
+
+### 08:06 UTC: the east ramp is a SPEED-GATED route (feasibility, analysis only); r5b4_rs15 (--respawn-speed 1.0 1.5)
+
+* Hand-placed ANALYSIS-ONLY states (never trained on): rising out of a basement hole (x 2,520-2,640, |y| 420-640,
+  z 1,230, vz +200..+700) heading east within +-35 deg, 1,024 random surf-like macro rollouts per speed:
+  900 u/s: 0 above the rim, 0 finishes; 1,300: 149 above the rim (z > 1,560), 0 finishes; 1,700: 416 above,
+  1 finish; 2,100: 535 above, 4 finishes (max z 2,357). So the room's east ramp lifts an agent over the funnel rim
+  when it leaves a hole eastward at ~1,700+ u/s, and the drop into the funnel is then a precision step (random
+  steering finishes 0.1-0.4%). The greedy line's basement speeds are ~800-1,540 u/s and its passes under the holes
+  head the wrong way.
+* That is what `--respawn-speed` exists for (respawn.py: "speed-gated jumps can be practiced at make-it speed before
+  the policy has learned to CARRY that speed - the value of the boosted states then pulls the upstream line
+  faster"): it scales the reservoir rows' velocity by U(lo, hi) (default 0.9-1.1; real episodes, so a boosted
+  episode that clears the rim moves the novel ceiling). Generic: one range, no map quantity.
+* **r5b4_rs15** (08:05): resume of r5b4_ncz at 17,633,902,592 (md5 837794dd...) + `--respawn-speed 1.0 1.5`, evals
+  every 6.25M, everything else restored (T cap 0.2, nocut field, pitch floor). Watch: the novel ceiling (d_best below
+  1,415 = a real episode over the rim), the greedy line's 98% reach (boosted training could disturb the earlier
+  precision gates).
