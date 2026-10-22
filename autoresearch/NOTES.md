@@ -2590,3 +2590,23 @@ Standing-hull solid tests (`core.trace(p, p, hull=0).startsolid`) and kill hulls
   ~100-300 of E. The ~400-500 of E lost inside the room is mostly the outward exit into the room's side wall.
 * So the climb exists in training, it is ~100-300 E-height short, and the frontier rows now replay exactly
   these approaches (15% of the non-start pool). Kept running.
+
+### 16:36 UTC: MILESTONE - a REAL training episode finishes the map (r6b3_front2 at 17.74B); restart with a wider band
+
+* r6b3_front2's novel ceiling (the min d over REAL episodes - map start, reservoir, greedy and frontier rows,
+  never novel rows) jumped 98,260.5 -> 99,650.8 at 17,741M and -> 99,674.8 (= d0: d_best 0, the finish box)
+  at 17,743M - ~322M steps (~38 min) after the arm started from the incumbent. The ceiling had been at
+  98,260 (just above the funnel rim) since round 5 (~2.5B steps). race/success_rate 0.27-0.33 afterwards
+  (it includes the novel rows' trivial wins, so it is not the count).
+* The finishing route, from the frontier captures after the jump (2 s windows ending at d 13-276 u): from
+  the top of the room's east slope the agent gets just above the funnel's EAST rim - window starts at
+  (3,068-3,275, -120..-320, 1,546-1,609), 25-480 u/s, E 1,485-1,716 - and drops into the funnel and down the
+  shaft (1,300-1,515 u/s at the end). So: hole climb (outward, v ~(-200, -950, +500)) -> east slope -> over
+  the east rim at x ~3,070-3,200 -> funnel. The greedy line has not followed yet (evals to 17,797M: best
+  98.248, no finish; the lineage's gates went training-ceiling first, greedy line 100-550M steps later).
+* The band problem round 4 met, again: the frontier band hangs off the all-time ceiling, which is now 0, so
+  every capture after the jump is a "fall into the funnel" window (204 of 250 captures; 82% of the pool),
+  diluting the room-climb practice that produced the finishes. **r6b3_front3** (16:3x): resume of
+  r6b3_front2's last checkpoint (17,834,180,608, ckpt_stop.pt md5 f1ab65fc..., pulled to
+  runs/r6b3/r6b3_front2/) with `--respawn-front-band 0.02` (d <= 1,993 u: room arrivals and finish
+  approaches; the basement and the passage stay outside), everything else restored, 3e9 budget.
