@@ -2454,3 +2454,17 @@ basement and only near the funnel wall in shape).
   is self-imitation of the executed steer (--sil-coef is currently refused with any burst).
 
 ### r6b1_ctl (14:30 UTC): bare resume of the incumbent, evals every 6.25M, the control
+* 14:37 UTC: r6b1_ctl NEVER STARTED - **the record gate timed out (420 s) baking the no-corner-cut field**: the
+  incumbent checkpoint carries race_no_corner_cut=1, so record_ckpt on a fresh box must bake
+  maps/surf_src_sidistic.goalc_32.npz first, and on box 57222250 that took > 7 min (round 5 baked it inside the
+  trainer, where no timeout applies). The loop released the box (26 min, ~$0.15). **Any resume of this lineage on a
+  fresh box: pre-bake first** - `box.py ssh --timeout 2400 -- "cd /root/RL_Surf && python3
+  tools/bake_nocut_field.py --map maps/surf_src_sidistic.bsp"` - then launch.
+* 14:39 UTC: **box 57226380: RTX 3090, $0.295/h, machine 153789 (Missouri)**; the loop deploys, pre-bakes, then
+  launches the steer arm directly (round 5's 3.8B steps at this gate with a flat ceiling are the reference; the
+  control would mostly bank evals, which the arm does too).
+* NEW `--sil-fix-sigma 1` (commit 0ee01e0, default off): the SIL policy term scores the view heads with log-sigma
+  detached, so imitating a steer burst's executed yaw moves the mean only (SIL's unclipped -log pi would otherwise
+  inflate the one global yaw sigma; round 4: sigma x1.5 broke the line). --sil-coef is now allowed with --steer-eps
+  (still refused with --ez-eps / --spawn-burst). Reserved for arm 2 if the steer arm moves the training ceiling
+  but not the greedy line.
