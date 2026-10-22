@@ -2262,7 +2262,7 @@ safety classifier; simulator probes from the policy's own states answered the sa
   frontier's default frac 0.5 every frontier row is overwritten by a novel row (the greedy rows then take
   the tail). A frontier arm here needs the two to write disjoint slices first.
 
-### 07:13 UTC: bandx wobbled into a 96.7% mode at T 0.5; arm r5b1_t02 (T cap 0.2)
+### 07:12 UTC: bandx wobbled into a 96.7% mode at T 0.5; arm r5b1_t02 (T cap 0.2)
 
 * bandx 16.39-16.80B: frontier evals 98.1-98.25 (**98.250 at 16,666M, median 98.09**: 6/9 at 98%), then from
   ~16.70B the line fell into a 96.7% mode (episodes drop into the bowl at ~110 s and do not swing out;
