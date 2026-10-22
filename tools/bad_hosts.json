@@ -2698,6 +2698,15 @@
       "detail": "autoresearch r5b1: box 57138833 (RTX 5080, NL, offer 57138695) not running after 330 s (status None); box.py's automatic --block failed because the instance never appeared in `vast show instances` - entry added by hand",
       "run": "",
       "reason": "unreliable"
+    },
+    {
+      "ip": "108.7.77.216",
+      "machine_id": 150677,
+      "host_id": 696527,
+      "reason": "gpu_capped",
+      "date": "2026-10-22",
+      "detail": "FOREIGN TENANT: RTX 5080 at 100% util, 250 W, 670 MiB used with no process in our container (instance 57219589, 13:49 UTC); gpu_health: GPU0 BUSY. Entered by hand (vast_pick --block has no foreign_tenant reason and the release ran first).",
+      "run": "r6b3 deploy"
     }
   ],
   "known_good": [
