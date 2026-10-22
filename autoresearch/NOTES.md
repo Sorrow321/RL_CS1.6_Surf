@@ -2113,3 +2113,23 @@ safety classifier; simulator probes from the policy's own states answered the sa
   thread count, so no result changes; the startup line prints `numba=N`. On the 32-thread boxes of
   rounds 1-4 numba ran 32 threads against a ~31-CPU quota: probably part of RaceReward's 0.95 ms per
   tick there (r4 timing), unmeasured.
+
+### 03:38 UTC: MILESTONE - r5b1_gspd (`--respawn-greedy-speed 1.0 1.5`) passes the wall within ~110M steps: 97.064, CP7
+
+* r5b1_gspd = the incumbent checkpoint (15,032,385,536) + `--respawn-greedy-speed 1.0 1.5` + evals every
+  12.5M, launched 03:19 on box 57148363 (~160k steps/s incl. evals). Greedy evals (score.py best / median):
+  15,033M 94.34 / 92.8 (the checkpoint itself: 7/9 at the wall - far more consistent than the incumbent's
+  94.668 eval, median 60.6), 15,045M 94.40, **15,058M 95.03** (first episode over the wall's x),
+  95.10, 95.06, 95.07, 95.16, 95.22, **15,146M 96.09** (dropped past the block toward the tunnel level),
+  **15,159M 96.52 / 95.8** (5/9 past the wall), 96.50 / 96.45, **15,184M 97.064 / 96.28 - CP7** (sgcp_7,
+  the first time any eval enters it), 15,196M 96.88 / 96.46.
+* Training at 15.20B: novel ceiling 96,043 u (98.24%), reservoir min depth 2.116% (deepest state 97.9%),
+  `win 7.72% @ 2.9 s` (training episodes now finish - spawns near the end), T 0.05, ep_len 2,236.
+* So the gate that held the incumbent's greedy line at 94.7% (and the ceiling at 95.18%) fell ~110M steps
+  after the greedy-line rows were replayed faster - the probe-predicted mechanism (the line's own states
+  never succeed; scaled up, some reach the slot; the critic then values the fast line). One seed, no plain
+  control from 15.03B: the incumbent's own last 450M steps moved the ceiling 92.1 -> 95.2% and its greedy
+  best 92.2 -> 94.7%, so a plain continuation might also have passed in time; what the arm did is pass it
+  at once (7/9 greedy episodes at 96.5% within 125M steps).
+* EXTENDED (a gate the incumbent never cleared): r5b1_gspdx = bare resume of gspd's ckpt_final (15.332B;
+  restores the speed rows), 2.5e9 steps, evals every 12.5M, snapshots every 1e8. Box extended to 06:37.
