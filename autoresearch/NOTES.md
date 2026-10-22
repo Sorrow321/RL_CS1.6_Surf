@@ -2254,3 +2254,7 @@ safety classifier; simulator probes from the policy's own states answered the sa
   Real episodes (harvested, move the ceiling). 300M first; read-out: the ceiling below d 1,462, a
   reservoir state in the shaft, a greedy eval past 98.3% or a finish; the line before the room must
   hold.
+* Branch best is now r5b2_vr's 98.278 (16,894M); its hand-on checkpoint runs/r5b2/r5b2_vr/ckpt_final.pt
+  (17,143,693,312, md5 f70b5999...) CARRIES --respawn-novel-vrand 0.4 in its config (a bare resume
+  restores it): pass `--respawn-novel-vrand 0` to drop it. x1's final (16.54B, md5 aedabd64...) is the
+  plain-config alternative.
