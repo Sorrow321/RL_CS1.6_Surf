@@ -2273,3 +2273,17 @@ safety classifier; simulator probes from the policy's own states answered the sa
   rounds 2-3). **r5b1_t02** (07:11): bandx's 16,634,609,664 snapshot (md5 2db66abb..., the start of its best
   stretch) + `--unstuck-max 0.2` (T 0.5 -> 0.2 at the first iteration: `T = min(tmax, ...)` while stuck),
   3e8 steps. Control: bandx's own continuation from the same snapshot (above).
+
+### 07:38 UTC: r5b1_t02 (T cap 0.2) - 98.260, not decisively better; next arm r5b1_m1 (`--respawn-margin 1`)
+
+* t02 (bandx's 16.634B snapshot, T 0.5 -> 0.2) 16.64-16.87B, 15 evals: **98.260 (16,698M, the branch's best)**,
+  87.8, 98.24, 98.12, 98.14 / 98.21 / 98.19 / 98.22 (medians 98.04-98.07: 4 consecutive evals with >= 5/9 at the
+  frontier), then 96.81, 96.75, 96.73, 86.79, 96.76 (the 96.7% bowl mode for ~50M steps), 98.21. bandx from the
+  same snapshot at T 0.5: 98.20, 98.25 (median 98.09), 98.09, 98.18, then 96.7% mode for ~100M steps. One seed
+  each: T 0.2 holds the frontier somewhat more often; the bowl-mode wobble happens at both caps.
+* Why no partial climb ever becomes a spawn: the reservoir keeps only snapshots >= `--respawn-margin` (2 s)
+  before an episode's end, and a training episode that climbs part of the funnel ramp falls and dies within
+  ~1-2 s - so the mid-climb states are never harvested (round 4's 60.57% analysis, same mechanism; there
+  margin 1 was null because the passes were too rare). Here training's ceiling did move (98.35 -> 98.64%),
+  so partial climbs exist. **r5b1_m1**: t02's final + `--respawn-margin 1`, 3e8 steps. Read-out: reservoir
+  deepest past 98.3% (mind < 1.7%), the ceiling, evals past 98.3%.
