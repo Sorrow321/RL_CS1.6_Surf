@@ -111,7 +111,7 @@ TRAIN_ONLY = frozenset({
     "eval_parallel",
     # --front-temp / --front-band: the TRAINING rollout's per-env sampling temperature; a
     # recording samples (or argmaxes) at its own --temp like every other tempered checkpoint
-    "front_temp", "front_band", "front_heads", "front_ou",
+    "front_temp", "front_band", "front_heads", "front_ou", "front_record",
     # --int-real-only: which TRAINING episodes the novelty bonus pays and counts
     "int_real_only",
     # --ramp-reward: what the TRAINING reward pays in the ramp-window task (arc progress, or +1

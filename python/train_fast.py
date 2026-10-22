@@ -6307,6 +6307,12 @@ def main() -> None:
                     help="--front-temp: which heads the frontier temperature reaches - all "
                          "(the default) or the YAW head alone (keys and pitch keep the global "
                          "temperature). ckpt restores")
+    ap.add_argument("--front-record", type=int, default=None, choices=[0, 1],
+                    help="--front-temp: 1 = the band tests the episode's progress RECORD (the "
+                         "--race-ratchet best) instead of where the env is now - an env that has "
+                         "reached the frontier region stays in the band through a dip after it, and "
+                         "one that has not is never in it, whatever its current progress. 0 = the "
+                         "current position (default); ckpt restores")
     ap.add_argument("--front-ou", type=float, default=None,        # 0 = off
                     help="--front-temp: TAU > 0 seconds - inside the band the yaw head's "
                          "standard-normal draw is a per-env AR(1) / Ornstein-Uhlenbeck sequence "
@@ -7276,6 +7282,9 @@ def main() -> None:
         if args.front_ou is None and ck_cfg.get("front_ou"):
             args.front_ou = float(ck_cfg["front_ou"])
             restored.append(f"front_ou={args.front_ou:g}")
+        if args.front_record is None and ck_cfg.get("front_record"):
+            args.front_record = int(ck_cfg["front_record"])
+            restored.append(f"front_record={args.front_record}")
         if args.ez_max is None and ck_cfg.get("ez_max") is not None:
             args.ez_max = int(ck_cfg["ez_max"])
         if args.ez_mu is None and ck_cfg.get("ez_mu") is not None:
@@ -8610,6 +8619,11 @@ def main() -> None:
         args.front_heads = "all"
     if args.front_ou is None:
         args.front_ou = 0.0
+    if args.front_record is None:
+        args.front_record = 0
+    if int(args.front_record) and not (float(args.front_temp) > 0.0 and args.race_ratchet):
+        raise SystemExit("--front-record tests --front-temp's band on the --race-ratchet record: it "
+                         "needs --front-temp T_F > 0 and --race-ratchet")
     if float(args.front_ou) < 0.0:
         raise SystemExit("--front-ou TAU needs TAU >= 0 seconds (0 = off)")
     if (float(args.front_ou) > 0.0 or args.front_heads != "all") and not float(args.front_temp) > 0.0:
@@ -14069,6 +14083,8 @@ def main() -> None:
             meta["config"]["front_heads"] = str(args.front_heads)
         if float(args.front_ou or 0.0) > 0.0:
             meta["config"]["front_ou"] = float(args.front_ou)
+        if int(args.front_record or 0):
+            meta["config"]["front_record"] = 1
     # --unstuck: written ONLY when set (a control run's config dump stays
     # byte-identical); every knob rides along so a resume restores them
     if UNSTUCK:
@@ -15030,6 +15046,10 @@ def main() -> None:
     # rewrites before every decision (in set_front_temp) and sample_view reads inside the graph.
     # FRONT_OU is a Python constant, so without it the graph captured is the one that shipped
     FRONT_OU = FRONT and float(args.front_ou or 0.0) > 0.0
+    FRONT_REC = FRONT and bool(int(args.front_record or 0))
+    if FRONT_REC:
+        print("--front-record: the band tests each episode's progress RECORD (the ratchet's best), "
+              "so an env stays in it through a dip once it has reached the frontier region")
     front_eps_t = None
     if FRONT_OU:
         _ou_dt = float(KH) * float(TICK.ms) * 1e-3
@@ -15049,6 +15069,9 @@ def main() -> None:
         the post-step distance of every env, the new spawn's for an env that just ended)."""
         nonlocal front_share
         d = reward_fn._d
+        if FRONT_REC and getattr(reward_fn, "_rec", None) is not None:
+            # --front-record: the episode's record (restarted at each spawn, like _d)
+            d = reward_fn._rec
         band = (np.zeros(N, bool) if d is None else (np.asarray(d) <= front_thr))
         tb = FRONT_BASE[0]
         if _f_yaw:

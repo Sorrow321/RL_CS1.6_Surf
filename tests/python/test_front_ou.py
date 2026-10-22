@@ -75,7 +75,7 @@ def test_sample_view_with_eps_draws_mu_plus_sigma_eps_and_its_density():
 def test_the_recorder_treats_the_flags_as_training_only():
     sys.path.insert(0, str(ROOT / "tools"))
     import record_ckpt
-    assert {"front_heads", "front_ou"} <= set(record_ckpt.TRAIN_ONLY)
+    assert {"front_heads", "front_ou", "front_record"} <= set(record_ckpt.TRAIN_ONLY)
 
 
 def _cfg(run):
@@ -115,10 +115,26 @@ def test_a_resume_runs_the_yaw_ou_band_and_restores_it():
 
 
 @needs_run
+def test_front_record_runs_on_the_ratchet_record_from_scratch():
+    run = "frontrec_on"
+    shutil.rmtree(ROOT / "runs" / run, ignore_errors=True)
+    r = _run([sys.executable, "-u", str(TRAIN), "--run", run] + SMOKE
+             + ["--steps", "8192", "--race-ratchet", "--front-temp", "1", "--front-band", "0.5",
+                "--front-record", "1", "--front-heads", "yaw", "--front-ou", "0.5"])
+    assert r.returncode == 0, r.stdout[-4000:] + r.stderr[-4000:]
+    assert "--front-record: the band tests each episode's progress RECORD" in r.stdout
+    assert re.search(r"  fronttemp\+ou \d+%", r.stdout), r.stdout[-3000:]
+    c = _cfg(run)
+    assert c["front_record"] == 1 and c["front_ou"] == 0.5 and c["front_heads"] == "yaw"
+    shutil.rmtree(ROOT / "runs" / run, ignore_errors=True)
+
+
+@needs_run
 @pytest.mark.parametrize("extra,msg", [
     (["--front-ou", "0.5"], "they need --front-temp T_F > 0"),
     (["--front-heads", "yaw"], "they need --front-temp T_F > 0"),
     (["--front-temp", "1", "--front-ou", "-1"], "--front-ou TAU needs TAU >= 0"),
+    (["--front-temp", "1", "--front-record", "1"], "needs --front-temp T_F > 0 and --race-ratchet"),
 ])
 def test_bad_settings_are_refused(extra, msg):
     r = _run([sys.executable, "-u", str(TRAIN), "--run", "frontou_bad"] + SMOKE
