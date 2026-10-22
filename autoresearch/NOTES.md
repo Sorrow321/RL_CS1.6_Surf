@@ -2632,3 +2632,10 @@ basement and only near the funnel wall in shape).
   ledge under the hole (hover share 0.66-0.98, dozens of tiny vx reversals) until the 30 s patience cut - so a longer
   --eval-patience adds hovering, not attempts. The 98.349 rise was a rarer slower SECOND loop (|v| ~900-1,000, return
   leg at z ~800-850) that turned east under the -y hole while rising (vz +536).
+* Why the turn arm hurt the line OUTSIDE its band (progress.csv, r6b1_turn vs r6b1_steer2 at matched steps): the novel
+  rows' progress median fell 97,500 -> 95,100-96,300u (nocut) and training wins 0.20 -> 0.08-0.12, while steer2 held
+  97,200-97,600u and 0.20-0.24. Plausible chain: turned rows wander the basement and mark its cells visited, so the
+  novel sampler (unvisited cells only) re-targets EARLIER - onto the drop / climb-back stretch (94-96.7%), its 90-deg
+  turned rows there are what the climb-back then fails on. A second-order effect of the novel sampler's visit grid:
+  any new exploration that visits frontier cells pushes novel rows back. A turn variant would need its rows kept out
+  of the novel visit count.
