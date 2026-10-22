@@ -2230,3 +2230,22 @@ AABBs of the kill triggers are broadphase only (zones.kill_zones' own warning); 
   (nothing pays speed with time-pen 0); keys temperature higher only for envs in the frontier band (--front-temp on
   keys only); the WR demo shows the human line here (analysis only - round 4's download was refused by the session
   classifier).
+
+### 05:55 UTC: the basement climb is a CAN'T for the current policy, speed or not; r5b4_t06 (keys T cap 0.6)
+
+* r5b4_ncx 16,210-16,764M (~550M steps on the no-corner-cut field): evals 95.8-98.24% best, medians 22-98%, no
+  basement exit; the novel ceiling never moved (no real episode above the funnel rim).
+* **The holes into the funnel room** (hull maps): two ~180 x 300 u openings in the room's floor at x 2,490-2,670,
+  |y| 400-680, against the room's WEST wall (x ~2,460); clear vertical passage from z 1,050 to 1,350. The greedy loop's
+  return leg passes under the -y hole heading WEST (into that wall); the first pass crosses under the +y hole falling.
+* Random macros from the basement states with velocities x1.2 / x1.4 / x1.6: max z in the funnel's x range exactly
+  1,166 every time (the basement ceiling) - the rollouts hit the ceiling instead of finding the holes.
+* **The POLICY itself** (r5b4_ncx 16.61B snapshot, record_ckpt --spawn-states, stochastic at the training keys
+  temperature 1.2) from 350 flying basement states: x1.0 speed 0/16 finishes (best 98.24%), x1.4 speed 0/16 (best
+  98.15%); many episodes stop on basement ledges (v ~0 at z ~850-1,040). Speed is not the missing piece; the climb
+  (aim at a hole with vz up, heading east / inward) is a skill the policy does not have. `--respawn-speed` (built for
+  speed-gated jumps) is therefore not the arm.
+* **r5b4_t06** (05:52): resume of r5b4_ncx at 16,764,108,800 (md5 10d7ed86...; snapshot ckpt_16710631424 also on the
+  box) + `--unstuck-max 0.6 --ckpt-every 1e8` (keys-only temperature cap 0.2 -> 0.6; T rises to it within ~80M steps
+  since the stuck counter is far past 200M). The score is the max over evals and the 98.2% episodes survived T 0.5
+  in r5b4_main, so more key exploration in the basement costs little; with the pitch floor the KL stays sane.

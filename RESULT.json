@@ -19,7 +19,8 @@
    "12.5e6"
   ],
   "resume_from": "r5b4_t02/ckpt_15733358592.pt (md5 e3998f36...) <- r5b4_main/ckpt_15432941568.pt <- incumbent r4b3_band15x/ckpt_final.pt (15,032,385,536)",
-  "commit": "b6eb04a"
+  "commit": "b6eb04a",
+  "ckpt_note": "r5b4_ps05's last weights, step 16,186,867,712, md5 b0b6b4004a75eff9319f2d022190d46c (pulled by scp, md5-checked)"
  },
- "summary": "r5b4_main (bare resume of the incumbent 94.668, evals every 12.5M) reached 98.231 at 15,448M (CP7): the greedy line passed the wall slit and the chimney; it decayed once the unstuck T climbed to 0.5. r5b4_t02 = its 15.433B snapshot + --unstuck-max 0.2: best 98.236 (15,698M, median 98.1%). 0 finishes: the line loops on a basement ramp under the last wall but exits ~250 u too low to reach the opening into the room above the 120 u finish shaft. Building --pitch-sigma-min (PPO's joint ratio is dominated by the pitch head sitting on the sigma floor: approx_kl 1-22)."
+ "summary": "Bare resume of the incumbent (94.668) -> 98.231 (CP7) at 15.45B; T cap 0.2 -> 98.236; NEW --pitch-sigma-min 0.05 (the rounds-3-5 approx_kl anomaly was the pitch head on the sigma floor: kl 1-22 -> 0.02) -> 98.249 (16,174M, r5b4_ps05). 0 finishes: the greedy line loops in a basement under the last wall and must climb ~560 u through a hole into the room above the finish funnel; 3,072 random-macro rollouts from its own basement states never got over the rim. NEW --race-no-corner-cut (the 26-neighbour goal field leaked through the funnel's one-voxel slanted walls, a false minimum against the outer wall); r5b4_ncx trains on it now."
 }
