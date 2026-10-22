@@ -2006,3 +2006,79 @@ safety classifier; simulator probes from the policy's own states answered the sa
 * Code: the best lineage ran at commit 3ea2710 (--eval-patience, --eval-parallel, --front-temp,
   --respawn-greedy-stuck; flag-off bit-identical to the round's start); later commits are notes and config.
 * Box 57057785 released at 00:01 UTC (`box.py status`: no box).
+
+## Round 5, branch r5b4 - 2026-10-22 01:28 UTC
+
+### Box
+
+* 01:00-01:20 UTC: no offer under the caps (cheapest passing-filter 3090s at $0.375-0.42 vs the 0.30 cap; 0
+  boxes live fleet-wide). A background `box.py rent` retry loop was refused by the session's permission
+  classifier, so the rent was retried by hand. At ~01:17 the operator raised the tier-1 caps (3090 / 3090 Ti /
+  4080 / 5080) to $0.65 in config.json (an uncommitted harness edit in this worktree - not mine, not committed).
+* **Box 57138676: RTX 3090, $0.281/h, machine 151065 (Missouri)** - the machine round 4 trained on (226k
+  steps/s training-only). READY 01:22, deployed 01:26 (branch + incumbent ckpt, md5 cb1dbce4...).
+
+### The incumbent's state (analysis, no box)
+
+* Its best eval (traj_14991491072, 94.668): ONE episode reaches 94.67% (dies at 110.2 s at (22, -698, 1,689)),
+  one 91.7% (stuck against a wall at x -1,340 until the patience cut), FOUR stop at the old 60.56% gate, two
+  die at 34.4% (x ~-2,000, z ~9,760), one stays at the first ramp (1.6%). All 9 start at (7,837, 0, 15,042)
+  with v = 0; only the spawn yaw differs (347-355 deg, the 8 deg jitter) - chaos does the rest.
+* Its last 10M training steps logged `race/success_rate` 0.004-0.008 with finish times 2.6-5.1 s: training
+  episodes spawned near the goal (reservoir / greedy / novel rows) started finishing. Novel ceiling d_best
+  4,716 u (95.18%); reservoir deepest 94.54% (both y lanes, x ~0-200, z ~1,900-2,070); unstuck T 0.15.
+* **The last stretch** (goal field + kill-teleport AABBs, ANALYSIS ONLY): the frontier states sit in a slot
+  between kill plate *28 above (z ~2,065, x -224..1,248) and kill plate *39 below (z ~1,666, x -1,840..224).
+  The field's value at x 200 jumps from 5,491 (z 1,700) to 4,459 (z 1,600): a lower corridor (z ~1,400-1,600)
+  runs east from x ~0 to CP7 (sgcp_7, x 1,632-1,648, z 1,312-1,600) at 95.3% -> 97.0%. At y -600 the slot is
+  closed by solid from x ~300-400 (z 1,700-2,000). So the way on is: east in the slot past *39's end (x 224),
+  then down into the lower corridor before the wall - a ~100 u window. Then CP7, kill plates *50 (z ~1,313,
+  x 1,632-2,432), *61 (z ~1,201, x 2,464-3,424), *3 (z ~660, x 1,983-4,208, |y| <= 704) and the finish box
+  (x 2,872-3,048, |y| <= 88, z 176-185; arrival = the ORIGIN's segment crossing it). The field (BFS over
+  solids, triggers ignored) cuts straight through *28, *10 and *3 here.
+* Probe (local CPU, record_ckpt --spawn-states, the reservoir's 43 states >= 93%): greedy 0/6 past 94.7%
+  (two fall onto *39 at x ~40-50 within 1-3 s - too far west; four hover until the 12 s cap).
+
+### r5b4_main (01:27 UTC): bare resume of the incumbent
+
+* `box.py launch --resume --record-every 12.5e6 -- --ckpt-every 1e8`, 5e9 steps budget; every flag restored
+  (stall_eps 5, keys-only T cap 0.5, patience 30, side-by-side evals, greedy rows 0.3 + stuck 200, band 0.15,
+  ratchet, time-pen 0, surf-bonus 0, int-real-only). Purpose: push the frontier to the first finish.
+
+### 01:40 UTC: the final stretch, measured with the sim's own hull traces and kill hulls (ANALYSIS ONLY)
+
+AABBs of the kill triggers are broadphase only (zones.kill_zones' own warning); these numbers use
+`core.trace(p, p, hull)` for solids and `zones.hull_probe` (the trigger's hull-1 clipnodes) for kills.
+* **The pocket** (where the frontier states sit, ~94.5%): x 20-200, |y| ~500-700 (the two mirror lanes),
+  z ~1,720-2,100, solid walls west / east, a KILL FLOOR at z ~1,700. Its only exit is UP.
+* **The wall slit:** east of the pocket a block (x ~220-1,100, z ~1,580-2,080, full width) with a kill layer
+  on its top (z ~2,100); on the block a wall at x 480-540 (z 2,120-2,280, full width |y| <= ~700). Over it the
+  free origin gap is **z 2,310-2,345 standing (35 u), 2,290-2,365 ducked (75 u)**; the space above the block
+  is z 2,100-2,345. The 94.81% greedy episode (15,033M ep 4) climbed out of the pocket at vz +400-600 to an
+  apex of ~2,150, hit this wall at x ~480 (vx +994 -> -293) and fell onto the kill layer.
+* **The chimney:** past the wall the free region z ~1,840-2,080 (x 840-1,640) connects to the LOWER CORRIDOR
+  (z ~1,240-1,560, x 0..2,440) only through a chimney at x ~1,080-1,240 near y 0 (z 1,600-1,800), between kill
+  plates (z ~1,800 at x 800-1,050 and 1,300-1,700) and under block *157 (z ~1,900-2,000, kill on top).
+* **The corridor and the shaft:** the corridor runs east under the slab past CP7 (x 1,632-1,648) above a kill
+  plate (z ~1,300); at x ~2,480+ an open space leads to a funnel (walls at x ~2,760 / 3,080) narrowing to a
+  ~120 u SHAFT at x ~2,880-2,960, y ~0, open from z ~1,560 down to the finish (x 2,872-3,048, |y| <= 88, z
+  176-185; finish = the origin's segment crossing the hull-inflated box). The kill plates at z ~1,200 and
+  ~650-700 have their holes exactly over the shaft.
+* The goal field (BFS over solids) follows this route (pocket -> over the wall at z ~2,280 -> x ~840 ->
+  chimney at y ~-200 -> corridor -> shaft) and only grazes kill layers (block top at z 2,100).
+* Probes (local CPU, record_ckpt --spawn-states from the incumbent's 43 deepest reservoir states, all inside
+  the pocket, nearly at rest): greedy 0/6 and stochastic (keys temp 1.15, = training) 0/16 get out - they
+  hover or fall onto the kill floor. The exit has to arrive with speed from the ramp before the pocket
+  (x ~-1,100..-400, ~1-1.5 s before the wall); the pocket states themselves are dead ends.
+* **Training finishes in the incumbent's last steps came from NOVEL rows** (trivial wins): the novel sampler's
+  ceiling d_best is the min d over REAL envs only (respawn.py observe), and it stood at 4,716 u (95.18%), so no
+  real episode had gone deeper; the 2.6-5.1 s finishes were novel-row episodes placed in the open space above
+  the shaft (d >= d_best is allowed anywhere in the field's reachable set).
+
+### 01:37 UTC: r5b4_main - the training ceiling moves past the wall and the chimney
+
+* Evals (score.py best / median): 15,033M 94.806 / 93.0 (the checkpoint), 15,045M 94.732, 15,058M 87.637,
+  **15,071M 94.893** / 93.1, 15,083M 94.551 / **94.5** (all 9 reach the pocket), 15,096M 94.488.
+* Training ceiling 93,052 -> **94,320 u (96.47%)** at ~15.10B: d 3,448 is the lower corridor at x ~1,200 - a
+  REAL episode got over the slit and down the chimney. stall_frac 0.2 -> 0.29-0.41, T 0.09, evals every ~80 s
+  (12.5M steps; ~156k steps/s average, ~226k training-only).
