@@ -2224,3 +2224,22 @@ safety classifier; simulator probes from the policy's own states answered the sa
 * bandx 15.95-16.11B: 98.16, 98.14 (16,011M: 5/9 at 98.1%, median 98.07), 98.08, 98.10, 98.19, 98.15, 98.13,
   98.14, 96.7, 96.8; best of the run **98.237** (15,973M). Training ceiling 96,149 -> 96,435 u (98.64%) by
   16.11B; training win 29% (2.1 s episodes from spawns near the funnel). T 0.5.
+
+### 06:47 UTC: the funnel gate is a missing CLIMB skill, not speed (two CPU benches on bandx's 16.389B checkpoint)
+
+* Own states: the checkpoint's greedy pool after the 16,376M eval holds 1,274 rows on the return (x > 2,300,
+  > 96%: the east-end turn at x ~4,100, the return at ~3,200, the funnel base at ~2,760). Sampled at the
+  training temperature (keys 1.5 = T 0.5), 12 x 8 s each, velocity x1.0 / x1.5 / x2.0: **0/36 finish**, best
+  98.15-98.2% in every set. More speed on the line's own states does not produce the climb.
+* BENCH ONLY (WR demo states, measurement - CLAUDE.md section 0): 12 states of the human's approach, 114.20-
+  114.75 s (z 762-837, 1,500-1,546 u/s west along y ~570-590, just before the curved ramp that lifts him to the
+  rim): greedy **0/6**, sampled **0/12** finish; the policy's highest point 1,153-1,493 (rim ~1,575-1,600), best
+  progress 97.95-98.26%. So from the human's own approach the policy still cannot ride the spiral ramp up to the
+  rim: a CAN'T (like the CP2 cavity ramp in round 2), not a WON'T, and the speed rows cannot fix it.
+* What the policy does know: training finishes 24-29% of episodes, ~2.2 s long - novel rows placed ABOVE the
+  funnel (d >= the ceiling) fall in. So V is high above the funnel and on the rim; the gap is the ~1.5 s
+  spiral climb (115.0-116.0 s for the human: vx -917 -> +914 while vz +1,005 -> +214).
+* For the next round: practice ON the ramp is what is missing. Candidates (untested here): yaw exploration
+  only at the frontier (`--front-temp`, null at r4's 60.57% gate, a different gate), a reservoir draw weighted
+  to the deepest states (the return/ramp are ~0.1% of a 100k reservoir spanning the map), forward spawns
+  (`--respawn-frontier`, trivial-win risk near the shaft).
