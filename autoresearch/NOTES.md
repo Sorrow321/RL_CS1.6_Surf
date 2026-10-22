@@ -2589,3 +2589,62 @@ stochastic (keys temp 1.2 = training) x6 per set:
   draw the yaw at temperature 4 (sigma 0.30 z ~ 1 deg) from an AR(1) with rho 0.961 per 40 ms decision
   (correlation time 1 s); keys / pitch and every other env as the incumbent. Step line: `fronttemp+ou 2-3%
   >96.8%` - only 2-3% of the envs are in the band at a time (a small dose).
+
+### 17:10 UTC: arm 4 (r6b4_ou) at +113M - the line holds; the greedy U-turn has not changed yet
+
+* Evals (score.py, on the box): 98.025, 98.089, 98.288, 98.114, 98.135, 98.157, **98.301**, 98.220, 98.249
+  (17,419-17,520M) - all CP7, medians back to 98.0-98.1% in 2 of the last 3: correlated yaw exploration at
+  the frontier does NOT break the upstream line (the three boost arms all broke at the chimney by +50M).
+  In-band share 2-3% at the start -> 16% by 17.53B; reservoir min depth 2.013 -> 1.888%; novel ceiling flat
+  (98,260); learned yaw sigma 0.074 -> 0.064 (the policy narrows itself against the tempered rows).
+* Where the greedy line now ends: hovering at the +y hole's INNER edge, (2,617-2,650, 315-377, 1,062-1,181)
+  at ~0 speed, 98.17-98.30% (the incumbent's best: the -y hole's edge at z 1,226, 98.35%).
+* The greedy U-turn (scratchpad work/uturn.py on the eval files; first basement loop, x > 3,300): arm 4 at
+  17.51-17.52B - strafe offset median -1.64..-1.75 deg, zmax 1,148 (the wall ride), |v_h| min 955-1,034, west
+  leg |v_h| 1,084-1,166 at z 814-864, |y| 493-534. Incumbent eval: -1.40..-1.54 deg, zmax 1,116-1,148, |v_h| min
+  1,095-1,281, west leg 1,173-1,340 at z 865-1,072, |y| 365-495. So the west leg moved lower and outward
+  (toward the human's z 765 / |y| 585) but slower; the offset has not moved toward the human's 0 deg. The
+  incumbent's 98.349 episode turned the mirror way (clockwise, strafe-right, +1.32 deg) - the same habit.
+
+### 17:45 UTC: arm 4 wobbled into the chimney stop too; the U-turn has not moved; planning in the simulator
+
+* r6b4_ou 17,533-17,633M: ten evals at the CP6 chimney stop (96.71-96.89%, two at 57.8%), then back at CP7
+  (98.257, 98.134, 98.213 to 17,671M). So the chimney stop is a mode of the lineage itself (round 5's
+  controls logged 96.7 evals too), not of the speed boost alone. Greedy U-turn at 17.65B: offset still
+  -1.43..-1.57 deg, wall ride to z 1,148-1,166. Novel ceiling flat; reservoir min depth ~1.86-1.89%; in-band
+  share 16-23%. Best eval of the run 98.301.
+* Feasibility (ANALYSIS; scratchpad work/macro_feas.py, SurfCore.play_step per tick from the incumbent eval's
+  own east-leg state at 117.3 s): a held strafe-left at offset 0 deg makes the wide flat U-turn (x 4,157,
+  z 720-790) but from that state the line is already descending and dies on the basement kill floor at
+  t+1.24 s; a 1,215-rollout grid of 4-macro sequences from it reached no hole. The human's line had a small
+  upward bounce before the turn (z 764 -> 912), so the root must be earlier.
+* Generic planner: scratchpad work/cem_macro.py - CEM over K held macros (strafe key L/none/R, forward key,
+  view offset from the velocity heading, duration), objective = the goal field's min d (a finish = 0), rooted
+  at a state of the policy's OWN greedy eval episode (no demo input; CLAUDE.md 0b: planning in the
+  simulator). Running from the incumbent eval ep 2, 0.3 s after its basement entry.
+
+### 18:08 UTC: Go-Explore from the policy's own states reaches the ROOM; arm 5 (r6b4_gex) trains on that path
+
+* CEM over held strafe macros (scratchpad work/cem_macro.py) from the incumbent eval ep 2's basement entry:
+  converged in a minute onto the plateau the greedy line already parks on (98.24%, the hole's edge); 0
+  finishes in 15k rollouts - the progress objective is deceptive here.
+* **Go-Explore** (scratchpad work/goexp.py; ANALYSIS + own-state archive; no demo input): cells = (x/128,
+  y/128, z/64, |v_h|/150, heading/30 deg), count-based selection, 1-3 random held macros (strafe key, forward
+  key, view offset ~ N(0, 3 deg), 0.1-0.8 s) from SurfCore.play_step, rooted at 20 states of the incumbent
+  eval's own episodes 1/2/3/5/7 (0-1 s after their basement entries). 22 min, 225k cells, no finish; but the
+  deepest path, from ep 7 + 1.0 s ((3,457, 565, 786), |v_h| 1,353), does a clockwise strafe-right U-turn, comes
+  back west on the -y OUTER-LOW lane ((2,687, -588, 762), |v_h| 1,259 - the mirror of the human's lane, ~280
+  u/s slower), kicks up the ramp (vz +576), rises through the -y hole and crosses the room toward the funnel
+  at z ~1,245-1,293 (room max 1,310; the rim is ~1,560). Grader's field: **98.55-98.56%** there (the old
+  field's corner-cut leak by the funnel's outer wall), training field (nocut) 98.29% vs ~98.0-98.1% for the
+  greedy line's hole-edge park. The fastest cells (1,676 u/s) are back in the pit under the chimney.
+* Energy (E = v^2/2 + g z): the policy's corridor E (1.92e6) is above the human's (1.81e6) and its basement
+  entry equal (1.83e6); it loses ~0.2e6 at the basement floor landing (vz -900 onto the floor ramp) and more
+  in the wall-ride U-turn. So the line has the energy; it spends it on the landing and the U-turn.
+* **r6b4_gex** (arm 5, 18:05): resume of r6b4_ou's last weights (17,808,490,496; its last six evals
+  98.12-98.25, all CP7; best 98.301) - so the OU yaw band is restored - + `--spawn-states
+  runs/ge_path.npy --spawn-states-frac 0.15` = the 91 states (every 4 ticks) of that archive path, rebuilt
+  by exact replay (scratchpad work/path_states.py). Launched with box.py `--self-states` (provenance in the
+  box record). The trainer re-reads the file when it changes, so a better path can be swapped in live.
+* Go-Explore v2 running locally: continues the 225k-cell archive, adds roots before the floor landing, and
+  draws half of each batch from the top-5% cells by mechanical energy.
