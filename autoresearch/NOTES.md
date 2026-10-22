@@ -2250,7 +2250,7 @@ AABBs of the kill triggers are broadphase only (zones.kill_zones' own warning); 
   since the stuck counter is far past 200M). The score is the max over evals and the 98.2% episodes survived T 0.5
   in r5b4_main, so more key exploration in the basement costs little; with the pitch floor the KL stays sane.
 
-### 06:21 UTC: T 0.6 hurts; Go-Explore from own states tops out in the room; the room's EAST WALL IS A RAMP
+### 06:16 UTC: T 0.6 hurts; Go-Explore from own states tops out in the room; the room's EAST WALL IS A RAMP
 
 * **r5b4_t06** (keys T cap 0.6, 16,764-16,990M): within ~230M steps the best eval episodes fell from 98.2% (CP7,
   the basement) to 96.7-97.4% (CP6 - the greedy line stops in the corridor). Stopped; the lineage's high-T lesson
