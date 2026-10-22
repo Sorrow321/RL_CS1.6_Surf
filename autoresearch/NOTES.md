@@ -1642,3 +1642,54 @@ box.py (machines 149861, 136954). Local CPU probes with record_ckpt --spawn-stat
   run on the local CPU (fp32): 34.359 with --eval-stall (the per-tick rule's cut, above) and 47.495 with
   --eval-par alone (5 of 9 die at 47.4% at ~55 s; the same weights read ~54.5% on the GPU: bf16 vs fp32
   changes a chaotic line, as round 3's CPU probes also saw).
+
+## ROUND 4 LESSON (r4b1) - written at wrap-up
+
+**Result: no box all round, so no training.** From 12:50 to 23:22 UTC no single RTX offer under the caps
+passed box.py (the market's cheapest 4090 / 3090 / 5090 sat $0.06-0.25 over their caps); the one rented
+(a $0.188 3090, 15:22) was still loading its image after 330 s and was destroyed by the readiness rule.
+The branch's only evals are the incumbent checkpoint's own greedy line on the local CPU (fp32):
+**47.495** with --eval-par (5 of 9 die at 47.4% at ~55 s) and 34.359 with --eval-stall (the shipped rule's
+cut, below); the same weights read ~54.5 on the GPU (bf16).
+
+**What this round measured (generic, CPU-tested, pushed on ar/r4b1; none of it has run on a GPU):**
+1. **Evals were 49% of the incumbent run's wall time.** time/fps in progress.csv is cumulative, so the
+   wall time per row is recoverable: r3b3_gwx2 stepped at **328k steps/s** between evals and averaged 168k;
+   the 9 eval episodes run one after another at batch 1 on a 1-env core, the bowl cyclers to the 300 s
+   cap, up to 143 s per eval against ~76 s of training per 25M steps. NEW `--eval-par 1`: the episodes side
+   by side on a 9-env eval core (same file format, greedy pool, stall hooks per env): an eval costs its
+   LONGEST episode. Expected ~1.8-2x training per hour by itself.
+2. **The pitch head dominates the actor's gradient.** Under --view-absolute with --pitch-entropy 0 its
+   sigma sits at the LOG_STD_MIN clamp (0.0067) since round 1 (r1/r2/r3 checkpoints); the score-function
+   noise scales as 1/sigma. Measured (CPU, the incumbent, one 4,096-row minibatch, --diag-heads): pitch
+   **96% of the shared actor gradient norm**, 86% of the update's KL, joint-ratio clip fraction 30.9% vs
+   11.3% without the pitch term. NEW `--pitch-std-min S` (0.05 ~ the yaw's own sigma) and `--diag-heads N`.
+3. **The stall rule kills good flight.** It re-arms only when ONE call improves the running best by > 32
+   u, and without --reward-per-decision the race reward is called every TICK (<= ~23 u at full speed), so
+   only near-wall corner switches of the trilinear field re-arm it. Replayed on the incumbent's own best
+   eval it kills every greedy-line episode at 42.4-43.1 s (34%) - including the ones that reach 54.7% at
+   63 s - as a FAIL with no bootstrap, and the same `_since` gates the reservoir harvest (stagnant_mask, 3 s),
+   consistent with the reservoir's concentration at wall-dense regions (median 25.6% at 8.84B). NEW
+   `--stall-cum 1`: re-arm on a cumulative 32 u (15 s without that much progress kills, at any cadence);
+   with it --eval-stall becomes the intended stuck-episode cut (as shipped it caps evals at ~34%).
+
+**For the next round** (if these notes travel): resume the incumbent with `--eval-par 1` at the least (pure
+throughput, no learning change). The arm built for it: `--pitch-std-min 0.05 --stall-cum 1 --eval-stall 1
+--eval-par 1 --critic-warmup 20 --diag-heads 25 --ckpt-every 1e8` - the warmup because --stall-cum changes
+which episodes end as fails (round 3's time-penalty precedent); watch the first evals and roll back to a bare
+--eval-par resume if the greedy line breaks; read diag-heads at the real 8,192-row minibatch.
+
+**Ops:** a background `box.py rent` retry loop (every 60 s) is the only way in when the market is above the
+caps; it caught one offer in 8.5 h. CPU evals of a checkpoint (`train_fast.py --ckpt ... --envs 8 --n-steps 8
+--minibatches 1 --record-every 1e12 --eval-eps 9 --eval-par 1`) take ~5-10 min here but do not reproduce the
+GPU's greedy line. Never kill by a `ps | grep` pattern that also appears in the killing command's own line.
+
+## Wrap-up (r4b1) - 2026-10-22 00:10 UTC
+
+* Final: RESULT.json `"final": true`, score **47.495** (r4b1_cpueval2, eval traj_8838971648: 9 episodes,
+  best 47.50%, median 47.37%, 0 finishes, CP3) - the incumbent checkpoint's own greedy line evaluated on
+  the local CPU with --eval-par; r4b1_cpueval (with the shipped --eval-stall) 34.359. No new checkpoint.
+* No box was held at any point after 15:28 UTC (the one rental was destroyed by box.py's readiness rule);
+  the rent loop was stopped at 23:22 UTC; nothing to pull or release.
+* Branch head: --pitch-std-min / --diag-heads (a8f075e), stall-aware greedy pool (89ab892), --eval-par
+  (5bc7558), --stall-cum (166d3c3), notes and RESULT.json (this commit).

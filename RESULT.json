@@ -1,7 +1,7 @@
 {
  "agent": "r4b1",
  "round": 4,
- "final": false,
+ "final": true,
  "best": {
   "score": 47.495,
   "eval_file": "/home/steam/ar/runs/r4b1/r4b1_cpueval2/traj_8838971648.jsonl",
@@ -12,8 +12,8 @@
    "--eval-par",
    "1"
   ],
-  "resume_from": "incumbent r3 ckpt (r3b3_gwx2 final, 8,838,971,392); CPU, 1 iteration of 256 steps: the incumbent's own greedy line, fp32 on CPU",
-  "commit": "5bc7558"
+  "resume_from": "incumbent r3 ckpt (r3b3_gwx2 final, 8,838,971,392), 256 steps on the local CPU: the incumbent's own greedy line in fp32 (no box all round, no training; no new checkpoint)",
+  "commit": "c63dfbc"
  },
- "summary": "Round 4 (r4b1), 18:15 UTC: NO BOX since 12:50 (no offer under the caps). Branch evals so far are the incumbent checkpoint's own greedy line evaluated on CPU (47.495 with --eval-par; GPU evals of the same weights read ~54.5). Built, tested, pushed: --pitch-std-min/--diag-heads (pitch = 96% of the shared actor gradient, measured), --eval-par (9 eval episodes side by side; evals were 49% of the incumbent run's wall time), --stall-cum (the per-tick stall rule kills every greedy-line episode at ~42.5 s whatever its progress; cumulative re-arm fixes it). Plan when a box comes: incumbent + --pitch-std-min 0.05 --stall-cum 1 --eval-stall 1 --eval-par 1 --critic-warmup 20."
+ "summary": "r4b1: NO BOX all round (12:50-23:22 UTC no single RTX offer under the caps; one 3090 rented at 15:22 failed readiness), so no training; the branch's evals are the incumbent's own greedy line on the local CPU (47.495 with --eval-par; the same weights read ~54.5 on the GPU). Measured and built (generic, CPU-tested, pushed): (1) evals were 49% of the incumbent run's wall time (328k steps/s between evals, 168k average) -> NEW --eval-par (episodes side by side); (2) the pitch head (sigma at the 0.0067 clamp since round 1) is 96% of the shared actor gradient and 86% of the KL -> NEW --pitch-std-min / --diag-heads; (3) the per-tick stall rule kills every greedy-line episode at ~42.5 s (34%) whatever its progress and gates the reservoir harvest -> NEW --stall-cum. Next: resume the incumbent with --eval-par 1, then the arm --pitch-std-min 0.05 --stall-cum 1 --eval-stall 1 --critic-warmup 20 (untested on a GPU)."
 }
