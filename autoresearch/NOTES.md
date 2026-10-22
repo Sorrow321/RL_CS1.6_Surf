@@ -2174,3 +2174,15 @@ safety classifier; simulator probes from the policy's own states answered the sa
   (d >= d_best = 1,617) fall into the funnel. No real episode has gone up a hole yet.
 * Probe (local CPU, the 15.633B snapshot, 16 of the greedy line's own room states, 5 s): greedy
   0/16 and keys at temperature 1.5 0/16 rise into a hole; 11/16 stay standing on the ramp tops.
+
+### 03:48 UTC: r5b2_x1 at 16.17B - ~780M steps at the hole gate; the training ceiling moves first
+
+* Evals 15.84-16.17B: 98.08-98.25 in all but one (16,040M: 83.8), best **98.252** (16,165M); medians
+  swing 28-98% (T at its 0.5 cap since ~15.68B: keys at temperature 1.5 - the same wobble as round 4
+  at T 0.5; the best episode is unaffected).
+* **Novel ceiling 96,151 -> 96,244 u (98.44%, d_best 1,524) at ~16.0B**: below the hole cells' d
+  (1,640-1,664), so a REAL training episode has gone up through a hole in *160 into the shaft. The
+  reservoir's deepest is still 98.23% (the 2 s harvest margin). Every earlier gate went ceiling
+  first, greedy line 100-550M steps later. Training wins 25-28% at ~2.5 s (novel rows in the shaft).
+* box.py pull re-tars every eval of the run each time (105 files, minutes); pulling with rsync of
+  the new traj files instead (scratchpad qpull.sh).
