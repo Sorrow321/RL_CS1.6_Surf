@@ -3,10 +3,10 @@
  "round": 5,
  "final": false,
  "best": {
-  "score": 98.123,
-  "eval_file": "/home/steam/ar/runs/r5b4/r5b4_main/traj_15246819328.jsonl",
+  "score": 98.231,
+  "eval_file": "/home/steam/ar/runs/r5b4/r5b4_main/traj_15448145920.jsonl",
   "run": "r5b4_main",
-  "step": 15246819328,
+  "step": 15448145920,
   "ckpt": "/home/steam/ar/runs/r5b4/r5b4_main/ckpt_latest.pt",
   "recipe": [
    "--ckpt-every",
@@ -17,5 +17,5 @@
   "resume_from": "incumbent r4b3_band15x/ckpt_final.pt (15,032,385,536, md5 cb1dbce4...), bare resume (every flag restored)",
   "commit": "feab5d4"
  },
- "summary": "r5b4_main = bare resume of the incumbent (94.668) on box 57138676 (RTX 3090, $0.281/h), evals every 12.5M. Best 98.123 at 15,247M (CP7, median 96.6%, 0 finishes): the greedy line passed the wall slit (35 u gap) and the chimney ~200M steps after the training ceiling did (95.2 -> 96.5% at ~15.10B). Next: the corridor/funnel and the ~120 u shaft to the finish."
+ "summary": "r5b4_main = bare resume of the incumbent (94.668) on box 57138676 (RTX 3090, $0.281/h), evals every 12.5M. Best 98.231 at 15,448M (CP7, median 98.1%, 0 finishes): the greedy line passed the wall slit and the chimney ~130M steps after the training ceiling did. It now stops in a basement under the last wall; the finish needs a ~310 u climb out of it (a ramp turnaround) into the funnel above the 120 u shaft. Training's ceiling (98.56%) is already past that climb."
 }

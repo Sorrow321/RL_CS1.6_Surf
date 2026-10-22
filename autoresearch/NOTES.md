@@ -2106,3 +2106,25 @@ AABBs of the kill triggers are broadphase only (zones.kill_zones' own warning); 
   fall into a rise - the CP2-cavity kind of gate (dip + ramp turnaround), which took ~380M steps once the time
   penalty was gone (round 3).
 * Local copy: runs/r5b4/r5b4_main/ckpt_15232663552.pt (md5 c39c37bd...), 14M steps before the first 98.1% eval.
+
+### 03:00 UTC: r5b4_main stopped at 15.79B - the greedy line decayed once T climbed to 0.5; restart at T cap 0.2 (r5b4_t02)
+
+* r5b4_main 15,310-15,813M: best 98.231 (15,448M, median 98.1%, 5 of 9 in the basement, one episode climbing
+  out to z ~1,220 at x 2,704 before it died), then the evals decayed: medians 86.5% from ~15.5B and 60.3% by
+  15.79B (round 4's old gate), best episodes still 98.1-98.2% now and then. Training ceiling 96,176 -> 96,361 u
+  (98.56%: the funnel room - a real episode made the basement climb) and flat after 15.46B.
+* The unstuck T: decaying 0.15 -> 0.01 through 15.43B while the line improved; the stuck counter (no +500 u eval
+  best since 95,904 u at ~15.25B) passed 200M at 15.44B and T rose 0.14 / 0.26 / 0.39 / 0.5 (cap) by 15.54B -
+  the eval medians fell with it. The lineage saw the same (round 3: the line broke at T > ~1.5; round 4 wobbles
+  at T 0.5) and lower T caps consolidated lines in rounds 2 and 3. A vicious circle here: the +500 u rule needs
+  an eval episode out of the basement (d < 1,364), and T 0.5 keeps the greedy line from getting there.
+* approx_kl 0.07-0.4 until ~15.37B, then 1.2-14.7 per update (before T rose, so not T alone). Same anomaly as
+  rounds 3/4. Suspect the pitch head: sigma 0.007 with no entropy term, so a pitch-mean shift of 0.03 (z units)
+  alone is ~9 nats of log-ratio - and the pitch aims the depth camera. Not verified, not changed.
+* **r5b4_t02** (02:57): resume of r5b4_main's snapshot ckpt_15432941568.pt (md5 4485efac..., the weights just
+  before the 98.231 eval, T 0.012 there) + `--unstuck-max 0.2 --ckpt-every 1e8`, evals every 12.5M, 5e9 budget.
+  Everything else restored. Question: does a T cap of 0.2 hold the 98% line and let it consolidate the basement
+  climb that training already makes? Reference: r5b4_main from the same weights at T -> 0.5 (above).
+* Ops: `box.py pull` re-tars every eval file each call (1.1 GB by 15.8B, ~60 files of 15-20 MB): replaced by an
+  incremental scp of the new files (scratchpad ipull.sh). `pkill -f <pattern>` in a command line that contains the
+  pattern killed my own shell once more (CLAUDE.md) - kill by pid.
