@@ -2566,3 +2566,26 @@ stochastic (keys temp 1.2 = training) x6 per set:
   (inside the band the yaw's standard-normal draw is a per-env AR(1) with correlation time TAU and unit
   marginal variance; outside i.i.d.; the stored z IS the executed z, so the update's log-density is the
   executed action's and a deviation that pays moves the mean). Both default off; tests/python/test_front_ou.py.
+
+### 16:40 UTC: arm 3 broke too at +50M; arm 4 (r6b4_ou) = frontier OU yaw exploration
+
+* **r6b4_gsr** (arm 3: boost within 0.01 d0 of the reservoir-anchored frontier, stuck 200 kept): 98.222,
+  98.103, 98.121, 98.153, then **96.749** (17,470M, CP6 - the chimney/pit stop). All three boosted arms
+  went to the CP6 stop at ~+50M steps (arm 1 intermittently, arm 2 four evals running). Round 5's controls
+  also logged occasional 96.7 evals (ncy, rs15), so the stop is a known intermittent mode of this lineage that
+  the boosted practice makes frequent. Stopped (17.48B); the boost is dropped.
+* Ops: `pgrep -f 'run <name> '` inside `box.py ssh` matched its own shell once (the pattern is in the command
+  line) and killed the ssh instead of the trainer - CLAUDE.md's warning, again. Kill by the pid the launch
+  prints.
+* Progress of the key points on the REWARD field (nocut, d0 99,675): chimney dive 96.50%, the corridor after
+  the pit 95.40-96.00%, the policy's U-turn 96.85-97.03%, the human's (wider) U-turn 96.43-96.59%, the west
+  leg 97.28-97.33%, the basement entry / kick launch 97.80-97.81%. A band on the CURRENT position cannot
+  include a wide U-turn without the chimney - hence:
+* NEW `--front-record 1`: the --front-temp band tests the episode's ratchet RECORD, so an env is hot from
+  the moment it has reached the frontier region and stays hot through the dip after it; an episode from
+  the start is not hot at the chimney (its record there is <= 96.5%). Needs --race-ratchet.
+* **r6b4_ou** (16:37): warm resume of the incumbent + `--front-temp 3 --front-band 0.012 --front-heads yaw
+  --front-ou 1.0 --front-record 1 --ckpt-every 1e8`, evals every 12.5M: in-band episodes (record >= ~96.8%)
+  draw the yaw at temperature 4 (sigma 0.30 z ~ 1 deg) from an AR(1) with rho 0.961 per 40 ms decision
+  (correlation time 1 s); keys / pitch and every other env as the incumbent. Step line: `fronttemp+ou 2-3%
+  >96.8%` - only 2-3% of the envs are in the band at a time (a small dose).
