@@ -2747,3 +2747,16 @@ stochastic (keys temp 1.2 = training) x6 per set:
 * The 98.346 episode (ep 2): best 98.35% at (2,666, -367, 1,218), v (-268, 419, 0) - a rise to the -y hole's
   inner edge, dying on the room floor's kill layer; the incumbent's 98.349 was the same move ((2,631, -351,
   1,220)). The annealed line makes it regularly now (98.336 next eval).
+
+### 21:58 UTC: the hole-edge rise caps the score near 98.35; last arm r6b4_lrg
+
+* r6b4_lr 17,809-17,966M (lr 5e-5): 23 consecutive CP7 evals 98.16-98.35 from 17,834M (medians 98.1% in most);
+  best **98.346** (17,891M, pulled: runs/r6b4/r6b4_lr/traj_17890803712.jsonl), then 98.336. Stopped at
+  17,966,301,184 (md5 11037ec0...; ckpt being pulled).
+* Why the max sits at ~98.35: the 98.33-98.35 episodes (and the incumbent's 98.349) all rise NEXT to the -y hole
+  ((2,631-2,666, -351..-367, ~1,218-1,226)) - |y| 351-367 is just inside the hole's inner edge (the hole spans
+  |y| 400-680) - and die on the room floor's kill layer. That move cannot score much more; getting INTO the
+  hole (the Go-Explore paths: 98.55-98.70 on the grader) is the next real step.
+* **r6b4_lrg** (21:56): r6b4_lr's last weights (17,966,301,184, lr 5e-5, OU frontier yaw restored) +
+  `--spawn-states runs/ge_path.npy --spawn-states-frac 0.05` (the 291 own-root archive-path states, a third
+  of arm 5's share, at a sixth of its learning rate), evals every 6.25M until the wrap-up.
