@@ -2760,3 +2760,12 @@ stochastic (keys temp 1.2 = training) x6 per set:
 * **r6b4_lrg** (21:56): r6b4_lr's last weights (17,966,301,184, lr 5e-5, OU frontier yaw restored) +
   `--spawn-states runs/ge_path.npy --spawn-states-frac 0.05` (the 291 own-root archive-path states, a third
   of arm 5's share, at a sixth of its learning rate), evals every 6.25M until the wrap-up.
+
+### 22:22 UTC: 98.357 (r6b4_lrg) - above the incumbent's 98.349
+
+* r6b4_lrg (lr 5e-5 + 5% own-root archive-path spawns) 17,967-18,042M: 13 of 13 evals at CP7, medians
+  98.1-98.2%: 98.314, 98.171, 98.232, 98.233, 98.255, 98.232, 98.248, **98.357** (18,010,865,664), 98.142,
+  98.182, 98.336, 98.174, 98.192.
+* The 98.357 episode (ep 5): best 98.36% at (2,596, -336, 1,271), v (169, -256, -130) - the -y hole-edge rise
+  ~50 u higher than any before (the incumbent's 98.349 peaked at z ~1,220-1,226), then down onto the room
+  floor's kill layer at (2,593, -361, 1,220). One episode; whether the path spawns raised it is not shown.

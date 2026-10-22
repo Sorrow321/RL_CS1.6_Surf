@@ -3,13 +3,17 @@
  "round": 6,
  "final": false,
  "best": {
-  "score": 98.346,
-  "eval_file": "/home/steam/ar/runs/r6b4/r6b4_lr/traj_17890803712.jsonl",
-  "run": "r6b4_lr",
-  "step": 17890803712,
+  "score": 98.357,
+  "eval_file": "/home/steam/ar/runs/r6b4/r6b4_lrg/traj_18010865664.jsonl",
+  "run": "r6b4_lrg",
+  "step": 18010865664,
   "ckpt": null,
-  "ckpt_note": "pending: r6b4_lr's newest weights are pulled at the end of the run (slow link); fallback local copy r6b4_ou/ckpt_latest.pt (17,808,490,496, md5 d839caf9..., the weights r6b4_lr started from).",
+  "ckpt_note": "pending: r6b4_lrg's newest weights are pulled at the end of the run (slow link, ~50 min); fallbacks: r6b4_lr/ckpt_latest.pt (17,966,301,184, md5 11037ec0..., the weights r6b4_lrg started from; pull in progress) and r6b4_ou/ckpt_latest.pt (17,808,490,496, md5 d839caf9..., local).",
   "recipe": [
+   "--spawn-states",
+   "runs/ge_path.npy",
+   "--spawn-states-frac",
+   "0.05",
    "--lr",
    "5e-5",
    "--front-temp",
@@ -27,8 +31,8 @@
    "--record-every",
    "6.25e6"
   ],
-  "resume_from": "r6b4_ou/ckpt_latest.pt (17,808,490,496) <- incumbent r5b4_ncy (17,418,944,512)",
+  "resume_from": "r6b4_lr (17,966,301,184) <- r6b4_ou (17,808,490,496) <- incumbent r5b4_ncy (17,418,944,512)",
   "commit": "3077d12"
  },
- "summary": "Round 6 (r6b4), best 98.301 (r6b4_ou, CP7; incumbent 98.349); 0 finishes. Root cause of the last gate (WR demo, measurement only; replays exactly in our sim): in the basement U-turn the policy strafes with its view 1.5 deg off the velocity (the human 0 deg), the turn adds nothing, it wall-rides up and loses ~300 u/s, so its kick is too weak for the funnel rim. NEW flags (default off, tested): --respawn-greedy-speed (+band): broke the upstream line in 3 arms; --front-heads yaw / --front-ou / --front-record (correlated frontier yaw exploration, colored noise in PPO): holds the line, best 98.301, U-turn habit unchanged in ~390M steps. Planning in the simulator (Go-Explore over held strafe macros, rooted at own states): reaches the room (grader 98.55-98.70%) but no finish - ~15% short of the kick energy; training on those paths regressed the line. Now: arm 4's weights re-run with evals every 6.25M."
+ "summary": "Round 6 (r6b4): best 98.357 (r6b4_lrg at 18.01B, CP7, median 98.1%; incumbent 98.349); 0 finishes. Root cause of the last gate (WR demo, measurement only; it replays exactly in our sim): in the basement U-turn the policy strafes 1.5 deg off the velocity (human 0), wall-rides and loses ~300 u/s, so its kick cannot clear the funnel rim. NEW (default off, tested): --respawn-greedy-speed[-band] (broke the line), --front-heads yaw / --front-ou / --front-record (correlated frontier yaw exploration; holds the line). Go-Explore over held strafe macros rooted at own states reaches the room (grader 98.55-98.70) but no finish (~15% short of kick energy). Final line: an LR anneal (5e-5) stopped the chimney wobble (23+ CP7 evals in a row); + 5% own-root archive-path spawns gave the 98.357 hole-edge rise (z 1,271)."
 }
