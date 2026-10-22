@@ -2256,3 +2256,8 @@ safety classifier; simulator probes from the policy's own states answered the sa
   the agent ON the ramp moving up - the one generic mechanism that reaches those states - but it interleaves
   with the novel / greedy rows, and near a goal it is the trivial-win harvest trap; worth a careful arm next
   round).
+* **Do not launch `--respawn-frontier` on this lineage as is:** `FrontierSpawnSampler.mix` and
+  `NovelSpawnSampler.mix` both write their rows at the HEAD of the non-start pool (`out[n_fresh:n_fresh+k]`),
+  and the trainer runs the novel mix after the frontier mix - with `--respawn-novel` (frac 0.5) and the
+  frontier's default frac 0.5 every frontier row is overwritten by a novel row (the greedy rows then take
+  the tail). A frontier arm here needs the two to write disjoint slices first.
