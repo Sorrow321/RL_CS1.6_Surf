@@ -38,7 +38,7 @@ class FrontierRowPool:
     def __init__(self, n_envs: int, frac: float, band: float, d0: float, tick_ms: float,
                  every: int = 4, window=(0.0, 2.0), cooldown: float = 0.5, cap: int = 20000,
                  min_rows: int = 200, seed: int = 0, advance: float = 0.0, cross: bool = False,
-                 finish: bool = False):
+                 finish: bool = False, speed=(1.0, 1.0)):
         frac = float(frac)
         if not 0.0 < frac < 1.0:
             raise ValueError(f"--respawn-front F needs 0 < F < 1, got {frac!r}")
@@ -69,6 +69,16 @@ class FrontierRowPool:
         # entered the room 0 times in 24 tries from their starts)
         self.finish = bool(finish)
         self.pending = [None] * int(n_envs)
+        # --respawn-front-speed LO HI: each mixed row's velocity x U(LO, HI), direction kept - the
+        # --respawn-speed curriculum at the training frontier (round 6: the arrivals at the finish
+        # room's east slope carry E ~1,450-1,620 where the funnel rim needs ~1,600-1,700+). Its own
+        # generator, so the rows drawn are exactly the unscaled ones; (1, 1) = off, no draw
+        s_lo, s_hi = (float(v) for v in speed)
+        if not 0.0 < s_lo <= s_hi:
+            raise ValueError(f"--respawn-front-speed LO HI needs 0 < LO <= HI, got {s_lo!r} {s_hi!r}")
+        self.speed = (s_lo, s_hi)
+        self.speed_rng = (np.random.default_rng([int(seed), 5303])
+                          if (s_lo, s_hi) != (1.0, 1.0) else None)
         self.n = int(n_envs)
         self.frac, self.band, self.d0 = frac, float(band), float(d0)
         self.lo, self.hi = lo, hi
@@ -185,6 +195,9 @@ class FrontierRowPool:
         out = np.array(pool, dtype=STATE_DTYPE, copy=True)
         end = len(out) - int(n_tail)
         out[end - n:end] = self.rows[self.rng.integers(0, self.size, n)]
+        if self.speed_rng is not None:
+            sc = self.speed_rng.uniform(self.speed[0], self.speed[1], n).astype(np.float32)
+            out["velocity"][end - n:end] *= sc[:, None]
         self.mixed = n
         return out
 
@@ -196,7 +209,9 @@ class FrontierRowPool:
                         (", advance >= {:,.0f} u".format(self.advance * self.d0)
                          if self.advance > 0.0 else "")
                         + (", crossings into the band only" if self.cross else "")
-                        + (", finishing episodes only" if self.finish else ""), self.frac))
+                        + (", finishing episodes only" if self.finish else "")
+                        + (", speed x U({:g}, {:g})".format(*self.speed)
+                           if self.speed_rng is not None else ""), self.frac))
 
     # -- persistence -------------------------------------------------------------
     def state_dict(self) -> dict:

@@ -187,6 +187,32 @@ def test_the_finish_gate_commits_a_window_only_when_its_episode_finishes():
     assert "finishing episodes only" in p.line()
 
 
+def test_the_speed_scale_multiplies_the_mixed_rows_only():
+    def filled(**kw):
+        p = _pool(n=1, cooldown=0.04, min_rows=5, seed=3, **kw)
+        dr = _Drive(p, 1)
+        dr.dsched[0] = lambda k: 1050.0 - k
+        for _ in range(100):
+            dr.tick(ceiling=1000.0)
+        p.rows["velocity"][:, 0] = 100.0 + np.arange(p.size, dtype=np.float32)
+        p.rows["velocity"][:, 2] = 50.0
+        return p
+    pool = np.zeros(100, STATE_DTYPE)
+    off, on = filled(), filled(speed=(1.2, 1.6))
+    a, b = off.mix(pool, 10, 20), on.mix(pool, 10, 20)
+    assert off.mixed == on.mixed == 18
+    assert np.array_equal(a["origin"], b["origin"])            # the same rows drawn
+    k = b["velocity"][62:80, 0].astype(np.float64) / a["velocity"][62:80, 0]
+    assert (k >= 1.2 - 1e-6).all() and (k <= 1.6 + 1e-6).all() and k.std() > 0.01
+    assert np.allclose(b["velocity"][62:80, 2], a["velocity"][62:80, 2] * k, rtol=1e-5)
+    assert a[:62].tobytes() == b[:62].tobytes() and a[80:].tobytes() == b[80:].tobytes()
+    same = filled(speed=(1.0, 1.0))
+    assert same.speed_rng is None and same.mix(pool, 10, 20).tobytes() == a.tobytes()
+    assert "speed x U(1.2, 1.6)" in on.line()
+    with pytest.raises(ValueError):
+        _pool(speed=(0.0, 1.0))
+
+
 def test_an_episode_end_restarts_the_ring_and_the_record():
     p = _pool(n=1, cooldown=0.04)
     dr = _Drive(p, 1)
@@ -299,6 +325,19 @@ def test_the_trainer_wires_restores_and_refuses_it():
     assert "restored --respawn-front state" in r5.stdout
     cf = _cfg(run4)
     assert cf["respawn_front_finish"] == 1 and cf["respawn_front_cross"] == 1
+    r6 = _run([sys.executable, "-u", str(TRAIN), "--run", "front_spd"] + SMOKE
+              + ["--steps", "2048", "--respawn-front-speed", "1.0", "1.3"])
+    assert r6.returncode != 0 and "needs --respawn-front F > 0" in r6.stdout + r6.stderr
+    shutil.rmtree(ROOT / "runs" / "front_spd", ignore_errors=True)
+    run5 = "front_speed"
+    shutil.rmtree(ROOT / "runs" / run5, ignore_errors=True)
+    r7 = _run([sys.executable, "-u", str(TRAIN), "--run", run5, "--ckpt",
+               str(ROOT / "runs" / run4 / "ckpt_final.pt")] + SMOKE + GREEDY_SMOKE
+              + ["--steps", "22528", "--respawn-front-speed", "1.0", "1.3"])
+    assert r7.returncode == 0, r7.stdout[-4000:] + r7.stderr[-4000:]
+    assert "velocity x U(1, 1.3) per row" in r7.stdout
+    assert _cfg(run5)["respawn_front_speed"] == [1.0, 1.3]
+    shutil.rmtree(ROOT / "runs" / run5, ignore_errors=True)
     shutil.rmtree(ROOT / "runs" / run4, ignore_errors=True)
     shutil.rmtree(ROOT / "runs" / run3, ignore_errors=True)
     shutil.rmtree(ROOT / "runs" / run3, ignore_errors=True)

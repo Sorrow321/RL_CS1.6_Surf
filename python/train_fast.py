@@ -6801,6 +6801,10 @@ def main() -> None:
                     metavar=("LO", "HI"),
                     help="--respawn-front: keep the states from HI down to LO seconds before each "
                          "qualifying record (default 0 2)")
+    ap.add_argument("--respawn-front-speed", type=float, nargs=2, default=None, metavar=("LO", "HI"),
+                    help="--respawn-front: scale each frontier row's velocity by U(LO, HI), direction "
+                         "kept (--respawn-speed's curriculum at the training frontier). Default 1 1 = "
+                         "off; ckpt restores")
     ap.add_argument("--respawn-front-finish", type=int, default=None, choices=(0, 1),
                     help="--respawn-front: 1 = a captured window joins the pool only if its episode then "
                          "FINISHES (held per env until the episode ends); turning it on over a "
@@ -7817,6 +7821,8 @@ def main() -> None:
             args.respawn_front_cross = int(ck_cfg["respawn_front_cross"])
         if args.respawn_front_finish is None and ck_cfg.get("respawn_front_finish") is not None:
             args.respawn_front_finish = int(ck_cfg["respawn_front_finish"])
+        if args.respawn_front_speed is None and ck_cfg.get("respawn_front_speed") is not None:
+            args.respawn_front_speed = [float(v) for v in ck_cfg["respawn_front_speed"]]
         # --respawn-backward: a spawn DISTRIBUTION, restored like the frontier
         if args.respawn_backward is None and ck_cfg.get("respawn_backward"):
             args.respawn_backward = True
@@ -8777,6 +8783,12 @@ def main() -> None:
         args.respawn_front_cross = 0
     if args.respawn_front_finish is None:
         args.respawn_front_finish = 0
+    if args.respawn_front_speed is None:
+        args.respawn_front_speed = [1.0, 1.0]
+    if (tuple(float(v) for v in args.respawn_front_speed) != (1.0, 1.0)
+            and not float(args.respawn_front or 0.0) > 0.0):
+        raise SystemExit("--respawn-front-speed scales --respawn-front's rows: it needs "
+                         "--respawn-front F > 0")
     if args.respawn_greedy_speed is None:
         args.respawn_greedy_speed = [1.0, 1.0]
     if (tuple(float(v) for v in args.respawn_greedy_speed) != (1.0, 1.0)
@@ -11381,7 +11393,8 @@ def main() -> None:
                                     seed=int(args.seed) + 7717,
                                     advance=float(args.respawn_front_advance),
                                     cross=bool(args.respawn_front_cross),
-                                    finish=bool(args.respawn_front_finish))
+                                    finish=bool(args.respawn_front_finish),
+                                    speed=tuple(args.respawn_front_speed))
         except ValueError as _e:
             raise SystemExit(str(_e))
         FROWS_FIELD = _ffld
@@ -11392,6 +11405,8 @@ def main() -> None:
                  if FROWS.advance > 0.0 else "")
               + ("; crossings INTO the band only" if FROWS.cross else "")
               + ("; held until the episode ends, kept only if it FINISHES" if FROWS.finish else "")
+              + ("; velocity x U({:g}, {:g}) per row".format(*FROWS.speed)
+                 if FROWS.speed_rng is not None else "")
               + f" (real "
               f"episodes only; kept even when the episode dies right after; clocks zeroed; "
               f"real episodes, harvested)")
@@ -14114,6 +14129,8 @@ def main() -> None:
             meta["config"]["respawn_front_cross"] = 1
         if FROWS.finish:
             meta["config"]["respawn_front_finish"] = 1
+        if FROWS.speed_rng is not None:
+            meta["config"]["respawn_front_speed"] = [float(v) for v in FROWS.speed]
     # --eval-patience: written ONLY when on, like the greedy pool above
     if EVAL_PATIENCE:
         meta["config"]["eval_patience"] = float(args.eval_patience)
