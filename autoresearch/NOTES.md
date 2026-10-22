@@ -2197,7 +2197,7 @@ safety classifier; simulator probes from the policy's own states answered the sa
 * r5b1_band ends at 15.633B; a chained relaunch bare-resumes it as **r5b1_bandx** (3e9 steps, evals every
   12.5M; band + speed restored).
 
-### 05:35 UTC: unstuck T at its cap thins the frontier; bandx 98.233
+### 05:33 UTC: unstuck T at its cap thins the frontier; bandx 98.233
 
 * Per 50M steps (all four runs; T = unstuck temperature, keys only): share of greedy episodes at the 98%
   frontier - band 28 / 11 / 28 / 22 / 17% at T 0.01-0.27 (15.30-15.50B), **3 / 6%** at T 0.5 (15.55-15.60B);
