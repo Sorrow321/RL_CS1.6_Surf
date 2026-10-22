@@ -37,7 +37,7 @@ from .core import STATE_DTYPE
 class FrontierRowPool:
     def __init__(self, n_envs: int, frac: float, band: float, d0: float, tick_ms: float,
                  every: int = 4, window=(0.0, 2.0), cooldown: float = 0.5, cap: int = 20000,
-                 min_rows: int = 200, seed: int = 0, advance: float = 0.0):
+                 min_rows: int = 200, seed: int = 0, advance: float = 0.0, cross: bool = False):
         frac = float(frac)
         if not 0.0 < frac < 1.0:
             raise ValueError(f"--respawn-front F needs 0 < F < 1, got {frac!r}")
@@ -56,6 +56,11 @@ class FrontierRowPool:
         # hanging at ~110 u/s on the finish room's east slope) re-captures its own crawl every
         # cooldown and floods the pool with one dead-end spot. 0 = off
         self.advance = float(advance)
+        # --respawn-front-cross 1: a capture also needs the window to START outside the band (d HI s
+        # ago > the band's edge): the arrival INTO the frontier, not what follows inside it. Once
+        # real episodes finish, the band holds the easy part (round 6: every finishing episode gave
+        # ~4 "fall down the finish shaft" windows, flooding the pool); crossings keep the climb
+        self.cross = bool(cross)
         self.n = int(n_envs)
         self.frac, self.band, self.d0 = frac, float(band), float(d0)
         self.lo, self.hi = lo, hi
@@ -117,10 +122,13 @@ class FrontierRowPool:
         # flew to)
         go = (rec & (d <= ceil + self.band * self.d0) & (self.fill >= self.R)
               & (snap_no - self.last_cap >= self.cool))
-        if self.advance > 0.0 and go.any():
+        if (self.advance > 0.0 or self.cross) and go.any():
             # the oldest snapshot of the window is the one HI s ago (the ring holds R = k_hi + 1)
             d_old = self.ring_d[np.arange(self.n), self.fill % self.R]
-            go &= (d_old - d) >= self.advance * self.d0
+            if self.advance > 0.0:
+                go &= (d_old - d) >= self.advance * self.d0
+            if self.cross:
+                go &= d_old > ceil + self.band * self.d0
         added = 0
         for i in np.flatnonzero(go):
             back = np.arange(self.k_hi, self.k_lo - 1, -1)     # oldest first
@@ -166,7 +174,8 @@ class FrontierRowPool:
                 .format(self.size, self.captured, self.ceiling, self.band, self.band * self.d0,
                         self.hi, self.lo,
                         (", advance >= {:,.0f} u".format(self.advance * self.d0)
-                         if self.advance > 0.0 else ""), self.frac))
+                         if self.advance > 0.0 else "")
+                        + (", crossings into the band only" if self.cross else ""), self.frac))
 
     # -- persistence -------------------------------------------------------------
     def state_dict(self) -> dict:

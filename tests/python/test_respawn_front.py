@@ -146,6 +146,29 @@ def test_the_advance_gate_keeps_arrivals_and_drops_crawls():
         _pool(advance=-0.1)
 
 
+def test_the_cross_gate_keeps_the_arrival_into_the_band_only():
+    # band edge 1,100 (ceiling 1,000 + 0.01 x 10,000); window 0.4 s = 10 snapshots = 40 ticks
+    p = _pool(n=1, cooldown=0.04, cross=True)
+    dr = _Drive(p, 1)
+    # d falls from 2,000 into the band and on down to 0 (a finish): crossing windows are those whose
+    # START (40 ticks back) is still > 1,100 - the first ~40 ticks inside the band
+    dr.dsched[0] = lambda k: max(0.0, 2000.0 - 20.0 * k)
+    for _ in range(200):
+        dr.tick(ceiling=1000.0)
+    assert p.captured >= 1
+    starts_d = 2000.0 - 20.0 * p.rows["origin"][:, 0]
+    # every captured WINDOW starts outside the band: its oldest state (first of each 11) has d > 1,100
+    w0 = starts_d[::11]
+    assert (w0 > 1100.0).all()
+    off = _pool(n=1, cooldown=0.04)
+    do = _Drive(off, 1)
+    do.dsched[0] = dr.dsched[0]
+    for _ in range(200):
+        do.tick(ceiling=1000.0)
+    assert off.captured > p.captured        # without the gate the fall inside the band is kept too
+    assert "crossings into the band only" in p.line()
+
+
 def test_an_episode_end_restarts_the_ring_and_the_record():
     p = _pool(n=1, cooldown=0.04)
     dr = _Drive(p, 1)
@@ -237,6 +260,16 @@ def test_the_trainer_wires_restores_and_refuses_it():
     assert r2.returncode == 0, r2.stdout[-4000:] + r2.stderr[-4000:]
     assert "respawn_front=0.1" in r2.stdout
     assert _cfg(run2)["respawn_front_band"] == 0.02
+    run3 = "front_cross"
+    shutil.rmtree(ROOT / "runs" / run3, ignore_errors=True)
+    r4 = _run([sys.executable, "-u", str(TRAIN), "--run", run3, "--ckpt",
+               str(ROOT / "runs" / run / "ckpt_final.pt")] + SMOKE + GREEDY_SMOKE
+              + ["--steps", "14336", "--respawn-front-cross", "1"])
+    assert r4.returncode == 0, r4.stdout[-4000:] + r4.stderr[-4000:]
+    assert "crossings INTO the band only" in r4.stdout
+    assert "the restored frontier pool is dropped" in r4.stdout
+    assert _cfg(run3)["respawn_front_cross"] == 1
+    shutil.rmtree(ROOT / "runs" / run3, ignore_errors=True)
     r3 = _run([sys.executable, "-u", str(TRAIN), "--run", "front_bad"] + SMOKE
               + ["--steps", "2048", "--respawn-frac", "0", "--respawn-front", "0.1"])
     assert r3.returncode != 0 and "--respawn-front needs the reservoir" in r3.stdout + r3.stderr
