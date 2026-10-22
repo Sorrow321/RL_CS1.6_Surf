@@ -2150,3 +2150,29 @@ safety classifier; simulator probes from the policy's own states answered the sa
   the shaft. Training already finishes (7.7% of episodes, 2.9 s long: spawns near the funnel).
 * Evals' medians sit at ~86.6% in many evals (3-4 of 9 episodes stop at the 86.6% stop, x ~-2,000, z
   ~4,000, ~98 s): the consistency gap for the finish fraction later.
+
+### 04:33 UTC: r5b1_gspdx REGRESSED (all rows scaled) -> NEW `--respawn-greedy-speed-band B`; arm r5b1_band
+
+* r5b1_gspdx (bare resume of gspd's final, every greedy row x U(1, 1.5)), 15.333B -> 15.708B (stopped):
+  evals 93.0, **98.145 (15,346M, 4/9 at 98%)**, 98.107, 87.7, 98.06, **98.157 (15,447M)**, 98.09, 87.8, 95.1,
+  86.6, 98.12, 88.1, 98.00, 98.10, 97.97, 88.15, then from 15.58B: 86.8, 96.5, 72.5, 86.3, 87.7, 96.8, 96.7,
+  86.6, 86.6, 96.7 - no 98% episode in the last ~150M steps. Training ceiling flat at 96,240 u (98.44%)
+  from ~15.37B; unstuck T 0.01 -> 0.5 (cap) over 15.47-15.57B (no +500 u eval best after 15.27B).
+* The greedy line shifted to an EARLIER stop: episodes per eval past 90% / stopped at 85.5-89%:
+  gspd's last 12 evals **44% / 28%**, gspdx's last 12 **11% / 42%**. The 86.6% stop (x ~-1,700, z ~3,900,
+  ~97.5 s: the line loses horizontal speed and falls into a kill) and the 88% stop (a climb at x
+  -800..-300 to z ~3,690 reached at ~750-800 u/s; the incumbent's line carried 1,150-1,400 there) both
+  look speed-dependent - and with ~80% of the greedy pool now from those stops, every one of those rows
+  was replayed x1-1.5 faster. Hypothesis: speed factors on a failure the line passes in OTHER episodes
+  break DAgger's correction (the policy trains on states it never reaches at the speed it flies).
+* NEW `--respawn-greedy-speed-band B` (commit 55d5449): the speed factor only for greedy rows within
+  B x d0 (field distance) of the pool's deepest row; every other failure replayed exactly. B = 0 = every
+  row (the flag above, byte for byte); rows outside the band byte-identical to unscaled rows; the factors
+  are still drawn for every row (generator state independent of B). 5 pool tests + the trainer smoke;
+  test_eval_patience's flag-off bit-identity passes.
+* **r5b1_band** (04:31): gspd's ckpt_final (15,332,802,560, md5 59a5a533..., T ~0.05) + 
+  `--respawn-greedy-speed-band 0.05` (speed 1.0-1.5 restored), 3e8 steps, evals every 12.5M. Matched-step
+  control: gspdx (the same checkpoint, all rows scaled). Read-out: the share of greedy episodes past 90%
+  vs stopped at 86-88%, and the 98% frontier (the funnel return).
+* Box: the box's checkout was updated with git (fetch + checkout -B, deploy_box.sh's own commands) instead of
+  `box.py deploy`, whose GPU health check fails on a busy GPU (r4 harness note); Python-only change.
