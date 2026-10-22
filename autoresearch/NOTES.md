@@ -2274,7 +2274,7 @@ safety classifier; simulator probes from the policy's own states answered the sa
   stretch) + `--unstuck-max 0.2` (T 0.5 -> 0.2 at the first iteration: `T = min(tmax, ...)` while stuck),
   3e8 steps. Control: bandx's own continuation from the same snapshot (above).
 
-### 07:38 UTC: r5b1_t02 (T cap 0.2) - 98.260, not decisively better; next arm r5b1_m1 (`--respawn-margin 1`)
+### 07:37 UTC: r5b1_t02 (T cap 0.2) - 98.260, not decisively better; next arm r5b1_m1 (`--respawn-margin 1`)
 
 * t02 (bandx's 16.634B snapshot, T 0.5 -> 0.2) 16.64-16.87B, 15 evals: **98.260 (16,698M, the branch's best)**,
   87.8, 98.24, 98.12, 98.14 / 98.21 / 98.19 / 98.22 (medians 98.04-98.07: 4 consecutive evals with >= 5/9 at the
