@@ -2585,3 +2585,7 @@ basement and only near the funnel wall in shape).
 * Read-out: the novel ceiling (98,260u = d 1,414 nocut, flat through round 5 and every arm so far) - a real episode
   from a turned row that launches and crests moves it; then the greedy line (the lineage's gates went ceiling first,
   greedy line 100-550M steps later).
+* Bench of the operator's raw yield (local, measurement only): 53 of the incumbent's OWN east-leg states from its best
+  eval (x 2,700-3,700, z < 900, moving east > 1,000 u/s), heading reversed: greedy 0/16 and stochastic 0/24 finish or
+  crest (several rise to z 1,418-1,509 - up the passage, as from the human's launch states). As expected: the policy has
+  never practised the launch, and the steer that makes it work (CEM) is ~1e-3 of committed offsets.
