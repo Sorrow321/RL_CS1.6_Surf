@@ -2648,3 +2648,58 @@ stochastic (keys temp 1.2 = training) x6 per set:
   box record). The trainer re-reads the file when it changes, so a better path can be swapped in live.
 * Go-Explore v2 running locally: continues the 225k-cell archive, adds roots before the floor landing, and
   draws half of each batch from the top-5% cells by mechanical energy.
+
+### 18:35 UTC: arm 5 at +100M; the archive path's room states are dead ends without more energy
+
+* r6b4_gex evals (17,809-17,897M): 98.129, 98.135, 98.251, 98.234, 98.195, then the lineage's chimney wobble
+  96.725, 96.752, then 97.067. Reservoir min depth 1.89 -> **1.766%** (the path's hole / room states are now
+  harvested by real episodes); novel ceiling flat.
+* Bench (ANALYSIS; incumbent weights, stochastic at keys 1.2, from the path's own hole / room states): 0/8
+  finish - the room states (z 1,250-1,300, vz <= 256) fall onto the room floor's kill layer in 0.1-0.9 s. The
+  path's kick launched at z 877 with vz +809 (apex ~1,290); the human's at z 954 with vz +1,011 (apex ~1,590;
+  the rim ~1,560). With the west leg at ~1,545 instead of ~1,280 the same kick would give vz ~980.
+  So the path teaches the room entry (grader +0.2%: 98.55% vs the hole-edge park) but not the finish.
+* Go-Explore v2 (energy-biased half batches, roots before the floor landing): room max z 1,310 -> 1,379 at
+  ~300k cells, no finish.
+
+### 18:45 UTC: Go-Explore v2 done (no finish); arm 5's spawn file swapped live to four archive paths
+
+* v2 (32 min, energy-biased half batches, roots 0.3 s before to 0.15 s after the basement entries; 315k
+  cells): no finish; room max z 1,413 ((2,657, -638), rising); best grader progress 98.60%; fastest west leg on
+  the -y outer-low lane **1,438 u/s** at (2,947, -573, 778) heading west (the human's lane at 1,545).
+* arm 5's spawn file (runs/ge_path.npy on the box, re-read by the trainer on change) is now 291 states: the
+  v1 path (91) + v2's paths to its deepest cell (85, root ep 3), its highest room state (73, root ep 7) and its
+  fastest outer-lane west leg (42, root ep 7) - all rooted at the incumbent eval's own states, rebuilt by exact
+  replay. The v1-only file is kept as runs/ge_path_v1.npy.
+* r6b4_gex to 17,960M: 97.067, 96.739, 96.753 (chimney wobble), 98.129, 98.140, 98.185; reservoir min depth
+  ~1.77-1.80%; ceiling flat.
+* Go-Explore v3 running (35 min): continues v2's archive with roots 0.5-1.0 s BEFORE the basement entry (the
+  corridor / passage, where the policy's line still carries more energy than the human's).
+
+### 19:20 UTC: Go-Explore v3 (corridor roots) - no finish; the energy gap is ~15% at the kick
+
+* v3 (35 min from v2's archive, roots 0.5-1.0 s before the basement entries, energy-biased): 364k cells, no
+  finish; best grader progress 98.70%; room max z 1,435 (several cells at exactly 1,435); fastest -y
+  outer-lane west leg still 1,438 u/s; strongest kick in the archive vz +867 at (2,790, 466, 891) (apex
+  ~1,360) against the human's +1,011 at z 954 (apex ~1,590). Mechanical energy E = v^2/2 + g z on the outer
+  lane: archive 1.66e6, human 1.81e6, the policy's own basement entry 1.83e6 - the search line still spends
+  ~8% between the entry and the west leg (the human ~1%).
+* r6b4_gex to 18,061M (+250M): 98.17, 98.16, 98.14, (88.07, 96.73, 96.86 wobble), 98.19, 98.20; the trainer
+  re-read the 291-state file at 17,965M; reservoir min depth 1.737%; the greedy line still parks at the hole
+  edge. On the training field the room pays only ~0.2% over that park, so without a finishing path the
+  pull is weak.
+* v4 running (40 min, one CPU job): v3's archive, macros held up to 1.2 s and up to 4 per rollout (the human
+  holds one strafe for ~2.2 s through the descent, landing, U-turn and west leg).
+
+### 19:50 UTC: arm 5 (archive-path spawns) regressed the greedy line; the box returns to arm 4's line for evals
+
+* r6b4_gex 17,808-18,248M (~440M steps): best 98.275 (18,073M); from ~18.12B ten evals in a row at 96.7-97.05%
+  (CP6/CP7 - the line stops before the basement). The reservoir did harvest the paths' hole / room states (min
+  depth 1.89 -> 1.73%), but the greedy line never took the room entry (on the training field it pays ~0.2% over
+  the hole-edge park), and with 15% of every pool moved onto 291 basement states the upstream line got less
+  practice. Stopped at ~18.25B (ckpt_stop.pt kept on the box).
+* **r6b4_ou2** (19:47): bare resume of arm 4's 17,808,490,496 weights (front-temp 3 / band 0.012 / yaw / OU 1.0 /
+  record restored; no spawn file), evals every **6.25M** - with ~5 h left and no finishing path found, the
+  remaining lever on the score is sampling the most stable line often (arm 4: 98.12-98.30 at CP7; the
+  incumbent's 98.349 was one rare hole-edge rise in ~200 round-5 evals). A finishing path from the local
+  Go-Explore search would still be swapped in as a spawn file.

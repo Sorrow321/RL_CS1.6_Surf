@@ -3,22 +3,27 @@
  "round": 6,
  "final": false,
  "best": {
-  "score": 98.291,
-  "eval_file": null,
-  "run": "r6b4_gsb",
-  "step": 17432051712,
+  "score": 98.301,
+  "eval_file": "/home/steam/ar/runs/r6b4/r6b4_ou/traj_17494966272.jsonl",
+  "run": "r6b4_ou",
+  "step": 17494966272,
   "ckpt": null,
   "recipe": [
-   "--respawn-greedy-speed",
+   "--front-temp",
+   "3",
+   "--front-band",
+   "0.012",
+   "--front-heads",
+   "yaw",
+   "--front-ou",
    "1.0",
-   "1.5",
-   "--respawn-greedy-speed-band",
-   "0.02",
-   "--respawn-greedy-stuck",
-   "0"
+   "--front-record",
+   "1",
+   "--ckpt-every",
+   "1e8"
   ],
   "resume_from": "incumbent r5b4_ncy/ckpt_latest.pt (17,418,944,512)",
-  "commit": "27f5aaf"
+  "commit": "3077d12"
  },
- "summary": "Round 6 (r6b4). Box 57226494 (3090, slow link: evals scored on the box). Measurement-only WR-demo bench: the incumbent finishes 9/9 from inside the basement hole, 0/50 from just after the kick ramp; its own best episode flies the ramp-and-turn at ~1,000 u/s and reaches only the hole's edge. Root cause found: in the basement U-turn the policy strafes with its view 1.5 deg off the velocity (the human ~0 deg), so the air-strafe turn adds nothing, it wall-rides up and loses ~300 u/s - a 6-sigma held yaw deviation. Arms 1-3 (NEW --respawn-greedy-speed, speed-boosted greedy rows): best 98.291, each broke the line at the chimney after ~50M steps. Arm 4 r6b4_ou (16:37): NEW --front-heads yaw / --front-ou 1.0 / --front-record 1 - correlated yaw exploration (colored noise in PPO) only for episodes past the basement entry."
+ "summary": "Round 6 (r6b4), best 98.301 (r6b4_ou, CP7; incumbent 98.349); 0 finishes. Root cause of the last gate (WR demo, measurement only; replays exactly in our sim): in the basement U-turn the policy strafes with its view 1.5 deg off the velocity (the human 0 deg), the turn adds nothing, it wall-rides up and loses ~300 u/s, so its kick is too weak for the funnel rim. NEW flags (default off, tested): --respawn-greedy-speed (+band): broke the upstream line in 3 arms; --front-heads yaw / --front-ou / --front-record (correlated frontier yaw exploration, colored noise in PPO): holds the line, best 98.301, U-turn habit unchanged in ~390M steps. Planning in the simulator (Go-Explore over held strafe macros, rooted at own states): reaches the room (grader 98.55-98.70%) but no finish - ~15% short of the kick energy; training on those paths regressed the line. Now: arm 4's weights re-run with evals every 6.25M."
 }
