@@ -2231,7 +2231,7 @@ AABBs of the kill triggers are broadphase only (zones.kill_zones' own warning); 
   keys only); the WR demo shows the human line here (analysis only - round 4's download was refused by the session
   classifier).
 
-### 05:55 UTC: the basement climb is a CAN'T for the current policy, speed or not; r5b4_t06 (keys T cap 0.6)
+### 05:48 UTC: the basement climb is a CAN'T for the current policy, speed or not; r5b4_t06 (keys T cap 0.6)
 
 * r5b4_ncx 16,210-16,764M (~550M steps on the no-corner-cut field): evals 95.8-98.24% best, medians 22-98%, no
   basement exit; the novel ceiling never moved (no real episode above the funnel rim).
