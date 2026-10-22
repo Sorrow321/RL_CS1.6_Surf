@@ -1,7 +1,7 @@
 {
  "agent": "r5b2",
  "round": 5,
- "final": false,
+ "final": true,
  "best": {
   "score": 98.282,
   "eval_file": "/home/steam/ar/runs/r5b2/r5b2_m/traj_17197170688.jsonl",
@@ -16,13 +16,14 @@
    "--respawn-novel-vrand",
    "0"
   ],
-  "resume_from": "r5b2_vsx ckpt_latest (17,158,897,664, md5 8ca9225e) <- r5b2_vs <- r5b2_x2 <- r5b2_x1 final (16.54B) <- incumbent r4b3_band15x (15.03B)",
-  "commit": "402df14",
+  "resume_from": "incumbent r4b3_band15x/ckpt_final.pt (15,032,385,536, md5 cb1dbce4...) -> r5b2_x1 (bare resume, evals every 12.5M; 98.25 by 16.17B) -> r5b2_x2 (x1 final 16.54B, bare) -> r5b2_vs (+ --respawn-novel-vrand 0.3 --respawn-novel-vrand-band 0.01 --respawn-novel-vrand-speed 1.0 1.5) -> r5b2_vsx (bare) -> r5b2_m (vsx ckpt_latest 17,158,897,664, md5 8ca9225e, + --respawn-novel-vrand 0 = the incumbent's config)",
+  "commit": "743675c",
   "best_progress_pct": 98.28,
   "median_progress_pct": 98.02,
   "finishes": 0,
   "best_finish_s": null,
-  "max_cp": 7
+  "max_cp": 7,
+  "note": "ckpt_final.pt = r5b2_m's end, step 19,759,366,144, md5 e12f8130ed0892d2a0d8c6f2e8c36a1a, pulled by scp and md5-checked before the box was released. Config = the incumbent's (stall_eps 5, keys-only T cap 0.5, greedy rows 0.3 + stuck 200, band 0.15, ratchet, time-pen 0, patience 30, side-by-side evals); a bare resume restores it."
  },
- "summary": "Round 5 (r5b2): box 57141550 (RTX 4080 + 7950X, $0.251/h). r5b2_x1 = bare resume of the incumbent (15.03 -> 16.54B): past the slot over kill plate *28 and CP7 (98.25); then the last gate: the finish shaft is entered only UP through two holes in func_wall *160 from a dead-end room, and the funnel rim above the tube needs vz >= ~650 at the hole. Arms at the gate (300M each): front-temp, vrand (NEW), global respawn-speed, frontier respawn-speed (NEW), speed-pot - none passed; 3 cost the line. Best 98.282 (r5b2_m, the main line in the incumbent's config, 17,197M). The greedy line's launches have the vz but leave the ramp at |y| <= 381 (the holes start at ~370-400)."
+ "summary": "Best 98.282 (r5b2_m at 17,197M, CP7; incumbent 94.668), 0 finishes. The incumbent's own continuation took the 94.6% gate (the climb into the slot over kill plate *28, ~240M) and CP7 (~100M later, 98.1-98.2%). The last 1.7%: the finish shaft is entered only UP through two holes in func_wall *160 from a dead-end room, and the funnel rim needs vz >= ~600 at the hole. The policy already finishes from a fast entry (2/24); the missing skill is the launch - a state-specific ~140 deg brake-redirect on the ramp (random search: 2 fast entries in ~400k). Nulls at the gate (300M each): --front-temp, NEW --respawn-novel-vrand (random-direction and speed modes), --respawn-speed 1.0 1.5 and --speed-pot 5 (both harmful). Next: search at decision time / search-then-imitate on the line's own launch-attempt states; tools in autoresearch/analysis/r5b2/."
 }

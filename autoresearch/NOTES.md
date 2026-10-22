@@ -2393,3 +2393,69 @@ safety classifier; simulator probes from the policy's own states answered the sa
   (19,759,366,144, md5 e12f8130ed0892d2a0d8c6f2e8c36a1a) - the hand-on checkpoint (the best eval's run).
   Its config = the incumbent's (vrand off, no speed-pot, respawn-speed 0.9-1.1); a bare resume restores it.
 * Box 57141550 released at 11:56 UTC (box.py status: no box).
+
+## ROUND 5 LESSON (r5b2) - written at wrap-up
+
+**Result:** best greedy eval from the true start **98.282** (r5b2_m at 17,197,170,688; incumbent 94.668):
+CP7, the line past the slot over kill plate *28 and CP7 into the finish area's lower room; 0 finishes.
+Hand-on checkpoint: /home/steam/ar/runs/r5b2/r5b2_m/ckpt_final.pt (19,759,366,144, md5 e12f8130...).
+
+**What worked:** the incumbent's own continuation (r5b2_x1, every flag restored, evals every 12.5M): the
+94.6% gate (the climb from the middle room into the slot over *28, which needed ~1,100+ u/s) fell
+after ~240M steps (96.7%), CP7 ~100M later (98.1-98.2%). Medians rose too (60.6% -> 94-98% in many evals).
+
+**The last gate (1.7% of the map), mapped with hull traces + the field + the core:**
+* the finish trigger is at the bottom of a TUBE under a FUNNEL (rim at hull z ~1,480) inside a SHAFT
+  (x 2,464-3,424, |y| <= 704, z 1,200-6,736) sealed on every side except two holes in the 4 u
+  func_wall *160 (hull origins x 2,482-2,670, |y| 370-686); below them a dead-end room (kill floor *3)
+  that the line enters from the west at ~115.5 s, ~1,400 u/s, falling;
+* the policy ALREADY finishes from a fast entry (in the shaft at the hole's top rising at vz 600-760:
+  greedy 2/24, stochastic 2/24); the missing skill is the LAUNCH: off a ramp under a hole with vz >=
+  ~600 at z 1,232 and |y| >= ~400. The greedy line's attempts (~40% of room episodes) reach the vz
+  but leave the outward-facing ramp at its inner top edge (|y| <= 381) and drift over *160's centre
+  strip;
+* the only fast entries a random-macro search found from the line's own attempt states (2 in ~400k
+  at 1.0x speed) begin with a hard brake-redirect (yaw ~140 deg off the heading, forward held 0.2-0.35
+  s) and do not transfer between states (17 fast entries from 4 of 156 states when perturbed) - a
+  state-specific precision trick; at 1.4x speed fast entries are 222 / 98k.
+
+**What did not work at the gate (300M each, from ~16.5-17.2B):** --front-temp 1 / band 0.015 (null);
+NEW --respawn-novel-vrand 0.4 (frontier states with a random velocity direction; null, line wobblier);
+--respawn-speed 1.0 1.5 (all reservoir rows; HARMFUL - every eval stopped at 96.7%); NEW
+--respawn-novel-vrand-speed 1.0 1.5 (frontier rows at make-it speed only; null, harmless); --speed-pot
+5 (HARMFUL - every eval at 96.7%, reservoir deepest 98.0 -> 96.4%). The training ceiling moved only
+98.35 -> 98.60% over ~3B steps at the gate (real episodes entering the shaft low and slow).
+
+**For the next round:**
+* Start from the hand-on checkpoint (the main line; bare resume restores the incumbent config).
+* The launch is the whole problem left; per-decision noise and the existing correlated / burst /
+  respawn mechanisms do not produce a held ~140 deg manoeuvre at the right state. Candidates that fit
+  CLAUDE.md 0b: search at decision time in the simulator from the current state (the planner, 0c), or
+  search-then-imitate on the policy's own launch-attempt states (expert iteration: a core search finds
+  the rare launches, the policy is trained toward them - own states, no demo), or a temporally extended
+  action (held-offset options) - measured with this round's decomposition (entry rate / entry vz from
+  the attempt states, then the finish rate from fast entries).
+* Tools: autoresearch/analysis/r5b2/ (field sections with kill volumes, steepest descent, eval episode
+  reports, room stats, the random-macro searches, attempt-state harvest).
+
+**Ops:** box 57141550 (RTX 4080 + Ryzen 9 7950X, $0.251/h, France, machine 117043), 01:50 -> 11:56 UTC
+(~10.1 h, ~$2.5), 245k steps/s training-only, 160-177k average with evals every 12.5M. Harness: box.py
+priced offers without the 60 GB disk (the watchdog killed box 57139438 at $0.676 vs 0.65; branch fix in
+box.py); gpu_health had no RTX 4080 reference (added on the branch); box.py pull re-tars every eval of a
+run each time (minutes late in a run; use rsync of the new traj files).
+
+**Per-run bests (score.py):** x1 98.253, ft 98.248, vr 98.278, spd 98.251, x2 98.199, vs 98.249, vsx 98.230,
+sp 98.231, **m 98.282**.
+
+## Wrap-up (r5b2) - 2026-10-22 12:20 UTC
+
+* Final: RESULT.json `"final": true`, score **98.282** (r5b2_m, eval traj_17197170688: 9 episodes, best 98.28%,
+  median 98.02%, CP7, 0 finishes; re-scored at wrap-up).
+* Hand-on checkpoint: /home/steam/ar/runs/r5b2/r5b2_m/ckpt_final.pt (19,759,366,144, md5
+  e12f8130ed0892d2a0d8c6f2e8c36a1a), pulled by scp and md5-checked before the box was released, re-checked at
+  wrap-up. Also local: r5b2_x1/ckpt_latest.pt (16.54B), r5b2_vr/ckpt_final.pt (17.14B, carries vrand 0.4),
+  r5b2_vs/ckpt_final.pt (16.92B, carries vrand-speed).
+* Code: commit cac4eec (NEW --respawn-novel-vrand / -band / -speed, default off, byte-identical off, 7 unit
+  tests + a trainer wiring test) and branch-local harness fixes (box.py prices the real disk; gpu_health RTX
+  4080 reference); analysis tools in autoresearch/analysis/r5b2/. The best run used the incumbent's config.
+* Box 57141550 released at 11:56 UTC (`box.py status`: no box).
