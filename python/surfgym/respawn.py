@@ -1773,6 +1773,15 @@ class NovelSpawnSampler:
         self.novel_env = np.zeros(self.n, bool)
         self._keys = frozenset()
         self._keys_prev = frozenset()
+        # --respawn-backward-mix: the goal-anchored rows mixed in next to the novel rows are
+        # tagged through the same keys (add_back_keys), and tracked on their own as well:
+        # back_env is True while env i flies an episode that spawned from one of them
+        self.back_env = np.zeros(self.n, bool)
+        self._bkeys = frozenset()
+        self._bkeys_prev = frozenset()
+        self.back_spawned = 0
+        self._b_end = 0
+        self._b_win = 0
         # counters, cumulative
         self.offered = 0
         self.rej_field = 0
@@ -1838,6 +1847,7 @@ class NovelSpawnSampler:
             return
         self.spawned += len(e)
         self._w_sp += len(e)
+        self.back_env[e] = False
         if not self._keys and not self._keys_prev:
             self.novel_env[e] = False
             return
@@ -1848,6 +1858,11 @@ class NovelSpawnSampler:
         nv = int(self.novel_env[e].sum())
         self.spawned_novel += nv
         self._w_nov += nv
+        if self._bkeys or self._bkeys_prev:
+            for j, i in enumerate(e):
+                k = org[j].tobytes()
+                self.back_env[i] = (k in self._bkeys) or (k in self._bkeys_prev)
+            self.back_spawned += int(self.back_env[e].sum())
 
     def pop_share(self) -> float:
         """The share of episodes that started from a novel row since the
@@ -1855,6 +1870,38 @@ class NovelSpawnSampler:
         sp, nv = self._w_sp, self._w_nov
         self._w_sp = self._w_nov = 0
         return (nv / sp) if sp else float("nan")
+
+    # -- --respawn-backward-mix: goal-anchored rows tagged like novel rows ----
+    def add_back_keys(self, rows) -> None:
+        """Tag ``rows`` (the backward rows just placed in the pool) like this
+        iteration's novel rows - their episodes are then never harvested, mark no
+        visits, never lower ``d_best`` and earn no novelty under --int-real-only -
+        and remember them on their own for the outcome count. Call it AFTER
+        :meth:`mix` of the same pool (mix rotates the novel keys)."""
+        org = np.ascontiguousarray(np.asarray(rows["origin"]), np.float32).reshape(-1, 3)
+        ks = frozenset(org[i].tobytes() for i in range(len(org)))
+        self._bkeys_prev = self._bkeys
+        self._bkeys = ks
+        if ks:
+            self._keys = self._keys | ks
+
+    def note_back_outcomes(self, ended, success) -> None:
+        """Count the ENDED episodes that spawned from a backward row, and how many of
+        them finished. Call it BEFORE :meth:`note_spawns` of the same tick, which
+        retags the ended envs for their next episode."""
+        e = np.flatnonzero(np.asarray(ended, bool))
+        if not len(e):
+            return
+        b = e[self.back_env[e]]
+        if len(b):
+            self._b_end += int(len(b))
+            self._b_win += int(np.asarray(success, bool)[b].sum())
+
+    def pop_back(self) -> tuple:
+        """(ended, finished) backward-row episodes since the last call."""
+        out = (self._b_end, self._b_win)
+        self._b_end = self._b_win = 0
+        return out
 
     # -- sampling -------------------------------------------------------------
     def _near_visited(self, p: np.ndarray) -> np.ndarray:

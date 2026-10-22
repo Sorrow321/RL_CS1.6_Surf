@@ -6591,6 +6591,21 @@ def main() -> None:
     ap.add_argument("--respawn-backward-floor", type=float, default=None,
                     help="--respawn-backward: nearest admitted distance to "
                          "the goal, u (default 256: outside the trigger)")
+    ap.add_argument("--respawn-backward-mix", type=float, default=None,
+                    help="F in (0, 1): MIX goal-anchored rows into the "
+                         "reservoir pool as F of its non-start rows, right "
+                         "after the --respawn-novel rows (before the "
+                         "--respawn-greedy tail): the --respawn-backward "
+                         "sampler at a FIXED band (distance to the goal in "
+                         "[--respawn-backward-floor, --respawn-backward-start "
+                         "x d0], speed U(--respawn-backward-speed) along the "
+                         "field descent, --respawn-backward-shell of them "
+                         "from the band's far edge). Their episodes are "
+                         "tagged like novel rows: never harvested, no visit "
+                         "marks, never lower the novel ceiling, no novelty "
+                         "under --int-real-only. Needs --respawn-novel; "
+                         "exclusive with --respawn-backward. 0 = off "
+                         "(default); restored on resume")
     # --- --respawn-novel (user, 2026-10-19; surfgym.respawn.NovelSpawnSampler)
     ap.add_argument("--respawn-novel", action="store_true", default=None,
                     help="replace --respawn-novel-frac of the RESERVOIR rows "
@@ -7775,6 +7790,10 @@ def main() -> None:
                 and ck_cfg.get("respawn_backward_speed")):
             args.respawn_backward_speed = [
                 float(v) for v in ck_cfg["respawn_backward_speed"]]
+        if (args.respawn_backward_mix is None
+                and ck_cfg.get("respawn_backward_mix")):
+            args.respawn_backward_mix = float(ck_cfg["respawn_backward_mix"])
+            restored.append(f"respawn_backward_mix={args.respawn_backward_mix:g}")
         if args.respawn_speed is None and ck_cfg.get("respawn_speed"):
             args.respawn_speed = [float(v) for v in ck_cfg["respawn_speed"]]
             restored.append(f"respawn_speed={args.respawn_speed[0]:g}-"
@@ -8741,6 +8760,17 @@ def main() -> None:
         args.respawn_backward_min_ep = 50
     if args.respawn_backward_speed is None:
         args.respawn_backward_speed = [1000.0, 2500.0]
+    if args.respawn_backward_mix is None:
+        args.respawn_backward_mix = 0.0
+    if float(args.respawn_backward_mix) != 0.0:
+        if not 0.0 < float(args.respawn_backward_mix) < 1.0:
+            raise SystemExit("--respawn-backward-mix F needs 0 < F < 1 (0 = off)")
+        if args.respawn_backward:
+            raise SystemExit("--respawn-backward-mix is exclusive with --respawn-backward "
+                             "(the pure backward pool)")
+        if not args.respawn_novel:
+            raise SystemExit("--respawn-backward-mix needs --respawn-novel: its rows are "
+                             "tagged through the novel sampler's keys")
     if args.respawn_backward and args.respawn_binned is None:
         # the reservoir half of the backward pool: equal share per occupied
         # progress bin, exactly as --respawn-frontier-uniform implies it
@@ -11245,6 +11275,50 @@ def main() -> None:
                  f"{args.respawn_novel_turn:g}) deg" if args.respawn_novel_turn > 0.0 else "")
               + (f"; only within {args.respawn_novel_band:g} x d0 of the ceiling in potential"
                  if args.respawn_novel_band > 0.0 else ""))
+    # --respawn-backward-mix: goal-anchored rows (the backward sampler at a fixed band) mixed
+    # into the reservoir pool right after the novel rows, tagged like them
+    BMIX = float(args.respawn_backward_mix or 0.0)
+    if BMIX > 0.0:
+        for _bad, _why in ((MULTI, "--maps"), (D.enabled, "DDP"),
+                           (args.respawn_random, "--respawn-random"),
+                           (args.respawn_frontier, "--respawn-frontier"),
+                           (demo is not None, "--demo-file"),
+                           (bool(args.goals), "--goals")):
+            if _bad:
+                raise SystemExit(f"--respawn-backward-mix is not wired with {_why}")
+        for _i, slot in enumerate(slots):
+            _fld = (slot.reward_field if slot.reward_field is not None
+                    else slot.goal_field)
+            if not slot.rf_d0:
+                raise SystemExit("--respawn-backward-mix needs a start geodesic (rf_d0)")
+            slot.backmix = BackwardSpawnSampler(
+                slot.core, _fld, float(slot.rf_d0),
+                start_frac=args.respawn_backward_start,
+                step_frac=args.respawn_backward_step,
+                rate=args.respawn_backward_rate,
+                min_ep=args.respawn_backward_min_ep,
+                window=args.respawn_backward_window,
+                sched_steps=0.0,
+                speed=tuple(args.respawn_backward_speed),
+                floor=args.respawn_backward_floor,
+                shell_frac=args.respawn_backward_shell,
+                shell_width=args.respawn_backward_shell_width,
+                maxvel=float(args.maxvel), seed=83 + 101 * _i)
+        _bm_over = (float(args.respawn_novel_frac) + BMIX
+                    + max(0.0, float(args.respawn_greedy or 0.0)))
+        print(f"respawn BACKWARD-MIX: {BMIX:.0%} of the non-start pool = goal-anchored rows "
+              f"(distance to the goal in [{args.respawn_backward_floor:g}u, "
+              f"{args.respawn_backward_start:.0%} of d0 = "
+              + ", ".join(f"{s_.backmix.W:,.0f}u" for s_ in slots)
+              + f"], fixed; speed U({args.respawn_backward_speed[0]:g}, "
+              f"{args.respawn_backward_speed[1]:g}) u/s along the field descent; "
+              f"{args.respawn_backward_shell:.0%} from the band's far "
+              f"{args.respawn_backward_shell_width:.0%}), placed after the "
+              f"{args.respawn_novel_frac:.0%} novel quota; tagged like novel rows (never "
+              f"harvested, no visit marks, no ceiling, no novelty under --int-real-only)"
+              + (f"  !! novel {args.respawn_novel_frac:g} + mix {BMIX:g} + greedy "
+                 f"{float(args.respawn_greedy or 0.0):g} > 1: the greedy tail overwrites "
+                 f"some mixed rows" if _bm_over > 1.0 + 1e-9 else ""))
     # --respawn-greedy: the policy's own greedy-eval states before each death
     # (surfgym/greedy_spawn.py), rebuilt at every eval
     GREEDY = None
@@ -13971,6 +14045,9 @@ def main() -> None:
             meta["config"]["respawn_novel_band"] = float(args.respawn_novel_band)
     if int(args.int_real_only):
         meta["config"]["int_real_only"] = 1
+    # --respawn-backward-mix: written ONLY when on (a control run's config stays identical)
+    if BMIX > 0.0:
+        meta["config"]["respawn_backward_mix"] = BMIX
     # --respawn-greedy: written ONLY when on (a control run's config dump stays byte-identical)
     if GREEDY is not None:
         meta["config"]["respawn_greedy"] = float(GREEDY.frac)
@@ -14583,6 +14660,12 @@ def main() -> None:
             CSV_COLS += [f"novel/ceiling{_sfx}", f"novel/rows{_sfx}",
                          f"novel/prog_med{_sfx}", f"novel/moved_med{_sfx}",
                          f"novel/share{_sfx}", f"novel/visited{_sfx}"]
+            if BMIX > 0.0:
+                # --respawn-backward-mix: rows placed this iteration, their median
+                # progress (map units), and the backward-row episodes that ENDED this
+                # iteration / how many of them finished
+                CSV_COLS += [f"bmix/rows{_sfx}", f"bmix/prog_med{_sfx}",
+                             f"bmix/ended{_sfx}", f"bmix/finished{_sfx}"]
     if D.is_main:                    # four append handles corrupt the file
         csv_path = out / "progress.csv"
         if csv_path.exists() and csv_path.stat().st_size:
@@ -17153,6 +17236,18 @@ def main() -> None:
                             int(round((len(_rp) - _nf)
                                       * args.respawn_novel_frac)),
                             _s.respawn)
+                        if _s.backmix is not None:
+                            # --respawn-backward-mix: right after the novel quota,
+                            # tagged through the novel keys (add_back_keys)
+                            _boff = _nf + int(round((len(_rp) - _nf)
+                                                    * args.respawn_novel_frac))
+                            _nbm = max(0, min(int(round((len(_rp) - _nf) * BMIX)),
+                                              len(_rp) - _boff))
+                            _brows = _s.backmix.sample_states(_nbm, _s.respawn)
+                            if len(_brows):
+                                _rp = np.array(_rp, dtype=STATE_DTYPE, copy=True)
+                                _rp[_boff:_boff + len(_brows)] = _brows
+                            _s.novel.add_back_keys(_brows)
                     if GREEDY is not None:
                         # --respawn-greedy: the TAIL of the non-start rows, so the
                         # map-start rows and the novel rows after them are kept
@@ -17857,6 +17952,13 @@ def main() -> None:
                         fleet.observe_respawn(ended, stagnant=stag,
                                               success=gmask)
                         if NOVEL and ended.any():
+                            if BMIX > 0.0:
+                                # --respawn-backward-mix: the ended backward-row
+                                # episodes and their finishes, BEFORE the retag
+                                _bgh = fleet.goal_hits().astype(bool)
+                                for _s in slots:
+                                    _s.novel.note_back_outcomes(ended[_s.sl],
+                                                                _bgh[_s.sl])
                             # --respawn-novel: tag the episodes that just
                             # started. AFTER the harvest above, which judged
                             # the ENDED episodes under their own tags
@@ -19141,11 +19243,24 @@ def main() -> None:
                     f"[{_s.tag}]" if MULTI else "", _ce if _ce == _ce else 0.0,
                     int(_ns.get("n", 0)),
                     "{:.0%}".format(_sh) if _sh == _sh else "n/a"))
+                if _s.backmix is not None:
+                    _bs = _s.backmix.stats()
+                    _be, _bw = _s.novel.pop_back()
+                    novel_row += [int(_bs.get("n", 0)),
+                                  round(_bs["median"], 1) if "median" in _bs else "",
+                                  int(_be), int(_bw)]
+                    _nn.append("  bmix rows {:,} fin {}/{}".format(
+                        int(_bs.get("n", 0)), int(_bw), int(_be)))
             novel_note = "".join(_nn)
             if it_no % 100 == 1:
                 for _s in slots:
                     print(f"[{global_step:>13,d}] "
                           + _s.novel.line(f"[{_s.tag}]" if MULTI else ""))
+                    if _s.backmix is not None:
+                        print(f"[{global_step:>13,d}] "
+                              + _s.backmix.line(f"[{_s.tag}]" if MULTI else "")
+                              + f"  | backward-row episodes started so far "
+                              f"{_s.novel.back_spawned:,}")
         # ---- --gate-boxes: this iteration's ramp visits, hit vs miss ------
         gate_note, gate_row = "", None
         if GATE is not None:

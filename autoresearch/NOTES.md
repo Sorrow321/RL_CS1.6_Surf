@@ -2378,3 +2378,29 @@ pattern that is in your own command line.
   (16,186,867,712), r5b4_main/ckpt_15232663552.pt.
 * Code: commit 686f2ed (--pitch-sigma-min, --race-no-corner-cut, record_ckpt mirrors) is the last code change; later
   commits are notes. Box 57138676 released at wrap-up.
+
+## Round 6, branch r6b2 - 2026-10-22 13:59 UTC
+
+### Box
+
+* 13:41 box 57218543 (RTX 5080 + 7950X3D, Massachusetts, machine 150677, $0.40/h): its GPU was 99% busy at
+  249/250 W with 670 MiB in use and NO process in the container before any work (a foreign load);
+  gpu_health refused it (BUSY). Released; blocklisted by hand (vast_pick.py has no foreign-tenant reason and
+  needs the live instance - block THEN release).
+* 13:47 **box 57219728: RTX 5080 + i9-14900 (32 threads), Italy, machine 153177, $0.575/h.** Deployed with
+  the incumbent ckpt (md5 7256a1cf...). The first launch's record gate baked the no-corner-cut field on the
+  GPU (~6 min on this box) before the trainer started.
+
+### Energy at the last gate (analysis, the incumbent's own states and its 98.349 eval)
+
+* Energy height h_E = z + |v|^2 / (2 g) (g 800). In the 98.349 episode: 105 s 3,760 u, 108.75 s 3,349,
+  110.25 s 3,092, 111.0 s 2,915 (a deep dip to z -164 at 111.5 s, |v_h| 2,040), 112.0 s 2,457, the corridor
+  113.5-115.5 s ~2,400-2,480, the basement's first pass 116.5 s 2,124. Each bumpy stretch costs 300-600 u.
+* To leave a basement hole (top z ~1,230) at 1,300 u/s needs h_E 2,286; at 1,700 u/s (round 5's
+  east-ramp finishes) 3,036. A DIRECT flight over the funnel rim (z 1,560) from the hole top needs vz ~750+
+  there plus ~400-600 u/s toward the funnel: |v| ~1,000, h_E ~1,855.
+* The incumbent's reservoir (20k states) at 97.5-98.5% progress: |v| median 125-1,145, h_E median
+  1,025-1,881, max 2,346-2,409; its greedy pool max h_E ~2,540-2,576. So no state the policy reaches carries
+  the energy of round 5's east-ramp finishes; the direct flight is energetically possible but needs a steep,
+  inward rise through a hole that the line never makes (its passes under the holes: east while falling,
+  west while rising; the one rise through the -y hole came at |v_h| 340-520).

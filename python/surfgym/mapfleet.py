@@ -92,7 +92,7 @@ class MapSlot:
                  "reward_field", "goal_box", "d0", "rf_d0", "cell",
                  "goal_cell",
                  "reward_fn", "respawn", "rand_spawn", "frontier", "backward",
-                 "novel",
+                 "novel", "backmix",
                  "pool", "plat_pool",
                  "eval_core",
                  "map_center", "eval_reward_feed", "eval_latch_feed", "tag",
@@ -141,6 +141,9 @@ class MapSlot:
         # --respawn-novel: own states moved to where the agent has never
         # been, never past its best potential (respawn.py)
         self.novel = None
+        # --respawn-backward-mix: goal-anchored rows mixed into the
+        # reservoir pool beside the novel rows (respawn.py)
+        self.backmix = None
         self.pool = None
         self.plat_pool = None
         self.eval_core = None

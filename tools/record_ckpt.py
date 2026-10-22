@@ -189,6 +189,9 @@ TRAIN_ONLY = frozenset({
     "respawn_backward_frac", "respawn_backward_shell",
     "respawn_backward_shell_width", "respawn_backward_speed",
     "respawn_backward_floor",
+    # --respawn-backward-mix: the same rows mixed into the reservoir pool -
+    # where a training episode starts, TRAIN_ONLY likewise
+    "respawn_backward_mix",
     # optimizer / schedule / plumbing - no effect on a rollout
     "trainer", "envs", "steps", "lr", "epochs", "gamma", "gae", "clip",
     "vf", "ent", "ent_final", "graphs", "compile", "bf16", "train_stride",
