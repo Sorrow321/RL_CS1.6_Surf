@@ -2081,7 +2081,7 @@ safety classifier; simulator probes from the policy's own states answered the sa
   finish in a few seconds. Real episodes never pass (d_best has not moved since round 4). So the post-slit
   part is being learned from novel rows; the missing skill is the higher climb into the slit.
 
-### 01:58 UTC: r5b3_main passes the slit - 96.084; the next stop is a hole in kill plate *10
+### 01:55 UTC: r5b3_main passes the slit - 96.084; the next stop is a hole in kill plate *10
 
 * Evals 15,058-15,096M (score.py): 94.940, 95.083, **96.084 (15,083M, median 94.6%)**, 95.153 (median 94.5%).
   Training ceiling 93,052 -> **94,409 u (96.56%)**: d_best 3,359 = the field route at ~(1,328, -272, 1,512),
