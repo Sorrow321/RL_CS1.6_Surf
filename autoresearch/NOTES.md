@@ -2212,3 +2212,14 @@ safety classifier; simulator probes from the policy's own states answered the sa
 * Considered and not run: --respawn-binned 1 (16 d-bins over [0, d0]: ~4x more lower-lane draws but still
   ~0.15% of all spawns, and it reshapes the whole reservoir); --respawn-frontier (spawns past the frontier,
   the role the novel rows already play). Main line kept unchanged.
+
+### 05:54 UTC: 98.254 - the greedy line passes under the second wall
+
+* r5b3_main2 evals 15,672-15,773M: 87.802, **98.254 (15,697M, CP7)**, 86.687, 88.116, **98.090 (15,773M)**. The 98.25%
+  episode reaches the lower lane at (2,612, 368, 1,136) at 123.7 s (a slow line: 98% only at ~120 s) and dies
+  on kill *3 at (2,936, 277, 709) at 129.9 s; the 98.09% one sits in the lower lane at (2,544, -339, 1,052) from
+  136 s until the patience cut. Training ceiling 96,095 u (98.29%), training win 21-23%.
+* Medians 86.4-86.6% in 6 of the last 7 evals: with T at its 0.5 cap (keys) most greedy episodes now die at the
+  86.5% gate ((-1,684, -230, 4,045) at ~98 s, falling); at T ~0.01 (15.27-15.47B) medians were mixed but often
+  93-97%. The best episode moved forward under T 0.5 (96.7 -> 98.25), and the score counts only the best
+  until something finishes, so T is left alone (the tracker's +500 u rule needs 96,363 u to halve it).
