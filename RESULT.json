@@ -7,7 +7,7 @@
   "eval_file": "/home/steam/ar/runs/r5b3/r5b3_main/traj_15271985152.jsonl",
   "run": "r5b3_main",
   "step": 15271985152,
-  "ckpt": "/home/steam/ar/runs/r5b3/r5b3_main/ckpt_latest.pt (not pulled yet)",
+  "ckpt": "/home/steam/ar/runs/r5b3/r5b3_main/ckpt_latest.pt (15,570,829,312, md5 a21034be...; the run's last weights, 299M steps after the best eval)",
   "recipe": [
    "bare resume of the incumbent",
    "--ckpt-every",

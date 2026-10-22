@@ -2163,3 +2163,21 @@ safety classifier; simulator probes from the policy's own states answered the sa
 * Market: still nothing under the caps (a 4090 + Threadripper PRO 7985WX at $0.457 vs the $0.45 cap).
 * Plan: keep the main line; if no new best by ~15.7B, an arm (candidates: a lower novel share - ~25% of the
   novel rows are trivial finishes near the shaft -, a larger greedy-pool share, or tempered SIL).
+
+### 04:56 UTC: evals were HALF of this box's time; r5b3_main stopped, r5b3_main2 = same run, evals every 25M
+
+* r5b3_main averaged 42.3k steps/s over 15,032-15,557M (525M in 3 h 27 min) against 84k training-only: the
+  greedy evals (every 12.5M, ~130 s each on this EPYC 7302P) took ~50% of the wall time. At 25M per eval
+  that is ~30% -> ~1.4x more training per hour; the lineage ran 25M in rounds 3-4 too.
+* r5b3_main stopped at ~15,573M (kill by pid; ckpt_latest 15,570,829,312, md5 a21034be..., pulled to
+  runs/r5b3/r5b3_main/ - the hand-on candidate while that run holds the best eval, 98.052 at 15,272M).
+  43/43 evals valid; last ones 96.7-96.8% (best episode), medians 86.6% (most episodes now die at the
+  86.8% gate; T had risen 0.01 -> 0.50 over the last ~100M steps).
+* **r5b3_main2**: bare resume of that checkpoint, `--record-every 25e6 --ckpt-every 1e8`, 3e9 steps. No training
+  change: everything restored (T 0.50 at its cap, stuck 300M).
+* CORRECTION to 03:46: the finish shaft is a CLOSED tube at z ~1,000 (thin walls at |y| ~80-112 and
+  x ~2,848-2,896 / 3,040-3,056; the 64 u probe grid missed them). The field is right: from the lower lane
+  under the second thin wall (origin z <~1,104) the way is straight UP at x ~2,540-2,700 (open at z
+  1,156-1,252 between the wall and kill *61's west edge x ~2,764 at |y| ~500), then east above *61 into the
+  funnel and down the shaft. In the lower lane the field gets worse going east (d ~1,840 at x 2,600 ->
+  ~2,000 at x 2,900, z ~1,000) and better going up (d ~1,520-1,720 at z 1,350): no deceptive dip.
