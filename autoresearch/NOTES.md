@@ -2693,3 +2693,13 @@ pattern that is in your own command line.
 * **r6b2_tp2** (20:15 UTC): bare resume of tp1's last weights (19,955,974,144, md5 6838c110...), tp1's settings
   restored (time-pen 0.001, front-perturb 0.25 / 1% / turn 90 / x1.4-2.0, front-temp 1 / 1%, greedy rows
   unperturbed). The configuration that produced the greedy chamber entry, run to the end of the round.
+
+### 20:46 UTC: r6b2_tp2 null (0 entries); r6b2_tp3 = front-perturb at the line's own energy (x1.0-1.3)
+
+* **r6b2_tp2** (tp1's weights and settings, 19.96-20.19B, ~230M): 37 evals, best 98.289; 0 greedy chamber entries in
+  333 episodes (69 reached the basement); front-perturb finishes 8 in 25,450. The 98.329 entry has not repeated.
+* **r6b2_tp3** (20:44 UTC): tp2's last weights (20,186,136,576, md5 acdbae7a...) + `--respawn-front-perturb-speed 1.0 1.3
+  --respawn-front-perturb-band 0.005` (time-pen 0.001, turn 90, F 0.25, front-temp 1 / 1% restored). The greedy
+  entries happen at the line's own energy (x1.0); the rows at x1.4-2.0 trained entries the greedy line cannot make,
+  so the last hours train the entry - and the drift toward the funnel after it - at the energy the line has. With
+  the 0.1/s penalty, entering and dying beats looping in the basement.
