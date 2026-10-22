@@ -2641,3 +2641,18 @@ pattern that is in your own command line.
 * Over the round, nothing has changed the greedy line's basement energy (2,310-2,396 median in all nine runs);
   the critic-driven route (practice the end at make-it energy so that energy acquires value upstream) has not
   shown a first sign in ~1.3B steps of front-perturb training.
+
+### 18:58 UTC: r6b2_tp1 - a small time penalty (0.1/s) as the energy lever
+
+* Hypothesis: with --time-pen 0 (round 3's fix for the suicide basin) only the discount rewards speed; the line is
+  now learned to ~98%, so continuing is worth more than dying almost everywhere, and a SMALL per-second cost
+  should make the line faster - plausibly keeping more of the energy it bleeds between the chimney and the
+  basement. Generic: the standard race objective's time term, one constant.
+* Slip: `--time-pen` is PER TICK (0.005 = 0.5/s); a first launch (r6b2_tp, 18:53) passed 0.1 = 10/s and was
+  killed after ~6M steps, inside the 20-update critic warmup (actor frozen, nothing learned; its run dir is not
+  a result). Relaunched from the same checkpoint.
+* **r6b2_tp1** (18:56 UTC): fp6's last checkpoint (19,559,088,128, md5 8646eeb2...) + `--time-pen 0.001 (0.1/s)
+  --critic-warmup 20 --respawn-front-perturb 0.25 --respawn-front-perturb-band 0.01 --respawn-front-perturb-speed
+  1.4 2.0 --respawn-front-perturb-turn 90` (front-temp 1 / 1%, novel 0.2, backward-mix 0.1, greedy 0.25 restored).
+  Leading indicator: the greedy line's basement-entry h_E (2,310-2,396 in every run so far); also the line's
+  health (basement-mode share) and the evals.
