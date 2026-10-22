@@ -14778,6 +14778,12 @@ def main() -> None:
                 # iteration / how many of them finished
                 CSV_COLS += [f"bmix/rows{_sfx}", f"bmix/prog_med{_sfx}",
                              f"bmix/ended{_sfx}", f"bmix/finished{_sfx}"]
+    if FPERT > 0.0:
+        # --respawn-front-perturb: the episodes from its rows that ENDED this iteration, how
+        # many finished, and the deepest progress any of them reached (map units)
+        for _s in slots:
+            _sfx = f".{_s.tag}" if MULTI else ""
+            CSV_COLS += [f"fpert/ended{_sfx}", f"fpert/finished{_sfx}", f"fpert/best_prog{_sfx}"]
     if D.is_main:                    # four append handles corrupt the file
         csv_path = out / "progress.csv"
         if csv_path.exists() and csv_path.stat().st_size:
@@ -15299,6 +15305,10 @@ def main() -> None:
             # envs' deepest field distance lowers the ceiling
             for _s in slots:
                 _s.novel.observe(vis_np[_s.sl, 0:3])
+        if FPERT > 0.0:
+            # --respawn-front-perturb: the deepest point its episodes reach (a counter only)
+            for _s in slots:
+                FPERT_S[_s.tag].observe(vis_np[_s.sl, 0:3])
         # --route: the lookahead fan rides the SAME pose upload the renderer
         # needs, so it costs one argmin and no extra host->device traffic.
         # Speed comes from the scalar row (slot 3 = |v_xy|/1000), which the
@@ -17373,6 +17383,7 @@ def main() -> None:
                         if len(_prows):
                             _rp = np.array(_rp, dtype=STATE_DTYPE, copy=True)
                             _rp[_poff:_poff + len(_prows)] = _prows
+                        FPERT_S[_s.tag].remember(_prows)
                     if GREEDY is not None:
                         # --respawn-greedy: the TAIL of the non-start rows, so the
                         # map-start rows and the novel rows after them are kept
@@ -18090,6 +18101,14 @@ def main() -> None:
                             for _s in slots:
                                 _s.novel.note_spawns(_s.core.states_view,
                                                      ended[_s.sl])
+                        if FPERT > 0.0 and ended.any():
+                            # --respawn-front-perturb: count the ended episodes from its
+                            # rows (and their finishes), then tag the fresh spawns
+                            _fgh = fleet.goal_hits().astype(bool)
+                            for _s in slots:
+                                FPERT_S[_s.tag].note_outcomes(ended[_s.sl], _fgh[_s.sl])
+                                FPERT_S[_s.tag].note_spawns(_s.core.states_view,
+                                                            ended[_s.sl])
                         if goalsys is not None and ended.any():
                             goalsys.assign(np.flatnonzero(ended))
                         if track_bins and ended.any():
@@ -19393,6 +19412,16 @@ def main() -> None:
                 print(f"[{global_step:>13,d}] front-perturb{f'[{_s.tag}]' if MULTI else ''}: "
                       f"{_fl['n']:,} rows from {_fl['src']:,} frontier-band reservoir states "
                       f"(d <= {_fl['d_thr']:,.0f}u, progress med {_fl['prog_med']:,.0f}u)")
+        fpert_note, fpert_row = "", None
+        if FPERT > 0.0:
+            fpert_row, _fn = [], []
+            for _s in slots:
+                _fe, _fw, _fb = FPERT_S[_s.tag].pop_outcomes()
+                _fbp = (float(_s.rf_d0) - _fb) if _fb < float("inf") else float("nan")
+                fpert_row += [int(_fe), int(_fw), round(_fbp, 1) if _fbp == _fbp else ""]
+                _fn.append("  fpert fin {}/{}{}".format(
+                    int(_fw), int(_fe), f" best {_fbp:,.0f}u" if _fbp == _fbp else ""))
+            fpert_note = "".join(_fn)
         # ---- --gate-boxes: this iteration's ramp visits, hit vs miss ------
         gate_note, gate_row = "", None
         if GATE is not None:
@@ -20036,7 +20065,9 @@ def main() -> None:
                            # aug/* and race/*_mirror, after everything (only when on)
                            + aug_row
                            # novel/*, after those (only under --respawn-novel)
-                           + (novel_row if novel_row is not None else []))
+                           + (novel_row if novel_row is not None else [])
+                           # fpert/*, after those (only under --respawn-front-perturb)
+                           + (fpert_row if fpert_row is not None else []))
             csv_f.flush()
         race_note = ""
         if isinstance(reward_fn, RaceReward) and race_sr == race_sr:
@@ -20132,7 +20163,7 @@ def main() -> None:
         print(f"step {global_step:>13,d}  rew {rmean:8.2f}  len {lmean:6.0f}  "
               f"fps {fps:,.0f}  kl {kl:.4f}  ent {ent_coef:.4f}"
               f"{hyg_note}{race_note}{front_note}{back_note}{gate_note}"
-              f"{unstuck_note}{cc_note}{crl_note}{imatch_note}{novel_note}"
+              f"{unstuck_note}{cc_note}{crl_note}{imatch_note}{novel_note}{fpert_note}"
               + (f"  greedy {GREEDY.size:,}x{GREEDY.mixed}" if GREEDY is not None else ""))
         tm.flush(it_no)
         if D.enabled:

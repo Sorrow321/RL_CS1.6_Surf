@@ -1695,6 +1695,67 @@ class FrontierPerturbRows:
         self.rng = np.random.default_rng(int(seed))
         self._lim = float(field.reach_max) - 0.5 * float(field.cell)
         self.last = {"n": 0, "src": 0, "d_thr": float("nan"), "prog_med": float("nan")}
+        # outcome bookkeeping (counters only - nothing here changes a spawn): the episodes that
+        # started from a row of the live or the previous pool, matched by spawn origin as the
+        # novel sampler does, and how they ended
+        self._keys = frozenset()
+        self._keys_prev = frozenset()
+        self.env = None
+        self.spawned = 0
+        self._ended = 0
+        self._won = 0
+        self._best_d = float("inf")
+
+    def remember(self, rows) -> None:
+        """The origins of the rows just placed in the pool (call once per pool build)."""
+        org = np.ascontiguousarray(np.asarray(rows["origin"]), np.float32).reshape(-1, 3)
+        self._keys_prev = self._keys
+        self._keys = frozenset(org[i].tobytes() for i in range(len(org)))
+
+    def note_outcomes(self, ended, success) -> None:
+        """Count the ENDED episodes that spawned from one of these rows and how many finished;
+        call it BEFORE :meth:`note_spawns` of the same tick."""
+        if self.env is None:
+            return
+        e = np.flatnonzero(np.asarray(ended, bool))
+        b = e[self.env[e]] if len(e) else e
+        if len(b):
+            self._ended += int(len(b))
+            self._won += int(np.asarray(success, bool)[b].sum())
+
+    def note_spawns(self, states, ended) -> None:
+        """Tag the episodes that just started (``ended`` rows of ``states`` are the fresh spawns)."""
+        e = np.flatnonzero(np.asarray(ended, bool))
+        n = len(np.asarray(ended))
+        if self.env is None or len(self.env) != n:
+            self.env = np.zeros(n, bool)
+        if not len(e):
+            return
+        self.env[e] = False
+        if not self._keys and not self._keys_prev:
+            return
+        org = np.ascontiguousarray(np.asarray(states["origin"])[e], np.float32)
+        for j, i in enumerate(e):
+            k = org[j].tobytes()
+            self.env[i] = (k in self._keys) or (k in self._keys_prev)
+        self.spawned += int(self.env[e].sum())
+
+    def observe(self, pos) -> None:
+        """The deepest field distance any tagged episode has reached (once per decision)."""
+        if self.env is None or not self.env.any():
+            return
+        p = np.asarray(pos, np.float64).reshape(-1, 3)[self.env]
+        d = np.asarray(self.field.sample(p), np.float64)
+        d = d[d < self._lim]
+        if len(d):
+            self._best_d = min(self._best_d, float(d.min()))
+
+    def pop_outcomes(self) -> tuple:
+        """(ended, finished, deepest d reached) since the last call."""
+        out = (self._ended, self._won, self._best_d)
+        self._ended = self._won = 0
+        self._best_d = float("inf")
+        return out
 
     def rows(self, reservoir, n: int) -> np.ndarray:
         """(m,) STATE_DTYPE, ``m <= n`` (an empty band returns none)."""

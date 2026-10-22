@@ -90,6 +90,35 @@ def test_rows_come_from_the_band_turned_scaled_and_clocks_zeroed():
     assert len(fp.rows(_Res(np.zeros(0, STATE_DTYPE)), 10)) == 0
 
 
+@needs_run
+def test_the_outcome_counters_follow_the_tagged_episodes():
+    fld = _field()
+    fp = FrontierPerturbRows(fld, 97768.0, band=0.2, seed=1)
+    placed = np.zeros(2, STATE_DTYPE)
+    placed["origin"] = [(101.0, 7.0, 11.0), (103.0, 7.0, 11.0)]
+    fp.remember(placed)
+    spawned = np.zeros(4, STATE_DTYPE)
+    spawned["origin"] = [(101.0, 7.0, 11.0), (5.0, 7.0, 11.0), (103.0, 7.0, 11.0), (6.0, 7.0, 11.0)]
+    fp.note_outcomes(np.ones(4, bool), np.ones(4, bool))       # before any tag: nothing counted
+    fp.note_spawns(spawned, np.ones(4, bool))
+    assert fp.env.tolist() == [True, False, True, False] and fp.spawned == 2
+    pos = np.array([[2900.0, 0.0, 400.0], [7837.0, 0.0, 15042.0], [2900.0, 0.0, 900.0],
+                    [2900.0, 0.0, 300.0]])
+    fp.observe(pos)
+    d = np.asarray(fld.sample(pos[[0, 2]]), np.float64)
+    fp.note_outcomes(np.array([True, True, False, False]), np.array([True, True, False, False]))
+    e, w, b = fp.pop_outcomes()
+    assert (e, w) == (1, 1) and b == pytest.approx(d.min())
+    assert fp.pop_outcomes()[:2] == (0, 0)
+    # the next pool without rows keeps the previous keys for one more pool, then drops them
+    fp.remember(np.zeros(0, STATE_DTYPE))
+    fp.note_spawns(spawned, np.ones(4, bool))
+    assert fp.env.tolist() == [True, False, True, False]
+    fp.remember(np.zeros(0, STATE_DTYPE))
+    fp.note_spawns(spawned, np.ones(4, bool))
+    assert not fp.env.any()
+
+
 @pytest.mark.parametrize("kw,msg", [
     ({"band": 0.0}, "--respawn-front-perturb-band B needs 0 < B < 1"),
     ({"turn": 200.0}, "--respawn-front-perturb-turn T needs 0 <= T <= 180"),
@@ -119,6 +148,10 @@ def test_the_trainer_mixes_logs_saves_restores_and_refuses():
     assert "respawn FRONT-PERTURB: 20% of the non-start pool" in out
     m = re.findall(r"front-perturb: ([0-9,]+) rows from ([0-9,]+) frontier-band", out)
     assert m and int(m[0][0].replace(",", "")) == int(round((4096 - 410) * 0.2)), out[-3000:]
+    assert re.search(r"  fpert fin \d+/\d+", out), out[-3000:]
+    from test_respawn_backward_mix import _csv
+    rr = _csv(run)
+    assert rr and "fpert/ended" in rr[0] and "fpert/finished" in rr[0] and "fpert/best_prog" in rr[0]
     cfg = _cfg(run)
     assert cfg["respawn_front_perturb"] == 0.2 and cfg["respawn_front_perturb_band"] == 0.3
     assert cfg["respawn_front_perturb_turn"] == 90.0
