@@ -1717,7 +1717,8 @@ class NovelSpawnSampler:
                  radius: tuple = (256.0, 2048.0), shell_frac: float = 0.5,
                  shell_width: float = 0.25, tries: int = 8, bins: int = 32,
                  d0: float = 0.0, window: float = 0.0, seed: int = 73,
-                 turn: float = 0.0, band: float = 0.0) -> None:
+                 turn: float = 0.0, band: float = 0.0, vrand: float = 0.0,
+                 vrand_band: float = 0.01) -> None:
         self.core = core
         self.field = field
         self.n = int(n_envs)
@@ -1752,6 +1753,26 @@ class NovelSpawnSampler:
         if self.band < 0.0 or (self.band > 0.0 and not self.d0 > 0.0):
             raise ValueError(f"--respawn-novel-band {band}: needs >= 0 and the map's d0")
         self.rej_band = 0
+        # --respawn-novel-vrand F: F of the novel rows are the reservoir's own FRONTIER states
+        # (within vrand_band x d0 of its deepest state in potential) kept where they are, with the
+        # velocity's direction drawn uniformly on the sphere and its speed taken from another
+        # frontier state - exploring starts in velocity at the frontier (Sutton and Barto's
+        # exploring starts, Go-Explore's "return, then explore" with a random velocity). A gate
+        # whose way on needs a velocity the policy never produces there (sidistic's last gate: a
+        # launch UP through a hole in the floor above a dead-end room) gets shown it. Tagged novel
+        # like the moved rows: never harvested, never move the ceiling. Its own generator; 0 = off
+        # (no draw, the moved rows exactly as shipped)
+        self.vrand = float(vrand)
+        self.vrand_band = float(vrand_band)
+        if not (0.0 <= self.vrand <= 1.0):
+            raise ValueError(f"--respawn-novel-vrand {vrand}: a fraction in [0, 1]")
+        if self.vrand > 0.0 and not (self.vrand_band > 0.0 and self.d0 > 0.0):
+            raise ValueError(f"--respawn-novel-vrand-band {vrand_band}: needs > 0 and the "
+                             "map's d0")
+        self.vrand_rng = (np.random.default_rng([int(seed), 104729])
+                          if self.vrand > 0.0 else None)
+        self.vrand_kept = 0
+        self._last_vrand = 0
         nz, ny, nx = field.grid.shape
         self.mins = np.asarray(field.mins, np.float64)
         span = np.array([nx, ny, nz], np.float64) * float(field.cell)
@@ -1997,6 +2018,49 @@ class NovelSpawnSampler:
                       np.hypot(out["velocity"][:, 0], out["velocity"][:, 1]))
         return out
 
+    def sample_vrand(self, n: int, reservoir) -> np.ndarray:
+        """(m,) STATE_DTYPE, ``m <= n``: ``--respawn-novel-vrand``'s rows. Each is a reservoir
+        state within ``vrand_band`` x d0 of the reservoir's deepest state in potential, kept in
+        place, with a velocity whose direction is uniform on the sphere and whose speed is that
+        of another such state (a standing state gets a speed the frontier flies at); the view
+        yaw turns with the horizontal heading, so the view's offset from it is kept."""
+        n = int(n)
+        if n <= 0 or reservoir is None or reservoir.size == 0:
+            self._last_vrand = 0
+            return np.zeros(0, dtype=STATE_DTYPE)
+        k = int(reservoir.size)
+        org = np.asarray(reservoir._store[:k]["origin"], np.float64)
+        d = np.asarray(self.field.sample(org), np.float64)
+        ok = d < self._lim
+        if not ok.any():
+            self._last_vrand = 0
+            return np.zeros(0, dtype=STATE_DTYPE)
+        src = np.flatnonzero(ok & (d <= float(d[ok].min()) + self.vrand_band * self.d0))
+        g = self.vrand_rng
+        pick = src[g.integers(0, len(src), n)]
+        spd_src = src[g.integers(0, len(src), n)]
+        out = reservoir._store[pick].copy()
+        spd = np.linalg.norm(np.asarray(reservoir._store[spd_src]["velocity"], np.float64),
+                             axis=1)
+        u = g.normal(size=(n, 3))
+        u /= np.maximum(np.linalg.norm(u, axis=1, keepdims=True), 1e-9)
+        v0 = np.asarray(out["velocity"], np.float64)
+        h0 = np.degrees(np.arctan2(v0[:, 1], v0[:, 0]))
+        h1 = np.degrees(np.arctan2(u[:, 1], u[:, 0]))
+        # no horizontal heading to keep an offset from: the view looks along the new one
+        flat = np.hypot(v0[:, 0], v0[:, 1]) < 1.0
+        yaw = np.where(flat, h1, np.asarray(out["yaw"], np.float64) + (h1 - h0))
+        out["yaw"] = np.mod(yaw, 360.0).astype(np.float32)
+        out["velocity"] = (u * spd[:, None]).astype(np.float32)
+        out["onground"] = -1
+        out["basevelocity"] = 0.0
+        out["base_vel_flag"] = 0
+        out["waterjumptime"] = 0.0
+        out["seg_hint"] = 0
+        self.vrand_kept += len(out)
+        self._last_vrand = len(out)
+        return out
+
     def mix(self, pool: np.ndarray, n_fresh: int, n_novel: int,
             reservoir) -> np.ndarray:
         """Overwrite ``n_novel`` RESERVOIR rows of an already-built pool
@@ -2004,8 +2068,13 @@ class NovelSpawnSampler:
         pool draw, so counts are the probabilities and the map-start share
         is untouched) and remember the new rows' origins as the keys."""
         n_novel = int(min(max(n_novel, 0), len(pool) - int(n_fresh)))
-        rows = (self.sample_states(n_novel, reservoir) if n_novel > 0
-                else np.zeros(0, dtype=STATE_DTYPE))
+        if self.vrand > 0.0 and n_novel > 0:
+            rows_v = self.sample_vrand(int(round(n_novel * self.vrand)), reservoir)
+            rows = self.sample_states(n_novel - len(rows_v), reservoir)
+            rows = np.concatenate([rows, rows_v]) if len(rows_v) else rows
+        else:
+            rows = (self.sample_states(n_novel, reservoir) if n_novel > 0
+                    else np.zeros(0, dtype=STATE_DTYPE))
         self._keys_prev = self._keys
         org = np.ascontiguousarray(rows["origin"], np.float32)
         self._keys = frozenset(org[i].tobytes() for i in range(len(rows)))
@@ -2075,6 +2144,9 @@ class NovelSpawnSampler:
                                     st["rej_visited"], st["hull_reject"]))
         if "rej_band" in st:
             rej += " (outside the band {:.0%})".format(st["rej_band"])
+        if self.vrand > 0.0:
+            head += "; {:,} vrand rows (frontier states, random velocity)".format(
+                self._last_vrand)
         if "n" not in st:
             return head + "; no rows this iteration" + rej
         return head + ("; {:,} rows: progress med {:,.0f}u p90 {:,.0f}u, moved "

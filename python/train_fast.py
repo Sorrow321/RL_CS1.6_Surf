@@ -6599,6 +6599,16 @@ def main() -> None:
                          "B d0) - near the frontier in the field's units, which keeps the dips "
                          "just behind it and drops the earlier track a folded map puts next "
                          "to it (default 0 = off)")
+    ap.add_argument("--respawn-novel-vrand", type=float, default=None,
+                    help="--respawn-novel: F of the novel rows are the reservoir's own "
+                         "FRONTIER states (within --respawn-novel-vrand-band x d0 of its deepest "
+                         "state in potential) kept in place, with the velocity's direction "
+                         "uniform on the sphere and its speed taken from another frontier "
+                         "state: exploring starts in velocity where the line ends. Tagged novel "
+                         "(never harvested, never move the ceiling). Default 0 = off")
+    ap.add_argument("--respawn-novel-vrand-band", type=float, default=None,
+                    help="--respawn-novel-vrand: the frontier band B in units of the map's "
+                         "start geodesic (default 0.01)")
     ap.add_argument("--respawn-novel-window", type=float, default=None,
                     help="--respawn-novel: 'visited' means entered within the last "
                          "W..2W env steps (two grids rolled every W), so a place the "
@@ -7687,6 +7697,9 @@ def main() -> None:
         if (args.respawn_novel_band is None
                 and ck_cfg.get("respawn_novel_band") is not None):
             args.respawn_novel_band = float(ck_cfg["respawn_novel_band"])
+        for _nk in ("respawn_novel_vrand", "respawn_novel_vrand_band"):
+            if getattr(args, _nk) is None and ck_cfg.get(_nk) is not None:
+                setattr(args, _nk, float(ck_cfg[_nk]))
         # --int-real-only: part of the reward, restored like the other novelty knobs
         if args.int_real_only is None and ck_cfg.get("int_real_only") is not None:
             args.int_real_only = int(ck_cfg["int_real_only"])
@@ -8626,7 +8639,9 @@ def main() -> None:
                      ("respawn_novel_tries", 8),
                      ("respawn_novel_window", 1e7),
                      ("respawn_novel_turn", 0.0),
-                     ("respawn_novel_band", 0.0)):
+                     ("respawn_novel_band", 0.0),
+                     ("respawn_novel_vrand", 0.0),
+                     ("respawn_novel_vrand_band", 0.01)):
         if getattr(args, _nk) is None:
             setattr(args, _nk, _nv)
     if args.int_real_only is None:
@@ -11142,7 +11157,9 @@ def main() -> None:
                 d0=float(slot.rf_d0 or 0.0),
                 window=float(args.respawn_novel_window), seed=73 + 101 * _i,
                 turn=float(args.respawn_novel_turn),
-                band=float(args.respawn_novel_band))
+                band=float(args.respawn_novel_band),
+                vrand=float(args.respawn_novel_vrand),
+                vrand_band=float(args.respawn_novel_vrand_band))
             # a novel spawn's episode is DISCARDED at its end, never harvested
             slot.respawn.skip = slot.novel.novel_env
         print(f"respawn NOVEL: {args.respawn_novel_frac:.0%} of the non-start pool = own "
@@ -11158,7 +11175,10 @@ def main() -> None:
               + (f"; heading (velocity and view yaw) turned by U(-{args.respawn_novel_turn:g}, "
                  f"{args.respawn_novel_turn:g}) deg" if args.respawn_novel_turn > 0.0 else "")
               + (f"; only within {args.respawn_novel_band:g} x d0 of the ceiling in potential"
-                 if args.respawn_novel_band > 0.0 else ""))
+                 if args.respawn_novel_band > 0.0 else "")
+              + (f"; {args.respawn_novel_vrand:.0%} of the novel rows are frontier states "
+                 f"(within {args.respawn_novel_vrand_band:g} x d0 of the reservoir's deepest) "
+                 f"with a random velocity direction" if args.respawn_novel_vrand > 0.0 else ""))
     # --respawn-greedy: the policy's own greedy-eval states before each death
     # (surfgym/greedy_spawn.py), rebuilt at every eval
     GREEDY = None
@@ -13870,6 +13890,9 @@ def main() -> None:
             meta["config"]["respawn_novel_turn"] = float(args.respawn_novel_turn)
         if args.respawn_novel_band > 0.0:
             meta["config"]["respawn_novel_band"] = float(args.respawn_novel_band)
+        if args.respawn_novel_vrand > 0.0:
+            meta["config"]["respawn_novel_vrand"] = float(args.respawn_novel_vrand)
+            meta["config"]["respawn_novel_vrand_band"] = float(args.respawn_novel_vrand_band)
     if int(args.int_real_only):
         meta["config"]["int_real_only"] = 1
     # --respawn-greedy: written ONLY when on (a control run's config dump stays byte-identical)

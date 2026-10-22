@@ -2202,3 +2202,24 @@ safety classifier; simulator probes from the policy's own states answered the sa
   `--front-temp 1 --front-band 0.015` (every head at temperature 2 for envs at >= 98.5% of the
   reservoir's deepest progress = 96.6%: the last ~5 s before the room; ~1% of envs at a time), 300M.
   Read-out vs r5b2_x1's own last 300M: the novel ceiling (d_best), reservoir deepest, evals > 98.3%.
+
+### 04:55 UTC: r5b2_ft (front-temp 1, band 0.015) - NULL at the hole gate; NEW --respawn-novel-vrand
+
+* **r5b2_ft** (16.543 -> 16.843B, 300M, 165k steps/s): 24 evals 96.86-98.25 (best 98.248, medians
+  59-98%), novel ceiling flat at 96,306 u (the control moved it +62 u over its last 300M), reservoir
+  deepest 98.26% (mind 1.743%). `fronttemp` reached 20% of envs (the band grows as the line
+  consolidates). Same as round 4's arm at the 60.57% gate: per-decision noise at the frontier does
+  not produce the multi-step launch; it did not hurt the line. Final ckpt kept on the box.
+* **NEW `--respawn-novel-vrand F [--respawn-novel-vrand-band B]`** (surfgym.respawn
+  NovelSpawnSampler.sample_vrand): F of the novel rows are the reservoir's own FRONTIER states
+  (within B x d0, default 0.01, of the reservoir's deepest state in potential) kept in place, with
+  the velocity's direction drawn uniformly on the sphere and its speed taken from another frontier
+  state (a standing state gets a speed the frontier flies at); the view yaw turns with the heading.
+  Tagged novel like the moved rows (never harvested, never move the ceiling, not counted by
+  --int-real-only). Exploring starts (Sutton and Barto) in velocity at the frontier: the hole gate
+  needs a velocity (up, slow in x, under a hole) the policy never produces there. Generic: one
+  fraction, one band in units of d0, no map quantity. Default 0 = off: mix() is byte-identical and
+  draws nothing (its own generator). Tests: tests/python/test_respawn_novel_vrand.py (6: off =
+  shipped sampler byte for byte; the rows are frontier states in place with frontier speeds and
+  random directions, tagged novel; the view yaw keeps its offset; refusals; recorder TRAIN_ONLY;
+  trainer wiring + config + bare-resume restore + no key when off).
