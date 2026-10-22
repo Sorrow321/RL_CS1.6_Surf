@@ -2405,7 +2405,7 @@ pattern that is in your own command line.
   inward rise through a hole that the line never makes (its passes under the holes: east while falling,
   west while rising; the one rise through the -y hole came at |v_h| 340-520).
 
-### 14:20 UTC: r6b2_ctl (control) and NEW --respawn-backward-mix; arm r6b2_bmix
+### 14:16 UTC: r6b2_ctl (control) and NEW --respawn-backward-mix; arm r6b2_bmix
 
 * **r6b2_ctl** = bare resume of the incumbent (17,418,944,512) + `--record-every 6.25e6 --ckpt-every 1e8`,
   13:57-14:12 UTC (~107M steps, ~130k steps/s with evals): 17 evals, 98.11-98.25 (CP7) for the first 12,
