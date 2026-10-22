@@ -2458,3 +2458,29 @@ Standing-hull solid tests (`core.trace(p, p, hull=0).startsolid`) and kill hulls
   +352), better ~1,000 (apex +625, above the rim for ~1.7 s, enough to drift ~300-500 u inward/east over
   the funnel opening). The alternative round 5 found: leave the hole heading EAST at 1,300-1,700+ u/s and
   ride the room's east slope up.
+
+### 14:25 UTC: CEM from the greedy line's own passage states - extra energy alone does not open the climb (ANALYSIS ONLY)
+
+* scratchpad geo/cem_hole.py: raw core (1,024 envs, eval physics, view_mode 1, yaw-adaptive, kill
+  teleports on, the finish box armed), 12 held macros per rollout (yaw offset from the velocity heading,
+  fwd / side / duck / jump, 1-40 decisions each), CEM 20 iterations x 1,024, 6 s; objective = max z inside
+  the room's footprint (else z inside a hole column - 500). Starts: 4 of the incumbent's greedy-pool states
+  on the corridor's last stretch / the passage (x 2,000-2,450, |v| 1,019-1,338, E 1,945-2,564).
+* Natural speed: best z in a hole column 1,050-1,096 (below the ceiling at ~1,156), best vz under a hole
+  181-547; nothing entered the room. x1.5 (E 2,766-3,961): 499-592 (z <= 1,092), vz <= 575. x2.0 (E up to
+  5,918): one start reached the room at z 1,208; vz <= 632. 0 finishes in ~250k rollouts.
+* So the climb is a CONTROL problem as much as an energy one: with 1.5-2x the energy, random held macros
+  still do not convert speed into upward speed under a hole (the greedy line's own ep 5 did better: 488 at
+  z 1,078, into the room at 1,222). Physics of the hole: a hole sits outside the outer slope's top edge;
+  riding the slope inward-up and then pressing OUTWARD (air braking is 250 u/s per tick when the wish
+  direction opposes the velocity) leaves the slope with vz ~ 0.68 x the slope speed and carries the player
+  outward over the hole - a two-step maneuver, which random macros rarely string together.
+
+### r6b3_gs (14:19 UTC): warm resume of the incumbent + `--respawn-greedy-speed 1.0 2.0`
+
+* `box.py launch --resume --steps 1.5e9 --record-every 12.5e6 -- --respawn-greedy-speed 1.0 2.0
+  --ckpt-every 1e8` on box 57223179 (RTX 3090, $0.188/h, Ontario, machine 120725). The launch's record gate
+  took 418 s (the goalc_32 field is baked on the box at the first recording).
+* First lines: novel ceiling 98,260 u (= d_best 1,415: the rim's level), novel rows 1,843 per pool, 41-48% of
+  episodes; training "win" 25-35% at 2.2-2.4 s - NOVEL-row trivial wins (rows high in the tall room fall into
+  the funnel), so the win rate says nothing about the route; the novel ceiling and the greedy evals do.
