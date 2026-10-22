@@ -2310,7 +2310,7 @@ safety classifier; simulator probes from the policy's own states answered the sa
   (2.3-2.4 s: near-funnel novel rows), reservoir p10 ~4,900 u, T 0.2 (stuck 2.5B steps).
 * Runs to ~11:40, then wrap-up (12:19).
 
-### 11:41 UTC: r5b1_m1x end (19.085B): the plateau held, no finish; last run r5b1_m1y until the wrap-up
+### 11:40 UTC: r5b1_m1x end (19.085B): the plateau held, no finish; last run r5b1_m1y until the wrap-up
 
 * m1x 17.24 -> 19.085B (148 valid evals): best 98.263 (18,268M); the typical eval reaches 98.1-98.25 with 3-8/9 at
   the frontier, with 96.7% bowl-mode stretches and 2 transient collapses (28.2%, 42.9%: all 9 at an early gate for
