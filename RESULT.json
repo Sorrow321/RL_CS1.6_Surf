@@ -15,11 +15,12 @@
    "1e8"
   ],
   "resume_from": "incumbent r4b3_band15x/ckpt_final.pt (15,032,385,536, md5 cb1dbce4...) bare resume",
-  "commit": "7b644d5",
+  "commit": "8d5de05",
   "best_progress_pct": 98.25,
   "median_progress_pct": 98.06,
   "finishes": 0,
+  "best_finish_s": null,
   "max_cp": 7
  },
- "summary": "Round 5 (r5b2): box 57141550 (RTX 4080 + 7950X, $0.251/h). r5b2_x1 = bare resume of the incumbent (15.03B -> 16.54B): best 98.253 (CP7, 16,165M) - past the slot over kill plate *28 (~15.2B) and CP7 (15.39B); then ~1.15B steps at the last gate: the finish shaft is entered only UP through two holes in func_wall *160 from a dead-end room (surf a side ramp, launch ~230 u). Training ceiling 98.50% (a few real episodes went up). Testing r5b2_ft = + --front-temp 1 --front-band 0.015 (exploration only in the last ~5 s before the room), 300M from 16.54B."
+ "summary": "Round 5 (r5b2): box 57141550 (RTX 4080 + 7950X, $0.251/h). r5b2_x1 = bare resume of the incumbent (15.03 -> 16.54B): best 98.253 (CP7, 16,165M) - past the slot over kill plate *28 and CP7; since 15.39B the last gate: the finish shaft is entered only UP through two holes in func_wall *160 from a dead-end room. Arms at the gate: front-temp 1 / band 0.015 (300M) null. Now r5b2_vr = NEW --respawn-novel-vrand 0.4 (exploring starts in velocity: 40% of the novel rows are the reservoir's frontier states with a random velocity direction), 300M from 16.84B."
 }

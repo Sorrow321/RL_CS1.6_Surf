@@ -2223,3 +2223,8 @@ safety classifier; simulator probes from the policy's own states answered the sa
   shipped sampler byte for byte; the rows are frontier states in place with frontier speeds and
   random directions, tagged novel; the view yaw keeps its offset; refusals; recorder TRAIN_ONLY;
   trainer wiring + config + bare-resume restore + no key when off).
+* **r5b2_vr** (04:54): resume of r5b2_ft's final (16,843,276,288, md5 97dd011f...) + `--front-temp 0
+  --respawn-novel-vrand 0.4 --respawn-novel-vrand-band 0.01` (everything else restored), 300M first.
+  Per pool: 737 vrand rows (frontier states with random velocity) + 1,106 moved rows. Read-out: the
+  novel ceiling below d_best 1,462 (real episodes past the holes), reservoir states in the shaft,
+  greedy evals past 98.3% / a finish.
