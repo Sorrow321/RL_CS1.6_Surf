@@ -2179,3 +2179,23 @@ AABBs of the kill triggers are broadphase only (zones.kill_zones' own warning); 
   offset-invariant, so only leak points change). Generic: one grid rule, no map constant.
 * `box.py deploy` on the busy box (to get 144f9e8) failed only at gpu_health (GPU busy) after updating the checkout,
   as round 4 noted; the trainer kept running. Bake started on the box GPU beside ps05 (runs/bake_nocut.log).
+
+### 04:38 UTC: the no-corner-cut field baked; r5b4_nc trains on it
+
+* Bake on the box GPU (tools/bake_nocut_field.py, ~3 min beside a trainer): maps/surf_src_sidistic.goalc_32.npz
+  (3.6 MB). Start geodesic 97,768 -> **99,675 u** (+1,906, reachable). Along the 98.2% greedy episode (16.00B eval)
+  the difference new - old falls in steps from ~1,906 at the start to ~230 at the end (25-35 s, 55 s, 75-80 s: -600,
+  105-115 s); 5-second progress ratios new/old 1.00-1.03 on most of the route, 0.85 / 1.07 / 1.13 / 1.08 on four
+  segments; the ratchet's cumulative pay along the route 96,027 (old) vs 97,661 u (new) - the same per unit of d0.
+  So the corner-cut leaks are a handful of places (slanted one-voxel walls), the funnel among them.
+* **r5b4_nc** (04:32): resume of r5b4_ps05/ckpt_16133914624.pt (md5 a7cb65be...) + `--goal-field-file
+  maps/surf_src_sidistic.goalc_32.npz --critic-warmup 20 --ckpt-every 1e8` (pitch floor 0.05, T cap 0.2 restored).
+* **The observations follow the field too** (the potential channel, compass and pot-rate read slot.reward_field;
+  --goal-field-file's help says the obs channel keeps the free-space field - stale): the first two evals, on the
+  checkpoint's FROZEN weights (critic warmup), read 86.5 / 86.6% (CP5; the same weights scored 98.1% under the
+  old field). ~15M steps after the warmup the line was back at 98.18% (CP7). A transient, not a loss.
+* record_ckpt mirrored nothing of --goal-field-file (TRAIN_ONLY) - a recording of such a checkpoint rendered the
+  free-space field. Fixed (commit db4823e): the observation channels read the named field, a missing file refuses.
+  NOTE for any later resume of an r5b4_nc checkpoint on a NEW box: the field file is not in the maps tarball -
+  rebuild it first: `python3 tools/bake_nocut_field.py --map maps/surf_src_sidistic.bsp` (~3 min on the GPU), or
+  the trainer refuses ("--goal-field-file: ... not found").
