@@ -2654,3 +2654,19 @@ Standing-hull solid tests (`core.trace(p, p, hull=0).startsolid`) and kill hulls
 * **r6b3_fsil** (17:5x): resume of front4's checkpoint + `--sil-coef 0.1 --sil-tempered 1 --sil-top 256
   --sil-success 1 --ckpt-every 1e8` (frontier rows with the crossing rule restored), 3e9 budget, evals every
   12.5M. Box extended (deadline ~23:05 UTC).
+
+### 18:27 UTC: r6b3_fsil (SIL on finishing real episodes) - NEGATIVE; r6b3_front5 = front4 + `--respawn-front 0.4`
+
+* (The box deadline set at 17:58 is 21:58 UTC, not ~23:05 as the previous entry says.)
+* r6b3_fsil, 18,540M -> ~18,765M (+225M): the SIL buffer took 1,866 rows (finishing real episodes), mean gain
+  0.11-0.15, loss spikes to 151; the yaw sigma fell 0.079 -> 0.059. Greedy census: 23/153 episodes reached the
+  basement (front4: 61/288), 0 room entries, vz under a hole p50 165 / max 494 (front4: 311 / 628), and 56 of
+  the 130 others stopped at ~97% (before CP7; front4 43/227). Evals 96.7-98.1, no finish. Imitating the
+  successes concentrated the policy (sigma) and cost the line upstream. Stopped.
+* Where the env-steps go (estimate from the pool mix and episode lengths): start rows ~10% of spawns but
+  ~3,000 decisions each -> ~50% of all env-steps; greedy rows ~25%; reservoir ~12%; novel rows ~8% (mostly
+  2-s trivial wins); frontier rows only ~4%. So the climb practice that produced the training finishes is a
+  few % of the compute.
+* **r6b3_front5** (18:2x): resume of front4's checkpoint (18,539,872,256, md5 95002530...) + `--respawn-front
+  0.4 --ckpt-every 1e8` (crossing rule, band 0.02, advance 0.0015 restored; no SIL). At 0.4 the frontier block
+  also overwrites ~700 of the novel block's rows (the trivial-win rows).
