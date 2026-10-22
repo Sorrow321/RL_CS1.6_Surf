@@ -2703,3 +2703,15 @@ pattern that is in your own command line.
   entries happen at the line's own energy (x1.0); the rows at x1.4-2.0 trained entries the greedy line cannot make,
   so the last hours train the entry - and the drift toward the funnel after it - at the energy the line has. With
   the 0.1/s penalty, entering and dying beats looping in the basement.
+
+### 21:14 UTC: r6b2_tp3 - **98.417**, above the incumbent; greedy chamber entries 4 in 333
+
+* r6b2_tp3 (front-perturb at x1.0-1.3, band 0.5%, turn 90; time-pen 0.001; front-temp 1 / 1%), 20.19-20.42B (~230M):
+  **greedy chamber entries 4 of 333 episodes** (apex z 1,291-1,356; tp1 1 of 585 at z 1,288; 0 of 3,036 before
+  front-perturb), best eval **98.417** (20,230,701,056, median 98.1%, CP7): episode 3 surfs west along the -y ramp
+  (116.8-117.1 s, ~1,290 u/s), turns up-slope (117.2-117.6 s: vy +87 -> +594, vz +88 -> +685), rises through the
+  -y hole (117.8-118.0 s), apex z 1,337 above the slab, flies east to (3,044, -383, 1,329) next to the funnel's
+  outer wall at 118.6 s (old field 98.41%: the wall's corner-cut leak) and falls after bouncing off it (~119 s).
+  h_E at the turn ~1,910 (the scripted bench says ~2,350 clears the rim). Front-perturb finishes 0 at this energy.
+* Training the entry at the energy the line actually has (x1.0-1.3) made the GREEDY line do it 7x more often
+  (per episode) and higher than training it at x1.4-2.0 did. Running on to the end of the round.
