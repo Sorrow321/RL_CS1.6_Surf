@@ -2197,3 +2197,18 @@ safety classifier; simulator probes from the policy's own states answered the sa
   each with a ~48 deg surf ramp on its inner side (from z ~840 at |y| ~496 up to ~1,020 at |y| ~336). So the
   last gate is a surf climb out of the outer lane (>= ~270 u up, then east over *61 to the funnel at
   x ~2,750-2,900): a skill the policy has, at a new place; the field pays it (d 1,840 -> ~1,520 going up).
+
+### 05:39 UTC: probe - from the lower lane the policy CANNOT climb out yet (0/32)
+
+* record_ckpt from the newest ckpt's (15,672M) 40 deepest reservoir states (97.96-98.24%, lower lane x 2,445-2,846,
+  y 229-486, z 900-1,154; speeds mostly < 1,100), 12 s each: greedy **0/8**, sampled **0/24** finish; 2/32 ever get
+  above z 1,260 (zmax 1,347 / 1,373) and fall back; 9/32 die on kill *3 (z ~690-715) through holes near x ~2,000 /
+  ~2,900-3,060; the rest wander in the lane at z ~950-1,000 until the cap.
+* Arithmetic for the climb: the outer lane's inner ramp is ~48 deg and ~180 u tall (z ~840 -> ~1,020); leaving its
+  top with vz >= ~620 (>= ~840 u/s up the ramp) reaches z ~1,260, the height needed to cross over kill *61
+  (z 1,176-1,224, |y| < ~336) toward the funnel. The lane states the reservoir keeps are slow (harvested >= 2 s
+  before an end, mostly from episodes crawling there), so the practice that matters is a FAST arrival under
+  the second wall - which only the main line's own episodes provide.
+* Considered and not run: --respawn-binned 1 (16 d-bins over [0, d0]: ~4x more lower-lane draws but still
+  ~0.15% of all spawns, and it reshapes the whole reservoir); --respawn-frontier (spawns past the frontier,
+  the role the novel rows already play). Main line kept unchanged.
