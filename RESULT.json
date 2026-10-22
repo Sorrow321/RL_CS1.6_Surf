@@ -3,11 +3,11 @@
  "round": 5,
  "final": false,
  "best": {
-  "score": 94.396,
-  "eval_file": "/home/steam/ar/runs/r5b1/r5b1_gspd/traj_15045492736.jsonl",
+  "score": 97.064,
+  "eval_file": "/home/steam/ar/runs/r5b1/r5b1_gspd/traj_15183904768.jsonl",
   "run": "r5b1_gspd",
-  "step": 15045492736,
-  "ckpt": "/home/steam/ar/runs/r5b1/r5b1_gspd/ckpt_latest.pt",
+  "step": 15183904768,
+  "ckpt": "/home/steam/ar/runs/r5b1/r5b1_gspd/ckpt_final.pt",
   "recipe": [
    "--respawn-greedy-speed",
    "1.0",
@@ -18,5 +18,5 @@
   "resume_from": "incumbent r4b3_band15x/ckpt_final.pt (15,032,385,536, md5 cb1dbce4...); bare resume + --respawn-greedy-speed 1.0 1.5, evals every 12.5M",
   "commit": "3763775"
  },
- "summary": "Round 5 (r5b1). The 95.2% gate is a kill-topped wall in a slot over a block, cleared only with carried speed (WR crosses at ~1,300-1,550 u/s, the policy arrives at 600-950; probes: speed-boosted own states reach the wall, unboosted never). NEW --respawn-greedy-speed LO HI (greedy-line rows replayed x U(LO,HI) faster). Arm r5b1_gspd (incumbent + speed 1.0-1.5) running since 03:19 on a 3090 (Japan): first evals 94.34 / 94.40, median ~93% (7/9 at the wall). Fixed a numba thread cliff on many-core hosts (13 ms -> 0.02 ms per field sample; the first launch stalled in its eval). Below the incumbent (94.668) so far."
+ "summary": "Round 5 (r5b1). The 95.2% gate is a kill-topped wall in a slot over a block, cleared only with carried speed (WR ~1,300-1,550 u/s at the climb; the policy 600-950). NEW --respawn-greedy-speed LO HI: the greedy-line rows replayed x U(LO, HI) faster. Arm r5b1_gspd (incumbent 15.03B + speed 1.0-1.5, 3090 Japan, from 03:19): the greedy line passed the wall at ~15.15B (+110M steps; incumbent stuck at the wall), 96.5 (median 95.8%), CP7 at 15.184B: best 97.064. Training ceiling 98.24%, reservoir deepest 97.9%, 7.7% of training episodes finish. Extending as the main line. Also fixed a numba thread cliff on many-core hosts (13 ms -> 0.02 ms per field sample)."
 }
