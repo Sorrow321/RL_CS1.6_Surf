@@ -2006,3 +2006,37 @@ safety classifier; simulator probes from the policy's own states answered the sa
 * Code: the best lineage ran at commit 3ea2710 (--eval-patience, --eval-parallel, --front-temp,
   --respawn-greedy-stuck; flag-off bit-identical to the round's start); later commits are notes and config.
 * Box 57057785 released at 00:01 UTC (`box.py status`: no box).
+
+## Round 5, branch r5b3 - 2026-10-22 01:15 UTC
+
+### Start state (the incumbent, read before anything else)
+
+* Incumbent checkpoint = r4b3_band15x final (15,032,385,536); code on this branch = the commit it trained at
+  (3ea2710) + notes/config only. Its unstuck T 0.15, stuck 40M; reservoir 20k states, deepest 94.54%
+  (median 50.9%); greedy pool 2,700 rows from the last eval (9/9 fail: deaths 41.5 / 105.9-107.3 s, stops
+  39.5-100.7 s); novel d_best 4,716 u (ceiling 95.2%).
+* **Training already FINISHES now and then**: the last progress.csv rows have race/success_rate 0.44% and 0.83%
+  with race/finish_s 4.1-4.9 s - episodes spawned ~4 s from the end (reservoir states near the frontier).
+* The 94.668 eval (traj_14991491072): all 9 episodes start at (7,837, 0, 15,042), v 0, and differ only in the
+  initial view yaw (347-355 deg); chaos does the rest. Ends: 2 at 34.4% (42.5 s, (-2,000, 180, 9,763)), 4 at
+  the old 60.56% stop (~72-76 s), 1 at 1.6% (stuck on the first ramp from 5 s), 1 at 91.7%, the best at
+  94.67% (109.7 s at (123, -607, 2,018), dies at 110.2 s). So the median (60.6%) is set by EARLIER gates the
+  line passes only sometimes - finish_frac (10 points) will need robustness, not just the last gate.
+* Remaining field route from the best point (steepest descent on goal_32, d 5,296 u): east and down through
+  (976, -272, 1,896), (1,520, -464, 1,352), (2,448, -400, 1,160), up to (2,832, -48, 1,416), then a vertical
+  drop at x ~2,896 into the finish box (x 2,872-3,048, |y| <= 88, z 176-184). Kill teleports (target
+  sidstart) all around: full-width plates *28 (z ~2,064, x -224..1,248), *10 (z ~1,792, x 800-1,696), *50
+  (z ~1,312, x 1,632-2,432), *61 (z ~1,200, x 2,464-3,424, |y| <= 704), *3 (z ~656-672, x 1,984-4,208); CP7
+  curtain sgcp_7 at x 1,632-1,648. The AABBs are unions of brushes, so gaps may exist; the field ignores
+  triggers.
+* Score arithmetic once something finishes: 100 + 10 x finish_frac + 10 x (1 - t/300). One greedy finish at
+  ~116 s = ~107.1; 9/9 = ~116. Consistency is worth ~10, speed ~0.33 per 10 s.
+* `--finish-k K` (existing, rewards.py): finish_k x max(0, tref - T_ep) paid on the finish tick - a time cost
+  charged only to finishers (no suicide channel). The generic speed lever once the policy finishes.
+
+### Box
+
+* 01:00-01:15 UTC: no offer passes the caps. A background loop retries `box.py rent` every 3 min and, once
+  READY, deploys ar/r5b3 + the incumbent ckpt and launches the main line, so the box never idles:
+  **r5b3_main** = bare resume of the incumbent + `--ckpt-every 1e8`, `--record-every 12.5e6` (as band15x),
+  6e9 steps.
