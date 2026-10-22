@@ -7,8 +7,8 @@
   "eval_file": "/home/steam/ar/runs/r6b2/r6b2_tp1/traj_19723190272.jsonl",
   "run": "r6b2_tp1",
   "step": 19723190272,
-  "ckpt": null,
-  "ckpt_note": "r6b2_tp1 is still training; its checkpoint is pulled at wrap-up.",
+  "ckpt": "/home/steam/ar/runs/r6b2/r6b2_tp1/ckpt_latest.pt",
+  "ckpt_note": "r6b2_tp1's last weights, step 19,955,974,144, md5 6838c110c2e3441d6b621c8f305fa68a (copied after the run stopped; md5 matches the box). Config: time_pen 0.001, respawn_front_perturb 0.25 (band 0.01, turn 90, speed 1.4-2.0), front_temp 1 / front_band 0.01, respawn_backward_mix 0.1, respawn_novel_frac 0.2, respawn_greedy 0.25, race_no_corner_cut 1, pitch_sigma_min 0.05, unstuck_max 0.2.",
   "recipe": [
    "--time-pen",
    "0.001",
