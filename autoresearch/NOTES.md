@@ -2151,3 +2151,31 @@ AABBs of the kill triggers are broadphase only (zones.kill_zones' own warning); 
 * **r5b4_ps05** (03:33): resume of r5b4_t02/ckpt_15733358592.pt (md5 e3998f36...) + `--pitch-sigma-min 0.05
   --ckpt-every 1e8` (T cap 0.2 and everything else restored), evals every 12.5M. 30-min first test against t02's
   own record from 15.43-15.75B (best 98.1-98.2, medians 28-98, no exit).
+
+### 04:10 UTC: r5b4_ps05 (pitch floor) - KL sane, line more consistent, still no exit; the FINISH FUNNEL and a field leak
+
+* r5b4_ps05 15,733-16,033M (~300M steps): approx_kl 0.019-0.031 throughout (was 1-22); best **98.246** (15,797M,
+  median 98.1%); 4 of the last 7 evals had a median >= 96.5% (t02's medians: 28-98%) - the greedy line is more
+  consistent, one seed. No eval left the basement; novel ceiling 96,341 -> 96,354 u.
+* **The finish geometry** (plan-view hull maps, ANALYSIS ONLY): the shaft (x ~2,910-3,000, y ~-70..50) sits inside a
+  tapering FUNNEL whose walls rise to z ~1,550 (inner opening x 2,820-3,150, |y| <= 190 at z 1,500, narrowing to the
+  shaft at z ~1,200). Around it a room (x 2,460-3,240+, z 1,180-1,650+) whose FLOOR is a kill layer (z ~1,200), with
+  holes down to the basement at x 2,490-2,670, |y| >= 370. So the way in is: rise through a hole from the basement,
+  keep rising above the funnel rim (z > ~1,560), drop into the funnel. The greedy loop's return leg passes under the
+  holes at z ~880-980 with vz +500-840: its apex would be ~1,420, ~140 u short of the rim, and it heads west.
+* **The goal field leaks through the funnel wall**: the walls are one voxel thick and slanted, and the 26-neighbour
+  BFS slips diagonally between two solid voxels that touch along an edge. Raw field: just outside the wall at z ~1,416,
+  d 1,300; just inside 1,212 (88 u for a wall the player cannot cross); above the rim 1,388. A crop BFS from the
+  slab occupancy (old rule reproduces the field to ~30 u) with NO CORNER CUTTING: outside the wall 1,333 -> 1,634,
+  (2,800, 180, 1,380) 1,350 -> 1,697, (2,736, 240, 1,320) 1,461 -> 1,742; inside the funnel and above the rim
+  unchanged; the basement / corridor +240-290 (a near-constant offset upstream). So the shipped shaping has a false
+  minimum against the OUTER funnel wall ~100 u better than the real way over the rim - exactly where training's
+  ceiling (98.56%, the room) has sat for ~500M steps.
+* NEW (commit 144f9e8, default off): `build_goal_field(..., no_corner_cut=True)` / `_bfs_geodesic(no_corner_cut=)`
+  (a diagonal step needs every intermediate voxel of its box free; own cache goalc_, own sig c1_) +
+  `tools/bake_nocut_field.py` (bakes it, refuses a disconnected start, compares it with the shipped field along eval
+  trajectories). 4 tests (tests/python/test_goal_nocut.py) + the fast-path tests pass. The trainer reads it through
+  the existing `--goal-field-file` (the shaping, the potential channel, compass and pot-rate follow it - all
+  offset-invariant, so only leak points change). Generic: one grid rule, no map constant.
+* `box.py deploy` on the busy box (to get 144f9e8) failed only at gpu_health (GPU busy) after updating the checkout,
+  as round 4 noted; the trainer kept running. Bake started on the box GPU beside ps05 (runs/bake_nocut.log).
