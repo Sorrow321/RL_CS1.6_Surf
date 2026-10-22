@@ -7,7 +7,7 @@
   "eval_file": "/home/steam/ar/runs/r5b1/r5b1_m1/traj_17036214272.jsonl",
   "run": "r5b1_m1",
   "step": 17036214272,
-  "ckpt": "/home/steam/ar/runs/r5b1/r5b1_m1/ckpt_final.pt (to pull)",
+  "ckpt": "/home/steam/ar/runs/r5b1/r5b1_m1/ckpt_final.pt (17,235,443,712, md5 57e49406...; pulled + md5-checked)",
   "recipe": [
    "--respawn-greedy-speed",
    "1.0",
