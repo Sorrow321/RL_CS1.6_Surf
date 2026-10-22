@@ -2484,3 +2484,30 @@ Standing-hull solid tests (`core.trace(p, p, hull=0).startsolid`) and kill hulls
 * First lines: novel ceiling 98,260 u (= d_best 1,415: the rim's level), novel rows 1,843 per pool, 41-48% of
   episodes; training "win" 25-35% at 2.2-2.4 s - NOVEL-row trivial wins (rows high in the tall room fall into
   the funnel), so the win rate says nothing about the route; the novel ceiling and the greedy evals do.
+
+### 14:52 UTC: r6b3_gs (greedy rows x U(1, 2) speed) - NEGATIVE: the line breaks everywhere, no climb
+
+* 17,419M -> 17,622M (~200M steps, 25 min, ~140k steps/s average incl. evals every 12.5M): 17 evals, best
+  98.276 (17,457M); medians 98.1% for the first three evals, then 73-88% (one 30.0%). Deaths spread over the
+  whole map in the late evals: 13.7%, 23.4-24.3% (the CP2 area), 56.8%, 82.9%, 86.5-88.2% (~98-101 s),
+  96.8%, and the basement. Novel ceiling 98,260 u the whole time (d_best 1,415, the rim's level); the
+  reservoir's deepest state went 2.013% -> 1.695% min depth (boosted episodes living 2 s in the room) and
+  back to 2.04%. No finish, no rim crossing.
+* Reading: the greedy pool holds the 2 s before EVERY greedy failure (deaths at 22-98 s too, not only the
+  basement), so x1-2 speed there trains fast-entry behaviour at gates the line passes at its own speed, and
+  the natural-speed line forgets them. A boost confined to the frontier would avoid that; with the CEM result
+  (energy alone does not make the climb) it is not the lever. Stopped (PROTOCOL: behind the incumbent's
+  line at matched steps).
+
+### r6b3_sil (14:51 UTC): incumbent + self-imitation (`--sil-coef 0.1 --sil-tempered 1 --sil-top 256`)
+
+* The pattern of rounds 2 and 5: stochastic training episodes reach further than the greedy line (here the
+  novel ceiling d_best 1,415 u = the funnel rim's level, i.e. training episodes climb out of the basement
+  into the room up to the rim; the greedy line enters the room once in ~60 evals). SIL (Oh et al. 2018,
+  docs/sil.md) keeps the rollout rows whose return target beat the critic (R > V) and trains the actor
+  toward them - here the rare climbs - never pushing an action down; `--sil-top 256` keeps a rare row for
+  ~200 iterations; `--sil-tempered 1` scores the tempered (keys T 0.2) samples under their own
+  temperature. Built in round 3 (r3b3, CPU-tested), never run on a box until now.
+* Bare resume of the incumbent (runs_ckpt.pt, 17,418,944,512) + the three SIL flags + `--ckpt-every 1e8`,
+  2e9 budget, evals every 12.5M. Watch: `sil/mean_gain` (must come down), the greedy line entering the room
+  (best eval > 98.35), the novel ceiling.
