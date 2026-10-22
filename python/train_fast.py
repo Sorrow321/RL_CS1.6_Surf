@@ -110,6 +110,7 @@ from surfgym.dipmeter import DIP_KEYS
 from surfgym.goalfield import build_goal_field
 from surfgym.greedy_spawn import GreedyLinePool, as_truncated
 from surfgym.frontier_rows import FrontierRowPool
+from surfgym.sil import success_rows
 from surfgym.mapfleet import HeldoutSlot, MapFleet, MapSlot
 from surfgym.obsaux import ACT_FEAT, CMP_FEAT, ObsAux, PotRate, make_pot_rate_feed
 from surfgym.surfflag import SurfFlag, g_step_of, make_surf_feed
@@ -6917,6 +6918,11 @@ def main() -> None:
                          "rollout into the buffer, so a rare success stays in it for about "
                          "--sil-buffer / K iterations instead of being overwritten by the next "
                          "rollout's R > V rows (0 = the shipped rule: all of them)")
+    ap.add_argument("--sil-success", type=int, default=None, choices=(0, 1),
+                    help="--sil-coef: 1 = admit only rows of REAL episodes (never a --respawn-novel "
+                         "row's) that reach the FINISH within the rollout - self-imitation of the "
+                         "successes only, not of every row whose return beat the critic. 0 = the "
+                         "shipped rule (default)")
     ap.add_argument("--sil-tempered", type=int, default=None, choices=(0, 1),
                     help="--sil-coef under --unstuck: 1 = score the buffer's actions under the "
                          "CURRENT sampling temperature (sigma x (1+T), logits / (1+T)) - the "
@@ -7382,7 +7388,7 @@ def main() -> None:
             restored.append(f"tail_weight={args.tail_weight:g}")
         for _k, _cast in (("sil_coef", float), ("sil_buffer", int), ("sil_batches", int),
                           ("sil_batch_size", int), ("sil_ent", float), ("sil_tempered", int),
-                          ("sil_top", int)):
+                          ("sil_top", int), ("sil_success", int)):
             if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
                 setattr(args, _k, _cast(ck_cfg[_k]))
                 restored.append(f"{_k}={ck_cfg[_k]}")
@@ -13857,6 +13863,8 @@ def main() -> None:
             meta["config"]["sil_tempered"] = 1
         if int(args.sil_top or 0) > 0:
             meta["config"]["sil_top"] = int(args.sil_top)
+        if int(args.sil_success or 0):
+            meta["config"]["sil_success"] = 1
     if YCOND:
         meta["config"]["yaw_cond"] = 1
         print(f"--yaw-cond: side-key head conditioned on the sampled yaw "
@@ -14862,6 +14870,11 @@ def main() -> None:
     SIL_BS = int(args.sil_batch_size if args.sil_batch_size is not None else 512)
     SIL_ENT = float(args.sil_ent if args.sil_ent is not None else 0.0)
     SIL_TEMPERED = bool(int(args.sil_tempered or 0))
+    # --sil-success: per-decision host masks (the episode-end flag, its finish flag and the
+    # episode's novel tag) from which the rows of finishing real episodes are picked
+    SIL_SUCC = bool(int(args.sil_success or 0))
+    if SIL_SUCC and not SIL_COEF > 0.0:
+        raise SystemExit("--sil-success filters --sil-coef's buffer: it needs --sil-coef > 0")
     tail_eps: list[tuple] = []
     tail_seg = np.zeros(N, np.int64)
     #   tail_bin   the goal-distance bin each env's CURRENT episode spawned
@@ -14894,6 +14907,10 @@ def main() -> None:
     b_val = torch.zeros((T, N), device=device)
     b_rew = torch.zeros((T, N), device=device)
     b_done = torch.zeros((T, N), device=device)
+    if SIL_SUCC:
+        sil_done_np = np.zeros((T, N), bool)
+        sil_goal_np = np.zeros((T, N), bool)
+        sil_nov_np = np.zeros((T, N), bool)
     # --exec-cut: 1 where the env's plan was replaced right after decision t (its executor
     # return ends there); None = the advantage loop that shipped
     b_cut = torch.zeros((T, N), device=device) if EXEC_CUT else None
@@ -16188,6 +16205,11 @@ def main() -> None:
         if SIL.top:
             print(f"--sil-top {SIL.top}: at most {SIL.top} rows per rollout join the buffer "
                   f"(the largest gains), so a row stays about {SIL_CAP // SIL.top} iterations")
+        if SIL_SUCC:
+            if MULTI:
+                raise SystemExit("--sil-success is single-map")
+            print("--sil-success: only rows of REAL episodes (never a --respawn-novel row's) "
+                  "that reach the finish inside the rollout join the buffer")
         if SIL_TEMPERED:
             print("--sil-tempered: buffer rows are scored under the CURRENT sampling "
                   "temperature (sigma x (1+T), logits / (1+T))"
@@ -17552,6 +17574,11 @@ def main() -> None:
                 if rpd:
                     done_acc = np.zeros(N, bool)
                     goal_acc = np.zeros(N, bool)
+                if SIL_SUCC:
+                    # --sil-success: this decision's rows belong to the episode each env flies
+                    # NOW (its novel tag now); a finish during the decision is OR'ed per tick
+                    sil_goal_acc = np.zeros(N, bool)
+                    sil_nov_np[t] = (slots[0].novel.novel_env if NOVEL else False)
                 for _j in range(KH):
                     if H > 0 and _j % K == 0:
                         # --chunk: decision _j//K of this chunk. An episode
@@ -17583,6 +17610,8 @@ def main() -> None:
                     else:
                         o2, base_r, done, trunc, term_obs = fleet.step(act_np32)
                     tm.add("env", t_env)
+                    if SIL_SUCC:
+                        sil_goal_acc |= fleet.goal_hits().astype(bool)
                     t_rew = tm.now()
                     gmask = None
                     if goalsys is not None:
@@ -18101,6 +18130,9 @@ def main() -> None:
                                     .to(device, non_blocking=True))
                 b_done[t].copy_(torch.from_numpy(
                     ended_acc.astype(np.float32)).to(device, non_blocking=True))
+                if SIL_SUCC:
+                    sil_goal_np[t] = sil_goal_acc & ended_acc
+                    sil_done_np[t] = ended_acc
                 if ou_c is not None:
                     # --view-ou-sigma: every episode start (terminal,
                     # truncation, stall kill, reservoir respawn - all of
@@ -18670,7 +18702,10 @@ def main() -> None:
             # so f_img's rows are exactly the T*N decisions)
             with torch.no_grad():
                 sil_kept = SIL.add(f_scal, f_img, f_act, f_ret, b_val.reshape(-1),
-                                   z=f_z, priv=f_priv)
+                                   z=f_z, priv=f_priv,
+                                   mask=(torch.from_numpy(success_rows(
+                                       sil_done_np, sil_goal_np, sil_nov_np).reshape(-1))
+                                       .to(device) if SIL_SUCC else None))
             sil_loss_t = None
         # --int-split: the intrinsic return, raw (V_I is never normalised)
         f_reti = ret_i.reshape(-1) if INT_SPLIT else None

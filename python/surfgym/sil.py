@@ -56,12 +56,16 @@ class SILBuffer:
         return idx
 
     @torch.no_grad()
-    def add(self, scal, img, act, ret, val, z=None, priv=None) -> int:
+    def add(self, scal, img, act, ret, val, z=None, priv=None, mask=None) -> int:
         """Keep every row whose return target beats the critic (R > V);
         returns how many were kept. If more than the capacity qualify, the
-        largest gains win."""
+        largest gains win. ``mask`` (bool, one per row; --sil-success): only
+        those rows are eligible at all."""
         gain = ret - val
-        keep = torch.nonzero(gain > 0, as_tuple=False).squeeze(-1)
+        ok = gain > 0
+        if mask is not None:
+            ok = ok & mask.to(ok.device)
+        keep = torch.nonzero(ok, as_tuple=False).squeeze(-1)
         self.n_offered += int(ret.numel())
         n = int(keep.numel())
         if n == 0:
@@ -118,3 +122,21 @@ def sil_loss_terms(logp: torch.Tensor, ent: torch.Tensor, value: torch.Tensor,
     vl = 0.5 * gain.pow(2).mean()
     el = -ent.mean()
     return pg + vl + float(ent_coef) * el, raw.detach()
+
+
+def success_rows(done, goal, novel):
+    """--sil-success: (T, N) bool - True for the rows of an episode that ENDS IN A FINISH inside
+    this rollout and is not a --respawn-novel row's episode. ``done`` (T, N) the decision at which
+    an env's episode ended, ``goal`` (T, N) that end was a finish, ``novel`` (T, N) the env's
+    episode at that decision spawned from a novel row. Backward over t: a row belongs to the
+    episode that ends at the first done at or after it; the last open episode has no outcome yet
+    (False)."""
+    import numpy as _np
+    done = _np.asarray(done, bool)
+    goal = _np.asarray(goal, bool)
+    out = _np.zeros(done.shape, bool)
+    s = _np.zeros(done.shape[1], bool)
+    for t in range(done.shape[0] - 1, -1, -1):
+        s = _np.where(done[t], goal[t], s)
+        out[t] = s
+    return out & ~_np.asarray(novel, bool)
