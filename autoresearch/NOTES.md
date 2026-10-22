@@ -2223,3 +2223,18 @@ safety classifier; simulator probes from the policy's own states answered the sa
   86.5% gate ((-1,684, -230, 4,045) at ~98 s, falling); at T ~0.01 (15.27-15.47B) medians were mixed but often
   93-97%. The best episode moved forward under T 0.5 (96.7 -> 98.25), and the score counts only the best
   until something finishes, so T is left alone (the tracker's +500 u rule needs 96,363 u to halve it).
+
+### 06:25 UTC: T 0.5 is breaking the greedy line; r5b3_main2 stopped, r5b3_t01 = same + --unstuck-max 0.1
+
+* r5b3_main2 15,798-15,899M: 88.057, **28.233** (9/9 back at the CP2 area, median 26.6%), 95.130 (median 28.2%),
+  98.135 (median 60.5%), 96.527. With T at its 0.5 cap (keys, stuck 650M steps) the training ceiling stayed
+  at 98.29% for ~500M steps while the greedy medians fell from often 93-97% (T ~0.01, 15.27-15.47B) to
+  86.5% and then to 27-60%. Round 4 saw the same wobble at T 0.5; round 3 consolidated the line by lowering
+  the cap.
+* r5b3_main2 stopped at 15,923,675,136 (pid kill; ckpt_latest md5 65b25a03..., pulled to runs/r5b3/r5b3_main2/ -
+  the hand-on candidate while that run holds the branch best 98.254). 15/15 evals valid.
+* **r5b3_t01**: bare resume of that checkpoint + `--unstuck-max 0.1` (T is restored at 0.5 and clamped to the
+  cap at the first update), evals every 25M, snapshots every 1e8. One change. Read-out: the medians back
+  above ~86-96% and the best episode still reaching the lower lane (>= 98%).
+* Ops note: I killed the trainer with a pgrep -f pattern over ssh that also matched my own ssh shell; it took
+  the lower pid (the trainer) by luck. Use the known pid (box.py status / the launch log) next time.
