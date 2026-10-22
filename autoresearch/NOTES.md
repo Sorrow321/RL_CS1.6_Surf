@@ -2724,3 +2724,9 @@ pattern that is in your own command line.
   (vy flips to -750..-930), up through the -y hole, then EAST along the chamber's -y side at ~900 u/s. The z 1,465
   episode reaches the chamber's sloped east wall and climbs it (x 3,243 -> 3,311, z 1,252 -> 1,328, then 1,465):
   round 5's east-ramp hypothesis, flown by the greedy policy - with h_E ~1,780-1,920, short of the rim.
+
+### 23:04 UTC: r6b2_tp3 at +900M - greedy entries 8 in 1,611; box to 01:33
+
+* r6b2_tp3 20.19-21.14B: 179 evals, best still **98.421** (20,614M); greedy chamber entries 8 of 1,611 episodes (apex
+  z 1,257-1,465); front-perturb finishes 0 at x1.0-1.3 (the entries fall short of the rim). Box 57219728 extended
+  to 01:33 UTC for the wrap-up.
