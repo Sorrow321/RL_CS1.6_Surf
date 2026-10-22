@@ -2673,3 +2673,11 @@ basement and only near the funnel wall in shape).
 * 18:16 UTC r6b1_turn2 (17,419-17,558M): evals 98.250, 98.273, 98.215, then a CP6 wobble (96.465, 96.812, 97.105,
   97.420, 96.727, 96.796) and back: **98.308 (17,532M, the round's best so far)**, 98.250, 98.230. The line wobbles out
   and back by itself, as the correction says. Novel ceiling 98,260u unchanged; turned rows ~890 per refresh.
+* 18:44 UTC r6b1_turn2 at 17,708M (290M steps): evals 98.17-98.28 (CP7) then CP6 again (96.7-97.2) from 17,633M;
+  best still 98.308; novel ceiling 98,260u flat (no real episode over the rim in 290M steps of the turn operator).
+  The 98.308 episode (ep 18 of traj_17532715008) reached the -y hole's mouth at (2,672, -406, 1,193) - the incumbent's
+  98.349 reached (2,631, -351, 1,220); several episodes per CP7 eval reach z 1,080-1,190 there. The line is a few tens
+  of units of rise away from beating the incumbent on the score's field.
+* Lottery policy for the rest of the round: a restart from the incumbent stays at CP7 for ~3-11 evals before the
+  wobble (steer2 11, bank3 5, turn2 3), so restarting with a new seed whenever the line drops to CP6 yields more CP7
+  evals than waiting it out. r6b1_turn3 (18:50 UTC): seed 3, 54-episode evals every 6.25M, turn + steer kept.
