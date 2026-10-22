@@ -2642,3 +2642,5 @@ basement and only near the funnel wall in shape).
 * The trainer is DETERMINISTIC for a given checkpoint + flags + seed: r6b1_bank2's evals at 17,419M / 17,432M are
   byte-for-byte r6b1_bank's (98.217 / 98.200). A restart for more greedy-eval samples should change --seed, or it
   replays the same checkpoints.
+* 17:13 UTC: **r6b1_bank3** = the same + `--seed 1 --eval-eps 54` (fresh checkpoints; a side-by-side eval costs ~1 s
+  per extra episode on this box, so 54 episodes per eval is ~1,180 greedy episodes per hour against ~700 at 27).
