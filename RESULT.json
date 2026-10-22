@@ -3,11 +3,11 @@
  "round": 5,
  "final": false,
  "best": {
-  "score": 98.237,
-  "eval_file": "/home/steam/ar/runs/r5b1/r5b1_bandx/traj_15973482496.jsonl",
+  "score": 98.25,
+  "eval_file": "/home/steam/ar/runs/r5b1/r5b1_bandx/traj_16665542656.jsonl",
   "run": "r5b1_bandx",
-  "step": 15973482496,
-  "ckpt": "/home/steam/ar/runs/r5b1/r5b1_bandx/ckpt_final.pt (to pull at the end; band's final 15,633,219,584 md5 4017ed40... is local)",
+  "step": 16665542656,
+  "ckpt": "box: runs/r5b1_bandx/ckpt_16734748672.pt (bandx was stopped at ~16.80B for the T-cap arm; local: ckpt_16334192640.pt)",
   "recipe": [
    "--respawn-greedy-speed",
    "1.0",
@@ -20,5 +20,5 @@
   "resume_from": "incumbent r4b3_band15x/ckpt_final.pt (15,032,385,536) -> r5b1_gspd (+ --respawn-greedy-speed 1.0 1.5) -> [gspdx, all rows scaled: regressed, stopped] -> r5b1_band (gspd's final 15,332,802,560 + --respawn-greedy-speed-band 0.05) -> r5b1_bandx (bare resume of band's final 15,633,219,584)",
   "commit": "55d5449"
  },
- "summary": "Round 5 (r5b1). NEW --respawn-greedy-speed LO HI (greedy-line rows replayed x U(LO,HI) faster) broke the 95.2% wall (a kill-topped wall in a slot, cleared only with carried speed): r5b1_gspd passed it in ~110M steps -> CP7 -> 98.1% (the east-end turn). Scaling ALL greedy rows then regressed the line (gspdx: episodes past 90% 44% -> 11%); NEW --respawn-greedy-speed-band B (scale only rows within B d0 of the deepest failure) fixed it at matched steps (past 90% 38% vs 21%, at 98% 20% vs 9%). r5b1_bandx (from 05:05): best 98.237 at 15.97B. No finish yet: the last gate is the return from the east-end turn up the ramp to the funnel (the line arrives too high and slow). The unstuck T at its 0.5 cap (frontier stalled ~600M steps) cuts the 98% share (band: 11-28% at T<=0.27, 0-6% at 0.5). Also fixed a numba thread cliff on many-core hosts."
+ "summary": "Round 5 (r5b1). NEW --respawn-greedy-speed LO HI (greedy-line rows replayed x U(LO,HI) faster) broke the 95.2% wall (a kill-topped wall in a slot, cleared only with carried speed): r5b1_gspd passed it in ~110M steps -> CP7 -> 98.1% (the east-end turn). Scaling ALL greedy rows then regressed the line (gspdx: episodes past 90% 44% -> 11%); NEW --respawn-greedy-speed-band B (scale only rows within B d0 of the deepest failure) fixed it at matched steps (past 90% 38% vs 21%, at 98% 20% vs 9%). r5b1_bandx (from 05:05): best 98.250 at 16.666B (6/9 at 98%). No finish yet: the last gate is the return from the east-end turn up the ramp to the funnel (the line arrives too high and slow). The unstuck T at its 0.5 cap (frontier stalled ~600M steps) cuts the 98% share (band: 11-28% at T<=0.27, 0-6% at 0.5). Also fixed a numba thread cliff on many-core hosts."
 }
