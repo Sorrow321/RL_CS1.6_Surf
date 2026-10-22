@@ -1718,7 +1718,7 @@ class NovelSpawnSampler:
                  shell_width: float = 0.25, tries: int = 8, bins: int = 32,
                  d0: float = 0.0, window: float = 0.0, seed: int = 73,
                  turn: float = 0.0, band: float = 0.0, vrand: float = 0.0,
-                 vrand_band: float = 0.01) -> None:
+                 vrand_band: float = 0.01, vrand_speed=None) -> None:
         self.core = core
         self.field = field
         self.n = int(n_envs)
@@ -1769,6 +1769,16 @@ class NovelSpawnSampler:
         if self.vrand > 0.0 and not (self.vrand_band > 0.0 and self.d0 > 0.0):
             raise ValueError(f"--respawn-novel-vrand-band {vrand_band}: needs > 0 and the "
                              "map's d0")
+        # --respawn-novel-vrand-speed LO HI: the frontier rows KEEP their own velocity direction
+        # (and view) and scale its speed by U(LO, HI) instead of drawing a new direction - the
+        # frontier states at make-it speed (sidistic's last gate: the launch through a hole
+        # clears the funnel's rim only from ~1.3-1.5x the speed the line arrives with). None =
+        # the random-direction rows
+        self.vrand_speed = (None if vrand_speed is None
+                            else (float(vrand_speed[0]), float(vrand_speed[1])))
+        if self.vrand_speed is not None and not (0.0 < self.vrand_speed[0]
+                                                 <= self.vrand_speed[1]):
+            raise ValueError(f"--respawn-novel-vrand-speed {vrand_speed}: needs 0 < LO <= HI")
         self.vrand_rng = (np.random.default_rng([int(seed), 104729])
                           if self.vrand > 0.0 else None)
         self.vrand_kept = 0
@@ -2038,6 +2048,19 @@ class NovelSpawnSampler:
         src = np.flatnonzero(ok & (d <= float(d[ok].min()) + self.vrand_band * self.d0))
         g = self.vrand_rng
         pick = src[g.integers(0, len(src), n)]
+        if self.vrand_speed is not None:
+            out = reservoir._store[pick].copy()
+            sc = g.uniform(self.vrand_speed[0], self.vrand_speed[1], n)
+            out["velocity"] = (np.asarray(out["velocity"], np.float64)
+                               * sc[:, None]).astype(np.float32)
+            out["onground"] = -1
+            out["basevelocity"] = 0.0
+            out["base_vel_flag"] = 0
+            out["waterjumptime"] = 0.0
+            out["seg_hint"] = 0
+            self.vrand_kept += len(out)
+            self._last_vrand = len(out)
+            return out
         spd_src = src[g.integers(0, len(src), n)]
         out = reservoir._store[pick].copy()
         spd = np.linalg.norm(np.asarray(reservoir._store[spd_src]["velocity"], np.float64),
@@ -2145,8 +2168,10 @@ class NovelSpawnSampler:
         if "rej_band" in st:
             rej += " (outside the band {:.0%})".format(st["rej_band"])
         if self.vrand > 0.0:
-            head += "; {:,} vrand rows (frontier states, random velocity)".format(
-                self._last_vrand)
+            head += ("; {:,} vrand rows (frontier states, random velocity)".format(
+                self._last_vrand) if self.vrand_speed is None else
+                "; {:,} vrand rows (frontier states, speed x {:g}-{:g})".format(
+                    self._last_vrand, *self.vrand_speed))
         if "n" not in st:
             return head + "; no rows this iteration" + rej
         return head + ("; {:,} rows: progress med {:,.0f}u p90 {:,.0f}u, moved "

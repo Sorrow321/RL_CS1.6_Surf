@@ -104,6 +104,36 @@ def test_view_yaw_turns_with_the_heading(core, field, reservoir):
 
 
 @needs_sid
+def test_speed_mode_keeps_direction_and_scales_speed(core, field, reservoir):
+    band = 0.05
+    s = _sampler(core, field, reservoir, vrand=1.0, vrand_band=band, vrand_speed=(1.0, 1.5))
+    store = reservoir._store[:reservoir.size]
+    src = {o.tobytes(): i for i, o in enumerate(np.asarray(store["origin"], np.float32))}
+    d_all = np.asarray(field.sample(np.asarray(store["origin"], np.float64)), np.float64)
+    lim = field.reach_max - 0.5 * field.cell
+    dmin = d_all[d_all < lim].min()
+    rows = s.sample_vrand(300, reservoir)
+    assert len(rows) == 300 and "speed x 1-1.5" in s.line()
+    ratios = []
+    for r in rows:
+        i = src[np.asarray(r["origin"], np.float32).tobytes()]
+        assert d_all[i] <= dmin + band * D0
+        v0 = np.asarray(store["velocity"][i], np.float64)
+        v1 = np.asarray(r["velocity"], np.float64)
+        n0 = np.linalg.norm(v0)
+        if n0 < 1.0:
+            continue
+        k = np.linalg.norm(v1) / n0
+        ratios.append(k)
+        assert np.allclose(v1, v0 * k, atol=1e-2 * n0)       # same direction
+        assert float(r["yaw"]) == float(store["yaw"][i])    # view unchanged
+    ratios = np.asarray(ratios)
+    assert ratios.min() >= 1.0 - 1e-4 and ratios.max() <= 1.5 + 1e-4 and np.ptp(ratios) > 0.3
+    with pytest.raises(ValueError):
+        NovelSpawnSampler(core, field, 4, d0=D0, vrand=0.3, vrand_speed=(1.5, 1.0))
+
+
+@needs_sid
 def test_refusals(core, field):
     with pytest.raises(ValueError):
         NovelSpawnSampler(core, field, 4, d0=D0, vrand=1.5)
@@ -115,7 +145,7 @@ def test_refusals(core, field):
 
 def test_recorder_lists_the_flags_training_only():
     src = (ROOT / "tools" / "record_ckpt.py").read_text(encoding="utf-8")
-    assert '"respawn_novel_vrand", "respawn_novel_vrand_band"' in src
+    assert '"respawn_novel_vrand", "respawn_novel_vrand_band", "respawn_novel_vrand_speed"' in src
 
 
 def test_the_trainer_wires_and_restores_it():
@@ -152,5 +182,18 @@ def test_the_trainer_wires_and_restores_it():
     assert r3.returncode == 0, r3.stdout[-4000:] + r3.stderr[-4000:]
     cfg3 = json.loads((ROOT / "runs" / run3 / "run.json").read_text(encoding="utf-8"))["config"]
     assert "respawn_novel_vrand" not in cfg3 and "vrand rows" not in r3.stdout
-    for dd in (d0, ROOT / "runs" / run, ROOT / "runs" / run2, ROOT / "runs" / run3):
+    # the speed mode: own direction, speed x U(LO, HI)
+    run4 = "vrand_spd"
+    shutil.rmtree(ROOT / "runs" / run4, ignore_errors=True)
+    r4 = _run([sys.executable, "-u", str(TRAIN), "--run", run4, "--ckpt", str(seeded)] + SMOKE
+              + ["--steps", "6144", "--respawn-reservoir", "5000", "--respawn-novel",
+                 "--respawn-novel-vrand", "0.5", "--respawn-novel-vrand-band", "0.2",
+                 "--respawn-novel-vrand-speed", "1.0", "1.5"])
+    assert r4.returncode == 0, r4.stdout[-4000:] + r4.stderr[-4000:]
+    assert "with their own velocity x U(1, 1.5)" in r4.stdout
+    assert re.search(r"[0-9,]+ vrand rows \(frontier states, speed x 1-1.5\)", r4.stdout)
+    cfg4 = json.loads((ROOT / "runs" / run4 / "run.json").read_text(encoding="utf-8"))["config"]
+    assert cfg4["respawn_novel_vrand_speed"] == [1.0, 1.5]
+    for dd in (d0, ROOT / "runs" / run, ROOT / "runs" / run2, ROOT / "runs" / run3,
+               ROOT / "runs" / run4):
         shutil.rmtree(dd, ignore_errors=True)

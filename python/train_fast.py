@@ -6606,6 +6606,11 @@ def main() -> None:
                          "uniform on the sphere and its speed taken from another frontier "
                          "state: exploring starts in velocity where the line ends. Tagged novel "
                          "(never harvested, never move the ceiling). Default 0 = off")
+    ap.add_argument("--respawn-novel-vrand-speed", type=float, nargs=2, default=None,
+                    metavar=("LO", "HI"),
+                    help="--respawn-novel-vrand: the frontier rows KEEP their own velocity "
+                         "direction and scale its speed by U(LO, HI) instead of drawing a new "
+                         "direction (the frontier at make-it speed). Default: random direction")
     ap.add_argument("--respawn-novel-vrand-band", type=float, default=None,
                     help="--respawn-novel-vrand: the frontier band B in units of the map's "
                          "start geodesic (default 0.01)")
@@ -7700,6 +7705,10 @@ def main() -> None:
         for _nk in ("respawn_novel_vrand", "respawn_novel_vrand_band"):
             if getattr(args, _nk) is None and ck_cfg.get(_nk) is not None:
                 setattr(args, _nk, float(ck_cfg[_nk]))
+        if (args.respawn_novel_vrand_speed is None
+                and ck_cfg.get("respawn_novel_vrand_speed") is not None):
+            args.respawn_novel_vrand_speed = [
+                float(v) for v in ck_cfg["respawn_novel_vrand_speed"]]
         # --int-real-only: part of the reward, restored like the other novelty knobs
         if args.int_real_only is None and ck_cfg.get("int_real_only") is not None:
             args.int_real_only = int(ck_cfg["int_real_only"])
@@ -11159,7 +11168,9 @@ def main() -> None:
                 turn=float(args.respawn_novel_turn),
                 band=float(args.respawn_novel_band),
                 vrand=float(args.respawn_novel_vrand),
-                vrand_band=float(args.respawn_novel_vrand_band))
+                vrand_band=float(args.respawn_novel_vrand_band),
+                vrand_speed=(None if args.respawn_novel_vrand_speed is None
+                             else tuple(float(v) for v in args.respawn_novel_vrand_speed)))
             # a novel spawn's episode is DISCARDED at its end, never harvested
             slot.respawn.skip = slot.novel.novel_env
         print(f"respawn NOVEL: {args.respawn_novel_frac:.0%} of the non-start pool = own "
@@ -11178,7 +11189,10 @@ def main() -> None:
                  if args.respawn_novel_band > 0.0 else "")
               + (f"; {args.respawn_novel_vrand:.0%} of the novel rows are frontier states "
                  f"(within {args.respawn_novel_vrand_band:g} x d0 of the reservoir's deepest) "
-                 f"with a random velocity direction" if args.respawn_novel_vrand > 0.0 else ""))
+                 + ("with a random velocity direction" if args.respawn_novel_vrand_speed is None
+                    else "with their own velocity x U({:g}, {:g})".format(
+                        *args.respawn_novel_vrand_speed))
+                 if args.respawn_novel_vrand > 0.0 else ""))
     # --respawn-greedy: the policy's own greedy-eval states before each death
     # (surfgym/greedy_spawn.py), rebuilt at every eval
     GREEDY = None
@@ -13893,6 +13907,9 @@ def main() -> None:
         if args.respawn_novel_vrand > 0.0:
             meta["config"]["respawn_novel_vrand"] = float(args.respawn_novel_vrand)
             meta["config"]["respawn_novel_vrand_band"] = float(args.respawn_novel_vrand_band)
+            if args.respawn_novel_vrand_speed is not None:
+                meta["config"]["respawn_novel_vrand_speed"] = [
+                    float(v) for v in args.respawn_novel_vrand_speed]
     if int(args.int_real_only):
         meta["config"]["int_real_only"] = 1
     # --respawn-greedy: written ONLY when on (a control run's config dump stays byte-identical)

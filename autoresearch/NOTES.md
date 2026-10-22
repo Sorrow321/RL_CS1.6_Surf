@@ -2258,3 +2258,18 @@ safety classifier; simulator probes from the policy's own states answered the sa
   (17,143,693,312, md5 f70b5999...) CARRIES --respawn-novel-vrand 0.4 in its config (a bare resume
   restores it): pass `--respawn-novel-vrand 0` to drop it. x1's final (16.54B, md5 aedabd64...) is the
   plain-config alternative.
+
+### 06:10 UTC: r5b2_spd (--respawn-speed 1.0 1.5) null and HARMFUL; main line back (r5b2_x2); frontier-only boost built
+
+* **r5b2_spd** (16.843 -> 17.144B, 300M, 171k steps/s): from ~16.98B EVERY eval stops at 96.7-96.9%
+  (the pillar-room drop, CP6) - boosting every reservoir row 1.0-1.5x changed the line before the
+  room; novel ceiling 96,306 -> 96,382 u (98.58%), reservoir deepest 97.9% (mind 2.105%, worse).
+  Best eval 98.251 (16,907M, early). Do not boost the whole reservoir at this stage.
+* Local probe (record_ckpt, x1's 16.54B policy, its own 24 launch-capable ramp states, keys at
+  temperature 1.5, 5 s): at 1.0x speed 1/24 into the shaft (98.42%), at 1.5x 0/24; 0 finishes.
+* **r5b2_x2** (06:05): x1's final (16,542,859,264, md5 aedabd64...) bare resume (x1's config: no
+  front-temp, no vrand, respawn-speed 0.9-1.1), 1.5e9 - the main line, while the next arm is built.
+* **NEW `--respawn-novel-vrand-speed LO HI`**: the vrand rows KEEP their own velocity direction and
+  view and scale the speed by U(LO, HI) - the frontier states (only) at make-it speed, tagged novel;
+  what the random-macro search says can finish (2 of 8,192 from 1.0-1.5x post-launch states). 7 unit
+  tests + the trainer wiring test.
