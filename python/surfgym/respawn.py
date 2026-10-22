@@ -2084,15 +2084,19 @@ class NovelSpawnSampler:
 
 
 def turn_rows_in_band(pool: np.ndarray, n_start: int, d: np.ndarray, thr: float,
-                      deg: float, rng) -> tuple:
+                      deg: float, rng, frac: float = 1.0) -> tuple:
     """--respawn-turn: rows ``n_start:`` of a spawn pool whose goal-field distance ``d``
     (one per row from ``n_start`` on) is <= ``thr`` get their horizontal velocity and view
     yaw turned by one U(-deg, deg) angle each; ``|v_xy|``, vz, the position and every other
     field are kept, the map-start rows ``:n_start`` are never touched. Returns (a copy of the
     pool, how many rows were turned). ``rng`` is the caller's own generator, so the pool's
-    other draws are unchanged."""
+    other draws are unchanged. ``frac`` < 1: each in-band row is turned with that probability
+    (one more draw from ``rng``), so rows kept as they are - e.g. a harvested state that
+    worked - are still practised the way they were reached; 1.0 draws nothing extra."""
     out = np.array(pool, copy=True)
     sel = int(n_start) + np.flatnonzero(np.asarray(d, np.float64) <= float(thr))
+    if len(sel) and float(frac) < 1.0:
+        sel = sel[rng.random(len(sel)) < float(frac)]
     if not len(sel):
         return out, 0
     th = np.radians(rng.uniform(-float(deg), float(deg), len(sel)))

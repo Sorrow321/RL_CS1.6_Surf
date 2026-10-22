@@ -7073,6 +7073,10 @@ def main() -> None:
                          "their own positions and speeds, in a new direction: a ramp it only "
                          "ever rode one way, ridden back (Go-Explore's return-then-explore "
                          "with the exploration put into the start state). ckpt restores")
+    ap.add_argument("--respawn-turn-frac", type=float, default=None,  # 1.0
+                    help="--respawn-turn: each in-band row is turned with this probability (1 = "
+                         "all of them; < 1 keeps the rest as reached, e.g. a harvested state "
+                         "that worked). ckpt restores")
     ap.add_argument("--respawn-turn-front", type=float, default=None,  # 0.01
                     help="--respawn-turn: the band, the --ez-front rule (progress >= (1 - B) x "
                          "the reservoir's deepest, re-read every refresh); default 0.01")
@@ -7845,6 +7849,8 @@ def main() -> None:
             restored.append(f"respawn_turn={args.respawn_turn:g}")
             if args.respawn_turn_front is None and ck_cfg.get("respawn_turn_front"):
                 args.respawn_turn_front = float(ck_cfg["respawn_turn_front"])
+            if args.respawn_turn_frac is None and ck_cfg.get("respawn_turn_frac") is not None:
+                args.respawn_turn_frac = float(ck_cfg["respawn_turn_frac"])
             restored.append(f"respawn_speed={args.respawn_speed[0]:g}-"
                             f"{args.respawn_speed[1]:g}")
         if ck_cfg.get("blend"):
@@ -8957,11 +8963,15 @@ def main() -> None:
         args.respawn_turn = 0.0
     if args.respawn_turn_front is None:
         args.respawn_turn_front = 0.01
+    if args.respawn_turn_frac is None:
+        args.respawn_turn_frac = 1.0
     if float(args.respawn_turn) != 0.0:
         if not 0.0 < float(args.respawn_turn) <= 180.0:
             raise SystemExit("--respawn-turn T must be in (0, 180] degrees")
         if not 0.0 < float(args.respawn_turn_front) <= 1.0:
             raise SystemExit("--respawn-turn-front must be in (0, 1]")
+        if not 0.0 < float(args.respawn_turn_frac) <= 1.0:
+            raise SystemExit("--respawn-turn-frac must be in (0, 1]")
         if args.reward != "race" or args.maps or float(args.respawn_frac or 0.0) <= 0.0:
             raise SystemExit("--respawn-turn rotates the respawn reservoir's pool rows inside "
                              "the race reward's frontier band: it needs --reward race, one "
@@ -13722,6 +13732,8 @@ def main() -> None:
     if float(args.respawn_turn or 0.0) > 0.0:
         meta["config"]["respawn_turn"] = float(args.respawn_turn)
         meta["config"]["respawn_turn_front"] = float(args.respawn_turn_front)
+        if float(args.respawn_turn_frac) < 1.0:
+            meta["config"]["respawn_turn_frac"] = float(args.respawn_turn_frac)
     # --steer-*: in the config ONLY when on, so the control's config is unchanged
     if float(args.steer_eps or 0.0) > 0.0:
         meta["config"].update({"steer_eps": float(args.steer_eps),
@@ -17326,7 +17338,8 @@ def main() -> None:
                             from surfgym.respawn import turn_rows_in_band
                             _rp, _nt = turn_rows_in_band(
                                 _rp, _nf, _fld.sample(_rp["origin"][_nf:]), _thr,
-                                float(args.respawn_turn), turn_rng)
+                                float(args.respawn_turn), turn_rng,
+                                frac=float(args.respawn_turn_frac))
                             turn_note = (f"  turn {_nt}/{len(_rp) - _nf} "
                                          f">{100.0 * (1.0 - _thr / _d0f):.1f}%")
                     _set_pool(_s, _rp)

@@ -260,3 +260,19 @@ def test_sil_steer_only_admits_burst_rows_config_and_refusal():
         bad.stdout + bad.stderr)
     for dd in (d, ROOT / "runs" / "steer_bad"):
         shutil.rmtree(dd, ignore_errors=True)
+
+
+def test_turn_rows_in_band_frac_keeps_the_rest_and_frac_one_is_the_old_draw():
+    from surfgym.core import STATE_DTYPE
+    from surfgym.respawn import turn_rows_in_band
+    n = 400
+    pool = np.zeros(n, STATE_DTYPE)
+    pool["velocity"][:, 0] = 1000.0
+    d = np.zeros(n - 4)                                      # every row from 4 on is in band
+    full, k1 = turn_rows_in_band(pool, 4, d, 1.0, 180.0, np.random.default_rng(3))
+    same, k2 = turn_rows_in_band(pool, 4, d, 1.0, 180.0, np.random.default_rng(3), frac=1.0)
+    assert k1 == k2 == n - 4 and np.array_equal(full, same)  # frac 1: the old behaviour, draw for draw
+    half, k3 = turn_rows_in_band(pool, 4, d, 1.0, 180.0, np.random.default_rng(3), frac=0.5)
+    assert 120 < k3 < 280                                    # ~half of 396
+    moved = ~np.isclose(half["velocity"][:, 0], 1000.0) | ~np.isclose(half["velocity"][:, 1], 0.0)
+    assert int(moved.sum()) <= k3 and not moved[:4].any()
