@@ -2573,3 +2573,20 @@ Standing-hull solid tests (`core.trace(p, p, hull=0).startsolid`) and kill hulls
   --ckpt-every 1e8` (band 0.003 x d0 = 299 u, window 0-2 s, advance >= 0.0015 x d0 = 150 u over the
   window - the new default). Captures now need an ARRIVAL at the deep room (d <= 1,714 u, the east slope's
   top and above the rim) with >= 150 u of field progress in the 2 s before it.
+
+### 16:06 UTC: r6b3_front2 at 17.60B - the arrivals the frontier pool keeps (box-side, the run's own checkpoint)
+
+* (Correction to the 15:4x entry: r6b3_front's best was 98.276, at its last eval traj_17645961216; it ran to
+  17,696M with an eval mean of 72,454 u, at the low edge of the incumbent's band.)
+* r6b3_front2, +176M: 46 captures -> 2,346 states (x p10/p50/p90 2,637/3,272/3,407, z 1,146/1,324/1,445,
+  |v| 107/750/1,135; 2,050 in the room, 279 in the basement). Evals 98.11-98.26, no finish; reservoir min
+  depth 1.648% (d ~1,643: real episodes now live >= 2 s in the room).
+* Each capture is one real training episode, 2 s: start in the basement (|v| 680-1,470, E 1,540-2,190),
+  most rise through the -y hole's INNER edge at (2,48x-2,62x, -39x..-44x) with v ~(-200, -950, +500) -
+  heading OUTWARD - then cross the room to the top of its east slope (x 3,34x-3,40x, z 1,36x-1,54x,
+  |y| 60-300) and arrive at 30-650 u/s, E 1,360-1,640 (d 1,613-1,713). The best (E 1,576 at (3,404, -65,
+  1,545); E 1,639 at (3,349, -242, 1,371) still rising at +373) are at or just above the funnel rim's level
+  (~1,568); entering the funnel from there needs ~250-600 u of westward travel above the rim, i.e. another
+  ~100-300 of E. The ~400-500 of E lost inside the room is mostly the outward exit into the room's side wall.
+* So the climb exists in training, it is ~100-300 E-height short, and the frontier rows now replay exactly
+  these approaches (15% of the non-start pool). Kept running.
