@@ -2310,3 +2310,11 @@ safety classifier; simulator probes from the policy's own states answered the sa
   that fall into the funnel and finish in ~2.3 s: the critic knows the chimney pays +50, the policy never gets
   there from the lane. A generic lever for the next round: novelty over (position x velocity direction) cells,
   so that novel rows land in the visited lane with novel (upward) velocities and practise the rise.
+
+### 11:23 UTC: r5b3_ft - a REAL training episode climbs into the chimney (ceiling 98.27-98.34% -> 98.52%)
+
+* Training ceiling 96,142 -> **96,321 u (98.52%)** between 16.91B and 17.01B (~540M steps into --front-temp): d_best
+  1,447 lies inside the chimney (the field there: d ~1,376 at (2,750, +-200, 1,350)), i.e. a real episode got out of
+  the lower lane - the first time in ~1.4B steps at this gate. Reservoir deepest still 98.25% (the episode did not
+  live 2 s more), greedy evals 98.15-98.21% (the line is still in the lane). Too late to attribute (one event; the
+  lane practice had also run ~1B steps), and too late to follow: ~55 min to wrap-up.
