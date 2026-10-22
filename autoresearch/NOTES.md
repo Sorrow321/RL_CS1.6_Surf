@@ -2314,3 +2314,67 @@ AABBs of the kill triggers are broadphase only (zones.kill_zones' own warning); 
 * r5b4_rs15 (`--respawn-speed 1.0 1.5`, 17.63-18.19B, ~560M steps): the greedy line kept its 98% reach (evals 96.7-98.34,
   medians up to 98.2%); the novel ceiling never moved (no real episode over the funnel rim). Boosted respawns alone
   did not open the speed-gated climb in this window.
+
+## ROUND 5 LESSON (r5b4) - written at wrap-up, 2026-10-22 12:24 UTC
+
+**Result:** best greedy eval from the true start **98.349** (r5b4_ncy at 16,903,045,120; incumbent 94.668): CP7, the
+basement under the last wall, one episode up through a basement hole into the room above the finish funnel. 0 finishes.
+Hand-on checkpoint: /home/steam/ar/runs/r5b4/r5b4_ncy/ckpt_latest.pt (17,418,944,512, md5 7256a1cf...); its config
+carries race_no_corner_cut=1 (the trainer bakes maps/surf_src_sidistic.goalc_32.npz itself on a new box, ~3 min on the
+GPU), pitch_sigma_min=0.05 and unstuck_max=0.2 - a bare resume restores all three.
+
+**Per-run bests:** main 98.231 | t02 98.236 | ps05 98.249 | nc 98.176 | ncx 98.238 | **ncy 98.349** | ncz 98.261 | t06 98.218
+| rs15 98.344 (to 19.29B).
+
+**What worked:**
+1. A bare resume of the incumbent: the greedy line passed the wall slit (35 u standing gap over a wall above a kill
+   layer) and the chimney ~130-200M steps after training's ceiling did, then CP7 and the corridor (98.23% by 15.45B).
+2. `--unstuck-max 0.2` after the T 0.5 cap had decayed the line (medians 98 -> 60%); T 0.6 later pulled the line back
+   to 96.7% within ~230M steps - keep T low at this end of the map.
+3. **NEW `--pitch-sigma-min S`** (default off, bit-identical; record_ckpt mirrors it): the rounds-3-5 "unexplained"
+   approx_kl of 0.6-22 per update was the pitch head - its sigma sat on the global floor 0.0067 with no entropy term,
+   so a ~1 deg move of the camera-aim mean was several nats of the joint PPO ratio. Floored at 0.05: kl 1-6 -> 0.02-0.03
+   at once, and the greedy line's medians were steadier (4 of 7 evals >= 96.5% vs 28-98% before). Keep it.
+4. **NEW `--race-no-corner-cut 1`** (+ `build_goal_field(no_corner_cut=True)`, default off, bit-identical; record_ckpt
+   mirrors it, and now also mirrors `--goal-field-file`, which it rendered wrong before): the 26-neighbour goal-field
+   BFS slips diagonally through one-voxel-thick slanted walls; at the finish funnel that made the outside of its wall
+   ~300 u "closer" than the real way over its rim. The corrected field changes the learned route's shaping by a few
+   percent on four segments only (5-s progress ratios 0.85-1.13, cumulative pay 96,027 vs 97,661 u); its
+   observations transient cost 2 evals (86.5%), recovered in ~15M steps. The best eval (98.349) came on it.
+
+**The last gate, measured (analysis only - hull traces, true kill hulls, simulator probes):** after CP7 the corridor
+ends at a wall; the way on drops into a BASEMENT (kill floor ~700) and must rise again through one of two holes
+(x 2,490-2,670, |y| 400-680) into a ROOM whose floor is a kill layer (~1,200); the finish SHAFT sits inside a tapering
+FUNNEL whose rim is at z ~1,560, and the room's EAST wall is a ~40 deg ramp (x 3,240 at z 1,250 -> 3,420 at 1,400).
+From analysis states leaving a hole eastward, the ramp lifts an agent over the rim at >= ~1,300 u/s and finishes
+appear at ~1,700+ u/s (1 / 1,024 random-macro rollouts at 1,700, 4 at 2,100). The greedy line's basement speeds are
+800-1,540 u/s and both its passes under the holes head the wrong way (east while falling, west while rising).
+
+**What did not work:** ~10k simulator rollouts from the policy's own states (random macros incl. x1.2-1.6 speed,
+two Go-Explore runs with 25k-cell archives, surf-like macros, CEM over 10-macro sequences from the corridor) - none
+over the rim (best: into the room at z 1,353); the policy itself from its basement states at x1.0 / x1.4 speed:
+0/32; keys T cap 0.6 (line regressed); `--respawn-speed 1.0 1.5` (built for speed-gated jumps; ~1.66B steps, line
+held at 98.2-98.34%, ceiling never moved).
+
+**For the next round:** the finish is one speed-gated maneuver away. Ideas not tried: carry speed - nothing pays it
+with time-pen 0 (a small time cost once the line is reliable, or a speed-aware term that is generic); SIL restricted
+to REAL episodes (the shipped buffer would be flooded by the 20-30% novel-row trivial wins above the funnel); keys-only
+frontier temperature; more steps at T 0.2 (each earlier gate took 100M-1.6B steps). Evals every 6.25-12.5M sample the
+max well; the line is consistent at ~98.2% (medians 98.1%).
+
+**Ops:** box 57138676 (RTX 3090, machine 151065 Missouri, $0.281/h), 01:22-12:2x UTC (~11 h, ~$3.1); 145-150k steps/s
+with evals every 12.5M (110k at 6.25M). The operator raised the tier-1 price caps to $0.65 at ~01:17 (config.json,
+uncommitted, not mine); before that no offer passed and a background rent loop was refused by the session classifier.
+`box.py pull` re-tars every eval each call (1+ GB late in a run) - pull new evals incrementally by scp. `box.py deploy`
+on a busy box fails only at the GPU health check after updating the checkout (not a bad box). Never `pkill -f` a
+pattern that is in your own command line.
+
+## Wrap-up (r5b4) - 2026-10-22 12:24 UTC
+
+* Final: RESULT.json `"final": true`, score **98.349** (r5b4_ncy, eval traj_16903045120: 9 episodes, best 98.35%, median
+  98.1%, 0 finishes, CP7; re-scored at wrap-up).
+* Hand-on checkpoint: /home/steam/ar/runs/r5b4/r5b4_ncy/ckpt_latest.pt (17,418,944,512, md5
+  7256a1cf0844cb05c6b3ecda512e8a62, md5-checked against the box at wrap-up). Also local: r5b4_ps05/ckpt_latest.pt
+  (16,186,867,712), r5b4_main/ckpt_15232663552.pt.
+* Code: commit 686f2ed (--pitch-sigma-min, --race-no-corner-cut, record_ckpt mirrors) is the last code change; later
+  commits are notes. Box 57138676 released at wrap-up.

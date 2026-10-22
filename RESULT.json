@@ -1,13 +1,14 @@
 {
  "agent": "r5b4",
  "round": 5,
- "final": false,
+ "final": true,
  "best": {
   "score": 98.349,
   "eval_file": "/home/steam/ar/runs/r5b4/r5b4_ncy/traj_16903045120.jsonl",
   "run": "r5b4_ncy",
   "step": 16903045120,
   "ckpt": "/home/steam/ar/runs/r5b4/r5b4_ncy/ckpt_latest.pt",
+  "ckpt_note": "r5b4_ncy's last weights, step 17,418,944,512, md5 7256a1cf0844cb05c6b3ecda512e8a62 (scp, md5-checked against the box at wrap-up). Config: race_no_corner_cut=1 (the trainer bakes maps/surf_src_sidistic.goalc_32.npz on a new box, ~3 min GPU), pitch_sigma_min=0.05, unstuck_max=0.2; a bare resume restores all three.",
   "recipe": [
    "--race-no-corner-cut",
    "1",
@@ -20,8 +21,8 @@
    "--record-every",
    "12.5e6"
   ],
-  "resume_from": "r5b4_ncx/ckpt 16,764,108,800 (md5 10d7ed86...) <- r5b4_nc <- r5b4_ps05 <- r5b4_t02 <- r5b4_main snapshot 15.433B <- incumbent r4b3_band15x/ckpt_final.pt (15,032,385,536)",
+  "resume_from": "incumbent r4b3_band15x/ckpt_final.pt (15,032,385,536) -> r5b4_main (bare) -> its 15,432,941,568 snapshot -> r5b4_t02 (--unstuck-max 0.2) -> r5b4_ps05 (+ --pitch-sigma-min 0.05) -> r5b4_nc (+ --goal-field-file goalc) -> r5b4_ncx (--race-no-corner-cut 1 instead) -> r5b4_ncy (bare resume of ncx at 16,764,108,800)",
   "commit": "686f2ed"
  },
- "summary": "Bare resume of the incumbent (94.668) -> 98.231 (CP7) at 15.45B; T cap 0.2 -> 98.236; NEW --pitch-sigma-min 0.05 (the rounds-3-5 approx_kl anomaly was the pitch head on the sigma floor: kl 1-22 -> 0.02) -> 98.249 (16,174M, r5b4_ps05). 0 finishes: the greedy line loops in a basement under the last wall and must climb ~560 u through a hole into the room above the finish funnel; 3,072 random-macro rollouts from its own basement states never got over the rim. NEW --race-no-corner-cut (the 26-neighbour goal field leaked through the funnel's one-voxel slanted walls, a false minimum against the outer wall); r5b4_ncx trains on it now."
+ "summary": "Best 98.349 (r5b4_ncy at 16,903M, CP7, median 98.1%, 0 finishes; incumbent 94.668). A bare resume of the incumbent passed the wall slit and the chimney (98.231 at 15.45B); then the greedy line stopped in a basement under the last wall. NEW --pitch-sigma-min 0.05: the rounds-3-5 approx_kl anomaly (1-22/update) was the pitch head on the sigma floor - kl 0.02 after, more consistent evals. NEW --race-no-corner-cut: the 26-neighbour goal field leaked through the finish funnel's one-voxel slanted walls (a false minimum against its outer wall). The finish needs ~1,700+ u/s EASTWARD out of a basement hole, up the room's east ramp over the funnel rim, then a drop into the funnel (feasibility check from analysis states); the greedy line's basement speeds are 800-1,540 and it passes the holes the wrong way. ~10k simulator rollouts (macros, Go-Explore, CEM) from the policy's own states never got over the rim; T 0.6 hurt the line; --respawn-speed 1.0 1.5 held the line but did not open the climb in ~1.6B steps. Next: the speed-gated climb (learn to carry speed into the basement and exit a hole eastward)."
 }
