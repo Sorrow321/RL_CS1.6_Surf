@@ -2324,3 +2324,17 @@ safety classifier; simulator probes from the policy's own states answered the sa
   faces outward-up, so riding up it means moving inward; the way through is to come off the slope
   lower (|y| ~450-600) by strafing outward while rising (that is what the random-macro successes held:
   a side key in the first segment) - a precise air-control skill, not a speed problem alone.
+
+### 07:45 UTC: r5b2_sp (--speed-pot 5) HARMFUL at the gate; the long main-line run r5b2_m
+
+* **r5b2_sp** (17.159 -> 17.459B, 300M, 177k steps/s): after its first eval (98.231) EVERY eval stops at
+  96.7-96.8% (the pillar-room drop, CP6; 23 evals); the reservoir's deepest state fell 98.0% -> 96.4%
+  (mind 3.642%), training stall share 1% (the speed potential keeps the agent moving), novel ceiling
+  96,350 u. The speed potential re-shaped the whole final section's line backwards; it is a TIME
+  optimiser for a line that already finishes (skate_laby), not a way through a precision gate.
+* Five arms at the hole gate this round (front-temp, vrand random-direction, global respawn-speed,
+  frontier respawn-speed, speed-pot): none produced a shaft entry; three cost the line (more 96.7%
+  stops). The configuration under which the *28 slot and CP7 fell (x1, the incumbent's) stays the best.
+* **r5b2_m** (07:43): r5b2_vsx's ckpt_latest (17,158,897,664, md5 8ca9225e...) + `--respawn-novel-vrand
+  0` (everything else restored: the incumbent's config), 2.6e9 steps until the wrap-up - the longest
+  uninterrupted stretch at the gate since x1 (1.15B), evals every 12.5M. Box extended to 12:44 UTC.
