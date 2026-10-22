@@ -2752,3 +2752,12 @@ Standing-hull solid tests (`core.trace(p, p, hull=0).startsolid`) and kill hulls
 * **r6b3_front8** (21:2x), until the wrap-up: resume of front6's checkpoint (18,792,054,784, md5 70895ca6...: the
   round's healthiest greedy line - basement 47/189, vz under a hole p50 347, max 688) with front6's settings
   (frontier 0.15, crossing rule, finish gate, no boost), evals every 6.25M.
+
+### 21:55 UTC: r6b3_front8 replays r6b3_front7 byte for byte (the trainer is deterministic on a resume here)
+
+* front8 was launched with exactly front7's settings from the same checkpoint (front6's 18,792,054,784): all 35
+  of its evals so far are byte-identical to front7's at the same steps (md5). So on this box (RTX 3090, the
+  same image) a resume with the same checkpoint, flags and seed reproduces the run exactly - unlike CLAUDE.md's
+  note for the 5090 rounds. Practical consequences: a "control" is free to reproduce, and a repeat launch is not a
+  new lottery ticket unless something (the seed, a flag) differs. front8 passes front7's end (19,107M) ~22:00 UTC
+  and continues from there (new evals) until the wrap-up - effectively front7 continued.
