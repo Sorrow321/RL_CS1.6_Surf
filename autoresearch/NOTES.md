@@ -2428,3 +2428,33 @@ pattern that is in your own command line.
   (tests/python/test_respawn_greedy_speed.py) incl. flag-off bit-identity vs the pre-change trainer with
   --respawn-greedy 0.25 on (config, csv, eval bytes, weights, the saved pool).
 * Generic: one range on the policy's own failure states, no map quantity.
+
+### The finish area, mapped with the sim's own hull traces (ANALYSIS ONLY; scratchpad geo/x?map.py)
+
+Standing-hull solid tests (`core.trace(p, p, hull=0).startsolid`) and kill hulls (`zones.hull_probe`) on
+24-48 u grids:
+* **The room above the funnel is a CLOSED TALL BOX**: x ~2,490-3,400, |y| <= ~670, from its floor at
+  z ~1,200 up to z ~6,600 (solid above at y 0 from ~6,700; no side openings at z 1,600 / 3,000 / 6,400).
+  Its only entrances are the two basement holes; the funnel cone stands in its middle (walls at x 2,764
+  and 3,148-3,180, |y| <= ~180 at z 1,536; it tapers to the 128-u shaft x 2,892-3,020 at z 1,216).
+  The room's east wall slopes: x 3,244 at z 1,248 -> 3,372 at 1,408 -> 3,436 from 1,568 up (~50 deg).
+* **The basement is two LANES** (constant cross-section from x ~2,210 to past 3,000; the y-z slices at
+  x 2,420 / 2,580 / 2,700 / 3,000 are identical below z 1,150): outer walls at |y| ~704, a thin
+  central divider at |y| < 32 (the shaft's walls at x ~3,000), floor ~690, ceiling ~1,150. In each lane a
+  ramp block: a VERTICAL inner face at |y| ~320 (z 708-996) and a ~43 deg OUTER SLOPE from (|y| 330,
+  z 1,000) down to (|y| 640, z 708), facing outward-up; a narrow trough between its foot and the outer
+  wall. The block starts at x ~2,210; west of it (x 2,020-2,190) is the kill pit (z ~704) at the bottom
+  of the passage.
+* **The passage**: the corridor's last ~380 u (x 2,020-2,404) is open from the corridor (z 1,360-1,552)
+  straight down to the basement; the end wall (x 2,428-2,476) spans z 1,168-1,552 and the passage runs
+  under it into the lanes.
+* **The holes**: x ~2,500-2,680, |y| 384-672 - directly ABOVE each lane's outer slope (whose surface is at
+  z ~784 at |y| 560 and ~952 at |y| 400), i.e. OUTSIDE the slope's top edge (|y| 330). Riding the slope
+  up and inward ends under the solid ceiling; to rise through a hole you need vz > 0 at |y| 384-672,
+  x 2,500-2,680. ep 5 of the incumbent's best eval did exactly that (on the slope moving inward-up at
+  x 2,387, then outward-up and east, through the hole's inner edge at (2,502, -384, 1,175)) at
+  vz ~+300-490 - not enough.
+* What clears the rim (z ~1,568) straight up from the hole (z ~1,216): vz >= ~750 at the hole (apex
+  +352), better ~1,000 (apex +625, above the rim for ~1.7 s, enough to drift ~300-500 u inward/east over
+  the funnel opening). The alternative round 5 found: leave the hole heading EAST at 1,300-1,700+ u/s and
+  ride the room's east slope up.
