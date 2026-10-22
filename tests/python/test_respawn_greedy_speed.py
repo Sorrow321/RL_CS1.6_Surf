@@ -147,6 +147,39 @@ def test_the_band_boosts_only_the_rows_near_the_pools_deepest():
     assert all_.boost is None and "boost" not in all_.state_dict()
 
 
+def _feed_floor(pool, eps, ends, d_floor):
+    hook = pool.hook()
+    t = 0
+    for ep in eps:
+        for i in range(len(ep)):
+            hook(t, ep[i:i + 1], np.zeros(1), np.array([i == len(ep) - 1]), np.array([False]))
+            t += 1
+    return pool.build([{"end": e} for e in ends], 10.0,
+                      d_fn=lambda o: np.asarray(o, np.float64)[:, 0], d_floor=d_floor)
+
+
+def test_the_band_anchors_at_the_reservoirs_deepest_when_that_is_deeper():
+    eps, ends = [_line_ep(1000, 500), _line_ep(1000, 900)], ["fail", "fail"]
+    # a reservoir deeper than the line (x 300): band 0.3 -> x <= 600; the pool's own deepest (521)
+    # would have given x <= 821
+    p = GreedyLinePool(0.5, window=(0.25, 2.0), seed=2, speed=(1.2, 1.5), speed_band=0.3)
+    _feed_floor(p, eps, ends, 300.0)
+    x = np.asarray(p.rows["origin"][:, 0], np.float64)
+    assert np.array_equal(p.boost, x <= 600.0 + 1e-3)
+    # a line that regressed far behind the reservoir's frontier (x >= 904 here, floor 100):
+    # nothing is boosted at its new stop
+    q = GreedyLinePool(0.5, window=(0.25, 2.0), seed=2, speed=(1.2, 1.5), speed_band=0.1)
+    _feed_floor(q, [_line_ep(1000, 900)], ["fail"], 100.0)
+    assert q.boost is not None and not q.boost.any() and q.info["boost"] == 0
+    # a floor shallower than the pool's deepest, or none, leaves the pool's own anchor
+    r = GreedyLinePool(0.5, window=(0.25, 2.0), seed=2, speed=(1.2, 1.5), speed_band=0.1)
+    _feed_floor(r, eps, ends, 5000.0)
+    x = np.asarray(r.rows["origin"][:, 0], np.float64)
+    assert np.array_equal(r.boost, x <= x.min() + 100.0 + 1e-3)
+    _feed_floor(r, eps, ends, float("nan"))
+    assert np.array_equal(r.boost, x <= x.min() + 100.0 + 1e-3)
+
+
 @pytest.mark.parametrize("kw", [dict(speed_band=0.05), dict(speed=(1.0, 1.5), speed_band=-0.1)])
 def test_bad_bands_are_refused(kw):
     with pytest.raises(ValueError):

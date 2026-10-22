@@ -2521,3 +2521,21 @@ stochastic (keys temp 1.2 = training) x6 per set:
 * Ops: the box's link to here is ~29 KB/s (an 8.5 MB eval took 5 min), so evals are scored ON THE BOX
   (scratchpad work/rscore.sh) and only the best is pulled; an ~80 MB checkpoint needs ~45 min - start the
   final pull well before wrap-up.
+
+### 16:10 UTC: arm 2 (r6b4_gsb, boost within 0.02 d0 of the pool's deepest) broke the line the same way; control
+
+* Evals: 98.222 (resume), **98.291**, **98.291**, 97.952, 97.386, then 96.738, 96.726, 96.871, 96.732
+  (17,482-17,520M). Best 98.291 (< 98.349). Stopped at ~17.53B.
+* Where the line breaks (both arms; on-box analysis of the evals): at ~110 s the greedy episodes leave the
+  chimney diving at (1,440-1,481, -361..-380, 1,190-1,230) with v ~(50, -1,100, -1,350) - SOUTH - and end at
+  the bottom of the deep pit under it (z ~0-400). The incumbent dives there WEST (at 111.5 s v (-2,041, -16,
+  -611), |v| 2,130) onto the pit-bottom ramp and surfs back up to the corridor (z ~1,500 by 113.5 s), like
+  the human (dive to z -175 at 108 s, up the ramp by 110 s). So the break is the pit ramp, upstream of CP7.
+* Why the band did not protect it: the pool's own deepest row anchors the band, the first pool's windows
+  2 s before the 114.8-115.7 s best stops include the pit ramp (112.8-113.7 s), and once the line breaks
+  the band follows it onto the new stop. Fix (code, below): anchor at the reservoir's deepest too.
+* Own-state bench (ANALYSIS; incumbent's moving basement greedy-pool rows, velocity x K, stochastic at keys
+  temperature 1.2, 24 x 6 s each): x1.0 hole 1, room 0, finish 0; x1.25 hole 0, room 0, finish 0. Speed
+  alone on its own states does not hand the policy the hole; the boost is a slow exploration aid at best.
+* **r6b4_ctl** (16:02): bare resume of the incumbent, evals every 12.5M - the same-box reference and an eval
+  bank while arm 3 is built.

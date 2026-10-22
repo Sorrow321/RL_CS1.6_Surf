@@ -82,10 +82,12 @@ class GreedyLinePool:
         # the rows the pool draws without it; None = off (no draw at all)
         self.speed = speed
         self.srng = None if speed is None else np.random.default_rng(int(seed) + 7)
-        # --respawn-greedy-speed-band B: only the rows within B x d0 of the pool's DEEPEST row (d0 =
-        # the field at the eval episodes' own start) are scaled - the frontier the line is stuck
-        # at, not the earlier places a few greedy episodes fail (those stay plain DAgger rows).
-        # 0 = every row. The mask is rebuilt with the pool; None until a build has the field
+        # --respawn-greedy-speed-band B: only the rows within B x d0 of the DEEPEST state (d0 =
+        # the field at the eval episodes' own start; the deepest = this pool's deepest row or the
+        # build's d_floor, the reservoir's deepest, whichever is deeper) are scaled - the frontier
+        # the line is stuck at, not the earlier places a few greedy episodes fail (those stay
+        # plain DAgger rows). 0 = every row. The mask is rebuilt with the pool; None until a build
+        # has the field
         self.speed_band = speed_band
         self.boost = None
         self.rows = np.zeros(0, STATE_DTYPE)
@@ -131,7 +133,7 @@ class GreedyLinePool:
                 self._cur = []
         return on_tick
 
-    def build(self, summaries, tick_ms: float, d_fn=None) -> dict:
+    def build(self, summaries, tick_ms: float, d_fn=None, d_floor=None) -> dict:
         """Rebuild the pool from the recording just captured. ``summaries`` is
         record_rollout's return (one trailer per episode, in order); ``tick_ms`` the eval
         core's realised mean tick. -> the build's stats.
@@ -200,7 +202,14 @@ class GreedyLinePool:
                 rd = np.asarray(d_fn(np.asarray(rows["origin"], np.float64)), np.float64)
                 rd = np.where(np.isfinite(rd), rd, np.inf)
                 if d0 > 0.0 and np.isfinite(rd).any():
-                    self.boost = rd <= float(rd.min()) + self.speed_band * d0
+                    # the anchor: the deeper of this pool's deepest row and ``d_floor`` (the
+                    # trainer passes the reservoir's deepest state), so a greedy line that broke
+                    # EARLIER than the frontier gets no boost at its new stop - the boost cannot
+                    # chase a regression and lock it in
+                    anchor = float(rd.min())
+                    if d_floor is not None and np.isfinite(d_floor):
+                        anchor = min(anchor, float(d_floor))
+                    self.boost = rd <= anchor + self.speed_band * d0
             self.info["boost"] = 0 if self.boost is None else int(self.boost.sum())
         return dict(self.info, rows=self.size)
 

@@ -6792,9 +6792,11 @@ def main() -> None:
                          "policy's own line at make-it speed. Default off; ckpt restores")
     ap.add_argument("--respawn-greedy-speed-band", type=float, default=None,   # 0 = every row
                     help="--respawn-greedy-speed: scale only the greedy rows within B x d0 of the "
-                         "pool's DEEPEST row (d0 = the field at the eval episodes' start) - the "
-                         "frontier the line is stuck at; the rows cut before earlier failures stay "
-                         "plain DAgger rows. 0 = every row (default); ckpt restores")
+                         "DEEPEST state - the pool's deepest row or the reservoir's deepest, "
+                         "whichever is deeper (d0 = the field at the eval episodes' start): the "
+                         "frontier the line is stuck at; the rows cut before earlier failures (and a "
+                         "line that regressed) stay plain DAgger rows. 0 = every row (default); "
+                         "ckpt restores")
     ap.add_argument("--archive-frac", type=float, default=None,   # 0 = off
                     help="survivor-gated predecessor archive: the share of the "
                          "spawn pool replaced each iteration by archive rows - "
@@ -19420,10 +19422,16 @@ def main() -> None:
                         # the field distance, off-field (the unreachable sentinel) -> inf
                         _d = np.asarray(_f.sample(o), np.float64)
                         return np.where(_d < _f.reach_max - 0.5 * _f.cell, _d, np.inf)
+                    _rg_floor = None
+                    if (GREEDY.speed_band > 0.0 and _gfld is not None
+                            and _s.respawn is not None and _s.respawn.size):
+                        # --respawn-greedy-speed-band anchors at the reservoir's deepest state too
+                        _rf = np.asarray(_rg_d(_s.respawn._store[:_s.respawn.size]["origin"]))
+                        _rg_floor = float(_rf.min()) if np.isfinite(_rf).any() else None
                     GREEDY.build(_ev_sum if _ev_pat is None
                                  else as_truncated(_ev_sum, _ev_pat.state["killed"]),
                                  float(sum(_tpat)) / len(_tpat),
-                                 d_fn=None if _gfld is None else _rg_d)
+                                 d_fn=None if _gfld is None else _rg_d, d_floor=_rg_floor)
                     print(f"[{global_step:>13,d}] " + GREEDY.line())
                 st = episode_stats(path)
                 _f = float(np.mean([e["fwd_max"] for e in st])) if st else 0.0
