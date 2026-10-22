@@ -2468,3 +2468,31 @@ basement and only near the funnel wall in shape).
   inflate the one global yaw sigma; round 4: sigma x1.5 broke the line). --sil-coef is now allowed with --steer-eps
   (still refused with --ez-eps / --spawn-burst). Reserved for arm 2 if the steer arm moves the training ceiling
   but not the greedy line.
+* 15:00 UTC: box 57226380's deploy waited 20 min on the BACKGROUND `apt-get install ffmpeg git build-essential` (a
+  slow apt mirror; pip - and so pytest, which deploy step 5 waits for - only runs after it). git/gcc were already
+  there (the core had built), ffmpeg is optional (render_pov falls back to cv2): killing that apt-get PID let pip
+  finish in 20 s and the deploy went on. **Harness issue (deploy_box.sh)**: the step-5 wait on pytest is chained
+  behind an apt install of ffmpeg; on a slow mirror that is the deploy's long pole.
+* Probe 2 (local CPU, same tool): random held nudges (dy U(-90, 90) deg, 3-15 decisions, from a random tick in the
+  first 2 s) from 64 of the policy's own FLYING basement reservoir states (|v_h| > 800): 0/64 finish or crest, and
+  **0/64 even reach the room** (max z in the room's x range 1,166 = the basement ceiling under it). With probe 1:
+  0/128.
+* Energy accounting (E/g = z + |v|^2 / 1,600, own greedy line vs the human): both enter the basement with ~2,270-2,305;
+  the human keeps 2,248 into the east leg, the policy 2,123 (a lossier landing on the ramp); the policy's U-turn
+  then conserves energy but turns it into HEIGHT (z 756 -> 1,058), so its return leg carries 2,109 mostly as height,
+  against the human's 2,259 mostly as speed (z 763, 1,546 u/s). The launch wall (a steep face, normal ~(0.83, -0.39,
+  0.41) at x ~2,700-2,850, z ~800-960) converts westward speed into vz; hit 150 u too high and 200 u/s too slow it
+  gives vz +200-500, not +1,000.
+
+### r6b1_steer (15:07 UTC): incumbent + `--steer-eps 0.03 --steer-front 0.015 --steer-dy 90 --steer-hold 3 15`
+
+* Warm resume of the incumbent checkpoint (r5b4_ncy, 17,418,944,512; T cap 0.2, nocut field, pitch floor, band novel
+  rows, greedy rows 0.3 + stuck 200, ratchet, time-pen 0 - all restored) on box 57226380, evals every 6.25M, ckpt every
+  1e8, 3e9 budget. The no-corner-cut field was pre-baked (411 s on this 3090, just under the gate's 420 s).
+* Step line: `ez 0.2-0.4% steer>96.5%` - the band starts at 96.5% (nocut) progress, bursts are 0.2-0.4% of all
+  decisions (most envs are outside the band). Reservoir min depth 2.013% (deepest 97.99% nocut), novel ceiling d 1,414u.
+* The baked field was pulled to the local maps/ (md5 f2609db9..., its sig matches the local bsp), so local
+  record_ckpt benches now run the real checkpoint with its real observation field. Re-run of the in-hole bench on it:
+  the same 4/6 finishes.
+* Reference for this arm: round 5's ~3.8B steps at this gate, novel ceiling flat at d 1,414u (nocut) and evals
+  96.7-98.35. Read-out: the novel ceiling below 1,414 (a real episode over the rim) and evals above 98.349.
