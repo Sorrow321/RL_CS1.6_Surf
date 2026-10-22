@@ -2589,3 +2589,25 @@ basement and only near the funnel wall in shape).
   eval (x 2,700-3,700, z < 900, moving east > 1,000 u/s), heading reversed: greedy 0/16 and stochastic 0/24 finish or
   crest (several rise to z 1,418-1,509 - up the passage, as from the human's launch states). As expected: the policy has
   never practised the launch, and the steer that makes it work (CEM) is ~1e-3 of committed offsets.
+
+### 16:55 UTC: r6b1_turn - NEGATIVE for the line (CP6 again), the ceiling never moved
+
+* 17,419M -> 17,571M (152M steps). Evals 98.105, (83.6), 98.204, 98.175, 98.120, 98.169, then from 17,495M (+75M
+  steps) **96.71-96.93% (CP6) in every eval** - the same stop as the speed-pot arm. The steer-only arm (identical but
+  for the turn) held 98.1-98.2% in 11 evals over the same steps. Novel ceiling 98,260u throughout (no real episode
+  past d 1,414); turned rows 2,000 per refresh at first, ~900 later (the greedy pool moved out of the band once the
+  line regressed).
+* Where the regressed line fails (traj_17557880832 ep 0): down the chimney, the big drop to z ~-178 and the ramp back up
+  as before, but it climbs back only to z ~1,200-1,345 (the incumbent's line reaches 1,552), misses the corridor
+  (z ~1,490-1,560 on the +y side) and drops again - drop / climb loops until it dies. That stretch is OUTSIDE the
+  turn's band (> 96.9%), so the damage is indirect (a shared network and critic re-fit on a very different basement
+  distribution), and the end of the line is fragile to it: two arms, two regressions within ~75M steps.
+* Lesson: on this checkpoint, a change that re-distributes the basement's training data heavily (speed shaping
+  everywhere, half the frontier spawns turned) costs the line one gate earlier faster than it can teach the launch.
+
+### r6b1_bank (16:53 UTC): the stable configuration, 27 greedy episodes per eval
+
+* Incumbent + the steer bursts (the one arm that kept the 98% line) + `--eval-eps 27` (side-by-side evals cost their
+  longest episode, so 3x the samples of the greedy line per eval for little wall time; score.py takes the best
+  episode, >= 5 required). Evals every 12.5M. The incumbent's 98.349 was one episode's hole rise to z 1,220 out of ~200
+  evals x 9; this arm draws ~3x more episodes per hour from the same policy family.
