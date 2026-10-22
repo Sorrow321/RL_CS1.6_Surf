@@ -2683,3 +2683,13 @@ pattern that is in your own command line.
   else restored: time-pen 0.001, front-perturb 0.25 / band 1% / turn 90 / x1.4-2.0, front-temp 1 / 1%, novel 0.2,
   backward-mix 0.1, greedy 0.25): in the basement mode the greedy pool is the line's own basement loop, so nudging
   those rows trains the entry from the states the greedy line is actually in.
+
+### 20:17 UTC: r6b2_tpg (greedy-row nudges) hurt the line; back to tp1's weights and settings (r6b2_tp2)
+
+* **r6b2_tpg** (19.96-20.18B, ~220M): 35 evals, best 98.188; the basement reached by only 27 of 315 eval episodes
+  (tp1: 167 of 585) - the line fell into the CP6 mode; 0 chamber entries; basement-entry h_E median 2,117. With the
+  greedy rows nudged the line loses its practice at its own failure points (gpt's line survived the same nudge,
+  but with novel 0.3 / backward-mix 0.2 and no time penalty). Stopped.
+* **r6b2_tp2** (20:15 UTC): bare resume of tp1's last weights (19,955,974,144, md5 6838c110...), tp1's settings
+  restored (time-pen 0.001, front-perturb 0.25 / 1% / turn 90 / x1.4-2.0, front-temp 1 / 1%, greedy rows
+  unperturbed). The configuration that produced the greedy chamber entry, run to the end of the round.
