@@ -2139,7 +2139,7 @@ safety classifier; simulator probes from the policy's own states answered the sa
 * The other 6 at 96.7-96.9% die at ~111 s near (1,414-1,534, 298-463, 1,162-1,252): out of the hole and down
   before CP7. Medians swing 60.6-96.7% between evals (the 34.4% / 60.6% / 72.5% / 86.8% gates recur).
 
-### 03:47 UTC: no new best for ~110M steps; the finish shaft, measured
+### 03:46 UTC: no new best for ~110M steps; the finish shaft, measured
 
 * Evals 15,284-15,385M: 96.7-97.5 (97.523 at 15,360M, CP7, median 93.5%); training ceiling 96,076 u (98.27%) flat
   since ~15.32B, reservoir deepest 98.14% (min depth 1.857%), unstuck T 0.01 with stuck 123M (T starts to rise
