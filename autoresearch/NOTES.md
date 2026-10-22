@@ -2133,3 +2133,20 @@ safety classifier; simulator probes from the policy's own states answered the sa
   at once (7/9 greedy episodes at 96.5% within 125M steps).
 * EXTENDED (a gate the incumbent never cleared): r5b1_gspdx = bare resume of gspd's ckpt_final (15.332B;
   restores the speed rows), 2.5e9 steps, evals every 12.5M, snapshots every 1e8. Box extended to 06:37.
+
+### 03:59 UTC: r5b1_gspd end (15.33B) - 98.124; the greedy line flies the human's late route to the east-end turn
+
+* r5b1_gspd evals 15,196-15,322M (score.py): 96.88, 96.68, 96.71, 96.70, 96.69, 96.68, **98.118 (15,272M,
+  CP7)**, 96.50, 96.70, 96.72, **98.124 (15,322M, 2/9 at 98.1%)**. ckpt_final 15,332,802,560 (md5
+  59a5a533...) pulled to runs/r5b1/r5b1_gspd/ (scp + md5 check).
+* 15,322M episode 7 against the human (WR demo, analysis only): over the wall at 110.0 s (611, 259, 2,347)
+  -> drops past the tunnel to the bowl bottom (203, -157, -171) at 112.75 s -> swings up its west side to the
+  +y side -> east through the tunnel past CP7 at z ~1,430-1,530 (115-116 s) -> descends east past the finish
+  column to (3,040, 533, 821) -> **the east-end turnaround at x ~3,780** (118 s; the human's at ~3,950, 114 s)
+  -> back west at z ~870-1,090 -> climbs at x ~2,340-2,410 (the human climbs to the funnel top at
+  (2,973, 289, 1,575) at 116 s) -> **too far west**: stops at (2,410, -650, 1,345) and falls straight down
+  onto the lower kill floor (x 2,394, z 692) at 121.8 s. The agent is ~4.5 s behind the human.
+* So the last gate is the return: climb back to the funnel top over x ~2,950 and stop there, then drop down
+  the shaft. Training already finishes (7.7% of episodes, 2.9 s long: spawns near the funnel).
+* Evals' medians sit at ~86.6% in many evals (3-4 of 9 episodes stop at the 86.6% stop, x ~-2,000, z
+  ~4,000, ~98 s): the consistency gap for the finish fraction later.
