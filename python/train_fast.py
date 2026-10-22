@@ -6923,6 +6923,12 @@ def main() -> None:
                          "distribution they were drawn from, exact for this iteration's rows - "
                          "so imitating tempered samples moves the mean without inflating sigma "
                          "or flattening the keys. 0 = the shipped untempered score (default)")
+    ap.add_argument("--sil-steer-only", type=int, default=None, choices=(0, 1),
+                    help="--sil-coef with --steer-eps: 1 = only STEER-BURST rows enter the SIL "
+                         "buffer, so SIL imitates exactly the committed steers whose return beat "
+                         "the critic (self-imitation of successful exploration) and never the "
+                         "on-policy rows - e.g. novel-row trivial wins. 0 = every R > V row "
+                         "(default)")
     ap.add_argument("--sil-fix-sigma", type=int, default=None, choices=(0, 1),
                     help="--sil-coef: 1 = the SIL policy term scores the view heads with the "
                          "Gaussians' log-sigma DETACHED, so imitating an action far from the "
@@ -7409,7 +7415,7 @@ def main() -> None:
             restored.append(f"tail_weight={args.tail_weight:g}")
         for _k, _cast in (("sil_coef", float), ("sil_buffer", int), ("sil_batches", int),
                           ("sil_batch_size", int), ("sil_ent", float), ("sil_tempered", int),
-                          ("sil_top", int), ("sil_fix_sigma", int)):
+                          ("sil_top", int), ("sil_fix_sigma", int), ("sil_steer_only", int)):
             if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
                 setattr(args, _k, _cast(ck_cfg[_k]))
                 restored.append(f"{_k}={ck_cfg[_k]}")
@@ -13873,6 +13879,8 @@ def main() -> None:
             meta["config"]["sil_top"] = int(args.sil_top)
         if int(args.sil_fix_sigma or 0):
             meta["config"]["sil_fix_sigma"] = 1
+        if int(args.sil_steer_only or 0):
+            meta["config"]["sil_steer_only"] = 1
     if YCOND:
         meta["config"]["yaw_cond"] = 1
         print(f"--yaw-cond: side-key head conditioned on the sampled yaw "
@@ -14882,6 +14890,10 @@ def main() -> None:
     SIL_ENT = float(args.sil_ent if args.sil_ent is not None else 0.0)
     SIL_TEMPERED = bool(int(args.sil_tempered or 0))
     SIL_FIX_SIGMA = bool(int(args.sil_fix_sigma or 0))
+    SIL_STEER_ONLY = bool(int(args.sil_steer_only or 0))
+    if SIL_STEER_ONLY and not (SIL_COEF > 0.0 and float(args.steer_eps or 0.0) > 0.0):
+        raise SystemExit("--sil-steer-only admits the steer-burst rows into the SIL buffer: it "
+                         "needs --sil-coef > 0 and --steer-eps > 0")
     tail_eps: list[tuple] = []
     tail_seg = np.zeros(N, np.int64)
     #   tail_bin   the goal-distance bin each env's CURRENT episode spawned
@@ -18725,8 +18737,17 @@ def main() -> None:
             # prediction joins the buffer (PRO == 0 here: STACK > 1 is refused,
             # so f_img's rows are exactly the T*N decisions)
             with torch.no_grad():
-                sil_kept = SIL.add(f_scal, f_img, f_act, f_ret, b_val.reshape(-1),
-                                   z=f_z, priv=f_priv)
+                if SIL_STEER_ONLY:
+                    # --sil-steer-only: the steer-burst rows only (b_ez marks them; ez /
+                    # spawn bursts are refused with --sil-coef)
+                    _k = b_ez.reshape(-1).nonzero(as_tuple=False).squeeze(-1)
+                    sil_kept = SIL.add(f_scal[_k], f_img[_k], f_act[_k], f_ret[_k],
+                                       b_val.reshape(-1)[_k],
+                                       z=None if f_z is None else f_z[_k],
+                                       priv=None if f_priv is None else f_priv[_k])
+                else:
+                    sil_kept = SIL.add(f_scal, f_img, f_act, f_ret, b_val.reshape(-1),
+                                       z=f_z, priv=f_priv)
             sil_loss_t = None
         # --int-split: the intrinsic return, raw (V_I is never normalised)
         f_reti = ret_i.reshape(-1) if INT_SPLIT else None

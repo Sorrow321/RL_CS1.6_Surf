@@ -237,3 +237,26 @@ def test_respawn_turn_rotation_arithmetic():
     yaw = np.array([170.0, 0.0, -170.0])
     ny_ = np.mod(yaw + np.degrees(th) + 180.0, 360.0) - 180.0
     assert np.allclose(ny_, [-10.0, 90.0, 145.0])
+
+
+@needs_run
+def test_sil_steer_only_admits_burst_rows_config_and_refusal():
+    """--sil-steer-only 1: only steer-burst rows enter the SIL buffer (the run trains, the
+    config carries the key, the recorder audit passes); refused without --steer-eps."""
+    run = "steer_silonly"
+    r = _train(run, ["--steer-eps", "0.5", "--steer-dy", "60", "--steer-hold", "2", "6",
+                     "--sil-coef", "0.1", "--sil-top", "64", "--sil-fix-sigma", "1",
+                     "--sil-steer-only", "1"], steps="12288")
+    d = ROOT / "runs" / run
+    cfg = json.loads((d / "run.json").read_text(encoding="utf-8"))["config"]
+    assert cfg["sil_steer_only"] == 1 and cfg["sil_fix_sigma"] == 1
+    sys.path.insert(0, str(ROOT / "tools"))
+    import record_ckpt
+    record_ckpt.audit_cfg(cfg)
+    shutil.rmtree(ROOT / "runs" / "steer_bad", ignore_errors=True)
+    bad = _run([sys.executable, "-u", str(TRAIN), "--run", "steer_bad"]
+               + SMOKE + ["--steps", "2048", "--sil-coef", "0.1", "--sil-steer-only", "1"])
+    assert bad.returncode != 0 and "needs --sil-coef > 0 and --steer-eps > 0" in (
+        bad.stdout + bad.stderr)
+    for dd in (d, ROOT / "runs" / "steer_bad"):
+        shutil.rmtree(dd, ignore_errors=True)
