@@ -2717,3 +2717,33 @@ stochastic (keys temp 1.2 = training) x6 per set:
   the OUTER side onto the floor slope: |v_h| 1,124 -> 1,538) and a flat U-turn (wishdir perpendicular); the
   search never reproduced the first part from the policy's entry states, which already arrive steep and
   inward (vy +260, vz -900). The energy may have to be set upstream of the passage.
+
+### 20:30 UTC: r6b4_ou2 wobbles too; checkpoint pull made resumable; box to 01:27
+
+* r6b4_ou2 (arm 4's weights, evals every 6.25M) 17,809-17,922M: 98.107-98.233 for 7 evals, two at 88.1% (CP5),
+  then six in a row at 96.73% (the chimney stop) from 17,891M. Every arm this round and round 5's controls
+  show this wobble; at 6.25M per eval it costs ~6-10 evals each time.
+* Ops: the box's link is flaky as well as slow - an 80 MB checkpoint scp died at 7.6 MB ("lost
+  connection"). scratchpad work/pull_ckpt.sh = rsync --partial --append-verify in a retry loop, md5-checked
+  against the box before the rename. Pulling r6b4_ou/ckpt_latest.pt (17,808,490,496; the run of the
+  branch's best eval, 98.301). Box extended to 01:27 UTC (wrap-up 00:55, round end 01:35).
+
+### 20:58 UTC: r6b4_ou2 spent most evals in the wobble; LR anneal for the last hours (r6b4_lr)
+
+* r6b4_ou2 17,809-18,016M (35 evals at 6.25M): best 98.254 (17,985M); 22 of the last 30 evals at the
+  chimney / CP5 stops (96.72-97.15%, 88.1%), the line coming back to CP7 for 2-3 evals at a time. Stopped
+  at ~18.02B (ckpt_stop.pt on the box).
+* **r6b4_lr** (20:57): arm 4's 17,808,490,496 weights again (the good mode: its first evals were
+  98.12-98.25) + `--lr 5e-5` (from 3e-4; all else restored, incl. the OU frontier yaw band), evals every
+  6.25M. A late-stage LR anneal to slow the drift between the two chimney modes, so more of the last
+  ~3.5 h of evals land at CP7. approx_kl 0.007 on the first update (0.02-0.06 at 3e-4).
+
+### 21:28 UTC: the LR anneal holds the line at CP7 - 98.346 / 98.336 (incumbent 98.349)
+
+* r6b4_lr (arm 4's weights, lr 5e-5, evals every 6.25M), 17,809-17,897M: 98.102, then three wobble evals (96.71),
+  then **11 consecutive CP7 evals** 98.116-98.346 (medians 98.1% in 7 of them): 98.166, 98.122, 98.116, 98.154,
+  98.177, 98.173, 98.237, 98.233, 98.215, **98.346** (17,891M), **98.336**. At lr 3e-4 the same weights spent
+  22 of 30 evals in the chimney stop (r6b4_ou2) - the anneal slows the drift between the two modes.
+* The 98.346 episode (ep 2): best 98.35% at (2,666, -367, 1,218), v (-268, 419, 0) - a rise to the -y hole's
+  inner edge, dying on the room floor's kill layer; the incumbent's 98.349 was the same move ((2,631, -351,
+  1,220)). The annealed line makes it regularly now (98.336 next eval).
