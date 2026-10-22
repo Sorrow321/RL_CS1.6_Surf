@@ -2739,3 +2739,16 @@ Standing-hull solid tests (`core.trace(p, p, hull=0).startsolid`) and kill hulls
 * +240M steps: 20 evals 97.97-98.23, 0 finishes; the finish-gated capture counter 430 -> 437 (7 crossings of
   episodes that went on to FINISH, against 0 in front6's 252M steps without the boost - the boosted replays do
   reach the finish now and then). Greedy census: 42/180 basement, 0 room entries, vz under a hole p50 180 / max 608.
+
+### 21:22 UTC: r6b3_fspd stopped - the speed boost COMPOUNDS through the capture loop; final run r6b3_front8
+
+* r6b3_fspd, 19,107M -> ~19,660M: the finish-gated capture counter 430 -> 871 (the boosted replays finish
+  often), but the pool degenerated: |v| p10/p50/p90 862/1,363/1,699 (the unboosted pool's starts had p50 ~900),
+  z p50 1,672 / p90 2,071, x p50 2,945 - high flights through the tall room above the funnel. A captured window of
+  a boosted episode is boosted again when replayed, so the speeds compound generation by generation and the
+  finishes become trivial. Greedy line no better: basement 42/189 then 36/189 per half, 0 room entries, vz under a
+  hole p50 180 -> 116. Best eval 98.249, 0 finishes. (A boost on replayed own states needs the boost kept out of
+  what gets recaptured - e.g. capture only from unboosted spawns - or it runs away.)
+* **r6b3_front8** (21:2x), until the wrap-up: resume of front6's checkpoint (18,792,054,784, md5 70895ca6...: the
+  round's healthiest greedy line - basement 47/189, vz under a hole p50 347, max 688) with front6's settings
+  (frontier 0.15, crossing rule, finish gate, no boost), evals every 6.25M.
