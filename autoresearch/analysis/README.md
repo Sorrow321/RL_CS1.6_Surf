@@ -11,3 +11,14 @@ Both run ON THE BOX from /root/RL_Surf (copy the .py files and the .npy there), 
   way --respawn-novel moves them; `sid_corridor_east.npy` both lanes, `_py.npy` the +y lane)
   and report how far east it gets, whether it reaches the ramp (x > 5,300) and how far west
   it comes back (`xret`). Map coordinates are measurement boxes only.
+
+# r5b3 analysis scripts (2026-10-22, ANALYSIS ONLY)
+
+Both run locally from the repo root on the CPU (no checkpoint needed for the first).
+
+* `sid_killprobe.py {xy|xz|yz} a0 a1 da b0 b1 db c [duck]` - kill / solid / free map of a plane, from the
+  simulator's own trigger test (holes in kill plates show up; the bsp AABBs hide them). Found the 95% slit,
+  the hole in kill *10, the second thin wall's underpass, the closed chimney above the finish.
+* `sid_macro_climb.py <ckpt> [n] [seed]` - random held macros on the raw core from the policy's OWN lower-lane
+  states (its reservoir + its greedy-eval arrivals): can anything climb out of the lane into the chimney?
+  Result on the 15.67B checkpoint: 0 / 2,048 finish, 1 above z 1,260.
