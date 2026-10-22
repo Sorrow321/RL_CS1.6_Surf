@@ -1,13 +1,13 @@
 {
  "agent": "r5b1",
  "round": 5,
- "final": false,
+ "final": true,
  "best": {
   "score": 98.329,
   "eval_file": "/home/steam/ar/runs/r5b1/r5b1_m1/traj_17036214272.jsonl",
   "run": "r5b1_m1",
   "step": 17036214272,
-  "ckpt": "/home/steam/ar/runs/r5b1/r5b1_m1/ckpt_final.pt (17,235,443,712, md5 57e49406...; pulled + md5-checked)",
+  "ckpt": "/home/steam/ar/runs/r5b1/r5b1_m1/ckpt_final.pt",
   "recipe": [
    "--respawn-greedy-speed",
    "1.0",
@@ -21,8 +21,9 @@
    "--ckpt-every",
    "1e8"
   ],
-  "resume_from": "incumbent r4b3_band15x/ckpt_final.pt (15,032,385,536) -> r5b1_gspd (+ --respawn-greedy-speed 1.0 1.5) -> [gspdx, all rows scaled: regressed, stopped] -> r5b1_band (gspd's final 15,332,802,560 + --respawn-greedy-speed-band 0.05) -> r5b1_bandx (bare resume of band's final 15,633,219,584)",
-  "commit": "55d5449"
+  "resume_from": "incumbent r4b3_band15x/ckpt_final.pt (15,032,385,536) -> r5b1_gspd (+ NEW --respawn-greedy-speed 1.0 1.5) -> [r5b1_gspdx: bare resume, regressed, stopped] -> r5b1_band (gspd's final 15,332,802,560 + NEW --respawn-greedy-speed-band 0.05) -> r5b1_bandx -> r5b1_t02 (bandx's 16,634,609,664 snapshot + --unstuck-max 0.2) -> r5b1_m1 (t02's final 16,935,026,688 + --respawn-margin 1). Continuations r5b1_m1x / r5b1_m1y (bare resumes) held the plateau (best 98.263 / 98.305).",
+  "commit": "55d5449",
+  "note": "ckpt_final.pt = r5b1_m1's end, step 17,235,443,712, md5 57e49406239ccc32d5154ac839e49946, pulled and md5-checked. Alternative warm start with ~1.85B more steps at the frontier, same config: runs/r5b1/r5b1_m1x/ckpt_final.pt (19,085,656,064, md5 193fc1f4b870159c0b640cbf4e4c1220). Code: every run of the best lineage at commit 55d5449 or later code-identical commits (notes only after it)."
  },
- "summary": "Round 5 (r5b1). NEW --respawn-greedy-speed LO HI (greedy-line rows replayed x U(LO,HI) faster) broke the 95.2% wall (a kill-topped wall in a slot, cleared only with carried speed): r5b1_gspd passed it in ~110M steps -> CP7 -> 98.1% (the east-end turn). Scaling ALL greedy rows then regressed the line (gspdx: episodes past 90% 44% -> 11%); NEW --respawn-greedy-speed-band B (scale only rows within B d0 of the deepest failure) fixed it at matched steps (past 90% 38% vs 21%, at 98% 20% vs 9%). r5b1_bandx (from 05:05): 98.250 at 16.666B; T cap 0.2 arm r5b1_t02: 98.260 at 16.698B; + --respawn-margin 1 (r5b1_m1, partial climbs kept as spawns): 98.329 at 17.036B, 8/9 at 98% at 17.11B. No finish yet: the last gate is the return from the east-end turn up the ramp to the funnel (the line arrives too high and slow). The unstuck T at its 0.5 cap (frontier stalled ~600M steps) cuts the 98% share (band: 11-28% at T<=0.27, 0-6% at 0.5). Also fixed a numba thread cliff on many-core hosts."
+ "summary": "Best 98.329 (r5b1_m1 at 17.036B, CP7; incumbent 94.668), 0 finishes. (1) NEW --respawn-greedy-speed LO HI: the greedy-line rows replayed x U(LO,HI) faster broke the 95.2% gate (a kill-topped wall in a slot, cleared only with carried speed) in ~110M steps -> CP7 -> 98.1% (bowl swing, tunnel, east-end turn). (2) Scaling ALL rows regressed the line (past 90%: 44% -> 11%); NEW --respawn-greedy-speed-band B (frontier rows only) fixed it at matched steps (38% vs 21%, at 98%: 20% vs 9%). (3) --respawn-margin 1 + T cap 0.2: best 98.329, 8/9 at 98%. (4) Fixed a numba thread cliff on many-core hosts. Last gate: the funnel climb - a CAN'T even from the human's approach states (bench); next: practice ON the spiral ramp (forward spawns need the frontier/novel mix overlap fixed)."
 }

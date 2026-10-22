@@ -2319,3 +2319,67 @@ safety classifier; simulator probes from the policy's own states answered the sa
 * ckpt_final 19,085,656,064 (md5 193fc1f4...) pulled to runs/r5b1/r5b1_m1x/: the alternative warm start (same
   config as m1's final, ~1.85B more steps at the frontier).
 * r5b1_m1y (11:34): bare resume of that final, 3.5e8 steps, ends ~12:11 (more evals at the frontier until the wrap-up).
+
+## ROUND 5 LESSON (r5b1) - written at wrap-up, 2026-10-22 12:23 UTC
+
+**Result:** best greedy eval from the true start **98.329** (r5b1_m1 at 17,036,214,272; incumbent 94.668): CP7, the
+greedy line through the 95.2% wall, the bowl swing, the tunnel and the east-end turn to the funnel's foot. 0 finishes.
+Hand-on checkpoint: /home/steam/ar/runs/r5b1/r5b1_m1/ckpt_final.pt (17,235,443,712, md5 57e49406...). A bare resume
+restores everything below (speed rows 1.0-1.5 + band 0.05, margin 1, T cap 0.2, and round 4's flags). Alternative warm
+start, same config, ~1.85B more steps at the frontier: runs/r5b1/r5b1_m1x/ckpt_final.pt (19,085,656,064, md5 193fc1f4...).
+
+**Per-run bests (score.py):** gspd 98.124, gspdx 98.175, band 98.154, bandx 98.250, t02 98.260, **m1 98.329**, m1x 98.263,
+m1y 98.305.
+
+**Lineage of the best run** (warm, from the incumbent 15,032,385,536): r5b1_gspd (+ NEW --respawn-greedy-speed 1.0 1.5)
+-> [r5b1_gspdx: bare resume, regressed, stopped] -> r5b1_band (gspd's final 15.333B + NEW --respawn-greedy-speed-band
+0.05) -> r5b1_bandx -> r5b1_t02 (bandx's 16.634B snapshot + --unstuck-max 0.2) -> r5b1_m1 (+ --respawn-margin 1) ->
+r5b1_m1x -> r5b1_m1y (bare resumes, the plateau held).
+
+**What worked:**
+1. **NEW `--respawn-greedy-speed LO HI`** (commit 91edb87): the greedy-line pool's rows (the deployed line's own states
+   before each greedy failure) replayed with velocity x U(LO, HI). The 95.2% gate was a kill-topped wall in a slot that
+   is only cleared with carried speed (WR ~1,300-1,550 u/s at the climb, the policy 600-950); from the line's own states
+   0/18 rollouts got past it, x1.3-x1.6 reached the slot. With 1.0-1.5 the greedy line passed the wall ~110M steps after
+   the resume (incumbent: stuck there) -> 96.5 -> CP7 97.06 -> 98.12 (east-end turn) within ~300M steps.
+2. **NEW `--respawn-greedy-speed-band B`** (commit 55d5449): scaling EVERY greedy row regressed the line (episodes past
+   90%: 44% -> 11%; an earlier speed-dependent climb took over) - scaled DAgger rows at failures the line passes in other
+   episodes train it on states it never reaches. Scaling only rows within 0.05 d0 of the deepest failure, matched steps
+   from the same checkpoint: past 90% 38% vs 21%, at the 98% frontier 20% vs 9%, mean best 97.87 vs 95.09.
+3. **`--respawn-margin 1` (+ T cap 0.2)**: the reservoir kept the last second of the deep episodes (p10 depth 7-8.5k ->
+   4.3k u): best eval 98.329, evals with 8/9 episodes at 98%.
+4. **Fix: numba thread cliff** (commit 3763775; train_fast / record_ckpt set NUMBA_NUM_THREADS like OMP): on a 128-thread
+   host with a 61-CPU quota one GoalField.sample() took 13 ms at numba's default 128 threads vs 0.02 ms at 30; the first
+   greedy eval never finished and the launch gate killed the run. Results are bit-identical at any thread count.
+
+**What did not work / limits:**
+* The unstuck T at its 0.5 cap thinned the frontier episodes (98% share 11-28% at T <= 0.27 vs 0-6% at 0.5); T 0.2 held
+  it somewhat better; the line still wobbles into a 96.7% bowl mode for ~50-100M-step stretches at any T.
+* **The funnel climb (the last ~1.5%) is a CAN'T for this policy**: from its own return states (x1 / x1.5 / x2 speed, at
+  the training temperature or at temperature 2 on every head) 0/60 rollouts finish; from the human's own approach states
+  (WR demo, BENCH ONLY) 0/18. The human comes back west LOW (z ~770) at 1,540 u/s, catches a curved ramp at x
+  ~2,750-2,860 and spirals up 830 u to the rim; the policy comes back higher and slower and stands under the funnel.
+  Training finishes 15-32% of episodes, all ~2 s long from novel rows placed ABOVE the funnel (V is high there).
+  Training's ceiling stayed at 98.64% from ~16.1B to the end (3.7B steps).
+
+**For the next round:** the missing piece is practice ON the spiral ramp, moving up. Untested candidates: forward spawns
+(`--respawn-frontier`; but its mix and the novel sampler's mix write the SAME head slice of the pool, so with
+`--respawn-novel` on every frontier row is overwritten - fix that first), a reservoir draw weighted to the deepest states,
+or spawns from the policy's own highest ramp states. The score's time term only matters after a finish.
+
+**Ops:** box 57148363 (RTX 3090, EPYC 7B12 128 threads / 61-CPU quota, Japan, $0.348/h), 02:53 -> 12:13 UTC (~9.3 h,
+~$3.3); ~157k steps/s with evals every 12.5M. Before it, 30 rent attempts over ~1.8 h (market above the caps; the
+operator raised the 3090/5080 caps to $0.65 overnight). Harness issue (above): box.py's readiness-failure blocklisting
+fails when the instance never appears in `vast show instances` (machine 152482 added by hand). `box.py deploy` on a busy
+GPU fails its health check: for a Python-only change the box's checkout was updated with git directly.
+
+## Wrap-up (r5b1) - 2026-10-22 12:23 UTC
+
+* Final: RESULT.json `"final": true`, score **98.329** (r5b1_m1, eval traj_17036214272: 9 episodes, best 98.33%, CP7, 0
+  finishes).
+* Hand-on checkpoint: /home/steam/ar/runs/r5b1/r5b1_m1/ckpt_final.pt (17,235,443,712, md5 57e49406239ccc32d5154ac839e49946),
+  pulled by box.py pull --ckpt --final and md5-checked; also local: r5b1_m1x/ckpt_final.pt (19.085B), r5b1_t02,
+  r5b1_band, r5b1_gspd finals, r5b1_bandx/ckpt_16334192640.pt.
+* Code: commits 91edb87 (--respawn-greedy-speed), 3763775 (numba threads), 55d5449 (--respawn-greedy-speed-band); later
+  commits are notes / RESULT only.
+* Box 57148363 released at 12:13 UTC (`box.py status`: no box).
