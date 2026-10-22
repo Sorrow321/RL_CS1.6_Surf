@@ -10,12 +10,12 @@
   "ckpt": "/home/steam/ar/runs/r5b2/r5b2_vr/ckpt_final.pt",
   "recipe": [],
   "resume_from": null,
-  "commit": "c32a82f",
+  "commit": "cac4eec",
   "best_progress_pct": 98.28,
   "median_progress_pct": 95.9,
   "finishes": 0,
   "best_finish_s": null,
   "max_cp": 7
  },
- "summary": "Round 5 (r5b2): box 57141550 (RTX 4080 + 7950X, $0.251/h). r5b2_x1 = bare resume of the incumbent (15.03 -> 16.54B): 98.25 (CP7) - past the slot over kill plate *28 and CP7; then the last gate: the finish shaft is entered only UP through two holes in func_wall *160 from a dead-end room, and the funnel above the tube has its rim ~250 u higher, so it needs a launch with vz >= ~650 (the policy's ramp states give <= 600; a random-macro search finds finishes only from 1.0-1.5x faster states). Arms at the gate: front-temp (null), NEW --respawn-novel-vrand 0.4 (null; best eval 98.278). Now r5b2_spd = --respawn-speed 1.0 1.5 from 16.84B."
+ "summary": "Round 5 (r5b2): box 57141550 (RTX 4080 + 7950X, $0.251/h). r5b2_x1 = bare resume of the incumbent (15.03 -> 16.54B): 98.25 (CP7) - past the slot over kill plate *28 and CP7; then the last gate: the finish shaft is entered only UP through two holes in func_wall *160 from a dead-end room, and the funnel rim above the tube needs a launch with vz >= ~650 (the line's ramp states give <= 600; a random-macro search finishes only from 1.0-1.5x faster states). Arms at the gate (300M each): front-temp null, NEW --respawn-novel-vrand 0.4 null (98.278), --respawn-speed 1.0 1.5 harmful. Now r5b2_vs = NEW --respawn-novel-vrand-speed 1.0 1.5 (frontier rows only at make-it speed)."
 }

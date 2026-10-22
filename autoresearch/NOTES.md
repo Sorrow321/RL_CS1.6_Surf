@@ -2273,3 +2273,9 @@ safety classifier; simulator probes from the policy's own states answered the sa
   view and scale the speed by U(LO, HI) - the frontier states (only) at make-it speed, tagged novel;
   what the random-macro search says can finish (2 of 8,192 from 1.0-1.5x post-launch states). 7 unit
   tests + the trainer wiring test.
+* **r5b2_vs** (06:14): r5b2_x2 stopped at 16,618,881,024 (md5 482b713d...; its two evals: 96.78, 96.75 -
+  the pillar-stop mode, as x1's last six evals: the greedy line flips between the room (98.1-98.3%)
+  and the 96.7% pillar stop every ~50-150M steps at T 0.5) + `--respawn-novel-vrand 0.3
+  --respawn-novel-vrand-band 0.01 --respawn-novel-vrand-speed 1.0 1.5`: 553 frontier rows per pool at
+  1.0-1.5x their own speed + 1,290 moved rows. 300M first. Read-out: novel-row wins from the boosted
+  frontier rows, then the ceiling / greedy evals past the holes.
