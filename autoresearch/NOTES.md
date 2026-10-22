@@ -2299,3 +2299,13 @@ safety classifier; simulator probes from the policy's own states answered the sa
   the funnel base, partial climbs - that the 2 s margin discarded. Training ceiling unchanged (98.64%).
 * EXTENDED (the branch's best eval and its best frontier consistency): r5b1_m1x = bare resume of m1's final,
   1.85e9 steps (ends ~11:40, before the 12:19 wrap-up). Box extended.
+
+### 09:18 UTC: r5b1_m1x (margin-1 main line) at 17.80B - the frontier holds, the climb does not come
+
+* m1x (bare resume of m1's final 17,235,443,712; margin 1, T cap 0.2, speed band 0.05), 46 evals to 17.79B:
+  best **98.255** (17,512M); 98.249 (17,664M, 7/9 at 98%), 98.233 (17,764M, **8/9 at 98%, median 98.09**); most
+  evals 98.08-98.21 with 3-8 episodes at the frontier; a 96.7% bowl-mode stretch at ~17.63B (3 evals) and ONE
+  transient collapse (17,726M: all 9 die at the 28.2% CP2 window at 28-37 s; the next eval is back at 98.1%).
+  The branch's best stays m1's 98.329 (17,036M). Training: ceiling flat at 98.64% since ~16.1B, win 31-32%
+  (2.3-2.4 s: near-funnel novel rows), reservoir p10 ~4,900 u, T 0.2 (stuck 2.5B steps).
+* Runs to ~11:40, then wrap-up (12:19).
