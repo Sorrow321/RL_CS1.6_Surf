@@ -3,14 +3,20 @@
  "round": 5,
  "final": false,
  "best": {
-  "score": null,
-  "eval_file": null,
-  "run": null,
-  "step": null,
-  "ckpt": null,
-  "recipe": [],
-  "resume_from": "incumbent r4b3_band15x/ckpt_final.pt (15,032,385,536)",
-  "commit": null
+  "score": 94.963,
+  "eval_file": "/home/steam/ar/runs/r5b3/r5b3_main/traj_15045492736.jsonl",
+  "run": "r5b3_main",
+  "step": 15045492736,
+  "ckpt": "/home/steam/ar/runs/r5b3/r5b3_main/ckpt_latest.pt (not pulled yet)",
+  "recipe": [
+   "bare resume of the incumbent",
+   "--ckpt-every",
+   "1e8",
+   "--record-every",
+   "12.5e6"
+  ],
+  "resume_from": "incumbent r4b3_band15x/ckpt_final.pt (15,032,385,536, md5 cb1dbce4...)",
+  "commit": "ec1ea69 (code = 3ea2710)"
  },
- "summary": "Round 5 start (01:05 UTC): no box yet (no offer under the caps; rent retry loop running). Plan: bare-resume the incumbent (94.668, CP6, 5.3% of the map left) and push for the first finish."
+ "summary": "Main line r5b3_main (01:30 UTC) = bare resume of the incumbent on box 57138137 (RTX 3090 + EPYC 7302P, $0.60/h, only ~84k steps/s training-only, CPU-bound). Eval 2 (15,045M): 94.963 (best 95.0%, median 86.6%) > incumbent 94.668. Training finishes now and then from near-end spawns (win ~1%). Next: watch for the first greedy finish; switch to a faster box if one appears under the caps."
 }

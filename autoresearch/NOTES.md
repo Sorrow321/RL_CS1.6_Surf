@@ -2040,3 +2040,17 @@ safety classifier; simulator probes from the policy's own states answered the sa
   READY, deploys ar/r5b3 + the incumbent ckpt and launches the main line, so the box never idles:
   **r5b3_main** = bare resume of the incumbent + `--ckpt-every 1e8`, `--record-every 12.5e6` (as band15x),
   6e9 steps.
+
+### 01:38 UTC: box 57138137 (RTX 3090 + EPYC 7302P, $0.599/h, machine 46086, Oklahoma); r5b3_main 94.963
+
+* The rent loop got it at 01:20 (the operator raised the 3090/3090 Ti/4080/5080 caps to $0.65 in config.json
+  mid-round - uncommitted harness edit in this worktree, left as is). Deploy + ckpt push (md5 cb1dbce4...)
+  4 min; record gates 2.5 min; r5b3_main launched 01:30.
+* **Slow box: ~84k steps/s training-only** (2,097,152 steps per 25 s; trainer at 2,927% CPU, GPU 9% busy, load
+  30-35 on 32 threads): the EPYC 7302P (Zen 2, 3.0 GHz) is ~0.37x round 4's 5.1 GHz host (226k). Evals every
+  12.5M take ~50-60 s each here, so ~65k steps/s overall (~0.23B steps/h). Kept because nothing else passes
+  the caps (01:35: 0 offers); switch if a faster box appears. Deadline extended to 05:37 UTC.
+* Evals (score.py): 15,033M (the incumbent ckpt itself) **94.402, median 92.3%** (the incumbent's own best
+  eval had median 60.6%); 15,045M **94.963** (best 95.0%, median 86.6%) - above the incumbent. Deaths
+  cluster at ~105-109 s: x -1,540..-1,480 z 2,230-2,810 (92-93%), and the best two at (260..427, -43..413,
+  ~2,095) at 108.6 s (94.7-95.0%). Training wins ~1% (e.g. "win 1.11% @ 3.1 s": spawns ~3 s from the end).
