@@ -2243,3 +2243,16 @@ safety classifier; simulator probes from the policy's own states answered the sa
   only at the frontier (`--front-temp`, null at r4's 60.57% gate, a different gate), a reservoir draw weighted
   to the deepest states (the return/ramp are ~0.1% of a 100k reservoir spanning the map), forward spawns
   (`--respawn-frontier`, trivial-win risk near the shaft).
+
+### 06:41 UTC: no exploration knob tested here produces the climb; bandx stays the main line
+
+* Same benches at temperature 2 on EVERY head (`--exec-temp 2`, what `--front-temp 1` would do at the
+  frontier): from the human's approach states 0/12 climb (highest 1,371), from the line's own return states
+  0/12 (highest 1,339). Together with 0/36 at x1-x2 speed and 0/18 from the human's states at the training
+  temperature: the spiral climb is not within reach of the current policy's sampling at all.
+* Decision: keep r5b1_bandx (the frontier band of the greedy pool already puts ~8% of all spawns on the
+  return and the funnel base; training's ceiling did move 98.35 -> 98.64% at ~16.1B). Not run this round:
+  `--respawn-frontier` with a thin end-of-map shell (forward spawns aimed down the field gradient would put
+  the agent ON the ramp moving up - the one generic mechanism that reaches those states - but it interleaves
+  with the novel / greedy rows, and near a goal it is the trivial-win harvest trap; worth a careful arm next
+  round).
