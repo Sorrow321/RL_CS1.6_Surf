@@ -2007,7 +2007,7 @@ safety classifier; simulator probes from the policy's own states answered the sa
   --respawn-greedy-stuck; flag-off bit-identical to the round's start); later commits are notes and config.
 * Box 57057785 released at 00:01 UTC (`box.py status`: no box).
 
-## Round 5, branch r5b3 - 2026-10-22 01:15 UTC
+## Round 5, branch r5b3 - 2026-10-22 01:12 UTC
 
 ### Start state (the incumbent, read before anything else)
 
@@ -2036,7 +2036,7 @@ safety classifier; simulator probes from the policy's own states answered the sa
 
 ### Box
 
-* 01:00-01:15 UTC: no offer passes the caps. A background loop retries `box.py rent` every 3 min and, once
+* 01:00-01:12 UTC: no offer passes the caps. A background loop retries `box.py rent` every 3 min and, once
   READY, deploys ar/r5b3 + the incumbent ckpt and launches the main line, so the box never idles:
   **r5b3_main** = bare resume of the incumbent + `--ckpt-every 1e8`, `--record-every 12.5e6` (as band15x),
   6e9 steps.
