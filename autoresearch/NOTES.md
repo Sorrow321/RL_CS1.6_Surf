@@ -2378,3 +2378,79 @@ pattern that is in your own command line.
   (16,186,867,712), r5b4_main/ckpt_15232663552.pt.
 * Code: commit 686f2ed (--pitch-sigma-min, --race-no-corner-cut, record_ckpt mirrors) is the last code change; later
   commits are notes. Box 57138676 released at wrap-up.
+
+## Round 6, branch r6b1 - 2026-10-22 14:34 UTC
+
+### Box
+
+* 13:44-14:07 UTC no offer passed the caps (cheapest 5080 $0.667 vs 0.65, 4090 $0.80, 5090 $0.88). A background
+  `box.py rent` retry loop (every 3 min, then deploy + launch the control) got **box 57222250: RTX 3090, $0.350/h,
+  machine 141910 (Thailand), AMD EPYC 7502, 61 CPUs quota**. Its network is slow (pip ~0.5 MB/s): the deploy took
+  19 min (14:11 -> 14:30).
+* tools/gpu_health.py (harness file) has no RTX 4090 reference again: re-added round 2's (commit 689af3b), so a
+  4090 box passes deploy. **Harness issue**: the operator's copy should carry the 4090 and 5080 references.
+
+### The last stretch, measured (WR demo 47250, ANALYSIS ONLY - CLAUDE.md section 0; never in training)
+
+Downloaded from speedrun.eu, parsed with tools/demo/parse_hldemo.py (map surf_src_sidistic_b2, same geometry). The
+human, last 6 s (old-field progress):
+
+| t (s) | position | velocity | what |
+|---|---|---|---|
+| 112.4 | (2,442, -353, 1,062) | (1,066, -236, -893) | down the passage under the last wall, -y side |
+| 113.0 | (3,218, -586, 764) | (1,537, -76, -81) | east along the -y side ramp, LOW (z ~765), 1,540 u/s |
+| 113.8 | (4,038, 15, 911) | (-180, 1,469, -24) | U-turn at the basement's east end, stays at z ~900, keeps 1,480 u/s |
+| 114.6 | (3,162, 588, 763) | (-1,545, -40, 43) | back WEST along the +y side ramp, LOW, 1,546 u/s |
+| 114.85 | (2,793, 529, 825) | (-1,175, -635, 672) | the LAUNCH: steers toward the centre (-y) on the ramp |
+| 115.0 | (2,707, 397, 964) | (-206, -952, **1,005**) | rising at vz +1,005, east of the hole |
+| 115.1-115.3 | (2,646, 336, 1,062) -> (2,562, 475, 1,231) | heading 258 -> 185 -> 87 deg | a ~200 deg clockwise whip in 0.3 s (wall contacts: faster than air-strafing allows) UP THROUGH THE +y HOLE |
+| 115.4-116.2 | (2,594, 558, 1,304) -> (2,961, 100, 1,601) | | air-strafe east and to the centre, crest at z ~1,600 over the funnel rim (~1,560) |
+| 116.4-118.1 | (2,953, -51, 1,596) -> finish | | hits the shaft's wall, falls straight down the shaft |
+
+* So round 5's "east ramp at 1,700+ u/s" hypothesis is not the human's way. The way is a vertical launch: vz ~+1,000
+  at z ~960 just east of a hole (apex 964 + 1,005^2/1,600 = 1,595), which needs the return leg LOW (z ~770-800, on the
+  side ramp) and FAST (~1,540 u/s), then a steer toward the centre on the launch ramp and a whip into the hole.
+* The incumbent's best episode (98.349, ep 5 of traj_16903045120): same loop mirrored, but its U-turn is 230 u
+  further west and CLIMBS (z 756 -> 1,058, |v| 1,479 -> 1,304; energy conserved, speed traded for height), and its
+  return leg passes the launch at z ~940-960 (140 u above the ramp) at 1,320-1,365 u/s: it flies OVER the launch
+  surface and gets vz +221..+529 instead of +1,005.
+* Score note: score.py's field is the OLD (corner-cut) one, which leaks through the funnel wall: in the room just
+  outside the wall at z ~1,416 the old d is ~1,300 (98.67%). So getting INTO the room high enough already beats 98.349
+  (that episode's min d 1,614 was at the hole's edge, z 1,220).
+
+### Bench (measurement only: record_ckpt --spawn-states from the human's states, the incumbent checkpoint)
+
+The no-corner-cut field cannot be baked on the local CPU (a GPU sweep BFS), so these ran on a copy of the checkpoint
+with race_no_corner_cut=0 (the observation channels on the old field; the two differ by a near-constant offset in the
+basement and only near the funnel wall in shape).
+
+| start set (human's states) | greedy | stochastic (T 1) |
+|---|---|---|
+| in the hole, rising (115.15-115.4 s) | **4/6 finish** (crest z 1,606, down the shaft) | - |
+| the launch ramp (114.7-115.0 s) | 0/7 (rise to z 1,536-1,564 but WEST, up the passage behind the wall) | 0/21 |
+
+* So the post-hole skill (crest + funnel + shaft, learnt from the novel rows above the funnel: training
+  success_rate 0.29-0.30 are those trivial wins) EXISTS; the launch does not. From the human's launch states the
+  policy keeps heading west, passes under the hole too low (z 900 < the hole's bottom ~1,050) and rises into the
+  passage. The human turns toward the centre on the ramp, rising steeply east of the hole, then whips in.
+* Random held yaw nudges (scratchpad nudge_search.py: N envs side by side, each adds one dy ~ U(-120, 120) deg to the
+  policy's own yaw command for 2-15 decisions from a random tick, the policy free otherwise) from 64 of the policy's
+  OWN reservoir basement states: 0/64 finish or crest. Half the basement reservoir states HOVER (|v| < 100) on a
+  ledge under the hole at (2,4xx-2,6xx, +-350, ~1,000) - the greedy line's stall too; no steer rises from there.
+
+### NEW --steer-eps P --steer-front B --steer-dy D --steer-hold LO HI (commit dc30213)
+
+* A steer burst holds ONE offset dy ~ U(-D, D) deg for U[LO, HI] decisions and ADDS it to the yaw offset the policy
+  just sampled (velocity frame); keys, pitch and the policy's own steering stay its own. ez bursts replace the keys
+  with uniform draws, which kills a surf line (random duck / no strafe). --steer-front B: only inside the frontier band
+  (the --ez-front rule: progress >= (1 - B) x the reservoir's deepest). Rows dropped from the PPO pool (b_ez).
+* Generic: four constants, no map quantity. Default off; restored on resume; config only when on; TRAIN_ONLY for
+  record_ckpt. Tests tests/python/test_steer_bursts.py (warp inverse; CPU smoke: band live, config, resume, refusals;
+  flag-off bit-identity vs the trainer before the change) + test_ez_viewc.py: 6 pass.
+* Why: the gate needs a committed multi-decision steer (toward the centre on the launch ramp, a different U-turn)
+  that the 25 Hz policy's iid noise (yaw sigma 0.076 in z, ~0.3 deg near straight flight) never produces: 0/21
+  stochastic from ideal states. Limitation: with the rows dropped the policy learns the burst only through the
+  states it reaches (reservoir harvest, the critic); if the ceiling moves but the greedy line does not, the next step
+  is self-imitation of the executed steer (--sil-coef is currently refused with any burst).
+
+### r6b1_ctl (14:30 UTC): bare resume of the incumbent, evals every 6.25M, the control
