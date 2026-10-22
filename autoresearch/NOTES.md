@@ -2212,3 +2212,21 @@ AABBs of the kill triggers are broadphase only (zones.kill_zones' own warning); 
 * **r5b4_ncx** (04:44): resume of r5b4_nc's checkpoint at 16,209,936,384 (md5 76006b45..., kept on the box as
   runs/r5b4_nc/ckpt_stop.pt) + `--goal-field-file "" --race-no-corner-cut 1 --ckpt-every 1e8` - the SAME field (cache
   hit, start geodesic 99,675 u), now under the robust flag. Pitch floor 0.05 and T cap 0.2 restored.
+
+### 04:52 UTC: the basement climb from the greedy line's own states - random macros never make it (ANALYSIS ONLY)
+
+* States: 1,634 basement states (x > 2,280, z 700-1,250) cut from r5b4_nc / r5b4_ps05 greedy eval episodes (full
+  STATE_DTYPE from a pool-row template + the row's origin / velocity / yaw / duck); flying ones |v_h| > 600: 410
+  (|v_h| median ~1,110, max 1,538). Raw core, 1,024 envs, view_mode 1, the eval header's physics, kill teleports
+  on, finish box armed; each env holds 2-4 random macros (yaw offset U(-110, 110) deg from the velocity heading,
+  random strafe / forward keys, 10% jump, 30% duck) for 4-6 s (scratchpad macro/macro_search*.py).
+* Result over 3,072 rollouts (seeds 1-3; |v_h| > 600 and > 1,100): **0 finishes, 0 above the funnel rim, 0 with the
+  corrected-field d < 1,400**; the highest any rollout got in the funnel's x range was z 1,254-1,340 (the room's kill
+  floor is at ~1,200, the rim at ~1,560); best d 1,799-1,915 (the hole itself is ~2,000). So from where the greedy
+  line is now, the climb is not reachable by naive steering: it needs a precise surf UP a basement ramp (energy-wise
+  |v| 1,500 at z 1,000 could reach z ~2,400) - or a faster line into the basement. Training's ceiling (the room at
+  z ~1,320, 98.56% old units) says real episodes rarely get partway.
+* For the next round: this is the gate. Ideas not tried: carry more speed through the corridor into the basement
+  (nothing pays speed with time-pen 0); keys temperature higher only for envs in the frontier band (--front-temp on
+  keys only); the WR demo shows the human line here (analysis only - round 4's download was refused by the session
+  classifier).
