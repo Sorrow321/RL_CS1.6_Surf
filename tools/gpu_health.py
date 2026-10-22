@@ -36,6 +36,10 @@ REFERENCE = {
     # same copy ratio as the 5090 reference. Its 250 W of 360 W power limit did
     # not bind (90 W under the GEMM), so the reference decides, not the cap
     "NVIDIA GeForce RTX 5080": {"gbps": 816.0, "tflops": 112.0, "sm_mhz": 2745},
+    # vast box 56901034 (5950X), 2026-10-20 (r2b2): bf16 GEMM 153 TFLOPS (93% of the
+    # 4090's 165 dense spec), copy 918 GB/s, 2,400 MHz at 190 W - its default 500 W
+    # limit never binds, so without a reference the power-cap heuristic failed it
+    "NVIDIA GeForce RTX 4090": {"gbps": 857.0, "tflops": 165.0, "sm_mhz": 2520},
 }
 
 
