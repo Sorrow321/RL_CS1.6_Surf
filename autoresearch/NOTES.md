@@ -2499,7 +2499,7 @@ pattern that is in your own command line.
   the last round and the gate has absorbed ~4B steps. Read-outs: the novel ceiling (any real episode over the
   rim moves it below 1,415), the reservoir's deepest state (mind 1.98% now = the basement), the greedy evals.
 
-### 15:57 UTC: r6b2_gpt so far; the policy cannot pull out even from ideal states (bench); NEW --respawn-front-perturb
+### 15:54 UTC: r6b2_gpt so far; the policy cannot pull out even from ideal states (bench); NEW --respawn-front-perturb
 
 * **r6b2_gpt** (bmix ckpt + greedy rows turned +-90 deg and x U(1, 1.5) + front-temp 1 in the last 0.5% band),
   17.90-18.16B, 52 evals: best **98.308** (17,961M, median 98.1%); the line is in the basement mode in most evals

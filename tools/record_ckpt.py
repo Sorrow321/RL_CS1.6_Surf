@@ -193,6 +193,9 @@ TRAIN_ONLY = frozenset({
     # --respawn-backward-mix: the same rows mixed into the reservoir pool -
     # where a training episode starts, TRAIN_ONLY likewise
     "respawn_backward_mix",
+    # --respawn-front-perturb: own frontier states nudged as training spawns - TRAIN_ONLY likewise
+    "respawn_front_perturb", "respawn_front_perturb_band", "respawn_front_perturb_turn",
+    "respawn_front_perturb_speed",
     # optimizer / schedule / plumbing - no effect on a rollout
     "trainer", "envs", "steps", "lr", "epochs", "gamma", "gae", "clip",
     "vf", "ent", "ent_final", "graphs", "compile", "bf16", "train_stride",

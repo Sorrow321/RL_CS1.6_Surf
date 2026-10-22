@@ -1662,6 +1662,75 @@ class BackwardSpawnSampler(FrontierSpawnSampler):
                     st.get("spd_med", float("nan"))))
 
 
+class FrontierPerturbRows:
+    """``--respawn-front-perturb F``: F of the non-start pool rows are the policy's OWN
+    reservoir states from its FRONTIER band - field progress >= (1 - ``band``) x the
+    reservoir's deepest progress - kept in place, with the horizontal velocity and the view
+    yaw turned together by U(-``turn``, ``turn``) deg and the velocity scaled by
+    U(``speed``). Clocks zeroed as the greedy rows do. Real episodes (harvested).
+
+    Why: a speed-gated maneuver just past the frontier (sidistic's basement -> chamber:
+    surf UP a ramp face fast, then strafe off it) needs states the line passes NEAR but
+    never IN - the same place, another heading, more energy. The reservoir's own frontier
+    states, nudged in heading and energy, put training episodes there. ``--respawn-speed``
+    scales every reservoir row and never turns one ("that IS the run"); here only the
+    frontier band is touched, which is where the line ends. Generic: a band fraction, an
+    angle and a speed range, no map quantity."""
+
+    def __init__(self, field, d0: float, band: float = 0.005, turn: float = 90.0,
+                 speed=(1.0, 1.5), seed: int = 0) -> None:
+        if not 0.0 < float(band) < 1.0:
+            raise ValueError(f"--respawn-front-perturb-band B needs 0 < B < 1, got {band!r}")
+        if not 0.0 <= float(turn) <= 180.0:
+            raise ValueError(f"--respawn-front-perturb-turn T needs 0 <= T <= 180, got {turn!r}")
+        speed = tuple(float(v) for v in speed)
+        if not (len(speed) == 2 and 0.0 < speed[0] <= speed[1]):
+            raise ValueError(f"--respawn-front-perturb-speed LO HI needs 0 < LO <= HI, "
+                             f"got {speed!r}")
+        self.field = field
+        self.d0 = float(d0)
+        self.band = float(band)
+        self.turn = float(turn)
+        self.speed = speed
+        self.rng = np.random.default_rng(int(seed))
+        self._lim = float(field.reach_max) - 0.5 * float(field.cell)
+        self.last = {"n": 0, "src": 0, "d_thr": float("nan"), "prog_med": float("nan")}
+
+    def rows(self, reservoir, n: int) -> np.ndarray:
+        """(m,) STATE_DTYPE, ``m <= n`` (an empty band returns none)."""
+        n = int(n)
+        if n <= 0 or reservoir is None or reservoir.size == 0:
+            self.last = {"n": 0, "src": 0, "d_thr": float("nan"), "prog_med": float("nan")}
+            return np.zeros(0, dtype=STATE_DTYPE)
+        k = int(reservoir.size)
+        org = np.asarray(reservoir._store[:k]["origin"], np.float64)
+        d = np.asarray(self.field.sample(org), np.float64)
+        ok = d < self._lim
+        if not ok.any():
+            self.last = {"n": 0, "src": 0, "d_thr": float("nan"), "prog_med": float("nan")}
+            return np.zeros(0, dtype=STATE_DTYPE)
+        p_max = self.d0 - float(d[ok].min())
+        d_thr = self.d0 - (1.0 - self.band) * p_max
+        src = np.flatnonzero(ok & (d <= d_thr))
+        out = reservoir._store[src[self.rng.integers(0, len(src), n)]].copy()
+        v = out["velocity"].astype(np.float64)
+        if self.turn > 0.0:
+            a = self.rng.uniform(-self.turn, self.turn, n)
+            c, s_ = np.cos(np.radians(a)), np.sin(np.radians(a))
+            vx, vy = v[:, 0].copy(), v[:, 1].copy()
+            v[:, 0] = c * vx - s_ * vy
+            v[:, 1] = s_ * vx + c * vy
+            out["yaw"] = np.mod(out["yaw"].astype(np.float64) + a, 360.0).astype(np.float32)
+        v *= self.rng.uniform(self.speed[0], self.speed[1], n)[:, None]
+        out["velocity"] = v.astype(np.float32)
+        out["tick"] = 0
+        out["stuck_ticks"] = 0
+        dd = d[src]
+        self.last = {"n": int(n), "src": int(len(src)), "d_thr": float(d_thr),
+                     "prog_med": float(self.d0 - np.median(dd))}
+        return out
+
+
 class NovelSpawnSampler:
     """``--respawn-novel`` (user, 2026-10-19): respawn the agent where it has
     NOT been, never past its own best potential, with a velocity it really

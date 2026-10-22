@@ -115,7 +115,7 @@ from surfgym.surfflag import SurfFlag, g_step_of, make_surf_feed
 from surfgym.privfeat import PRIV_DIM, PRIV_FEATURES, PrivFeat, velocity_from_obs
 from surfgym.record import record_rollout, record_rollout_parallel
 from surfgym.bc import BCDataset
-from surfgym.respawn import (BackwardSpawnSampler, DemoCurriculum,
+from surfgym.respawn import (BackwardSpawnSampler, DemoCurriculum, FrontierPerturbRows,
                              FrontierSpawnSampler, NovelSpawnSampler,
                              RandomSpawnSampler, RespawnBuffer)
 from surfgym.rewards import (CC_BUCKETS, CC_P0, CC_TEMP_GAIN, CC_TMAX,
@@ -6606,6 +6606,22 @@ def main() -> None:
                          "under --int-real-only. Needs --respawn-novel; "
                          "exclusive with --respawn-backward. 0 = off "
                          "(default); restored on resume")
+    ap.add_argument("--respawn-front-perturb", type=float, default=None,
+                    help="F in (0, 1): F of the non-start pool rows are the policy's OWN "
+                         "reservoir states from its frontier band (field progress >= (1 - "
+                         "--respawn-front-perturb-band) x the reservoir's deepest), kept in "
+                         "place, heading (velocity + view yaw) turned by U(-T, T) deg "
+                         "(--respawn-front-perturb-turn) and velocity scaled by U(LO, HI) "
+                         "(--respawn-front-perturb-speed); placed after the novel / "
+                         "backward-mix quotas, before the --respawn-greedy tail; real "
+                         "episodes. 0 = off (default); restored on resume")
+    ap.add_argument("--respawn-front-perturb-band", type=float, default=None,
+                    help="--respawn-front-perturb: the band B (default 0.005)")
+    ap.add_argument("--respawn-front-perturb-turn", type=float, default=None,
+                    help="--respawn-front-perturb: the heading turn T, deg (default 90)")
+    ap.add_argument("--respawn-front-perturb-speed", type=float, nargs=2, default=None,
+                    metavar=("LO", "HI"),
+                    help="--respawn-front-perturb: the speed scale (default 1.0 1.5)")
     # --- --respawn-novel (user, 2026-10-19; surfgym.respawn.NovelSpawnSampler)
     ap.add_argument("--respawn-novel", action="store_true", default=None,
                     help="replace --respawn-novel-frac of the RESERVOIR rows "
@@ -7812,6 +7828,17 @@ def main() -> None:
                 and ck_cfg.get("respawn_backward_mix")):
             args.respawn_backward_mix = float(ck_cfg["respawn_backward_mix"])
             restored.append(f"respawn_backward_mix={args.respawn_backward_mix:g}")
+        if (args.respawn_front_perturb is None
+                and ck_cfg.get("respawn_front_perturb")):
+            args.respawn_front_perturb = float(ck_cfg["respawn_front_perturb"])
+            restored.append(f"respawn_front_perturb={args.respawn_front_perturb:g}")
+            for _fk in ("respawn_front_perturb_band", "respawn_front_perturb_turn"):
+                if getattr(args, _fk) is None and ck_cfg.get(_fk) is not None:
+                    setattr(args, _fk, float(ck_cfg[_fk]))
+            if (args.respawn_front_perturb_speed is None
+                    and ck_cfg.get("respawn_front_perturb_speed")):
+                args.respawn_front_perturb_speed = [
+                    float(v) for v in ck_cfg["respawn_front_perturb_speed"]]
         if args.respawn_speed is None and ck_cfg.get("respawn_speed"):
             args.respawn_speed = [float(v) for v in ck_cfg["respawn_speed"]]
             restored.append(f"respawn_speed={args.respawn_speed[0]:g}-"
@@ -8786,6 +8813,17 @@ def main() -> None:
         args.respawn_backward_speed = [1000.0, 2500.0]
     if args.respawn_backward_mix is None:
         args.respawn_backward_mix = 0.0
+    if args.respawn_front_perturb is None:
+        args.respawn_front_perturb = 0.0
+    if args.respawn_front_perturb_band is None:
+        args.respawn_front_perturb_band = 0.005
+    if args.respawn_front_perturb_turn is None:
+        args.respawn_front_perturb_turn = 90.0
+    if args.respawn_front_perturb_speed is None:
+        args.respawn_front_perturb_speed = [1.0, 1.5]
+    if float(args.respawn_front_perturb) != 0.0:
+        if not 0.0 < float(args.respawn_front_perturb) < 1.0:
+            raise SystemExit("--respawn-front-perturb F needs 0 < F < 1 (0 = off)")
     if float(args.respawn_backward_mix) != 0.0:
         if not 0.0 < float(args.respawn_backward_mix) < 1.0:
             raise SystemExit("--respawn-backward-mix F needs 0 < F < 1 (0 = off)")
@@ -11343,6 +11381,39 @@ def main() -> None:
               + (f"  !! novel {args.respawn_novel_frac:g} + mix {BMIX:g} + greedy "
                  f"{float(args.respawn_greedy or 0.0):g} > 1: the greedy tail overwrites "
                  f"some mixed rows" if _bm_over > 1.0 + 1e-9 else ""))
+    # --respawn-front-perturb: own frontier-band reservoir states, nudged in heading and energy
+    FPERT = float(args.respawn_front_perturb or 0.0)
+    FPERT_S = {}
+    if FPERT > 0.0:
+        if respawn is None or args.respawn_frac <= 0.0:
+            raise SystemExit("--respawn-front-perturb needs the reservoir (--respawn-frac > 0)")
+        for _bad, _why in ((MULTI, "--maps"), (D.enabled, "DDP"),
+                           (args.respawn_random, "--respawn-random"),
+                           (args.respawn_frontier, "--respawn-frontier"),
+                           (args.respawn_backward, "--respawn-backward"),
+                           (demo is not None, "--demo-file"),
+                           (bool(args.goals), "--goals")):
+            if _bad:
+                raise SystemExit(f"--respawn-front-perturb is not wired with {_why}")
+        for _i, slot in enumerate(slots):
+            _fld = (slot.reward_field if slot.reward_field is not None
+                    else slot.goal_field)
+            if _fld is None or not hasattr(_fld, "grid") or not slot.rf_d0:
+                raise SystemExit("--respawn-front-perturb needs the geodesic goal field")
+            try:
+                FPERT_S[slot.tag] = FrontierPerturbRows(
+                    _fld, float(slot.rf_d0), band=float(args.respawn_front_perturb_band),
+                    turn=float(args.respawn_front_perturb_turn),
+                    speed=args.respawn_front_perturb_speed, seed=int(args.seed) + 4141 + _i)
+            except ValueError as _e:
+                raise SystemExit(str(_e))
+        print(f"respawn FRONT-PERTURB: {FPERT:.0%} of the non-start pool = own reservoir states "
+              f"from the frontier band (progress >= {1.0 - args.respawn_front_perturb_band:.1%} "
+              f"of the reservoir's deepest), kept in place, heading (velocity and view yaw) "
+              f"turned by U(-{args.respawn_front_perturb_turn:g}, "
+              f"{args.respawn_front_perturb_turn:g}) deg, velocity x U("
+              f"{args.respawn_front_perturb_speed[0]:g}, {args.respawn_front_perturb_speed[1]:g})"
+              f"; real episodes (harvested)")
     # --respawn-greedy: the policy's own greedy-eval states before each death
     # (surfgym/greedy_spawn.py), rebuilt at every eval
     GREEDY = None
@@ -14078,6 +14149,13 @@ def main() -> None:
     # --respawn-backward-mix: written ONLY when on (a control run's config stays identical)
     if BMIX > 0.0:
         meta["config"]["respawn_backward_mix"] = BMIX
+    # --respawn-front-perturb: written ONLY when on
+    if FPERT > 0.0:
+        meta["config"]["respawn_front_perturb"] = FPERT
+        meta["config"]["respawn_front_perturb_band"] = float(args.respawn_front_perturb_band)
+        meta["config"]["respawn_front_perturb_turn"] = float(args.respawn_front_perturb_turn)
+        meta["config"]["respawn_front_perturb_speed"] = [
+            float(v) for v in args.respawn_front_perturb_speed]
     # --respawn-greedy: written ONLY when on (a control run's config dump stays byte-identical)
     if GREEDY is not None:
         meta["config"]["respawn_greedy"] = float(GREEDY.frac)
@@ -17282,6 +17360,19 @@ def main() -> None:
                                 _rp = np.array(_rp, dtype=STATE_DTYPE, copy=True)
                                 _rp[_boff:_boff + len(_brows)] = _brows
                             _s.novel.add_back_keys(_brows)
+                    if FPERT > 0.0:
+                        # --respawn-front-perturb: after the novel / backward-mix quotas,
+                        # before the greedy tail
+                        _nf = max(1, int(round(len(_rp) * (1.0 - args.respawn_frac))))
+                        _nns = len(_rp) - _nf
+                        _poff = _nf + int(round(_nns * (
+                            (args.respawn_novel_frac if _s.novel is not None else 0.0)
+                            + (BMIX if _s.backmix is not None else 0.0))))
+                        _npf = max(0, min(int(round(_nns * FPERT)), len(_rp) - _poff))
+                        _prows = FPERT_S[_s.tag].rows(_s.respawn, _npf)
+                        if len(_prows):
+                            _rp = np.array(_rp, dtype=STATE_DTYPE, copy=True)
+                            _rp[_poff:_poff + len(_prows)] = _prows
                     if GREEDY is not None:
                         # --respawn-greedy: the TAIL of the non-start rows, so the
                         # map-start rows and the novel rows after them are kept
@@ -19295,6 +19386,13 @@ def main() -> None:
                               + _s.backmix.line(f"[{_s.tag}]" if MULTI else "")
                               + f"  | backward-row episodes started so far "
                               f"{_s.novel.back_spawned:,}")
+        if FPERT > 0.0 and it_no % 100 == 1:
+            # --respawn-front-perturb: where this iteration's rows came from
+            for _s in slots:
+                _fl = FPERT_S[_s.tag].last
+                print(f"[{global_step:>13,d}] front-perturb{f'[{_s.tag}]' if MULTI else ''}: "
+                      f"{_fl['n']:,} rows from {_fl['src']:,} frontier-band reservoir states "
+                      f"(d <= {_fl['d_thr']:,.0f}u, progress med {_fl['prog_med']:,.0f}u)")
         # ---- --gate-boxes: this iteration's ramp visits, hit vs miss ------
         gate_note, gate_row = "", None
         if GATE is not None:
