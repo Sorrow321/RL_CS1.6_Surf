@@ -2277,3 +2277,14 @@ AABBs of the kill triggers are broadphase only (zones.kill_zones' own warning); 
   first archive's 4,000 best cells, 220 iterations: no finish; best d 1,699; the highest room states (z ~1,353) sit
   right above the -y hole at ~100 u/s (they rose slowly through it and stalled); one state ever got east of x 3,100
   (z 1,222). Naive simulator search does not produce the fast eastward rise across the room to its east ramp.
+
+### 07:33 UTC: CEM over macro sequences from the greedy line's corridor state - no route; r5b4_ncz (evals every 6.25M)
+
+* CEM (scratchpad macro/cem_route.py): 10 held macros (yaw offset, side, fwd, duck, duration), population 1,024, 64
+  elites, 40 iterations, 7 s rollouts on the raw core from the greedy line's own state in the corridor ~1 s before
+  the basement ((1,852, 431, 1,514), v (444, -1,116, -26), corrected d 3,047): best d 1,991 - it never got into the
+  room (the Go-Explore archive reached 1,699 from basement states). With the two Go-Explore runs and the macro and
+  policy probes, ~10k rollouts from the policy's own states have found no way over the funnel rim.
+* r5b4_ncy 16,764-17,419M: evals 96.7-98.35, best 98.349 (16,903M), no further hole passage. The line is consistent;
+  what moves the score now is sampling it: **r5b4_ncz** (07:31) = bare resume of r5b4_ncy at 17,418,944,512 (md5
+  7256a1cf...) with `--record-every 6.25e6` (~60% more evals for ~20% less training).
