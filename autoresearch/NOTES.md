@@ -2558,7 +2558,7 @@ pattern that is in your own command line.
   restored, evals every 6.25M. First iterations: 28-37 front-perturb episodes end per iteration, 0 finishes,
   deepest 97,606-97,673 u (the basement).
 
-### 17:02 UTC: r6b2_fp2 counters - the policy enters the chamber from perturbed rows at ~0.07%, never finishes
+### 17:01 UTC: r6b2_fp2 counters - the policy enters the chamber from perturbed rows at ~0.07%, never finishes
 
 * r6b2_fp2 18.56-18.73B (336 iterations, ~176M steps): 17,558 front-perturb episodes ended, **0 finished**; 13
   iterations had an episode reach chamber depth (best progress >= 97,760 u; max 98,107 u = d 1,568, mid-chamber
