@@ -2196,3 +2196,16 @@ safety classifier; simulator probes from the policy's own states answered the sa
   exactly this; T 0.36 and rising (no +500 u eval best since 15.27B).
 * r5b1_band ends at 15.633B; a chained relaunch bare-resumes it as **r5b1_bandx** (3e9 steps, evals every
   12.5M; band + speed restored).
+
+### 05:35 UTC: unstuck T at its cap thins the frontier; bandx 98.233
+
+* Per 50M steps (all four runs; T = unstuck temperature, keys only): share of greedy episodes at the 98%
+  frontier - band 28 / 11 / 28 / 22 / 17% at T 0.01-0.27 (15.30-15.50B), **3 / 6%** at T 0.5 (15.55-15.60B);
+  bandx 0-6% at T 0.5 for 250M steps (one bucket 33%); gspdx 3-8% at T 0.01-0.02 already (its 86-89%
+  stops 33-58% vs band's 17-33% at the same T: the all-rows speed effect), 0-8% at T 0.5.
+* So two effects: scaling every greedy row hurts at any T; T at its cap (0.5, reached because the eval
+  frontier has not moved 500 u since 15.27B) thins the frontier episodes further. T is the lineage's
+  generic escape from stalls (it found the 60.57% and 82.7% gates in round 4), so it stays for now.
+* bandx (from 15.633B, T 0.5): evals 96.8, 86.7, 96.9, 96.7, 97.6, 96.7, 96.9, 96.8, 96.7, 96.7, 93.1,
+  96.7, **98.233 (15,860M; 3/9 at 98%: the best episode reaches (2,659, -400, 1,143) at 122.6 s)**, 88.0,
+  98.191. The frontier inches toward the funnel's x (2,750-3,000).
