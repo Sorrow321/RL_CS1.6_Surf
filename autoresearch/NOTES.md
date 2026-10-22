@@ -2078,3 +2078,20 @@ safety classifier; simulator probes from the policy's own states answered the sa
   hull must be above z ~2,102 when it crosses the block's west edge (x ~-250 at y 0, ~200 at
   |y| > 500) with enough speed to clear ~600-1,000 u of plate under the *52 ceiling (z 2,416).
   ep 8 of the incumbent eval climbed 1,718 -> 2,106 (108-109.2 s) but at 570-620 u/s.
+
+### 01:58 UTC: box 57141550 (RTX 4080 + Ryzen 9 7950X, $0.251/h, France, machine 117043); r5b2_x1
+
+* Rent loop got it at 01:49. **Harness issue:** tools/gpu_health.py has no RTX 4080 reference, so
+  the power-cap heuristic (245 W of 340 W) failed the deploy. Measured: bf16 GEMM 90 TFLOPS (92% of
+  the 4080's 97.5 dense spec), copy 601 GB/s (84% of 716.8), 2,400 MHz at 112 W under the GEMM (the
+  cap does not bind). Added a 4080 reference on this branch (97.5 TFLOPS / 609 GB/s = 85% copy
+  ratio / 2,505 MHz, the 5080 entry's method); redeploy passed.
+* **r5b2_x1** (01:52): bare resume of the incumbent (15,032,385,536, md5 cb1dbce4...) + `--ckpt-every
+  1e8`, `--record-every 12.5e6`, 3e9 steps. Everything restored (log line checked: stall_eps 5,
+  keys-only T cap 0.5, greedy 0.3 + stuck 200, novel band, ratchet, time-pen 0, patience 30,
+  side-by-side evals). Training-only ~240-250k steps/s; evals (episodes ~100-130 s) halve the average.
+* Evals: 15,033M (the checkpoint itself) 92.977 (median 86.8%, 7/9 die at 97.8-106.8 s);
+  **15,045M 94.932** (median 88.0%): ep 4 gets ABOVE kill plate *28 at (394, 105, 2,128) with 1,080
+  u/s horizontal but vz -294 and dies on the plate at (370, -21, 2,087) - the first eval episode in
+  the slot. Three episodes park early (14.7% at 16 s, 31.8%, 41.6% at 52 s, horizontal speed
+  50-70 u/s): time-pen 0 and fail_pen 0 make parking and dying both worth 0 to the objective.
