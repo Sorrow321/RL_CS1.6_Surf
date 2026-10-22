@@ -2138,3 +2138,15 @@ safety classifier; simulator probes from the policy's own states answered the sa
   onto the room floor (z ~830 at x ~2,300) and crawled there until it fell at 137.7 s.
 * The other 6 at 96.7-96.9% die at ~111 s near (1,414-1,534, 298-463, 1,162-1,252): out of the hole and down
   before CP7. Medians swing 60.6-96.7% between evals (the 34.4% / 60.6% / 72.5% / 86.8% gates recur).
+
+### 03:47 UTC: no new best for ~110M steps; the finish shaft, measured
+
+* Evals 15,284-15,385M: 96.7-97.5 (97.523 at 15,360M, CP7, median 93.5%); training ceiling 96,076 u (98.27%) flat
+  since ~15.32B, reservoir deepest 98.14% (min depth 1.857%), unstuck T 0.01 with stuck 123M (T starts to rise
+  at 200M, i.e. ~15.47B), training win 6-9% (novel rows near the end).
+* The finish shaft (killprobe y 0 slice, x-y map at z 1,000): a free column at x ~2,910-3,006, |y| <~ 64 from
+  z ~1,540 down to the finish box, through holes in kill *61 (z ~1,200) and *3 (z ~656-672); at z ~1,000 it is
+  open from the side to lanes at |y| 64-320 and 320-640 (walls at |y| ~320 from x 2,206, a central divider at
+  y ~0 from x 1,950 to 2,878, floor ~870-900, *61 above). Above *61 a V funnel (ramps from x ~2,750 z 1,540 to
+  x ~2,880 z 1,252) leads into the shaft top. So after the underpass of the second thin wall (origin z <~1,104)
+  the way on is east along a lane at z ~900-1,100 to x ~2,950, then sideways into the shaft and down.
