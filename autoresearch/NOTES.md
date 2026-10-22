@@ -2287,3 +2287,15 @@ safety classifier; simulator probes from the policy's own states answered the sa
   margin 1 was null because the passes were too rare). Here training's ceiling did move (98.35 -> 98.64%),
   so partial climbs exist. **r5b1_m1**: t02's final + `--respawn-margin 1`, 3e8 steps. Read-out: reservoir
   deepest past 98.3% (mind < 1.7%), the ceiling, evals past 98.3%.
+
+### 08:07 UTC: r5b1_m1 (`--respawn-margin 1`) - 98.329 and the most consistent frontier yet; extended (r5b1_m1x)
+
+* m1 = t02's final (16,935,026,688) + `--respawn-margin 1` (T cap 0.2, speed band restored), 16.94-17.14B (12
+  evals): 96.74, 96.80, 98.06, 98.13 (median 98.04), **98.329 (17,036M; best episode stops at (2,670, -394,
+  1,248) at 122.0 s - ~100-200 u higher on the ramp than the 98.1-98.2% episodes)**, 98.15 (median 98.01),
+  87.7, 98.09, 98.11 (median 98.06), 86.6, **98.20 (17,112M, 8/9 at 98%, median 98.10)**, 98.17.
+* Reservoir: p10 depth 7,000-8,500 u (bandx / t02) -> **4,265-4,468 u** within ~200M steps (min 1,659 u =
+  98.30%): with the 1 s margin the reservoir keeps the last second of the line's deep episodes - the return,
+  the funnel base, partial climbs - that the 2 s margin discarded. Training ceiling unchanged (98.64%).
+* EXTENDED (the branch's best eval and its best frontier consistency): r5b1_m1x = bare resume of m1's final,
+  1.85e9 steps (ends ~11:40, before the 12:19 wrap-up). Box extended.
