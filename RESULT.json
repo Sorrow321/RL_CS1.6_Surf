@@ -3,24 +3,19 @@
  "round": 5,
  "final": false,
  "best": {
-  "score": 98.253,
-  "eval_file": "/home/steam/ar/runs/r5b2/r5b2_x1/traj_15951462400.jsonl",
-  "run": "r5b2_x1",
-  "step": 15951462400,
-  "ckpt": "/home/steam/ar/runs/r5b2/r5b2_x1/ckpt_latest.pt",
-  "recipe": [
-   "--record-every",
-   "12.5e6",
-   "--ckpt-every",
-   "1e8"
-  ],
-  "resume_from": "incumbent r4b3_band15x/ckpt_final.pt (15,032,385,536, md5 cb1dbce4...) bare resume",
-  "commit": "8d5de05",
-  "best_progress_pct": 98.25,
-  "median_progress_pct": 98.06,
+  "score": 98.278,
+  "eval_file": "/home/steam/ar/runs/r5b2/r5b2_vr/traj_16894132224.jsonl",
+  "run": "r5b2_vr",
+  "step": 16894132224,
+  "ckpt": null,
+  "recipe": [],
+  "resume_from": null,
+  "commit": "544c2eb",
+  "best_progress_pct": 98.28,
+  "median_progress_pct": 95.9,
   "finishes": 0,
   "best_finish_s": null,
   "max_cp": 7
  },
- "summary": "Round 5 (r5b2): box 57141550 (RTX 4080 + 7950X, $0.251/h). r5b2_x1 = bare resume of the incumbent (15.03 -> 16.54B): best 98.253 (CP7, 16,165M) - past the slot over kill plate *28 and CP7; since 15.39B the last gate: the finish shaft is entered only UP through two holes in func_wall *160 from a dead-end room. Arms at the gate: front-temp 1 / band 0.015 (300M) null. Now r5b2_vr = NEW --respawn-novel-vrand 0.4 (exploring starts in velocity: 40% of the novel rows are the reservoir's frontier states with a random velocity direction), 300M from 16.84B."
+ "summary": "Round 5 (r5b2): box 57141550 (RTX 4080 + 7950X, $0.251/h). r5b2_x1 = bare resume of the incumbent (15.03 -> 16.54B): 98.25 (CP7) - past the slot over kill plate *28 and CP7; then the last gate: the finish shaft is entered only UP through two holes in func_wall *160 from a dead-end room, and the funnel above the tube has its rim ~250 u higher, so it needs a launch with vz >= ~650 (the policy's ramp states give <= 600; a random-macro search finds finishes only from 1.0-1.5x faster states). Arms at the gate: front-temp (null), NEW --respawn-novel-vrand 0.4 (null; best eval 98.278). Now r5b2_spd = --respawn-speed 1.0 1.5 from 16.84B."
 }

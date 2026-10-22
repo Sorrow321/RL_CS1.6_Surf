@@ -2228,3 +2228,29 @@ safety classifier; simulator probes from the policy's own states answered the sa
   Per pool: 737 vrand rows (frontier states with random velocity) + 1,106 moved rows. Read-out: the
   novel ceiling below d_best 1,462 (real episodes past the holes), reservoir states in the shaft,
   greedy evals past 98.3% / a finish.
+
+### 05:35 UTC: r5b2_vr (vrand 0.4) null; the finish needs a HIGH launch (random-macro search); arm r5b2_spd
+
+* **r5b2_vr** (16.843 -> 17.143B, 300M, 172k steps/s): 24 evals 86.5-98.28 (best **98.278** at
+  16,894M, +0.03 over x1 - noise), and from ~16.9B more evals stop at the 96.7% pillar-room drop
+  (CP6); novel ceiling flat at 96,306 u; training wins 20-28% -> ~5% (the moved rows that fall into
+  the funnel were cut to 60%). Null at this gate (one 300M test; the mechanism stays in the code).
+* **Random held-macro search on the raw core (ANALYSIS ONLY, own states)**: 4 segments of 0.15-1 s,
+  yaw offset U(-150, 150) from the heading, random fwd/side/jump/duck, from the 15.63B greedy pool's
+  752 room states:
+  * stage 1 - into the shaft through a hole: ~0.07% (45 of 65k; 79 of 98k). Every entry starts
+    from the greedy line's states SURFING THE -y RAMP WESTWARD at ~1,230-1,460 u/s, rising
+    (vz +200..+680), mostly holding a side key; it crosses z 1,232 at x 2,480-2,672 (the holes'
+    west part) at vz 134-591 within 0.4-0.7 s;
+  * stage 2 - from those post-launch states to the finish: **0 of 8,192**. The tube's top is an
+    inverted-pyramid FUNNEL (inner slopes 62 deg, normal z 0.47) whose rim is at hull-origin z
+    ~1,476-1,500 (x ~2,736-3,184, |y| <= 224), wrapped in an overhanging collar from z ~1,260; so
+    the hole crossing needs vz >= ~650 to clear the rim, and the policy's ramp states give <= ~600;
+  * the same two stages with the start states' velocities x U(1.0, 1.5): post-launch vz up to 672,
+    and **2 of 8,192 reach the funnel, 1 the finish depth**. The line arrives in the room too slow.
+* **r5b2_spd** (05:33): resume of r5b2_ft's final (16,843,276,288, md5 97dd011f...) + `--front-temp 0
+  --respawn-speed 1.0 1.5` (the trainer's existing knob, "practices speed-gated jumps at up to +50%
+  entry speed": reservoir rows at 1.0-1.5x their speed; greedy, novel and start rows unchanged).
+  Real episodes (harvested, move the ceiling). 300M first; read-out: the ceiling below d 1,462, a
+  reservoir state in the shaft, a greedy eval past 98.3% or a finish; the line before the room must
+  hold.
