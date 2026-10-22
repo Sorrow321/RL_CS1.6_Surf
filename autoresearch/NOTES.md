@@ -2054,3 +2054,29 @@ safety classifier; simulator probes from the policy's own states answered the sa
   eval had median 60.6%); 15,045M **94.963** (best 95.0%, median 86.6%) - above the incumbent. Deaths
   cluster at ~105-109 s: x -1,540..-1,480 z 2,230-2,810 (92-93%), and the best two at (260..427, -43..413,
   ~2,095) at 108.6 s (94.7-95.0%). Training wins ~1% (e.g. "win 1.11% @ 3.1 s": spawns ~3 s from the end).
+
+### 02:05 UTC: the 95% gate, measured (ANALYSIS ONLY: own states + the simulator, no demo)
+
+* **Probe** (local CPU, `record_ckpt --spawn-states`, the incumbent ckpt): from its 48 deepest reservoir states
+  (92.96-94.54%), 20 s each: greedy **0/8** finish (best 95.08%), sampled **0/16** (best 95.07%). The best
+  ones die at x 170-480, z 2,086-2,105 (the kill floor below); 10/16 sampled ones are still alive at 20 s,
+  wandering in the side lanes (|y| 600-860) at z 1,800-1,950 under it. So the next step is a CAN'T-yet,
+  not only a greedy-vs-sampled gap.
+* **Geometry** (scratchpad geo/killprobe.py + slice_xz.py: a standing / ducked player placed at each grid
+  point with v = 0 either fails on the first tick = kill, starts solid = solid, or is free):
+  * a THIN WALL at x ~480-536 spanning the whole width (|y| < 832) from the kill floor *28 (z ~2,064,
+    x -224..~800 at y 0) up to z ~2,236, a kill strip (*41) on top up to ~2,280, and a solid ceiling from
+    z ~2,384 (a kill layer *52 above it);
+  * so the ONLY way east is a slit over the strip: standing origin z 2,320-2,344 (~30 u), ducked
+    2,320-2,360 (~45 u), moving east;
+  * the field route crosses it at z ~2,312 ((400, -272, 2,312) d 4,708 = **the training ceiling d_best
+    4,716 / 95.18%**: real episodes have reached the slit's mouth and never passed), then drops east of the
+    floor's end (x ~800), through a hole under func_wall *157 (x ~1,090-1,250, z 1,580-1,840), past CP7
+    and down the shaft at x ~2,896 into the finish.
+* The greedy line and the probe episodes arrive at the wall at z ~2,100-2,200, i.e. ~150-250 u too low: the
+  incumbent's best episode climbed from z 1,721 (x -825, 108.0 s) to 2,090 (x -235, vz +159) and then fell.
+  Clearing the slit at ~1,200 u/s needs vz ~+600 leaving the ramp at x ~-235.
+* Training's finishes (win 0.3-1%, finish 2.3-6.4 s after spawn) must be NOVEL-row episodes (placed at
+  d >= d_best, i.e. at or before the slit, with turned velocities): some pass the slit and fall to the
+  finish in a few seconds. Real episodes never pass (d_best has not moved since round 4). So the post-slit
+  part is being learned from novel rows; the missing skill is the higher climb into the slit.
