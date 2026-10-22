@@ -7,7 +7,7 @@
   "eval_file": "/home/steam/ar/runs/r6b4/r6b4_ou/traj_17494966272.jsonl",
   "run": "r6b4_ou",
   "step": 17494966272,
-  "ckpt": null,
+  "ckpt": "/home/steam/ar/runs/r6b4/r6b4_ou/ckpt_latest.pt",
   "recipe": [
    "--front-temp",
    "3",
@@ -23,7 +23,8 @@
    "1e8"
   ],
   "resume_from": "incumbent r5b4_ncy/ckpt_latest.pt (17,418,944,512)",
-  "commit": "3077d12"
+  "commit": "3077d12",
+  "ckpt_note": "r6b4_ou's last weights, step 17,808,490,496, md5 d839caf9a32250d4145920ebe02641f0 (rsync, md5-checked against the box). Config: the incumbent's + front_temp 3, front_band 0.012, front_heads yaw, front_ou 1.0, front_record 1; a bare resume restores them."
  },
  "summary": "Round 6 (r6b4), best 98.301 (r6b4_ou, CP7; incumbent 98.349); 0 finishes. Root cause of the last gate (WR demo, measurement only; replays exactly in our sim): in the basement U-turn the policy strafes with its view 1.5 deg off the velocity (the human 0 deg), the turn adds nothing, it wall-rides up and loses ~300 u/s, so its kick is too weak for the funnel rim. NEW flags (default off, tested): --respawn-greedy-speed (+band): broke the upstream line in 3 arms; --front-heads yaw / --front-ou / --front-record (correlated frontier yaw exploration, colored noise in PPO): holds the line, best 98.301, U-turn habit unchanged in ~390M steps. Planning in the simulator (Go-Explore over held strafe macros, rooted at own states): reaches the room (grader 98.55-98.70%) but no finish - ~15% short of the kick energy; training on those paths regressed the line. Now: arm 4's weights re-run with evals every 6.25M."
 }
