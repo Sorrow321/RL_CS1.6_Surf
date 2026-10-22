@@ -2288,7 +2288,7 @@ safety classifier; simulator probes from the policy's own states answered the sa
   so partial climbs exist. **r5b1_m1**: t02's final + `--respawn-margin 1`, 3e8 steps. Read-out: reservoir
   deepest past 98.3% (mind < 1.7%), the ceiling, evals past 98.3%.
 
-### 08:07 UTC: r5b1_m1 (`--respawn-margin 1`) - 98.329 and the most consistent frontier yet; extended (r5b1_m1x)
+### 08:06 UTC: r5b1_m1 (`--respawn-margin 1`) - 98.329 and the most consistent frontier yet; extended (r5b1_m1x)
 
 * m1 = t02's final (16,935,026,688) + `--respawn-margin 1` (T cap 0.2, speed band restored), 16.94-17.14B (12
   evals): 96.74, 96.80, 98.06, 98.13 (median 98.04), **98.329 (17,036M; best episode stops at (2,670, -394,
