@@ -2090,7 +2090,14 @@ def gauss_entropy(log_std):
     return (0.5 + 0.5 * LOG2PI + log_std).sum()
 
 
-def sample_view(padded, mu, log_std, temp=None, temp_view=None):
+def ou_step(x, n, rho: float):
+    """One AR(1) / Ornstein-Uhlenbeck step with UNIT marginal variance: x' = rho x + sqrt(1 -
+    rho^2) n, n ~ N(0, 1). A stationary x stays N(0, 1) and corr(x_t, x_{t+k}) = rho^k
+    (--front-ou)."""
+    return (float(rho) * x + float(np.sqrt(max(0.0, 1.0 - float(rho) ** 2))) * n).astype(np.float32)
+
+
+def sample_view(padded, mu, log_std, temp=None, temp_view=None, eps=None):
     """The --view-continuous rollout draw (no grad): heads N_VIEW..5 by
     Gumbel-argmax on the padded slice (sample_padded, unchanged), the view
     by z = mu + sigma * eps. Static shapes and one randn_like next to the
@@ -2103,10 +2110,14 @@ def sample_view(padded, mu, log_std, temp=None, temp_view=None):
     _temper_logits); ``temp_view`` (None = temp), a scalar or one value
     per Gaussian head, tempers the Gaussian heads INSTEAD (the trainer's
     --unstuck-temp-heads, the benchmark's yaw / pitch / keys knobs). The
-    log-prob returned is the tempered joint's."""
+    log-prob returned is the tempered joint's.
+
+    ``eps`` (None = off): the standard-normal draw of the view heads, supplied by the caller
+    instead of randn_like (--front-ou: a per-env temporally correlated sequence whose marginal
+    is N(0, 1), so the log-prob is still the density of the executed z)."""
     cat, logp_c = sample_padded(padded[:, N_VIEW:], temp)
     ls = _temper_log_std(log_std, temp if temp_view is None else temp_view)
-    z = mu + ls.exp() * torch.randn_like(mu)
+    z = mu + ls.exp() * (torch.randn_like(mu) if eps is None else eps)
     B = padded.shape[0]
     neutral = torch.full((B, N_VIEW), 0, dtype=cat.dtype, device=cat.device)
     neutral[:, 0] = NEUTRAL_ACT[0]
@@ -6292,6 +6303,20 @@ def main() -> None:
                     help="--front-temp: the band B - an env is at the frontier when its "
                          "progress >= (1 - B) x the reservoir's deepest progress (the "
                          "--ez-front band); re-read every iteration")
+    ap.add_argument("--front-heads", default=None, choices=["all", "yaw"],
+                    help="--front-temp: which heads the frontier temperature reaches - all "
+                         "(the default) or the YAW head alone (keys and pitch keep the global "
+                         "temperature). ckpt restores")
+    ap.add_argument("--front-ou", type=float, default=None,        # 0 = off
+                    help="--front-temp: TAU > 0 seconds - inside the band the yaw head's "
+                         "standard-normal draw is a per-env AR(1) / Ornstein-Uhlenbeck sequence "
+                         "with correlation time TAU (rho = exp(-decision period / TAU), unit "
+                         "marginal variance), outside it i.i.d. as today. The marginal is still "
+                         "N(0, 1), so the stored z is the executed z and its log-density is the "
+                         "one PPO uses (Hollenstein, Martius, Piater 2024, colored noise in PPO): "
+                         "a sustained deviation that pays is learned into the mean. Exploration "
+                         "for moves that need a small offset held for ~TAU seconds. 0 = off; ckpt "
+                         "restores")
     ap.add_argument("--unstuck-ent", type=int, default=None, choices=[0, 1],
                     help="--unstuck: entropy coefficient x (1+T); default 1")
     ap.add_argument("--unstuck-int", type=int, default=None, choices=[0, 1],
@@ -7245,6 +7270,12 @@ def main() -> None:
         if args.front_band is None and ck_cfg.get("front_band"):
             args.front_band = float(ck_cfg["front_band"])
             restored.append(f"front_band={args.front_band:g}")
+        if args.front_heads is None and ck_cfg.get("front_heads"):
+            args.front_heads = str(ck_cfg["front_heads"])
+            restored.append(f"front_heads={args.front_heads}")
+        if args.front_ou is None and ck_cfg.get("front_ou"):
+            args.front_ou = float(ck_cfg["front_ou"])
+            restored.append(f"front_ou={args.front_ou:g}")
         if args.ez_max is None and ck_cfg.get("ez_max") is not None:
             args.ez_max = int(ck_cfg["ez_max"])
         if args.ez_mu is None and ck_cfg.get("ez_mu") is not None:
@@ -8575,6 +8606,15 @@ def main() -> None:
         args.front_temp = 0.0
     if args.front_band is None:
         args.front_band = 0.04
+    if args.front_heads is None:
+        args.front_heads = "all"
+    if args.front_ou is None:
+        args.front_ou = 0.0
+    if float(args.front_ou) < 0.0:
+        raise SystemExit("--front-ou TAU needs TAU >= 0 seconds (0 = off)")
+    if (float(args.front_ou) > 0.0 or args.front_heads != "all") and not float(args.front_temp) > 0.0:
+        raise SystemExit("--front-ou / --front-heads shape --front-temp's band: they need "
+                         "--front-temp T_F > 0")
     if float(args.front_temp) != 0.0:
         _bad = [f for f, on in (("--maps", args.maps),
                                 ("--rnn", args.rnn not in (None, "none")),
@@ -14025,6 +14065,10 @@ def main() -> None:
     if float(args.front_temp or 0.0) > 0.0:
         meta["config"]["front_temp"] = float(args.front_temp)
         meta["config"]["front_band"] = float(args.front_band)
+        if args.front_heads != "all":
+            meta["config"]["front_heads"] = str(args.front_heads)
+        if float(args.front_ou or 0.0) > 0.0:
+            meta["config"]["front_ou"] = float(args.front_ou)
     # --unstuck: written ONLY when set (a control run's config dump stays
     # byte-identical); every knob rides along so a resume restores them
     if UNSTUCK:
@@ -14973,12 +15017,32 @@ def main() -> None:
                         if (UNSTUCK_TEMP and UNSTUCK_MASK_VIEW is not None)
                         else np.zeros(NZ, np.float32))
         _f_hot = 1.0 + float(args.front_temp)
+        _f_yaw = args.front_heads == "yaw"
         print(f"--front-temp {args.front_temp:g}: an env whose progress is >= "
-              f"(1 - {args.front_band:g}) x the reservoir's deepest samples every head at "
-              f"{_f_hot:g}; the others keep "
+              f"(1 - {args.front_band:g}) x the reservoir's deepest samples "
+              + ("the YAW head" if _f_yaw else "every head") + f" at {_f_hot:g}; "
+              + ("its other heads and " if _f_yaw else "") + "the other envs keep "
               + (f"the --unstuck T on heads '{UNSTUCK_HEADS}'" if UNSTUCK_TEMP
                  else "temperature 1")
               + "; PPO scores each row at its own temperature")
+    # --front-ou: the yaw draw of an in-band env is a per-env AR(1) sequence with unit marginal
+    # variance (correlation time TAU), every other draw i.i.d.; a STATIC (N, NZ) tensor the host
+    # rewrites before every decision (in set_front_temp) and sample_view reads inside the graph.
+    # FRONT_OU is a Python constant, so without it the graph captured is the one that shipped
+    FRONT_OU = FRONT and float(args.front_ou or 0.0) > 0.0
+    front_eps_t = None
+    if FRONT_OU:
+        _ou_dt = float(KH) * float(TICK.ms) * 1e-3
+        _ou_rho = float(np.exp(-_ou_dt / float(args.front_ou)))
+        _ou_rng = np.random.default_rng(int(args.seed) + 515)
+        _ou_x = _ou_rng.standard_normal(N).astype(np.float32)
+        _pm2 = device.type == "cuda"
+        feps_pin = torch.zeros((N, NZ), pin_memory=_pm2)
+        feps_np = feps_pin.numpy()
+        front_eps_t = torch.zeros((N, NZ), device=device)
+        print(f"--front-ou {args.front_ou:g}: inside the band the yaw draw is an AR(1) sequence, "
+              f"rho {_ou_rho:.4f} per {_ou_dt * 1e3:.0f} ms decision (unit marginal variance; the "
+              f"stored z is the executed z)")
 
     def set_front_temp() -> None:
         """--front-temp: this decision's per-env temperatures from the band (reward_fn._d is
@@ -14987,10 +15051,21 @@ def main() -> None:
         d = reward_fn._d
         band = (np.zeros(N, bool) if d is None else (np.asarray(d) <= front_thr))
         tb = FRONT_BASE[0]
-        ftk_np[:] = np.where(band, _f_hot, 1.0 + tb * _f_mask_cat)
-        ftv_np[:] = np.where(band[:, None], _f_hot, 1.0 + tb * _f_mask_view[None, :])
+        if _f_yaw:
+            # --front-heads yaw: keys and pitch keep the global temperature everywhere
+            ftk_np[:] = 1.0 + tb * _f_mask_cat
+            ftv_np[:] = 1.0 + tb * _f_mask_view[None, :]
+            ftv_np[:, 0] = np.where(band, _f_hot, ftv_np[:, 0])
+        else:
+            ftk_np[:] = np.where(band, _f_hot, 1.0 + tb * _f_mask_cat)
+            ftv_np[:] = np.where(band[:, None], _f_hot, 1.0 + tb * _f_mask_view[None, :])
         temp_t.copy_(ftk_pin.view(N, 1, 1), non_blocking=True)
         tempv_t.copy_(ftv_pin, non_blocking=True)
+        if FRONT_OU:
+            _ou_x[:] = ou_step(_ou_x, _ou_rng.standard_normal(N).astype(np.float32), _ou_rho)
+            feps_np[:] = _ou_rng.standard_normal((N, NZ)).astype(np.float32)
+            feps_np[:, 0] = np.where(band, _ou_x, feps_np[:, 0])
+            front_eps_t.copy_(feps_pin, non_blocking=True)
         front_share = float(band.mean())
     # --rnn: the per-env recurrent state. static_h is the state ENTERING the
     # next decision - the graphed step reads it and writes the state leaving
@@ -15306,7 +15381,7 @@ def main() -> None:
             if ROLL_MASK is not None:
                 padded = ROLL_MASK(padded)
             act, z, logp = sample_view(padded, mu, policy.log_std(), temp_t,
-                                       tempv_t)
+                                       tempv_t, eps=front_eps_t if FRONT_OU else None)
             static_act.copy_(act)
             # STORED z is the un-offset draw, so logp above is exactly the
             # behaviour policy's log-density of the EXECUTED action and the
@@ -19906,7 +19981,7 @@ def main() -> None:
         if FRONT:
             # --front-temp: the share of envs inside the band at the last decision, and the
             # band's edge in progress
-            hyg_note += (f"  fronttemp {front_share:.0%}"
+            hyg_note += (f"  fronttemp{'+ou' if FRONT_OU else ''} {front_share:.0%}"
                          + (f">{100.0 * (1.0 - front_thr / float(fleet.slots[0].rf_d0)):.1f}%"
                             if front_thr != float("inf") else ""))
         if AUG_ON and aug_kl_v == aug_kl_v:

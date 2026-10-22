@@ -2539,3 +2539,30 @@ stochastic (keys temp 1.2 = training) x6 per set:
   alone on its own states does not hand the policy the hole; the boost is a slow exploration aid at best.
 * **r6b4_ctl** (16:02): bare resume of the incumbent, evals every 12.5M - the same-box reference and an eval
   bank while arm 3 is built.
+
+### 16:28 UTC: the U-turn is a 1.5-degree yaw habit (analysis); arm 3 running; NEW --front-heads / --front-ou
+
+* **The basement U-turn, human vs policy, the offset = view yaw - velocity heading** (demo frames;
+  incumbent eval ep 2): BOTH hold strafe-LEFT with no forward key through the whole east leg and
+  U-turn (the human from 112.8 to 114.99 s, then strafe-right for the hard turn into the hole). The
+  human keeps the view ON the velocity (offset -0.9..+0.8 deg): wishdir perpendicular to v, the full
+  30 u/s-per-frame air-strafe turn - a flat 180 deg turn of radius ~560 u (v^2 / 3,930 u/s^2 at
+  1,480 u/s) at constant speed, z 764-911, no wall contact. The policy holds offset **-1.5 to -1.6
+  deg**: wishdir 1.5 deg FORWARD of perpendicular, v.wishdir ~ +29 of the 30 cap, so the strafe adds
+  almost nothing (addspeed ~1); it flies on straight into the east-end wall at 117.7 s (|v_h| 1,425 ->
+  1,097 in 0.1 s), wall-rides up to z 1,145 and comes back west slow, inside and high - over the kick
+  surface's top edge.
+* So the whole energy gap is ~1.5 deg of yaw held for ~1.3 s: 0.42 z at d(off)/du = 3.543 deg, i.e.
+  ~6 sigma of the policy's yaw sigma (0.074 z = 0.26 deg) - per decision, unreachable by i.i.d.
+  noise of any per-step size that does not wreck the line; the repo's own survey
+  (docs/research-litsurvey-timing.md 4.2) names colored noise in PPO (Hollenstein et al. 2024) as the
+  untested PPO-native fix. The existing --view-ou-sigma holds an offset but adds it to the EXECUTED z
+  only (the stored z excludes it), so PPO never moves the mean toward an offset that paid - the ledger's
+  nulls ("hitters die").
+* **r6b4_gsr** (arm 3, 16:15): incumbent + `--respawn-greedy-speed 1.0 1.5 --respawn-greedy-speed-band 0.01`
+  (anchored at the reservoir's deepest; stuck 200 kept): evals 98.222, 98.103, 98.121, 98.153 to 17,457M -
+  the line holds so far (arms 1-2 broke at +45-55M).
+* NEW `--front-heads yaw` (the --front-temp band's temperature on the yaw head alone) and `--front-ou TAU`
+  (inside the band the yaw's standard-normal draw is a per-env AR(1) with correlation time TAU and unit
+  marginal variance; outside i.i.d.; the stored z IS the executed z, so the update's log-density is the
+  executed action's and a deviation that pays moves the mean). Both default off; tests/python/test_front_ou.py.
