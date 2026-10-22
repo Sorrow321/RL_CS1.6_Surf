@@ -2547,3 +2547,19 @@ Standing-hull solid tests (`core.trace(p, p, hull=0).startsolid`) and kill hulls
   evals every 12.5M, commit ec2923c. Captures fire when a real episode sets an episode record with
   d <= d_best + 299 = 1,714 u (the room well above the holes, the rim) after >= 2 s of flight; the pool
   mixes once it holds 200 states. Step line: `front <pool>x<mixed> (<captures> cap)`.
+
+### 15:40 UTC: r6b3_front - the frontier pool filled with ONE dead-end spot (crawlers on the room's east slope)
+
+* r6b3_front (incumbent + `--respawn-front 0.15`, band 299 u, 2 s window), 17,419M -> ~17,570M: 4,993
+  captures, the pool full (20,000) by ~17.5B. Its contents (the run's own checkpoint, box-side summary):
+  ALL 20,000 states in the finish room at x 3,398-3,408, z 1,411-1,447, |v| p10/p50/p90 32/113/215, d
+  1,697-1,725 - the top of the room's EAST slope, where it turns vertical. Reservoir min depth 2.01% ->
+  1.70% (d 1,698): real episodes now live >= 2 s there.
+* So real training episodes DO climb out of the basement, cross the room and ride the east slope up to
+  z ~1,430 - and arrive there at ~100-200 u/s, i.e. with E ~1,440, below the funnel rim's 1,568 (from there
+  the finish is energetically impossible). Each crawl to a slightly lower d is a new episode record, so the
+  rule re-captured the crawl every 0.5 s and the pool (and the 15% of spawns drawn from it) became that one
+  dead end. Evals 92.3-98.2 (no gain), crawl share of training episodes 20-30% -> 52-57%.
+* This is the same energy gate from the other side: the policy CAN reach the east slope (round 5's route),
+  it arrives too slow. Fix to the rule (commit pending): `--respawn-front-advance A` - a capture also needs
+  the episode to have advanced >= A x d0 (default 0.0015 = 150 u) over the window: arrivals, not crawls.
