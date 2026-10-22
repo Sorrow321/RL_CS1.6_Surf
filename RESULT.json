@@ -2,6 +2,24 @@
  "agent": "r5b2",
  "round": 5,
  "final": false,
- "best": null,
- "summary": "Round 5 start (01:11 UTC): no box yet (market above the caps; rent retry loop every 3 min). Plan: bare-resume the incumbent (94.668, CP6, r4b3_band15x 15.03B) with evals every 12.5M; the last 5.3% = a slot over kill plate *28 (z 2,102-2,380) then a 160 u hole through two kill plates down a shaft to the finish. Training already finishes at 0.4-1.4% from near-goal spawns."
+ "best": {
+  "score": 94.932,
+  "eval_file": "/home/steam/ar/runs/r5b2/r5b2_x1/traj_15045492736.jsonl",
+  "run": "r5b2_x1",
+  "step": 15045492736,
+  "ckpt": null,
+  "recipe": [
+   "--record-every",
+   "12.5e6",
+   "--ckpt-every",
+   "1e8"
+  ],
+  "resume_from": "incumbent r4b3_band15x/ckpt_final.pt (15,032,385,536, md5 cb1dbce4...) bare resume",
+  "commit": "677b3dd",
+  "best_progress_pct": 94.93,
+  "median_progress_pct": 88.04,
+  "finishes": 0,
+  "max_cp": 6
+ },
+ "summary": "Round 5 (r5b2): box 57141550 (RTX 4080 + 7950X, $0.251/h) since 01:50 UTC; r5b2_x1 = bare resume of the incumbent (r4b3_band15x 15.03B, every flag restored), evals every 12.5M. 15,045M: 94.932 (best episode gets above kill plate *28 at 1,080 u/s, too low, dies on it). Gate: the climb from the middle room into the slot over *28. Next if it stalls: --respawn-speed 1.0 1.5."
 }
