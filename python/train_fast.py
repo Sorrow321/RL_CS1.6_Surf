@@ -109,6 +109,7 @@ from surfgym.core import STATE_DTYPE
 from surfgym.dipmeter import DIP_KEYS
 from surfgym.goalfield import build_goal_field
 from surfgym.greedy_spawn import GreedyLinePool, as_truncated
+from surfgym.frontier_rows import FrontierRowPool
 from surfgym.mapfleet import HeldoutSlot, MapFleet, MapSlot
 from surfgym.obsaux import ACT_FEAT, CMP_FEAT, ObsAux, PotRate, make_pot_rate_feed
 from surfgym.surfflag import SurfFlag, g_step_of, make_surf_feed
@@ -6784,6 +6785,21 @@ def main() -> None:
                     metavar=("LO", "HI"),
                     help="--respawn-greedy: keep the states from HI down to LO seconds before "
                          "each failed greedy episode's last tick (default 0.5 5.0)")
+    ap.add_argument("--respawn-front", type=float, default=None,      # 0 = off
+                    help="share of the NON-start spawn pool replaced each iteration by states "
+                         "from the approach to the deepest places REAL training episodes reach: "
+                         "the --respawn-front-window seconds before each new episode record that "
+                         "lies within --respawn-front-band x d0 of the ceiling, kept even when the "
+                         "episode dies right after (the reservoir's margin drops those). "
+                         "Single-map, needs the reservoir (surfgym/frontier_rows.py). 0 = off; "
+                         "ckpt restores")
+    ap.add_argument("--respawn-front-band", type=float, default=None,
+                    help="--respawn-front: a record qualifies within B x d0 of the ceiling (the "
+                         "deepest d a real episode reached) (default 0.003)")
+    ap.add_argument("--respawn-front-window", type=float, nargs=2, default=None,
+                    metavar=("LO", "HI"),
+                    help="--respawn-front: keep the states from HI down to LO seconds before each "
+                         "qualifying record (default 0 2)")
     ap.add_argument("--respawn-greedy-speed", type=float, nargs=2, default=None,
                     metavar=("LO", "HI"),
                     help="--respawn-greedy: scale each greedy-line row's velocity by U(LO, HI), "
@@ -7767,6 +7783,15 @@ def main() -> None:
                 and ck_cfg.get("respawn_greedy_speed") is not None):
             args.respawn_greedy_speed = [float(v) for v in ck_cfg["respawn_greedy_speed"]]
             restored.append("respawn_greedy_speed={:g}-{:g}".format(*args.respawn_greedy_speed))
+        # --respawn-front: a spawn DISTRIBUTION, restored like the greedy rows
+        if args.respawn_front is None and ck_cfg.get("respawn_front") is not None:
+            args.respawn_front = float(ck_cfg["respawn_front"])
+            restored.append(f"respawn_front={args.respawn_front:g}")
+        if args.respawn_front_band is None and ck_cfg.get("respawn_front_band") is not None:
+            args.respawn_front_band = float(ck_cfg["respawn_front_band"])
+        if (args.respawn_front_window is None
+                and ck_cfg.get("respawn_front_window") is not None):
+            args.respawn_front_window = [float(v) for v in ck_cfg["respawn_front_window"]]
         # --respawn-backward: a spawn DISTRIBUTION, restored like the frontier
         if args.respawn_backward is None and ck_cfg.get("respawn_backward"):
             args.respawn_backward = True
@@ -8715,6 +8740,12 @@ def main() -> None:
     if int(args.respawn_greedy_stuck) and not float(args.respawn_greedy or 0.0) > 0.0:
         raise SystemExit("--respawn-greedy-stuck adds to --respawn-greedy's pool: it needs "
                          "--respawn-greedy F > 0")
+    if args.respawn_front is None:
+        args.respawn_front = 0.0
+    if args.respawn_front_band is None:
+        args.respawn_front_band = 0.003
+    if args.respawn_front_window is None:
+        args.respawn_front_window = [0.0, 2.0]
     if args.respawn_greedy_speed is None:
         args.respawn_greedy_speed = [1.0, 1.0]
     if (tuple(float(v) for v in args.respawn_greedy_speed) != (1.0, 1.0)
@@ -11291,6 +11322,40 @@ def main() -> None:
                  f"(best-progress tick -> end)" if GREEDY.stuck else "")
               + ("; velocity x U({:g}, {:g}) per row".format(*GREEDY.speed)
                  if GREEDY.speed_rng is not None else ""))
+    # --respawn-front: the approach to the deepest places real training episodes reach
+    # (surfgym/frontier_rows.py), captured every decision in the rollout
+    FROWS = None
+    if float(args.respawn_front) != 0.0:
+        if respawn is None or args.respawn_frac <= 0.0:
+            raise SystemExit("--respawn-front needs the reservoir (--respawn-frac > 0): its "
+                             "rows replace the reservoir share of the pool")
+        for _bad, _why in ((MULTI, "--maps"),
+                           (D.enabled, "DDP"),
+                           (args.respawn_random, "--respawn-random"),
+                           (args.respawn_backward, "--respawn-backward"),
+                           (demo is not None, "--demo-file"),
+                           (bool(args.goals), "--goals")):
+            if _bad:
+                raise SystemExit(f"--respawn-front is not wired with {_why}")
+        _fs = slots[0]
+        _ffld = _fs.reward_field if _fs.reward_field is not None else _fs.goal_field
+        if _ffld is None or not float(_fs.rf_d0 or 0.0) > 0.0:
+            raise SystemExit("--respawn-front needs the shaping field and its start distance")
+        try:
+            FROWS = FrontierRowPool(N, float(args.respawn_front),
+                                    float(args.respawn_front_band), float(_fs.rf_d0),
+                                    tick_ms=float(_fs.core.tick_ms),
+                                    every=int(args.act_every),
+                                    window=tuple(args.respawn_front_window),
+                                    seed=int(args.seed) + 7717)
+        except ValueError as _e:
+            raise SystemExit(str(_e))
+        FROWS_FIELD = _ffld
+        print(f"respawn FRONT: {FROWS.frac:.0%} of the non-start pool = the policy's own states "
+              f"from {FROWS.hi:g} to {FROWS.lo:g} s before each new episode record within "
+              f"{FROWS.band:g} x d0 = {FROWS.band * FROWS.d0:,.0f} u of the ceiling (real "
+              f"episodes only; kept even when the episode dies right after; clocks zeroed; "
+              f"real episodes, harvested)")
     if args.respawn_backward:
         for _i, slot in enumerate(slots):
             _fld = (slot.reward_field if slot.reward_field is not None
@@ -13998,6 +14063,11 @@ def main() -> None:
             meta["config"]["respawn_greedy_stuck"] = int(GREEDY.stuck)
         if GREEDY.speed_rng is not None:
             meta["config"]["respawn_greedy_speed"] = [float(v) for v in GREEDY.speed]
+    # --respawn-front: written ONLY when on, like the greedy pool above
+    if FROWS is not None:
+        meta["config"]["respawn_front"] = float(FROWS.frac)
+        meta["config"]["respawn_front_band"] = float(FROWS.band)
+        meta["config"]["respawn_front_window"] = [float(FROWS.lo), float(FROWS.hi)]
     # --eval-patience: written ONLY when on, like the greedy pool above
     if EVAL_PATIENCE:
         meta["config"]["eval_patience"] = float(args.eval_patience)
@@ -15942,6 +16012,9 @@ def main() -> None:
     if GREEDY is not None and args.ckpt and ck.get("respawn_greedy") is not None:
         if GREEDY.load_state_dict(ck["respawn_greedy"]):
             print(f"restored --respawn-greedy state: {GREEDY.line()}")
+    if FROWS is not None and args.ckpt and ck.get("respawn_front") is not None:
+        if FROWS.load_state_dict(ck["respawn_front"]):
+            print(f"restored --respawn-front state: {FROWS.line()}")
     if BACKWARD and args.ckpt and ck.get("respawn_backward") is not None:
         _rb = ck["respawn_backward"]
         for _s in slots:
@@ -16021,6 +16094,9 @@ def main() -> None:
         if GREEDY is not None:
             # --respawn-greedy: the last eval's greedy-line states (rebuilt at the next eval)
             state["respawn_greedy"] = GREEDY.state_dict()
+        if FROWS is not None:
+            # --respawn-front: the frontier approach states (a FIFO; a resume keeps them)
+            state["respawn_front"] = FROWS.state_dict()
         if RETN:
             # the running (mu, sigma) IS part of the value function under
             # --ret-norm: without it the restored critic's outputs have no
@@ -17174,6 +17250,11 @@ def main() -> None:
                             int(round((len(_rp) - _nf)
                                       * args.respawn_novel_frac)),
                             _s.respawn)
+                    if FROWS is not None:
+                        # --respawn-front: the block right before the greedy tail
+                        _nff = max(1, int(round(len(_rp) * (1.0 - args.respawn_frac))))
+                        _rp = FROWS.mix(_rp, _nff, (int(round((len(_rp) - _nff) * GREEDY.frac))
+                                                    if GREEDY is not None else 0))
                     if GREEDY is not None:
                         # --respawn-greedy: the TAIL of the non-start rows, so the
                         # map-start rows and the novel rows after them are kept
@@ -17884,6 +17965,16 @@ def main() -> None:
                             for _s in slots:
                                 _s.novel.note_spawns(_s.core.states_view,
                                                      ended[_s.sl])
+                        if FROWS is not None:
+                            # --respawn-front: the decision-cadence ring of every env, and a
+                            # real episode's new record near the ceiling keeps its approach.
+                            # AFTER the novel tags: an ended env's row is its next episode
+                            _fs0 = slots[0]
+                            FROWS.observe(
+                                _fs0.core.states_view, FROWS_FIELD.sample,
+                                (~_fs0.novel.novel_env) if NOVEL else np.ones(N, bool),
+                                ended,
+                                ceiling=(_fs0.novel.d_best if NOVEL else None))
                         if goalsys is not None and ended.any():
                             goalsys.assign(np.flatnonzero(ended))
                         if track_bins and ended.any():
@@ -19907,7 +19998,9 @@ def main() -> None:
               f"fps {fps:,.0f}  kl {kl:.4f}  ent {ent_coef:.4f}"
               f"{hyg_note}{race_note}{front_note}{back_note}{gate_note}"
               f"{unstuck_note}{cc_note}{crl_note}{imatch_note}{novel_note}"
-              + (f"  greedy {GREEDY.size:,}x{GREEDY.mixed}" if GREEDY is not None else ""))
+              + (f"  greedy {GREEDY.size:,}x{GREEDY.mixed}" if GREEDY is not None else "")
+              + (f"  front {FROWS.size:,}x{FROWS.mixed} ({FROWS.captured:,} cap)"
+                 if FROWS is not None else ""))
         tm.flush(it_no)
         if D.enabled:
             # C2 production asserts (docs/ddp-plan.md §5): cheap, exact,
