@@ -49,7 +49,7 @@ def as_truncated(summaries, idx) -> list:
 
 class GreedyLinePool:
     def __init__(self, frac: float, window=(0.5, 5.0), seed: int = 0, stuck: int = 0,
-                 speed=None):
+                 speed=None, speed_band: float = 0.0, d0: float = 0.0):
         frac = float(frac)
         if not 0.0 < frac < 1.0:
             raise ValueError(f"--respawn-greedy F needs 0 < F < 1, got {frac!r}")
@@ -83,6 +83,23 @@ class GreedyLinePool:
         else:
             self.speed = None
             self.speed_rng = None
+        # --respawn-greedy-speed-band B: scale only the rows within B x d0 (field distance) of
+        # the pool's DEEPEST row - the line's frontier failure, where its own speed never
+        # succeeds - and replay every other failure exactly. A failure the line passes in other
+        # episodes needs the DAgger correction at the speed the line really flies; scaled there,
+        # the rows train the policy on states it never reaches (sidistic r5: with every row
+        # scaled the share of greedy episodes stopping at an 86.6% climb grew from ~1/9 to
+        # ~6/9 while the frontier sat at 98.1%). The factors are still drawn for every row (the
+        # generator's state does not depend on B); rows outside the band keep factor 1.
+        # 0 = every row, as --respawn-greedy-speed alone
+        self.speed_band = float(speed_band)
+        self.d0 = float(d0)
+        if self.speed_band < 0.0:
+            raise ValueError(f"--respawn-greedy-speed-band B needs B >= 0, got {speed_band!r}")
+        if self.speed_band > 0.0 and (self.speed is None or not self.d0 > 0.0):
+            raise ValueError("--respawn-greedy-speed-band needs --respawn-greedy-speed and the "
+                             "map's start distance d0")
+        self.row_d = None
         self.rows = np.zeros(0, STATE_DTYPE)
         self.info = {"eps": 0, "fail": 0, "deaths_s": []}
         self.mixed = 0
@@ -185,6 +202,11 @@ class GreedyLinePool:
         else:
             rows = np.zeros(0, STATE_DTYPE)
         self.rows = rows
+        # --respawn-greedy-speed-band: each row's field distance, for the band at mix time
+        self.row_d = None
+        if self.speed_band > 0.0 and d_fn is not None and len(rows):
+            rd = np.asarray(d_fn(np.asarray(rows["origin"], np.float64)), np.float64)
+            self.row_d = np.where(np.isfinite(rd), rd, np.inf)
         self.info = {"eps": len(eps), "fail": n_used, "deaths_s": deaths, "stops_s": stops}
         return dict(self.info, rows=self.size)
 
@@ -198,10 +220,20 @@ class GreedyLinePool:
             self.mixed = 0
             return pool
         out = np.array(pool, dtype=STATE_DTYPE, copy=True)
-        out[len(out) - n:] = self.rows[self.rng.integers(0, self.size, n)]
+        idx = self.rng.integers(0, self.size, n)
+        out[len(out) - n:] = self.rows[idx]
         if self.speed is not None:
             # --respawn-greedy-speed: the velocity of the mixed-in rows only, one scale per row
             k = self.speed_rng.uniform(self.speed[0], self.speed[1], n).astype(np.float32)
+            if self.speed_band > 0.0:
+                # --respawn-greedy-speed-band: the frontier rows only (no distances yet, e.g.
+                # a resume before its first eval: none)
+                rd = self.row_d
+                if rd is None or len(rd) != self.size or not np.isfinite(rd).any():
+                    k[:] = 1.0
+                else:
+                    deep = rd[idx] <= float(np.min(rd)) + self.speed_band * self.d0
+                    k = np.where(deep, k, np.float32(1.0)).astype(np.float32)
             out["velocity"][len(out) - n:] *= k[:, None]
         self.mixed = n
         return out
@@ -215,11 +247,16 @@ class GreedyLinePool:
                         ", ".join(f"{v:.1f}" for v in d) if d else "-", self.hi, self.lo,
                         ", ".join(f"{v:.1f}" for v in b) if b else "-", self.frac)
                 + (" at x{:g}..{:g} speed".format(*self.speed) if self.speed is not None
-                   else ""))
+                   else "")
+                + (" (rows within {:g} d0 of the deepest)".format(self.speed_band)
+                   if self.speed_band > 0.0 else ""))
 
     # -- persistence ---------------------------------------------------------
     def state_dict(self) -> dict:
-        return {"rows": self.rows.copy(), "info": dict(self.info)}
+        st = {"rows": self.rows.copy(), "info": dict(self.info)}
+        if self.row_d is not None:
+            st["row_d"] = self.row_d.copy()
+        return st
 
     def load_state_dict(self, st) -> bool:
         rows = st.get("rows") if isinstance(st, dict) else None
@@ -227,4 +264,8 @@ class GreedyLinePool:
             return False
         self.rows = np.array(rows, dtype=STATE_DTYPE, copy=True)
         self.info = dict(st.get("info") or self.info)
+        rd = st.get("row_d")
+        self.row_d = (np.array(rd, np.float64, copy=True)
+                      if self.speed_band > 0.0 and rd is not None and len(rd) == len(self.rows)
+                      else None)
         return True
