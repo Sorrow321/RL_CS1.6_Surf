@@ -2086,3 +2086,13 @@ safety classifier; simulator probes from the policy's own states answered the sa
   **Harness issue:** box.py's readiness-failure path calls `vast_pick.py --block <instance>`, which
   exits when the instance is not listed - the machine stays rentable and the next attempt picks it
   again; box.py could record the offer's machine_id / host_id itself.
+
+### 02:40 UTC: the arm's premise, measured (analysis only, CPU)
+
+* From the checkpoint's OWN greedy-pool states >= 92% (396 rows: the 2 s before the greedy deaths,
+  mostly in the turnaround room x -1,700..-1,300, z 2,200-2,940) with velocity x1.5, sampled at the
+  training temperature (keys 1.15), 12 x 8 s: **3/12 enter the slot** (94.88-95.10%, at x 426-435,
+  z 2,099-2,176) and land on the block's kill top; 7/12 die within 1.4 s (boosted into walls or kill
+  volumes); none crosses the wall. Unboosted states: 0/12 into the slot (02:15 entry). So the speed
+  rows create the slot experience training lacks; flying OVER the wall is what training must learn
+  from it.
