@@ -2,6 +2,25 @@
  "agent": "r6b1",
  "round": 6,
  "final": false,
- "best": null,
- "summary": "Round 6 start. Analysis (WR demo, analysis only): the finish route is a launch off a basement ramp at ~1,500 u/s low on the return leg -> vz ~+1,000 -> up through a basement hole -> air-strafe to the funnel. Bench: the incumbent FINISHES 4/6 from in-hole rising states but 0/7 greedy, 0/21 stochastic from the launch states (it flies west into the passage), 0/64 with random held yaw nudges from its own basement states. New --steer-eps (frontier steer bursts: a held yaw offset on the policy's own command). Running: r6b1_ctl (bare resume, control)."
+ "best": {
+  "score": 98.27,
+  "eval_file": "/home/steam/ar/runs/r6b1/r6b1_steer/traj_17432051712.jsonl",
+  "run": "r6b1_steer",
+  "step": 17432051712,
+  "ckpt": null,
+  "recipe": [
+   "--steer-eps",
+   "0.03",
+   "--steer-front",
+   "0.015",
+   "--steer-dy",
+   "90",
+   "--steer-hold",
+   "3",
+   "15"
+  ],
+  "resume_from": "incumbent r5b4_ncy/ckpt_latest.pt (17,418,944,512)",
+  "commit": "7257b22"
+ },
+ "summary": "Round 6. WR demo (analysis only): the finish is a launch off the basement's west wall at ~1,500 u/s low on the return leg -> vz ~+1,000 -> up a hole -> crest at z 1,600 -> funnel. Bench: incumbent finishes 4/6 from in-hole states, 0/28 from launch states. CEM over steer schedules from the policy's own basement-entry states: 98.53% (score field) via a low-energy pop-up into the room, 0 finishes. r6b1_steer (--steer-eps frontier steer bursts, NEW): 25M steps, best 98.270. Now r6b1_sp5: + --speed-pot 5 (charge speed lost, pay speed gained; the policy's U-turn trades speed for height)."
 }

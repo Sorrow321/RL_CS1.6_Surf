@@ -2515,3 +2515,25 @@ basement and only near the funnel wall in shape).
 * So committed steering of the policy's own line does reach the room (above the incumbent's 98.349 on the score's
   field) - but the cheap way, not the finish. Run 2 (queued): the NO-CORNER-CUT field as the objective (no leak), 1,024
   envs, 40 iterations, 20 x 0.24 s, 8 s rollouts.
+* Run 2 (NO-CORNER-CUT field objective, 1,024 envs, 40 iterations, 20 x 0.24 s, 8 s): root ep5 best d 1,733 (nocut),
+  root ep7 1,857; 0 finishes - steering alone from the entry does not even match training's ceiling (d 1,414 nocut).
+  Run 3 (measurement-only roots = the human's return-leg / launch states) was killed unrun: **a CEM beside the trainer
+  starved its evals** (one eval took 4.7 min instead of ~1.5); never run the two together.
+* `pgrep -f '<pattern>'` inside a `ssh host "..."` command matches the remote shell running it (its command line
+  holds the pattern) and kills the session - the CLAUDE.md pkill warning holds for any `-f` match. Kill by listed PID.
+
+### r6b1_steer stopped at 17,444M (25M steps); r6b1_sp5 (15:23 UTC) = incumbent + `--speed-pot 5` + the same steer bursts
+
+* r6b1_steer evals (score.py): 97.949 (the checkpoint itself), 98.119, **98.270**, 98.246 (medians 77-98%). Too few
+  steps to judge the bursts (eval cadence below), but the CEM says steering alone finds only the low-energy pop-up.
+* **Evals ate ~75% of the box**: each eval (9 greedy episodes side by side, ~120 s of game to the basement + the 30 s
+  patience window) took ~70 s, i.e. one eval per ~95 s of wall time at --record-every 6.25e6 -> ~66k steps/s of
+  training. r6b1_sp5 runs --record-every 12.5e6.
+* **Why --speed-pot** (existing flag, ledger 2026-10-04: skate_laby 79.70 -> 75.96 s warm): Phi = K |v_xy| / 1000 paid
+  as its change per call, telescoping (credit moves in time, the best run is unchanged). It charges exactly the
+  policy's basement mistake - the U-turn that trades ~175 u/s for 250 u of height, a return leg too slow and too high
+  for the launch wall - and the energy-wasting pop-up bounce. K = 5 (skate_laby used 10; here the basement's remaining
+  progress is ~1.9 reward units and the success bonus 50). `--critic-warmup 20` (a new reward term on a warm critic, as
+  round 3 did for time-pen 0). Steer bursts kept (cheap: 2-4% of rows dropped) to explore line variations the speed
+  term can then select.
+* Box 57226380 extended to 21:24 UTC.
