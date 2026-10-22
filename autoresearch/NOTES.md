@@ -2098,3 +2098,17 @@ safety classifier; simulator probes from the policy's own states answered the sa
 * Most other greedy episodes now die at the slit's west side (x 330-480, z 2,089-2,107: too low, kill floor
   *28), and 2-3 per eval earlier (86.8% at (-1,700, -200, 3,750), 72-73% at x ~-11,100..-11,550, 59.9%,
   3.8% at the first ramp).
+
+### 02:21 UTC: 96.628 (median 96.0%): through the hole; the next stop is the room below
+
+* Evals 15,108-15,171M: 95.168, 95.156, 95.196, 95.069, **96.628 (15,158M, median 96.0%: 7/9 past the hole)**,
+  96.454. Training ceiling 94,885 u (97.05%), unstuck best 94,471 u, T 0.06, training win 0-0.44%.
+* The 96.63% episode (15,158M ep 5): down the hole at x ~1,170-1,210, |y| < 100 (z 1,780 -> 1,575 at
+  110.4-110.9 s), out of the hollow block below (func_wall *158) to the EAST at (1,317, 172, 1,471), v (483,
+  1, -756), then straight down to z -164 (112.4 s). Six of the others die at ~110 s at (1,283-1,446,
+  |y| 140-320, z 1,814-1,833) on kill *10 beside the hole.
+* What follows (killprobe slices, field route): east through the room below (ceiling z ~1,580-1,612), past
+  a thin func_wall *159 at x 1,640-1,656 (|y| <= 448, z 1,328-1,584, on the CP7 curtain) by its SIDE
+  (the field route passes at y ~-464), over kill *50 (z ~1,312, x 1,632-2,432), then the finish shaft at
+  x ~2,896. Leaving the hole at ~470 u/s east is too slow: the agent drops below z ~1,348 within ~140 u.
+* Snapshot ckpt_15132524544.pt (md5 0b91d40f...) copied to runs/r5b3/r5b3_main/ as insurance (scp 10 s).
