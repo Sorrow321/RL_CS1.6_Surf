@@ -2378,3 +2378,61 @@ pattern that is in your own command line.
   (16,186,867,712), r5b4_main/ckpt_15232663552.pt.
 * Code: commit 686f2ed (--pitch-sigma-min, --race-no-corner-cut, record_ckpt mirrors) is the last code change; later
   commits are notes. Box 57138676 released at wrap-up.
+
+## Round 6, branch r6b4 - 2026-10-22 14:05 UTC
+
+### Box
+
+* 13:41-14:05 UTC: no single-GPU offer passes box.py (cheapest 4090 $0.72 vs cap 0.45, 5090 $0.87 vs
+  0.60, 3090 $1.33; the one 5080 under its cap, machine 150677 at $0.40, is blocklisted for a foreign
+  tenant). A background `box.py rent` retry loop (every 3 min, scratchpad work/rent_loop.sh) runs.
+
+### The human's finish, from the WR demo (47250; ANALYSIS ONLY - CLAUDE.md section 0)
+
+Parsed with tools/demo/parse_hldemo.py (a local copy of the public file; nothing from it enters a run).
+Demo seconds (the timer starts ~2 s in); positions are hull centres like SurfState.origin.
+
+| t (s) | position | velocity | what |
+|---|---|---|---|
+| 112.50 | (2,544, -393, 969) | (957, -590, -922) | down the passage into the basement |
+| 113.00 | (3,218, -586, 764) | (1,537, -76, -81) | basement, east, LOW |
+| 113.50-114.25 | (3,923, -394, 883) -> (4,044, -59, 912) -> (3,694, 550, 818) | \|v_h\| 1,470-1,495 | a WIDE, LOW U-turn at the east end |
+| 114.50-114.75 | (3,315, 588, 763) -> (2,931, 570, 781) | (-1,543, 43, -45) | west on the +y OUTER lane, z ~765, 1,545 u/s, strafe-left held |
+| 114.65-114.99 | (3,066, 583, 767) -> (2,709, 407, 954) | -> (-206, -955, +1,011) | a curved KICK RAMP: the velocity rotates west -> south and up in 0.35 s |
+| 115.02-115.39 | (2,700, 372, 992) -> (2,590, 554, 1,300) | -> (553, 731, 700) | slides round a curved surface (dv 50-120 per 7.6 ms frame, beyond air-accel), turning NORTH into the +y hole, rising |
+| 115.50-116.25 | (2,676, 594, 1,370) -> (2,958, 53, 1,603) | | across the room east then south, over the funnel rim (z 1,575 at 116.0) |
+| 116.50-118.25 | (2,959, -49, 1,581) -> (2,932, 72, 24) | \|v_h\| ~70 | stops dead over the funnel and falls down the shaft; finish |
+
+The incumbent's greedy line (traj_16903045120, eps 1-2), same stretch: east leg at 1,420-1,460 u/s
+(human 1,538), then turns ~360 u EARLIER (x 3,655-3,728 vs 4,044) and CLIMBS a surface to z 1,136-1,146
+(human 883-912) losing ~300 u/s; west leg INSIDE (y 350-540 vs 570-590) and HIGHER (z 880-1,016 at
+x ~2,800 vs ~780) at 1,200-1,300 u/s; it misses the kick ramp, gets its kick at x ~2,130-2,500 (past
+the hole) and rises into the passage instead (z <= 1,241 at x ~2,400). So the gap is energy and line:
+a wide, low east-end turn that keeps ~1,500 u/s, the outer-low west lane onto the kick ramp, then the
+in-room turn to the funnel and the stop.
+
+### The greedy-line pool is mostly basement hovering (measured on the incumbent checkpoint)
+
+* ck["respawn_greedy"]: 3,847 rows from 9 failed episodes (best-progress stops at 114.8, 115.1, 115.4,
+  115.7, 123.7, 136.7, 139.8 s; two early failures at 25.2 / 53.0 s). 49% lie in the basement, but
+  their MEDIAN horizontal speed is 63 u/s: they are `--respawn-greedy-stuck 200`'s stalled stretches
+  (greedy episodes hovering on basement ledges for the 30 s until --eval-patience cuts them). Moving
+  basement rows: east leg 6%, west leg 7% (|v_h| median 966, p90 1,395), U-turn 3%.
+
+### NEW `--respawn-greedy-speed LO HI` (default off)
+
+* Each greedy-line spawn row's velocity x U(LO, HI) when it is mixed into the pool - what
+  `--respawn-speed` does to the RESERVOIR rows. The greedy rows are mixed in after the reservoir's
+  build_pool, so round 5's rs15 (`--respawn-speed 1.0 1.5`, ~1.66B steps, null) never boosted them:
+  it boosted reservoir rows spread over the whole map (a few % of them in the basement).
+* Own RNG (seed + 7): the rows drawn are exactly the rows drawn without the flag. Config key only
+  when on; restored on resume; refused without --respawn-greedy; TRAIN_ONLY in record_ckpt.
+  Tests: tests/python/test_respawn_greedy_speed.py (pool: same rows, velocity scaled in [LO, HI]
+  per row, direction kept, off = no draw; bad ranges refused; trainer wiring + bare-resume restore +
+  refusal; flag-off bit-identity vs the trainer before the change).
+* Generic: one range, no map quantity; the policy's own states.
+* Planned arm 1 (warm, at the wall): incumbent + `--respawn-greedy-speed 1.0 1.5
+  --respawn-greedy-stuck 0` (the stalled stretches are at rest, a boost does nothing to them, and
+  dropping them roughly doubles the share of moving approach states in the pool). Two knobs: the
+  attribution is to the pair. Control = round 5's own continuations of this lineage at T 0.2
+  (~2B steps: evals 98.2-98.35, novel ceiling flat).

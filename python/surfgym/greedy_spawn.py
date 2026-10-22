@@ -48,7 +48,8 @@ def as_truncated(summaries, idx) -> list:
 
 
 class GreedyLinePool:
-    def __init__(self, frac: float, window=(0.5, 5.0), seed: int = 0, stuck: int = 0):
+    def __init__(self, frac: float, window=(0.5, 5.0), seed: int = 0, stuck: int = 0,
+                 speed=None):
         frac = float(frac)
         if not 0.0 < frac < 1.0:
             raise ValueError(f"--respawn-greedy F needs 0 < F < 1, got {frac!r}")
@@ -57,6 +58,12 @@ class GreedyLinePool:
             raise ValueError(f"--respawn-greedy-window LO HI needs 0 <= LO < HI, got {lo!r} {hi!r}")
         if int(stuck) < 0:
             raise ValueError(f"--respawn-greedy-stuck N needs N >= 0, got {stuck!r}")
+        if speed is not None:
+            s_lo, s_hi = (float(v) for v in speed)
+            if not 0.0 < s_lo <= s_hi:
+                raise ValueError("--respawn-greedy-speed LO HI needs 0 < LO <= HI, got "
+                                 f"{s_lo!r} {s_hi!r}")
+            speed = (s_lo, s_hi)
         self.frac = frac
         self.lo, self.hi = lo, hi
         # --respawn-greedy-stuck N: also N evenly spaced states of each episode's STALLED
@@ -64,6 +71,11 @@ class GreedyLinePool:
         # stops gaining. 0 = off: the pool is the two anchors' windows, as before
         self.stuck = int(stuck)
         self.rng = np.random.default_rng(int(seed))
+        # --respawn-greedy-speed LO HI: each mixed-in row's velocity x U(LO, HI), what
+        # --respawn-speed does to the reservoir rows. Its own RNG, so the rows drawn are exactly
+        # the rows the pool draws without it; None = off (no draw at all)
+        self.speed = speed
+        self.srng = None if speed is None else np.random.default_rng(int(seed) + 7)
         self.rows = np.zeros(0, STATE_DTYPE)
         self.info = {"eps": 0, "fail": 0, "deaths_s": []}
         self.mixed = 0
@@ -180,6 +192,11 @@ class GreedyLinePool:
             return pool
         out = np.array(pool, dtype=STATE_DTYPE, copy=True)
         out[len(out) - n:] = self.rows[self.rng.integers(0, self.size, n)]
+        if self.speed is not None:
+            # make-it speed on the line itself: a speed-gated move the policy cannot yet carry
+            # into is practised from its own states, and their value pulls the line upstream
+            scale = self.srng.uniform(self.speed[0], self.speed[1], n).astype(np.float32)
+            out["velocity"][len(out) - n:] *= scale[:, None]
         self.mixed = n
         return out
 
@@ -190,7 +207,9 @@ class GreedyLinePool:
                 "{:.0%} of the non-start pool"
                 .format(self.size, self.info["fail"], self.info["eps"],
                         ", ".join(f"{v:.1f}" for v in d) if d else "-", self.hi, self.lo,
-                        ", ".join(f"{v:.1f}" for v in b) if b else "-", self.frac))
+                        ", ".join(f"{v:.1f}" for v in b) if b else "-", self.frac)
+                + ("" if self.speed is None
+                   else ", velocity x U({:g}, {:g})".format(*self.speed)))
 
     # -- persistence ---------------------------------------------------------
     def state_dict(self) -> dict:
