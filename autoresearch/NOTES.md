@@ -2006,3 +2006,56 @@ safety classifier; simulator probes from the policy's own states answered the sa
 * Code: the best lineage ran at commit 3ea2710 (--eval-patience, --eval-parallel, --front-temp,
   --respawn-greedy-stuck; flag-off bit-identical to the round's start); later commits are notes and config.
 * Box 57057785 released at 00:01 UTC (`box.py status`: no box).
+
+## Round 5, branch r5b1 - 2026-10-22 01:18 UTC
+
+### Where the incumbent stands (analysis only, local CPU)
+
+* Incumbent eval traj_14991491072 (score 94.668): per episode best progress 34.4, 60.6 (x4), 1.6 (stuck
+  at the start ramp for 59 s, then cut by patience), 91.7, **94.7** (the best: dies at 110.2 s on the kill
+  floor *39 at (22, -698, 1,689) after peaking at (123, -607, 2,018) at 109.7 s). Median 60.6%.
+* The checkpoint's own training state: reservoir deepest 94.54% (20k states; 17 in 94-95%, none past 95%);
+  novel ceiling d_best 4,716 u = **95.18%**; greedy pool max 93.1%. One training episode finished at 14.98B
+  (race/success_rate 0.0039, finish_s 4.34: a spawn near the end, not a run from the start).
+* The field route from the 94.7% point to the finish (steepest descent on goal_32): climb east to
+  (496, -272, 2,312) - a ~150-200 u slot between the top of a block (x ~224-1,100, top z ~2,100-2,150)
+  and a ceiling (z ~2,300-2,350) - then down around func_walls *157 / *158 (x 1,016-1,264) to a tunnel at
+  z ~1,300-1,550, east through CP7 (sgcp_7 *139, x 1,632-1,648; func_wall *159 blocks |y| < 448 there),
+  on to a funnel at x ~2,750-3,100 (y ~0, z ~1,250-1,550) and down a vertical shaft (x ~2,880-2,940) to the
+  finish box (zones end, x 2,872-3,048, |y| < 88, z 176-184). Kill plates along it (AABBs): *28 z 2,065,
+  *52 z 2,418, *10 z 1,793, *40 z 1,985, *59 z 1,425, *50 z 1,313 (tunnel floor past CP7), *61 z 1,201,
+  *3 z 656-672. The 95.18% ceiling (d 4,716) lies inside the slot: some training episode got there.
+* The frontier floor (x -1,840..224 at z ~1,664) carries kill *39 on its surface: landing = death.
+* Policy probe (record_ckpt --spawn-states, the checkpoint's own 43 reservoir states >= 93%, greedy x6,
+  15 s): best 94.66%; 4/6 fall onto *39 within 1-11 s, 2/6 hover alive at |y| ~800-850, z ~1,970-2,040.
+* The 94.7% episode loses speed before the block: |vh| ~1,450 at 103.5-104 s (west at z ~2,600), a
+  turnaround at x ~-1,240, then 500-950 u/s, and 600 u/s on the last climb (z 1,721 -> 2,105 at
+  108-109.25 s); it peaks ~50-100 u below what clearing the block's top edge needs. A speed / height
+  gate of the "hidden skill" kind (CLAUDE.md 0b), passed now and then by stochastic training episodes.
+
+### 01:42 UTC: the gate at 95.2% is a WALL in the slot, threaded at speed (analysis only)
+
+* Hull traces: the slot over the block (open x ~-90..1,450 at z ~2,100-2,330, |y| < ~700) is cut by a
+  full-width wall at x 496-~530 whose top (z ~2,278) carries the no_jump kill strip *41 (z 2,272-2,280);
+  the ceiling's underside is at z ~2,388. Free origin window over the wall: standing z 2,316-2,344
+  (28 u above the kill), ducked z 2,298-2,360 (62 u). The block top under the slot is kill-surfaced too
+  (*28: an episode landing on it at (468, -737, 2,086) died).
+* Speed probe (record_ckpt --spawn-states, the 43 reservoir states >= 93% with their velocity scaled,
+  greedy x6 each): x1.0 best 94.66%; x1.3 best 94.94% (one episode into the slot, x 461, z 2,138, then
+  lands on the block's kill top); x1.6 best **95.20%** (one episode climbs to (480, -278, 2,243) = the
+  training ceiling's depth, hits the wall's face and falls). The rest fall onto *39 or park alive at
+  |y| ~800, z ~1,976. So more speed gets it INTO the slot, and the slot itself is untrained.
+* WR demo 47250 (downloaded this round from speedrun.eu, parsed with tools/demo/parse_hldemo.py; ANALYSIS
+  ONLY, nothing from it enters a run): the human climbs a ramp on the +y side at 104.4-104.6 s (|vh|
+  1,550, vz +620..+920), enters the slot at (200, 446, 2,224) at 105.0 s heading east-south-east
+  (v (810, -1,032, 541)), touches the ceiling at z ~2,365 and slides over the wall at x 500 at 105.40 s,
+  then descends east. The incumbent's 94.7% episode climbs on the -y side at ~600 u/s and peaks at
+  z 2,105. Upstream, the human keeps 1,230-1,640 u/s through the turnaround room (x -1,700..-900,
+  z 2,000-2,900, 100.5-104 s) where the agent drops to 500-950 u/s. Speed is the missing skill.
+* The rest of the human's route (the next gates): after the wall it drops at x ~1,100-1,500 past the
+  tunnel level down to a BOWL at the bottom (z ~-175 at (333, -157) at 108.0 s; progress 96.6 -> 94.4%,
+  a 2.2% dip), swings up its west side (vz +1,409) to the +y side, east at z ~1,500, |y| 670-815 through
+  the side passage past CP7 (110-111 s), descends east to x ~3,200-3,950 (z ~760-890) past the finish
+  column, turns round on an east-end ramp at x ~3,950 (114 s; 98.0 -> 96.8%, another dip), climbs back
+  west to the funnel top (2,973, 289, 1,575) at 116 s, stops over the shaft and falls straight down to
+  the finish at ~118.2 s. Two more dip + ramp-turnaround gates after the wall.
