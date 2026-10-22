@@ -2703,3 +2703,17 @@ stochastic (keys temp 1.2 = training) x6 per set:
   remaining lever on the score is sampling the most stable line often (arm 4: 98.12-98.30 at CP7; the
   incumbent's 98.349 was one rare hole-edge rise in ~200 round-5 evals). A finishing path from the local
   Go-Explore search would still be swapped in as a spawn file.
+
+### 20:00 UTC: Go-Explore v4 (held macros up to 1.2 s) - saturated; the search verdict
+
+* v4 (40 min from v3's archive): 439k cells, no finish; its new fastest state (1,894 u/s) is a fall into the
+  pit under the chimney ((-134, -265, -273)); outer-lane west leg still <= 1,438 u/s; strongest kick still vz
+  +867 (apex ~1,360). Room max z 1,435 since v3.
+* Verdict after ~2.5 CPU-hours of planning (CEM + four Go-Explore runs, ~440k cells, all rooted at the
+  incumbent eval's own states from 1 s before to 1 s after the basement entry): the hole and the room are
+  reachable from the policy's own line (grader 98.55-98.70%), the finish is not - the search's best line is
+  ~15% short of the kick energy the rim needs, and neither earlier roots, an energy-biased selection nor
+  longer holds moved that ceiling. The human's line keeps its energy through the passage descent (vy toward
+  the OUTER side onto the floor slope: |v_h| 1,124 -> 1,538) and a flat U-turn (wishdir perpendicular); the
+  search never reproduced the first part from the policy's entry states, which already arrive steep and
+  inward (vy +260, vz -900). The energy may have to be set upstream of the passage.
