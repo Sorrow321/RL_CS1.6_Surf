@@ -2563,3 +2563,13 @@ Standing-hull solid tests (`core.trace(p, p, hull=0).startsolid`) and kill hulls
 * This is the same energy gate from the other side: the policy CAN reach the east slope (round 5's route),
   it arrives too slow. Fix to the rule (commit pending): `--respawn-front-advance A` - a capture also needs
   the episode to have advanced >= A x d0 (default 0.0015 = 150 u) over the window: arrivals, not crawls.
+
+### 15:47 UTC: r6b3_front stopped; r6b3_front2 = incumbent + `--respawn-front 0.15` with the advance gate (commit 5920b65)
+
+* (The previous heading's "15:40 UTC" was typed, not read from date: it was 15:32.)
+* r6b3_front final: 17,419M -> ~17,62xM, 22 evals, best 98.209, eval mean in the incumbent's band; no
+  finish, novel ceiling unchanged.
+* r6b3_front2 (box 57223179, 15:44): bare resume of the incumbent ckpt + `--respawn-front 0.15
+  --ckpt-every 1e8` (band 0.003 x d0 = 299 u, window 0-2 s, advance >= 0.0015 x d0 = 150 u over the
+  window - the new default). Captures now need an ARRIVAL at the deep room (d <= 1,714 u, the east slope's
+  top and above the rim) with >= 150 u of field progress in the 2 s before it.
