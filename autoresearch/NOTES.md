@@ -2052,3 +2052,29 @@ safety classifier; simulator probes from the policy's own states answered the sa
   0.5, greedy rows 0.3 / 0.25-2.0 s + stuck 200, band 0.15, ratchet, time-pen 0, patience 30,
   side-by-side evals), evals every 12.5M, snapshots every 1e8 - the lineage moved a gate every
   ~100-400M steps in round 4; it is also the control for anything later.
+
+### Harness issue (r5b2, 01:45 UTC): box.py priced offers without the real disk; the watchdog killed the box
+
+* The operator raised the 3090 / 3090 Ti / 4080 / 5080 caps to $0.65 during the night (config.json
+  in this worktree). box.py then rented box 57139438 (RTX 5080, NL, machine 152482) at the
+  offer's dph_total $0.636; the instance bills $0.676 because an offer's dph_total prices the
+  DEFAULT disk while the box gets config.disk_gb (60 GB at that host's storage_cost). The fleet
+  watchdog checks the INSTANCE price: "RTX_5080 at 0.676 $/h, above its 0.65 cap", second
+  sighting 01:30:16, destroyed ~40 s after READY, mid-deploy.
+* Branch-local fix in autoresearch/box.py offers(): price = dph_total - storage_total_cost
+  + disk_gb x storage_cost / 720, and require price x 1.02 <= cap. The operator's copy returns
+  next round; the same fix belongs there.
+* (Also re-learned: `pkill -f "box.py deploy ..."` killed my own shell - the pattern was in the
+  command line, CLAUDE.md's warning.)
+
+### Probe (local CPU, ANALYSIS ONLY): greedy from the policy's own deepest reservoir states
+
+* 24 reservoir states at 93.2-94.5% (the middle room's east end, x -1,170..200, |y| 536-800,
+  z 1,700-2,070, |v| 50-1,000 u/s), greedy, 12 s each; 15 episodes recorded before the 20-min
+  timeout (this CPU is shared). **0/15 past 94.64%**: 7 fall onto the room's kill floor *39
+  (z 1,664) within 1-11 s, 8 park on the side rails at (-630..-60, +-790, ~1,970) to the 12 s cap.
+* Geometry: the middle room's east wall is the chevron face of a block whose top (z ~2,064) is
+  kill plate *28; the side rails (|y| ~650-800, x -1,400..-150) top out at ~1,930. To pass, the
+  hull must be above z ~2,102 when it crosses the block's west edge (x ~-250 at y 0, ~200 at
+  |y| > 500) with enough speed to clear ~600-1,000 u of plate under the *52 ceiling (z 2,416).
+  ep 8 of the incumbent eval climbed 1,718 -> 2,106 (108-109.2 s) but at 570-620 u/s.

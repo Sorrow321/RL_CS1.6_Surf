@@ -274,7 +274,15 @@ def offers(exclude_machines=()) -> list:
                 if norm_gpu(o.get("gpu_name")) != name:
                     continue
                 dph = float(o.get("dph_total") or 99.0)
-                if dph > cap:
+                # r5b2 harness fix (2026-10-22): an offer's dph_total prices the DEFAULT disk,
+                # the instance is billed for config.disk_gb, and the fleet watchdog checks the
+                # INSTANCE price: box 57139438 (offer 0.636 $/h, cap 0.65) ran at 0.676 $/h and
+                # was destroyed by the watchdog a minute after READY. Price the real disk.
+                sc = o.get("storage_cost")
+                if sc is not None:
+                    dph += (float(CFG["disk_gb"]) * float(sc) / 720.0
+                            - float(o.get("storage_total_cost") or 0.0))
+                if dph * 1.02 > cap:
                     continue
                 if (o.get("machine_id") in mids or o.get("host_id") in hids
                         or o.get("public_ipaddr") in ips
