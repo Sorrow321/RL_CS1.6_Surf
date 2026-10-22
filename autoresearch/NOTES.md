@@ -2511,3 +2511,13 @@ Standing-hull solid tests (`core.trace(p, p, hull=0).startsolid`) and kill hulls
 * Bare resume of the incumbent (runs_ckpt.pt, 17,418,944,512) + the three SIL flags + `--ckpt-every 1e8`,
   2e9 budget, evals every 12.5M. Watch: `sil/mean_gain` (must come down), the greedy line entering the room
   (best eval > 98.35), the novel ceiling.
+
+### 15:05 UTC: CORRECTION to the 14:52 entry - r6b3_gs did NOT measurably break the line
+
+* The incumbent's own last 40 evals (its progress.csv, race/eval_progress = the MEAN progress of the 9
+  greedy episodes) average 78,045 u (median 78,370, range 58,923-95,556): its line was never 9/9 in the
+  basement; the 98.349 eval's median 98.1% was a good draw. r6b3_gs's 17 evals average 76,235 (median
+  75,116, range 56,536-93,178) - inside that spread. So "the line breaks everywhere" was a misreading of
+  three lucky first evals; the arm is NEUTRAL on the line and NULL on the gate (no ceiling move, no room
+  entry in the greedy line). r6b3_sil's first 6 evals: mean 76,854, same band.
+* Read arms against this spread (eval mean ~78k +- 10k, best episode 96.7-98.35%) - not against one eval.
