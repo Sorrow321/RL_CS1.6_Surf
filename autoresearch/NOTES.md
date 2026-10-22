@@ -2059,3 +2059,30 @@ safety classifier; simulator probes from the policy's own states answered the sa
   column, turns round on an east-end ramp at x ~3,950 (114 s; 98.0 -> 96.8%, another dip), climbs back
   west to the funnel top (2,973, 289, 1,575) at 116 s, stops over the shaft and falls straight down to
   the finish at ~118.2 s. Two more dip + ramp-turnaround gates after the wall.
+
+### 02:15 UTC: NEW `--respawn-greedy-speed LO HI` (commit 91edb87); still no box
+
+* Stochastic probe (record_ckpt --stochastic --exec-keys-temp 1.15 = the checkpoint's training
+  temperature; its own 43 reservoir states >= 93%, 12 x 10 s): **0/12 past 94.57%**; 6 park alive on the
+  floor at z ~1,706 (x -330..-910, |y| 550-850), 6 fall onto the kill surface *39. The frontier states
+  are slow and low: sampling noise does not produce the fast climb.
+* So the greedy-line pool (~10% of all spawns sit in the 2 s before the greedy line's deaths at the
+  wall) replays states from which nothing succeeds - round 3's lesson ("greedy spawns need a frontier
+  the stochastic policy can sometimes pass"). The new flag scales each greedy row's velocity by
+  U(LO, HI) when it is mixed into the pool (one factor per row, its own generator: the rows drawn are
+  the unscaled ones): the reservoir's `--respawn-speed` curriculum, aimed at the deployed line's
+  failures. Generic (a speed range, no map quantity); off = byte-identical (unit test on the pool;
+  test_eval_patience's trainer bit-identity passes); config key only when on; restored on resume;
+  TRAIN_ONLY for record_ckpt. tests/python/test_respawn_greedy_speed.py (3 pool tests + a CPU trainer
+  smoke: wired, restored, refused without --respawn-greedy or with LO > HI).
+* First arm when a box comes: **r5b1_gspd** = the incumbent checkpoint (15,032,385,536, md5 cb1dbce4...)
+  + `--respawn-greedy-speed 1.0 1.5`, 3e8 steps (~30 min), evals every 12.5M. Read-out: the training
+  ceiling past the wall (> ~95.3%), the reservoir's deepest past 94.54%, then evals past 95.2%.
+  Control: the incumbent's own last 450M steps (ceiling 92.12 -> 95.18%, greedy best 94.67%).
+* Box: 19 rent attempts 01:04-02:14 UTC; nothing under the caps (the operator raised the 3090 / 5080
+  caps to $0.65 during the night; cheapest 4090 $0.508 vs 0.45, 5090 $0.80 vs 0.60). One 5080 (NL,
+  machine 152482) never reached `running`; box.py's automatic blocklisting failed (the instance never
+  appeared in `vast show instances`), so it was added to tools/bad_hosts.json by hand (commit a99eb96).
+  **Harness issue:** box.py's readiness-failure path calls `vast_pick.py --block <instance>`, which
+  exits when the instance is not listed - the machine stays rentable and the next attempt picks it
+  again; box.py could record the offer's machine_id / host_id itself.
