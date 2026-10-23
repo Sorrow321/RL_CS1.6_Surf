@@ -3,11 +3,11 @@
  "round": 7,
  "final": false,
  "best": {
-  "score": null,
-  "eval_file": null,
-  "run": null,
-  "step": null,
-  "ckpt": null,
+  "score": 97.896,
+  "eval_file": "/home/steam/ar/runs/r7b4/r7b4_gk/traj_22218276864.jsonl",
+  "run": "r7b4_gk",
+  "step": 22218276864,
+  "ckpt": "/home/steam/ar/runs/r7b4/r7b4_gk/ckpt_latest.pt",
   "recipe": [
    "--respawn-greedy-keep",
    "8",
@@ -19,5 +19,5 @@
   "resume_from": "incumbent r6b2_tp3 ckpt (22,217,752,576)",
   "commit": "bfec7fb"
  },
- "summary": "02:53 UTC: r7b4_gk running on box 57310803 (RTX 3090): warm resume of the incumbent (22.218B) + NEW --respawn-greedy-keep 8 (the greedy pool keeps the 8 deepest failed greedy episodes across evals) + NEW --respawn-front-perturb-anchor 100 (the front-perturb band hangs off the 100th-deepest reservoir state, so one finishing chain cannot collapse it into the funnel - it did in tp3 at 21.118B, after the first fpert finishes). Evals every 6.25M. No eval scored yet."
+ "summary": "03:23 UTC: r7b4_gk launched on box 57310803 (RTX 3090 / EPYC 7B12, 61-CPU quota): warm resume of the incumbent (22.218B) + NEW --respawn-greedy-keep 8 (the greedy pool keeps the 8 deepest failed greedy episodes across evals) + NEW --respawn-front-perturb-anchor 100 (the band hangs off the 100th-deepest reservoir state; one finishing chain collapsed it into the funnel in tp3 at 21.118B). Evals every 12.5M (a greedy eval costs ~70 s on this CPU; the first launch hung in its eval from OpenMP spin-waits under the CPU quota - fixed in run_arm.sh with OMP_WAIT_POLICY=PASSIVE). Resume eval 97.896 (5/9 basement, 0 entries)."
 }
