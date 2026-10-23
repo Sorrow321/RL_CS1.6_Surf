@@ -2907,7 +2907,7 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
 * Read-outs: h at the basement entry (en1: +200-250 u within ~100M), the basement loop kept (death times
   116-139 s like the control, not 112-113 s like en1), chamber entries and their apex, rim crossings.
 
-### 03:58 UTC: arm 2 (r7b2_ef1, energy priced up to the frontier band) - 98.366, greedy chamber entries x5
+### 03:55 UTC: arm 2 (r7b2_ef1, energy priced up to the frontier band) - 98.366, greedy chamber entries x5
 
 * r7b2_ef1 22,218-22,51xM (~300M steps, 186k steps/s): 47 evals; **best 98.366** (22,432,186,368; the
   incumbent re-scored 98.315), 98.362 (22,419M), 98.287, 98.239, 98.232, 98.152, 98.034; CP5 / CP6 wobbles at
