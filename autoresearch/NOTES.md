@@ -375,7 +375,7 @@ ends "md5 ... != ... (truncated pull); none kept" (2026-10-23 20:13). Workaround
 contract by hand - `scp` with a long timeout into `<run>/ckpt_latest.pt.part`, md5 checked
 against the box's file, then renamed into place.
 
-### pbr1b3, 2026-10-23 20:35 UTC - how to rebuild the search's spawn file (it lives only on the box)
+### pbr1b3, 2026-10-23 20:34 UTC - how to rebuild the search's spawn file (it lives only on the box)
 
 The phase-2 spawn file is search output, not in git. To rebuild it on a fresh box (~15 min of
 box time, trainer not running - a search and a trainer cannot share the CPUs):
