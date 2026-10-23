@@ -3128,3 +3128,11 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   ablation: round 6's frontier temperature is what makes the GREEDY line enter the chamber - exploration in the
   last 1% of the map trains the mean action there.
 * **r7b4_ft15** (09:58): the same snapshot + `--front-temp 1.5` (temperature 2.5 in the same band).
+
+### 10:21 UTC: front-temp dose 0 / 1 / 1.5 -> 0 / 10 / 1 entries; replication r7b4_ft0b
+
+* r7b4_ft15 (inc2's 22.243B snapshot, T 0.2, `--front-temp 1.5`), 22.249-22.362B, 19 evals: **1 entry** (apex
+  1,360, 98.309) in 171 episodes, but the most basement episodes of any path (80 of 171). From the same weights:
+  front-temp 0 -> 0 entries (26 basement), 1 -> 10 entries (64 basement of 207), 1.5 -> 1 entry (80 basement).
+* **r7b4_ft0b** (10:20): replication on a second path - inc2's 22,293,250,048 snapshot + T cap 0.1 + `--front-temp
+  0`. Reference: r7b4_t01 (the same start and T, front-temp 1) had 5 entries in its first ~70M steps.
