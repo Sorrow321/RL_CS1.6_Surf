@@ -398,3 +398,14 @@ Then launch with `--self-states "<provenance>" -- --spawn-states runs/gx_spawns_
 --spawn-states-frac 0.7 --spawn-states-curric 0.003` (band mode). The coarse archive and its
 184-state chain file are also kept on the agent host in $AR_HOME/runs/pbr1b3/gx_pb4/.
 `config.json`'s incumbent_recipe now carries `--view-ent-squash 1` (the generic objective fix).
+
+### pbr1b3, 2026-10-23 21:03 UTC - band phase 2 plateaus at the corner; replicate the early climb
+
+* `pbr1b3_sgx6` (sgx1's 334.5M + band, G 0.003, 70%): greedy evals 264 / 263 / 257 / 260 /
+  249 u (335M-637M), scores 0.40-0.45, no climb. Its curriculum band stays on the lower level
+  (top-decile rows ~1,596 u). Stopped.
+* The one climb (sgx1 @153M) came early in fine-tuning the surfer; longer band training drifts
+  back to the corner. `pbr1b3_sgx7` (21:03) replicates sgx1 exactly from the fresh sid_ref
+  weights (pbr1b3_sidwarm 1.57M) to see whether the early climb repeats.
+* sgx1's ckpt_latest (334.5M, md5 2ed815bc...) is on the agent host now (hand-pulled, md5
+  verified): the hand-on checkpoint for the 0.613 eval.

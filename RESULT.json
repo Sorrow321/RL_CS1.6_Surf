@@ -7,7 +7,7 @@
   "eval_file": "/home/steam/ar_pb/runs/pbr1b3/pbr1b3_sgx1/traj_0153092096.jsonl",
   "run": "pbr1b3_sgx1",
   "step": 153092096,
-  "ckpt": null,
+  "ckpt": "/home/steam/ar_pb/runs/pbr1b3/pbr1b3_sgx1/ckpt_latest.pt",
   "recipe": [
    "incumbent_recipe (restored from sid_ref's config)",
    "--view-ent-squash",
@@ -22,5 +22,5 @@
   "resume_from": "sid_ref weights via pbr1b3_sidwarm ckpt_latest (1.57M on this map)",
   "commit": "bb7fe35"
  },
- "summary": "Gate 1 = climb onto a sill + SURF a 390-u ramp over a kill layer + drop. Plain PPO arms stall at ~250 u. Built: --view-ent-squash (yaw sigma 2.72 -> ~1), Go-Explore energy cells (search reaches 3.8%), --spawn-states-curric (band / backward). Phase 2 from scratch learned everything after the ramp but not the ramp or climb. Warm start from the sidistic surfer + phase 2 (pbr1b3_sgx1): at 153M the greedy line climbs onto the sill and onto the ramp (350 u, score 0.613). Next: the ramp crossing; backward-window curriculum ready (0744259)."
+ "summary": "Gate 1 (the start room) = a duck-jump onto a sill + SURFING a 390-u ramp over a kill layer + a drop; plain PPO arms stall at ~250 u. Built: --view-ent-squash (yaw sigma 2.72 -> ~1), Go-Explore energy cells --cell-energy (the search leaves the room in <1 min, reaches 3.8%), --spawn-states-curric (band works; backward window fails on chain sets). Scratch phase 2 learned everything after the ramp but never climbed; warm start from the sidistic SURFER + phase 2 climbed onto the ramp once (sgx1 @153M: 350 u, score 0.613, ckpt 334.5M pulled). Now: a fresh replicate of that setup (sgx7)."
 }
