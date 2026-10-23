@@ -341,3 +341,23 @@ resample every 25 decisions. On a box it runs as it does locally (CPU physics + 
   --bc-coef-final 0 --bc-steps 1e9 --bc-target dist --bc-value-coef 0.25 --spawn-states
   spawn_climb.npy --spawn-states-frac 0.4 --sil-coef 0 --sil-top 0 --front-temp 1
   --front-band 0.01`.
+
+### 20:56 UTC - THE START TRAP IS PASSED BY THE GREEDY LINE: 3.229 (pbr1b4_bc2, expert iteration)
+
+* pbr1b4_bc2 greedy evals: 0.43 / 0.44 / 0.42 / 0.42 / 0.42 (2.43B-2.73B), then **3.181 at
+  2.804B and 3.229 at 2.879B**: 3 of 9 greedy episodes from the TRUE START mount the plate, hop
+  into the south tunnel, crawl it and drop into the chamber (best 3.23%, far point
+  (808, -3290, 3370), the chamber floor - the same place every search line ends). Median still
+  0.41% (6/9 stay at the start). One eval earlier (2.577B) 1/9 had already mounted the plate.
+* Checkpoint: the trainer keeps only ckpt_latest (+ every 1e9 steps), which moved 18.9M steps
+  between the eval and my copy -> pulled as ckpt_2898264064.pt (its TRUE step; RESULT.json
+  says so). Since 20:52 a watcher on the box (/root/ckwatch.sh <run> <protect>) copies
+  ckpt_latest to ckpt_<step>.pt every 60 s (newest 15 kept): pull the one at/before a best eval.
+* Round-3 DAgger waves (proposer = BC round-1 checkpoint, eps 0.15, resample 25, spawn seeds
+  7-10): 3 of 4 crossed (arcs 2,962-3,008 u); distilled with OMP 8 threads sequentially beside
+  the trainer (5,987 / 5,941 / 5,950 rows) - not merged yet.
+* **The score is a MAX over 9 episodes: reliability at the start does not move it until
+  something finishes. Next gate = the chamber (an energy gate: the record leaves on an upper
+  path at z ~3500, ~150 u above the floor where every line stops).** Running: beam_tas waves
+  from the true start with the bc2 checkpoint (it passes the start itself), 60 s cap, eps 0.15,
+  seeds 11-13 - can the population find the way out of the chamber?
