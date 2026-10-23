@@ -2841,3 +2841,20 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   to the pre-change rewards.py over 200 random calls with deaths (ratchet + time penalty + novelty); the
   trainer carries / restores / refuses it and record_ckpt records it (TRAIN_ONLY); flag-off trainer
   bit-identity (config, csv, eval bytes, weights) vs the pre-change train_fast.py.
+
+### 02:40 UTC: box speed; r7b1_ctl (control); arm 1 r7b1_ep2 launched
+
+* Box 57307538 = RTX 3090 on an **AMD EPYC 7502** (Zen 2, 2.5 GHz, 64 threads, cgroup quota 61 CPUs):
+  **~115k steps/s training-only** (round 4/5's 3090 + 5.1 GHz host: 226k) and a side-by-side greedy eval
+  takes **60-90 s** here (9 episodes of ~110-150 s game time, 7 of them cut by patience) - with evals
+  every 6.25M that is ~50k steps/s average. Nothing better under the caps at 02:37 (5080 $0.667 vs 0.65,
+  4090 $0.537 vs 0.45, 5090 $0.668 vs 0.60, one other 3090 filtered out), so the arm evals every 12.5M.
+* **r7b1_ctl** = bare resume of the incumbent, 22.218 -> 22.233B (~15M steps, stopped for the arm): evals
+  (score.py) 97.875, 97.860, 97.973 (CP7, 0 finishes). Energy profile (median h_E at the first tick past P%
+  progress): 96% 3,137-3,157 | 97% 2,336-2,418 | 97.8% 2,332-2,385; basement entry 2,311-2,324 (6 of 9
+  episodes; one eval 1,736 on 3). The bar the energy arm has to move.
+* **r7b1_ep2** (02:40): bare resume of the incumbent (22,217,752,576) + `--energy-pot 2 --critic-warmup 20
+  --ckpt-every 1e8`, evals every 12.5M, 3e9 budget. C = 2: 1,000 u of energy height = 2.0 reward (2% of
+  progress); the line bleeds ~7,500 u between 60 and 114 s (~15 reward against ~47 of progress there), a
+  single hard landing of 300-525 u now costs 0.6-1.05 at once (the time penalty is 0.004 per decision).
+  Leading indicator: the energy profile at 96-97.8% and the basement entry; then chamber entries / apex.

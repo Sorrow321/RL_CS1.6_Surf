@@ -2,6 +2,19 @@
  "agent": "r7b1",
  "round": 7,
  "final": false,
- "best": null,
- "summary": "Round 7 start (02:14 UTC). Box 57307538 (RTX 3090, Thailand, $0.35/h). Control r7b1_ctl = bare resume of the incumbent (r6b2_tp3, 22.218B). Arm in preparation: --energy-pot C (NEW, potential-based shaping on the energy height z + |v|^2/2g) - the incumbent's greedy line reaches the basement with h_E ~2,100-2,350, short of what a rim crossing needs; it loses it in a few hard landings (-300..-525 each) between 100 and 114 s."
+ "best": {
+  "score": 97.973,
+  "eval_file": "/home/steam/ar/runs/r7b1/r7b1_ctl/traj_22230859776.jsonl",
+  "run": "r7b1_ctl",
+  "step": 22230859776,
+  "ckpt": "box 57307538: /root/RL_Surf/runs/r7b1_ctl/ckpt_latest.pt (not pulled; the incumbent's weights + 15M steps)",
+  "recipe": [
+   "bare resume of the incumbent",
+   "--ckpt-every",
+   "1e8"
+  ],
+  "resume_from": "incumbent r6b2_tp3 (22,217,752,576)",
+  "commit": "1127192"
+ },
+ "summary": "Box 57307538 (RTX 3090 + EPYC 7502, ~115k steps/s training-only, evals 60-90 s). Control r7b1_ctl (bare resume, 15M steps): 97.86-97.97, energy height at 96%/97% progress ~3,145/~2,380, basement entry ~2,320 - short of a rim crossing (~2,300 at the ramp foot after the loop's ~300 u loss). Arm 1 r7b1_ep2 (02:40 UTC): incumbent + NEW --energy-pot 2 (potential-based shaping on z + |v|^2/2g: hard landings charged when they happen, climbs free) + critic warmup 20; evals every 12.5M. Read-out: the greedy line's energy at 96-97.8% and the basement entry, then chamber entries."
 }
