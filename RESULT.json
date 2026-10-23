@@ -7,7 +7,7 @@
   "eval_file": "/home/steam/ar/runs/r7b1/r7b1_gate2/traj_22673883136.jsonl",
   "run": "r7b1_gate2",
   "step": 22673883136,
-  "ckpt": "box 57307538: /root/RL_Surf/runs/r7b1_gate2/ckpt_latest.pt (the run's newest weights; first snapshot ckpt_22754623488.pt); arm 5's earlier local snapshot runs/r7b1/r7b1_gate/ckpt_22618308608.pt",
+  "ckpt": "/home/steam/ar/runs/r7b1/r7b1_gate2/ckpt_latest.pt (r7b1_gate2's final weights, step 22,856,335,360, md5 61c0e6ec36d9b9719a4255c34d4f0238, pulled and md5-checked)",
   "recipe": [
    "--energy-pot",
    "1",
