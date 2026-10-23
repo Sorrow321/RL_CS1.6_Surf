@@ -288,3 +288,24 @@ own reward-free search from the true spawn, no demo or record data, generic cons
   trained yet) it jumps at once, drifts north-east and dies in trigger *257 at ~2 s. The yaw
   sigma collapsed to 0.015. `--demo-tau0 T` (new) lets a continuation start the curriculum where
   the previous run stopped (the position is not checkpointed).
+
+### BREAKTHROUGH: the greedy line clears the start room from the true start (2026-10-23 19:18 UTC)
+* pbr1b1_bcur5 (800M, ~45 min on the 5080): the backward curriculum reached the true spawn
+  ([19]->[9]->[0], 99.9% success from states 0-9 at the end) and the GREEDY evals from the true
+  start went 0.33 (604M) -> **3.234 (680M)** -> 3.232 (755M): 7 of 9 episodes walk to the wall,
+  duck-jump onto the plate corner, jump into the gap, crawl the tunnel, drop and reach the pit at
+  3.21-3.23% (809, -3,288, 3,375) in ~7-9 s; 2 of 9 still stop at the mouth (0.41%). Previous best
+  0.451. Checkpoint pulled: runs/pbr1b1/pbr1b1_bcur5/ckpt_final.pt (800M,
+  md5 2a17b618b001c13b4a1cfef6b69908af) - the newest file, 45M steps after the 755M eval.
+* What made it work, in order: (1) Go-Explore + entry_search find the two-jump entry by uniform
+  random bursts (no demo); (2) a backward curriculum on ONE such 270-tick line, scored by a
+  generic success rule (`--demo-success-d -50`: the ratchet record reaches the line's end on the
+  shaping field); (3) the warm sidistic trunk with the YAW MEAN head zeroed (no low-speed spin);
+  (4) --yaw-entropy 0. The earlier uniform-spawn curriculum (pbr1b1_entry/yaw0) only ever got the
+  plate landing; the backward order is what taught the takeoff timing.
+* Next: gate 2 (the pit climb). pbr1b1_g2b = bcur5's 800M weights, the curriculum OFF, the
+  recipe's frontier machinery back ON at its exact values (novel 0.2 / band 0.15 / radius
+  256-3072 / shell 0.9, greedy 0.25 + stuck 200, front-perturb 0.25 x1.0-1.3, backward-mix 0.1,
+  int-real-only 1), and 40% spawns from entry_ge_states.npy to keep the entry practised.
+  (A first try, pbr1b1_g2, came up with novel/greedy/front-perturb at trainer DEFAULTS - the
+  curriculum run's config had dropped those keys - and was relaunched within 2 minutes.)
