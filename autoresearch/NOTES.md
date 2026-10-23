@@ -308,3 +308,15 @@ learn what energy is worth there before the policy can make it.
 * NEW --demo-tau-start N (DemoCurriculum tau0; tau is not checkpointed).
 * arm 12 pbr1b2_ge12: arm 11's 217M weights, same flags + --demo-tau-start 282, budget 1.5e9.
   Box extended to 23:01 UTC.
+
+### 2026-10-23 19:34 UTC - arm 12 stalled on a chain bug (fixed); arm 13
+
+* arm 12 pbr1b2_ge12 (continuation at tau 282): the curriculum did NOT MOVE in 280M steps - band
+  [282,297] logged 0 episodes. Cause: my dense chain REPEATED segments (a burst that enters
+  several chain cells has its prefix in each of their dumped paths; 42 duplicated origins in 379
+  rows), and DemoCurriculum.match() attributes a state to the LAST row with its origin, so the
+  band's spawns were counted at rows 314-329. Evals 0.405 / 0.402 / 0.401 / 0.402.
+* NEW tools/archive_chain.py (dense root -> cell chain, each state kept at its first occurrence;
+  test). The deduplicated spine: 379 -> 333 rows (old 282 -> 269, the climb old 155-186 -> 143-174).
+  Arms 8-10's 0% bands did log episodes, so those stalls were real; arm 12's was the bug.
+* arm 13 pbr1b2_ge13: arm 12's 508M weights + chain_dedup_378.npy + --demo-tau-start 269.
