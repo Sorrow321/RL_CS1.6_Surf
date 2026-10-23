@@ -3136,3 +3136,19 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   front-temp 0 -> 0 entries (26 basement), 1 -> 10 entries (64 basement of 207), 1.5 -> 1 entry (80 basement).
 * **r7b4_ft0b** (10:20): replication on a second path - inc2's 22,293,250,048 snapshot + T cap 0.1 + `--front-temp
   0`. Reference: r7b4_t01 (the same start and T, front-temp 1) had 5 entries in its first ~70M steps.
+
+### 10:45 UTC: **98.403** - and a CORRECTION: front-temp 0 is not an entry killer (path noise)
+
+* r7b4_ft0b (inc2's 22.293B snapshot + T cap 0.1 + `--front-temp 0`), 22.300-22.406B, 18 evals: **12 entries in
+  162 episodes (7.4%)**, all in 22.306-22.344B (apex 1,332-1,422), best **98.403** (22,318,415,872, apex 1,401;
+  the branch's best), then 0 entries and CP6 from 22.388B. Its reference r7b4_t01 (same start, same T,
+  front-temp 1) had 5 entries in that stretch.
+* **CORRECTION to the 09:59 entry:** "the frontier temperature is what makes the greedy line enter" does NOT hold:
+  front-temp 0 gave 0 entries from the 22.243B snapshot and 12 from the 22.293B snapshot. With deterministic
+  training each setting is ONE path, and the entry counts swing 0-12 between paths at the same setting - path
+  noise, not a front-temp effect. The robust observation is the region: paths through the ~22.29-22.34B weights
+  enter the chamber for ~50M steps, whatever the knob.
+* Weights: runs/r7b4/r7b4_ft0b/ckpt_latest.pt (ft0b's last weights, 22.41B, md5 dd351c73...); the box's
+  ckpt_22318415872.pt is exactly the 98.403 eval's weights.
+* **r7b4_p1** (10:44): that 22,318,415,872 snapshot + `--front-temp 1 --front-band 0.01` (T 0.1 restored): another
+  path out of the best weights.
