@@ -3133,3 +3133,12 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   Why: the skate_laby lesson (ledger 2026-10-04: "at 3e-4 the policy was drifting around the solved skill; the LR cut
   lets it settle") - here a finishing skill appeared and drifted away within ~300M steps. Twice the evals to sample the
   peak policy. Generic: an LR cut once the policy first succeeds.
+
+### 11:05 UTC: arm 8 (peak snapshot + lr 1e-4) - a SECOND greedy finish: 107.140 (119.14 s)
+
+* r7b2_lr1 25.395-25.577B (~180M steps, 57 evals every 3.125M): **traj_25480396800 = 107.140** (1/9 finish, 119.14 s,
+  median 97.9%) ~85M steps after the restart; near-misses 98.567, 98.565, 98.551, 98.532. Real front-perturb finishes
+  32.0 / 38.3 / 25.6 per 10k (the bel peak's level; bel's drifted tail 1.6-8). So the finishing skill is reproducible
+  from the peak weights. Throughput 128k steps/s cumulative (evals twice as often).
+* Branch best still 107.176 (bel, 118.05 s). Score = 100 + 10 x finish fraction + 10 x (1 - t/300): a second
+  finishing episode in one eval is worth +1.1.
