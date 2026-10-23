@@ -3042,3 +3042,7 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   1.2), 8 s each: **0 chamber entries at every speed**, best progress median 97.85-97.87% (back up the passage). So from the +y
   return leg the missing piece is the entry SKILL, not energy. (Caveat: a spawn restarts the ratchet record, so the record-gap
   observation is 0 there, where the eval's line carried ~0.5% of d0 - the same as every training row.)
+* Considered and dropped: `--aug-mirror` (sidistic is y-symmetric and the physics is reflection-exact, surfgym/mirror.py). It is
+  refused with --obs-compass (the ego compass is not reflected), and it would not transfer the -y entry to the +y return leg in
+  an UNMIRRORED greedy eval: a mirrored episode only changes which side the policy believes it is on; the policy's response to a
+  "+y-looking" observation is still trained only by episodes that look +y.
