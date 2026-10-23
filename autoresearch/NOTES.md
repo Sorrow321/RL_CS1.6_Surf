@@ -3207,3 +3207,10 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   117 episodes, a CP6 stretch at 22.388-22.406B, best 97.988.
 * **r7b4_p8** (12:42): ft0b's 22,318,415,872 snapshot (the 98.403 eval's weights; the source of ft0b's and p1's
   entry bursts) + `--front-temp 1 --front-band 0.01 --unstuck-max 0.2`; runs until the 13:34 wrap-up.
+
+### 13:03 UTC: **98.480** (r7b4_p8, the last branch)
+
+* r7b4_p8 (ft0b's 22,318,415,872 snapshot + `--front-temp 1 --front-band 0.01 --unstuck-max 0.2` - i.e. the
+  incumbent's own settings again), 22.325-22.425B, 17 evals: basement mode, a CP6 stretch at 22.362-22.400B, then
+  **4 entries in one eval at 22,419,079,168 (apex 1,457): score 98.480** (the branch's best) and 1 more at 22.425B.
+  Runs on until the wrap-up.
