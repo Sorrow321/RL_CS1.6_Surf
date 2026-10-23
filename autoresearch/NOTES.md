@@ -2955,3 +2955,14 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   energy - the direction the term pushes, within ~100M steps. Basement share 4-6/9 frozen, 1-5/9 later.
 * Training: approx_kl 0.017-0.029, explained variance 0.99, episode reward 16.5-19.6 (tp3 19-21: the energy charge),
   stall_frac 0.08 -> 0.21 (tp3 0.06-0.12) - more training episodes stop gaining; watch. fpert finishes 0.
+
+### 12:01 UTC: r7b3_ep1 at +246M - basement-entry energy +150-250 u and still rising; 0 entries in 360 episodes
+
+* 40 evals (22.218-22.464B): best **97.929** (22,407M); the line reaches the basement in 117/360 eval episodes (32%;
+  frozen-actor evals 4-6/9), with two wobbles (CP6 96.5-96.6 at 22.26-22.29B; ~86-88% at 22.33 / 22.38 / 22.40B).
+* h_E at the first basement tick, median per eval: frozen 2,312-2,338 -> 2,426-2,543 (+75-120M) -> 2,446-2,622
+  over the last 15 evals (+150-250 u). The energy term does what it is for: the greedy line now arrives with the
+  ~2,350-2,500 that round 6 measured a rim crossing needs at the ramp foot.
+* But 0 chamber entries in 360 eval episodes (tp3's ~0.4% would give ~1.4) - the entry is the turn-timing skill
+  (05:30 / 06:05 entries above), which energy alone does not supply. Training: kl 0.022-0.031, stall_frac back to
+  0.09-0.16, fpert finishes 0, ep reward 17.8-21.4.

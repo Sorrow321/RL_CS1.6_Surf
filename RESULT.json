@@ -3,10 +3,10 @@
  "round": 7,
  "final": false,
  "best": {
-  "score": 97.916,
-  "eval_file": "/home/steam/ar/runs/r7b3/r7b3_ep1/traj_22224568320.jsonl",
+  "score": 97.929,
+  "eval_file": "/home/steam/ar/runs/r7b3/r7b3_ep1/traj_22407020544.jsonl",
   "run": "r7b3_ep1",
-  "step": 22224568320,
+  "step": 22407020544,
   "ckpt": "/home/steam/ar/runs/r7b3/r7b3_ep1/ckpt_latest.pt",
   "recipe": [
    "--energy-pot",
