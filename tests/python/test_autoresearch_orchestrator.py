@@ -298,3 +298,37 @@ def test_a_quiet_session_is_rearmed(tmp_path, monkeypatch):
     assert not orchestrator.tell_stalled({**slot, "stall_told": 0}, wrapup_at, wrapup_at)
     fresh = {"agent": "r2b2", "dir": str(d), "launched": now - 600}            # a new round
     assert not orchestrator.tell_stalled(fresh, now, wrapup_at)
+
+
+def test_the_incumbent_is_rescored_with_the_current_grader(tmp_path):
+    """A grader change between rounds (round 7: the no-corner-cut field) must not leave the
+    incumbent's old-grader score as the bar the next winner is compared against."""
+    ev = tmp_path / "traj_0016903045120.jsonl"
+    ev.write_text("{}\n", encoding="utf-8")
+
+    class Grader:
+        def __init__(self, s):
+            self.s, self.seen = s, []
+
+        def score_file(self, p):
+            self.seen.append(Path(p))
+            return {"score": self.s}
+
+    inc = {"eval": str(ev), "score": 98.349}
+    g = Grader(98.21)
+    assert orchestrator.incumbent_score(inc, scorer=g) == 98.21
+    assert g.seen == [ev]
+    assert orchestrator.incumbent_score(inc, scorer=Grader(None)) == 98.349    # no longer valid
+    gone = {"eval": str(tmp_path / "missing.jsonl"), "score": 98.349}
+    assert orchestrator.incumbent_score(gone, scorer=Grader(1.0)) == 98.349    # eval gone
+    assert orchestrator.incumbent_score({}, scorer=Grader(1.0)) is None        # no incumbent
+
+
+def test_only_the_first_episodes_of_an_eval_count():
+    """score = max over episodes, so a 54-episode eval must not out-draw a 9-episode one."""
+    import score
+    eps = [({"episode": i}, None, {"end": "fail"}) for i in (3, 10, 0, 53, 8, 9, 1)]
+    assert [h["episode"] for h, _, _ in score.first_episodes(eps, 9)] == [3, 0, 8, 1]
+    assert score.first_episodes(eps, 0) == eps                                 # 0 = all
+    plain = [({}, None, {"end": "fail"}) for _ in range(12)]
+    assert len(score.first_episodes(plain, 9)) == 9                            # no index: file order

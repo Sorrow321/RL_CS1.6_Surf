@@ -54,7 +54,16 @@ Pass sidistic from the true start, champion-free and generic: first a finish, th
 finishes. Your score is `python autoresearch/score.py --best $AR_HOME/runs/$AR_AGENT/`. It
 is the best eval's max-episode progress on the goal field (a finish counts 100), plus
 10 x the finish fraction, plus a time term once something finishes. Only greedy evals from
-the true start count; the grader rejects anything else. The milestones known so far are in
+the true start count; the grader rejects anything else.
+
+The grader changed before round 7 (operator, 2026-10-23); score.py and config.json say why:
+* the field is `config.field` = the no-corner-cut goal graph (`goalc_32.npz`, start d 99,675),
+  the field training already shapes on. The old `goal_32.npz` leaked through the finish
+  funnel's wall and scored a dead end outside it above the way over the rim.
+* only the first `config.score_episodes` (9) episodes of an eval count, by header episode
+  index: a bigger eval is not a better score.
+* the incumbent is re-scored with the current grader before it is compared, so scores from
+  before the change (98.3-98.4 on the old field) are not the bar. The milestones known so far are in
 NOTES.md: the first-ramp trap at 5.7%, the wall hole ("window") at 20.8% -> CP1 at 22.9%,
 and the CP2 wall at 27.5%.
 
