@@ -3068,3 +3068,13 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   evals past the point where the T 0.2 replay drifted at 22.312B), 57 of 171 episodes in the basement, **5
   entries** (apex z 1,327-1,423), best 98.380 (22,337,290,240); then CP6 at 22.375-22.394B (4 evals) and partly
   back (1-2 of 9 in the basement) at 22.400-22.413B.
+
+### 08:03 UTC: t01 holds basement mode at T 0.1 but entries thin out; arm r7b4_t01k3 = + archive K 3
+
+* r7b4_t01 22.413-22.545B (21 more evals, 40 in all): basement mode in most evals (4-7 of 9; one CP6 stretch of 4
+  evals at 22.469-22.488B), 136 of 360 episodes in the basement, but only 2 more entries (apex 1,344, 1,259);
+  best still 98.380 (22,337M). Run total: 7 entries in 360 episodes (1.9%), all apex 1,259-1,423.
+* **r7b4_t01k3** (08:02): t01's 22,544,908,288 snapshot + `--respawn-greedy-keep 3` (T cap 0.1 restored): the 3
+  deepest greedy failures (the line's best entries) kept as spawn rows across evals, so training practises the
+  pull-out / rise from the deployed line's own best attempts; K 3 keeps the dilution of the current-failure
+  practice small. Read-out over ~1 h against t01's last hour: entries per eval and their apex.
