@@ -577,6 +577,64 @@ def gravity_step(core) -> float:
     return -float(ph.sv_gravity) * tick_ms / 1000.0
 
 
+def energy_height(states, gravity: float = 800.0) -> np.ndarray:
+    """h = z + |v|^2 / (2 g) per row: the height a lineage could reach if all its speed were
+    turned into climb - the quantity free fall and frictionless surfing keep, and that air
+    acceleration and jumps add (surfgym.rewards' --energy-pot uses the same h)."""
+    v = np.asarray(states["velocity"], np.float64)
+    return (np.asarray(states["origin"], np.float64)[:, 2]
+            + (v * v).sum(axis=1) / (2.0 * float(gravity)))
+
+
+def rank_rec_e(rec_d, h, valid, quant: float) -> np.ndarray:
+    """--score rec_e: the elite ORDER (best first) of a population by (1) its record - the
+    lowest goal-field distance the lineage has reached so far, in `quant`-u bins - and (2)
+    inside a bin, its energy height h, higher first; invalid rows last. A record is history
+    (a lineage that leaves its best point keeps it), so a lineage that turns away from the goal
+    to gain energy is not ranked below one standing at the same record: the search can climb an
+    energy ladder the field does not show (a speed-up on a ramp before a gap), and the record
+    takes over again as soon as the energy buys new progress. Nothing here reads the map."""
+    rec_d = np.asarray(rec_d, np.float64)
+    h = np.asarray(h, np.float64)
+    valid = np.asarray(valid, bool)
+    q = float(quant)
+    key_rec = np.floor(rec_d / q) if q > 0 else rec_d
+    # lexsort: the LAST key is the primary one; invalid rows get +inf on both keys
+    return np.lexsort((np.where(valid, -h, np.inf),
+                       np.where(valid, key_rec, np.inf)))
+
+
+class EliteArchive:
+    """--dump-elite-states: the states of the search's elite lineages at every generation (a
+    STATE_DTYPE .npy for the trainer's --spawn-states, plus a sidecar .json): the policy's OWN
+    states, found by selecting among its own stochastic continuations from the true start."""
+
+    def __init__(self, per_gen: int):
+        self.per_gen = max(1, int(per_gen))
+        self.rows, self.meta = [], []
+
+    def add(self, states, order, rec_d, h, gen: int, tick: int):
+        take = np.asarray(order[:self.per_gen])
+        if len(take) == 0:
+            return
+        self.rows.append(np.array(states[take], copy=True))
+        self.meta.append({"gen": int(gen), "tick": int(tick), "n": int(len(take)),
+                          "rec_d_best": float(np.min(np.asarray(rec_d)[take])),
+                          "h_max": float(np.max(np.asarray(h)[take]))})
+
+    def save(self, path, extra: dict) -> int:
+        if not self.rows:
+            return 0
+        rows = np.concatenate(self.rows)
+        rows["tick"] = 0                   # the trainer zeroes the clocks anyway
+        np.save(path, rows)
+        side = Path(str(path)).with_suffix(".json")
+        side.write_text(json.dumps({"rows": int(len(rows)), "per_gen": self.per_gen,
+                                    "gens": self.meta, **extra}, indent=1),
+                        encoding="utf-8")
+        return int(len(rows))
+
+
 def replay_arc(core, spawn_state, acts_ticks, arcp, max_ticks, g_step,
                contact_tol: float = 1.0, bank: str = "contact",
                view_ticks=None):
@@ -1492,7 +1550,9 @@ def make_scorer(gf, route_file, corridor, mode, value_fn=None,
     d-ranking died in); 'dv' is d until the population's frontier d drops
     below v_switch, then V - the endgame is where d lies most.
     """
-    if mode == "d":
+    if mode in ("d", "rec_e"):
+        # rec_e: the instantaneous score is -d like 'd'; the record and the energy that rank
+        # the population are kept by the search loop (rank_rec_e)
         def score(states, obs=None):
             d = gf.sample(states["origin"]).astype(np.float64)
             return -d, d
@@ -1901,13 +1961,23 @@ def main():
                     help="do not require the greedy gate to finish (implied "
                     "by --greedy-prefix: searching from the wall is only "
                     "interesting for a policy that does NOT finish)")
-    ap.add_argument("--score", choices=["d", "route", "v", "dv"],
+    ap.add_argument("--score", choices=["d", "route", "v", "dv", "rec_e"],
                     default="d",
                     help="boundary ranking: 'd' = geodesic (spawn-to-finish "
                     "search), 'route' = route vertex index then d (wall "
                     "search - see make_scorer), 'v' = the checkpoint's own "
                     "critic, 'dv' = d until the frontier is within "
                     "--v-switch of the goal, then the critic")
+    ap.add_argument("--rec-quant", type=float, default=256.0,
+                    help="--score rec_e: the record's bin width in u (lineages whose records "
+                    "share a bin are ranked by energy height)")
+    ap.add_argument("--dump-elite-states", default=None, metavar="NPY",
+                    help="population mode: save the elite lineages' states at every "
+                    "generation (STATE_DTYPE .npy + a .json sidecar) - own states for the "
+                    "trainer's --spawn-states")
+    ap.add_argument("--dump-per-gen", type=int, default=64,
+                    help="--dump-elite-states: rows taken from the top of each generation's "
+                    "order")
     ap.add_argument("--v-switch", type=float, default=20000.0,
                     help="--score dv: switch from d to V(s) once the "
                     "population's smallest geodesic d is below this")
@@ -2780,6 +2850,19 @@ def main():
         gen, best_gen = 0, None
         dth_t, dth_o = [], []
         frontier = {"vert": -1, "d": float("inf"), "tick": -1}
+        # --score rec_e: every lineage's record (the lowest field d it has reached; history,
+        # cloned with the state) - the elites are ranked by it, then by energy height
+        REC_E = args.score == "rec_e"
+        rec_d, hE = None, None
+        if REC_E:
+            if progress_mode:
+                raise SystemExit("--score rec_e ranks by its own record; drop --objective "
+                                 "progress/auto")
+            rec_d = ogf.sample(coreN.states_view["origin"]).astype(np.float64)
+            g_en = float(coreN.config.phys.sv_gravity)
+            print(f"score rec_e: elites by record (min field d so far) in "
+                  f"{args.rec_quant:g}u bins, ties by energy height z + |v|^2/(2*{g_en:g})")
+        elite_arch = (EliteArchive(args.dump_per_gen) if args.dump_elite_states else None)
         # --objective progress/auto: the order-only arc coordinate per env
         # (eval_honesty --order-only: ArcProgress's local-window rule), its
         # per-env anchor cloned with the state at every resample; the best
@@ -2900,6 +2983,13 @@ def main():
                 obs, _rew, done, trunc, _term = coreN.step(a)
             gh = coreN.goal_hits
             dead = np.asarray(done, bool) | np.asarray(trunc, bool)
+            if REC_E:
+                # a lineage's record moves only while it is alive (a dead env already holds
+                # its respawn)
+                _live = valid & ~dead
+                if _live.any():
+                    _dp = ogf.sample(coreN.states_view["origin"]).astype(np.float64)
+                    np.minimum(rec_d, np.where(_live, _dp, np.inf), out=rec_d)
             if arcp is not None:
                 # the post-step position of every LIVE lineage; an env that
                 # died this tick already holds its respawn, so its arc is
@@ -2988,10 +3078,18 @@ def main():
                         np.floor(best_arc / args.arc_quant)
                     order = np.lexsort((np.where(valid, -sc, np.inf),
                                         np.where(valid, -akey, np.inf)))
+                elif REC_E:
+                    hE = energy_height(states, g_en)
+                    order = rank_rec_e(rec_d, hE, valid, args.rec_quant)
                 else:
                     order = np.argsort(np.where(valid, -sc, np.inf),
                                        kind="stable")
                 elig = order[valid[order]]
+                if elite_arch is not None and len(elig):
+                    elite_arch.add(states, elig,
+                                   (rec_d if REC_E else dgeo),
+                                   (hE if REC_E else energy_height(states)),
+                                   gen, t + 1)
                 if len(elig) == 0:
                     # every lineage finished or died inside this window; a
                     # reseed would restart episode clocks against the
@@ -3053,6 +3151,8 @@ def main():
                     # under test, so redrawing here would truncate every
                     # one of them (MacroHold's docstring).
                     macro.clone(losers, donors)
+                if REC_E:
+                    rec_d[losers] = rec_d[donors]
                 if arcp is not None:
                     # the arc anchor and the lineage's record travel with
                     # the history: the loser IS the donor's lineage now
@@ -3118,6 +3218,10 @@ def main():
                              if arcp is not None else "")
                           + f"min_d={dgeo[keep[0]]:8.0f} "
                           f"med_d={np.median(dgeo[keep]):8.0f} "
+                          + (f"rec={rec_d[keep[0]]:8.0f} "
+                             f"recmin={rec_d[elig].min():8.0f} "
+                             f"h={hE[keep[0]]:6.0f} hmax={hE[elig].max():6.0f} "
+                             if REC_E else "")
                           + (f"br={br_live:4d}/{br_el:4d}el "
                              f"brd={br_d:8.0f} "
                              if br_fired >= 0 else "")
@@ -3125,6 +3229,16 @@ def main():
         dt_loop = time.time() - t_loop
         n_ticks = t + 1 - t_start
         fps = n_ticks * N / max(dt_loop, 1e-9)
+        if elite_arch is not None:
+            _n = elite_arch.save(args.dump_elite_states, {
+                "ckpt": str(args.ckpt), "map": Path(map_path).stem, "score": args.score,
+                "rec_quant": float(args.rec_quant), "envs": N, "resample_every": R,
+                "eps": float(args.eps), "seed": int(args.seed),
+                "rec_min": (float(rec_d.min()) if REC_E else None),
+                "provenance": "beam_tas population search: the checkpoint's own stochastic "
+                              "continuations from the map start, elites selected every "
+                              "generation (no demo, no route)"})
+            print(f"elite states: {_n} rows -> {args.dump_elite_states}")
         print(f"search done: {n_ticks} ticks x {N} envs in {dt_loop:.0f}s "
               f"({fps:,.0f} env-steps/s), {len(finishes)} finishes, "
               f"{gen} generations"

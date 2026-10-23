@@ -139,3 +139,27 @@ The recipe's energy potential (K 3, Phi = K h / 1000, h = z + |v|^2 / 2g) paid o
 instead of only once at the band edge: a pump in the trough is paid as it happens (~+1.3 for the
 WR's +434 u), so the gate is shaped by a physical invariant, no map constant. Risk: energy
 farming in the trough instead of exiting (sidistic's "dip lock" reason for the front form).
+
+### 2026-10-23 15:53 UTC - arms 2 and 3 (warm, sid2pb at step 0, 4e8 budget each)
+
+* arm 2 pbr1b2_xen (+ --energy-pot-front 0 --energy-pot-front-bonus 0, plain energy potential):
+  evals 0.388 / 0.331 / 0.096 (0.5M / 76M / 151M). Same suicide as arm 1, now the fastest one:
+  at 151M all 9 greedy episodes JUMP INTO THE NORTH KILL STRIP within 1.4-2.4 s. Note the plain
+  energy term itself pays a jump-suicide (+0.13: the jump's energy is paid, a death keeps it, a
+  safe landing would charge it back) - the "no death refund" rule makes dying mid-air the best
+  end of a jump. Stopped at 155M.
+* arm 3 pbr1b2_xen0 (arm 2 + --time-pen 0): evals 0.408 / 0.425 / 0.454 - no suicide (episodes
+  ~8 s, stall kills 54%), energy churn +1,006/-1,079 u per episode, but still on the platform
+  (reservoir deepest 99.38% of d0). Stopped at 153M. So the time penalty IS what drives the
+  suicide here; removing it is necessary, not sufficient.
+* LESSON: the time penalty + a dead-end start = a suicide attractor (0.1/s of living cost against
+  0 for dying; the platform's kill strips make dying a 1.4 s action).
+
+### arm 4: pbr1b2_xsp = arm 3 resumed at 151.5M + --respawn-speed 1.0 1.6
+
+The reservoir rows (most of the spawn pool) spawn with their speed x U(1.0, 1.6) instead of
+U(0.9, 1.1) (an existing flag: "practices speed-gated jumps"). Generic: "what if I were faster
+here". A trough state falling at ~660 u/s gets up to ~1,060 u/s, which is about the energy the
+WR carries out of the trough (+430..590 u of z + v^2/2g); the ratchet pays a trough spawn for
+every new record it sets on the way back west (its b_0 is its own spawn d), so the critic can
+learn what energy is worth there before the policy can make it.
