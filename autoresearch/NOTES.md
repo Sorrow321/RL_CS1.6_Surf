@@ -254,3 +254,16 @@ resample every 25 decisions. On a box it runs as it does locally (CPU physics + 
 * Spawn file v4 (live in pbr1b4_ys at 991M, 17:31): the last 10 spine rows of all 50 wins
   (ge_gp1 P 400 + ge_gp2 P 265: the entry bursts and their stitched approach) x3 + chain[13:]
   (inside the tunnel -> the chamber). 1,560 rows, 30% of the spawn pool.
+
+### 18:00 UTC - the backward curriculum is working one step at a time: the last step is learned
+
+* Probe (record_ckpt --stochastic, 20 x 4 s episodes from the entry-burst states, pbr1b4_ys
+  ckpt at ~1.40B): **11/20 enter the corridor alive and crawl to x 112-241** (most of the
+  tunnel), from both mouths (e.g. (649, -2929, 3719), (648, -3087, 3716), (686, -3112, 3717)).
+  The 9 failures all start ONE STEP EARLIER - on the plate edge / floor at z 3686-3696, before
+  the hop up into the mouth (x 665-759). Random continuations from the same states: 1-10%. So
+  RL has learned the final step from spawns and is one step short; the greedy line from the true
+  start (still at the south wall, floor level, 0.4%) needs two more steps: floor -> plate, plate
+  edge -> mouth.
+* Spawn v5 live at 1.44B (17:59 UTC): the FULL spines of all 50 search wins (1,130 rows, 567 of
+  them on the approach east of x 700) + the entry rows x2 + chain[13:] = 2,190 rows.
