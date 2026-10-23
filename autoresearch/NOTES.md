@@ -2702,3 +2702,5 @@ basement and only near the funnel wall in shape).
   where the score's field is lower. Next evals 98.312-98.328 (CP7), then the usual dip; reset to seed 9.
 * 23:53 UTC: r6b1_turn9 (seed 9) - best 98.321, wobbling from 17,444M; reset as r6b1_turn10 (seed 10), the last run
   before the wrap-up.
+* 00:20 UTC: r6b1_turn10 (seed 10) - **98.405** (17,432M, second best), wobbling from 17,463M; reset as r6b1_turn11
+  (seed 11) for the last ~30 min before the wrap-up.
