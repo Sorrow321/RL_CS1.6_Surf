@@ -4215,6 +4215,58 @@ def episode_stats(traj_path: Path):
     return out
 
 
+def _ge_phase1(args) -> str:
+    """--ge-minutes: run tools/explore_phase1.py (Go-Explore phase 1, reward-free) from the
+    map's true spawn for args.ge_minutes on every CPU the container allows, then write its
+    archive's states as runs/<run>/ge_states.npy (STATE_DTYPE rows, clocks zeroed). A file
+    already there (a resume, or a relaunch of the same run) is reused, never rebuilt."""
+    import subprocess
+    from surfgym.core import STATE_DTYPE as _SD
+    out = ROOT / "runs" / args.run
+    path = out / "ge_states.npy"
+    if path.exists():
+        print(f"--ge-minutes: reusing this run's archive {path} "
+              f"({len(np.load(path, allow_pickle=False)):,} states)")
+        return str(path)
+    out.mkdir(parents=True, exist_ok=True)
+    try:
+        n = len(os.sched_getaffinity(0))
+    except AttributeError:                   # pragma: no cover - Windows
+        n = os.cpu_count() or 8
+    n = min(n, _cgroup_cpu_quota() or n)
+    cmd = [sys.executable, "-u", str(ROOT / "tools" / "explore_phase1.py"),
+           "--map", str(args.map), "--out", str(out / "ge"), "--envs", "2048",
+           "--cell", f"{float(args.ge_cell):g}", "--cell-speed", str(int(args.ge_speed)),
+           "--cell-speed-max", "2400", "--decisions", "100",
+           "--act-every", str(int(args.act_every)), "--maxvel", f"{float(args.maxvel):g}",
+           "--max-minutes", f"{float(args.ge_minutes):g}", "--threads", str(n),
+           "--seed", str(int(args.seed)), "--snapshot-every", "100", "--print-every", "100"]
+    print(f"--ge-minutes {float(args.ge_minutes):g}: Go-Explore phase 1 from the true spawn "
+          f"({n} threads): {' '.join(cmd[2:])}", flush=True)
+    env = dict(os.environ, OMP_NUM_THREADS=str(n))
+    with open(out / "ge.log", "w") as fh:
+        r = subprocess.run(cmd, stdout=fh, stderr=subprocess.STDOUT, env=env)
+    # explore_phase1 exits 1 when no run crossed the finish - the normal end of a budgeted
+    # search; anything else, or no archive, is a failure
+    if r.returncode not in (0, 1) or not (out / "ge" / "archive.npz").exists():
+        raise SystemExit(f"--ge-minutes: explore_phase1 failed (exit {r.returncode}); see "
+                         f"{out / 'ge.log'}")
+    z = np.load(out / "ge" / "archive.npz", allow_pickle=True)
+    st = z["state"]
+    rows = np.zeros(len(st), _SD)
+    for f in _SD.names:
+        rows[f] = st[f]
+    rows["tick"] = 0
+    rows["stuck_ticks"] = 0
+    tmp = out / "ge_states.tmp.npy"
+    np.save(tmp, rows)
+    os.replace(tmp, path)
+    tail = (out / "ge.log").read_text(errors="replace").strip().splitlines()[-1:]
+    print(f"--ge-minutes: {len(rows):,} archive states -> {path}"
+          + (f" ({tail[0].strip()})" if tail else ""), flush=True)
+    return str(path)
+
+
 def main() -> None:
     # allow_abbrev=False: the launcher's demo guard matches exact spellings,
     # and argparse would otherwise accept --demo-f for --demo-file (GPT
@@ -6832,6 +6884,27 @@ def main() -> None:
     ap.add_argument("--spawn-states-frac", type=float, default=None,
                     help="with --spawn-states: the share of the spawn pool it replaces, in "
                          "(0, 1)")
+    ap.add_argument("--ge-minutes", type=float, default=None,      # 0 = off
+                    help="Go-Explore phase 1 BEFORE training (tools/explore_phase1.py; Ecoffet "
+                         "et al., Nature 2021): a REWARD-FREE archive search from the map's true "
+                         "spawn - cells of --ge-cell u x --ge-speed horizontal-speed buckets, "
+                         "chosen 1/sqrt(seen+1), restored exactly, explored with uniform random "
+                         "actions (95%% repeat) - for this many wall-clock minutes on all CPUs; "
+                         "its archive then joins every TRAINING spawn pool as --ge-frac of it "
+                         "(the --spawn-states rule; evals still start at the map start). The "
+                         "archive is this run's own search from the true spawn: no demo, no "
+                         "record, no reward, no map constant. On princessburglar it crosses the "
+                         "start room's crouch tunnel (invisible to the slab field) in ~1 min. "
+                         "Written to runs/<run>/ge/ + ge_states.npy; a resume reuses the file. "
+                         "Single map, 10 ms tick. 0 = off (bit-identical); ckpt restores")
+    ap.add_argument("--ge-frac", type=float, default=None,
+                    help="--ge-minutes: the share of every training spawn pool drawn uniformly "
+                         "from the archive, in (0, 1) (default 0.3)")
+    ap.add_argument("--ge-cell", type=float, default=None,
+                    help="--ge-minutes: archive cell size in u (default 64)")
+    ap.add_argument("--ge-speed", type=int, default=None,
+                    help="--ge-minutes: horizontal-speed buckets (0..2400 u/s) in the archive's "
+                         "cell key (default 8; 0 = position only)")
     ap.add_argument("--respawn-greedy", type=float, default=None,     # 0 = off
                     help="share of the NON-start spawn pool replaced each iteration by the "
                          "policy's OWN greedy-eval states from the seconds before each death "
@@ -7708,6 +7781,11 @@ def main() -> None:
         if args.spawn_states_frac is None and ck_cfg.get("spawn_states_frac") is not None:
             args.spawn_states_frac = float(ck_cfg["spawn_states_frac"])
             restored.append(f"spawn_states_frac={args.spawn_states_frac:g}")
+        for _gk, _gt in (("ge_minutes", float), ("ge_frac", float), ("ge_cell", float),
+                         ("ge_speed", int)):
+            if getattr(args, _gk) is None and ck_cfg.get(_gk) is not None:
+                setattr(args, _gk, _gt(ck_cfg[_gk]))
+                restored.append(f"{_gk}={getattr(args, _gk):g}")
         if args.demo_window is None and ck_cfg.get("demo_window") is not None:
             args.demo_window = int(ck_cfg["demo_window"])
         if args.demo_rate is None and ck_cfg.get("demo_rate") is not None:
@@ -10075,10 +10153,33 @@ def main() -> None:
             raise SystemExit("--archive-frac must be in (0, 1)")
     SPAWN_STATES = None
     SS_SEQK = [None]           # --spawn-states .npz with seq_k: each state's sequence start
-    if args.spawn_states:
+    # the file the training pool draws from and its share: --spawn-states, or the archive
+    # --ge-minutes builds (this run's own reward-free search from the true spawn)
+    SS_PATH, SS_FRAC = args.spawn_states, args.spawn_states_frac
+    if args.ge_minutes is None:
+        args.ge_minutes = 0.0
+    if float(args.ge_minutes) > 0.0:
+        if args.spawn_states:
+            raise SystemExit("--ge-minutes builds its own spawn-state pool: not with "
+                             "--spawn-states")
+        if args.maps:
+            raise SystemExit("--ge-minutes is single-map")
+        if abs(float(args.tick_ms) - 10.0) > 1e-9 or args.tick_ms_schedule:
+            raise SystemExit("--ge-minutes: explore_phase1 runs the 10 ms tick only")
+        args.ge_frac = 0.3 if args.ge_frac is None else float(args.ge_frac)
+        args.ge_cell = 64.0 if args.ge_cell is None else float(args.ge_cell)
+        args.ge_speed = 8 if args.ge_speed is None else int(args.ge_speed)
+        if not 0.0 < args.ge_frac < 1.0:
+            raise SystemExit("--ge-frac must be in (0, 1)")
+        SS_PATH, SS_FRAC = _ge_phase1(args), args.ge_frac
+        print(f"provenance: ge_states = {SS_PATH} (this run's own Go-Explore phase-1 archive "
+              "from the true spawn: reward-free, uniform random actions; no demo)")
+    elif any(getattr(args, _gk) is not None for _gk in ("ge_frac", "ge_cell", "ge_speed")):
+        raise SystemExit("--ge-frac / --ge-cell / --ge-speed need --ge-minutes > 0")
+    if SS_PATH:
         if args.maps:
             raise SystemExit("--spawn-states is single-map")
-        _ssf = args.spawn_states_frac
+        _ssf = SS_FRAC
         if _ssf is None or not 0.0 < float(_ssf) < 1.0:
             raise SystemExit("--spawn-states needs --spawn-states-frac in (0, 1)")
         from surfgym.core import STATE_DTYPE as _SD
@@ -10101,15 +10202,15 @@ def main() -> None:
             _a["tick"] = 0
             _a["stuck_ticks"] = 0
             return _a
-        SPAWN_STATES = _load_spawn_states(args.spawn_states)
+        SPAWN_STATES = _load_spawn_states(SS_PATH)
         if SS_SEQK[0] is not None and not (args.goal_planner == "ramps" and args.ramp_sequence):
             raise SystemExit("--spawn-states with seq_k starts a --ramp-sequence part way: it "
                              "needs --goal-planner ramps --ramp-sequence")
         # the file is RE-READ when its mtime changes (checked every 20 iterations): an outer
         # loop (a fresh edge archive of the current policy) can refresh the own-state pool
         # without restarting the run; replace it atomically (write + rename)
-        SS_MTIME = os.path.getmtime(args.spawn_states)
-        print(f"--spawn-states: {len(SPAWN_STATES):,} own states from {args.spawn_states}; "
+        SS_MTIME = os.path.getmtime(SS_PATH)
+        print(f"--spawn-states: {len(SPAWN_STATES):,} own states from {SS_PATH}; "
               f"{float(_ssf):.0%} of every training spawn pool drawn uniformly from them "
               f"(exact states, clocks zeroed; re-read when the file changes)")
     elif args.spawn_states_frac is not None and flag_given("--spawn-states-frac"):
@@ -14142,6 +14243,11 @@ def main() -> None:
     if args.race_no_corner_cut:
         # written ONLY when set: a control run's config dump is unchanged
         meta["config"]["race_no_corner_cut"] = 1
+    if float(args.ge_minutes or 0.0) > 0.0:
+        # --ge-minutes: written ONLY when on (a control run's config dump is unchanged); a
+        # resume restores the four and reuses runs/<run>/ge_states.npy
+        meta["config"].update(ge_minutes=float(args.ge_minutes), ge_frac=float(args.ge_frac),
+                              ge_cell=float(args.ge_cell), ge_speed=int(args.ge_speed))
     if args.demo_file and float(args.demo_front_frac) > 0.0:
         # --demo-front-frac: dumped only when on (a flag-off run.json is the
         # control's byte for byte); a resume restores it
@@ -16163,6 +16269,23 @@ def main() -> None:
             for _s, _b in zip(slots, INT_BASE):
                 _s.reward_fn.int_coef = _b * (1.0 + unstuck_T)
     SS_RNG = np.random.default_rng(int(args.seed) + 4242)     # --spawn-states draws
+    if float(args.ge_minutes or 0.0) > 0.0 and SPAWN_STATES is not None:
+        # --ge-minutes: archive cells BEHIND the start on the shaping field are dropped - dead
+        # ends the reward never pays, which a uniform draw over-samples (princessburglar: 61% of
+        # the archive is the half-pipe east of the spawn, and a policy spawned there learned to
+        # run east from the true start and die in it, pbr1b1_gewarm 2026-10-23). What remains is
+        # the search's forward frontier, from the spawn on.
+        _gs = slots[0]
+        _gf = _gs.reward_field if _gs.reward_field is not None else _gs.goal_field
+        if _gf is not None:
+            _gd = _gf.sample(SPAWN_STATES["origin"].astype(np.float64)).astype(np.float64)
+            _gk = (_gd < _gf.reach_max - 0.5 * float(_gf.cell)) & (_gd < float(_gs.rf_d0))
+            if not _gk.any():
+                raise SystemExit("--ge-minutes: no archive cell is deeper than the start")
+            print(f"--ge-minutes: {int(_gk.sum()):,} of {len(SPAWN_STATES):,} archive states lie "
+                  f"deeper than the start on the shaping field (d < {float(_gs.rf_d0):,.0f}); "
+                  "the ones behind it are dropped")
+            SPAWN_STATES = SPAWN_STATES[_gk]
     # --int-match: the reward the fleet was paid this iteration (novelty included), and the note
     imatch_rsum = 0.0
     imatch_note = ""
@@ -17346,14 +17469,14 @@ def main() -> None:
         if SPAWN_STATES is not None and it_no % 20 == 0:
             # --spawn-states: re-read a refreshed file (an outer archive loop replaced it)
             try:
-                _mt = os.path.getmtime(args.spawn_states)
+                _mt = os.path.getmtime(SS_PATH)
                 if _mt != SS_MTIME:
-                    SPAWN_STATES = _load_spawn_states(args.spawn_states)
+                    SPAWN_STATES = _load_spawn_states(SS_PATH)
                     SS_MTIME = _mt
                     if RPLAN and SS_SEQK[0] is not None:
                         _ramp_planner.windows.set_seq_starts(SPAWN_STATES["origin"], SS_SEQK[0])
                     print(f"--spawn-states: re-read {len(SPAWN_STATES):,} own states from "
-                          f"{args.spawn_states} at step {global_step:,}", flush=True)
+                          f"{SS_PATH} at step {global_step:,}", flush=True)
             except (OSError, ValueError) as _e:
                 print(f"--spawn-states: re-read failed ({_e}); keeping the previous pool",
                       flush=True)
@@ -17369,7 +17492,7 @@ def main() -> None:
                 # the map-start pool before the reservoir fills, is tiled up to it first)
                 if len(_pool) < 4096:
                     _pool = np.resize(_pool, 4096)
-                _m = int(round(len(_pool) * float(args.spawn_states_frac)))
+                _m = int(round(len(_pool) * float(SS_FRAC)))
                 _pos = SS_RNG.choice(len(_pool), _m, replace=False)
                 _pool = _pool.copy()
                 _pool[_pos] = SPAWN_STATES[SS_RNG.integers(0, len(SPAWN_STATES), _m)]

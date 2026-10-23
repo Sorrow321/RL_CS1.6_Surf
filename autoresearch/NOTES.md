@@ -138,3 +138,22 @@ So the start is an exploration gate PPO's narrow policy never samples (it learne
 the spawn = death": trigger *257 hangs over the ledge east of the spawn), and an archive of
 return-then-explore with uniform actions crosses it at once. Section 0/0b: the archive is our
 own reward-free search from the true spawn, no demo or record data, generic constants.
+
+### Warm sidistic weights + the GE archive as spawns (pbr1b1_gewarm, gewarm2)
+* `pbr1b1_gewarm` (resume of the stripped sidistic finisher, recipe flags from its config,
+  `--spawn-states ge1_states.npy --spawn-states-frac 0.3`): the 76M greedy eval ran EAST from
+  the true spawn into the half-pipe and died there (9/9, z ~3,290-3,310): 61% of the archive
+  is that dead-end half-pipe (behind the start on the field), and a uniform draw taught it.
+  Stopped at 78M.
+* Fix (generic): keep only archive cells the shaping field ranks DEEPER than the true start
+  (d < d_start): 1,058 of 3,597 (70 within 150 u of the spawn, 53 in the tunnel, the rest past
+  it). `pbr1b1_gewarm2` = the same launch on that file (ge1_fwd_states.npy,
+  md5 6897f4c420346e07a2b35ad18a719c36).
+* Trainer flag `--ge-minutes M [--ge-frac 0.3 --ge-cell 64 --ge-speed 8]` (default off,
+  bit-identical, TRAIN_ONLY in record_ckpt): runs explore_phase1 from the true spawn for M
+  minutes on all CPUs before training (it exits 1 when nothing finished - accepted), writes
+  runs/<run>/ge_states.npy (reused on resume), applies the same deeper-than-the-start filter on
+  the shaping field, and mixes it into every training spawn pool as --ge-frac (the
+  --spawn-states rule; no SELF_STATES needed: it is the run's own search, never data).
+  explore_phase1 gained `--maxvel` (its core defaulted to 2000; the recipe runs 3500).
+  Tests: tests/python/test_ge_minutes.py (CPU, princessburglar).

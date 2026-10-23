@@ -96,6 +96,9 @@ TRAIN_ONLY = frozenset({
     # --spawn-states: a share of the TRAINING spawn pool drawn from a file of own states; a
     # recording spawns at the map start like the trainer's eval
     "spawn_states", "spawn_states_frac",
+    # --ge-minutes: a share of the TRAINING spawn pool drawn from the run's own Go-Explore
+    # archive; a recording spawns at the map start like the trainer's eval
+    "ge_minutes", "ge_frac", "ge_cell", "ge_speed",
     # --respawn-novel: a share of the TRAINING spawn pool moved to where the agent has never
     # been; a recording spawns at the map start like the trainer's eval
     "respawn_novel", "respawn_novel_frac", "respawn_novel_shell", "respawn_novel_shell_width",

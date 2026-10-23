@@ -673,6 +673,10 @@ def explore(args) -> int:
                          max_episode_ticks=int(args.ep_ticks),
                          water_fail=1, yaw_jitter_deg=0.0,
                          lidar_w=0, lidar_h=0)     # eyeless: no obs needed
+    if getattr(args, "maxvel", None) is not None:
+        # --maxvel: the trainer's sv_maxvelocity (the core default is 2000), so the archive's
+        # states obey the physics the policy trains under
+        cfg.phys.sv_maxvelocity = float(args.maxvel)
     if float(getattr(args, "kill_margin", 0.0)) > 0.0:
         # --kill-margin: PLAN WITH CLEARANCE. The search treats a band above the
         # map's own kill trigger as lethal (the player's box height 36 u plus
@@ -1071,6 +1075,9 @@ def meta_dict(args, bsp, hasher, arch, it, n_goal, extra=None) -> dict:
         "goals": int(n_goal),
         "weight": "1/sqrt(C_seen+1)",
     }
+    if getattr(args, "maxvel", None) is not None:
+        # --maxvel only: the flag-off meta json is unchanged
+        out["maxvel"] = float(args.maxvel)
     if extra:
         # --roots-goal only: the flag-off meta json is unchanged
         out.update(extra)
@@ -1689,6 +1696,9 @@ def build_parser() -> argparse.ArgumentParser:
                          "tools/goal_curriculum_pool.py exports the archive as a start pool")
     ap.add_argument("--roots-goal-n", type=int, default=16,
                     help="--roots-goal: footprint samples (rounded up to a square grid)")
+    ap.add_argument("--maxvel", type=float, default=None,
+                    help="sv_maxvelocity for the search core (default: the core's 2000); "
+                         "train_fast --ge-minutes passes the run's own --maxvel")
     ap.add_argument("--max-minutes", type=float, default=0.0,
                     help="stop after this much wall-clock time (0 = no time limit)")
     ap.add_argument("--kill-margin", type=float, default=0.0,
