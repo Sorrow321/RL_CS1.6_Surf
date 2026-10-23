@@ -2896,3 +2896,18 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   lacks (the round-2 greedy-vs-stochastic gap): from the line's own basement states it is rare at every
   temperature. Turning front-temp off to "consolidate" has no basis here; the training entries come from the
   front-perturb rows (heading turned +-90 deg), i.e. from states the line does not visit.
+
+### Harness issue (r7b3, 05:40 UTC): the fleet watchdog destroys a 5th box - its cap is 4, config.json says 5
+
+* Every box this branch rented while four others were live died within ~1 min: 57323378 (04:51, RTX 5080
+  Australia), 57327166 (05:33) and 57327456 (05:36, both RTX 5080 + i9-14900, Italy; the second answered
+  ssh first). fleet_watchdog.log: "57327456 breaks the rental policy (beyond the 4-box cap) - once; waiting for
+  a second sighting" -> "DESTROY 57327456 (POLICY: beyond the 4-box cap (label r7b3))". The running daemon
+  (pid 454175, started Oct 22) has RLSURF_MAX_BOXES=4 in its environment, while config.json's max_boxes is 5
+  ("4 branch boxes + 1 operator box ... With 4 the operator box would block a branch's re-rent"). box.py
+  checks 5, so it rents, and the watchdog kills the youngest box beyond 4: with the operator box and three
+  branch boxes live, the fourth branch can never hold one. The earlier 03:19 "GONE" box (57313655) was
+  probably the same rule (I released it before reading the log).
+* Not mine to change (the daemon and its environment are the operator's). Workaround on this branch: the
+  rent loop only rents while `box.py budget` shows fewer than 4 live boxes. Fix for the operator: restart the
+  daemon with RLSURF_MAX_BOXES=5 (CLAUDE.md: restart the daemon after a policy change).
