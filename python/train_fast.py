@@ -2853,8 +2853,16 @@ class _TorchPolicyBase:
             self._keys_tick = None
         if self.core is not None:
             tick = np.asarray(self.core.states_view["tick"], np.int64)
+            fresh = None
             if self._keys_tick is not None:
-                self.keys.reset(tick < self._keys_tick + self._period)
+                fresh = tick < self._keys_tick + self._period
+                self.keys.reset(fresh)
+            elif getattr(self, "spawn_duck", False):
+                fresh = np.ones(n, bool)
+            if getattr(self, "spawn_duck", False) and fresh is not None and fresh.any():
+                # --keys-hold-spawn-duck (the checkpoint's): a crouched spawn holds duck, as
+                # the trainer does
+                self.keys.state[fresh & (np.asarray(self.core.states_view["ducked"]) > 0), 2] = 1
             self._keys_tick = tick.copy()
 
     def act(self, obs):

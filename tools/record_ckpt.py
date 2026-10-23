@@ -101,7 +101,6 @@ TRAIN_ONLY = frozenset({
     # --demo-success-d: the TRAINING backward curriculum's success rule; a recording spawns at the start
     "demo_success_d",
     "demo_success_bonus",
-    "keys_hold_spawn_duck",
     # --ge-minutes: a share of the TRAINING spawn pool drawn from the run's own Go-Explore
     # archive; a recording spawns at the map start like the trainer's eval
     "ge_minutes", "ge_frac", "ge_cell", "ge_speed",
@@ -2681,6 +2680,9 @@ def main(argv=None, build_only: bool = False, device=None):
                aux=obs_aux, masks=masks, cc_fn=cc_fn,
                keys_hold=keys_hold, ratchet_fn=ratchet_fn, pass_fn=pass_fn,
                vec_fn=vec_fn, mirror=_mirror, surf_fn=surf_fn, prate_fn=prate_fn)
+    if keys_hold and cfg.get("keys_hold_spawn_duck"):
+        # --keys-hold-spawn-duck: a crouched spawn (a --spawn-states row) holds duck, as in training
+        _pol.spawn_duck = True
     if locals().get("_psearch") is not None:
         # --plan-search M (--goal-planner primlearn): a scratch core of M envs built like this one,
         # its own fan line, and a fresh greedy wrapper of the SAME executor per simulation
