@@ -13,6 +13,7 @@ Phi = K * h / 1000 with h = z + |v|^2 / (2 g), paid as its change every call.
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -113,6 +114,75 @@ def test_zero_is_off_and_the_stats_appear_only_when_on():
     assert "en_gain_per_ep" in sb and "en_loss_per_ep" in sb
 
 
+class _LineField:
+    """d = x: the field falls along +x (the goal at x 0)."""
+    reach_max = 1e9
+    cell = 32.0
+
+    def sample(self, p):
+        return np.asarray(p, np.float64)[:, 0].astype(np.float32)
+
+
+def _rr_front(k, edge, ratchet=True):
+    core = _FakeCore(1).at([5000.0])
+    rr = RaceReward(_LineField(), scale=1.0, time_pen=0.0, stall_ticks=10 ** 9, ratchet=ratchet)
+    rr.energy_pot = k
+    rr.en_front_d = edge
+    rr.on_reset(core)
+    return rr, core
+
+
+def _go(rr, core, x, vx, done=0):
+    core.states_view["origin"][:, 0] = np.float32(x)
+    core.states_view["velocity"][:] = np.asarray([[vx, 0.0, 0.0]], np.float32)
+    return float(_step(rr, core, done=done)[0])
+
+
+def _e(v):
+    return K / 1000.0 * v * v / (2 * G)
+
+
+def test_front_latch_pays_up_to_the_band_and_stops_inside_it():
+    """moves of <= 100 u per call (the ratchet's teleport clip), the band edge at d 3,000"""
+    rr, core = _rr_front(K, edge=3000.0)
+    _go(rr, core, 3100.0, 1000.0)                                  # anchors
+    # outside the band: the ratchet pays 50 and the energy change is paid
+    assert _go(rr, core, 3050.0, 1200.0) == pytest.approx(50.0 + _e(1200) - _e(1000), abs=1e-3)
+    # the transition that ENTERS the band (record 2990 <= 3000) is still paid
+    assert _go(rr, core, 2990.0, 1500.0) == pytest.approx(60.0 + _e(1500) - _e(1200), abs=1e-3)
+    # inside it the energy term is off: only the ratchet pays, a speed loss costs nothing
+    assert _go(rr, core, 2940.0, 500.0) == pytest.approx(50.0, abs=1e-3)
+    # backing out of the band keeps the latch (the record is still inside)
+    assert _go(rr, core, 3020.0, 400.0) == pytest.approx(0.0, abs=1e-3)
+    assert bool(rr._en_off[0])
+    # an ended row: its new episode spawns OUTSIDE the band and is paid again from there
+    assert _go(rr, core, 6000.0, 0.0, done=1) == pytest.approx(0.0, abs=1e-6)
+    assert not bool(rr._en_off[0])
+    assert _go(rr, core, 6000.0, 800.0) == pytest.approx(_e(800), abs=1e-3)
+
+
+def test_front_latch_a_spawn_inside_the_band_is_off_from_the_start():
+    rr, core = _rr_front(K, edge=3000.0)
+    _go(rr, core, 3100.0, 1000.0)
+    _go(rr, core, 2000.0, 0.0, done=1)                             # the new episode spawns in the band
+    assert bool(rr._en_off[0])
+    assert _go(rr, core, 2000.0, 900.0) == pytest.approx(0.0, abs=1e-6)
+
+
+def test_front_latch_off_is_the_plain_term():
+    """edge = inf (no reservoir yet, or the flag off): the ratchet plus the plain energy term on
+    every call, inside the would-be band too, and no latch state"""
+    rr, core = _rr_front(K, edge=float("inf"))
+    _go(rr, core, 3100.0, 1000.0)
+    rec, prev = 3100.0, 1000.0
+    for x, v in ((3050.0, 1300.0), (2990.0, 700.0), (2940.0, 1500.0), (2960.0, 200.0)):
+        pay = max(0.0, rec - x)
+        rec = min(rec, x)
+        assert _go(rr, core, x, v) == pytest.approx(pay + _e(v) - _e(prev), abs=1e-3)
+        prev = v
+    assert rr._en_off is None
+
+
 @needs_run
 def test_the_real_core_keeps_energy_height_in_free_flight():
     """Launched up from the spawn platform with no keys held: on every tick where only gravity
@@ -179,8 +249,37 @@ def test_the_trainer_carries_restores_and_records_it():
     r4 = _run([sys.executable, "-u", str(TRAIN), "--run", "enpot_bad"] + SMOKE
               + ["--steps", "2048", "--energy-pot", "-1"])
     assert r4.returncode != 0 and "--energy-pot K needs K >= 0" in r4.stdout + r4.stderr
+    r5 = _run([sys.executable, "-u", str(TRAIN), "--run", "enpot_bad"] + SMOKE
+              + ["--steps", "2048", "--energy-pot-front", "0.01"])
+    assert r5.returncode != 0 and "it needs --energy-pot K > 0" in r5.stdout + r5.stderr
     for dd in (run, run2, "enpot_bad"):
         shutil.rmtree(ROOT / "runs" / dd, ignore_errors=True)
+
+
+@needs_run
+def test_the_front_latch_runs_on_a_seeded_reservoir_and_is_restored():
+    from test_respawn_greedy import GREEDY_SMOKE, _seeded_ckpt
+    d0, seeded = _seeded_ckpt("enfront_base")
+    run = "enfront_on"
+    shutil.rmtree(ROOT / "runs" / run, ignore_errors=True)
+    r = _run([sys.executable, "-u", str(TRAIN), "--run", run, "--ckpt", str(seeded)] + SMOKE
+             + GREEDY_SMOKE + ["--steps", "10240", "--energy-pot", "1", "--energy-pot-front",
+                               "0.5", "--ep-ticks", "60"])
+    assert r.returncode == 0, r.stdout[-4000:] + r.stderr[-4000:]
+    out = r.stdout
+    assert "--energy-pot-front 0.5: the energy term is paid only until" in out
+    assert re.search(r"  en \+[0-9,]+/-[0-9,]+u/ep off \d+%", out), out[-3000:]
+    cfg = _cfg(run)
+    assert cfg["energy_pot"] == 1.0 and cfg["energy_pot_front"] == 0.5
+    run2 = "enfront_re"
+    shutil.rmtree(ROOT / "runs" / run2, ignore_errors=True)
+    r2 = _run([sys.executable, "-u", str(TRAIN), "--run", run2, "--ckpt",
+               str(ROOT / "runs" / run / "ckpt_final.pt")] + SMOKE + GREEDY_SMOKE
+              + ["--steps", "14336"])
+    assert r2.returncode == 0, r2.stdout[-4000:] + r2.stderr[-4000:]
+    assert "energy_pot_front=0.5" in r2.stdout and _cfg(run2)["energy_pot_front"] == 0.5
+    for dd in (d0, ROOT / "runs" / run, ROOT / "runs" / run2):
+        shutil.rmtree(dd, ignore_errors=True)
 
 
 def _pre_change_trainer(dst: Path):

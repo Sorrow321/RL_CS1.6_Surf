@@ -1051,6 +1051,14 @@ class RaceReward:
         self._g_en = 800.0
         self.en_gain = 0.0
         self.en_loss = 0.0
+        # --energy-pot-front B: the term is paid only BEFORE the frontier band. en_front_d is the
+        # band edge in d (the trainer re-reads it every iteration from the reservoir's deepest
+        # state: progress >= (1 - B) x the deepest), inf = no band. _en_off is the per-episode
+        # latch: once the episode's record (the ratchet's, else d) is inside the band the term
+        # stops for the rest of the episode, so energy is worth something on the way to the
+        # frontier and is free to spend at it (a quick death in the band keeps nothing).
+        self.en_front_d = float("inf")
+        self._en_off = None
         # --surf-bonus / --dive-pen (round 40, pnSURF): "surfing = good,
         # diving = bad" as a dense per-tick term. Both are REWARD UNITS PER
         # SECOND on the flag; the trainer converts to per-tick. 0/0 is off
@@ -1238,6 +1246,7 @@ class RaceReward:
         self._vmax = float(getattr(core.config.phys, "sv_maxvelocity", 0.0) or 0.0)
         self._spd_prev = None        # --speed-pot re-anchors on the first call
         self._en_prev = None         # --energy-pot re-anchors on the first call
+        self._en_off = None          # --energy-pot-front: no episode is latched yet
         self._g_en = float(core.config.phys.sv_gravity)
         self._best = self._d.copy()
         if self.sr:
@@ -1589,6 +1598,17 @@ class RaceReward:
                 self._en_prev = h.copy()
             dh = h - self._en_prev
             dh[ended] = 0.0
+            if self.en_front_d < float("inf"):
+                # --energy-pot-front: the latch as it stood before this call governs this
+                # transition (the one that enters the band is still paid); then it latches on
+                # this call's record, and an ended row's new episode starts latched iff its
+                # spawn is already inside the band
+                if self._en_off is None or self._en_off.shape != h.shape:
+                    self._en_off = np.zeros(h.shape, bool)
+                dh[self._en_off] = 0.0
+                rec = self._rec if (self.ratchet and self._rec is not None) else dc
+                self._en_off |= np.asarray(rec) <= self.en_front_d
+                self._en_off[ended] = d[ended] <= self.en_front_d
             r += ((self.energy_pot / 1000.0) * dh).astype(np.float32)
             self.en_gain += float(dh[dh > 0.0].sum())
             self.en_loss -= float(dh[dh < 0.0].sum())
@@ -2136,6 +2156,9 @@ class RaceReward:
             out["en_gain_per_ep"] = (self.en_gain / n_ep) if n_ep else float("nan")
             out["en_loss_per_ep"] = (self.en_loss / n_ep) if n_ep else float("nan")
             self.en_gain = self.en_loss = 0.0
+            if self._en_off is not None:
+                # --energy-pot-front: the share of envs whose episode is past the band edge now
+                out["en_off_frac"] = float(self._en_off.mean())
         if self.arc is not None:
             out["arc_gain"] = (float(np.mean(self.arc_gain))
                                if self.arc_gain else float("nan"))

@@ -2861,3 +2861,35 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
 * Read-outs: the step line's loss per episode (falling = the policy keeps energy), and in the greedy evals the
   h at the basement entry (control 2,363-2,489), the basement reach (the suicide risk), chamber entries / apex,
   rim crossings, finishes, the score.
+
+### 03:19 UTC: arm 1 (r7b2_en1, --energy-pot 1) - the line KEEPS energy, then dives into the basement kill floor
+
+* r7b2_en1 22,218-22,49xM (~275M steps, 186k steps/s cumulative): 44 evals, all 96.5-97.93 (CP6 / CP7), best
+  97.928; 0 chamber entries.
+* **Energy (the mechanism works upstream):** h at the basement entry, median per eval, 2,290-2,400 (the first
+  evals = the checkpoint) -> **2,500-2,630 from ~22.30B** (max 2,681); h at 112 s 2,380 -> 2,500-2,600. The line
+  also reaches the basement ~1.5 s sooner (112.0-112.7 s vs the control's 113.4-114.8 s).
+* **The failure I wrote down before the launch, observed:** in the basement every en1 episode now dives straight
+  into the -y outer channel's kill floor within ~0.6 s of entering (dies at (2,860-3,000, -650..-690, ~710),
+  112.4-113.3 s); the control loops for 3-25 s (surfs east, U-turns, returns west climbing - the leg the chamber
+  entries come from) and dies at 116-139 s. With no death refund a free fall into a kill trigger costs no energy
+  while the loop destroys ~1,300 u of h (-1.3 reward), so the quickest death is the energy-optimal end of a
+  non-finishing episode.
+* Where the line spends its energy (control eval, scratchpad energy_budget.py; per 10 s: air-strafe gain
+  +190-330 u (~20-33 u/s; the per-frame optimum is ~56 u/s), small airborne losses -190..-520, contacts with
+  > 5 u per tick -300..-1,970 over 12-135 ticks): along the line d / h: 105 s 7,656 / 3,554; 109 s 3,515 (record
+  96.47%) / 3,108; **110 s a deep dip to z -178 (d 5,316, the record stays) / 2,686; 111 s 2,499**; 113 s
+  3,234 / 2,490; 114 s the basement 2,178 (97.81%) / 2,519; 115 s 2,093 (the landing).
+
+### NEW `--energy-pot-front B`: energy is priced only on the way TO the frontier band
+
+* With B > 0 the term is paid until the episode's record (the ratchet's; d without it) reaches the frontier band -
+  progress >= (1 - B) x the reservoir's deepest, the --front-temp rule, re-read every iteration - and then stops
+  for the rest of the episode (a latch; an episode that spawns inside the band is off from the start). So the
+  energy a line CARRIES to the frontier counts, and spending it there (looping, climbing, dying) is free: the
+  basement suicide earns nothing. Generic: the policy's own reservoir defines the band, one constant.
+* At B 0.01 the band edge is d ~3,064 now (progress 96.93%; the reservoir's deepest is 97.9%): the latch fires at
+  ~113 s, after the deep dip (the largest single loss) and before the basement.
+* Step line `en +G/-L u/ep off X%` (X = envs past the edge). Tests added to test_energy_pot.py (the entering
+  transition is paid and none after; backing out keeps the latch; an ended row re-arms; a spawn in the band is off
+  from the start; edge inf = the plain term; the trainer smoke on a seeded reservoir, restore, refusals).
