@@ -2962,3 +2962,16 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   (incumbent ~114 s). Its new weak spot: 3-6 of 9 episodes die at 86% (~96 s, near (-1,680, ~0, 3,900)) - those that
   drift to y ~+210 at 95 s instead of y -230..-440 (the incumbent lost 2 of 9 there). Medians ~86% as a result; the
   greedy-line pool practises exactly those deaths. Running on.
+
+### 04:45 UTC: arm 3 - a REAL training episode over the funnel rim at ~22.518B; a burst of 821 front-perturb finishes
+
+* At ~22.5176B the reservoir's deepest state jumped 98.01% -> 98.56% of progress (min depth 1.989% -> 1.436%, d ~1,431 u:
+  on the corrected field that exists only above the funnel opening, z ~1,650). Reservoir states are harvested >= 2 s before
+  an episode's end from REAL episodes only (map starts, reservoir, greedy and front-perturb rows; never novel or
+  backward-mix rows), so an episode flew over the rim and on for 2 s more.
+* The front-perturb band (0.5% of the deepest) then held those states: front-perturb episodes finished 1/62, 63/77,
+  82/82, 48/65, 35/51, 22/36 per iteration (22.518-22.526B), then 2-3 per iteration and 0 from ~22.533B as the band
+  filled with other deep states (min depth 1.413%). 821 finishes in 12,516 front-perturb episodes over the run so far
+  (round 6's tp3 at the same x1.0-1.3 speeds: 0). Same shape as fp3's burst in round 6 (x1.4-2.0 there).
+* The greedy line has not entered the chamber yet in this arm (0 of 90 eval episodes); the line now loops in the basement
+  again with ~+150-200 u more energy than the incumbent's. Running on.
