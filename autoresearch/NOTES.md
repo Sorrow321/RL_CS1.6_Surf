@@ -3011,3 +3011,19 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
 * **r7b2_ef15** (now): resume of ef2's healthy snapshot ckpt_23912251392 (md5 19a7b431..., ~80M steps before the
   lock) + `--energy-pot 1.5 --critic-warmup 20 --ckpt-every 1e8` (front-perturb x1.0-1.3, latch 0.01, everything else
   restored), evals every 6.25M. Watch the CP6 share; revert to a snapshot on a lock.
+
+### 07:02 UTC: NEW `--energy-pot-front-bonus 1` - the energy paid once, at the frontier band, as the speed brought there
+
+* Why: with the per-call potential every stretch before the band is priced, so an episode that DIES before the band
+  keeps the energy it would have lost on the way: the term always rewards dying earlier by the energy the line still
+  had to destroy, and at a costly stretch (the deep dip, ~600 u at K 1.5-2 vs ~1.8 of value after it) that flips the
+  line into dying there (ef2's lock). With the bonus mode nothing is paid or charged on the way; on the call an
+  episode's record first enters the band it is paid K x |v|^2 / (2 g) / 1000 of that state, once. Dying before the
+  band forfeits it, so no stretch is ever cheaper to die on; arriving faster pays more (the kinetic part, so the
+  map's z origin does not enter - a z term would make the bonus a function of where the map was modelled). Spawns
+  inside the band get nothing; without a band (an empty reservoir) nothing is paid.
+* The energy preference reaches the dip through the critic (V at the dip includes the expected bonus, and a contact
+  that destroys speed lowers V(s')), not through a per-call charge.
+* Tests (test_energy_pot.py): nothing on the way (speed or height changes pay 0), the entering call pays K x KE, once,
+  a new episode outside the band can earn it again, a spawn inside cannot, no band = nothing; the trainer smoke
+  (startup line, config key, restore) and the refusal without --energy-pot-front; flag off bit-identical.

@@ -5994,6 +5994,12 @@ def main() -> None:
                          "the term stops for the rest of it, so energy carried to the frontier "
                          "counts and spending it there (or dying there) is free. A checkpoint "
                          "restores it. 0 = off (the term everywhere)")
+    ap.add_argument("--energy-pot-front-bonus", type=int, default=None, choices=(0, 1),
+                    help="with --energy-pot-front: 1 = pay nothing on the way and, ONCE per "
+                         "episode on the call its record first enters the band, K x the kinetic "
+                         "energy height |v|^2 / (2 g) / 1000 of that state - the speed brought to "
+                         "the frontier; dying before the band forfeits it, so no stretch is ever "
+                         "cheaper to die on. A checkpoint restores it. 0 = the per-call potential")
     ap.add_argument("--surf-bonus", type=float, default=None,     # 0 = off
                     help="race (round 40, pnSURF): REWARD UNITS PER SECOND "
                          "paid while the player is riding a surfable face. "
@@ -7322,6 +7328,9 @@ def main() -> None:
         if args.energy_pot_front is None and ck_cfg.get("energy_pot_front") is not None:
             args.energy_pot_front = float(ck_cfg["energy_pot_front"])
             restored.append(f"energy_pot_front={args.energy_pot_front:g}")
+        if args.energy_pot_front_bonus is None and ck_cfg.get("energy_pot_front_bonus"):
+            args.energy_pot_front_bonus = int(ck_cfg["energy_pot_front_bonus"])
+            restored.append(f"energy_pot_front_bonus={args.energy_pot_front_bonus}")
         if args.speed_coef is None and ck_cfg.get("speed_coef") is not None:
             args.speed_coef = float(ck_cfg["speed_coef"])
             restored.append(f"speed_coef={args.speed_coef:g}")
@@ -8697,6 +8706,10 @@ def main() -> None:
             raise SystemExit("--energy-pot-front B needs 0 < B < 1 (0 = off)")
         if args.maps:
             raise SystemExit("--energy-pot-front reads one map's reservoir band: single map only")
+    if args.energy_pot_front_bonus is None:
+        args.energy_pot_front_bonus = 0
+    if args.energy_pot_front_bonus and not args.energy_pot_front > 0.0:
+        raise SystemExit("--energy-pot-front-bonus pays at the band edge: it needs --energy-pot-front B > 0")
     if args.surf_bonus is None:
         args.surf_bonus = 0.0
     if args.dive_pen is None:
@@ -12838,6 +12851,7 @@ def main() -> None:
             _s.reward_fn.speed_pot = float(args.speed_pot)
             # --energy-pot: the same, on z + |v|^2 / (2 g) (reward units per 1000 u)
             _s.reward_fn.energy_pot = float(args.energy_pot)
+            _s.reward_fn.en_front_bonus = bool(args.energy_pot_front_bonus)
             _s.reward_fn.surf_bonus = SURF_BONUS_T
             _s.reward_fn.dive_pen = DIVE_PEN_T
             _s.reward_fn.surf_hspd = float(args.surf_hspd)
@@ -13583,6 +13597,8 @@ def main() -> None:
                           if args.reward == "race" and args.energy_pot else {}),
                        **({"energy_pot_front": float(args.energy_pot_front)}
                           if args.reward == "race" and args.energy_pot_front else {}),
+                       **({"energy_pot_front_bonus": int(args.energy_pot_front_bonus)}
+                          if args.reward == "race" and args.energy_pot_front_bonus else {}),
                        "surf_bonus": (args.surf_bonus
                                       if args.reward == "race" else None),
                        "dive_pen": (args.dive_pen
@@ -15165,6 +15181,10 @@ def main() -> None:
               f"episode's record reaches the band (progress >= (1 - {args.energy_pot_front:g}) x "
               f"the reservoir's deepest, re-read every iteration); past it the term is off for "
               f"the rest of the episode")
+        if args.energy_pot_front_bonus:
+            print(f"--energy-pot-front-bonus: nothing is paid on the way; on the call an episode's "
+                  f"record first enters the band it is paid {args.energy_pot:g} x |v|^2 / (2 g) "
+                  f"/ 1000 of that state, once")
     FRONT = float(args.front_temp or 0.0) > 0.0
     FRONT_BASE = [0.0]                   # the global T (set_unstuck_temp writes it)
     front_thr = float("inf")             # d at the band's edge, re-read every iteration

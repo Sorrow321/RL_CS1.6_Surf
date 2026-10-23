@@ -183,6 +183,33 @@ def test_front_latch_off_is_the_plain_term():
     assert rr._en_off is None
 
 
+def test_front_bonus_pays_the_kinetic_part_once_at_the_band_edge():
+    """--energy-pot-front-bonus: nothing on the way (a speed or height change pays 0), the call that
+    brings the record inside the band pays K x |v|^2 / (2 g) / 1000 of its state, nothing after"""
+    rr, core = _rr_front(K, edge=3000.0)
+    rr.en_front_bonus = True
+    _go(rr, core, 3100.0, 1000.0)                                  # anchors
+    assert _go(rr, core, 3050.0, 1400.0) == pytest.approx(50.0, abs=1e-3)    # ratchet only
+    core.states_view["origin"][:, 2] = np.float32(-400.0)           # a drop in z pays nothing either
+    assert _go(rr, core, 3010.0, 1400.0) == pytest.approx(40.0, abs=1e-3)
+    # the entering call: the ratchet's 60 + K x 1500^2 / 1600 / 1000
+    assert _go(rr, core, 2950.0, 1500.0) == pytest.approx(60.0 + _e(1500), abs=1e-3)
+    assert _go(rr, core, 2900.0, 1800.0) == pytest.approx(50.0, abs=1e-3)    # once only
+    # a new episode outside the band can earn it again; a spawn inside the band cannot
+    _go(rr, core, 6000.0, 0.0, done=1)
+    assert _go(rr, core, 5950.0, 900.0) == pytest.approx(50.0, abs=1e-3)
+    _go(rr, core, 2000.0, 0.0, done=1)
+    assert _go(rr, core, 1950.0, 1200.0) == pytest.approx(50.0, abs=1e-3)
+
+
+def test_front_bonus_without_a_band_pays_nothing():
+    rr, core = _rr_front(K, edge=float("inf"))
+    rr.en_front_bonus = True
+    _go(rr, core, 3100.0, 1000.0)
+    for x, v, pay in ((3050.0, 1300.0, 50.0), (2990.0, 700.0, 60.0), (2940.0, 1500.0, 50.0)):
+        assert _go(rr, core, x, v) == pytest.approx(pay, abs=1e-3)     # the ratchet alone
+
+
 @needs_run
 def test_the_real_core_keeps_energy_height_in_free_flight():
     """Launched up from the spawn platform with no keys held: on every tick where only gravity
@@ -278,7 +305,20 @@ def test_the_front_latch_runs_on_a_seeded_reservoir_and_is_restored():
               + ["--steps", "14336"])
     assert r2.returncode == 0, r2.stdout[-4000:] + r2.stderr[-4000:]
     assert "energy_pot_front=0.5" in r2.stdout and _cfg(run2)["energy_pot_front"] == 0.5
-    for dd in (d0, ROOT / "runs" / run, ROOT / "runs" / run2):
+    assert "energy_pot_front_bonus" not in _cfg(run2)
+    run3 = "enfront_bonus"
+    shutil.rmtree(ROOT / "runs" / run3, ignore_errors=True)
+    r3 = _run([sys.executable, "-u", str(TRAIN), "--run", run3, "--ckpt",
+               str(ROOT / "runs" / run / "ckpt_final.pt")] + SMOKE + GREEDY_SMOKE
+              + ["--steps", "14336", "--energy-pot-front-bonus", "1", "--ep-ticks", "60"])
+    assert r3.returncode == 0, r3.stdout[-4000:] + r3.stderr[-4000:]
+    assert "--energy-pot-front-bonus: nothing is paid on the way" in r3.stdout
+    assert _cfg(run3)["energy_pot_front_bonus"] == 1 and _cfg(run3)["energy_pot_front"] == 0.5
+    r4 = _run([sys.executable, "-u", str(TRAIN), "--run", "enfront_bad"] + SMOKE
+              + ["--steps", "2048", "--energy-pot", "1", "--energy-pot-front-bonus", "1"])
+    assert r4.returncode != 0 and "it needs --energy-pot-front B > 0" in r4.stdout + r4.stderr
+    for dd in (d0, ROOT / "runs" / run, ROOT / "runs" / run2, ROOT / "runs" / run3,
+               ROOT / "runs" / "enfront_bad"):
         shutil.rmtree(dd, ignore_errors=True)
 
 

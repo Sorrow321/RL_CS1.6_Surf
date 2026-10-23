@@ -1059,6 +1059,12 @@ class RaceReward:
         # frontier and is free to spend at it (a quick death in the band keeps nothing).
         self.en_front_d = float("inf")
         self._en_off = None
+        # --energy-pot-front-bonus 1: instead of paying the potential's change before the band,
+        # pay ONCE, on the call the latch fires, energy_pot x the kinetic part |v|^2 / (2 g) / 1000
+        # of that state: the speed an episode brings to the frontier, with nothing paid or charged
+        # on the way (so dying before the band forfeits it and is never the cheaper end; the
+        # kinetic part, not z, so the map's coordinate origin does not enter)
+        self.en_front_bonus = False
         # --surf-bonus / --dive-pen (round 40, pnSURF): "surfing = good,
         # diving = bad" as a dense per-tick term. Both are REWARD UNITS PER
         # SECOND on the flag; the trainer converts to per-tick. 0/0 is off
@@ -1605,10 +1611,19 @@ class RaceReward:
                 # spawn is already inside the band
                 if self._en_off is None or self._en_off.shape != h.shape:
                     self._en_off = np.zeros(h.shape, bool)
-                dh[self._en_off] = 0.0
                 rec = self._rec if (self.ratchet and self._rec is not None) else dc
-                self._en_off |= np.asarray(rec) <= self.en_front_d
+                inside = np.asarray(rec) <= self.en_front_d
+                if self.en_front_bonus:
+                    # --energy-pot-front-bonus: no per-call change at all; the call that first
+                    # brings the record inside the band pays the kinetic part of its state
+                    newly = inside & ~self._en_off & ~ended
+                    dh = np.where(newly, (vv * vv).sum(axis=1) / (2.0 * self._g_en), 0.0)
+                else:
+                    dh[self._en_off] = 0.0
+                self._en_off |= inside
                 self._en_off[ended] = d[ended] <= self.en_front_d
+            elif self.en_front_bonus:
+                dh = np.zeros_like(dh)       # no band yet (an empty reservoir): nothing to pay
             r += ((self.energy_pot / 1000.0) * dh).astype(np.float32)
             self.en_gain += float(dh[dh > 0.0].sum())
             self.en_loss -= float(dh[dh < 0.0].sum())
