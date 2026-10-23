@@ -2975,3 +2975,23 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   x1.0-1.3) the whole sequence hole -> over the rim -> funnel -> finish now happens in training, rarely. Backward-mix
   rows (start inside the chamber) finish 56%.
 * Box 57308519 extended to 08:31 UTC.
+
+### 06:19 UTC: arm 3 stopped at 24.14B (plateau); arm 4 r7b2_fs16 = its weights + front-perturb speed x1.0-1.6
+
+* **r7b2_ef2** (--energy-pot 2, 23,011-24,138M, ~1.13B steps, 179 evals, 188k steps/s): best **98.462**; 18 evals
+  at 98.31-98.46 (entries); by blocks of 20 evals the basement-entry h median 2,593 / 2,647 / 2,701 / 2,721 / 2,661 /
+  2,692 / 2,681 / 2,699 (flat after ~23.3B), entries 2 / 1 / 2 / 7 / 5 / 2 / 9 / 3 per 180 episodes, no CP5 / CP6 eval
+  in the first 100. Training finishes from front-perturb rows: 14 in 131,232. Weights: runs/r7b2_ef2/ckpt_stop.pt on
+  the box (24,137,695,232, md5 1b135efc...).
+* An entry reached z 1,577 (23,665M ep 1) - but in the chamber's far corner (3,406, -688), climbing the corner after
+  bouncing off the funnel's outer wall; d there ~2,020 (no score). Like the 98.462 episode, it reached the funnel wall
+  at z ~1,400-1,440 (apex = 1,250 + vz^2/1600 with vz ~550 at the hole top) and bounced. Clearing the rim needs vz
+  ~750 at the hole top = ~940 leaving the face at z ~1,050 = ~1,245 u/s up-slope at the face's top (the entries have
+  ~1,000-1,050): ~+280 u of h at the face, or a straighter up-slope approach.
+* Why practice, not K: in a non-finishing regime any energy price inside the band makes dying the cheapest end (en1),
+  so energy can only become worth keeping in the basement once FINISHES are observed from such states - then the
+  critic values energy at the hole and the basement actions that keep it get advantage. Training finishes are ~1e-4.
+* **r7b2_fs16** (now): resume of ef2's ckpt_stop +  (was 1.0-1.3; band 0.5%,
+  turn 90, F 0.25, energy-pot 2 / front 0.01 and everything else restored), evals every 6.25M, 2e9 budget. One knob.
+  Read-outs: fpert/finished per iteration (was ~1e-4), the greedy entries' apex and min d, the reservoir's deepest
+  state (round 6's drift: harvested entries pull the front-perturb band into the chamber).
