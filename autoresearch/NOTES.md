@@ -502,3 +502,11 @@ the backward curriculum (--demo-file + --demo-success-d) on the found line. Not 
   the wall). Question: is the pre-impact wall a step-size problem (the air turn learnable from
   0.05 s out, then backward) or a direction the policy never samples at any distance?
   (g2cur5 ended with band [1250,1259] at 76% and [1230,1239] still 0.0%.)
+* g2cur6 (grow/window 5) result, 2.83-3.29B: band [1245,1249] (1-5 ticks before the wall) 77.6%
+  at once; [1240,1244] 16-37%; [1235,1239] (11-15 ticks) 0.0-0.4% on ~10 visits in ~45 min. So
+  the pre-impact wall WAS partly a step-size problem, and the frontier stalls again ~10 ticks
+  (2-3 decisions) before the impact.
+* **pbr1b1_g2cur7** (23:55 UTC): g2cur6's ckpt_latest (3.285B, md5 a6559938...) with ONLY the yaw
+  head's log sigma edited -4.53 -> log 0.3 (the policy's yaw exploration had collapsed to 0.011
+  rad under --yaw-entropy 0), same curriculum (grow/window 5, tau0 1235). Readout: does band
+  [1235,1239] move within the hour; does the greedy start room survive the noisier training.
