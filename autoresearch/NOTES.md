@@ -450,8 +450,8 @@ u/ep but loses as much).
 **Pitfalls that cost time:** (1) probing "x < 560" after a step counted DEATHS as successes
 (a dead env is autoreset to the info_player_start at x 511) - apply `alive &= ~ended` first;
 (2) plan_to_bc costs ~300-350 CPU-min per call regardless of the line count - never beside a
-trainer, cap OMP threads; (3) the trainer keeps only ckpt_latest - run /root/ckwatch.sh (in
-this branch's NOTES above) for per-step snapshots; (4) a resume restores --sil-top, which then
+trainer, cap OMP threads; (3) the trainer keeps only ckpt_latest - run tools/ckwatch.sh <run> <protect> on
+the box for per-step snapshots; (4) a resume restores --sil-top, which then
 refuses --sil-coef 0 unless --sil-top 0 is passed; (5) box.py ssh times out at 600 s.
 
 **Next (round 2):** the chamber. Ideas: enter it fast (a search ranked on energy from the
