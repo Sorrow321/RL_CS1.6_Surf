@@ -31,7 +31,63 @@ sys.path.insert(0, str(ROOT / "tools"))
 
 from surfgym.core import STATE_DTYPE, SurfCore, default_config  # noqa: E402
 from surfgym.goalfield import GoalField                          # noqa: E402
-import entry_search                                              # noqa: E402
+
+
+def search_any(core, root, targets, cell, a, rng, deadline):
+    """Uniform bursts (95% repeat per 4-tick decision) from ``root`` until one enters one of
+    ``targets``' cell boxes with >= --speed-frac of its speed; the FURTHEST target any burst of
+    a round entered wins. -> (target index, per-tick states, bursts) or None."""
+    from surfgym.core import ACTION_NVEC
+    n, ticks = a.envs, a.ticks
+    boxes = []
+    for t in targets:
+        o = np.asarray(t["origin"], np.float64)
+        v = np.asarray(t["velocity"], np.float64)
+        boxes.append((o - cell / 2, o + cell / 2,
+                      float(a.speed_frac) * float(np.sqrt((v * v).sum()))))
+    root = root.copy()
+    root["tick"] = 0
+    root["stuck_ticks"] = 0
+    act = np.zeros((n, 6), np.int32)
+
+    def fresh(m):
+        c = int(m.sum())
+        if c:
+            act[m, 0] = rng.integers(0, ACTION_NVEC[0], c)
+            act[m, 1] = 3
+            for h in (2, 3, 4, 5):
+                act[m, h] = rng.integers(0, ACTION_NVEC[h], c)
+
+    bursts = 0
+    while time.time() < deadline:
+        for j in range(n):
+            core.set_state(j, root)
+        fresh(np.ones(n, bool))
+        traj = np.zeros((ticks + 1, n), STATE_DTYPE)
+        traj[0] = core.get_states()
+        alive = np.ones(n, bool)
+        hit_t = np.full((len(boxes), n), -1)
+        for t in range(ticks):
+            if t % 4 == 0 and t:
+                fresh(rng.random(n) > 0.95)
+            _, _, done, trunc, _ = core.step(act)
+            s = core.get_states()
+            traj[t + 1] = s
+            alive &= ~((done > 0) | (trunc > 0))
+            o = s["origin"].astype(np.float64)
+            sp = np.sqrt((s["velocity"].astype(np.float64) ** 2).sum(axis=1))
+            for b, (lo, hi, smin) in enumerate(boxes):
+                inb = alive & (hit_t[b] < 0) & np.all((o >= lo) & (o <= hi), axis=1) & (sp >= smin)
+                hit_t[b][inb] = t + 1
+            if (hit_t[-1] >= 0).any():
+                break
+        bursts += n
+        for b in range(len(boxes) - 1, -1, -1):
+            e = np.flatnonzero(hit_t[b] >= 0)
+            if len(e):
+                env = int(e[0])
+                return b, traj[: hit_t[b][env] + 1, env].copy(), bursts
+    return None
 
 
 def chain_to(parent: np.ndarray, i: int) -> list:
@@ -53,6 +109,8 @@ def main(argv=None):
     ap.add_argument("--minutes-per-link", type=float, default=1.0)
     ap.add_argument("--maxvel", type=float, default=3500.0)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--lookahead", type=int, default=4,
+                    help="target any of the next N chain cells and jump to the furthest reached")
     ap.add_argument("--speed-frac", type=float, default=0.9,
                     help="a link must also arrive with at least this share of the archived "
                          "cell's speed (the archive's energy dimension; 0 = position only)")
@@ -82,25 +140,22 @@ def main(argv=None):
         root[name] = st[chain[0]][name]
     line = [root[0].copy()]
     reached = 0
-    for k in range(1, len(chain)):
-        o = np.asarray(st[chain[k]]["origin"], np.float64)
-        box = [o[0] - cell / 2, o[0] + cell / 2, o[1] - cell / 2, o[1] + cell / 2,
-               o[2] - cell / 2, o[2] + cell / 2]
+    while reached < len(chain) - 1:
+        # the next --lookahead chain cells are all targets; the burst that enters the FURTHEST
+        # one wins (a link the archive reached through a later-replaced parent state is skipped)
+        ks = list(range(reached + 1, min(len(chain), reached + 1 + int(a.lookahead))))
         t0 = time.time()
-        vt = np.asarray(st[chain[k]]["velocity"], np.float64)
-        smin = float(a.speed_frac) * float(np.sqrt((vt * vt).sum())) if a.speed_frac > 0 else None
-        hits, n = entry_search.search(core, line[-1], a.envs, a.ticks, 4, 0.95, box, False,
-                                      None, 1, time.time() + 60.0 * a.minutes_per_link, rng,
-                                      speed_min=smin)
-        if not hits:
-            print(f"link {k}/{len(chain) - 1} -> cell {chain[k]} not re-found in {n:,} bursts "
+        got = search_any(core, line[-1], [st[chain[k]] for k in ks], cell, a, rng,
+                         time.time() + 60.0 * a.minutes_per_link)
+        if got is None:
+            print(f"links {ks[0]}..{ks[-1]} of {len(chain) - 1} not re-found "
                   f"({time.time() - t0:.0f}s): the line stops at link {reached}")
             break
-        seg = hits[0][0]
+        j, seg, n = got
         line.extend(seg[1:])
-        reached = k
-        print(f"link {k}/{len(chain) - 1}: {len(seg) - 1} ticks after {n:,} bursts, now at "
-              f"{np.asarray(seg[-1]['origin']).round(0)}", flush=True)
+        reached = ks[j]
+        print(f"link {reached}/{len(chain) - 1}: {len(seg) - 1} ticks after {n:,} bursts, now "
+              f"at {np.asarray(seg[-1]['origin']).round(0)}", flush=True)
     out = np.array(line, dtype=STATE_DTYPE)
     out["tick"] = 0
     out["stuck_ticks"] = 0
