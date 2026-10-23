@@ -840,6 +840,13 @@ def explore(args) -> int:
         fresh_actions(idx)
 
     n_goal = 0
+    # --goal-progress P (0 = off): the field-progress milestone that also counts as a win
+    goal_d = None
+    won_runs: set = set()
+    if float(getattr(args, "goal_progress", 0.0) or 0.0) > 0.0:
+        goal_d = float(arch.dist[:arch.size].min()) - float(args.goal_progress)
+        print(f"--goal-progress {float(args.goal_progress):g}: an alive burst at field "
+              f"distance <= {goal_d:,.0f}u ({dist.name}) is a win, once per run")
     n_runs = 0
     n_deaths = 0
     total_ticks = 0
@@ -879,6 +886,17 @@ def explore(args) -> int:
                 ended = (done | trunc) != 0
                 hit = np.flatnonzero(np.asarray(core.goal_hits, bool)
                                      & (cur_run >= 0))
+                if goal_d is not None and t % act_every == act_every - 1:
+                    # --goal-progress: an ALIVE env (an ended row is already the next spawn)
+                    # whose field distance is P below the roots' is a win too, once per run
+                    cand = np.flatnonzero((cur_run >= 0) & ~ended)
+                    if cand.size:
+                        dd = dist.sample(sv["origin"][cand].astype(np.float64))
+                        pg = [int(e) for e in cand[dd <= goal_d]
+                              if int(cur_run[e]) not in won_runs]
+                        for e in pg:
+                            won_runs.add(int(cur_run[e]))
+                        hit = np.union1d(hit, np.asarray(pg, np.int64))
                 for e in hit.tolist():
                     n_goal += 1
                     run = int(cur_run[e])
@@ -1638,6 +1656,8 @@ def build_parser() -> argparse.ArgumentParser:
                          "dead envs idle to the end of the chunk")
     ap.add_argument("--max-iters", type=int, default=0,
                     help="stop after this many chunks (0 = until the goal)")
+    ap.add_argument("--goal-progress", type=float, default=0.0,
+                    help="also count as a WIN (dump the burst, count toward --goals) an ALIVE env whose goal-field distance is this many units below the roots' - a progress milestone on the map's own field instead of the finish box, so a search can stop at a gate and hand its first physically continuous crossing on (0 = off, the finish only)")
     ap.add_argument("--goals", type=int, default=1,
                     help="stop after this many goal crossings (0 = never)")
     ap.add_argument("--ep-ticks", type=int, default=6000,
