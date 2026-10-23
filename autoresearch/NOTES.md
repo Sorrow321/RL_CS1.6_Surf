@@ -353,3 +353,13 @@ the backward curriculum (--demo-file + --demo-success-d) on the found line. Not 
   speed -> long drop). Next round: a spine with a PUMP (Go-Explore with --cell-energy reached
   h ~3,800 in the half-pipe vs the record's ~3,930-3,950; or the policy's own pumping under
   per-call energy shaping), or a way to carry speed through the crouch tunnel.
+* Gate 2 is ALSO a field-deception trap (grader field, core probes 20:35 UTC): the pit's best
+  point (809, -3,288, 3,375) = 3.23% is the field's LOCAL optimum (under the south ramp, whose top
+  the field routes over); the way out the record takes - over the gap at x ~230-280 onto the
+  raised floor at x >= 330 (z ~3,376-3,428), up the east ramp, U-turn north then west - reads
+  2.18% (400, -3,010) -> 2.53% (600, -3,024) -> 2.85% (840, -3,012) -> 2.86% (1,021, -2,922) ->
+  3.19% (929, -2,735) -> 3.54% (735, -2,651) -> 3.93% (527, -2,683): WORSE than the pit for
+  ~2-3 s of flying, so the ratchet pays nothing until the U-turn is done. Plus the speed part:
+  the greedy line heads SOUTH for 0.25 s after the tunnel before turning east, so it crosses
+  x ~300 at z ~3,340 and hits the raised floor's west face; heading east at once it would cross
+  at z ~3,570 and land on it. Both parts at once: a detour against the field, flown at speed.
