@@ -350,3 +350,19 @@ SELF_STATES/CKPT/ARM_RESUME/SCRATCH). Nothing else changes in box.py.
   evals 363M: 254 u, 438M: 217 u. Fix (35c138c): the window starts at the 0.1 quantile of the
   rows by progress (the deepest 10% count as passed, still drawn). `pbr1b3_sgx5` = resume of
   sgx4's 466.1M with it.
+
+### pbr1b3, 2026-10-23 20:19 UTC - the backward window fails on a search's chain set; back to the band
+
+* `pbr1b3_sgx5` (466.1M -> 578M, window starting at the 0.1 quantile, row 106, progress
+  ~1,830 u): even there the window's success was < 0.1, so it BACKED OFF toward the goal end
+  (net -11 steps) into the dead-end rows (success 0.04) and stayed. ~100M steps of nearly pure
+  dead-end practice wrecked the policy: greedy eval 542M frontier 36 u (dies at the start),
+  training episodes 55 decisions long. Stopped.
+* Lesson: Salimans & Chen assume ONE trajectory whose end is the goal. The union of a search's
+  chains, ordered by progress, has a deep half made of the search's own failed branches (free
+  falls at the lower level's edges), so "start at the end and slide back on success" never
+  reaches the start. If a backward window is used on search output, it needs a single chain
+  that is known to continue (a cell with descendants), not the deepest cells.
+* `pbr1b3_sgx6` (20:19): resume of sgx1's 334.5M (the band-curriculum lineage that climbed at
+  153M) with exactly sgx1's spawn rule (band, G 0.003, 70% file spawns) for the rest of the
+  round.
