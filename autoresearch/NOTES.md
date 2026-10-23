@@ -3117,3 +3117,19 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
 * Weights: the run's snapshots ckpt_25394937856 (54M before the eval) and ckpt_25495076864 (46M after) are pulled to
   runs/r7b2/r7b2_bel/; the run keeps training (more finishes per eval are worth up to +8.9 of score: 100 + 10 x frac +
   10 x (1 - t/300)).
+
+### 10:38 UTC: the endgame was transient (peak 25.25-25.47B); arm 8 r7b2_lr1 = the peak snapshot + `--lr 1e-4`
+
+* r7b2_bel to its stop at ~26.16B (243 evals, all CP7): one finish (25,449M), no other. By blocks of 36 evals the
+  greedy entries were 12.3% / 8.3% / **5.6% (25.25-25.47B: exit vz median 594, max 721, the finish, d 1,435 / 1,441)**
+  / 1.9% / 1.2% / 4.4%, exit vz median back to 424 by 26.1B. Real front-perturb finishes per 300 iterations: 3.7, 13.3,
+  16.5, 19.4, 7.9, **45.2** (25.58-25.74B), then 3.1, 8.0, 1.6 per 10k - the training side peaked and collapsed too.
+  The reservoir's deepest state went 1.51% -> 1.39% (25.75B, finishes harvested into the chamber) -> 1.71% min depth:
+  plausibly round 6's drift (the front-perturb band follows the harvested deepest state into the chamber and off the
+  face the finishes start from). Weights: runs/r7b2_bel/ckpt_stop.pt on the box (md5 8cad8d52...).
+* **r7b2_lr1** (10:38 UTC): resume of bel's ckpt_25394937856 (54M steps before the finish; md5 390bf508..., local copy
+  verified) + `--lr 1e-4` (was 3e-4; the ckpt's optimizer state is kept, its lr overridden) `--record-every 3.125e6
+  --ckpt-every 1e8`; everything else restored (backward-elev -60/60, bonus K 3 / latch 0.01, front-perturb x1.0-1.3).
+  Why: the skate_laby lesson (ledger 2026-10-04: "at 3e-4 the policy was drifting around the solved skill; the LR cut
+  lets it settle") - here a finishing skill appeared and drifted away within ~300M steps. Twice the evals to sample the
+  peak policy. Generic: an LR cut once the policy first succeeds.
