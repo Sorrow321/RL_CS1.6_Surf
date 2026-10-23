@@ -2935,3 +2935,20 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   --no-eval-at-start` (archive 8, anchor 100 and every incumbent flag restored), evals every 18.75M. Leading
   indicator: the greedy line's h_E at the basement entry and on the ramp (median ~2,300 / ~1,950 now); then
   entries, apex height and the evals.
+
+### 04:36 UTC: the box's slowness was numba's 128-thread pool; fixed in run_arm.sh (~2.2x faster training)
+
+* `--timing` on this box (7.4 s per iteration): reward_py 3,718 ms, vis_cpu 1,498, env 711, update 972, sync_copy
+  328, lidar 226 - the CPU phases 5-7x round 4's box, the GPU phases equal.
+* GoalField.sample is a numba `parallel=True` kernel, and numba sizes its pool to every host thread (128 here).
+  Micro-benchmark on the box (PASSIVE waits): 128 threads ~662-682 us per call at 9 or 1,024 points; 8 threads
+  22-25 us; 4 threads 29-44; 1 thread 5 (9 points) / 34 (1,024). The reward, the compass, pot-rate, the novel /
+  fpert / gkeep observers and the eval hooks call it many times per tick.
+* `NUMBA_NUM_THREADS=8` (commit ed39671, tools/run_arm.sh, overridable): **3.3 s per iteration** (reward_py 430,
+  vis_cpu 760, env 490, update 975 ms) = ~160k steps/s training-only. Neither change alters a computed value.
+  Probably part of every box's cost (numba's default = the host's thread count), largest on big shared hosts.
+* r7b4_sp5's first 3 minutes ran without the fix (moved to runs/r7b4_sp5_slow on the box, not a result);
+  **r7b4_sp5b** (04:34) is the same arm (gk2's stop weights + `--speed-pot 5 --critic-warmup 20`) with it.
+* CEM over 6-macro sequences (1,024 x 40 iterations each) from 5 of the rebuilt approach states at x1.0 speed:
+  best z over the funnel opening 1,334, chamber max 1,376, best d 1,650 - no rim crossing. With the random
+  search above: at the line's own energy the rim is out of reach from where the line enters.
