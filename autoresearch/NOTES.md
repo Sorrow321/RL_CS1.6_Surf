@@ -401,3 +401,20 @@ the backward curriculum (--demo-file + --demo-success-d) on the found line. Not 
   deepest chain link by link from each parent's archived state, checks every link's end against
   the child's state (0.5 u), and writes one per-tick line. Local smoke: 4/4 links exact.
   GE6 = GE4's settings + --exact-chains, 12 min, 21:30 UTC.
+* GE6 (21:30-21:36 UTC, stopped at ~6 min): 15,006 cells, 339 past 3.3%, deepest **3.93%**
+  (536, -2,688, 3,409). `ge_replay.py` replayed the deepest chain (25 cells) EXACTLY - 24/24 links
+  within 0.5 u - into one 1,881-tick line (runs/pbr1b1_ge6/line_a.npy on the box, md5
+  4296eab791f13b104d33afc52bb76eed). What the line does (core states, 0.5 s steps): from the
+  policy's own state in the crouch tunnel (224, -2,885; |v| 224) it goes BACK EAST through the
+  tunnel to x ~837 (t 0-7 s, slow), then slides west at 300-380 u/s (t 7.5-10 s), leaves the
+  tunnel at x ~0-140 with |v| 380, drops onto the ridge at 603 -> 772 u/s, LAUNCHES off its east
+  end at (604, -3,035, 3,484) with vz +346, flies over the pit at z ~3,557, lands on the east
+  side (x ~990-1,050), turns north and U-turns west along y ~-2,688 to 3.93%. So the search
+  found the speed fix this file predicted (gate 2 = the start room's energy coming due) by
+  itself: a run-up inside the tunnel, not a pump in the half-pipe.
+* pbr1b1_g2cur (launched 21:39 UTC): g2b's ckpt_latest (1.305B, md5 55d4251e...) + backward
+  curriculum on line_a (`--demo-window 10 --demo-grow 10 --demo-front-frac 0.67`,
+  `--demo-success-d 100`: success = the record reaches d <= 55,001 = 3.76%, past the pit by
+  ~0.5%; -50 as in bcur5 would ask for 50 u past an end that is falling into the north lower
+  area) + 30% start-room spawns (entry_ge_states.npy) + the demo-incompatible spawn options off
+  (as bcur5). 1,881 states at 10 per advance = 188 advances.
