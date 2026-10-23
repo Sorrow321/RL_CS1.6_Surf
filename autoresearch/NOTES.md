@@ -418,3 +418,10 @@ the backward curriculum (--demo-file + --demo-success-d) on the found line. Not 
   ~0.5%; -50 as in bcur5 would ask for 50 u past an end that is falling into the north lower
   area) + 30% start-room spawns (entry_ge_states.npy) + the demo-incompatible spawn options off
   (as bcur5). 1,881 states at 10 per advance = 188 advances.
+* g2cur pace (21:39-21:44 UTC): 1880 -> 1780 in ~100M steps, i.e. one advance per ~10.5M steps =
+  exactly the curriculum's hardcoded 20-iteration cooldown (iterations are 524,288 steps), so
+  grow 10 would need >= 1.9B more steps for the 1,780 states left, at the deadline before any
+  stall. Restarted as **pbr1b1_g2cur2** from g2cur's ckpt_latest (1.403B, md5 b8b53646...) with
+  `--demo-grow 20 --demo-tau0 1790` (the position it had backed off to; band [1780,1789] was at
+  13-15%, the start of the north U-turn). Rule for next time: grow ~ n/100 states, so a spine of
+  any length is crossed in ~100 advances (bcur5: 270/100 ~ 3, it ran 10).
