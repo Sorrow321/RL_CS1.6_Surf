@@ -3,21 +3,14 @@
  "round": 7,
  "final": false,
  "best": {
-  "score": 98.362,
-  "eval_file": "/home/steam/ar/runs/r7b4/r7b4_gk/traj_22243442688.jsonl",
-  "run": "r7b4_gk",
-  "step": 22243442688,
-  "ckpt": "/home/steam/ar/runs/r7b4/r7b4_gk/ckpt_latest.pt",
-  "recipe": [
-   "--respawn-greedy-keep",
-   "8",
-   "--respawn-front-perturb-anchor",
-   "100",
-   "--ckpt-every",
-   "1e8"
-  ],
-  "resume_from": "incumbent r6b2_tp3 ckpt (22,217,752,576)",
-  "commit": "bfec7fb"
+  "score": 98.39,
+  "eval_file": "/home/steam/ar/runs/r7b4/r7b4_inc/traj_22306357248.jsonl",
+  "run": "r7b4_inc",
+  "step": 22306357248,
+  "ckpt": "/home/steam/ar/runs/r7b4/r7b4_inc/ckpt_latest.pt",
+  "recipe": [],
+  "resume_from": "incumbent r6b2_tp3 ckpt (22,217,752,576), bare resume (its own recipe)",
+  "commit": "ed39671"
  },
- "summary": "Best 98.362 (r7b4_gk at 22.243B: one greedy chamber entry; incumbent 98.315). Built: --respawn-greedy-keep K (archive of the K deepest failed greedy episodes across evals), --respawn-front-perturb-anchor N (band off the N-th deepest reservoir state), run_arm.sh thread fixes (OMP PASSIVE, numba 8 threads: 7.4 -> 3.3 s per iteration). Measured (analysis only): from the greedy line's own chamber-entry approach, the policy, random macros and CEM never clear the funnel rim at the line's energy (random needs ~x1.3 speed). --speed-pot 5 raised the line's energy +270 u at the chimney but locked it in a pit failure (0/369 to the basement in 47 evals). Now r7b4_isp2: the incumbent's weights + archive + anchor + --speed-pot 2, evals every 6.25M (basement mode again: 10/18)."
+ "summary": "Best 98.390 (r7b4_inc at 22.306B: the incumbent's weights and recipe resumed bare, 10 greedy chamber entries in 207 episodes = 4.8% over 22.24-22.31B, apex z up to 1,441; incumbent 98.315). The speed-pot arms (K 5 / 2) raised the line's energy but locked the greedy line in a pit failure (0 basement in 100+ evals); --respawn-greedy-keep / --front-perturb-anchor did not show a gain. Analysis: from the line's own entry approach the funnel rim is out of reach at its energy (policy, random, CEM; random needs x1.3 speed). Ops: numba's pool sized to all 128 host threads made this box 2.2x slow (NUMBA_NUM_THREADS=8 in run_arm.sh). Now: restarts of the incumbent recipe from its weights (each gives ~90M steps of basement-mode lines with entries), snapshots every 25M."
 }
