@@ -289,3 +289,17 @@ resample every 25 decisions. On a box it runs as it does locally (CPU physics + 
 * Next (running): tools/plan_to_bc.py over the 3 waves (24 kept lines) -> BC rows (policy-space
   targets) + spine, then a warm resume with --bc-file (expert iteration, the sidistic operator's
   exit_local loop) so the GREEDY line imitates the found line.
+
+### 19:31 UTC - expert iteration launched: pbr1b4_bc (BC on the search lines + spine spawns)
+
+* tools/plan_to_bc.py over the 3 search waves: **17,899 BC rows from 24 lines, 0 dropped**,
+  best arc 3,010 u; spine = the best line's 2,970 per-tick states from the TRUE START (the
+  final 31-tick fall trimmed) - a physically continuous line, unlike the Go-Explore chain. The
+  distil is CPU-heavy (17 cores for ~20 min while a trainer shared the box; minutes alone).
+* pbr1b4_ys2 stopped at 2.143B (best 0.429; greedy unchanged). `pbr1b4_bc` = resume of its
+  checkpoint + `--bc-file runs/beam_pb3/bc.npz --bc-coef 0.5 --bc-coef-final 0 --bc-steps 1e9
+  --bc-target dist --bc-value-coef 0.25 --spawn-states runs/beam_pb3/spine.npy
+  --spawn-states-frac 0.3 --sil-coef 0 --sil-top 0 --front-temp 1 --front-band 0.01` (the
+  recipe's frontier temperature back; SIL off - a resume restores --sil-top, which refuses
+  --sil-coef 0 unless --sil-top 0 is passed too). BC NLL 47.9 -> 7.8 in the first iterations.
+* Box 57384171 extended to 21:20 UTC (18:20).
