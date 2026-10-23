@@ -3,12 +3,12 @@
  "round": 1,
  "final": false,
  "best": {
-  "score": 3.233,
-  "eval_file": "/home/steam/ar_pb/runs/pbr1b4/pbr1b4_bc2/traj_3105882112.jsonl",
-  "run": "pbr1b4_bc2",
-  "step": 3105882112,
-  "ckpt": "/home/steam/ar_pb/runs/pbr1b4/pbr1b4_bc2/ckpt_3115843584.pt",
-  "ckpt_note": "snapshot 9,961,472 steps AFTER the eval (the per-step watcher keeps the newest 15; the ones before 3.115B were pruned on the box). Also pulled: ckpt_3029336064.pt (1M steps before the 3.230 eval) and ckpt_2898264064.pt. Every eval from 2.955B on has median 3.2% (the start is passed reliably).",
+  "score": 3.234,
+  "eval_file": "/home/steam/ar_pb/runs/pbr1b4/pbr1b4_bc3/traj_3583508480.jsonl",
+  "run": "pbr1b4_bc3",
+  "step": 3583508480,
+  "ckpt": "/home/steam/ar_pb/runs/pbr1b4/pbr1b4_bc3/ckpt_3571974144.pt",
+  "ckpt_note": "snapshot 11.5M steps BEFORE the eval (per-step watcher). Every eval since 2.955B (bc2) and all of bc3 score 3.226-3.234 with median 3.2%: the start trap is passed reliably, the chamber (kill floor under a deceptive U-turn) is the wall. Also pulled: bc2 ckpt_3115843584 / ckpt_3029336064 / ckpt_2898264064.",
   "recipe": [
    "--bc-file",
    "runs/beam_pb6/bc_merged.npz",
@@ -33,10 +33,16 @@
    "--front-temp",
    "1",
    "--front-band",
-   "0.01"
+   "0.01",
+   "--bc-coef(bc3)",
+   "0.2",
+   "--energy-pot-front",
+   "0",
+   "--energy-pot-front-bonus",
+   "0"
   ],
-  "resume_from": "pbr1b4_bc ckpt 2,425,880,576 (BC round 1) <- pbr1b4_ys2 2,142,765,056 (+spawn v6, SIL) <- pbr1b4_ys 1,890,582,528 (recipe + --init-weights sid_ref + --time-pen 0 + --yaw-sigma-max 0.5 + Go-Explore spawn files) <- --init-weights $AR_HOME/incumbent/sid_ref/ckpt.pt",
-  "commit": "875c5e5"
+  "resume_from": "pbr1b4_bc2 ckpt_latest 3,205,496,832 <- pbr1b4_bc ckpt 2,425,880,576 (BC round 1) <- pbr1b4_ys2 2,142,765,056 (+spawn v6, SIL) <- pbr1b4_ys 1,890,582,528 (recipe + --init-weights sid_ref + --time-pen 0 + --yaw-sigma-max 0.5 + Go-Explore spawn files) <- --init-weights $AR_HOME/incumbent/sid_ref/ckpt.pt",
+  "commit": "b7843ef"
  },
  "summary": "FIRST PASS OF THE START TRAP: 3.229 (pbr1b4_bc2 at 2.879B: 3/9 greedy episodes from the true start crawl through the tunnel into the chamber, 3.2%; 0.466 before). Expert iteration: tools/beam_tas.py policy-guided search (--objective progress along a champion-free self route, --eps now allowed under --keys-hold) finds lines through the crawl-space exit ~4 of 10 waves; tools/plan_to_bc.py distils them; a warm resume with --bc-file + spawns along the replayed lines (climb windows x4) teaches the greedy line. RL alone (Go-Explore spawn files, yaw-sigma cap, SIL) never chained the climb. Next: more DAgger rounds for reliability; the chamber is an energy gate (the record's upper path at z ~3500)."
 }
