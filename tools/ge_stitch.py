@@ -14,7 +14,11 @@ state. Targets come from the archive itself - nothing from a demo, a record or a
         --field maps/X.goalc_32.npz --out runs/ge/line.npy [--minutes-per-link 1]
 
 A link that cannot be re-found within its budget ends the line there (the output then stops at
-the last cell it did reach, and says so)."""
+the last cell it did reach, and says so). --backtrack 16,32,64,128 first retries such a link from
+that many ticks EARLIER on the line (the line is cut back to the root that worked): a cell is a
+position and a speed, not a heading, so the line can arrive in the right cell too late to make the
+next one - a surf launch, say, whose approach has to start before the last cell. --prefix resumes
+from a previous run's line (with --prefix-links, the chain links it had reached)."""
 from __future__ import annotations
 
 import argparse
@@ -114,7 +118,17 @@ def main(argv=None):
     ap.add_argument("--speed-frac", type=float, default=0.9,
                     help="a link must also arrive with at least this share of the archived "
                          "cell's speed (the archive's energy dimension; 0 = position only)")
+    ap.add_argument("--backtrack", default="",
+                    help="comma list of tick offsets: a link not re-found from the line's end is "
+                         "retried from that many ticks earlier on the line, e.g. 16,32,64,128")
+    ap.add_argument("--cell", type=int, default=None,
+                    help="the chain's end cell (archive index); default the deepest on the field")
+    ap.add_argument("--prefix", default=None,
+                    help="resume from a previous ge_stitch line (.npy) of the same chain")
+    ap.add_argument("--prefix-links", type=int, default=0,
+                    help="with --prefix: the chain links that line had reached")
     a = ap.parse_args(argv)
+    backtrack = [int(b) for b in a.backtrack.split(",") if b.strip()]
     z = np.load(a.archive, allow_pickle=True)
     meta = json.loads(Path(a.archive).with_suffix(".meta.json").read_text()) \
         if Path(a.archive).with_suffix(".meta.json").exists() else {}
@@ -125,10 +139,10 @@ def main(argv=None):
                   float(zf["cell"]), float(zf["reach_max"]))
     d = f.sample(st["origin"].astype(np.float64)).astype(np.float64)
     d[d >= f.reach_max - 0.5 * f.cell] = np.inf
-    best = int(np.argmin(d))
+    best = int(np.argmin(d)) if a.cell is None else int(a.cell)
     chain = chain_to(parent, best)
-    print(f"deepest cell {best}: d {d[best]:,.0f} at {np.asarray(st[best]['origin']).round(0)}; "
-          f"chain of {len(chain)} cells")
+    print(f"{'deepest' if a.cell is None else 'chosen'} cell {best}: d {d[best]:,.0f} at "
+          f"{np.asarray(st[best]['origin']).round(0)}; chain of {len(chain)} cells")
     cfg = default_config(num_envs=a.envs, sv_maxvelocity=float(a.maxvel), lidar_w=0, lidar_h=0,
                          spawn_mode=2, water_fail=1, yaw_jitter_deg=0.0)
     core = SurfCore(str(a.map), cfg)
@@ -140,22 +154,37 @@ def main(argv=None):
         root[name] = st[chain[0]][name]
     line = [root[0].copy()]
     reached = 0
+    if a.prefix:
+        line = [r.copy() for r in np.load(a.prefix, allow_pickle=False)]
+        reached = int(a.prefix_links)
+        print(f"resuming from {a.prefix}: {len(line)} states, link {reached}")
     while reached < len(chain) - 1:
         # the next --lookahead chain cells are all targets; the burst that enters the FURTHEST
         # one wins (a link the archive reached through a later-replaced parent state is skipped)
         ks = list(range(reached + 1, min(len(chain), reached + 1 + int(a.lookahead))))
         t0 = time.time()
-        got = search_any(core, line[-1], [st[chain[k]] for k in ks], cell, a, rng,
-                         time.time() + 60.0 * a.minutes_per_link)
+        got, back = None, 0
+        for back in [0] + backtrack:
+            if back >= len(line):
+                break
+            got = search_any(core, line[-1 - back], [st[chain[k]] for k in ks], cell, a, rng,
+                             time.time() + 60.0 * a.minutes_per_link)
+            if got is not None:
+                break
+            if backtrack:
+                print(f"  links {ks[0]}..{ks[-1]} not re-found {back} ticks back", flush=True)
         if got is None:
             print(f"links {ks[0]}..{ks[-1]} of {len(chain) - 1} not re-found "
                   f"({time.time() - t0:.0f}s): the line stops at link {reached}")
             break
         j, seg, n = got
+        if back:
+            del line[-back:]
         line.extend(seg[1:])
         reached = ks[j]
-        print(f"link {reached}/{len(chain) - 1}: {len(seg) - 1} ticks after {n:,} bursts, now "
-              f"at {np.asarray(seg[-1]['origin']).round(0)}", flush=True)
+        print(f"link {reached}/{len(chain) - 1}: {len(seg) - 1} ticks after {n:,} bursts"
+              f"{f' ({back} ticks back)' if back else ''}, now at "
+              f"{np.asarray(seg[-1]['origin']).round(0)}", flush=True)
     out = np.array(line, dtype=STATE_DTYPE)
     out["tick"] = 0
     out["stuck_ticks"] = 0
