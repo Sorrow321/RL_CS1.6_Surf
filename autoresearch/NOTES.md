@@ -3098,3 +3098,14 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   10 in 22.243-22.306B and T 0.1 from 22.293B gave 5 in its first ~70M steps; T 0.15 from 22.268B and the archive
   K 3 path gave none.
 * **r7b4_t01b** (08:49): inc2's 22,242,918,400 snapshot (the start of the high-entry window) + `--unstuck-max 0.1`.
+
+### 09:13 UTC: t01b - entries again right after the restart, then none; arm r7b4_t02c (t01's 22.343B at T 0.2)
+
+* r7b4_t01b (inc2's 22.243B snapshot + T cap 0.1), 22.249-22.362B, 19 evals: **7 entries in 171 episodes
+  (4.1%)**, 6 of them in the first ~30M steps (apex 1,255-1,380), best 98.317 (22,255,501,312); a CP6 stretch at
+  22.281-22.293B; then 8 basement-mode evals (5-7 of 9) with 0 entries.
+* Across all paths (deterministic training; one path per setting): greedy entries appear while training passes
+  a narrow region near the 22.24-22.35B weights and die out within ~30-60M steps; the apex climbed only in the
+  longest such window (T 0.2: 1,324 -> 1,441).
+* **r7b4_t02c** (09:12): t01's 22,343,581,696 snapshot (taken right after its 98.380 entry; T 0.1 path) +
+  `--unstuck-max 0.2`.
