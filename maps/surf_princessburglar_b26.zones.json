@@ -1,0 +1,39 @@
+{
+  "map": "surf_princessburglar_b26",
+  "source": "manual",
+  "note": "start/end auto-detected from the BSP's timer triggers (2026-10-23). spawns = where the timed run starts: the trigger_teleport 'start_run' destination (860, -3005, 3616) + 37 u (CS 1.6 puts the hull centre mins.z + 1 above it). The spawn room reaches the course only through that teleport, the start curtain fires at the same moment, and every trigger_teleport is fatal in the core (teleport_fail).",
+  "start": {
+    "mins": [
+      370.0,
+      658.0,
+      2882.0
+    ],
+    "maxs": [
+      653.0,
+      689.0,
+      3246.0
+    ]
+  },
+  "end": {
+    "mins": [
+      560.0,
+      2608.0,
+      -3509.0
+    ],
+    "maxs": [
+      880.0,
+      2928.0,
+      -3474.0
+    ]
+  },
+  "spawns": [
+    {
+      "origin": [
+        860.0,
+        -3005.0,
+        3653.0
+      ],
+      "yaw": 0.0
+    }
+  ]
+}

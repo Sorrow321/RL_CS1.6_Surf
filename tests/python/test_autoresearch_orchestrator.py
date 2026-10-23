@@ -173,6 +173,44 @@ def test_handon_skips_a_truncated_or_damaged_checkpoint(tmp_path, monkeypatch):
     assert orchestrator.handon_ckpt(run) == run / "ckpt_final.pt"
 
 
+def test_handon_prefers_the_snapshot_before_the_best_eval(tmp_path, monkeypatch):
+    """r7b2_bel (2026-10-23) finished once at 25,448,939,520 inside a transient peak; its
+    snapshot 54M steps before the finish finished again when resumed, while its ckpt_latest
+    was ~700M steps past the peak. The round end hands on the newest snapshot at or before the
+    best eval unless the newest checkpoint is more than twice as near the eval."""
+    torch = pytest.importorskip("torch")
+    monkeypatch.setattr(orchestrator, "AR_HOME", tmp_path / "ar")
+    run = tmp_path / "r7b2_bel"
+    run.mkdir()
+
+    def save(name, step):
+        torch.save({"policy": {"w": torch.zeros(8)}, "global_step": step}, run / name)
+        return run / name
+
+    ev = 25_448_939_520
+    before = save("ckpt_25394937856.pt", 25_394_937_856)          # 54M before the eval
+    after = save("ckpt_25495076864.pt", 25_495_076_864)           # 46M after it
+    assert orchestrator.handon_ckpt(run, ev) == before
+    latest = save("ckpt_latest.pt", 26_160_000_000)               # the wrap-up pull
+    assert orchestrator.handon_ckpt(run, ev) == before
+    assert orchestrator.handon_ckpt(run) == latest                # no eval step: the old rule
+    # a damaged snapshot is skipped for the next older one, which must pass the distance test
+    bad = bytearray(before.read_bytes())
+    bad[len(bad) // 2] ^= 0xFF
+    before.write_bytes(bytes(bad))
+    older = save("ckpt_25294798848.pt", 25_294_798_848)
+    assert orchestrator.handon_ckpt(run, ev) == older
+    # far before the eval while the newest is near it: the newest
+    for p in (before, after, older):
+        p.unlink()
+    save("ckpt_24000000000.pt", 24_000_000_000)
+    save("ckpt_latest.pt", 25_460_000_000)                        # 11M after the eval
+    assert orchestrator.handon_ckpt(run, ev) == latest
+    # nothing after the eval: the newest, as before
+    save("ckpt_latest.pt", 25_440_000_000)
+    assert orchestrator.handon_ckpt(run, ev) == latest
+
+
 def test_the_winners_recipe_travels_with_it(tmp_path, monkeypatch):
     """r1b1 (2026-10-20) made its scratch recipe config.json's incumbent_recipe; restoring the
     operator's config.json would have dropped --respawn-novel --race-ratchet from every round-2

@@ -1,4 +1,4 @@
-# Autoresearch protocol - branch agents (fork-and-flush on surf_src_sidistic)
+# Autoresearch protocol - branch agents (fork-and-flush on surf_princessburglar_b26)
 
 You are ONE branch agent of a fork-and-flush round (Cai et al. 2026, arXiv 2610.07447,
 "Escaping Idea Basins in Autoresearch Agents"). Read this file, then `CLAUDE.md` (binding,
@@ -50,22 +50,37 @@ findings are archived, not inherited: that is the flush.
 
 ## The goal and the one number
 
-Pass sidistic from the true start, champion-free and generic: first a finish, then faster
-finishes. Your score is `python autoresearch/score.py --best $AR_HOME/runs/$AR_AGENT/`. It
-is the best eval's max-episode progress on the goal field (a finish counts 100), plus
-10 x the finish fraction, plus a time term once something finishes. Only greedy evals from
-the true start count; the grader rejects anything else.
+Pass surf_princessburglar_b26 from the true start, champion-free and generic: first a finish,
+then finishing reliably, then faster than 75.18 s, the human world record (its demo timed on our
+zones, start curtain to finish box; the demo is an analysis instrument only, CLAUDE.md section
+0). The record's time is the bar a result is read against, never a constant in the reward, the
+spawn rule or a schedule (CLAUDE.md 0b). Your score is
+`python autoresearch/score.py --best $AR_HOME/runs/$AR_AGENT/`. It is the best eval's
+max-episode progress on the goal field (a finish counts 100), plus 10 x the finish fraction,
+plus a time term once something finishes (10 x (1 - best finish s / 300)). One more finishing
+episode of the 9 is worth 1.11 and one second off the best finish 0.033, so the score ranks
+reliability before speed. Only greedy evals from the true start count; the grader rejects
+anything else.
 
-The grader changed before round 7 (operator, 2026-10-23); score.py and config.json say why:
-* the field is `config.field` = the no-corner-cut goal graph (`goalc_32.npz`, start d 99,675),
-  the field training already shapes on. The old `goal_32.npz` leaked through the finish
-  funnel's wall and scored a dead end outside it above the way over the rim.
+The true start. The map's spawn sits in a SEALED start room whose only way out is the
+trigger_teleport `start_run`; the timer's start curtain fires at the same moment. Every
+teleport is fatal in our core (teleport_fail), so the map's zones file
+(`maps/surf_princessburglar_b26.zones.json`, source manual) declares the spawn at that
+teleport's destination, (860, -3005, 3653) yaw 0 (the destination + 37 u, where CS 1.6 puts
+the hull centre). Every trainer, recorder and the grader start there. The other 32 teleports
+are fall catches back to the start room and stay fatal. The server runs sv_maxvelocity 3500
+(the WR demo's movevars), so the recipe carries `--maxvel 3500`.
+
+* the field is `config.field` = the no-corner-cut goal graph, the field the recipe shapes on
+  (`--race-no-corner-cut 1`); `config.start_d` is its distance at the spawn.
 * only the first `config.score_episodes` (9) episodes of an eval count, by header episode
   index: a bigger eval is not a better score.
-* the incumbent is re-scored with the current grader before it is compared, so scores from
-  before the change (98.3-98.4 on the old field) are not the bar. The milestones known so far are in
-NOTES.md: the first-ramp trap at 5.7%, the wall hole ("window") at 20.8% -> CP1 at 22.9%,
-and the CP2 wall at 27.5%.
+* there is no incumbent checkpoint for this map: round 1 starts FROM SCRATCH with
+  `config.incumbent_recipe` - the sidistic lineage's final flags (it finished sidistic from
+  the true start after 7 rounds; NOTES.md says what each mechanism did there) plus the speed
+  cap. The sidistic finisher's weights are in `$AR_HOME/incumbent/sid_ref/ckpt.pt` (identical
+  observation and action layout) for a warm-start experiment if you want one; they were never
+  trained on this map.
 
 ## Each wakeup
 
@@ -192,10 +207,15 @@ python autoresearch/box.py release --agent $AR_AGENT
 * Before releasing a box, pull every run you may want to cite:
   `box.py pull --agent $AR_AGENT --run <run>`. Add `--ckpt` for the one you might hand on.
 * Score: `python autoresearch/score.py --best $AR_HOME/runs/$AR_AGENT/<run>/`.
-* The next round's incumbent checkpoint is the winning eval's run's `ckpt_final.pt`, or its
-  `ckpt_latest.pt` if there is no final one, or its newest `ckpt_<step>.pt`, as pulled to
-  `$AR_HOME/runs/`: the first of those that is complete (a truncated or damaged file is
-  skipped). That is the run's NEWEST weights, usually later than its best eval.
+* The next round's incumbent checkpoint comes from the winning eval's run, as pulled to
+  `$AR_HOME/runs/` (a truncated or damaged file is skipped). It is the newest
+  `ckpt_<step>.pt` AT OR BEFORE the winning eval, unless the run's newest checkpoint
+  (`ckpt_final.pt`, else `ckpt_latest.pt`, else its newest `ckpt_<step>.pt`) is more than
+  twice as near the eval; with no snapshot at or before the eval, it is that newest one,
+  usually later than the eval. A snapshot is handed on only if you pulled it: if your best
+  eval falls between snapshots, pull the one before it as well
+  (`box.py pull --agent $AR_AGENT --run <run> --snapshot <step>`; operator, 2026-10-23: r7b2's
+  finish came inside a transient peak, and its ckpt_latest was ~700M steps past it).
   `AR_BRANCH.json`'s incumbent gives `eval_step` and `ckpt_step`. Before you compare against
   the incumbent's score, read the checkpoint's own first eval.
 * `box.py pull --ckpt` downloads to `<ckpt>.part` and replaces the copy already pulled only
@@ -212,7 +232,8 @@ python autoresearch/box.py release --agent $AR_AGENT
 
 ## Wrap-up (at `wrapup_at`, or when a message says ROUND OVER; never before)
 
-1. Launch nothing new. Pull the best run, with its checkpoint (`--ckpt`).
+1. Launch nothing new. Pull the best run, with its checkpoint (`--ckpt`) and the snapshot
+   at or before its best eval (`--snapshot <step>`).
 2. Score it. Write `RESULT.json` with `"final": true` and the summary.
 3. Append the round's lesson to NOTES.md: what worked, what did not, the numbers.
 4. `git add -A && git commit` (trailers) `&& git push origin ar/$AR_AGENT`.

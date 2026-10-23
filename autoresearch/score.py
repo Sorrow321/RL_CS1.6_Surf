@@ -1,4 +1,4 @@
-"""score.py - the deterministic grader J of fork-and-flush (arXiv 2610.07447), for sidistic.
+"""score.py - the deterministic grader J of fork-and-flush (arXiv 2610.07447), on config.map.
 
 One number per GREEDY eval from the TRUE map start - the trajectories the trainer writes every
 --record-every steps (runs/<run>/traj_<step>.jsonl, 9 episodes). Higher is better:

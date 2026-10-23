@@ -1,18 +1,27 @@
-# autoresearch: fork-and-flush on surf_src_sidistic
+# autoresearch: fork-and-flush on surf_princessburglar_b26
 
 An unattended research loop on the agent host (the droplet, no GPU). It runs the method of
 Cai et al. 2026, "Fork-and-Flush: Escaping Idea Basins in Autoresearch Agents"
-(arXiv 2610.07447), toward one goal: **pass sidistic from the true start**, champion-free
-and generic (CLAUDE.md sections 0 and 0b).
+(arXiv 2610.07447), toward one goal: **pass surf_princessburglar_b26 from the true start**
+(the start_run teleport's destination, declared in the map's zones file), champion-free and
+generic (CLAUDE.md sections 0 and 0b), then reliably, then faster than 75.18 s, the human world
+record (a bar to read results against, never a reward constant). The second program of this
+harness: the first, on surf_src_sidistic (2026-10-20..23, 7 rounds, ~/ar), finished that map
+from the true start; this one (user, 2026-10-23) asks whether its recipe converges quickly on
+the map the surf community calls the hardest. State lives in ~/ar_pb, agents and branches are
+named pbr<round>b<k> / ar/pbr<round>b<k>.
 
 ## How it works
 
 * **Rounds.** Each round forks **4 branch agents** from one workspace: a git commit plus the
   protected incumbent checkpoint and eval. Every branch is a fresh Claude Code session
-  ("flush") in its own slot (`~/ar/wt/b1..b4`) on its own branch (`ar/r<round>b<k>`).
+  ("flush") in its own slot (`$AR_HOME/wt/b1..b4`) on its own branch
+  (`ar/<agent_prefix>r<round>b<k>`; config agent_prefix).
 * **Schedule.** Rounds last **12 h** (user, 2026-10-20: 24 h is too long for one
-  lineage) and there are **6**, so 72 h in all. The schedule is fixed, as the paper advises,
-  with K = 4. Change `rounds` / `round_hours` in `config.json` to extend.
+  lineage). There were **6** (72 h); the user added a 7th and an 8th on 2026-10-23, so 8
+  rounds, ~98 h in all. The schedule is fixed, as the paper advises, with K = 4. Change
+  `rounds` / `round_hours` in `config.json` to extend, and move `budget_end_hours` to the new
+  end with them.
 * **Selection.** At a round's end every branch is scored by `autoresearch/score.py`. A
   branch's score is its best greedy eval from the true start. The winner's branch head seeds
   the next round. The losers are archived (`~/ar/archive/r<n>/`) and pruned.
@@ -70,8 +79,8 @@ and generic (CLAUDE.md sections 0 and 0b).
   * The venv `~/ar/venv` holds numpy, CPU torch, scipy, numba, opencv-headless, pytest and
     vastai.
   * The C core is built (`build.sh`).
-* **Maps.** `maps/surf_src_sidistic.*` (bsp + baked caches) is copied into the main checkout,
-  and `~/ar/maps/sidistic_maps.tar.gz` holds the copy that boxes receive.
+* **Maps.** `maps/<config map stem>.*` (bsp + baked caches + zones.json) is copied into the
+  main checkout, and `$AR_HOME/maps/<config maps_tarball>` holds the copy that boxes receive.
 * **Incumbent.** `~/ar/incumbent/` is round 0: sidEM2cap2surfGR at 749.7M, plus the surf
   run's progress.csv as a reference.
 * **Claude Code** (`~/.claude/settings.json`): `permissions.defaultMode: "auto"` and
