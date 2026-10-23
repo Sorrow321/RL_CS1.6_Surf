@@ -129,7 +129,7 @@
     "--int-real-only",
     "1",
     "--time-pen",
-    "0.001",
+    "0",
     "--stall-eps",
     "5",
     "--pitch-sigma-min",
@@ -163,7 +163,9 @@
     "--energy-pot-front-bonus",
     "1",
     "--maxvel",
-    "3500"
+    "3500",
+    "--ent",
+    "0.002"
   ],
   "start_d": 57149.0,
   "model": "claude-opus-5-5",

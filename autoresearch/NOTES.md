@@ -446,3 +446,6 @@ learn what energy is worth there before the policy can make it.
   off the NORTH ledge). That is the skill to find next.
 * Box 57383391 released at 21:51 (no further idea had a credible chance in the 3.7 h left;
   the fleet was over its spending pace).
+* config.json incumbent_recipe (the lineage key): --time-pen 0.001 -> 0 and --ent 0.002 added
+  (default 0.005). Evidence: warm arms 1-3 (suicide attractor at 0.001) and arms 4-10 (yaw sigma
+  0.15 -> 2.72 at ent 0.005); arms 11-16 ran with both. NOT tested from scratch on this map.
