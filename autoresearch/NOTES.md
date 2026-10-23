@@ -3152,3 +3152,14 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   ckpt_22318415872.pt is exactly the 98.403 eval's weights.
 * **r7b4_p1** (10:44): that 22,318,415,872 snapshot + `--front-temp 1 --front-band 0.01` (T 0.1 restored): another
   path out of the best weights.
+
+### 11:06 UTC: r7b4_p1 - 15 entries in 153 episodes, 14 of them in 4 evals; short branches from the entry-rich snapshots
+
+* r7b4_p1 (the 98.403 weights at 22,318,415,872 + front-temp 1 / band 0.01, T 0.1), 22.325-22.425B, 17 evals:
+  **15 entries in 153 episodes (9.8%)** - 3, 4, 4, 3 entries per 9-episode eval at 22.337-22.356B - apex up to
+  **1,449** (the highest greedy apex this round) but best score 98.362: the score is the closest approach to
+  the funnel (min d), not the height. Then entries stop (1 more at 22.425B) with the line in partial basement
+  mode.
+* The entries cluster in windows of ~20-40M steps after a branch from these snapshots. For the rest of the round
+  the box runs short branches (~12 evals each, one setting change each) from the entry-rich snapshots.
+* **r7b4_p2** (11:05): p1's 22,343,581,696 snapshot (right before its 4-4-3 stretch) + `--front-temp 0`.
