@@ -157,3 +157,38 @@ own reward-free search from the true spawn, no demo or record data, generic cons
   --spawn-states rule; no SELF_STATES needed: it is the run's own search, never data).
   explore_phase1 gained `--maxvel` (its core defaulted to 2000; the recipe runs 3500).
   Tests: tests/python/test_ge_minutes.py (CPU, princessburglar).
+
+### Gate 2 is ENERGY: the pit after the tunnel drop (measured 2026-10-23 15:30 UTC)
+* Past the tunnel the route drops into a pit (floor z ~3,330-3,340 at x ~650-900) and must climb
+  out (the record: a U-turn east -> north -> west up to z ~3,500-3,530 at ~700-750 u/s, then a
+  long drop west). The record arrives with energy height h = z + |v|^2/2g ~3,850-3,970 (it
+  pumped the east half-pipe first: h 3,653 at spawn -> ~3,930). Go-Explore's states past 2%
+  have h <= ~3,600-3,667 - the uniform-action search crawls through the tunnel at 200-300 u/s.
+* `explore_phase1 --cell-energy 32` (6 threads, 6.6 min, rooted at the spawn, ge2 archive in
+  $AR_HOME/runs/pbr1b1/_ge2/): 12,561 cells, half-pipe h max 3,802 (vs 3,775 without energy
+  cells), pit h max ~3,600-3,667, frontier unchanged at 3.2%. Random actions do not generate the
+  ~200+ u of energy; the policy's own surfing has to (or the climb needs less than I think).
+* PPO's training frontier (reservoir min-depth 96.76%) has not moved past the archive's 3.2% in
+  220M steps of gewarm2 either.
+* Merged forward spawn file of both archives: _ge2/ge12_fwd_states.npy (4,038 states, h median
+  3,582, max 3,859; md5 f93b2d0b6e45e96c044c9e56e3382ace).
+
+### The start gate, corrected (2026-10-23 ~15:50 UTC, core traces)
+* pbr1b1_gewarm2 (400M, stopped at budget): greedy evals 0.414 / 0.418 / 0.421 / 0.440 / 0.432 /
+  0.451 (best, 378M). From 76M on, EVERY greedy episode ends at the tunnel MOUTH (x ~649-681,
+  y ~-2880..-2930, on the spawn floor) instead of the south dead end or the east pit - the archive
+  taught WHERE to go - but it never gets in.
+* Ducked-hull free space by core.trace: the tunnel entrance (x 592-640) has its floor at z ~3,698,
+  80 u above the spawn floor (3,616-3,618); a thin shelf at the same height runs along the mouth's
+  north side (y ~-2,878..-2,895, x 652-700+). The best jump (duck-jump) lifts the feet ~63 u. So
+  from a standstill on the spawn floor the tunnel is out of reach: it is entered from ABOVE
+  (falling onto the shelf / into the mouth) - energy again, or a lucky line.
+* In both GE archives the tunnel was entered exactly twice (in 3.8M + 0.9M runs), from airborne
+  parents at the mouth with h ~3,726-3,740 (bursts of 1.9-4.8 s), and once from the SOUTH passage
+  (466, -2,983, 3,692) into the tunnel at (440, -2,933, 3,708): the field's south route joins the
+  tunnel further west, it is not a dead end in topology - only for a slow walker.
+  1,024 simple jump/duck/forward macros from the policy's own mouth states and 2,048 x 400-tick
+  random bursts from the GE parent state: 0 entries. A rare event for uniform actions and for PPO.
+* So both gates are energy gates. Next arm: per-call energy shaping (`--energy-pot-front 0
+  --energy-pot-front-bonus 0`, K = 3: pays every gain of h, charges every loss), resumed from
+  gewarm2 at 400M with both archives (pbr1b1_geen).
