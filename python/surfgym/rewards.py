@@ -1037,6 +1037,20 @@ class RaceReward:
         # 0 = off (the block is skipped). Set by the trainer on training slots, like speed_coef.
         self.speed_pot = 0.0
         self._spd_prev = None
+        # --energy-pot (autoresearch r7b2, 2026-10-23): the same potential on the ENERGY HEIGHT,
+        # Phi = energy_pot * h / 1000 with h = z + |v|^2 / (2 g) - the surf form of "lost speed":
+        # free fall and frictionless surfing keep h (gravity trades height for speed), so only
+        # what the map takes (a contact's normal component, ground friction, a bad strafe) is
+        # charged and only what the player adds (air acceleration, a jump) is paid. Per call as
+        # the CHANGE of Phi; telescopes per episode; ended rows pay 0 and re-anchor. No death
+        # refund: dying keeps the energy it had (free fall into a kill trigger is neutral), so a
+        # line that destroys less energy scores higher. 0 = off (the block is skipped). Training
+        # slots only, like speed_pot. en_gain / en_loss: units of h moved since pop_stats.
+        self.energy_pot = 0.0
+        self._en_prev = None
+        self._g_en = 800.0
+        self.en_gain = 0.0
+        self.en_loss = 0.0
         # --surf-bonus / --dive-pen (round 40, pnSURF): "surfing = good,
         # diving = bad" as a dense per-tick term. Both are REWARD UNITS PER
         # SECOND on the flag; the trainer converts to per-tick. 0/0 is off
@@ -1223,6 +1237,8 @@ class RaceReward:
         self._g_tick = float(core.config.phys.sv_gravity) * self.tick_ms * 1e-3
         self._vmax = float(getattr(core.config.phys, "sv_maxvelocity", 0.0) or 0.0)
         self._spd_prev = None        # --speed-pot re-anchors on the first call
+        self._en_prev = None         # --energy-pot re-anchors on the first call
+        self._g_en = float(core.config.phys.sv_gravity)
         self._best = self._d.copy()
         if self.sr:
             if n % 2:
@@ -1562,6 +1578,21 @@ class RaceReward:
             dv[ended] = 0.0
             r += ((self.speed_pot / 1000.0) * dv).astype(np.float32)
             self._spd_prev = s.copy()
+        if self.energy_pot > 0.0:
+            # --energy-pot: h = z + |v|^2 / (2 g); the sum over an episode telescopes to
+            # energy_pot * (h at its end - h at its start) / 1000. Ended rows hold the NEXT
+            # episode's spawn: they pay 0 and re-anchor (as --speed-pot does).
+            vv = v.astype(np.float64)
+            h = (_states(core)["origin"][:, 2].astype(np.float64)
+                 + (vv * vv).sum(axis=1) / (2.0 * self._g_en))
+            if self._en_prev is None or self._en_prev.shape != h.shape:
+                self._en_prev = h.copy()
+            dh = h - self._en_prev
+            dh[ended] = 0.0
+            r += ((self.energy_pot / 1000.0) * dh).astype(np.float32)
+            self.en_gain += float(dh[dh > 0.0].sum())
+            self.en_loss -= float(dh[dh < 0.0].sum())
+            self._en_prev = h
         if self.dip_speed_coef > 0.0 and self._rec is not None and self.arc is None:
             # `_rec` already holds this state's record (updated above), so
             # dc > _rec + margin is exactly "inside a dip"; ended rows are
@@ -2098,6 +2129,13 @@ class RaceReward:
             out["surf_paid_ticks"] = self.surf_paid_ticks
             out["surf_dive_ticks"] = self.dive_ticks
         self.surf_paid_ticks = self.dive_ticks = self.surf_air_ticks = 0.0
+        if self.energy_pot > 0.0:
+            # --energy-pot: energy height (u) gained / lost by the training envs since the last
+            # call, per ended episode - the term's own read-out (a line that keeps its energy
+            # shows a falling loss)
+            out["en_gain_per_ep"] = (self.en_gain / n_ep) if n_ep else float("nan")
+            out["en_loss_per_ep"] = (self.en_loss / n_ep) if n_ep else float("nan")
+            self.en_gain = self.en_loss = 0.0
         if self.arc is not None:
             out["arc_gain"] = (float(np.mean(self.arc_gain))
                                if self.arc_gain else float("nan"))

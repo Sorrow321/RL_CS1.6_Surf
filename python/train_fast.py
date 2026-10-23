@@ -5979,6 +5979,14 @@ def main() -> None:
                          "telescopes, so it moves credit in time without changing which run is "
                          "best (the user, 2026-10-04, skate_laby: 'lost speed on turns'). "
                          "A checkpoint restores it. 0 = off")
+    ap.add_argument("--energy-pot", type=float, default=None,     # 0 = off
+                    help="race: the --speed-pot form on the ENERGY HEIGHT, Phi = K * h / 1000 "
+                         "with h = z + |v|^2 / (2 g), paid as its change every call (the surf "
+                         "form of 'lost speed': free fall and frictionless surfing keep h, so a "
+                         "contact's lost normal component and ground friction are charged when "
+                         "they happen and air acceleration is paid when gained). Telescopes per "
+                         "episode, no death refund. Training slots only; a checkpoint restores "
+                         "it. 0 = off")
     ap.add_argument("--surf-bonus", type=float, default=None,     # 0 = off
                     help="race (round 40, pnSURF): REWARD UNITS PER SECOND "
                          "paid while the player is riding a surfable face. "
@@ -7301,6 +7309,9 @@ def main() -> None:
         if args.speed_pot is None and ck_cfg.get("speed_pot") is not None:
             args.speed_pot = float(ck_cfg["speed_pot"])
             restored.append(f"speed_pot={args.speed_pot:g}")
+        if args.energy_pot is None and ck_cfg.get("energy_pot") is not None:
+            args.energy_pot = float(ck_cfg["energy_pot"])
+            restored.append(f"energy_pot={args.energy_pot:g}")
         if args.speed_coef is None and ck_cfg.get("speed_coef") is not None:
             args.speed_coef = float(ck_cfg["speed_coef"])
             restored.append(f"speed_coef={args.speed_coef:g}")
@@ -8661,6 +8672,12 @@ def main() -> None:
         args.speed_coef = 0.0
     if args.speed_pot is None:
         args.speed_pot = 0.0
+    if args.energy_pot is None:
+        args.energy_pot = 0.0
+    if args.energy_pot < 0.0:
+        raise SystemExit("--energy-pot K needs K >= 0 (0 = off)")
+    if args.energy_pot > 0.0 and args.reward != "race":
+        raise SystemExit("--energy-pot is a race-reward term: it needs --reward race")
     if args.surf_bonus is None:
         args.surf_bonus = 0.0
     if args.dive_pen is None:
@@ -12800,6 +12817,8 @@ def main() -> None:
             # --speed-pot: a potential in reward units per 1000 u/s - no tick scaling (a change of
             # Phi is the same whatever the tick); training slots only, like speed_coef
             _s.reward_fn.speed_pot = float(args.speed_pot)
+            # --energy-pot: the same, on z + |v|^2 / (2 g) (reward units per 1000 u)
+            _s.reward_fn.energy_pot = float(args.energy_pot)
             _s.reward_fn.surf_bonus = SURF_BONUS_T
             _s.reward_fn.dive_pen = DIVE_PEN_T
             _s.reward_fn.surf_hspd = float(args.surf_hspd)
@@ -13541,6 +13560,8 @@ def main() -> None:
                                       if args.reward == "race" else None),
                        **({"speed_pot": float(args.speed_pot)}
                           if args.reward == "race" and args.speed_pot else {}),
+                       **({"energy_pot": float(args.energy_pot)}
+                          if args.reward == "race" and args.energy_pot else {}),
                        "surf_bonus": (args.surf_bonus
                                       if args.reward == "race" else None),
                        "dive_pen": (args.dive_pen
@@ -20082,6 +20103,10 @@ def main() -> None:
                 # being watched, not only after it
                 race_note += (f"  surf {rs['surf_paid_frac']:5.1%}"
                               f"/dive {rs['dive_frac']:5.1%}")
+            if "en_gain_per_ep" in rs and rs["en_gain_per_ep"] == rs["en_gain_per_ep"]:
+                # --energy-pot: energy height gained / lost per ended training episode
+                race_note += (f"  en +{rs['en_gain_per_ep']:,.0f}"
+                              f"/-{rs['en_loss_per_ep']:,.0f}u/ep")
             if respawn is not None:
                 # CLAUDE.md: race/win_rate is the THIRD deceptive metric and
                 # it has fired - round 19 read 18.46% off a reservoir that

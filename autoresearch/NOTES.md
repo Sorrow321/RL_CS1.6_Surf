@@ -2797,3 +2797,52 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   md5 6838c110...), r6b2_gpt/ckpt_latest.pt (18,282,446,848), r6b2_bmix/ckpt_stop.pt, r6b2_fp*/ (on the box only).
 * Code: commit fee9839 is the last code change (--respawn-front-perturb + counters, --respawn-greedy-turn / -speed,
   --respawn-backward-mix); later commits are notes and RESULT. Box 57219728 released at wrap-up.
+
+## Round 7, branch r7b2 - 2026-10-23 02:41 UTC
+
+### Box
+
+* 02:23-02:30 UTC: **box 57308519, RTX 5080, The Netherlands, machine 153021, $0.535/h** (first offer, READY in
+  ~3.5 min). Deployed the incumbent ckpt (r6b2_tp3 ckpt_latest, 22,217,752,576, md5 c713bd69...). The first launch's
+  record gate re-baked the no-corner-cut field (413 s with the recordings).
+* `box.py deploy` of a branch that is not yet on GitHub fails at `git checkout -B` ("origin/ar/r7b2 is not a
+  commit"): push the branch before the first deploy.
+
+### The incumbent on the new grader (analysis, no box)
+
+* The grader now reads the no-corner-cut field (goalc_32): the incumbent's 98.421 eval (traj_20614479872) is
+  **98.315**. Its 9 episodes (scratchpad energy_line.py; h = z + |v|^2/1600, the energy height): 5 reach the
+  basement (x > 2,280, z < 1,250 after 100 s) with **h at the basement entry median 2,350, max 2,434**; 1 chamber
+  entry (apex z 1,363); 0 over the funnel rim (z > 1,560 inside the chamber); h at 105 s median 3,454, at 112 s
+  2,384. So the line still loses ~1,100 u of energy height between 105 s and the basement (round 6's diagnosis).
+
+### r7b2_ctl (02:39 UTC): bare resume of the incumbent, evals every 6.25M - the same-box control
+
+* `box.py launch --resume --record-every 6.25e6 -- --ckpt-every 1e8`; every tp3 setting restored. First evals
+  97.901 / 97.895 (CP7, basement 5-6 of 9, h_bas median 2,363-2,413, no entry). ~70-76k steps/s cumulative
+  in the first minutes (compile + evals included).
+
+### NEW `--energy-pot K` (the --speed-pot form on the energy height)
+
+* Phi = K x h / 1000 with **h = z + |v|^2 / (2 g)**, paid as its CHANGE every call (training slots only), ended
+  rows pay 0 and re-anchor, no death refund; K in reward units per 1000 u of h (K = 1 ~ the race scale on
+  sidistic: 1% of progress = 997 u of d). Step line `en +G/-L u/ep` (energy height gained / lost per ended
+  training episode). Default 0 = off (the block is skipped, config key written only when on); a checkpoint
+  restores it; TRAIN_ONLY for record_ckpt.
+* Why h and not |v_xy| (--speed-pot): GoldSrc integrates gravity in two half steps, which keeps z + v^2/2g
+  EXACTLY in free fall (unit test, and on the real core to < 0.05 u per tick), and frictionless surfing keeps it
+  too; so the term charges exactly what the map takes (a contact's normal component, ground friction, a bad
+  strafe) and pays what the player adds (air acceleration, a jump). |v_xy| would pay diving and charge climbing,
+  and the last gate is a climb.
+* Why: the last gate is ENERGY-limited (round 6: the greedy line enters the basement at h ~2,350 and needs
+  ~+400 at the ramp; it loses ~1,100 u of h between 105 s and the basement, mostly at contacts), and nothing in
+  the objective prices energy: with the ratchet only new records pay and the 0.1/s time penalty did not move it.
+  The user's own skate_laby proxy ("lost speed on turns", --speed-pot 10) took that map 79.70 -> 75.96 s.
+  Generic: one constant, physics only (g from the core), no map quantity (CLAUDE.md 0b).
+* Risk, stated before the run: with no refund a basement loop that destroys energy is worth less than a quick
+  death there (~-1.3 units of h over the loop), so the line could learn to die early in the basement instead of
+  looping into the chamber - watch the basement reach and the chamber entries, not only the score.
+* Tests: tests/python/test_energy_pot.py (per-call pay, free fall pays 0 and a landing is charged, telescoping,
+  ended-row re-anchor, 0 = off, the real core's free flight keeps h; the trainer carries / restores / records it
+  and refuses K < 0; flag off is bit-identical to the trainer before the change - config, csv, eval bytes,
+  weights).
