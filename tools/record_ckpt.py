@@ -82,6 +82,9 @@ class _RouteProbe:
 TRAIN_ONLY = frozenset({
     # --target-kl: PPO's early stop inside the update; a recording runs no update
     "target_kl",
+    # --init-weights: where a fresh run's STARTING weights came from (provenance); a recording
+    # loads the run's own weights
+    "init_weights",
     # --ramp-death-charge: a training reward term (the eval pays no reward)
     "ramp_death_charge",
     # --ramp-route-flat: the shape of the training reward's potential

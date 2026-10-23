@@ -5916,6 +5916,14 @@ def main() -> None:
                          "(the user, 2026-10-04, skate_laby: the 89.35 s weights were lost "
                          "between the 1e9-step checkpoints). Not a config key; 0 = off")
     ap.add_argument("--ckpt", default=None)
+    ap.add_argument("--init-weights", default=None, metavar="CKPT",
+                    help="a FRESH run whose network starts from CKPT's policy weights - a "
+                         "weights-only warm start, e.g. a finisher of another map onto this "
+                         "one. Nothing else is read: the optimizer, the step counter, the "
+                         "reservoirs, the novelty table and every schedule start as a scratch "
+                         "run's. The architecture flags must match CKPT's (strict load). "
+                         "Refused with --ckpt (that is a resume). Training-only; written to "
+                         "the config only when set")
     ap.add_argument("--sb3", default=None)
     ap.add_argument("--reset-steps", action="store_true")
     ap.add_argument("--reward", choices=["forward", "path", "blend", "maxspeed",
@@ -13396,6 +13404,44 @@ def main() -> None:
                   f"({fleet.reservoir_size():,} states)")
         print(f"resumed {args.ckpt} at step {global_step:,}"
               + (" (steps reset)" if args.reset_steps else ""))
+    INIT_W = None
+    if args.init_weights:
+        # --init-weights: the policy's tensors and NOTHING else. A --ckpt resume onto another
+        # map would also bring that map's reservoir, greedy-death states, novelty table and
+        # --unstuck reading (its best is the other map's frontier) - state keyed to positions
+        # that mean nothing here
+        if args.ckpt:
+            raise SystemExit("--init-weights starts a FRESH run from another run's weights and "
+                             "--ckpt resumes one: pass one of them")
+        _iw = torch.load(args.init_weights, map_location="cpu", weights_only=False)
+        _iw_sd = _iw["policy"] if isinstance(_iw, dict) and "policy" in _iw else _iw
+        _iw_cfg = (_iw.get("config") or {}) if isinstance(_iw, dict) else {}
+        check_arch_matches(_iw_cfg, args, policy)
+        _own = policy.state_dict()
+        _bad = ([f"{k} missing" for k in _own if k not in _iw_sd]
+                + [f"{k} unexpected" for k in _iw_sd if k not in _own]
+                + [f"{k} {tuple(_iw_sd[k].shape)} != this run's {tuple(_own[k].shape)}"
+                   for k in _own if k in _iw_sd
+                   and tuple(_iw_sd[k].shape) != tuple(_own[k].shape)])
+        if _bad:
+            raise SystemExit("--init-weights: this run's network is not the checkpoint's "
+                             "(the architecture and observation flags must match): "
+                             + "; ".join(_bad[:8]))
+        policy.load_state_dict(_iw_sd)
+        if VIEW_ABS:
+            _mv = policy.project_log_std()
+            if _mv:
+                print(f"--init-weights: {_mv} view head(s) projected onto the sigma caps; sig "
+                      + "/".join(f"{v:.3f}" for v in policy.log_std().exp().tolist()))
+        import hashlib
+        with open(args.init_weights, "rb") as _fh:
+            _md5 = hashlib.md5(_fh.read()).hexdigest()
+        INIT_W = {"path": str(args.init_weights), "md5": _md5,
+                  "step": int(_iw.get("global_step", 0)) if isinstance(_iw, dict) else 0,
+                  "map": _iw_cfg.get("map")}
+        print(f"--init-weights {args.init_weights} (md5 {_md5}, {INIT_W['map']} at step "
+              f"{INIT_W['step']:,}): {len(_own)} policy tensors loaded; the optimizer, the "
+              "step counter, the reservoirs, the novelty table and every schedule start fresh")
 
     # DDP: no wrapper constructor syncs weights here — broadcast explicitly,
     # then hold every rank to an EXACTLY equal param checksum (startup and
@@ -14105,6 +14151,10 @@ def main() -> None:
         # record_ckpt.py and render_pov.py mirror both keys
         meta["config"]["depth_enc"] = str(args.depth_enc)
         meta["config"]["depth_log_d0"] = float(args.depth_log_d0)
+    if INIT_W is not None:
+        # --init-weights: provenance of the starting weights, ONLY when set (TRAIN_ONLY in
+        # record_ckpt: the recorder loads this run's own weights)
+        meta["config"]["init_weights"] = INIT_W
     if args.obs_potential:
         meta["config"]["obs_potential"] = str(args.obs_potential)
         meta["config"]["obs_potential_d0"] = {
