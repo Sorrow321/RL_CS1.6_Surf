@@ -109,3 +109,35 @@ resample every 25 decisions. On a box it runs as it does locally (CPU physics + 
   finisher, 25.39B steps; all 37 policy tensors loaded, everything else fresh), budget 3e9 with
   a 30-min review (no step-budget schedule in the recipe, so a promising run need not restart).
   First minutes: half the training episodes stall-killed, greedy eval 250 u (0.4%).
+
+### 15:10 UTC - pbr1b4_iw: NULL, and THE START IS A TRAP (measured with the core's traces)
+
+* `pbr1b4_iw` (recipe + --init-weights sid_ref) stopped at 345M steps: greedy best 250 u
+  (0.4%, the FIRST eval, the sidistic weights almost untouched; score 0.403), then 0.0-0.1%;
+  furthest training state 557 u; novelty paid 0.01/ep; T hit its 0.2 cap at ~250M; training
+  episodes shrank to ~1.5 s (the policy learned to die: with the ratchet + time-pen 0.001 and
+  no progress available, the fastest death is the best return).
+* **The start, from the core (`SurfCore.trace`, standing hull):** the spawn platform (floor
+  3616, origin 3653) is closed to the WEST by solid up to >= z 3800 at x <= 640 (every
+  y -3150..-2870). The one gap west is a slot at y -3054..-2946 between two func_conveyor
+  plates holding two trigger_push volumes (x 648-718, z 3657-3698, pitch 90 = straight DOWN,
+  speed 2500): a death chute into the catch teleport. The exit is a hidden upper corridor on
+  the NORTH side: at origin z 3740, y -2884 a hull trace runs west from x 860 to x 66 (a
+  ledge at ~3700, ~85 u above the platform floor; a standing jump is ~45 u, a duck-jump ~63).
+  The record gets there by running EAST into the half-pipe (x 1177-2396, y -3136..-2864,
+  z 3296-3568), surfing it end to end and back (~6 s), and climbing out of its west end at
+  ~530 u/s to z ~3749, then flying west along the corridor and dropping into the chamber at
+  x ~0. The goal field (free-space BFS, no gravity) points UP into the corridor from the spawn
+  and through the death chute: an ENERGY DEFICIT at step one, +1,500 u of d the wrong way.
+* What the sidistic policy did here: the first eval (weights untouched) walked west and pressed
+  against the x ~649 wall for 35-50 s; by 76M steps PPO had it running east into the half-pipe
+  and falling off its sides (y -3181 / -2829, z ~3300) in 3-9 s; by 150M it died in 1.5 s by
+  touching a teleport brush at (900, -3098, 3686).
+* Generic reading: three recipe constants set late on sidistic work against a from-scratch
+  trap start: the time penalty (dying is free, living costs), the 0.2 temperature cap
+  ("temperature discovers" ran at cap 2 from scratch on sidistic), and energy priced only on
+  entering the frontier band (the band is AT the spawn, so pumping speed in the half-pipe pays
+  nothing).
+* `pbr1b4_esc` launched 15:08 UTC: recipe + --init-weights sid_ref + `--time-pen 0
+  --unstuck-max 2 --energy-pot-front 0 --energy-pot-front-bonus 0` (energy paid everywhere).
+  Read: does any episode reach the corridor (best > ~1,000 u = 1.75%)?
