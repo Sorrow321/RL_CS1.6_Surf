@@ -3134,3 +3134,9 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   stronger term moves more arrivals to the -y side than it adds at the hole.
 * **r7b1_gate3** (10:52): gate2's final weights (22,856,335,360, md5 61c0e6ec...; C = 1 and the gate restored), evals every 6.25M,
   to the wrap-up - the regime with the most greedy entries.
+
+### 11:22 UTC: r7b1_gate3 (C = 1 again) - 5 greedy entries in 15 evals
+
+* r7b1_gate3 22.856 -> 22.954B: entries 98.344, 98.278/98.291 (two in one eval), 98.401, 98.372, 98.413 - every one from a +y arrival
+  (h_E 2,485-2,582 at the basement entry), apex z 1,352-1,433 with h_E 1,777-1,953 left at the apex: the loop + entry costs
+  ~600-700 u, the last obstacle between these entries and the rim (~2,200 at the apex would clear it). Best still 98.493 (gate2).
