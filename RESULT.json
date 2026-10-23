@@ -8,9 +8,16 @@
   "run": "pbr1b2_xen0",
   "step": 151519232,
   "ckpt": null,
-  "recipe": ["--energy-pot-front", "0", "--energy-pot-front-bonus", "0", "--time-pen", "0"],
+  "recipe": [
+   "--energy-pot-front",
+   "0",
+   "--energy-pot-front-bonus",
+   "0",
+   "--time-pen",
+   "0"
+  ],
   "resume_from": "sid2pb (tools/transfer_ckpt.py of incumbent/sid_ref, step 0)",
   "commit": "7f2cc54"
  },
- "summary": "The start is a gate the field hides: the platform's only ways on are a ridge pump (the WR) or a duck-jump climb at its NW corner onto a north ledge (~1e-4 per random 8 s burst). Arms 1-4 (sidistic warm start; plain energy pot; time-pen 0; respawn-speed 1.0-1.6) all stall at that corner (0.07-0.45); time-pen 0.001 makes suicide the attractor there. Go-Explore phase 1 from the map start (explore_phase1, NEW --maxvel/--view-velocity) gets off the platform in 2.5 min (3.2%). Arm 5 (running): recipe + time-pen 0 + --spawn-states from the Go-Explore archive, warm from the sidistic transfer."
+ "summary": "Start of princess = two hidden gates: off the platform (a ridge pump - the WR - or a 9 u duck-jump exploit onto a conveyor edge at the NW/SW corner), then speed carried off the ledge into an enclosed pocket's exit ramp. Arms 1-4 (sidistic warm start; plain energy pot; time-pen 0; respawn-speed) stall at the corner (<=0.454); time-pen 0.001 makes suicide the attractor there. Go-Explore phase 1 from the map start (NEW explore_phase1 --maxvel/--view-velocity/--dump-paths/--cell-speed-3d) reaches 3.84% in 3 min; RL with its states as spawns (arms 5-7: archive, balanced, dense chain) does not learn the climb from the true start (0.41-0.42). Arm 8 (running): NEW --demo-reach, Salimans-Chen backward curriculum over the Go-Explore dense chain (787 states)."
 }
