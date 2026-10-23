@@ -363,3 +363,25 @@ the backward curriculum (--demo-file + --demo-success-d) on the found line. Not 
   the greedy line heads SOUTH for 0.25 s after the tunnel before turning east, so it crosses
   x ~300 at z ~3,340 and hits the raised floor's west face; heading east at once it would cross
   at z ~3,570 and land on it. Both parts at once: a detour against the field, flown at speed.
+
+### Gate 2: Go-Explore from the policy's own tunnel exit gets past the pit (2026-10-23 20:20-21:10 UTC)
+* GE4: tools/explore_phase1.py rooted at 32 of g2b's OWN greedy tunnel-exit states
+  (_entry/exit_roots.npy), 64 u cells x --cell-energy 32, 4,096 envs, 768 iterations: 20,074
+  cells, the deepest at **3.95%** on the grader field (534, -2,668, 3,422) - past the pit (3.24%),
+  reward-free, no demo. 551 cells lie past 3.3%.
+* The geometry those cells cross (core hull traces, x 260-930, y -2,620..-3,420): the "raised
+  floor" is a surf RIDGE running east (x 292-612, crest z 3,389 at y ~-3,004, surf faces on both
+  sides), a flat pit floor at z ~3,296 east of it, and far surf ramps (z 3,412-3,508) at
+  x 772-932 to the north (y -2,652..-2,780) and the south (y -3,260..-3,356). Every chain past
+  3.3% leaves the ridge's east end RISING (v (43, -335, 451) or (317, 423, 254), |v| 563-586),
+  flies over the pit, lands on a far ramp and U-turns west.
+* Re-finding that as one line (tools/ge_stitch.py, uniform bursts link by link): line3 got to
+  chain link 21 = the ridge's east end, arriving LEVEL (v (542, -67, -97)) - the right 64 u cell,
+  the wrong heading and vz - and the launch link was not re-found. The archive's own link there
+  is 505-510 ticks deep: that parent cell's state was REPLACED by a shorter way in (depth 184),
+  so the state the launch was found from no longer exists; all 551 deep cells descend from it.
+  GE5 rooted at line3's last 12 states (8 min, 2.9M runs, 1,361 cells): nothing past the pit -
+  from 0.07 s before the ridge's end there is no time left to turn up the face.
+* ge_stitch `--backtrack 8,16,...,128` (new): a link not re-found from the line's end is
+  retried from that many ticks earlier on the line (the line is cut back to the root that
+  worked); `--cell` picks the chain end, `--prefix` resumes a line.
