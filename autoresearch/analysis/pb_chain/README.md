@@ -19,3 +19,19 @@ Resuming a checkpoint trained on these (e.g. pbr1b2_ge13): its config carries
 `demo_file = runs/pbr1b2_ge3/chain_dedup_378.npy`, which a fresh box does not have. Either copy
 this file there, or pass `--demo-file ''` (an empty string switches the curriculum off on a
 resume) together with the recipe's spawn features if you want them back.
+
+## Resuming the round-1 handoff checkpoints (both tied at 3.235)
+
+* pbr1b2_ge14 / ckpt_853016576.pt (= pbr1b2_ge13's final weights): its config restores
+  `demo_file = runs/pbr1b2_ge3/chain_dedup_378.npy` (and demo_window/rate/min_ep/grow).
+* pbr1b2_ge16 / ckpt_1260388352.pt: its config restores
+  `spawn_states = runs/pbr1b2_ge3/spine378_spawn.npy` (frac 0.15) and `demo_file = ''`.
+
+Both paths are byte-identical copies of `chain_dedup_378.npy` here. On a fresh box either
+
+    mkdir -p runs/pbr1b2_ge3
+    cp autoresearch/analysis/pb_chain/chain_dedup_378.npy runs/pbr1b2_ge3/chain_dedup_378.npy
+    cp autoresearch/analysis/pb_chain/chain_dedup_378.npy runs/pbr1b2_ge3/spine378_spawn.npy
+
+or switch them off on the resume: `--demo-file '' --demo-front-frac 0 --demo-grow 0` and/or
+`--spawn-states ''`. Both checkpoints carry --time-pen 0 and --ent 0.002 in their config.
