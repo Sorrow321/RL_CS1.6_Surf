@@ -477,3 +477,16 @@ the backward curriculum (--demo-file + --demo-success-d) on the found line. Not 
   (view sigma 0.010, --yaw-entropy 0) to find the line's air turn (wishdir ~81 deg right of the
   velocity: back+left with the view ~144 deg off the velocity, or right strafe with the view
   along it).
+* For whoever continues gate 2 (written 23:15 UTC, before the round's end):
+  1. The line is solved as a SEARCH problem: GE from the policy's own tunnel-exit states with
+     --exact-chains + ge_replay gives an exact 1,881-tick line past the pit in ~6 min of box CPU
+     (all 339 cells past 3.3% share one lineage: tunnel run-up -> ridge launch -> east-wall
+     bounce -> north U-turn).
+  2. The curriculum on it needs, from the start: `--keys-hold-spawn-duck` (crouched exact spawns),
+     `--demo-success-bonus` (the run-up's payoff is ~19 s away; the pit is 2 s away),
+     `--demo-grow ~n/100` (the 20-iteration cooldown bounds the pace at ~10.5M steps per advance).
+  3. The open blocker is the pre-impact flight [1230,1249]: a ducked air turn whose wishdir is
+     ~81 deg right of the velocity. The policy has ~no view exploration there (sigma 0.010 under
+     --yaw-entropy 0, a choice made for the start room's precision jumps). Options: give curriculum
+     spawns a view temperature, or pick a GE chain without the wall bounce (re-run GE with a
+     heading-aware cell so the archive keeps more than one lineage past the pit).
