@@ -3037,3 +3037,8 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   restored. Two knobs on one row type: practise the turn where the line makes it, at up to 1.5x speed so that rim crossings and
   finishes from those states are frequent enough for the critic to price energy at the hole - the energy term is off in the band
   by design, so only the value of a finish can make the loop keep energy.
+* Probe (local CPU, ANALYSIS ONLY): the near-98.393 policy (snapshot 22.745B) recorded greedily from 24 of its own return-leg
+  states (x 2,950-3,150 heading west, 19 on the +y side; h_E median 2,290 / 2,574 / 2,858 with the velocity scaled x1.0 / 1.1 /
+  1.2), 8 s each: **0 chamber entries at every speed**, best progress median 97.85-97.87% (back up the passage). So from the +y
+  return leg the missing piece is the entry SKILL, not energy. (Caveat: a spawn restarts the ratchet record, so the record-gap
+  observation is 0 there, where the eval's line carried ~0.5% of d0 - the same as every training row.)
