@@ -3048,3 +3048,16 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   1,441 in ~65M steps, i.e. the window was still improving when the CP6 drift ended it.
 * Plan: r7b4_inc2 saves every 25M; when the line sits in the CP6 mode for ~8 evals, resume from the last
   snapshot taken inside the basement window (continuing its improvement), not from 22.218B.
+
+### 07:18 UTC: the trainer is DETERMINISTIC on this box - a restart replays; rollback + T cap 0.1 (r7b4_t01)
+
+* r7b4_inc2 (the same bare restart of the incumbent as r7b4_inc, only --ckpt-every 2.5e7 differs) reproduced
+  r7b4_inc's 20 evals EXACTLY (97.896, 97.909, ..., 98.390 at 22,306,357,248, then 96.531 at 22.312B): on this
+  box and image a resume from the same checkpoint with the same flags is bit-identical, so a restart from the
+  same weights adds no new samples (CLAUDE.md's "not run-to-run reproducible" was another box). Stopped at
+  22.34B; its snapshots ckpt_22242918400 / 22268084224 / 22293250048 / 22318415872 / 22343581696 are on the box.
+* **r7b4_t01** (07:17): resume of the 22,293,250,048 snapshot (inside the basement window, 3 evals before the
+  CP6 drift; md5 77f0ad96...) + `--unstuck-max 0.1` (keys temperature 1.2 -> 1.1, entropy and intrinsic
+  multipliers likewise): lower T caps consolidated the greedy line in rounds 2, 3 and 5, and the CP6 drift may be
+  noise-driven. Snapshots every 25M, evals every 6.25M. Read-out: does the basement window (and the entries'
+  climb) last past 22.312B?
