@@ -2730,3 +2730,70 @@ pattern that is in your own command line.
 * r6b2_tp3 20.19-21.14B: 179 evals, best still **98.421** (20,614M); greedy chamber entries 8 of 1,611 episodes (apex
   z 1,257-1,465); front-perturb finishes 0 at x1.0-1.3 (the entries fall short of the rim). Box 57219728 extended
   to 01:33 UTC for the wrap-up.
+
+## ROUND 6 LESSON (r6b2) - written at wrap-up, 2026-10-23 00:59 UTC
+
+**Result:** best greedy eval from the true start **98.421** (r6b2_tp3 at 20,614,479,872; incumbent 98.349): the greedy line
+surfs up a basement ramp, rises through a hole into the sealed funnel chamber, flies east to the funnel's outer wall
+and dies there - the lineage's first greedy chamber entries. 0 finishes in evals. Hand-on checkpoint: /home/steam/ar/runs/r6b2/r6b2_tp3/ckpt_latest.pt (22,217,752,576, md5 c713bd6943bb41a675ab2b5ac5d897f4).
+
+**Per-run bests (score.py):** ctl 98.245 | bmix 98.259 | gpt 98.308 | fp 98.277 | fp2 98.294 | fp3 98.253 | fp4 98.183 |
+fp5 98.289 | fp6 98.269 | tp1 98.329 | tpg 98.188 | tp2 98.289 | **tp3 98.421**.
+
+**The last gate, measured (analysis only: hull slices, true kill hulls, simulator probes from hand-placed states that
+never enter training):**
+* The space above the finish funnel is a SEALED vertical chamber (walls x 2,480 / 3,408 and |y| 688, identical in 64
+  directions at every height 1,600-6,600, ceiling 6,700). Its only openings are two holes in its floor (x 2,500-2,660,
+  |y| 390-660, slab z 1,140-1,250) over the basement. Under each hole a 49-degree ramp runs along x (face from |y| ~620,
+  z ~705 up to |y| 330, z ~1,030); moving up the face carries the agent INWARD under the slab.
+* The hole entry: surf up the face low under a hole, then strafe outward so the motion turns vertical through the hole
+  (scripted from ideal states: 3,017 / 58,800 enter, 156 over the rim, 6 finish; needs >= ~1,300 u/s up-slope to enter,
+  ~1,600 to clear the rim). The chamber's east wall is a ~40-degree ramp that also lifts an agent flying east.
+* It is ENERGY-limited. From the line's own frontier states random held actions never enter (0 / 16k); turned +-90 deg
+  alone 0.012%; x1.4-1.6 speed alone 0.47%; turned + x1.8-2.2 0.70%, up to z 2,474. The greedy line enters the basement
+  with h_E = z + v^2/1600 ~2,200-2,400 in every run (~2,350 is what a rim crossing needs at the ramp's foot, and the
+  line loses ~300 more in its basement loop before it tries); it had ~3,800 at 105 s and bleeds ~170 u/s.
+
+**What was built (all default off, bit-identical when off, CPU-tested, record_ckpt TRAIN_ONLY):**
+* `--respawn-front-perturb F` (+ `-band B`, `-turn T`, `-speed LO HI`; counters fpert/ended, finished, best_prog): F of
+  the non-start pool rows are the reservoir's own frontier-band states kept in place, heading turned U(-T, T), speed
+  x U(LO, HI). The mechanism of the round:
+  * at x1.4-2.0 (fp3) it produced the lineage's first REAL training finishes: **94**, at 5-9% of its episodes for
+    ~18M steps, from fast states in the holes - then the band drifted (harvested entries moved the reservoir's deepest
+    state into the chamber) and the rate fell to ~0; wider bands / more energy did not bring it back;
+  * at **x1.0-1.3** (tp3, band 0.5%, with --time-pen 0.001) it made the GREEDY line enter the chamber: 0 greedy
+    entries in 3,036 episodes before front-perturb training, 2 in ~675 after ~1B steps of it, **10 in 2,376** in tp3
+    (apex z 1,257-1,465; one climbed the chamber's east ramp), and the best evals 98.417 / 98.421.
+* `--respawn-backward-mix F`: Salimans-Chen goal-anchored rows from the map's own field mixed beside the novel / greedy
+  rows (tagged like novel rows). Taught the chamber -> funnel part (50-70% of its episodes finished) - not the way in.
+* `--respawn-greedy-turn T / --respawn-greedy-speed LO HI`: the greedy rows nudged. Only reaches the basement while
+  the greedy line is in its basement mode; with the time penalty it broke the line (tpg: CP6 mode, 27 of 315 episodes
+  in the basement).
+
+**What did not work:** goal-anchored rows alone (bmix); greedy-row nudges as the main lever; wider front-perturb bands
+(1%, 3%: the basement rows diluted); a small time penalty (0.1/s) did not raise the line's basement energy (median h_E
+2,270 vs 2,340); nothing this round raised it.
+
+**For a next lineage:** the finish is one rise away - the greedy line now does the entry at its own energy and needs
+~+400 u of h_E at the ramp to clear the rim (then the funnel drop, which the chamber rows already teach). Levers: an
+entry on the FIRST pass (before the basement loop costs ~300 u), a line that keeps energy through the chimney / deep
+dip / passage (~1,100 u lost there), more steps of tp3's recipe (the entry rate and height were still rising), a
+front-perturb band anchored to the policy's own line rather than the harvested deepest state (so it cannot drift).
+An energy-height potential (generic physics, telescoping) would be the direct lever but is a reward term (CLAUDE.md 0b)
+- untested.
+
+**Ops:** box 57218543 (RTX 5080, Massachusetts) had a foreign load on its GPU at rent time - released and blocklisted
+by hand (vast_pick.py has no foreign-tenant reason and needs the live instance). Box 57219728 (RTX 5080 + i9-14900,
+Italy, $0.575/h), 13:47 -> ~01:00 UTC; 125-140k steps/s with evals every 6.25M. `--time-pen` is PER TICK (0.005 =
+0.5/s) - a first launch with 0.1 (10/s) was caught inside its critic warmup. `box.py extend` sets now + H, not
+deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4 vCPU): ~10 min per record_ckpt bench.
+
+## Wrap-up (r6b2) - 2026-10-23 00:59 UTC
+
+* Final: RESULT.json `"final": true`, score **98.421** (r6b2_tp3, eval traj_20614479872: 9 episodes, best 98.42%, median
+  98.12%, 0 finishes, CP7; re-scored at wrap-up, 7 of tp3's evals pulled).
+* Hand-on checkpoint: /home/steam/ar/runs/r6b2/r6b2_tp3/ckpt_latest.pt (22,217,752,576, md5 c713bd6943bb41a675ab2b5ac5d897f4),
+  copied after the run was stopped and md5-checked against the box. Also local: r6b2_tp1/ckpt_latest.pt (19,955,974,144,
+  md5 6838c110...), r6b2_gpt/ckpt_latest.pt (18,282,446,848), r6b2_bmix/ckpt_stop.pt, r6b2_fp*/ (on the box only).
+* Code: commit fee9839 is the last code change (--respawn-front-perturb + counters, --respawn-greedy-turn / -speed,
+  --respawn-backward-mix); later commits are notes and RESULT. Box 57219728 released at wrap-up.
