@@ -108,7 +108,7 @@ from surfgym import distributed
 from surfgym.core import STATE_DTYPE
 from surfgym.dipmeter import DIP_KEYS
 from surfgym.goalfield import build_goal_field
-from surfgym.greedy_spawn import GreedyLinePool, as_truncated
+from surfgym.greedy_spawn import GreedyLinePool, SpawnOutcomeCounter, as_truncated
 from surfgym.mapfleet import HeldoutSlot, MapFleet, MapSlot
 from surfgym.obsaux import ACT_FEAT, CMP_FEAT, ObsAux, PotRate, make_pot_rate_feed
 from surfgym.surfflag import SurfFlag, g_step_of, make_surf_feed
@@ -6825,6 +6825,12 @@ def main() -> None:
                     metavar=("LO", "HI"),
                     help="--respawn-greedy: keep the states from HI down to LO seconds before "
                          "each failed greedy episode's last tick (default 0.5 5.0)")
+    ap.add_argument("--respawn-greedy-keep", type=int, default=None,   # 0 = off
+                    help="--respawn-greedy: also keep the windows of the K DEEPEST failed "
+                         "greedy episodes seen so far (by each episode's best field progress), "
+                         "ACROSS evals, drawn beside the last eval's own - the deployed line's "
+                         "rare deepest attempts stay in practice after the next eval. Counters "
+                         "gkeep/ended, finished, best_prog. 0 = off; ckpt restores")
     ap.add_argument("--archive-frac", type=float, default=None,   # 0 = off
                     help="survivor-gated predecessor archive: the share of the "
                          "spawn pool replaced each iteration by archive rows - "
@@ -7806,6 +7812,10 @@ def main() -> None:
                 and ck_cfg.get("respawn_greedy_speed") is not None):
             args.respawn_greedy_speed = [float(v) for v in ck_cfg["respawn_greedy_speed"]]
             restored.append("respawn_greedy_speed={:g}-{:g}".format(*args.respawn_greedy_speed))
+        if (args.respawn_greedy_keep is None
+                and ck_cfg.get("respawn_greedy_keep") is not None):
+            args.respawn_greedy_keep = int(ck_cfg["respawn_greedy_keep"])
+            restored.append(f"respawn_greedy_keep={args.respawn_greedy_keep}")
         # --respawn-backward: a spawn DISTRIBUTION, restored like the frontier
         if args.respawn_backward is None and ck_cfg.get("respawn_backward"):
             args.respawn_backward = True
@@ -8775,6 +8785,11 @@ def main() -> None:
             and not float(args.respawn_greedy or 0.0) > 0.0):
         raise SystemExit("--respawn-greedy-turn / --respawn-greedy-speed perturb "
                          "--respawn-greedy's rows: they need --respawn-greedy F > 0")
+    if args.respawn_greedy_keep is None:
+        args.respawn_greedy_keep = 0
+    if int(args.respawn_greedy_keep) and not float(args.respawn_greedy or 0.0) > 0.0:
+        raise SystemExit("--respawn-greedy-keep adds to --respawn-greedy's pool: it needs "
+                         "--respawn-greedy F > 0")
     if args.eval_patience is None:
         args.eval_patience = 0.0
     if args.eval_patience < 0.0:
@@ -11435,7 +11450,8 @@ def main() -> None:
                                     seed=int(args.seed) + 9191,
                                     stuck=int(args.respawn_greedy_stuck or 0),
                                     turn=float(args.respawn_greedy_turn or 0.0),
-                                    speed=args.respawn_greedy_speed)
+                                    speed=args.respawn_greedy_speed,
+                                    keep=int(args.respawn_greedy_keep or 0))
         except ValueError as _e:
             raise SystemExit(str(_e))
         print(f"respawn GREEDY: {GREEDY.frac:.0%} of the non-start pool = the policy's own "
@@ -11446,7 +11462,18 @@ def main() -> None:
               + (f"; heading (velocity and view yaw) turned by U(-{GREEDY.turn:g}, "
                  f"{GREEDY.turn:g}) deg" if GREEDY.turn > 0.0 else "")
               + (f"; velocity scaled by U({GREEDY.speed[0]:g}, {GREEDY.speed[1]:g})"
-                 if GREEDY.speed is not None else ""))
+                 if GREEDY.speed is not None else "")
+              + (f"; + the windows of the {GREEDY.keep} deepest failed greedy episodes so far, "
+                 f"kept across evals" if GREEDY.keep else ""))
+    # --respawn-greedy-keep: how the episodes from the kept (earlier-eval) rows end
+    GKEEP_C = None
+    if GREEDY is not None and GREEDY.keep > 0:
+        _fld = (slots[0].reward_field if slots[0].reward_field is not None
+                else slots[0].goal_field)
+        if _fld is None or not hasattr(_fld, "grid") or not slots[0].rf_d0:
+            raise SystemExit("--respawn-greedy-keep needs the geodesic goal field (it ranks "
+                             "the greedy episodes by their best field progress)")
+        GKEEP_C = SpawnOutcomeCounter(_fld)
     if args.respawn_backward:
         for _i, slot in enumerate(slots):
             _fld = (slot.reward_field if slot.reward_field is not None
@@ -14166,6 +14193,8 @@ def main() -> None:
             meta["config"]["respawn_greedy_turn"] = float(GREEDY.turn)
         if GREEDY.speed is not None:
             meta["config"]["respawn_greedy_speed"] = [float(v) for v in GREEDY.speed]
+        if GREEDY.keep > 0:
+            meta["config"]["respawn_greedy_keep"] = int(GREEDY.keep)
     # --eval-patience: written ONLY when on, like the greedy pool above
     if EVAL_PATIENCE:
         meta["config"]["eval_patience"] = float(args.eval_patience)
@@ -14784,6 +14813,10 @@ def main() -> None:
         for _s in slots:
             _sfx = f".{_s.tag}" if MULTI else ""
             CSV_COLS += [f"fpert/ended{_sfx}", f"fpert/finished{_sfx}", f"fpert/best_prog{_sfx}"]
+    if GKEEP_C is not None:
+        # --respawn-greedy-keep: the episodes from the kept (earlier-eval) greedy rows that
+        # ENDED this iteration, how many finished, the deepest progress any reached (map units)
+        CSV_COLS += ["gkeep/ended", "gkeep/finished", "gkeep/best_prog"]
     if D.is_main:                    # four append handles corrupt the file
         csv_path = out / "progress.csv"
         if csv_path.exists() and csv_path.stat().st_size:
@@ -15309,6 +15342,9 @@ def main() -> None:
             # --respawn-front-perturb: the deepest point its episodes reach (a counter only)
             for _s in slots:
                 FPERT_S[_s.tag].observe(vis_np[_s.sl, 0:3])
+        if GKEEP_C is not None:
+            # --respawn-greedy-keep: likewise for the kept greedy rows' episodes
+            GKEEP_C.observe(vis_np[slots[0].sl, 0:3])
         # --route: the lookahead fan rides the SAME pose upload the renderer
         # needs, so it costs one argmin and no extra host->device traffic.
         # Speed comes from the scalar row (slot 3 = |v_xy|/1000), which the
@@ -17389,6 +17425,8 @@ def main() -> None:
                         # map-start rows and the novel rows after them are kept
                         _rp = GREEDY.mix(_rp, max(1, int(round(
                             len(_rp) * (1.0 - args.respawn_frac)))))
+                        if GKEEP_C is not None:
+                            GKEEP_C.remember(GREEDY.last_arch)
                     _set_pool(_s, _rp)
             elif SPAWN_STATES is not None:
                 # --spawn-states before the reservoir fills: map starts + own states
@@ -18109,6 +18147,11 @@ def main() -> None:
                                 FPERT_S[_s.tag].note_outcomes(ended[_s.sl], _fgh[_s.sl])
                                 FPERT_S[_s.tag].note_spawns(_s.core.states_view,
                                                             ended[_s.sl])
+                        if GKEEP_C is not None and ended.any():
+                            # --respawn-greedy-keep: the same for the kept greedy rows
+                            _kgh = fleet.goal_hits().astype(bool)
+                            GKEEP_C.note_outcomes(ended[slots[0].sl], _kgh[slots[0].sl])
+                            GKEEP_C.note_spawns(slots[0].core.states_view, ended[slots[0].sl])
                         if goalsys is not None and ended.any():
                             goalsys.assign(np.flatnonzero(ended))
                         if track_bins and ended.any():
@@ -19422,6 +19465,14 @@ def main() -> None:
                 _fn.append("  fpert fin {}/{}{}".format(
                     int(_fw), int(_fe), f" best {_fbp:,.0f}u" if _fbp == _fbp else ""))
             fpert_note = "".join(_fn)
+        gkeep_row = None
+        if GKEEP_C is not None:
+            # --respawn-greedy-keep: the kept greedy rows' episodes (on the fpert note's line)
+            _ke, _kw, _kb = GKEEP_C.pop_outcomes()
+            _kbp = (float(slots[0].rf_d0) - _kb) if _kb < float("inf") else float("nan")
+            gkeep_row = [int(_ke), int(_kw), round(_kbp, 1) if _kbp == _kbp else ""]
+            fpert_note += "  gkeep fin {}/{}{}".format(
+                int(_kw), int(_ke), f" best {_kbp:,.0f}u" if _kbp == _kbp else "")
         # ---- --gate-boxes: this iteration's ramp visits, hit vs miss ------
         gate_note, gate_row = "", None
         if GATE is not None:
@@ -19660,10 +19711,20 @@ def main() -> None:
                         # the field distance, off-field (the unreachable sentinel) -> inf
                         _d = np.asarray(_f.sample(o), np.float64)
                         return np.where(_d < _f.reach_max - 0.5 * _f.cell, _d, np.inf)
+                    _rk = None
+                    if GREEDY.keep > 0:
+                        # --respawn-greedy-keep ranks the episodes on the field the race
+                        # reward shapes on (under --race-no-corner-cut that is not goal_field)
+                        _rfld = (_s.reward_field if _s.reward_field is not None
+                                 else _gfld)
+
+                        def _rk(o, _f=_rfld):
+                            _d = np.asarray(_f.sample(o), np.float64)
+                            return np.where(_d < _f.reach_max - 0.5 * _f.cell, _d, np.inf)
                     GREEDY.build(_ev_sum if _ev_pat is None
                                  else as_truncated(_ev_sum, _ev_pat.state["killed"]),
                                  float(sum(_tpat)) / len(_tpat),
-                                 d_fn=None if _gfld is None else _rg_d)
+                                 d_fn=None if _gfld is None else _rg_d, rank_fn=_rk)
                     print(f"[{global_step:>13,d}] " + GREEDY.line())
                 st = episode_stats(path)
                 _f = float(np.mean([e["fwd_max"] for e in st])) if st else 0.0
@@ -20067,7 +20128,9 @@ def main() -> None:
                            # novel/*, after those (only under --respawn-novel)
                            + (novel_row if novel_row is not None else [])
                            # fpert/*, after those (only under --respawn-front-perturb)
-                           + (fpert_row if fpert_row is not None else []))
+                           + (fpert_row if fpert_row is not None else [])
+                           # gkeep/*, LAST (only under --respawn-greedy-keep)
+                           + (gkeep_row if gkeep_row is not None else []))
             csv_f.flush()
         race_note = ""
         if isinstance(reward_fn, RaceReward) and race_sr == race_sr:

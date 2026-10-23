@@ -2797,3 +2797,40 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   md5 6838c110...), r6b2_gpt/ckpt_latest.pt (18,282,446,848), r6b2_bmix/ckpt_stop.pt, r6b2_fp*/ (on the box only).
 * Code: commit fee9839 is the last code change (--respawn-front-perturb + counters, --respawn-greedy-turn / -speed,
   --respawn-backward-mix); later commits are notes and RESULT. Box 57219728 released at wrap-up.
+
+## Round 7, branch r7b4 - 2026-10-23 02:40 UTC
+
+### State at the start (analysis, no box)
+
+* Incumbent: r6b2_tp3, re-scored on the corrected field (goalc_32.npz) at **98.315** (its 98.421 was the old
+  field); checkpoint 22,217,752,576 (tp3's last weights). Score = best progress + 10 x finish fraction + a time
+  term, so ONE greedy finish in the first 9 episodes of an eval is worth ~+9 over everything else.
+* **tp3's progress.csv shows something the round-6 notes missed** (they stop at 21.14B): front-perturb episodes
+  (x1.0-1.3 speed, band 0.5%) FINISHED at 21.106-21.117B, 1-4 per iteration (fpert/best_prog 99,629-99,675).
+  Then at 21.118B every front-perturb row finished (60/60, 64/65, ...) for ~25M steps: real finishes harvest
+  their WHOLE chain (respawn.py: success -> cutoff = end), so the reservoir's deepest state moved into the
+  funnel and the band (d <= d_min + 0.5% of the span) collapsed onto it - trivial finishes. At 21.143B the funnel
+  states had been flushed from the 100k FIFO ring (a funnel-start finish takes < 1 s: no 1 s snapshot is
+  harvested, so nothing replenishes them), the band went back to the basement, and fpert finished 0 in the
+  remaining ~1.06B steps. So the end-game is learnable from the line's own frontier states near its own
+  energy, but the practice slid off it twice (round 6's fp3 burst was the same failure).
+* The best eval (traj_20614479872): 2 of 9 episodes reach the basement (98.31% / 97.89%); the others die at
+  86.0% (x2, ~96.5 s), 87.5% (stuck at ~99.6 s), 55.5% (64 s). The 98.31% episode's energy height
+  h_E = z + |v|^2/1600: 4,898 u at 96.9 s, 3,733 at 102.9, 3,447 at 105.9, 2,912 at 108.9, 2,503 at 109.9
+  (a dip to z -163), 2,321 at 110.9, 2,352 at 113.9 (corridor), 2,138 at 114.9, 1,940 at 116.9, 1,853 at
+  117.9 s - above the slab at (2,974, -394, 1,358), |v| 890 heading east along the funnel's outer wall, dies at
+  118.4 s. A direct rise over the rim (z ~1,560) from the slab top needs h_E >= ~1,630 (vz ~700 + ~340 u/s
+  toward the funnel), so the greedy entries (h_E 1,780-1,920) have the energy; what they lack is the turn of
+  that velocity upward (the funnel's outer wall / the chamber's east ramp).
+
+### NEW `--respawn-greedy-keep K` (this commit)
+
+* The greedy-line pool is rebuilt at every eval from that eval's 9 episodes, so the deployed line's rare
+  frontier attempts (round 6: 10 chamber entries in 2,376 greedy episodes) are practised for one eval interval
+  and then forgotten. With K > 0 the pool also keeps the windows (the same HI..LO s before each death / stop)
+  of the K DEEPEST failed greedy episodes seen so far, ranked by their best progress on the field the reward
+  shapes on (the no-corner-cut field here), ACROSS evals; they are drawn beside the last eval's own windows
+  (uniform over the union). DAgger on the deployed line's deepest failures; no perturbation (the exact greedy
+  states). Counters gkeep/ended, gkeep/finished, gkeep/best_prog (the episodes from the kept rows of earlier
+  evals). Generic: one count, the policy's own greedy states, no map quantity. Default off; config only when
+  on; restored on resume; TRAIN_ONLY for record_ckpt. Tests: tests/python/test_respawn_greedy_keep.py.

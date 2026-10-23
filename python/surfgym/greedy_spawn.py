@@ -49,7 +49,7 @@ def as_truncated(summaries, idx) -> list:
 
 class GreedyLinePool:
     def __init__(self, frac: float, window=(0.5, 5.0), seed: int = 0, stuck: int = 0,
-                 turn: float = 0.0, speed=None):
+                 turn: float = 0.0, speed=None, keep: int = 0):
         frac = float(frac)
         if not 0.0 < frac < 1.0:
             raise ValueError(f"--respawn-greedy F needs 0 < F < 1, got {frac!r}")
@@ -58,6 +58,19 @@ class GreedyLinePool:
             raise ValueError(f"--respawn-greedy-window LO HI needs 0 <= LO < HI, got {lo!r} {hi!r}")
         if int(stuck) < 0:
             raise ValueError(f"--respawn-greedy-stuck N needs N >= 0, got {stuck!r}")
+        if int(keep) < 0:
+            raise ValueError(f"--respawn-greedy-keep K needs K >= 0, got {keep!r}")
+        # --respawn-greedy-keep K: the windows of the K DEEPEST failed greedy episodes seen so
+        # far (ranked by the episode's best field progress) are kept ACROSS evals and drawn
+        # beside the last eval's own windows. The deployed line reaches its frontier in a
+        # few episodes of a few evals (sidistic round 6: 10 chamber entries in 2,376 greedy
+        # episodes), and a pool rebuilt at every eval forgets them at the next one. 0 = off:
+        # the pool is the last eval's windows only, as before
+        self.keep = int(keep)
+        self._arch: list = []          # [(best d, eval number, rows)], deepest first
+        self._n_eval = 0
+        self.n_arch = 0                # pool rows (at its END) from earlier evals' kept episodes
+        self.last_arch = np.zeros(0, STATE_DTYPE)   # the kept-episode rows the last mix drew
         if not 0.0 <= float(turn) <= 180.0:
             raise ValueError(f"--respawn-greedy-turn T needs 0 <= T <= 180, got {turn!r}")
         if speed is not None:
@@ -121,7 +134,7 @@ class GreedyLinePool:
                 self._cur = []
         return on_tick
 
-    def build(self, summaries, tick_ms: float, d_fn=None) -> dict:
+    def build(self, summaries, tick_ms: float, d_fn=None, rank_fn=None) -> dict:
         """Rebuild the pool from the recording just captured. ``summaries`` is
         record_rollout's return (one trailer per episode, in order); ``tick_ms`` the eval
         core's realised mean tick. -> the build's stats.
@@ -133,7 +146,11 @@ class GreedyLinePool:
           the tick of the episode's BEST progress (its minimum d) when that lies more than
           HI s before the end: the states HI..0 s before it. That is where a line that
           got STUCK (a truncated episode: evals never stall-kill) or that lost ground
-          long before dying stopped making progress."""
+          long before dying stopped making progress.
+
+        ``rank_fn`` (same signature as ``d_fn``; default ``d_fn``) ranks the episodes for
+        --respawn-greedy-keep by their minimum distance; the windows themselves follow
+        ``d_fn`` either way."""
         par = getattr(self, "_par", None)
         if par is not None:
             # side by side: episode i is env i's first episode (one still running when the
@@ -148,13 +165,14 @@ class GreedyLinePool:
         self._eps, self._cur = [], []
         per_s = 1000.0 / float(tick_ms)
         lo_t, hi_t = int(round(self.lo * per_s)), int(round(self.hi * per_s))
-        keep, deaths, stops, n_used = [], [], [], 0
+        keep, deaths, stops, n_used, best = [], [], [], 0, []
         for i, ep in enumerate(eps):
             end = summaries[i].get("end") if i < len(summaries) else None
             n = len(ep)
             if end not in ("fail", "trunc") or not n:
                 continue
             idx = []
+            d_best = np.inf
             if end == "fail" and n - lo_t > max(0, n - hi_t):
                 idx.append(np.arange(max(0, n - hi_t), n - lo_t))
                 deaths.append(round(n / per_s, 2))
@@ -163,6 +181,7 @@ class GreedyLinePool:
                 d = np.where(np.isfinite(d), d, np.inf)
                 if np.isfinite(d).any():
                     tb = int(np.argmin(d))
+                    d_best = float(d[tb])
                     if tb < n - hi_t and tb > 0:
                         idx.append(np.arange(max(0, tb - hi_t), tb + 1))
                         stops.append(round(tb / per_s, 2))
@@ -172,6 +191,11 @@ class GreedyLinePool:
                                 tb, n - 1, num=min(self.stuck, n - tb)).astype(np.int64)))
             if idx:
                 keep.append(ep[np.unique(np.concatenate(idx))])
+                if self.keep > 0 and rank_fn is not None:
+                    dr = np.asarray(rank_fn(np.asarray(ep["origin"], np.float64)), np.float64)
+                    dr = dr[np.isfinite(dr)]
+                    d_best = float(dr.min()) if len(dr) else np.inf
+                best.append(d_best)
                 n_used += 1
         if keep:
             rows = np.concatenate(keep).astype(STATE_DTYPE, copy=True)
@@ -179,8 +203,27 @@ class GreedyLinePool:
             rows["stuck_ticks"] = 0
         else:
             rows = np.zeros(0, STATE_DTYPE)
-        self.rows = rows
         self.info = {"eps": len(eps), "fail": n_used, "deaths_s": deaths, "stops_s": stops}
+        if self.keep > 0:
+            # --respawn-greedy-keep: this eval's episodes compete with the kept ones on their
+            # best progress; the kept entries from EARLIER evals join the pool after this
+            # eval's own rows (an entry from this eval is in them already)
+            cand = []
+            for r_, d_ in zip(keep, best):
+                if np.isfinite(d_):
+                    r_ = np.array(r_, dtype=STATE_DTYPE, copy=True)
+                    r_["tick"] = 0
+                    r_["stuck_ticks"] = 0
+                    cand.append((float(d_), self._n_eval, r_))
+            self._arch = sorted(self._arch + cand, key=lambda e: (e[0], -e[1]))[:self.keep]
+            old = [r_ for d_, e_, r_ in self._arch if e_ != self._n_eval]
+            self.n_arch = int(sum(len(r_) for r_ in old))
+            if old:
+                rows = np.concatenate([rows] + old).astype(STATE_DTYPE, copy=False)
+            self.info["kept_d"] = [round(d_, 1) for d_, _, _ in self._arch]
+            self.info["kept_rows"] = self.n_arch
+        self._n_eval += 1
+        self.rows = rows
         return dict(self.info, rows=self.size)
 
     # -- the pool ------------------------------------------------------------
@@ -191,10 +234,16 @@ class GreedyLinePool:
         n = int(round((len(pool) - int(n_fresh)) * self.frac))
         if n <= 0 or not self.size:
             self.mixed = 0
+            self.last_arch = np.zeros(0, STATE_DTYPE)
             return pool
         out = np.array(pool, dtype=STATE_DTYPE, copy=True)
-        out[len(out) - n:] = self.perturb(self.rows[self.rng.integers(0, self.size, n)])
+        pick = self.rng.integers(0, self.size, n)
+        out[len(out) - n:] = self.perturb(self.rows[pick])
         self.mixed = n
+        if self.keep > 0:
+            # --respawn-greedy-keep: the drawn rows that came from earlier evals' kept episodes
+            # (the pool's last n_arch rows), for the trainer's outcome counter
+            self.last_arch = out[len(out) - n:][pick >= self.size - self.n_arch].copy()
         return out
 
     def perturb(self, rows: np.ndarray) -> np.ndarray:
@@ -219,16 +268,25 @@ class GreedyLinePool:
 
     def line(self) -> str:
         d, b = self.info["deaths_s"], self.info.get("stops_s", [])
+        kd = self.info.get("kept_d")
         return ("greedy-line pool: {:,} own states from {}/{} failed greedy episodes "
                 "(deaths at {} s, {:g}..{:g} s before each; best-progress stops at {} s), "
                 "{:.0%} of the non-start pool"
                 .format(self.size, self.info["fail"], self.info["eps"],
                         ", ".join(f"{v:.1f}" for v in d) if d else "-", self.hi, self.lo,
-                        ", ".join(f"{v:.1f}" for v in b) if b else "-", self.frac))
+                        ", ".join(f"{v:.1f}" for v in b) if b else "-", self.frac)
+                + (f"; kept {len(kd)}/{self.keep} deepest (best d {kd[0]:,.0f}..{kd[-1]:,.0f} u), "
+                   f"{self.info.get('kept_rows', 0):,} rows from earlier evals"
+                   if self.keep > 0 and kd else ""))
 
     # -- persistence ---------------------------------------------------------
     def state_dict(self) -> dict:
-        return {"rows": self.rows.copy(), "info": dict(self.info)}
+        st = {"rows": self.rows.copy(), "info": dict(self.info)}
+        if self.keep > 0:
+            st["kept"] = [(float(d_), int(e_), r_.copy()) for d_, e_, r_ in self._arch]
+            st["n_eval"] = int(self._n_eval)
+            st["n_arch"] = int(self.n_arch)
+        return st
 
     def load_state_dict(self, st) -> bool:
         rows = st.get("rows") if isinstance(st, dict) else None
@@ -236,4 +294,78 @@ class GreedyLinePool:
             return False
         self.rows = np.array(rows, dtype=STATE_DTYPE, copy=True)
         self.info = dict(st.get("info") or self.info)
+        if self.keep > 0 and st.get("kept") is not None:
+            self._arch = [(float(d_), int(e_), np.array(r_, dtype=STATE_DTYPE, copy=True))
+                          for d_, e_, r_ in st["kept"]][:self.keep]
+            self._n_eval = int(st.get("n_eval", 0))
+            self.n_arch = min(int(st.get("n_arch", 0)), self.size)
+        else:
+            # a checkpoint saved without the kept episodes (or a K that is now off): the
+            # restored rows are one eval's own windows
+            self.n_arch = 0
         return True
+
+
+class SpawnOutcomeCounter:
+    """How the episodes that started from a given set of pool rows end: the rows' origins are
+    remembered per pool build, the fresh spawns are tagged by origin (the novel sampler's and
+    --respawn-front-perturb's rule), and each tagged episode that ends is counted, with its
+    finishes and the deepest field distance any of them reached. Counters only."""
+
+    def __init__(self, field) -> None:
+        self.field = field
+        self._lim = float(field.reach_max) - 0.5 * float(field.cell)
+        self._keys = frozenset()
+        self._keys_prev = frozenset()
+        self.env = None
+        self.spawned = 0
+        self._ended = 0
+        self._won = 0
+        self._best_d = float("inf")
+
+    def remember(self, rows) -> None:
+        org = np.ascontiguousarray(np.asarray(rows["origin"]), np.float32).reshape(-1, 3)
+        self._keys_prev = self._keys
+        self._keys = frozenset(org[i].tobytes() for i in range(len(org)))
+
+    def note_outcomes(self, ended, success) -> None:
+        """Call BEFORE :meth:`note_spawns` of the same tick."""
+        if self.env is None:
+            return
+        e = np.flatnonzero(np.asarray(ended, bool))
+        b = e[self.env[e]] if len(e) else e
+        if len(b):
+            self._ended += int(len(b))
+            self._won += int(np.asarray(success, bool)[b].sum())
+
+    def note_spawns(self, states, ended) -> None:
+        e = np.flatnonzero(np.asarray(ended, bool))
+        n = len(np.asarray(ended))
+        if self.env is None or len(self.env) != n:
+            self.env = np.zeros(n, bool)
+        if not len(e):
+            return
+        self.env[e] = False
+        if not self._keys and not self._keys_prev:
+            return
+        org = np.ascontiguousarray(np.asarray(states["origin"])[e], np.float32)
+        for j, i in enumerate(e):
+            k = org[j].tobytes()
+            self.env[i] = (k in self._keys) or (k in self._keys_prev)
+        self.spawned += int(self.env[e].sum())
+
+    def observe(self, pos) -> None:
+        if self.env is None or not self.env.any():
+            return
+        p = np.asarray(pos, np.float64).reshape(-1, 3)[self.env]
+        d = np.asarray(self.field.sample(p), np.float64)
+        d = d[d < self._lim]
+        if len(d):
+            self._best_d = min(self._best_d, float(d.min()))
+
+    def pop_outcomes(self) -> tuple:
+        """(ended, finished, deepest d reached) since the last call."""
+        out = (self._ended, self._won, self._best_d)
+        self._ended = self._won = 0
+        self._best_d = float("inf")
+        return out
