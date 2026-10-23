@@ -67,9 +67,10 @@ def market(monkeypatch, tmp_path):
 def test_offers_are_whitelisted_capped_single_gpu_and_ordered(market):
     got = box.offers()
     ids = [o["id"] for o in got]
-    # 3090 at 0.31 is over its 0.30 cap; machine 777 is blocklisted; the 4090 at 0.50 is over
-    # 0.45; the 2-GPU 5090 is out. Tier 0 (3090 / 5080) first, cheapest first
-    assert ids == [4, 2, 5, 7], ids
+    # the 3090 at 0.31 is under its 0.65 cap (raised 2026-10-22, 3a9af7e); machine 777 is
+    # blocklisted; the 4090 at 0.50 is over 0.45; the 2-GPU 5090 is out. Tier 0 (3090 / 5080)
+    # first, cheapest first
+    assert ids == [4, 2, 1, 5, 7], ids
     assert {o["gpu"] for o in got} <= set(box.CFG["max_dph"])
 
 
@@ -193,7 +194,8 @@ GR = ROOT / "runs" / "sidEM2cap2surfGR" / "traj_0755499008.jsonl"
 def test_score_rejects_an_eval_that_does_not_start_at_the_map_start(tmp_path):
     import score
     good = score.score_file(GR)
-    assert good["score"] == pytest.approx(27.222, abs=0.01) and good["max_cp"] == 1
+    # 27.222 on the old goal_32 field; 26.853 on the no-corner-cut field (round 7 on)
+    assert good["score"] == pytest.approx(26.853, abs=0.01) and good["max_cp"] == 1
     lines = GR.read_text(encoding="utf-8").splitlines()
     # move every episode's first row 9,000 u along x: not the map start any more
     bad = []

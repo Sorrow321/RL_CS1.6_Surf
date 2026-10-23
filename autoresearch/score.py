@@ -5,10 +5,15 @@ One number per GREEDY eval from the TRUE map start - the trajectories the traine
 
     score = best_progress_pct + 10 * finish_frac + (10 * (1 - best_finish_s / 300) if any finish)
 
-* best_progress_pct: max over episodes of 100 * (d0 - min d) / d0 on the map's goal field
-  (maps/<map>.goal_32.npz, the field the race reward shapes on), d0 = the field at the
-  episode's first row. A finished episode counts 100. This is the honest frontier (CLAUDE.md
-  section 3: corridor MAX and finishes), not race/eval_progress's mean.
+* best_progress_pct: max over episodes of 100 * (d0 - min d) / d0 on config.field, the goal
+  graph WITHOUT corner cutting (maps/<map>.goalc_32.npz, the field the race reward shapes on
+  since round 5; before round 7 the grader read goal_32.npz, which leaks through the finish
+  funnel's slanted wall and scored a dead end outside it above the way over the rim), d0 = the
+  field at the episode's first row. A finished episode counts 100. This is the honest frontier
+  (CLAUDE.md section 3: corridor MAX and finishes), not race/eval_progress's mean.
+* only the first config.score_episodes episodes count (header episode index < N; 9 = what
+  the trainer records): the score is a max over episodes, so a larger eval would only buy
+  more lottery tickets.
 * finish_frac: episodes that ended "done" (inside the finish) / episodes.
 * the time term only exists once something finishes: faster is better, 300 s = the cap.
 
@@ -37,6 +42,7 @@ REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "python"))
 CFG = json.loads((REPO / "autoresearch" / "config.json").read_text(encoding="utf-8"))
 START_D = float(CFG.get("start_d", 97768.0))
+SCORE_EPISODES = int(CFG.get("score_episodes") or 0)
 EP_CAP_S = 300.0
 _FIELD = None
 _CPS = None
@@ -90,11 +96,22 @@ def episodes(path: Path):
     return eps
 
 
+def first_episodes(eps, n: int):
+    """The episodes the score counts: those whose header episode index is below n, so the
+    choice does not depend on the order episodes are written in, or the first n in file order
+    when a header has no index. n <= 0 keeps them all."""
+    if n <= 0:
+        return eps
+    if all(isinstance(h.get("episode"), int) for h, _, _ in eps):
+        return [e for e in eps if e[0]["episode"] < n]
+    return eps[:n]
+
+
 def score_file(path: Path) -> dict:
     path = Path(path)
     out = {"file": str(path), "score": None}
     try:
-        eps = episodes(path)
+        eps = first_episodes(episodes(path), SCORE_EPISODES)
     except (OSError, ValueError) as e:
         out["error"] = f"unreadable: {e}"
         return out

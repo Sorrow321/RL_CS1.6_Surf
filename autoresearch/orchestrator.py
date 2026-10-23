@@ -458,6 +458,21 @@ def score_branch(agent: str) -> dict:
     return res
 
 
+def incumbent_score(inc: dict, scorer=None):
+    """The incumbent's score under the CURRENT grader: its stored eval re-scored, so a grader
+    change between rounds (round 7: the no-corner-cut field, 9 episodes) compares like with
+    like. The stored score when the eval is gone or no longer valid."""
+    ev = inc.get("eval")
+    if ev and Path(ev).exists():
+        if scorer is None:
+            sys.path.insert(0, str(REPO / "autoresearch"))
+            import score as scorer
+        s = scorer.score_file(Path(ev)).get("score")
+        if s is not None:
+            return s
+    return inc.get("score")
+
+
 def end_round(st, final=False) -> None:
     r = st["round"]
     log(f"ROUND {r} ENDS")
@@ -495,7 +510,12 @@ def end_round(st, final=False) -> None:
     if win:
         git("push", "-q", "origin", f"{win['branch']}:{win['branch']}", cwd=REPO, check=False)
         inc = st.get("incumbent") or {}
-        if win["score"] > float(inc.get("score") or -1e9):
+        inc_now = incumbent_score(inc)
+        if inc and inc_now != inc.get("score"):
+            log(f"  incumbent {inc.get('agent')} re-scored with the current grader: "
+                f"{inc.get('score')} -> {inc_now}")
+            inc["score_before"], inc["score"] = inc.get("score"), inc_now
+        if win["score"] > float(inc_now if inc_now is not None else -1e9):
             new = AR_HOME / "incumbent" / f"r{r}"
             new.mkdir(parents=True, exist_ok=True)
             ev = Path(win["best"]["file"])
