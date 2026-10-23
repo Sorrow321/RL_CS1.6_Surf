@@ -3,17 +3,25 @@
  "round": 1,
  "final": false,
  "best": {
-  "score": 0.403,
-  "eval_file": "/home/steam/ar_pb/runs/pbr1b4/pbr1b4_iw/traj_0000524288.jsonl",
-  "run": "pbr1b4_iw",
-  "step": 524288,
+  "score": 0.466,
+  "eval_file": "/home/steam/ar_pb/runs/pbr1b4/pbr1b4_esc/traj_0378011648.jsonl",
+  "run": "pbr1b4_esc",
+  "step": 378011648,
   "ckpt": null,
   "recipe": [
    "--init-weights",
-   "runs_ckpt.pt (= $AR_HOME/incumbent/sid_ref/ckpt.pt)"
+   "runs_ckpt.pt (sid_ref)",
+   "--time-pen",
+   "0",
+   "--unstuck-max",
+   "2",
+   "--energy-pot-front",
+   "0",
+   "--energy-pot-front-bonus",
+   "0"
   ],
   "resume_from": null,
   "commit": "b7c17fa"
  },
- "summary": "pbr1b4_iw (recipe + --init-weights sid_ref, 345M steps): NULL - trapped at the start (best 0.4% = the first eval; the policy learned to die in 1.5 s). The start is a trap: west is a wall + a push-down death chute; the exit is a corridor ~85 u above the platform, reached by the record only after pumping speed in an east half-pipe (+1,500 u of d the wrong way). Running pbr1b4_esc: + --time-pen 0 --unstuck-max 2 --energy-pot-front 0 (energy paid everywhere). Next if null: a generic exploration mechanism for energy-deficit starts."
+ "summary": "Start trap diagnosed (west wall + push-down chute; exit = a crawl-space corridor ~85 u up, DUCK required in our core). Two RL arms null at 0.4% (pbr1b4_iw recipe+sid_ref warm; pbr1b4_esc +time-pen 0, temp cap 2, energy everywhere). Go-Explore phase 1 (tools/explore_phase1.py) from the true start passes the trap in 30 s and reaches 3.21% (chamber). Running pbr1b4_ge: RL with 20% of spawns from the archive's root->best chain (tools/archive_spawns.py) + sid_ref warm + time-pen 0. Next: outer loop (re-run the search from the policy's frontier, refresh the spawn file)."
 }

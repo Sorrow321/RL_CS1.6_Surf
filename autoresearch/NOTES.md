@@ -141,3 +141,32 @@ resample every 25 decisions. On a box it runs as it does locally (CPU physics + 
 * `pbr1b4_esc` launched ~15:03 UTC: recipe + --init-weights sid_ref + `--time-pen 0
   --unstuck-max 2 --energy-pot-front 0 --energy-pot-front-bonus 0` (energy paid everywhere).
   Read: does any episode reach the corridor (best > ~1,000 u = 1.75%)?
+
+### 15:41 UTC - the start, solved by search: Go-Explore phase 1 passes the trap in 30 s
+
+* `pbr1b4_esc` (+ --time-pen 0 --unstuck-max 2 --energy-pot-front 0): NULL at 567M steps, best
+  eval 0.466 (0.4%). Episodes lengthened (1.5 s -> 9 s), T reached 1.83 and the yaw sigma blew
+  up to 2.7, but the greedy line only learned to perch at (675, -2934, 3732) on the conveyor
+  plate north of the death chute, bouncing for 30 s, ~40 u from the way out.
+* **The way out in OUR core** (core traces; the record is analysis only): the corridor is a
+  CRAWL SPACE here. Standing, its cross-section is z 3732-3740 x y -2910..-2886 (a slot a few u
+  tall); DUCKED it is z 3716-3756 x y -2918..-2866. The record runs it STANDING at z ~3722 -
+  inside our solid by ~10 u. That is systematic, not local: 805 of the record's 7,723 rows put
+  its hull inside our geometry, in ~dozen segments along the whole course (6.7-8 s, 15, 17, 23,
+  25, 29, 32, 49, 53, 60, 64 s), each needing a ~12 u lift to be free (the core's hull vs sloped
+  faces). Harmless on open ramps, decisive in a tight slot: our start needs a duck the server's
+  does not.
+* **Go-Explore phase 1 (`tools/explore_phase1.py`, unchanged; cell 32, 100-decision bursts at
+  act-every 4, 95% repeat) from the TRUE START** reached the corridor in 40 iterations (~30 s,
+  local CPU, 0.12M ticks/s) and the chamber below it (best goalc d 55,315 = 3.21%) within a
+  minute; on the box (4,096 envs, 28 threads) 3.06M ticks/s, the same plateau in 30 s, then
+  ever-shorter chains (best route 7.07 s deep). It stalls at 3.2% (the chamber: a skill gate,
+  where RL and the field should take over).
+* **New tool `tools/archive_spawns.py`**: the archive's root -> best-goal-field cell chain as a
+  STATE_DTYPE .npy for --spawn-states (no map constant: the field's own frontier, the
+  tools/archive_route.py rule). Provenance: reward-free random bursts from the true start; no
+  demo, no policy, no reward.
+* `pbr1b4_ge` launched 15:39 UTC = recipe + --init-weights sid_ref + `--time-pen 0
+  --spawn-states runs/ge_pb1/chain.npy --spawn-states-frac 0.2` (73 chain states, 3.21%).
+  Go-Explore's "robustify" half done by RL from states along the found route. Read: does the
+  GREEDY line from the true start learn the crawl (best > 1.5%), and does RL push past 3.2%?
