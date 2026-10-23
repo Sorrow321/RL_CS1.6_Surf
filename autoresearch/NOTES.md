@@ -449,3 +449,14 @@ learn what energy is worth there before the policy can make it.
 * config.json incumbent_recipe (the lineage key): --time-pen 0.001 -> 0 and --ent 0.002 added
   (default 0.005). Evidence: warm arms 1-3 (suicide attractor at 0.001) and arms 4-10 (yaw sigma
   0.15 -> 2.72 at ent 0.005); arms 11-16 ran with both. NOT tested from scratch on this map.
+* Correction to the 21:18 note: the core applies a non-once trigger_push through basevelocity,
+  so run 7's top-energy states (vz -450..-640 by the west conveyors) are not push-inflated - they
+  are FALLING down the shaft there. A 3D-speed cell key credits a fall as energy; on this map
+  the horizontal-speed key (explore_phase1's default) is the better energy proxy.
+* Next idea I would build (needs a box; the fleet was over its pace from 21:52): a POLICY-GUIDED
+  Go-Explore / MAP-Elites over (position cell x horizontal-speed bin) - the population search's
+  proposals are the policy's own (so every found move is repeatable, unlike random bursts), and a
+  cell keeps its best-ENERGY representative, so lineages are compared only against lineages at
+  the same place: the rec_e beam ranking failed because it compares a lineage that already
+  crash-landed in the pocket with one still on the ledge. The deepest high-energy chain it finds
+  is the next --demo-reach spine.
