@@ -252,3 +252,23 @@ SELF_STATES/CKPT/ARM_RESUME/SCRATCH). Nothing else changes in box.py.
 * Harness note: box 57382729 (Thailand) uploads at ~0.022 MB/s to the agent host, with the
   trainer paused or not (network path, not CPU): a 63 MB checkpoint takes ~50 min to pull.
   Start checkpoint pulls long before a deadline.
+
+### pbr1b3, 2026-10-23 17:51 UTC - hand-weighted spawns replaced by a generic reverse curriculum
+
+* **Correction (CLAUDE.md 0b):** from 240M to 604M `pbr1b3_gx2` drew its spawn file with
+  weights I set after looking at where the policy dies (progress bands x15 / x4 / x2, and the
+  fine archive's cells inside a box around the climb and the tightrope). That is a map-specific
+  spawn rule: those 360M steps are ANALYSIS, not a recipe result. Greedy evals over them: 155,
+  190, 168 u (worse than the corner's ~250).
+* **The generic replacement** (commit bb7fe35): `--spawn-states-curric G` (surfgym/ss_curric.py,
+  Florensa et al. 2017): every --spawn-states row keeps decayed counts of the episodes started
+  from it and of those whose ratchet record got G x d0 past the row's own field distance; rows
+  are drawn with weight max(p (1 - p), 0.02). G = 0.01 x d0 on every map. Tested: weights,
+  outcome scoring, counts kept across a re-read, draw frequencies, CPU smokes (32 episodes
+  noted), flag-off bit-identity against the base trainer.
+* Spawn set, chosen generically: the union of the parent chains of the 256 deepest cells of
+  the fine search (32 u x 24 u energy) and the 64 deepest of the coarse one (96 u) - 1,061
+  states, no region selection.
+* `pbr1b3_gx3` (17:52): ARM_RESUME of gx2's 604.5M checkpoint (its own; md5 6d0395f5...) +
+  `--spawn-states runs/gx_spawns_cur.npy --spawn-states-frac 0.5 --spawn-states-curric 0.01`
+  (squash and the recipe restored from the checkpoint).
