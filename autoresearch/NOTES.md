@@ -2847,3 +2847,13 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   fall free, a climb that turns speed into height free, telescoping, ended rows re-anchor, 0 = off;
   trainer smoke + bare-resume restore + record_ckpt; flag-off bit-identity vs the pre-change
   trainer). record_ckpt: TRAIN_ONLY.
+
+### Harness issue (r7b3): box.py's readiness-failure blocklisting does not stick
+
+* `box.py rent` logs "blocklisting machine N" when an offer fails readiness, but the entry never
+  reached tools/bad_hosts.json or $AR_HOME/bad_hosts.json for machine 57401 (failed 02:55 and
+  02:58) or 46086 (failed 03:11 "running but no ssh"; re-rented 03:15 as 57313655, READY, then
+  GONE within minutes - vast show instance empty, ssh refused). The call is
+  `vast_pick.py --block <iid>` with its output captured and ignored; vast_pick looks the instance
+  up in `vastai show instances` and exits if it is not there, so the failure is silent. Both
+  machines were re-rented minutes after "blocklisting". Entered by hand on this branch.

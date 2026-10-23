@@ -2734,6 +2734,15 @@
       "detail": "r7b3 2026-10-23: RTX 3090 + Ryzen 9 5950X, Japan, offer 57168997: failed readiness twice (box 57310892 status None after 330 s; box 57311522 running but no ssh within 90 s). box.py's own --block call failed silently (instance gone), entered by hand.",
       "run": "r7b3 rent",
       "reason": "unreliable"
+    },
+    {
+      "ip": "104.187.142.167",
+      "machine_id": 46086,
+      "host_id": null,
+      "date": "2026-10-23",
+      "detail": "r7b3 2026-10-23: RTX 3090, Oklahoma, offer 47335235 ($0.547): box 57312919 running but no ssh within 90 s (03:11, box.py's --block failed silently); rented again as 57313655 at 03:15 (READY), GONE within 0.1 h (vast show instance empty, ssh refused at 03:20).",
+      "run": "r7b3 rent",
+      "reason": "unreliable"
     }
   ],
   "known_good": [
