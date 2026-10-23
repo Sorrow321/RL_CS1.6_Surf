@@ -3,14 +3,15 @@
  "round": 7,
  "final": false,
  "best": {
-  "score": 98.462,
-  "eval_file": "/home/steam/ar/runs/r7b2/r7b2_ef2/traj_23206559744.jsonl",
-  "run": "r7b2_ef2",
-  "step": 23206559744,
-  "ckpt": "/home/steam/ar/runs/r7b2/r7b2_ef2/ckpt_latest.pt",
+  "score": 98.478,
+  "eval_file": "/home/steam/ar/runs/r7b2/r7b2_ef15/traj_24044896256.jsonl",
+  "run": "r7b2_ef15",
+  "step": 24044896256,
+  "ckpt": "/home/steam/ar/runs/r7b2/r7b2_ef15/ckpt_stop.pt",
+  "ckpt_note": "r7b2_ef15's last weights at 24,328,011,776 (md5 6d228e20...), copied after the run was stopped",
   "recipe": [
    "--energy-pot",
-   "2",
+   "1.5",
    "--energy-pot-front",
    "0.01",
    "--critic-warmup",
@@ -20,8 +21,8 @@
    "--ckpt-every",
    "1e8"
   ],
-  "resume_from": "r7b2_ef1 ckpt_stop (23,011,000,320, md5 162a4193...) <- incumbent r6b2_tp3 (22,217,752,576) + --energy-pot 1 --energy-pot-front 0.01",
+  "resume_from": "r7b2_ef2 ckpt_23912251392 (K 2) <- r7b2_ef1 ckpt_stop (23,011,000,320; K 1) <- incumbent r6b2_tp3 (22,217,752,576)",
   "commit": "26da1d6"
  },
- "summary": "Best 98.462 (r7b2_ef2 at 23.207B; incumbent re-scored 98.315). NEW --energy-pot K (potential on the energy height z + |v|^2/2g, no death refund) + NEW --energy-pot-front 0.01 (priced only until the episode's record reaches the frontier band; without it the line learned to dive into the basement kill floor). K=1 (ef1): +150-250 u of energy at the basement, greedy chamber entries 1.9-2.5% of episodes (incumbent recipe ~0.4%), 98.366. K=2 (ef2): energy +100-150 more, an entry crossing the chamber toward the funnel at z 1,439 (rim 1,560). 0 finishes. The exits from the hole are too flat."
+ "summary": "Best 98.478 (r7b2_ef15 at 24.045B; incumbent re-scored 98.315). NEW --energy-pot K (potential on the energy height z + |v|^2/2g) + NEW --energy-pot-front 0.01 (priced only until the episode's record reaches the frontier band): the line carries +300 u of energy to the basement (median 2,710 vs ~2,400), greedy chamber entries 3.8% of eval episodes (incumbent recipe ~0.4%), entries now leave the hole with h ~2,300 and pass the funnel at z ~1,460 (rim 1,560); 0 finishes. K 2 locked the line into the dip death (the per-call price rewards dying before costly stretches); NEW --energy-pot-front-bonus (pay K x kinetic energy once at the band edge, nothing on the way) is under test (r7b2_eb3, K 3)."
 }

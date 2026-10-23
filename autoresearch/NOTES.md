@@ -3027,3 +3027,18 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
 * Tests (test_energy_pot.py): nothing on the way (speed or height changes pay 0), the entering call pays K x KE, once,
   a new episode outside the band can earn it again, a spawn inside cannot, no band = nothing; the trainer smoke
   (startup line, config key, restore) and the refusal without --energy-pot-front; flag off bit-identical.
+
+### 07:38 UTC: arm 5' (r7b2_ef15, K 1.5 from 23.91B) - 98.478, no lock; arm 6 r7b2_eb3 = its weights + the bonus mode at K 3
+
+* r7b2_ef15 23,912-24,328M (~415M steps, 66 evals, 184k steps/s): **best 98.478** (24,044,896,256); 23 evals above
+  98.0; CP5 / CP6 only as isolated wobbles (4 of 66) - it passed the steps where ef2 locked (23.99B) and kept the line.
+  Basement 57% of episodes, h at the basement entry median **2,710**; **20 chamber entries in 531 episodes (3.8%)**,
+  apex up to 1,464 near the funnel (one 1,569 in a corner). The reservoir's deepest state moved 98.3% -> 98.58%.
+* The 98.478 episode: up the -y face (vy +654, vz +819 at 114.8 s, h 2,426), out through the -y hole at 115.07 s with
+  **h 2,331** (ef1's entries: 1,780-2,080) but vz 579, across the chamber north-east, past the funnel's EAST side at
+  (3,224, -50, 1,460) moving north at 1,160 u/s (d 1,517), into its wall at 116.0 s. Energy at the hole is no longer
+  the limit; the exit angle is: vz / |v| ~0.44 at the hole top, the rim needs ~0.54 at this energy.
+* **r7b2_eb3** (07:35 UTC): resume of ef15's ckpt_stop (24,328,011,776, md5 6d228e20...) + `--energy-pot 3
+  --energy-pot-front-bonus 1 --critic-warmup 20 --ckpt-every 1e8` (latch 0.01 and everything else restored); commit
+  a7f979a. Test (~30-45 min): the line's health (no lock: the bonus removes the die-early incentive) and the
+  basement / hole energy against ef15 (2,710 / ~2,300).
