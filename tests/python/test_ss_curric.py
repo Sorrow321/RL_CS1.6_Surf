@@ -118,7 +118,7 @@ def test_cpu_smoke_with_the_curriculum(tmp_path):
 def test_backward_window_slides_with_success_and_draws_from_it():
     xs = np.arange(0.0, 400.0, 2.0)                    # 200 rows, progress = x
     c = SpawnStateCurriculum(_rows(xs), _Field(), d0=1000.0, gain_frac=0.05, mode="backward",
-                             min_ep=30.0)
+                             min_ep=30.0, start_q=0.0)
     assert c.D == 16 and c.step_n == 4
     w = c._window()
     assert np.allclose(np.sort(c.spawn_d[w]), np.sort(1000.0 - xs[-16:]))   # deepest first
@@ -154,7 +154,7 @@ def test_rows_at_the_end_of_the_set_can_succeed():
 def test_backward_window_moves_on_from_a_hard_but_not_hopeless_stretch():
     xs = np.arange(0.0, 400.0, 2.0)
     c = SpawnStateCurriculum(_rows(xs), _Field(), d0=1000.0, gain_frac=0.05, mode="backward",
-                             min_ep=30.0)
+                             min_ep=30.0, start_q=0.0)
     w = c._window()
     # 15% success: below the 0.2 bar, above its half
     k = 0
@@ -165,3 +165,13 @@ def test_backward_window_moves_on_from_a_hard_but_not_hopeless_stretch():
             k += 1
         c.step()
     assert c.tau > 0
+
+
+def test_backward_window_starts_past_the_deepest_tail():
+    xs = np.arange(0.0, 400.0, 2.0)                    # 200 rows
+    c = SpawnStateCurriculum(_rows(xs), _Field(), d0=1000.0, gain_frac=0.05, mode="backward")
+    assert c.tau == 20                                 # start_q 0.1: the deepest 20 rows passed
+    rng = np.random.default_rng(2)
+    d = c.draw(rng, 6000)
+    tail = d["origin"][:, 0] >= xs[-20]
+    assert 0.1 < tail.mean() < 0.25                    # in the passed-row third, not the window

@@ -35,7 +35,8 @@ class SpawnStateCurriculum:
 
     def __init__(self, states, field, d0: float, gain_frac: float,
                  decay: float = 0.99, floor: float = 0.02, mode: str = "band",
-                 rate: float = 0.2, min_ep: float = 30.0, front: float = 2.0 / 3.0) -> None:
+                 rate: float = 0.2, min_ep: float = 30.0, front: float = 2.0 / 3.0,
+                 start_q: float = 0.1) -> None:
         if not gain_frac > 0.0:
             raise ValueError("gain_frac must be > 0")
         if mode not in ("band", "backward"):
@@ -53,9 +54,13 @@ class SpawnStateCurriculum:
         self.ep = np.zeros(0, np.float64)
         self.win = np.zeros(0, np.float64)
         self.noted = 0
-        self.tau = 0
         self.advances = 0
         self._since = 0.0          # window episodes since the window last moved
+        # --backward: the window STARTS at the start_q quantile of the rows by progress (the
+        # deepest start_q of them count as passed): a search's deepest rows are its own frontier,
+        # dead ends with nothing known past them, and a sweep that begins there snags on them
+        self.start_q = float(start_q)
+        self.tau = None
         self.set_states(states)
 
     @staticmethod
@@ -87,7 +92,9 @@ class SpawnStateCurriculum:
         self.order = uniq[np.argsort(-prog[uniq], kind="stable")]
         self.D = max(16, len(self.order) // 32)
         self.step_n = max(4, self.D // 4)
-        self.tau = min(getattr(self, "tau", 0), max(0, len(self.order) - self.D))
+        if self.tau is None:
+            self.tau = int(self.start_q * len(self.order)) if self.mode == "backward" else 0
+        self.tau = min(self.tau, max(0, len(self.order) - self.D))
 
     def p(self) -> np.ndarray:
         return (self.win + 0.5) / (self.ep + 1.0)
