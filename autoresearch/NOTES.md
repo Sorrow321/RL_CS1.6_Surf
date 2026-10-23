@@ -2982,3 +2982,12 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   97.90%; from ep1's own top-quartile basement states (34 rows, h_E ~2,660-2,690) **0/24**, best 97.86%. With
   ~+300 u of energy the policy still turns the passage way, not up through a hole: the energy term raised the
   energy and left the entry skill where it was (or slightly below it) in ~400M steps.
+
+### 12:36 UTC: r7b3_ep1 stopped at 22,661.8M (+444M); the last hour runs the bare-resume control (r7b3_ctl2)
+
+* r7b3_ep1 final: 71 evals, best **97.929** (22,407M), 0 chamber entries, basement-entry energy +250-330 u. Below the
+  incumbent's 98.315 at matched steps with no entry -> stopped (PROTOCOL). Final weights pulled:
+  runs/r7b3/r7b3_ep1/ckpt_latest.pt (md5 6e688a6c...), snapshot ckpt_22618308608.pt (md5 d76ee030...).
+* **r7b3_ctl2** (12:35): bare resume of the incumbent (22,217,752,576; tp3's recipe, no energy term), evals every
+  6.25M, to the wrap-up: the best-known recipe for the score (greedy entries ~0.4% of eval episodes in tp3) and a
+  same-box reference for ep1's first ~250M steps (basement share, h_E at the basement entry).
