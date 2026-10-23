@@ -3186,3 +3186,10 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
 * r7b4_p4 (p3's 22,393,913,344 snapshot + `--front-temp 1 --front-band 0.01`, T 0.2), 22.400-22.476B, 13 evals: 3
   entries in 117 episodes (apex 1,317-1,445), best 98.389.
 * **r7b4_p5** (11:55): p4's 22,444,244,992 snapshot (exactly the weights of its 98.389 eval) + `--front-temp 0`.
+
+### 12:11 UTC: p5 1 entry; branch r7b4_p6 back in the dense region
+
+* r7b4_p5 (p4's 22,444,244,992 snapshot + `--front-temp 0`), 22.451-22.526B, 13 evals: 1 entry in 117 episodes,
+  best 97.987 (two CP5 evals at 87.7). Snapshots past ~22.44B have given few entries (p4 3, p5 1).
+* **r7b4_p6** (12:10): ft0b's 22,343,581,696 snapshot (inside ft0b's 12-entry stretch; front-temp 0 restored) +
+  `--unstuck-max 0.2`.
