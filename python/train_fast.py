@@ -6874,6 +6874,16 @@ def main() -> None:
     ap.add_argument("--spawn-states-frac", type=float, default=None,
                     help="with --spawn-states: the share of the spawn pool it replaces, in "
                          "(0, 1)")
+    ap.add_argument("--spawn-states-curric", type=float, default=None,
+                    help="with --spawn-states: a REVERSE CURRICULUM over its rows (Florensa et "
+                         "al. 2017; surfgym/ss_curric.py) instead of uniform draws - each row "
+                         "keeps decayed counts of the episodes started from it and how many got "
+                         "their progress record G x d0 past the row's own field distance, and "
+                         "rows are drawn with weight max(p (1 - p), 0.02), p the smoothed "
+                         "success rate: the starts the policy sometimes passes dominate. G is a "
+                         "fraction of the true start's distance, the same on every map. Needs "
+                         "--race-ratchet (the record). 0 = off (default, uniform draws, "
+                         "bit-identical); ckpt restores")
     ap.add_argument("--respawn-greedy", type=float, default=None,     # 0 = off
                     help="share of the NON-start spawn pool replaced each iteration by the "
                          "policy's OWN greedy-eval states from the seconds before each death "
@@ -7750,6 +7760,9 @@ def main() -> None:
         if args.spawn_states_frac is None and ck_cfg.get("spawn_states_frac") is not None:
             args.spawn_states_frac = float(ck_cfg["spawn_states_frac"])
             restored.append(f"spawn_states_frac={args.spawn_states_frac:g}")
+        if args.spawn_states_curric is None and ck_cfg.get("spawn_states_curric"):
+            args.spawn_states_curric = float(ck_cfg["spawn_states_curric"])
+            restored.append(f"spawn_states_curric={args.spawn_states_curric:g}")
         if args.demo_window is None and ck_cfg.get("demo_window") is not None:
             args.demo_window = int(ck_cfg["demo_window"])
         if args.demo_rate is None and ck_cfg.get("demo_rate") is not None:
@@ -10165,6 +10178,16 @@ def main() -> None:
               f"(exact states, clocks zeroed; re-read when the file changes)")
     elif args.spawn_states_frac is not None and flag_given("--spawn-states-frac"):
         raise SystemExit("--spawn-states-frac without --spawn-states")
+    # --spawn-states-curric: None/0 = uniform draws (the shipped rule, byte for byte)
+    SS_CURRIC = float(args.spawn_states_curric or 0.0)
+    if SS_CURRIC < 0.0:
+        raise SystemExit("--spawn-states-curric G needs G >= 0 (0 = off)")
+    if SS_CURRIC > 0.0:
+        if SPAWN_STATES is None:
+            raise SystemExit("--spawn-states-curric needs --spawn-states")
+        if not args.race_ratchet:
+            raise SystemExit("--spawn-states-curric scores an episode by the ratchet's progress "
+                             "record: it needs --race-ratchet")
     # CLAUDE.md section 0: HUMAN DEMOS NEVER TRAIN THE AGENT. Every
     # spawn-state / imitation / route source - given as a flag OR restored
     # from a checkpoint - must be declared policy-derived by the operator
@@ -13815,6 +13838,10 @@ def main() -> None:
                        "spawn_states": args.spawn_states,
                        "spawn_states_frac": (float(args.spawn_states_frac)
                                              if args.spawn_states else None),
+                       # --spawn-states-curric: written ONLY when on (a control's dump is
+                       # unchanged); TRAIN_ONLY in record_ckpt.py like spawn_states
+                       **({"spawn_states_curric": float(args.spawn_states_curric)}
+                          if float(args.spawn_states_curric or 0.0) > 0.0 else {}),
                        "demo_window": (args.demo_window
                                        if args.demo_file else None),
                        "demo_rate": (args.demo_rate
@@ -16220,6 +16247,18 @@ def main() -> None:
             for _s, _b in zip(slots, INT_BASE):
                 _s.reward_fn.int_coef = _b * (1.0 + unstuck_T)
     SS_RNG = np.random.default_rng(int(args.seed) + 4242)     # --spawn-states draws
+    SSC = None                 # --spawn-states-curric (surfgym/ss_curric.py)
+    ss_idx = None
+    if SS_CURRIC > 0.0:
+        from surfgym.ss_curric import SpawnStateCurriculum
+        _fld0 = (slots[0].reward_field if slots[0].reward_field is not None
+                 else slots[0].goal_field)
+        SSC = SpawnStateCurriculum(SPAWN_STATES, _fld0, float(slots[0].rf_d0 or 0.0),
+                                   SS_CURRIC)
+        ss_idx = np.full(N, -1, np.int64)
+        print(f"--spawn-states-curric {SS_CURRIC:g}: rows drawn by max(p (1 - p), 0.02), "
+              f"success = the record {SSC.gain:,.0f}u ({SS_CURRIC:g} x d0) past the row's "
+              f"own distance; {SSC.line()}")
     # --int-match: the reward the fleet was paid this iteration (novelty included), and the note
     imatch_rsum = 0.0
     imatch_note = ""
@@ -17401,6 +17440,8 @@ def main() -> None:
         fleet.set_step(global_step)   # authoritative (survives resume)
         t_pool = tm.now()
 
+        if SSC is not None and it_no % 20 == 0:
+            print(f"[{global_step:>13,}] {SSC.line()}", flush=True)
         if SPAWN_STATES is not None and it_no % 20 == 0:
             # --spawn-states: re-read a refreshed file (an outer archive loop replaced it)
             try:
@@ -17408,6 +17449,8 @@ def main() -> None:
                 if _mt != SS_MTIME:
                     SPAWN_STATES = _load_spawn_states(args.spawn_states)
                     SS_MTIME = _mt
+                    if SSC is not None:
+                        SSC.set_states(SPAWN_STATES)
                     if RPLAN and SS_SEQK[0] is not None:
                         _ramp_planner.windows.set_seq_starts(SPAWN_STATES["origin"], SS_SEQK[0])
                     print(f"--spawn-states: re-read {len(SPAWN_STATES):,} own states from "
@@ -17430,7 +17473,10 @@ def main() -> None:
                 _m = int(round(len(_pool) * float(args.spawn_states_frac)))
                 _pos = SS_RNG.choice(len(_pool), _m, replace=False)
                 _pool = _pool.copy()
-                _pool[_pos] = SPAWN_STATES[SS_RNG.integers(0, len(SPAWN_STATES), _m)]
+                if SSC is not None:
+                    _pool[_pos] = SSC.draw(SS_RNG, _m)
+                else:
+                    _pool[_pos] = SPAWN_STATES[SS_RNG.integers(0, len(SPAWN_STATES), _m)]
             _slot.core.set_spawn_pool(_pool)
         for _s in slots:
             if demo is not None:
@@ -18304,6 +18350,16 @@ def main() -> None:
                                 demo.note_outcomes(demo_idx[ei][known],
                                                    goal_now[known])
                             demo_idx[ei] = demo.match(sv_view[ei]["origin"])
+                        if SSC is not None and ended.any():
+                            # --spawn-states-curric: score the ended episodes started from a
+                            # row by their progress record as it stood before the terminal
+                            # tick (the ratchet's _rec_boot), then tag the fresh spawns
+                            ei = np.flatnonzero(ended)
+                            known = ss_idx[ei] >= 0
+                            if known.any():
+                                SSC.note(ss_idx[ei][known],
+                                         np.asarray(reward_fn._rec_boot)[ei][known])
+                            ss_idx[ei] = SSC.match(sv_view[ei]["origin"])
                     if respawn is None and goalsys is not None and ended.any():
                         # --goal-planner ramps without the reservoir: the ended envs respawned
                         # at the map start; their windows are drawn all the same
