@@ -713,6 +713,15 @@ DEDUP_DECISIONS = 12       # prefix length hashed for --dedup (user spec)
 DEDUP_ATTEMPTS = 3         # rerolls before keeping a colliding sample
 
 
+def _policy_nvec():
+    """The POLICY heads' sizes as train_fast holds them now: under --keys-hold
+    (set_keys_hold) fwd/side/duck carry the keep bin, so an eps-uniform draw has to range
+    over the policy's bins - the rows it edits are policy rows, resolved to engine keys by
+    the wrapper afterwards. The module's own NVEC import stays the engine's."""
+    import train_fast as _tfn
+    return list(_tfn.NVEC)
+
+
 class EpsSampledTorchPolicy(SampledTorchPolicy):
     """--eps: per-head epsilon-uniform proposal mixing. At each decision
     each of the 6 heads INDEPENDENTLY replaces its policy sample with a
@@ -753,7 +762,7 @@ class EpsSampledTorchPolicy(SampledTorchPolicy):
         act, _ = sample_padded(padded)
         if self._eps > 0.0:
             if self._nvec_t is None:
-                self._nvec_t = torch.tensor(NVEC, device=act.device,
+                self._nvec_t = torch.tensor(_policy_nvec(), device=act.device,
                                             dtype=act.dtype)
             mask = torch.rand(act.shape, device=act.device) < self._eps
             u = (torch.rand(act.shape, device=act.device)
@@ -770,7 +779,7 @@ class EpsSampledTorchPolicy(SampledTorchPolicy):
         act, z, _ = sample_view(padded, mu, self.policy.log_std())
         if self._eps > 0.0:
             if self._nvec_t is None:
-                self._nvec_t = torch.tensor(NVEC, device=act.device,
+                self._nvec_t = torch.tensor(_policy_nvec(), device=act.device,
                                             dtype=act.dtype)
             mask = torch.rand(act.shape, device=act.device) < self._eps
             u = (torch.rand(act.shape, device=act.device)
@@ -2028,7 +2037,8 @@ def main():
     import train_fast as _tf
     _tf.set_keys_hold(KEYS)
     if KEYS:
-        _raw = [f for f, on in (("--eps", args.eps > 0.0), ("--dedup", args.dedup),
+        # --eps is allowed: EpsSampledTorchPolicy draws over the POLICY heads (_policy_nvec)
+        _raw = [f for f, on in (("--dedup", args.dedup),
                                 ("--commit", args.commit > 0),
                                 ("--greedy-prefix", args.greedy_prefix > 0),
                                 ("--prefix-line", bool(args.prefix_line)),
