@@ -201,3 +201,20 @@ SELF_STATES/CKPT/ARM_RESUME/SCRATCH). Nothing else changes in box.py.
   chains of the archive's deepest cells (`tools/gx_spawns.py`), re-written while the search
   goes on (the trainer re-reads the file on mtime). Provenance: the search's own states, rooted
   at the true start, random actions; no demo, no record.
+
+### pbr1b3, 2026-10-23 16:26 UTC - the search finds the record's window by itself; phase 2 launched
+
+* The energy-keyed search (`gx_pb4`: 96 u cells x 24 u energy bins, seed 1, 12 min on the box
+  at ~1.3M ticks/s, 9,272 cells) reached **3.82%** of the goalc field: spawn -> NW corner ->
+  onto the north ledge (+62 u, a duck-jump height) -> west along it at z ~3714-3728 through the
+  window -> drop at x ~100 -> the lower level east at ~700 u/s -> south -> back up toward z
+  ~3450 on both the south (620,-3320) and north (629,-2637) sides. That is the record's own line
+  through the window (the record goes on west from (420,-2636,3478)), found with random actions.
+  Saved: $AR_HOME/runs/pbr1b3/gx_pb4/ (archive, log, the 184-state spawn file).
+* **A search and a trainer cannot share the box either**: the phase-2 trainer next to the
+  search (20 OMP threads) sat in its first eval for 5 min (`pbr1b3_gx1`, killed; its record
+  gate failed cleanly, it does not count). Time-share instead (one at a time).
+* `pbr1b3_gx2` (16:23): recipe + `--view-ent-squash 1` + `--spawn-states runs/gx_spawns.npy
+  --spawn-states-frac 0.5`, scratch, alone, OMP 15. Provenance (passed to launch --self-states):
+  the search's own states, rooted at the true start, random actions; no demo, no record, no
+  policy. Evals are from the true start as always.
