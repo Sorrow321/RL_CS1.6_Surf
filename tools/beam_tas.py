@@ -479,6 +479,46 @@ def run_episode(core, pol, obs, fout, max_ticks, header, episode_idx):
     return end, ep_ticks, finished, pre_state
 
 
+def save_frontier_line(frontier, cfg, map_path, ep_cap, tick, arm, row0, obs_start,
+                       gate_seed, k, out_dir, gf) -> None:
+    """--save-frontier: replay the frontier lineage's action table open-loop on a fresh
+    1-env core from the search's spawn row and write its per-tick states (the curriculum
+    spine) and trajectory. The replay must reach the frontier's d to within a cell, or the
+    files are still written but flagged (the batched search and a 1-env core disagreed)."""
+    acts = np.asarray(frontier["acts"], np.int32)
+    view = frontier.get("view")
+    acts_t = np.repeat(acts, int(k), axis=0)
+    view_t = line_view_ticks(view, k)
+    core = build_sim(cfg, map_path, 1, ep_cap, tick=tick)
+    arm(core)
+    core.reset(gate_seed)
+    core.set_state(0, row0)
+    states, best_d = [], float("inf")
+    for t in range(min(len(acts_t), int(frontier["tick"]))):
+        states.append(core.get_states()[0].copy())
+        a = np.ascontiguousarray(acts_t[t].reshape(1, 6), dtype=np.int32)
+        if view_t is not None:
+            _o, _r, done, trunc, _ = core.step(
+                a, view=np.ascontiguousarray(view_t[t].reshape(1, 2), dtype=np.float32))
+        else:
+            _o, _r, done, trunc, _ = core.step(a)
+        if bool(np.asarray(done)[0]) or bool(np.asarray(trunc)[0]):
+            break
+        best_d = min(best_d, float(gf.sample(
+            np.asarray(core.get_states()[0]["origin"], np.float64)[None])[0]))
+    states = np.array(states)
+    ok = best_d <= float(frontier["d"]) + float(gf.cell)
+    np.savez(out_dir / "beam_frontier.npz", acts=acts,
+             **({"view": np.asarray(view, np.float32)} if view is not None else {}),
+             states=states, spawn_state=row0, obs_start=np.asarray(obs_start, np.float32),
+             act_every=np.int32(k), frontier_d=np.float64(frontier["d"]),
+             frontier_tick=np.int32(frontier["tick"]), replay_best_d=np.float64(best_d),
+             replay_ok=np.int32(1 if ok else 0))
+    print(f"--save-frontier: {len(states)} states, replay best d {best_d:,.0f} "
+          f"(search frontier {frontier['d']:,.0f}) -> {out_dir / 'beam_frontier.npz'}"
+          + ("" if ok else "  !! the replay did NOT reach the frontier"))
+
+
 class Playback:
     """Open-loop replay: feed a recorded per-tick action sequence, ignore
     the observation entirely. No policy, no GPU. ``view_ticks`` (T, 2)
@@ -2000,6 +2040,13 @@ def main():
     ap.add_argument("--contact-tol", type=float, default=1.0,
                     help="--arc-bank contact: |dvz - gravity step| above "
                     "this is a contact tick (plan_to_bc --contact-tol)")
+    ap.add_argument("--save-frontier", action="store_true",
+                    help="no crossing: also replay the FRONTIER lineage (the one that held the "
+                    "deepest --score d at a resample) open-loop and save it - "
+                    "beam_frontier.npz (acts, view, spawn_state, the per-tick STATE_DTYPE "
+                    "states) and beam_frontier.jsonl - so a line deeper than the policy's own "
+                    "can seed a curriculum (train_fast --demo-file ... --demo-success-d). "
+                    "Off = the tool as it was")
     ap.add_argument("--out-dir", default=str(ROOT / "runs" / "beam_tas"))
     ap.add_argument("--log-every", type=int, default=5,
                     help="print every Nth generation")
@@ -3109,6 +3156,11 @@ def main():
                             and dgeo[keep[0]] < frontier["d"])):
                     frontier = {"vert": lead_vert,
                                 "d": float(dgeo[keep[0]]), "tick": t + 1}
+                    if args.save_frontier:
+                        # the lineage's own action table up to now (keep[0] was not cloned over)
+                        frontier["acts"] = hist[:d + 1, keep[0]].copy()
+                        frontier["view"] = (hist_v[:d + 1, keep[0]].copy() if VIEWC
+                                            else None)
                 if gen % max(1, args.log_every) == 0:
                     print(f"gen {gen:3d} t={t + 1:5d} valid={len(elig):4d} "
                           + (f"vert={lead_vert:5d} " if lead_vert >= 0 else "")
@@ -3458,6 +3510,9 @@ def main():
                        "env_steps_per_s": round(fps)}
             (out_dir / "summary.json").write_text(
                 json.dumps(summary, indent=2), encoding="utf-8")
+            if args.save_frontier and frontier.get("acts") is not None:
+                save_frontier_line(frontier, cfg, map_path, ep_cap, TICK, arm, row0,
+                                   obs_start, gate_seed, K, out_dir, ogf)
             if allow_nonfin:
                 return
             raise SystemExit(
