@@ -2893,3 +2893,16 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
 * Step line `en +G/-L u/ep off X%` (X = envs past the edge). Tests added to test_energy_pot.py (the entering
   transition is paid and none after; backing out keeps the latch; an ended row re-arms; a spawn in the band is off
   from the start; edge inf = the plain term; the trainer smoke on a seeded reservoir, restore, refusals).
+
+### 03:25 UTC: arm 1 stopped at 22.64B; arm 2 r7b2_ef1 = incumbent + `--energy-pot 1 --energy-pot-front 0.01`
+
+* r7b2_en1 ended at ~22,637M (66 evals, best 97.928 at 22,243M, 0 chamber entries); snapshots ckpt_22317891584 /
+  22418030592 / 22518169600 on the box.
+* **r7b2_ef1** (03:24 UTC): resume of the incumbent ckpt (22,217,752,576 - not en1's: its basement suicide would
+  have to be unlearned under a base objective that is nearly indifferent between looping and dying there) +
+  `--energy-pot 1 --energy-pot-front 0.01 --critic-warmup 20 --ckpt-every 1e8`, evals every 6.25M, 2e9 budget;
+  commit 26da1d6. Differs from en1 by the latch only. The band edge reads 97.3% progress (d ~2,690: the reservoir's
+  deepest is 98.3% at the resume) - the latch fires in the passage just before the basement (~113.5 s), so the
+  deep dip and everything upstream are priced, the basement is not. `off 4%` of envs latched at a time.
+* Read-outs: h at the basement entry (en1: +200-250 u within ~100M), the basement loop kept (death times
+  116-139 s like the control, not 112-113 s like en1), chamber entries and their apex, rim crossings.
