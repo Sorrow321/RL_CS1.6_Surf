@@ -295,3 +295,23 @@ SELF_STATES/CKPT/ARM_RESUME/SCRATCH). Nothing else changes in box.py.
   passes that stretch at z ~3478 and ~730 u/s (h ~3,810) on its way west, energy it carried
   from a FAST tightrope (~590 u/s) and the drop. The search crept the tightrope at ~300 u/s
   and lost the rest to the lower level's floors: gate 2 is an energy gate that starts at gate 1.
+
+### pbr1b3, 2026-10-23 18:47 UTC - the "tightrope" is a SURF RAMP; switching phase 2 to a surfer's weights
+
+* `pbr1b3_gx4` (719.8M -> ~900M, curriculum G 0.003, 70% search spawns): band 122 rows, 222
+  mastered, 717 failing, the band still downstream (top-decile rows at progress ~1,583 u);
+  greedy evals 249 / 197 / 250 u. Stopped.
+* **Geometry, measured** (a ducked hull dropped at rest, 4-u scan along y -2896..-2878): there
+  is NO foothold between x ~214 and ~602 - every drop there dies; only the sill (x 602-658, z
+  3714) and a stub at x 90-214 hold. Yet the record crosses that 390 u at CONSTANT z ~3721-3725
+  with vz ~0: it is SURFING a ramp on the north wall over the kill layer (a hull at rest slides
+  off it and dies; my earlier "15-u ledge" reading was wrong). The search's 281/288 airborne
+  ledge states are surf contacts.
+* So gate 1's core skill is surfing, which a scratch policy cannot practise anywhere in the
+  start room. The sidistic finisher (a surfer) spawned on the ramp survives 118-558 ticks and
+  creeps up to 164 u west before falling (the scratch-trained phase-2 policy: 16-144 ticks).
+* `pbr1b3_sgx1` (18:50): warm start from sid_ref's weights (its pbr1b3_sidwarm continuation,
+  1.57M steps on this map, md5 a16493f6...) + `--view-ent-squash 1 --spawn-states
+  runs/gx_spawns_cur.npy --spawn-states-frac 0.7 --spawn-states-curric 0.003` (the generic
+  1,061-state chain set). A warm start measures whether transferred surfing opens the gate; a
+  recipe that only works warm is not yet a recipe (PROTOCOL).
