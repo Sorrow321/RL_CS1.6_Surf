@@ -2716,6 +2716,15 @@
       "date": "2026-10-22",
       "detail": "FOREIGN TENANT: RTX 5080 at 100% util, 250 W, 670 MiB used with no process in our container (instance 57219589, 13:49 UTC); gpu_health: GPU0 BUSY. Entered by hand (vast_pick --block has no foreign_tenant reason and the release ran first).",
       "run": "r6b3 deploy"
+    },
+    {
+      "ip": "202.215.0.218",
+      "machine_id": 48881,
+      "host_id": 351328,
+      "date": "2026-10-23",
+      "detail": "r7b3 2026-10-23: RTX 3090 on EPYC 7B12 (machine 48881, Japan); host load avg 123 with nothing of ours running (other tenants); incumbent recipe resume did ONE 524k-step iteration in ~13 min, no ckpt_latest in 900 s",
+      "run": "r7b3_ctl launch",
+      "reason": "cpu_bound"
     }
   ],
   "known_good": [

@@ -2797,3 +2797,53 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   md5 6838c110...), r6b2_gpt/ckpt_latest.pt (18,282,446,848), r6b2_bmix/ckpt_stop.pt, r6b2_fp*/ (on the box only).
 * Code: commit fee9839 is the last code change (--respawn-front-perturb + counters, --respawn-greedy-turn / -speed,
   --respawn-backward-mix); later commits are notes and RESULT. Box 57219728 released at wrap-up.
+
+## Round 7, branch r7b3 - 2026-10-23 02:14 UTC (wrap-up 13:34 UTC)
+
+### Start
+
+* Incumbent: r6b2_tp3's last weights (22,217,752,576, md5 c713bd69...); its 98.421 eval re-scores
+  **98.315** on the new grader field (goalc_32, start d 99,675): episode 2 is in the chamber at
+  (2,974, -394, 1,358), h_E 1,853, next to the funnel's outer wall.
+* What the new field pays in the chamber (score.py's field, analysis only): at z ~1,540 (just
+  under the rim height) 98.15-98.30% at y -500, 98.25-98.51% at y -300, 98.3-98.69% at y 0 over
+  the funnel opening (x 2,900-2,980); inside the funnel 98.75% (z 1,480) -> 99.0% (z 1,240) ->
+  the shaft. So without a finish an eval can gain ~0.2-0.4 by rising toward the rim / the
+  middle; a finish is worth 100 + 10/9 + the time term.
+* **tp3's own progress.csv has real front-perturb FINISHES at x1.0-1.3** (round 6's notes say 0):
+  21.100-21.117B, 1-4 per iteration (fpert best 99,629-99,675), then 21.118-21.143B 46-79 per
+  iteration at ~100% of the front-perturb episodes - the reservoir harvested those finishing
+  episodes, its deepest state moved into the funnel and the band rows became trivial wins - and
+  0 again from 21.147B to the end (22.2B). So the policy CAN finish from its own basement states
+  turned +-90 deg at x1.0-1.3 energy, rarely; the band then drifts (fp3's failure mode again).
+
+### Boxes
+
+* 02:21 box 57307625 (RTX 3090 on an EPYC 7B12, machine 48881, Japan, $0.36/h): the host's load
+  average was ~123 with nothing of ours running (other tenants); the bare resume did ONE
+  524k-step iteration in ~13 min and the launch's record gate killed it (no ckpt_latest in 900 s).
+  The first launch also timed out the pre-launch record gate because the box had to bake the
+  no-corner-cut field (~7 min) - the second passed. Blocklisted (cpu_bound) and released 02:49.
+* 02:50-03:00 the only other offer (3090, machine 57401, Japan) failed readiness twice (box.py
+  blocklisted it). No offer passes since; a bounded `box.py rent` retry loop (every 3 min) runs.
+
+### NEW `--energy-pot K` (energy-height potential, default off)
+
+* Round 6's measured gap: the greedy line enters the basement with h_E = z + |v|^2/1600 of
+  ~2,100-2,400 and needs ~2,350 at the ramp foot to clear the funnel rim; it loses ~110 u/s of h_E
+  on average over the whole map (15,042 at the start -> ~1,735 in the chamber at 118 s), most of it
+  in ramp transitions and wall scrapes (e.g. 108-110 s: -719 in the deep dip to z -174), and
+  nothing in the reward values energy except through a finish nobody sees.
+* `--energy-pot K`: Phi = K x (100/d0) x h_E, paid per call as its change (the `--speed-pot`
+  contract: ended rows pay 0 and re-anchor; the sum telescopes). Height <-> speed trades are free
+  (free fall, a clean climb up a ramp); energy lost at a wall, a ramp transition or on the ground is
+  charged when lost; strafing gains (<= 56 u/s of h_E at 100 Hz: |v|^2 grows by <= 900 per tick)
+  are paid. Unlike `--speed-pot` (|v_xy|), it does not charge the hole entry's speed-to-height
+  conversion. K = 1 counts a unit of energy height like a unit of field distance (map-normalised
+  like the progress term, one constant for every map). At K = 1 the line's h_E loss over the map is
+  ~13% of its progress pay (-13.3 vs +98.3), ~-0.11/s on average (the time penalty is 0.1/s).
+* Generic (CLAUDE.md 0b): a physics quantity defined the same on every map (z, |v|, g), one
+  constant, no map box or threshold. Tests: tests/python/test_energy_pot.py (per-call pay, free
+  fall free, a climb that turns speed into height free, telescoping, ended rows re-anchor, 0 = off;
+  trainer smoke + bare-resume restore + record_ckpt; flag-off bit-identity vs the pre-change
+  trainer). record_ckpt: TRAIN_ONLY.

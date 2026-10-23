@@ -1037,6 +1037,16 @@ class RaceReward:
         # 0 = off (the block is skipped). Set by the trainer on training slots, like speed_coef.
         self.speed_pot = 0.0
         self._spd_prev = None
+        # --energy-pot (2026-10-23, autoresearch r7b3): potential-based shaping on the mechanical
+        # energy height h_E = z + |v|^2 / (2 g), Phi = energy_pot * scale * h_E (scale = this
+        # reward's own progress scale, so K = 1 counts a unit of energy height like a unit of
+        # field distance), paid per call as the CHANGE of Phi. Trading height for speed and back
+        # is free; energy lost at a wall, a ramp transition or on the ground is charged when it
+        # is lost, energy gained by strafing is paid when gained. 0 = off (the block is
+        # skipped). Set by the trainer on training slots, like speed_pot.
+        self.energy_pot = 0.0
+        self._eh_prev = None
+        self._grav = 800.0
         # --surf-bonus / --dive-pen (round 40, pnSURF): "surfing = good,
         # diving = bad" as a dense per-tick term. Both are REWARD UNITS PER
         # SECOND on the flag; the trainer converts to per-tick. 0/0 is off
@@ -1223,6 +1233,8 @@ class RaceReward:
         self._g_tick = float(core.config.phys.sv_gravity) * self.tick_ms * 1e-3
         self._vmax = float(getattr(core.config.phys, "sv_maxvelocity", 0.0) or 0.0)
         self._spd_prev = None        # --speed-pot re-anchors on the first call
+        self._eh_prev = None         # --energy-pot likewise
+        self._grav = float(core.config.phys.sv_gravity)
         self._best = self._d.copy()
         if self.sr:
             if n % 2:
@@ -1562,6 +1574,20 @@ class RaceReward:
             dv[ended] = 0.0
             r += ((self.speed_pot / 1000.0) * dv).astype(np.float32)
             self._spd_prev = s.copy()
+        if self.energy_pot > 0.0:
+            # --energy-pot: the same contract as --speed-pot on h_E = z + |v|^2 / (2 g); the sum
+            # over an episode telescopes to energy_pot * scale * (h_E at its end - at its start).
+            # Ended rows hold the NEXT episode's spawn: they pay 0 and re-anchor.
+            st = _states(core)
+            v3 = st["velocity"].astype(np.float64)
+            eh = (st["origin"][:, 2].astype(np.float64)
+                  + (v3 * v3).sum(1) / (2.0 * self._grav))
+            if self._eh_prev is None or self._eh_prev.shape != eh.shape:
+                self._eh_prev = eh.copy()
+            de = eh - self._eh_prev
+            de[ended] = 0.0
+            r += ((self.energy_pot * self.scale) * de).astype(np.float32)
+            self._eh_prev = eh
         if self.dip_speed_coef > 0.0 and self._rec is not None and self.arc is None:
             # `_rec` already holds this state's record (updated above), so
             # dc > _rec + margin is exactly "inside a dip"; ended rows are
