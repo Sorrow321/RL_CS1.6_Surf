@@ -374,3 +374,27 @@ SELF_STATES/CKPT/ARM_RESUME/SCRATCH). Nothing else changes in box.py.
 ends "md5 ... != ... (truncated pull); none kept" (2026-10-23 20:13). Workaround used: the same
 contract by hand - `scp` with a long timeout into `<run>/ckpt_latest.pt.part`, md5 checked
 against the box's file, then renamed into place.
+
+### pbr1b3, 2026-10-23 20:35 UTC - how to rebuild the search's spawn file (it lives only on the box)
+
+The phase-2 spawn file is search output, not in git. To rebuild it on a fresh box (~15 min of
+box time, trainer not running - a search and a trainer cannot share the CPUs):
+
+    # coarse energy search from the true start (reaches ~3.8% of the goalc field in ~12 min)
+    OMP_NUM_THREADS=20 python3 tools/explore_phase1.py --map maps/surf_princessburglar_b26.bsp \
+        --out runs/gx_pb4 --envs 2048 --cell 96 --cell-energy 24 --maxvel 3500 --act-every 4 \
+        --threads 20 --max-minutes 12 --snapshot-every 50 --ep-ticks 30000 --goals 1 --seed 1
+    # fine search (dense states through the climb and the surf ramp), 4 min
+    OMP_NUM_THREADS=30 python3 tools/explore_phase1.py --map maps/surf_princessburglar_b26.bsp \
+        --out runs/gx_fine1 --envs 2048 --cell 32 --cell-energy 24 --maxvel 3500 --act-every 4 \
+        --threads 30 --max-minutes 4 --snapshot-every 50 --ep-ticks 30000 --goals 1 --seed 2
+    python3 tools/gx_spawns.py runs/gx_fine1/archive.npz \
+        --field maps/surf_princessburglar_b26.goalc_32.npz --out runs/gx_fine256.npy --top 256
+    python3 tools/gx_spawns.py runs/gx_pb4/archive.npz \
+        --field maps/surf_princessburglar_b26.goalc_32.npz --out runs/gx_pb4_64.npy --top 64
+    # union, deduplicated by origin (0.1 u) -> runs/gx_spawns_cur.npy (1,061 rows this round)
+
+Then launch with `--self-states "<provenance>" -- --spawn-states runs/gx_spawns_cur.npy
+--spawn-states-frac 0.7 --spawn-states-curric 0.003` (band mode). The coarse archive and its
+184-state chain file are also kept on the agent host in $AR_HOME/runs/pbr1b3/gx_pb4/.
+`config.json`'s incumbent_recipe now carries `--view-ent-squash 1` (the generic objective fix).
