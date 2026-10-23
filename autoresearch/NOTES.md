@@ -201,3 +201,28 @@ resample every 25 decisions. On a box it runs as it does locally (CPU physics + 
 * Also measured: Go-Explore with speed in the cell key (--cell-speed 4), rooted at the tunnel
   exit, plateaus at the same chamber cell in 5 min (random actions do not make speed; the
   chamber's way out is the record's upper path at z ~3500, ~150 u above the search's floor).
+
+### 16:27 UTC - the yaw sigma hits the clamp on a stuck start; --yaw-sigma-max; pbr1b4_ys
+
+* Box 57384171 extended to 19:19 UTC (orchestrator notice).
+* pbr1b4_ge stopped at 923M steps: best 0.429, the greedy unchanged after both live swaps.
+  **Diagnosis: the yaw head's sigma was at the global clamp (2.718)** - 0.08 at the sidistic
+  weights, 0.9 by 345M in pbr1b4_iw, 2.7 by 567M in pbr1b4_esc, 2.718 by ~800M here. With the
+  absolute view in the velocity frame, the movement direction follows the yaw, so every training
+  rollout walked and jumped in a random direction: a 0.2% crux can never be practised that way.
+  While a run is stuck the entropy bonus is the only force on that sigma (the pitch head had the
+  same pathology; --pitch-entropy 0 and its log-0.5 cap fixed it).
+* The archive also holds the NORTH tunnel (105 cells; south 107): its shallowest cell is 1.95 s
+  deep - walk WNW to (758, -2944) at ~250 u/s, jump, duck in the air, fly into the mouth at
+  (664, -2915, 3696), land ducked inside at (633, -2916, 3714). No conveyor plate. The greedy
+  line already presses at that wall (slow, no running duck-jump). The field and the compass point
+  into the north tunnel, so this route agrees with the shaping.
+* **New flag `--yaw-sigma-max S`** (commit 425b849; tests/python/test_yaw_sigma_max.py, 4 pass
+  incl. a CPU trainer run): the yaw head(s)' log sigma ceiling at log S instead of 1.0 under
+  --view-absolute; projected after every optimizer step like the pitch cap; config key only when
+  set; mirrored in record_ckpt and beam_tas. Generic: one constant on every map (0.5 = the
+  pitch cap).
+* `pbr1b4_ys` launched 16:26 UTC = recipe + --init-weights sid_ref + --time-pen 0
+  + `--yaw-sigma-max 0.5 --spawn-states runs/ge_pb1/spawn_v2.npy --spawn-states-frac 0.3`
+  (148 rows: the 25 crux states [south chain 2-13 + the north-tunnel chain] x3, + the 73-state
+  chain). Read: does the greedy enter a tunnel (best > 1.5%)?
