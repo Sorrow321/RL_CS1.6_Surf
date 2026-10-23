@@ -215,3 +215,30 @@ learn what energy is worth there before the policy can make it.
   states, best 3.84%; balanced file 6,371 rows (530 at the climb, 1,208 on the ledge).
 * arm 6 pbr1b2_ge6 launched: arm 5's 109M weights + recipe + --time-pen 0 + --spawn-states
   runs/pbr1b2_ge3/spawn_bal.npy (frac 0.3). Box 57383391 (3090, 0.375 $/h, deadline 19:01 UTC).
+
+### 2026-10-23 17:33 UTC - arm 6 null; the climb is a 9 u exploit; arm 7 on the dense chain
+
+* arm 6 pbr1b2_ge6 (arm 5's 109M + balanced Go-Explore spawns, frac 0.3): 0.419 / 0.413 (110M /
+  185M). Bench (record_ckpt --spawn-states, arm 6 weights at ~205M): from mid-climb states 0/5
+  reach the ledge, from corner-floor states 0/5. The spawn mix had put the reservoir's frontier
+  band in the POCKET (3.6%), so the recipe's frontier machinery (novel / front-perturb / greedy
+  rows) trained the dead end, not the climb the eval needs first.
+* HARNESS-ADJACENT LESSON: a second CPU job on the box (Go-Explore at 10 threads, nice 5, or a
+  record_ckpt bench) cut the trainer from ~150k to 30-45k steps/s (OMP pools oversubscribed).
+  Search and train SEQUENTIALLY on one box.
+* The climb, decoded: the conveyors at the platform's west edge sit under trigger_push volumes
+  that push DOWN at 2,500 u/s; a duck-jump at y ~-2939 lands the hull on conveyor 2's north edge
+  with ~9 u of overlap just outside conveyor 1's push zone, then a walk west along that edge onto
+  the ledge. The map's push-down traps exist to stop exactly this; the intended way off is the
+  pump (the WR). A 9 u tightrope is a poor thing to ask PPO to find.
+* Go-Explore run 7 (64 u x 16 bins of |v| - NEW --cell-speed-3d - from the start): no deeper than
+  the pocket. Energy reached: trough h <= 3,899, over the platform <= 3,964, ledge <= 3,827, pocket
+  <= 3,894; the WR carries ~3,950-3,980 into the pocket and leaves it at ~3,920 up the east ramp:
+  the pocket gate is ~+100 u of energy brought in from upstream.
+* The DENSE CHAIN (runs/pbr1b2_probe/dense_chain.py): for the deepest cell, the burst states
+  that first reached each cell on its parent chain, concatenated - 787 states, one per decision,
+  root -> 3.84%. It climbs on the SOUTH side ((778,-3067) -> (629,-3111, z 3716)), runs a south
+  ledge west to x ~150, drops at x ~30-50 and comes back east into the deepest region south of
+  the pocket. NEW explore_phase1 --dump-paths now also saves the decision actions and views.
+* arm 7 pbr1b2_ge7 launched 17:32: arm 6's 208M + recipe + --time-pen 0 + --spawn-states
+  chain_dense.npy at frac 0.5 (the spine-testbed construction on a self-found line).
