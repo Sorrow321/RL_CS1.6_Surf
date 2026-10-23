@@ -2879,3 +2879,22 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   evaluates every 12.5M (~40 evals/h).
 * The diagnostic run's own resume eval (the incumbent's 22.218B weights, run on this box with the new flags'
   pool) is not counted (its run dir was deleted; it was not a launched run).
+
+### 04:15 UTC: this box is slow (~31-42k steps/s with evals); thread benchmark; r7b4_gk stopped at 22.28B -> r7b4_gk2
+
+* r7b4_gk (03:21-03:52, 22.218 -> 22.280B, 5 evals every 12.5M): **98.362** at 22,243,442,688 (one greedy chamber
+  entry, zmax 1,347; above the incumbent's 98.315 by the width of the chamber floor, not a new gate), then
+  97.93 and a CP6-mode eval (96.52, 0/9 in the basement). Evals 97.896, 97.909, 98.362, 97.929, 96.519. The
+  archive filled at once (kept 8/8 deepest, best d 1,633-2,112 u after 3 evals). Counters at 22.268B: fpert fin
+  0/79 (best 98,005 u), gkeep fin 0/17 (best 98,032 u), bmix fin 18/23.
+* Throughput: ~9.3 s per 524,288-step iteration (~56k steps/s training only) and an eval every 6.5-7 min, ~31k
+  steps/s overall - the incumbent's run did 125-140k on a 5080 + i9. The host is a 128-thread EPYC 7B12 (Zen 2,
+  ~3.06 GHz mean clock) shared with a tenant running ~61 CPUs of niced load (/proc/stat), and the trainer's
+  serial parts (per-tick Python, the eval's per-env work) dominate. Benchmark from r7b4_gk's last weights, 14
+  iterations + the resume eval each: A (omp 30, PASSIVE) 8.7 s/iteration, eval ~193 s; B (omp 16, PASSIVE)
+  8.5 s, ~193 s; C (omp 16, default spin) never finished its resume eval in 8 min (the container throttled
+  again: nr_throttled 7,554 -> 9,548). So PASSIVE stays, the thread count does not matter, and this box is
+  ~4x slower than a good one. No offer has passed box.py's filters since 02:48; an offer watcher runs in the
+  background, and the run moves to a better box if one appears.
+* **r7b4_gk2** (04:14): bare resume of r7b4_gk's last weights (22,279,618,560, md5 9daa46e3..., the archive's 8
+  kept episodes and every flag restored), evals every 18.75M (a ~190 s eval per ~5 min of training).

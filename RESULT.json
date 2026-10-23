@@ -3,10 +3,10 @@
  "round": 7,
  "final": false,
  "best": {
-  "score": 97.896,
-  "eval_file": "/home/steam/ar/runs/r7b4/r7b4_gk/traj_22218276864.jsonl",
+  "score": 98.362,
+  "eval_file": "/home/steam/ar/runs/r7b4/r7b4_gk/traj_22243442688.jsonl",
   "run": "r7b4_gk",
-  "step": 22218276864,
+  "step": 22243442688,
   "ckpt": "/home/steam/ar/runs/r7b4/r7b4_gk/ckpt_latest.pt",
   "recipe": [
    "--respawn-greedy-keep",
