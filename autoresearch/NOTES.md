@@ -3018,3 +3018,22 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   iterations before), with rim-depth episodes (>= 98,260 u) and finishes now and then (901 front-perturb finishes in 64k, 2 in
   the last ~100M steps). Round 6's fp3 had the same ramp before its greedy entries; the greedy line lags training by
   100-500M steps in this lineage. 80k steps/s average with evals on this box. Running on unchanged; box extended to ~10:05.
+
+### 06:45 UTC: arm 3 r7b1_epf stopped at 23.18B; why the greedy entries stalled; arm 4 r7b1_fp15
+
+* r7b1_epf 22.445 -> 23.183B (~740M steps, 80k steps/s with evals): best **98.393** (22.735B); after 22.95B no greedy entry
+  in ~110 eval episodes (evals 96.5-98.0, mostly 97.9). Final weights: runs/r7b1_epf/ckpt_latest.pt on the box (step
+  23,183,491,072, md5 eb87764e...; kept as runs_ckpt_epf.pt).
+* What the greedy line does in the basement now (25 basement episodes of the last 6 evals): 13 "corridor climbs" - it arrives on
+  the -y side, loops, and the return leg comes back WEST along the +y side (y +330..+520) at x ~3,000 with h_E 2,170-2,465 (the
+  ~2,300 a rim crossing needs at the face), then climbs at x ~2,100-2,400 back up the passage into the corridor (z up to
+  1,564) - ~300-500 u (~0.3 s) too far west of the hole (x 2,490-2,670). 8 stay in the basement, 4 die within 1 s. The 98.393
+  entries came on the -y return leg; the policy is not mirror-equivariant, so the +y return needs its own entry skill.
+* Training: front-perturb rim crossings fell to 0-3 per 60 iterations (chamber-depth ones every iteration). The front-perturb band
+  (0.005 x the deepest = progress >= 97.64%) does NOT contain the return leg at x ~3,000 (~97.4%): the rows practise the passage
+  exit, the holes and the chamber, not the decision point.
+* **r7b1_fp15** (06:45): epf's final weights + `--respawn-front-perturb-band 0.01` (>= ~97.15%: return leg, passage exit, holes,
+  chamber) `--respawn-front-perturb-speed 1.0 1.5` (was 1.3) `--ckpt-every 1e8`; energy-pot 1 / front 0.01 and everything else
+  restored. Two knobs on one row type: practise the turn where the line makes it, at up to 1.5x speed so that rim crossings and
+  finishes from those states are frequent enough for the critic to price energy at the hole - the energy term is off in the band
+  by design, so only the value of a finish can make the loop keep energy.
