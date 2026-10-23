@@ -267,3 +267,25 @@ resample every 25 decisions. On a box it runs as it does locally (CPU physics + 
   edge -> mouth.
 * Spawn v5 live at 1.44B (17:59 UTC): the FULL spines of all 50 search wins (1,130 rows, 567 of
   them on the approach east of x 700) + the entry rows x2 + chain[13:] = 2,190 rows.
+
+### 19:16 UTC - POLICY-GUIDED SEARCH FINDS THE WAY: lines from the true start to ~5% (expert iteration)
+
+* RL alone did not chain the curriculum back: from the plate/floor approach states the policy
+  went 0/20 into the corridor (18:35 probe; it steps off the plate and jumps from the floor,
+  max z 3697). pbr1b4_ys2 (resume of ys at 1.89B, spawn v6 = approach states x4 + entry rows +
+  chain tail, frac 0.5, --sil-coef 0.1 --sil-top 256 --front-temp 0): greedy still 0.4% at
+  2.12B.
+* **tools/beam_tas.py (policy-guided population search) from the TRUE START with the ys
+  checkpoint (1.89B), `--objective progress --route-file self_route.npz`**: with the policy's own
+  proposals only (keys-hold refused --eps/--macro-hold) the population stays at the wall (best
+  arc 343 u). Patched beam_tas so --eps works under --keys-hold (uniform over the POLICY heads'
+  bins). **With --eps 0.15: the replayed best line enters the south tunnel at ~17-19 s (20 s
+  cap); with a 30 s cap, waves 2 and 3 (torch seeds 2, 3) reach arc 2,981 / 3,010 u (5.2-5.3%
+  of the route) at ~27 s, min goalc d ~56,221 u**, replay exact. The population does what the
+  policy alone cannot: it keeps the rare lineage that made the hop and clones it.
+* `tools/self_route.py`: the route = the box archive's chain (73 states: start -> plate -> south
+  tunnel -> chamber) + the goalc field's steepest descent from the chain's end to the finish
+  basin (448 pts @ 128 u, 57,236 u, d_end 64). Champion-free: a reward-free search + the field.
+* Next (running): tools/plan_to_bc.py over the 3 waves (24 kept lines) -> BC rows (policy-space
+  targets) + spine, then a warm resume with --bc-file (expert iteration, the sidistic operator's
+  exit_local loop) so the GREEDY line imitates the found line.
