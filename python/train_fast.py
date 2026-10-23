@@ -2115,7 +2115,8 @@ def sample_view(padded, mu, log_std, temp=None, temp_view=None):
 
 
 def logprob_entropy_view(padded, actions, mu, log_std, z,
-                         pitch_ent: float = 1.0, temp=None, temp_view=None):
+                         pitch_ent: float = 1.0, temp=None, temp_view=None,
+                         yaw_ent: float = 1.0):
     """The update's recomputation under --view-continuous: the categorical
     log-prob / entropy over heads N_VIEW..5 (logprob_entropy_padded on the
     slice) plus the Gaussian log-density of the STORED z and the Gaussian
@@ -2135,6 +2136,22 @@ def logprob_entropy_view(padded, actions, mu, log_std, z,
                                            actions[:, N_VIEW:], temp)
     ls = _temper_log_std(log_std, temp if temp_view is None else temp_view)
     logp = logp_c + gauss_logp(z, mu, ls)
+    if yaw_ent != 1.0:
+        # --yaw-entropy: the YAW head(s)' share of the bonus scaled (0 drops it), the pitch head
+        # keeping pitch_ent; 1.0 never reaches here, so the default is the expressions below op
+        # for op. With no reward signal the bonus alone pushes a state-independent log sigma up
+        # by the coefficient every update (princessburglar's start room: 0.08 -> the 2.718
+        # clamp in ~500M steps, pbr1b1 2026-10-23), which is the pitch head's old story.
+        if ls.dim() > 1:
+            h = 0.5 + 0.5 * LOG2PI + ls
+            ent = ent_c + float(yaw_ent) * h[..., :-1].sum(-1)
+            if pitch_ent != 0.0:
+                ent = ent + float(pitch_ent) * h[..., -1]
+            return logp, ent
+        ent = ent_c + float(yaw_ent) * gauss_entropy(ls[:-1])
+        if pitch_ent != 0.0:
+            ent = ent + float(pitch_ent) * gauss_entropy(ls[-1:])
+        return logp, ent
     if ls.dim() > 1:
         # --front-temp: one view temperature PER ROW ((B, n_z) log sigma), so the Gaussian
         # entropy is per row too, the pitch head being the LAST column (with one temperature
@@ -6238,6 +6255,16 @@ def main() -> None:
                          "the clamp, 2.718, by 3-8B steps on two seeds). "
                          "Written to the config only under --view-absolute "
                          "and restored on resume.")
+    ap.add_argument("--yaw-entropy", type=float, default=None,
+                    help="--view-continuous: the YAW head(s)' share of the entropy bonus "
+                         "(their Gaussian entropy is multiplied by this; the pitch head keeps "
+                         "--pitch-entropy). Default 1.0 = the old arithmetic. The view sigma is "
+                         "a state-independent parameter, so while a run is stuck (no reward "
+                         "signal) the bonus alone walks it up to the clamp and the whole "
+                         "policy's view goes noisy (princessburglar: 0.08 -> 2.718 in ~500M "
+                         "steps); 0 leaves sigma to the policy gradient, and exploration to "
+                         "--unstuck's sampling temperature. Config only when != 1; restored on "
+                         "resume; TRAIN_ONLY for record_ckpt.")
     ap.add_argument("--pitch-sigma-min", type=float, default=None,  # 0 = off
                     help="--view-absolute: a FLOOR on the pitch head's sigma (z units; pitch "
                          "target = -20 + 50 tanh z deg). The pitch moves only the camera and "
@@ -8463,6 +8490,10 @@ def main() -> None:
                 and not flag_given("--pitch-entropy")):
             args.pitch_entropy = float(ck_cfg["pitch_entropy"])
             restored.append(f"pitch_entropy={args.pitch_entropy:g}")
+        if (ck_cfg.get("yaw_entropy") is not None
+                and not flag_given("--yaw-entropy")):
+            args.yaw_entropy = float(ck_cfg["yaw_entropy"])
+            restored.append(f"yaw_entropy={args.yaw_entropy:g}")
         if (ck_cfg.get("pitch_sigma_min") is not None
                 and not flag_given("--pitch-sigma-min")):
             args.pitch_sigma_min = float(ck_cfg["pitch_sigma_min"])
@@ -10035,6 +10066,14 @@ def main() -> None:
                          "entropy: it needs --view-continuous")
     if PITCH_ENT < 0.0:
         raise SystemExit("--pitch-entropy must be >= 0")
+    # --yaw-entropy: the yaw head(s)' share of the entropy bonus; a Python constant like
+    # PITCH_ENT (one compiled graph per value); 1.0 = the pre-flag arithmetic
+    YAW_ENT = float(args.yaw_entropy) if args.yaw_entropy is not None else 1.0
+    if YAW_ENT != 1.0 and not VIEWC:
+        raise SystemExit("--yaw-entropy scales the continuous YAW head's entropy: it needs "
+                         "--view-continuous")
+    if YAW_ENT < 0.0:
+        raise SystemExit("--yaw-entropy must be >= 0")
     # --pitch-sigma-min: the pitch head's sigma floor (0 = off); a Python constant
     PITCH_SIG_MIN = float(args.pitch_sigma_min or 0.0)
     if PITCH_SIG_MIN != 0.0:
@@ -14152,6 +14191,11 @@ def main() -> None:
                   f"{_how}; pitch target = -20 + 50 tanh z (core view_mode "
                   f"{int(core.config.view_mode)})")
             meta["config"]["pitch_entropy"] = PITCH_ENT
+            if YAW_ENT != 1.0:
+                # written ONLY when set: a control run's config dump is unchanged
+                meta["config"]["yaw_entropy"] = YAW_ENT
+                print(f"--yaw-entropy {YAW_ENT:g}: the yaw head's entropy term is "
+                      + ("OFF" if YAW_ENT == 0.0 else f"scaled by {YAW_ENT:g}"))
             _pe = ("OFF" if PITCH_ENT == 0.0
                    else "scaled by %g" % PITCH_ENT)
             print(f"--pitch-entropy {PITCH_ENT:g}: the pitch head's entropy "
@@ -16511,7 +16555,8 @@ def main() -> None:
                     cat, mu = split_view(logits.float())
                     padded = packer.pad(cat)
                     logp, ent = logprob_entropy_view(padded, s_act, mu, policy.log_std(),
-                                                     s_z, PITCH_ENT, s_temp, s_tempv)
+                                                     s_z, PITCH_ENT, s_temp, s_tempv,
+                                                     yaw_ent=YAW_ENT)
                 else:
                     padded = packer.pad(logits.float())
                     logp, ent = logprob_entropy_padded(padded, s_act, s_temp)
@@ -16626,7 +16671,7 @@ def main() -> None:
                     # Gaussian's, which is what keeps sigma from collapsing
                     logp, ent = logprob_entropy_view(
                         padded, f_act[idx], mu, policy.log_std(), f_z[idx],
-                        PITCH_ENT, f_temp, f_tempv)
+                        PITCH_ENT, f_temp, f_tempv, yaw_ent=YAW_ENT)
                 else:
                     logp, ent = logprob_entropy_padded(padded, f_act[idx],
                                                        f_temp)
@@ -16728,7 +16773,7 @@ def main() -> None:
                 # density of the STORED z, as in mb_step
                 logp, ent = logprob_entropy_view(
                     padded, f_act[idx], mu, policy.log_std(), f_z[idx],
-                    PITCH_ENT, f_temp, f_tempv)
+                    PITCH_ENT, f_temp, f_tempv, yaw_ent=YAW_ENT)
             else:
                 logp, ent = logprob_entropy_padded(padded, f_act[idx])
             value = value.float()

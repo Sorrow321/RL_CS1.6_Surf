@@ -39,10 +39,17 @@ def feet_z(st: np.ndarray) -> np.ndarray:
     return st["origin"][..., 2] - np.where(st["ducked"] > 0, 18.0, 36.0)
 
 
+FIELD = [None, None]          # (GoalField, d_max) for --field/--d-max
+
+
 def in_target(st: np.ndarray, box, onground: bool, feet_min) -> np.ndarray:
     o = st["origin"]
     m = ((o[..., 0] >= box[0]) & (o[..., 0] <= box[1]) & (o[..., 1] >= box[2])
          & (o[..., 1] <= box[3]) & (o[..., 2] >= box[4]) & (o[..., 2] <= box[5]))
+    if FIELD[0] is not None:
+        # --d-max: the target is "deeper than D on the field" (inside the box as well)
+        d = FIELD[0].sample(o.reshape(-1, 3).astype(np.float64)).reshape(o.shape[:-1])
+        m &= (d < float(FIELD[1])) & (d < FIELD[0].reach_max - 0.5 * float(FIELD[0].cell))
     if onground:
         m &= st["onground"] != -1
     if feet_min is not None:
@@ -103,10 +110,15 @@ def main(argv=None):
                     help="the root is the map's true spawn (the zones file's spawn)")
     ap.add_argument("--root-archive", default=None,
                     help="ARCHIVE.npz:INDEX - an explore_phase1 archive row as the root")
+    ap.add_argument("--root-states", default=None,
+                    help="a STATE_DTYPE .npy: every row is a root (one search each)")
     ap.add_argument("--stage-roots", default=None,
                     help="a previous entry_search output: the last state of each line is a root")
     ap.add_argument("--target", required=True, help="xmin xmax ymin ymax zmin zmax")
     ap.add_argument("--onground", action="store_true")
+    ap.add_argument("--field", default=None, help="a GoalField .npz for --d-max")
+    ap.add_argument("--d-max", type=float, default=None,
+                    help="with --field: success also needs the field's distance below this")
     ap.add_argument("--feet-min", type=float, default=None)
     ap.add_argument("--k", type=int, default=8, help="successes to keep per root")
     ap.add_argument("--envs", type=int, default=2048)
@@ -118,6 +130,12 @@ def main(argv=None):
     ap.add_argument("--seed", type=int, default=0)
     a = ap.parse_args(argv)
     box = [float(v) for v in a.target.split()]
+    if a.field and a.d_max is not None:
+        from surfgym.goalfield import GoalField
+        zf = np.load(a.field, allow_pickle=False)
+        FIELD[0] = GoalField(zf["grid"].astype(np.float32) * float(zf["quant"]), zf["mins"],
+                             float(zf["cell"]), float(zf["reach_max"]))
+        FIELD[1] = float(a.d_max)
     cfg = default_config(num_envs=a.envs, sv_maxvelocity=float(a.maxvel), lidar_w=0, lidar_h=0,
                          spawn_mode=2, water_fail=1, yaw_jitter_deg=0.0)
     core = SurfCore(str(a.map), cfg)
@@ -128,6 +146,9 @@ def main(argv=None):
         from surfgym.rewards import map_spawn_pool
         p = map_spawn_pool(core)
         roots.append(np.asarray(p[0]).copy())
+    if a.root_states:
+        rs = np.load(a.root_states, allow_pickle=False)
+        roots.extend(np.asarray(r).copy() for r in rs)
     if a.root_archive:
         f, i = a.root_archive.rsplit(":", 1)
         st = np.load(f, allow_pickle=True)["state"]
@@ -161,7 +182,8 @@ def main(argv=None):
             "ticks": a.ticks, "act_every": a.act_every, "repeat_p": a.repeat_p,
             "maxvel": a.maxvel, "seed": a.seed, "roots": len(roots), "bursts": tried,
             "hits": len(lines), "stage_roots": a.stage_roots, "root_archive": a.root_archive,
-            "root_spawn": bool(a.root_spawn),
+            "root_spawn": bool(a.root_spawn), "root_states": a.root_states,
+            "field": a.field, "d_max": a.d_max,
             "provenance": "machine-generated: uniform random bursts from the given roots in the "
                           "simulator; no demo, no record, no policy, no reward"}
     obj = np.empty(len(lines), dtype=object)

@@ -96,6 +96,8 @@ TRAIN_ONLY = frozenset({
     # --spawn-states: a share of the TRAINING spawn pool drawn from a file of own states; a
     # recording spawns at the map start like the trainer's eval
     "spawn_states", "spawn_states_frac",
+    # --yaw-entropy: the yaw head's share of the TRAINING entropy bonus; a recording runs no update
+    "yaw_entropy",
     # --ge-minutes: a share of the TRAINING spawn pool drawn from the run's own Go-Explore
     # archive; a recording spawns at the map start like the trainer's eval
     "ge_minutes", "ge_frac", "ge_cell", "ge_speed",
