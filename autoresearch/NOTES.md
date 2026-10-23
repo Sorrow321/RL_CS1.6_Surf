@@ -226,3 +226,31 @@ resample every 25 decisions. On a box it runs as it does locally (CPU physics + 
   + `--yaw-sigma-max 0.5 --spawn-states runs/ge_pb1/spawn_v2.npy --spawn-states-frac 0.3`
   (148 rows: the 25 crux states [south chain 2-13 + the north-tunnel chain] x3, + the 73-state
   chain). Read: does the greedy enter a tunnel (best > 1.5%)?
+
+### 17:31 UTC - the crux measured properly (a counting bug corrected), entry bursts, spawn v4
+
+* **CORRECTION (my bug, 16:15-17:20 UTC):** the batched-core probes counted a burst as "in the
+  corridor" when the origin read x < 560 after the step - but an env that DIED that tick (any
+  catch teleport) is autoreset to the map's info_player_start (511, 413, 2888), x = 511. So
+  deaths counted as successes. Wrong numbers, now void: "2.6% of random bursts from the true
+  start reach a tunnel", the time-before-entry ladder (70% / 41% / 14% / 8% / 5%), and the
+  plate-state rates (1/512 etc.). The 17:21 spawn swap (5,519 "success-bundle" states) was in
+  fact a bundle of states BEFORE DEATHS - replaced at 17:31. Test with `alive &= ~ended` FIRST.
+* **Corrected (alive, x < 560, z > 3600, 3-4 s random held-key bursts):** from the true start
+  0/4096; from the chain's plate/mouth states (south and north) 0/1024 each; from inside the
+  south tunnel (chain 13) 260/1024. The stitched chain's crux rows are not on a successful
+  trajectory (the archive found the entry from another state in those cells).
+* **`tools/explore_phase1.py --goal-progress P`** (default off; self-test 99/99): an ALIVE burst
+  P units down the goal field (the tool's goal_32) is a win, dumped as win_k.traj.jsonl /
+  win_k.spine.npy - the first PHYSICALLY CONTINUOUS crossing of a gate, not only the finish.
+  On goal_32 here: walls under the mouths 247-248 u, mouths 239, inside at x 600: 324, x 400:
+  ~510. P 400 -> 20 wins in 6 iterations but all from cells already inside; P 265 -> 30 wins
+  in 0.1 min with the real entries (e.g. north: 122 ticks from (695, -2929, 3680) to the mouth).
+* The NORTH entry, from the bursts: stand on the conveyor plate's NW corner (650, -2940, origin
+  3696 ducked / 3714 standing), hop NORTH-UP ducked into the slot (z 3719-3731, y -2929 ->
+  -2923), crawl west. The greedy line jumps from the FLOOR 20-40 u north of that corner.
+  Random continuations from states along the real bursts: north 0-3.6%, south mouth footholds
+  (647, -3088, 3714 ducked on ground) 6-10%.
+* Spawn file v4 (live in pbr1b4_ys at 991M, 17:31): the last 10 spine rows of all 50 wins
+  (ge_gp1 P 400 + ge_gp2 P 265: the entry bursts and their stitched approach) x3 + chain[13:]
+  (inside the tunnel -> the chamber). 1,560 rows, 30% of the spawn pool.
