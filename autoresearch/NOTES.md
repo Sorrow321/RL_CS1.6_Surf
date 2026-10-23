@@ -2956,7 +2956,7 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   the rim is at ~1,560 and the funnel opening at |y| <= 190. A collision at 115.4 s (h 2,050 -> 1,490), death at
   116.7 s. So: the energy for the rim was there (h 2,119 at the apex), the exit was too flat (vz 551 vs ~705).
 
-### 05:34 UTC: arm 3 at 23.64B - entries more frequent and higher; real training finishes from frontier rows
+### 05:37 UTC: arm 3 at 23.64B - entries more frequent and higher; real training finishes from frontier rows
 
 * r7b2_ef2 by blocks of 20 evals (180 episodes each), 23.01 -> 23.63B:
 
