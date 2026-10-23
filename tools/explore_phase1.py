@@ -818,6 +818,7 @@ def explore(args) -> int:
     act = np.zeros((n, 6), np.int32)
     VIEWV = bool(getattr(args, "view_velocity", 0))
     view = np.zeros((n, 2), np.float32) if VIEWV else None
+    view_h = np.zeros((ticks, n, 2), np.float32) if VIEWV else None
     if VIEWV:
         from surfgym.view import off_warp
     cur_run = np.full(n, -1, np.int32)
@@ -905,6 +906,8 @@ def explore(args) -> int:
                                           & (rng.random(n) >= args.repeat_p))
                     fresh_actions(live)
                 acts_h[t] = act
+                if VIEWV:
+                    view_h[t] = view
                 _, rew, done, trunc, _ = (core.step(act, view=view) if VIEWV
                                           else core.step(act))
                 rew_h[t] = rew
@@ -934,7 +937,8 @@ def explore(args) -> int:
                     break
 
             n_runs += len(r_t0)
-            fold_chunk(arch, hasher, hist, rid_h, r_t0, r_d0, r_org, dist, paths)
+            fold_chunk(arch, hasher, hist, rid_h, r_t0, r_d0, r_org, dist, paths, acts_h,
+                       view_h)
             it += 1
             if (max_minutes > 0.0 and not stop
                     and time.perf_counter() - t_start >= 60.0 * max_minutes):
@@ -1027,13 +1031,20 @@ class PathLog:
 
     def __init__(self, stride: int):
         self.stride = max(1, int(stride))
-        self.rows, self.cells = [], []
+        self.rows, self.cells, self.acts, self.views = [], [], [], []
 
-    def add(self, hist, t0: int, t1: int, env: int, cell: int) -> None:
+    def add(self, hist, t0: int, t1: int, env: int, cell: int, acts_h=None,
+            view_h=None) -> None:
         r = hist[t0:t1 + 1:self.stride, env]
         if len(r):
             self.rows.append(np.array(r, copy=True))
             self.cells.append(np.full(len(r), int(cell), np.int64))
+            # the decision taken AT each kept row (held for the stride's ticks): the segment
+            # replays open-loop from its first row
+            if acts_h is not None:
+                self.acts.append(np.array(acts_h[t0:t1 + 1:self.stride, env], copy=True))
+            if view_h is not None:
+                self.views.append(np.array(view_h[t0:t1 + 1:self.stride, env], copy=True))
 
     def save(self, out: Path) -> int:
         if not self.rows:
@@ -1041,11 +1052,16 @@ class PathLog:
         rows = np.concatenate(self.rows)
         np.save(out / "paths.npy", rows)
         np.save(out / "paths_cell.npy", np.concatenate(self.cells))
+        if self.acts:
+            np.save(out / "paths_act.npy", np.concatenate(self.acts))
+        if self.views:
+            np.save(out / "paths_view.npy", np.concatenate(self.views))
         return int(len(rows))
 
 
 def fold_chunk(arch: Archive, hasher: CellHash, hist, rid_h, r_t0, r_d0,
-               r_org, dist, paths: "PathLog | None" = None) -> None:
+               r_org, dist, paths: "PathLog | None" = None, acts_h=None,
+               view_h=None) -> None:
     """Archive everything one chunk of rollout discovered."""
     if not r_t0:
         return
@@ -1062,7 +1078,8 @@ def fold_chunk(arch: Archive, hasher: CellHash, hist, rid_h, r_t0, r_d0,
         if paths is not None:
             for i, j in zip(added.tolist(), arch.last_added_j):
                 run = int(g_run[j])
-                paths.add(hist, int(r_t0[run]), int(g_tick[j]), int(g_env[j]), i)
+                paths.add(hist, int(r_t0[run]), int(g_tick[j]), int(g_env[j]), i,
+                          acts_h, view_h)
 
 
 def dump_win(out: Path, k: int, arch: Archive, hist, acts_h, rew_h, env: int,
