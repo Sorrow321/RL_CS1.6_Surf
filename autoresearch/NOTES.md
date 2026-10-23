@@ -403,3 +403,32 @@ learn what energy is worth there before the policy can make it.
   (the frontier-band rows' speed scale, a generic width): the agent experiences the pocket with
   the speed the exit needs, so the critic can learn what speed is worth there, while the plain
   energy potential pays bringing it in. Box extended to the round's end.
+
+### 2026-10-23 21:18 UTC - arm 16 at 1.39B; the pump route is still unfound
+
+* arm 16 pbr1b2_ge16 (front-perturb speed x1.0-3.0 + plain energy pot): evals 3.230 / 3.233 /
+  3.235 / 3.231 (median 3.2%); training frontier inching: front-perturb best 1,850 -> 1,874 u,
+  novel ceiling 1,906 u (3.34%). Kept running (cheap) as the pocket probe.
+* The highest-energy states Go-Explore found near the platform (run 7, h up to 3,964) are
+  ARTIFACTS: all have vz -450..-640 over the west conveyors - the trigger_push's 2,500 u/s
+  impulse, not usable energy. No archived state flies west over the platform at speed (the WR's
+  pump exit), so random bursts never found the pump; rooting there would not help.
+
+### Recommendations for the next round (pbr1b2's view, 21:18 UTC)
+
+1. Start from the handed-on checkpoint (3.235, median 3.2%); a resume needs `--demo-file ''`
+   (or the spine file from autoresearch/analysis/pb_chain/) - see that README.
+2. Keep --time-pen 0 and --ent 0.002 on this map: the time penalty made suicide (the platform's
+   kill strips, 1.4 s) the attractor in four arms; ent 0.005 drove the yaw sigma to its cap
+   whenever the reward stopped depending on the view.
+3. The next gate is the pocket: the policy arrives with h ~3,400 (walks the south ledge at
+   ~100 u/s and crash-lands three times); the exit ramp needs ~3,920+. Ideas not yet tried: a
+   Go-Explore cell key on energy that the PUSH TRIGGERS cannot inflate (e.g. horizontal speed
+   only on the ledge and pocket, or excluding trigger_push volumes), rooted at the policy's
+   ledge states; a backward curriculum over a spine that BRINGS energy (a north-ledge route);
+   energy-aware beam search ranking (record, then h) with the selection delayed until after the
+   landing.
+4. The method that worked (Go-Explore phase 1 -> dense deduplicated chain -> --demo-reach
+   backward curriculum, spine cut before unrepeatable moves) is generic: nothing in it reads the
+   map beyond its goal field; it is how to cross the NEXT hidden gate too, once Go-Explore can
+   reach past it.
