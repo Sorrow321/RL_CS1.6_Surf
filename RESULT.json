@@ -3,12 +3,12 @@
  "round": 1,
  "final": false,
  "best": {
-  "score": 3.234,
-  "eval_file": "/home/steam/ar_pb/runs/pbr1b4/pbr1b4_bc3/traj_3583508480.jsonl",
+  "score": 3.236,
+  "eval_file": "/home/steam/ar_pb/runs/pbr1b4/pbr1b4_bc3/traj_3659005952.jsonl",
   "run": "pbr1b4_bc3",
-  "step": 3583508480,
-  "ckpt": "/home/steam/ar_pb/runs/pbr1b4/pbr1b4_bc3/ckpt_3571974144.pt",
-  "ckpt_note": "snapshot 11.5M steps BEFORE the eval (per-step watcher). Every eval since 2.955B (bc2) and all of bc3 score 3.226-3.234 with median 3.2%: the start trap is passed reliably, the chamber (kill floor under a deceptive U-turn) is the wall. Also pulled: bc2 ckpt_3115843584 / ckpt_3029336064 / ckpt_2898264064.",
+  "step": 3659005952,
+  "ckpt": "/home/steam/ar_pb/runs/pbr1b4/pbr1b4_bc3/ckpt_3659005952.pt",
+  "ckpt_note": "snapshot AT the eval's step (per-step watcher tools/ckwatch.sh). Every eval since 2.955B scores 3.226-3.236 with median 3.2%: the start trap is passed reliably; the chamber (kill floor under a deceptive U-turn) is the wall. Also pulled: bc3 ckpt_3571974144, bc2 ckpt_3115843584 / ckpt_3029336064 / ckpt_2898264064.",
   "recipe": [
    "--bc-file",
    "runs/beam_pb6/bc_merged.npz",
@@ -42,7 +42,7 @@
    "0"
   ],
   "resume_from": "pbr1b4_bc2 ckpt_latest 3,205,496,832 <- pbr1b4_bc ckpt 2,425,880,576 (BC round 1) <- pbr1b4_ys2 2,142,765,056 (+spawn v6, SIL) <- pbr1b4_ys 1,890,582,528 (recipe + --init-weights sid_ref + --time-pen 0 + --yaw-sigma-max 0.5 + Go-Explore spawn files) <- --init-weights $AR_HOME/incumbent/sid_ref/ckpt.pt",
-  "commit": "b7843ef"
+  "commit": "6629dfd"
  },
  "summary": "FIRST PASS OF THE START TRAP: 3.229 (pbr1b4_bc2 at 2.879B: 3/9 greedy episodes from the true start crawl through the tunnel into the chamber, 3.2%; 0.466 before). Expert iteration: tools/beam_tas.py policy-guided search (--objective progress along a champion-free self route, --eps now allowed under --keys-hold) finds lines through the crawl-space exit ~4 of 10 waves; tools/plan_to_bc.py distils them; a warm resume with --bc-file + spawns along the replayed lines (climb windows x4) teaches the greedy line. RL alone (Go-Explore spawn files, yaw-sigma cap, SIL) never chained the climb. Next: more DAgger rounds for reliability; the chamber is an energy gate (the record's upper path at z ~3500)."
 }
