@@ -3,18 +3,22 @@
  "round": 7,
  "final": false,
  "best": {
-  "score": 97.973,
-  "eval_file": "/home/steam/ar/runs/r7b1/r7b1_ctl/traj_22230859776.jsonl",
-  "run": "r7b1_ctl",
+  "score": 97.977,
+  "eval_file": "/home/steam/ar/runs/r7b1/r7b1_ep1/traj_22230859776.jsonl",
+  "run": "r7b1_ep1",
   "step": 22230859776,
-  "ckpt": "box 57307538: /root/RL_Surf/runs/r7b1_ctl/ckpt_latest.pt (not pulled; the incumbent's weights + 15M steps)",
+  "ckpt": "box 57307538: /root/RL_Surf/runs/r7b1_ep1/ckpt_latest.pt (not pulled yet)",
   "recipe": [
    "bare resume of the incumbent",
+   "--energy-pot",
+   "1",
+   "--critic-warmup",
+   "20",
    "--ckpt-every",
    "1e8"
   ],
   "resume_from": "incumbent r6b2_tp3 (22,217,752,576)",
   "commit": "1127192"
  },
- "summary": "Box 57307538 (RTX 3090 + EPYC 7502, ~115k steps/s training-only, evals 60-90 s). Control r7b1_ctl (bare resume, 15M steps): 97.86-97.97, energy height at 96%/97% progress ~3,145/~2,380, basement entry ~2,320 - short of a rim crossing (~2,300 at the ramp foot after the loop's ~300 u loss). Arm 1 r7b1_ep2 (02:40 UTC): incumbent + NEW --energy-pot 2 (potential-based shaping on z + |v|^2/2g: hard landings charged when they happen, climbs free) + critic warmup 20; evals every 12.5M. Read-out: the greedy line's energy at 96-97.8% and the basement entry, then chamber entries."
+ "summary": "Box 57307538 (RTX 3090 + EPYC 7502, ~115k steps/s training-only). NEW --energy-pot C (potential on z + |v|^2/2g, non-terminal): C=2 (ep2) raised the line's energy upstream but made dying at the deep dip pay (objective = progress + C x energy at death) -> 96.5% for 8 evals. C=1 (ep1, running): the greedy line's basement-entry energy rose 2,320 -> 2,440-2,560 (no earlier run moved it), arrival 1 s sooner, but fewer episodes reach the basement (1-5 of 9). Probe (analysis only): the incumbent's line is locally energy-optimal at every impact, so energy must come from route changes. Best eval so far 97.977 (incumbent 98.315). Next: chamber entries at the higher energy."
 }

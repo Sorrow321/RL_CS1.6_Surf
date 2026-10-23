@@ -2910,3 +2910,18 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   energy at the basement needs a different route somewhere (ep2's +100-200 u at 93-96% were route changes, and the one
   it found at the dip died), or an entry before the loop (the loop costs ~400 u between the basement landing at ~2,350
   and the return-leg entry at ~1,900, and round 6's bench says ~2,300 at the face is what a rim crossing needs).
+
+### 03:50 UTC: arm 2 r7b1_ep1 (--energy-pot 1) - the FIRST rise of the basement energy in the lineage
+
+* r7b1_ep1 = incumbent + `--energy-pot 1 --critic-warmup 20`, 22.218 -> 22.369B (warmup to 22.228B). Evals (score.py):
+  97.898, 97.977, 97.909, 97.890, then 96.509, 96.577, 96.631 (the deep-dip death again, 2-6 of 9 episodes), then back:
+  97.880, 97.909, 97.910, 97.891, 97.892 (CP7).
+* **Energy at the basement entry (median, episodes that get there): 2,441 / 2,547 / 2,564 / 2,511 in the last four evals**
+  (control 2,311-2,324; round 6's nine runs 2,310-2,396 - nothing had moved it). At 97% progress 2,519-2,576 (control
+  2,336-2,418), 97.8% 2,510-2,574 (2,332-2,385). The basement is reached at 112-113 s (incumbent ~114 s): faster and
+  ~+200 u.
+* The cost: the line is less consistent - 1-5 of 9 episodes reach the basement (control 6), the others die at 14-41%,
+  69-72%, 86% (96 s) and 87% (99 s); medians 70-98%. The energy term re-routes the line everywhere; whether it
+  re-consolidates is the next ~250M steps.
+* Kept running as the main line (3e9 budget, evals every 12.5M). Watching: chamber entries and their apex (the face needs
+  ~2,300 for the rim; the loop costs ~400 after the basement entry), the basement count per eval.
