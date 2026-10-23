@@ -3005,3 +3005,7 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   eval - and 87.70), recovered by 22.835B. Energy at 97.8% progress 2,499-2,682.
 * Weights: snapshot ckpt_22745186304.pt (10M steps after the eval) pulled to /home/steam/ar/runs/r7b1/r7b1_epf/ (md5
   11e0257a8c33465d600d78f8ca95aaf4). The run continues unchanged.
+* Probe from ep 8's own pre-hole states (114.6 / 114.8 s, h_E ~2,150; replayed inputs + 4-8 deg yaw noise, 10-20% key flips,
+  2 s, ANALYSIS ONLY): 383-494 of 1,023 enter the chamber (the entry is robust from there), apex p50 1,382, max 1,440-1,462,
+  0 over the rim. So the line is ~+120-180 u of energy at the hole short of the rim - more training (a cleaner hole
+  passage, a cheaper loop) or more energy upstream, not a different maneuver.
