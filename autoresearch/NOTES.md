@@ -304,7 +304,7 @@ resample every 25 decisions. On a box it runs as it does locally (CPU physics + 
   --sil-coef 0 unless --sil-top 0 is passed too). BC NLL 47.9 -> 7.8 in the first iterations.
 * Box 57384171 extended to 21:20 UTC (18:20).
 
-### 19:48 UTC - BC fits the lines (99.9%) but the greedy does not reach them: distribution shift -> DAgger
+### 19:47 UTC - BC fits the lines (99.9%) but the greedy does not reach them: distribution shift -> DAgger
 
 * pbr1b4_bc (2.143B -> 2.435B, BC coef 0.5 -> 0.36): BC head-acc 0.999, joint-acc 0.997,
   view-mse 0.009 on the 17,899 planner rows - and the greedy evals unchanged (0.416-0.442).
