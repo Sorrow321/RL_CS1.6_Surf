@@ -2991,3 +2991,18 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
 * **r7b3_ctl2** (12:35): bare resume of the incumbent (22,217,752,576; tp3's recipe, no energy term), evals every
   6.25M, to the wrap-up: the best-known recipe for the score (greedy entries ~0.4% of eval episodes in tp3) and a
   same-box reference for ep1's first ~250M steps (basement share, h_E at the basement entry).
+
+### 13:05 UTC: the same-box control beats the incumbent - 98.342; the energy term SUPPRESSED the entry
+
+* **r7b3_ctl2** (bare resume of the incumbent, no new flag), 22 evals 22.218-22.350B: best **98.342** (22,318,940,160:
+  median 98.0%, 3 of 9 episodes in the chamber, apex z 1,337-1,403), 98.333 (its resume eval, the incumbent's own
+  weights + one update), 98.306, 98.238; **6 chamber entries in 198 eval episodes (3.0%)**; CP6 wobbles at 22.23 /
+  22.25-22.27B as in ep1. h_E at the basement entry median 2,287 (p90 2,378).
+* **r7b3_ep1 (energy term) over the same steps on the same box: 0 entries in ~200 eval episodes (0 in 639 over its
+  444M)**, best 97.93, while its basement-entry energy rose to ~2,450-2,700. Fisher's exact test on 0/198 vs 6/198:
+  p ~ 0.015 - one seed per arm, but the direction is clear.
+* Reading: the energy potential charges every collision, and the entry route ends in collisions (the line rises
+  through the hole, flies east and hits the funnel's outer wall or the chamber floor) while the passage loop is
+  smooth; so the term made the entry relatively WORSE and the policy stopped trying it, while it learned to keep
+  energy (fewer impacts in the deep dip / landing). A potential that charges losses favours whichever branch of a
+  decision has fewer impacts, not the one that leads on: for this gate the wrong signal.
