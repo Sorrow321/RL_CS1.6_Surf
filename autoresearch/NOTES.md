@@ -2991,7 +2991,7 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
 * Why practice, not K: in a non-finishing regime any energy price inside the band makes dying the cheapest end (en1),
   so energy can only become worth keeping in the basement once FINISHES are observed from such states - then the
   critic values energy at the hole and the basement actions that keep it get advantage. Training finishes are ~1e-4.
-* **r7b2_fs16** (now): resume of ef2's ckpt_stop +  (was 1.0-1.3; band 0.5%,
+* **r7b2_fs16** (06:17 UTC): resume of ef2's ckpt_stop + `--respawn-front-perturb-speed 1.0 1.6` (was 1.0-1.3; band 0.5%,
   turn 90, F 0.25, energy-pot 2 / front 0.01 and everything else restored), evals every 6.25M, 2e9 budget. One knob.
   Read-outs: fpert/finished per iteration (was ~1e-4), the greedy entries' apex and min d, the reservoir's deepest
   state (round 6's drift: harvested entries pull the front-perturb band into the chamber).
