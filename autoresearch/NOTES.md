@@ -3034,3 +3034,17 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
 * **r7b4_inc2** (06:53): the same bare restart, snapshots every 25M (so a good window can be resumed from its
   own weights rather than from 22.218B). Plan for the rest of the round: when the line sits in the CP6 mode
   for ~8 evals, resume from the last snapshot taken inside a basement-mode window with entries.
+
+### 07:00 UTC: inside the basement window the entries climb (1,315 -> 1,441); the rollback plan
+
+* The 98.390 entry (r7b4_inc 22,306M ep 7): east in the basement (115.4 s, |v| ~1,420, h_E 2,184) -> U-turn
+  -> west on the -y side -> up the -y ramp face at 116.5-116.6 s (v (-953, +408, +788), h_E 2,112) -> pull-out
+  at 116.77 s (v (-212, -949, +668)) -> through the hole (116.92 s, z 1,253) -> east in the chamber, apex
+  **z 1,441** at (3,054-3,167, ~-350) at 117.5-117.7 s, d 1,612 -> into the chamber's east wall at x 3,408
+  (118.1 s, h_E 1,724 -> 1,486) -> falls. The pull-out is steeper (vz +668..+788 vs +518..+638 in the earlier
+  entries) and the line arrives with ~150 u more h_E on the ramp (2,210 at 116.0 s vs ~2,040): the rim
+  (~1,560) was ~120 u away.
+* Across r7b4_inc's window the entries' apex rose 1,324 -> 1,315 -> 1,333 -> 1,411/1,413 -> 1,352 -> 1,359 ->
+  1,441 in ~65M steps, i.e. the window was still improving when the CP6 drift ended it.
+* Plan: r7b4_inc2 saves every 25M; when the line sits in the CP6 mode for ~8 evals, resume from the last
+  snapshot taken inside the basement window (continuing its improvement), not from 22.218B.
