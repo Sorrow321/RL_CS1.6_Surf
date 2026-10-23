@@ -673,6 +673,12 @@ def explore(args) -> int:
                          max_episode_ticks=int(args.ep_ticks),
                          water_fail=1, yaw_jitter_deg=0.0,
                          lidar_w=0, lidar_h=0)     # eyeless: no obs needed
+    if getattr(args, "view_velocity", 0):
+        # --view-velocity: the trainer's action space for the view - an ABSOLUTE yaw target in
+        # the velocity frame (core view_mode 1, ABI 9) under --yaw-adaptive - so a held burst
+        # holds an angle to the velocity, i.e. a constant air strafe, instead of a turn rate
+        cfg.view_mode = 1
+        cfg.yaw_adaptive = 1
     if getattr(args, "maxvel", None) is not None:
         # --maxvel: the map's sv_maxvelocity (the trainer's flag of the same name); unset keeps
         # the core default this tool always ran with
@@ -800,6 +806,10 @@ def explore(args) -> int:
     rew_h = np.zeros((ticks, n), np.float32)
     rid_h = np.full((ticks, n), -1, np.int32)
     act = np.zeros((n, 6), np.int32)
+    VIEWV = bool(getattr(args, "view_velocity", 0))
+    view = np.zeros((n, 2), np.float32) if VIEWV else None
+    if VIEWV:
+        from surfgym.view import off_warp
     cur_run = np.full(n, -1, np.int32)
     sv = core.states_view
     pitch_bin = 3                                  # PITCH_BINS[3] == 0 deg
@@ -815,6 +825,12 @@ def explore(args) -> int:
         act[idx, 3] = rng.integers(0, ACTION_NVEC[3], m)
         act[idx, 4] = rng.integers(0, ACTION_NVEC[4], m)
         act[idx, 5] = rng.integers(0, ACTION_NVEC[5], m) if args.duck else 0
+        if VIEWV:
+            # the yaw target's offset from the velocity heading, drawn like a policy with a
+            # flat prior over its own squashed action (u ~ U(-1, 1) through the same warp:
+            # fine near "look along the velocity", +-180 at the ends); pitch is inert
+            view[idx, 0] = off_warp(rng.uniform(-1.0, 1.0, m)).astype(np.float32)
+            view[idx, 1] = 0.0
 
     # per-chunk run bookkeeping (parallel lists indexed by run id)
     r_t0: list[int] = []
@@ -878,7 +894,8 @@ def explore(args) -> int:
                                           & (rng.random(n) >= args.repeat_p))
                     fresh_actions(live)
                 acts_h[t] = act
-                _, rew, done, trunc, _ = core.step(act)
+                _, rew, done, trunc, _ = (core.step(act, view=view) if VIEWV
+                                          else core.step(act))
                 rew_h[t] = rew
                 ended = (done | trunc) != 0
                 hit = np.flatnonzero(np.asarray(core.goal_hits, bool)
@@ -1655,6 +1672,10 @@ def build_parser() -> argparse.ArgumentParser:
                     help="hard cap on archive entries (memory guard: each "
                          "entry is ~150 bytes)")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--view-velocity", type=int, default=0, choices=(0, 1),
+                    help="explore in the trainer's view space: an absolute yaw target in the "
+                    "velocity frame (core view_mode 1, yaw-adaptive), drawn per burst through "
+                    "surfgym.view.off_warp, instead of a random yaw-delta bin (0 = off, as before)")
     ap.add_argument("--maxvel", type=float, default=None,
                     help="sv_maxvelocity of the search's physics (default: the core default)")
     ap.add_argument("--threads", type=int, default=0,
