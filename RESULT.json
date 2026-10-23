@@ -3,5 +3,5 @@
  "round": 7,
  "final": false,
  "best": null,
- "summary": "Round 7 (r7b3): no eval yet. 02:21 the first box (3090 on an oversubscribed EPYC host) did one iteration in 13 min - blocklisted and released; no offer has passed the filters since 02:59 (retry loop running). Built --energy-pot K (potential-based shaping on h_E = z + |v|^2/2g, default off, bit-identical when off, tested): the measured gap at the last gate is energy (the greedy line reaches the basement with h_E ~2,100-2,400, the rim needs ~2,350 at the ramp foot) and nothing in the reward values energy. Next: warm arm from the incumbent with --energy-pot 1 (30 min), compared with tp3's own progress.csv at matched steps."
+ "summary": "Round 7 (r7b3): no GPU until 08:25 - the fleet watchdog daemon runs with a 4-box cap (config says 5) and destroyed every 5th box within a minute (harness issue in NOTES); a box got at 08:25 sat idle 2.7 h while a question to the user blocked this session. Built --energy-pot K (potential on h_E = z + |v|^2/2g, default off, tested): the greedy line loses ~600 u of energy in two impacts (the deep dip's bottom, the first basement landing) and enters the chamber only when it turns up-slope ~0.3 s earlier on the return leg. Probes: x1.0-1.3 more energy alone does not make the greedy policy enter. 11:12 r7b3_ep1 = incumbent + --energy-pot 1 (warm), evals every 6.25M."
 }

@@ -2924,3 +2924,22 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
 * So the greedy entry is a TIMING choice on the return leg (turn up-slope ~0.3 s earlier, east of x ~2,600)
   plus ~100-200 u more energy; with the same turn 0.3 s late the line climbs the passage (the probes' x1.3
   episodes did exactly this, higher).
+
+### 11:12 UTC: box 57345282 (RTX 3090 + Ryzen 9 5950X, $0.375/h); r7b3_ep1 launched - and 2.7 h of it lost idle
+
+* At 06:22 I asked the user (AskUserQuestion) whether to restart the watchdog daemon with a cap of 5. The
+  question BLOCKED this session until ~11:07 (the answer: the user fixes the daemon). Meanwhile the cap-aware
+  rent loop got box 57345282 at 08:25 (a fleet slot had freed) and it sat IDLE for 2.7 h (~$1; CLAUDE.md:
+  no load for 5 min = destroy) because nothing was awake to deploy it. Lesson for any agent: never block on a
+  question while a background job can hand you a box; state the issue in text and keep the loop running.
+  The daemon still shows RLSURF_MAX_BOXES=4 at 11:10.
+* 11:08 extended to 14:07; deployed (incumbent ckpt md5 c713bd69...); the no-corner-cut field cache copied
+  from this machine (same bsp signature 4226124 / 1774626465079097800, md5 f2609db9...) so the launch did not
+  bake (record gate passed in 60 s).
+* **r7b3_ep1** (11:12): WARM resume of the incumbent (22,217,752,576) + `--energy-pot 1 --critic-warmup 20
+  --ckpt-every 1e8`, evals every 6.25M, budget 1.2e9; everything else restored (tp3's recipe: time-pen 0.001,
+  front-perturb 0.25 / band 0.005 / turn 90 / x1.0-1.3, front-temp 1 / 1%, novel 0.2, backward-mix 0.1,
+  greedy 0.25 + stuck 200, T cap 0.2 keys-only, pitch floor, no-corner-cut field). It measures AT the gate.
+  Reference = tp3's own progress.csv and round 6's eval statistics (greedy entries ~0.4% of eval episodes;
+  basement reached by ~30-55% of eval episodes). Read-outs: basement share and h_E at the basement entry, chamber
+  entries and their apex, the best score vs 98.315.
