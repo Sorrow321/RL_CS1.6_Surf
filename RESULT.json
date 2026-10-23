@@ -3,23 +3,22 @@
  "round": 7,
  "final": false,
  "best": {
-  "score": 107.176,
-  "eval_file": "/home/steam/ar/runs/r7b2/r7b2_bel/traj_25448939520.jsonl",
-  "run": "r7b2_bel",
-  "step": 25448939520,
-  "ckpt": "/home/steam/ar/runs/r7b2/r7b2_bel/ckpt_25495076864.pt",
-  "ckpt_note": "the eval's weights lie between the run's snapshots ckpt_25394937856 (54M steps before) and ckpt_25495076864 (46M after), both pulled; the run keeps training",
+  "score": 107.227,
+  "eval_file": "/home/steam/ar/runs/r7b2/r7b2_lr2/traj_25756696576.jsonl",
+  "run": "r7b2_lr2",
+  "step": 25756696576,
+  "ckpt": "/home/steam/ar/runs/r7b2/r7b2_lr2/ckpt_25795493888.pt",
+  "ckpt_note": "the eval's weights lie between the run's snapshots ckpt_25695354880 (61M steps before) and ckpt_25795493888 (39M after), both pulled and md5-checked",
   "recipe": [
-   "--respawn-backward-elev",
-   "-60",
-   "60",
+   "--lr",
+   "5e-5",
    "--record-every",
-   "6.25e6",
+   "3.125e6",
    "--ckpt-every",
    "1e8"
   ],
-  "resume_from": "r7b2_eb3 ckpt_stop (24,794,103,808; --energy-pot 3 --energy-pot-front-bonus 1) <- r7b2_ef15 (24,328,011,776; --energy-pot 1.5 --energy-pot-front 0.01) <- r7b2_ef2 ckpt_23912251392 <- r7b2_ef1 <- incumbent r6b2_tp3 (22,217,752,576)",
+  "resume_from": "r7b2_lr1 ckpt_25495076864 (lr 1e-4) <- r7b2_bel ckpt_25394937856 (--respawn-backward-elev -60 60) <- r7b2_eb3 (--energy-pot 3 --energy-pot-front-bonus 1) <- r7b2_ef15 (--energy-pot 1.5 --energy-pot-front 0.01) <- r7b2_ef2 ckpt_23912251392 <- r7b2_ef1 <- incumbent r6b2_tp3 (22,217,752,576)",
   "commit": "d77c580"
  },
- "summary": "FIRST GREEDY FINISH: 107.176 (r7b2_bel at 25.449B: 1/9 episodes finish from the true start in 118.05 s; incumbent 98.315, 0 finishes in the lineage before). NEW --energy-pot (energy-height potential) + --energy-pot-front (priced only up to the frontier band) + --energy-pot-front-bonus (paid once at the band edge as K x kinetic energy: no dip lock): +300 u of energy into the basement, greedy chamber entries 0.4% -> 10-13%. NEW --respawn-backward-elev -60 60: the goal-anchored rows at the basement hole were all clamped to +30 deg; allowed to climb, real frontier-row finishes rose 1.9 -> 26 per 10k and the greedy line finished ~650M steps later."
+ "summary": "GREEDY FINISHES: best 107.227 (r7b2_lr2 at 25.757B: 1/9 episodes finish from the true start in 116.52 s); four greedy finishes in all (107.176 bel 118.05 s, 107.140 lr1, 107.151 lr2, 107.227 lr2); incumbent 98.315, 0 finishes before this round. NEW --energy-pot (energy-height potential) + --energy-pot-front (priced only up to the frontier band) + --energy-pot-front-bonus (paid once at the band edge): +300 u of energy into the basement, greedy chamber entries 0.4% -> 10-13%. NEW --respawn-backward-elev -60 60: the goal-anchored rows at the basement hole were all clamped to +30 deg; allowed to climb, real frontier-row finishes rose 1.9 -> 26-45 per 10k and the greedy line finished. LR cuts (1e-4, 5e-5) on the peak weights reproduced the finishes."
 }

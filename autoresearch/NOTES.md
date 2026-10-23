@@ -3152,3 +3152,12 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   `--lr 5e-5 --record-every 3.125e6 --ckpt-every 1e8` (everything else restored). Both runs started from the 25.39B
   weights finished within 50-90M steps; this samples the post-finish weights with half the step size again, until
   the wrap-up.
+
+### 12:56 UTC: arm 9 (r7b2_lr2, lr 5e-5) - two more greedy finishes; best 107.227 (116.52 s)
+
+* r7b2_lr2 25.495-26.00B (160 evals every 3.125M): **traj_25756696576 = 107.227** (1/9 finish in **116.52 s**, median
+  98.4%) and traj_25700073472 = 107.151 (1/9, 118.79 s). Four greedy finishes this round in all, from three runs of the
+  same weights (bel 25,449M 118.05 s; lr1 25,480M 119.14 s; lr2 25,700M 118.79 s and 25,757M 116.52 s - the human WR
+  is 115.99 s). Training front-perturb finishes 15-35 per 10k through the run (the lower LR held them).
+* Weights: lr2's snapshots ckpt_25695354880 (61M before the 107.227 eval) and ckpt_25795493888 (39M after) pulled and
+  md5-checked (a841e246... / d8f57ccb...).
