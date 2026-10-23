@@ -3,18 +3,18 @@
  "round": 7,
  "final": false,
  "best": {
-  "score": 98.41,
-  "eval_file": "/home/steam/ar/runs/r7b4/r7b4_p2/traj_22362456064.jsonl",
-  "run": "r7b4_p2",
-  "step": 22362456064,
-  "ckpt": "/home/steam/ar/runs/r7b4/r7b4_p2/ckpt_latest.pt",
+  "score": 98.426,
+  "eval_file": "/home/steam/ar/runs/r7b4/r7b4_p3/traj_22375038976.jsonl",
+  "run": "r7b4_p3",
+  "step": 22375038976,
+  "ckpt": "/home/steam/ar/runs/r7b4/r7b4_p3/ckpt_latest.pt",
   "recipe": [
    "--front-temp",
    "0",
    "--unstuck-max",
-   "0.1"
+   "0.2"
   ],
-  "resume_from": "r7b4_p1 ckpt_22343581696 (incumbent 22.218B -> bare 75M -> T 0.1 / front-temp 0 25M (ft0b) -> front-temp 1 25M (p1)) + --front-temp 0",
+  "resume_from": "r7b4_p2 ckpt_22368747520 (incumbent 22.218B -> bare 75M -> ft0b 25M -> p1 25M -> p2 25M) + --unstuck-max 0.2",
   "commit": "ed39671"
  },
  "summary": "Best 98.390 (r7b4_inc at 22.306B: the incumbent's weights and recipe resumed bare, 10 greedy chamber entries in 207 episodes = 4.8% over 22.24-22.31B, apex z up to 1,441; incumbent 98.315). The speed-pot arms (K 5 / 2) raised the line's energy but locked the greedy line in a pit failure (0 basement in 100+ evals); --respawn-greedy-keep / --front-perturb-anchor did not show a gain. Analysis: from the line's own entry approach the funnel rim is out of reach at its energy (policy, random, CEM; random needs x1.3 speed). Ops: numba's pool sized to all 128 host threads made this box 2.2x slow (NUMBA_NUM_THREADS=8 in run_arm.sh). Now: restarts of the incumbent recipe from its weights (each gives ~90M steps of basement-mode lines with entries), snapshots every 25M."
