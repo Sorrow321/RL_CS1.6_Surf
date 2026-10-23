@@ -3,12 +3,12 @@
  "round": 1,
  "final": false,
  "best": {
-  "score": 3.23,
-  "eval_file": "/home/steam/ar_pb/runs/pbr1b4/pbr1b4_bc2/traj_3030384640.jsonl",
+  "score": 3.233,
+  "eval_file": "/home/steam/ar_pb/runs/pbr1b4/pbr1b4_bc2/traj_3105882112.jsonl",
   "run": "pbr1b4_bc2",
-  "step": 3030384640,
-  "ckpt": "/home/steam/ar_pb/runs/pbr1b4/pbr1b4_bc2/ckpt_3029336064.pt",
-  "ckpt_note": "snapshot 1,048,576 steps (2 iterations) before the eval (per-step watcher on the box); 3/9 -> 9/9-median greedy episodes reach the chamber since 2.95B",
+  "step": 3105882112,
+  "ckpt": "/home/steam/ar_pb/runs/pbr1b4/pbr1b4_bc2/ckpt_3115843584.pt",
+  "ckpt_note": "snapshot 9,961,472 steps AFTER the eval (the per-step watcher keeps the newest 15; the ones before 3.115B were pruned on the box). Also pulled: ckpt_3029336064.pt (1M steps before the 3.230 eval) and ckpt_2898264064.pt. Every eval from 2.955B on has median 3.2% (the start is passed reliably).",
   "recipe": [
    "--bc-file",
    "runs/beam_pb6/bc_merged.npz",
@@ -36,7 +36,7 @@
    "0.01"
   ],
   "resume_from": "pbr1b4_bc ckpt 2,425,880,576 (BC round 1) <- pbr1b4_ys2 2,142,765,056 (+spawn v6, SIL) <- pbr1b4_ys 1,890,582,528 (recipe + --init-weights sid_ref + --time-pen 0 + --yaw-sigma-max 0.5 + Go-Explore spawn files) <- --init-weights $AR_HOME/incumbent/sid_ref/ckpt.pt",
-  "commit": "7cd2d4e"
+  "commit": "875c5e5"
  },
  "summary": "FIRST PASS OF THE START TRAP: 3.229 (pbr1b4_bc2 at 2.879B: 3/9 greedy episodes from the true start crawl through the tunnel into the chamber, 3.2%; 0.466 before). Expert iteration: tools/beam_tas.py policy-guided search (--objective progress along a champion-free self route, --eps now allowed under --keys-hold) finds lines through the crawl-space exit ~4 of 10 waves; tools/plan_to_bc.py distils them; a warm resume with --bc-file + spawns along the replayed lines (climb windows x4) teaches the greedy line. RL alone (Go-Explore spawn files, yaw-sigma cap, SIL) never chained the climb. Next: more DAgger rounds for reliability; the chamber is an energy gate (the record's upper path at z ~3500)."
 }
