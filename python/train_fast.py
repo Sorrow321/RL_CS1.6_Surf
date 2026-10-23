@@ -6612,6 +6612,13 @@ def main() -> None:
     ap.add_argument("--respawn-backward-floor", type=float, default=None,
                     help="--respawn-backward: nearest admitted distance to "
                          "the goal, u (default 256: outside the trigger)")
+    ap.add_argument("--respawn-backward-elev", type=float, nargs=2, default=None,
+                    metavar=("LO", "HI"),
+                    help="--respawn-backward / --respawn-backward-mix: the band the rows' "
+                         "velocity ELEVATION is clamped to, deg (default -60 30). The rows fly "
+                         "along the field's descent; where that descent climbs (out of a pit, "
+                         "up a ramp, through a hole in a ceiling) +30 makes every row flatter "
+                         "than the way on. A checkpoint restores it")
     ap.add_argument("--respawn-backward-mix", type=float, default=None,
                     help="F in (0, 1): MIX goal-anchored rows into the "
                          "reservoir pool as F of its non-start rows, right "
@@ -7850,6 +7857,10 @@ def main() -> None:
         if (args.respawn_backward_min_ep is None
                 and ck_cfg.get("respawn_backward_min_ep") is not None):
             args.respawn_backward_min_ep = int(ck_cfg["respawn_backward_min_ep"])
+        if args.respawn_backward_elev is None and ck_cfg.get("respawn_backward_elev"):
+            args.respawn_backward_elev = [float(v) for v in ck_cfg["respawn_backward_elev"]]
+            restored.append(f"respawn_backward_elev={args.respawn_backward_elev[0]:g}"
+                            f"-{args.respawn_backward_elev[1]:g}")
         if (args.respawn_backward_speed is None
                 and ck_cfg.get("respawn_backward_speed")):
             args.respawn_backward_speed = [
@@ -8860,6 +8871,12 @@ def main() -> None:
         args.respawn_backward_min_ep = 50
     if args.respawn_backward_speed is None:
         args.respawn_backward_speed = [1000.0, 2500.0]
+    if args.respawn_backward_elev is not None:
+        _lo, _hi = (float(v) for v in args.respawn_backward_elev)
+        if not -90.0 <= _lo < _hi <= 90.0:
+            raise SystemExit("--respawn-backward-elev LO HI needs -90 <= LO < HI <= 90")
+    BACK_ELEV = (tuple(float(v) for v in args.respawn_backward_elev)
+                 if args.respawn_backward_elev is not None else (-60.0, 30.0))
     if args.respawn_backward_mix is None:
         args.respawn_backward_mix = 0.0
     if args.respawn_front_perturb is None:
@@ -11414,6 +11431,7 @@ def main() -> None:
                 floor=args.respawn_backward_floor,
                 shell_frac=args.respawn_backward_shell,
                 shell_width=args.respawn_backward_shell_width,
+                elev_range=BACK_ELEV,
                 maxvel=float(args.maxvel), seed=83 + 101 * _i)
         _bm_over = (float(args.respawn_novel_frac) + BMIX
                     + max(0.0, float(args.respawn_greedy or 0.0)))
@@ -11422,7 +11440,9 @@ def main() -> None:
               f"{args.respawn_backward_start:.0%} of d0 = "
               + ", ".join(f"{s_.backmix.W:,.0f}u" for s_ in slots)
               + f"], fixed; speed U({args.respawn_backward_speed[0]:g}, "
-              f"{args.respawn_backward_speed[1]:g}) u/s along the field descent; "
+              f"{args.respawn_backward_speed[1]:g}) u/s along the field descent"
+              + (f" (elevation clamped to [{BACK_ELEV[0]:g}, {BACK_ELEV[1]:g}] deg)"
+                 if args.respawn_backward_elev is not None else "") + "; "
               f"{args.respawn_backward_shell:.0%} from the band's far "
               f"{args.respawn_backward_shell_width:.0%}), placed after the "
               f"{args.respawn_novel_frac:.0%} novel quota; tagged like novel rows (never "
@@ -11518,6 +11538,7 @@ def main() -> None:
                 floor=args.respawn_backward_floor,
                 shell_frac=args.respawn_backward_shell,
                 shell_width=args.respawn_backward_shell_width,
+                elev_range=BACK_ELEV,
                 maxvel=float(args.maxvel), seed=79 + 101 * _i)
         print(f"respawn BACKWARD: the map run backward - band = distance to "
               f"the goal in [{args.respawn_backward_floor:g}u, W], W from "
@@ -13678,6 +13699,8 @@ def main() -> None:
                            args.respawn_backward_shell_width),
                        "respawn_backward_speed": args.respawn_backward_speed,
                        "respawn_backward_floor": args.respawn_backward_floor,
+                       **({"respawn_backward_elev": list(BACK_ELEV)}
+                          if args.respawn_backward_elev is not None else {}),
                        "respawn_min_speed": args.respawn_min_speed,
                        "respawn_mode": args.respawn_mode,
                        "respawn_bins": args.respawn_bins,

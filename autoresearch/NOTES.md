@@ -3042,3 +3042,27 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   --energy-pot-front-bonus 1 --critic-warmup 20 --ckpt-every 1e8` (latch 0.01 and everything else restored); commit
   a7f979a. Test (~30-45 min): the line's health (no lock: the bonus removes the die-early incentive) and the
   basement / hole energy against ef15 (2,710 / ~2,300).
+
+### 08:18 UTC: arm 6 (bonus mode K 3) - the healthiest line, more entries, no higher; NEW `--respawn-backward-elev LO HI`
+
+* **r7b2_eb3** (ef15's 24.328B + `--energy-pot 3 --energy-pot-front-bonus 1`), 24.33-24.75B, 67 evals: **all CP7**
+  (no CP5 / CP6 eval); basement 61-69% of episodes (ef15 48-63%); **chamber entries 7.2% / 4.6% / 11.1%** of
+  episodes in blocks of 17 evals (ef15 0.7-5.2%); best 98.430. But the energy did not rise (h at the basement entry
+  median 2,605-2,631 vs ef15's ~2,710; h at the hole ~2,000-2,050) and no entry got closer than d 1,583. Real
+  training finishes from front-perturb rows 2.8 per 10k (ef15 1.6). So the bonus mode removes the dip lock and
+  doubles the entries; the dense per-call term moved the energy more.
+* **The exit angle is the limit** (both arms): at the hole top vz / |v| ~0.44; at the current energy the rim needs
+  ~0.54-0.6, or ~+570 u of h at the same angle. And the shaping barely pays a steeper exit that still misses the rim
+  (the field falls ~0.1 reward between z 1,460 and 1,550 beside the funnel): a needle, paid only by the finish.
+* **What the goal-anchored rows show at the hole** (measured on the sampler, 2,000 rows at 5% of d0): all 48 rows in
+  the hole region (x 2,380-2,760, |y| 300-700, z 900-1,400) sit at exactly +30 deg of elevation - the field's descent
+  there points steeper and the backward sampler clamps elevation to [-60, +30] ("survivable"). So the backward-mix
+  rows, which finish ~50% from the chamber, only ever DEMONSTRATE flat exits from the hole.
+* NEW `--respawn-backward-elev LO HI` (default -60 30, bit-identical): the clamp as a flag, for --respawn-backward and
+  --respawn-backward-mix; with -60 60 the hole-region rows' median elevation is 59 deg and 19% of all rows climb
+  steeper than 30. Config key only when set; restored on resume; TRAIN_ONLY for record_ckpt. Tests
+  (tests/python/test_respawn_backward_elev.py): rows inside the band, the same positions, some steeper than +30;
+  trainer smoke (startup line, config, restore, recorder, refusal); flag off bit-identical to the trainer before the
+  change with --respawn-backward-mix on.
+* Why it is generic: the backward rows follow the map's own field descent; where the way on climbs (a pit, a ramp, a
+  hole in a ceiling) a +30 clamp makes every such row flatter than the route. One band for every map.
