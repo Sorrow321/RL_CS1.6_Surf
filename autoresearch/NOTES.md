@@ -3078,3 +3078,14 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   deepest greedy failures (the line's best entries) kept as spawn rows across evals, so training practises the
   pull-out / rise from the deployed line's own best attempts; K 3 keeps the dilution of the current-failure
   practice small. Read-out over ~1 h against t01's last hour: entries per eval and their apex.
+
+### 08:27 UTC: archive K 3 null; arm r7b4_t015 = rollback into the high-entry window at T cap 0.15
+
+* r7b4_t01k3 (t01's 22.545B + archive 3, T 0.1), 22.551-22.664B, 19 evals: 55 of 171 episodes in the basement,
+  **0 entries**, the basement share falling (CP6 / partial evals from 22.60B). Stopped.
+* Greedy chamber entries per arm so far (episodes): r7b4_gk 1/45 (then CP6); r7b4_inc bare T 0.2 **10/207**, all
+  in 22.243-22.306B; r7b4_t01 T 0.1 from 22.293B 7/360 (5 in its first 70M steps); t01k3 0/171. The entries come
+  in a regime of the incumbent's weights 25-90M steps into training and thin out after it, whatever the knob.
+* **r7b4_t015** (08:26): inc2's 22,268,084,224 snapshot (the middle of that window) + `--unstuck-max 0.15`
+  (between 0.2 - more entries, then the CP6 drift at 22.312B - and 0.1 - a longer window, fewer entries): a
+  different deterministic path through the same regime.
