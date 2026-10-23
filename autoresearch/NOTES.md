@@ -342,7 +342,7 @@ resample every 25 decisions. On a box it runs as it does locally (CPU physics + 
   spawn_climb.npy --spawn-states-frac 0.4 --sil-coef 0 --sil-top 0 --front-temp 1
   --front-band 0.01`.
 
-### 20:56 UTC - THE START TRAP IS PASSED BY THE GREEDY LINE: 3.229 (pbr1b4_bc2, expert iteration)
+### 20:53 UTC - THE START TRAP IS PASSED BY THE GREEDY LINE: 3.229 (pbr1b4_bc2, expert iteration)
 
 * pbr1b4_bc2 greedy evals: 0.43 / 0.44 / 0.42 / 0.42 / 0.42 (2.43B-2.73B), then **3.181 at
   2.804B and 3.229 at 2.879B**: 3 of 9 greedy episodes from the TRUE START mount the plate, hop
