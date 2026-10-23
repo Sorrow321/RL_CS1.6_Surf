@@ -242,3 +242,13 @@ SELF_STATES/CKPT/ARM_RESUME/SCRATCH). Nothing else changes in box.py.
   and around the climb (259) x3 -> 2,910 rows: 45% start/climb, 25% tightrope, 30% deeper.
   A fine search (32 u x 24 u energy, 4 min, 118k cells, trainer paused with SIGSTOP/SIGCONT)
   supplied the dense states.
+* 17:40 diagnostics with the 517M checkpoint: from tightrope states near its WEST end (x 87-171)
+  the policy now survives, drops and crosses the lower level to 3.1-3.2% (1,745-1,835 u) - the
+  downstream part is learned; from mid-tightrope / sill states it still dies in 15-80 ticks,
+  drifting 10-15 u south off the ledge (the safe band is y ~-2896..-2881, ~15 u; 281/288 of the
+  search's ledge states are mid-hop, ducked, many with southward velocity). Greedy evals 378M:
+  155 u, 453M: 190 u (worse than the corner). Spawn file rebuilt: 70% climb / sill / tightrope
+  (progress 120-800 u), 10% start room, 20% downstream.
+* Harness note: box 57382729 (Thailand) uploads at ~0.022 MB/s to the agent host, with the
+  trainer paused or not (network path, not CPU): a 63 MB checkpoint takes ~50 min to pull.
+  Start checkpoint pulls long before a deadline.
