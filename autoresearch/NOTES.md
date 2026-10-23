@@ -309,3 +309,34 @@ own reward-free search from the true spawn, no demo or record data, generic cons
   int-real-only 1), and 40% spawns from entry_ge_states.npy to keep the entry practised.
   (A first try, pbr1b1_g2, came up with novel/greedy/front-perturb at trainer DEFAULTS - the
   curriculum run's config had dropped those keys - and was relaunched within 2 minutes.)
+
+### Gate 2 (the pit, 3.2%), measured 2026-10-23 19:40-20:15 UTC
+* pbr1b1_g2b (bcur5's weights + the recipe's frontier machinery at its exact values + 40%
+  entry_ge spawns): 9/9 greedy episodes reach the pit at every eval 800M-1.25B (3.229-3.235;
+  bcur5 had 7/9), but nothing past it in 500M steps. ckpt_latest 1.31B pulled.
+* The pit: the shaping field's route climbs ~100 u straight above the greedy line's best point
+  (809, -3,288, ~3,370) up a steep SOUTH ramp (normal (-0.20, 0.73, 0.66), lower edge ~80 u above
+  the pit floor); the record instead surfs an EAST ramp (lower edge ~60 u above the floor) at
+  800-900 u/s. Both ramps start above what a jump from the floor reaches.
+* The real loss is in the DROP after the tunnel: the greedy line exits the tunnel at ~320 u/s
+  (it crawls), falls steeply, drifts north off the descending surf slope at (233, -2,995, 3,481)
+  and lands FLAT on the floor - h 3,813 -> 3,378 in 0.25 s. The record surfs that slope along
+  y ~-3,000..-3,030 and keeps 800-900 u/s into the east ramp.
+* Searches that found nothing past the pit: entry_search (uniform bursts) from 32 of the
+  policy's own pit states (138k bursts) and 32 drop states (131k), target d < 55,100; beam_tas
+  pure policy proposals (4,096 envs); beam_tas `--branch-view-only` yaw-target bursts (+-20/30/60
+  deg, forked at 4-5 s, protected 4-6 generations). beam_tas gained `--save-frontier` (the
+  deepest non-finishing lineage, replayed, as a spine) and `--branch-view-only` (a yaw burst a
+  --keys-hold checkpoint accepts).
+* Arm pbr1b1_g2c: g2b's 1.31B weights + per-call energy shaping (--energy-pot-front 0
+  --energy-pot-front-bonus 0, K 3): the flat landing in the drop costs ~-1.3 at the moment it
+  happens, instead of a once-per-episode bonus at the frontier.
+
+### Caveat for the lineage (CLAUDE.md 0b), written down so the next round does not inherit it blind
+The start-room lines came from TWO entry_search stages whose target BOXES (the conveyor-plate
+corner, then the tunnel mouth) I chose from my own core probes of this map. The searches were
+random bursts and no demo or record data entered them, but a hand-picked box is map knowledge,
+i.e. not yet the generic recipe 0b asks for. The generic version of the same mechanism is
+Go-Explore phase 1 (reward-free, it found the tunnel by itself in ~1 min) plus stage targets
+defined on the field (entry_search --field/--d-max "deeper than the current frontier"), then
+the backward curriculum (--demo-file + --demo-success-d) on the found line. Not run yet.
