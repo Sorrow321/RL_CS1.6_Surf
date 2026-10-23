@@ -170,3 +170,34 @@ resample every 25 decisions. On a box it runs as it does locally (CPU physics + 
   --spawn-states runs/ge_pb1/chain.npy --spawn-states-frac 0.2` (73 chain states, 3.21%).
   Go-Explore's "robustify" half done by RL from states along the found route. Read: does the
   GREEDY line from the true start learn the crawl (best > 1.5%), and does RL push past 3.2%?
+
+### 16:07 UTC - pbr1b4_ge: the chain teaches the tunnel but not the CRUX; spawn files swapped live
+
+* pbr1b4_ge at 470M steps (uniform spawns over the 73-state chain): the reservoir's deepest
+  state sits at the chain's end (mind 96.77% = 3.23%), but the GREEDY line from the true start
+  is unchanged (0.4%, score <= 0.429): it now jumps at the west wall under the NORTH tunnel
+  (649-653, -2905..-2923, z ~3690), ~20 u too low for the ducked window (z >= 3716), and never
+  climbs onto the conveyor plate the route needs. 80%+ of training episodes are stall-killed.
+* The route the search found (the box archive's chain, 73 states, 7.07 s to 3.21%): walk west,
+  duck-jump onto the UPPER CONVEYOR PLATE (x 648-718, y -3054..-2946, top z 3681, inside the
+  2,500 u/s down-push: the chain stands on it at origin 3696), jump west from the plate into the
+  SOUTH tunnel (y ~ -3100, the mirror of the north one), crawl ducked to x ~150, drop into the
+  chamber (a U-turn: east along its south side, north, back west), end at (811, -2716, 3365).
+* **The crux, measured with the batched core and the searcher's own random bursts (95% repeat,
+  2.4 s):** from chain state 13 (inside the tunnel) 255/512 bursts get through; from the plate
+  states 8 / 10 / 11 / 12: 1/512, 0/512, 0/512, 2/512 (and 3/2048 from 8). The plate -> tunnel
+  entry is a ~0.2% event; open-loop constant holds (19 yaws x 3 strafes x 5 jump times x duck)
+  succeed 0/570. Note the chain is STITCHED (each row is the best state of its cell; its
+  children may have been found from another state in the cell), so a stored row is not
+  guaranteed to continue the way the chain does - another reason the crux rows are hard starts.
+* --race-arc along the found route would NOT fix the crux: the greedy's north-wall spot projects
+  onto the route's slot vertex (~170 u away, inside the 1,500 u corridor), so it already earns
+  the local arc; the crux is a motor skill, not a deceptive coordinate.
+* Spawn files swapped LIVE (the trainer re-reads --spawn-states on mtime change, every 20
+  iterations): 15:55 UTC -> the trap part only (chain states 0-28; re-read at 345.5M), 16:07 UTC
+  -> the crux only (states 2-13: floor -> plate -> tunnel mouth; ~575M). Backward-algorithm
+  logic without the code: put the starts where the policy fails, ~17 starts per state per
+  iteration instead of ~3.
+* Also measured: Go-Explore with speed in the cell key (--cell-speed 4), rooted at the tunnel
+  exit, plateaus at the same chamber cell in 5 min (random actions do not make speed; the
+  chamber's way out is the record's upper path at z ~3500, ~150 u above the search's floor).
