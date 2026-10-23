@@ -110,7 +110,7 @@ resample every 25 decisions. On a box it runs as it does locally (CPU physics + 
   a 30-min review (no step-budget schedule in the recipe, so a promising run need not restart).
   First minutes: half the training episodes stall-killed, greedy eval 250 u (0.4%).
 
-### 15:10 UTC - pbr1b4_iw: NULL, and THE START IS A TRAP (measured with the core's traces)
+### 15:04 UTC - pbr1b4_iw: NULL, and THE START IS A TRAP (measured with the core's traces)
 
 * `pbr1b4_iw` (recipe + --init-weights sid_ref) stopped at 345M steps: greedy best 250 u
   (0.4%, the FIRST eval, the sidistic weights almost untouched; score 0.403), then 0.0-0.1%;
@@ -138,6 +138,6 @@ resample every 25 decisions. On a box it runs as it does locally (CPU physics + 
   ("temperature discovers" ran at cap 2 from scratch on sidistic), and energy priced only on
   entering the frontier band (the band is AT the spawn, so pumping speed in the half-pipe pays
   nothing).
-* `pbr1b4_esc` launched 15:08 UTC: recipe + --init-weights sid_ref + `--time-pen 0
+* `pbr1b4_esc` launched ~15:03 UTC: recipe + --init-weights sid_ref + `--time-pen 0
   --unstuck-max 2 --energy-pot-front 0 --energy-pot-front-bonus 0` (energy paid everywhere).
   Read: does any episode reach the corridor (best > ~1,000 u = 1.75%)?
