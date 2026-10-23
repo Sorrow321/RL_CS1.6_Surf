@@ -2761,3 +2761,11 @@ Standing-hull solid tests (`core.trace(p, p, hull=0).startsolid`) and kill hulls
   note for the 5090 rounds. Practical consequences: a "control" is free to reproduce, and a repeat launch is not a
   new lottery ticket unless something (the seed, a flag) differs. front8 passes front7's end (19,107M) ~22:00 UTC
   and continues from there (new evals) until the wrap-up - effectively front7 continued.
+
+### 00:11 UTC: r6b3_front8 - 98.346 (the branch best), a room entry at the -y hole
+
+* Eval 19,862M ep 8: 98.35% (score 98.346, 0.003 under the incumbent): the second west leg (E ~1,380-1,430),
+  a reversal at the west end (2,526, -406, 943) with v (-332, 523, 550) -> east, rising through the -y hole's
+  inner edge (2,642, -376, 1,158) at ~500 u/s, stopping at its east edge (2,669, -368, 1,195), d 1,617 on the
+  scored field; then back into the basement. The same low-energy late climb as the round's two earlier room
+  entries (E ~1,200-1,350 at the hole).
