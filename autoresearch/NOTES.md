@@ -100,3 +100,12 @@ resample every 25 decisions. On a box it runs as it does locally (CPU physics + 
 * **Harness issue (market):** at 14:28-14:38 UTC no offer passed the filters: the cheapest
   allowed card was a 5080 at 0.667 $/h (cap 0.65), 4090s from 0.669 (cap 0.45), 5090s from
   0.936 (cap 0.60), two 3090s at 1.33+. `rent` was refused four times.
+
+### 14:44 UTC - box 57384171 (RTX 5090, 0.535 $/h, Ryzen 9 7950X 32 thr, KR), run pbr1b4_iw
+
+* The rent retry loop got a box at 14:42 (first attempt after the loop started). Deployed
+  ar/pbr1b4 (b7c17fa) with sid_ref pushed as runs_ckpt.pt (md5 390bf508...).
+* `pbr1b4_iw` = the incumbent recipe from scratch + `--init-weights runs_ckpt.pt` (the sidistic
+  finisher, 25.39B steps; all 37 policy tensors loaded, everything else fresh), budget 3e9 with
+  a 30-min review (no step-budget schedule in the recipe, so a promising run need not restart).
+  First minutes: half the training episodes stall-killed, greedy eval 250 u (0.4%).
