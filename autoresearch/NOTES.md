@@ -460,3 +460,34 @@ strafing on the corridor ramp (x ~460, where the record turns its drop into ~900
 Go-Explore cells keyed on energy height with roots carrying speed. Re-plan from the incumbent:
 beam_tas from the true start with it passes the start in every lineage now, so a 60 s budget
 is ~50 s of chamber search.
+
+### 22:37 UTC - box released; core probes for round 2: the tunnels are SURF channels, the chamber's ridge
+
+* Final runs: pbr1b4_bc3 3.234-3.236 through 3.915B (best **3.236** at 3,659,005,952, the
+  snapshot AT that step pulled: runs/pbr1b4/pbr1b4_bc3/ckpt_3659005952.pt; ckpt_latest pulled
+  too). Two last chamber searches with the bc3 checkpoint (energy tie-break): stall at arc
+  ~2,950 u. Box 57384171 released 22:35 UTC (the fleet was over budget pace: 2.13 vs 1.84 $/h).
+  Search/BC artifacts saved to $AR_HOME/runs/pbr1b4/artifacts/ (bc_merged.npz etc.; the
+  orchestrator only scores dirs with traj files, so this is inert).
+* **The tunnels keep speed (single-env play_step, ducked, start (630, y, ~3725) heading west):**
+  holding the side key INTO the tunnel's slanted face (north tunnel: "right"/sm +250 facing
+  west; south tunnel: "left"/sm -250) the player SURFS the tunnel and exits at x ~115-118 with
+  its speed intact (300 -> 301, 500 -> 500, 800 -> 800 u/s); any other key set slides off and
+  dies (a catch teleport). So the chamber's entry speed = the tunnel's entry speed. That is what
+  the record's east half-pipe buys (~570 u/s through the corridor); our line enters the tunnel
+  at ~100-300 u/s from the plate.
+* **The chamber's speed converter:** the corridor (y -3100..-2900) has a central RIDGE at
+  x 300-600: flat top at origin z 3426, sides sloped n_z 0.58 (surf faces) at y ~-2950 and
+  ~-3050. The record exits the tunnel westward at x ~100, turns in the air at x 30-60, drops
+  ~360 u and lands on the ridge's SOUTH face (461, -3052, 3357) moving east at ~920 u/s
+  horizontal, then flies up/east to the east connection, north, and west along the north pocket
+  over the kill floor. Energy height at the tunnel exit (z 3720) already covers the far side if
+  the drop is converted on the ridge; landing on the flat floor (our line) throws it away.
+* Correction to 21:29: corridor positions at x 557-685, z 3324-3377 are ALIVE in a 5-min
+  Go-Explore from synthetic fast tunnel-exit roots (our own exit state, speed set to 0/300/600),
+  so the [451..762] teleport covers the POCKETS' floor, not the corridor. That search did not
+  get past the chamber's best d either (52,874 vs the 52,575 plateau on goal_32).
+* Round 2 should therefore: (a) carry speed into the tunnel (the half-pipe east of the spawn is
+  the speed source; field d +1,500 u the wrong way) or (b) learn the drop-onto-the-ridge
+  conversion after a slow exit; both are search/BC targets in the policy's action space, and
+  the tunnel surf needs a held side key that BC from search lines can teach.
