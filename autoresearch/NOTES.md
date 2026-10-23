@@ -409,3 +409,17 @@ Then launch with `--self-states "<provenance>" -- --spawn-states runs/gx_spawns_
   weights (pbr1b3_sidwarm 1.57M) to see whether the early climb repeats.
 * sgx1's ckpt_latest (334.5M, md5 2ed815bc...) is on the agent host now (hand-pulled, md5
   verified): the hand-on checkpoint for the 0.613 eval.
+
+### pbr1b3, 2026-10-23 21:31 UTC - resuming this branch's checkpoint (if it is handed on)
+
+The hand-on checkpoint (sgx1, 334.5M) carries `spawn_states runs/gx_spawns_cur.npy`,
+`spawn_states_frac 0.7` and `spawn_states_curric 0.003` in its config, and a resume RESTORES
+them. On a fresh box that file does not exist: either rebuild it first (the 20:34 entry; ~15
+min of box time, then `scp`/keep it at `runs/gx_spawns_cur.npy`) and pass
+`--self-states "<provenance>"` to `box.py launch --resume`, or switch the curriculum off with
+`-- --spawn-states '' --spawn-states-curric 0` (an empty path turns the restored file off; a
+restored curriculum without a file is refused). Everything else is the incumbent recipe from
+sid_ref's config plus `view_ent_squash 1`.
+* 21:29 `pbr1b3_sgx7` (the exact sgx1 replicate from the fresh sid_ref weights): 248 / 251 /
+  217 u at 2M / 77M / 153M - no climb at 153M this time; the runs are not bit-reproducible and
+  sgx1's climb was one episode in 45. It keeps training to the end of the round.
