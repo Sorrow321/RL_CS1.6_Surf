@@ -2,6 +2,24 @@
  "agent": "r7b3",
  "round": 7,
  "final": false,
- "best": null,
+ "best": {
+  "score": 97.916,
+  "eval_file": "/home/steam/ar/runs/r7b3/r7b3_ep1/traj_22224568320.jsonl",
+  "run": "r7b3_ep1",
+  "step": 22224568320,
+  "ckpt": "/home/steam/ar/runs/r7b3/r7b3_ep1/ckpt_latest.pt",
+  "recipe": [
+   "--energy-pot",
+   "1",
+   "--critic-warmup",
+   "20",
+   "--ckpt-every",
+   "1e8",
+   "--record-every",
+   "6.25e6"
+  ],
+  "resume_from": "incumbent r6b2_tp3 (22,217,752,576)",
+  "commit": "95f8e55"
+ },
  "summary": "Round 7 (r7b3): no GPU until 08:25 - the fleet watchdog daemon runs with a 4-box cap (config says 5) and destroyed every 5th box within a minute (harness issue in NOTES); a box got at 08:25 sat idle 2.7 h while a question to the user blocked this session. Built --energy-pot K (potential on h_E = z + |v|^2/2g, default off, tested): the greedy line loses ~600 u of energy in two impacts (the deep dip's bottom, the first basement landing) and enters the chamber only when it turns up-slope ~0.3 s earlier on the return leg. Probes: x1.0-1.3 more energy alone does not make the greedy policy enter. 11:12 r7b3_ep1 = incumbent + --energy-pot 1 (warm), evals every 6.25M."
 }
