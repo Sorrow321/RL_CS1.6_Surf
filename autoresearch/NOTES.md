@@ -2950,3 +2950,15 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   restored; kept on the box as runs_ckpt_ep1.pt; the incumbent's copy as runs_ckpt_incumbent.pt) + `--energy-pot-front
   0.01 --critic-warmup 20 --ckpt-every 1e8`, evals every 12.5M. Watching: basement life back to seconds (the loop), chamber
   entries at the higher energy (apex vs the rim at ~1,560), the arrival energy holding at ~2,500+.
+
+### 04:35 UTC: arm 3 r7b1_epf at +120M - the basement loop comes back; a new 86% failure on the faster line
+
+* r7b1_epf (ep1's weights + `--energy-pot-front 0.01`, band edge `epot<96.9%`), 22.445 -> 22.565B: 10 evals 97.85-97.95
+  (CP7), no chamber entry yet; energy at 97% progress 2,463-2,597 (control 2,336-2,418) - the upstream gain holds.
+* Basement behaviour (life after the basement entry, arrival side): the first evals still the ep1 suicide (0.5 s, -y);
+  from ~22.47B more arrivals on the +y side living 4.4-13 s (the loop the incumbent's entries come from): 22.533B 3 of 4,
+  22.546B 3 of 4, 22.559B 3 of 3. The gate does what it was built for.
+* The line is ~1.3 s faster than the incumbent's by 95 s (x -2,200 vs -3,700 at 94.5 s) and reaches 98% at ~112 s
+  (incumbent ~114 s). Its new weak spot: 3-6 of 9 episodes die at 86% (~96 s, near (-1,680, ~0, 3,900)) - those that
+  drift to y ~+210 at 95 s instead of y -230..-440 (the incumbent lost 2 of 9 there). Medians ~86% as a result; the
+  greedy-line pool practises exactly those deaths. Running on.
