@@ -358,3 +358,20 @@ learn what energy is worth there before the policy can make it.
   the south part of the pocket. Go-Explore run ge14: rooted at 885 of the policy's OWN pocket
   states (every 20th row with progress >= 2.9% of the 810M eval), 64 u cells x 16 bins of |v|,
   --view-velocity 1, --dump-paths 1, 10 min at full CPU (training paused).
+
+### 2026-10-23 20:26 UTC - 3.235 with median 3.2% (the route is reliable); arm 14 explores the pocket
+
+* arm 14 pbr1b2_ge14 (arm 13's final 853.0M weights; the curriculum OFF, the recipe's frontier
+  machinery back ON - novel / front-perturb / greedy rows / backward-mix - plus --respawn-speed 1.0
+  1.5, 15% --spawn-states from the 333-row spine, --time-pen 0 --ent 0.002, --demo-file ''
+  --demo-front-frac 0 --demo-grow 0 to switch the restored curriculum off): evals 3.235 (853.5M,
+  one iteration after the resume: median 3.2%) and 3.234 (929M, median 3.2%). Best = 3.235;
+  arm 13's 853.0M weights copied into the run as ckpt_853016576.pt for the handoff (pulled).
+* The pocket frontier: front-perturb rows from 27 frontier states (d <= 55,311), novel ceiling
+  1,896 u, no progress past 3.24% yet at 978M; yaw sigma drifting up again (0.13 -> 0.46).
+* Go-Explore ge14 rooted at 885 of the policy's own pocket states (64 u x 16 |v| bins): 684
+  cells, ~1,400 deaths in 1.3M runs, best = the roots: the pocket is enclosed for random bursts
+  (as run 4). The WR leaves it east up a ramp at ~1,000 u/s, carried in from the north-ledge drop;
+  the policy enters off the south ledge at ~650 u/s and stops at (808,-3286,3375), a local field
+  minimum ~200 u BELOW the WR's d through the pocket (55,300 vs ~55,500): the next gate is a
+  field dip plus an energy deficit, the sidistic recipe's own last gate.
