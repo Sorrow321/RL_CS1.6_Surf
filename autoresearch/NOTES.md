@@ -344,3 +344,9 @@ SELF_STATES/CKPT/ARM_RESUME/SCRATCH). Nothing else changes in box.py.
   (its rows stay in the passed-row draws); below half it still backs off. `pbr1b3_sgx4` =
   resume of sgx3's 362.3M with that rule. sgx1's ckpt_latest (334.5M) is being pulled as the
   hand-on insurance for the 0.613 eval (~50 min at the box's 22 KB/s).
+* 20:00 `pbr1b3_sgx4` (465M): the escape rule moved the window twice, then it oscillated
+  between rows 8 and 16 (progress 2,085-2,151 u, success 0.06): the deep tail of the chain set
+  is the search's dead ends (free falls at the lower level's far edges), not a route. Greedy
+  evals 363M: 254 u, 438M: 217 u. Fix (35c138c): the window starts at the 0.1 quantile of the
+  rows by progress (the deepest 10% count as passed, still drawn). `pbr1b3_sgx5` = resume of
+  sgx4's 466.1M with it.
