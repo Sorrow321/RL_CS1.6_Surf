@@ -490,3 +490,10 @@ the backward curriculum (--demo-file + --demo-success-d) on the found line. Not 
      --yaw-entropy 0, a choice made for the start room's precision jumps). Options: give curriculum
      spawns a view temperature, or pick a GE chain without the wall bounce (re-run GE with a
      heading-aware cell so the archive keeps more than one lineage past the pit).
+* Probe of g2cur5 (2.69B) from line state 1230 with duck HELD (record_ckpt now mirrors
+  --keys-hold-spawn-duck), 4 stochastic episodes: the policy stays on the line for ~6 ticks,
+  then turns the velocity LEFT/north (vy -134 -> +200 in 12 ticks) where the line turns RIGHT/
+  south (vy -134 -> -265), slides north along the east wall and falls into the north end of
+  the pit (3.0%). So after the duck fix the remaining failure is the air-turn DIRECTION, and the
+  policy never samples the right one (0 successes from [1230,1239] -> no positive examples for
+  the bonus to reinforce).
