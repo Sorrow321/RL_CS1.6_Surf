@@ -497,3 +497,8 @@ the backward curriculum (--demo-file + --demo-success-d) on the found line. Not 
   the pit (3.0%). So after the duck fix the remaining failure is the air-turn DIRECTION, and the
   policy never samples the right one (0 successes from [1230,1239] -> no positive examples for
   the bonus to reinforce).
+* **pbr1b1_g2cur6** (23:24 UTC): g2cur5's ckpt_latest (2.826B, md5 bc4097e2...) with FINER steps
+  across the impact: `--demo-window 5 --demo-grow 5 --demo-tau0 1245` (band = 1-5 ticks before
+  the wall). Question: is the pre-impact wall a step-size problem (the air turn learnable from
+  0.05 s out, then backward) or a direction the policy never samples at any distance?
+  (g2cur5 ended with band [1250,1259] at 76% and [1230,1239] still 0.0%.)
