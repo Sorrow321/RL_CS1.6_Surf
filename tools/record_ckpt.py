@@ -80,6 +80,9 @@ class _RouteProbe:
 # a new flag nobody taught this file about, and we refuse to emit a
 # trajectory rather than emit a plausible wrong one.
 TRAIN_ONLY = frozenset({
+    # tools/transfer_ckpt.py: the provenance of a cross-map warm start (source checkpoint,
+    # its map and step, the run state dropped); the weights are read like any other
+    "transfer",
     # --target-kl: PPO's early stop inside the update; a recording runs no update
     "target_kl",
     # --ramp-death-charge: a training reward term (the eval pays no reward)
