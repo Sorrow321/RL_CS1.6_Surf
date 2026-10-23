@@ -2857,3 +2857,16 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   `vast_pick.py --block <iid>` with its output captured and ignored; vast_pick looks the instance
   up in `vastai show instances` and exits if it is not there, so the failure is silent. Both
   machines were re-rented minutes after "blocklisting". Entered by hand on this branch.
+
+### 04:15 UTC: probe - more energy alone does not make the greedy policy enter (ANALYSIS ONLY, own states)
+
+* States: the incumbent checkpoint's own greedy-line pool (ck["respawn_greedy"], 3,041 rows from its last
+  eval's 2 s-before-death windows and stalled stretches): 1,547 basement rows (x > 2,000, z < 1,150, progress
+  > 96%), the top quartile by h_E kept (387 rows, h_E 1,393-2,301, median 2,008, |v| ~750-1,450).
+* `record_ckpt --spawn-states`, GREEDY, 24 episodes x 7 s per setting, velocity scaled x1.0 / x1.15 / x1.3
+  (local CPU): chamber entries **1 / 0 / 1** of 24 (apex z 1,256 / - / 1,336), over the rim 0, finishes 0,
+  best 98.16 / 97.99 / 98.33%. At x1.3 (h_E up to ~3,250) the greedy policy climbs higher in its LOOP -
+  back up the passage into the corridor (max z 1,564-1,582 at x < 2,440) - instead of up through a hole.
+* So the greedy policy does not turn extra energy into the hole entry: the entry is a skill/route choice
+  first and an energy budget second. --energy-pot (which values energy everywhere) is still the planned
+  first arm, but its success needs the policy to learn the entry as well; read entries, not only h_E.
