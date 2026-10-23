@@ -365,8 +365,8 @@ the backward curriculum (--demo-file + --demo-success-d) on the found line. Not 
   at z ~3,570 and land on it. Both parts at once: a detour against the field, flown at speed.
 
 ### Gate 2: Go-Explore from the policy's own tunnel exit gets past the pit (2026-10-23 20:20-21:10 UTC)
-* GE4: tools/explore_phase1.py rooted at 32 of g2b's OWN greedy tunnel-exit states
-  (_entry/exit_roots.npy), 64 u cells x --cell-energy 32, 4,096 envs, 768 iterations: 20,074
+* GE4: tools/explore_phase1.py rooted at 64 of g2b's OWN greedy tunnel-exit states
+  (runs/pbr1b1_entry/exit_roots.npy on the box), 64 u cells x --cell-energy 32, 4,096 envs, 768 iterations: 20,074
   cells, the deepest at **3.95%** on the grader field (534, -2,668, 3,422) - past the pit (3.24%),
   reward-free, no demo. 551 cells lie past 3.3%.
 * The geometry those cells cross (core hull traces, x 260-930, y -2,620..-3,420): the "raised
@@ -391,3 +391,13 @@ the backward curriculum (--demo-file + --demo-success-d) on the found line. Not 
   there in 8 tries - it entered the box at its BOTTOM, not rising like the archived state
   (v (43, -335, 451)). So ge_stitch `--vel-cos C` (new, default off): a link must also arrive
   with its velocity within cosine C of the archived state's. Rerun with C 0.7 on both chains.
+* Both velocity-matched stitches (C 0.7, backtracking 0..128 ticks, 21:20-21:28 UTC) failed at
+  the launch as well: from line3 - tunnel exit straight onto the ridge's south face - no burst
+  reaches either launch cell moving the archived way. The archive's launch came from a
+  different, longer approach (~300-690 ticks) whose states the "shorter way in" rule overwrote.
+* So `explore_phase1 --exact-chains` (new; flag off: archive + meta bit-identical, checked): a
+  cell's parent is the cell its run was RESTORED from, states are never replaced, and each cell
+  keeps its run's actions from the restore to the first entry; `tools/ge_replay.py` replays the
+  deepest chain link by link from each parent's archived state, checks every link's end against
+  the child's state (0.5 u), and writes one per-tick line. Local smoke: 4/4 links exact.
+  GE6 = GE4's settings + --exact-chains, 12 min, 21:30 UTC.
