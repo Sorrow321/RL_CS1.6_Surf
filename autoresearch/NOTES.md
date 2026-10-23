@@ -296,3 +296,15 @@ learn what energy is worth there before the policy can make it.
   unrepeatable moves cut out or the spine truncated before them.
 * arm 11 pbr1b2_ge11: the clean sidistic transfer (step 0) + recipe + --time-pen 0 --ent 0.002 +
   the spine cut at row 378 (start -> corner climb -> south ledge, 1.44%), --demo-grow 16.
+
+### 2026-10-23 19:03 UTC - arm 11 -> arm 12 (continuation)
+
+* arm 11 pbr1b2_ge11 (clean sidistic transfer, --ent 0.002, spine rows 0..378): the yaw sigma
+  stayed at 0.13 (ent 0.002 fixed the drift); tau 378 -> 282 in 217M steps (bands 61-100%), the
+  reservoir reached 3.2% (the policy carries on past the spine's end by itself). Evals 0.396 /
+  0.416 / 0.428 (tau far from 0: the true start is still only 10% of the pool). ~33M steps per
+  16-state advance - spine episodes run until the stall kill (~18 s), so few episodes end per
+  iteration.
+* NEW --demo-tau-start N (DemoCurriculum tau0; tau is not checkpointed).
+* arm 12 pbr1b2_ge12: arm 11's 217M weights, same flags + --demo-tau-start 282, budget 1.5e9.
+  Box extended to 23:01 UTC.
