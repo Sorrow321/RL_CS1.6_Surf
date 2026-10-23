@@ -407,3 +407,56 @@ resample every 25 decisions. On a box it runs as it does locally (CPU physics + 
   potential paid everywhere, so pumping speed on the chamber's sloped walls pays (the recipe
   paid it once, at the frontier band's entry - which is now the chamber, so speed gained there
   earned nothing). Read: does the reservoir / novelty ceiling move past 3.25%?
+
+### 22:08 UTC - ROUND 1 LESSON (pbr1b4): how the start trap was passed, and the next wall
+
+**Result: 3.234** (0.4% for every pure-RL arm). Every greedy eval from 2.955B on has median 3.2%:
+the policy leaves the sealed start every time and stops in the chamber.
+
+**The map's first two gates are deceptions the goal field cannot see** (core-measured):
+1. START: west is a wall + a push-down death chute; the exit is a crawl-space tunnel (north or
+   south, 80 u above the floor) - in OUR core the record's standing corridor is ~10 u too low
+   (the hull-vs-sloped-face offset, 805 of its rows inside our solid), so it needs a duck. The
+   field points up into the tunnel; the climb is floor -> conveyor-plate corner -> mouth ledge ->
+   duck into the slot (three precise hops).
+2. CHAMBER (3.2%): an H with a trigger_teleport across its west half at floor level; the way on
+   is a U-turn (east, north, back west ABOVE the kill floor at z ~3500), +265 u of field d the
+   wrong way, with speed (~900 u/s) the crawl tunnel does not give.
+
+**What worked (the pipeline; all champion-free, all generic):**
+* `tools/explore_phase1.py` (Go-Explore phase 1) from the true start finds the start's exit in
+  ~30 s - but its chain is STITCHED: the stored crux rows are not on a successful trajectory.
+  `--goal-progress P` (new) dumps the first physically continuous crossing of a milestone.
+* RL from those spawns learns the LAST step only (11/20 from the mouth) and never chains back;
+  PPO cannot learn a 0.1%-success precise climb from rare successes in any spawn mix I tried.
+* **Policy-guided population search** `tools/beam_tas.py --objective progress --route-file
+  <tools/self_route.py route> --eps 0.15 --resample-every 25 --skip-gate --max-ticks 3000`
+  (eps under --keys-hold: patched this round) finds lines from the TRUE START through the
+  tunnel into the chamber in ~4 of 10 waves (30 s cap; --resample-every 15 was worse).
+* `tools/plan_to_bc.py` (per spawn seed, merge with surfgym.bc.merge_bc_files) -> a warm resume
+  with `--bc-file ... --bc-coef 0.5 --bc-target dist --bc-value-coef 0.25` + `--spawn-states`
+  = the replayed spines with their climb windows x4, frac 0.4. Round 1 of BC (one spawn yaw,
+  lines that wander 16 s first) fitted 99.9% and moved nothing; round 2 (3 spawn seeds incl. a
+  DAgger wave from the BC checkpoint, climb-weighted spawns) passed the start within ~20 min of
+  training and then reliably.
+* `--yaw-sigma-max 0.5` (new) and `--time-pen 0` throughout - now in incumbent_recipe.
+
+**What did not:** --init-weights sid_ref alone; --time-pen 0 + --unstuck-max 2 + energy
+everywhere (pbr1b4_esc); Go-Explore spawn files at 20-50% (any composition); SIL 0.1; beam_tas
+with --score e (energy tie-break) or a 60 s cap at the chamber; Go-Explore with speed cells
+rooted at our own chamber-entry states (8 min, 0 wins); energy paid everywhere (bc3: pumps ~+1k
+u/ep but loses as much).
+
+**Pitfalls that cost time:** (1) probing "x < 560" after a step counted DEATHS as successes
+(a dead env is autoreset to the info_player_start at x 511) - apply `alive &= ~ended` first;
+(2) plan_to_bc costs ~300-350 CPU-min per call regardless of the line count - never beside a
+trainer, cap OMP threads; (3) the trainer keeps only ckpt_latest - run /root/ckwatch.sh (in
+this branch's NOTES above) for per-step snapshots; (4) a resume restores --sil-top, which then
+refuses --sil-coef 0 unless --sil-top 0 is passed; (5) box.py ssh times out at 600 s.
+
+**Next (round 2):** the chamber. Ideas: enter it fast (a search ranked on energy from the
+TUNNEL with the start already solved), a search whose proposals include the policy's surf
+strafing on the corridor ramp (x ~460, where the record turns its drop into ~900 u/s), or
+Go-Explore cells keyed on energy height with roots carrying speed. Re-plan from the incumbent:
+beam_tas from the true start with it passes the start in every lineage now, so a 60 s budget
+is ~50 s of chamber search.
