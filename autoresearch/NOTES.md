@@ -438,3 +438,56 @@ sid_ref's config plus `view_ent_squash 1`.
   217 u, identical paths) - "replicate" means a different `--seed`. sgx1 differed from sgx7 only
   through the curriculum's end-row cap (659c788), which changes the band weights. sgx8 stopped;
   `pbr1b3_sgx9` = the same setup with `--seed 1` (seed is not restored from a checkpoint).
+
+## Round 1 lesson (pbr1b3) - the start room, its anatomy, and what moved it
+
+**Best: 0.613** (`pbr1b3_sgx1` @153M: one greedy episode climbs onto the sill, goes through the
+window onto the surf ramp and falls at 8.8 s, 350 u = 0.61%); hand-on checkpoint: sgx1's
+ckpt_latest (334.5M, md5 2ed815bc...) in $AR_HOME/runs/pbr1b3/pbr1b3_sgx1/.
+
+**Gate 1 is the start room** (measured with the core, not guessed):
+1. a flat floor (hull z 3652) whose west end has a 2,500 u/s DOWN-pusher into teleports
+   (x 648-718) - the SW corner every policy parks in (~215-265 u of progress) is beside it;
+2. a duck-jump (+62 u) onto a step at the west end (x ~700-740), then north-west to a sill
+   (x 602-658, y ~-2885, z 3714 ducked) at a window in the west wall;
+3. a **surf ramp** along the north wall over a KILL LAYER, x 602 -> 214 (390 u, no foothold;
+   the record surfs it at constant z ~3722, ~590 u/s);
+4. a stub at x 90-214 and a drop into the lower level (z ~3350), east, then north;
+5. gate 2 at ~3.9%: an ENERGY gate - the record carries ~80 u more energy height into it than
+   a slow ramp crossing leaves (search frontier h <= 3,730 vs the record's ~3,810).
+The goal field is blind to all of it (the start's field minimum is the SW corner).
+
+**What worked**
+* `--view-ent-squash 1` (generic objective fix; in the recipe now): the yaw entropy bonus was
+  the pre-tanh Gaussian's, which drove the yaw sigma to the 2.718 clamp in ~100M steps
+  wherever the reward is flat (bang-bang look, 180 deg off the velocity); squashed: ~1.0.
+* **Go-Explore with energy-height cells** (`explore_phase1.py --cell-energy 24`): leaves the
+  room in < 1 min of search and reaches 3.2-3.8% (position cells: never; speed buckets: 4 min).
+* **Phase 2 = spawn states from the search's chains** (`tools/gx_spawns.py`, `--spawn-states`,
+  `--spawn-states-curric 0.003` band mode): a scratch policy learns everything downstream of
+  the ramp (from the ramp's west end it drops and crosses the lower level to 3.2%).
+* **The sidistic finisher's weights** (a surfer) are what make the gate learnable at all:
+  warm start + phase 2 climbs onto the sill at ~150-400M (sgx1 153M: 1/9 episodes through the
+  window; replicate sgx7 379M: 2/9 onto the sill/step). Scratch phase 2 never climbed in ~900M.
+
+**What did not**
+* Plain recipe from scratch, 4x novelty, energy shaping everywhere, sid_ref zero-shot: all
+  ~250 u. Two trainers (or a trainer + a search) on one box: both starve.
+* Hand-weighted spawn files (bands chosen after looking at deaths): CLAUDE.md 0b violation,
+  and no better (155-190 u). Replaced by the generic curriculum.
+* The **backward window** (Salimans & Chen) over the union of chains: the deep half of a
+  search's chain set is its failed branches (free falls), so the window parks on dead ends;
+  ~100M steps there wrecked the policy (eval 36 u). Needs ONE chain known to continue.
+* Longer band training after the first climbs drifts back to the corner or into early deaths
+  (sgx6 0.40-0.45; sgx7 after 379M 0.28-0.40).
+
+**Next round, ranked**
+1. Resume the hand-on checkpoint (see 21:29 entry: rebuild the spawn file or pass
+   `--spawn-states '' --spawn-states-curric 0`) and consolidate the climb with a learning-rate
+   cut (the sidistic lineage's R7 finding: skills found at a transient peak drift away at
+   3e-4).
+2. A backward window over ONE continuing chain (a deep cell with descendants), or Florensa
+   weights with the band floor raised, so the ramp rows get practice.
+3. A search rooted at FAST ramp crossings (energy cells at the ramp) for gate 2's energy.
+* The trainer is deterministic per seed on this box: a replicate needs `--seed`.
+* Box uplink 22 KB/s: pull checkpoints by hand (see the harness-issue entry), early.
