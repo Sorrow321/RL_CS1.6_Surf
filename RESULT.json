@@ -62,5 +62,5 @@
   "resume_from": "/home/steam/ar_pb/runs/pbr1b1/pbr1b1_bcur5/ckpt_final.pt",
   "note": "9/9 greedy episodes reach the pit (3.229-3.235 at every eval 800M-1.25B); ckpt_latest is 1.31B, the only snapshot of the run"
  },
- "summary": "Start room solved for the greedy line (0.45 -> 3.234, bcur5; 9/9 to the pit in g2b, 3.235): Go-Explore + entry_search lines + a backward curriculum (--demo-success-d, --yaw-entropy 0, zeroed yaw-mean head). Gate 2 (the pit, 3.23%): Go-Explore rooted at the policy's own tunnel-exit states gets past it (3.95%) by a surf LAUNCH off the east end of a ridge over the pit; ge_stitch --backtrack is re-finding that chain as one line for a backward curriculum from g2b."
+ "summary": "Start room solved for the greedy line (0.45 -> 3.234 bcur5; 9/9 to the pit in g2b, 3.235): Go-Explore + entry_search lines + a backward curriculum (--demo-success-d, --yaw-entropy 0, zeroed yaw-mean head). Gate 2 (the pit, 3.23%): Go-Explore with exact provenance (explore_phase1 --exact-chains, rooted at the policy's own tunnel-exit states) found a way past it (3.93%): a run-up back east inside the tunnel, a fast drop onto the ridge and a launch over the pit; tools/ge_replay.py replayed it exactly into a 1,881-tick line. Running: pbr1b1_g2cur = backward curriculum on that line from g2b's weights."
 }
