@@ -3,26 +3,22 @@
  "round": 7,
  "final": false,
  "best": {
-  "score": 98.478,
-  "eval_file": "/home/steam/ar/runs/r7b2/r7b2_ef15/traj_24044896256.jsonl",
-  "run": "r7b2_ef15",
-  "step": 24044896256,
-  "ckpt": "/home/steam/ar/runs/r7b2/r7b2_ef15/ckpt_stop.pt",
-  "ckpt_note": "r7b2_ef15's last weights at 24,328,011,776 (md5 6d228e20...), copied after the run was stopped",
+  "score": 98.525,
+  "eval_file": "/home/steam/ar/runs/r7b2/r7b2_bel/traj_24870125568.jsonl",
+  "run": "r7b2_bel",
+  "step": 24870125568,
+  "ckpt": "/home/steam/ar/runs/r7b2/r7b2_bel/ckpt_latest.pt",
   "recipe": [
-   "--energy-pot",
-   "1.5",
-   "--energy-pot-front",
-   "0.01",
-   "--critic-warmup",
-   "20",
+   "--respawn-backward-elev",
+   "-60",
+   "60",
    "--record-every",
    "6.25e6",
    "--ckpt-every",
    "1e8"
   ],
-  "resume_from": "r7b2_ef2 ckpt_23912251392 (K 2) <- r7b2_ef1 ckpt_stop (23,011,000,320; K 1) <- incumbent r6b2_tp3 (22,217,752,576)",
-  "commit": "26da1d6"
+  "resume_from": "r7b2_eb3 ckpt_stop (24,794,103,808; --energy-pot 3 --energy-pot-front-bonus 1) <- r7b2_ef15 (24,328,011,776; --energy-pot 1.5 --energy-pot-front 0.01) <- r7b2_ef2 ckpt_23912251392 <- r7b2_ef1 <- incumbent r6b2_tp3 (22,217,752,576)",
+  "commit": "d77c580"
  },
- "summary": "Best 98.478 (r7b2_ef15 at 24.045B; incumbent re-scored 98.315). NEW --energy-pot K (potential on the energy height z + |v|^2/2g) + NEW --energy-pot-front 0.01 (priced only until the episode's record reaches the frontier band): +300 u of energy into the basement, greedy chamber entries 4-11% of eval episodes (incumbent recipe ~0.4%), entries pass beside the funnel at z ~1,460 (rim 1,560); 0 finishes. NEW --energy-pot-front-bonus (pay K x kinetic energy once at the band edge) removed the dip lock the per-call price caused at K 2 (all-CP7 evals, entries x2). The exits from the hole are too flat; NEW --respawn-backward-elev -60 60 lets the goal-anchored rows at the hole climb (they were all clamped to +30 deg) - under test (r7b2_bel)."
+ "summary": "Best 98.525 (r7b2_bel at 24.870B; incumbent re-scored 98.315); 0 finishes but one greedy episode over the funnel rim (z 1,603 via the chamber's east-wall ramp, missed the opening by ~40-50 u). NEW --energy-pot (energy-height potential) + --energy-pot-front (priced only up to the frontier band) + --energy-pot-front-bonus (paid once at the band edge as K x kinetic energy: no dip lock): +300 u of energy into the basement, greedy chamber entries 0.4% -> 10-13% of eval episodes. NEW --respawn-backward-elev -60 60: the goal-anchored rows at the basement hole were all clamped to +30 deg; allowed to climb, the steepest greedy exit rose 565 -> 628 u/s and real frontier-row finishes 1.9 -> 5.4 per 10k."
 }

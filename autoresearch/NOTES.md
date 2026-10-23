@@ -3075,3 +3075,19 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   K 3 / latch 0.01, backward-mix 0.1, front-perturb x1.0-1.3 and everything else restored); commit d77c580. One knob.
   Read-outs: `bmix fin W/E` (more finishes once hole-region rows fly up steeply), the greedy entries' vz at the hole
   top (~580 so far) and their min d (best 1,517), CP health.
+
+### 08:48 UTC: arm 7 (r7b2_bel, backward rows allowed to climb) - 98.525, and one greedy episode OVER THE RIM
+
+* r7b2_bel 24.79-25.07B (~280M steps, 43 evals, all CP7): **best 98.525** (24,870,125,568), 98.512 (25,065M), 98.431,
+  98.429, 98.423, 98.421 ... Over its 43 evals: entries 51 in 387 episodes (**13.2%**; eb3's last 40 evals 10.6%), the
+  steepest hole exit vz 628 (eb3 max 565), the closest approach d **1,469** (eb3 1,564).
+* Training: backward-mix rows finish 57.1% (eb3 54.7%); **real front-perturb rows finish 5.4 per 10k (eb3 1.9)** - the
+  policy finishes from its own frontier states ~3x as often.
+* The 98.525 episode (ep 3): out of the -y hole at 115.32 s with vz 628 (h 2,154), across the chamber to (3,010, -300,
+  1,500) moving north at 1,000 u/s and into the funnel's outer wall at (2,996, -224, 1,501): 60 u under the rim, ~35 u
+  outside the opening (|y| <= 190).
+* The 98.512 episode (25,065M ep 0): from the chamber up the EAST-WALL RAMP (x 3,397, y +551), **over the rim at z
+  1,603** (3,239, 356) at 117.5 s, back toward the funnel moving (-298, -333) and down just outside the opening's
+  north-east corner ((3,190, 183, 1,476): the opening ends at x ~3,150) - the route round 5 predicted (up the east ramp,
+  back over the funnel), missed by ~40-50 u.
+* Box extended to ~11:45 UTC. The run continues (2e9 budget to ~26.8B).
