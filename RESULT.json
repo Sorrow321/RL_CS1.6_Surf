@@ -2,6 +2,18 @@
  "agent": "pbr1b4",
  "round": 1,
  "final": false,
- "best": null,
- "summary": "Round 1 start (no box yet: the market had no offer under the caps at 14:28-14:38 UTC). Built --init-weights CKPT (weights-only warm start, default off, test_init_weights.py) and checked locally that the sidistic finisher's weights load strictly under this map's full recipe. First run when a box comes up: the incumbent recipe from scratch, warm-started from $AR_HOME/incumbent/sid_ref/ckpt.pt by --init-weights (30 min), then a scratch control."
+ "best": {
+  "score": 0.403,
+  "eval_file": "/home/steam/ar_pb/runs/pbr1b4/pbr1b4_iw/traj_0000524288.jsonl",
+  "run": "pbr1b4_iw",
+  "step": 524288,
+  "ckpt": null,
+  "recipe": [
+   "--init-weights",
+   "runs_ckpt.pt (= $AR_HOME/incumbent/sid_ref/ckpt.pt)"
+  ],
+  "resume_from": null,
+  "commit": "b7c17fa"
+ },
+ "summary": "pbr1b4_iw (recipe + --init-weights sid_ref, 345M steps): NULL - trapped at the start (best 0.4% = the first eval; the policy learned to die in 1.5 s). The start is a trap: west is a wall + a push-down death chute; the exit is a corridor ~85 u above the platform, reached by the record only after pumping speed in an east half-pipe (+1,500 u of d the wrong way). Running pbr1b4_esc: + --time-pen 0 --unstuck-max 2 --energy-pot-front 0 (energy paid everywhere). Next if null: a generic exploration mechanism for energy-deficit starts."
 }
