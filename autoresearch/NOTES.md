@@ -3089,3 +3089,12 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
 * **r7b4_t015** (08:26): inc2's 22,268,084,224 snapshot (the middle of that window) + `--unstuck-max 0.15`
   (between 0.2 - more entries, then the CP6 drift at 22.312B - and 0.1 - a longer window, fewer entries): a
   different deterministic path through the same regime.
+
+### 08:50 UTC: T 0.15 from 22.268B null; arm r7b4_t01b = T 0.1 from the window's start (22.243B)
+
+* r7b4_t015 (inc2's 22.268B snapshot + T cap 0.15), 22.274-22.388B, 19 evals: 44 of 171 episodes in the
+  basement, **0 entries**, CP6 stretches at 22.299-22.325B and from 22.375B. Stopped.
+* So the entries are path-specific (deterministic training: each setting is one path): the bare T 0.2 path gave
+  10 in 22.243-22.306B and T 0.1 from 22.293B gave 5 in its first ~70M steps; T 0.15 from 22.268B and the archive
+  K 3 path gave none.
+* **r7b4_t01b** (08:49): inc2's 22,242,918,400 snapshot (the start of the high-entry window) + `--unstuck-max 0.1`.
