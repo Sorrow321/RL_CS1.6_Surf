@@ -149,3 +149,19 @@ def test_rows_at_the_end_of_the_set_can_succeed():
     c.note([0], [960.0])                               # 40 u of 50 needed: a failure
     assert c.win[3] == 1.0 and c.win[2] == pytest.approx(0.99) and c.ep[2] == pytest.approx(1.99)
     assert c.win[0] == 0.0
+
+
+def test_backward_window_moves_on_from_a_hard_but_not_hopeless_stretch():
+    xs = np.arange(0.0, 400.0, 2.0)
+    c = SpawnStateCurriculum(_rows(xs), _Field(), d0=1000.0, gain_frac=0.05, mode="backward",
+                             min_ep=30.0)
+    w = c._window()
+    # 15% success: below the 0.2 bar, above its half
+    k = 0
+    for _ in range(25):
+        for i in w:
+            ok = (k % 20) < 3
+            c.note([i], [1000.0 - xs[i] - (60.0 if ok else 0.0)])
+            k += 1
+        c.step()
+    assert c.tau > 0

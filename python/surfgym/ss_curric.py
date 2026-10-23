@@ -55,6 +55,7 @@ class SpawnStateCurriculum:
         self.noted = 0
         self.tau = 0
         self.advances = 0
+        self._since = 0.0          # window episodes since the window last moved
         self.set_states(states)
 
     @staticmethod
@@ -101,6 +102,13 @@ class SpawnStateCurriculum:
     def _window(self) -> np.ndarray:
         return self.order[self.tau:self.tau + self.D]
 
+    @property
+    def _win_set(self) -> set:
+        key = (self.tau, len(self.order))
+        if getattr(self, "_wkey", None) != key:
+            self._wkey, self._wset = key, set(int(j) for j in self._window())
+        return self._wset
+
     def step(self) -> None:
         """--backward: slide the window by its own success (call once per pool build)."""
         if self.mode != "backward":
@@ -111,12 +119,18 @@ class SpawnStateCurriculum:
             return
         r = win / ep
         last = max(0, len(self.order) - self.D)
-        if r >= self.rate and self.tau < last:
+        # a window that holds at least half the bar for 10 x min_ep episodes moves on too: a
+        # stretch that is hard but not hopeless must not park the sweep for good (the rows it
+        # passes keep being drawn); below half the bar it backs off toward the end
+        if self.tau < last and (r >= self.rate or (r >= 0.5 * self.rate
+                                                   and self._since >= 10.0 * self.min_ep)):
             self.tau = min(last, self.tau + self.step_n)
             self.advances += 1
+            self._since = 0.0
         elif r < 0.5 * self.rate and self.tau > 0:
             self.tau = max(0, self.tau - self.step_n)
             self.advances -= 1
+            self._since = 0.0
 
     def draw(self, rng, n: int) -> np.ndarray:
         if self.mode == "backward":
@@ -150,6 +164,8 @@ class SpawnStateCurriculum:
             self.ep[i] = self.ep[i] * self.decay + 1.0
             self.win[i] = self.win[i] * self.decay + ok
             self.noted += 1
+            if self.mode == "backward" and i in self._win_set:
+                self._since += 1.0
 
     def line(self) -> str:
         tried = self.ep > 0.5
