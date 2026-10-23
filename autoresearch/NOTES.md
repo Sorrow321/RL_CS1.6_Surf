@@ -2989,3 +2989,19 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   1e8`, evals every 6.25M, the resume eval kept. A gentler speed push (K 2: a 300 u/s loss costs 0.6) from
   weights that pass the pit, so the evals sample basement-mode lines (where entries and score happen) while
   the energy rises. If the line locks in the pit again, speed-pot goes to 0.
+
+### 05:58 UTC: isp2 (incumbent weights + speed-pot 2) also locked in the pit; bold arm r7b4_bpit with frontier temperature over the pit
+
+* r7b4_isp2 (22.218 -> 22.411B, 27 evals): the first 3 evals in basement mode (97.898 / 97.916 / 97.936,
+  12 of 27 episodes in the basement, no entry), then from 22.237B (~20M steps, right after the 10.5M-step
+  critic warmup) every eval CP6 (96.52-96.55), 0 of 216 episodes in the basement. So even K 2 sends the line
+  into the pit failure within ~10M actor steps; r7b4_gk (no speed-pot) drifted there within ~50M.
+* A likely amplifier: with K = 8 the archive holds ~40% of the greedy rows, so when the line regresses the
+  current failure (the pit) gets ~40% less greedy-row practice than without it. And at the pit (progress
+  ~94.5%) training samples at keys T 0.2 only (the front-temp band starts at ~97.3%), i.e. almost no
+  exploration where the faster line now fails.
+* **r7b4_bpit** (05:58), bounded: isp2's last weights (22,410,690,560, md5 bdef8cc5...; speed-pot 2 restored)
+  + `--front-band 0.05` (temperature 2 on every head from progress >= 95% of the reservoir's deepest, i.e.
+  from before the pit) + `--respawn-greedy-keep 3` (archive trimmed to its 3 deepest), evals every 6.25M.
+  Read-out: basement-mode evals return (the faster line finds a pit pass) by ~07:30 UTC, else the rest of the
+  round samples the incumbent's own recipe (basement-mode evals are where entries - and score - happen).
