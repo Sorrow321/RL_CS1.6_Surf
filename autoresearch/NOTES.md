@@ -316,7 +316,7 @@ SELF_STATES/CKPT/ARM_RESUME/SCRATCH). Nothing else changes in box.py.
   1,061-state chain set). A warm start measures whether transferred surfing opens the gate; a
   recipe that only works warm is not yet a recipe (PROTOCOL).
 
-### pbr1b3, 2026-10-23 19:30 UTC - the surfer's warm start climbs: 350 u, score 0.613
+### pbr1b3, 2026-10-23 19:13 UTC - the surfer's warm start climbs: 350 u, score 0.613
 
 * `pbr1b3_sgx1` (sid_ref weights + squash + the generic 1,061-state chain set, band
   curriculum G 0.003, 70% file spawns): 110M diagnostics still failed the ramp (it survives
