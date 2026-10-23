@@ -320,3 +320,24 @@ resample every 25 decisions. On a box it runs as it does locally (CPU physics + 
   the first hop sooner), a different spawn seed per wave (the yaw jitter), 4 waves with the ys
   1.89B proposer + 2 waves with the BC checkpoint itself as the proposer (DAgger: the lines start
   where the greedy actually goes); distil per spawn and merge; resume BC from bc_latest.
+
+### 20:16 UTC - expert-iteration round 2: more lines, three spawns, climb-weighted spawns (pbr1b4_bc2)
+
+* Search waves (2048 envs, 30 s cap, progress objective along the self route): with the ys
+  1.89B proposer, --eps 0.25 --resample-every 15, spawn seeds 1-4 -> 3 of 4 FAILED (arc 343;
+  faster cloning culls lineages before they climb), seed 4 crossed at 15.65 s (arc 3,014 u).
+  With the BC checkpoint (2.43B) as the proposer (DAgger), seeds 5-6 -> seed 5 crossed at
+  20.7 s (arc 3,013 u), seed 6 failed. With the earlier --eps 0.15 --resample-every 25: 2 of 3
+  crossed. So far ~4 of 10 waves find the way; resample 25 looks better than 15.
+* The climb (seed 4 line, the earliest): from the floor's SW corner (649, -3098, 3652) jump
+  NORTH while rising -> land ON the plate's SW corner (649, -3068, 3714 = feet on the plate)
+  -> jump SOUTH -> land on the south mouth's ledge (643, -3083, 3714) -> jump W/SW at z ~3740
+  -> crawl. Three hops, each from a standing foothold.
+* plan_to_bc per spawn seed (5,965 + 5,931 rows, 0 dropped) + the round-1 file -> bc_merged.npz
+  (~29.8k rows); spawn_climb.npy = the 3 replayed best spines + their 6 s windows around the
+  tunnel entry (500 ticks before .. 100 after) x4 = 16,141 rows. A distil costs ~300-350
+  CPU-minutes regardless of the line count; two in parallel ~22 min; never next to a trainer.
+* `pbr1b4_bc2` 20:15 UTC = resume of bc_latest (2.43B) + `--bc-file bc_merged.npz --bc-coef 0.5
+  --bc-coef-final 0 --bc-steps 1e9 --bc-target dist --bc-value-coef 0.25 --spawn-states
+  spawn_climb.npy --spawn-states-frac 0.4 --sil-coef 0 --sil-top 0 --front-temp 1
+  --front-band 0.01`.
