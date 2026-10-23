@@ -257,3 +257,17 @@ own reward-free search from the true spawn, no demo or record data, generic cons
   (--sil-coef 0.5 --sil-top 64: a rare tunnel entry stays in the buffer ~780 iterations) +
   --front-temp 0 (the trainer refuses front-temp with SIL). First eval: the view turns
   0.01 deg/tick at low speed (no spin).
+* pbr1b1_sil2 (zeroed yaw head + plate curriculum + --sil-coef 0.5 --sil-top 64): the greedy
+  line COLLAPSED - 123 u (76M) -> 7 u (151M) -> 8 u (227M), dying at the spawn; the SIL loss
+  grew 5 -> 12.9 and the yaw sigma crept 0.078 -> 0.34. Stopped. (pbr1b1_yaw0c, a filler
+  continuation of yaw0 on the original curriculum, ran 18:28-18:33 while I built the next arm.)
+* `--demo-success-d M` (new, flag off bit-identical, tests/python/test_demo_success_d.py): the
+  Salimans-Chen curriculum (DemoCurriculum) only counted FINISHES, so a spine ending in a hard
+  room could never advance; with M a spine episode also succeeds when its ratchet record reaches
+  d(spine end) + M on the shaping field.
+* pbr1b1_bcur5: zeroed-yaw-head warm weights + `--demo-file spine_short.npy` (the shortest
+  spawn->plate->tunnel line, 270 states, _entry/spine_short.npy md5
+  b6e295f63250b43d1de8e3bc7fdce3ac) `--demo-window 10 --demo-grow 10 --demo-front-frac 0.67
+  --demo-success-d -50` (success = record d <= 56,787, 50 u inside the tunnel) + --yaw-entropy 0.
+  The curriculum refuses --respawn-novel / -backward-mix / -front-perturb / -greedy (and
+  --int-real-only needs novel), so those are 0 for this arm: 90% of spawns come from the spine.
