@@ -197,10 +197,15 @@ python autoresearch/box.py release --agent $AR_AGENT
 * Before releasing a box, pull every run you may want to cite:
   `box.py pull --agent $AR_AGENT --run <run>`. Add `--ckpt` for the one you might hand on.
 * Score: `python autoresearch/score.py --best $AR_HOME/runs/$AR_AGENT/<run>/`.
-* The next round's incumbent checkpoint is the winning eval's run's `ckpt_final.pt`, or its
-  `ckpt_latest.pt` if there is no final one, or its newest `ckpt_<step>.pt`, as pulled to
-  `$AR_HOME/runs/`: the first of those that is complete (a truncated or damaged file is
-  skipped). That is the run's NEWEST weights, usually later than its best eval.
+* The next round's incumbent checkpoint comes from the winning eval's run, as pulled to
+  `$AR_HOME/runs/` (a truncated or damaged file is skipped). It is the newest
+  `ckpt_<step>.pt` AT OR BEFORE the winning eval, unless the run's newest checkpoint
+  (`ckpt_final.pt`, else `ckpt_latest.pt`, else its newest `ckpt_<step>.pt`) is more than
+  twice as near the eval; with no snapshot at or before the eval, it is that newest one,
+  usually later than the eval. A snapshot is handed on only if you pulled it: if your best
+  eval falls between snapshots, pull the one before it as well
+  (`box.py pull --agent $AR_AGENT --run <run> --snapshot <step>`; operator, 2026-10-23: r7b2's
+  finish came inside a transient peak, and its ckpt_latest was ~700M steps past it).
   `AR_BRANCH.json`'s incumbent gives `eval_step` and `ckpt_step`. Before you compare against
   the incumbent's score, read the checkpoint's own first eval.
 * `box.py pull --ckpt` downloads to `<ckpt>.part` and replaces the copy already pulled only
@@ -217,7 +222,8 @@ python autoresearch/box.py release --agent $AR_AGENT
 
 ## Wrap-up (at `wrapup_at`, or when a message says ROUND OVER; never before)
 
-1. Launch nothing new. Pull the best run, with its checkpoint (`--ckpt`).
+1. Launch nothing new. Pull the best run, with its checkpoint (`--ckpt`) and the snapshot
+   at or before its best eval (`--snapshot <step>`).
 2. Score it. Write `RESULT.json` with `"final": true` and the summary.
 3. Append the round's lesson to NOTES.md: what worked, what did not, the numbers.
 4. `git add -A && git commit` (trailers) `&& git push origin ar/$AR_AGENT`.

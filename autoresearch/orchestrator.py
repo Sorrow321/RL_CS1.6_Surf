@@ -435,18 +435,36 @@ def ckpt_complete(path: Path) -> bool:
     return ckpt_step(path) is not None
 
 
-def handon_ckpt(run_dir: Path):
+def handon_ckpt(run_dir: Path, eval_step=None):
     """The checkpoint a run hands on: ckpt_final.pt, else ckpt_latest.pt, else its newest
-    ckpt_<step>.pt milestone, whichever is the first COMPLETE one; None if none is."""
+    ckpt_<step>.pt milestone, whichever is the first COMPLETE one; None if none is.
+
+    With eval_step (the step of the run's best eval), the newest complete milestone AT OR
+    BEFORE that eval is handed on instead, unless the checkpoint above is more than twice as
+    near the eval: those are the weights whose training led to the best eval, where the
+    newest ones may have trained on past it. r7b2_bel (2026-10-23) finished once at
+    25,448,939,520 inside a transient peak (greedy chamber entries 5.6% -> 1.9% -> 1.2% in the
+    next 36-eval blocks, no other finish in 870M steps). Its snapshot 54M steps before the
+    finish, resumed, finished again within 85M; its ckpt_latest was ~700M steps past it."""
     milestones = sorted(((int(m.group(1)), p) for p in run_dir.glob("ckpt_*.pt")
                          if (m := re.fullmatch(r"ckpt_(\d+)\.pt", p.name))), reverse=True)
+    newest = None
     for p in [run_dir / "ckpt_final.pt", run_dir / "ckpt_latest.pt"] + [p for _, p in milestones]:
         if not p.exists():
             continue
         if ckpt_complete(p):
-            return p
+            newest = p
+            break
         log(f"  !! {run_dir.name}/{p.name} is truncated or damaged: not handed on")
-    return None
+    if newest is None or eval_step is None:
+        return newest
+    n = ckpt_step(newest)
+    if n is None or n <= eval_step:
+        return newest
+    for s, p in milestones:
+        if s <= eval_step and p != newest and ckpt_complete(p):
+            return p if eval_step - s <= 2 * (n - eval_step) else newest
+    return newest
 
 
 def score_branch(agent: str) -> dict:
@@ -520,7 +538,8 @@ def end_round(st, final=False) -> None:
             new.mkdir(parents=True, exist_ok=True)
             ev = Path(win["best"]["file"])
             shutil.copy2(ev, new / ev.name)
-            ck = handon_ckpt(ev.parent)
+            eval_step = int(ev.stem.split("_")[1])
+            ck = handon_ckpt(ev.parent, eval_step)
             if ck is None:
                 log(f"  !! no complete checkpoint in {ev.parent}: incumbent/ckpt.pt stays the "
                     "previous round's")
@@ -532,10 +551,10 @@ def end_round(st, final=False) -> None:
             for f in ("progress.csv", "run.json"):
                 if (ev.parent / f).exists():
                     shutil.copy2(ev.parent / f, new / f)
-            # the checkpoint handed on is the best run's NEWEST one, usually later than its
-            # best eval (r1b1_ratnovx: best eval 1,633M, ckpt_latest ~2.5B): say both steps,
-            # so the next round does not expect the checkpoint to reproduce the score
-            eval_step = int(ev.stem.split("_")[1])
+            # the checkpoint handed on is the snapshot at or before the best eval when the run
+            # has one (handon_ckpt), else its NEWEST one, usually later than the best eval
+            # (r1b1_ratnovx: best eval 1,633M, ckpt_latest ~2.5B): say both steps, so the
+            # next round does not expect the checkpoint to reproduce the score
             if ck is not None:
                 ck_path, ck_from = str(new / "ckpt.pt"), f"{ev.parent.name}/{ck.name}"
             else:

@@ -562,7 +562,9 @@ def cmd_launch(a):
 
 def cmd_pull(a):
     """Harvest a run to $AR_HOME/runs/<agent>/<run>/: run.json, progress.csv, the launch log,
-    every greedy eval trajectory, and with --ckpt the newest checkpoint (md5-verified)."""
+    every greedy eval trajectory, with --ckpt the newest checkpoint and with --snapshot STEP
+    the milestone ckpt_<STEP>.pt (repeatable; the round end hands on the snapshot at or
+    before the best eval), each md5-verified."""
     rec = need_rec(a.agent)
     dst = AR_HOME / "runs" / a.agent / a.run
     dst.mkdir(parents=True, exist_ok=True)
@@ -588,8 +590,9 @@ def cmd_pull(a):
                     data = fsrc.read()            # read whole before the old copy is replaced
                 (dst / name).write_bytes(data)
     (dst / "_pull.tgz").unlink(missing_ok=True)
-    if a.ckpt:
-        ck = "ckpt_final.pt" if a.final else "ckpt_latest.pt"
+    cks = (["ckpt_final.pt" if a.final else "ckpt_latest.pt"] if a.ckpt else []) + \
+        [f"ckpt_{s}.pt" for s in (a.snapshot or [])]
+    for ck in cks:
         r = ssh(rec, f"md5sum /root/RL_Surf/runs/{a.run}/{ck} | cut -d' ' -f1")
         want = r.stdout.strip()
         if want:
@@ -704,6 +707,8 @@ def main(argv=None):
     p.add_argument("--run", required=True)
     p.add_argument("--ckpt", action="store_true")
     p.add_argument("--final", action="store_true", help="ckpt_final.pt instead of ckpt_latest.pt")
+    p.add_argument("--snapshot", type=int, action="append", metavar="STEP",
+                   help="also pull the milestone ckpt_<STEP>.pt (repeatable)")
     p.set_defaults(fn=cmd_pull)
     p = sub.add_parser("extend")
     p.add_argument("--agent", required=True)

@@ -256,3 +256,8 @@ def test_a_truncated_ckpt_pull_keeps_the_copy_already_pulled(monkeypatch, tmp_pa
     scp["mode"] = "whole"
     box.main(["pull", "--agent", "r1b2", "--run", "r1b2_nth", "--ckpt"])
     assert (dst / "ckpt_latest.pt").read_bytes() == on_box
+    # --snapshot pulls a milestone the same way (the round end hands on the one at or before
+    # the best eval; r7b2 had to scp them by hand on 2026-10-23)
+    box.main(["pull", "--agent", "r1b2", "--run", "r1b2_nth", "--snapshot", "25394937856"])
+    assert (dst / "ckpt_25394937856.pt").read_bytes() == on_box
+    assert not (dst / "ckpt_25394937856.pt.part").exists()
