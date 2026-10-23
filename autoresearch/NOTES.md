@@ -2797,3 +2797,47 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   md5 6838c110...), r6b2_gpt/ckpt_latest.pt (18,282,446,848), r6b2_bmix/ckpt_stop.pt, r6b2_fp*/ (on the box only).
 * Code: commit fee9839 is the last code change (--respawn-front-perturb + counters, --respawn-greedy-turn / -speed,
   --respawn-backward-mix); later commits are notes and RESULT. Box 57219728 released at wrap-up.
+
+## Round 7, branch r7b1 - 2026-10-23 02:28 UTC
+
+### Box
+
+* 02:17 **box 57307538: RTX 3090, Thailand, machine 141910, $0.35/h**, READY in 30 s; deployed with the
+  incumbent ckpt (md5 c713bd69..., r6b2_tp3 at 22,217,752,576).
+* The first launch's record gate timed out (420 s) while record_ckpt baked the no-corner-cut field
+  (goalc_32.npz, not in the maps tarball) on this 3090; the bake finished at the timeout and the cache
+  was written, so the relaunch hit it. On a NEW box, bake it first: `python3 tools/bake_nocut_field.py
+  --map maps/surf_src_sidistic.bsp` (~7 min on a 3090), then launch.
+
+### The incumbent's energy budget, per event (analysis of its 98.315 eval, traj_20614479872)
+
+* Energy height h_E = z + |v|^2 / (2 x 800). The best episode (ep 2): 60 s 9,900; 80 s 7,095; 90 s 6,182;
+  100 s 4,722; 105 s 3,474; 108 s 3,190; 110 s 2,471 (the deep dip, z -174); 112 s 2,364; 114 s 2,354 (the
+  basement entry); 116 s 2,062; 117 s 1,926; 118 s 1,735 (in the chamber, short of the rim).
+* The losses are discrete impacts, not a steady drag: per quarter second, between 100 and 114 s, -520
+  (100.5-100.75 s), -375 (102.25-102.75), -143 (106.5), -295 (108.5), -525 (109.5-110.0, the bottom of the
+  deep dip), i.e. ~1,860 of the 2,370 u lost there; in free flight the line GAINS ~+12 u per 0.25 s (air
+  strafing: the GoldSrc air-accelerate step adds at most ~56 u of h_E per second at 100 Hz, whatever the
+  speed). Nothing in the race reward charges a loss when it happens (the ratchet pays field progress
+  only, the time penalty is 0.1/s).
+* Energy-vs-progress profile of that eval (median h_E at the first tick past P% on the goalc field, over
+  the episodes that get there): 80% 6,160 | 90% 4,144 | 93% 3,436 | 95% 3,160 | 96% 3,127 | 97% 2,341 |
+  97.8% 2,332; basement entry (first tick x > 2,300, z < 1,150 after 100 s) median 2,129 (5 episodes).
+  Script: scratchpad an/eprof.py (ANALYSIS ONLY). Round 6's scripted bench: ~2,300 at the ramp foot clears
+  the rim; the east-ramp route wants ~3,000.
+
+### NEW `--energy-pot C` (default off)
+
+* Potential-based shaping on the mechanical energy height: Phi = C x scale x (z + |v|^2 / 2g), scale = the
+  race reward's own 100/d0 per u, so C = how many u of field distance 1 u of energy height is worth (the
+  same C means the same thing on every map). Paid per call as the change of Phi: energy lost against a wall
+  or in a hard landing is charged when it is lost, energy gained by strafing is paid when gained, and a
+  climb or a fall that trades speed for height pays nothing - unlike `--speed-pot` (|v_xy|), which charges
+  every climb, and the hole entry IS a climb. Ended rows pay 0 and re-anchor (the --speed-pot pattern); a
+  gain above max_step per call is a relocation and is clipped. Generic: physics (gravity read from the
+  core), one constant, nothing read off the map (CLAUDE.md 0b).
+* Tests: tests/python/test_energy_pot.py - per-call pay, a constant-energy climb pays 0, telescoping, the
+  ended-row re-anchor, the relocation clip, 0 = off; the reward module with the flag off is bit-identical
+  to the pre-change rewards.py over 200 random calls with deaths (ratchet + time penalty + novelty); the
+  trainer carries / restores / refuses it and record_ckpt records it (TRAIN_ONLY); flag-off trainer
+  bit-identity (config, csv, eval bytes, weights) vs the pre-change train_fast.py.

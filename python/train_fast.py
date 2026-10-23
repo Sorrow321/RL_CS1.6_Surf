@@ -5979,6 +5979,14 @@ def main() -> None:
                          "telescopes, so it moves credit in time without changing which run is "
                          "best (the user, 2026-10-04, skate_laby: 'lost speed on turns'). "
                          "A checkpoint restores it. 0 = off")
+    ap.add_argument("--energy-pot", type=float, default=None,     # 0 = off
+                    help="race: potential-based shaping on the mechanical energy height "
+                         "h_E = z + |v|^2 / (2 g), Phi = C x the shaping scale (100/d0 per u) "
+                         "x h_E, paid as its change every call: energy lost at a wall or in a "
+                         "hard landing is charged when it is lost, energy gained by strafing "
+                         "is paid when gained, and trading speed for height (a climb) or back "
+                         "pays nothing - unlike --speed-pot. C = how many u of field distance "
+                         "1 u of energy height is worth. A checkpoint restores it. 0 = off")
     ap.add_argument("--surf-bonus", type=float, default=None,     # 0 = off
                     help="race (round 40, pnSURF): REWARD UNITS PER SECOND "
                          "paid while the player is riding a surfable face. "
@@ -7301,6 +7309,9 @@ def main() -> None:
         if args.speed_pot is None and ck_cfg.get("speed_pot") is not None:
             args.speed_pot = float(ck_cfg["speed_pot"])
             restored.append(f"speed_pot={args.speed_pot:g}")
+        if args.energy_pot is None and ck_cfg.get("energy_pot") is not None:
+            args.energy_pot = float(ck_cfg["energy_pot"])
+            restored.append(f"energy_pot={args.energy_pot:g}")
         if args.speed_coef is None and ck_cfg.get("speed_coef") is not None:
             args.speed_coef = float(ck_cfg["speed_coef"])
             restored.append(f"speed_coef={args.speed_coef:g}")
@@ -8661,6 +8672,12 @@ def main() -> None:
         args.speed_coef = 0.0
     if args.speed_pot is None:
         args.speed_pot = 0.0
+    if args.energy_pot is None:
+        args.energy_pot = 0.0
+    if args.energy_pot < 0.0 or not np.isfinite(args.energy_pot):
+        raise SystemExit(f"--energy-pot must be finite and >= 0, got {args.energy_pot}")
+    if args.energy_pot and args.reward != "race":
+        raise SystemExit("--energy-pot is a race-reward term: needs --reward race")
     if args.surf_bonus is None:
         args.surf_bonus = 0.0
     if args.dive_pen is None:
@@ -12800,6 +12817,15 @@ def main() -> None:
             # --speed-pot: a potential in reward units per 1000 u/s - no tick scaling (a change of
             # Phi is the same whatever the tick); training slots only, like speed_coef
             _s.reward_fn.speed_pot = float(args.speed_pot)
+            # --energy-pot: dimensionless (u of field distance per u of energy height), scaled
+            # by the reward's own 100/d0 - no tick scaling either; training slots only
+            _s.reward_fn.energy_pot = float(args.energy_pot)
+            if args.energy_pot:
+                print(f"race{f'[{_s.name}]' if MULTI else ''}: ENERGY POTENTIAL - "
+                      f"Phi = {args.energy_pot:g} x scale x (z + |v|^2 / 2g), paid as its "
+                      f"change per call: 1,000 u of energy height lost = "
+                      f"{args.energy_pot * 1000.0 * 100.0 / max(_s.rf_d0, 1.0):.3f} reward "
+                      f"(d0 = {_s.rf_d0:,.0f}u); ended rows re-anchor")
             _s.reward_fn.surf_bonus = SURF_BONUS_T
             _s.reward_fn.dive_pen = DIVE_PEN_T
             _s.reward_fn.surf_hspd = float(args.surf_hspd)
@@ -13541,6 +13567,8 @@ def main() -> None:
                                       if args.reward == "race" else None),
                        **({"speed_pot": float(args.speed_pot)}
                           if args.reward == "race" and args.speed_pot else {}),
+                       **({"energy_pot": float(args.energy_pot)}
+                          if args.reward == "race" and args.energy_pot else {}),
                        "surf_bonus": (args.surf_bonus
                                       if args.reward == "race" else None),
                        "dive_pen": (args.dive_pen

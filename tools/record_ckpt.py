@@ -88,6 +88,9 @@ TRAIN_ONLY = frozenset({
     "ramp_route_flat",
     # --speed-pot: a training reward term (potential-based speed shaping); a recording pays nothing
     "speed_pot",
+    # --energy-pot: a training reward term (potential-based energy-height shaping); a recording
+    # pays nothing
+    "energy_pot",
     # --min-speed-kill / --min-speed-grace: a TRAINING kill rule (force_fail below a speed
     # floor); evals and recordings never kill, exactly like the stall kill
     "min_speed_kill", "min_speed_grace", "min_speed_secs",

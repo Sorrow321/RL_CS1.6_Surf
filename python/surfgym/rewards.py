@@ -1037,6 +1037,18 @@ class RaceReward:
         # 0 = off (the block is skipped). Set by the trainer on training slots, like speed_coef.
         self.speed_pot = 0.0
         self._spd_prev = None
+        # --energy-pot C (r7b1, 2026-10-23): potential-based shaping on the mechanical ENERGY
+        # HEIGHT h_E = z + |v|^2 / (2 g), Phi = C * scale * h_E (scale = the race shaping's own
+        # 100/d0 per u, so 1 u of energy height is worth C u of field distance on every map),
+        # paid per call as the CHANGE of Phi. Energy lost against a wall or in a hard landing is
+        # charged when it is lost, energy gained by strafing is paid when gained, and a climb or
+        # a fall that trades speed for height (or back) pays nothing - unlike --speed-pot, which
+        # charges every climb. A gain above max_step per tick is a relocation, not physics, and
+        # is clipped. Ended rows hold the NEXT episode's spawn: they pay 0 and re-anchor.
+        # 0 = off (the block is skipped). Set by the trainer on training slots, like speed_pot.
+        self.energy_pot = 0.0
+        self._eh_prev = None
+        self._g_e = 800.0
         # --surf-bonus / --dive-pen (round 40, pnSURF): "surfing = good,
         # diving = bad" as a dense per-tick term. Both are REWARD UNITS PER
         # SECOND on the flag; the trainer converts to per-tick. 0/0 is off
@@ -1223,6 +1235,8 @@ class RaceReward:
         self._g_tick = float(core.config.phys.sv_gravity) * self.tick_ms * 1e-3
         self._vmax = float(getattr(core.config.phys, "sv_maxvelocity", 0.0) or 0.0)
         self._spd_prev = None        # --speed-pot re-anchors on the first call
+        self._eh_prev = None         # --energy-pot too
+        self._g_e = float(core.config.phys.sv_gravity)
         self._best = self._d.copy()
         if self.sr:
             if n % 2:
@@ -1562,6 +1576,18 @@ class RaceReward:
             dv[ended] = 0.0
             r += ((self.speed_pot / 1000.0) * dv).astype(np.float32)
             self._spd_prev = s.copy()
+        if self.energy_pot > 0.0:
+            # --energy-pot: the change of C * scale * (z + |v|^2 / 2g) since the last call
+            vv = v.astype(np.float64)
+            eh = (_states(core)["origin"][:, 2].astype(np.float64)
+                  + (vv * vv).sum(axis=1) / (2.0 * self._g_e))
+            if self._eh_prev is None or self._eh_prev.shape != eh.shape:
+                self._eh_prev = eh.copy()
+            de = eh - self._eh_prev
+            np.minimum(de, clip, out=de)
+            de[ended] = 0.0
+            r += ((self.energy_pot * self.scale) * de).astype(np.float32)
+            self._eh_prev = eh
         if self.dip_speed_coef > 0.0 and self._rec is not None and self.arc is None:
             # `_rec` already holds this state's record (updated above), so
             # dc > _rec + margin is exactly "inside a dip"; ended rows are
