@@ -1,7 +1,7 @@
 {
  "agent": "r6b3",
  "round": 6,
- "final": false,
+ "final": true,
  "best": {
   "score": 98.346,
   "eval_file": "/home/steam/ar/runs/r6b3/r6b3_front8/traj_19862126592.jsonl",
@@ -9,13 +9,22 @@
   "step": 19862126592,
   "ckpt": "/home/steam/ar/runs/r6b3/r6b3_front8/ckpt_latest.pt",
   "recipe": [
+   "--respawn-front",
+   "0.15",
+   "--respawn-front-band",
+   "0.02",
+   "--respawn-front-cross",
+   "1",
+   "--respawn-front-finish",
+   "1",
    "--ckpt-every",
    "1e8",
    "--record-every",
    "6.25e6"
   ],
   "resume_from": "incumbent (17,418,944,512) -> r6b3_front2 (--respawn-front 0.15, advance gate) -> r6b3_front3 (--respawn-front-band 0.02) -> r6b3_front4 (--respawn-front-cross 1) -> r6b3_front6 (--respawn-front-finish 1, from 18,539,872,256) -> r6b3_front8 (bare resume of front6's 18,792,054,784 with evals every 6.25M; identical to r6b3_front7 up to 19,107M)",
-  "commit": "c44f33fd5a85a48067559a3cc2cfff755abe82ed"
+  "commit": "c44f33fd5a85a48067559a3cc2cfff755abe82ed",
+  "ckpt_note": "r6b3_front8's last weights, step 20,273,168,384, md5 df80a5af1b8bfed4e86127cb19c64e59 (scp, md5-checked against the box at wrap-up). Config carries --respawn-front 0.15 with --respawn-front-band 0.02 --respawn-front-advance 0.0015 --respawn-front-cross 1 --respawn-front-finish 1, plus the incumbent's race_no_corner_cut / pitch_sigma_min 0.05 / unstuck_max 0.2; a bare resume restores all."
  },
- "summary": "Round 6 (r6b3). Best eval 98.276 (CP7, 0 finishes; incumbent 98.349). MILESTONE: NEW --respawn-front (spawn rows from the 2 s before real training episodes reach the frontier, kept even if they die; + --respawn-front-advance / -cross / -finish refinements) gave the first REAL training finish of the lineage at 17.74B (~322M steps after the incumbent): basement hole -> the room's east slope -> over the funnel's east rim -> shaft. The greedy line never followed in ~1.4B more steps: it reaches the basement in ~20% of eval episodes and climbs (rarely) only after energy-wasting loops (E ~1,400 vs ~1,600+ needed at the east slope top); even the sampled policy cannot repeat its own crossings from their starts (0/24). Nulls: --respawn-greedy-speed 1-2, SIL (all R>V rows, and --sil-success: finishing episodes only) both hurt the line; frontier share 0.4 regressed the main line. Final arm: r6b3_front7 (front config, evals every 6.25M)."
+ "summary": "Best 98.346 (r6b3_front8 at 19,862M, CP7, 0 greedy finishes; incumbent 98.349): a room entry through the -y basement hole. MILESTONE: NEW --respawn-front (spawn rows from the 2 s before real training episodes reach the frontier, kept even if they die; refined by -advance, -cross, -finish) gave the lineage's first REAL training finish at 17.74B (~322M steps after the incumbent): basement hole -> the finish room's east slope -> over the funnel's east rim -> shaft. The greedy line never followed in ~2.5B more steps: it reaches the basement in 13-28% of eval episodes and climbs only late with too little energy (E ~1,350 vs ~1,600-1,700 needed); probes: neither half of the finish is a repeatable skill (0/24 room entries from the crossing windows, 0/20 finishes from the best east-slope arrivals). Nulls: --respawn-greedy-speed (neutral), SIL (all R>V rows, and NEW --sil-success) and frontier share 0.4 all hurt the line; NEW --respawn-front-speed compounds through the capture loop. Next: a boost that is not recaptured, a committing decision layer, more steps."
 }

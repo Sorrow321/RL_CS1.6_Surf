@@ -2769,3 +2769,76 @@ Standing-hull solid tests (`core.trace(p, p, hull=0).startsolid`) and kill hulls
   inner edge (2,642, -376, 1,158) at ~500 u/s, stopping at its east edge (2,669, -368, 1,195), d 1,617 on the
   scored field; then back into the basement. The same low-energy late climb as the round's two earlier room
   entries (E ~1,200-1,350 at the hole).
+
+## ROUND 6 LESSON (r6b3) - written at wrap-up, 2026-10-23 01:06 UTC
+
+**Result:** best greedy eval from the true start **98.346** (r6b3_front8 at 19,862,126,592, a room entry through the -y basement hole; incumbent 98.349): CP7, the basement before
+the finish room, 0 greedy finishes. **But the first REAL training finish of the lineage**: with NEW `--respawn-front`
+a training episode that was never a novel row finished the map at 17.74B steps, ~322M steps after the incumbent's
+checkpoint; the novel ceiling had sat just above the funnel rim (d_best 1,415 u) for the whole of round 5.
+
+**Per-run bests (score.py):** gs 98.276 | sil 98.227 | front 98.276 | front2 98.261 | front3 98.263 | front4 98.270 |
+front5 98.262 | fsil 98.294 | front6 98.260 | front7 98.266 | fspd 98.249 | **front8 98.346** (237 evals). 0 greedy finishes.
+
+**The finish route training found** (frontier captures, box-side checkpoint summaries): on the first return leg of
+the basement loop (heading west at x ~3,000-3,300, |v| ~1,300, E ~1,860-2,190) ride the lane's outer slope
+inward-up, press outward, rise through the -y hole's inner edge (v ~(-200, -950, +500)), cross the finish room to
+the top of its east slope (x ~3,400, z ~1,400-1,550), get just above the funnel's EAST rim (x ~3,070-3,275, z
+~1,550-1,610, E ~1,600-1,700) and drop into the funnel and the shaft. Geometry (hull traces): the room is a closed
+tall box (x 2,490-3,400, |y| < 680, z 1,200-6,600) entered only through two holes (x 2,500-2,680, |y| 384-672)
+that sit outside the lanes' outer slopes; the funnel cone stands in the middle of it.
+
+**What worked:**
+1. **NEW `--respawn-front F`** (surfgym/frontier_rows.py): F of the non-start spawn rows replay the policy's OWN
+   states from the 2 s before each REAL episode's new record near the ceiling, kept even when the episode dies
+   right after (the reservoir's 2 s margin drops exactly those). Three refinements, each from a measured failure
+   mode of the one before:
+   * `--respawn-front-advance 0.0015` (default): only ARRIVALS (>= 0.0015 x d0 of field progress over the window),
+     not crawls - the first pool filled with one dead end (agents creeping at ~110 u/s on the east slope);
+   * `--respawn-front-cross 1`: only windows that start outside the band and end inside - once episodes finished,
+     the ceiling-anchored band held the "fall down the finish shaft" windows (82% of the pool);
+   * `--respawn-front-finish 1`: a window joins only if its episode then finishes (filters new captures; an
+     inherited pool is kept as the bootstrap).
+2. Diagnostics worth reusing (scratchpad scripts in the notes above): hull-trace x-z / y-z / x-y maps with true kill
+   hulls; the box-side pool summaries; the greedy census (basement entries, room entries, vz under the holes per
+   eval episode) - the honest per-gate measure here, since best-episode scores sit at 98.1-98.3 whatever happens.
+
+**What did not work:**
+* `--respawn-greedy-speed 1.0 2.0` (NEW): neutral on the line, no climb in 200M; boosting every greedy failure
+  point (deaths at 22-98 s too) is not targeted, and CEM shows energy alone does not make the climb.
+* SIL 0.1 tempered top-256 (all R > V rows): eval mean 70k vs ~78k, no climb. NEW `--sil-success 1` (only rows of
+  real episodes that finish): sigma 0.079 -> 0.059, basement reach 21% -> 15%, more episodes stuck at 97%. Both
+  hurt the line; imitation narrowed the policy upstream.
+* Frontier share 0.4: the line regressed (deaths in the deep pit after the chimney at 96.7%) - the climb practice
+  must not starve the main line.
+* NEW `--respawn-front-speed 1.0 1.4`: training finishes jumped (capture counter 430 -> 871) but the boost
+  COMPOUNDS through the capture loop (a recaptured boosted window is boosted again: pool |v| p50 ~900 -> 1,363)
+  and the pool became trivial high flights; the greedy line did not move.
+
+**Why the greedy line never followed (measured):** it reaches the basement in only 13-28% of eval episodes
+(checkpoint to checkpoint), loops first and climbs (twice in the round) only late with E ~1,400; probes from the
+policy's own states: from 364 crossing windows' starts greedy 0/12 and sampled 0/12 entered the room; from the best
+east-slope arrivals (E p50 1,618) greedy 0/10 and sampled 0/10 finished. Neither half of the finish is a repeatable
+skill yet - the training finishes are rare lucky sequences, and the energy at the east slope's top (~1,450-1,620)
+is at the edge of what the rim needs (~1,600-1,700+).
+
+**For whoever continues:** the route and the mechanism exist. Next levers, untried: the frontier rows with a speed
+boost that is NOT recaptured (capture only from unboosted spawns); a decision layer that commits to the multi-second
+climb (CLAUDE.md 0c); more steps - the earlier gates of this lineage took 100M-1.6B steps after training's ceiling.
+
+**Ops:** box 57223179 (RTX 3090, $0.188/h, Ontario, machine 120725), ~14:17-00:5x UTC, ~140-150k steps/s with
+evals every 12.5M. The first rental (RTX 5080, machine 150677) had a foreign tenant on its GPU (100% busy, nothing
+of ours running) - blocklisted by hand (vast_pick.py --block has no such reason). Local CPU record_ckpt runs at
+~12x slower than real time; short probes (10-20 episodes of 8-10 s) are fine.
+
+## Wrap-up (r6b3) - 2026-10-23 01:06 UTC
+
+* Final: RESULT.json `"final": true`, score **98.346** (r6b3_front8, eval traj_19862126592: 9 episodes, best 98.35%,
+  median 96.71%, 0 finishes, CP7; 237/237 valid evals in the run).
+* Checkpoint of the best run: /home/steam/ar/runs/r6b3/r6b3_front8/ckpt_latest.pt (20,273,168,384, md5
+  df80a5af1b8bfed4e86127cb19c64e59), pulled by scp after stopping the trainer and md5-checked. Also local:
+  r6b3_front2/ckpt_stop.pt (17,834,180,608 - the first checkpoint after a real training finish), r6b3_front3/ckpt_stop.pt,
+  r6b3_front4/ckpt_stop.pt, r6b3_fsil/ckpt_latest.pt.
+* Code: --respawn-greedy-speed (0fda1d2), --respawn-front (ec2923c) + -advance (5920b65) + -cross (0e7d060) + -finish
+  (d953e85) + -speed (c44f33f), --sil-success (d8479d6); every flag default off and bit-identical when off (tests).
+* Box 57223179 (RTX 3090, $0.188/h) released at wrap-up.
