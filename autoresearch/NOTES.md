@@ -79,3 +79,63 @@ resample every 25 decisions. On a box it runs as it does locally (CPU physics + 
 ## Round log
 
 (winners append below)
+
+## pbr1b2 (round 1) - working notes
+
+### 2026-10-23 14:34 UTC - start
+
+* Box: vast 3090 machine 144293 at 0.375 $/h (rented 14:32 after ~5 min of "no offer passes":
+  the >=32-thread filter leaves very few offers once three branches hold boxes).
+* WR line on the goalc field (ANALYSIS ONLY): d is monotone along the record's line except
+  the first ~4 s - the record goes EAST from the spawn (d 57,232 -> 58,664, +1,430 u), turns
+  and comes back west past the spawn at ~6.5 s - and one 50 u bump at ~21 s. So apart from
+  the start the field is a good guide along the line a human takes (the deception risk is
+  free flight across voids, not a field that points the wrong way).
+* NEW tools/transfer_ckpt.py: a cross-map warm start. A plain resume of another map's
+  checkpoint would restore its greedy-death pool (raw sidistic coordinates, restored whatever
+  the map), its --unstuck best reading (a sidistic distance) and its config map (the record
+  gate then looks for a map the box does not have). The tool keeps the weights + Adam, sets
+  the target map, drops all run state and restarts the step at 0 (generic: nothing in it
+  reads the target map). sid_ref -> runs/pbr1b2/xfer/sid2pb_ckpt.pt.
+
+### 2026-10-23 15:16 UTC - THE START GATE (analysis only: BSP entities + scripted physics)
+
+The first gate of this map is the start itself, and it is an ENERGY gate the field does not show:
+
+* The spawn platform (x ~650..1150, y -3155..-2845, floor z 3617) is walled north, south and
+  west (scripted walking/jumping/duck-jumping west stops at x ~650-730). Its west edge carries two
+  func_conveyor steps under two trigger_push volumes that push DOWN at 2500 u/s (angles 90 0 0):
+  a trap, not a booster. Its north edge has the "healingdoor" triggers/doors (dmg -10000).
+* Jumping over the platform's north and south strips (x 856..1144, y > -2906 or < -3098, hull
+  top above ~3700) is a fatal trigger_teleport (start, bbox x 865-1151 z 3696-3780); the centre
+  band y -3098..-2906 and anything at x < 856 are safe (killmap: one-tick teleport test).
+* The only exit is EAST into a U-trough (x ~1150..2400) whose floor is a fatal teleport (start,
+  bbox x 192-2396 z 3236-3667): walking east off the platform dies at 2.5 s, z 3312.
+* The WR (analysis only) pumps that trough: east down the ramp to 1,150 u/s, up the far side to
+  x 2361 z 3635, back west to x 1126 at z 3713 (~800 u/s), then flies WEST over the platform's
+  centre band and the west wall at z ~3710-3734 and drops at x ~70-300. d rises +1,430 u on the
+  way out and only falls below the spawn's after ~6.5 s.
+* So: a ramp speed-up (energy gain z + v^2/2g of ~+430 u) before any field progress is possible,
+  under a ratchet that pays nothing until it is done, beside two kill zones that punish the
+  random jumps an exploring policy makes. Exactly the CLAUDE.md 0b case ("speedup on ramps that
+  are not shown by reward vector field") - so the fix must be generic, not a trough term.
+
+### 2026-10-23 15:16 UTC - arm 1: pbr1b2_xfer (sidistic finisher -> princess, full recipe) - NULL
+
+* zero-shot (step 0, 9 greedy eps on the box): 0.394 - it walks the platform at ~250 u/s for the
+  whole 300 s, never drops into the trough.
+* training (warm, recipe, 117-127k steps/s - GPU-bound on this map, 99% util, so ~120k is this
+  map's 3090 rate, not a bad box): evals 0.406 (0.5M) -> 0.066 (76M) -> 0.088 (151M). The
+  reservoir's deepest state stayed at 99.36-99.37% of d0 (~360 u, the platform's west edge).
+  By 151M training episodes were ~2 s long: it learned to SUICIDE into the trough (stalling
+  15 s costs 1.5 of time penalty, dying costs nothing, the pump pays nothing). Stopped at 155M.
+* the transfer prior does not help at this gate; the warm surfer is not pulled into the trough
+  because nothing pays for energy behind the frontier (--energy-pot-front-bonus pays only when
+  the record ENTERS the frontier band, i.e. after a successful pump).
+
+### arm 2: pbr1b2_xen - the same warm start with --energy-pot-front 0 --energy-pot-front-bonus 0
+
+The recipe's energy potential (K 3, Phi = K h / 1000, h = z + |v|^2 / 2g) paid on every call
+instead of only once at the band edge: a pump in the trough is paid as it happens (~+1.3 for the
+WR's +434 u), so the gate is shaped by a physical invariant, no map constant. Risk: energy
+farming in the trough instead of exiting (sidistic's "dip lock" reason for the front form).
