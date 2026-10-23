@@ -79,3 +79,24 @@ resample every 25 decisions. On a box it runs as it does locally (CPU physics + 
 ## Round log
 
 (winners append below)
+
+## pbr1b4 (round 1) - 2026-10-23 14:39 UTC: start
+
+* **The start, measured on the record line (ANALYSIS ONLY).** The goal field (goalc_32) falls
+  almost monotonically along the WR line from 0.27 s to the finish: after the start the largest
+  rise above the running minimum is ~200 u (at ~21.7 s). The one exception is the first ~6 s:
+  the record runs EAST from the spawn into a half-pipe (d 57,149 -> 58,643, +1,500 u), turns,
+  comes back ~100 u above the spawn and flies WEST over the roof of the chamber beside the
+  spawn, dropping in at x ~ 0 (WR ~8.3 s). In the field the chamber is DOWNHILL from the spawn
+  (d ~55-56.5k): the field already points the right way, and the half-pipe is the record's
+  speed gain (~900 u/s into the chamber), not a hidden route. So the first gate should be
+  "enter the chamber slow and survive it", not a deceptive dip.
+* **New flag `--init-weights CKPT`** (default off; tests/python/test_init_weights.py): a
+  FRESH run whose policy starts from CKPT's weights and nothing else (the optimizer, the step
+  counter, every reservoir, the novelty table and the schedules start as scratch's). A plain
+  --ckpt resume onto another map would also restore sidistic's reservoir, greedy-death states,
+  novelty table and --unstuck reading. The sidistic finisher (sid_ref, 25.39B steps) loads
+  strictly under this map's full recipe (37 tensors; checked locally on CPU).
+* **Harness issue (market):** at 14:28-14:38 UTC no offer passed the filters: the cheapest
+  allowed card was a 5080 at 0.667 $/h (cap 0.65), 4090s from 0.669 (cap 0.45), 5090s from
+  0.936 (cap 0.60), two 3090s at 1.33+. `rent` was refused four times.
