@@ -4744,6 +4744,13 @@ def main() -> None:
                          "the spine's last state - the curriculum position is not in the "
                          "checkpoint, so a continuation passes where the previous run's log "
                          "left it ('demo starts [T,...]'). Not a config key; default = n-1")
+    ap.add_argument("--demo-success-bonus", type=float, default=None,   # None = off
+                    help="--demo-success-d: an episode whose ratchet record CROSSES the spine's "
+                         "success line (d(spine end) + --demo-success-d) is paid this once, like "
+                         "a finish; episodes that start past the line are never paid. The "
+                         "curriculum's success becomes the objective's too, so a line whose "
+                         "payoff lies seconds past a nearer field optimum is worth flying. "
+                         "Config only when set; ckpt restores")
     ap.add_argument("--demo-success-d", type=float, default=None,   # None = off
                     help="--demo-file: an episode started from the spine counts as a SUCCESS "
                          "for the backward curriculum when its ratchet RECORD (the deepest "
@@ -7841,6 +7848,10 @@ def main() -> None:
         if args.demo_success_d is None and ck_cfg.get("demo_success_d") is not None:
             args.demo_success_d = float(ck_cfg["demo_success_d"])
             restored.append(f"demo_success_d={args.demo_success_d:g}")
+        if (args.demo_success_bonus is None
+                and ck_cfg.get("demo_success_bonus") is not None):
+            args.demo_success_bonus = float(ck_cfg["demo_success_bonus"])
+            restored.append(f"demo_success_bonus={args.demo_success_bonus:g}")
         if args.int_view is None and ck_cfg.get("int_view") is not None:
             args.int_view = int(ck_cfg["int_view"])
             restored.append(f"int_view={args.int_view}")
@@ -11365,6 +11376,8 @@ def main() -> None:
               f"window {args.demo_window}, advance/backoff at "
               f"{args.demo_rate:.0%} window finish rate "
               f"(demo replaces the reservoir share of the pool)")
+        if args.demo_success_bonus is not None and args.demo_success_d is None:
+            raise SystemExit("--demo-success-bonus pays the --demo-success-d line: give both")
         if args.demo_success_d is not None:
             if not args.race_ratchet:
                 raise SystemExit("--demo-success-d reads the ratchet record: it needs "
@@ -14326,6 +14339,9 @@ def main() -> None:
     if args.demo_file and args.demo_success_d is not None:
         # --demo-success-d: dumped only when set; a resume restores it
         meta["config"]["demo_success_d"] = float(args.demo_success_d)
+    if args.demo_file and args.demo_success_bonus is not None:
+        # --demo-success-bonus: dumped only when set; a resume restores it
+        meta["config"]["demo_success_bonus"] = float(args.demo_success_bonus)
     if args.race_sr:
         # --race-sr: dumped only when on, so a flag-off run.json is the
         # control's byte for byte (test_int_split's identity check)
@@ -15254,6 +15270,13 @@ def main() -> None:
         print(f"--demo-success-d {float(args.demo_success_d):g}: a spine episode succeeds when "
               f"its record reaches d <= {DEMO_END_D:,.0f} (the spine end's {_de:,.0f} + "
               f"{float(args.demo_success_d):g}) or it finishes")
+    DEMO_BONUS = 0.0                      # --demo-success-bonus: paid once per crossing episode
+    DEMO_PAID = None
+    DEMO_BONUS_N = [0]
+    if DEMO_END_D is not None and float(args.demo_success_bonus or 0.0) > 0.0:
+        DEMO_BONUS = float(args.demo_success_bonus)
+        print(f"--demo-success-bonus {DEMO_BONUS:g}: an episode whose record crosses d <= "
+              f"{DEMO_END_D:,.0f} is paid {DEMO_BONUS:g} once (one that starts past it never is)")
     b_logp = torch.zeros((T, N), device=device)
     b_val = torch.zeros((T, N), device=device)
     b_rew = torch.zeros((T, N), device=device)
@@ -17740,7 +17763,8 @@ def main() -> None:
                           f"{ep.sum():,.0f}  wins {wins:,.1f}")
         if demo is not None and it_no % 100 == 1 and demo.last_info:
             print(f"  {demo.last_info}  |  demo-tracked eps "
-                  f"{demo.ep.sum():,.0f}  wins {demo.win.sum():,.1f}")
+                  f"{demo.ep.sum():,.0f}  wins {demo.win.sum():,.1f}"
+                  + (f"  |  spine-line bonuses {DEMO_BONUS_N[0]:,}" if DEMO_BONUS else ""))
             print(f"  {demo.region_report()}")
         tm.add("pool", t_pool)
         # PPO hygiene counters: per-ITERATION deltas, zeroed here, not
@@ -18491,6 +18515,19 @@ def main() -> None:
                     r_dec = reward_fn(prev_obs, o2, term_obs, base_r,
                                       done_acc, ended_acc & ~done_acc, core,
                                       goal=goal_acc)
+                    if DEMO_BONUS:
+                        # --demo-success-bonus: the record (after this call; an ended row's is
+                        # already the NEW episode's spawn) crossing the spine's success line
+                        _rec = np.asarray(reward_fn._rec)
+                        if DEMO_PAID is None:
+                            DEMO_PAID = _rec <= DEMO_END_D
+                        _hit = (~ended_acc) & (~DEMO_PAID) & (_rec <= DEMO_END_D)
+                        if _hit.any():
+                            r_dec = np.array(r_dec, copy=True)
+                            r_dec[_hit] += DEMO_BONUS
+                            DEMO_PAID |= _hit
+                            DEMO_BONUS_N[0] += int(_hit.sum())
+                        DEMO_PAID[ended_acc] = _rec[ended_acc] <= DEMO_END_D
                     r_acc += r_dec
                     if INT_SPLIT:
                         rint_acc += _int_r()

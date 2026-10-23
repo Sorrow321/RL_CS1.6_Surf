@@ -432,3 +432,15 @@ the backward curriculum (--demo-file + --demo-success-d) on the found line. Not 
   a ramp U-turn) reaches 20-59%; band [1230,1239] (0.1-0.2 s BEFORE the impact, mid-air while
   the line air-strafes right ~40 deg with the view turning 2 deg/tick, ducked) is at 0.0% in
   every visit: the policy does not reproduce the impact angle the bounce needs.
+* Why it stalls (probe, 22:20 UTC: record_ckpt of g2cur2's ckpt_latest spawned at line_a states
+  1230 and 1250): the GREEDY policy flies from both straight into the pit (811, -3,287) in ~2 s.
+  The pit is the field's local optimum (3.23%), ~0.3% above the line state and 2 s away; the
+  line's ramp U-turn first DIPS (2.99 -> 2.75%) and pays its +1.0% only ~5 s later. Under the
+  20 s discount and the ratchet, P(success) ~0.4 x 0.78 ~ the pit's certain 0.31: indifferent.
+  It gets worse at the line's start: 7 s of run-up back east in the tunnel (no new record) then
+  the payoff at 10-18.8 s, discounted to ~1.4 units, against the pit's +2.0 at ~2.5 s (~1.76).
+  The ratchet alone prefers the pit even for a policy that could fly the line perfectly.
+* So `--demo-success-bonus B` (new, flag off bit-identical): an episode whose ratchet record
+  CROSSES the spine's success line (d(end) + --demo-success-d) is paid B once (episodes that
+  spawn past it never are). B = 50 = the finish bonus. The curriculum's success becomes the
+  objective's: 50 x 0.9995^1880 ~ 19.5 at the line's start against the pit's ~1.8.
