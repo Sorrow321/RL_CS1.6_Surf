@@ -3142,3 +3142,13 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   from the peak weights. Throughput 128k steps/s cumulative (evals twice as often).
 * Branch best still 107.176 (bel, 118.05 s). Score = 100 + 10 x finish fraction + 10 x (1 - t/300): a second
   finishing episode in one eval is worth +1.1.
+
+### 11:41 UTC: arm 8 fading like arm 7; arm 9 r7b2_lr2 = arm 8's post-finish snapshot + `--lr 5e-5`
+
+* r7b2_lr1 25.395-25.81B (153 evals): the one finish (107.140 at 25,480M) amid a cluster of near-misses (98.46-98.57,
+  25.455-25.493B); real front-perturb finishes per 150 iterations 32.0 / 38.3 / 28.3 / 29.7 / 17.4 / 5.7 per 10k -
+  the same fade as bel's, slower. Weights: runs/r7b2_lr1/ckpt_stop.pt on the box (md5 e44b287f...).
+* **r7b2_lr2** (11:41 UTC): resume of lr1's ckpt_25495076864 (15M steps after its finish; md5 bea41e20..., pulled) +
+  `--lr 5e-5 --record-every 3.125e6 --ckpt-every 1e8` (everything else restored). Both runs started from the 25.39B
+  weights finished within 50-90M steps; this samples the post-finish weights with half the step size again, until
+  the wrap-up.
