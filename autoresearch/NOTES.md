@@ -423,3 +423,8 @@ sid_ref's config plus `view_ent_squash 1`.
 * 21:29 `pbr1b3_sgx7` (the exact sgx1 replicate from the fresh sid_ref weights): 248 / 251 /
   217 u at 2M / 77M / 153M - no climb at 153M this time; the runs are not bit-reproducible and
   sgx1's climb was one episode in 45. It keeps training to the end of the round.
+* 21:57 `pbr1b3_sgx7` evals 228M 198 u, 304M 248 u, **379M 271 u (0.472): episode 5 climbs
+  onto the sill (z 3741), episode 8 onto the step (z 3724)**, neither goes west through the
+  window; several episodes now die in 6-9 s (the climb attempts meet the down-pusher / kill
+  strip). The climb reappears in the replicate at ~1-2 episodes in 9 by ~380M: it is in the
+  surfer lineage's repertoire, not only sgx1's lucky episode. Box extended to 01:56 UTC.
