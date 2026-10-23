@@ -5278,6 +5278,12 @@ def main() -> None:
                          "the checkpoint config and mirrored by "
                          "tools/record_ckpt.py")
     # --- --keys-hold: the movement keys as HELD STATE (surfgym/keyshold.py) -
+    ap.add_argument("--keys-hold-spawn-duck", action="store_const", const=1, default=None,
+                    help="--keys-hold: an episode that SPAWNS crouched (a demo / reservoir / "
+                         "spawn-state row with ducked set) starts with duck HELD instead of "
+                         "neutral, so an exact mid-air crouched state does not unduck on its "
+                         "first tick unless the policy re-presses duck at once. Map-start spawns "
+                         "(standing) are unchanged. Config only when set; ckpt restores")
     ap.add_argument("--keys-hold", action="store_const", const=1, default=None,
                     help="the fwd, side and duck heads each gain a KEEP bin "
                          "at index 0 (3->4, 3->4, 2->3 bins); bin 0 holds "
@@ -7848,6 +7854,9 @@ def main() -> None:
         if args.demo_success_d is None and ck_cfg.get("demo_success_d") is not None:
             args.demo_success_d = float(ck_cfg["demo_success_d"])
             restored.append(f"demo_success_d={args.demo_success_d:g}")
+        if args.keys_hold_spawn_duck is None and ck_cfg.get("keys_hold_spawn_duck"):
+            args.keys_hold_spawn_duck = 1
+            restored.append("keys_hold_spawn_duck")
         if (args.demo_success_bonus is None
                 and ck_cfg.get("demo_success_bonus") is not None):
             args.demo_success_bonus = float(ck_cfg["demo_success_bonus"])
@@ -12146,6 +12155,8 @@ def main() -> None:
     # outright (see the resume block). Having no warm start to protect, it
     # yields the trailing slot to --race-ratchet, which does.
     N_KEYS = keyshold.N_FEATURES if args.keys_hold else 0
+    if args.keys_hold_spawn_duck and not N_KEYS:
+        raise SystemExit("--keys-hold-spawn-duck needs --keys-hold (it sets the held duck)")
     # --ramp-obs-pass: the pass flag, LAST of all - after the ratchet gap - so a checkpoint
     # without it grows onto it by widen_for_obs' trailing zero-pad (its own function at step 0)
     N_PASS = 1 if (RPLAN and int(args.ramp_obs_pass or 0)) else 0
@@ -14339,6 +14350,9 @@ def main() -> None:
     if args.demo_file and args.demo_success_d is not None:
         # --demo-success-d: dumped only when set; a resume restores it
         meta["config"]["demo_success_d"] = float(args.demo_success_d)
+    if args.keys_hold_spawn_duck:
+        # --keys-hold-spawn-duck: dumped only when on; a resume restores it
+        meta["config"]["keys_hold_spawn_duck"] = 1
     if args.demo_file and args.demo_success_bonus is not None:
         # --demo-success-bonus: dumped only when set; a resume restores it
         meta["config"]["demo_success_bonus"] = float(args.demo_success_bonus)
@@ -18690,6 +18704,11 @@ def main() -> None:
                     # bootstrap (which reads keys.boot) and BEFORE
                     # fill_vision.
                     keys.reset(ended_acc)
+                    if args.keys_hold_spawn_duck and ended_acc.any():
+                        # --keys-hold-spawn-duck: a fresh episode whose spawn row is already
+                        # crouched holds duck (engine bin 1) from its first tick
+                        _dk = ended_acc & (np.asarray(sv_view["ducked"]) > 0)
+                        keys.state[_dk, 2] = 1
                 if surf_flag is not None:
                     # --obs-surf: every episode start forgets the previous decision's vz (a
                     # fresh spawn has nothing to compare with, so its first flag reads 0).

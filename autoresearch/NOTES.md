@@ -452,3 +452,15 @@ the backward curriculum (--demo-file + --demo-success-d) on the found line. Not 
   helper on both paths, logs the first payment) and relaunched as **pbr1b1_g2cur4** (22:51 UTC)
   from g2cur3's ckpt_latest (2.338B, md5 e7b182cc...), `--demo-tau0 1230`: first payment at
   2.340B, training reward per episode 0.2 -> ~10.
+* Root cause of the 1230 wall (core replay, 23:10 UTC): the line holds DUCK through the flight and
+  releases it only at the impact (its raw actions: back+left with the view turning -2 deg/tick
+  1200-1250, duck held; at 1252 duck released, right strafe). Replaying the line's own actions
+  from state 1230 or 1240 reproduces it exactly; the same actions with duck released until the
+  impact unduck the hull mid-air, drop it to the floor (z 3,333) and the bounce never happens.
+  --keys-hold resets the held keys to NEUTRAL (duck released) at every episode start, so every
+  curriculum spawn before the impact unducked on its first tick unless the policy re-pressed duck
+  at once - 0.0% in every visit; after the impact the line itself releases duck, so the neutral
+  reset matched and the policy reached 20-59%. A spawn-semantics bug for any crouched exact
+  state (demo, reservoir, spawn-state rows), not a skill gap.
+* `--keys-hold-spawn-duck` (new, flag off bit-identical): an episode whose spawn row is ducked
+  starts with duck HELD.
