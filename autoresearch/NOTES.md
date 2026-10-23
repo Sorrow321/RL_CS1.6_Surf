@@ -3046,3 +3046,21 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   refused with --obs-compass (the ego compass is not reflected), and it would not transfer the -y entry to the +y return leg in
   an UNMIRRORED greedy eval: a mirrored episode only changes which side the policy believes it is on; the policy's response to a
   "+y-looking" observation is still trained only by episodes that look +y.
+
+### 07:20 UTC: arm 4 r7b1_fp15 stopped (null); the arrival side decides the entries; arm 5 r7b1_gate (clean restart)
+
+* **r7b1_fp15** (epf's final + front-perturb band 0.01, x1.0-1.5), 23.183 -> ~23.33B (~150M): 12 evals 97.90-97.98 (CP7),
+  medians 97.9% in most, 7-9 of 9 episodes in the basement - the most consistent line of the round - but 0 greedy entries, and in
+  training the wider band DILUTED the rows: chamber-depth front-perturb episodes in 2-27 of 50 iterations (epf: every iteration),
+  rim-depth 0-1, finishes 0-1 per ~3,000. Round 6's fp4 / fp6 saw the same with wider bands. Weights kept on the box
+  (runs_ckpt_fp15.pt).
+* **The arrival side** (the y side of the passage exit at the basement entry): the incumbent's line arrives on BOTH sides (the
+  control's evals: 8 -y, 7 +y), and round 6's entries all came from the -y RETURN leg, i.e. +y arrivals (arrive, loop east,
+  U-turn, come back on the other side). ep1's suicide phase made every arrival -y (dropping into the -y outer channel at once),
+  and the gated runs inherited it: epf's last 10 evals 49 -y / 6 +y arrivals, fp15's 50 / 16. A -y arrival returns on +y, where
+  the policy has no entry (the probe above). So the energy route works, but the detour through ep1 cost the entry side.
+* **r7b1_gate** (07:20): the INCUMBENT's weights (22,217,752,576, md5 c713bd69...) + `--energy-pot 1 --energy-pot-front 0.01
+  --critic-warmup 20 --ckpt-every 1e8`, the incumbent's own front-perturb settings (band 0.005, x1.0-1.3) restored, evals every
+  12.5M. The arm this round would have run first with hindsight: the energy credit gated at the frontier from the start, so the
+  basement suicide is never learned and the arrival mix can stay ~50/50. Read-outs: the energy at 97% (ep1: +200 u in ~140M
+  steps), the arrival mix, greedy entries.
