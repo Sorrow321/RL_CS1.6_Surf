@@ -3118,3 +3118,11 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   --critic-warmup 20`, evals every 6.25M, everything else restored. With the gate the deep-dip trade still favours flying on at
   C = 1.5 (keep 1.5 x 3.2 = 4.8 by dying vs 1.5 x 2.6 + 1.5 of progress = 5.4; at C = 2 the margin is ~0.3). Revert to C = 1 if the
   line breaks within ~45 min.
+
+### 10:25 UTC: r7b1_ep15 (C 1.5) at +95M - the line holds; 98.416; arrivals swing to -y
+
+* r7b1_ep15 22.856 -> 22.95B, 15 evals: **98.416** (22.876B, an entry from a +y arrival, apex 1,442 - h_E 2,605 at the basement
+  arrival, 1,966 at the apex: the loop + entry cost ~640 u), one CP5 wobble at the start, the rest 97.89-98.00. No deep-dip deaths
+  at C = 1.5 with the gate (0 episodes at 96.3-96.8% in the last 8 evals). Energy at 97% progress 2,568-2,656 (C = 1: ~2,580).
+* Arrivals swing between evals (22.876B: 4 +y / 3 -y; the last 8 evals: 1 +y / ~35 -y); -y arrivals now loop 10-30 s (more return
+  legs per episode) but the +y return has no entry. Running on to the wrap-up window.
