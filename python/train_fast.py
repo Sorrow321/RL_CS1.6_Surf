@@ -15271,12 +15271,31 @@ def main() -> None:
               f"its record reaches d <= {DEMO_END_D:,.0f} (the spine end's {_de:,.0f} + "
               f"{float(args.demo_success_d):g}) or it finishes")
     DEMO_BONUS = 0.0                      # --demo-success-bonus: paid once per crossing episode
-    DEMO_PAID = None
+    DEMO_PAID = [None]
     DEMO_BONUS_N = [0]
     if DEMO_END_D is not None and float(args.demo_success_bonus or 0.0) > 0.0:
         DEMO_BONUS = float(args.demo_success_bonus)
         print(f"--demo-success-bonus {DEMO_BONUS:g}: an episode whose record crosses d <= "
               f"{DEMO_END_D:,.0f} is paid {DEMO_BONUS:g} once (one that starts past it never is)")
+
+    def _demo_bonus_pay(r, ended):
+        """--demo-success-bonus: pay the rows whose ratchet record (after this reward call; an
+        ended row's is already the NEW episode's spawn) has just crossed the spine's success
+        line; an episode is paid once, and one that spawns past the line never."""
+        rec = np.asarray(reward_fn._rec)
+        if DEMO_PAID[0] is None:
+            DEMO_PAID[0] = rec <= DEMO_END_D
+        paid = DEMO_PAID[0]
+        hit = (~ended) & (~paid) & (rec <= DEMO_END_D)
+        if hit.any():
+            if DEMO_BONUS_N[0] == 0:
+                print(f"--demo-success-bonus: first payment at step {global_step:,}", flush=True)
+            r = np.array(r, copy=True)
+            r[hit] += DEMO_BONUS
+            paid |= hit
+            DEMO_BONUS_N[0] += int(hit.sum())
+        paid[ended] = rec[ended] <= DEMO_END_D
+        return r
     b_logp = torch.zeros((T, N), device=device)
     b_val = torch.zeros((T, N), device=device)
     b_rew = torch.zeros((T, N), device=device)
@@ -18113,6 +18132,9 @@ def main() -> None:
                         goalsys.on_reward(r)
                     prev_obs = o2.copy()
                     ended = (done | trunc).astype(bool)
+                    if DEMO_BONUS and r is not None:
+                        # --demo-success-bonus on the per-tick reward path
+                        r = _demo_bonus_pay(r, ended)
                     if CRL and ended.any():
                         # --crl: where the episode ENDED - a finish, a death,
                         # a stall kill or a truncation - off the TERMINAL obs
@@ -18516,18 +18538,7 @@ def main() -> None:
                                       done_acc, ended_acc & ~done_acc, core,
                                       goal=goal_acc)
                     if DEMO_BONUS:
-                        # --demo-success-bonus: the record (after this call; an ended row's is
-                        # already the NEW episode's spawn) crossing the spine's success line
-                        _rec = np.asarray(reward_fn._rec)
-                        if DEMO_PAID is None:
-                            DEMO_PAID = _rec <= DEMO_END_D
-                        _hit = (~ended_acc) & (~DEMO_PAID) & (_rec <= DEMO_END_D)
-                        if _hit.any():
-                            r_dec = np.array(r_dec, copy=True)
-                            r_dec[_hit] += DEMO_BONUS
-                            DEMO_PAID |= _hit
-                            DEMO_BONUS_N[0] += int(_hit.sum())
-                        DEMO_PAID[ended_acc] = _rec[ended_acc] <= DEMO_END_D
+                        r_dec = _demo_bonus_pay(r_dec, ended_acc)
                     r_acc += r_dec
                     if INT_SPLIT:
                         rint_acc += _int_r()
