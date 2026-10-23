@@ -375,3 +375,16 @@ learn what energy is worth there before the policy can make it.
   the policy enters off the south ledge at ~650 u/s and stops at (808,-3286,3375), a local field
   minimum ~200 u BELOW the WR's d through the pocket (55,300 vs ~55,500): the next gate is a
   field dip plus an energy deficit, the sidistic recipe's own last gate.
+
+### 2026-10-23 20:29 UTC - the pocket gate is an ENERGY deficit; arm 15 (plain energy potential)
+
+* Energy trace of a deep greedy episode (929M eval, h = z + |v|^2/1600): the policy WALKS the
+  south ledge at 60-140 u/s (h ~3,725; the WR runs its ledge at ~600 u/s, h ~3,950), then
+  CRASH-LANDS three times on the way down (3,740 -> 3,532, 3,634 -> 3,503, 3,522 -> 3,426) and
+  ends at h ~3,407 in the pocket. The WR keeps h ~3,980 into the pocket by landing on the slope
+  and leaves up the east ramp (needs ~3,920+). Deficit: ~250 u from walking + ~300 u lost to flat
+  landings.
+* arm 15 pbr1b2_ge15: arm 14's 994M weights + --energy-pot-front 0 --energy-pot-front-bonus 0
+  (the recipe's K 3 energy potential paid/charged on every call: a gained strafe speed is paid,
+  a crash landing is charged ~-1 per 300 u lost) with everything else as arm 14. Generic: a
+  physical invariant, no map constant; with --time-pen 0 arm 3 showed no suicide.
