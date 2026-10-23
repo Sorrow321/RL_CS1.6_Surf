@@ -3214,3 +3214,68 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   incumbent's own settings again), 22.325-22.425B, 17 evals: basement mode, a CP6 stretch at 22.362-22.400B, then
   **4 entries in one eval at 22,419,079,168 (apex 1,457): score 98.480** (the branch's best) and 1 more at 22.425B.
   Runs on until the wrap-up.
+
+## ROUND 7 LESSON (r7b4) - written at wrap-up
+
+**Result:** best greedy eval from the true start **98.480** (r7b4_p8 at 22,419,079,168; the incumbent re-scored on the
+no-corner-cut field: 98.315): CP7, the greedy line up a basement ramp, through a hole and into the funnel chamber
+(apex z up to 1,454), 0 finishes. Hand-on checkpoint: runs/r7b4/r7b4_p8/ckpt_latest.pt (pulled at wrap-up, md5 below).
+
+**What the round established (measured):**
+1. **The last gate is energy, now shown from the greedy line's own states** (analysis only): from 26 states rebuilt
+   from a greedy chamber entry's approach (ramp face + pull-out, 116.2-117.45 s) the policy enters the chamber
+   (stochastic at the training temperature 20/40, greedy 7/12) but never clears the funnel rim (z ~1,560; best
+   1,348); raw-core random held macros: x1.0 speed 0/4,096 over the rim (z max 1,457), x1.15 0 (1,500), x1.3
+   130/4,096 over the rim and 0 finishes; CEM over 6-macro sequences (5 states x 1,024 x 40) best z 1,376. The line
+   reaches the basement with h_E ~2,350 (z + v^2/1600); it loses ~1,000 u between the chimney (~3,400) and the
+   basement, ~500 of it in a "deep dip" (a pit under the corridor whose bottom ramp it uses as a U-turn) and ~270
+   in the basement loop.
+2. **--speed-pot raises the line's energy but costs the pit pass**: K 5 lifted h_E at the chimney 3,400 ->
+   3,650-3,680 in ~70M steps; the faster line then lands ~130 u lower on the pit's bottom ramp and dies there.
+   K 5 (gk2's weights), K 2 (the incumbent's weights) and K 2 + temperature 2 over the pit each locked the greedy
+   line in that failure within 10-50M steps; none recovered in 150-290M (0 basement episodes in 100+ evals).
+3. **The trainer is deterministic on a box** (3090 + EPYC 7B12, image pytorch 2.7.1): a resume from the same
+   checkpoint with the same flags replays bit-identically (r7b4_inc2 reproduced r7b4_inc's 20 evals exactly), so a
+   restart without a setting change yields no new samples, and every setting is ONE path.
+4. **Greedy chamber entries come in short windows**: paths through the ~22.24-22.45B weights enter the chamber
+   in 4-10% of greedy episodes for ~20-40M steps after a branch from a snapshot inside such a window, then stop
+   (bare T 0.2: 10/207; T 0.1 variants 5-7; ft0b 12/162; p1 15/153 with 3-4 per eval at its peak; p2 6/108;
+   p3 8/108; p4 3/117; p5 1/117; p6 3/117; p7 1/117; p8 10+/153 with 4 in one eval). The branch bests 98.390 ->
+   98.403 -> 98.410 -> 98.426 -> 98.480 came from re-branching inside windows. Settings (T cap 0.1/0.15/0.2, front-temp 0/1/1.5, archive K 3) moved the counts 0-15 between paths
+   with no consistent sign: path noise (an apparent "front-temp 0 kills entries" from one path was reversed by
+   the next, see the 10:45 correction).
+
+**Built (default off, bit-identical when off, CPU-tested):**
+* `--respawn-greedy-keep K` (+ counters gkeep/*): the greedy pool keeps the K deepest failed greedy episodes
+  across evals. No measurable gain in greedy entries here (K 8 then CP6; K 3 0/171).
+* `--respawn-front-perturb-anchor N`: the front-perturb band off the N-th deepest reservoir state (the tp3 band
+  collapse at 21.118B, below). Never triggered this round.
+* tools/run_arm.sh: `OMP_WAIT_POLICY=PASSIVE OPENBLAS_NUM_THREADS=1` (the first launch hung 14 min in its greedy
+  eval under a 61-CPU quota: ~100 spin-waiting threads, the cgroup throttled in 50% of its periods) and
+  `NUMBA_NUM_THREADS=8` (numba's pool defaulted to the 128 host threads: GoalField.sample cost ~670 us per call vs
+  ~25 us; iteration 7.4 -> 3.3 s, evals 190 -> ~15 s). Both are probably worth keeping on every box.
+
+**Found in the incumbent's own log:** round 6's tp3 had real front-perturb finishes at 21.106-21.117B (1-4 per
+iteration, from chamber-level band states); one finish harvested funnel states and the band collapsed onto them
+(100% trivial finishes for ~25M steps, then none for 1.06B) - the reason for the anchor flag.
+
+**For a next lineage:** a greedy finish needs ~+800 u of h_E at the chamber approach (the x1.3 rim threshold of the
+random search). Speed-pot buys ~+270 u at the chimney and then needs the line to re-learn the pit at the new
+speed; a route without the deep dip (~500 u) would close most of the gap. Branch from snapshots inside entry
+windows (deterministic training) to sample the max.
+
+**Ops:** box 57310803 (RTX 3090, EPYC 7B12, 61-CPU quota, $0.36/h, machine 48881), 02:50 -> wrap-up; no offer
+passed the filters for the first 18 min (rent retry loop). Evals every 6.25M after the numba fix (~150k steps/s).
+
+## Wrap-up (r7b4) - 2026-10-23 13:40 UTC
+
+* Final: RESULT.json `"final": true`, score **98.480** (r7b4_p8, eval traj_22419079168: 9 episodes, best 98.48%, median
+  97.92%, CP7, 0 finishes; re-scored at wrap-up, 51 valid evals in the run).
+* Hand-on checkpoint: /home/steam/ar/runs/r7b4/r7b4_p8/ckpt_latest.pt (22,642,950,144, md5
+  f7fad7ce215d9bf0132f1ce95f456d35), copied after the run was stopped and md5-checked against the box. Also local:
+  r7b4_p3/ckpt_latest.pt (98.426's run), r7b4_p2, r7b4_ft0b, r7b4_inc, r7b4_gk ckpt_latest.pt.
+* Per-run bests (score.py, pulled evals): gk 98.362 | gk2 96.527 | sp5b 96.545 | sp5c 96.545 | isp2 97.936 | bpit 96.547 |
+  inc 98.390 | inc2 98.390 (replay) | t01 98.380 | t01k3 97.987 | t015 97.993 | t01b 98.317 | t02c 98.022 | ft0 97.971 |
+  ft15 98.309 | ft0b 98.403 | p1 98.362 | p2 98.410 | p3 98.426 | p4 98.389 | p5 97.987 | p6 98.166 | p7 97.988 | **p8 98.480**.
+* Code: commit ed39671 is the last code change (--respawn-greedy-keep, --respawn-front-perturb-anchor, run_arm.sh thread
+  settings); later commits are notes and RESULT. Box 57310803 released at wrap-up.

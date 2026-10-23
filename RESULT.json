@@ -1,7 +1,7 @@
 {
  "agent": "r7b4",
  "round": 7,
- "final": false,
+ "final": true,
  "best": {
   "score": 98.48,
   "eval_file": "/home/steam/ar/runs/r7b4/r7b4_p8/traj_22419079168.jsonl",
@@ -16,8 +16,9 @@
    "--unstuck-max",
    "0.2"
   ],
-  "resume_from": "r7b4_ft0b ckpt_22318415872 (incumbent 22.218B -> bare 75M -> T 0.1 / front-temp 0 25M) + --front-temp 1 --front-band 0.01 --unstuck-max 0.2 (= the incumbent's own settings)",
-  "commit": "ed39671"
+  "resume_from": "r7b4_ft0b ckpt_22318415872 <- r7b4_inc2 ckpt_22293250048 <- incumbent r6b2_tp3 (22,217,752,576); the incumbent's own recipe throughout, ft0b ran T 0.1 / front-temp 0 for 25M steps",
+  "commit": "ed39671",
+  "ckpt_note": "r7b4_p8's last weights, step 22,642,950,144, md5 f7fad7ce215d9bf0132f1ce95f456d35 (copied after the run was stopped at wrap-up; md5 matches the box). A bare resume restores the incumbent's recipe (front-perturb 0.25 / band 0.005 / x1.0-1.3, time-pen 0.001, front-temp 1 / band 0.01, novel 0.2, backward-mix 0.1, greedy 0.25 + stuck 200, keys-only T cap 0.2, pitch floor 0.05, no-corner-cut field)."
  },
- "summary": "Best 98.390 (r7b4_inc at 22.306B: the incumbent's weights and recipe resumed bare, 10 greedy chamber entries in 207 episodes = 4.8% over 22.24-22.31B, apex z up to 1,441; incumbent 98.315). The speed-pot arms (K 5 / 2) raised the line's energy but locked the greedy line in a pit failure (0 basement in 100+ evals); --respawn-greedy-keep / --front-perturb-anchor did not show a gain. Analysis: from the line's own entry approach the funnel rim is out of reach at its energy (policy, random, CEM; random needs x1.3 speed). Ops: numba's pool sized to all 128 host threads made this box 2.2x slow (NUMBA_NUM_THREADS=8 in run_arm.sh). Now: restarts of the incumbent recipe from its weights (each gives ~90M steps of basement-mode lines with entries), snapshots every 25M."
+ "summary": "Best 98.480 (r7b4_p8 at 22.419B: 4 of 9 greedy episodes into the funnel chamber, apex z 1,457; incumbent re-scored 98.315), CP7, 0 finishes. Measured: at the greedy line's energy the funnel rim is out of reach from its own chamber-entry approach (policy, random macros, CEM; random needs ~x1.3 speed), and --speed-pot raises the line's energy (+270 u at the chimney) but locks the greedy line in a pit failure (0 basement in 100+ evals). The trainer is deterministic on a box (a resume replays bit-identically); greedy chamber entries come in ~20-40M-step windows after branching from snapshots near 22.24-22.42B (up to 4 per 9-episode eval), and re-branching inside them took the best 98.390 -> 98.480; settings (T cap, front-temp, archive) only moved counts by path noise. Built: --respawn-greedy-keep, --respawn-front-perturb-anchor (no gain shown), run_arm.sh NUMBA_NUM_THREADS=8 + OMP PASSIVE (this box 7.4 -> 3.3 s per iteration). Next: ~+800 u of h_E at the chamber approach is the gate; a route without the deep dip (~500 u) is the largest single source."
 }
