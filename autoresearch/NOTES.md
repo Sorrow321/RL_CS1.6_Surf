@@ -255,7 +255,7 @@ resample every 25 decisions. On a box it runs as it does locally (CPU physics + 
   (ge_gp1 P 400 + ge_gp2 P 265: the entry bursts and their stitched approach) x3 + chain[13:]
   (inside the tunnel -> the chamber). 1,560 rows, 30% of the spawn pool.
 
-### 18:00 UTC - the backward curriculum is working one step at a time: the last step is learned
+### 17:59 UTC - the backward curriculum is working one step at a time: the last step is learned
 
 * Probe (record_ckpt --stochastic, 20 x 4 s episodes from the entry-burst states, pbr1b4_ys
   ckpt at ~1.40B): **11/20 enter the corridor alive and crawl to x 112-241** (most of the
