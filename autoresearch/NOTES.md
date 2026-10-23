@@ -3101,3 +3101,19 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   eb3 1.9, ef15 1.6): the policy now finishes from its own frontier states (turned, x1.0-1.3) about 9x as often as
   before the elevation change. Backward-mix rows 56.7%. Every earlier gate of this lineage went training first,
   greedy line next.
+
+### 09:56 UTC: MILESTONE - THE FIRST GREEDY FINISH: 107.176 (r7b2_bel at 25,448,939,520, 118.05 s)
+
+* Eval traj_25448939520 (score.py: **107.176**, best 100%, 1/9 finishes, best finish **118.05 s**, CP7, 152/152 valid
+  evals in the run): episode 1 starts at the map spawn (7,837, 0, 15,042) and finishes at 118.04 s at (2,986, 4, 227),
+  inside the finish box. Its end, 112-118 s: the basement first pass (113.0 s, h 2,474) -> east and the U-turn at x
+  ~3,960 -> west along the -y face (114.5 s, 1,566 u/s) -> up-slope (115.0 s, vy +911, **vz +961**) -> out of the -y
+  hole at 115.25 s (**vz 761**, h 2,220) -> across the chamber -> **over the rim at (2,975, -363, 1,564)** at 116.0 s
+  moving inward (vy +985) -> over the funnel opening (2,955, -116, 1,579) -> into the funnel at 116.5 s -> down the
+  shaft (vz -639 .. -1,471) -> the finish at 118.04 s.
+* The training side before it: real front-perturb finishes 9.4 -> 16.9 -> 26.1 per 10k over the run's thirds (eb3:
+  1.9); the eval came ~650M steps after the backward rows were allowed to climb. The unstuck tracker's best went to
+  97,768 u (= d0 on the standard field: a finish).
+* Weights: the run's snapshots ckpt_25394937856 (54M before the eval) and ckpt_25495076864 (46M after) are pulled to
+  runs/r7b2/r7b2_bel/; the run keeps training (more finishes per eval are worth up to +8.9 of score: 100 + 10 x frac +
+  10 x (1 - t/300)).
