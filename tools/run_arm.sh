@@ -82,6 +82,12 @@ PY="${PYTHON:-python3}"
 # training ran ~131k steps/s. Neither changes what the trainer computes.
 export OMP_WAIT_POLICY="${OMP_WAIT_POLICY:-PASSIVE}"
 export OPENBLAS_NUM_THREADS="${OPENBLAS_NUM_THREADS:-1}"
+# numba's parallel kernels (GoalField.sample, called many times per tick by the
+# reward, the compass, pot-rate and the eval hooks) size their pool to EVERY
+# host thread by default: 128 on box 57310803, where one call cost ~670 us
+# whatever its size (9 or 1,024 points) against ~25 us at 8 threads, and the
+# reward phase took 3.7 s of a 7.4 s iteration.
+export NUMBA_NUM_THREADS="${NUMBA_NUM_THREADS:-8}"
 
 CKPT="${CKPT:-runs_ckpt.pt}"
 # md5 of runs/sOBSR2/ckpt_latest.pt @ step 3,782,737,920 - the stuck agent:
