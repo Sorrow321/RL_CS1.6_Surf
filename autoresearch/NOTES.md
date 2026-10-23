@@ -385,3 +385,9 @@ the backward curriculum (--demo-file + --demo-success-d) on the found line. Not 
 * ge_stitch `--backtrack 8,16,...,128` (new): a link not re-found from the line's end is
   retried from that many ticks earlier on the line (the line is cut back to the root that
   worked); `--cell` picks the chain end, `--prefix` resumes a line.
+* First backtracking stitches (21:05-21:20 UTC, 1 min per try, offsets 0..128 ticks): the north
+  chain (cell 18598) never re-found the launch; the south chain (18696) re-found it from 16 ticks
+  back (enters cell 13070's box at (603, -3,034, 3,406) with |v| >= 0.9x) but no later link from
+  there in 8 tries - it entered the box at its BOTTOM, not rising like the archived state
+  (v (43, -335, 451)). So ge_stitch `--vel-cos C` (new, default off): a link must also arrive
+  with its velocity within cosine C of the archived state's. Rerun with C 0.7 on both chains.
