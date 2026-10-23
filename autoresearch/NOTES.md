@@ -390,3 +390,20 @@ resample every 25 decisions. On a box it runs as it does locally (CPU physics + 
   lineages that leave the tunnel fast; spawns in the drop with the record-like speed are NOT
   allowed (record-derived); generic speed sources are the drop itself (~760 u/s vertical) and a
   ramp landing that converts it.
+
+### 21:43 UTC - 3.233; chamber Go-Explore null; pbr1b4_bc3 = energy paid everywhere
+
+* pbr1b4_bc2 evals 3.030B / 3.106B / 3.181B: 3.230 / **3.233** / 3.229, median 3.2% every time
+  (the start trap is passed reliably). RESULT.json -> 3.233; pulled ckpt_3115843584.pt (10M
+  steps after that eval; the watcher keeps only the newest 15 snapshots, so the ones just
+  before it were pruned - widen it if a later best matters) + ckpt_3029336064.pt (1M before
+  the 3.230 eval). bc2 stopped at 3.205B.
+* Go-Explore (tools/explore_phase1.py, cell 32 x speed 8, 2,048 envs, 16 threads, 8 min,
+  2.8M runs, 15,545 cells) ROOTED at our own states from mid-tunnel to the chamber floor
+  (241 rows of the 3 replayed spines), --goal-progress 600: **0 wins, best d unchanged**.
+  Random held-key bursts do not build the speed to cross the kill floor.
+* `pbr1b4_bc3` 21:42 UTC = resume of bc2 at 3.205B with the same BC + spawn files (BC coef
+  0.2 -> 0) and **`--energy-pot-front 0 --energy-pot-front-bonus 0`**: the energy-height
+  potential paid everywhere, so pumping speed on the chamber's sloped walls pays (the recipe
+  paid it once, at the frontier band's entry - which is now the chamber, so speed gained there
+  earned nothing). Read: does the reservoir / novelty ceiling move past 3.25%?
