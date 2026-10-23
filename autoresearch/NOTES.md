@@ -3163,3 +3163,11 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
 * The entries cluster in windows of ~20-40M steps after a branch from these snapshots. For the rest of the round
   the box runs short branches (~12 evals each, one setting change each) from the entry-rich snapshots.
 * **r7b4_p2** (11:05): p1's 22,343,581,696 snapshot (right before its 4-4-3 stretch) + `--front-temp 0`.
+
+### 11:22 UTC: **98.410** (r7b4_p2); branch r7b4_p3
+
+* r7b4_p2 (p1's 22,343,581,696 snapshot + `--front-temp 0`, T 0.1), 22.350-22.419B, 12 evals: 6 entries in 108
+  episodes (all in 22.350-22.388B, apex 1,322-1,431), best **98.410** (22,362,456,064; the branch's best), then 0
+  entries. Weights runs/r7b4/r7b4_p2/ckpt_latest.pt (22.42B, md5 4b31282f...).
+* **r7b4_p3** (11:21): p2's 22,368,747,520 snapshot (inside its entry stretch; 98.393 at 22.369B) + `--unstuck-max
+  0.2` (front-temp 0 restored).
