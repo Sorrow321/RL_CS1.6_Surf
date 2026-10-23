@@ -242,3 +242,23 @@ learn what energy is worth there before the policy can make it.
   the pocket. NEW explore_phase1 --dump-paths now also saves the decision actions and views.
 * arm 7 pbr1b2_ge7 launched 17:32: arm 6's 208M + recipe + --time-pen 0 + --spawn-states
   chain_dense.npy at frac 0.5 (the spine-testbed construction on a self-found line).
+
+### 2026-10-23 17:47 UTC - arm 7 null (uniform spine); arm 8 = Go-Explore phase 2 (backward curriculum)
+
+* arm 7 pbr1b2_ge7 (arm 6's 208M + the dense chain as --spawn-states at frac 0.5, the
+  spine-testbed construction): 0.402 / 0.411 (209M / 284M), unchanged at 323M. A uniform draw
+  over the whole chain spreads the practice; the precise climb gets a ~4% share and is not
+  learned in 115M steps.
+* NEW --demo-reach R (train_fast; surfgym.respawn.demo_reach_wins; default off, not dumped):
+  Salimans-Chen's curriculum advances on the finish rate of its frontier window, so it could not
+  run on a partial spine. With R, a spine episode is a win when its lowest field d comes within
+  R u of the spine's last row (or it finishes). The window then starts at the chain's end and
+  only moves earlier once its band succeeds 20% of the time - the training piles up right before
+  the hardest move instead of spreading over the chain (Go-Explore's phase 2, Ecoffet et al.).
+* --demo-file is not wired with --respawn-novel / --respawn-greedy / --int-real-only 1; on a
+  resume the restored ones are turned off explicitly: --no-respawn-novel --int-real-only 0
+  --respawn-greedy 0 --respawn-greedy-stuck 0 --respawn-backward-mix 0 --respawn-front-perturb 0
+  --spawn-states ''.
+* arm 8 pbr1b2_ge8: arm 7's latest + recipe + --time-pen 0 + the switches above + --demo-file
+  runs/pbr1b2_ge3/chain_dense.npy --demo-reach 128 --demo-grow 8 --demo-window 16
+  --demo-front-frac 0.67.
