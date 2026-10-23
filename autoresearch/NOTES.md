@@ -460,3 +460,9 @@ learn what energy is worth there before the policy can make it.
   the same place: the rec_e beam ranking failed because it compares a lineage that already
   crash-landed in the pocket with one still on the ledge. The deepest high-energy chain it finds
   is the next --demo-reach spine.
+* NEW beam_tas --elite-cells C (with --score rec_e; default off; unit-tested, NOT yet run on a
+  box): the highest-energy lineage of every occupied C-u cell is an elite first. Suggested first
+  run: the handed-on checkpoint, from the true start, --envs 4096 --resample-every 50
+  --elite-frac 0.25 --score rec_e --rec-quant 256 --elite-cells 128 --max-ticks 6000
+  --allow-nonfinisher --skip-gate --route-file none --dump-elite-states <npy>; look for elite
+  rows in the pocket with h > ~3,900 and anything past 3.24%.
