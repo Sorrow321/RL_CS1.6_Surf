@@ -3,20 +3,24 @@
  "round": 1,
  "final": false,
  "best": {
-  "score": 0.446,
-  "eval_file": "/home/steam/ar_pb/runs/pbr1b3/pbr1b3_enall/traj_0076021760.jsonl",
-  "run": "pbr1b3_enall",
-  "step": 76021760,
+  "score": 0.454,
+  "eval_file": "/home/steam/ar_pb/runs/pbr1b3/pbr1b3_gx3/traj_0605028352.jsonl",
+  "run": "pbr1b3_gx3",
+  "step": 605028352,
   "ckpt": null,
   "recipe": [
    "incumbent_recipe",
-   "--energy-pot-front",
-   "0",
-   "--energy-pot-front-bonus",
-   "0"
+   "--view-ent-squash",
+   "1",
+   "--spawn-states",
+   "runs/gx_spawns_cur.npy (Go-Explore chains)",
+   "--spawn-states-frac",
+   "0.5",
+   "--spawn-states-curric",
+   "0.01"
   ],
-  "resume_from": null,
-  "commit": "86e6927"
+  "resume_from": "pbr1b3_gx2 ckpt_latest at 604.5M (its own run)",
+  "commit": "bb7fe35"
  },
- "summary": "Start room = an energy gate inside a trap box (down-pusher into teleports at the floor's west end, teleport strip over the north ledge, exits 87 u above the floor). PPO arms (baseline, 4x novelty, energy everywhere, sid_ref warm start, squashed-entropy fix) all stall at ~250 u (0.4%). --view-ent-squash (b47f38c) fixes the yaw sigma blow-up (2.718 -> ~1.0) but not the gate. Go-Explore phase 1 with energy-height cells (--cell-energy, cedfde3) leaves the room in <1 min of search and reaches 3.2% of the field. Running: Go-Explore phase 2 - pbr1b3_gx1 = recipe + squash + --spawn-states (parent chains of the search's deepest cells, refreshed every 5 min while the search continues)."
+ "summary": "Start room = climb + 15-u-wide TIGHTROPE over a kill layer + drop. All plain PPO arms stall at ~250 u (0.45%). Built: --view-ent-squash (yaw sigma 2.72 -> ~1.0), Go-Explore energy cells (--cell-energy; the search leaves the room in <1 min, reaches 3.8%), --spawn-states-curric (Florensa reverse curriculum over the search's states). Phase 2 (train from the search's chains) taught the policy everything downstream of the tightrope's west end, but not the tightrope middle or the climb: greedy evals stay at ~250 u. Now: pbr1b3_gx4 = resume with a local curriculum threshold (G 0.003 x d0) and 70% spawns from the search states. Best eval 0.454 (gx3 @605M, 266 u)."
 }

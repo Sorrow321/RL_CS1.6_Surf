@@ -272,3 +272,26 @@ SELF_STATES/CKPT/ARM_RESUME/SCRATCH). Nothing else changes in box.py.
 * `pbr1b3_gx3` (17:52): ARM_RESUME of gx2's 604.5M checkpoint (its own; md5 6d0395f5...) +
   `--spawn-states runs/gx_spawns_cur.npy --spawn-states-frac 0.5 --spawn-states-curric 0.01`
   (squash and the recipe restored from the checkpoint).
+
+### pbr1b3, 2026-10-23 18:13 UTC - the curriculum's success bar was a whole gate wide; G 0.01 -> 0.003
+
+* `pbr1b3_gx3` (604.5M -> 719.8M, curriculum G = 0.01 x d0 = 571 u): after ~38k scored
+  episodes 965 of 1,061 rows read "failing" (p <= 0.1), 69 in the band, 27 mastered; the band
+  sat downstream (top-decile rows at progress ~1,118 u, the lower level) and every tightrope /
+  sill row was at the floor weight - ~6% of the file's draws in all. Greedy evals 605M: 266 u
+  (score 0.454, the branch's best so far), 680M: 247 u. Gate diagnostics at 689M: no change
+  (sill and mid-tightrope rows die in 16-144 ticks; the west end and everything after it work).
+* The reverse curriculum is only as local as its success bar: one "success" at 571 u needed
+  the whole climb + tightrope + drop. G = 0.003 x d0 (171 u, about one obstacle's length) puts
+  the band at the moving front of competence; that is the constant from here on (revised once,
+  during the mechanism's first test, for that reason - not tuned to this map's numbers).
+* `pbr1b3_gx4` (18:10): resume of gx3's 719.8M checkpoint with `--spawn-states-curric 0.003
+  --spawn-states-frac 0.7` (same generic 1,061-state chain set).
+* 18:12: a deep search rooted at the 616 chain states with progress >= 1,700 u
+  (`--roots-spine`, 96 u x 24 u energy), trainer paused with SIGSTOP for its 9 minutes.
+* Deep search result (`gx_deep1`, 9 min, 2.95M runs, rooted at 616 states >= 1,700 u): only
+  +60 u (goal_32 best 52,272 -> 52,212; goalc ~2,243 u = 3.9%), 1,783 cells. Its frontier is
+  falling states at x ~530, y -2620..-2790, z ~3400-3430 with energy height <= ~3,730; the record
+  passes that stretch at z ~3478 and ~730 u/s (h ~3,810) on its way west, energy it carried
+  from a FAST tightrope (~590 u/s) and the drop. The search crept the tightrope at ~300 u/s
+  and lost the rest to the lower level's floors: gate 2 is an energy gate that starts at gate 1.
