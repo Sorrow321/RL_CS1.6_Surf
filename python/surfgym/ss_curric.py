@@ -69,6 +69,7 @@ class SpawnStateCurriculum:
         self.n = len(self.S)
         org = self.S["origin"].astype(np.float64)
         self.spawn_d = self.field.sample(org).astype(np.float64)
+        self.d_end = float(self.spawn_d.min())
         self._key = {}
         for i, k in enumerate(self._keys(org)):
             self._key.setdefault(k, i)          # duplicate rows share the first index
@@ -141,7 +142,11 @@ class SpawnStateCurriculum:
         for i, b in zip(idxs, best_d):
             if i < 0:
                 continue
-            ok = float(self.spawn_d[i] - b >= self.gain)
+            # the bar is G, capped at the way to the set's deepest row: reaching the end of the
+            # known route is a success (Salimans & Chen score reaching the demo's end), so the
+            # rows at the search's own frontier - with nothing known past them - can pass
+            need = min(self.gain, max(0.0, float(self.spawn_d[i]) - self.d_end))
+            ok = float(self.spawn_d[i] - b >= need)
             self.ep[i] = self.ep[i] * self.decay + 1.0
             self.win[i] = self.win[i] * self.decay + ok
             self.noted += 1

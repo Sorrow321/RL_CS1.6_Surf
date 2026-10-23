@@ -41,10 +41,10 @@ def _rows(xs):
 
 
 def test_weights_and_notes():
-    c = SpawnStateCurriculum(_rows([0.0, 100.0, 200.0, 100.0]), _Field(), d0=1000.0,
-                             gain_frac=0.05)          # gain 50 u
+    c = SpawnStateCurriculum(_rows([0.0, 100.0, 200.0, 100.0, 900.0]), _Field(), d0=1000.0,
+                             gain_frac=0.05)          # gain 50 u (x 900: the set's deep end)
     w = c.weights()
-    assert np.allclose(w, 0.25) and len(w) == 4
+    assert np.allclose(w, 0.25) and len(w) == 5
     assert list(c.match(_rows([100.0, 7.0])["origin"])) == [1, -1]
     # row 0: always succeeds (record 60 u past its d = 1000); row 2: always fails (10 u)
     for _ in range(300):
@@ -138,3 +138,14 @@ def test_backward_window_slides_with_success_and_draws_from_it():
     c.step()
     assert c.tau == 0 and c.advances == 0
     assert "backward" in c.line()
+
+
+def test_rows_at_the_end_of_the_set_can_succeed():
+    c = SpawnStateCurriculum(_rows([0.0, 100.0, 190.0, 200.0]), _Field(), d0=1000.0,
+                             gain_frac=0.05)          # gain 50 u; the deepest row is x 200
+    c.note([3], [800.0])                               # the deepest row: no gain needed
+    c.note([2], [800.0])                               # 10 u from the end: reaching it is enough
+    c.note([2], [805.0])                               # 5 u short of the end: a failure
+    c.note([0], [960.0])                               # 40 u of 50 needed: a failure
+    assert c.win[3] == 1.0 and c.win[2] == pytest.approx(0.99) and c.ep[2] == pytest.approx(1.99)
+    assert c.win[0] == 0.0
