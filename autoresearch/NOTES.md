@@ -2942,3 +2942,16 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   knob: K 1 -> 2 (a 600 u contact now costs 1.2, the deep dip's ~600 u loss against ~1.3 of progress after it - the
   risk is the line learning to die at the dip; watch the CP6 share). Box copy of the incumbent kept as
   runs_ckpt_incumbent.pt.
+
+### 05:03 UTC: arm 3 (r7b2_ef2, --energy-pot 2) - new best 98.462: an entry 120 u under the rim, heading for the funnel
+
+* r7b2_ef2 23,011-23,29xM (~280M steps, 184k steps/s): 44 evals; **best 98.462** (23,206,559,744); the rest
+  97.8-98.26 (CP7) - no CP5 / CP6 eval in 44 (ef1 had ~10 in 105). h at the basement entry, median per episode:
+  2,512 (first 10 evals) -> **2,660 (last 10)**, p90 2,738 (ef1 ~2,570). Basement reach 51% of episodes (ef1 42%).
+  Chamber entries 3 in 396 episodes (0.8%; ef1 2.5%), apex 1,296 / 1,316 / 1,444. The unstuck tracker took a new
+  +500 u eval best (95,904 -> 96,433 u), so T halved to 0.11.
+* The 98.462 episode (ep 0): west along the -y face at 1,540 u/s (113.5 s, h 2,313), up-slope (vy +354..+599, vz
+  +371..+791), pull-out at (2,512, -380, 1,159) (vy -> -840), through the -y hole at 114.27 s (h 2,123, vz 551), then
+  across the chamber INWARD toward the funnel: apex z **1,439** at (2,976, -233) at 115.0 s with |v_h| ~1,040 left -
+  the rim is at ~1,560 and the funnel opening at |y| <= 190. A collision at 115.4 s (h 2,050 -> 1,490), death at
+  116.7 s. So: the energy for the rim was there (h 2,119 at the apex), the exit was too flat (vz 551 vs ~705).
