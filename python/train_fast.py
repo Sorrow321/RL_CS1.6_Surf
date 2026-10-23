@@ -482,7 +482,7 @@ class Policy(nn.Module):
                  plan_film: int = 0, film_dim: int = 0,
                  views: int = 1, views_scale: int = 1, drop_depth: bool = False,
                  simba: bool = False, split_trunk: bool = False,
-                 pitch_sigma_min: float = 0.0):
+                 pitch_sigma_min: float = 0.0, yaw_sigma_max: float = 0.0):
         super().__init__()
         # --priv-critic (asymmetric actor-critic, Pinto et al. 2017): the
         # CRITIC additionally reads a privileged state block the simulator
@@ -840,8 +840,12 @@ class Policy(nn.Module):
             # checkpoint being transplanted; registered last, it is last
             # --view-absolute: the pitch head (last) is capped at log 0.5
             # (PITCH_LOG_STD_MAX_ABS); the yaw head(s) keep LOG_STD_MAX
+            # --yaw-sigma-max S (0 = off, the pre-flag ceiling list): the yaw head(s) capped at
+            # log S instead of LOG_STD_MAX, the pitch cap's rule applied to yaw
+            _yhi = (float(np.log(float(yaw_sigma_max))) if float(yaw_sigma_max or 0.0) > 0.0
+                    else LOG_STD_MAX)
             _hi = (None if self.view_absolute is None else
-                   [LOG_STD_MAX] * (self.n_z - 1) + [PITCH_LOG_STD_MAX_ABS])
+                   [_yhi] * (self.n_z - 1) + [PITCH_LOG_STD_MAX_ABS])
             self.view_std = _ViewLogStd(self.n_z, float(LOG_STD_INIT), _hi)
             # --pitch-sigma-min S (--view-absolute only; 0 = off, no buffer, the pre-flag
             # log_std() op for op): a FLOOR on the pitch head's sigma. The pitch moves only
@@ -6194,6 +6198,15 @@ def main() -> None:
                          "the clamp, 2.718, by 3-8B steps on two seeds). "
                          "Written to the config only under --view-absolute "
                          "and restored on resume.")
+    ap.add_argument("--yaw-sigma-max", type=float, default=None,  # 0 = off
+                    help="--view-absolute: a CEILING on the yaw head(s)' sigma (z units), the "
+                         "pitch cap's rule applied to yaw. While a run is stuck the entropy bonus "
+                         "is the only force on the yaw sigma and it climbs to the global clamp "
+                         "(2.718; pbr1b4 2026-10-23: 0.08 -> 2.718 in ~0.8B steps on three arms), "
+                         "where every rollout's movement direction is noise and a precise "
+                         "maneuver can never succeed in training. E.g. 0.5. The greedy action "
+                         "(the mean) is unchanged. 0 / unset = off (bit-identical). Config + "
+                         "restored on resume; record_ckpt mirrors it.")
     ap.add_argument("--pitch-sigma-min", type=float, default=None,  # 0 = off
                     help="--view-absolute: a FLOOR on the pitch head's sigma (z units; pitch "
                          "target = -20 + 50 tanh z deg). The pitch moves only the camera and "
@@ -8397,6 +8410,10 @@ def main() -> None:
                 and not flag_given("--pitch-sigma-min")):
             args.pitch_sigma_min = float(ck_cfg["pitch_sigma_min"])
             restored.append(f"pitch_sigma_min={args.pitch_sigma_min:g}")
+        if (ck_cfg.get("yaw_sigma_max") is not None
+                and not flag_given("--yaw-sigma-max")):
+            args.yaw_sigma_max = float(ck_cfg["yaw_sigma_max"])
+            restored.append(f"yaw_sigma_max={args.yaw_sigma_max:g}")
         # --view-ou-sigma is rollout BEHAVIOUR, not shape, but a resume that
         # silently dropped it would change the exploration mid-run without
         # saying so - the Round 17 failure class. Restored like the rest.
@@ -9974,6 +9991,15 @@ def main() -> None:
         if not float(np.exp(LOG_STD_MIN)) < PITCH_SIG_MIN < float(np.exp(PITCH_LOG_STD_MAX_ABS)):
             raise SystemExit(f"--pitch-sigma-min must lie in ({float(np.exp(LOG_STD_MIN)):.4f}, "
                              f"0.5) (the global floor and the pitch cap)")
+    # --yaw-sigma-max: the yaw head(s)' sigma ceiling (0 = off); a Python constant
+    YAW_SIG_MAX = float(args.yaw_sigma_max or 0.0)
+    if YAW_SIG_MAX != 0.0:
+        if not VIEW_ABS:
+            raise SystemExit("--yaw-sigma-max needs --view-absolute (the per-head ceiling "
+                             "exists only there)")
+        if not float(np.exp(LOG_STD_MIN)) < YAW_SIG_MAX < float(np.exp(LOG_STD_MAX)):
+            raise SystemExit(f"--yaw-sigma-max must lie in ({float(np.exp(LOG_STD_MIN)):.4f}, "
+                             f"{float(np.exp(LOG_STD_MAX)):.4f}) (the global floor and ceiling)")
     # --int-mode / --archive-*: None = the flag-off constants
     if args.int_mode is None:
         args.int_mode = "cell"
@@ -12634,6 +12660,7 @@ def main() -> None:
                     yaw_cond=YCOND, view_continuous=VIEWC,
                     view_absolute=VIEW_ABS,
                     pitch_sigma_min=PITCH_SIG_MIN,
+                    yaw_sigma_max=YAW_SIG_MAX,
                     obs_fourier=int(args.obs_fourier or 0),
                     int_split=INT_SPLIT,
                     dropout=float(args.dropout),
@@ -14102,6 +14129,11 @@ def main() -> None:
             print(f"--pitch-entropy {PITCH_ENT:g}: the pitch head's entropy "
                   f"term is {_pe} and its log sigma is capped at log 0.5 "
                   f"(sigma <= 0.5) in this mode")
+            if YAW_SIG_MAX > 0.0:
+                # written ONLY when set: a control run's config dump is unchanged
+                meta["config"]["yaw_sigma_max"] = YAW_SIG_MAX
+                print(f"--yaw-sigma-max {YAW_SIG_MAX:g}: the yaw head's sigma is capped at "
+                      f"{YAW_SIG_MAX:g} (global ceiling {float(np.exp(LOG_STD_MAX)):.3f})")
             if PITCH_SIG_MIN > 0.0:
                 # written ONLY when set: a control run's config dump is unchanged
                 meta["config"]["pitch_sigma_min"] = PITCH_SIG_MIN
