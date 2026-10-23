@@ -116,6 +116,7 @@ from surfgym.privfeat import PRIV_DIM, PRIV_FEATURES, PrivFeat, velocity_from_ob
 from surfgym.record import record_rollout, record_rollout_parallel
 from surfgym.bc import BCDataset
 from surfgym.respawn import (BackwardSpawnSampler, DemoCurriculum, FrontierPerturbRows,
+                             demo_reach_wins,
                              FrontierSpawnSampler, NovelSpawnSampler,
                              RandomSpawnSampler, RespawnBuffer)
 from surfgym.rewards import (CC_BUCKETS, CC_P0, CC_TEMP_GAIN, CC_TMAX,
@@ -4662,6 +4663,12 @@ def main() -> None:
                          "frontier band [tau,tau+D-1]. 0 = off, "
                          "byte-identical to the sliding paper rule. "
                          "ckpt restores")
+    ap.add_argument("--demo-reach", type=float, default=None,   # 0 = off
+                    help="with --demo-file: an episode started from the spine is a WIN when its "
+                         "lowest goal-field distance comes within R u of the spine's LAST row's "
+                         "(or it finishes), instead of the paper's finish-only rule - for a spine "
+                         "that ends short of the goal (a search's partial line). 0 = off, "
+                         "byte-identical. Training-only")
     ap.add_argument("--demo-front-frac", type=float, default=None,  # 0 = off
                     help="with --demo-grow: this share of the demo draws "
                          "comes from the FRONTIER BAND [tau,tau+D-1] (the "
@@ -15066,6 +15073,20 @@ def main() -> None:
               f"mean 1 per group. Watch tail/n_med: if it falls under "
               f"{args.tail_min_n} the groups are too fine to estimate a tail")
     demo_idx = np.full(N, -1, np.int64)   # demo index of each env's start
+    # --demo-reach: every env's lowest field distance in its current episode, and the win line
+    DEMO_REACH_THR = None
+    DEMO_FIELD = None
+    demo_epmin = None
+    if demo is not None and float(args.demo_reach or 0.0) > 0.0:
+        if MULTI:
+            raise SystemExit("--demo-reach is single-map")
+        _s0 = slots[0]
+        DEMO_FIELD = (_s0.reward_field if _s0.reward_field is not None else _s0.goal_field)
+        _dend = float(DEMO_FIELD.sample(np.asarray(demo.S[-1:]["origin"]))[0])
+        DEMO_REACH_THR = _dend + float(args.demo_reach)
+        demo_epmin = np.full(N, np.inf, np.float64)
+        print(f"--demo-reach {args.demo_reach:g}: a spine episode wins at field d <= "
+              f"{DEMO_REACH_THR:,.0f}u (the spine's last row at {_dend:,.0f}u) or a finish")
     b_logp = torch.zeros((T, N), device=device)
     b_val = torch.zeros((T, N), device=device)
     b_rew = torch.zeros((T, N), device=device)
@@ -18237,10 +18258,20 @@ def main() -> None:
                             # states_view are already the fresh spawns)
                             fleet.track_start_bins(ended, fleet.goal_hits(),
                                                    start_bin)
+                        if demo_epmin is not None:
+                            # --demo-reach: fold this tick into every LIVE episode's lowest d (an
+                            # ended row of states_view already holds its next spawn)
+                            _dpost = DEMO_FIELD.sample(sv_view["origin"]).astype(np.float64)
+                            np.minimum(demo_epmin, np.where(ended, np.inf, _dpost),
+                                       out=demo_epmin)
                         if demo is not None and ended.any():
                             # same stash-and-attribute, in demo-index space
                             ei = np.flatnonzero(ended)
                             goal_now = fleet.goal_hits().astype(bool)[ei]
+                            if demo_epmin is not None:
+                                goal_now = demo_reach_wins(goal_now, demo_epmin[ei],
+                                                           DEMO_REACH_THR)
+                                demo_epmin[ei] = _dpost[ei]     # the next episode's spawn
                             known = demo_idx[ei] >= 0
                             if known.any():
                                 demo.note_outcomes(demo_idx[ei][known],

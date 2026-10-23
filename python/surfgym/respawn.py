@@ -27,6 +27,16 @@ from .core import STATE_DTYPE
 __all__ = ["RespawnBuffer", "DemoCurriculum", "RandomSpawnSampler"]
 
 
+def demo_reach_wins(goal_now, epmin, thr):
+    """--demo-reach: the outcome of the spine episodes that just ended - a finish, or (thr not
+    None) a lowest field distance within the win line thr. thr None returns goal_now unchanged
+    (the paper's finish-only rule)."""
+    goal_now = np.asarray(goal_now, bool)
+    if thr is None:
+        return goal_now
+    return goal_now | (np.asarray(epmin, np.float64) <= float(thr))
+
+
 class DemoCurriculum:
     """Salimans & Chen (1812.03381) backward curriculum over a demo spine.
 
