@@ -673,6 +673,10 @@ def explore(args) -> int:
                          max_episode_ticks=int(args.ep_ticks),
                          water_fail=1, yaw_jitter_deg=0.0,
                          lidar_w=0, lidar_h=0)     # eyeless: no obs needed
+    if getattr(args, "maxvel", None) is not None:
+        # --maxvel: the map's sv_maxvelocity (the trainer's flag of the same name); unset keeps
+        # the core default this tool always ran with
+        cfg.phys.sv_maxvelocity = float(args.maxvel)
     if float(getattr(args, "kill_margin", 0.0)) > 0.0:
         # --kill-margin: PLAN WITH CLEARANCE. The search treats a band above the
         # map's own kill trigger as lethal (the player's box height 36 u plus
@@ -1651,6 +1655,8 @@ def build_parser() -> argparse.ArgumentParser:
                     help="hard cap on archive entries (memory guard: each "
                          "entry is ~150 bytes)")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--maxvel", type=float, default=None,
+                    help="sv_maxvelocity of the search's physics (default: the core default)")
     ap.add_argument("--threads", type=int, default=0,
                     help="OMP_NUM_THREADS for the core (0 = leave as is)")
     ap.add_argument("--keep-tick", action="store_true",
