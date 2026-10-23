@@ -2743,6 +2743,15 @@
       "detail": "r7b3 2026-10-23: RTX 3090, Oklahoma, offer 47335235 ($0.547): box 57312919 running but no ssh within 90 s (03:11, box.py's --block failed silently); rented again as 57313655 at 03:15 (READY), GONE within 0.1 h (vast show instance empty, ssh refused at 03:20).",
       "run": "r7b3 rent",
       "reason": "unreliable"
+    },
+    {
+      "ip": null,
+      "machine_id": 124550,
+      "host_id": null,
+      "date": "2026-10-23",
+      "detail": "r7b3 2026-10-23: RTX 5080, Australia, offer 57323247 ($0.428): box 57323378 not running after 330 s (status None) at 04:56; box.py's --block failed silently, entered by hand.",
+      "run": "r7b3 rent",
+      "reason": "unreliable"
     }
   ],
   "known_good": [
