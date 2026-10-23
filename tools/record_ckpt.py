@@ -82,6 +82,9 @@ class _RouteProbe:
 TRAIN_ONLY = frozenset({
     # --target-kl: PPO's early stop inside the update; a recording runs no update
     "target_kl",
+    # --view-ent-squash: the entropy bonus's form in the update; a recording runs no update and
+    # samples / takes the mean of the same squashed Gaussian either way
+    "view_ent_squash",
     # --ramp-death-charge: a training reward term (the eval pays no reward)
     "ramp_death_charge",
     # --ramp-route-flat: the shape of the training reward's potential

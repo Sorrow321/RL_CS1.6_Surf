@@ -132,3 +132,17 @@ recipe trains at ~120k steps/s instantaneous there (trainer at 5200% CPU, GPU 10
 cannot share one box without oversubscribing (each trainer defaults to omp = half the CPUs).
 This branch adds `--env KEY=VALUE` (repeatable; upper-case keys; refuses the launch-mode keys
 SELF_STATES/CKPT/ARM_RESUME/SCRATCH). Nothing else changes in box.py.
+
+### pbr1b3, 2026-10-23 15:07 UTC - two trainers on one box do NOT work; omp 15 beats omp 30 alone
+
+* Two trainers side by side at OMP_NUM_THREADS=15 each (61-CPU quota, EPYC 7502): load
+  average 97, ~3,200% CPU each, and NEITHER advanced a single 524k-step iteration in 40 s; the
+  first greedy eval took 8 min instead of ~1. Spin-waiting thread teams (OMP + numba's
+  parallel kernels default to every core) fight each other. One trainer per box.
+* Alone, the same trainer at OMP_NUM_THREADS=15 runs **136k steps/s** instantaneous, against
+  ~122k at the default 30 on this box: half-the-cores is too many on a 64-thread Zen 2 part.
+* `pbr1b3_sidwarm` (warm start) was stopped after its first eval: frontier 237 u, peak 235 u/s
+  (it walks; the scratch policy at 76M peaked at 121 u/s), patience-cut 8/9, score 0.410. Its
+  yaw sigma started at 0.078 (a converged policy). Not continued: one box, and 4x novelty from
+  scratch has the better prior for a start gate.
+* `pbr1b3_nov4` (recipe + `--int-coef 1.0`, scratch) continues alone (launched 14:56).

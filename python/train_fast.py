@@ -2090,6 +2090,24 @@ def gauss_entropy(log_std):
     return (0.5 + 0.5 * LOG2PI + log_std).sum()
 
 
+def squash_entropy_corr(mu, log_std):
+    """--view-ent-squash: the change-of-variables term of the entropy of u = tanh(z),
+    H(u) = H(z) + E_z[log(1 - tanh(z)^2)], estimated with ONE reparameterised draw per row
+    (z = mu + sigma * eps, eps ~ N(0, 1) with no grad), so it carries the gradient to mu
+    and log sigma. -> (B, n_heads) float32, one column per Gaussian head; the caller sums
+    the heads it pays. log(1 - tanh(x)^2) = 2 (log 2 - x - softplus(-2x)), stable for any x.
+
+    The Gaussian entropy alone grows like log sigma without bound, while the squashed
+    action's entropy peaks near sigma ~0.7 (mu = 0) and FALLS beyond it as the mass piles at
+    u = +-1: with no reward signal on a head, the bonus drove the yaw sigma to the
+    LOG_STD_MAX clamp (2.718) - a bang-bang look direction, i.e. under --view-absolute
+    velocity a target 180 deg off the velocity half the time."""
+    sig = log_std.exp()
+    eps = torch.randn_like(mu)
+    x = mu + sig * eps
+    return 2.0 * (math.log(2.0) - x - F.softplus(-2.0 * x))
+
+
 def sample_view(padded, mu, log_std, temp=None, temp_view=None):
     """The --view-continuous rollout draw (no grad): heads N_VIEW..5 by
     Gumbel-argmax on the padded slice (sample_padded, unchanged), the view
@@ -2115,7 +2133,8 @@ def sample_view(padded, mu, log_std, temp=None, temp_view=None):
 
 
 def logprob_entropy_view(padded, actions, mu, log_std, z,
-                         pitch_ent: float = 1.0, temp=None, temp_view=None):
+                         pitch_ent: float = 1.0, temp=None, temp_view=None,
+                         squash: bool = False):
     """The update's recomputation under --view-continuous: the categorical
     log-prob / entropy over heads N_VIEW..5 (logprob_entropy_padded on the
     slice) plus the Gaussian log-density of the STORED z and the Gaussian
@@ -2130,7 +2149,21 @@ def logprob_entropy_view(padded, actions, mu, log_std, z,
     ``temp`` / ``temp_view`` (None = off) score the stored actions under
     the SAME tempered distribution sample_view drew them from (sigma *
     temp_view-or-temp, logits / temp), and the entropy is that
-    distribution's too."""
+    distribution's too.
+
+    ``squash`` (--view-ent-squash; False = the pre-flag arithmetic op for op) adds
+    squash_entropy_corr, so the entropy paid is that of the SQUASHED action tanh(z) the
+    core actually receives: per Gaussian head E[log(1 - tanh(z)^2)], the pitch head's
+    share scaled by ``pitch_ent`` like its Gaussian term. The log-prob is unchanged."""
+    if squash:
+        logp, ent = logprob_entropy_view(padded, actions, mu, log_std, z, pitch_ent,
+                                         temp, temp_view)
+        ls = _temper_log_std(log_std, temp if temp_view is None else temp_view)
+        c = squash_entropy_corr(mu, ls)
+        ent = ent + c[:, :-1].sum(-1)
+        if pitch_ent != 0.0:
+            ent = ent + float(pitch_ent) * c[:, -1]
+        return logp, ent
     logp_c, ent_c = logprob_entropy_padded(padded[:, N_VIEW:],
                                            actions[:, N_VIEW:], temp)
     ls = _temper_log_std(log_std, temp if temp_view is None else temp_view)
@@ -6177,6 +6210,15 @@ def main() -> None:
                          "log 0.5. The planner, plan_to_bc, expert_dagger, "
                          "line_fragility and --bc-file all read the mode "
                          "from the checkpoint.")
+    ap.add_argument("--view-ent-squash", type=int, default=None, choices=(0, 1),
+                    help="--view-continuous: pay the entropy bonus on the SQUASHED view action "
+                         "u = tanh(z) the core receives (H(z) + E[log(1 - tanh(z)^2)], one "
+                         "reparameterised draw per row) instead of the Gaussian's H(z), which "
+                         "grows like log sigma without bound: with no signal on a head the "
+                         "bonus alone drove the yaw sigma to the 2.718 clamp in ~100M steps "
+                         "from scratch (princessburglar's start room), a bang-bang look "
+                         "direction. The squashed entropy peaks near sigma ~0.7 and falls "
+                         "beyond it. 0 = off (default, bit-identical); restored on resume")
     ap.add_argument("--pitch-entropy", type=float, default=None,
                     help="--view-continuous: the PITCH head's share of the "
                          "entropy bonus (its Gaussian entropy is multiplied "
@@ -8385,6 +8427,9 @@ def main() -> None:
                 and not flag_given("--pitch-entropy")):
             args.pitch_entropy = float(ck_cfg["pitch_entropy"])
             restored.append(f"pitch_entropy={args.pitch_entropy:g}")
+        if ck_cfg.get("view_ent_squash") and args.view_ent_squash is None:
+            args.view_ent_squash = int(ck_cfg["view_ent_squash"])
+            restored.append(f"view_ent_squash={args.view_ent_squash}")
         if (ck_cfg.get("pitch_sigma_min") is not None
                 and not flag_given("--pitch-sigma-min")):
             args.pitch_sigma_min = float(ck_cfg["pitch_sigma_min"])
@@ -9957,6 +10002,12 @@ def main() -> None:
                          "entropy: it needs --view-continuous")
     if PITCH_ENT < 0.0:
         raise SystemExit("--pitch-entropy must be >= 0")
+    # --view-ent-squash: the entropy of the SQUASHED view action (a Python constant, so the
+    # compiled update traces one graph per value; off = the pre-flag graph)
+    VIEW_ENT_SQ = bool(args.view_ent_squash or 0)
+    if VIEW_ENT_SQ and not VIEWC:
+        raise SystemExit("--view-ent-squash is the continuous view heads' entropy: it needs "
+                         "--view-continuous")
     # --pitch-sigma-min: the pitch head's sigma floor (0 = off); a Python constant
     PITCH_SIG_MIN = float(args.pitch_sigma_min or 0.0)
     if PITCH_SIG_MIN != 0.0:
@@ -14038,6 +14089,12 @@ def main() -> None:
               f"{float(core.config.pitch_rate_max_deg):g} deg/tick); "
               f"log sigma {float(policy.log_std()[0]):.3f} / "
               f"{float(policy.log_std()[1]):.3f}")
+        if VIEW_ENT_SQ:
+            # written ONLY when set: a control run's config dump is unchanged
+            meta["config"]["view_ent_squash"] = 1
+            print("--view-ent-squash 1: the view heads' entropy bonus is the SQUASHED action's, "
+                  "H(z) + E[log(1 - tanh(z)^2)] (one reparameterised draw per row); the pitch "
+                  "head's share follows --pitch-entropy")
         if VIEW_ABS:
             meta["config"]["view_absolute"] = VIEW_ABS
             _how = ("yaw target = heading(v_h) + off_warp(tanh z) deg "
@@ -16388,7 +16445,8 @@ def main() -> None:
                     cat, mu = split_view(logits.float())
                     padded = packer.pad(cat)
                     logp, ent = logprob_entropy_view(padded, s_act, mu, policy.log_std(),
-                                                     s_z, PITCH_ENT, s_temp, s_tempv)
+                                                     s_z, PITCH_ENT, s_temp, s_tempv,
+                                                     squash=VIEW_ENT_SQ)
                 else:
                     padded = packer.pad(logits.float())
                     logp, ent = logprob_entropy_padded(padded, s_act, s_temp)
@@ -16503,7 +16561,7 @@ def main() -> None:
                     # Gaussian's, which is what keeps sigma from collapsing
                     logp, ent = logprob_entropy_view(
                         padded, f_act[idx], mu, policy.log_std(), f_z[idx],
-                        PITCH_ENT, f_temp, f_tempv)
+                        PITCH_ENT, f_temp, f_tempv, squash=VIEW_ENT_SQ)
                 else:
                     logp, ent = logprob_entropy_padded(padded, f_act[idx],
                                                        f_temp)
@@ -16605,7 +16663,7 @@ def main() -> None:
                 # density of the STORED z, as in mb_step
                 logp, ent = logprob_entropy_view(
                     padded, f_act[idx], mu, policy.log_std(), f_z[idx],
-                    PITCH_ENT, f_temp, f_tempv)
+                    PITCH_ENT, f_temp, f_tempv, squash=VIEW_ENT_SQ)
             else:
                 logp, ent = logprob_entropy_padded(padded, f_act[idx])
             value = value.float()
