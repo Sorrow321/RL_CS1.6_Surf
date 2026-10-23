@@ -243,3 +243,17 @@ own reward-free search from the true spawn, no demo or record data, generic cons
   plate speed they become near-max spins, so the keys push in random directions and the jump
   into the gap is never aimed. The start room is all < 100 u/s precision; PPO has to learn a
   low-speed yaw mode from plate experience.
+* pbr1b1_yaw0b (yaw0 continued at 400M with the plate->tunnel step weighted 3x): plate landings
+  3/9 (400M) -> 1 -> 0 -> 0 -> 0 (702M), the view still spins at 10 deg/tick on the plate, no
+  tunnel entry, 0.40-0.45. Stopped.
+* pbr1b1_scr (the recipe FROM SCRATCH + the same curriculum + --yaw-entropy 0): yaw sigma
+  0.31 -> 2.718 (clamp) by 270M ANYWAY, pitch at its 0.5 cap, kl 0.28: from scratch the policy
+  gradient itself widens the view, so --yaw-entropy 0 only stops the bonus-driven part (the warm
+  yaw0 run held 0.07). Evals 0.41-0.45, 0 plate landings. Stopped at 270M.
+* pbr1b1_sil2: stripped sidistic weights with the YAW MEAN head zeroed (view_head row 0 and its
+  bias: u = 0 = look along the velocity at speed, no turn below 100 u/s; the policy's surf trunk
+  and keys untouched; _ckpts/sidwarm_yaw0head.pt, md5 a0438d24ebf21f53fc7a27beaa083a99) + the
+  plate-weighted curriculum (entry2_states.npy, 40%) + --yaw-entropy 0 + self-imitation
+  (--sil-coef 0.5 --sil-top 64: a rare tunnel entry stays in the buffer ~780 iterations) +
+  --front-temp 0 (the trainer refuses front-temp with SIL). First eval: the view turns
+  0.01 deg/tick at low speed (no spin).
