@@ -2858,3 +2858,55 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   progress); the line bleeds ~7,500 u between 60 and 114 s (~15 reward against ~47 of progress there), a
   single hard landing of 300-525 u now costs 0.6-1.05 at once (the time penalty is 0.004 per decision).
   Leading indicator: the energy profile at 96-97.8% and the basement entry; then chamber entries / apex.
+
+### 03:15 UTC: arm 1 r7b1_ep2 (--energy-pot 2) - the line keeps more energy, then DIES AT THE DEEP DIP
+
+* r7b1_ep2, 22.218 -> 22.375B (~157M steps; warmup to 22.228B): evals 97.898, 97.912, 97.849 (the warmup and the
+  first update), then **96.521, 95.705, 96.512, 96.518, 96.509, 96.520, 96.530, 96.531** - from 22.256B every eval's
+  best episode stops at 96.5% (CP6).
+* Energy DID move upstream: median h_E at 93% progress 3,567-3,645 (control 3,426-3,464), 95% 3,258-3,355 (control
+  3,162-3,186), 96% 3,177-3,246 (control 3,137-3,157): +100-200 u within ~100M steps.
+* But the line changed at the deep dip (~108-109 s): it now arrives further out in -y and falls past the curved
+  bottom into the kill below at (950, -700, -200), vz -2,028, in 3-4 of 9 episodes per eval, where the incumbent
+  surfed the bottom at (335, -156, -174), v (-2,057, 3, 0) with a -525 u impact. Also more deaths at 86.1% (~96 s,
+  (-1,680, -120, 3,900); the incumbent's eval had 2 of 9 there).
+* **Why (arithmetic):** without a terminal charge the potential pays C x scale x h_E at the LAST state, so the
+  objective becomes progress + C x (energy at death). Dying at the dip keeps h_E ~3,200; surfing the bottom and flying
+  on to the basement ends at ~2,000 with +1.8 of progress: at C = 2 dying wins by ~0.6, at C = 1 continuing wins by
+  ~0.6 (break-even C ~1.5). The same suicide-basin arithmetic as round 3's time penalty: any per-step cost that a death
+  stops is a reason to die where progress is slow.
+* A Grzes terminal charge (-C x scale x h_E at death) would remove it, but with it the shaping is exactly
+  potential-based and, once the critic has learned -C x scale x h_E (it can: obs columns 12-14 are the absolute
+  position), its advantages vanish for every episode that dies - no lasting push to keep energy. Not built.
+* **r7b1_ep1** (03:15): bare resume of the incumbent + `--energy-pot 1 --critic-warmup 20 --ckpt-every 1e8`, evals
+  every 12.5M. Same read-outs. ep2's weights kept on the box (ckpt_22317891584.pt, ckpt_latest).
+* Side measurement (local CPU, no training): the incumbent recorded at `--act-every 2` (20 ms decisions) - 1 of 3
+  greedy episodes broke at 21.9%, the other two reached 96.5 / 97.9% with h_E +60-80 u above the K = 4 line at
+  95-97.8% (3,203 / 2,461 / 2,463 at 96 / 97 / 97.8%). Finer control alone is not the missing ~400 u.
+
+### 03:30 UTC: the incumbent's line is LOCALLY energy-optimal at every big impact (probe, analysis only)
+
+* Probe (scratchpad an/eprobe.py, ANALYSIS ONLY - the policy's own greedy-eval states, raw core, nothing trains): the
+  full STATE_DTYPE rebuilt from an eval row (origin, velocity, yaw, pitch, duck, onground; the rest zero) and env 0
+  replaying the recorded keys + view (target = the next recorded yaw) reproduces the recorded line to the unit (positions
+  and h_E at +0.01..+3 s) - the reconstruction is exact.
+* From the incumbent's best episode (traj_20614479872 ep 2), 1,023 rollouts that replay the line's own inputs with a yaw
+  offset N(0, 3 deg) per 0.1-0.5 s macro and a 10% key flip, against the greedy line (h_E of the survivors that made at
+  least the greedy line's progress):
+
+  | start | horizon | greedy h_E | perturbed survivors | their max h_E |
+  |---|---|---|---|---|
+  | 100.2 s (before the -520 impact) | 2.0 s | 4,186 | 62% alive | 4,197-4,204 |
+  | 102.0 s (-375) | 2.0 s | 3,676 | 88% | 3,720 |
+  | 105.5 s | 2.0 s | 3,222 | 55% | 3,223 |
+  | 108.3 s (the deep dip, -850 to 111.3 s) | 3.0 s | 2,338 | 53% (8 deg: 32%) | 2,369 (8 deg: 2,261) |
+  | 113.9 s (basement landing) | 1.5 s | 2,029 | 71% | 2,065 |
+  | 114.9 s (the loop's U-turn) | 1.5 s | 1,959 | 93% | 2,064-2,081 |
+  | 115.9 s (the return leg) | 1.5 s | 1,908 | 82% | 1,911-1,923 |
+
+  Random held macros (yaw U(-60, 60) from the velocity heading, random keys) from 108.3 s: 76% alive at +0.3 s, 2% at
+  +0.8 s, 0% at +1.5 s - the dip is a precision stretch.
+* So no small change of the line keeps more than ~+30-120 u at any impact: the losses are what THIS route costs. More
+  energy at the basement needs a different route somewhere (ep2's +100-200 u at 93-96% were route changes, and the one
+  it found at the dip died), or an entry before the loop (the loop costs ~400 u between the basement landing at ~2,350
+  and the return-leg entry at ~1,900, and round 6's bench says ~2,300 at the face is what a rim crossing needs).
