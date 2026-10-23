@@ -2,6 +2,15 @@
  "agent": "pbr1b2",
  "round": 1,
  "final": false,
- "best": null,
- "summary": "Round 1 start (14:30 UTC): no eval yet. Built tools/transfer_ckpt.py (cross-map warm start: sidistic finisher weights + Adam, princess map, run state dropped, step 0). Waiting for a box (no offer passes the filters at 14:30)."
+ "best": {
+  "score": 0.454,
+  "eval_file": "/home/steam/ar_pb/runs/pbr1b2/pbr1b2_xen0/traj_0151519232.jsonl",
+  "run": "pbr1b2_xen0",
+  "step": 151519232,
+  "ckpt": null,
+  "recipe": ["--energy-pot-front", "0", "--energy-pot-front-bonus", "0", "--time-pen", "0"],
+  "resume_from": "sid2pb (tools/transfer_ckpt.py of incumbent/sid_ref, step 0)",
+  "commit": "7f2cc54"
+ },
+ "summary": "The start is a gate the field hides: the platform's only ways on are a ridge pump (the WR) or a duck-jump climb at its NW corner onto a north ledge (~1e-4 per random 8 s burst). Arms 1-4 (sidistic warm start; plain energy pot; time-pen 0; respawn-speed 1.0-1.6) all stall at that corner (0.07-0.45); time-pen 0.001 makes suicide the attractor there. Go-Explore phase 1 from the map start (explore_phase1, NEW --maxvel/--view-velocity) gets off the platform in 2.5 min (3.2%). Arm 5 (running): recipe + time-pen 0 + --spawn-states from the Go-Explore archive, warm from the sidistic transfer."
 }
