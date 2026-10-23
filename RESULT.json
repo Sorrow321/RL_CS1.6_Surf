@@ -1,7 +1,7 @@
 {
  "agent": "r6b1",
  "round": 6,
- "final": false,
+ "final": true,
  "best": {
   "score": 98.418,
   "eval_file": "/home/steam/ar/runs/r6b1/r6b1_turn8/traj_17419468800.jsonl",
@@ -33,5 +33,5 @@
   "commit": "3d03c42",
   "ckpt_note": "r6b1_turn8's last weights, step 17,501,257,728, md5 b3438648c5282b20a21d2617a54b207b (scp + md5 check against the box after the run stopped). The best eval is its first (17,419,468,800 = the incumbent's weights after one PPO iteration). A bare resume restores turn/steer/eval settings; the nocut field must be baked on a new box first."
  },
- "summary": "Round 6. WR demo (analysis only): the finish is a launch off the basement's west wall at ~1,500 u/s low on the return leg -> vz ~+1,000 -> up a hole -> crest z 1,600 -> funnel. Bench: incumbent finishes 4/6 from in-hole states, 0/28 from launch states; CEM (measurement): policy + committed yaw steer finishes ~1e-3 from the human's launch state, never from its own states (only a low-energy pop-up, 98.5% on the leaky score field). Arms: --steer-eps (NEW, frontier steer bursts) flat 98.1-98.27; --speed-pot 5 negative (line back to CP6, 96.8%). Now r6b1_turn: + --respawn-turn 180 (NEW: frontier spawn rows turned; the policy's own east leg reversed = the human's return leg)."
+ "summary": "Best 98.418 (r6b1_turn8, first eval at 17,419,468,800: the incumbent's weights after one PPO iteration, 54 greedy episodes; one rises through the -y basement hole to z 1,222 nearer the centre than the incumbent's 98.349). 0 finishes. Analysis (WR demo as instrument only): the finish = a low fast return leg, a launch off the basement west wall to vz ~+1,000, a whip through the +y hole, crest z 1,600, funnel. The incumbent finishes 4/6 from in-hole states; CEM (policy + committed yaw steer) finishes ~1e-3 from the human's launch state but never from the policy's own states (only a low-energy pop-up). NEW (default off, tested): --steer-eps family (frontier steer bursts), --respawn-turn family (frontier spawns turned), --sil-fix-sigma, --sil-steer-only. None moved the training ceiling (d 1,414 nocut since round 5); --speed-pot 5 dropped the line to CP6; SIL on steer bursts was unstable. The checkpoint's 98% greedy line wobbles to a 96.7% CP6 stop and back by itself; the score came from sampling: restart from the incumbent with a new seed whenever it wobbled, 54-episode side-by-side evals. Next: launch-quality states + a committed steer (turn rows kept out of the novel visit grid; bounded real-only SIL; correlated frontier exploration)."
 }

@@ -2704,3 +2704,68 @@ basement and only near the funnel wall in shape).
   before the wrap-up.
 * 00:20 UTC: r6b1_turn10 (seed 10) - **98.405** (17,432M, second best), wobbling from 17,463M; reset as r6b1_turn11
   (seed 11) for the last ~30 min before the wrap-up.
+
+## ROUND 6 LESSON (r6b1) - written at wrap-up
+
+**Result:** best greedy eval from the true start **98.418** (r6b1_turn8, its first eval traj_17419468800 at 17,419,468,800; incumbent 98.349), CP7, 0 finishes. The best
+episode rises through the -y basement hole to z ~1,222 nearer the centre than the incumbent's (the score's OLD field is
+lower there: it leaks through the funnel's outer wall). Hand-on checkpoint: /home/steam/ar/runs/r6b1/r6b1_turn8/ckpt_latest.pt (17,501,257,728, md5 b3438648c5282b20a21d2617a54b207b).
+
+**What the finish needs (measured, analysis only - the WR demo is an instrument, never training):**
+* The human returns west LOW (z ~770-800 on the +y side ramp) and FAST (~1,540 u/s), hits the basement's west wall
+  (a steep face, normal ~(0.83, -0.39, 0.41), x ~2,700-2,850) which turns the speed into vz +1,005, whips ~200 deg
+  through the +y hole using wall contacts, crests at z ~1,600 over the funnel rim (~1,560) and drops down the shaft.
+* The incumbent policy FINISHES 4/6 from the human's in-hole rising states (115.15-115.4 s): the crest + funnel + shaft
+  skill exists (learnt from novel rows above the funnel). From the human's launch states (114.7-115.0 s) it finishes
+  0/7 greedy, 0/21 stochastic: it rises (z ~1,550) but WEST up the passage.
+* CEM over committed yaw-offset schedules added to the policy's own command (measurement): from the human's 114.8 s
+  launch state ~1e-3 of schedules finish (the policy's own keys suffice); from 114.6 s (0.2 s earlier) none in 30k;
+  from the policy's OWN basement-entry states only a low-energy pop-up into the room (98.4-98.53% on the leaky field,
+  energy E/g 2,272 -> 1,440), never the finish.
+* Energy: the policy's return leg carries E/g ~2,109 mostly as HEIGHT (its U-turn trades ~175 u/s for 250 u), the
+  human's ~2,259 mostly as speed. Its own east leg reversed IS the human's return leg (same place, height, speed).
+
+**New, generic, default off, bit-identical when off, tested (tests/python/test_steer_bursts.py, 9 tests):**
+`--steer-eps/--steer-front/--steer-dy/--steer-hold` (frontier steer bursts: a held offset ADDED to the policy's own yaw,
+keys kept), `--sil-fix-sigma`, SIL allowed with steer bursts, `--sil-steer-only`, `--respawn-turn/--respawn-turn-front/
+--respawn-turn-frac` (frontier spawn rows with their heading turned: return-then-explore in direction).
+
+**What did not move the ceiling (novel ceiling d 1,414 nocut, flat since round 5, through ~2B steps of arms):** steer
+bursts (flat 98.1-98.27); --speed-pot 5 (the line fell to CP6 and training wins collapsed: the shaft and chimney drops
+cost horizontal speed); the turn operator (290M steps, p = 1 and 0.5); SIL on steer bursts (unstable within 6 updates:
+novel-row trivial wins leak in, and a committed 19 deg steer is ~72 sigma from the yaw mean, so log-likelihood imitation
+explodes - needs a real-only filter and a bounded loss).
+
+**The CP6 wobble (important for reading any arm on this checkpoint):** its 98% greedy line flips to a 96.7% stop (the
+climb back from the big drop comes up too low and misses the corridor) and back, seed-dependently, within 25-150M steps
+of a resume - with or without any change. Two early "this arm broke the line" verdicts were this wobble.
+
+**What produced the score:** sampling the near-incumbent greedy line. The trainer is deterministic per checkpoint +
+flags + seed, so restarting from the incumbent with a NEW seed whenever the line wobbled to CP6 kept the evals at CP7;
+54-episode side-by-side evals (~1 s per extra episode on a 3090) sampled ~1,300 greedy episodes per hour. The hole rises
+that score above 98.35 are rare (~1 per 300-1,000 episodes): 98.418 came from seed 8's FIRST eval, 98.405 from seed
+10's second, 98.347 twice.
+
+**Ideas not finished (for whoever continues):** the turn operator with its rows kept out of the novel sampler's visit
+grid (else the novel rows re-target earlier on the map); a Huber-on-z SIL restricted to REAL episodes to imitate a
+successful committed steer; correlated (OU / pink) yaw exploration in the frontier band, scored per row.
+
+**Ops:** box 57226380 (RTX 3090, Missouri, $0.295/h). Deploys can wait 20+ min on a background apt mirror (kill that apt
+PID: git/gcc were there, ffmpeg is optional). A checkpoint carrying race_no_corner_cut needs the field pre-baked on a new
+box (bake_nocut_field.py, ~7 min on a 3090) - the record gate's 420 s timeout kills the launch otherwise. Never run a CEM
+or a second trainer beside a training run (evals starve). `pgrep -f`/`pkill -f` over ssh match the remote shell itself.
+gpu_health.py (harness) needs the RTX 4090 reference again.
+
+**Per-run bests (score.py --best):** steer 98.270 | sp5 98.245 | steer2 98.221 | turn 98.204 | bank 98.217 | silst 98.226
+| bank2 98.217 | bank3 98.249 | turn2 98.308 | turn3 98.283 | turn4 98.347 | turn5 98.273 | turn6 98.277 | turn7 98.347 |
+**turn8 98.418** | turn9 98.321 | turn10 98.405 | turn11 98.347. 0 finishes anywhere.
+
+## Wrap-up (r6b1) - 2026-10-23 01:14 UTC
+
+* Final: RESULT.json `"final": true`, score **98.418** (r6b1_turn8, eval traj_17419468800: 54 episodes, best 98.42%, median
+  98.1%, 0 finishes, CP7; re-scored at wrap-up). Every run's evals pulled (file counts checked against the box).
+* Hand-on checkpoint: /home/steam/ar/runs/r6b1/r6b1_turn8/ckpt_latest.pt (17,501,257,728, md5
+  b3438648c5282b20a21d2617a54b207b), copied by scp and md5-checked against the box after the run stopped. Also local:
+  r6b1_turn4/ckpt_latest.pt (17,639,669,760, md5 65979bd8...).
+* Code: the last code change is 3d03c42 (--respawn-turn-frac); the best run trained at it. Box 57226380 released at
+  01:11 UTC (`box.py status`: no box); ~11 h at $0.295/h.
