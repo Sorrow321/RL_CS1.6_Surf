@@ -3061,3 +3061,10 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   multipliers likewise): lower T caps consolidated the greedy line in rounds 2, 3 and 5, and the CP6 drift may be
   noise-driven. Snapshots every 25M, evals every 6.25M. Read-out: does the basement window (and the entries'
   climb) last past 22.312B?
+
+### 07:40 UTC: T cap 0.1 extends the basement window by ~60M steps (5 more entries); the drift still comes
+
+* r7b4_t01 (22.293B snapshot + `--unstuck-max 0.1`), 22.299-22.413B, 19 evals: basement mode to 22.369B (12
+  evals past the point where the T 0.2 replay drifted at 22.312B), 57 of 171 episodes in the basement, **5
+  entries** (apex z 1,327-1,423), best 98.380 (22,337,290,240); then CP6 at 22.375-22.394B (4 evals) and partly
+  back (1-2 of 9 in the basement) at 22.400-22.413B.
