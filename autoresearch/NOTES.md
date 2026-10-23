@@ -3118,3 +3118,13 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   in the end-game band (round 6 added temperature 2 on every head at >= 99% of the reservoir's deepest; never
   ablated). Training in the band then samples near the greedy action the evals score. Reference: the bare T 0.2
   path from the same weights, 10 entries in 22.243-22.306B.
+
+### 09:59 UTC: `--front-temp 0` kills the greedy entries; dose step r7b4_ft15 = front-temp 1.5
+
+* r7b4_ft0 (inc2's 22.243B snapshot, T 0.2, front-temp off), 22.249-22.356B, 18 evals: **0 entries in 162
+  episodes**, 26 of 162 in the basement (the line mostly at the corridor / CP6). From the same weights the bare
+  recipe (front-temp 1: every head at temperature 2 for envs at >= 99% of the reservoir's deepest progress) gave
+  10 entries in 22.243-22.306B and 64 of 207 basement episodes. One path each (deterministic), but a clean
+  ablation: round 6's frontier temperature is what makes the GREEDY line enter the chamber - exploration in the
+  last 1% of the map trains the mean action there.
+* **r7b4_ft15** (09:58): the same snapshot + `--front-temp 1.5` (temperature 2.5 in the same band).
