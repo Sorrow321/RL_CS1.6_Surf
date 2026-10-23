@@ -214,3 +214,23 @@ own reward-free search from the true spawn, no demo or record data, generic cons
   the yaw head's sigma hit its 2.718 cap - a stuck warm policy loses its view precision. Stopped.
 * Next: pbr1b1_entry = the stripped sidistic weights (fresh) + recipe + `--spawn-states
   entry_ge_states.npy --spawn-states-frac 0.4`: a dense curriculum along the machine-found entry.
+
+### The entry curriculum, and why the stuck runs rot (2026-10-23 ~17:00 UTC)
+* pbr1b1_entry (fresh stripped sidistic weights + recipe + 40% spawns from entry_ge_states.npy):
+  the greedy line learned the first precision step - at 151M every episode duck-jumps
+  continuously (jump ~95%, duck ~85% of ticks) with the feet peaking exactly at the plate
+  (3,679), and one episode per eval at 151M / 227M / 302M LANDED on the conveyor plate - but none
+  made the plate -> gap jump; scores 0.36-0.42.
+* pbr1b1_entry2 (continued at 400M with the plate->tunnel step weighted 3x): evals 0.440 /
+  0.343 / 0.258 / 0.166 at 400/476/551/627M while the YAW sigma climbed 0.54 -> 2.1 -> 2.6
+  (clamp 2.718). The same rot in geen (sigma at the clamp, evals flat) and gewarm2 (0.08 ->
+  1.06). Cause: the view sigma is one state-independent parameter and the entropy bonus pushes
+  log sigma up by the coefficient every update while the advantages carry no signal (a stuck
+  start room); the eval is greedy, but the policy is TRAINED on near-random yaw and its mean
+  drifts. Same story as the pitch head (--pitch-entropy 0 under --view-absolute).
+* `--yaw-entropy Y` (new, default 1.0 bit-identical, TRAIN_ONLY): Y = 0 drops the yaw head's
+  entropy term; exploration stays with --unstuck's sampling temperature. Test:
+  tests/python/test_yaw_entropy.py. Arm pbr1b1_yaw0 = pbr1b1_entry's launch + --yaw-entropy 0.
+* Random bursts from the archive's 12 highest-energy pit states (h ~3,655-3,667) never reach
+  d < 54,800 (4.1%) in 104k bursts, nor with their speed scaled x1.5 / x2 / x2.5 (h up to
+  ~5,400): gate 2 is a directed U-turn climb (skill), not a lack of energy alone.
