@@ -2924,3 +2924,21 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   with 500 u/s toward the funnel), and the entries carry h 1,780-2,080 - enough energy, pointed sideways.
 * PROTOCOL: beats the incumbent's score and clears its entry gate ~5x as often at matched steps -> the run
   continues on its 2e9 budget (to ~24.2B, ~06:30 UTC).
+
+### 04:36 UTC: arm 2 stopped at 23.01B (best 98.366, entries 2.5%, apex flat); arm 3 r7b2_ef2 = its weights + `--energy-pot 2`
+
+* r7b2_ef1 22,218-23,011M (~793M steps, 105+ evals, 189k steps/s): best **98.366** (22,432M); later evals
+  98.32 / 98.32 / 98.30 / 98.27 / 98.23 (entries) between 97.9 (basement) and CP5 / CP6 wobbles. Over its last 58
+  evals: 13 chamber entries in 522 episodes (2.5%), apex 1,299-1,409 (the earlier max 1,450) - more entries, no
+  higher. h at the basement entry, median of the per-eval medians, 2,570. Weights: runs/r7b2_ef1/ckpt_stop.pt on the
+  box (23,011,000,320, md5 162a4193...); being pulled.
+* Where eval episodes end (control / en1 / ef1, 81 / 594 / 945 episodes): the basement 38% / 41% / 42% - the energy
+  term did not cost the line's reach; ~43% die before 100 s in the arms (the CP5 point at ~86-88%).
+* **Why more energy is still needed, not only a better pull-out:** at the face's low point the entries have h
+  2,000-2,300 at z ~800; a PERFECT up-slope conversion (49 deg face: vz = 0.75 |v|) gives vz ~1,090 at z 800 and
+  ~680 at the hole top (z 1,250) - the rim (z 1,560) needs ~700. The entries reach vz 220-470 there.
+* **r7b2_ef2** (04:34 UTC): resume of ef1's ckpt_stop (23,011,000,320) + `--energy-pot 2 --critic-warmup 20
+  --ckpt-every 1e8` (energy_pot_front 0.01 and every tp3 setting restored), evals every 6.25M, 2e9 budget. One
+  knob: K 1 -> 2 (a 600 u contact now costs 1.2, the deep dip's ~600 u loss against ~1.3 of progress after it - the
+  risk is the line learning to die at the dip; watch the CP6 share). Box copy of the incumbent kept as
+  runs_ckpt_incumbent.pt.
