@@ -2848,3 +2848,18 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
 * Box: none yet. 02:30-02:50 UTC no offer passed box.py's filters (32+ threads, >= 2.5 GHz, caps): the
   cheapest 32-thread cards were a 4090 at $0.457 (cap 0.45), 5080s at $0.667 (cap 0.65), a 5080 at $0.466 on a
   2.25 GHz EPYC. A rent retry loop runs every 2 min.
+
+### 02:53 UTC: box 57310803 (RTX 3090, AMD EPYC 7B12, quota 61 CPUs, $0.361/h, machine 48881); arm r7b4_gk
+
+* Rented by the retry loop at 02:48, READY 02:50, deployed 02:52 (branch + incumbent ckpt md5 c713bd69...). The
+  no-corner-cut field (goalc_32.npz, md5 f2609db9..., not in the maps tarball) was scp'd to the box's maps/ so
+  the trainer does not re-bake it: its signature records the bsp's mtime_ns 1774626465079097800, which
+  tools/restamp_maps.py restores ("already matching").
+* **r7b4_gk** (02:53): warm resume of the incumbent (22,217,752,576; every flag restored: front-perturb 0.25 /
+  band 0.5% / turn 90 / x1.0-1.3, time-pen 0.001, front-temp 1 / 1%, novel 0.2, backward-mix 0.1, greedy 0.25 +
+  stuck 200, keys-only T cap 0.2, pitch floor 0.05, no-corner-cut field) + `--respawn-greedy-keep 8
+  --respawn-front-perturb-anchor 100 --ckpt-every 1e8`, evals every 6.25M, 3e9 budget. Measures AT the gate:
+  do the kept deepest greedy failures (the line's own chamber entries, once it makes them) turn into training
+  finishes from the greedy line's states (gkeep/finished), and does the greedy line then finish? Reference at
+  matched steps: tp3 (20.19-22.2B): greedy chamber entries 10 in 2,376 episodes (0.42%), 0 greedy finishes,
+  fpert finishes only in the 21.106-21.143B window.

@@ -8,9 +8,16 @@
   "run": null,
   "step": null,
   "ckpt": null,
-  "recipe": [],
+  "recipe": [
+   "--respawn-greedy-keep",
+   "8",
+   "--respawn-front-perturb-anchor",
+   "100",
+   "--ckpt-every",
+   "1e8"
+  ],
   "resume_from": "incumbent r6b2_tp3 ckpt (22,217,752,576)",
-  "commit": null
+  "commit": "bfec7fb"
  },
- "summary": "Round 7 start (02:40 UTC): no box yet (no offer under the caps; rent retry loop running). Building --respawn-greedy-keep K (the greedy pool keeps the windows of the K deepest failed greedy episodes ACROSS evals, so the line's rare chamber entries stay in practice). First arm: warm resume of the incumbent + --respawn-greedy-keep, evals every 6.25M."
+ "summary": "02:53 UTC: r7b4_gk running on box 57310803 (RTX 3090): warm resume of the incumbent (22.218B) + NEW --respawn-greedy-keep 8 (the greedy pool keeps the 8 deepest failed greedy episodes across evals) + NEW --respawn-front-perturb-anchor 100 (the front-perturb band hangs off the 100th-deepest reservoir state, so one finishing chain cannot collapse it into the funnel - it did in tp3 at 21.118B, after the first fpert finishes). Evals every 6.25M. No eval scored yet."
 }
