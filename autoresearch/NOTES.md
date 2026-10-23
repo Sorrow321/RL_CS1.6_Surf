@@ -3073,3 +3073,13 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
 * Arrivals 12 +y / 33 -y over 11 evals (control 7 / 8): the energy term still shifts the passage approach toward the -y side.
   The arrival side is the phase of the corridor's zig-zag at the passage (e.g. the incumbent's ep 2: y +214 -> +106 -> +135 ->
   +257 -> +406 over 113.4-114.0 s), so any upstream route change moves it. Running on.
+
+### 08:15 UTC: arm 5 r7b1_gate at +290M - 98.349 and 98.123; the first entry from a -y arrival; a wobble
+
+* r7b1_gate 22.356 -> 22.505B: **98.349** (22.394B: a greedy entry from a +y arrival, apex 1,360) and **98.123** (22.420B: the
+  first greedy entry of the lineage from a -y ARRIVAL, after a 14 s basement loop, apex 1,296); then a wobble (22.457-22.495B:
+  medians ~86%, one CP5 eval at 87.5%, -y arrivals dropping into the outer channel within 0.5 s in 7 of 13). Energy at 97%
+  progress median 2,576 (control ~2,380). Arrivals 6 +y / 30 -y in the last 12 evals.
+* Training: front-perturb episodes at chamber depth in EVERY iteration from the start (60 of 60 per block), rim-depth 0-7 and
+  finishes 0-5 per 60 iterations; the unstuck T eased 0.2 -> 0.09 after the new eval best. Gate edge `epot<97.3%`, reservoir
+  deepest 98.30%. Running on; box extended to ~14:15 (wrap-up 13:34).
