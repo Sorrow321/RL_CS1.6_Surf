@@ -2789,3 +2789,9 @@ stochastic (keys temp 1.2 = training) x6 per set:
   all CP7) with the same flags restored (lr 5e-5, 5% own-root archive-path spawns, OU frontier yaw), evals
   every 6.25M, until ~00:45. That snapshot is being pulled as the hand-on checkpoint (the newest weights of
   r6b4_lrg's good mode).
+
+### 00:23 UTC: r6b4_lrg2 (rollback to the 18.17B snapshot) - same wobble after ~90M steps
+
+* r6b4_lrg2 18,167-18,318M: 15 evals at CP7 (98.08-98.35, best 98.347 at 18,199M; medians 98.0-98.2%), then from
+  18,255M eleven in a row at the chimney stop (96.72-96.75%). The rollback bought ~15 good-mode evals; at lr 5e-5
+  the drift into the bad mode is slower than at 3e-4 but not gone. The branch's best stays 98.444 (r6b4_lrg).
