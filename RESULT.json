@@ -8,7 +8,7 @@
   "run": "pbr1b2_ge14",
   "step": 853540864,
   "ckpt": "/home/steam/ar_pb/runs/pbr1b2/pbr1b2_ge14/ckpt_853016576.pt",
-  "ckpt_note": "the eval ran one iteration after resuming pbr1b2_ge13's final weights (853,016,576), copied into the run as ckpt_853016576.pt and pulled (md5-verified); median 3.2% (the route is reliable); pbr1b2_ge13/ckpt_708313088.pt and ckpt_808452096.pt also pulled",
+  "ckpt_note": "TIE at 3.235 (scores are rounded to 3 decimals): pbr1b2_ge14/traj_0853540864 (ckpt_853016576.pt, pulled) and pbr1b2_ge16/traj_1311768576 (ckpt_1260388352.pt, the milestone 51M steps before it, pulled); both evals median 3.2%. Also pulled: pbr1b2_ge13/ckpt_708313088.pt, ckpt_808452096.pt, ckpt_latest.pt",
   "recipe": [
    "(eval at the resume of) --time-pen 0 --ent 0.002 --demo-file '' --demo-front-frac 0 --demo-grow 0 --spawn-states spine378 --spawn-states-frac 0.15 --respawn-speed 1.0 1.5; weights trained by pbr1b2_ge13: --demo-file chain_dedup_378 --demo-reach 128 --demo-grow 16 --demo-window 16 --demo-front-frac 0.67 --demo-tau-start 269 --time-pen 0 --ent 0.002 (+ novel/greedy/front-perturb off)"
   ],

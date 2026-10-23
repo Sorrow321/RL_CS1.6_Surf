@@ -432,3 +432,17 @@ learn what energy is worth there before the policy can make it.
    backward curriculum, spine cut before unrepeatable moves) is generic: nothing in it reads the
    map beyond its goal field; it is how to cross the NEXT hidden gate too, once Go-Explore can
    reach past it.
+
+### 2026-10-23 21:52 UTC - the descent loses the energy (bench); box released
+
+* arm 16 stopped at 1.68B: evals 3.227-3.235 (median 3.2%), one TIE at 3.235 (1,311.8M; its
+  milestone ckpt_1260388352.pt pulled next to it so either tied eval hands on a checkpoint).
+* Bench (record_ckpt --spawn-states, arm 16 weights): the policy spawned on the SOUTH LEDGE at
+  450-650 u/s (h 3,840-4,000, WR-level ledge energy; ducked like the states it came from - a
+  standing hull at a ducked height fails as stuck in 0.1 s, the first try's mistake) still ends
+  at the same pocket point (3.23%) with only h 3,620-3,670 left down there: it sheds ~350 u on
+  the descent whatever it starts with. So ledge speed alone is not enough: the descent must KEEP
+  the energy (the WR flies over the floor the policy lands on and lands on the pocket's slope,
+  off the NORTH ledge). That is the skill to find next.
+* Box 57383391 released at 21:51 (no further idea had a credible chance in the 3.7 h left;
+  the fleet was over its spending pace).
