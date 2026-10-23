@@ -530,6 +530,12 @@ def cmd_launch(a):
     recipe = [] if a.no_recipe else list(CFG["incumbent_recipe"])
     env = (f"MAP={shlex.quote(CFG['map'])} BUDGET={shlex.quote(str(int(float(a.steps))))} "
            f"RECORD_EVERY={shlex.quote(a.record_every)} ")
+    for kv in (a.env or []):
+        k, sep, v = kv.partition("=")
+        if not sep or not re.fullmatch(r"[A-Z_][A-Z0-9_]*", k) or k in ("SELF_STATES", "CKPT",
+                                                                        "ARM_RESUME", "SCRATCH"):
+            die(f"--env takes KEY=VALUE with an upper-case KEY (not a launch-mode key): {kv!r}")
+        env += f"{k}={shlex.quote(v)} "
     if a.self_states is not None:
         # run_arm.sh refuses --spawn-states / --demo-file / --bc-file without SELF_STATES=1,
         # the declaration that the file came from the POLICY'S OWN states (CLAUDE.md section
@@ -701,6 +707,9 @@ def main(argv=None):
     p.add_argument("--self-states", default=None, metavar="PROVENANCE",
                    help="SELF_STATES=1 for run_arm.sh: the --spawn-states (or similar) file "
                         "was built from the policy's OWN states; say how (it is recorded)")
+    p.add_argument("--env", action="append", default=[], metavar="KEY=VALUE",
+                   help="extra environment for run_arm.sh / the trainer (e.g. OMP_NUM_THREADS=15 "
+                        "to run two arms side by side on one box); repeatable")
     p.add_argument("extra", nargs=argparse.REMAINDER)
     p.set_defaults(fn=cmd_launch)
     p = sub.add_parser("pull")

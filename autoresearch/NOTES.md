@@ -79,3 +79,56 @@ resample every 25 decisions. On a box it runs as it does locally (CPU physics + 
 ## Round log
 
 (winners append below)
+
+## pbr1b3 (round 1), 2026-10-23 14:49 UTC - the start gate, measured
+
+Box 57382729: RTX 3090 on an AMD EPYC 7502 (64 threads, 2.5 GHz cap), 0.35 $/h. The incumbent
+recipe trains at ~120k steps/s instantaneous there (trainer at 5200% CPU, GPU 10% busy).
+
+* **The sidistic finisher's weights zero-shot** (`record_ckpt.py --map surf_princessburglar_b26
+  --maxvel 3500`, CPU, greedy): walk ~200 u west-south-west and press into the spawn room's SW
+  corner (650, -3155, 3654) for 84 s; best progress 0.32% (d 56,968 of 57,149). The scratch
+  baseline's first eval stops at the same corner (0.3%, score 0.34).
+* **Why (analysis of the WR line, CLAUDE.md section 0 - analysis only):** the spawn floor is at
+  hull-centre z 3652 in a room x 650-1150, y -3100..-2900. Its west wall (x ~600) has a WINDOW
+  at the north side (y ~ -2884, hull z ~3700-3760), i.e. 50-110 u above the floor; the north
+  ledge is +87 u, the south ledge +132 u - all above a standing jump. The record does not walk
+  out: it drops EAST into a halfpipe (x 1180-2400, floor z ~3360), pumps once (east wall up to
+  z 3654, back down, up the west slope to z 3763 at 4.8 s), flies west over the room at z ~3720
+  and ~590 u/s, through the window, and drops at x ~50. Along its line the no-corner-cut field
+  RISES by up to 1,520 u for the first 4.8 s (d 57,149 -> 58,661 -> 56,459 at 5.7 s); after that
+  the field falls monotonically along the record to the finish (no other rise > 300 u).
+* So the first gate is an ENERGY gate behind a potential plateau: the field (dynamics-free)
+  points west/up into the wall; the way is "go away, gain energy, come back high".
+* A weights-only warm start of sid_ref was prepared (policy + optimizer, steps 0, config map
+  set to princess and maxvel 3500; no reservoir / greedy rows / novelty counts / unstuck clock,
+  all of which would otherwise be restored with sidistic coordinates - the greedy rows and the
+  unstuck best are NOT map-keyed in the trainer's resume path).
+
+### pbr1b3, 2026-10-23 14:56 UTC - the scratch baseline cannot even run here; two arms side by side
+
+* `pbr1b3_base` (incumbent recipe from scratch, 102M steps, then stopped): greedy frontier 215 u
+  (0.5M) -> 250 u (76M), score 0.34 -> 0.408; greedy peak speed 98 -> 121 u/s (it never runs,
+  let alone pumps). Training: novel ceiling 432 u, 21 visited 128-u cells in 53M steps.
+* **The yaw (view) sigma hits the clamp**: `sig` 0.30 at 1M -> 0.95 (53M) -> 1.80 (80M) ->
+  2.72 = e^LOG_STD_MAX (100M). The start room pays almost nothing (the ratchet's whole budget
+  there is ~250 u = 0.44 reward; novelty at 0.25 is spent in 21 cells), so the entropy bonus
+  alone drives the yaw head to its ceiling; under the velocity-frame absolute view a
+  saturated tanh(N(mu, 2.7)) is a bang-bang look direction, i.e. random movement. On a map
+  whose start pays progress at once (a ramp, a drop) this never shows; here the first dense
+  signal has to come from somewhere else.
+* `box.py launch --env KEY=VALUE` added on this branch (Harness issue below) so two arms can
+  share the box at OMP_NUM_THREADS=15 each (the trainer uses ~52 of 61 CPUs at omp 30 with the
+  GPU 10% busy, so two half-width trainers should give more total steps than one).
+* Arms now running together (launched 14:53-14:56): `pbr1b3_sidwarm` = the sidistic finisher's weights
+  (weights + optimizer only, see above) on the recipe as restored from its config + --map
+  princess --maxvel 3500; its yaw sigma starts at 0.077. `pbr1b3_nov4` = the recipe from scratch
+  with count-based novelty x4 (`--int-coef 1.0`, the uf2 evidence: novelty at 4-10x was the
+  only champion-free mechanism that took that map's start dip).
+
+### Harness issue (pbr1b3)
+
+`box.py launch` cannot pass environment variables to run_arm.sh / the trainer, so two arms
+cannot share one box without oversubscribing (each trainer defaults to omp = half the CPUs).
+This branch adds `--env KEY=VALUE` (repeatable; upper-case keys; refuses the launch-mode keys
+SELF_STATES/CKPT/ARM_RESUME/SCRATCH). Nothing else changes in box.py.
