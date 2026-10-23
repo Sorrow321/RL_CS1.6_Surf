@@ -2955,3 +2955,23 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   across the chamber INWARD toward the funnel: apex z **1,439** at (2,976, -233) at 115.0 s with |v_h| ~1,040 left -
   the rim is at ~1,560 and the funnel opening at |y| <= 190. A collision at 115.4 s (h 2,050 -> 1,490), death at
   116.7 s. So: the energy for the rim was there (h 2,119 at the apex), the exit was too flat (vz 551 vs ~705).
+
+### 05:34 UTC: arm 3 at 23.64B - entries more frequent and higher; real training finishes from frontier rows
+
+* r7b2_ef2 by blocks of 20 evals (180 episodes each), 23.01 -> 23.63B:
+
+  | evals from | basement | h at entry, median / p90 | entries | apex z |
+  |---|---|---|---|---|
+  | 23,011M | 56% | 2,593 / 2,724 | 2 | 1,296 1,315 |
+  | 23,137M | 49% | 2,647 / 2,722 | 1 | 1,444 |
+  | 23,263M | 63% | 2,701 / 2,784 | 2 | 1,354 1,405 |
+  | 23,389M | 51% | 2,721 / 2,824 | 7 | 1,297-1,471 |
+  | 23,514M | 54% | 2,661 / 2,773 | 5 | 1,330-1,433 |
+
+  Evals scoring above 98.3: 98.462 (23,206M), 98.374, 98.314, 98.375, 98.331, 98.373, 98.428, 98.445 - the entries now
+  come every ~10-20 evals. Best still 98.462; apex max 1,471 (rim 1,560); 0 eval finishes.
+* `fpert/finished` (progress.csv): **9 real finishes in 89,020 front-perturb episodes under ef1, 6 in 71,883 under
+  ef2** (~1e-4; tp3 in round 6 had 0 at x1.0-1.3): from the policy's own frontier states (heading turned +-90, speed
+  x1.0-1.3) the whole sequence hole -> over the rim -> funnel -> finish now happens in training, rarely. Backward-mix
+  rows (start inside the chamber) finish 56%.
+* Box 57308519 extended to 08:31 UTC.
