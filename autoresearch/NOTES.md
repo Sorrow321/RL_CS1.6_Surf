@@ -142,7 +142,7 @@ resample every 25 decisions. On a box it runs as it does locally (CPU physics + 
   --unstuck-max 2 --energy-pot-front 0 --energy-pot-front-bonus 0` (energy paid everywhere).
   Read: does any episode reach the corridor (best > ~1,000 u = 1.75%)?
 
-### 15:41 UTC - the start, solved by search: Go-Explore phase 1 passes the trap in 30 s
+### 15:38 UTC - the start, solved by search: Go-Explore phase 1 passes the trap in 30 s
 
 * `pbr1b4_esc` (+ --time-pen 0 --unstuck-max 2 --energy-pot-front 0): NULL at 567M steps, best
   eval 0.466 (0.4%). Episodes lengthened (1.5 s -> 9 s), T reached 1.83 and the yaw sigma blew
@@ -166,7 +166,7 @@ resample every 25 decisions. On a box it runs as it does locally (CPU physics + 
   STATE_DTYPE .npy for --spawn-states (no map constant: the field's own frontier, the
   tools/archive_route.py rule). Provenance: reward-free random bursts from the true start; no
   demo, no policy, no reward.
-* `pbr1b4_ge` launched 15:39 UTC = recipe + --init-weights sid_ref + `--time-pen 0
+* `pbr1b4_ge` launched ~15:37 UTC = recipe + --init-weights sid_ref + `--time-pen 0
   --spawn-states runs/ge_pb1/chain.npy --spawn-states-frac 0.2` (73 chain states, 3.21%).
   Go-Explore's "robustify" half done by RL from states along the found route. Read: does the
   GREEDY line from the true start learn the crawl (best > 1.5%), and does RL push past 3.2%?
