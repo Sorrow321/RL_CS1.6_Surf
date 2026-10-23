@@ -50,11 +50,16 @@ findings are archived, not inherited: that is the flush.
 
 ## The goal and the one number
 
-Pass sidistic from the true start, champion-free and generic: first a finish, then faster
-finishes. Your score is `python autoresearch/score.py --best $AR_HOME/runs/$AR_AGENT/`. It
-is the best eval's max-episode progress on the goal field (a finish counts 100), plus
-10 x the finish fraction, plus a time term once something finishes. Only greedy evals from
-the true start count; the grader rejects anything else.
+Pass sidistic from the true start, champion-free and generic: first a finish, then finishing
+reliably, then faster than 115 s, the human world record (user, 2026-10-23). The record's time
+is the bar a result is read against, never a constant in the reward, the spawn rule or a
+schedule (CLAUDE.md 0b). Your score is
+`python autoresearch/score.py --best $AR_HOME/runs/$AR_AGENT/`. It is the best eval's
+max-episode progress on the goal field (a finish counts 100), plus 10 x the finish fraction,
+plus a time term once something finishes (10 x (1 - best finish s / 300)). One more finishing
+episode of the 9 is worth 1.11 and one second off the best finish 0.033, so the score ranks
+reliability before speed. Only greedy evals from the true start count; the grader rejects
+anything else.
 
 The grader changed before round 7 (operator, 2026-10-23); score.py and config.json say why:
 * the field is `config.field` = the no-corner-cut goal graph (`goalc_32.npz`, start d 99,675),

@@ -3,7 +3,8 @@
 An unattended research loop on the agent host (the droplet, no GPU). It runs the method of
 Cai et al. 2026, "Fork-and-Flush: Escaping Idea Basins in Autoresearch Agents"
 (arXiv 2610.07447), toward one goal: **pass sidistic from the true start**, champion-free
-and generic (CLAUDE.md sections 0 and 0b).
+and generic (CLAUDE.md sections 0 and 0b), then reliably, then faster than 115 s, the human
+world record (user, 2026-10-23; a bar to read results against, never a reward constant).
 
 ## How it works
 
@@ -11,8 +12,10 @@ and generic (CLAUDE.md sections 0 and 0b).
   protected incumbent checkpoint and eval. Every branch is a fresh Claude Code session
   ("flush") in its own slot (`~/ar/wt/b1..b4`) on its own branch (`ar/r<round>b<k>`).
 * **Schedule.** Rounds last **12 h** (user, 2026-10-20: 24 h is too long for one
-  lineage) and there are **6**, so 72 h in all. The schedule is fixed, as the paper advises,
-  with K = 4. Change `rounds` / `round_hours` in `config.json` to extend.
+  lineage). There were **6** (72 h); the user added a 7th and an 8th on 2026-10-23, so 8
+  rounds, ~98 h in all. The schedule is fixed, as the paper advises, with K = 4. Change
+  `rounds` / `round_hours` in `config.json` to extend, and move `budget_end_hours` to the new
+  end with them.
 * **Selection.** At a round's end every branch is scored by `autoresearch/score.py`. A
   branch's score is its best greedy eval from the true start. The winner's branch head seeds
   the next round. The losers are archived (`~/ar/archive/r<n>/`) and pruned.
