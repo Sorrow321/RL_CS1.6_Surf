@@ -320,3 +320,29 @@ learn what energy is worth there before the policy can make it.
   test). The deduplicated spine: 379 -> 333 rows (old 282 -> 269, the climb old 155-186 -> 143-174).
   Arms 8-10's 0% bands did log episodes, so those stalls were real; arm 12's was the bug.
 * arm 13 pbr1b2_ge13: arm 12's 508M weights + chain_dedup_378.npy + --demo-tau-start 269.
+
+### 2026-10-23 20:06 UTC - BREAKTHROUGH: 3.234, the first greedy line off the start platform
+
+* arm 13 pbr1b2_ge13 (deduplicated spine, --demo-tau-start 269): tau 269 -> 141 in ~90M steps
+  (bands 68-99%), then the climb's run-up band [125,140] (rows of the duck-jump onto the
+  conveyor edge) oscillates with the band after it (92%): its win rate at each advance attempt
+  rose 20.7% -> 25.0% -> 30.6% -> 39.4% over ~200M steps - PPO learning the precise move from
+  concentrated practice. Greedy evals FROM THE TRUE START: 0.421 / 0.406 / 0.404 (508-660M), then
+  **3.234 at 735M** (2/9 episodes at 3.22-3.23%) and **3.231 at 810M (6/9 episodes at 3.23%)**.
+  Every deep episode stops at the same place, (808,-3286,3375): the south part of the pocket
+  under the platform. The policy does the corner climb, the ledge, the drop and the pocket entry
+  on its own, beyond the spine's end (1.44%).
+* Snapshots pulled for the handoff: ckpt_708313088.pt (27M before the 735M eval),
+  ckpt_808452096.pt (2M before the 810M eval), ckpt_latest.pt.
+* HARNESS ISSUE (box.py pull --snapshot): the trainer names milestones ZERO-PADDED
+  (ckpt_0708313088.pt) and box.py builds f"ckpt_{s}.pt" from the int (ckpt_708313088.pt), finds
+  no file, and skips it SILENTLY. Workaround used: on the box `ln ckpt_0708313088.pt
+  ckpt_708313088.pt`, then `box.py pull --snapshot 708313088` (md5-verified). The orchestrator's
+  milestone regex accepts the unpadded local name.
+* What made it work, in order: (1) Go-Explore phase 1 from the map start finds the route
+  (random held-key bursts, --view-velocity, 64 u x speed cells); (2) the dense chain with each
+  state once (tools/archive_chain.py); (3) Salimans-Chen's backward curriculum turned into
+  Go-Explore phase 2 by --demo-reach (win = reach the spine's end region); (4) the spine cut
+  before moves the policy cannot repeat (a band at 0% vs ~100% next to it marks one); (5)
+  clean weights + --ent 0.002 (the yaw sigma drifted to its cap in the chained warm runs);
+  (6) --time-pen 0 (the platform's kill strips make suicide the attractor otherwise).
