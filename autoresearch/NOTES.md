@@ -3005,3 +3005,18 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   from before the pit) + `--respawn-greedy-keep 3` (archive trimmed to its 3 deepest), evals every 6.25M.
   Read-out: basement-mode evals return (the faster line finds a pit pass) by ~07:30 UTC, else the rest of the
   round samples the incumbent's own recipe (basement-mode evals are where entries - and score - happen).
+
+### 06:25 UTC: bpit null (still locked in the pit); the rest of the round samples the incumbent's recipe (r7b4_inc)
+
+* r7b4_bpit (isp2's weights + speed-pot 2 + `--front-band 0.05` + archive 3), 22.411 -> 22.567B, 23 evals: all
+  CP6 (96.25-96.55), 0 of 207 episodes in the basement. Training episodes do survive ~3-unit dips every
+  iteration (dip/max_survived_depth 2.84-3.17), so the stochastic policy gets through the pit; the greedy
+  line has not in ~150M steps of temperature-2 practice there.
+* Verdict on the energy route this round: --speed-pot raises the line's energy (+~270 u of h_E at the chimney,
+  K 5) but every speed-pot arm (K 5 from gk2's weights, K 2 from the incumbent's, K 2 + pit exploration) put the
+  greedy line into the pit failure within 10-50M steps and none recovered in 150-290M; and the energy a greedy
+  finish needs (~+800 u of h_E at the chamber approach, the x1.3 rim threshold of the random search) is ~3x
+  what speed-pot bought. Not reachable in the 7 h left.
+* **r7b4_inc** (06:24): bare resume of the incumbent (22,217,752,576) with its own recipe and nothing added,
+  evals every 6.25M: basement-mode lines are where chamber entries (and any score above 98.362) come from.
+  If it drifts into the CP6 mode for ~20 evals, it restarts from the incumbent's weights.
