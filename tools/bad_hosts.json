@@ -2716,6 +2716,51 @@
       "date": "2026-10-22",
       "detail": "FOREIGN TENANT: RTX 5080 at 100% util, 250 W, 670 MiB used with no process in our container (instance 57219589, 13:49 UTC); gpu_health: GPU0 BUSY. Entered by hand (vast_pick --block has no foreign_tenant reason and the release ran first).",
       "run": "r6b3 deploy"
+    },
+    {
+      "ip": "202.215.0.218",
+      "machine_id": 48881,
+      "host_id": 351328,
+      "date": null,
+      "detail": "r7b3 2026-10-23: RTX 3090 on EPYC 7B12 (machine 48881, Japan); host load avg 123 with nothing of ours running (other tenants); incumbent recipe resume did ONE 524k-step iteration in ~13 min, no ckpt_latest in 900 s",
+      "run": "",
+      "reason": "cpu_bound"
+    },
+    {
+      "ip": "202.215.0.218",
+      "machine_id": 48881,
+      "host_id": 351328,
+      "date": "2026-10-23",
+      "detail": "r7b3 2026-10-23: RTX 3090 on EPYC 7B12 (machine 48881, Japan); host load avg 123 with nothing of ours running (other tenants); incumbent recipe resume did ONE 524k-step iteration in ~13 min, no ckpt_latest in 900 s",
+      "run": "r7b3_ctl launch",
+      "reason": "cpu_bound"
+    },
+    {
+      "ip": null,
+      "machine_id": 57401,
+      "host_id": null,
+      "date": "2026-10-23",
+      "detail": "r7b3 2026-10-23: RTX 3090 + Ryzen 9 5950X, Japan, offer 57168997: failed readiness twice (box 57310892 status None after 330 s; box 57311522 running but no ssh within 90 s). box.py's own --block call failed silently (instance gone), entered by hand.",
+      "run": "r7b3 rent",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "104.187.142.167",
+      "machine_id": 46086,
+      "host_id": null,
+      "date": "2026-10-23",
+      "detail": "r7b3 2026-10-23: RTX 3090, Oklahoma, offer 47335235 ($0.547): box 57312919 running but no ssh within 90 s (03:11, box.py's --block failed silently); rented again as 57313655 at 03:15 (READY), GONE within 0.1 h (vast show instance empty, ssh refused at 03:20).",
+      "run": "r7b3 rent",
+      "reason": "unreliable"
+    },
+    {
+      "ip": null,
+      "machine_id": 124550,
+      "host_id": null,
+      "date": "2026-10-23",
+      "detail": "r7b3 2026-10-23: RTX 5080, Australia, offer 57323247 ($0.428): box 57323378 not running after 330 s (status None) at 04:56; box.py's --block failed silently, entered by hand.",
+      "run": "r7b3 rent",
+      "reason": "unreliable"
     }
   ],
   "known_good": [
