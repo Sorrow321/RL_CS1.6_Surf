@@ -466,3 +466,14 @@ learn what energy is worth there before the policy can make it.
   --elite-frac 0.25 --score rec_e --rec-quant 256 --elite-cells 128 --max-ticks 6000
   --allow-nonfinisher --skip-gate --route-file none --dump-elite-states <npy>; look for elite
   rows in the pocket with h > ~3,900 and anything past 3.24%.
+
+### 2026-10-23 22:56 UTC - --elite-cells run (5080 box 57433644, 7 min, released)
+
+* beam_tas --score rec_e --rec-quant 256 --elite-cells 128 from the TRUE START, arm 16's
+  1,260M weights as the proposal, 4096 lineages, 2 s generations, 60 s: the population is in the
+  pocket by 12 s; per-cell energy elites raise the best pocket energy from 3,453 (plain rec_e) to
+  3,635 - far below the ~3,920 the exit needs - and nothing passes 3.23%. The pocket has TWO
+  mirror stop points, (808,-3289,3377) and (810,-2711,3377) (the pocket is symmetric about
+  y ~-3000). Verdict: the policy's own proposals contain no energy-keeping descent, so no
+  selection rule over them finds one; the next round needs a proposal that can (random
+  view-velocity bursts did not either) or a new skill learned first (ledge speed + slope landing).
