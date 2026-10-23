@@ -3066,3 +3066,12 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   change with --respawn-backward-mix on.
 * Why it is generic: the backward rows follow the map's own field descent; where the way on climbs (a pit, a ramp, a
   hole in a ceiling) a +30 clamp makes every such row flatter than the route. One band for every map.
+
+### 08:20 UTC: arm 7 r7b2_bel = arm 6's weights + `--respawn-backward-elev -60 60`
+
+* r7b2_eb3 stopped at 24,794,103,808 (74 evals, best 98.430, all CP7); weights runs/r7b2_eb3/ckpt_stop.pt on the box
+  (md5 7a30fae3...).
+* **r7b2_bel** (08:19 UTC): resume of eb3's ckpt_stop + `--respawn-backward-elev -60 60 --ckpt-every 1e8` (bonus mode
+  K 3 / latch 0.01, backward-mix 0.1, front-perturb x1.0-1.3 and everything else restored); commit d77c580. One knob.
+  Read-outs: `bmix fin W/E` (more finishes once hole-region rows fly up steeply), the greedy entries' vz at the hole
+  top (~580 so far) and their min d (best 1,517), CP health.
