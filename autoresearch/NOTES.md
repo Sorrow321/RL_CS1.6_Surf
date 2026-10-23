@@ -3108,3 +3108,13 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   CP6 evals at 96.5% - the deep-dip / 86% wobbles).
 * No snapshot exists between the run start (22.654B) and the first 1e8 snapshot (22.754B): the weights of the 98.493 eval itself
   are not kept; the run's newest weights are the hand-on ones (this is the last round).
+
+### 09:50 UTC: r7b1_gate2 stopped at 22.856B; last push r7b1_ep15 (--energy-pot 1.5)
+
+* r7b1_gate2 22.655-22.856B (34 evals every 6.25M): best **98.493** (22.674B), entries also at 98.390 (22.737B) and 98.392
+  (22.837B); the rest 87.8-98.0, medians mostly 97.9%. Entry apexes 1,415-1,470 against the funnel's wall top ~1,550 - ~1 entry per
+  16 evals, ~+80-100 u of energy short. Weights kept on the box as runs_ckpt_gate2.pt (22,856,335,360, md5 61c0e6ec...).
+* The energy gain at C = 1 has plateaued at ~+200 u (97% progress ~2,580). **r7b1_ep15** (09:50): those weights + `--energy-pot 1.5
+  --critic-warmup 20`, evals every 6.25M, everything else restored. With the gate the deep-dip trade still favours flying on at
+  C = 1.5 (keep 1.5 x 3.2 = 4.8 by dying vs 1.5 x 2.6 + 1.5 of progress = 5.4; at C = 2 the margin is ~0.3). Revert to C = 1 if the
+  line breaks within ~45 min.
