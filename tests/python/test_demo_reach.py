@@ -28,3 +28,13 @@ def test_flag_parses_default_off():
     src = (ROOT / "python" / "train_fast.py").read_text(encoding="utf-8")
     assert 'ap.add_argument("--demo-reach", type=float, default=None' in src
     assert "if demo is not None and float(args.demo_reach or 0.0) > 0.0:" in src
+
+
+def test_demo_tau_start():
+    from surfgym.core import STATE_DTYPE
+    from surfgym.respawn import DemoCurriculum
+    S = np.zeros(50, STATE_DTYPE)
+    S["origin"][:, 0] = np.arange(50)
+    assert DemoCurriculum(S).tau == 49                      # default: the spine's end
+    assert DemoCurriculum(S, tau0=17).tau == 17
+    assert DemoCurriculum(S, tau0=999).tau == 49 and DemoCurriculum(S, tau0=-3).tau == 0

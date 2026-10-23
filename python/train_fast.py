@@ -4663,6 +4663,10 @@ def main() -> None:
                          "frontier band [tau,tau+D-1]. 0 = off, "
                          "byte-identical to the sliding paper rule. "
                          "ckpt restores")
+    ap.add_argument("--demo-tau-start", type=int, default=None,
+                    help="with --demo-file: the spine index the curriculum's window starts at "
+                         "(default the spine's end, as before) - a continuation run passes the "
+                         "tau its predecessor reached (tau is not checkpointed). Training-only")
     ap.add_argument("--demo-reach", type=float, default=None,   # 0 = off
                     help="with --demo-file: an episode started from the spine is a WIN when its "
                          "lowest goal-field distance comes within R u of the spine's LAST row's "
@@ -11206,7 +11210,10 @@ def main() -> None:
         demo = DemoCurriculum(np.load(args.demo_file),
                               window=args.demo_window, rate=args.demo_rate,
                               min_ep=args.demo_min_ep, grow=args.demo_grow,
-                              front_frac=float(args.demo_front_frac))
+                              front_frac=float(args.demo_front_frac),
+                              tau0=args.demo_tau_start)
+        if args.demo_tau_start is not None:
+            print(f"--demo-tau-start {args.demo_tau_start}: the window starts at tau {demo.tau}")
         print(f"demo curriculum: {demo.n} states from {args.demo_file}, "
               f"window {args.demo_window}, advance/backoff at "
               f"{args.demo_rate:.0%} window finish rate "

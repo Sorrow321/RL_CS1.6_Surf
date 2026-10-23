@@ -53,7 +53,8 @@ class DemoCurriculum:
 
     def __init__(self, states, window: int = 10, rate: float = 0.2,
                  min_ep: float = 50.0, seed: int = 29,
-                 grow: int = 0, front_frac: float = 0.0) -> None:
+                 grow: int = 0, front_frac: float = 0.0,
+                 tau0: int | None = None) -> None:
         self.S = np.asarray(states, STATE_DTYPE)
         self.n = len(self.S)
         self.D = int(window)
@@ -94,7 +95,10 @@ class DemoCurriculum:
             raise ValueError("front_frac needs grow > 0: the sliding window "
                              "already draws only its band")
         self.front_frac = float(front_frac)
-        self.tau = self.n - 1
+        # --demo-tau-start: where the window starts (default the spine's end, as the paper);
+        # a continuation run passes the tau its predecessor had reached, since tau is not in
+        # the checkpoint
+        self.tau = self.n - 1 if tau0 is None else int(min(max(int(tau0), 0), self.n - 1))
         self.ep = np.zeros(self.n, np.float64)
         self.win = np.zeros(self.n, np.float64)
         self.decay = 0.99
