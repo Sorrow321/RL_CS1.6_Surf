@@ -2918,3 +2918,20 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   So at the line's own energy not even random steering gets near the rim from where the line enters;
   ~+15-30% speed at the ramp is what the entry lacks (round 6's "energy-limited" verdict, now from the
   greedy line's actual states).
+
+### 04:31 UTC: r7b4_gk2 (archive + anchor) in the CP6 mode; arm r7b4_sp5 = + `--speed-pot 5`
+
+* r7b4_gk2 (22.280 -> 22.311B, ~10.8 s per iteration on this box): its 2 evals 96.520 / 96.527, both with 0 of
+  9 episodes in the basement (the line's CP6 mode, the round-6 wobble: dies on the corridor's kill plate at
+  ~110 s). Counters: fpert fin 0/40, gkeep fin 0/26. Stopped; weights runs/r7b4_gk2/ckpt_stop.pt (22,310,551,552,
+  md5 dd025e70..., archive 8 kept episodes).
+* The measured gap is energy (the probes above), and the line bleeds h_E at ~170 u/s through the last 20 s (impacts,
+  the basement U-turn). The trainer's `--speed-pot K` (skate_laby, 2026-10-04, the user's "lost speed on turns":
+  Phi = K |v_xy| / 1000 paid as its change per call; it telescopes, so a speed loss is charged when it happens
+  and the run-level ranking is unchanged; there --speed-pot 10 took the best 79.70 -> 75.96 s) is the generic
+  lever for exactly that. K = 5 (half of skate's): a 300 u/s loss costs 1.5 at once against ~0.83/s of ratchet
+  income.
+* **r7b4_sp5** (04:31): resume of gk2's stop weights + `--speed-pot 5 --critic-warmup 20 --ckpt-every 1e8 --timing
+  --no-eval-at-start` (archive 8, anchor 100 and every incumbent flag restored), evals every 18.75M. Leading
+  indicator: the greedy line's h_E at the basement entry and on the ramp (median ~2,300 / ~1,950 now); then
+  entries, apex height and the evals.
