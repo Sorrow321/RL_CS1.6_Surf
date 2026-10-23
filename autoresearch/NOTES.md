@@ -2974,3 +2974,11 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   8 evals (frozen start 2,312-2,338): **+250-330 u**, above the ~2,350 round 6 estimated for a rim crossing at the
   ramp foot. Yet 0 chamber entries in 576 episodes (tp3's 0.4% would give ~2.3; P(0) ~ 10%): more energy does
   not by itself produce the entry, as the 04:15 probe predicted.
+
+### 12:35 UTC: probe of r7b3_ep1's 22,618M snapshot - no entries from basement states (ANALYSIS ONLY)
+
+* Greedy, 24 episodes x 7 s, local CPU, snapshot ckpt_22618308608 (md5 d76ee030..., pulled): from the incumbent's own
+  387 top-quartile basement states (the 04:15 probe's file) **0/24** chamber entries (incumbent policy: 1/24), best
+  97.90%; from ep1's own top-quartile basement states (34 rows, h_E ~2,660-2,690) **0/24**, best 97.86%. With
+  ~+300 u of energy the policy still turns the passage way, not up through a hole: the energy term raised the
+  energy and left the entry skill where it was (or slightly below it) in ~400M steps.
