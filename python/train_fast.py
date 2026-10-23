@@ -6663,6 +6663,11 @@ def main() -> None:
                          "harvested into the reservoir and never moves the "
                          "ceiling, so it cannot teleport the run forward. "
                          "Needs the reservoir (--respawn-frac > 0)")
+    # a resume restores --respawn-novel from the checkpoint when the flag is absent, so a bare
+    # switch could never turn it off again; this one sets the same dest to False (the expert
+    # loop's rounds spawn along the planner line with --demo-file, which --respawn-novel refuses)
+    ap.add_argument("--no-respawn-novel", dest="respawn_novel", action="store_false",
+                    help="turn a checkpoint's --respawn-novel OFF for this run")
     ap.add_argument("--respawn-novel-frac", type=float, default=None,
                     help="--respawn-novel: share of the NON-start pool "
                          "(default 0.5)")
@@ -8831,7 +8836,12 @@ def main() -> None:
                          "--respawn-greedy F > 0")
     if args.respawn_greedy_turn is None:
         args.respawn_greedy_turn = 0.0
-    if ((float(args.respawn_greedy_turn) > 0.0 or args.respawn_greedy_speed is not None)
+    # a NEUTRAL speed (x1 x1, what a resume restores from a checkpoint that had greedy rows)
+    # perturbs nothing, so it does not need the rows: the expert loop turns --respawn-greedy off
+    # on such a resume and cannot pass "no speed" on the command line
+    _gspd_on = (args.respawn_greedy_speed is not None
+                and tuple(float(x) for x in args.respawn_greedy_speed) != (1.0, 1.0))
+    if ((float(args.respawn_greedy_turn) > 0.0 or _gspd_on)
             and not float(args.respawn_greedy or 0.0) > 0.0):
         raise SystemExit("--respawn-greedy-turn / --respawn-greedy-speed perturb "
                          "--respawn-greedy's rows: they need --respawn-greedy F > 0")
@@ -16797,6 +16807,10 @@ def main() -> None:
             raise SystemExit("--bc-file: single-map, flat (no --chunk), "
                              "unstacked, fan-less race policies only - the "
                              "planner cannot clone the other per-env states")
+        if N_HIST or N_PASS or N_RVEC:
+            raise SystemExit("--bc-file with --act-hist / --ramp-obs-pass / --ramp-obs-vec: "
+                             "tools/plan_to_bc.py does not record those blocks yet (the "
+                             "compass, ratchet gap, surf flag and pot rate it does)")
         if BCV > 0.0 and args.race_arc:
             raise SystemExit("--bc-value-coef with --race-arc: the stored z "
                              "is the GEODESIC objective's return (plan_to_bc "
@@ -16841,7 +16855,11 @@ def main() -> None:
                        # --curiosity-cond: the rows get the T = 0 column
                        n_cc=N_CC,
                        # --keys-hold: the rows' held-key columns + policy-space targets
-                       keys_hold=bool(args.keys_hold))
+                       keys_hold=bool(args.keys_hold),
+                       # the compass, ratchet gap, surf flag and pot rate the file must carry
+                       # (plan_to_bc records them per decision; surfgym.bc.XBLOCKS)
+                       xlayout={"aux": N_AUX, "ratchet": N_RATCHET, "surf": N_SURF,
+                                "prate": N_PRATE})
         print(bc.describe())
         bc_lidar, bc_dtype = slots[0].lidar, b_img.dtype
         bc_steps = (float(args.bc_steps) if args.bc_steps

@@ -233,7 +233,7 @@ def replay_line(core, spawn_state, obs_start, acts, k: int, reward_feed=None,
                 latch_fn=None, reward_slot: int = REWARD_SLOT,
                 max_ticks: int = 0, keep_final: bool = False,
                 reward_fn=None, rewards_out=None, info_out=None,
-                view=None, views_out=None):
+                view=None, views_out=None, x_fn=None, xs_out=None):
     """Open-loop replay of one planner line on a 1-env ``core``.
 
     ``acts`` is the (D, 6) per-decision action table beam_tas committed,
@@ -275,6 +275,12 @@ def replay_line(core, spawn_state, obs_start, acts, k: int, reward_feed=None,
     command, stepped alongside ``acts`` (``core.step(a, view=...)``); each
     decision's row is appended to ``views_out`` next to ``rows``. None is
     the discrete replay, call for call.
+
+    ``x_fn(core) -> {block: (w,) float32}`` (tools/beam_tas.XFeeds.row_fn: the
+    compass, the ratchet gap, the surf flag, the pot rate) is called ONCE per
+    decision at the decision's state, the cadence the policy wrapper's _obs
+    calls those feeds at, and its result appended to ``xs_out`` next to
+    ``rows``. None is the replay that shipped, call for call.
     """
     acts = np.asarray(acts)
     view = None if view is None else np.asarray(view, np.float32).reshape(-1, 2)
@@ -298,6 +304,8 @@ def replay_line(core, spawn_state, obs_start, acts, k: int, reward_feed=None,
         # latch flag as it stood one decision AGO), then the latch
         fv = None if reward_feed is None else float(reward_feed(core)[0])
         lf = 0.0 if latch_fn is None else float(latch_fn(core)[0])
+        if x_fn is not None:
+            xs_out.append(x_fn(core))
         st = core.get_states()[0].copy()
         scal = obs[0, :N_SCALAR].copy()
         if fv is not None:
@@ -806,18 +814,53 @@ def keys_policy_probs(probs, held):
     return out
 
 
+# The scalar-side blocks the policy reads that the 15 core scalars, the latch and the held keys do
+# not carry (tools/beam_tas.XFeeds), by name. A file stores each as `x_<name>` (rows, width), meta
+# 'xcols' lists [name, width] in this order, and BCDataset splices them into the row where the
+# policy wrapper's _obs puts them: aux after the latch, the other three after the held keys.
+XBLOCKS = ("aux", "ratchet", "surf", "prate")
+
+
+def _xcols_checked(xcols, n: int, meta: dict) -> dict:
+    """{name: (n, w) float32} validated against XBLOCKS and meta['xcols'] -> the npz keys."""
+    if not xcols:
+        if meta.get("xcols"):
+            raise ValueError("meta['xcols'] without the columns")
+        return {}
+    bad = [k for k in xcols if k not in XBLOCKS]
+    if bad:
+        raise ValueError(f"unknown scalar blocks {bad} (known: {list(XBLOCKS)})")
+    out, layout = {}, []
+    for name in XBLOCKS:
+        if name not in xcols:
+            continue
+        a = np.ascontiguousarray(xcols[name], np.float32).reshape(n, -1)
+        if not np.isfinite(a).all():
+            raise ValueError(f"x_{name} must be finite")
+        out[f"x_{name}"] = a
+        layout.append([name, int(a.shape[1])])
+    if [list(x) for x in (meta.get("xcols") or [])] != layout:
+        raise ValueError(f"meta['xcols'] {meta.get('xcols')} != the columns given {layout}")
+    return out
+
+
 def save_bc_dataset(path, states, scal, latch, actions, weights, line_id,
                     meta: dict, probs=None, zret=None, zmask=None,
-                    view=None, view_zmu=None, view_zsd=None, keys=None) -> None:
+                    view=None, view_zmu=None, view_zsd=None, keys=None,
+                    xcols=None) -> None:
     """Write a BC file. With none of ``probs`` / ``zret`` / ``zmask`` this
     writes VERSION 1 - the same keys, in the same order, that shipped - so
     an untreated round's file is byte-identical to the one it always wrote
     and no existing reader sees a new version number. Any of the three
     promotes the file to version 2 and writes all three (the missing ones
     filled with their version-1 meaning: the one-hot of ``actions``, and a
-    zero return with a zero mask, i.e. no value target)."""
+    zero return with a zero mask, i.e. no value target).
+
+    ``xcols`` ({block: (n, w)}, names from XBLOCKS, listed in meta['xcols']) are written after
+    every other key, so a file without them is byte-identical to before."""
     states = np.ascontiguousarray(states, dtype=STATE_DTYPE)
     n = len(states)
+    xc = _xcols_checked(xcols, n, meta)
     scal = np.ascontiguousarray(scal, dtype=np.float32).reshape(n, N_SCALAR)
     latch = np.ascontiguousarray(latch, dtype=np.float32).reshape(n)
     actions = np.ascontiguousarray(actions, dtype=np.int64).reshape(n, 6)
@@ -863,7 +906,7 @@ def save_bc_dataset(path, states, scal, latch, actions, weights, line_id,
                  latch=latch, actions=actions, weights=weights,
                  line_id=line_id,
                  meta=np.str_(json.dumps(meta, sort_keys=True, default=str)),
-                 **vcols, **kcols)
+                 **vcols, **kcols, **xc)
         return
     probs = (onehot_probs(actions) if probs is None
              else np.ascontiguousarray(probs, np.float32).reshape(n, NACT,
@@ -878,7 +921,7 @@ def save_bc_dataset(path, states, scal, latch, actions, weights, line_id,
     np.savez(path, version=np.int32(2), states=states, scal=scal,
              latch=latch, actions=actions, weights=weights, line_id=line_id,
              meta=np.str_(json.dumps(meta, sort_keys=True, default=str)),
-             probs=probs, zret=zret, zmask=zmask, **vcols, **kcols)
+             probs=probs, zret=zret, zmask=zmask, **vcols, **kcols, **xc)
 
 
 def load_bc_meta(path) -> dict:
@@ -923,6 +966,9 @@ def load_bc_arrays(path) -> dict:
                          if "view_zsd" in z.files else None),
             # --keys-hold: the held-key columns, None when the file has none
             "keys": (np.asarray(z["keys"], np.float32) if "keys" in z.files else None),
+            # the extra scalar blocks (XBLOCKS), {} when the file has none
+            "xcols": {k[2:]: np.asarray(z[k], np.float32) for k in z.files
+                      if k.startswith("x_")},
             "meta": json.loads(str(z["meta"]))}
 
 
@@ -954,13 +1000,19 @@ def merge_bc_files(paths, out) -> dict:
     meta["best_s"] = min((p["meta"].get("best_s") for p in parts
                           if p["meta"].get("best_s") is not None), default=None)
     has_v2 = any(p["has_probs"] or p["has_value"] for p in parts)
+    # the extra scalar blocks: the same set, of the same widths, in every file or in none
+    xl = [[list(x) for x in (p["meta"].get("xcols") or [])] for p in parts]
+    if any(x != xl[0] for x in xl):
+        raise ValueError(f"the files carry different scalar blocks: {xl}")
+    xcols = ({name: np.concatenate([p["xcols"][name] for p in parts], axis=0)
+              for name, _w in xl[0]} if xl[0] else None)
     save_bc_dataset(out, cat("states"), cat("scal"), cat("latch"), cat("actions"),
                     cat("weights"), np.concatenate(line_ids), meta,
                     probs=cat("probs") if has_v2 else None,
                     zret=cat("zret") if has_v2 else None,
                     zmask=cat("zmask") if has_v2 else None,
                     view=cat("view"), view_zmu=cat("view_zmu"), view_zsd=cat("view_zsd"),
-                    keys=cat("keys"))
+                    keys=cat("keys"), xcols=xcols)
     return meta
 
 
@@ -988,7 +1040,8 @@ class BCDataset:
     def __init__(self, path, device, n_latch: int, obs_reward: bool,
                  seed: int = 0, priv_fn=None, view_continuous: bool = False,
                  yaw_adaptive: bool = False, pitch_rate_max_deg: float = 10.0,
-                 view_absolute=None, n_cc: int = 0, keys_hold: bool = False):
+                 view_absolute=None, n_cc: int = 0, keys_hold: bool = False,
+                 xlayout=None):
         import torch
         z = np.load(path, allow_pickle=False)
         ver = int(z["version"])
@@ -1016,7 +1069,28 @@ class BCDataset:
             raise SystemExit(f"{path}: built with n_latch="
                              f"{self.meta.get('n_latch')!r}, trainer has "
                              f"N_LATCH={n_latch}")
+        # the extra scalar blocks (XBLOCKS): the trainer names the ones its policy reads, with
+        # their widths, and the file must carry exactly those - a row missing one would be the
+        # wrong width, and one fed zeros would not be the state the planner flew in
+        want = [[k, int(w)] for k, w in (xlayout or {}).items() if int(w)]
+        want.sort(key=lambda kw: XBLOCKS.index(kw[0]))
+        have = [list(x) for x in (self.meta.get("xcols") or [])]
+        if have != want:
+            raise SystemExit(f"{path}: carries the scalar blocks {have or 'none'}, the trainer's "
+                             f"policy reads {want or 'none'}; rebuild it with tools/plan_to_bc.py "
+                             "from this checkpoint")
+        xw = dict((k, w) for k, w in want)
+
+        def xblock(name):
+            a = np.asarray(z[f"x_{name}"], np.float32).reshape(self.n, -1)
+            if a.shape[1] != xw[name]:
+                raise SystemExit(f"{path}: x_{name} is {a.shape[1]} wide, meta says {xw[name]}")
+            return a
+        self.xlayout = want
         cols = [scal] + ([latch[:, None]] if n_latch else [])
+        # --act-hist / --obs-compass: the aux block, after the latch (the rollout's _obs order)
+        if "aux" in xw:
+            cols.append(xblock("aux"))
         # --curiosity-cond (train_fast N_CC): the trainer's row carries the
         # family's T column LAST; a planner line is a competent line, so
         # its rows are imitated as the T = 0 (exploit) member - the column
@@ -1033,6 +1107,10 @@ class BCDataset:
             if "keys" not in z.files:
                 raise SystemExit(f"{path}: keys_hold meta but no keys columns")
             cols.append(np.asarray(z["keys"], np.float32).reshape(self.n, -1))
+        # --race-ratchet, --obs-surf, --obs-pot-rate: after the held keys, in that order
+        for name in ("ratchet", "surf", "prate"):
+            if name in xw:
+                cols.append(xblock(name))
         self.scal = torch.as_tensor(np.concatenate(cols, axis=1),
                                     dtype=torch.float32, device=device)
         pose = np.zeros((self.n, 6), np.float32)
@@ -1188,6 +1266,7 @@ class BCDataset:
                 f"value rows {self.value_rows:,}/{self.n:,}"
                 + ("; T column synthesised at 0 (--curiosity-cond: the rows "
                    "imitate the exploit member)" if self.n_cc else "")
+                + (f"; scalar blocks {self.xlayout}" if self.xlayout else "")
                 + (f"; view targets: {self.view_note}"
                    + (f" [absolute {self.view_absolute}]"
                       if self.view_absolute else "")

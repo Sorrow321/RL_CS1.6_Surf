@@ -161,9 +161,39 @@ def main() -> int:
                          "a pool); 0 = this round's lines only")
     ap.add_argument("--start-round", type=int, default=0,
                     help="the first round's number (directory and run names continue from it)")
+    ap.add_argument("--plan-args", default="",
+                    help="extra tools/beam_tas.py flags for every wave, one string (sidistic "
+                         "2026-10-23: '--allow-nonfinisher --v-switch 5000', with --score dv)")
+    ap.add_argument("--distil-args", default="",
+                    help="extra tools/plan_to_bc.py flags, one string (e.g. '--no-value-target' "
+                         "for a lineage whose reward plan_to_bc's line reward does not mirror)")
+    ap.add_argument("--gate-rule", choices=("mean", "score"), default="mean",
+                    help="mean: every eval episode finished and the mean beats the bar (as "
+                         "before). score: the GRADER's number (--grader: best progress + 10 x "
+                         "finish fraction + the time term) of the challenger beats the "
+                         "incumbent's on the same spawns (needs --gate-rematch 1) - finishing "
+                         "more often first, then faster, for a seed that does not finish yet")
+    ap.add_argument("--grader", default="C:/RL_Surf/autoresearch/score.py",
+                    help="--gate-rule score: the score.py whose score_file grades an eval")
     ap.add_argument("--extra", nargs=argparse.REMAINDER, default=[],
                     help="extra train_fast flags (everything after --extra)")
     args = ap.parse_args()
+    import shlex
+    plan_extra = shlex.split(args.plan_args)
+    distil_extra = shlex.split(args.distil_args)
+    grade = None
+    if args.gate_rule == "score":
+        if not (args.gate and args.gate_rematch):
+            raise SystemExit("--gate-rule score compares on the same spawns: needs --gate 1 "
+                             "--gate-rematch 1")
+        import importlib.util
+        _spec = importlib.util.spec_from_file_location("exit_grader", args.grader)
+        _grader = importlib.util.module_from_spec(_spec)
+        _spec.loader.exec_module(_grader)
+
+        def grade(p):
+            s = _grader.score_file(Path(p)) if Path(p).exists() else {}
+            return s.get("score")
 
     out = (ROOT / args.out) if not Path(args.out).is_absolute() else Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -196,7 +226,7 @@ def main() -> int:
                       # --spawn-per-wave: each wave plans from its own spawn draw, so the BC lines
                       # cover the start jitter the evals see (a wave of one spawn tunes one start)
                       "--seed", (1 + 100 * r + w) if args.spawn_per_wave else 0,
-                      "--out-dir", wdir],
+                      "--out-dir", wdir, *plan_extra],
                      rdir / f"wave_{w}.log", timeout=3600)
             s = {}
             if (wdir / "summary.json").exists():
@@ -210,6 +240,25 @@ def main() -> int:
         row["plan"] = {"waves": waves, "wall_s": round(time.time() - t0, 1),
                        "best_s": min([x["best_s"] for x in waves if x.get("best_s")],
                                      default=None)}
+        # the round's fastest search line, kept for the viewer (beam_best.jsonl is its open-loop
+        # replay, bit-exact by beam_tas' own assert)
+        fast = [x for x in waves if x.get("best_s")]
+        if fast:
+            bw = min(fast, key=lambda x: x["best_s"])
+            src = rdir / f"wave_{bw['wave']}" / "beam_best.jsonl"
+            if src.exists():
+                shutil.copyfile(src, rdir / "best_line.jsonl")
+                row["plan"]["best_line"] = str(rdir / "best_line.jsonl")
+        if (args.target_best is not None and row["plan"]["best_s"] is not None
+                and row["plan"]["best_s"] <= args.target_best):
+            # the user, 2026-10-23 (sidistic): "if our search finds it, it's enough"
+            row["target_reached"] = {"by": "planner", "run_s": row["plan"]["best_s"]}
+            log(fh, f"round {r}: TARGET REACHED by the planner - a search line of "
+                    f"{row['plan']['best_s']:.2f} s <= {args.target_best:g} s -> "
+                    f"{rdir / 'best_line.jsonl'}")
+            with open(out / "summary.jsonl", "a", encoding="utf-8") as f:
+                f.write(json.dumps(row) + "\n")
+            break
         if not npzs:
             log(fh, f"round {r}: no wave crossed - stopping")
             row["stopped"] = "no crossing"
@@ -229,7 +278,7 @@ def main() -> int:
             for i, z in enumerate(npzs):
                 bi, si = rdir / f"bc_{i}.npz", rdir / f"spine_{i}.npy"
                 rc = run([PY, "-u", ROOT / "tools" / "plan_to_bc.py", "--plan", z, "--ckpt", cur,
-                          "--out", bi, "--spine", si, "--map", args.map],
+                          "--out", bi, "--spine", si, "--map", args.map, *distil_extra],
                          rdir / f"distil_{i}.log", timeout=3600)
                 if rc != 0 or not bi.exists():
                     break
@@ -240,7 +289,7 @@ def main() -> int:
                 np.save(spine, np.concatenate(spines))
         else:
             rc = run([PY, "-u", ROOT / "tools" / "plan_to_bc.py", "--plan", *npzs, "--ckpt", cur,
-                      "--out", bc, "--spine", spine, "--map", args.map],
+                      "--out", bc, "--spine", spine, "--map", args.map, *distil_extra],
                      rdir / "distil.log", timeout=3600)
         if rc != 0 or not bc.exists():
             log(fh, f"round {r}: distil failed (rc {rc}) - see {rdir / 'distil.log'}")
@@ -354,6 +403,15 @@ def main() -> int:
                 accept = mean != float("inf") and (paired < 0.0 if pairs else True)
                 log(fh, f"round {r}: paired on {len(pairs)} shared finishes: "
                         f"{'n/a' if paired is None else f'{paired:+.3f} s'} (challenger - incumbent)")
+                if args.gate_rule == "score":
+                    # the grader on the same spawns: more finishes first, then the faster best
+                    # finish, then the deeper best progress (sidistic 2026-10-23: the seed
+                    # finishes 0/9 greedy, so the mean rule above could never accept)
+                    sc_c, sc_i = grade(ev), grade(evi)
+                    row["score"] = {"challenger": sc_c, "incumbent": sc_i}
+                    accept = sc_c is not None and (sc_i is None or sc_c > sc_i)
+                    log(fh, f"round {r}: grader {sc_c} (challenger) vs {sc_i} (incumbent) "
+                            "on the same spawns")
             if accept:
                 best_mean, best_mean_ck = mean, out / "best_mean.pt"
                 shutil.copyfile(final, best_mean_ck)

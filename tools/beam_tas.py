@@ -240,6 +240,36 @@ class XFeeds:
             kw["prate_fn"] = make_pot_rate_feed(self.ogf)        # stateless
         return kw, b
 
+    def layout(self) -> dict:
+        """{block: width} of the columns these feeds produce (surfgym.bc.XBLOCKS names)."""
+        return {k: w for k, w in (("aux", self.n_aux), ("ratchet", int(self.ratchet)),
+                                  ("surf", int(self.surf)), ("prate", int(self.prate))) if w}
+
+    def row_fn(self, kw):
+        """f(core) -> {block: (w,) float32} for env 0 of `core`, calling each feed of `kw` ONCE:
+        the per-decision call the wrapper's _obs makes, for tools/plan_to_bc.py's replay (the
+        rows the policy saw along a planner line). The --act-hist history would need the decided
+        action pushed after every decision, which an open-loop replay does not do: refused."""
+        if self.hist_k:
+            raise SystemExit("--act-hist: the replay does not push decided actions into the "
+                             "history block yet")
+        def f(core):
+            out = {}
+            if "aux" in kw:
+                sv = core.states_view
+                out["aux"] = np.asarray(kw["aux"].eval_features(
+                    sv["origin"], sv["yaw"], sv["tick"]), np.float32)[0].copy()
+            if "ratchet_fn" in kw:
+                out["ratchet"] = np.asarray(kw["ratchet_fn"](core), np.float32).reshape(-1)[:1].copy()
+            if "surf_fn" in kw:
+                out["surf"] = np.asarray(kw["surf_fn"](core, core.num_envs),
+                                         np.float32).reshape(-1)[:1].copy()
+            if "prate_fn" in kw:
+                out["prate"] = np.asarray(kw["prate_fn"](core, core.num_envs),
+                                          np.float32).reshape(-1)[:1].copy()
+            return out
+        return f
+
 
 class XBundle:
     """The per-env rows of one wrapper's XFeeds, by NAME (a shape test could catch a lookup

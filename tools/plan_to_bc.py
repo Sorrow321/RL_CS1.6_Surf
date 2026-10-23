@@ -383,6 +383,25 @@ def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
         print(f"plan tick: {tick.describe()}")
     core, gf, d0, _zones = open_planner_core(cfg, map_path, ep_cap, tick=tick)
     pitch_max = float(core.config.pitch_rate_max_deg)
+    # the scalar blocks the policy reads beyond the core's 15, the latch and the held keys
+    # (beam_tas.XFeeds: compass, ratchet gap, surf flag, pot rate), off the field the
+    # OBSERVATIONS read - recorded per decision along every line (surfgym.bc XBLOCKS)
+    ogf = gf
+    if cfg.get("goal_field_file"):
+        from surfgym.goalfield import load_goal_field
+        _gff = Path(str(cfg["goal_field_file"]))
+        if not _gff.is_absolute():
+            _gff = beam_tas.ROOT / _gff
+        ogf = load_goal_field(_gff)
+    elif int(cfg.get("race_no_corner_cut") or 0):
+        from surfgym.goalfield import build_goal_field
+        ogf = build_goal_field(core, _zones["end"], cell=goal_cell_for(cfg, map_path, core),
+                               no_corner_cut=True)
+    XF = beam_tas.XFeeds(cfg, ogf, tick.ms, K)
+    xlay = XF.layout()
+    if xlay:
+        print(XF.describe())
+    all_x = {name: [] for name in xlay}
     slot_probe, rf_probe, lf_probe = make_eval_feeds(
         cfg, gf, d0, K, tick_ms=tick.requested_ms)
     n_latch = 0 if lf_probe is None else 1
@@ -491,11 +510,15 @@ def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
             rfn, _ = make_line_reward(cfg, gf, d0, K,
                                       tick_ms=tick.requested_ms)
         views_out = [] if VIEWC else None
+        # fresh feeds per line: the ratchet record and the surf tracker are episode state
+        xs = [] if xlay else None
+        x_fn = XF.row_fn(XF.make(core)[0]) if xlay else None
         rows, tick_states, finished, ticks = replay_line(
             core, spawn_state, obs_start, acts, K, rf, lf,
             max_ticks=ep_cap, keep_final=not is_fin,
             reward_fn=rfn, rewards_out=rew_dec, info_out=rinfo,
-            view=(c["view"] if VIEWC else None), views_out=views_out)
+            view=(c["view"] if VIEWC else None), views_out=views_out,
+            x_fn=x_fn, xs_out=xs)
         states_arr = np.array(tick_states, dtype=spawn_state.dtype)
         info = {"finished": bool(is_fin), "arc": float(c["best_arc"]),
                 "arc_tick": int(c["arc_tick"]), "end_tick": int(c["end_tick"]),
@@ -583,6 +606,8 @@ def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
             all_states.append(st)
             all_scal.append(scal)
             all_latch.append(latch)
+            for name in xlay:
+                all_x[name].append(xs[jd][name])
             if KEYS:
                 if not np.array_equal(np.asarray(act, np.int64)[:6], np.asarray(acts[jd], np.int64)[:6]):
                     raise SystemExit(f"line {j} decision {jd}: the replayed row is not the plan's")
@@ -680,6 +705,10 @@ def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
     meta["value_target"] = bool(value_target)
     if KEYS:
         meta["keys_hold"] = 1
+    from surfgym.bc import XBLOCKS
+    xcols = {name: np.array(all_x[name], np.float32).reshape(n_rows, -1) for name in xlay}
+    if xcols:
+        meta["xcols"] = [[name, int(xcols[name].shape[1])] for name in XBLOCKS if name in xcols]
     if value_target:
         m = zmask > 0.0
         meta["value"] = {
@@ -697,7 +726,8 @@ def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
                     np.array(all_id, np.int32), meta,
                     probs=probs, zret=zret, zmask=zmask,
                     view=view_arr, view_zmu=vmu_arr, view_zsd=vsd_arr,
-                    keys=(np.array(all_keys, np.float32) if KEYS else None))
+                    keys=(np.array(all_keys, np.float32) if KEYS else None),
+                    xcols=(xcols or None))
     lead = (f"best {secs(t_best):.2f}s" if t_best is not None
             else f"best arc {meta['best_arc']:,.0f}u")
     print(f"bc: {n_rows:,} rows from {len(kept)} line(s) "
