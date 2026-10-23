@@ -3,14 +3,16 @@
  "round": 7,
  "final": false,
  "best": {
-  "score": 97.928,
-  "eval_file": "/home/steam/ar/runs/r7b2/r7b2_en1/traj_22243442688.jsonl",
-  "run": "r7b2_en1",
-  "step": 22243442688,
-  "ckpt": "/home/steam/ar/runs/r7b2/r7b2_en1/ckpt_latest.pt",
+  "score": 98.366,
+  "eval_file": "/home/steam/ar/runs/r7b2/r7b2_ef1/traj_22432186368.jsonl",
+  "run": "r7b2_ef1",
+  "step": 22432186368,
+  "ckpt": "/home/steam/ar/runs/r7b2/r7b2_ef1/ckpt_latest.pt",
   "recipe": [
    "--energy-pot",
    "1",
+   "--energy-pot-front",
+   "0.01",
    "--critic-warmup",
    "20",
    "--record-every",
@@ -18,8 +20,8 @@
    "--ckpt-every",
    "1e8"
   ],
-  "resume_from": "incumbent r6b2_tp3 ckpt_latest (22,217,752,576, md5 c713bd69...)",
-  "commit": "1849c32"
+  "resume_from": "incumbent r6b2_tp3 ckpt_latest (22,217,752,576, md5 c713bd69...); every tp3 setting restored",
+  "commit": "26da1d6"
  },
- "summary": "Best 97.928 (r7b2_en1; incumbent re-scored 98.315). Arm 1 --energy-pot 1 (NEW: potential on the energy height z + |v|^2/2g): the line keeps +200-250 u of energy to the basement within ~100M steps, then dives into the basement kill floor (no death refund: a free fall keeps its energy, the loop destroys it) - 0 chamber entries. Next: --energy-pot-front B (NEW: energy priced only on the way to the frontier band, off past it)."
+ "summary": "Best 98.366 (r7b2_ef1 at 22.432B; incumbent re-scored 98.315): NEW --energy-pot (potential on the energy height z + |v|^2/2g, no death refund) + NEW --energy-pot-front 0.01 (priced only until the episode's record reaches the frontier band). The line carries +150-250 u of energy to the basement, keeps its basement loop, and the greedy policy enters the funnel chamber in 1.9% of eval episodes (incumbent recipe ~0.4%), apex up to z 1,450 (rim 1,560); 0 finishes. Arm 1 (--energy-pot without the latch) learned to dive into the basement kill floor. Next: the entries carry enough energy but leave the hole with vz 220-470 (the rim needs ~700)."
 }

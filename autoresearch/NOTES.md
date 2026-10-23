@@ -2906,3 +2906,21 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   deep dip and everything upstream are priced, the basement is not. `off 4%` of envs latched at a time.
 * Read-outs: h at the basement entry (en1: +200-250 u within ~100M), the basement loop kept (death times
   116-139 s like the control, not 112-113 s like en1), chamber entries and their apex, rim crossings.
+
+### 03:58 UTC: arm 2 (r7b2_ef1, energy priced up to the frontier band) - 98.366, greedy chamber entries x5
+
+* r7b2_ef1 22,218-22,51xM (~300M steps, 186k steps/s): 47 evals; **best 98.366** (22,432,186,368; the
+  incumbent re-scored 98.315), 98.362 (22,419M), 98.287, 98.239, 98.232, 98.152, 98.034; CP5 / CP6 wobbles at
+  22.40-22.43B (86.4-96.8).
+* h at the basement entry, median per eval: 2,312-2,463 (first evals) -> 2,450-2,616 (22.29B on); the basement
+  loop is KEPT (median stay 3-27 s; en1: 0.6 s): the latch removed the suicide and kept the upstream gain.
+* **Greedy chamber entries: 8 in 423 episodes (1.9%)** - the incumbent recipe's rate was ~0.4% (tp3: 10 in 2,376),
+  this box's control 0 in 81. Apex z 1,281 / 1,307 / 1,337 / 1,372 / 1,374 / 1,391 / 1,450; 0 over the rim
+  (z 1,560). All on the -y side and alike: a low point on the -y ramp face at x 3,120-3,424, z 780-860 (h 2,000-
+  2,300, |v| 1,350-1,530), west along the face climbing, up through the -y hole at x 2,480-2,710 with **h
+  1,780-2,080 but vz only 220-470** (|v_h| 400-1,000), then east along the chamber (the 1,450 one up the chamber's
+  east-wall ramp at x 3,379).
+* So the entry is now mostly a DIRECTION problem: from the hole top (z ~1,250) the rim needs vz ~700+ (h ~1,712
+  with 500 u/s toward the funnel), and the entries carry h 1,780-2,080 - enough energy, pointed sideways.
+* PROTOCOL: beats the incumbent's score and clears its entry gate ~5x as often at matched steps -> the run
+  continues on its 2e9 budget (to ~24.2B, ~06:30 UTC).
