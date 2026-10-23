@@ -2863,3 +2863,19 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   finishes from the greedy line's states (gkeep/finished), and does the greedy line then finish? Reference at
   matched steps: tp3 (20.19-22.2B): greedy chamber entries 10 in 2,376 episodes (0.42%), 0 greedy finishes,
   fpert finishes only in the 21.106-21.143B window.
+
+### 03:20 UTC: the first launch hung in its greedy eval (CPU quota throttling); fixed in run_arm.sh; relaunched
+
+* r7b4_gk's first launch (02:53) printed iteration 1's diagnostics and then nothing for 14 min; the record gate
+  killed it at 03:09 (no ckpt_latest.pt in 900 s). A diagnostic run of the same command with faulthandler
+  dumps: the main thread was INSIDE the greedy eval (record_rollout_parallel -> obsaux compass ->
+  goalfield.sample), alive, but the process sat at 5,333% CPU with ~100 threads at ~55% each, GPU 0%, and the
+  container's cgroup was throttled in 50% of its CFS periods (cpu.stat nr_throttled 5,508 / 11,030). The box is
+  a 61-CPU quota on a 128-thread EPYC 7B12; after every tiny parallel region of the 9-env eval core the
+  OpenMP / OpenBLAS workers spin-wait, burn the quota, and the eval's main thread crawls.
+* With `OMP_WAIT_POLICY=PASSIVE OPENBLAS_NUM_THREADS=1` the same command ran clean: the resume eval took
+  ~70 s, training ~4 s per 524,288-step iteration (~131k steps/s). Now exported (overridable) by
+  tools/run_arm.sh (commit dcffcbf). A 70 s eval every 6.25M would eat ~60% of this box's time, so this run
+  evaluates every 12.5M (~40 evals/h).
+* The diagnostic run's own resume eval (the incumbent's 22.218B weights, run on this box with the new flags'
+  pool) is not counted (its run dir was deleted; it was not a launched run).
