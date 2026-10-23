@@ -3109,3 +3109,12 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   longest such window (T 0.2: 1,324 -> 1,441).
 * **r7b4_t02c** (09:12): t01's 22,343,581,696 snapshot (taken right after its 98.380 entry; T 0.1 path) +
   `--unstuck-max 0.2`.
+
+### 09:36 UTC: t02c 1 entry; ablation r7b4_ft0 = `--front-temp 0` from the window's start
+
+* r7b4_t02c (t01's 22.343B snapshot + T cap 0.2), 22.350-22.463B, 19 evals: **1 entry** (apex 1,324) in 171
+  episodes, a CP6 stretch of 11 evals (22.375-22.438B), then basement mode (4-8 of 9) without entries.
+* **r7b4_ft0** (09:35): inc2's 22,242,918,400 snapshot (T 0.2 default) + `--front-temp 0`: no extra temperature
+  in the end-game band (round 6 added temperature 2 on every head at >= 99% of the reservoir's deepest; never
+  ablated). Training in the band then samples near the greedy action the evals score. Reference: the bare T 0.2
+  path from the same weights, 10 entries in 22.243-22.306B.
