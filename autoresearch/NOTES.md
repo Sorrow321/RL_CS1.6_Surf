@@ -2898,3 +2898,23 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   background, and the run moves to a better box if one appears.
 * **r7b4_gk2** (04:14): bare resume of r7b4_gk's last weights (22,279,618,560, md5 9daa46e3..., the archive's 8
   kept episodes and every flag restored), evals every 18.75M (a ~190 s eval per ~5 min of training).
+
+### 04:30 UTC: the greedy line's own chamber entry cannot reach the rim at its energy (probes, ANALYSIS ONLY)
+
+* The 98.362 eval's entry (22,243M ep 0), every 0.15 s: east along the basement's +y side (114.6 s, |v| 1,482,
+  h_E 2,153) -> U-turn at x ~4,086 (115.3 s, h_E 2,015) -> west along y ~-450 -> up the -y ramp face
+  (116.4-116.8 s, v (-1,242, +253, +264) -> (-969, +201, +638), h_E ~1,950) -> outward pull-out at
+  (2,497, -401, 1,160) 116.98 s, v (-132, -931, +518) -> through the hole -> above the slab heading EAST
+  (117.3-117.7 s, z 1,280-1,327, |v| ~950, h_E ~1,860-1,904) -> turns +y at the chamber's east ramp
+  (x ~3,248, 118.0 s), loses 290 u of h_E in an impact (118.2 s) and drifts along the funnel's east side at
+  z ~1,345 (d 1,638) until it falls (119.1 s). The apex of every greedy entry is set by the pull-out: vz
+  ~400-640 with ~900+ u/s still horizontal.
+* Policy probes (record_ckpt --spawn-states, the r7b4_gk 22.28B weights): from the archive's window of that
+  episode (2..0.25 s before death, i.e. after the pull-out) 24 stochastic at temperature 2 (= front-temp) and
+  8 greedy: 0 over the rim, all dead in 0.3-1.3 s. From 26 states rebuilt from the trajectory at 116.2-117.45
+  s (ramp face + pull-out): stochastic 20/40 enter the chamber, greedy 7/12, **0 over the rim**, z max 1,348.
+* Raw-core random held macros from the same 26 states (4,096 rollouts each): speed x1.0 -> 44% enter, 0 over
+  the rim (z max 1,457); x1.15 -> 0 (z max 1,500); x1.3 -> 130 over the rim (z max 1,578), 0 finishes.
+  So at the line's own energy not even random steering gets near the rim from where the line enters;
+  ~+15-30% speed at the ramp is what the entry lacks (round 6's "energy-limited" verdict, now from the
+  greedy line's actual states).
