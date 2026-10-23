@@ -2886,3 +2886,13 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   missing energy. These are exactly the losses an energy potential charges.
 * The first pass falls THROUGH the +y hole's footprint (114.0-114.25 s at x 2,414-2,688, y 407-512, z 1,190 ->
   945, vz -750..-950): it is under the hole but falling, moving along x on the face, never up-slope.
+
+### 05:30 UTC: the same probe, stochastic - no temperature enters from the line's own basement states
+
+* Same 387 top-quartile-h_E basement states (x1.0), 48 episodes x 7 s each, local CPU:
+  `--stochastic --exec-keys-temp 1.2` (= training outside the frontier band: keys T 0.2) **0/48** chamber
+  entries (best 98.01%); `--stochastic --exec-temp 2` (= front-temp 1 inside the band) **0/48** (best 97.99%);
+  greedy (above) 1/24. So the entry is not a skill the stochastic policy has near its mean and the greedy line
+  lacks (the round-2 greedy-vs-stochastic gap): from the line's own basement states it is rare at every
+  temperature. Turning front-temp off to "consolidate" has no basis here; the training entries come from the
+  front-perturb rows (heading turned +-90 deg), i.e. from states the line does not visit.
