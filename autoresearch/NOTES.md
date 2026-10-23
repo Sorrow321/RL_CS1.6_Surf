@@ -3099,3 +3099,12 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
 * **r7b1_gate2** (08:47): bare resume of r7b1_gate's latest weights with `--record-every 6.25e6` (was 12.5M), everything else
   restored: with ~0.25 greedy entries per eval and the energy trend flat, more greedy evals per hour (~1.6x) are worth more now
   than the ~30% training throughput they cost.
+
+### 09:18 UTC: 98.493 (r7b1_gate2 at 22.674B) - the entry apex keeps rising: 1,382 -> 1,457 -> 1,470
+
+* r7b1_gate2 (arm 5's weights, evals every 6.25M), 22.655-22.743B, 15 evals: **98.493** (22.674B: episode 0 through the -y hole at
+  114.3 s, inward over the funnel to its apex z 1,470 at (2,986, -269), h_E 2,127; at 115.21 s it is at |y| 241 - 51 u outside the
+  funnel opening - and ~80 u below the wall top, hits the outer wall), **98.390** (22.737B, apex 1,415), the rest 96.5-98.0 (three
+  CP6 evals at 96.5% - the deep-dip / 86% wobbles).
+* No snapshot exists between the run start (22.654B) and the first 1e8 snapshot (22.754B): the weights of the 98.493 eval itself
+  are not kept; the run's newest weights are the hand-on ones (this is the last round).

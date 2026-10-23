@@ -3,11 +3,11 @@
  "round": 7,
  "final": false,
  "best": {
-  "score": 98.451,
-  "eval_file": "/home/steam/ar/runs/r7b1/r7b1_gate/traj_22595764224.jsonl",
-  "run": "r7b1_gate",
-  "step": 22595764224,
-  "ckpt": "box 57307538: /root/RL_Surf/runs/r7b1_gate/ckpt_latest.pt (the run's newest weights); local snapshot runs/r7b1/r7b1_gate/ckpt_22618308608.pt (22.6M steps after the eval)",
+  "score": 98.493,
+  "eval_file": "/home/steam/ar/runs/r7b1/r7b1_gate2/traj_22673883136.jsonl",
+  "run": "r7b1_gate2",
+  "step": 22673883136,
+  "ckpt": "box 57307538: /root/RL_Surf/runs/r7b1_gate2/ckpt_latest.pt (the run's newest weights; first snapshot ckpt_22754623488.pt); arm 5's earlier local snapshot runs/r7b1/r7b1_gate/ckpt_22618308608.pt",
   "recipe": [
    "--energy-pot",
    "1",
@@ -16,10 +16,12 @@
    "--critic-warmup",
    "20",
    "--ckpt-every",
-   "1e8"
+   "1e8",
+   "--record-every",
+   "6.25e6"
   ],
-  "resume_from": "incumbent r6b2_tp3 (22,217,752,576)",
+  "resume_from": "r7b1_gate (22,654,484,480) <- incumbent r6b2_tp3 (22,217,752,576)",
   "commit": "e369987"
  },
- "summary": "98.451 (r7b1_gate at 22.596B = incumbent + --energy-pot 1 --energy-pot-front 0.01, 378M steps; incumbent 98.315): a greedy entry through the -y hole with no edge loss, turning inward over the funnel to z 1,457 at |y| ~300, ~100 u of energy short of the rim. NEW --energy-pot C (potential on z + |v|^2/2g) + --energy-pot-front B (the term stops once an episode's record is in the frontier band - the plain potential pays the energy left at death and made the line die at the deep dip (C=2) or in the basement at once (C=1)): the greedy line carries +200 u to 97% progress (~2,580 vs ~2,380) and still loops and enters. Arms: ep2 (C=2) dip death; ep1 (C=1) basement suicide; epf (ep1 + gate) 98.393; fp15 (wider/faster frontier rows) null; gate (clean restart) 98.349 / 98.123 / 98.451. Entries need the +y arrival (the -y return leg) - the energy term biases the arrival to -y (~5:1)."
+ "summary": "98.493 (r7b1_gate2 at 22.674B, arm 5's line continued; 98.451 at 22.596B before it = incumbent + --energy-pot 1 --energy-pot-front 0.01, 378M steps; incumbent 98.315): a greedy entry through the -y hole with no edge loss, turning inward over the funnel to z 1,457 at |y| ~300, ~100 u of energy short of the rim. NEW --energy-pot C (potential on z + |v|^2/2g) + --energy-pot-front B (the term stops once an episode's record is in the frontier band - the plain potential pays the energy left at death and made the line die at the deep dip (C=2) or in the basement at once (C=1)): the greedy line carries +200 u to 97% progress (~2,580 vs ~2,380) and still loops and enters. Arms: ep2 (C=2) dip death; ep1 (C=1) basement suicide; epf (ep1 + gate) 98.393; fp15 (wider/faster frontier rows) null; gate (clean restart) 98.349 / 98.123 / 98.451. Entries need the +y arrival (the -y return leg) - the energy term biases the arrival to -y (~5:1)."
 }
