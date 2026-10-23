@@ -340,3 +340,16 @@ i.e. not yet the generic recipe 0b asks for. The generic version of the same mec
 Go-Explore phase 1 (reward-free, it found the tunnel by itself in ~1 min) plus stage targets
 defined on the field (entry_search --field/--d-max "deeper than the current frontier"), then
 the backward curriculum (--demo-file + --demo-success-d) on the found line. Not run yet.
+* Gate 2, physics (core traces of the greedy line, g2b 1.25B ep1): from the tunnel exit
+  (151, -2,885, 3,722; |v| ~320, heading west) the line turns south-east and FREE-FALLS for
+  ~0.9 s (vz -222 -> -782 at exactly g, no contact), then hits a WALL at x ~300
+  (290, -2,975, 3,340): vx -> 0, h 3,813 -> 3,378. With ~350 u/s of horizontal speed its arc
+  passes BELOW the lip of the surf slope the record lands on; the record leaves the tunnel at
+  600-680 u/s (carried from its half-pipe pump through the tunnel) and its arc clears the lip,
+  lands tangentially at (374, -3,032, 3,386) at 913 u/s and runs onto the east ramp. Optimal air
+  strafing over a 0.9 s fall adds only ~30^2/(2v) ~1.3 u/s per tick, ~+100 u/s - not the missing
+  ~250. So gate 2 is the START ROOM's energy coming due: the slow two-jump entry this lineage found
+  reaches the pit, and the way OUT needs the fast line (pump in the east half-pipe -> tunnel at
+  speed -> long drop). Next round: a spine with a PUMP (Go-Explore with --cell-energy reached
+  h ~3,800 in the half-pipe vs the record's ~3,930-3,950; or the policy's own pumping under
+  per-call energy shaping), or a way to carry speed through the crouch tunnel.
