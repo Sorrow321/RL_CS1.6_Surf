@@ -366,3 +366,11 @@ SELF_STATES/CKPT/ARM_RESUME/SCRATCH). Nothing else changes in box.py.
 * `pbr1b3_sgx6` (20:17): resume of sgx1's 334.5M (the band-curriculum lineage that climbed at
   153M) with exactly sgx1's spawn rule (band, G 0.003, 70% file spawns) for the rest of the
   round.
+
+### Harness issue (pbr1b3): `box.py pull --ckpt` cannot finish on a slow uplink
+
+`box.py pull` caps each checkpoint `scp` at 1,800 s. Box 57382729 (Thailand) uploads at
+~22 KB/s whatever the trainer is doing, so a 61 MB checkpoint needs ~46 min and the pull always
+ends "md5 ... != ... (truncated pull); none kept" (2026-10-23 20:13). Workaround used: the same
+contract by hand - `scp` with a long timeout into `<run>/ckpt_latest.pt.part`, md5 checked
+against the box's file, then renamed into place.
