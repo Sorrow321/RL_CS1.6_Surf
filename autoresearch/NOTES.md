@@ -280,3 +280,11 @@ own reward-free search from the true spawn, no demo or record data, generic cons
   the true start now walks to that wall spot in 9/9 episodes (151M, 227M) and duck-jumps to the
   right apex (feet 3,679), but bunny-hops (jumps on the move) instead of stopping at the wall
   first; 0 plate landings yet. Evals 0.42.
+* pbr1b1_bcur5 at 600M: the curriculum got past the first duck-jump (~430M) and kept going:
+  starts [89,..] 58% -> [79] 35% -> [69] 31% -> [59] 27% -> [49] 39% -> [39] 62% -> [29] 82%
+  success - from a few seconds into the line the policy now walks to the wall, duck-jumps onto the
+  plate corner, jumps into the gap and gets 50 u into the tunnel. The greedy line from the TRUE
+  start got WORSE meanwhile (378M 120 u, 453M 53 u, 529M 36 u): from spine states 0-28 (never
+  trained yet) it jumps at once, drifts north-east and dies in trigger *257 at ~2 s. The yaw
+  sigma collapsed to 0.015. `--demo-tau0 T` (new) lets a continuation start the curriculum where
+  the previous run stopped (the position is not checkpointed).
