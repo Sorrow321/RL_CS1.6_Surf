@@ -331,3 +331,10 @@ SELF_STATES/CKPT/ARM_RESUME/SCRATCH). Nothing else changes in box.py.
 * Harness note: on this box I updated the checkout with `git fetch && git checkout` over ssh
   instead of `box.py deploy` (whose GPU spec check fails while a trainer holds the GPU); same
   commit either way.
+* 19:35 sgx1's later evals: 228M 238 u, 304M 230 u - the 153M climb was one lucky greedy
+  episode. Switched to the backward window (`pbr1b3_sgx2`, resume of sgx1's 334.5M); its
+  window sat at the deepest rows with success 0.00 over 3,298 episodes: those rows are the
+  search's own frontier (falling states, nothing known past them), so a local +171 u bar can
+  never be met there and the window never left. Fixed (659c788): the bar is capped at the way
+  to the set's deepest row (reaching the end of the known route is a success - Salimans &
+  Chen's own criterion). `pbr1b3_sgx3` = resume of sgx2's 342.9M with the fix.
