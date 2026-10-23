@@ -262,3 +262,20 @@ learn what energy is worth there before the policy can make it.
 * arm 8 pbr1b2_ge8: arm 7's latest + recipe + --time-pen 0 + the switches above + --demo-file
   runs/pbr1b2_ge3/chain_dense.npy --demo-reach 128 --demo-grow 8 --demo-window 16
   --demo-front-frac 0.67.
+
+### 2026-10-23 18:18 UTC - arms 8/9: the backward curriculum works on the easy part, stalls at a pocket move
+
+* arm 8 pbr1b2_ge8 (--demo-grow 8): tau 786 -> 682 in 136M steps, every band won 98.7-99.9%
+  (a spine episode from the chain's end region reaches the win line almost always), but ~10M
+  steps per 8-state advance: far too slow to reach the climb (rows ~159-186) in budget. Evals
+  0.402 / 0.417 (the greedy line from the true start is only trained once tau reaches 0).
+* arm 9 pbr1b2_ge9 (--demo-grow 32, from arm 8's 466M): tau 786 -> 594 fast, then OSCILLATES:
+  band [594,609] 0.0% success (1,600 eps), band [626,...] 96.8-97.6%. Rows 589-620 are a move
+  inside the pocket ((653,-3030,3441) -> (864,-3165,3476), 2.65% -> 3.15%) that Go-Explore's
+  random bursts made once and the policy cannot repeat from those states. Evals 0.427 / 0.405.
+* The chain is STITCHED, not continuous: e.g. rows 162 -> 163 jump from a burst rising at z 3685
+  to another burst's stored state ducked at z 3751 (a cell's stored state is replaced when a
+  shorter route is found; the dumped path is the first visit's). A curriculum only resets into
+  the rows, so that is sound for spawns; it is not an open-loop replay.
+* arm 10 pbr1b2_ge10: arm 9's 617.6M + the spine cut at row 593 (2.7%, chain_dense_593.npy):
+  the curriculum can now walk back through the drop, the ledge and the climb to the true start.
