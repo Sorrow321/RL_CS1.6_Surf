@@ -265,6 +265,11 @@ class Archive:
         self.index: dict[int, int] = {}
         self._cum: np.ndarray | None = None
         self.n_full_warned = False
+        # --exact-chains: a cell's parent is the cell its run was RESTORED from, a cell's
+        # state is never replaced, and link_acts[i] holds the run's actions from that restore
+        # to the first entry - so every chain replays exactly (tools/ge_replay.py)
+        self.exact = False
+        self.link_acts: dict[int, np.ndarray] = {}
 
     def _grow(self, cap: int) -> None:
         old = getattr(self, "key", None)
@@ -318,7 +323,7 @@ class Archive:
         return i
 
     def ingest(self, g_key, g_run, g_tick, g_state, run_t0, run_d0,
-               run_origin) -> np.ndarray:
+               run_origin, entries: list | None = None) -> np.ndarray:
         """Fold one chunk's (run, cell) first-visit records into the archive.
 
         ``run_t0`` / ``run_d0`` / ``run_origin`` are per-run arrays: the tick
@@ -361,13 +366,15 @@ class Archive:
                 self.state[i] = g_state[j]
                 self.seen[i] = 1
                 self.depth[i] = d
-                self.parent[i] = prev_idx
+                self.parent[i] = origins[r] if self.exact else prev_idx
                 index[k] = i
                 self.size = i + 1
                 added.append(i)
+                if entries is not None:
+                    entries.append(j)
             else:
                 self.seen[i] += 1
-                if d < self.depth[i]:
+                if d < self.depth[i] and not self.exact:
                     # "better trajectory" is shorter here - the run reached the
                     # same cell in fewer ticks from the map start. 1901.10995
                     # 2.1.1 resets the choice counters on an improvement (a new
@@ -423,10 +430,21 @@ class Archive:
         n = self.size
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
+        extra = {}
+        if self.exact:
+            # link_acts[link_off[i]:link_off[i + 1]] = cell i's link actions (roots: none)
+            lens = np.array([len(self.link_acts.get(i, ())) for i in range(n)], np.int64)
+            off = np.zeros(n + 1, np.int64)
+            np.cumsum(lens, out=off[1:])
+            flat = np.zeros((int(off[-1]), 6), np.int8)
+            for i, a in self.link_acts.items():
+                if i < n:
+                    flat[off[i]:off[i + 1]] = a
+            extra = dict(link_acts=flat, link_off=off)
         np.savez(path,
                  key=self.key[:n], state=self.state[:n], seen=self.seen[:n],
                  chosen=self.chosen[:n], parent=self.parent[:n],
-                 depth=self.depth[:n], dist=self.dist[:n])
+                 depth=self.depth[:n], dist=self.dist[:n], **extra)
         if meta is not None:
             Path(str(path).replace(".npz", ".meta.json")).write_text(
                 json.dumps(meta, indent=2), encoding="utf-8")
@@ -786,6 +804,7 @@ def explore(args) -> int:
                       speed=args.cell_speed, speed_max=args.cell_speed_max,
                       energy=float(getattr(args, "cell_energy", 0.0) or 0.0))
     arch = Archive(hasher, max_cells=args.max_cells)
+    arch.exact = bool(getattr(args, "exact_chains", False))
     rk = hasher.keys(roots)
     for j in range(len(roots)):
         i = arch.add(int(rk[j]), roots[j], depth=0, parent=-1)
@@ -923,7 +942,7 @@ def explore(args) -> int:
                     break
 
             n_runs += len(r_t0)
-            fold_chunk(arch, hasher, hist, rid_h, r_t0, r_d0, r_org, dist)
+            fold_chunk(arch, hasher, hist, rid_h, r_t0, r_d0, r_org, dist, acts_h)
             it += 1
             if (max_minutes > 0.0 and not stop
                     and time.perf_counter() - t_start >= 60.0 * max_minutes):
@@ -1007,7 +1026,7 @@ def _goal_meta(extra, arch, spawns, cell, minutes=None):
 
 
 def fold_chunk(arch: Archive, hasher: CellHash, hist, rid_h, r_t0, r_d0,
-               r_org, dist) -> None:
+               r_org, dist, acts_h=None) -> None:
     """Archive everything one chunk of rollout discovered."""
     if not r_t0:
         return
@@ -1016,9 +1035,15 @@ def fold_chunk(arch: Archive, hasher: CellHash, hist, rid_h, r_t0, r_d0,
     if g_key.size == 0:
         return
     g_state = hist[g_tick, g_env]
+    ent = [] if arch.exact else None
     added = arch.ingest(g_key, g_run, g_tick, g_state,
                         np.asarray(r_t0, np.int64), np.asarray(r_d0, np.int64),
-                        np.asarray(r_org, np.int64))
+                        np.asarray(r_org, np.int64), entries=ent)
+    if ent:
+        # --exact-chains: the run's actions from its restore (r_t0) to the entry tick
+        for i, j in zip(added.tolist(), ent):
+            t0 = int(r_t0[int(g_run[j])])
+            arch.link_acts[i] = acts_h[t0:int(g_tick[j]), int(g_env[j])].copy()
     if added.size:
         arch.dist[added] = dist.sample(arch.state[added]["origin"])
 
@@ -1097,6 +1122,10 @@ def meta_dict(args, bsp, hasher, arch, it, n_goal, extra=None) -> dict:
         out["maxvel"] = float(args.maxvel)
     if float(getattr(args, "cell_energy", 0.0) or 0.0) > 0.0:
         out["cell_energy"] = float(args.cell_energy)
+    if getattr(args, "exact_chains", False):
+        out["exact_chains"] = True
+        out["ep_ticks"] = int(args.ep_ticks)
+        out["keep_teleports"] = bool(args.keep_teleports)
     if extra:
         # --roots-goal only: the flag-off meta json is unchanged
         out.update(extra)
@@ -1677,6 +1706,10 @@ def build_parser() -> argparse.ArgumentParser:
                     help="save the archive every N chunks (0 = only at exit)")
     ap.add_argument("--print-every", type=int, default=10,
                     help="progress line every N chunks")
+    ap.add_argument("--exact-chains", action="store_true",
+                    help="exact provenance: a cell's parent is the cell its run was restored "
+                         "from, states are never replaced and each cell keeps its run's "
+                         "actions, so any chain replays exactly (tools/ge_replay.py)")
     ap.add_argument("--max-cells", type=int, default=4_000_000,
                     help="hard cap on archive entries (memory guard: each "
                          "entry is ~150 bytes)")
