@@ -477,3 +477,22 @@ learn what energy is worth there before the policy can make it.
   y ~-3000). Verdict: the policy's own proposals contain no energy-keeping descent, so no
   selection rule over them finds one; the next round needs a proposal that can (random
   view-velocity bursts did not either) or a new skill learned first (ledge speed + slope landing).
+
+### 2026-10-23 23:35 UTC - ready-to-run: the pocket traverse by curriculum (no box available)
+
+The full deduplicated chain (autoresearch/analysis/pb_chain/chain_dedup_full.npy, 714 rows,
+3.83% at its end) leaves the pocket floor out: rows ~518-566 traverse from (613,-2989,3412) 2.55%
+via (871,-3119,3440) 3.04% up onto the SOUTH RIM (z 3460-3530) and rows 590-713 run along it to
+3.83% - ~0.6 points above the policy's stop at the floor (808,-3289,3377), 3.23%. Arm 9's
+curriculum sat at 0% on that band, but with the DEGRADED lineage (yaw sigma 1.18); it has not
+been tried with the clean policy. The run I would launch (box.py launch --resume from
+pbr1b2_ge16/ckpt_1260388352.pt, provenance as arm 13's):
+
+    <recipe> --time-pen 0 --ent 0.002 --no-respawn-novel --int-real-only 0 --respawn-greedy 0
+    --respawn-greedy-stuck 0 --respawn-backward-mix 0 --respawn-front-perturb 0 --spawn-states ''
+    --demo-file autoresearch/analysis/pb_chain/chain_dedup_full.npy --demo-reach 128
+    --demo-grow 16 --demo-window 16 --demo-front-frac 0.67 --demo-tau-start 640
+
+(win line = the chain end's d + 128, ~3.6%; tau 640 starts on the rim, the band walks back into
+the traverse). Watch the band at ~520-566: 0% beside ~100% is the move; arm 13 showed PPO lifting
+such a band 20% -> 40% in ~200M steps when the policy is clean.
