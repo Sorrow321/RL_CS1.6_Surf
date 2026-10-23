@@ -303,3 +303,20 @@ resample every 25 decisions. On a box it runs as it does locally (CPU physics + 
   recipe's frontier temperature back; SIL off - a resume restores --sil-top, which refuses
   --sil-coef 0 unless --sil-top 0 is passed too). BC NLL 47.9 -> 7.8 in the first iterations.
 * Box 57384171 extended to 21:20 UTC (18:20).
+
+### 19:48 UTC - BC fits the lines (99.9%) but the greedy does not reach them: distribution shift -> DAgger
+
+* pbr1b4_bc (2.143B -> 2.435B, BC coef 0.5 -> 0.36): BC head-acc 0.999, joint-acc 0.997,
+  view-mse 0.009 on the 17,899 planner rows - and the greedy evals unchanged (0.416-0.442).
+  The greedy reaches the floor SOUTH of the conveyor plate by 1.2 s (714, -3078) and bounces at
+  z 3652-3687 for 30 s; it never mounts the plate.
+* The found lines climb the same way (waves 2 and 3, ~17.5-19.5 s): STAND on the plate's SW
+  corner (649-654, -3059..-3066, origin 3714 = feet on the plate), jump-spam there (z 3721-
+  3746), drift SW while high into the slot (630, -3088, 3742) ducking, crawl. But they WANDER
+  ~16 s on the floor first (the population needed that long to stumble on the climb), so ~90%
+  of the BC rows teach wandering and the climb is a handful of decisions whose preconditions the
+  greedy never reproduces (plus the search used ONE spawn yaw; evals jitter it by 8 deg).
+* Next: expert iteration done properly - more waves with --eps 0.25, --resample-every 15 (keep
+  the first hop sooner), a different spawn seed per wave (the yaw jitter), 4 waves with the ys
+  1.89B proposer + 2 waves with the BC checkpoint itself as the proposer (DAgger: the lines start
+  where the greedy actually goes); distil per spawn and merge; resume BC from bc_latest.
