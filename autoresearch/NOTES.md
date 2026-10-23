@@ -410,7 +410,7 @@ Then launch with `--self-states "<provenance>" -- --spawn-states runs/gx_spawns_
 * sgx1's ckpt_latest (334.5M, md5 2ed815bc...) is on the agent host now (hand-pulled, md5
   verified): the hand-on checkpoint for the 0.613 eval.
 
-### pbr1b3, 2026-10-23 21:31 UTC - resuming this branch's checkpoint (if it is handed on)
+### pbr1b3, 2026-10-23 21:29 UTC - resuming this branch's checkpoint (if it is handed on)
 
 The hand-on checkpoint (sgx1, 334.5M) carries `spawn_states runs/gx_spawns_cur.npy`,
 `spawn_states_frac 0.7` and `spawn_states_curric 0.003` in its config, and a resume RESTORES
