@@ -425,3 +425,10 @@ the backward curriculum (--demo-file + --demo-success-d) on the found line. Not 
   `--demo-grow 20 --demo-tau0 1790` (the position it had backed off to; band [1780,1789] was at
   13-15%, the start of the north U-turn). Rule for next time: grow ~ n/100 states, so a spine of
   any length is crossed in ~100 advances (bcur5: 270/100 ~ 3, it ran 10).
+* g2cur2 (grow 20) ran 1790 -> 1270 in ~230M steps (one advance per 10.5-15M, cooldown-bound),
+  then STALLED at the far-side wall: from 1.71B to 1.93B+ it oscillates 1270 <-> 1250 <-> 1230.
+  Band [1250,1259] (just after the line hits the east wall at (989, -3,098), v (329,-265,-374)
+  -> (-163,-188,-83), then slides up a south ramp, stops at (991, -3,159) and slides back north -
+  a ramp U-turn) reaches 20-59%; band [1230,1239] (0.1-0.2 s BEFORE the impact, mid-air while
+  the line air-strafes right ~40 deg with the view turning 2 deg/tick, ducked) is at 0.0% in
+  every visit: the policy does not reproduce the impact angle the bounce needs.
