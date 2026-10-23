@@ -1485,6 +1485,9 @@ def print_cadence(c, label="winner"):
           f"fwd key held on {100 * c['fwd_air']:.1f}%")
 
 
+ENERGY_G = 800.0      # sv_gravity of every map this tool searches (the CS default)
+
+
 def make_scorer(gf, route_file, corridor, mode, value_fn=None,
                 v_switch: float = 0.0):
     """-> score(states, obs) = (higher is better, geodesic d).
@@ -1505,6 +1508,17 @@ def make_scorer(gf, route_file, corridor, mode, value_fn=None,
         def score(states, obs=None):
             d = gf.sample(states["origin"]).astype(np.float64)
             return -d, d
+        return score
+    if mode == "e":
+        # ENERGY HEIGHT h = z + |v|^2 / (2 g): under --objective progress the elites are chosen by
+        # best arc first, so this only orders lineages TIED on progress - at an energy gate (a
+        # U-turn the field and the route cannot see, where every lineage has stopped at the same
+        # arc) it keeps the ones carrying speed or height instead of the ones closest to the goal
+        def score(states, obs=None):
+            o = np.asarray(states["origin"], np.float64)
+            v = np.asarray(states["velocity"], np.float64)
+            d = gf.sample(states["origin"]).astype(np.float64)
+            return o[:, 2] + (v * v).sum(1) / (2.0 * ENERGY_G), d
         return score
     if mode in ("v", "dv"):
         if value_fn is None:
@@ -1910,13 +1924,14 @@ def main():
                     help="do not require the greedy gate to finish (implied "
                     "by --greedy-prefix: searching from the wall is only "
                     "interesting for a policy that does NOT finish)")
-    ap.add_argument("--score", choices=["d", "route", "v", "dv"],
+    ap.add_argument("--score", choices=["d", "route", "v", "dv", "e"],
                     default="d",
                     help="boundary ranking: 'd' = geodesic (spawn-to-finish "
                     "search), 'route' = route vertex index then d (wall "
                     "search - see make_scorer), 'v' = the checkpoint's own "
                     "critic, 'dv' = d until the frontier is within "
-                    "--v-switch of the goal, then the critic")
+                    "--v-switch of the goal, then the critic, 'e' = energy height "
+                    "z + |v|^2/2g (under --objective progress: the tie-break at an energy gate)")
     ap.add_argument("--v-switch", type=float, default=20000.0,
                     help="--score dv: switch from d to V(s) once the "
                     "population's smallest geodesic d is below this")
