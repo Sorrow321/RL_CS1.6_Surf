@@ -3020,3 +3020,17 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
 * **r7b4_inc** (06:24): bare resume of the incumbent (22,217,752,576) with its own recipe and nothing added,
   evals every 6.25M: basement-mode lines are where chamber entries (and any score above 98.362) come from.
   If it drifts into the CP6 mode for ~20 evals, it restarts from the incumbent's weights.
+
+### 06:55 UTC: **98.390** - the incumbent's own recipe, resumed bare, enters the chamber 4.8% of the time for ~90M steps
+
+* r7b4_inc (bare resume of the incumbent, nothing added, evals every 6.25M), 22.218-22.357B, 23 evals: the
+  first 15 in basement mode (64 of 207 episodes in the basement overall) with **10 greedy chamber entries** in
+  9 evals from 22.243B to 22.306B (apex z 1,315-1,441), best **98.390** (22,306,357,248, apex z 1,441, d ~1,606);
+  then from 22.312B the CP6 mode (8 evals, 96.51-97.92). The incumbent's own continuation in round 6 had
+  entries in 0.42% of greedy episodes over 2B steps; here 4.8% over ~90M steps.
+* So every restart from the incumbent's weights gave a basement-mode window (r7b4_gk: ~40M steps; r7b4_inc:
+  ~90M; isp2 with speed-pot: ~15M) and then the CP6 mode. Weights kept: runs/r7b4/r7b4_inc/ckpt_latest.pt
+  (22,357,xxx,xxx, md5 a6ab3f75..., CP6 mode) and the box's ckpt_22317891584.pt.
+* **r7b4_inc2** (06:53): the same bare restart, snapshots every 25M (so a good window can be resumed from its
+  own weights rather than from 22.218B). Plan for the rest of the round: when the line sits in the CP6 mode
+  for ~8 evals, resume from the last snapshot taken inside a basement-mode window with entries.
