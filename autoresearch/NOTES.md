@@ -271,3 +271,12 @@ own reward-free search from the true spawn, no demo or record data, generic cons
   --demo-success-d -50` (success = record d <= 56,787, 50 u inside the tunnel) + --yaw-entropy 0.
   The curriculum refuses --respawn-novel / -backward-mix / -front-perturb / -greedy (and
   --int-real-only needs novel), so those are 0 for this arm: 90% of spawns come from the spine.
+* pbr1b1_bcur5 at 250M: the curriculum ran from spine state 269 back to 119-129 in ~100M steps and
+  oscillates there (band [129,138] 40-51% success, [119,128] 4-11%): that is mid-ascent of the
+  FIRST duck-jump, where the apex clears the plate corner by ~1 u. The line: walk WNW along the
+  floor to the wall at (649, -2915) (states 0-104), stop against it (vx -> 0), duck-jump in place
+  drifting ~17 u SOUTH (vy -7 -> -66) onto the plate's north corner (state ~148, feet 3,680), jump
+  again from the plate north-west into the gap (state ~200, feet 3,696). The greedy line from
+  the true start now walks to that wall spot in 9/9 episodes (151M, 227M) and duck-jumps to the
+  right apex (feet 3,679), but bunny-hops (jumps on the move) instead of stopping at the wall
+  first; 0 plate landings yet. Evals 0.42.
