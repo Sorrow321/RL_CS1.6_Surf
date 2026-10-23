@@ -388,3 +388,18 @@ learn what energy is worth there before the policy can make it.
   (the recipe's K 3 energy potential paid/charged on every call: a gained strafe speed is paid,
   a crash landing is charged ~-1 per 300 u lost) with everything else as arm 14. Generic: a
   physical invariant, no map constant; with --time-pen 0 arm 3 showed no suicide.
+
+### 2026-10-23 20:52 UTC - arm 15 (plain energy pot) and the policy-guided search at the pocket; arm 16
+
+* arm 15 pbr1b2_ge15 (994M -> 1,160M): evals 3.232 / 3.232 / 3.231 (median 3.2% each), energy
+  term active (+860/-1,033 u of h per episode), frontier unchanged (reservoir deepest 3.235%).
+* beam_tas --score rec_e from the TRUE START with arm 15's weights (4096 lineages, 2 s
+  generations, 60 s): the policy's own proposals now run the whole route. With --rec-quant 1024
+  the population parked at the drop landing (d ~56,170 shares a bin with the pocket's ~55,300 and
+  has more energy there - coarse bins make the energy tie-break myopic); with --rec-quant 256 the
+  whole population was in the pocket by 12 s and then stuck: h max 3,453 for 40 s. Neither the
+  policy's proposals nor random bursts ADD energy in the pocket; it has to be brought in.
+* arm 16 pbr1b2_ge16: arm 15's 1,160M weights, same flags + --respawn-front-perturb-speed 1.0 3.0
+  (the frontier-band rows' speed scale, a generic width): the agent experiences the pocket with
+  the speed the exit needs, so the critic can learn what speed is worth there, while the plain
+  energy potential pays bringing it in. Box extended to the round's end.
