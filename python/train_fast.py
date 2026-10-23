@@ -4739,6 +4739,11 @@ def main() -> None:
                          "curriculum trains on new starts beside the "
                          "frontier plus replayed old ones, 200:100 = 2/3. "
                          "0 = off, byte-identical. ckpt restores")
+    ap.add_argument("--demo-tau0", type=int, default=None,   # None = the spine's end
+                    help="--demo-file: start the backward curriculum at spine state T instead of "
+                         "the spine's last state - the curriculum position is not in the "
+                         "checkpoint, so a continuation passes where the previous run's log "
+                         "left it ('demo starts [T,...]'). Not a config key; default = n-1")
     ap.add_argument("--demo-success-d", type=float, default=None,   # None = off
                     help="--demo-file: an episode started from the spine counts as a SUCCESS "
                          "for the backward curriculum when its ratchet RECORD (the deepest "
@@ -11351,7 +11356,11 @@ def main() -> None:
         demo = DemoCurriculum(np.load(args.demo_file),
                               window=args.demo_window, rate=args.demo_rate,
                               min_ep=args.demo_min_ep, grow=args.demo_grow,
-                              front_frac=float(args.demo_front_frac))
+                              front_frac=float(args.demo_front_frac),
+                              tau0=args.demo_tau0)
+        if args.demo_tau0 is not None:
+            print(f"--demo-tau0 {args.demo_tau0}: the curriculum starts at spine state "
+                  f"{demo.tau} of {demo.n}")
         print(f"demo curriculum: {demo.n} states from {args.demo_file}, "
               f"window {args.demo_window}, advance/backoff at "
               f"{args.demo_rate:.0%} window finish rate "

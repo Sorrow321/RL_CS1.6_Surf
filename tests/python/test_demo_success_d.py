@@ -116,3 +116,17 @@ def test_flag_off_is_bit_identical_to_the_trainer_before_the_change(tmp_path):
     finally:
         for dd in (a, b):
             shutil.rmtree(dd, ignore_errors=True)
+
+
+def test_demo_tau0_starts_the_curriculum_where_asked():
+    from surfgym.core import STATE_DTYPE
+    from surfgym.respawn import DemoCurriculum
+    S = np.zeros(30, STATE_DTYPE)
+    S["origin"][:, 0] = np.arange(30, dtype=np.float32)
+    assert DemoCurriculum(S).tau == 29                       # the paper's start, unchanged
+    assert DemoCurriculum(S, tau0=7).tau == 7
+    assert DemoCurriculum(S, tau0=99).tau == 29 and DemoCurriculum(S, tau0=-3).tau == 0
+    c = DemoCurriculum(S, window=5, grow=5, tau0=10)
+    pool = c.build_pool(np.zeros(4, STATE_DTYPE), pool_size=200, fresh_frac=0.1)
+    o = pool["origin"][:, 0]
+    assert ((o == 0) | (o >= 10)).all()                       # fresh rows or spine [10, 29]
