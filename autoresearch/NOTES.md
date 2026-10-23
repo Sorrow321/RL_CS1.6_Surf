@@ -491,3 +491,39 @@ is ~50 s of chamber search.
   the speed source; field d +1,500 u the wrong way) or (b) learn the drop-onto-the-ridge
   conversion after a slow exit; both are search/BC targets in the policy's action space, and
   the tunnel surf needs a held side key that BC from search lines can teach.
+
+### 23:45 UTC - the chamber gate quantified (core probes, no box): the energy it needs
+
+* **Nothing cheap is left below the gate.** Best eval (bc3 3.659B): all 9 greedy episodes reach
+  P (808, -3288, 3377), goalc d 55,300-55,335, then wander 30 s (eval patience) and end. The two
+  chamber Go-Explore archives (9,877 and 1,178 cells, our own roots + fast synthetic roots) have
+  NO alive cell below d 55,300: their best are P and its mirror at the NORTH pocket's east end
+  (823, -2741, 3377), d 55,318. The field says "walk west along either pocket's floor" and
+  ignores the trigger_teleport there, so the score only moves by crossing the kill floor.
+* **Free space (standing-hull origin z, core traces):** both pockets over the kill trigger
+  (x 451-762): floor origin z 3324. The NORTH pocket is open up to z 3544, so a hull clears the
+  trigger (origin z >= 3396) in a 148 u band. Its only entry from the east is a WINDOW under the
+  ceiling at x 760-800, y -2640..-2680, z ~3480-3544. Behind it, x 850-1000 is a slab: a low room
+  at z 3332-3408 and an upper space at z 3460-3544. At x 440 (the trigger's west edge) only
+  z 3460-3544 is open at y -2640..-2680. West of x 435 the pocket drops to z <= 3180, the exit.
+  The south pocket's ceiling is z 3408: no flight band, so it is a dead end.
+* **Ballistic crossing threshold** (no keys, from x 790 in the window, heading west; scratchpad
+  cross_probe2.py): it passes alive with
+  * vz 0: v >= 800 u/s at z 3530-3540, v >= 1,000-1,100 at z 3500-3510;
+  * vz +150..+300: v >= 500-700 u/s.
+
+  Minimum energy height (z + |v|^2/1600) about 3,710-3,760. The slow tunnel exit has
+  3,720-3,758 (z ~3,720, 100-250 u/s), so it only suffices with near-perfect conversion. Our line
+  loses ~130 u of it on landing (t750 -> t800 of ep 2) and reaches the corridor floor at 575 u/s
+  with ~3,550: 160-200 u short.
+* **So the chamber is an ENERGY gate. The line needs about +200 u of energy height over ours**,
+  from any of:
+  * carrying speed into the tunnel (the tunnels keep it when surfed, 22:37);
+  * landing the drop on a sloped face without loss;
+  * air-strafe gain on the chamber's ramps.
+
+  Then a U-turn up the east connection and west through the window at >= 500-800 u/s. Any search
+  or RL scheme for round 2 can be checked against those numbers in the core before any box time.
+* Not attempted in the last 2 h of the round: every route past this needs search -> BC ->
+  train (2-3 h with plan_to_bc's CPU cost), so it cannot produce a better greedy eval before
+  the 01:34 wrap-up.
