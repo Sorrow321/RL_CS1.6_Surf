@@ -18,5 +18,5 @@
   "resume_from": null,
   "commit": "86e6927"
  },
- "summary": "Start room is an energy gate (exit window 50-110 u above the floor; WR pumps in the east halfpipe first). Baseline, 4x novelty and energy-shaping-everywhere all stall at ~250 u (0.4-0.5%) by 76M with peak speed ~100-140 u/s: the yaw sigma inflates to the 2.718 clamp because the view entropy bonus is the Gaussian's, not the squashed action's (bang-bang look, often 180 deg off the velocity). Fix built: --view-ent-squash 1 (b47f38c, flag-off bit-identical). Running now: pbr1b3_vesq = recipe + --view-ent-squash 1 from scratch. Warm start from sid_ref walks to the same corner."
+ "summary": "Start room = an energy gate inside a trap box (down-pusher into teleports at the floor's west end, teleport strip over the north ledge, exits 87 u above the floor). PPO arms (baseline, 4x novelty, energy everywhere, sid_ref warm start, squashed-entropy fix) all stall at ~250 u (0.4%). --view-ent-squash (b47f38c) fixes the yaw sigma blow-up (2.718 -> ~1.0) but not the gate. Go-Explore phase 1 with energy-height cells (--cell-energy, cedfde3) leaves the room in <1 min of search and reaches 3.2% of the field. Running: Go-Explore phase 2 - pbr1b3_gx1 = recipe + squash + --spawn-states (parent chains of the search's deepest cells, refreshed every 5 min while the search continues)."
 }

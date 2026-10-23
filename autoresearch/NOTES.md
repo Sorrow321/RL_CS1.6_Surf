@@ -173,3 +173,31 @@ SELF_STATES/CKPT/ARM_RESUME/SCRATCH). Nothing else changes in box.py.
   deploy_box.sh's GPU spec check ("below spec ... SW Power Cap") AFTER the git checkout: the
   code is deployed, restamp is skipped (harmless when the maps did not change). The GPU is
   fine (it passed the same check idle at 14:29); not blocklisted.
+
+### pbr1b3, 2026-10-23 16:13 UTC - the start room is a trap box; Go-Explore with ENERGY cells gets out
+
+* `pbr1b3_vesq` (recipe + `--view-ent-squash 1`, scratch, 150M, stopped): the yaw sigma
+  plateaued at ~1.0 (0.69 @51M, 0.90 @76M, 1.03 @141M - the squashed entropy's optimum is
+  sigma ~0.9-1.05 for |mu| <= 1) instead of 2.718, as designed; but the greedy line is the same
+  (238-245 u, peak ~105 u/s, ~24 visited cells). Necessary, not sufficient: keep it on.
+* **What the room really is** (the core's own triggers, analysis): a `trigger_push` straight
+  DOWN at 2,500 u/s at the floor's west end (x 648-718, y -3054..-2946) into teleport volumes
+  below - the SW corner every policy parks in is beside it, and standing in it kills in 4
+  ticks; a `trigger_teleport` strip above the north ledge's east part (x 865-1151, z ~3700);
+  a door east into the halfpipe only below z ~3720 (y ~-3000, 64 u wide); ledges at +87 u
+  (north) / +132 u (south) above the floor. Random actions die in <4 s 88% of the time.
+* **Go-Explore phase 1** (`tools/explore_phase1.py`, random actions, 95% repeat, state restore,
+  1/sqrt(seen+1); on the box at ~1.6M ticks/s):
+  - position-only 128 u cells (local probe): 160 cells and stuck in the room;
+  - 128 u x 15 speed buckets (100 u/s): stuck at ~1,150 cells for 3 min, then a burst climbed
+    out at the SW corner (onto z 3739 at x ~600, +87 u) and the archive reached goalc d 55,319
+    = **3.2% of the field at 10.5 s** (west along the raised section, drop at x ~100, east
+    through the lower level at 600-700 u/s, north) - the record's own lower-level line after
+    its north window;
+  - 96 u x **24 u energy-height bins** (new `--cell-energy`): the same depth in **0.8 min**.
+  The record pumps for its energy; the search ratchets it bin by bin, which the speed bucket
+  (100 u/s ~ 150 u of height at 800 u/s) could not.
+* Next: Go-Explore phase 2 - train the recipe (+ squash) with `--spawn-states` = the parent
+  chains of the archive's deepest cells (`tools/gx_spawns.py`), re-written while the search
+  goes on (the trainer re-reads the file on mtime). Provenance: the search's own states, rooted
+  at the true start, random actions; no demo, no record.
