@@ -1,13 +1,14 @@
 {
  "agent": "r7b3",
  "round": 7,
- "final": false,
+ "final": true,
  "best": {
   "score": 98.342,
   "eval_file": "/home/steam/ar/runs/r7b3/r7b3_ctl2/traj_22318940160.jsonl",
   "run": "r7b3_ctl2",
   "step": 22318940160,
   "ckpt": "/home/steam/ar/runs/r7b3/r7b3_ctl2/ckpt_latest.pt",
+  "ckpt_note": "r7b3_ctl2 last weights, step 22,507,683,840, md5 225a198fd11f44634cf416ff4c2067f3 (pulled by box.py pull --ckpt after the trainer was stopped; md5 matches the box). A bare resume restores the incumbent recipe (no energy term).",
   "recipe": [
    "--ckpt-every",
    "1e8",
@@ -17,5 +18,5 @@
   "resume_from": "incumbent r6b2_tp3 (22,217,752,576), bare resume (every flag restored)",
   "commit": "95f8e55"
  },
- "summary": "Best 98.342 (r7b3_ctl2, bare resume of the incumbent, eval at 22.319B: 3 of 9 greedy episodes enter the funnel chamber). No GPU until 08:25 (fleet watchdog capped at 4 boxes vs config 5; then 2.7 h idle while a question blocked the session). NEW --energy-pot K (potential on h_E = z + |v|^2/2g, default off, tested): warm from the incumbent at K=1 it raised the greedy line's energy at the basement by ~300 u (median ~2,320 -> ~2,600) but SUPPRESSED chamber entries: 0 in 639 eval episodes vs 6 in 198 for the same-box control over the same steps; best 97.929. Probes: neither more energy (x1.0-1.3) nor any sampling temperature makes the policy enter from its own basement states; the entry is a turn-timing skill on the return leg."
+ "summary": "Best 98.342 (r7b3_ctl2, a bare resume of the incumbent, eval at 22.319B: 3 of 9 greedy episodes rise into the funnel chamber; incumbent 98.315). Box time was ~2.6 h: the fleet watchdog runs with a 4-box cap (config.json says 5) and destroyed every box this branch rented while 4 were live; one rented at 08:25 then sat idle 2.7 h while an AskUserQuestion blocked the session. NEW --energy-pot K (potential-based shaping on h_E = z + |v|^2/2g, default off, bit-identical when off, tested). Warm from the incumbent at K=1 (r7b3_ep1, 444M steps): the greedy line's energy at the basement entry rose ~300 u (median 2,320 -> ~2,600) but chamber entries went to 0 in 639 eval episodes (same-box control: 7 in 423), best 97.929 - the term charges the entry's collisions and favours the smooth passage loop. Probes from the policy's own basement states: neither x1.0-1.3 energy nor any sampling temperature makes it enter; the entry is a turn-timing choice on the return leg (up-slope ~0.3 s earlier, east of x ~2,600)."
 }

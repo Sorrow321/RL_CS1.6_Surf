@@ -3006,3 +3006,59 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   smooth; so the term made the entry relatively WORSE and the policy stopped trying it, while it learned to keep
   energy (fewer impacts in the deep dip / landing). A potential that charges losses favours whichever branch of a
   decision has fewer impacts, not the one that leads on: for this gate the wrong signal.
+
+## ROUND 7 LESSON (r7b3) - written at wrap-up, 2026-10-23 13:40 UTC
+
+**Result:** best greedy eval from the true start **98.342** (r7b3_ctl2 at 22,318,940,160; incumbent 98.315 re-scored on
+the goalc field): a bare resume of the incumbent, 3 of 9 greedy episodes rising through a basement hole into the funnel
+chamber (apex z 1,337-1,403), 0 finishes. Hand-on checkpoint: /home/steam/ar/runs/r7b3/r7b3_ctl2/ckpt_latest.pt
+(22,507,683,840, md5 225a198fd11f44634cf416ff4c2067f3).
+
+**Per-run bests (score.py):** ep1 97.929 (71 evals, --energy-pot 1) | **ctl2 98.342** (47 evals, bare resume).
+
+**What happened to the box time:** ~2.6 h of training in a 12 h round. The first box (EPYC 7B12, other tenants, host
+load ~123) did one iteration in 13 min; the market had nothing under the caps from 03:00 to 05:30; then every box
+rented while four were live was destroyed within a minute by the fleet watchdog ("beyond the 4-box cap": the daemon
+runs with RLSURF_MAX_BOXES=4 while config.json says 5 - harness issue above); a box rented at 08:25 sat idle 2.7 h
+because an AskUserQuestion blocked this session until 11:07. Never block on a question while a background job can hand
+you a box.
+
+**What was built:** `--energy-pot K` (potential-based shaping on the mechanical energy height h_E = z + |v|^2 / (2 g),
+Phi = K x (100/d0) x h_E, paid per call as its change, ended rows pay 0 and re-anchor; height <-> speed trades are free,
+collision / ramp-transition / ground losses are charged, strafing gains paid). Default off, bit-identical when off
+(tested against the pre-change trainer), record_ckpt TRAIN_ONLY, 8 tests (tests/python/test_energy_pot.py).
+
+**What it did (warm, K = 1, one seed, same box as the control):**
+* the greedy line's energy at the basement entry rose ~+300 u within ~250M steps (median ~2,320 frozen -> 2,450-2,700;
+  the control: median 2,229) - the term does what it says: fewer impacts in the deep dip and at the basement landing;
+* chamber entries went to **0 in 639 eval episodes** against **7 in 423** for the control (Fisher p ~ 0.015 on the first
+  ~200 each); best 97.929. The energy charge falls on the entry route's collisions (through the hole, east into the
+  funnel's outer wall / the chamber floor) and not on the smooth passage loop, so it tilts the decision AGAINST the
+  entry. A loss-charging potential prefers the branch with fewer impacts, not the branch that leads on. Not a recipe
+  component for this kind of gate; it may still be useful where the issue is plain speed (skate_laby's --speed-pot).
+
+**What the probes say about the last gate (analysis only, the policy's own states):**
+* from the incumbent's own high-energy basement states the GREEDY policy enters 1/24 at x1.0, 0/24 at x1.15, 1/24 at
+  x1.3 energy (with more energy it climbs higher back up the passage); sampled at keys temperature 1.2 or all heads at 2:
+  0/48 each. The energy arm's snapshot: 0/24 and 0/24.
+* entry vs miss in the incumbent eval: the entry turns up-slope on the return leg ~0.3 s EARLIER (east of x ~2,600) and
+  strafes out through the hole; the misses turn west of the hole (x 2,260-2,480) and rise up the passage, or turn to
+  the centre between the holes. The entry is a turn-timing choice, then energy.
+* tp3's own log (incumbent progress.csv) holds ~15 REAL front-perturb finishes at x1.0-1.3 around 21.10B before its
+  band drifted into the funnel - the stochastic policy can finish from perturbed basement states, rarely.
+
+**For a next lineage:** the line now carries the energy; what is missing is choosing the hole over the passage at the
+return-leg turn. Levers not tried: practice concentrated on the return-leg states with the turn earlier (greedy-pool
+rows shifted in time / heading only at that turn, generically: the greedy line's own states before its deepest
+stop), self-imitation of the real training entries, more steps of the plain recipe (the control gave 7 entries in
+423 episodes in 290M steps, ~1.7% - higher than tp3's ~0.4%).
+
+## Wrap-up (r7b3) - 2026-10-23 13:40 UTC
+
+* Final: RESULT.json `"final": true`, score **98.342** (r7b3_ctl2, eval traj_22318940160: 9 episodes, best 98.34%,
+  median 98.02%, CP7, 0 finishes; 47/47 valid evals in the run; r7b3_ep1 71/71 valid, best 97.929).
+* Hand-on checkpoint: /home/steam/ar/runs/r7b3/r7b3_ctl2/ckpt_latest.pt (22,507,683,840, md5
+  225a198fd11f44634cf416ff4c2067f3), pulled by `box.py pull --ckpt` after the trainer was stopped (md5 checked by
+  box.py). Also local: r7b3_ep1/ckpt_latest.pt (22,661,824,512-ish, md5 6e688a6c...), r7b3_ep1/ckpt_22618308608.pt.
+* Code: commit 95f8e55 (--energy-pot + tests) is the last code change; later commits are notes, blocklist entries
+  and RESULT. Box 57345282 released at 13:38 UTC (`box.py status`: no box).
