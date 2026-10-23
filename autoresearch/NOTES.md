@@ -444,3 +444,6 @@ the backward curriculum (--demo-file + --demo-success-d) on the found line. Not 
   CROSSES the spine's success line (d(end) + --demo-success-d) is paid B once (episodes that
   spawn past it never are). B = 50 = the finish bonus. The curriculum's success becomes the
   objective's: 50 x 0.9995^1880 ~ 19.5 at the line's start against the pit's ~1.8.
+* pbr1b1_g2cur3 (launched 22:37 UTC): g2cur2's ckpt_latest (2.159B, md5 c10c3a7f...) + the same
+  curriculum (grow 20, `--demo-tau0 1250`) + `--demo-success-bonus 50`. g2cur2 had spent
+  1.71-2.16B oscillating 1270 <-> 1250 <-> 1230 (band [1230,1239] at 0.0% on every visit).
