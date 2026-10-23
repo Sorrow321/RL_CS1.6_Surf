@@ -2846,3 +2846,18 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   ended-row re-anchor, 0 = off, the real core's free flight keeps h; the trainer carries / restores / records it
   and refuses K < 0; flag off is bit-identical to the trainer before the change - config, csv, eval bytes,
   weights).
+
+### 02:47 UTC: r7b2_ctl stopped (9 evals, best 97.913); arm 1 r7b2_en1 = incumbent + `--energy-pot 1`
+
+* **r7b2_ctl** (22,218-22,274M, ~56M steps, 144k steps/s cumulative on the 5080 + Ryzen 9 9950X3D): 9 evals
+  97.90-97.91 (CP7, basement 2-8 of 9, h at the basement entry median 2,363-2,489) with CP5 / CP6 wobbles (87.8,
+  96.6, 96.5); 0 chamber entries. Stopped by pid to free the box.
+* **r7b2_en1** (02:46 UTC): resume of the incumbent ckpt (22,217,752,576) + `--energy-pot 1 --critic-warmup 20
+  --ckpt-every 1e8`, evals every 6.25M, 2e9 budget (first read at ~30 min). Every tp3 setting restored
+  (time-pen 0.001, front-perturb 0.25 / 0.5% / x1.0-1.3 / turn 90, front-temp 1 / 1%, novel 0.2, backward-mix
+  0.1, greedy 0.25 + stuck 200, keys-only T cap 0.2, pitch floor 0.05, nocut field). First step lines (actor
+  frozen): `en +891..1,181/-3,795..4,055 u/ep` - a training episode (all spawn kinds) destroys ~4,000 u of h and
+  adds ~1,000, i.e. the term nets ~-3 reward per episode against rew ~14.
+* Read-outs: the step line's loss per episode (falling = the policy keeps energy), and in the greedy evals the
+  h at the basement entry (control 2,363-2,489), the basement reach (the suicide risk), chamber entries / apex,
+  rim crossings, finishes, the score.

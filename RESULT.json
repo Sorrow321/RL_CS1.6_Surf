@@ -3,10 +3,10 @@
  "round": 7,
  "final": false,
  "best": {
-  "score": 97.901,
-  "eval_file": "/home/steam/ar/runs/r7b2/r7b2_ctl/traj_22218276864.jsonl",
+  "score": 97.913,
+  "eval_file": "/home/steam/ar/runs/r7b2/r7b2_ctl/traj_22230859776.jsonl",
   "run": "r7b2_ctl",
-  "step": 22218276864,
+  "step": 22230859776,
   "ckpt": "/home/steam/ar/runs/r7b2/r7b2_ctl/ckpt_latest.pt",
   "recipe": [
    "--record-every",
@@ -17,5 +17,5 @@
   "resume_from": "incumbent r6b2_tp3 ckpt_latest (22,217,752,576, md5 c713bd69...)",
   "commit": "01e2281"
  },
- "summary": "Round 7 start: control r7b2_ctl (bare resume of the incumbent) running on box 57308519; first evals 97.90 (CP7). Building --energy-pot (energy-height potential, the --speed-pot form on z + |v|^2/2g) as the first arm: the last gate is energy-limited (round 6)."
+ "summary": "Control r7b2_ctl (bare resume of the incumbent, 56M steps): best 97.913 (CP7, new grader; the incumbent's 98.421 eval re-scores 98.315). Arm 1 r7b2_en1 = incumbent + --energy-pot 1 (NEW: potential on the energy height z + |v|^2/2g, the --speed-pot form) running since 02:46 UTC: the last gate is energy-limited (round 6), and nothing in the objective prices energy."
 }
