@@ -346,3 +346,15 @@ learn what energy is worth there before the policy can make it.
   before moves the policy cannot repeat (a band at 0% vs ~100% next to it marks one); (5)
   clean weights + --ent 0.002 (the yaw sigma drifted to its cap in the chained warm runs);
   (6) --time-pen 0 (the platform's kill strips make suicide the attractor otherwise).
+
+### 2026-10-23 20:14 UTC - arm 13 stopped at tau 45 (past the climb); Go-Explore from the pocket
+
+* arm 13's curriculum went 125 -> 45 between ~810M and ~890M: the climb's run-up is learned and
+  the window was walking the platform back toward the true start (row 0) when it was stopped
+  (its ckpt_latest + --demo-tau-start 45 continues it). The spines are now in the repo:
+  autoresearch/analysis/pb_chain/ (chain_dedup_378.npy = arm 13's; chain_dedup_full.npy = 714
+  rows to 3.84%) with a README (provenance; how to resume without the file: --demo-file '').
+* The score only moves with deeper progress: every deep greedy episode stops at (808,-3286,3375),
+  the south part of the pocket. Go-Explore run ge14: rooted at 885 of the policy's OWN pocket
+  states (every 20th row with progress >= 2.9% of the 810M eval), 64 u cells x 16 bins of |v|,
+  --view-velocity 1, --dump-paths 1, 10 min at full CPU (training paused).
