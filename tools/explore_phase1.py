@@ -142,7 +142,9 @@ class CellHash:
     """
 
     def __init__(self, mins, maxs, cell: float = 256.0, view: int = 0,
-                 speed: int = 0, speed_max: float = 3500.0) -> None:
+                 speed: int = 0, speed_max: float = 3500.0,
+                 energy: float = 0.0, energy_vmax: float = 3500.0,
+                 gravity: float = 800.0) -> None:
         self.mins = np.asarray(mins, np.float64)
         self.cell = float(cell)
         self.view = int(view)
@@ -150,12 +152,21 @@ class CellHash:
         self.dims = tuple(int(np.ceil((float(maxs[i]) - self.mins[i]) / self.cell)) + 1
                           for i in range(3))
         self.speed_bin = float(speed_max) / max(1, self.speed)
+        # --cell-energy B: the energy height h = z + |v|^2 / (2 g) in B-u bins, folded into the
+        # key like the speed bucket. A place reached with B more energy is a new cell, so each
+        # small gain is a stepping stone (an energy gate - a climb, a jump over a trap - is
+        # passed by ratcheting h up, which a coarse speed bucket cannot see). 0 = off.
+        self.energy = float(energy)
+        self.g2 = 2.0 * float(gravity)
+        self.e_min = float(self.mins[2])
+        self.n_e = (int(np.ceil((float(maxs[2]) + float(energy_vmax) ** 2 / self.g2
+                                 - self.e_min) / self.energy)) + 1) if self.energy > 0.0 else 0
 
     @property
     def capacity(self) -> int:
         """Number of distinct keys this hash can produce."""
         n = self.dims[0] * self.dims[1] * self.dims[2]
-        return n * max(1, self.view) * max(1, self.speed)
+        return n * max(1, self.view) * max(1, self.speed) * max(1, self.n_e)
 
     def keys(self, states: np.ndarray) -> np.ndarray:
         """STATE_DTYPE array of any shape -> int64 keys of the same shape."""
@@ -177,6 +188,12 @@ class CellHash:
             sb = (np.hypot(v[..., 0], v[..., 1]) // self.speed_bin).astype(np.int64)
             np.clip(sb, 0, self.speed - 1, out=sb)
             key = key * self.speed + sb
+        if self.n_e > 0:
+            v = states["velocity"].astype(np.float64)
+            h = p[..., 2] + (v * v).sum(axis=-1) / self.g2
+            eb = ((h - self.e_min) // self.energy).astype(np.int64)
+            np.clip(eb, 0, self.n_e - 1, out=eb)
+            key = key * self.n_e + eb
         return key
 
 
@@ -673,6 +690,9 @@ def explore(args) -> int:
                          max_episode_ticks=int(args.ep_ticks),
                          water_fail=1, yaw_jitter_deg=0.0,
                          lidar_w=0, lidar_h=0)     # eyeless: no obs needed
+    if getattr(args, "maxvel", None) is not None:
+        # the server's sv_maxvelocity (the trainer's --maxvel); absent = the core default
+        cfg.phys.sv_maxvelocity = float(args.maxvel)
     if float(getattr(args, "kill_margin", 0.0)) > 0.0:
         # --kill-margin: PLAN WITH CLEARANCE. The search treats a band above the
         # map's own kill trigger as lethal (the player's box height 36 u plus
@@ -764,7 +784,9 @@ def explore(args) -> int:
 
     mins, maxs = core.map_bounds()
     hasher = CellHash(mins, maxs, cell=args.cell, view=args.cell_view,
-                      speed=args.cell_speed, speed_max=args.cell_speed_max)
+                      speed=args.cell_speed, speed_max=args.cell_speed_max,
+                      energy=args.cell_energy, energy_vmax=float(cfg.phys.sv_maxvelocity),
+                      gravity=float(cfg.phys.sv_gravity))
     arch = Archive(hasher, max_cells=args.max_cells)
     rk = hasher.keys(roots)
     for j in range(len(roots)):
@@ -774,6 +796,7 @@ def explore(args) -> int:
     print(f"map {bsp.stem} | envs {n} | cell {args.cell:g}u"
           f"{f' x view{args.cell_view}' if args.cell_view else ''}"
           f"{f' x speed{args.cell_speed}' if args.cell_speed else ''}"
+          f"{f' x energy {args.cell_energy:g}u ({hasher.n_e} bins)' if args.cell_energy else ''}"
           f" | grid {hasher.dims} ({hasher.capacity:,} keys)")
     print(f"burst {args.decisions} decisions x {act_every} ticks "
           f"({ticks} ticks = {ticks * cfg.phys.msec / 1000:.1f}s) | "
@@ -1056,6 +1079,8 @@ def meta_dict(args, bsp, hasher, arch, it, n_goal, extra=None) -> dict:
         "cell_view": args.cell_view,
         "cell_speed": args.cell_speed,
         "cell_speed_max": args.cell_speed_max,
+        "cell_energy": args.cell_energy,
+        "maxvel": getattr(args, "maxvel", None),
         "grid_dims": list(hasher.dims),
         "grid_mins": [float(v) for v in hasher.mins],
         "envs": args.envs,
@@ -1619,6 +1644,13 @@ def build_parser() -> argparse.ArgumentParser:
                     help="horizontal-speed buckets folded into the cell key "
                          "(0 = off); surf walls are speed-gated, so the same "
                          "place at a new speed is arguably a new state")
+    ap.add_argument("--maxvel", type=float, default=None,
+                    help="sv_maxvelocity for the search's core (the trainer's --maxvel); "
+                         "absent = the core default")
+    ap.add_argument("--cell-energy", type=float, default=0.0,
+                    help="energy-height bins of this many u folded into the cell key, "
+                         "h = z + |v|^2 / (2 g) (0 = off): a place reached with more energy is "
+                         "a new cell, so small energy gains become stepping stones")
     ap.add_argument("--cell-speed-max", type=float, default=3500.0,
                     help="top of the speed-bucket range")
     ap.add_argument("--decisions", type=int, default=100,
