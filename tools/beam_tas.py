@@ -163,6 +163,127 @@ MAIN_MAPS = Path("C:/RL_Surf/maps")
 UNSUPPORTED = ("route_file", "chunk", "frame_stack", "race_arc")
 
 
+class XFeeds:
+    """The scalar-side observation blocks beam_tas v1 predates - --obs-compass (+ --act-hist),
+    --race-ratchet, --obs-surf, --obs-pot-rate - built exactly as tools/record_ckpt.py builds
+    them (the same classes the trainer's rollout drives) off the field the observations read
+    (`ogf`: the no-corner-cut bake under --race-no-corner-cut). `make(core)` gives one wrapper
+    its fresh feeds plus an XBundle that clones their per-env state donor -> loser at a
+    resample and snapshots it around a critic probe (which runs _obs a second time per tick:
+    the surf tracker would read that as an episode start)."""
+
+    def __init__(self, cfg, ogf, tick_ms: float, K: int):
+        self.cfg, self.ogf, self.tick_ms, self.K = cfg, ogf, float(tick_ms), int(K)
+        self.hist_k = int(cfg.get("act_hist") or 0)
+        self.compass = int(cfg.get("obs_compass") or 0)
+        self.ratchet = bool(cfg.get("race_ratchet"))
+        self.surf = bool(int(cfg.get("obs_surf") or 0))
+        self.prate = bool(int(cfg.get("obs_pot_rate") or 0))
+        bad = [k for k in ("ramp_obs_pass", "ramp_obs_vec", "goals") if cfg.get(k)]
+        if bad:
+            raise SystemExit("beam_tas does not mirror " + ", ".join(bad) + " yet")
+        if (self.compass or self.ratchet or self.prate) and ogf is None:
+            raise SystemExit("this checkpoint's observations read a goal field; none was built")
+        self.n_aux = 0
+        if self.hist_k or self.compass:
+            from surfgym.obsaux import ObsAux
+            self.n_aux = ObsAux(1, k=self.hist_k, field=(ogf if self.compass else None),
+                                yaw_adaptive=bool(cfg.get("yaw_adaptive"))).n_features
+        self.n_columns = (self.n_aux + int(self.ratchet) + int(self.surf)
+                          + int(self.prate))
+
+    def describe(self) -> str:
+        on = [f"compass/act-hist {self.n_aux}" if self.n_aux else "",
+              "ratchet gap" if self.ratchet else "", "surf flag" if self.surf else "",
+              "pot rate" if self.prate else ""]
+        return (f"scalar blocks mirrored ({self.n_columns} columns): "
+                + ", ".join(x for x in on if x)) if self.n_columns else "no extra scalar blocks"
+
+    def make(self, core):
+        b, kw = XBundle(), {}
+        if self.n_aux:
+            from surfgym.obsaux import ObsAux
+            b.aux = ObsAux(core.num_envs, k=self.hist_k,
+                           field=(self.ogf if self.compass else None),
+                           yaw_adaptive=bool(self.cfg.get("yaw_adaptive")))
+            kw["aux"] = b.aux
+        if self.ratchet:
+            # record_ckpt's ratchet_fn verbatim: the record gap (d - b)/d0, b the episode's best
+            # d so far (an episode start, read off the tick, re-arms it)
+            _d0 = float(np.mean(self.ogf.sample(map_spawn_pool(core)["origin"])))
+            _rs = {"rec": None, "tick": None}
+
+            def ratchet_fn(c, _f=self.ogf, _d0=_d0):
+                sv = c.states_view
+                d = _f.sample(sv["origin"]).astype(np.float64)
+                tick = np.asarray(sv["tick"], np.int64).copy()
+                rec, pt = _rs["rec"], _rs["tick"]
+                if rec is None or len(rec) != len(d) or pt is None:
+                    rec = d.copy()
+                else:
+                    rec = np.where(tick <= pt, d, rec)
+                rec = np.minimum(rec, d)
+                _rs["rec"], _rs["tick"] = rec, tick
+                return ((d - rec) / _d0).astype(np.float32)
+            ratchet_fn.state = _rs
+            b.dicts.append((_rs, ("rec", "tick")))
+            kw["ratchet_fn"] = ratchet_fn
+        if self.surf:
+            from surfgym.surfflag import make_surf_feed
+            ph = core.config.phys
+            fn = make_surf_feed(ph.sv_gravity, self.tick_ms, self.K,
+                                vmax=float(ph.sv_maxvelocity))
+            b.surf = fn.state
+            kw["surf_fn"] = fn
+        if self.prate:
+            from surfgym.obsaux import make_pot_rate_feed
+            kw["prate_fn"] = make_pot_rate_feed(self.ogf)        # stateless
+        return kw, b
+
+
+class XBundle:
+    """The per-env rows of one wrapper's XFeeds, by NAME (a shape test could catch a lookup
+    table whose length happens to equal the env count)."""
+    AUX = ("_d0", "_prev_tick", "hist")
+    SURF = ("_vz", "_air", "_prev_tick", "flag")
+
+    def __init__(self):
+        self.aux, self.surf, self.dicts = None, None, []
+
+    def _slots(self):
+        if self.aux is not None:
+            for k in self.AUX:
+                yield self.aux, k, False
+        f = None if self.surf is None else self.surf.get("f")
+        if f is not None:
+            for k in self.SURF:
+                yield f, k, False
+        for d, keys in self.dicts:
+            for k in keys:
+                yield d, k, True
+
+    def clone(self, losers, donors) -> None:
+        for o, k, is_dict in self._slots():
+            a = o[k] if is_dict else getattr(o, k)
+            if a is not None:
+                a[losers] = a[donors]
+
+    def snapshot(self):
+        out = []
+        for o, k, is_dict in self._slots():
+            a = o[k] if is_dict else getattr(o, k)
+            out.append((o, k, is_dict, None if a is None else a.copy()))
+        return out
+
+    @staticmethod
+    def restore(snap) -> None:
+        for o, k, is_dict, a in snap:
+            if is_dict:
+                o[k] = a
+            else:
+                setattr(o, k, a)
+
+
 def resolve_map(name_or_path, cfg_map):
     p = str(name_or_path or cfg_map)
     if p.lower().endswith(".bsp"):
@@ -1988,6 +2109,25 @@ def main():
           + ("  ** WARNING: that smells like a RE-BAKE - wrong map "
              "path/mtime? **" if dt > 30 else ""))
 
+    # --goal-field-file / --race-no-corner-cut: MIRRORED as record_ckpt does - the potential
+    # channel, the compass, the pot rate and the ratchet gap read the SHAPING field (the cached
+    # goalc_ bake); the spawn yaw stays on the free-space field. The d score ranks on it too: it
+    # is the field the lineage was paid on and the one autoresearch/score.py grades with
+    ogf = gf
+    if cfg.get("goal_field_file"):
+        from surfgym.goalfield import load_goal_field
+        _gff = Path(str(cfg["goal_field_file"]))
+        if not _gff.is_absolute():
+            _gff = ROOT / _gff
+        ogf = load_goal_field(_gff)
+        print(f"--goal-field-file {cfg['goal_field_file']} mirrored")
+    elif int(cfg.get("race_no_corner_cut") or 0):
+        t0 = time.time()
+        ogf = build_goal_field(core1, zones["end"], cell=gcell, no_corner_cut=True)
+        dt = time.time() - t0
+        print(f"--race-no-corner-cut mirrored: observations and the d score read the "
+              f"no-corner-cut field ({dt:.1f}s)"
+              + ("  ** WARNING: that smells like a RE-BAKE **" if dt > 30 else ""))
     raw = map_spawn_pool(core1)
     pool = map_spawn_pool(core1, yaw=gf.descent_yaw(raw["origin"]))
     pool["pitch"] = -10.0
@@ -2019,7 +2159,8 @@ def main():
                      # --obs-potential: the race field as channel 2, the
                      # trainer's own scale (record_ckpt mirrors it the same way)
                      potential=LidarPotential.from_cfg(
-                         cfg, gf, core1, device, Path(map_path).stem, d0=d0),
+                         cfg, ogf, core1, device, Path(map_path).stem,
+                         d0=(d0 if ogf is gf else None)),
                      vision_clip=bool(int(cfg.get("vision_clip") or 0)),
                      depth_enc=str(cfg.get("depth_enc") or "legacy"),
                      ttc=bool(cfg.get("obs_ttc") or 0),
@@ -2062,7 +2203,10 @@ def main():
         raise SystemExit("checkpoint config has view_absolute without "
                          "view_continuous")
     n_keys = _tf.keyshold.N_FEATURES if KEYS else 0
-    policy = Policy(core1.obs_dim + n_latch + n_cc + n_keys
+    XF = XFeeds(cfg, ogf, TICK.ms, K)
+    n_x = XF.n_columns
+    print(XF.describe())
+    policy = Policy(core1.obs_dim + n_latch + n_cc + n_keys + n_x
                     + int(getattr(lidar, "frame_size", lw * lh * lidar.channels)) * stack,
                     lw, lh,
                     emb=int(cfg.get("emb", 256)),
@@ -2086,9 +2230,12 @@ def main():
                     split_trunk=bool(cfg.get("split_trunk") or 0),
                     # the scalar columns after the core's: latch, the cc T column and the
                     # --keys-hold held state, in the order the wrappers' _obs appends them
-                    n_codes=0, chunk=0, route_dim=n_latch + n_cc + n_keys,
+                    n_codes=0, chunk=0, route_dim=n_latch + n_cc + n_keys + n_x,
                     route_critic_only=bool(cfg.get("route_critic_only")),
-                    view_continuous=VIEWC, view_absolute=VIEW_ABS
+                    view_continuous=VIEWC, view_absolute=VIEW_ABS,
+                    # --pitch-sigma-min: MIRRORED (record_ckpt) - the pitch head's sigma floor is
+                    # what the proposals sample the camera with
+                    pitch_sigma_min=float(cfg.get("pitch_sigma_min") or 0.0)
                     ).to(device)
     policy.load_state_dict(ck["policy"])
     policy.eval()
@@ -2231,9 +2378,10 @@ def main():
                       f"{args.seed + e})")
                 break
             es1, ef1, _, lf1 = mk_feed()
+            xkw1, _ = XF.make(core1)
             gpol = GreedyTorchPolicy(policy, packer, device, lidar, core1,
                                      K, stack, extra_slot=es1, extra_fn=ef1,
-                                     latch_fn=lf1, cc_fn=cc_fn1, keys_hold=KEYS)
+                                     latch_fn=lf1, cc_fn=cc_fn1, keys_hold=KEYS, **xkw1)
             end, ticks, fin, _ = run_episode(core1, gpol, obs, f,
                                              ep_cap, header1, e)
             print(f"greedy ep{e} (spawn seed {args.seed + e}): {end} in "
@@ -2281,6 +2429,12 @@ def main():
         coreN.set_state(i, row0)
     obs[:] = obs_start[None, :]
     esN, efN, feed_state, latchN = mk_feed()
+    # the extra scalar blocks' feeds: ONE set for this core, shared by every wrapper on it (the
+    # sampler and a --greedy-prefix greedy), cloned at every resample like the latch below
+    xkwN, xfeN = XF.make(coreN)
+    if args.commit > 0 and n_x:
+        raise SystemExit("--commit: the snapshot -> all re-centring does not carry the "
+                         "compass / ratchet / surf state yet; use the population mode")
     if (args.boundary_v or args.dedup) and args.commit <= 0:
         raise SystemExit("--boundary-v/--dedup are commit-mode features "
                          "(pass --commit H)")
@@ -2297,13 +2451,13 @@ def main():
         spol = MixedTorchPolicy(policy, packer, device, lidar, coreN,
                                 K, stack, n_greedy=args.greedy_envs,
                                 extra_slot=esN, extra_fn=efN,
-                                latch_fn=latchN, cc_fn=cc_fnN, keys_hold=KEYS)
+                                latch_fn=latchN, cc_fn=cc_fnN, keys_hold=KEYS, **xkwN)
     elif args.eps > 0.0 or args.dedup:
         spol = EpsSampledTorchPolicy(policy, packer, device, lidar, coreN,
                                      K, stack, eps=args.eps,
                                      dedup=args.dedup,
                                      extra_slot=esN, extra_fn=efN,
-                                     latch_fn=latchN, cc_fn=cc_fnN, keys_hold=KEYS)
+                                     latch_fn=latchN, cc_fn=cc_fnN, keys_hold=KEYS, **xkwN)
     elif (n_cc and args.cc_temp == "trained"
           and int(cfg.get("cc_temp_scale") or 0)
           and float(cc_TN.max()) > 0.0):
@@ -2314,13 +2468,13 @@ def main():
         spol = TemperedTorchPolicy(policy, packer, device, lidar, coreN,
                                    K, stack, keys_temp=_kt,
                                    extra_slot=esN, extra_fn=efN,
-                                   latch_fn=latchN, cc_fn=cc_fnN, keys_hold=KEYS)
+                                   latch_fn=latchN, cc_fn=cc_fnN, keys_hold=KEYS, **xkwN)
         print(f"--cc-temp trained: proposal keys temperatures "
               f"{float(_kt.min()):.3f}..{float(_kt.max()):.3f}")
     else:   # never route eps=0 through the mixer: RNG-stream parity
         spol = SampledTorchPolicy(policy, packer, device, lidar, coreN,
                                   K, stack, extra_slot=esN, extra_fn=efN,
-                                  latch_fn=latchN, cc_fn=cc_fnN, keys_hold=KEYS)
+                                  latch_fn=latchN, cc_fn=cc_fnN, keys_hold=KEYS, **xkwN)
     if n_cc and args.cc_temp == "trained" and not isinstance(
             spol, TemperedTorchPolicy) and int(cfg.get("cc_temp_scale") or 0) \
             and float(cc_TN.max()) > 0.0:
@@ -2338,7 +2492,7 @@ def main():
     if prefix > 0:
         gpolN = GreedyTorchPolicy(policy, packer, device, lidar, coreN,
                                   K, stack, extra_slot=esN, extra_fn=efN,
-                                  latch_fn=latchN, cc_fn=cc_fnN, keys_hold=KEYS)
+                                  latch_fn=latchN, cc_fn=cc_fnN, keys_hold=KEYS, **xkwN)
     value_fn = None
     if args.boundary_v or args.score in ("v", "dv"):
         def value_fn(o):
@@ -2350,14 +2504,16 @@ def main():
             saved = None if feed_state is None else feed_state.get("d")
             lsaved = (None if latchN is None
                       else (latchN.state.get("f"), latchN.state.get("tick")))
+            xsaved = xfeN.snapshot()
             with torch.inference_mode():
                 _, v = policy(spol._obs(o))
             if feed_state is not None:
                 feed_state["d"] = saved
             if lsaved is not None:
                 latchN.state["f"], latchN.state["tick"] = lsaved
+            XBundle.restore(xsaved)
             return v.detach().float().reshape(-1).cpu().numpy()
-    scorer = make_scorer(gf, args.route_file, args.corridor, args.score,
+    scorer = make_scorer(ogf, args.route_file, args.corridor, args.score,
                          value_fn=value_fn, v_switch=args.v_switch)
 
     # ---- --branch-at / --branch-grid: the junction fork -----------------
@@ -2847,6 +3003,8 @@ def main():
                     # the donor holds (the policy reads them as 7 obs columns next decision)
                     spol.keys.state[losers] = spol.keys.state[donors]
                     spol.keys.boot[losers] = spol.keys.boot[donors]
+                # the compass d0, the ratchet record and the surf tracker are episode history too
+                xfeN.clone(losers, donors)
                 obs = np.array(obs)        # patch clones' scalar obs too
                 obs[losers] = obs[donors]
                 valid[:] = True

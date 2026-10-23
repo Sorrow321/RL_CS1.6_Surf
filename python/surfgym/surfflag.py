@@ -134,4 +134,5 @@ def make_surf_feed(sv_gravity: float, tick_ms: float, ticks: int,
         sv = core.states_view
         return f.eval_features(sv["onground"],
                                np.asarray(sv["velocity"])[:, 2], sv["tick"])
+    feed.state = st         # the tracker, for a search that clones envs (tools/beam_tas.py)
     return feed
