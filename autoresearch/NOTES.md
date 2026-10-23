@@ -3091,3 +3091,13 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   north-east corner ((3,190, 183, 1,476): the opening ends at x ~3,150) - the route round 5 predicted (up the east ramp,
   back over the funnel), missed by ~40-50 u.
 * Box extended to ~11:45 UTC. The run continues (2e9 budget to ~26.8B).
+
+### 09:20 UTC: arm 7 at 25.39B - real frontier-row finishes take off (17.6 per 10k)
+
+* r7b2_bel 24.79-25.39B (95 evals, all CP7): best 98.525; 98.512, 98.510, 98.488, 98.468, 98.450. Evals 25.07-25.38B
+  (51): entries 21 in 459 episodes (4.6%, fewer than the 13.2% before) but steeper and higher - exit vz median 473,
+  max 675; 4 episodes above the rim's height inside the chamber; closest approaches d 1,482 / 1,485 / 1,507 / 1,527.
+* `fpert/finished`: **94 real finishes in 72,045 front-perturb episodes** (13.0 per 10k; 17.6 in the second half;
+  eb3 1.9, ef15 1.6): the policy now finishes from its own frontier states (turned, x1.0-1.3) about 9x as often as
+  before the elevation change. Backward-mix rows 56.7%. Every earlier gate of this lineage went training first,
+  greedy line next.
