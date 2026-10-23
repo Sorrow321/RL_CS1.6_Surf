@@ -146,3 +146,30 @@ SELF_STATES/CKPT/ARM_RESUME/SCRATCH). Nothing else changes in box.py.
   yaw sigma started at 0.078 (a converged policy). Not continued: one box, and 4x novelty from
   scratch has the better prior for a start gate.
 * `pbr1b3_nov4` (recipe + `--int-coef 1.0`, scratch) continues alone (launched 14:56).
+
+### pbr1b3, 2026-10-23 15:34 UTC - novelty x4 is a null; the yaw entropy bonus is mis-specified
+
+* `pbr1b3_nov4` (recipe + `--int-coef 1.0`, scratch, 152M steps, stopped): frontier 175 u (0.5M)
+  -> 248 u (76M) -> 208 u (152M), peak 131-132 u/s, ~25 visited 128-u cells, yaw sigma at the
+  2.718 clamp by 125M - the baseline's curve exactly. Every greedy episode of both runs stays in
+  the WEST half of the spawn room (x 649-936, mean speed ~50 u/s); none goes east to the door
+  at x ~1150 that leads to the halfpipe. Score 0.403.
+* **Root cause found in the code:** `logprob_entropy_view` paid the GAUSSIAN entropy of the
+  view heads, 0.5 + 0.5 log 2pi + log sigma, which grows without bound; the core receives
+  u = tanh(z), whose entropy peaks near sigma ~0.7 (mu = 0) and falls beyond it. Where the
+  reward carries no signal the bonus alone pushes the yaw sigma to LOG_STD_MAX (2.718), and
+  under `--view-absolute velocity` the warp maps |u| ~ 1 to a +-180 deg offset: the agent looks
+  BACKWARDS from its velocity half the time and can never build speed. (The pitch head hit the
+  same clamp on cannonball by 3-8B steps; that was fixed by zeroing its share, --pitch-entropy.)
+* `--view-ent-squash 1` (commit b47f38c): the squashed action's entropy, H(z) + E[log(1 -
+  tanh(z)^2)] with one reparameterised draw per row; the pitch share follows --pitch-entropy.
+  A correction of the objective, right on every map (where the reward does carry a yaw signal
+  it binds rarely). Tested: quadrature match, gradient on log sigma +1 -> negative at the clamp,
+  per-row sigma, CPU smoke, and flag-off bit-identity against the base trainer (config,
+  progress.csv, eval bytes, weights).
+* `pbr1b3_enall` (recipe + `--energy-pot-front 0 --energy-pot-front-bonus 0`: the energy
+  potential paid everywhere) runs since 15:28; next: the recipe + `--view-ent-squash 1`.
+* Harness note: `box.py deploy` onto a box whose GPU is busy with a running trainer fails
+  deploy_box.sh's GPU spec check ("below spec ... SW Power Cap") AFTER the git checkout: the
+  code is deployed, restamp is skipped (harmless when the maps did not change). The GPU is
+  fine (it passed the same check idle at 14:29); not blocklisted.

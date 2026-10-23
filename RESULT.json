@@ -3,18 +3,20 @@
  "round": 1,
  "final": false,
  "best": {
-  "score": 0.41,
-  "eval_file": "/home/steam/ar_pb/runs/pbr1b3/pbr1b3_sidwarm/traj_0000524288.jsonl",
-  "run": "pbr1b3_sidwarm",
-  "step": 524288,
+  "score": 0.446,
+  "eval_file": "/home/steam/ar_pb/runs/pbr1b3/pbr1b3_enall/traj_0076021760.jsonl",
+  "run": "pbr1b3_enall",
+  "step": 76021760,
   "ckpt": null,
   "recipe": [
-   "sid_ref weights-only warm start",
-   "--map maps/surf_princessburglar_b26.bsp",
-   "--maxvel 3500"
+   "incumbent_recipe",
+   "--energy-pot-front",
+   "0",
+   "--energy-pot-front-bonus",
+   "0"
   ],
-  "resume_from": "/home/steam/ar_pb/incumbent/sid_ref/ckpt.pt (policy+optimizer only)",
-  "commit": "91f9fbb9817c60e17164693059c4ae1c96e6c3d4"
+  "resume_from": null,
+  "commit": "86e6927"
  },
- "summary": "Baseline (incumbent recipe, scratch) stuck in the start room: 250 u (0.44%) at 76M, peak 121 u/s; its yaw sigma saturates at the clamp (2.72) because the start room pays nothing. The start is an energy gate: the room's exit is a window 50-110 u above the floor; the WR pumps in the east halfpipe first (+1,520 u potential dip). Running side by side: sid_ref weights-only warm start (pbr1b3_sidwarm) and 4x novelty from scratch (pbr1b3_nov4). Next: energy shaping everywhere, or whichever arm moves the frontier."
+ "summary": "Start room is an energy gate (exit window 50-110 u above the floor; WR pumps in the east halfpipe first). Baseline, 4x novelty and energy-shaping-everywhere all stall at ~250 u (0.4-0.5%) by 76M with peak speed ~100-140 u/s: the yaw sigma inflates to the 2.718 clamp because the view entropy bonus is the Gaussian's, not the squashed action's (bang-bang look, often 180 deg off the velocity). Fix built: --view-ent-squash 1 (b47f38c, flag-off bit-identical). Running now: pbr1b3_vesq = recipe + --view-ent-squash 1 from scratch. Warm start from sid_ref walks to the same corner."
 }
