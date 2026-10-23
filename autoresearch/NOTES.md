@@ -218,3 +218,27 @@ SELF_STATES/CKPT/ARM_RESUME/SCRATCH). Nothing else changes in box.py.
   --spawn-states-frac 0.5`, scratch, alone, OMP 15. Provenance (passed to launch --self-states):
   the search's own states, rooted at the true start, random actions; no demo, no record, no
   policy. Evals are from the true start as always.
+
+### pbr1b3, 2026-10-23 17:20 UTC - the start gate is climb + TIGHTROPE + drop; phase 2 is slow to learn it
+
+* `pbr1b3_gx2` at 350M (recipe + squash + 50% spawns from the search's chains): training
+  episodes reach the search frontier (reservoir min-depth 96.4% = 3.6% progress), but every
+  greedy eval from the true start stops at ~250 u (0.5M ... 302M). At 151M, 2 of 9 greedy
+  episodes went north onto the NW step (z ~3722) and stopped.
+* Diagnostics (record_ckpt --spawn-states from the search's own states, on the box):
+  - from the 11 pre-climb states (floor / mid-air ducked at the sill): 0/16 climbs (greedy and
+    stochastic); the policy hops onto the room's west step (z 3714, x ~700-730) and stands there,
+    or reverses its westward motion;
+  - from 16 sill / window states: 7/8 greedy episodes DIE within 13-62 ticks just past the
+    window, falling from z ~3724 toward ~3705 at y -2900..-2917.
+* Why (the core, analysis): the whole west section (x 200-600) has a KILL LAYER just above its
+  floor - a ducked hull dies within 0-20 ticks even at rest anywhere there. The only safe line
+  is a narrow ledge along the north wall, y ~-2884..-2892, ducked at z ~3714-3730, for ~500 u
+  (the record slides it at ~590 u/s, y -2880..-2885). So the gate = duck-jump onto the sill ->
+  a ~500 u tightrope ducked -> drop at x ~90 into the lower level. The map is symmetric about
+  y ~-3005; the first search also found the south twin (600,-3127,3739).
+* Spawn file re-weighted live (the trainer re-reads it): start / climb (progress < 300 u) x15,
+  300-700 u x4, 700-1000 u x2, the rest x1, plus every fine-archive cell on the tightrope (288)
+  and around the climb (259) x3 -> 2,910 rows: 45% start/climb, 25% tightrope, 30% deeper.
+  A fine search (32 u x 24 u energy, 4 min, 118k cells, trainer paused with SIGSTOP/SIGCONT)
+  supplied the dense states.
