@@ -2040,6 +2040,11 @@ def main():
     ap.add_argument("--contact-tol", type=float, default=1.0,
                     help="--arc-bank contact: |dvz - gravity step| above "
                     "this is a contact tick (plan_to_bc --contact-tol)")
+    ap.add_argument("--branch-view-only", action="store_true",
+                    help="--branch-at under --view-continuous: the burst overrides only the "
+                    "VIEW yaw target (held for --branch-hold ticks), never a key - so it writes no "
+                    "raw engine key row and runs on a --keys-hold checkpoint (whose fwd/side/duck "
+                    "bin 0 is 'keep'). Off = the burst sets the side key too, as before")
     ap.add_argument("--save-frontier", action="store_true",
                     help="no crossing: also replay the FRONTIER lineage (the one that held the "
                     "deepest --score d at a resample) open-loop and save it - "
@@ -2079,7 +2084,9 @@ def main():
                                 ("--commit", args.commit > 0),
                                 ("--greedy-prefix", args.greedy_prefix > 0),
                                 ("--prefix-line", bool(args.prefix_line)),
-                                ("--branch-at", bool(args.branch_at)),
+                                ("--branch-at", bool(args.branch_at)
+                                 and not (args.branch_view_only
+                                          and cfg.get("view_continuous"))),
                                 ("--branch-grid", bool(args.branch_grid)),
                                 ("--macro-hold", bool(args.macro_hold))) if on]
         if _raw:
@@ -2926,10 +2933,12 @@ def main():
                               branch_draw(br_rng, br_n,
                                           int(args.branch_jitter)))
                 if VIEWC:
-                    a, v = branch_apply_view(a, v, br_idx, br_act[0],
-                                             br_act[1],
-                                             float(args.branch_jitter),
-                                             view_absolute=VIEW_ABS)
+                    _a2, v = branch_apply_view(a, v, br_idx, br_act[0],
+                                               br_act[1],
+                                               float(args.branch_jitter),
+                                               view_absolute=VIEW_ABS)
+                    if not args.branch_view_only:
+                        a = _a2      # --branch-view-only keeps the policy's own keys
                 else:
                     a = branch_apply(a, br_idx, br_act,
                                      int(args.branch_jitter))
