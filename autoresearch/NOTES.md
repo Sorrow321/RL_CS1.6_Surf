@@ -3193,3 +3193,10 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   best 97.987 (two CP5 evals at 87.7). Snapshots past ~22.44B have given few entries (p4 3, p5 1).
 * **r7b4_p6** (12:10): ft0b's 22,343,581,696 snapshot (inside ft0b's 12-entry stretch; front-temp 0 restored) +
   `--unstuck-max 0.2`.
+
+### 12:27 UTC: p6 3 entries (98.166); branch r7b4_p7
+
+* r7b4_p6 (ft0b's 22,343,581,696 snapshot + `--unstuck-max 0.2`, front-temp 0), 22.350-22.425B, 13 evals: 3 entries
+  in 117 episodes (apex 1,265-1,331), best 98.166, a CP6 stretch at 22.362-22.375B.
+* **r7b4_p7** (12:26): p1's 22,368,747,520 snapshot (p1 = front-temp 1 / band 0.01, T 0.1; 15 entries) +
+  `--unstuck-max 0.2`.
