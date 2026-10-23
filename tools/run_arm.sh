@@ -72,6 +72,17 @@ shift || true
 # PYTHON=python; the boxes keep the python3 default.
 PY="${PYTHON:-python3}"
 
+# Idle thread pools must not spin (r7b4, 2026-10-23). On box 57310803 (a
+# 61-CPU CFS quota on a 128-thread EPYC host) the trainer's first greedy eval
+# never finished in 15 min: the eval core steps 9 envs per tick, and after
+# every tiny parallel region the OpenMP / OpenBLAS workers (~100 threads)
+# spin-waited at ~55% each, so the container sat at its quota, was throttled
+# in 50% of the CFS periods, and the eval's main thread crawled. With
+# OMP_WAIT_POLICY=PASSIVE + one BLAS thread the same eval took ~70 s and
+# training ran ~131k steps/s. Neither changes what the trainer computes.
+export OMP_WAIT_POLICY="${OMP_WAIT_POLICY:-PASSIVE}"
+export OPENBLAS_NUM_THREADS="${OPENBLAS_NUM_THREADS:-1}"
+
 CKPT="${CKPT:-runs_ckpt.pt}"
 # md5 of runs/sOBSR2/ckpt_latest.pt @ step 3,782,737,920 - the stuck agent:
 # gets most of the way down the map, then fails for want of exploration.
