@@ -3171,3 +3171,12 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   entries. Weights runs/r7b4/r7b4_p2/ckpt_latest.pt (22.42B, md5 4b31282f...).
 * **r7b4_p3** (11:21): p2's 22,368,747,520 snapshot (inside its entry stretch; 98.393 at 22.369B) + `--unstuck-max
   0.2` (front-temp 0 restored).
+
+### 11:38 UTC: **98.426** (r7b4_p3); branch r7b4_p4
+
+* r7b4_p3 (p2's 22,368,747,520 snapshot + `--unstuck-max 0.2`, front-temp 0), 22.375-22.444B, 12 evals: 8 entries
+  in 108 episodes (22.375-22.406B, apex 1,281-1,454), best **98.426** (22,375,038,976, apex 1,454; the branch's
+  best), then 0 entries. Weights runs/r7b4/r7b4_p3/ckpt_latest.pt (22.44B, md5 c5f8f9ae...).
+* Each branch from an entry-stretch snapshot gives ~20-40M steps of entries; the best of each branch: p1 98.362,
+  p2 98.410, p3 98.426.
+* **r7b4_p4** (11:37): p3's 22,393,913,344 snapshot (inside its entry stretch) + `--front-temp 1 --front-band 0.01`.
