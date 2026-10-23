@@ -428,7 +428,7 @@ sid_ref's config plus `view_ent_squash 1`.
   window; several episodes now die in 6-9 s (the climb attempts meet the down-pusher / kill
   strip). The climb reappears in the replicate at ~1-2 episodes in 9 by ~380M: it is in the
   surfer lineage's repertoire, not only sgx1's lucky episode. Box extended to 01:56 UTC.
-* 22:55 `pbr1b3_sgx7` after 379M: 455M 0.345, 530M 0.401, 606M 0.299, 681M 0.281, 757M 0.354 -
+* 22:53 `pbr1b3_sgx7` after 379M: 455M 0.345, 530M 0.401, 606M 0.299, 681M 0.281, 757M 0.354 -
   most greedy episodes now die in the first seconds (the policy tries the climb and falls into
   the west-end down-pusher / kill strips), no climb completed. Stopped at ~820M.
   `pbr1b3_sgx8` = a second fresh replicate of sgx1's setup from the sid_ref weights, to spend
