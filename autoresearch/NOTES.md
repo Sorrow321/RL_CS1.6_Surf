@@ -234,3 +234,12 @@ own reward-free search from the true spawn, no demo or record data, generic cons
 * Random bursts from the archive's 12 highest-energy pit states (h ~3,655-3,667) never reach
   d < 54,800 (4.1%) in 104k bursts, nor with their speed scaled x1.5 / x2 / x2.5 (h up to
   ~5,400): gate 2 is a directed U-turn climb (skill), not a lack of energy alone.
+* pbr1b1_yaw0 (--yaw-entropy 0): yaw sigma holds 0.069-0.074 through 290M (vs 0.08 -> 0.5+ before);
+  151M eval 3/9 episodes land on the plate (entry: 1/9), score 0.443; 227M 0/9 (feet max 3,721).
+* WHY the second jump fails - the view at LOW SPEED: on the plate the eval's yaw swings ~160 deg
+  every 20 ticks (near the 10 deg/tick ceiling). src/env.c view_mode 1: below 100 u/s the yaw
+  command is a per-tick DELTA from the current yaw (base = yaw), above it an OFFSET from the
+  velocity heading. The sidistic weights output offsets (tens of degrees) learned at speed; at
+  plate speed they become near-max spins, so the keys push in random directions and the jump
+  into the gap is never aimed. The start room is all < 100 u/s precision; PPO has to learn a
+  low-speed yaw mode from plate experience.
