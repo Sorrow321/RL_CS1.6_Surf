@@ -464,3 +464,7 @@ the backward curriculum (--demo-file + --demo-success-d) on the found line. Not 
   state (demo, reservoir, spawn-state rows), not a skill gap.
 * `--keys-hold-spawn-duck` (new, flag off bit-identical): an episode whose spawn row is ducked
   starts with duck HELD.
+* **pbr1b1_g2cur5** (23:01 UTC): g2cur4's ckpt_latest (2.546B, md5 e7927f3c...) + the curriculum
+  (grow 20, tau0 1230) + `--demo-success-bonus 50` + `--keys-hold-spawn-duck`. g2cur4 (the bonus
+  alone) had lifted the later deciles' success from 33-58% to 68-80% but band [1230,1239] stayed
+  at 0.0% - consistent with the spawn-duck cause.
