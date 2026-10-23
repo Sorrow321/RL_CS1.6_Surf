@@ -3,24 +3,24 @@
  "round": 1,
  "final": false,
  "best": {
-  "score": 0.454,
-  "eval_file": "/home/steam/ar_pb/runs/pbr1b3/pbr1b3_gx3/traj_0605028352.jsonl",
-  "run": "pbr1b3_gx3",
-  "step": 605028352,
+  "score": 0.613,
+  "eval_file": "/home/steam/ar_pb/runs/pbr1b3/pbr1b3_sgx1/traj_0153092096.jsonl",
+  "run": "pbr1b3_sgx1",
+  "step": 153092096,
   "ckpt": null,
   "recipe": [
-   "incumbent_recipe",
+   "incumbent_recipe (restored from sid_ref's config)",
    "--view-ent-squash",
    "1",
    "--spawn-states",
-   "runs/gx_spawns_cur.npy (Go-Explore chains)",
+   "runs/gx_spawns_cur.npy (Go-Explore chains, 1,061 states)",
    "--spawn-states-frac",
-   "0.5",
+   "0.7",
    "--spawn-states-curric",
-   "0.01"
+   "0.003"
   ],
-  "resume_from": "pbr1b3_gx2 ckpt_latest at 604.5M (its own run)",
+  "resume_from": "sid_ref weights via pbr1b3_sidwarm ckpt_latest (1.57M on this map)",
   "commit": "bb7fe35"
  },
- "summary": "Start room = climb + 15-u-wide TIGHTROPE over a kill layer + drop. All plain PPO arms stall at ~250 u (0.45%). Built: --view-ent-squash (yaw sigma 2.72 -> ~1.0), Go-Explore energy cells (--cell-energy; the search leaves the room in <1 min, reaches 3.8%), --spawn-states-curric (Florensa reverse curriculum over the search's states). Phase 2 (train from the search's chains) taught the policy everything downstream of the tightrope's west end, but not the tightrope middle or the climb: greedy evals stay at ~250 u. Now: pbr1b3_gx4 = resume with a local curriculum threshold (G 0.003 x d0) and 70% spawns from the search states. Best eval 0.454 (gx3 @605M, 266 u)."
+ "summary": "Gate 1 = climb onto a sill + SURF a 390-u ramp over a kill layer + drop. Plain PPO arms stall at ~250 u. Built: --view-ent-squash (yaw sigma 2.72 -> ~1), Go-Explore energy cells (search reaches 3.8%), --spawn-states-curric (band / backward). Phase 2 from scratch learned everything after the ramp but not the ramp or climb. Warm start from the sidistic surfer + phase 2 (pbr1b3_sgx1): at 153M the greedy line climbs onto the sill and onto the ramp (350 u, score 0.613). Next: the ramp crossing; backward-window curriculum ready (0744259)."
 }

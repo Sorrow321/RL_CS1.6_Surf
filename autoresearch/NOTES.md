@@ -315,3 +315,19 @@ SELF_STATES/CKPT/ARM_RESUME/SCRATCH). Nothing else changes in box.py.
   runs/gx_spawns_cur.npy --spawn-states-frac 0.7 --spawn-states-curric 0.003` (the generic
   1,061-state chain set). A warm start measures whether transferred surfing opens the gate; a
   recipe that only works warm is not yet a recipe (PROTOCOL).
+
+### pbr1b3, 2026-10-23 19:30 UTC - the surfer's warm start climbs: 350 u, score 0.613
+
+* `pbr1b3_sgx1` (sid_ref weights + squash + the generic 1,061-state chain set, band
+  curriculum G 0.003, 70% file spawns): 110M diagnostics still failed the ramp (it survives
+  less there than the untrained sid_ref - the band concentrates training on the lower level),
+  but the **153M greedy eval has one episode that climbs onto the sill (z 3740), goes west
+  through the window onto the ramp to x 559 and falls at 8.8 s: 350 u, score 0.613** (the
+  branch's best; the scratch phase-2 runs never climbed in ~900M steps).
+* Built meanwhile (0744259): `--spawn-states-curric-mode backward` - the Salimans & Chen window
+  over the rows by progress (deepest first, D = max(16, n/32), slides toward the start at 0.2
+  success over 30 episodes, back below 0.1; 2/3 of the draws from the window). Unit-tested and
+  CPU-smoked; held in reserve while sgx1 improves (its greedy-line respawns now feed ramp states).
+* Harness note: on this box I updated the checkout with `git fetch && git checkout` over ssh
+  instead of `box.py deploy` (whose GPU spec check fails while a trainer holds the GPU); same
+  commit either way.
