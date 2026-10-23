@@ -3083,3 +3083,19 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
 * Training: front-perturb episodes at chamber depth in EVERY iteration from the start (60 of 60 per block), rim-depth 0-7 and
   finishes 0-5 per 60 iterations; the unstuck T eased 0.2 -> 0.09 after the new eval best. Gate edge `epot<97.3%`, reservoir
   deepest 98.30%. Running on; box extended to ~14:15 (wrap-up 13:34).
+
+### 08:45 UTC: MILESTONE - 98.451 (r7b1_gate at 22.596B), ~100 u of energy short of the rim
+
+* r7b1_gate eval 22,595,764,224: **score 98.451** (best 98.45%, median 97.9%, CP7). Episode 0: -y return leg at h_E ~2,240
+  (114.1-115.1 s), up-slope turn (115.2 s: v (-882, 741, 780)), outward strafe and through the -y hole with NO edge loss (h_E
+  2,118 -> 2,115 -> 2,098 at 115.5-115.7 s, where the 98.393 entry lost ~190), then inward and east: (2,872, -533, 1,423) ->
+  (3,008, -328, 1,456) at 116.3 s, apex z 1,457, over the funnel's x range and ~100 u outside its |y| <= 190 opening, ~100 u below
+  the rim; it hits the funnel's outer wall at 116.45 s. At |v_h| ~1,030 the rim needs h_E ~2,226 at the apex: +100 u (98.393's
+  entry was ~170 short).
+* Evals 22.51-22.63B otherwise 87.7-98.0 (one CP5 wobble); arrivals 5 +y / 31 -y; entries come from +y arrivals (98.349 and 98.451)
+  plus one -y arrival after a long loop (98.123). Energy at 97% progress median 2,582 (flat since ~22.4B).
+* Weights: snapshot ckpt_22618308608.pt (22.6M steps after the eval) pulled to /home/steam/ar/runs/r7b1/r7b1_gate/ (md5
+  5771b9f58bb8b63371faddf6efb272aa).
+* **r7b1_gate2** (08:47): bare resume of r7b1_gate's latest weights with `--record-every 6.25e6` (was 12.5M), everything else
+  restored: with ~0.25 greedy entries per eval and the energy trend flat, more greedy evals per hour (~1.6x) are worth more now
+  than the ~30% training throughput they cost.
