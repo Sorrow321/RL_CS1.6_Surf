@@ -17,7 +17,8 @@ A link that cannot be re-found within its budget ends the line there (the output
 the last cell it did reach, and says so). --backtrack 16,32,64,128 first retries such a link from
 that many ticks EARLIER on the line (the line is cut back to the root that worked): a cell is a
 position and a speed, not a heading, so the line can arrive in the right cell too late to make the
-next one - a surf launch, say, whose approach has to start before the last cell. --prefix resumes
+next one - a surf launch, say, whose approach has to start before the last cell; --vel-cos C
+also asks a link to arrive moving within cosine C of the archived state. --prefix resumes
 from a previous run's line (with --prefix-links, the chain links it had reached)."""
 from __future__ import annotations
 
@@ -47,8 +48,9 @@ def search_any(core, root, targets, cell, a, rng, deadline):
     for t in targets:
         o = np.asarray(t["origin"], np.float64)
         v = np.asarray(t["velocity"], np.float64)
-        boxes.append((o - cell / 2, o + cell / 2,
-                      float(a.speed_frac) * float(np.sqrt((v * v).sum()))))
+        sp = float(np.sqrt((v * v).sum()))
+        boxes.append((o - cell / 2, o + cell / 2, float(a.speed_frac) * sp,
+                      v / max(sp, 1e-6)))
     root = root.copy()
     root["tick"] = 0
     root["stuck_ticks"] = 0
@@ -80,8 +82,12 @@ def search_any(core, root, targets, cell, a, rng, deadline):
             alive &= ~((done > 0) | (trunc > 0))
             o = s["origin"].astype(np.float64)
             sp = np.sqrt((s["velocity"].astype(np.float64) ** 2).sum(axis=1))
-            for b, (lo, hi, smin) in enumerate(boxes):
+            for b, (lo, hi, smin, u) in enumerate(boxes):
                 inb = alive & (hit_t[b] < 0) & np.all((o >= lo) & (o <= hi), axis=1) & (sp >= smin)
+                if a.vel_cos is not None:
+                    # --vel-cos: the link must also arrive moving like the archived state
+                    vv = s["velocity"].astype(np.float64)
+                    inb &= (vv @ u) >= float(a.vel_cos) * np.maximum(sp, 1e-6)
                 hit_t[b][inb] = t + 1
             if (hit_t[-1] >= 0).any():
                 break
@@ -118,6 +124,10 @@ def main(argv=None):
     ap.add_argument("--speed-frac", type=float, default=0.9,
                     help="a link must also arrive with at least this share of the archived "
                          "cell's speed (the archive's energy dimension; 0 = position only)")
+    ap.add_argument("--vel-cos", type=float, default=None,
+                    help="a link must also arrive with its velocity within this cosine of the "
+                         "archived state's (a cell is a position and a speed, not a heading); "
+                         "default off")
     ap.add_argument("--backtrack", default="",
                     help="comma list of tick offsets: a link not re-found from the line's end is "
                          "retried from that many ticks earlier on the line, e.g. 16,32,64,128")
