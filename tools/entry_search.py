@@ -42,7 +42,7 @@ def feet_z(st: np.ndarray) -> np.ndarray:
 FIELD = [None, None]          # (GoalField, d_max) for --field/--d-max
 
 
-def in_target(st: np.ndarray, box, onground: bool, feet_min) -> np.ndarray:
+def in_target(st: np.ndarray, box, onground: bool, feet_min, speed_min=None) -> np.ndarray:
     o = st["origin"]
     m = ((o[..., 0] >= box[0]) & (o[..., 0] <= box[1]) & (o[..., 1] >= box[2])
          & (o[..., 1] <= box[3]) & (o[..., 2] >= box[4]) & (o[..., 2] <= box[5]))
@@ -54,11 +54,14 @@ def in_target(st: np.ndarray, box, onground: bool, feet_min) -> np.ndarray:
         m &= st["onground"] != -1
     if feet_min is not None:
         m &= feet_z(st) >= float(feet_min)
+    if speed_min is not None:
+        v = st["velocity"].astype(np.float64)
+        m &= np.sqrt((v * v).sum(axis=-1)) >= float(speed_min)
     return m
 
 
 def search(core, root, n: int, ticks: int, act_every: int, repeat_p: float, box, onground,
-           feet_min, k: int, deadline: float, rng) -> list:
+           feet_min, k: int, deadline: float, rng, speed_min=None) -> list:
     """Random bursts from ``root`` until ``k`` reach the target or the deadline passes;
     returns [(states (t+1,) STATE_DTYPE, actions (t+1, 6) int8)] per success."""
     root = root.copy()
@@ -92,7 +95,8 @@ def search(core, root, n: int, ticks: int, act_every: int, repeat_p: float, box,
             _, _, done, trunc, _ = core.step(act)
             traj[t + 1] = core.get_states()
             alive &= ~((done > 0) | (trunc > 0))
-            new = alive & (first < 0) & in_target(traj[t + 1], box, onground, feet_min)
+            new = alive & (first < 0) & in_target(traj[t + 1], box, onground, feet_min,
+                                                  speed_min)
             first[new] = t + 1
             if (first >= 0).sum() >= k - len(hits):
                 break
