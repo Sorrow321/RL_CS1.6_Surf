@@ -193,3 +193,25 @@ learn what energy is worth there before the policy can make it.
 * Plan (arm 5): the recipe + --time-pen 0 + --spawn-states <archive> (Go-Explore from the map
   start: champion-free, no demo; CLAUDE.md 0b lists archives / return-then-explore and planning
   in the simulator as generic), warm from the sidistic transfer at step 0.
+
+### 2026-10-23 16:58 UTC - arm 5 (Go-Explore spawn states) and the SECOND gate (the pocket)
+
+* arm 5 pbr1b2_ge5 (sidistic transfer at step 0 + recipe + --time-pen 0 + --spawn-states: 650
+  Go-Explore archive rows ahead of the start, 30% of the pool): evals 0.402 / 0.421 (0.5M / 76M).
+  The reservoir jumped to 3.2% within 5M steps (from the spawn rows) and stayed there; the greedy
+  line stays at the NW corner jumping at y -2850..-2910 (the climb is at y ~-2945). Stopped 115M.
+* Go-Explore run 4, rooted at the archive's 64 deepest states (3.0-3.2%): 360 cells, ~100 deaths
+  in 1.6M runs - the deep cells are an ENCLOSED POCKET under the platform (floor z ~3300). The
+  field counts it 3.2% because free space continues above it. The WR passes through it only
+  because it lands there at ~1,000 u/s off the ledge drop and surfs straight up a ramp east
+  (z 3317 -> 3522), curves north and west along an upper level at z ~3500, and drops into the
+  lower chamber at x ~200, z ~3000 (11 s, 4.8%). A random walker drops in at ~600 u/s and is
+  stuck. So the start holds TWO hidden gates: the corner climb (or the trough pump), then speed
+  carried off the ledge into the pocket's ramp.
+* NEW explore_phase1 --dump-paths (the burst states that first reached each new cell; a precise
+  move happens inside one cell, and the archive keeps one state per cell) and archive_to_spawn
+  --paths / --bin-width / --per-bin (rows balanced along field progress: a uniform draw over an
+  archive starves narrow passages). Run 3 (64 u, view-velocity, paths): 3,654 cells, 58,187 path
+  states, best 3.84%; balanced file 6,371 rows (530 at the climb, 1,208 on the ledge).
+* arm 6 pbr1b2_ge6 launched: arm 5's 109M weights + recipe + --time-pen 0 + --spawn-states
+  runs/pbr1b2_ge3/spawn_bal.npy (frac 0.3). Box 57383391 (3090, 0.375 $/h, deadline 19:01 UTC).
