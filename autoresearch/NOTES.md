@@ -290,7 +290,7 @@ resample every 25 decisions. On a box it runs as it does locally (CPU physics + 
   targets) + spine, then a warm resume with --bc-file (expert iteration, the sidistic operator's
   exit_local loop) so the GREEDY line imitates the found line.
 
-### 19:31 UTC - expert iteration launched: pbr1b4_bc (BC on the search lines + spine spawns)
+### 19:30 UTC - expert iteration launched: pbr1b4_bc (BC on the search lines + spine spawns)
 
 * tools/plan_to_bc.py over the 3 search waves: **17,899 BC rows from 24 lines, 0 dropped**,
   best arc 3,010 u; spine = the best line's 2,970 per-tick states from the TRUE START (the
