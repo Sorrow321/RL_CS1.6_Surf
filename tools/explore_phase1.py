@@ -323,6 +323,7 @@ class Archive:
         origins = run_origin.tolist()
         index = self.index
         added: list[int] = []
+        added_j: list[int] = []
         prev_run = -1
         prev_idx = -1
         for j in range(len(keys)):
@@ -350,6 +351,7 @@ class Archive:
                 index[k] = i
                 self.size = i + 1
                 added.append(i)
+                added_j.append(j)
             else:
                 self.seen[i] += 1
                 if d < self.depth[i]:
@@ -363,6 +365,8 @@ class Archive:
                     self.chosen[i] = 0
             prev_idx = i
         self._cum = None
+        # --dump-paths: which first-visit record made each new cell (fold_chunk reads it)
+        self.last_added_j = added_j
         return np.asarray(added, np.int64)
 
     # -- selection ----------------------------------------------------------
@@ -859,6 +863,7 @@ def explore(args) -> int:
             arch.chosen[a] += 1
         fresh_actions(idx)
 
+    paths = PathLog(act_every) if getattr(args, "dump_paths", 0) else None
     n_goal = 0
     n_runs = 0
     n_deaths = 0
@@ -923,7 +928,7 @@ def explore(args) -> int:
                     break
 
             n_runs += len(r_t0)
-            fold_chunk(arch, hasher, hist, rid_h, r_t0, r_d0, r_org, dist)
+            fold_chunk(arch, hasher, hist, rid_h, r_t0, r_d0, r_org, dist, paths)
             it += 1
             if (max_minutes > 0.0 and not stop
                     and time.perf_counter() - t_start >= 60.0 * max_minutes):
@@ -967,6 +972,8 @@ def explore(args) -> int:
                            args.cell, minutes=(time.perf_counter() - t_start) / 60.0)
         arch.save(out / "archive.npz",
                   meta_dict(args, bsp, hasher, arch, it, n_goal, gmeta))
+        if paths is not None:
+            print(f"paths: {paths.save(out):,} burst states -> {out / 'paths.npy'}")
         el = time.perf_counter() - t_start
         if goal_mode:
             print(f"done: {it} iters, {n_runs:,} runs, {arch.size:,} cells, "
@@ -1006,8 +1013,33 @@ def _goal_meta(extra, arch, spawns, cell, minutes=None):
     return m
 
 
+class PathLog:
+    """--dump-paths: for every NEW cell, the states of the burst that first reached it, from the
+    burst's restored start to the entry tick at decision stride - the archive keeps one state
+    per cell, and a hop that needs a precise move (a climb onto a ledge) happens INSIDE a cell,
+    so the intermediate states are what a learner restarting along the route needs."""
+
+    def __init__(self, stride: int):
+        self.stride = max(1, int(stride))
+        self.rows, self.cells = [], []
+
+    def add(self, hist, t0: int, t1: int, env: int, cell: int) -> None:
+        r = hist[t0:t1 + 1:self.stride, env]
+        if len(r):
+            self.rows.append(np.array(r, copy=True))
+            self.cells.append(np.full(len(r), int(cell), np.int64))
+
+    def save(self, out: Path) -> int:
+        if not self.rows:
+            return 0
+        rows = np.concatenate(self.rows)
+        np.save(out / "paths.npy", rows)
+        np.save(out / "paths_cell.npy", np.concatenate(self.cells))
+        return int(len(rows))
+
+
 def fold_chunk(arch: Archive, hasher: CellHash, hist, rid_h, r_t0, r_d0,
-               r_org, dist) -> None:
+               r_org, dist, paths: "PathLog | None" = None) -> None:
     """Archive everything one chunk of rollout discovered."""
     if not r_t0:
         return
@@ -1021,6 +1053,10 @@ def fold_chunk(arch: Archive, hasher: CellHash, hist, rid_h, r_t0, r_d0,
                         np.asarray(r_org, np.int64))
     if added.size:
         arch.dist[added] = dist.sample(arch.state[added]["origin"])
+        if paths is not None:
+            for i, j in zip(added.tolist(), arch.last_added_j):
+                run = int(g_run[j])
+                paths.add(hist, int(r_t0[run]), int(g_tick[j]), int(g_env[j]), i)
 
 
 def dump_win(out: Path, k: int, arch: Archive, hist, acts_h, rew_h, env: int,
@@ -1672,6 +1708,9 @@ def build_parser() -> argparse.ArgumentParser:
                     help="hard cap on archive entries (memory guard: each "
                          "entry is ~150 bytes)")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--dump-paths", type=int, default=0, choices=(0, 1),
+                    help="also save, for every new cell, the burst states (one per decision) "
+                    "from the burst's start to the cell entry: paths.npy + paths_cell.npy")
     ap.add_argument("--view-velocity", type=int, default=0, choices=(0, 1),
                     help="explore in the trainer's view space: an absolute yaw target in the "
                     "velocity frame (core view_mode 1, yaw-adaptive), drawn per burst through "

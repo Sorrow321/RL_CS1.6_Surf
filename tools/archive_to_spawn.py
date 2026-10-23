@@ -51,6 +51,9 @@ def main(argv=None) -> int:
     ap.add_argument("--field", required=True, help="the goal field .npz the reward shapes on")
     ap.add_argument("--start-d", type=float, default=None,
                     help="the start's field distance (default: the archive's root row, depth 0)")
+    ap.add_argument("--paths", nargs="*", default=[],
+                    help="explore_phase1 --dump-paths files (paths.npy): the burst states that "
+                    "first reached each cell, filtered like the archive rows and appended")
     ap.add_argument("--min-progress", type=float, default=0.0,
                     help="keep rows with 1 - d/d0 above this (default 0: ahead of the start)")
     a = ap.parse_args(argv)
@@ -60,8 +63,15 @@ def main(argv=None) -> int:
     d = f.sample(st["origin"]).astype(np.float64)
     d0 = float(a.start_d) if a.start_d else float(d[int(np.argmin(depth))])
     out, dk = select(st, d, d0, a.min_progress, f.reach_max - 0.5 * f.cell)
+    n_arch = len(out)
+    for pth in a.paths:
+        ps = np.load(pth, allow_pickle=False)
+        po, pk = select(ps, f.sample(ps["origin"]).astype(np.float64), d0, a.min_progress,
+                        f.reach_max - 0.5 * f.cell)
+        out, dk = np.concatenate([out, po]), np.concatenate([dk, pk])
     np.save(a.out, out)
     meta = {"archive": str(a.archive), "rows": int(len(out)), "of": int(len(st)),
+            "archive_rows": int(n_arch), "paths": [str(x) for x in a.paths],
             "start_d": d0, "min_progress": float(a.min_progress),
             "progress_max": float(1.0 - dk.min() / d0) if len(dk) else None,
             "provenance": "Go-Explore phase 1 (tools/explore_phase1.py) from the map start: "
