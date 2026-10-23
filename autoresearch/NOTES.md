@@ -2995,3 +2995,19 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   turn 90, F 0.25, energy-pot 2 / front 0.01 and everything else restored), evals every 6.25M, 2e9 budget. One knob.
   Read-outs: fpert/finished per iteration (was ~1e-4), the greedy entries' apex and min d, the reservoir's deepest
   state (round 6's drift: harvested entries pull the front-perturb band into the chamber).
+
+### 06:58 UTC: CORRECTION - arm 3's own line locked into the CP6 dip death at ~23.99B; arm 4 is confounded; arm 5' r7b2_ef15 (K 1.5 from 23.91B)
+
+* r7b2_ef2's evals from 23,992M to its stop at 24,138M (24 evals) are ALL 96.53-96.57 (CP6: every greedy episode dies
+  at the deep dip, ~96.5%); the 05:37 / 06:19 entries called its end a plateau - it was a lock. Its last healthy evals:
+  98.388 (23,974M), 98.340 (23,987M).
+* **r7b2_fs16 (arm 4, front-perturb x1.0-1.6)** resumed ef2's locked final weights: its FIRST eval (the checkpoint
+  itself, 24,138M) was already 96.57; 62 evals 96.56-96.60, 0 front-perturb finishes in 44k episodes. So arm 4 says
+  nothing clean about x1.0-1.6 (it never had a healthy line to work on). Not repeated - no time.
+* Likely cause of the lock (arithmetic, not measured): at K 2 the dip costs ~600 u of h = -1.2, plus ~4 s x 0.1 of
+  time penalty, against ~+1.4 of ratchet progress to the basement and ~+0.4 for an entry - continuing past the dip is
+  worth only ~+0.2 more than dying there, so the line can flip to the dip death (the CP6 mode the lineage has always
+  had, now stickier). K 3 (r7b2_ef3, killed after ~3 min, started from the locked weights) would make it worse.
+* **r7b2_ef15** (now): resume of ef2's healthy snapshot ckpt_23912251392 (md5 19a7b431..., ~80M steps before the
+  lock) + `--energy-pot 1.5 --critic-warmup 20 --ckpt-every 1e8` (front-perturb x1.0-1.3, latch 0.01, everything else
+  restored), evals every 6.25M. Watch the CP6 share; revert to a snapshot on a lock.
