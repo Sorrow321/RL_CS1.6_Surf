@@ -163,3 +163,33 @@ here". A trough state falling at ~660 u/s gets up to ~1,060 u/s, which is about 
 WR carries out of the trough (+430..590 u of z + v^2/2g); the ratchet pays a trough spawn for
 every new record it sets on the way back west (its b_0 is its own spawn d), so the critic can
 learn what energy is worth there before the policy can make it.
+
+### 2026-10-23 16:40 UTC - arm 4 null; the gate is a CLIMB at the platform's NW corner, not a pump
+
+* arm 4 pbr1b2_xsp (arm 3 + --respawn-speed 1.0 1.6, from 151.5M): 0.444 (152M) / 0.436 (227M),
+  reservoir deepest unchanged, unstuck T rose to 0.15. Stopped. All four RL arms stall with the
+  frontier at the platform's NW corner (x ~650-730, y ~-2900): exactly where the way on starts.
+* NEW beam_tas --score rec_e (elites by record, then energy height) + --dump-elite-states: with the
+  RL policy or the sidistic finisher as the proposal, 4096 lineages x 22-89 generations never
+  gained more than ~+300 u of energy height and never left the platform; --eps and --macro-hold
+  are refused for keys-hold checkpoints. The sidistic finisher spawned ON the start ridge (bench,
+  constructed states) rides it for 15 s but adds no energy: it never learned to pump.
+* Go-Explore phase 1 (tools/explore_phase1.py, random 95%-repeat bursts from the map start, 128 u
+  cells x 8 speed bins, NEW --maxvel 3500) left the platform in 2.5 minutes (3M runs): best cell
+  3.19% of the grader's d0, under the platform at z ~3330 - the region the WR crosses at 8.5-9.9 s.
+  Its chain: walk to the NW corner -> onto the NORTH LEDGE (z ~3714 origin, 68 u above the
+  platform floor) -> west along the ledge to x ~90 -> drop -> back east UNDER the platform. The
+  WR's trough pump is only the FAST way onto that ledge; the slow way is a climb.
+* The climb (bursts from the archived corner state): 1 in 16,384 random 8 s bursts - a duck-jump
+  onto the edge of the west conveyor step at y ~-2945 (the trigger_push above the conveyors
+  pushes down, but not at their north edge), then west along the step tops onto the ledge.
+  175 scripted single/double jump and duck-jump patterns all failed. A ~1e-4 event for random
+  keys is why PPO never found it; the ratchet pays the moment it is on the ledge (d falls west).
+* Stopped at 3.2% after 8 min (487 cells): the next obstacle is below the platform.
+* NEW explore_phase1 --view-velocity: explore in the trainer's view space (absolute yaw target in
+  the velocity frame, off_warp prior), so a held burst is a constant air strafe, not a spin.
+  Run 2: 64 u cells (so the climb is split into archived steps), 8 speed bins, 30 min.
+* NEW tools/archive_to_spawn.py: archive rows ahead of the start -> --spawn-states.
+* Plan (arm 5): the recipe + --time-pen 0 + --spawn-states <archive> (Go-Explore from the map
+  start: champion-free, no demo; CLAUDE.md 0b lists archives / return-then-explore and planning
+  in the simulator as generic), warm from the sidistic transfer at step 0.
