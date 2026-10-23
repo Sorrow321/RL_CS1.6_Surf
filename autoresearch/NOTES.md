@@ -468,3 +468,12 @@ the backward curriculum (--demo-file + --demo-success-d) on the found line. Not 
   (grow 20, tau0 1230) + `--demo-success-bonus 50` + `--keys-hold-spawn-duck`. g2cur4 (the bonus
   alone) had lifted the later deciles' success from 33-58% to 68-80% but band [1230,1239] stayed
   at 0.0% - consistent with the spawn-duck cause.
+* g2cur5's first visits to band [1230,1239]: still 0.0% over 1,000 episodes. A core check rules
+  out the mid-decision respawn (the previous episode's action row stepping the fresh spawn for
+  1-3 ticks): 1, 2 or 3 ticks of released duck at the spawn leave the line's trajectory
+  identical; only a sustained release (here 22 ticks) unducks. So what remains is the policy's
+  own choice from the pre-impact states - most likely the post-impact habit it learned at
+  1250+ (release duck, strafe right), applied 0.1-0.2 s early - with no yaw exploration
+  (view sigma 0.010, --yaw-entropy 0) to find the line's air turn (wishdir ~81 deg right of the
+  velocity: back+left with the view ~144 deg off the velocity, or right strafe with the view
+  along it).
