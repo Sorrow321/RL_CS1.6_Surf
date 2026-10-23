@@ -3126,3 +3126,11 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   at C = 1.5 with the gate (0 episodes at 96.3-96.8% in the last 8 evals). Energy at 97% progress 2,568-2,656 (C = 1: ~2,580).
 * Arrivals swing between evals (22.876B: 4 +y / 3 -y; the last 8 evals: 1 +y / ~35 -y); -y arrivals now loop 10-30 s (more return
   legs per episode) but the +y return has no entry. Running on to the wrap-up window.
+
+### 10:52 UTC: r7b1_ep15 stopped (C 1.5: fewer entries); back to the C = 1 weights for the last hours (r7b1_gate3)
+
+* r7b1_ep15 22.856 -> ~23.06B (33 evals every 6.25M): one entry (98.416), the rest 97.87-98.01; no deep-dip deaths; energy at 97%
+  2,570-2,656; arrivals almost all -y (no entry side). Entries per eval: C = 1 4/30 (gate) and 3/34 (gate2), C = 1.5 1/33 - the
+  stronger term moves more arrivals to the -y side than it adds at the hole.
+* **r7b1_gate3** (10:52): gate2's final weights (22,856,335,360, md5 61c0e6ec...; C = 1 and the gate restored), evals every 6.25M,
+  to the wrap-up - the regime with the most greedy entries.
