@@ -30,3 +30,10 @@ the goal field, and the lineage's own policy-guided search (CLAUDE.md section 0 
   START into the chamber (per-tick STATE_DTYPE, physically continuous; written by
   tools/plan_to_bc.py --spine). The climb windows (500 ticks before the first tick at x < 600,
   z > 3690, to 100 after) x4 + the whole spines were the --spawn-states of pbr1b4_bc2.
+* `pb_chamber_xsec.py [hull]` - core hull traces: the free origin-z intervals over the chamber
+  (x 300-1050, both pockets and the corridor). It shows the north pocket's flight band over the
+  kill trigger and its east window (NOTES 23:45).
+* `pb_chamber_crossing.py` - ballistic crossings of the north pocket's kill floor from that
+  window (x 790; z 3480-3540; westward v 300-1300; vz 0/150/300). Measures the energy the
+  chamber gate needs. Run both from the repo root (`python3 autoresearch/analysis/<script>`;
+  they need the built core).

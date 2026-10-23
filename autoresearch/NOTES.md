@@ -507,8 +507,8 @@ is ~50 s of chamber search.
   at z 3332-3408 and an upper space at z 3460-3544. At x 440 (the trigger's west edge) only
   z 3460-3544 is open at y -2640..-2680. West of x 435 the pocket drops to z <= 3180, the exit.
   The south pocket's ceiling is z 3408: no flight band, so it is a dead end.
-* **Ballistic crossing threshold** (no keys, from x 790 in the window, heading west; scratchpad
-  cross_probe2.py): it passes alive with
+* **Ballistic crossing threshold** (no keys, from x 790 in the window, heading west;
+  autoresearch/analysis/pb_chamber_crossing.py; free space: pb_chamber_xsec.py): it passes alive with
   * vz 0: v >= 800 u/s at z 3530-3540, v >= 1,000-1,100 at z 3500-3510;
   * vz +150..+300: v >= 500-700 u/s.
 
