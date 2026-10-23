@@ -3180,3 +3180,9 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
 * Each branch from an entry-stretch snapshot gives ~20-40M steps of entries; the best of each branch: p1 98.362,
   p2 98.410, p3 98.426.
 * **r7b4_p4** (11:37): p3's 22,393,913,344 snapshot (inside its entry stretch) + `--front-temp 1 --front-band 0.01`.
+
+### 11:56 UTC: p4 3 entries (best 98.389); branch r7b4_p5
+
+* r7b4_p4 (p3's 22,393,913,344 snapshot + `--front-temp 1 --front-band 0.01`, T 0.2), 22.400-22.476B, 13 evals: 3
+  entries in 117 episodes (apex 1,317-1,445), best 98.389.
+* **r7b4_p5** (11:55): p4's 22,444,244,992 snapshot (exactly the weights of its 98.389 eval) + `--front-temp 0`.
