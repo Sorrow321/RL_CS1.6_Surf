@@ -5987,6 +5987,13 @@ def main() -> None:
                          "is paid when gained, and trading speed for height (a climb) or back "
                          "pays nothing - unlike --speed-pot. C = how many u of field distance "
                          "1 u of energy height is worth. A checkpoint restores it. 0 = off")
+    ap.add_argument("--energy-pot-front", type=float, default=None,   # 0 = off
+                    help="--energy-pot: stop the energy term for the rest of an episode once its "
+                         "record (the closest it has come to the goal) is inside the frontier band, "
+                         "progress >= (1 - B) x the reservoir's deepest (the --front-temp rule, "
+                         "re-read every iteration). Carry energy TO the frontier; never be paid "
+                         "for dying with it there - which the plain potential does, since it pays "
+                         "the energy of the last state. A checkpoint restores it. 0 = off")
     ap.add_argument("--surf-bonus", type=float, default=None,     # 0 = off
                     help="race (round 40, pnSURF): REWARD UNITS PER SECOND "
                          "paid while the player is riding a surfable face. "
@@ -7312,6 +7319,9 @@ def main() -> None:
         if args.energy_pot is None and ck_cfg.get("energy_pot") is not None:
             args.energy_pot = float(ck_cfg["energy_pot"])
             restored.append(f"energy_pot={args.energy_pot:g}")
+        if args.energy_pot_front is None and ck_cfg.get("energy_pot_front") is not None:
+            args.energy_pot_front = float(ck_cfg["energy_pot_front"])
+            restored.append(f"energy_pot_front={args.energy_pot_front:g}")
         if args.speed_coef is None and ck_cfg.get("speed_coef") is not None:
             args.speed_coef = float(ck_cfg["speed_coef"])
             restored.append(f"speed_coef={args.speed_coef:g}")
@@ -8678,6 +8688,17 @@ def main() -> None:
         raise SystemExit(f"--energy-pot must be finite and >= 0, got {args.energy_pot}")
     if args.energy_pot and args.reward != "race":
         raise SystemExit("--energy-pot is a race-reward term: needs --reward race")
+    if args.energy_pot_front is None:
+        args.energy_pot_front = 0.0
+    if args.energy_pot_front:
+        if not 0.0 < float(args.energy_pot_front) <= 1.0:
+            raise SystemExit("--energy-pot-front B must be in (0, 1]")
+        if not args.energy_pot:
+            raise SystemExit("--energy-pot-front gates the --energy-pot term: it needs "
+                             "--energy-pot C > 0")
+        if args.maps:
+            raise SystemExit("--energy-pot-front reads one map's reservoir (the --front-temp "
+                             "band): not implemented with --maps")
     if args.surf_bonus is None:
         args.surf_bonus = 0.0
     if args.dive_pen is None:
@@ -13569,6 +13590,8 @@ def main() -> None:
                           if args.reward == "race" and args.speed_pot else {}),
                        **({"energy_pot": float(args.energy_pot)}
                           if args.reward == "race" and args.energy_pot else {}),
+                       **({"energy_pot_front": float(args.energy_pot_front)}
+                          if args.reward == "race" and args.energy_pot_front else {}),
                        "surf_bonus": (args.surf_bonus
                                       if args.reward == "race" else None),
                        "dive_pen": (args.dive_pen
@@ -15145,6 +15168,13 @@ def main() -> None:
     # it every head at 1 + T_F, outside it the global --unstuck temperature on its heads (1 when
     # there is none). The captured rollout graph reads them through the same sample_view call;
     # the update scores each row at the temperature it was drawn at (b_ftk / b_ftv, like b_cct).
+    # --energy-pot-front: the energy term's band edge (the --front-temp rule with its own B),
+    # written into the reward every iteration; inf until the reservoir has a deepest state
+    EPF = float(args.energy_pot_front or 0.0) > 0.0
+    if EPF:
+        print(f"--energy-pot-front {args.energy_pot_front:g}: the energy term stops for the rest "
+              f"of an episode once its record is at progress >= (1 - {args.energy_pot_front:g}) x "
+              f"the reservoir's deepest (re-read every iteration); before that it is paid as usual")
     FRONT = float(args.front_temp or 0.0) > 0.0
     FRONT_BASE = [0.0]                   # the global T (set_unstuck_temp writes it)
     front_thr = float("inf")             # d at the band's edge, re-read every iteration
@@ -17480,6 +17510,13 @@ def main() -> None:
             _d0f = float(fleet.slots[0].rf_d0 or 0.0)
             front_thr = (_d0f - (1.0 - float(args.front_band)) * _d0f * (1.0 - _mf)
                          if (_mf == _mf and _d0f > 0.0) else float("inf"))
+        if EPF:
+            # --energy-pot-front: the same band edge with its own B
+            _mf = fleet.reservoir_min_depth()
+            _d0f = float(fleet.slots[0].rf_d0 or 0.0)
+            reward_fn.energy_front_d = (
+                _d0f - (1.0 - float(args.energy_pot_front)) * _d0f * (1.0 - _mf)
+                if (_mf == _mf and _d0f > 0.0) else float("inf"))
         if EZF:
             # the frontier band of --ez-front: progress P_f = d0 * (1 -
             # min-depth) is the reservoir's deepest; a burst may start where
@@ -20171,6 +20208,9 @@ def main() -> None:
             hyg_note += (f"  fronttemp {front_share:.0%}"
                          + (f">{100.0 * (1.0 - front_thr / float(fleet.slots[0].rf_d0)):.1f}%"
                             if front_thr != float("inf") else ""))
+        if EPF and reward_fn.energy_front_d != float("inf"):
+            # --energy-pot-front: where the energy term stops
+            hyg_note += (f"  epot<{100.0 * (1.0 - reward_fn.energy_front_d / float(fleet.slots[0].rf_d0)):.1f}%")
         if AUG_ON and aug_kl_v == aug_kl_v:
             # --aug-*: how far the augmented frame's answer still is from the clean one
             hyg_note += f"  drac kl {aug_kl_v:.4f} v {aug_vm_v:.4f}"

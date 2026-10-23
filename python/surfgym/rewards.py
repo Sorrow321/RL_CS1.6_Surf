@@ -1049,6 +1049,14 @@ class RaceReward:
         self.energy_pot = 0.0
         self._eh_prev = None
         self._g_e = 800.0
+        # --energy-pot-front B: the energy term stops for the rest of an episode once its record
+        # (the smallest field distance it has reached) is inside the frontier band, d <= this
+        # threshold (the trainer re-reads it every iteration from the reservoir's deepest state).
+        # Without it the potential pays C x scale x h_E at the LAST state, i.e. it pays for dying
+        # with energy wherever progress is slow - at the frontier that is the gate itself. inf =
+        # off (energy shaping everywhere, the plain --energy-pot).
+        self.energy_front_d = float("inf")
+        self._eh_dmin = None
         # --surf-bonus / --dive-pen (round 40, pnSURF): "surfing = good,
         # diving = bad" as a dense per-tick term. Both are REWARD UNITS PER
         # SECOND on the flag; the trainer converts to per-tick. 0/0 is off
@@ -1236,6 +1244,7 @@ class RaceReward:
         self._vmax = float(getattr(core.config.phys, "sv_maxvelocity", 0.0) or 0.0)
         self._spd_prev = None        # --speed-pot re-anchors on the first call
         self._eh_prev = None         # --energy-pot too
+        self._eh_dmin = None         # and its --energy-pot-front record
         self._g_e = float(core.config.phys.sv_gravity)
         self._best = self._d.copy()
         if self.sr:
@@ -1585,6 +1594,14 @@ class RaceReward:
                 self._eh_prev = eh.copy()
             de = eh - self._eh_prev
             np.minimum(de, clip, out=de)
+            if self.energy_front_d != float("inf"):
+                # --energy-pot-front: nothing once the episode's record (before this call) is in
+                # the frontier band; the ended rows' record restarts at their new spawn
+                if self._eh_dmin is None or self._eh_dmin.shape != d.shape:
+                    self._eh_dmin = d.astype(np.float64).copy()
+                de[self._eh_dmin <= self.energy_front_d] = 0.0
+                np.minimum(self._eh_dmin, d, out=self._eh_dmin)
+                self._eh_dmin[ended] = d[ended]
             de[ended] = 0.0
             r += ((self.energy_pot * self.scale) * de).astype(np.float32)
             self._eh_prev = eh

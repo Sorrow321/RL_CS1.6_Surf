@@ -116,6 +116,68 @@ def test_zero_is_off():
     assert a._eh_prev is None
 
 
+class _XField:
+    """d = 10,000 - x: moving +x is progress."""
+    def sample(self, pos):
+        return 10000.0 - np.atleast_2d(pos)[:, 0].astype(np.float64)
+
+
+def _rr_front(thr):
+    """The energy term alone: a pair of rewards on two identical cores, C and 0 (the field's
+    progress shaping cancels in the difference)."""
+    pair = []
+    for c in (C, 0.0):
+        core = _FakeCore(1).at([0.0])
+        rr = RaceReward(_XField(), scale=SCALE, time_pen=0.0, stall_ticks=10 ** 9, max_step=1e9)
+        rr.energy_pot = c
+        rr.energy_front_d = thr
+        rr.on_reset(core)
+        pair.append((rr, core))
+    return pair
+
+
+def _go(pair, x, z, v, done=0):
+    out = []
+    for rr, core in pair:
+        core.states_view["origin"][:, 0] = np.float32(x)
+        out.append(float(_step(rr, _put(core, z, v), done=done)[0]))
+    return out[0] - out[1]
+
+
+def test_front_gate_stops_the_term_once_the_record_is_in_the_band():
+    """--energy-pot-front: paid while the episode's record d > thr, nothing after - even when the
+    agent falls back out of the band (the record only improves)."""
+    pair = _rr_front(thr=4000.0)                          # the band: d <= 4,000, i.e. x >= 6,000
+    _go(pair, 1000.0, 2000.0, (1000.0, 0.0, 0.0))           # anchors
+    a = _go(pair, 3000.0, 2000.0, (800.0, 0.0, 0.0))        # outside the band: charged
+    assert a == pytest.approx(C * SCALE * (_h(2000, (800, 0, 0)) - _h(2000, (1000, 0, 0))), abs=1e-5)
+    b = _go(pair, 6500.0, 2000.0, (600.0, 0.0, 0.0))        # the call that ENTERS the band: still paid
+    assert b == pytest.approx(C * SCALE * (_h(2000, (600, 0, 0)) - _h(2000, (800, 0, 0))), abs=1e-5)
+    c = _go(pair, 6600.0, 2000.0, (100.0, 0.0, 0.0))        # inside: a big loss, not charged
+    assert c == pytest.approx(0.0, abs=1e-7)
+    e = _go(pair, 2000.0, 2000.0, (900.0, 0.0, 0.0))        # back out of the band: the record stays
+    assert e == pytest.approx(0.0, abs=1e-7)
+
+
+def test_front_gate_spawn_in_the_band_gets_nothing_and_a_new_episode_restarts_the_record():
+    pair = _rr_front(thr=4000.0)
+    _go(pair, 7000.0, 2000.0, (1000.0, 0.0, 0.0))           # spawned in the band
+    assert _go(pair, 7100.0, 2000.0, (200.0, 0.0, 0.0)) == pytest.approx(0.0, abs=1e-7)
+    # the episode ends; the new spawn is far behind the band, so its energy is paid again
+    assert _go(pair, 500.0, 3000.0, (0.0, 0.0, 0.0), done=1) == pytest.approx(0.0, abs=1e-7)
+    f = _go(pair, 600.0, 2990.0, (0.0, 0.0, -150.0))
+    assert f == pytest.approx(C * SCALE * (_h(2990, (0, 0, -150)) - 3000.0), abs=1e-5)
+
+
+def test_front_gate_off_is_the_plain_term():
+    pair = _rr_front(thr=float("inf"))
+    b, cb = _rr(C, max_step=1e9)
+    for x, z, v in ((1000.0, 2000.0, (1000.0, 0.0, 0.0)), (7000.0, 1900.0, (300.0, 0.0, 0.0)),
+                    (9000.0, 1500.0, (1500.0, 0.0, -400.0))):
+        assert _go(pair, x, z, v) == pytest.approx(float(_step(b, _put(cb, z, v))[0]), abs=1e-5)
+    assert pair[0][0]._eh_dmin is None
+
+
 def _cfg(run):
     return json.loads((ROOT / "runs" / run / "run.json").read_text(encoding="utf-8"))["config"]
 
@@ -137,6 +199,28 @@ def test_the_trainer_carries_restores_and_refuses_it_and_the_recorder_accepts_it
     r3 = _run([sys.executable, "-u", str(TRAIN), "--run", "epot_bad"] + SMOKE
               + ["--steps", "2048", "--energy-pot", "-1"])
     assert r3.returncode != 0 and "--energy-pot must be finite and >= 0" in r3.stdout + r3.stderr
+    # --energy-pot-front on a resume of a seeded reservoir: the band edge becomes finite
+    from test_respawn_greedy import _seeded_ckpt
+    d0s, seeded = _seeded_ckpt("epot_front_base")
+    run3 = "epot_front"
+    shutil.rmtree(ROOT / "runs" / run3, ignore_errors=True)
+    r4 = _run([sys.executable, "-u", str(TRAIN), "--run", run3, "--ckpt", str(seeded)] + SMOKE
+              + ["--steps", "8192", "--respawn-reservoir", "5000", "--energy-pot", "1",
+                 "--energy-pot-front", "0.02"])
+    assert r4.returncode == 0, r4.stdout[-4000:] + r4.stderr[-4000:]
+    assert "--energy-pot-front 0.02: the energy term stops" in r4.stdout
+    assert "  epot<" in r4.stdout, r4.stdout[-3000:]
+    assert _cfg(run3)["energy_pot_front"] == 0.02
+    r5 = _run([sys.executable, "-u", str(TRAIN), "--run", "epot_front_re", "--ckpt",
+               str(ROOT / "runs" / run3 / "ckpt_final.pt")] + SMOKE + ["--steps", "10240"])
+    assert r5.returncode == 0, r5.stdout[-4000:] + r5.stderr[-4000:]
+    assert "energy_pot_front=0.02" in r5.stdout
+    r6 = _run([sys.executable, "-u", str(TRAIN), "--run", "epot_bad2"] + SMOKE
+              + ["--steps", "2048", "--energy-pot-front", "0.02"])
+    assert r6.returncode != 0 and "needs --energy-pot C > 0" in r6.stdout + r6.stderr
+    for rn in (run3, "epot_front_re", "epot_bad2"):
+        shutil.rmtree(ROOT / "runs" / rn, ignore_errors=True)
+    shutil.rmtree(d0s, ignore_errors=True)
     rec = _run([sys.executable, "-u", str(RECORD), str(ROOT / "runs" / run2 / "ckpt_final.pt"),
                 "--map", str(SID), "--episodes", "1", "--ep-ticks", "200",
                 "--out", str(ROOT / "runs" / run2 / "rec.jsonl")])
