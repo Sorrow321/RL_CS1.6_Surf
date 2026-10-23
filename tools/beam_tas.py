@@ -604,6 +604,38 @@ def rank_rec_e(rec_d, h, valid, quant: float) -> np.ndarray:
                        np.where(valid, key_rec, np.inf)))
 
 
+def rank_cell_elites(origins, rec_d, h, valid, cell: float, quant: float) -> np.ndarray:
+    """--elite-cells C (with --score rec_e): MAP-Elites selection inside the population. Every
+    valid lineage is binned by its position into C-u cells; the HIGHEST-ENERGY lineage of each
+    occupied cell comes first (those representatives ordered by record bin, then energy), then
+    every other valid lineage in rank_rec_e order, invalid rows last. A lineage is thereby only
+    out-ranked by one at the SAME place: the plain rec_e ranking compares a lineage that already
+    crash-landed deeper with one still carrying its speed upstream, and the population keeps the
+    crash. Nothing here reads the map."""
+    origins = np.asarray(origins, np.float64)
+    valid = np.asarray(valid, bool)
+    h = np.asarray(h, np.float64)
+    base = rank_rec_e(rec_d, h, valid, quant)
+    if not valid.any():
+        return base
+    key = np.floor(origins / float(cell)).astype(np.int64)
+    seen, reps = set(), []
+    # walk the lineages by energy (highest first): the first one met in a cell represents it
+    for i in np.lexsort((-h, ~valid)):
+        if not valid[i]:
+            break
+        k = tuple(key[i])
+        if k not in seen:
+            seen.add(k)
+            reps.append(int(i))
+    reps = np.asarray(reps, np.int64)
+    rep_order = reps[rank_rec_e(np.asarray(rec_d)[reps], h[reps], np.ones(len(reps), bool), quant)]
+    is_rep = np.zeros(len(valid), bool)
+    is_rep[rep_order] = True
+    rest = base[~is_rep[base]]
+    return np.concatenate([rep_order, rest])
+
+
 class EliteArchive:
     """--dump-elite-states: the states of the search's elite lineages at every generation (a
     STATE_DTYPE .npy for the trainer's --spawn-states, plus a sidecar .json): the policy's OWN
@@ -1971,6 +2003,9 @@ def main():
     ap.add_argument("--rec-quant", type=float, default=256.0,
                     help="--score rec_e: the record's bin width in u (lineages whose records "
                     "share a bin are ranked by energy height)")
+    ap.add_argument("--elite-cells", type=float, default=0.0,
+                    help="--score rec_e: MAP-Elites selection - the highest-energy lineage of "
+                    "every occupied C-u position cell is an elite first (0 = off)")
     ap.add_argument("--dump-elite-states", default=None, metavar="NPY",
                     help="population mode: save the elite lineages' states at every "
                     "generation (STATE_DTYPE .npy + a .json sidecar) - own states for the "
@@ -3080,7 +3115,10 @@ def main():
                                         np.where(valid, -akey, np.inf)))
                 elif REC_E:
                     hE = energy_height(states, g_en)
-                    order = rank_rec_e(rec_d, hE, valid, args.rec_quant)
+                    order = (rank_cell_elites(states["origin"], rec_d, hE, valid,
+                                              args.elite_cells, args.rec_quant)
+                             if args.elite_cells > 0 else
+                             rank_rec_e(rec_d, hE, valid, args.rec_quant))
                 else:
                     order = np.argsort(np.where(valid, -sc, np.inf),
                                        kind="stable")

@@ -59,3 +59,16 @@ def test_elite_archive_roundtrip(tmp_path):
     meta = json.loads(out.with_suffix(".json").read_text())
     assert meta["rows"] == 3 and meta["gens"][0]["rec_d_best"] == 7.0
     assert meta["provenance"] == "test"
+
+
+def test_cell_elites_one_best_energy_per_cell_first():
+    # lineages 0,1 share cell A (1 has more energy), 2 is alone in cell B, 3 is invalid
+    o = np.array([[10.0, 0, 0], [20.0, 0, 0], [300.0, 0, 0], [15.0, 0, 0]])
+    rec = np.array([500.0, 900.0, 950.0, 100.0])        # 0 has the best record, but less energy
+    h = np.array([1.0, 50.0, 5.0, 999.0])
+    valid = np.array([True, True, True, False])
+    order = B.rank_cell_elites(o, rec, h, valid, cell=128.0, quant=1.0)
+    # representatives: cell A -> 1 (energy), cell B -> 2; ordered by record (900 < 950): 1, 2
+    assert order.tolist()[:2] == [1, 2]
+    assert order.tolist()[2] == 0 and order.tolist()[3] == 3
+    assert sorted(order.tolist()) == [0, 1, 2, 3]
