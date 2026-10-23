@@ -433,3 +433,8 @@ sid_ref's config plus `view_ent_squash 1`.
   the west-end down-pusher / kill strips), no climb completed. Stopped at ~820M.
   `pbr1b3_sgx8` = a second fresh replicate of sgx1's setup from the sid_ref weights, to spend
   the rest of the round in the ~150-400M window where both surfer runs climbed.
+* 23:22 The trainer is DETERMINISTIC on this box for a fixed seed and code: `pbr1b3_sgx8`
+  (same checkpoint, flags and commit as sgx7) reproduced sgx7's evals exactly (248 / 251 /
+  217 u, identical paths) - "replicate" means a different `--seed`. sgx1 differed from sgx7 only
+  through the curriculum's end-row cap (659c788), which changes the band weights. sgx8 stopped;
+  `pbr1b3_sgx9` = the same setup with `--seed 1` (seed is not restored from a checkpoint).
