@@ -2943,3 +2943,15 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   Reference = tp3's own progress.csv and round 6's eval statistics (greedy entries ~0.4% of eval episodes;
   basement reached by ~30-55% of eval episodes). Read-outs: basement share and h_E at the basement entry, chamber
   entries and their apex, the best score vs 98.315.
+
+### 11:38 UTC: r7b3_ep1 at +120M - energy at the basement entry up ~+100-150 u; no entry yet
+
+* 18 evals (22.218-22.325B, ~78k steps/s on this 3090 with evals every 6.25M): score.py best 97.79-97.92 when the
+  line reaches the basement (CP7), 96.5-96.6 in a 5-eval CP6 wobble (22.256-22.287B, the CP6 mode tp3 also had);
+  0 chamber entries in 162 episodes (tp3's rate ~0.4% would give ~0.65); best 97.916.
+* Leading indicator (gate_stats.py, h_E at the first basement tick, my definition): the first 5 evals (actor frozen
+  for the 20-update critic warmup, = the incumbent) median 2,312-2,338; the evals after ~75M steps of training with
+  --energy-pot 1: 2,426-2,543 (one at 2,104 with a single episode). So the line arrives with ~100-150 u more
+  energy - the direction the term pushes, within ~100M steps. Basement share 4-6/9 frozen, 1-5/9 later.
+* Training: approx_kl 0.017-0.029, explained variance 0.99, episode reward 16.5-19.6 (tp3 19-21: the energy charge),
+  stall_frac 0.08 -> 0.21 (tp3 0.06-0.12) - more training episodes stop gaining; watch. fpert finishes 0.
