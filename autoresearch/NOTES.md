@@ -2990,3 +2990,18 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   the front-temp band (> 97.1%) do cover the loop. Running on: round 6 needed ~1B steps of front-perturb practice before the
   greedy line entered; this line has ~+240 u more on the return leg.
 * The reservoir's rim-crossing states of ~22.518B were replaced by 22.71B (deepest back at 98.13%).
+
+### 05:35 UTC: MILESTONE - 98.393 (r7b1_epf at 22.735B), above the incumbent's 98.315; the entry turns INWARD
+
+* r7b1_epf eval 22,734,700,544: **score 98.393** (best 98.39%, median 97.9%, CP7), 2 greedy chamber entries (apex z 1,359 /
+  1,382) - the first of the round. Episode 8: return leg west along y ~-500 (114.1 s, h_E 2,168), up-slope turn (114.6 s,
+  vy +709 inward, vz +747), outward strafe at x ~2,500 (114.95 s: v (-32, -1,092, 479), h_E 2,127), through the -y hole,
+  an edge impact (-190 u: h_E 2,127 -> 1,933 at 115.1-115.2 s), then INWARD and east: (2,652, -418, 1,359) v (421, 846, 191)
+  at 115.31 s -> (2,907, -222, 1,376) at 115.67 s, over the funnel's x range and 32 u outside its |y| <= 190 opening, ~180 u
+  below the rim (z 1,560), into the funnel's outer wall at 116.1 s. Round 6's entries flew east along the outer wall instead.
+* Clearing the rim at ~900 u/s horizontal needs h_E ~2,070 at the apex: without the edge impact (2,127) it would (apex
+  ~1,620). The energy work bought most of the gap.
+* Other evals 22.71-22.86B: 97.84-97.93 with a wobble at 22.785-22.822B (96.53, 96.59 - the deep-dip death in 9 of 9 for one
+  eval - and 87.70), recovered by 22.835B. Energy at 97.8% progress 2,499-2,682.
+* Weights: snapshot ckpt_22745186304.pt (10M steps after the eval) pulled to /home/steam/ar/runs/r7b1/r7b1_epf/ (md5
+  11e0257a8c33465d600d78f8ca95aaf4). The run continues unchanged.
