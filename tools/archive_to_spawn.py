@@ -43,6 +43,23 @@ def select(states, d, d0: float, min_progress: float = 0.0, reach_max: float = n
     return out, d[ok]
 
 
+def balance(rows, d, d0: float, width: float, per_bin: int, seed: int = 0):
+    """At most `per_bin` rows (a seeded uniform draw) from every `width`-wide bin of field progress
+    1 - d/d0: a route explored by an archive is mostly the places that are easy to wander in, so a
+    uniform draw over its rows starves the narrow passages; per-bin draws spread the spawns along
+    the route instead. width <= 0 keeps everything."""
+    if width <= 0 or per_bin <= 0 or not len(rows):
+        return rows, d
+    rng = np.random.default_rng(seed)
+    b = np.floor((1.0 - np.asarray(d, np.float64) / d0) / width).astype(np.int64)
+    keep = []
+    for v in np.unique(b):
+        idx = np.flatnonzero(b == v)
+        keep.append(idx if len(idx) <= per_bin else rng.choice(idx, per_bin, replace=False))
+    k = np.sort(np.concatenate(keep))
+    return rows[k], np.asarray(d)[k]
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -54,6 +71,9 @@ def main(argv=None) -> int:
     ap.add_argument("--paths", nargs="*", default=[],
                     help="explore_phase1 --dump-paths files (paths.npy): the burst states that "
                     "first reached each cell, filtered like the archive rows and appended")
+    ap.add_argument("--bin-width", type=float, default=0.0,
+                    help="balance: progress bin width (fraction of d0); 0 = keep every row")
+    ap.add_argument("--per-bin", type=int, default=0, help="balance: rows kept per bin")
     ap.add_argument("--min-progress", type=float, default=0.0,
                     help="keep rows with 1 - d/d0 above this (default 0: ahead of the start)")
     a = ap.parse_args(argv)
@@ -69,8 +89,12 @@ def main(argv=None) -> int:
         po, pk = select(ps, f.sample(ps["origin"]).astype(np.float64), d0, a.min_progress,
                         f.reach_max - 0.5 * f.cell)
         out, dk = np.concatenate([out, po]), np.concatenate([dk, pk])
+    n_all = len(out)
+    out, dk = balance(out, dk, d0, a.bin_width, a.per_bin)
     np.save(a.out, out)
     meta = {"archive": str(a.archive), "rows": int(len(out)), "of": int(len(st)),
+            "before_balance": int(n_all), "bin_width": float(a.bin_width),
+            "per_bin": int(a.per_bin),
             "archive_rows": int(n_arch), "paths": [str(x) for x in a.paths],
             "start_d": d0, "min_progress": float(a.min_progress),
             "progress_max": float(1.0 - dk.min() / d0) if len(dk) else None,
