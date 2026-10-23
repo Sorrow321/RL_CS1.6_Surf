@@ -3,22 +3,23 @@
  "round": 7,
  "final": false,
  "best": {
-  "score": 97.977,
-  "eval_file": "/home/steam/ar/runs/r7b1/r7b1_ep1/traj_22230859776.jsonl",
-  "run": "r7b1_ep1",
-  "step": 22230859776,
-  "ckpt": "box 57307538: /root/RL_Surf/runs/r7b1_ep1/ckpt_latest.pt (not pulled yet)",
+  "score": 98.393,
+  "eval_file": "/home/steam/ar/runs/r7b1/r7b1_epf/traj_22734700544.jsonl",
+  "run": "r7b1_epf",
+  "step": 22734700544,
+  "ckpt": "box 57307538: /root/RL_Surf/runs/r7b1_epf/ckpt_latest.pt (the run's newest weights; snapshots every 1e8)",
   "recipe": [
-   "bare resume of the incumbent",
    "--energy-pot",
    "1",
+   "--energy-pot-front",
+   "0.01",
    "--critic-warmup",
    "20",
    "--ckpt-every",
    "1e8"
   ],
-  "resume_from": "incumbent r6b2_tp3 (22,217,752,576)",
-  "commit": "1127192"
+  "resume_from": "r7b1_ep1 (22,444,769,280; = incumbent r6b2_tp3 22,217,752,576 + --energy-pot 1)",
+  "commit": "e369987"
  },
- "summary": "Box 57307538 (RTX 3090 + EPYC 7502, ~115k steps/s training-only). NEW --energy-pot C (potential on z + |v|^2/2g, non-terminal): C=2 (ep2) raised the line's energy upstream but made dying at the deep dip pay (objective = progress + C x energy at death) -> 96.5% for 8 evals. C=1 (ep1, running): the greedy line's basement-entry energy rose 2,320 -> 2,440-2,560 (no earlier run moved it), arrival 1 s sooner, but fewer episodes reach the basement (1-5 of 9). Probe (analysis only): the incumbent's line is locally energy-optimal at every impact, so energy must come from route changes. Best eval so far 97.977 (incumbent 98.315). Next: chamber entries at the higher energy."
+ "summary": "98.393 (r7b1_epf at 22.735B, CP7; incumbent 98.315): a greedy episode enters the chamber through the -y hole with h_E ~2,127 and turns INWARD over the funnel (2,907, -222, 1,376), ~180 u below the rim. NEW --energy-pot C (potential on z + |v|^2/2g) + --energy-pot-front B (the term stops once an episode's record is in the frontier band, so dying at the frontier is never paid): the greedy line reaches the basement ~2 s sooner with +200-270 u (97%: ~2,600 vs ~2,380), the basement loop intact; one real training episode crossed the rim (22.518B) -> a burst of 821 front-perturb finishes. Plain --energy-pot (no gate): C=2 died at the deep dip, C=1 died in the basement at once (it pays the energy left at death). Next: more steps; the entry needs ~+150-200 u more at the hole."
 }
