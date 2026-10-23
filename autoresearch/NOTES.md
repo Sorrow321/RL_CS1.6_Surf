@@ -2966,3 +2966,11 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
 * But 0 chamber entries in 360 eval episodes (tp3's ~0.4% would give ~1.4) - the entry is the turn-timing skill
   (05:30 / 06:05 entries above), which energy alone does not supply. Training: kl 0.022-0.031, stall_frac back to
   0.09-0.16, fpert finishes 0, ep reward 17.8-21.4.
+
+### 12:28 UTC: r7b3_ep1 at +400M - the line carries ~+300 u of energy into the basement; still 0 entries
+
+* 64 evals (22.218-22.615B): best 97.929; 185/576 eval episodes reach the basement (two 9/9 evals at 22.58B), one
+  more wobble (22.50-22.52B at 87.7 / 96.5-96.8%). h_E at the first basement tick: median 2,546-2,670 in the last
+  8 evals (frozen start 2,312-2,338): **+250-330 u**, above the ~2,350 round 6 estimated for a rim crossing at the
+  ramp foot. Yet 0 chamber entries in 576 episodes (tp3's 0.4% would give ~2.3; P(0) ~ 10%): more energy does
+  not by itself produce the entry, as the 04:15 probe predicted.
