@@ -2970,3 +2970,22 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
 * Offer watcher: an RTX 5080 + Threadripper PRO 5975WX at $0.428/h (Australia) appeared at 04:51; not taken -
   this 3090 now runs ~160k steps/s training-only (round 6's 5080 + i9 ran this recipe at 125-140k with evals),
   and a switch risks the box (readiness failures) for ~15 min of setup.
+
+### 05:27 UTC: sp5c locked in the pit for ~290M steps; arm r7b4_isp2 = the incumbent's weights + archive + anchor + `--speed-pot 2`
+
+* r7b4_sp5c, 22.359-22.650B (47 evals): every eval CP6, 0 of 369+ episodes in the basement, best 96.545. Every
+  episode now dies at the same spot, the pit's bottom (~0, -250, -310) at 107-110 s (before speed-pot the
+  CP6-mode deaths were scattered through the pit at 113-123 s or wandered there until the patience cut at
+  ~138 s). The energy indicator (h_E where d first drops below 6,000 u) rose 3,400 -> 3,505 -> ~3,650-3,680
+  and plateaued; the faster line enters the pit lower than the incumbent's surviving pass ((335, -156,
+  -174) at 110.0 s) and hits its floor. Counters: fpert fin 0/65, gkeep fin 0/34; reservoir mind 2.096%.
+  Weights runs/r7b4_sp5c/ckpt_stop.pt on the box (22.650B, md5 61f5d701...).
+* Reading: speed-pot does raise the line's energy (+~270 u at the chimney), but a faster line meets the pit
+  in a state it has never practised, and ~290M steps of greedy-line practice there did not restore the pass.
+  The pit failure itself began before speed-pot (r7b4_gk drifted into it by 22.268B from the incumbent's
+  basement-mode weights).
+* **r7b4_isp2** (05:27): the incumbent's weights (22,217,752,576; basement mode, 5/9 to the basement) +
+  `--respawn-greedy-keep 8 --respawn-front-perturb-anchor 100 --speed-pot 2 --critic-warmup 20 --ckpt-every
+  1e8`, evals every 6.25M, the resume eval kept. A gentler speed push (K 2: a 300 u/s loss costs 0.6) from
+  weights that pass the pit, so the evals sample basement-mode lines (where entries and score happen) while
+  the energy rises. If the line locks in the pit again, speed-pot goes to 0.
