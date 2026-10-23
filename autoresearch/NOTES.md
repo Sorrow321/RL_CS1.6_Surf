@@ -192,3 +192,25 @@ own reward-free search from the true spawn, no demo or record data, generic cons
 * So both gates are energy gates. Next arm: per-call energy shaping (`--energy-pot-front 0
   --energy-pot-front-bonus 0`, K = 3: pays every gain of h, charges every loss), resumed from
   gewarm2 at 400M with both archives (pbr1b1_geen).
+
+### The start room, solved in the simulator (2026-10-23 ~16:10 UTC)
+* The wall west of the spawn (x ~620-660) has two gaps (north y ~-2,902..-2,916, south
+  y ~-3,100), both with floors at z ~3,698 (80 u above the spawn floor) into a room (floor 3,666,
+  ceiling ~3,778) that leads to the tunnel. Between them sits the doorway's func_conveyor plates
+  (upper plate top ~3,678-3,681) inside a 2,500 u/s push-down trigger.
+* The way in (found by `tools/entry_search.py`, random bursts with 95% repeat): (1) a duck-jump
+  from the spawn floor that lands on the NORTH CORNER of the upper conveyor plate (feet ~3,678;
+  the duck-jump peaks at ~3,679 - about 1 u of margin) - ~1 in 3,000 bursts from the true spawn;
+  (2) from the plate, a jump + duck into the north gap, then crawl west ducked - from 1 in 400 to
+  1 in 10,000 bursts depending on the landing. One burst in ~50,000 does both from the GE parent.
+  No pump needed: this is a precision puzzle, not an energy one.
+* Box run: 24 spawn->plate lines (81,920 bursts, 2.5 min) and 71 plate->tunnel lines (548,864
+  bursts, 3 min) = 71 full spawn->tunnel lines, 270-552 ticks each.
+  $AR_HOME/runs/pbr1b1/_entry/: stageA.npz, stageB.npz, full_lines.npz, entry_ge_states.npy
+  (every 9th tick of the 71 lines = 3,361 states + the 4,038 GE forward states; md5
+  3d014fb2abc6d883fd51b839611889b6).
+* pbr1b1_geen (per-call energy shaping, resumed from gewarm2 at 400M): no pumping emerged in
+  227M steps (episode energy +900/-1,000 u), greedy line still at the mouth (0.411-0.419), and
+  the yaw head's sigma hit its 2.718 cap - a stuck warm policy loses its view precision. Stopped.
+* Next: pbr1b1_entry = the stripped sidistic weights (fresh) + recipe + `--spawn-states
+  entry_ge_states.npy --spawn-states-frac 0.4`: a dense curriculum along the machine-found entry.
