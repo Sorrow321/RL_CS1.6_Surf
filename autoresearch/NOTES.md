@@ -2870,3 +2870,19 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
 * So the greedy policy does not turn extra energy into the hole entry: the entry is a skill/route choice
   first and an energy budget second. --energy-pot (which values energy everywhere) is still the planned
   first arm, but its success needs the policy to learn the entry as well; read entries, not only h_E.
+
+### 04:45 UTC: where the greedy line loses its energy (incumbent eval, episodes 2 / 5 / 7, ANALYSIS ONLY)
+
+* All three fly the same line from 105 s: h_E ~3,420-3,470 at 105 s -> ~3,160-3,230 at 108 s (the climb over
+  the wall slit, x -1,600 -> 1,440, z 1,740 -> 2,360 -> 2,110) -> **the deep dip, 108.25-110.0 s**: down a
+  shaft at x 1,170-1,430 from z ~1,950 to the bottom (z -150..-180, x 250-550, moving WEST at ~2,050 u/s), a
+  ramp turns it up (110.25-111.5 s, vz +1,100..+1,440) into the corridor at z ~1,500-1,560 heading EAST
+  (112-113.5 s, ~1,100 u/s) -> the corridor end (2,416, ~380, 1,185) at ~113.9 s -> down the passage onto the
+  +y basement ramp (114.25-114.5 s, z ~775).
+* h_E: 3,160-3,230 (108 s) -> 2,470-2,530 after the dip's bottom (110 s; -300..-400 u at the bottom impact
+  alone) -> 2,290-2,480 in the corridor -> 1,870-2,180 after the first basement landing (-150..-300 u). The dip
+  is a ~4 s westward detour (x 1,170 at 108.5 s, back at x 1,170 at ~112.3 s) that turns the chimney's fall into
+  the corridor's horizontal speed; its two impacts (the shaft bottom, the basement landing) are ~600 u of the
+  missing energy. These are exactly the losses an energy potential charges.
+* The first pass falls THROUGH the +y hole's footprint (114.0-114.25 s at x 2,414-2,688, y 407-512, z 1,190 ->
+  945, vz -750..-950): it is under the hole but falling, moving along x on the face, never up-slope.
