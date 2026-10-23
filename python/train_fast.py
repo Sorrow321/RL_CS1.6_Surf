@@ -6884,6 +6884,14 @@ def main() -> None:
                          "fraction of the true start's distance, the same on every map. Needs "
                          "--race-ratchet (the record). 0 = off (default, uniform draws, "
                          "bit-identical); ckpt restores")
+    ap.add_argument("--spawn-states-curric-mode", default=None, choices=("band", "backward"),
+                    help="--spawn-states-curric: 'band' (default) = the Florensa weights; "
+                         "'backward' = the Salimans & Chen backward algorithm (Go-Explore's "
+                         "phase 2): the rows ordered by progress, deepest first, a window of "
+                         "max(16, n/32) rows sliding toward the start when its success rate "
+                         "(the same per-row success) reaches 0.2 over 30 episodes and back below "
+                         "0.1; 2/3 of the draws from the window, the rest from the rows it has "
+                         "passed. ckpt restores")
     ap.add_argument("--respawn-greedy", type=float, default=None,     # 0 = off
                     help="share of the NON-start spawn pool replaced each iteration by the "
                          "policy's OWN greedy-eval states from the seconds before each death "
@@ -7763,6 +7771,9 @@ def main() -> None:
         if args.spawn_states_curric is None and ck_cfg.get("spawn_states_curric"):
             args.spawn_states_curric = float(ck_cfg["spawn_states_curric"])
             restored.append(f"spawn_states_curric={args.spawn_states_curric:g}")
+        if args.spawn_states_curric_mode is None and ck_cfg.get("spawn_states_curric_mode"):
+            args.spawn_states_curric_mode = str(ck_cfg["spawn_states_curric_mode"])
+            restored.append(f"spawn_states_curric_mode={args.spawn_states_curric_mode}")
         if args.demo_window is None and ck_cfg.get("demo_window") is not None:
             args.demo_window = int(ck_cfg["demo_window"])
         if args.demo_rate is None and ck_cfg.get("demo_rate") is not None:
@@ -10188,6 +10199,8 @@ def main() -> None:
         if not args.race_ratchet:
             raise SystemExit("--spawn-states-curric scores an episode by the ratchet's progress "
                              "record: it needs --race-ratchet")
+    elif args.spawn_states_curric_mode is not None and flag_given("--spawn-states-curric-mode"):
+        raise SystemExit("--spawn-states-curric-mode without --spawn-states-curric")
     # CLAUDE.md section 0: HUMAN DEMOS NEVER TRAIN THE AGENT. Every
     # spawn-state / imitation / route source - given as a flag OR restored
     # from a checkpoint - must be declared policy-derived by the operator
@@ -13842,6 +13855,9 @@ def main() -> None:
                        # unchanged); TRAIN_ONLY in record_ckpt.py like spawn_states
                        **({"spawn_states_curric": float(args.spawn_states_curric)}
                           if float(args.spawn_states_curric or 0.0) > 0.0 else {}),
+                       **({"spawn_states_curric_mode": str(args.spawn_states_curric_mode)}
+                          if (float(args.spawn_states_curric or 0.0) > 0.0
+                              and (args.spawn_states_curric_mode or "band") != "band") else {}),
                        "demo_window": (args.demo_window
                                        if args.demo_file else None),
                        "demo_rate": (args.demo_rate
@@ -16254,10 +16270,12 @@ def main() -> None:
         _fld0 = (slots[0].reward_field if slots[0].reward_field is not None
                  else slots[0].goal_field)
         SSC = SpawnStateCurriculum(SPAWN_STATES, _fld0, float(slots[0].rf_d0 or 0.0),
-                                   SS_CURRIC)
+                                   SS_CURRIC, mode=str(args.spawn_states_curric_mode or "band"))
         ss_idx = np.full(N, -1, np.int64)
-        print(f"--spawn-states-curric {SS_CURRIC:g}: rows drawn by max(p (1 - p), 0.02), "
-              f"success = the record {SSC.gain:,.0f}u ({SS_CURRIC:g} x d0) past the row's "
+        print(f"--spawn-states-curric {SS_CURRIC:g}: "
+              + ("the backward window (Salimans & Chen) over the rows by progress, "
+                 if SSC.mode == "backward" else "rows drawn by max(p (1 - p), 0.02), ")
+              + f"success = the record {SSC.gain:,.0f}u ({SS_CURRIC:g} x d0) past the row's "
               f"own distance; {SSC.line()}")
     # --int-match: the reward the fleet was paid this iteration (novelty included), and the note
     imatch_rsum = 0.0

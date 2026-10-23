@@ -113,3 +113,28 @@ def test_cpu_smoke_with_the_curriculum(tmp_path):
         assert cfg.get("spawn_states_curric") == 0.01
     finally:
         shutil.rmtree(ROOT / "runs" / run, ignore_errors=True)
+
+
+def test_backward_window_slides_with_success_and_draws_from_it():
+    xs = np.arange(0.0, 400.0, 2.0)                    # 200 rows, progress = x
+    c = SpawnStateCurriculum(_rows(xs), _Field(), d0=1000.0, gain_frac=0.05, mode="backward",
+                             min_ep=30.0)
+    assert c.D == 16 and c.step_n == 4
+    w = c._window()
+    assert np.allclose(np.sort(c.spawn_d[w]), np.sort(1000.0 - xs[-16:]))   # deepest first
+    rng = np.random.default_rng(1)
+    d = c.draw(rng, 3000)
+    deep = d["origin"][:, 0] >= xs[-16]
+    assert deep.mean() > 0.99                          # tau 0: window = passed = the deep rows
+    # the window succeeds -> it slides toward the start
+    for _ in range(40):
+        c.note(w, 1000.0 - xs[w] - 60.0)               # record 60 u past the row (gain 50)
+    c.step()
+    assert c.tau == 4 and c.advances == 1
+    # the new window (it overlaps the old one, whose successes decay) keeps failing -> back off
+    w2 = c._window()
+    for _ in range(400):
+        c.note(w2, 1000.0 - xs[w2] - 5.0)
+    c.step()
+    assert c.tau == 0 and c.advances == 0
+    assert "backward" in c.line()
