@@ -2925,3 +2925,28 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   re-consolidates is the next ~250M steps.
 * Kept running as the main line (3e9 budget, evals every 12.5M). Watching: chamber entries and their apex (the face needs
   ~2,300 for the rim; the loop costs ~400 after the basement entry), the basement count per eval.
+
+### 04:05 UTC: ep1's energy rise is real upstream, but the plain potential pays a basement SUICIDE; NEW --energy-pot-front; arm 3
+
+* r7b1_ep1 (--energy-pot 1) to 22.447B: evals 97.875-97.910 (CP7), medians back to 97.8-97.9% in 2 of the last 3; energy
+  0.3 s before the basement entry 2,505-2,571 in every eval after ~22.26B (control 2,349), at 97% progress 2,505-2,595
+  (control 2,336-2,418).
+* **But from ~22.26B every basement arrival dies within 0.5 s**: the line now reaches the basement on the -y side
+  (y -326..-687) and drops straight into the outer channel's kill floor (z ~710), where the incumbent landed on the +y
+  face and looped 4-21 s (the loop is where its chamber entries come from). Same arithmetic as ep2's dip death: the
+  plain potential's objective is progress + C x (energy at death), and the loop costs ~400 u for a rare entry.
+* **NEW `--energy-pot-front B`** (commit e369987, default off): the energy term stops for the rest of an episode once its
+  record (the smallest field distance reached so far) is in the frontier band, progress >= (1 - B) x the reservoir's
+  deepest - the --front-temp rule, re-read every iteration (step line `epot<P%`). The energy credit is then the energy the
+  episode CARRIED TO the frontier, and nothing that happens there (looping, an entry attempt, a death) changes it. The
+  record only improves, so leaving the band again does not re-open the term (no farming at the edge). Generic: one band
+  constant, the policy's own reservoir. Tests in tests/python/test_energy_pot.py (gate: paid until the call that enters the
+  band, nothing after even outside it again, a spawn in the band gets nothing, a new episode restarts the record, inf =
+  the plain term; trainer: startup line, `epot<` with a seeded reservoir, config, restore, refusal without --energy-pot;
+  the flag-off bit-identity tests still pass).
+* With B = 0.01 and the deepest reservoir state at ~98.3%, the band starts at ~97.3% progress: after the deep dip (the
+  dip is still charged, its death incentive at C = 1 is weak - ep1 passed it), before the passage and the basement.
+* **r7b1_epf** (04:05): ep1's last weights (runs/r7b1_ep1/ckpt_latest.pt, step 22,444,769,280, md5 b91578f4..., energy_pot 1
+  restored; kept on the box as runs_ckpt_ep1.pt; the incumbent's copy as runs_ckpt_incumbent.pt) + `--energy-pot-front
+  0.01 --critic-warmup 20 --ckpt-every 1e8`, evals every 12.5M. Watching: basement life back to seconds (the loop), chamber
+  entries at the higher energy (apex vs the rim at ~1,560), the arrival energy holding at ~2,500+.
