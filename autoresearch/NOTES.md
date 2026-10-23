@@ -2952,3 +2952,21 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
 * CEM over 6-macro sequences (1,024 x 40 iterations each) from 5 of the rebuilt approach states at x1.0 speed:
   best z over the funnel opening 1,334, chamber max 1,376, best d 1,650 - no rim crossing. With the random
   search above: at the line's own energy the rim is out of reach from where the line enters.
+
+### 04:58 UTC: r7b4_sp5c (speed-pot 5) - the line's energy rises; the line sits in the CP6 mode (the deep dip's bottom)
+
+* r7b4_sp5c (sp5b's weights at 22,358,786,048 + speed-pot 5 restored, evals every 6.25M; ~150k steps/s with
+  the numba fix): 11 evals 22.365-22.428B, all CP6 mode: best 96.52-96.54, 0 of 99 episodes in the basement
+  (the mode began at 22.268B in r7b4_gk, before speed-pot).
+* **Leading indicator moves:** the greedy line's h_E where d first drops below 6,000 u: 3,370-3,420 in the
+  incumbent / r7b4_gk evals -> **3,526 -> 3,626** over sp5c's evals (+150-250 u in ~70M steps).
+* The CP6 death, against the incumbent's basement line (ep 2 of traj_20614479872): both go down the chimney
+  and then fall into a pit under the corridor ("the deep dip": (1,427, -385, 1,120) -> (335, -156, -174) in
+  1 s for the incumbent at 109-110 s), surf a ramp at its bottom at ~2,050 u/s and climb back to the corridor
+  (z ~1,500 by 112 s), losing ~500 u of h_E. The sp5c line reaches the pit 1.5 s EARLIER with more energy
+  (h_E 3,157 vs 2,874 at its lip) but lands ~100 u lower on the bottom ramp ((197, -236, -273) at 108.5 s)
+  and dies. The dip itself is where the line's missing energy goes; the corridor route without it would
+  arrive at the basement ~2 s earlier and ~500 u higher.
+* Offer watcher: an RTX 5080 + Threadripper PRO 5975WX at $0.428/h (Australia) appeared at 04:51; not taken -
+  this 3090 now runs ~160k steps/s training-only (round 6's 5080 + i9 ran this recipe at 125-140k with evals),
+  and a switch risks the box (readiness failures) for ~15 min of setup.
