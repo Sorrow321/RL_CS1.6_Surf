@@ -1678,9 +1678,18 @@ class FrontierPerturbRows:
     angle and a speed range, no map quantity."""
 
     def __init__(self, field, d0: float, band: float = 0.005, turn: float = 90.0,
-                 speed=(1.0, 1.5), seed: int = 0) -> None:
+                 speed=(1.0, 1.5), seed: int = 0, anchor: int = 1) -> None:
         if not 0.0 < float(band) < 1.0:
             raise ValueError(f"--respawn-front-perturb-band B needs 0 < B < 1, got {band!r}")
+        if int(anchor) < 1:
+            raise ValueError(f"--respawn-front-perturb-anchor N needs N >= 1, got {anchor!r}")
+        # --respawn-front-perturb-anchor N: the band hangs off the reservoir's N-th deepest
+        # state. 1 = the deepest (the shipped rule); a real finish harvests its whole chain, so
+        # one finishing episode puts a state in the finish funnel, and anchored on it the band
+        # (d <= d_min + B x the span) holds only funnel states - trivial finishes - until the
+        # ring flushes them (sidistic round 6, tp3 21.118B: 100% fpert finishes for ~25M steps,
+        # then 0 for 1.06B). N states have to get there before the band moves
+        self.anchor = int(anchor)
         if not 0.0 <= float(turn) <= 180.0:
             raise ValueError(f"--respawn-front-perturb-turn T needs 0 <= T <= 180, got {turn!r}")
         speed = tuple(float(v) for v in speed)
@@ -1770,7 +1779,12 @@ class FrontierPerturbRows:
         if not ok.any():
             self.last = {"n": 0, "src": 0, "d_thr": float("nan"), "prog_med": float("nan")}
             return np.zeros(0, dtype=STATE_DTYPE)
-        p_max = self.d0 - float(d[ok].min())
+        if self.anchor <= 1:
+            p_max = self.d0 - float(d[ok].min())
+        else:
+            dk = d[ok]
+            k = min(self.anchor, len(dk)) - 1
+            p_max = self.d0 - float(np.partition(dk, k)[k])
         d_thr = self.d0 - (1.0 - self.band) * p_max
         src = np.flatnonzero(ok & (d <= d_thr))
         out = reservoir._store[src[self.rng.integers(0, len(src), n)]].copy()

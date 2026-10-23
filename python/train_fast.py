@@ -6617,6 +6617,11 @@ def main() -> None:
                          "episodes. 0 = off (default); restored on resume")
     ap.add_argument("--respawn-front-perturb-band", type=float, default=None,
                     help="--respawn-front-perturb: the band B (default 0.005)")
+    ap.add_argument("--respawn-front-perturb-anchor", type=int, default=None,
+                    help="--respawn-front-perturb: the band hangs off the reservoir's N-th "
+                         "deepest state (default 1 = the deepest). With N > 1 a few states "
+                         "harvested from one finishing chain cannot pull the band into the "
+                         "finish. ckpt restores")
     ap.add_argument("--respawn-front-perturb-turn", type=float, default=None,
                     help="--respawn-front-perturb: the heading turn T, deg (default 90)")
     ap.add_argument("--respawn-front-perturb-speed", type=float, nargs=2, default=None,
@@ -7845,6 +7850,11 @@ def main() -> None:
             for _fk in ("respawn_front_perturb_band", "respawn_front_perturb_turn"):
                 if getattr(args, _fk) is None and ck_cfg.get(_fk) is not None:
                     setattr(args, _fk, float(ck_cfg[_fk]))
+            if (args.respawn_front_perturb_anchor is None
+                    and ck_cfg.get("respawn_front_perturb_anchor") is not None):
+                args.respawn_front_perturb_anchor = int(ck_cfg["respawn_front_perturb_anchor"])
+                restored.append(
+                    f"respawn_front_perturb_anchor={args.respawn_front_perturb_anchor}")
             if (args.respawn_front_perturb_speed is None
                     and ck_cfg.get("respawn_front_perturb_speed")):
                 args.respawn_front_perturb_speed = [
@@ -8832,6 +8842,12 @@ def main() -> None:
         args.respawn_front_perturb = 0.0
     if args.respawn_front_perturb_band is None:
         args.respawn_front_perturb_band = 0.005
+    if args.respawn_front_perturb_anchor is None:
+        args.respawn_front_perturb_anchor = 1
+    if (int(args.respawn_front_perturb_anchor) != 1
+            and not float(args.respawn_front_perturb or 0.0) > 0.0):
+        raise SystemExit("--respawn-front-perturb-anchor sets --respawn-front-perturb's band: "
+                         "it needs --respawn-front-perturb F > 0")
     if args.respawn_front_perturb_turn is None:
         args.respawn_front_perturb_turn = 90.0
     if args.respawn_front_perturb_speed is None:
@@ -11419,12 +11435,20 @@ def main() -> None:
                 FPERT_S[slot.tag] = FrontierPerturbRows(
                     _fld, float(slot.rf_d0), band=float(args.respawn_front_perturb_band),
                     turn=float(args.respawn_front_perturb_turn),
-                    speed=args.respawn_front_perturb_speed, seed=int(args.seed) + 4141 + _i)
+                    speed=args.respawn_front_perturb_speed, seed=int(args.seed) + 4141 + _i,
+                    anchor=int(args.respawn_front_perturb_anchor))
             except ValueError as _e:
                 raise SystemExit(str(_e))
         print(f"respawn FRONT-PERTURB: {FPERT:.0%} of the non-start pool = own reservoir states "
               f"from the frontier band (progress >= {1.0 - args.respawn_front_perturb_band:.1%} "
-              f"of the reservoir's deepest), kept in place, heading (velocity and view yaw) "
+              + ("of the reservoir's deepest" if int(args.respawn_front_perturb_anchor) == 1
+                 else "of the reservoir's {}{} deepest state".format(
+                     int(args.respawn_front_perturb_anchor),
+                     {1: "st", 2: "nd", 3: "rd"}.get(
+                         int(args.respawn_front_perturb_anchor) % 10
+                         if int(args.respawn_front_perturb_anchor) % 100 not in (11, 12, 13)
+                         else 0, "th")))
+              + f"), kept in place, heading (velocity and view yaw) "
               f"turned by U(-{args.respawn_front_perturb_turn:g}, "
               f"{args.respawn_front_perturb_turn:g}) deg, velocity x U("
               f"{args.respawn_front_perturb_speed[0]:g}, {args.respawn_front_perturb_speed[1]:g})"
@@ -14180,6 +14204,8 @@ def main() -> None:
     if FPERT > 0.0:
         meta["config"]["respawn_front_perturb"] = FPERT
         meta["config"]["respawn_front_perturb_band"] = float(args.respawn_front_perturb_band)
+        if int(args.respawn_front_perturb_anchor) != 1:
+            meta["config"]["respawn_front_perturb_anchor"] = int(args.respawn_front_perturb_anchor)
         meta["config"]["respawn_front_perturb_turn"] = float(args.respawn_front_perturb_turn)
         meta["config"]["respawn_front_perturb_speed"] = [
             float(v) for v in args.respawn_front_perturb_speed]

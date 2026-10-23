@@ -2834,3 +2834,17 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   states). Counters gkeep/ended, gkeep/finished, gkeep/best_prog (the episodes from the kept rows of earlier
   evals). Generic: one count, the policy's own greedy states, no map quantity. Default off; config only when
   on; restored on resume; TRAIN_ONLY for record_ckpt. Tests: tests/python/test_respawn_greedy_keep.py.
+
+### NEW `--respawn-front-perturb-anchor N` (this commit)
+
+* The front-perturb band is d <= d_ref + B x (d0 - d_ref) with d_ref = the reservoir's DEEPEST state. A real
+  finish harvests its whole chain (no 2 s margin on success), so ONE finishing episode puts a state in the
+  funnel and the band then holds only funnel states (tp3 at 21.118B above: every row finished trivially for
+  ~25M steps, the basement practice stopped, and nothing came back after the flush). With N > 1 the band
+  hangs off the N-th deepest state, so N states have to get there before it moves (a robust anchor, one
+  count, no map quantity). In the incumbent's saved reservoir the 100th-deepest of 100k (99.9th percentile)
+  sits at 98.28% vs the max 98.30%, so N = 100 leaves the normal band where it was. Default 1 = the shipped
+  rule, bit-identical (tests/python/test_respawn_front_perturb_anchor.py).
+* Box: none yet. 02:30-02:50 UTC no offer passed box.py's filters (32+ threads, >= 2.5 GHz, caps): the
+  cheapest 32-thread cards were a 4090 at $0.457 (cap 0.45), 5080s at $0.667 (cap 0.65), a 5080 at $0.466 on a
+  2.25 GHz EPYC. A rent retry loop runs every 2 min.
