@@ -2975,3 +2975,18 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   (round 6's tp3 at the same x1.0-1.3 speeds: 0). Same shape as fp3's burst in round 6 (x1.4-2.0 there).
 * The greedy line has not entered the chamber yet in this arm (0 of 90 eval episodes); the line now loops in the basement
   again with ~+150-200 u more energy than the incumbent's. Running on.
+
+### 05:10 UTC: arm 3 at +270M - a consistent, faster, higher-energy line; no greedy chamber entry yet
+
+* r7b1_epf 22.565 -> 22.712B: evals 97.89-97.93 (CP7), medians back to 97.8-97.9% in 7 of 9; 5-9 of 9 episodes reach the
+  basement (the 86% failure faded). Energy at 97% progress 2,560-2,653 (control ~2,380), basement entry 2,427-2,588.
+* The loop is shorter and the return leg comes at ~114 s (incumbent ~116.4 s) at x ~3,090 heading west with h_E 1,876-2,408
+  (median ~2,190; the incumbent's ~1,950). It passes under the holes too low and climbs back up the passage into the corridor
+  to z 1,500-1,564 at x 2,150-2,370 - the extra energy is real, it goes the wrong way. 0 greedy chamber entries in ~170
+  eval episodes (tp3's rate was ~0.5%).
+* Probe from three of those return-leg states (h_E 2,284-2,408; replayed inputs + 12 deg yaw noise + 25% key flips, 2.5 s):
+  chamber entries 0, 0, 3 of 1,023 (max z 1,382), none over the rim - the entry is a maneuver (up-slope turn under a hole,
+  then the outward strafe), not a perturbation of this line. The front-perturb band (d <= 2,219-2,436 u, median 97.5%) and
+  the front-temp band (> 97.1%) do cover the loop. Running on: round 6 needed ~1B steps of front-perturb practice before the
+  greedy line entered; this line has ~+240 u more on the return leg.
+* The reservoir's rim-crossing states of ~22.518B were replaced by 22.71B (deepest back at 98.13%).
