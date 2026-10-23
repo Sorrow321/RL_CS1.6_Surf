@@ -279,3 +279,20 @@ learn what energy is worth there before the policy can make it.
   the rows, so that is sound for spawns; it is not an open-loop replay.
 * arm 10 pbr1b2_ge10: arm 9's 617.6M + the spine cut at row 593 (2.7%, chain_dense_593.npy):
   the curriculum can now walk back through the drop, the ledge and the climb to the true start.
+
+### 2026-10-23 18:41 UTC - arm 10 stalls at the next stitch; the warm lineage degraded; arm 11
+
+* arm 10 pbr1b2_ge10 (spine rows 0..593, from arm 9's 617.6M): tau 593 -> 433 fast, then the same
+  oscillation one segment earlier: band [433,448] 0.0%, band [465,...] 100% - rows ~434-465 are
+  the drop off the south ledge ((29,-3045,3490) -> (153,-2997,3591)), another random-burst move
+  the policy does not repeat. Evals 0.413 / 0.406 / 0.417.
+* The chained warm runs DEGRADED the policy: the yaw sigma rose 0.15 (sidistic) -> 0.4 (arm 3)
+  -> 0.75 (arm 4) -> 1.18 (arm 9) -> 2.72 (arm 10, the cap: a random view), and arm 10's training
+  episodes were 100% stall kills. With --time-pen 0 and dead-end spawns the reward barely
+  depends on the view, so ent 0.005 wins. Lesson: restart from clean weights, lower ent.
+* LESSON on Go-Explore chains as curricula: each random-burst move the policy cannot repeat is a
+  wall the backward curriculum oscillates at (0% vs ~100% on the two sides). A chain built from
+  the POLICY's own proposals (beam search) would not have them; a random-burst chain needs its
+  unrepeatable moves cut out or the spine truncated before them.
+* arm 11 pbr1b2_ge11: the clean sidistic transfer (step 0) + recipe + --time-pen 0 --ent 0.002 +
+  the spine cut at row 378 (start -> corner climb -> south ledge, 1.44%), --demo-grow 16.
