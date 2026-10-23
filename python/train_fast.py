@@ -4739,6 +4739,15 @@ def main() -> None:
                          "curriculum trains on new starts beside the "
                          "frontier plus replayed old ones, 200:100 = 2/3. "
                          "0 = off, byte-identical. ckpt restores")
+    ap.add_argument("--demo-success-d", type=float, default=None,   # None = off
+                    help="--demo-file: an episode started from the spine counts as a SUCCESS "
+                         "for the backward curriculum when its ratchet RECORD (the deepest "
+                         "shaping-field distance it reached) comes within this many u of the "
+                         "spine's LAST state's distance, or it crosses the finish (the "
+                         "default rule, unchanged when the flag is absent). A spine that ends "
+                         "short of the goal - a searched line through a hard room - then trains "
+                         "backward to the map start like a finishing one. Needs --race-ratchet. "
+                         "Config only when set; ckpt restores")
     # ---- expert iteration: distil the planner's line (surfgym/bc.py) ----
     ap.add_argument("--bc-file", default=None,
                     help="behaviour-cloning rows from tools/plan_to_bc.py "
@@ -7824,6 +7833,9 @@ def main() -> None:
         if (args.demo_front_frac is None
                 and ck_cfg.get("demo_front_frac") is not None):
             args.demo_front_frac = float(ck_cfg["demo_front_frac"])
+        if args.demo_success_d is None and ck_cfg.get("demo_success_d") is not None:
+            args.demo_success_d = float(ck_cfg["demo_success_d"])
+            restored.append(f"demo_success_d={args.demo_success_d:g}")
         if args.int_view is None and ck_cfg.get("int_view") is not None:
             args.int_view = int(ck_cfg["int_view"])
             restored.append(f"int_view={args.int_view}")
@@ -11344,6 +11356,12 @@ def main() -> None:
               f"window {args.demo_window}, advance/backoff at "
               f"{args.demo_rate:.0%} window finish rate "
               f"(demo replaces the reservoir share of the pool)")
+        if args.demo_success_d is not None:
+            if not args.race_ratchet:
+                raise SystemExit("--demo-success-d reads the ratchet record: it needs "
+                                 "--race-ratchet")
+            if args.maps:
+                raise SystemExit("--demo-success-d is single-map")
         if float(args.demo_front_frac) > 0.0:
             print(f"--demo-front-frac {args.demo_front_frac:g}: that share of "
                   f"the demo draws comes from the frontier band [tau,tau+"
@@ -14296,6 +14314,9 @@ def main() -> None:
         # --demo-front-frac: dumped only when on (a flag-off run.json is the
         # control's byte for byte); a resume restores it
         meta["config"]["demo_front_frac"] = float(args.demo_front_frac)
+    if args.demo_file and args.demo_success_d is not None:
+        # --demo-success-d: dumped only when set; a resume restores it
+        meta["config"]["demo_success_d"] = float(args.demo_success_d)
     if args.race_sr:
         # --race-sr: dumped only when on, so a flag-off run.json is the
         # control's byte for byte (test_int_split's identity check)
@@ -15216,6 +15237,14 @@ def main() -> None:
               f"mean 1 per group. Watch tail/n_med: if it falls under "
               f"{args.tail_min_n} the groups are too fine to estimate a tail")
     demo_idx = np.full(N, -1, np.int64)   # demo index of each env's start
+    DEMO_END_D = None                     # --demo-success-d: the spine end's d + margin
+    if demo is not None and args.demo_success_d is not None:
+        _df = slots[0].reward_field if slots[0].reward_field is not None else slots[0].goal_field
+        _de = float(_df.sample(np.asarray(demo.S[-1]["origin"], np.float64)[None])[0])
+        DEMO_END_D = _de + float(args.demo_success_d)
+        print(f"--demo-success-d {float(args.demo_success_d):g}: a spine episode succeeds when "
+              f"its record reaches d <= {DEMO_END_D:,.0f} (the spine end's {_de:,.0f} + "
+              f"{float(args.demo_success_d):g}) or it finishes")
     b_logp = torch.zeros((T, N), device=device)
     b_val = torch.zeros((T, N), device=device)
     b_rew = torch.zeros((T, N), device=device)
@@ -18409,6 +18438,12 @@ def main() -> None:
                             # same stash-and-attribute, in demo-index space
                             ei = np.flatnonzero(ended)
                             goal_now = fleet.goal_hits().astype(bool)[ei]
+                            if DEMO_END_D is not None:
+                                # --demo-success-d: the ended episodes' records as they stood
+                                # before this call re-anchored them on the new spawns
+                                _rb = getattr(slots[0].reward_fn, "_rec_boot", None)
+                                if _rb is not None:
+                                    goal_now = goal_now | (np.asarray(_rb)[ei] <= DEMO_END_D)
                             known = demo_idx[ei] >= 0
                             if known.any():
                                 demo.note_outcomes(demo_idx[ei][known],
