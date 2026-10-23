@@ -338,3 +338,9 @@ SELF_STATES/CKPT/ARM_RESUME/SCRATCH). Nothing else changes in box.py.
   never be met there and the window never left. Fixed (659c788): the bar is capped at the way
   to the set's deepest row (reaching the end of the known route is a success - Salimans &
   Chen's own criterion). `pbr1b3_sgx3` = resume of sgx2's 342.9M with the fix.
+* 19:51 `pbr1b3_sgx3`'s window held at the deep end at 0.17-0.18 success over 3,300 episodes
+  (the search's last states are free falls: they never get much easier). Added (81cf557): a
+  window holding >= half the 0.2 bar for 10 x min_ep episodes since its last move advances too
+  (its rows stay in the passed-row draws); below half it still backs off. `pbr1b3_sgx4` =
+  resume of sgx3's 362.3M with that rule. sgx1's ckpt_latest (334.5M) is being pulled as the
+  hand-on insurance for the 0.613 eval (~50 min at the box's 22 KB/s).
