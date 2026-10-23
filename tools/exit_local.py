@@ -417,8 +417,10 @@ def main() -> int:
                 shutil.copyfile(final, best_mean_ck)
                 row["gate"] = "accepted"
                 rejects_in_row = 0
-                log(fh, f"round {r}: gate ACCEPTED (mean {mean:.2f} s vs {bar:.2f} s, all {n} "
-                        f"finished) -> {best_mean_ck}")
+                why = (f"grader {row['score']['challenger']} vs {row['score']['incumbent']}, "
+                       f"{len(fins)}/{n} finished" if args.gate_rule == "score"
+                       else f"mean {mean:.2f} s vs {bar:.2f} s, all {n} finished")
+                log(fh, f"round {r}: gate ACCEPTED ({why}) -> {best_mean_ck}")
                 if args.target_mean is not None and mean <= args.target_mean:
                     target_hit = True
                     row["target_reached"] = True
@@ -428,8 +430,10 @@ def main() -> int:
                 nxt = best_mean_ck
                 row["gate"] = "rejected"
                 rejects_in_row += 1
-                log(fh, f"round {r}: gate rejected (mean {mean:.2f} s vs {bar:.2f} s)"
-                        f" - the next round plans from {best_mean_ck}")
+                why = (f"grader {row['score']['challenger']} vs {row['score']['incumbent']}"
+                       if args.gate_rule == "score" else f"mean {mean:.2f} s vs {bar:.2f} s")
+                log(fh, f"round {r}: gate rejected ({why}) - the next round plans from "
+                        f"{best_mean_ck}")
                 if (args.lr_halve_after and rejects_in_row >= args.lr_halve_after
                         and lr_now > args.lr_min):
                     lr_now, rejects_in_row = max(args.lr_min, lr_now / 2.0), 0
