@@ -3009,3 +3009,12 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   2 s, ANALYSIS ONLY): 383-494 of 1,023 enter the chamber (the entry is robust from there), apex p50 1,382, max 1,440-1,462,
   0 over the rim. So the line is ~+120-180 u of energy at the hole short of the rim - more training (a cleaner hole
   passage, a cheaper loop) or more energy upstream, not a different maneuver.
+
+### 06:10 UTC: arm 3 at +580M (23.02B) - training enters every iteration; the greedy line ~1%
+
+* r7b1_epf 22.86-23.02B: evals 97.87-98.09 (one more greedy chamber entry at 22.949B, apex 1,263); greedy entries 3 in ~300
+  eval episodes since 22.7B. Energy at 97.8% progress 2,567-2,676, basement arrival ~2,550-2,670 (control ~2,320).
+* Training side: since 22.76B EVERY iteration has a front-perturb episode at chamber depth (fpert best >= 97,760 u; 5-78% of
+  iterations before), with rim-depth episodes (>= 98,260 u) and finishes now and then (901 front-perturb finishes in 64k, 2 in
+  the last ~100M steps). Round 6's fp3 had the same ramp before its greedy entries; the greedy line lags training by
+  100-500M steps in this lineage. 80k steps/s average with evals on this box. Running on unchanged; box extended to ~10:05.
