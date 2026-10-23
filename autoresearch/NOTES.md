@@ -2911,3 +2911,16 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
 * Not mine to change (the daemon and its environment are the operator's). Workaround on this branch: the
   rent loop only rents while `box.py budget` shows fewer than 4 live boxes. Fix for the operator: restart the
   daemon with RLSURF_MAX_BOXES=5 (CLAUDE.md: restart the daemon after a policy change).
+
+### 06:05 UTC: entry vs no entry on the greedy return leg (incumbent eval, ANALYSIS ONLY)
+
+* The one entry (ep 2) returns west on the **-y** face (y ~ -500) with h_E ~1,950-2,060, turns UP-SLOPE early -
+  at x ~2,985 -> 2,764 (116.6-116.8 s: vy -> +599 inward, vz +630) - then strafes outward at x ~2,500 (117.2 s:
+  vy -938) and rises through the -y hole (x 2,502-2,583, z 1,211-1,294).
+* The misses: ep 7 / ep 8 return on the **+y** face (h_E ~1,760-1,850) and make the same up-slope turn ~300-450 u
+  further WEST (x ~2,260-2,480, west of the hole's x 2,490-2,670): the rise carries them up the PASSAGE toward
+  the corridor (z 1,306-1,417 at x ~2,340-2,410) instead of through the hole; ep 5 (+y, h_E ~1,725) turns
+  inward to the centre (y ~50) between the holes and falls; ep 6 sits on a ledge at (2,385, -330, 1,010).
+* So the greedy entry is a TIMING choice on the return leg (turn up-slope ~0.3 s earlier, east of x ~2,600)
+  plus ~100-200 u more energy; with the same turn 0.3 s late the line climbs the passage (the probes' x1.3
+  episodes did exactly this, higher).
