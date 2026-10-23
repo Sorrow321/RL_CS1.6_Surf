@@ -3161,3 +3161,84 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   is 115.99 s). Training front-perturb finishes 15-35 per 10k through the run (the lower LR held them).
 * Weights: lr2's snapshots ckpt_25695354880 (61M before the 107.227 eval) and ckpt_25795493888 (39M after) pulled and
   md5-checked (a841e246... / d8f57ccb...).
+
+## ROUND 7 LESSON (r7b2) - written at wrap-up, 13:55 UTC
+
+**Result:** best greedy eval from the true start **107.228** (r7b2_lr2 at 26,354,384,896: 1 of 9 episodes finishes in
+**116.49 s**; score = 100 + 10 x 1/9 + 10 x (1 - 116.49/300)). **The lineage's first greedy finishes**, in three runs of
+the same weights: bel 107.176 (25,448,939,520, 118.05 s), lr1 107.140 (25,480,396,800, 119.14 s), lr2 107.151
+(25,700,073,472, 118.79 s), 107.227 (25,756,696,576, 116.52 s) and 107.228 (26,354,384,896, 116.49 s; the human WR is
+115.99 s). Incumbent 98.315 (r6b2_tp3's 98.421 re-scored on the no-corner-cut field), 0 finishes in the lineage before
+this round. Every eval of the round is valid (score.py; 285 / 285 in lr2).
+
+**Per-run bests (score.py, all evals valid):** ctl 97.913 | en1 97.928 | ef1 98.366 | ef2 98.462 | fs16 96.600 | ef15
+98.478 | eb3 98.430 | **bel 107.176** | **lr1 107.140** | **lr2 107.228** (ef3, 3 min from CP6-locked weights: 96.6).
+
+**The lineage of the finishing weights** (all warm, from the incumbent r6b2_tp3 22,217,752,576; every tp3 flag restored):
+ef1 (`--energy-pot 1 --energy-pot-front 0.01 --critic-warmup 20`, 22.22 -> 23.01B) -> ef2 (`--energy-pot 2`, to its
+healthy snapshot 23,912,251,392) -> ef15 (`--energy-pot 1.5`, 23.91 -> 24.33B) -> eb3 (`--energy-pot 3
+--energy-pot-front-bonus 1`, 24.33 -> 24.79B) -> **bel** (`--respawn-backward-elev -60 60`, 24.79 -> 26.16B; the finish
+at 25.449B) -> lr1 (bel's 25,394,937,856 + `--lr 1e-4`; 107.140 at 25.480B) -> **lr2** (lr1's 25,495,076,864 + `--lr 5e-5`;
+107.151 at 25.700B, 107.227 at 25.757B, **107.228** at 26.354B).
+
+**What worked (all NEW this round, default off, bit-identical when off, CPU-tested, TRAIN_ONLY for record_ckpt):**
+1. **`--energy-pot K`**: a potential on the ENERGY HEIGHT h = z + |v|^2 / (2 g), paid as its change every call (the
+   --speed-pot form; GoldSrc's half-step gravity keeps h exactly in free fall, so only what the map takes - contacts,
+   friction, bad strafes - is charged and only air acceleration / jumps are paid). Diagnosis behind it (measured on
+   the incumbent's greedy line): the line strafed in only ~20-33 u/s of h (the per-frame optimum is ~56) and lost
+   300-2,000 u per 10 s at ramp contacts; the last gate was energy-limited.
+   * ALONE (en1, no latch) the line kept +200-250 u to the basement and then **dove into the basement kill floor** in
+     every episode (a free fall into a kill trigger costs no energy, a loop destroys ~1,300 u): the death-is-cheapest
+     failure of any per-step cost when nothing finishes.
+2. **`--energy-pot-front B`**: the term is paid only until the episode's record reaches the frontier band (the
+   --front-temp rule on the policy's own reservoir; a latch): energy carried TO the frontier counts, spending it there
+   is free. ef1: +150-250 u at the basement, the loop kept, greedy chamber entries 0.4% -> 1.9-2.5%, 98.366.
+   * At K 2 (ef2) the line LOCKED into the deep-dip death (CP6, 96.5%) after ~1B steps: before the band the price
+     still rewards dying before a costly stretch (the dip: ~600 u x K vs ~1.8 of value after it). K 1.5 held (ef15:
+     98.478, entries 3.8%).
+3. **`--energy-pot-front-bonus 1`**: pay nothing on the way; once, on the call the record enters the band, pay K x
+   |v|^2 / (2 g) / 1000 (the kinetic part: origin-free). Dying before the band forfeits it, so no stretch is ever the
+   cheaper death. eb3 (K 3): **all 74 evals CP7**, basement 61-69%, entries 5-11% - but no higher, exits too flat.
+4. **`--respawn-backward-elev LO HI`** (the backward sampler's elevation clamp as a flag, default -60 30): measured, all
+   48 sampled goal-anchored rows at the basement hole sat at exactly +30 deg (the field's descent there climbs
+   steeper), so the backward-mix rows only ever demonstrated FLAT exits. With -60 60 (bel): the steepest greedy exit
+   565 -> 628 -> 721 u/s, real front-perturb finishes 1.9 -> 9.4 -> 16.5 -> 26 -> 45 per 10k, an episode over the rim
+   via the chamber's east-wall ramp (z 1,603), and **the finish ~650M steps after the change**: up the -y face (vz 961),
+   out of the -y hole at vz 761, over the rim at (2,975, -363, 1,564), down the funnel, the finish at 118.04 s.
+5. **LR cuts on the peak weights** (the skate_laby lesson): `--lr 1e-4` from bel's 25.39B reproduced a finish ~85M steps
+   after the restart (lr1, 107.140); `--lr 5e-5` from lr1's post-finish 25.495B gave two more (lr2: 118.79 s, 116.52 s)
+   and held the training finishes at 15-35 per 10k where bel's faded to 2-8.
+
+**What did not work / caveats:**
+* The endgame skill was TRANSIENT in bel: entries and training finishes peaked at 25.25-25.74B and fell (45 -> 2-8 per
+  10k) as finishes were harvested and the reservoir's deepest state (hence the front-perturb band) moved into the
+  chamber - round 6's band drift. lr1 (lower LR) faded more slowly (38 -> 6). A band anchored to something that
+  cannot drift with success is still the open fix.
+* fs16 (front-perturb x1.0-1.6) started from ef2's already CP6-locked weights - its null is confounded.
+* ~40% of greedy episodes still die before 100 s (the CP5 point at ~86%): the median eval progress is ~86-98%, so the
+  finish FRACTION (10 x frac in the score) is the next lever, not the time.
+
+**For a next lineage:** resume r7b2_lr2/ckpt_latest.pt (26,392,133,632, md5 0b42195b..., 38M steps after the 107.228
+eval; also local: ckpt_25695354880 / ckpt_25795493888 around the 107.227 one) - every flag above restores, the LR is
+5e-5; keep the LR low (1e-4 or less) once it finishes; fix the band drift; then the
+early-death points (CP5 ~86%) for the finish fraction; then a time cost for speed (the time term is worth only 10 x
+(1 - t/300)).
+
+**Ops:** box 57308519 (RTX 5080 + Ryzen 9 9950X3D, Netherlands, machine 153021, $0.535/h), 02:30 -> wrap-up (~11 h,
+~$6); 185k steps/s cumulative with evals every 6.25M (130k at 3.125M). `box.py deploy` of a branch not yet on GitHub
+fails (push first); on a busy box it updates the checkout and fails only the GPU check (as before). Quoted heredocs
+for NOTES (an unquoted one executed a backticked flag); take the heading time from `date` in the same command.
+
+## Wrap-up (r7b2) - 2026-10-23 13:55 UTC
+
+* Final: RESULT.json `"final": true`, score **107.228** (r7b2_lr2, eval traj_26354384896: 9 episodes, best 100%, 1 finish
+  in 116.49 s, median 97.91%, CP7; re-scored at wrap-up, 285 / 285 valid evals in the run).
+* Hand-on checkpoint: /home/steam/ar/runs/r7b2/r7b2_lr2/ckpt_latest.pt (26,392,133,632, md5
+  0b42195b19e716d37c459ae380c9c443), saved when the run was stopped at wrap-up and md5-checked against the box. Also local
+  (md5-checked): r7b2_lr2/ckpt_25695354880 / ckpt_25795493888, r7b2_lr1/ckpt_25495076864, r7b2_bel/ckpt_25394937856 /
+  ckpt_25495076864, r7b2_ef15/ckpt_stop.pt, r7b2_ef1/ckpt_stop.pt.
+* Evals pulled incrementally by scp (box.py pull re-tars every eval: 2.9 GB for lr2) together with run.json,
+  progress.csv and the launch logs.
+* Code: d77c580 is the last code change (--energy-pot, --energy-pot-front, --energy-pot-front-bonus,
+  --respawn-backward-elev, all default off and bit-identical when off); later commits are notes and RESULT.
+* Box 57308519 released at wrap-up (below).

@@ -1,14 +1,14 @@
 {
  "agent": "r7b2",
  "round": 7,
- "final": false,
+ "final": true,
  "best": {
-  "score": 107.227,
-  "eval_file": "/home/steam/ar/runs/r7b2/r7b2_lr2/traj_25756696576.jsonl",
+  "score": 107.228,
+  "eval_file": "/home/steam/ar/runs/r7b2/r7b2_lr2/traj_26354384896.jsonl",
   "run": "r7b2_lr2",
-  "step": 25756696576,
-  "ckpt": "/home/steam/ar/runs/r7b2/r7b2_lr2/ckpt_25795493888.pt",
-  "ckpt_note": "the eval's weights lie between the run's snapshots ckpt_25695354880 (61M steps before) and ckpt_25795493888 (39M after), both pulled and md5-checked",
+  "step": 26354384896,
+  "ckpt": "/home/steam/ar/runs/r7b2/r7b2_lr2/ckpt_latest.pt",
+  "ckpt_note": "r7b2_lr2's last weights, step 26,392,133,632, md5 0b42195b19e716d37c459ae380c9c443 (saved when the run was stopped at wrap-up; md5 matches the box). Also local: the snapshots bracketing its 107.227 eval (ckpt_25695354880 / ckpt_25795493888) and bel's around the first finish (r7b2_bel/ckpt_25394937856 / ckpt_25495076864). A bare resume restores every flag (energy_pot 3, energy_pot_front 0.01, energy_pot_front_bonus 1, respawn_backward_elev -60 60, and the tp3 recipe); lr is 5e-5 in the optimizer state.",
   "recipe": [
    "--lr",
    "5e-5",
@@ -17,8 +17,8 @@
    "--ckpt-every",
    "1e8"
   ],
-  "resume_from": "r7b2_lr1 ckpt_25495076864 (lr 1e-4) <- r7b2_bel ckpt_25394937856 (--respawn-backward-elev -60 60) <- r7b2_eb3 (--energy-pot 3 --energy-pot-front-bonus 1) <- r7b2_ef15 (--energy-pot 1.5 --energy-pot-front 0.01) <- r7b2_ef2 ckpt_23912251392 <- r7b2_ef1 <- incumbent r6b2_tp3 (22,217,752,576)",
+  "resume_from": "r7b2_lr1 ckpt_25495076864 (--lr 1e-4) <- r7b2_bel ckpt_25394937856 (--respawn-backward-elev -60 60) <- r7b2_eb3 (--energy-pot 3 --energy-pot-front-bonus 1) <- r7b2_ef15 (--energy-pot 1.5 --energy-pot-front 0.01) <- r7b2_ef2 ckpt_23912251392 (--energy-pot 2) <- r7b2_ef1 (--energy-pot 1 --energy-pot-front 0.01) <- incumbent r6b2_tp3 (22,217,752,576)",
   "commit": "d77c580"
  },
- "summary": "GREEDY FINISHES: best 107.227 (r7b2_lr2 at 25.757B: 1/9 episodes finish from the true start in 116.52 s); four greedy finishes in all (107.176 bel 118.05 s, 107.140 lr1, 107.151 lr2, 107.227 lr2); incumbent 98.315, 0 finishes before this round. NEW --energy-pot (energy-height potential) + --energy-pot-front (priced only up to the frontier band) + --energy-pot-front-bonus (paid once at the band edge): +300 u of energy into the basement, greedy chamber entries 0.4% -> 10-13%. NEW --respawn-backward-elev -60 60: the goal-anchored rows at the basement hole were all clamped to +30 deg; allowed to climb, real frontier-row finishes rose 1.9 -> 26-45 per 10k and the greedy line finished. LR cuts (1e-4, 5e-5) on the peak weights reproduced the finishes."
+ "summary": "GREEDY FINISHES - the lineage's first: best 107.228 (r7b2_lr2 at 26.354B: 1/9 episodes finish from the true start in 116.49 s); finishes in bel (107.176, 118.05 s), lr1 (107.140) and lr2 (107.151, 107.227 at 116.52 s, 107.228); incumbent 98.315, 0 finishes before. NEW --energy-pot (energy-height potential z + |v|^2/2g) + --energy-pot-front (priced only up to the frontier band) + --energy-pot-front-bonus (paid once at the band edge as K x kinetic energy, so no stretch is a cheaper death): +300 u of energy into the basement, greedy chamber entries 0.4% -> 10-13%. NEW --respawn-backward-elev -60 60: the goal-anchored rows at the basement hole were all clamped to +30 deg; allowed to climb, real frontier-row finishes rose 1.9 -> 26-45 per 10k and the greedy line finished ~650M steps later. LR cuts (1e-4, 5e-5) on the peak weights reproduced the finishes. Next: the finish FRACTION (~40% of episodes still die before 100 s) and the front-perturb band drift that made the first endgame transient."
 }
