@@ -3064,3 +3064,12 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
   12.5M. The arm this round would have run first with hindsight: the energy credit gated at the frontier from the start, so the
   basement suicide is never learned and the arrival mix can stay ~50/50. Read-outs: the energy at 97% (ep1: +200 u in ~140M
   steps), the arrival mix, greedy entries.
+
+### 07:45 UTC: arm 5 r7b1_gate at +140M - energy up as in ep1, loop intact, one entry (98.155)
+
+* r7b1_gate 22.218 -> 22.356B: evals 97.89-97.92 and **98.155** (22.319B: a greedy chamber entry, apex 1,275, from a +y arrival).
+  Energy at 97% progress 2,346-2,419 (the first evals) -> 2,485-2,579 (22.28-22.34B), the ep1 gain without ep1's suicide: no
+  0.5 s basement deaths beyond the control's own rate, loops of 2-30 s.
+* Arrivals 12 +y / 33 -y over 11 evals (control 7 / 8): the energy term still shifts the passage approach toward the -y side.
+  The arrival side is the phase of the corridor's zig-zag at the passage (e.g. the incumbent's ep 2: y +214 -> +106 -> +135 ->
+  +257 -> +406 over 113.4-114.0 s), so any upstream route change moves it. Running on.
