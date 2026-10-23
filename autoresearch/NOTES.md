@@ -361,3 +361,32 @@ resample every 25 decisions. On a box it runs as it does locally (CPU physics + 
   path at z ~3500, ~150 u above the floor where every line stops).** Running: beam_tas waves
   from the true start with the bc2 checkpoint (it passes the start itself), 60 s cap, eps 0.15,
   seeds 11-13 - can the population find the way out of the chamber?
+
+### 21:29 UTC - 3.230; the CHAMBER (the next gate) mapped: a kill floor under a deceptive U-turn
+
+* pbr1b4_bc2: 3.226 (2.955B, median 3.2%) and **3.230 (3.030B, 8/9 greedy episodes in the
+  chamber)**; RESULT.json -> 3.230 with ckpt_3029336064.pt (the watcher's snapshot 1M steps
+  before the eval, pulled).
+* Chamber search waves (bc2 proposer, 60 s cap, eps 0.15): seeds 11-13 with --score d and
+  seeds 14-16 with the new **`--score e`** (energy height z + |v|^2/2g as the tie-break inside a
+  --arc-quant 256 bin; commit on this branch) all stall at arc ~2,995-3,013 u by 10-17 s and
+  make no progress in the remaining ~45 s.
+* **The chamber, from the core (standing-hull slices + down traces; the record is analysis
+  only):** an H - a central corridor (y -3100..-2900, ceiling ~3548) with a SOUTH pocket
+  (y -3375..-3200, ceiling ~3410) and a NORTH pocket (y -2800..-2625), walled from the corridor
+  except at the east end (x 850-1050, sloped walls n_z ~0.66 = surf faces). The floor is flat at
+  origin z ~3332 everywhere east of x ~760; the north pocket steps down to 3172 at its west end,
+  the exit (250, -2650). **A trigger_teleport [451..762] x [-3393..-2605] x [3207..3360] spans
+  the chamber's width at floor level**: standing on the floor there puts the hull in it. Every
+  greedy episode stops at P (808, -3290, 3370), the south pocket just EAST of that kill floor
+  (field d 55,308); the south pocket's west part (d 54,926 at x 500) is walled at x 750-800
+  below z ~3500. The record's line: ~920 u/s out of the drop from the tunnel, east along the
+  corridor rising to z ~3520, the U-turn north through the east connection (the sloped walls),
+  then WEST along the north pocket at z 3470-3520 - over the kill floor - and out at x ~250.
+  The field says go west from P (d falls) and the U-turn east costs +265 u of d. So: an energy
+  gate (carry ~900 u/s from the drop, surf, cross 300 u above a kill floor) under a deceptive
+  U-turn. Our line crawls out of the tunnel at ~200 u/s and lands on the flat floor.
+* What could pass it (not tried this round): a search ranked by energy from the TUNNEL EXIT with
+  lineages that leave the tunnel fast; spawns in the drop with the record-like speed are NOT
+  allowed (record-derived); generic speed sources are the drop itself (~760 u/s vertical) and a
+  ramp landing that converts it.
