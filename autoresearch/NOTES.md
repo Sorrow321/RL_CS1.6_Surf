@@ -3140,3 +3140,63 @@ deadline + H. Local CPU probes competed with other branches' jobs (load ~11 on 4
 * r7b1_gate3 22.856 -> 22.954B: entries 98.344, 98.278/98.291 (two in one eval), 98.401, 98.372, 98.413 - every one from a +y arrival
   (h_E 2,485-2,582 at the basement entry), apex z 1,352-1,433 with h_E 1,777-1,953 left at the apex: the loop + entry costs
   ~600-700 u, the last obstacle between these entries and the rim (~2,200 at the apex would clear it). Best still 98.493 (gate2).
+
+## ROUND 7 LESSON (r7b1) - written at wrap-up, 2026-10-23 13:45 UTC
+
+**Result:** best greedy eval from the true start **98.493** (r7b1_gate2 at 22,673,883,136; incumbent re-scored 98.315 on the goalc field): a greedy
+entry into the funnel chamber that turns inward over the funnel to apex z ~1,470 at |y| 241 - 51 u outside the opening, ~80 u under
+the wall top. 0 finishes. Hand-on checkpoint: /home/steam/ar/runs/r7b1/r7b1_gate2/ckpt_latest.pt (22,856,335,360, md5 61c0e6ec36d9b9719a4255c34d4f0238).
+
+**What was built (default off, bit-identical when off, CPU-tested, record_ckpt TRAIN_ONLY):**
+* `--energy-pot C`: potential-based shaping on the mechanical energy height h_E = z + |v|^2 / (2 g), Phi = C x scale (100/d0)
+  x h_E, paid per call as its change - a hard landing or wall hit is charged when the energy is lost, strafing gains are paid, a
+  climb at constant energy pays nothing (unlike --speed-pot). Generic: physics, one constant.
+* `--energy-pot-front B`: the term stops for the rest of an episode once its record is in the frontier band (progress >= (1 - B)
+  x the reservoir's deepest, the --front-temp rule). Needed because the plain (non-terminal) potential's objective is progress +
+  C x (energy at death): it PAYS for dying with energy wherever progress is slow - measured twice: C = 2 made the line die at the
+  bottom of the deep dip (96.5%, 8 evals), C = 1 made every basement arrival drop into the outer channel within 0.5 s. A Grzes
+  terminal charge would remove that but also cancels the term entirely once the critic has learned -C scale h_E (the critic sees
+  the absolute position): no lasting push.
+
+**What it did:**
+* The incumbent's greedy line reached the basement with h_E ~2,320 in every run of rounds 6-7 (2,310-2,396); with `--energy-pot 1
+  --energy-pot-front 0.01` it carries ~2,580 at 97% progress (+200-270 u) and arrives ~2 s sooner, with the basement loop intact.
+* Greedy chamber entries became regular: gate (from the incumbent, evals every 12.5M) 4 in 30 evals (98.155, 98.349, 98.123,
+  98.451), gate2 (evals every 6.25M) 3 in 34 (98.493, 98.390, 98.392), gate3 ~9 in 91 (best 98.413), ep15 (C = 1.5) 1 in 33. The apex rose
+  1,275 -> 1,470 and the entries now turn INWARD over the funnel (round 6's flew along the outer wall).
+* One REAL training episode crossed the rim (22.518B in epf) -> a burst of 821 front-perturb finishes in ~10M steps.
+
+**What did not work / what limits it:**
+* Probe (analysis only: own greedy states, exact state reconstruction, replayed inputs + noise): the line is LOCALLY energy-optimal at
+  every big impact (perturbed survivors keep at most +30-120 u); the deep dip's ~800 u loss is intrinsic to the route; from the
+  line's own pre-hole states 40-50% of perturbed flights enter the chamber but none clears the rim (apex <= 1,462).
+* The entries need a +y ARRIVAL (the -y return leg): the policy is not mirror-equivariant and has the entry skill only on the -y
+  return; from its own +y return-leg states it never enters at x1.0-1.2 speed (probe). The energy term shifts arrivals to -y
+  (control ~50/50; C = 1 ~1:5; C = 1.5 ~1:30) - the main reason C = 1.5 made fewer entries.
+* The basement loop + entry costs ~600-700 u (arrival ~2,550 -> apex ~1,900); a rim crossing needs ~2,200 at the apex.
+* fp15 (front-perturb band 0.01, x1.0-1.5): the wider band diluted the frontier rows (chamber-depth rows 2-27 of 50 iterations vs
+  every iteration), 0 greedy entries. `--act-every 2` on the incumbent (no training): +60-80 u, one of three episodes broke early.
+
+**For a next lineage:** the energy-shaped line is ~100 u (apex) short of the rim and enters only from one side. Levers: an entry
+skill on the +y return (or a line that keeps the +y arrival), a cheaper basement loop (the energy term is off there by design -
+only the finish's value can price energy at the hole), the energy credit gated by frontier band instead of death (as built).
+
+**Ops:** box 57307538 (RTX 3090 + AMD EPYC 7502, Thailand, $0.35/h): ~115k steps/s training-only, greedy evals 60-90 s each (2x
+the 5080 boxes) - with evals every 12.5M ~80k steps/s average. The no-corner-cut field must be baked before the first launch on a
+new box (the record gate times out at 420 s on a 3090 while it bakes). `box.py launch --steps` is a DELTA on a resume.
+
+**Per-run bests (score.py):** ctl 97.973 | ep2 97.912 | ep1 97.977 | epf 98.393 | fp15 97.977 | gate 98.451 | **gate2 98.493** | ep15
+98.416 | gate3 98.413.
+
+**Lineage of the best run:** incumbent r6b2_tp3 (22,217,752,576) -> r7b1_gate (+ `--energy-pot 1 --energy-pot-front 0.01
+--critic-warmup 20`, evals every 12.5M) -> r7b1_gate2 (bare resume, evals every 6.25M). Code: commit e369987 (--energy-pot,
+--energy-pot-front, tests/python/test_energy_pot.py: 12 tests incl. flag-off bit-identity of the reward module and the trainer).
+
+## Wrap-up (r7b1) - 2026-10-23 13:45 UTC
+
+* Final: RESULT.json `"final": true`, score **98.493** (r7b1_gate2, eval traj_22673883136: 9 episodes, best 98.49%, median 97.7%, 0
+  finishes, CP7; re-scored at wrap-up, 33 of 33 valid evals in the run).
+* Hand-on checkpoint: /home/steam/ar/runs/r7b1/r7b1_gate2/ckpt_latest.pt (22,856,335,360, md5 61c0e6ec36d9b9719a4255c34d4f0238), pulled
+  after the run was stopped and md5-checked against the box again at wrap-up. Also local: r7b1_gate/ckpt_22618308608.pt (md5
+  5771b9f5..., 22.6M steps after the 98.451 eval), r7b1_epf/ckpt_22745186304.pt (md5 11e0257a..., 10M steps after the 98.393 eval).
+* Box 57307538 (RTX 3090 + EPYC 7502, $0.35/h), 02:17 -> 13:45 UTC - released at wrap-up.

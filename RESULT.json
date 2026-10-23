@@ -1,13 +1,14 @@
 {
  "agent": "r7b1",
  "round": 7,
- "final": false,
+ "final": true,
  "best": {
   "score": 98.493,
   "eval_file": "/home/steam/ar/runs/r7b1/r7b1_gate2/traj_22673883136.jsonl",
   "run": "r7b1_gate2",
   "step": 22673883136,
-  "ckpt": "/home/steam/ar/runs/r7b1/r7b1_gate2/ckpt_latest.pt (r7b1_gate2's final weights, step 22,856,335,360, md5 61c0e6ec36d9b9719a4255c34d4f0238, pulled and md5-checked)",
+  "ckpt": "/home/steam/ar/runs/r7b1/r7b1_gate2/ckpt_latest.pt",
+  "ckpt_note": "r7b1_gate2's final weights, step 22,856,335,360, md5 61c0e6ec36d9b9719a4255c34d4f0238 (pulled after the run was stopped; md5 re-checked against the box at wrap-up). A bare resume restores --energy-pot 1 --energy-pot-front 0.01 and the incumbent recipe (time_pen 0.001, front-perturb 0.25 / 0.005 / turn 90 / x1.0-1.3, front-temp 1 / 0.01, novel 0.2, backward-mix 0.1, greedy 0.25 + stuck 200, T cap 0.2, pitch floor 0.05, nocut field).",
   "recipe": [
    "--energy-pot",
    "1",
@@ -23,5 +24,5 @@
   "resume_from": "r7b1_gate (22,654,484,480) <- incumbent r6b2_tp3 (22,217,752,576)",
   "commit": "e369987"
  },
- "summary": "98.493 (r7b1_gate2 at 22.674B; incumbent 98.315): a greedy entry through the -y hole, inward over the finish funnel to apex z 1,470 at |y| 241 - 51 u outside the opening and ~80 u under the wall top. The arm: incumbent + NEW --energy-pot 1 (potential on the energy height z + |v|^2/2g) + NEW --energy-pot-front 0.01 (the energy term stops once an episode's record is in the frontier band; the plain potential pays the energy left at death: C=2 died at the deep dip, C=1 died in the basement at once). The greedy line carries ~+200 u to 97% progress (~2,580 vs ~2,380); greedy entries 98.155 / 98.349 / 98.123 / 98.451 / 98.493 / 98.390 with apex 1,275 -> 1,470. Entries need a +y arrival (-y return leg); the energy term biases arrivals to -y (~5:1). Probes: the line is locally energy-optimal at every impact; from its +y return leg the policy has no entry at any speed."
+ "summary": "98.493 (r7b1_gate2 at 22.674B; incumbent re-scored 98.315): a greedy entry into the funnel chamber that turns inward over the funnel to apex z 1,470 at |y| 241 - 51 u outside the opening, ~80 u under the wall top; 0 finishes. NEW --energy-pot C (potential on the energy height z + |v|^2/2g) + NEW --energy-pot-front B (the term stops once an episode's record is in the frontier band; the plain potential pays the energy left at death: C=2 died at the deep dip, C=1 died in the basement at once). From the incumbent, --energy-pot 1 --energy-pot-front 0.01 carries ~+200-270 u to 97% progress (~2,580 vs ~2,380) with the loop intact; greedy chamber entries became regular (gate 4/35 evals, gate2 3/33, gate3 ~9/91; apex 1,275 -> 1,470). Limits: entries only from a +y arrival (the -y return leg; the energy term biases arrivals to -y, C=1.5 more so: 1/33); the basement loop + entry costs ~600-700 u; the line is locally energy-optimal at every impact (probe)."
 }
