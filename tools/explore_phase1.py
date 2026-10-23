@@ -142,8 +142,11 @@ class CellHash:
     """
 
     def __init__(self, mins, maxs, cell: float = 256.0, view: int = 0,
-                 speed: int = 0, speed_max: float = 3500.0) -> None:
+                 speed: int = 0, speed_max: float = 3500.0, speed3d: bool = False) -> None:
         self.mins = np.asarray(mins, np.float64)
+        # speed3d: bucket |v| (3D) instead of the horizontal speed - with the position cell it
+        # stands for the energy height z + |v|^2/2g, which is what a half-pipe or a ramp gates on
+        self.speed3d = bool(speed3d)
         self.cell = float(cell)
         self.view = int(view)
         self.speed = int(speed)
@@ -174,7 +177,9 @@ class CellHash:
             key = key * self.view + yb
         if self.speed > 0:
             v = states["velocity"]
-            sb = (np.hypot(v[..., 0], v[..., 1]) // self.speed_bin).astype(np.int64)
+            sp = (np.sqrt(v[..., 0] ** 2 + v[..., 1] ** 2 + v[..., 2] ** 2) if self.speed3d
+                  else np.hypot(v[..., 0], v[..., 1]))
+            sb = (sp // self.speed_bin).astype(np.int64)
             np.clip(sb, 0, self.speed - 1, out=sb)
             key = key * self.speed + sb
         return key
@@ -778,7 +783,8 @@ def explore(args) -> int:
 
     mins, maxs = core.map_bounds()
     hasher = CellHash(mins, maxs, cell=args.cell, view=args.cell_view,
-                      speed=args.cell_speed, speed_max=args.cell_speed_max)
+                      speed=args.cell_speed, speed_max=args.cell_speed_max,
+                      speed3d=bool(getattr(args, "cell_speed_3d", 0)))
     arch = Archive(hasher, max_cells=args.max_cells)
     rk = hasher.keys(roots)
     for j in range(len(roots)):
@@ -1708,6 +1714,8 @@ def build_parser() -> argparse.ArgumentParser:
                     help="hard cap on archive entries (memory guard: each "
                          "entry is ~150 bytes)")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--cell-speed-3d", type=int, default=0, choices=(0, 1),
+                    help="--cell-speed buckets |v| (3D) instead of the horizontal speed")
     ap.add_argument("--dump-paths", type=int, default=0, choices=(0, 1),
                     help="also save, for every new cell, the burst states (one per decision) "
                     "from the burst's start to the cell entry: paths.npy + paths_cell.npy")
