@@ -2795,3 +2795,69 @@ stochastic (keys temp 1.2 = training) x6 per set:
 * r6b4_lrg2 18,167-18,318M: 15 evals at CP7 (98.08-98.35, best 98.347 at 18,199M; medians 98.0-98.2%), then from
   18,255M eleven in a row at the chimney stop (96.72-96.75%). The rollback bought ~15 good-mode evals; at lr 5e-5
   the drift into the bad mode is slower than at 3e-4 but not gone. The branch's best stays 98.444 (r6b4_lrg).
+
+## ROUND 6 LESSON (r6b4) - written at wrap-up, 2026-10-23 01:00 UTC
+
+**Result:** best greedy eval from the true start **98.444** (r6b4_lrg at 18,048,614,400; incumbent 98.349): CP7; its best
+episode is the FIRST greedy episode through the -y basement hole into the room above the finish funnel ((2,848, -303,
+1,237)). 0 finishes. Hand-on checkpoint: /home/steam/ar/runs/r6b4/r6b4_lrg/ckpt_18166579200.pt (md5 9bc6dce1...).
+
+**Lineage of the best run:** incumbent (r5b4_ncy, 17,418,944,512) -> r6b4_ou (+ --front-temp 3 --front-band 0.012
+--front-heads yaw --front-ou 1.0 --front-record 1; 390M steps) -> r6b4_lr (bare resume of its 17,808M weights + --lr 5e-5)
+-> r6b4_lrg (its 17,966M weights + --spawn-states runs/ge_path.npy --spawn-states-frac 0.05: 291 states of four Go-Explore
+archive paths rooted at the incumbent eval's own basement-entry states). A bare resume restores every flag; the spawn
+file is not in the repo (rebuild with autoresearch/analysis/sid_goexp_macros.py + sid_goexp_path_states.py).
+
+**What the last gate is (WR demo, MEASUREMENT ONLY; the demo replays exactly in our simulator):** basement east leg, a
+WIDE flat U-turn at the east end, the -y/+y OUTER-LOW lane west at ~1,545 u/s, strafe INTO a 43-deg kick surface (normal
+(0, +-0.73, 0.69)) -> launched off its top edge at vz ~+1,010, a hard strafe turn back over it up through the hole, across
+the room, over the funnel rim (~1,560), stop, drop. From inside the hole the incumbent finishes 9/9 (demo-state bench).
+**The policy's gap is one habit:** through the U-turn it strafes with its view 1.5 deg off the velocity (wishdir 1.5 deg
+forward of perpendicular - the speed-GAIN strafe angle; the human holds 0 deg, the max-TURN angle), so the turn adds
+nothing, it wall-rides up the east end to z ~1,145, loses ~300 u/s and comes back west inside and high, over the kick
+surface's top edge. That offset is ~6 sigma of the policy's per-decision yaw noise.
+
+**What worked:**
+1. **An LR anneal (3e-4 -> 5e-5) at the end of the map.** Every arm this round (and round 5's controls) wobbled between two
+   greedy modes at the chimney/pit (CP6 stop at 96.7% vs CP7); at lr 3e-4 arm 4's weights spent 22 of 30 evals in the bad
+   mode, at 5e-5 the same weights gave 23+ CP7 evals in a row (98.1-98.35, medians 98.1%).
+2. **Own-state archive paths as a small spawn share (5%) at the low LR:** 13/13 CP7 evals, 98.357 (a hole-edge rise 50 u
+   higher than any before) and **98.444** (the first greedy room entry). At 15% and lr 3e-4 (arm 5) the same idea regressed
+   the line - dose and LR both matter.
+3. **Go-Explore in the simulator** (cells of position / speed / heading, random held strafe macros, SurfCore.play_step,
+   rooted at the policy's own greedy-eval states; no demo input) found the hole and the room (grader 98.55-98.70%) in 22 min
+   where CEM converged on the hole-edge plateau. It did not find a finish: its best line is ~15% short of the kick energy.
+
+**What did not work (all warm, from the incumbent):**
+* NEW `--respawn-greedy-speed LO HI` (greedy rows' velocity x U(LO, HI)) and `--respawn-greedy-speed-band B` (only near the
+  frontier, anchored at the pool's / reservoir's deepest): every variant broke the line at the chimney after ~50M steps.
+* NEW `--front-heads yaw` / `--front-ou TAU` / `--front-record 1` (colored-noise yaw exploration only for episodes past the
+  frontier region; the stored z is the executed z): held the line (best 98.301) but the U-turn offset did not move in ~390M
+  steps - the reward for the right U-turn only exists ~2 s later, after a kick and a turn the policy also lacks.
+* Spawning on the archive paths at 15% (arm 5): the line regressed before the basement.
+
+**For whoever continues:** the finish needs the U-turn habit broken and ~15% more energy into the kick; neither exploration
+noise nor speed-boosted spawns did it. The two levers with traction were (a) a self-found line (Go-Explore from the policy's
+own states) used as a small spawn share at a low learning rate and (b) the LR anneal. A Go-Explore search that finds a
+FINISHING line (not yet found: more compute, roots upstream of the passage) would give the +50 signal those spawns lack.
+
+**Ops:** box 57226494 (RTX 3090, EPYC 7502, $0.35/h, Thailand) 14:41 -> 01:xx UTC; ~130k steps/s training, 45-75k average
+with evals. The link to here was ~29 KB/s and dropped connections: evals were scored ON the box and checkpoints pulled with a
+resumable rsync loop (~50 min per 80 MB). The incumbent checkpoint carries --race-no-corner-cut: bake
+maps/surf_src_sidistic.goalc_32.npz on a fresh box before the first launch or the record gate times out.
+
+**Per-run bests (score.py --best on the pulled runs):** gs15 98.236 | gsb 98.291 | ou 98.301 | lr 98.346 | **lrg 98.444** |
+lrg2 98.355 (not pulled; below the branch best) | ctl / gsr / ou2 / gex <= 98.275 (not pulled). Every pulled eval validates.
+
+## Wrap-up (r6b4) - 2026-10-23 01:00 UTC
+
+* Final: RESULT.json `"final": true`, score **98.444** (r6b4_lrg, eval traj_18048614400: 9 episodes, best 98.44%, median 96.7%,
+  CP7, 0 finishes; re-scored at wrap-up).
+* Hand-on checkpoint: /home/steam/ar/runs/r6b4/r6b4_lrg/ckpt_18166579200.pt (18,166,579,200, md5
+  9bc6dce1790b4fedaafd2cfe8dfbd2f1), pulled by rsync and md5-checked; the run's later ckpt_latest (18.25B, after its wobble)
+  was not pulled. `box.py pull` was not used: it re-tars every eval of a run (~400 MB here) over a ~29 KB/s link - the best
+  run's eval, run.json, progress.csv and checkpoint were pulled one by one instead. Also local: r6b4_lr/ckpt_latest.pt
+  (17,966,301,184), r6b4_ou/ckpt_latest.pt (17,808,490,496).
+* Code: --respawn-greedy-speed[-band] (9e16010, 27f5aaf, fd83c68), --front-heads / --front-ou (203b403), --front-record
+  (3077d12) - all default off, flag-off bit-identical (tests/python/test_respawn_greedy_speed.py, test_front_ou.py); analysis
+  and planner scripts under autoresearch/analysis/ (sid_*). Box 57226494 released at wrap-up.

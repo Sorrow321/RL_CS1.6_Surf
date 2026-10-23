@@ -1,14 +1,14 @@
 {
  "agent": "r6b4",
  "round": 6,
- "final": false,
+ "final": true,
  "best": {
   "score": 98.444,
   "eval_file": "/home/steam/ar/runs/r6b4/r6b4_lrg/traj_18048614400.jsonl",
   "run": "r6b4_lrg",
   "step": 18048614400,
   "ckpt": "/home/steam/ar/runs/r6b4/r6b4_lrg/ckpt_18166579200.pt",
-  "ckpt_note": "r6b4_lrg's snapshot at 18,166,579,200 (md5 9bc6dce1790b4fedaafd2cfe8dfbd2f1, rsync, md5-checked against the box) - the newest weights of r6b4_lrg's good mode (its evals around it were all CP7; after 18.2B it wobbled and was rolled back to this snapshot as r6b4_lrg2). Config: the incumbent's + lr 5e-5, front_temp 3, front_band 0.012, front_heads yaw, front_ou 1.0, front_record 1, spawn_states runs/ge_path.npy (291 own-root Go-Explore archive-path states, not in the repo: autoresearch/analysis/sid_goexp_*.py rebuild them) at frac 0.05. Fallbacks local: r6b4_lr/ckpt_latest.pt (17,966,301,184, md5 11037ec0...), r6b4_ou/ckpt_latest.pt (17,808,490,496, md5 d839caf9...).",
+  "ckpt_note": "r6b4_lrg's snapshot at 18,166,579,200 (md5 9bc6dce1790b4fedaafd2cfe8dfbd2f1, rsync, md5-checked against the box) - its newest good-mode weights; the run's ckpt_latest (18.25B, after it wobbled) was not pulled (the box link moved ~80 MB per ~50 min). Config: the incumbent's + lr 5e-5, front_temp 3, front_band 0.012, front_heads yaw, front_ou 1.0, front_record 1, spawn_states runs/ge_path.npy at frac 0.05 (291 own-root Go-Explore archive-path states, not in the repo; autoresearch/analysis/sid_goexp_*.py rebuild them). Fallbacks local: r6b4_lr/ckpt_latest.pt (17,966,301,184, md5 11037ec0...), r6b4_ou/ckpt_latest.pt (17,808,490,496, md5 d839caf9...).",
   "recipe": [
    "--spawn-states",
    "runs/ge_path.npy",
@@ -34,5 +34,5 @@
   "resume_from": "r6b4_lr (17,966,301,184) <- r6b4_ou (17,808,490,496) <- incumbent r5b4_ncy (17,418,944,512)",
   "commit": "3077d12"
  },
- "summary": "Round 6 (r6b4): best 98.444 (r6b4_lrg at 18.05B, CP7: the first greedy episode through the -y hole into the room; incumbent 98.349); 0 finishes. Root cause of the last gate (WR demo, measurement only; it replays exactly in our sim): in the basement U-turn the policy strafes 1.5 deg off the velocity (human 0), wall-rides and loses ~300 u/s, so its kick cannot clear the funnel rim. NEW (default off, tested): --respawn-greedy-speed[-band] (broke the line), --front-heads yaw / --front-ou / --front-record (correlated frontier yaw exploration; holds the line). Go-Explore over held strafe macros rooted at own states reaches the room (grader 98.55-98.70) but no finish (~15% short of kick energy). Final line: an LR anneal (5e-5) stopped the chimney wobble (23+ CP7 evals in a row); + 5% own-root archive-path spawns gave the 98.357 hole-edge rise (z 1,271)."
+ "summary": "Best 98.444 (r6b4_lrg at 18.05B, CP7; incumbent 98.349): the first greedy episode through the -y basement hole into the room above the finish funnel. 0 finishes. Root cause of the last gate (WR demo, measurement only; it replays exactly in our sim): in the basement U-turn the policy strafes 1.5 deg off the velocity (human 0), so the turn adds nothing, it wall-rides and loses ~300 u/s, and its kick cannot clear the funnel rim. What worked: an LR anneal (3e-4 -> 5e-5) ended the chimney-mode wobble (23+ CP7 evals in a row), and 5% spawns on own-root Go-Explore paths (held strafe macros in the simulator, no demo) gave the room entry. Did not work: NEW --respawn-greedy-speed[-band] (broke the line), NEW --front-heads/--front-ou/--front-record (held the line, U-turn unchanged), 15% path spawns at lr 3e-4. Next: a Go-Explore line that FINISHES (~15% more kick energy) as the spawn source."
 }
