@@ -810,3 +810,13 @@ beam found the policy's own way over the wall in 100 s).
 * Box 57454337 extended to 08:07 UTC (05:08; the 3 h rent was about to expire).
 * pbr2b3_beam2 (05:09 UTC): beam1's 4.666B weights + the curriculum on pbr2b3_beam_ge_g4.npy from
   its end, same flags as beam1.
+* GE_g5 (12 min, rooted at the new spine's north side -> drop -> climb, 640-909, stride 15):
+  deepest 7.079% at (-1,015, -3,001, 3,238) - the same wall at x ~-1,000..-1,015, z ~3,240 that
+  ends the GE_g4 chain. The highest energy height west of x -900 in the archive is ~3,631
+  (record ~3,775 there, z 3,407 at x -1,083).
+* Energy height h = z + |v|^2/2g along the route, policy line vs record (ANALYSIS ONLY): tunnel
+  exit ~3,814 vs ~3,978; ridge ~3,787 vs ~3,907; north side ~3,734 vs ~3,842; bottom of the drop
+  3,592 (GE line; beam line 3,186) vs ~3,799. A 110-200 u deficit carried from the start: the
+  record pumps the east half-pipe first (+230-280 u, round 1's analysis), the precision entry
+  starts from a standstill. With this energy the route past x -1,015 is closed to every search so
+  far (2 beams, 2 GE runs, ~3M runs); 7.07% looks like this entry's ceiling.
