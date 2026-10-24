@@ -786,3 +786,8 @@ ckpt_latest 3.285B (md5 a6559938..., the most curriculum progress), both named i
   (A record_ckpt --dump-states of the 6.7% checkpoint did not finish in 10 min on the box - greedy
   episodes now run into the 300 s cap without the eval's patience cut; killed. GE3 = 233 roots from
   GE1's own cells past 6.4%, --cell-speed 8 added, 15 min, 12:31-12:46.)
+* GE3 (12:31-12:46): 233 roots = GE1's own cells past 6.4% (speeds <= 399 u/s), + --cell-speed 8, 15 min,
+  2.52M runs: 13,255 cells, best 6.680% (the root), 0 cells past 6.69%. Two searches (GE2 from line_b's
+  end, GE3 from GE1's deep cells) agree: the pocket at (-1,015, -2,984, 3,016) is closed to slow
+  uniform policy-frame bursts. The record leaves it ~376 u higher at ~700 u/s after reaching ~1,290
+  u/s at the bottom of the drop (analysis only) - the way on needs the fast drop.
