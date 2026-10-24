@@ -1179,3 +1179,9 @@ shorter budget_end_hours. Written down for the operator; nothing is worked aroun
   the east half-pipe vs the greedy's h ~3,735 / ~70 u/s entry: +95 u, about what gate 8 lacks).
 * Auto loop backoff (new): consecutive failed cycles wait retry x 1, 2, 4, 8 evals before the next beam
   (an accepted spine resets it), so at a training-bound gate the search costs a few % of box time.
+* 23:40 UTC: the operator's mid-round harness update (commit 1208385, user 2026-10-25): a flat fleet
+  burn cap of 1.2 $/h replaces the pacer, and cheaper cards joined tier 0 under lower caps (3080 / 4070 /
+  5070 / 60 Ti class, 0.20-0.30 $/h). A second branch rented at once (burn 0.964 $/h); the only offers
+  passing the query at 23:46 were 5080s at 0.621 (storage included), so 0.236 $/h of room fits no card
+  yet. The watcher now dry-runs the rent every ~16 min to catch a cheap card.
+* The CPU trainer swap test passes on the final auto-spine code (deepest-contact cut, stall, backoff).
