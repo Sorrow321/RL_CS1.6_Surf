@@ -152,7 +152,13 @@ def stall_tick(d, margin: float) -> int:
     return int(ok[0]) if len(ok) else int(np.argmin(d))
 
 
-def go_explore(a, out: Path, line, end: int):
+def boost_stages(spec: str) -> list:
+    """--ge-boost '1.0,1.04;1.08,1.12' -> [[1.0, 1.04], [1.08, 1.12]]: the escalation ladder."""
+    return [[float(b) for b in st.split(",") if b.strip()]
+            for st in str(spec).split(";") if st.strip()]
+
+
+def go_explore(a, out: Path, line, end: int, boosts=None, tag: str = "ge"):
     """GE --exact-chains rooted at the line's last --roots-secs before ``end``; the deepest
     chain replayed and spliced onto the line at its root -> (spliced states, info)."""
     from spine_canon_view import canon_view
@@ -160,7 +166,8 @@ def go_explore(a, out: Path, line, end: int):
     lo = max(0, end - int(round(a.roots_secs * TICKS_PER_S)))
     idx = np.unique(np.linspace(lo, end, max(2, int(a.roots_n))).round().astype(int))
     roots = clean(line[idx])
-    boosts = [float(b) for b in str(a.ge_boost).split(",") if b.strip()]
+    if boosts is None:
+        boosts = boost_stages(a.ge_boost)[0]
     if boosts != [1.0]:
         # --ge-boost: each root also with its velocity scaled (the --respawn-front-perturb
         # rule: the line's own states with more or less energy); the chain's root is matched
@@ -171,7 +178,7 @@ def go_explore(a, out: Path, line, end: int):
             r["velocity"] = (r["velocity"].astype(np.float64) * b).astype(r["velocity"].dtype)
             rs.append(r)
         roots = np.concatenate(rs)
-    gd = out / "ge"
+    gd = out / tag
     gd.mkdir(parents=True, exist_ok=True)
     np.save(gd / "roots.npy", roots)
     cmd = [sys.executable, "-u", ROOT / "tools" / "explore_phase1.py", "--map", a.map,
@@ -183,13 +190,13 @@ def go_explore(a, out: Path, line, end: int):
         cmd += ["--maxvel", a.maxvel]
     if a.threads:
         cmd += ["--threads", a.threads]
-    rc = run(cmd, out / "ge.log", a.ge_minutes * 60 + 600)
+    rc = run(cmd, out / f"{tag}.log", a.ge_minutes * 60 + 600)
     info = {"ge_rc": rc, "ge_roots": [int(i) for i in idx], "ge_boost": boosts}
     if not (gd / "archive.npz").exists():
         return None, info
     rc2 = run([sys.executable, "-u", ROOT / "tools" / "ge_replay.py", "--map", a.map,
                "--archive", gd / "archive.npz", "--field", a.field, "--out", gd / "line.npy"],
-              out / "ge_replay.log", 1200)
+              out / f"{tag}_replay.log", 1200)
     info["ge_replay_rc"] = rc2
     if not (gd / "line.npy").exists():
         return None, info
@@ -229,9 +236,11 @@ def main(argv=None) -> int:
     ap.add_argument("--ge-minutes", type=float, default=10.0, help="0 = no GE fallback")
     ap.add_argument("--ge-cell", type=float, default=64.0)
     ap.add_argument("--ge-energy", type=float, default=32.0)
-    ap.add_argument("--ge-boost", default="1.0,1.04",
-                    help="comma list of speed factors: every GE root is also tried with its "
-                         "velocity scaled by each (1.0 = the line's own states only)")
+    ap.add_argument("--ge-boost", default="1.0,1.04;1.08,1.12",
+                    help="the GE's escalation ladder: ';'-separated stages of comma-separated "
+                         "speed factors; every root is tried with its velocity scaled by each "
+                         "factor of a stage, and the next stage (--ge-minutes each) runs only "
+                         "when one finds no line past the greedy frontier")
     ap.add_argument("--roots-secs", type=float, default=2.5,
                     help="Go-Explore roots: the line's last seconds before it stalls")
     ap.add_argument("--stall-margin", type=float, default=500.0,
@@ -295,17 +304,26 @@ def main(argv=None) -> int:
         if best_src is None and a.ge_minutes > 0:
             st = min(e, stall_tick(d, a.stall_margin))
             res.update(beam_stall=st)
-            gl, gi = go_explore(a, out, line, st)
-            res.update(gi)
-            if gl is not None:
+            # the escalation ladder: a stage's speed factors only if the previous stage found
+            # no line past the greedy frontier. The boost buys the uniform explorer the energy
+            # its random actions waste; the trained policy has flown the route it found with
+            # its own (round 3: gate 8's chain needed x1.04, the greedy passed unboosted)
+            for k, boosts in enumerate(boost_stages(a.ge_boost)):
+                tag = "ge" if k == 0 else f"ge{k + 1}"
+                gl, gi = go_explore(a, out, line, st, boosts=boosts, tag=tag)
+                res.update({(kk if k == 0 else f"{tag}_{kk[3:]}" if kk.startswith("ge_")
+                             else f"{tag}_{kk}"): vv for kk, vv in gi.items()})
+                if gl is None:
+                    continue
                 gd_ = field_d(field, gl)
                 ge_e, ge_de = cut_line(gl, gd_, a.contact_tol, a.cut)
-                res.update(ge_len=int(len(gl)), ge_end=ge_e, ge_end_d=ge_de,
-                           ge_best_d=float(gd_.min()))
-                print(f"GE line: {len(gl)} states, best d {gd_.min():,.0f}, cut at {ge_e} "
-                      f"d {ge_de:,.0f}", flush=True)
+                res.update({f"{tag}_len": int(len(gl)), f"{tag}_end": ge_e,
+                            f"{tag}_end_d": ge_de, f"{tag}_best_d": float(gd_.min())})
+                print(f"GE stage {k + 1} (speed x {boosts}): {len(gl)} states, best d "
+                      f"{gd_.min():,.0f}, cut at {ge_e} d {ge_de:,.0f}", flush=True)
                 if ge_de < a.greedy_d - a.gain:
-                    best_src = ("beam+ge", gl[:ge_e + 1], ge_de)
+                    best_src = (f"beam+{tag}", gl[:ge_e + 1], ge_de)
+                    break
     if best_src is not None:
         src, sp, de = best_src
         sp = clean(sp)

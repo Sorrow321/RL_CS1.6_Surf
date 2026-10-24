@@ -156,3 +156,45 @@ def test_branched_beam_command_parses(tmp_path, monkeypatch):
         assert v.lstrip("-").isdigit(), (flag, v)        # beam_tas parses these as int
         assert f'"{flag}", type=int' in ap_src
     assert "--branch-view-only" in cmd
+
+
+def test_ge_ladder_escalates_until_a_stage_passes(tmp_path, monkeypatch):
+    """--ge-boost 'S1;S2': stage 2 runs only because stage 1 found no line past the greedy
+    frontier, and its line becomes the spine (source beam+ge2)."""
+    sys.path.insert(0, str(ROOT / "tools"))
+    import auto_spine
+    from surfgym.core import STATE_DTYPE
+    # a field whose d is 10,000 - x along the x axis (cells of 32 u, 64 x 4 x 4)
+    nx, ny, nz, cell = 64, 4, 4, 32.0
+    grid = np.zeros((nz, ny, nx), np.float32)
+    grid[:] = (10000.0 - (np.arange(nx) + 0.5) * cell)[None, None, :]
+    fp = tmp_path / "field.npz"
+    np.savez(fp, grid=grid, quant=np.float64(1.0), mins=np.zeros(3), cell=np.float64(cell),
+             reach_max=np.float64(20000.0))
+
+    def line_to(x_end, n=50):
+        s = np.zeros(n, STATE_DTYPE)
+        s["origin"][:, 0] = np.linspace(100.0, x_end, n)
+        s["origin"][:, 1:] = 50.0
+        s["velocity"][:, 0] = 500.0
+        return s
+    monkeypatch.setattr(auto_spine, "beam",
+                        lambda a, out, branch_tick=0: (line_to(600.0), {"beam_rc": 0}))
+    calls = []
+
+    def fake_ge(a, out, line, end, boosts=None, tag="ge"):
+        calls.append((tuple(boosts), tag))
+        if len(calls) == 1:
+            return line_to(650.0), {"ge_rc": 0}            # not past greedy - gain
+        return line_to(1500.0), {"ge_rc": 0}               # passes
+    monkeypatch.setattr(auto_spine, "go_explore", fake_ge)
+    out = tmp_path / "k01"
+    rc = auto_spine.main(["--ckpt", "c.pt", "--map", "m.bsp", "--field", str(fp),
+                          "--out", str(out), "--greedy-d", "9400", "--gain", "500",
+                          "--ge-boost", "1.0,1.04;1.08,1.12", "--ge-minutes", "1"])
+    assert rc == 0
+    assert calls == [((1.0, 1.04), "ge"), ((1.08, 1.12), "ge2")]
+    info = json.loads((out / "spine.json").read_text())
+    assert info["source"] == "beam+ge2" and info["n"] == 50
+    assert "ge2_end_d" in info and "ge_end_d" in info
+    assert np.load(out / "spine.npy")["origin"][-1, 0] == 1500.0
