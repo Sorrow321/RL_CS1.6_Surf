@@ -883,3 +883,13 @@ round 1's fixed grow 20 / cooldown 20 they would have taken ~130M).
   median 7.0%)** - climbing steadily with the anchored success line on GE8's spine (peak speed
   899-911 u/s, frontier 3,880-3,895 u). Kept running instead of the pull-line arm. Pulled cur8
   ckpt_latest 7.143B (md5 810cf090...).
+* cur8 plateau (10:06 UTC): evals 7.009 / 6.990 / 6.982 / 6.995 / 7.001 / 6.974 / 6.994; its
+  curriculum got past the hard landing (spine 741) and reached tau ~164 (band 65-90%). But cur8's
+  own greedy line still hits the rim (CPU recording, ep 1, tick 734, (175,-2,838,3,143), h 3,803 ->
+  3,432): its 7.0% is its own better wall approach, not the chain's line.
+* GE9 (pb_frontier_step --roots sink on cur8 7.48B, cur8 paused): deepest 7.083%, chosen 7.030%
+  (224 ticks) - the same rim-clearing family as GE8; no better.
+* **pbr2b4_cur9** (10:20 UTC): resume cur8 final (7.541B, md5 5bb29c30...) + cur8's flags + the PULL
+  line `--demo-pull-d 20 --demo-pull-bonus 25` (anchor d <= 53,196 = 6.92% pays 50, pull d <=
+  53,116 = 7.06% pays 25 more: reachable only by the rim-clearing line) + `--demo-tau0 160` (where
+  cur8's curriculum stood). First pull payment at 7.542B.
