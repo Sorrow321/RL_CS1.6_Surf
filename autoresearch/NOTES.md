@@ -1066,3 +1066,20 @@ beam found the policy's own way over the wall in 100 s).
   --exact-chains (32 u x energy 16 cells) rooted at the line's own states before the stall and
   splice the deepest chain in. Training's own frontier was ~20.8% at the end.
 * Box 57454337 (RTX 5080, 0.60 $/h) released at wrap-up.
+
+## pbr3b3 (round 3, slot 3) - 2026-10-24 19:40 UTC start
+
+### Harness issue: the budget pace blocks EVERY rental this round (19:41 UTC)
+`box.py budget` at the round start: credit $18.46, reserve $10, 48.6 h to budget_end_hours ->
+allowed (18.46 - 10) / 48.6 = **0.174 $/h** for the whole fleet (rent accepts burn + dph <=
+allowed x 1.10 = 0.191). The only offers that pass the whitelist / caps / blocklist / offer_query
+are three RTX 5080s at 0.563 / 0.601 / 0.601 $/h, so `rent --dry-run` refuses ("no offer passes
+... within the budget pace") and no branch can rent. Unless the credit is topped up, a 0.563 $/h
+box first passes when hours_left <= 8.46 / 0.512 = 16.5 h, i.e. ~32 h from now (round 6). The
+remaining $8.46 is ~15 box-hours for the rest of the program. Also: if no branch of a round has
+a valid eval, the orchestrator forks the SAME base next round, so a box-less round's work is
+lost unless some branch produces a greedy eval. Operator: a top-up, or a pace rule that allows
+one box at a time (e.g. a box-hours budget instead of a $/h rate), is needed for rounds 3-6.
+* Update 20:00 UTC: the credit was topped up to $43.42 -> allowed 0.693 $/h; one box is live
+  (0.578 $/h), so rent is still refused (0.578 + 0.563 > 0.693 x 1.1): the pace now funds ~one
+  box for the fleet at a time. Retried every wakeup.

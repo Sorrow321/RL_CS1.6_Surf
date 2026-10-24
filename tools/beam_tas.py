@@ -479,6 +479,33 @@ def run_episode(core, pol, obs, fout, max_ticks, header, episode_idx):
     return end, ep_ticks, finished, pre_state
 
 
+def load_start_state(spec: str):
+    """--start-state FILE[:INDEX] -> (a 1-row STATE_DTYPE array, a description). FILE is a
+    STATE_DTYPE .npy (a spine) or a record_ckpt --dump-states .npz (its first ep_* array);
+    INDEX defaults to the last row, and a negative one counts from the end."""
+    from surfgym.core import STATE_DTYPE
+    path, _, idx = str(spec).rpartition(":")
+    if not path or not idx.lstrip("-").isdigit():
+        path, idx = str(spec), ""
+    z = np.load(path, allow_pickle=False)
+    if hasattr(z, "files"):
+        keys = sorted(k for k in z.files if k.startswith("ep_"))
+        if not keys:
+            raise SystemExit(f"--start-state {path}: no ep_* array in the .npz")
+        arr = z[keys[0]]
+    else:
+        arr = z
+    arr = np.asarray(arr)
+    if arr.dtype.names is None or "origin" not in arr.dtype.names or arr.ndim != 1:
+        raise SystemExit(f"--start-state {path}: not a 1-D STATE_DTYPE array")
+    i = int(idx) if idx else len(arr) - 1
+    if not -len(arr) <= i < len(arr):
+        raise SystemExit(f"--start-state {path}: index {i} outside 0..{len(arr) - 1}")
+    i %= len(arr)
+    row = np.ascontiguousarray(arr[i:i + 1].astype(STATE_DTYPE))
+    return row, f"{Path(path).name}[{i}] of {len(arr)}"
+
+
 def save_frontier_line(frontier, cfg, map_path, ep_cap, tick, arm, row0, obs_start,
                        gate_seed, k, out_dir, gf) -> None:
     """--save-frontier: replay the frontier lineage's action table open-loop on a fresh
@@ -1948,6 +1975,17 @@ def main():
                     "episode. row0/obs_start come from the reset itself, so "
                     "for a --greedy-prefix search the gate rollout is pure "
                     "overhead (a full single-env episode per wave)")
+    ap.add_argument("--start-state", default=None, metavar="FILE[:INDEX]",
+                    help="search FROM ONE OF THE POLICY'S OWN STATES instead of the map "
+                    "spawn: row INDEX (default the last; negative counts from the end) of a "
+                    "STATE_DTYPE .npy, or of the first ep_* array of a record_ckpt "
+                    "--dump-states .npz. The state is spawned the way the trainer spawns a "
+                    "--spawn-states / --demo-file row (one-row spawn pool: clocks zeroed, "
+                    "held keys neutral, duck held on a crouched row under the checkpoint's "
+                    "--keys-hold-spawn-duck), so a search a few seconds before a wall costs "
+                    "those seconds, not the whole line, and works on a --keys-hold "
+                    "checkpoint (no raw engine prefix). Implies --skip-gate and "
+                    "--allow-nonfinisher; off = byte-identical")
     ap.add_argument("--allow-nonfinisher", action="store_true",
                     help="do not require the greedy gate to finish (implied "
                     "by --greedy-prefix: searching from the wall is only "
@@ -2464,6 +2502,21 @@ def main():
     if pre_acts is not None:
         nonfin, gate_seed = (0, pre_row0, pre_obs0), pre_seed
         core1.reset(pre_seed)
+    if args.start_state:
+        # --start-state: the search's spawn is one of the policy's own states, spawned through
+        # a one-row spawn pool exactly as the trainer spawns a spine row (the core zeroes the
+        # clocks, the push-once flags and the stuck bookkeeping); the reset below captures
+        # row0 / obs_start from it
+        if pre_acts is not None or args.greedy_prefix > 0:
+            raise SystemExit("--start-state excludes --prefix-line / --greedy-prefix")
+        ss_row, ss_desc = load_start_state(args.start_state)
+        core1.set_spawn_pool(ss_row)
+        args.skip_gate, args.allow_nonfinisher = True, True
+        print(f"--start-state {ss_desc}: origin {np.round(ss_row[0]['origin'], 1)} "
+              f"|v| {float(np.linalg.norm(ss_row[0]['velocity'])):.0f} ducked "
+              f"{int(ss_row[0]['ducked'])}"
+              + (" (duck held: --keys-hold-spawn-duck)" if KEYS
+                 and cfg.get("keys_hold_spawn_duck") else ""))
     with open(gpath, "w", encoding="utf-8", newline="\n") as f:
         for e in range(0 if pre_acts is not None
                        else max(1, args.greedy_eps)):
@@ -2591,6 +2644,10 @@ def main():
         gpolN = GreedyTorchPolicy(policy, packer, device, lidar, coreN,
                                   K, stack, extra_slot=esN, extra_fn=efN,
                                   latch_fn=latchN, cc_fn=cc_fnN, keys_hold=KEYS, **xkwN)
+    if args.start_state and KEYS and cfg.get("keys_hold_spawn_duck"):
+        # --keys-hold-spawn-duck (the checkpoint's): a crouched start state holds duck from the
+        # first decision, the way the trainer spawns the same row (record_ckpt's mirror)
+        spol.spawn_duck = True
     value_fn = None
     if args.boundary_v or args.score in ("v", "dv"):
         def value_fn(o):
@@ -3219,6 +3276,7 @@ def main():
                                  else None),
                  "prefix_ticks": int(t_start),
                  "prefix_s": (secs(t_start) if t_start else None),
+                 **({"start_state": str(args.start_state)} if args.start_state else {}),
                  "branch_at": args.branch_at,
                  "branch_grid": args.branch_grid,
                  "branch_grid_spec": br_meta,

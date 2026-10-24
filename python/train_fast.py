@@ -3607,6 +3607,114 @@ def race_progress_eps(traj_path: Path, field) -> list:
     return per_ep
 
 
+def eval_min_d_eps(traj_path: Path, field) -> list:
+    """--auto-beam: [(deepest field distance reached, ticks)] per episode of a recording, in
+    recording order; the unreachable sentinel (off the field) is never the deepest point."""
+    rows, out = [], []
+    cut = field.reach_max - 0.5 * field.cell
+    with open(traj_path, encoding="utf-8") as f:
+        for line in f:
+            row = json.loads(line)
+            if isinstance(row, dict) and "map" in row:
+                rows = []
+            elif isinstance(row, list):
+                rows.append(row)
+            elif isinstance(row, dict) and "end" in row and rows:
+                d = np.asarray(field.sample(np.asarray(rows, np.float64)[:, 1:4]), np.float64)
+                ok = d < cut
+                out.append((float(d[ok].min()) if ok.any() else float("inf"), len(rows)))
+                rows = []
+    return out
+
+
+def auto_beam_step(ab, args, path, out, step, save_ckpt, end_d, tick):
+    """--auto-beam, after one greedy eval: when enough episodes are past the spine's success
+    line ``end_d``, search from the map start with the policy's own proposals (beam_tas
+    --save-frontier) and return (the new spine's DemoCurriculum, its success line) when the
+    deepest lineage, cut at its deepest point on the shaping field, carries the line at least
+    --auto-beam-margin x d0 further; else None. ``ab`` is the run's loop state."""
+    import shlex
+    import subprocess
+    field = ab["field"]
+    eps = eval_min_d_eps(path, field)
+    if not eps:
+        return None
+    if ab["wait"] > 0:
+        ab["wait"] -= 1
+        return None
+    crossed = sum(1 for dmin, _ in eps if dmin <= end_d)
+    if crossed < max(1, int(math.ceil(float(args.auto_beam_cross) * len(eps)))):
+        return None
+    ab["k"] += 1
+    k = ab["k"]
+    save_ckpt("autobeam")
+    bdir = out / f"auto_beam_{k:02d}"
+    max_ticks = max(t for _, t in eps) + tick.secs_to_ticks(float(args.auto_beam_secs), "round")
+    cmd = [sys.executable, "-u", str(ROOT / "tools" / "beam_tas.py"),
+           str(out / "ckpt_autobeam.pt"), "--envs", str(int(args.auto_beam)),
+           *shlex.split(str(args.auto_beam_args)), "--allow-nonfinisher", "--save-frontier",
+           "--skip-gate", "--route-file", "none", "--max-ticks", str(int(max_ticks)),
+           "--out-dir", str(bdir)]
+    print(f"[{step:>13,d}] --auto-beam #{k}: {crossed}/{len(eps)} greedy episodes past "
+          f"d <= {end_d:,.0f}; searching: {' '.join(cmd[2:])}", flush=True)
+    t0 = time.time()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    try:
+        r = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True, timeout=3600,
+                           encoding="utf-8", errors="replace")
+        log, rc = r.stdout + r.stderr, r.returncode
+    except subprocess.TimeoutExpired as e:
+        log, rc = f"{e}", -1
+    bdir.mkdir(parents=True, exist_ok=True)
+    (bdir / "beam_log.txt").write_text(log, encoding="utf-8")
+    fz = bdir / "beam_frontier.npz"
+    why = None
+    if rc != 0 or not fz.exists():
+        why = f"the search failed (exit {rc}): {log.strip().splitlines()[-1:] or ''}"
+    else:
+        z = np.load(fz)
+        if not int(z["replay_ok"]):
+            why = "its frontier line did not replay"
+    if why is None:
+        S = np.ascontiguousarray(np.asarray(z["states"]).astype(STATE_DTYPE))
+        d = np.asarray(field.sample(S["origin"].astype(np.float64)), np.float64)
+        d = np.where(d < field.reach_max - 0.5 * field.cell, d, np.inf)
+        i = int(np.argmin(d)) if len(d) else 0
+        if not len(d) or not np.isfinite(d[i]):
+            why = "its frontier line has no state on the field"
+    if why is None:
+        new_end = float(d[i]) + float(args.demo_success_d)
+        gain = float(end_d) - new_end
+        need = float(args.auto_beam_margin) * ab["d0"]
+        if gain < need:
+            why = (f"its line ends at d {d[i]:,.0f} (success line {new_end:,.0f}), "
+                   f"{gain:,.0f} u past the current one (< {need:,.0f})")
+    if why is not None:
+        ab["wait"] = int(args.auto_beam_retry)
+        print(f"[{step:>13,d}] --auto-beam #{k}: NOT taken - {why}; next search after "
+              f"{ab['wait']} more evals ({time.time() - t0:.0f} s)", flush=True)
+        return None
+    spine = S[:i + 1]
+    sp = out / f"auto_spine_{k:02d}.npy"
+    np.save(sp, spine)
+    args.demo_file = str(sp)
+    kw = {}
+    if args.demo_cooldown is not None:
+        kw["cooldown"] = int(args.demo_cooldown)
+    if args.demo_grow_max is not None:
+        kw["grow_max"] = int(args.demo_grow_max)
+    new = DemoCurriculum(spine, window=args.demo_window, rate=args.demo_rate,
+                         min_ep=args.demo_min_ep, grow=args.demo_grow,
+                         front_frac=float(args.demo_front_frac), tau0=None, **kw)
+    d0 = ab["d0"]
+    print(f"[{step:>13,d}] --auto-beam #{k}: SPINE SWAP -> {sp.name}: {len(spine)} states to "
+          f"d {d[i]:,.0f} ({100.0 * (d0 - d[i]) / d0:.2f}% of {d0:,.0f}), success line "
+          f"{end_d:,.0f} -> {new_end:,.0f}; the curriculum restarts at its end "
+          f"({time.time() - t0:.0f} s)", flush=True)
+    return new, new_end
+
+
 def _seg_hits_box(pts, box):
     """True where ANY consecutive segment of ``pts`` (T, 3) pierces the AABB.
 
@@ -4803,6 +4911,32 @@ def main() -> None:
     ap.add_argument("--demo-front-view", type=float, default=None,  # None = 1 + T
                     help="--demo-front-temp: the yaw head's sigma multiplier inside the hot "
                          "window, instead of 1 + T (the keys stay at 1 + T)")
+    ap.add_argument("--auto-beam", type=int, default=0,   # 0 = off
+                    help="--demo-file + --demo-success-d: the search -> curriculum loop inside "
+                         "the run. N > 0 = when a greedy eval has --auto-beam-cross of its "
+                         "episodes past the spine's success line, save the weights, run "
+                         "tools/beam_tas.py from the map start with N copies of the policy "
+                         "(--save-frontier: the deepest lineage of the policy's OWN proposals), "
+                         "cut that line at its deepest point on the shaping field and, if its "
+                         "success line lies --auto-beam-margin x d0 past the current one, make "
+                         "it the curriculum's spine (tau back at its end, the success line and "
+                         "bonus moved with it, runs/<run>/auto_spine_<k>.npy, the config's "
+                         "demo_file updated so a resume continues on it). Single map, single "
+                         "rank. Off = today, bit-identical")
+    ap.add_argument("--auto-beam-cross", type=float, default=0.5,
+                    help="--auto-beam: the share of the greedy eval's episodes whose deepest "
+                         "point must be past the spine's success line to search for the next")
+    ap.add_argument("--auto-beam-margin", type=float, default=0.005,
+                    help="--auto-beam: a searched line replaces the spine only if its success "
+                         "line is this fraction of the start distance past the current one")
+    ap.add_argument("--auto-beam-secs", type=float, default=10.0,
+                    help="--auto-beam: the search runs this many seconds past the longest "
+                         "greedy eval episode")
+    ap.add_argument("--auto-beam-retry", type=int, default=4,
+                    help="--auto-beam: greedy evals to wait after a search whose line was not "
+                         "taken before searching again")
+    ap.add_argument("--auto-beam-args", default="--resample-every 25 --score d --greedy-envs 32",
+                    help="--auto-beam: further tools/beam_tas.py arguments")
     # ---- expert iteration: distil the planner's line (surfgym/bc.py) ----
     ap.add_argument("--bc-file", default=None,
                     help="behaviour-cloning rows from tools/plan_to_bc.py "
@@ -14486,6 +14620,12 @@ def main() -> None:
     if args.demo_file and args.demo_success_bonus is not None:
         # --demo-success-bonus: dumped only when set; a resume restores it
         meta["config"]["demo_success_bonus"] = float(args.demo_success_bonus)
+    if int(args.auto_beam) > 0:
+        # --auto-beam: dumped only when on; not restored (pass it again on a resume)
+        meta["config"]["auto_beam"] = {
+            "envs": int(args.auto_beam), "cross": float(args.auto_beam_cross),
+            "margin": float(args.auto_beam_margin), "secs": float(args.auto_beam_secs),
+            "retry": int(args.auto_beam_retry), "args": str(args.auto_beam_args)}
     if args.race_sr:
         # --race-sr: dumped only when on, so a flag-off run.json is the
         # control's byte for byte (test_int_split's identity check)
@@ -15439,6 +15579,20 @@ def main() -> None:
         DEMO_BONUS = float(args.demo_success_bonus)
         print(f"--demo-success-bonus {DEMO_BONUS:g}: an episode whose record crosses d <= "
               f"{DEMO_END_D:,.0f} is paid {DEMO_BONUS:g} once (one that starts past it never is)")
+    AB = None                             # --auto-beam: the in-run search -> curriculum loop
+    if int(args.auto_beam) > 0:
+        if DEMO_END_D is None:
+            raise SystemExit("--auto-beam moves the --demo-file spine's --demo-success-d line: "
+                             "give both")
+        if MULTI or D.world_size > 1:
+            raise SystemExit("--auto-beam is single-map, single-rank")
+        AB = {"k": 0, "wait": 0, "field": _df,
+              "d0": float(slots[0].rf_d0 or slots[0].d0)}
+        print(f"--auto-beam {int(args.auto_beam)}: when {args.auto_beam_cross:.0%} of a greedy "
+              f"eval's episodes pass d <= {DEMO_END_D:,.0f}, tools/beam_tas.py searches from the "
+              f"map start ({args.auto_beam_secs:g} s past the longest episode) and its deepest "
+              f"line becomes the spine if its success line is >= "
+              f"{args.auto_beam_margin * AB['d0']:,.0f} u deeper")
 
     def _demo_bonus_pay(r, ended):
         """--demo-success-bonus: pay the rows whose ratchet record (after this reward call; an
@@ -20331,6 +20485,16 @@ def main() -> None:
                       f"{f'[HELDOUT {_s.tag}]' if _s.heldout else f'[{_s.tag}]' if MULTI else ''}: fwd {_f:7.0f}u"
                       f"  path {_p:7.0f}u  peak {_v:6.0f} u/s"
                       f"{prog_note} -> {path.name}")
+                if AB is not None and not _s.heldout:
+                    # --auto-beam: the next spine from the policy's own search, once the
+                    # greedy line has passed this one's success line
+                    _ab = auto_beam_step(AB, args, path, out, global_step, save_ckpt,
+                                         DEMO_END_D, TICK)
+                    if _ab is not None:
+                        demo, DEMO_END_D = _ab
+                        DEMO_PAID[0] = None
+                        demo_idx[:] = -1
+                        meta["config"]["demo_file"] = args.demo_file
                 if (args.save_best and not MULTI and not _s.heldout and p_nfin
                         and fin_best < best_fin_saved):
                     # --save-best: keep the weights behind every new best greedy finish
