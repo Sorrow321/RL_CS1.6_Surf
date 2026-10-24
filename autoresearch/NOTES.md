@@ -723,3 +723,12 @@ ckpt_latest 3.285B (md5 a6559938..., the most curriculum progress), both named i
   policy's own greedy recording ticks 0-739 from the true start + line_b, 2,123 states), tau0 = the
   end, grow 10 / window 10 / cooldown 5, success-d 100 (d <= 53,432 = 6.50%), bonus 50, aligned views,
   spawn states = entry_ge_states + line_a x4 (keeps the route learned so far practised).
+* GE2 past line_b's end (10:21-10:36 UTC, same settings, 8 threads, 15 min, 2.57M runs, 100 roots =
+  line_b[983:1383:4]): 5,793 cells, NOTHING past 6.68%, only 1,117 deaths - the area around
+  (-1,015, -2,984, 3,016) is a closed or gated pocket for uniform policy-frame bursts. The gate after
+  6.68% is the next open question.
+* vv3 so far (3.827-4.09B): the curriculum ran 2122 -> 1122 in ~30 min (99-100% per band: line_b's
+  floor run and the drop), while the GREEDY line eroded: 3.985 / 3.939 / 3.881 / 3.845 - at 4.054B
+  only 2/9 reach 3.8%, 5/9 stall at 3.13-3.17% after the bounce (training mass sits on line_b's far end;
+  line_a's post-bounce stretch gets only the 15% line_a spawn rows). Expected to recover when tau enters
+  the spine's prefix (the policy's own recorded route through the bounce, spine 0-739).
