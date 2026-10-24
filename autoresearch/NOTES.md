@@ -740,3 +740,23 @@ of the line kept cold. TRAIN_ONLY in record_ckpt.
   line_a's end (586, -2,688, 3,475) with vz -250: vx -600 lands at z ~3,387 at x 435 (inside
   the catch, z <= 3,396 with the hull), vx -700 at ~3,402 (clears). A modest energy deficit; the
   ratchet pays +0.6-2.8% within 1-3 s past it, and canon5's greedy-death spawns sit right there.
+
+### Gate 3 by search: the policy's own beam line to 6.6% (2026-10-24 04:20 UTC)
+* canon5 evals 3.993 / 3.993 / 4.002 / **4.055** (4.244B) / 4.016 (4.320B): 9/9 die at gate 3.
+  At 4.24B several episodes end with vx = 0 at x ~465, z 3,380-3,400: they hit a WALL there and
+  drop into the catch - gate 3 is "arrive higher than that wall", not only faster.
+* `tools/beam_tas.py` from the true start on canon5's 4.29B weights (4,096 stochastic copies,
+  `--greedy-envs 32`, `--score d`, resample every 25 decisions, `--allow-nonfinisher
+  --save-frontier`; it refuses `--greedy-prefix` on a --keys-hold checkpoint, and needs
+  `--route-file none` off cannonball or it crashes before saving): min d 55,532 (gen 5) -> 53,387
+  (gen 10) -> 53,320 = **6.70%** (gen 15) and flat after, 102 s. The frontier lineage, replayed
+  exactly: the same start room / tunnel / ridge, but after the launch a FAST east-side U-turn
+  (617-639 u/s; no slow wall bounce) onto the north side at z 3,493 and 610 u/s, over the wall at
+  x ~465 at z 3,453, a long drop west and down to (8, -2,795, 2,931), a surf at 722 u/s, 6.55% at
+  (-766, -2,892, 3,080), then it stops in a hollow at x ~-1,015, z ~2,960-3,020 (the record passes
+  there at z ~3,400 and 750+ u/s: gate 4 looks like energy again).
+* Spine `autoresearch/spines/pbr2b3_beam_g3b.npy` = that line cut at tick 1,065 (6.62%, its best
+  before the stall). The policy's own actions, so its views fit (no canonicalisation needed).
+* pbr2b3_beam1 (04:21 UTC): canon5's ckpt_latest (4.317B, md5 ab10e8d0...) + the curriculum on the
+  beam spine from its end (success = d(end) + 100 = 6.45%, bonus 50) + the same pace / band
+  temperature / greedy / front-perturb flags, --spawn-states-frac 0.2.
