@@ -1011,3 +1011,9 @@ beam found the policy's own way over the wall in 100 s).
 * **Where it stands:** every gate from 7% on has been ENERGY - the record carries ~100-250 u more
   energy height (z + |v|^2/2g) from its start-room pump. The next one is the fall catch at ~16%
   (x -1,700..-2,250, z ~2,900): the line runs east 60-120 u above it at ~900 u/s (record ~1,050).
+* The ~16% impact (analysis; both beam lines g10a and the energy-weighted g11dh `--score dh K 2`):
+  both reach x ~-1,700 (y ~-2,350, z ~2,940) and lose 500-600 u of h there (g11dh carries ~100 u
+  more into it, 3,702 vs 3,594 at 15%, and loses it all). The record (ANALYSIS ONLY) arrives
+  higher and further north ((-1,859, -2,404, 3,013) at 1,049 u/s, vz -350, where our line is at
+  (-1,879, -2,519, 2,930) at 950) and lands tangentially on a descending ramp at (-1,652, -2,366,
+  2,926), surfing it to 1,249 u/s at x -1,184. Ours hits the ramp's edge: a landing geometry again.
