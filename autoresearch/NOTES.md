@@ -502,3 +502,20 @@ such a band 20% -> 40% in ~200M steps when the policy is clean.
 * A 5080 freed up at 00:06 (box 57440978, 0.601 $/h). arm 17 = the ready-to-run plan above:
   arm 16's 1,260M weights + the full deduplicated chain as the spine (--demo-tau-start 640, on the
   south rim; win line ~3.6%) + the plain energy potential. ~75 min of training before wrap-up.
+
+### 2026-10-24 00:38 UTC - arm 17: the pocket traverse is a 0% band with the clean policy too
+
+* pbr1b2_ge17 (5080, 217k steps/s; arm 16's 1,260M + full-chain curriculum from tau 640, plain
+  energy pot): tau 640 -> 544 fast (rim bands 61-100%), then the same oscillation as arm 9 one
+  step later: band [528,543] = the start of the traverse ((722,-3076,3456), 2.78%) 0.0% over 1,600
+  episodes at every attempt, band [544,...] 61-65%. Zero positives, so PPO has nothing to lift
+  (arm 13's climb band started at 3%). Greedy evals 3.229-3.235 (median 3.2%); stopped at 1.59B
+  after ~25 min; box 57440978 released.
+* Verdict on the pocket: both of its exits seen so far are random-burst moves the policy does
+  not repeat from the curriculum's states (0% bands), and the energy route (the WR's) is unfound.
+  The next round needs a different proposal (see the recommendations) - more curriculum time on
+  a 0% band will not do it.
+* Ties at 3.235: pbr1b2_ge14/traj_0853540864, pbr1b2_ge16/traj_1311768576 and traj_1613758464,
+  pbr1b2_ge17/traj_1336410112. Each run dir holds a checkpoint at or before its tied eval:
+  ge14/ckpt_853016576.pt; ge16/ckpt_1260388352.pt; ge17/ckpt_1260388352.pt (a hard link to ge16's:
+  ge17 RESUMED from exactly those weights, 76M steps before its eval).
