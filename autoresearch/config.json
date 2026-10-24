@@ -8,8 +8,8 @@
   "_score_episodes_doc": "score.py counts only the first N episodes of an eval (header episode index < N): its score is a max over episodes, so an eval with more episodes would buy lottery tickets (r6b1 scored 98.418 with 54-episode evals of the incumbent's weights). 0 = all.",
   "branches_per_round": 4,
   "round_hours": 12,
-  "rounds": 2,
-  "_rounds_doc": "The user (2026-10-23): 'let's see if the sidistic recipe will converge quick on princess' - two rounds first, extended (with budget_end_hours) if it is progressing and the credit allows.",
+  "rounds": 6,
+  "_rounds_doc": "The user (2026-10-23): 'let's see if the sidistic recipe will converge quick on princess' - two rounds first, extended (with budget_end_hours) if it is progressing and the credit allows. 2026-10-24, after round 2's 20.414 (pbr2b3): 'The rounds need to keep going' - rounds 3-6 added (the first program's length), the orchestrator restarted from state.json at 29.5 h.",
   "wrapup_minutes": 40,
   "max_agents": 5,
   "max_boxes": 5,
@@ -17,8 +17,8 @@
   "ablation_minutes_first": 30,
   "ablation_minutes_max": 360,
   "budget_reserve_usd": 10.0,
-  "budget_end_hours": 26,
-  "_budget_end_hours_doc": "Hours from THIS program's start (state.json started) over which box.py spreads the credit above the reserve: 2 rounds x 12 h + scoring. Move it with rounds.",
+  "budget_end_hours": 78,
+  "_budget_end_hours_doc": "Hours from THIS program's start (state.json started) over which box.py spreads the credit above the reserve: 2 rounds x 12 h + scoring; 78 since 2026-10-24 = the 29.5 h restart + rounds 3-6 (4 x 12 h) + scoring. Move it with rounds.",
   "gpu_tiers": [
     [
       "RTX_3090",
