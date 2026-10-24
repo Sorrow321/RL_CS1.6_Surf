@@ -913,3 +913,7 @@ round 1's fixed grow 20 / cooldown 20 they would have taken ~130M).
   rim-clearing approach instead of the first 10 states, and the policy learned it within ~20 min
   (cur9, same flags without pull-stats, never did in 20 min; cur7, the deep line alone with no
   anchor, collapsed). Pulled cur10 ckpt_latest 8.369B (md5 8fb635ba...).
+* GE10 (11:08 UTC, pb_frontier_step --roots frontier on cur10 8.369B, cur10 paused): the CPU greedy
+  recording reaches 12.42 / 12.26 / 12.61% at ticks 1,251-1,421 (12.5-14.2 s from the true start);
+  roots = ep 2's last 4 s, 2 x 10-min exact-chain searches. Next spine's lines from own quantities:
+  anchor at the policy's own reach (12.4%), pull at the new chain's end (+20 u), --demo-pull-stats.
