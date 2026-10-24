@@ -822,3 +822,15 @@ round 1's fixed grow 20 / cooldown 20 they would have taken ~130M).
 * GE rim1/rim2 (08:05 UTC, cur5 PAUSED with SIGSTOP so the search gets the whole CPU): roots = cur4's
   own greedy line from 1.0 s to 0.1 s before its worst energy drop (tick 725, (169,-2,835,3,150)),
   --cell-energy 16, cell 64 / 48, bursts 50 / 100 decisions, 10 min each.
+* **GE rim1/rim2 found energy-keeping lines past the rim** (10 min each, cur5 paused): with roots on
+  the CURRENT policy's own approach (1.0-0.1 s before its biggest one-tick energy drop) and
+  --cell-energy 16, cells past the rim keep h up to 3,712 (x 0..-200) and 3,544-3,559 on the launch
+  ramp (every earlier search: <= 3,388). rim1's deepest, **7.030%** (-1,001,-2,983,3,231) |v| 716,
+  is a 233-tick chain (ge_replay 8/8) from the policy's state at 4.14%: it passes x ~182 at z 3,223
+  (~75 u above the policy's rim impact) with no energy loss, lands in the half-pipe at x ~-100
+  losing ~180 u (the policy loses ~400 at the rim), rides the ramp at ~1,045 u/s and reaches the
+  wall top at z 3,231 (the platform is z ~3,328). First physical line past the 6.7% wall.
+* plat1/plat2 (08:15 UTC): GE rooted at that chain's last 1.5 s (75 roots), 8 min x 2.
+* pb_perturb_spawns.py (new, not used yet): perturbed copies of the policy's own greedy states before
+  its biggest energy drop (the --respawn-front-perturb / -novel family aimed at the energy sink);
+  512 of 728 valid copies for cur4's line.
