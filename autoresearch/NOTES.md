@@ -820,3 +820,17 @@ beam found the policy's own way over the wall in 100 s).
   record pumps the east half-pipe first (+230-280 u, round 1's analysis), the precision entry
   starts from a standstill. With this energy the route past x -1,015 is closed to every search so
   far (2 beams, 2 GE runs, ~3M runs); 7.07% looks like this entry's ceiling.
+* beam2 (4.666-4.784B): the curriculum came back from the spine's end to [803,807] (the bottom of
+  the drop, the start of the climb) and sat there 15 min: that band 40 -> 44% against --demo-rate
+  0.5, the next one 70-76%; deciles 80% (727-818) 24%, 90% 91%. Evals 6.686 / 6.658 (the greedy
+  still takes the beam line's slow drop into the hollow). Stopped; pbr2b3_beam3 (05:43 UTC) = its
+  4.784B weights (md5 18befd7e...), --demo-tau0 805 --demo-rate 0.3, the rest unchanged.
+* GE from the TRUE SPAWN with energy cells (13 min of 20, 12,422 cells, 8 threads): no fast
+  tunnel entry - the best tunnel cell has h 3,824 at 329 u/s (record ~500-600 u/s, h ~3,950),
+  the east half-pipe tops out at h 3,804 (record ~3,930). As in round 1, uniform actions do not
+  pump; that route to more energy stays closed to search.
+* The x ~-1,015 wall (core traces, ducked hull, west from x -950): solid below z ~3,240 (a wall
+  facing east at x -1,015), a rim at z 3,270-3,300 (x -950..-1,000), free above z ~3,330. The GE
+  line meets it at z 3,240 with h ~3,583: the energy to clear z 3,330 is there, the trajectory is
+  too flat (it reaches the wall moving 730 u/s horizontally). Gate 5 is a launch-angle problem,
+  not only energy: about +90 u of height at the wall, or ~+65 u/s at the bottom of the drop.
