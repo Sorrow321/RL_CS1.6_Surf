@@ -677,3 +677,7 @@ ckpt_latest 3.285B (md5 a6559938..., the most curriculum progress), both named i
   the time (03:20-05:58: no 3090 / 3090 Ti / 4080 offers at all, every 5080 blocklisted, 4090s
   over the 0.45 cap). Meanwhile everything ran on the 4-vCPU host: the analysis above, three new
   flags/tools and their tests.
+* Which checkpoint for the aligned curriculum (06:35 UTC, record_ckpt stochastic, 5 eps): g2cur6
+  (3.285B) from ALIGNED line states 1700: 5/5 success, reaching 3.78-4.03% (past the line's end);
+  from aligned 1780: 0/5 but 3.70-3.75% (the success line is 3.76%). g2cur (1.403B): aligned 1700
+  0/5, 1780 1/5. g2cur6's tail skills partly carry over to the aligned frame -> it is the arm's base.
