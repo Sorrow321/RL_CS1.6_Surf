@@ -791,3 +791,38 @@ ckpt_latest 3.285B (md5 a6559938..., the most curriculum progress), both named i
   end, GE3 from GE1's deep cells) agree: the pocket at (-1,015, -2,984, 3,016) is closed to slow
   uniform policy-frame bursts. The record leaves it ~376 u higher at ~700 u/s after reaching ~1,290
   u/s at the bottom of the drop (analysis only) - the way on needs the fast drop.
+
+### pbr2b2 round 2 lesson (2026-10-24, written 13:30 UTC before the wrap-up)
+* **Score 3.236 -> 6.687** (best eval pbr2b2_vv7 traj_4431282176, 9/9 greedy episodes from the true
+  start reach 6.68-6.69%; handed-on snapshot ckpt_4427612160.pt, md5 314fef79..., 3.7M steps before
+  it; later evals 6.685-6.687 up to 4.88B). The greedy line now clears the start room, the tunnel,
+  the pit (gate 2) and the next gate (the run west and the drop onto the lower floor), and ends in a
+  closed pocket at (-1,012, -3,000, 3,012).
+* **What did it, in order:**
+  1. `--demo-view-velocity`: a Go-Explore line's view is random (line_a looked 139-176 deg BACKWARD
+     through its launch and flight); the policy's velocity-frame view warp is ~200x coarser there
+     than near 0, and the manoeuvre is a GoldSrc air-strafe turn needing 1-2 deg. Spawning line
+     states looking along their velocity let the curriculum cross the wall bounce in ~15 min
+     (round 1: stuck 1.5B+ steps). tools/line_track.py shows it in the core: line_a 960 -> 1300 is
+     flyable with policy-frame actions at 25 Hz once the spawn view is aligned.
+  2. Contiguous curriculum bands (`--demo-grow` <= `--demo-window`) and `--demo-cooldown 5`: 1120 -> 10
+     in 40 min at ~98% per band; the greedy line passed the pit (3.99) with the curriculum still at ~490.
+  3. Search the next gate from the policy's OWN states: record_ckpt --dump-states of the greedy line,
+     the states 1-2.5 s before its deaths as roots, `explore_phase1 --view-velocity --exact-chains`
+     (8 threads next to the trainer, 15 min) -> line_b to 6.68%; spine = the own greedy recording up
+     to the root + line_b.
+  4. `--demo-success-bonus 0` for that extension: with the bonus every extension eroded the start room
+     and the route (vv3-vv6: greedy 3.99 -> 0.42) because the bonus line was out of one episode's reach
+     from the start, so start-room episodes never earned it; line_b's field progress is monotone and the
+     ratchet alone teaches it. vv7 (no bonus): the route held, the greedy line picked up line_b within
+     ~25 min, 9/9 at 6.68% from 4.43B.
+* **What did not:** a merged spawn file that halved the start room's share (vv3 lost the start room);
+  shorter spines alone (vv6); GE2 / GE3 past 6.68% (15 min each, 2.5M runs, nothing: the pocket is closed
+  to slow uniform bursts - the record leaves it ~376 u higher after a ~1,290 u/s drop, so the next gate is
+  a SPEED gate; GE lines are slow and the map's later gates need the fast line).
+* **Harness:** no usable box for the first 6.7 h (4 failed rentals, an empty or blocklisted market,
+  0.30-0.38 $/h of pace headroom); everything up to 09:02 was CPU analysis on the 4-vCPU host.
+* **Next (for whoever continues):** a speed source for the drop after 4.3% (the fast way down needs
+  ~700 u/s at its top): GE with energy/speed cells rooted at the policy's own drop states, or the
+  policy's own surfing under energy shaping on that stretch; then the same pipeline (own pre-death
+  roots -> policy-frame exact-chain GE -> own-recording + line spine, no bonus, aligned views).
