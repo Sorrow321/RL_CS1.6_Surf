@@ -83,6 +83,7 @@ class GreedyLinePool:
         self.mixed = 0
         self._eps: list = []
         self._cur: list = []
+        self._keys, self._keys_of = set(), None
 
     @property
     def size(self) -> int:
@@ -196,6 +197,18 @@ class GreedyLinePool:
         out[len(out) - n:] = self.perturb(self.rows[self.rng.integers(0, self.size, n)])
         self.mixed = n
         return out
+
+    def is_row(self, origins) -> np.ndarray:
+        """Whether each origin is one of the pool's states (origins rounded to 0.1 u; a mixed
+        row keeps its state's origin, --respawn-greedy-turn / -speed move only the velocity
+        and the view) - how the trainer tells a greedy-line spawn from the rest of the pool
+        (--respawn-greedy-temp)."""
+        if self._keys_of is not self.rows:
+            self._keys = {tuple(np.round(np.asarray(o, np.float64), 1))
+                          for o in np.asarray(self.rows["origin"])}
+            self._keys_of = self.rows
+        return np.array([tuple(np.round(np.asarray(o, np.float64), 1)) in self._keys
+                         for o in np.asarray(origins)], bool)
 
     def perturb(self, rows: np.ndarray) -> np.ndarray:
         """``rows`` with --respawn-greedy-turn / --respawn-greedy-speed applied (a copy);

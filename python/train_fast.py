@@ -7024,6 +7024,17 @@ def main() -> None:
                     help="--respawn-greedy: scale each mixed greedy row's velocity by "
                          "U(LO, HI) (the policy's own frontier states with more or less "
                          "energy). Off by default; ckpt restores")
+    ap.add_argument("--respawn-greedy-temp", type=float, default=None,   # None = off
+                    help="--respawn-greedy: T > 0 = an env whose episode STARTED on a greedy-line "
+                         "row samples the keys at 1 + T and the yaw sigma x --respawn-greedy-"
+                         "temp-view (default 1 + T) for its first --respawn-greedy-temp-ticks "
+                         "ticks (the --demo-front-temp rule on the --front-temp slots; pitch "
+                         "stays cold): exploration on the greedy line's own last seconds before "
+                         "it stalls. Off = today, bit-identical; not restored")
+    ap.add_argument("--respawn-greedy-temp-ticks", type=int, default=None,   # 100
+                    help="--respawn-greedy-temp: the hot window after a greedy-row spawn, ticks")
+    ap.add_argument("--respawn-greedy-temp-view", type=float, default=None,  # None = 1 + T
+                    help="--respawn-greedy-temp: the yaw head's sigma multiplier in the window")
     ap.add_argument("--respawn-greedy-window", type=float, nargs=2, default=None,
                     metavar=("LO", "HI"),
                     help="--respawn-greedy: keep the states from HI down to LO seconds before "
@@ -8901,6 +8912,35 @@ def main() -> None:
                              + ", ".join(_bad))
     elif args.demo_front_ticks is not None or args.demo_front_view is not None:
         raise SystemExit("--demo-front-ticks / --demo-front-view need --demo-front-temp")
+    if args.respawn_greedy_temp is not None:
+        if float(args.respawn_greedy_temp) <= 0.0:
+            raise SystemExit("--respawn-greedy-temp T needs T > 0 (absent = off)")
+        if not float(args.respawn_greedy or 0.0) > 0.0:
+            raise SystemExit("--respawn-greedy-temp tempers --respawn-greedy rows: it needs "
+                             "--respawn-greedy F > 0")
+        if args.respawn_greedy_temp_ticks is None:
+            args.respawn_greedy_temp_ticks = 100
+        if int(args.respawn_greedy_temp_ticks) <= 0:
+            raise SystemExit("--respawn-greedy-temp-ticks must be > 0")
+        if (args.respawn_greedy_temp_view is not None
+                and float(args.respawn_greedy_temp_view) <= 0.0):
+            raise SystemExit("--respawn-greedy-temp-view is a sigma multiplier: > 0")
+        _bad = [f for f, on in (("--maps", args.maps),
+                                ("--rnn", args.rnn not in (None, "none")),
+                                ("--chunk", args.chunk),
+                                ("--sil-coef", float(args.sil_coef or 0.0) > 0.0),
+                                ("--cc-temp-scale", args.cc_temp_scale),
+                                ("--crl", getattr(args, "crl", None)),
+                                ("--yaw-cond", args.yaw_cond))
+                if on]
+        if not args.view_continuous or args.reward != "race":
+            _bad.append("a run without --view-continuous and --reward race")
+        if _bad:
+            raise SystemExit("--respawn-greedy-temp (a per-env temperature on the flat "
+                             "single-map rollout) is not implemented with " + ", ".join(_bad))
+    elif (args.respawn_greedy_temp_ticks is not None
+          or args.respawn_greedy_temp_view is not None):
+        raise SystemExit("--respawn-greedy-temp-ticks / -view need --respawn-greedy-temp")
     if args.ez_front is None:
         args.ez_front = 0.0
     if float(args.ez_front) != 0.0:
@@ -14572,6 +14612,13 @@ def main() -> None:
         meta["config"]["demo_cooldown"] = int(args.demo_cooldown)
     if args.demo_file and args.demo_grow_max is not None:
         meta["config"]["demo_grow_max"] = int(args.demo_grow_max)
+    # --respawn-greedy-temp: written ONLY when on (a record of the run, never restored)
+    if args.respawn_greedy_temp is not None:
+        meta["config"]["respawn_greedy_temp"] = float(args.respawn_greedy_temp)
+        meta["config"]["respawn_greedy_temp_ticks"] = int(args.respawn_greedy_temp_ticks)
+        meta["config"]["respawn_greedy_temp_view"] = (
+            float(args.respawn_greedy_temp_view)
+            if args.respawn_greedy_temp_view is not None else None)
     # --demo-front-temp: written ONLY when on (a record of the run, never restored)
     if args.demo_front_temp is not None:
         meta["config"]["demo_front_temp"] = float(args.demo_front_temp)
@@ -15566,8 +15613,11 @@ def main() -> None:
     # --demo-front-temp rides the same per-env slots: FRONT is on for either, FRONT_RES only
     # for the reservoir band of --front-temp itself
     DFT = float(args.demo_front_temp or 0.0) > 0.0 and demo is not None
+    GTEMP = float(args.respawn_greedy_temp or 0.0) > 0.0 and GREEDY is not None
     FRONT_RES = float(args.front_temp or 0.0) > 0.0
-    FRONT = FRONT_RES or DFT
+    FRONT = FRONT_RES or DFT or GTEMP
+    greedy_sp = np.zeros(N, bool)        # --respawn-greedy-temp: env spawned on a greedy row
+    gt_share = float("nan")
     FRONT_BASE = [0.0]                   # the global T (set_unstuck_temp writes it)
     front_thr = float("inf")             # d at the band's edge, re-read every iteration
     front_share = float("nan")
@@ -15595,6 +15645,14 @@ def main() -> None:
                   + (f"the --unstuck T on heads '{UNSTUCK_HEADS}'" if UNSTUCK_TEMP
                      else "temperature 1")
                   + "; PPO scores each row at its own temperature")
+    if GTEMP:
+        _gt_k = 1.0 + float(args.respawn_greedy_temp)
+        _gt_v = (float(args.respawn_greedy_temp_view)
+                 if args.respawn_greedy_temp_view is not None else _gt_k)
+        GT_TICKS = int(args.respawn_greedy_temp_ticks)
+        print(f"--respawn-greedy-temp {args.respawn_greedy_temp:g}: an env whose episode started "
+              f"on a greedy-line row samples the keys at {_gt_k:g} and the yaw sigma x {_gt_v:g} "
+              f"for its first {GT_TICKS} ticks; PPO scores each row at its own temperature")
     if DFT:
         _dft_k = 1.0 + float(args.demo_front_temp)
         _dft_v = (float(args.demo_front_view) if args.demo_front_view is not None else _dft_k)
@@ -15607,7 +15665,7 @@ def main() -> None:
     def set_front_temp() -> None:
         """--front-temp: this decision's per-env temperatures from the band (reward_fn._d is
         the post-step distance of every env, the new spawn's for an env that just ended)."""
-        nonlocal front_share, dft_share
+        nonlocal front_share, dft_share, gt_share
         d = reward_fn._d
         band = (np.zeros(N, bool) if (d is None or not FRONT_RES)
                 else (np.asarray(d) <= front_thr))
@@ -15623,6 +15681,13 @@ def main() -> None:
             # keeps the cold value
             ftv_np[np.flatnonzero(hot)[:, None], np.arange(NZ - 1)[None, :]] = _dft_v
             dft_share = float(hot.mean())
+        if GTEMP and _dft_len[0] is not None:
+            # --respawn-greedy-temp: the envs whose episode started on a greedy-line row,
+            # inside their hot window (the same per-row slots; the yaw head(s) only)
+            hotg = greedy_sp & (_dft_len[0] < GT_TICKS)
+            ftk_np[hotg] = _gt_k
+            ftv_np[np.flatnonzero(hotg)[:, None], np.arange(NZ - 1)[None, :]] = _gt_v
+            gt_share = float(hotg.mean())
         temp_t.copy_(ftk_pin.view(N, 1, 1), non_blocking=True)
         tempv_t.copy_(ftv_pin, non_blocking=True)
         front_share = float(band.mean())
@@ -18665,6 +18730,10 @@ def main() -> None:
                                 demo.note_outcomes(demo_idx[ei][known],
                                                    goal_now[known])
                             demo_idx[ei] = demo.match(sv_view[ei]["origin"])
+                        if GTEMP and ended.any():
+                            # --respawn-greedy-temp: which fresh spawns are greedy-line rows
+                            _gei = np.flatnonzero(ended)
+                            greedy_sp[_gei] = GREEDY.is_row(sv_view[_gei]["origin"])
                     if respawn is None and goalsys is not None and ended.any():
                         # --goal-planner ramps without the reservoir: the ended envs respawned
                         # at the map start; their windows are drawn all the same
@@ -20696,6 +20765,9 @@ def main() -> None:
         if DFT:
             # --demo-front-temp: the share of envs hot at the last decision
             hyg_note += f"  demohot {dft_share:.1%}"
+        if GTEMP:
+            # --respawn-greedy-temp: the share of envs hot at the last decision
+            hyg_note += f"  greedyhot {gt_share:.1%}"
         if AUG_ON and aug_kl_v == aug_kl_v:
             # --aug-*: how far the augmented frame's answer still is from the clean one
             hyg_note += f"  drac kl {aug_kl_v:.4f} v {aug_vm_v:.4f}"
