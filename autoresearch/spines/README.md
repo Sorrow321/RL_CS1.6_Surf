@@ -56,3 +56,6 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   18.26% (beam_tas on pbr2b3_beam9's 7.67B weights; frontier 18.52% at 19 s, the population
   extinct by 28 s), cut at a healthy state at or before its best; views along the velocity. No demo,
   no record data (pbr2b3).
+* `pbr2b3_beam_g10a_1560.npy` (1,561 states, md5 698e8ec75b45d269c4bd41d6e14439a5): the same beam_g10a line cut at tick 1,560
+  (16.68%, just past the fall catch at x ~-1,700..-2,000 that ends beam9's greedy line), so the
+  curriculum's success line sits right after that catch. Same provenance (pbr2b3).
