@@ -1134,3 +1134,35 @@ CPU beam_tas works locally: ~1,750 env-steps/s at 256 envs (3 threads), so a 512
   vary the view; the 20.4% gate needs a harder carve and a ~4 deg/tick air turn. gate_search
   passes them (--beam-keys-temp / --beam-yaw-scale).
 * Local test running: 512-copy beam with keys T 1.3 and yaw sigma x6 (~4.5 deg).
+
+### 21:30-22:05 UTC: the 20.4% gate is a launch, then a corner (local searches all fail)
+* Tempered CPU beam (512 copies, keys T 1.3, yaw sigma x6): extinct at 16-17 s like the plain one
+  (frontier 19.28% at 16 s; the tempering killed ~40% of the lineages on the face at 15 s).
+* Uniform random bursts (`entry_search`, new `--alive-after 100`: a hit must still be alive 1 s
+  after reaching d < 45,262 = 20.8%) from 16 of the plain beam line's states (x -1,705 .. -65,
+  the channel landing through the face and the flight): **0 hits in 1.62M bursts** (20 min).
+* Why (core traces; the record as ANALYSIS ONLY): a solid block fills y < -2,600 from x -900 to
+  +400 at z 2,450-2,850, with a 100 u pillar at (-50, -2,350); the pit floor east of the block
+  (z 2,360) IS the catch; the only landing is a surf ramp on the block's east side (x 450-550,
+  y -2,650..-3,350, normal z 0.65) that rises west and curves out east. So: launch off the face's
+  end, fly east between the pillar and the block (y ~-2,450), turn hard right around the corner
+  at x ~400 and drop onto that ramp. The corner needs altitude ~2,650+ at x ~400: ballistically a
+  launch vz of ~+400 (record +467 -> z 2,782 at x 377; policy +209..+250 -> ~2,600 and still
+  heading north of y -2,400 when it is already below the corner). With the policy's own energy
+  (h ~3,700 at the launch) a vz +450 launch is affordable (|v_h| ~1,084, z ~2,790 at the corner),
+  so this gate is the CARVE at the face's end (the record turns into the face -10 -> -33 deg and
+  trades 146 u/s of horizontal speed for vz), not an energy deficit.
+* The ballistic flight east-south-east from the launch hits the block's north wall, which is
+  why both the record and the policy turn LEFT first (to ~+40 deg) and right only at the corner.
+  A hand-written steering controller (held face macro -> steer east -> hard right at x 100-300)
+  over 8,100 combinations never reached the ramp (best 18.85%): measurement noise of a bad
+  controller, not evidence either way. Not pursued (a map-specific controller is not a method).
+* The trainer's reservoir in the incumbent checkpoint (20,000 states): its 22 states past 20.0%
+  (20.7-20.8%) are a nearly motionless pocket on a step of the pit floor at (914-927,
+  -2,708..-2,762, ~2,440) - round 2's "training frontier 20.8%" is that pocket, not a way on.
+* gate_search now re-aims a GE chain's views along the velocity (spine_canon_view, round 2's
+  gate-2 lesson); entry_search `--view-velocity` (random velocity-frame view targets, the
+  policy's own action space; off = unchanged, test passes).
+* Next with a box: gate_search (beam 4,096, then GE 12 min rooted at the line's 13-15.5 s: the
+  face approach, the ride and the launch); the GE archive's energy cells keep high launches as
+  their own cells, which is what this gate needs.

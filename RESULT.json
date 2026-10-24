@@ -3,5 +3,5 @@
  "round": 3,
  "final": false,
  "best": null,
- "summary": "No box yet (budget pace: one 5080 for the fleet, rented by another branch since ~20:00 UTC; a local waiter rents + deploys when a second fits). Analysis: the incumbent's 9/9 greedy episodes die in catch *187 at ~16.8 s after leaving a surf face at x ~-990 with vz +209 (the record leaves it with +467 after a harder carve, then air-turns into a bowl). A 512-copy CPU beam dies at the same catch. Built tools/gate_search.py (beam -> GE fallback -> splice -> contact cut, one command) and tools/spine_tool.py for the box session."
+ "summary": "No box yet (the fleet's budget pace admits one 5080; another branch holds it since ~20:00 UTC; a local waiter rents + deploys when a second fits). The incumbent's 20.4% gate, measured: a launch off a surf face (policy vz +209..+250, needed ~+400; affordable with its own energy) then a hard right around a block corner onto the only ramp over a catch floor. Local CPU searches all fail there: 2 beams (512, plain and tempered), 1.62M random bursts. Built tools/gate_search.py (beam -> GE -> splice -> canon views -> contact cut), spine_tool.py, beam_tas --prop-keys-temp/--prop-yaw-scale, entry_search --alive-after/--view-velocity. Next with a box: gate_search, then the curriculum resume."
 }
