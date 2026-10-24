@@ -18,3 +18,16 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   of two Go-Explore phase-1 archives rooted at the true spawn. Used as `--spawn-states` (0.3-0.4)
   to keep the start room practised. Caveat (NOTES.md): the two entry_search stage target boxes
   were chosen from core probes of this map.
+
+# pbr2b4 (round 2)
+
+* `pbr2b4_chain3b.npy` (298 states, md5 946dc2ee28caa699581088c4408e081e): an exact per-tick chain
+  from `pbr1b1_line_a.npy` state 1058 (the drop onto the ridge, ~650 u/s) to 3.95% on the grader
+  field: surf the ridge east at ~780 u/s, launch north-east over the pit, turn on the far east
+  side, fly west along the north side. `tools/explore_phase1.py --exact-chains` (reward-free
+  uniform bursts, 64 u x --cell-energy 32, 4,096 envs, K 4, 100 decisions, --maxvel 3500, 12 min)
+  rooted at line_a states 900-1250 (stride 2), then `tools/ge_replay.py --cell 16115` (9/9 links).
+* `pbr2b4_spine_b.npy` (1,916 states, md5 df440ae6f70437b72e3f7fe40c5f9b4d): the backward
+  curriculum's spine from the TRUE START = pbr1b1_g2cur6's own greedy line from the true start
+  (record_ckpt --dump-states, episode 2, ticks 0-559, into the crouch tunnel) + line_a states
+  0-1057 (the tunnel run-up) + chain3b. Junctions within 8 u. 1,574 of 1,916 states ducked.

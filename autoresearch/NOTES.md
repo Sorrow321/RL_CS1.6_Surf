@@ -586,3 +586,63 @@ the backward curriculum (--demo-file + --demo-success-d) on the found line. Not 
 * **Next:** a line without the wall-bounce manoeuvre (a coarser heading key, or a longer GE), a
   held view temperature for curriculum spawns, and a curriculum that starts with all four fixes.
   Everything needed to resume is in the repo (autoresearch/spines/, the flag set above).
+
+## pbr2b4 (round 2, slot 4) - started 2026-10-24 02:18 UTC
+
+Box: 57454279, RTX 5080 (Italy, machine 153177), 0.561 $/h, rented 02:26 UTC (3 h deadline).
+Deployed ar/pbr2b4 with pbr1b1_g2cur6's ckpt_latest (3.285B, md5 a6559938...) as runs_ckpt.pt.
+
+### g2cur6's greedy line from the true start (record_ckpt --dump-states, 3 episodes, 02:30 UTC)
+* best 3.173 / 3.090 / 3.234% (the pit, ticks 853-1070). It has CHANGED since g2b: after the
+  tunnel (exit x ~126 at tick ~620, only ~190 u/s - it crawls the tunnel ducked at 180-190 u/s)
+  it turns east at once and rides the surf ridge (tick 680-800: z 3,543 -> 3,410, 220 -> 455
+  u/s) to its east end (630, -2,987, 3,410), then drops off it into the pit (841, -3,223, 3,351).
+  line_a instead slides the tunnel at 300-380 u/s, leaves it at 380 u/s, rides the ridge at
+  603 -> 772 u/s and launches off its end with vz +346. So the remaining gap is SPEED out of the
+  tunnel (190 vs 380 u/s): the drop adds ~400 u/s in both cases.
+* GE1 = explore_phase1 --exact-chains (GE6's settings: 64 u x --cell-energy 32, 4,096 envs, K 4,
+  100 decisions, --maxvel 3500) rooted at the greedy line's last 4 s before its best point (ticks
+  510-910, stride 2: tunnel x <= 330, exit, ridge, pit), 9 min, 8.5M runs: 13,652 cells, NOTHING
+  past the pit (best 3.231% = a root). Those roots start too late in the tunnel for a run-up.
+* GE2 (roots: the greedy line from tick 160 = the tunnel entry, stride 2, 376 roots) and GE3
+  (roots: line_a states 900-1250 = tunnel slide end, exit, ridge, launch, flight up to the wall
+  bounce; does a continuation WITHOUT the bounce exist?) running together, 12 min, 15 threads each.
+
+### --demo-adapt M / --demo-cooldown C (new, default off / 20, byte-identical; commit 125fb86)
+The curriculum's step adapts in [1, M]: a second advance in a row with the band at >= 2 x rate
+doubles it, a backoff halves it and backs off by the halved step (Rprop's sign rule; a first
+version that doubled on every easy advance cycled 32 <-> 64 at a hard state - caught by the
+test). It replaces pbr1b1's by-hand "grow 20 on the easy part, 5 through the bounce", and the
+cooldown (20 iterations = 10.5M steps per move, which bounded g2cur's pace) is a flag.
+tests/python/test_demo_adapt.py (4 passed, CPU).
+
+### GE2 / GE3 results and the new line (02:41-02:53 UTC)
+* GE2 (roots: g2cur6's greedy line from the tunnel entry, 376 roots, 12 min, 6.8M runs): 15,824
+  cells, nothing past the pit. With GE1, two searches from the POLICY'S OWN slow line found no way
+  past it: from ~190 u/s out of the tunnel random bursts do not reach the launch.
+* GE3 (roots: line_a states 900-1250, the fast part: 300-380 u/s slide, exit, drop, ridge,
+  launch, flight to the bounce; 12 min, 5.4M runs): 16,356 cells, **633 past 3.3%, best 3.963%**,
+  from TWO roots only - line_a 1058 (on the drop onto the ridge, |v| 651) and line_a 1112 (on the
+  ridge, |v| ~770). None from the flight states 1150-1248 (the wall-bounce lineage was not even
+  re-found in 12 min: it is the rare one).
+  * chain from 1112 (chain3a, 1,213 ticks, 3.79%): lands on the far SOUTH ramp, wanders north and
+    back for ~9 s, ends running west along the south ramp. The field's descent from its end goes
+    west and joins the record's route (4.6% at x 310, 6.2% at x -458, 8.3% at x -1,482), so the
+    south side is not a dead end for the field.
+  * **chain from 1058 (chain3b, 298 ticks = 3 s, 3.95%)**: surfs the ridge east at ~780 u/s,
+    launches north-east off it ((629,-3,016,3,408) v (465, 305, 396)), flies over the pit, turns
+    on the far east side ((1,010,-2,862) v (568,12) -> (-257,464) in 20 ticks) and flies west
+    along y ~-2,650..-2,666 at 400-500 u/s to (534,-2,666,3,435) - the record's own side and
+    heading (record: 3.5% at (757,-2,651), 4% at (481,-2,662)). No 6-s flight + wall bounce.
+* spine_b (1,916 states) = g2cur6's own greedy line from the true start (ticks 0-559, into the
+  tunnel; it passes within 8 u of line_a's first state) + line_a 0-1057 (the run-up) + chain3b.
+  autoresearch/spines/pbr2b4_spine_b.npy (md5 df440ae6...) and pbr2b4_chain3b.npy.
+
+### pbr2b4_cur1 (launched 02:55 UTC): backward curriculum on spine_b from g2cur6 (3.285B)
+`--resume` g2cur6 + `--demo-file spine_b --demo-window 10 --demo-grow 8 --demo-adapt 64
+--demo-cooldown 5 --demo-front-frac 0.67 --demo-success-d 100 --demo-success-bonus 50
+--keys-hold-spawn-duck --yaw-entropy 0` + the demo-incompatible spawn options off (as round 1) +
+30% `--spawn-states pbr1b1_entry_ge_states.npy`; 4e9 steps cap. Success line d <= 54,990 (3.78%).
+First 3 min: tau 1915 -> 1667 (chain3b state 49, on the ridge before the launch) with band
+success 100 / 97 / 92 / 87%, step 8 -> 64 (the curriculum's first ~250 states took ~5M steps; at
+round 1's fixed grow 20 / cooldown 20 they would have taken ~130M).
