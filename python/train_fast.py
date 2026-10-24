@@ -3740,6 +3740,10 @@ def auto_beam_step(ab, args, path, out, step, save_ckpt, end_d, tick):
     ab["k"] += 1
     k = ab["k"]
     save_ckpt("autobeam")
+    if not (out / "ckpt_latest.pt").exists():
+        # the run's first eval comes before its first ckpt_latest.pt, and run_arm.sh's record
+        # gate kills a run that has none after 900 s: a search (plus --auto-ge) can take longer
+        save_ckpt("latest")
     bdir = out / f"auto_beam_{k:02d}"
     max_ticks = max(t for _, t in eps) + tick.secs_to_ticks(float(args.auto_beam_secs), "round")
     cmd = [sys.executable, "-u", str(ROOT / "tools" / "beam_tas.py"),
