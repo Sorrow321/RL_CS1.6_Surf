@@ -747,3 +747,9 @@ round 1's fixed grow 20 / cooldown 20 they would have taken ~130M).
   `--demo-replay 0.25 --demo-speed 0.3 1.0 1.3` + per-call energy shaping (`--energy-pot-front 0
   --energy-pot-front-bonus 0`: every contact's loss of h charged when it happens; under GAE
   lambda 0.95 the hard landing gets its own credit although the episode total telescopes).
+* cur3 first readout (05:54 UTC, 5.19B): with --demo-replay 0.25 the curriculum swept spine_c from
+  the end to tau 0 in ~10 min WITHOUT losing the line (evals 6.700 / 6.696 / 6.699 / 6.717 /
+  **6.759** at 5.164B, best 6.8%; cur2 had dropped to the pit for 25 min). The energy height on the
+  launch ramp (first tick past 5.6%) moved for the first time: cur2's 9 episodes all 3,086-3,103;
+  cur3 at 5.09-5.16B 3,085-3,341 (several ~+250 u). Peak speed 797 -> 825 u/s. Still short of the
+  ~3,700 the wall needs. Pulled cur3 ckpt_latest 5.1847B (md5 19d7d584...).

@@ -3,13 +3,13 @@
  "round": 2,
  "final": false,
  "best": {
-  "score": 6.696,
-  "eval_file": "/home/steam/ar_pb/runs/pbr2b4/pbr2b4_cur2/traj_4847566848.jsonl",
-  "run": "pbr2b4_cur2",
-  "step": 4847566848,
-  "ckpt": "/home/steam/ar_pb/runs/pbr2b4/pbr2b4_cur2/ckpt_latest.pt",
+  "score": 6.759,
+  "eval_file": "/home/steam/ar_pb/runs/pbr2b4/pbr2b4_cur3/traj_5163712512.jsonl",
+  "run": "pbr2b4_cur3",
+  "step": 5163712512,
+  "ckpt": "/home/steam/ar_pb/runs/pbr2b4/pbr2b4_cur3/ckpt_latest.pt",
   "recipe": [
-   "--resume pbr2b4_cur1 final ckpt_latest (4.394B, md5 f213128b; cur1 = the same flags on spine_b from pbr1b1_g2cur6)",
+   "--resume pbr2b4_cur2 ckpt_latest (4.861B, md5 6c41d08c; cur2 <- cur1 <- pbr1b1_g2cur6)",
    "--maxvel",
    "3500",
    "--demo-file",
@@ -45,12 +45,22 @@
    "--spawn-states",
    "autoresearch/spines/pbr1b1_entry_ge_states.npy",
    "--spawn-states-frac",
-   "0.3"
+   "0.3",
+   "--demo-replay",
+   "0.25",
+   "--demo-speed",
+   "0.3",
+   "1.0",
+   "1.3",
+   "--energy-pot-front",
+   "0",
+   "--energy-pot-front-bonus",
+   "0"
   ],
-  "resume_from": "/home/steam/ar_pb/runs/pbr2b4/pbr2b4_cur1/ckpt_latest.pt (4.394B, md5 f213128b)",
-  "commit": "2a174b5",
-  "ckpt_step": 4861198336,
-  "ckpt_md5": "6c41d08cfb0cd59c13695cacf6e5acca"
+  "resume_from": "/home/steam/ar_pb/runs/pbr2b4/pbr2b4_cur2/ckpt_latest.pt (4.861B, md5 6c41d08c)",
+  "commit": "899b129",
+  "ckpt_step": 5184684032,
+  "ckpt_md5": "19d7d584b12a4684874d33f4ff00e52a"
  },
  "summary": "Best 6.696 (cur2 4.8476B; incumbent 3.236): 9/9 greedy episodes from the TRUE START reach 6.55-6.70%. Loop: own greedy line -> exact-chain Go-Explore rooted at its last seconds -> spine = own prefix + chain -> backward curriculum with the adaptive step (--demo-adapt) + --demo-replay. Gates passed: the pit (3.2%), the fall catch (4.0%). Next gate (6.7%, x~-1,000) is a SPEED gate: GE from the launch ramp with velocity x1.5 reaches 12.6%; the policy loses ~450 u of energy height in one hard landing at x~200 that neither GE nor yaw nudges avoid. cur3 (05:42): + per-call energy shaping + --demo-speed 0.3 1.0 1.3 (sped-up spine starts)."
 }
