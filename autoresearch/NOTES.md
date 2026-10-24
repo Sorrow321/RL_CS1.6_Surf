@@ -860,3 +860,8 @@ round 1's fixed grow 20 / cooldown 20 they would have taken ~130M).
 * GE hp1/hp2 (08:57 UTC): roots = chain_rim1 idx 0-70 (from the policy's 4.14% state to just before
   its half-pipe contact at idx 80, (64,-2,826,2,980)), 10 min x 2: a smoother half-pipe landing is
   the next energy step toward the platform.
+* GE hp1/hp2 (4-min snapshots): ramp h max 3,557-3,584 - no better than the rim-clearing line; the
+  half-pipe loss stays for uniform bursts. No platform.
+* **pbr2b4_cur7** (09:03 UTC): resume cur6 final (6.797B, md5 9615ee3e...) + cur6's flags +
+  `--demo-file spine_e` (GE8: cur6's own prefix + the 7.09% rim-clearing chain) with
+  `--demo-success-d 20` (success at 7.056%, past the policy's own best 6.956%).

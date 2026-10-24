@@ -51,3 +51,8 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   energy drop, 64 u x --cell-energy 16, 50-decision bursts, 10 min; ge_replay 8/8 links, 233 ticks)
   that passes the rim ~75 u higher, keeps the energy and reaches the wall top at 7.03%
   (-1,001,-2,983,3,231).
+* `pbr2b4_spine_e.npy` (900 states, md5 8da828ad3f813a50cfe3424300952c13): pbr2b4_cur6's own greedy
+  line from the true start (6.777B, episode 1, ticks 0-663) + GE8's chain (pb_frontier_step --roots
+  sink: rooted at that line's own states 1.0-0.1 s before its largest one-tick energy drop - the
+  rim - 64 u x --cell-energy 16, 50-decision bursts, 10 min; shortest chain within 32 u of the
+  deepest, 236 ticks, ge_replay 12/12) to the wall top at 7.09% (-1,001,-2,996,3,252).
