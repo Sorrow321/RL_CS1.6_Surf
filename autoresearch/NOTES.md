@@ -528,3 +528,15 @@ the backward curriculum (--demo-file + --demo-success-d) on the found line. Not 
   pass - test_ge_minutes, test_entry_search, test_yaw_entropy, test_demo_success_d,
   test_demo_success_bonus, test_keys_hold_spawn_duck, test_exact_chains (each new flag
   bit-identical when off against the trainer / explorer before it).
+* How to resume the gate-2 curriculum (the flag set the last runs used; all files in the repo):
+  `box.py launch --agent A --run R --steps N --resume --self-states "<provenance of
+  autoresearch/spines/README.md>" -- --maxvel 3500 --demo-file autoresearch/spines/pbr1b1_line_a.npy
+  --demo-window 5 --demo-grow 5 --demo-tau0 <where the last run stood, 1235-1240>
+  --demo-front-frac 0.67 --demo-success-d 100 --demo-success-bonus 50 --keys-hold-spawn-duck
+  --yaw-entropy 0 --no-respawn-novel --respawn-backward-mix 0 --int-real-only 0
+  --respawn-front-perturb 0 --respawn-greedy 0 --respawn-greedy-stuck 0
+  --spawn-states autoresearch/spines/pbr1b1_entry_ge_states.npy --spawn-states-frac 0.3`
+  (grow 5 only through the precise manoeuvre; the easy stretches went at 20 states/advance.)
+  The demo curriculum refuses the recipe's novel / backward-mix / front-perturb / greedy spawns,
+  hence the zeros; the start room is kept by the 30% start-room states plus 7% true-start
+  spawns (9/9 to the pit through 3.3B steps of curriculum, a few 8/9 evals).
