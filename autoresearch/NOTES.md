@@ -524,3 +524,7 @@ the backward curriculum (--demo-file + --demo-success-d) on the found line. Not 
 * Box 57382830 released 00:18 UTC (nothing left worth running before the 01:34 wrap-up).
   Pulled: g2cur's ckpt_latest (1.403B, the best eval's, md5 b8b53646...) and g2cur6's
   (3.285B, the most curriculum progress without the sigma edit, md5 a6559938...).
+* Regression pass at the end (00:19-00:28 UTC, local CPU): all 18 tests of this branch's flags
+  pass - test_ge_minutes, test_entry_search, test_yaw_entropy, test_demo_success_d,
+  test_demo_success_bonus, test_keys_hold_spawn_duck, test_exact_chains (each new flag
+  bit-identical when off against the trainer / explorer before it).
