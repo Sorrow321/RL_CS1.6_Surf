@@ -5,11 +5,15 @@ Every limit comes from autoresearch/config.json and is enforced HERE, before mon
 * ONE box per agent. The agent's box id lives in $AR_HOME/boxes/<agent>.json and in the fleet
   watchdog's registry (label = agent). A second `rent` while one is live is refused.
 * At most config.max_boxes live boxes on the account.
-* Consumer GPUs only, in the user's order: 3090 / 3090 Ti / 4080 / 5080 first (cheapest of
-  those), then 4090, then 5090. Single GPU. Hard $/h cap per card (config.max_dph). No
-  datacenter cards, ever.
+* Consumer GPUs only, in the user's order: 3090 / 3090 Ti / 4080 / 5080 first, with the
+  cheaper 3080 / 4070 / 5070 / 60 Ti class cards under lower caps since 2026-10-25 (cheapest of
+  those), then 4090, then 5090. Single GPU. Hard $/h cap per card (config.max_dph) on the box's
+  full price, its disk included. No datacenter cards, ever.
 * The budget governor: credit above config.budget_reserve_usd, and the live burn rate plus
-  this box no faster than (credit - reserve) / hours left until config.budget_end_hours.
+  this box no faster than config.budget_rate_usd_h (a flat rate, the user's, 2026-10-25) or,
+  without that key, (credit - reserve) / hours left until config.budget_end_hours (+10%).
+  `extend` is refused when the fleet's burn over the extension would come out of the reserve:
+  a credit run-out stops every box on the account at once.
 * Readiness: `running` within config.ready_running_s (the image pull), ssh within
   config.ready_ssh_s after that. Otherwise the host is blocklisted (tools/bad_hosts.json),
   the box destroyed, and the next offer tried (CLAUDE.md section 1).
@@ -171,10 +175,19 @@ def budget_state(live=None) -> dict:
     burn = sum(float(i.get("dph_total") or 0.0) for i in live)
     start = float(os.environ.get("AR_START") or 0.0) or _ar_start()
     hours_left = max(1.0, CFG["budget_end_hours"] - (time.time() - start) / 3600.0)
-    allowed = max(0.0, c - CFG["budget_reserve_usd"]) / hours_left
+    above = max(0.0, c - CFG["budget_reserve_usd"])
+    rate = CFG.get("budget_rate_usd_h")
+    if rate:
+        # the user's flat rate (2026-10-25) is the limit as stated, without the pacer's slack
+        allowed = float(rate) if above > 0 else 0.0
+        limit = allowed
+    else:
+        allowed = above / hours_left
+        limit = allowed * 1.10
     return {"credit": round(c, 2), "burn_per_h": round(burn, 3), "boxes": len(live),
             "hours_left": round(hours_left, 1), "allowed_per_h": round(allowed, 3),
-            "reserve": CFG["budget_reserve_usd"]}
+            "limit_per_h": round(limit, 3), "reserve": CFG["budget_reserve_usd"],
+            "hours_to_reserve": round(above / burn, 1) if burn > 0 else None}
 
 
 def _ar_start() -> float:
@@ -253,42 +266,47 @@ def blocked_keys():
 
 def offers(exclude_machines=()) -> list:
     """Every acceptable offer, best first: (tier, $/h). Nothing outside the whitelist, the
-    caps, the blocklist or config.cpu_exclude is ever returned."""
+    caps, the blocklist or config.cpu_exclude is ever returned.
+
+    ONE search, filtered here by card name: fifteen whitelisted cards searched one at a time
+    were fifteen vast calls under the fleet lock on every retry (2026-10-25). Priced with the
+    box's own disk (--storage disk_gb): vast prices 5 GB by default, the instance's dph_total
+    carries all of disk_gb (the 5080 offer at 0.563 runs at 0.578), and the fleet watchdog
+    destroys a box whose dph_total is over its cap."""
     mids, hids, ips = blocked_keys()
     cpu_bad = [re.compile(p) for p in CFG.get("cpu_exclude", [])]
+    try:
+        got = vast("search", "offers", CFG["offer_query"], "-o", "dph+", "--limit", "5000",
+                   "--storage", str(CFG["disk_gb"]))
+    except RuntimeError as e:
+        log(f"offer search failed: {e}")
+        return []
     out = []
-    for tier, names in enumerate(CFG["gpu_tiers"]):
-        for name in names:
-            cap = gpu_cap(name)
-            if cap is None:
-                continue
-            try:
-                got = vast("search", "offers", f"gpu_name={name} {CFG['offer_query']}",
-                           "-o", "dph+")
-            except RuntimeError as e:
-                log(f"offer search {name} failed: {e}")
-                continue
-            for o in got:
-                if int(o.get("num_gpus") or 0) != 1:
-                    continue
-                if norm_gpu(o.get("gpu_name")) != name:
-                    continue
-                dph = float(o.get("dph_total") or 99.0)
-                if dph > cap:
-                    continue
-                if (o.get("machine_id") in mids or o.get("host_id") in hids
-                        or o.get("public_ipaddr") in ips
-                        or o.get("machine_id") in exclude_machines):
-                    continue
-                cpu = (o.get("cpu_name") or "").strip()
-                if any(p.search(cpu) for p in cpu_bad):
-                    continue
-                out.append({"tier": tier, "gpu": name, "dph": dph, "id": o["id"],
-                            "machine_id": o.get("machine_id"), "host_id": o.get("host_id"),
-                            "cores": o.get("cpu_cores_effective"), "ram_gb": round((o.get("cpu_ram") or 0) / 1024),
-                            "inet_down": o.get("inet_down"), "where": o.get("geolocation", ""),
-                            "cpu": cpu})
-    out.sort(key=lambda o: (o["tier"], o["dph"]))
+    for o in got:
+        name = norm_gpu(o.get("gpu_name"))
+        tier, cap = gpu_tier(name), gpu_cap(name)
+        if tier is None or cap is None:
+            continue
+        if int(o.get("num_gpus") or 0) != 1:
+            continue
+        dph = float(o.get("dph_total") or 99.0)
+        if dph > cap:
+            continue
+        if (o.get("machine_id") in mids or o.get("host_id") in hids
+                or o.get("public_ipaddr") in ips
+                or o.get("machine_id") in exclude_machines):
+            continue
+        cpu = (o.get("cpu_name") or "").strip()
+        if any(p.search(cpu) for p in cpu_bad):
+            continue
+        out.append({"tier": tier, "gpu": name, "dph": dph, "id": o["id"],
+                    "machine_id": o.get("machine_id"), "host_id": o.get("host_id"),
+                    "cores": o.get("cpu_cores_effective"), "ram_gb": round((o.get("cpu_ram") or 0) / 1024),
+                    "inet_down": o.get("inet_down"), "where": o.get("geolocation", ""),
+                    "cpu": cpu})
+    # on a price tie the card with the higher cap (the better class) goes first: a cheaper card
+    # never wins while a good one costs the same (user, 2026-10-25)
+    out.sort(key=lambda o: (o["tier"], o["dph"], -gpu_cap(o["gpu"])))
     return out
 
 
@@ -366,10 +384,10 @@ def cmd_rent(a):
         tried = set()
         for attempt in range(3):
             cands = offers(exclude_machines=tried)
-            cands = [o for o in cands if b["burn_per_h"] + o["dph"] <= b["allowed_per_h"] * 1.10]
+            cands = [o for o in cands if b["burn_per_h"] + o["dph"] <= b["limit_per_h"] + 1e-9]
             if not cands:
                 die(f"no offer passes (whitelist, caps, blocklist) within the budget pace: "
-                    f"burn {b['burn_per_h']} $/h, allowed {b['allowed_per_h']} $/h. Wait for a "
+                    f"burn {b['burn_per_h']} $/h, limit {b['limit_per_h']} $/h. Wait for a "
                     "box to be released or for prices to drop; do analysis meanwhile.", code=3)
             o = cands[0]
             tried.add(o["machine_id"])
@@ -623,6 +641,14 @@ def cmd_pull(a):
 
 def cmd_extend(a):
     rec = need_rec(a.agent)
+    # a flat rate can outspend the credit, and a run-out stops EVERY box on the account at once
+    # (2026-10-09): no extension that the fleet's burn would pay out of the reserve
+    b = budget_state()
+    above = b["credit"] - b["reserve"]
+    if above < b["burn_per_h"] * float(a.hours):
+        die(f"extend {a.hours} h refused: the fleet burns {b['burn_per_h']} $/h and the credit "
+            f"${b['credit']} is ${max(0.0, above):.2f} above the ${b['reserve']} reserve. "
+            "Harvest and release, or extend for less.")
     r = watchdog("extend", str(rec["id"]), "--minutes", f"{float(a.hours) * 60:.0f}")
     print(r.stdout.strip() or r.stderr.strip())
 
