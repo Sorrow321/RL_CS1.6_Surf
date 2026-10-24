@@ -770,3 +770,23 @@ pbr1b1_g2cur6/ckpt_latest.pt 3.285B, md5 a6559938..., both present).
   flat top and every flat landing), instead of the once-per-episode bonus at the frontier band
   (which pays the speed brought into the last 1% only). lb2 ended stuck at 6.7% (eval 6.696 at
   4.418B, unstuck T at its 0.20 cap, frontier record unchanged for 400M steps).
+* lb3 (per-call energy) is a REGRESSION: greedy evals 6.660 (4.446B, inherited) -> 4.833 -> 4.863 ->
+  6.472 (median back to 4.8%: the south-side fall catch returns), frontier unchanged at 6.73% after
+  260M steps. Stopped 05:58 UTC. The once-per-episode frontier bonus (the recipe's form) stays.
+* beam_tas (policy-guided population search, 4,096 envs, resample 25, 64 greedy envs, from the true
+  start with lb2's 4.446B weights; `--skip-gate --allow-nonfinisher --save-frontier`, needs
+  `--route-file none` on this map): 2,500 ticks in 14 s, min d 53,320 = 6.70% from gen 10 on -
+  the policy's own variations stop at the same wall.
+* Why the south route stops (core traces + energy budget, analysis only): the channel west of
+  x ~-100 is a surf ramp - flat top z 2,944 (y -3,120..-2,880) with a south face and a north face
+  (47 deg) - ending at x ~-800..-1,000 against a block whose top is z ~3,296. Clearing the block
+  takes a launch off a face's top edge with vz ~+780 (the record: from 1,236 u/s on the NORTH face,
+  energy height h = z + v^2/2g ~3,800). The policy arrives from the SOUTH side, moving north into
+  the south face, which faces south: a head-on landing, energy lost whatever the policy does
+  (h ~3,690 -> its 565 u/s at z 2,890). A lossless landing needs to come from the north side onto
+  the north face, moving north - the record's route, which also carries ~+200 u of h from its
+  half-pipe pump at the start. So 6.7% is the south route's ceiling; the north route (and more
+  energy) is the way on.
+* **pbr2b1_lb4** (06:08 UTC): lb2's 4.446B + the recipe as in lb2 + `--unstuck-max 2` (the key-head
+  temperature cap; sidistic crossed its early gates from scratch at 2). Question: does more key
+  noise find a different line at the wall (the north face) in 30 min?
