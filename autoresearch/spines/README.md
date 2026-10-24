@@ -24,3 +24,8 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   left the view a median 48 deg (176 deg through the flight) off the velocity, while a
   --view-absolute velocity policy looks within +-7 deg of it and turns at ~4 deg/tick at speed.
   Same provenance as line_a (pbr2b3, round 2).
+* `pbr2b3_line_a_canon_780.npy` (1,101 states, md5 6a0373013ebbfda3e51cb16020d52b0a): pbr2b3_line_a_canon.npy from state 780
+  on - the westward slide through the crouch tunnel, where the policy's OWN greedy line from the
+  true start joins the spine (pbr2b3_canon3's 3.644B eval enters the tunnel at x ~640 heading west);
+  states 0-779 are the explorer's run-up back east through the tunnel, which the greedy line never
+  flies. Same provenance (pbr2b3, round 2).
