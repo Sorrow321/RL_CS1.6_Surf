@@ -121,6 +121,15 @@ sys.path.insert(0, str(ROOT / "python"))
 
 from surfgym.core import ACTION_NVEC, STATE_DTYPE                # noqa: E402
 
+# --view-vel (pbr2b1): the yaw column of a random action indexes this table of view commands
+# in degrees, read by the core's --view-absolute velocity mode (src/env.c surf_yaw_delta_abs):
+# an OFFSET from the horizontal velocity heading at >= 100 u/s, a per-tick turn (clamped to the
+# 10 deg/tick ceiling) below it - what the trained policy's yaw command means. Dense near 0: the
+# policy's own greedy flight holds |offset| < 30 deg on 97% of moving ticks (incumbent eval).
+VIEW_VEL_CMDS = np.array([-60.0, -30.0, -20.0, -12.0, -8.0, -4.0, -2.0, 0.0,
+                          2.0, 4.0, 8.0, 12.0, 20.0, 30.0, 60.0], np.float32)
+assert len(VIEW_VEL_CMDS) == ACTION_NVEC[0]
+
 # ---------------------------------------------------------------------------
 # cells
 # ---------------------------------------------------------------------------
@@ -718,6 +727,10 @@ def explore(args) -> int:
                          max_episode_ticks=int(args.ep_ticks),
                          water_fail=1, yaw_jitter_deg=0.0,
                          lidar_w=0, lidar_h=0)     # eyeless: no obs needed
+    view_vel = bool(getattr(args, "view_vel", False))
+    if view_vel:
+        # --view-vel: the trainer's --view-absolute velocity view (ABI 9 view_mode 1)
+        cfg.view_mode = 1
     if getattr(args, "maxvel", None) is not None:
         # --maxvel: the trainer's sv_maxvelocity (the core default is 2000), so the archive's
         # states obey the physics the policy trains under
@@ -849,6 +862,7 @@ def explore(args) -> int:
     rew_h = np.zeros((ticks, n), np.float32)
     rid_h = np.full((ticks, n), -1, np.int32)
     act = np.zeros((n, 6), np.int32)
+    vcmd = np.zeros((n, 2), np.float32)            # --view-vel only
     cur_run = np.full(n, -1, np.int32)
     sv = core.states_view
     pitch_bin = 3                                  # PITCH_BINS[3] == 0 deg
@@ -927,7 +941,12 @@ def explore(args) -> int:
                                           & (rng.random(n) >= args.repeat_p))
                     fresh_actions(live)
                 acts_h[t] = act
-                _, rew, done, trunc, _ = core.step(act)
+                if view_vel:
+                    # --view-vel: yaw column -> view command; pitch target 0 (inert for physics)
+                    vcmd[:, 0] = VIEW_VEL_CMDS[act[:, 0]]
+                    _, rew, done, trunc, _ = core.step(act, vcmd)
+                else:
+                    _, rew, done, trunc, _ = core.step(act)
                 rew_h[t] = rew
                 ended = (done | trunc) != 0
                 hit = np.flatnonzero(np.asarray(core.goal_hits, bool)
@@ -1137,6 +1156,10 @@ def meta_dict(args, bsp, hasher, arch, it, n_goal, extra=None) -> dict:
         out["cell_energy"] = float(args.cell_energy)
     if int(getattr(args, "cell_heading", 0) or 0) > 0:
         out["cell_heading"] = int(args.cell_heading)
+    if getattr(args, "view_vel", False):
+        # --view-vel only: the flag-off meta json is unchanged
+        out["view_vel"] = True
+        out["view_vel_cmds"] = [float(v) for v in VIEW_VEL_CMDS]
     if getattr(args, "exact_chains", False):
         out["exact_chains"] = True
         out["ep_ticks"] = int(args.ep_ticks)
@@ -1724,6 +1747,12 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--cell-heading", type=int, default=0,
                     help="H > 0: the cell key also holds H sectors of the horizontal velocity "
                          "heading x rising/not (default 0 = off, keys unchanged)")
+    ap.add_argument("--view-vel", action="store_true",
+                    help="act in the trainer's --view-absolute velocity view: the yaw column of "
+                         "each random action indexes VIEW_VEL_CMDS (an offset from the velocity "
+                         "heading at >= 100 u/s, a per-tick turn below), so the archive's views "
+                         "and a replayed line's actions are ones the policy holds (default off: "
+                         "the per-tick delta bins, unchanged)")
     ap.add_argument("--exact-chains", action="store_true",
                     help="exact provenance: a cell's parent is the cell its run was restored "
                          "from, states are never replaced and each cell keeps its run's "

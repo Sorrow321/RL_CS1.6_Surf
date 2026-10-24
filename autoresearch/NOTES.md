@@ -612,3 +612,23 @@ pbr1b1_g2cur6/ckpt_latest.pt 3.285B, md5 a6559938..., both present).
   velocity-frame threshold); position, velocity, stance exact; the core's +-8 deg spawn jitter on
   top. Generic: no map constant; any search line has a random view. `--demo-cooldown N` (new,
   default 20 = the old constant): iterations between two curriculum moves.
+* Core check (02:35 UTC, view_mode 1, line state 1235): the line's right turn is an air STRAFE -
+  back+left keys at the saturated strafe angle (v . wishdir = 30 exactly), the velocity turning
+  only as fast as the view turns (-2 deg/tick); with a fixed view the same keys change nothing.
+  From the same state with the view along the velocity, holding RIGHT strafe turns the velocity
+  south (366,-202) -> (150,-402) in 10 ticks (the line: (280,-321)), LEFT strafe turns it north
+  (the round-1 probe's failure). So with a forward spawn view the manoeuvre is one key.
+* Zero-shot probe of g2cur6 (3.285B) from state 1235 with the forward view, 11 stochastic
+  episodes: 0/11 reach the success line, all go into the pit (3.10-3.23%). Not informative
+  about training (the policy never saw forward-view spawns there).
+* Boxes: 57455128 (3090, machine 104634) was power-capped (240 of 350 W, bf16 GEMM 84% of ref);
+  deploy refused; blocklisted (my first entry went into known_good by mistake, so box.py rented
+  the same machine again as 57455693 - fixed, released). Box **57455920** (RTX 5080, 0.60 $/h,
+  ssh -p 29148 root@99.82.217.53) from 02:44 UTC.
+* **pbr2b1_vv1** (02:48 UTC): resume g2cur6 ckpt_latest (3.285B, md5 a6559938...) + the round-1
+  curriculum flags (line_a, window/grow 5, tau0 1245, front 0.67, success-d 100, bonus 50,
+  spawn-duck, yaw-entropy 0, the recipe's demo-incompatible spawns off, 30% entry_ge states) +
+  **--demo-view-vel --demo-cooldown 10**, --ckpt-every 2.5e8, evals every 75M. The trainer:
+  1,316 of 1,881 spine rows move >= 100 u/s, their recorded view 48 deg off the velocity
+  (median). First readout: band [1245,1249] (77.6% with the raw views in g2cur6) is 0.0% over
+  288 episodes with forward views -> backoff to 1250: the old weights must relearn the spawns.

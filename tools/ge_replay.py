@@ -66,6 +66,12 @@ def main(argv=None):
                          water_fail=1, yaw_jitter_deg=0.0, lidar_w=0, lidar_h=0)
     if meta.get("maxvel") is not None:
         cfg.phys.sv_maxvelocity = float(meta["maxvel"])
+    vtab = None
+    if meta.get("view_vel"):
+        # explore_phase1 --view-vel: the yaw column indexes the archive's own view-command table
+        cfg.view_mode = 1
+        vtab = np.asarray(meta["view_vel_cmds"], np.float32)
+        print(f"view: --view-vel archive, velocity-frame commands {vtab.tolist()}")
     core = SurfCore(str(a.map), cfg)
     if not meta.get("keep_teleports", False):
         core.set_teleport_fail(True)
@@ -81,8 +87,13 @@ def main(argv=None):
         core.set_state(0, s0)
         seg = []
         dead = False
+        vc = np.zeros((1, 2), np.float32)
         for t in range(len(la)):
-            _, _, done, trunc, _ = core.step(la[t][None, :])
+            if vtab is not None:
+                vc[0, 0] = vtab[int(la[t][0])]
+                _, _, done, trunc, _ = core.step(la[t][None, :], vc)
+            else:
+                _, _, done, trunc, _ = core.step(la[t][None, :])
             if (done[0] | trunc[0]) != 0:
                 dead = True
                 break
