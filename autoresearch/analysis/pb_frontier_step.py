@@ -52,6 +52,14 @@ def main(argv=None):
     ap.add_argument("--ep-ticks", type=int, default=3000)
     ap.add_argument("--threads", type=int, default=15)
     ap.add_argument("--seed", type=int, default=10)
+    ap.add_argument("--roots", choices=["frontier", "sink"], default="frontier",
+                    help="frontier: the last --window-s before the best tick; sink: --before-s .. "
+                         "--after-s before the largest one-tick energy-height drop")
+    ap.add_argument("--before-s", type=float, default=1.0)
+    ap.add_argument("--after-s", type=float, default=0.1)
+    ap.add_argument("--cells", type=int, nargs="+", default=[64])
+    ap.add_argument("--decisions", type=int, nargs="+", default=[100])
+    ap.add_argument("--cell-energy", type=float, default=32.0)
     ap.add_argument("--tol", type=float, default=32.0,
                     help="chain end = the shortest chain among cells within this many u of the "
                          "deepest (half a 64 u cell)")
@@ -75,23 +83,36 @@ def main(argv=None):
     e = eps[kbest]
     pe = T.prog(f, e)
     ib = int(np.nanargmax(pe))
-    lo = max(0, ib - int(round(a.window_s * 100)))
-    roots_idx = np.arange(lo, ib + 1, 2)
+    if a.roots == "sink":
+        # the policy's own energy sink: the largest one-tick drop of h = z + |v|^2/(2g) before its
+        # best-progress tick; roots = the --before-s .. --after-s seconds before it, every tick
+        oo = e["origin"].astype(np.float64)
+        vv = e["velocity"].astype(np.float64)
+        hh = oo[:, 2] + (vv * vv).sum(1) / 1600.0
+        w = int(np.argmin(np.diff(hh[:max(2, ib)])))
+        lo = max(0, w - int(round(a.before_s * 100)))
+        roots_idx = np.arange(lo, max(lo + 1, w - int(round(a.after_s * 100))) + 1, 1)
+        print(f"energy sink: tick {w} ({hh[w]:.0f} -> {hh[w + 1]:.0f}) at {oo[w].round(0)}", flush=True)
+    else:
+        lo = max(0, ib - int(round(a.window_s * 100)))
+        roots_idx = np.arange(lo, ib + 1, 2)
     roots = np.zeros(len(roots_idx), STATE_DTYPE)
     for n in STATE_DTYPE.names:
         roots[n] = e[roots_idx][n]
     roots["tick"] = 0
     roots["stuck_ticks"] = 0
     np.save(out / "roots.npy", roots)
-    print(f"roots: ep {kbest} ticks {lo}..{ib} stride 2 = {len(roots)} (best {pbest:.3f}%)", flush=True)
+    print(f"roots: ep {kbest} ticks {int(roots_idx[0])}..{int(roots_idx[-1])} = {len(roots)} "
+          f"(best {pbest:.3f}%, mode {a.roots})", flush=True)
     procs = []
     for g in range(a.ge):
         d = out / f"ge{g}"
         log = open(out / f"ge{g}.log", "w")
         procs.append(subprocess.Popen(
             [sys.executable, "-u", "tools/explore_phase1.py", "--map", MAP, "--roots-spine",
-             str(out / "roots.npy"), "--exact-chains", "--cell", "64", "--cell-energy", "32",
-             "--envs", "4096", "--act-every", "4", "--decisions", "100", "--maxvel", "3500",
+             str(out / "roots.npy"), "--exact-chains", "--cell", str(a.cells[g % len(a.cells)]),
+             "--cell-energy", str(a.cell_energy), "--envs", "4096", "--act-every", "4",
+             "--decisions", str(a.decisions[g % len(a.decisions)]), "--maxvel", "3500",
              "--max-minutes", str(a.minutes), "--goals", "1", "--threads", str(a.threads),
              "--seed", str(a.seed + g), "--out", str(d)],
             cwd=str(ROOT), stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL))
