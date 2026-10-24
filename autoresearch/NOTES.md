@@ -1153,3 +1153,27 @@ the budget pace (0.69 $/h) admit one box; until then every rent was refused (0.1
   so it reaches the south opening ~150 u too low (z 2,383 at (706, -2,613)) and falls into the
   catch short of the ramp. The launch is also flatter (vz ~+300 vs ~+430 off the ramp at x -940),
   but the speed-boost probe shows energy alone does not move the line.
+
+### Gate 8 needs the record's energy: boosted Go-Explore (20:42-21:05 UTC)
+* Branched beam (beam_tas --branch-at t1450:2048 --branch-burst 200 --branch-hold 50
+  --branch-jitter 45 --branch-protect 3 --branch-view-only, as2's 9.59B weights): 1,953 forked
+  lineages alive at 16 s, 1 at 17 s, extinct at 18 s. View offsets through the launch and the
+  turn do not find the corridor ramp.
+* Core probe: a hard right air strafe from our own post-launch states either turns too early and
+  hits the room's south wall (y ~-2,580, x < 400) or too late and falls into the catch; at 100 Hz
+  the turn radius is ~220-440 u at 1,150 u/s.
+* Go-Explore #3 (64 u x energy 32 cells, 96 roots = 24 of the beam line's states over 12.5-15.4 s
+  x velocity 1.00 / 1.04 / 1.08 / 1.12 - the front-perturb rule; 15 min beside the trainer, 3.8M
+  runs): ONLY the x1.12 root just after the launch ((-440, -2,314, 2,885), 1,296 u/s vs the
+  policy's 1,157) passes: a sharper right turn at x 464-552, into the corridor at z 2,425 heading
+  south, a HARD landing on the corridor's west surf ramp (1,476 -> 962 u/s at (551, -2,781, 2,413)),
+  a bounce, and a slow ballistic exit east (570-700 u/s) to 21.26%; its x1.12 sibling at the launch
+  point reaches 20.85% in the corridor. x1.08 best 20.26%, x1.04 / x1.00 <= ~20.0%.
+* That chain is a dead end too: coasting from its post-ramp flight dies in the next catch at
+  z ~2,400 (x 800-1,104) within 0.5-1.3 s. The record exits that ramp at ~1,100 u/s climbing to
+  z ~2,900. The policy's energy height runs ~110-200 u under the record's from the start room on
+  (round 2's measurements; here 3,651 vs 3,792 at the launch): gate 8 needs it.
+* The south corridor (core traces): floor at feet z 2,360 = the catch everywhere; the way on is a
+  53 deg surf ramp along its WEST side (x 420-540, feet z 2,390-2,530) from y -2,650 to -3,350.
+  The field cannot tell a ramp landing (20.40%) from the catch fall (20.41%): a success line has
+  to sit past ~20.6%, in the flight after the ramp.
