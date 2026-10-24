@@ -2770,6 +2770,24 @@
       "detail": "RTX 3090 power limit 240 of 350 W (SW Power Cap active), bf16 GEMM 57 vs ref 69 TFLOPS (83%); gpu_health UNHEALTHY, deploy_box refused (pbr2b2 2026-10-24)",
       "run": "pbr2b2 rent",
       "reason": "gpu_capped"
+    },
+    {
+      "ip": "203.121.204.241",
+      "machine_id": 140626,
+      "host_id": 80463,
+      "date": null,
+      "detail": "autoresearch pbr2b2: not running after 330 s (status loading, #7 166.5 Selecting previously unselected package python3-software-properties.\r\n)",
+      "run": "",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "153.226.102.43",
+      "machine_id": 29700,
+      "host_id": 35677,
+      "date": null,
+      "detail": "autoresearch pbr2b2: not running after 330 s (status loading, 2.7.1-cuda12.8-cudnn9-devel: Pulling from pytorch/pytorch\n)",
+      "run": "",
+      "reason": "unreliable"
     }
   ],
   "known_good": [
