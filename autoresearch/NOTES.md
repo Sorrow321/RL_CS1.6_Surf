@@ -661,3 +661,7 @@ ckpt_latest 3.285B (md5 a6559938..., the most curriculum progress), both named i
   0 it drifts 10-65 u through the slow tunnel run-up (0-700, the line climbing at the tunnel's east
   end) and then misses the drop - the slow, full-control part a curriculum learns like the start
   room. Tracker cost: ~3 min for the whole line at beam 64 on this 4-vCPU host.
+* Past line_a's end (05:35 UTC, local, policy-frame GE, 2 threads, 2 min, 49.6k runs from
+  line_a[1780:1881:5]): nothing beyond 3.93% (the end state itself), 22% of runs die - the line ends
+  falling west into the area north of the pit at ~250 u/s (the record crosses here at 700-750 u/s).
+  Expect the next gate after 3.93% to be another speed gate; a box GE (32 threads) is the next look.
