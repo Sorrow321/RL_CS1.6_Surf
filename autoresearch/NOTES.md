@@ -976,3 +976,38 @@ beam found the policy's own way over the wall in 100 s).
   Lesson: move the success line by one gate at a time, not to the far end of a fragile line.
 * pbr2b3_beam11 (10:35 UTC): back to beam9's 7.687B weights (md5 e25d10cf...) with that line cut at
   tick 1,560 (16.68%, just past the catch: autoresearch/spines/pbr2b3_beam_g10a_1560.npy).
+* beam11 (beam9's weights, the line cut at 16.68%): evals 15.946 / 15.550 / 15.869 / 15.995 /
+  15.944 - no regression, no gain yet; the curriculum sits at the impact before 16% ([1445] 16%,
+  [1440] 99%). kl reads 0.2-0.8 on the late runs (it was 0.05-0.15 earlier).
+
+### pbr2b3 round 2 lesson (drafted 10:57 UTC, finalised at wrap-up)
+* **Score 3.236 -> 16.056** (best eval pbr2b3_beam9 traj_7578583040, median 15.7%; 8-9 of 9
+  greedy episodes from the true start reach 15.4-16.1%). The greedy line: start room -> tunnel ->
+  ridge launch -> fast east-side U-turn -> north side -> over the gate-3 wall -> the drop surf ->
+  over the x -1,015 wall -> the U-turn climb at x ~-3,300 -> east to the fall catch at ~16%.
+* **What did it, in order:**
+  1. Gate 2 (round 1's 1,235 wall, held 1.5B+ steps): a GE line's VIEW is the uniform explorer's
+     (up to 176 deg off the velocity) - `tools/spine_canon_view.py` puts it along the velocity -
+     and the bounce needs a ~3.5 deg yaw change - `--demo-front-temp 0.5 --demo-front-view 6
+     --demo-front-ticks 40` (yaw sigma x6 for band spawns' first 0.4 s). 186M steps.
+  2. `--demo-cooldown 5 --demo-grow-max 40`: the rest of a 1,881-state line in ~150M steps.
+  3. Cut the spine where the greedy line joins it (the explorer's run-up is never flown).
+  4. The search -> curriculum LOOP: when the greedy line reaches the spine's end, `beam_tas` from
+     the true start on the newest weights (4,096 copies, 32 greedy envs, d-ranked, `--skip-gate
+     --save-frontier --route-file none`, ~2 min) -> the policy's own line to the next frontier ->
+     cut at its best before the stall -> the next `--demo-file`. Gates 3, 6 (12.5% U-turn) and the
+     13% catch fell this way; GE `--exact-chains` from the line's own states supplied the drop surf
+     (gate 4, 6.7 -> 7.07%) when the beam stalled.
+  5. Per-call energy shaping (`--energy-pot 8 --energy-pot-front 0 --energy-pot-front-bonus 0`)
+     carried the line over the energy-limited x -1,015 wall (7.2% -> 12.2%), with the recipe's
+     frontier-perturb rows (speed x1.0-1.3 at the training frontier) teaching the stretch beyond it.
+  6. `--respawn-greedy` / `--respawn-front-perturb` work with the curriculum now (they keep the
+     gate after the spine's end trained).
+* **What did not:** a band temperature on the explorer's own views (dft1); canonical views without
+  re-learning the post-bounce part (canon1); `--respawn-greedy-temp`, `--respawn-greedy-speed`,
+  `--score dh` beams, finer-cell GE at the walls (all at the x -1,015 wall); the spawn / half-pipe
+  pump GE (the record's start-room pump, +100-160 u of energy, stays unfound); moving the success
+  line to the far end of a fragile line (beam10: the route erodes; move it one gate at a time).
+* **Where it stands:** every gate from 7% on has been ENERGY - the record carries ~100-250 u more
+  energy height (z + |v|^2/2g) from its start-room pump. The next one is the fall catch at ~16%
+  (x -1,700..-2,250, z ~2,900): the line runs east 60-120 u above it at ~900 u/s (record ~1,050).
