@@ -928,9 +928,16 @@ class MixedTorchPolicy(SampledTorchPolicy):
     proposals are slower than its mode and whose population otherwise
     arrives at the finish window late, low, and dead."""
 
-    def __init__(self, *a, n_greedy: int, **kw):
+    def __init__(self, *a, n_greedy: int, keys_temp=None, view_scale=None, **kw):
         super().__init__(*a, **kw)
         self._ng = int(n_greedy)
+        # --prop-keys-temp / --prop-view-scale: the SAMPLED envs draw at these temperatures
+        # (the trainer's tempered draw: logits / T on the categorical heads, sigma x S per
+        # Gaussian head); None = the policy's own temperature, the untempered call
+        self._tc = None if keys_temp is None else float(keys_temp)
+        self._tv = (None if view_scale is None else
+                    torch.tensor([float(v) for v in view_scale], dtype=torch.float32,
+                                 device=self.device))
 
     @torch.inference_mode()
     def _decide(self, obs):
@@ -940,13 +947,18 @@ class MixedTorchPolicy(SampledTorchPolicy):
             # argmax of the four categorical heads, off the same forward
             cat, mu = split_view(logits.float())
             padded = self.packer.pad(cat)
-            act, z, _ = sample_view(padded, mu, self.policy.log_std())
+            if self._tc is None and self._tv is None:
+                act, z, _ = sample_view(padded, mu, self.policy.log_std())
+            else:
+                act, z, _ = sample_view(padded, mu, self.policy.log_std(), self._tc,
+                                        self._tv if self._tv is not None else 1.0)
             if self._ng > 0:
                 act[:self._ng, N_VIEW:] = padded[:self._ng, N_VIEW:].argmax(-1)
                 z[:self._ng] = mu[:self._ng]
             return self._finish_view(act[:, N_VIEW:], z)
         padded = self.packer.pad(logits)
-        act, _ = sample_padded(padded)
+        act, _ = (sample_padded(padded) if self._tc is None
+                  else sample_padded(padded, self._tc))
         if self._ng > 0:
             act[:self._ng] = padded[:self._ng].argmax(-1)
         return act.to("cpu").numpy().astype(np.int32)
@@ -1986,6 +1998,15 @@ def main():
                     "those seconds, not the whole line, and works on a --keys-hold "
                     "checkpoint (no raw engine prefix). Implies --skip-gate and "
                     "--allow-nonfinisher; off = byte-identical")
+    ap.add_argument("--prop-keys-temp", type=float, default=None,
+                    help="--greedy-envs: the sampled envs draw the categorical heads at this "
+                    "temperature (logits / T), the trainer's tempered draw (off = the policy's "
+                    "own, byte-identical)")
+    ap.add_argument("--prop-view-scale", default=None, metavar="YAW[,PITCH]",
+                    help="--greedy-envs: the sampled envs draw the Gaussian view heads with "
+                    "sigma x these (the pitch head, camera only, defaults to 1); a nearly "
+                    "deterministic yaw (sigma 0.013 rad) otherwise gives a population of "
+                    "near-copies (off = byte-identical)")
     ap.add_argument("--allow-nonfinisher", action="store_true",
                     help="do not require the greedy gate to finish (implied "
                     "by --greedy-prefix: searching from the wall is only "
@@ -2599,10 +2620,22 @@ def main():
                              "and excludes --eps/--dedup/--commit")
         if args.greedy_envs > N:
             raise SystemExit("--greedy-envs must be <= --envs")
+        _pt = {}
+        if args.prop_keys_temp is not None:
+            _pt["keys_temp"] = float(args.prop_keys_temp)
+        if args.prop_view_scale is not None:
+            _vs = [float(x) for x in str(args.prop_view_scale).split(",")]
+            if not VIEWC:
+                raise SystemExit("--prop-view-scale needs a --view-continuous checkpoint")
+            _pt["view_scale"] = (_vs + [1.0] * N_VIEW)[:N_VIEW]
+        if _pt:
+            print(f"proposal temperature: keys {_pt.get('keys_temp', 1.0):g}, view sigma x "
+                  f"{_pt.get('view_scale', [1.0] * N_VIEW)} on the {N - args.greedy_envs} "
+                  f"sampled envs")
         spol = MixedTorchPolicy(policy, packer, device, lidar, coreN,
                                 K, stack, n_greedy=args.greedy_envs,
                                 extra_slot=esN, extra_fn=efN,
-                                latch_fn=latchN, cc_fn=cc_fnN, keys_hold=KEYS, **xkwN)
+                                latch_fn=latchN, cc_fn=cc_fnN, keys_hold=KEYS, **_pt, **xkwN)
     elif args.eps > 0.0 or args.dedup:
         spol = EpsSampledTorchPolicy(policy, packer, device, lidar, coreN,
                                      K, stack, eps=args.eps,
