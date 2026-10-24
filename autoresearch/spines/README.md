@@ -31,3 +31,12 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   end = archive cell 3258) and joined by `tools/splice_line.py`. No demo, no record data. Its views
   are the policy's kind (median 9 deg off the velocity at >= 100 u/s); line_a's head keeps its
   random-walk views (use `--demo-view-vel`).
+* `pbr2b1_north_line.npy` (763 states, md5 986cc9a57986cf839ae9cc7650b0cf87): a building block for
+  the NORTH route (not trained on yet). States 0-596 = the policy's OWN greedy episode from the true
+  start (pbr2b1_lb2 ckpt_latest 4.446B via `record_ckpt --dump-states`, episode 0: start room,
+  tunnel, ridge launch, flight over the pit); then a 166-tick tail from that episode's state 597
+  (over the pit, h ~3,720) to the pit's NORTH side, (634, -2,687, 3,431) = 3.78% at 579 u/s:
+  `explore_phase1 --view-vel --exact-chains` rooted at 160 of the policy's own over-the-pit states,
+  replayed by `ge_replay` (5/5 links, cell 15292) and joined by `splice_line`. At this energy the
+  north route cannot clear the block at 6.7% (NOTES.md, the feasibility check); it needs ~+130 u
+  of energy height (the record's pump + strafed tunnel) first.
