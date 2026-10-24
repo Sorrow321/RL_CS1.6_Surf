@@ -149,6 +149,17 @@ def go_explore(a, out: Path, line, end: int):
     lo = max(0, end - int(round(a.roots_secs * TICKS_PER_S)))
     idx = np.unique(np.linspace(lo, end, max(2, int(a.roots_n))).round().astype(int))
     roots = clean(line[idx])
+    boosts = [float(b) for b in str(a.ge_boost).split(",") if b.strip()]
+    if boosts != [1.0]:
+        # --ge-boost: each root also with its velocity scaled (the --respawn-front-perturb
+        # rule: the line's own states with more or less energy); the chain's root is matched
+        # back to the line by position, so a boosted root splices like any other
+        rs = []
+        for b in boosts:
+            r = np.array(roots, copy=True)
+            r["velocity"] = (r["velocity"].astype(np.float64) * b).astype(r["velocity"].dtype)
+            rs.append(r)
+        roots = np.concatenate(rs)
     gd = out / "ge"
     gd.mkdir(parents=True, exist_ok=True)
     np.save(gd / "roots.npy", roots)
@@ -162,7 +173,7 @@ def go_explore(a, out: Path, line, end: int):
     if a.threads:
         cmd += ["--threads", a.threads]
     rc = run(cmd, out / "ge.log", a.ge_minutes * 60 + 600)
-    info = {"ge_rc": rc, "ge_roots": [int(i) for i in idx]}
+    info = {"ge_rc": rc, "ge_roots": [int(i) for i in idx], "ge_boost": boosts}
     if not (gd / "archive.npz").exists():
         return None, info
     rc2 = run([sys.executable, "-u", ROOT / "tools" / "ge_replay.py", "--map", a.map,
@@ -178,7 +189,10 @@ def go_explore(a, out: Path, line, end: int):
     ro = np.asarray(gl[0]["origin"], np.float64)
     dist = np.linalg.norm(np.asarray(line["origin"], np.float64) - ro, axis=1)
     j = int(np.argmin(dist))
-    info.update(ge_root_index=j, ge_root_err=float(dist[j]), ge_chain_len=int(len(gl)))
+    vr = float(np.linalg.norm(np.asarray(gl[0]["velocity"], np.float64))
+               / max(1e-6, float(np.linalg.norm(np.asarray(line[j]["velocity"], np.float64)))))
+    info.update(ge_root_index=j, ge_root_err=float(dist[j]), ge_chain_len=int(len(gl)),
+                ge_root_boost=round(vr, 3))
     if dist[j] > 1.0:
         return None, info
     chain, _m = canon_view(gl[1:])
@@ -204,6 +218,9 @@ def main(argv=None) -> int:
     ap.add_argument("--ge-minutes", type=float, default=10.0, help="0 = no GE fallback")
     ap.add_argument("--ge-cell", type=float, default=32.0)
     ap.add_argument("--ge-energy", type=float, default=16.0)
+    ap.add_argument("--ge-boost", default="1.0",
+                    help="comma list of speed factors: every GE root is also tried with its "
+                         "velocity scaled by each (1.0 = the line's own states only)")
     ap.add_argument("--roots-secs", type=float, default=3.0,
                     help="Go-Explore roots: the line's last seconds before it stalls")
     ap.add_argument("--stall-margin", type=float, default=500.0,
