@@ -693,3 +693,20 @@ pbr1b1_g2cur6/ckpt_latest.pt 3.285B, md5 a6559938..., both present).
   --demo-view-vel --demo-cooldown 10, the recipe's demo-incompatible spawns off, 30% entry_ge
   states, evals every 75M, ckpt every 250M. Trainer: 1,162 of 2,024 rows move >= 100 u/s (their
   recorded view 24 deg off, median). First move at once: [2003,2023] from 100% at the end band.
+* **lb1 at +320M (04:05 UTC): the curriculum crossed the whole searched tail in ~20 min** - 2023
+  -> 1103 (920 states, cooldown-bound at grow 20 / cooldown 10; regions 60-99% of the spine at
+  90-100%), then stalled at band [1103,1112] = line_a 1103-1112, the landing on the ridge's north
+  face at ~770 u/s before the crest and the launch (line_a's views there: 126-160 deg off; now
+  canonical): 0.0 / 0.2 / 0.4 / 1.9 / 2.2 / 2.3% on six visits (band [1113,1122] at 48-70%).
+  Throughput 239k steps/s. Greedy evals 3.383-3.686B: 3.227 / 3.211 / 3.234 / 3.224 / 3.215 (pit;
+  expected until the curriculum reaches the true start).
+* **lb1 BREAKTHROUGH (04:17 UTC): greedy eval at 3.837B scores 4.804** (incumbent 3.236): 3 of 9
+  episodes from the TRUE START pass the pit - ep2 3.80%, ep6 3.93%, ep7 4.80%. The policy's own
+  route (ep 7): start room 0-1.5 s, tunnel crawl 2-4.5 s at 200-266 u/s (NO run-up), drop at 5 s,
+  ridge at 5.5 s (|vh| 598), launch at 6.0 s (vz +422), over the pit at 6.5 s (z 3,532), the
+  south side at 7.0 s (3.29%), west along it: 3.78% at 7.5 s, 4.14% at 8.0 s, 4.32% at 8.5 s,
+  4.79% at 9.1 s, then falls to its death at (172, -3,222, 3,163). It goes PAST line_b's end
+  (3.81%): the ratchet keeps paying beyond the curriculum's success line.
+* The ridge band [1103,1112] had broken by ~04:10 and the curriculum then ran 1103 -> 723 (the
+  start of the west slide) at 25-97% per band. Snapshots pulled: ckpt_3633315840.pt (before the
+  eval, md5 404173bd...) and ckpt_3883401216.pt (47M after it, md5 56281de6...).
