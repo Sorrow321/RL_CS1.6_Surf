@@ -731,3 +731,12 @@ of the line kept cold. TRAIN_ONLY in record_ckpt.
   --respawn-front-perturb 0.2 (band 0.005, speed x1.0-1.3, turn 90), the recipe's values.
   First iterations: greedy pool 1,575 states from 9/9 gate-3 deaths (7.1-8.5 s), 23% of envs in
   the frontier band, reservoir deepest 5.92%.
+* canon5 evals: 3.993 / 3.993 / **4.002** (4.169B; new best, 9/9 to gate 3, deaths at 7.0-7.3 s);
+  training's reservoir deepest 5.9% -> 6.7% by 4.23B (frontier-perturb rows explore past it).
+* Gate 3 against the record (ANALYSIS ONLY): the record crosses the teleport's west edge (x 451)
+  at about (481, -2,662, 3,501) at 729 u/s (energy height z + |v|^2/2g ~3,840) and goes on down
+  to (75, -2,869, 3,068) -> (-268, -2,698, 2,839) at 1,239 u/s (a surf drop) -> 7.6% by 10.3 s.
+  line_a reaches the north side at ~3,550 (state 1800: z 3,482, |v| 337). Ballistics from
+  line_a's end (586, -2,688, 3,475) with vz -250: vx -600 lands at z ~3,387 at x 435 (inside
+  the catch, z <= 3,396 with the hull), vx -700 at ~3,402 (clears). A modest energy deficit; the
+  ratchet pays +0.6-2.8% within 1-3 s past it, and canon5's greedy-death spawns sit right there.

@@ -3,13 +3,13 @@
  "round": 2,
  "final": false,
  "best": {
-  "score": 3.995,
-  "eval_file": "/home/steam/ar_pb/runs/pbr2b3/pbr2b3_canon4/traj_3721920512.jsonl",
-  "run": "pbr2b3_canon4",
-  "step": 3721920512,
-  "ckpt": "/home/steam/ar_pb/runs/pbr2b3/pbr2b3_canon4/ckpt_3721396224.pt",
-  "ckpt_step": 3721396224,
-  "ckpt_md5": "6b1335d283547a948bfd78d90e727e26",
+  "score": 4.002,
+  "eval_file": "/home/steam/ar_pb/runs/pbr2b3/pbr2b3_canon5/traj_4168613888.jsonl",
+  "run": "pbr2b3_canon5",
+  "step": 4168613888,
+  "ckpt": "(canon5 ckpt_latest, pulled when the run stops)",
+  "ckpt_step": null,
+  "ckpt_md5": null,
   "recipe": [
    "resume chain: pbr1b1 g2cur6 (3.285B) -> pbr2b3_canon1 -> canon2 -> canon3 (3.721B)",
    "--demo-file autoresearch/spines/pbr2b3_line_a_canon.npy (canon2/3), _canon_780.npy (canon4)",
@@ -19,10 +19,11 @@
    "--demo-cooldown 5 --demo-grow-max 40 (canon3/4), --demo-rate 0.5 (canon4)",
    "--no-respawn-novel --respawn-backward-mix 0 --int-real-only 0 --respawn-front-perturb 0 --respawn-greedy 0 --respawn-greedy-stuck 0",
    "--spawn-states autoresearch/spines/pbr1b1_entry_ge_states.npy --spawn-states-frac 0.3",
-   "--maxvel 3500"
+   "--maxvel 3500",
+   "canon5: + --respawn-greedy 0.2 --respawn-greedy-window 0.25 2.0 --respawn-greedy-stuck 200 --respawn-front-perturb 0.2 --respawn-front-perturb-band 0.005 --respawn-front-perturb-speed 1.0 1.3 --respawn-front-perturb-turn 90 --demo-front-frac 0.4 --demo-tau0 0"
   ],
-  "resume_from": "/home/steam/ar_pb/runs/pbr2b3/pbr2b3_canon3/ckpt_latest.pt",
-  "commit": "6c5d117"
+  "resume_from": "/home/steam/ar_pb/runs/pbr2b3/pbr2b3_canon4/ckpt_latest.pt",
+  "commit": "ae339f2"
  },
  "summary": "Best 3.995 (incumbent 3.236): the greedy line from the true start passes gate 2 (the pit) and reaches 4.0% (canon4's first eval, 0.5M steps after resuming canon3's final 3.721B weights; handed-on ckpt = those weights, pbr2b3_canon4/ckpt_3721396224.pt). How: round 1's line_a curriculum had stalled 15 ticks before a wall bounce because the explorer's view (up to 176 deg off the velocity) and turn rate do not fit the policy; tools/spine_canon_view.py (view along the velocity) + --demo-front-temp (yaw sigma x6 for band spawns' first 0.4 s) crossed it, and --demo-cooldown 5 --demo-grow-max 40 crossed the remaining ~1,200 states in ~150M steps."
 }
