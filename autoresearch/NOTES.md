@@ -656,3 +656,25 @@ round 1's fixed grow 20 / cooldown 20 they would have taken ~130M).
   of the spine) succeeds 45% / 90%. 104k spine-line bonuses paid. ~288k steps/s.
   Greedy evals still the pit (3.2%, 8-9/9; one at 2.7%) - they can only move once the curriculum
   is through the run-up (line_a 500-1000) and into the policy's own prefix (spine < 560).
+
+### BREAKTHROUGH: the greedy line from the TRUE START clears the pit (03:40-03:55 UTC)
+* cur1's curriculum ran from the tunnel slide (03:31, spine 1430) through the run-up and the
+  policy's own prefix to **tau 0 by ~03:50 UTC** (step 64, band 88-98% from spine 463 down; the
+  run-up and the start room were easy). The greedy evals jumped from the pit (3.22 at 3.889B) to
+  **3.937 (3.965B), 3.970, 3.926, 3.919, 3.990 (4.267B, best 4.0%, median 3.9%)**: 9/9 episodes
+  clear the pit. Score 3.990 vs the incumbent's 3.236. Matched-step reading: g2cur..g2cur7 spent
+  1.3-3.44B on line_a without moving the greedy line off the pit; cur1 did it in ~0.68B steps
+  (3.285 -> 3.965B, ~45 min on the 5080).
+* The greedy line is NOT the spine: it reaches 3.99% at tick ~660 (6.6 s from the start). It
+  slides the tunnel at ~330 u/s by itself (no 7-s run-up back east), exits at x ~60, drops onto the
+  ridge (807 u/s), launches north-east (664,-2,995,3,414) v (490,326,349), turns west on the far
+  side (843,-2,695) and dies at ~(475..520, -2,700..-2,766, z 3,380-3,400) about 0.1 s after its
+  best point: fall-catch trigger_teleport *209 (AABB x 451-762, top z 3,360) - it descends at
+  -417 u/s and drops below ~3,396 before x 451; the record crosses there ~100 u higher.
+* Pulled: cur1 ckpt_4285530112.pt (md5 61f26c21..., the snapshot right after the best eval) and
+  ckpt_latest (4.40B at the stop). cur1 stopped at 4.405B (SIGTERM; a background job ignores
+  SIGINT) to give the CPU to the next search. box.py extend sets the deadline to NOW + hours.
+* GE4 / GE5 (04:00 UTC): exact-chain GE rooted at the new greedy line's last 4 s / 3 s; first
+  snapshot: 5,792 cells past 4.0%, best **6.65%** (-1,015,-3,005,2,994), the chain rooted at
+  greedy tick 603 (just after the far-side turn west). tools: autoresearch/analysis/
+  pb_frontier_step.py does record -> roots -> 2 searches -> replay deepest -> join, on the box.
