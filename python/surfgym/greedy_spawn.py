@@ -53,7 +53,13 @@ def last_contact(ep, tail: int, tol: float = 1.0) -> int:
     median vz step of the last ``tail`` ticks (tools/pick_selfline.contact_cut's rule, its step
     read off the final fall instead of the whole episode, which on a surf line is mostly ramp
     contact). A last ``tail`` that is not ballistic gives the last index (no flight)."""
-    vz = np.asarray(ep["velocity"], np.float64).reshape(-1, 3)[:, 2]
+    return last_contact_vz(np.asarray(ep["velocity"], np.float64).reshape(-1, 3)[:, 2],
+                           tail, tol)
+
+
+def last_contact_vz(vz, tail: int, tol: float = 1.0) -> int:
+    """:func:`last_contact` on a per-tick vertical velocity array."""
+    vz = np.asarray(vz, np.float64)
     n = len(vz)
     if n < 3 or tail < 2:
         return n - 1

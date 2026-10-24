@@ -15557,12 +15557,19 @@ def main() -> None:
                                                                             or 9))]
         if not eps:
             return
-        bests, lens = [], []
+        from surfgym.greedy_spawn import last_contact_vz
+        tps = 1000.0 / float(args.tick_ms or 10.0)
+        bests, lens, launches = [], [], []
         for e in eps:
             d = np.asarray(_f.sample(np.asarray(e[:, 1:4], np.float64)), np.float64)
             d = np.where(d < _f.reach_max - 0.5 * _f.cell, d, np.inf)
             bests.append(float(d.min()))
             lens.append(len(e))
+            # where the episode committed to its end: the last map contact before a fatal
+            # ballistic flight longer than 0.25 s (the --respawn-greedy-contact rule)
+            _c = last_contact_vz(e[:, 6], int(0.25 * tps))
+            if len(e) - 1 - _c > int(0.25 * tps):
+                launches.append(_c)
         bests = np.asarray(bests)
         m = int((bests <= DEMO_END_D).sum())
         med = float(np.median(bests))
@@ -15588,7 +15595,10 @@ def main() -> None:
         save_ckpt("latest")
         AUTO["k"] += 1
         kdir = adir / f"k{AUTO['k']:02d}"
-        tps = 1000.0 / float(args.tick_ms or 10.0)
+        # the branched beam forks half a second before the greedy line's median launch into a
+        # fatal flight (0 = none: no fatal flight in this eval)
+        br_tick = (int(max(1, np.median(launches) - 0.5 * tps))
+                   if len(launches) * 2 > len(eps) else 0)
         cmd = [sys.executable, "-u", str(Path(__file__).resolve().parents[1] / "tools"
                                          / "auto_spine.py"),
                "--ckpt", str(out / "ckpt_latest.pt"), "--map", str(slots[0].core.bsp_path),
@@ -15598,6 +15608,7 @@ def main() -> None:
                "--envs", str(int(args.auto_spine_envs)),
                "--ge-minutes", f"{float(args.auto_spine_ge_minutes):g}",
                "--act-every", str(int(K)), "--seed", str(AUTO["k"]),
+               "--branch-tick", str(br_tick),
                "--timeout", f"{float(args.auto_spine_timeout):g}"]
         if args.maxvel is not None:
             cmd += ["--maxvel", f"{float(args.maxvel):g}"]

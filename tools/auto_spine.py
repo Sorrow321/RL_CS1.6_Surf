@@ -102,22 +102,34 @@ def run(cmd, log, timeout):
     return rc
 
 
-def beam(a, out: Path):
-    bd = out / "beam"
+def beam(a, out: Path, branch_tick: int = 0):
+    """beam_tas from the true start; ``branch_tick`` > 0 forks half the population there
+    with held VIEW offsets (--branch-at, --branch-view-only: the policy's own keys) for
+    --branch-burst-secs, protected --branch-protect generations - a different manoeuvre at the
+    place the greedy line commits to its death, which the policy's own narrow proposals
+    (a collapsed yaw sigma) never try."""
+    tag = "beam" if branch_tick <= 0 else "beam_br"
+    bd = out / tag
     bd.mkdir(parents=True, exist_ok=True)
     cmd = [sys.executable, "-u", ROOT / "tools" / "beam_tas.py", a.ckpt, "--map", a.map,
            "--envs", a.envs, "--resample-every", 25, "--score", "d",
            "--greedy-envs", a.greedy_envs, "--allow-nonfinisher", "--save-frontier",
            "--skip-gate", "--route-file", "none", "--max-ticks", a.beam_ticks,
            "--torch-seed", a.seed, "--log-every", 5, "--out-dir", bd]
-    rc = run(cmd, out / "beam.log", a.timeout)
+    if branch_tick > 0:
+        cmd += ["--branch-at", f"t{int(branch_tick)}:{int(a.envs) // 2}",
+                "--branch-burst", int(round(a.branch_burst_secs * TICKS_PER_S)),
+                "--branch-hold", int(round(a.branch_hold_secs * TICKS_PER_S)),
+                "--branch-jitter", a.branch_jitter, "--branch-protect", a.branch_protect,
+                "--branch-view-only"]
+    rc = run(cmd, out / f"{tag}.log", a.timeout)
     f = bd / "beam_frontier.npz"
     if not f.exists():
-        return None, {"beam_rc": rc}
+        return None, {f"{tag}_rc": rc}
     z = np.load(f, allow_pickle=False)
-    return z["states"], {"beam_rc": rc, "beam_replay_ok": int(z["replay_ok"]),
-                         "beam_frontier_d": float(z["frontier_d"]),
-                         "beam_frontier_tick": int(z["frontier_tick"])}
+    return z["states"], {f"{tag}_rc": rc, f"{tag}_replay_ok": int(z["replay_ok"]),
+                         f"{tag}_frontier_d": float(z["frontier_d"]),
+                         f"{tag}_frontier_tick": int(z["frontier_tick"])}
 
 
 def stall_tick(d, margin: float) -> int:
@@ -203,6 +215,14 @@ def main(argv=None) -> int:
     ap.add_argument("--threads", type=int, default=0)
     ap.add_argument("--timeout", type=float, default=1800.0, help="beam_tas wall cap (s)")
     ap.add_argument("--contact-tol", type=float, default=1.0)
+    ap.add_argument("--branch-tick", type=int, default=0,
+                    help="> 0: when the plain beam falls short, a second beam forks half its "
+                         "population at this tick (the greedy line's commitment point)")
+    ap.add_argument("--branch-burst-secs", type=float, default=2.0)
+    ap.add_argument("--branch-hold-secs", type=float, default=0.5)
+    ap.add_argument("--branch-jitter", type=float, default=45.0,
+                    help="deg: the held view offset is U(-J, J) around the policy's own aim")
+    ap.add_argument("--branch-protect", type=int, default=3)
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args(argv)
     if a.selftest:
@@ -227,7 +247,21 @@ def main(argv=None) -> int:
               f"frontier {a.greedy_d:,.0f}", flush=True)
         if de < a.greedy_d - a.gain:
             best_src = ("beam", line[:e + 1], de)
-        elif a.ge_minutes > 0:
+        if best_src is None and a.branch_tick > 0:
+            bl, bi = beam(a, out, a.branch_tick)
+            res.update(bi)
+            if bl is not None and len(bl):
+                bd_ = field_d(field, bl)
+                be, bde = cut_line(bl, bd_, a.contact_tol)
+                res.update(br_len=int(len(bl)), br_end=be, br_end_d=bde,
+                           br_best_d=float(bd_.min()))
+                print(f"branched beam line (fork at tick {a.branch_tick}): {len(bl)} states, "
+                      f"best d {bd_.min():,.0f}, cut at {be} d {bde:,.0f}", flush=True)
+                if bde < a.greedy_d - a.gain:
+                    best_src = ("beam_br", bl[:be + 1], bde)
+                elif bde < de:
+                    line, d, e, de = bl, bd_, be, bde     # GE roots on the deeper line
+        if best_src is None and a.ge_minutes > 0:
             st = min(e, stall_tick(d, a.stall_margin))
             res.update(beam_stall=st)
             gl, gi = go_explore(a, out, line, st)
