@@ -886,3 +886,19 @@ beam found the policy's own way over the wall in 100 s).
   `--respawn-greedy-temp 1 --respawn-greedy-temp-ticks 60 --respawn-greedy-temp-view 6` (keys at
   2, yaw sigma 0.02 -> 0.12 rad for 0.6 s after a greedy-row spawn on the drop / landing / climb),
   1.2B steps.
+* CORRECTION to "gate 5 is a landing" (07:40 UTC): with the vertical speed included, the record's
+  h at the top of the landing (8.74 s, (75, -2,869, 3,068), vz -858) is ~3,894 and it also loses
+  ~100-140 u over the landing and the curved ride (3,798 at 9.04 s, 3,753 at 9.35 s, ~3,780 at the
+  wall). Our newest beam line reaches nearly the same state at tick 714 ((98, -2,874, 3,077), vz
+  -842) with h ~3,793 and loses ~165 over the same stretch. So the deficit IS upstream (~100 u:
+  the record's start-room pump), and the landing difference is only ~30-60 u. To clear the wall
+  (top ~3,330 with ~750 u/s still horizontal) the line needs h ~3,700-3,730 there; the best greedy
+  has 3,673-3,690, the record 3,780.
+* The policy's line gains +146 u of h from the spawn to the drop by air strafing (the record +240,
+  mostly from the pump). One second of optimal air strafing at 700 u/s adds ~60 u of h; with
+  --energy-pot 3 that pays ~0.18 against ~1.2 of ratchet progress for the same second.
+* beam6 (greedy-row temperature + speed nudge on top of per-call shaping), evals 7.156 / 7.067 /
+  7.088 / 7.147: h at the top of the landing unchanged (3,785-3,795), at the wall 3,615-3,673
+  (beam4/5: up to 3,690) - not better.
+* GE_g7 (07:36 UTC): 32 u cells x energy 16, 29 roots on the newest beam line's north side ->
+  descent (ticks 640-780, stride 5), 12 min.
