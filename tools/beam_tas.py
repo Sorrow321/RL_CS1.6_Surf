@@ -1517,7 +1517,7 @@ def print_cadence(c, label="winner"):
 
 
 def make_scorer(gf, route_file, corridor, mode, value_fn=None,
-                v_switch: float = 0.0):
+                v_switch: float = 0.0, h_coef: float = 1.0):
     """-> score(states, obs) = (higher is better, geodesic d).
 
     mode 'd' is the plain -geodesic used by the spawn-to-finish search.
@@ -1536,6 +1536,19 @@ def make_scorer(gf, route_file, corridor, mode, value_fn=None,
         def score(states, obs=None):
             d = gf.sample(states["origin"]).astype(np.float64)
             return -d, d
+        return score
+    if mode == "dh":
+        # pbr2b4 (2026-10-24): -(d - h_coef * h), h = z + |v|^2 / (2 g) the energy height (the
+        # quantity --energy-pot prices). Distance-only ranking cannot see a lineage that keeps
+        # its energy through a landing until that energy pays off at a later gate; this ranks
+        # 1 u of energy height like 1 u of distance (h_coef 1), so the population keeps the
+        # lineages that carry speed into a speed gate
+        def score(states, obs=None):
+            d = gf.sample(states["origin"]).astype(np.float64)
+            o = np.asarray(states["origin"], np.float64)
+            v = np.asarray(states["velocity"], np.float64)
+            h = o[:, 2] + (v * v).sum(1) / 1600.0
+            return -(d - float(h_coef) * h), d
         return score
     if mode in ("v", "dv"):
         if value_fn is None:
@@ -1941,13 +1954,18 @@ def main():
                     help="do not require the greedy gate to finish (implied "
                     "by --greedy-prefix: searching from the wall is only "
                     "interesting for a policy that does NOT finish)")
-    ap.add_argument("--score", choices=["d", "route", "v", "dv"],
+    ap.add_argument("--h-coef", type=float, default=1.0,
+                    help="--score dh: weight of the energy height h = z + |v|^2/(2g) against "
+                    "the geodesic d (u per u)")
+    ap.add_argument("--score", choices=["d", "route", "v", "dv", "dh"],
                     default="d",
                     help="boundary ranking: 'd' = geodesic (spawn-to-finish "
                     "search), 'route' = route vertex index then d (wall "
                     "search - see make_scorer), 'v' = the checkpoint's own "
                     "critic, 'dv' = d until the frontier is within "
-                    "--v-switch of the goal, then the critic")
+                    "--v-switch of the goal, then the critic, 'dh' = d minus "
+                    "--h-coef x the energy height (keeps the lineages that carry "
+                    "speed into a speed gate)")
     ap.add_argument("--v-switch", type=float, default=20000.0,
                     help="--score dv: switch from d to V(s) once the "
                     "population's smallest geodesic d is below this")
@@ -2598,7 +2616,8 @@ def main():
             XBundle.restore(xsaved)
             return v.detach().float().reshape(-1).cpu().numpy()
     scorer = make_scorer(ogf, args.route_file, args.corridor, args.score,
-                         value_fn=value_fn, v_switch=args.v_switch)
+                         value_fn=value_fn, v_switch=args.v_switch,
+                         h_coef=float(getattr(args, "h_coef", 1.0)))
 
     # ---- --branch-at / --branch-grid: the junction fork -----------------
     br_kind, br_val, br_n = None, 0.0, 0
