@@ -47,9 +47,28 @@ def as_truncated(summaries, idx) -> list:
     return [dict(s, end="trunc") if i in idx else s for i, s in enumerate(summaries)]
 
 
+def last_contact(ep, tail: int, tol: float = 1.0) -> int:
+    """The index of the last state the map pushed back on, for an episode whose end is a
+    ballistic flight: between contacts vz changes by one gravity step per tick, taken as the
+    median vz step of the last ``tail`` ticks (tools/pick_selfline.contact_cut's rule, its step
+    read off the final fall instead of the whole episode, which on a surf line is mostly ramp
+    contact). A last ``tail`` that is not ballistic gives the last index (no flight)."""
+    vz = np.asarray(ep["velocity"], np.float64).reshape(-1, 3)[:, 2]
+    n = len(vz)
+    if n < 3 or tail < 2:
+        return n - 1
+    dvz = np.diff(vz)
+    t = dvz[-min(int(tail), len(dvz)):]
+    g = float(np.median(t))
+    if np.abs(t - g).max() > tol or g >= 0.0:
+        return n - 1
+    hit = np.flatnonzero(np.abs(dvz - g) > tol)
+    return int(hit[-1]) + 1 if len(hit) else 0
+
+
 class GreedyLinePool:
     def __init__(self, frac: float, window=(0.5, 5.0), seed: int = 0, stuck: int = 0,
-                 turn: float = 0.0, speed=None):
+                 turn: float = 0.0, speed=None, contact: bool = False):
         frac = float(frac)
         if not 0.0 < frac < 1.0:
             raise ValueError(f"--respawn-greedy F needs 0 < F < 1, got {frac!r}")
@@ -76,6 +95,11 @@ class GreedyLinePool:
         # own RNG, so the rows DRAWN are exactly the unperturbed ones; off = no draw at all
         self.turn = float(turn)
         self.speed = speed
+        # --respawn-greedy-contact: a FAIL that ends in a ballistic flight longer than LO is
+        # anchored at its LAST MAP CONTACT (the launch) instead of its last tick - after the
+        # last contact nothing but air strafing acts, so the decisions that led to the death
+        # are the ones before it. Off = the death anchor, as before
+        self.contact = bool(contact)
         self._prng = np.random.default_rng(int(seed) + 7717)
         self.rng = np.random.default_rng(int(seed))
         self.rows = np.zeros(0, STATE_DTYPE)
@@ -149,14 +173,20 @@ class GreedyLinePool:
         self._eps, self._cur = [], []
         per_s = 1000.0 / float(tick_ms)
         lo_t, hi_t = int(round(self.lo * per_s)), int(round(self.hi * per_s))
-        keep, deaths, stops, n_used = [], [], [], 0
+        keep, deaths, stops, launches, n_used = [], [], [], [], 0
         for i, ep in enumerate(eps):
             end = summaries[i].get("end") if i < len(summaries) else None
             n = len(ep)
             if end not in ("fail", "trunc") or not n:
                 continue
             idx = []
-            if end == "fail" and n - lo_t > max(0, n - hi_t):
+            c = last_contact(ep, lo_t) if (self.contact and end == "fail") else n - 1
+            if self.contact and end == "fail" and n - 1 - c > lo_t:
+                # the launch and the HI - LO seconds before it
+                idx.append(np.arange(max(0, c - (hi_t - lo_t)), c + 1))
+                deaths.append(round(n / per_s, 2))
+                launches.append(round(c / per_s, 2))
+            elif end == "fail" and n - lo_t > max(0, n - hi_t):
                 idx.append(np.arange(max(0, n - hi_t), n - lo_t))
                 deaths.append(round(n / per_s, 2))
             if d_fn is not None:
@@ -182,6 +212,8 @@ class GreedyLinePool:
             rows = np.zeros(0, STATE_DTYPE)
         self.rows = rows
         self.info = {"eps": len(eps), "fail": n_used, "deaths_s": deaths, "stops_s": stops}
+        if self.contact:
+            self.info["launches_s"] = launches
         return dict(self.info, rows=self.size)
 
     # -- the pool ------------------------------------------------------------
@@ -232,12 +264,15 @@ class GreedyLinePool:
 
     def line(self) -> str:
         d, b = self.info["deaths_s"], self.info.get("stops_s", [])
+        la = self.info.get("launches_s")
         return ("greedy-line pool: {:,} own states from {}/{} failed greedy episodes "
                 "(deaths at {} s, {:g}..{:g} s before each; best-progress stops at {} s), "
                 "{:.0%} of the non-start pool"
                 .format(self.size, self.info["fail"], self.info["eps"],
                         ", ".join(f"{v:.1f}" for v in d) if d else "-", self.hi, self.lo,
-                        ", ".join(f"{v:.1f}" for v in b) if b else "-", self.frac))
+                        ", ".join(f"{v:.1f}" for v in b) if b else "-", self.frac)
+                + ("" if la is None else "; fatal flights anchored at their last contact ({} s)"
+                   .format(", ".join(f"{v:.1f}" for v in la) if la else "none")))
 
     # -- persistence ---------------------------------------------------------
     def state_dict(self) -> dict:

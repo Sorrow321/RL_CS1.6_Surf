@@ -110,6 +110,8 @@ TRAIN_ONLY = frozenset({
     # recording spawns at the map start like the trainer's eval
     "auto_spine", "auto_spine_quorum", "auto_spine_patience", "auto_spine_retry",
     "auto_spine_delay",
+    # --respawn-greedy-contact: where the TRAINING greedy-line rows are anchored
+    "respawn_greedy_contact",
     "auto_spine_gain", "auto_spine_envs", "auto_spine_ge_minutes", "auto_spine_extra_secs",
     "auto_spine_timeout",
     # --respawn-greedy-temp: the TRAINING rollout's sampling temperature for greedy-row spawns
