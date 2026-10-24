@@ -25,8 +25,11 @@ sys.path.insert(0, str(ROOT / "python"))
 from surfgym.core import STATE_DTYPE  # noqa: E402
 
 
-def pick(eps, dist, window=(0.25, 4.0), n: int = 64, tick_s: float = 0.01) -> np.ndarray:
-    """``eps``: per-episode STATE_DTYPE arrays; ``dist``: origins (k, 3) -> field distance."""
+def pick(eps, dist, window=(0.25, 4.0), n: int = 64, tick_s: float = 0.01,
+         max_d: float = float("inf")) -> np.ndarray:
+    """``eps``: per-episode STATE_DTYPE arrays; ``dist``: origins (k, 3) -> field distance.
+    ``max_d``: only episodes whose deepest distance is at most this (the ones that reached the
+    frontier; default all)."""
     lo, hi = (int(round(float(w) / tick_s)) for w in window)
     rows = []
     for st in eps:
@@ -35,6 +38,8 @@ def pick(eps, dist, window=(0.25, 4.0), n: int = 64, tick_s: float = 0.01) -> np
             continue
         d = np.asarray(dist(st["origin"].astype(np.float64)), np.float64)
         b = int(np.argmin(d))
+        if d[b] > max_d:
+            continue
         rows.append(st[max(0, b - hi):max(0, b - lo) + 1])
     allr = np.concatenate(rows) if rows else np.zeros(0, STATE_DTYPE)
     if len(allr) > n:
@@ -54,6 +59,8 @@ def main(argv=None):
     ap.add_argument("--window", type=float, nargs=2, default=(0.25, 4.0),
                     help="seconds before each episode's deepest tick: LO HI")
     ap.add_argument("--tick-ms", type=float, default=10.0)
+    ap.add_argument("--max-d", type=float, default=float("inf"),
+                    help="only episodes whose deepest field distance is at most this")
     a = ap.parse_args(argv)
     from surfgym.goalfield import GoalField
     zf = np.load(a.field, allow_pickle=False)
@@ -61,7 +68,7 @@ def main(argv=None):
                   float(zf["cell"]), float(zf["reach_max"]))
     z = np.load(a.dump, allow_pickle=False)
     eps = [z[k] for k in sorted(z.files) if k.startswith("ep_")]
-    r = pick(eps, f.sample, tuple(a.window), a.n, a.tick_ms / 1000.0)
+    r = pick(eps, f.sample, tuple(a.window), a.n, a.tick_ms / 1000.0, a.max_d)
     if not len(r):
         raise SystemExit("no states in the window")
     np.save(a.out, r)

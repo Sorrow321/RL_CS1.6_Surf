@@ -30,3 +30,14 @@ def test_window_before_the_deepest_tick():
     assert x.min() == 25 and x.max() == 200
     few = pick_roots.pick([ep(1000, 600)], dist, window=(0.25, 2.0), n=8)
     assert len(few) == 8 and few["origin"][0, 0] == 200 and few["origin"][-1, 0] == 25
+
+
+def test_max_d_keeps_only_frontier_episodes():
+    def ep(n, best, depth):
+        s = np.zeros(n, STATE_DTYPE)
+        s["origin"][:, 0] = np.abs(np.arange(n) - best) + depth
+        return s
+    dist = lambda o: o[:, 0]                                  # noqa: E731
+    r = pick_roots.pick([ep(1000, 600, 0), ep(1000, 600, 500)], dist, window=(0.25, 2.0),
+                        n=10_000, max_d=100.0)
+    assert len(r) == 176 and r["origin"][:, 0].max() == 200
