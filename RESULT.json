@@ -3,13 +3,13 @@
  "round": 2,
  "final": false,
  "best": {
-  "score": 6.68,
-  "eval_file": "/home/steam/ar_pb/runs/pbr2b3/pbr2b3_beam1/traj_4544004096.jsonl",
+  "score": 6.684,
+  "eval_file": "/home/steam/ar_pb/runs/pbr2b3/pbr2b3_beam1/traj_4619501568.jsonl",
   "run": "pbr2b3_beam1",
-  "step": 4544004096,
-  "ckpt": "(beam1 ckpt, pulled at the run's stop)",
-  "ckpt_step": null,
-  "ckpt_md5": null,
+  "step": 4619501568,
+  "ckpt": "/home/steam/ar_pb/runs/pbr2b3/pbr2b3_beam1/ckpt_latest.pt",
+  "ckpt_step": 4665638912,
+  "ckpt_md5": "627bdc6bbd4083221c2700c59f655b30",
   "recipe": [
    "resume chain: pbr1b1 g2cur6 (3.285B) -> pbr2b3_canon1 -> canon2 -> canon3 (3.721B)",
    "--demo-file autoresearch/spines/pbr2b3_line_a_canon.npy (canon2/3), _canon_780.npy (canon4)",
@@ -26,5 +26,5 @@
   "resume_from": "/home/steam/ar_pb/runs/pbr2b3/pbr2b3_canon5/ckpt_latest.pt",
   "commit": "f089a27"
  },
- "summary": "Best 6.680 (beam1 4.54B, median 6.7%; 4.055 before) (incumbent 3.236): the greedy line from the true start passes gate 2 (the pit) 9/9 and dies at gate 3 (a fall catch under the north path, ~4.0%). Gate 2: round 1's line_a curriculum stalled because the explorer's view/turn rate do not fit the policy; tools/spine_canon_view.py + --demo-front-temp crossed it, --demo-cooldown/--demo-grow-max crossed the rest of the line in ~150M steps. Gate 3: --respawn-greedy/--respawn-front-perturb now work with the curriculum; a policy-guided beam search (beam_tas, 4,096 copies) found the policy's own line past gate 3 to 6.62% (autoresearch/spines/pbr2b3_beam_g3b.npy), now the spine of pbr2b3_beam1."
+ "summary": "Best 6.684 (incumbent 3.236): from the true start the greedy line passes gate 2 (the pit) and gate 3 (a wall + fall catch under the north path) and most episodes reach 6.7%, a hollow at x ~-1,000 (gate 4, an energy deficit). Gate 2: round 1's line_a curriculum, unstuck by view canonicalisation (tools/spine_canon_view.py) + a band yaw temperature (--demo-front-temp) + curriculum pace flags. Gate 3: beam_tas from the true start found the policy's own line past it; the curriculum on that line (--respawn-greedy/--respawn-front-perturb now wired with --demo-file). Gate 4: two beams stall at 6.70%; Go-Explore with energy cells from the line's own drop states found a faster surf to 7.07% -> spine of pbr2b3_beam2 (running)."
 }

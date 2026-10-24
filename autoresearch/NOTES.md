@@ -798,3 +798,15 @@ of the line kept cold. TRAIN_ONLY in record_ckpt.
    before the stall -> the next spine (step 3).
 Gate 2 needed steps 1-3 (GE line + canonical views + band temperature), gate 3 steps 3-4 (one
 beam found the policy's own way over the wall in 100 s).
+* beam1 final evals: 6.668 / 6.680 / **6.684** (4.620B, median 6.65%); stopped at 4.666B (ckpt
+  md5 627bdc6b..., pulled; the curriculum was at ~370-375, the tunnel exit, after consolidating the
+  launch at 34-68% bands).
+* GE_g4 result (10 min, 1.23M runs, 25,034 cells): deepest on the grader field d 53,110 = **7.07%**
+  at (-1,002, -2,994, 3,240). ge_replay (7/7 links exact): from the beam line's tick 720 (on the
+  drop, |v| ~880) it SURFS the drop - 1,058 u/s at the bottom (z 2,878) where the beam line had
+  722 - climbs at ~730 u/s to z 3,246 and hits a wall at x ~-1,000 (horizontal speed 733 -> 335 at
+  7.07%; the record passes there at z ~3,400). Spine = beam line [0, 720) + that chain, views along
+  the velocity -> autoresearch/spines/pbr2b3_beam_ge_g4.npy (909 states).
+* Box 57454337 extended to 08:07 UTC (05:08; the 3 h rent was about to expire).
+* pbr2b3_beam2 (05:09 UTC): beam1's 4.666B weights + the curriculum on pbr2b3_beam_ge_g4.npy from
+  its end, same flags as beam1.
