@@ -62,8 +62,11 @@ def main(argv=None):
     chain = chain_to(parent, end)
     print(f"{'deepest' if a.cell is None else 'chosen'} cell {end}: d {d[end]:,.0f} at "
           f"{np.asarray(st[end]['origin']).round(0)}; chain of {len(chain)} cells")
+    vv = "link_views" in z.files
     cfg = default_config(num_envs=1, spawn_mode=2, max_episode_ticks=int(meta.get("ep_ticks", 6000)),
-                         water_fail=1, yaw_jitter_deg=0.0, lidar_w=0, lidar_h=0)
+                         water_fail=1, yaw_jitter_deg=0.0, lidar_w=0, lidar_h=0,
+                         **({"view_mode": 1, "yaw_adaptive": 1} if vv else {}))
+    views = z["link_views"] if vv else None
     if meta.get("maxvel") is not None:
         cfg.phys.sv_maxvelocity = float(meta["maxvel"])
     core = SurfCore(str(a.map), cfg)
@@ -74,6 +77,7 @@ def main(argv=None):
     for k in range(1, len(chain)):
         p, c = chain[k - 1], chain[k]
         la = acts[off[c]:off[c + 1]].astype(np.int32)
+        lv = views[off[c]:off[c + 1]].astype(np.float32) if vv else None
         core.reset(0)
         s0 = st[p:p + 1].copy()
         s0["tick"] = 0
@@ -82,7 +86,11 @@ def main(argv=None):
         seg = []
         dead = False
         for t in range(len(la)):
-            _, _, done, trunc, _ = core.step(la[t][None, :])
+            if vv:
+                _, _, done, trunc, _ = core.step(np.ascontiguousarray(la[t][None, :]),
+                                                 view=np.ascontiguousarray(lv[t][None, :]))
+            else:
+                _, _, done, trunc, _ = core.step(la[t][None, :])
             if (done[0] | trunc[0]) != 0:
                 dead = True
                 break

@@ -282,6 +282,8 @@ class Archive:
         # to the first entry - so every chain replays exactly (tools/ge_replay.py)
         self.exact = False
         self.link_acts: dict[int, np.ndarray] = {}
+        # --view-velocity: the run's per-tick view TARGETS beside link_acts (exact replay)
+        self.link_views: dict[int, np.ndarray] | None = None
 
     def _grow(self, cap: int) -> None:
         old = getattr(self, "key", None)
@@ -453,6 +455,12 @@ class Archive:
                 if i < n:
                     flat[off[i]:off[i + 1]] = a
             extra = dict(link_acts=flat, link_off=off)
+            if self.link_views is not None:
+                fv = np.zeros((int(off[-1]), 2), np.float32)
+                for i, a in self.link_views.items():
+                    if i < n:
+                        fv[off[i]:off[i + 1]] = a
+                extra["link_views"] = fv
         np.savez(path,
                  key=self.key[:n], state=self.state[:n], seen=self.seen[:n],
                  chosen=self.chosen[:n], parent=self.parent[:n],
@@ -714,10 +722,14 @@ def explore(args) -> int:
             raise SystemExit("--roots-goal never crosses a goal (the roots are "
                              "in it): give --max-minutes or --max-iters")
 
+    vvel = bool(getattr(args, "view_velocity", False))
     cfg = default_config(num_envs=n, spawn_mode=2,
                          max_episode_ticks=int(args.ep_ticks),
                          water_fail=1, yaw_jitter_deg=0.0,
-                         lidar_w=0, lidar_h=0)     # eyeless: no obs needed
+                         lidar_w=0, lidar_h=0,     # eyeless: no obs needed
+                         # --view-velocity: the view row is a TARGET in the velocity frame, the
+                         # policy's own action space under --view-absolute velocity
+                         **({"view_mode": 1, "yaw_adaptive": 1} if vvel else {}))
     if getattr(args, "maxvel", None) is not None:
         # --maxvel: the trainer's sv_maxvelocity (the core default is 2000), so the archive's
         # states obey the physics the policy trains under
@@ -818,6 +830,8 @@ def explore(args) -> int:
                       heading=int(getattr(args, "cell_heading", 0) or 0))
     arch = Archive(hasher, max_cells=args.max_cells)
     arch.exact = bool(getattr(args, "exact_chains", False))
+    if arch.exact and vvel:
+        arch.link_views = {}
     rk = hasher.keys(roots)
     for j in range(len(roots)):
         i = arch.add(int(rk[j]), roots[j], depth=0, parent=-1)
@@ -849,6 +863,8 @@ def explore(args) -> int:
     rew_h = np.zeros((ticks, n), np.float32)
     rid_h = np.full((ticks, n), -1, np.int32)
     act = np.zeros((n, 6), np.int32)
+    view = np.zeros((n, 2), np.float32) if vvel else None
+    views_h = np.zeros((ticks, n, 2), np.float32) if vvel else None
     cur_run = np.full(n, -1, np.int32)
     sv = core.states_view
     pitch_bin = 3                                  # PITCH_BINS[3] == 0 deg
@@ -864,6 +880,13 @@ def explore(args) -> int:
         act[idx, 3] = rng.integers(0, ACTION_NVEC[3], m)
         act[idx, 4] = rng.integers(0, ACTION_NVEC[4], m)
         act[idx, 5] = rng.integers(0, ACTION_NVEC[5], m) if args.duck else 0
+        if view is not None:
+            # --view-velocity: a yaw TARGET relative to the velocity heading, drawn in the
+            # policy's own squashed coordinate (off_warp: half the draws within +-10 deg), pitch
+            # 0 (inert). Drawn after the keys, so a flag-off search's stream is untouched.
+            from surfgym.view import off_warp
+            view[idx, 0] = off_warp(rng.uniform(-1.0, 1.0, m)).astype(np.float32)
+            view[idx, 1] = 0.0
 
     # per-chunk run bookkeeping (parallel lists indexed by run id)
     r_t0: list[int] = []
@@ -927,7 +950,11 @@ def explore(args) -> int:
                                           & (rng.random(n) >= args.repeat_p))
                     fresh_actions(live)
                 acts_h[t] = act
-                _, rew, done, trunc, _ = core.step(act)
+                if view is not None:
+                    views_h[t] = view
+                    _, rew, done, trunc, _ = core.step(act, view=view)
+                else:
+                    _, rew, done, trunc, _ = core.step(act)
                 rew_h[t] = rew
                 ended = (done | trunc) != 0
                 hit = np.flatnonzero(np.asarray(core.goal_hits, bool)
@@ -955,7 +982,8 @@ def explore(args) -> int:
                     break
 
             n_runs += len(r_t0)
-            fold_chunk(arch, hasher, hist, rid_h, r_t0, r_d0, r_org, dist, acts_h)
+            fold_chunk(arch, hasher, hist, rid_h, r_t0, r_d0, r_org, dist, acts_h,
+                       views_h if arch.link_views is not None else None)
             it += 1
             if (max_minutes > 0.0 and not stop
                     and time.perf_counter() - t_start >= 60.0 * max_minutes):
@@ -1039,7 +1067,7 @@ def _goal_meta(extra, arch, spawns, cell, minutes=None):
 
 
 def fold_chunk(arch: Archive, hasher: CellHash, hist, rid_h, r_t0, r_d0,
-               r_org, dist, acts_h=None) -> None:
+               r_org, dist, acts_h=None, views_h=None) -> None:
     """Archive everything one chunk of rollout discovered."""
     if not r_t0:
         return
@@ -1057,6 +1085,8 @@ def fold_chunk(arch: Archive, hasher: CellHash, hist, rid_h, r_t0, r_d0,
         for i, j in zip(added.tolist(), ent):
             t0 = int(r_t0[int(g_run[j])])
             arch.link_acts[i] = acts_h[t0:int(g_tick[j]), int(g_env[j])].copy()
+            if views_h is not None:
+                arch.link_views[i] = views_h[t0:int(g_tick[j]), int(g_env[j])].copy()
     if added.size:
         arch.dist[added] = dist.sample(arch.state[added]["origin"])
 
@@ -1137,6 +1167,8 @@ def meta_dict(args, bsp, hasher, arch, it, n_goal, extra=None) -> dict:
         out["cell_energy"] = float(args.cell_energy)
     if int(getattr(args, "cell_heading", 0) or 0) > 0:
         out["cell_heading"] = int(args.cell_heading)
+    if getattr(args, "view_velocity", False):
+        out["view_velocity"] = True              # flag off: the meta json is unchanged
     if getattr(args, "exact_chains", False):
         out["exact_chains"] = True
         out["ep_ticks"] = int(args.ep_ticks)
@@ -1724,6 +1756,12 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--cell-heading", type=int, default=0,
                     help="H > 0: the cell key also holds H sectors of the horizontal velocity "
                          "heading x rising/not (default 0 = off, keys unchanged)")
+    ap.add_argument("--view-velocity", action="store_true",
+                    help="random view TARGETS in the velocity frame (core view_mode 1 + "
+                         "yaw_adaptive, the policy's own action space under --view-absolute "
+                         "velocity), held with --repeat-p like the keys, instead of uniform "
+                         "per-tick yaw-delta bins (which spin the view); with --exact-chains the "
+                         "archive keeps link_views and ge_replay replays them")
     ap.add_argument("--exact-chains", action="store_true",
                     help="exact provenance: a cell's parent is the cell its run was restored "
                          "from, states are never replaced and each cell keeps its run's "
