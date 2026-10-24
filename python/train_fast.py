@@ -15701,6 +15701,13 @@ def main() -> None:
                              "give both")
         if MULTI or D.world_size > 1:
             raise SystemExit("--auto-beam is single-map, single-rank")
+        import shlex as _shlex
+        _aba = _shlex.split(str(args.auto_beam_args))
+        if "--greedy-envs" in _aba and _aba.index("--greedy-envs") + 1 < len(_aba) \
+                and int(_aba[_aba.index("--greedy-envs") + 1]) > int(args.auto_beam):
+            raise SystemExit(f"--auto-beam {int(args.auto_beam)}: --auto-beam-args asks for "
+                             f"{_aba[_aba.index('--greedy-envs') + 1]} greedy envs, more than "
+                             "the search has")
         # the free-fall vz step of one tick (the contact trim); a non-integer tick's pattern
         # varies it by a fraction of a u/s, which the tolerance absorbs
         _pat = tuple(getattr(slots[0].core, "tick_pattern", (TICK.ms,))) or (TICK.ms,)
