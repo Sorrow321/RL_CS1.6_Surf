@@ -798,3 +798,27 @@ round 1's fixed grow 20 / cooldown 20 they would have taken ~130M).
   south and ~34 u higher than our line, with ~110 u more h at 4% (3,863 vs 3,740-3,777); our line
   clips a rim at (175,-2,838,3,145). A threshold: a little more energy before the drop may clear the
   rim and save the 400 u.
+* More nulls at the platform gate (07:20-07:45 UTC):
+  * cur4's final policy from its far-side spine states with velocity x1.15 (6 greedy episodes):
+    the extra energy is shed by 4.3% (h 3,551-3,608, below the policy's own line) and the ramp
+    gets 3,079-3,219; same wall (6.61-6.70%). Sped-up starts there do not teach speed.
+  * beam_tas --score dh + --branch-at (view-only yaw bursts, jitter +-15 deg, held 20-28 ticks,
+    protected 3-4 gens): forked at d <= 54,900 (fired at tick 700, already past the rim: forks only
+    happen at resample boundaries) and at t600 (the far-side turn, 1,792 envs, 1.5-s burst): min d
+    53,306-53,326 (6.69-6.72%) both times.
+* GE "south1" (07:44 UTC): roots = the last 2 s of chain3a (the south-side route at 3.2-3.79%,
+  pbr2b4_ge/chain3a.npy): the field's descent from its end runs west at z ~3,250-3,316 - the
+  platform's own height - so the south side may reach the platform route without the jump from
+  below.
+* GE south1 (8 min): only 2,044 cells, best 3.924% - the south ramp's end is a dead end in physics
+  (the field's westward descent there was misleading).
+* **The rim is a steering problem, not a speed one** (cur4's final policy, greedy, from its OWN
+  states at 4.15-4.45% with the velocity x1.0 / x1.1 / x1.2, 4 episodes each): every episode, at
+  every scale (h at the start up to 3,889 - more than the record's ~3,863 at 4%), hits the same spot
+  (168-179, -2,833..-2,837, 3,146-3,150) and loses the energy there (ramp h 3,212-3,377, best
+  6.61-6.82%). The policy steers into that rim whatever its speed; clearing it needs a different
+  path (the record passes ~20 u further south and ~34 u higher), which neither its sampling noise
+  (yaw sigma ~0.01), +-15 deg yaw bursts nor uniform GE bursts have produced.
+* GE rim1/rim2 (08:05 UTC, cur5 PAUSED with SIGSTOP so the search gets the whole CPU): roots = cur4's
+  own greedy line from 1.0 s to 0.1 s before its worst energy drop (tick 725, (169,-2,835,3,150)),
+  --cell-energy 16, cell 64 / 48, bursts 50 / 100 decisions, 10 min each.
