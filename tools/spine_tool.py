@@ -16,7 +16,9 @@ root, zero the clocks. This does those steps the same way every time.
 
 * `--src` is a .npy of STATE_DTYPE rows or an .npz holding them under `states`.
 * `cut --end auto` (default) ends the spine at the line's deepest state on `--field`
-  (argmin d over the reachable states); `--end N` at state N; `--start N` drops the first N.
+  (argmin d over the reachable states); `--end contact` at the last tick at or before that
+  state at which the map pushed back (tools/pick_selfline.py's contact rule: a line that ends
+  in a fall must not teach the fall); `--end N` at state N; `--start N` drops the first N.
 * `cat --part FILE[:LO[:HI]]` takes rows LO..HI-1 of each part, in order, and reports the gap
   between consecutive parts: a chain spliced at its root has a 0 u gap (the repeated root is
   kept once), the next tick of the same line <= 35 u; more than --max-gap is refused.
@@ -82,6 +84,18 @@ def zero_clocks(states: np.ndarray) -> np.ndarray:
     return out
 
 
+def contact_end(states: np.ndarray, tol: float = 1.0) -> int:
+    """The last index whose vz change departs from the ballistic step (the median of diff(vz),
+    tools/pick_selfline.contact_cut's rule): the last tick the map pushed back, kept. A line
+    with no departure keeps its last state."""
+    vz = states["velocity"][:, 2].astype(np.float64)
+    if len(vz) < 3:
+        return len(vz) - 1
+    dvz = np.diff(vz)
+    hit = np.flatnonzero(np.abs(dvz - float(np.median(dvz))) > float(tol))
+    return int(hit[-1]) + 1 if len(hit) else len(vz) - 1
+
+
 def parse_part(spec: str):
     """FILE[:LO[:HI]] -> (file, lo, hi); a Windows drive letter is not a range."""
     bits = spec.split(":")
@@ -125,7 +139,11 @@ def main(argv=None) -> int:
             p.add_argument("--src", required=True)
         if name == "cut":
             p.add_argument("--start", type=int, default=0)
-            p.add_argument("--end", default="auto", help="'auto' = the deepest state, or an index")
+            p.add_argument("--end", default="auto",
+                           help="'auto' = the deepest state; 'contact' = the last tick at or "
+                                "before it at which the map pushed back (never mid-fall); or an "
+                                "index")
+            p.add_argument("--contact-tol", type=float, default=1.0)
         if name == "cat":
             p.add_argument("--part", action="append", required=True)
             p.add_argument("--max-gap", type=float, default=50.0,
@@ -154,11 +172,15 @@ def main(argv=None) -> int:
         s = load_states(a.src)
         ref = d0 if d0 else float(depths(s, f)[0])
         describe(s, f, ref, "source")
-        if a.end == "auto":
+        if a.end in ("auto", "contact"):
             d = depths(s, f)
             end = int(np.argmin(d))
             if not np.isfinite(d[end]):
                 raise SystemExit("no state of the source lies on the field")
+            if a.end == "contact":
+                deep = end
+                end = contact_end(s[:deep + 1], a.contact_tol)
+                print(f"deepest state {deep}; last map contact at or before it: {end}")
         else:
             end = int(a.end)
         if not 0 <= a.start <= end < len(s):
