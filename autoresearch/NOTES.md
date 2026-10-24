@@ -707,3 +707,43 @@ round 1's fixed grow 20 / cooldown 20 they would have taken ~130M).
   shell itself (CLAUDE.md) - stop a run by runs/<run>.pid.
 * GE6 = autoresearch/analysis/pb_frontier_step.py on cur2's 4.861B weights (record 3 greedy
   episodes, roots = the best one's last 4 s, 2 x 12-min exact-chain searches), 04:43 UTC.
+* The 6.67% wall is a SPEED gate, and its cause is one hard landing (energy height h = z +
+  |v|^2/2g along cur2's greedy line, ep 1): h ~3,680-3,740 from the far side to the drop at x ~200,
+  then (237,-2,752,3,264) |v| 872 h 3,740 -> (159,-2,861,3,138) |v| 502 **h 3,296** in 0.25 s, and
+  h ~3,280-3,340 after it. It reaches the launch ramp at x ~-460 at |v| 654-760; with h 3,740 it would
+  be ~1,150 u/s there, and the record (analysis only) leaves that ramp at 916 u/s horizontal,
+  vz +714 and passes x -1,018 at z 3,392 where every chain of ours stops at z ~3,000-3,045.
+* GE6 (pb_frontier_step on cur2 4.861B: greedy best 6.687% at tick 971, roots ticks 571-971, two
+  12-min exact-chain searches, 04:43-04:55 UTC): **nothing past 6.73%** - the wall at x ~-940..-1,015
+  holds for uniform random bursts. They did find ~60 cells past the drop (x 140..-300) with
+  h 3,600-3,758 (falling fast, pre-impact), but every cell beyond x -100 has h <= 3,349; rolled out
+  from those 77 states (record_ckpt --spawn-states, 12 greedy + 12 stochastic) the POLICY loses the
+  energy within 0.6 s too (h -> ~3,080) and stops at the same wall (6.52-6.70%).
+* **Speed opens the wall** (GE rooted at the policy's own launch-ramp states, greedy ticks 860-960,
+  x -219..-769, with the velocity SCALED, 6 min each): x1.25 -> 6.95% (just past it), **x1.5 ->
+  12.60%** (x -3,303; 58,648 cells, depth 2,153 ticks). A smooth drop (h kept at ~3,712 instead of
+  ~3,290) would put ~1,130 u/s on that ramp = the x1.5 case. So the next gate is one energy-keeping
+  manoeuvre at the x ~200 drop, which neither uniform bursts nor the policy perform.
+* pb_nudge_sweep.py (new): the policy's own greedy line from the true start with one yaw offset
+  (record_ckpt --nudge-*: 6 ticks 650-750 before its own h drop x holds 5/15 decisions x offsets
+  +-10/20/40 deg, 73 runs, 14 in parallel) - is a near-policy line that keeps the energy there?
+* Nudge sweep result (05:05-05:28 UTC; the box sweep is SLOW: 8-14 parallel record_ckpt processes
+  take ~4.5 min per 13-s episode, GPU contention - run 1-3 at a time or use the trainer instead):
+  of the runs done (ticks 650-700, holds 5-15, offsets +-5..40 deg) none beat the unnudged line by
+  more than 0.17% (best 6.707%); h on the launch ramp 3,084-3,277 (needs ~3,700). Offsets at tick
+  650 (the far side) wreck the line (death at 4.0-4.8%). A small yaw deviation before the drop does
+  not keep the energy.
+* GE "drop" (05:30 UTC): roots = only the drop approach (greedy ticks 690-790, 101 roots), cell 64
+  x --cell-energy 16 (finer), bursts 100 and 50 decisions, 10 min each: does a concentrated search
+  find an energy-keeping landing (h > ~3,600 past x -300)?
+* GE "drop" result (10 min x 2, 21-23k cells each): best 6.83% / 6.69%; past x -100 every cell has
+  h <= ~3,388 again (h up to 3,759 only at x 100..-100, pre-impact). Concentrating random bursts on
+  the drop approach does not find the energy-keeping landing: search alone does not cross this gate.
+* `--demo-speed P LO HI` (new, default off, byte-identical): a share P of the demo draws outside the
+  frontier band starts with velocity x U(LO, HI); those rows are lifted 0.15 u so they match no
+  spine key (kept out of the curriculum's statistics). The recipe's --respawn-front-perturb-speed
+  range is 1.0-1.3, used as is (CLAUDE.md 0b: not the x1.5 this map's probe showed).
+* **pbr2b4_cur3** (05:40 UTC): resume cur2 4.861B + spine_c curriculum (tau from the end) +
+  `--demo-replay 0.25 --demo-speed 0.3 1.0 1.3` + per-call energy shaping (`--energy-pot-front 0
+  --energy-pot-front-bonus 0`: every contact's loss of h charged when it happens; under GAE
+  lambda 0.95 the hard landing gets its own credit although the episode total telescopes).

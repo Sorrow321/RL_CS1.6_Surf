@@ -44,7 +44,8 @@ class DemoCurriculum:
     def __init__(self, states, window: int = 10, rate: float = 0.2,
                  min_ep: float = 50.0, seed: int = 29,
                  grow: int = 0, front_frac: float = 0.0, tau0=None,
-                 cooldown: int = 20, adapt: int = 0, replay: float = 0.0) -> None:
+                 cooldown: int = 20, adapt: int = 0, replay: float = 0.0,
+                 speed=None) -> None:
         self.S = np.asarray(states, STATE_DTYPE)
         self.n = len(self.S)
         self.D = int(window)
@@ -121,6 +122,21 @@ class DemoCurriculum:
         if float(replay) > 0.0 and not self.grow:
             raise ValueError("replay needs grow > 0 (the anchored range)")
         self.replay = float(replay)
+        # --demo-speed P LO HI (None = off, byte-identical draws): a share P of the draws
+        # OUTSIDE the frontier band gets its velocity scaled by U(LO, HI) - the --respawn-front-
+        # perturb-speed idea on the spine: a speed gate a little ahead of the policy's own speed
+        # is felt, and the value of arriving fast is learned. Those rows are lifted 0.15 u so
+        # their origin never matches a spine key: a sped-up start is not the spine state, and
+        # its outcome stays out of the curriculum's success statistics.
+        if speed is not None:
+            pf, lo, hi = (float(v) for v in speed)
+            if not (0.0 < pf <= 1.0 and 0.0 < lo <= hi):
+                raise ValueError(f"speed needs 0 < P <= 1 and 0 < LO <= HI, got {speed}")
+            if not self.grow:
+                raise ValueError("speed needs grow > 0 (the anchored range)")
+            self.speed = (pf, lo, hi)
+        else:
+            self.speed = None
         self.rng = np.random.default_rng(seed)
         self._key = {tuple(np.round(np.asarray(r["origin"], np.float64), 1)): i
                      for i, r in enumerate(self.S)}
@@ -167,7 +183,17 @@ class DemoCurriculum:
                 n_rep = int(round(n_demo * self.replay))
                 idx[:n_rep] = self.rng.integers(0, self.n, n_rep)
         fresh = start_pool[self.rng.integers(0, len(start_pool), n_fresh)]
-        return np.concatenate([fresh, self.S[idx].copy()])
+        rows = self.S[idx].copy()
+        if self.speed is not None:
+            pf, lo, hi = self.speed
+            n_front = int(round(n_demo * self.front_frac)) if self.front_frac > 0.0 else 0
+            cand = np.arange(n_front, n_demo)          # every draw outside the band share
+            pick = cand[self.rng.random(len(cand)) < pf]
+            if len(pick):
+                k = self.rng.uniform(lo, hi, len(pick)).astype(np.float32)
+                rows["velocity"][pick] *= k[:, None]
+                rows["origin"][pick, 2] += np.float32(0.15)
+        return np.concatenate([fresh, rows])
 
     def match(self, origins: np.ndarray) -> np.ndarray:
         """Demo index of each position, -1 if not a demo spawn."""

@@ -4763,6 +4763,14 @@ def main() -> None:
                          "with the policy's own greedy line keeps that line practised while the "
                          "curriculum works on the new part at its end. 0 = off, byte-identical. "
                          "Config only when set; ckpt restores")
+    ap.add_argument("--demo-speed", type=float, nargs=3, default=None,   # None = off
+                    metavar=("P", "LO", "HI"),
+                    help="--demo-grow: a share P of the demo draws outside the frontier band "
+                         "starts with its velocity scaled by U(LO, HI) (--respawn-front-perturb-"
+                         "speed on the spine: a speed gate just ahead of the policy's own speed "
+                         "is felt); those starts are kept out of the curriculum's success "
+                         "statistics. Off by default, byte-identical. Config only when set; ckpt "
+                         "restores")
     ap.add_argument("--demo-adapt", type=int, default=None,   # None/0 = off
                     help="--demo-grow: ADAPT the step tau moves by in [1, M] instead of the fixed "
                          "--demo-grow S (the first step): an advance with the frontier band at "
@@ -7889,6 +7897,9 @@ def main() -> None:
         if args.demo_replay is None and ck_cfg.get("demo_replay") is not None:
             args.demo_replay = float(ck_cfg["demo_replay"])
             restored.append(f"demo_replay={args.demo_replay:g}")
+        if args.demo_speed is None and ck_cfg.get("demo_speed") is not None:
+            args.demo_speed = [float(v) for v in ck_cfg["demo_speed"]]
+            restored.append(f"demo_speed={args.demo_speed}")
         if args.keys_hold_spawn_duck is None and ck_cfg.get("keys_hold_spawn_duck"):
             args.keys_hold_spawn_duck = 1
             restored.append("keys_hold_spawn_duck")
@@ -11415,6 +11426,12 @@ def main() -> None:
             raise SystemExit("--demo-cooldown must be >= 0")
         if args.demo_replay and not args.demo_grow:
             raise SystemExit("--demo-replay needs --demo-grow (the anchored range)")
+        if args.demo_speed is not None:
+            _pf, _lo, _hi = (float(v) for v in args.demo_speed)
+            if not args.demo_grow:
+                raise SystemExit("--demo-speed needs --demo-grow (the anchored range)")
+            if not (0.0 < _pf <= 1.0 and 0.0 < _lo <= _hi):
+                raise SystemExit("--demo-speed P LO HI needs 0 < P <= 1 and 0 < LO <= HI")
         if args.demo_replay and not 0.0 < float(args.demo_replay) <= 1.0:
             raise SystemExit("--demo-replay must be in (0, 1]")
         demo = DemoCurriculum(np.load(args.demo_file),
@@ -11425,10 +11442,17 @@ def main() -> None:
                               cooldown=(20 if args.demo_cooldown is None
                                         else int(args.demo_cooldown)),
                               adapt=int(args.demo_adapt or 0),
-                              replay=float(args.demo_replay or 0.0))
+                              replay=float(args.demo_replay or 0.0),
+                              speed=(None if args.demo_speed is None
+                                     else tuple(float(v) for v in args.demo_speed)))
         if args.demo_cooldown is not None:
             print(f"--demo-cooldown {int(args.demo_cooldown)}: tau moves at most once every "
                   f"{int(args.demo_cooldown)} iterations (default 20)")
+        if args.demo_speed is not None:
+            print(f"--demo-speed {args.demo_speed[0]:g} {args.demo_speed[1]:g} "
+                  f"{args.demo_speed[2]:g}: that share of the demo draws outside the band starts "
+                  f"with its velocity x U({args.demo_speed[1]:g}, {args.demo_speed[2]:g}), outside "
+                  f"the curriculum's statistics")
         if args.demo_replay:
             print(f"--demo-replay {float(args.demo_replay):g}: that share of the demo draws is "
                   f"uniform over the whole spine [0,{demo.n - 1}] (the part before tau stays "
@@ -14418,6 +14442,9 @@ def main() -> None:
     if args.demo_file and args.demo_replay:
         # --demo-replay: dumped only when on; a resume restores it
         meta["config"]["demo_replay"] = float(args.demo_replay)
+    if args.demo_file and args.demo_speed is not None:
+        # --demo-speed: dumped only when on; a resume restores it
+        meta["config"]["demo_speed"] = [float(v) for v in args.demo_speed]
     if args.keys_hold_spawn_duck:
         # --keys-hold-spawn-duck: dumped only when on; a resume restores it
         meta["config"]["keys_hold_spawn_duck"] = 1

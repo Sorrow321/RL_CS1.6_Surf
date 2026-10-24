@@ -133,6 +133,25 @@ def test_replay_draws_the_whole_spine():
         DemoCurriculum(_spine(50), replay=0.2)          # replay needs grow
 
 
+def test_speed_scales_outside_the_band_and_hides_from_the_stats():
+    n, tau = 600, 300
+    sp = _spine(n)
+    sp["velocity"][:, 0] = 100.0
+    c = DemoCurriculum(sp, window=10, grow=8, front_frac=0.67, tau0=tau, min_ep=1e9,
+                       speed=(0.5, 1.2, 1.4))
+    pool = c.build_pool(np.zeros(8, STATE_DTYPE), pool_size=10000, fresh_frac=0.1)
+    demo = pool[pool["velocity"][:, 0] > 0]
+    fast = demo["velocity"][:, 0] > 100.5
+    n_demo, n_front = 9000, int(round(9000 * 0.67))
+    assert abs(fast.sum() - 0.5 * (n_demo - n_front)) < 150, fast.sum()
+    assert demo["velocity"][fast, 0].min() >= 119.9 and demo["velocity"][fast, 0].max() <= 140.1
+    assert not fast[:n_front].any(), "the band share is never sped up"
+    idx = c.match(demo["origin"])
+    assert (idx[fast] == -1).all() and (idx[~fast] >= 0).all(), "sped-up rows match no spine key"
+    with pytest.raises(ValueError):
+        DemoCurriculum(sp, speed=(0.5, 1.2, 1.4))      # needs grow
+
+
 @pytest.mark.skipif(not (ROOT / "maps" / "surf_princessburglar_b26.bsp").exists(),
                     reason="needs the princessburglar map")
 def test_trainer_takes_and_dumps_the_flags(tmp_path):
@@ -140,7 +159,8 @@ def test_trainer_takes_and_dumps_the_flags(tmp_path):
     run = "dadapt_smoke"
     try:
         r = _run_demo(run, ["--demo-grow", "4", "--demo-adapt", "16", "--demo-cooldown", "3",
-                            "--demo-replay", "0.2"], tmp_path)
+                            "--demo-replay", "0.2", "--demo-speed", "0.3", "1.0", "1.3"],
+                      tmp_path)
         out = r.stdout + r.stderr
         assert r.returncode == 0, out[-4000:]
         assert "--demo-adapt 16: the step adapts in [1, 16] from 4" in out
@@ -149,6 +169,8 @@ def test_trainer_takes_and_dumps_the_flags(tmp_path):
         assert "--demo-replay 0.2: that share of the demo draws is uniform over the whole" in out
         assert cfg["demo_adapt"] == 16 and cfg["demo_cooldown"] == 3
         assert cfg["demo_replay"] == 0.2
+        assert cfg["demo_speed"] == [0.3, 1.0, 1.3]
+        assert "--demo-speed 0.3 1 1.3: that share of the demo draws outside the band" in out
     finally:
         shutil.rmtree(ROOT / "runs" / run, ignore_errors=True)
     bad = _run_demo("dadapt_bad", ["--demo-adapt", "16"], tmp_path)
