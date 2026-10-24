@@ -41,3 +41,16 @@ def test_max_d_keeps_only_frontier_episodes():
     r = pick_roots.pick([ep(1000, 600, 0), ep(1000, 600, 500)], dist, window=(0.25, 2.0),
                         n=10_000, max_d=100.0)
     assert len(r) == 176 and r["origin"][:, 0].max() == 200
+
+
+def test_first_within_anchors_the_first_approach():
+    s = np.zeros(1000, STATE_DTYPE)
+    x = np.full(1000, 500.0)
+    x[300:400] = 10.0                 # first approach: within 20 of the minimum
+    x[800] = 0.0                      # the deepest tick, after a wander
+    s["origin"][:, 0] = x
+    dist = lambda o: o[:, 0]                                  # noqa: E731
+    late = pick_roots.pick([s], dist, window=(0.0, 1.0), n=10_000)
+    first = pick_roots.pick([s], dist, window=(0.0, 1.0), n=10_000, first_within=20.0)
+    assert len(late) == 101 and late["origin"][-1, 0] == 0.0          # ticks 700..800
+    assert len(first) == 101 and (first["origin"][-1, 0] == 10.0)     # ticks 200..300
