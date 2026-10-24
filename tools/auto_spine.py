@@ -8,10 +8,12 @@ can run by itself (train_fast --auto-spine) instead of an agent choosing cut poi
 1. BEAM: tools/beam_tas.py from the TRUE start on the newest weights - N stochastic copies of
    the policy, a greedy floor, the leaders by goal-field d cloned every 25 decisions,
    --save-frontier replays the frontier lineage open-loop into per-tick states.
-2. CUT: the line is trimmed at the LAST TICK THE MAP PUSHED BACK (tools/pick_selfline.py's
-   contact_cut: vertical acceleration departing from the gravity step - a line that ends in a
-   fatal fall ends where the track ended, not in the fall, which a d-ranked search otherwise
-   rewards), then cut at its best d inside that.
+2. CUT: the line ends at its best d (--cut best, the default; the --gain margin over the
+   greedy frontier is what keeps a fatal fall from counting), or (--cut contact) at its best d
+   at or before the LAST TICK THE MAP PUSHED BACK (tools/pick_selfline.py's contact_cut). The
+   contact trim was the first default and failed on the gate it was built for: the lines that
+   pass princessburglar's 20.4% catch make their last contact at the ramp landing (20.40%, level
+   with the catch fall) and fly the rest (a U-turn climb to 21.4%) ballistically.
 3. GO-EXPLORE when the beam does not beat the greedy frontier by --gain: tools/explore_phase1.py
    --exact-chains rooted at the line's own last --roots-secs seconds before its cut,
    tools/ge_replay.py replays the deepest chain exactly, the chain is spliced onto the line at
@@ -72,10 +74,18 @@ def contact_cut_states(states, tol: float = 1.0) -> int:
     return int(contact_cut(rows, tol)[0])
 
 
-def cut_line(states, d, tol: float = 1.0) -> tuple[int, float]:
-    """-> (index of the line's end, its d): the best d at or before the last contact."""
+def cut_line(states, d, tol: float = 1.0, mode: str = "contact") -> tuple[int, float]:
+    """-> (index of the line's end, its d). ``contact``: the best d at or before the last
+    contact (a line that ends in a fatal fall ends where the track ended). ``best``: the best d
+    anywhere - the --gain margin over the greedy frontier is then what keeps a fall from
+    counting; on princessburglar's 20.4% gate the passing lines' last contact IS the ramp
+    landing (20.40%, level with the catch fall's 20.41%) and everything that makes them
+    passes (the U-turn climb to 21.4%) is ballistic after it (pbr3b4, 2026-10-24)."""
     if len(states) == 0:
         return -1, float("inf")
+    if mode == "best":
+        e = int(np.argmin(d))
+        return e, float(d[e])
     c = contact_cut_states(states, tol)
     e = int(np.argmin(d[:c + 1]))
     return e, float(d[e])
@@ -216,22 +226,25 @@ def main(argv=None) -> int:
     ap.add_argument("--greedy-envs", type=int, default=32)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--ge-minutes", type=float, default=10.0, help="0 = no GE fallback")
-    ap.add_argument("--ge-cell", type=float, default=32.0)
-    ap.add_argument("--ge-energy", type=float, default=16.0)
-    ap.add_argument("--ge-boost", default="1.0",
+    ap.add_argument("--ge-cell", type=float, default=64.0)
+    ap.add_argument("--ge-energy", type=float, default=32.0)
+    ap.add_argument("--ge-boost", default="1.0,1.04",
                     help="comma list of speed factors: every GE root is also tried with its "
                          "velocity scaled by each (1.0 = the line's own states only)")
-    ap.add_argument("--roots-secs", type=float, default=3.0,
+    ap.add_argument("--roots-secs", type=float, default=2.5,
                     help="Go-Explore roots: the line's last seconds before it stalls")
     ap.add_argument("--stall-margin", type=float, default=500.0,
                     help="the line stalls where it first comes within this many u of its "
                          "best d")
-    ap.add_argument("--roots-n", type=int, default=24)
+    ap.add_argument("--roots-n", type=int, default=40)
     ap.add_argument("--act-every", type=int, default=4)
     ap.add_argument("--maxvel", type=float, default=None)
     ap.add_argument("--threads", type=int, default=0)
     ap.add_argument("--timeout", type=float, default=1800.0, help="beam_tas wall cap (s)")
     ap.add_argument("--contact-tol", type=float, default=1.0)
+    ap.add_argument("--cut", choices=["best", "contact"], default="best",
+                    help="where a line ends: its best d (the --gain margin guards against a "
+                         "fall), or the best d at or before its last map contact")
     ap.add_argument("--branch-tick", type=int, default=0,
                     help="> 0: when the plain beam falls short, a second beam forks half its "
                          "population at this tick (the greedy line's commitment point)")
@@ -256,7 +269,7 @@ def main(argv=None) -> int:
     best_src = None
     if line is not None and len(line):
         d = field_d(field, line)
-        e, de = cut_line(line, d, a.contact_tol)
+        e, de = cut_line(line, d, a.contact_tol, a.cut)
         res.update(beam_len=int(len(line)), beam_end=e, beam_end_d=de,
                    beam_best_d=float(d.min()))
         print(f"beam line: {len(line)} states, best d {d.min():,.0f}, cut at {e} "
@@ -269,7 +282,7 @@ def main(argv=None) -> int:
             res.update(bi)
             if bl is not None and len(bl):
                 bd_ = field_d(field, bl)
-                be, bde = cut_line(bl, bd_, a.contact_tol)
+                be, bde = cut_line(bl, bd_, a.contact_tol, a.cut)
                 res.update(br_len=int(len(bl)), br_end=be, br_end_d=bde,
                            br_best_d=float(bd_.min()))
                 print(f"branched beam line (fork at tick {a.branch_tick}): {len(bl)} states, "
@@ -285,7 +298,7 @@ def main(argv=None) -> int:
             res.update(gi)
             if gl is not None:
                 gd_ = field_d(field, gl)
-                ge_e, ge_de = cut_line(gl, gd_, a.contact_tol)
+                ge_e, ge_de = cut_line(gl, gd_, a.contact_tol, a.cut)
                 res.update(ge_len=int(len(gl)), ge_end=ge_e, ge_end_d=ge_de,
                            ge_best_d=float(gd_.min()))
                 print(f"GE line: {len(gl)} states, best d {gd_.min():,.0f}, cut at {ge_e} "
