@@ -236,11 +236,14 @@ def main(argv=None) -> int:
     ap.add_argument("--ge-minutes", type=float, default=10.0, help="0 = no GE fallback")
     ap.add_argument("--ge-cell", type=float, default=64.0)
     ap.add_argument("--ge-energy", type=float, default=32.0)
-    ap.add_argument("--ge-boost", default="1.0,1.04;1.08,1.12",
+    ap.add_argument("--ge-boost", default="1.0,1.04;1.08;1.12",
                     help="the GE's escalation ladder: ';'-separated stages of comma-separated "
                          "speed factors; every root is tried with its velocity scaled by each "
                          "factor of a stage, and the next stage (--ge-minutes each) runs only "
-                         "when one finds no line past the greedy frontier")
+                         "when one finds no line past the greedy frontier. One factor per stage "
+                         "above 1.04: the deepest chain of a mixed stage is the most boosted "
+                         "one, and a x1.12 root put a spine out of the greedy line's reach "
+                         "(round 3, auto-spine search 3)")
     ap.add_argument("--roots-secs", type=float, default=2.5,
                     help="Go-Explore roots: the line's last seconds before it stalls")
     ap.add_argument("--stall-margin", type=float, default=500.0,

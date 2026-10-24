@@ -2114,6 +2114,26 @@ def sample_view(padded, mu, log_std, temp=None, temp_view=None):
     return torch.cat([neutral, cat], dim=1), z, logp_c + gauss_logp(z, mu, ls)
 
 
+def milestone_pay(rec, ended, ms, paid):
+    """--demo-milestones: (bonus count per row, the updated (N, M) paid table) for records
+    ``rec`` (N,) against milestone distances ``ms`` (M,). A row is paid each milestone its
+    record crosses during the episode, once; ``paid`` None (or a narrower table: milestones
+    added since) marks the rows already past a new milestone as paid; ended rows (their record
+    is already the next episode's spawn) are re-marked by where they respawned."""
+    rec = np.asarray(rec, np.float64)
+    ended = np.asarray(ended, bool)
+    ms = np.asarray(ms, np.float64)[None, :]
+    if paid is None or paid.shape[1] != ms.shape[1]:
+        old = paid
+        paid = rec[:, None] <= ms
+        if old is not None:
+            paid[:, :old.shape[1]] = old
+    hit = (~ended)[:, None] & (~paid) & (rec[:, None] <= ms)
+    paid |= hit
+    paid[ended] = rec[ended][:, None] <= ms
+    return hit.sum(axis=1), paid
+
+
 def demo_hot_mask(demo_idx, band, ep_len, ticks):
     """--demo-front-temp: the envs whose episode STARTED on the curriculum's frontier band
     ``band`` = (lo, hi) inclusive (``demo_idx`` is the spine index of each env's spawn, -1 for
@@ -4789,6 +4809,18 @@ def main() -> None:
                          "beats the greedy frontier by --auto-spine-gain replaces the "
                          "curriculum's (restarting at its end) and its success line. Single "
                          "map, single GPU. Config only when on; never restored")
+    ap.add_argument("--auto-spine-milestones", action="store_true",
+                    help="--auto-spine + --demo-success-bonus: when a new spine replaces the "
+                         "curriculum's, the old success line becomes a MILESTONE that keeps "
+                         "paying the bonus once per episode on crossing - progress the greedy "
+                         "line already makes is not unpaid when the success line moves on "
+                         "(round 2's beam10 eroded its route that way). Off = one line; "
+                         "config only when on; never restored")
+    ap.add_argument("--demo-milestones", default=None,
+                    help="comma list of shaping-field distances, each paid the "
+                         "--demo-success-bonus once per episode whose record crosses it (one "
+                         "that spawns past it never is): a relaunch's way to keep the success "
+                         "lines its previous --auto-spine run had passed. Off = none")
     ap.add_argument("--auto-spine-quorum", type=int, default=5,
                     help="--auto-spine: greedy-eval episodes that must cross the success line")
     ap.add_argument("--auto-spine-patience", type=float, default=0.0,
@@ -14563,6 +14595,11 @@ def main() -> None:
             auto_spine_ge_minutes=float(args.auto_spine_ge_minutes),
             auto_spine_extra_secs=float(args.auto_spine_extra_secs),
             auto_spine_timeout=float(args.auto_spine_timeout))
+        if args.auto_spine_milestones:
+            meta["config"]["auto_spine_milestones"] = 1
+    if args.demo_milestones:
+        meta["config"]["demo_milestones"] = [float(x) for x in
+                                             str(args.demo_milestones).split(",") if x.strip()]
     if args.race_sr:
         # --race-sr: dumped only when on, so a flag-off run.json is the
         # control's byte for byte (test_int_split's identity check)
@@ -15519,6 +15556,20 @@ def main() -> None:
         print(f"--demo-success-bonus {DEMO_BONUS:g}: an episode whose record crosses d <= "
               f"{DEMO_END_D:,.0f} is paid {DEMO_BONUS:g} once (one that starts past it never is)")
 
+    # --demo-milestones / --auto-spine-milestones: further success lines, each paid the bonus
+    # once per episode (MILES[0] = the distances, MILES[1] = the (N, M) paid table or None)
+    MILES = [np.asarray([float(x) for x in str(args.demo_milestones or "").split(",")
+                         if x.strip()], np.float64), None]
+    MILES_N = [0]
+    if len(MILES[0]):
+        if not DEMO_BONUS:
+            raise SystemExit("--demo-milestones pays the --demo-success-bonus: give it")
+        print(f"--demo-milestones: {', '.join(f'{v:,.0f}' for v in MILES[0])} - each paid "
+              f"{DEMO_BONUS:g} once per episode whose record crosses it")
+    if args.auto_spine_milestones and not (args.auto_spine and DEMO_BONUS):
+        raise SystemExit("--auto-spine-milestones keeps --auto-spine's old success lines paying "
+                         "the --demo-success-bonus: give both")
+
     def _demo_bonus_pay(r, ended):
         """--demo-success-bonus: pay the rows whose ratchet record (after this reward call; an
         ended row's is already the NEW episode's spawn) has just crossed the spine's success
@@ -15536,6 +15587,15 @@ def main() -> None:
             paid |= hit
             DEMO_BONUS_N[0] += int(hit.sum())
         paid[ended] = rec[ended] <= DEMO_END_D
+        if len(MILES[0]):
+            nm, MILES[1] = milestone_pay(rec, ended, MILES[0], MILES[1])
+            if nm.any():
+                if MILES_N[0] == 0:
+                    print(f"--demo-milestones: first milestone payment at step {global_step:,}",
+                          flush=True)
+                r = np.array(r, copy=True)
+                r += DEMO_BONUS * nm
+                MILES_N[0] += int(nm.sum())
         return r
 
     # --auto-spine: the search -> curriculum loop (tools/auto_spine.py). AUTO["eval"] is set by
@@ -15643,6 +15703,11 @@ def main() -> None:
             return
         sp = np.load(res["spine"])
         demo.reset_spine(sp)
+        if args.auto_spine_milestones:
+            # the line the greedy just crossed keeps paying (a milestone), the new one is next
+            MILES[0] = np.append(MILES[0], float(DEMO_END_D))
+            print(f"[{global_step:>13,d}] auto-spine milestones: "
+                  + ", ".join(f"{v:,.0f}" for v in MILES[0]), flush=True)
         _de = float(_f.sample(np.asarray(demo.S[-1]["origin"], np.float64)[None])[0])
         DEMO_END_D = _de + float(args.demo_success_d)
         DEMO_PAID[0] = None
@@ -15651,7 +15716,8 @@ def main() -> None:
         AUTO["retry_at"] = 0
         (adir / "current.json").write_text(json.dumps(
             {"step": int(global_step), "k": AUTO["k"], "spine": res["spine"],
-             "success_d": DEMO_END_D, **res}, indent=1), encoding="utf-8")
+             "success_d": DEMO_END_D, "milestones": [float(v) for v in MILES[0]], **res},
+            indent=1), encoding="utf-8")
         print(f"[{global_step:>13,d}] auto-spine search {AUTO['k']}: NEW SPINE from "
               f"{res.get('source')} ({demo.n} states, end d {_de:,.0f}, greedy frontier "
               f"{med:,.0f}) in {dt:.0f}s -> {res['spine']}; success line d <= "

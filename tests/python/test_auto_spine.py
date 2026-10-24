@@ -198,3 +198,66 @@ def test_ge_ladder_escalates_until_a_stage_passes(tmp_path, monkeypatch):
     assert info["source"] == "beam+ge2" and info["n"] == 50
     assert "ge2_end_d" in info and "ge_end_d" in info
     assert np.load(out / "spine.npy")["origin"][-1, 0] == 1500.0
+
+
+@needs_pb
+def test_milestones_pay_and_refuse(tmp_path):
+    """--demo-milestones: a line 40 u in front of the true spawn is crossed and paid; without the
+    success bonus it is refused."""
+    from test_demo_success_d import _spine
+    from surfgym.goalfield import GoalField
+    z = np.load(ROOT / "maps" / "surf_princessburglar_b26.goalc_32.npz", allow_pickle=False)
+    f = GoalField(z["grid"].astype(np.float32) * float(z["quant"]), z["mins"], float(z["cell"]),
+                  float(z["reach_max"]))
+    sp = np.load(_spine(tmp_path))
+    # the test spine walks EAST of the spawn (away from the goal): a line 5 u inside its far
+    # end is crossed by the episodes spawned there that step back toward the goal
+    m = float(np.round(f.sample(np.asarray(sp[-1]["origin"], np.float64)[None])[0] - 5.0))
+    run = "aspn_miles"
+    try:
+        r = _run_demo(run, ["--demo-success-d", "50", "--demo-success-bonus", "50",
+                            "--demo-milestones", f"{m:g}", "--auto-spine",
+                            "--auto-spine-milestones", "--auto-spine-envs", "16",
+                            "--auto-spine-ge-minutes", "0", "--auto-spine-delay", "1e12",
+                            "--steps", "16384"], tmp_path)
+        out = r.stdout + r.stderr
+        assert r.returncode == 0, out[-6000:]
+        assert f"--demo-milestones: {m:,.0f} - each paid 50 once per episode" in out
+        cfg = json.loads((ROOT / "runs" / run / "run.json").read_text())["config"]
+        assert cfg["demo_milestones"] == [m] and cfg["auto_spine_milestones"] == 1
+    finally:
+        shutil.rmtree(ROOT / "runs" / run, ignore_errors=True)
+    bad = _run_demo("aspn_miles_bad", ["--demo-success-d", "50", "--demo-milestones", "57100"],
+                    tmp_path)
+    assert bad.returncode != 0 and "--demo-milestones pays the --demo-success-bonus" in (
+        bad.stdout + bad.stderr)
+    shutil.rmtree(ROOT / "runs" / "aspn_miles_bad", ignore_errors=True)
+
+
+def test_milestone_pay_rule():
+    """The milestone arithmetic: paid once per crossing episode, never for a row that is past
+    the line when it appears or when it respawns, and a milestone added later extends the
+    table without re-paying the old ones."""
+    sys.path.insert(0, str(ROOT / "python"))
+    from train_fast import milestone_pay
+    ms = [100.0, 50.0]
+    rec = np.array([120.0, 90.0, 40.0])          # row 1 past 100 already, row 2 past both
+    n, paid = milestone_pay(rec, np.zeros(3, bool), ms, None)
+    assert n.tolist() == [0, 0, 0] and paid.tolist() == [[False, False], [True, False],
+                                                          [True, True]]
+    rec = np.array([95.0, 45.0, 30.0])           # row 0 crosses 100, row 1 crosses 50
+    n, paid = milestone_pay(rec, np.zeros(3, bool), ms, paid)
+    assert n.tolist() == [1, 1, 0]
+    n, paid = milestone_pay(rec, np.zeros(3, bool), ms, paid)
+    assert n.tolist() == [0, 0, 0]               # once per episode
+    rec = np.array([200.0, 45.0, 30.0])          # row 0 ended and respawned at 200
+    n, paid = milestone_pay(rec, np.array([True, False, False]), ms, paid)
+    assert n.tolist() == [0, 0, 0] and paid[0].tolist() == [False, False]
+    rec = np.array([99.0, 45.0, 30.0])           # it crosses 100 again in its new episode
+    n, paid = milestone_pay(rec, np.zeros(3, bool), ms, paid)
+    assert n.tolist() == [1, 0, 0]
+    n, paid = milestone_pay(rec, np.zeros(3, bool), ms + [20.0], paid)   # a new milestone
+    assert n.tolist() == [0, 0, 0] and paid.shape == (3, 3)
+    rec = np.array([99.0, 45.0, 10.0])           # row 2 was at 30 when 20 appeared: pays now
+    n, paid = milestone_pay(rec, np.zeros(3, bool), ms + [20.0], paid)
+    assert n.tolist() == [0, 0, 1]
