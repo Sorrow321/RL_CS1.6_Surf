@@ -1118,3 +1118,13 @@ and a relaunch. `--auto-spine` (python/surfgym/autospine.py, train_fast.py) does
   4bbcb8f9...) -> `box.py launch --resume` with round 2's beam12 flag set (NOTES above) +
   `--auto-spine`. The initial spine (pbr2b3_beam_ge_g16, success line ~18.7%) is already passed by
   9/9 greedy episodes, so the first eval wants beam 1 at once.
+
+### Harness issue: the budget pace leaves room for ONE box across four branches (pbr3b2, 21:10 UTC)
+`box.py`'s pace rule (burn + new box <= 1.1 x (credit - reserve) / hours left) at credit ~$43,
+reserve $10 and ~47 h left allows 0.69 $/h, while every offer that passes `config.offer_query` costs
+0.56-0.60 $/h (5080s; no 3090 / 4090 / 5090 passed the query tonight). So exactly one branch can
+hold a box at a time and the other three wait (this branch has been blocked since 19:40 UTC; first
+$18.46 of credit allowed no box at all). A second box would need credit >= ~$59 at this pace, or a
+shorter budget_end_hours. Written down for the operator; nothing is worked around.
+* The record gate's audit accepts the new `auto_spine` config key (checked on the incumbent's config
+  with the key added) and still refuses unknown keys.
