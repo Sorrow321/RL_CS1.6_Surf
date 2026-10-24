@@ -718,3 +718,16 @@ of the line kept cold. TRAIN_ONLY in record_ckpt.
   north -> west, then a long drop west"): a speed/height gate, the recipe's kind.
 * TRAINING is already past it: canon4's reservoir deepest 5.07% (3.92B) -> 5.42% (3.94B) - spine
   episodes that cross the success line keep flying on the ratchet, and some clear the teleport.
+* canon4 later evals: 3.964 / 3.946 / 3.975 / 3.978 (3.80-4.02B): 9/9 past the pit every time,
+  9/9 dying at gate 3; the training reservoir's deepest oscillated 5.1-5.4%.
+* `--respawn-greedy` and `--respawn-front-perturb` now WORK WITH --demo-file (they were refused as
+  "not wired"; no existing run changes): the greedy-death rows take the tail of the curriculum
+  pool's non-start rows, the perturbed frontier rows the stretch before it, both out of the demo
+  rows' uniform part (after the frontier band's draws). The curriculum's success bonus stays on,
+  which matters: without it the ratchet + time-pen hardly separate the gate-2 line from the pit
+  (+0.77 progress reward for ~8 s more at 0.001/tick, about the same).
+* pbr2b3_canon5 (03:51 UTC): canon4's ckpt_latest (4.017B, md5 2027d47c...) + the curriculum at
+  tau 0 (--demo-front-frac 0.4) + --respawn-greedy 0.2 (window 0.25-2 s, stuck 200) +
+  --respawn-front-perturb 0.2 (band 0.005, speed x1.0-1.3, turn 90), the recipe's values.
+  First iterations: greedy pool 1,575 states from 9/9 gate-3 deaths (7.1-8.5 s), 23% of envs in
+  the frontier band, reservoir deepest 5.92%.
