@@ -870,3 +870,14 @@ beam found the policy's own way over the wall in 100 s).
   episodes on the greedy line's own drop / landing / climb (2..0.25 s before its best-progress
   stop at ~9.2 s). No searched state (3 GE archives, 4 beams) keeps more than ~3,700 through the
   landing (record ~3,798).
+* beam4 later evals: 7.164 / **7.193** (5.431B: max z 3,309 at the wall, the closest yet) / 7.111 /
+  7.116 / 7.130; h after the landing went 3,674-3,688 at 5.43B then back to 3,639-3,669 - per-call
+  shaping alone plateaus ~20-60 u short. Stopped at 5.694B (ckpt md5 cd33a0d5..., pulled).
+* pbr2b3_beam5 (07:09 UTC): beam4's weights + the same flags + `--respawn-greedy-speed 1.0 1.05`
+  (the greedy-line rows on the drop / landing / climb get up to +5% speed, so training sees
+  passages over the wall from the line's own states).
+* `--respawn-greedy-temp T [--respawn-greedy-temp-ticks K --respawn-greedy-temp-view V]` (new,
+  off = bit-identical; tests/python/test_respawn_greedy_temp.py): an env whose episode started on a
+  greedy-line row samples the keys at 1 + T and the yaw sigma x V for its first K ticks - the
+  --demo-front-temp rule (which cracked the gate-2 bounce) on the greedy line's own last seconds
+  before it stalls. `GreedyLinePool.is_row` tells those spawns from the rest by origin.
