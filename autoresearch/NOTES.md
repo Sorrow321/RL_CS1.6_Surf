@@ -655,3 +655,9 @@ ckpt_latest 3.285B (md5 a6559938..., the most curriculum progress), both named i
   rate and resolution once the view is in the policy's frame; the sensitive stretch for a myopic
   tracker is the tunnel exit -> drop onto the ridge (960-1060). A closed-loop learner trained
   backward is not myopic; this is the evidence for the aligned curriculum arm.
+  With beam 64: from aligned 960 -> 1300 median 3.1 u, max 18 u - the tunnel exit, the drop onto
+  the ridge, the launch, the flight AND the bounce, all at 25 Hz in the policy frame (the beam-16
+  failures there were search myopia); from 1000 it still loses the bounce (a trapped branch); from
+  0 it drifts 10-65 u through the slow tunnel run-up (0-700, the line climbing at the tunnel's east
+  end) and then misses the drop - the slow, full-control part a curriculum learns like the start
+  room. Tracker cost: ~3 min for the whole line at beam 64 on this 4-vCPU host.
