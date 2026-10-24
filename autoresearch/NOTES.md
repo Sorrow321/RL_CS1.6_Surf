@@ -632,3 +632,16 @@ pbr1b1_g2cur6/ckpt_latest.pt 3.285B, md5 a6559938..., both present).
   1,316 of 1,881 spine rows move >= 100 u/s, their recorded view 48 deg off the velocity
   (median). First readout: band [1245,1249] (77.6% with the raw views in g2cur6) is 0.0% over
   288 episodes with forward views -> backoff to 1250: the old weights must relearn the spawns.
+* vv1 at +85M (02:55 UTC): the forward-view curriculum backed off 1245 -> 1275 (bands 0.0, 0.0,
+  0.2, 0.8, 4.0, 11.3%), then relearned 1275 -> 1250 in ~40M steps (44-60% per band); deciles
+  70-90% of the spine hold 89-98%. Now it oscillates 1250 <-> 1255: band [1250,1254] (the wall
+  impact itself; with the recorded views it was easy) at 14-16%. Why it may be harder: right
+  after the impact the line does a RAMP U-turn (slides up the south ramp, stops, slides back
+  north); a forward view there points up the ramp, along a velocity that is about to reverse,
+  while the recorded view already looked north. "Look along the velocity" is not the policy's
+  view through a reversal. Evals: 3.209 (3.286B, the inherited weights) and 3.215 (3.361B): pit.
+* `explore_phase1 --view-vel` (new, default off, archive + meta bit-identical; ge_replay replays
+  it; tests/python/test_ge_view_vel.py 2/2): random actions in the trainer's velocity-frame view
+  (yaw column -> an offset table, dense near 0), so a searched line holds views the policy holds
+  and its actions are ones the policy can take. Fallback if vv1 stalls: GE --view-vel
+  --exact-chains from the policy's own greedy tunnel states -> ge_replay -> a natural-view line.
