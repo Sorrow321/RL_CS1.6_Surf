@@ -751,3 +751,22 @@ pbr1b1_g2cur6/ckpt_latest.pt 3.285B, md5 a6559938..., both present).
   drops on at 1,200-1,500 u/s. The policy arrives at 300-560 u/s (flat landings after its drop) -
   an ENERGY gate again; the recipe's energy-pot + front-perturb speed x1.0-1.3 are the tools on
   board; the generic loop (GE --view-vel from its own pre-frontier states) is the other.
+* GE-VV6 (05:08-05:22, roots = 0.25-4 s before each greedy episode's FIRST approach within 300 u
+  of its frontier, `pick_roots --first-within 300`, new): 13,728 cells, nothing past 6.7%; in the
+  wall region (x -1,100..-300) its best energy height h = z + |v|^2/2g is 3,351 and |v| <= 911.
+  GE-VV7 (roots = the north-side end of GE-VV3's 4.01% chain, h ~3,675, falling at ~420 u/s):
+  2,750 cells, nothing past its own roots - those states die. Both routes are energy-starved: the
+  record carries h ~3,850 on its north side (it pumped the east half-pipe at the start; analysis
+  only) and h ~3,800 at the ramp base below.
+* The 6.7% gate's geometry (core traces, analysis only): west of x ~-100 the course is a long surf
+  ramp with a flat top - top z 2,944 over y -3,120..-2,880, a SOUTH face (normal (0,-0.73,0.68))
+  and a NORTH face (normal (0,+0.73,0.68)) falling to z ~2,825 at y -3,280 / -2,720. The record
+  rides the north face low (1,236 u/s at (-282,-2,699,2,840)) and uses that speed to climb an
+  up-ramp to the wall top (z 3,412 at x -1,158). The policy lands on the south face, climbs onto
+  the flat top while slowing 565 -> 290 u/s, and reaches the wall base on the flat top too slow.
+* **pbr2b1_lb3** (05:29 UTC): lb2's ckpt_latest (4.446B, md5 0d32d945...) + the same frontier
+  machinery + `--energy-pot 3 --energy-pot-front 0 --energy-pot-front-bonus 0` = the recipe's
+  energy term in its PER-CALL form (every loss of h charged when it happens: the climb onto the
+  flat top and every flat landing), instead of the once-per-episode bonus at the frontier band
+  (which pays the speed brought into the last 1% only). lb2 ended stuck at 6.7% (eval 6.696 at
+  4.418B, unstuck T at its 0.20 cap, frontier record unchanged for 400M steps).
