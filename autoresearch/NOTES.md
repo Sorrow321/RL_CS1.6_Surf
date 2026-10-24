@@ -641,3 +641,17 @@ ckpt_latest 3.285B (md5 a6559938..., the most curriculum progress), both named i
   SOUTH ramp, stopping at (808, -3,287, 3,436) = 3.34% (above the incumbent's 3.24%). So past the
   ridge-at-speed state there is more than the wall bounce; everything still needs the run-up and
   the fast drop onto the ridge first (line_a 0..1110).
+* `tools/line_track.py` (new): beam search that RE-FLIES a line with policy-space actions only - a
+  view offset off_warp(u) from the velocity (33 u values, core view_mode 1) x fwd/side keys x
+  jump, duck from the line, held per 4-tick decision, starting from the aligned spawn - scoring
+  each decision by its distance to the line 4 ticks on (pos + w_vel x vel). line_a, beam 16,
+  w_vel 0.1 (05:00 UTC, local CPU, seconds per run):
+  from aligned 1100 -> 1300: pos err 3.0 / 4.5 u at 1200 / 1300 (the launch, the flight and the
+  WALL BOUNCE flown in the policy's own frame at 25 Hz; 13.5 u by 1400, the slow ramp U-turn);
+  from 1080 / 1060 -> 1300: median 2.9 / 5.0 u, max 9.5 / 15 u; from 1000: 0.7 u at 1100 (on the
+  ridge) but loses the bounce (125 u at 1300); from 1040 / 960: lost in the drop; from 700: 11 u at
+  1000, 236 u at 1100; from 0: 9-50 u through the slow tunnel, 0.1 u at 600-700, lost in the drop.
+  So the manoeuvre the backward-frame curriculum stalled on is flyable at the policy's decision
+  rate and resolution once the view is in the policy's frame; the sensitive stretch for a myopic
+  tracker is the tunnel exit -> drop onto the ridge (960-1060). A closed-loop learner trained
+  backward is not myopic; this is the evidence for the aligned curriculum arm.
