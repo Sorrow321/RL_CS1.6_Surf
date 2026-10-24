@@ -1083,3 +1083,49 @@ one box at a time (e.g. a box-hours budget instead of a $/h rate), is needed for
 * Update 20:00 UTC: the credit was topped up to $43.42 -> allowed 0.693 $/h; one box is live
   (0.578 $/h), so rent is still refused (0.578 + 0.563 > 0.693 x 1.1): the pace now funds ~one
   box for the fleet at a time. Retried every wakeup.
+
+### Gate 8 (the 20.4% catch), analysed on CPU (2026-10-24 19:45-20:36 UTC, no box)
+* The incumbent's 9 greedy episodes (traj_9837740032) all die at 16.8-17.1 s in trigger_teleport
+  *187 (-> start; AABB x -3,847..1,131, y -3,848..-2,148, z 2,334..2,914) at (530-706,
+  -2,391..-2,613, z 2,381-2,389), |v| ~1,460, h = z + |v|^2/1600 ~3,713-3,720. A CPU greedy
+  recording of the same weights (record_ckpt, 1 episode, --dump-states) dies there too (20.12%):
+  runs/pbr3b3/_ge20/cpu_greedy_line.npy (1,686 full states).
+* Its last contact with the map is at tick 1,540 (x -929, z 2,822, v (1,023, -456, 280), h
+  ~3,654, 17.46%): from there it FREE-FALLS 1.45 s east into the catch (vz -8 u/s per tick). The
+  record (ANALYSIS ONLY) passes the same x at z 2,826 with h ~3,750 (+100 u), launches steeper
+  (vz +467) and then keeps SURFING a series of ramps at z ~2,900-2,960 from x -900 to ~+400
+  (velocity flips at 19.9 s and 20.65 s), turns south at x ~400-520 down a slope to z ~2,444 and
+  U-turns east out of a bowl (20.2-20.3% for ~0.75 s, then 20.7% at 22.15 s). The policy flies
+  100-250 u below that ramp series and never touches it: gate 8 is the energy deficit again.
+* Local searches that did NOT cross it: Go-Explore --exact-chains (64 u x energy 32 cells, 2048
+  envs, ~1 core for 30 min, 1.9M runs, 77k cells) rooted at 29 states of the CPU line's last 2.8 s:
+  deepest 20.17%, every deep cell falling into the catch; beam_tas --start-state (below) with 256
+  envs, --score dh --score-energy 2, from line tick 1,480: population extinct 1 s past the greedy
+  death, frontier 20.05%. CPU beams run at ~150-600 env-steps/s here (lidar on torch CPU), so a
+  4,096-env beam from the true start is hours locally: this gate needs the box.
+
+### New: the search -> curriculum loop inside the run (commits a8cc80f.., tests pass on CPU)
+* `train_fast --auto-beam N` (off = bit-identical, tests/python/test_auto_beam.py): after a
+  greedy eval with --auto-beam-cross (0.5) of its episodes past the spine's --demo-success-d line,
+  the trainer saves ckpt_autobeam.pt, runs `tools/beam_tas.py` from the map start with N copies
+  (`--auto-beam-args`, default round 2's `--resample-every 25 --score d --greedy-envs 32`,
+  --save-frontier --skip-gate, --auto-beam-secs 10 past the longest greedy episode), cuts the
+  frontier lineage at its LAST CONTACT before its deepest point (CLAUDE.md's xSELF trim: a beam
+  lineage ends in the fall that killed it; on the incumbent's own line the cut is the 17.46%
+  take-off, not the 20.12% fall) and swaps it in as the spine when its success line is
+  --auto-beam-margin (0.005 x d0 = 286 u) deeper: runs/<run>/auto_spine_<k>.npy, tau back at its
+  end, DEMO_END_D / the bonus moved, the config's demo_file updated (a resume continues on it).
+  A search not taken waits --auto-beam-retry (4) evals. Single map, single rank.
+* `--auto-ge M` (off = bit-identical): when the beam's line is not taken, explore_phase1
+  --exact-chains (`--auto-ge-args`, default `--cell 32 --cell-energy 16 --decisions 100 --envs
+  4096`, round 2's GE_g7/g16 cells) for M minutes from ~25 of the line's own states in its last
+  --auto-ge-window (5) s, ge_replay of the deepest cell, spliced at its root with canonical views,
+  the same cut and margin. Automates round 2's GE_g4 / GE_g16 steps.
+* `beam_tas --start-state FILE[:INDEX]` (off = byte-identical, tests/python/
+  test_beam_start_state.py): the population starts from one of the policy's own states, spawned
+  like a trainer spine row (one-row spawn pool; --keys-hold-spawn-duck mirrored), so it works on a
+  --keys-hold checkpoint (which refuses --greedy-prefix / --prefix-line) and costs only the
+  seconds searched.
+* The first box run planned (resume of the incumbent, beam12's flag set + `--auto-beam 4096
+  --auto-ge 10`): the incumbent's greedy line is already past ge_g16's success line (18.86%), so
+  the very first eval triggers the search.
