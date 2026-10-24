@@ -775,3 +775,9 @@ ckpt_latest 3.285B (md5 a6559938..., the most curriculum progress), both named i
   line_b's floor (spine 1049-1069, 28-99% per band, slower than with the bonus: rew ~1/episode).
   The erosion of vv3-vv6 was the success bonus's imbalance. Rule: a curriculum bonus must be
   reachable from where the eval starts, or switched off when the line's field progress is monotone.
+* **vv7: 6.686** (12:19 UTC). Greedy evals 3.983 / **4.032** (3.903B) / 3.987 / 3.967 / 4.831
+  (4.129B) / **6.686** (4.205B): 4/9 episodes reach line_b's END (6.68-6.69% at (-1,012, -3,000,
+  3,012), one in 12.6 s), the rest 3.99-4.81%. The greedy line picked up line_b while the curriculum
+  still sat at spine 1049 (line_b 309, the floor after the drop): the start-room/route spawns reached
+  the 4.67% success line 14-19% of the time by then. Snapshots pulled: ckpt_4127195136.pt (md5
+  61569133...), ckpt_4227334144.pt (md5 424d75d0...), ckpt_3926917120.pt (md5 d750a644...).
