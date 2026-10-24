@@ -1258,3 +1258,27 @@ the budget pace (0.69 $/h) admit one box; until then every rent was refused (0.1
 * Before the swap the old spine's curriculum had reached tau 0 (88% at [0,...]): the band before
   the boosted root, 0.0-0.1% for 300M steps, did open up.
 * Box extended to ~02:20 UTC.
+
+### Score 24.291 - gate 9 by the loop; then the beam10 erosion, and milestones (22:28-23:04 UTC)
+* as3 evals after the k02 swap: 24.083 (10.794B) / **24.291** (10.870B, median 24.2%): 5-6 of 9
+  greedy episodes over the gate-9 wall into the crawl region (24.16-24.29%), 2 at the gate-8
+  catch, 1 at the wall, 1 stalled at 5.4%. ~150M steps after the spine swap, no agent in the loop.
+  Handoff: as3's ckpt_latest at exactly 10,869,538,816 (the trainer saves it before a search), md5
+  302b1a3d...; copied as pbr3b4_as3/ckpt_10869538816.pt so a later ckpt_latest pull cannot move
+  the handoff off it (handon_ckpt: a milestone at or before the best eval, checked).
+* auto-spine search 3 (10.870B, 1,017 s): beam frontier 24.54% (no gain); GE stage 1 (x1.0/1.04)
+  24.76% (no gain); GE stage 2 (x1.08/1.12) -> a chain from the beam line's state at 17.2 s x1.12
+  that catches the ramp at x ~2,444 the record's way and surfs on north to 26.66% (k03, success
+  line 26.49%). Within 75M steps the greedy evals fell 24.29 -> 21.51 / 21.52 / 21.49: no greedy
+  line over the wall any more, and the curriculum stuck INSIDE the boosted chain (bands 0-30% at
+  ~1,885). The success line had moved 2.5% past the greedy frontier and the line the greedy
+  crossed (24.0%) stopped paying: round 2's beam10 erosion, reproduced.
+* Fixes (4807a0b): `--auto-spine-milestones` (on a swap the old success line stays a MILESTONE
+  that keeps paying the bonus once per episode on crossing) and `--demo-milestones D,...` (seed
+  milestones on a relaunch); train_fast.milestone_pay + tests/python/test_auto_spine.py
+  test_milestone_pay_rule. auto_spine's GE ladder is now 1.0,1.04 ; 1.08 ; 1.12 (one factor per
+  stage above 1.04: a mixed stage's deepest chain is its most boosted one).
+* **pbr3b4_as4** (23:03 UTC): the 24.291 weights (10.8695B, pushed md5-verified) + spine k02
+  (runs/spine_k02.npy, success line 43,426 = 24.0%) + --demo-milestones 44939 (k01's line) +
+  --auto-spine --auto-spine-milestones (delay 3e8, retry 4e8, patience 6e8, gain 500, GE 8 min) +
+  as3's other flags, 2.5B steps. First eval 6/9 past 24.0%; first milestone payment at once.
