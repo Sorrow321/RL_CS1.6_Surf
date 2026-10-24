@@ -834,3 +834,10 @@ beam found the policy's own way over the wall in 100 s).
   line meets it at z 3,240 with h ~3,583: the energy to clear z 3,330 is there, the trajectory is
   too flat (it reaches the wall moving 730 u/s horizontally). Gate 5 is a launch-angle problem,
   not only energy: about +90 u of height at the wall, or ~+65 u/s at the bottom of the drop.
+* beam3 (rate 0.3): evals 6.667 / 6.632 / **7.168** (4.935B) / 7.107 (5.011B, median 7.0%). The
+  greedy line now takes the GE chain's surf over the drop: in the 7.168 eval 2 of 9 reach the wall
+  at x ~-1,007 at z 3,278-3,291 (the GE line met it at 3,240; the top is ~3,330) and fall back
+  into the hollow, 3 reach the hollow (6.55-6.59%), 1 dies in the drop (4.87%), 2 at gate 3, 1
+  stalls on the north side. The curriculum is back at the east-side U-turn (~575-590, 25-52%).
+* beam_g5a (06:00 UTC): a beam from beam3's ~5.02B weights - can the policy's own sampling clear
+  the last 40 u now?
