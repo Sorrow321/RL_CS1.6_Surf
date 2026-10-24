@@ -949,3 +949,13 @@ beam found the policy's own way over the wall in 100 s).
   with h ~3,160-3,200; it stalls at (-3,400, -2,610, 2,712). Gate 6: energy again (~500 u).
 * Spine autoresearch/spines/pbr2b3_beam_g8a.npy (1,338 states to 12.34%). pbr2b3_beam8 (09:14 UTC):
   beam7's 7.007B weights + the curriculum on it from its end + the beam7 flag set (energy K 8).
+* beam8 (the curriculum on the 12.34% beam line, energy K 8): evals 11.820 / 12.264 / 12.368 /
+  12.264 / **13.527** (7.310B, median 12.8%): the greedy line now gets through the 12.5% U-turn
+  and every episode dies at z ~2,933 (x -2,989..-3,425) still gaining - a fall catch under the
+  record's climb. Stopped at 7.352B (ckpt md5 635d7cf4..., pulled; the handon pick).
+* beam_g9a (beam_tas from beam8's 7.33B weights): frontier **15.66%** at 15 s, the population
+  extinct at 16 s. The line climbs the U-turn with h ~3,470-3,540 (beam_g8a's had ~3,200) to z
+  ~3,120, runs east at 800-900 u/s to 15.36% (14.4 s), hits something at (-1,965, -2,516, 2,991)
+  (900 -> 255 u/s; the record passes there at 1,046 u/s) and dies. Spine
+  autoresearch/spines/pbr2b3_beam_g9a.npy (1,441 states, cut 5 ticks before that impact, 15.36%).
+* pbr2b3_beam9 (09:42 UTC): beam8's 7.352B weights + the curriculum on it, the beam7 flag set.
