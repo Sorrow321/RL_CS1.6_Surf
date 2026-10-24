@@ -21,3 +21,5 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
 * `pbr2b2_line_a_ridge_roots.npy` (pbr2b2, round 2; 51 states): `pbr1b1_line_a.npy[1000:1251:5]` -
   the line's tunnel exit, drop, ridge, launch and flight, as Go-Explore roots
   (`explore_phase1 --roots-spine ... --roots-last 0`). Same provenance as line_a (own search).
+* `pbr2b2_line_a_end_roots.npy` (pbr2b2; 21 states): `pbr1b1_line_a.npy[1780:1881:5]` - the line's
+  last second (3.5-3.93%), as Go-Explore roots for the stretch past its end.
