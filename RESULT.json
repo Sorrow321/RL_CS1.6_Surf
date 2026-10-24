@@ -3,13 +3,13 @@
  "round": 2,
  "final": false,
  "best": {
-  "score": 7.168,
-  "eval_file": "/home/steam/ar_pb/runs/pbr2b3/pbr2b3_beam3/traj_4935122944.jsonl",
-  "run": "pbr2b3_beam3",
-  "step": 4935122944,
-  "ckpt": "/home/steam/ar_pb/runs/pbr2b3/pbr2b3_beam3/ckpt_latest.pt",
-  "ckpt_step": 5128060928,
-  "ckpt_md5": "a312f0da320f4f1c7c34b41d4f758fcf",
+  "score": 7.193,
+  "eval_file": "/home/steam/ar_pb/runs/pbr2b3/pbr2b3_beam4/traj_5430575104.jsonl",
+  "run": "pbr2b3_beam4",
+  "step": 5430575104,
+  "ckpt": "(beam4 ckpt_latest, pulled at the run's stop)",
+  "ckpt_step": null,
+  "ckpt_md5": null,
   "recipe": [
    "resume chain: pbr1b1 g2cur6 (3.285B) -> pbr2b3_canon1 -> canon2 -> canon3 (3.721B)",
    "--demo-file autoresearch/spines/pbr2b3_line_a_canon.npy (canon2/3), _canon_780.npy (canon4)",
@@ -22,10 +22,11 @@
    "--maxvel 3500",
    "canon5: + --respawn-greedy 0.2 --respawn-greedy-window 0.25 2.0 --respawn-greedy-stuck 200 --respawn-front-perturb 0.2 --respawn-front-perturb-band 0.005 --respawn-front-perturb-speed 1.0 1.3 --respawn-front-perturb-turn 90 --demo-front-frac 0.4 --demo-tau0 0",
    "beam1: --demo-file autoresearch/spines/pbr2b3_beam_g3b.npy (the policy's own beam line to 6.62%), --spawn-states-frac 0.2",
-   "beam2/beam3: --demo-file autoresearch/spines/pbr2b3_beam_ge_g4.npy (beam line + GE drop-surf chain to 7.07%), beam3 --demo-rate 0.3 --demo-tau0 805"
+   "beam2/beam3: --demo-file autoresearch/spines/pbr2b3_beam_ge_g4.npy (beam line + GE drop-surf chain to 7.07%), beam3 --demo-rate 0.3 --demo-tau0 805",
+   "beam4: + --energy-pot 3 --energy-pot-front 0 --energy-pot-front-bonus 0 (per-call energy shaping), --demo-tau0 320"
   ],
-  "resume_from": "/home/steam/ar_pb/runs/pbr2b3/pbr2b3_beam2/ckpt_latest.pt",
-  "commit": "9839860"
+  "resume_from": "/home/steam/ar_pb/runs/pbr2b3/pbr2b3_beam3/ckpt_latest.pt",
+  "commit": "86881fd"
  },
- "summary": "Best 7.168 (beam3 4.935B; incumbent 3.236): from the true start the greedy line passes gate 2 (the pit) and gate 3 (a wall + fall catch under the north path) and most episodes reach 6.7%, a hollow at x ~-1,000 (gate 4, an energy deficit). Gate 2: round 1's line_a curriculum, unstuck by view canonicalisation (tools/spine_canon_view.py) + a band yaw temperature (--demo-front-temp) + curriculum pace flags. Gate 3: beam_tas from the true start found the policy's own line past it; the curriculum on that line (--respawn-greedy/--respawn-front-perturb now wired with --demo-file). Gate 4: two beams stall at 6.70%; Go-Explore with energy cells from the line's own drop states found a faster surf to 7.07% -> spine of pbr2b3_beam2 (running)."
+ "summary": "Best 7.193 (beam4 5.431B; incumbent 3.236): from the true start the greedy line passes gate 2 (the pit), gate 3 (wall + fall catch under the north path) and the hollow at 6.7%, and stops at a wall at x ~-1,015 (7.2%), ~20-60 u too low. How: round 1's line_a curriculum unstuck by tools/spine_canon_view.py + --demo-front-temp; pace flags (--demo-cooldown/--demo-grow-max); then a search->curriculum loop: beam_tas from the true start (the policy's own lines) and Go-Explore --exact-chains from the line's own states (the drop surf to 7.07%), each cut into the next spine. The last wall is an energy deficit of ~100-160 u of z+v^2/2g from the start room (the record pumps a half-pipe first); 4 beams and 4 GE runs end at it, per-call energy shaping lifted the training frontier to 12.2% only via boosted spawns. Next: a pumped start (the long detour against the field) or stronger energy shaping (beam7, --energy-pot 8, running)."
 }
