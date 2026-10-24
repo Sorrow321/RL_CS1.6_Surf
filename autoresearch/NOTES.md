@@ -770,3 +770,7 @@ round 1's fixed grow 20 / cooldown 20 they would have taken ~130M).
   now 3,274-3,384 in 8/9 episodes (cur2 3,086-3,103; cur3's best 3,341), rising slower. The platform
   (z 3,328 ~315 u past the ramp) needs h ~3,550 (3,328 + the horizontal KE at the apex). Pulled
   cur4 ckpt_latest 5.637B (md5 8e9b6ffc...).
+* GE7 (pb_frontier_step on cur4 5.637B, 1 x 8 min BESIDE the trainer, 0.44M ticks/s = a quarter of
+  an idle box): greedy best 6.752%, deepest cell 6.775% - nothing onto the platform from the
+  policy's own line at ramp h ~3,350. (Fixed: the step now reports "no new line" instead of a
+  1-state chain when no cell beats the roots.)

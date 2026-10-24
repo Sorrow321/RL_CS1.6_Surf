@@ -111,7 +111,13 @@ def main(argv=None):
     # the chain end: among the cells within --tol u of the deepest (any search), the SHORTEST
     # chain - fewer states for the curriculum to learn for (almost) the same depth
     dlo = min(c[0] for c in pool)
-    pool = [c for c in pool if c[0] <= dlo + a.tol]
+    pool = [c for c in pool if c[0] <= dlo + a.tol and c[1] > 0]
+    if not pool:
+        print(f"no cell deeper than the roots: deepest {100 * (57149 - dlo) / 57149:.3f}% is a "
+              f"root (greedy best {pbest:.3f}%) - no new line")
+        (out / "spine.json").write_text(json.dumps({"ckpt": a.ckpt, "greedy_best_pct": pbest,
+                                                    "new_line": False}, indent=1))
+        return
     dmin, dep_best, g, i = min(pool, key=lambda c: (c[1], c[0]))
     print(f"chain end: ge{g} cell {i}, {100 * (57149 - dmin) / 57149:.3f}%, depth {dep_best} ticks "
           f"(shortest of {len(pool)} cells within {a.tol:g} u of the deepest)")
