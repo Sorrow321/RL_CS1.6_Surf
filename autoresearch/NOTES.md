@@ -923,3 +923,13 @@ beam found the policy's own way over the wall in 100 s).
 * GE_pump2 (08:20 UTC): rooted at the spawn GE's 24 highest-energy states in the east half-pipe
   (x ~2,070-2,170, z ~3,290, ~900 u/s, h ~3,802), 64 u x energy 16 cells, 15 min: can the
   half-pipe give more energy, and does any of it reach the tunnel fast?
+* GE_pump2 (15 min, 6.9M runs from the 24 highest-energy half-pipe states): half-pipe h 3,804 ->
+  3,839; best tunnel states h ~3,828-3,830 at 340-465 u/s (the greedy leaves the tunnel at
+  ~3,809): +20, the record ~3,950. The h ~3,940-3,974 cells next to the spawn are the doorway's
+  trigger_push (basevelocity (0, 0, -2,500): pushed DOWN onto the conveyor), not usable energy.
+  The pump stays closed to uniform-action search; it is a policy skill (surfing a half-pipe for
+  speed) on a long detour against the field.
+* The wall's top across y (ducked hull traced west from x -880): at y -3,020..-2,980 (where the
+  line meets it, a V notch at x -988..-1,008) open from z 3,330; at y -2,920..-2,860 and
+  -3,120..-3,080 open from ~3,320 but solid further east at lower z. No gap: the line is 10-30 u
+  short, which matches the energy deficit.
