@@ -3,11 +3,11 @@
  "round": 2,
  "final": false,
  "best": {
-  "score": 15.947,
-  "eval_file": "/home/steam/ar_pb/runs/pbr2b4/pbr2b4_cur11/traj_9652666368.jsonl",
+  "score": 19.016,
+  "eval_file": "/home/steam/ar_pb/runs/pbr2b4/pbr2b4_cur11/traj_10105651200.jsonl",
   "run": "pbr2b4_cur11",
-  "step": 9652666368,
-  "ckpt": "/home/steam/ar_pb/runs/pbr2b4/pbr2b4_cur11/ckpt_9645850624.pt",
+  "step": 10105651200,
+  "ckpt": "/home/steam/ar_pb/runs/pbr2b4/pbr2b4_cur11/ckpt_10094116864.pt",
   "recipe": [
    "--resume pbr2b4_cur10 final ckpt_latest (8.369B, md5 8fb635ba)",
    "--envs",
@@ -73,8 +73,8 @@
   ],
   "resume_from": "pbr2b4_cur10 final (8.369B, md5 8fb635ba; cur10 <- cur9 <- cur8 <- cur6 <- cur5 <- cur4 <- cur3 <- cur2 <- cur1 <- pbr1b1_g2cur6)",
   "commit": "c104897",
-  "ckpt_step": 9645850624,
-  "ckpt_md5": "0eab5c9cdb18fc1ce64b761231163f6a"
+  "ckpt_step": 10094116864,
+  "ckpt_md5": "0555de56e2af01bc1d72727a54974d64"
  },
- "summary": "Best 15.947 (cur11 9.653B; incumbent 3.236): 9/9 greedy episodes from the TRUE START reach 15.5-15.9%. Loop: own greedy line -> exact-chain Go-Explore rooted at its last seconds or before its biggest energy drop -> spine = own prefix + chain -> backward curriculum (--demo-adapt, --demo-replay), per-call energy shaping, anchor + pull success lines (--demo-pull-stats). Gates passed: the pit (3.2%), the fall catch (4.0%), the rim + platform jump (6.7%), the platform route, and (by the policy itself, practising its whole own line with energy shaping) the 12.6% U-turn."
+ "summary": "Best 19.016 (cur11 10.106B; incumbent 3.236): 9/9 greedy episodes from the TRUE START reach ~18.5-19.0%. Loop: own greedy line -> exact-chain Go-Explore rooted at its last seconds or before its biggest energy drop -> spine = own prefix + chain -> backward curriculum (--demo-adapt, --demo-replay), per-call energy shaping, anchor + pull success lines (--demo-pull-stats). Gates passed: the pit (3.2%), the fall catch (4.0%), the rim + platform jump (6.7%), the platform route, and (by the policy itself, practising its whole own line with energy shaping) the 12.6% U-turn."
 }

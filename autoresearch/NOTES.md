@@ -952,3 +952,8 @@ round 1's fixed grow 20 / cooldown 20 they would have taken ~130M).
   best 15.9%, median 15.8%)**. A box-side watcher (runs/pbr2b4_snapwatch.sh) copies every new
   ckpt_latest to ckpt_<step>.pt; pulled ckpt_9645850624.pt (7M steps before the 15.947 eval, md5
   0eab5c9c...) as the hand-on snapshot.
+* cur11 still climbing (13:06 UTC): 16.058 / 18.148 / 18.099 / 18.199 / 18.673 / **19.016 (10.106B,
+  best 19.0%, median 18.7%, 9/9 > 18%)**; peak speed ~1,490-1,497 u/s. Pulled the watcher's
+  ckpt_10094116864.pt (11.5M steps before that eval, md5 0555de56...) as the hand-on snapshot.
+  (score.py lists evals lexicographically: 11-digit steps sort before 10-digit ones - read the whole
+  list, not its tail.)
