@@ -1166,3 +1166,7 @@ one box at a time (e.g. a box-hours budget instead of a $/h rate), is needed for
   and h ~2,450 (one standing at z 2,421) - episodes that hit a wall at the catch's east edge and
   stall there, not a way onto the ramp series. Don't read the reservoir's min-depth as progress
   at this gate.
+* Harness issue resolved by the operator 23:40 UTC (commit 45a7c05, user 2026-10-25): the fleet's
+  burn is capped at a flat 1.2 $/h and tier 0 now holds the 3080 / 4070 / 5070 / 60 Ti class
+  under 0.20-0.30 $/h caps. A 3090 at 0.386 $/h passed at 23:41 and another branch rented it
+  first (fleet burn 0.964); a waiter now rents the moment the dry-run passes.
