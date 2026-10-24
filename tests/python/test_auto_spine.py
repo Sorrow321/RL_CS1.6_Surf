@@ -129,3 +129,30 @@ def test_flag_off_is_bit_identical(tmp_path):
     finally:
         for dd in (a, b):
             shutil.rmtree(dd, ignore_errors=True)
+
+
+def test_branched_beam_command_parses(tmp_path, monkeypatch):
+    """The branched beam's flags are ones beam_tas.py's own parser accepts (round 3: a float
+    --branch-jitter killed the first live branched beam with an argparse error)."""
+    sys.path.insert(0, str(ROOT / "tools"))
+    import auto_spine
+    seen = {}
+
+    def fake_run(cmd, log, timeout):
+        seen["cmd"] = [str(c) for c in cmd]
+        return 0
+    monkeypatch.setattr(auto_spine, "run", fake_run)
+    a = auto_spine.main.__globals__["argparse"].Namespace(
+        ckpt="c.pt", map="m.bsp", envs=64, greedy_envs=4, beam_ticks=100, seed=0, timeout=10,
+        branch_burst_secs=2.0, branch_hold_secs=0.5, branch_jitter=45, branch_protect=3)
+    auto_spine.beam(a, tmp_path, branch_tick=1700)
+    cmd = seen["cmd"]
+    i = cmd.index("--branch-at")
+    assert cmd[i + 1] == "t1700:32"
+    import beam_tas
+    ap_src = Path(beam_tas.__file__).read_text(encoding="utf-8")
+    for flag in ("--branch-burst", "--branch-hold", "--branch-jitter", "--branch-protect"):
+        v = cmd[cmd.index(flag) + 1]
+        assert v.lstrip("-").isdigit(), (flag, v)        # beam_tas parses these as int
+        assert f'"{flag}", type=int' in ap_src
+    assert "--branch-view-only" in cmd

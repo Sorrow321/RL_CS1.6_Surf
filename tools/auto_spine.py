@@ -130,7 +130,8 @@ def beam(a, out: Path, branch_tick: int = 0):
         cmd += ["--branch-at", f"t{int(branch_tick)}:{int(a.envs) // 2}",
                 "--branch-burst", int(round(a.branch_burst_secs * TICKS_PER_S)),
                 "--branch-hold", int(round(a.branch_hold_secs * TICKS_PER_S)),
-                "--branch-jitter", a.branch_jitter, "--branch-protect", a.branch_protect,
+                "--branch-jitter", int(round(a.branch_jitter)),
+                "--branch-protect", int(a.branch_protect),
                 "--branch-view-only"]
     rc = run(cmd, out / f"{tag}.log", a.timeout)
     f = bd / "beam_frontier.npz"
@@ -250,7 +251,7 @@ def main(argv=None) -> int:
                          "population at this tick (the greedy line's commitment point)")
     ap.add_argument("--branch-burst-secs", type=float, default=2.0)
     ap.add_argument("--branch-hold-secs", type=float, default=0.5)
-    ap.add_argument("--branch-jitter", type=float, default=45.0,
+    ap.add_argument("--branch-jitter", type=int, default=45,
                     help="deg: the held view offset is U(-J, J) around the policy's own aim")
     ap.add_argument("--branch-protect", type=int, default=3)
     ap.add_argument("--selftest", action="store_true")
