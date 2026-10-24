@@ -11743,11 +11743,12 @@ def main() -> None:
     if FPERT > 0.0:
         if respawn is None or args.respawn_frac <= 0.0:
             raise SystemExit("--respawn-front-perturb needs the reservoir (--respawn-frac > 0)")
+        # --demo-file is wired (pbr2b3, 2026-10-24): the rows replace demo rows of the pool's
+        # uniform part, never the frontier band's or the map-start share
         for _bad, _why in ((MULTI, "--maps"), (D.enabled, "DDP"),
                            (args.respawn_random, "--respawn-random"),
                            (args.respawn_frontier, "--respawn-frontier"),
                            (args.respawn_backward, "--respawn-backward"),
-                           (demo is not None, "--demo-file"),
                            (bool(args.goals), "--goals")):
             if _bad:
                 raise SystemExit(f"--respawn-front-perturb is not wired with {_why}")
@@ -11777,11 +11778,12 @@ def main() -> None:
         if respawn is None or args.respawn_frac <= 0.0:
             raise SystemExit("--respawn-greedy needs the reservoir (--respawn-frac > 0): its "
                              "rows replace the reservoir share of the pool")
+        # --demo-file is wired (pbr2b3, 2026-10-24): the tail of the demo rows, as of the
+        # reservoir rows without it
         for _bad, _why in ((MULTI, "--maps"),
                            (D.enabled, "DDP (rank 0 alone runs the eval)"),
                            (args.respawn_random, "--respawn-random"),
                            (args.respawn_backward, "--respawn-backward"),
-                           (demo is not None, "--demo-file"),
                            (bool(args.goals), "--goals")):
             if _bad:
                 raise SystemExit(f"--respawn-greedy is not wired with {_why}")
@@ -17768,6 +17770,26 @@ def main() -> None:
                 # paper resets to the demonstration state itself)
                 _dpool = demo.build_pool(_s.pool,
                                          fresh_frac=1.0 - args.respawn_frac)
+                if ((FPERT > 0.0 or GREEDY is not None) and _s.respawn is not None
+                        and _s.respawn.size >= 2000):
+                    # --respawn-front-perturb / --respawn-greedy with the curriculum: the
+                    # greedy rows take the TAIL of the non-start rows (their rule), the
+                    # perturbed frontier rows the stretch just before it - both out of the
+                    # demo rows' uniform part, which comes after the frontier band's draws
+                    _nf = max(1, int(round(len(_dpool) * (1.0 - args.respawn_frac))))
+                    _nns = len(_dpool) - _nf
+                    _ngr = (int(round(_nns * GREEDY.frac))
+                            if (GREEDY is not None and GREEDY.size) else 0)
+                    if FPERT > 0.0:
+                        _npf = max(0, min(int(round(_nns * FPERT)), _nns - _ngr))
+                        _prows = FPERT_S[_s.tag].rows(_s.respawn, _npf)
+                        if len(_prows):
+                            _dpool = np.array(_dpool, dtype=STATE_DTYPE, copy=True)
+                            _pe = len(_dpool) - _ngr
+                            _dpool[_pe - len(_prows):_pe] = _prows
+                        FPERT_S[_s.tag].remember(_prows)
+                    if GREEDY is not None:
+                        _dpool = GREEDY.mix(_dpool, _nf)
                 _set_pool(_s, _dpool)
                 if goalsys is not None:
                     # demo rows carry no harvested goal (NaN -> the
