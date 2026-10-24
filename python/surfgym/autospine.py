@@ -196,6 +196,10 @@ class AutoSpine:
         self.stall = int(stall)
         self.since = 0
         self.want_stall = False
+        # consecutive cycles that ended without a spine: each doubles the wait before the next
+        # (retry x 1, 2, 4, 8 evals), so a gate that needs training rather than search does not
+        # keep a beam + Go-Explore running beside the trainer; an accepted spine resets it
+        self.fails = 0
         self.log = log
         self.k = 0                    # cycles (beams) started
         self.n_eval = 0               # evals seen
@@ -285,7 +289,8 @@ class AutoSpine:
         return self.proc is not None
 
     def _backoff(self, rec: dict, result: str, msg: str, cur=None) -> None:
-        self.retry_at = self.n_eval + self.retry
+        self.fails += 1
+        self.retry_at = self.n_eval + self.retry * (2 ** min(self.fails - 1, 3))
         if cur is not None and cur.get("stall"):
             self.since = self.n_eval          # the next stall cycle waits a whole stall window
         self.history.append({**rec, "result": result})
@@ -425,6 +430,7 @@ class AutoSpine:
         p.with_suffix(".json").write_text(json.dumps(side, indent=1), encoding="utf-8")
         self.accepted += 1
         self.since = self.n_eval
+        self.fails = 0
         self.history.append({**rec, "result": "accepted", "source": source, "spine": str(p),
                              "rows": len(sp)})
         self.log(f"auto-spine: cycle {k} ({source}, {time.time() - cur['t_cycle']:.0f}s) -> new "
@@ -445,7 +451,8 @@ class AutoSpine:
         self.proc, self.cur = None, None
 
     def state_dict(self) -> dict:
-        return {"k": self.k, "accepted": self.accepted, "history": list(self.history)}
+        return {"k": self.k, "accepted": self.accepted, "fails": self.fails,
+                "history": list(self.history)}
 
 
 def beam_tas_argv(repo_root, map_path, envs: int, greedy_envs: int, python=None, tool=None):

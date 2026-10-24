@@ -234,6 +234,24 @@ def test_a_stall_recuts_against_the_greedys_level(tmp_path):
     assert not a.want
 
 
+def test_failed_cycles_back_off_exponentially(tmp_path):
+    from surfgym.autospine import AutoSpine
+    shallow = tmp_path / "shallow.npy"
+    np.save(shallow, _line(np.linspace(1000, 690, 32)))
+    a = AutoSpine(tmp_path / "run", XField(), _stub_cmd(shallow), margin=50.0, quorum=0,
+                  retry=2, log=lambda m: None)
+    ev = tmp_path / "ev.jsonl"
+    _traj(ev, [[1000, 700]])
+    waits = []
+    for k in range(5):
+        while not a.want:                                   # evals until the next beam is wanted
+            a.note_eval(ev, k, 900.0)
+        a.start(tmp_path / "ck.pt", k)
+        assert _wait(a, 900.0) is None
+        waits.append(a.retry_at - a.n_eval)
+    assert waits == [2, 4, 8, 16, 16] and a.fails == 5
+
+
 # ---- the trainer (CPU, princessburglar) ----------------------------------------------------
 try:
     from test_ge_minutes import _csv, needs_pb  # noqa: E402
