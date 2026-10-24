@@ -770,3 +770,8 @@ ckpt_latest 3.285B (md5 a6559938..., the most curriculum progress), both named i
   is there with a short spine too. line_b's progress is nearly monotone on the field (3.33 -> 4.12
   -> 4.63 -> 4.85%), so the ratchet alone pays for following it. **pbr2b2_vv7** (11:52) = vv6 with
   `--demo-success-bonus 0` (from vv2's 3.827B again).
+* **vv7 holds the route** (12:05 UTC, 3.827-4.03B): with `--demo-success-bonus 0` the greedy evals
+  stay at cover 4.0% with 0 patience cuts (3.827B / 3.903B / 3.978B) while the curriculum works on
+  line_b's floor (spine 1049-1069, 28-99% per band, slower than with the bonus: rew ~1/episode).
+  The erosion of vv3-vv6 was the success bonus's imbalance. Rule: a curriculum bonus must be
+  reachable from where the eval starts, or switched off when the line's field progress is monotone.
