@@ -44,3 +44,7 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   exactly by ge_replay (7/7 links) from that same state: it surfs the drop at up to 1,058 u/s and
   climbs to 7.07% at (-1,002, -2,994, 3,240). Views re-aimed along the velocity (spine_canon_view).
   No demo, no record data (pbr2b3, round 2).
+* `pbr2b3_beam_g8a.npy` (1,338 states, md5 f0e76e8019d2472a14d63ff3096035d2): the policy's own line
+  from the true spawn past the x -1,015 wall to 12.34% (beam_tas on pbr2b3_beam7's 6.98B weights,
+  4,096 copies, 32 greedy envs, d-ranked; frontier 12.52% at 24 s), cut at its best progress before
+  it stalls at x ~-3,400 (tick 1,337); views along the velocity. No demo, no record data (pbr2b3).
