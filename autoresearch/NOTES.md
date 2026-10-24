@@ -684,3 +684,8 @@ ckpt_latest 3.285B (md5 a6559938..., the most curriculum progress), both named i
   More g2cur6 probes from aligned states: 1500 5/5 (~4.0%), 1300 5/5 (55 u/s, below the 100 u/s
   frame speed, so unaligned), 1260 0/5 (aligned at 146 u/s on the ramp slide right after the
   bounce; falls into the pit) - the aligned curriculum has to relearn 1250-1290 itself.
+  line_track 960 -> 1880 (beam 64, 08:25 UTC): 2.5 u at 1060, 2.3 u at 1160, 5.1 u at 1260 (past the
+  bounce), then the slow ramp U-turn drifts it (17 u at 1360, 34 u at 1460, lost by 1560). Those
+  slow stretches are the ones g2cur6 already flies from aligned spawns (1300 / 1500 5/5), so every
+  part of line_a is covered by either a policy-frame re-fly (the fast parts) or the policy's own
+  skill (the slow tail).
