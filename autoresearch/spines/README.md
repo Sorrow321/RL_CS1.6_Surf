@@ -29,3 +29,11 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   true start joins the spine (pbr2b3_canon3's 3.644B eval enters the tunnel at x ~640 heading west);
   states 0-779 are the explorer's run-up back east through the tunnel, which the greedy line never
   flies. Same provenance (pbr2b3, round 2).
+* `pbr2b3_beam_g3b.npy` (1,066 states, md5 ccce8fa9a36d173b67f7e1e7df6707c8): the policy's OWN line
+  from the true spawn to 6.62% on the grader field, past gate 3. `tools/beam_tas.py` (policy-guided
+  population search: 4,096 stochastic copies of pbr2b3_canon5's 4.29B weights, 32 greedy envs as a
+  floor, the leaders by goal-field d cloned every 25 decisions, `--save-frontier --route-file none`,
+  20 s cap, 102 s on the box) found the frontier lineage at 6.70% at 14 s and replayed it exactly
+  (runs/pbr2b3/_beam_g3b/beam_frontier.npz); cut at its best progress before it stalls in a hollow
+  at x ~-1,015 (tick 1,065). Its views are the policy's own (within ~7 deg of the velocity at speed).
+  No demo, no record data (pbr2b3, round 2).
