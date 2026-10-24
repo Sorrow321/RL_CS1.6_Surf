@@ -3639,16 +3639,96 @@ def last_contact_cut(S, i: int, g_step: float, tol: float = 1.0) -> int:
     return last if last >= 0 else int(i)
 
 
+def _ab_score(ab, S):
+    """--auto-beam: (per-state field distance, deepest index, its last-contact cut) of a line."""
+    field = ab["field"]
+    d = np.asarray(field.sample(S["origin"].astype(np.float64)), np.float64)
+    d = np.where(d < field.reach_max - 0.5 * field.cell, d, np.inf)
+    if not len(d) or not np.isfinite(d.min()):
+        return d, -1, -1
+    i_deep = int(np.argmin(d))
+    # the deepest point, trimmed back to the last contact with the map: a searched line
+    # usually ends in the fall that killed it, and a spine (and a success line) inside that
+    # fall would pay for falling
+    i = last_contact_cut(S, i_deep, ab["g_step"], ab["tol"])
+    return d, i_deep, (i if np.isfinite(d[i]) else i_deep)
+
+
+def _ab_run(cmd, log_path, timeout):
+    """Run one search tool; its whole output lands in ``log_path``. -> (exit code, last line)."""
+    import subprocess
+    try:
+        r = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True, timeout=timeout,
+                           encoding="utf-8", errors="replace")
+        log, rc = r.stdout + r.stderr, r.returncode
+    except subprocess.TimeoutExpired as e:
+        log, rc = f"{e}", -1
+    Path(log_path).parent.mkdir(parents=True, exist_ok=True)
+    Path(log_path).write_text(log, encoding="utf-8")
+    tail = log.strip().splitlines()
+    return rc, (tail[-1] if tail else "")
+
+
+def auto_ge_line(ab, args, S, i_cut, gdir):
+    """--auto-ge: Go-Explore (tools/explore_phase1.py --exact-chains: reward-free uniform
+    bursts) rooted at ~25 of the searched line's OWN states in the --auto-ge-window seconds
+    before its cut, for --auto-ge minutes. The archive's deepest cell on the shaping field is
+    replayed exactly (tools/ge_replay.py) and spliced onto the line at its root, the
+    explorer's views re-aimed along the velocity (tools/spine_canon_view.py's rule).
+    -> (the spliced STATE_DTYPE line, a note) or (None, why)."""
+    import shlex
+    w = ab["tick"].secs_to_ticks(float(args.auto_ge_window), "round")
+    idx = np.arange(max(0, int(i_cut) - w), int(i_cut) + 1)
+    idx = idx[::max(1, len(idx) // 25)]
+    gdir.mkdir(parents=True, exist_ok=True)
+    np.save(gdir / "roots.npy", S[idx])
+    rc, last = _ab_run([sys.executable, "-u", str(ROOT / "tools" / "explore_phase1.py"),
+                        "--map", ab["bsp"], "--out", str(gdir), "--exact-chains",
+                        "--act-every", str(ab["K"]), "--maxvel", f"{ab['maxvel']:g}",
+                        "--roots-spine", str(gdir / "roots.npy"),
+                        "--max-minutes", f"{float(args.auto_ge):g}", "--goals", "1",
+                        *shlex.split(str(args.auto_ge_args))],
+                       gdir / "ge_log.txt", float(args.auto_ge) * 60.0 + 900.0)
+    arch = gdir / "archive.npz"
+    if not arch.exists():
+        return None, f"Go-Explore wrote no archive (exit {rc}: {last})"
+    z = np.load(arch, allow_pickle=False)
+    st = z["state"]
+    field = ab["field"]
+    dz = np.asarray(field.sample(st["origin"].astype(np.float64)), np.float64)
+    dz = np.where(dz < field.reach_max - 0.5 * field.cell, dz, np.inf)
+    end = int(np.argmin(dz))
+    if not np.isfinite(dz[end]):
+        return None, "no Go-Explore cell on the field"
+    rc, last = _ab_run([sys.executable, "-u", str(ROOT / "tools" / "ge_replay.py"),
+                        "--map", ab["bsp"], "--archive", str(arch), "--cell", str(end),
+                        "--out", str(gdir / "line.npy")], gdir / "replay_log.txt", 1800.0)
+    if rc != 0 or not (gdir / "line.npy").exists():
+        return None, f"the Go-Explore chain did not replay (exit {rc}: {last})"
+    L = np.load(gdir / "line.npy").astype(STATE_DTYPE)
+    hit = np.flatnonzero(np.all(S["origin"][idx] == L[0]["origin"], axis=1))
+    if not len(hit):
+        return None, "the Go-Explore chain's root is not a state of the line"
+    t_r = int(idx[hit[0]])
+    G = np.array(L[1:], copy=True)
+    v = G["velocity"].astype(np.float64)
+    m = np.hypot(v[:, 0], v[:, 1]) >= 100.0          # the core's absolute-view regime
+    G["yaw"][m] = (np.degrees(np.arctan2(v[m, 1], v[m, 0])) % 360.0).astype(G["yaw"].dtype)
+    out = np.ascontiguousarray(np.concatenate([S[:t_r + 1], G]).astype(STATE_DTYPE))
+    return out, (f"Go-Explore {len(st):,} cells, deepest d {dz[end]:,.0f}; chain from line "
+                 f"state {t_r}, {len(G)} states spliced")
+
+
 def auto_beam_step(ab, args, path, out, step, save_ckpt, end_d, tick):
     """--auto-beam, after one greedy eval: when enough episodes are past the spine's success
     line ``end_d``, search from the map start with the policy's own proposals (beam_tas
-    --save-frontier) and return (the new spine's DemoCurriculum, its success line) when the
-    deepest lineage, cut at its deepest point on the shaping field, carries the line at least
-    --auto-beam-margin x d0 further; else None. ``ab`` is the run's loop state."""
+    --save-frontier); the deepest lineage, cut at its last contact before its deepest point on
+    the shaping field, becomes the spine when that carries the success line at least
+    --auto-beam-margin x d0 further. Otherwise, under --auto-ge, Go-Explore from the line's own
+    last seconds may supply the extension (auto_ge_line). -> (the new spine's DemoCurriculum,
+    its success line) or None. ``ab`` is the run's loop state."""
     import shlex
-    import subprocess
-    field = ab["field"]
-    eps = eval_min_d_eps(path, field)
+    eps = eval_min_d_eps(path, ab["field"])
     if not eps:
         return None
     if ab["wait"] > 0:
@@ -3672,42 +3752,42 @@ def auto_beam_step(ab, args, path, out, step, save_ckpt, end_d, tick):
     t0 = time.time()
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
-    try:
-        r = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True, timeout=3600,
-                           encoding="utf-8", errors="replace")
-        log, rc = r.stdout + r.stderr, r.returncode
-    except subprocess.TimeoutExpired as e:
-        log, rc = f"{e}", -1
-    bdir.mkdir(parents=True, exist_ok=True)
-    (bdir / "beam_log.txt").write_text(log, encoding="utf-8")
+    rc, last = _ab_run(cmd, bdir / "beam_log.txt", 3600.0)
+    need = float(args.auto_beam_margin) * ab["d0"]
+    S, why, src = None, None, "beam"
     fz = bdir / "beam_frontier.npz"
-    why = None
     if rc != 0 or not fz.exists():
-        why = f"the search failed (exit {rc}): {log.strip().splitlines()[-1:] or ''}"
+        why = f"the search failed (exit {rc}: {last})"
     else:
         z = np.load(fz)
         if not int(z["replay_ok"]):
             why = "its frontier line did not replay"
-    if why is None:
-        S = np.ascontiguousarray(np.asarray(z["states"]).astype(STATE_DTYPE))
-        d = np.asarray(field.sample(S["origin"].astype(np.float64)), np.float64)
-        d = np.where(d < field.reach_max - 0.5 * field.cell, d, np.inf)
-        i_deep = int(np.argmin(d)) if len(d) else 0
-        if not len(d) or not np.isfinite(d[i_deep]):
-            why = "its frontier line has no state on the field"
-    if why is None:
-        # cut at the deepest point, trimmed back to the last contact with the map: the
-        # frontier lineage usually ends in the fall that killed the population, and a spine
-        # (and a success line) inside that fall would pay for falling
-        i = last_contact_cut(S, i_deep, ab["g_step"], ab["tol"])
-        if not np.isfinite(d[i]):
-            i = i_deep
-        new_end = float(d[i]) + float(args.demo_success_d)
-        gain = float(end_d) - new_end
-        need = float(args.auto_beam_margin) * ab["d0"]
-        if gain < need:
-            why = (f"its line ends at d {d[i]:,.0f} (success line {new_end:,.0f}), "
-                   f"{gain:,.0f} u past the current one (< {need:,.0f})")
+        else:
+            S = np.ascontiguousarray(np.asarray(z["states"]).astype(STATE_DTYPE))
+    if S is not None:
+        d, i_deep, i = _ab_score(ab, S)
+        if i < 0:
+            why, S = "its frontier line has no state on the field", None
+        else:
+            new_end = float(d[i]) + float(args.demo_success_d)
+            if float(end_d) - new_end < need:
+                why = (f"its line ends at d {d[i]:,.0f} (success line {new_end:,.0f}), "
+                       f"{float(end_d) - new_end:,.0f} u past the current one (< {need:,.0f})")
+    if why is not None and S is not None and float(args.auto_ge) > 0.0:
+        print(f"[{step:>13,d}] --auto-beam #{k}: the beam's line is not taken ({why}); "
+              f"Go-Explore from its last {float(args.auto_ge_window):g} s for "
+              f"{float(args.auto_ge):g} min", flush=True)
+        L, note = auto_ge_line(ab, args, S, i, bdir / "ge")
+        if L is None:
+            why = f"{why}; {note}"
+        else:
+            dL, iL_deep, iL = _ab_score(ab, L)
+            nL = float(dL[iL]) + float(args.demo_success_d) if iL >= 0 else float("inf")
+            if iL < 0 or float(end_d) - nL < need:
+                why = (f"{why}; {note}, its cut at d "
+                       f"{dL[iL] if iL >= 0 else float('inf'):,.0f} is not far enough")
+            else:
+                S, d, i_deep, i, new_end, why, src = L, dL, iL_deep, iL, nL, None, note
     if why is not None:
         ab["wait"] = int(args.auto_beam_retry)
         print(f"[{step:>13,d}] --auto-beam #{k}: NOT taken - {why}; next search after "
@@ -3726,11 +3806,11 @@ def auto_beam_step(ab, args, path, out, step, save_ckpt, end_d, tick):
                          min_ep=args.demo_min_ep, grow=args.demo_grow,
                          front_frac=float(args.demo_front_frac), tau0=None, **kw)
     d0 = ab["d0"]
-    print(f"[{step:>13,d}] --auto-beam #{k}: SPINE SWAP -> {sp.name}: {len(spine)} states to "
-          f"d {d[i]:,.0f} ({100.0 * (d0 - d[i]) / d0:.2f}% of {d0:,.0f}; the line's deepest "
-          f"{100.0 * (d0 - d[i_deep]) / d0:.2f}% at state {i_deep}, cut at its last contact "
-          f"{i}), success line {end_d:,.0f} -> {new_end:,.0f}; the curriculum restarts at its "
-          f"end ({time.time() - t0:.0f} s)", flush=True)
+    print(f"[{step:>13,d}] --auto-beam #{k}: SPINE SWAP -> {sp.name} ({src}): {len(spine)} "
+          f"states to d {d[i]:,.0f} ({100.0 * (d0 - d[i]) / d0:.2f}% of {d0:,.0f}; the line's "
+          f"deepest {100.0 * (d0 - d[i_deep]) / d0:.2f}% at state {i_deep}, cut at its last "
+          f"contact {i}), success line {end_d:,.0f} -> {new_end:,.0f}; the curriculum restarts "
+          f"at its end ({time.time() - t0:.0f} s)", flush=True)
     return new, new_end
 
 
@@ -4956,6 +5036,18 @@ def main() -> None:
                          "taken before searching again")
     ap.add_argument("--auto-beam-args", default="--resample-every 25 --score d --greedy-envs 32",
                     help="--auto-beam: further tools/beam_tas.py arguments")
+    ap.add_argument("--auto-ge", type=float, default=0.0,   # 0 = off
+                    help="--auto-beam: M > 0 = when the beam's line is not taken, Go-Explore "
+                         "(tools/explore_phase1.py --exact-chains, reward-free) for M minutes "
+                         "from ~25 of that line's own states in its last --auto-ge-window "
+                         "seconds before the cut; the deepest cell's chain is replayed exactly "
+                         "(tools/ge_replay.py), spliced on at its root with the views along the "
+                         "velocity, and judged by the same cut and margin")
+    ap.add_argument("--auto-ge-window", type=float, default=5.0,
+                    help="--auto-ge: seconds of the line before its cut the roots come from")
+    ap.add_argument("--auto-ge-args", default="--cell 32 --cell-energy 16 --decisions 100 "
+                                              "--envs 4096",
+                    help="--auto-ge: further tools/explore_phase1.py arguments")
     # ---- expert iteration: distil the planner's line (surfgym/bc.py) ----
     ap.add_argument("--bc-file", default=None,
                     help="behaviour-cloning rows from tools/plan_to_bc.py "
@@ -14644,7 +14736,9 @@ def main() -> None:
         meta["config"]["auto_beam"] = {
             "envs": int(args.auto_beam), "cross": float(args.auto_beam_cross),
             "margin": float(args.auto_beam_margin), "secs": float(args.auto_beam_secs),
-            "retry": int(args.auto_beam_retry), "args": str(args.auto_beam_args)}
+            "retry": int(args.auto_beam_retry), "args": str(args.auto_beam_args),
+            **({"ge_minutes": float(args.auto_ge), "ge_window": float(args.auto_ge_window),
+                "ge_args": str(args.auto_ge_args)} if float(args.auto_ge) > 0.0 else {})}
     if args.race_sr:
         # --race-sr: dumped only when on, so a flag-off run.json is the
         # control's byte for byte (test_int_split's identity check)
@@ -15599,6 +15693,8 @@ def main() -> None:
         print(f"--demo-success-bonus {DEMO_BONUS:g}: an episode whose record crosses d <= "
               f"{DEMO_END_D:,.0f} is paid {DEMO_BONUS:g} once (one that starts past it never is)")
     AB = None                             # --auto-beam: the in-run search -> curriculum loop
+    if float(args.auto_ge) > 0.0 and int(args.auto_beam) <= 0:
+        raise SystemExit("--auto-ge is --auto-beam's fallback: give --auto-beam N")
     if int(args.auto_beam) > 0:
         if DEMO_END_D is None:
             raise SystemExit("--auto-beam moves the --demo-file spine's --demo-success-d line: "
@@ -15612,7 +15708,9 @@ def main() -> None:
         AB = {"k": 0, "wait": 0, "field": _df,
               "d0": float(slots[0].rf_d0 or slots[0].d0),
               "g_step": g_step_of(_g, TICK.ms, 1),
-              "tol": 1.0 + _g * (max(_pat) - min(_pat)) * 1e-3}
+              "tol": 1.0 + _g * (max(_pat) - min(_pat)) * 1e-3,
+              "tick": TICK, "bsp": str(slots[0].core.bsp_path), "K": int(K),
+              "maxvel": float(slots[0].core.config.phys.sv_maxvelocity)}
         print(f"--auto-beam {int(args.auto_beam)}: when {args.auto_beam_cross:.0%} of a greedy "
               f"eval's episodes pass d <= {DEMO_END_D:,.0f}, tools/beam_tas.py searches from the "
               f"map start ({args.auto_beam_secs:g} s past the longest episode) and its deepest "

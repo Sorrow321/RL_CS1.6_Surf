@@ -41,7 +41,8 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--map", required=True)
     ap.add_argument("--archive", required=True)
-    ap.add_argument("--field", required=True)
+    ap.add_argument("--field", default=None,
+                    help="the GoalField .npz the deepest cell is picked on (needed unless --cell)")
     ap.add_argument("--out", required=True)
     ap.add_argument("--cell", type=int, default=None,
                     help="the chain's end cell (archive index); default the deepest on the field")
@@ -53,15 +54,20 @@ def main(argv=None):
     meta = json.loads(Path(a.archive).with_suffix(".meta.json").read_text())
     st, parent = z["state"], z["parent"]
     acts, off = z["link_acts"], z["link_off"]
-    zf = np.load(a.field, allow_pickle=False)
-    f = GoalField(zf["grid"].astype(np.float32) * float(zf["quant"]), zf["mins"],
-                  float(zf["cell"]), float(zf["reach_max"]))
-    d = f.sample(st["origin"].astype(np.float64)).astype(np.float64)
-    d[d >= f.reach_max - 0.5 * f.cell] = np.inf
+    if a.field is None and a.cell is None:
+        raise SystemExit("--field is needed to pick the deepest cell (or name it with --cell)")
+    f = None
+    if a.field is not None:
+        zf = np.load(a.field, allow_pickle=False)
+        f = GoalField(zf["grid"].astype(np.float32) * float(zf["quant"]), zf["mins"],
+                      float(zf["cell"]), float(zf["reach_max"]))
+        d = f.sample(st["origin"].astype(np.float64)).astype(np.float64)
+        d[d >= f.reach_max - 0.5 * f.cell] = np.inf
     end = int(np.argmin(d)) if a.cell is None else int(a.cell)
     chain = chain_to(parent, end)
-    print(f"{'deepest' if a.cell is None else 'chosen'} cell {end}: d {d[end]:,.0f} at "
-          f"{np.asarray(st[end]['origin']).round(0)}; chain of {len(chain)} cells")
+    print(f"{'deepest' if a.cell is None else 'chosen'} cell {end}: "
+          + (f"d {d[end]:,.0f} " if f is not None else "")
+          + f"at {np.asarray(st[end]['origin']).round(0)}; chain of {len(chain)} cells")
     cfg = default_config(num_envs=1, spawn_mode=2, max_episode_ticks=int(meta.get("ep_ticks", 6000)),
                          water_fail=1, yaw_jitter_deg=0.0, lidar_w=0, lidar_h=0)
     if meta.get("maxvel") is not None:
@@ -100,9 +106,12 @@ def main(argv=None):
     out["tick"] = 0
     out["stuck_ticks"] = 0
     np.save(a.out, out)
-    dl = f.sample(out["origin"].astype(np.float64))
-    print(f"{len(out)} states -> {a.out}; links {ok}/{len(chain) - 1}; line end d "
-          f"{float(dl[-1]):,.0f}, best d {float(dl.min()):,.0f}")
+    if f is not None:
+        dl = f.sample(out["origin"].astype(np.float64))
+        print(f"{len(out)} states -> {a.out}; links {ok}/{len(chain) - 1}; line end d "
+              f"{float(dl[-1]):,.0f}, best d {float(dl.min()):,.0f}")
+    else:
+        print(f"{len(out)} states -> {a.out}; links {ok}/{len(chain) - 1}")
     return 0 if ok == len(chain) - 1 else 1
 
 

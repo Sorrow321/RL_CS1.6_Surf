@@ -99,6 +99,37 @@ def test_the_cut_drops_the_final_fall():
 
 
 @needs_pb
+def test_the_ge_fallback_splices_an_exact_chain(tmp_path):
+    """auto_ge_line on a short real line: Go-Explore from its last states, the deepest chain
+    replayed and spliced on at its root, the explorer's views re-aimed along the velocity."""
+    from argparse import Namespace
+
+    from surfgym.core import STATE_DTYPE
+    from surfgym.goalfield import GoalField
+    from surfgym.tick import TickClock
+    from test_ge_minutes import PB
+    from train_fast import auto_ge_line
+    S = np.load(_spine(tmp_path)).astype(STATE_DTYPE)
+    zf = np.load(ROOT / "maps" / "surf_princessburglar_b26.goalc_32.npz")
+    field = GoalField(zf["grid"].astype(np.float32) * float(zf["quant"]), zf["mins"],
+                      float(zf["cell"]), float(zf["reach_max"]))
+    ab = {"tick": TickClock(10.0), "bsp": str(PB), "K": 4, "maxvel": 3500.0, "field": field}
+    args = Namespace(auto_ge=0.15, auto_ge_window=5.0,
+                     auto_ge_args="--cell 64 --cell-energy 32 --decisions 20 --envs 64 "
+                                  "--threads 2")
+    L, note = auto_ge_line(ab, args, S, len(S) - 1, tmp_path / "ge")
+    assert L is not None, note
+    assert (tmp_path / "ge" / "archive.npz").exists() and (tmp_path / "ge" / "line.npy").exists()
+    t_r = int(note.split("chain from line state ")[1].split(",")[0])
+    assert 0 <= t_r < len(S) and L[:t_r + 1].tobytes() == S[:t_r + 1].tobytes()
+    G = L[t_r + 1:]
+    v = G["velocity"].astype(np.float64)
+    fast = np.hypot(v[:, 0], v[:, 1]) >= 100.0
+    hd = np.degrees(np.arctan2(v[:, 1], v[:, 0])) % 360.0
+    assert np.allclose(G["yaw"][fast], hd[fast], atol=1e-3)
+
+
+@needs_pb
 def test_it_needs_the_success_line(tmp_path):
     r = _run("ab_bad", AB, tmp_path)
     shutil.rmtree(ROOT / "runs" / "ab_bad", ignore_errors=True)
