@@ -149,12 +149,17 @@ class CellHash:
     N_ENERGY = 64
 
     def __init__(self, mins, maxs, cell: float = 256.0, view: int = 0,
-                 speed: int = 0, speed_max: float = 3500.0, energy: float = 0.0) -> None:
+                 speed: int = 0, speed_max: float = 3500.0, energy: float = 0.0,
+                 heading: int = 0) -> None:
         self.mins = np.asarray(mins, np.float64)
         self.cell = float(cell)
         self.view = int(view)
         self.speed = int(speed)
         self.energy = float(energy)
+        # --cell-heading H: H sectors of the horizontal VELOCITY heading x 2 (rising / not), so a
+        # place reached moving another way is a new cell (a 64 u x energy cell does not hold the
+        # heading, and the "shorter way in" rule then keeps whichever direction came first)
+        self.heading = int(heading)
         self.dims = tuple(int(np.ceil((float(maxs[i]) - self.mins[i]) / self.cell)) + 1
                           for i in range(3))
         self.speed_bin = float(speed_max) / max(1, self.speed)
@@ -164,7 +169,8 @@ class CellHash:
         """Number of distinct keys this hash can produce."""
         n = self.dims[0] * self.dims[1] * self.dims[2]
         return (n * max(1, self.view) * max(1, self.speed)
-                * (self.N_ENERGY if self.energy > 0.0 else 1))
+                * (self.N_ENERGY if self.energy > 0.0 else 1)
+                * (2 * self.heading if self.heading > 0 else 1))
 
     def keys(self, states: np.ndarray) -> np.ndarray:
         """STATE_DTYPE array of any shape -> int64 keys of the same shape."""
@@ -192,6 +198,12 @@ class CellHash:
             eb = (ke // self.energy).astype(np.int64)
             np.clip(eb, 0, self.N_ENERGY - 1, out=eb)
             key = key * self.N_ENERGY + eb
+        if self.heading > 0:
+            v = states["velocity"].astype(np.float64)
+            hb = np.floor((np.degrees(np.arctan2(v[..., 1], v[..., 0])) % 360.0)
+                          / 360.0 * self.heading).astype(np.int64)
+            np.clip(hb, 0, self.heading - 1, out=hb)
+            key = (key * self.heading + hb) * 2 + (v[..., 2] > 0.0)
         return key
 
 
@@ -802,7 +814,8 @@ def explore(args) -> int:
     mins, maxs = core.map_bounds()
     hasher = CellHash(mins, maxs, cell=args.cell, view=args.cell_view,
                       speed=args.cell_speed, speed_max=args.cell_speed_max,
-                      energy=float(getattr(args, "cell_energy", 0.0) or 0.0))
+                      energy=float(getattr(args, "cell_energy", 0.0) or 0.0),
+                      heading=int(getattr(args, "cell_heading", 0) or 0))
     arch = Archive(hasher, max_cells=args.max_cells)
     arch.exact = bool(getattr(args, "exact_chains", False))
     rk = hasher.keys(roots)
@@ -1122,6 +1135,8 @@ def meta_dict(args, bsp, hasher, arch, it, n_goal, extra=None) -> dict:
         out["maxvel"] = float(args.maxvel)
     if float(getattr(args, "cell_energy", 0.0) or 0.0) > 0.0:
         out["cell_energy"] = float(args.cell_energy)
+    if int(getattr(args, "cell_heading", 0) or 0) > 0:
+        out["cell_heading"] = int(args.cell_heading)
     if getattr(args, "exact_chains", False):
         out["exact_chains"] = True
         out["ep_ticks"] = int(args.ep_ticks)
@@ -1706,6 +1721,9 @@ def build_parser() -> argparse.ArgumentParser:
                     help="save the archive every N chunks (0 = only at exit)")
     ap.add_argument("--print-every", type=int, default=10,
                     help="progress line every N chunks")
+    ap.add_argument("--cell-heading", type=int, default=0,
+                    help="H > 0: the cell key also holds H sectors of the horizontal velocity "
+                         "heading x rising/not (default 0 = off, keys unchanged)")
     ap.add_argument("--exact-chains", action="store_true",
                     help="exact provenance: a cell's parent is the cell its run was restored "
                          "from, states are never replaced and each cell keeps its run's "
