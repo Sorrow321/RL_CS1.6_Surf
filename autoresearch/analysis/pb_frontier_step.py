@@ -52,6 +52,9 @@ def main(argv=None):
     ap.add_argument("--ep-ticks", type=int, default=3000)
     ap.add_argument("--threads", type=int, default=15)
     ap.add_argument("--seed", type=int, default=10)
+    ap.add_argument("--tol", type=float, default=32.0,
+                    help="chain end = the shortest chain among cells within this many u of the "
+                         "deepest (half a 64 u cell)")
     a = ap.parse_args(argv)
     out = ROOT / a.out
     out.mkdir(parents=True, exist_ok=True)
@@ -94,16 +97,24 @@ def main(argv=None):
             cwd=str(ROOT), stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL))
     for p in procs:
         p.wait()
-    cand = []
+    cand, pool = [], []
     for g in range(a.ge):
         z = np.load(out / f"ge{g}" / "archive.npz", allow_pickle=False)
-        st = z["state"]
+        st, dep = z["state"], z["depth"]
         d = f.sample(st["origin"].astype(np.float64)).astype(np.float64)
         d[d >= f.reach_max - 0.5 * f.cell] = np.inf
         i = int(np.argmin(d))
         cand.append((float(d[i]), g, i, len(st)))
-        print(f"ge{g}: {len(st):,} cells, deepest {100 * (57149 - d[i]) / 57149:.3f}% (cell {i})")
-    dmin, g, i, _ = min(cand)
+        pool += [(float(d[j]), int(dep[j]), g, int(j)) for j in np.flatnonzero(d <= d[i] + a.tol)]
+        print(f"ge{g}: {len(st):,} cells, deepest {100 * (57149 - d[i]) / 57149:.3f}% (cell {i}, "
+              f"depth {int(dep[i])} ticks)")
+    # the chain end: among the cells within --tol u of the deepest (any search), the SHORTEST
+    # chain - fewer states for the curriculum to learn for (almost) the same depth
+    dlo = min(c[0] for c in pool)
+    pool = [c for c in pool if c[0] <= dlo + a.tol]
+    dmin, dep_best, g, i = min(pool, key=lambda c: (c[1], c[0]))
+    print(f"chain end: ge{g} cell {i}, {100 * (57149 - dmin) / 57149:.3f}%, depth {dep_best} ticks "
+          f"(shortest of {len(pool)} cells within {a.tol:g} u of the deepest)")
     chain = out / "chain.npy"
     r = sh([sys.executable, "tools/ge_replay.py", "--map", MAP, "--archive",
             str(out / f"ge{g}" / "archive.npz"), "--field", FIELD, "--cell", str(i),
