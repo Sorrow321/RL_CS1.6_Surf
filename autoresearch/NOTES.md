@@ -543,3 +543,7 @@ the backward curriculum (--demo-file + --demo-success-d) on the found line. Not 
   Correction to the line above (counted, 00:33 UTC): from ~2.7B the greedy evals are mostly 8/9
   to the pit (g2cur5 2.70B 8/9; g2cur6 9,9,8,8,8,8,8 of 9; g2cur7 8,9,8) - the start room erodes
   slowly under the curriculum; one episode per eval stops at the tunnel mouth.
+  Correction (checked): the non-pit episode is not always at the tunnel mouth - g2cur5 2.70B ep8
+  stops on the plate by the mouth (672, -2,941; 0.39%), g2cur7 3.44B ep6 stalls INSIDE the
+  tunnel (351, -2,885; 1.00%), g2cur6 3.28B ep2 reaches the pit area at 3.06% (under the 3.1%
+  cut used for the count, so that eval is really 9/9 in the pit region).
