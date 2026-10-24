@@ -51,7 +51,8 @@
    "2e-4"
   ],
   "resume_from": "/home/steam/ar_pb/runs/pbr2b2/pbr2b2_vv2 ckpt_latest 3.827B",
-  "commit": "82517b922b84d008db5668cdb2e875fe78a34e1a"
+  "commit": "82517b922b84d008db5668cdb2e875fe78a34e1a",
+  "ckpt_md5": "d750a644ac0cb6844cb225ced30caa82"
  },
  "summary": "Best 4.032 (vv7 3.903B): the greedy line from the true start passes the pit - 9/9 to ~4.0% - (incumbent 3.236, the pit). How: pbr1b1's line_a curriculum with VELOCITY-ALIGNED spawn views (--demo-view-velocity): it crossed the wall bounce in ~15 min (round 1: stuck 1.5B+ steps) and with contiguous bands (grow <= window) ran 1120 -> 10 in 40 min; vv2's greedy evals 3.99. Why: line_a flew its launch/flight with the view 139-176 deg backward, where the policy's view warp is ~200x coarser; tools/line_track.py re-flies it in the policy frame at 25 Hz. Next gate: explore_phase1 --view-velocity --exact-chains from the policy's own pre-death states found line_b to 6.68% in 15 min; curricula on it eroded the route until the success bonus was switched off (an unreachable bonus line starves the start room); vv7 (bonus 0) holds the route and is learning line_b's drop. After 6.68%: a speed gate (GE2 null)."
 }
