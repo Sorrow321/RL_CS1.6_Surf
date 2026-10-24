@@ -1154,3 +1154,10 @@ one box at a time (e.g. a box-hours budget instead of a $/h rate), is needed for
   and lands on ramps at z ~2,900-2,960 at x ~-661 and ~+131 that our flight passes ~50-300 u
   below. So gate 8 is the launch's energy, built upstream (the 13-17% deficit above) - the x
   -1,015 wall's story (7.2%: passed after ~830M steps of per-call energy shaping, round 2).
+* Go-Explore rooted on the APPROACH to gate 8's launch ramp (the CPU line's ticks 1,040-1,540,
+  stride 20 = 26 roots; 32 u x energy 16 cells, 2,048 envs, 3 threads at nice 19 beside other
+  jobs, 22:23-22:55 UTC, stopped at 1.55M cells / 1.6 GB RSS to spare the machine): deepest
+  19.56%, all deep cells falling into the catch at x ~250-282. A different take-off from the
+  policy's own approach is not found by uniform bursts at this scale either. Local CPU has now
+  tried GE (2 root windows) and three beams (256/1,024 envs, plain and tempered): gate 8 needs
+  box-scale search or the policy's own energy to improve.
