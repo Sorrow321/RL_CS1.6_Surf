@@ -56,3 +56,8 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   sink: rooted at that line's own states 1.0-0.1 s before its largest one-tick energy drop - the
   rim - 64 u x --cell-energy 16, 50-decision bursts, 10 min; shortest chain within 32 u of the
   deepest, 236 ticks, ge_replay 12/12) to the wall top at 7.09% (-1,001,-2,996,3,252).
+* `pbr2b4_spine_f.npy` (1,356 states, md5 88cd5d53177236fceb376b0c97e086cc): pbr2b4_cur10's own
+  greedy line from the true start (8.369B, episode 2, ticks 0-1016: start room, tunnel, ridge launch,
+  far side, rim cleared, platform jump, platform route) + GE11's chain (--roots sink at that line's
+  largest energy drop after the platform, tick 1,061; 48 u x --cell-energy 16, 100-decision bursts,
+  10 min; 338 ticks, ge_replay 12/12) to 12.74%.

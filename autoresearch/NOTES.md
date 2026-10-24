@@ -924,3 +924,11 @@ round 1's fixed grow 20 / cooldown 20 they would have taken ~130M).
   ~2,990 (the record keeps ~3,640 there).
 * GE11 (11:20 UTC): pb_frontier_step --roots sink on cur10 (the sink = tick 1,061), 2 x 10 min,
   --cell-energy 16.
+* GE11 result: deepest 12.738% / 12.784%; past 9.5% its cells keep h up to ~3,140-3,220 (the policy
+  ~2,955-2,995, the record ~3,650); the chosen chain ends at 12.740% - no way through the 12.6% U-turn
+  yet (an energy gate like the rim: the policy crawls the platform route at the slow chain's speeds
+  and loses ~500 u in two impacts after it).
+* **pbr2b4_cur11** (11:33 UTC): resume cur10 final (8.369B, md5 8fb635ba...) + spine_f (cur10's own
+  line to the platform's end + GE11's chain to 12.74%) with the anchor at 12.4% (--demo-success-d 195)
+  and the pull at d_end + 20 (12.705%) with --demo-pull-stats: practice + energy shaping on the
+  post-platform section. Runs to the wrap-up.
