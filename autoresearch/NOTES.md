@@ -1036,3 +1036,10 @@ beam found the policy's own way over the wall in 100 s).
   beam12 resumed and evaluated at 18.499 0.5M steps later) placed as pbr2b3_beam12/ckpt_8478261248.pt,
   the snapshot at or before the eval that handon_ckpt picks (checked) over beam12's regressed
   later ckpt_latest.
+* beam12 later evals: 15.9 x5, 18.868 (9.158B), then **20.151 / 20.230 / 20.282 (9.385B) / 20.255 /
+  20.194** - from ~9.2B on ALL 9 greedy episodes clear the 16% catch and reach 19.85-20.28%, dying
+  at z ~2,380-2,400 (x 477-682): the next fall catch, gate 8. The curriculum's band before the 16%
+  impact had sat at ~1% for ~700M steps before the greedy line got through.
+* Handoff for 20.282: beam12's ckpt_latest (9.597B, md5 82f90e5b..., pulled; evals around it
+  20.19-20.26). The earlier placed 8.478B snapshot was REMOVED: once the run's newest checkpoint
+  passes ~9.84B, handon_ckpt's 2x rule would have preferred that worse snapshot.
