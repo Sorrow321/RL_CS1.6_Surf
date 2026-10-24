@@ -1017,3 +1017,12 @@ beam found the policy's own way over the wall in 100 s).
   higher and further north ((-1,859, -2,404, 3,013) at 1,049 u/s, vz -350, where our line is at
   (-1,879, -2,519, 2,930) at 950) and lands tangentially on a descending ramp at (-1,652, -2,366,
   2,926), surfing it to 1,249 u/s at x -1,184. Ours hits the ramp's edge: a landing geometry again.
+* beam11 final evals 16.029 / 16.012 (8.37-8.44B, medians 16.0%): steady, the band before the 16%
+  impact at 17% the whole run. Stopped at 8.478B (ckpt md5 d3fb3b96..., pulled).
+* GE_g16 (rooted at 25 of the g10a line's states before the 16% impact, 32 u x energy 16 cells,
+  12 min): 1.27M cells, deepest **18.86%** (-123, -2,431, 2,510); past the ramp edge it holds h up
+  to 3,432 (the beam lines ~3,000). The deepest chain (15/15 links) starts just after the impact
+  (h 2,972), goes back and forth on the ramps there for ~6.8 s gaining h to ~3,220 (a small pump -
+  the first energy GAIN any uniform search of this round found), then flies east at 640-1,078 u/s.
+  Spine autoresearch/spines/pbr2b3_beam_ge_g16.npy (2,381 states: g10a to tick 1,455 + that chain).
+* pbr2b3_beam12 (11:44 UTC): beam11's 8.478B weights + the curriculum on it, same flags.
