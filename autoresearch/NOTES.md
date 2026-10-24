@@ -981,8 +981,8 @@ beam found the policy's own way over the wall in 100 s).
   [1440] 99%). kl reads 0.2-0.8 on the late runs (it was 0.05-0.15 earlier).
 
 ### pbr2b3 round 2 lesson (drafted 10:57 UTC, finalised at wrap-up)
-* **Score 3.236 -> 19.534** (best eval pbr2b3_beam12 traj_8629780480: one of 9 greedy episodes from
-  the true start to 19.5%, 8 to the 16% catch; beam9's 16.056 had 8-9 of 9 at 15.4-16.1%). The greedy line: start room -> tunnel ->
+* **Score 3.236 -> 20.414** (best eval pbr2b3_beam12 traj_9837740032, median 20.4%: all 9 greedy
+  episodes from the true start reach 19.85-20.41% and die in the next fall catch at z ~2,380). The greedy line: start room -> tunnel ->
   ridge launch -> fast east-side U-turn -> north side -> over the gate-3 wall -> the drop surf ->
   over the x -1,015 wall -> the U-turn climb at x ~-3,300 -> east to the fall catch at ~16%.
 * **What did it, in order:**
@@ -1043,3 +1043,26 @@ beam found the policy's own way over the wall in 100 s).
 * Handoff for 20.282: beam12's ckpt_latest (9.597B, md5 82f90e5b..., pulled; evals around it
   20.19-20.26). The earlier placed 8.478B snapshot was REMOVED: once the run's newest checkpoint
   passes ~9.84B, handon_ckpt's 2x rule would have preferred that worse snapshot.
+
+### pbr2b3 wrap-up (2026-10-24 13:40 UTC)
+* Final: **20.414** (pbr2b3_beam12 traj_9837740032, 9.838B; beam12's last evals 20.27-20.41). 108
+  greedy evals this round, all valid. Handed-on checkpoint: pbr2b3_beam12/ckpt_9478602752.pt
+  (md5 4bbcb8f9..., the trainer's milestone at or before the best eval, pulled; evals around it
+  ~20.2) - beam12's ckpt_latest (10.157B, md5 9240e464..., evals 20.36-20.41) is pulled beside it.
+* The flag set of the last run (beam12, a resume - every shape-changing flag comes from the
+  checkpoint): `--demo-file autoresearch/spines/pbr2b3_beam_ge_g16.npy --demo-window 5 --demo-grow 5
+  --demo-grow-max 40 --demo-cooldown 5 --demo-rate 0.3 --demo-front-frac 0.4 --demo-success-d 100
+  --demo-success-bonus 50 --keys-hold-spawn-duck --yaw-entropy 0 --demo-front-temp 0.5
+  --demo-front-ticks 40 --demo-front-view 6 --respawn-greedy 0.2 --respawn-greedy-window 0.25 2.0
+  --respawn-greedy-stuck 200 --respawn-front-perturb 0.2 --respawn-front-perturb-band 0.005
+  --respawn-front-perturb-speed 1.0 1.3 --respawn-front-perturb-turn 90 --energy-pot 8
+  --energy-pot-front 0 --energy-pot-front-bonus 0 --no-respawn-novel --respawn-backward-mix 0
+  --int-real-only 0 --spawn-states autoresearch/spines/pbr1b1_entry_ge_states.npy
+  --spawn-states-frac 0.2 --maxvel 3500` (box.py launch --resume --self-states "<the spine README's
+  provenance>").
+* To continue (the loop of this round, one gate per cycle): beam_tas from the true start on the
+  newest weights -> the frontier line past the 20.4% catch -> cut at its best before the stall ->
+  the next --demo-file (move the success line ONE gate at a time); if the beam stalls, Go-Explore
+  --exact-chains (32 u x energy 16 cells) rooted at the line's own states before the stall and
+  splice the deepest chain in. Training's own frontier was ~20.8% at the end.
+* Box 57454337 (RTX 5080, 0.60 $/h) released at wrap-up.
