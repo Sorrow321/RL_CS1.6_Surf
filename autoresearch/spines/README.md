@@ -18,3 +18,6 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   of two Go-Explore phase-1 archives rooted at the true spawn. Used as `--spawn-states` (0.3-0.4)
   to keep the start room practised. Caveat (NOTES.md): the two entry_search stage target boxes
   were chosen from core probes of this map.
+* `pbr2b2_line_a_ridge_roots.npy` (pbr2b2, round 2; 51 states): `pbr1b1_line_a.npy[1000:1251:5]` -
+  the line's tunnel exit, drop, ridge, launch and flight, as Go-Explore roots
+  (`explore_phase1 --roots-spine ... --roots-last 0`). Same provenance as line_a (own search).
