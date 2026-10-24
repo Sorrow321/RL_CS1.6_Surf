@@ -790,3 +790,38 @@ pbr1b1_g2cur6/ckpt_latest.pt 3.285B, md5 a6559938..., both present).
 * **pbr2b1_lb4** (06:08 UTC): lb2's 4.446B + the recipe as in lb2 + `--unstuck-max 2` (the key-head
   temperature cap; sidistic crossed its early gates from scratch at 2). Question: does more key
   noise find a different line at the wall (the north face) in 30 min?
+* GE-VV8 (06:06-06:20, from the TRUE SPAWN, --view-vel --exact-chains, 64 u x energy 32, 12
+  threads beside lb4): 16,873 cells; it PUMPS the east half-pipe to energy height h 3,967 (east
+  cells max 3,924; the record ~3,930) but brings at most h 3,802 / 302 u/s to the tunnel's west
+  exit (the policy: ~3,764 / 266 u/s; line_a's run-up: ~3,845 / 390 u/s) - it crawls the tunnel
+  and the energy goes into the floor. The record flies the tunnel at 500-600 u/s (h ~3,930).
+* GE-VV9 (06:21 UTC): roots = the 64 highest-energy pump cells of GE-VV8 (h 3,910-3,924, x
+  1,193-2,380, exact chains from the true spawn) -> look for a FAST tunnel exit (fly the tunnel).
+  If it exists: GE from that exit for the north route over the block, then one backward
+  curriculum on the whole new line (spawn -> pump -> tunnel -> ... -> past 6.7%).
+* GE-VV9 (from GE-VV8's pump cells, h 3,910-3,924; 11 min): 17,832 cells, the fastest tunnel west
+  exit 327 u/s / h 3,801 - random velocity-frame bursts pump the half-pipe but do not fly the
+  crouch tunnel at speed (the record's entry is a precise ducked flight past teleport *257).
+* lb4 (unstuck cap 2) at 4.522B: 6.668 (median 6.5%), T 0.62 and rising, stuck 490M; throughput
+  down to ~47k steps/s while two searches shared the CPU.
+* Feasibility check (06:36 UTC, ANALYSIS ONLY - the record's states as an instrument, CLAUDE.md
+  section 0; output in runs/ANALYSIS_ONLY_wr on the box, never a spawn, line or reward): GE
+  --view-vel rooted at the record's north-side states 7.85-8.2 s (x 448-667, h ~3,850), and the
+  same positions with the speed scaled to the policy's energy (h 3,700, 518-592 u/s). Question:
+  is the north route over the block possible at the policy's energy (then search for a
+  policy-reachable way there), or only with the record's pump energy?
+* **Feasibility result (analysis only): the 6.7% wall is an ENERGY deficit of ~150 u of h.** GE
+  from the record's north-side states with its energy (h ~3,850): 25,409 cells, best **7.20%** at
+  (-1,008,-3,000,3,320) = on top of the block, 445 cells past 6.8%, in 6 min. The same positions
+  at the policy's energy (h 3,700): 13,188 cells, best 6.75%, none past 6.8%.
+* Where the record's energy comes from (its first 7 s, analysis only): it drops into the east
+  half-pipe, surfs it east and back west to 922 u/s (h 3,653 -> 3,890), climbs the half-pipe's west
+  side to the tunnel's EAST mouth (964,-2,912,3,764) arriving at ~514 u/s, then strafes (right,
+  ducked) through the crouch tunnel at constant z ~3,722 ACCELERATING 537 -> 605 u/s, exits with
+  h 3,953 (the policy: 266 u/s, h ~3,764; entered from the side gap at ~0 speed), and carries
+  h ~3,850 over the pit and to its north side.
+* lb4 stopped 06:53 UTC (6.657 / 6.668; T 0.88 rising, frontier stuck 540M - key noise cannot
+  create ~150 u of energy).
+* GE-VV10 (06:54, full CPU): roots = GE-VV8's own west-going high-energy half-pipe states (h
+  3,890-3,916, x 1,176-1,797, vx -226..-622; exact chains from the true spawn) -> look for the
+  climb to the tunnel's east mouth at speed and a fast tunnel.
