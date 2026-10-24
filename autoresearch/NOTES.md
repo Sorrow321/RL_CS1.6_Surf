@@ -854,3 +854,9 @@ round 1's fixed grow 20 / cooldown 20 they would have taken ~130M).
   the policy's own greedy best.
 * GE8 (pb_frontier_step --roots sink on cur6 6.777B, cur6 paused): roots = its 1.0-0.1 s before the
   rim; 64/16 x 50 decisions and 48/16 x 100 decisions, 10 min each.
+* GE8 result: deepest 7.114% (ge0) / 7.053% (ge1); chosen 7.091% (shortest within 32 u: 236 ticks,
+  12/12 links) ending at the wall top (-1,001,-2,996,3,252). runs/pbr2b4_ge8/spine.npy = cur6's own
+  greedy prefix (664 ticks) + that chain = 900 states.
+* GE hp1/hp2 (08:57 UTC): roots = chain_rim1 idx 0-70 (from the policy's 4.14% state to just before
+  its half-pipe contact at idx 80, (64,-2,826,2,980)), 10 min x 2: a smoother half-pipe landing is
+  the next energy step toward the platform.
