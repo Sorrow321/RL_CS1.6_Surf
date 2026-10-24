@@ -745,3 +745,10 @@ ckpt_latest 3.285B (md5 a6559938..., the most curriculum progress), both named i
   are the first thing to erode. **pbr2b2_vv4** (10:54) = vv2's ckpt_latest (3.827B, the 9/9-to-4%
   weights) + spine_b again, spawn states = entry_ge x2 + line_a x4 (start room 66%) at frac 0.45
   (start room ~30% of all spawns as in vv1/vv2, line_a ~15%), `--lr 2e-4`, the rest as vv3.
+* vv4 (3.827-4.026B, 10:54-11:10): the same erosion as vv3, slower: evals 3.971 / 3.987 / 3.813 - at
+  3.978B 2/9 reach 3.8%, 7/9 stall at 2.9-3.2% after the bounce (the post-bounce ramp U-turn and
+  north run; the start room held this time). The curriculum reached spine 1312. What erodes is the
+  stretch only the spine's prefix (the policy's own recorded route) covers, and the curriculum has
+  not reached it. **pbr2b2_vv5** (11:10) = vv4's ckpt_latest (4.026B, md5 133a1475...) +
+  `--demo-tau0 1312` + spawn_v3 = entry_ge x2 + spine_b[0:740] x10 (the recorded route) +
+  line_a[1100:] x4, frac 0.5 (start room ~29%, recorded route ~15%, line_a flight ~6% of spawns).
