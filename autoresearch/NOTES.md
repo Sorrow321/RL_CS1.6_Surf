@@ -540,3 +540,6 @@ the backward curriculum (--demo-file + --demo-success-d) on the found line. Not 
   The demo curriculum refuses the recipe's novel / backward-mix / front-perturb / greedy spawns,
   hence the zeros; the start room is kept by the 30% start-room states plus 7% true-start
   spawns (9/9 to the pit through 3.3B steps of curriculum, a few 8/9 evals).
+  Correction to the line above (counted, 00:33 UTC): from ~2.7B the greedy evals are mostly 8/9
+  to the pit (g2cur5 2.70B 8/9; g2cur6 9,9,8,8,8,8,8 of 9; g2cur7 8,9,8) - the start room erodes
+  slowly under the curriculum; one episode per eval stops at the tunnel mouth.
