@@ -554,3 +554,35 @@ the backward curriculum (--demo-file + --demo-success-d) on the found line. Not 
   --keys-hold-spawn-duck; the curriculum still crossed 1880 -> 1250 that way (the hull change was
   survivable there) and it became fatal only at the wall bounce. Expect the same at the drop and
   the launch - keep the flag on from the start.
+
+### pbr1b1 round 1 lesson (wrap-up, 2026-10-24 01:36 UTC)
+* **Score 0.45 -> 3.236** (best eval pbr1b1_g2cur2 traj_1403518976; handed-on checkpoint
+  pbr1b1_g2cur ckpt_latest 1.403B, md5 b8b53646...). The greedy line clears the start room - two
+  precision duck-jumps onto a conveyor-plate corner, a crouch tunnel - and reaches the pit at
+  3.2% in 9/9 episodes. What did it: Go-Explore + entry_search found the entry by random bursts
+  (no demo; caveat: two stage target boxes picked by hand), then a Salimans-Chen backward
+  curriculum on ONE found line (`--demo-success-d`), the warm trunk with the yaw-mean head zeroed,
+  `--yaw-entropy 0`. What did not: uniform archive spawns, SIL, energy shaping, beam search.
+* **Gate 2 (the pit) is understood, not passed.** The way out needs speed the slow entry does not
+  carry. `explore_phase1 --exact-chains` + `tools/ge_replay.py` found it in ~6 min of box CPU as one
+  exact 1,881-tick line past the pit (3.93%; autoresearch/spines/pbr1b1_line_a.npy): a run-up back
+  east inside the tunnel, a ~770 u/s drop onto a surf ridge, a launch over the pit, a ducked air
+  turn into a wall, a ramp U-turn. Plain Go-Explore archives cannot be stitched into such a line
+  (the "shorter way in" rule overwrites the parent state a launch was found from); exact chains can.
+* **A backward curriculum on a long searched line needs four things, each found the hard way:**
+  (1) `--demo-grow ~n/100` - the 20-iteration cooldown makes 10 states/advance far too slow for
+  1,881; (2) `--demo-success-bonus` - the ratchet + 20 s discount prefer a pit 2 s away to a payoff
+  10-19 s away, even for a perfect flier; (3) `--keys-hold-spawn-duck` - exact crouched spawns
+  unducked on their first tick, 0.0% from every pre-impact state (the line is crouched for 1,717 of
+  1,881 ticks); (4) fine steps through a precise manoeuvre - at 20 states/advance the pre-impact
+  band sat at 0.0% for 1.5B steps, at 5 it went 77.6% (1-5 ticks before the wall) -> 16-37% (6-10)
+  -> 0.1-0.4% (11-15 ticks) and stalled there.
+* **Numbers of the curriculum runs (g2cur..g2cur7, 1.305-3.44B):** 1880 -> 1250 in ~600M steps,
+  then the wall bounce held it from 1.71B to the end (final frontier ~state 1235). The greedy evals
+  never moved off the pit (3.221-3.236); the start room eroded only slightly (mostly 8/9 after
+  2.7B). A one-off yaw-sigma kick (0.011 -> 0.3) decayed back to 0.08 in ~150M steps and changed
+  nothing. GE with a heading-aware cell key (x16) reached 211k cells in 15 min and nothing past the
+  pit (too thin).
+* **Next:** a line without the wall-bounce manoeuvre (a coarser heading key, or a longer GE), a
+  held view temperature for curriculum spawns, and a curriculum that starts with all four fixes.
+  Everything needed to resume is in the repo (autoresearch/spines/, the flag set above).

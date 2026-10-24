@@ -1,7 +1,7 @@
 {
  "agent": "pbr1b1",
  "round": 1,
- "final": false,
+ "final": true,
  "best": {
   "score": 3.236,
   "eval_file": "/home/steam/ar_pb/runs/pbr1b1/pbr1b1_g2cur2/traj_1403518976.jsonl",
@@ -45,5 +45,5 @@
   "resume_from": "/home/steam/ar_pb/runs/pbr1b1/pbr1b1_g2b/ckpt_latest.pt",
   "note": "the eval is g2cur2's first, 0.5M steps after it resumed g2cur's ckpt_latest (1.403B) - the checkpoint handed on; 9/9-ish greedy episodes reach the pit (3.21-3.24%), like g2b (3.235)"
  },
- "summary": "Start room solved for the greedy line (0.45 -> 3.234 bcur5; 9/9 to the pit in g2b, 3.235): Go-Explore + entry_search lines + a backward curriculum (--demo-success-d, --yaw-entropy 0, zeroed yaw-mean head). Gate 2 (the pit, 3.23%): Go-Explore with exact provenance (explore_phase1 --exact-chains, rooted at the policy's own tunnel-exit states) found a way past it (3.93%): a run-up back east inside the tunnel, a fast drop onto the ridge and a launch over the pit; tools/ge_replay.py replayed it exactly into a 1,881-tick line. Running: pbr1b1_g2cur = backward curriculum on that line from g2b's weights."
+ "summary": "Best 3.236 (start 0.45): the greedy line now clears princessburglar's start room (two precision duck-jumps onto a conveyor plate corner + a crouch tunnel) and reaches the pit at 3.2% in 9/9 eval episodes (bcur5 3.234 -> g2b 3.235 -> g2cur2 3.236). How: Go-Explore + tools/entry_search.py find the entry by random bursts (no demo; caveat: two stage target boxes were hand-picked), a Salimans-Chen backward curriculum on one found line (--demo-success-d), zeroed yaw-mean head, --yaw-entropy 0. Gate 2 (the pit) understood, not passed: explore_phase1 --exact-chains + tools/ge_replay.py found the way out (tunnel run-up, fast drop, ridge launch, ducked air turn into a wall, ramp U-turn) as one exact 1,881-tick line past the pit (3.93%; autoresearch/spines/pbr1b1_line_a.npy). A backward curriculum on it reached state ~1235 of 1,881 after three fixes it needed (--demo-success-bonus, --keys-hold-spawn-duck, finer steps through the manoeuvre) and stalls 10-15 ticks before the wall impact (wrong air-turn direction). Handed-on checkpoint: g2cur ckpt_latest 1.403B (md5 b8b53646...); the most curriculum progress is g2cur6's 3.285B (md5 a6559938..., runs/pbr1b1/pbr1b1_g2cur6)."
 }
