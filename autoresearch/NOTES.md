@@ -937,3 +937,14 @@ round 1's fixed grow 20 / cooldown 20 they would have taken ~130M).
   13.1%); the curriculum band sits in GE11's chain (spine ~1,138, 14-21%). Handed-on checkpoint for
   13.203: cur10's final ckpt (8,368,685,056, md5 8fb635ba...) placed in cur11's run dir as
   ckpt_8368685056.pt and pulled with --snapshot (the cur5 procedure).
+
+### BREAKTHROUGH 3: the policy passes the 12.6% U-turn itself - 15.389 (12:18 UTC)
+* cur11 evals: 13.203 / 12.838 / 13.113 / 13.186 / 13.082 / 13.139 / 13.271 / 14.117 /
+  **15.389 (8.973B, best 15.4%, median 15.2%)** / 15.240 / 15.195 / 15.063. No new search: practising
+  its WHOLE own line (spine_f = cur10's own greedy prefix through the platform + GE11's energy-keeping
+  chain past the platform's drop) with per-call energy shaping and the anchor (12.4%) + pull
+  (12.705%, --demo-pull-stats) lines, the policy carried more energy into the U-turn (h at 12%
+  2,955-2,995 -> ~3,120-3,130 by 8.75B) and went over it within ~45 min.
+* Hand-on: no snapshot at 8.973B exists (ckpt_latest moved on); pulled cur11 ckpt_latest 9.252B (md5
+  c6e27c50..., its own evals 15.06-15.24) and removed the stale ckpt_8368685056.pt (cur10's weights,
+  still in cur10's dir) from runs/pbr2b4/pbr2b4_cur11/, so the newest checkpoint is the one handed on.
