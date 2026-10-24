@@ -847,3 +847,23 @@ pbr1b1_g2cur6/ckpt_latest.pt 3.285B, md5 a6559938..., both present).
 * **pbr2b1_lb5** (07:27 UTC): lb2's exact configuration from lb2's final checkpoint (4.446B, md5
   0d32d945...), to keep collecting greedy evals at the wall (the training reservoir has touched
   6.78%) and consolidate the 9/9 route. Box extended to 09:20 UTC.
+* lb5 evals 4.446-4.824B: 6.657 / 6.683 / 6.675 / 6.675 / 6.675 / 6.671 (the wall; best stays 6.696).
+* The energy budget along the policy's OWN route (greedy 4.116B ep 0, h = z + |v|^2/2g): ~3,708
+  over the pit, 3,547 at (399,-3,324) on the south side, 3,492 at (199,-3,222), **3,187** at
+  (88,-3,140) (-305 in one collision), 3,092 landing on the south face at (-124,-3,241), ~3,000 at
+  the wall base. The record: ~3,850 on its north side, ~3,800 at the north face base. So the south
+  route bleeds ~600 u of h in collisions and can never clear the block; the next gate needs the
+  north route AND ~+100-150 u of h more than the policy carries over the pit (the pump + a strafed
+  tunnel). No single change on the current route passes it.
+* GE-VV13 (07:52 UTC, 12 threads beside lb5): roots = 160 of the policy's own greedy states over
+  the pit (x 680-923, h 3,653-3,723; 20 cells) -> a north-route tail joined to the policy's own
+  line, as a building block for a later round (at this energy it cannot pass the block, see the
+  feasibility check).
+* GE-VV13 (12 min): from the policy's own over-the-pit states the NORTH side is only 1.65 s away -
+  306 north-side cells, e.g. (634,-2,687,3,431) at 579 u/s, 3.78%, 165 ticks from its root - but
+  at h ~3,720 (the record: ~3,850 there; the block needs ~3,850, per the feasibility check). Kept
+  as `autoresearch/spines/pbr2b1_north_line.npy` (the policy's own greedy line 0-596 + that tail,
+  763 states, md5 986cc9a5...) for a later round.
+* Ceiling without the block (core hull traces + field, analysis): the best points near the wall
+  are jump-height spots at its base, 6.71-6.73% at z ~3,059 (x -940..-972); the training
+  reservoir has touched d 53,273 = 6.78%. lb5 keeps collecting greedy evals there until ~10:00 UTC.
