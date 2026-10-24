@@ -59,3 +59,8 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
 * `pbr2b3_beam_g10a_1560.npy` (1,561 states, md5 698e8ec75b45d269c4bd41d6e14439a5): the same beam_g10a line cut at tick 1,560
   (16.68%, just past the fall catch at x ~-1,700..-2,000 that ends beam9's greedy line), so the
   curriculum's success line sits right after that catch. Same provenance (pbr2b3).
+* `pbr2b3_beam_ge_g16.npy` (2,381 states, md5 84fb90934c54195c1c78012e076fb367): the beam_g10a line (the policy's own) to its
+  tick 1,455 (just past the ~16% ramp impact) + the deepest chain of a Go-Explore run rooted at 25 of
+  that line's own states before the impact (32 u x energy 16 cells, 12 min, 1.27M cells; ge_replay
+  15/15 links): ~6.8 s of back-and-forth on the ramps there (h 2,972 -> ~3,220, a small pump), then
+  east at 640-1,078 u/s to 18.86%. Views along the velocity. No demo, no record data (pbr2b3).
