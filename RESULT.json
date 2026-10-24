@@ -3,13 +3,13 @@
  "round": 2,
  "final": false,
  "best": {
-  "score": 4.055,
-  "eval_file": "/home/steam/ar_pb/runs/pbr2b3/pbr2b3_canon5/traj_4244111360.jsonl",
-  "run": "pbr2b3_canon5",
-  "step": 4244111360,
-  "ckpt": "/home/steam/ar_pb/runs/pbr2b3/pbr2b3_canon5/ckpt_latest.pt",
-  "ckpt_step": 4316987392,
-  "ckpt_md5": "ab10e8d0765f85f4f08f84f2c4858282",
+  "score": 6.668,
+  "eval_file": "/home/steam/ar_pb/runs/pbr2b3/pbr2b3_beam1/traj_4468506624.jsonl",
+  "run": "pbr2b3_beam1",
+  "step": 4468506624,
+  "ckpt": "(beam1 ckpt, pulled at the run's stop)",
+  "ckpt_step": null,
+  "ckpt_md5": null,
   "recipe": [
    "resume chain: pbr1b1 g2cur6 (3.285B) -> pbr2b3_canon1 -> canon2 -> canon3 (3.721B)",
    "--demo-file autoresearch/spines/pbr2b3_line_a_canon.npy (canon2/3), _canon_780.npy (canon4)",
@@ -20,10 +20,11 @@
    "--no-respawn-novel --respawn-backward-mix 0 --int-real-only 0 --respawn-front-perturb 0 --respawn-greedy 0 --respawn-greedy-stuck 0",
    "--spawn-states autoresearch/spines/pbr1b1_entry_ge_states.npy --spawn-states-frac 0.3",
    "--maxvel 3500",
-   "canon5: + --respawn-greedy 0.2 --respawn-greedy-window 0.25 2.0 --respawn-greedy-stuck 200 --respawn-front-perturb 0.2 --respawn-front-perturb-band 0.005 --respawn-front-perturb-speed 1.0 1.3 --respawn-front-perturb-turn 90 --demo-front-frac 0.4 --demo-tau0 0"
+   "canon5: + --respawn-greedy 0.2 --respawn-greedy-window 0.25 2.0 --respawn-greedy-stuck 200 --respawn-front-perturb 0.2 --respawn-front-perturb-band 0.005 --respawn-front-perturb-speed 1.0 1.3 --respawn-front-perturb-turn 90 --demo-front-frac 0.4 --demo-tau0 0",
+   "beam1: --demo-file autoresearch/spines/pbr2b3_beam_g3b.npy (the policy's own beam line to 6.62%), --spawn-states-frac 0.2"
   ],
-  "resume_from": "/home/steam/ar_pb/runs/pbr2b3/pbr2b3_canon4/ckpt_latest.pt",
-  "commit": "ae339f2"
+  "resume_from": "/home/steam/ar_pb/runs/pbr2b3/pbr2b3_canon5/ckpt_latest.pt",
+  "commit": "f089a27"
  },
- "summary": "Best 4.055 (incumbent 3.236): the greedy line from the true start passes gate 2 (the pit) 9/9 and dies at gate 3 (a fall catch under the north path, ~4.0%). Gate 2: round 1's line_a curriculum stalled because the explorer's view/turn rate do not fit the policy; tools/spine_canon_view.py + --demo-front-temp crossed it, --demo-cooldown/--demo-grow-max crossed the rest of the line in ~150M steps. Gate 3: --respawn-greedy/--respawn-front-perturb now work with the curriculum; a policy-guided beam search (beam_tas, 4,096 copies) found the policy's own line past gate 3 to 6.62% (autoresearch/spines/pbr2b3_beam_g3b.npy), now the spine of pbr2b3_beam1."
+ "summary": "Best 6.668 (beam1 4.47B; 4.055 before) (incumbent 3.236): the greedy line from the true start passes gate 2 (the pit) 9/9 and dies at gate 3 (a fall catch under the north path, ~4.0%). Gate 2: round 1's line_a curriculum stalled because the explorer's view/turn rate do not fit the policy; tools/spine_canon_view.py + --demo-front-temp crossed it, --demo-cooldown/--demo-grow-max crossed the rest of the line in ~150M steps. Gate 3: --respawn-greedy/--respawn-front-perturb now work with the curriculum; a policy-guided beam search (beam_tas, 4,096 copies) found the policy's own line past gate 3 to 6.62% (autoresearch/spines/pbr2b3_beam_g3b.npy), now the spine of pbr2b3_beam1."
 }

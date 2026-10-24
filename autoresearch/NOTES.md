@@ -760,3 +760,14 @@ of the line kept cold. TRAIN_ONLY in record_ckpt.
 * pbr2b3_beam1 (04:21 UTC): canon5's ckpt_latest (4.317B, md5 ab10e8d0...) + the curriculum on the
   beam spine from its end (success = d(end) + 100 = 6.45%, bonus 50) + the same pace / band
   temperature / greedy / front-perturb flags, --spawn-states-frac 0.2.
+* pbr2b3_beam1 evals: 4.076 (4.318B, its resume) / 4.007 (4.393B) / **6.668** (4.469B): 4 of 9
+  greedy episodes follow the beam line to the gate-4 hollow (6.50-6.67%, x ~-940..-983, then
+  wander there until the eval's end), 2 die at 4.81% in the drop after gate 3 ((165-182, -2,781..
+  -2,795, z ~3,160-3,190) falling at vz -650..-690), 1 dies at gate 3 (3.98%), and 2 stay in the
+  pit (3.17-3.21%): with the success line moved out to 6.45%, gate 2 is no longer paid by itself
+  and erodes a little. The curriculum walked back 1065 -> 590 by 4.54B (deciles 50-90%: 74 / 77 /
+  89 / 99 / 100% success), now consolidating the east-side U-turn after the launch.
+* Gate 4 against the record (ANALYSIS ONLY): the record surfs the long drop down to z 2,839 at
+  1,239 u/s (-268, -2,698), then climbs to z ~3,407 at x -1,083 and goes on west at z ~3,380-
+  3,400. The beam line reaches the bottom at 722 u/s, climbs only to z ~3,080 and falls into the
+  hollow at x ~-1,000: speed at the bottom of the drop again (surfing the slope, not falling).
