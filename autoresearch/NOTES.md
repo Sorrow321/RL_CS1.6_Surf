@@ -732,3 +732,9 @@ ckpt_latest 3.285B (md5 a6559938..., the most curriculum progress), both named i
   only 2/9 reach 3.8%, 5/9 stall at 3.13-3.17% after the bounce (training mass sits on line_b's far end;
   line_a's post-bounce stretch gets only the 15% line_a spawn rows). Expected to recover when tau enters
   the spine's prefix (the policy's own recorded route through the bounce, spine 0-739).
+* What the gate after 6.68% is (10:40 UTC; the WR demo as an ANALYSIS instrument only, CLAUDE.md 0):
+  the record carries ~700 u/s into the drop after the 4% area, reaches its bottom at ~1,290 u/s (z
+  2,854), surfs UP a ramp (vz +884) and passes x ~ -1,018 at z ~3,392 at ~706 u/s (7.18% there).
+  line_b walks the lower floor at 250 u/s (z ~2,979) to x -1,015 and is 376 u below the record's
+  line - a speed gate again: uniform-burst lines are slow, the climb out needs the fast drop. A
+  generic speed source (not map-specific) is the open problem for the next stretch.
