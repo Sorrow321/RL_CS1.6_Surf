@@ -586,3 +586,29 @@ the backward curriculum (--demo-file + --demo-success-d) on the found line. Not 
 * **Next:** a line without the wall-bounce manoeuvre (a coarser heading key, or a longer GE), a
   held view temperature for curriculum spawns, and a curriculum that starts with all four fixes.
   Everything needed to resume is in the repo (autoresearch/spines/, the flag set above).
+
+## pbr2b1 (round 2, slot 1) - 2026-10-24 02:31 UTC
+
+Starting point: the lineage's own checkpoints (no incumbent ckpt was handed on: AR_BRANCH.json
+ckpt null; RESULT.json of round 1 names runs/pbr1b1/pbr1b1_g2cur/ckpt_latest.pt 1.403B and
+pbr1b1_g2cur6/ckpt_latest.pt 3.285B, md5 a6559938..., both present).
+
+### Idea 1: the curriculum spawns look backwards (measured 02:20-02:30 UTC, CPU only)
+* line_a is a random-action search line, so its VIEW is a random walk: the yaw offset from the
+  horizontal velocity heading along the line is -141, -139, -43, 41, 55, 108 (run-up), 3-7 (the
+  west slide), 41, 126, 160 (the drop and launch), -176 at 1200 and **139 deg at 1230-1245**
+  (the stuck band: the line flies across the pit looking back over its shoulder, back+left keys
+  giving a wishdir ~86 deg right of the velocity).
+* The policy's own greedy flight (incumbent eval traj_1403518976, 9 episodes, ticks with
+  |v_h| >= 100): offset percentiles 5/25/50/75/95 = about -12/-5/0/+4/+8 deg, |offset| < 30 deg on
+  97-98% of moving ticks. Pitch along line_a is constant (-9.3, the root's); the policy's own
+  flight pitch spans -30..+30, so pitch is not the issue.
+* Under --view-absolute velocity the view turns at most 10 deg/tick, so a spawn at 1235 spends
+  ~14 ticks (3.5 decisions) turning around - exactly the 11-15 ticks before the wall impact where
+  the curriculum has stalled (band [1235,1239] at 0.0-0.6% on every visit, [1240,1244] ~25%).
+  The physics needs a right air turn; from a forward view that is just a right strafe.
+* `--demo-view-vel` (new, default off, bit-identical; tests/python/test_demo_view_vel.py 4/4):
+  spine spawn rows moving >= 100 u/s get yaw = their horizontal velocity heading (the core's own
+  velocity-frame threshold); position, velocity, stance exact; the core's +-8 deg spawn jitter on
+  top. Generic: no map constant; any search line has a random view. `--demo-cooldown N` (new,
+  default 20 = the old constant): iterations between two curriculum moves.
