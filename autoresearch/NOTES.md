@@ -1297,3 +1297,14 @@ the budget pace (0.69 $/h) admit one box; until then every rent was refused (0.1
   crawl landing.
 * as4 search 1 (11.172B): beam frontier 43,214 (24.38%) = no gain; GE stage 1 (x1.0/1.04) no
   line past the frontier; stage 2 (x1.08) running, stage 3 (x1.12) after it if needed.
+
+### as4 search 1: no line past the crawl; as5 with the fixed fork (23:47-23:50 UTC)
+* as4 search 1 (1,538 s): beam 43,216 / branched beam (forked at the useless 49.7 s) 43,216 / GE
+  x1.0-1.04 43,021 / x1.08 43,024 / x1.12 43,018 - every stage ~160 u past the greedy (43,181),
+  short of the 500 u gain. Roots were the beam line's 17.6-20.1 s; as3's x1.12 chain that passed
+  gate 10 rooted at 17.2 s (before the gate-9 wall), 2.9 s before that line's stall.
+* auto_spine GE roots now span the last 4.0 s before the stall (48 roots), b4e1103.
+* The operator's mid-round harness (2b4bfeb): cheaper cards allowed, a flat fleet cap of 1.2 $/h,
+  no extend into the $10 reserve. No change to this branch's runs.
+* **pbr3b4_as5** (23:49 UTC): as4's 11.191B weights (md5 e71cecf4...) + the same flags, trainer
+  0835494+ (the stall-aware branch fork) and auto_spine b4e1103, --auto-spine-delay 1e8, 3B steps.
