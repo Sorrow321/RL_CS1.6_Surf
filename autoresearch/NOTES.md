@@ -661,3 +661,21 @@ pbr1b1_g2cur6/ckpt_latest.pt 3.285B, md5 a6559938..., both present).
   the drop and the pit). At 7.4 min: 14,049 cells, 2.04M ticks/s, best 3.20% on the grader field
   = the pit (round 1's random-view GE6 had 339 cells past 3.3% by ~6 min). Its tunnel cells reach
   the east end (x 17-1236, z <= 3,786) but the fastest tunnel exit is 266 u/s (line_a: ~390).
+* GE-VV1 stopped at ~10 min (no line past 3.21%). GE-VV2 (03:18 UTC): the same search rooted at
+  31 states of line_a's tunnel SLIDE (800-980: 304-388 u/s, view offset 2-9 deg - the one natural-
+  view stretch of line_a; collapsed to 16 cells). At 5.6 min: 17,244 cells, best 3.21%, but it
+  does reach the right places: 540 cells flying high over the pit (z > 3,450, x 650-1,000),
+  ridge cells up to 849 u/s, tunnel exits up to 476 u/s (line_a: ~390). What it lacks is the
+  far side: line_a's continuation is an air turn into the east wall, a ramp U-turn and the north
+  exit - flown, it turns out, looking BACKWARDS: line_a's view offset is 160 deg rising off the
+  ridge (1,140), -176 over the pit (1,200), 139 in the air turn (1,235), north-looking (149-176)
+  through the U-turn.
+* **GE-VV3 finds the way past the pit in the policy's own view** (03:27 UTC): the same velocity-
+  frame search rooted at line_a's over-the-pit FLIGHT states 1150-1245 (every 3rd, views re-aimed
+  along the velocity; 32 roots). At 4.6 min: 4,211 cells, **755 past 3.3%, 178 past 3.8%, best
+  4.01%** (round 1's line_a ends at 3.93%). Two routes: a SHORT one to the SOUTH side above the
+  pit - 3.3% at (863,-3298,3494) after 654 ticks, 3.8% at (619,-3312,3432) after 822 ticks from
+  root (808,-3033,3556) = line_a ~1200 - which is where the shaping field itself routes (over the
+  south ramp), and a long north route (4.0% after 2,254 ticks). So the velocity-frame search
+  solves the far side once it starts with line_a's speed and height over the pit; from the slide
+  (GE-VV2) its own launches were too low.

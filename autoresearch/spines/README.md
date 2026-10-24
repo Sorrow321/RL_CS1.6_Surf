@@ -18,3 +18,16 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   of two Go-Explore phase-1 archives rooted at the true spawn. Used as `--spawn-states` (0.3-0.4)
   to keep the start room practised. Caveat (NOTES.md): the two entry_search stage target boxes
   were chosen from core probes of this map.
+
+## pbr2b1 (round 2)
+
+* `pbr2b1_line_b.npy` (2,024 states, md5 18713796bc1f1e79f152f50d1f5c8b86): `pbr1b1_line_a.npy`
+  states 0-1200 (unchanged) + an 823-state tail from line_a's state 1201 (over the pit, mid-flight)
+  to 3.81% on the grader field (the SOUTH side above the pit, (619, -3,312, 3,432)). The tail is
+  `tools/explore_phase1.py --view-vel --exact-chains` (reward-free uniform bursts in the trainer's
+  velocity-frame view: random keys + a view offset from a table dense near 0; 64 u x --cell-energy
+  32 cells, 4,096 envs, 12 min on a 5080 box) rooted at line_a's own flight states 1150-1245 (every
+  3rd, yaw re-aimed along the velocity), replayed exactly by `tools/ge_replay.py` (9/9 links; chain
+  end = archive cell 3258) and joined by `tools/splice_line.py`. No demo, no record data. Its views
+  are the policy's kind (median 9 deg off the velocity at >= 100 u/s); line_a's head keeps its
+  random-walk views (use `--demo-view-vel`).
