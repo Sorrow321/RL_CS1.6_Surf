@@ -766,3 +766,7 @@ round 1's fixed grow 20 / cooldown 20 they would have taken ~130M).
   --spawn-states = entry states + 3 x platform-chain rows 150-2,153 (~45% of the 30% share on the
   platform route), so the policy learns 6.7 -> 12.6% while the energy term raises its ramp speed.
   cur3 evals: 6.700 / 6.696 / 6.699 / 6.717 / 6.759 / 6.702 (best 6.759 at 5.164B).
+* cur4 (06:22 UTC, 5.64B): evals 6.683 / 6.716 / 6.781 / 6.678 / **6.796 (5.536B)** / 6.767; ramp h
+  now 3,274-3,384 in 8/9 episodes (cur2 3,086-3,103; cur3's best 3,341), rising slower. The platform
+  (z 3,328 ~315 u past the ramp) needs h ~3,550 (3,328 + the horizontal KE at the apex). Pulled
+  cur4 ckpt_latest 5.637B (md5 8e9b6ffc...).
