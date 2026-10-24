@@ -2200,7 +2200,8 @@ def main(argv=None, build_only: bool = False, device=None):
                     # --pitch-sigma-min: MIRRORED - the pitch head's sigma floor is
                     # what a stochastic recording samples the camera with (the
                     # greedy mean does not depend on it)
-                    pitch_sigma_min=float(cfg.get("pitch_sigma_min") or 0.0)
+                    pitch_sigma_min=float(cfg.get("pitch_sigma_min") or 0.0),
+                    yaw_sigma_min=float(cfg.get("yaw_sigma_min") or 0.0)
                     ).to(device)
     say("loading policy", 29)
     if args.cold_policy is not None:

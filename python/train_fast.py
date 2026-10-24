@@ -482,7 +482,7 @@ class Policy(nn.Module):
                  plan_film: int = 0, film_dim: int = 0,
                  views: int = 1, views_scale: int = 1, drop_depth: bool = False,
                  simba: bool = False, split_trunk: bool = False,
-                 pitch_sigma_min: float = 0.0):
+                 pitch_sigma_min: float = 0.0, yaw_sigma_min: float = 0.0):
         super().__init__()
         # --priv-critic (asymmetric actor-critic, Pinto et al. 2017): the
         # CRITIC additionally reads a privileged state block the simulator
@@ -850,14 +850,24 @@ class Policy(nn.Module):
             # is several nats of the JOINT log-ratio PPO clips on - approx_kl 1-22 per update
             # with the yaw sigma at 0.07 (autoresearch r5b4, 2026-10-22). Non-persistent like
             # log_std_hi: the state_dict keys do not change.
-            if float(pitch_sigma_min or 0.0) > 0.0:
+            # --yaw-sigma-min S (pbr2b2; 0 = off, the buffer exactly as before): the same
+            # floor on the yaw head(s), whose sigma --yaw-entropy 0 lets collapse to
+            # ~0.011 - at the fine end of the velocity-frame warp (3.5 deg per unit u)
+            # that is ~0.2 deg of exploration, under the 1-2 deg an air-strafe turn needs
+            _ylo = (float(np.log(float(yaw_sigma_min))) if float(yaw_sigma_min or 0.0) > 0.0
+                    else LOG_STD_MIN)
+            if float(yaw_sigma_min or 0.0) > 0.0 and self.view_absolute is None:
+                raise SystemExit("--yaw-sigma-min needs --view-absolute")
+            if float(pitch_sigma_min or 0.0) > 0.0 or float(yaw_sigma_min or 0.0) > 0.0:
                 if self.view_absolute is None:
                     raise SystemExit("--pitch-sigma-min needs --view-absolute (the pitch "
                                      "head is the last view head only there)")
                 self.view_std.register_buffer(
                     "log_std_lo", torch.as_tensor(
-                        [LOG_STD_MIN] * (self.n_z - 1)
-                        + [float(np.log(float(pitch_sigma_min)))], dtype=torch.float32),
+                        [_ylo] * (self.n_z - 1)
+                        + [float(np.log(float(pitch_sigma_min)))
+                           if float(pitch_sigma_min or 0.0) > 0.0 else LOG_STD_MIN],
+                        dtype=torch.float32),
                     persistent=False)
         else:
             self.view_head = None
@@ -6313,6 +6323,14 @@ def main() -> None:
                          "steps); 0 leaves sigma to the policy gradient, and exploration to "
                          "--unstuck's sampling temperature. Config only when != 1; restored on "
                          "resume; TRAIN_ONLY for record_ckpt.")
+    ap.add_argument("--yaw-sigma-min", type=float, default=None,  # 0 = off
+                    help="--view-absolute: a FLOOR on the yaw head's sigma (z units), the "
+                         "--pitch-sigma-min mechanism on the yaw head. Under --yaw-entropy 0 the "
+                         "yaw sigma collapses to ~0.011, i.e. ~0.2 deg of rollout exploration at "
+                         "the fine end of the velocity-frame warp, under the 1-2 deg a GoldSrc "
+                         "air-strafe turn needs at 400 u/s. The greedy action (the mean) is "
+                         "unchanged. 0 / unset = off (bit-identical). Config + restored on "
+                         "resume; record_ckpt mirrors it.")
     ap.add_argument("--pitch-sigma-min", type=float, default=None,  # 0 = off
                     help="--view-absolute: a FLOOR on the pitch head's sigma (z units; pitch "
                          "target = -20 + 50 tanh z deg). The pitch moves only the camera and "
@@ -8562,6 +8580,10 @@ def main() -> None:
                 and not flag_given("--pitch-sigma-min")):
             args.pitch_sigma_min = float(ck_cfg["pitch_sigma_min"])
             restored.append(f"pitch_sigma_min={args.pitch_sigma_min:g}")
+        if (ck_cfg.get("yaw_sigma_min") is not None
+                and not flag_given("--yaw-sigma-min")):
+            args.yaw_sigma_min = float(ck_cfg["yaw_sigma_min"])
+            restored.append(f"yaw_sigma_min={args.yaw_sigma_min:g}")
         # --view-ou-sigma is rollout BEHAVIOUR, not shape, but a resume that
         # silently dropped it would change the exploration mid-run without
         # saying so - the Round 17 failure class. Restored like the rest.
@@ -10147,6 +10169,14 @@ def main() -> None:
         if not float(np.exp(LOG_STD_MIN)) < PITCH_SIG_MIN < float(np.exp(PITCH_LOG_STD_MAX_ABS)):
             raise SystemExit(f"--pitch-sigma-min must lie in ({float(np.exp(LOG_STD_MIN)):.4f}, "
                              f"0.5) (the global floor and the pitch cap)")
+    # --yaw-sigma-min: the yaw head's sigma floor (0 = off); a Python constant
+    YAW_SIG_MIN = float(args.yaw_sigma_min or 0.0)
+    if YAW_SIG_MIN != 0.0:
+        if not VIEW_ABS:
+            raise SystemExit("--yaw-sigma-min needs --view-absolute")
+        if not float(np.exp(LOG_STD_MIN)) < YAW_SIG_MIN < float(np.exp(LOG_STD_MAX)):
+            raise SystemExit(f"--yaw-sigma-min must lie in ({float(np.exp(LOG_STD_MIN)):.4f}, "
+                             f"{float(np.exp(LOG_STD_MAX)):.3f})")
     # --int-mode / --archive-*: None = the flag-off constants
     if args.int_mode is None:
         args.int_mode = "cell"
@@ -12868,6 +12898,7 @@ def main() -> None:
                     yaw_cond=YCOND, view_continuous=VIEWC,
                     view_absolute=VIEW_ABS,
                     pitch_sigma_min=PITCH_SIG_MIN,
+                    **({"yaw_sigma_min": YAW_SIG_MIN} if YAW_SIG_MIN > 0.0 else {}),
                     obs_fourier=int(args.obs_fourier or 0),
                     int_split=INT_SPLIT,
                     dropout=float(args.dropout),
@@ -14303,6 +14334,12 @@ def main() -> None:
             print(f"--pitch-entropy {PITCH_ENT:g}: the pitch head's entropy "
                   f"term is {_pe} and its log sigma is capped at log 0.5 "
                   f"(sigma <= 0.5) in this mode")
+            if YAW_SIG_MIN > 0.0:
+                # --yaw-sigma-min: written ONLY when set
+                meta["config"]["yaw_sigma_min"] = YAW_SIG_MIN
+                print(f"--yaw-sigma-min {YAW_SIG_MIN:g}: the yaw head's sigma is floored at "
+                      f"{YAW_SIG_MIN:g}; sig now "
+                      + "/".join(f"{v:.3f}" for v in policy.log_std().exp().tolist()))
             if PITCH_SIG_MIN > 0.0:
                 # written ONLY when set: a control run's config dump is unchanged
                 meta["config"]["pitch_sigma_min"] = PITCH_SIG_MIN
