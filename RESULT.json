@@ -3,17 +3,17 @@
  "round": 2,
  "final": false,
  "best": {
-  "score": 3.99,
-  "eval_file": "/home/steam/ar_pb/runs/pbr2b4/pbr2b4_cur1/traj_4267180032.jsonl",
-  "run": "pbr2b4_cur1",
-  "step": 4267180032,
-  "ckpt": "/home/steam/ar_pb/runs/pbr2b4/pbr2b4_cur1/ckpt_4285530112.pt",
+  "score": 6.696,
+  "eval_file": "/home/steam/ar_pb/runs/pbr2b4/pbr2b4_cur2/traj_4847566848.jsonl",
+  "run": "pbr2b4_cur2",
+  "step": 4847566848,
+  "ckpt": "/home/steam/ar_pb/runs/pbr2b4/pbr2b4_cur2/ckpt_latest.pt",
   "recipe": [
-   "--resume pbr1b1_g2cur6 ckpt_latest (3.285B, md5 a6559938)",
+   "--resume pbr2b4_cur1 final ckpt_latest (4.394B, md5 f213128b; cur1 = the same flags on spine_b from pbr1b1_g2cur6)",
    "--maxvel",
    "3500",
    "--demo-file",
-   "autoresearch/spines/pbr2b4_spine_b.npy (md5 df440ae6)",
+   "autoresearch/spines/pbr2b4_spine_c.npy (md5 0816a498)",
    "--demo-window",
    "10",
    "--demo-grow",
@@ -47,10 +47,10 @@
    "--spawn-states-frac",
    "0.3"
   ],
-  "resume_from": "/home/steam/ar_pb/runs/pbr1b1/pbr1b1_g2cur6/ckpt_latest.pt",
-  "commit": "ef75a62",
-  "ckpt_step": 4285530112,
-  "ckpt_md5": "61f26c2123461ccb31faa8e79b501146"
+  "resume_from": "/home/steam/ar_pb/runs/pbr2b4/pbr2b4_cur1/ckpt_latest.pt (4.394B, md5 f213128b)",
+  "commit": "2a174b5",
+  "ckpt_step": 4861198336,
+  "ckpt_md5": "6c41d08cfb0cd59c13695cacf6e5acca"
  },
- "summary": "Best 3.990 (incumbent 3.236): the greedy line from the TRUE START now clears the pit in 9/9 episodes (3.85-3.99%, ~6.6 s) and dies ~0.1 s later in a fall at ~(500,-2700,z 3,390). How: exact-chain Go-Explore rooted at line_a's fast states found a 3-s line past the pit (ridge launch NE, far-side turn, west along the north side); backward curriculum on spine_b (own greedy prefix + line_a run-up + that chain) from g2cur6 with the new adaptive step (--demo-adapt 64 --demo-cooldown 5): end -> launch in 5 min, the launch in ~20 min, launch -> true start in ~20 min (3.29B -> 3.97B). The policy found its own shortcut (no 7-s tunnel run-up). Next: GE from the new frontier, extend the spine, repeat."
+ "summary": "Best 6.696 (incumbent 3.236): the greedy line from the TRUE START reaches 6.55-6.70% in 9/9 episodes (past the pit at 3.2%, the fall catch at 4.0%, to a wall at x~-1,000). Loop: record the policy's own greedy line -> exact-chain Go-Explore rooted at its last 3-4 s (reward-free, 12 min) -> shortest chain near the deepest cell -> spine = own greedy prefix + chain -> backward curriculum with the new adaptive step (--demo-adapt 64 --demo-cooldown 5), all four round-1 fixes. cur1 (spine_b): pit cleared, 3.990; cur2 (spine_c): 6.696. Lesson: a new spine needs --demo-replay (cur2 forgot its own line for ~25 min until tau came back to it). Next: GE from the 6.7% frontier, cur3."
 }

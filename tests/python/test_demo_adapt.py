@@ -1,10 +1,12 @@
-"""--demo-cooldown C / --demo-adapt M (pbr2b4, 2026-10-24): the backward curriculum's pace.
+"""--demo-cooldown C / --demo-adapt M / --demo-replay R (pbr2b4, 2026-10-24): the backward
+curriculum's pace, and practice of the spine before tau.
 
 * the class with the defaults (cooldown 20, adapt 0) is byte-identical to DemoCurriculum before
   the change (loaded from git): same pools, same tau path, same log line;
 * --demo-adapt doubles the step over an easy stretch and halves it into a precise one, so tau
   runs fast to a hard state and then settles beside it;
 * --demo-cooldown spaces the moves;
+* --demo-replay draws that share uniformly over the whole spine, before tau included;
 * the trainer accepts both, prints them and dumps them (CPU, princessburglar)."""
 from __future__ import annotations
 
@@ -110,20 +112,43 @@ def test_cooldown_spaces_the_moves():
         DemoCurriculum(_spine(50), grow=4, cooldown=-1)
 
 
+def test_replay_draws_the_whole_spine():
+    n, tau = 1000, 700
+    for front in (0.0, 0.67):
+        c = DemoCurriculum(_spine(n), window=10, grow=8, front_frac=front, tau0=tau,
+                           replay=0.2, min_ep=1e9)        # min_ep: tau never moves here
+        pool = c.build_pool(np.zeros(8, STATE_DTYPE), pool_size=20000, fresh_frac=0.1)
+        idx = c.match(pool["origin"])
+        demo = idx[idx >= 0]
+        before = float((demo < tau).mean())
+        # 20% uniform over [0, n-1] -> 0.2 x 700/1000 = 14% of the draws land before tau
+        assert 0.12 < before < 0.16, (front, before)
+        assert demo.min() < 50 and demo.max() == n - 1
+        off = DemoCurriculum(_spine(n), window=10, grow=8, front_frac=front, tau0=tau,
+                             min_ep=1e9)
+        p0 = off.build_pool(np.zeros(8, STATE_DTYPE), pool_size=20000, fresh_frac=0.1)
+        i0 = off.match(p0["origin"])
+        assert (i0[i0 >= 0] >= tau).all(), "without replay every demo draw is in [tau, n-1]"
+    with pytest.raises(ValueError):
+        DemoCurriculum(_spine(50), replay=0.2)          # replay needs grow
+
+
 @pytest.mark.skipif(not (ROOT / "maps" / "surf_princessburglar_b26.bsp").exists(),
                     reason="needs the princessburglar map")
 def test_trainer_takes_and_dumps_the_flags(tmp_path):
     from test_demo_success_d import _run_demo
     run = "dadapt_smoke"
     try:
-        r = _run_demo(run, ["--demo-grow", "4", "--demo-adapt", "16", "--demo-cooldown", "3"],
-                      tmp_path)
+        r = _run_demo(run, ["--demo-grow", "4", "--demo-adapt", "16", "--demo-cooldown", "3",
+                            "--demo-replay", "0.2"], tmp_path)
         out = r.stdout + r.stderr
         assert r.returncode == 0, out[-4000:]
         assert "--demo-adapt 16: the step adapts in [1, 16] from 4" in out
         assert "--demo-cooldown 3: tau moves at most once every 3 iterations" in out
         cfg = json.loads((ROOT / "runs" / run / "run.json").read_text())["config"]
+        assert "--demo-replay 0.2: that share of the demo draws is uniform over the whole" in out
         assert cfg["demo_adapt"] == 16 and cfg["demo_cooldown"] == 3
+        assert cfg["demo_replay"] == 0.2
     finally:
         shutil.rmtree(ROOT / "runs" / run, ignore_errors=True)
     bad = _run_demo("dadapt_bad", ["--demo-adapt", "16"], tmp_path)

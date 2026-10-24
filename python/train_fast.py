@@ -4757,6 +4757,12 @@ def main() -> None:
                          "(default 20, the value it had before this flag: one advance per 20 "
                          "iterations bounds a long spine's pace however easy it is). Config "
                          "only when set; ckpt restores")
+    ap.add_argument("--demo-replay", type=float, default=None,   # None/0 = off
+                    help="--demo-grow: a share R of the demo draws is uniform over the WHOLE "
+                         "spine [0, n-1], states before tau included - so a spine that starts "
+                         "with the policy's own greedy line keeps that line practised while the "
+                         "curriculum works on the new part at its end. 0 = off, byte-identical. "
+                         "Config only when set; ckpt restores")
     ap.add_argument("--demo-adapt", type=int, default=None,   # None/0 = off
                     help="--demo-grow: ADAPT the step tau moves by in [1, M] instead of the fixed "
                          "--demo-grow S (the first step): an advance with the frontier band at "
@@ -7880,6 +7886,9 @@ def main() -> None:
         if args.demo_adapt is None and ck_cfg.get("demo_adapt") is not None:
             args.demo_adapt = int(ck_cfg["demo_adapt"])
             restored.append(f"demo_adapt={args.demo_adapt}")
+        if args.demo_replay is None and ck_cfg.get("demo_replay") is not None:
+            args.demo_replay = float(ck_cfg["demo_replay"])
+            restored.append(f"demo_replay={args.demo_replay:g}")
         if args.keys_hold_spawn_duck is None and ck_cfg.get("keys_hold_spawn_duck"):
             args.keys_hold_spawn_duck = 1
             restored.append("keys_hold_spawn_duck")
@@ -11404,6 +11413,10 @@ def main() -> None:
                              "(the first step)")
         if args.demo_cooldown is not None and int(args.demo_cooldown) < 0:
             raise SystemExit("--demo-cooldown must be >= 0")
+        if args.demo_replay and not args.demo_grow:
+            raise SystemExit("--demo-replay needs --demo-grow (the anchored range)")
+        if args.demo_replay and not 0.0 < float(args.demo_replay) <= 1.0:
+            raise SystemExit("--demo-replay must be in (0, 1]")
         demo = DemoCurriculum(np.load(args.demo_file),
                               window=args.demo_window, rate=args.demo_rate,
                               min_ep=args.demo_min_ep, grow=args.demo_grow,
@@ -11411,10 +11424,15 @@ def main() -> None:
                               tau0=args.demo_tau0,
                               cooldown=(20 if args.demo_cooldown is None
                                         else int(args.demo_cooldown)),
-                              adapt=int(args.demo_adapt or 0))
+                              adapt=int(args.demo_adapt or 0),
+                              replay=float(args.demo_replay or 0.0))
         if args.demo_cooldown is not None:
             print(f"--demo-cooldown {int(args.demo_cooldown)}: tau moves at most once every "
                   f"{int(args.demo_cooldown)} iterations (default 20)")
+        if args.demo_replay:
+            print(f"--demo-replay {float(args.demo_replay):g}: that share of the demo draws is "
+                  f"uniform over the whole spine [0,{demo.n - 1}] (the part before tau stays "
+                  f"practised)")
         if args.demo_adapt:
             print(f"--demo-adapt {int(args.demo_adapt)}: the step adapts in [1, "
                   f"{int(args.demo_adapt)}] from {demo.step} (x2 on a second advance in a row at >= "
@@ -14397,6 +14415,9 @@ def main() -> None:
     if args.demo_file and args.demo_adapt:
         # --demo-adapt: dumped only when on; a resume restores it
         meta["config"]["demo_adapt"] = int(args.demo_adapt)
+    if args.demo_file and args.demo_replay:
+        # --demo-replay: dumped only when on; a resume restores it
+        meta["config"]["demo_replay"] = float(args.demo_replay)
     if args.keys_hold_spawn_duck:
         # --keys-hold-spawn-duck: dumped only when on; a resume restores it
         meta["config"]["keys_hold_spawn_duck"] = 1

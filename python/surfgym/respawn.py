@@ -44,7 +44,7 @@ class DemoCurriculum:
     def __init__(self, states, window: int = 10, rate: float = 0.2,
                  min_ep: float = 50.0, seed: int = 29,
                  grow: int = 0, front_frac: float = 0.0, tau0=None,
-                 cooldown: int = 20, adapt: int = 0) -> None:
+                 cooldown: int = 20, adapt: int = 0, replay: float = 0.0) -> None:
         self.S = np.asarray(states, STATE_DTYPE)
         self.n = len(self.S)
         self.D = int(window)
@@ -111,6 +111,16 @@ class DemoCurriculum:
             raise ValueError("adapt needs grow > 0: it adapts the anchored range's step")
         self.step = min(self.grow, self.adapt) if self.adapt else (self.grow if self.grow else 1)
         self._last_move = -1
+        # --demo-replay R (0 = off, byte-identical draws): a share R of the demo draws is
+        # uniform over the WHOLE spine [0, n-1], states before tau included. A spine whose
+        # first part is the policy's own greedy line (a new search appended to it) otherwise
+        # gets no practice on that part until tau comes back to it, and the line it already
+        # flew is forgotten: pbr2b4_cur2 lost its pit crossing within 75M steps that way.
+        if not 0.0 <= float(replay) <= 1.0:
+            raise ValueError(f"replay must be in [0, 1], got {replay}")
+        if float(replay) > 0.0 and not self.grow:
+            raise ValueError("replay needs grow > 0 (the anchored range)")
+        self.replay = float(replay)
         self.rng = np.random.default_rng(seed)
         self._key = {tuple(np.round(np.asarray(r["origin"], np.float64), 1)): i
                      for i, r in enumerate(self.S)}
@@ -140,11 +150,22 @@ class DemoCurriculum:
         if self.front_frac > 0.0:
             b_lo, b_hi = self._band()
             n_front = int(round(n_demo * self.front_frac))
-            idx = np.concatenate([
-                self.rng.integers(b_lo, b_hi + 1, n_front),
-                self.rng.integers(d_lo, d_hi + 1, n_demo - n_front)])
+            if self.replay > 0.0:
+                n_rep = int(round(n_demo * self.replay))
+                n_rest = max(0, n_demo - n_front - n_rep)
+                idx = np.concatenate([
+                    self.rng.integers(b_lo, b_hi + 1, n_front),
+                    self.rng.integers(d_lo, d_hi + 1, n_rest),
+                    self.rng.integers(0, self.n, n_demo - n_front - n_rest)])
+            else:
+                idx = np.concatenate([
+                    self.rng.integers(b_lo, b_hi + 1, n_front),
+                    self.rng.integers(d_lo, d_hi + 1, n_demo - n_front)])
         else:
             idx = self.rng.integers(d_lo, d_hi + 1, n_demo)
+            if self.replay > 0.0:
+                n_rep = int(round(n_demo * self.replay))
+                idx[:n_rep] = self.rng.integers(0, self.n, n_rep)
         fresh = start_pool[self.rng.integers(0, len(start_pool), n_fresh)]
         return np.concatenate([fresh, self.S[idx].copy()])
 

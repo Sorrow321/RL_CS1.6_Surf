@@ -686,3 +686,24 @@ round 1's fixed grow 20 / cooldown 20 they would have taken ~130M).
   Rule used, generic: among cells within 0.01% of the deepest, the shortest chain.
 * **pbr2b4_cur2** (launched 04:15 UTC): resume cur1's final ckpt_latest (4.394B, md5 f213128b...)
   + the same curriculum flags + `--demo-file spine_c` (1,146 states; success line 6.49%).
+
+### cur2 result: 6.696, and the forgetting lesson (04:15-04:43 UTC)
+* cur2's first eval (4.3946B = the resume point) 3.982; then **3.23 / 3.21 / 3.23 / 3.23 / 3.22
+  from 4.470B to 4.772B**: the greedy line lost its pit crossing (peak speed 443-573 u/s vs
+  ~800; it crawled the tunnel again) within 75M steps. Cause: while tau worked on the new chain
+  (spine_c 600-1145, the far west), NO demo draw came from the prefix (spine_c 0-598 = the policy's
+  own line through the tunnel, the ridge and the launch) - the draws are [tau, n-1] only - and only
+  the 7% true-start spawns and the 30% start-room states touched that part. cur1 kept its line
+  because at tau 0 it practised the whole spine.
+* tau reached 0 at ~04:40 (the prefix states, previously ~98%, had fallen to 15-66% band success;
+  the curriculum re-taught them on its way back), and the next eval jumped: **6.696 at 4.8476B
+  (best 6.70%, median 6.6%, 9/9 episodes at 6.55-6.70%)**, all stopping around x -840..-1,015 near
+  the wall GE4/GE5 stopped at, wandering there until the 30-s patience cut.
+* `--demo-replay R` (new, default off, byte-identical): a share R of the demo draws is uniform
+  over the WHOLE spine [0, n-1]. For the next spines (R 0.2). tests/python/test_demo_adapt.py
+  (5 passed incl. the trainer smoke).
+* cur2 stopped at ~4.87B (pulled ckpt_latest 4.861B, md5 6c41d08c..., 14M steps after the best
+  eval). Careful: `pgrep -f '<the trainer's command line>'` inside an ssh command matches the ssh
+  shell itself (CLAUDE.md) - stop a run by runs/<run>.pid.
+* GE6 = autoresearch/analysis/pb_frontier_step.py on cur2's 4.861B weights (record 3 greedy
+  episodes, roots = the best one's last 4 s, 2 x 12-min exact-chain searches), 04:43 UTC.
