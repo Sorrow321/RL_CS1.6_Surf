@@ -1153,3 +1153,18 @@ shorter budget_end_hours. Written down for the operator; nothing is worked aroun
   incumbent's yaw sigma is 0.013 rad (0.75 deg; --yaw-entropy 0 collapsed it), so the population search
   proposes almost one view per state - the record's turn may need a different view offset. Local test
   running: 256 copies from the true start, V 10.
+* Local beam with `--view-temp 10` (256 copies of the incumbent from the true start, 32 greedy, yaw sigma
+  0.75 -> 7.5 deg on the sampled envs; 22 min at 331 env-steps/s on the droplet): the population went
+  EXTINCT at t = 1700, exactly where the greedy dies (frontier 18.93% at the 16 s resample; med_d within
+  ~60 u of min_d all the way - one tight bundle). View noise in the search does not crack gate 8.
+* WHY - gate 8 is ENERGY at the takeoff (the record is ANALYSIS ONLY): at the shared last ramp contact
+  the record leaves with vz +475, |v| 1,219, h 3,751; the policy with vz +336, |v| 1,133, h 3,609. The
+  140 u/s of vz is ~70 u of apex height - the 50-95 u the record flies higher. The deficit was there on
+  the ramp before (x ~-1,200: h 3,791 vs 3,646).
+* NOT the air strafing: over the 9 greedy episodes' ballistic ticks (62% of all) the policy holds a pure
+  side key 98% of the time (no forward), its view within 2.2 deg (median) of the velocity, and gains
+  +0.48 u/s of horizontal speed per tick = 78% of the 30^2/(2v) optimum; the record's 10 ms rows show
+  the same pattern (side 98%, view 1.0 deg off, +0.42 u/s per row). The ~145 u deficit is carried from
+  upstream - mostly the start room (round 2: tunnel exit h ~3,814 vs the record's ~3,978; the record
+  pumps the east half-pipe first, the precision entry starts from a standstill) plus landing losses.
+  So the remaining route will keep presenting energy gates until the start carries more energy.
