@@ -4752,6 +4752,18 @@ def main() -> None:
                          "the spine's last state - the curriculum position is not in the "
                          "checkpoint, so a continuation passes where the previous run's log "
                          "left it ('demo starts [T,...]'). Not a config key; default = n-1")
+    ap.add_argument("--demo-cooldown", type=int, default=None,   # None = 20 (the old constant)
+                    help="--demo-file: iterations between two moves of the curriculum's tau "
+                         "(default 20, the value it had before this flag: one advance per 20 "
+                         "iterations bounds a long spine's pace however easy it is). Config "
+                         "only when set; ckpt restores")
+    ap.add_argument("--demo-adapt", type=int, default=None,   # None/0 = off
+                    help="--demo-grow: ADAPT the step tau moves by in [1, M] instead of the fixed "
+                         "--demo-grow S (the first step): an advance with the frontier band at "
+                         ">= 2 x --demo-rate doubles it, a backoff halves it and backs off by the "
+                         "halved step - fast over easy stretches, state by state through a "
+                         "precise one, no per-spine schedule. 0 = off, byte-identical. Config "
+                         "only when set; ckpt restores")
     ap.add_argument("--demo-success-bonus", type=float, default=None,   # None = off
                     help="--demo-success-d: an episode whose ratchet record CROSSES the spine's "
                          "success line (d(spine end) + --demo-success-d) is paid this once, like "
@@ -7862,6 +7874,12 @@ def main() -> None:
         if args.demo_success_d is None and ck_cfg.get("demo_success_d") is not None:
             args.demo_success_d = float(ck_cfg["demo_success_d"])
             restored.append(f"demo_success_d={args.demo_success_d:g}")
+        if args.demo_cooldown is None and ck_cfg.get("demo_cooldown") is not None:
+            args.demo_cooldown = int(ck_cfg["demo_cooldown"])
+            restored.append(f"demo_cooldown={args.demo_cooldown}")
+        if args.demo_adapt is None and ck_cfg.get("demo_adapt") is not None:
+            args.demo_adapt = int(ck_cfg["demo_adapt"])
+            restored.append(f"demo_adapt={args.demo_adapt}")
         if args.keys_hold_spawn_duck is None and ck_cfg.get("keys_hold_spawn_duck"):
             args.keys_hold_spawn_duck = 1
             restored.append("keys_hold_spawn_duck")
@@ -11381,11 +11399,26 @@ def main() -> None:
             raise SystemExit("--demo-front-frac needs --demo-grow: the sliding "
                              "window already draws only its band")
     if args.demo_file:
+        if args.demo_adapt and not args.demo_grow:
+            raise SystemExit("--demo-adapt adapts the --demo-grow step: give --demo-grow "
+                             "(the first step)")
+        if args.demo_cooldown is not None and int(args.demo_cooldown) < 0:
+            raise SystemExit("--demo-cooldown must be >= 0")
         demo = DemoCurriculum(np.load(args.demo_file),
                               window=args.demo_window, rate=args.demo_rate,
                               min_ep=args.demo_min_ep, grow=args.demo_grow,
                               front_frac=float(args.demo_front_frac),
-                              tau0=args.demo_tau0)
+                              tau0=args.demo_tau0,
+                              cooldown=(20 if args.demo_cooldown is None
+                                        else int(args.demo_cooldown)),
+                              adapt=int(args.demo_adapt or 0))
+        if args.demo_cooldown is not None:
+            print(f"--demo-cooldown {int(args.demo_cooldown)}: tau moves at most once every "
+                  f"{int(args.demo_cooldown)} iterations (default 20)")
+        if args.demo_adapt:
+            print(f"--demo-adapt {int(args.demo_adapt)}: the step adapts in [1, "
+                  f"{int(args.demo_adapt)}] from {demo.step} (x2 on a second advance in a row at >= "
+                  f"{2 * args.demo_rate:.0%} band success, /2 on a backoff)")
         if args.demo_tau0 is not None:
             print(f"--demo-tau0 {args.demo_tau0}: the curriculum starts at spine state "
                   f"{demo.tau} of {demo.n}")
@@ -14358,6 +14391,12 @@ def main() -> None:
     if args.demo_file and args.demo_success_d is not None:
         # --demo-success-d: dumped only when set; a resume restores it
         meta["config"]["demo_success_d"] = float(args.demo_success_d)
+    if args.demo_file and args.demo_cooldown is not None:
+        # --demo-cooldown: dumped only when set; a resume restores it
+        meta["config"]["demo_cooldown"] = int(args.demo_cooldown)
+    if args.demo_file and args.demo_adapt:
+        # --demo-adapt: dumped only when on; a resume restores it
+        meta["config"]["demo_adapt"] = int(args.demo_adapt)
     if args.keys_hold_spawn_duck:
         # --keys-hold-spawn-duck: dumped only when on; a resume restores it
         meta["config"]["keys_hold_spawn_duck"] = 1

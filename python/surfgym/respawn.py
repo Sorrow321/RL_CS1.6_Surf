@@ -43,7 +43,8 @@ class DemoCurriculum:
 
     def __init__(self, states, window: int = 10, rate: float = 0.2,
                  min_ep: float = 50.0, seed: int = 29,
-                 grow: int = 0, front_frac: float = 0.0, tau0=None) -> None:
+                 grow: int = 0, front_frac: float = 0.0, tau0=None,
+                 cooldown: int = 20, adapt: int = 0) -> None:
         self.S = np.asarray(states, STATE_DTYPE)
         self.n = len(self.S)
         self.D = int(window)
@@ -91,6 +92,25 @@ class DemoCurriculum:
         self.win = np.zeros(self.n, np.float64)
         self.decay = 0.99
         self._cool = 0
+        # --demo-cooldown C (default 20, the hardcoded value before the flag): iterations
+        # between two moves of tau. One advance per 20 iterations bounds a 1,881-state spine
+        # at grow 20 to ~1.9B steps however easy it is (pbr1b1, round 1).
+        self.cooldown = int(cooldown)
+        if self.cooldown < 0:
+            raise ValueError(f"cooldown must be >= 0, got {cooldown}")
+        # --demo-adapt M (0 = off, byte-identical): the step tau moves by ADAPTS in [1, M]
+        # instead of the fixed --demo-grow S. A second advance in a row with the band at
+        # >= 2 x rate doubles it (an easy stretch), a backoff halves it first and backs off by
+        # the halved step (a precise stretch) - Rprop's sign rule on the curriculum position. pbr1b1 set 20 states per advance on the easy part of its spine and
+        # 5 through the wall bounce by hand; this is the same rule written once, so no
+        # per-spine schedule is needed. Needs grow (the anchored range); grow is the first step.
+        self.adapt = int(adapt)
+        if self.adapt < 0:
+            raise ValueError(f"adapt must be >= 0, got {adapt}")
+        if self.adapt and not self.grow:
+            raise ValueError("adapt needs grow > 0: it adapts the anchored range's step")
+        self.step = min(self.grow, self.adapt) if self.adapt else (self.grow if self.grow else 1)
+        self._last_move = -1
         self.rng = np.random.default_rng(seed)
         self._key = {tuple(np.round(np.asarray(r["origin"], np.float64), 1)): i
                      for i, r in enumerate(self.S)}
@@ -148,16 +168,26 @@ class DemoCurriculum:
         r = win / max(ep, 1e-9)
         self._cool = max(0, self._cool - 1)
         step = self.grow if self.grow else 1
+        if self.adapt:
+            step = self.step
         moved = 0
         if ep >= self.min_ep and self._cool == 0:
             if r >= self.rate and self.tau > 0:
                 self.tau = max(0, self.tau - step)
                 moved = -1
+                if self.adapt and r >= 2.0 * self.rate and self._last_move < 0:
+                    # Rprop's rule: grow only on a second move the same way; an advance
+                    # right after a backoff keeps the step (else halve + double cycles)
+                    self.step = min(self.adapt, 2 * self.step)
             elif r < self.rate and self.tau < self.n - 1:
+                if self.adapt:
+                    self.step = max(1, self.step // 2)
+                    step = self.step
                 self.tau = min(self.n - 1, self.tau + step)
                 moved = +1
             if moved:
-                self._cool = 20
+                self._cool = self.cooldown
+                self._last_move = moved
         d_lo, d_hi = self._draw()
         self.last_info = (f"demo starts [{d_lo},{d_hi}]/{self.n} "
                           f"(frontier band [{lo},{hi}]) "
@@ -166,11 +196,14 @@ class DemoCurriculum:
             b_lo, b_hi = self._band()
             self.last_info += (f" | {self.front_frac:.0%} of demo draws on "
                                f"the band [{b_lo},{b_hi}]")
+        if self.adapt:
+            self.last_info += f" | step {self.step}"
+
         if moved:
             d_lo, d_hi = self._draw()
             print(f"demo curriculum: tau {'<- earlier' if moved < 0 else '-> later (backoff)'}"
                   f" starts [{d_lo},{d_hi}] (success {r:.1%} "
-                  f"over {ep:.0f} eps)")
+                  f"over {ep:.0f} eps)" + (f" step {self.step}" if self.adapt else ""))
 
     def region_report(self, bins: int = 10) -> str:
         """Per-region episodes and finish rate over the whole spine.
