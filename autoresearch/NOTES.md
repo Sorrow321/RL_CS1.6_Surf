@@ -886,3 +886,7 @@ pbr1b1_g2cur6/ckpt_latest.pt 3.285B, md5 a6559938..., both present).
   the channel would be reached with h ~3,550 (a face-edge launch from the flat top then misses the
   block's top by ~60 u). A per-call energy term limited to a window behind the frontier would aim
   at exactly this, but its width would be read off this map (CLAUDE.md 0b) - not built.
+* Regression pass (09:08 UTC, local CPU): 16/16 - test_demo_view_vel (incl. flag-off bit-identity
+  against the trainer before the change), test_ge_view_vel (incl. flag-off archive + meta
+  bit-identity), test_pick_roots, test_splice_line, test_energy_budget, test_exact_chains,
+  test_demo_success_d.
