@@ -826,3 +826,6 @@ ckpt_latest 3.285B (md5 a6559938..., the most curriculum progress), both named i
   ~700 u/s at its top): GE with energy/speed cells rooted at the policy's own drop states, or the
   policy's own surfing under energy shaping on that stretch; then the same pipeline (own pre-death
   roots -> policy-frame exact-chain GE -> own-recording + line spine, no bonus, aligned views).
+* Wrap-up (13:38 UTC): final pull of pbr2b2_vv7 (17 evals, all valid; best traj_4431282176 = 6.687,
+  later evals 6.685-6.687), ckpt_4427612160.pt (md5 314fef79...) and ckpt_latest.pt (md5 be550fb9...)
+  in $AR_HOME/runs/pbr2b2/pbr2b2_vv7/; box 57492384 released.

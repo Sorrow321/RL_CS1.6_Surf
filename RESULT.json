@@ -1,7 +1,7 @@
 {
  "agent": "pbr2b2",
  "round": 2,
- "final": false,
+ "final": true,
  "best": {
   "score": 6.687,
   "eval_file": "/home/steam/ar_pb/runs/pbr2b2/pbr2b2_vv7/traj_4431282176.jsonl",
@@ -51,8 +51,9 @@
    "2e-4"
   ],
   "resume_from": "/home/steam/ar_pb/runs/pbr2b2/pbr2b2_vv2 ckpt_latest 3.827B",
-  "commit": "3aab71a1f945d5d70f729b1daeb6818489ec861f",
-  "ckpt_md5": "314fef79d920d4d9b4b2dab82755a3c9"
+  "commit": "d9c6232b6057b8c1cbea3f69e9617ebfb85ce424",
+  "ckpt_md5": "314fef79d920d4d9b4b2dab82755a3c9",
+  "ckpt_latest": "/home/steam/ar_pb/runs/pbr2b2/pbr2b2_vv7/ckpt_latest.pt (md5 be550fb95d712e35e9ee8eed9392bfbd, ~4.9B; evals 6.685-6.687 up to 4.88B)"
  },
- "summary": "Best 6.687 (vv7 4.431B; incumbent 3.236): the greedy line from the true start passes the pit AND the next gate - 9/9 episodes reach 6.68-6.69% (the end of line_b, a lower floor west of the pit). How: (1) pbr1b1's line_a backward curriculum with VELOCITY-ALIGNED spawn views (--demo-view-velocity; it crossed the wall bounce in ~15 min, round 1 was stuck 1.5B+ steps), contiguous bands (grow <= window) -> greedy 3.99 (vv2); (2) explore_phase1 --view-velocity --exact-chains from the policy's own pre-death states found line_b to 6.68% in 15 min; (3) a curriculum on [own greedy recording + line_b to the floor] WITHOUT the success bonus (with it, vv3-vv6 eroded the start room: the unreachable bonus line starves the start-room episodes). Next gate after 6.68%: a speed gate (GE2 null; analysis: the record climbs out at ~1,300 u/s)."
+ "summary": "Best 6.687 (pbr2b2_vv7 traj_4431282176 at 4.431B; incumbent 3.236): 9/9 greedy episodes from the true start clear the start room, the tunnel, the pit and the next gate and reach 6.68-6.69% (the end of line_b, a closed pocket on the lower floor west of the pit). How: (1) pbr1b1's line_a backward curriculum with VELOCITY-ALIGNED spawn views (--demo-view-velocity) - line_a flew its launch/flight looking 139-176 deg backward, where the policy's view warp is ~200x coarser; aligned, the wall bounce fell in ~15 min (round 1: 1.5B+ steps); contiguous bands + --demo-cooldown 5 -> greedy 3.99 (vv2). (2) explore_phase1 --view-velocity --exact-chains from the policy's own pre-death greedy states found line_b to 6.68% in 15 min; a curriculum on [own greedy recording + line_b to the floor] with --demo-success-bonus 0 (with the bonus, vv3-vv6 eroded the start room: an out-of-reach bonus line starves the start-room episodes). Next: past 6.68% is a speed gate (two 15-min GE nulls; the record leaves the pocket ~376 u higher after a ~1,290 u/s drop) - needs a speed source on the drop, then the same pipeline. Snapshot handed on: ckpt_4427612160.pt (md5 314fef79...)."
 }
