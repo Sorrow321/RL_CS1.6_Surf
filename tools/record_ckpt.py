@@ -104,6 +104,8 @@ TRAIN_ONLY = frozenset({
     # --demo-front-temp: the TRAINING rollout's sampling temperature for curriculum-band spawns;
     # a recording spawns at the map start and samples at its own --temp
     "demo_front_temp", "demo_front_ticks", "demo_front_view",
+    # --demo-cooldown / --demo-grow-max: the TRAINING curriculum's pace
+    "demo_cooldown", "demo_grow_max",
     # --ge-minutes: a share of the TRAINING spawn pool drawn from the run's own Go-Explore
     # archive; a recording spawns at the map start like the trainer's eval
     "ge_minutes", "ge_frac", "ge_cell", "ge_speed",

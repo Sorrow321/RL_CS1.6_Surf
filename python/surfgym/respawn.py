@@ -43,7 +43,8 @@ class DemoCurriculum:
 
     def __init__(self, states, window: int = 10, rate: float = 0.2,
                  min_ep: float = 50.0, seed: int = 29,
-                 grow: int = 0, front_frac: float = 0.0, tau0=None) -> None:
+                 grow: int = 0, front_frac: float = 0.0, tau0=None,
+                 cooldown: int = 20, grow_max: int = 0) -> None:
         self.S = np.asarray(states, STATE_DTYPE)
         self.n = len(self.S)
         self.D = int(window)
@@ -91,6 +92,21 @@ class DemoCurriculum:
         self.win = np.zeros(self.n, np.float64)
         self.decay = 0.99
         self._cool = 0
+        # --demo-cooldown C (20 = the reference implementation's hardcoded value, unchanged):
+        # iterations between two moves of tau. At 20 x 524,288 steps per iteration a move costs
+        # >= 10.5M steps whatever the band's success, so a spine of n states at --demo-grow S
+        # takes >= n / S x 10.5M steps even where every band passes at once.
+        self.cooldown = int(cooldown)
+        if self.cooldown < 1:
+            raise ValueError(f"cooldown must be >= 1, got {cooldown}")
+        # --demo-grow-max G (0 = off, the fixed step): under --demo-grow, each advance that
+        # follows an advance doubles the step (S, 2S, 4S, ... up to G); a backoff moves back by
+        # the base S and resets the step to S. Easy stretches are crossed in a few moves, the
+        # precise ones still at S.
+        self.grow_max = int(grow_max)
+        if self.grow_max and (not self.grow or self.grow_max < self.grow):
+            raise ValueError("grow_max needs grow > 0 and grow_max >= grow")
+        self._step = self.grow
         self.rng = np.random.default_rng(seed)
         self._key = {tuple(np.round(np.asarray(r["origin"], np.float64), 1)): i
                      for i, r in enumerate(self.S)}
@@ -151,13 +167,17 @@ class DemoCurriculum:
         moved = 0
         if ep >= self.min_ep and self._cool == 0:
             if r >= self.rate and self.tau > 0:
-                self.tau = max(0, self.tau - step)
+                self.tau = max(0, self.tau - (self._step if self.grow_max else step))
                 moved = -1
+                if self.grow_max:
+                    self._step = min(2 * self._step, self.grow_max)
             elif r < self.rate and self.tau < self.n - 1:
                 self.tau = min(self.n - 1, self.tau + step)
                 moved = +1
+                if self.grow_max:
+                    self._step = self.grow
             if moved:
-                self._cool = 20
+                self._cool = self.cooldown
         d_lo, d_hi = self._draw()
         self.last_info = (f"demo starts [{d_lo},{d_hi}]/{self.n} "
                           f"(frontier band [{lo},{hi}]) "
@@ -170,7 +190,8 @@ class DemoCurriculum:
             d_lo, d_hi = self._draw()
             print(f"demo curriculum: tau {'<- earlier' if moved < 0 else '-> later (backoff)'}"
                   f" starts [{d_lo},{d_hi}] (success {r:.1%} "
-                  f"over {ep:.0f} eps)")
+                  f"over {ep:.0f} eps)"
+                  + (f" next step {self._step}" if self.grow_max else ""))
 
     def region_report(self, bins: int = 10) -> str:
         """Per-region episodes and finish rate over the whole spine.

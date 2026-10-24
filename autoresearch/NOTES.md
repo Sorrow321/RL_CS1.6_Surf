@@ -619,3 +619,49 @@ of the line kept cold. TRAIN_ONLY in record_ckpt.
 * pbr2b3_dft1 (02:45 UTC): g2cur6's 3.285B + pbr1b1's gate-2 curriculum flag set (tau0 1240,
   window/grow 5) + --demo-front-temp 2 --demo-front-ticks 40 --demo-front-view 20 (yaw sigma
   0.011 -> 0.22 rad), 450M steps.
+* pbr2b3_dft1 result (3.285-3.364B, stopped 02:51 UTC): band [1240,1244] 78% on the first visit
+  (round 1's g2cur6 log: 16-37%), [1235,1239] 0.0 / 0.0 / 0.3 / 0.0% over four visits of 500
+  episodes each (round 1: 0.0-0.4%). Evals 3.223 / 3.192 (pit). Keys at T 3 + yaw sigma x20 for
+  the first 40 ticks of a band episode do not crack it: temperature is not the missing piece.
+* WHY (measured on the spine and the incumbent eval): the greedy policy looks within +-7 deg of
+  its velocity at speed (incumbent traj_1403518976, 9,974 rows with |v_h| > 200: offset p5/p95
+  -7.2 / +7.1 deg - the yaw-mean head was zeroed in round 1), while line_a's view is a median
+  176 deg off the velocity through the flight [1150,1250) and 139 deg at the band (88 deg on the
+  ridge ride [1000,1150), 101 deg on the north side [1500,1881); only the tunnel slide
+  [700,1000) looks ahead). The explorer's uniform yaw actions left it there. The core turns the
+  view at most atan(30/|v|) per tick (~4 deg/tick at 420 u/s): a spawn at 1235 needs ~34 ticks
+  to bring the view round and hits the wall in ~14. With the view 139 deg off, the policy's
+  habitual forward/left keys turn the velocity LEFT (round 1's probe: it turns north and slides
+  into the pit's north end); the line's right turn is back+left with that view. A spawn-semantics
+  defect of the --keys-hold-spawn-duck family: the state carries an artifact of the explorer.
+* `tools/spine_canon_view.py` (new): the same spine with yaw = the velocity heading on every row
+  with |v_h| >= 100 (the core's absolute-view regime); slower rows and every other field
+  unchanged -> autoresearch/spines/pbr2b3_line_a_canon.npy (md5 8de7e89f...).
+* pbr2b3_canon1 (02:53 UTC): dft1's launch on the canonical spine, NO temperature (attribution).
+* pbr2b3_canon1 result (3.285-3.381B, 02:53-02:59 UTC): with the canonical view the policy LOST
+  the post-bounce skill it had learned on the line's own views: [1240,1244] 0.0% (dft1: 78%),
+  [1245,1249] 0.2%, then oscillating [1250] 22-60% <-> [1255] 13%. Evals 3.235 / 3.142.
+  Round 1 trained 1880 -> 1250 on the explorer's views, and the policy's post-impact behaviour
+  is tuned to them.
+* Local CPU probes (record_ckpt from single line states, greedy, g2cur6 3.285B; 03:00 UTC): from
+  1236 and 1242, with either view, the policy holds RIGHT strafe with its view ~1.5 deg right of
+  the velocity (recorded offset +4 = the target set a tick earlier, the heading having turned
+  5.6 deg since): that turns the velocity ~5.6 deg/tick (air accel: 30 - |v| cos(91.5 deg) ~ 41
+  u/s per tick at 420 u/s). The line turns ~2 deg/tick (-31 -> -55 deg over 1236-1248) into the
+  wall bounce. Canonical view: the policy over-turns (heading -96 at +12 ticks vs the line's -55),
+  passes south of the corner, falls into the pit (3.17-3.21%). Line view: the view first swings
+  ~140 deg at the 10 deg/tick ceiling (14 ticks) with no effective wishdir, the right turn starts
+  after the line's impact tick and it flies past the corner (3.03-3.06%). So the band needs a
+  WEAKER turn: right strafe with the view ~+2 deg LEFT of the velocity (accel ~15 u/s/tick), a
+  3.5 deg change of the yaw command - ~6 sigma at the policy's yaw sigma 0.011 rad (0.6 deg).
+  dft1's x20 (12.6 deg sigma) on the line's view was far too wide for that and could not beat
+  the swing anyway.
+* pbr2b3_canon2 (03:00 UTC): resume canon1's ckpt_latest (3.381B, md5 acfe1d80...) on the
+  canonical spine, tau0 1255, + --demo-front-temp 0.5 --demo-front-view 6 --demo-front-ticks 40
+  (yaw sigma ~3.8 deg, keys logits / 1.5 for a band spawn's first 0.4 s).
+* `--demo-cooldown C` / `--demo-grow-max G` (new, off = the old rule; tests/python/test_demo_pace.py):
+  the curriculum's 20-iteration cooldown made every move of tau cost >= 10.5M steps (n / grow x
+  10.5M for a whole spine: line_a at grow 5 = ~4B steps even if every band passed at once).
+  C spaces the moves C iterations apart; G doubles the step on consecutive advances (S, 2S, ...
+  G) and a backoff moves back by S and resets it, so easy stretches cross in a few moves and the
+  precise ones still go at S.

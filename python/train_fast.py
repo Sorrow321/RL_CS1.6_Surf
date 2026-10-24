@@ -4777,6 +4777,16 @@ def main() -> None:
                          "short of the goal - a searched line through a hard room - then trains "
                          "backward to the map start like a finishing one. Needs --race-ratchet. "
                          "Config only when set; ckpt restores")
+    ap.add_argument("--demo-cooldown", type=int, default=None,   # None = 20
+                    help="--demo-file: iterations between two moves of the curriculum's tau "
+                         "(default 20, the reference implementation's constant): every move "
+                         "costs at least this many iterations whatever the band's success. "
+                         "Config only when set; not restored")
+    ap.add_argument("--demo-grow-max", type=int, default=None,   # None = off
+                    help="--demo-grow S: each advance that follows an advance doubles the step "
+                         "(S, 2S, 4S ... up to this); a backoff moves back by S and resets the "
+                         "step to S. Easy stretches cross in a few moves, precise ones at S. "
+                         "Config only when set; not restored")
     ap.add_argument("--demo-front-temp", type=float, default=None,   # None = off
                     help="--demo-file: T > 0 = an env whose episode STARTED on the curriculum's "
                          "frontier band [tau, tau+D-1] samples the keys and the yaw at 1 + T "
@@ -11426,6 +11436,8 @@ def main() -> None:
     else:
         respawn = None
     demo = None
+    if not args.demo_file and (args.demo_cooldown is not None or args.demo_grow_max is not None):
+        raise SystemExit("--demo-cooldown / --demo-grow-max pace the --demo-file curriculum")
     if not 0.0 <= float(args.demo_front_frac) <= 1.0:
         raise SystemExit("--demo-front-frac must be in [0, 1]")
     if float(args.demo_front_frac) > 0.0:
@@ -11435,11 +11447,25 @@ def main() -> None:
             raise SystemExit("--demo-front-frac needs --demo-grow: the sliding "
                              "window already draws only its band")
     if args.demo_file:
+        _dkw = {}
+        if args.demo_cooldown is not None:
+            _dkw["cooldown"] = int(args.demo_cooldown)
+        if args.demo_grow_max is not None:
+            if not args.demo_grow or int(args.demo_grow_max) < int(args.demo_grow):
+                raise SystemExit("--demo-grow-max G needs --demo-grow S and G >= S")
+            _dkw["grow_max"] = int(args.demo_grow_max)
         demo = DemoCurriculum(np.load(args.demo_file),
                               window=args.demo_window, rate=args.demo_rate,
                               min_ep=args.demo_min_ep, grow=args.demo_grow,
                               front_frac=float(args.demo_front_frac),
-                              tau0=args.demo_tau0)
+                              tau0=args.demo_tau0, **_dkw)
+        if _dkw:
+            print("demo curriculum pace: "
+                  + (f"cooldown {demo.cooldown} iterations" if "cooldown" in _dkw else "")
+                  + (", " if len(_dkw) == 2 else "")
+                  + (f"step doubling {args.demo_grow} -> {demo.grow_max} on consecutive "
+                     f"advances, back to {args.demo_grow} on a backoff"
+                     if "grow_max" in _dkw else ""))
         if args.demo_tau0 is not None:
             print(f"--demo-tau0 {args.demo_tau0}: the curriculum starts at spine state "
                   f"{demo.tau} of {demo.n}")
@@ -14539,6 +14565,11 @@ def main() -> None:
     if float(args.front_temp or 0.0) > 0.0:
         meta["config"]["front_temp"] = float(args.front_temp)
         meta["config"]["front_band"] = float(args.front_band)
+    # --demo-cooldown / --demo-grow-max: written ONLY when set (a record of the run)
+    if args.demo_file and args.demo_cooldown is not None:
+        meta["config"]["demo_cooldown"] = int(args.demo_cooldown)
+    if args.demo_file and args.demo_grow_max is not None:
+        meta["config"]["demo_grow_max"] = int(args.demo_grow_max)
     # --demo-front-temp: written ONLY when on (a record of the run, never restored)
     if args.demo_front_temp is not None:
         meta["config"]["demo_front_temp"] = float(args.demo_front_temp)
