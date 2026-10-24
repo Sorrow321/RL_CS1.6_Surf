@@ -586,3 +586,36 @@ the backward curriculum (--demo-file + --demo-success-d) on the found line. Not 
 * **Next:** a line without the wall-bounce manoeuvre (a coarser heading key, or a longer GE), a
   held view temperature for curriculum spawns, and a curriculum that starts with all four fixes.
   Everything needed to resume is in the repo (autoresearch/spines/, the flag set above).
+
+## pbr2b3 (round 2, slot 3) - 2026-10-24 02:18 UTC start
+
+Box: 57454337, RTX 5080, 0.60 $/h, Florida (machine 118632), 32 threads.
+
+### Harness issue: the round-1 checkpoint was not handed on
+`AR_BRANCH.json` incumbent `ckpt: null` ("no complete checkpoint in pbr1b1_g2cur2"): the winning
+eval is g2cur2's first (1.4035B), but pbr1b1 pulled the PARENT run's checkpoint
+(pbr1b1_g2cur/ckpt_latest.pt, 1.403B, md5 b8b53646...), which the orchestrator's
+handon_ckpt does not look for. This branch uses the two checkpoints the winner's RESULT.json and
+NOTES name (md5-verified, read by exact path only, nothing else of that directory):
+g2cur6 ckpt_latest 3.285B (md5 a6559938..., the most gate-2 curriculum progress) and g2cur
+ckpt_latest 1.403B (md5 b8b53646..., the 3.236 eval's weights), copied to
+$AR_HOME/runs/pbr2b3/_ckpts/. Operator: a winner's best eval made 0.5M steps into a resume has
+its weights in the parent run; handon_ckpt could fall back to the run's `--ckpt` source.
+
+### Probes (02:30-02:45 UTC, box)
+* Uniform random bursts (entry_search, 95% repeat, 700 ticks) from line_a states 1215, 1225,
+  1230, 1235, 1240, 1245 to the curriculum's success line (d <= 55,001 on the grader field):
+  0 hits in 57,344 bursts - even from 1245, where the policy succeeds ~77%. The line past the
+  bounce (south ramp, stop, north along the east side, U-turn west) is skill, not luck.
+* record_ckpt-based benches are too slow for this (one env, ~1 min per 1,000-tick episode on a
+  loaded box): tools/band_bench.py exists but use the trainer's own curriculum log instead.
+
+### --demo-front-temp T (new, flag off bit-identical; tests/python/test_demo_front_temp.py)
+An env whose episode started on the backward curriculum's frontier band [tau, tau+D-1] samples
+the keys at 1 + T and the yaw sigma x --demo-front-view (default 1 + T) for its first
+--demo-front-ticks ticks; the camera-only pitch head stays cold; PPO scores each row at its own
+temperature (the --front-temp slots). Exploration where the curriculum is stuck, the learned rest
+of the line kept cold. TRAIN_ONLY in record_ckpt.
+* pbr2b3_dft1 (02:45 UTC): g2cur6's 3.285B + pbr1b1's gate-2 curriculum flag set (tau0 1240,
+  window/grow 5) + --demo-front-temp 2 --demo-front-ticks 40 --demo-front-view 20 (yaw sigma
+  0.011 -> 0.22 rad), 450M steps.

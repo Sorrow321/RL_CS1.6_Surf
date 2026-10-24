@@ -18,3 +18,9 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   of two Go-Explore phase-1 archives rooted at the true spawn. Used as `--spawn-states` (0.3-0.4)
   to keep the start room practised. Caveat (NOTES.md): the two entry_search stage target boxes
   were chosen from core probes of this map.
+* `pbr2b3_line_a_canon.npy` (1,881 states, md5 8de7e89f9e2b9abedc13b37f68a7bf68): pbr1b1_line_a.npy
+  with the VIEW re-aimed along the velocity on every row with |v_h| >= 100 u/s (1,316 rows;
+  `tools/spine_canon_view.py`); every other field is identical. The explorer's random actions had
+  left the view a median 48 deg (176 deg through the flight) off the velocity, while a
+  --view-absolute velocity policy looks within +-7 deg of it and turns at ~4 deg/tick at speed.
+  Same provenance as line_a (pbr2b3, round 2).
