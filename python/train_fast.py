@@ -4777,6 +4777,39 @@ def main() -> None:
                          "short of the goal - a searched line through a hard room - then trains "
                          "backward to the map start like a finishing one. Needs --race-ratchet. "
                          "Config only when set; ckpt restores")
+    ap.add_argument("--auto-spine", action="store_true",
+                    help="--demo-file + --demo-success-d: the search -> curriculum loop run by "
+                         "the trainer. After a greedy eval in which --auto-spine-quorum "
+                         "episodes crossed the spine's success line (or after "
+                         "--auto-spine-patience steps without that), ckpt_latest goes to "
+                         "tools/auto_spine.py (beam_tas from the true start on these weights; "
+                         "the frontier line trimmed at its last map contact and cut at its "
+                         "best d; Go-Explore --exact-chains from the line's own last seconds "
+                         "when the beam does not beat the greedy frontier) and a spine that "
+                         "beats the greedy frontier by --auto-spine-gain replaces the "
+                         "curriculum's (restarting at its end) and its success line. Single "
+                         "map, single GPU. Config only when on; never restored")
+    ap.add_argument("--auto-spine-quorum", type=int, default=5,
+                    help="--auto-spine: greedy-eval episodes that must cross the success line")
+    ap.add_argument("--auto-spine-patience", type=float, default=0.0,
+                    help="--auto-spine: also search after this many steps without a new spine "
+                         "(0 = only on the quorum)")
+    ap.add_argument("--auto-spine-delay", type=float, default=0.0,
+                    help="--auto-spine: no search before this many steps after the "
+                         "launch (a resume's first eval is the weights it resumed)")
+    ap.add_argument("--auto-spine-retry", type=float, default=3e8,
+                    help="--auto-spine: steps to wait after a search that found no spine")
+    ap.add_argument("--auto-spine-gain", type=float, default=200.0,
+                    help="--auto-spine: u a new spine's end must beat the greedy frontier by "
+                         "(the median greedy episode's deepest d)")
+    ap.add_argument("--auto-spine-envs", type=int, default=4096,
+                    help="--auto-spine: beam / Go-Explore population")
+    ap.add_argument("--auto-spine-ge-minutes", type=float, default=10.0,
+                    help="--auto-spine: Go-Explore budget when the beam falls short (0 = none)")
+    ap.add_argument("--auto-spine-extra-secs", type=float, default=15.0,
+                    help="--auto-spine: the beam runs this long past the eval's longest episode")
+    ap.add_argument("--auto-spine-timeout", type=float, default=2400.0,
+                    help="--auto-spine: wall-clock cap (s) of one search")
     ap.add_argument("--demo-cooldown", type=int, default=None,   # None = 20
                     help="--demo-file: iterations between two moves of the curriculum's tau "
                          "(default 20, the reference implementation's constant): every move "
@@ -11521,6 +11554,25 @@ def main() -> None:
                                  "--race-ratchet")
             if args.maps:
                 raise SystemExit("--demo-success-d is single-map")
+        if args.auto_spine:
+            if args.demo_success_d is None:
+                raise SystemExit("--auto-spine moves the --demo-success-d line: give it")
+            if args.maps or D.enabled:
+                raise SystemExit("--auto-spine is single-map, single-GPU")
+            if int(args.auto_spine_quorum) < 1:
+                raise SystemExit("--auto-spine-quorum must be >= 1")
+            print(f"--auto-spine: a greedy eval with >= {int(args.auto_spine_quorum)} episodes "
+                  f"past the success line"
+                  + (f" (or {float(args.auto_spine_patience):,.0f} steps without a new spine)"
+                     if float(args.auto_spine_patience) > 0 else "")
+                  + f" runs tools/auto_spine.py on ckpt_latest (beam {int(args.auto_spine_envs)}"
+                  f" envs, +{float(args.auto_spine_extra_secs):g}s past the eval's longest "
+                  f"episode; Go-Explore {float(args.auto_spine_ge_minutes):g} min when the beam"
+                  f" falls short); a spine beating the greedy frontier by "
+                  f"{float(args.auto_spine_gain):g}u replaces this one")
+    elif args.auto_spine:
+        raise SystemExit("--auto-spine needs --demo-file (the first spine) and --demo-success-d")
+    if args.demo_file:
         if float(args.demo_front_frac) > 0.0:
             print(f"--demo-front-frac {args.demo_front_frac:g}: that share of "
                   f"the demo draws comes from the frontier band [tau,tau+"
@@ -14486,6 +14538,19 @@ def main() -> None:
     if args.demo_file and args.demo_success_bonus is not None:
         # --demo-success-bonus: dumped only when set; a resume restores it
         meta["config"]["demo_success_bonus"] = float(args.demo_success_bonus)
+    if args.auto_spine:
+        # --auto-spine: dumped only when on (a flag-off run.json is the control's byte for
+        # byte); never restored - the loop is a property of the run, not of the weights
+        meta["config"].update(
+            auto_spine=1, auto_spine_quorum=int(args.auto_spine_quorum),
+            auto_spine_patience=float(args.auto_spine_patience),
+            auto_spine_retry=float(args.auto_spine_retry),
+            auto_spine_delay=float(args.auto_spine_delay),
+            auto_spine_gain=float(args.auto_spine_gain),
+            auto_spine_envs=int(args.auto_spine_envs),
+            auto_spine_ge_minutes=float(args.auto_spine_ge_minutes),
+            auto_spine_extra_secs=float(args.auto_spine_extra_secs),
+            auto_spine_timeout=float(args.auto_spine_timeout))
     if args.race_sr:
         # --race-sr: dumped only when on, so a flag-off run.json is the
         # control's byte for byte (test_int_split's identity check)
@@ -15458,6 +15523,107 @@ def main() -> None:
             DEMO_BONUS_N[0] += int(hit.sum())
         paid[ended] = rec[ended] <= DEMO_END_D
         return r
+
+    # --auto-spine: the search -> curriculum loop (tools/auto_spine.py). AUTO["eval"] is set by
+    # the greedy eval below; the hook after the eval block reads it.
+    AUTO_SPINE = bool(args.auto_spine) and demo is not None and DEMO_END_D is not None
+    AUTO = {"eval": None, "last": None, "retry_at": 0, "k": 0, "field": None}
+    if AUTO_SPINE and float(args.auto_spine_delay) > 0:
+        AUTO["retry_at"] = int(global_step + float(args.auto_spine_delay))
+        print(f"--auto-spine-delay: no search before step {AUTO['retry_at']:,}")
+
+    def _auto_spine_after_eval(ev_path):
+        """Read the greedy eval; on the quorum (or the patience) run tools/auto_spine.py on
+        ckpt_latest and swap a spine that beats the greedy frontier into the curriculum."""
+        nonlocal DEMO_END_D
+        import subprocess as _sp
+        from surfgym.route import episodes_from_traj
+        _f = slots[0].reward_field if slots[0].reward_field is not None else slots[0].goal_field
+        eps = [e for e in episodes_from_traj(ev_path) if len(e)][:max(1, int(args.eval_eps
+                                                                            or 9))]
+        if not eps:
+            return
+        bests, lens = [], []
+        for e in eps:
+            d = np.asarray(_f.sample(np.asarray(e[:, 1:4], np.float64)), np.float64)
+            d = np.where(d < _f.reach_max - 0.5 * _f.cell, d, np.inf)
+            bests.append(float(d.min()))
+            lens.append(len(e))
+        bests = np.asarray(bests)
+        m = int((bests <= DEMO_END_D).sum())
+        med = float(np.median(bests))
+        if AUTO["last"] is None:
+            AUTO["last"] = int(global_step)
+        quorum = m >= int(args.auto_spine_quorum)
+        pat = (float(args.auto_spine_patience) > 0
+               and global_step - AUTO["last"] >= float(args.auto_spine_patience))
+        go = (quorum or pat) and global_step >= AUTO["retry_at"]
+        print(f"[{global_step:>13,d}] auto-spine: {m}/{len(eps)} greedy episodes past the "
+              f"success line d <= {DEMO_END_D:,.0f}; greedy frontier (median deepest d) "
+              f"{med:,.0f}" + ("  -> SEARCH" + (" (patience)" if pat and not quorum else "")
+                               if go else ""), flush=True)
+        if not go:
+            return
+        adir = out / "auto"
+        adir.mkdir(parents=True, exist_ok=True)
+        if AUTO["field"] is None:
+            AUTO["field"] = adir / "field.npz"
+            np.savez(AUTO["field"], grid=np.asarray(_f.grid, np.float32),
+                     quant=np.float64(1.0), mins=np.asarray(_f.mins, np.float64),
+                     cell=np.float64(_f.cell), reach_max=np.float64(_f.reach_max))
+        save_ckpt("latest")
+        AUTO["k"] += 1
+        kdir = adir / f"k{AUTO['k']:02d}"
+        tps = 1000.0 / float(args.tick_ms or 10.0)
+        cmd = [sys.executable, "-u", str(Path(__file__).resolve().parents[1] / "tools"
+                                         / "auto_spine.py"),
+               "--ckpt", str(out / "ckpt_latest.pt"), "--map", str(slots[0].core.bsp_path),
+               "--field", str(AUTO["field"]), "--out", str(kdir), "--greedy-d", f"{med:.1f}",
+               "--gain", f"{float(args.auto_spine_gain):g}",
+               "--beam-ticks", str(int(max(lens) + float(args.auto_spine_extra_secs) * tps)),
+               "--envs", str(int(args.auto_spine_envs)),
+               "--ge-minutes", f"{float(args.auto_spine_ge_minutes):g}",
+               "--act-every", str(int(K)), "--seed", str(AUTO["k"]),
+               "--timeout", f"{float(args.auto_spine_timeout):g}"]
+        if args.maxvel is not None:
+            cmd += ["--maxvel", f"{float(args.maxvel):g}"]
+        t0 = time.time()
+        print(f"[{global_step:>13,d}] auto-spine search {AUTO['k']}: " + " ".join(cmd),
+              flush=True)
+        res = None
+        try:
+            r = _sp.run(cmd, capture_output=True, text=True, encoding="utf-8",
+                        errors="replace", timeout=float(args.auto_spine_timeout) + 900)
+            (kdir / "auto_spine.log").write_text(r.stdout + r.stderr, encoding="utf-8")
+            for ln in r.stdout.splitlines()[::-1]:
+                if ln.startswith("AUTO_SPINE "):
+                    res = json.loads(ln[len("AUTO_SPINE "):])
+                    break
+        except (_sp.TimeoutExpired, OSError, ValueError) as ex:
+            print(f"!! auto-spine search {AUTO['k']} failed: {ex}", flush=True)
+        dt = time.time() - t0
+        if not res or not res.get("spine"):
+            AUTO["retry_at"] = int(global_step + float(args.auto_spine_retry))
+            AUTO["last"] = int(global_step)
+            print(f"[{global_step:>13,d}] auto-spine search {AUTO['k']}: NO new spine in "
+                  f"{dt:.0f}s ({json.dumps(res) if res else 'no result'}); next try at "
+                  f"step {AUTO['retry_at']:,}", flush=True)
+            return
+        sp = np.load(res["spine"])
+        demo.reset_spine(sp)
+        _de = float(_f.sample(np.asarray(demo.S[-1]["origin"], np.float64)[None])[0])
+        DEMO_END_D = _de + float(args.demo_success_d)
+        DEMO_PAID[0] = None
+        demo_idx[:] = -1
+        AUTO["last"] = int(global_step)
+        AUTO["retry_at"] = 0
+        (adir / "current.json").write_text(json.dumps(
+            {"step": int(global_step), "k": AUTO["k"], "spine": res["spine"],
+             "success_d": DEMO_END_D, **res}, indent=1), encoding="utf-8")
+        print(f"[{global_step:>13,d}] auto-spine search {AUTO['k']}: NEW SPINE from "
+              f"{res.get('source')} ({demo.n} states, end d {_de:,.0f}, greedy frontier "
+              f"{med:,.0f}) in {dt:.0f}s -> {res['spine']}; success line d <= "
+              f"{DEMO_END_D:,.0f}; the curriculum restarts at its end", flush=True)
     b_logp = torch.zeros((T, N), device=device)
     b_val = torch.zeros((T, N), device=device)
     b_rew = torch.zeros((T, N), device=device)
@@ -20279,6 +20445,8 @@ def main() -> None:
                                  float(sum(_tpat)) / len(_tpat),
                                  d_fn=None if _gfld is None else _rg_d)
                     print(f"[{global_step:>13,d}] " + GREEDY.line())
+                if AUTO_SPINE and _i == 0 and not _s.heldout:
+                    AUTO["eval"] = path     # --auto-spine: read after the eval block
                 st = episode_stats(path)
                 _f = float(np.mean([e["fwd_max"] for e in st])) if st else 0.0
                 _p = float(np.mean([e["path"] for e in st])) if st else 0.0
@@ -20539,6 +20707,15 @@ def main() -> None:
                       f"finished {agg_fin_trig:6.2%} "
                       f"({AGG['n_trigger']} maps)")
         tm.add("record", t_rec)
+        if AUTO_SPINE and AUTO["eval"] is not None:
+            # --auto-spine: the greedy eval just written decides whether to search
+            _ap, AUTO["eval"] = AUTO["eval"], None
+            try:
+                _auto_spine_after_eval(_ap)
+            except Exception as _ex:         # a failed search never ends the run
+                AUTO["retry_at"] = int(global_step + float(args.auto_spine_retry))
+                print(f"!! auto-spine: {type(_ex).__name__}: {_ex}; next try at step "
+                      f"{AUTO['retry_at']:,}", flush=True)
         t_ck = tm.now()
         if global_step >= next_ckpt:
             next_ckpt = global_step + int(args.ckpt_every)

@@ -106,6 +106,12 @@ TRAIN_ONLY = frozenset({
     "demo_front_temp", "demo_front_ticks", "demo_front_view",
     # --demo-cooldown / --demo-grow-max: the TRAINING curriculum's pace
     "demo_cooldown", "demo_grow_max",
+    # --auto-spine: the TRAINING curriculum's spine replaced by the run's own search; a
+    # recording spawns at the map start like the trainer's eval
+    "auto_spine", "auto_spine_quorum", "auto_spine_patience", "auto_spine_retry",
+    "auto_spine_delay",
+    "auto_spine_gain", "auto_spine_envs", "auto_spine_ge_minutes", "auto_spine_extra_secs",
+    "auto_spine_timeout",
     # --respawn-greedy-temp: the TRAINING rollout's sampling temperature for greedy-row spawns
     "respawn_greedy_temp", "respawn_greedy_temp_ticks", "respawn_greedy_temp_view",
     # --ge-minutes: a share of the TRAINING spawn pool drawn from the run's own Go-Explore

@@ -112,6 +112,21 @@ class DemoCurriculum:
                      for i, r in enumerate(self.S)}
         self.last_info = ""
 
+    def reset_spine(self, states, tau0=None) -> None:
+        """Swap in a new spine mid-run (train_fast --auto-spine): the curriculum restarts at
+        the new spine's end (or ``tau0``) with fresh outcome tables, the step and the cooldown
+        reset; window, rate, pace and the rng stream carry on."""
+        self.S = np.asarray(states, STATE_DTYPE)
+        self.n = len(self.S)
+        self.tau = self.n - 1 if tau0 is None else int(np.clip(int(tau0), 0, self.n - 1))
+        self.ep = np.zeros(self.n, np.float64)
+        self.win = np.zeros(self.n, np.float64)
+        self._cool = 0
+        self._step = self.grow
+        self._key = {tuple(np.round(np.asarray(r["origin"], np.float64), 1)): i
+                     for i, r in enumerate(self.S)}
+        self.last_info = ""
+
     def _band(self) -> tuple[int, int]:
         """Inclusive [lo, hi] of the frontier band scoring the advance."""
         if self.grow:

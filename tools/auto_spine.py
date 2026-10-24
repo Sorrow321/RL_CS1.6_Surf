@@ -1,0 +1,295 @@
+#!/usr/bin/env python3
+"""auto_spine.py - the next curriculum spine from the policy's OWN search (pbr3b4, 2026-10-24).
+
+One step of the search -> curriculum loop that carried surf_princessburglar_b26 from 3.2% to
+20.4% in round 2 (autoresearch/NOTES.md, "The method so far"), written down as a rule a trainer
+can run by itself (train_fast --auto-spine) instead of an agent choosing cut points by eye:
+
+1. BEAM: tools/beam_tas.py from the TRUE start on the newest weights - N stochastic copies of
+   the policy, a greedy floor, the leaders by goal-field d cloned every 25 decisions,
+   --save-frontier replays the frontier lineage open-loop into per-tick states.
+2. CUT: the line is trimmed at the LAST TICK THE MAP PUSHED BACK (tools/pick_selfline.py's
+   contact_cut: vertical acceleration departing from the gravity step - a line that ends in a
+   fatal fall ends where the track ended, not in the fall, which a d-ranked search otherwise
+   rewards), then cut at its best d inside that.
+3. GO-EXPLORE when the beam does not beat the greedy frontier by --gain: tools/explore_phase1.py
+   --exact-chains rooted at the line's own last --roots-secs seconds before its cut,
+   tools/ge_replay.py replays the deepest chain exactly, the chain is spliced onto the line at
+   its root and its views are put along the velocity (tools/spine_canon_view.py: the uniform
+   explorer's views are arbitrary); then the same CUT.
+4. The spine is written only if its end beats --greedy-d (the greedy eval's frontier) by
+   --gain; the last stdout line is ``AUTO_SPINE {json}`` either way.
+
+No constant here comes from a map: every threshold is a field distance margin, a time, or a
+search budget, and the same flags run on any map. No demo or record data enters (CLAUDE.md
+sections 0 and 0b): the beam's proposals are the policy's own, the explorer's actions are
+uniform.
+
+    python tools/auto_spine.py --ckpt runs/X/ckpt_latest.pt --map maps/M.bsp \\
+        --field maps/M.goalc_32.npz --out runs/X/auto/k3 --greedy-d 45500 --beam-ticks 3200
+
+    python tools/auto_spine.py --selftest          # the cut rules on synthetic lines
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+import numpy as np
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "python"))
+sys.path.insert(0, str(ROOT / "tools"))
+
+TICKS_PER_S = 100          # the beam and the explorer run the checkpoint's tick: 10 ms here
+
+
+def load_field(path):
+    from surfgym.goalfield import GoalField
+    z = np.load(path, allow_pickle=False)
+    return GoalField(z["grid"].astype(np.float32) * float(z["quant"]), z["mins"],
+                     float(z["cell"]), float(z["reach_max"]))
+
+
+def field_d(field, states) -> np.ndarray:
+    """d of each state's origin on the field; off-field (the unreachable sentinel) -> inf."""
+    o = np.asarray(states["origin"], np.float64).reshape(-1, 3)
+    d = np.asarray(field.sample(o), np.float64)
+    return np.where(d < field.reach_max - 0.5 * field.cell, d, np.inf)
+
+
+def contact_cut_states(states, tol: float = 1.0) -> int:
+    """The index of the last state the map pushed back on (pick_selfline.contact_cut on the
+    states' vertical velocity: between contacts vz falls by one gravity step per tick)."""
+    from pick_selfline import contact_cut
+    v = np.asarray(states["velocity"], np.float64).reshape(-1, 3)
+    rows = np.zeros((len(v), 8))
+    rows[:, 4:7] = v
+    return int(contact_cut(rows, tol)[0])
+
+
+def cut_line(states, d, tol: float = 1.0) -> tuple[int, float]:
+    """-> (index of the line's end, its d): the best d at or before the last contact."""
+    if len(states) == 0:
+        return -1, float("inf")
+    c = contact_cut_states(states, tol)
+    e = int(np.argmin(d[:c + 1]))
+    return e, float(d[e])
+
+
+def clean(states):
+    out = np.array(states, copy=True)
+    out["tick"] = 0
+    out["stuck_ticks"] = 0
+    return out
+
+
+def run(cmd, log, timeout):
+    print("+ " + " ".join(str(c) for c in cmd), flush=True)
+    t0 = time.time()
+    with open(log, "w", encoding="utf-8") as fh:
+        try:
+            r = subprocess.run([str(c) for c in cmd], stdout=fh, stderr=subprocess.STDOUT,
+                               cwd=str(ROOT), timeout=timeout)
+            rc = r.returncode
+        except subprocess.TimeoutExpired:
+            rc = -9
+    print(f"  exit {rc} after {time.time() - t0:.0f}s (log {log})", flush=True)
+    return rc
+
+
+def beam(a, out: Path):
+    bd = out / "beam"
+    bd.mkdir(parents=True, exist_ok=True)
+    cmd = [sys.executable, "-u", ROOT / "tools" / "beam_tas.py", a.ckpt, "--map", a.map,
+           "--envs", a.envs, "--resample-every", 25, "--score", "d",
+           "--greedy-envs", a.greedy_envs, "--allow-nonfinisher", "--save-frontier",
+           "--skip-gate", "--route-file", "none", "--max-ticks", a.beam_ticks,
+           "--torch-seed", a.seed, "--log-every", 5, "--out-dir", bd]
+    rc = run(cmd, out / "beam.log", a.timeout)
+    f = bd / "beam_frontier.npz"
+    if not f.exists():
+        return None, {"beam_rc": rc}
+    z = np.load(f, allow_pickle=False)
+    return z["states"], {"beam_rc": rc, "beam_replay_ok": int(z["replay_ok"]),
+                         "beam_frontier_d": float(z["frontier_d"]),
+                         "beam_frontier_tick": int(z["frontier_tick"])}
+
+
+def stall_tick(d, margin: float) -> int:
+    """The first tick at which the line came within ``margin`` u of its best d: where it
+    stopped making progress (a line that crawls on after a crash keeps its best d for many
+    seconds, and roots on that crawl explore a dead end - pbr3b4's first beam hopped on a ledge
+    for 15 s after losing 1,000 u/s there)."""
+    ok = np.flatnonzero(np.asarray(d) <= float(np.min(d)) + float(margin))
+    return int(ok[0]) if len(ok) else int(np.argmin(d))
+
+
+def go_explore(a, out: Path, line, end: int):
+    """GE --exact-chains rooted at the line's last --roots-secs before ``end``; the deepest
+    chain replayed and spliced onto the line at its root -> (spliced states, info)."""
+    from spine_canon_view import canon_view
+    from surfgym.core import STATE_DTYPE
+    lo = max(0, end - int(round(a.roots_secs * TICKS_PER_S)))
+    idx = np.unique(np.linspace(lo, end, max(2, int(a.roots_n))).round().astype(int))
+    roots = clean(line[idx])
+    gd = out / "ge"
+    gd.mkdir(parents=True, exist_ok=True)
+    np.save(gd / "roots.npy", roots)
+    cmd = [sys.executable, "-u", ROOT / "tools" / "explore_phase1.py", "--map", a.map,
+           "--out", gd, "--envs", a.envs, "--cell", a.ge_cell, "--cell-energy", a.ge_energy,
+           "--decisions", 100, "--act-every", a.act_every, "--exact-chains",
+           "--roots-spine", gd / "roots.npy", "--max-minutes", a.ge_minutes,
+           "--goals", 1, "--seed", a.seed]
+    if a.maxvel:
+        cmd += ["--maxvel", a.maxvel]
+    if a.threads:
+        cmd += ["--threads", a.threads]
+    rc = run(cmd, out / "ge.log", a.ge_minutes * 60 + 600)
+    info = {"ge_rc": rc, "ge_roots": [int(i) for i in idx]}
+    if not (gd / "archive.npz").exists():
+        return None, info
+    rc2 = run([sys.executable, "-u", ROOT / "tools" / "ge_replay.py", "--map", a.map,
+               "--archive", gd / "archive.npz", "--field", a.field, "--out", gd / "line.npy"],
+              out / "ge_replay.log", 1200)
+    info["ge_replay_rc"] = rc2
+    if not (gd / "line.npy").exists():
+        return None, info
+    gl = np.load(gd / "line.npy")
+    if gl.dtype != STATE_DTYPE or len(gl) < 2:
+        return None, info
+    # the chain starts at one of the roots: find it on the line (roots are exact copies)
+    ro = np.asarray(gl[0]["origin"], np.float64)
+    dist = np.linalg.norm(np.asarray(line["origin"], np.float64) - ro, axis=1)
+    j = int(np.argmin(dist))
+    info.update(ge_root_index=j, ge_root_err=float(dist[j]), ge_chain_len=int(len(gl)))
+    if dist[j] > 1.0:
+        return None, info
+    chain, _m = canon_view(gl[1:])
+    return np.concatenate([np.asarray(line[:j + 1], STATE_DTYPE),
+                           np.asarray(chain, STATE_DTYPE)]), info
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("--ckpt")
+    ap.add_argument("--map")
+    ap.add_argument("--field", help="the goal field the d of every rule is read on (the "
+                                     "trainer's shaping field: <map>.goalc_32.npz)")
+    ap.add_argument("--out", help="output directory (spine.npy, spine.json, logs)")
+    ap.add_argument("--greedy-d", type=float, default=float("inf"),
+                    help="the greedy eval's frontier d; a spine must end below it - --gain")
+    ap.add_argument("--gain", type=float, default=200.0,
+                    help="u of field distance a new spine must beat --greedy-d by")
+    ap.add_argument("--beam-ticks", type=int, default=4000, help="beam_tas --max-ticks")
+    ap.add_argument("--envs", type=int, default=4096)
+    ap.add_argument("--greedy-envs", type=int, default=32)
+    ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--ge-minutes", type=float, default=10.0, help="0 = no GE fallback")
+    ap.add_argument("--ge-cell", type=float, default=32.0)
+    ap.add_argument("--ge-energy", type=float, default=16.0)
+    ap.add_argument("--roots-secs", type=float, default=3.0,
+                    help="Go-Explore roots: the line's last seconds before it stalls")
+    ap.add_argument("--stall-margin", type=float, default=500.0,
+                    help="the line stalls where it first comes within this many u of its "
+                         "best d")
+    ap.add_argument("--roots-n", type=int, default=24)
+    ap.add_argument("--act-every", type=int, default=4)
+    ap.add_argument("--maxvel", type=float, default=None)
+    ap.add_argument("--threads", type=int, default=0)
+    ap.add_argument("--timeout", type=float, default=1800.0, help="beam_tas wall cap (s)")
+    ap.add_argument("--contact-tol", type=float, default=1.0)
+    ap.add_argument("--selftest", action="store_true")
+    a = ap.parse_args(argv)
+    if a.selftest:
+        return selftest()
+    for k in ("ckpt", "map", "field", "out"):
+        if getattr(a, k) is None:
+            ap.error(f"--{k} is required")
+    out = Path(a.out)
+    out.mkdir(parents=True, exist_ok=True)
+    field = load_field(a.field)
+    res = {"greedy_d": a.greedy_d, "gain": a.gain, "spine": None}
+    line, info = beam(a, out)
+    res.update(info)
+    best_src = None
+    if line is not None and len(line):
+        d = field_d(field, line)
+        e, de = cut_line(line, d, a.contact_tol)
+        res.update(beam_len=int(len(line)), beam_end=e, beam_end_d=de,
+                   beam_best_d=float(d.min()))
+        print(f"beam line: {len(line)} states, best d {d.min():,.0f}, cut at {e} "
+              f"(last contact {contact_cut_states(line, a.contact_tol)}) d {de:,.0f}; greedy "
+              f"frontier {a.greedy_d:,.0f}", flush=True)
+        if de < a.greedy_d - a.gain:
+            best_src = ("beam", line[:e + 1], de)
+        elif a.ge_minutes > 0:
+            st = min(e, stall_tick(d, a.stall_margin))
+            res.update(beam_stall=st)
+            gl, gi = go_explore(a, out, line, st)
+            res.update(gi)
+            if gl is not None:
+                gd_ = field_d(field, gl)
+                ge_e, ge_de = cut_line(gl, gd_, a.contact_tol)
+                res.update(ge_len=int(len(gl)), ge_end=ge_e, ge_end_d=ge_de,
+                           ge_best_d=float(gd_.min()))
+                print(f"GE line: {len(gl)} states, best d {gd_.min():,.0f}, cut at {ge_e} "
+                      f"d {ge_de:,.0f}", flush=True)
+                if ge_de < a.greedy_d - a.gain:
+                    best_src = ("beam+ge", gl[:ge_e + 1], ge_de)
+    if best_src is not None:
+        src, sp, de = best_src
+        sp = clean(sp)
+        p = out / "spine.npy"
+        np.save(p, sp)
+        import hashlib
+        res.update(spine=str(p), source=src, n=int(len(sp)), end_d=de,
+                   md5=hashlib.md5(p.read_bytes()).hexdigest())
+        (out / "spine.json").write_text(json.dumps(res, indent=1), encoding="utf-8")
+    print("AUTO_SPINE " + json.dumps(res), flush=True)
+    return 0 if best_src is not None else 2
+
+
+def selftest() -> int:
+    """The cut on synthetic lines: a ride that ends in a free fall is cut at its last contact,
+    and the end is the best d inside the ride, not in the fall."""
+    from surfgym.core import STATE_DTYPE
+
+    class F:                                   # d = x, reachable everywhere
+        reach_max, cell = 1e9, 32.0
+
+        def sample(self, o):
+            return np.asarray(o, np.float64)[:, 0]
+    n = 300
+    s = np.zeros(n, STATE_DTYPE)
+    s["origin"][:, 0] = 1000.0 - np.arange(n) * 2.0          # d falls all the way
+    vz = np.zeros(n)
+    vz[:120] = np.sin(np.arange(120) / 7.0) * 50.0           # a ride: the map pushes back
+    vz[120:] = vz[119] - 8.0 * np.arange(1, n - 119)          # then ballistic (8 u/s/tick)
+    s["velocity"][:, 2] = vz
+    d = field_d(F(), s)
+    c = contact_cut_states(s)
+    e, de = cut_line(s, d)
+    ok = True
+    for name, cond in (("contact cut at the ride's end", 115 <= c <= 120),
+                       ("the end is the best d before the fall", e == c and de == d[c]),
+                       ("the fall is not part of the line", e < 120)):
+        print(("ok   " if cond else "FAIL ") + name)
+        ok &= bool(cond)
+    # a line that never leaves the ground keeps its best d
+    s2 = np.zeros(50, STATE_DTYPE)
+    s2["origin"][:, 0] = 500.0 - np.abs(np.arange(50) - 30.0)
+    s2["velocity"][:, 2] = np.sin(np.arange(50))
+    e2, de2 = cut_line(s2, field_d(F(), s2))
+    cond = e2 == 0 or de2 == float(field_d(F(), s2).min())
+    print(("ok   " if cond else "FAIL ") + "a grounded line ends at its best d")
+    ok &= bool(cond)
+    return 0 if ok else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
