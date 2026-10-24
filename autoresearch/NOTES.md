@@ -1166,3 +1166,19 @@ CPU beam_tas works locally: ~1,750 env-steps/s at 256 envs (3 threads), so a 512
 * Next with a box: gate_search (beam 4,096, then GE 12 min rooted at the line's 13-15.5 s: the
   face approach, the ride and the launch); the GE archive's energy cells keep high launches as
   their own cells, which is what this gate needs.
+
+### 22:03-22:40 UTC: local Go-Explore at the 20.4% gate (25 min, ~1/50 of a box run)
+* `explore_phase1 --exact-chains`, 32 u x energy 16 cells, 1,024 envs, 2 threads, rooted at 15 of
+  the plain beam line's face states (ticks 1440-1510): 3.0M runs, 636,540 cells, 0.11-0.12M
+  ticks/s (box: ~2.2M). Deepest on the grader field **20.33%** - cells falling into the catch at
+  (566-606, -2,550..-2,590, ~2,400). It DID reach the corner high: 10,181 cells at x 300-450,
+  y -2,650..-2,250, max z 2,753 (the corner needs ~2,650+), but slow (median |v_h| 685 u/s, they
+  traded speed for height) and none on the ramp east of the block.
+* Measurement: held right air turns (velocity-frame view targets 0..-12 deg, delays 0-30 ticks,
+  duck on/off) from GE's 200 highest corner states: 9,600 combinations, 0 reach the ramp, best
+  20.30%. The record skims the block's east face at x ~430-470 (heading -100 deg at x 435, z 2,585
+  at y -2,609) and lands on the ramp at (524, -2,837, 2,444): a precision line like gate 2's wall
+  bounce. Not forced with hand-picked roots (CLAUDE.md 0b: that would be map knowledge in the
+  line); the generic path is the box-scale GE (gate_search), ~50x the compute of this run.
+* Archive kept: $AR_HOME/runs/pbr3b1/_ge20a/archive.npz (exact chains from the policy's own
+  beam-line states; a box GE can be compared against it).
