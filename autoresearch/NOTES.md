@@ -981,8 +981,8 @@ beam found the policy's own way over the wall in 100 s).
   [1440] 99%). kl reads 0.2-0.8 on the late runs (it was 0.05-0.15 earlier).
 
 ### pbr2b3 round 2 lesson (drafted 10:57 UTC, finalised at wrap-up)
-* **Score 3.236 -> 16.056** (best eval pbr2b3_beam9 traj_7578583040, median 15.7%; 8-9 of 9
-  greedy episodes from the true start reach 15.4-16.1%). The greedy line: start room -> tunnel ->
+* **Score 3.236 -> 19.534** (best eval pbr2b3_beam12 traj_8629780480: one of 9 greedy episodes from
+  the true start to 19.5%, 8 to the 16% catch; beam9's 16.056 had 8-9 of 9 at 15.4-16.1%). The greedy line: start room -> tunnel ->
   ridge launch -> fast east-side U-turn -> north side -> over the gate-3 wall -> the drop surf ->
   over the x -1,015 wall -> the U-turn climb at x ~-3,300 -> east to the fall catch at ~16%.
 * **What did it, in order:**
@@ -1026,3 +1026,13 @@ beam found the policy's own way over the wall in 100 s).
   the first energy GAIN any uniform search of this round found), then flies east at 640-1,078 u/s.
   Spine autoresearch/spines/pbr2b3_beam_ge_g16.npy (2,381 states: g10a to tick 1,455 + that chain).
 * pbr2b3_beam12 (11:44 UTC): beam11's 8.478B weights + the curriculum on it, same flags.
+* beam12 (the curriculum on beam line + GE_g16 chain): evals **18.499** (8.479B, 0.5M steps after
+  resuming beam11's final weights) / 18.750 / **19.534** (8.630B) / 15.730 / 15.991. In the best
+  ones ONE of 9 episodes clears the 16% catch and flies on east (19.53%: (253, -2,308, 2,433) at
+  17.2 s, ~470 u below the record's line there), the other 8 die at the catch (15.8-16.0%). The
+  curriculum came back through the GE pump stretch and the impact and stalls just before it
+  ([1335] 30%, [1340] ~1%); the later evals regressed to the catch.
+* Handoff for the 19.534 eval: beam11's final weights (8,478,261,248, md5 d3fb3b96..., the weights
+  beam12 resumed and evaluated at 18.499 0.5M steps later) placed as pbr2b3_beam12/ckpt_8478261248.pt,
+  the snapshot at or before the eval that handon_ckpt picks (checked) over beam12's regressed
+  later ckpt_latest.
