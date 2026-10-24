@@ -1,7 +1,7 @@
 {
  "agent": "pbr2b1",
  "round": 2,
- "final": false,
+ "final": true,
  "best": {
   "score": 6.697,
   "eval_file": "/home/steam/ar_pb/runs/pbr2b1/pbr2b1_lb5/traj_5276958720.jsonl",
@@ -25,7 +25,9 @@
    "0.3"
   ],
   "resume_from": "/home/steam/ar_pb/runs/pbr2b1/pbr2b1_lb2/ckpt_latest.pt",
-  "commit": "9911228"
+  "commit": "see git log ar/pbr2b1",
+  "ckpt_step": 5292163072,
+  "snapshot_before": "/home/steam/ar_pb/runs/pbr2b1/pbr2b1_lb5/ckpt_5196218368.pt (md5 c8d370627082eabe58bc3b7d9e7158c3)"
  },
- "summary": "Best 6.697 (incumbent 3.236): 9/9 greedy episodes from the true start pass the pit and reach ~6.7% (lb5 traj_5276958720; hand-on ckpt pbr2b1_lb5 ckpt_latest 5.292B). How: the round-1 curriculum line was a random-view search line; explore_phase1 --view-vel (Go-Explore in the policy's velocity-frame view) from that line's own over-the-pit states found a natural-view way past the pit; a backward curriculum on it (lb1) put 9/9 past the pit in ~35 min; the recipe's own frontier machinery (lb2) then carried 4.0 -> 6.7%. The 6.7% wall is an energy deficit (analysis-only feasibility: with the record's energy a search reaches the block top, with the policy's it cannot): the south route bleeds ~600 u of energy height in collisions; the way on is the record's pump + strafed crouch tunnel + north route, which random search does not find (the tunnel strafe) - next round's work, with autoresearch/spines/pbr2b1_north_line.npy as a start."
+ "summary": "Best 6.697 (incumbent 3.236; round start 3.2% = the pit): 9/9 greedy episodes from the true start pass the pit and reach ~6.7% (pbr2b1_lb5 traj_5276958720; hand-on ckpt pbr2b1_lb5 ckpt_latest 5.292B, 15M after the eval). Pit: round 1's curriculum line was a random-view search line (views 139-176 deg off the velocity where it stalled); explore_phase1 --view-vel (Go-Explore in the policy's velocity-frame view) from that line's own over-the-pit states found a natural-view way past the pit in 4 min; a backward curriculum on it (lb1, --demo-view-vel --demo-cooldown 10) put 9/9 past the pit in ~35 min; the recipe's own frontier machinery (lb2/lb5) then carried 4.0 -> 6.7%. The 6.7% wall is an ENERGY deficit (analysis-only feasibility check: with the record's energy a search reaches the block top, with the policy's it cannot; the south route bleeds ~600 u of energy height in collisions). Nulls at the wall: per-call energy term, temperature cap 2, policy-guided beam search, 9 velocity-frame searches. Next: the record's pump + strafe-surfed crouch tunnel + north route learned as one unit (spines/pbr2b1_north_line.npy, tools/energy_budget.py)."
 }

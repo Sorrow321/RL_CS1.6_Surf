@@ -901,3 +901,51 @@ pbr1b1_g2cur6/ckpt_latest.pt 3.285B, md5 a6559938..., both present).
   and blocklist). After ~11:00 a slow reward mechanism has too little time before the 13:37
   wrap-up to say anything. It stays the first cheap experiment for a later round (from
   pbr2b1_lb5 ckpt_latest 5.292B, watching `tools/energy_budget.py` on its evals).
+
+### pbr2b1 round 2 lesson (wrap-up, 2026-10-24 13:38 UTC)
+* **Score 3.236 -> 6.697** (best eval pbr2b1_lb5 traj_5276958720: 9/9 greedy episodes from the true
+  start past the pit, best 6.70%, median 6.7%; handed-on checkpoint pbr2b1_lb5 ckpt_latest 5.292B,
+  md5 bdd5117c..., 15M steps after the eval; the snapshot before it is ckpt_5196218368.pt). lb2's
+  6.696 (4.418B) is the same policy family; lb5 = lb2's configuration continued.
+  The pit (gate 2, 3.2%) fell in ~35 min of curriculum once the line was right;
+  the recipe's own frontier machinery then carried the policy 4.0 -> 6.7% in 30 min.
+* **What unlocked the pit: search in the POLICY'S action space.** Round 1's curriculum line was a
+  random-action Go-Explore line whose VIEW is a random walk (139-176 deg off the velocity where the
+  curriculum stalled); the policy never holds such views (within 30 deg of the velocity 97% of the
+  time) and with the view turning <= 10 deg/tick a spawn there spends its first ~15 ticks looking
+  backwards. Re-aiming the spawn views afterwards (`--demo-view-vel`, vv1) was not enough (stalled
+  at the wall impact, where the recorded line's U-turn relied on its backward view). Searching
+  again in the trainer's velocity-frame view (`explore_phase1 --view-vel`: random keys + a view
+  offset table dense near 0) from round 1's own over-the-pit states found a natural-view way past
+  the pit in 4 min (818 cells past 3.3%); line_b = line_a[:1201] + that tail; the backward
+  curriculum crossed all 2,024 states' worth of difficulty in ~35 min (lb1) and the greedy line
+  found its own faster route (no run-up) - 4.80 at 3.837B, 9/9 past the pit at 3.912B.
+* **Then the recipe, unchanged**: `--demo-file ""` + the incumbent recipe's frontier machinery at
+  its exact values (lb2): 5.46 -> 6.69 in 30 min (past a fall-catch teleport on the south side).
+* **The 6.7% wall is an energy deficit, measured:** a block (top z ~3,296) ends the surf channel at
+  x ~-1,000; clearing it needs a ~+780 vz launch off a ramp face. The policy's south route bleeds
+  ~600 u of energy height h = z + |v|^2/2g in collisions (h ~3,708 over the pit -> ~3,000 at the
+  wall). Analysis-only feasibility search from the record's north-side states: with the record's
+  h ~3,850 the block's top is reached (7.20%) in 6 min; at the policy's h 3,700, 6.75%. The record
+  gets its energy by pumping the east half-pipe at the start and strafe-surfing the crouch tunnel
+  (exit 605 u/s, h 3,953 vs the policy's 266 u/s, ~3,764), then the north route.
+* **What did not work at the wall:** per-call energy shaping (lb3: regression to 4.8-6.5), a higher
+  key-temperature cap (lb4, `--unstuck-max 2`), policy-guided beam search (beam_tas, 4,096 envs:
+  6.70%), velocity-frame GE from the policy's own pre-wall states (VV5, VV6), from the north side
+  (VV7), from the true spawn with energy cells (VV8: pumps to h 3,967 but crawls the tunnel), from
+  the pump states (VV9-VV12: the mouth at h 3,908 with 32 u cells, but every tunnel exit <= 383 u/s).
+  More exit speed alone breaks the current policy (probe: 600 u/s at the tunnel exit -> 1.7-3.2%).
+* **Next (for a later round):** the record-style energy route as one learned unit - pump in the
+  east half-pipe (GE-VV8 finds it), strafe-surf the crouch tunnel (the missing skill: a control
+  skill RL may learn where random bursts cannot), carry h ~3,850 over the pit to the NORTH side
+  (`autoresearch/spines/pbr2b1_north_line.npy`: the policy's own line + a north tail at today's
+  energy), drop tangentially onto the north face, launch over the block.
+* **Tools added (all flag-off bit-identical, tested):** train_fast `--demo-view-vel`,
+  `--demo-cooldown N`; explore_phase1 `--view-vel` (+ ge_replay follows); tools/pick_roots.py
+  (`--window`, `--max-d`, `--first-within`), tools/splice_line.py. Lines: autoresearch/spines/
+  pbr2b1_line_b.npy (the pit), pbr2b1_north_line.npy.
+* **Also measured this round (for whoever continues):** the crouch tunnel's north side is a 57 deg
+  surf ramp the record strafe-surfs (move-right while heading west, 537 -> 605 u/s); the policy's
+  energy budget on the best eval loses -348..-568 u of h in ONE crash landing at x 90-170 right
+  after the south side; the first cheap experiment not run for lack of a box is a long test of the
+  per-call energy term from pbr2b1_lb5 ckpt_latest (lb3 only saw its first 260M steps).
