@@ -3,5 +3,5 @@
  "round": 2,
  "final": false,
  "best": null,
- "summary": "Round 2 start (02:18 UTC): continuing pbr1b1's gate-2 backward curriculum on line_a from g2cur6 (3.285B) with a new --demo-front-temp (curriculum-band spawns sample keys at 1+T and yaw sigma xV for their first ticks). First arm pbr2b3_dft1 (T 2, yaw x20, 40 ticks) launched 02:45 UTC on box 57454337 (RTX 5080). No eval of this round yet; the incumbent is 3.236."
+ "summary": "Round 2: pbr1b1's gate-2 backward curriculum on line_a, resumed from g2cur6 (3.285B). Found the 1235 wall's cause: the GE line's view is the random explorer's (up to 176 deg off the velocity) while the policy looks along its velocity and turns 5.6 deg/tick where the wall bounce needs ~2. Fix: tools/spine_canon_view.py (view along the velocity) + --demo-front-temp (yaw sigma x6 for band spawns' first 0.4 s): pbr2b3_canon2 crossed the bounce (1255 -> 1170 in 186M steps, bands 49-77%). Now pbr2b3_canon3 with --demo-cooldown 5 --demo-grow-max 40 (pace). Greedy evals still the pit (best 3.235, incumbent 3.236)."
 }

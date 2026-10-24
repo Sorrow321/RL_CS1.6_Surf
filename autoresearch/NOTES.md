@@ -665,3 +665,19 @@ of the line kept cold. TRAIN_ONLY in record_ckpt.
   C spaces the moves C iterations apart; G doubles the step on consecutive advances (S, 2S, ...
   G) and a backoff moves back by S and resets it, so easy stretches cross in a few moves and the
   precise ones still go at S.
+
+### The wall bounce falls (2026-10-24 03:14 UTC): canonical view + band yaw temperature
+* pbr2b3_canon2 (canon1's 3.381B weights, canonical spine, --demo-front-temp 0.5
+  --demo-front-view 6 --demo-front-ticks 40), 3.381-3.568B: the curriculum re-learned the
+  post-bounce bands on the canonical views ([1255] 97/71%, [1250] 17/26%), then crossed the
+  pre-impact flight that held round 1 at 0.0-0.4% for 1.5B+ steps: [1245] 26% -> ... ->
+  [1230] 49% -> [1225] 56% -> [1220..1215] 57% -> [1210..1175] 69-77%, every advance at the
+  20-iteration cooldown (~10.5M steps each, ~17 advances in 186M steps). Greedy evals still the
+  pit (3.223 / 3.217 / 3.222): the curriculum is at state ~1170 of 1,881 (the flight after the
+  ridge launch).
+* What it took (one run, so the two are not separated): the spine's view along the velocity (the
+  policy's own view regime) AND a 3.8 deg yaw sigma on band spawns for 0.4 s (the weak turn is a
+  ~3.5 deg change of the yaw command). Temperature on the explorer's views (dft1) did nothing.
+* pbr2b3_canon3 (03:16 UTC): canon2's ckpt_latest (3.568B, md5 59d2dce4..., pulled) + the same
+  flags, tau0 1170, + --demo-cooldown 5 --demo-grow-max 40 (the bands pass at 70%+: the
+  cooldown was the pace), 600M steps.
