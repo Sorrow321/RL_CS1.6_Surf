@@ -893,3 +893,12 @@ round 1's fixed grow 20 / cooldown 20 they would have taken ~130M).
   line `--demo-pull-d 20 --demo-pull-bonus 25` (anchor d <= 53,196 = 6.92% pays 50, pull d <=
   53,116 = 7.06% pays 25 more: reachable only by the rim-clearing line) + `--demo-tau0 160` (where
   cur8's curriculum stood). First pull payment at 7.542B.
+* cur9 (10:40 UTC, 7.96B): evals 7.003 / 6.978 / 6.986 / 7.001 / 7.001 / 6.986 - the anchor holds
+  with the pull line, but every greedy episode still hits the rim (h just past it 3,357-3,427; the
+  chain keeps ~3,750). With tau back at 0 the band (67% of demo draws) sits on the first 10 states
+  and the rim-clearing stretch gets ~2% of the draws.
+* `--demo-pull-stats` (new, default off): the curriculum's success statistics use the pull line,
+  the anchor's bonus stays - the band settles where the policy cannot reach the deeper end yet.
+  tests/python/test_demo_pull.py (2 passed).
+* **pbr2b4_cur10** (10:45 UTC): resume cur9 final (7.965B, md5 3fddfcbf...) + cur9's flags +
+  `--demo-pull-stats` (tau from the end).
