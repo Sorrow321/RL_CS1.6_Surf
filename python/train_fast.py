@@ -117,7 +117,7 @@ from surfgym.record import record_rollout, record_rollout_parallel
 from surfgym.bc import BCDataset
 from surfgym.respawn import (BackwardSpawnSampler, DemoCurriculum, FrontierPerturbRows,
                              FrontierSpawnSampler, NovelSpawnSampler,
-                             RandomSpawnSampler, RespawnBuffer)
+                             RandomSpawnSampler, RespawnBuffer, view_along_velocity)
 from surfgym.rewards import (CC_BUCKETS, CC_P0, CC_TEMP_GAIN, CC_TMAX,
                              CC_TMIN, AcroCoverageReward, BlendedReward,
                              CoverageSpeedReward, ForwardProgressReward,
@@ -4752,6 +4752,22 @@ def main() -> None:
                          "the spine's last state - the curriculum position is not in the "
                          "checkpoint, so a continuation passes where the previous run's log "
                          "left it ('demo starts [T,...]'). Not a config key; default = n-1")
+    ap.add_argument("--demo-view-vel", action="store_const", const=1, default=None,
+                    help="--demo-file: every spine spawn row moving at >= 100 u/s horizontally "
+                         "(the core's velocity-frame threshold) gets its view yaw re-aimed along "
+                         "its horizontal velocity; position, velocity and stance stay exact. A "
+                         "spine from a random-action search carries a random view the policy "
+                         "never holds in flight (pbr1b1's line_a: 139-176 deg off through the pit "
+                         "flight; the policy's own flight: within 30 deg 97%% of the time), and "
+                         "under --view-absolute the view turns at most 10 deg/tick, so such a "
+                         "spawn spends its first ~15 ticks looking backwards. Map-start, "
+                         "--spawn-states and reservoir rows are unchanged. Config only when on; "
+                         "ckpt restores")
+    ap.add_argument("--demo-cooldown", type=int, default=None,   # None = 20
+                    help="--demo-file: training iterations between two moves of the curriculum "
+                         "(default 20, the original hardcoded value, byte-identical). At 20 x "
+                         "524,288 steps a long spine needs ~10.5M steps per advance however easy "
+                         "the stretch. Config only when set; ckpt restores")
     ap.add_argument("--demo-success-bonus", type=float, default=None,   # None = off
                     help="--demo-success-d: an episode whose ratchet record CROSSES the spine's "
                          "success line (d(spine end) + --demo-success-d) is paid this once, like "
@@ -7869,6 +7885,12 @@ def main() -> None:
                 and ck_cfg.get("demo_success_bonus") is not None):
             args.demo_success_bonus = float(ck_cfg["demo_success_bonus"])
             restored.append(f"demo_success_bonus={args.demo_success_bonus:g}")
+        if args.demo_view_vel is None and ck_cfg.get("demo_view_vel"):
+            args.demo_view_vel = 1
+            restored.append("demo_view_vel")
+        if args.demo_cooldown is None and ck_cfg.get("demo_cooldown") is not None:
+            args.demo_cooldown = int(ck_cfg["demo_cooldown"])
+            restored.append(f"demo_cooldown={args.demo_cooldown}")
         if args.int_view is None and ck_cfg.get("int_view") is not None:
             args.int_view = int(ck_cfg["int_view"])
             restored.append(f"int_view={args.int_view}")
@@ -11385,7 +11407,21 @@ def main() -> None:
                               window=args.demo_window, rate=args.demo_rate,
                               min_ep=args.demo_min_ep, grow=args.demo_grow,
                               front_frac=float(args.demo_front_frac),
-                              tau0=args.demo_tau0)
+                              tau0=args.demo_tau0,
+                              cooldown=(20 if args.demo_cooldown is None
+                                        else int(args.demo_cooldown)))
+        if args.demo_cooldown is not None:
+            print(f"--demo-cooldown {int(args.demo_cooldown)}: the curriculum may move every "
+                  f"{int(args.demo_cooldown)} iterations (default 20)")
+        if args.demo_view_vel:
+            _dv = view_along_velocity(demo.S)
+            _dm = np.hypot(demo.S["velocity"][:, 0], demo.S["velocity"][:, 1]) >= 100.0
+            _doff = ((demo.S["yaw"][_dm].astype(np.float64) - _dv["yaw"][_dm] + 180.0)
+                     % 360.0) - 180.0
+            print(f"--demo-view-vel: {int(_dm.sum()):,} of {demo.n:,} spine rows move at "
+                  f">= 100 u/s and spawn looking along their velocity (their recorded view "
+                  f"was {np.median(np.abs(_doff)) if len(_doff) else 0.0:.0f} deg off it, "
+                  f"median)")
         if args.demo_tau0 is not None:
             print(f"--demo-tau0 {args.demo_tau0}: the curriculum starts at spine state "
                   f"{demo.tau} of {demo.n}")
@@ -14364,6 +14400,12 @@ def main() -> None:
     if args.demo_file and args.demo_success_bonus is not None:
         # --demo-success-bonus: dumped only when set; a resume restores it
         meta["config"]["demo_success_bonus"] = float(args.demo_success_bonus)
+    if args.demo_file and args.demo_view_vel:
+        # --demo-view-vel: dumped only when on; a resume restores it
+        meta["config"]["demo_view_vel"] = 1
+    if args.demo_file and args.demo_cooldown is not None:
+        # --demo-cooldown: dumped only when set; a resume restores it
+        meta["config"]["demo_cooldown"] = int(args.demo_cooldown)
     if args.race_sr:
         # --race-sr: dumped only when on, so a flag-off run.json is the
         # control's byte for byte (test_int_split's identity check)
@@ -17651,6 +17693,10 @@ def main() -> None:
                 # paper resets to the demonstration state itself)
                 _dpool = demo.build_pool(_s.pool,
                                          fresh_frac=1.0 - args.respawn_frac)
+                if args.demo_view_vel:
+                    # --demo-view-vel: the spine rows look along their velocity (map-start
+                    # rows stand still and keep theirs; --spawn-states rows are mixed in after)
+                    _dpool = view_along_velocity(_dpool)
                 _set_pool(_s, _dpool)
                 if goalsys is not None:
                     # demo rows carry no harvested goal (NaN -> the

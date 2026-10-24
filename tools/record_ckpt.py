@@ -101,6 +101,9 @@ TRAIN_ONLY = frozenset({
     # --demo-success-d: the TRAINING backward curriculum's success rule; a recording spawns at the start
     "demo_success_d",
     "demo_success_bonus",
+    # --demo-view-vel / --demo-cooldown: the TRAINING curriculum's spawn view and its pace; a
+    # recording spawns at the map start like the trainer's eval
+    "demo_view_vel", "demo_cooldown",
     # --ge-minutes: a share of the TRAINING spawn pool drawn from the run's own Go-Explore
     # archive; a recording spawns at the map start like the trainer's eval
     "ge_minutes", "ge_frac", "ge_cell", "ge_speed",

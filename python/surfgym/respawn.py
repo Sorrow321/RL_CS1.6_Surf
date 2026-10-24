@@ -24,7 +24,31 @@ import numpy as np
 
 from .core import STATE_DTYPE
 
-__all__ = ["RespawnBuffer", "DemoCurriculum", "RandomSpawnSampler"]
+__all__ = ["RespawnBuffer", "DemoCurriculum", "RandomSpawnSampler",
+           "view_along_velocity"]
+
+
+def view_along_velocity(rows: np.ndarray, min_speed: float = 100.0) -> np.ndarray:
+    """A copy of STATE_DTYPE ``rows`` whose view yaw looks along the horizontal velocity
+    wherever |v_h| >= ``min_speed`` (the core's own velocity-frame threshold, src/env.c
+    surf_yaw_delta_abs); slower rows and every other field are unchanged.
+
+    --demo-view-vel (pbr2b1): a spine from a random-action search carries the search's random
+    view, which the policy never holds in flight (pbr1b1's line_a: 139-176 deg off the velocity
+    through the pit flight; the policy's own greedy flight: |offset| < 30 deg on 97% of moving
+    ticks). The view is not physics state at the spawn instant - it only sets future wishdirs,
+    and under --view-absolute velocity the policy's command IS an offset from this heading - so
+    re-aiming it keeps the spawn's position, velocity and stance exact. The core's spawn yaw
+    jitter still applies on top."""
+    out = np.array(rows, dtype=STATE_DTYPE, copy=True)
+    if not len(out):
+        return out
+    v = out["velocity"].astype(np.float64)
+    vh = np.hypot(v[:, 0], v[:, 1])
+    m = vh >= float(min_speed)
+    if m.any():
+        out["yaw"][m] = (np.degrees(np.arctan2(v[m, 1], v[m, 0])) % 360.0).astype(np.float32)
+    return out
 
 
 class DemoCurriculum:
@@ -43,7 +67,8 @@ class DemoCurriculum:
 
     def __init__(self, states, window: int = 10, rate: float = 0.2,
                  min_ep: float = 50.0, seed: int = 29,
-                 grow: int = 0, front_frac: float = 0.0, tau0=None) -> None:
+                 grow: int = 0, front_frac: float = 0.0, tau0=None,
+                 cooldown: int = 20) -> None:
         self.S = np.asarray(states, STATE_DTYPE)
         self.n = len(self.S)
         self.D = int(window)
@@ -91,6 +116,12 @@ class DemoCurriculum:
         self.win = np.zeros(self.n, np.float64)
         self.decay = 0.99
         self._cool = 0
+        # --demo-cooldown N: pool rebuilds (= training iterations) between two moves of
+        # tau; 20 is the original hardcoded value. It bounds the pace: at 20 x 524,288 steps a
+        # 1,881-state spine needed ~10.5M steps per advance however easy the stretch (pbr1b1)
+        self.cooldown = int(cooldown)
+        if self.cooldown < 1:
+            raise ValueError(f"cooldown must be >= 1, got {cooldown}")
         self.rng = np.random.default_rng(seed)
         self._key = {tuple(np.round(np.asarray(r["origin"], np.float64), 1)): i
                      for i, r in enumerate(self.S)}
@@ -157,7 +188,7 @@ class DemoCurriculum:
                 self.tau = min(self.n - 1, self.tau + step)
                 moved = +1
             if moved:
-                self._cool = 20
+                self._cool = self.cooldown
         d_lo, d_hi = self._draw()
         self.last_info = (f"demo starts [{d_lo},{d_hi}]/{self.n} "
                           f"(frontier band [{lo},{hi}]) "
