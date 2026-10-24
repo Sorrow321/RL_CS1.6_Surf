@@ -2,8 +2,7 @@
 
 * offers: whitelisted single-GPU RTX cards under their cap, blocklisted hosts and the CPUs in
   config.cpu_exclude out, in the user's order (3090-class tier first, cheapest first, then
-  4090, then 5090); one search, priced with the box's disk; the cheaper cards of 2026-10-25
-  sit under caps below the good cards' and lose a price tie to them;
+  4090, then 5090);
 * the blocklist is shared: every branch's list folds into $AR_HOME/bad_hosts.json, which
   every agent's box.py reads on top of its own;
 * rent refuses a second box for the same agent, a box over the fleet cap, and a box the
@@ -37,18 +36,17 @@ MARKET = {
     "RTX_5080": [_offer(4, "RTX_5080", 0.20)],
     "RTX_4090": [_offer(5, "RTX_4090", 0.44), _offer(6, "RTX_4090", 0.50)],
     "RTX_5090": [_offer(7, "RTX_5090", 0.55), _offer(8, "RTX_5090", 0.55, n=2)],
-    "A100_PCIE": [_offer(9, "A100_PCIE", 0.10)],
 }
 
 
 @pytest.fixture
 def market(monkeypatch, tmp_path):
-    state = {"live": [], "credit": 100.0, "created": [], "searches": []}
+    state = {"live": [], "credit": 100.0, "created": []}
 
     def fake_vast(*args, raw=True, timeout=120, check=True):
         if args[:2] == ("search", "offers"):
-            state["searches"].append(args)
-            return [o for offs in MARKET.values() for o in offs]
+            gpu = args[2].split()[0].split("=")[1]
+            return list(MARKET.get(gpu, []))
         if args[:2] == ("show", "instances"):
             return list(state["live"])
         if args[:2] == ("show", "user"):
@@ -70,36 +68,10 @@ def test_offers_are_whitelisted_capped_single_gpu_and_ordered(market):
     got = box.offers()
     ids = [o["id"] for o in got]
     # the 3090 at 0.31 is under its 0.65 cap (raised 2026-10-22, 3a9af7e); machine 777 is
-    # blocklisted; the 4090 at 0.50 is over 0.45; the 2-GPU 5090 is out; the A100 is not a
-    # whitelisted card, however cheap. Tier 0 (3090 / 5080) first, cheapest first
+    # blocklisted; the 4090 at 0.50 is over 0.45; the 2-GPU 5090 is out. Tier 0 (3090 / 5080)
+    # first, cheapest first
     assert ids == [4, 2, 1, 5, 7], ids
     assert {o["gpu"] for o in got} <= set(box.CFG["max_dph"])
-    # ONE search for the whole whitelist, priced with the box's own disk: the watchdog checks
-    # the instance's dph_total, which carries all of disk_gb
-    assert len(market["searches"]) == 1
-    s = market["searches"][0]
-    assert s[2] == box.CFG["offer_query"]
-    assert s[s.index("--storage") + 1] == str(box.CFG["disk_gb"])
-
-
-def test_the_cheaper_cards(monkeypatch):
-    """User, 2026-10-25: 'search for cheaper ones ... 4080, 4070, 5070, things like that' and
-    'they shouldn't be bigger than the good GPUs'. Their caps sit below every good card's, they
-    rank by price inside tier 0, and a price tie goes to the good card."""
-    good = ("RTX_3090", "RTX_3090_Ti", "RTX_4080", "RTX_4080S", "RTX_5080")
-    caps = box.CFG["max_dph"]
-    cheaper = [g for g in box.CFG["gpu_tiers"][0] if g not in good]
-    assert {"RTX_4070", "RTX_5070"} <= set(cheaper)
-    assert max(caps[g] for g in cheaper) < min(caps[g] for g in good)
-    market = [_offer(1, "RTX_5080", 0.38), _offer(2, "RTX_5070", 0.22),
-              _offer(3, "RTX_5070_Ti", 0.669),       # over its cap: dearer than the 5080
-              _offer(4, "RTX_4070S_Ti", 0.29), _offer(5, "RTX_5060_Ti", 0.21),
-              _offer(6, "RTX_3090", 0.22)]
-    monkeypatch.setattr(box, "vast", lambda *a, **k: list(market))
-    monkeypatch.setattr(box, "blocked_keys", lambda: (set(), set(), set()))
-    got = [(o["gpu"], o["dph"]) for o in box.offers()]
-    assert got == [("RTX_3090", 0.22), ("RTX_5070", 0.22), ("RTX_4070S_Ti", 0.29),
-                   ("RTX_5080", 0.38)], got
 
 
 def test_one_box_per_agent(market):
@@ -146,7 +118,7 @@ def test_offers_drop_the_excluded_cpus(monkeypatch):
     xeon = dict(_offer(1, "RTX_3090", 0.18), cpu_name="Xeon® E5-2699 v3 ")
     ryzen = dict(_offer(2, "RTX_3090", 0.25), cpu_name="AMD Ryzen 9 5950X 16-Core Processor")
     monkeypatch.setattr(box, "vast", lambda *a, **k: [xeon, ryzen]
-                        if a[:3] == ("search", "offers", box.CFG["offer_query"])
+                        if a[:3] == ("search", "offers", f"gpu_name=RTX_3090 {box.CFG['offer_query']}")
                         else [])
     monkeypatch.setattr(box, "blocked_keys", lambda: (set(), set(), set()))
     got = box.offers()

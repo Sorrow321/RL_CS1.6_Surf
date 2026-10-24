@@ -36,17 +36,12 @@ named pbr<round>b<k> / ar/pbr<round>b<k>.
 
 ## Hard limits (config.json, enforced in code)
 
-* **Cards.** RTX 3090 / 3090 Ti / 4080 / 5080 and, since 2026-10-25, the cheaper 3080 / 4070
-  / 5070 / 60 Ti class cards (>= 12 GB) first, cheapest of those; then 4090; then 5090.
-* **Price caps** ($/h for the whole box, its disk included; the cheaper cards' caps are below
-  the good cards', user 2026-10-25):
+* **Cards.** RTX 3090 / 3090 Ti / 4080 / 5080 first, cheapest of those; then 4090; then 5090.
+* **Price caps:**
 
   | Card | Max $/h |
   |---|---|
-  | 3090, 3090 Ti, 4080, 4080 Super, 5080 | 0.65 |
-  | 4070 Ti Super, 5070 Ti | 0.30 |
-  | 3080, 3080 Ti, 4070, 4070 Super, 4070 Ti, 5070 | 0.25 |
-  | 4060 Ti 16 GB, 5060 Ti 16 GB | 0.20 |
+  | 3090, 3090 Ti, 4080, 5080 | 0.65 |
   | 4090 | 0.45 |
   | 5090 | 0.60 |
 
