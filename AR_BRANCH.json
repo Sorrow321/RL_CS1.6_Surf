@@ -1,0 +1,16 @@
+{
+ "agent": "pbr1b3",
+ "round": 1,
+ "rounds": 2,
+ "slot": 3,
+ "branch": "ar/pbr1b3",
+ "base_commit": "91f9fbb9817c60e17164693059c4ae1c96e6c3d4",
+ "started_at": 1792764886.6131701,
+ "wrapup_at": 1792805683.4216716,
+ "round_end": 1792808083.4216716,
+ "wrapup_at_utc": "2026-10-24 01:34 UTC",
+ "round_end_utc": "2026-10-24 02:14 UTC",
+ "ar_home": "/home/steam/ar_pb",
+ "incumbent": null,
+ "runs_dir": "/home/steam/ar_pb/runs/pbr1b3"
+}
