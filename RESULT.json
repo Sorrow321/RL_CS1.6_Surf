@@ -3,13 +3,16 @@
  "round": 2,
  "final": false,
  "best": {
-  "score": 3.223,
-  "eval_file": "/home/steam/ar_pb/runs/pbr2b2/pbr2b2_vv1/traj_3436707840.jsonl",
-  "run": "pbr2b2_vv1",
-  "step": 3436707840,
-  "ckpt": "/home/steam/ar_pb/runs/pbr2b2/pbr2b2_vv1/ckpt_latest.pt (not pulled yet)",
+  "score": 3.991,
+  "eval_file": "/home/steam/ar_pb/runs/pbr2b2/pbr2b2_vv2/traj_3654811648.jsonl",
+  "run": "pbr2b2_vv2",
+  "step": 3654811648,
+  "ckpt": "/home/steam/ar_pb/runs/pbr2b2/pbr2b2_vv2/ckpt_3603431424.pt",
+  "ckpt_step": 3603431424,
+  "ckpt_md5": "f694bc7e601b43c910192a24f2590124",
+  "ckpt_after": "/home/steam/ar_pb/runs/pbr2b2/pbr2b2_vv2/ckpt_3703570432.pt (md5 ad5650aa517f36911a7778937cf4c127)",
   "recipe": [
-   "warm: pbr1b1_g2cur6 ckpt_latest 3.285B",
+   "warm: pbr2b2_vv1 ckpt_latest 3.503B (from pbr1b1_g2cur6 3.285B)",
    "--maxvel",
    "3500",
    "--demo-file",
@@ -17,9 +20,9 @@
    "--demo-window",
    "10",
    "--demo-grow",
-   "20",
+   "10",
    "--demo-tau0",
-   "1240",
+   "1120",
    "--demo-front-frac",
    "0.67",
    "--demo-success-d",
@@ -48,8 +51,8 @@
    "--demo-cooldown",
    "5"
   ],
-  "resume_from": "/home/steam/ar_pb/runs/pbr1b1/pbr1b1_g2cur6/ckpt_latest.pt",
+  "resume_from": "/home/steam/ar_pb/runs/pbr2b2/pbr2b2_vv1 ckpt_latest 3.503B (md5 574f5248...)",
   "commit": "3659983ac8cd93812ce9f76ee22f6cd05ce758a3"
  },
- "summary": "Arm 1 (pbr2b2_vv1, 09:05 UTC, RTX 5080): the line_a curriculum with VELOCITY-ALIGNED spawn views crossed the wall bounce in ~15 min (190M steps) - the backward-frame curriculum of round 1 sat there for 1.5B+ steps - and stands at states ~1100-1120 (the ridge/launch) at 09:20. Greedy evals still at the pit (3.12-3.22) until the curriculum reaches the line's start. Why: line_a flies its launch/flight with the view 139-176 deg backward, where the policy's view warp is ~200x coarser; tools/line_track.py re-flies 960->1300 in the policy frame at 25 Hz. New: --demo-view-velocity, --demo-cooldown, --yaw-sigma-min, explore_phase1 --view-velocity, tools/line_actions.py, tools/line_track.py."
+ "summary": "Best 3.991 (vv2 3.655B): the greedy line from the true start now passes the pit - 8/9 episodes reach 3.81-3.99% in ~9-10 s, then die at z ~3,396 just past line_a's end (next gate). How: pbr1b1's line_a curriculum with VELOCITY-ALIGNED spawn views (--demo-view-velocity) - it crossed the wall bounce in ~15 min (round 1: stuck 1.5B+ steps) and ran 1120 -> 490 in 13 min once the bands were contiguous (grow <= window). Why: line_a flies its launch/flight with the view 139-176 deg backward, where the policy's view warp is ~200x coarser; tools/line_track.py re-flies 960->1300 in the policy frame at 25 Hz. Next: policy-frame Go-Explore (explore_phase1 --view-velocity --exact-chains) from the policy's own states before the 3.99% deaths, then extend the curriculum."
 }
