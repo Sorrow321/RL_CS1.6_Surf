@@ -678,3 +678,11 @@ round 1's fixed grow 20 / cooldown 20 they would have taken ~130M).
   snapshot: 5,792 cells past 4.0%, best **6.65%** (-1,015,-3,005,2,994), the chain rooted at
   greedy tick 603 (just after the far-side turn west). tools: autoresearch/analysis/
   pb_frontier_step.py does record -> roots -> 2 searches -> replay deepest -> join, on the box.
+* GE4 (12 min, 22,392 cells) and GE5 (11 min, 23,701 cells) both stop at **6.65-6.67%** around
+  x ~-1,000, z ~3,000-3,045 (a new wall: the chains arrive there nearly stopped). Deepest chains
+  1,287-1,631 ticks; GE5 cell 23236 (6.667%) has a 546-tick chain from greedy tick 599 (the
+  far-side turn): west along the north side at z 3,477-3,520 (the greedy line flies ~100 u lower
+  there and falls into *209), down at x ~200 (z 3,344 -> 3,118), west through 5.0-6.6%, stop.
+  Rule used, generic: among cells within 0.01% of the deepest, the shortest chain.
+* **pbr2b4_cur2** (launched 04:15 UTC): resume cur1's final ckpt_latest (4.394B, md5 f213128b...)
+  + the same curriculum flags + `--demo-file spine_c` (1,146 states; success line 6.49%).

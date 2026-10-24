@@ -31,3 +31,9 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   curriculum's spine from the TRUE START = pbr1b1_g2cur6's own greedy line from the true start
   (record_ckpt --dump-states, episode 2, ticks 0-559, into the crouch tunnel) + line_a states
   0-1057 (the tunnel run-up) + chain3b. Junctions within 8 u. 1,574 of 1,916 states ducked.
+* `pbr2b4_spine_c.npy` (1,146 states, md5 0816a498b603f76771a04e8874f5e12d): pbr2b4_cur1's own
+  greedy line from the true start (ckpt 4.327B, record_ckpt --dump-states, episode 0, ticks 0-598:
+  start room, tunnel slide, ridge launch, far-side turn) + an exact-chain GE chain (GE5: rooted at
+  that line's last 3 s, 64 u x energy 32, 4,096 envs, 11 min; the near-deepest cell with the
+  shortest chain, 546 ticks; ge_replay 16/16 links) west along the north side over the fall catch,
+  down at x ~200 and west to 6.67% at (-1,008,-3,124,3,045), where it arrives nearly stopped.
