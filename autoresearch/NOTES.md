@@ -738,3 +738,16 @@ pbr1b1_g2cur6/ckpt_latest.pt 3.285B, md5 a6559938..., both present).
   --demo-front-frac 0` (a resume restores the demo curriculum otherwise; the restored 0.67 front
   fraction is refused without a demo file). The restored reservoir's deepest state is d 53,463 =
   **6.45%** (an lb1 training episode got that far); front-perturb spawns 922 rows from it.
+* **lb2 (recipe frontier machinery) works: evals 5.464 (3.965B) -> 6.673 -> 6.695 (4.116B, median
+  6.66%) -> 6.685 -> 6.690.** The greedy line (9/9 past the pit) now flies the south side west past
+  the fall catch (5.05% at 8.4 s at (88,-3,140,3,085)), drops to z ~2,890 at x -124 (9.0 s), flies
+  west at z ~2,950-3,010 and stops at (-1,006, -3,000, ~2,980) = 6.6-6.7% at 11-15 s, then
+  wanders until the eval patience ends it. Snapshot ckpt_4214751232.pt pulled (md5 a5def63f...;
+  lb2 has no snapshot before its best eval - it resumed lb1's 3.968B).
+* The 6.7% gate, measured (field descent + the WR demo, ANALYSIS ONLY): the field goes straight UP
+  ~300 u from there (z 2,985 -> 3,305 at x -1,040..-1,166), over a wall, then down to z ~2,600
+  and on. The record reaches that region at 1,236 u/s (a 680 u drop from its north side, surfed),
+  climbs a ramp from z 2,840 to 3,412 (vz +781 at x -498), crosses at (-1,158, -3,110, 3,412) and
+  drops on at 1,200-1,500 u/s. The policy arrives at 300-560 u/s (flat landings after its drop) -
+  an ENERGY gate again; the recipe's energy-pot + front-perturb speed x1.0-1.3 are the tools on
+  board; the generic loop (GE --view-vel from its own pre-frontier states) is the other.
