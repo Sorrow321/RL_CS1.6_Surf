@@ -1167,7 +1167,7 @@ CPU beam_tas works locally: ~1,750 env-steps/s at 256 envs (3 threads), so a 512
   face approach, the ride and the launch); the GE archive's energy cells keep high launches as
   their own cells, which is what this gate needs.
 
-### 22:03-22:40 UTC: local Go-Explore at the 20.4% gate (25 min, ~1/50 of a box run)
+### 22:03-22:31 UTC: local Go-Explore at the 20.4% gate (25 min, ~1/50 of a box run)
 * `explore_phase1 --exact-chains`, 32 u x energy 16 cells, 1,024 envs, 2 threads, rooted at 15 of
   the plain beam line's face states (ticks 1440-1510): 3.0M runs, 636,540 cells, 0.11-0.12M
   ticks/s (box: ~2.2M). Deepest on the grader field **20.33%** - cells falling into the catch at
@@ -1182,3 +1182,8 @@ CPU beam_tas works locally: ~1,750 env-steps/s at 256 envs (3 threads), so a 512
   line); the generic path is the box-scale GE (gate_search), ~50x the compute of this run.
 * Archive kept: $AR_HOME/runs/pbr3b1/_ge20a/archive.npz (exact chains from the policy's own
   beam-line states; a box GE can be compared against it).
+* The corridor is a TUNNEL (point traces up from z 2,900): its ceiling falls east, z 3,161 at
+  x -800 -> 2,920 at x 200 -> below 2,900 from x 300; the block south of it is solid to z 3,400+
+  (no way over it). So at the corner the origin must sit in a ~180 u window, z ~2,650 (to make
+  the turn onto the ramp) .. ~2,830 (under the ceiling): the record passes x 377 at 2,782. A
+  launch window, not just a higher launch - the kind of precise line gate 2's curriculum needed.
