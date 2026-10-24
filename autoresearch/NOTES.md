@@ -1086,3 +1086,36 @@ then east at z ~2,880-2,900 (21.3% at x 948, 22.4% at x 1,567). The policy is ~4
 record at 10% and at 20% (16.8 s vs 21.1 s: the record spends ~6.5 s pumping in the start room).
 CPU beam_tas works locally: ~1,750 env-steps/s at 256 envs (3 threads), so a 512-copy search to
 28 s takes ~15 min.
+
+### 20:00-20:35 UTC: no box yet; the 20.4% gate analysed; one-command gate search
+* Budget: the credit was topped up ~20:00 (allowed 0.175 -> 0.693 $/h) and another branch rented
+  the one 5080 the pace admits (burn 0.578); a second box needs credit ~60 $ or a release. A
+  local waiter polls `rent --dry-run` every 4 min and rents + deploys the incumbent when it passes.
+* CPU beam_tas (512 copies, 2 threads, 18 min, ~800 env-steps/s): the whole population died
+  between 16 and 17 s in the same catch; frontier 19.27% at the last resample (16 s). The policy's
+  own sampling does not make this gate.
+* The gate, measured (core traces + the record as ANALYSIS ONLY): a floor channel descends east
+  (n (0.23, 0, 0.97)) with a surf face on its south side (n (0.16, 0.75, 0.64)) from x ~-1,650 to
+  -975, where the face ends. The record slides the channel floor at 1,050 -> 1,270 u/s, carves RIGHT
+  up the face's last ~150 u (heading -10 -> -33 deg) and leaves its end at (-967, -2,407, 2,804)
+  with vz +467; the policy surfs ~60 u further up the face (y -2,420 vs -2,360) at 920 -> 1,140 u/s,
+  ducked, and leaves at (-988, -2,468, 2,868) with vz +209. Then both are ballistic: the record's
+  extra vz keeps it ~100-250 u higher at x 0..400, where it air-turns hard right (45 -> -100 deg in
+  0.4 s at 1,158 u/s: right strafe with the view 1.5-2 deg LEFT of the velocity, ~4 deg/tick) and
+  drops into a bowl at (550, -2,976, 2,414) that sends it back up east. The policy, lower, turns
+  later and falls into catch *187. Energy at the channel: policy h ~3,670 (beam line 3,700-3,730),
+  record ~3,785 - the lineage's standing deficit again, but the launch line matters as much.
+* Local Go-Explore is impractical (30k ticks/s here vs 2.2M on a box: most runs die in the catch
+  within ~70 ticks). The machine is also loaded by other local jobs (load 8.6 on 4 vCPU at 20:30):
+  keep local CPU work tiny.
+* `tools/spine_tool.py` (info / cut / cat / splice; `cut --end contact` = the last map contact at
+  or before the deepest state, pick_selfline's rule, so a spine never ends mid-fall) and
+  `tools/gate_search.py` (one gate as one command: beam_tas from the true start -> if its line does
+  not reach `--need`, explore_phase1 --exact-chains rooted on the beam line's states `--ge-from`..
+  `--ge-to` s before its stall -> ge_replay -> splice -> contact cut -> <out>/spine.npy +
+  gate_search.json). Smoke-tested on CPU (GE stage, 0.2 min): plumbing OK; the toy GE line's
+  deepest state was mid-fall into the catch and the contact cut correctly backed it off to the
+  ramp launch (17.4%).
+* Box plan: deploy (waiter) -> `python tools/gate_search.py --ckpt runs_ckpt.pt --out
+  runs/pbr3b1_gs1 --need 20.6 --ge-from 3 --ge-to 0.5` on the box -> inspect -> `box.py launch
+  --resume` with round 2's curriculum flag set on the new spine.
