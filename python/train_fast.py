@@ -15559,12 +15559,16 @@ def main() -> None:
             return
         from surfgym.greedy_spawn import last_contact_vz
         tps = 1000.0 / float(args.tick_ms or 10.0)
-        bests, lens, launches = [], [], []
+        bests, lens, launches, stalls = [], [], [], []
         for e in eps:
             d = np.asarray(_f.sample(np.asarray(e[:, 1:4], np.float64)), np.float64)
             d = np.where(d < _f.reach_max - 0.5 * _f.cell, d, np.inf)
             bests.append(float(d.min()))
             lens.append(len(e))
+            # where the episode stopped making progress: the first tick within the
+            # auto_spine stall margin (500 u) of its best d
+            _ok = np.flatnonzero(d <= float(d.min()) + 500.0)
+            stalls.append(int(_ok[0]) if len(_ok) else len(e) - 1)
             # where the episode committed to its end: the last map contact before a fatal
             # ballistic flight longer than 0.25 s (the --respawn-greedy-contact rule)
             _c = last_contact_vz(e[:, 6], int(0.25 * tps))
@@ -15597,8 +15601,11 @@ def main() -> None:
         kdir = adir / f"k{AUTO['k']:02d}"
         # the branched beam forks half a second before the greedy line's median launch into a
         # fatal flight (0 = none: no fatal flight in this eval)
+        # (a line that stalls without a fatal flight - stuck on a floor - forks a second
+        # before the median tick where its episodes stopped making progress)
         br_tick = (int(max(1, np.median(launches) - 0.5 * tps))
-                   if len(launches) * 2 > len(eps) else 0)
+                   if len(launches) * 2 > len(eps)
+                   else int(max(1, np.median(stalls) - 1.0 * tps)))
         cmd = [sys.executable, "-u", str(Path(__file__).resolve().parents[1] / "tools"
                                          / "auto_spine.py"),
                "--ckpt", str(out / "ckpt_latest.pt"), "--map", str(slots[0].core.bsp_path),
