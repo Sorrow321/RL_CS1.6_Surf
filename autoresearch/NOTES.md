@@ -763,3 +763,10 @@ ckpt_latest 3.285B (md5 a6559938..., the most curriculum progress), both named i
 * **pbr2b2_vv6** (11:37): vv2's ckpt_latest (3.827B) + `--demo-file spine_b2` = spine_b[:1160] (the
   recorded route + line_b[0:420], ending on the lower floor after the drop at 4.85%; success line
   4.67%), spawn_v3 at frac 0.35, lr 2e-4, the rest as vv3.
+* vv6 (3.827-4.02B, 11:37-11:51): the shorter spine did NOT stop the erosion - curriculum 1159 -> 1049
+  at 74-99% per band, greedy evals 3.983 / 3.906 / 3.838 (medians 3.9 -> 2.8 -> 3.2%, 6-8/9
+  patience cuts). The start room and route spawns (spine deciles 0-50%) sit at 0% success: any
+  success line beyond the current reach is out of reach for them at first, so the bonus imbalance
+  is there with a short spine too. line_b's progress is nearly monotone on the field (3.33 -> 4.12
+  -> 4.63 -> 4.85%), so the ratchet alone pays for following it. **pbr2b2_vv7** (11:52) = vv6 with
+  `--demo-success-bonus 0` (from vv2's 3.827B again).
