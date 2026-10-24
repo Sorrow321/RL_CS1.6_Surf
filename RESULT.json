@@ -3,10 +3,10 @@
  "round": 2,
  "final": false,
  "best": {
-  "score": 4.002,
-  "eval_file": "/home/steam/ar_pb/runs/pbr2b3/pbr2b3_canon5/traj_4168613888.jsonl",
+  "score": 4.055,
+  "eval_file": "/home/steam/ar_pb/runs/pbr2b3/pbr2b3_canon5/traj_4244111360.jsonl",
   "run": "pbr2b3_canon5",
-  "step": 4168613888,
+  "step": 4244111360,
   "ckpt": "(canon5 ckpt_latest, pulled when the run stops)",
   "ckpt_step": null,
   "ckpt_md5": null,
