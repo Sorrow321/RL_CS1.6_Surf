@@ -881,3 +881,8 @@ beam found the policy's own way over the wall in 100 s).
   greedy-line row samples the keys at 1 + T and the yaw sigma x V for its first K ticks - the
   --demo-front-temp rule (which cracked the gate-2 bounce) on the greedy line's own last seconds
   before it stalls. `GreedyLinePool.is_row` tells those spawns from the rest by origin.
+* beam5 (5.694-5.776B, the greedy speed nudge alone): evals 7.144 / 7.157. Replaced after 80M
+  steps by pbr2b3_beam6 (07:16 UTC): beam5's weights (md5 97781bd7...) + the speed nudge +
+  `--respawn-greedy-temp 1 --respawn-greedy-temp-ticks 60 --respawn-greedy-temp-view 6` (keys at
+  2, yaw sigma 0.02 -> 0.12 rad for 0.6 s after a greedy-row spawn on the drop / landing / climb),
+  1.2B steps.
