@@ -933,3 +933,19 @@ beam found the policy's own way over the wall in 100 s).
   line meets it, a V notch at x -988..-1,008) open from z 3,330; at y -2,920..-2,860 and
   -3,120..-3,080 open from ~3,320 but solid further east at lower z. No gap: the line is 10-30 u
   short, which matches the energy deficit.
+
+### The x -1,015 wall falls to per-call energy shaping at K 8: score 12.216 (2026-10-24 09:06 UTC)
+* beam7's evals (`--energy-pot 8 --energy-pot-front 0 --energy-pot-front-bonus 0`, beam4's
+  flags otherwise): 7.121 / 7.198 / 7.183 / 7.185 / 7.132 / 7.163 / 7.197 / 7.184 / 7.197 / 7.184 /
+  then **12.216** at 6.955B (median 12.0%): 8 of 9 greedy episodes clear the wall and fly on to
+  11.3-12.2% (x -2,900..-3,200, z 2,490-2,690, 12-14 s), the stretch training had learned from
+  the frontier-perturb rows' boosted states. ~830M steps of per-call shaping (K 3 then 8) before
+  the greedy line found the last ~10-30 u. Checkpoint: beam7's ckpt_latest 7.007B (md5
+  a97d0d24..., pulled; the handon pick for that eval) and a copy of the 6.975B one in _ckpts/.
+* beam_g8a (beam_tas from beam7's 6.98B weights): frontier **12.52%** at 24 s, stalled from gen
+  15. The line loses ~380 u of h in the drop right after the wall ((-1,355, -3,049, 2,736) h 3,635
+  -> (-1,939, -2,888, 2,295) h 3,256; the record ~110 there) and reaches the next turn - the
+  record's U-turn climb at x ~-3,250..-3,490 up to z ~3,000-3,080 at ~1,000 u/s, h ~3,660-3,710 -
+  with h ~3,160-3,200; it stalls at (-3,400, -2,610, 2,712). Gate 6: energy again (~500 u).
+* Spine autoresearch/spines/pbr2b3_beam_g8a.npy (1,338 states to 12.34%). pbr2b3_beam8 (09:14 UTC):
+  beam7's 7.007B weights + the curriculum on it from its end + the beam7 flag set (energy K 8).

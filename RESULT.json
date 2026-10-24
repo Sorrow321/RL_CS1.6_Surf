@@ -8,8 +8,8 @@
   "run": "pbr2b3_beam7",
   "step": 6955204608,
   "ckpt": "/home/steam/ar_pb/runs/pbr2b3/pbr2b3_beam7/ckpt_latest.pt",
-  "ckpt_step": null,
-  "ckpt_md5": null,
+  "ckpt_step": 7007109120,
+  "ckpt_md5": "a97d0d2489525785979151df01a0ab5e",
   "recipe": [
    "resume chain: pbr1b1 g2cur6 (3.285B) -> pbr2b3_canon1 -> canon2 -> canon3 (3.721B)",
    "--demo-file autoresearch/spines/pbr2b3_line_a_canon.npy (canon2/3), _canon_780.npy (canon4)",
@@ -29,5 +29,5 @@
   "resume_from": "/home/steam/ar_pb/runs/pbr2b3/pbr2b3_beam6/ckpt_latest.pt",
   "commit": "c9d3434"
  },
- "summary": "Best 12.216 (beam7 6.955B, median 12.0%; incumbent 3.236): from the true start the greedy line passes gate 2 (the pit), gate 3 (wall + fall catch under the north path) and the hollow at 6.7%, and stops at a wall at x ~-1,015 (7.2%), ~20-60 u too low. How: round 1's line_a curriculum unstuck by tools/spine_canon_view.py + --demo-front-temp; pace flags (--demo-cooldown/--demo-grow-max); then a search->curriculum loop: beam_tas from the true start (the policy's own lines) and Go-Explore --exact-chains from the line's own states (the drop surf to 7.07%), each cut into the next spine. The last wall is an energy deficit of ~100-160 u of z+v^2/2g from the start room (the record pumps a half-pipe first); 4 beams and 4 GE runs end at it, per-call energy shaping lifted the training frontier to 12.2% only via boosted spawns. Next: a pumped start (the long detour against the field) or stronger energy shaping (beam7, --energy-pot 8, running)."
+ "summary": "Best 12.216 (beam7 6.955B, median 12.0%; incumbent 3.236): from the true start 8 of 9 greedy episodes pass gate 2 (the pit), gate 3 (wall + fall catch under the north path), the hollow and the x -1,015 wall, to 11.3-12.2%. How: round 1's line_a curriculum unstuck by tools/spine_canon_view.py + --demo-front-temp; pace flags; a search->curriculum loop (beam_tas from the true start = the policy's own lines; Go-Explore --exact-chains from the line's own states), each cut into the next spine; per-call energy shaping (--energy-pot 8 --energy-pot-front 0 --energy-pot-front-bonus 0) carried the line over the energy-limited wall. Next gate ~12.5%: a U-turn climb the line reaches ~500 u of energy short (it loses ~380 u landing the drop after the wall, the record ~110). beam8 = the curriculum on the policy's own 12.34% line."
 }
