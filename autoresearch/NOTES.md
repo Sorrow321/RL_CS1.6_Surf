@@ -839,3 +839,11 @@ pbr1b1_g2cur6/ckpt_latest.pt 3.285B, md5 a6559938..., both present).
 * GE-VV12 (07:15 UTC): roots = GE-VV11's 30 highest-energy mouth / early-tunnel cells (h 3,871-
   3,945, x 717-1,093), 32 u cells x energy 16, 10 min - a building block for the next round: an
   exact, natural-view, low-loss tunnel traversal joined to the pump chain.
+* GE-VV12 (from GE-VV11's mouth / early-tunnel cells, h 3,871-3,945; 32 u x energy 16; 218k
+  cells): the best tunnel exit is h 3,803 / 269 u/s after 23 s of chain - random bursts cannot
+  strafe-surf the crouch tunnel; the pumped energy goes into the walls. **The record-style energy
+  route is out of reach for search this round**, and (probe above) the current policy cannot use
+  extra exit energy anyway. 6.7% is this lineage's ceiling this round.
+* **pbr2b1_lb5** (07:27 UTC): lb2's exact configuration from lb2's final checkpoint (4.446B, md5
+  0d32d945...), to keep collecting greedy evals at the wall (the training reservoir has touched
+  6.78%) and consolidate the 9/9 route. Box extended to 09:20 UTC.
