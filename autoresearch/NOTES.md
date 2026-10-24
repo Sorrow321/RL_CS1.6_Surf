@@ -771,3 +771,30 @@ of the line kept cold. TRAIN_ONLY in record_ckpt.
   1,239 u/s (-268, -2,698), then climbs to z ~3,407 at x -1,083 and goes on west at z ~3,380-
   3,400. The beam line reaches the bottom at 722 u/s, climbs only to z ~3,080 and falls into the
   hollow at x ~-1,000: speed at the bottom of the drop again (surfing the slope, not falling).
+* beam1 4.544B eval: **6.680**, median 6.65% (most of 9 reach the gate-4 hollow).
+* A second beam (beam1's 4.548B weights, `--skip-gate`: with an episode cap of 300 s the greedy
+  warm-up episodes no longer die at 7 s and took >10 min) stalls at the same place: min d 53,323
+  (6.69%) from gen 15 to 25. Gate 4 holds for the policy's own proposals.
+* Gate 4 is the energy the slow entry never had: energy height h = z + |v|^2/2g at the gate-3 exit
+  (x ~366): the beam line ~3,528, the record ~3,884 (analysis only); at the bottom of the drop
+  (x ~-300): ~3,186 vs ~3,798 (722 vs 1,239 u/s). The record's surplus comes from the east
+  half-pipe pump at the start that the precision entry skips (round 1's analysis).
+* GE_g4 (04:53 UTC): explore_phase1 --exact-chains, 64 u x energy 32 cells, 4,096 envs, 16
+  threads, rooted at 24 states of the beam line from the north side to the hollow (ticks 600-1100,
+  stride 20), 10 min.
+
+### The method so far (pbr2b3, for whoever continues)
+1. A searched line (GE --exact-chains + ge_replay, or beam_tas --save-frontier) -> spine.
+2. `tools/spine_canon_view.py` when the line came from the uniform explorer (its views are
+   arbitrary; a beam line is the policy's own and needs nothing).
+3. Backward curriculum on it: `--demo-file S --demo-window 5 --demo-grow 5 --demo-grow-max 40
+   --demo-cooldown 5 --demo-front-frac 0.4..0.67 --demo-success-d 100 --demo-success-bonus 50
+   --keys-hold-spawn-duck --yaw-entropy 0 --demo-front-temp 0.5 --demo-front-ticks 40
+   --demo-front-view 6` (+ `--demo-rate 0.5` to consolidate), with `--respawn-greedy 0.2
+   --respawn-front-perturb 0.2` (recipe values) at the gate after the spine's end.
+4. When the greedy line reaches the spine's end, beam_tas from the TRUE START with the newest
+   weights (`--envs 4096 --resample-every 25 --score d --greedy-envs 32 --allow-nonfinisher
+   --save-frontier --skip-gate --route-file none`, ~2 min) -> cut the frontier line at its best
+   before the stall -> the next spine (step 3).
+Gate 2 needed steps 1-3 (GE line + canonical views + band temperature), gate 3 steps 3-4 (one
+beam found the policy's own way over the wall in 100 s).
