@@ -840,3 +840,9 @@ round 1's fixed grow 20 / cooldown 20 they would have taken ~130M).
   `--demo-file spine_d` (898 states: cur4's own greedy prefix to 4.14% + the rim-clearing chain;
   success line 6.86%, beyond what the current line reaches). cur5's last evals 6.828 / 6.729 /
   6.855.
+* cur6 (08:43 UTC, 6.76B): evals 6.843 (resume point) / **6.956 (6.433B)** / 6.927 / 6.950 / 6.949 /
+  6.941 - the greedy line from the true start now takes the rim-clearing approach (peak speed
+  875-898 u/s vs ~830-850) and its episodes end at x ~-1,000 at z 3,136-3,168 (before: 3,000-3,045).
+  The curriculum band sits at spine 731 (the half-pipe landing, 14-22%), while the replayed
+  prefix and early chain succeed 45-77%. Box extended to 13:44 UTC. Pulled cur6 ckpt_latest
+  6.777B (md5 cdaa5299...).
