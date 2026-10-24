@@ -80,6 +80,11 @@ resample every 25 decisions. On a box it runs as it does locally (CPU physics + 
 
 (winners append below)
 
+* Round 1, pbr1b2: 3.235 (3.23% max, 0 finishes, median 3.2% from 810M on): off the start
+  platform by Go-Explore phase 1 -> deduplicated dense chain -> --demo-reach backward
+  curriculum; stuck in the pocket under the platform (an energy deficit of ~500 u). Lesson:
+  "ROUND 1 LESSON (pbr1b2 wrap-up)" at the end of the pbr1b2 notes.
+
 ## pbr1b2 (round 1) - working notes
 
 ### 2026-10-23 14:34 UTC - start
@@ -519,3 +524,46 @@ such a band 20% -> 40% in ~200M steps when the policy is clean.
   pbr1b2_ge17/traj_1336410112. Each run dir holds a checkpoint at or before its tied eval:
   ge14/ckpt_853016576.pt; ge16/ckpt_1260388352.pt; ge17/ckpt_1260388352.pt (a hard link to ge16's:
   ge17 RESUMED from exactly those weights, 76M steps before its eval).
+
+### 2026-10-24 01:40 UTC - ROUND 1 LESSON (pbr1b2 wrap-up)
+
+* Result: best greedy eval from the true start 3.235 (3.23% max progress, 0 finishes), a tie
+  of four evals (ge14/traj_0853540864, ge16/traj_1311768576 and traj_1613758464,
+  ge17/traj_1336410112); median 3.2% in all 18 evals from 810M to 1.61B, so the line off the
+  platform is reliable. Before the method every arm sat at 0.39-0.454 (~0.4%, the spawn
+  platform's NW corner).
+* Handed-on checkpoints (zip CRC checked at wrap-up): ge14/ckpt_853016576.pt (md5 1312bd69...)
+  and ge16/ckpt_1260388352.pt = ge17/ckpt_1260388352.pt (md5 007a1990...). How to resume them:
+  autoresearch/analysis/pb_chain/README.md.
+* What worked (generic: nothing in it reads the map beyond its goal field):
+  1. Go-Explore phase 1 from the map start (tools/explore_phase1.py --view-velocity
+     --dump-paths, 64 u x horizontal-speed cells) found the way off the platform in minutes;
+     RL arms 1-7 had not (<= 0.454).
+  2. A dense chain from the archive's root to its deepest cell with every state kept once
+     (tools/archive_chain.py). The raw concatenation repeats burst prefixes, and the curriculum
+     then stalls for good on a band no episode is credited to (arm 12).
+  3. NEW --demo-reach R: Salimans-Chen's backward curriculum with "reach the chain end region"
+     as the win, i.e. Go-Explore phase 2 on a partial chain. PPO raised the climb band's win
+     rate 20.7% -> 39.4% in ~200M steps, and the greedy policy then went on past the spine's end
+     (1.44%) to 3.23% by itself.
+  4. Cut the spine before moves the policy cannot repeat: a band at 0% beside ~100% bands is a
+     random-burst move, and a curriculum cannot lift a band with zero positives (arms 9, 17).
+  5. --time-pen 0 (with the kill strips a living cost makes suicide the attractor: arms 1-2) and
+     --ent 0.002 (at 0.005 the yaw sigma drifted to its cap: arms 4-10). Both are in
+     config.json's incumbent_recipe; neither is tested from scratch on this map.
+* What did not: the cross-map warm start (tools/transfer_ckpt.py, sidistic finisher: 0.406 and
+  then suicide); the energy potential, front form and plain (arms 2, 3, 15); speed-boosted
+  respawns (arm 4); Go-Explore rows as spawn states, balanced or not, and the dense chain as a
+  uniform spine (arms 5-7, ~0.4). At the pocket: the curriculum on its 0% bands (arms 9, 17),
+  policy-guided population search ranked by record then energy (beam_tas --score rec_e), and
+  per-cell energy elites (--elite-cells): best pocket energy 3,635 u, nothing past 3.24%.
+* The open gate (analysis only): the pocket's exit ramp needs an energy height
+  h = z + v^2/2g of ~3,920 u. The policy arrives with ~3,400 (a slow ledge walk, crash
+  landings) and loses ~350 u on the descent even when it is spawned fast on the ledge. The
+  missing skill is a descent that KEEPS its energy (landing on the slope, not the floor).
+  Random bursts and the policy's own proposals both miss it, so the next proposal has to be
+  able to find it. A candidate is Go-Explore keyed on horizontal speed, rooted at the policy's
+  own ledge states, with bursts long enough to carry speed off the ledge.
+* Harness issue (still open): box.py pull --snapshot builds an unpadded checkpoint name while
+  the trainer writes zero-padded milestones, so the pull skips them silently. The workaround is
+  a hard link with the unpadded name on the box before the pull.

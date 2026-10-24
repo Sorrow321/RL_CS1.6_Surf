@@ -1,7 +1,7 @@
 {
  "agent": "pbr1b2",
  "round": 1,
- "final": false,
+ "final": true,
  "best": {
   "score": 3.235,
   "eval_file": "/home/steam/ar_pb/runs/pbr1b2/pbr1b2_ge14/traj_0853540864.jsonl",
@@ -16,5 +16,5 @@
   "spine": "Go-Explore phase 1 from the map start (explore_phase1 --view-velocity --dump-paths --maxvel 3500, 64 u x 8 speed cells), dense chain to its deepest cell via tools/archive_chain.py (deduplicated), first 379 raw rows -> 333 (start -> corner climb -> south ledge, 1.44%)",
   "commit": "9c029ae"
  },
- "summary": "FIRST WAY OFF THE PLATFORM: 3.234 (pbr1b2_ge13 at 735M; 810M: 3.231 with 6/9 greedy episodes from the true start at 3.2%, the pocket under the platform). The start hides two gates (a ridge pump or a 9 u duck-jump climb at the corner; then speed into the pocket's exit ramp). RL arms 1-7 (sidistic warm start, energy pot, time-pen 0, speed-boosted or Go-Explore spawn states) all stalled at the corner (<=0.454). What worked: Go-Explore phase 1 from the map start finds the route in minutes; NEW --demo-reach turns Salimans-Chen's backward curriculum into Go-Explore phase 2 on that partial chain; the chain must be deduplicated (tools/archive_chain.py) and cut before moves the policy cannot repeat; --ent 0.002 stops the yaw sigma drifting to its cap. Next: the pocket exit (all episodes stop at (808,-3286,3375))."
+ "summary": "FINAL 3.235 (3.23% max, 0 finishes; median 3.2% in all 18 greedy evals from 810M to 1.61B: most episodes from the true start reach the pocket under the spawn platform). Before it every arm stalled at ~0.4% on the platform (best 0.454): cross-map warm start (tools/transfer_ckpt.py), energy potential, speed-boosted or Go-Explore spawn states, a uniform spine. What worked (generic): Go-Explore phase 1 from the map start (explore_phase1 --view-velocity --dump-paths) -> a dense deduplicated chain to its deepest cell (tools/archive_chain.py) -> Salimans-Chen backward curriculum with NEW --demo-reach (win = reach the chain end region: Go-Explore phase 2), the spine cut before moves the policy cannot repeat (a 0% band beside ~100%), plus --time-pen 0 (kill-strip suicide attractor) and --ent 0.002 (yaw sigma drift). Open gate: the pocket exit needs energy height ~3,920 u, the policy arrives with ~3,400 and sheds ~350 u on the descent even when spawned fast; curriculum over its 0% bands (arms 9, 17), plain energy potential, and policy-guided population search ranked by record then energy (beam_tas --score rec_e, --elite-cells) found no exit (best pocket h 3,635). Next: a proposal that can find an energy-KEEPING descent (Go-Explore keyed on horizontal speed, rooted at the policy's own ledge states). Resume notes: autoresearch/analysis/pb_chain/README.md."
 }
