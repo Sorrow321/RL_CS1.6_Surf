@@ -1177,3 +1177,32 @@ the budget pace (0.69 $/h) admit one box; until then every rent was refused (0.1
   53 deg surf ramp along its WEST side (x 420-540, feet z 2,390-2,530) from y -2,650 to -3,350.
   The field cannot tell a ramp landing (20.40%) from the catch fall (20.41%): a success line has
   to sit past ~20.6%, in the flight after the ramp.
+
+### Gate 8 by search at x1.04: the spine past the catch (21:02-21:20 UTC)
+* Go-Explore #4 with the trainer STOPPED (all 30 threads, 1.8M ticks/s, 15 min, 24M runs; 64 u x
+  energy 32 cells; 66 roots = 33 of the beam line's states over 14.0-15.6 s x velocity 1.00 /
+  1.04): the x1.04 root at the launch ((-868, -2,456, 2,843), 15.0 s, 1,219 u/s) reaches **21.54%**
+  the record's way (ANALYSIS: same manoeuvre, ~100 u lower): a sharper right turn at x 443-549,
+  a TANGENTIAL landing on the corridor's west surf ramp at (549, -2,759, 2,403) at 1,391 u/s, south
+  along it, a U-turn at (484, -3,443), a climb north-east and east at ~1,000 u/s to (1,103, -2,852,
+  2,833). The x1.04 root at x -225: 21.38%. The x1.00 roots: <= 20.58%, every one crashing at
+  (540-590, -2,600..-2,700) and crawling (a dead end like the ledge). So the gate needs ~+4% speed
+  (~+40 u of energy height) at the launch - not the record's full +140 u.
+* That line's end is gate 9: coasting from it hits a wall at x ~1,104 just under its top and
+  slides into the next catch at z ~2,405; the record clears it ~100 u higher (z ~2,930 at x 1,208).
+* Spine autoresearch/spines/pbr3b4_ge_r3d.npy (1,814 states: the beam line to 15.0 s + that chain,
+  tools/ge_spine.py; success line d <= 44,939 = 21.37%). New tools: tools/ge_roots_best.py (per-root
+  depth of an exact-chains archive), tools/ge_spine.py.
+* Lesson for the GE: focused roots (the 1.6 s around the launch) and the whole CPU found in 2 min
+  what 15-min runs with 96 roots spread over 3 s beside the trainer (0.47M ticks/s) never found;
+  auto_spine's GE defaults now follow it (64 u x energy 32, roots over the last 2.5 s before the
+  stall, x1.0 / 1.04), and the trainer waits while it searches.
+* auto_spine `--cut best` is the default now: both lines that pass this gate make their LAST
+  CONTACT at the ramp landing (20.40-20.43%, level with the catch fall's 20.41%), and all that makes
+  them pass (the U-turn climb to 21.4-21.5%) is ballistic after it - the contact trim would have
+  cut them at the landing. The --gain margin (500 u past the greedy median) is what keeps a fall
+  from counting.
+* as2 evals: 20.336 / 20.366 / 20.279 (9.61-9.76B; stopped at 9.812B, ckpt md5 f929449b...).
+* **pbr3b4_as3** (21:20 UTC): as2's 9.812B weights + the curriculum on pbr3b4_ge_r3d.npy (its end)
+  + as2's flags (greedy-contact rows, greedy temp, front-perturb, energy K 8, success bonus 50)
+  + --auto-spine (delay 4e8, retry 4e8, patience 6e8, gain 500, GE 8 min), 2B steps.

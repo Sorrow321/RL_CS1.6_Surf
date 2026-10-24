@@ -3,10 +3,10 @@
  "round": 3,
  "final": false,
  "best": {
-  "score": 20.29,
-  "eval_file": "/home/steam/ar_pb/runs/pbr3b4/pbr3b4_as1/traj_9554624512.jsonl",
-  "run": "pbr3b4_as1",
-  "step": 9554624512,
+  "score": 20.366,
+  "eval_file": "/home/steam/ar_pb/runs/pbr3b4/pbr3b4_as2/traj_9689366528.jsonl",
+  "run": "pbr3b4_as2",
+  "step": 9689366528,
   "ckpt": null,
   "recipe": [
    "resume of the incumbent 9.479B + round 2's last flag set",
@@ -15,5 +15,5 @@
   "resume_from": "/home/steam/ar_pb/incumbent/r2/ckpt.pt",
   "commit": "a0166fb"
  },
- "summary": "Box 57557523 (RTX 5080) from 19:57 UTC. Gate 8 (20.4%): the incumbent's last contact is at 17.4%, the rest a ballistic fall into a catch; the record launches steeper off the same ramp and turns south along a curved wall onto a ramp. Speed boosts up to x1.10 at 14 s do not change the greedy line (CAN'T, not energy alone). Beam from the incumbent: dead-end ledge (20.74%); tempered beams (yaw x6/x20) worse; two Go-Explore runs found nothing past. New: train_fast --auto-spine + tools/auto_spine.py (round 2's search->curriculum cycle inside the trainer), beam_tas --view-temp/--keys-temp, --respawn-greedy-contact (greedy rows at the fatal flight's launch). Running pbr3b4_as2. Best so far 20.290 (as1)."
+ "summary": "Box 57557523 (RTX 5080) from 19:57 UTC. Gate 8 (20.4%: a ballistic fall into a catch after a late, low turn into a corridor whose floor is the catch and whose west wall is a surf ramp) passed BY SEARCH: Go-Explore --exact-chains rooted at the policy's own launch states x1.04 speed, the trainer stopped, finds the record's manoeuvre (ramp landing, U-turn, climb east) to 21.54%; spine autoresearch/spines/pbr3b4_ge_r3d.npy. Beams (plain/tempered/branched) and GE at x1.00 do not pass. Now pbr3b4_as3 = curriculum on that spine. New code: train_fast --auto-spine + tools/auto_spine.py (the search->curriculum cycle inside the trainer), --respawn-greedy-contact, beam_tas --view-temp, tools/ge_spine.py / ge_roots_best.py. Best eval so far 20.366 (as2)."
 }
