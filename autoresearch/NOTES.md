@@ -857,3 +857,16 @@ beam found the policy's own way over the wall in 100 s).
   **per-call energy shaping** (`--energy-pot 3 --energy-pot-front 0 --energy-pot-front-bonus 0`:
   every loss of h charged when it happens - the landing's -160 u costs ~-0.48 at that tick -
   instead of the recipe's once-at-the-frontier kinetic bonus, which never sees the landing).
+* beam4 (per-call energy shaping, 5.128-5.42B): the TRAINING frontier jumped - reservoir deepest
+  7.17% -> **12.2%** within ~250M steps - but the greedy evals stayed at the wall (7.113 / 7.171 /
+  7.168 / 7.164, medians 7.1-7.2%), and beams from its weights (`--score d`, and `--score dh
+  --score-energy 5`; `--eps` is refused on --keys-hold) still stop at 7.1-7.19%. The jump comes
+  from the frontier-perturb rows (speed x1.0-1.3 at the frontier band, which sat AT the wall):
+  boosted copies of the wall states clear it and the policy has learned the stretch past it from
+  there, so the greedy line needs only the passage itself.
+* Landing energy across evals (h after the drop's bottom, max z reached at x < -950): beam3
+  3,620-3,655 / 3,257-3,291 -> beam4 3,650-3,669 / 3,290-3,296 (wall top ~3,330): per-call
+  shaping buys ~+20-30 u of h in ~250M steps; ~40 u to go. The greedy pool already spawns 20% of
+  episodes on the greedy line's own drop / landing / climb (2..0.25 s before its best-progress
+  stop at ~9.2 s). No searched state (3 GE archives, 4 beams) keeps more than ~3,700 through the
+  landing (record ~3,798).
