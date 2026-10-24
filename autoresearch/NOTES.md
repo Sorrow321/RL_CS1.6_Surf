@@ -1168,3 +1168,14 @@ shorter budget_end_hours. Written down for the operator; nothing is worked aroun
   upstream - mostly the start room (round 2: tunnel exit h ~3,814 vs the record's ~3,978; the record
   pumps the east half-pipe first, the precision entry starts from a standstill) plus landing losses.
   So the remaining route will keep presenting energy gates until the start carries more energy.
+* Go-Explore exact chains rooted where the auto loop now roots them (25 states of the greedy line's ticks
+  [1044, 1544], the approach to its last ramp contact), 30 min on 1 thread (nice 19), 1.6M cells,
+  runs/pbr3b2/_ge_inc2/: deepest cell (101, -2,440, 2,500) = 19.24%, a fall; the deepest CONTACT stays
+  1544 (17.44%) -> rejected (correctly). With the earlier 15 min run and the view-temp beam: three
+  searches from the policy's own line, nothing lands past the catch. Consistent with the energy
+  diagnosis: from the policy's energy the landing is out of reach, so search alone cannot pass gate 8;
+  training must find the energy (round 2's x -1,015 wall took ~830M steps of per-call energy shaping)
+  or the start must carry more (round 2's GE_pump2 reached the tunnel at h ~3,830 / 340-465 u/s from
+  the east half-pipe vs the greedy's h ~3,735 / ~70 u/s entry: +95 u, about what gate 8 lacks).
+* Auto loop backoff (new): consecutive failed cycles wait retry x 1, 2, 4, 8 evals before the next beam
+  (an accepted spine resets it), so at a training-bound gate the search costs a few % of box time.
