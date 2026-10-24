@@ -79,6 +79,25 @@ def test_the_spine_is_swapped_for_the_searched_line(tmp_path):
         shutil.rmtree(ROOT / "runs" / run, ignore_errors=True)
 
 
+def test_the_cut_drops_the_final_fall():
+    from surfgym.core import STATE_DTYPE
+    from train_fast import last_contact_cut
+    S = np.zeros(60, STATE_DTYPE)
+    S["onground"] = -1
+    vz = np.zeros(60)
+    vz[:20] = 50.0                         # on a ramp: vz held by the surface
+    vz[20:] = 50.0 - 8.0 * np.arange(1, 41)  # then free fall at one gravity step per tick
+    S["velocity"][:, 2] = vz
+    assert last_contact_cut(S, 59, 8.0) == 19         # the take-off state (19 -> 20 is ballistic)
+    assert last_contact_cut(S, 10, 8.0) == 10         # contact all the way: the deepest point
+    S["onground"][45] = 0
+    assert last_contact_cut(S, 59, 8.0) == 45         # standing counts as contact
+    T = np.zeros(10, STATE_DTYPE)
+    T["velocity"][:, 2] = -8.0 * np.arange(10)
+    T["onground"] = -1
+    assert last_contact_cut(T, 9, 8.0) == 9           # no contact at all: keep the whole line
+
+
 @needs_pb
 def test_it_needs_the_success_line(tmp_path):
     r = _run("ab_bad", AB, tmp_path)

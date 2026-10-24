@@ -3627,6 +3627,18 @@ def eval_min_d_eps(traj_path: Path, field) -> list:
     return out
 
 
+def last_contact_cut(S, i: int, g_step: float, tol: float = 1.0) -> int:
+    """The last state at or before ``i`` at which the map had pushed back: on the ground, or
+    just after a tick whose vertical velocity change is not the free-fall step ``-g_step`` (the
+    xSELF trim of CLAUDE.md section 3: a line that ends in a fall must not pay for the fall);
+    ``i`` itself when the stretch holds no contact at all."""
+    vz = np.asarray(S["velocity"][:i + 1, 2], np.float64)
+    hit = np.flatnonzero(np.abs(np.diff(vz) + float(g_step)) > float(tol))
+    gnd = np.flatnonzero(np.asarray(S["onground"][:i + 1]) >= 0)
+    last = max(int(hit[-1]) + 1 if len(hit) else -1, int(gnd[-1]) if len(gnd) else -1)
+    return last if last >= 0 else int(i)
+
+
 def auto_beam_step(ab, args, path, out, step, save_ckpt, end_d, tick):
     """--auto-beam, after one greedy eval: when enough episodes are past the spine's success
     line ``end_d``, search from the map start with the policy's own proposals (beam_tas
@@ -3680,10 +3692,16 @@ def auto_beam_step(ab, args, path, out, step, save_ckpt, end_d, tick):
         S = np.ascontiguousarray(np.asarray(z["states"]).astype(STATE_DTYPE))
         d = np.asarray(field.sample(S["origin"].astype(np.float64)), np.float64)
         d = np.where(d < field.reach_max - 0.5 * field.cell, d, np.inf)
-        i = int(np.argmin(d)) if len(d) else 0
-        if not len(d) or not np.isfinite(d[i]):
+        i_deep = int(np.argmin(d)) if len(d) else 0
+        if not len(d) or not np.isfinite(d[i_deep]):
             why = "its frontier line has no state on the field"
     if why is None:
+        # cut at the deepest point, trimmed back to the last contact with the map: the
+        # frontier lineage usually ends in the fall that killed the population, and a spine
+        # (and a success line) inside that fall would pay for falling
+        i = last_contact_cut(S, i_deep, ab["g_step"], ab["tol"])
+        if not np.isfinite(d[i]):
+            i = i_deep
         new_end = float(d[i]) + float(args.demo_success_d)
         gain = float(end_d) - new_end
         need = float(args.auto_beam_margin) * ab["d0"]
@@ -3709,9 +3727,10 @@ def auto_beam_step(ab, args, path, out, step, save_ckpt, end_d, tick):
                          front_frac=float(args.demo_front_frac), tau0=None, **kw)
     d0 = ab["d0"]
     print(f"[{step:>13,d}] --auto-beam #{k}: SPINE SWAP -> {sp.name}: {len(spine)} states to "
-          f"d {d[i]:,.0f} ({100.0 * (d0 - d[i]) / d0:.2f}% of {d0:,.0f}), success line "
-          f"{end_d:,.0f} -> {new_end:,.0f}; the curriculum restarts at its end "
-          f"({time.time() - t0:.0f} s)", flush=True)
+          f"d {d[i]:,.0f} ({100.0 * (d0 - d[i]) / d0:.2f}% of {d0:,.0f}; the line's deepest "
+          f"{100.0 * (d0 - d[i_deep]) / d0:.2f}% at state {i_deep}, cut at its last contact "
+          f"{i}), success line {end_d:,.0f} -> {new_end:,.0f}; the curriculum restarts at its "
+          f"end ({time.time() - t0:.0f} s)", flush=True)
     return new, new_end
 
 
@@ -15586,8 +15605,14 @@ def main() -> None:
                              "give both")
         if MULTI or D.world_size > 1:
             raise SystemExit("--auto-beam is single-map, single-rank")
+        # the free-fall vz step of one tick (the contact trim); a non-integer tick's pattern
+        # varies it by a fraction of a u/s, which the tolerance absorbs
+        _pat = tuple(getattr(slots[0].core, "tick_pattern", (TICK.ms,))) or (TICK.ms,)
+        _g = float(slots[0].core.config.phys.sv_gravity)
         AB = {"k": 0, "wait": 0, "field": _df,
-              "d0": float(slots[0].rf_d0 or slots[0].d0)}
+              "d0": float(slots[0].rf_d0 or slots[0].d0),
+              "g_step": g_step_of(_g, TICK.ms, 1),
+              "tol": 1.0 + _g * (max(_pat) - min(_pat)) * 1e-3}
         print(f"--auto-beam {int(args.auto_beam)}: when {args.auto_beam_cross:.0%} of a greedy "
               f"eval's episodes pass d <= {DEMO_END_D:,.0f}, tools/beam_tas.py searches from the "
               f"map start ({args.auto_beam_secs:g} s past the longest episode) and its deepest "
