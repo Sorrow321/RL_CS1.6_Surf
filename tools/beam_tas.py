@@ -901,9 +901,14 @@ class MixedTorchPolicy(SampledTorchPolicy):
     proposals are slower than its mode and whose population otherwise
     arrives at the finish window late, low, and dead."""
 
-    def __init__(self, *a, n_greedy: int, **kw):
+    def __init__(self, *a, n_greedy: int, keys_temp=None, view_scale=None, **kw):
         super().__init__(*a, **kw)
         self._ng = int(n_greedy)
+        # --prop-keys-temp / --prop-yaw-scale: the SAMPLED envs' draw through the trainer's own
+        # sample_view(temp, temp_view) call; None = the untempered call, byte for byte (the
+        # greedy envs take argmax / mu, which no temperature moves)
+        self._kt = None if keys_temp is None or float(keys_temp) == 1.0 else float(keys_temp)
+        self._vs = None if view_scale is None else [float(v) for v in view_scale]
 
     @torch.inference_mode()
     def _decide(self, obs):
@@ -913,13 +918,17 @@ class MixedTorchPolicy(SampledTorchPolicy):
             # argmax of the four categorical heads, off the same forward
             cat, mu = split_view(logits.float())
             padded = self.packer.pad(cat)
-            act, z, _ = sample_view(padded, mu, self.policy.log_std())
+            if self._kt is None and self._vs is None:
+                act, z, _ = sample_view(padded, mu, self.policy.log_std())
+            else:
+                act, z, _ = sample_view(padded, mu, self.policy.log_std(),
+                                        temp=self._kt, temp_view=self._vs)
             if self._ng > 0:
                 act[:self._ng, N_VIEW:] = padded[:self._ng, N_VIEW:].argmax(-1)
                 z[:self._ng] = mu[:self._ng]
             return self._finish_view(act[:, N_VIEW:], z)
         padded = self.packer.pad(logits)
-        act, _ = sample_padded(padded)
+        act, _ = sample_padded(padded) if self._kt is None else sample_padded(padded, self._kt)
         if self._ng > 0:
             act[:self._ng] = padded[:self._ng].argmax(-1)
         return act.to("cpu").numpy().astype(np.int32)
@@ -1972,6 +1981,15 @@ def main():
                     "and env 0 is never cloned over while alive, so the "
                     "search is bounded below by the greedy line itself. "
                     "0 = every env samples, as before")
+    ap.add_argument("--prop-keys-temp", type=float, default=1.0,
+                    help="population mode with --greedy-envs: the SAMPLED envs draw the key "
+                    "heads at this temperature (logits / T; the trainer's sample_view temp). "
+                    "1 = off, byte-identical")
+    ap.add_argument("--prop-yaw-scale", type=float, default=1.0,
+                    help="population mode with --greedy-envs, --view-continuous: the SAMPLED "
+                    "envs draw the yaw head with sigma x this (pitch untouched; the trainer's "
+                    "sample_view temp_view). 1 = off, byte-identical. A --yaw-entropy 0 policy's "
+                    "yaw sigma is ~0.01 rad, so its proposals barely vary the view")
     ap.add_argument("--route-file",
                     default="C:/RL_Surf/maps/surf_src_cannonball.route.npz")
     ap.add_argument("--corridor", type=float, default=1500.0)
@@ -2071,6 +2089,12 @@ def main():
                     help="print every Nth generation")
     ap.add_argument("--no-config-audit", action="store_true")
     args = ap.parse_args()
+    if (float(args.prop_keys_temp) != 1.0 or float(args.prop_yaw_scale) != 1.0) \
+            and args.greedy_envs <= 0:
+        raise SystemExit("--prop-keys-temp / --prop-yaw-scale temper the sampled envs of the "
+                         "--greedy-envs mixer: give --greedy-envs G > 0")
+    if float(args.prop_keys_temp) <= 0.0 or float(args.prop_yaw_scale) <= 0.0:
+        raise SystemExit("--prop-keys-temp / --prop-yaw-scale must be > 0")
 
     t_all = time.time()
     out_dir = Path(args.out_dir)
@@ -2546,10 +2570,20 @@ def main():
                              "and excludes --eps/--dedup/--commit")
         if args.greedy_envs > N:
             raise SystemExit("--greedy-envs must be <= --envs")
+        _pvs = None
+        if float(args.prop_yaw_scale) != 1.0:
+            if not VIEWC:
+                raise SystemExit("--prop-yaw-scale needs a --view-continuous checkpoint")
+            _pvs = [float(args.prop_yaw_scale), 1.0]      # the yaw head; pitch is inert
         spol = MixedTorchPolicy(policy, packer, device, lidar, coreN,
                                 K, stack, n_greedy=args.greedy_envs,
+                                keys_temp=float(args.prop_keys_temp), view_scale=_pvs,
                                 extra_slot=esN, extra_fn=efN,
                                 latch_fn=latchN, cc_fn=cc_fnN, keys_hold=KEYS, **xkwN)
+        if float(args.prop_keys_temp) != 1.0 or _pvs is not None:
+            print(f"proposal temperature: the {N - args.greedy_envs} sampled envs draw the keys "
+                  f"at T {float(args.prop_keys_temp):g} and the yaw with sigma x "
+                  f"{float(args.prop_yaw_scale):g}; the {args.greedy_envs} greedy envs are untouched")
     elif args.eps > 0.0 or args.dedup:
         spol = EpsSampledTorchPolicy(policy, packer, device, lidar, coreN,
                                      K, stack, eps=args.eps,

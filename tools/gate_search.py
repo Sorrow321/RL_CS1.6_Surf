@@ -63,6 +63,10 @@ def main(argv=None) -> int:
     ap.add_argument("--beam-greedy", type=int, default=32)
     ap.add_argument("--beam-ticks", type=int, default=3000)
     ap.add_argument("--beam-seed", type=int, default=0)
+    ap.add_argument("--beam-keys-temp", type=float, default=1.0,
+                    help="beam_tas --prop-keys-temp (the sampled envs' key temperature)")
+    ap.add_argument("--beam-yaw-scale", type=float, default=1.0,
+                    help="beam_tas --prop-yaw-scale (the sampled envs' yaw sigma multiplier)")
     ap.add_argument("--skip-beam", default=None, metavar="NPZ",
                     help="reuse a beam_frontier.npz instead of running the beam")
     ap.add_argument("--ge-minutes", type=float, default=12.0, help="0 = never run GE")
@@ -98,7 +102,8 @@ def main(argv=None) -> int:
                   "--envs", a.beam_envs, "--resample-every", 25, "--score", "d",
                   "--greedy-envs", a.beam_greedy, "--allow-nonfinisher", "--save-frontier",
                   "--skip-gate", "--route-file", "none", "--max-ticks", a.beam_ticks,
-                  "--torch-seed", a.beam_seed, "--out-dir", bdir], log)
+                  "--torch-seed", a.beam_seed, "--prop-keys-temp", a.beam_keys_temp,
+                  "--prop-yaw-scale", a.beam_yaw_scale, "--out-dir", bdir], log)
         fz = bdir / "beam_frontier.npz"
         if rc != 0 or not fz.exists():
             raise SystemExit(f"beam_tas failed (exit {rc}); see {log}")
