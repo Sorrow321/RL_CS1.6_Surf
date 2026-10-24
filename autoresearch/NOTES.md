@@ -948,3 +948,7 @@ round 1's fixed grow 20 / cooldown 20 they would have taken ~130M).
 * Hand-on: no snapshot at 8.973B exists (ckpt_latest moved on); pulled cur11 ckpt_latest 9.252B (md5
   c6e27c50..., its own evals 15.06-15.24) and removed the stale ckpt_8368685056.pt (cur10's weights,
   still in cur10's dir) from runs/pbr2b4/pbr2b4_cur11/, so the newest checkpoint is the one handed on.
+* cur11 keeps climbing (12:41 UTC): 15.058 / 15.141 / 15.008 / 15.449 / 15.748 / **15.947 (9.653B,
+  best 15.9%, median 15.8%)**. A box-side watcher (runs/pbr2b4_snapwatch.sh) copies every new
+  ckpt_latest to ckpt_<step>.pt; pulled ckpt_9645850624.pt (7M steps before the 15.947 eval, md5
+  0eab5c9c...) as the hand-on snapshot.
