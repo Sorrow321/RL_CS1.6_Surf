@@ -20,13 +20,15 @@ def test_the_pull_line_is_on_and_dumped(tmp_path):
     run = "dpull_on"
     try:
         r = _run_demo(run, ["--demo-success-d", "100", "--demo-success-bonus", "50",
-                            "--demo-pull-d", "0", "--demo-pull-bonus", "25"], tmp_path)
+                            "--demo-pull-d", "0", "--demo-pull-bonus", "25",
+                            "--demo-pull-stats"], tmp_path)
         out = r.stdout + r.stderr
         assert r.returncode == 0, out[-4000:]
         assert "--demo-pull-d 0: a second line at d <=" in out and "pays 25 once more" in out
         cfg = json.loads((ROOT / "runs" / run / "run.json").read_text())["config"]
         assert cfg["demo_pull_d"] == 0.0 and cfg["demo_pull_bonus"] == 25.0
-        assert cfg["demo_success_d"] == 100.0
+        assert cfg["demo_success_d"] == 100.0 and cfg["demo_pull_stats"] == 1
+        assert "--demo-pull-stats: the curriculum's success statistics use the pull line" in out
     finally:
         shutil.rmtree(ROOT / "runs" / run, ignore_errors=True)
 

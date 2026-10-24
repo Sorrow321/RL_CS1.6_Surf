@@ -4788,6 +4788,11 @@ def main() -> None:
                          "stay on the --demo-success-d line. Config only when set; ckpt restores")
     ap.add_argument("--demo-pull-bonus", type=float, default=None,   # None = off
                     help="--demo-pull-d: the extra bonus paid once at the second line")
+    ap.add_argument("--demo-pull-stats", action="store_const", const=1, default=None,
+                    help="--demo-pull-d: the curriculum's success statistics use the PULL line "
+                         "instead of the --demo-success-d anchor, so the band settles where the "
+                         "policy cannot reach the deeper spine end yet, while the anchor's bonus "
+                         "keeps the current line worth flying. Config only when on; ckpt restores")
     ap.add_argument("--demo-success-bonus", type=float, default=None,   # None = off
                     help="--demo-success-d: an episode whose ratchet record CROSSES the spine's "
                          "success line (d(spine end) + --demo-success-d) is paid this once, like "
@@ -7923,6 +7928,9 @@ def main() -> None:
         if args.demo_pull_bonus is None and ck_cfg.get("demo_pull_bonus") is not None:
             args.demo_pull_bonus = float(ck_cfg["demo_pull_bonus"])
             restored.append(f"demo_pull_bonus={args.demo_pull_bonus:g}")
+        if args.demo_pull_stats is None and ck_cfg.get("demo_pull_stats"):
+            args.demo_pull_stats = 1
+            restored.append("demo_pull_stats")
         if args.int_view is None and ck_cfg.get("int_view") is not None:
             args.int_view = int(ck_cfg["int_view"])
             restored.append(f"int_view={args.int_view}")
@@ -11488,6 +11496,9 @@ def main() -> None:
             raise SystemExit("--demo-success-bonus pays the --demo-success-d line: give both")
         if (args.demo_pull_d is None) != (args.demo_pull_bonus is None):
             raise SystemExit("--demo-pull-d and --demo-pull-bonus go together")
+        if args.demo_pull_stats and args.demo_pull_d is None:
+            raise SystemExit("--demo-pull-stats scores the curriculum on the --demo-pull-d line: "
+                             "give --demo-pull-d / --demo-pull-bonus")
         if args.demo_pull_d is not None and not float(args.demo_success_bonus or 0.0) > 0.0:
             raise SystemExit("--demo-pull-d is a second line beside --demo-success-bonus: give "
                              "--demo-success-d and --demo-success-bonus too")
@@ -14476,6 +14487,8 @@ def main() -> None:
         # --demo-pull-d / --demo-pull-bonus: dumped only when set; a resume restores them
         meta["config"]["demo_pull_d"] = float(args.demo_pull_d)
         meta["config"]["demo_pull_bonus"] = float(args.demo_pull_bonus)
+        if args.demo_pull_stats:
+            meta["config"]["demo_pull_stats"] = 1
     if args.race_sr:
         # --race-sr: dumped only when on, so a flag-off run.json is the
         # control's byte for byte (test_int_split's identity check)
@@ -15422,6 +15435,9 @@ def main() -> None:
         print(f"--demo-pull-d {float(args.demo_pull_d):g}: a second line at d <= "
               f"{DEMO_PULL_D:,.0f} pays {DEMO_PULL_B:g} once more (the anchor stays at "
               f"{DEMO_END_D:,.0f})")
+        if args.demo_pull_stats:
+            print(f"--demo-pull-stats: the curriculum's success statistics use the pull line "
+                  f"d <= {DEMO_PULL_D:,.0f}")
 
     def _demo_pull_pay(r, ended, rec):
         if DEMO_PULL_PAID[0] is None:
@@ -18660,7 +18676,10 @@ def main() -> None:
                                 # before this call re-anchored them on the new spawns
                                 _rb = getattr(slots[0].reward_fn, "_rec_boot", None)
                                 if _rb is not None:
-                                    goal_now = goal_now | (np.asarray(_rb)[ei] <= DEMO_END_D)
+                                    _line = (DEMO_PULL_D if (DEMO_PULL_D is not None
+                                                             and args.demo_pull_stats)
+                                             else DEMO_END_D)
+                                    goal_now = goal_now | (np.asarray(_rb)[ei] <= _line)
                             known = demo_idx[ei] >= 0
                             if known.any():
                                 demo.note_outcomes(demo_idx[ei][known],
