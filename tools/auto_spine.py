@@ -244,12 +244,12 @@ def main(argv=None) -> int:
                          "above 1.04: the deepest chain of a mixed stage is the most boosted "
                          "one, and a x1.12 root put a spine out of the greedy line's reach "
                          "(round 3, auto-spine search 3)")
-    ap.add_argument("--roots-secs", type=float, default=2.5,
+    ap.add_argument("--roots-secs", type=float, default=4.0,
                     help="Go-Explore roots: the line's last seconds before it stalls")
     ap.add_argument("--stall-margin", type=float, default=500.0,
                     help="the line stalls where it first comes within this many u of its "
                          "best d")
-    ap.add_argument("--roots-n", type=int, default=40)
+    ap.add_argument("--roots-n", type=int, default=48)
     ap.add_argument("--act-every", type=int, default=4)
     ap.add_argument("--maxvel", type=float, default=None)
     ap.add_argument("--threads", type=int, default=0)
