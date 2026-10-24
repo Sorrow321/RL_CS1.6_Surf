@@ -45,3 +45,9 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   then down to 10-12.6% (-3,303,-3,384,2,790). Rows 150+ are physical (no scaling after the root).
   cur4's --spawn-states = pbr1b1_entry_ge_states + 3 x rows 150-2,153 (runs/pbr2b4/_ge6/
   spawn_entry_platform.npy, md5 267696e9...).
+* `pbr2b4_spine_d.npy` (898 states, md5 fbc3f8298fad8bf7b96e9ca803ae12f1): pbr2b4_cur4's own greedy
+  line from the true start (5.656B weights, record_ckpt --dump-states, episode 0, ticks 0-664) + an
+  exact-chain GE chain (GE rim1: roots = that line's own states 1.0-0.1 s before its largest one-tick
+  energy drop, 64 u x --cell-energy 16, 50-decision bursts, 10 min; ge_replay 8/8 links, 233 ticks)
+  that passes the rim ~75 u higher, keeps the energy and reaches the wall top at 7.03%
+  (-1,001,-2,983,3,231).

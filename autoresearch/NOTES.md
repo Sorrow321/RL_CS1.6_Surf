@@ -834,3 +834,9 @@ round 1's fixed grow 20 / cooldown 20 they would have taken ~130M).
 * pb_perturb_spawns.py (new, not used yet): perturbed copies of the policy's own greedy states before
   its biggest energy drop (the --respawn-front-perturb / -novel family aimed at the energy sink);
   512 of 728 valid copies for cur4's line.
+* plat1/plat2 (4 min each, roots = the 7.03% chain's last 1.5 s): best 7.046-7.061%, all at the
+  wall top (z ~3,230) - that line ends on a ledge ~100 u below the platform.
+* **pbr2b4_cur6** (08:23 UTC): resume cur5 final (6.357B, md5 71fb8398...) + cur5's flags +
+  `--demo-file spine_d` (898 states: cur4's own greedy prefix to 4.14% + the rim-clearing chain;
+  success line 6.86%, beyond what the current line reaches). cur5's last evals 6.828 / 6.729 /
+  6.855.
