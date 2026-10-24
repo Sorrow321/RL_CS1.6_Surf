@@ -36,12 +36,17 @@ named pbr<round>b<k> / ar/pbr<round>b<k>.
 
 ## Hard limits (config.json, enforced in code)
 
-* **Cards.** RTX 3090 / 3090 Ti / 4080 / 5080 first, cheapest of those; then 4090; then 5090.
-* **Price caps:**
+* **Cards.** RTX 3090 / 3090 Ti / 4080 / 5080 and, since 2026-10-25, the cheaper 3080 / 4070
+  / 5070 / 60 Ti class cards (>= 12 GB) first, cheapest of those; then 4090; then 5090.
+* **Price caps** ($/h for the whole box, its disk included; the cheaper cards' caps are below
+  the good cards', user 2026-10-25):
 
   | Card | Max $/h |
   |---|---|
-  | 3090, 3090 Ti, 4080, 5080 | 0.65 |
+  | 3090, 3090 Ti, 4080, 4080 Super, 5080 | 0.65 |
+  | 4070 Ti Super, 5070 Ti | 0.30 |
+  | 3080, 3080 Ti, 4070, 4070 Super, 4070 Ti, 5070 | 0.25 |
+  | 4060 Ti 16 GB, 5060 Ti 16 GB | 0.20 |
   | 4090 | 0.45 |
   | 5090 | 0.60 |
 
@@ -49,8 +54,11 @@ named pbr<round>b<k> / ar/pbr<round>b<k>.
 * **Enforcement.** `box.py` refuses any rental outside these limits. The fleet watchdog
   destroys any instance on the account that breaks them, whoever rented it. It needs two
   consecutive sightings before acting.
-* **Budget pacing.** No new box once the credit falls to the $10 reserve. The fleet's burn
-  rate may not exceed (credit - reserve) / hours left until hour 72.
+* **Budget.** No new box once the credit falls to the $10 reserve. The fleet's burn (live
+  boxes plus the new one) may not exceed config.budget_rate_usd_h, $1.2/h since 2026-10-25
+  (the user); without that key, (credit - reserve) / hours left until budget_end_hours.
+  `box.py extend` is refused when the fleet's burn over the extension would come out of the
+  reserve.
 * **Deadlines.** Every box has a watchdog deadline (`box.py rent --hours`, `box.py extend`).
 * **Readiness.** A box must be running within 5.5 min of creation and reachable by ssh within
   90 s after that; otherwise it is blocklisted and destroyed.

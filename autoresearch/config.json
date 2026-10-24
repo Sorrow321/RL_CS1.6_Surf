@@ -19,12 +19,25 @@
   "budget_reserve_usd": 10.0,
   "budget_end_hours": 78,
   "_budget_end_hours_doc": "Hours from THIS program's start (state.json started) over which box.py spreads the credit above the reserve: 2 rounds x 12 h + scoring; 78 since 2026-10-24 = the 29.5 h restart + rounds 3-6 (4 x 12 h) + scoring. Move it with rounds.",
+  "budget_rate_usd_h": 1.2,
+  "_budget_rate_usd_h_doc": "The user, 2026-10-25, with three of four agents refused a box by the pacer (0.70 $/h): 'we make the budget equal to $1 an hour, or actually $1.2 an hour.' A flat cap on the fleet's burn, live boxes plus the one being rented, while the credit is above the reserve; it replaces the pacer ((credit - reserve) / hours left until budget_end_hours, +10%) and its slack. A flat rate can outspend the credit ($31.4 above the reserve that night = 26 h at 1.2 $/h, against ~44 h of program left), so box.py extend refuses an extension the fleet's burn would pay out of the reserve: a run-out stops every box on the account at once (2026-10-09). Remove the key to go back to the pacer.",
   "gpu_tiers": [
     [
       "RTX_3090",
       "RTX_3090_Ti",
       "RTX_4080",
-      "RTX_5080"
+      "RTX_4080S",
+      "RTX_5080",
+      "RTX_4070S_Ti",
+      "RTX_5070_Ti",
+      "RTX_3080",
+      "RTX_3080_Ti",
+      "RTX_4070",
+      "RTX_4070S",
+      "RTX_4070_Ti",
+      "RTX_5070",
+      "RTX_4060_Ti",
+      "RTX_5060_Ti"
     ],
     [
       "RTX_4090"
@@ -39,9 +52,21 @@
     "RTX_4080": 0.65,
     "RTX_5080": 0.65,
     "RTX_4090": 0.45,
-    "RTX_5090": 0.6
+    "RTX_5090": 0.6,
+    "RTX_4080S": 0.65,
+    "RTX_4070S_Ti": 0.3,
+    "RTX_5070_Ti": 0.3,
+    "RTX_3080": 0.25,
+    "RTX_3080_Ti": 0.25,
+    "RTX_4070": 0.25,
+    "RTX_4070S": 0.25,
+    "RTX_4070_Ti": 0.25,
+    "RTX_5070": 0.25,
+    "RTX_4060_Ti": 0.2,
+    "RTX_5060_Ti": 0.2
   },
-  "offer_query": "num_gpus=1 cuda_vers>=12.8 reliability>0.98 inet_down>300 rentable=true disk_space>60 cpu_cores_effective>=32 cpu_ghz>=2.5 verified=true",
+  "_max_dph_doc": "$/h for the WHOLE box, its disk_gb of storage included: box.py prices offers with --storage disk_gb, and the fleet watchdog checks the instance's dph_total, which includes the disk, against these same caps (the 5080 offer at 0.563 runs at 0.578). The user, 2026-10-25, with three of four agents refused a box for hours by the budget pace: 'Maybe they can try to search for cheaper ones. Technically, we don't need a super quick box. We can search for example, 4080, 4070, 5070, things like that' and 'The prices obviously should be lower ... they shouldn't be bigger than the good GPUs.' So the cheaper cards joined tier 0 (cheapest first: a cheaper card is never rented while a good card fits the pace at the same price or less) under caps below the good cards' 0.65: 0.30 for the 16 GB 70 Ti class (4070 Ti Super = RTX_4070S_Ti, 5070 Ti), 0.25 for the 12 GB 70 class and the 3080s, 0.20 for the 16 GB 60 Ti class (offer_query's gpu_ram>=12 drops the 8 GB variants). RTX_4080S is vast's name for the 4080 Super, a 4080 at the 4080's cap. Going rates that night, median $/h over every verified single-GPU offer: 4070 0.21, 4070S 0.15, 4070 Ti 0.20, 5070 0.24, 5070 Ti 0.34, 3080 0.18, 3080 Ti 0.22, 4060 Ti 0.19, 5060 Ti 0.17, 5080 0.38; only a handful come with >= 32 threads. pbr3b4's 5080 (the incumbent-style recipe, 1024 envs) used 4.5 of 16 GB, its GPU 22-99% busy, at 222-267k steps/s: the CPU's physics shares the pace, so a slower card on a fast 32-thread host loses less than its GPU spec.",
+  "offer_query": "num_gpus=1 cuda_vers>=12.8 reliability>0.98 inet_down>300 rentable=true disk_space>60 cpu_cores_effective>=32 cpu_ghz>=2.5 verified=true gpu_ram>=12",
   "cpu_exclude": [
     "Xeon.* E[57]-"
   ],
@@ -168,7 +193,7 @@
   "start_d": 57149.0,
   "model": "claude-opus-5-5",
   "effort": "max",
-  "_offer_query_doc": "Scratch training here is CPU-bound: the trainer takes half the container's CPUs for physics. A 16-thread 3090 box ran the incumbent recipe at ~36k steps/s (2026-10-20, smoke_x1) against ~420k on the 5090 PC, so boxes need >= 32 effective threads on a fast CPU. Measured the same night on a 3090 + Ryzen 9 5950X box (32 threads, quota 30.7 CPUs, omp 15): ~194k steps/s, GPU 30% busy.",
+  "_offer_query_doc": "Scratch training here is CPU-bound: the trainer takes half the container's CPUs for physics. A 16-thread 3090 box ran the incumbent recipe at ~36k steps/s (2026-10-20, smoke_x1) against ~420k on the 5090 PC, so boxes need >= 32 effective threads on a fast CPU. Measured the same night on a 3090 + Ryzen 9 5950X box (32 threads, quota 30.7 CPUs, omp 15): ~194k steps/s, GPU 30% busy. gpu_ram>=12 (GB; 2026-10-25): the cheaper cards' 8 GB variants are out, every good card has 16-24 GB.",
   "_incumbent_recipe_doc": "The sidistic lineage's final training flags (r7b2_bel, its first greedy finish), FROM SCRATCH: run_arm.sh SCRATCH's baseline is overridden by these (later flags win). Plus --maxvel 3500, the server's sv_maxvelocity in the WR demo's movevars (sidistic was trained at 4000).",
   "agent_prefix": "pb",
   "_agent_prefix_doc": "Agents pbr<round>b<k>, branches ar/pbr<round>b<k>: the first program's ar/r<n>b<k> are on origin.",

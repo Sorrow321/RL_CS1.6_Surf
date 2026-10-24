@@ -2,7 +2,8 @@
 
 * offers: whitelisted single-GPU RTX cards under their cap, blocklisted hosts and the CPUs in
   config.cpu_exclude out, in the user's order (3090-class tier first, cheapest first, then
-  4090, then 5090);
+  4090, then 5090); one search, priced with the box's disk; the cheaper cards of 2026-10-25
+  sit under caps below the good cards' and lose a price tie to them;
 * the blocklist is shared: every branch's list folds into $AR_HOME/bad_hosts.json, which
   every agent's box.py reads on top of its own;
 * rent refuses a second box for the same agent, a box over the fleet cap, and a box the
@@ -36,17 +37,18 @@ MARKET = {
     "RTX_5080": [_offer(4, "RTX_5080", 0.20)],
     "RTX_4090": [_offer(5, "RTX_4090", 0.44), _offer(6, "RTX_4090", 0.50)],
     "RTX_5090": [_offer(7, "RTX_5090", 0.55), _offer(8, "RTX_5090", 0.55, n=2)],
+    "A100_PCIE": [_offer(9, "A100_PCIE", 0.10)],
 }
 
 
 @pytest.fixture
 def market(monkeypatch, tmp_path):
-    state = {"live": [], "credit": 100.0, "created": []}
+    state = {"live": [], "credit": 100.0, "created": [], "searches": []}
 
     def fake_vast(*args, raw=True, timeout=120, check=True):
         if args[:2] == ("search", "offers"):
-            gpu = args[2].split()[0].split("=")[1]
-            return list(MARKET.get(gpu, []))
+            state["searches"].append(args)
+            return [o for offs in MARKET.values() for o in offs]
         if args[:2] == ("show", "instances"):
             return list(state["live"])
         if args[:2] == ("show", "user"):
@@ -68,10 +70,36 @@ def test_offers_are_whitelisted_capped_single_gpu_and_ordered(market):
     got = box.offers()
     ids = [o["id"] for o in got]
     # the 3090 at 0.31 is under its 0.65 cap (raised 2026-10-22, 3a9af7e); machine 777 is
-    # blocklisted; the 4090 at 0.50 is over 0.45; the 2-GPU 5090 is out. Tier 0 (3090 / 5080)
-    # first, cheapest first
+    # blocklisted; the 4090 at 0.50 is over 0.45; the 2-GPU 5090 is out; the A100 is not a
+    # whitelisted card, however cheap. Tier 0 (3090 / 5080) first, cheapest first
     assert ids == [4, 2, 1, 5, 7], ids
     assert {o["gpu"] for o in got} <= set(box.CFG["max_dph"])
+    # ONE search for the whole whitelist, priced with the box's own disk: the watchdog checks
+    # the instance's dph_total, which carries all of disk_gb
+    assert len(market["searches"]) == 1
+    s = market["searches"][0]
+    assert s[2] == box.CFG["offer_query"]
+    assert s[s.index("--storage") + 1] == str(box.CFG["disk_gb"])
+
+
+def test_the_cheaper_cards(monkeypatch):
+    """User, 2026-10-25: 'search for cheaper ones ... 4080, 4070, 5070, things like that' and
+    'they shouldn't be bigger than the good GPUs'. Their caps sit below every good card's, they
+    rank by price inside tier 0, and a price tie goes to the good card."""
+    good = ("RTX_3090", "RTX_3090_Ti", "RTX_4080", "RTX_4080S", "RTX_5080")
+    caps = box.CFG["max_dph"]
+    cheaper = [g for g in box.CFG["gpu_tiers"][0] if g not in good]
+    assert {"RTX_4070", "RTX_5070"} <= set(cheaper)
+    assert max(caps[g] for g in cheaper) < min(caps[g] for g in good)
+    market = [_offer(1, "RTX_5080", 0.38), _offer(2, "RTX_5070", 0.22),
+              _offer(3, "RTX_5070_Ti", 0.669),       # over its cap: dearer than the 5080
+              _offer(4, "RTX_4070S_Ti", 0.29), _offer(5, "RTX_5060_Ti", 0.21),
+              _offer(6, "RTX_3090", 0.22)]
+    monkeypatch.setattr(box, "vast", lambda *a, **k: list(market))
+    monkeypatch.setattr(box, "blocked_keys", lambda: (set(), set(), set()))
+    got = [(o["gpu"], o["dph"]) for o in box.offers()]
+    assert got == [("RTX_3090", 0.22), ("RTX_5070", 0.22), ("RTX_4070S_Ti", 0.29),
+                   ("RTX_5080", 0.38)], got
 
 
 def test_one_box_per_agent(market):
@@ -91,8 +119,10 @@ def test_the_fleet_cap(market):
         box.main(["rent", "--agent", "r1b2", "--dry-run"])
 
 
-def test_the_budget_pace(market, capsys):
-    # $100, $10 reserve, 72 h: 1.25 $/h. Four 0.30 boxes already burn 1.2 - nothing fits
+def test_the_budget_pace(market, capsys, monkeypatch):
+    # the pacer, without the flat rate: $100, $10 reserve, 72 h: 1.25 $/h. Four 0.30 boxes
+    # already burn 1.2 - nothing fits
+    monkeypatch.delitem(box.CFG, "budget_rate_usd_h", raising=False)
     market["live"] = [{"id": 100 + i, "label": f"x{i}", "dph_total": 0.30} for i in range(3)]
     market["credit"] = 30.0          # (30 - 10) / 72 = 0.28 $/h allowed, 0.9 already burning
     with pytest.raises(SystemExit) as e:
@@ -107,6 +137,47 @@ def test_the_budget_pace(market, capsys):
     assert out["would_rent"]["id"] == 4 and market["created"] == []
 
 
+def test_the_flat_rate(market, capsys, monkeypatch):
+    """User, 2026-10-25: 'we make the budget equal to ... $1.2 an hour.' The fleet's burn plus
+    the new box may reach the rate, not pass it (no pacer slack), whatever the credit."""
+    monkeypatch.setitem(box.CFG, "budget_rate_usd_h", 1.2)
+    market["credit"] = 30.0          # the pacer would allow (30 - 10) / 78 = 0.26 $/h
+    market["live"] = [{"id": 100, "label": "x0", "dph_total": 0.50},
+                      {"id": 101, "label": "x1", "dph_total": 0.50}]
+    b = box.budget_state()
+    assert b["limit_per_h"] == 1.2 and b["hours_to_reserve"] == 20.0, b
+    box.main(["rent", "--agent", "r1b3", "--dry-run"])          # 1.0 + the 0.20 5080 = 1.2
+    assert json.loads(capsys.readouterr().out)["would_rent"]["id"] == 4
+    market["live"][1]["dph_total"] = 0.51                        # 1.21 > 1.2
+    with pytest.raises(SystemExit) as e:
+        box.main(["rent", "--agent", "r1b3", "--dry-run"])
+    assert e.value.code == 3
+    market["live"] = []
+    market["credit"] = 10.0                                      # at the reserve: no box
+    assert box.budget_state()["limit_per_h"] == 0.0
+    with pytest.raises(SystemExit):
+        box.main(["rent", "--agent", "r1b3", "--dry-run"])
+    assert market["created"] == []
+
+
+def test_extend_stops_short_of_the_reserve(market, monkeypatch):
+    """A flat rate can outspend the credit and a run-out stops every box at once: an extension
+    the fleet's burn would pay out of the reserve is refused, and the deadline stands."""
+    calls = []
+    monkeypatch.setattr(box, "watchdog", lambda *a: calls.append(a) or
+                        box.subprocess.CompletedProcess(a, 0, "extended", ""))
+    box.save_rec("r1b1", {"agent": "r1b1", "id": 42, "gpu": "RTX_5080", "dph": 0.6,
+                          "created": 0})
+    market["live"] = [{"id": 42, "label": "r1b1", "dph_total": 0.6},
+                      {"id": 43, "label": "r1b2", "dph_total": 0.6}]
+    market["credit"] = 12.0                                      # $2 above the reserve
+    with pytest.raises(SystemExit):
+        box.main(["extend", "--agent", "r1b1", "--hours", "2"])  # 1.2 $/h x 2 h = $2.4
+    assert calls == []
+    box.main(["extend", "--agent", "r1b1", "--hours", "1"])      # $1.2 of the $2
+    assert calls == [("extend", "42", "--minutes", "60")]
+
+
 def test_the_reserve(market):
     market["credit"] = 9.0
     with pytest.raises(SystemExit):
@@ -118,7 +189,7 @@ def test_offers_drop_the_excluded_cpus(monkeypatch):
     xeon = dict(_offer(1, "RTX_3090", 0.18), cpu_name="Xeon® E5-2699 v3 ")
     ryzen = dict(_offer(2, "RTX_3090", 0.25), cpu_name="AMD Ryzen 9 5950X 16-Core Processor")
     monkeypatch.setattr(box, "vast", lambda *a, **k: [xeon, ryzen]
-                        if a[:3] == ("search", "offers", f"gpu_name=RTX_3090 {box.CFG['offer_query']}")
+                        if a[:3] == ("search", "offers", box.CFG["offer_query"])
                         else [])
     monkeypatch.setattr(box, "blocked_keys", lambda: (set(), set(), set()))
     got = box.offers()
