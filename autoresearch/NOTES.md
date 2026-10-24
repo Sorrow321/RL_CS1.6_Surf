@@ -501,6 +501,6 @@ The goal field is blind to all of it (the start's field minimum is the SW corner
   486M 255 u (0.42-0.43) - the cut stops the drift into early deaths but brings no climb in
   ~200M steps; the climb is not latent in sgx1's 334.5M weights in a form a smaller step
   recovers quickly. (First test only; the round ends.)
-* 01:36 Wrap-up: final best **0.613** (`pbr1b3_sgx1/traj_0153092096.jsonl`, 350 u = 0.61%, 0
+* 01:39 Wrap-up: final best **0.613** (`pbr1b3_sgx1/traj_0153092096.jsonl`, 350 u = 0.61%, 0
   finishes); hand-on checkpoint `pbr1b3_sgx1/ckpt_latest.pt` (334.5M, md5 2ed815bc..., matches
   the box). Every cited run's evals are in $AR_HOME/runs/pbr1b3/. Box 57382729 released.
