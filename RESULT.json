@@ -3,17 +3,26 @@
  "round": 3,
  "final": false,
  "best": {
-  "score": 20.366,
-  "eval_file": "/home/steam/ar_pb/runs/pbr3b4/pbr3b4_as2/traj_9689366528.jsonl",
-  "run": "pbr3b4_as2",
-  "step": 9689366528,
-  "ckpt": null,
+  "score": 21.525,
+  "eval_file": "/home/steam/ar_pb/runs/pbr3b4/pbr3b4_as3/traj_10190061568.jsonl",
+  "run": "pbr3b4_as3",
+  "step": 10190061568,
+  "ckpt": "/home/steam/ar_pb/runs/pbr3b4/pbr3b4_as3/ckpt_latest.pt",
+  "ckpt_step": 10265559040,
+  "ckpt_md5": "dda2825f0dbcd90c119837faaec7980a",
   "recipe": [
-   "resume of the incumbent 9.479B + round 2's last flag set",
-   "--auto-spine --auto-spine-delay 4e8 --auto-spine-retry 4e8 --auto-spine-gain 500 --auto-spine-ge-minutes 8"
+   "resume chain: incumbent 9.479B -> as1 -> as2 (9.812B) -> as3",
+   "--demo-file runs/spine_r3d.npy (= autoresearch/spines/pbr3b4_ge_r3d.npy: own beam line + x1.04 GE exact chain past the 20.4% catch)",
+   "--demo-window 5 --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5 --demo-rate 0.3 --demo-front-frac 0.4 --demo-success-d 100 --demo-success-bonus 50",
+   "--keys-hold-spawn-duck --yaw-entropy 0 --demo-front-temp 0.5 --demo-front-ticks 40 --demo-front-view 6",
+   "--respawn-greedy 0.2 --respawn-greedy-window 0.25 2.0 --respawn-greedy-stuck 200 --respawn-greedy-contact --respawn-greedy-temp 0.5 --respawn-greedy-temp-ticks 100 --respawn-greedy-temp-view 6",
+   "--respawn-front-perturb 0.2 --respawn-front-perturb-band 0.005 --respawn-front-perturb-speed 1.0 1.3 --respawn-front-perturb-turn 90",
+   "--energy-pot 8 --energy-pot-front 0 --energy-pot-front-bonus 0 --no-respawn-novel --respawn-backward-mix 0 --int-real-only 0",
+   "--spawn-states autoresearch/spines/pbr1b1_entry_ge_states.npy --spawn-states-frac 0.2 --maxvel 3500",
+   "--auto-spine --auto-spine-delay 4e8 --auto-spine-retry 4e8 --auto-spine-patience 6e8 --auto-spine-gain 500 --auto-spine-ge-minutes 8"
   ],
-  "resume_from": "/home/steam/ar_pb/incumbent/r2/ckpt.pt",
-  "commit": "a0166fb"
+  "resume_from": "/home/steam/ar_pb/runs/pbr3b4/pbr3b4_as2 ckpt_latest 9.812B (md5 f929449b...)",
+  "commit": "0091e30"
  },
- "summary": "Box 57557523 (RTX 5080) from 19:57 UTC. Gate 8 (20.4%: a ballistic fall into a catch after a late, low turn into a corridor whose floor is the catch and whose west wall is a surf ramp) passed BY SEARCH: Go-Explore --exact-chains rooted at the policy's own launch states x1.04 speed, the trainer stopped, finds the record's manoeuvre (ramp landing, U-turn, climb east) to 21.54%; spine autoresearch/spines/pbr3b4_ge_r3d.npy. Beams (plain/tempered/branched) and GE at x1.00 do not pass. Now pbr3b4_as3 = curriculum on that spine. New code: train_fast --auto-spine + tools/auto_spine.py (the search->curriculum cycle inside the trainer), --respawn-greedy-contact, beam_tas --view-temp, tools/ge_spine.py / ge_roots_best.py. Best eval so far 20.366 (as2)."
+ "summary": "Score 20.414 -> 21.525 (as3 10.19B; 9/9 greedy episodes pass the 20.4% catch: ramp landing, U-turn, climb east to 21.5%, then die at a wall at x ~1,104 = gate 9). Gate 8 found BY SEARCH: Go-Explore --exact-chains rooted at the policy's own launch states x1.04 speed (trainer stopped, full CPU) -> the record's manoeuvre -> spine autoresearch/spines/pbr3b4_ge_r3d.npy -> curriculum; the greedy passed within ~150M steps although the curriculum's band before the boosted root stays at 0%. Beams (plain/tempered/branched) and GE at x1.00 did not pass. New code: train_fast --auto-spine + tools/auto_spine.py (beam -> branched beam -> GE with boosted roots -> spine swap, inside the trainer), --respawn-greedy-contact, beam_tas --view-temp/--keys-temp, tools/ge_spine.py, ge_roots_best.py."
 }
