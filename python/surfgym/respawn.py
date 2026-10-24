@@ -24,7 +24,31 @@ import numpy as np
 
 from .core import STATE_DTYPE
 
-__all__ = ["RespawnBuffer", "DemoCurriculum", "RandomSpawnSampler"]
+__all__ = ["RespawnBuffer", "DemoCurriculum", "RandomSpawnSampler", "align_view_to_velocity"]
+
+# src/env.c surf_yaw_delta_abs: under view_mode 1 the yaw target is the velocity heading + the
+# command only at a horizontal speed >= this; below it the base is the current yaw
+VIEW_FRAME_MIN_SPEED = 100.0
+
+
+def align_view_to_velocity(states, min_speed: float = VIEW_FRAME_MIN_SPEED):
+    """A copy of ``states`` whose rows moving at a horizontal speed >= ``min_speed`` look along
+    their velocity heading (yaw = atan2(vy, vx), the core's [0, 360) convention).
+
+    The view yaw is not physics: pm reads it only through the wishdir of the NEXT commands. A row
+    from a search line or an archive (uniform random yaw deltas, 95% repeat) often looks 140-180
+    deg away from its velocity, i.e. backward. A --view-absolute velocity policy commands its view
+    as an offset from that heading and has seen almost nothing but offsets near 0, so such a spawn
+    shows it the wrong half of the world and reverses its keys, and at flight speed the view
+    cannot swing round inside a few decisions (pbr2b2, 2026-10-24: line_a's flight 1150-1245 looks
+    139-176 deg backward). Aligning the row puts it in the policy's own frame and leaves every
+    physical quantity alone. Slower rows are kept: below the core's 100 u/s the yaw command is a
+    delta from the current yaw, so there is no velocity frame to align to."""
+    out = np.array(states, dtype=STATE_DTYPE, copy=True)
+    v = out["velocity"].astype(np.float64)
+    fast = np.hypot(v[:, 0], v[:, 1]) >= float(min_speed)
+    out["yaw"][fast] = (np.degrees(np.arctan2(v[fast, 1], v[fast, 0])) % 360.0).astype(np.float32)
+    return out
 
 
 class DemoCurriculum:
@@ -43,7 +67,8 @@ class DemoCurriculum:
 
     def __init__(self, states, window: int = 10, rate: float = 0.2,
                  min_ep: float = 50.0, seed: int = 29,
-                 grow: int = 0, front_frac: float = 0.0, tau0=None) -> None:
+                 grow: int = 0, front_frac: float = 0.0, tau0=None,
+                 cooldown: int = 20) -> None:
         self.S = np.asarray(states, STATE_DTYPE)
         self.n = len(self.S)
         self.D = int(window)
@@ -91,6 +116,11 @@ class DemoCurriculum:
         self.win = np.zeros(self.n, np.float64)
         self.decay = 0.99
         self._cool = 0
+        # iterations between two moves of tau (20 = the reference implementation's constant;
+        # --demo-cooldown): the pace bound of an easy stretch is one move per cooldown
+        if int(cooldown) < 1:
+            raise ValueError(f"cooldown must be >= 1, got {cooldown}")
+        self.cooldown = int(cooldown)
         self.rng = np.random.default_rng(seed)
         self._key = {tuple(np.round(np.asarray(r["origin"], np.float64), 1)): i
                      for i, r in enumerate(self.S)}
@@ -157,7 +187,7 @@ class DemoCurriculum:
                 self.tau = min(self.n - 1, self.tau + step)
                 moved = +1
             if moved:
-                self._cool = 20
+                self._cool = self.cooldown
         d_lo, d_hi = self._draw()
         self.last_info = (f"demo starts [{d_lo},{d_hi}]/{self.n} "
                           f"(frontier band [{lo},{hi}]) "

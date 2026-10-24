@@ -117,7 +117,7 @@ from surfgym.record import record_rollout, record_rollout_parallel
 from surfgym.bc import BCDataset
 from surfgym.respawn import (BackwardSpawnSampler, DemoCurriculum, FrontierPerturbRows,
                              FrontierSpawnSampler, NovelSpawnSampler,
-                             RandomSpawnSampler, RespawnBuffer)
+                             RandomSpawnSampler, RespawnBuffer, align_view_to_velocity)
 from surfgym.rewards import (CC_BUCKETS, CC_P0, CC_TEMP_GAIN, CC_TMAX,
                              CC_TMIN, AcroCoverageReward, BlendedReward,
                              CoverageSpeedReward, ForwardProgressReward,
@@ -4752,6 +4752,19 @@ def main() -> None:
                          "the spine's last state - the curriculum position is not in the "
                          "checkpoint, so a continuation passes where the previous run's log "
                          "left it ('demo starts [T,...]'). Not a config key; default = n-1")
+    ap.add_argument("--demo-cooldown", type=int, default=None,   # None = 20
+                    help="--demo-file: training iterations between two moves of the curriculum "
+                         "position (default 20, the reference implementation's constant). Every "
+                         "easy stretch of a long spine moves at exactly one --demo-grow step per "
+                         "cooldown, so this bounds the pace. Config only when set; ckpt restores")
+    ap.add_argument("--demo-view-velocity", action="store_const", const=1, default=None,
+                    help="--view-absolute velocity: every --demo-file and --spawn-states row "
+                         "moving at >= 100 u/s horizontally (the core's view-frame speed) spawns "
+                         "looking along its velocity (command 0 of the policy's own view frame) "
+                         "instead of the row's recorded yaw, which a search line's random yaw "
+                         "deltas leave anywhere (often backward). Physics is unchanged: the view "
+                         "enters pm only through the next commands' wishdir. The core's spawn "
+                         "yaw jitter still applies. Config only when set; ckpt restores")
     ap.add_argument("--demo-success-bonus", type=float, default=None,   # None = off
                     help="--demo-success-d: an episode whose ratchet record CROSSES the spine's "
                          "success line (d(spine end) + --demo-success-d) is paid this once, like "
@@ -7869,6 +7882,12 @@ def main() -> None:
                 and ck_cfg.get("demo_success_bonus") is not None):
             args.demo_success_bonus = float(ck_cfg["demo_success_bonus"])
             restored.append(f"demo_success_bonus={args.demo_success_bonus:g}")
+        if args.demo_cooldown is None and ck_cfg.get("demo_cooldown") is not None:
+            args.demo_cooldown = int(ck_cfg["demo_cooldown"])
+            restored.append(f"demo_cooldown={args.demo_cooldown}")
+        if args.demo_view_velocity is None and ck_cfg.get("demo_view_velocity"):
+            args.demo_view_velocity = 1
+            restored.append("demo_view_velocity")
         if args.int_view is None and ck_cfg.get("int_view") is not None:
             args.int_view = int(ck_cfg["int_view"])
             restored.append(f"int_view={args.int_view}")
@@ -10235,6 +10254,20 @@ def main() -> None:
                              "is rebuilt from the map each iteration")
         if not 0.0 < float(args.archive_frac) < 1.0:
             raise SystemExit("--archive-frac must be in (0, 1)")
+    if args.demo_view_velocity:
+        if VIEW_ABS != "velocity":
+            raise SystemExit("--demo-view-velocity aligns spawn rows to the --view-absolute "
+                             "velocity frame: it needs --view-absolute velocity")
+        if not (args.demo_file or args.spawn_states):
+            raise SystemExit("--demo-view-velocity re-frames --demo-file / --spawn-states rows: "
+                             "give one of them")
+        print("--demo-view-velocity: --demo-file / --spawn-states rows at >= 100 u/s spawn "
+              "looking along their velocity (view command 0); slower rows keep their yaw")
+    if args.demo_cooldown is not None:
+        if not args.demo_file:
+            raise SystemExit("--demo-cooldown needs --demo-file")
+        if int(args.demo_cooldown) < 1:
+            raise SystemExit("--demo-cooldown must be >= 1")
     SPAWN_STATES = None
     SS_SEQK = [None]           # --spawn-states .npz with seq_k: each state's sequence start
     # the file the training pool draws from and its share: --spawn-states, or the archive
@@ -10285,6 +10318,8 @@ def main() -> None:
             _a = _a.copy()
             _a["tick"] = 0
             _a["stuck_ticks"] = 0
+            if args.demo_view_velocity:
+                _a = align_view_to_velocity(_a)
             return _a
         SPAWN_STATES = _load_spawn_states(SS_PATH)
         if SS_SEQK[0] is not None and not (args.goal_planner == "ramps" and args.ramp_sequence):
@@ -11381,11 +11416,19 @@ def main() -> None:
             raise SystemExit("--demo-front-frac needs --demo-grow: the sliding "
                              "window already draws only its band")
     if args.demo_file:
-        demo = DemoCurriculum(np.load(args.demo_file),
+        _demo_rows = np.load(args.demo_file)
+        if args.demo_view_velocity:
+            _demo_rows = align_view_to_velocity(_demo_rows)
+        demo = DemoCurriculum(_demo_rows,
                               window=args.demo_window, rate=args.demo_rate,
                               min_ep=args.demo_min_ep, grow=args.demo_grow,
                               front_frac=float(args.demo_front_frac),
-                              tau0=args.demo_tau0)
+                              tau0=args.demo_tau0,
+                              **({} if args.demo_cooldown is None
+                                 else {"cooldown": int(args.demo_cooldown)}))
+        if args.demo_cooldown is not None:
+            print(f"--demo-cooldown {int(args.demo_cooldown)}: the curriculum position moves at "
+                  f"most once per {int(args.demo_cooldown)} iterations (default 20)")
         if args.demo_tau0 is not None:
             print(f"--demo-tau0 {args.demo_tau0}: the curriculum starts at spine state "
                   f"{demo.tau} of {demo.n}")
@@ -14364,6 +14407,12 @@ def main() -> None:
     if args.demo_file and args.demo_success_bonus is not None:
         # --demo-success-bonus: dumped only when set; a resume restores it
         meta["config"]["demo_success_bonus"] = float(args.demo_success_bonus)
+    if args.demo_file and args.demo_cooldown is not None:
+        # --demo-cooldown: dumped only when set; a resume restores it
+        meta["config"]["demo_cooldown"] = int(args.demo_cooldown)
+    if args.demo_view_velocity:
+        # --demo-view-velocity: dumped only when on; a resume restores it
+        meta["config"]["demo_view_velocity"] = 1
     if args.race_sr:
         # --race-sr: dumped only when on, so a flag-off run.json is the
         # control's byte for byte (test_int_split's identity check)
