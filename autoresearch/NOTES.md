@@ -752,3 +752,14 @@ ckpt_latest 3.285B (md5 a6559938..., the most curriculum progress), both named i
   not reached it. **pbr2b2_vv5** (11:10) = vv4's ckpt_latest (4.026B, md5 133a1475...) +
   `--demo-tau0 1312` + spawn_v3 = entry_ge x2 + spine_b[0:740] x10 (the recorded route) +
   line_a[1100:] x4, frac 0.5 (start room ~29%, recorded route ~15%, line_a flight ~6% of spawns).
+* **vv5 collapsed too** (4.026-4.39B, 11:10-11:36): greedy 3.1 -> 3.4 -> 2.7 -> 2.4 -> 0.5% (the
+  start room again) while the curriculum crossed line_b's start (21-43% per band) and oscillated at
+  spine 632-642 (the recorded route 1 s before line_b's root). Diagnosis: spine_b's success line
+  (6.50%) is out of reach from the start room and the route, so those episodes never earn the 50
+  bonus that line_b's episodes do; after advantage normalisation their small ratchet returns lose,
+  and the precision start room is forgotten first. In vv2 the line (3.76%) was reachable from the
+  start in ~9 s and nothing eroded. Rule: keep the curriculum's success line within one episode's
+  reach of the true start, i.e. extend a line in steps.
+* **pbr2b2_vv6** (11:37): vv2's ckpt_latest (3.827B) + `--demo-file spine_b2` = spine_b[:1160] (the
+  recorded route + line_b[0:420], ending on the lower floor after the drop at 4.85%; success line
+  4.67%), spawn_v3 at frac 0.35, lr 2e-4, the rest as vv3.
