@@ -3,13 +3,13 @@
  "round": 2,
  "final": false,
  "best": {
-  "score": 13.527,
-  "eval_file": "/home/steam/ar_pb/runs/pbr2b3/pbr2b3_beam8/traj_7309623296.jsonl",
-  "run": "pbr2b3_beam8",
-  "step": 7309623296,
-  "ckpt": "/home/steam/ar_pb/runs/pbr2b3/pbr2b3_beam8/ckpt_latest.pt",
-  "ckpt_step": 7351566336,
-  "ckpt_md5": "635d7cf426d66b28007df90542ffa7e3",
+  "score": 16.056,
+  "eval_file": "/home/steam/ar_pb/runs/pbr2b3/pbr2b3_beam9/traj_7578583040.jsonl",
+  "run": "pbr2b3_beam9",
+  "step": 7578583040,
+  "ckpt": "/home/steam/ar_pb/runs/pbr2b3/pbr2b3_beam9/ckpt_latest.pt",
+  "ckpt_step": 7670333440,
+  "ckpt_md5": null,
   "recipe": [
    "resume chain: pbr1b1 g2cur6 (3.285B) -> pbr2b3_canon1 -> canon2 -> canon3 (3.721B)",
    "--demo-file autoresearch/spines/pbr2b3_line_a_canon.npy (canon2/3), _canon_780.npy (canon4)",
@@ -25,10 +25,11 @@
    "beam2/beam3: --demo-file autoresearch/spines/pbr2b3_beam_ge_g4.npy (beam line + GE drop-surf chain to 7.07%), beam3 --demo-rate 0.3 --demo-tau0 805",
    "beam4: + --energy-pot 3 --energy-pot-front 0 --energy-pot-front-bonus 0 (per-call energy shaping), --demo-tau0 320",
    "beam7: beam4's flags with --energy-pot 8 (per-call)",
-   "beam8: --demo-file autoresearch/spines/pbr2b3_beam_g8a.npy (the policy's own beam line to 12.34%), energy-pot 8 per-call"
+   "beam8: --demo-file autoresearch/spines/pbr2b3_beam_g8a.npy (the policy's own beam line to 12.34%), energy-pot 8 per-call",
+   "beam9: --demo-file autoresearch/spines/pbr2b3_beam_g9a.npy (the policy's own beam line to 15.36%)"
   ],
-  "resume_from": "/home/steam/ar_pb/runs/pbr2b3/pbr2b3_beam7/ckpt_latest.pt",
-  "commit": "d0e8334"
+  "resume_from": "/home/steam/ar_pb/runs/pbr2b3/pbr2b3_beam8/ckpt_latest.pt",
+  "commit": "9eb2e1f"
  },
- "summary": "Best 13.527 (beam8 7.310B, median 12.8%; incumbent 3.236): from the true start 8 of 9 greedy episodes pass gate 2 (the pit), gate 3 (wall + fall catch under the north path), the hollow and the x -1,015 wall, to 11.3-12.2%. How: round 1's line_a curriculum unstuck by tools/spine_canon_view.py + --demo-front-temp; pace flags; a search->curriculum loop (beam_tas from the true start = the policy's own lines; Go-Explore --exact-chains from the line's own states), each cut into the next spine; per-call energy shaping (--energy-pot 8 --energy-pot-front 0 --energy-pot-front-bonus 0) carried the line over the energy-limited wall. Next gate ~12.5%: a U-turn climb the line reaches ~500 u of energy short (it loses ~380 u landing the drop after the wall, the record ~110). beam8 = the curriculum on the policy's own 12.34% line."
+ "summary": "Best 16.056 (beam9 7.579B, median 15.7%; incumbent 3.236): from the true start 8 of 9 greedy episodes pass gate 2 (the pit), gate 3 (wall + fall catch under the north path), the hollow and the x -1,015 wall, to 11.3-12.2%. How: round 1's line_a curriculum unstuck by tools/spine_canon_view.py + --demo-front-temp; pace flags; a search->curriculum loop (beam_tas from the true start = the policy's own lines; Go-Explore --exact-chains from the line's own states), each cut into the next spine; per-call energy shaping (--energy-pot 8 --energy-pot-front 0 --energy-pot-front-bonus 0) carried the line over the energy-limited wall. Next gate ~12.5%: a U-turn climb the line reaches ~500 u of energy short (it loses ~380 u landing the drop after the wall, the record ~110). beam8 = the curriculum on the policy's own 12.34% line."
 }
