@@ -753,3 +753,16 @@ round 1's fixed grow 20 / cooldown 20 they would have taken ~130M).
   launch ramp (first tick past 5.6%) moved for the first time: cur2's 9 episodes all 3,086-3,103;
   cur3 at 5.09-5.16B 3,085-3,341 (several ~+250 u). Peak speed 797 -> 825 u/s. Still short of the
   ~3,700 the wall needs. Pulled cur3 ckpt_latest 5.1847B (md5 19d7d584...).
+* Where cur3 loses energy (greedy evals, the drop zone 4.3% -> 5.6%): cur2 9/9 episodes fall to
+  z ~2,985 at ~1,120 u/s and lose ~650-726 u of h in 25 ticks at x ~48-106 (an impact); cur3
+  (5.164B) 6/9 now land EARLIER and HIGHER (x ~167-194, z ~3,145, |v| ~1,000) and lose 370-470 u,
+  3/9 still the old impact. The per-call energy term is moving the landing.
+* What the x1.5 chain does past the "wall" (pbr2b4_platform_chain.npy): from the scaled ramp state
+  it flies UP onto a platform at z ~3,328 (x ~-730, by state 150), crawls west along it at 6-350
+  u/s for ~15 s (to x ~-1,558), drops to 10% and reaches 12.6%. So the 6.7% wall is one jump onto
+  a platform ~400 u above the ramp (needs h ~3,450-3,700 there; cur3's best episodes 3,341); the
+  platform route itself needs no speed.
+* **pbr2b4_cur4** (06:05 UTC): resume cur3 final (5.234B, md5 27125fcc...) + cur3's flags, with
+  --spawn-states = entry states + 3 x platform-chain rows 150-2,153 (~45% of the 30% share on the
+  platform route), so the policy learns 6.7 -> 12.6% while the energy term raises its ramp speed.
+  cur3 evals: 6.700 / 6.696 / 6.699 / 6.717 / 6.759 / 6.702 (best 6.759 at 5.164B).

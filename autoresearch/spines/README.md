@@ -37,3 +37,11 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   that line's last 3 s, 64 u x energy 32, 4,096 envs, 11 min; the near-deepest cell with the
   shortest chain, 546 ticks; ge_replay 16/16 links) west along the north side over the fall catch,
   down at x ~200 and west to 6.67% at (-1,008,-3,124,3,045), where it arrives nearly stopped.
+* `pbr2b4_platform_chain.npy` (2,154 states, md5 40317f67523add07979e6c91384290ad): an exact-chain GE
+  chain (64 u x energy 32, 6 min, ge_replay 24/24 links) rooted at pbr2b4_cur2's OWN greedy
+  launch-ramp states (ticks 860-960 of its 4.861B line, x -219..-769) with the velocity SCALED x1.5
+  (the recipe's front-perturb speed idea, a speed-handicap probe): from (-415,-2,771,2,918) |v| 1,135
+  up onto a platform at z ~3,328 (state ~150), slowly west along it (to x ~-1,558, states 150-1,650),
+  then down to 10-12.6% (-3,303,-3,384,2,790). Rows 150+ are physical (no scaling after the root).
+  cur4's --spawn-states = pbr1b1_entry_ge_states + 3 x rows 150-2,153 (runs/pbr2b4/_ge6/
+  spawn_entry_platform.npy, md5 267696e9...).
