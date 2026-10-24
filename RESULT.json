@@ -3,5 +3,5 @@
  "round": 3,
  "final": false,
  "best": null,
- "summary": "Round 3 start (2026-10-24 19:40 UTC). box.py rent refuses on budget pace (credit 18.46 $, reserve 10 $, allowed 0.174 $/h; the cheapest passing offer is a 5080 at 0.563 $/h). Working locally (CPU) on the next gate past the incumbent's 20.4% fall catch until a box can be rented."
+ "summary": "No box yet (budget pace: one 5080 for the fleet, rented by another branch since ~20:00 UTC; a local waiter rents + deploys when a second fits). Analysis: the incumbent's 9/9 greedy episodes die in catch *187 at ~16.8 s after leaving a surf face at x ~-990 with vz +209 (the record leaves it with +467 after a harder carve, then air-turns into a bowl). A 512-copy CPU beam dies at the same catch. Built tools/gate_search.py (beam -> GE fallback -> splice -> contact cut, one command) and tools/spine_tool.py for the box session."
 }
