@@ -1206,3 +1206,21 @@ the budget pace (0.69 $/h) admit one box; until then every rent was refused (0.1
 * **pbr3b4_as3** (21:20 UTC): as2's 9.812B weights + the curriculum on pbr3b4_ge_r3d.npy (its end)
   + as2's flags (greedy-contact rows, greedy temp, front-perturb, energy K 8, success bonus 50)
   + --auto-spine (delay 4e8, retry 4e8, patience 6e8, gain 500, GE 8 min), 2B steps.
+
+### GATE 8 PASSED by the greedy line: score 21.525 (2026-10-24 21:45 UTC)
+* pbr3b4_as3 evals: 20.316 (9.81B, resume) / 20.358 / **21.451** (9.96B, ~150M steps in) / 21.451 /
+  21.516 / **21.525** (10.19B): from 9.96B on 8-9 of 9 greedy episodes from the true start fly the
+  found manoeuvre (turn into the corridor, ramp landing, U-turn, climb east) and die at 18.5-19.4 s
+  at a WALL at x ~1,104 (z 2,777-2,829 there; the record crosses x 1,208 at ~2,930), falling back
+  into the catch at (770-800, -2,950..-3,070, 2,385). Gate 9 = clear that wall: ~100 u of height.
+* The curriculum crossed the whole chain in ~20 min and then sat exactly at the boosted root:
+  band [1498,1502] (the x1.04 root's first states) 56-57%, band [1493,1497] (the policy's own
+  unboosted states just before it) 0.0-0.1% for 300M+ steps - and yet the greedy line passed. The
+  greedy arrives at the launch with a slightly different (better) state than the stochastic beam
+  line the spine was cut from; a spawn on the beam line's own states lacks the energy, the
+  deployed policy's line does not.
+* Handoff weights pulled: pbr3b4_as3/ckpt_latest.pt at 10,265,559,040 (md5 dda2825f..., 75M after
+  the 21.525 eval; evals 9.96-10.19B all 21.45-21.53).
+* The trainer's own --auto-spine fired for the first time at 10.266B (9/9 past the 21.37% line):
+  beam (11 s, frontier 44,919 = no better than the greedy's 44,879), the branched beam (fork at
+  17.02 s = 0.5 s before the greedy's median launch), then Go-Explore (8 min, trainer waiting).
