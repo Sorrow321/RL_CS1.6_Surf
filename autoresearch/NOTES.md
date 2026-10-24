@@ -1282,3 +1282,18 @@ the budget pace (0.69 $/h) admit one box; until then every rent was refused (0.1
   (runs/spine_k02.npy, success line 43,426 = 24.0%) + --demo-milestones 44939 (k01's line) +
   --auto-spine --auto-spine-milestones (delay 3e8, retry 4e8, patience 6e8, gain 500, GE 8 min) +
   as3's other flags, 2.5B steps. First eval 6/9 past 24.0%; first milestone payment at once.
+
+### as4: milestones hold the route; 24.538 (23:05-23:35 UTC)
+* as4 evals (the 24.291 weights + spine k02 + milestone 44,939): 24.272 / 24.350 / 24.405 / 24.197 /
+  **24.538** (11.172B, median 24.4%, 8/9 past the 24.0% line). No erosion; one dip (11.10B, 3/9).
+  Handoff: as4's ckpt_latest at exactly 11,172,052,992 (saved before the search), md5 0455e4df...,
+  pinned as pbr3b4_as4/ckpt_11172052992.pt.
+* The milestone smoke test and the flag-off bit-identity test pass (CPU, 6.7 min).
+* A flaw found in the trainer's branch tick: an eval episode cut by --eval-patience while hopping
+  ends "mid-flight", so its last hop counted as a launch into a fatal flight and as4's search 1
+  forked its branched beam at 49.7 s (useless). Fixed in 0835494 (for the next launch): an episode
+  whose best progress came > 3 s before its end STALLED and commits at its stall tick (first tick
+  within 500 u of its best d); on as4's 11.17B eval the fork moves to 19.07 s, ~1 s before the
+  crawl landing.
+* as4 search 1 (11.172B): beam frontier 43,214 (24.38%) = no gain; GE stage 1 (x1.0/1.04) no
+  line past the frontier; stage 2 (x1.08) running, stage 3 (x1.12) after it if needed.
