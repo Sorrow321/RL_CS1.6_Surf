@@ -586,3 +586,41 @@ the backward curriculum (--demo-file + --demo-success-d) on the found line. Not 
 * **Next:** a line without the wall-bounce manoeuvre (a coarser heading key, or a longer GE), a
   held view temperature for curriculum spawns, and a curriculum that starts with all four fixes.
   Everything needed to resume is in the repo (autoresearch/spines/, the flag set above).
+
+## pbr2b2 (round 2, slot 2) - started 2026-10-24 02:18 UTC
+
+Inherited: incumbent 3.236 (the pit, 9/9); no incumbent checkpoint was handed on (ckpt null: the
+best eval's run g2cur2 has none pulled), so the lineage's own pulled checkpoints are used:
+pbr1b1_g2cur ckpt_latest 1.403B (md5 b8b53646..., the best eval's weights) and pbr1b1_g2cur6
+ckpt_latest 3.285B (md5 a6559938..., the most curriculum progress), both named in RESULT.json.
+
+### Why the line_a curriculum stalls before the wall bounce (2026-10-24 02:40-03:05 UTC, CPU core probes)
+* line_a's VIEW is backward through the whole launch and flight: yaw minus velocity heading is
+  139-176 deg at states 1150-1245 (also 1050-1100: 49-134 deg, and most slow stretches). Go-Explore
+  draws uniform yaw-delta bins with 95% repeat, so its views wander; the spawn copies them
+  (the core adds +-8 deg jitter only).
+* The manoeuvre at 1230-1250 is a GoldSrc air-strafe turn at its precision limit: the line holds
+  back+left (inferred, below) with the view 137-139 deg off the velocity and turning -2 deg/tick,
+  so the wishdir sits ~88 deg off the velocity. At 422 u/s the air acceleration is zero unless that
+  angle exceeds acos(30/422) = 85.9 deg: replaying the line's exact keys with the view command HELD
+  at the decision-start offset (139 instead of the line's leading 137) gives no acceleration, no
+  turn, and misses the bounce by ~95 u (from 1240; 13 u from 1245).
+* The policy's view parameterisation (surfgym/view.py off_warp, b = 2 ln 17) has 3.54 deg per unit
+  of u at offset 0 but ~780 deg per unit at offset 137 (du/dz 0.096 there): the sampling noise
+  alone (sigma 0.011 in z) is ~+-1 deg at the line's offset, i.e. the line's manoeuvre sits where
+  the policy's view head is ~200x coarser than at "look along the velocity". In the velocity-aligned
+  frame the same physical manoeuvre is a RIGHT strafe with offset ~+2 deg (core sweep from aligned
+  1230-1245: only offsets near +2 reproduce the line's post-impact state class) - the fine end.
+* Probes with g2cur6 (record_ckpt, stochastic, success = record reaches d(end) + 100):
+  from 1245 original view 4/10, aligned 0/10; from 1240 0/10 both; from 1235 0/4 orig, 0/8 aligned.
+  That checkpoint has 2B steps of backward-frame habits at 1245+, so it cannot test the frame by
+  itself; a curriculum has to re-learn the tail in the aligned frame.
+* tools/line_actions.py (new): recovers a line's per-tick keys (fwd/side x 3, jump/duck from the
+  next row's oldbuttons, view moved to the next row's yaw under view_mode 2) by one-step search;
+  line_a: 1,880/1,880 transitions exact (0.0000 u). Keys held (fwd/side not neutral) on 95% of ticks.
+* New flags (default off, bit-identical; tests/python/test_demo_view_velocity.py, 4 pass):
+  `--demo-view-velocity` (demo / spawn-state rows at >= 100 u/s spawn with yaw = velocity heading)
+  and `--demo-cooldown N` (the curriculum's 20-iteration move cooldown as a flag).
+* Box 57455886 (RTX 3090, France, 0.437 $/h) failed gpu_health (power limit 240 of 350 W, bf16 GEMM
+  83% of ref): blocklisted (machine 104634) and released at 02:44. The fleet's other three boxes
+  then left 0.30 $/h of pace headroom and no passing offer fit it (02:45-03:05).
