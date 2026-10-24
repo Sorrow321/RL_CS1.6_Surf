@@ -1,13 +1,13 @@
 {
  "agent": "pbr2b4",
  "round": 2,
- "final": false,
+ "final": true,
  "best": {
-  "score": 20.017,
-  "eval_file": "/home/steam/ar_pb/runs/pbr2b4/pbr2b4_cur11/traj_10483138560.jsonl",
+  "score": 20.214,
+  "eval_file": "/home/steam/ar_pb/runs/pbr2b4/pbr2b4_cur11/traj_10558636032.jsonl",
   "run": "pbr2b4_cur11",
-  "step": 10483138560,
-  "ckpt": "/home/steam/ar_pb/runs/pbr2b4/pbr2b4_cur11/ckpt_10482614272.pt",
+  "step": 10558636032,
+  "ckpt": "/home/steam/ar_pb/runs/pbr2b4/pbr2b4_cur11/ckpt_10557587456.pt",
   "recipe": [
    "--resume pbr2b4_cur10 final ckpt_latest (8.369B, md5 8fb635ba)",
    "--envs",
@@ -73,8 +73,12 @@
   ],
   "resume_from": "pbr2b4_cur10 final (8.369B, md5 8fb635ba; cur10 <- cur9 <- cur8 <- cur6 <- cur5 <- cur4 <- cur3 <- cur2 <- cur1 <- pbr1b1_g2cur6)",
   "commit": "c104897",
-  "ckpt_step": 10482614272,
-  "ckpt_md5": "6676ffccfa94515145844676b28eaded"
+  "ckpt_step": 10557587456,
+  "ckpt_md5": "2c1ca9ddec029170684421f13334d626",
+  "best_progress_pct": 20.21,
+  "median_progress_pct": 19.97,
+  "finishes": 0,
+  "episodes": 9
  },
- "summary": "Best 20.017 (cur11 10.483B; incumbent 3.236): 9/9 greedy episodes from the TRUE START reach ~19.4-20.0%. Loop: own greedy line -> exact-chain Go-Explore rooted at its last seconds or before its biggest energy drop -> spine = own prefix + chain -> backward curriculum (--demo-adapt, --demo-replay), per-call energy shaping, anchor + pull success lines (--demo-pull-stats). Gates passed: the pit (3.2%), the fall catch (4.0%), the rim + platform jump (6.7%), the platform route, and (by the policy itself, practising its whole own line with energy shaping) the 12.6% U-turn."
+ "summary": "Best 20.214 (pbr2b4_cur11 10.559B; incumbent 3.236): 9/9 greedy episodes from the TRUE START reach ~19.7-20.2% (median 20.0%), no finish yet. Loop (generic, own states only): record the policy's own greedy line -> exact-chain Go-Explore rooted at its last 3-4 s or 1.0-0.1 s before its largest energy-height drop (pb_frontier_step.py) -> spine = own prefix + the shortest near-deepest chain -> backward curriculum with --demo-adapt/--demo-cooldown (Rprop step), --demo-replay, per-call energy shaping, and an ANCHOR success line the current line reaches plus a PULL line past it scored by --demo-pull-stats. Gates passed: the pit (3.2%), the fall catch (4.0%), the rim + platform jump (6.7%; cur10, 20 min after pull-stats), the platform route (learned from speed-scaled own-state GE spawns), the 12.6% U-turn and on to 20% (cur11, by practising its whole own line). Next: the same loop from the 20% frontier."
 }

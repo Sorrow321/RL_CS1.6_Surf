@@ -960,3 +960,52 @@ round 1's fixed grow 20 / cooldown 20 they would have taken ~130M).
 * cur11 at 13:25 UTC: 19.016 / 19.602 / 19.640 / 19.828 / 19.830 / **20.017 (10.483B, best 20.0%,
   median 19.6%)**. Pulled the watcher's ckpt_10482614272.pt (0.5M steps before it, md5 6676ffcc...).
   Box extended to 14:10 UTC for the wrap-up pulls.
+* cur11 final evals (stopped 13:38 UTC at 10.725B): 20.017 / **20.214 (10.559B, best 20.2%, median
+  20.0%)** / 20.186 / 20.148. Handed-on checkpoint: pbr2b4_cur11/ckpt_10557587456.pt (the watcher's
+  snapshot 1.05M steps before the best eval, md5 2c1ca9dd...); ckpt_latest 10.725B (md5 1199c7ba...)
+  is pulled too.
+
+### pbr2b4 round 2 lesson (wrap-up, 2026-10-24 13:40 UTC)
+* **Score 3.236 -> 20.214** (pbr2b4_cur11 traj_10558636032: 9/9 greedy episodes from the TRUE START at
+  ~19.7-20.2%, median 20.0%, no finish yet). Gates passed: the pit (3.2%), the fall catch (4.0%), the
+  rim + platform jump (6.7%), the platform route, the 12.6% U-turn, on to 20%.
+* **The loop that did it** (generic: no map coordinate, box or demo in any reward, spawn or schedule;
+  every spawn state is the policy's own or its own reward-free search's):
+  1. record the policy's own greedy line from the true start (record_ckpt --dump-states);
+  2. exact-chain Go-Explore (explore_phase1 --exact-chains, 64 u cells, --cell-energy 32 or 16) rooted
+     at its own states - the last 3-4 s before its best point, or 1.0-0.1 s before its largest
+     one-tick ENERGY-HEIGHT drop (autoresearch/analysis/pb_frontier_step.py --roots frontier|sink) -
+     10-12 min of box CPU with the trainer paused (SIGSTOP);
+  3. chain end = the shortest chain within half a cell of the deepest; spine = the policy's own greedy
+     prefix up to the chain's root + the replayed chain (ge_replay);
+  4. backward curriculum on the spine with round 1's four fixes plus this round's: --demo-adapt 64
+     --demo-cooldown 5 (Rprop step: end -> hard spot in minutes, state by state through it),
+     --demo-replay 0.25 (keeps the own prefix practised; cur2 forgot its line for 25 min without it),
+     an ANCHOR success line the current line reaches (+50) and, when the spine ends past the policy's
+     reach, a PULL line (--demo-pull-d 20 --demo-pull-bonus 25) with --demo-pull-stats (the curriculum
+     scored on the pull line, so the band sits on the new manoeuvre); per-call energy shaping
+     (--energy-pot-front 0 --energy-pot-front-bonus 0); --unstuck-max 1 --unstuck-temp-heads all;
+     --stall-secs 8; spawn states from a speed-scaled (x1.5) own-state GE chain for the section past a
+     speed gate (the platform route was learned from them hours before the policy could reach it).
+* **Speed gates are energy-height bookkeeping.** h = z + |v|^2/2g along the greedy line locates the
+  sink (the one-tick drop) and the deficit; a speed-scaled GE probe from the policy's own approach
+  (x1.25 / x1.5) shows whether speed opens the gate (x1.5 at the 6.7% ramp -> 12.6%) and yields the
+  route beyond. The rim at 6.7% was STEERING, not speed (x1.2 still clipped it); a GE rooted 1 s
+  before the policy's own sink with 16-u energy cells found the line over it, and --demo-pull-stats
+  taught it in ~20 min. The 12.6% U-turn then fell to plain practice of the whole own line (spine_f)
+  with per-call energy shaping (h at 12% +140 u, then over it within ~45 min), and the line kept
+  climbing to 20% with no further search.
+* **Mistakes worth not repeating:** a success line beyond the current line's reach removes the anchor
+  and the line collapses within 75M steps (cur7: 6.9% -> 4.8%); a success line inside the current
+  reach never forces the new approach (cur6/8/9 stayed on the rim); `pgrep -f`/`grep` + kill over ssh
+  matches the ssh shell's own command line (three times this round: stop runs by runs/<run>.pid,
+  match helpers on exact argv fields); background jobs ignore SIGINT (use SIGTERM); 8-14 parallel
+  record_ckpt processes crawl (GPU contention); score.py lists evals lexicographically (11-digit
+  steps first); a checkpoint near the best eval only exists if something copies ckpt_latest
+  (runs/pbr2b4_snapwatch.sh-style watcher) or the eval is the resume point.
+* **Nulls:** yaw-nudge sweeps of the greedy line; sped-up far-side spawns (x1.15); the energy-aware
+  beam (beam_tas --score dh, with and without view bursts); GE from the south route; a higher
+  exploration temperature alone; --demo-speed (no visible effect on its own).
+* **Next (if a round follows):** the same loop from the 20% frontier - record cur11's line, a
+  frontier/sink GE, a spine with an anchor at the policy's own reach and a pull line at the chain's
+  end, --demo-pull-stats, and a snapshot watcher from the start.
