@@ -873,3 +873,16 @@ pbr1b1_g2cur6/ckpt_latest.pt 3.285B, md5 a6559938..., both present).
   ckpt_5196218368.pt (md5 c8d37062..., before it). Stopped 09:00 UTC with the frontier stuck for
   1.64B steps at the temperature cap; box 57455920 released 09:01 UTC (nothing left to run with a
   real chance at the wall; the record-style energy route is a multi-part project, see above).
+* The crouch tunnel, measured (core traces x 200-800, analysis): its north side is a 57 deg SURF
+  RAMP (normal (0,-0.83,0.55)) rising z 3,705 -> 3,732 over y -2,876..-2,858 under a 3,776
+  ceiling; south of it a flat floor at 3,666. The record's buttons through it are move-RIGHT only
+  while heading west = pressing into that ramp: it strafe-surfs it (no friction) and accelerates
+  537 -> 605 u/s. The policy enters from the side gap at ~0 and exits at 266-409 u/s.
+* `tools/energy_budget.py` (new, measurement only; tests/python/test_energy_budget.py): per-episode
+  energy height h = z + |v|^2/2g and every stretch that loses more than --loss u. On the best eval
+  (lb5 traj_5276958720, episodes 0-2): h 3,653 at the spawn -> ~3,800 at the tunnel exit -> ~3,700
+  over the pit -> ONE crash landing at x 90-170, y -3,115..-3,155 costs **-348 / -509 / -568 u**,
+  then ~-80 per landing on the channel's flat top; h ~3,050-3,100 at the wall. Without that crash
+  the channel would be reached with h ~3,550 (a face-edge launch from the flat top then misses the
+  block's top by ~60 u). A per-call energy term limited to a window behind the frontier would aim
+  at exactly this, but its width would be read off this map (CLAUDE.md 0b) - not built.
