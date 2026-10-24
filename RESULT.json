@@ -3,13 +3,13 @@
  "round": 2,
  "final": false,
  "best": {
-  "score": 6.686,
-  "eval_file": "/home/steam/ar_pb/runs/pbr2b2/pbr2b2_vv7/traj_4204789760.jsonl",
+  "score": 6.687,
+  "eval_file": "/home/steam/ar_pb/runs/pbr2b2/pbr2b2_vv7/traj_4431282176.jsonl",
   "run": "pbr2b2_vv7",
-  "step": 4204789760,
-  "ckpt": "/home/steam/ar_pb/runs/pbr2b2/pbr2b2_vv7/ckpt_4227334144.pt",
-  "ckpt_step": 4227334144,
-  "note": "4/9 episodes reach line_b's end (6.68-6.69%), the rest 3.99-4.81%; the 4.227B snapshot is 22M steps after the eval, 4.127B 78M before",
+  "step": 4431282176,
+  "ckpt": "/home/steam/ar_pb/runs/pbr2b2/pbr2b2_vv7/ckpt_4427612160.pt",
+  "ckpt_step": 4427612160,
+  "note": "9/9 episodes reach 6.68-6.69% (line_b's end); the snapshot is 3.7M steps before the eval; the 4.507-4.658B evals score the same",
   "recipe": [
    "warm: pbr2b2_vv2 ckpt_latest 3.827B (md5 e6b074af...)",
    "--maxvel",
@@ -51,9 +51,8 @@
    "2e-4"
   ],
   "resume_from": "/home/steam/ar_pb/runs/pbr2b2/pbr2b2_vv2 ckpt_latest 3.827B",
-  "commit": "47a2c968ab37ff14a2bc5b442933e984c00e6ace",
-  "ckpt_md5": "424d75d0d79318dabec9d344acb0d53f",
-  "ckpt_before": "/home/steam/ar_pb/runs/pbr2b2/pbr2b2_vv7/ckpt_4127195136.pt (md5 61569133dc3e31e1fd4dd478833bdaf4)"
+  "commit": "3aab71a1f945d5d70f729b1daeb6818489ec861f",
+  "ckpt_md5": "314fef79d920d4d9b4b2dab82755a3c9"
  },
- "summary": "Best 6.686 (vv7 4.205B; incumbent 3.236): the greedy line from the true start passes the pit AND the next gate - 4/9 episodes reach 6.68% (the end of line_b, a lower floor west of the pit), the rest 3.99-4.81%. How: (1) pbr1b1's line_a backward curriculum with VELOCITY-ALIGNED spawn views (--demo-view-velocity; it crossed the wall bounce in ~15 min, round 1 was stuck 1.5B+ steps), contiguous bands (grow <= window) -> greedy 3.99 (vv2); (2) explore_phase1 --view-velocity --exact-chains from the policy's own pre-death states found line_b to 6.68% in 15 min; (3) a curriculum on [own greedy recording + line_b to the floor] WITHOUT the success bonus (with it, vv3-vv6 eroded the start room: the unreachable bonus line starves the start-room episodes). Next gate after 6.68%: a speed gate (GE2 null; analysis: the record climbs out at ~1,300 u/s)."
+ "summary": "Best 6.687 (vv7 4.431B; incumbent 3.236): the greedy line from the true start passes the pit AND the next gate - 9/9 episodes reach 6.68-6.69% (the end of line_b, a lower floor west of the pit). How: (1) pbr1b1's line_a backward curriculum with VELOCITY-ALIGNED spawn views (--demo-view-velocity; it crossed the wall bounce in ~15 min, round 1 was stuck 1.5B+ steps), contiguous bands (grow <= window) -> greedy 3.99 (vv2); (2) explore_phase1 --view-velocity --exact-chains from the policy's own pre-death states found line_b to 6.68% in 15 min; (3) a curriculum on [own greedy recording + line_b to the floor] WITHOUT the success bonus (with it, vv3-vv6 eroded the start room: the unreachable bonus line starves the start-room episodes). Next gate after 6.68%: a speed gate (GE2 null; analysis: the record climbs out at ~1,300 u/s)."
 }
