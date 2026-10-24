@@ -64,6 +64,13 @@ def main(argv=None):
           f"{np.asarray(st[end]['origin']).round(0)}; chain of {len(chain)} cells")
     cfg = default_config(num_envs=1, spawn_mode=2, max_episode_ticks=int(meta.get("ep_ticks", 6000)),
                          water_fail=1, yaw_jitter_deg=0.0, lidar_w=0, lidar_h=0)
+    viewv = bool(meta.get("view_velocity", False))
+    if viewv:
+        # explore_phase1 --view-velocity: column 0 is the quantised view offset (view_row)
+        sys.path.insert(0, str(ROOT / "tools"))
+        from explore_phase1 import view_row
+        cfg.view_mode = 1
+        cfg.yaw_adaptive = 1
     if meta.get("maxvel") is not None:
         cfg.phys.sv_maxvelocity = float(meta["maxvel"])
     core = SurfCore(str(a.map), cfg)
@@ -82,7 +89,10 @@ def main(argv=None):
         seg = []
         dead = False
         for t in range(len(la)):
-            _, _, done, trunc, _ = core.step(la[t][None, :])
+            if viewv:
+                _, _, done, trunc, _ = core.step(la[t][None, :], view=view_row(la[t][None, :]))
+            else:
+                _, _, done, trunc, _ = core.step(la[t][None, :])
             if (done[0] | trunc[0]) != 0:
                 dead = True
                 break

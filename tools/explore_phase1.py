@@ -718,6 +718,13 @@ def explore(args) -> int:
                          max_episode_ticks=int(args.ep_ticks),
                          water_fail=1, yaw_jitter_deg=0.0,
                          lidar_w=0, lidar_h=0)     # eyeless: no obs needed
+    VIEWV = bool(getattr(args, "view_velocity", False))
+    if VIEWV:
+        # --view-velocity: the trainer's --view-continuous --view-absolute velocity frame
+        # (core view_mode 1, yaw_adaptive as the recipe); the burst's yaw is a target OFFSET
+        # from the velocity heading, drawn through the policy's own warp (surfgym.view.off_warp)
+        cfg.view_mode = 1
+        cfg.yaw_adaptive = 1
     if getattr(args, "maxvel", None) is not None:
         # --maxvel: the trainer's sv_maxvelocity (the core default is 2000), so the archive's
         # states obey the physics the policy trains under
@@ -852,12 +859,19 @@ def explore(args) -> int:
     cur_run = np.full(n, -1, np.int32)
     sv = core.states_view
     pitch_bin = 3                                  # PITCH_BINS[3] == 0 deg
+    vrow = np.zeros((n, 2), np.float32) if VIEWV else None
 
     def fresh_actions(idx: np.ndarray) -> None:
         m = idx.size
         if m == 0:
             return
-        act[idx, 0] = rng.integers(0, ACTION_NVEC[0], m)
+        if VIEWV:
+            # --view-velocity: column 0 holds q in [-127, 127], the view command is
+            # off_warp(q / 127) deg (u uniform, the policy's parameterisation); int8 like a bin,
+            # so --exact-chains' link actions replay it (view_row)
+            act[idx, 0] = rng.integers(-VIEW_Q, VIEW_Q + 1, m)
+        else:
+            act[idx, 0] = rng.integers(0, ACTION_NVEC[0], m)
         act[idx, 1] = (rng.integers(0, ACTION_NVEC[1], m) if args.random_pitch
                        else pitch_bin)
         act[idx, 2] = rng.integers(0, ACTION_NVEC[2], m)
@@ -927,7 +941,11 @@ def explore(args) -> int:
                                           & (rng.random(n) >= args.repeat_p))
                     fresh_actions(live)
                 acts_h[t] = act
-                _, rew, done, trunc, _ = core.step(act)
+                if VIEWV:
+                    view_row(act, vrow)
+                    _, rew, done, trunc, _ = core.step(act, view=vrow)
+                else:
+                    _, rew, done, trunc, _ = core.step(act)
                 rew_h[t] = rew
                 ended = (done | trunc) != 0
                 hit = np.flatnonzero(np.asarray(core.goal_hits, bool)
@@ -1038,6 +1056,21 @@ def _goal_meta(extra, arch, spawns, cell, minutes=None):
     return m
 
 
+VIEW_Q = 127      # --view-velocity: the view offset's int8 quantisation, u = q / VIEW_Q
+
+
+def view_row(act: np.ndarray, out: np.ndarray | None = None) -> np.ndarray:
+    """--view-velocity: (n, 6) actions whose column 0 is q -> the core's (n, 2) float32 view row
+    (yaw target offset off_warp(q / VIEW_Q) deg from the velocity heading, pitch target 0)."""
+    from surfgym.view import off_warp
+    a = np.asarray(act)
+    if out is None:
+        out = np.zeros((a.shape[0], 2), np.float32)
+    out[:, 0] = off_warp(np.clip(a[:, 0].astype(np.float64), -VIEW_Q, VIEW_Q) / VIEW_Q)
+    out[:, 1] = 0.0
+    return out
+
+
 def fold_chunk(arch: Archive, hasher: CellHash, hist, rid_h, r_t0, r_d0,
                r_org, dist, acts_h=None) -> None:
     """Archive everything one chunk of rollout discovered."""
@@ -1137,6 +1170,10 @@ def meta_dict(args, bsp, hasher, arch, it, n_goal, extra=None) -> dict:
         out["cell_energy"] = float(args.cell_energy)
     if int(getattr(args, "cell_heading", 0) or 0) > 0:
         out["cell_heading"] = int(args.cell_heading)
+    if getattr(args, "view_velocity", False):
+        # --view-velocity only: the flag-off meta json is unchanged
+        out["view_velocity"] = True
+        out["view_q"] = VIEW_Q
     if getattr(args, "exact_chains", False):
         out["exact_chains"] = True
         out["ep_ticks"] = int(args.ep_ticks)
@@ -1724,6 +1761,14 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--cell-heading", type=int, default=0,
                     help="H > 0: the cell key also holds H sectors of the horizontal velocity "
                          "heading x rising/not (default 0 = off, keys unchanged)")
+    ap.add_argument("--view-velocity", action="store_true",
+                    help="bursts act in the trainer's --view-absolute velocity frame (core "
+                         "view_mode 1): the yaw is a target OFFSET from the velocity heading, "
+                         "drawn as off_warp(u) with u uniform (the policy's own warp, fine near "
+                         "'look along the velocity'), so a found line is flown in the frame "
+                         "and at the resolution the policy acts in. Column 0 of the action rows "
+                         "holds q = round(127 u); tools/ge_replay.py reads it back (meta "
+                         "view_velocity)")
     ap.add_argument("--exact-chains", action="store_true",
                     help="exact provenance: a cell's parent is the cell its run was restored "
                          "from, states are never replaced and each cell keeps its run's "
