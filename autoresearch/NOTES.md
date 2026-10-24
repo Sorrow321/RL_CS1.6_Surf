@@ -1196,3 +1196,13 @@ exactly one 5080 (0.56-0.60 $/h) for the whole fleet, and the cheapest passing o
 (this branch polls `rent --dry-run` every 4 min and has not got in since 19:41). Options: a pace
 that admits K boxes before forking K branches, fewer branches per round while credit is low,
 or cheaper offers in the query (a 3090 at <= 0.18 $/h would fit beside the 5080).
+
+### Box at last (23:42 UTC): the operator's mid-round budget change
+* 23:40 UTC the operator's harness commit (99753a6) set a flat fleet cap of 1.2 $/h and allowed
+  cheaper card classes; the waiter rented at 23:41:33: **box 57580595, RTX 3090 (300 W cap,
+  gpu_health healthy), AMD EPYC 7502, cgroup quota 61.4 CPUs, 0.386 $/h, Thailand (machine
+  141910), 3 h deadline**. (The waiter's own deploy step missed it - the new box.py status
+  output - and I deployed by hand at 23:45; incumbent ckpt md5 4bbcb8f9 verified on the box.)
+* Lesson: `pkill -f <pattern>` with the pattern in the same shell command killed that shell
+  (CLAUDE.md's self-match warning, locally too); use the PID.
+* 23:45 gate_search stage 1 (beam 4,096, --need 20.6, no GE) on the box.
