@@ -932,3 +932,8 @@ round 1's fixed grow 20 / cooldown 20 they would have taken ~130M).
   line to the platform's end + GE11's chain to 12.74%) with the anchor at 12.4% (--demo-success-d 195)
   and the pull at d_end + 20 (12.705%) with --demo-pull-stats: practice + energy shaping on the
   post-platform section. Runs to the wrap-up.
+* cur11 (11:51 UTC, 8.77B): evals **13.203 (8.3692B = cur11's first = cur10's final weights + 1
+  update; best 13.2%, median 12.3%)** / 12.838 / 13.113 / 13.186 / 13.082 / 13.139 (medians up to
+  13.1%); the curriculum band sits in GE11's chain (spine ~1,138, 14-21%). Handed-on checkpoint for
+  13.203: cur10's final ckpt (8,368,685,056, md5 8fb635ba...) placed in cur11's run dir as
+  ckpt_8368685056.pt and pulled with --snapshot (the cur5 procedure).

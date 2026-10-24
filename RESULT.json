@@ -3,11 +3,11 @@
  "round": 2,
  "final": false,
  "best": {
-  "score": 12.73,
-  "eval_file": "/home/steam/ar_pb/runs/pbr2b4/pbr2b4_cur10/traj_8342994944.jsonl",
-  "run": "pbr2b4_cur10",
-  "step": 8342994944,
-  "ckpt": "/home/steam/ar_pb/runs/pbr2b4/pbr2b4_cur10/ckpt_latest.pt",
+  "score": 13.203,
+  "eval_file": "/home/steam/ar_pb/runs/pbr2b4/pbr2b4_cur11/traj_8369209344.jsonl",
+  "run": "pbr2b4_cur11",
+  "step": 8369209344,
+  "ckpt": "/home/steam/ar_pb/runs/pbr2b4/pbr2b4_cur11/ckpt_8368685056.pt",
   "recipe": [
    "--resume pbr2b4_cur9 final (7.965B)",
    "--maxvel",
@@ -68,10 +68,10 @@
    "25",
    "--demo-pull-stats"
   ],
-  "resume_from": "pbr2b4_cur9 final (7.965B, md5 3fddfcbf; cur9 <- cur8 <- cur6 <- cur5 <- cur4 <- cur3 <- cur2 <- cur1 <- pbr1b1_g2cur6)",
+  "resume_from": "(this IS cur10's final ckpt_latest, 8.369B; the eval is cur11's first, one PPO update later)",
   "commit": "c104897",
   "ckpt_step": 8368685056,
   "ckpt_md5": "8fb635ba80cae6dfad3a022220e01c5f"
  },
- "summary": "Best 12.730 (cur10 8.343B; incumbent 3.236): 9/9 greedy episodes from the TRUE START reach 12.6-12.7%. Loop: own greedy line -> exact-chain Go-Explore rooted at its last seconds or before its biggest energy drop -> spine = own prefix + chain -> backward curriculum (--demo-adapt, --demo-replay), per-call energy shaping. Gates passed: the pit (3.2%), the fall catch (4.0%), the rim + platform jump (6.7%): a GE line from the policy's own pre-rim states keeps ~400 u more energy; the curriculum scored on a PULL line past the policy's reach (--demo-pull-stats) while an anchor line keeps the old line paid taught it in ~20 min, and the platform route (spawn states from a speed-scaled own-state GE chain) was already learned."
+ "summary": "Best 13.203 (cur10's final weights, scored as cur11's first eval at 8.369B; incumbent 3.236): greedy episodes from the TRUE START reach 12.3-13.2%. Loop: own greedy line -> exact-chain Go-Explore rooted at its last seconds or before its biggest energy drop -> spine = own prefix + chain -> backward curriculum (--demo-adapt, --demo-replay), per-call energy shaping. Gates passed: the pit (3.2%), the fall catch (4.0%), the rim + platform jump (6.7%): a GE line from the policy's own pre-rim states keeps ~400 u more energy; the curriculum scored on a PULL line past the policy's reach (--demo-pull-stats) while an anchor line keeps the old line paid taught it in ~20 min, and the platform route (spawn states from a speed-scaled own-state GE chain) was already learned."
 }
