@@ -967,3 +967,12 @@ beam found the policy's own way over the wall in 100 s).
   u/s), it crawls east at 300-600 u/s to 18.1%, hits again at (-401, -2,351, 2,626) and creeps to
   18.57% at ~120 u/s. Spine autoresearch/spines/pbr2b3_beam_g10a.npy (1,736 states, cut at 18.26%,
   618 u/s). pbr2b3_beam10 (10:10 UTC): beam9's 7.687B weights + the curriculum on it.
+* beam10 (beam9's weights, the curriculum on the 18.26% line): evals 15.946 / 15.423 / 15.339 /
+  15.383 / 15.324, medians 15.9 -> 14.8 - a REGRESSION: every greedy episode dies at z ~2,932-2,938
+  (the fall catch under the eastward run, x -2,050..-2,250, earlier than beam9's -1,720..-2,000),
+  while the curriculum sat at the impact before 16% ([1445] 13%, [1440] 99%). With the success line
+  out at 18.1% no episode the greedy can fly is paid the bonus any more, and the earlier route
+  erodes (the same effect as the 2/9 pit episodes when the line first moved to 6.45%).
+  Lesson: move the success line by one gate at a time, not to the far end of a fragile line.
+* pbr2b3_beam11 (10:35 UTC): back to beam9's 7.687B weights (md5 e25d10cf...) with that line cut at
+  tick 1,560 (16.68%, just past the catch: autoresearch/spines/pbr2b3_beam_g10a_1560.npy).
