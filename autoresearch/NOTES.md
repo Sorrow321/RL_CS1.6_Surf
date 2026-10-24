@@ -825,3 +825,17 @@ pbr1b1_g2cur6/ckpt_latest.pt 3.285B, md5 a6559938..., both present).
 * GE-VV10 (06:54, full CPU): roots = GE-VV8's own west-going high-energy half-pipe states (h
   3,890-3,916, x 1,176-1,797, vx -226..-622; exact chains from the true spawn) -> look for the
   climb to the tunnel's east mouth at speed and a fast tunnel.
+* GE-VV10 (64 u cells, roots = GE-VV8's west-going pump states): reaches the tunnel's east mouth
+  only 5 times (h <= 3,811). GE-VV11 (the same roots, **32 u cells**, 10 min, 128,213 cells): 79
+  mouth cells with h up to **3,908** (the record's level) - but the tunnel traversal still loses
+  it: exit <= 383 u/s, h 3,817 (the record: 605 u/s, h 3,953), and that exit sits 16.8 s down a
+  loopy chain from its pump root. The in-tunnel strafe-surf is the piece random bursts lack.
+* Probe (ANALYSIS ONLY, runs/ANALYSIS_ONLY_exitspeed on the box): the CURRENT policy (lb2 4.446B)
+  greedy from its own tunnel-exit states with the speed scaled to 266 / 450 / 600 u/s: 6.59-6.67%
+  in 5/6 / 3.63-6.63% / 1.70-3.21%. More energy at the exit makes the current policy WORSE: its
+  whole post-tunnel route (drop, ridge launch, pit, south side) is tuned to its slow entry. So the
+  record-style energy route would have to be learned as a whole (start pump -> fast tunnel ->
+  pit at speed -> north route -> north face -> the block), not bolted onto this route.
+* GE-VV12 (07:15 UTC): roots = GE-VV11's 30 highest-energy mouth / early-tunnel cells (h 3,871-
+  3,945, x 717-1,093), 32 u cells x energy 16, 10 min - a building block for the next round: an
+  exact, natural-view, low-loss tunnel traversal joined to the pump chain.
