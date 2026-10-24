@@ -64,3 +64,13 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   that line's own states before the impact (32 u x energy 16 cells, 12 min, 1.27M cells; ge_replay
   15/15 links): ~6.8 s of back-and-forth on the ramps there (h 2,972 -> ~3,220, a small pump), then
   east at 640-1,078 u/s to 18.86%. Views along the velocity. No demo, no record data (pbr2b3).
+* `pbr3b4_ge_r3d.npy` (1,814 states, md5 f716d4f9149a582edd452a1897570c0d): the policy's own line
+  from the true spawn past the 20.4% fall catch to 21.54% (pbr3b4, round 3). The first 1,500 states
+  are beam_tas's frontier lineage (4,096 stochastic copies of the incumbent's 9.48B weights, d-ranked,
+  runs/pbr3b4/_beam_r3a); state 1,500 onward is the deepest chain of an explore_phase1
+  --exact-chains run (64 u x energy 32 cells, 15 min, uniform random actions) rooted at 66 of that
+  line's own states over 14.0-15.6 s at velocity x1.00 and x1.04, replayed exactly by ge_replay
+  (13/13 links): its root is the line's state at 15.0 s (the launch off the ramp at x -868) with the
+  velocity x1.04 - a sharper right turn at x 440-550 into the south corridor, a tangential landing
+  on its west surf ramp, a U-turn at (484, -3,443) and a climb east to (1,103, -2,852, 2,833) at
+  ~1,015 u/s. Views along the velocity on the explorer's part (tools/ge_spine.py). No demo, no record.
