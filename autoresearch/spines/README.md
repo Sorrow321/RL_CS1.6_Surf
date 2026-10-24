@@ -48,3 +48,7 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   from the true spawn past the x -1,015 wall to 12.34% (beam_tas on pbr2b3_beam7's 6.98B weights,
   4,096 copies, 32 greedy envs, d-ranked; frontier 12.52% at 24 s), cut at its best progress before
   it stalls at x ~-3,400 (tick 1,337); views along the velocity. No demo, no record data (pbr2b3).
+* `pbr2b3_beam_g9a.npy` (1,441 states, md5 7ab294dd8eb440f6ff3c2913c9326b3a): the policy's own line from the true spawn
+  through the U-turn climb past the 13% fall catch to 15.36% (beam_tas on pbr2b3_beam8's 7.33B weights;
+  frontier 15.66% at 15 s, every lineage dead by 16 s), cut 5 ticks before the impact at x ~-1,965
+  (tick 1445); views along the velocity. No demo, no record data (pbr2b3).
