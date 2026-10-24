@@ -867,3 +867,9 @@ pbr1b1_g2cur6/ckpt_latest.pt 3.285B, md5 a6559938..., both present).
 * Ceiling without the block (core hull traces + field, analysis): the best points near the wall
   are jump-height spots at its base, 6.71-6.73% at z ~3,059 (x -940..-972); the training
   reservoir has touched d 53,273 = 6.78%. lb5 keeps collecting greedy evals there until ~10:00 UTC.
+* lb5 (lb2's configuration from 4.446B): evals 6.657-6.697 over 4.45-5.65B; **6.697 at 5.277B** is
+  the round's best eval (traj_5276958720; the same wall, one episode a hair higher). Its checkpoints
+  pulled: ckpt_latest = 5.292B (md5 bdd5117c..., 15M after the eval - the hand-on file) and
+  ckpt_5196218368.pt (md5 c8d37062..., before it). Stopped 09:00 UTC with the frontier stuck for
+  1.64B steps at the temperature cap; box 57455920 released 09:01 UTC (nothing left to run with a
+  real chance at the wall; the record-style energy route is a multi-part project, see above).
