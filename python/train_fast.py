@@ -17892,11 +17892,28 @@ def main() -> None:
         if AUTO is not None:
             # --auto-spine: a finished beam's line becomes the spine (the curriculum restarts at
             # its end, the success line moves with it), then the beam the last eval wanted starts
-            _res = AUTO.poll(DEMO_END_D)
+            try:
+                _res = AUTO.poll(DEMO_END_D)
+            except Exception:                 # the loop is an add-on: never kill the run
+                import traceback
+                traceback.print_exc()
+                print("!! --auto-spine: poll failed; the loop is OFF for the rest of the run, "
+                      "the curriculum stays on its spine", flush=True)
+                AUTO.close()
+                AUTO, _res = None, None
+        if AUTO is not None:
+            _new_demo = None
             if _res is not None:
-                demo = DemoCurriculum(_res.states, window=args.demo_window, rate=args.demo_rate,
-                                      min_ep=args.demo_min_ep, grow=args.demo_grow,
-                                      front_frac=float(args.demo_front_frac), **_dkw)
+                try:
+                    _new_demo = DemoCurriculum(_res.states, window=args.demo_window,
+                                               rate=args.demo_rate, min_ep=args.demo_min_ep,
+                                               grow=args.demo_grow,
+                                               front_frac=float(args.demo_front_frac), **_dkw)
+                except Exception as _e:       # keep the spine in force
+                    print(f"!! --auto-spine: {_res.path.name} cannot be a curriculum ({_e}); "
+                          f"the curriculum stays on {args.demo_file}", flush=True)
+            if _new_demo is not None:
+                demo = _new_demo
                 DEMO_END_D = _res.d_cut + float(args.demo_success_d)
                 DEMO_PAID[0] = None           # re-armed on the new line at the next reward call
                 demo_idx[:] = -1              # in-flight episodes started on the old spine
@@ -17909,8 +17926,16 @@ def main() -> None:
                       f"{args.demo_file} ({demo.n} states, starts [{demo.tau},{demo.n - 1}]); "
                       f"success line d <= {DEMO_END_D:,.0f}", flush=True)
             if AUTO.want and not AUTO.running():
-                save_ckpt("autobeam")
-                AUTO.start(out / "ckpt_autobeam.pt", global_step)
+                try:
+                    save_ckpt("autobeam")
+                    AUTO.start(out / "ckpt_autobeam.pt", global_step)
+                except Exception:             # the loop is an add-on: never kill the run
+                    import traceback
+                    traceback.print_exc()
+                    print("!! --auto-spine: the beam could not start; the loop is OFF for the "
+                          "rest of the run", flush=True)
+                    AUTO.close()
+                    AUTO = None
 
         if SPAWN_STATES is not None and it_no % 20 == 0:
             # --spawn-states: re-read a refreshed file (an outer archive loop replaced it)
@@ -20448,8 +20473,16 @@ def main() -> None:
                       f"{prog_note} -> {path.name}")
                 if AUTO is not None and not _s.heldout:
                     # --auto-spine: does a quorum of this eval reach the success line?
-                    print(f"[{global_step:>13,d}] "
-                          + AUTO.note_eval(path, global_step, DEMO_END_D), flush=True)
+                    try:
+                        print(f"[{global_step:>13,d}] "
+                              + AUTO.note_eval(path, global_step, DEMO_END_D), flush=True)
+                    except Exception:         # the loop is an add-on: never kill the run
+                        import traceback
+                        traceback.print_exc()
+                        print("!! --auto-spine: note_eval failed; the loop is OFF for the rest "
+                              "of the run, the curriculum stays on its spine", flush=True)
+                        AUTO.close()
+                        AUTO = None
                 if (args.save_best and not MULTI and not _s.heldout and p_nfin
                         and fin_best < best_fin_saved):
                     # --save-best: keep the weights behind every new best greedy finish
