@@ -841,3 +841,19 @@ beam found the policy's own way over the wall in 100 s).
   stalls on the north side. The curriculum is back at the east-side U-turn (~575-590, 25-52%).
 * beam_g5a (06:00 UTC): a beam from beam3's ~5.02B weights - can the policy's own sampling clear
   the last 40 u now?
+* beam3 final evals 7.107 / 7.156 (5.086B, median 7.1%); stopped at 5.128B (ckpt md5 a312f0da...,
+  pulled; the handed-on checkpoint for the 7.168 eval). Curriculum at ~320 (the tunnel exit).
+* GE_g6 (rooted at beam_g5a's own climb to the wall, 10 min, 1.23M runs): deepest 7.138% at
+  (-1,008, -3,000, 3,274), NO cell west of x -1,030. beam_g5a (d-ranked) frontier 7.13% at 9 s;
+  beam_g5dh (`--score dh`, new: rank by -d + K x energy height, K 1) 7.145% at 9 s - the same.
+* WHERE the energy goes (beam_g5a / g5dh frontier lines, h = z + |v|^2/2g): ~3,790-3,800 all the
+  way down the drop (ticks 700-760; the record has ~3,800 there too), then -114 u in 0.2 s at the
+  bottom ((50, -2,809, 2,967) vz -933 -> (-93, -2,704, 2,833) vz -366) and -46 more: the line
+  LANDS on the bottom of the drop and the clip eats its vertical component; the record arrives
+  there tangentially (vz +31 at 1,239 u/s, h ~3,798). Kept, those ~160 u clear the wall (top
+  ~3,330; the line meets it at ~3,270 with h ~3,640). So gate 5 is a landing, not an energy
+  deficit from the start.
+* pbr2b3_beam4 (06:22 UTC): beam3's 5.128B weights + the same curriculum (tau0 320) +
+  **per-call energy shaping** (`--energy-pot 3 --energy-pot-front 0 --energy-pot-front-bonus 0`:
+  every loss of h charged when it happens - the landing's -160 u costs ~-0.48 at that tick -
+  instead of the recipe's once-at-the-frontier kinetic bonus, which never sees the landing).

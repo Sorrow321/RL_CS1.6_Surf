@@ -7,9 +7,9 @@
   "eval_file": "/home/steam/ar_pb/runs/pbr2b3/pbr2b3_beam3/traj_4935122944.jsonl",
   "run": "pbr2b3_beam3",
   "step": 4935122944,
-  "ckpt": "(beam3 ckpt_latest, pulled at the run's stop)",
-  "ckpt_step": null,
-  "ckpt_md5": null,
+  "ckpt": "/home/steam/ar_pb/runs/pbr2b3/pbr2b3_beam3/ckpt_latest.pt",
+  "ckpt_step": 5128060928,
+  "ckpt_md5": "a312f0da320f4f1c7c34b41d4f758fcf",
   "recipe": [
    "resume chain: pbr1b1 g2cur6 (3.285B) -> pbr2b3_canon1 -> canon2 -> canon3 (3.721B)",
    "--demo-file autoresearch/spines/pbr2b3_line_a_canon.npy (canon2/3), _canon_780.npy (canon4)",
