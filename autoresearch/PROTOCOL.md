@@ -141,7 +141,9 @@ final before `wrapup_at`.
 * **Watching.** The user watches through Claude Remote Control and `~/ar/status.md` (the
   user's view, which you do not read: see Independence). That replaces CLAUDE.md's per-box
   dashboard tunnel. A dashboard on the box is optional, and no tunnel is needed.
-* **Budget.** The total is the vast credit; box.py paces it to config.budget_end_hours.
+* **Budget.** The total is the vast credit. box.py caps the fleet's burn at
+  config.budget_rate_usd_h ($1.2/h, the user, 2026-10-25) and keeps the $10 reserve: no rent
+  at the reserve, and no `extend` that the fleet's burn would pay out of it.
 
 ## Code changes
 
@@ -193,7 +195,8 @@ python autoresearch/box.py release --agent $AR_AGENT
   * is unregistered.
 * A box with no experiment running is released within 5 minutes (CLAUDE.md section 1). Do
   your analysis with the box released, unless you are about to launch again.
-* If `rent` refuses on budget, the fleet is spending faster than the money lasts. Do analysis
+* If `rent` refuses on budget, the fleet is at its spending limit (`box.py budget`: burn_per_h
+  against limit_per_h). Do analysis
   or coding and try later. Never work around it.
 * Your box id is in `$AR_HOME/boxes/$AR_AGENT.json` and `box.py status --agent $AR_AGENT`. Keep
   it in NOTES.md too.

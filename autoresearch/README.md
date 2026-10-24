@@ -54,8 +54,11 @@ named pbr<round>b<k> / ar/pbr<round>b<k>.
 * **Enforcement.** `box.py` refuses any rental outside these limits. The fleet watchdog
   destroys any instance on the account that breaks them, whoever rented it. It needs two
   consecutive sightings before acting.
-* **Budget pacing.** No new box once the credit falls to the $10 reserve. The fleet's burn
-  rate may not exceed (credit - reserve) / hours left until hour 72.
+* **Budget.** No new box once the credit falls to the $10 reserve. The fleet's burn (live
+  boxes plus the new one) may not exceed config.budget_rate_usd_h, $1.2/h since 2026-10-25
+  (the user); without that key, (credit - reserve) / hours left until budget_end_hours.
+  `box.py extend` is refused when the fleet's burn over the extension would come out of the
+  reserve.
 * **Deadlines.** Every box has a watchdog deadline (`box.py rent --hours`, `box.py extend`).
 * **Readiness.** A box must be running within 5.5 min of creation and reachable by ssh within
   90 s after that; otherwise it is blocklisted and destroyed.

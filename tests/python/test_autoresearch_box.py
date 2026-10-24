@@ -119,8 +119,10 @@ def test_the_fleet_cap(market):
         box.main(["rent", "--agent", "r1b2", "--dry-run"])
 
 
-def test_the_budget_pace(market, capsys):
-    # $100, $10 reserve, 72 h: 1.25 $/h. Four 0.30 boxes already burn 1.2 - nothing fits
+def test_the_budget_pace(market, capsys, monkeypatch):
+    # the pacer, without the flat rate: $100, $10 reserve, 72 h: 1.25 $/h. Four 0.30 boxes
+    # already burn 1.2 - nothing fits
+    monkeypatch.delitem(box.CFG, "budget_rate_usd_h", raising=False)
     market["live"] = [{"id": 100 + i, "label": f"x{i}", "dph_total": 0.30} for i in range(3)]
     market["credit"] = 30.0          # (30 - 10) / 72 = 0.28 $/h allowed, 0.9 already burning
     with pytest.raises(SystemExit) as e:
@@ -133,6 +135,47 @@ def test_the_budget_pace(market, capsys):
     box.main(["rent", "--agent", "r1b3", "--dry-run"])
     out = json.loads(capsys.readouterr().out)
     assert out["would_rent"]["id"] == 4 and market["created"] == []
+
+
+def test_the_flat_rate(market, capsys, monkeypatch):
+    """User, 2026-10-25: 'we make the budget equal to ... $1.2 an hour.' The fleet's burn plus
+    the new box may reach the rate, not pass it (no pacer slack), whatever the credit."""
+    monkeypatch.setitem(box.CFG, "budget_rate_usd_h", 1.2)
+    market["credit"] = 30.0          # the pacer would allow (30 - 10) / 78 = 0.26 $/h
+    market["live"] = [{"id": 100, "label": "x0", "dph_total": 0.50},
+                      {"id": 101, "label": "x1", "dph_total": 0.50}]
+    b = box.budget_state()
+    assert b["limit_per_h"] == 1.2 and b["hours_to_reserve"] == 20.0, b
+    box.main(["rent", "--agent", "r1b3", "--dry-run"])          # 1.0 + the 0.20 5080 = 1.2
+    assert json.loads(capsys.readouterr().out)["would_rent"]["id"] == 4
+    market["live"][1]["dph_total"] = 0.51                        # 1.21 > 1.2
+    with pytest.raises(SystemExit) as e:
+        box.main(["rent", "--agent", "r1b3", "--dry-run"])
+    assert e.value.code == 3
+    market["live"] = []
+    market["credit"] = 10.0                                      # at the reserve: no box
+    assert box.budget_state()["limit_per_h"] == 0.0
+    with pytest.raises(SystemExit):
+        box.main(["rent", "--agent", "r1b3", "--dry-run"])
+    assert market["created"] == []
+
+
+def test_extend_stops_short_of_the_reserve(market, monkeypatch):
+    """A flat rate can outspend the credit and a run-out stops every box at once: an extension
+    the fleet's burn would pay out of the reserve is refused, and the deadline stands."""
+    calls = []
+    monkeypatch.setattr(box, "watchdog", lambda *a: calls.append(a) or
+                        box.subprocess.CompletedProcess(a, 0, "extended", ""))
+    box.save_rec("r1b1", {"agent": "r1b1", "id": 42, "gpu": "RTX_5080", "dph": 0.6,
+                          "created": 0})
+    market["live"] = [{"id": 42, "label": "r1b1", "dph_total": 0.6},
+                      {"id": 43, "label": "r1b2", "dph_total": 0.6}]
+    market["credit"] = 12.0                                      # $2 above the reserve
+    with pytest.raises(SystemExit):
+        box.main(["extend", "--agent", "r1b1", "--hours", "2"])  # 1.2 $/h x 2 h = $2.4
+    assert calls == []
+    box.main(["extend", "--agent", "r1b1", "--hours", "1"])      # $1.2 of the $2
+    assert calls == [("extend", "42", "--minutes", "60")]
 
 
 def test_the_reserve(market):
