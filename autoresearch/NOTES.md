@@ -846,3 +846,11 @@ round 1's fixed grow 20 / cooldown 20 they would have taken ~130M).
   The curriculum band sits at spine 731 (the half-pipe landing, 14-22%), while the replayed
   prefix and early chain succeed 45-77%. Box extended to 13:44 UTC. Pulled cur6 ckpt_latest
   6.777B (md5 cdaa5299...).
+* Correction (08:47 UTC): cur6's greedy line does NOT clear the rim - its own largest energy drop is
+  still the rim (CPU recording, ep 1, tick 736 (192,-2,833,3,148), h 3,781 -> 3,404; ramp h of its
+  GPU evals 3,318-3,381 as before). Its 6.9-7.0% comes from a better wall approach (z ~3,160 at
+  x -1,000). And spine_d's success line (6.86%) is BELOW what that line now reaches (~6.9%), so the
+  curriculum never required the rim-clearing approach. Rule for the next spine: success line past
+  the policy's own greedy best.
+* GE8 (pb_frontier_step --roots sink on cur6 6.777B, cur6 paused): roots = its 1.0-0.1 s before the
+  rim; 64/16 x 50 decisions and 48/16 x 100 decisions, 10 min each.
