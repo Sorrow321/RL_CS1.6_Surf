@@ -37,3 +37,10 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   (runs/pbr2b3/_beam_g3b/beam_frontier.npz); cut at its best progress before it stalls in a hollow
   at x ~-1,015 (tick 1,065). Its views are the policy's own (within ~7 deg of the velocity at speed).
   No demo, no record data (pbr2b3, round 2).
+* `pbr2b3_beam_ge_g4.npy` (909 states, md5 a28ef67685dd77ad89bce2be3a91b96e): the policy's own beam line from the true spawn
+  (beam_tas on pbr2b3_beam1's 4.548B weights, runs/pbr2b3/_ge_g4/beam_g4a_frontier.npz) up to its
+  tick 720 (the drop after gate 3), then the deepest chain of a Go-Explore run rooted at 24 of that
+  line's own states (explore_phase1 --exact-chains, 64 u x energy 32 cells, 10 min) replayed
+  exactly by ge_replay (7/7 links) from that same state: it surfs the drop at up to 1,058 u/s and
+  climbs to 7.07% at (-1,002, -2,994, 3,240). Views re-aimed along the velocity (spine_canon_view).
+  No demo, no record data (pbr2b3, round 2).
