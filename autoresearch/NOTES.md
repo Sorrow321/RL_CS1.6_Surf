@@ -1129,3 +1129,17 @@ one box at a time (e.g. a box-hours budget instead of a $/h rate), is needed for
 * The first box run planned (resume of the incumbent, beam12's flag set + `--auto-beam 4096
   --auto-ge 10`): the incumbent's greedy line is already past ge_g16's success line (18.86%), so
   the very first eval triggers the search.
+* The CPU pre-rent check of the planned box launch (incumbent + beam12's flags + `--auto-beam 16
+  --auto-ge 0.3`, 32 envs, --no-compile) ran the whole loop: the resume's first greedy eval had
+  6/9 episodes past ge_g16's success line (d <= 46,471) -> beam -> its line cut at the last
+  contact at d 47,186 (17.43%, the take-off) -> not taken -> Go-Explore fallback (147k cells,
+  chain spliced at line state 1,528, cut at the same take-off) -> not taken -> retry in 4 evals,
+  training on. (The first try failed on beam_tas's own --greedy-envs <= --envs guard, handled as
+  a failed search; now refused at launch.) Its train/approx_kl 46 on the first update is the
+  32-env CPU batch (256-sample minibatches against a 0.013 rad yaw sigma), not the box config.
+* Energy height h = z + |v|^2/1600 at the first passage of each progress mark, the incumbent's
+  CPU line vs the record (ANALYSIS ONLY): the policy is ~4.2 s AHEAD of the record at every mark
+  from 0.5% to 20% (the record pumps for ~6 s at the start) but carries less energy all the way:
+  +155..172 u deficit at 0.5-1%, +87..105 at 3-5%, +63..77 at 7-12% (the drop surf and the x
+  -1,015 wall section), +85..121 at 13-17% (the U-turn climb and the east run), +88..103 at
+  18-20%. Gate 8's take-off (17.46%) sits where the deficit is largest after the start.
