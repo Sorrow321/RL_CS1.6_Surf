@@ -633,3 +633,11 @@ ckpt_latest 3.285B (md5 a6559938..., the most curriculum progress), both named i
 * Both lineage checkpoints have the yaw sigma at 0.011 (log -4.52, --yaw-entropy 0): ~0.2 deg of
   exploration in the aligned frame. `--yaw-sigma-min S` (new, the --pitch-sigma-min floor on the
   yaw head; off = bit-identical; record_ckpt / beam_tas mirror it) for the arm after alignment.
+* `explore_phase1 --view-velocity` (new; flag off bit-identical, tests/python/test_ge_view_velocity.py):
+  bursts act in the policy's velocity frame (offset off_warp(u), u uniform, q = round(127u) in
+  action column 0 so --exact-chains replays it; ge_replay reads meta view_velocity). Local smoke
+  (04:25 UTC, 2 threads, 3 min, 61k runs, rooted at line_a 1000..1240 every 10): best 3.34%, one
+  lineage - from line_a 1110 (the ridge at 752 u/s) a different launch over the pit onto the lower
+  SOUTH ramp, stopping at (808, -3,287, 3,436) = 3.34% (above the incumbent's 3.24%). So past the
+  ridge-at-speed state there is more than the wall bounce; everything still needs the run-up and
+  the fast drop onto the ridge first (line_a 0..1110).
