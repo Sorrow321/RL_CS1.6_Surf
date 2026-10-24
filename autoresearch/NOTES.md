@@ -774,3 +774,16 @@ round 1's fixed grow 20 / cooldown 20 they would have taken ~130M).
   an idle box): greedy best 6.752%, deepest cell 6.775% - nothing onto the platform from the
   policy's own line at ramp h ~3,350. (Fixed: the step now reports "no new line" instead of a
   1-state chain when no cell beats the roots.)
+* `tools/beam_tas.py --score dh [--h-coef 1]` (new; d minus the energy height, default ranking
+  unchanged; tests/python/test_beam_score_dh.py): the energy-aware policy-guided beam (cur4 5.656B,
+  2,048 envs, resample 25, --greedy-envs 64, --skip-gate; --eps is refused under --keys-hold, so
+  the proposals are the policy's own samples, yaw sigma 0.017) also stops at the wall: min d
+  53,322-53,359 (6.68-6.70%) from t 10 s to 20 s. The policy's own sampling is too narrow to find
+  the landing. (beam_tas's greedy gate runs 3 episodes to the ckpt's 300-s cap first: use
+  --skip-gate.)
+* cur4 log at 5.79B: tr/st/cr 0%/92%/97% - 92% of training episodes end by the 15-s stall rule at
+  the wall (~half of all experience wandering there), kl 0.19-0.21 (high; cur1 ~0.08-0.10).
+* **pbr2b4_cur5** (07:05 UTC): resume cur4 final (5.802B, md5 dacb6a58...) + cur4's flags +
+  `--unstuck-max 1.0 --unstuck-temp-heads all` (the recipe's stuck-frontier temperature with a
+  higher cap and on the view heads too: more landing variety) + `--stall-secs 8` (less wall time).
+  cur4 evals: ... 6.792 / 6.748.
