@@ -8,8 +8,8 @@
   "run": "pbr2b3_beam9",
   "step": 7578583040,
   "ckpt": "/home/steam/ar_pb/runs/pbr2b3/pbr2b3_beam9/ckpt_latest.pt",
-  "ckpt_step": 7670333440,
-  "ckpt_md5": null,
+  "ckpt_step": 7687110656,
+  "ckpt_md5": "e25d10cf1c1d891f307ec76468bb56cd",
   "recipe": [
    "resume chain: pbr1b1 g2cur6 (3.285B) -> pbr2b3_canon1 -> canon2 -> canon3 (3.721B)",
    "--demo-file autoresearch/spines/pbr2b3_line_a_canon.npy (canon2/3), _canon_780.npy (canon4)",
