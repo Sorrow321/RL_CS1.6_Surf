@@ -11,6 +11,8 @@ root, zero the clocks. This does those steps the same way every time.
     python tools/spine_tool.py cut  --src runs/x/beam_frontier.npz --out runs/x/spine.npy
     python tools/spine_tool.py cat  --part runs/x/line.npy:0:1455 --part runs/y/chain.npy \\
         --out runs/y/spine.npy
+    python tools/spine_tool.py splice --line runs/x/spine.npy --chain runs/y/chain.npy \\
+        --out runs/y/spine2.npy     # finds the chain's root on the line
 
 * `--src` is a .npy of STATE_DTYPE rows or an .npz holding them under `states`.
 * `cut --end auto` (default) ends the spine at the line's deepest state on `--field`
@@ -114,7 +116,7 @@ def describe(states: np.ndarray, f: GoalField, d0: float, label: str = "") -> di
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
-    for name in ("info", "cut", "cat"):
+    for name in ("info", "cut", "cat", "splice"):
         p = sub.add_parser(name)
         p.add_argument("--field", default=None)
         p.add_argument("--d0", type=float, default=None,
@@ -130,7 +132,12 @@ def main(argv=None) -> int:
                            help="refuse a splice whose consecutive parts are further apart (u); "
                                 "consecutive states of one line are one tick (<= 35 u at "
                                 "3,500 u/s) apart, a chain spliced at its root 0 u")
-        if name in ("cut", "cat"):
+        if name == "splice":
+            p.add_argument("--line", required=True, help="the line the chain was rooted on")
+            p.add_argument("--chain", required=True, help="ge_replay's line (row 0 = its root)")
+            p.add_argument("--tol", type=float, default=0.5,
+                           help="the root must match a line state within this many u")
+        if name in ("cut", "cat", "splice"):
             p.add_argument("--out", required=True)
     a = ap.parse_args(argv)
     f = load_field(a.field or default_field())
@@ -159,6 +166,22 @@ def main(argv=None) -> int:
         out = zero_clocks(s[a.start:end + 1])
         np.save(a.out, out)
         describe(out, f, ref, f"spine [{a.start}, {end}] -> {a.out}")
+        return 0
+    if a.cmd == "splice":
+        line, chain = load_states(a.line), load_states(a.chain)
+        gap = np.linalg.norm(line["origin"].astype(np.float64)
+                             - chain[0]["origin"].astype(np.float64)[None], axis=1)
+        dv = np.linalg.norm(line["velocity"].astype(np.float64)
+                            - chain[0]["velocity"].astype(np.float64)[None], axis=1)
+        i = int(np.argmin(gap + dv))
+        print(f"chain root = line state {i} (gap {gap[i]:.3f} u, dv {dv[i]:.3f} u/s)")
+        if gap[i] > a.tol or dv[i] > a.tol:
+            raise SystemExit(f"the chain's root is not on the line (nearest state {i}: "
+                             f"{gap[i]:.1f} u, {dv[i]:.1f} u/s away)")
+        out = zero_clocks(np.concatenate([line[:i], chain]))
+        np.save(a.out, out)
+        describe(out, f, d0 if d0 else float(depths(out, f)[0]),
+                 f"line [0, {i}) + chain ({len(chain)}) -> {a.out}")
         return 0
     parts = []
     for spec in a.part:
