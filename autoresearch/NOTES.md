@@ -916,3 +916,10 @@ beam found the policy's own way over the wall in 100 s).
   pulled). pbr2b3_beam7 (07:53 UTC): its weights + beam4's flag set with `--energy-pot 8` (was 3):
   a stronger price on energy so the policy strafes for it in the flight / U-turn / north side,
   where its line now only holds h level.
+* beam7 (--energy-pot 8): evals 7.121 / **7.198** (6.200B; one episode at z 3,321 at the wall, 9 u
+  under its top) / 7.183 / 7.185 / 7.132. The energy upstream did not move (tunnel exit h
+  ~3,806-3,812, top of the landing ~3,800, as with K 3): the policy already gains what this entry
+  allows. A beam from its 6.46B weights (64 greedy envs, another torch seed) stops at 7.18%.
+* GE_pump2 (08:20 UTC): rooted at the spawn GE's 24 highest-energy states in the east half-pipe
+  (x ~2,070-2,170, z ~3,290, ~900 u/s, h ~3,802), 64 u x energy 16 cells, 15 min: can the
+  half-pipe give more energy, and does any of it reach the tunnel fast?
