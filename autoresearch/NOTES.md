@@ -787,3 +787,14 @@ round 1's fixed grow 20 / cooldown 20 they would have taken ~130M).
   `--unstuck-max 1.0 --unstuck-temp-heads all` (the recipe's stuck-frontier temperature with a
   higher cap and on the view heads too: more landing variety) + `--stall-secs 8` (less wall time).
   cur4 evals: ... 6.792 / 6.748.
+* cur5 at 6.21B (07:21 UTC): T 0.2 -> 1.0 by 6.0B, kl fell to 0.03-0.08 (from 0.19), episodes 1,440-1,477
+  ticks (stall 8 s), yaw sigma 0.010; evals **6.885 (5.8023B = cur5's first, i.e. cur4's final
+  weights + 1 update)** / 6.785 / 6.836 / 6.772 / 6.835 / 6.828; ramp h still 3,281-3,378 - the
+  higher temperature did not move the energy in 20 min.
+* Handed-on checkpoint for 6.885: cur4's final ckpt (5,801,771,008, md5 dacb6a58...) copied into
+  cur5's run dir as ckpt_5801771008.pt (the step cur5 resumed at, <= the eval's step) and pulled
+  with --snapshot, so the snapshot-at-or-before rule hands on the weights that scored it.
+* Why the landing is hard (record analysis, ANALYSIS ONLY): at x 175 the record is ~20 u further
+  south and ~34 u higher than our line, with ~110 u more h at 4% (3,863 vs 3,740-3,777); our line
+  clips a rim at (175,-2,838,3,145). A threshold: a little more energy before the drop may clear the
+  rim and save the 400 u.
