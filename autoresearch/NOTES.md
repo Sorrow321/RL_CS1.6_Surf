@@ -1066,3 +1066,46 @@ beam found the policy's own way over the wall in 100 s).
   --exact-chains (32 u x energy 16 cells) rooted at the line's own states before the stall and
   splice the deepest chain in. Training's own frontier was ~20.8% at the end.
 * Box 57454337 (RTX 5080, 0.60 $/h) released at wrap-up.
+
+## pbr3b4 (round 3, slot 4) - 2026-10-24 19:40 UTC start
+
+Box: 57557523, RTX 5080, 0.563 $/h, machine 153177 (Italy), 32 threads. Rented 19:57 UTC by a
+background watcher (`box.py rent` every 3 min) the moment the credit top-up ($18.46 -> $43.45) let
+the budget pace (0.69 $/h) admit one box; until then every rent was refused (0.174 $/h allowed).
+
+### The 20.4% catch (gate 8), measured 19:45-20:10 UTC
+* The incumbent eval (traj_9837740032): every episode's LAST MAP CONTACT is at ~15.3 s, 17.4%
+  ((-930..-968, -2,434..-2,476, z 2,810-2,873), ~1,150 u/s); the 17.4 -> 20.4% is a 1.7 s ballistic
+  flight that ends in the fall catch at z ~2,383 (x 530-706). The grader's 20.4 is a fall.
+* The record (ANALYSIS ONLY) flies the same gap ~75-145 u higher (z 2,932 at x 0, 2,853 at x 215;
+  ours 2,857 / 2,709) and turns from east to SOUTH at x 215-440 by sliding along a curved wall
+  (20.75-21.05 s: |v_h| constant at ~1,160, vz falling at exactly g, h ~3,800 held), then lands
+  on a south-running ramp at (550, -2,976, 2,414) at 1,450 u/s, U-turns at (442, -3,317) and climbs
+  east. Our line arrives lower (h ~3,747 vs ~3,800) and misses the wall.
+* beam_tas from the true start on the incumbent's 9.479B weights (4,096 copies, 32 greedy, d-ranked,
+  35 s cap, 19 s on the 5080): frontier 20.74% - the survivors crash onto a LEDGE at (661, -2,526,
+  2,411) at 16.5 s (1,289 -> 301 u/s, h 3,747 -> 2,467) and hop there to 32 s. A dead end.
+* Go-Explore --exact-chains (32 u x energy 16 cells, 4,096 envs, 30 threads, 12 min) rooted at 25
+  of that beam line's states over 13.0-16.1 s (before the impact): 2.5M cells, 11.3M runs, best
+  only ~530 u past its roots (a 25 s creeping chain). Nothing past the gate.
+
+### --auto-spine: the search -> curriculum loop run by the trainer (new, commit a0166fb)
+* `tools/auto_spine.py` = round 2's manual cycle as a rule: beam_tas from the true start on the
+  newest weights -> the frontier line TRIMMED AT ITS LAST MAP CONTACT (pick_selfline.contact_cut:
+  a d-ranked search's frontier is often a fatal fall; the incumbent's own 20.4 is one) and cut at
+  its best d -> if that beats the greedy frontier by --gain: the spine; else Go-Explore
+  --exact-chains rooted at the line's last --roots-secs before it STALLS (first tick within
+  --stall-margin 500 u of its best d - the ledge crawl would otherwise root GE on a dead end),
+  ge_replay of the deepest chain, spliced at its root, views along the velocity, same cut.
+* `train_fast --auto-spine` (default off, bit-identical off - tests/python/test_auto_spine.py,
+  TRAIN_ONLY in record_ckpt): after a greedy eval with >= --auto-spine-quorum (5) episodes past the
+  spine's success line (or --auto-spine-patience steps), it saves ckpt_latest, runs auto_spine.py
+  (the trainer waits; ~20 s beam + up to --auto-spine-ge-minutes GE), and a spine that beats the
+  greedy frontier (median episode's deepest d) by --auto-spine-gain replaces the curriculum's
+  (DemoCurriculum.reset_spine: restart at the new end) and its success line. --auto-spine-delay /
+  --auto-spine-retry space the searches. Generic: every constant is a field margin, a time or a
+  search budget; the same flags on any map (CLAUDE.md 0b).
+* Run pbr3b4_as1 (20:13 UTC): the incumbent's 9.479B weights + round 2's last flag set (spine
+  pbr2b3_beam_ge_g16.npy, energy K 8, greedy-death + front-perturb rows) + `--auto-spine
+  --auto-spine-delay 4e8 --auto-spine-retry 4e8 --auto-spine-gain 500 --auto-spine-ge-minutes 8`,
+  1.5B steps. Gain 500 because the ledge line (20.70%) beats the greedy median (~20.37%) by ~190 u.

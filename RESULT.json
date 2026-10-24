@@ -2,6 +2,18 @@
  "agent": "pbr3b4",
  "round": 3,
  "final": false,
- "best": null,
- "summary": "Round 3 start (2026-10-24 19:40 UTC): no box - the budget governor allows 0.174 $/h for the whole fleet (credit $18.46, reserve $10, 48.6 h to budget_end_hours) and the cheapest passing offer is a 0.563 $/h RTX 5080. A watcher retries the rent every 3 min. Meanwhile: analysis of the 20.4% catch and an automated search->curriculum loop (beam_tas -> spine -> curriculum) so a box, when one comes, runs the lineage's cycle unattended."
+ "best": {
+  "score": 20.156,
+  "eval_file": "/home/steam/ar_pb/runs/pbr3b4/pbr3b4_as1/traj_9479127040.jsonl",
+  "run": "pbr3b4_as1",
+  "step": 9479127040,
+  "ckpt": null,
+  "recipe": [
+   "resume of the incumbent 9.479B + round 2's last flag set",
+   "--auto-spine --auto-spine-delay 4e8 --auto-spine-retry 4e8 --auto-spine-gain 500 --auto-spine-ge-minutes 8"
+  ],
+  "resume_from": "/home/steam/ar_pb/incumbent/r2/ckpt.pt",
+  "commit": "a0166fb"
+ },
+ "summary": "Box 57557523 (RTX 5080) from 19:57 UTC. Gate 8 (20.4%) analysed: the incumbent's last contact is at 17.4%, the rest a ballistic fall into a catch; the record flies ~100 u higher and turns south along a curved wall onto a ramp. A beam from the incumbent weights crashes onto a dead-end ledge (20.74%); Go-Explore from its last 3 s (12 min) found nothing past. New: train_fast --auto-spine + tools/auto_spine.py run round 2's search->curriculum cycle inside the trainer (beam -> contact-trimmed cut -> GE fallback -> spine swap). Running pbr3b4_as1 (incumbent weights + round-2 flags + --auto-spine): first eval 20.156 (the resumed weights)."
 }
