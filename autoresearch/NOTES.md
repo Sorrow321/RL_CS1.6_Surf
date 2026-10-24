@@ -781,3 +781,8 @@ ckpt_latest 3.285B (md5 a6559938..., the most curriculum progress), both named i
   still sat at spine 1049 (line_b 309, the floor after the drop): the start-room/route spawns reached
   the 4.67% success line 14-19% of the time by then. Snapshots pulled: ckpt_4127195136.pt (md5
   61569133...), ckpt_4227334144.pt (md5 424d75d0...), ckpt_3926917120.pt (md5 d750a644...).
+* vv7 4.280B eval: 6.686 again with the MEDIAN at 6.7% (8/9 patience-cut at line_b's end) - the
+  greedy line now reaches 6.68% reliably; the score is capped there by the gate after it.
+  (A record_ckpt --dump-states of the 6.7% checkpoint did not finish in 10 min on the box - greedy
+  episodes now run into the 300 s cap without the eval's patience cut; killed. GE3 = 233 roots from
+  GE1's own cells past 6.4%, --cell-speed 8 added, 15 min, 12:31-12:46.)
