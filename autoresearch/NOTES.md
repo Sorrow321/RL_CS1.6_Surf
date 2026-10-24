@@ -1099,3 +1099,22 @@ and a relaunch. `--auto-spine` (python/surfgym/autospine.py, train_fast.py) does
   hard SOUTH (vy -717 -> -1,113 at x ~380-440) and surfs down to z 2,414 at (550, -2,976) before a
   U-turn up a south ramp; the policy turns gently (vy -224 -> -838), drifts east to x ~650-700 and
   falls into the catch at z ~2,385. A steering gate, the kind a policy-guided beam has found before.
+* Additions (20:25-20:40 UTC): the Go-Explore fallback (`--auto-spine-ge-minutes 10`, default on
+  with --auto-spine): a beam line that is not deep enough gets explore_phase1 --exact-chains (32 u x
+  energy 16 cells, 4,096 envs, half the CPUs) rooted at 25 states of its last 5 s before its best,
+  ge_replay's deepest chain spliced onto it (round 2's GE_g4 / GE_g16 by hand); `--auto-spine-stall
+  24`: after 24 evals without the quorum a cycle runs anyway and only has to reach past the greedy's
+  own level, so a spine the greedy cannot be carried through is re-cut on the current weights
+  (round 2's beam10 -> beam11 by hand). Every hook is guarded: an exception turns the loop off and
+  the run goes on with its spine.
+* Tests (tests/python/test_auto_spine.py, all pass): 6 unit tests (the cut, the eval reader, accept /
+  no-gain backoff / failed beam, the GE splice, the stall re-cut) and 3 CPU trainer tests on
+  princessburglar - the curriculum swaps onto a stub beam's line and the checkpoint names it
+  (19 min on the loaded droplet), the refusal without --demo-success-d, flag off bit-identical to the
+  trainer before the change (config, progress.csv, weights). A real GE + ge_replay smoke through
+  AutoSpine (8 roots on round 2's 16.68% line, 20 s, 2 threads): 67,636 cells, chain replayed 2/2
+  links, spliced and accepted at 17.77%.
+* Launch plan (scratchpad go.sh): rent -> deploy ar/pbr3b2 with the incumbent ckpt (9.479B, md5
+  4bbcb8f9...) -> `box.py launch --resume` with round 2's beam12 flag set (NOTES above) +
+  `--auto-spine`. The initial spine (pbr2b3_beam_ge_g16, success line ~18.7%) is already passed by
+  9/9 greedy episodes, so the first eval wants beam 1 at once.
