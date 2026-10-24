@@ -901,9 +901,15 @@ class MixedTorchPolicy(SampledTorchPolicy):
     proposals are slower than its mode and whose population otherwise
     arrives at the finish window late, low, and dead."""
 
-    def __init__(self, *a, n_greedy: int, **kw):
+    def __init__(self, *a, n_greedy: int, view_temp=None, keys_temp=None, **kw):
         super().__init__(*a, **kw)
         self._ng = int(n_greedy)
+        # --view-temp / --keys-temp (None = off, the draw is byte-identical): the PROPOSAL
+        # envs sample the yaw head at sigma x view_temp (pitch untouched: camera only) and
+        # the four key heads at logits / keys_temp; the greedy envs still take mu / argmax
+        self._kt = None if keys_temp is None else float(keys_temp)
+        self._vt = (None if view_temp is None and keys_temp is None
+                    else [1.0 if view_temp is None else float(view_temp), 1.0])
 
     @torch.inference_mode()
     def _decide(self, obs):
@@ -913,7 +919,11 @@ class MixedTorchPolicy(SampledTorchPolicy):
             # argmax of the four categorical heads, off the same forward
             cat, mu = split_view(logits.float())
             padded = self.packer.pad(cat)
-            act, z, _ = sample_view(padded, mu, self.policy.log_std())
+            if self._vt is None:
+                act, z, _ = sample_view(padded, mu, self.policy.log_std())
+            else:
+                act, z, _ = sample_view(padded, mu, self.policy.log_std(),
+                                        temp=self._kt, temp_view=self._vt)
             if self._ng > 0:
                 act[:self._ng, N_VIEW:] = padded[:self._ng, N_VIEW:].argmax(-1)
                 z[:self._ng] = mu[:self._ng]
@@ -1788,6 +1798,13 @@ def main():
                     "head independently goes uniform over its bins with "
                     "this probability at every decision (0 = pure pi, "
                     "byte-identical to the eps-free tool)")
+    ap.add_argument("--view-temp", type=float, default=None,
+                    help="--greedy-envs: the proposal envs draw the YAW head at sigma x this "
+                         "(a collapsed yaw sigma leaves the search no other line to try); "
+                         "None = off, byte-identical")
+    ap.add_argument("--keys-temp", type=float, default=None,
+                    help="--greedy-envs: the proposal envs draw the four key heads at "
+                         "logits / this; None = off, byte-identical")
     ap.add_argument("--cc-T", default="0",
                     help="--curiosity-cond checkpoints: the family member "
                          "the PROPOSAL envs run as - a T in [0, cc_tmax] "
@@ -2540,6 +2557,8 @@ def main():
     if progress_mode and args.commit > 0:
         raise SystemExit("--objective progress/auto is a population-mode "
                          "feature and excludes --commit")
+    if (args.view_temp is not None or args.keys_temp is not None) and args.greedy_envs <= 0:
+        raise SystemExit("--view-temp / --keys-temp temper the --greedy-envs proposals")
     if args.greedy_envs > 0:
         if args.eps > 0.0 or args.dedup or args.commit > 0:
             raise SystemExit("--greedy-envs is a population-mode feature "
@@ -2548,6 +2567,7 @@ def main():
             raise SystemExit("--greedy-envs must be <= --envs")
         spol = MixedTorchPolicy(policy, packer, device, lidar, coreN,
                                 K, stack, n_greedy=args.greedy_envs,
+                                view_temp=args.view_temp, keys_temp=args.keys_temp,
                                 extra_slot=esN, extra_fn=efN,
                                 latch_fn=latchN, cc_fn=cc_fnN, keys_hold=KEYS, **xkwN)
     elif args.eps > 0.0 or args.dedup:
