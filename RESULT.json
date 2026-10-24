@@ -2,6 +2,21 @@
  "agent": "pbr2b1",
  "round": 2,
  "final": false,
- "best": null,
- "summary": "Round 2 started 02:18 UTC. Idea 1: the round-1 curriculum line (a random-action search line) spawns the policy with a random view (139-176 deg off the velocity through the pit flight; the policy flies within 30 deg of it 97% of the time). New flag --demo-view-vel re-aims spine spawns along the velocity; first test = resume g2cur6 (3.285B) at the stuck band [1235,1239]. No box yet (market empty under caps/blocklist at 02:28-02:31 UTC)."
+ "best": {
+  "score": 3.215,
+  "eval_file": "/home/steam/ar_pb/runs/pbr2b1/pbr2b1_vv1/traj_3361210368.jsonl",
+  "run": "pbr2b1_vv1",
+  "step": 3361210368,
+  "ckpt": "/home/steam/ar_pb/runs/pbr2b1/pbr2b1_vv1/ckpt_latest.pt",
+  "recipe": [
+   "warm: pbr1b1_g2cur6 ckpt_latest (3.285B)",
+   "--demo-file autoresearch/spines/pbr1b1_line_a.npy",
+   "--demo-view-vel",
+   "--demo-cooldown 10",
+   "(round-1 curriculum flags)"
+  ],
+  "resume_from": "/home/steam/ar_pb/runs/pbr1b1/pbr1b1_g2cur6/ckpt_latest.pt",
+  "commit": "f654450"
+ },
+ "summary": "Round 2 (pbr2b1). Best so far 3.215 (pit, below the incumbent 3.236). Found: round 1's curriculum line was a random-view search line (views 139-176 deg off the velocity where it stalled); re-aiming spawn views (--demo-view-vel, vv1) relearned the tail but stalled at the wall impact. New: explore_phase1 --view-vel (search in the policy's velocity-frame view) rooted at line_a's own over-the-pit flight states finds lines past the pit (818 cells past 3.3%, best 4.01%) in 4 min; line_b = line_a[:1201] + an 823-tick south-route tail to 3.81%. Running: pbr2b1_lb1, backward curriculum on line_b from vv1's weights."
 }

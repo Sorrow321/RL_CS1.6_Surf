@@ -679,3 +679,17 @@ pbr1b1_g2cur6/ckpt_latest.pt 3.285B, md5 a6559938..., both present).
   south ramp), and a long north route (4.0% after 2,254 ticks). So the velocity-frame search
   solves the far side once it starts with line_a's speed and height over the pit; from the slide
   (GE-VV2) its own launches were too low.
+* GE-VV3 final (12 min): 4,383 cells, 818 past 3.3%, 191 past 3.8%, best 4.01%. Replayed exactly
+  (ge_replay, links 9/9 and 26/26): the SOUTH route (cell 3258) = 823 ticks from line_a 1201 -
+  lands on the east side, dawdles there slowly for ~5 s (x 950-1,040, z 3,450-3,514), then goes
+  south-west and west along y -3,312 at ~160 u/s: 3.3% at tail tick 647, 3.5% at 724, 3.81% at
+  822 (falling); the NORTH route (cell 4126) = 2,255 ticks, loops between the east side and the
+  north for ~20 s, 3.92% at 2,240, 4.01% at 2,254. Chose the south route (compact).
+* **line_b** = line_a[:1201] + tail 3258 = 2,024 states (autoresearch/spines/pbr2b1_line_b.npy,
+  md5 18713796...; provenance in autoresearch/spines/README.md). Success line d <= 55,073 (3.63%).
+* **pbr2b1_lb1** (03:43 UTC, box 57455920): resume vv1's ckpt_latest (3.381B, md5 7abe9bf9...) +
+  backward curriculum on line_b from its end: --demo-window 10 --demo-grow 20 --demo-front-frac
+  0.67 --demo-success-d 100 --demo-success-bonus 50 --keys-hold-spawn-duck --yaw-entropy 0
+  --demo-view-vel --demo-cooldown 10, the recipe's demo-incompatible spawns off, 30% entry_ge
+  states, evals every 75M, ckpt every 250M. Trainer: 1,162 of 2,024 rows move >= 100 u/s (their
+  recorded view 24 deg off, median). First move at once: [2003,2023] from 100% at the end band.
