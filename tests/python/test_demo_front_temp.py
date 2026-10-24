@@ -1,8 +1,8 @@
 """--demo-front-temp T (pbr2b3, 2026-10-24): under --demo-file, an env whose episode STARTED on
-the backward curriculum's frontier band samples every head at 1 + T (the view sigma at
---demo-front-view when given) for its first --demo-front-ticks physics ticks; every other env
-keeps its own temperature, and PPO scores each row at the temperature it was drawn at (the
---front-temp slots).
+the backward curriculum's frontier band samples the keys and the yaw at 1 + T (the yaw sigma
+at --demo-front-view when given; the camera-only pitch head stays cold) for its first
+--demo-front-ticks physics ticks; every other env keeps its own temperature, and PPO scores
+each row at the temperature it was drawn at (the --front-temp slots).
 
 (a) the hot mask: band membership, spawns off the spine, the window;
 (b) the trainer (CPU, princessburglar): it says so, the step line carries the hot share, the
@@ -50,7 +50,7 @@ def test_on_dumped_and_refused(tmp_path):
         out = r.stdout + r.stderr
         assert r.returncode == 0, out[-4000:]
         assert ("--demo-front-temp 2: an env whose episode started on the curriculum's "
-                "frontier band samples the keys at 3 and the view sigma x 8 for its first "
+                "frontier band samples the keys at 3 and the yaw sigma x 8 for its first "
                 "60 ticks") in out
         assert "demohot " in out
         cfg = json.loads((ROOT / "runs" / run / "run.json").read_text())["config"]

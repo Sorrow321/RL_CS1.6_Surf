@@ -4779,8 +4779,9 @@ def main() -> None:
                          "Config only when set; ckpt restores")
     ap.add_argument("--demo-front-temp", type=float, default=None,   # None = off
                     help="--demo-file: T > 0 = an env whose episode STARTED on the curriculum's "
-                         "frontier band [tau, tau+D-1] samples every head at 1 + T (keys logits "
-                         "/ (1+T), view sigma x (1+T)) for its first --demo-front-ticks physics "
+                         "frontier band [tau, tau+D-1] samples the keys and the yaw at 1 + T "
+                         "(keys logits / (1+T), yaw sigma x (1+T); the pitch head, which moves "
+                         "only the camera, stays cold) for its first --demo-front-ticks physics "
                          "ticks; every other env keeps its own temperature (the --front-temp / "
                          "--unstuck rule). PPO scores each row at the temperature it was drawn "
                          "at (the --front-temp slots). Exploration where the curriculum is "
@@ -4790,7 +4791,7 @@ def main() -> None:
                     help="--demo-front-temp: the hot window after a band spawn, in physics "
                          "ticks (default 100)")
     ap.add_argument("--demo-front-view", type=float, default=None,  # None = 1 + T
-                    help="--demo-front-temp: the view heads' sigma multiplier inside the hot "
+                    help="--demo-front-temp: the yaw head's sigma multiplier inside the hot "
                          "window, instead of 1 + T (the keys stay at 1 + T)")
     # ---- expert iteration: distil the planner's line (surfgym/bc.py) ----
     ap.add_argument("--bc-file", default=None,
@@ -15566,7 +15567,7 @@ def main() -> None:
         _dft_v = (float(args.demo_front_view) if args.demo_front_view is not None else _dft_k)
         DFT_TICKS = int(args.demo_front_ticks)
         print(f"--demo-front-temp {args.demo_front_temp:g}: an env whose episode started on the "
-              f"curriculum's frontier band samples the keys at {_dft_k:g} and the view sigma "
+              f"curriculum's frontier band samples the keys at {_dft_k:g} and the yaw sigma "
               f"x {_dft_v:g} for its first {DFT_TICKS} ticks; PPO scores each row at its own "
               f"temperature")
 
@@ -15585,7 +15586,9 @@ def main() -> None:
             # band (demo_idx is the spine index of each env's spawn), inside the hot window
             hot = demo_hot_mask(demo_idx, demo._band(), _dft_len[0], DFT_TICKS)
             ftk_np[hot] = _dft_k
-            ftv_np[hot] = _dft_v
+            # the yaw head(s); the pitch head (the last column) moves only the camera, so it
+            # keeps the cold value
+            ftv_np[np.flatnonzero(hot)[:, None], np.arange(NZ - 1)[None, :]] = _dft_v
             dft_share = float(hot.mean())
         temp_t.copy_(ftk_pin.view(N, 1, 1), non_blocking=True)
         tempv_t.copy_(ftv_pin, non_blocking=True)
