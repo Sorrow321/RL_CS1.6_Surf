@@ -624,3 +624,12 @@ ckpt_latest 3.285B (md5 a6559938..., the most curriculum progress), both named i
 * Box 57455886 (RTX 3090, France, 0.437 $/h) failed gpu_health (power limit 240 of 350 W, bf16 GEMM
   83% of ref): blocklisted (machine 104634) and released at 02:44. The fleet's other three boxes
   then left 0.30 $/h of pace headroom and no passing offer fit it (02:45-03:05).
+* More core probes (03:10-03:25 UTC): random policy-frame bursts (u ~ U[-1,1] through off_warp,
+  keys uniform, duck held, 4,096 envs) reach the line's post-bounce ramp slide (within 12 u and
+  60 u/s of states 1262-1300) from 1245 in 1.2% (either frame) and from 1240 / 1235 / 1220 in 0.0%,
+  from aligned 1230 in 0.05%: the bounce is rare for undirected search in either frame, so what
+  matters is whether a LEARNING policy can be precise and explore at the right scale. Open-loop,
+  one 4-tick yaw kick of 0.5-2 deg breaks line_a almost everywhere before ~1450 (it is a GE line).
+* Both lineage checkpoints have the yaw sigma at 0.011 (log -4.52, --yaw-entropy 0): ~0.2 deg of
+  exploration in the aligned frame. `--yaw-sigma-min S` (new, the --pitch-sigma-min floor on the
+  yaw head; off = bit-identical; record_ckpt / beam_tas mirror it) for the arm after alignment.
