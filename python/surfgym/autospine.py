@@ -16,7 +16,8 @@ deeper. Each cycle waited for an agent wakeup (20-30 min) and a relaunch.
 * :meth:`AutoSpine.start` runs beam_tas as a SUBPROCESS on a checkpoint of the current weights
   (the trainer keeps training meanwhile);
 * :meth:`AutoSpine.poll` collects the frontier line (``beam_frontier.npz``, the exact replay of
-  the deepest lineage), cuts it at its minimum d (the line's best progress), zeroes its clocks,
+  the deepest lineage), cuts it at its deepest CONTACT (the minimum d among the states where
+  the map pushed back - never inside the fall that ends it), zeroes its clocks,
   puts the view along the velocity (``tools/spine_canon_view.py``'s rule) and accepts it only if
   its success line lies beyond what the quorum of greedy episodes already reaches; the trainer
   then swaps the curriculum onto it (tau back at the new spine's end).
@@ -39,7 +40,8 @@ import numpy as np
 
 from .core import STATE_DTYPE
 
-__all__ = ["AutoSpine", "SpineResult", "cut_line", "canon_view", "episode_min_d"]
+__all__ = ["AutoSpine", "SpineResult", "cut_line", "contact_mask", "canon_view",
+           "episode_min_d"]
 
 
 def canon_view(states: np.ndarray, min_speed: float = 100.0) -> tuple[np.ndarray, np.ndarray]:
@@ -61,11 +63,33 @@ def _field_d(field, origins) -> np.ndarray:
     return np.where(d < field.reach_max - 0.5 * field.cell, d, np.inf)
 
 
-def cut_line(states: np.ndarray, field, canon: bool = True) -> tuple[np.ndarray, int, float]:
-    """The spine a frontier line gives: its states up to and including the one of minimum d on
-    ``field`` (the line's best progress; a line's tail past it is the fall that ended it), clocks
-    zeroed (``tick``, ``stuck_ticks``, as every spine tool does), the view along the velocity when
-    ``canon``. Returns (spine, cut index, d at the cut)."""
+def contact_mask(states: np.ndarray, tol: float = 1.0) -> np.ndarray:
+    """True on the states where the map pushed back: the tick's change of vertical velocity
+    departs from the gravity step by more than ``tol`` (tools/pick_selfline.py's contact_cut, the
+    rule CLAUDE.md names for trimming a policy line's fall). The gravity step is the MEDIAN of the
+    per-tick change - a surf line is mostly ballistic (68% of the incumbent's greedy line), so it
+    needs no engine constant. State 0 counts as a contact (the spawn)."""
+    vz = np.asarray(states["velocity"], np.float64)[:, 2]
+    m = np.zeros(len(vz), bool)
+    if len(vz):
+        m[0] = True
+    if len(vz) >= 3:
+        dvz = np.diff(vz)
+        g = float(np.median(dvz))
+        m[1:] = np.abs(dvz - g) > float(tol)
+    return m
+
+
+def cut_line(states: np.ndarray, field, canon: bool = True,
+             contact: bool = True) -> tuple[np.ndarray, int, float]:
+    """The spine a frontier line gives: its states up to and including the DEEPEST CONTACT - the
+    state of minimum d on ``field`` among those where the map pushed back (:func:`contact_mask`).
+    A line ends in the fall that killed it, and its deepest point is usually inside that fall
+    (the incumbent's greedy line: last contact at 17.6%, then 1.35 s of free fall into a catch to
+    19.9%); a spine ending there would pay the success bonus for diving deeper into the catch.
+    ``contact=False``, or a line with no contact after its first state, cuts at the minimum d.
+    Clocks zeroed (``tick``, ``stuck_ticks``, as every spine tool does), the view along the
+    velocity when ``canon``. Returns (spine, cut index, d at the cut)."""
     s = np.asarray(states, STATE_DTYPE)
     if not len(s):
         raise ValueError("an empty line")
@@ -73,6 +97,11 @@ def cut_line(states: np.ndarray, field, canon: bool = True) -> tuple[np.ndarray,
     if not np.isfinite(d).any():
         raise ValueError("no state of the line is on the field")
     i = int(np.argmin(d))
+    if contact:
+        cm = contact_mask(s)
+        cm[0] = False
+        if cm.any() and np.isfinite(d[cm]).any():
+            i = int(np.flatnonzero(cm)[np.argmin(d[cm])])
     sp = s[:i + 1].copy()
     sp["tick"] = 0
     sp["stuck_ticks"] = 0
@@ -358,7 +387,7 @@ class AutoSpine:
         return res
 
     def _judge(self, line, end_d, cur, rec, source):
-        """Cut ``line`` at its minimum d and accept it if its success line is past the bar;
+        """Cut ``line`` at its deepest contact and accept it if its success line is past the bar;
         returns (SpineResult or None, cut index or None when the line is unusable)."""
         k, step, q_d = cur["k"], cur["step"], cur["q_d"]
         try:
@@ -386,7 +415,8 @@ class AutoSpine:
                     "phase-1 archive (reward-free uniform bursts, exact chains) rooted at that "
                     "line's own states, replayed by tools/ge_replay.py")
         side = {"provenance": (f"the policy's OWN line from the map's true start: {how}; cut at "
-                               f"its minimum d ({d_cut:,.0f}u on the shaping field, index {cut})"
+                               f"its deepest contact ({d_cut:,.0f}u on the shaping field, index "
+                               f"{cut})"
                                + ("; views along the velocity" if self.canon else "")
                                + ". No demo, no record data (--auto-spine)."),
                 "tool": "surfgym.autospine (train_fast --auto-spine)", "rows": int(len(sp)),

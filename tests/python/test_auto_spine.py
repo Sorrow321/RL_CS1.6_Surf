@@ -56,6 +56,24 @@ def test_cut_line_takes_the_minimum_and_canonicalises():
     assert np.allclose(slow["yaw"], 7.0)
 
 
+def test_cut_line_stops_at_the_deepest_contact_not_inside_the_fall():
+    """A line that rides a ramp (vz pushed back every tick) then free-falls deeper (vz -8 per
+    tick): the cut is the last ramp tick, not the deepest point of the fall."""
+    from surfgym.autospine import contact_mask, cut_line
+    n_ramp, n_fall = 30, 70
+    xs = np.r_[np.linspace(2000, 1000, n_ramp), np.linspace(990, 300, n_fall)]
+    s = _line(xs)
+    vz = np.r_[np.full(n_ramp, -100.0) + 3.0 * (np.arange(n_ramp) % 2),   # pushed back
+               -100.0 - 8.0 * np.arange(1, n_fall + 1)]                   # ballistic
+    s["velocity"][:, 2] = vz
+    cm = contact_mask(s)
+    assert cm[:n_ramp].sum() >= n_ramp - 2 and not cm[n_ramp + 1:].any()
+    sp, i, d = cut_line(s, XField())
+    assert i == n_ramp and d == pytest.approx(xs[n_ramp])       # the first tick of the fall
+    _, j, _ = cut_line(s, XField(), contact=False)
+    assert j == len(xs) - 1
+
+
 def _traj(path, eps):
     """A record.py-shaped trajectory: per episode a header, rows [t, x, y, z, ...], a trailer."""
     with open(path, "w", encoding="utf-8") as fh:
