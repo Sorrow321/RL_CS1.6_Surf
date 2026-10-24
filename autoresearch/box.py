@@ -5,9 +5,10 @@ Every limit comes from autoresearch/config.json and is enforced HERE, before mon
 * ONE box per agent. The agent's box id lives in $AR_HOME/boxes/<agent>.json and in the fleet
   watchdog's registry (label = agent). A second `rent` while one is live is refused.
 * At most config.max_boxes live boxes on the account.
-* Consumer GPUs only, in the user's order: 3090 / 3090 Ti / 4080 / 5080 first (cheapest of
-  those), then 4090, then 5090. Single GPU. Hard $/h cap per card (config.max_dph). No
-  datacenter cards, ever.
+* Consumer GPUs only, in the user's order: 3090 / 3090 Ti / 4080 / 5080 first, with the
+  cheaper 3080 / 4070 / 5070 / 60 Ti class cards under lower caps since 2026-10-25 (cheapest of
+  those), then 4090, then 5090. Single GPU. Hard $/h cap per card (config.max_dph) on the box's
+  full price, its disk included. No datacenter cards, ever.
 * The budget governor: credit above config.budget_reserve_usd, and the live burn rate plus
   this box no faster than (credit - reserve) / hours left until config.budget_end_hours.
 * Readiness: `running` within config.ready_running_s (the image pull), ssh within
@@ -253,42 +254,47 @@ def blocked_keys():
 
 def offers(exclude_machines=()) -> list:
     """Every acceptable offer, best first: (tier, $/h). Nothing outside the whitelist, the
-    caps, the blocklist or config.cpu_exclude is ever returned."""
+    caps, the blocklist or config.cpu_exclude is ever returned.
+
+    ONE search, filtered here by card name: fifteen whitelisted cards searched one at a time
+    were fifteen vast calls under the fleet lock on every retry (2026-10-25). Priced with the
+    box's own disk (--storage disk_gb): vast prices 5 GB by default, the instance's dph_total
+    carries all of disk_gb (the 5080 offer at 0.563 runs at 0.578), and the fleet watchdog
+    destroys a box whose dph_total is over its cap."""
     mids, hids, ips = blocked_keys()
     cpu_bad = [re.compile(p) for p in CFG.get("cpu_exclude", [])]
+    try:
+        got = vast("search", "offers", CFG["offer_query"], "-o", "dph+", "--limit", "5000",
+                   "--storage", str(CFG["disk_gb"]))
+    except RuntimeError as e:
+        log(f"offer search failed: {e}")
+        return []
     out = []
-    for tier, names in enumerate(CFG["gpu_tiers"]):
-        for name in names:
-            cap = gpu_cap(name)
-            if cap is None:
-                continue
-            try:
-                got = vast("search", "offers", f"gpu_name={name} {CFG['offer_query']}",
-                           "-o", "dph+")
-            except RuntimeError as e:
-                log(f"offer search {name} failed: {e}")
-                continue
-            for o in got:
-                if int(o.get("num_gpus") or 0) != 1:
-                    continue
-                if norm_gpu(o.get("gpu_name")) != name:
-                    continue
-                dph = float(o.get("dph_total") or 99.0)
-                if dph > cap:
-                    continue
-                if (o.get("machine_id") in mids or o.get("host_id") in hids
-                        or o.get("public_ipaddr") in ips
-                        or o.get("machine_id") in exclude_machines):
-                    continue
-                cpu = (o.get("cpu_name") or "").strip()
-                if any(p.search(cpu) for p in cpu_bad):
-                    continue
-                out.append({"tier": tier, "gpu": name, "dph": dph, "id": o["id"],
-                            "machine_id": o.get("machine_id"), "host_id": o.get("host_id"),
-                            "cores": o.get("cpu_cores_effective"), "ram_gb": round((o.get("cpu_ram") or 0) / 1024),
-                            "inet_down": o.get("inet_down"), "where": o.get("geolocation", ""),
-                            "cpu": cpu})
-    out.sort(key=lambda o: (o["tier"], o["dph"]))
+    for o in got:
+        name = norm_gpu(o.get("gpu_name"))
+        tier, cap = gpu_tier(name), gpu_cap(name)
+        if tier is None or cap is None:
+            continue
+        if int(o.get("num_gpus") or 0) != 1:
+            continue
+        dph = float(o.get("dph_total") or 99.0)
+        if dph > cap:
+            continue
+        if (o.get("machine_id") in mids or o.get("host_id") in hids
+                or o.get("public_ipaddr") in ips
+                or o.get("machine_id") in exclude_machines):
+            continue
+        cpu = (o.get("cpu_name") or "").strip()
+        if any(p.search(cpu) for p in cpu_bad):
+            continue
+        out.append({"tier": tier, "gpu": name, "dph": dph, "id": o["id"],
+                    "machine_id": o.get("machine_id"), "host_id": o.get("host_id"),
+                    "cores": o.get("cpu_cores_effective"), "ram_gb": round((o.get("cpu_ram") or 0) / 1024),
+                    "inet_down": o.get("inet_down"), "where": o.get("geolocation", ""),
+                    "cpu": cpu})
+    # on a price tie the card with the higher cap (the better class) goes first: a cheaper card
+    # never wins while a good one costs the same (user, 2026-10-25)
+    out.sort(key=lambda o: (o["tier"], o["dph"], -gpu_cap(o["gpu"])))
     return out
 
 
