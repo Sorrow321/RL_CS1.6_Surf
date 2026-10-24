@@ -135,7 +135,9 @@ final before `wrapup_at`.
   CLAUDE.md's "one hour per ablation".
 * **Boxes.** One box per agent, single GPU only, and consumer RTX cards under the
   config.max_dph caps (3090 first, then 4090, then 5090; cheaper cards that do the job, like
-  the 5080, are fine). No datacenter cards, ever. box.py and the watchdog enforce this.
+  the 5080, are fine, and since 2026-10-25 the 3080 / 4070 / 5070 / 60 Ti class under lower
+  caps: box.py takes the cheapest acceptable offer, so a box may be a slower card). No
+  datacenter cards, ever. box.py and the watchdog enforce this.
 * **Watching.** The user watches through Claude Remote Control and `~/ar/status.md` (the
   user's view, which you do not read: see Independence). That replaces CLAUDE.md's per-box
   dashboard tunnel. A dashboard on the box is optional, and no tunnel is needed.
