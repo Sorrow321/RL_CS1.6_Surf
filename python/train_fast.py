@@ -2114,6 +2114,15 @@ def sample_view(padded, mu, log_std, temp=None, temp_view=None):
     return torch.cat([neutral, cat], dim=1), z, logp_c + gauss_logp(z, mu, ls)
 
 
+def demo_hot_mask(demo_idx, band, ep_len, ticks):
+    """--demo-front-temp: the envs whose episode STARTED on the curriculum's frontier band
+    ``band`` = (lo, hi) inclusive (``demo_idx`` is the spine index of each env's spawn, -1 for
+    a spawn off the spine) and are still inside the hot window (``ep_len`` < ``ticks``)."""
+    lo, hi = band
+    demo_idx = np.asarray(demo_idx)
+    return (demo_idx >= int(lo)) & (demo_idx <= int(hi)) & (np.asarray(ep_len) < int(ticks))
+
+
 def logprob_entropy_view(padded, actions, mu, log_std, z,
                          pitch_ent: float = 1.0, temp=None, temp_view=None,
                          yaw_ent: float = 1.0):
@@ -4768,6 +4777,21 @@ def main() -> None:
                          "short of the goal - a searched line through a hard room - then trains "
                          "backward to the map start like a finishing one. Needs --race-ratchet. "
                          "Config only when set; ckpt restores")
+    ap.add_argument("--demo-front-temp", type=float, default=None,   # None = off
+                    help="--demo-file: T > 0 = an env whose episode STARTED on the curriculum's "
+                         "frontier band [tau, tau+D-1] samples every head at 1 + T (keys logits "
+                         "/ (1+T), view sigma x (1+T)) for its first --demo-front-ticks physics "
+                         "ticks; every other env keeps its own temperature (the --front-temp / "
+                         "--unstuck rule). PPO scores each row at the temperature it was drawn "
+                         "at (the --front-temp slots). Exploration where the curriculum is "
+                         "stuck, the learned rest of the line kept cold. Off = today, "
+                         "bit-identical; not restored from a checkpoint")
+    ap.add_argument("--demo-front-ticks", type=int, default=None,   # 100
+                    help="--demo-front-temp: the hot window after a band spawn, in physics "
+                         "ticks (default 100)")
+    ap.add_argument("--demo-front-view", type=float, default=None,  # None = 1 + T
+                    help="--demo-front-temp: the view heads' sigma multiplier inside the hot "
+                         "window, instead of 1 + T (the keys stay at 1 + T)")
     # ---- expert iteration: distil the planner's line (surfgym/bc.py) ----
     ap.add_argument("--bc-file", default=None,
                     help="behaviour-cloning rows from tools/plan_to_bc.py "
@@ -8837,6 +8861,35 @@ def main() -> None:
             raise SystemExit("--front-temp (a per-env temperature on the flat single-map "
                              "rollout, read off the reservoir) is not implemented with "
                              + ", ".join(_bad))
+    if args.demo_front_temp is not None:
+        # --demo-front-temp rides the --front-temp slots (the per-env temperature tensors and
+        # the update's per-row scoring), so it has the same rollout requirements
+        _bad = [f for f, on in (("--maps", args.maps),
+                                ("--rnn", args.rnn not in (None, "none")),
+                                ("--chunk", args.chunk),
+                                ("DDP", int(os.environ.get("WORLD_SIZE", "1")) > 1),
+                                ("--sil-coef", float(args.sil_coef or 0.0) > 0.0),
+                                ("--cc-temp-scale", args.cc_temp_scale),
+                                ("--crl", getattr(args, "crl", None)),
+                                ("--yaw-cond", args.yaw_cond),
+                                ("no --demo-file", not args.demo_file))
+                if on]
+        if float(args.demo_front_temp) <= 0.0:
+            raise SystemExit("--demo-front-temp T needs T > 0 (absent = off)")
+        if args.demo_front_ticks is None:
+            args.demo_front_ticks = 100
+        if int(args.demo_front_ticks) <= 0:
+            raise SystemExit("--demo-front-ticks must be > 0")
+        if args.demo_front_view is not None and float(args.demo_front_view) <= 0.0:
+            raise SystemExit("--demo-front-view is a sigma multiplier: > 0")
+        if not args.view_continuous or args.reward != "race":
+            _bad.append("a run without --view-continuous and --reward race")
+        if _bad:
+            raise SystemExit("--demo-front-temp (a per-env temperature on the flat single-map "
+                             "rollout, read off the demo curriculum) is not implemented with "
+                             + ", ".join(_bad))
+    elif args.demo_front_ticks is not None or args.demo_front_view is not None:
+        raise SystemExit("--demo-front-ticks / --demo-front-view need --demo-front-temp")
     if args.ez_front is None:
         args.ez_front = 0.0
     if float(args.ez_front) != 0.0:
@@ -14485,6 +14538,12 @@ def main() -> None:
     if float(args.front_temp or 0.0) > 0.0:
         meta["config"]["front_temp"] = float(args.front_temp)
         meta["config"]["front_band"] = float(args.front_band)
+    # --demo-front-temp: written ONLY when on (a record of the run, never restored)
+    if args.demo_front_temp is not None:
+        meta["config"]["demo_front_temp"] = float(args.demo_front_temp)
+        meta["config"]["demo_front_ticks"] = int(args.demo_front_ticks)
+        meta["config"]["demo_front_view"] = (float(args.demo_front_view)
+                                             if args.demo_front_view is not None else None)
     # --unstuck: written ONLY when set (a control run's config dump stays
     # byte-identical); every knob rides along so a resume restores them
     if UNSTUCK:
@@ -15470,10 +15529,16 @@ def main() -> None:
             print(f"--energy-pot-front-bonus: nothing is paid on the way; on the call an episode's "
                   f"record first enters the band it is paid {args.energy_pot:g} x |v|^2 / (2 g) "
                   f"/ 1000 of that state, once")
-    FRONT = float(args.front_temp or 0.0) > 0.0
+    # --demo-front-temp rides the same per-env slots: FRONT is on for either, FRONT_RES only
+    # for the reservoir band of --front-temp itself
+    DFT = float(args.demo_front_temp or 0.0) > 0.0 and demo is not None
+    FRONT_RES = float(args.front_temp or 0.0) > 0.0
+    FRONT = FRONT_RES or DFT
     FRONT_BASE = [0.0]                   # the global T (set_unstuck_temp writes it)
     front_thr = float("inf")             # d at the band's edge, re-read every iteration
     front_share = float("nan")
+    dft_share = float("nan")
+    _dft_len = [None]                    # ep_len, once it exists (the rollout's tick counter)
     b_ftk = b_ftv = None
     if FRONT:
         temp_t = torch.ones((N, 1, 1), device=device)
@@ -15488,23 +15553,40 @@ def main() -> None:
         _f_mask_view = (UNSTUCK_MASK_VIEW.detach().cpu().numpy().astype(np.float32)
                         if (UNSTUCK_TEMP and UNSTUCK_MASK_VIEW is not None)
                         else np.zeros(NZ, np.float32))
-        _f_hot = 1.0 + float(args.front_temp)
-        print(f"--front-temp {args.front_temp:g}: an env whose progress is >= "
-              f"(1 - {args.front_band:g}) x the reservoir's deepest samples every head at "
-              f"{_f_hot:g}; the others keep "
-              + (f"the --unstuck T on heads '{UNSTUCK_HEADS}'" if UNSTUCK_TEMP
-                 else "temperature 1")
-              + "; PPO scores each row at its own temperature")
+        _f_hot = 1.0 + float(args.front_temp or 0.0)
+        if FRONT_RES:
+            print(f"--front-temp {args.front_temp:g}: an env whose progress is >= "
+                  f"(1 - {args.front_band:g}) x the reservoir's deepest samples every head at "
+                  f"{_f_hot:g}; the others keep "
+                  + (f"the --unstuck T on heads '{UNSTUCK_HEADS}'" if UNSTUCK_TEMP
+                     else "temperature 1")
+                  + "; PPO scores each row at its own temperature")
+    if DFT:
+        _dft_k = 1.0 + float(args.demo_front_temp)
+        _dft_v = (float(args.demo_front_view) if args.demo_front_view is not None else _dft_k)
+        DFT_TICKS = int(args.demo_front_ticks)
+        print(f"--demo-front-temp {args.demo_front_temp:g}: an env whose episode started on the "
+              f"curriculum's frontier band samples the keys at {_dft_k:g} and the view sigma "
+              f"x {_dft_v:g} for its first {DFT_TICKS} ticks; PPO scores each row at its own "
+              f"temperature")
 
     def set_front_temp() -> None:
         """--front-temp: this decision's per-env temperatures from the band (reward_fn._d is
         the post-step distance of every env, the new spawn's for an env that just ended)."""
-        nonlocal front_share
+        nonlocal front_share, dft_share
         d = reward_fn._d
-        band = (np.zeros(N, bool) if d is None else (np.asarray(d) <= front_thr))
+        band = (np.zeros(N, bool) if (d is None or not FRONT_RES)
+                else (np.asarray(d) <= front_thr))
         tb = FRONT_BASE[0]
         ftk_np[:] = np.where(band, _f_hot, 1.0 + tb * _f_mask_cat)
         ftv_np[:] = np.where(band[:, None], _f_hot, 1.0 + tb * _f_mask_view[None, :])
+        if DFT and _dft_len[0] is not None:
+            # --demo-front-temp: the envs whose episode started on the curriculum's frontier
+            # band (demo_idx is the spine index of each env's spawn), inside the hot window
+            hot = demo_hot_mask(demo_idx, demo._band(), _dft_len[0], DFT_TICKS)
+            ftk_np[hot] = _dft_k
+            ftv_np[hot] = _dft_v
+            dft_share = float(hot.mean())
         temp_t.copy_(ftk_pin.view(N, 1, 1), non_blocking=True)
         tempv_t.copy_(ftv_pin, non_blocking=True)
         front_share = float(band.mean())
@@ -16296,6 +16378,7 @@ def main() -> None:
         return
     ep_ret = np.zeros(N, np.float64)
     ep_len = np.zeros(N, np.int64)
+    _dft_len[0] = ep_len                 # --demo-front-temp reads the hot window off it
     # race/crawl_frac: running sum of |v_xy| over the live episode, read off
     # obs slot 3 (which src/env.c writes as |v_xy|/1000), so the whole
     # measurement is one numpy add per physics tick on an array the rollout
@@ -20548,12 +20631,15 @@ def main() -> None:
                 # where the --ez-front band starts, in % of the start geodesic
                 _d0f = float(fleet.slots[0].rf_d0 or 0.0)
                 hyg_note += f" front>{100.0 * (1.0 - ez_thr / _d0f):.1f}%"
-        if FRONT:
+        if FRONT_RES:
             # --front-temp: the share of envs inside the band at the last decision, and the
             # band's edge in progress
             hyg_note += (f"  fronttemp {front_share:.0%}"
                          + (f">{100.0 * (1.0 - front_thr / float(fleet.slots[0].rf_d0)):.1f}%"
                             if front_thr != float("inf") else ""))
+        if DFT:
+            # --demo-front-temp: the share of envs hot at the last decision
+            hyg_note += f"  demohot {dft_share:.1%}"
         if AUG_ON and aug_kl_v == aug_kl_v:
             # --aug-*: how far the augmented frame's answer still is from the clean one
             hyg_note += f"  drac kl {aug_kl_v:.4f} v {aug_vm_v:.4f}"
