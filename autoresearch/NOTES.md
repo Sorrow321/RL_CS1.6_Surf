@@ -1161,3 +1161,8 @@ one box at a time (e.g. a box-hours budget instead of a $/h rate), is needed for
   policy's own approach is not found by uniform bursts at this scale either. Local CPU has now
   tried GE (2 root windows) and three beams (256/1,024 envs, plain and tempered): gate 8 needs
   box-scale search or the policy's own energy to improve.
+* The incumbent's training reservoir "frontier" past gate 8 (its 22 states past 20.4%, up to
+  20.79%) is a dead-end POCKET: all at (914-927, -2,708..-2,762, z 2,421-2,462) with |v| 18-223
+  and h ~2,450 (one standing at z 2,421) - episodes that hit a wall at the catch's east edge and
+  stall there, not a way onto the ramp series. Don't read the reservoir's min-depth as progress
+  at this gate.
