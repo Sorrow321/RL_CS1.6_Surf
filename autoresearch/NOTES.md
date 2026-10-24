@@ -738,3 +738,10 @@ ckpt_latest 3.285B (md5 a6559938..., the most curriculum progress), both named i
   line_b walks the lower floor at 250 u/s (z ~2,979) to x -1,015 and is 376 u below the record's
   line - a speed gate again: uniform-burst lines are slow, the climb out needs the fast drop. A
   generic speed source (not map-specific) is the open problem for the next stretch.
+* **vv3 collapsed the start room** (stopped 4.33B, 10:53 UTC): greedy evals 3.845 -> 0.422 / 0.419 /
+  0.421 (9/9 stuck in the start room) while its curriculum oscillated at spine 672-682 (the recorded
+  route just before line_b's root, 4-6% vs 38-41%). The merged spawn file had halved the start room's
+  share (30% -> 15%; line_a took the other half) and kl ran 0.19. The start room's precision jumps
+  are the first thing to erode. **pbr2b2_vv4** (10:54) = vv2's ckpt_latest (3.827B, the 9/9-to-4%
+  weights) + spine_b again, spawn states = entry_ge x2 + line_a x4 (start room 66%) at frac 0.45
+  (start room ~30% of all spawns as in vv1/vv2, line_a ~15%), `--lr 2e-4`, the rest as vv3.
