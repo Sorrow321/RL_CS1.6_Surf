@@ -865,3 +865,13 @@ round 1's fixed grow 20 / cooldown 20 they would have taken ~130M).
 * **pbr2b4_cur7** (09:03 UTC): resume cur6 final (6.797B, md5 9615ee3e...) + cur6's flags +
   `--demo-file spine_e` (GE8: cur6's own prefix + the 7.09% rim-clearing chain) with
   `--demo-success-d 20` (success at 7.056%, past the policy's own best 6.956%).
+* **cur7 broke the line** (6.797-7.20B): evals 6.945 (resume point) -> **4.827 / 4.804 / 6.897 / 4.829 /
+  4.813** - 9/9 episodes die at ~4.8% (around the rim / the drop) from 75M steps on, and the replayed
+  prefix (deciles 0-70% of the spine) reaches the success line 0%. Cause: --demo-success-d 20 put
+  the success line (7.056%) beyond the policy's own reach, so no episode from the start earned the
+  +50 bonus any more; that bonus is what anchors the whole line, and without it the line decayed
+  within one eval interval while the band (chain states past the rim) kept 21-25%. Lesson: the
+  success line must stay reachable by the current line (spine_d's 6.86% was; cur6 stayed at
+  6.94-6.96). Stopped at 7.21B.
+* **pbr2b4_cur8** (09:28 UTC): resume cur6 final (6.797B) + spine_e (GE8's 7.09% chain) with the
+  anchoring `--demo-success-d 100` (6.92%).
