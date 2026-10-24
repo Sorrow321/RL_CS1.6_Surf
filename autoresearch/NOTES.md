@@ -646,3 +646,13 @@ tests/python/test_demo_adapt.py (4 passed, CPU).
 First 3 min: tau 1915 -> 1667 (chain3b state 49, on the ridge before the launch) with band
 success 100 / 97 / 92 / 87%, step 8 -> 64 (the curriculum's first ~250 states took ~5M steps; at
 round 1's fixed grow 20 / cooldown 20 they would have taken ~130M).
+* cur1 at the launch (02:58-03:20 UTC): the adaptive step closed in on spine 1674-1683 (chain3b
+  56-65, the ridge just before the launch) within 2 min (64 -> 32 -> ... -> 1), and the band
+  hovered at 14-25% success around the 20% threshold for ~20 min (~300M steps) while the policy
+  learned the launch (band success ~10% -> 25%; the states just after the launch 75%). Then it
+  went through: **tau 1674 -> 1430 by 03:31 UTC** (band 20-47%, step back up to 8-32): the launch,
+  the ridge ride, the drop onto the ridge and the tunnel exit (line_a 950-1057) are behind it; it
+  is in the tunnel slide (spine 1430 = line_a 870, x ~460, -320 u/s). The far side (deciles 80-90%
+  of the spine) succeeds 45% / 90%. 104k spine-line bonuses paid. ~288k steps/s.
+  Greedy evals still the pit (3.2%, 8-9/9; one at 2.7%) - they can only move once the curriculum
+  is through the run-up (line_a 500-1000) and into the policy's own prefix (spine < 560).
