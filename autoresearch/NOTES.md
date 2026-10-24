@@ -1128,3 +1128,28 @@ $18.46 of credit allowed no box at all). A second box would need credit >= ~$59 
 shorter budget_end_hours. Written down for the operator; nothing is worked around.
 * The record gate's audit accepts the new `auto_spine` config key (checked on the incumbent's config
   with the key added) and still refuses unknown keys.
+
+### Gate 8 (the ~20.4% catch), measured locally 22:10-22:40 UTC
+* The incumbent's greedy line, dumped as exact states (beam_tas, 2 greedy envs, resample 5:
+  runs/pbr3b2/_greedy_inc/beam_frontier.npz, 1,680 states): its LAST CONTACT with geometry is at
+  tick 1544 (-940, -2,425, 2,806) = 17.44%; from there it flies 1.35 s in free fall (dvz = -8.0 every
+  tick) east to x ~650 and dies in the catch at z ~2,385 (19.9% at tick 1679, 20.4% best eval).
+* The record (ANALYSIS ONLY) leaves the same ramp at the same place (last contact (-928, -2,431,
+  2,822), 17.47%), flies 1.27 s turning hard SOUTH (|dv_h| 65-100 u/s per 10 ms row, the policy's line
+  <= 76) about 50-95 u higher, and lands on a south-going ramp at (480, -2,726, 2,496) = 20.31%, surfs
+  it south to (453, -3,257, 2,529), U-turns and climbs (20.0% -> 21.0% by row 2230). The record's line
+  stays below the greedy's death depth (20.41%) for ~1 s through that U-turn: a small field deception.
+* Gate 8 = a precise 1.3 s air manoeuvre from the last ramp to a landing, steering + height.
+* Go-Explore exact chains rooted at 25 states of the greedy line's last 5 s (15 min, 2 threads, 1,024
+  envs, 1.2M cells, runs/pbr3b2/_ge_inc/): deepest cell 20.19% at (528, -2,520, 2,401) - still the fall
+  into the catch. Nothing past it.
+* That run exposed a flaw in the first auto-spine cut (minimum d): it ACCEPTED that line, whose end is
+  inside a fatal fall - its success bonus would pay diving deeper into the catch. The cut is now the
+  DEEPEST CONTACT (minimum d among states where the map pushed back, pick_selfline's contact rule;
+  gravity step = the median per-tick dvz, -8.0 on this line where 68% of ticks are ballistic): the
+  greedy line cuts at 1544 (17.44%), the GE splice is rejected, and the GE fallback's roots now lie on
+  the approach to the last ramp instead of inside the doomed flight.
+* beam_tas `--view-temp V` (new, 1 = off): the sampled envs draw the yaw with sigma x V. The
+  incumbent's yaw sigma is 0.013 rad (0.75 deg; --yaw-entropy 0 collapsed it), so the population search
+  proposes almost one view per state - the record's turn may need a different view offset. Local test
+  running: 256 copies from the true start, V 10.
