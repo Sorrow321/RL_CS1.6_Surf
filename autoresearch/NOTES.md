@@ -703,3 +703,8 @@ ckpt_latest 3.285B (md5 a6559938..., the most curriculum progress), both named i
   [1120,1129] (0.0%) - the ridge / launch. Region success (decile of the spine): 60% 60%, 70% 99%,
   80% 94%, 90% 89%. pbr1b1's backward-frame curriculum held at ~1235-1250 for 1.5B+ steps. Greedy
   evals still at the pit: 3.218 / 3.117 / 3.223 (3.286B / 3.361B / 3.437B).
+* vv1 stopped at 3.503B (09:22): it oscillated [1100,1109] 0.0% (990-995 eps per visit) <-> [1120,1129]
+  21-59%. With --demo-grow 20 > --demo-window 10 the bands skip states (1110-1119 = the bottom of the
+  ridge's curve at ~750 u/s were never a band, only 33% uniform draws over 770 states). Rule: keep
+  grow <= window. **pbr2b2_vv2** (09:22) = vv1's ckpt_latest (3.503B, md5 574f5248...) with
+  `--demo-grow 10 --demo-window 10 --demo-tau0 1120`, everything else as vv1. Box deadline -> 13:47.
