@@ -665,3 +665,15 @@ ckpt_latest 3.285B (md5 a6559938..., the most curriculum progress), both named i
   line_a[1780:1881:5]): nothing beyond 3.93% (the end state itself), 22% of runs die - the line ends
   falling west into the area north of the pit at ~250 u/s (the record crosses here at 700-750 u/s).
   Expect the next gate after 3.93% to be another speed gate; a box GE (32 threads) is the next look.
+
+### Harness issue (pbr2b2, 2026-10-24 06:06 UTC): no box for the first 3.8 h of the round
+* 4 rentals, 0 usable: 57455886 (3090 France, power-capped 240/350 W, gpu_health UNHEALTHY,
+  02:42), 57458026 (5080 Australia) and 57458526 (3090 Japan) not running after 330 s (image pull,
+  03:06-03:18), 57474124 (3090 Alabama, 0.187 $/h) not running after 330 s (06:05). box.py
+  blocklisted each machine, as the rule says.
+* Between them the fleet's other three boxes held 1.818 $/h against an allowed 2.12-2.20 $/h, so
+  the pace headroom was 0.30-0.38 $/h, and the single-GPU market under the filters
+  (cpu_cores_effective >= 32, reliability > 0.98, ...) minus the fleet blocklist was EMPTY most of
+  the time (03:20-05:58: no 3090 / 3090 Ti / 4080 offers at all, every 5080 blocklisted, 4090s
+  over the 0.45 cap). Meanwhile everything ran on the 4-vCPU host: the analysis above, three new
+  flags/tools and their tests.

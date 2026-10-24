@@ -2788,6 +2788,15 @@
       "detail": "autoresearch pbr2b2: not running after 330 s (status loading, 2.7.1-cuda12.8-cudnn9-devel: Pulling from pytorch/pytorch\n)",
       "run": "",
       "reason": "unreliable"
+    },
+    {
+      "ip": "104.189.206.37",
+      "machine_id": 143360,
+      "host_id": 350808,
+      "date": null,
+      "detail": "autoresearch pbr2b2: not running after 330 s (status loading, )",
+      "run": "",
+      "reason": "unreliable"
     }
   ],
   "known_good": [
