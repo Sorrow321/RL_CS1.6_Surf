@@ -1066,3 +1066,23 @@ beam found the policy's own way over the wall in 100 s).
   --exact-chains (32 u x energy 16 cells) rooted at the line's own states before the stall and
   splice the deepest chain in. Training's own frontier was ~20.8% at the end.
 * Box 57454337 (RTX 5080, 0.60 $/h) released at wrap-up.
+
+## pbr3b1 (round 3, slot 1) - 2026-10-24 19:40 UTC start
+
+### Harness issue: the budget pace admits no offer (19:41 UTC)
+`box.py budget`: credit 18.46 $, reserve 10 $, hours_left 48.6 -> allowed 0.174 $/h; the only
+offers passing config.offer_query are three RTX 5080s at 0.563-0.601 $/h, so `rent` refuses
+(code 3) for every branch. A 5080 needs credit >= ~35 $ at this hours_left. No box until the
+credit is topped up; a background waiter re-checks `rent --dry-run` every 10 min.
+Meanwhile: local CPU work only (4 vCPU shared with the game server, no GPU).
+
+### The incumbent's death (analysis of traj_9837740032)
+All 9 greedy episodes reach (250-350, -2,310, 2,610-2,650) at ~16.5 s with |v| ~1,330 and vz
+-660..-700, run on east-south-east and fall into trigger_teleport *187 (a fall catch back to the
+start; AABB x -3,847..1,131, y -3,848..-2,148, z 2,334..2,914) at z ~2,380-2,390, x 530-706.
+Energy height there 3,710-3,780. The record (ANALYSIS ONLY) passes (431, -2,517, 2,645) at
+1,360 u/s (h ~3,800) and turns SOUTH to (440, -3,297, 2,560) - progress dips 20.20 -> 20.01% -
+then east at z ~2,880-2,900 (21.3% at x 948, 22.4% at x 1,567). The policy is ~4 s AHEAD of the
+record at 10% and at 20% (16.8 s vs 21.1 s: the record spends ~6.5 s pumping in the start room).
+CPU beam_tas works locally: ~1,750 env-steps/s at 256 envs (3 threads), so a 512-copy search to
+28 s takes ~15 min.
