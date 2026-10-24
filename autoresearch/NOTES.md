@@ -710,3 +710,31 @@ pbr1b1_g2cur6/ckpt_latest.pt 3.285B, md5 a6559938..., both present).
 * The ridge band [1103,1112] had broken by ~04:10 and the curriculum then ran 1103 -> 723 (the
   start of the west slide) at 25-97% per band. Snapshots pulled: ckpt_3633315840.pt (before the
   eval, md5 404173bd...) and ckpt_3883401216.pt (47M after it, md5 56281de6...).
+* lb1 eval at 3.912B: **9/9 greedy episodes past the pit** (3.76-4.04%, median 3.9%, score 4.041 -
+  lower max than 3.837B's lucky 4.80, but the pit gate is now solved reliably). All nine die the
+  same way at 7.6-8.6 s: flying west along the south side at ~550 u/s and falling into a fatal
+  zone at z ~3,380-3,430, x ~465-595 (the 4.80% episode got to x 172 before its fall). The
+  curriculum meanwhile at ~523 (in line_a's run-up, which the policy's own route skips: it exits
+  the tunnel at ~266 u/s and still makes the launch).
+* Next gate, the generic loop: the policy's own greedy line -> GE --view-vel from its states just
+  before its frontier -> splice (own greedy states + searched tail) -> backward curriculum.
+  GE-VV5 (04:24 UTC, 12 threads beside lb1): roots = `pick_roots --window 0.25 3 --max-d 55149`
+  (new --max-d: only episodes past 3.5%) over 9 greedy episodes of ckpt_3883401216 (all 9 past
+  the pit, 3.67-3.98%, dying at x 508-676) -> 64 roots, 41 cells.
+* The next gate, measured (04:30 UTC, core replay of 5 greedy episodes of ckpt_3883401216): every
+  episode ends the moment its hull dips below z ~3,360 over x 451-762 = trigger_teleport *209 to
+  `start` (box z 3,207-3,360; the 4.80% episode died in *188 further west, box x 125-417,
+  z 3,104-3,137). No water, not stuck. The shaping field's descent from the south side runs WEST
+  at z ~3,240-3,460 (x 468 -> -332 -> -1,132) and on down the course (43% after 600 cells), i.e.
+  the way on is to carry speed/height west along the south side over those catches. GE-VV5 (9.4
+  min, roots = the policy's own south-side states 0.25-3 s before death): best 3.96%, nothing past
+  4% - those states are already committed to the fall. Stopped.
+* lb1 stopped at 3.968B (curriculum at ~423, inside line_a's run-up, which the policy's own route
+  skips); ckpt_latest pulled (md5 a181413c...).
+* **pbr2b1_lb2** (04:39 UTC): resume lb1's 3.968B + the RECIPE's frontier machinery back on at its
+  exact values (novel 0.2 / band 0.15 / radius 256-3072 / shell 0.9, greedy 0.25 window 0.25-2
+  stuck 200, front-perturb 0.25 band 0.005 speed 1.0-1.3 turn 90, front-temp 1 band 0.01,
+  backward-mix 0.1 elev -60..60, int-real-only 1) + 30% entry_ge states; `--demo-file ""
+  --demo-front-frac 0` (a resume restores the demo curriculum otherwise; the restored 0.67 front
+  fraction is refused without a demo file). The restored reservoir's deepest state is d 53,463 =
+  **6.45%** (an lb1 training episode got that far); front-perturb spawns 922 rows from it.
