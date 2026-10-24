@@ -497,3 +497,7 @@ The goal field is blind to all of it (the start's field minimum is the SW corner
   1 (sgx7) climbed onto the sill without the window, 1 (sgx9) never climbed. Stopped.
   `pbr1b3_sgx10` (00:46) = the first test of the next round's #1: sgx1's 334.5M with a
   learning-rate cut to 1e-4 (band curriculum), for the round's last ~45 min.
+* 01:13 `pbr1b3_sgx10` (sgx1's 334.5M, lr 3e-4 -> 1e-4, band): 335M 246 u, 410M 259 u,
+  486M 255 u (0.42-0.43) - the cut stops the drift into early deaths but brings no climb in
+  ~200M steps; the climb is not latent in sgx1's 334.5M weights in a form a smaller step
+  recovers quickly. (First test only; the round ends.)
