@@ -681,3 +681,6 @@ ckpt_latest 3.285B (md5 a6559938..., the most curriculum progress), both named i
   (3.285B) from ALIGNED line states 1700: 5/5 success, reaching 3.78-4.03% (past the line's end);
   from aligned 1780: 0/5 but 3.70-3.75% (the success line is 3.76%). g2cur (1.403B): aligned 1700
   0/5, 1780 1/5. g2cur6's tail skills partly carry over to the aligned frame -> it is the arm's base.
+  More g2cur6 probes from aligned states: 1500 5/5 (~4.0%), 1300 5/5 (55 u/s, below the 100 u/s
+  frame speed, so unaligned), 1260 0/5 (aligned at 146 u/s on the ramp slide right after the
+  bounce; falls into the pit) - the aligned curriculum has to relearn 1250-1290 itself.
