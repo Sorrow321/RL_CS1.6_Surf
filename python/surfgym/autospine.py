@@ -133,12 +133,17 @@ class AutoSpine:
     1 with exact chains (``ge_cmd(roots_npy, out_dir, minutes)``: reward-free uniform bursts)
     is rooted at ``ge_roots_n`` states of that line's last ``ge_roots_ticks`` ticks before its
     best; ``replay_cmd(archive, field_npz, out_npy)`` replays the archive's deepest chain into a
-    per-tick line; the beam line up to the chain's root + the chain is judged like a beam line."""
+    per-tick line; the beam line up to the chain's root + the chain is judged like a beam line.
+
+    ``stall`` > 0: after that many evals without the quorum, a cycle runs anyway and its line only
+    has to reach past the greedy's quorum-th best (not the success line in force), so a spine the
+    greedy cannot be carried through is replaced by the current weights' own next line."""
 
     def __init__(self, out_dir, field, beam_cmd, margin: float, quorum: int = 5,
                  retry: int = 4, canon: bool = True, ep_ticks: int = 30000,
                  max_ticks: int = 0, ge_cmd=None, replay_cmd=None, ge_minutes: float = 0.0,
-                 ge_roots_ticks: int = 500, ge_roots_n: int = 25, log=print) -> None:
+                 ge_roots_ticks: int = 500, ge_roots_n: int = 25, stall: int = 0,
+                 log=print) -> None:
         self.out = Path(out_dir)
         self.field = field
         self.beam_cmd = beam_cmd
@@ -155,6 +160,13 @@ class AutoSpine:
             raise ValueError("ge_minutes > 0 needs ge_cmd and replay_cmd")
         self.ge_roots_ticks = int(ge_roots_ticks)
         self.ge_roots_n = int(ge_roots_n)
+        # stall: evals without the quorum (counted from the last accepted spine, or the last
+        # stall cycle) after which a cycle runs anyway and is judged against the greedy's own
+        # level only - a spine the curriculum cannot carry the greedy line through is re-cut
+        # on the current weights (round 2's beam10 -> beam11); 0 = off
+        self.stall = int(stall)
+        self.since = 0
+        self.want_stall = False
         self.log = log
         self.k = 0                    # cycles (beams) started
         self.n_eval = 0               # evals seen
@@ -189,8 +201,11 @@ class AutoSpine:
             return note + f"; cycle {self.k} still running ({self.cur['stage']})"
         if self.n_eval < self.retry_at:
             return note + f"; next beam no earlier than eval {self.retry_at}"
-        if end_d is None or self.quorum <= 0 or n_in >= self.quorum:
+        stalled = (self.stall > 0 and end_d is not None and self.quorum > 0
+                   and n_in < self.quorum and self.n_eval - self.since >= self.stall)
+        if end_d is None or self.quorum <= 0 or n_in >= self.quorum or stalled:
             self.want = True
+            self.want_stall = bool(stalled)
             self.q_d = q_d
             # the beam runs until its population dies; the cap is twice the eval's longest
             # episode + 20 s, within the training episode cap
@@ -200,7 +215,9 @@ class AutoSpine:
                 n_rows = self.ep_ticks
             self.want_ticks = (self.max_ticks if self.max_ticks > 0 else
                                int(min(self.ep_ticks, max(3000, 2 * n_rows + 2000))))
-            note += f" -> beam {self.k + 1} wanted (cap {self.want_ticks} ticks)"
+            note += (f" -> beam {self.k + 1} wanted (cap {self.want_ticks} ticks"
+                     + (f"; STALL: {self.n_eval - self.since} evals without the quorum, judged "
+                        f"against the greedy's level only" if stalled else "") + ")")
         return note
 
     @staticmethod
@@ -231,15 +248,17 @@ class AutoSpine:
         d.mkdir(parents=True, exist_ok=True)
         self._spawn("beam", self.beam_cmd(Path(ckpt_path), d, self.k - 1, self.want_ticks),
                     "beam.log", dir=d, k=self.k, step=int(step), q_d=self.q_d,
-                    t_cycle=time.time())
+                    t_cycle=time.time(), stall=self.want_stall)
         self.log(f"auto-spine: beam {self.k} started on the step-{step:,} weights "
                  f"(pid {self.proc.pid}, cap {self.want_ticks} ticks) -> {d}")
 
     def running(self) -> bool:
         return self.proc is not None
 
-    def _backoff(self, rec: dict, result: str, msg: str) -> None:
+    def _backoff(self, rec: dict, result: str, msg: str, cur=None) -> None:
         self.retry_at = self.n_eval + self.retry
+        if cur is not None and cur.get("stall"):
+            self.since = self.n_eval          # the next stall cycle waits a whole stall window
         self.history.append({**rec, "result": result})
         self.log(f"auto-spine: {msg}; next beam no earlier than eval {self.retry_at}")
 
@@ -263,7 +282,7 @@ class AutoSpine:
         d = cur["dir"]
         rp = d / "ge_roots.npy"
         np.save(rp, roots)
-        keep = {k: cur[k] for k in ("k", "step", "q_d", "t_cycle")}
+        keep = {k: cur[k] for k in ("k", "step", "q_d", "t_cycle", "stall")}
         self._spawn("ge", self.ge_cmd(rp, d / "ge", self.ge_minutes), "ge.log", dir=d,
                     line=np.asarray(line, STATE_DTYPE), **keep)
         self.log(f"auto-spine: cycle {cur['k']}: Go-Explore ({self.ge_minutes:g} min, exact "
@@ -287,12 +306,12 @@ class AutoSpine:
             fz = d / "beam_frontier.npz"
             if rc != 0 or not fz.is_file():
                 self._backoff(rec, "failed", f"beam {k} FAILED (exit {rc}, {dt:.0f}s; "
-                              f"{d / 'beam.log'})")
+                              f"{d / 'beam.log'})", cur)
                 return None
             z = np.load(fz, allow_pickle=False)
             if "replay_ok" in z.files and not int(z["replay_ok"]):
                 self._backoff(rec, "replay_failed",
-                              f"beam {k}: the frontier line did not replay exactly")
+                              f"beam {k}: the frontier line did not replay exactly", cur)
                 return None
             line = np.asarray(z["states"], STATE_DTYPE)
             res, cut = self._judge(line, end_d, cur, rec, "beam")
@@ -301,24 +320,25 @@ class AutoSpine:
             if self.ge_minutes > 0.0:
                 self._start_ge(cur, line, cut)
                 return None
-            self._backoff(rec, "no_gain", f"beam {k} ({dt:.0f}s) found nothing deeper")
+            self._backoff(rec, "no_gain", f"beam {k} ({dt:.0f}s) found nothing deeper", cur)
             return None
         if stage == "ge":
             arch = d / "ge" / "archive.npz"
             # explore_phase1 exits 1 when nothing finished: the normal end of a budgeted search
             if rc not in (0, 1) or not arch.is_file():
                 self._backoff(rec, "ge_failed", f"cycle {k}: Go-Explore FAILED (exit {rc}; "
-                              f"{d / 'ge.log'})")
+                              f"{d / 'ge.log'})", cur)
                 return None
             self._spawn("replay", self.replay_cmd(arch, self.field_npz(), d / "ge_line.npy"),
                         "ge_replay.log", dir=d, line=cur["line"],
-                        **{x: cur[x] for x in ("k", "step", "q_d", "t_cycle")})
+                        **{x: cur[x] for x in ("k", "step", "q_d", "t_cycle", "stall")})
             return None
         # stage == "replay": ge_replay exits 1 when a link diverged; its line stops there and
         # is still exact up to that link
         lp = d / "ge_line.npy"
         if not lp.is_file():
-            self._backoff(rec, "replay_failed", f"cycle {k}: ge_replay wrote no line (exit {rc})")
+            self._backoff(rec, "replay_failed", f"cycle {k}: ge_replay wrote no line (exit {rc})",
+                          cur)
             return None
         gl = np.asarray(np.load(lp, allow_pickle=False), STATE_DTYPE)
         line = cur["line"]
@@ -327,14 +347,14 @@ class AutoSpine:
         j = int(np.argmin(err))
         if not len(gl) or err[j] > 0.5:
             self._backoff(rec, "splice_failed", f"cycle {k}: the GE chain's root is not on the "
-                          f"beam line (nearest {err[j]:.1f} u)")
+                          f"beam line (nearest {err[j]:.1f} u)", cur)
             return None
         spliced = np.concatenate([line[:j], gl])
         rec["splice_at"] = j
         res, cut = self._judge(spliced, end_d, cur, rec, "ge")
         if res is None and cut is not None:
             self._backoff(rec, "no_gain", f"cycle {k}: the beam line + the GE chain found "
-                          f"nothing deeper either")
+                          f"nothing deeper either", cur)
         return res
 
     def _judge(self, line, end_d, cur, rec, source):
@@ -344,11 +364,13 @@ class AutoSpine:
         try:
             sp, cut, d_cut = cut_line(line, self.field, canon=self.canon)
         except ValueError as e:
-            self._backoff(rec, "no_line", f"cycle {k}: no usable line ({e})")
+            self._backoff(rec, "no_line", f"cycle {k}: no usable line ({e})", cur)
             return None, None
         new_end = d_cut + self.margin
-        bar = min(float("inf") if end_d is None else float(end_d), float(q_d))
-        rec.update(d_cut=round(d_cut, 1), cut=cut,
+        # a stall cycle answers to the greedy's own level only (it may re-cut the spine SHORTER)
+        bar = (float(q_d) if cur.get("stall") else
+               min(float("inf") if end_d is None else float(end_d), float(q_d)))
+        rec.update(d_cut=round(d_cut, 1), cut=cut, stall=bool(cur.get("stall")),
                    bar=(round(bar, 1) if np.isfinite(bar) else None))
         if not new_end < bar:
             self.log(f"auto-spine: cycle {k} ({source}): best d {d_cut:,.0f} (+{self.margin:g} "
@@ -372,6 +394,7 @@ class AutoSpine:
                 "source": source}
         p.with_suffix(".json").write_text(json.dumps(side, indent=1), encoding="utf-8")
         self.accepted += 1
+        self.since = self.n_eval
         self.history.append({**rec, "result": "accepted", "source": source, "spine": str(p),
                              "rows": len(sp)})
         self.log(f"auto-spine: cycle {k} ({source}, {time.time() - cur['t_cycle']:.0f}s) -> new "

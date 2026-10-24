@@ -189,6 +189,33 @@ def test_ge_fallback_splices_a_deeper_chain_onto_the_beam_line(tmp_path):
     assert h["result"] == "accepted" and h["splice_at"] == 30
 
 
+def test_a_stall_recuts_against_the_greedys_level(tmp_path):
+    """No quorum for `stall` evals -> a cycle runs anyway; its line need only pass the greedy's
+    quorum-th best (here SHORTER than the success line in force), and the clock restarts."""
+    from surfgym.autospine import AutoSpine
+    mid = tmp_path / "mid.npy"
+    np.save(mid, _line(np.linspace(1000, 400, 61)))         # best d 400
+    logs = []
+    a = AutoSpine(tmp_path / "run", XField(), _stub_cmd(mid), margin=50.0, quorum=2, retry=1,
+                  stall=3, log=logs.append)
+    ev = tmp_path / "ev.jsonl"
+    _traj(ev, [[1000, 600], [1000, 650], [1000, 900]])      # quorum-th best 650
+    end_d = 100.0                                           # a success line nobody reaches
+    assert not a.note_eval(ev, 1, end_d).endswith("wanted") and not a.want
+    a.note_eval(ev, 2, end_d)
+    assert not a.want
+    note = a.note_eval(ev, 3, end_d)                        # 3 evals since the start
+    assert a.want and a.want_stall and "STALL" in note
+    a.start(tmp_path / "ck.pt", 3)
+    r = _wait(a, end_d)
+    # 400 + 50 = 450 is short of the line in force (100) but past the greedy's 650: accepted
+    assert r is not None and r.d_cut == pytest.approx(400.0)
+    h = a.state_dict()["history"][-1]
+    assert h["stall"] is True and h["bar"] == 650.0 and a.since == a.n_eval
+    a.note_eval(ev, 4, 450.0)                               # the new line: still nobody
+    assert not a.want
+
+
 # ---- the trainer (CPU, princessburglar) ----------------------------------------------------
 try:
     from test_ge_minutes import _csv, needs_pb  # noqa: E402

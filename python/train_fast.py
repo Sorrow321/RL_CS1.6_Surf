@@ -4839,6 +4839,12 @@ def main() -> None:
                          "last 5 s before its best, and tools/ge_replay.py's deepest chain "
                          "spliced onto it is judged the same way (round 2's fallback at three of "
                          "its gates); 0 = beams only")
+    ap.add_argument("--auto-spine-stall", type=int, default=24,
+                    help="--auto-spine: after this many evals without the quorum (since the last "
+                         "accepted spine), a cycle runs anyway and its line only has to reach "
+                         "past the greedy's own quorum-th best - a spine the greedy cannot be "
+                         "carried through is re-cut on the current weights (round 2's beam10 -> "
+                         "beam11); 0 = off")
     ap.add_argument("--auto-spine-ge-threads", type=int, default=0,
                     help="--auto-spine: Go-Explore threads (0 = half the CPUs the container "
                          "allows; the trainer keeps the rest)")
@@ -14664,7 +14670,8 @@ def main() -> None:
                                         "retry": int(args.auto_spine_retry),
                                         "canon": int(args.auto_spine_canon),
                                         "max_ticks": int(args.auto_spine_max_ticks),
-                                        "ge_minutes": float(args.auto_spine_ge_minutes)}
+                                        "ge_minutes": float(args.auto_spine_ge_minutes),
+                                        "stall": int(args.auto_spine_stall)}
     # --respawn-greedy-temp: written ONLY when on (a record of the run, never restored)
     if args.respawn_greedy_temp is not None:
         meta["config"]["respawn_greedy_temp"] = float(args.respawn_greedy_temp)
@@ -15522,6 +15529,7 @@ def main() -> None:
                                         act_every=int(args.act_every)),
                          replay_cmd=replay_argv(ROOT, _amap),
                          ge_minutes=float(args.auto_spine_ge_minutes),
+                         stall=int(args.auto_spine_stall),
                          log=lambda m: print(m, flush=True))
         print(f"--auto-spine: after a greedy eval with >= {args.auto_spine_quorum} episodes at "
               f"or past the success line, beam_tas ({args.auto_spine_envs} copies of the "
