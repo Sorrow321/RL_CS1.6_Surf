@@ -1137,3 +1137,19 @@ the budget pace (0.69 $/h) admit one box; until then every rent was refused (0.1
   --demo-front-temp rule that cracked gate 2, on the launch window), --auto-spine as before (first
   search at 10.013B). First eval: 8/9 fatal flights anchored at 15.2-15.4 s.
 * as1 evals: 20.156 (9.479B, the incumbent's weights) / 20.290 (9.555B).
+
+### Gate 8 geometry (core probes, 20:33-20:40 UTC; the record is ANALYSIS ONLY)
+* The room after the 17.4% launch: open x 0-800, y -2,150..-2,600 for z 2,420-2,850, a pillar at
+  (320-360, -2,390..-2,430), a slanted ceiling over x >= 320 at z ~2,880-2,900 (normal (-0.23, 0,
+  -0.97)), the south wall at y ~-2,630 for x < 400, and the way on a SOUTH opening at x 400-800
+  (y -2,630..-3,070) whose surf ramp starts at about (500, -2,770, 2,470). Below z ~2,390 is the
+  fall catch; a dead-end ledge sits at (742, -2,700, 2,421).
+* The record turns from east to south around the pillar's east side at x 215-444 in 0.3 s with no
+  contact (hull traces 48-200 u clear on every side): optimal speed-preserving air strafing turns
+  ~60/|v| rad per frame (wishdir 91.5 deg off the velocity, a = 60 u/s), 2.96 deg/frame at 1,160
+  u/s - 116 deg in 0.3 s at its 131 fps, ~89 deg at our 100 Hz (the --tick-ms caveat of CLAUDE.md:
+  a 100 Hz turn has a ~30% larger radius).
+* Our greedy line turns ~0.3 s LATE: its velocity swings south only at x 500-700 (16.5-16.75 s),
+  so it reaches the south opening ~150 u too low (z 2,383 at (706, -2,613)) and falls into the
+  catch short of the ramp. The launch is also flatter (vz ~+300 vs ~+430 off the ramp at x -940),
+  but the speed-boost probe shows energy alone does not move the line.
