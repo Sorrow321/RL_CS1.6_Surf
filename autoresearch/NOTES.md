@@ -1143,3 +1143,14 @@ one box at a time (e.g. a box-hours budget instead of a $/h rate), is needed for
   +155..172 u deficit at 0.5-1%, +87..105 at 3-5%, +63..77 at 7-12% (the drop surf and the x
   -1,015 wall section), +85..121 at 13-17% (the U-turn climb and the east run), +88..103 at
   18-20%. Gate 8's take-off (17.46%) sits where the deficit is largest after the start.
+* More CPU beams at gate 8 (21:00-21:25 UTC, --start-state at the CPU line's tick 1,400, 1.4 s
+  before the 17.46% take-off, --score dh --score-energy 2, 1,024 envs): untempered, extinct 3 s
+  in, frontier 18.69%; with `beam_tas --prop-keys-temp 2 --prop-view-scale 6` (new: the sampled
+  envs draw at the trainer's tempered draw beside the greedy floor; off = byte-identical),
+  extinct 4 s in, frontier 20.05%, its best lineage bouncing off the catch's edge at z ~2,430.
+  Every lineage flies the policy's own ballistic flight from the take-off: the population is one
+  trajectory family whatever the proposal temperature. The record (ANALYSIS ONLY) leaves the same
+  ramp at x ~-919 with vz +467 (ours +280: ~87 u less apex height) and h ~3,750 (ours ~3,654),
+  and lands on ramps at z ~2,900-2,960 at x ~-661 and ~+131 that our flight passes ~50-300 u
+  below. So gate 8 is the launch's energy, built upstream (the 13-17% deficit above) - the x
+  -1,015 wall's story (7.2%: passed after ~830M steps of per-call energy shaping, round 2).
