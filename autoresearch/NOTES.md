@@ -917,3 +917,10 @@ round 1's fixed grow 20 / cooldown 20 they would have taken ~130M).
   recording reaches 12.42 / 12.26 / 12.61% at ticks 1,251-1,421 (12.5-14.2 s from the true start);
   roots = ep 2's last 4 s, 2 x 10-min exact-chain searches. Next spine's lines from own quantities:
   anchor at the policy's own reach (12.4%), pull at the new chain's end (+20 u), --demo-pull-stats.
+* GE10 result: nothing past 12.63% in 2 x 10 min (the frontier wall at x ~-3,300: a U-turn climb the
+  record flies at 1,000-1,150 u/s with h ~3,660-3,780; our line arrives at 554 u/s, h ~3,000).
+  cur10's own line loses its energy AFTER the platform: one-tick drops of 329 u at tick 1,061
+  (-1,526,-3,024,3,050; 8.45%) and 202 u at tick 1,191 (-1,533,-2,873,2,397; 9.23%), h 3,480 ->
+  ~2,990 (the record keeps ~3,640 there).
+* GE11 (11:20 UTC): pb_frontier_step --roots sink on cur10 (the sink = tick 1,061), 2 x 10 min,
+  --cell-energy 16.
