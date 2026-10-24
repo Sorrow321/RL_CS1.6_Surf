@@ -697,3 +697,9 @@ ckpt_latest 3.285B (md5 a6559938..., the most curriculum progress), both named i
   curriculum (window 10, grow 20, tau0 1240, front-frac 0.67, success-d 100, success-bonus 50,
   keys-hold-spawn-duck, yaw-entropy 0, 30% entry_ge spawn states, the demo-incompatible spawn options
   off as in pbr1b1) + `--demo-view-velocity --demo-cooldown 5`, --ckpt-every 1e8, 2e9 steps max.
+* **pbr2b2_vv1 crossed the wall bounce in ~15 minutes** (09:05-09:20 UTC, 211k steps/s): the
+  curriculum backed off 1240 -> 1280 at once (aligned starts there 0%), then went BACK through the
+  bounce region within ~190M steps and by 3.476B oscillates at [1100,1109] (21-39% success) <->
+  [1120,1129] (0.0%) - the ridge / launch. Region success (decile of the spine): 60% 60%, 70% 99%,
+  80% 94%, 90% 89%. pbr1b1's backward-frame curriculum held at ~1235-1250 for 1.5B+ steps. Greedy
+  evals still at the pit: 3.218 / 3.117 / 3.223 (3.286B / 3.361B / 3.437B).
