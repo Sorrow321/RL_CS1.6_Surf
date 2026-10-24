@@ -61,9 +61,13 @@ def in_target(st: np.ndarray, box, onground: bool, feet_min, speed_min=None) -> 
 
 
 def search(core, root, n: int, ticks: int, act_every: int, repeat_p: float, box, onground,
-           feet_min, k: int, deadline: float, rng, speed_min=None) -> list:
+           feet_min, k: int, deadline: float, rng, speed_min=None, alive_after: int = 0) -> list:
     """Random bursts from ``root`` until ``k`` reach the target or the deadline passes;
-    returns [(states (t+1,) STATE_DTYPE, actions (t+1, 6) int8)] per success."""
+    returns [(states (t+1,) STATE_DTYPE, actions (t+1, 6) int8)] per success.
+
+    ``alive_after`` T > 0: a burst counts only if it is still alive T ticks after its first
+    entry (it keeps acting at random), so a fall that passes through the target on its way
+    into a kill volume is not a line; the saved line then runs to that tick."""
     root = root.copy()
     root["tick"] = 0
     root["stuck_ticks"] = 0
@@ -98,9 +102,21 @@ def search(core, root, n: int, ticks: int, act_every: int, repeat_p: float, box,
             new = alive & (first < 0) & in_target(traj[t + 1], box, onground, feet_min,
                                                   speed_min)
             first[new] = t + 1
-            if (first >= 0).sum() >= k - len(hits):
+            if alive_after > 0:
+                ok = (first >= 0) & alive & (t + 1 >= first + alive_after)
+                if ok.sum() >= k - len(hits) or not alive.any():
+                    break
+            elif (first >= 0).sum() >= k - len(hits):
                 break
         bursts += n
+        if alive_after > 0:
+            # alive at tick first + T (a burst dead earlier has alive False now and its first
+            # entry is older than T only if it survived to here)
+            end = first + alive_after
+            ok = (first >= 0) & alive & (end <= t + 1)
+            for j in np.where(ok)[0][: k - len(hits)]:
+                hits.append((traj[: end[j] + 1, j].copy(), hist[: end[j] + 1, j].copy()))
+            continue
         for j in np.where(first >= 0)[0][: k - len(hits)]:
             hits.append((traj[: first[j] + 1, j].copy(), hist[: first[j] + 1, j].copy()))
     return hits, bursts
@@ -132,6 +148,9 @@ def main(argv=None):
     ap.add_argument("--maxvel", type=float, default=3500.0)
     ap.add_argument("--minutes", type=float, default=3.0)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--alive-after", type=int, default=0,
+                    help="a burst counts only if still alive this many ticks after its first "
+                         "entry into the target (0 = off: the first entry counts)")
     a = ap.parse_args(argv)
     box = [float(v) for v in a.target.split()]
     if a.field and a.d_max is not None:
@@ -173,7 +192,7 @@ def main(argv=None):
     for ri, root in enumerate(roots):
         per_root = time.time() + (deadline - time.time()) / max(1, len(roots) - ri)
         hits, n = search(core, root, a.envs, a.ticks, a.act_every, a.repeat_p, box, a.onground,
-                         a.feet_min, a.k, per_root, rng)
+                         a.feet_min, a.k, per_root, rng, alive_after=a.alive_after)
         tried += n
         for s, h in hits:
             lines.append(s)
@@ -190,6 +209,8 @@ def main(argv=None):
             "field": a.field, "d_max": a.d_max,
             "provenance": "machine-generated: uniform random bursts from the given roots in the "
                           "simulator; no demo, no record, no policy, no reward"}
+    if a.alive_after:
+        meta["alive_after"] = a.alive_after          # flag off: the meta is unchanged
     obj = np.empty(len(lines), dtype=object)
     obj[:] = lines
     aobj = np.empty(len(acts), dtype=object)
