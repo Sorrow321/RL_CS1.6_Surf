@@ -875,3 +875,7 @@ round 1's fixed grow 20 / cooldown 20 they would have taken ~130M).
   6.94-6.96). Stopped at 7.21B.
 * **pbr2b4_cur8** (09:28 UTC): resume cur6 final (6.797B) + spine_e (GE8's 7.09% chain) with the
   anchoring `--demo-success-d 100` (6.92%).
+* `--demo-pull-d M2 --demo-pull-bonus B2` (new, default off): a second spine line at d(end) + M2
+  paying B2 once per episode beside the --demo-success-d anchor; the curriculum's statistics stay on
+  the anchor. One line cannot both anchor the current line and pull toward a deeper spine end (cur7).
+  tests/python/test_demo_pull.py (2 passed, CPU).

@@ -4778,6 +4778,16 @@ def main() -> None:
                          "halved step - fast over easy stretches, state by state through a "
                          "precise one, no per-spine schedule. 0 = off, byte-identical. Config "
                          "only when set; ckpt restores")
+    ap.add_argument("--demo-pull-d", type=float, default=None,   # None = off
+                    help="--demo-success-bonus: a SECOND line at d(spine end) + this, paying "
+                         "--demo-pull-bonus once per episode on top. One success line cannot both "
+                         "anchor the policy's current line (reachable by it) and pull it toward a "
+                         "deeper spine end (beyond it): the anchor is --demo-success-d, the pull "
+                         "is this (pbr2b4_cur7: a success line past the policy's reach removed the "
+                         "anchor and the line collapsed in 75M steps). The curriculum's statistics "
+                         "stay on the --demo-success-d line. Config only when set; ckpt restores")
+    ap.add_argument("--demo-pull-bonus", type=float, default=None,   # None = off
+                    help="--demo-pull-d: the extra bonus paid once at the second line")
     ap.add_argument("--demo-success-bonus", type=float, default=None,   # None = off
                     help="--demo-success-d: an episode whose ratchet record CROSSES the spine's "
                          "success line (d(spine end) + --demo-success-d) is paid this once, like "
@@ -7907,6 +7917,12 @@ def main() -> None:
                 and ck_cfg.get("demo_success_bonus") is not None):
             args.demo_success_bonus = float(ck_cfg["demo_success_bonus"])
             restored.append(f"demo_success_bonus={args.demo_success_bonus:g}")
+        if args.demo_pull_d is None and ck_cfg.get("demo_pull_d") is not None:
+            args.demo_pull_d = float(ck_cfg["demo_pull_d"])
+            restored.append(f"demo_pull_d={args.demo_pull_d:g}")
+        if args.demo_pull_bonus is None and ck_cfg.get("demo_pull_bonus") is not None:
+            args.demo_pull_bonus = float(ck_cfg["demo_pull_bonus"])
+            restored.append(f"demo_pull_bonus={args.demo_pull_bonus:g}")
         if args.int_view is None and ck_cfg.get("int_view") is not None:
             args.int_view = int(ck_cfg["int_view"])
             restored.append(f"int_view={args.int_view}")
@@ -11470,6 +11486,11 @@ def main() -> None:
               f"(demo replaces the reservoir share of the pool)")
         if args.demo_success_bonus is not None and args.demo_success_d is None:
             raise SystemExit("--demo-success-bonus pays the --demo-success-d line: give both")
+        if (args.demo_pull_d is None) != (args.demo_pull_bonus is None):
+            raise SystemExit("--demo-pull-d and --demo-pull-bonus go together")
+        if args.demo_pull_d is not None and not float(args.demo_success_bonus or 0.0) > 0.0:
+            raise SystemExit("--demo-pull-d is a second line beside --demo-success-bonus: give "
+                             "--demo-success-d and --demo-success-bonus too")
         if args.demo_success_d is not None:
             if not args.race_ratchet:
                 raise SystemExit("--demo-success-d reads the ratchet record: it needs "
@@ -14451,6 +14472,10 @@ def main() -> None:
     if args.demo_file and args.demo_success_bonus is not None:
         # --demo-success-bonus: dumped only when set; a resume restores it
         meta["config"]["demo_success_bonus"] = float(args.demo_success_bonus)
+    if args.demo_file and args.demo_pull_d is not None:
+        # --demo-pull-d / --demo-pull-bonus: dumped only when set; a resume restores them
+        meta["config"]["demo_pull_d"] = float(args.demo_pull_d)
+        meta["config"]["demo_pull_bonus"] = float(args.demo_pull_bonus)
     if args.race_sr:
         # --race-sr: dumped only when on, so a flag-off run.json is the
         # control's byte for byte (test_int_split's identity check)
@@ -15387,11 +15412,39 @@ def main() -> None:
         print(f"--demo-success-bonus {DEMO_BONUS:g}: an episode whose record crosses d <= "
               f"{DEMO_END_D:,.0f} is paid {DEMO_BONUS:g} once (one that starts past it never is)")
 
+    DEMO_PULL_D = None                    # --demo-pull-d: the second (pull) line
+    DEMO_PULL_B = 0.0
+    DEMO_PULL_PAID = [None]
+    DEMO_PULL_N = [0]
+    if DEMO_BONUS and args.demo_pull_d is not None:
+        DEMO_PULL_D = _de + float(args.demo_pull_d)
+        DEMO_PULL_B = float(args.demo_pull_bonus)
+        print(f"--demo-pull-d {float(args.demo_pull_d):g}: a second line at d <= "
+              f"{DEMO_PULL_D:,.0f} pays {DEMO_PULL_B:g} once more (the anchor stays at "
+              f"{DEMO_END_D:,.0f})")
+
+    def _demo_pull_pay(r, ended, rec):
+        if DEMO_PULL_PAID[0] is None:
+            DEMO_PULL_PAID[0] = rec <= DEMO_PULL_D
+        paid = DEMO_PULL_PAID[0]
+        hit = (~ended) & (~paid) & (rec <= DEMO_PULL_D)
+        if hit.any():
+            if DEMO_PULL_N[0] == 0:
+                print(f"--demo-pull-bonus: first payment at step {global_step:,}", flush=True)
+            r = np.array(r, copy=True)
+            r[hit] += DEMO_PULL_B
+            paid |= hit
+            DEMO_PULL_N[0] += int(hit.sum())
+        paid[ended] = rec[ended] <= DEMO_PULL_D
+        return r
+
     def _demo_bonus_pay(r, ended):
         """--demo-success-bonus: pay the rows whose ratchet record (after this reward call; an
         ended row's is already the NEW episode's spawn) has just crossed the spine's success
         line; an episode is paid once, and one that spawns past the line never."""
         rec = np.asarray(reward_fn._rec)
+        if DEMO_PULL_D is not None:
+            r = _demo_pull_pay(r, ended, rec)
         if DEMO_PAID[0] is None:
             DEMO_PAID[0] = rec <= DEMO_END_D
         paid = DEMO_PAID[0]
