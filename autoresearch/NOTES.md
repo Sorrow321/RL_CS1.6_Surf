@@ -547,3 +547,10 @@ the backward curriculum (--demo-file + --demo-success-d) on the found line. Not 
   stops on the plate by the mouth (672, -2,941; 0.39%), g2cur7 3.44B ep6 stalls INSIDE the
   tunnel (351, -2,885; 1.00%), g2cur6 3.28B ep2 reaches the pit area at 3.06% (under the 3.1%
   cut used for the count, so that eval is really 9/9 in the pit region).
+* line_a is crouched almost throughout (1,717 of 1,881 states ducked; airborne + ducked outside
+  the tunnel: ticks 656-761 at the tunnel's east end, 998-1086 the drop onto the ridge, and
+  1165-1793 = 6.3 s from the launch through the flight, the wall bounce and the north side). So
+  every curriculum spawn on those stretches started by releasing duck before
+  --keys-hold-spawn-duck; the curriculum still crossed 1880 -> 1250 that way (the hull change was
+  survivable there) and it became fatal only at the wall bounce. Expect the same at the drop and
+  the launch - keep the flag on from the start.
