@@ -18,6 +18,9 @@ spliced onto the line at its root; the result cut at its deepest point is the ne
   line falls through to GE.
 * GE roots: the beam line's states from `--ge-from` s to `--ge-to` s before the beam frontier's
   tick (the last resample before the population died), every `--ge-stride` ticks.
+* A GE chain's rows get the view along the velocity (tools/spine_canon_view.py): the uniform
+  explorer leaves the view anywhere, and a --view-absolute policy spawned on such a row spends
+  its first ticks swinging it round (round 2's gate-2 lesson).
 * Every constant is generic (cells, burst length, envs, minutes): nothing reads the map's
   geometry, a demo or a record. The spines are the policy's own (beam) and its own reward-free
   search (GE), the provenance `box.py launch --self-states` records.
@@ -152,6 +155,15 @@ def main(argv=None) -> int:
                              "--chain", str(out / "ge_chain.npy"), "--field", field,
                              "--out", str(out / "ge_line.npy")])
             gl = np.load(out / "ge_line.npy", allow_pickle=False)
+            # the chain's rows carry the uniform explorer's view: put it along the velocity
+            # (tools/spine_canon_view.py, round 2's gate-2 lesson); the beam rows before the
+            # root are the policy's own and keep theirs
+            from spine_canon_view import canon_view
+            i0 = len(gl) - len(chain)
+            canon, m = canon_view(gl[i0:])
+            gl = np.concatenate([gl[:i0], canon])
+            np.save(out / "ge_line.npy", gl)
+            res["ge"]["canon_rows"] = int(m.sum())
             dg = spine_tool.depths(gl, f)
             res["ge"].update({"replay_exit": rc, "chain_n": int(len(chain)),
                               "prog_best": round(prog(float(dg.min())), 3)})

@@ -32,6 +32,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "python"))
 
 from surfgym.core import ACTION_NVEC, STATE_DTYPE, SurfCore, default_config  # noqa: E402
+from surfgym.view import off_warp  # noqa: E402
 
 
 def feet_z(st: np.ndarray) -> np.ndarray:
@@ -61,7 +62,8 @@ def in_target(st: np.ndarray, box, onground: bool, feet_min, speed_min=None) -> 
 
 
 def search(core, root, n: int, ticks: int, act_every: int, repeat_p: float, box, onground,
-           feet_min, k: int, deadline: float, rng, speed_min=None, alive_after: int = 0) -> list:
+           feet_min, k: int, deadline: float, rng, speed_min=None, alive_after: int = 0,
+           view_velocity: bool = False) -> list:
     """Random bursts from ``root`` until ``k`` reach the target or the deadline passes;
     returns [(states (t+1,) STATE_DTYPE, actions (t+1, 6) int8)] per success.
 
@@ -73,6 +75,7 @@ def search(core, root, n: int, ticks: int, act_every: int, repeat_p: float, box,
     root["stuck_ticks"] = 0
     hits = []
     act = np.zeros((n, 6), np.int32)
+    view = np.zeros((n, 2), np.float32) if view_velocity else None
 
     def fresh(m):
         c = int(m.sum())
@@ -81,6 +84,13 @@ def search(core, root, n: int, ticks: int, act_every: int, repeat_p: float, box,
             act[m, 1] = 3                                  # pitch is inert (src/env.c)
             for h in (2, 3, 4, 5):
                 act[m, h] = rng.integers(0, ACTION_NVEC[h], c)
+            if view is not None:
+                # --view-velocity: a yaw TARGET in the velocity frame (core view_mode 1), drawn
+                # in the policy's own squashed coordinate (off_warp: half the draws within
+                # +-10 deg of the velocity); pitch 0 (inert). Drawn after the keys, so the key
+                # stream of a flag-off search is untouched.
+                view[m, 0] = off_warp(rng.uniform(-1.0, 1.0, c)).astype(np.float32)
+                view[m, 1] = 0.0
 
     bursts = 0
     while len(hits) < k and time.time() < deadline:
@@ -89,6 +99,7 @@ def search(core, root, n: int, ticks: int, act_every: int, repeat_p: float, box,
         fresh(np.ones(n, bool))
         traj = np.zeros((ticks + 1, n), STATE_DTYPE)
         hist = np.zeros((ticks + 1, n, 6), np.int8)
+        vhist = np.zeros((ticks + 1, n, 2), np.float32) if view is not None else None
         traj[0] = core.get_states()
         alive = np.ones(n, bool)
         first = np.full(n, -1)
@@ -96,7 +107,11 @@ def search(core, root, n: int, ticks: int, act_every: int, repeat_p: float, box,
             if t % act_every == 0 and t:
                 fresh(rng.random(n) > repeat_p)
             hist[t] = act
-            _, _, done, trunc, _ = core.step(act)
+            if view is not None:
+                vhist[t] = view
+                _, _, done, trunc, _ = core.step(act, view=view)
+            else:
+                _, _, done, trunc, _ = core.step(act)
             traj[t + 1] = core.get_states()
             alive &= ~((done > 0) | (trunc > 0))
             new = alive & (first < 0) & in_target(traj[t + 1], box, onground, feet_min,
@@ -115,10 +130,12 @@ def search(core, root, n: int, ticks: int, act_every: int, repeat_p: float, box,
             end = first + alive_after
             ok = (first >= 0) & alive & (end <= t + 1)
             for j in np.where(ok)[0][: k - len(hits)]:
-                hits.append((traj[: end[j] + 1, j].copy(), hist[: end[j] + 1, j].copy()))
+                hits.append((traj[: end[j] + 1, j].copy(), hist[: end[j] + 1, j].copy())
+                            + ((vhist[: end[j] + 1, j].copy(),) if vhist is not None else ()))
             continue
         for j in np.where(first >= 0)[0][: k - len(hits)]:
-            hits.append((traj[: first[j] + 1, j].copy(), hist[: first[j] + 1, j].copy()))
+            hits.append((traj[: first[j] + 1, j].copy(), hist[: first[j] + 1, j].copy())
+                        + ((vhist[: first[j] + 1, j].copy(),) if vhist is not None else ()))
     return hits, bursts
 
 
@@ -148,6 +165,11 @@ def main(argv=None):
     ap.add_argument("--maxvel", type=float, default=3500.0)
     ap.add_argument("--minutes", type=float, default=3.0)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--view-velocity", action="store_true",
+                    help="random view TARGETS in the velocity frame (core view_mode 1, "
+                         "yaw_adaptive - the policy's own action space under --view-absolute "
+                         "velocity) held like the keys, instead of uniform per-tick yaw-delta "
+                         "bins that spin the view; lines keep their views near the velocity")
     ap.add_argument("--alive-after", type=int, default=0,
                     help="a burst counts only if still alive this many ticks after its first "
                          "entry into the target (0 = off: the first entry counts)")
@@ -159,8 +181,9 @@ def main(argv=None):
         FIELD[0] = GoalField(zf["grid"].astype(np.float32) * float(zf["quant"]), zf["mins"],
                              float(zf["cell"]), float(zf["reach_max"]))
         FIELD[1] = float(a.d_max)
+    _vv = {"view_mode": 1, "yaw_adaptive": 1} if a.view_velocity else {}
     cfg = default_config(num_envs=a.envs, sv_maxvelocity=float(a.maxvel), lidar_w=0, lidar_h=0,
-                         spawn_mode=2, water_fail=1, yaw_jitter_deg=0.0)
+                         spawn_mode=2, water_fail=1, yaw_jitter_deg=0.0, **_vv)
     core = SurfCore(str(a.map), cfg)
     core.set_teleport_fail(True)
     core.reset(0)
@@ -189,14 +212,18 @@ def main(argv=None):
     rng = np.random.default_rng(a.seed)
     deadline = time.time() + 60.0 * a.minutes
     lines, acts, parent, tried = [], [], [], 0
+    views = []
     for ri, root in enumerate(roots):
         per_root = time.time() + (deadline - time.time()) / max(1, len(roots) - ri)
         hits, n = search(core, root, a.envs, a.ticks, a.act_every, a.repeat_p, box, a.onground,
-                         a.feet_min, a.k, per_root, rng, alive_after=a.alive_after)
+                         a.feet_min, a.k, per_root, rng, alive_after=a.alive_after,
+                         view_velocity=a.view_velocity)
         tried += n
-        for s, h in hits:
-            lines.append(s)
-            acts.append(h)
+        for hit in hits:
+            lines.append(hit[0])
+            acts.append(hit[1])
+            if len(hit) > 2:
+                views.append(hit[2])
             parent.append(ri)
         print(f"root {ri} {np.asarray(root['origin']).round(0).tolist()}: {len(hits)} hits in "
               f"{n:,} bursts", flush=True)
@@ -211,12 +238,18 @@ def main(argv=None):
                           "simulator; no demo, no record, no policy, no reward"}
     if a.alive_after:
         meta["alive_after"] = a.alive_after          # flag off: the meta is unchanged
+    extra = {}
+    if a.view_velocity:
+        meta["view_velocity"] = True
+        vobj = np.empty(len(views), dtype=object)
+        vobj[:] = views
+        extra["views"] = vobj
     obj = np.empty(len(lines), dtype=object)
     obj[:] = lines
     aobj = np.empty(len(acts), dtype=object)
     aobj[:] = acts
     np.savez(a.out, lines=obj, acts=aobj, parent=np.asarray(parent, np.int64),
-             meta=json.dumps(meta))
+             meta=json.dumps(meta), **extra)
     print(f"{len(lines)} lines -> {a.out} ({tried:,} bursts)")
     return 0 if lines else 1
 
