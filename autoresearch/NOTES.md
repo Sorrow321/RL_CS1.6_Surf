@@ -681,3 +681,40 @@ of the line kept cold. TRAIN_ONLY in record_ckpt.
 * pbr2b3_canon3 (03:16 UTC): canon2's ckpt_latest (3.568B, md5 59d2dce4..., pulled) + the same
   flags, tau0 1170, + --demo-cooldown 5 --demo-grow-max 40 (the bands pass at 70%+: the
   cooldown was the pace), 600M steps.
+* pbr2b3_canon3 (3.568-3.721B, 03:16-03:28 UTC, --demo-cooldown 5 --demo-grow-max 40): the
+  curriculum crossed the WHOLE line in ~150M steps: 1170 -> 1095 (four moves) -> 725 -> ... ->
+  285 (bands 51-94%, step 40) -> backoffs at the run-up (290-295: 2.4/11.8%) -> 0 by 3.72B.
+  Deciles at the end (success per tenth of the spine): 58 / 57 / 64 / 71 / 44 / 25 / 60 / 99 /
+  95 / 89% - the step-40 advances skipped states; the tunnel exit + drop + ridge + launch decile
+  [940,1128) is the weakest (25%).
+* canon3's 3.644B greedy eval (score 3.233, all 9 still end in the pit region): the line from the
+  true start CHANGED - start room, tunnel west at ~240 u/s, exit at (151, -2,888) 255 u/s, the
+  air U-turn south-east, the ridge ride east at 546 u/s - but it rides 40 u NORTH of the crest
+  (y -2,961 vs the line's -3,035 on the south face) and leaves the ridge's east end LEVEL (vz +25
+  vs the line's +350..440 at z ~3,445-3,484), so it lands on the pit floor's east part (899,
+  -3,153, 3,314) at ~8 s and wanders there (3.0-3.23%).
+* The greedy line joins the spine at the tunnel's east part heading west (line_a state ~780-810);
+  states 0-779 are the explorer's run-up back east, which the greedy never flies but which held
+  67% of the band draws at tau 0-300. -> autoresearch/spines/pbr2b3_line_a_canon_780.npy (the
+  canonical spine from 780).
+* pbr2b3_canon4 (03:29 UTC): canon3's ckpt_latest (3.721B, md5 6b1335d2...) on the 780-spine,
+  tau0 350 (line 1130, just before the launch), --demo-rate 0.5 (a band must reach 50% before
+  tau moves earlier: consolidation, not coverage), the rest as canon3; 600M steps.
+
+### GATE 2 PASSED from the true start: score 3.995 (2026-10-24 03:41 UTC)
+* pbr2b3_canon4's first greedy eval (traj_3721920512, 0.5M steps after resuming canon3's final
+  3.721B weights): **score 3.995** (incumbent 3.236), best 4.00%, median 3.99%, 9/9 episodes past
+  the pit (3.79-4.00%): start room -> tunnel -> air U-turn -> ridge -> launch -> flight -> wall
+  bounce -> ramp U-turn -> north side -> west. Then 3.964 (3.797B) and 3.946 (3.873B): faster
+  (episodes 7.4-7.7 s instead of 8.7-10.6 s) with the same end.
+* Handed-on checkpoint: canon3's ckpt_latest (3,721,396,224, md5 6b1335d2..., the weights canon4
+  resumed and evaluated 0.5M steps later), placed as pbr2b3_canon4/ckpt_3721396224.pt so the
+  orchestrator's handon_ckpt (newest milestone at or before the best eval) finds it (checked).
+* Gate 3 (where all 18 episodes of those evals die): falling west off the north side at
+  (480-606, -2,680..-2,706, z ~3,380-3,396), 350-640 u/s, vz -380..-436, into trigger_teleport *209
+  (target start = a fall catch; x 451-762, y -3,393..-2,605, z 3,207-3,360: the pit's west part
+  under the north path). line_a itself ended there (its last cell, 3.93%, is the deepest GE6 got
+  before the same fall). The record crosses here at z ~3,500-3,530 and 700-750 u/s ("a U-turn
+  north -> west, then a long drop west"): a speed/height gate, the recipe's kind.
+* TRAINING is already past it: canon4's reservoir deepest 5.07% (3.92B) -> 5.42% (3.94B) - spine
+  episodes that cross the success line keep flying on the ratchet, and some clear the teleport.

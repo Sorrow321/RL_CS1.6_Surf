@@ -2,6 +2,27 @@
  "agent": "pbr2b3",
  "round": 2,
  "final": false,
- "best": null,
- "summary": "Round 2: pbr1b1's gate-2 backward curriculum on line_a, resumed from g2cur6 (3.285B). Found the 1235 wall's cause: the GE line's view is the random explorer's (up to 176 deg off the velocity) while the policy looks along its velocity and turns 5.6 deg/tick where the wall bounce needs ~2. Fix: tools/spine_canon_view.py (view along the velocity) + --demo-front-temp (yaw sigma x6 for band spawns' first 0.4 s): pbr2b3_canon2 crossed the bounce (1255 -> 1170 in 186M steps, bands 49-77%). Now pbr2b3_canon3 with --demo-cooldown 5 --demo-grow-max 40 (pace). Greedy evals still the pit (best 3.235, incumbent 3.236)."
+ "best": {
+  "score": 3.995,
+  "eval_file": "/home/steam/ar_pb/runs/pbr2b3/pbr2b3_canon4/traj_3721920512.jsonl",
+  "run": "pbr2b3_canon4",
+  "step": 3721920512,
+  "ckpt": "/home/steam/ar_pb/runs/pbr2b3/pbr2b3_canon4/ckpt_3721396224.pt",
+  "ckpt_step": 3721396224,
+  "ckpt_md5": "6b1335d283547a948bfd78d90e727e26",
+  "recipe": [
+   "resume chain: pbr1b1 g2cur6 (3.285B) -> pbr2b3_canon1 -> canon2 -> canon3 (3.721B)",
+   "--demo-file autoresearch/spines/pbr2b3_line_a_canon.npy (canon2/3), _canon_780.npy (canon4)",
+   "--demo-window 5 --demo-grow 5 --demo-front-frac 0.67 --demo-success-d 100 --demo-success-bonus 50",
+   "--keys-hold-spawn-duck --yaw-entropy 0",
+   "--demo-front-temp 0.5 --demo-front-ticks 40 --demo-front-view 6",
+   "--demo-cooldown 5 --demo-grow-max 40 (canon3/4), --demo-rate 0.5 (canon4)",
+   "--no-respawn-novel --respawn-backward-mix 0 --int-real-only 0 --respawn-front-perturb 0 --respawn-greedy 0 --respawn-greedy-stuck 0",
+   "--spawn-states autoresearch/spines/pbr1b1_entry_ge_states.npy --spawn-states-frac 0.3",
+   "--maxvel 3500"
+  ],
+  "resume_from": "/home/steam/ar_pb/runs/pbr2b3/pbr2b3_canon3/ckpt_latest.pt",
+  "commit": "6c5d117"
+ },
+ "summary": "Best 3.995 (incumbent 3.236): the greedy line from the true start passes gate 2 (the pit) and reaches 4.0% (canon4's first eval, 0.5M steps after resuming canon3's final 3.721B weights; handed-on ckpt = those weights, pbr2b3_canon4/ckpt_3721396224.pt). How: round 1's line_a curriculum had stalled 15 ticks before a wall bounce because the explorer's view (up to 176 deg off the velocity) and turn rate do not fit the policy; tools/spine_canon_view.py (view along the velocity) + --demo-front-temp (yaw sigma x6 for band spawns' first 0.4 s) crossed it, and --demo-cooldown 5 --demo-grow-max 40 crossed the remaining ~1,200 states in ~150M steps."
 }
