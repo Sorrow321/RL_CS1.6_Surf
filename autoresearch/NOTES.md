@@ -1187,3 +1187,12 @@ CPU beam_tas works locally: ~1,750 env-steps/s at 256 envs (3 threads), so a 512
   (no way over it). So at the corner the origin must sit in a ~180 u window, z ~2,650 (to make
   the turn onto the ramp) .. ~2,830 (under the ceiling): the record passes x 377 at 2,782. A
   launch window, not just a higher launch - the kind of precise line gate 2's curriculum needed.
+
+### Harness issue (for the operator): one affordable box for four branches (23:05 UTC)
+Since ~20:00 UTC the budget pace (credit ~43 $, reserve 10 $, ~47 h left -> 0.70 $/h) admits
+exactly one 5080 (0.56-0.60 $/h) for the whole fleet, and the cheapest passing offers are all
+5080s. Whichever branch rents first holds it; the other three cannot run a single eval, and
+`end_round` then picks among branches with valid evals only, so the round reduces to that race
+(this branch polls `rent --dry-run` every 4 min and has not got in since 19:41). Options: a pace
+that admits K boxes before forking K branches, fewer branches per round while credit is low,
+or cheaper offers in the query (a 3090 at <= 0.18 $/h would fit beside the 5080).
