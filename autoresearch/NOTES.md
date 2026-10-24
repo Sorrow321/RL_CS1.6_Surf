@@ -1066,3 +1066,36 @@ beam found the policy's own way over the wall in 100 s).
   --exact-chains (32 u x energy 16 cells) rooted at the line's own states before the stall and
   splice the deepest chain in. Training's own frontier was ~20.8% at the end.
 * Box 57454337 (RTX 5080, 0.60 $/h) released at wrap-up.
+
+## pbr3b2 (round 3, slot 2) - 2026-10-24 19:40 UTC start
+
+### Budget: no box at the start
+* `box.py rent` refused on the budget pace: credit $18.46, reserve $10, 48.6 h left -> 0.174 $/h
+  allowed, and the only offers passing the query were 5080s at 0.56-0.60 $/h. After a top-up
+  (~20:00 UTC, credit $43.45) the pace is 0.69 $/h = ONE box fleet-wide, and another branch
+  had it. Retried at every wakeup.
+* Local CPU (4 vCPU, shared with the other branches): beam_tas runs at ~820 env-steps/s with 64
+  envs - a 4,096-env beam from the true start would take hours here; on the box it is ~2 min.
+
+### --auto-spine: round 2's search -> curriculum loop inside one launch (new, flag off = bit-identical)
+Round 2 crossed six gates with one hand-driven loop (beam_tas from the true start on the newest
+weights -> cut the frontier line -> the next --demo-file); each cycle waited for an agent wakeup
+and a relaunch. `--auto-spine` (python/surfgym/autospine.py, train_fast.py) does it in the trainer:
+* after every greedy eval: when `--auto-spine-quorum` (5 of 9) episodes reach the spine's success
+  line (min d on the shaping field <= d(spine end) + --demo-success-d), a beam is wanted;
+* next iteration: `save_ckpt("autobeam")` and tools/beam_tas.py as a SUBPROCESS (4,096 copies,
+  32 greedy, d-ranked, resample 25, `--skip-gate --save-frontier --route-file none`, cap = 2x the
+  eval's longest episode + 20 s) - the trainer keeps training;
+* when it ends: the frontier line (exact replay) is cut at its minimum d, clocks zeroed, view along
+  the velocity (spine_canon_view's rule) -> runs/<run>/autospine_<k>.npy + a provenance sidecar;
+  accepted only if d(cut) + M is past both the line in force and the eval's quorum-th best (else
+  retry after `--auto-spine-retry` 4 evals with the next proposal seed);
+* the swap: a new DemoCurriculum on it (same window/grow/pace kwargs, tau at its end), the success
+  line moved, the bonus re-armed, in-flight demo indices dropped, config demo_file = the new spine
+  (so a resume continues on it). TRAIN_ONLY in record_ckpt.
+* Generic (0b): the policy's own sampling from the true start + the shaping field; no map input.
+* The ~20.4% catch (analysis, the record is ANALYSIS ONLY): the incumbent's line tracks the record
+  within ~70 u to ~19.9% (x ~180-390, y ~-2,330, z ~2,750-2,800, ~1,200 u/s); there the record turns
+  hard SOUTH (vy -717 -> -1,113 at x ~380-440) and surfs down to z 2,414 at (550, -2,976) before a
+  U-turn up a south ramp; the policy turns gently (vy -224 -> -838), drifts east to x ~650-700 and
+  falls into the catch at z ~2,385. A steering gate, the kind a policy-guided beam has found before.

@@ -4803,6 +4803,49 @@ def main() -> None:
     ap.add_argument("--demo-front-view", type=float, default=None,  # None = 1 + T
                     help="--demo-front-temp: the yaw head's sigma multiplier inside the hot "
                          "window, instead of 1 + T (the keys stay at 1 + T)")
+    ap.add_argument("--auto-spine", action="store_true",
+                    help="--demo-file + --demo-success-d: the search -> curriculum loop in one "
+                         "launch (surfgym/autospine.py). When --auto-spine-quorum of a greedy "
+                         "eval's episodes reach the spine's success line, tools/beam_tas.py runs "
+                         "as a subprocess on a checkpoint of the current weights (the policy's "
+                         "own population search from the true start, d-ranked); its frontier "
+                         "line, cut at its minimum d with the view along the velocity, replaces "
+                         "the spine (the curriculum restarts at its end, the success line moves "
+                         "with it) when it reaches past what the greedy line already does. Off "
+                         "= today, bit-identical; config only when set")
+    ap.add_argument("--auto-spine-envs", type=int, default=4096,
+                    help="--auto-spine: beam_tas population (default 4096)")
+    ap.add_argument("--auto-spine-greedy", type=int, default=32,
+                    help="--auto-spine: beam_tas greedy envs, a floor at the greedy line "
+                         "(default 32)")
+    ap.add_argument("--auto-spine-quorum", type=int, default=5,
+                    help="--auto-spine: greedy-eval episodes that must reach the success line "
+                         "before the next beam (default 5 of the 9; 0 = a beam after every "
+                         "eval)")
+    ap.add_argument("--auto-spine-retry", type=int, default=4,
+                    help="--auto-spine: evals to wait after a beam that found nothing deeper "
+                         "(the next one draws another proposal seed; default 4)")
+    ap.add_argument("--auto-spine-canon", type=int, default=1, choices=(0, 1),
+                    help="--auto-spine: 1 = the new spine's view along the velocity on rows "
+                         "faster than 100 u/s (tools/spine_canon_view.py), 0 = as sampled")
+    ap.add_argument("--auto-spine-max-ticks", type=int, default=0,
+                    help="--auto-spine: the beam's cap in physics ticks (0 = twice the wanting "
+                         "eval's longest episode + 20 s, within --ep-ticks; the beam stops "
+                         "earlier when its whole population has died)")
+    ap.add_argument("--auto-spine-ge-minutes", type=float, default=10.0,
+                    help="--auto-spine: when a beam's line is not deep enough, Go-Explore phase 1 "
+                         "(tools/explore_phase1.py --exact-chains, 32 u x energy 16 cells, "
+                         "reward-free) runs this many minutes rooted at 25 states of that line's "
+                         "last 5 s before its best, and tools/ge_replay.py's deepest chain "
+                         "spliced onto it is judged the same way (round 2's fallback at three of "
+                         "its gates); 0 = beams only")
+    ap.add_argument("--auto-spine-ge-threads", type=int, default=0,
+                    help="--auto-spine: Go-Explore threads (0 = half the CPUs the container "
+                         "allows; the trainer keeps the rest)")
+    ap.add_argument("--auto-spine-beam-tool", default=None,
+                    help="--auto-spine: the search script (default tools/beam_tas.py; it takes "
+                         "beam_tas's arguments and writes <out-dir>/beam_frontier.npz) - a stub "
+                         "for the CPU tests")
     # ---- expert iteration: distil the planner's line (surfgym/bc.py) ----
     ap.add_argument("--bc-file", default=None,
                     help="behaviour-cloning rows from tools/plan_to_bc.py "
@@ -14612,6 +14655,16 @@ def main() -> None:
         meta["config"]["demo_cooldown"] = int(args.demo_cooldown)
     if args.demo_file and args.demo_grow_max is not None:
         meta["config"]["demo_grow_max"] = int(args.demo_grow_max)
+    # --auto-spine: written ONLY when on (a record of the run, never restored); demo_file then
+    # names the spine in force at each save, so a resume picks up the newest one
+    if args.auto_spine:
+        meta["config"]["auto_spine"] = {"envs": int(args.auto_spine_envs),
+                                        "greedy": int(args.auto_spine_greedy),
+                                        "quorum": int(args.auto_spine_quorum),
+                                        "retry": int(args.auto_spine_retry),
+                                        "canon": int(args.auto_spine_canon),
+                                        "max_ticks": int(args.auto_spine_max_ticks),
+                                        "ge_minutes": float(args.auto_spine_ge_minutes)}
     # --respawn-greedy-temp: written ONLY when on (a record of the run, never restored)
     if args.respawn_greedy_temp is not None:
         meta["config"]["respawn_greedy_temp"] = float(args.respawn_greedy_temp)
@@ -15439,6 +15492,45 @@ def main() -> None:
         DEMO_BONUS = float(args.demo_success_bonus)
         print(f"--demo-success-bonus {DEMO_BONUS:g}: an episode whose record crosses d <= "
               f"{DEMO_END_D:,.0f} is paid {DEMO_BONUS:g} once (one that starts past it never is)")
+    AUTO = None                           # --auto-spine: the search -> curriculum loop
+    if args.auto_spine:
+        _bad = [f for f, on in (("no --demo-file", demo is None),
+                                ("no --demo-success-d", DEMO_END_D is None),
+                                ("--maps", bool(args.maps)), ("--ddp", D.enabled)) if on]
+        if _bad:
+            raise SystemExit("--auto-spine moves a single-map --demo-file curriculum and its "
+                             "--demo-success-d line: " + ", ".join(_bad))
+        if int(args.auto_spine_envs) < 2 or not 0 <= int(args.auto_spine_greedy) \
+                < int(args.auto_spine_envs):
+            raise SystemExit("--auto-spine-envs >= 2 and 0 <= --auto-spine-greedy < it")
+        from surfgym.autospine import AutoSpine, beam_tas_argv, ge_argv, replay_argv
+        _amap = Path(args.map).resolve()
+        _gthr = int(args.auto_spine_ge_threads)
+        if _gthr <= 0:
+            try:
+                _gthr = len(os.sched_getaffinity(0))
+            except AttributeError:            # pragma: no cover - Windows
+                _gthr = os.cpu_count() or 8
+            _gthr = max(1, min(_gthr, _cgroup_cpu_quota() or _gthr) // 2)
+        AUTO = AutoSpine(out, _df, beam_tas_argv(ROOT, _amap, int(args.auto_spine_envs),
+                                                 int(args.auto_spine_greedy),
+                                                 tool=args.auto_spine_beam_tool),
+                         margin=float(args.demo_success_d), quorum=int(args.auto_spine_quorum),
+                         retry=int(args.auto_spine_retry), canon=bool(args.auto_spine_canon),
+                         ep_ticks=int(args.ep_ticks), max_ticks=int(args.auto_spine_max_ticks),
+                         ge_cmd=ge_argv(ROOT, _amap, float(args.maxvel), _gthr,
+                                        act_every=int(args.act_every)),
+                         replay_cmd=replay_argv(ROOT, _amap),
+                         ge_minutes=float(args.auto_spine_ge_minutes),
+                         log=lambda m: print(m, flush=True))
+        print(f"--auto-spine: after a greedy eval with >= {args.auto_spine_quorum} episodes at "
+              f"or past the success line, beam_tas ({args.auto_spine_envs} copies of the "
+              f"current weights, {args.auto_spine_greedy} greedy) searches from the true start "
+              f"in a subprocess; a frontier line reaching past the greedy's own replaces the "
+              f"spine (retry after {args.auto_spine_retry} evals when it does not)"
+              + (f"; a stalled beam line gets {args.auto_spine_ge_minutes:g} min of Go-Explore "
+                 f"({_gthr} threads) from its last 5 s" if args.auto_spine_ge_minutes > 0
+                 else ""))
 
     def _demo_bonus_pay(r, ended):
         """--demo-success-bonus: pay the rows whose ratchet record (after this reward call; an
@@ -17796,6 +17888,29 @@ def main() -> None:
             _tick_retune(global_step)
         fleet.set_step(global_step)   # authoritative (survives resume)
         t_pool = tm.now()
+
+        if AUTO is not None:
+            # --auto-spine: a finished beam's line becomes the spine (the curriculum restarts at
+            # its end, the success line moves with it), then the beam the last eval wanted starts
+            _res = AUTO.poll(DEMO_END_D)
+            if _res is not None:
+                demo = DemoCurriculum(_res.states, window=args.demo_window, rate=args.demo_rate,
+                                      min_ep=args.demo_min_ep, grow=args.demo_grow,
+                                      front_frac=float(args.demo_front_frac), **_dkw)
+                DEMO_END_D = _res.d_cut + float(args.demo_success_d)
+                DEMO_PAID[0] = None           # re-armed on the new line at the next reward call
+                demo_idx[:] = -1              # in-flight episodes started on the old spine
+                try:
+                    args.demo_file = str(_res.path.relative_to(ROOT))
+                except ValueError:
+                    args.demo_file = str(_res.path)
+                meta["config"]["demo_file"] = args.demo_file
+                print(f"[{global_step:>13,d}] auto-spine: the curriculum now runs on "
+                      f"{args.demo_file} ({demo.n} states, starts [{demo.tau},{demo.n - 1}]); "
+                      f"success line d <= {DEMO_END_D:,.0f}", flush=True)
+            if AUTO.want and not AUTO.running():
+                save_ckpt("autobeam")
+                AUTO.start(out / "ckpt_autobeam.pt", global_step)
 
         if SPAWN_STATES is not None and it_no % 20 == 0:
             # --spawn-states: re-read a refreshed file (an outer archive loop replaced it)
@@ -20331,6 +20446,10 @@ def main() -> None:
                       f"{f'[HELDOUT {_s.tag}]' if _s.heldout else f'[{_s.tag}]' if MULTI else ''}: fwd {_f:7.0f}u"
                       f"  path {_p:7.0f}u  peak {_v:6.0f} u/s"
                       f"{prog_note} -> {path.name}")
+                if AUTO is not None and not _s.heldout:
+                    # --auto-spine: does a quorum of this eval reach the success line?
+                    print(f"[{global_step:>13,d}] "
+                          + AUTO.note_eval(path, global_step, DEMO_END_D), flush=True)
                 if (args.save_best and not MULTI and not _s.heldout and p_nfin
                         and fin_best < best_fin_saved):
                     # --save-best: keep the weights behind every new best greedy finish
@@ -20828,6 +20947,10 @@ def main() -> None:
         meta["tick_hz_final"] = round(TICK.hz, 3)
         meta["tick_schedule"] = tick_sched.to_dict()
         meta["tick_changes"] = tick_log
+    if AUTO is not None:
+        # --auto-spine: stop a beam still running; the run's beams, as they went
+        AUTO.close()
+        meta["auto_spine"] = AUTO.state_dict()
     if D.is_main:
         (out / "run.json").write_text(json.dumps(meta, indent=2),
                                       encoding="utf-8")
