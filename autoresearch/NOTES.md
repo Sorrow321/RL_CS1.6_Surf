@@ -496,3 +496,9 @@ pbr1b2_ge16/ckpt_1260388352.pt, provenance as arm 13's):
 (win line = the chain end's d + 128, ~3.6%; tau 640 starts on the rim, the band walks back into
 the traverse). Watch the band at ~520-566: 0% beside ~100% is the move; arm 13 showed PPO lifting
 such a band 20% -> 40% in ~200M steps when the policy is clean.
+
+### 2026-10-24 00:13 UTC - final arm: pbr1b2_ge17, the pocket traverse by curriculum
+
+* A 5080 freed up at 00:06 (box 57440978, 0.601 $/h). arm 17 = the ready-to-run plan above:
+  arm 16's 1,260M weights + the full deduplicated chain as the spine (--demo-tau-start 640, on the
+  south rim; win line ~3.6%) + the plain energy potential. ~75 min of training before wrap-up.
