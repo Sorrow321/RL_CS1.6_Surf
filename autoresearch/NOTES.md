@@ -491,3 +491,9 @@ The goal field is blind to all of it (the start's field minimum is the SW corner
 3. A search rooted at FAST ramp crossings (energy cells at the ramp) for gate 2's energy.
 * The trainer is deterministic per seed on this box: a replicate needs `--seed`.
 * Box uplink 22 KB/s: pull checkpoints by hand (see the harness-issue entry), early.
+* 00:44 `pbr1b3_sgx9` (seed 1): 222 / 220 / 252 / 256 / 245 / 245 / 255 / 227 / 130 u
+  (2M-606M), no climb at all, then the same drift into early deaths as sgx7. The climb rate of
+  the surfer warm start is seed-dependent: 1 of 3 seeds+codes (sgx1) got through the window,
+  1 (sgx7) climbed onto the sill without the window, 1 (sgx9) never climbed. Stopped.
+  `pbr1b3_sgx10` (00:44) = the first test of the next round's #1: sgx1's 334.5M with a
+  learning-rate cut to 1e-4 (band curriculum), for the round's last ~45 min.
