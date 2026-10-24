@@ -902,3 +902,14 @@ round 1's fixed grow 20 / cooldown 20 they would have taken ~130M).
   tests/python/test_demo_pull.py (2 passed).
 * **pbr2b4_cur10** (10:45 UTC): resume cur9 final (7.965B, md5 3fddfcbf...) + cur9's flags +
   `--demo-pull-stats` (tau from the end).
+
+### BREAKTHROUGH 2: 12.730 - the rim, the platform jump and the platform route (11:05 UTC)
+* cur10 evals: 6.982 (resume) / 7.010 / 6.987 / 7.202 / **12.674 (8.267B) / 12.730 (8.343B, best
+  12.7%, median 12.6%, 9/9)**. The greedy line now CLEARS the rim (h just past it 3,777-3,802 in
+  every episode; cur9 3,357-3,427), carries the energy up onto the platform and flies the platform
+  route to 12.6-12.7% - the route it had learned from the platform-chain spawn states since cur4.
+* What did it: `--demo-pull-stats`. With the curriculum scored on the pull line (7.06%, reachable
+  only by the rim-clearing chain) and the anchor's +50 still paid at 6.92%, the band settled on the
+  rim-clearing approach instead of the first 10 states, and the policy learned it within ~20 min
+  (cur9, same flags without pull-stats, never did in 20 min; cur7, the deep line alone with no
+  anchor, collapsed). Pulled cur10 ckpt_latest 8.369B (md5 8fb635ba...).
