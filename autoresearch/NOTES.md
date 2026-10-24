@@ -957,3 +957,6 @@ round 1's fixed grow 20 / cooldown 20 they would have taken ~130M).
   ckpt_10094116864.pt (11.5M steps before that eval, md5 0555de56...) as the hand-on snapshot.
   (score.py lists evals lexicographically: 11-digit steps sort before 10-digit ones - read the whole
   list, not its tail.)
+* cur11 at 13:25 UTC: 19.016 / 19.602 / 19.640 / 19.828 / 19.830 / **20.017 (10.483B, best 20.0%,
+  median 19.6%)**. Pulled the watcher's ckpt_10482614272.pt (0.5M steps before it, md5 6676ffcc...).
+  Box extended to 14:10 UTC for the wrap-up pulls.
