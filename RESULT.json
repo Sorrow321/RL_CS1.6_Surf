@@ -3,17 +3,17 @@
  "round": 2,
  "final": false,
  "best": {
-  "score": 6.956,
-  "eval_file": "/home/steam/ar_pb/runs/pbr2b4/pbr2b4_cur6/traj_6433013760.jsonl",
-  "run": "pbr2b4_cur6",
-  "step": 6433013760,
-  "ckpt": "/home/steam/ar_pb/runs/pbr2b4/pbr2b4_cur6/ckpt_latest.pt",
+  "score": 7.009,
+  "eval_file": "/home/steam/ar_pb/runs/pbr2b4/pbr2b4_cur8/traj_7099383808.jsonl",
+  "run": "pbr2b4_cur8",
+  "step": 7099383808,
+  "ckpt": "/home/steam/ar_pb/runs/pbr2b4/pbr2b4_cur8/ckpt_latest.pt",
   "recipe": [
-   "--resume pbr2b4_cur5 final (6.357B)",
+   "--resume pbr2b4_cur6 final (6.797B)",
    "--maxvel",
    "3500",
    "--demo-file",
-   "runs/pbr2b4_ge6/spine_d.npy = autoresearch/spines/pbr2b4_spine_d.npy (md5 fbc3f829)",
+   "runs/pbr2b4_ge8/spine.npy = autoresearch/spines/pbr2b4_spine_e.npy (md5 8da828ad)",
    "--demo-window",
    "10",
    "--demo-grow",
@@ -63,10 +63,10 @@
    "--stall-secs",
    "8"
   ],
-  "resume_from": "pbr2b4_cur5 final (6.357B, md5 71fb8398; cur5 <- cur4 <- cur3 <- cur2 <- cur1 <- pbr1b1_g2cur6)",
-  "commit": "1005e2e",
-  "ckpt_step": 6776946688,
-  "ckpt_md5": "cdaa5299870c200d9381a9327de29261"
+  "resume_from": "pbr2b4_cur6 final (6.797B, md5 9615ee3e; cur6 <- cur5 <- cur4 <- cur3 <- cur2 <- cur1 <- pbr1b1_g2cur6)",
+  "commit": "3018873",
+  "ckpt_step": 7142899712,
+  "ckpt_md5": "810cf090d48de69ebde89f02783fa029"
  },
- "summary": "Best 6.956 (cur6 6.433B; incumbent 3.236): 9/9 greedy episodes from the TRUE START reach ~6.9-7.0%. Loop: own greedy line -> exact-chain Go-Explore rooted at its last seconds (or before its biggest energy drop) -> spine = own prefix + chain -> backward curriculum (--demo-adapt, --demo-replay) with per-call energy shaping. Gates passed: the pit (3.2%), the fall catch (4.0%), the 6.7% rim (a GE line from the policy's own pre-rim states that clears it and keeps ~200 u more energy). Open: a platform ~100 u above the line's end needs ~3,700 u of energy height on the ramp (the line has ~3,550; a x1.5 speed probe reaches 12.6% from there)."
+ "summary": "Best 7.009 (cur8 7.099B; incumbent 3.236): 9/9 greedy episodes from the TRUE START reach ~7.0%. Loop: own greedy line -> exact-chain Go-Explore rooted at its last seconds (or before its biggest energy drop) -> spine = own prefix + chain -> backward curriculum (--demo-adapt, --demo-replay) with per-call energy shaping. Gates passed: the pit (3.2%), the fall catch (4.0%), the 6.7% rim (a GE line from the policy's own pre-rim states that clears it and keeps ~200 u more energy). Open: a platform ~100 u above the line's end needs ~3,700 u of energy height on the ramp (the line has ~3,550; a x1.5 speed probe reaches 12.6% from there)."
 }

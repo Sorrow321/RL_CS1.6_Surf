@@ -879,3 +879,7 @@ round 1's fixed grow 20 / cooldown 20 they would have taken ~130M).
   paying B2 once per episode beside the --demo-success-d anchor; the curriculum's statistics stay on
   the anchor. One line cannot both anchor the current line and pull toward a deeper spine end (cur7).
   tests/python/test_demo_pull.py (2 passed, CPU).
+* cur8 (09:44 UTC, 7.14B): evals 6.945 (resume point) / 6.984 / 6.993 / 6.998 / **7.009 (7.099B,
+  median 7.0%)** - climbing steadily with the anchored success line on GE8's spine (peak speed
+  899-911 u/s, frontier 3,880-3,895 u). Kept running instead of the pull-line arm. Pulled cur8
+  ckpt_latest 7.143B (md5 810cf090...).
