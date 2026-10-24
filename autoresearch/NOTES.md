@@ -689,3 +689,11 @@ ckpt_latest 3.285B (md5 a6559938..., the most curriculum progress), both named i
   slow stretches are the ones g2cur6 already flies from aligned spawns (1300 / 1500 5/5), so every
   part of line_a is covered by either a policy-frame re-fly (the fast parts) or the policy's own
   skill (the slow tail).
+
+### Box at last (2026-10-24 09:02 UTC)
+* Box 57492384: RTX 5080, Florida (machine 125600), 0.601 $/h, ssh -p 29155 root@99.82.217.53, rented
+  09:02 when the fleet's headroom jumped to 1.17 $/h (another box released). Deadline 3 h (extend).
+* Arm 1 = pbr2b2_vv1: resume pbr1b1_g2cur6 ckpt_latest (3.285B, md5 a6559938...) + the line_a
+  curriculum (window 10, grow 20, tau0 1240, front-frac 0.67, success-d 100, success-bonus 50,
+  keys-hold-spawn-duck, yaw-entropy 0, 30% entry_ge spawn states, the demo-incompatible spawn options
+  off as in pbr1b1) + `--demo-view-velocity --demo-cooldown 5`, --ckpt-every 1e8, 2e9 steps max.
