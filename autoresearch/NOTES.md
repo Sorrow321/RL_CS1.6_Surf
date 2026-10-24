@@ -708,3 +708,18 @@ ckpt_latest 3.285B (md5 a6559938..., the most curriculum progress), both named i
   ridge's curve at ~750 u/s were never a band, only 33% uniform draws over 770 states). Rule: keep
   grow <= window. **pbr2b2_vv2** (09:22) = vv1's ckpt_latest (3.503B, md5 574f5248...) with
   `--demo-grow 10 --demo-window 10 --demo-tau0 1120`, everything else as vv1. Box deadline -> 13:47.
+* **vv2 result** (3.503-3.827B, 09:22-10:05 UTC): contiguous bands took the curriculum 1120 -> 10 in
+  ~40 min (98% success per band through the ridge, the drop, the fast tunnel slide and the run-up),
+  and the GREEDY line from the true start passed the pit while the curriculum was still at ~490:
+  evals 3.205 / 3.213 / **3.991** (3.655B) / 3.989 / 3.972 - 8-9/9 episodes reach 3.81-3.99% in
+  ~9-10 s and die at z ~3,380-3,396 just past line_a's end. Snapshots pulled: ckpt_3603431424.pt
+  (md5 f694bc7e...), ckpt_3703570432.pt (md5 ad5650aa...).
+* **The next gate, searched (09:45-10:00 UTC)**: explore_phase1 --view-velocity --exact-chains, 8
+  threads on the box next to the trainer, 15 min, 3.2M runs, rooted at 250 of the policy's OWN states
+  from the 1-2.5 s before those deaths (record_ckpt --dump-states of vv2 3.738B, 9/9 at 3.86-3.99%):
+  12,202 cells, best **6.68%**, 7,628 cells past 4%, 4,187 past 5%, 801 past 6%. Deepest chain
+  replayed exactly -> line_b (1,383 states, autoresearch/spines/pbr2b2_line_b.npy).
+* **pbr2b2_vv3** (10:05): vv2's ckpt_latest (3.827B, md5 e6b074af...) + `--demo-file spine_b` (the
+  policy's own greedy recording ticks 0-739 from the true start + line_b, 2,123 states), tau0 = the
+  end, grow 10 / window 10 / cooldown 5, success-d 100 (d <= 53,432 = 6.50%), bonus 50, aligned views,
+  spawn states = entry_ge_states + line_a x4 (keeps the route learned so far practised).

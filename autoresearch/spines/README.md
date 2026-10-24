@@ -23,3 +23,12 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   (`explore_phase1 --roots-spine ... --roots-last 0`). Same provenance as line_a (own search).
 * `pbr2b2_line_a_end_roots.npy` (pbr2b2; 21 states): `pbr1b1_line_a.npy[1780:1881:5]` - the line's
   last second (3.5-3.93%), as Go-Explore roots for the stretch past its end.
+* `pbr2b2_line_b.npy` (pbr2b2; 1,383 states, md5 8201dc2a5a37c428b873865ee6b42289): one exact line from
+  the policy's OWN greedy state ~1-2.5 s before its 3.9-4.0% death (pbr2b2_vv2 at 3.738B, recording
+  ep 0, tick 740) to 6.68% on the grader field at (-1,015, -2,984, 3,016). `explore_phase1
+  --view-velocity --exact-chains` (policy-frame uniform bursts, 64 u x --cell-energy 32, 4,096 envs,
+  8 threads, 15 min, 3.2M runs, rooted at 250 of that recording's own pre-death states) +
+  `ge_replay.py` (12/12 links exact).
+* `pbr2b2_spine_b.npy` (2,123 states, md5 00a9774aea71f4fdd40db09aee2c3530): that greedy recording's
+  ticks 0-739 from the TRUE start + line_b - one time-ordered spine of exact consecutive own states,
+  the `--demo-file` of pbr2b2_vv3.
