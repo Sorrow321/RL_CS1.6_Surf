@@ -15630,10 +15630,13 @@ def main() -> None:
             _ok = np.flatnonzero(d <= float(d.min()) + 500.0)
             stalls.append(int(_ok[0]) if len(_ok) else len(e) - 1)
             # where the episode committed to its end: the last map contact before a fatal
-            # ballistic flight longer than 0.25 s (the --respawn-greedy-contact rule)
-            _c = last_contact_vz(e[:, 6], int(0.25 * tps))
-            if len(e) - 1 - _c > int(0.25 * tps):
-                launches.append(_c)
+            # ballistic flight longer than 0.25 s (the --respawn-greedy-contact rule) - for an
+            # episode that died at its best; one whose best came > 3 s before its end STALLED
+            # (the eval's patience cut ended it, mid-hop or not) and commits at its stall
+            if len(e) - 1 - int(np.argmin(d)) <= int(3.0 * tps):
+                _c = last_contact_vz(e[:, 6], int(0.25 * tps))
+                if len(e) - 1 - _c > int(0.25 * tps):
+                    launches.append(_c)
         bests = np.asarray(bests)
         m = int((bests <= DEMO_END_D).sum())
         med = float(np.median(bests))
