@@ -515,3 +515,12 @@ the backward curriculum (--demo-file + --demo-success-d) on the found line. Not 
   costs precision near the wall) before recovering to 22-35%, and [1235,1239] stayed at
   0.2-0.3% - unchanged. Yaw exploration as a one-off kick is not the lever; a held view
   temperature for curriculum spawns, or a line without this manoeuvre, are what is left.
+* `explore_phase1 --cell-heading H` (new, flag off bit-identical): the cell key also holds H
+  sectors of the horizontal velocity heading x rising/not. GE7 = GE6's settings + --cell-heading 8
+  (x16 keys), 15 min (00:02-00:17 UTC): 211,596 cells (GE6: 15,006 in 6 min), best = the pit
+  (52,568 u on the tool field), NOTHING past it - the finer key spreads 4,096 envs too thin; GE6
+  found the launch in ~4 min. A coarser heading (2-4 sectors) or a much longer search is what is
+  left to try for a second lineage past the pit.
+* Box 57382830 released 00:18 UTC (nothing left worth running before the 01:34 wrap-up).
+  Pulled: g2cur's ckpt_latest (1.403B, the best eval's, md5 b8b53646...) and g2cur6's
+  (3.285B, the most curriculum progress without the sigma edit, md5 a6559938...).
