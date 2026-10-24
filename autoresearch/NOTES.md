@@ -902,3 +902,17 @@ beam found the policy's own way over the wall in 100 s).
   (beam4/5: up to 3,690) - not better.
 * GE_g7 (07:36 UTC): 32 u cells x energy 16, 29 roots on the newest beam line's north side ->
   descent (ticks 640-780, stride 5), 12 min.
+* GE_g7 (32 u x energy 16 cells, 12 min, 270,929 cells, 1.38M runs): deepest **7.202%** at
+  (-1,008, -3,000, 3,315) sliding up the wall face (15 u under its top), still NO cell west of
+  x -1,030; best h after the landing 3,722. No search of this round gets over the wall.
+* The tunnel (greedy beam6 evals): the line enters at x 645 at ~70 u/s (h 3,735; the precision
+  entry from the conveyor plate) and leaves at x ~80 at ~390 u/s (h ~3,809) after 2.1 s - ~150
+  u/s per second, the optimal air-strafe gain at those speeds (30^2/(2v) per tick); the record
+  enters at ~500-600 from its pump. The ~100-160 u energy deficit that ends this route at the x
+  -1,015 wall is the start room's: closing it means a pumped start (east half-pipe, then into the
+  tunnel at speed) - the long detour against the field that no search found (round 1 and the
+  spawn GE above), the planner question of CLAUDE.md 0c.
+* beam6 evals 7.156 / 7.067 / 7.088 / 7.147 / 7.121; stopped at 6.124B (ckpt md5 4a2869c2...,
+  pulled). pbr2b3_beam7 (07:53 UTC): its weights + beam4's flag set with `--energy-pot 8` (was 3):
+  a stronger price on energy so the policy strafes for it in the flight / U-turn / north side,
+  where its line now only holds h level.
