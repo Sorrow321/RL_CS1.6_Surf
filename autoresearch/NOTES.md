@@ -896,3 +896,8 @@ pbr1b1_g2cur6/ckpt_latest.pt 3.285B, md5 a6559938..., both present).
   lossy (the record's line is near-lossless; the policy loses ~160 on the south side, ~350-570 in
   one crash, ~80 per hop)? lb3 regressed in its first 260M steps; its long-run effect was never
   measured. Rent refused at 09:30 (no offer within the fleet's budget pace) - retrying.
+* The long per-call energy test was NOT RUN: rent refused at 09:30, 09:51, 10:12, 10:33 and 10:55
+  UTC (no qualifying offer within the fleet's budget pace; the market listed none under the caps
+  and blocklist). After ~11:00 a slow reward mechanism has too little time before the 13:37
+  wrap-up to say anything. It stays the first cheap experiment for a later round (from
+  pbr2b1_lb5 ckpt_latest 5.292B, watching `tools/energy_budget.py` on its evals).
