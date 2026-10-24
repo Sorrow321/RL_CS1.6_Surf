@@ -510,3 +510,8 @@ the backward curriculum (--demo-file + --demo-success-d) on the found line. Not 
   head's log sigma edited -4.53 -> log 0.3 (the policy's yaw exploration had collapsed to 0.011
   rad under --yaw-entropy 0), same curriculum (grow/window 5, tau0 1235). Readout: does band
   [1235,1239] move within the hour; does the greedy start room survive the noisier training.
+* g2cur7 result (3.285-3.44B, ~45 min): the policy gradient shrank the restored yaw sigma
+  0.27 -> 0.19 -> 0.12 -> 0.08 within ~150M steps, band [1240,1244] dropped to 12-17% (noise
+  costs precision near the wall) before recovering to 22-35%, and [1235,1239] stayed at
+  0.2-0.3% - unchanged. Yaw exploration as a one-off kick is not the lever; a held view
+  temperature for curriculum spawns, or a line without this manoeuvre, are what is left.
