@@ -1,7 +1,7 @@
 {
  "agent": "pbr1b4",
  "round": 1,
- "final": false,
+ "final": true,
  "best": {
   "score": 3.236,
   "eval_file": "/home/steam/ar_pb/runs/pbr1b4/pbr1b4_bc3/traj_3659005952.jsonl",
@@ -42,7 +42,8 @@
    "0"
   ],
   "resume_from": "pbr1b4_bc2 ckpt_latest 3,205,496,832 <- pbr1b4_bc ckpt 2,425,880,576 (BC round 1) <- pbr1b4_ys2 2,142,765,056 (+spawn v6, SIL) <- pbr1b4_ys 1,890,582,528 (recipe + --init-weights sid_ref + --time-pen 0 + --yaw-sigma-max 0.5 + Go-Explore spawn files) <- --init-weights $AR_HOME/incumbent/sid_ref/ckpt.pt",
-  "commit": "2bf8033"
+  "commit": "425b849f8dd4a073fea25c4195a4ab6b745d9b0c",
+  "commit_note": "the code commit pbr1b4_bc3 recorded in run.json (git.dirty true on the box); branch head = this wrap-up commit"
  },
- "summary": "3.236 (pbr1b4_bc3 @3.659B; 0.4% for every pure-RL arm). The start is a deceptive trap (wall + push-down chute; exit = a crawl-space tunnel needing a duck in our core). Passed by EXPERT ITERATION: Go-Explore (explore_phase1, new --goal-progress) finds the exit; tools/beam_tas.py policy-guided search (--objective progress along tools/self_route.py, --eps now allowed under --keys-hold) finds lines from the true start into the chamber in ~4/10 waves; tools/plan_to_bc.py distils them; a warm resume with --bc-file + spawns along the replayed lines' climb windows makes the greedy line pass the start (median 3.2% since 2.955B). New flags: --init-weights, --yaw-sigma-max (recipe: --time-pen 0 --yaw-sigma-max 0.5). The next wall is the chamber: a kill floor under a deceptive U-turn that needs speed - the tunnels are surf channels that keep speed, so carry it in (half-pipe) or land the drop on the corridor ridge. RL alone, SIL, energy everywhere, energy-ranked search, speed-keyed Go-Explore: nulls there. Chamber gate quantified (core, NOTES 23:45): the way on is the north pocket's ceiling window (x ~790, z 3500-3540) at >= 500-800 u/s westward = energy height ~3,710-3,760; our line reaches the corridor floor with ~3,550."
+ "summary": "FINAL 3.236 (pbr1b4_bc3 @3,659,005,952; ckpt_3659005952.pt = the snapshot AT the eval step). Every greedy eval since 2.955B: 9/9 episodes leave the sealed start and stop in the chamber (median 3.2%); every pure-RL arm stayed at 0.4%. START TRAP passed by EXPERT ITERATION: Go-Explore (tools/explore_phase1.py, --goal-progress) finds the exit; tools/beam_tas.py policy-guided search (--objective progress along a tools/self_route.py line, --eps under --keys-hold) finds lines from the true start; tools/plan_to_bc.py distils them; warm resume with --bc-file + spawns on the replayed lines' climb windows. New flags: --init-weights, --yaw-sigma-max (recipe: --time-pen 0 --yaw-sigma-max 0.5). NEXT WALL = the chamber, an ENERGY gate under a deceptive U-turn: the way on is the north pocket's ceiling window (x ~790, z 3500-3540) at >= 500-800 u/s westward (energy height ~3,710-3,760); our line lands with ~3,550. Carry speed in (the tunnels keep it when surfed), land the drop on a slope, or gain it by air-strafing. Nulls there: SIL, energy everywhere, energy-ranked search, speed-keyed Go-Explore."
 }

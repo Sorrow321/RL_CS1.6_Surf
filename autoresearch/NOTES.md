@@ -527,3 +527,25 @@ is ~50 s of chamber search.
 * Not attempted in the last 2 h of the round: every route past this needs search -> BC ->
   train (2-3 h with plan_to_bc's CPU cost), so it cannot produce a better greedy eval before
   the 01:34 wrap-up.
+
+### 01:37 UTC - WRAP-UP (round 1, pbr1b4): final 3.236
+
+* **Final: 3.236** = pbr1b4_bc3, greedy eval traj_3659005952.jsonl: best 3.24%, median 3.23%,
+  0 finishes. The hand-on checkpoint is
+  $AR_HOME/runs/pbr1b4/pbr1b4_bc3/ckpt_3659005952.pt: the snapshot AT the eval's step, global_step
+  verified, code commit 425b849. Also pulled: ckpt_latest (3.915B), ckpt_3571974144; bc2
+  ckpt_3115843584 / 3029336064 / 2898264064.
+* Per-run bests:
+  * bc3 3.236, bc2 3.233;
+  * bc 0.442, esc 0.466, ys 0.443, ys2 0.429, ge 0.429;
+  * iw 0.403 (the sid_ref warm start, untrained here).
+* **The round's lesson, in one line:** the start trap is precise, rare and invisible to the
+  potential field. It fell to EXPERT ITERATION (Go-Explore finds it -> policy-guided population
+  search from the true start -> BC distillation + spawns on the replayed lines -> RL). It never
+  fell to RL exploration terms on their own.
+* The next gate (the chamber, 3.2%) needs ENERGY (23:45): about +200 u of energy height over our
+  line, delivered through the north pocket's ceiling window at >= 500-800 u/s. Round 2 should
+  start from bc3's checkpoint: it passes the start on its own, so a search's whole budget goes to
+  the chamber. Try energy-carrying lines first (tunnel surf with a held side key, slope landings,
+  air-strafe gain), checked against the crossing probe (autoresearch/analysis) before box time.
+* Box 57384171 was released at 22:35 UTC; no box has been held since.
