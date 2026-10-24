@@ -1241,3 +1241,20 @@ the budget pace (0.69 $/h) admit one box; until then every rent was refused (0.1
   waste. So auto_spine's GE is now an ESCALATION LADDER (--ge-boost '1.0,1.04;1.08,1.12', default):
   the second stage of speed factors runs only when the first finds no line past the greedy
   frontier (--ge-minutes each). Test: test_ge_ladder_escalates_until_a_stage_passes.
+
+### The loop runs itself: auto-spine search 2 finds gate 9 with the BRANCHED beam (22:19 UTC)
+* auto-spine search 2 (10.719B, 46 s, no GE needed): the plain beam's frontier 44,876 (no better
+  than the greedy's 44,854); the branched beam (fork 2,048 of 4,096 copies at 17.0 s = 0.5 s before
+  the greedy line's median launch, held view offsets U(-45, 45) deg for 0.5 s each over 2 s, the
+  policy's own keys, protected 3 generations) - 324 forked lineages alive at 20 s and already at
+  d 43,511 (23.86%) - frontier 43,326 = **24.19%** at 34 s. NEW SPINE (k02, 3,348 states, md5
+  5cf733e9...), success line d <= 43,426 (24.0%); the curriculum restarted at its end.
+* The k02 line: the corridor U-turn climbs higher than the greedy's (z 2,869 at x 1,015), over the
+  gate-9 wall by 19 s ((1,748, -2,870, 2,920) at 912 u/s), then a HARD landing at x ~2,370 (912 ->
+  548 u/s, energy height 3,441 -> 2,902) and 13 s of slow hopping on a floor at (2,600-2,820,
+  -2,760..-2,960, z ~2,750), 23.9-24.2%: gate 10 (the record surfs a ramp up to z 3,290 at x
+  ~3,200 there, ANALYSIS ONLY). No speed boost anywhere: the policy's own proposals from the true
+  start, a different view for 2 s at the commitment point.
+* Before the swap the old spine's curriculum had reached tau 0 (88% at [0,...]): the band before
+  the boosted root, 0.0-0.1% for 300M steps, did open up.
+* Box extended to ~02:20 UTC.
