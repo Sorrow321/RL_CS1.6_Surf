@@ -645,3 +645,19 @@ pbr1b1_g2cur6/ckpt_latest.pt 3.285B, md5 a6559938..., both present).
   (yaw column -> an offset table, dense near 0), so a searched line holds views the policy holds
   and its actions are ones the policy can take. Fallback if vv1 stalls: GE --view-vel
   --exact-chains from the policy's own greedy tunnel states -> ge_replay -> a natural-view line.
+* vv1 at +95M (03:06 UTC): four visits to band [1250,1254] (the impact itself) at 13.8 / 15.8 /
+  15.0 / ~15%, each followed by [1255,1259] at 57-65% and a re-advance - stuck at the impact
+  with the forward views, where the recorded views had passed it. Lesson: a random-view line
+  cannot be fixed by re-aiming its spawns afterwards - right after the impact the line's ramp
+  U-turn was flown with the recorded (north-looking) view, and with a velocity-following view the
+  same states need a different, harder control (the view flips through the reversal). The line
+  itself has to be found in the policy's own view: explore_phase1 --view-vel.
+* Ops: a record_ckpt --dump-states on the box beside the trainer took ~10 CPUs (torch threads)
+  and cut the trainer from ~180k to ~24k steps/s for 10 min; rerun pinned with taskset to 4 cores.
+* GE-VV1 (box, 03:08-03:22 UTC): `explore_phase1 --view-vel --exact-chains --cell 64
+  --cell-energy 32 --envs 4096 --decisions 100 --act-every 4 --maxvel 3500`, roots = 64 of the
+  policy's OWN greedy states 0.25-6 s before each episode's deepest tick (`tools/pick_roots.py`,
+  new; g2cur6 weights, 3 greedy episodes from the true start; 32 roots in the tunnel, the rest in
+  the drop and the pit). At 7.4 min: 14,049 cells, 2.04M ticks/s, best 3.20% on the grader field
+  = the pit (round 1's random-view GE6 had 339 cells past 3.3% by ~6 min). Its tunnel cells reach
+  the east end (x 17-1236, z <= 3,786) but the fastest tunnel exit is 266 u/s (line_a: ~390).
