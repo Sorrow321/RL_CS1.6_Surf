@@ -1119,3 +1119,18 @@ CPU beam_tas works locally: ~1,750 env-steps/s at 256 envs (3 threads), so a 512
 * Box plan: deploy (waiter) -> `python tools/gate_search.py --ckpt runs_ckpt.pt --out
   runs/pbr3b1_gs1 --need 20.6 --ge-from 3 --ge-to 0.5` on the box -> inspect -> `box.py launch
   --resume` with round 2's curriculum flag set on the new spine.
+
+### 21:00-21:10 UTC: energy audit; proposal temperature for the beam
+* Energy audit of the incumbent's greedy line (per tick: ballistic ticks = vz change of exactly
+  one gravity step; air gain vs the strafe maximum 30^2/2g = 0.5625 u of h per tick): the policy
+  gets 427 of a possible 640 u in the air over 0-20% (67%; 82-92% on most stretches after 6%),
+  the record 320 of 570 (56%). Contacts cost both about the same (-120..-160 u at each of the
+  2-4%, 4-6%, 8-10% landings). So the policy's air strafing is NOT where its deficit comes
+  from; the record's ~100 u surplus at 16-20% is its start-room pump carried forward.
+* `beam_tas --prop-keys-temp T --prop-yaw-scale V` (new, off = byte-identical: every array of
+  beam_frontier.npz equal on the incumbent, 48 envs x 300 ticks): with --greedy-envs, the sampled
+  envs draw the keys at T and the yaw with sigma x V through the trainer's own sample_view(temp,
+  temp_view). The policy's yaw sigma is 0.013 rad (--yaw-entropy 0), so its proposals barely
+  vary the view; the 20.4% gate needs a harder carve and a ~4 deg/tick air turn. gate_search
+  passes them (--beam-keys-temp / --beam-yaw-scale).
+* Local test running: 512-copy beam with keys T 1.3 and yaw sigma x6 (~4.5 deg).
