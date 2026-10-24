@@ -1109,3 +1109,31 @@ the budget pace (0.69 $/h) admit one box; until then every rent was refused (0.1
   pbr2b3_beam_ge_g16.npy, energy K 8, greedy-death + front-perturb rows) + `--auto-spine
   --auto-spine-delay 4e8 --auto-spine-retry 4e8 --auto-spine-gain 500 --auto-spine-ge-minutes 8`,
   1.5B steps. Gain 500 because the ledge line (20.70%) beats the greedy median (~20.37%) by ~190 u.
+
+### Gate 8 is not energy alone: boosted spawns, tempered beams (20:20-20:33 UTC)
+* WON'T vs CAN'T, local CPU: the incumbent greedy policy spawned at its own beam-line state at
+  14.0 s (on the U-turn run east, before the ramp ride) with the velocity x1.00 / 1.03 / 1.06 /
+  1.10 (h 3,720 -> 3,856, above the record's ~3,800): all four die in the same catch at 20.06-20.33%;
+  at x 200 they are at z 2,674-2,726 whatever the boost (the record: 2,853). More energy does not
+  change the line's shape: the launch off the ramp at x ~-940 (vz ~+300 for us, ~+430 for the
+  record) and the flight under the curved wall stay the same.
+* beam_tas `--view-temp V` / `--keys-temp T` (new, off = byte-identical): the --greedy-envs
+  proposal copies draw the yaw head at sigma x V (the policy's own is 0.013-0.016 rad) / the keys
+  at logits / T. From as1's 9.59B weights: V 6 -> population extinct at 18 s, frontier 20.08% (a
+  fall); V 20 -> 18.3% at 20 s. Yaw noise on every decision only adds deaths.
+* Go-Explore #2 (64 u x energy 32 cells, 32 roots over the beam line's 11.6-16.15 s, i.e. the
+  approach, the ramp ride and the launch; 16 threads beside the trainer): nothing past the gate
+  at 6.5 min.
+* `--respawn-greedy-contact` (new, off = bit-identical, tests/python/test_respawn_greedy_contact.py,
+  TRAIN_ONLY): the greedy-death rows of a failed greedy episode that ENDS IN A BALLISTIC FLIGHT
+  (longer than the window's LO) are the HI-LO seconds up to its LAST MAP CONTACT (the launch),
+  not the seconds before its death - with the default window all 20% of those spawns sat in the
+  doomed 1.7 s fall into the catch, and the front-perturb band sits on the dead-end ledge. The
+  contact is read off the vz steps (gravity = the median step of the final fall; no constant).
+  On the incumbent's eval: launches at 15.24-15.44 s on 9/9.
+* Run pbr3b4_as2 (20:31 UTC): as1's 9.613B weights (md5 fec72708...) + as1's flags +
+  `--respawn-greedy-contact --respawn-greedy-temp 0.5 --respawn-greedy-temp-ticks 100
+  --respawn-greedy-temp-view 6` (keys at 1.5, yaw sigma x6 for 1 s after a greedy-row spawn: the
+  --demo-front-temp rule that cracked gate 2, on the launch window), --auto-spine as before (first
+  search at 10.013B). First eval: 8/9 fatal flights anchored at 15.2-15.4 s.
+* as1 evals: 20.156 (9.479B, the incumbent's weights) / 20.290 (9.555B).
