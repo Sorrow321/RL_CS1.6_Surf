@@ -1224,3 +1224,20 @@ the budget pace (0.69 $/h) admit one box; until then every rent was refused (0.1
 * The trainer's own --auto-spine fired for the first time at 10.266B (9/9 past the 21.37% line):
   beam (11 s, frontier 44,919 = no better than the greedy's 44,879), the branched beam (fork at
   17.02 s = 0.5 s before the greedy's median launch), then Go-Explore (8 min, trainer waiting).
+
+### The first live --auto-spine search, and gate 9 (21:46-21:56 UTC)
+* auto-spine search 1 (10.266B, trainer waiting 499 s): beam frontier d 44,926 (no better than the
+  greedy median 44,879); the branched beam died on an argparse error (a float --branch-jitter;
+  fixed in 99b0ed9 with a test that checks the flags against beam_tas's parser); Go-Explore stage
+  (8 min, 40 roots over the beam line's 15.0-17.5 s x 1.0 / 1.04, 7.9M runs): deepest 44,819 at
+  (1,104, -2,783, 2,831) - AT the gate-9 wall, not over it. NO new spine; retry at 10.666B.
+* Gate 9 geometry (core point probes, x 1,000-1,560 at y -2,780..-2,920): a thin wall at x
+  ~1,120-1,160 whose top is at z ~2,860, a floor at z ~2,690 beyond it. A standing hull must
+  cross with its origin at z >= ~2,896 (ducked ~2,878); every greedy episode meets it at z
+  2,777-2,829 (18.5 s), bounces back and falls into the catch at (770-800, -2,950..-3,070, 2,385).
+  The record crosses x 1,208 at ~2,934.
+* Gate 8's lesson for the search: the GE needed x1.04 to find the route, the trained greedy then
+  flew it with its own energy - the boost buys the uniform explorer the energy its random actions
+  waste. So auto_spine's GE is now an ESCALATION LADDER (--ge-boost '1.0,1.04;1.08,1.12', default):
+  the second stage of speed factors runs only when the first finds no line past the greedy
+  frontier (--ge-minutes each). Test: test_ge_ladder_escalates_until_a_stage_passes.
