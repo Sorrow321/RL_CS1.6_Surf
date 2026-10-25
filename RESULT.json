@@ -3,13 +3,13 @@
  "round": 4,
  "final": false,
  "best": {
-  "score": 27.203,
-  "eval_file": "/home/steam/ar_pb/runs/pbr4b4/pbr4b4_c11/traj_18778947584.jsonl",
+  "score": 27.226,
+  "eval_file": "/home/steam/ar_pb/runs/pbr4b4/pbr4b4_c11/traj_19382927360.jsonl",
   "run": "pbr4b4_c11",
-  "step": 18778947584,
-  "ckpt": "/home/steam/ar_pb/runs/pbr4b4/pbr4b4_c11/ckpt_18778947584.pt",
-  "ckpt_step": 18778947584,
-  "ckpt_md5": "c98df8d26035f83f1eb0cf58b4d00fb7",
+  "step": 19382927360,
+  "ckpt": "/home/steam/ar_pb/runs/pbr4b4/pbr4b4_c11/ckpt_19382927360.pt",
+  "ckpt_step": 19382927360,
+  "ckpt_md5": "031133562d3467233157e80f3fd99d8e",
   "recipe": [
    "resume of the incumbent pbr3b4_as10 13.4999B weights",
    "--demo-file runs/spine_dh10.npy (autoresearch/spines/pbr4b4_beam_dh10.npy: c4's own beam ranked by -d + 10 x energy height, to 26.99%) --demo-tau0 1725 --demo-window 5 --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5 --demo-rate 0.3 --demo-front-frac 0.4 --demo-success-d 100 --demo-success-bonus 50 --demo-milestones 44939,43426,42363,42171,42007",
@@ -25,5 +25,5 @@
   "resume_from": "pbr4b4_c10 ckpt_latest 18.476B <- c9 17.915B <- c8 17.349B <- c7 16.906B <- c6 16.554B <- c5 <- c4 <- c3 <- c2 <- incumbent pbr3b4_as10 13.4999B",
   "commit": "3383db2"
  },
- "summary": "Score 24.737 -> 27.203 (pbr4b4_c11 18.78B, exact weights by --save-best-eval). Chain: the incumbent's own beam passed gate 10 (26.39%) -> curriculum (c2) -> the trainer's own spine k01 (c3) -> an unboosted Go-Explore chain past the upper-floor landing (east flight; c4, 26.896) -> c4's own beam ranked by -d + 10 x energy height to the north gap (26.99%; c6, 27.056). Next gate: the gap north of the north ramp (record ~690 u/s there, ours ~600, ~200 u of energy short; lost at the gate-8 corridor landing, the gate-9 wall clip and the upper-floor contact). New this round: numba thread cap (12k -> 341k steps/s), --save-best-eval, auto_spine --beam-energy, --respawn-greedy-impacts (c7: energy at matched progress +20-40 u so far)."
+ "summary": "Score 24.737 -> 27.226 (pbr4b4_c11 19.38B, exact weights by --save-best-eval). Chain: the incumbent's own beam passed gate 10 (26.39%) -> curriculum (c2) -> the trainer's own spine k01 (c3) -> an unboosted Go-Explore chain past the upper-floor landing (east flight; c4, 26.896) -> c4's own beam ranked by -d + 10 x energy height to the north gap (26.99%; c6, 27.056). Next gate: the gap north of the north ramp (record ~690 u/s there, ours ~600, ~200 u of energy short; lost at the gate-8 corridor landing, the gate-9 wall clip and the upper-floor contact). New this round: numba thread cap (12k -> 341k steps/s), --save-best-eval, auto_spine --beam-energy, --respawn-greedy-impacts (c7: energy at matched progress +20-40 u so far)."
 }

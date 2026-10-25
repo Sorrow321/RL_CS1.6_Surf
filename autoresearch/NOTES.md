@@ -1920,3 +1920,7 @@ throttled) and could read it as a bad box. The fix is one line in python/train_f
   weights ckpt_18778947584.pt md5 c98df8d2..., pulled - the round's best) / 27.168 / 26.996. Energy
   at 26.5% in the 18.85B eval: median 3,554 (7 eps) - the first rise since c7 (~+30 u). The
   reservoir's deepest harvested state is unchanged (73.93% of d0 left = 26.07%).
+* c11 later evals: 26.353 / 26.977 / 27.082 / 27.147 / **27.226** (19.383B, ckpt_19382927360.pt
+  pulled). The energy rises at last: 22% median 3,516-3,528 (was ~3,410: the gate-9 clip is gone
+  from most episodes), 24% 3,450-3,465, 26.5% **3,559-3,578** (c10 ~3,515). The gap wants ~3,735.
+  Box extended to 17:14 UTC (14:14).
