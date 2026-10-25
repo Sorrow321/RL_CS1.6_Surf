@@ -1371,3 +1371,11 @@ or cheaper offers in the query (a 3090 at <= 0.18 $/h would fit beside the 5080)
   carryable-energy states that are deeper than the start AND moving downhill on the goal field
   (v . -grad d > 0), no push volume (they came out at x 465-891, |v_h| median 543, h_c
   3,838-3,861: fast states at the tunnel mouth), 25 min.
+* GE_pump5 (energy-selected T 100, forward-downhill roots, 25 min, 12.7M runs, 359k cells): max
+  progress 3.94% (1,320 cells past 3.3% - it crossed the pit like round 1's GE6); the tunnel still
+  entered at <= 464 u/s, carried h 3,847 at 1.38%, 3,705 at 2.44% (|v| 794). The pump's surplus is
+  still lost at the tunnel entry, which needs the player level, ducked and at z ~3,716-3,760 at
+  speed in the mouth (a 4-D needle: height x level x duck x speed).
+* 04:45 GE_pump6: pump4's settings + `--select-energy 150`, rooted at the half-pipe's top-64
+  carryable states of pump4/5 (h_c **4,039-4,055** - the pump keeps climbing with each run: 3,941
+  -> 3,981 -> 4,026 -> 4,055), 8,192 envs, 48 threads, 35 min.
