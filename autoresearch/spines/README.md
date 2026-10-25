@@ -64,3 +64,13 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   that line's own states before the impact (32 u x energy 16 cells, 12 min, 1.27M cells; ge_replay
   15/15 links): ~6.8 s of back-and-forth on the ramps there (h 2,972 -> ~3,220, a small pump), then
   east at 640-1,078 u/s to 18.86%. Views along the velocity. No demo, no record data (pbr2b3).
+* `pbr3b1_vvel_g20.npy` (1,816 states, md5 f6bf01d34e7f8db592949c1d8688fc1e): the policy's own
+  beam line from the true spawn (tools/beam_tas.py on the round-2 incumbent's 9.478B weights, 512
+  copies, d-ranked, CPU; its frontier lineage, 1,600 states) to its state 1465 on the surf face
+  before the 20.4% fall catch, then the deepest chain of a Go-Explore run rooted at 15 of that
+  line's own face states (tools/explore_phase1.py --exact-chains --view-velocity: random
+  velocity-frame view targets, 32 u x energy 16 cells, 4,096 envs, 12 min on a 3090 box) replayed
+  exactly by tools/ge_replay.py (14/14 links): a higher launch off the face (vz +376), under the
+  tunnel's ceiling, round the block's corner onto the ramp, up and east to 21.54% (airborne at
+  ~800 u/s, h 3,228). Chain views along the velocity (spine_canon_view). No demo, no record data
+  (pbr3b1, round 3).

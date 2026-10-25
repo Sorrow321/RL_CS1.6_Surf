@@ -1206,3 +1206,31 @@ or cheaper offers in the query (a 3090 at <= 0.18 $/h would fit beside the 5080)
 * Lesson: `pkill -f <pattern>` with the pattern in the same shell command killed that shell
   (CLAUDE.md's self-match warning, locally too); use the PID.
 * 23:45 gate_search stage 1 (beam 4,096, --need 20.6, no GE) on the box.
+
+### 23:45-00:15 UTC: the 20.4% gate falls to box Go-Explore - and velocity-frame actions win the A/B
+* Box beam (gate_search stage 1, 4,096 copies, 22 s): its deepest lineage survives the fall past
+  the catch by crash-landing on a low surface at x ~600 (|v| 1,325 -> 292, h 3,740 -> ~2,450) and
+  crawls to 20.58% - a dead end without energy. No ramp line.
+* Two compute-matched GE runs on the box (12 min, 4,096 envs, 28 threads each, the SAME 15 roots:
+  the plain CPU beam line's face states 1440-1510, `--exact-chains`, 32 u x energy 16):
+
+  | explorer | cells | on the ramp (fast) | on the climb east | best | h at best |
+  |---|---|---|---|---|---|
+  | uniform yaw-delta bins (as before) | 1,120,958 | 53,766 (11,408) | 16,446 | 21.06% | 2,858 |
+  | `--view-velocity` (new) | 1,309,173 | 138,356 (76,241) | 92,484 | **21.54%** | 3,228 |
+
+  One seed each, but 2.6x / 6.7x / 5.6x more cells at every stage past the gate and 365 u more
+  energy at the frontier. Held targets relative to the velocity are what carves and hard air
+  turns are made of; per-tick yaw deltas spin the view. **Use `--view-velocity` for GE on surf**
+  (lines also come out with views near the velocity, the policy's own frame).
+* (The local 90-min delta GE, 970k cells, never got past 20.33%: the gate needed box scale.)
+* Spine `autoresearch/spines/pbr3b1_vvel_g20.npy` (1,816 states, to 21.54%): line_g20a[0, 1465)
+  + the vvel GE's deepest chain (14/14 links exact). Cut at the DEEPEST state, not at the last
+  contact: the contact cut would end it on the ramp at 20.13%, below the 20.41% the catch-falling
+  greedy line already reaches, so the success line would pay the fall. The contact rule is right
+  for a line that ends in a fall, wrong for a flight that climbs and levels (as here).
+* pbr3b1_c1 (00:05 UTC): resume of the incumbent (9.478B, md5 4bbcb8f9) with round 2's curriculum
+  flag set on this spine, 400M steps. First eval (the incumbent's own weights on this 3090):
+  **20.224** (median 6.7%: on a 3090 the same weights fork earlier than on the 5080 - CLAUDE.md's
+  cross-card warning). Curriculum: [1810] 100% -> [1800] 100% -> [1780] 100% -> [1710..] 0.0%
+  (backoff): the ramp climb is the new skill.

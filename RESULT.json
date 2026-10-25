@@ -3,5 +3,5 @@
  "round": 3,
  "final": false,
  "best": null,
- "summary": "No box yet (the fleet's budget pace admits one 5080; another branch holds it since ~20:00 UTC; a local waiter rents + deploys when a second fits). The incumbent's 20.4% gate, measured: a launch off a surf face (policy vz +209..+250, needed ~+400; affordable with its own energy) then a hard right around a block corner onto the only ramp over a catch floor. Local CPU searches all fail there: 2 beams (512, plain and tempered), 1.62M random bursts. Built tools/gate_search.py (beam -> GE -> splice -> canon views -> contact cut), spine_tool.py, beam_tas --prop-keys-temp/--prop-yaw-scale, entry_search --alive-after/--view-velocity. Next with a box: gate_search, then the curriculum resume."
+ "summary": "Box 57580595 (RTX 3090, 0.386 $/h) rented 23:42 UTC after the operator's mid-round budget change. Box beam (4096 copies) on the incumbent: its deepest lineage crash-lands past the 20.4% catch on a low surface (20.58%, ~300 u/s, a dead end). Running two compute-matched 12-min Go-Explores from the policy's own surf-face states (yaw-delta vs velocity-frame actions) to find the launch + corner line onto the ramp, then the curriculum resume."
 }
