@@ -105,3 +105,13 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   lineage of the policy's own proposals), 26 s cap, --save-frontier replay exact (d 42,078). It
   rides UP the ramp (z 2,785 -> 3,204 at 19.4-20.8 s), lands on the floor beyond it at z 3,197 and
   walks/hops north at 100-440 u/s. Views are the policy's own. No demo, no record (pbr4b3, round 4).
+* `pbr4b3_ge12_x132.npy` (2,841 states, md5 942cb89a439a8cd193ae6d8e7a869e99): gate 11 (the lethal
+  floor under a 1,000 u flight at 26.4%) by search - the policy's OWN branched-beam line from the true
+  spawn (beam_tas on pbr4b3_t1's 14.97B weights at their own tick ~8.25 ms, the trainer's auto-spine
+  search 2, half the copies forked with held view offsets) to its tick 2,299 on the gate-10 ramp, then
+  the exact Go-Explore chain (explore_phase1 --exact-chains --tick-ms 8, uniform random bursts, 64 u x
+  energy 32 cells, 12 min) rooted at that line's ramp state with the velocity x1.32, replayed 16/16
+  links exactly: off the ramp top high, onto the ridge, surfing it north, over the sheet and down the
+  hole at 27.9%; cut just after the hole's landing (28.41%). Views of the chain along the velocity
+  (spine_canon_view). No demo, no record (pbr4b3, round 4). The x1.32 root is a big boost: under
+  milestones the old success lines keep the route paid.

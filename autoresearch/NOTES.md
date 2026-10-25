@@ -1765,3 +1765,19 @@ over-subscribes the quota. This branch's surfgym now caps numba; the operator ma
   (ed636e1; pulled onto the box, so t1's next search uses it without a restart).
 * t1 evals 26.366 / 26.359 (14.59-14.67B, tick ~9.2-9.0 ms): 7-8/9 over gate 10, all dying on the sheet.
   Curriculum back at ~1,695 (17 s). Next auto-spine search at 14.916B (tick ~8.4 ms).
+* t1 evals 14.74-14.97B (tick ~8.9 -> 8.3 ms): 26.359 / 26.366 / 26.363 / **26.370** - from 14.89B
+  **9/9 greedy episodes over gate 10** (all die on the sheet at 26.32-26.37%).
+* auto-spine search 2 (14.969B, ckpt tick ~8.25 ms -> the explorer at 8 ms): beam 42,227, branched beams
+  42,057 / 42,059 / 42,054, GE stage 1 (x1.0 / 1.04 at 8 ms) deepest 41,807 = 26.85% at (3,402, -2,087,
+  3,189), over the sheet and falling (10 ms GE11 x1.0: 26.07%) - short of the 41,588 the gain rule needs.
+  The hole that leads on is at 27.6-27.8% (d 41,379 at (3,481, -1,552, 3,142)). Stages x1.08 / x1.12 next.
+* GE12 (beside it, 14 threads, 12 min): the newest branched-beam line's ramp ride x1.16 / 1.24 / 1.32 at
+  8 ms - is the hole reachable at this tick, and with how much boost?
+* search 2 stages x1.08 / x1.12 (8 ms): 41,717 (27.0%) / 39,187 (tool field) - no spine (1,535 s, the
+  trainer waiting). GE12 (x1.16 / 1.24 / 1.32 at 8 ms): **26.42 / 27.02 / 30.48%** - the x1.32 root at
+  mid-ramp (2,541, -2,975, 2,998), |v| 923 -> 1,218, h 3,530 -> 3,926 (the record ~3,600 here, the
+  uniform explorer wastes what the policy would strafe in) flies the record's way: high off the ramp
+  top, the ridge north, the launch, over the sheet and DOWN THE HOLE at 27.9%, a hard landing (-400 u),
+  west and north to a crash at (2,199, -909, 2,647) and a crawl to 30.48%.
+* Spine autoresearch/spines/pbr4b3_ge12_x132.npy (2,841 states: search 2's branched-beam line to its ramp
+  + that chain, cut after the hole's landing at 28.41%; success line d <= 41,015 = 28.23%).
