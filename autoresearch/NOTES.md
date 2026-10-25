@@ -1446,3 +1446,31 @@ as7's 24.555 eval (ep0) vs the WR demo:
 * **pbr3b4_as9** (02:46 UTC): as8's weights + the same flags with --energy-pot 12 (was 8; round 2:
   K 3 -> 8 carried the x -1,015 wall after ~800M steps), auto-spine delay 1e9 / patience 1.5e9,
   5B steps (to the round's end). Read-out: the U-turn-exit energy per eval, and any gate-10 pass.
+
+### USER INSIGHT (relayed by the operator, 2026-10-25 ~03:20 UTC): the FIRST ramp
+* "At the very start, after start_run, the policy ignores the FIRST ramp - it runs against the
+  geodesic field - and jumps straight onto the second ramp (the first ramp the policy uses today).
+  A human surfs that first ramp first to gain momentum and only then goes to the second ramp,
+  arriving with more speed, and the user expects that extra energy to break some of the gates the
+  policy faces later." The user asks for a way to make the policy use that first ramp, under the
+  standing rules: CLAUDE.md 0b - nothing hand-placed for this ramp (no reward term, spawn rule,
+  target box or spine aimed at it); the mechanism must be generic, one that would also find a
+  field-opposed momentum ramp on a map nobody has opened - a search or exploration that finds the
+  line on its own, then the usual line-to-curriculum loop; and section 0: the WR demo stays
+  analysis only.
+* What this lineage already knew about it: the true spawn faces yaw 0 = EAST, toward that ramp (the
+  east half-pipe); the record pumps it for ~6 s (energy height 3,653 -> ~3,930-3,950, d rising
+  ~1,520 u = 2.7% against the field) and enters the crouch tunnel at ~570 u/s, where our line
+  enters at ~70 u/s from a standstill (two precision duck-jumps). Uniform-action Go-Explore from
+  the spawn never pumped (round 2: half-pipe h max 3,804 -> 3,839, tunnel at <= 465 u/s).
+* Measured this round (energy at matched progress, ANALYSIS ONLY): our line is 156 u of energy
+  height under the record at 1%, but only 27-47 u at 10-12% (the record's own h falls 3,945 ->
+  3,651 by 10%); the gate-10 deficit (~250 u) is made at gate 8's corridor landing. So the pump's
+  energy does not simply carry for the record either - but a pumped start also changes every
+  line downstream (more speed into gates 2-8), which is the user's point and is worth testing.
+* Generic mechanism tried (below): an ENERGY-ranked, branched beam from the true start - half or
+  more of the policy's own copies forked at tick 1 with random view commands (some keep facing
+  east; the keys stay the policy's own), the population ranked by -d + K x energy height
+  (beam_tas --score dh) instead of -d alone, so lineages that gain energy AGAINST the field are
+  not culled. Nothing in it names the ramp: on any map it asks "is there a start that buys
+  energy the field-follower never collects?"
