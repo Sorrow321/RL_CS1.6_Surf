@@ -1960,6 +1960,9 @@ def main():
                     help="RNG for the macro draws (default: --seed). A "
                     "private numpy generator, so the torch stream - and "
                     "every run without --macro-hold - is untouched")
+    ap.add_argument("--start-state", default=None, metavar="NPY[:I]",
+                    help="start the population from row I of this STATE_DTYPE .npy instead of "
+                         "the map spawn (needs --skip-gate); None = the spawn, byte-identical")
     ap.add_argument("--skip-gate", action="store_true",
                     help="capture the spawn state but do NOT roll the gate "
                     "episode. row0/obs_start come from the reset itself, so "
@@ -2511,8 +2514,27 @@ def main():
                 greedy_ticks, row0, obs_start = ticks, row, o0
                 gate_seed = args.seed + e
                 break
+    if args.start_state:
+        # --start-state FILE[:I]: the population starts from row I of a STATE_DTYPE .npy (e.g.
+        # a Go-Explore cell the policy has never reached) instead of the map spawn - the
+        # explorer finds WHERE, the policy's own proposals find HOW. The first decision sees
+        # the spawn's scalar observation (the core recomputes it on the next step; the image is
+        # rendered from the state); the replay is open-loop from this row, exact as ever.
+        if not args.skip_gate:
+            raise SystemExit("--start-state needs --skip-gate (no greedy gate from a mid-line state)")
+        if pre_acts is not None:
+            raise SystemExit("--start-state and --prefix-line both set the search's first state")
+        _sp, _, _si = str(args.start_state).partition(":")
+        _ss = np.load(_sp)
+        _row = np.array(_ss[int(_si or 0):int(_si or 0) + 1], copy=True)
+        _row["tick"] = 0
+        _row["stuck_ticks"] = 0
+        nonfin = (0, _row, nonfin[2])
+        print(f"--start-state {Path(_sp).name}[{int(_si or 0)}]: the search starts at "
+              f"{np.round(np.asarray(_row[0]['origin'], np.float64))} |v| "
+              f"{float(np.linalg.norm(np.asarray(_row[0]['velocity'], np.float64))):.0f}")
     allow_nonfin = (args.allow_nonfinisher or args.greedy_prefix > 0
-                    or pre_acts is not None)
+                    or pre_acts is not None or bool(args.start_state))
     if greedy_ticks is None:
         if not allow_nonfin:
             raise SystemExit(
