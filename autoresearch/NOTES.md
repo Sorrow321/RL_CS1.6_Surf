@@ -1790,3 +1790,10 @@ throttled) and could read it as a bad box. The fix is one line in python/train_f
   anchors), --demo-tau0 1740. Question: does exploring the approaches to the line's two biggest
   energy drops per episode (with the greedy-row temperature) raise the energy the line carries
   into the north gap (h ~3,520 at 26.5%; the gap wants ~3,700)?
+* autoresearch/analysis/pb_energy_profile.py (new, ANALYSIS ONLY): energy height at first arrival
+  at 20 / 21 / 22 / 24 / 25.5 / 26.5 % per greedy eval (n: median / max over the 9 episodes).
+  Incumbent 13.50B: 3,712 / 3,402 / 3,351 / 3,307 / - / -; c4 16.14B: 3,712 / 3,463 / 3,465 / 3,396 /
+  3,236 (max 3,493) / 4 eps 3,496; c6 16.37B: 3,727 / 3,460 / 3,379 / 3,356 / 3,236 (max 3,520) /
+  1 ep 3,549. The record (ANALYSIS): ~3,796 / 3,583 / ~3,610 / 3,600 / ~3,710 / ~3,720. This round's
+  policy already lands gate 8's corridor ~60 u softer than the incumbent; the median 25.5% figure
+  (3,236) is the walk on the upper floor (the east flight is the max column).
