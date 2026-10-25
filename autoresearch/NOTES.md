@@ -1348,3 +1348,16 @@ the budget pace (0.69 $/h) admit one box; until then every rent was refused (0.1
 * Stopped as7 at 12.340B; a manual auto_spine.py on its weights with ONE long GE stage (25 min,
   x1.0 / 1.04 / 1.08 roots over the last 4 s before the beam line's stall, no branched beam,
   full CPU) - the trainer's 8-min stages never had that budget for an unboosted line.
+
+### The long GE finds nothing past gate 10 below x1.12; as8 (01:35-02:02 UTC)
+* Manual auto_spine.py on as7's 12.34B weights, one 25-min GE stage (144 roots = 48 of the beam
+  line's states over 15.3-19.3 s x 1.00 / 1.04 / 1.08, full CPU): best 42,988 (24.78%), 235 u past
+  the greedy - no ramp catch. Gate 10 has only ever been passed with a x1.12 root (as3 search 3);
+  every gate since 7% has pointed at the same thing: the policy's line runs ~100-200 u of energy
+  height under the record's from the start room on (the record's half-pipe pump), and the uniform
+  explorer needs a boost to find what the record does with that energy.
+* **pbr3b4_as8** (02:01 UTC): as7's 12.34B weights + spine k03 + milestones 44,939 / 43,426 +
+  --demo-rate 0.2 (Salimans-Chen's rho; the ramp-catch band sat at 24-29% under 0.3) + the rest of
+  as7's flags, 5B steps (to the round's end). The milestones keep the score's route paid; the
+  question is whether the policy carries the boosted chain's skill back to its own energy, as it
+  did at gate 8 (x1.04).
