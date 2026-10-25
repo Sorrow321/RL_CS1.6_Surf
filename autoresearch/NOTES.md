@@ -1238,3 +1238,29 @@ one box at a time (e.g. a box-hours budget instead of a $/h rate), is needed for
   +147 u in 5 s, found with no reward and no map knowledge (the record: +217 u by 5 s). (2) From
   that state, a policy-guided Pareto beam (the policy's own surfing; --start-state, 512 envs,
   mild proposal temperature): does the policy pump further and carry it back west?
+* Stage 2 result (03:39-04:06 UTC, CPU): the POLICY does not pump. From the GE chain's highest-
+  energy cell (11399, the half-pipe's bottom) all 512 lineages died within 1 s - that state was
+  already falling into trigger_teleport *127 (-> start; AABB x 192..2,396, y -3,256..-2,742, z up
+  to 3,667): the half-pipe has a FATAL BOTTOM (the record's lowest origin ~3,354 skims it; round
+  1's policy trained on half-pipe spawns died there at z ~3,290-3,310). From a live chain state
+  (tick 400, the turnaround on the far wall, h 3,744) with `--score pareto` and mild proposal
+  temperature, 9 s: the population stays inside the half-pipe (x 1,193..2,376), never climbs back
+  over its west rim, and LOSES energy (h_max 3,786 -> 3,510-3,643); two thirds die. Uniform GE
+  gained +147 u along the same stretch. The pump is out of the policy's training distribution:
+  it is a skill to be LEARNED from a searched line, not a choice its proposals can make.
+* So, for whoever continues the momentum idea (generic, nothing aimed at this ramp):
+  1. LINE: Go-Explore --exact-chains from the true spawn with energy cells (reward-free) finds the
+     field-opposed region and partial pumps by itself; the line to keep is the chain to the
+     archive's best-energy cell AHEAD of the start past the start room (the field-ahead region,
+     e.g. inside the crouch tunnel), so the chain runs spawn -> pump -> back -> tunnel. (Round 2's
+     box GE_pump2 reached the tunnel at +20 u over the policy's line; round 3's local GE below.)
+  2. CURRICULUM: the backward curriculum on that line, with --keys-hold-spawn-duck, canonical views
+     (tools/spine_canon_view.py: a uniform-action line), --demo-front-temp, as at gate 2. Two
+     things are new: (a) a field-opposed stretch gives the ratchet record nothing (d rises), so a
+     spine episode's "success" by record reaches the end trivially - the success test must ALSO
+     ask for the line's energy at that depth (a generic --demo-success-energy rule: the record
+     crosses d(end) + M with h >= h(end) - tol), or the spine must run on past a gate that only
+     the momentum line passes (gate 8); (b) per-call energy shaping (--energy-pot 8) already pays
+     +2.1 for the record's +263 u pump - the incentive is there, the experience is not.
+  3. The half-pipe's fatal bottom (*127) makes the pump a precision surf: spawn rows from the line
+     near the bottom will die until the walls are learned (round 1's lesson at the plate).
