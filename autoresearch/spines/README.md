@@ -97,3 +97,13 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   rollouts survive 1 s (x 863-2,380: the east half-pipe; energy median 3,649, max 3,815). The
   explorer's states in both directions, nothing aimed at a ramp; used by pbr3b4_as12 (the policy
   learned to survive there and to come back to the tunnel; it did not pump). No demo, no record.
+* `pbr4b2_beam_dh1.npy` (2,500 states, md5 47d1ac2a3f28535a9dfc64394a243ea9): the policy's OWN line
+  from the true spawn over gate 10 (the ramp climb at x ~2,400-3,050 that stopped round 3's greedy
+  at the 24.4-24.7% crawl) onto the flat top (z ~3,197) and north along it to 26.35% (d 42,084 on
+  the grader field) at 25.0 s (pbr4b2, round 4). `tools/beam_tas.py` from the true start on the
+  round-3 incumbent's weights (pbr3b4_as10 ckpt_13499891712, md5 a3a21331...): 4,096 stochastic
+  copies, 32 greedy envs, ranked by `--score dh --score-energy 1` (-d + 1 x energy height
+  z + |v|^2/2g), resampled every 25 decisions, `--save-frontier --skip-gate --route-file none
+  --max-ticks 3500`, 19 s on the box; the frontier lineage replayed exactly (replay_ok 1), kept
+  whole (its best d is its last state). The d-ranked beam (runs/pbr4b2/_beams1/d0) reached the
+  same place (42,063) 8 s later and slower. No demo, no record data; views are the policy's own.
