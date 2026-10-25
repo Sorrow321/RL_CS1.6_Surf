@@ -1901,3 +1901,14 @@ over-subscribes the quota. This branch's surfgym now caps numba; the operator ma
   would mean to the policy. GE16 (13:16 UTC): GE15's 50 unboosted roots (spine 2600-2880) with
   `--view-follow=-90,-60,-30,-15,0,15,30,60,90`, 15 min (GE15, the uniform-view twin, stopped at 4 min:
   30.46%, GE14's kind of chains).
+* t7 (band share 0.8): band [2879] 7-9% (t5 3-4%) but no higher; evals 29.285 / 29.301 / **29.317** (18.501B) /
+  29.285 / 29.272 / 29.304. Handoff milestone ckpt_18474336256 pulled.
+* **GE16 (view-follow) 32.05%** from the policy's own unboosted state 2743: out of the hole it holds FORWARD with
+  the view ~89 deg left of the velocity (= a left strafe in the policy's frame), the ramp at (3,202, -1,673,
+  2,826), north to 30.0% at (2,437, -1,024, 2,766), a hard landing at (2,371, -873, 2,614) (h 3,286 -> 2,672) and
+  then 25 s of crawling near the catch (z 2,594-2,830, 13-590 u/s) up to (2,279, 101, 2,596). The record passes
+  there ~230 u higher with ~250 u more energy (h ~3,530 vs ~3,290 after the ramp landing, ANALYSIS ONLY): past
+  30% gate 13 is energy again.
+* **pbr4b3_t8** (13:36 UTC): t7's 18.771B weights (md5 fce2c1c7...) + spine autoresearch/spines/pbr4b3_ge16vf.npy
+  (the g11 line to 2743 + GE16's chain to its 30.28% landing, the explorer's own views - no canon_view;
+  success line d <= 39,943 = 30.11%) + milestones 44939,43426,42182,41015,40497 + band share 0.8, the rest as t7.
