@@ -1217,3 +1217,24 @@ one box at a time (e.g. a box-hours budget instead of a $/h rate), is needed for
   never pumped (h 3,804 -> 3,839, the record ~3,930) and never entered the tunnel fast; round 3's
   energy profile: the policy's deficit is LARGEST at the start (+155..172 u at 0.5-1% progress)
   and +63..121 u everywhere after, i.e. the gates since 7% (all energy gates) inherit it.
+* The record's start, read for the insight (ANALYSIS ONLY): from the start curtain (0.5 s,
+  (874, -2,994, 3,652)) it walks EAST, drops into a half-pipe at x ~1,250 (bottom z ~3,354-3,370
+  at 825-921 u/s), climbs the far side to x ~2,349 (4.25 s), turns, crosses the bottom again,
+  climbs the near side 110 u above the spawn floor ((955, -2,906, 3,764) at 6.5 s) and flies WEST
+  through the crouch tunnel at ~580-600 u/s (t 6.75-7.75 s); h 3,667 -> 3,930 (+263 u) in 6 s.
+  The policy crawls the same tunnel at 200-300 u/s after its two-jump precision entry.
+* Why a d-ranked search can never keep it: the pump costs ~6 s of being BEHIND the start on the
+  field, and its payoff (+140 u of h at the tunnel exit, ~+100 u downstream) only shows at the
+  energy gates 7-20 s later. So `beam_tas --score pareto` (new): rank by Pareto dominance on
+  (d, h) - a lineage behind but carrying more energy stays on the front, no weight constant.
+* First probe (beam from the true start, `--branch-at t100:N --branch-view-only` heading bursts):
+  every forked lineage died within 2-3 s - the policy's own start-room keys duck-jump, and east of
+  the spawn that jump enters trigger_teleport *257 hanging just above the floor (round 1).
+* Two-stage generic search (03:26 UTC on): (1) reward-free Go-Explore --exact-chains from the true
+  spawn (64 u x energy 32 cells, 12 min, ~1 core: 912k runs, 11,424 cells, 9,040 of them BEHIND
+  the start on the field); its highest-energy field-opposed cell has h 3,802 (the half-pipe's
+  bottom, 884 u/s), and its exact chain (ge_replay, 4/4 links, runs/pbr3b3/_mom/chain_11399.npy)
+  walks east at 250 u/s, drops in, crosses the bottom, climbs the far side and comes back down:
+  +147 u in 5 s, found with no reward and no map knowledge (the record: +217 u by 5 s). (2) From
+  that state, a policy-guided Pareto beam (the policy's own surfing; --start-state, 512 envs,
+  mild proposal temperature): does the policy pump further and carry it back west?
