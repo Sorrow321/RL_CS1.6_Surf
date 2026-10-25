@@ -2124,3 +2124,22 @@ over-subscribes the quota. This branch's surfgym now caps numba; the operator ma
   23.364B and being learned when the round ended. Gate 16 (~51%, a fail trigger at the north end of the corridor)
   fell to the policy's own beam line within ~150M steps. The loop is running: let its patience fire before
   intervening.
+
+## pbr5b2 (round 5, slot 2) - 2026-10-25 19:47 UTC start
+
+Box: 57714456, RTX 5080 + Ryzen 9 5900XT (32 thr, cgroup quota 30.72 CPUs), 0.621 $/h, Florida
+(machine 118632, round 2's box; the 0.363 $/h Threadripper offer was taken by another agent within a
+minute). Incumbent: pbr4b3_t11 ckpt_23551016960 (md5 7fbcd458...), eval 52.937 at 23.590B.
+
+### c1: the incumbent's loop, continued (19:53 UTC)
+* **pbr5b2_c1** = resume of the incumbent's weights with round 4's last flag set (NOTES "To continue")
+  on spine k05 (the trainer's own search 5: beam to 4,344 + an unboosted view-follow GE chain to
+  56.22%) + its held keys + all 14 milestones + --auto-spine (quorum 5/9, patience 1.2e9, gain 500,
+  GE 8 min per stage), 4e9 steps. The curriculum restarts at k05's end (its position is not
+  checkpointed). The first eval of the resumed weights (23.5515B): frontier 29,822 u on the trainer's
+  field, one episode dead at 22 s.
+* What lies past k05 (ANALYSIS ONLY, the WR demo on the grader field): the record reaches 52.9% at
+  ~44.8 s (our greedy at ~36 s: ~9 s ahead), drops from z ~2,600 to ~1,250 at 1,693 u/s (46 s, 54.8%)
+  and climbs back to z ~2,200-2,500 (47-49 s, 56.7-58%) with energy height ~2,800-2,850 (z +
+  |v|^2/1600). k05's line ends at 56.22% at (-2,395, 2,472, 1,965) at 212 u/s, h ~1,990: ~800 u of
+  energy height under the record there. The gate after k05 will probably be energy again.

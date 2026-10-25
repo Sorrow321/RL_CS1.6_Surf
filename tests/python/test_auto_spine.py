@@ -298,3 +298,81 @@ def test_branched_beams_fork_at_the_tick_and_earlier(tmp_path, monkeypatch):
     assert forks == [(1700, "beam_br"), (1600, "beam_br2"), (1500, "beam_br3")]
     info = json.loads((out / "spine.json").read_text())
     assert info["source"] == "beam_br3" and info["br3_fork"] == 1500
+
+
+def test_energy_roots_sit_before_the_largest_losses():
+    """energy_roots (pbr5b2): roots in the lead seconds before each of the largest energy-height
+    losses in the window before the stall; a smaller loss and anything outside the window get
+    none."""
+    sys.path.insert(0, str(ROOT / "tools"))
+    import auto_spine
+    from surfgym.core import STATE_DTYPE
+    tps, n = 100.0, 2000
+    s = np.zeros(n, STATE_DTYPE)
+    z = np.full(n, 3000.0)
+    v = np.full(n, 3000.0)
+    # losses (in |v|) at ticks 500 (outside a 12 s window before 1990), 1100 (843 u of h),
+    # 1400 (950 u, the biggest), 1700 (400 u), 1800 (92 u, the smallest)
+    for t, dv in ((500, 600.0), (1100, 300.0), (1400, 400.0), (1700, 200.0), (1800, 50.0)):
+        v[t + 1:] -= dv
+    s["origin"][:, 2] = z
+    s["velocity"][:, 0] = v
+    idx, losses = auto_spine.energy_roots(s, 1990, tps, secs=12.0, drops=3, lead=1.0, n=48)
+    marks = sorted(t for t, _ in losses)
+    assert marks == [1100, 1400, 1700]
+    assert all(dh < 0 for _, dh in losses)
+    for m in marks:
+        near = idx[(idx >= m - 100) & (idx <= m - 1)]
+        assert len(near) >= 8
+    assert not np.any((idx > 1700) & (idx <= 1990))      # nothing after the last root window
+    assert not np.any(idx < 990)                          # the window: 12 s before tick 1990
+    # a smooth line falls back to evenly spaced roots
+    s2 = np.zeros(300, STATE_DTYPE)
+    s2["origin"][:, 2] = np.linspace(3000.0, 3100.0, 300)
+    i2, l2 = auto_spine.energy_roots(s2, 299, tps, secs=2.0)
+    assert l2 == [] and i2.min() >= 99 and i2.max() == 299
+    assert auto_spine.stage_specs("1.0,1.04;E1.0,1.04;1.08") == [
+        ("tail", [1.0, 1.04]), ("energy", [1.0, 1.04]), ("tail", [1.08])]
+
+
+def test_ge_ladder_energy_stage_gets_its_roots(tmp_path, monkeypatch):
+    """An E stage of --ge-boost hands go_explore the energy roots (and only that stage)."""
+    sys.path.insert(0, str(ROOT / "tools"))
+    import auto_spine
+    from surfgym.core import STATE_DTYPE
+    nx, ny, nz, cell = 64, 4, 4, 32.0
+    grid = np.zeros((nz, ny, nx), np.float32)
+    grid[:] = (10000.0 - (np.arange(nx) + 0.5) * cell)[None, None, :]
+    fp = tmp_path / "field.npz"
+    np.savez(fp, grid=grid, quant=np.float64(1.0), mins=np.zeros(3), cell=np.float64(cell),
+             reach_max=np.float64(20000.0))
+
+    def line_to(x_end, n=400):
+        s = np.zeros(n, STATE_DTYPE)
+        s["origin"][:, 0] = np.linspace(100.0, x_end, n)
+        s["origin"][:, 1:] = 50.0
+        s["velocity"][:, 0] = 500.0
+        s["velocity"][250:, 0] = 200.0                      # one loss, at tick 249
+        return s
+    monkeypatch.setattr(auto_spine, "beam",
+                        lambda a, out, branch_tick=0, tag=None: (line_to(600.0), {"beam_rc": 0}))
+    calls = []
+
+    def fake_ge(a, out, line, end, boosts=None, tag="ge", line_keys=None, **kw):
+        calls.append((tuple(boosts), tag, kw.get("roots")))
+        if len(calls) == 1:
+            return line_to(650.0), {"ge_rc": 0}
+        return line_to(1500.0), {"ge_rc": 0}
+    monkeypatch.setattr(auto_spine, "go_explore", fake_ge)
+    out = tmp_path / "k01"
+    rc = auto_spine.main(["--ckpt", "c.pt", "--map", "m.bsp", "--field", str(fp),
+                          "--out", str(out), "--greedy-d", "9400", "--gain", "500",
+                          "--ge-boost", "1.0;E1.0", "--ge-minutes", "1",
+                          "--stall-margin", "50"])
+    assert rc == 0
+    assert calls[0][:2] == ((1.0,), "ge") and calls[0][2] is None
+    assert calls[1][:2] == ((1.0,), "ge2") and calls[1][2] is not None
+    r = np.asarray(calls[1][2])
+    assert r.max() <= 248 and r.min() >= 249 - 100
+    info = json.loads((out / "spine.json").read_text())
+    assert info["source"] == "beam+ge2" and info["ge2_energy_losses"][0][0] == 249

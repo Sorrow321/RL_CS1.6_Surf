@@ -207,17 +207,92 @@ def stall_tick(d, margin: float) -> int:
 
 def boost_stages(spec: str) -> list:
     """--ge-boost '1.0,1.04;1.08,1.12' -> [[1.0, 1.04], [1.08, 1.12]]: the escalation ladder."""
-    return [[float(b) for b in st.split(",") if b.strip()]
-            for st in str(spec).split(";") if st.strip()]
+    return [b for _m, b in stage_specs(spec)]
 
 
-def go_explore(a, out: Path, line, end: int, boosts=None, tag: str = "ge", line_keys=None):
-    """GE --exact-chains rooted at the line's last --roots-secs before ``end``; the deepest
-    chain replayed and spliced onto the line at its root -> (spliced states, info)."""
+def stage_specs(spec: str) -> list:
+    """--ge-boost '1.0,1.04;E1.0,1.04;1.08' -> [('tail', [1.0, 1.04]), ('energy', [1.0, 1.04]),
+    ('tail', [1.08])]: a stage prefixed E roots the explorer before the line's largest
+    energy losses (energy_roots) instead of in its last --roots-secs before the stall."""
+    out = []
+    for st in str(spec).split(";"):
+        st = st.strip()
+        if not st:
+            continue
+        mode = "tail"
+        if st[0] in "Ee":
+            mode, st = "energy", st[1:]
+        out.append((mode, [float(b) for b in st.split(",") if b.strip()]))
+    return out
+
+
+G_ENERGY = 800.0           # sv_gravity: energy height h = z + |v|^2 / (2 g) (explore_phase1's)
+
+
+def energy_height(states) -> np.ndarray:
+    o = np.asarray(states["origin"], np.float64).reshape(-1, 3)
+    v = np.asarray(states["velocity"], np.float64).reshape(-1, 3)
+    return o[:, 2] + (v * v).sum(axis=1) / (2.0 * G_ENERGY)
+
+
+def energy_roots(line, end: int, tps: float, secs: float = 12.0, drops: int = 3,
+                 lead: float = 1.0, n: int = 48, win: float = 0.1,
+                 gap: float = 0.5) -> tuple[np.ndarray, list]:
+    """Root indices just BEFORE the line's largest energy losses (pbr5b2, 2026-10-25).
+
+    A line that crashes keeps going for a while and stalls seconds later where its energy has
+    run out (princessburglar's k05: -1,650 u of energy height in crashes over 50-54%, a stall
+    at 56.2% under a climb it can no longer make). Roots in its last --roots-secs before the
+    stall are all post-crash: no boost the ladder tries gives a slow state back hundreds of u of
+    height. Here the roots sit in the ``lead`` seconds before each of the ``drops`` largest
+    losses of h over ``win`` seconds in the line's last ``secs`` seconds up to ``end`` (losses
+    at least ``gap`` seconds apart), so the explorer searches for a way through each loss with
+    the energy the line still had. -> (indices, [(tick, loss), ...])."""
+    h = energy_height(line)
+    end = int(min(max(end, 1), len(h) - 1))
+    w = max(1, int(round(win * tps)))
+    lo = max(0, end - int(round(secs * tps)))
+    if end - lo <= w:
+        return np.unique(np.linspace(lo, end, max(2, n)).round().astype(int)), []
+    t = np.arange(lo, end - w + 1)
+    dh = h[t + w] - h[t]
+    order = t[np.argsort(dh)]
+    picked: list = []
+    for tt in order:
+        if len(picked) >= max(1, drops):
+            break
+        if h[tt + w] - h[tt] >= 0.0:
+            break
+        if all(abs(int(tt) - p) >= gap * tps for p in picked):
+            picked.append(int(tt))
+    if not picked:
+        return np.unique(np.linspace(lo, end, max(2, n)).round().astype(int)), []
+    # the drop's own tick: the largest single-tick loss inside its window
+    marks = []
+    for tt in picked:
+        seg = np.diff(h[tt:tt + w + 1])
+        marks.append(int(tt + int(np.argmin(seg))))
+    per = max(2, int(n) // len(marks))
+    idx = []
+    for m in marks:
+        a0 = max(0, m - int(round(lead * tps)))
+        idx.append(np.linspace(a0, max(a0, m - 1), per).round().astype(int))
+    loss = [(int(m), float(h[m + 1] - h[m]) if m + 1 < len(h) else 0.0) for m in marks]
+    return np.unique(np.concatenate(idx)), loss
+
+
+def go_explore(a, out: Path, line, end: int, boosts=None, tag: str = "ge", line_keys=None,
+               roots=None):
+    """GE --exact-chains rooted at the line's last --roots-secs before ``end`` (or at the line
+    indices ``roots``); the deepest chain replayed and spliced onto the line at its root ->
+    (spliced states, info)."""
     from spine_canon_view import canon_view
     from surfgym.core import STATE_DTYPE
-    lo = max(0, end - int(round(a.roots_secs * TICKS_PER_S)))
-    idx = np.unique(np.linspace(lo, end, max(2, int(a.roots_n))).round().astype(int))
+    if roots is not None:
+        idx = np.unique(np.asarray(roots, np.int64))
+    else:
+        lo = max(0, end - int(round(a.roots_secs * TICKS_PER_S)))
+        idx = np.unique(np.linspace(lo, end, max(2, int(a.roots_n))).round().astype(int))
     roots = clean(line[idx])
     if boosts is None:
         boosts = boost_stages(a.ge_boost)[0]
@@ -312,14 +387,22 @@ def main(argv=None) -> int:
     ap.add_argument("--ge-minutes", type=float, default=10.0, help="0 = no GE fallback")
     ap.add_argument("--ge-cell", type=float, default=64.0)
     ap.add_argument("--ge-energy", type=float, default=32.0)
-    ap.add_argument("--ge-boost", default="1.0,1.04;1.08;1.12",
+    ap.add_argument("--ge-boost", default="1.0,1.04;E1.0,1.04;1.08;1.12",
                     help="the GE's escalation ladder: ';'-separated stages of comma-separated "
                          "speed factors; every root is tried with its velocity scaled by each "
                          "factor of a stage, and the next stage (--ge-minutes each) runs only "
                          "when one finds no line past the greedy frontier. One factor per stage "
                          "above 1.04: the deepest chain of a mixed stage is the most boosted "
                          "one, and a x1.12 root put a spine out of the greedy line's reach "
-                         "(round 3, auto-spine search 3)")
+                         "(round 3, auto-spine search 3). A stage prefixed E roots the "
+                         "explorer just before the line's largest energy losses instead "
+                         "(energy_roots; --energy-roots-secs / --energy-drops / --energy-lead)")
+    ap.add_argument("--energy-roots-secs", type=float, default=12.0,
+                    help="E stages: the window before the stall searched for energy losses")
+    ap.add_argument("--energy-drops", type=int, default=3,
+                    help="E stages: how many of the largest losses get roots")
+    ap.add_argument("--energy-lead", type=float, default=1.0,
+                    help="E stages: roots over this many seconds before each loss")
     ap.add_argument("--ge-view-follow", default="-90,-60,-30,-15,0,15,30,60,90",
                     help="explore_phase1 --view-follow offsets (deg from the velocity heading) for "
                          "the Go-Explore stages; 'none' = the uniform yaw-rate explorer")
@@ -411,10 +494,21 @@ def main(argv=None) -> int:
             # no line past the greedy frontier. The boost buys the uniform explorer the energy
             # its random actions waste; the trained policy has flown the route it found with
             # its own (round 3: gate 8's chain needed x1.04, the greedy passed unboosted)
-            for k, boosts in enumerate(boost_stages(a.ge_boost)):
+            for k, (mode, boosts) in enumerate(stage_specs(a.ge_boost)):
                 tag = "ge" if k == 0 else f"ge{k + 1}"
+                kw = {}
+                if mode == "energy":
+                    # roots before the line's largest energy losses (the line's own states
+                    # with the energy it still had), not in its last seconds before the stall
+                    ridx, losses = energy_roots(line, st, TICKS_PER_S, a.energy_roots_secs,
+                                                a.energy_drops, a.energy_lead, a.roots_n)
+                    kw["roots"] = ridx
+                    res.update({f"{tag}_energy_losses": [[t, round(dh, 1)] for t, dh in losses]})
+                    print(f"GE stage {k + 1}: energy roots before the losses "
+                          + ", ".join(f"{dh:,.0f} u at tick {t}" for t, dh in losses)
+                          + f" ({len(ridx)} roots)", flush=True)
                 gl, gi = go_explore(a, out, line, st, boosts=boosts, tag=tag,
-                                    line_keys=KEYS.get(line_tag))
+                                    line_keys=KEYS.get(line_tag), **kw)
                 res.update({(kk if k == 0 else f"{tag}_{kk[3:]}" if kk.startswith("ge_")
                              else f"{tag}_{kk}"): vv for kk, vv in gi.items()})
                 if gl is None:
@@ -423,7 +517,8 @@ def main(argv=None) -> int:
                 ge_e, ge_de = cut_line(gl, gd_, a.contact_tol, a.cut)
                 res.update({f"{tag}_len": int(len(gl)), f"{tag}_end": ge_e,
                             f"{tag}_end_d": ge_de, f"{tag}_best_d": float(gd_.min())})
-                print(f"GE stage {k + 1} (speed x {boosts}): {len(gl)} states, best d "
+                print(f"GE stage {k + 1} ({'energy roots, ' if mode == 'energy' else ''}"
+                      f"speed x {boosts}): {len(gl)} states, best d "
                       f"{gd_.min():,.0f}, cut at {ge_e} d {ge_de:,.0f}", flush=True)
                 if ge_de < a.greedy_d - a.gain:
                     best_src = (f"beam+{tag}", gl[:ge_e + 1], ge_de)

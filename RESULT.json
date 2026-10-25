@@ -2,6 +2,17 @@
  "agent": "pbr5b2",
  "round": 5,
  "final": false,
- "best": null,
- "summary": "Round 5 start (19:50 UTC): box 57714456 (RTX 5080, 0.62 $/h). First run: resume the round-4 incumbent (pbr4b3_t11 ckpt_23551016960, 52.937) with t11's flag set and spine k05 (the trainer's own auto-spine loop)."
+ "best": {
+  "score": 52.924,
+  "eval_file": "/home/steam/ar_pb/runs/pbr5b2/pbr5b2_c1/traj_23551541248.jsonl",
+  "run": "pbr5b2_c1",
+  "step": 23551541248,
+  "ckpt": "/home/steam/ar_pb/incumbent/r4/ckpt.pt",
+  "recipe": [
+   "resume of the round-4 incumbent pbr4b3_t11 ckpt_23551016960 with t11's flag set, spine pbr4b3_auto_t11k05 + keys, 14 milestones, --auto-spine (quorum 5, patience 1.2e9, gain 500, GE 8 min)"
+  ],
+  "resume_from": "pbr4b3_t11 ckpt_23551016960 (incumbent r4, md5 7fbcd458...)",
+  "commit": "901b641"
+ },
+ "summary": "c1 (19:53 UTC) = the incumbent's loop continued on k05; its first eval (the resumed weights) 52.924."
 }
