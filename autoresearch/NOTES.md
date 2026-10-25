@@ -2143,3 +2143,29 @@ minute). Incumbent: pbr4b3_t11 ckpt_23551016960 (md5 7fbcd458...), eval 52.937 a
   and climbs back to z ~2,200-2,500 (47-49 s, 56.7-58%) with energy height ~2,800-2,850 (z +
   |v|^2/1600). k05's line ends at 56.22% at (-2,395, 2,472, 1,965) at 212 u/s, h ~1,990: ~800 u of
   energy height under the record there. The gate after k05 will probably be energy again.
+
+### The gate after k05 is an energy climb; auto_spine gets energy-anchored GE roots (20:00-20:15 UTC)
+* Past k05's end (56.22%, z 1,965) the grader field's path CLIMBS to z ~2,357-2,421 by 56.6-57.0% and
+  runs at z ~2,390 to 61% (greedy descent on the field grid). k05's line arrives with energy height
+  h ~1,994 (212 u/s): it cannot reach z 2,390 at all. The k05 GE chain (from state 4,344, 50.86%) loses
+  ~1,650 u of h in crashes over 50-54% (single-tick losses -254 at 50.2%, -140 at 51.2%, -126 / -120 at
+  51.6-51.7%, -335 at a floor landing at 52.7%, -348 at 54.0%); the record (ANALYSIS ONLY) loses ~520
+  there: it surfs a zig-zag descent from z ~2,600 to ~1,250 at up to 1,712 u/s (h 3,039 at the U's
+  bottom, 54.8%) and swoops up (vz +1,243) to z 2,213+ at 56.7% with h ~2,800. k05 reaches the bottom at
+  ~1,150 u/s (h ~2,130): the climb needs >= ~1,350 u/s there even with zero speed at the top.
+* So the loop will probably stall at ~56.2%: auto_spine's GE roots sit in the last 4 s before the stall,
+  all post-crash, and a x1.12 boost of a 200-700 u/s state adds < 60 u of h.
+* **auto_spine `--ge-boost` E stages** (ef2d3db, pulled onto the box: the running trainer's next search
+  uses it): the default ladder is now `1.0,1.04;E1.0,1.04;1.08;1.12`; an E stage roots the explorer in
+  the 1 s before each of the 3 largest losses of h (over 0.1 s windows, >= 0.5 s apart) in the line's
+  last 12 s before its stall (`energy_roots`; --energy-roots-secs / --energy-drops / --energy-lead).
+  Generic: the policy's own line and energy height, no map constant. On k05 itself it picks the losses
+  at 4,254 / 4,551 / 4,731. Tests: test_energy_roots_sit_before_the_largest_losses,
+  test_ge_ladder_energy_stage_gets_its_roots (+ the old ladder / branched / cut tests pass).
+* c1 curriculum so far: k05 walked back 5001 -> ~4436 in ~25 min (bands 37-75% except two stuck spots:
+  [4576-4586] 0.0-0.1% for ~5 min (the chain leaves a floor and turns 150 deg left in the air), then
+  [4421-4436] 0.1-1.2% (the chain's own impact on a surface at 51.7%)). Greedy evals 52.92-52.94%.
+* Local probe (record_ckpt, the incumbent's weights, single k05 states at 54% / 54.6% with the velocity
+  x1.0 / 1.2 / 1.4): every episode dies in the fall catch at z ~1,190 under the U's bottom; x1.0 from
+  4,780 reaches 56.15% then falls; with more speed the policy flies another line and dies sooner. More
+  energy alone does nothing for weights not trained there (a WON'T, not a CAN'T).
