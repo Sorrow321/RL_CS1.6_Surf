@@ -3,16 +3,16 @@
  "round": 4,
  "final": false,
  "best": {
-  "score": 26.375,
-  "eval_file": "/home/steam/ar_pb/runs/pbr4b4/pbr4b4_c3/traj_15430320128.jsonl",
-  "run": "pbr4b4_c3",
-  "step": 15430320128,
-  "ckpt": "/home/steam/ar_pb/runs/pbr4b4/pbr4b4_c3/ckpt_15430320128.pt",
-  "ckpt_step": 15430320128,
+  "score": 26.733,
+  "eval_file": "/home/steam/ar_pb/runs/pbr4b4/pbr4b4_c4/traj_16066281472.jsonl",
+  "run": "pbr4b4_c4",
+  "step": 16066281472,
+  "ckpt": "/home/steam/ar_pb/runs/pbr4b4/pbr4b4_c4/ckpt_16066281472.pt",
+  "ckpt_step": 16066281472,
   "ckpt_md5": "a2a4b8debf119a9769a8a38ff5648ee8",
   "recipe": [
    "resume of the incumbent pbr3b4_as10 13.4999B weights",
-   "--demo-file runs/spine_k01.npy (autoresearch/spines/pbr4b4_auto_k01.npy, the trainer's own beam line to 26.05%; c2 trained on pbr4b4_beam_s1.npy first) --demo-tau0 1779 --demo-window 5 --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5 --demo-rate 0.3 --demo-front-frac 0.4 --demo-success-d 100 --demo-success-bonus 50 --demo-milestones 44939,43426,42171",
+   "--demo-file runs/spine_s3.npy (autoresearch/spines/pbr4b4_ge_s3.npy: c3's own dh-ranked beam line to 20.4 s + an unboosted Go-Explore chain: east flight over the upper floor, east-wall surf, north ramp, 26.67%) --demo-window 5 --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5 --demo-rate 0.3 --demo-front-frac 0.4 --demo-success-d 100 --demo-success-bonus 50 --demo-milestones 44939,43426,42363,42171",
    "--keys-hold-spawn-duck --yaw-entropy 0 --demo-front-temp 0.5 --demo-front-ticks 40 --demo-front-view 6",
    "--respawn-greedy 0.2 --respawn-greedy-window 0.25 2.0 --respawn-greedy-stuck 200 --respawn-greedy-contact --respawn-greedy-temp 0.5 --respawn-greedy-temp-ticks 100 --respawn-greedy-temp-view 6 --respawn-greedy-speed 1.0 1.05",
    "--respawn-front-perturb 0.2 --respawn-front-perturb-band 0.005 --respawn-front-perturb-speed 1.0 1.3 --respawn-front-perturb-turn 90",
@@ -21,8 +21,8 @@
    "--auto-spine --auto-spine-milestones --auto-spine-delay 3e8 --auto-spine-retry 4e8 --auto-spine-patience 1.5e9 --auto-spine-gain 500 --auto-spine-ge-minutes 8",
    "--save-best-eval 1"
   ],
-  "resume_from": "pbr4b4_c2 ckpt_latest 15.052B (md5 101a3598...) <- incumbent pbr3b4_as10 13.4999B",
-  "commit": "2858ddc"
+  "resume_from": "pbr4b4_c3 ckpt_latest 15.688B (md5 8ea7391a...) <- c2 15.052B <- incumbent pbr3b4_as10 13.4999B",
+  "commit": "87c4bdb"
  },
- "summary": "Score 24.737 -> 26.375 (pbr4b4_c3 15.43B, exact weights saved by --save-best-eval; 1-3 of 9 greedy episodes from the true start climb the gate-10 ramp and crawl to 26.4%). How: a plain beam_tas on the incumbent's weights reached 26.39% (round 3's k03 curriculum had taught the ramp); its line became the spine, the greedy followed after ~1.1B steps; the trainer's own search then swapped in a faster 26.05% line (k01). Gate 11 (26.4%): a fall-catch sheet under a north ramp; the line crawls there at 250-450 u/s, the record arrives at ~850. Finding: the greedy's free-flight energy gain is at the 10 ms tick's ceiling (56 u/s per s; the record reaches 69 at 131 fps). Trainer fixes: numba thread cap (12k -> 341k steps/s), --save-best-eval. Now: a full-CPU beam batch at gate 11."
+ "summary": "Score 24.737 -> 26.733 (pbr4b4_c4 16.07B, exact weights by --save-best-eval; median 26.36%: most greedy episodes from the true start now pass gate 10 and reach the gate-11 catch, the best ones fly east over the upper floor onto the north ramp). Chain this round: the incumbent's own beam passed gate 10 (26.39%) -> curriculum (c2) -> the trainer's own spine k01 (c3) -> an unboosted Go-Explore chain from c3's own beam line past the upper-floor landing (spine ge_s3, c4). Next gate: the gap north of the north ramp (the record flies it at ~690 u/s; our lines arrive ~470, ~200 u of energy short, mostly lost at the gate-8 corridor and x~2,000 landings). Fixes: numba thread cap (12k -> 341k steps/s), --save-best-eval."
 }
