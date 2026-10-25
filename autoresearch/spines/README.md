@@ -115,3 +115,9 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   hole at 27.9%; cut just after the hole's landing (28.41%). Views of the chain along the velocity
   (spine_canon_view). No demo, no record (pbr4b3, round 4). The x1.32 root is a big boost: under
   milestones the old success lines keep the route paid.
+* `pbr4b3_beam_g11.npy` (2,900 states, md5 ad6f945f669b526921297705409a23a9): the policy's OWN line from
+  the true spawn over gate 11 at its own tick (7.67 ms): beam_tas on pbr4b3_t2's 15.47B weights (4,096
+  copies, 32 greedy, d-ranked, torch seed 4), replayed exactly - the ridge north, the launch, the flight
+  over the lethal floor, down the hole at 28.0% and on to 29.31% where it falls toward the trigger_teleport
+  sheet *128 (z ~2,577, a fall catch; gate 12). Cut at its best d. Views are the policy's own. No boost,
+  no demo, no record (pbr4b3, round 4).

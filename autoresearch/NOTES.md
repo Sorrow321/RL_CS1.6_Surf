@@ -1787,3 +1787,14 @@ over-subscribes the quota. This branch's surfgym now caps numba; the operator ma
   continues from the checkpoint (8.2 ms now, 7.63 ms from 15.165B; no --tick-ms-schedule on a resume -
   the flag would REPLACE the ramp). 3B steps. Question: does the curriculum carry the policy over the
   sheet from its own (unboosted) states, as round 3's x1.12 k03 spine eventually did for gate 10?
+
+### GATE 11 HALF-CROSSED: 27.287 (2026-10-25 10:40 UTC)
+* t2 evals (curriculum on the x1.32 spine; the tick reached 7.63 ms at 15.165B): 26.358 / 26.372 /
+  26.384 / 26.363 (14.99-15.22B) then **27.228** (15.293B) / 27.163 / **27.287** (15.444B, median 27.18%):
+  8/9 greedy episodes now launch off the ridge's north end and fly over the sheet at 850-940 u/s,
+  landing ON it 120-500 u short of the hole's south edge (ends at (3,538-3,594, -2,081..-1,693, z ~3,190);
+  the hole spans y -1,425..-1,575). Training's reservoir already reaches 28.46%.
+* The curriculum walked the spine back 2840 -> 2295 in ~150M steps and sits at the x1.32 root: band
+  [2300,...] (the boosted chain) 96%, band [2295,2299] (the line's own unboosted states) 0.0% - round 3's
+  k03 picture - yet the greedy line follows the chain most of the way with its own (7.63 ms) energy.
+* Handoff snapshot pulled: pbr4b3_t2/ckpt_15390998528.pt (the milestone at or before the 27.287 eval).

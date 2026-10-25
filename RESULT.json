@@ -3,15 +3,15 @@
  "round": 4,
  "final": false,
  "best": {
-  "score": 26.374,
-  "eval_file": "/home/steam/ar_pb/runs/pbr4b3/pbr4b3_t1/traj_14516486144.jsonl",
-  "run": "pbr4b3_t1",
-  "step": 14516486144,
-  "ckpt": "pbr4b3_t1 ckpt_latest saved at 14,516,486,144 by the auto-spine search (pull pending)",
+  "score": 27.287,
+  "eval_file": "/home/steam/ar_pb/runs/pbr4b3/pbr4b3_t2/traj_15443951616.jsonl",
+  "run": "pbr4b3_t2",
+  "step": 15443951616,
+  "ckpt": "/home/steam/ar_pb/runs/pbr4b3/pbr4b3_t2/ckpt_15390998528.pt (the milestone at or before the eval)",
   "recipe": [
    "resume of the round-3 incumbent (pbr3b4_as10 13.4999B)",
-   "--demo-file autoresearch/spines/pbr4b3_beam_g10.npy (own beam line over gate 10, 26.36%) --demo-window 5 --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5 --demo-rate 0.3 --demo-front-frac 0.4 --demo-success-d 100 --demo-success-bonus 50",
-   "--demo-milestones 44939,43426 --keys-hold-spawn-duck --yaw-entropy 0 --demo-front-temp 0.5 --demo-front-ticks 40 --demo-front-view 6",
+   "--demo-file autoresearch/spines/pbr4b3_ge12_x132.npy (own beam line + an 8 ms x1.32 GE chain over gate 11, cut at 28.41%) --demo-window 5 --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5 --demo-rate 0.3 --demo-front-frac 0.4 --demo-success-d 100 --demo-success-bonus 50",
+   "--demo-milestones 44939,43426,42182 --keys-hold-spawn-duck --yaw-entropy 0 --demo-front-temp 0.5 --demo-front-ticks 40 --demo-front-view 6",
    "--respawn-greedy 0.2 --respawn-greedy-window 0.25 2.0 --respawn-greedy-stuck 200 --respawn-greedy-contact --respawn-greedy-temp 0.5 --respawn-greedy-temp-ticks 100 --respawn-greedy-temp-view 6",
    "--respawn-front-perturb 0.2 --respawn-front-perturb-band 0.005 --respawn-front-perturb-speed 1.0 1.3 --respawn-front-perturb-turn 90",
    "--energy-pot 12 --energy-pot-front 0 --energy-pot-front-bonus 0 --no-respawn-novel --respawn-backward-mix 0 --int-real-only 0",
@@ -19,8 +19,8 @@
    "--auto-spine --auto-spine-milestones --auto-spine-gain 500 --auto-spine-ge-minutes 8 --auto-spine-retry 4e8 --auto-spine-patience 1.2e9",
    "--tick-ms-schedule 10:7.63:800e6 --ckpt-every 2e8"
   ],
-  "resume_from": "pbr4b3_g10b ckpt_latest 14.365B (md5 a5339175...)",
+  "resume_from": "pbr4b3_t1 ckpt_latest 14.990B (md5 ab8d9f51...), tick 8.2 ms -> 7.63 ms from 15.165B",
   "commit": "ad5f905"
  },
- "summary": "24.737 -> 26.374 (pbr4b3_t1 14.516B; from 14.89B 9/9 greedy episodes over gate 10, the 26.4% sheet death at gate 11). A plain beam on the incumbent's weights already passed gate 10. Gate 11 needs ~+250-400 u of energy height (GE boosts at 10 ms: x1.3 -> 27.42%; at 8 ms x1.32 -> 30.48%, down the hole that leads on). The record runs 131 fps and air-strafe gain is per frame: t1 ramps the tick 10 -> 7.63 ms (+30% gain), and the ramp alone took gate 10 from 1-3/9 to 9/9. Now pbr4b3_t2: curriculum on the 8 ms x1.32 GE chain over gate 11 (spine cut at 28.41%) with milestones. Also fixed: numba pool oversubscription (7k -> 350k steps/s), a tick-aware explorer for auto_spine."
+ "summary": "24.737 -> 27.287 (pbr4b3_t2 15.444B: 8/9 greedy episodes launch over the gate-11 sheet to 26.8-27.3%; t1 26.374 at 14.516B, from 14.89B 9/9 greedy episodes over gate 10, the 26.4% sheet death at gate 11). A plain beam on the incumbent's weights already passed gate 10. Gate 11 needs ~+250-400 u of energy height (GE boosts at 10 ms: x1.3 -> 27.42%; at 8 ms x1.32 -> 30.48%, down the hole that leads on). The record runs 131 fps and air-strafe gain is per frame: t1 ramps the tick 10 -> 7.63 ms (+30% gain), and the ramp alone took gate 10 from 1-3/9 to 9/9. Now pbr4b3_t2: curriculum on the 8 ms x1.32 GE chain over gate 11 (spine cut at 28.41%) with milestones. Also fixed: numba pool oversubscription (7k -> 350k steps/s), a tick-aware explorer for auto_spine."
 }
