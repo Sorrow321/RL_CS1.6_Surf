@@ -4842,6 +4842,17 @@ def main() -> None:
                     help="--auto-spine: the beam runs this long past the eval's longest episode")
     ap.add_argument("--auto-spine-timeout", type=float, default=2400.0,
                     help="--auto-spine: wall-clock cap (s) of one search")
+    ap.add_argument("--auto-spine-score", choices=["d", "dh"], default=None,
+                    help="--auto-spine: the search beams' ranking (auto_spine.py --score; None = "
+                         "its default, d). dh = -d + --auto-spine-score-energy x the energy "
+                         "height z + |v|^2/2g: lineages that keep energy at the same depth "
+                         "survive the resample")
+    ap.add_argument("--auto-spine-score-energy", type=float, default=1.0,
+                    help="--auto-spine-score dh: u of field distance one u of energy is worth")
+    ap.add_argument("--auto-spine-ge-boost", default=None,
+                    help="--auto-spine: the Go-Explore escalation ladder (auto_spine.py "
+                         "--ge-boost; None = its default '1.0,1.04;1.08;1.12'). '+H' tokens add "
+                         "H u of energy height to a root instead of scaling its velocity")
     ap.add_argument("--demo-cooldown", type=int, default=None,   # None = 20
                     help="--demo-file: iterations between two moves of the curriculum's tau "
                          "(default 20, the reference implementation's constant): every move "
@@ -14597,6 +14608,11 @@ def main() -> None:
             auto_spine_timeout=float(args.auto_spine_timeout))
         if args.auto_spine_milestones:
             meta["config"]["auto_spine_milestones"] = 1
+        if args.auto_spine_score is not None:
+            meta["config"].update(auto_spine_score=str(args.auto_spine_score),
+                                  auto_spine_score_energy=float(args.auto_spine_score_energy))
+        if args.auto_spine_ge_boost is not None:
+            meta["config"]["auto_spine_ge_boost"] = str(args.auto_spine_ge_boost)
     if args.demo_milestones:
         meta["config"]["demo_milestones"] = [float(x) for x in
                                              str(args.demo_milestones).split(",") if x.strip()]
@@ -15680,6 +15696,11 @@ def main() -> None:
                "--act-every", str(int(K)), "--seed", str(AUTO["k"]),
                "--branch-tick", str(br_tick),
                "--timeout", f"{float(args.auto_spine_timeout):g}"]
+        if args.auto_spine_score is not None:
+            cmd += ["--score", str(args.auto_spine_score),
+                    "--score-energy", f"{float(args.auto_spine_score_energy):g}"]
+        if args.auto_spine_ge_boost is not None:
+            cmd += ["--ge-boost", str(args.auto_spine_ge_boost)]
         if args.maxvel is not None:
             cmd += ["--maxvel", f"{float(args.maxvel):g}"]
         t0 = time.time()

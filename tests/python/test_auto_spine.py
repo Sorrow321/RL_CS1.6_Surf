@@ -298,3 +298,52 @@ def test_branched_beams_fork_at_the_tick_and_earlier(tmp_path, monkeypatch):
     assert forks == [(1700, "beam_br"), (1600, "beam_br2"), (1500, "beam_br3")]
     info = json.loads((out / "spine.json").read_text())
     assert info["source"] == "beam_br3" and info["br3_fork"] == 1500
+
+
+def test_boost_tokens_and_energy_boost():
+    """--ge-boost '+H' tokens (pbr4b2): H u of energy height added to a root's kinetic part,
+    along its velocity, along the view yaw for a root at rest; plain factors still scale."""
+    sys.path.insert(0, str(ROOT / "tools"))
+    import auto_spine
+    from surfgym.core import STATE_DTYPE
+    assert auto_spine.boost_stages("1.0,1.04;1.08;1.12") == [[1.0, 1.04], [1.08], [1.12]]
+    assert auto_spine.boost_stages("1.0,+40;+80") == [[1.0, "+40"], ["+80"]]
+    r = np.zeros(3, STATE_DTYPE)
+    r["velocity"][0] = (1000.0, 0.0, 0.0)          # fast
+    r["velocity"][1] = (150.0, 200.0, 0.0)          # a walker
+    r["yaw"][2] = 90.0                              # at rest, looking along +y
+    r["origin"][:, 2] = 100.0
+    b = auto_spine.boost_roots(r, "+80")
+    v0 = r["velocity"].astype(np.float64)
+    v1 = b["velocity"].astype(np.float64)
+    h0 = 100.0 + (v0 ** 2).sum(1) / 1600.0
+    h1 = 100.0 + (v1 ** 2).sum(1) / 1600.0
+    assert np.allclose(h1 - h0, 80.0, atol=0.05)
+    assert np.allclose(v1[0] / np.linalg.norm(v1[0]), (1.0, 0.0, 0.0), atol=1e-6)
+    assert np.allclose(v1[1] / np.linalg.norm(v1[1]), (0.6, 0.8, 0.0), atol=1e-6)
+    assert np.allclose(v1[2] / np.linalg.norm(v1[2]), (0.0, 1.0, 0.0), atol=1e-6)
+    assert np.array_equal(b["origin"], r["origin"])                 # only the velocity moves
+    s = auto_spine.boost_roots(r, 1.1)
+    assert np.allclose(s["velocity"].astype(np.float64), v0 * 1.1, atol=1e-3)
+
+
+def test_beam_score_passthrough(tmp_path, monkeypatch):
+    """auto_spine --score dh reaches beam_tas; without it the beam's command line is the old one."""
+    sys.path.insert(0, str(ROOT / "tools"))
+    import argparse
+    import auto_spine
+    seen = []
+    monkeypatch.setattr(auto_spine, "run",
+                        lambda cmd, log, timeout: seen.append([str(c) for c in cmd]) or 0)
+    base = dict(ckpt="c.pt", map="m.bsp", envs=64, greedy_envs=4, beam_ticks=100, seed=0,
+                timeout=10)
+    auto_spine.beam(argparse.Namespace(**base), tmp_path)
+    auto_spine.beam(argparse.Namespace(**base, score="d", score_energy=1.0), tmp_path)
+    auto_spine.beam(argparse.Namespace(**base, score="dh", score_energy=3.0), tmp_path)
+    assert "--score" in seen[0] and seen[0][seen[0].index("--score") + 1] == "d"
+    assert seen[0] == seen[1]
+    i = seen[2].index("--score", seen[2].index("--score") + 1)
+    assert seen[2][i:i + 4] == ["--score", "dh", "--score-energy", "3"]
+    import beam_tas
+    src = Path(beam_tas.__file__).read_text(encoding="utf-8")
+    assert '"--score-energy", type=float' in src

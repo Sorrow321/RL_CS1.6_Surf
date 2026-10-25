@@ -126,6 +126,12 @@ def beam(a, out: Path, branch_tick: int = 0, tag: str = None):
            "--greedy-envs", a.greedy_envs, "--allow-nonfinisher", "--save-frontier",
            "--skip-gate", "--route-file", "none", "--max-ticks", a.beam_ticks,
            "--torch-seed", a.seed, "--log-every", 5, "--out-dir", bd]
+    if getattr(a, "score", "d") != "d":
+        # --score dh: rank the population by -d + K x energy height, so at an energy gate the
+        # lineages that keep more energy at the same depth survive the resample (pbr4b2: the
+        # dh K 1 beam crossed princessburglar's gate 10 8 s sooner and ~180 u/s faster than
+        # the d-ranked one); the default command line is unchanged
+        cmd += ["--score", a.score, "--score-energy", f"{float(a.score_energy):g}"]
     if branch_tick > 0:
         cmd += ["--branch-at", f"t{int(branch_tick)}:{int(a.envs) // 2}",
                 "--branch-burst", int(round(a.branch_burst_secs * TICKS_PER_S)),
@@ -152,10 +158,41 @@ def stall_tick(d, margin: float) -> int:
     return int(ok[0]) if len(ok) else int(np.argmin(d))
 
 
+def boost_token(b: str):
+    """'1.04' -> 1.04 (the velocity scaled); '+80' -> '+80' (80 u of energy height added)."""
+    b = b.strip()
+    return f"+{float(b[1:]):g}" if b.startswith("+") else float(b)
+
+
 def boost_stages(spec: str) -> list:
-    """--ge-boost '1.0,1.04;1.08,1.12' -> [[1.0, 1.04], [1.08, 1.12]]: the escalation ladder."""
-    return [[float(b) for b in st.split(",") if b.strip()]
+    """--ge-boost '1.0,1.04;1.08,1.12' -> [[1.0, 1.04], [1.08, 1.12]]: the escalation ladder.
+    A '+H' token adds H u of energy height instead (see boost_roots)."""
+    return [[boost_token(b) for b in st.split(",") if b.strip()]
             for st in str(spec).split(";") if st.strip()]
+
+
+G_ENERGY = 800.0        # sv_gravity: the energy height h = z + |v|^2 / 2g of --energy-pot
+
+
+def boost_roots(roots, b):
+    """The roots with more energy: a float scales the velocity (x1.04 = +8% of the kinetic
+    part, which is nothing on a SLOW line - a walker at 250 u/s gains ~10 u of height at
+    x1.12); '+H' adds H u of energy height to the kinetic part, |v| -> sqrt(|v|^2 + 2 g H),
+    along the velocity (along the view's yaw for a state at rest) - the same energy at any
+    speed (+80 u = x1.04 at ~1,600 u/s, 250 -> 425 u/s for the walker)."""
+    r = np.array(roots, copy=True)
+    v = np.asarray(r["velocity"], np.float64).reshape(-1, 3)
+    if isinstance(b, str):
+        dh = float(b[1:])
+        sp = np.linalg.norm(v, axis=1)
+        yaw = np.radians(np.asarray(r["yaw"], np.float64).reshape(-1))
+        rest = np.stack([np.cos(yaw), np.sin(yaw), np.zeros_like(yaw)], axis=1)
+        u = np.where(sp[:, None] > 1.0, v / np.maximum(sp, 1e-9)[:, None], rest)
+        v = u * np.sqrt(sp * sp + 2.0 * G_ENERGY * dh)[:, None]
+    else:
+        v = v * float(b)
+    r["velocity"] = v.reshape(np.shape(r["velocity"])).astype(r["velocity"].dtype)
+    return r
 
 
 def go_explore(a, out: Path, line, end: int, boosts=None, tag: str = "ge"):
@@ -170,10 +207,14 @@ def go_explore(a, out: Path, line, end: int, boosts=None, tag: str = "ge"):
         boosts = boost_stages(a.ge_boost)[0]
     if boosts != [1.0]:
         # --ge-boost: each root also with its velocity scaled (the --respawn-front-perturb
-        # rule: the line's own states with more or less energy); the chain's root is matched
-        # back to the line by position, so a boosted root splices like any other
+        # rule: the line's own states with more or less energy) or, for a '+H' token, with H u
+        # of energy height added (boost_roots); the chain's root is matched back to the line by
+        # position, so a boosted root splices like any other
         rs = []
         for b in boosts:
+            if isinstance(b, str):
+                rs.append(boost_roots(roots, b))
+                continue
             r = np.array(roots, copy=True)
             r["velocity"] = (r["velocity"].astype(np.float64) * b).astype(r["velocity"].dtype)
             rs.append(r)
@@ -243,7 +284,14 @@ def main(argv=None) -> int:
                          "when one finds no line past the greedy frontier. One factor per stage "
                          "above 1.04: the deepest chain of a mixed stage is the most boosted "
                          "one, and a x1.12 root put a spine out of the greedy line's reach "
-                         "(round 3, auto-spine search 3)")
+                         "(round 3, auto-spine search 3). A '+H' factor adds H u of energy "
+                         "height instead (|v| -> sqrt(|v|^2 + 2 g H)): the same energy on a slow "
+                         "line as on a fast one, where a factor adds almost nothing to a walker")
+    ap.add_argument("--score", choices=["d", "dh"], default="d",
+                    help="the beams' ranking (beam_tas --score): d, or dh = -d + --score-energy "
+                         "x the energy height")
+    ap.add_argument("--score-energy", type=float, default=1.0,
+                    help="--score dh: u of field distance one u of energy height is worth")
     ap.add_argument("--roots-secs", type=float, default=4.0,
                     help="Go-Explore roots: the line's last seconds before it stalls")
     ap.add_argument("--stall-margin", type=float, default=500.0,
