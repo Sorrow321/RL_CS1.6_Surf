@@ -128,3 +128,9 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   exactly: down the hole heading SOUTH-WEST, a hard landing on the ramp at (2,880, -1,683, 2,781), west then
   north at ~820-900 u/s, to 30.44% (falling toward the catch sheet *128 at its end). Cut at its best d;
   the chain's views along the velocity. No demo, no record (pbr4b3, round 4).
+* `pbr4b3_ge14.npy` (3,230 states, md5 d5ba35e9937b7b8d6188017034ce98dd): gate 12 WITHOUT a boost - pbr4b3_beam_g11.npy (the policy's own 7.67 ms
+  beam line) to its state 2,750 just before the gate-11 hole, then the exact Go-Explore chain
+  (explore_phase1 --exact-chains --tick-ms 8, uniform random bursts, 64 u x energy 32 cells, 15 min) rooted
+  at that state UNBOOSTED (x1.000), replayed 12/12 links exactly: a bounce off the room's north side turns it
+  south-west into the hole, onto the ramp at (2,759, -1,751, 2,950), north along x ~2,400-2,560 to (2,383,
+  -23, 2,661) = 31.79%. Cut at its best d; the chain's views along the velocity. No demo, no record.
