@@ -2005,13 +2005,18 @@ def _temper_logits(padded, temp):
     return padded / temp
 
 
-def sample_padded(padded, temp=None):
+def sample_padded(padded, temp=None, hold=None):
     """Gumbel-argmax sample + total logprob from padded logits (no grad).
     ``temp`` (None = off): the softmax temperature, logits / temp; the
     returned log-prob is then the TEMPERED distribution's, i.e. the
-    behaviour policy's."""
+    behaviour policy's. ``hold`` (None = off, the draw that shipped): (m (B,), u (B, ...)) -
+    the rows with m > 0.5 draw with the HELD uniforms u instead of fresh ones (--demo-front-hold:
+    the same Gumbel noise decision after decision, so a row keeps choosing the same category
+    while its logits stay put; each draw is still an exact sample of the tempered softmax)."""
     padded = _temper_logits(padded, temp)
     u = torch.rand_like(padded).clamp_min_(1e-20)
+    if hold is not None:
+        u = torch.where(hold[0].view(-1, *([1] * (u.dim() - 1))) > 0.5, hold[1], u)
     act = (padded - torch.log(-torch.log(u))).argmax(-1)
     lsm = F.log_softmax(padded, dim=-1)
     logp = lsm.gather(-1, act.unsqueeze(-1)).squeeze(-1).sum(-1)
@@ -2090,7 +2095,7 @@ def gauss_entropy(log_std):
     return (0.5 + 0.5 * LOG2PI + log_std).sum()
 
 
-def sample_view(padded, mu, log_std, temp=None, temp_view=None):
+def sample_view(padded, mu, log_std, temp=None, temp_view=None, hold=None):
     """The --view-continuous rollout draw (no grad): heads N_VIEW..5 by
     Gumbel-argmax on the padded slice (sample_padded, unchanged), the view
     by z = mu + sigma * eps. Static shapes and one randn_like next to the
@@ -2103,10 +2108,18 @@ def sample_view(padded, mu, log_std, temp=None, temp_view=None):
     _temper_logits); ``temp_view`` (None = temp), a scalar or one value
     per Gaussian head, tempers the Gaussian heads INSTEAD (the trainer's
     --unstuck-temp-heads, the benchmark's yaw / pitch / keys knobs). The
-    log-prob returned is the tempered joint's."""
-    cat, logp_c = sample_padded(padded[:, N_VIEW:], temp)
-    ls = _temper_log_std(log_std, temp if temp_view is None else temp_view)
-    z = mu + ls.exp() * torch.randn_like(mu)
+    log-prob returned is the tempered joint's. ``hold`` (None = off): (m (B,), u (B, heads,
+    bins), e (B, n_z)) - rows with m > 0.5 draw the categorical heads with the held Gumbel
+    uniforms u and the view with the held standard normals e (--demo-front-hold)."""
+    if hold is None:
+        cat, logp_c = sample_padded(padded[:, N_VIEW:], temp)
+        ls = _temper_log_std(log_std, temp if temp_view is None else temp_view)
+        z = mu + ls.exp() * torch.randn_like(mu)
+    else:
+        cat, logp_c = sample_padded(padded[:, N_VIEW:], temp, hold=(hold[0], hold[1]))
+        ls = _temper_log_std(log_std, temp if temp_view is None else temp_view)
+        eps = torch.where(hold[0].view(-1, 1) > 0.5, hold[2], torch.randn_like(mu))
+        z = mu + ls.exp() * eps
     B = padded.shape[0]
     neutral = torch.full((B, N_VIEW), 0, dtype=cat.dtype, device=cat.device)
     neutral[:, 0] = NEUTRAL_ACT[0]
@@ -4879,6 +4892,13 @@ def main() -> None:
     ap.add_argument("--demo-front-view", type=float, default=None,  # None = 1 + T
                     help="--demo-front-temp: the yaw head's sigma multiplier inside the hot "
                          "window, instead of 1 + T (the keys stay at 1 + T)")
+    ap.add_argument("--demo-front-hold", action="store_const", const=1, default=None,
+                    help="--demo-front-temp: inside the hot window an env draws with HELD noise "
+                         "(the Gumbel uniforms of the key heads and the view's standard normals "
+                         "are drawn once, at the band spawn's first decision, and reused for the "
+                         "window): a temporally correlated exploration - a sustained manoeuvre "
+                         "instead of per-decision white noise - in which every draw is still an "
+                         "exact sample of the tempered policy, scored as such by PPO")
     # ---- expert iteration: distil the planner's line (surfgym/bc.py) ----
     ap.add_argument("--bc-file", default=None,
                     help="behaviour-cloning rows from tools/plan_to_bc.py "
@@ -8993,8 +9013,10 @@ def main() -> None:
             raise SystemExit("--demo-front-temp (a per-env temperature on the flat single-map "
                              "rollout, read off the demo curriculum) is not implemented with "
                              + ", ".join(_bad))
-    elif args.demo_front_ticks is not None or args.demo_front_view is not None:
-        raise SystemExit("--demo-front-ticks / --demo-front-view need --demo-front-temp")
+    elif (args.demo_front_ticks is not None or args.demo_front_view is not None
+          or args.demo_front_hold):
+        raise SystemExit("--demo-front-ticks / --demo-front-view / --demo-front-hold need "
+                         "--demo-front-temp")
     if args.respawn_greedy_temp is not None:
         if float(args.respawn_greedy_temp) <= 0.0:
             raise SystemExit("--respawn-greedy-temp T needs T > 0 (absent = off)")
@@ -14757,6 +14779,9 @@ def main() -> None:
         meta["config"]["demo_front_ticks"] = int(args.demo_front_ticks)
         meta["config"]["demo_front_view"] = (float(args.demo_front_view)
                                              if args.demo_front_view is not None else None)
+    if args.demo_front_hold:
+        # --demo-front-hold: dumped only when on
+        meta["config"]["demo_front_hold"] = 1
     # --unstuck: written ONLY when set (a control run's config dump stays
     # byte-identical); every knob rides along so a resume restores them
     if UNSTUCK:
@@ -15941,6 +15966,19 @@ def main() -> None:
         print(f"--respawn-greedy-temp {args.respawn_greedy_temp:g}: an env whose episode started "
               f"on a greedy-line row samples the keys at {_gt_k:g} and the yaw sigma x {_gt_v:g} "
               f"for its first {GT_TICKS} ticks; PPO scores each row at its own temperature")
+    DFH = bool(args.demo_front_hold) and DFT
+    hold_m = hold_u = hold_e = hold_m_pin = None
+    if DFH:
+        # --demo-front-hold: one row of Gumbel uniforms (the padded key heads) and one of view
+        # normals per env, redrawn at a band spawn's first decision and reused while the env is
+        # in its hot window (hold_m); static buffers, read inside the captured rollout graph
+        _hgen = torch.Generator(device=device)
+        _hgen.manual_seed(int(args.seed) + 77001 + 1000 * int(D.rank))
+        hold_u = torch.rand((N, NACT - N_VIEW, NPAD), device=device,
+                            generator=_hgen).clamp_min_(1e-20)
+        hold_e = torch.randn((N, NZ), device=device, generator=_hgen)
+        hold_m = torch.zeros((N,), device=device)
+        hold_m_pin = torch.zeros((N,), pin_memory=device.type == "cuda")
     if DFT:
         _dft_k = 1.0 + float(args.demo_front_temp)
         _dft_v = (float(args.demo_front_view) if args.demo_front_view is not None else _dft_k)
@@ -15949,6 +15987,10 @@ def main() -> None:
               f"curriculum's frontier band samples the keys at {_dft_k:g} and the yaw sigma "
               f"x {_dft_v:g} for its first {DFT_TICKS} ticks; PPO scores each row at its own "
               f"temperature")
+        if DFH:
+            print(f"--demo-front-hold: inside that window the draws reuse ONE set of noise per "
+                  f"env (drawn at the band spawn's first decision): a held manoeuvre, every draw "
+                  f"still an exact sample of the tempered policy")
 
     def set_front_temp() -> None:
         """--front-temp: this decision's per-env temperatures from the band (reward_fn._d is
@@ -15964,6 +16006,17 @@ def main() -> None:
             # --demo-front-temp: the envs whose episode started on the curriculum's frontier
             # band (demo_idx is the spine index of each env's spawn), inside the hot window
             hot = demo_hot_mask(demo_idx, demo._band(), _dft_len[0], DFT_TICKS)
+            if DFH:
+                # --demo-front-hold: fresh held noise at the window's first decision, then
+                # the same noise while the env stays hot
+                fresh = np.flatnonzero(hot & (np.asarray(_dft_len[0]) < KH))
+                if fresh.size:
+                    fi = torch.as_tensor(fresh, device=device)
+                    hold_u[fi] = torch.rand((fresh.size, NACT - N_VIEW, NPAD), device=device,
+                                            generator=_hgen).clamp_min_(1e-20)
+                    hold_e[fi] = torch.randn((fresh.size, NZ), device=device, generator=_hgen)
+                hold_m_pin.numpy()[:] = hot
+                hold_m.copy_(hold_m_pin, non_blocking=True)
             ftk_np[hot] = _dft_k
             # the yaw head(s); the pitch head (the last column) moves only the camera, so it
             # keeps the cold value
@@ -16297,7 +16350,8 @@ def main() -> None:
             if ROLL_MASK is not None:
                 padded = ROLL_MASK(padded)
             act, z, logp = sample_view(padded, mu, policy.log_std(), temp_t,
-                                       tempv_t)
+                                       tempv_t,
+                                       hold=(hold_m, hold_u, hold_e) if DFH else None)
             static_act.copy_(act)
             # STORED z is the un-offset draw, so logp above is exactly the
             # behaviour policy's log-density of the EXECUTED action and the
