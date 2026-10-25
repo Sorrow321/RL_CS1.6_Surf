@@ -3,5 +3,5 @@
  "round": 5,
  "final": false,
  "best": null,
- "summary": "Round 5 slot 4. No box yet (the fleet's 1.2 $/h cap is taken by two boxes; a watcher retries every 60 s). Plan: resume the incumbent (pbr4b3_t11 ckpt_23551016960, 52.937) on spine k05 with t11's flag set and the trainer's own --auto-spine loop, plus --auto-spine-pick-energy (new: a Go-Explore chain ends at the survivable cell past the bar with the highest progress + energy-pot potential instead of the deepest)."
+ "summary": "Round 5 slot 4. No run yet: the fleet's 1.2 $/h cap was full from the start; at 21:19 UTC a 0.165 $/h RTX 4060 Ti came free but failed deploy's gpu_health (power-capped 100/165 W, 37 TFLOPS) and was blocklisted + released per CLAUDE.md; the slot was taken by another box within a minute. A watcher rents, deploys and launches by itself. Plan: resume the incumbent (52.937) on spine k05 with t11's flags + --auto-spine-pick-energy (new, 42e46d9/0d4e7ee: a GE chain ends at the viable cell past the bar with the highest progress + energy-pot potential, not the deepest); if the loop stalls ~56% for energy (k05 loses ~1,620 u of energy height over 50-56% vs the record's ~790), search upstream for a smoother line."
 }
