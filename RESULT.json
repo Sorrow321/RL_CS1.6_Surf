@@ -3,16 +3,17 @@
  "round": 5,
  "final": false,
  "best": {
-  "score": 56.341,
-  "eval_file": "/home/steam/ar_pb/runs/pbr5b2/pbr5b2_c1/traj_24004526080.jsonl",
-  "run": "pbr5b2_c1",
-  "step": 24004526080,
-  "ckpt": "/home/steam/ar_pb/runs/pbr5b2/pbr5b2_c1/ckpt_23951572992.pt",
+  "score": 56.579,
+  "eval_file": "/home/steam/ar_pb/runs/pbr5b2/pbr5b2_c4/traj_24928845824.jsonl",
+  "run": "pbr5b2_c4",
+  "step": 24928845824,
+  "ckpt": "/home/steam/ar_pb/runs/pbr5b2/pbr5b2_c4/ckpt_24826609664.pt",
   "recipe": [
-   "resume of the round-4 incumbent pbr4b3_t11 ckpt_23551016960 with t11's flag set, spine pbr4b3_auto_t11k05 + keys, 14 milestones, --auto-spine (quorum 5, patience 1.2e9, gain 500, GE 8 min)"
+   "c1: resume of the round-4 incumbent pbr4b3_t11 ckpt_23551016960 with t11's flag set on spine k05 (56.341)",
+   "c2/c3/c4: + --respawn-greedy-energy 3; c4 = spine pbr5b2_e1c (+keys; tools/stitch_spine.py: beam + GE chain A x1.04 + policy rollout + GE --cell-heading 1 chain x1.08, cut at 57.2%) with milestones ...,25121,24479"
   ],
-  "resume_from": "pbr4b3_t11 ckpt_23551016960 (incumbent r4, md5 7fbcd458...)",
-  "commit": "d554d1e"
+  "resume_from": "pbr5b2_c3 ckpt_latest 24.626B (<- c2 24.162B <- c1 24.080B <- incumbent r4)",
+  "commit": "0739d2d"
  },
- "summary": "c1 (resume of the incumbent on k05): 56.341 at 24.0045B (k05's end reached). Gate at 56.6%: a shaft climb that needs the U exit to throw ~vz +900 up a narrow shaft; search 1's ladder failed (56.5-56.74%). Found by hand, generically: Go-Explore with a rising/not split in the cell key (--cell-heading 1) rooted at the policy's own U exit from the most energetic archive state -> 62.25% (x1.08 root). Spine pbr5b2_e1 (tools/stitch_spine.py) in c3 (21:42 UTC) with --respawn-greedy-energy 3 and milestones along it; auto_spine now defaults to the rising split."
+ "summary": "56.341 (c1, k05's end) -> 56.579 (c4 24.929B: 2/9 greedy episodes up the 56.3% shaft into the upper room). The climb past the upper room needs ~800 u/s vertical at the shaft = ~200-450 u more energy height than the policy's line has; its descent (50-54.5%) crashes where the record does not. Found by search, generically: Go-Explore with a rising/not cell split -> 62.25% (x1.08 root); a cleaner descent (x1.04 root, +600 u at 53%). c4's curriculum stalls at the x1.08 root; c5 (22:36) teaches the descent with --demo-success-energy 200 (new)."
 }
