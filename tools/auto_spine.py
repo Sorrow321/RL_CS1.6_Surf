@@ -387,7 +387,7 @@ def main(argv=None) -> int:
     ap.add_argument("--ge-minutes", type=float, default=10.0, help="0 = no GE fallback")
     ap.add_argument("--ge-cell", type=float, default=64.0)
     ap.add_argument("--ge-energy", type=float, default=32.0)
-    ap.add_argument("--ge-boost", default="1.0,1.04;E1.0,1.04;1.08;1.12",
+    ap.add_argument("--ge-boost", default="1.0,1.04;1.08;1.12",
                     help="the GE's escalation ladder: ';'-separated stages of comma-separated "
                          "speed factors; every root is tried with its velocity scaled by each "
                          "factor of a stage, and the next stage (--ge-minutes each) runs only "
@@ -396,7 +396,10 @@ def main(argv=None) -> int:
                          "one, and a x1.12 root put a spine out of the greedy line's reach "
                          "(round 3, auto-spine search 3). A stage prefixed E roots the "
                          "explorer just before the line's largest energy losses instead "
-                         "(energy_roots; --energy-roots-secs / --energy-drops / --energy-lead)")
+                         "(energy_roots; --energy-roots-secs / --energy-drops / --energy-lead). "
+                         "Not in the default: its first use (pbr5b2 search 1, princessburglar "
+                         "56.6%) was a null - the uniform explorer from pre-crash roots adds its "
+                         "own crashes (max energy height at the climb 2,340 vs stage 1's 2,395)")
     ap.add_argument("--energy-roots-secs", type=float, default=12.0,
                     help="E stages: the window before the stall searched for energy losses")
     ap.add_argument("--energy-drops", type=int, default=3,
