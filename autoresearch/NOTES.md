@@ -1338,3 +1338,13 @@ the budget pace (0.69 $/h) admit one box; until then every rent was refused (0.1
   --auto-spine-patience 1.2e9 (was 6e8): a patience search costs ~25 min while it finds nothing
   and could swap k03 (whose band is about to open) for a similar boosted line; searches still
   fire on the quorum (5/9 greedy episodes past 26.49%).
+
+### as7: 24.555; the ramp-catch band plateaus; a 25-min focused GE (01:05-01:35 UTC)
+* as7 evals: 24.539 / 24.548 / 24.555 (12.32B, new best by a hair: the crawl reaches a little
+  further) - 9/9 to the crawl every time. Handoff: as7's ckpt_latest at 12,340,166,656 (md5
+  158e4e1b..., 19M after the eval; handon_ckpt picks it).
+* The k03 ramp-catch band (spine 1,893-1,897) plateaued: 23.6-26.6% over ~500M steps (peak 28.9%
+  in as6), under the 30% --demo-rate. Even past it, the greedy would meet the x1.12 root.
+* Stopped as7 at 12.340B; a manual auto_spine.py on its weights with ONE long GE stage (25 min,
+  x1.0 / 1.04 / 1.08 roots over the last 4 s before the beam line's stall, no branched beam,
+  full CPU) - the trainer's 8-min stages never had that budget for an unboosted line.
