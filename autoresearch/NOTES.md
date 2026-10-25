@@ -1830,3 +1830,10 @@ beam_tas from the true start on t8e's weights (8 ms, 4,096 copies, 30 s):
   327-414 u/s, h ~3,300 (k09: 715, 3,588) - ~110 u short at the ramp foot and ~180 u more lost on the
   ramp. The curriculum band sits at k09 state ~2155 (17.2 s; 18% vs 72% either side); the greedy has
   not yet taken over the beam line's energy-keeping moves before the ramp.
+
+### Gate 11 passed by the greedy: score 27.147 (2026-10-25 16:47 UTC)
+* t8h evals: 24.605 / 26.467 / 24.758 / 26.436 (14.70B) / 24.679 / **27.105** (14.855B: 27.02, 27.10%)
+  / **27.147** (14.930B: 27.15%, 26.36%). Greedy episodes from the true start fly the k09 line over
+  gate 11 at 125 Hz (~1.5 h after the k08 spine, ~1.3 h after k09). Handoff: the box watcher's
+  ckpt_14930673664.pt (one iteration after the eval; md5 1d131749...) and ckpt_14854651904.pt (the
+  27.105 eval's exact weights), both pulled into runs/pbr4b1/pbr4b1_t8h/.
