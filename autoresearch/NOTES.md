@@ -1963,3 +1963,7 @@ throttled) and could read it as a bad box. The fix is one line in python/train_f
   ~300 u further SOUTH (y -1,650..-1,712, z 2,771-2,909), turns north at x ~2,500 (28.6 s) and runs
   north along x ~2,400-2,500 to y -104 by 30.0 s (31.7%). So past the gap: a landing under the slot,
   then a west surf whose line must stay south (our boosted line drifts ~300 u north and dies).
+* c12 later evals (21.18-21.94B): 27.023 / 27.076 / 27.167 / **27.206** / 27.113 / 27.138 / 27.132 /
+  27.178 / 27.163 - the most reliable policy of the round (21.78B: 9/9 episodes at 26.5% with median
+  h 3,570, max 3,587; gate 9 clean, 22% ~3,490). The energy creeps up ~+20-40 u per 1B steps under
+  c11/c12's flags; the gap wants ~3,735.
