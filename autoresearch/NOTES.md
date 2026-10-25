@@ -1608,3 +1608,32 @@ as7's 24.555 eval (ep0) vs the WR demo:
   (+ `--auto-spine --auto-spine-milestones --auto-spine-gain 500 --auto-spine-ge-minutes 8` to let
   the trainer search; the as10 run had it off). Box 57557523 (RTX 5080, 0.56 $/h), released at
   wrap-up.
+
+## pbr4b2 (round 4, slot 2) - 2026-10-25 07:43 UTC start
+
+Box: 57632318, RTX 4080 + i9-14900F (32 thr), 0.30 $/h, UK (machine 151788), rented 07:47 UTC.
+
+### Gate 10 falls to the policy's own beam at once (07:50-07:57 UTC)
+* Beams from the TRUE start on the incumbent's weights (pbr3b4_as10 ckpt_13499891712; beam_tas 4,096
+  copies, 32 greedy envs, resample every 25 decisions, 35 s cap, ~19 s each on the box): d-ranked
+  frontier d 42,063 = **26.39%** at 33 s; `--score dh --score-energy 1` 42,084 (26.35%) at 25 s;
+  dh K 3 42,074; dh K 3 branched at 16 s 42,063. Every one passes gate 10 - round 3's last beams
+  (as5-as7 weights, 11.4-12.3B) stopped at 24.4-24.8%; the K 12 energy shaping of as9/as10 (~1.5B
+  steps) apparently made the policy's own proposals able to climb.
+* The lines (dh1, d0): the U-turn exit after the gate-8 corridor, east over the gate-9 wall, a
+  landing at x ~2,100-2,300 (h ~3,500 -> ~3,380), then UP the ramp further SOUTH than the greedy
+  (y -3,000..-3,070 at x 2,680-2,800, the record's side; the greedy drifts north to y ~-2,877 and
+  bounces off a wall at (2,807, -2,745)), over its top at x ~3,050 (dh1 at 662 u/s, h 3,464; d0 at
+  ~480) onto a flat top at z ~3,197, then WALKING north at ~250 u/s to (3,500, -2,330) = 26.35%.
+  The record (ANALYSIS ONLY) crosses that top at ~800-900 u/s and climbs north to z ~3,417 by y
+  ~-2,060: the walk at 250 u/s is the next gate (gate 11).
+* Gate 10 energy (ANALYSIS ONLY, incumbent ep0 vs the record at matched places): ramp entry h 3,370
+  vs 3,608; the 238 u deficit = ~91 carried from before gate 8 + ~109 extra lost at the gate-8
+  corridor landing + ~80 extra at the landing before the ramp, minus ~46 we gain more after the
+  corridor U-turn. On the ramp the record gains ~86 u/s of h by strafing (131 fps), the greedy ~35.
+* Spine autoresearch/spines/pbr4b2_beam_dh1.npy (the dh1 line, 2,500 states, md5 47d1ac2a...).
+* **pbr4b2_c1** (07:57 UTC): the incumbent's weights + the curriculum on that spine from its end
+  (success line d <= 42,184 = 26.19%) + `--demo-milestones 44939,43426` (the k01 / k02 lines keep
+  paying) + round 3's flag set (energy K 12, greedy-contact rows + temp, front-perturb, success
+  bonus 50) + `--auto-spine --auto-spine-milestones --auto-spine-gain 500 --auto-spine-ge-minutes 8
+  --auto-spine-delay 3e8 --auto-spine-retry 4e8 --auto-spine-patience 1.2e9`, 2B steps.
