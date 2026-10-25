@@ -1745,3 +1745,27 @@ throttled) and could read it as a bad box. The fix is one line in python/train_f
 * Spine autoresearch/spines/pbr4b4_ge_s3.npy (2,303 states, end 26.67%, success line 42,007 =
   26.50%). **pbr4b4_c4** (10:39 UTC): c3's 15.688B weights + that spine + milestones
   44939,43426,42363,42171 (k01's line added) + the c3 flags (auto-spine delay 6e8), 4B steps.
+
+### c4 learns the east flight; energy-ranked beams reach the north gap (10:41-11:12 UTC)
+* c4 evals (spine ge_s3): 26.355 / 26.351 / 26.372 (median 26.4%) / 26.622 / 26.388 / **26.733**
+  (16.066B) / **26.896** (16.142B, median 26.3%; exact weights ckpt_16141778944.pt md5 a4e8166d...,
+  pulled): most greedy episodes reach the gate-11 catch, the best fly east over the upper floor
+  onto the north ramp and die in the catch further north. The curriculum crossed the GE chain's
+  parts (2302 -> 1742) in ~370M steps.
+* GE stage 2 (rooted at the s3 chain's 21.5-22.4 s, x1.0/1.04/1.08, 15 min at 12 threads beside
+  c4): deepest 26.88% from a x1.08 root - the north ramp peaks at z 3,391 (h 3,530) and the line
+  falls into the catch at (3,474, -2,034).
+* Search 5 (beams beside c4 on its 16.06B weights): d-ranked 26.25%; **dh K 10 26.99%**, dh K 30
+  26.92%, view-branched + dh K 10 at 18.5 s 26.92% (at 16.3 s 26.25%). Energy ranking keeps the
+  lineages that do not lose their speed; all of them die in the catch of the GAP north of the
+  north ramp: the record (ANALYSIS) launches off the ramp's top at ~690-705 u/s (h ~3,720) and
+  flies ~620 u north over the catch; our lines get there at 560-600 u/s (h ~3,520). ~200 u short.
+  Where it is lost (energy at first arrival, dh10 line vs the record): 20% 3,736 vs 3,796; 21%
+  (after gate 8's corridor landing) 3,473 vs 3,583; 24% 3,452 vs 3,600; 26.5% 3,524 vs ~3,720.
+* `--save-best-eval` paid off at once: three new bests in c4, each with its exact weights.
+* `auto_spine --beam-energy K` / `train_fast --auto-spine-beam-energy K` (new, d891120; off = the
+  old search byte for byte; tests/python/test_auto_spine.py test_energy_beam_command_and_choice):
+  the trainer's search also runs the beam ranked by -d + K x energy height and keeps the deeper line.
+* **pbr4b4_c6** (11:12 UTC): c4's final 16.208B weights -> c5 (14M steps, restarted for the flag)
+  -> c6 = spine dh10 (--demo-tau0 2280) + milestones 44939,43426,42363,42171,42007 +
+  --auto-spine-beam-energy 10 (delay 5e8), the rest as c4, 4B steps.

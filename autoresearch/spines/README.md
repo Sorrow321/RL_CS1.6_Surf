@@ -118,3 +118,9 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   20.0-21.3 s, replayed exactly (8/8 links), views along the velocity: it flies EAST over the upper
   floor without landing, surfs the east wall, climbs the north ramp to z 3,355 and falls into the
   fall-catch sheet at 26.67% (cut at its best d). No boost, no demo, no record (pbr4b4).
+* `pbr4b4_beam_dh10.npy` (2,300 states, md5 106cc18a30fa42771475e717c6ea6cfe): the frontier lineage of
+  tools/beam_tas.py from the TRUE spawn on pbr4b4_c4's own 16.06B weights, ranked by -d + 10 x the
+  energy height (`--score dh --score-energy 10`; 4,096 copies, 32 greedy), replayed open-loop and cut
+  at its best d (26.99%): the policy's own east flight over the upper floor, east-wall surf and
+  north-ramp climb, falling into the fall-catch sheet in the gap north of that ramp. Used by
+  pbr4b4_c5 / c6. No boost, no demo, no record.
