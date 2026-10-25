@@ -64,6 +64,37 @@
 # same line without the flag).
 set -euo pipefail
 
+# A container whose CFS quota is a FRACTION of the CPUs it can see oversubscribes every thread
+# pool that sizes itself by the affinity (numba, torch, the recorder's OpenMP): vast box 57652710
+# (2026-10-25) showed 128 host threads under a 30.7-CPU quota, and a greedy recording ran at
+# ~160 ms per tick - a 3,000-tick episode in ~8 min, 10 s once pinned - so the trainer's first
+# greedy eval outlived the record gate's 15 min twice. Re-exec this launcher (and so everything it
+# starts: the trainer, the record gate, the auto-spine searches) pinned to as many CPUs as the
+# quota allows. A box whose quota covers its CPUs (every box before this one) is untouched.
+if [ -z "${RUN_ARM_PINNED:-}" ] && command -v taskset >/dev/null 2>&1; then
+  _Q=$(python3 -c '
+import os
+def q():
+    try:
+        a, b = open("/sys/fs/cgroup/cpu.max").read().split()[:2]
+        return 0 if a == "max" else int(float(a) / float(b))
+    except Exception:
+        pass
+    try:
+        a = int(open("/sys/fs/cgroup/cpu/cpu.cfs_quota_us").read())
+        b = int(open("/sys/fs/cgroup/cpu/cpu.cfs_period_us").read())
+        return a // b if a > 0 and b > 0 else 0
+    except Exception:
+        return 0
+print(q())' 2>/dev/null || echo 0)
+  _N=$(nproc)
+  if [ "${_Q:-0}" -gt 0 ] && [ "$_N" -gt $((_Q + 1)) ]; then
+    echo "== $_N CPUs visible under a ${_Q}-CPU quota: pinning the launch to CPUs 0-$((_Q - 1)) (taskset)"
+    export RUN_ARM_PINNED=1
+    exec taskset -c "0-$((_Q - 1))" bash "$0" "$@"
+  fi
+fi
+
 RUN="${1:?usage: run_arm.sh <run-name> [extra trainer flags ...]}"
 shift || true
 

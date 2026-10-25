@@ -1715,3 +1715,25 @@ This branch did its analysis and search locally on CPU meanwhile (gate 10 at 125
   makes that turn keeping h ~3,700 (ours ~3,280 after the hit), passes (3,527, -2,493, 3,222) at
   875 u/s climbing (vz +377) and tops out at z 3,417 at (3,584, -1,998) (26.7%) before a long drop
   west: gate 11 is another energy climb, ~200-400 u of energy height short.
+
+### The 8 ms run on a box (10:51 UTC on)
+* Box 57652710: RTX 5060 Ti 16 GB, AMD EPYC 7B13 (128 host threads, cgroup quota 30.7 CPUs, omp 15),
+  0.163 $/h - the first offer that fit the fleet's 0.174 $/h of room. Eyeless physics 1.19M
+  env-ticks/s at 15 threads (1,024 envs).
+* pbr4b1_t8a (10:55): the incumbent 13.4999B weights + --tick-ms 8 + spine k05 + milestones 44939,43426
+  + the round-3 flag set + --auto-spine (delay 3e8, retry 4e8, patience 1.2e9, gain 500, GE 8 min).
+  TICK TRANSFER confirmed (ep_ticks 30000 at 10 ms = 300 s -> 37,500 ticks). KILLED by run_arm.sh's
+  record gate at 11:10: no ckpt_latest.pt within 900 s - the first iteration's greedy eval (9 parallel
+  episodes, one Python-stepped tick at a time with a JSON row per env per tick, up to the 300 s cap =
+  37,500 ticks) had not finished. Relaunched as **pbr4b1_t8b** with --ep-secs 120 (15,000 ticks; the
+  greedy reaches 26% in ~22 s) at 11:15 UTC.
+* pbr4b1_t8b (--ep-secs 120) stalled the same way: iteration 1's rollout + update finished (its
+  front-perturb line printed at 13,500,416,000), then the first greedy eval ran > 12 min at ~3,000%
+  CPU, GPU 0%. Cause (measured on the box): the container sees 128 host CPUs under a 30.7-CPU CFS
+  quota, so every pool sized by the affinity oversubscribes ~4x and throttles - one 3,000-tick
+  greedy recording took ~8 min unpinned, **10 s** under `taskset -c 0-30` with OMP/MKL/OpenBLAS/Numba
+  at 15 (a 9-env core step alone is 0.04 ms: the physics was never the problem). The trainer's own
+  OMP team was already sized from the quota (15); the other pools were not.
+* Fix (tools/run_arm.sh): when nproc exceeds the cgroup quota + 1, the launcher re-execs itself under
+  taskset pinned to the quota's CPU count (everything it starts inherits it). Every earlier box's quota
+  covered its CPUs, so their launches are unchanged.
