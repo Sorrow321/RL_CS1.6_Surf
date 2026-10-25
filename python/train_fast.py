@@ -4248,6 +4248,48 @@ def eval_finish_times(traj_path: Path, field):
     return len(fins), float(np.mean(fins)), float(min(fins))
 
 
+def eval_score(traj_path: Path, field, n_eps: int) -> float:
+    """--save-best-eval: one greedy eval's number on the autoresearch grader's rule
+    (autoresearch/score.py): over the episodes whose header index is below ``n_eps`` (the first
+    ``n_eps`` in file order when an index is missing), the best episode's progress on ``field``
+    (100 x (d at its first row - its least honest d) / that first d; a finish - trailer end
+    "done" - counts 100) + 10 x the finished fraction + 10 x (1 - best finish s / 300) once
+    something finishes. -inf for a recording with no episode."""
+    eps, hdr, rows = [], None, []
+    with open(traj_path, encoding="utf-8") as f:
+        for line in f:
+            row = json.loads(line)
+            if isinstance(row, dict) and "map" in row:
+                hdr, rows = row, []
+            elif isinstance(row, list):
+                rows.append(row)
+            elif isinstance(row, dict) and "end" in row and hdr is not None:
+                if rows:
+                    eps.append((hdr, np.asarray(rows, np.float64), row))
+                hdr, rows = None, []
+    if n_eps > 0:
+        if all(isinstance(h.get("episode"), int) for h, _, _ in eps):
+            eps = [e for e in eps if e[0]["episode"] < n_eps]
+        else:
+            eps = eps[:n_eps]
+    if not eps:
+        return float("-inf")
+    prog, fins = [], []
+    for h, r, tr in eps:
+        d = np.asarray(field.sample(r[:, 1:4]), np.float64)
+        d0 = float(d[0])
+        ok = d < field.reach_max - 0.5 * field.cell
+        dmin = float(d[ok].min()) if ok.any() else d0
+        done = tr.get("end") == "done"
+        prog.append(100.0 if done else max(0.0, 100.0 * (d0 - dmin) / max(d0, 1e-6)))
+        if done:
+            fins.append(len(r) * float(h.get("tick_ms", 10.0)) / 1000.0)
+    s = max(prog) + 10.0 * len(fins) / len(eps)
+    if fins:
+        s += 10.0 * max(0.0, 1.0 - min(fins) / 300.0)
+    return float(s)
+
+
 def episode_stats(traj_path: Path):
     out, rows = [], []
     with open(traj_path, encoding="utf-8") as f:
@@ -6125,6 +6167,15 @@ def main() -> None:
                          "ckpt_best.pt when its best finish time beats this launch's best so far "
                          "(the user, 2026-10-04, skate_laby: the 89.35 s weights were lost "
                          "between the 1e9-step checkpoints). Not a config key; 0 = off")
+    ap.add_argument("--save-best-eval", type=int, default=0, choices=(0, 1),
+                    help="single-map race runs: after every greedy eval, save ckpt_<step>.pt when "
+                         "its score on the autoresearch grader's rule (the best episode's progress "
+                         "on the reward field + 10 x finish fraction + the time term; train_fast."
+                         "eval_score) beats this launch's best so far - the exact weights behind "
+                         "the eval, named at its step, so 'the newest snapshot at or before the "
+                         "best eval' is that eval's own (pbr4b4, 2026-10-25: ckpt_latest is "
+                         "overwritten every minute and the 26.36 eval fell between 1e9-step "
+                         "snapshots). Not a config key; 0 = off")
     ap.add_argument("--ckpt", default=None)
     ap.add_argument("--sb3", default=None)
     ap.add_argument("--reset-steps", action="store_true")
@@ -18048,6 +18099,7 @@ def main() -> None:
     int_row = []              # --int-split: this iteration's int/* values
     it_no = 0
     best_fin_saved = float("inf")     # --save-best: this launch's best greedy finish (s)
+    best_eval_saved = float("-inf")   # --save-best-eval: this launch's best greedy eval score
     best_stage_saved = -1.0           # --save-best on a --ramp-sequence run: best mean eval stage
     TKL = float(args.target_kl or 0.0)
     if TKL < 0.0 or TKL != TKL:
@@ -20613,6 +20665,17 @@ def main() -> None:
                     save_ckpt("best")
                     print(f"--save-best: new best greedy finish {fin_best:.2f}s at step "
                           f"{global_step:,} -> ckpt_best.pt")
+                if args.save_best_eval and not MULTI and not _s.heldout:
+                    # --save-best-eval: the weights behind every new best greedy eval, named at
+                    # the eval's step (the eval ran on exactly these weights, synchronously)
+                    _ef = _s.reward_field if _s.reward_field is not None else _s.goal_field
+                    if _ef is not None:
+                        _sc = eval_score(path, _ef, int(args.eval_eps or 9))
+                        if _sc > best_eval_saved:
+                            best_eval_saved = _sc
+                            save_ckpt(f"{global_step:010d}")
+                            print(f"--save-best-eval: new best greedy eval {_sc:.3f} at step "
+                                  f"{global_step:,} -> ckpt_{global_step:010d}.pt", flush=True)
                 if (args.save_best and not MULTI and not _s.heldout and RPLAN
                         and goalsys is not None and goalsys.ev.get("stages")):
                     # --save-best on a --ramp-sequence run: the weights behind every new best
