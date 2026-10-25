@@ -1608,3 +1608,45 @@ as7's 24.555 eval (ep0) vs the WR demo:
   (+ `--auto-spine --auto-spine-milestones --auto-spine-gain 500 --auto-spine-ge-minutes 8` to let
   the trainer search; the as10 run had it off). Box 57557523 (RTX 5080, 0.56 $/h), released at
   wrap-up.
+
+## pbr4b1 (round 4, slot 1) - 2026-10-25 07:43 UTC start
+
+No box until the fleet's burn allows one (1.026 of 1.2 $/h at 07:50; a background `box.py rent`
+retries every 3 min). Local CPU analysis meanwhile.
+
+### Energy budget of the incumbent's line: strafing gains, contacts lose (07:55 UTC, ANALYSIS)
+In free flight gravity conserves h = z + |v|^2/1600, so the per-tick dh there is the air-accelerate
+gain alone (max 900/1600 = 0.5625 u per FRAME, wishdir exactly perpendicular to the velocity:
+`accelspeed` = 100 x 320 x dt >> the 30 u/s addspeed cap, so the gain is per frame, not per second).
+Incumbent eval traj_13500416000 (10 ms), up to each episode's best:
+* 69% of ticks are free flight; 71% of those gain >= 0.45 u (near-optimal strafing), 9% lose.
+* Cumulative to 5 / 10 / 15 / 20 / 21 / 24%: strafing +160 / +255 / +350 / +440 / +395 / +475 u,
+  contacts (floors, ramps, walls, landings) +10 / -280 / -315 / -375 / -640 / -810 u. The gate-8
+  corridor landing alone costs ~-270 u (20 -> 21%); every gate since 7% has been energy.
+* So the policy already strafes well where it flies; the deficit is contacts, and the TIME it
+  strafes: the gain is per physics FRAME.
+
+### The physics tick: the record runs 131 fps, we run 100 Hz (08:00 UTC)
+* The WR demo's usercmds are 7/8 ms frames (131 fps; round 1's notes). The air-accelerate impulse
+  saturates per FRAME, so a 131-fps strafer gains 1.30x the energy per second of strafing and turns
+  1.30x faster (CLAUDE.md `--tick-ms`; tools exist since 2026-09-04). The project has used it twice
+  (cannonball xQR32T131: the policy re-fits in 75M steps, 1.3-1.4 s faster; skate_laby skLABY12,
+  the user: "Yeah, let's do it": 97.66 -> 89.35 s). The ledger's verdict: a hard switch, not the
+  ramp. This lineage never tried it; its gates 4/5/8/10 are 100-300 u energy deficits.
+* It is a physics parameter of the player's client read from the demo like the movevars
+  (--maxvel 3500 is the same kind), the same on every map: no reward, spawn or schedule constant,
+  no demo state (CLAUDE.md 0, 0b).
+* Frozen-policy probes (incumbent weights, local CPU, greedy, record_ckpt --tick-ms):
+  - 7.63 ms ([8, 8, 7]): 1 of 2 episodes reaches 24.55% (the whole route!), 1 dies at 4.9%;
+  - 8 ms: 1 of 4 reaches 24.0%; the others die at 7.15% (the x -1,015 wall) and 12.8% (gate 6).
+  The episode that flies the route strafes for +100..+116 u more energy by 20-24% (1.25x, as the
+  frame count predicts) but loses ~70-170 u more on contacts: the line is fitted to 10 ms.
+  A re-fit should keep the strafing gain.
+* Choice: 8 ms (125 Hz, 1.25x), not 7.63: a whole-ms tick has no pattern, so Go-Explore's exact
+  chains replay exactly (a [8, 8, 7] pattern makes a link's replay depend on the pattern phase at
+  its restore) - the lineage's search loop needs that.
+* Code (flag off = unchanged): `explore_phase1 --tick-ms` (whole ms; refuses a pattern tick; the
+  meta records it), `ge_replay` replays at the archive's tick, `auto_spine --tick-ms` (its seconds
+  and the explorer's core), train_fast passes its tick to auto_spine. Test:
+  tests/python/test_ge_tick.py (chains replay at 8 ms and DIVERGE read as 10 ms; flag off
+  bit-identical to the explorer at the base commit; 7.63 refused).

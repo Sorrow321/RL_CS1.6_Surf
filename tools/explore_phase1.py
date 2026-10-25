@@ -722,6 +722,11 @@ def explore(args) -> int:
         # --maxvel: the trainer's sv_maxvelocity (the core default is 2000), so the archive's
         # states obey the physics the policy trains under
         cfg.phys.sv_maxvelocity = float(args.maxvel)
+    if getattr(args, "tick_ms", None) is not None:
+        # --tick-ms: the trainer's physics tick (a whole number of ms; the C core steps in
+        # integer ms, and a multi-element pattern would make a chain's replay depend on the
+        # pattern phase at each restore). None = the core's 10 ms, byte-identical.
+        cfg.phys.msec = tick_msec(args.tick_ms)
     if float(getattr(args, "kill_margin", 0.0)) > 0.0:
         # --kill-margin: PLAN WITH CLEARANCE. The search treats a band above the
         # map's own kill trigger as lethal (the player's box height 36 u plus
@@ -1107,6 +1112,15 @@ def dump_win(out: Path, k: int, arch: Archive, hist, acts_h, rew_h, env: int,
           f"({depth * tick_ms / 1000.0:.1f}s)")
 
 
+def tick_msec(tick_ms) -> int:
+    """--tick-ms as the core's integer msec; a non-integer tick is refused."""
+    t = float(tick_ms)
+    if abs(t - round(t)) > 1e-9 or not 1 <= round(t) <= 50:
+        raise SystemExit(f"--tick-ms {tick_ms:g}: the search runs whole-ms ticks only "
+                         "(1..50); a pattern tick's chains would not replay exactly")
+    return int(round(t))
+
+
 def meta_dict(args, bsp, hasher, arch, it, n_goal, extra=None) -> dict:
     out = {
         "map": bsp.stem,
@@ -1133,6 +1147,9 @@ def meta_dict(args, bsp, hasher, arch, it, n_goal, extra=None) -> dict:
     if getattr(args, "maxvel", None) is not None:
         # --maxvel only: the flag-off meta json is unchanged
         out["maxvel"] = float(args.maxvel)
+    if getattr(args, "tick_ms", None) is not None:
+        # --tick-ms only: ge_replay / auto_spine read the archive's tick from here
+        out["tick_ms"] = int(tick_msec(args.tick_ms))
     if float(getattr(args, "cell_energy", 0.0) or 0.0) > 0.0:
         out["cell_energy"] = float(args.cell_energy)
     if int(getattr(args, "cell_heading", 0) or 0) > 0:
@@ -1773,6 +1790,11 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--maxvel", type=float, default=None,
                     help="sv_maxvelocity for the search core (default: the core's 2000); "
                          "train_fast --ge-minutes passes the run's own --maxvel")
+    ap.add_argument("--tick-ms", type=float, default=None,
+                    help="physics tick in WHOLE ms for the search core (default: the core's "
+                         "10 ms); the trainer's --tick-ms when it runs an integer tick - a "
+                         "non-integer tick is refused (its [8, 8, 7] pattern would make an "
+                         "exact chain's replay depend on the pattern phase at each restore)")
     ap.add_argument("--max-minutes", type=float, default=0.0,
                     help="stop after this much wall-clock time (0 = no time limit)")
     ap.add_argument("--kill-margin", type=float, default=0.0,

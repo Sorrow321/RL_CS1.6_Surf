@@ -1,30 +1,7 @@
 {
- "agent": "pbr3b4",
- "round": 3,
- "final": true,
- "best": {
-  "score": 24.737,
-  "eval_file": "/home/steam/ar_pb/runs/pbr3b4/pbr3b4_as10/traj_13500416000.jsonl",
-  "run": "pbr3b4_as10",
-  "step": 13500416000,
-  "ckpt": "/home/steam/ar_pb/runs/pbr3b4/pbr3b4_as10/ckpt_13499891712.pt",
-  "ckpt_step": 13499891712,
-  "ckpt_md5": "a3a213310f68dcdb32968fbd9674d11f",
-  "recipe": [
-   "resume chain: incumbent 9.479B -> as1 -> as2 (9.812B) -> as3",
-   "--demo-window 5 --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5 --demo-rate 0.3 --demo-front-frac 0.4 --demo-success-d 100 --demo-success-bonus 50",
-   "--keys-hold-spawn-duck --yaw-entropy 0 --demo-front-temp 0.5 --demo-front-ticks 40 --demo-front-view 6",
-   "--respawn-greedy 0.2 --respawn-greedy-window 0.25 2.0 --respawn-greedy-stuck 200 --respawn-greedy-contact --respawn-greedy-temp 0.5 --respawn-greedy-temp-ticks 100 --respawn-greedy-temp-view 6",
-   "--respawn-front-perturb 0.2 --respawn-front-perturb-band 0.005 --respawn-front-perturb-speed 1.0 1.3 --respawn-front-perturb-turn 90",
-   "--energy-pot 12 --energy-pot-front 0 --energy-pot-front-bonus 0 --no-respawn-novel --respawn-backward-mix 0 --int-real-only 0",
-   "--spawn-states autoresearch/spines/pbr1b1_entry_ge_states.npy --spawn-states-frac 0.2 --maxvel 3500",
-   "--demo-file runs/spine_k03.npy (as3's --auto-spine search 3 line: own beam line to 17.2 s + a x1.12 GE chain over the gate-9 wall and up the ramp to 26.66%)",
-   "--demo-milestones 44939,43426 --auto-spine --auto-spine-milestones --auto-spine-delay 1e9 --auto-spine-retry 4e8 --auto-spine-patience 1.5e9 --auto-spine-gain 500 --auto-spine-ge-minutes 8",
-   "--demo-rate 0.2 (as8 on; was 0.3)"
-  ],
-  "resume_from": "pbr3b4_as9 ckpt_latest 13.4999B (these exact weights; as10 resumed them and scored 24.737 at 13.5004B)",
-  "commit": "cc39ff4",
-  "ckpt_latest": "/home/steam/ar_pb/runs/pbr3b4/pbr3b4_as10/ckpt_latest.pt (13.661B, md5 e988a96fb89ee598407a5234fb1ccd00)"
- },
- "summary": "Score 20.414 -> 24.737 (pbr3b4_as10 13.50B; 108 valid evals; 9/9 greedy episodes from the true start pass gate 8 (the 20.4% catch) and gate 9 (the 21.5% wall) and reach the crawl at 24.4-24.7%). Gate 8: Go-Explore --exact-chains at x1.04 speed from the policy's own launch states -> spine -> curriculum; the greedy flew it unboosted. Gate 9: found by the trainer itself (train_fast --auto-spine + tools/auto_spine.py: beam -> branched beams -> GE escalation ladder -> spine swap), branched beam, 46 s. A x1.12 spine for gate 10 eroded the route until --auto-spine-milestones/--demo-milestones (old success lines keep paying). Gate 10 (a ramp climb at 24.4%) needs ~+220 u of energy height out of gate 8's corridor U-turn; only a x1.12 GE root has passed it. User's first-ramp idea: survivable field-opposed explorer spawns taught the policy to survive the half-pipe and return to the tunnel; no pumping yet; the objective does not pay a 6 s detour (NOTES). Next: the energy out of gate 8's landing, or a pumped start on a line that needs it."
+ "agent": "pbr4b1",
+ "round": 4,
+ "final": false,
+ "best": null,
+ "summary": "Round 4 start (07:50 UTC). Plan: the incumbent (24.737, gate 10 = an energy-limited ramp climb) resumed at the WR player's physics tick (--tick-ms 7.63 = 130.4 Hz: +30% air-accelerate impulses per second, sharper turns; the project's own precedent on cannonball and skate_laby). Waiting for a box (fleet at its 1.2 $/h cap)."
 }

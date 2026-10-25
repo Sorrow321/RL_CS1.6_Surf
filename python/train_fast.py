@@ -15682,6 +15682,9 @@ def main() -> None:
                "--timeout", f"{float(args.auto_spine_timeout):g}"]
         if args.maxvel is not None:
             cmd += ["--maxvel", f"{float(args.maxvel):g}"]
+        if abs(float(args.tick_ms or 10.0) - 10.0) > 1e-9:
+            # the search's seconds and the explorer's core at this run's tick (10 ms: unchanged)
+            cmd += ["--tick-ms", f"{float(args.tick_ms):g}"]
         t0 = time.time()
         print(f"[{global_step:>13,d}] auto-spine search {AUTO['k']}: " + " ".join(cmd),
               flush=True)

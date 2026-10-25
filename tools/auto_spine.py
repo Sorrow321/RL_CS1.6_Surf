@@ -47,7 +47,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "python"))
 sys.path.insert(0, str(ROOT / "tools"))
 
-TICKS_PER_S = 100          # the beam and the explorer run the checkpoint's tick: 10 ms here
+TICKS_PER_S = 100          # the beam and the explorer run the checkpoint's tick (--tick-ms sets it)
 
 
 def load_field(path):
@@ -188,6 +188,9 @@ def go_explore(a, out: Path, line, end: int, boosts=None, tag: str = "ge"):
            "--goals", 1, "--seed", a.seed]
     if a.maxvel:
         cmd += ["--maxvel", a.maxvel]
+    if a.tick_ms is not None and abs(float(a.tick_ms) - 10.0) > 1e-9:
+        # the explorer runs the checkpoint's tick (beam_tas does by itself); off = unchanged
+        cmd += ["--tick-ms", f"{float(a.tick_ms):g}"]
     if a.threads:
         cmd += ["--threads", a.threads]
     rc = run(cmd, out / f"{tag}.log", a.ge_minutes * 60 + 600)
@@ -252,6 +255,10 @@ def main(argv=None) -> int:
     ap.add_argument("--roots-n", type=int, default=48)
     ap.add_argument("--act-every", type=int, default=4)
     ap.add_argument("--maxvel", type=float, default=None)
+    ap.add_argument("--tick-ms", type=float, default=None,
+                    help="the checkpoint's physics tick (train_fast passes its own when it is "
+                         "not 10 ms): every seconds -> ticks conversion here and the explorer's "
+                         "core follow it; beam_tas runs the checkpoint's tick by itself")
     ap.add_argument("--threads", type=int, default=0)
     ap.add_argument("--timeout", type=float, default=1800.0, help="beam_tas wall cap (s)")
     ap.add_argument("--contact-tol", type=float, default=1.0)
@@ -273,6 +280,9 @@ def main(argv=None) -> int:
     a = ap.parse_args(argv)
     if a.selftest:
         return selftest()
+    if a.tick_ms is not None:
+        global TICKS_PER_S
+        TICKS_PER_S = 1000.0 / float(a.tick_ms)
     for k in ("ckpt", "map", "field", "out"):
         if getattr(a, k) is None:
             ap.error(f"--{k} is required")
