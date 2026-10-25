@@ -2221,3 +2221,19 @@ minute). Incumbent: pbr4b3_t11 ckpt_23551016960 (md5 7fbcd458...), eval 52.937 a
 * GE-C (21:06 UTC, full CPU, 10 min): roots = chain A's last second (beam line to 4,372 + stage 1's exact chain
   to the U-bottom cell 156792, h 2,741, replayed 13/13 -> runs/_stitch/lineA.npy on the box) + the policy's own
   greedy climb from it (rollB, 0.9 s before its first wall), x1.0 / 1.04 / 1.08, view-follow, 8 ms.
+* GE-C (10 min, 102 roots): deepest 24,656 = 56.86% (needs < 24,579 = 57.0%); 1,153 cells in the upper room with
+  h up to 2,657 (search 1's archives: <= 2,395), 6 cells at z >= 2,300 (h <= 2,346). GE-D (8 min, rooted at GE-C's
+  48 most energetic upper-room cells, x1.0): nothing past 56.86%, no cell above z 2,300.
+* The geometry past the upper room (core hull + teleport slices, 32 u grid): from the upper room (z 2,150-2,295) the
+  only way up is a column at x -2,320..-2,224 (z ~2,300) into a high area (z 2,380-2,450, x -2,480..-2,224,
+  y 2,366-2,686), and from there narrow corridors run SOUTH at z ~2,390 (x -2,480..-2,448 and -2,256..-2,224, y
+  1,982-2,334) - the field's 57.0-58% path. The record (ANALYSIS ONLY) does the whole climb in ONE ballistic rise:
+  up the U's north wall (vz +1,243 at z 1,484), into the shaft at (-2,411, 2,568, 2,020) with vz +874, through the
+  upper room and the column to z ~2,490 (2,020 + 874^2/1,600 = 2,497), then south down the corridor. Free air cannot
+  turn horizontal speed into height, so every explorer chain that enters the upper room sideways is stuck under the
+  column whatever its energy: the gate needs the U exit to throw the speed straight up the shaft (vz ~+900 at z
+  ~2,000; ours: ~+350..+470 at z ~1,940, max rise ~2,070).
+* A cell-key gap: GE's 64 u x energy cell does not tell a state rising at vz +900 in the shaft from one crossing it
+  sideways with the same |v|, and under --exact-chains the first one found keeps the cell. GE-E (21:32 UTC, 10 min)
+  = 147 roots (chain A's last 1.3 s at the energetic U-bottom + the policy's U exit from it, x1.0 / 1.04 / 1.08) with
+  `--cell-heading 1` (the existing heading key with one sector: only the rising / not split, x2 keys).
