@@ -74,3 +74,18 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   velocity x1.04 - a sharper right turn at x 440-550 into the south corridor, a tangential landing
   on its west surf ramp, a U-turn at (484, -3,443) and a climb east to (1,103, -2,852, 2,833) at
   ~1,015 u/s. Views along the velocity on the explorer's part (tools/ge_spine.py). No demo, no record.
+* `pbr3b4_auto_k02.npy` (3,348 states, md5 5cf733e9ae4a6a773c515b0682cf0281): found BY THE TRAINER
+  (train_fast --auto-spine, search 2 of pbr3b4_as3 at 10.72B): tools/auto_spine.py's branched beam
+  - beam_tas from the true spawn on the run's own weights, 4,096 copies, half of them forked at
+  17.0 s (0.5 s before the greedy line's median launch) with held view offsets U(-45, 45) deg for
+  0.5 s each over 2 s, the policy's own keys - over the 21.5% wall (gate 9) to a hard landing at x
+  ~2,370 and 13 s of crawling at 23.9-24.2% (gate 10); cut at its best d (24.19%). No speed boost,
+  no demo, no record. Used by pbr3b4_as3 (10.72-10.87B: greedy 21.5 -> 24.29), as4, as5.
+* `pbr3b4_auto_k03.npy` (2,284 states, md5 0bbda0750625edaefc32be2ae7ca9f85): found BY THE TRAINER
+  (search 3 of pbr3b4_as3 at 10.87B): the run's own beam line from the true spawn to 17.2 s + the
+  deepest exact Go-Explore chain (64 u x energy 32 cells, 8 min, stage 2 of the escalation ladder)
+  rooted at that line's state at 17.2 s with the velocity x1.12, replayed exactly, views along the
+  velocity: over the gate-9 wall further south, a ramp catch at x ~2,444 and up and north to 26.66%.
+  No demo, no record. The x1.12 root is out of the greedy line's reach so far: unprotected it eroded
+  the route (as3 10.87-11.16B); under --demo-milestones it holds the route but its ramp-catch band
+  sits at ~25% (as6, as7); pbr3b4_as8 continues it with --demo-rate 0.2.
