@@ -89,3 +89,11 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   No demo, no record. The x1.12 root is out of the greedy line's reach so far: unprotected it eroded
   the route (as3 10.87-11.16B); under --demo-milestones it holds the route but its ramp-catch band
   sits at ~25% (as6, as7); pbr3b4_as8 continues it with --demo-rate 0.2.
+* `pbr3b4_spawn_both2.npy` (9,316 states, md5 35f28b37ddecd9d9f5cecefc6bb4d510): a `--spawn-states`
+  file for the first-ramp question (the user's insight, 2026-10-25, NOTES.md): the 7,399 states of
+  pbr1b1_entry_ge_states.npy (start-room, deeper than the start) + the 1,917 cells BEHIND the start
+  (shaping-field distance above the spawn's) of a 6-min explore_phase1 --exact-chains archive rooted
+  at the true spawn (uniform random actions, 64 u x energy 32) from which >= 25% of 32 uniform-random
+  rollouts survive 1 s (x 863-2,380: the east half-pipe; energy median 3,649, max 3,815). The
+  explorer's states in both directions, nothing aimed at a ramp; used by pbr3b4_as12 (the policy
+  learned to survive there and to come back to the tunnel; it did not pump). No demo, no record.
