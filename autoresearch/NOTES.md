@@ -1338,3 +1338,14 @@ or cheaper offers in the query (a 3090 at <= 0.18 $/h would fit beside the 5080)
   -> spine (spine_tool / ge_replay, views along the velocity) -> backward curriculum with the
   success bonus at the spine's end, the round-2 recipe; (3) the downstream route was learned at
   the old energy and will need the curriculum to re-fit it at the higher speed.
+* 03:2x UTC: c4's eval at 10.527B **collapsed to 4.842** (9/9 die at 4.8%, the drop after gate 3):
+  with every demo episode on the ramp's last decile and the success line moved out, the earlier
+  route eroded (round 2's beam10 lesson again), while the GE runs beside it cut it to ~77k steps/s.
+  Stopped at ~10.57B. This round's best stays c3's 20.475 (handed-on checkpoint pulled).
+* Root choice for the pump search, made generic: rank states by CARRYABLE energy height,
+  z + (vx^2 + vy^2 + max(vz,0)^2)/2g, and drop states with a nonzero basevelocity (inside a push
+  volume). Plain h = z + |v|^2/2g ranks a player falling out of the doorway's 2,500 u/s push-down
+  trigger above everything. With it: half-pipe max 3,941 (the record ~3,930-3,950: the pump is
+  real), forward states (deeper than the start) max 3,827 (the policy's tunnel exit ~3,810): the
+  pump's energy is lost before the tunnel. 03:23 GE_pump3: velocity-frame, 32 u x energy 16,
+  rooted at the 48 highest carryable-energy states (3,913-3,941, all in the half-pipe), 15 min.
