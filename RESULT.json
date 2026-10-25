@@ -3,11 +3,11 @@
  "round": 4,
  "final": false,
  "best": {
-  "score": 29.065,
-  "eval_file": "/home/steam/ar_pb/runs/pbr4b2/pbr4b2_t1/traj_14918615040.jsonl",
+  "score": 29.21,
+  "eval_file": "/home/steam/ar_pb/runs/pbr4b2/pbr4b2_t1/traj_15220604928.jsonl",
   "run": "pbr4b2_t1",
-  "step": 14918615040,
-  "ckpt": "/home/steam/ar_pb/runs/pbr4b2/pbr4b2_t1/ckpt_14930673664.pt (12M steps after the eval; ckpt_14767620096.pt = the 29.003 eval's own weights)",
+  "step": 15220604928,
+  "ckpt": "/home/steam/ar_pb/runs/pbr4b2/pbr4b2_t1/ckpt_15225323520.pt (4.7M steps after the eval; ckpt_15144058880.pt is the 29.201 eval's, at or before)",
   "recipe": [
    "resume chain: incumbent (pbr3b4_as10 13.4999B) -> pbr4b2_c1 (14.088B) -> pbr4b2_t1",
    "--tick-ms-schedule 10:7.63:3e8 (the WR demo's 131 fps, [8,8,7] ms)",
@@ -18,5 +18,5 @@
   "commit": "256b467",
   "ckpt_md5": "b1dca100ac6f7435852ff962d43cc35b"
  },
- "summary": "Gate 10 by the policy's own beam line + curriculum (c1 26.371 at 10 ms); the tick ramped 10 -> 7.63 ms (the WR's 131 fps; t1): 9/9 over gate 10 with ~+100 u of energy. The trainer's own auto-spine (dh beams, +H energy GE ladder) then took gates 11-12 by itself: 28.626 -> 29.003 -> 29.065 (14.92B, 8/9 episodes to ~29%, dying in a fall catch at z ~2,600 past the record's landing at x ~3,224). Spine k03 (30.49%) training."
+ "summary": "Gate 10 by the policy's own beam line + curriculum (c1 26.371 at 10 ms); the tick ramped 10 -> 7.63 ms (the WR's 131 fps; t1): 9/9 over gate 10 with ~+100 u of energy. The trainer's own auto-spine (dh beams, +H energy GE ladder) took gates 11-12a by itself: 28.626 -> 29.003 -> 29.210 (15.22B, 9/9 to ~29.2%). Its GE chains were found at 10 ms; Go-Explore at the policy's own tick (new, 82c640b) found a line to 35.25% (spine pbr4b2_m2_ge763) -> run t2 (10:56 UTC) with milestones up to 38,250."
 }

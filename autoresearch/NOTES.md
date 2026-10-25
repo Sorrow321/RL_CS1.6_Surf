@@ -1776,3 +1776,20 @@ Box: 57632318, RTX 4080 + i9-14900F (32 thr), 0.30 $/h, UK (machine 151788), ren
   139) vs k03's (-288, 901, 21)) but steers and keeps z 2,835-2,910 to y ~-325 where it lands on a
   ramp; the explorer's lines fly it ballistically and lose ~200 u of height by y -800.
 * Manual search 2 (10:47 UTC): the same with the tick-aware GE (explorer at [8,8,7]).
+* **Manual search 2 with the TICK-AWARE explorer** (explore_phase1 --tick-ms 7.63 via auto_spine,
+  t1's 15.45B weights, trainer paused): beam 40,494 (no gain), then GE stage 1 (x1.0 / +40, 8 min,
+  [8,8,7] ms) -> a 21-cell chain, 20/20 links exact, to d **37,005 = 35.25%** (10 ms GE from the same
+  kind of roots: 30.58%). The line (root on the north side, +40 u = x1.034): the lower-ramp landing
+  costs only ~230 u (10 ms GE lines: ~420), the north turn at x ~2,544 with v (-89, 992) - the
+  record's own heading there (ANALYSIS ONLY: (-57, 991)) - holds z ~2,920-2,940, lands and bounces at
+  (2,393, -519), runs north-west at ~960-1,000 u/s, lands at (1,926, 904), climbs north at ~450-500
+  u/s to (1,790, 1,305, 2,938), turns west and falls at (1,497, 1,468, 2,596). Spine
+  autoresearch/spines/pbr4b2_m2_ge763.npy (3,451 states, md5 8fcb44b6...).
+* t1 stopped at 15.503B (evals to 15.447B; best 29.210 at 15.221B; hand-on snapshots
+  ckpt_15144058880 (29.201's, at/before) and ckpt_15225323520 (4.7M after the 29.210 eval) pulled).
+* **pbr4b2_t2** (10:56 UTC): t1's 15.503B weights (the 7.63 ms tick restored from the checkpoint's
+  schedule; never pass --tick-ms-schedule to a resume - it would restart the ramp) + the curriculum on
+  pbr4b2_m2_ge763.npy from its end (success line 37,105 = 35.07%) + `--demo-milestones
+  44939,43426,42188,41607,40709,39400,38250` (the five crossed lines + two evenly spaced along the
+  new line's 6% stretch, so partial progress along it keeps paying) + auto-spine (tick-aware GE,
+  dh beams, +H ladder, delay 2e8, retry 3e8, patience 6e8), 6B steps.
