@@ -1816,3 +1816,9 @@ beam_tas from the true start on t8e's weights (8 ms, 4,096 copies, 30 s):
   2699 to ~2050 (the gate-8 corridor landing, 20.4%) in ~25 min and oscillates there (10-23%).
   The box watcher snapshotted that eval's exact weights: pbr4b1_t8g/ckpt_14304673792.pt (pulled, md5
   f2a4c1c2...), the handoff.
+* Energy-ranked branched beams on t8g's 14.305B weights (the 26.547 eval's; dh K3 forked at 15.0 s,
+  dh K3 forked at 19.0 s, dh K5 forked at 15.0 s): **27.15 / 27.15 / 27.05%**, unboosted - the policy
+  trained on k08's soft turn now proposes its own way over gate 11 (past the x1.12 chain's 27.04%).
+  Spine pbr4b1_k09_t8.npy (2,700 states to 27.13%, success line d 41,742 = 26.96%).
+  **pbr4b1_t8h** (15:31 UTC): t8g's ckpt_latest 14,401,142,784 (md5 91647b84...) + k09 + milestones
+  44939 / 43426 / 42286 / 42103 (k08's line) + --lr 1e-4.
