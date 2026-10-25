@@ -1,7 +1,7 @@
 {
  "agent": "pbr4b1",
  "round": 4,
- "final": false,
+ "final": true,
  "best": {
   "score": 27.147,
   "eval_file": "/home/steam/ar_pb/runs/pbr4b1/pbr4b1_t8h/traj_14930149376.jsonl",
@@ -19,7 +19,8 @@
   "resume_from": "pbr4b1_t8g ckpt_latest 14,401,142,784 (8 ms)",
   "commit": "f7b2ce4",
   "ckpt_step": 14930673664,
-  "ckpt_md5": "1d131749e851366d11e6e0b9cbbb1bb2"
+  "ckpt_md5": "1d131749e851366d11e6e0b9cbbb1bb2",
+  "handon_ckpt": "/home/steam/ar_pb/runs/pbr4b1/pbr4b1_t8h/ckpt_14854651904.pt (orchestrator.handon_ckpt's pick: the 27.105 eval's exact weights, md5 44dcf6a16e71bd028457376ab07f8e51; ckpt_14930673664.pt, one iteration after the 27.147 eval, md5 1d131749..., and ckpt_latest 15.23B, md5 7111a7ff..., beside it)"
  },
- "summary": "Score 24.737 -> 27.147 (t8h 14.930B; 2/9 greedy episodes past gate 10, one past gate 11 to 27.15%; 27.105 one eval earlier). Lever: an 8 ms physics tick (125 Hz; the WR player ran 131 fps; air acceleration is per frame): the policy's own beam climbs the gate-10 ramp unboosted at 8 ms where it stalls at 10 ms (24.75%) -> the incumbent resumed at --tick-ms 8 passed gate 10 (26.33%). Gate 11: energy-ranked beams (beam_tas --score dh) keep the lineages that do not throw energy away at the gate-10 ramp top -> the policy's own line over gate 11 (k08 26.50%, then k09 27.13%) -> curriculum + milestones at lr 1e-4 (3e-4 went kl-unstable). Box only from 10:51 (fleet cap); a 128-CPU/30.7-quota box throttled evals until run_arm.sh pinned the launch."
+ "summary": "Score 24.737 -> 27.147 (pbr4b1_t8h 14.930B, 38 valid evals; 2/9 greedy episodes past gate 10, one over gate 11 to 27.15%). (1) The physics tick: the WR player ran 131 fps and air acceleration is per frame; at --tick-ms 8 (125 Hz) the policy's own beam climbs the gate-10 ramp unboosted (26.2%) where it stalls at 10 ms (24.75%); the incumbent resumed at 8 ms re-fitted in ~75M steps and passed gate 10 (26.333). (2) Gate 11: energy-ranked beams (beam_tas --score dh) keep the lineages that do not lose 250-300 u at the gate-10 ramp top -> the policy's own lines k08 (26.50%) and k09 (27.13%) -> curriculum + milestones -> the greedy over gate 11. (3) kl creep: lr 3e-4 -> 1e-4 -> 5e-5. Boosted spines (x1.12, x1.04) never opened their roots. Box only from 10:51 (fleet cap); a 128-CPU/30.7-quota box throttled evals until run_arm.sh pinned the launch. Next: k10 (27.38%) for gate 12, energy-ranked beams in auto_spine."
 }

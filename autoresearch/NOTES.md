@@ -1851,3 +1851,48 @@ beam_tas from the true start on t8e's weights (8 ms, 4,096 copies, 30 s):
   which may scale the advantages). **pbr4b1_t8i** (17:46 UTC): the 27.147 snapshot
   (ckpt_14930673664.pt, md5 1d131749...) + k09 + the same milestones + **--lr 5e-5** (sidistic R7's
   second cut), auto-spine off (a patience search would stall the last evals), until the wrap-up.
+
+### pbr4b1 round 4 lesson (wrap-up)
+* **Score 24.737 -> 27.147** (best eval pbr4b1_t8h traj_14930149376, 14.930B: 2/9 greedy episodes from
+  the true start past gate 10, one past gate 11 to 27.15%; 27.105 one eval earlier; 38 valid evals).
+  Handed-on checkpoint (orchestrator.handon_ckpt, checked): pbr4b1_t8h/ckpt_14854651904.pt - the 27.105
+  eval's exact weights (md5 44dcf6a1...), the box watcher's copy; beside it ckpt_14930673664.pt (one
+  iteration after the 27.147 eval, md5 1d131749...) and ckpt_latest (15.23B). The weights are 8 ms
+  (tick_ms 8.0 in their config): a resume runs 125 Hz with no --tick-ms flag.
+* **What did it, in order:**
+  1. **The physics tick.** The WR player ran 131 fps and the air-accelerate impulse is per FRAME, so at
+     our 100 Hz the policy gets ~25-30% less strafe energy and turn per second than the record. At
+     `--tick-ms 8` (125 Hz; a whole-ms tick so Go-Explore's exact chains replay exactly) the policy's
+     own beam climbs the gate-10 ramp from its own unboosted state (26.27%) where the same beam at 10 ms
+     stalls at 24.75%; from the true start 26.18% (spine k05). The incumbent resumed at 8 ms re-fitted
+     its route in ~75M steps and passed gate 10 (26.333, 2/9) ~150M steps later. Tools: explore_phase1
+     / ge_replay / auto_spine `--tick-ms` (whole ms). Precedent: cannonball xQR32T131, skate_laby.
+  2. **Energy-ranked beams for gate 11.** d-ranked beams and GE up to x1.08 died at the climb after the
+     gate-10 ramp; GE x1.12 reached 27.04% but its boosted root never opened in the curriculum (round 3's
+     wall again). `beam_tas --score dh --score-energy 3` with a branched fork at gate 8 kept the
+     lineages that do NOT hit the ramp top (-70 u instead of -250..-300 u): the policy's own way through
+     (k08, 26.50%). Trained on it, the policy's own energy-ranked beams then went over gate 11 (k09,
+     27.13-27.15%), and the greedy followed ~1.3 h later.
+  3. **Stability.** lr 3e-4 at 8 ms went kl-unstable (40-iteration means 0.06 -> 0.28, spikes 2-4) and
+     the weights regressed (median 24.4 -> 21.5%); restarting from pre-instability weights at 1e-4 held,
+     but kl crept up again over ~0.5B steps (0.08 -> 0.2); the last stretch ran at 5e-5 from the best
+     snapshot. Episode rewards doubled with the stacked milestone bonuses - a candidate cause.
+* **What did not:** boosted spines whose root the policy cannot reach (k06 x1.12: band before the root
+  0.0%; k07 x1.04 chain: its curriculum crawled 75 states in 170M steps); 10 ms anything at gate 10;
+  dh K 8 (no better than d).
+* **Ops lessons:** (a) the fleet's flat 1.2 $/h cap left this branch boxless from 07:50 to 10:51;
+  (b) box 57652710 shows 128 host CPUs under a 30.7-CPU quota: thread pools sized by the affinity
+  throttled evals ~50x until run_arm.sh pinned the launch (taskset to the quota); (c) a box-side
+  watcher (/root/snap_watch.py) that copies ckpt_latest to ckpt_<step>.pt right after each eval gives
+  every eval an exact (or next-iteration) checkpoint to hand on; (d) SIGSTOP/SIGCONT pauses the trainer
+  for a search without losing its state.
+* t8i (the 27.147 snapshot at lr 5e-5, 17:46-19:02): 26.504 / 24.691 / 24.681 / 26.330 / 24.757 / 24.606 /
+  26.399 / 26.473 - steady, no new best.
+* **Where it stands / next:** gate 12 is right after 27.1% (the policy's beams die at 21.6 s, ~27.0-27.15%);
+  GE x1.04 from the policy's own beam state reaches 27.38% (spine pbr4b1_k10_t8.npy, not trained on
+  yet). Gate 10 is still passed by only 1-2/9 greedy episodes per eval - most stop at the crawl with
+  ~110 u less energy at the ramp foot than the energy-ranked beam line; the curriculum band sat between
+  gates 8 and 9 (k09 state ~2150). Next: the k10 curriculum with milestones (44939 / 43426 / 42286 /
+  42103 / 41742), energy-ranked beams as auto_spine's default beam (a `--beam-score dh` option), and a
+  look at the kl creep (advantage scale vs the milestone bonuses).
+* Box 57652710 (RTX 5060 Ti, 0.163 $/h) released at wrap-up (19:05 UTC).
