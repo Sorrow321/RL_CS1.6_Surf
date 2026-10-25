@@ -120,3 +120,11 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   velocity: up the gate-10 ramp, a soft turn at its top (-113 u), north over gate 11 at z ~3,350 to
   27.04%. No demo, no record (pbr4b1, round 4). The x1.12 root is 400 u past the greedy frontier,
   under auto_spine's 500 u gain, and was taken by hand.
+* `pbr4b1_k07_t8.npy` (2,806 states, md5 e98e9b6c003ac63b6704820eb0369b07): the policy's own ENERGY-RANKED branched beam line from the true
+  spawn (beam_tas `--score dh --score-energy 3`, 4,096 stochastic copies of pbr4b1_t8e's ~13.84B
+  weights, half forked at 15.0 s with held view offsets, 8 ms tick) - it makes the gate-10 ramp-top turn
+  without the -250..-300 u contact of the d-ranked lines - to its state 2,552 (20.4 s) + the deepest
+  exact Go-Explore chain (uniform random actions, 64 u x energy 32, 8 min) rooted at that state with
+  the velocity x1.04: a loop at the ramp top gaining energy (h 3,564 -> 3,612), then north-west at
+  760-820 u/s over gate 11 to 26.85%. Views along the velocity on the chain. No demo, no record
+  (pbr4b1, round 4).
