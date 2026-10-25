@@ -1430,3 +1430,19 @@ as7's 24.555 eval (ep0) vs the WR demo:
   highest-progress ones there were slow states on a ledge by the crawl).
 * GE #7 (02:33 UTC): rooted at 18 of that chain's ramp states, x1.0, 64 u x energy 32, 10 min, 16
   threads beside as8 - to extend the line up the ramp until its progress clears the crawl's.
+
+### Gate 10 needs ~+220 u at the corridor U-turn exit; as9 tests per-call energy K 12 (02:34-02:47 UTC)
+* GE #7 (rooted at the unboosted ramp chain's own ramp states, x1.0, 10 min at 16 threads): best
+  24.59% at (2,843, -2,774, 3,000) - no way UP the ramp from there. The record climbs it steeply
+  (vz +726 at x ~2,480, z 3,290 by x 3,194) with ~150 u more energy than that chain: gate 10 is the
+  ramp CLIMB, and it is an energy gate.
+* Energy height at the U-turn exit after gate 8's corridor ramp ((625, -3,271, 2,740), where the
+  x1.12 root of pbr3b4_auto_k03.npy sits): the beam line it was cut from 3,430, the x1.12 root
+  3,607, the record ~3,570-3,610 (ANALYSIS ONLY), the greedy line 3,302-3,383 (as8, 9 episodes).
+  Median over evals (autoresearch/analysis/pb_uturn_energy.py, a measurement point only): 3,359
+  (as3 10.87B) -> 3,369 (as7 12.32B) -> 3,386 (as8 12.87B): +27 u in ~2B steps at K 8.
+* as8 (k03 curriculum, rate 0.2): band at the x1.12 root 62.8%, the band before it 0.0%; evals
+  24.35-24.53 (milestones hold the route). Stopped at 12.938B (md5 84f76349...).
+* **pbr3b4_as9** (02:46 UTC): as8's weights + the same flags with --energy-pot 12 (was 8; round 2:
+  K 3 -> 8 carried the x -1,015 wall after ~800M steps), auto-spine delay 1e9 / patience 1.5e9,
+  5B steps (to the round's end). Read-out: the U-turn-exit energy per eval, and any gate-10 pass.
