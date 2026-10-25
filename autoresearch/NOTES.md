@@ -1792,3 +1792,11 @@ beam_tas from the true start on t8e's weights (8 ms, 4,096 copies, 30 s):
   policy's own proposal distribution; the d-ranked selection threw it away.
 * GE_g11 (14:05 UTC): explore_phase1 --exact-chains, 8 ms, 64 u x energy 32 cells, 8 min, rooted at
   that line's own states over its last 1.6 s (20.0-21.6 s) at x1.0 and x1.04.
+* GE_g11 result (8 min, 84k cells): the deepest chain roots at the K3 branched line's own state at
+  20.4 s with the velocity **x1.04**, loops once at the gate-10 ramp top GAINING energy by strafing
+  (h 3,564 -> 3,612), then flies north-west at 760-820 u/s over gate 11 to **26.85%**
+  (3,398, -2,086, 3,188), still at 821 u/s. Spine pbr4b1_k07_t8.npy (2,806 states, success line
+  d 41,904 = 26.68%).
+* t8e evals to 13.92B: 24.513 / 24.527 / 24.597 / 24.531 - the k06 curriculum never opened its
+  boosted root. **pbr4b1_t8f** (14:18 UTC): t8e's ckpt_latest 13,937,672,192 (md5 290a4cca...) +
+  spine k07 + milestones 44939 / 43426 / 42286 + --lr 1e-4, 2B steps.
