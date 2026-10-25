@@ -107,3 +107,14 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   --max-ticks 3500`, 19 s on the box; the frontier lineage replayed exactly (replay_ok 1), kept
   whole (its best d is its last state). The d-ranked beam (runs/pbr4b2/_beams1/d0) reached the
   same place (42,063) 8 s later and slower. No demo, no record data; views are the policy's own.
+* `pbr4b2_t1_auto_k01.npy` (2,802 states, md5 50d33cea72acdaa4f96fc9061ca1da2a): found BY THE TRAINER
+  (train_fast --auto-spine, search 1 of pbr4b2_t1 at 14.54B, after the tick ramp to 7.63 ms = [8,8,7]):
+  the dh-ranked beam line from the true spawn on the run's own weights (4,096 copies, states at the
+  7.667 ms tick) to its 20.35 s state, then the deepest chain of an explore_phase1 --exact-chains run
+  (64 u x energy 32 cells, uniform random actions at 10 ms) rooted at that line's states over its last
+  4 s with +80 u of energy height added to each root's velocity (auto_spine '+80' token), replayed by
+  ge_replay: over the gate-11 gap to d 41,507 (27.37%). Views along the velocity on the explorer's
+  part. No demo, no record data (pbr4b2, round 4).
+* `pbr4b2_t1_auto_k02.npy` (2,900 states, md5 40acc9979e899a12e6a3f4089ebb4a19): found BY THE TRAINER
+  (search 2 of pbr4b2_t1 at 14.69B): the dh-ranked beam line alone (the run's own weights from the
+  true spawn, 7.667 ms states) to d 40,609 (28.94%). No demo, no record data (pbr4b2, round 4).
