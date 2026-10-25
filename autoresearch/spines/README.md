@@ -204,3 +204,8 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   the most energetic U-bottom state (energy height 2,741; the policy's own line ~2,300 there): the cleaner descent
   over 51.2-54.5%, for a curriculum whose success needs the ENERGY (train_fast --demo-success-energy), not depth.
   Same provenance as pbr5b2_e1.
+* `pbr5b2_s6.npy` + `.keys.npy` (6,399 rows; md5 a84256d093930a3e3851fe57807f9205 / 199f9fb7357974cdb92e784747087b0b):
+  the POLICY'S OWN plain beam line (tools/auto_spine.py: beam_tas from the true spawn, 4,096 stochastic copies, d-ranked,
+  on pbr5b2_c5's 25.876B weights at their 7.67 ms tick) to d 21,524 = 62.34%: after c5 learned the cleaner 51.7-54.5%
+  descent (energy height 2,962 at 53%) the policy's own population goes up the 56.3% shaft and over the upper level by
+  itself, unboosted. Keys = the beam's own held keys. No demo, no record (pbr5b2, round 5).
