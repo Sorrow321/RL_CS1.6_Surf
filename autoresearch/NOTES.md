@@ -1608,3 +1608,29 @@ as7's 24.555 eval (ep0) vs the WR demo:
   (+ `--auto-spine --auto-spine-milestones --auto-spine-gain 500 --auto-spine-ge-minutes 8` to let
   the trainer search; the as10 run had it off). Box 57557523 (RTX 5080, 0.56 $/h), released at
   wrap-up.
+
+## pbr4b4 (round 4, slot 4) - 2026-10-25 07:44 UTC start
+
+Box: 57632515, RTX 5080, 0.363 $/h, machine 145348, 64 threads. Rented 07:48 UTC (no contention:
+the fleet had no live box).
+
+### The incumbent's own beam is already past gate 10 (07:50-07:57 UTC)
+* Where the incumbent greedy stops (traj_13500416000, ep0): it DOES climb the gate-10 ramp now
+  (19.5-20.7 s, z 2,737 -> 3,084, ~680 u/s, h ~3,350-3,380), but it climbs it ~200 u north of the
+  record's line and turns north at x ~2,830 (24.74%), hits something at (2,781, -2,747, 3,080)
+  (vh 687 -> 513, -130 u of h), and falls back to the crawl floor (z ~2,727, -474 u of h).
+* beam_tas from the true start on the incumbent weights (4,096 copies, 32 greedy, d-ranked, 32 s
+  cap, 46 s on the box): frontier **d 42,067 = 26.39%** at 31 s (still progressing at the cap).
+  The same with `--score dh` K 1 (26.38% at 28 s) and K 3 (26.38% at 26 s). The lines climb the
+  ramp further south (z 3,186 at x 2,831 - the record's line there is (2,831, -3,004, 3,188), ANALYSIS
+  ONLY - but at ~400 u/s instead of ~780), land on the upper floor (z ~3,197) and crawl east and
+  north at 100-300 u/s to (3,495, -2,460). Round 3's beams on as5/as7 weights stopped at 24.3-24.4%:
+  the k03 curriculum (as8/as9, a x1.12 chain up this ramp) taught the ramp, and the policy's own
+  sampling now finds a slow way up with its own energy.
+* Spine autoresearch/spines/pbr4b4_beam_s1.npy (3,100 states, cut at its best d 42,071 on the grader
+  field = 26.38%; success line 42,171 = 26.21%).
+* **pbr4b4_c1** (07:58 UTC): the incumbent's 13.4999B weights + the curriculum on that spine + the
+  milestones of the two lines the greedy already crosses (--demo-milestones 44939,43426 = k01 21.37%,
+  k02 24.0%) + as10's other flags (energy K 12, greedy-contact rows with temp, front-perturb,
+  greedy speed 1.0-1.05, start-room spawns 0.2) + --auto-spine --auto-spine-milestones (delay 3e8,
+  retry 4e8, patience 1.5e9, gain 500, GE 8 min), 3B steps.

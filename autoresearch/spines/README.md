@@ -97,3 +97,11 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   rollouts survive 1 s (x 863-2,380: the east half-pipe; energy median 3,649, max 3,815). The
   explorer's states in both directions, nothing aimed at a ramp; used by pbr3b4_as12 (the policy
   learned to survive there and to come back to the tunnel; it did not pump). No demo, no record.
+* `pbr4b4_beam_s1.npy` (3,100 states, md5 e1c02c67c119f6c41a839ee577a0f082): the frontier lineage
+  of tools/beam_tas.py from the TRUE spawn on the incumbent's own weights (pbr3b4_as10's 13.4999B
+  checkpoint; 4,096 stochastic copies, 32 greedy, d-ranked, resample every 25 decisions, 32 s cap),
+  replayed open-loop and cut at its best d (26.38%, the cap's last tick - still progressing). The
+  same start room / gates 2-9 as the greedy line; at gate 10 it climbs the ramp at x ~2,450-2,930
+  further SOUTH than the greedy (z 3,186 at x 2,831 vs the greedy's 3,077 further north, where the
+  greedy turns north into a wall), lands on the upper floor at z ~3,197 and crawls east / north at
+  100-300 u/s to (3,495, -2,460) at 31 s. No boost, no demo, no record (pbr4b4, round 4).
