@@ -2152,3 +2152,13 @@ Incumbent: pbr4b3_t11 traj_23590338560 (52.937, 9/9 greedy at 52.8-52.94%), weig
   hits), instead of the deepest cell; the spine ends at the pick. tools/ge_replay.py --pick-energy /
   --pick-max-d / --pick-d0, tools/auto_spine.py --ge-pick-energy / --d0. Generic: the reward's own
   potential, no map constant. Tests: test_auto_spine.py (pick order, plumbing, the cut, survival).
+* Local check of the pick (20:07-20:15 UTC; explore_phase1 --exact-chains --view-follow --tick-ms 8,
+  3 min x 2 threads on this machine, 12 roots = k05 rows 4290-4344, 72,816 cells): the DEEPEST cell
+  (56.15%, h 2,105) is a dead end (no run lived past it); the highest-potential cells past a 53.7%
+  bar are all free-falling states at 54.2-54.3% (vz -1,000..-1,200, h ~2,400 kept until the impact),
+  and 1-s random rollouts barely filter them (2 of 64 at >= 25%). So viability now comes from the
+  explorer's own tree: a candidate needs a subtree reaching >= 1 s past it (ge_replay.ticks_ahead;
+  0d4e7ee). 1,514 of 28,980 candidates pass; the pick is 55.95% at h 2,160 with a 1.4-6 s
+  continuation. Every viable chain past 53.7% has h <= ~2,330: on this route the energy is gone by
+  the 52-54% landings (the record: h 3,193-3,234 at 52-53%). If 56% is an energy wall, the fix is
+  upstream (a smoother line through 50-54%), not a deeper pick.
