@@ -1837,3 +1837,8 @@ beam_tas from the true start on t8e's weights (8 ms, 4,096 copies, 30 s):
   gate 11 at 125 Hz (~1.5 h after the k08 spine, ~1.3 h after k09). Handoff: the box watcher's
   ckpt_14930673664.pt (one iteration after the eval; md5 1d131749...) and ckpt_14854651904.pt (the
   27.105 eval's exact weights), both pulled into runs/pbr4b1/pbr4b1_t8h/.
+* Energy-ranked branched beams on the 27.147 weights (14.93B): 27.02 / 27.07 / 26.83% - gate 12 (right
+  after 27.1%) holds for the policy's own proposals; every frontier ends at 21.6 s. With ~2 h left a
+  search -> curriculum cycle (~1.3-1.5 h from spine to greedy) does not fit before the wrap-up, so t8h
+  keeps k09 to the end. GE_g12 (17:04 UTC, 8 min, trainer paused): exact chains at 8 ms rooted at that
+  line's last 2 s (x1.0, x1.04) - the next round's gate-12 starting point.
