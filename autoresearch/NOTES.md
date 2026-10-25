@@ -1361,3 +1361,26 @@ the budget pace (0.69 $/h) admit one box; until then every rent was refused (0.1
   as7's flags, 5B steps (to the round's end). The milestones keep the score's route paid; the
   question is whether the policy carries the boosted chain's skill back to its own energy, as it
   did at gate 8 (x1.04).
+
+### Where the energy deficit comes from (ANALYSIS ONLY, 02:05 UTC)
+Energy height h = z + |v|^2/1600 at the FIRST arrival at each progress level on the grader field,
+as7's 24.555 eval (ep0) vs the WR demo:
+
+| progress | t greedy | t record | h greedy | h record | deficit |
+|---|---|---|---|---|---|
+| 1% | 2.97 | 7.59 | 3,789 | 3,945 | 156 |
+| 5% | 7.21 | 11.39 | 3,816 | 3,895 | 79 |
+| 10% | 11.05 | 15.25 | 3,624 | 3,651 | 27 |
+| 15% | 14.03 | 18.42 | 3,657 | 3,756 | 98 |
+| 20% | 16.68 | 20.97 | 3,707 | 3,796 | 89 |
+| 21% | 18.16 | 22.29 | 3,354 | 3,583 | 229 |
+| 24% | 20.34 | 24.00 | 3,301 | 3,600 | 299 |
+
+* The greedy line is 4.3-4.6 s AHEAD of the record all the way (it skips the half-pipe pump) and
+  recovers most of the start room's 156 u by 10% (per-call energy shaping works: 27-47 u at
+  10-12%).
+* Gate 10's deficit (~220-300 u) is created at GATE 8's corridor landing: from 20% to 21% the
+  greedy loses ~353 u (3,707 -> 3,354), the record ~213 (3,796 -> 3,583). Our line lands on the
+  corridor's west ramp the way the x1.04 GE chain did (hard: 1,476 -> 962 u/s); the record lands
+  tangentially (1,450 u/s, vz -98) and keeps ~140 u more through the U-turn. A smoother landing
+  there is worth more for gate 10 than any start-room pump.
