@@ -3,11 +3,11 @@
  "round": 4,
  "final": false,
  "best": {
-  "score": 44.373,
-  "eval_file": "/home/steam/ar_pb/runs/pbr4b3/pbr4b3_t10/traj_20416299008.jsonl",
+  "score": 44.505,
+  "eval_file": "/home/steam/ar_pb/runs/pbr4b3/pbr4b3_t10/traj_20869283840.jsonl",
   "run": "pbr4b3_t10",
-  "step": 20416299008,
-  "ckpt": "/home/steam/ar_pb/runs/pbr4b3/pbr4b3_t10/ckpt_20389560320.pt (the milestone at or before the eval, md5 ecd9ddf39e0fffc0ef9167361d47548c)",
+  "step": 20869283840,
+  "ckpt": "/home/steam/ar_pb/runs/pbr4b3/pbr4b3_t10/ckpt_20790116352.pt (the milestone at or before the eval, md5 22eccc5a525beafcaa4c741f1f00a772); t10 ckpt_latest 20.947B pulled beside it",
   "recipe": [
    "resume of the round-3 incumbent (pbr3b4_as10 13.4999B)",
    "--demo-file autoresearch/spines/pbr4b3_auto_t9k04.npy --demo-keys autoresearch/spines/pbr4b3_auto_t9k04.keys.npy --demo-tau0 4629 (the trainer's own beam line to 45.18% + its held keys) --demo-window 5 --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5 --demo-rate 0.3 --demo-front-frac 0.8 --demo-success-d 100 --demo-success-bonus 50",
@@ -23,5 +23,5 @@
   "resume_from": "pbr4b3_t9 ckpt_latest 20.189B (tick 7.667 ms)",
   "commit": "4c8f7cb"
  },
- "summary": "24.737 -> 44.373 (pbr4b3_t10 20.416B, median 44.3%; t9 44.025 at 20.127B; 33.376 at 19.598B when gate 12 opened, then the trainer's own auto-spine swapped in four beam lines (35 / 41 / 43.7 / 45.2%) within 30 min). Gate 10: a plain beam on the incumbent's weights. Gates 10-11 were ENERGY: air-strafe gain is per frame and the record runs 131 fps; --tick-ms-schedule 10 -> 7.63 ms took gate 10 from 1-3/9 to 9/9, then gate 11 by GE + the policy's own beam. Gate 12 (a ramp surf below the gate-11 hole) needed the spawn's HELD KEYS: under --keys-hold every spine spawn reset them to neutral; tools/spine_canon_keys.py (view along the velocity, keys translated so the wish direction survives) + train_fast --demo-keys opened it at once. Also: numba pool fix (7k -> 350k steps/s), tick-aware + view-follow explorer."
+ "summary": "24.737 -> 44.505 (pbr4b3_t10 20.869B, median 44.35%; t9 44.025 at 20.127B; 33.376 at 19.598B when gate 12 opened, then the trainer's own auto-spine swapped in four beam lines (35 / 41 / 43.7 / 45.2%) within 30 min). Gate 10: a plain beam on the incumbent's weights. Gates 10-11 were ENERGY: air-strafe gain is per frame and the record runs 131 fps; --tick-ms-schedule 10 -> 7.63 ms took gate 10 from 1-3/9 to 9/9, then gate 11 by GE + the policy's own beam. Gate 12 (a ramp surf below the gate-11 hole) needed the spawn's HELD KEYS: under --keys-hold every spine spawn reset them to neutral; tools/spine_canon_keys.py (view along the velocity, keys translated so the wish direction survives) + train_fast --demo-keys opened it at once. Also: numba pool fix (7k -> 350k steps/s), tick-aware + view-follow explorer. Gate 14 (a crash at 44.2%) by an unboosted view-follow GE chain to 47.18%: pbr4b3_t11."
 }

@@ -1964,3 +1964,12 @@ over-subscribes the quota. This branch's surfgym now caps numba; the operator ma
   341, h 3,915 -> 2,696 in two ticks, then crawls (45% only 8 s later). The record passes there 150-200 u higher
   (z 2,755-2,837) and keeps 1,071+ u/s. A line-shape gate (too steep), not energy.
 * GE18 (15:22 UTC, view-follow, 8 ms, 12 min): 40 roots on the s51 line over 26.4-28.4 s (before the crash), x1.0.
+* t10 later evals 44.361 / 44.352 / 44.345 / 44.429 / **44.505** (20.869B); the k04 band at its hop landing 13%.
+  Handoff milestone ckpt_20790116352 pulled (and t10's ckpt_latest 20.947B).
+* **GE18 (view-follow, unboosted): 47.18%** from the s51 line's state at 42.08% (-1,094, -51, 2,924): the chain
+  meets the 44.2% corner falling less steeply, REBOUNDS (h 3,869 -> 3,351 but still 1,082 u/s) instead of
+  stopping dead, and flies west along the record's corridor at ~780 u/s to (-2,405, -1,241, 3,096). Spine
+  autoresearch/spines/pbr4b3_ge18ck.npy + .keys.npy (s51 to 3,557 + the chain, canonical views, translated keys;
+  success line d <= 30,286 = 47.00%).
+* **pbr4b3_t11** (15:36 UTC): t10's 20.947B weights (md5 6a247ef4...) + that spine + `--demo-keys` + ten
+  milestones (..., 32260, 31429), the rest as t10.
