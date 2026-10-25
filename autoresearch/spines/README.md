@@ -200,3 +200,7 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   pbr5b2_e1 cut at its row 5,004 (57.20%, d 24,459), just past the shaft climb on the upper level - the next gate only
   (the full e1's curriculum stalled at once on an explorer impact at 61.5%, far past what the greedy flies). Same
   provenance as pbr5b2_e1.
+* `pbr5b2_e1d.npy` + `.keys.npy` (4,597 rows; md5 below in NOTES): pbr5b2_e1 cut at row 4,596 = the end of its GE chain A,
+  the most energetic U-bottom state (energy height 2,741; the policy's own line ~2,300 there): the cleaner descent
+  over 51.2-54.5%, for a curriculum whose success needs the ENERGY (train_fast --demo-success-energy), not depth.
+  Same provenance as pbr5b2_e1.

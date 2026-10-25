@@ -114,6 +114,7 @@ TRAIN_ONLY = frozenset({
     "auto_spine_delay", "auto_spine_milestones", "demo_milestones",
     # --respawn-greedy-contact: where the TRAINING greedy-line rows are anchored
     "respawn_greedy_contact", "respawn_greedy_energy", "respawn_greedy_energy_secs",
+    "demo_success_energy",
     "auto_spine_gain", "auto_spine_envs", "auto_spine_ge_minutes", "auto_spine_extra_secs",
     "auto_spine_timeout",
     # --respawn-greedy-temp: the TRAINING rollout's sampling temperature for greedy-row spawns
