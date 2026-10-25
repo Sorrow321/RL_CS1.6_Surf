@@ -1278,3 +1278,15 @@ or cheaper offers in the query (a 3090 at <= 0.18 $/h would fit beside the 5080)
   past the catch) + tau0 1700, 1.5B steps: let the walk-back reach the hard part of this gate (the
   launch, the tunnel, the corner, the landing at 1465-1675) instead of polishing the ramp exit.
   Box extended to 06:09 UTC.
+* c4 (success 20.84%): evals 20.436 / 20.381 / 20.408 (flat); band [1695,1699] passes ~54%, wall
+  at [1690,1694] 0.0%. Each relaxation moves the wall 5-10 states up the curved ramp.
+* What the GE line does on that ramp (its exact link_acts / link_views): spine 1675-1714 holds
+  RIGHT strafe (fwd none, view target 2.2 deg right of the velocity) through the whole curve, then
+  at 1717 left strafe with the view 36 deg off (the air brake east). The probes showed the policy
+  pressing LEFT (east, toward the goal) from its first decisions on the ramp: not a spawn-semantics
+  defect (oldbuttons stores only jump/duck, so a held strafe could not be restored anyway), but a
+  learned preference the band temperature (keys T 1.5, yaw x6, 40 ticks) does not overturn - the
+  full ride costs ~0.2% of field progress for ~0.4 s before it pays.
+* 02:44 UTC: velocity-frame GE from the TRUE SPAWN (64 u x energy 16, 24 threads beside c4, 15
+  min): does the explorer that cracked the 20.4% gate also find the record's start-room pump
+  (+150-250 u of energy height, which every gate since 7% has lacked)?
