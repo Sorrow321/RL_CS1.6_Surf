@@ -1825,3 +1825,8 @@ beam_tas from the true start on t8e's weights (8 ms, 4,096 copies, 30 s):
 * t8h evals: 24.605 / 26.467 (1/9 past gate 10) / 24.758. Its k09 curriculum walked from 2699 back to
   ~2150 (17.2 s, between gates 8 and 9) in ~25 min and oscillates there (2154: 65%, 2149: 15%).
   The gate-10 pass stays rare in the greedy evals (0-2/9 since 13.65B); the best eval is 26.547.
+* t8h evals 14.70B 26.436 (2/9 past gate 10) / 14.78B 24.679. The greedy's gate-10 passers against k09
+  at matched progress: at 24% (the ramp foot) 850-881 u/s, h 3,400-3,423 (k09: 971, 3,530); at 26%
+  327-414 u/s, h ~3,300 (k09: 715, 3,588) - ~110 u short at the ramp foot and ~180 u more lost on the
+  ramp. The curriculum band sits at k09 state ~2155 (17.2 s; 18% vs 72% either side); the greedy has
+  not yet taken over the beam line's energy-keeping moves before the ramp.
