@@ -4838,6 +4838,11 @@ def main() -> None:
                     help="--auto-spine: beam / Go-Explore population")
     ap.add_argument("--auto-spine-ge-minutes", type=float, default=10.0,
                     help="--auto-spine: Go-Explore budget when the beam falls short (0 = none)")
+    ap.add_argument("--auto-spine-ge-select-energy", type=float, default=0.0,
+                    help="--auto-spine: the Go-Explore stage's --select-energy T (u): the "
+                         "explorer returns to the cells that kept their energy (weight x "
+                         "exp((h - h_max) / T), h = z + |v|^2 / 2g). 0 = off, the Nature weight; "
+                         "config only when on")
     ap.add_argument("--auto-spine-extra-secs", type=float, default=15.0,
                     help="--auto-spine: the beam runs this long past the eval's longest episode")
     ap.add_argument("--auto-spine-timeout", type=float, default=2400.0,
@@ -14597,6 +14602,8 @@ def main() -> None:
             auto_spine_timeout=float(args.auto_spine_timeout))
         if args.auto_spine_milestones:
             meta["config"]["auto_spine_milestones"] = 1
+        if float(args.auto_spine_ge_select_energy) > 0.0:
+            meta["config"]["auto_spine_ge_select_energy"] = float(args.auto_spine_ge_select_energy)
     if args.demo_milestones:
         meta["config"]["demo_milestones"] = [float(x) for x in
                                              str(args.demo_milestones).split(",") if x.strip()]
@@ -15685,6 +15692,8 @@ def main() -> None:
         if abs(float(args.tick_ms or 10.0) - 10.0) > 1e-9:
             # the search's seconds and the explorer's core at this run's tick (10 ms: unchanged)
             cmd += ["--tick-ms", f"{float(args.tick_ms):g}"]
+        if float(args.auto_spine_ge_select_energy) > 0.0:
+            cmd += ["--ge-select-energy", f"{float(args.auto_spine_ge_select_energy):g}"]
         t0 = time.time()
         print(f"[{global_step:>13,d}] auto-spine search {AUTO['k']}: " + " ".join(cmd),
               flush=True)

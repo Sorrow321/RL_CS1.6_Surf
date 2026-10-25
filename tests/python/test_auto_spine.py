@@ -298,3 +298,49 @@ def test_branched_beams_fork_at_the_tick_and_earlier(tmp_path, monkeypatch):
     assert forks == [(1700, "beam_br"), (1600, "beam_br2"), (1500, "beam_br3")]
     info = json.loads((out / "spine.json").read_text())
     assert info["source"] == "beam_br3" and info["br3_fork"] == 1500
+
+
+def test_ge_command_carries_tick_and_energy_selection(tmp_path, monkeypatch):
+    """auto_spine --tick-ms 8 --ge-select-energy 64 (pbr4b1): the explorer's command carries both
+    and explore_phase1's own parser accepts it; the roots window is counted at the run's tick
+    (4 s = 500 ticks at 8 ms); off (no flags) the command has neither."""
+    sys.path.insert(0, str(ROOT / "tools"))
+    import auto_spine
+    import explore_phase1
+    from surfgym.core import STATE_DTYPE
+    seen = []
+
+    def fake_run(cmd, log, timeout):
+        seen.append([str(c) for c in cmd])
+        return 0
+    monkeypatch.setattr(auto_spine, "run", fake_run)
+    line = np.zeros(2000, STATE_DTYPE)
+    line["origin"][:, 0] = np.arange(2000, dtype=np.float64)
+    fp = tmp_path / "field.npz"
+    np.savez(fp, grid=np.zeros((4, 4, 4), np.float32), quant=np.float64(1.0), mins=np.zeros(3),
+             cell=np.float64(32.0), reach_max=np.float64(20000.0))
+    base = ["--ckpt", "c.pt", "--map", "m.bsp", "--field", str(fp), "--out", str(tmp_path)]
+    for flags, tps in ((["--tick-ms", "8", "--ge-select-energy", "64"], 125.0), ([], 100.0)):
+        monkeypatch.setattr(auto_spine, "TICKS_PER_S", 100)
+        ap_ns = {}
+
+        def fake_beam(a, out, branch_tick=0, tag=None):
+            ap_ns["a"] = a
+            return None, {}
+        monkeypatch.setattr(auto_spine, "beam", fake_beam)
+        assert auto_spine.main(base + flags) == 2          # no beam line: no spine
+        assert auto_spine.TICKS_PER_S == tps
+        a = ap_ns["a"]
+        a.roots_secs, a.roots_n, a.ge_minutes, a.threads = 4.0, 8, 1.0, 0
+        seen.clear()
+        auto_spine.go_explore(a, tmp_path, line, 1999, boosts=[1.0])
+        cmd = seen[0]
+        roots = np.load(tmp_path / "ge" / "roots.npy")
+        assert len(roots) >= 2
+        assert float(roots["origin"][0, 0]) == 1999 - round(4.0 * tps)
+        args = explore_phase1.build_parser().parse_args(cmd[3:])
+        if flags:
+            assert args.tick_ms == 8.0 and args.select_energy == 64.0
+        else:
+            assert "--tick-ms" not in cmd and "--select-energy" not in cmd
+            assert args.tick_ms is None and args.select_energy == 0.0

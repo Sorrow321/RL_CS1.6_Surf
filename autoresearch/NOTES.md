@@ -1667,3 +1667,10 @@ Free-flight strafing to the same place: incumbent +475 u, record ~+549 (4 s long
 So ~230 u of the ~300 u deficit at gate 10 is made by the two LANDINGS just before it (gate 8's
 and gate 9's), and ~75 u by strafing time. A tangential landing at those two places is worth what
 the x1.12 boost gave the k03 chain.
+* `train_fast --auto-spine-ge-select-energy T` / `auto_spine --ge-select-energy T` (new, 0 = off,
+  TRAIN_ONLY): the trainer's own search loop runs its Go-Explore stage with --select-energy T. With
+  --tick-ms 8 the loop's beam, explorer and replay all run the run's tick. Test:
+  test_auto_spine.py::test_ge_command_carries_tick_and_energy_selection.
+* 09:10 UTC: still no box - three boxes hold 1.026 of the fleet's 1.2 $/h; the only offers under
+  the 0.174 left (a 4060 Ti at 0.150, a 4070 at 0.156) sit on blocklisted hosts; the cheapest
+  acceptable offer is a 3090 at 0.377. The rent loop retries every 90 s.

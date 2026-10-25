@@ -191,6 +191,8 @@ def go_explore(a, out: Path, line, end: int, boosts=None, tag: str = "ge"):
     if a.tick_ms is not None and abs(float(a.tick_ms) - 10.0) > 1e-9:
         # the explorer runs the checkpoint's tick (beam_tas does by itself); off = unchanged
         cmd += ["--tick-ms", f"{float(a.tick_ms):g}"]
+    if float(a.ge_select_energy) > 0.0:
+        cmd += ["--select-energy", f"{float(a.ge_select_energy):g}"]
     if a.threads:
         cmd += ["--threads", a.threads]
     rc = run(cmd, out / f"{tag}.log", a.ge_minutes * 60 + 600)
@@ -247,6 +249,9 @@ def main(argv=None) -> int:
                          "above 1.04: the deepest chain of a mixed stage is the most boosted "
                          "one, and a x1.12 root put a spine out of the greedy line's reach "
                          "(round 3, auto-spine search 3)")
+    ap.add_argument("--ge-select-energy", type=float, default=0.0,
+                    help="u: explore_phase1 --select-energy (return to the cells that kept "
+                         "their energy); 0 = off")
     ap.add_argument("--roots-secs", type=float, default=4.0,
                     help="Go-Explore roots: the line's last seconds before it stalls")
     ap.add_argument("--stall-margin", type=float, default=500.0,
