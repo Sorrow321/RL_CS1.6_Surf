@@ -1845,3 +1845,9 @@ beam_tas from the true start on t8e's weights (8 ms, 4,096 copies, 30 s):
 * GE_g12 result (8 min, 98k cells): deepest 27.38% (3,330, -1,813, 3,187) from the beam line's own state
   at 20.6 s x1.04 - higher over gate 11 (z 3,414 at 26.4%), then down north-west into gate 12 (a hit
   at ~27.3%, h 3,649 -> 3,558). Spine pbr4b1_k10_t8.npy saved for the next round (not used in round 4).
+* t8h later evals: 26.510 / 26.526 / 24.816 (15.01-15.16B) - no gain on 27.147. Its approx_kl crept up
+  at lr 1e-4 as it had in t8c at 3e-4: 40-iteration means 0.07-0.09 (14.40-14.60B) -> 0.12-0.21
+  (15.0-15.23B), single updates ~1 (episode rewards grew 40 -> 80 with the stacked milestone bonuses,
+  which may scale the advantages). **pbr4b1_t8i** (17:46 UTC): the 27.147 snapshot
+  (ckpt_14930673664.pt, md5 1d131749...) + k09 + the same milestones + **--lr 5e-5** (sidistic R7's
+  second cut), auto-spine off (a patience search would stall the last evals), until the wrap-up.
