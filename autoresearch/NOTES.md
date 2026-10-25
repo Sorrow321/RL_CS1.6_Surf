@@ -1749,3 +1749,22 @@ Box: 57632318, RTX 4080 + i9-14900F (32 thr), 0.30 $/h, UK (machine 151788), ren
   python3 tools/pin_best.py <run> &`. Pinned so far: t1 ckpt_14390132736 (26.376),
   ckpt_14692122624 (28.626), ckpt_14767620096 (29.003, at its eval), ckpt_14930673664 (12M after
   the 29.065 eval) - all pulled.
+
+### Gate 12 holds the curriculum; GE at the policy's tick (10:00-10:40 UTC)
+* t1 evals 15.0-15.37B: 29.138 / 29.147 / 29.201 / **29.210** (15.221B) / 28.869 / 29.149: 9/9 die
+  at (2,743-2,814, -1,249..-1,320, z ~2,600) at ~22.1 s - the k02 line's ending (west off the north
+  side, into a catch). The k03 line (search 3: beam to 20.2 s + a GE chain rooted at its state 2,626
+  with +40 u, x1.039) instead loops east -> south -> west after the north ramp, lands on the lower
+  ramp at (3,369, -1,744, 2,938) (the record's, ANALYSIS ONLY: (3,224, -1,678, 2,835)), runs west at
+  ~1,050 u/s and turns north off a contact at (2,889, -1,736, 2,833), ending in a fall at
+  (2,235, -807, 2,602) at 30.49%. The curriculum has sat at k03 [2839..2848] for ~450M steps:
+  band [2844] 41%, band [2839] (0.05 s before that contact) 0.0% on every visit.
+* Suspected cause: the GE chain was found at 10 ms (explore_phase1 only ran the core's 10 ms) and
+  is flown by a 7.67 ms policy; a precise contact can come out differently at another tick. So
+  `explore_phase1 --tick-ms T` (new, 82c640b): the explorer steps the given tick ([8,8,7] at 7.63),
+  every chunk's reset restarts the pattern, and --exact-chains stores each link's pattern phase
+  (link_phase) that tools/ge_replay.py restores, so chains replay exactly at that tick
+  (tests/python/test_exact_chains.py::test_exact_chains_at_a_tick_pattern; flag off bit-identical).
+  auto_spine passes the checkpoint's tick to it. Not used by t1 (launched before).
+* Manual search on t1's 15.42B weights (trainer paused by SIGSTOP; runs/_manual1 on the box):
+  dh beam 40,444 / branched beams 40,441-40,446 (= the greedy's 40,522: no gain); GE stages running.
