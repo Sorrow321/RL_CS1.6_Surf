@@ -1815,3 +1815,14 @@ throttled) and could read it as a bad box. The fix is one line in python/train_f
   unboosted lines - the record's own figure.
 * The training frontier does not reach the gap either: the frontier-perturb rows (speed x1.0-1.3 at
   the reservoir's band, ~26.0-26.1%) top out at 26.37% (the crawl line's catch).
+* Where the ~190 u deficit at the gap builds up (energy height at first arrival, c7 16.78B median vs
+  the record, ANALYSIS ONLY): 1% 154 (the record's start pump) -> 10% 25 (it dissipates for both)
+  -> 20% 79 (10-20%: both take 5.7 s, the record gains 145 u, we gain 91) -> 21% 95 (gate 8's
+  landing, +16) -> **22% 178 (gate 9: our median clips the wall top, -53 u, while the record gains
+  30; our best episodes keep 3,519)** -> 26.5% 192. Gate 9's clip is the largest single leak.
+* c7 stopped at 16.906B (ckpt_latest md5 0696a3bf..., pulled): evals 26.982 after the best; the
+  auto-spine quorum (6/9 past 26.82%) was about to start a ~30-min search whose GE ladder (<= x1.12)
+  cannot cross a ~200 u gap (the manual x1.25 GE did not).
+* **pbr4b4_c8** (11:49 UTC): c7's weights + --respawn-greedy-impacts 3 + --auto-spine-ge-minutes 0
+  (beam searches only, ~3 min) --auto-spine-gain 200 (a beam line 200 u past the greedy median
+  becomes the spine) --auto-spine-delay 2e8 --auto-spine-retry 6e8, --demo-tau0 1730.
