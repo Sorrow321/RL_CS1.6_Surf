@@ -1663,3 +1663,36 @@ Box: 57632318, RTX 4080 + i9-14900F (32 thr), 0.30 $/h, UK (machine 151788), ren
 * The trainer saves only ckpt_latest (and milestones every 1B), so the 26.353 eval's weights were
   overwritten: pin_best.py (scratchpad tool, running on the box at nice 19) now scores each new
   eval and copies ckpt_latest to ckpt_<step>.pt whenever the run's best score moves.
+
+### Gate 11 and the physics tick: the record flies at 131 fps (08:30-08:41 UTC)
+* Gate 11 (where the gate-10 crossers die, 26.35%): a GAP north of the flat top at y ~-2,330..-2,350
+  (a kill volume at z <= ~3,260; the walkers and a 7.63 ms beam line both die there). The record
+  (ANALYSIS ONLY) runs north along the flat at ~900 u/s, takes a small KICKER at y ~-2,560..-2,450
+  (vz +266 -> +504) and flies the gap at z ~3,300-3,340 onto a north ramp that climbs to z 3,417.
+  Our 10 ms lines reach the flat at 250-480 u/s (a walk): no kicker launch is possible at that speed.
+* Where the energy goes (beam lines of the incumbent's weights vs the record at matched x, energy
+  height h): x -1,000 -93 u, x 0 -64, x 1,000 -164 (the gate-8 corridor landing: -100 vs the record),
+  x 2,000 -202, x 2,600 -223, x 2,800 -215. All dh / d / branched beams carry the same h (the same
+  policy). On the gate-10 ramp the record gains ~86 u/s of h - above the 100 Hz maximum of air
+  strafing (56 u/s: 900 (u/s)^2 per tick at airaccelerate 100) and possible only at its 131 fps.
+* PROBE (trainer paused with SIGSTOP, ~25 s): beam_tas `--tick-ms 7.63` (the WR's frame rate,
+  [8,8,7] ms) on the SAME weights (trained at 10 ms): frontier 26.3% at 22.2 s (10 ms: 25.0 s), and
+  the line carries ~+100 u of h from x 1,500 on (x 2,000: 3,542 vs 3,425; x 3,000: 3,569 vs 3,461),
+  flies OVER the flat top in the air at 700-750 u/s, reaches the kicker area at 740 u/s (record
+  ~890) - but overflies the kicker and dies in the gap at 26.3%. Greedy at 7.63 ms with the same
+  weights: 1.7 / 4.9 / 3.2% (CLAUDE.md: a frozen policy does not transfer across the tick; the
+  population search compensates, greedy does not).
+* Decision (a physics-parity choice, written down so the operator can judge it): CLAUDE.md's
+  `--tick-ms` section treats the WR demo's 131 fps as the physics a strafer actually had and built
+  `--tick-ms-schedule` to move trained policies there; the grader reads positions only (and the
+  header's tick_ms for finish times). A ~200 u energy deficit that is partly the frame rate is the
+  same deficit every later gate meets, so the lineage moves to the record's tick by a ramp.
+* c1 stopped at 14.088B (evals to 14.029B: best 26.371). **pbr4b2_t1** (08:41 UTC): c1's 14.088B
+  weights + the same curriculum / milestones / flags + `--tick-ms-schedule 10:7.63:3e8` (linear in
+  ms over 300M steps, then 7.667 ms = [8,8,7]) + auto-spine with `--auto-spine-score dh
+  --auto-spine-score-energy 1 --auto-spine-ge-boost "1.0,+40;+80;+160"` (delay 4e8), 2B steps. The
+  curriculum restarts at the spine's end (re-learns the line at the new tick). Its resume eval
+  (14.088B, still 10 ms): 26.361 (ckpt_14090764288 pinned).
+* Harness issue (operator): `box.py deploy` on a box whose trainer is running fails its GPU health
+  check (the benchmark shares the GPU: "166 TFLOPS ... below spec") after the git pull has already
+  happened - a false defect; this box (57632318) was NOT blocklisted.
