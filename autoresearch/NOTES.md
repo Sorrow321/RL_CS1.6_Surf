@@ -1290,3 +1290,21 @@ or cheaper offers in the query (a 3090 at <= 0.18 $/h would fit beside the 5080)
 * 02:44 UTC: velocity-frame GE from the TRUE SPAWN (64 u x energy 16, 24 threads beside c4, 15
   min): does the explorer that cracked the 20.4% gate also find the record's start-room pump
   (+150-250 u of energy height, which every gate since 7% has lacked)?
+
+### 03:00 UTC: the velocity-frame explorer finds the start-room PUMP (the lineage's oldest open gap)
+* `explore_phase1 --view-velocity --exact-chains`, rooted at the TRUE SPAWN only, 64 u x energy 16
+  cells, 4,096 envs, 24 threads (beside c4), 15 min, 8.2M runs, 38,805 cells: east half-pipe
+  energy height **max 3,983 (p99 3,966)** - round 2's uniform explorer reached 3,804 from the
+  spawn and 3,839 when re-rooted at its best half-pipe states; the record has ~3,930-3,950. So the
+  pump that rounds 1-2 called "closed to uniform-action search" is open to velocity-frame random
+  actions in 15 min. (Beware the doorway's trigger_push next to the spawn: its h ~3,940-3,974 is a
+  2,500 u/s DOWNWARD push, not energy - round 2's note.)
+* Not found yet: carrying it into the crouch tunnel at speed - tunnel cells max h 3,871, |v_h|
+  <= 373 (the record enters at 500-600 u/s, h ~3,950); best cell past 1% h 3,830 (the policy's
+  tunnel exit ~3,809-3,814). Max progress 3.21% (the pit), as in round 1.
+* 03:03 GE_pump2: the same explorer rooted at the 48 highest-h cells of that archive (h 3,978-3,986),
+  15 min: the fast way into the tunnel?
+* Why it matters: every gate since 7% (and the one after this round's ramp) has been ~100-300 u of
+  energy short; a pumped start is the upstream fix. Exploiting it needs a new start line and the
+  route re-learned at higher speed - next round's work, not this one's.
+* c4 evals: ... / 20.449 (10.452B). Best this round still c3's 20.475.
