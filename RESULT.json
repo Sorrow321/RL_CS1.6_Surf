@@ -3,17 +3,18 @@
  "round": 4,
  "final": false,
  "best": {
-  "score": 24.774,
-  "eval_file": "/home/steam/ar_pb/runs/pbr4b2/pbr4b2_c1/traj_13500416000.jsonl",
+  "score": 26.371,
+  "eval_file": "/home/steam/ar_pb/runs/pbr4b2/pbr4b2_c1/traj_14028898304.jsonl",
   "run": "pbr4b2_c1",
-  "step": 13500416000,
-  "ckpt": "/home/steam/ar_pb/incumbent/r3/ckpt.pt (the resume eval of the incumbent's weights)",
+  "step": 14028898304,
+  "ckpt": "/home/steam/ar_pb/runs/pbr4b2/pbr4b2_c1/ckpt_14024704000.pt",
   "recipe": [
    "resume of the round-3 incumbent (pbr3b4_as10 ckpt_13499891712)",
-   "--demo-file autoresearch/spines/pbr4b2_beam_dh1.npy --demo-milestones 44939,43426 + round 3's flag set + --auto-spine"
+   "--demo-file autoresearch/spines/pbr4b2_beam_dh1.npy --demo-milestones 44939,43426 + round 3's flag set (energy K 12, greedy-contact rows + temp, front-perturb, success bonus 50) + --auto-spine --auto-spine-milestones"
   ],
   "resume_from": "/home/steam/ar_pb/incumbent/r3/ckpt.pt",
-  "commit": "5b67278"
+  "commit": "ff6000d",
+  "ckpt_md5": "aa389f9ce9268103e31960efcc6bdffe"
  },
- "summary": "Round 4 start (07:43 UTC). Beams (beam_tas, 4,096 copies) from the true start on the incumbent's 13.5B weights now find the way over gate 10 (the ramp climb that held round 3's greedy at the 24.7% crawl) in 19 s: d-ranked and energy-ranked (dh K 1/3, branched) all reach 26.35-26.39%. Spine pbr4b2_beam_dh1.npy (energy-ranked line, 2,500 states) + the round-3 curriculum flags + milestones 44939,43426 + --auto-spine: run pbr4b2_c1 launched 07:57 UTC on box 57632318 (RTX 4080, 0.30 $/h). No eval of this round yet."
+ "summary": "Beams from the true start on the incumbent's weights cross gate 10 (26.35-26.39%); spine pbr4b2_beam_dh1.npy + curriculum (run c1, milestones 44939/43426, auto-spine on). Greedy evals 24.4-24.8 and 26.353 / 26.338 / 26.371 (14.03B; 1-2 of 9 episodes over gate 10, dying at the gap after the flat top at 26.35%). Gate 11 = an energy gap (~200-300 u of energy height vs the record)."
 }

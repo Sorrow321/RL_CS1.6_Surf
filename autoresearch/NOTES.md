@@ -1649,3 +1649,17 @@ Box: 57632318, RTX 4080 + i9-14900F (32 thr), 0.30 $/h, UK (machine 151788), ren
   (`--ge-boost '1.0,+40;+80;+160'`, trainer `--auto-spine-ge-boost`): H u of energy height added
   to a root's kinetic part instead of a velocity factor, which adds ~nothing to a slow line (the
   gate-10 beam lines WALK the next stretch at 250 u/s: x1.12 there is +10 u of height).
+
+### c1: the greedy follows over gate 10 - score 26.353 (08:25 UTC)
+* c1 evals 24.774 / 24.714 / 24.734 / **26.353** (13.727B) / 26.338 (13.802B) / 24.424 (13.878B): in
+  the 26.3 evals 1-2 of 9 greedy episodes climb the gate-10 ramp, go over its top and reach the
+  beam line's end (26.35%); the rest still crawl at 24.1-24.6%. The passing episodes arrive at
+  x 2,600 with energy height 3,398-3,419 (z ~3,050-3,060); the crawling ones with 3,190-3,320.
+* All passing episodes then DIE at ~24.6-24.9 s at (3,511, -2,345, z ~3,200), walking north off
+  the flat top at 250-340 u/s (gate 11; the beam lineages died there too). The record (ANALYSIS
+  ONLY) crosses the flat in the AIR at 800-880 u/s ~90 u above it and surfs a ramp up to z ~3,417
+  by y ~-2,060: ~300 u of energy height more than our walkers - the gate-10 climb is passed with
+  no margin (over the top at 340-480 u/s after an impact at its edge).
+* The trainer saves only ckpt_latest (and milestones every 1B), so the 26.353 eval's weights were
+  overwritten: pin_best.py (scratchpad tool, running on the box at nice 19) now scores each new
+  eval and copies ckpt_latest to ckpt_<step>.pt whenever the run's best score moves.
