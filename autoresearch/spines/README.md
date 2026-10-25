@@ -196,3 +196,7 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   62.25% (d 21,577), replayed 46/46. Cut at its best d. Views along the velocity on the chains, keys translated
   with them; the beam rows' keys are the beam's own, the rollout's from its trajectory. No demo, no record
   (pbr5b2, round 5).
+* `pbr5b2_e1c.npy` + `.keys.npy` (5,005 rows; md5 adae45ae3cb2c2afffdbde98d4e41e61 / 7ff2bc12313b0290ad11010426bf04ff):
+  pbr5b2_e1 cut at its row 5,004 (57.20%, d 24,459), just past the shaft climb on the upper level - the next gate only
+  (the full e1's curriculum stalled at once on an explorer impact at 61.5%, far past what the greedy flies). Same
+  provenance as pbr5b2_e1.
