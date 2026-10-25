@@ -3,13 +3,13 @@
  "round": 3,
  "final": false,
  "best": {
-  "score": 24.538,
-  "eval_file": "/home/steam/ar_pb/runs/pbr3b4/pbr3b4_as4/traj_11172052992.jsonl",
-  "run": "pbr3b4_as4",
-  "step": 11172052992,
-  "ckpt": "/home/steam/ar_pb/runs/pbr3b4/pbr3b4_as4/ckpt_11172052992.pt",
-  "ckpt_step": 11172052992,
-  "ckpt_md5": "0455e4df0fd884ebe0627728a1e01e2f",
+  "score": 24.555,
+  "eval_file": "/home/steam/ar_pb/runs/pbr3b4/pbr3b4_as7/traj_12321292288.jsonl",
+  "run": "pbr3b4_as7",
+  "step": 12321292288,
+  "ckpt": "/home/steam/ar_pb/runs/pbr3b4/pbr3b4_as7/ckpt_latest.pt",
+  "ckpt_step": 12340166656,
+  "ckpt_md5": "158e4e1bca1509da2ab49279f5d4304f",
   "recipe": [
    "resume chain: incumbent 9.479B -> as1 -> as2 (9.812B) -> as3",
    "--demo-window 5 --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5 --demo-rate 0.3 --demo-front-frac 0.4 --demo-success-d 100 --demo-success-bonus 50",
@@ -18,11 +18,11 @@
    "--respawn-front-perturb 0.2 --respawn-front-perturb-band 0.005 --respawn-front-perturb-speed 1.0 1.3 --respawn-front-perturb-turn 90",
    "--energy-pot 8 --energy-pot-front 0 --energy-pot-front-bonus 0 --no-respawn-novel --respawn-backward-mix 0 --int-real-only 0",
    "--spawn-states autoresearch/spines/pbr1b1_entry_ge_states.npy --spawn-states-frac 0.2 --maxvel 3500",
-   "--demo-file runs/spine_k02.npy (as3's --auto-spine search 2 line: the branched beam over the gate-9 wall to 24.19%)",
-   "--demo-milestones 44939 --auto-spine --auto-spine-milestones --auto-spine-delay 3e8 --auto-spine-retry 4e8 --auto-spine-patience 6e8 --auto-spine-gain 500 --auto-spine-ge-minutes 8"
+   "--demo-file runs/spine_k03.npy (as3's --auto-spine search 3 line: own beam line to 17.2 s + a x1.12 GE chain over the gate-9 wall and up the ramp to 26.66%)",
+   "--demo-milestones 44939,43426 --auto-spine --auto-spine-milestones --auto-spine-delay 6e8 --auto-spine-retry 4e8 --auto-spine-patience 1.2e9 --auto-spine-gain 500 --auto-spine-ge-minutes 8"
   ],
-  "resume_from": "/home/steam/ar_pb/runs/pbr3b4/pbr3b4_as3/ckpt_10869538816.pt (the 24.291 weights)",
-  "commit": "4807a0b"
+  "resume_from": "pbr3b4_as6 ckpt_latest 11.868B (as5 11.377B <- as4 11.191B <- the 24.291 weights)",
+  "commit": "aa20918"
  },
- "summary": "Score 20.414 -> 24.538 (as4 11.17B, median 24.4%; as3 10.87B 24.291: 5/9 greedy episodes fly over the 20.4% catch AND the gate-9 wall to 24.2-24.3%, then crawl on a floor at x ~2,800 = gate 10). Gate 8 found by Go-Explore --exact-chains at x1.04 speed from the policy's own launch states (trainer stopped) -> spine -> curriculum. Gate 9 found by the trainer itself: train_fast --auto-spine ran tools/auto_spine.py after the greedy crossed the gate-8 success line; its branched beam (half the copies forked 0.5 s before the greedy's launch with held view offsets) found the line over the wall in 46 s and swapped it in; the greedy followed within ~150M steps. New code: --auto-spine + tools/auto_spine.py (beam -> branched beam -> GE escalation ladder 1.0/1.04 -> 1.08/1.12 -> spine swap), --respawn-greedy-contact, beam_tas --view-temp/--keys-temp, tools/ge_spine.py, ge_roots_best.py."
+ "summary": "Score 20.414 -> 24.555 (as7 12.32B; 9/9 greedy episodes from the true start pass the 20.4% catch (gate 8) and the 21.5% wall (gate 9) and reach 24.4-24.6%, crawling on a floor = gate 10, a landing ~250 u north of a ramp). Gate 8 found by Go-Explore --exact-chains at x1.04 speed from the policy's own launch states -> spine -> curriculum. Gate 9 found by the trainer itself (train_fast --auto-spine: its branched beam, 46 s). A x1.12 spine past gate 10 eroded the route (beam10 again) until --auto-spine-milestones / --demo-milestones (old success lines keep paying); under milestones the route holds but the boosted ramp catch is stuck at ~25% band success. New code: --auto-spine + tools/auto_spine.py (beam -> branched beams -> GE escalation ladder -> spine swap), milestones, --respawn-greedy-contact, beam_tas --view-temp/--keys-temp, tools/ge_spine.py, ge_roots_best.py."
 }
