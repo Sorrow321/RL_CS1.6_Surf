@@ -2193,3 +2193,31 @@ minute). Incumbent: pbr4b3_t11 ckpt_23551016960 (md5 7fbcd458...), eval 52.937 a
   203/4,096 valid 3.8 s after the fork: the descent is narrow at 1,000+ u/s, a +-45 deg held view kills);
   GE stage 1 (last 4 s, x1.0 / 1.04) deepest 24,798 = 56.61% IN the upper room (-2,316, 2,466, 2,155): its
   archive has 320 cells in the upper room with h <= 2,395, none at z >= 2,300 - the energy wall.
+
+### Search 1's verdict, the beam probes, and what the energy problem really is (20:55-21:15 UTC)
+* Search 1 (24.080B, 2,241 s of trainer wait): NO spine. GE stages, deepest d (needs < 24,579 = 57.0%):
+  x1.0/1.04 24,795 (56.61%) / E (energy roots) 24,819 / x1.08 24,748 (56.70%) / x1.12 24,725 (56.74%) - all in
+  the upper room. The E stage left the default ladder (c70f542); the energy forks stay (cheap).
+* c1 stopped at 24.0805B (ckpt_latest = the search's 24.080B save, md5 adb0febb...). Its curriculum had sat at
+  band [4371,4375] (k05's GE chain at 51.2%, 7-15%) for ~30 min: most curriculum spawns were on the uniform
+  explorer's crash-heavy chain, which the greedy no longer follows (it reaches 56.1% on its own line).
+* Beam probes on c1's 24.08B weights, from the true start, the box idle (47 s each): `--score dh --score-energy 2`
+  -> 56.59%, h at 56% 2,337; the same + `--keys-temp 1.5` -> 56.58%, h 2,201. The plain beam had 56.59%, h 2,345.
+  The same three crashes in every line (50.1-50.2% -200..-346, 51.6-51.8% -310..-497, 52.8% -353..-370): the
+  policy's population has no crash-free descent; energy-weighted ranking cannot keep what is not there.
+* The archives DO hold energy the policy's line lacks: the E-stage archive (roots before the crashes) has cells
+  at y 1,200-1,500 (53%) with h 3,022 (the beam ~2,441 there) and at the U-bottom h 2,725-2,741 in stage 1's
+  archive (the beam ~2,380-2,412); but every explorer chain loses it again before the climb (max h in the climb
+  region 2,343-2,427). And the policy does not keep it either: rolled out (greedy, box) from the U-bottom state
+  with h 2,741 it hits the U's exit walls (-114, -160, -282) and reaches 56.0% with h 2,021 - with more speed it
+  flies a line it never learned. (A local probe print showed only the start energy; corrected here.)
+* So the gate needs a new SKILL line: the descent flown high along the walls (the record stays at z ~2,550-
+  2,600 from y ~600 to ~1,450, ANALYSIS ONLY) and the shaft climb with that energy. Searches alone have not
+  produced it.
+* **pbr5b2_c2** (21:00 UTC): c1's 24.080B weights + c1's flags + `--respawn-greedy-energy 3` (the greedy pool now
+  6,512 states incl. the windows before the descent's losses of -316..-733 u at 34-36.6 s and gate 14's corner)
+  + `--demo-tau0 4340` (the curriculum restarts just before k05's explorer chain) + `--auto-spine-delay 4e8`.
+  Evals 56.107 / 56.142 (24.08 / 24.156B). Paused at 24.16B (21:05) for a focused GE:
+* GE-C (21:06 UTC, full CPU, 10 min): roots = chain A's last second (beam line to 4,372 + stage 1's exact chain
+  to the U-bottom cell 156792, h 2,741, replayed 13/13 -> runs/_stitch/lineA.npy on the box) + the policy's own
+  greedy climb from it (rollB, 0.9 s before its first wall), x1.0 / 1.04 / 1.08, view-follow, 8 ms.
