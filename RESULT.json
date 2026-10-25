@@ -7,7 +7,7 @@
   "eval_file": "/home/steam/ar_pb/runs/pbr3b1/pbr3b1_c3/traj_10165944320.jsonl",
   "run": "pbr3b1_c3",
   "step": 10165944320,
-  "ckpt": "/home/steam/ar_pb/runs/pbr3b1/pbr3b1_c3/ckpt_latest.pt (10.225B, md5 bb75e80e; pulling)",
+  "ckpt": "/home/steam/ar_pb/runs/pbr3b1/pbr3b1_c3/ckpt_latest.pt (10,224,664,576; md5 bb75e80e; pulled, the handon_ckpt pick for this eval)",
   "recipe": [
    "resume of the incumbent (9.478B) with round 2's curriculum flag set on autoresearch/spines/pbr3b1_vvel_g20.npy"
   ],
