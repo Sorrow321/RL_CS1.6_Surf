@@ -1793,3 +1793,22 @@ Box: 57632318, RTX 4080 + i9-14900F (32 thr), 0.30 $/h, UK (machine 151788), ren
   44939,43426,42188,41607,40709,39400,38250` (the five crossed lines + two evenly spaced along the
   new line's 6% stretch, so partial progress along it keeps paying) + auto-spine (tick-aware GE,
   dh beams, +H ladder, delay 2e8, retry 3e8, patience 6e8), 6B steps.
+
+### The m2 curriculum stops at the lower-ramp landing: the policy's habit (11:00-11:30 UTC)
+* t2 (curriculum on pbr4b2_m2_ge763 from its end): 3450 -> 2790 in ~20 min, then stuck: band
+  [2795..] 38-40%, band [2790..] 0.0% on every visit (500 episodes each); greedy evals 29.07-29.20
+  (the k02 route, dying in the catch at y ~-1,300).
+* Skill probes (beam_tas --start-state on the spine's states, 4,096 stochastic copies + 32 greedy of
+  t2's weights, trainer paused): from 2800 all 4,096 survive and fly to 39.2% (d 34,748) in 5.4 s; from
+  2786-2793 only 26-150 survive 0.77 s; from 2696-2781 (before the landing) the WHOLE population is
+  dead within 0.3-0.9 s even with resampling every 5 decisions. The frontier lineages show why: from
+  the north-side drop the policy at once holds the RIGHT strafe and turns north (heading 208 -> 136
+  deg in 0.6 s) - its k02 habit - and falls into the catch, where the spine keeps heading south-west
+  onto the lower ramp. A habit, not a spawn artifact: the curriculum has no positive example from
+  the bands before the landing.
+* **pbr4b2_t3** (11:30 UTC): t2's 16.016B weights, the same curriculum at --demo-tau0 2790 with a
+  much hotter band: `--demo-front-temp 2 --demo-front-ticks 60` (keys at temperature 3 for the
+  first 60 ticks = 0.46 s of a band spawn; t2 had 0.5 / 40), the rest as t2, 5B steps.
+* Harness lesson (again, CLAUDE.md warns): `pgrep -f '<pattern>'` inside an ssh command whose own
+  text contains the pattern matches the remote shell itself; `kill $(pgrep ...)` then kills the
+  session, not the trainer. Use the pid.
