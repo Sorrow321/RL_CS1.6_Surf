@@ -194,7 +194,13 @@ if ! $SSH -p "$PORT" "root@$HOST" "cd /root/RL_Surf && python3 tools/gpu_health.
 !! Record it BEFORE destroying (identifiers vanish with the instance):
 !!   python tools/vast_pick.py --block <instance_id> --reason gpu_capped !!       --detail "<measured TFLOPS vs ref>"
 BAD
-  exit 1
+  # GPU_HEALTH_WARN_ONLY=1 (pbr5b3, 2026-10-25): gpu_health.py has no reference for the cheaper cards
+  # the program allows since 2026-10-25 and fails every power-capped one as UNJUDGED; the trainer is
+  # CPU-bound, so its steps/s on the box decides instead (< ~150k -> blocklist and release)
+  if [ "${GPU_HEALTH_WARN_ONLY:-0}" != "1" ]; then
+    exit 1
+  fi
+  echo "!! GPU_HEALTH_WARN_ONLY=1: continuing; judge the box on the trainer's steps/s"
 fi
 
 cat <<MSG

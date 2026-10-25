@@ -2144,3 +2144,24 @@ with t11's flag set (NOTES "To continue (next round)"), the k05 spine (to 56.22%
   (54.76%: h 2,131 vs the record's ~3,224 at 54%; k05 ends at 56.22% crawling at 209 u/s, h 1,994, where the
   record has 1,181 u/s). The record's next climb (58%: z 2,508) needs more energy than k05's end has: expect the
   loop to need a more energetic line through 52% before it gets much past 56%.
+* Box 57724231 rented 21:27 UTC by the retry loop (cheapest acceptable offer once one fit the 0.216 $/h left):
+  RTX 4060 Ti 16 GB (100 W power limit) + Ryzen 9 3950X (32 threads, cgroup quota 30.72 CPUs), 31 GB RAM,
+  0.165 $/h, Poland (machine 148894), watchdog deadline ~07:20 UTC.
+
+### Harness issue: gpu_health fails every power-capped cheap card as UNJUDGED (21:28 UTC)
+`tools/deploy_box.sh` step 6 runs `tools/gpu_health.py --all`, which has no REFERENCE for the cheaper cards
+allowed since 2026-10-25 and treats a power limit under 85% of the default as a defect when it has none: box
+57724231's RTX 4060 Ti 16 GB (100 W of 165 W; 37 TFLOPS bf16, 246 GB/s = 85% of the 288 GB/s spec, the
+other references' copy ratio) failed the deploy. This branch's deploy_box.sh takes `GPU_HEALTH_WARN_ONLY=1`
+(print the verdict, continue; the trainer's steps/s decides). Operator: a 4060 Ti / 5060 Ti / 3080 / 4070 /
+5070 reference (or a warn-only path for them) would let the cheap tier deploy.
+
+### Box 57724231 was CPU-starved by a foreign niced load: 61k steps/s, blocklisted and released (21:41 UTC)
+* pbr5b3_c1 (the launch above, `launch_c1.sh` in the session scratchpad: t11's flags + k05) ran at ~61k steps/s
+  instantaneous (3.67M steps in 60 s; round 4's 5080/TR box ~330k): per 524k-step iteration ~3 s of PPO update
+  at 99% GPU (the capped card) + ~5.5 s of rollout, with the host's /proc/stat at 62% `ni` and 0% idle (loadavg
+  42 on 32 threads) - a load outside the container took ~60% of the CPU and the trainer got ~14 cores.
+  CLAUDE.md section 1 (underperforming dies) + PROTOCOL (far under ~150k): blocklisted (machine 148894,
+  reason cpu_bound) and released. The rent retry runs on.
+* Its one greedy eval (traj_23551541248, the incumbent's own weights 0.5M steps after the resume): **52.930**,
+  median 52.84% (0/9 past k05's success line d <= 25,121) - pulled to runs/pbr5b3/pbr5b3_c1/.

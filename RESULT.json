@@ -2,6 +2,18 @@
  "agent": "pbr5b3",
  "round": 5,
  "final": false,
- "best": null,
- "summary": "Round 5 start (19:48 UTC): plan = resume the incumbent (pbr4b3_t11 ckpt_23551016960, 52.937) with t11's flag set, the k05 spine (to 56.22%) and the trainer's own --auto-spine loop. Waiting for a box: the fleet's 1.2 $/h cap is 0.984 used by the other branches; a rent retry runs every 3 min."
+ "best": {
+  "score": 52.93,
+  "eval_file": "/home/steam/ar_pb/runs/pbr5b3/pbr5b3_c1/traj_23551541248.jsonl",
+  "run": "pbr5b3_c1",
+  "step": 23551541248,
+  "ckpt": "/home/steam/ar_pb/incumbent/r4/ckpt.pt",
+  "recipe": [
+   "resume of the round-4 incumbent pbr4b3_t11 ckpt_23551016960 with t11's flags + spine k05 (pbr4b3_auto_t11k05 + keys) + 14 milestones + --auto-spine"
+  ],
+  "resume_from": "pbr4b3_t11 ckpt_23551016960 (the incumbent ckpt.pt, md5 7fbcd458...)",
+  "commit": "825f021",
+  "ckpt_note": "the eval ran the incumbent's own weights 0.5M steps after the resume; no checkpoint of this run was pulled (box released after 8 min: 61k steps/s, a CPU-starved host)"
+ },
+ "summary": "Round 5: no box until 21:27 UTC (fleet cap full); the first, a 4060 Ti on a CPU-starved host (61k steps/s), was blocklisted and released after 8 min. Its only eval = the incumbent's weights: 52.930. Rent retry running; plan unchanged: resume the incumbent with t11's flags + k05 + --auto-spine."
 }
