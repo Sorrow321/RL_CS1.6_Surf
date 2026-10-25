@@ -1608,3 +1608,23 @@ as7's 24.555 eval (ep0) vs the WR demo:
   (+ `--auto-spine --auto-spine-milestones --auto-spine-gain 500 --auto-spine-ge-minutes 8` to let
   the trainer search; the as10 run had it off). Box 57557523 (RTX 5080, 0.56 $/h), released at
   wrap-up.
+
+## pbr4b3 (round 4, slot 3) - 2026-10-25 07:43 UTC start
+
+Box: 57632609, RTX 5080 + Threadripper 3970X (32 thr), 0.363 $/h, Ireland (machine 145348).
+Incumbent: pbr3b4_as10 traj_13500416000 (24.737), weights 13.4999B (md5 a3a21331...).
+
+### Where the gate-10 energy goes, tick by tick (incumbent eval ep0, 24.74%; ANALYSIS of our own line)
+* 16.95 -> 17.00 s: the gate-8 corridor ramp landing, ONE impact: h 3,710 -> 3,553 (-157 u),
+  v (207, -1,090, -850) -> (451, -1,130, -532) - it meets the ramp falling at vz -850.
+* 17.00 -> 17.60 s: riding the ramp south and U-turning at the corridor's end: a steady -3..-5 u
+  per tick, 3,553 -> 3,364 (-190 u) - a curved surface, the hull losing a little at every facet.
+* 18.0 -> 19.45 s (U-turn exit -> over the gate-9 wall): the policy GAINS +94 u by air strafing
+  (3,382 -> 3,483); the x1.12 GE chain of spine k03 LOSES 67 u over the same stretch (uniform
+  random actions waste energy: the boost paid for the explorer's waste, not for a lack in the
+  policy's flying).
+* 19.45 -> 19.90 s: the gate-10 ramp catch: -68 u in one tick (vz -523 -> -278) then -68 more;
+  k03 meets the same surface at 18.5 s rising (vz +65) and loses 38 u. ep0 climbs to z 3,084 at
+  x 2,835 (k03: 3,187 there) and falls back (24.74%).
+* So the line needs ~+60-100 u at 23% AND a smoother ramp catch; the biggest single sink is the
+  gate-8 corridor landing + U-turn (-347 u in 0.65 s; the record loses ~213 over 20-21%).
