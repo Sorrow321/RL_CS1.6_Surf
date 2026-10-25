@@ -1310,3 +1310,28 @@ shorter budget_end_hours. Written down for the operator; nothing is worked aroun
      policy's surfing pumps inside the half-pipe and the d term brings it back;
   3. an energy-ratchet Go-Explore (re-root every few minutes at the states of most usable energy; round 2's
      second stage gained +35 u in the half-pipe).
+* What option 2 above needs in tools/beam_tas.py (not built, ~1 h): a `--start-states NPY:IDX` that seeds
+  the population at an archived state on a --keys-hold checkpoint - row0 = that state (clocks zeroed); the
+  first decision's scalar obs from a reset onto a one-state spawn pool (set_spawn_pool + reset) instead of
+  the map spawn's obs_start; the wrappers' KeysHold state with duck HELD when the state is ducked (the
+  trainer's --keys-hold-spawn-duck rule); the ratchet / compass / pot-rate feeds re-anchored at the start
+  state. save_frontier_line already replays from any row0, so the exactness check carries over.
+
+### pbr3b2 round 3 lesson (drafted 04:35 UTC; no box all round)
+* No score: the budget pace allowed no rental at the start ($18 credit), then one box fleet-wide, and the
+  1.2 $/h cap (from 23:40) was held by two other branches with no cheap 32-thread card on offer. Everything
+  below was built and measured on the 4-vCPU droplet.
+* Built (all flag-off bit-identical, tested): `--auto-spine` (round 2's search -> curriculum loop inside one
+  launch: beam_tas subprocess on the current weights after a greedy quorum at the success line; cut at the
+  deepest CONTACT, never inside the fall that ends a line; Go-Explore fallback; stall re-cut; exponential
+  backoff), `--demo-success-energy` (the success line also asks for the line's energy height),
+  beam_tas `--view-temp`, tools/energy_waypoint.py (same place, more energy, same way).
+* Gate 8 (the 20.4% catch) is an energy + takeoff-angle gate: the policy leaves its last ramp with vz +336 /
+  h 3,609, the record (analysis only) +475 / 3,751; seven local searches from the policy's own line (beams:
+  d, dh, view-temp, 2 s resampling, 1k copies; 2 GE runs) never land past it, though an energy-ranked beam
+  finds the policy's own line reaching the takeoff with h 3,735 (autoresearch/spines/pbr3b2_beam_dh2.npy).
+* The user's insight (above): the energy the policy lacks at every gate comes from the FIRST RAMP it skips
+  at the start. Uniform-action Go-Explore from the true spawn (2 stages, 60 min local) does not pump that
+  half-pipe; it finds only a tunnel run-up worth +30-70 u. The pump is a surf skill: the next step is to let
+  the policy's own surfing search or train from the archive's states (options 1-3 above), with
+  --demo-success-energy so the detour is only paid when it comes back onto the route with energy to spare.
