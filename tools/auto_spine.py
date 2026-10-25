@@ -47,7 +47,24 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "python"))
 sys.path.insert(0, str(ROOT / "tools"))
 
-TICKS_PER_S = 100          # the beam and the explorer run the checkpoint's tick: 10 ms here
+TICKS_PER_S = 100          # 10 ms; ckpt_tick() replaces it with the checkpoint's own tick
+
+
+def ckpt_tick(ckpt) -> float:
+    """The physics tick (ms) a checkpoint's weights were trained at: its config's realised
+    mean tick (``tick_ms_eff``, under --tick-ms-schedule the ramp's current pattern), else
+    ``tick_ms``, else 10. beam_tas runs that tick by itself (physics parity); the explorer is
+    told it with --tick-ms, rounded to whole ms (explore_phase1's exact-chain rule)."""
+    import torch
+    try:
+        c = torch.load(str(ckpt), map_location="cpu", weights_only=False)
+    except Exception:                                    # noqa: BLE001
+        return 10.0
+    cf = c.get("config") or {}
+    for k in ("tick_ms_eff", "tick_ms"):
+        if cf.get(k) is not None:
+            return float(cf[k])
+    return 10.0
 
 
 def load_field(path):
@@ -190,6 +207,10 @@ def go_explore(a, out: Path, line, end: int, boosts=None, tag: str = "ge"):
         cmd += ["--maxvel", a.maxvel]
     if a.threads:
         cmd += ["--threads", a.threads]
+    if int(round(a.tick)) != 10:
+        # the policy flies another tick (--tick-ms-schedule): so does the explorer, rounded to
+        # whole ms (10 = the explorer's default, byte-identical)
+        cmd += ["--tick-ms", int(round(a.tick))]
     rc = run(cmd, out / f"{tag}.log", a.ge_minutes * 60 + 600)
     info = {"ge_rc": rc, "ge_roots": [int(i) for i in idx], "ge_boost": boosts}
     if not (gd / "archive.npz").exists():
@@ -278,6 +299,12 @@ def main(argv=None) -> int:
             ap.error(f"--{k} is required")
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
+    global TICKS_PER_S
+    a.tick = ckpt_tick(a.ckpt)
+    TICKS_PER_S = 1000.0 / a.tick
+    if int(round(a.tick)) != 10:
+        print(f"checkpoint tick {a.tick:.4f} ms: the beam runs it (physics parity), the explorer "
+              f"{int(round(a.tick))} ms; seconds convert at {TICKS_PER_S:.2f} ticks/s", flush=True)
     field = load_field(a.field)
     res = {"greedy_d": a.greedy_d, "gain": a.gain, "spine": None}
     line, info = beam(a, out)

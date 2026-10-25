@@ -3,11 +3,11 @@
  "round": 4,
  "final": false,
  "best": {
-  "score": 26.362,
-  "eval_file": "/home/steam/ar_pb/runs/pbr4b3/pbr4b3_g10b/traj_13953400832.jsonl",
-  "run": "pbr4b3_g10b",
-  "step": 13953400832,
-  "ckpt": "/home/steam/ar_pb/runs/pbr4b3/pbr4b3_g10b/ckpt_latest.pt (13,872,136,192, md5 5113d16d172b6cd065c87dfe78902a92; no milestone at or before the eval yet - the run's first ckpt_<step> is at 14.5B)",
+  "score": 26.374,
+  "eval_file": "/home/steam/ar_pb/runs/pbr4b3/pbr4b3_t1/traj_14516486144.jsonl",
+  "run": "pbr4b3_t1",
+  "step": 14516486144,
+  "ckpt": "pbr4b3_t1 ckpt_latest saved at 14,516,486,144 by the auto-spine search (pull pending)",
   "recipe": [
    "resume of the round-3 incumbent (pbr3b4_as10 13.4999B)",
    "--demo-file autoresearch/spines/pbr4b3_beam_g10.npy (own beam line over gate 10, 26.36%) --demo-window 5 --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5 --demo-rate 0.3 --demo-front-frac 0.4 --demo-success-d 100 --demo-success-bonus 50",
@@ -16,10 +16,11 @@
    "--respawn-front-perturb 0.2 --respawn-front-perturb-band 0.005 --respawn-front-perturb-speed 1.0 1.3 --respawn-front-perturb-turn 90",
    "--energy-pot 12 --energy-pot-front 0 --energy-pot-front-bonus 0 --no-respawn-novel --respawn-backward-mix 0 --int-real-only 0",
    "--spawn-states autoresearch/spines/pbr1b1_entry_ge_states.npy --spawn-states-frac 0.2 --maxvel 3500",
-   "--auto-spine --auto-spine-milestones --auto-spine-gain 500 --auto-spine-ge-minutes 8 --auto-spine-retry 4e8 --auto-spine-patience 1.2e9"
+   "--auto-spine --auto-spine-milestones --auto-spine-gain 500 --auto-spine-ge-minutes 8 --auto-spine-retry 4e8 --auto-spine-patience 1.2e9",
+   "--tick-ms-schedule 10:7.63:800e6 --ckpt-every 2e8"
   ],
-  "resume_from": "incumbent r3 ckpt (13.4999B, md5 a3a21331...)",
+  "resume_from": "pbr4b3_g10b ckpt_latest 14.365B (md5 a5339175...)",
   "commit": "ad5f905"
  },
- "summary": "24.737 -> 26.362 (pbr4b3_g10b 13.953B; 1-3/9 greedy episodes over gate 10 to 26.36%). A plain beam on the incumbent's weights already passed gate 10; curriculum on that line + milestones, the greedy followed in ~230M steps. Gate 11 (a lethal floor under a 1,000 u flight at 26.4%) needs ~+250 u of energy height: GE with speed boosts x1.0/1.1/1.2/1.3 reaches 26.07/26.54/26.95/27.42%. Our policy strafes at the per-FRAME optimum and the record runs 131 fps: a beam at 8.75 ms carries +40-60 u everywhere and surfs the gate-11 ridge the record's way. Now: pbr4b3_t1, the tick ramped 10 -> 7.63 ms over 800M steps. Also fixed a 50x throughput loss (numba pool)."
+ "summary": "24.737 -> 26.374 (pbr4b3_t1 14.516B, 8/9 past gate 10 at tick ~9.5 ms; g10b 26.362 had 1-3/9 greedy episodes over gate 10 to 26.36%). A plain beam on the incumbent's weights already passed gate 10; curriculum on that line + milestones, the greedy followed in ~230M steps. Gate 11 (a lethal floor under a 1,000 u flight at 26.4%) needs ~+250 u of energy height: GE with speed boosts x1.0/1.1/1.2/1.3 reaches 26.07/26.54/26.95/27.42%. Our policy strafes at the per-FRAME optimum and the record runs 131 fps: a beam at 8.75 ms carries +40-60 u everywhere and surfs the gate-11 ridge the record's way. Now: pbr4b3_t1, the tick ramped 10 -> 7.63 ms over 800M steps. Also fixed a 50x throughput loss (numba pool)."
 }

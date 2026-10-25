@@ -722,6 +722,11 @@ def explore(args) -> int:
         # --maxvel: the trainer's sv_maxvelocity (the core default is 2000), so the archive's
         # states obey the physics the policy trains under
         cfg.phys.sv_maxvelocity = float(args.maxvel)
+    if getattr(args, "tick_ms", None) is not None:
+        # --tick-ms: the policy's (whole-ms) tick; every printed second below reads msec
+        if int(args.tick_ms) < 1:
+            raise SystemExit(f"--tick-ms must be a whole number of ms >= 1, got {args.tick_ms}")
+        cfg.phys.msec = int(args.tick_ms)
     if float(getattr(args, "kill_margin", 0.0)) > 0.0:
         # --kill-margin: PLAN WITH CLEARANCE. The search treats a band above the
         # map's own kill trigger as lethal (the player's box height 36 u plus
@@ -1133,6 +1138,9 @@ def meta_dict(args, bsp, hasher, arch, it, n_goal, extra=None) -> dict:
     if getattr(args, "maxvel", None) is not None:
         # --maxvel only: the flag-off meta json is unchanged
         out["maxvel"] = float(args.maxvel)
+    if getattr(args, "tick_ms", None) is not None:
+        # --tick-ms only (ge_replay steps its core at this tick): the flag-off meta is unchanged
+        out["tick_ms"] = int(args.tick_ms)
     if float(getattr(args, "cell_energy", 0.0) or 0.0) > 0.0:
         out["cell_energy"] = float(args.cell_energy)
     if int(getattr(args, "cell_heading", 0) or 0) > 0:
@@ -1773,6 +1781,13 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--maxvel", type=float, default=None,
                     help="sv_maxvelocity for the search core (default: the core's 2000); "
                          "train_fast --ge-minutes passes the run's own --maxvel")
+    ap.add_argument("--tick-ms", type=int, default=None,
+                    help="the search core's physics tick, WHOLE ms (default: the core's 10, "
+                         "byte-identical). A policy trained under --tick-ms-schedule flies "
+                         "another tick, and the explorer's chains should obey its physics. "
+                         "Whole ms only: a pattern like [8,8,7] steps the batch in a global "
+                         "phase, so a restored burst could start at another phase than its "
+                         "replay and ge_replay's chains would stop being exact")
     ap.add_argument("--max-minutes", type=float, default=0.0,
                     help="stop after this much wall-clock time (0 = no time limit)")
     ap.add_argument("--kill-margin", type=float, default=0.0,

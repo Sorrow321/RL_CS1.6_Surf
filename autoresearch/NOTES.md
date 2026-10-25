@@ -1747,3 +1747,10 @@ over-subscribes the quota. This branch's surfgym now caps numba; the operator ma
   Generic: the tick is the player's frame rate (the WR's 131 fps), map-independent; the lineage
   already takes sv_maxvelocity 3500 from the same demo's movevars. A checkpoint carries its ramp, so a
   next-round resume of this lineage CONTINUES at 7.63 ms (the trainer prints the tick).
+* t1 evals (tick ramp 10 -> 7.63 ms over 800M steps from 14.365B): 24.770 (14.365B, the resume) /
+  26.316 / **26.374** (14.516B, tick ~9.55 ms: **8/9 greedy episodes over gate 10**, 26.34-26.37%; at
+  10 ms g10b never had more than 3/9). The extra air acceleration carries the ramp climb. All 8 still
+  die on the gate-11 sheet.
+* The 8/9 quorum fired the trainer's auto-spine search 1 at 14.516B: beam 42,139 (no gain), three
+  branched beams no gain, then the GE ladder - which runs at 10 ms (explore_phase1 has no tick option)
+  and per GE11 needs ~x1.3 at this gate; killed after 9 min so training resumes (next try 14.916B).
