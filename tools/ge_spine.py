@@ -5,6 +5,7 @@ of the line's state - and the explorer's states re-aimed along the velocity,
 tools/spine_canon_view.py), cut at the best d on the field. Prints a JSON summary.
 
     python tools/ge_spine.py runs/beam/beam_frontier.npz runs/ge/line.npy out.npy [field.npz]
+    python tools/ge_spine.py first_spine.npy runs/ge2/line.npy out.npy     # chain on a chain
 """
 import sys, json, hashlib, numpy as np
 sys.path.insert(0, 'tools'); sys.path.insert(0, 'python')
@@ -13,7 +14,8 @@ from surfgym.core import STATE_DTYPE
 from surfgym.goalfield import GoalField
 beam_npz, chain_npy, out = sys.argv[1], sys.argv[2], sys.argv[3]
 field = sys.argv[4] if len(sys.argv) > 4 else "maps/surf_princessburglar_b26.goalc_32.npz"
-line = np.load(beam_npz)['states']
+# the base line: a beam_tas frontier .npz ('states') or a spine .npy (a two-stage splice)
+line = np.load(beam_npz) if str(beam_npz).endswith('.npy') else np.load(beam_npz)['states']
 gl = np.load(chain_npy)
 o = np.asarray(gl[0]['origin'], np.float64)
 dist = np.linalg.norm(line['origin'].astype(np.float64) - o, axis=1)
