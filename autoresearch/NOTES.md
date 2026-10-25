@@ -1754,3 +1754,14 @@ over-subscribes the quota. This branch's surfgym now caps numba; the operator ma
 * The 8/9 quorum fired the trainer's auto-spine search 1 at 14.516B: beam 42,139 (no gain), three
   branched beams no gain, then the GE ladder - which runs at 10 ms (explore_phase1 has no tick option)
   and per GE11 needs ~x1.3 at this gate; killed after 9 min so training resumes (next try 14.916B).
+* Beams on t1's 14.52B weights (tick ~9.5 ms): at its own tick 42,261 (26.05%); at 7.67 ms ([8,8,7])
+  **42,059 = 26.40%** - after 150M steps of ramp the population survives the record's tick (the 14.0B
+  weights went extinct at the gate-8 corridor there). Energy height at 24/25%: 10 ms 3,422 / 3,519,
+  8.75 ms 3,476 / 3,581, 7.67 ms 3,521 / 3,628 (the record ~3,600 / 3,680) - but at 7.67 ms its line still
+  lands on the floor after the ramp (26%: 3,236) instead of riding the ridge.
+* `explore_phase1 --tick-ms N` (whole ms; flag off bit-identical, tests/python/test_ge_tick.py),
+  ge_replay steps its core at the meta's tick, and auto_spine.py reads the checkpoint's realised tick
+  (config tick_ms_eff), gives the explorer its whole-ms rounding and converts its seconds at that tick
+  (ed636e1; pulled onto the box, so t1's next search uses it without a restart).
+* t1 evals 26.366 / 26.359 (14.59-14.67B, tick ~9.2-9.0 ms): 7-8/9 over gate 10, all dying on the sheet.
+  Curriculum back at ~1,695 (17 s). Next auto-spine search at 14.916B (tick ~8.4 ms).
