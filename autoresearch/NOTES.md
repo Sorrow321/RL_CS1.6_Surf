@@ -1312,3 +1312,37 @@ one box at a time (e.g. a box-hours budget instead of a $/h rate), is needed for
   triggers the search. Watch for "--auto-beam #k" lines in runs/A_ab1_launch.txt; a swapped spine
   lives in runs/A_ab1/auto_spine_<k>.npy on the box (box.py pull does not fetch it: copy it with
   `box.py ssh -- base64 -w0 <file>`; a resume reads it from the checkpoint's demo_file).
+
+### pbr3b3 round 3 lesson (final, 2026-10-25 07:00 UTC)
+* **Score: none.** No box for the whole round: the budget pacer allowed 0.174 $/h until the
+  operator's 23:40 change to a flat 1.2 $/h cap, after which two other branches' boxes held 0.964
+  $/h and no eligible offer fit the 0.236 $/h left (one 3090 slot opened at 23:41 and went to
+  another branch within a minute). A background waiter polled every 3 minutes until 06:15. The
+  CPU pre-rent check's greedy eval of the incumbent's weights (20.235) was not counted: a re-eval
+  of the incumbent is not this branch's work.
+* **What this branch leaves (all CPU-tested 13/13, every flag off = bit-identical, all pushed):**
+  1. `--auto-beam N [--auto-ge M]`: the lineage's search -> curriculum loop inside the trainer
+     (beam from the map start once the greedy eval passes the spine's success line; the frontier
+     line cut at its last contact; a Go-Explore fallback from the line's last 5 s; spine swap,
+     success line and config moved). Ran end to end in the CPU check on the incumbent.
+  2. `--demo-success-energy TOL`: a curriculum crossing counts (and is paid) only if it carries the
+     line's energy - what a momentum line needs, since a slower line reaches the same depth.
+  3. `beam_tas --start-state` (search from the policy's own state, keys-hold OK), `--prop-keys-temp
+     / --prop-view-scale` (tempered proposals), `--score pareto` (Pareto dominance on field
+     distance x energy height: no weight, keeps "behind but energetic" lineages).
+  4. spines/pbr3b3_ge_ramp_11399.npy: a generic search's line from the true spawn into the
+     field-opposed ramp (stage 1 of the energy loop), never trained on.
+* **What was learned:** gate 8 (20.4%) is the take-off at 17.46% with vz +280 / h ~3,654 against
+  the record's +467 / ~3,750, a free fall below the record's ramp series into *187; no local
+  search crosses it, and the reservoir past it is a dead-end pocket. The energy deficit along the
+  route is 63-172 u, largest at the start - the user's insight: the record surfs a field-opposed
+  momentum ramp (the east half-pipe, +263 u in 6 s) that the policy never takes. Uniform GE reaches
+  it and pumps +147 u but carries no energy past the start room; the policy's own proposals lose
+  energy there (fatal bottom *127). The ramp is a skill gap, so it has to be learned from a
+  searched line: the energy loop above (GE line into the ramp -> curriculum -> Pareto beams ->
+  curriculum with --demo-success-energy -> the route loop).
+* **Next round, first box hour:** either the staged auto-loop run on the incumbent (NOTES above:
+  gate 8 by search + time under energy shaping) or the energy loop's stage 2 (the curriculum on
+  spines/pbr3b3_ge_ramp_11399.npy), whichever the round's agent judges more likely to move the
+  score within its box time; the second is the user's direction and the larger lever on every
+  energy gate after 7%.
