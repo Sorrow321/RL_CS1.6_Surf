@@ -79,3 +79,39 @@ def test_pattern_tick_refused(tmp_path):
     r = _run([sys.executable, "-u", str(GE), "--out", str(tmp_path / "ge"), "--tick-ms",
               "7.63"] + ARGS, timeout=300)
     assert r.returncode != 0 and "whole-ms" in (r.stdout + r.stderr)
+
+
+def test_select_energy_weights():
+    """--select-energy T: W = 1/sqrt(C_seen + 1) x exp((h - h_max) / T); 0 = the Nature weight."""
+    sys.path.insert(0, str(ROOT / "tools"))
+    sys.path.insert(0, str(ROOT / "python"))
+    from explore_phase1 import Archive, CellHash
+    from surfgym.core import STATE_DTYPE
+    a = Archive(CellHash((0.0,) * 3, (1e5,) * 3, 256.0), capacity=4)
+    for j, (z, vx) in enumerate([(100.0, 0.0), (100.0, 400.0), (164.0, 0.0)]):
+        s = np.zeros(1, STATE_DTYPE)[0]
+        s["origin"][2] = z
+        s["velocity"][0] = vx
+        a.add(1000 + j, s, depth=j, parent=-1)
+    a.seen[:3] = 0
+    a.build_sampler()
+    w0 = np.diff(np.concatenate([[0.0], a._cum]))
+    assert np.allclose(w0, 1.0)                       # off: every unseen cell weighs 1
+    a.select_energy, a.two_g = 64.0, 1600.0
+    a.build_sampler()
+    w = np.diff(np.concatenate([[0.0], a._cum]))
+    h = np.array([100.0, 100.0 + 400.0 ** 2 / 1600.0, 164.0])   # 100, 200, 164
+    assert np.allclose(w, np.exp((h - h.max()) / 64.0))
+    assert w[1] > w[2] > w[0]
+
+
+@needs_pb
+def test_select_energy_meta(tmp_path):
+    out = tmp_path / "gee"
+    r = _run([sys.executable, "-u", str(GE), "--out", str(out), "--exact-chains", "--tick-ms",
+              "8", "--select-energy", "64"] + ARGS, timeout=900)
+    assert r.returncode in (0, 1), r.stdout[-3000:] + r.stderr[-3000:]
+    meta = json.loads((out / "archive.meta.json").read_text())
+    assert meta["select_energy"] == 64.0 and meta["tick_ms"] == 8
+    r = _replay(out / "archive.npz", tmp_path / "line.npy")
+    assert r.returncode == 0 and "DIVERGED" not in r.stdout, r.stdout[-3000:]

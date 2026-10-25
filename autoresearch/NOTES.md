@@ -1650,3 +1650,20 @@ Incumbent eval traj_13500416000 (10 ms), up to each episode's best:
   and the explorer's core), train_fast passes its tick to auto_spine. Test:
   tests/python/test_ge_tick.py (chains replay at 8 ms and DIVERGE read as 10 ms; flag off
   bit-identical to the explorer at the base commit; 7.63 refused).
+
+### Where the energy goes: contact events, incumbent vs the record (08:10 UTC, ANALYSIS ONLY)
+Per contact event (a run of ticks that are not free flight: floors, ramps, walls) up to the
+incumbent's 24.74% (ep0, 20.7 s) and the record's first arrival there (24.5 s; its start-room
+teleport, +735 u of z, left out):
+| event | incumbent | record |
+|---|---|---|
+| the ridge drop after the tunnel (2%) | -109 | -141 |
+| the drop's landing after gate 3 (5%) | -158 | -143 |
+| the x -1,500 landing (9%) | -147 | -167 |
+| **gate 8's corridor landing (20.3%)** | **-298** | **-169** |
+| **gate 9's landing after the wall (23%)** | **-136** | **-35** |
+| all contacts | -772 | -602 |
+Free-flight strafing to the same place: incumbent +475 u, record ~+549 (4 s longer in the air).
+So ~230 u of the ~300 u deficit at gate 10 is made by the two LANDINGS just before it (gate 8's
+and gate 9's), and ~75 u by strafing time. A tangential landing at those two places is worth what
+the x1.12 boost gave the k03 chain.

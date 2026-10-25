@@ -282,6 +282,12 @@ class Archive:
         # to the first entry - so every chain replays exactly (tools/ge_replay.py)
         self.exact = False
         self.link_acts: dict[int, np.ndarray] = {}
+        # --select-energy T (u; 0 = off, the Nature weight byte for byte): W is multiplied by
+        # exp((h - h_max) / T), h = z + |v|^2 / (2 g) the cell state's energy height - the
+        # return favours the states that kept their energy (a tangential landing over a crash
+        # at the same place), a quantity of the physics, not of any map
+        self.select_energy = 0.0
+        self.two_g = 1600.0
 
     def _grow(self, cap: int) -> None:
         old = getattr(self, "key", None)
@@ -405,6 +411,11 @@ class Archive:
         """Cache the cumulative selection weight. W = 1/sqrt(C_seen + 1)
         (Nature Extended Data Table 1a, robustification treatment)."""
         w = 1.0 / np.sqrt(self.seen[:self.size].astype(np.float64) + 1.0)
+        if self.select_energy > 0.0:
+            st = self.state[:self.size]
+            v = st["velocity"].astype(np.float64)
+            h = st["origin"][:, 2].astype(np.float64) + (v * v).sum(axis=1) / self.two_g
+            w = w * np.exp((h - h.max()) / float(self.select_energy))
         self._cum = np.cumsum(w)
 
     def draw(self, n: int, rng: np.random.Generator) -> np.ndarray:
@@ -823,6 +834,9 @@ def explore(args) -> int:
                       heading=int(getattr(args, "cell_heading", 0) or 0))
     arch = Archive(hasher, max_cells=args.max_cells)
     arch.exact = bool(getattr(args, "exact_chains", False))
+    if float(getattr(args, "select_energy", 0.0) or 0.0) > 0.0:
+        arch.select_energy = float(args.select_energy)
+        arch.two_g = 2.0 * float(cfg.phys.sv_gravity)
     rk = hasher.keys(roots)
     for j in range(len(roots)):
         i = arch.add(int(rk[j]), roots[j], depth=0, parent=-1)
@@ -1150,6 +1164,8 @@ def meta_dict(args, bsp, hasher, arch, it, n_goal, extra=None) -> dict:
     if getattr(args, "tick_ms", None) is not None:
         # --tick-ms only: ge_replay / auto_spine read the archive's tick from here
         out["tick_ms"] = int(tick_msec(args.tick_ms))
+    if float(getattr(args, "select_energy", 0.0) or 0.0) > 0.0:
+        out["select_energy"] = float(args.select_energy)
     if float(getattr(args, "cell_energy", 0.0) or 0.0) > 0.0:
         out["cell_energy"] = float(args.cell_energy)
     if int(getattr(args, "cell_heading", 0) or 0) > 0:
@@ -1790,6 +1806,10 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--maxvel", type=float, default=None,
                     help="sv_maxvelocity for the search core (default: the core's 2000); "
                          "train_fast --ge-minutes passes the run's own --maxvel")
+    ap.add_argument("--select-energy", type=float, default=0.0,
+                    help="u: multiply the selection weight by exp((h - h_max) / T), h = z + "
+                         "|v|^2 / 2g of the cell's state - return to the states that kept their "
+                         "energy (0 = off, the Nature weight)")
     ap.add_argument("--tick-ms", type=float, default=None,
                     help="physics tick in WHOLE ms for the search core (default: the core's "
                          "10 ms); the trainer's --tick-ms when it runs an integer tick - a "
