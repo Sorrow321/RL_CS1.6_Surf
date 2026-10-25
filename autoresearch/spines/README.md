@@ -105,3 +105,8 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   further SOUTH than the greedy (z 3,186 at x 2,831 vs the greedy's 3,077 further north, where the
   greedy turns north into a wall), lands on the upper floor at z ~3,197 and crawls east / north at
   100-300 u/s to (3,495, -2,460) at 31 s. No boost, no demo, no record (pbr4b4, round 4).
+* `pbr4b4_auto_k01.npy` (2,200 states, md5 e941a2b9692d9d89efd55020ddeb299e): found BY THE TRAINER
+  (pbr4b4_c2's --auto-spine search 1, the patience trigger at 15.01B): tools/beam_tas.py from the
+  TRUE spawn on the run's own weights (4,096 copies, 32 greedy, d-ranked), the frontier lineage
+  replayed and cut at its best d - 26.05% at 22 s (up the gate-10 ramp, then it stalls). Used by
+  pbr4b4_c3. No boost, no demo, no record.

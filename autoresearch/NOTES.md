@@ -1691,3 +1691,6 @@ throttled) and could read it as a bad box. The fix is one line in python/train_f
   117M after it vs the 14.50B snapshot 435M before). **pbr4b4_c3** (09:42 UTC) = those weights +
   spine k01 (--demo-tau0 1779, where the curriculum stood) + milestones 44939,43426,42171 +
   --save-best-eval 1, the rest as c2, 4B steps.
+* c3's resume eval (15.0528B, the c2 final weights on this box): 26.354 by the trainer's rule ->
+  --save-best-eval wrote ckpt_15052832768.pt at once (the feature works on the box).
+* Box 57632515 extended to 12:42 UTC (09:42).
