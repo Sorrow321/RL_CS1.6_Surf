@@ -1343,3 +1343,17 @@ shorter budget_end_hours. Written down for the operator; nothing is worked aroun
   1: the greedy that learned to go east died there 9/9), and the archive's "most energetic" half-pipe states
   are falls INTO it: h ~3,805 is height turned into speed on the way to dying, not pumping. The live wall
   states carry h ~3,747-3,759. The record never goes below z ~3,357: the pump rides the WALLS.
+* Diagnostic 2 (04:56 UTC): beam_tas --start-states from a LIVE half-pipe wall state ((1,814, -2,915, 3,568),
+  |v| 536, h 3,747), 512 copies of the incumbent, --score dh 2, 15 s (runs/pbr3b2/_beam_hp2): the
+  population survives (300-400 alive throughout) but never comes back west (d stays 2,300 u behind the
+  start) and its frontier line BLEEDS energy - h 3,747 -> 3,598 in 1 s -> ~3,510 by 5 s - wandering low in
+  the half-pipe at 10-370 u/s. The incumbent has no skill for this half-pipe (it never trained there):
+  neither uniform actions (GE) nor the policy's own samples pump it. The first ramp has to be TRAINED.
+* For whoever continues the first ramp (needs a box; all generic): train with a share of spawns drawn
+  from a reward-free Go-Explore archive rooted at the true spawn (--ge-minutes / --spawn-states over its
+  LIVE states - drop states falling at more than ~half the fall speed into a catch, e.g. by keeping only
+  states the archive itself reached again afterwards), the per-call energy shaping (--energy-pot 8: every
+  gain of h paid, every loss charged - pumping pays by itself), and --demo-success-energy on an energy
+  waypoint of the route (energy_waypoint.py; the run's own greedy line as the reference) so the pump is
+  only completed by coming back onto the route faster. Round 1's version of this (archive spawns WITHOUT
+  energy shaping) taught the greedy to go east and die in the half-pipe's bottom.
