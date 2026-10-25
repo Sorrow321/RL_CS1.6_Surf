@@ -1916,3 +1916,7 @@ throttled) and could read it as a bad box. The fix is one line in python/train_f
 * **pbr4b4_c11** (13:19 UTC): c10's weights + --respawn-greedy-speed **1.0 1.5** (the greedy rows'
   boosted copies can now cross), 2.5B steps. Round-2 precedent: boosted frontier rows taught the
   stretch past the x -1,015 wall and the greedy followed once it found ~10-30 u; here the gap is ~200 u.
+* c11 evals (greedy rows x1.0-1.5): 27.053 / 27.091 / 27.089 / 26.902 / **27.203** (18.779B, exact
+  weights ckpt_18778947584.pt md5 c98df8d2..., pulled - the round's best) / 27.168 / 26.996. Energy
+  at 26.5% in the 18.85B eval: median 3,554 (7 eps) - the first rise since c7 (~+30 u). The
+  reservoir's deepest harvested state is unchanged (73.93% of d0 left = 26.07%).
