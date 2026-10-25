@@ -1800,3 +1800,14 @@ beam_tas from the true start on t8e's weights (8 ms, 4,096 copies, 30 s):
 * t8e evals to 13.92B: 24.513 / 24.527 / 24.597 / 24.531 - the k06 curriculum never opened its
   boosted root. **pbr4b1_t8f** (14:18 UTC): t8e's ckpt_latest 13,937,672,192 (md5 290a4cca...) +
   spine k07 + milestones 44939 / 43426 / 42286 + --lr 1e-4, 2B steps.
+* t8f evals: 24.489 / 24.560 / 26.075 (1/9 past gate 10). Its k07 curriculum crept only 75 states
+  back from the end in ~170M steps (band [2730,2734] = 26.03%, the start of the flight north, at
+  18-19% against the 0.2 rate; [2735..] 94%).
+* WHY the greedy dies at gate 11 (its 26.07-26.33% episodes against k07's nearest states): it
+  reaches the ramp-top region at 284-497 u/s with h ~3,272-3,345, where k07 (the soft-turn beam
+  line) has 725-765 u/s and h ~3,560-3,609 - it still takes the d-ranked lines' ramp-top contact.
+  k07 teaches that soft turn only in its prefix (before state 2552), which its curriculum would reach
+  in 1.5-2 h. So **pbr4b1_t8g** (14:54 UTC): t8f's ckpt_latest 14,153,154,560 (md5 dfb3b685...) +
+  spine **k08** = the energy-ranked beam line alone (the policy's own actions through the soft turn
+  to 26.50%, no boost; success line d 42,103 = 26.33%) + milestones 44939 / 43426 / 42286 +
+  --lr 1e-4 + --auto-spine (its search from the greedy's line once 5/9 cross 26.33%).
