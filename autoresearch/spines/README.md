@@ -133,3 +133,9 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   actions from the true spawn through gates 2-10 and the soft gate-10 ramp-top turn to 26.50% at
   21.6 s (beam_tas `--score dh --score-energy 3`, half the copies forked at 15.0 s with held view
   offsets, 8 ms tick, t8e's weights). No demo, no record (pbr4b1, round 4).
+* `pbr4b1_k09_t8.npy` (2,700 states, md5 02bfb3813aafb7b6817c415be8ebf386): the policy's OWN
+  energy-ranked branched beam line from the true spawn past gate 11 to 27.13% at 21.6 s, no boost
+  (beam_tas `--score dh --score-energy 3`, 4,096 stochastic copies of pbr4b1_t8g's 14.305B weights -
+  the 26.547 eval's - half forked at 15.0 s with held view offsets, 8 ms tick, replayed exactly): the
+  soft gate-10 ramp-top turn (h 3,530-3,635 from 24 to 26.5%), north up to z 3,309 at 26.6%, on at
+  835 u/s. No demo, no record (pbr4b1, round 4).
