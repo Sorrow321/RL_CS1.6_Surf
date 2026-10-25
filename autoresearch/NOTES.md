@@ -1859,7 +1859,7 @@ over-subscribes the quota. This branch's surfgym now caps numba; the operator ma
 * **pbr4b3_t5** (12:15 UTC): t4's 17.223B weights (md5 a0e38643...) + that spine + milestones
   44939,43426,42182,41015,40497,39852 + the same flags, 3B steps.
 
-### Gate 12's band: the policy turns north too early on the ramp (12:40-12:50 UTC)
+### Gate 12's band: the policy turns north too early on the ramp (12:35-12:42 UTC)
 * t5 evals 29.265 / **29.292** (17.299B) / 29.272 / 29.270 / 29.250 / 29.283 / 29.280: flat. The curriculum on the
   unboosted GE14 spine walked 3229 -> 2884 at once and stopped: band [2879,2883] at 2.2-4.0% for 25 min,
   band [2884,...] at 91-94%. States 2862-2886 of the spine SURF a ramp (func_wall *96, x 2,789-3,538,
@@ -1870,7 +1870,7 @@ over-subscribes the quota. This branch's surfgym now caps numba; the operator ma
   turning LEFT along the ramp face for ~6 ticks (yaw 197 -> 209) and only then right. From state 2884 (vz +335
   already) the same right turn works: **32.9-33.0%**, past the spine's own end (31.79%).
 * So the band needs a ~20-30 deg leftward view (or the left strafe) for ~6 ticks - far outside the band
-  temperature's 6 x 0.016 rad (~5 deg) yaw sigma. **pbr4b3_t6** (12:50 UTC): t5's 17.729B weights (md5
+  temperature's 6 x 0.016 rad (~5 deg) yaw sigma. **pbr4b3_t6** (12:42 UTC): t5's 17.729B weights (md5
   67975c22...) + the same spine with `--demo-tau0 2884` + `--demo-front-temp 1.0 --demo-front-view 25
   --demo-front-ticks 60` (band spawns: keys at T 2, yaw sigma ~0.4 rad, for 0.46 s), the rest unchanged.
   t5's handoff: t4's ckpt_latest (the weights t5 resumed) placed as pbr4b3_t5/ckpt_17222860800.pt.
