@@ -1837,3 +1837,24 @@ over-subscribes the quota. This branch's surfgym now caps numba; the operator ma
 * Spine autoresearch/spines/pbr4b3_ge13.npy (3,054 states, success line d <= 39,852 = 30.27%).
   **pbr4b3_t4** (11:27 UTC): t3's 16.316B weights (md5 0c61903f...) + that spine + milestones
   44939,43426,42182,41015,40497 + the same flags (7.67 ms held), 3B steps.
+* t4 evals (curriculum on the GE13 x1.04 spine): 29.257 / 29.226 / 29.235 / 29.237 / 29.254 / 29.222
+  (16.32-16.69B): flat - the greedy still falls NORTH-WEST into the catch after the hole (median 29.2%),
+  and 3/9 fell back to gate 10 (24.1%) in the last eval. Training's reservoir meanwhile reaches **37.3%**
+  (spawns on the chain fly far past). The curriculum sits at spine 2848 = the chain 1.6 s after its root,
+  just before its hard landing on the south-west ramp (band [2848] 13%, [2853+] 95%).
+* Beams on t4's 16.75B weights from the true start: 40,500-40,528 (the catch fall; a branched one too).
+  beam_tas --start-state from the policy's own spine states over the sheet (2690-2780): every lineage dead
+  within 0.8-1.5 s - that start path does not reproduce the trainer's spawn (held keys / duck); not pursued.
+* GE13's x1.0 roots never make the south-west turn (the one from the policy's own state in the hole lands
+  on a ledge at (3,077, -1,111, 2,964) and crawls); both turning chains come from x1.04 roots over the sheet.
+  GE14 (11:55 UTC, 15 min, 12 threads): 40 spine states over the sheet flight (2650-2800) x1.0 / 1.02.
+* t4 later evals 29.225 / 29.258 / 29.233 / 29.264 / **29.279** (17.147B; handoff milestone ckpt_17116954624
+  pulled): flat at the catch fall; the curriculum band before the chain's ramp landing 13-21%.
+* **GE14 (unboosted roots, 15 min): 31.79%** from root spine state 2750 at x1.000 - the policy's OWN state
+  just before the gate-11 hole: a bounce off the room's north side turns it south-west into the hole, the ramp
+  at (2,759, -1,751, 2,950), north along x ~2,400-2,560 at 875-1,045 u/s, a hard landing at (2,338, -511, 2,619)
+  (h 3,298 -> 2,884) and on north to (2,383, -23, 2,661). Other x1.0 roots: 30.30 / 30.21 / 29.96%. With more
+  roots and time the uniform explorer finds the turn without a boost (GE13's 30 roots x 2 boosts in 12 min did
+  not). Spine autoresearch/spines/pbr4b3_ge14.npy (3,230 states, success line d <= 39,084 = 31.61%).
+* **pbr4b3_t5** (12:15 UTC): t4's 17.223B weights (md5 a0e38643...) + that spine + milestones
+  44939,43426,42182,41015,40497,39852 + the same flags, 3B steps.

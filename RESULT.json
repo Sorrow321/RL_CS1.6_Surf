@@ -3,15 +3,15 @@
  "round": 4,
  "final": false,
  "best": {
-  "score": 29.271,
-  "eval_file": "/home/steam/ar_pb/runs/pbr4b3/pbr4b3_t3/traj_15551430656.jsonl",
-  "run": "pbr4b3_t3",
-  "step": 15551430656,
-  "ckpt": "/home/steam/ar_pb/runs/pbr4b3/pbr4b3_t3/ckpt_15550906368.pt (the exact weights t3 resumed and evaluated 0.5M steps later = t2's ckpt_latest, md5 ec14781b155ccbbc46ae7f805596bd9a, placed as t3's snapshot at or before the eval)",
+  "score": 29.279,
+  "eval_file": "/home/steam/ar_pb/runs/pbr4b3/pbr4b3_t4/traj_17146839040.jsonl",
+  "run": "pbr4b3_t4",
+  "step": 17146839040,
+  "ckpt": "/home/steam/ar_pb/runs/pbr4b3/pbr4b3_t4/ckpt_17116954624.pt (the milestone at or before the eval, md5 c40a0da4d31dad91114366d9344f7e21); t4 ckpt_latest 17.223B pulled beside it",
   "recipe": [
    "resume of the round-3 incumbent (pbr3b4_as10 13.4999B)",
-   "--demo-file autoresearch/spines/pbr4b3_beam_g11.npy (own 7.67 ms beam line over gate 11 to 29.31%) --demo-window 5 --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5 --demo-rate 0.3 --demo-front-frac 0.4 --demo-success-d 100 --demo-success-bonus 50",
-   "--demo-milestones 44939,43426,42182,41015 --keys-hold-spawn-duck --yaw-entropy 0 --demo-front-temp 0.5 --demo-front-ticks 40 --demo-front-view 6",
+   "--demo-file autoresearch/spines/pbr4b3_ge13.npy (own gate-11 line + an 8 ms x1.04 GE chain out of the hole, 30.44%) --demo-window 5 --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5 --demo-rate 0.3 --demo-front-frac 0.4 --demo-success-d 100 --demo-success-bonus 50",
+   "--demo-milestones 44939,43426,42182,41015,40497 --keys-hold-spawn-duck --yaw-entropy 0 --demo-front-temp 0.5 --demo-front-ticks 40 --demo-front-view 6",
    "--respawn-greedy 0.2 --respawn-greedy-window 0.25 2.0 --respawn-greedy-stuck 200 --respawn-greedy-contact --respawn-greedy-temp 0.5 --respawn-greedy-temp-ticks 100 --respawn-greedy-temp-view 6",
    "--respawn-front-perturb 0.2 --respawn-front-perturb-band 0.005 --respawn-front-perturb-speed 1.0 1.3 --respawn-front-perturb-turn 90",
    "--energy-pot 12 --energy-pot-front 0 --energy-pot-front-bonus 0 --no-respawn-novel --respawn-backward-mix 0 --int-real-only 0",
@@ -19,8 +19,8 @@
    "--auto-spine --auto-spine-milestones --auto-spine-gain 500 --auto-spine-ge-minutes 8 --auto-spine-retry 4e8 --auto-spine-patience 1.2e9",
    "--tick-ms-schedule 10:7.63:800e6 --ckpt-every 2e8"
   ],
-  "resume_from": "pbr4b3_t2 ckpt_latest 15.551B (tick 7.667 ms)",
+  "resume_from": "pbr4b3_t3 ckpt_latest 16.316B (tick 7.667 ms)",
   "commit": "ad5f905"
  },
- "summary": "24.737 -> 29.271 (pbr4b3_t3 15.551B; from 15.70B 8-9/9 greedy episodes go down the gate-11 hole to 28.5-28.9%). Gate 10: a plain beam on the incumbent's weights already passed it. Gates 10-11 were ENERGY: the record runs 131 fps and air-strafe gain is per frame; ramping the tick 10 -> 7.63 ms (--tick-ms-schedule) took gate 10 from 1-3/9 to 9/9 and gave the line ~+100-500 u of energy height (above the record's at 25-26%). Gate 11 by an 8 ms x1.32 GE spine (the greedy then flew most of it), then the policy's own 7.67 ms beam line (29.31%). Gate 12: after the hole the line falls into a catch; the record lands on a ramp south-west. Fixed: numba pool oversubscription (7k -> 350k steps/s); tick-aware explorer for auto_spine."
+ "summary": "24.737 -> 29.279 (pbr4b3_t4 17.147B, 8-9/9 at 29.2%; t3 15.551B 29.271; from 15.70B 8-9/9 greedy episodes go down the gate-11 hole to 28.5-28.9%). Gate 10: a plain beam on the incumbent's weights already passed it. Gates 10-11 were ENERGY: the record runs 131 fps and air-strafe gain is per frame; ramping the tick 10 -> 7.63 ms (--tick-ms-schedule) took gate 10 from 1-3/9 to 9/9 and gave the line ~+100-500 u of energy height (above the record's at 25-26%). Gate 11 by an 8 ms x1.32 GE spine (the greedy then flew most of it), then the policy's own 7.67 ms beam line (29.31%). Gate 12: after the hole the line falls into a catch; the record lands on a ramp south-west. Fixed: numba pool oversubscription (7k -> 350k steps/s); tick-aware explorer for auto_spine. Gate 12 now by an UNBOOSTED GE chain from the policy's own pre-hole state (31.79%): pbr4b3_t5."
 }
