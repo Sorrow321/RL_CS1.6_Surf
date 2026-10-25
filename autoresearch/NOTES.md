@@ -1694,3 +1694,25 @@ throttled) and could read it as a bad box. The fix is one line in python/train_f
 * c3's resume eval (15.0528B, the c2 final weights on this box): 26.354 by the trainer's rule ->
   --save-best-eval wrote ckpt_15052832768.pt at once (the feature works on the box).
 * Box 57632515 extended to 12:42 UTC (09:42).
+
+### c3 and gate 11 (09:43-10:15 UTC)
+* c3 evals (k01 spine, milestones 44939/43426/42171): 26.354 / 24.380 / 26.355 / 26.368 / 26.366 /
+  **26.375** (15.430B; --save-best-eval kept its exact weights, ckpt_15430320128.pt md5 a2a4b8de...,
+  pulled) / 26.360 / 26.310. Stopped at 15.688B (ckpt_latest md5 8ea7391a... on the box as
+  runs/s2_ck.pt) for a full-CPU search. The curriculum sat at k01 [1799,1803] 23-27% / [1804,..] 47-52%.
+* **Gate 11 (26.37%)**: every 26.4% greedy episode dies at 24.2-24.4 s at (3,510, -2,315, 3,189)
+  in trigger_teleport *35 (target start = a fall catch; a thin sheet x 3,111-3,840, y -2,481..
+  -1,277, z 3,161-3,169) at |v| ~450, h ~3,317: it crawls along the upper floor (z ~3,197, 250 u/s)
+  and off its north edge onto a north-rising ramp whose underside is that sheet. The record
+  (ANALYSIS ONLY) skims the floor at 850-900 u/s and climbs the ramp (z 3,208 at y -2,524 -> 3,417
+  at y -2,059) with h ~3,700. Needs ~600+ u/s there (h >= ~3,425 at z 3,200): an energy gate.
+* **The tick ceiling (ANALYSIS, autoresearch-side measurement):** energy-height gain per second in
+  contact-free 0.5 s windows (vz linear at -800 u/s^2, no duck jump of the origin): our greedy
+  (c3 15.43B and the incumbent eval, 0-25 s) median 50, p90 55, MAX 56.0-56.2 u/s per s; the
+  record median 46-48, p90 63, max 69. The optimal air strafe adds at most 900 (u/s)^2 to |v|^2 per
+  frame (PM_AirAccelerate's 30 u/s cap at a wishdir perpendicular to v), i.e. 56.25 u of h per
+  second at 100 Hz and 73.7 at the record's 131 fps. So the policy already strafes at the 10 ms
+  ceiling in free flight; the record's surplus is partly the frame rate (CLAUDE.md --tick-ms: 30%
+  more air-accelerate impulses per second). Not acted on: changing the core's tick changes the
+  task every round inherits (a --tick-ms-schedule ramp; auto_spine assumes 10 ms) - written down
+  for the user / next rounds.
