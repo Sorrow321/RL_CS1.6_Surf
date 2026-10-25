@@ -2229,3 +2229,43 @@ Incumbent: pbr4b3_t11 traj_23590338560 (52.937), weights ckpt_23551016960 (md5 7
   ladder now continues to x1.2 and x1.3 (tools/auto_spine.py default --ge-boost "1.0,1.04;1.08;1.12;1.2;1.3": the loop
   itself would have found gate 18's only passing chains). Box extended to 02:29 UTC.
 * beam_tas --start-keys (new) and tools/chain_spine.py `beam:NPZ` pieces (new) in this commit.
+* c3 (the policy's x1.3 spine b13p): the curriculum walked back to the x1.3 root within ~150M steps (the post-gate part
+  is the policy's own) and sat there like c2 (band [4847,...] 60-65%, band [4842,4846] 0.0%); evals 56.242 / 56.212 /
+  56.188. Stopped at 25.18B.
+* The 52.8% LEDGE is the bottleneck: landing on it resets h to ~2,330 whatever the line brings (the policy flown from the
+  explorer's wall ride with h ~3,000 lands there and leaves with 2,333). A SURVIVING explorer chain (GE_e1 cell 136515,
+  rooted at the line's 51.4% just before its flat landing) zigzags down the shaft past the ledge without landing
+  (h ~2,940); the policy flown from its end keeps 2,790 / 2,714 at 54 / 55% (its own line: 2,377 / 2,314) and crashes
+  at 55.4-55.8%. The policy survives start-state beams from most of that chain's states (all but one of 12..144).
+* **train_fast --demo-success-energy M** (new; off = bit-identical, tests/python/test_demo_success_energy.py: the gate
+  rule, the trainer smoke, flag off vs the pre-change trainer, TRAIN_ONLY in record_ckpt): the spine's success line
+  counts only when the crossing's energy height is >= the spine end's - M (the bonus, the curriculum's success and the
+  --auto-spine quorum alike; a crossing short of the energy is judged once, never paid later). Generic: the target is
+  the spine's own end state (its depth AND its energy), from our own search; no map or record number enters.
+* **pbr5b1_c4** (22:41 UTC): c3's ckpt_latest (25,177,358,336, md5 bc099cfb...) + energy spine
+  autoresearch/spines/pbr5b1_e1.npy (the line to 51.4% + the ledge-bypass chain + the policy's continuation, cut at
+  55.41% where h = 2,701) + its keys + --demo-success-energy 150 (success = record past d 25,583 with h >= 2,551; the
+  greedy line has ~2,310 there) + the 16 milestones + c3's other flags; --auto-spine (quorum = 5/9 greedy crossings WITH
+  the energy). Question: does the curriculum teach the ledge bypass from the policy's own state, and does the greedy
+  then reach the gate with ~+400 u?
+* c4 (25.18-25.64B, ~25 min): the curriculum NEVER advanced - a bug in my first --demo-success-energy: a band at the
+  spine's end spawns PAST the success line (by --demo-success-d), which the old rule counts as an immediate success,
+  and my gate only counted crossings. Fixed (43672ed, test added): a fresh episode that spawns past the line holds it
+  when its spawn carries the energy. Evals 56.18-56.21 meanwhile (the policy trained ~450M steps from the spine's end
+  states at 55.4% with h ~2,700, the U exit with energy).
+* **pbr5b1_c5** (23:06 UTC): c4's ckpt_latest (25,637,158,912, md5 ca300603...) + the fixed gate, the rest as c4.
+
+### GATE 18 PASSED by the greedy line: 56.304 -> 61.398 (2026-10-25 23:24 UTC)
+* c5 (the fixed energy gate on spine e1): the curriculum walked e1 back at 93-100% band success; the first
+  energy-gated bonus at 25.647B. Evals 56.215 / 56.573 (25.713B: one episode past the climb to 56.6%) / 56.195 /
+  **61.398** (25.864B, ~230M steps after the launch: 2/9 greedy episodes from the true start through the gate to
+  61.27-61.40% at 48-55 s, five more over the climb to 56.7-56.95%, two at the old 56.17% spiral). The 5/9 crossings of
+  the e1 line WITH the energy fired the trainer's auto-spine search 1: the PLAIN BEAM on c5's own weights reached
+  d 21,912 = **61.66%** in 52 s -> spine k01 (5,900 states, the policy's own keys), success line d <= 22,012, the e1
+  line (25,583) kept as a milestone. The curriculum is learning k01 (band [5669] ~40%).
+* Handoff snapshot for 61.398: ckpt_25837436928 (27M steps before the eval), pulled.
+* What did it: the greedy line had no energy problem anywhere but 50-56%, and there one LEDGE landing (52.8%) reset its
+  energy whatever it brought; a curriculum on depth alone can never pay for not landing there (the greedy's own line
+  reaches the same depth). Asking the spine's success for the spine end's ENERGY at its depth made the bypass the
+  objective; the policy learned it from its own state in ~230M steps and the next gate's search needed only the
+  policy's own beam.

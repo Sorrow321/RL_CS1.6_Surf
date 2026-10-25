@@ -3,18 +3,19 @@
  "round": 5,
  "final": false,
  "best": {
-  "score": 56.304,
-  "eval_file": "/home/steam/ar_pb/runs/pbr5b1/pbr5b1_c2/traj_24757403648.jsonl",
-  "run": "pbr5b1_c2",
-  "step": 24757403648,
-  "ckpt": "/home/steam/ar_pb/runs/pbr5b1/pbr5b1_c2/ckpt_24779948032.pt",
+  "score": 61.398,
+  "eval_file": "/home/steam/ar_pb/runs/pbr5b1/pbr5b1_c5/traj_25864175616.jsonl",
+  "run": "pbr5b1_c5",
+  "step": 25864175616,
+  "ckpt": "/home/steam/ar_pb/runs/pbr5b1/pbr5b1_c5/ckpt_25837436928.pt",
   "recipe": [
-   "resume of pbr5b1_c1 24.379B (itself a resume of the round-4 incumbent) with t11's flag set",
-   "--demo-file autoresearch/spines/pbr5b1_b13c.npy --demo-keys autoresearch/spines/pbr5b1_b13c.keys.npy (own beam to 56.1% + an x1.3 GE chain past gate 18 to 58.15%)",
-   "--demo-milestones 44939,...,27001,25121 (15) --spawn-states autoresearch/spines/pbr5b1_spawn_energy.npy --spawn-states-frac 0.2 --auto-spine (quorum 5, patience 1.2e9)"
+   "resume chain c1 -> c2 -> c3 -> c4 -> c5 from the round-4 incumbent (t11's flag set throughout)",
+   "--demo-file autoresearch/spines/pbr5b1_e1.npy --demo-keys autoresearch/spines/pbr5b1_e1.keys.npy (own beam to 51.4% + a SURVIVING view-follow GE chain past the 52.8% ledge + the policy's own continuation to 55.41%)",
+   "--demo-success-energy 150 (NEW: the success line counts only with the spine end's energy height - 150 at the crossing) --demo-success-d 100 --demo-success-bonus 50",
+   "--demo-milestones 44939,...,27001,25121,24017 (16) --auto-spine (quorum 5 counting energy crossings, patience 1.2e9); auto_spine GE ladder to x1.3"
   ],
-  "resume_from": "pbr5b1_c1 ckpt_latest 24,379,392,000 (tick 7.667 ms)",
-  "commit": "9912a67"
+  "resume_from": "pbr5b1_c4 ckpt_latest 25,637,158,912 (tick 7.667 ms)",
+  "commit": "43672ed"
  },
- "summary": "pbr5b1_c1 = resume of the incumbent (52.937) on spine k05 + milestones + --auto-spine. 56.151 at 24.004B (1/9 through gate 17), 56.138 at 24.080B (5/9) -> auto-spine search 1 found nothing past 56.6% (28 min); 56.204 at 24.231B (8/9 at 56.1-56.2%). Gate 18 (56.14%) is ENERGY: the line loses ~1,650 u of energy height in hard landings/walls over 50-56% and dies spiralling up into kill volume *210/*192. An energy-ranked GE rooted before those landings (tools/ge_energy_pick.py) found chains +570..+715 u above the line at 52-53%; stage-2 GE from those states running (trainer stopped at 24.384B)."
+ "summary": "52.937 -> 61.398 (pbr5b1_c5 25.864B; 2/9 greedy at 61.3-61.4%, median 56.7%). Gate 18 (56.1%) was ENERGY: the line lost ~1,650 u of energy height in hard landings at 50-53%; the 52.8% ledge landing reset h to ~2,330 whatever came in; the climb past the gate needs ~2,700 (x1.3 at 56.1%). Fix: an energy spine through a SURVIVING explorer chain that passes the ledge without landing (GE picked by energy among cells whose subtree goes on) + train_fast --demo-success-energy (the spine's success line counts only with the spine end's energy). ~230M steps after the fix the greedy carried the energy through the gate; the trainer's own search swapped in its plain beam line to 61.66% (k01). Retracted: energy picks without a survival filter pick fatal falls. Next: let the loop learn k01."
 }
