@@ -1808,3 +1808,19 @@ over-subscribes the quota. This branch's surfgym now caps numba; the operator ma
   29.14%). **pbr4b3_t3** (10:46 UTC): t2's 15.551B weights (md5 ec14781b...) + that spine + milestones
   44939,43426,42182,41015 + the same flags (tick held at 7.63 ms by the checkpoint's ramp), 3B steps.
   t2's ckpt_latest (the 27.409 handoff) pulled.
+
+### GATE 11 PASSED by the greedy line: 29.271 (2026-10-25 11:08 UTC)
+* t3 evals (curriculum on the policy's own 7.67 ms gate-11 line): **29.271** (15.551B, the first eval,
+  0.5M steps after resuming t2's 15.551B weights: one episode down the hole to 29.27%) / 28.627 / 28.728
+  (15.702B: 9/9 past the gate-10 line, median 28.67%) / 28.824 / 28.892 / 28.818 (15.93B). From 15.70B
+  the greedy goes over the sheet and DOWN THE HOLE in 8-9/9 episodes and dies at 28.5-28.9%.
+  Handoff for 29.271: t2's ckpt_latest (the exact weights, md5 ec14781b...) placed as
+  pbr4b3_t3/ckpt_15550906368.pt (the snapshot at or before the eval).
+* Gate 12 (where every passing episode dies): after the hole the line falls NORTH-WEST (vz ~-1,100) into
+  trigger_teleport *128 (a catch sheet at z ~2,577) at (2,900-3,000, -1,300..-1,380). The record
+  (ANALYSIS ONLY) drops SOUTH-WEST out of the hole (3,412, -1,602) -> (3,278, -1,694, 2,863), lands on
+  a surf ramp at ~(3,169, -1,661, 2,806) (contact) and rides it west to (2,528, -1,527, 2,900) at 29%.
+* The curriculum sits right before the hole drop (bands [2749,2753] 29-31% / [2754,...] 87%); the
+  spine's success line (29.14%) lies in the catch fall, so the greedy (28.7-28.9%) rarely crosses it
+  and the trainer's quorum will not fire: searches run by hand (GE13 at 8 ms over the flight and the
+  drop x1.0 / 1.04; branched beams forked at 2600 / 2700 / 2800 ticks, before the hole).
