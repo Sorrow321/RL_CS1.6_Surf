@@ -1335,3 +1335,11 @@ shorter budget_end_hours. Written down for the operator; nothing is worked aroun
   half-pipe; it finds only a tunnel run-up worth +30-70 u. The pump is a surf skill: the next step is to let
   the policy's own surfing search or train from the archive's states (options 1-3 above), with
   --demo-success-energy so the detour is only paid when it comes back onto the route with energy to spare.
+* `beam_tas --start-states NPY:IDX` (new, 04:33 UTC; off = the tool as it was): the spawn pool becomes one
+  given state, so the policy's population search can run from a Go-Explore archive state it never reaches
+  by itself (keys-hold OK; a ducked start holds duck under --keys-hold-spawn-duck).
+* Diagnostic 1 (04:37 UTC): from the stage-1 archive's highest-energy HALF-PIPE state (h 3,804 at z 3,308,
+  vz -730): all 512 lineages dead within 1 s. The half-pipe's bottom (z ~3,290-3,310) is a fall catch (round
+  1: the greedy that learned to go east died there 9/9), and the archive's "most energetic" half-pipe states
+  are falls INTO it: h ~3,805 is height turned into speed on the way to dying, not pumping. The live wall
+  states carry h ~3,747-3,759. The record never goes below z ~3,357: the pump rides the WALLS.
