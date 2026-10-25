@@ -1233,3 +1233,22 @@ shorter budget_end_hours. Written down for the operator; nothing is worked aroun
   for it; the energy curriculum (--demo-success-energy) can teach the energy half, the approach has to
   come from training's own exploration (or a search that varies the approach heading over the last ~1 s
   before the lip - the policy's yaw sigma is 0.75 deg).
+
+### MAP INSIGHT FROM THE USER (relayed by the operator, 2026-10-25 ~03:20 UTC) - read this first
+* At the very start, after start_run, the policy IGNORES THE FIRST RAMP: using it means running against
+  the geodesic field, and the policy instead goes straight to the SECOND ramp (the first ramp the policy
+  uses today). A human surfs that first ramp first to gain momentum and only then goes to the second ramp,
+  arriving with more speed - and the user expects that extra energy to break some of the gates the policy
+  faces later. The user's question: how to make the policy use that first ramp.
+* The rules that come with it: CLAUDE.md 0b - nothing hand-placed for this ramp (no reward term, spawn
+  rule, target box or spine aimed at it); the mechanism must be generic, one that would also find a
+  field-opposed momentum ramp on a map nobody has opened (a search or exploration that finds the line on
+  its own, then the line-to-curriculum loop, is fine); section 0 - the WR demo stays analysis only.
+* How it ties to what this lineage measured: round 1 saw the record (analysis only) go EAST from the
+  spawn for ~6 s against the field (d +1,520 u), surf a half-pipe down to z ~3,370 and back, +230-280 u
+  of energy height, then fly back west into the crouch tunnel at 500-600 u/s; round 2 measured the
+  deficit it leaves: tunnel exit h ~3,814 (policy) vs ~3,978 (record), 100-200 u behind at every later
+  gate; tonight's gate 8 is ~145 u short at the takeoff. Searches so far (rounds 1-2) found the half-pipe
+  pump only partly with uniform actions (h <= ~3,839) and a tunnel entry at 340-465 u/s from it (GE_pump2),
+  never as a line the curriculum could teach - and a position-only success line could not have taught it
+  anyway: the slow route reaches the same places, only with less energy.
