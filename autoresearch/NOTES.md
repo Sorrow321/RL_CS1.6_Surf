@@ -1363,3 +1363,11 @@ or cheaper offers in the query (a 3090 at <= 0.18 $/h would fit beside the 5080)
 * 03:41 GE_pump4: GE_pump3's settings rooted at the top-64 carryable states of all three archives
   (3,970-3,981), 8,192 envs, 48 threads, 30 min (~4x pump3's compute). Next: --select-energy from
   the true spawn if pump4 does not find the fast tunnel entry.
+* GE_pump4 (30 min, 8,192 envs, 48 threads, 19M runs, 337k cells): half-pipe carryable energy
+  **4,026** (above the record's ~3,930-3,950); 33 states now on the fast west approach past the
+  spawn's north side (none before); the tunnel still entered at <= 448 u/s, carryable h <= 3,854;
+  best past 1% 3,836. Closer, not through.
+* 04:15 GE_pump5: `--select-energy 100` + roots chosen by a generic rule - the archive's top-64
+  carryable-energy states that are deeper than the start AND moving downhill on the goal field
+  (v . -grad d > 0), no push volume (they came out at x 465-891, |v_h| median 543, h_c
+  3,838-3,861: fast states at the tunnel mouth), 25 min.
