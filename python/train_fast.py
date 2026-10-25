@@ -4852,6 +4852,16 @@ def main() -> None:
                          "(S, 2S, 4S ... up to this); a backoff moves back by S and resets the "
                          "step to S. Easy stretches cross in a few moves, precise ones at S. "
                          "Config only when set; not restored")
+    ap.add_argument("--demo-keys", default=None, metavar="NPY",
+                    help="--demo-file + --keys-hold: a (spine rows, 3) int array of the HELD keys "
+                         "(fwd, side, duck in engine bins) each spine row was reached with; an "
+                         "episode spawned on row i starts holding row i's keys instead of neutral. "
+                         "Under --keys-hold the keys are state the policy observes and acts on, so "
+                         "a mid-line spawn that resets them starts a different state from the "
+                         "line's own (the --keys-hold-spawn-duck defect, for every held key: round "
+                         "4's gate-12 ramp was surfed with forward + left strafe held, and every "
+                         "spawn there started neutral). Dropped when --auto-spine swaps the spine "
+                         "(a new spine has no keys). Not restored; off = today, byte-identical")
     ap.add_argument("--demo-front-temp", type=float, default=None,   # None = off
                     help="--demo-file: T > 0 = an env whose episode STARTED on the curriculum's "
                          "frontier band [tau, tau+D-1] samples the keys and the yaw at 1 + T "
@@ -12383,6 +12393,23 @@ def main() -> None:
     N_KEYS = keyshold.N_FEATURES if args.keys_hold else 0
     if args.keys_hold_spawn_duck and not N_KEYS:
         raise SystemExit("--keys-hold-spawn-duck needs --keys-hold (it sets the held duck)")
+    DEMO_KEYS = [None]                    # --demo-keys: the held keys of each spine row
+    if args.demo_keys:
+        if not (args.demo_file and N_KEYS):
+            raise SystemExit("--demo-keys needs --demo-file and --keys-hold (it sets the held keys "
+                             "of spine spawns)")
+        _dk = np.asarray(np.load(args.demo_keys), np.int64)
+        _ns = len(np.load(args.demo_file, mmap_mode="r"))
+        if _dk.shape != (_ns, 3):
+            raise SystemExit(f"--demo-keys {args.demo_keys}: shape {_dk.shape}, the spine has "
+                             f"{_ns} rows (want ({_ns}, 3): fwd, side, duck)")
+        if (_dk[:, :2].min() < 0 or _dk[:, :2].max() > 2 or _dk[:, 2].min() < 0
+                or _dk[:, 2].max() > 1):
+            raise SystemExit("--demo-keys: fwd / side must be engine bins 0..2, duck 0..1")
+        DEMO_KEYS[0] = _dk.astype(np.int32)
+        _nn = int((_dk != np.asarray(keyshold.NEUTRAL)).any(axis=1).sum())
+        print(f"--demo-keys {args.demo_keys}: a spine spawn starts holding its row's keys "
+              f"({_nn} of {_ns} rows hold something other than neutral)")
     # --ramp-obs-pass: the pass flag, LAST of all - after the ratchet gap - so a checkpoint
     # without it grows onto it by widen_for_obs' trailing zero-pad (its own function at step 0)
     N_PASS = 1 if (RPLAN and int(args.ramp_obs_pass or 0)) else 0
@@ -14579,6 +14606,9 @@ def main() -> None:
     if args.keys_hold_spawn_duck:
         # --keys-hold-spawn-duck: dumped only when on; a resume restores it
         meta["config"]["keys_hold_spawn_duck"] = 1
+    if args.demo_keys:
+        # --demo-keys: dumped only when on (not restored: it belongs to its --demo-file)
+        meta["config"]["demo_keys"] = str(args.demo_keys)
     if args.demo_file and args.demo_success_bonus is not None:
         # --demo-success-bonus: dumped only when set; a resume restores it
         meta["config"]["demo_success_bonus"] = float(args.demo_success_bonus)
@@ -15706,6 +15736,10 @@ def main() -> None:
             return
         sp = np.load(res["spine"])
         demo.reset_spine(sp)
+        if DEMO_KEYS[0] is not None:
+            DEMO_KEYS[0] = None
+            print(f"[{global_step:>13,d}] --demo-keys dropped: the new spine has no held keys",
+                  flush=True)
         if args.auto_spine_milestones:
             # the line the greedy just crossed keeps paying (a milestone), the new one is next
             MILES[0] = np.append(MILES[0], float(DEMO_END_D))
@@ -19192,6 +19226,12 @@ def main() -> None:
                         # crouched holds duck (engine bin 1) from its first tick
                         _dk = ended_acc & (np.asarray(sv_view["ducked"]) > 0)
                         keys.state[_dk, 2] = 1
+                    if DEMO_KEYS[0] is not None and ended_acc.any():
+                        # --demo-keys: a fresh episode spawned on spine row i holds the keys
+                        # the line held there (demo_idx was set when the old episode ended)
+                        _de = np.flatnonzero(ended_acc & (demo_idx >= 0))
+                        if _de.size:
+                            keys.state[_de] = DEMO_KEYS[0][demo_idx[_de]]
                 if surf_flag is not None:
                     # --obs-surf: every episode start forgets the previous decision's vz (a
                     # fresh spawn has nothing to compare with, so its first flag reads 0).

@@ -142,3 +142,10 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   2,614), before a 25 s crawl near the catch). Views as the explorer had them (offsets of the velocity
   frame; no canon_view): out of the hole it holds forward with the view ~89 deg left of the velocity.
   No demo, no record (pbr4b3, round 4).
+* `pbr4b3_ge16ck.npy` + `pbr4b3_ge16ck.keys.npy` (3,074 rows; md5 f60c3f012b2361bf77f106b279fc2948 /
+  41d4b5c2b1d1fdebecbcd6ee4a123c2f): pbr4b3_ge16vf.npy in the POLICY's frame - tools/spine_canon_keys.py puts
+  every row's view along the velocity and translates the held keys so the wish direction survives (to within
+  22.5 deg): on the gate-12 ramp the explorer's forward-at-+89 deg becomes a LEFT strafe. The keys (fwd, side,
+  duck; engine bins) are the policy's own resolved beam keys on the g11 rows and the explorer's on the chain
+  rows (pbr4b3_ge16vf.keys.npy, md5 baf91cbccc1580b0145cd6b609b9dc21, before translation); for train_fast
+  --demo-keys. No demo, no record (pbr4b3, round 4).
