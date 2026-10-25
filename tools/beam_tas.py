@@ -1963,6 +1963,12 @@ def main():
     ap.add_argument("--start-state", default=None, metavar="NPY[:I]",
                     help="start the population from row I of this STATE_DTYPE .npy instead of "
                          "the map spawn (needs --skip-gate); None = the spawn, byte-identical")
+    ap.add_argument("--start-keys", default=None, metavar="F,S,D",
+                    help="--start-state under --keys-hold: the held keys (fwd, side, duck; "
+                         "engine bins) the population starts with, or 'auto' = neutral fwd/side "
+                         "and duck held iff the start row is ducked (train_fast "
+                         "--keys-hold-spawn-duck's rule: a crouched exact state unducks on its "
+                         "first tick otherwise). None = neutral, byte-identical")
     ap.add_argument("--skip-gate", action="store_true",
                     help="capture the spawn state but do NOT roll the gate "
                     "episode. row0/obs_start come from the reset itself, so "
@@ -2615,6 +2621,29 @@ def main():
         spol = SampledTorchPolicy(policy, packer, device, lidar, coreN,
                                   K, stack, extra_slot=esN, extra_fn=efN,
                                   latch_fn=latchN, cc_fn=cc_fnN, keys_hold=KEYS, **xkwN)
+    if args.start_keys is not None:
+        # --start-keys: the population's held keys at the start state (the trainer's spawn
+        # rule for an exact state: --keys-hold-spawn-duck / --demo-keys)
+        if not (args.start_state and KEYS):
+            raise SystemExit("--start-keys needs --start-state and a --keys-hold checkpoint")
+        if str(args.start_keys).lower() == "auto":
+            _k0 = (1, 1, int(bool(int(row0[0]["ducked"]))))
+        else:
+            _k0 = tuple(int(v) for v in str(args.start_keys).split(","))
+            if len(_k0) != 3 or not (0 <= _k0[0] <= 2 and 0 <= _k0[1] <= 2 and 0 <= _k0[2] <= 1):
+                raise SystemExit(f"--start-keys F,S,D wants engine bins (0-2, 0-2, 0-1), got "
+                                 f"{args.start_keys!r}")
+        from surfgym.keyshold import KeysHold as _KH
+        for _w in (spol,):
+            # the wrapper allocates its held state on its first decision and collapses it on a
+            # fresh episode (tick counter): allocate it now, holding _k0, and mark the current
+            # tick as already seen so the first decision keeps it
+            _w.keys = _KH(N)
+            _w.keys.state[:] = np.asarray(_k0, np.int32)
+            _w.keys.boot[:] = _w.keys.state
+            _w._keys_tick = (np.asarray(coreN.states_view["tick"], np.int64)
+                             - int(getattr(_w, "_period", K)))
+        print(f"--start-keys: the population starts holding fwd/side/duck {_k0}")
     if n_cc and args.cc_temp == "trained" and not isinstance(
             spol, TemperedTorchPolicy) and int(cfg.get("cc_temp_scale") or 0) \
             and float(cc_TN.max()) > 0.0:

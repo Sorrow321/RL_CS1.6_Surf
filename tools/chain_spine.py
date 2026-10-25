@@ -36,7 +36,7 @@ def main(argv=None):
     from surfgym.core import STATE_DTYPE
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--line", required=True)
-    ap.add_argument("--chain", action="append", required=True, metavar="ARCHIVE:CELL")
+    ap.add_argument("--chain", action="append", required=True, metavar="ARCHIVE:CELL|beam:NPZ")
     ap.add_argument("--out", required=True)
     ap.add_argument("--map", default=str(ROOT / "maps" / "surf_princessburglar_b26.bsp"))
     ap.add_argument("--field", default=str(ROOT / "maps" / "surf_princessburglar_b26.goalc_32.npz"))
@@ -51,6 +51,25 @@ def main(argv=None):
     field = load_field(a.field)
     info = {"line": a.line, "chains": []}
     for spec in a.chain:
+        if spec.startswith("beam:"):
+            # a beam_tas --save-frontier line (e.g. a --start-state search from a state of the
+            # current line): the policy's own states and actions, spliced at its first state
+            zb = np.load(spec[5:], allow_pickle=False)
+            bl = np.asarray(zb["states"], STATE_DTYPE)
+            bk = keys_from_acts(zb["acts"], int(zb["act_every"]), len(bl))
+            ro = np.asarray(bl[0]["origin"], np.float64)
+            dist = np.linalg.norm(np.asarray(line["origin"], np.float64) - ro, axis=1)
+            j = int(np.argmin(dist))
+            if dist[j] > 1.0:
+                raise SystemExit(f"{spec}: the beam's first state is {dist[j]:.1f} u from the line")
+            boost = float(np.linalg.norm(bl[0]["velocity"])
+                          / max(1e-6, float(np.linalg.norm(line[j]["velocity"]))))
+            line = np.concatenate([np.asarray(line[:j], STATE_DTYPE), bl])
+            bk[0] = keys[j]
+            keys = np.concatenate([np.asarray(keys[:j], np.int32), np.asarray(bk, np.int32)])
+            info["chains"].append({"spec": spec, "root_index": j, "root_boost": round(boost, 3),
+                                   "chain_len": int(len(bl))})
+            continue
         arch, cell = spec.rsplit(":", 1)
         cell = int(cell)
         tmp = Path(a.out).with_suffix(f".chain{len(info['chains'])}.npy")

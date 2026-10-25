@@ -3,16 +3,17 @@
  "round": 5,
  "final": false,
  "best": {
-  "score": 56.204,
-  "eval_file": "/home/steam/ar_pb/runs/pbr5b1/pbr5b1_c1/traj_24231018496.jsonl",
-  "run": "pbr5b1_c1",
-  "step": 24231018496,
-  "ckpt": "/home/steam/ar_pb/runs/pbr5b1/pbr5b1_c1/ckpt_24151851008.pt",
+  "score": 56.304,
+  "eval_file": "/home/steam/ar_pb/runs/pbr5b1/pbr5b1_c2/traj_24757403648.jsonl",
+  "run": "pbr5b1_c2",
+  "step": 24757403648,
+  "ckpt": "/home/steam/ar_pb/runs/pbr5b1/pbr5b1_c2/ckpt_24779948032.pt",
   "recipe": [
-   "resume of the round-4 incumbent (pbr4b3_t11 ckpt_23551016960) with t11's flag set",
-   "--demo-file autoresearch/spines/pbr4b3_auto_t11k05.npy --demo-keys autoresearch/spines/pbr4b3_auto_t11k05.keys.npy --demo-milestones 44939,...,27001 (14) --auto-spine (quorum 5, patience 1.2e9)"
+   "resume of pbr5b1_c1 24.379B (itself a resume of the round-4 incumbent) with t11's flag set",
+   "--demo-file autoresearch/spines/pbr5b1_b13c.npy --demo-keys autoresearch/spines/pbr5b1_b13c.keys.npy (own beam to 56.1% + an x1.3 GE chain past gate 18 to 58.15%)",
+   "--demo-milestones 44939,...,27001,25121 (15) --spawn-states autoresearch/spines/pbr5b1_spawn_energy.npy --spawn-states-frac 0.2 --auto-spine (quorum 5, patience 1.2e9)"
   ],
-  "resume_from": "pbr4b3_t11 ckpt_23551016960 (tick 7.667 ms)",
+  "resume_from": "pbr5b1_c1 ckpt_latest 24,379,392,000 (tick 7.667 ms)",
   "commit": "9912a67"
  },
  "summary": "pbr5b1_c1 = resume of the incumbent (52.937) on spine k05 + milestones + --auto-spine. 56.151 at 24.004B (1/9 through gate 17), 56.138 at 24.080B (5/9) -> auto-spine search 1 found nothing past 56.6% (28 min); 56.204 at 24.231B (8/9 at 56.1-56.2%). Gate 18 (56.14%) is ENERGY: the line loses ~1,650 u of energy height in hard landings/walls over 50-56% and dies spiralling up into kill volume *210/*192. An energy-ranked GE rooted before those landings (tools/ge_energy_pick.py) found chains +570..+715 u above the line at 52-53%; stage-2 GE from those states running (trainer stopped at 24.384B)."

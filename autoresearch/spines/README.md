@@ -196,3 +196,12 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   49-52.8% and picked by ENERGY HEIGHT at matched depth (tools/ge_energy_pick.py): they skip the line's hard landings
   at 51.8% / 52.8% and arrive at 52-54% with +420..+715 u of energy height over the policy's own line. For
   --spawn-states (the policy's own search, SELF_STATES). No demo, no record (pbr5b1, round 5).
+* `pbr5b1_b13p.npy` + `.keys.npy` (6,148 rows; md5 d422c380f8609797220d50349dc4ed8f /
+  2ff11b4ec67c85aad5d4bda41cfb8e58): gate 18 - pbr5b1_c1's auto-spine search 1 beam line (the policy's own, 7.67 ms,
+  from the true spawn) to its state 4,848 (56.1%), then the POLICY's own beam_tas --start-state line from that state
+  with its velocity x1.3 (2,048 copies, `--start-keys auto`): it climbs out of the gate and bunny-hops the room beyond
+  to 60.98% in 10 s (tools/chain_spine.py `beam:` piece; keys = the beam's own). x1.2 from the same state: 56.79%. No
+  demo, no record (pbr5b1, round 5).
+* CORRECTION to `pbr5b1_spawn_energy.npy` above: its four "energized" chains end in FATAL FALLS (stepping the core from
+  their states with any actions - the chain's own included - every run is teleported to the start room at the chain's
+  last state). Free fall conserves energy height, which is why an energy pick chose them. Do not use that file.

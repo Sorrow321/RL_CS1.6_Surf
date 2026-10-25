@@ -312,7 +312,7 @@ def main(argv=None) -> int:
     ap.add_argument("--ge-minutes", type=float, default=10.0, help="0 = no GE fallback")
     ap.add_argument("--ge-cell", type=float, default=64.0)
     ap.add_argument("--ge-energy", type=float, default=32.0)
-    ap.add_argument("--ge-boost", default="1.0,1.04;1.08;1.12",
+    ap.add_argument("--ge-boost", default="1.0,1.04;1.08;1.12;1.2;1.3",
                     help="the GE's escalation ladder: ';'-separated stages of comma-separated "
                          "speed factors; every root is tried with its velocity scaled by each "
                          "factor of a stage, and the next stage (--ge-minutes each) runs only "

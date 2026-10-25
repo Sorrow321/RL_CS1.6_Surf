@@ -2189,3 +2189,43 @@ Incumbent: pbr4b3_t11 traj_23590338560 (52.937), weights ckpt_23551016960 (md5 7
   passes on the policy's own energy only if it arrives with ~+300 u.
 * **pbr5b1_c2** (21:38 UTC): c1's ckpt_latest (24,379,392,000, md5 cb671f5f...) + spine b13c + its keys + milestones
   44939 ... 27001, 25121 (k05's line) + spawn_energy (0.2) + c1's other flags, --auto-spine as before, 4e9 steps.
+* c2 (x1.3 spine, energy spawns; 24.38-24.99B): the curriculum walked b13c back to the x1.3 root in ~150M steps and
+  sat there - band [4849,...] (the boosted chain) 83%, band [4844,4848] (the policy's own states) **0.0%** - round 4's
+  k02 picture. Evals 56.185 / 56.219 / 56.197 / 56.228 / 56.225 / **56.304** (24.757B) / 56.187 / 56.175 / 56.207: the
+  greedy line's energy losses unchanged (50.1% -256, 51.55% -752, 52.7% -509). Stopped at 24.99B (22:05 UTC).
+* beam_tas --start-state FIX (--start-keys auto|F,S,D, new; off = byte-identical): a population started from an exact
+  crouched state now holds duck (the trainer's --keys-hold-spawn-duck rule; the wrapper's held state is allocated at the
+  start). It did not rescue the explorer's later chain states (still 0 survivors from the energized chains' ends), but
+  from the policy's own states and from the explorer's early wall-ride states the start-state beam works.
+* What the POLICY does from the explorer's energized states (start-state beams, 2,048 copies, ckpt 24.379B): from the
+  wall ride at 51.8-52.0% (h ~2,980-3,030) it keeps the energy to 52.5% and then lands on the same ledge at 52.8% (h
+  3,060 -> 2,330) and stops at the gate (56.59%) with h ~2,160-2,190 - the 52.8% ledge landing is the policy's habit.
+  The record (ANALYSIS ONLY) spirals down that shaft at 1,000-1,500 u/s without touching the ledge (h ~3,200 at 54%).
+  Energy-ranked (dh K 1/3) branched beams from the wall ride: worse (extinct or 54-55.8%).
+* GE_e2 picks by energy (from the energized chain ends): 54.5% h 2,753 (+432 over the line), 55.0% 2,507 (+192), 55.5%
+  2,292 (-15): the explorer loses it in the dip at 54.5-55.5% (the record loses ~330 there too). The gate needs ~2,700-
+  2,800 at 56% (the x1.3 chain had 2,797 there; the record ~2,780).
+* GE_e3 (22:08 UTC, c2 stopped, 30 threads, 10 min): roots = the last 1 s of the three 54.5% energy chains (spliced
+  from chain1) x1.0 / 1.1 / 1.2 - a continuous energy line through the gate with a smaller boost, nearer the gate's
+  approach than x1.3 at 56.1%?
+* GE_e3 (stage 3, from the 54.5% energy picks x1.0 / 1.1 / 1.2): best 56.53% - the explorer loses the energy in the
+  dip at 54.5-55.5%.
+* **RETRACTION (22:30 UTC): the "energized" chains were FATAL FALLS.** Stepping the core from chain 179234's states
+  with ANY actions (its own exact link actions included) teleports every run to the start room at the chain's last
+  state (100+75 = 110+65 = 120+55 = 140+35 = tick 175). Free fall conserves z + |v|^2/2g, so an energy pick over an
+  archive picks runs on their way into a kill volume (round 3's lesson, "a cell with children is not a survivable
+  cell", missed again). The "+715 u at 53%" and every start-state beam that went extinct at t=100 from those states are
+  this artifact. With a SURVIVAL filter (the cell's subtree reaches >= 300 u deeper), real energized states exist
+  (GE_e1 at 53.0%: h 2,941 vs the line's 2,365; GE_e2 at 53.0%: 3,064 vs 2,374) but the policy started there does
+  WORSE (56.0-56.3%) than from its own line: it was never trained there. tools/ge_energy_pick.py needs the subtree
+  filter before it is used again (TODO).
+* The POLICY's own flight from boosted copies of its own states (beam_tas --start-state, 2,048 copies): beam state 4,848
+  (56.1%) x1.1 24,811 / **x1.2 24,695 (56.79%)** / **x1.3 22,299 (60.98%)**; state 4,700 x1.1 / x1.2: 24,797 / 24,691. From
+  the 54.3% surviving energized state x1.05-1.15: 24,702-24,630 (56.9%). The gate needs ~+400 u of energy height at
+  56.1% for the policy as well as for the explorer; nothing found upstream supplies it.
+* **pbr5b1_c3** (22:30 UTC): c2's ckpt_latest (24,989,663,232, md5 29c8c541...) + spine pbr5b1_b13p (the policy's own
+  x1.3 line past the gate, 60.98%; success line 60.8%) + milestones ..., 25121, **24017** (b13c's line at 57.97%: the climb
+  out of the gate pays once) + the original start-room spawns (spawn_energy dropped), the rest as c2; auto_spine's GE
+  ladder now continues to x1.2 and x1.3 (tools/auto_spine.py default --ge-boost "1.0,1.04;1.08;1.12;1.2;1.3": the loop
+  itself would have found gate 18's only passing chains). Box extended to 02:29 UTC.
+* beam_tas --start-keys (new) and tools/chain_spine.py `beam:NPZ` pieces (new) in this commit.
