@@ -1777,3 +1777,18 @@ tools/auto_spine.py by hand on t8c's 13.905B weights, --tick-ms 8, pinned to the
   44939 / 43426 / 42286 + **--lr 1e-4** (was 3e-4; sidistic R7's cut that held its finishing skill).
 * t8e up (record gate passed; "optimizer lr: 0.0003 (ckpt state) -> 0.0001"). First eval (13.689B,
   the 13.6886B weights): 24.513, median 24.1%, 9/9 to the gate-10 crawl - the route intact.
+* t8e evals 24.513 / 24.527 / 24.597 (9/9 at the gate-10 crawl, none past it; kl back to ~0.04 at
+  lr 1e-4). The k06 curriculum stands at the x1.12 root: band [2356..] 63%, band [2351,2355] (the
+  policy's own unboosted states before it) 0.0% - round 3's boosted-root wall again.
+
+### Energy-ranked beams find the soft ramp-top turn unboosted (13:57-14:04 UTC, trainer paused)
+beam_tas from the true start on t8e's weights (8 ms, 4,096 copies, 30 s):
+* `--score dh --score-energy 3`: 26.43%; the same + a branched fork at 15.0 s (the gate-8 approach;
+  held view offsets U(-45, 45) deg): **26.50%**; `--score-energy 8`: 26.36%; (d-ranked beams: 26.36-26.38%).
+* The K3 branched line keeps the energy the others lose at the gate-10 ramp top: no contact worse
+  than -70 u after 23.2% (the d-ranked beams: -247..-298 u at 25.3%), h 3,543 at 26% at 606 u/s
+  heading north - the x1.12 chain had 3,547 there. It still dies at 26.50% (3,586, -2,182, 3,270).
+  Its gate-8 landing is as hard as ever (-414 u at 20.3%). So the energy for gate 11 exists in the
+  policy's own proposal distribution; the d-ranked selection threw it away.
+* GE_g11 (14:05 UTC): explore_phase1 --exact-chains, 8 ms, 64 u x energy 32 cells, 8 min, rooted at
+  that line's own states over its last 1.6 s (20.0-21.6 s) at x1.0 and x1.04.
