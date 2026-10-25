@@ -1769,3 +1769,13 @@ throttled) and could read it as a bad box. The fix is one line in python/train_f
 * **pbr4b4_c6** (11:10 UTC): c4's final 16.208B weights -> c5 (14M steps, restarted for the flag)
   -> c6 = spine dh10 (--demo-tau0 2280) + milestones 44939,43426,42363,42171,42007 +
   --auto-spine-beam-energy 10 (delay 5e8), the rest as c4, 4B steps.
+* `--respawn-greedy-impacts K [--respawn-greedy-impact-min U]` (new, eaafe15, off = bit-identical
+  pool; tests/python/test_respawn_greedy_impacts.py, TRAIN_ONLY): the greedy-line pool also holds
+  the window's HI..LO seconds before each unfinished greedy episode's K largest drops of the energy
+  height z + |v|^2/2g (over 0.1 s, >= U u, default 40, >= 1 s apart, before its last HI s). With
+  --respawn-greedy-temp those spawns explore, and per-call energy shaping pays a softer landing at
+  once. On c4's 26.896 eval the rule picks exactly the leaks measured above: the gate-8 corridor
+  landing (16.9-17.1 s, -63..-98 u in 0.1 s), the gate-9 wall clip (18.3 s, -86..-88), the
+  upper-floor landing (21.2-21.5 s, -67..-170) and the drop-surf bottom (10.6 s, -73..-88).
+* c6's resume eval (16.2225B, c4's final weights + 14M steps of c5): **21.499**, 9/9 at the gate-9
+  wall (median 21.4%) - a transient or damage from the spine swap; watching.
