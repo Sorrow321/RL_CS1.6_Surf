@@ -1798,7 +1798,7 @@ throttled) and could read it as a bad box. The fix is one line in python/train_f
   policy already lands gate 8's corridor ~60 u softer than the incumbent; the median 25.5% figure
   (3,236) is the walk on the upper floor (the east flight is the max column).
 
-### The north gap (gate 12, ~27.0%) is an energy gate with a slot (11:43-11:55 UTC)
+### The north gap (gate 12, ~27.0%) is an energy gate with a slot (11:43-11:46 UTC)
 * c7 evals (impact rows on): 26.946 / 27.043 / 27.049 / **27.114** (16.781B, median 26.9%; exact
   weights ckpt_16780886016.pt md5 14fd99cd..., pulled). Energy at first arrival (pb_energy_profile)
   creeps up: 21% 3,454-3,488, 24% 3,382-3,414, 25.5% 3,446-3,492 (now the median: most episodes
