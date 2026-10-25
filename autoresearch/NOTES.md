@@ -1628,3 +1628,55 @@ Incumbent: pbr3b4_as10 traj_13500416000 (24.737), weights 13.4999B (md5 a3a21331
   x 2,835 (k03: 3,187 there) and falls back (24.74%).
 * So the line needs ~+60-100 u at 23% AND a smoother ramp catch; the biggest single sink is the
   gate-8 corridor landing + U-turn (-347 u in 0.65 s; the record loses ~213 over 20-21%).
+
+### GATE 10 IS IN THE POLICY'S OWN DISTRIBUTION: a plain beam on the incumbent climbs the ramp (08:00 UTC)
+* beam_tas from the true start on the incumbent's 13.4999B weights (4,096 stochastic copies, 32
+  greedy, d-ranked, resample every 25 decisions, half the population forked at 16.0 s with held
+  view offsets - every forked lineage died by 20 s, so the line below is the policy's own
+  unbranched proposals; 26 s cap, 208 s on this box with the trainer paused): frontier **d 42,078
+  = 26.36%** at 24 s, replayed exactly. The same beam ranked by -d + 3 x energy height (`--score dh
+  --score-energy 3`): 42,074 at 25 s (more survivors, 2,696 vs 1,481 of 4,096) - the ranking is
+  not what was missing.
+* The line: the usual route to the gate-8 corridor (h 3,709 at 16.6 s; landing -166 u at 16.8 s;
+  the corridor U-turn to h 3,384 at 17.4 s), strafing back up to h 3,486 by 19.0 s, then a
+  SMOOTH ramp catch at (2,141, -3,115, 2,750) (v (1,019, -40, -62): -84 u; the greedy ep0 met the
+  same surface at vz -523 and lost 136) and UP the ramp: z 2,785 -> 3,204 over 19.4-20.8 s, to
+  (3,041, -2,903, 3,191) at 640 u/s = 25.06%; a hard landing on the floor beyond (z 3,197, h 3,447
+  -> 3,284, onground), then walking / hopping north at 100-440 u/s to (3,468, -2,331) = 26.36%.
+* So round 3's last searches (as4/as5 on 11.17-11.38B weights: beams 43,2xx) were BEFORE the
+  policy learned to fly this; the 2B steps of energy K 12 + the k03 curriculum since then moved
+  the policy's distribution to the ramp, and nobody ran a beam on the newer weights (as10-as12
+  had --auto-spine off). Energy at 23% on this line ~3,480 - the greedy's best episodes have the
+  same; the difference is the catch angle, a skill the stochastic policy now has.
+* Spine autoresearch/spines/pbr4b3_beam_g10.npy (2,400 states, md5 7fa685aa...; success line
+  d <= 42,182 = 26.19%).
+* **pbr4b3_g10a** (08:03 UTC): the incumbent's weights + the curriculum on that spine from its end
+  + `--demo-milestones 44939,43426` (the k01 / k02 lines keep paying) + round 3's flag set (energy
+  K 12, greedy-contact rows with temperature, front-perturb) + `--auto-spine --auto-spine-milestones
+  --auto-spine-gain 500 --auto-spine-ge-minutes 8 --auto-spine-retry 4e8 --auto-spine-patience
+  1.2e9` (the trainer searches the next gate itself once 5/9 greedy episodes cross 26.19%). 4B
+  steps. pbr4b3_c0 (the plain continuation) was stopped before its first eval.
+
+### A 64-thread host under a 30.7-CPU quota ran the trainer at 7k steps/s: numba's pool (08:16-08:25 UTC)
+* pbr4b3_g10a ran at **~7,000 steps/s** (expected ~250k): 5.8M steps in 13.5 min, load average
+  ~100, 60 runnable threads at ~46% each, GPU 0% busy. The box shows 64 CPUs (Threadripper 3970X,
+  SMT) but its cgroup quota is 30.72; the trainer's OMP team is quota-aware (omp=15), but numba
+  sizes its parallel pool to every VISIBLE core: the goal field's fused prange sampler
+  (surfgym/goalfield.py, called on every env every tick for the race reward) ran a 64-thread
+  spinning OpenMP team (numba's omppool, its own libgomp) beside the core's 15 and torch's 15, and
+  the quota throttled them all. `taskset` to 30 cores did not help (the teams still spin). The
+  beams of 07:55-08:02 ran at 51-78k env-steps/s for the same reason (round 3's 5080 did ~750k).
+* Fix (ad5f905): `import surfgym` defaults NUMBA_NUM_THREADS to OMP_NUM_THREADS (train_fast sets
+  it first), else half the quota-aware CPUs (4..32), before goalfield imports numba. The sampler
+  is element-wise: results unchanged (tests/python/test_numba_threads.py: 1 vs 4 threads
+  bit-identical, the env default, an explicit setting kept). On round 3's 32-thread boxes numba
+  had 32 threads - over-subscribed too, so this may be worth some throughput there as well.
+* g10a was stopped (6M steps, the curriculum had moved to [2384,2399] at 100%) and relaunched
+  unchanged as **pbr4b3_g10b** (08:25 UTC) on the fixed commit.
+
+### Harness issue: offers whose visible threads exceed the container's CPU quota
+`config.offer_query`'s `cpu_cores_effective>=32` admits a 64-thread host whose container quota is
+30.7 CPUs (box 57632609). Anything that sizes a thread pool from the visible core count (numba,
+torch's default intra-op pool if OMP_NUM_THREADS is unset, a tool's own `os.cpu_count()`) then
+over-subscribes the quota. This branch's surfgym now caps numba; the operator may want a
+`vast_pick`/`gpu_health` probe that runs the trainer's first iterations and reads steps/s.

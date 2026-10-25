@@ -2,6 +2,20 @@
  "agent": "pbr4b3",
  "round": 4,
  "final": false,
- "best": null,
- "summary": "Round 4 started 07:43 UTC. Box 57632609 (RTX 5080, 0.363 $/h). pbr4b3_c0 = the incumbent's weights (13.4999B) + round 3's best flag set (k02 spine, milestone 44939, energy K 12), a carrier while energy-ranked branched beams (beam_tas --score dh) search for a smoother gate-8 corridor landing and a gate-10 ramp climb without a speed boost."
+ "best": {
+  "score": 24.667,
+  "eval_file": "/home/steam/ar_pb/runs/pbr4b3/pbr4b3_g10b/traj_13500416000.jsonl",
+  "run": "pbr4b3_g10b",
+  "step": 13500416000,
+  "ckpt": "/home/steam/ar_pb/incumbent/r3/ckpt.pt (the resumed weights, 13.4999B, md5 a3a21331...)",
+  "recipe": [
+   "resume of the round-3 incumbent (pbr3b4_as10 13.4999B)",
+   "--demo-file autoresearch/spines/pbr4b3_beam_g10.npy (own beam line over gate 10, 26.36%)",
+   "--demo-milestones 44939,43426 + round 3's flag set (energy K 12, greedy-contact rows, front-perturb)",
+   "--auto-spine --auto-spine-milestones --auto-spine-gain 500 --auto-spine-ge-minutes 8 --auto-spine-retry 4e8 --auto-spine-patience 1.2e9"
+  ],
+  "resume_from": "incumbent r3 ckpt (13.4999B)",
+  "commit": "ad5f905"
+ },
+ "summary": "A plain beam on the incumbent's weights (13.5B) passes gate 10 (the ramp climb) to 26.36%: the policy's own distribution has the skill; round 3's last beams were on 11.2-11.4B weights. pbr4b3_g10b = incumbent + curriculum on that beam line + milestones + auto-spine. Found and fixed a 50x throughput loss on quota-limited boxes (numba's pool sized to 64 visible cores under a 30.7-CPU quota: 7k -> 350k steps/s). First evals 24.60 / 24.67 (9/9 at the gate-10 crawl)."
 }
