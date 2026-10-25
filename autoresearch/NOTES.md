@@ -1544,3 +1544,11 @@ as7's 24.555 eval (ep0) vs the WR demo:
   the milestones pulled back) / 24.551 / 24.644 / 24.688 / 24.591; still 0/9 east of the spawn,
   tunnel exit h ~3,815. The half-pipe practice disturbs the route a little and has not yet
   changed the start.
+* Final skill probe (as12's 15.82B weights, the same three survivable half-pipe states, dh K 8,
+  8 s): from one of them the policy now flies back WEST out of the half-pipe and reaches the crouch
+  tunnel's mouth ((629, -2,879, 3,734) at 7 s, 0.52% past the start on the field) keeping its energy
+  (h 3,772 -> 3,758; our greedy enters that tunnel at ~3,735, the record at ~3,926-3,943) but slowly
+  (199 u/s); from the other two it still loses energy climbing the west wall. ~1.6B steps of
+  survivable field-opposed spawns taught it to survive the half-pipe and to come back onto its
+  route; pumping (gaining energy there) has not appeared yet.
+* as12 evals to 15.80B: 24.52-24.70, 0/9 east of the spawn, tunnel exit h 3,812-3,816.
