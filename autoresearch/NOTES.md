@@ -1736,3 +1736,16 @@ Box: 57632318, RTX 4080 + i9-14900F (32 thr), 0.30 $/h, UK (machine 151788), ren
 * t1 search 2 (14.692B, 20 s): the dh beam alone found d 40,609 (28.94%) -> spine k02 (2,900
   states, md5 40acc997...), success line 40,709; milestone 41,607 added. The loop now runs by
   itself at the 131 fps tick: gate 10 (energy) by the tick, gate 11 by a +H energy GE root.
+* t1 evals after k02: **29.003** (14.768B, 9/9 past 28.8%) / 28.916 (14.843B: 7/9 back at the 24%
+  crawl right after a spine swap - one transient eval) / **29.065** (14.919B, 8/9 at 28.8-29.1%).
+  Gate 12: the line drops west off the north side and falls into a catch at z ~2,600 (x 2,808-2,942,
+  y -1,220..-1,330) at 22.2 s; the record (ANALYSIS ONLY) turns west further south (y ~-1,678) and
+  lands on a lower ramp at z ~2,835 (x 3,224).
+* t1 search 3 (14.768B, 565 s): beam + GE -> spine k03 to d 39,722 (30.49%), success 39,822;
+  milestone 40,709 added (now 44,939 / 43,426 / 42,188 / 41,607 / 40,709).
+* tools/pin_best.py (new, a box helper): scores each new greedy eval and pins a checkpoint AT OR
+  BEFORE a new best (a rolling copy of ckpt_latest covers the minute before the eval), so the
+  round's hand-on finds weights next to the best eval. Run on the box: `setsid nohup nice -n 19
+  python3 tools/pin_best.py <run> &`. Pinned so far: t1 ckpt_14390132736 (26.376),
+  ckpt_14692122624 (28.626), ckpt_14767620096 (29.003, at its eval), ckpt_14930673664 (12M after
+  the 29.065 eval) - all pulled.
