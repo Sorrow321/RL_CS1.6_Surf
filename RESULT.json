@@ -3,11 +3,11 @@
  "round": 4,
  "final": false,
  "best": {
-  "score": 26.376,
-  "eval_file": "/home/steam/ar_pb/runs/pbr4b2/pbr4b2_t1/traj_14390132736.jsonl",
+  "score": 28.626,
+  "eval_file": "/home/steam/ar_pb/runs/pbr4b2/pbr4b2_t1/traj_14692122624.jsonl",
   "run": "pbr4b2_t1",
-  "step": 14390132736,
-  "ckpt": "/home/steam/ar_pb/runs/pbr4b2/pbr4b2_t1/ckpt_14390132736.pt",
+  "step": 14692122624,
+  "ckpt": "/home/steam/ar_pb/runs/pbr4b2/pbr4b2_t1/ckpt_14692122624.pt",
   "recipe": [
    "resume chain: incumbent (pbr3b4_as10 13.4999B) -> pbr4b2_c1 (14.088B) -> pbr4b2_t1",
    "--tick-ms-schedule 10:7.63:3e8 (the WR demo's 131 fps, [8,8,7] ms)",
@@ -15,8 +15,8 @@
    "--auto-spine --auto-spine-milestones --auto-spine-score dh --auto-spine-ge-boost '1.0,+40;+80;+160'"
   ],
   "resume_from": "/home/steam/ar_pb/runs/pbr4b2/pbr4b2_c1 ckpt_latest 14.088B (md5 5339b003...)",
-  "commit": "ff6000d",
-  "ckpt_md5": "aa389f9ce9268103e31960efcc6bdffe"
+  "commit": "256b467",
+  "ckpt_md5": "b1dca100ac6f7435852ff962d43cc35b"
  },
- "summary": "Gate 10 by the policy's own beam line (spine pbr4b2_beam_dh1) + curriculum: c1 26.371 at 10 ms (1-2/9 over). Then the tick ramped 10 -> 7.63 ms (the WR's 131 fps; t1): 9/9 greedy episodes over gate 10 with ~+100 u of energy (h ~3,500 at x 2,600), 26.376 (14.39B); all die at gate 11 (a gap after a kicker, 26.35%). Auto-spine search (dh beams, +H energy GE ladder) next."
+ "summary": "Gate 10 by the policy's own beam line (spine pbr4b2_beam_dh1) + curriculum: c1 26.371 at 10 ms. The tick ramped 10 -> 7.63 ms (the WR's 131 fps; t1): 9/9 over gate 10 with ~+100 u of energy (26.376). Then the trainer's own auto-spine (dh beams, +H GE ladder): search 1 (GE +80 u) found the way over gate 11's gap (spine to 27.37%); the greedy followed in ~150M steps: 28.626 (14.69B, 8/9 over the gap, one to 28.6%); search 2 (beam, 20 s) found 28.94% -> spine k02, training."
 }

@@ -1721,3 +1721,18 @@ Box: 57632318, RTX 4080 + i9-14900F (32 thr), 0.30 $/h, UK (machine 151788), ren
   on north to y -1,720 before turning west (with ~150 u more energy after the kicker). GE stage 1
   (x1.0 / +40 u, 8 min): 41,629 (27.16%), a 0.7 s chain from a post-gap state. All under the 500 u
   gain over the greedy (42,091): stages +80 / +160 running.
+
+### Gate 11 falls to the loop: score 28.626 (09:40 UTC)
+* t1 search 1 (14.541B, 1,046 s with the trainer waiting): beams and branched beams 26.8-27.1%,
+  GE stage 1 (x1.0 / +40 u) 27.16%, GE stage 2 (**+80 u of energy height**, root at the beam
+  line's 20.35 s = x1.129 at that speed) -> a line to d 41,507 (27.37%) = spine k01 (2,802 states,
+  md5 50d33cea..., runs/pbr4b2_t1/auto/k01 on the box), success line 41,607; milestones 44,939 /
+  43,426 / 42,188 kept paying.
+* The greedy followed at once: evals 26.378 (14.617B) / **28.626** (14.692B, median 27.5%): 8/9
+  episodes over the gap, 7 dying at (3,441-3,471, -1,626..-1,717, z ~3,190) at 27.4-27.6% (the record,
+  ANALYSIS ONLY, passes there ~150 u higher at z ~3,337 before turning west and dropping), one
+  (ep5) turning west early and dropping to (3,034, -1,360, 2,602) = 28.63%. Pinned:
+  pbr4b2_t1/ckpt_14692122624.pt (md5 b1dca100..., the eval's own step; pulled).
+* t1 search 2 (14.692B, 20 s): the dh beam alone found d 40,609 (28.94%) -> spine k02 (2,900
+  states, md5 40acc997...), success line 40,709; milestone 41,607 added. The loop now runs by
+  itself at the 131 fps tick: gate 10 (energy) by the tick, gate 11 by a +H energy GE root.
