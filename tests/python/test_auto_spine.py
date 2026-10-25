@@ -291,6 +291,29 @@ def test_the_trainer_swaps_the_curriculum_onto_the_beams_line(tmp_path, monkeypa
 
 
 @needs_pb
+def test_the_swap_recomputes_the_energy_line(tmp_path, monkeypatch):
+    """--demo-success-energy with --auto-spine: the swap asks the new spine's end for its energy."""
+    run = "asp_en"
+    monkeypatch.setenv("AUTOSPINE_STUB_SRC", str(SRC))
+    monkeypatch.setenv("AUTOSPINE_STUB_N", "600")
+    try:
+        r = _run_demo(run, ["--demo-success-d", "64", "--demo-success-bonus", "50",
+                            "--demo-success-energy", "40",
+                            "--auto-spine", "--auto-spine-quorum", "0",
+                            "--auto-spine-beam-tool", "tests/python/autospine_stub_beam.py",
+                            "--auto-spine-ge-minutes", "0",
+                            "--record-every", "2048", "--steps", "10240"], tmp_path)
+        out = r.stdout + r.stderr
+        assert r.returncode == 0, out[-4000:]
+        assert "--demo-success-energy 40: the line is paid" in out
+        assert "auto-spine: the curriculum now runs on runs/asp_en/autospine_01.npy" in out
+        cfg = json.loads((ROOT / "runs" / run / "run.json").read_text())["config"]
+        assert cfg["demo_success_energy"] == 40.0
+    finally:
+        shutil.rmtree(ROOT / "runs" / run, ignore_errors=True)
+
+
+@needs_pb
 def test_refused_without_the_success_line(tmp_path):
     bad = _run_demo("asp_bad", ["--auto-spine"], tmp_path)
     try:
