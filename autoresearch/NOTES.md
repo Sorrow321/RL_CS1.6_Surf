@@ -1680,3 +1680,70 @@ Incumbent: pbr3b4_as10 traj_13500416000 (24.737), weights 13.4999B (md5 a3a21331
 torch's default intra-op pool if OMP_NUM_THREADS is unset, a tool's own `os.cpu_count()`) then
 over-subscribes the quota. This branch's surfgym now caps numba; the operator may want a
 `vast_pick`/`gpu_health` probe that runs the trainer's first iterations and reads steps/s.
+
+### GATE 10 PASSED by the greedy line: 26.357 -> 26.362 (2026-10-25 08:41 UTC)
+* pbr4b3_g10b evals (each 75M steps, ~4 min at 350k steps/s): 24.667 / 24.746 / 24.575 / **26.357**
+  (13.727B, ~230M steps after the resume: 2/9 greedy episodes climb the ramp to 26.36%) / 26.323 /
+  26.338 / **26.362** (13.953B) / 26.342 (14.029B, 3/9). The other episodes still crawl at gate 10
+  (24.1-24.8%). The curriculum walked the spine back 2399 -> ~1800 (18.0 s, the corridor U-turn exit)
+  in ~150M steps and oscillates there (band [1799,1803] 16-24% against the 0.3 rate).
+* Every passing episode - and the beam line itself - DIES at (3,470, -2,340, z 3,197) at 26.34-26.36%:
+  gate 11. trigger_teleport *35 (target start = a fall catch) is a thin sheet at z 3,161-3,169 over
+  x 3,111-3,840, y -2,481..-1,277, flush with the floor (standing origin 3,197, feet 3,161): walking
+  north off the floor's south part is death. Hull traces (standing, downward): a flat floor at origin
+  3,197 everywhere, an L-shaped surf ridge (steep faces) rising to ~3,330 along y ~-3,000 (x 3,240-3,420)
+  and running north at x ~3,480-3,600 to y ~-2,650, solid blocks at x >= 3,540, y -2,600..-2,500 and
+  x <= 3,120, y >= -2,600.
+* The record (ANALYSIS ONLY): flies off the gate-10 ramp top at (3,024, -2,902, 3,269) at 811 u/s
+  (energy height 3,680), lands tangentially on the ridge's west face at x ~3,454-3,510, surfs it north
+  at ~900 u/s (contact) and launches off its north end at (3,521, -2,508, 3,214) with vz +320..+490 in a
+  ~1.5 s arc over the sheet (apex z 3,418) to y ~-1,700. Our line leaves the ramp top 80 u lower at
+  640-700 u/s (h ~3,510), lands FLAT on the floor at x ~3,140 (-160 u) and walks north at ~250 u/s
+  (h ~3,236 at 26%, the record 3,702): gate 11 is energy again, ~170 u short at the ramp top.
+* Searches on g10b's 13.87B weights (beam_tas 4,096 copies, 30-32 s caps, ~25 s each now):
+  d-ranked 42,081 / dh K 3 42,080 / dh K 8 42,085 - all at the sheet, energy profiles within 20-60 u
+  of each other (10% 3,619-3,655, 21% 3,454-3,460, 25% 3,361-3,532): energy-weighted ranking does not
+  buy energy, the policy's proposals all fly the same way. Branched beams (half forked at 19, 20, 21 s,
+  held view offsets +-45 / +-90 deg for 0.5 s over 2 s): 42,081-42,084, every forked lineage dead.
+* GE11 (08:52 UTC): explore_phase1 --exact-chains rooted at 24 of the newest beam line's
+  states over the gate-10 ramp ride (19.0-21.0 s) x speed 1.0 / 1.1 / 1.2 / 1.3, 64 u x energy 32 cells,
+  10 min at 12 threads beside the trainer: which boost crosses the sheet?
+* GE11 result (10 min, 3.9M runs, 125,908 cells): best progress per speed factor of the ramp roots -
+  x1.0 **26.07%** (nothing over the sheet), x1.1 26.54%, x1.2 26.95%, x1.3 **27.42%**. The x1.3 chain
+  (ge_replay 9/9 exact) from the ramp's foot (2,445, -3,025, 2,881) at 1,196 u/s (h 3,775): higher off
+  the ramp top (z 3,423), onto the ridge at (3,539, -2,852), surfs it north, launches at y -2,452
+  (z 3,334, vz +286) and flies over the sheet to (3,392, -1,764, 3,188) - still ~200 u short of the
+  way on.
+* Gate-11 room (hull traces from below the 3,677 ceiling): x 3,180-3,780, y -2,550..-1,350, its floor
+  at origin 3,197 lethal north of y -2,481 (the sheet), a pillar at x 3,180-3,420, y ~-2,220, and the
+  ONLY way on a hole in the floor at x 3,240-3,660, y -1,425..-1,575 (drops to 2,612) - ~1,000 u of
+  flight from the ridge's north end. Ballistics: launching at z ~3,330 with vz +500 gives ~1.5 s of air
+  under the ceiling, so ~680 u/s horizontal (|v| ~840 at the launch). The policy reaches the ridge
+  walking; it needs ~+250-350 u of energy height at the ramp (24%: ours 3,405-3,437, x1.3 root 3,775,
+  the record ~3,600 with a better line).
+* Where that much energy can come from (a hypothesis, being tested): our policy air-strafes at the
+  per-frame optimum (+0.56 u of energy height per tick in free flight, measured on ep0 18.0-19.45 s:
+  +94 u in 1.45 s) - and that optimum is PER FRAME (PM_AirAccelerate adds 30 u/s perpendicular: |v|^2
+  grows by 900 per frame whatever the speed). The record runs 7.62 ms frames (131 fps): 74 u/s of
+  energy height per second of strafing against our 56 at 100 Hz. Over the ~10-15 s of flight from 10%
+  to 24% that is ~+180-250 u - the size of the deficit, and the reason a better LINE alone (the dh
+  beams: +20-60 u) cannot close it. CLAUDE.md documents --tick-ms / --tick-ms-schedule for exactly
+  this (cannonball's WR also ran 131 fps).
+
+### The tick (frame rate) test: the frozen policy's beam at 10 / 8.75 / 7.67 ms (09:05 UTC)
+* The same d-ranked beam (4,096 copies, g10b's 14.0B weights trained at 10 ms) with beam_tas
+  `--tick-ms`: 10 ms 42,089 (26.35%, the sheet); **8.8 ms (realised [9,9,9,8] = 8.75 ms, 114 Hz):
+  41,931 = 26.62%**, the line carrying +38..+62 u of energy height at every level (5% 3,878 vs 3,821;
+  20% 3,770 vs 3,732; 24% 3,476 vs 3,422; 25% 3,581 vs 3,519) and - with it - flying off the ramp top
+  higher and onto the ridge at x ~3,520 and SURFING IT NORTH over the sheet's edge (the record's way)
+  to (3,522, -2,161, 3,209); 7.63 ms ([8,8,7]): 18.27%, extinct at the gate-8 corridor - a memorised
+  line breaks at a 30% faster air acceleration (CLAUDE.md's xQR32 result), while a 14% change keeps it.
+* g10b evals to 14.33B: 26.300 / 24.581 / 26.333 / 26.330 (1-3/9 over gate 10, never more).
+* **pbr4b3_t1** (09:12 UTC): g10b's 14.365B weights (md5 a5339175...) + g10b's flags +
+  `--tick-ms-schedule 10:7.63:800e6` (the tick moves linearly 10 -> 7.63 ms over 800M steps, then
+  holds; every per-second constant follows) + `--ckpt-every 2e8` (milestones for the handoff), 2B
+  steps. Question: does the route survive the ramp (the curriculum, the milestones and the start-room
+  states re-teach it), and does the energy at 24-26% rise toward the ~+250 u gate 11 needs?
+  Generic: the tick is the player's frame rate (the WR's 131 fps), map-independent; the lineage
+  already takes sv_maxvelocity 3500 from the same demo's movevars. A checkpoint carries its ramp, so a
+  next-round resume of this lineage CONTINUES at 7.63 ms (the trainer prints the tick).
