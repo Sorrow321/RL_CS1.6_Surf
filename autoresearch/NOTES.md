@@ -1842,3 +1842,6 @@ beam_tas from the true start on t8e's weights (8 ms, 4,096 copies, 30 s):
   search -> curriculum cycle (~1.3-1.5 h from spine to greedy) does not fit before the wrap-up, so t8h
   keeps k09 to the end. GE_g12 (17:04 UTC, 8 min, trainer paused): exact chains at 8 ms rooted at that
   line's last 2 s (x1.0, x1.04) - the next round's gate-12 starting point.
+* GE_g12 result (8 min, 98k cells): deepest 27.38% (3,330, -1,813, 3,187) from the beam line's own state
+  at 20.6 s x1.04 - higher over gate 11 (z 3,414 at 26.4%), then down north-west into gate 12 (a hit
+  at ~27.3%, h 3,649 -> 3,558). Spine pbr4b1_k10_t8.npy saved for the next round (not used in round 4).

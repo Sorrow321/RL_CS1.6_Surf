@@ -139,3 +139,10 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   the 26.547 eval's - half forked at 15.0 s with held view offsets, 8 ms tick, replayed exactly): the
   soft gate-10 ramp-top turn (h 3,530-3,635 from 24 to 26.5%), north up to z 3,309 at 26.6%, on at
   835 u/s. No demo, no record (pbr4b1, round 4).
+* `pbr4b1_k10_t8.npy` (2,764 states, md5 3d82b1a0b5143eb39b328fa477d31a8f; for the NEXT round, not
+  trained on in round 4): the policy's own energy-ranked branched beam line (beam_tas `--score dh
+  --score-energy 3`, 4,096 copies of pbr4b1_t8h's 14.93B weights - the 27.147 eval's - half forked at
+  20.0 s, 8 ms tick) to its state 2,580 (20.6 s, 25.9%) + the deepest exact Go-Explore chain (uniform
+  random actions, 64 u x energy 32, 8 min) rooted there with the velocity x1.04, views along the
+  velocity: higher over gate 11 (z 3,414 at 26.4%), north-west down to 27.38% (3,330, -1,813, 3,187),
+  where it hits something (gate 12). No demo, no record (pbr4b1, round 4).
