@@ -140,3 +140,15 @@ def test_flag_off_is_byte_identical(tmp_path):
     for k in set(sa) | set(sb):
         if k not in ("env_steps_per_s", "search_wall_s"):
             assert sa.get(k) == sb.get(k), k
+
+
+def test_pareto_dominance_count_matches_brute_force():
+    """--score pareto ranks by how many lineages dominate one on (d lower, energy higher)."""
+    from beam_tas import pareto_dominated
+    rng = np.random.default_rng(0)
+    d, h = rng.uniform(0, 1, 2500), rng.uniform(0, 1, 2500)
+    c = pareto_dominated(d, h, chunk=700)
+    for i in range(0, 2500, 61):
+        bf = int(((d <= d[i]) & (h >= h[i]) & ((d < d[i]) | (h > h[i]))).sum())
+        assert c[i] == bf
+    assert list(pareto_dominated([1., 2., 3., 2., 5.], [1., 3., 2., 3., 0.])) == [0, 0, 2, 0, 4]

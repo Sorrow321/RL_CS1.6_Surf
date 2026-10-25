@@ -1555,6 +1555,34 @@ def print_cadence(c, label="winner"):
           f"fwd key held on {100 * c['fwd_air']:.1f}%")
 
 
+def pareto_dominated(d, h, chunk: int = 1024):
+    """-> (N,) float64: how many points dominate each one for the objectives (d lower, h
+    higher): d_j <= d_i and h_j >= h_i with one strict. 0 = the Pareto front."""
+    d = np.asarray(d, np.float64)
+    h = np.asarray(h, np.float64)
+    out = np.zeros(len(d), np.float64)
+    for a in range(0, len(d), chunk):
+        di, hi = d[a:a + chunk, None], h[a:a + chunk, None]
+        dom = (d[None, :] <= di) & (h[None, :] >= hi) & ((d[None, :] < di) | (h[None, :] > hi))
+        out[a:a + chunk] = dom.sum(axis=1)
+    return out
+
+
+def pareto_note(states, elig, lead, sc, gravity: float) -> str:
+    """--score pareto's log column: the energy height of the leader and the population's best,
+    the eastmost and westmost lineage and the size of the front, over the lineages alive at
+    this boundary."""
+    o = np.asarray(states["origin"], np.float64)[elig]
+    v = np.asarray(states["velocity"], np.float64)[elig]
+    h = o[:, 2] + (v * v).sum(axis=-1) / (2.0 * float(gravity))
+    lo = np.asarray(states["origin"], np.float64)[lead]
+    lv = np.asarray(states["velocity"], np.float64)[lead]
+    hl = lo[2] + float((lv * lv).sum()) / (2.0 * float(gravity))
+    front = int((np.asarray(sc)[elig] > -0.5).sum())
+    return (f"h_lead={hl:6.0f} h_max={h.max():6.0f} x={o[:, 0].min():6.0f}..{o[:, 0].max():6.0f} "
+            f"front={front:4d} ")
+
+
 def make_scorer(gf, route_file, corridor, mode, value_fn=None,
                 v_switch: float = 0.0, energy_k: float = 1.0, gravity: float = 800.0):
     """-> score(states, obs) = (higher is better, geodesic d).
@@ -1586,6 +1614,19 @@ def make_scorer(gf, route_file, corridor, mode, value_fn=None,
             v = np.asarray(states["velocity"], np.float64)
             h = o[:, 2] + (v * v).sum(axis=-1) / (2.0 * float(gravity))
             return -d + float(energy_k) * h, d
+        return score
+    if mode == "pareto":
+        # pbr3b3 (2026-10-25): rank by Pareto dominance on (field distance d, energy height h):
+        # a lineage's score is minus the number of lineages at least as deep AND at least as
+        # energetic (one of them strictly), depth breaking ties. No weight between the two: a
+        # line that is BEHIND but carries more energy - a momentum ramp that runs against the
+        # field - stays on the front instead of being cloned over by the deeper, slower ones
+        def score(states, obs=None):
+            d = gf.sample(states["origin"]).astype(np.float64)
+            o = np.asarray(states["origin"], np.float64)
+            v = np.asarray(states["velocity"], np.float64)
+            h = o[:, 2] + (v * v).sum(axis=-1) / (2.0 * float(gravity))
+            return -pareto_dominated(d, h) - 1e-6 * d, d
         return score
     if mode in ("v", "dv"):
         if value_fn is None:
@@ -2011,14 +2052,16 @@ def main():
                     help="do not require the greedy gate to finish (implied "
                     "by --greedy-prefix: searching from the wall is only "
                     "interesting for a policy that does NOT finish)")
-    ap.add_argument("--score", choices=["d", "route", "v", "dv", "dh"],
+    ap.add_argument("--score", choices=["d", "route", "v", "dv", "dh", "pareto"],
                     default="d",
                     help="boundary ranking: 'd' = geodesic (spawn-to-finish "
                     "search), 'route' = route vertex index then d (wall "
                     "search - see make_scorer), 'v' = the checkpoint's own "
                     "critic, 'dv' = d until the frontier is within "
                     "--v-switch of the goal, then the critic, 'dh' = -d + "
-                    "--score-energy x the energy height z + |v|^2/2g (an energy gate)")
+                    "--score-energy x the energy height z + |v|^2/2g (an energy gate), "
+                    "'pareto' = Pareto dominance on (d, energy height): no weight, a "
+                    "line behind but carrying more energy stays on the front")
     ap.add_argument("--score-energy", type=float, default=1.0,
                     help="--score dh: u of geodesic distance one u of energy height is worth")
     ap.add_argument("--v-switch", type=float, default=20000.0,
@@ -3142,6 +3185,16 @@ def main():
                 gen += 1
                 states = coreN.get_states()
                 sc, dgeo = scorer(states, obs)
+                if args.score == "pareto":
+                    # the dominance count over the LIVE lineages only: a dead env already
+                    # holds its respawn (the start), which must not dominate anyone
+                    _o = np.asarray(states["origin"], np.float64)
+                    _v = np.asarray(states["velocity"], np.float64)
+                    _h = _o[:, 2] + (_v * _v).sum(axis=-1) / (
+                        2.0 * float(cfg.get("sv_gravity") or 800.0))
+                    _dd = np.where(valid, dgeo, np.inf)
+                    _hh = np.where(valid, _h, -np.inf)
+                    sc = -pareto_dominated(_dd, _hh) - 1e-6 * dgeo
                 if arcp is not None:
                     # best arc first (quantized if asked), the --score
                     # value inside a tie; invalid rows sort last. lexsort
@@ -3288,6 +3341,9 @@ def main():
                           + (f"br={br_live:4d}/{br_el:4d}el "
                              f"brd={br_d:8.0f} "
                              if br_fired >= 0 else "")
+                          + (pareto_note(states, elig, keep[0], sc,
+                                         float(cfg.get("sv_gravity") or 800.0))
+                             if args.score == "pareto" else "")
                           + f"finishes={len(finishes)}")
         dt_loop = time.time() - t_loop
         n_ticks = t + 1 - t_start
