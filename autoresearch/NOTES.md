@@ -2265,6 +2265,35 @@ minute). Incumbent: pbr4b3_t11 ckpt_23551016960 (md5 7fbcd458...), eval 52.937 a
 * Spine `pbr5b2_e1c` = e1 cut at row 5,004 (57.20%, d 24,459, just past the climb on the upper level; success line
   57.02%): the next gate only (round 2's lesson: move the success line one gate at a time). Its x1.08 root is row
   4,661 (row 4,660 = the policy's own U-exit state), 345 rows before the end.
-* **pbr5b2_c4** (22:10 UTC): c3's 24.626B weights (md5 3a2d4848...) + e1c + keys + the 16 milestones (..., 25,121,
+* **pbr5b2_c4** (22:06 UTC): c3's 24.626B weights (md5 3a2d4848...) + e1c + keys + the 16 milestones (..., 25,121,
   24,479) + c3's other flags, 4e9 steps. Expect a stall at band [4,656,4,660] (unboosted, before the x1.08 root);
   round 4's gate 15 was passed by the greedy ~150M steps after an x1.08 swap.
+
+### c4: the greedy finds the shaft, not the energy; the descent needs teaching for ENERGY (22:06-22:36 UTC)
+* c4 (spine e1c to 57.2%) evals 56.118 / 56.146 / 56.193 / 56.222 / **56.579** (24.929B, median 56.24%) / 56.233 /
+  56.216: 2/9 episodes now go UP THE SHAFT into the upper room (56.58%, then wander there until the patience cut;
+  another reached the shaft at 56.35%). Handoff for 56.579: c4's snapshot ckpt_24826609664 (pulled, md5
+  8e092b45...; c4's ckpt_latest 25.172B pulled too). The curriculum reached the x1.08 root within ~15 min and sat
+  there: band [4,664,...] (boosted) 73%, band [4,659,...] (incl. the policy's own U-exit rows 4,659-4,660) 2.4-2.9%.
+* Physics of those episodes: energy height at the U-bottom 2,301-2,333 (record ~3,040, ANALYSIS ONLY), into the shaft
+  at z 2,000 with vz +349 (record +874), top z ~2,139; the column to the high area needs z >= ~2,380, i.e. >= ~800 u/s
+  vertical at the shaft: ~200-450 u of energy the policy's line does not have.
+* Where it is lost (beams, probes): every policy line has three impacts over 50-53% - a wall at 50.2% (-200..-346),
+  the slanted func_wall/conveyor contact at 51.7% (-310..-497; the record loses ~300 there too) and a floor landing
+  at 52.8% (-353..-370; the record flies over it). Forked policy beams 0.5-1 s before the 50.2% wall with small held
+  view offsets (+-10 / +-20 deg, protected 4-5 generations, dh K 2-3 ranking): every forked lineage dead, the same
+  three impacts in the frontier line - the policy's descent is a narrow tube.
+* No booster: the only pushes near the climb are 30-50 u/s sheets (trigger_push *212 / *213); the record's one-frame
+  +1,905 vz at 51.7% is a demo artifact that cancels the next frame.
+* The searched cleaner descent: in search 1's stage-1 archive the energetic U-bottom states (h 2,512-2,741) all come
+  from x1.04 roots at the beam line's rows 4,370-4,372 (51.2%: +4% speed = ~+70 u there); x1.0 roots reach <= 2,389
+  (GE-F, unboosted roots over 49.5-51.6% with the rising split, 12 threads beside c4: <= 2,017 / 2,604 at x1.04, null).
+  Chain A (x1.04) keeps ~600 u more than the policy's line through 51.7-54.5% (h at 53%: 3,055 vs 2,379).
+* **`train_fast --demo-success-energy M`** (0739d2d; train_fast.energy_gate; tests/python/test_demo_success_energy.py:
+  the gate, print/dump/refusals, flag off bit-identical to the trainer at 10456fb): a spine episode succeeds and is
+  paid the bonus only if it crosses the success line with energy height >= the spine end's - M. A spine found for its
+  energy and no deeper than the greedy is otherwise a trivial success. Generic (the spine's own end state).
+* **pbr5b2_c5** (22:36 UTC): c4's 25.172B weights (md5 bb43ff40...) + spine `pbr5b2_e1d` (e1 to chain A's end, 4,597
+  rows, end h 2,741; success line d(end)+100 at 54.4%) + `--demo-success-energy 200` (h >= 2,541 at the crossing; the
+  greedy has ~2,300) + the 16 milestones + c4's other flags, no --auto-spine (refused with the energy rule). 30-min test:
+  does the curriculum walk chain A back to its x1.04 root, and does the greedy's U-bottom energy rise?
