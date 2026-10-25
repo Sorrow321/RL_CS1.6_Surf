@@ -1826,3 +1826,19 @@ throttled) and could read it as a bad box. The fix is one line in python/train_f
 * **pbr4b4_c8** (11:49 UTC): c7's weights + --respawn-greedy-impacts 3 + --auto-spine-ge-minutes 0
   (beam searches only, ~3 min) --auto-spine-gain 200 (a beam line 200 u past the greedy median
   becomes the spine) --auto-spine-delay 2e8 --auto-spine-retry 6e8, --demo-tau0 1730.
+
+### Recommendation for the user / the next rounds: the 10 ms tick (11:51 UTC, ANALYSIS ONLY)
+* Energy GAINED and LOST between 10% and 26.5% (0.01 s steps of h = z + |v|^2/1600, duck-toggle
+  jumps of the origin removed): the record 11.13 s, **gains 908 u (82 u/s per s), losses 839**, net
+  +69; our c7 16.78B greedy (5 episodes that get there) 11.6-11.9 s, **gains ~470 (40 u/s per s),
+  losses 540-605**, net -73..-131. In contact-free flight our policy is already AT the 10 ms ceiling
+  (56.25 u/s per s, measured max 56.0-56.2); the record at 131 fps has a 73.7 ceiling and also
+  strafes more of the time (it also gains on ramps).
+* At the record's frame time (7.63 ms, CLAUDE.md --tick-ms: 30% more air-accelerate impulses per
+  second) our own gains alone would be ~1.31x: **+~145 u by 26.5%** - most of the ~190 u the north
+  gap needs, before any landing improvement. Every gate since 7% has been an energy gate.
+* Not acted on this round: the tick is a property of the task every round inherits (the program
+  runs 10 ms; a frozen policy does not transfer across ticks - CLAUDE.md --tick-ms-schedule, a ramp
+  10 -> 7.63 over ~5e8 steps would re-learn every precision gate; tools/auto_spine.py assumes 10 ms
+  (TICKS_PER_S) and explore_phase1 builds a 10 ms core). It needs the user's / operator's decision:
+  it matches the WR's own client physics the way --maxvel 3500 matches its server's movevars.
