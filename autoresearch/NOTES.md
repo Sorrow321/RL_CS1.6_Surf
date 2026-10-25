@@ -2297,3 +2297,22 @@ minute). Incumbent: pbr4b3_t11 ckpt_23551016960 (md5 7fbcd458...), eval 52.937 a
   rows, end h 2,741; success line d(end)+100 at 54.4%) + `--demo-success-energy 200` (h >= 2,541 at the crossing; the
   greedy has ~2,300) + the 16 milestones + c4's other flags, no --auto-spine (refused with the energy rule). 30-min test:
   does the curriculum walk chain A back to its x1.04 root, and does the greedy's U-bottom energy rise?
+
+### c5: the energy-gated curriculum teaches the descent - 56.711 (2026-10-25 23:11 UTC)
+* c5 evals 56.165 / 56.177 / 56.161 (25.55-25.70B, energy at 53% ~2,330 as before), then **56.711** (25.776B, median
+  56.51%) / 56.709 (25.852B): the greedy now flies chain A's descent from its own state - energy height at first arrival,
+  median of the episodes: 53% 2,331-2,352 -> **2,864-2,897**, 54.5% ~2,310 -> 2,661-2,672, 56% ~2,300 -> 2,591-2,593 (+~300 u
+  into the climb). 7/9 episodes of the 56.711 eval reach the upper room (56.47-56.71%, z up to ~2,264; before ~2,130);
+  they top out at x ~-2,363..-2,392, 40-70 u WEST of the column (x -2,320..-2,224) that leads up. Two episodes fell back to
+  the 24% crawl (gate 10) in that eval: some erosion.
+* The curriculum: chain A's end (4,596) -> its edge-pass bands (4,466 / 4,461: 25 -> 39%) -> the key change at 4,451
+  (0.1% for a while) -> past chain A's x1.04 root (4,372) -> the beam rows at 38-83% (row 3,721 at 25.86B), in ~35 min.
+  The x1.04 root band did NOT stall (an energy-gated success rewards arriving with the energy, and the policy found it
+  from its own unboosted state).
+* Handoff for 56.711: c5's snapshot ckpt_25772425216 (3.7M steps before the eval; md5 25a4f93c..., pulled).
+* So: **a spine found for its energy needs a success rule that asks for the energy** (`--demo-success-energy`): the
+  depth rule would have counted every crossing (the greedy already flies past chain A's end), and a boosted depth spine
+  (c4's e1c) stalled at its root. Generic: the margin is relative to the spine's own end state.
+* 23:13 UTC: c5 paused at 25.876B (ckpt md5 4728837e...); auto_spine.py by hand on its weights (beam, branched beams at
+  4,970 / -1 s / -2 s + energy forks, GE stage 1 x1.0 / 1.04 with the rising split, 8 min): is the column climb now in
+  reach of the policy's own (energetic) line?
