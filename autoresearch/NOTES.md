@@ -2037,10 +2037,29 @@ over-subscribes the quota. This branch's surfgym now caps numba; the operator ma
   (height + speed on arrival, not depth), and a policy-frame explorer for contacts like this one (a continuous
   view offset, not 8 key directions, if the spine is to carry it).
 
-### pbr4b3 round 4 lesson (DRAFT 16:57 UTC, finalised at wrap-up)
-* **Score 24.737 -> 47.253** (pbr4b3_t11 21.250B, 9/9 greedy episodes at 47.1-47.25% from the true start). Gates
-  10, 11, 12, 13 (the auto-spine's 35/41/43.7/45.2% lines) and 14 passed; gate 15 (47.3%) had a x1.12 GE spine at
-  the end of the round.
+### GATE 15 PASSED by the trainer's own loop: 47.253 -> 51.093 (2026-10-25 18:27 UTC)
+* (The analysis above was right about k02 and wrong about the loop.) t11's auto-spine search 3 fired on PATIENCE at
+  22.910B (17:52 UTC, 1.2e9 steps after k02 with no quorum; ~25 min of trainer wait): beam / three branched beams
+  30,183 (no gain); GE stage 1 (x1.0 / 1.04) 29,997; **stage 2 (x1.08) 28,683 = 49.81%** from root 3,819 of the
+  policy's own beam line (a LESS boosted chain than k02's x1.12, from a later root) -> spine k03 (4,438 states,
+  keys translated; autoresearch/spines/pbr4b3_auto_t11k03). The greedy followed it ~150M steps after the swap:
+  eval 22.986B 47.132, **23.062B 50.720** (7/9 at 50.5-50.7%) -> the 9/9-style quorum fired search 4 at once
+  (37 s): the PLAIN beam on t11's own weights reached d 26,901 = 52.93% -> spine k04 (4,700 states, the beam's own
+  keys; pbr4b3_auto_t11k04). Evals **23.137B 51.093** (9/9 at 47.5-51.1%, median 50.7%; best), 23.213B 50.887.
+* Handoff: the snapshot before the 51.093 eval, ckpt_22950182912 (187M steps before), predates the breakthrough
+  (its own eval 22.986B: 47.13), so ckpt_latest was pulled at 18:29 UTC = step 23,203,414,016 (66M after the
+  eval, > 2x nearer; md5 ca202f62...) and is the RESULT.json ckpt; ckpt_23150460928 (13M after) pulled as well.
+* So the loop beat my diagnosis: a x1.08 chain from a later root was learnable where the x1.12 chain from root
+  3,782 stalled at its launch - the escalation ladder's FIRST sufficient boost, re-searched on newer weights, is
+  what passed. Patience (1.2e9) mattered: the quorum would never have fired on k02.
+* Gate 16 (50.7-51.1%): 8/9 episodes end with "fail" AT their best row, at (-2,240..-2,410, 340..520, 2,900-3,095),
+  700-1,075 u/s - a fail trigger at the north end, reached lower than the record's line there (ANALYSIS ONLY: the
+  record is at z ~3,316 by y 255). The k04 curriculum was at [4,189, 4,699] at 30-34% success at 18:31 UTC.
+
+### pbr4b3 round 4 lesson (wrap-up, 2026-10-25)
+* **Score 24.737 -> 51.093** (pbr4b3_t11 23.137B, 9/9 greedy episodes at 47.5-51.1% from the true start, median
+  50.7%; 0 finishes). Gates 10, 11, 12, 13 (the auto-spine's 35/41/43.7/45.2% lines), 14 (47.25%) and 15 (50.7-51.1%)
+  passed; gate 16 is a fail trigger at the north end of the corridor (~51%).
 * **What did it, in order of effect:**
   1. **Throughput, 50x on a quota-limited box** (ad5f905): numba sized its pool to 64 visible cores under a 30.7-CPU
      quota and the goal field's prange team throttled the trainer to ~7k steps/s; surfgym now defaults
@@ -2060,11 +2079,37 @@ over-subscribes the quota. This branch's surfgym now caps numba; the operator ma
   5. **The view-follow explorer** (`explore_phase1 --view-follow`, auto_spine's default now): bursts hold an offset
      from the velocity heading, so chains are found in the policy's own frame - gates 12 and 14 fell to UNBOOSTED
      chains from the policy's own states (the uniform yaw-rate explorer needed x1.04-1.32 there).
-  6. **The trainer's own loop**: once the keys were right, t9's auto-spine swapped in four of the policy's beam lines
-     in 30 min (35 -> 41 -> 43.7 -> 45.2%) with no agent in the loop; milestones kept every crossed line paid.
+  6. **The trainer's own loop (`--auto-spine`, quorum 5/9 or patience 1.2e9 steps)**: once the keys were right, t9
+     swapped in four of the policy's beam lines in 30 min (35 -> 41 -> 43.7 -> 45.2%); in t11 the loop's third search
+     (on PATIENCE, 1.2e9 steps after a x1.12 spine that stalled at gate 15's launch) found a x1.08 chain from a later
+     root, the greedy passed it ~150M steps after the swap (47.13 -> 50.72), and the quorum's search 4 swapped in the
+     policy's own beam to 52.9% in 37 s. No agent in the loop for either gate; milestones kept every crossed line
+     paid.
 * **What did not:** energy-ranked beams (`--score dh`: +20-60 u, the same lines), branched beams at gates 11-12,
   start-state beams from mid-line states (all lineages died - beam_tas's start path is not the trainer's spawn),
-  wider band temperature (T 2, yaw x25: worse), boosted GE spines (x1.32 at gate 11: the greedy followed most of it,
-  then the policy's own beam did the rest).
-* **Where it stands:** gate 15 (47.3%) is the energy lost at gate 14's rebound off a corner (-518 u; the record keeps
-  its speed there); the x1.12 spine k02 (to 49.75%) was being learned at the end.
+  wider band temperature (T 2, yaw x25: worse), boosted GE spines from early roots (x1.32 at gate 11, x1.12 at gate
+  15: the curriculum stalls on the part the policy cannot reach at its own speed - k02's band before the launch sat
+  at 0.0-0.4% for 1.2e9 steps), my own reading of gate 15 (I called it an approach problem the loop could not
+  solve; a less boosted chain from a later root solved it - measure before concluding, and let patience run).
+* **Numbers:** t11 (resume of t10 20.947B, 3e9 budget): 47.253 at 21.250B (gate 14), 47.1-47.2 for 1.7e9 steps on
+  k02, 50.720 at 23.062B, **51.093 at 23.137B**, 50.887 at 23.213B. ~330k steps/s on the 3090 box between searches;
+  each search stage is ~8 min of trainer wait (search 2: 1,647 s; search 3: ~25 min; search 4: 37 s).
+* **To continue (next round):** resume `ckpt_latest` of pbr4b3_t11 (23.203B; the RESULT.json ckpt) with t11's flags
+  and the last spine: `ARM_RESUME=1 SELF_STATES=1 bash tools/run_arm.sh <run> --envs 1024 --maxvel 3500
+  --ckpt-every 2e8 --demo-file autoresearch/spines/pbr4b3_auto_t11k04.npy --demo-keys
+  autoresearch/spines/pbr4b3_auto_t11k04.keys.npy --demo-window 5 --demo-grow 5 --demo-grow-max 40
+  --demo-cooldown 5 --demo-rate 0.3 --demo-front-frac 0.8 --demo-success-d 100 --demo-success-bonus 50
+  --demo-milestones 44939,43426,42182,41015,40497,39943,37251,33777,32260,31429,30286,28818,28783
+  --keys-hold-spawn-duck --yaw-entropy 0 --demo-front-temp 0.5 --demo-front-ticks 40 --demo-front-view 6
+  --respawn-greedy 0.2 --respawn-greedy-window 0.25 2.0 --respawn-greedy-stuck 200 --respawn-greedy-contact
+  --respawn-greedy-temp 0.5 --respawn-greedy-temp-ticks 100 --respawn-greedy-temp-view 6 --respawn-front-perturb
+  0.2 --respawn-front-perturb-band 0.005 --respawn-front-perturb-speed 1.0 1.3 --respawn-front-perturb-turn 90
+  --energy-pot 12 --energy-pot-front 0 --energy-pot-front-bonus 0 --no-respawn-novel --respawn-backward-mix 0
+  --int-real-only 0 --spawn-states autoresearch/spines/pbr1b1_entry_ge_states.npy --spawn-states-frac 0.2
+  --auto-spine --auto-spine-milestones --auto-spine-gain 500 --auto-spine-ge-minutes 8 --auto-spine-retry 4e8
+  --auto-spine-patience 1.2e9`. The checkpoint carries the 7.63 ms tick (never pass --tick-ms-schedule to it) and
+  the keys-hold / potential / view shapes. On a quota-limited box check `nproc` vs the cgroup quota first (the numba
+  fix is in surfgym; the CPU count the trainer sizes from is the quota).
+* **Where it stands:** gate 16 (~51%) - 8/9 greedy episodes end with "fail" at their best row at (-2,240..-2,410,
+  340..520, 2,900-3,095), lower than the record's line there (ANALYSIS ONLY); the k04 curriculum was walking back
+  through [4,189, 4,699] at 30-34% at the end. The loop is running: let its patience fire before intervening.

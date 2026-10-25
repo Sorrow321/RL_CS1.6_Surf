@@ -3,11 +3,11 @@
  "round": 4,
  "final": false,
  "best": {
-  "score": 47.253,
-  "eval_file": "/home/steam/ar_pb/runs/pbr4b3/pbr4b3_t11/traj_21249916928.jsonl",
+  "score": 51.093,
+  "eval_file": "/home/steam/ar_pb/runs/pbr4b3/pbr4b3_t11/traj_23137353728.jsonl",
   "run": "pbr4b3_t11",
-  "step": 21249916928,
-  "ckpt": "/home/steam/ar_pb/runs/pbr4b3/pbr4b3_t11/ckpt_21249916928.pt",
+  "step": 23137353728,
+  "ckpt": "/home/steam/ar_pb/runs/pbr4b3/pbr4b3_t11/ckpt_latest.pt",
   "recipe": [
    "resume of the round-3 incumbent (pbr3b4_as10 13.4999B)",
    "--demo-file autoresearch/spines/pbr4b3_ge18ck.npy --demo-keys autoresearch/spines/pbr4b3_ge18ck.keys.npy (own beam line + an unboosted view-follow GE chain past the 44.2% crash, to 47.18%; canonical views, translated keys) --demo-window 5 --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5 --demo-rate 0.3 --demo-front-frac 0.8 --demo-success-d 100 --demo-success-bonus 50",
@@ -18,11 +18,11 @@
    "--spawn-states autoresearch/spines/pbr1b1_entry_ge_states.npy --spawn-states-frac 0.2 --maxvel 3500",
    "--auto-spine --auto-spine-milestones --auto-spine-gain 500 --auto-spine-ge-minutes 8 --auto-spine-retry 4e8 --auto-spine-patience 1.2e9",
    "--tick-ms-schedule 10:7.63:800e6 --ckpt-every 2e8",
-   "t9's own --auto-spine then swapped in four policy beam lines: k01 34.99% (19.598B), k02 41.07% (19.674B), k03 43.73% (19.976B), k04 45.18% (20.127B)"
+   "t9's own --auto-spine then swapped in four policy beam lines: k01 34.99% (19.598B), k02 41.07% (19.674B), k03 43.73% (19.976B), k04 45.18% (20.127B); t11's auto-spine (resumed from t10 20.947B): search 2 k02 (x1.12 GE, 49.75%, 21.70B; its curriculum stalled at the launch), search 3 on patience k03 (x1.08 GE chain to d 28,683 = 49.81%, 22.91B), passed by the greedy within ~150M steps (50.72 at 23.06B), search 4 k04 = the policy's own beam line to d 26,901 = 52.93% (23.06B)"
   ],
   "resume_from": "pbr4b3_t10 ckpt_latest 20.947B (tick 7.667 ms)",
-  "commit": "4c8f7cb",
-  "ckpt_note": "the EXACT weights of the eval: ckpt_latest saved by the auto-spine search at step 21,249,916,928, pinned as ckpt_21249916928.pt and pulled, md5 32bc5715dca238f82cf54a49a24179a7"
+  "commit": "48ebb3e",
+  "ckpt_note": "ckpt_latest.pt pulled at 18:29 UTC = step 23,203,414,016 (md5 ca202f623924570dca81f1a450e8900c), 66M steps after the 51.093 eval; the snapshot before the eval, ckpt_22950182912.pt (187M before, pulled too), predates the gate-15 breakthrough (its own eval at 22.986B scored 47.13), so the handoff is ckpt_latest by the 2x-nearer rule; ckpt_23150460928.pt (13M after the eval) is pulled as well. Earlier best 47.253: ckpt_21249916928.pt (exact eval weights, md5 32bc5715...)."
  },
- "summary": "24.737 -> 47.253 (pbr4b3_t11 21.250B, 9/9 at 47.1-47.25%; t10 44.505; t9 44.025 at 20.127B; 33.376 at 19.598B when gate 12 opened, then the trainer's own auto-spine swapped in four beam lines (35 / 41 / 43.7 / 45.2%) within 30 min). Gate 10: a plain beam on the incumbent's weights. Gates 10-11 were ENERGY: air-strafe gain is per frame and the record runs 131 fps; --tick-ms-schedule 10 -> 7.63 ms took gate 10 from 1-3/9 to 9/9, then gate 11 by GE + the policy's own beam. Gate 12 (a ramp surf below the gate-11 hole) needed the spawn's HELD KEYS: under --keys-hold every spine spawn reset them to neutral; tools/spine_canon_keys.py (view along the velocity, keys translated so the wish direction survives) + train_fast --demo-keys opened it at once. Also: numba pool fix (7k -> 350k steps/s), tick-aware + view-follow explorer. Gate 14 (a crash at 44.2%) by an unboosted view-follow GE chain: passed by the greedy ~300M steps later."
+ "summary": "24.737 -> 51.093 (pbr4b3_t11 23.137B, 9/9 greedy at 47.5-51.1%, median 50.7%; 47.253 at 21.250B; t10 44.505; t9 44.025). Gate 10: a plain beam on the incumbent's weights. Gates 10-11 were ENERGY: air-strafe gain is per frame and the record runs 131 fps; --tick-ms-schedule 10 -> 7.63 ms took gate 10 from 1-3/9 to 9/9, then gate 11 by GE + the policy's own beam. Gate 12 (a ramp surf) needed the spawn's HELD KEYS: tools/spine_canon_keys.py + train_fast --demo-keys. Gates 13-14 by the trainer's own --auto-spine loop and the view-follow explorer. Gate 15 (47.2%, a launch off a ramp lip under a ceiling) fell to the loop's third search (a x1.08 GE chain) ~150M steps after its swap; the x1.12 chain before it had stalled its curriculum at the launch. Also: numba pool fix (7k -> 350k steps/s), tick-aware + view-follow explorer."
 }

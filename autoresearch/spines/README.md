@@ -165,3 +165,15 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   UNBOOSTED, replayed 14/14 links exactly: it rebounds off the corner instead of stopping and flies west along the
   record's corridor to 47.18%. Views along the velocity with the held keys translated (spine_canon_keys); the
   beam rows' keys are the beam's own. No demo, no record (pbr4b3, round 4).
+* `pbr4b3_auto_t11k03.npy` + `.keys.npy` (4,438 rows; md5 e10027824d48e385a37af9989c9ed0b3 /
+  34a04785b6299fd27de9385430f64613): gate 15 (a launch off a ramp lip at 47.2%) - found BY THE TRAINER
+  (pbr4b3_t11's auto-spine search 3 on patience at 22.910B): t11's own 7.67 ms beam line to its state 3,819, then
+  the view-follow Go-Explore stage-2 chain (x1.08 at its root, 619 states, explore_phase1 --exact-chains --tick-ms 8
+  --view-follow) to d 28,683 = 49.81%. The greedy passed it ~150M steps after the swap (50.72 at 23.06B). Views
+  along the velocity, keys translated (spine_canon_keys); the beam rows' keys are the beam's own. No demo, no
+  record (pbr4b3, round 4).
+* `pbr4b3_auto_t11k04.npy` + `.keys.npy` (4,700 rows; md5 3c52f0b059a1850065cee4587a751b28 /
+  6b676e96d47c8f006a34a4fdc4fd16e9): found BY THE TRAINER (pbr4b3_t11's auto-spine search 4 at 23.062B, 37 s, the
+  greedy's quorum past k03): the plain beam on t11's own weights from the true spawn at 7.67 ms, to d 26,901 =
+  52.93%; keys = the beam's own held keys per row. The spine t11 trained on at the end of round 4 and the natural
+  --demo-file / --demo-keys for a resume of its checkpoint. No demo, no record (pbr4b3, round 4).
