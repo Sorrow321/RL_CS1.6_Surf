@@ -134,3 +134,11 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   at that state UNBOOSTED (x1.000), replayed 12/12 links exactly: a bounce off the room's north side turns it
   south-west into the hole, onto the ramp at (2,759, -1,751, 2,950), north along x ~2,400-2,560 to (2,383,
   -23, 2,661) = 31.79%. Cut at its best d; the chain's views along the velocity. No demo, no record.
+* `pbr4b3_ge16vf.npy` (3,074 states, md5 4d6815e097e64594bfa4cb7d15d82b35): gate 12 searched IN THE POLICY'S
+  VIEW FRAME - pbr4b3_beam_g11.npy (the policy's own 7.67 ms beam line) to its state 2,743 just before the
+  gate-11 hole, then the exact chain of explore_phase1 --exact-chains --tick-ms 8
+  --view-follow=-90,-60,-30,-15,0,15,30,60,90 (bursts hold a view offset from the velocity heading; 15 min)
+  rooted there UNBOOSTED, replayed 42/42 links exactly, cut at 30.28% (its hard landing at (2,371, -873,
+  2,614), before a 25 s crawl near the catch). Views as the explorer had them (offsets of the velocity
+  frame; no canon_view): out of the hole it holds forward with the view ~89 deg left of the velocity.
+  No demo, no record (pbr4b3, round 4).
