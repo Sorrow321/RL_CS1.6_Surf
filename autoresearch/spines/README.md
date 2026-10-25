@@ -183,3 +183,12 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   view-follow Go-Explore stage-1 chain (663 states) to d 25,021 = 56.22%. Views along the velocity, keys translated;
   the beam rows' keys are the beam's own. The spine t11 trained on at the end of round 4 and the --demo-file /
   --demo-keys for a resume of its checkpoint. No demo, no record (pbr4b3, round 4).
+* `pbr5b4_e1.npy` + `.keys.npy` (4,648 rows; md5 288522cfca3d005a109ea870829c79ae /
+  06f80a76c41177e47a9df16e91789c80): the 52.7% landing kept smooth - pbr4b3_t11's own 7.67 ms beam line (spine k05's rows 0-4,233),
+  then two exact view-follow Go-Explore stages run beside pbr5b4_c1 on its box (explore_phase1 --exact-chains
+  --view-follow --tick-ms 8, 4,096 envs, 12 threads, 15 min each): stage 1 rooted at k05's beam rows 3,822-4,344
+  (64 u x energy 32 cells), stage 2 rooted at stage 1's 32 most energetic viable cells at 51.4-52.2% (32 u x
+  energy 16 cells); the chain to stage 2's cell at 54.04% picked by ge_replay --pick-energy (the highest
+  -100 d / d0 + 12 h / 1000 among cells past 53.72% that lived >= 1 s on). Stacked with tools/ge_stack_spine.py
+  (views along the velocity, held keys translated). Energy height ~3,000 through 51.5-54% where k05 had
+  2,430-2,480. No demo, no record (pbr5b4, round 5).
