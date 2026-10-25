@@ -1696,3 +1696,19 @@ Box: 57632318, RTX 4080 + i9-14900F (32 thr), 0.30 $/h, UK (machine 151788), ren
 * Harness issue (operator): `box.py deploy` on a box whose trainer is running fails its GPU health
   check (the benchmark shares the GPU: "166 TFLOPS ... below spec") after the git pull has already
   happened - a false defect; this box (57632318) was NOT blocklisted.
+
+### t1: the tick ramp works - 9/9 over gate 10 at 7.67 ms; score 26.376 (09:05 UTC)
+* t1 evals through the ramp (10 -> 7.63 ms over 14.088-14.388B): 26.361 / 26.346 / 24.476 /
+  26.366 (8.25 ms, 6/9 over gate 10) / **26.376** (14.390B, 7.667 ms, 9/9) / 26.371 (9/9). The greedy
+  did NOT collapse across the tick (a frozen line does not transfer, a ramped one does), and the
+  curriculum (restarted at the spine's end) walked 2499 -> 1349 at 80-93% per band.
+* Energy at 7.67 ms (greedy, 14.47B eval): x 2,600 h 3,500-3,550 at 845-880 u/s (10 ms c1: 3,190-
+  3,420), x 2,900 h 3,580-3,620 at 730-780 u/s; the line flies OVER the flat top in the air and comes
+  down at (3,385-3,478, -2,673..-2,610) at 850-890 u/s with h ~3,650-3,674 - the record's level
+  (~3,700) for the first time on this route.
+* Gate 11 is now a LANDING: the greedy comes down onto the flat (vz -313..-374), gets onground and
+  ground friction takes it 887 -> 250 u/s in ~0.3 s (h 3,674 -> 3,236), it walks to y ~-2,520, jumps
+  and falls into the gap at (3,520, -2,315, 3,187) at 21.3-21.9 s. The record (ANALYSIS ONLY) comes
+  down around (3,510, -2,700) and keeps ~900 u/s (no friction: a surfable slope, the kicker), rising
+  from y ~-2,610 (vz +266 -> +504) over the gap. Handed-on checkpoint for 26.376:
+  pbr4b2_t1/ckpt_14390132736.pt (md5 2c8f4ff1..., pinned at the eval's step, pulled).
