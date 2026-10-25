@@ -376,3 +376,48 @@ def test_ge_ladder_energy_stage_gets_its_roots(tmp_path, monkeypatch):
     assert r.max() <= 248 and r.min() >= 249 - 100
     info = json.loads((out / "spine.json").read_text())
     assert info["source"] == "beam+ge2" and info["ge2_energy_losses"][0][0] == 249
+
+
+def test_energy_forks_branch_before_the_plain_lines_losses(tmp_path, monkeypatch):
+    """--branch-energy N: after the --branch-tick forks fall short, branched beams fork
+    --branch-energy-lead s before the plain beam line's largest energy losses (the largest
+    first); a fork within 0.5 s of an existing one is skipped."""
+    sys.path.insert(0, str(ROOT / "tools"))
+    import auto_spine
+    from surfgym.core import STATE_DTYPE
+    nx, ny, nz, cell = 64, 4, 4, 32.0
+    grid = np.zeros((nz, ny, nx), np.float32)
+    grid[:] = (10000.0 - (np.arange(nx) + 0.5) * cell)[None, None, :]
+    fp = tmp_path / "field.npz"
+    np.savez(fp, grid=grid, quant=np.float64(1.0), mins=np.zeros(3), cell=np.float64(cell),
+             reach_max=np.float64(20000.0))
+
+    def line_to(x_end, n=1000, losses=()):
+        s = np.zeros(n, STATE_DTYPE)
+        s["origin"][:, 0] = np.linspace(100.0, x_end, n)
+        s["origin"][:, 1:] = 50.0
+        v = np.full(n, 2000.0)
+        for t, dv in losses:
+            v[t + 1:] -= dv
+        s["velocity"][:, 0] = v
+        return s
+    forks = []
+    # the plain line loses most at tick 700 (2000 -> 1500 u/s), less at 400 (-> 1800 first)
+    plain = line_to(600.0, losses=((400, 200.0), (700, 300.0)))
+
+    def fake_beam(a, out, branch_tick=0, tag=None):
+        if branch_tick <= 0:
+            return plain, {"beam_rc": 0}
+        forks.append((branch_tick, tag))
+        return line_to(1500.0 if branch_tick == 650 else 650.0), {f"{tag}_rc": 0}
+    monkeypatch.setattr(auto_spine, "beam", fake_beam)
+    out = tmp_path / "k01"
+    rc = auto_spine.main(["--ckpt", "c.pt", "--map", "m.bsp", "--field", str(fp),
+                          "--out", str(out), "--greedy-d", "9400", "--gain", "500",
+                          "--branch-tick", "950", "--branch-extra-secs", "1",
+                          "--ge-minutes", "0", "--stall-margin", "10"])
+    assert rc == 0
+    # ticks at 10 ms (no checkpoint): base forks 950, 850; energy forks 700 - 50, 400 - 50
+    assert forks == [(950, "beam_br"), (850, "beam_br2"), (650, "beam_br3")]
+    info = json.loads((out / "spine.json").read_text())
+    assert info["energy_forks"] == [650, 350] and info["source"] == "beam_br3"

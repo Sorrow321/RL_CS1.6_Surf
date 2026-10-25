@@ -426,6 +426,12 @@ def main(argv=None) -> int:
     ap.add_argument("--branch-extra-secs", default="1,2",
                     help="comma list: further branched beams forking this many seconds before "
                          "--branch-tick (each ~20 s on a 5080), the deepest line kept")
+    ap.add_argument("--branch-energy", type=int, default=2,
+                    help="when the beams above fall short: further branched beams forking "
+                         "--branch-energy-lead s before each of the N largest energy losses of "
+                         "the plain beam line in its last --energy-roots-secs before its stall "
+                         "(0 = none; each ~20-40 s)")
+    ap.add_argument("--branch-energy-lead", type=float, default=0.5)
     ap.add_argument("--branch-burst-secs", type=float, default=2.0)
     ap.add_argument("--branch-hold-secs", type=float, default=0.5)
     ap.add_argument("--branch-jitter", type=int, default=45,
@@ -467,7 +473,27 @@ def main(argv=None) -> int:
         forks = [] if a.branch_tick <= 0 else [a.branch_tick] + [
             int(a.branch_tick - float(x) * TICKS_PER_S) for x in
             str(a.branch_extra_secs).split(",") if x.strip()]
-        for k, ft in enumerate([f for f in forks if f > 0]):
+        forks = [f for f in forks if f > 0]
+        if best_src is None and int(a.branch_energy) > 0:
+            # energy-anchored forks (pbr5b2): the population also branches --branch-energy-lead
+            # s before each of the plain line's --branch-energy largest energy losses before its
+            # stall - the policy's own proposals through each crash; a variant that keeps its
+            # speed is ahead when the protection ends, and the depth ranking keeps it
+            nb = len(forks)
+            _ri, losses = energy_roots(line, min(e, stall_tick(d, a.stall_margin)), TICKS_PER_S,
+                                       a.energy_roots_secs, int(a.branch_energy),
+                                       a.energy_lead, 2)
+            for t, _dh in sorted(losses, key=lambda x: x[1]):          # the largest loss first
+                ft = int(t - a.branch_energy_lead * TICKS_PER_S)
+                if ft > 0 and all(abs(ft - f) >= 0.5 * TICKS_PER_S for f in forks):
+                    forks.append(ft)
+            res.update(energy_forks=[int(f) for f in forks[nb:]],
+                       energy_fork_losses=[[int(t), round(dh, 1)] for t, dh in losses])
+            if len(forks) > nb:
+                print("energy forks: " + ", ".join(
+                    f"tick {f}" for f in forks[nb:]) + " (before the losses " + ", ".join(
+                    f"{dh:,.0f} u at {t}" for t, dh in losses) + ")", flush=True)
+        for k, ft in enumerate(forks):
             if best_src is not None:
                 break
             tag = "beam_br" if k == 0 else f"beam_br{k + 1}"
