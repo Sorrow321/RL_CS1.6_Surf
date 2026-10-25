@@ -1994,3 +1994,9 @@ over-subscribes the quota. This branch's surfgym now caps numba; the operator ma
   vz +617 and flies NORTH at z ~3,200-3,240 (47.45% at (-2,450, -1,183, 3,239), 661 u/s, h ~3,510); our lines
   reach the same x at z ~3,100 with h ~3,300-3,330 and turn east. The ~190 u of energy is gate 14's rebound
   (-518 u at the 44.2% corner, where the record keeps ~3,550): gate 15 is energy again, created one gate back.
+* t11's auto-spine search 2 (21.703B, 1,647 s with the trainer waiting): beams 30,142 (no gain); GE stage 1
+  (view-follow, x1.0 / 1.04) 29,990 = 47.52% at (-2,411, -1,167, 3,212) - level with the record there, 208 u past
+  the greedy (< the 500 u gain); stage 2 (x1.08) 30,107; **stage 3 (x1.12) 28,718 = 49.75%** at (-2,406, 104,
+  3,219), north along the record's route. NEW SPINE k02 (4,569 states, success line d <= 28,818 = 49.57%), its
+  held keys loaded from k02/spine.keys.npy on the swap (4c8f7cb, first live use). Gate 15 needs ~x1.12 of the
+  explorer's energy at its root (the rebound's loss, one gate back).
