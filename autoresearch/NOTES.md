@@ -2321,6 +2321,6 @@ minute). Incumbent: pbr4b3_t11 ckpt_23551016960 (md5 7fbcd458...), eval 52.937 a
   energy height 53% 2,962 / 54.5% 2,794 / 56% 2,709, up the shaft into the high area by 56.9% (z 2,378), then over the
   upper level at 270-350 u/s to 62% in 11 s (GE-E's x1.08 chain crawled it in ~40 s). Spine
   `autoresearch/spines/pbr5b2_s6.npy` + keys (the beam's own). The energy curriculum unlocked the climb for the loop.
-* **pbr5b2_c6** (23:16 UTC): c5's 25.876B weights (md5 4728837e...) + spine s6 + its keys (success line d 21,624 =
+* **pbr5b2_c6** (launched 23:13-23:15 UTC): c5's 25.876B weights (md5 4728837e...) + spine s6 + its keys (success line d 21,624 =
   62.16%) + milestones (the 16 + 23,400 / 22,500 along s6) + --auto-spine (quorum / patience 1.2e9; GE with the rising
   split by default now) + --respawn-greedy-energy 3, no energy rule (s6 is a depth spine).
