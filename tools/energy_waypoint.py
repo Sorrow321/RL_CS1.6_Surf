@@ -54,9 +54,10 @@ def usable_energy(states, g2: float = 1600.0) -> np.ndarray:
             + (v[:, 0] ** 2 + v[:, 1] ** 2 + vz ** 2) / g2)
 
 
-def surplus(arch_states, greedy_states, near: float, g2: float = 1600.0):
+def surplus(arch_states, greedy_states, near: float, g2: float = 1600.0, min_cos: float = -2.0):
     """Per archived state: (energy above the greedy line's at the nearest greedy state, index of
-    that greedy state, distance to it); states farther than ``near`` from the line get -inf."""
+    that greedy state, distance to it); states farther than ``near`` from the line, or (min_cos)
+    moving more than acos(min_cos) away from the greedy line's direction there, get -inf."""
     a = np.asarray(arch_states["origin"], np.float64)
     gpos = np.asarray(greedy_states["origin"], np.float64)
     ha, hg = usable_energy(arch_states, g2), usable_energy(greedy_states, g2)
@@ -71,6 +72,14 @@ def surplus(arch_states, greedy_states, near: float, g2: float = 1600.0):
         best_d[upd], best_j[upd] = dd[upd], jj[upd] + j0
     sur = ha - hg[best_j]
     sur[best_d > near] = -np.inf
+    if min_cos > -1.0:
+        # ON the route means moving ALONG it: same place, same way (a state crossing the line the
+        # other way carries its energy somewhere the policy does not go)
+        va = np.asarray(arch_states["velocity"], np.float64)
+        vg = np.asarray(greedy_states["velocity"], np.float64)[best_j]
+        na, ng = np.linalg.norm(va, axis=1), np.linalg.norm(vg, axis=1)
+        cos = (va * vg).sum(1) / np.maximum(na * ng, 1e-9)
+        sur[(ng > 50.0) & (cos < min_cos)] = -np.inf
     return sur, best_j, best_d
 
 
@@ -130,7 +139,17 @@ def main(argv=None):
     ap.add_argument("--near", type=float, default=64.0,
                     help="u: an archived state counts as ON the greedy line within this distance "
                          "of one of its states (default 64 = one position cell)")
-    ap.add_argument("--min-surplus", type=float, default=0.0)
+    ap.add_argument("--min-cos", type=float, default=0.5,
+                    help="the state must move within acos(this) of the greedy line's direction at "
+                         "the matched place (default 0.5 = 60 deg; -2 = off)")
+    ap.add_argument("--min-surplus", type=float, default=50.0,
+                    help="u of usable energy above the greedy line a waypoint must carry")
+    ap.add_argument("--pick", choices=["furthest", "surplus"], default="furthest",
+                    help="furthest (default): of the states carrying >= --min-surplus, the one "
+                         "matched FURTHEST along the greedy line (a moving state beside the "
+                         "standing spawn always has a surplus; the useful one is the deepest place "
+                         "on the route still reached with energy to spare); surplus: the largest "
+                         "surplus anywhere on the line")
     ap.add_argument("--prefix-archive", default=None,
                     help="a two-stage search: --archive was rooted at states of THIS archive; its "
                          "chain to the root is replayed and put in front, so the line starts at "
@@ -159,14 +178,22 @@ def main(argv=None):
     gz = (np.load(a.greedy, allow_pickle=False))
     g = gz["states"] if hasattr(gz, "files") else gz
     g = np.asarray(g, STATE_DTYPE)
-    sur, gj, gd = surplus(st, g, a.near)
-    end = int(np.argmax(sur))
-    if not np.isfinite(sur[end]) or sur[end] < a.min_surplus:
-        raise SystemExit(f"no archived state on the greedy line carries more than "
-                         f"{a.min_surplus:g} u of energy above it (best {sur[end]:.1f})")
-    print(f"energy waypoint: cell {end} at {np.asarray(st[end]['origin']).round(0)}, "
-          f"{gd[end]:.0f} u from greedy state {gj[end]}, energy {energy(st[end:end + 1])[0]:,.0f} "
-          f"= greedy's {energy(g[gj[end]:gj[end] + 1])[0]:,.0f} + {sur[end]:.0f}")
+    sur, gj, gd = surplus(st, g, a.near, min_cos=a.min_cos)
+    ok_m = np.isfinite(sur) & (sur >= a.min_surplus)
+    if not ok_m.any():
+        raise SystemExit(f"no archived state on the greedy line carries {a.min_surplus:g} u of "
+                         f"usable energy above it (best {np.nanmax(np.where(np.isfinite(sur), sur, np.nan)):.1f})")
+    if a.pick == "furthest":
+        cand = np.flatnonzero(ok_m)
+        far = gj[cand].max()
+        cand = cand[gj[cand] == far]
+        end = int(cand[np.argmax(sur[cand])])
+    else:
+        end = int(np.argmax(np.where(ok_m, sur, -np.inf)))
+    print(f"energy waypoint ({a.pick}, >= {a.min_surplus:g} u): cell {end} at "
+          f"{np.asarray(st[end]['origin']).round(0)}, {gd[end]:.0f} u from greedy state {gj[end]} "
+          f"of {len(g)}, usable energy {usable_energy(st[end:end + 1])[0]:,.0f} = the greedy's "
+          f"{usable_energy(g[gj[end]:gj[end] + 1])[0]:,.0f} + {sur[end]:.0f}")
     top = np.argsort(-np.where(np.isfinite(sur), sur, -1e9))[:8]
     for i in top:
         print(f"  cell {i}: surplus {sur[i]:6.0f} u at greedy state {gj[i]} "
