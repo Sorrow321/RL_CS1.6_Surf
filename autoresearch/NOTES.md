@@ -1268,3 +1268,13 @@ or cheaper offers in the query (a 3090 at <= 0.18 $/h would fit beside the 5080)
   (scp with a 30-min timeout) cannot fetch a 63 MB checkpoint. `tools/pull_parallel.sh RUN FILE
   [DST]` (new) splits it on the box into 2 MB chunks, fetches 8 at a time (~130-175 KB/s total),
   reassembles and installs it only on an md5 match: c1's ckpt_final (63 MB) in 6 min.
+* c3 (success 21.19%): evals 20.469 / 20.448 / **20.475** (10.166B; 9/9 still at the catch). The
+  band [1705,1709] now passes (~60%) and the wall moved to [1700,1704] (0.0%, 4 visits): each 5
+  states earlier on the curved ramp the policy has more ride to hold and exits east early (the
+  full ride costs ~0.2% of field progress for ~0.4 s before it pays; the ratchet prefers the early
+  exit). From 1700 c1's weights reached ~20.83%.
+* **pbr3b1_c4** (02:12 UTC): c3's 10.225B weights (md5 bb75e80e) + `--demo-success-d 400` (success
+  20.84%: above the catch-falling line's 20.48% and the crash-and-crawl dead end's 20.58%, still
+  past the catch) + tau0 1700, 1.5B steps: let the walk-back reach the hard part of this gate (the
+  launch, the tunnel, the corner, the landing at 1465-1675) instead of polishing the ramp exit.
+  Box extended to 06:09 UTC.
