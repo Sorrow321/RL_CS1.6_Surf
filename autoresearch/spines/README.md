@@ -111,3 +111,12 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   decisions, `--tick-ms 8`, local CPU, 507 s, replayed exactly), cut at its best d: the start room,
   gates 2-9 and the gate-10 ramp climb, at 22.4 s. Every state follows 8 ms dynamics; views are the
   policy's own. No demo, no record, no boost (pbr4b1, round 4).
+* `pbr4b1_k06_t8.npy` (2,727 states, md5 92128251bfbc426cd8eacf50c8b5ed76): found by
+  tools/auto_spine.py run by hand on pbr4b1_t8c's 13.905B weights (8 ms tick, trainer paused): the
+  policy's own BRANCHED beam line from the true spawn (beam_tas, 4,096 stochastic copies, half forked
+  at 21.4 s with held view offsets) to its state 2,356 (18.8 s, the foot of the gate-10 ramp) + the
+  deepest exact Go-Explore chain (uniform random actions, 64 u x energy 32 cells, 8 min, stage 3 of the
+  escalation ladder) rooted at that state with the velocity x1.12, replayed exactly, views along the
+  velocity: up the gate-10 ramp, a soft turn at its top (-113 u), north over gate 11 at z ~3,350 to
+  27.04%. No demo, no record (pbr4b1, round 4). The x1.12 root is 400 u past the greedy frontier,
+  under auto_spine's 500 u gain, and was taken by hand.
