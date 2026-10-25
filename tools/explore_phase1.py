@@ -282,6 +282,11 @@ class Archive:
         # to the first entry - so every chain replays exactly (tools/ge_replay.py)
         self.exact = False
         self.link_acts: dict[int, np.ndarray] = {}
+        # --tick-ms with a multi-element pattern ([8, 8, 7] for 7.63 ms): the pattern phase at
+        # each link's restore, so tools/ge_replay.py replays the same ms sequence (period 1 =
+        # a fixed tick: nothing stored, the archive file is unchanged)
+        self.tick_period = 1
+        self.link_phase: dict[int, int] = {}
 
     def _grow(self, cap: int) -> None:
         old = getattr(self, "key", None)
@@ -453,6 +458,9 @@ class Archive:
                 if i < n:
                     flat[off[i]:off[i + 1]] = a
             extra = dict(link_acts=flat, link_off=off)
+            if self.tick_period > 1:
+                extra["link_phase"] = np.array([self.link_phase.get(i, 0) for i in range(n)],
+                                               np.int8)
         np.savez(path,
                  key=self.key[:n], state=self.state[:n], seen=self.seen[:n],
                  chosen=self.chosen[:n], parent=self.parent[:n],
@@ -733,7 +741,15 @@ def explore(args) -> int:
         cfg.kill_z = kz + 36.0 + float(args.kill_margin)
         print(f"--kill-margin {float(args.kill_margin):g}: the search fails below origin z "
               f"{cfg.kill_z:.0f} (kill trigger top {kz:.0f} + box 36 + margin)")
-    core = SurfCore(str(bsp), cfg)
+    tick_ms = getattr(args, "tick_ms", None)
+    if tick_ms is not None:
+        # --tick-ms: the physics tick of the policy whose states root this search (a ramped
+        # --tick-ms-schedule run ends at 7.63 ms = [8, 8, 7]); every chunk's reset restarts the
+        # pattern, and --exact-chains records each link's phase for the replay
+        core = SurfCore(str(bsp), cfg, tick_ms=float(tick_ms))
+        print(f"--tick-ms {float(tick_ms):g}: pattern {list(core.tick_pattern)} ms")
+    else:
+        core = SurfCore(str(bsp), cfg)
     if not args.keep_teleports:
         core.set_teleport_fail(True)
 
@@ -818,6 +834,8 @@ def explore(args) -> int:
                       heading=int(getattr(args, "cell_heading", 0) or 0))
     arch = Archive(hasher, max_cells=args.max_cells)
     arch.exact = bool(getattr(args, "exact_chains", False))
+    if tick_ms is not None:
+        arch.tick_period = len(core.tick_pattern)
     rk = hasher.keys(roots)
     for j in range(len(roots)):
         i = arch.add(int(rk[j]), roots[j], depth=0, parent=-1)
@@ -1057,6 +1075,10 @@ def fold_chunk(arch: Archive, hasher: CellHash, hist, rid_h, r_t0, r_d0,
         for i, j in zip(added.tolist(), ent):
             t0 = int(r_t0[int(g_run[j])])
             arch.link_acts[i] = acts_h[t0:int(g_tick[j]), int(g_env[j])].copy()
+            if arch.tick_period > 1:
+                # every chunk starts with a reset (pattern phase 0), so the run's restore tick
+                # within the chunk fixes the phase its link was stepped under
+                arch.link_phase[i] = t0 % arch.tick_period
     if added.size:
         arch.dist[added] = dist.sample(arch.state[added]["origin"])
 
@@ -1133,6 +1155,9 @@ def meta_dict(args, bsp, hasher, arch, it, n_goal, extra=None) -> dict:
     if getattr(args, "maxvel", None) is not None:
         # --maxvel only: the flag-off meta json is unchanged
         out["maxvel"] = float(args.maxvel)
+    if getattr(args, "tick_ms", None) is not None:
+        # --tick-ms only (ge_replay builds its core at this tick)
+        out["tick_ms"] = float(args.tick_ms)
     if float(getattr(args, "cell_energy", 0.0) or 0.0) > 0.0:
         out["cell_energy"] = float(args.cell_energy)
     if int(getattr(args, "cell_heading", 0) or 0) > 0:
@@ -1770,6 +1795,10 @@ def build_parser() -> argparse.ArgumentParser:
                          "tools/goal_curriculum_pool.py exports the archive as a start pool")
     ap.add_argument("--roots-goal-n", type=int, default=16,
                     help="--roots-goal: footprint samples (rounded up to a square grid)")
+    ap.add_argument("--tick-ms", type=float, default=None,
+                    help="the physics tick in ms (default the core's 10): the tick of the policy "
+                         "whose states root the search (7.63 = [8, 8, 7]); --exact-chains then "
+                         "stores each link's pattern phase (link_phase) for tools/ge_replay.py")
     ap.add_argument("--maxvel", type=float, default=None,
                     help="sv_maxvelocity for the search core (default: the core's 2000); "
                          "train_fast --ge-minutes passes the run's own --maxvel")

@@ -66,7 +66,13 @@ def main(argv=None):
                          water_fail=1, yaw_jitter_deg=0.0, lidar_w=0, lidar_h=0)
     if meta.get("maxvel") is not None:
         cfg.phys.sv_maxvelocity = float(meta["maxvel"])
-    core = SurfCore(str(a.map), cfg)
+    if meta.get("tick_ms") is not None:
+        # an archive explored at another tick (explore_phase1 --tick-ms): the same pattern,
+        # each link replayed from the phase its run was restored at
+        core = SurfCore(str(a.map), cfg, tick_ms=float(meta["tick_ms"]))
+    else:
+        core = SurfCore(str(a.map), cfg)
+    phase = z["link_phase"] if "link_phase" in z.files else None
     if not meta.get("keep_teleports", False):
         core.set_teleport_fail(True)
     line = [st[chain[0]].copy()]
@@ -79,6 +85,8 @@ def main(argv=None):
         s0["tick"] = 0
         s0["stuck_ticks"] = 0
         core.set_state(0, s0)
+        if phase is not None:
+            core.set_tick_phase(int(phase[c]))
         seg = []
         dead = False
         for t in range(len(la)):

@@ -51,18 +51,26 @@ TICKS_PER_S = 100          # the beam runs the checkpoint's tick: 10 ms unless m
                            # another from the checkpoint (a --tick-ms / ramp run, pbr4b2)
 
 
-def ckpt_ticks_per_s(path) -> float:
-    """Ticks per second of the checkpoint's own physics tick (its config's tick_ms_eff,
-    else tick_ms, else 10 ms): beam_tas runs that tick, so every seconds -> ticks conversion
-    of the beam's line (the branch burst / hold / fork offsets, the GE roots' window) uses it.
-    100 when the checkpoint cannot be read (the old constant)."""
+TICK_MS = None             # the checkpoint's requested tick when it is not 10 ms (main())
+
+
+def ckpt_tick(path) -> tuple:
+    """(requested tick ms, realised mean ms) of the checkpoint's physics (its config's tick_ms
+    and tick_ms_eff; 10 ms for a checkpoint that predates the keys or cannot be read)."""
     try:
         import torch
         cfg = torch.load(path, map_location="cpu", weights_only=False).get("config") or {}
-        ms = float(cfg.get("tick_ms_eff") or cfg.get("tick_ms") or 10.0)
+        req = float(cfg.get("tick_ms") or 10.0)
+        return req, float(cfg.get("tick_ms_eff") or req)
     except Exception:  # noqa: BLE001 - a fake path in the tests, an unreadable file
-        return 100.0
-    return 1000.0 / ms
+        return 10.0, 10.0
+
+
+def ckpt_ticks_per_s(path) -> float:
+    """Ticks per second of the checkpoint's own physics tick: beam_tas runs that tick, so every
+    seconds -> ticks conversion of the beam's line (the branch burst / hold / fork offsets, the
+    GE roots' window) uses it. 100 when the checkpoint cannot be read (the old constant)."""
+    return 1000.0 / ckpt_tick(path)[1]
 
 
 def load_field(path):
@@ -244,6 +252,10 @@ def go_explore(a, out: Path, line, end: int, boosts=None, tag: str = "ge"):
            "--goals", 1, "--seed", a.seed]
     if a.maxvel:
         cmd += ["--maxvel", a.maxvel]
+    if TICK_MS is not None:
+        # the explorer steps the checkpoint's own tick (the roots are that policy's states and
+        # the curriculum asks it to fly the chain), and ge_replay reads it from the meta
+        cmd += ["--tick-ms", f"{TICK_MS:g}"]
     if a.threads:
         cmd += ["--threads", a.threads]
     rc = run(cmd, out / f"{tag}.log", a.ge_minutes * 60 + 600)
@@ -341,8 +353,10 @@ def main(argv=None) -> int:
             ap.error(f"--{k} is required")
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
-    global TICKS_PER_S
-    TICKS_PER_S = ckpt_ticks_per_s(a.ckpt)
+    global TICKS_PER_S, TICK_MS
+    _req, _eff = ckpt_tick(a.ckpt)
+    TICKS_PER_S = 1000.0 / _eff
+    TICK_MS = None if abs(_req - 10.0) < 1e-9 else _req
     if abs(TICKS_PER_S - 100.0) > 1e-6:
         print(f"checkpoint tick {1000.0 / TICKS_PER_S:.4f} ms: {TICKS_PER_S:.2f} ticks/s for "
               f"the beam's seconds", flush=True)

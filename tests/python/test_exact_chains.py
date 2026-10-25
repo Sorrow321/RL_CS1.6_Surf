@@ -84,3 +84,24 @@ def test_flag_off_is_bit_identical(tmp_path):
         assert np.array_equal(a[k], b[k]), k
     assert (json.loads((tmp_path / "new" / "archive.meta.json").read_text())
             == json.loads((tmp_path / "old" / "archive.meta.json").read_text()))
+
+
+@needs_pb
+def test_exact_chains_at_a_tick_pattern(tmp_path):
+    """--tick-ms 7.63 ([8, 8, 7] ms): the archive stores each link's pattern phase and
+    ge_replay replays the deepest chain exactly at that tick (pbr4b2)."""
+    out = tmp_path / "ge"
+    r = _run([sys.executable, "-u", str(GE), "--out", str(out), "--exact-chains",
+              "--tick-ms", "7.63"] + ARGS, timeout=900)
+    assert r.returncode in (0, 1), r.stdout[-3000:] + r.stderr[-3000:]
+    z = np.load(out / "archive.npz", allow_pickle=False)
+    meta = json.loads((out / "archive.meta.json").read_text())
+    assert meta["tick_ms"] == 7.63
+    assert "link_phase" in z.files and len(z["link_phase"]) == len(z["parent"])
+    assert set(np.unique(z["link_phase"]).tolist()) <= {0, 1, 2}
+    line = tmp_path / "line.npy"
+    r = _run([sys.executable, "-u", str(ROOT / "tools" / "ge_replay.py"), "--map", str(PB),
+              "--archive", str(out / "archive.npz"), "--field", str(FIELD), "--out", str(line)],
+             timeout=600)
+    assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-3000:]
+    assert "DIVERGED" not in r.stdout
