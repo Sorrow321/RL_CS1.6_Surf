@@ -2000,3 +2000,35 @@ over-subscribes the quota. This branch's surfgym now caps numba; the operator ma
   3,219), north along the record's route. NEW SPINE k02 (4,569 states, success line d <= 28,818 = 49.57%), its
   held keys loaded from k02/spine.keys.npy on the swap (4c8f7cb, first live use). Gate 15 needs ~x1.12 of the
   explorer's energy at its root (the rebound's loss, one gate back).
+
+### pbr4b3 round 4 lesson (DRAFT 16:57 UTC, finalised at wrap-up)
+* **Score 24.737 -> 47.253** (pbr4b3_t11 21.250B, 9/9 greedy episodes at 47.1-47.25% from the true start). Gates
+  10, 11, 12, 13 (the auto-spine's 35/41/43.7/45.2% lines) and 14 passed; gate 15 (47.3%) had a x1.12 GE spine at
+  the end of the round.
+* **What did it, in order of effect:**
+  1. **Throughput, 50x on a quota-limited box** (ad5f905): numba sized its pool to 64 visible cores under a 30.7-CPU
+     quota and the goal field's prange team throttled the trainer to ~7k steps/s; surfgym now defaults
+     NUMBA_NUM_THREADS to the OMP count. ~350k steps/s after, and the beams ran 10x faster (25 s each).
+  2. **A plain beam on the incumbent's own weights** passed gate 10 (round 3's last searches were on older weights).
+  3. **The physics tick (frame rate): `--tick-ms-schedule 10:7.63:800e6`.** Air-strafe gain is per FRAME (|v|^2 grows
+     900 per optimally strafed frame), the policy strafes at that optimum, and the WR runs 131 fps: at 100 Hz the
+     line was 100-300 u of energy height short of the record at gates 10-11. The ramp alone took gate 10 from 1-3/9
+     to 9/9; by 28-44% the policy's beam line flies the record's route ~250 u ABOVE its energy, faster. (A checkpoint
+     carries its ramp: a resume continues at 7.63 ms; never pass the flag to a resume.)
+  4. **Held keys at spine spawns (`--demo-keys`, tools/spine_canon_keys.py, auto_spine spine.keys.npy).** Under
+     --keys-hold the keys are state the policy observes; every spine spawn reset them to neutral. A searched
+     manoeuvre made with held keys (gate 12's ramp: forward + a view 46-89 deg left of the velocity = a left strafe)
+     then starts from another state than the line's own: its band sat at 0-9% for 2.5 h over five runs (wider
+     temperature, more band share, explorer views kept - none helped); with the canonical view, the keys translated
+     to keep the wish direction, and spawns holding them, it opened at once and the greedy went 29.3 -> 33.4%.
+  5. **The view-follow explorer** (`explore_phase1 --view-follow`, auto_spine's default now): bursts hold an offset
+     from the velocity heading, so chains are found in the policy's own frame - gates 12 and 14 fell to UNBOOSTED
+     chains from the policy's own states (the uniform yaw-rate explorer needed x1.04-1.32 there).
+  6. **The trainer's own loop**: once the keys were right, t9's auto-spine swapped in four of the policy's beam lines
+     in 30 min (35 -> 41 -> 43.7 -> 45.2%) with no agent in the loop; milestones kept every crossed line paid.
+* **What did not:** energy-ranked beams (`--score dh`: +20-60 u, the same lines), branched beams at gates 11-12,
+  start-state beams from mid-line states (all lineages died - beam_tas's start path is not the trainer's spawn),
+  wider band temperature (T 2, yaw x25: worse), boosted GE spines (x1.32 at gate 11: the greedy followed most of it,
+  then the policy's own beam did the rest).
+* **Where it stands:** gate 15 (47.3%) is the energy lost at gate 14's rebound off a corner (-518 u; the record keeps
+  its speed there); the x1.12 spine k02 (to 49.75%) was being learned at the end.
