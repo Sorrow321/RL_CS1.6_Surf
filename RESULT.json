@@ -3,15 +3,15 @@
  "round": 4,
  "final": false,
  "best": {
-  "score": 44.025,
-  "eval_file": "/home/steam/ar_pb/runs/pbr4b3/pbr4b3_t9/traj_20126892032.jsonl",
-  "run": "pbr4b3_t9",
-  "step": 20126892032,
-  "ckpt": "/home/steam/ar_pb/runs/pbr4b3/pbr4b3_t9/ckpt_20097007616.pt (the milestone at or before the eval, md5 7e8521244f8cc8b7397cef47b81820a7); t9 ckpt_latest 20.189B pulled beside it",
+  "score": 44.373,
+  "eval_file": "/home/steam/ar_pb/runs/pbr4b3/pbr4b3_t10/traj_20416299008.jsonl",
+  "run": "pbr4b3_t10",
+  "step": 20416299008,
+  "ckpt": "/home/steam/ar_pb/runs/pbr4b3/pbr4b3_t10/ckpt_20389560320.pt (the milestone at or before the eval, md5 ecd9ddf39e0fffc0ef9167361d47548c)",
   "recipe": [
    "resume of the round-3 incumbent (pbr3b4_as10 13.4999B)",
-   "--demo-file autoresearch/spines/pbr4b3_ge16ck.npy --demo-keys autoresearch/spines/pbr4b3_ge16ck.keys.npy (own gate-11 line + a view-follow GE chain out of the hole; views along the velocity, held keys translated, spawns start holding them) --demo-window 5 --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5 --demo-rate 0.3 --demo-front-frac 0.8 --demo-success-d 100 --demo-success-bonus 50",
-   "--demo-milestones 44939,43426,42182,41015,40497 --keys-hold-spawn-duck --yaw-entropy 0 --demo-front-temp 0.5 --demo-front-ticks 40 --demo-front-view 6",
+   "--demo-file autoresearch/spines/pbr4b3_auto_t9k04.npy --demo-keys autoresearch/spines/pbr4b3_auto_t9k04.keys.npy --demo-tau0 4629 (the trainer's own beam line to 45.18% + its held keys) --demo-window 5 --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5 --demo-rate 0.3 --demo-front-frac 0.8 --demo-success-d 100 --demo-success-bonus 50",
+   "--demo-milestones 44939,43426,42182,41015,40497,39943,37251,33777,32260 --keys-hold-spawn-duck --yaw-entropy 0 --demo-front-temp 0.5 --demo-front-ticks 40 --demo-front-view 6",
    "--respawn-greedy 0.2 --respawn-greedy-window 0.25 2.0 --respawn-greedy-stuck 200 --respawn-greedy-contact --respawn-greedy-temp 0.5 --respawn-greedy-temp-ticks 100 --respawn-greedy-temp-view 6",
    "--respawn-front-perturb 0.2 --respawn-front-perturb-band 0.005 --respawn-front-perturb-speed 1.0 1.3 --respawn-front-perturb-turn 90",
    "--energy-pot 12 --energy-pot-front 0 --energy-pot-front-bonus 0 --no-respawn-novel --respawn-backward-mix 0 --int-real-only 0",
@@ -20,8 +20,8 @@
    "--tick-ms-schedule 10:7.63:800e6 --ckpt-every 2e8",
    "t9's own --auto-spine then swapped in four policy beam lines: k01 34.99% (19.598B), k02 41.07% (19.674B), k03 43.73% (19.976B), k04 45.18% (20.127B)"
   ],
-  "resume_from": "pbr4b3_t8 ckpt_latest 19.296B (tick 7.667 ms)",
-  "commit": "ba7088f"
+  "resume_from": "pbr4b3_t9 ckpt_latest 20.189B (tick 7.667 ms)",
+  "commit": "4c8f7cb"
  },
- "summary": "24.737 -> 44.025 (pbr4b3_t9 20.127B, median 43.8%; 33.376 at 19.598B when gate 12 opened, then the trainer's own auto-spine swapped in four beam lines (35 / 41 / 43.7 / 45.2%) within 30 min). Gate 10: a plain beam on the incumbent's weights. Gates 10-11 were ENERGY: air-strafe gain is per frame and the record runs 131 fps; --tick-ms-schedule 10 -> 7.63 ms took gate 10 from 1-3/9 to 9/9, then gate 11 by GE + the policy's own beam. Gate 12 (a ramp surf below the gate-11 hole) needed the spawn's HELD KEYS: under --keys-hold every spine spawn reset them to neutral; tools/spine_canon_keys.py (view along the velocity, keys translated so the wish direction survives) + train_fast --demo-keys opened it at once. Also: numba pool fix (7k -> 350k steps/s), tick-aware + view-follow explorer."
+ "summary": "24.737 -> 44.373 (pbr4b3_t10 20.416B, median 44.3%; t9 44.025 at 20.127B; 33.376 at 19.598B when gate 12 opened, then the trainer's own auto-spine swapped in four beam lines (35 / 41 / 43.7 / 45.2%) within 30 min). Gate 10: a plain beam on the incumbent's weights. Gates 10-11 were ENERGY: air-strafe gain is per frame and the record runs 131 fps; --tick-ms-schedule 10 -> 7.63 ms took gate 10 from 1-3/9 to 9/9, then gate 11 by GE + the policy's own beam. Gate 12 (a ramp surf below the gate-11 hole) needed the spawn's HELD KEYS: under --keys-hold every spine spawn reset them to neutral; tools/spine_canon_keys.py (view along the velocity, keys translated so the wish direction survives) + train_fast --demo-keys opened it at once. Also: numba pool fix (7k -> 350k steps/s), tick-aware + view-follow explorer."
 }
