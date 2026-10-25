@@ -243,6 +243,10 @@ def main(argv=None):
     out["tick"] = 0
     out["stuck_ticks"] = 0
     np.save(a.out, out)
+    # the chain's end cell, for whoever needs the chain's link actions (auto_spine's held keys): a
+    # picked cell is not the deepest, so it cannot be re-derived from the field
+    Path(str(a.out) + ".cell.json").write_text(json.dumps(
+        {"cell": int(end), "how": how, "links_ok": int(ok), "links": int(len(chain) - 1)}))
     dl = f.sample(out["origin"].astype(np.float64))
     print(f"{len(out)} states -> {a.out}; links {ok}/{len(chain) - 1}; line end d "
           f"{float(dl[-1]):,.0f}, best d {float(dl.min()):,.0f}")

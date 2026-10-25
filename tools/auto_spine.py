@@ -181,14 +181,18 @@ def keys_from_acts(acts, k: int, n: int) -> np.ndarray:
     return out
 
 
-def chain_keys(archive, field, n_states: int):
-    """(n_states - 1, 3) held keys of ge_replay's deepest chain past its root: the per-tick link
-    actions of every cell on the chain (explore_phase1 --exact-chains), as ge_replay walks it."""
+def chain_keys(archive, field, n_states: int, cell: int = None):
+    """(n_states - 1, 3) held keys of ge_replay's chain past its root: the per-tick link actions of
+    every cell on the chain (explore_phase1 --exact-chains), as ge_replay walks it. ``cell`` = the
+    chain's end (ge_replay's <line>.cell.json; a --pick-energy end is not the deepest), default the
+    deepest cell on the field."""
     from ge_replay import chain_to
     z = np.load(archive, allow_pickle=False)
-    d = np.asarray(field.sample(z["state"]["origin"].astype(np.float64)), np.float64)
-    d[d >= field.reach_max - 0.5 * field.cell] = np.inf
-    ch = chain_to(z["parent"], int(np.argmin(d)))
+    if cell is None:
+        d = np.asarray(field.sample(z["state"]["origin"].astype(np.float64)), np.float64)
+        d[d >= field.reach_max - 0.5 * field.cell] = np.inf
+        cell = int(np.argmin(d))
+    ch = chain_to(z["parent"], int(cell))
     seq = np.concatenate([z["link_acts"][z["link_off"][c]:z["link_off"][c + 1]]
                           for c in ch[1:]]) if len(ch) > 1 else np.zeros((0, 6), np.int64)
     if len(seq) != n_states - 1:
@@ -282,7 +286,9 @@ def go_explore(a, out: Path, line, end: int, boosts=None, tag: str = "ge", line_
         return None, info
     chain, _m = canon_view(gl[1:])
     if line_keys is not None:
-        ck = chain_keys(gd / "archive.npz", load_field(a.field), len(gl))
+        _cj = gd / "line.npy.cell.json"
+        _cell = json.loads(_cj.read_text())["cell"] if _cj.exists() else None
+        ck = chain_keys(gd / "archive.npz", load_field(a.field), len(gl), cell=_cell)
         if ck is not None:
             # the explorer's keys meant what they did relative to ITS view; the chain's views
             # are now along the velocity, so the keys move with them (spine_canon_keys)

@@ -418,3 +418,31 @@ def test_ticks_ahead_reads_the_explorer_tree():
     parent = [-1,  0,   0,   1,   3,   2]
     depth = [0,   50,  40,  90,  300, 45]
     assert ticks_ahead(parent, depth).tolist() == [300, 250, 5, 210, 0, 0]
+
+
+def test_chain_keys_follow_the_chosen_cell(tmp_path):
+    """auto_spine.chain_keys: the held keys of the chain to ``cell`` (ge_replay's picked end), not the
+    deepest cell's chain; the default is still the deepest."""
+    sys.path.insert(0, str(ROOT / "tools"))
+    import auto_spine
+    from surfgym.core import STATE_DTYPE
+    st = np.zeros(4, STATE_DTYPE)
+    st["origin"][:, 0] = [0.0, 10.0, 30.0, 20.0]          # cell 2 is the deepest (d = 1000 - x)
+    parent = np.array([-1, 0, 1, 0])
+    # link actions (6 heads; keys are columns 2, 3, 5): cell 1 = 2 ticks, cell 2 = 1, cell 3 = 3
+    acts = np.array([[0, 0, 1, 1, 0, 0], [0, 0, 1, 2, 0, 0],      # -> cell 1
+                     [0, 0, 2, 0, 0, 1],                          # -> cell 2
+                     [0, 0, 0, 0, 0, 1], [0, 0, 0, 1, 0, 1], [0, 0, 0, 2, 0, 1]])  # -> cell 3
+    off = np.array([0, 0, 2, 3, 6])
+    np.savez(tmp_path / "a.npz", state=st, parent=parent, link_acts=acts, link_off=off)
+
+    class F:
+        reach_max, cell = 1e9, 32.0
+
+        def sample(self, o):
+            return 1000.0 - np.asarray(o, np.float64)[:, 0]
+    deep = auto_spine.chain_keys(tmp_path / "a.npz", F(), 4)
+    assert deep.tolist() == [[1, 1, 0], [1, 2, 0], [2, 0, 1]]
+    picked = auto_spine.chain_keys(tmp_path / "a.npz", F(), 4, cell=3)
+    assert picked.tolist() == [[0, 0, 1], [0, 1, 1], [0, 2, 1]]
+    assert auto_spine.chain_keys(tmp_path / "a.npz", F(), 5, cell=3) is None
