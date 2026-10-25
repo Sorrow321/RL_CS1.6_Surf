@@ -2806,6 +2806,15 @@
       "detail": "autoresearch pbr2b2: not running after 330 s (status loading, )",
       "run": "",
       "reason": "unreliable"
+    },
+    {
+      "ip": "46.205.240.99",
+      "machine_id": 148894,
+      "host_id": 491607,
+      "date": "2026-10-25",
+      "detail": "RTX 4060 Ti power-capped 100 W of 165 W default (61%): bf16 GEMM 37 TFLOPS (~84% of the 4060 Ti's ~44 dense fp32-acc spec), sm 2145 MHz under load, copy 246 GB/s; gpu_health UNHEALTHY (no reference + cap). Ryzen 9 3950X 32 thr, machine 148894",
+      "run": "pbr5b4 deploy",
+      "reason": "gpu_capped"
     }
   ],
   "known_good": [
