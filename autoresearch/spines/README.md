@@ -183,3 +183,16 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   view-follow Go-Explore stage-1 chain (663 states) to d 25,021 = 56.22%. Views along the velocity, keys translated;
   the beam rows' keys are the beam's own. The spine t11 trained on at the end of round 4 and the --demo-file /
   --demo-keys for a resume of its checkpoint. No demo, no record (pbr4b3, round 4).
+* `pbr5b2_e1.npy` + `.keys.npy` (10,952 rows; md5 1711b7d8028edb3eb083c64ddaa75c8b /
+  b1ae7456fc168da111ba4eedc543eb5a): princessburglar's 56.6% shaft climb, stitched by tools/stitch_spine.py from
+  four exact segments, each the policy's own or the run's own reward-free search, each starting at the previous
+  one's state: (1) the policy's own 7.67 ms beam line from the true spawn (pbr5b2_c1's auto-spine search 1, beam_tas
+  on its 24.080B weights) to its state 4,372 (51.2%); (2) the exact view-follow Go-Explore chain of that search's
+  stage 1 (roots x1.0 / 1.04 over the beam line's last 4 s; this chain's root x1.04) to its most energetic
+  non-plunging U-bottom cell (energy height 2,741 vs the beam line's ~2,400), replayed 13/13; (3) the policy's own
+  greedy rollout from that state (record_ckpt --dump-states, c1's 24.080B weights) for 64 ticks; (4) the exact
+  Go-Explore chain (explore_phase1 --exact-chains --cell-heading 1 --view-follow --tick-ms 8, 10 min, roots on
+  segments 2-3 x1.0 / 1.04 / 1.08; this chain's root x1.08) up the shaft in one rise and over the upper level to
+  62.25% (d 21,577), replayed 46/46. Cut at its best d. Views along the velocity on the chains, keys translated
+  with them; the beam rows' keys are the beam's own, the rollout's from its trajectory. No demo, no record
+  (pbr5b2, round 5).
