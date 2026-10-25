@@ -1,19 +1,30 @@
 {
  "agent": "pbr3b1",
  "round": 3,
- "final": false,
+ "final": true,
  "best": {
   "score": 20.475,
   "eval_file": "/home/steam/ar_pb/runs/pbr3b1/pbr3b1_c3/traj_10165944320.jsonl",
   "run": "pbr3b1_c3",
   "step": 10165944320,
-  "ckpt": "/home/steam/ar_pb/runs/pbr3b1/pbr3b1_c3/ckpt_latest.pt (10,224,664,576; md5 bb75e80e; pulled, the handon_ckpt pick for this eval)",
+  "ckpt": "/home/steam/ar_pb/runs/pbr3b1/pbr3b1_c3/ckpt_latest.pt",
+  "ckpt_step": 10224664576,
+  "ckpt_md5": "bb75e80eb3b6569d9626fa9e4f442c2d",
   "recipe": [
-   "resume of the incumbent (9.478B) with round 2's curriculum flag set on autoresearch/spines/pbr3b1_vvel_g20.npy"
+   "resume chain: incumbent r2 (9.478B) -> pbr3b1_c1 -> c2 -> c3 (all resumes, this round)",
+   "--demo-file autoresearch/spines/pbr3b1_vvel_g20.npy (the policy's own beam line + a velocity-frame GE chain past the 20.4% gate, to 21.54%)",
+   "--demo-tau0 1705 --demo-window 5 --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5 --demo-rate 0.3 --demo-front-frac 0.4",
+   "--demo-success-d 200 --demo-success-bonus 50 --keys-hold-spawn-duck --yaw-entropy 0",
+   "--demo-front-temp 0.5 --demo-front-ticks 40 --demo-front-view 6",
+   "--respawn-greedy 0.2 --respawn-greedy-window 0.25 2.0 --respawn-greedy-stuck 200",
+   "--respawn-front-perturb 0.2 --respawn-front-perturb-band 0.005 --respawn-front-perturb-speed 1.0 1.3 --respawn-front-perturb-turn 90",
+   "--energy-pot 8 --energy-pot-front 0 --energy-pot-front-bonus 0",
+   "--no-respawn-novel --respawn-backward-mix 0 --int-real-only 0",
+   "--spawn-states autoresearch/spines/pbr1b1_entry_ge_states.npy --spawn-states-frac 0.2 --maxvel 3500"
   ],
-  "resume_from": "/home/steam/ar_pb/incumbent/r2/ckpt.pt",
-  "commit": "7090ffb",
-  "note": "c3's third eval; 9/9 still die at the 20.4% catch"
+  "resume_from": "pbr3b1_c2/ckpt_latest.pt (10,014,425,088, md5 7c944036)",
+  "commit": "c3 launched from 4ac9d51..7090ffb (trainer unchanged this round)",
+  "note": "9/9 greedy episodes still die at the 20.4% catch: a marginal gain over 20.414"
  },
- "summary": "Box 57580595 (3090) from 23:42 UTC. The 20.4% gate fell to box Go-Explore with velocity-frame random actions (explore_phase1 --view-velocity: 21.54% vs 21.06% for yaw-delta at matched compute). Spine pbr3b1_vvel_g20 (to 21.54%), but its end is doomed (every spawn there falls into the pit-floor catch within 0.9 s: ~300 u short of the energy for the next landing, which a ramp-rooted GE could not find either). Curriculum runs c1/c2 (evals 20.22-20.44, best 20.437) stuck at the mid-ramp band because success (21.37%) was barely above what the policy's early ramp exit reaches; c3 (01:42) relaxes it to 21.19% so the walk-back can continue. A greedy line along the spine would score ~21.2-21.5."
+ "summary": "Score 20.414 -> 20.475 (c3; 9/9 still die at the 20.4% catch). No box until 23:42 UTC (budget pace). New generic search: explore_phase1 --view-velocity (random view targets in the policy's own velocity frame) cracked the 20.4% gate's line (21.54% vs 21.06% for yaw-delta at matched compute) and pumps the field-opposed start half-pipe - the user's 'first ramp' - to carryable energy 4,073; --select-energy / --select-depth-cost (carryable-energy selection) and exact archives chained back to the spawn give first-ramp lines from the true start (pbr3b1_pump_long, pbr3b1_pump_short: tunnel at up to 642 u/s, +40-150 u over the policy). The 20.4% spine's end is a doomed flight (~200-300 u short of the next landing), so its curriculum stalled at the curved-ramp band and eroded (c4 4.842); the curriculum on the short pump line (c5) walked 1,376 -> ~931 states into the pump in ~35 min. Next: continue the first-ramp curriculum from the start, then re-search the 20.4% launch and the post-ramp landing with the extra energy; probe a spine's end before training on it."
 }

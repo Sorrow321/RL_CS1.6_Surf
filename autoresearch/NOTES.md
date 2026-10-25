@@ -1416,7 +1416,7 @@ or cheaper offers in the query (a 3090 at <= 0.18 $/h would fit beside the 5080)
   top of a half-pipe pass, the next precise piece. Greedy evals 20.288 / 20.251 / 20.220 (the
   greedy line still takes the old precision entry: the walk-back has not reached the spawn).
 
-### pbr3b1 round 3 lesson (written 06:30 UTC, finalised at wrap-up)
+### pbr3b1 round 3 lesson (written 06:30 UTC, final at the 07:01 UTC wrap-up)
 * **Score 20.414 -> 20.475** (pbr3b1_c3 traj_10165944320; handed-on checkpoint pbr3b1_c3/ckpt_latest.pt,
   10,224,664,576, md5 bb75e80e, pulled). A marginal gain: 9/9 greedy episodes still die at the 20.4%
   catch. No box until 23:42 UTC (budget pace; the operator's mid-round change), ~7 h of box time.
@@ -1456,3 +1456,13 @@ or cheaper offers in the query (a 3090 at <= 0.18 $/h would fit beside the 5080)
   [936] 0.0% and back to 941 (4.4%) - still walking into the pump; greedy evals 20.251 / 20.220 /
   20.354. Box 57580595 released 06:34 UTC (everything cited is pulled: c1-c5 logs and evals, c3's
   handed-on checkpoint, the three spines in autoresearch/spines/).
+
+### pbr3b1 wrap-up (2026-10-25 07:01 UTC)
+* Final: **20.475** (pbr3b1_c3 traj_10165944320, 10.166B; 20/20 valid evals this round, all
+  greedy from the true start; 9/9 episodes of the best still die at the 20.4% catch). Handed-on
+  checkpoint: pbr3b1_c3/ckpt_latest.pt (10,224,664,576, md5 bb75e80e, pulled; handon_ckpt's pick
+  for that eval, checked). The round's lesson is above ("pbr3b1 round 3 lesson").
+* For the next round: the user's first-ramp insight section above, and the three spines this round
+  left in autoresearch/spines/ - pbr3b1_vvel_g20 (past the 20.4% gate, doomed end at 21.54%),
+  pbr3b1_pump_long and pbr3b1_pump_short (the first ramp from the true spawn).
+* Box 57580595 (RTX 3090, 0.386 $/h) released 06:34 UTC; `box.py status` confirms no box.
