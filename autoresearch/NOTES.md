@@ -1317,7 +1317,7 @@ shorter budget_end_hours. Written down for the operator; nothing is worked aroun
   trainer's --keys-hold-spawn-duck rule); the ratchet / compass / pot-rate feeds re-anchored at the start
   state. save_frontier_line already replays from any row0, so the exactness check carries over.
 
-### pbr3b2 round 3 lesson (drafted 04:30 UTC; no box all round)
+### pbr3b2 round 3 lesson (drafted 04:30 UTC, final at the 07:00 UTC wrap-up; no box all round)
 * No score: the budget pace allowed no rental at the start ($18 credit), then one box fleet-wide, and the
   1.2 $/h cap (from 23:40) was held by two other branches with no cheap 32-thread card on offer. Everything
   below was built and measured on the 4-vCPU droplet.
@@ -1361,3 +1361,20 @@ shorter budget_end_hours. Written down for the operator; nothing is worked aroun
   have rented) - 17 min before wrapup_at. Not rented: rent + deploy + the launch's record gate do not fit
   before the wrap-up (which launches nothing new), and a run that short could only re-score the incumbent's
   own weights. The slot is left to the fleet.
+
+### pbr3b2 wrap-up (2026-10-25 07:00 UTC)
+* Final: no score (no box all round; RESULT.json final, best null). The round's lesson is the section
+  "pbr3b2 round 3 lesson" above; the first-ramp work after it (stages 1-2 of the energy-waypoint search, the
+  two half-pipe diagnostics) is the newest part.
+* For the next round, in order: (1) the USER'S INSIGHT above is the lead - the energy every later gate lacks
+  comes from the first ramp the policy skips; (2) it has to be TRAINED: uniform Go-Explore does not pump the
+  half-pipe and the incumbent cannot either (it bleeds energy there) - archive-state spawns (live states
+  only) + per-call energy shaping + --demo-success-energy on an energy waypoint of the route
+  (tools/energy_waypoint.py: same place, more energy, same way); (3) then --auto-spine carries the faster
+  policy on (beams from the true start, deepest-contact cuts, GE fallback, backoff), all tested on CPU here
+  but never run on a GPU.
+* Tools added this round: python/surfgym/autospine.py (+ train_fast --auto-spine*), train_fast
+  --demo-success-energy, tools/beam_tas.py --view-temp / --start-states, tools/energy_waypoint.py;
+  tests: test_auto_spine.py, test_demo_success_energy.py, test_energy_waypoint.py.
+* Spine added: autoresearch/spines/pbr3b2_beam_dh2.npy (the policy's own energy-ranked line to the gate-8
+  takeoff, h 3,735). Local search outputs: $AR_HOME/runs/pbr3b2/_* (no greedy evals, nothing scored).
