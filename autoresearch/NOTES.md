@@ -1208,3 +1208,19 @@ shorter budget_end_hours. Written down for the operator; nothing is worked aroun
   12-17 deg). A generic follow-up for energy gates (not built): let the curriculum teach a line's STATE,
   not only its position - success = the record reaches d(end) + M with energy height >= h(end) - eps -
   and accept an energy-ranked beam line that is as deep as the greedy's but carries more energy.
+
+### --demo-success-energy: the curriculum teaches a line's ENERGY, not only its position (new, 02:20 UTC)
+* `--demo-success-energy E` (with --demo-success-d and --demo-success-bonus; off = bit-identical): an
+  episode whose ratchet record crosses the spine's success line is paid the bonus - and counts as a
+  curriculum success - only if its energy height z + |v|^2/2g at that tick is >= h(spine end) - E; a
+  crossing short of it is spent (never paid). Spawns past the line count as before (else the bands at the
+  spine's end could never pass). The auto-spine swap recomputes h(end) for each new spine. TRAIN_ONLY.
+  Tests: tests/python/test_demo_success_energy.py (on + key dumped, refused without the bonus, flag off
+  bit-identical to the trainer before it).
+* Why (gate 8): the energy-ranked beam found the policy's OWN line to the takeoff with h 3,735 where its
+  greedy line has 3,614 at the same d (the record 3,751). The d-only success line cannot ask for that
+  (the greedy already passes 17.42%), the energy rule can.
+* Spine autoresearch/spines/pbr3b2_beam_dh2.npy (1,509 states to 17.42%, end h 3,735; provenance in the
+  spines README). Planned arm pbr3b2_en1 (scratchpad go_en.sh): resume the incumbent with round 2's
+  beam12 flags, --demo-file pbr3b2_beam_dh2.npy --demo-success-energy 50 + --auto-spine. Readout: the greedy
+  evals' energy at the last ramp contact (3,609 now) and progress past 20.4%.

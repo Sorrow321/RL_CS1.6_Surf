@@ -64,3 +64,11 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   that line's own states before the impact (32 u x energy 16 cells, 12 min, 1.27M cells; ge_replay
   15/15 links): ~6.8 s of back-and-forth on the ramps there (h 2,972 -> ~3,220, a small pump), then
   east at 640-1,078 u/s to 18.86%. Views along the velocity. No demo, no record data (pbr2b3).
+* `pbr3b2_beam_dh2.npy` (1,509 states, md5 a7222e9f5e74a6a5cd65c698ba69a011): the policy's OWN line from the true
+  spawn to its last ramp contact before the ~20.4% catch (17.42%, end energy height h = z + |v|^2/1600 =
+  3,735; the incumbent's greedy line has h 3,614 at the same d). `tools/beam_tas.py` on the incumbent
+  (pbr2b3 9.479B weights): 256 stochastic copies, 32 greedy, resample 25, `--score dh --score-energy 2`
+  (ranked by -d + 2 x energy height), extinct at 17 s; the frontier lineage replayed exactly and cut at its
+  deepest CONTACT (surfgym.autospine.cut_line, views along the velocity). For `--demo-success-energy`: a
+  curriculum that teaches the line's energy at the takeoff, not only its position. No demo, no record data
+  (pbr3b2, round 3; runs/pbr3b2/_beam_dh2/).
