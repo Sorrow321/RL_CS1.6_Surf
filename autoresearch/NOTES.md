@@ -1779,3 +1779,14 @@ throttled) and could read it as a bad box. The fix is one line in python/train_f
   upper-floor landing (21.2-21.5 s, -67..-170) and the drop-surf bottom (10.6 s, -73..-88).
 * c6's resume eval (16.2225B, c4's final weights + 14M steps of c5): **21.499**, 9/9 at the gate-9
   wall (median 21.4%) - a transient or damage from the spine swap; watching.
+
+### c6: 27.056; c7 adds the impact rows (11:15-11:32 UTC)
+* c6 evals (spine dh10, auto-spine with the dh K 10 beam): 21.499 / 21.393 (a transient after the
+  swap: 9/9 at the gate-9 wall) / **27.056** (16.374B, exact weights ckpt_16373514240.pt md5
+  fd053876..., pulled) / 26.339 / 26.897. The curriculum walked dh10 back 2280 -> 1730-1745 (the
+  gate-8/9 region, 26-38%). Stopped at 16.554B (ckpt_latest md5 d069d06c..., pulled).
+* **pbr4b4_c7** (11:30 UTC): c6's final weights + the same flags + `--respawn-greedy-impacts 2` and
+  --respawn-greedy 0.25 (was 0.2: the impact approaches share the greedy rows with the death
+  anchors), --demo-tau0 1740. Question: does exploring the approaches to the line's two biggest
+  energy drops per episode (with the greedy-row temperature) raise the energy the line carries
+  into the north gap (h ~3,520 at 26.5%; the gap wants ~3,700)?
