@@ -1241,3 +1241,30 @@ or cheaper offers in the query (a 3090 at <= 0.18 $/h would fit beside the 5080)
   lands on a curved ramp at ~1675 and rides it from heading south-east to south-west (vz -570 ->
   +660, dvz +20..+33 per tick), leaves it at 1717 and air-brakes east (the vvel explorer's large
   view offset); the failing band is mid-curve, 6-10 ticks before it leaves the ramp.
+
+### 00:57-01:45 UTC: the spine's end is doomed; success margin relaxed; parallel pulls
+* c1 ended at 9.878B (avg 122,694 steps/s). Evals 20.224 / 20.320 / 20.420 / 20.423 / 20.409 /
+  20.387; c2 (c1's final weights, tau0 1705): 20.403 / **20.437** (9.955B). All 9/9 at the catch.
+* Box probes (record_ckpt from single spine states, c1's final weights): from 1712 every episode
+  reaches 21.39-21.45% and then falls into the pit-floor catch (z ~2,400); from 1707 ~21.2%; from
+  1700 ~20.83%. The policy turns east off the curved ramp ~15 ticks early (vz +374..394 vs the
+  spine's +664 when it leaves). And from the spine's END (1815, 21.54%, airborne) 8/8 stochastic
+  episodes also fall into the catch within 0.9 s (from 1790, 1760 too): the GE chain's deepest
+  cell was a doomed mid-flight state. The next landing (z ~2,900 at x ~1,150, where the record
+  lands at 22.7 s) needs ~200-300 u more energy at the ramp than this line has (spine h ~3,470 at
+  the landing, record ~3,670).
+* A velocity-frame GE rooted at the spine's ramp states (1650-1716, 17 roots, 20 threads beside the
+  trainer, 13 min, 0.77M cells): max 21.58%, 4 cells past x 1,100 above z 2,850. No continuation
+  with this energy - the next gate is energy again (upstream: the launch, or the start-room pump).
+* So the success line at d(end)+100 = 21.37% paid DOOMED flights from 1712 (82%) and refused those
+  from 1707 (21.2%): the curriculum oscillated 1705 <-> 1710 for ~500M steps (0.1-2% at the band).
+  The score counts max progress, so a greedy line along this spine still scores ~21.2-21.5 even
+  though it dies: **pbr3b1_c3** (01:42, c2's 10.014B weights, md5 7c944036) = the same flags with
+  `--demo-success-d 200` (success 21.19%, still 0.75% past the catch-falling line's 20.44%) and
+  tau0 1705, 1.5B steps.
+* Lesson for spines cut at the deepest state: probe the END (record_ckpt --spawn-states from the
+  last state, stochastic): if its spawns all die, the success line must sit where survivors reach.
+* Harness issue: this box's single scp runs at ~22 KB/s (Thailand -> here), so box.py pull --ckpt
+  (scp with a 30-min timeout) cannot fetch a 63 MB checkpoint. `tools/pull_parallel.sh RUN FILE
+  [DST]` (new) splits it on the box into 2 MB chunks, fetches 8 at a time (~130-175 KB/s total),
+  reassembles and installs it only on an md5 match: c1's ckpt_final (63 MB) in 6 min.

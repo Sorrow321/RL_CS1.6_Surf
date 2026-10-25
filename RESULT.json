@@ -3,17 +3,17 @@
  "round": 3,
  "final": false,
  "best": {
-  "score": 20.42,
-  "eval_file": "/home/steam/ar_pb/runs/pbr3b1/pbr3b1_c1/traj_9630121984.jsonl",
-  "run": "pbr3b1_c1",
-  "step": 9630121984,
-  "ckpt": null,
+  "score": 20.437,
+  "eval_file": "/home/steam/ar_pb/runs/pbr3b1/pbr3b1_c2/traj_9954656256.jsonl",
+  "run": "pbr3b1_c2",
+  "step": 9954656256,
+  "ckpt": "/home/steam/ar_pb/runs/pbr3b1/pbr3b1_c1/ckpt_final.pt (9.878B, the weights c2 resumed; md5 038084c8)",
   "recipe": [
    "resume of the incumbent (9.478B) with round 2's curriculum flag set on autoresearch/spines/pbr3b1_vvel_g20.npy"
   ],
   "resume_from": "/home/steam/ar_pb/incumbent/r2/ckpt.pt",
   "commit": "7090ffb",
-  "note": "c1's third eval (151M steps of curriculum on pbr3b1_vvel_g20); 9/9 still die at the 20.4% catch"
+  "note": "c2's second eval; 9/9 still die at the 20.4% catch"
  },
- "summary": "Box 57580595 (3090) from 23:42 UTC. The 20.4% gate (a launch off a surf face, a tunnel with a falling ceiling, a hard right round a block corner onto the only ramp over a catch floor) fell to box Go-Explore with velocity-frame random actions (new explore_phase1 --view-velocity: 21.54% vs 21.06% for the yaw-delta explorer at matched compute, 2.6-6.7x more cells past the gate). Spine pbr3b1_vvel_g20 (to 21.54%); pbr3b1_c1 = the incumbent + round 2's curriculum on it: evals 20.224 / 20.320 / 20.420 (9.63B); training's frontier ~20.8% -> 24%; the curriculum oscillates at the ramp-landing band [1705,1709] (1.4-2% success; [1710,1714] 82%)."
+ "summary": "Box 57580595 (3090) from 23:42 UTC. The 20.4% gate fell to box Go-Explore with velocity-frame random actions (explore_phase1 --view-velocity: 21.54% vs 21.06% for yaw-delta at matched compute). Spine pbr3b1_vvel_g20 (to 21.54%), but its end is doomed (every spawn there falls into the pit-floor catch within 0.9 s: ~300 u short of the energy for the next landing, which a ramp-rooted GE could not find either). Curriculum runs c1/c2 (evals 20.22-20.44, best 20.437) stuck at the mid-ramp band because success (21.37%) was barely above what the policy's early ramp exit reaches; c3 (01:42) relaxes it to 21.19% so the walk-back can continue. A greedy line along the spine would score ~21.2-21.5."
 }
