@@ -3,5 +3,5 @@
  "round": 4,
  "final": false,
  "best": null,
- "summary": "Round 4 start (07:50 UTC). Plan: the incumbent (24.737, gate 10 = an energy-limited ramp climb) resumed at the WR player's physics tick (--tick-ms 7.63 = 130.4 Hz: +30% air-accelerate impulses per second, sharper turns; the project's own precedent on cannonball and skate_laby). Waiting for a box (fleet at its 1.2 $/h cap)."
+ "summary": "No box yet (fleet at its 1.2 $/h cap since 07:50). Local CPU found the lever: at the WR player's frame rate class (an 8 ms physics tick, 125 Hz; the record ran 131 fps) the policy's own beam proposals climb the gate-10 ramp from its own UNBOOSTED state (26.27-26.28%), while the same beam at 10 ms stalls at 24.75%. Spine pbr4b1_k04_t8.npy built from it. Next on a box: resume the incumbent at --tick-ms 8 with that curriculum, milestones 44939/43426 and the trainer's search loop (the search tools now run whole-ms ticks)."
 }

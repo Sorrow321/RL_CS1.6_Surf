@@ -105,3 +105,9 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   over the gate-9 wall and up the gate-10 ramp to 26.28% (cut at its best d). The same beam at the
   10 ms tick stalls at 24.75%. The policy's own actions throughout (views need no canonicalising);
   no demo, no record, no boost (pbr4b1, round 4). The suffix states follow 8 ms dynamics.
+* `pbr4b1_k05_t8.npy` (2,800 states, md5 f7f129afdc2934d9003bf4692111fa78): the policy's OWN line
+  from the TRUE SPAWN to 26.18% at the 8 ms physics tick - the frontier lineage of tools/beam_tas.py
+  (256 stochastic copies of the round-3 incumbent's 13.4999B weights, `--score d`, resample every 25
+  decisions, `--tick-ms 8`, local CPU, 507 s, replayed exactly), cut at its best d: the start room,
+  gates 2-9 and the gate-10 ramp climb, at 22.4 s. Every state follows 8 ms dynamics; views are the
+  policy's own. No demo, no record, no boost (pbr4b1, round 4).

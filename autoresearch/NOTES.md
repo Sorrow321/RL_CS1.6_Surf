@@ -1692,3 +1692,11 @@ the x1.12 boost gave the k03 chain.
   Same state, weights, population and ranking: the tick is the difference.
 * Spine autoresearch/spines/pbr4b1_k04_t8.npy (2,416 states) = k03's first 1,717 states + that 8 ms
   beam line; success line d 42,230 (26.11%).
+* Control, the same 8 ms beam ranked by d alone (`--score d`): **26.27%** (26.28% with dh K 2) -
+  the TICK opens gate 10 for the policy's proposals; energy ranking adds nothing here.
+* The same beam from the TRUE START at 8 ms (256 copies, d-ranked, 22.4 s cap at 3,000 ticks, 8.5 min
+  of local CPU): frontier **26.18%** at 22.4 s (3,504, -2,415, 3,220) - the whole route holds at
+  125 Hz and gate 10 falls from the true start with the policy's own proposals. Energy on that line:
+  h 3,789 at 20%, a -393 u gate-8 landing (still hard), 3,415 at 24%, then UP the ramp (z 3,172 at
+  24.5%, 3,226 at 25%). Spine autoresearch/spines/pbr4b1_k05_t8.npy (2,800 states, success line
+  d 42,286 = 26.01%) - the T1 spine (consistent 8 ms dynamics from the true start).
