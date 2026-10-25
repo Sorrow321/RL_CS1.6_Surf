@@ -1824,3 +1824,16 @@ over-subscribes the quota. This branch's surfgym now caps numba; the operator ma
   spine's success line (29.14%) lies in the catch fall, so the greedy (28.7-28.9%) rarely crosses it
   and the trainer's quorum will not fire: searches run by hand (GE13 at 8 ms over the flight and the
   drop x1.0 / 1.04; branched beams forked at 2600 / 2700 / 2800 ticks, before the hole).
+* Searches for gate 12 (11:09-11:22 UTC, beside t3): branched beams on t3's 15.99B weights forked at 2600 /
+  2700 / 2800 ticks (before the hole, held view offsets +-60 deg): 40,391 / 40,532 / 40,778 (the catch fall),
+  every forked lineage dead; plain 40,898. **GE13** (8 ms, 64 u x energy 32, 30 roots over the gate-11
+  spine's flight and drop x1.0 / 1.04, 12 min, 10 threads): deepest **30.44%** - from the x1.04 root at
+  spine state 2690 (over the sheet): down the hole heading SOUTH-WEST (the record's way), a hard landing on
+  the ramp at (2,880, -1,683, 2,781) (h 3,835 -> 3,445), west then north at 820-900 u/s, falling toward the
+  catch at (2,259, -827, 2,596). Several x1.0 roots reach 30.0-30.3%. (ge_roots_best's "group" =
+  archive index // N is unreliable once two roots share a cell: match the chain's first state to the spine.)
+* t3's later evals: 28.938 / 28.976 / 29.066 / **29.207** (16.31B, median 29.12%, 9/9 at 28.8-29.2% - the
+  greedy creeps further along the catch fall; 5/9 past the 29.14% success line at the last eval).
+* Spine autoresearch/spines/pbr4b3_ge13.npy (3,054 states, success line d <= 39,852 = 30.27%).
+  **pbr4b3_t4** (11:27 UTC): t3's 16.316B weights (md5 0c61903f...) + that spine + milestones
+  44939,43426,42182,41015,40497 + the same flags (7.67 ms held), 3B steps.
