@@ -1379,3 +1379,22 @@ or cheaper offers in the query (a 3090 at <= 0.18 $/h would fit beside the 5080)
 * 04:45 GE_pump6: pump4's settings + `--select-energy 150`, rooted at the half-pipe's top-64
   carryable states of pump4/5 (h_c **4,039-4,055** - the pump keeps climbing with each run: 3,941
   -> 3,981 -> 4,026 -> 4,055), 8,192 envs, 48 threads, 35 min.
+
+### 05:20 UTC: the first-ramp line exists - pump, fast tunnel entry, carried energy (generic search)
+* GE_pump6 (velocity-frame, --select-energy 150, rooted at the half-pipe's top carryable states,
+  35 min, 17.9M runs, 460k cells): half-pipe carryable energy 4,073; **tunnel entered at up to
+  642 u/s with carryable h 3,969** (record ~500-600 u/s, ~3,950-3,978; policy tunnel exit ~3,810);
+  389 states on the fast west approach; carried energy 3,965 at 1.28%, 3,912 at 1.53%, 3,852 at
+  2.77% (|v| 924), 3,837 at 3.01%.
+* `autoresearch/spines/pbr3b1_pump_long.npy`: that line from the TRUE SPAWN in one exact piece
+  (6 archives followed back root by root; every link replays exactly), 6,590 ticks = 65.9 s, max
+  carryable energy 4,049, end 2.77% at 917 u/s with 3,852. All 400 pump6 candidates past 2.5% with
+  h_c >= 3,800 descend from that same 65.6 s lineage: no short pumped chain in these archives.
+* So the user's first ramp, made generic: (1) random actions in the policy's own velocity frame
+  (`--view-velocity`) surf a field-opposed half-pipe for energy; (2) roots / selection by CARRYABLE
+  energy (`--select-energy`; push volumes excluded) push the archive toward energetic states; (3)
+  the energy then has to be carried through a precise entry (here the crouch tunnel), which took
+  ~2 h of box GE in six chained runs. Nothing in it names this map's ramp, tunnel or record.
+* 05:23 GE_short: from the true spawn, `--select-energy 100 --select-depth-cost 0.25` (the score
+  charges 0.25 u of carryable energy per tick of chain depth, ~25 u/s: energy gained quickly
+  outranks a long wander), 30 min - a SHORT pumped line for a feasible curriculum?

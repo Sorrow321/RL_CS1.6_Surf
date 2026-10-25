@@ -74,3 +74,14 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   tunnel's ceiling, round the block's corner onto the ramp, up and east to 21.54% (airborne at
   ~800 u/s, h 3,228). Chain views along the velocity (spine_canon_view). No demo, no record data
   (pbr3b1, round 3).
+* `pbr3b1_pump_long.npy` (6,590 states, md5 db18cd877e524ce7d4c9142e8504995a): ONE exact line from
+  the TRUE SPAWN that pumps the field-opposed east half-pipe (the user's "first ramp", carryable
+  energy up to 4,049) and carries it west into the crouch tunnel at speed and on to 2.77% (|v| 917,
+  carryable h 3,852; the policy's own line has ~3,810 at the tunnel exit). Built from six chained
+  velocity-frame Go-Explore archives (tools/explore_phase1.py --exact-chains --view-velocity, later
+  runs with --select-energy, each rooted at the previous archives' highest carryable-energy states,
+  push volumes excluded), followed back root by root to the spawn-rooted archive (exact state
+  matches) and replayed exactly by ge_replay (19/19, 46/46, 6/6, 6/6, 30/30 links); views along the
+  velocity. 65.9 s long: ~57 s of it is the explorer's wandering pump (the record pumps in ~6 s) -
+  proof the line exists, too long for a backward curriculum as is. No demo, no record data
+  (pbr3b1, round 3).
