@@ -85,3 +85,11 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   velocity. 65.9 s long: ~57 s of it is the explorer's wandering pump (the record pumps in ~6 s) -
   proof the line exists, too long for a backward curriculum as is. No demo, no record data
   (pbr3b1, round 3).
+* `pbr3b1_pump_short.npy` (1,377 states, md5 2d4fa3ddd6f4c437baf5cd5797b5ddd1): a SHORT first-ramp
+  line from the TRUE SPAWN, 13.8 s: east into the field-opposed half-pipe, three surf passes
+  (carryable energy 3,653 -> 3,907), back west at ~420 u/s through the SOUTH passage (y ~-3,120,
+  z ~3,740) to 1.33% with carryable h 3,852-3,864 (the policy's own tunnel exit ~3,810). One
+  velocity-frame Go-Explore rooted only at the spawn (explore_phase1 --exact-chains --view-velocity
+  --select-energy 100 --select-depth-cost 0.25, 30 min on a 3090 box), its highest-energy cell past
+  1% replayed exactly by ge_replay (25/25 links); views along the velocity. No demo, no record data
+  (pbr3b1, round 3).

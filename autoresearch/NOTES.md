@@ -1398,3 +1398,13 @@ or cheaper offers in the query (a 3090 at <= 0.18 $/h would fit beside the 5080)
 * 05:23 GE_short: from the true spawn, `--select-energy 100 --select-depth-cost 0.25` (the score
   charges 0.25 u of carryable energy per tick of chain depth, ~25 u/s: energy gained quickly
   outranks a long wander), 30 min - a SHORT pumped line for a feasible curriculum?
+* GE_short (05:23-05:54; from the true spawn, --select-energy 100 --select-depth-cost 0.25, 30 min,
+  15.9M runs, 313k cells): half-pipe carryable energy 3,975; best past 1%: h_c 3,864 at depth 1,376
+  ticks (13.8 s) - shorter than the 65.9 s line by 5x, at ~100 u less energy. Spine
+  `autoresearch/spines/pbr3b1_pump_short.npy` (1,377 states, to 1.33%, 25/25 links exact): three
+  passes in the half-pipe (3,653 -> 3,907), then west through the SOUTH passage (y ~-3,120) at
+  ~420 u/s with 3,852-3,864 at 1.33% (+40-50 u over the policy's tunnel exit).
+* **pbr3b1_c5** (05:56 UTC, the last ~50 min of box time): c3's 10.225B weights (the handed-on
+  20.475 checkpoint) + the backward curriculum on pbr3b1_pump_short.npy (same flag set, success
+  d(end)+100, spawn-states 0.1) - does the curriculum walk back through the pump, i.e. can the
+  policy be taught the user's first ramp at all? It cannot lower this round's banked score.
