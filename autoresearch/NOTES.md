@@ -1634,3 +1634,26 @@ the fleet had no live box).
   k02 24.0%) + as10's other flags (energy K 12, greedy-contact rows with temp, front-perturb,
   greedy speed 1.0-1.05, start-room spawns 0.2) + --auto-spine --auto-spine-milestones (delay 3e8,
   retry 4e8, patience 1.5e9, gain 500, GE 8 min), 3B steps.
+
+### c1 ran at ~12k steps/s: numba's thread team on a 64-thread host (08:07-08:20 UTC)
+* The box is a Threadripper 3970X (64 threads visible) with a 30.7-CPU container quota. c1 trained
+  at ~12k steps/s (round 3's 5080 + i9 box: 93-209k with the same flags), 75% of CFS periods
+  throttled, the process at 3,100% CPU and the GPU at 13%. `top -H`: ~32 long-lived busy threads
+  plus groups of 32 short-lived ones created and destroyed constantly. The trainer sizes its OMP
+  team from the quota (omp=15), but numba's `prange` kernels (surfgym.goalfield's fused sample,
+  called per tick by the reward) size theirs from the VISIBLE cores: NUMBA_NUM_THREADS = 64 here
+  (32 on round 3's box).
+* Fix (0c64956): train_fast sets NUMBA_NUM_THREADS = the OMP team size before numba loads (the
+  kernels are per-point, so the team size cannot change a result; tests/python/
+  test_goalfield_fastpath.py passes with a 2-thread team). c1 stopped at 13.512B after 12M steps;
+  **pbr4b4_c2** (08:19 UTC) = the same launch on the fixed trainer, from the incumbent's weights.
+* Measured on c2 (same box, same flags): **~341k steps/s** (40 s window at 13.51-13.53B), up from
+  ~12k - the fix is the whole difference, and this box is now faster than round 3's.
+
+### Harness issue (for the operator): 64-thread hosts with a ~30.7-CPU quota
+config.offer_query's `cpu_cores_effective>=32` admits hosts that show 64 threads to the container
+but give it a 30.7-CPU CFS quota (box 57632515, Threadripper 3970X). Any branch whose train_fast
+lacks 0c64956 runs ~20x slow there (numba's prange team = 64 visible threads, 75% of CFS periods
+throttled) and could read it as a bad box. The fix is one line in python/train_fast.py's prologue
+(NUMBA_NUM_THREADS = the OMP team size); tools that import surfgym.goalfield outside the trainer
+(beam_tas, explore_phase1, record_ckpt) inherit it only when the trainer launches them.
