@@ -407,3 +407,14 @@ def test_survivors_runs_on_the_map():
                   st, np.array([0, 1]), runs=8, secs=0.5)
     assert s.shape == (2,) and ((s >= 0.0) & (s <= 1.0)).all()
     assert s[0] > 0.0                                   # the true start is not a death
+
+
+def test_ticks_ahead_reads_the_explorer_tree():
+    """ge_replay.ticks_ahead: how long the explorer's own runs lived past each cell (its subtree's
+    deepest tick minus its own) - a leaf has 0, a root sees its deepest descendant."""
+    sys.path.insert(0, str(ROOT / "tools"))
+    from ge_replay import ticks_ahead
+    #        0     1    2    3    4    5
+    parent = [-1,  0,   0,   1,   3,   2]
+    depth = [0,   50,  40,  90,  300, 45]
+    assert ticks_ahead(parent, depth).tolist() == [300, 250, 5, 210, 0, 0]

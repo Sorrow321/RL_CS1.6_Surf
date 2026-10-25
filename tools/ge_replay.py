@@ -56,6 +56,19 @@ def pick_order(d, h, max_d: float, k_energy: float, d0: float) -> np.ndarray:
     return cand[np.argsort(-phi, kind="stable")]
 
 
+def ticks_ahead(parent: np.ndarray, depth: np.ndarray) -> np.ndarray:
+    """Per cell: how many ticks past it the explorer's own runs went on living - the deepest
+    (in ticks) cell of its subtree (runs restored from it, from those, ...) minus its own depth.
+    An exact-chains archive appends a child after its parent, so one reverse pass does it."""
+    par = np.asarray(parent, np.int64)
+    md = np.asarray(depth, np.int64).copy()
+    for i in range(len(md) - 1, -1, -1):
+        p = par[i]
+        if p >= 0 and md[i] > md[p]:
+            md[p] = md[i]
+    return md - np.asarray(depth, np.int64)
+
+
 def survivors(map_path, meta, st, cand, runs: int, secs: float, seed: int = 1) -> np.ndarray:
     """Share of ``runs`` uniform-random rollouts from each candidate's state still alive after
     ``secs`` (actions redrawn every 20 ticks), at the archive's tick and speed cap: a dying run
@@ -121,8 +134,14 @@ def main(argv=None):
                          "the deepest. 0 = the deepest cell (the old rule)")
     ap.add_argument("--pick-d0", type=float, default=None,
                     help="the race reward's progress scale d0 (the field at the true start)")
-    ap.add_argument("--pick-survive", type=int, default=32,
-                    help="uniform-random rollouts per candidate for the survival filter (0 = none)")
+    ap.add_argument("--pick-ahead-secs", type=float, default=1.0,
+                    help="a candidate must have lived on this long in the explorer's own runs (its "
+                         "subtree in the archive reaches this many seconds past it): a falling state "
+                         "keeps its energy height until it hits, and the deepest cell is often a dead "
+                         "end (0 = no such filter)")
+    ap.add_argument("--pick-survive", type=int, default=0,
+                    help="no candidate passes --pick-ahead-secs: uniform-random rollouts per "
+                         "candidate for a survival filter instead (0 = none: keep the deepest cell)")
     ap.add_argument("--pick-survive-secs", type=float, default=1.0)
     ap.add_argument("--pick-survive-frac", type=float, default=0.25)
     ap.add_argument("--pick-check", type=int, default=512,
@@ -148,12 +167,23 @@ def main(argv=None):
         if a.pick_d0 is None:
             raise SystemExit("--pick-energy needs --pick-d0 (the race reward's progress scale)")
         h = energy_height(st)
-        order = pick_order(d, h, a.pick_max_d, a.pick_energy, a.pick_d0)[:max(1, int(a.pick_check))]
+        order = pick_order(d, h, a.pick_max_d, a.pick_energy, a.pick_d0)
         print(f"--pick-energy {a.pick_energy:g}: {len(order)} candidate cells at or past d "
               f"{a.pick_max_d:,.0f} (deepest d {d[end]:,.0f}, energy height {h[end]:,.0f})")
+        if len(order) and float(a.pick_ahead_secs) > 0.0:
+            tps = 1000.0 / float(meta.get("tick_ms") or 10)
+            ahead = ticks_ahead(parent, z["depth"])
+            viable = order[ahead[order] >= int(round(float(a.pick_ahead_secs) * tps))]
+            print(f"  {len(viable)} of them lived on >= {a.pick_ahead_secs:g} s in the explorer's "
+                  f"own runs")
+            if len(viable):
+                order = viable[:1]                  # best first: the pick
+            elif int(a.pick_survive) <= 0:
+                order = order[:0]                   # none viable: the deepest cell stays
         if len(order):
+            order = order[:max(1, int(a.pick_check))]  # the rollout filter's budget
             ok_c = order
-            if int(a.pick_survive) > 0:
+            if int(a.pick_survive) > 0 and len(order) > 1:
                 surv = np.zeros(0)
                 ok_c = np.zeros(0, np.int64)
                 for b in range(0, len(order), 64):
