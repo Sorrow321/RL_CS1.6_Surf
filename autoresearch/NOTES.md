@@ -1768,3 +1768,11 @@ Box: 57632318, RTX 4080 + i9-14900F (32 thr), 0.30 $/h, UK (machine 151788), ren
   auto_spine passes the checkpoint's tick to it. Not used by t1 (launched before).
 * Manual search on t1's 15.42B weights (trainer paused by SIGSTOP; runs/_manual1 on the box):
   dh beam 40,444 / branched beams 40,441-40,446 (= the greedy's 40,522: no gain); GE stages running.
+* Manual search 1 (10 ms GE, t1's 15.42B weights): GE stage 1 (x1.0 / +40) -> 39,672 (30.58%): a
+  +40 root on the north side (x1.032), a hard landing on the lower ramp (h 3,799 -> 3,383), west, a
+  contact turning north, then a ballistic flight north-west into an IMPACT at (2,182, -976, 2,633)
+  (1,029 -> 265 u/s) and a crawl to (2,074, -823, 2,596). k03 ends near there too ((2,235, -807,
+  2,602), falling). The record (ANALYSIS ONLY) turns north at the same place (x ~2,530, v (-150, 977,
+  139) vs k03's (-288, 901, 21)) but steers and keeps z 2,835-2,910 to y ~-325 where it lands on a
+  ramp; the explorer's lines fly it ballistically and lose ~200 u of height by y -800.
+* Manual search 2 (10:47 UTC): the same with the tick-aware GE (explorer at [8,8,7]).
