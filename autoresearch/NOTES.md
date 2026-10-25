@@ -1836,3 +1836,12 @@ Box: 57632318, RTX 4080 + i9-14900F (32 thr), 0.30 $/h, UK (machine 151788), ren
   `--demo-front-temp 2 --demo-front-ticks 60 --demo-front-view 20 --demo-front-hold` (keys at
   temperature 3 and the yaw sigma x20 = ~17 deg, with the noise HELD for the band spawn's first
   0.46 s), the rest as t2/t3, 5B steps. Question: does band [2790] (0.0% in t2/t3) move.
+* t4 (held band noise, keys T 3, yaw sigma x20): band [2790] still 0.0% after ~300M steps; band
+  [2795] fell 38 -> 31-34% (the held noise costs the easier band). Greedy 29.04-29.15. Null.
+* Probe 5 (t4's weights, trainer paused): branched beams from the landing states 2771 / 2786 / 2790
+  (half the copies with HELD view offsets of up to +-60 / +-180 deg, the keys at temperature 2,
+  resampled every 5 decisions): the whole population dead within 0.3-1.2 s from every one; from
+  2800 (probe 1) all 4,096 copies fly on to 39.2%. The curve's EXIT state is the needle: the
+  explorer's exact contact sequence hands later states the velocity the next landing (y ~-519)
+  needs, and no policy-like action sequence from 2786-2796 reproduces it. A line can be past the
+  frontier and still not be flyable by the policy that has to learn it.
