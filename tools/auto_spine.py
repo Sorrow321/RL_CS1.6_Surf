@@ -256,9 +256,14 @@ def go_explore(a, out: Path, line, end: int, boosts=None, tag: str = "ge", line_
     info = {"ge_rc": rc, "ge_roots": [int(i) for i in idx], "ge_boost": boosts}
     if not (gd / "archive.npz").exists():
         return None, info
-    rc2 = run([sys.executable, "-u", ROOT / "tools" / "ge_replay.py", "--map", a.map,
-               "--archive", gd / "archive.npz", "--field", a.field, "--out", gd / "line.npy"],
-              out / f"{tag}_replay.log", 1200)
+    rcmd = [sys.executable, "-u", ROOT / "tools" / "ge_replay.py", "--map", a.map,
+            "--archive", gd / "archive.npz", "--field", a.field, "--out", gd / "line.npy"]
+    if float(a.ge_pick_energy) > 0.0 and np.isfinite(a.greedy_d) and a.d0:
+        # --ge-pick-energy: the chain end is the survivable cell past the spine's bar with the
+        # highest training potential (progress + K x energy height), not the deepest one
+        rcmd += ["--pick-max-d", f"{a.greedy_d - a.gain:.1f}", "--pick-energy",
+                 f"{float(a.ge_pick_energy):g}", "--pick-d0", f"{float(a.d0):.1f}"]
+    rc2 = run(rcmd, out / f"{tag}_replay.log", 1200)
     info["ge_replay_rc"] = rc2
     if not (gd / "line.npy").exists():
         return None, info
@@ -323,6 +328,14 @@ def main(argv=None) -> int:
     ap.add_argument("--ge-view-follow", default="-90,-60,-30,-15,0,15,30,60,90",
                     help="explore_phase1 --view-follow offsets (deg from the velocity heading) for "
                          "the Go-Explore stages; 'none' = the uniform yaw-rate explorer")
+    ap.add_argument("--ge-pick-energy", type=float, default=0.0,
+                    help="> 0: a Go-Explore stage's chain ends at the survivable archive cell past "
+                         "--greedy-d - --gain with the highest -100 d / d0 + K h / 1000 (K = this, "
+                         "the run's --energy-pot; h the energy height) instead of the deepest cell "
+                         "(tools/ge_replay.py --pick-energy). 0 = the deepest (the old rule)")
+    ap.add_argument("--d0", type=float, default=None,
+                    help="the race reward's progress scale (the field at the true start); default "
+                         "the beam line's first state")
     ap.add_argument("--roots-secs", type=float, default=4.0,
                     help="Go-Explore roots: the line's last seconds before it stalls")
     ap.add_argument("--stall-margin", type=float, default=500.0,
@@ -371,6 +384,8 @@ def main(argv=None) -> int:
     best_src = None
     if line is not None and len(line):
         d = field_d(field, line)
+        if a.d0 is None and np.isfinite(d[0]):
+            a.d0 = float(d[0])                  # the beam starts at the true start
         e, de = cut_line(line, d, a.contact_tol, a.cut)
         res.update(beam_len=int(len(line)), beam_end=e, beam_end_d=de,
                    beam_best_d=float(d.min()))
@@ -421,6 +436,11 @@ def main(argv=None) -> int:
                     continue
                 gd_ = field_d(field, gl)
                 ge_e, ge_de = cut_line(gl, gd_, a.contact_tol, a.cut)
+                if (float(a.ge_pick_energy) > 0.0 and np.isfinite(gd_[-1])
+                        and gd_[-1] < a.greedy_d - a.gain):
+                    # --ge-pick-energy: the chain was replayed TO the picked cell; a deeper point
+                    # earlier on it is where it had less energy left, so the spine ends at the pick
+                    ge_e, ge_de = len(gl) - 1, float(gd_[-1])
                 res.update({f"{tag}_len": int(len(gl)), f"{tag}_end": ge_e,
                             f"{tag}_end_d": ge_de, f"{tag}_best_d": float(gd_.min())})
                 print(f"GE stage {k + 1} (speed x {boosts}): {len(gl)} states, best d "

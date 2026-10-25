@@ -298,3 +298,112 @@ def test_branched_beams_fork_at_the_tick_and_earlier(tmp_path, monkeypatch):
     assert forks == [(1700, "beam_br"), (1600, "beam_br2"), (1500, "beam_br3")]
     info = json.loads((out / "spine.json").read_text())
     assert info["source"] == "beam_br3" and info["br3_fork"] == 1500
+
+
+def test_pick_order_ranks_by_the_training_potential():
+    """ge_replay --pick-energy: cells past the bar only, ranked by -100 d / d0 + K h / 1000; K = 0
+    is depth alone (the deepest first), and no cell past the bar is an empty order."""
+    sys.path.insert(0, str(ROOT / "tools"))
+    from ge_replay import pick_order
+    d = np.array([900.0, 500.0, 700.0, np.inf, 300.0])
+    h = np.array([9000.0, 1000.0, 5000.0, 9000.0, 500.0])
+    assert pick_order(d, h, 800.0, 0.0, 1000.0).tolist() == [4, 1, 2]
+    # K = 12 at d0 1,000: cell 2 (-70 + 60) beats cell 4 (-30 + 6): 4,500 u more energy height
+    # (54 units) outweighs 400 u of d (40 units)
+    assert pick_order(d, h, 800.0, 12.0, 1000.0).tolist() == [2, 4, 1]
+    assert len(pick_order(d, h, 100.0, 12.0, 1000.0)) == 0
+
+
+def test_ge_pick_energy_reaches_ge_replay(tmp_path, monkeypatch):
+    """auto_spine --ge-pick-energy K hands ge_replay the bar (greedy_d - gain), K and d0; without
+    it the replay command is the old one."""
+    sys.path.insert(0, str(ROOT / "tools"))
+    import auto_spine
+    from surfgym.core import STATE_DTYPE
+    seen = []
+
+    def fake_run(cmd, log, timeout):
+        cmd = [str(c) for c in cmd]
+        seen.append(cmd)
+        if cmd[2].endswith("explore_phase1.py"):
+            gd = Path(cmd[cmd.index("--out") + 1])
+            np.savez(gd / "archive.npz", x=np.zeros(1))
+        return 0
+    monkeypatch.setattr(auto_spine, "run", fake_run)
+    line = np.zeros(40, STATE_DTYPE)
+    line["origin"][:, 0] = np.arange(40.0)
+    for pick in (None, 12.0):
+        seen.clear()
+        argv = ["--ckpt", "c.pt", "--map", "m.bsp", "--field", "f.npz", "--out", str(tmp_path),
+                "--greedy-d", "9400", "--gain", "500", "--d0", "57149"]
+        if pick is not None:
+            argv += ["--ge-pick-energy", f"{pick:g}"]
+        ap_ns = auto_spine.main.__wrapped__ if hasattr(auto_spine.main, "__wrapped__") else None
+        assert ap_ns is None
+        import argparse
+        a = argparse.Namespace(roots_secs=0.1, roots_n=4, ge_boost="1.0", map="m.bsp", envs=64,
+                               ge_cell=64, ge_energy=32, act_every=4, ge_minutes=0.1, seed=0,
+                               maxvel=None, threads=0, tick=8.0, ge_view_follow="none",
+                               field="f.npz", greedy_d=9400.0, gain=500.0, d0=57149.0,
+                               ge_pick_energy=(pick or 0.0))
+        gl, info = auto_spine.go_explore(a, tmp_path, line, 39, boosts=[1.0], tag="ge")
+        rep = [c for c in seen if c[2].endswith("ge_replay.py")]
+        assert len(rep) == 1
+        if pick is None:
+            assert "--pick-energy" not in rep[0] and "--pick-max-d" not in rep[0]
+        else:
+            r = rep[0]
+            assert r[r.index("--pick-max-d") + 1] == "8900.0"
+            assert r[r.index("--pick-energy") + 1] == "12"
+            assert r[r.index("--pick-d0") + 1] == "57149.0"
+
+
+def test_ge_pick_energy_ends_the_spine_at_the_pick(tmp_path, monkeypatch):
+    """With --ge-pick-energy the GE line (replayed TO the picked cell) ends the spine at its last
+    state even when a deeper point came earlier on it; without it the cut is the best d."""
+    sys.path.insert(0, str(ROOT / "tools"))
+    import auto_spine
+    from surfgym.core import STATE_DTYPE
+    nx, ny, nz, cell = 64, 4, 4, 32.0
+    grid = np.zeros((nz, ny, nx), np.float32)
+    grid[:] = (10000.0 - (np.arange(nx) + 0.5) * cell)[None, None, :]
+    fp = tmp_path / "field.npz"
+    np.savez(fp, grid=grid, quant=np.float64(1.0), mins=np.zeros(3), cell=np.float64(cell),
+             reach_max=np.float64(20000.0))
+
+    def line_xs(xs):
+        s = np.zeros(len(xs), STATE_DTYPE)
+        s["origin"][:, 0] = xs
+        s["origin"][:, 1:] = 50.0
+        s["velocity"][:, 0] = 500.0
+        return s
+    monkeypatch.setattr(auto_spine, "beam",
+                        lambda a, out, branch_tick=0, tag=None: (line_xs(np.linspace(100, 600, 50)),
+                                                                 {"beam_rc": 0}))
+    # the GE line goes out to x 1,600 and comes back to x 1,300 (the pick)
+    ge = line_xs(np.concatenate([np.linspace(100, 1600, 60), np.linspace(1590, 1300, 20)]))
+    monkeypatch.setattr(auto_spine, "go_explore",
+                        lambda a, out, line, end, boosts=None, tag="ge", line_keys=None:
+                        (ge, {"ge_rc": 0}))
+    for pick, want in ((None, 1600.0), ("12", 1300.0)):
+        out = tmp_path / f"k_{pick}"
+        argv = ["--ckpt", "c.pt", "--map", "m.bsp", "--field", str(fp), "--out", str(out),
+                "--greedy-d", "9400", "--gain", "500", "--ge-boost", "1.0", "--ge-minutes", "1"]
+        if pick:
+            argv += ["--ge-pick-energy", pick]
+        assert auto_spine.main(argv) == 0
+        assert np.load(out / "spine.npy")["origin"][-1, 0] == pytest.approx(want, abs=1.0)
+
+
+@needs_pb
+def test_survivors_runs_on_the_map():
+    """ge_replay.survivors: shares in [0, 1] from real states (the true start and a state far
+    above the map's top, which falls out of the world or into a catch)."""
+    sys.path.insert(0, str(ROOT / "tools"))
+    from ge_replay import survivors
+    sp = np.load(ROOT / "autoresearch" / "spines" / "pbr4b3_auto_t11k05.npy")
+    st = np.array(sp[[0, 0]], copy=True)
+    s = survivors(ROOT / "maps" / "surf_princessburglar_b26.bsp", {"maxvel": 3500.0, "tick_ms": 8},
+                  st, np.array([0, 1]), runs=8, secs=0.5)
+    assert s.shape == (2,) and ((s >= 0.0) & (s <= 1.0)).all()
+    assert s[0] > 0.0                                   # the true start is not a death

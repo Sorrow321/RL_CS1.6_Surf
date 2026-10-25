@@ -4842,6 +4842,13 @@ def main() -> None:
                     help="--auto-spine: the beam runs this long past the eval's longest episode")
     ap.add_argument("--auto-spine-timeout", type=float, default=2400.0,
                     help="--auto-spine: wall-clock cap (s) of one search")
+    ap.add_argument("--auto-spine-pick-energy", action="store_true",
+                    help="--auto-spine: a Go-Explore stage's chain ends at the survivable archive "
+                         "cell past the spine's bar (greedy frontier - --auto-spine-gain) with the "
+                         "highest training potential -100 d / d0 + K h / 1000 (K = this run's "
+                         "--energy-pot, h = z + |v|^2 / 2g) instead of the deepest cell: the "
+                         "deepest chain is often one that crashed its way there and leaves the next "
+                         "gate without energy (round 4's k05: 56.2% at 209 u/s). Off = the deepest")
     ap.add_argument("--demo-cooldown", type=int, default=None,   # None = 20
                     help="--demo-file: iterations between two moves of the curriculum's tau "
                          "(default 20, the reference implementation's constant): every move "
@@ -11621,6 +11628,9 @@ def main() -> None:
                   f"{float(args.auto_spine_gain):g}u replaces this one")
     elif args.auto_spine:
         raise SystemExit("--auto-spine needs --demo-file (the first spine) and --demo-success-d")
+    if args.auto_spine_pick_energy and not args.auto_spine:
+        raise SystemExit("--auto-spine-pick-energy picks --auto-spine's Go-Explore chains: it "
+                         "needs --auto-spine")
     if args.demo_file:
         if float(args.demo_front_frac) > 0.0:
             print(f"--demo-front-frac {args.demo_front_frac:g}: that share of "
@@ -14627,6 +14637,8 @@ def main() -> None:
             auto_spine_timeout=float(args.auto_spine_timeout))
         if args.auto_spine_milestones:
             meta["config"]["auto_spine_milestones"] = 1
+        if args.auto_spine_pick_energy:
+            meta["config"]["auto_spine_pick_energy"] = 1
     if args.demo_milestones:
         meta["config"]["demo_milestones"] = [float(x) for x in
                                              str(args.demo_milestones).split(",") if x.strip()]
@@ -15712,6 +15724,10 @@ def main() -> None:
                "--timeout", f"{float(args.auto_spine_timeout):g}"]
         if args.maxvel is not None:
             cmd += ["--maxvel", f"{float(args.maxvel):g}"]
+        if args.auto_spine_pick_energy and float(args.energy_pot or 0.0) > 0.0:
+            # the GE chain's end by the objective's own potential (progress + energy height)
+            _d0 = slots[0].rf_d0 if slots[0].rf_d0 else slots[0].d0
+            cmd += ["--ge-pick-energy", f"{float(args.energy_pot):g}", "--d0", f"{float(_d0):.1f}"]
         t0 = time.time()
         print(f"[{global_step:>13,d}] auto-spine search {AUTO['k']}: " + " ".join(cmd),
               flush=True)
