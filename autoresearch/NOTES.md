@@ -1252,3 +1252,24 @@ shorter budget_end_hours. Written down for the operator; nothing is worked aroun
   pump only partly with uniform actions (h <= ~3,839) and a tunnel entry at 340-465 u/s from it (GE_pump2),
   never as a line the curriculum could teach - and a position-only success line could not have taught it
   anyway: the slow route reaches the same places, only with less energy.
+* The start, side by side (the record is ANALYSIS ONLY): from start_run the record goes EAST into a
+  half-pipe (x ~1,100-2,400, floor z ~3,360): down, up the far side to x ~2,350, back down and up the
+  near side to z ~3,745 at x ~1,060, then west at z ~3,722-3,736 into the crouch tunnel at 550-600 u/s;
+  energy height 3,691 (0.5 s) -> 3,931 (6.5 s) = +240 u, reaching ~1% progress at ~7.5 s. The policy
+  goes WEST at once (plate climb at 1.5 s, |v| 85), crawls the tunnel at 220-350 u/s and leaves it with
+  h ~3,827 at 4 s (the record ~3,970 at 8 s). The pump costs the record ~4.5 s and buys ~150 u of energy
+  height - the size of the deficit at every later gate.
+* HOW to make the policy use it, generically (pbr3b2, 03:30 UTC; nothing names the ramp):
+  1. FIND: Go-Explore phase 1 from the TRUE SPAWN, reward-free, cells keyed on position x energy height
+     (explore_phase1 --cell 64 --cell-energy 16 --exact-chains), then a second stage rooted at the
+     archive's states of most usable energy (round 2's GE_pump2 step; tools/energy_waypoint.py
+     --top-energy N --write-roots).
+  2. PICK: `tools/energy_waypoint.py` (new): the archived state that lies ON the policy's own greedy line
+     (within one cell of one of its states) with the most USABLE energy above the greedy line's there
+     (z + (vx^2 + vy^2 + max(vz,0)^2)/2g - downward speed into a floor, e.g. the spawn doorway's push-down
+     trigger, is not credited) - "the same place, more energy" is what a field-opposed momentum detour
+     looks like on any map. Its exact chain (two-stage: --prefix-archive) is replayed into a spine.
+  3. TEACH: the backward curriculum on that spine with `--demo-success-energy E`: the success line asks
+     for the waypoint's ENERGY, so the slow route (which reaches the same place) is not a success, and
+     the per-call energy shaping (--energy-pot 8) pays the policy's own surfing for pumping harder than
+     the uniform explorer did. Then --auto-spine carries the faster policy on (beams from the true start).
