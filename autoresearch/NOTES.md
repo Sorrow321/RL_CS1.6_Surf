@@ -1823,11 +1823,11 @@ throttled) and could read it as a bad box. The fix is one line in python/train_f
 * c7 stopped at 16.906B (ckpt_latest md5 0696a3bf..., pulled): evals 26.982 after the best; the
   auto-spine quorum (6/9 past 26.82%) was about to start a ~30-min search whose GE ladder (<= x1.12)
   cannot cross a ~200 u gap (the manual x1.25 GE did not).
-* **pbr4b4_c8** (11:49 UTC): c7's weights + --respawn-greedy-impacts 3 + --auto-spine-ge-minutes 0
+* **pbr4b4_c8** (11:48 UTC): c7's weights + --respawn-greedy-impacts 3 + --auto-spine-ge-minutes 0
   (beam searches only, ~3 min) --auto-spine-gain 200 (a beam line 200 u past the greedy median
   becomes the spine) --auto-spine-delay 2e8 --auto-spine-retry 6e8, --demo-tau0 1730.
 
-### Recommendation for the user / the next rounds: the 10 ms tick (11:51 UTC, ANALYSIS ONLY)
+### Recommendation for the user / the next rounds: the 10 ms tick (11:50 UTC, ANALYSIS ONLY)
 * Energy GAINED and LOST between 10% and 26.5% (0.01 s steps of h = z + |v|^2/1600, duck-toggle
   jumps of the origin removed): the record 11.13 s, **gains 908 u (82 u/s per s), losses 839**, net
   +69; our c7 16.78B greedy (5 episodes that get there) 11.6-11.9 s, **gains ~470 (40 u/s per s),
