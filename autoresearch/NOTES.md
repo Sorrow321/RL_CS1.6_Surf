@@ -1273,3 +1273,16 @@ shorter budget_end_hours. Written down for the operator; nothing is worked aroun
      for the waypoint's ENERGY, so the slow route (which reaches the same place) is not a success, and
      the per-call energy shaping (--energy-pot 8) pays the policy's own surfing for pumping harder than
      the uniform explorer did. Then --auto-spine carries the faster policy on (beams from the true start).
+* Stage 1 run (04:01 UTC, local, 35 min, 3 threads, 2.0M runs, 24,337 cells; runs/pbr3b2/_ge_pump/s1):
+  frontier the pit at ~3.3%. Two traps for the picking rule, both fixed in energy_waypoint.py: (a) "most
+  surplus" picks a state beside the STANDING spawn (anything moving there beats the greedy's start) - the
+  rule is now the FURTHEST place on the greedy line still reached with >= --min-surplus 50 u; (b) its
+  first furthest pick reached the tunnel mouth at 307 u/s (+59 u) by going west through the south
+  passage and coming back EAST through the tunnel - same place, wrong way - so the state must move within
+  60 deg of the greedy line's direction there (--min-cos 0.5). With both: nothing on the route carries
+  >= 50 u past 0.73 s of the greedy line (the start room); >= 25 u to the tunnel shelf at 1.9 s.
+  Uniform random actions from the spawn do not pump the half-pipe hard enough to come back onto the route
+  with a big surplus (round 2: half-pipe h <= 3,804-3,839, the record 3,931 on its way back west).
+* Stage 2 (04:02 UTC): rooted at stage 1's 24 states of most usable energy (3,801-3,817 at ~300 u/s - the
+  start room's two exits, the tunnel mouth and the south passage, NOT the half-pipe, whose fast states
+  move downward), 25 min.
