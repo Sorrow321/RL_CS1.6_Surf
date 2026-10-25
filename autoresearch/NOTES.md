@@ -1700,3 +1700,12 @@ the x1.12 boost gave the k03 chain.
   h 3,789 at 20%, a -393 u gate-8 landing (still hard), 3,415 at 24%, then UP the ramp (z 3,172 at
   24.5%, 3,226 at 25%). Spine autoresearch/spines/pbr4b1_k05_t8.npy (2,800 states, success line
   d 42,286 = 26.01%) - the T1 spine (consistent 8 ms dynamics from the true start).
+
+### Harness issue: one branch boxless for hours under the flat 1.2 $/h cap (09:30 UTC)
+From 07:50 (round start + 7 min) to at least 09:30 UTC every `box.py rent` was refused: three live
+boxes burned 1.026 of the fleet's 1.2 $/h, the only offers under the 0.174 $/h left (a 4060 Ti at
+0.150 on host 466625, a 4070 at 0.156 on host 302304) are on blocklisted hosts, and the cheapest
+acceptable offer was a 3090 at 0.377. With the good cards at 0.34-0.60 $/h the cap fits three boxes,
+not four, unless one branch rents a cheap card; whichever branch is slowest to rent at the round
+start waits for another's release. (One of the three live boxes may be the operator's sidx loop.)
+This branch did its analysis and search locally on CPU meanwhile (gate 10 at 125 Hz, above).
