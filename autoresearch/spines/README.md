@@ -177,3 +177,9 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   greedy's quorum past k03): the plain beam on t11's own weights from the true spawn at 7.67 ms, to d 26,901 =
   52.93%; keys = the beam's own held keys per row. The spine t11 trained on at the end of round 4 and the natural
   --demo-file / --demo-keys for a resume of its checkpoint. No demo, no record (pbr4b3, round 4).
+* `pbr4b3_auto_t11k05.npy` + `.keys.npy` (5,002 rows; md5 65e08c9f4ac0d1e3da24b6592dc442e9 /
+  0cafdaaf895b919bfa8e7a44db22e86d): found BY THE TRAINER (pbr4b3_t11's auto-spine search 5 at 23.364B, 638 s,
+  the greedy's quorum past k04): t11's own 7.67 ms beam line to its state 4,344, then an UNBOOSTED (x1.0)
+  view-follow Go-Explore stage-1 chain (663 states) to d 25,021 = 56.22%. Views along the velocity, keys translated;
+  the beam rows' keys are the beam's own. The spine t11 trained on at the end of round 4 and the --demo-file /
+  --demo-keys for a resume of its checkpoint. No demo, no record (pbr4b3, round 4).

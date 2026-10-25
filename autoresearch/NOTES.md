@@ -2056,10 +2056,19 @@ over-subscribes the quota. This branch's surfgym now caps numba; the operator ma
   700-1,075 u/s - a fail trigger at the north end, reached lower than the record's line there (ANALYSIS ONLY: the
   record is at z ~3,316 by y 255). The k04 curriculum was at [4,189, 4,699] at 30-34% success at 18:31 UTC.
 
+### GATE 16 PASSED, the loop again: 51.093 -> 52.930 (2026-10-25 18:57 UTC)
+* On k04 (the policy's own beam to 52.93%): evals 23.288B 52.911, 23.364B 52.923 (quorum -> search 5, 638 s: beam
+  to 27,135 then an UNBOOSTED view-follow GE stage-1 chain from root 4,344 to d 25,021 = 56.22% -> spine k05,
+  autoresearch/spines/pbr4b3_auto_t11k05), 23.439B 52.910, **23.515B 52.930** (9/9 at 52.83-52.93%; best).
+* Wrap-up (19:03 UTC): one more eval, **23.590B 52.937** (9/9 at 52.8-52.94%, median 52.85%; the round's best),
+  then 23.666B 52.920. Handoff: ckpt_23551016960.pt (39M steps before the 52.937 eval, md5 7fbcd458...); the
+  wrap-up's ckpt_latest is step 23,665,836,032 (75M after, md5 d6d9edd0...), not twice as near.
+
 ### pbr4b3 round 4 lesson (wrap-up, 2026-10-25)
-* **Score 24.737 -> 51.093** (pbr4b3_t11 23.137B, 9/9 greedy episodes at 47.5-51.1% from the true start, median
-  50.7%; 0 finishes). Gates 10, 11, 12, 13 (the auto-spine's 35/41/43.7/45.2% lines), 14 (47.25%) and 15 (50.7-51.1%)
-  passed; gate 16 is a fail trigger at the north end of the corridor (~51%).
+* **Score 24.737 -> 52.937** (pbr4b3_t11 23.590B, 9/9 greedy episodes at 52.8-52.94% from the true start, median
+  52.85%; 0 finishes). Gates 10, 11, 12, 13 (the auto-spine's 35/41/43.7/45.2% lines), 14 (47.25%), 15 (50.7-51.1%) and 16
+  (52.9%, the policy's own beam line k04) passed; the loop's k05 (an unboosted GE chain to 56.2%) was being learned
+  at the end.
 * **What did it, in order of effect:**
   1. **Throughput, 50x on a quota-limited box** (ad5f905): numba sized its pool to 64 visible cores under a 30.7-CPU
      quota and the goal field's prange team throttled the trainer to ~7k steps/s; surfgym now defaults
@@ -2092,14 +2101,15 @@ over-subscribes the quota. This branch's surfgym now caps numba; the operator ma
   at 0.0-0.4% for 1.2e9 steps), my own reading of gate 15 (I called it an approach problem the loop could not
   solve; a less boosted chain from a later root solved it - measure before concluding, and let patience run).
 * **Numbers:** t11 (resume of t10 20.947B, 3e9 budget): 47.253 at 21.250B (gate 14), 47.1-47.2 for 1.7e9 steps on
-  k02, 50.720 at 23.062B, **51.093 at 23.137B**, 50.887 at 23.213B. ~330k steps/s on the 3090 box between searches;
+  k02, 50.720 at 23.062B, 51.093 at 23.137B, 50.887 at 23.213B, 52.911 / 52.923 / 52.910 at 23.29-23.44B,
+  52.930 at 23.515B, **52.937 at 23.590B**, 52.920 at 23.666B. ~330k steps/s on the 3090 box between searches;
   each search stage is ~8 min of trainer wait (search 2: 1,647 s; search 3: ~25 min; search 4: 37 s).
-* **To continue (next round):** resume `ckpt_latest` of pbr4b3_t11 (23.203B; the RESULT.json ckpt) with t11's flags
+* **To continue (next round):** resume pbr4b3_t11's ckpt_23551016960.pt (the RESULT.json ckpt) with t11's flags
   and the last spine: `ARM_RESUME=1 SELF_STATES=1 bash tools/run_arm.sh <run> --envs 1024 --maxvel 3500
-  --ckpt-every 2e8 --demo-file autoresearch/spines/pbr4b3_auto_t11k04.npy --demo-keys
-  autoresearch/spines/pbr4b3_auto_t11k04.keys.npy --demo-window 5 --demo-grow 5 --demo-grow-max 40
+  --ckpt-every 2e8 --demo-file autoresearch/spines/pbr4b3_auto_t11k05.npy --demo-keys
+  autoresearch/spines/pbr4b3_auto_t11k05.keys.npy --demo-window 5 --demo-grow 5 --demo-grow-max 40
   --demo-cooldown 5 --demo-rate 0.3 --demo-front-frac 0.8 --demo-success-d 100 --demo-success-bonus 50
-  --demo-milestones 44939,43426,42182,41015,40497,39943,37251,33777,32260,31429,30286,28818,28783
+  --demo-milestones 44939,43426,42182,41015,40497,39943,37251,33777,32260,31429,30286,28818,28783,27001
   --keys-hold-spawn-duck --yaw-entropy 0 --demo-front-temp 0.5 --demo-front-ticks 40 --demo-front-view 6
   --respawn-greedy 0.2 --respawn-greedy-window 0.25 2.0 --respawn-greedy-stuck 200 --respawn-greedy-contact
   --respawn-greedy-temp 0.5 --respawn-greedy-temp-ticks 100 --respawn-greedy-temp-view 6 --respawn-front-perturb
@@ -2110,6 +2120,7 @@ over-subscribes the quota. This branch's surfgym now caps numba; the operator ma
   --auto-spine-patience 1.2e9`. The checkpoint carries the 7.63 ms tick (never pass --tick-ms-schedule to it) and
   the keys-hold / potential / view shapes. On a quota-limited box check `nproc` vs the cgroup quota first (the numba
   fix is in surfgym; the CPU count the trainer sizes from is the quota).
-* **Where it stands:** gate 16 (~51%) - 8/9 greedy episodes end with "fail" at their best row at (-2,240..-2,410,
-  340..520, 2,900-3,095), lower than the record's line there (ANALYSIS ONLY); the k04 curriculum was walking back
-  through [4,189, 4,699] at 30-34% at the end. The loop is running: let its patience fire before intervening.
+* **Where it stands:** the greedy at 52.8-52.9% (d ~26,950, the end of k04); k05 (unboosted, to 56.2%) swapped in at
+  23.364B and being learned when the round ended. Gate 16 (~51%, a fail trigger at the north end of the corridor)
+  fell to the policy's own beam line within ~150M steps. The loop is running: let its patience fire before
+  intervening.
