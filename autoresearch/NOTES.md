@@ -1946,3 +1946,7 @@ throttled) and could read it as a bad box. The fix is one line in python/train_f
   10 -> 7.63 from these weights) is the one lever measured this round that is the size of the gap.
   It changes the task every later round inherits (and tools/auto_spine.py + explore_phase1 assume
   10 ms), so it is the user's / operator's call - not taken here.
+* c11's last evals 27.150 / 27.118 / 27.092 / 27.111 (20.21-20.44B): stable, median 27.0%, 9/9 at
+  26.5% in the last one, gate-9 clean (22%: ~3,480), energy at 26.5% ~3,520-3,535. Stopped at
+  20.651B (ckpt_latest md5 605c43e0..., pulled). **pbr4b4_c12** (15:20 UTC) = the same flags from
+  those weights, to the round's end.
