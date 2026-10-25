@@ -1289,3 +1289,8 @@ one box at a time (e.g. a box-hours budget instead of a $/h rate), is needed for
   succeeds (and is paid) only while its record is past the line AND its energy height is >= the
   spine end's minus TOL; --auto-beam re-derives it on a swap; refused without the bonus and under
   --reward-per-decision.
+* Regression pass (04:47-04:57 UTC, local CPU): all 13 tests of this round's flags pass -
+  test_auto_beam (swap, last-contact cut, GE fallback, refusal, flag-off bit-identity),
+  test_beam_start_state (loader, keys-hold, start state, flag-off byte-identity, Pareto count),
+  test_demo_success_energy (announce/dump/refusal, unreachable energy pays nothing, flag-off
+  bit-identity).
