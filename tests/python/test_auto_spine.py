@@ -182,7 +182,7 @@ def test_ge_ladder_escalates_until_a_stage_passes(tmp_path, monkeypatch):
                         lambda a, out, branch_tick=0, tag=None: (line_to(600.0), {"beam_rc": 0}))
     calls = []
 
-    def fake_ge(a, out, line, end, boosts=None, tag="ge"):
+    def fake_ge(a, out, line, end, boosts=None, tag="ge", line_keys=None):
         calls.append((tuple(boosts), tag))
         if len(calls) == 1:
             return line_to(650.0), {"ge_rc": 0}            # not past greedy - gain

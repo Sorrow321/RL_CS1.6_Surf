@@ -31,3 +31,32 @@ def test_translate_keeps_the_wish_direction():
     # wrap-around: view 350, heading 10 -> offset -20; forward -> forward
     k = sck.translate(np.array([[2, 1, 0]]), yaw=[350.0], heading=[10.0])
     assert k.tolist() == [[2, 1, 0]]
+
+
+def test_auto_spine_keys_from_a_decision_table():
+    import auto_spine
+    acts = np.array([[7, 3, 2, 0, 1, 0], [7, 3, 1, 2, 0, 1]])     # two decisions of k = 2 ticks
+    k = auto_spine.keys_from_acts(acts, 2, 5)
+    # state 0 neutral; states 1-2 under decision 0; states 3-4 under decision 1
+    assert k.tolist() == [[1, 1, 0], [2, 0, 0], [2, 0, 0], [1, 2, 1], [1, 2, 1]]
+
+
+def test_auto_spine_chain_keys_follow_the_deepest_chain(tmp_path):
+    import auto_spine
+    sys.path.insert(0, str(ROOT / "python"))
+    from surfgym.core import STATE_DTYPE
+    st = np.zeros(3, STATE_DTYPE)
+    st["origin"][:, 0] = [300.0, 200.0, 100.0]          # cell 2 is the deepest (d = x)
+    acts = np.array([[0, 3, 2, 0, 1, 0], [0, 3, 2, 0, 1, 0],
+                     [0, 3, 1, 2, 0, 1], [0, 3, 1, 2, 0, 1], [0, 3, 0, 1, 0, 0]], np.int8)
+    np.savez(tmp_path / "archive.npz", state=st, parent=np.array([-1, 0, 1]),
+             link_acts=acts, link_off=np.array([0, 0, 2, 5]))
+
+    class F:
+        reach_max, cell = 1e9, 32.0
+
+        def sample(self, o):
+            return np.asarray(o, np.float64)[:, 0]
+    k = auto_spine.chain_keys(tmp_path / "archive.npz", F(), 6)   # root + 5 ticks
+    assert k.tolist() == [[2, 0, 0], [2, 0, 0], [1, 2, 1], [1, 2, 1], [0, 1, 0]]
+    assert auto_spine.chain_keys(tmp_path / "archive.npz", F(), 4) is None   # length mismatch

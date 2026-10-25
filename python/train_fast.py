@@ -15737,9 +15737,17 @@ def main() -> None:
         sp = np.load(res["spine"])
         demo.reset_spine(sp)
         if DEMO_KEYS[0] is not None:
-            DEMO_KEYS[0] = None
-            print(f"[{global_step:>13,d}] --demo-keys dropped: the new spine has no held keys",
-                  flush=True)
+            # the new spine's held keys (auto_spine writes them next to it), else none
+            _kp = res.get("keys")
+            _nk = np.asarray(np.load(_kp), np.int32) if _kp and Path(_kp).exists() else None
+            if _nk is not None and _nk.shape == (len(sp), 3):
+                DEMO_KEYS[0] = _nk
+                print(f"[{global_step:>13,d}] --demo-keys: the new spine's held keys from {_kp}",
+                      flush=True)
+            else:
+                DEMO_KEYS[0] = None
+                print(f"[{global_step:>13,d}] --demo-keys dropped: the new spine has no held "
+                      f"keys", flush=True)
         if args.auto_spine_milestones:
             # the line the greedy just crossed keeps paying (a milestone), the new one is next
             MILES[0] = np.append(MILES[0], float(DEMO_END_D))

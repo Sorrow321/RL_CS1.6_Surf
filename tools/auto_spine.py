@@ -155,9 +155,45 @@ def beam(a, out: Path, branch_tick: int = 0, tag: str = None):
     if not f.exists():
         return None, {f"{tag}_rc": rc}
     z = np.load(f, allow_pickle=False)
+    if "acts" in z.files and "act_every" in z.files:
+        KEYS[tag] = keys_from_acts(z["acts"], int(z["act_every"]), len(z["states"]))
     return z["states"], {f"{tag}_rc": rc, f"{tag}_replay_ok": int(z["replay_ok"]),
                          f"{tag}_frontier_d": float(z["frontier_d"]),
                          f"{tag}_frontier_tick": int(z["frontier_tick"])}
+
+
+# the held keys (fwd, side, duck; engine bins) each line's states were reached with, by line
+# tag (beam / beam_br* / ge*): written next to the spine for train_fast --demo-keys, because a
+# spine spawn that resets the held keys starts another state than the line's own (round 4)
+KEYS: dict = {}
+NEUTRAL_KEYS = (1, 1, 0)
+
+
+def keys_from_acts(acts, k: int, n: int) -> np.ndarray:
+    """(n, 3) held keys of a line's n states from its per-DECISION engine action table (k ticks a
+    decision): state t was reached under decision (t-1)//k's keys; state 0 holds neutral."""
+    acts = np.asarray(acts, np.int64)
+    out = np.empty((n, 3), np.int32)
+    out[:] = NEUTRAL_KEYS
+    for t in range(1, n):
+        a = acts[min((t - 1) // int(k), len(acts) - 1)]
+        out[t] = (a[2], a[3], a[5])
+    return out
+
+
+def chain_keys(archive, field, n_states: int):
+    """(n_states - 1, 3) held keys of ge_replay's deepest chain past its root: the per-tick link
+    actions of every cell on the chain (explore_phase1 --exact-chains), as ge_replay walks it."""
+    from ge_replay import chain_to
+    z = np.load(archive, allow_pickle=False)
+    d = np.asarray(field.sample(z["state"]["origin"].astype(np.float64)), np.float64)
+    d[d >= field.reach_max - 0.5 * field.cell] = np.inf
+    ch = chain_to(z["parent"], int(np.argmin(d)))
+    seq = np.concatenate([z["link_acts"][z["link_off"][c]:z["link_off"][c + 1]]
+                          for c in ch[1:]]) if len(ch) > 1 else np.zeros((0, 6), np.int64)
+    if len(seq) != n_states - 1:
+        return None
+    return np.asarray(seq[:, [2, 3, 5]], np.int32)
 
 
 def stall_tick(d, margin: float) -> int:
@@ -175,7 +211,7 @@ def boost_stages(spec: str) -> list:
             for st in str(spec).split(";") if st.strip()]
 
 
-def go_explore(a, out: Path, line, end: int, boosts=None, tag: str = "ge"):
+def go_explore(a, out: Path, line, end: int, boosts=None, tag: str = "ge", line_keys=None):
     """GE --exact-chains rooted at the line's last --roots-secs before ``end``; the deepest
     chain replayed and spliced onto the line at its root -> (spliced states, info)."""
     from spine_canon_view import canon_view
@@ -235,6 +271,20 @@ def go_explore(a, out: Path, line, end: int, boosts=None, tag: str = "ge"):
     if dist[j] > 1.0:
         return None, info
     chain, _m = canon_view(gl[1:])
+    if line_keys is not None:
+        ck = chain_keys(gd / "archive.npz", load_field(a.field), len(gl))
+        if ck is not None:
+            # the explorer's keys meant what they did relative to ITS view; the chain's views
+            # are now along the velocity, so the keys move with them (spine_canon_keys)
+            from spine_canon_keys import translate
+            v = np.asarray(gl["velocity"][1:], np.float64)
+            hd = np.degrees(np.arctan2(v[:, 1], v[:, 0])) % 360.0
+            fast = np.hypot(v[:, 0], v[:, 1]) >= 100.0
+            ck = ck.copy()
+            ck[fast] = translate(ck[fast], np.asarray(gl["yaw"][1:], np.float64)[fast],
+                                 hd[fast])
+            KEYS[tag] = np.concatenate([np.asarray(line_keys[:j + 1], np.int32),
+                                        ck.astype(np.int32)])
     return np.concatenate([np.asarray(line[:j + 1], STATE_DTYPE),
                            np.asarray(chain, STATE_DTYPE)]), info
 
@@ -308,6 +358,7 @@ def main(argv=None) -> int:
     field = load_field(a.field)
     res = {"greedy_d": a.greedy_d, "gain": a.gain, "spine": None}
     line, info = beam(a, out)
+    line_tag = "beam"
     res.update(info)
     best_src = None
     if line is not None and len(line):
@@ -344,6 +395,7 @@ def main(argv=None) -> int:
                 best_src = (tag, bl[:be + 1], bde)
             elif bde < de:
                 line, d, e, de = bl, bd_, be, bde     # GE roots on the deepest line
+                line_tag = tag
         if best_src is None and a.ge_minutes > 0:
             st = min(e, stall_tick(d, a.stall_margin))
             res.update(beam_stall=st)
@@ -353,7 +405,8 @@ def main(argv=None) -> int:
             # its own (round 3: gate 8's chain needed x1.04, the greedy passed unboosted)
             for k, boosts in enumerate(boost_stages(a.ge_boost)):
                 tag = "ge" if k == 0 else f"ge{k + 1}"
-                gl, gi = go_explore(a, out, line, st, boosts=boosts, tag=tag)
+                gl, gi = go_explore(a, out, line, st, boosts=boosts, tag=tag,
+                                    line_keys=KEYS.get(line_tag))
                 res.update({(kk if k == 0 else f"{tag}_{kk[3:]}" if kk.startswith("ge_")
                              else f"{tag}_{kk}"): vv for kk, vv in gi.items()})
                 if gl is None:
@@ -375,6 +428,12 @@ def main(argv=None) -> int:
         import hashlib
         res.update(spine=str(p), source=src, n=int(len(sp)), end_d=de,
                    md5=hashlib.md5(p.read_bytes()).hexdigest())
+        kt = src.split("+")[-1]
+        if KEYS.get(kt) is not None and len(KEYS[kt]) >= len(sp):
+            # the spine's held keys, row for row (train_fast --demo-keys loads them on a swap)
+            kp = out / "spine.keys.npy"
+            np.save(kp, np.asarray(KEYS[kt][:len(sp)], np.int32))
+            res.update(keys=str(kp))
         (out / "spine.json").write_text(json.dumps(res, indent=1), encoding="utf-8")
     print("AUTO_SPINE " + json.dumps(res), flush=True)
     return 0 if best_src is not None else 2
