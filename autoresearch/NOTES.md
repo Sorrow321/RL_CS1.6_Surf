@@ -1896,7 +1896,7 @@ throttled) and could read it as a bad box. The fix is one line in python/train_f
   1,067, jump held one tick, speed kept 97-98%) would argue the WR server had no CS bhop cap - but
   vz rises smoothly over ~10 ticks (-115 -> +244) while vh falls: it is riding a curved surface, not
   a ground jump (no +268 impulse). No evidence against the core's stock bhop cap.
-* **pbr4b4_c10** (12:47 UTC): c9's weights + **--respawn-greedy-speed 1.0 1.3** (was 1.0 1.05; the
+* **pbr4b4_c10** (12:46 UTC): c9's weights + **--respawn-greedy-speed 1.0 1.3** (was 1.0 1.05; the
   greedy rows sit 2..0.25 s before the north-ramp LAUNCH of the fatal flight, so the boosted copies
   can reach the slot - the x1.25 GE chain came within ~120 u of it) + K 24, 1.5B steps. Question:
   does training learn the stretch past the gap from boosted launches, and does the greedy then find
