@@ -1198,3 +1198,22 @@ one box at a time (e.g. a box-hours budget instead of a $/h rate), is needed for
   card) and give gate 8 time under per-call energy shaping, as the x -1,015 wall needed ~830M
   steps in round 2. If the loop's searches keep failing there, the upstream energy (13-17%) is
   the lever, not the search width.
+
+### USER INSIGHT (2026-10-25 ~03:20 UTC, relayed by the operator) - the first ramp is a momentum ramp
+* The user: right after start_run the policy IGNORES THE FIRST RAMP - surfing it runs against the
+  geodesic field - and jumps straight to the second ramp (the first one the policy uses today). A
+  human surfs that first ramp first to gain momentum and only then goes to the second ramp,
+  arriving with more speed; the user expects that extra energy to break several of the gates the
+  policy meets later. The user's question: make the policy use that first ramp.
+* The rules that come with it (CLAUDE.md 0b and 0): NOTHING hand-placed for this ramp - no reward
+  term, spawn rule, target box or spine aimed at it. The mechanism must be generic, one that would
+  also find a field-opposed momentum ramp on a map nobody has opened: a search or an exploration
+  that finds the line on its own, then the usual line -> curriculum loop. The WR demo stays
+  analysis only.
+* What this lineage already knew, consistent with it: round 1's analysis (the record goes EAST,
+  away from the goal, for ~6 s, surfing a half-pipe and gaining ~230-280 u of energy height, then
+  flies back west through the passage north of the spawn into the tunnel from above at speed);
+  round 2: uniform-action Go-Explore from the spawn / from the half-pipe's highest-energy states
+  never pumped (h 3,804 -> 3,839, the record ~3,930) and never entered the tunnel fast; round 3's
+  energy profile: the policy's deficit is LARGEST at the start (+155..172 u at 0.5-1% progress)
+  and +63..121 u everywhere after, i.e. the gates since 7% (all energy gates) inherit it.
