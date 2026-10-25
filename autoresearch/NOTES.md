@@ -1822,3 +1822,6 @@ beam_tas from the true start on t8e's weights (8 ms, 4,096 copies, 30 s):
   Spine pbr4b1_k09_t8.npy (2,700 states to 27.13%, success line d 41,742 = 26.96%).
   **pbr4b1_t8h** (15:31 UTC): t8g's ckpt_latest 14,401,142,784 (md5 91647b84...) + k09 + milestones
   44939 / 43426 / 42286 / 42103 (k08's line) + --lr 1e-4.
+* t8h evals: 24.605 / 26.467 (1/9 past gate 10) / 24.758. Its k09 curriculum walked from 2699 back to
+  ~2150 (17.2 s, between gates 8 and 9) in ~25 min and oscillates there (2154: 65%, 2149: 15%).
+  The gate-10 pass stays rare in the greedy evals (0-2/9 since 13.65B); the best eval is 26.547.
