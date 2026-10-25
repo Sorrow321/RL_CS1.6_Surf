@@ -1408,3 +1408,10 @@ or cheaper offers in the query (a 3090 at <= 0.18 $/h would fit beside the 5080)
   20.475 checkpoint) + the backward curriculum on pbr3b1_pump_short.npy (same flag set, success
   d(end)+100, spawn-states 0.1) - does the curriculum walk back through the pump, i.e. can the
   policy be taught the user's first ramp at all? It cannot lower this round's banked score.
+* **c5 result (05:56-06:27, ~170M steps): the policy CAN be taught the first-ramp line's tail.**
+  From c3's weights the backward curriculum on pbr3b1_pump_short.npy walked from the spine's end
+  (state 1,376, 1.33%) back to tau 946 in under 30 min: from there the policy flies the last ~4.3 s
+  of the pumped line (the half-pipe's last pass, back west through the south passage to 1.33%).
+  Then it oscillates at band [941,945] (0.0-0.8% success, 30-37% at [946]) - a turn-around at the
+  top of a half-pipe pass, the next precise piece. Greedy evals 20.288 / 20.251 / 20.220 (the
+  greedy line still takes the old precision entry: the walk-back has not reached the spawn).
