@@ -3,13 +3,13 @@
  "round": 4,
  "final": false,
  "best": {
-  "score": 26.733,
-  "eval_file": "/home/steam/ar_pb/runs/pbr4b4/pbr4b4_c4/traj_16066281472.jsonl",
+  "score": 26.896,
+  "eval_file": "/home/steam/ar_pb/runs/pbr4b4/pbr4b4_c4/traj_16141778944.jsonl",
   "run": "pbr4b4_c4",
-  "step": 16066281472,
-  "ckpt": "/home/steam/ar_pb/runs/pbr4b4/pbr4b4_c4/ckpt_16066281472.pt",
-  "ckpt_step": 16066281472,
-  "ckpt_md5": "a2a4b8debf119a9769a8a38ff5648ee8",
+  "step": 16141778944,
+  "ckpt": "/home/steam/ar_pb/runs/pbr4b4/pbr4b4_c4/ckpt_16141778944.pt",
+  "ckpt_step": 16141778944,
+  "ckpt_md5": "a4e8166de50ef0f5f3c42f37b6812a3a",
   "recipe": [
    "resume of the incumbent pbr3b4_as10 13.4999B weights",
    "--demo-file runs/spine_s3.npy (autoresearch/spines/pbr4b4_ge_s3.npy: c3's own dh-ranked beam line to 20.4 s + an unboosted Go-Explore chain: east flight over the upper floor, east-wall surf, north ramp, 26.67%) --demo-window 5 --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5 --demo-rate 0.3 --demo-front-frac 0.4 --demo-success-d 100 --demo-success-bonus 50 --demo-milestones 44939,43426,42363,42171",
@@ -24,5 +24,5 @@
   "resume_from": "pbr4b4_c3 ckpt_latest 15.688B (md5 8ea7391a...) <- c2 15.052B <- incumbent pbr3b4_as10 13.4999B",
   "commit": "87c4bdb"
  },
- "summary": "Score 24.737 -> 26.733 (pbr4b4_c4 16.07B, exact weights by --save-best-eval; median 26.36%: most greedy episodes from the true start now pass gate 10 and reach the gate-11 catch, the best ones fly east over the upper floor onto the north ramp). Chain this round: the incumbent's own beam passed gate 10 (26.39%) -> curriculum (c2) -> the trainer's own spine k01 (c3) -> an unboosted Go-Explore chain from c3's own beam line past the upper-floor landing (spine ge_s3, c4). Next gate: the gap north of the north ramp (the record flies it at ~690 u/s; our lines arrive ~470, ~200 u of energy short, mostly lost at the gate-8 corridor and x~2,000 landings). Fixes: numba thread cap (12k -> 341k steps/s), --save-best-eval."
+ "summary": "Score 24.737 -> 26.896 (pbr4b4_c4 16.14B, exact weights by --save-best-eval; median 26.36%: most greedy episodes from the true start now pass gate 10 and reach the gate-11 catch, the best ones fly east over the upper floor onto the north ramp). Chain this round: the incumbent's own beam passed gate 10 (26.39%) -> curriculum (c2) -> the trainer's own spine k01 (c3) -> an unboosted Go-Explore chain from c3's own beam line past the upper-floor landing (spine ge_s3, c4). Next gate: the gap north of the north ramp (the record flies it at ~690 u/s; our lines arrive ~470, ~200 u of energy short, mostly lost at the gate-8 corridor and x~2,000 landings). Fixes: numba thread cap (12k -> 341k steps/s), --save-best-eval."
 }
