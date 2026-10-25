@@ -1349,3 +1349,17 @@ or cheaper offers in the query (a 3090 at <= 0.18 $/h would fit beside the 5080)
   real), forward states (deeper than the start) max 3,827 (the policy's tunnel exit ~3,810): the
   pump's energy is lost before the tunnel. 03:23 GE_pump3: velocity-frame, 32 u x energy 16,
   rooted at the 48 highest carryable-energy states (3,913-3,941, all in the half-pipe), 15 min.
+* GE_pump3 (03:23-03:39; velocity-frame, 32 u x energy 16, 48 carryable-energy roots, 15 min,
+  286k cells): the half-pipe's carryable energy goes to 3,981, but the tunnel is still entered at
+  <= 431 u/s with carryable h <= 3,833; nothing past 1% beats the policy's own ~3,810. Along the
+  record's fast approach (heading west past the spawn's north side at z 3,700-3,800; analysis
+  only) the archive holds 0 states moving west faster than 300 u/s: the explorer never rides the
+  half-pipe's west wall out at speed. So the connection pump -> tunnel at speed is not a needle
+  the archive narrowly misses; that whole region of state space is unvisited.
+* `explore_phase1 --select-energy T` (new, off = bit-identical; tests pass): the cell selection
+  weight 1/sqrt(C+1) also carries exp((h_c - max h_c)/T) with h_c the carryable energy height (a
+  push volume's state counts its z only): the archive expands from its most energetic states first
+  - the generic "momentum the field does not show" bias the user's first-ramp insight asks for.
+* 03:41 GE_pump4: GE_pump3's settings rooted at the top-64 carryable states of all three archives
+  (3,970-3,981), 8,192 envs, 48 threads, 30 min (~4x pump3's compute). Next: --select-energy from
+  the true spawn if pump4 does not find the fast tunnel entry.
