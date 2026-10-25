@@ -1901,3 +1901,18 @@ throttled) and could read it as a bad box. The fix is one line in python/train_f
   can reach the slot - the x1.25 GE chain came within ~120 u of it) + K 24, 1.5B steps. Question:
   does training learn the stretch past the gap from boosted launches, and does the greedy then find
   any of that energy itself?
+
+### c10, the boosted-launch probe, c11 (12:47-13:21 UTC)
+* c10 (--respawn-greedy-speed 1.0 1.3): its resume eval of c9's final weights scored **27.165**
+  (17.9154B; exact weights ckpt_17915445248.pt md5 f8534442..., pulled - the round's best), then
+  27.073 / 27.128 / 27.069 / 27.053 / 27.125 / 27.095; energy at 26.5% flat (3,505-3,522). The
+  reservoir's deepest harvested state stayed at 26.07% (it keeps 2 s before each death), i.e. no
+  training episode survives past the gap. Stopped at 18.476B (md5 2bc2c9f5..., pulled).
+* Probe (beam_tas --start-state, 512 copies, c10's 18.37B weights, 6 s cap) from dh10's own north-ramp
+  states with the velocity scaled: 21.9 s x1.3 -> 27.33%; 22.1 s x1.3 -> 27.46%; **22.1 s x1.45 ->
+  28.81% in 2 s (through the slot)**; 21.9 s x1.45 and 22.3 s x1.3 / x1.45 -> every copy dies at once.
+  So the gap takes ~+45% speed at the launch (~+215 u of energy height), and x1.3 rows cannot teach
+  the stretch beyond it.
+* **pbr4b4_c11** (13:21 UTC): c10's weights + --respawn-greedy-speed **1.0 1.5** (the greedy rows'
+  boosted copies can now cross), 2.5B steps. Round-2 precedent: boosted frontier rows taught the
+  stretch past the x -1,015 wall and the greedy followed once it found ~10-30 u; here the gap is ~200 u.
