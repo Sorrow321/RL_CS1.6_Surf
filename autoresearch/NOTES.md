@@ -1781,3 +1781,9 @@ over-subscribes the quota. This branch's surfgym now caps numba; the operator ma
   west and north to a crash at (2,199, -909, 2,647) and a crawl to 30.48%.
 * Spine autoresearch/spines/pbr4b3_ge12_x132.npy (2,841 states: search 2's branched-beam line to its ramp
   + that chain, cut after the hole's landing at 28.41%; success line d <= 41,015 = 28.23%).
+* **pbr4b3_t2** (10:16 UTC): t1's 14.990B weights (md5 ab8d9f51..., tick 8.2 ms; t1's last evals 26.363 /
+  26.370 with 9/9 over gate 10) + the curriculum on pbr4b3_ge12_x132.npy from its end + `--demo-milestones
+  44939,43426,42182` (the k01 / k02 / g10 success lines keep paying) + t1's other flags; the tick ramp
+  continues from the checkpoint (8.2 ms now, 7.63 ms from 15.165B; no --tick-ms-schedule on a resume -
+  the flag would REPLACE the ramp). 3B steps. Question: does the curriculum carry the policy over the
+  sheet from its own (unboosted) states, as round 3's x1.12 k03 spine eventually did for gate 10?
