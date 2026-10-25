@@ -23,6 +23,38 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "python"))
 
 
+def survival(a, st, cand):
+    """Share of --survive-runs uniform-random rollouts alive after --survive-secs, per cell."""
+    from surfgym.core import ACTION_NVEC, SurfCore, default_config
+    R, N = int(a.survive_runs), 2048
+    per = max(1, N // R)
+    cfg = default_config(num_envs=N, spawn_mode=2, max_episode_ticks=6000, water_fail=1,
+                         yaw_jitter_deg=0.0, lidar_w=0, lidar_h=0)
+    cfg.phys.sv_maxvelocity = float(a.maxvel)
+    core = SurfCore(a.map, cfg)
+    core.set_teleport_fail(True)
+    rng = np.random.default_rng(1)
+    ticks = int(round(a.survive_secs * 100))
+    out = np.zeros(len(cand))
+    for b in range(0, len(cand), per):
+        cb = cand[b:b + per]
+        core.reset(0)
+        rows = np.repeat(cb, R)
+        for i, k in enumerate(rows):
+            s = np.array(st[k:k + 1], copy=True)
+            s["tick"] = 0
+            s["stuck_ticks"] = 0
+            core.set_state(i, s)
+        live = np.ones(N, bool)
+        for t in range(ticks):
+            if t % 20 == 0:
+                act = np.stack([rng.integers(0, n, N) for n in ACTION_NVEC], 1).astype(np.int32)
+            _, _, done, trunc, _ = core.step(act)
+            live &= ~(np.asarray(done, bool) | np.asarray(trunc, bool))
+        out[b:b + len(cb)] = live[:len(rows)].reshape(len(cb), R).mean(1)
+    return out
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("archive")
@@ -32,6 +64,13 @@ def main(argv=None):
     ap.add_argument("--map", default=str(ROOT / "maps" / "surf_princessburglar_b26.bsp"))
     ap.add_argument("--min-sep", type=float, default=256.0)
     ap.add_argument("--gravity", type=float, default=800.0)
+    ap.add_argument("--maxvel", type=float, default=3500.0)
+    ap.add_argument("--survive-secs", type=float, default=1.0)
+    ap.add_argument("--survive-frac", type=float, default=0.25)
+    ap.add_argument("--survive-runs", type=int, default=32)
+    ap.add_argument("--max-check", type=int, default=20000,
+                    help="survivability is checked on at most this many of the most energetic "
+                         "candidates")
     a = ap.parse_args(argv)
     from surfgym.goalfield import GoalField
     z = np.load(a.archive, allow_pickle=False)
@@ -46,13 +85,16 @@ def main(argv=None):
     roots = np.flatnonzero(parent < 0)
     d0 = float(np.min(d[roots]))
     h = o[:, 2] + (v * v).sum(axis=1) / (2.0 * a.gravity)
-    # VIABLE cells only: ones the explorer later restored from and found new cells beyond (some
-    # cell's parent) - a cell reached a tick before a death has the most kinetic energy of all
-    # (pbr3b4's first picks: states plunging into a fatal pit and a push-down trigger)
-    viable = np.zeros(len(st), bool)
-    viable[parent[parent >= 0]] = True
-    cand = np.flatnonzero(ok & (d > d0) & viable)
-    cand = cand[np.argsort(-h[cand])]
+    # SURVIVABLE cells only: a cell reached a tick before a death has the most kinetic energy of
+    # all (pbr3b4's first picks: states plunging into a fatal pit and a push-down trigger), and
+    # "the explorer continued from it" is not enough (a dying run still visits new cells on the
+    # way down: 0 / 1,024 random runs survived 1 s from those) - so every candidate is restored
+    # --survive-runs times and stepped with uniform random actions, and kept when at least
+    # --survive-frac of the runs are alive after --survive-secs
+    cand = np.flatnonzero(ok & (d > d0))
+    cand = cand[np.argsort(-h[cand])][:int(a.max_check)]
+    alive = survival(a, st, cand)
+    cand = cand[alive >= float(a.survive_frac)]
     picks = []
     for k in cand:
         if all(np.linalg.norm(o[k] - o[j]) >= a.min_sep for j in picks):
@@ -60,7 +102,7 @@ def main(argv=None):
         if len(picks) >= a.n:
             break
     h0 = float(h[roots].max())
-    print(f"{len(cand):,} cells behind the start (d > {d0:,.0f}); spawn h {h0:,.0f}")
+    print(f"{len(cand):,} survivable cells behind the start (d > {d0:,.0f}); spawn h {h0:,.0f}")
     for i, k in enumerate(picks):
         row = np.array(st[k:k + 1], copy=True)
         row["tick"] = 0
