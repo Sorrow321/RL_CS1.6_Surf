@@ -1902,7 +1902,7 @@ throttled) and could read it as a bad box. The fix is one line in python/train_f
   does training learn the stretch past the gap from boosted launches, and does the greedy then find
   any of that energy itself?
 
-### c10, the boosted-launch probe, c11 (12:47-13:21 UTC)
+### c10, the boosted-launch probe, c11 (12:47-13:20 UTC)
 * c10 (--respawn-greedy-speed 1.0 1.3): its resume eval of c9's final weights scored **27.165**
   (17.9154B; exact weights ckpt_17915445248.pt md5 f8534442..., pulled - the round's best), then
   27.073 / 27.128 / 27.069 / 27.053 / 27.125 / 27.095; energy at 26.5% flat (3,505-3,522). The
@@ -1913,6 +1913,6 @@ throttled) and could read it as a bad box. The fix is one line in python/train_f
   28.81% in 2 s (through the slot)**; 21.9 s x1.45 and 22.3 s x1.3 / x1.45 -> every copy dies at once.
   So the gap takes ~+45% speed at the launch (~+215 u of energy height), and x1.3 rows cannot teach
   the stretch beyond it.
-* **pbr4b4_c11** (13:21 UTC): c10's weights + --respawn-greedy-speed **1.0 1.5** (the greedy rows'
+* **pbr4b4_c11** (13:19 UTC): c10's weights + --respawn-greedy-speed **1.0 1.5** (the greedy rows'
   boosted copies can now cross), 2.5B steps. Round-2 precedent: boosted frontier rows taught the
   stretch past the x -1,015 wall and the greedy followed once it found ~10-30 u; here the gap is ~200 u.
