@@ -1988,3 +1988,9 @@ over-subscribes the quota. This branch's surfgym now caps numba; the operator ma
   the old explorer): on the box for t11's next search at 21.65B.
 * GE19 (16:07 UTC, view-follow, 12 min beside the trainer): 48 roots over the last 4 s before the 21.25B beam
   line's stall (its tick 3,927 of 4,100).
+* t11 evals 47.204 / 47.174 / 47.188 / 47.201 / 47.169 (21.33-21.63B): 9/9 stop at gate 15 (47.1-47.2%). GE19
+  (view-follow, 48 roots over the 4 s before the stall): best 47.37% - nothing past it either.
+* Gate 15 against the record (ANALYSIS ONLY): the record surfs at (-2,286..-2,443, -1,706..-1,598), launches with
+  vz +617 and flies NORTH at z ~3,200-3,240 (47.45% at (-2,450, -1,183, 3,239), 661 u/s, h ~3,510); our lines
+  reach the same x at z ~3,100 with h ~3,300-3,330 and turn east. The ~190 u of energy is gate 14's rebound
+  (-518 u at the 44.2% corner, where the record keeps ~3,550): gate 15 is energy again, created one gate back.
