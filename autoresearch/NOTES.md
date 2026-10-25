@@ -1886,3 +1886,18 @@ throttled) and could read it as a bad box. The fix is one line in python/train_f
   gains by ~1.31 (+~145 u by the gap) - written above as a recommendation, not acted on (it changes
   the task every round inherits). The user's first-ramp pump: the record's +154 u at 1% has shrunk
   to +25 u by 10% (it spends it in the tunnel and the drops), so it is not what the later gates lack.
+
+### c9 (energy K 24) is a null too; c10 boosts the greedy-launch rows (12:43-12:47 UTC)
+* c9 (--energy-pot 24, 17.35-17.91B): evals 26.908 / 27.026 / 27.106 / 27.039 / 27.055 / 27.084 /
+  26.919; energy at 26.5% median 3,470-3,525 (c8 3,494-3,527) - no change in ~550M steps. Its
+  auto-spine search (17.65B, beams only, 92 s) found no line 200 u past the greedy. Stopped at
+  17.915B (ckpt_latest md5 5e68d202..., pulled).
+* Checked and dropped: the record's three "jumps" at speed (8.96 s 928 u/s, 37.66 s 1,245, 65.07 s
+  1,067, jump held one tick, speed kept 97-98%) would argue the WR server had no CS bhop cap - but
+  vz rises smoothly over ~10 ticks (-115 -> +244) while vh falls: it is riding a curved surface, not
+  a ground jump (no +268 impulse). No evidence against the core's stock bhop cap.
+* **pbr4b4_c10** (12:47 UTC): c9's weights + **--respawn-greedy-speed 1.0 1.3** (was 1.0 1.05; the
+  greedy rows sit 2..0.25 s before the north-ramp LAUNCH of the fatal flight, so the boosted copies
+  can reach the slot - the x1.25 GE chain came within ~120 u of it) + K 24, 1.5B steps. Question:
+  does training learn the stretch past the gap from boosted launches, and does the greedy then find
+  any of that energy itself?
