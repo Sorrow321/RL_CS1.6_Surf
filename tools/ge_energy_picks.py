@@ -46,7 +46,12 @@ def main(argv=None):
     roots = np.flatnonzero(parent < 0)
     d0 = float(np.min(d[roots]))
     h = o[:, 2] + (v * v).sum(axis=1) / (2.0 * a.gravity)
-    cand = np.flatnonzero(ok & (d > d0))
+    # VIABLE cells only: ones the explorer later restored from and found new cells beyond (some
+    # cell's parent) - a cell reached a tick before a death has the most kinetic energy of all
+    # (pbr3b4's first picks: states plunging into a fatal pit and a push-down trigger)
+    viable = np.zeros(len(st), bool)
+    viable[parent[parent >= 0]] = True
+    cand = np.flatnonzero(ok & (d > d0) & viable)
     cand = cand[np.argsort(-h[cand])]
     picks = []
     for k in cand:
