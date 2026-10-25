@@ -1637,3 +1637,15 @@ Box: 57632318, RTX 4080 + i9-14900F (32 thr), 0.30 $/h, UK (machine 151788), ren
   paying) + round 3's flag set (energy K 12, greedy-contact rows + temp, front-perturb, success
   bonus 50) + `--auto-spine --auto-spine-milestones --auto-spine-gain 500 --auto-spine-ge-minutes 8
   --auto-spine-delay 3e8 --auto-spine-retry 4e8 --auto-spine-patience 1.2e9`, 2B steps.
+* c1 first evals: 24.774 (13.500B, the resume eval of the incumbent's weights - a lottery tick over
+  24.737) / 24.714 (13.576B; U-turn-exit energy median 3,367). The curriculum crossed 2499 -> ~1950
+  (the landing before the gate-10 ramp, 19.5 s) in ~60M steps (bands 66-100%), then oscillates
+  there: band [1944..] 24-25% against the 0.3 rate, [1949..] 68-70%.
+* Free-flight air strafing is already efficient (incumbent eval, ticks with vz falling exactly one
+  gravity step and |v_h| > 300: median 0.97 of the per-tick maximum |v_h|^2 gain of 900, 70% of
+  ticks > 0.9). The energy deficit is made at CONTACTS (landings, ramp entries), not in the air.
+* auto_spine (e3a7db1, default off): `--score dh --score-energy K` for its beams (trainer
+  `--auto-spine-score dh --auto-spine-score-energy K`), and '+H' tokens in the GE ladder
+  (`--ge-boost '1.0,+40;+80;+160'`, trainer `--auto-spine-ge-boost`): H u of energy height added
+  to a root's kinetic part instead of a velocity factor, which adds ~nothing to a slow line (the
+  gate-10 beam lines WALK the next stretch at 250 u/s: x1.12 there is +10 u of height).
