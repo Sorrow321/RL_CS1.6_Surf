@@ -1384,3 +1384,36 @@ as7's 24.555 eval (ep0) vs the WR demo:
   corridor's west ramp the way the x1.04 GE chain did (hard: 1,476 -> 962 u/s); the record lands
   tangentially (1,450 u/s, vz -98) and keeps ~140 u more through the U-turn. A smoother landing
   there is worth more for gate 10 than any start-room pump.
+
+### as8: the k03 curriculum reaches its x1.12 root (02:31 UTC)
+* With --demo-rate 0.2 the curriculum passed the ramp-catch band and the whole boosted chain and
+  now sits at its root: band [1718,1722] (the x1.12 root's states) 62.8%, band [1713,1717] (the
+  policy's own unboosted states just before it) 0.0% - gate 8's picture (x1.04 there). Greedy evals
+  24.455 / 24.477 / 24.527 / 24.481 / 24.420 / 24.413 / 24.354 (12.34-12.79B): the route holds
+  under the milestones; no gate-10 pass yet.
+
+### pbr3b4 round 3 lesson (DRAFT, finalised at wrap-up)
+* **Score 20.414 -> 24.555** (as7 12.32B; 9/9 greedy episodes from the true start through gate 8
+  (the 20.4% catch) and gate 9 (the 21.5% wall) to the crawl at 24.4-24.6%).
+* **What worked:**
+  1. Gate 8 by SEARCH with a speed boost: Go-Explore --exact-chains rooted at the policy's own
+     launch states x1.04 (the trainer stopped, the whole CPU, roots focused on the 1.6 s around the
+     launch) found the record's corridor manoeuvre in 2 min; spine + curriculum; the greedy flew it
+     WITHOUT the boost ~150M steps later although the band before the boosted root stayed at 0%.
+     The boost buys the uniform explorer the energy its random actions waste.
+  2. Gate 9 by THE TRAINER ITSELF: train_fast --auto-spine (tools/auto_spine.py) searched after the
+     greedy crossed the gate-8 success line; its branched beam (half the copies forked 0.5 s before
+     the greedy's launch, held view offsets for 2 s) found the line over the wall in 46 s and
+     swapped it in; the greedy followed in ~150M steps. No agent in that loop.
+  3. Milestones (--auto-spine-milestones / --demo-milestones): a spine whose success line jumped
+     2.5% (a x1.12 GE root) eroded the greedy from 24.29 to 21.5 in 75M steps - round 2's beam10;
+     with the old success lines kept paying, the same spine held the route for 1.5B+ steps.
+* **What did not:** beams with yaw temperature (--view-temp 6/20: more deaths), branched beams
+  forking too late (at the commitment point itself), GE at x1.00 for gates 8 and 10, the 8-min GE
+  ladder stages for gate 10 (x1.0-1.12), one 25-min GE at x1.0-1.08 for gate 10, speed-boosted
+  greedy spawns as a fix for gate 8 (energy alone did not move the line), the first auto_spine cut
+  rule (trim at the last contact: it cut both passing gate-8 lines at the landing).
+* **Where it stands:** gate 10 is a LANDING ~250 u north of the ramp the record catches at x
+  ~2,444; only a x1.12 GE root has passed it (spine pbr3b4_auto_k03.npy); the deficit (~250 u of
+  energy height vs the record) is made at gate 8's corridor landing (-353 u for us, -213 for the
+  record), not in the start room (the greedy recovers that by 10%).
