@@ -1712,3 +1712,12 @@ Box: 57632318, RTX 4080 + i9-14900F (32 thr), 0.30 $/h, UK (machine 151788), ren
   down around (3,510, -2,700) and keeps ~900 u/s (no friction: a surfable slope, the kicker), rising
   from y ~-2,610 (vz +266 -> +504) over the gap. Handed-on checkpoint for 26.376:
   pbr4b2_t1/ckpt_14390132736.pt (md5 2c8f4ff1..., pinned at the eval's step, pulled).
+* t1 auto-spine search 1 (14.541B, 8/9 greedy past 26.19%; dh beams, 7.67 ms): the policy's own
+  beams now PASS THE GAP - dh beam 41,826 (26.80%), branched beams 41,826 / 41,834 / **41,665 (27.08%)**
+  - by flying over the flat (h up to 3,731 at (3,506, -2,610) - the record's level), hitting the
+  kicker hard (vz -399: h 3,731 -> 3,536 in 0.2 s; the record skims it tangentially and keeps h
+  ~3,705) and crossing the gap at z 3,231-3,328. Then every line turns west early (y -2,100..
+  -1,900) at z ~3,190-3,330 and dies by ~22 s; the record climbs the north ramp to z 3,417 and goes
+  on north to y -1,720 before turning west (with ~150 u more energy after the kicker). GE stage 1
+  (x1.0 / +40 u, 8 min): 41,629 (27.16%), a 0.7 s chain from a post-gap state. All under the 500 u
+  gain over the greedy (42,091): stages +80 / +160 running.
