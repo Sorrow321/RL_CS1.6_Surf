@@ -52,3 +52,21 @@ def test_view_velocity_chains_replay_exactly(tmp_path):
         hd = np.degrees(np.arctan2(v[fast, 1], v[fast, 0]))
         off_deg = np.abs((st["yaw"][fast] - hd + 180.0) % 360.0 - 180.0)
         assert np.median(off_deg) < 45.0, np.median(off_deg)
+
+
+@needs_pb
+def test_select_energy_runs_and_is_recorded(tmp_path):
+    """--select-energy T: the explorer runs with the energy-weighted selection, the meta records
+    T, and the archive's chains still replay exactly (selection changes only WHICH cells are
+    restored, never how a run is recorded)."""
+    out = tmp_path / "ge"
+    r = _run([sys.executable, "-u", str(GE), "--out", str(out), "--exact-chains", "--view-velocity",
+              "--select-energy", "100"] + ARGS, timeout=900)
+    assert r.returncode in (0, 1), r.stdout[-3000:] + r.stderr[-3000:]
+    meta = json.loads((out / "archive.meta.json").read_text())
+    assert meta["select_energy"] == 100.0
+    line = tmp_path / "line.npy"
+    r = _run([sys.executable, "-u", str(ROOT / "tools" / "ge_replay.py"), "--map", str(PB),
+              "--archive", str(out / "archive.npz"), "--field", str(FIELD), "--out", str(line)],
+             timeout=600)
+    assert r.returncode == 0 and "DIVERGED" not in r.stdout, r.stdout[-3000:]

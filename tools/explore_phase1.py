@@ -284,6 +284,10 @@ class Archive:
         self.link_acts: dict[int, np.ndarray] = {}
         # --view-velocity: the run's per-tick view TARGETS beside link_acts (exact replay)
         self.link_views: dict[int, np.ndarray] | None = None
+        # --select-energy T: the selection weight also carries exp((h_c - max h_c) / T), h_c the
+        # cell state's CARRYABLE energy height z + (vx^2 + vy^2 + max(vz, 0)^2) / 2g (0 = off)
+        self.sel_energy_T = 0.0
+        self.sel_g = 800.0
 
     def _grow(self, cap: int) -> None:
         old = getattr(self, "key", None)
@@ -407,6 +411,15 @@ class Archive:
         """Cache the cumulative selection weight. W = 1/sqrt(C_seen + 1)
         (Nature Extended Data Table 1a, robustification treatment)."""
         w = 1.0 / np.sqrt(self.seen[:self.size].astype(np.float64) + 1.0)
+        if self.sel_energy_T > 0.0 and self.size:
+            st = self.state[:self.size]
+            v = st["velocity"].astype(np.float64)
+            hc = st["origin"][:, 2].astype(np.float64) + (
+                v[:, 0] ** 2 + v[:, 1] ** 2 + np.maximum(v[:, 2], 0.0) ** 2) / (2.0 * self.sel_g)
+            # a state inside a push volume moves with the push, not with its own energy
+            push = np.abs(st["basevelocity"].astype(np.float64)).sum(axis=1) > 0.0
+            hc[push] = st["origin"][push, 2]
+            w = w * np.exp(np.clip((hc - hc.max()) / self.sel_energy_T, -60.0, 0.0))
         self._cum = np.cumsum(w)
 
     def draw(self, n: int, rng: np.random.Generator) -> np.ndarray:
@@ -832,6 +845,9 @@ def explore(args) -> int:
     arch.exact = bool(getattr(args, "exact_chains", False))
     if arch.exact and vvel:
         arch.link_views = {}
+    if float(getattr(args, "select_energy", 0.0) or 0.0) > 0.0:
+        arch.sel_energy_T = float(args.select_energy)
+        arch.sel_g = float(cfg.phys.sv_gravity)
     rk = hasher.keys(roots)
     for j in range(len(roots)):
         i = arch.add(int(rk[j]), roots[j], depth=0, parent=-1)
@@ -1169,6 +1185,8 @@ def meta_dict(args, bsp, hasher, arch, it, n_goal, extra=None) -> dict:
         out["cell_heading"] = int(args.cell_heading)
     if getattr(args, "view_velocity", False):
         out["view_velocity"] = True              # flag off: the meta json is unchanged
+    if float(getattr(args, "select_energy", 0.0) or 0.0) > 0.0:
+        out["select_energy"] = float(args.select_energy)
     if getattr(args, "exact_chains", False):
         out["exact_chains"] = True
         out["ep_ticks"] = int(args.ep_ticks)
@@ -1756,6 +1774,11 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--cell-heading", type=int, default=0,
                     help="H > 0: the cell key also holds H sectors of the horizontal velocity "
                          "heading x rising/not (default 0 = off, keys unchanged)")
+    ap.add_argument("--select-energy", type=float, default=0.0,
+                    help="T > 0: cell selection weight x exp((h_c - max h_c) / T), h_c the cell's "
+                         "carryable energy height z + (vx^2 + vy^2 + max(vz,0)^2)/2g (a push volume's "
+                         "state counts its z only): expand from the most energetic states first, "
+                         "for momentum the goal field does not show (0 = off, bit-identical)")
     ap.add_argument("--view-velocity", action="store_true",
                     help="random view TARGETS in the velocity frame (core view_mode 1 + "
                          "yaw_adaptive, the policy's own action space under --view-absolute "
