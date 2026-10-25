@@ -1264,3 +1264,28 @@ one box at a time (e.g. a box-hours budget instead of a $/h rate), is needed for
      +2.1 for the record's +263 u pump - the incentive is there, the experience is not.
   3. The half-pipe's fatal bottom (*127) makes the pump a precision surf: spawn rows from the line
      near the bottom will die until the walls are learned (round 1's lesson at the plate).
+* Stage 1 again, longer (64 u x energy 16 cells, 35 min, 3 threads beside heavy load; 23,412 cells
+  at the 04:31 snapshot): AHEAD of the start its best energy height per progress bin beats the
+  policy's own line by only +30..+50 u at 0.5-1.5% (+291 at 0.25-0.5% is the doorway's push-down
+  trigger, not usable), and it falls 175-206 u behind past 2%. Its best real one (cell 23215,
+  1.25-1.5%, 752 u/s, h 3,852; ge_replay 15/15, runs/pbr3b3/_mom/chain_23215.npy) never goes east
+  at all: it crawls 15 s through the start room's SOUTH passage and drops from a different height.
+  Uniform search reaches the momentum ramp (stage 1) but does not pump it, and does not carry
+  energy past the start room - rounds 1-2's finding, confirmed with exact chains.
+* CONCLUSION on the user's question (how to make the policy use the first ramp): the ramp is a
+  SKILL gap for both the policy and uniform search, not a selection problem. The generic route is
+  an energy loop mirroring the route loop: (1) GE --exact-chains from the true spawn supplies a
+  line INTO the field-opposed ramp (chain_11399: +147 u in 5 s); (2) a backward curriculum on it
+  (--keys-hold-spawn-duck, canonical views, --demo-front-temp, as at gate 2) so the policy learns
+  to ride those walls without the fatal bottom (*127), paid by --energy-pot 8 for every gain;
+  (3) --score pareto beams from the trained policy (its proposals now surf there) to find a pump
+  that comes back west with more energy; (4) the curriculum on that line with
+  --demo-success-energy (new) so reaching the tunnel without the energy is not a success;
+  (5) back to the route loop (--auto-beam) from the faster start. Nothing in it names the ramp:
+  the field-opposed region is "behind the start on the shaping field", the gain is the energy
+  height, and both tools are generic. Needs box time (rounds 4+).
+* `--demo-success-energy TOL` (new, off = bit-identical, tests/python/test_demo_success_energy.py,
+  TRAIN_ONLY in record_ckpt): with --demo-success-d and --demo-success-bonus, a spine episode
+  succeeds (and is paid) only while its record is past the line AND its energy height is >= the
+  spine end's minus TOL; --auto-beam re-derives it on a swap; refused without the bonus and under
+  --reward-per-decision.

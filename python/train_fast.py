@@ -3607,6 +3607,12 @@ def race_progress_eps(traj_path: Path, field) -> list:
     return per_ep
 
 
+def spine_end_h(S, gravity: float) -> float:
+    """--demo-success-energy: the energy height z + |v|^2 / 2g of a spine's last state."""
+    v = np.asarray(S[-1]["velocity"], np.float64)
+    return float(S[-1]["origin"][2]) + float((v * v).sum()) / (2.0 * float(gravity))
+
+
 def eval_min_d_eps(traj_path: Path, field) -> list:
     """--auto-beam: [(deepest field distance reached, ticks)] per episode of a recording, in
     recording order; the unreachable sentinel (off the field) is never the deepest point."""
@@ -4979,6 +4985,13 @@ def main() -> None:
                          "curriculum's success becomes the objective's too, so a line whose "
                          "payoff lies seconds past a nearer field optimum is worth flying. "
                          "Config only when set; ckpt restores")
+    ap.add_argument("--demo-success-energy", type=float, default=None,   # None = off
+                    help="--demo-success-bonus: the crossing also has to CARRY the line's energy - "
+                         "a spine episode succeeds (and is paid) only while its record is past "
+                         "the success line AND its energy height z + |v|^2/2g is at least the "
+                         "spine end's minus this many u. A line that buys depth with momentum "
+                         "(a ramp run against the field first) is then not matched by a slower "
+                         "line reaching the same depth. Config only when set; ckpt restores")
     ap.add_argument("--demo-success-d", type=float, default=None,   # None = off
                     help="--demo-file: an episode started from the spine counts as a SUCCESS "
                          "for the backward curriculum when its ratchet RECORD (the deepest "
@@ -8164,6 +8177,10 @@ def main() -> None:
                 and ck_cfg.get("demo_success_bonus") is not None):
             args.demo_success_bonus = float(ck_cfg["demo_success_bonus"])
             restored.append(f"demo_success_bonus={args.demo_success_bonus:g}")
+        if (args.demo_success_energy is None
+                and ck_cfg.get("demo_success_energy") is not None):
+            args.demo_success_energy = float(ck_cfg["demo_success_energy"])
+            restored.append(f"demo_success_energy={args.demo_success_energy:g}")
         if args.int_view is None and ck_cfg.get("int_view") is not None:
             args.int_view = int(ck_cfg["int_view"])
             restored.append(f"int_view={args.int_view}")
@@ -14735,6 +14752,9 @@ def main() -> None:
     if args.demo_file and args.demo_success_bonus is not None:
         # --demo-success-bonus: dumped only when set; a resume restores it
         meta["config"]["demo_success_bonus"] = float(args.demo_success_bonus)
+    if args.demo_file and args.demo_success_energy is not None:
+        # --demo-success-energy: dumped only when set; a resume restores it
+        meta["config"]["demo_success_energy"] = float(args.demo_success_energy)
     if int(args.auto_beam) > 0:
         # --auto-beam: dumped only when on; not restored (pass it again on a resume)
         meta["config"]["auto_beam"] = {
@@ -15696,6 +15716,21 @@ def main() -> None:
         DEMO_BONUS = float(args.demo_success_bonus)
         print(f"--demo-success-bonus {DEMO_BONUS:g}: an episode whose record crosses d <= "
               f"{DEMO_END_D:,.0f} is paid {DEMO_BONUS:g} once (one that starts past it never is)")
+    DEMO_END_H = None                     # --demo-success-energy: the energy the crossing carries
+    DEMO_LAST = [None]                    # the ended episodes' success flags, before re-anchoring
+    DEMO_G = float(slots[0].core.config.phys.sv_gravity)
+    if args.demo_success_energy is not None:
+        if not DEMO_BONUS:
+            raise SystemExit("--demo-success-energy conditions the --demo-success-bonus crossing: "
+                             "give --demo-success-d and --demo-success-bonus")
+        if args.reward_per_decision:
+            raise SystemExit("--demo-success-energy reads the crossing tick: not with "
+                             "--reward-per-decision")
+        DEMO_END_H = spine_end_h(demo.S, DEMO_G) - float(args.demo_success_energy)
+        print(f"--demo-success-energy {float(args.demo_success_energy):g}: a spine episode "
+              f"succeeds (and is paid) only past d <= {DEMO_END_D:,.0f} with energy height "
+              f">= {DEMO_END_H:,.0f} (the spine end's {DEMO_END_H + float(args.demo_success_energy):,.0f}"
+              f" - {float(args.demo_success_energy):g})")
     AB = None                             # --auto-beam: the in-run search -> curriculum loop
     if float(args.auto_ge) > 0.0 and int(args.auto_beam) <= 0:
         raise SystemExit("--auto-ge is --auto-beam's fallback: give --auto-beam N")
@@ -15733,10 +15768,18 @@ def main() -> None:
         ended row's is already the NEW episode's spawn) has just crossed the spine's success
         line; an episode is paid once, and one that spawns past the line never."""
         rec = np.asarray(reward_fn._rec)
+        okr = rec <= DEMO_END_D
+        if DEMO_END_H is not None:
+            # --demo-success-energy: past the line AND carrying the line's energy (the live
+            # state; an ended row's is already the new episode's spawn)
+            _sv = slots[0].core.states_view
+            _vv = np.asarray(_sv["velocity"], np.float64)
+            okr = okr & (np.asarray(_sv["origin"][:, 2], np.float64)
+                         + (_vv * _vv).sum(axis=1) / (2.0 * DEMO_G) >= DEMO_END_H)
         if DEMO_PAID[0] is None:
-            DEMO_PAID[0] = rec <= DEMO_END_D
+            DEMO_PAID[0] = okr.copy()
         paid = DEMO_PAID[0]
-        hit = (~ended) & (~paid) & (rec <= DEMO_END_D)
+        hit = (~ended) & (~paid) & okr
         if hit.any():
             if DEMO_BONUS_N[0] == 0:
                 print(f"--demo-success-bonus: first payment at step {global_step:,}", flush=True)
@@ -15744,7 +15787,9 @@ def main() -> None:
             r[hit] += DEMO_BONUS
             paid |= hit
             DEMO_BONUS_N[0] += int(hit.sum())
-        paid[ended] = rec[ended] <= DEMO_END_D
+        if DEMO_END_H is not None:
+            DEMO_LAST[0] = paid.copy()
+        paid[ended] = okr[ended]
         return r
     b_logp = torch.zeros((T, N), device=device)
     b_val = torch.zeros((T, N), device=device)
@@ -19007,7 +19052,11 @@ def main() -> None:
                             # same stash-and-attribute, in demo-index space
                             ei = np.flatnonzero(ended)
                             goal_now = fleet.goal_hits().astype(bool)[ei]
-                            if DEMO_END_D is not None:
+                            if DEMO_END_H is not None and DEMO_LAST[0] is not None:
+                                # --demo-success-energy: the crossing had to carry the energy
+                                # (the payer's flags for the episodes that ended this tick)
+                                goal_now = goal_now | DEMO_LAST[0][ei]
+                            elif DEMO_END_D is not None:
                                 # --demo-success-d: the ended episodes' records as they stood
                                 # before this call re-anchored them on the new spawns
                                 _rb = getattr(slots[0].reward_fn, "_rec_boot", None)
@@ -20629,6 +20678,9 @@ def main() -> None:
                         DEMO_PAID[0] = None
                         demo_idx[:] = -1
                         meta["config"]["demo_file"] = args.demo_file
+                        if DEMO_END_H is not None:
+                            DEMO_END_H = (spine_end_h(demo.S, DEMO_G)
+                                          - float(args.demo_success_energy))
                 if (args.save_best and not MULTI and not _s.heldout and p_nfin
                         and fin_best < best_fin_saved):
                     # --save-best: keep the weights behind every new best greedy finish
