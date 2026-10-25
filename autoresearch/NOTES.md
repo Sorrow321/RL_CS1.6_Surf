@@ -1769,3 +1769,9 @@ tools/auto_spine.py by hand on t8c's 13.905B weights, --tick-ms 8, pinned to the
 * Spine pbr4b1_k06_t8.npy (2,727 states, success line d 41,796 = 26.86%) taken by hand.
   **pbr4b1_t8d** (13:20 UTC): t8c's 13.9046B weights (md5 68f68cf8...) + k06 + milestones
   44939 / 43426 / 42286 (k05's line, so gate 10 keeps paying) + the t8c flag set, 2B steps.
+* t8d's first eval (13.905B = t8c's weights at the pause): **24.155, median 21.5%** - 8/9 stop at
+  gate 9. t8c's approx_kl had turned unstable from ~13.72B: 25-iteration means 0.05-0.07 before,
+  0.10-0.28 after, single updates at 2-4 (the lineage saw kl 1.66 and 0.2-0.8 late in round 2).
+  t8d stopped. **pbr4b1_t8e** (13:27 UTC): t8c's ckpt_latest at 13,688,635,392 (pulled at 12:14,
+  md5 fd3b59e1...; before the instability, 37M steps after the 26.333 eval) + k06 + milestones
+  44939 / 43426 / 42286 + **--lr 1e-4** (was 3e-4; sidistic R7's cut that held its finishing skill).
