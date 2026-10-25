@@ -1657,3 +1657,37 @@ lacks 0c64956 runs ~20x slow there (numba's prange team = 64 visible threads, 75
 throttled) and could read it as a bad box. The fix is one line in python/train_fast.py's prologue
 (NUMBA_NUM_THREADS = the OMP team size); tools that import surfgym.goalfield outside the trainer
 (beam_tas, explore_phase1, record_ckpt) inherit it only when the trainer launches them.
+* c2 at 13.86B (08:39 UTC, ~360M steps in): the curriculum walked the spine back 3099 -> 1964 in
+  ~300M steps and sits at the gate-10 ramp's foot: band [1959,1963] (19.6 s on the line, climbing
+  at vh ~610, vz +636) 16.7 -> 22.7% over 7 visits (advance at 30%), band [1964,..] 88-91%.
+  Greedy evals 24.506 (resume, this box) / 24.560 / 24.558 / 24.555 / 24.614: 7/9 still turn north
+  at the ramp (z max 2,930-3,045; the spine climbs to 3,186), 2/9 of the last eval back in the pit.
+* c2 at 14.32B (09:02 UTC): band [1954,1958] passes (~31%), [1949,1953] backs off at 26-27%; evals
+  24.546-24.603 (9 evals, no greedy episode up the ramp yet).
+* Energy height at FIRST arrival at each progress level (autoresearch analysis, beam line vs the
+  greedy evals of c2 14.26B and the incumbent 13.50B): identical to 21% (h ~3,370-3,400 at
+  ~18.0 s); between 21% and 22% about half the greedy episodes lose ~100-130 u clipping the
+  gate-9 wall top (h 3,249-3,286 at 22%) while the beam line GAINS (3,402 -> 3,451) and the other
+  greedy episodes keep 3,400-3,460. At 24% the beam line has 3,352 and climbs; the good greedy
+  episodes have 3,335-3,418 but fly the ramp's foot flat (vz ~0 at x 2,400-2,800 where the beam
+  line has vz +550) and turn north. So the ramp climb is a manoeuvre the curriculum is teaching
+  (band at its foot ~27-31%), not an energy deficit, for the episodes that clear gate 9 cleanly.
+
+### GATE 10 PASSED by the greedy line: score 26.370 (09:30-09:42 UTC)
+* c2 evals from 14.41B: 24.823 / 24.591 / 24.864 / **26.364** (14.633B) / 24.434 / 26.340 / 26.333 /
+  **26.370** (14.935B): from ~14.6B on, 1-3 of 9 greedy episodes from the true start climb the
+  gate-10 ramp the spine's way and crawl on along the upper floor to 26.3-26.4%; the rest still
+  turn north at the ramp (24.3-24.6%). ~1.1B steps after the spine went in. The curriculum had
+  passed the ramp's foot (bands 1949-1958 at 27-32%) and walked back to the gate-8/9 region.
+* The trainer's patience search fired at 15.01B (auto-spine search 1, beam only, 82 s): the
+  newest weights' beam reaches 26.05% at 22 s (a faster line than s1's 26.05% at ~28 s; it then
+  stalls) -> spine k01 (2,200 states, md5 e941a2b9...; success line 42,363 = 25.87%), the old
+  success line 42,171 (26.21%) kept as a milestone.
+* `--save-best-eval` (new, ac380ff; tests/python/test_save_best_eval.py, incl. a match with
+  score.py on real evals): ckpt_latest is overwritten every minute and the 1e9 milestones missed
+  every good eval, so the trainer now saves ckpt_<step>.pt with the exact weights whenever a greedy
+  eval beats the launch's best on the grader's rule. Not a config key.
+* c2 stopped at 15.052B (ckpt_latest md5 101a3598..., pulled; the handon pick for the 26.370 eval:
+  117M after it vs the 14.50B snapshot 435M before). **pbr4b4_c3** (09:42 UTC) = those weights +
+  spine k01 (--demo-tau0 1779, where the curriculum stood) + milestones 44939,43426,42171 +
+  --save-best-eval 1, the rest as c2, 4B steps.
