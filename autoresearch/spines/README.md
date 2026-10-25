@@ -154,3 +154,7 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   its branched beam - beam_tas from the true spawn on t9's weights at their own 7.67 ms tick, half the copies
   forked 1 s before the greedy line's stall with held view offsets - past gate 12 to 34.99%. The keys are the
   beam's own resolved held keys per row (auto_spine.keys_from_acts). No demo, no record (pbr4b3, round 4).
+* `pbr4b3_auto_t9k04.npy` + `.keys.npy` (4,700 rows; md5 f92b0ad2ed39e53a23ed80a256cea868 /
+  d97584f6519581659368871f242ad83c): found BY THE TRAINER (pbr4b3_t9's auto-spine search 4 at 20.127B, 74 s):
+  its branched beam on t9's own weights from the true spawn (7.67 ms) to 45.18%; keys = the beam's own held
+  keys per row. No demo, no record (pbr4b3, round 4).
