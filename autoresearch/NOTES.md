@@ -1832,3 +1832,7 @@ Box: 57632318, RTX 4080 + i9-14900F (32 thr), 0.30 $/h, UK (machine 151788), ren
   which every draw is still an exact sample of the tempered policy (PPO's ratio unchanged).
   tests/python/test_demo_front_hold.py (held rows repeat their draw; the log-prob is the tempered
   joint's; hold=None is the shipped draw; flag-off bit-identity against the trainer before it).
+* **pbr4b2_t4** (12:04 UTC): t3's 16.456B weights + the same curriculum at tau0 2790 with
+  `--demo-front-temp 2 --demo-front-ticks 60 --demo-front-view 20 --demo-front-hold` (keys at
+  temperature 3 and the yaw sigma x20 = ~17 deg, with the noise HELD for the band spawn's first
+  0.46 s), the rest as t2/t3, 5B steps. Question: does band [2790] (0.0% in t2/t3) move.
