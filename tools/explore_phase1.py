@@ -288,6 +288,9 @@ class Archive:
         # cell state's CARRYABLE energy height z + (vx^2 + vy^2 + max(vz, 0)^2) / 2g (0 = off)
         self.sel_energy_T = 0.0
         self.sel_g = 800.0
+        # --select-depth-cost L: the selection score is h_c - L x depth (u per tick): energy gained
+        # quickly, not by a long wander (0 = off)
+        self.sel_depth_cost = 0.0
 
     def _grow(self, cap: int) -> None:
         old = getattr(self, "key", None)
@@ -419,6 +422,8 @@ class Archive:
             # a state inside a push volume moves with the push, not with its own energy
             push = np.abs(st["basevelocity"].astype(np.float64)).sum(axis=1) > 0.0
             hc[push] = st["origin"][push, 2]
+            if self.sel_depth_cost > 0.0:
+                hc = hc - self.sel_depth_cost * self.depth[:self.size].astype(np.float64)
             w = w * np.exp(np.clip((hc - hc.max()) / self.sel_energy_T, -60.0, 0.0))
         self._cum = np.cumsum(w)
 
@@ -848,6 +853,9 @@ def explore(args) -> int:
     if float(getattr(args, "select_energy", 0.0) or 0.0) > 0.0:
         arch.sel_energy_T = float(args.select_energy)
         arch.sel_g = float(cfg.phys.sv_gravity)
+        arch.sel_depth_cost = float(getattr(args, "select_depth_cost", 0.0) or 0.0)
+    elif float(getattr(args, "select_depth_cost", 0.0) or 0.0) > 0.0:
+        raise SystemExit("--select-depth-cost prices the --select-energy score: give --select-energy")
     rk = hasher.keys(roots)
     for j in range(len(roots)):
         i = arch.add(int(rk[j]), roots[j], depth=0, parent=-1)
@@ -1187,6 +1195,8 @@ def meta_dict(args, bsp, hasher, arch, it, n_goal, extra=None) -> dict:
         out["view_velocity"] = True              # flag off: the meta json is unchanged
     if float(getattr(args, "select_energy", 0.0) or 0.0) > 0.0:
         out["select_energy"] = float(args.select_energy)
+        if float(getattr(args, "select_depth_cost", 0.0) or 0.0) > 0.0:
+            out["select_depth_cost"] = float(args.select_depth_cost)
     if getattr(args, "exact_chains", False):
         out["exact_chains"] = True
         out["ep_ticks"] = int(args.ep_ticks)
@@ -1779,6 +1789,10 @@ def build_parser() -> argparse.ArgumentParser:
                          "carryable energy height z + (vx^2 + vy^2 + max(vz,0)^2)/2g (a push volume's "
                          "state counts its z only): expand from the most energetic states first, "
                          "for momentum the goal field does not show (0 = off, bit-identical)")
+    ap.add_argument("--select-depth-cost", type=float, default=0.0,
+                    help="with --select-energy: the score is h_c - L x depth (u of carryable energy "
+                         "per physics tick of chain depth), so energy gained quickly outranks a long "
+                         "wander to the same energy (0 = off)")
     ap.add_argument("--view-velocity", action="store_true",
                     help="random view TARGETS in the velocity frame (core view_mode 1 + "
                          "yaw_adaptive, the policy's own action space under --view-absolute "
