@@ -1327,3 +1327,14 @@ the budget pace (0.69 $/h) admit one box; until then every rent was refused (0.1
   --auto-spine-milestones (delay 6e8, patience 6e8), 3B steps. Question: does the curriculum get
   through the boosted chain's ramp-catch band (as3: 0-30% at ~1,885 for ~150M steps) when the
   route is protected, and does the greedy follow?
+
+### as6: milestones stop the erosion; the k03 ramp-catch band learning (00:37-01:06 UTC)
+* as6 evals (k03 spine, milestones 44,939 / 43,426): 24.528 / 24.419 / 24.465 / 24.429 / 24.416 /
+  24.438 / 24.422 (11.38-11.83B): 9/9 greedy episodes reach the crawl every time - NO erosion,
+  where as3's unprotected k03 phase fell to 21.5 within 75M steps. Not past the crawl yet.
+* The curriculum walked k03 back to the boosted chain's ramp-catch approach (spine 1,893-1,897,
+  ~19.0 s) and that band is rising toward the 30% advance rate: 23.9 -> 25.7 -> 26.1 -> 28.9%.
+* pbr3b4_as7 (01:05 UTC): as6's 11.868B weights (md5 b30c3ef6...) + the same flags with
+  --auto-spine-patience 1.2e9 (was 6e8): a patience search costs ~25 min while it finds nothing
+  and could swap k03 (whose band is about to open) for a similar boosted line; searches still
+  fire on the quorum (5/9 greedy episodes past 26.49%).
