@@ -1234,3 +1234,10 @@ or cheaper offers in the query (a 3090 at <= 0.18 $/h would fit beside the 5080)
   **20.224** (median 6.7%: on a 3090 the same weights fork earlier than on the 5080 - CLAUDE.md's
   cross-card warning). Curriculum: [1810] 100% -> [1800] 100% -> [1780] 100% -> [1710..] 0.0%
   (backoff): the ramp climb is the new skill.
+* c1 evals: 20.224 (9.479B) / 20.320 (9.555B) / **20.420** (9.630B, median 20.4%): the greedy line
+  still dies at the catch; the TRAINING frontier moved ~20.8% -> 24% (spine episodes that cross the
+  success line fly on). Curriculum (cooldown 5, grow 5..40): 1815 -> 1710 in ~40M steps, then
+  oscillates: band [1710,1714] 82% / [1705,1709] 1.4-2.0% (500 episodes per visit). The spine
+  lands on a curved ramp at ~1675 and rides it from heading south-east to south-west (vz -570 ->
+  +660, dvz +20..+33 per tick), leaves it at 1717 and air-brakes east (the vvel explorer's large
+  view offset); the failing band is mid-curve, 6-10 ticks before it leaves the ramp.

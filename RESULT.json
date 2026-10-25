@@ -3,17 +3,17 @@
  "round": 3,
  "final": false,
  "best": {
-  "score": 20.224,
-  "eval_file": "/home/steam/ar_pb/runs/pbr3b1/pbr3b1_c1/traj_9479127040.jsonl",
+  "score": 20.42,
+  "eval_file": "/home/steam/ar_pb/runs/pbr3b1/pbr3b1_c1/traj_9630121984.jsonl",
   "run": "pbr3b1_c1",
-  "step": 9479127040,
+  "step": 9630121984,
   "ckpt": null,
   "recipe": [
    "resume of the incumbent (9.478B) with round 2's curriculum flag set on autoresearch/spines/pbr3b1_vvel_g20.npy"
   ],
   "resume_from": "/home/steam/ar_pb/incumbent/r2/ckpt.pt",
   "commit": "7090ffb",
-  "note": "the resume's first eval = the incumbent's own weights on a 3090"
+  "note": "c1's third eval (151M steps of curriculum on pbr3b1_vvel_g20); 9/9 still die at the 20.4% catch"
  },
- "summary": "Box 57580595 (3090) from 23:42 UTC. The 20.4% gate (a launch off a surf face, a tunnel with a falling ceiling, a hard right round a block corner onto the only ramp over a catch floor) fell to box Go-Explore with velocity-frame random actions (new explore_phase1 --view-velocity: 21.54% vs 21.06% for the yaw-delta explorer at matched compute, 2.6-6.7x more cells past the gate). Spine pbr3b1_vvel_g20 (to 21.54%); pbr3b1_c1 = the incumbent + round 2's curriculum on it, first eval 20.224 (incumbent weights on a 3090)."
+ "summary": "Box 57580595 (3090) from 23:42 UTC. The 20.4% gate (a launch off a surf face, a tunnel with a falling ceiling, a hard right round a block corner onto the only ramp over a catch floor) fell to box Go-Explore with velocity-frame random actions (new explore_phase1 --view-velocity: 21.54% vs 21.06% for the yaw-delta explorer at matched compute, 2.6-6.7x more cells past the gate). Spine pbr3b1_vvel_g20 (to 21.54%); pbr3b1_c1 = the incumbent + round 2's curriculum on it: evals 20.224 / 20.320 / 20.420 (9.63B); training's frontier ~20.8% -> 24%; the curriculum oscillates at the ramp-landing band [1705,1709] (1.4-2% success; [1710,1714] 82%)."
 }
