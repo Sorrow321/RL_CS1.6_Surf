@@ -1500,3 +1500,18 @@ as7's 24.555 eval (ep0) vs the WR demo:
   surfer to go east and die there; this policy surfs at 1,000+ u/s.)
 * as10 evals: 24.737 (13.500B = as9's 13.4999B weights, pinned as pbr3b4_as10/ckpt_13499891712.pt)
   / 24.548 / 24.733; U-turn-exit energy 3,348-3,386 (flat under K 12).
+
+### as11: no pumping; the explorer's half-pipe states were doomed; as12 (04:21-04:32 UTC)
+* as11 (both-direction explorer spawns 0.25, K 12; 13.66-14.21B): greedy evals 24.535-24.623, and
+  0/9 episodes ever go east of the spawn (pb_start_energy.py), tunnel exit h 3,807-3,824 at
+  3.6-3.9 s (the record ~3,969 at 8.24 s, ANALYSIS ONLY) - the start did not change.
+* Why: the "viable" field-opposed cells were mostly DOOMED - from each half-pipe pick 0 / 1,024
+  runs survive 1 s with neutral or uniform random actions (falling into what looks like a kill
+  volume at the half-pipe's bottom, ~100 u under the record's line there), so those spawns were
+  instant deaths. A cell with children is not a survivable cell: a dying run still visits new
+  cells on the way down.
+* Generic survivability filter: keep the behind-the-start cells from which >= 25% of 32 uniform
+  random rollouts are alive after 1 s - 1,917 of 8,922 cells, x 863-2,380 (the half-pipe region),
+  energy median 3,649 / max 3,815. runs/spawn_both2.npy = the start-room entry states + those.
+* **pbr3b4_as12** (04:31 UTC): as11's 14.217B weights (md5 bf1b76a5...) + the same flags with
+  --spawn-states runs/spawn_both2.npy (0.25), 4B steps (to the round's end).
