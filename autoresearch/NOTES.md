@@ -2324,3 +2324,18 @@ minute). Incumbent: pbr4b3_t11 ckpt_23551016960 (md5 7fbcd458...), eval 52.937 a
 * **pbr5b2_c6** (launched 23:13-23:15 UTC): c5's 25.876B weights (md5 4728837e...) + spine s6 + its keys (success line d 21,624 =
   62.16%) + milestones (the 16 + 23,400 / 22,500 along s6) + --auto-spine (quorum / patience 1.2e9; GE with the rising
   split by default now) + --respawn-greedy-energy 3, no energy rule (s6 is a depth spine).
+
+### GATE 17 PASSED by the greedy line: 61.566 (2026-10-25 23:36 UTC)
+* c6 evals (spine s6 = the policy's own 62.34% beam line): 56.176 (25.877B, the resume) / **61.505** (25.952B, ~75M steps
+  after the launch) / 61.487 / **61.566** (26.103B, median 61.41%) / 61.500 / 61.448: 9/9 greedy episodes up the shaft,
+  over the upper level and south along a floor strip; energy height at 56% 2,690-2,758 (c4: ~2,300). Handoff for 61.566:
+  c6's snapshot ckpt_26076512256 (27M steps before the eval; md5 9a679e41..., pulled).
+* Gate 18 (where all 9 die, 61.3-61.6%): bunny-hopping south on a floor strip at z ~2,377 (feet 2,341), the greedy drifts
+  40-60 u east of the beam line (x ~-1,980 vs -2,020..-2,060) off the strip's edge onto trigger_teleport *211 (a fall
+  catch, z 2,317-2,343). The curriculum sits right there (band [6,158,6,162] 0.6-0.7%, [6,163,...] 56-59%). The beam line
+  itself ends in a fall from 61.9% (z 2,341 at (-1,990, 2,238)) to 62.34% (z 2,145, heading west): the gate after.
+* The chain of this gate, for the record: (1) search: Go-Explore with the rising / not cell split found the climb but only
+  from an x1.08 root, and a cleaner descent only from an x1.04 root; (2) a depth curriculum on the stitched boosted line
+  (e1c) taught the policy to AIM at the shaft (2/9 into the upper room, 56.579) but stalled at the x1.08 root; (3) an
+  ENERGY-gated curriculum on the descent alone (e1d) taught the energy in ~20 min; (4) on those weights the policy's own
+  plain beam made the climb unboosted (62.34%); (5) the usual depth curriculum on that line -> 9/9 within ~75M steps.
