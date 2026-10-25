@@ -1843,7 +1843,7 @@ throttled) and could read it as a bad box. The fix is one line in python/train_f
   (TICKS_PER_S) and explore_phase1 builds a 10 ms core). It needs the user's / operator's decision:
   it matches the WR's own client physics the way --maxvel 3500 matches its server's movevars.
 
-### c8: the impact rows did not raise the energy; c9 tests energy K 24 (11:48-12:16 UTC)
+### c8: the impact rows did not raise the energy; c9 tests energy K 24 (11:48-12:15 UTC)
 * c8 (--respawn-greedy-impacts 3, beam-only searches): evals 27.021 / 27.056 / 27.054 / 27.086 /
   26.974 / 27.074 (16.91-17.28B; no new best, 27.114 stands). Energy at 26.5% median 3,494-3,527
   (c7: 3,486-3,528): flat. With c7, ~800M steps of impact-approach rows (K 2 then 3) bought
@@ -1851,7 +1851,7 @@ throttled) and could read it as a bad box. The fix is one line in python/train_f
 * Its auto-spine search 1 (17.21B, quorum 7/9, beams only, 101 s): the d beam 42,082 (26.36%) and
   the dh K 10 beam both stop SHORT of the greedy median (41,757 = 26.93%) - the policy has absorbed
   the dh10 line and its own greedy now beats its stochastic beams at the gap.
-* c8 stopped at 17.349B (ckpt_latest md5 029cd057..., pulled). **pbr4b4_c9** (12:16 UTC): its
+* c8 stopped at 17.349B (ckpt_latest md5 029cd057..., pulled). **pbr4b4_c9** (12:14 UTC): its
   weights + the same flags with **--energy-pot 24** (was 12), 1.2B steps (a 30-60 min first test).
   Round 2: K 3 -> 8 carried the x -1,015 wall after ~800M steps; round 3: K 8 -> 12 did not move the
   gate-8 U-turn energy. Read-out: pb_energy_profile at 21-26.5% against c8's, and any eval past
