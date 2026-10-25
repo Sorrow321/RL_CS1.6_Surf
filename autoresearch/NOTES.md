@@ -1980,3 +1980,11 @@ over-subscribes the quota. This branch's surfgym now caps numba; the operator ma
   corner and flies the corridor west to the spine's end. The 9/9 quorum fired the trainer's auto-spine search 1
   at once (running). Handoff: the EXACT weights of the eval (ckpt_latest saved by the search at 21,249,916,928)
   pinned as pbr4b3_t11/ckpt_21249916928.pt and pulled (md5 32bc5715...).
+* t11's auto-spine search 1 (21.250B): beam / three branched beams 30,118-30,147 (47.3%), GE stage 1 (x1.0 / 1.04,
+  the uniform explorer) 30,132 at (-2,403, -1,233, 3,150) - no spine; stopped before the boosted stages (687 s of
+  trainer wait). Gate 15 sits at (-2,400, -1,240, ~3,100-3,150), 47.2-47.3%; the record (ANALYSIS ONLY) goes on
+  north from there ((-2,320, 255, 3,316) at 50%).
+* auto_spine's Go-Explore stages now run `explore_phase1 --view-follow` by default (`--ge-view-follow`, 'none' =
+  the old explorer): on the box for t11's next search at 21.65B.
+* GE19 (16:07 UTC, view-follow, 12 min beside the trainer): 48 roots over the last 4 s before the 21.25B beam
+  line's stall (its tick 3,927 of 4,100).
