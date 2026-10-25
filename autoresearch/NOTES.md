@@ -1928,3 +1928,21 @@ throttled) and could read it as a bad box. The fix is one line in python/train_f
   of the impact-approach anchors, whose rows are also boosted x1.0-1.5 by --respawn-greedy-speed),
   then 26.953 / 27.143 / 27.161 (19.84-19.99B) and the energy fell back (26.5%: 3,527-3,536; the
   gate-9 clip back in some episodes). The c11 gain is noisy: best 27.226, energy +0..60 u.
+
+### The tick, measured on our own policy (15:08-15:18 UTC, ANALYSIS ONLY - no training at 7.63 ms)
+* beam_tas (c11's 20.5B weights, 2,048 copies, d-ranked) from two of dh10's own mid-route states,
+  the same weights and states run at --tick-ms 10 and 7.63 (the record's frame time; the policy has
+  never trained at it):
+  | start | tick | best | h at 24% | 25.5% | 26% | 26.5% | 27% |
+  |---|---|---|---|---|---|---|---|
+  | 16.0 s (h 3,748) | 10 ms | 26.47% | 3,466 | 3,569 | 3,571 | - | - |
+  | 16.0 s | 7.63 ms | **27.10%** | 3,537 | 3,660 | **3,669** | 3,692 | 3,715 |
+  | 19.0 s (h 3,513) | 10 ms | 26.22% | 3,447 | 3,541 | 3,547 | - | - |
+  | 19.0 s | 7.63 ms | 26.56% | 3,504 | 3,631 | **3,633** | 3,657 | - |
+* +86..+98 u of energy height by 26% from 3-6 s of the route alone, untrained at that tick; the gap
+  wants ~3,735 at the launch (the x1.45 probe). From the true start the gain compounds (the 10-26.5%
+  gains estimate: +~145 u). Neither 7.63 ms line crossed the slot zero-shot.
+* For the user / the next rounds: training at the record's frame time (a --tick-ms-schedule ramp
+  10 -> 7.63 from these weights) is the one lever measured this round that is the size of the gap.
+  It changes the task every later round inherits (and tools/auto_spine.py + explore_phase1 assume
+  10 ms), so it is the user's / operator's call - not taken here.
