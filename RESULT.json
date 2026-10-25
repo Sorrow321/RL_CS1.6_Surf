@@ -21,7 +21,7 @@
    "--auto-spine --auto-spine-milestones --auto-spine-delay 2e8 --auto-spine-retry 6e8 --auto-spine-patience 1.5e9 --auto-spine-gain 200 --auto-spine-ge-minutes 0 --auto-spine-beam-energy 10 --save-best-eval 1"
   ],
   "resume_from": "pbr4b4_c10 ckpt_latest 18.476B <- c9 17.915B <- c8 17.349B <- c7 16.906B <- c6 16.554B <- c5 <- c4 <- c3 <- c2 <- incumbent pbr3b4_as10 13.4999B",
-  "commit": null,
+  "commit": "17ca682a28b267b98527fd87568d3a4db098257c",
   "ckpt_latest": "/home/steam/ar_pb/runs/pbr4b4/pbr4b4_c11/ckpt_latest.pt (20.651B, md5 605c43e084759ce49d5b843b918c6003)",
   "also_pulled": "pbr4b4_c12 ckpt_24275582976.pt (its best eval 27.211, md5 9104f2d1...) and ckpt_latest 24.826B (md5 8a0de437...) - the most consolidated weights (9/9 to the gap, median 27.1%)"
  },
