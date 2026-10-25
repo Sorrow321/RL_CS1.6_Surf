@@ -2256,3 +2256,15 @@ minute). Incumbent: pbr4b3_t11 ckpt_23551016960 (md5 7fbcd458...), eval 52.937 a
   the shaft rise where four ladder stages and two focused runs did not. (2) "Pick by energy, then hand over": the
   stage-1 archive held a U-bottom state with +360 u of energy over the policy's line; the policy rolled out from it
   and GE rooted on that rollout carried it up the shaft. Neither the policy nor the explorer did it alone.
+
+### c3 stalls in e1's crawl; c4 on the cut spine (21:44-22:12 UTC)
+* c3 (spine e1 to 62.25%): the curriculum walked 10,951 -> 10,436 in a few minutes and then sat for ~20 min at band
+  [10,431,10,435] (0.0-1.4%; [10,436] 41-47%): an explorer impact at 61.5% (-185 u), far inside the 40 s crawl and
+  5% past anything the greedy flies; every band before it has to pass it to reach the 62.07% success line. Greedy
+  evals 56.1% median (d 25,082-25,094) all along, best 56.25 / 56.14. Stopped at 24.626B.
+* Spine `pbr5b2_e1c` = e1 cut at row 5,004 (57.20%, d 24,459, just past the climb on the upper level; success line
+  57.02%): the next gate only (round 2's lesson: move the success line one gate at a time). Its x1.08 root is row
+  4,661 (row 4,660 = the policy's own U-exit state), 345 rows before the end.
+* **pbr5b2_c4** (22:10 UTC): c3's 24.626B weights (md5 3a2d4848...) + e1c + keys + the 16 milestones (..., 25,121,
+  24,479) + c3's other flags, 4e9 steps. Expect a stall at band [4,656,4,660] (unboosted, before the x1.08 root);
+  round 4's gate 15 was passed by the greedy ~150M steps after an x1.08 swap.
