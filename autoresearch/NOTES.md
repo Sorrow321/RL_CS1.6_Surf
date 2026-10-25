@@ -2001,6 +2001,42 @@ over-subscribes the quota. This branch's surfgym now caps numba; the operator ma
   held keys loaded from k02/spine.keys.npy on the swap (4c8f7cb, first live use). Gate 15 needs ~x1.12 of the
   explorer's energy at its root (the rebound's loss, one gate back).
 
+### Gate 15 is a LAUNCH, and k02's curriculum is stuck on its first 5 ticks (17:15-17:50 UTC)
+* t11 on k02 (21.70-22.33B): evals 47.14-47.22%, 9/9 at the gate. The curriculum oscillates every ~500 band
+  episodes between tau 3898 (band [3898,3902]: 0.0-0.4% success) and 3903 (band [3903,3907]: 53-57%) for 600M+
+  steps; the reservoir's deepest state is d 26,634 (53.4%, from k02's late spawns).
+* What happens at 3899-3905 (k02 = the policy's beam line to 3781 + the x1.12 GE chain from 3782): the chain
+  releases the ramp (keys forward+right -> left at 3899) at the ramp's lip and the velocity is deflected UP for
+  6 ticks (vz 200 -> 659, horizontal 1,144 -> 686 u/s, -300 u of h), orbits ~140 deg against the wall, then flies
+  north at z 3,060 -> 3,258 and lands on the floor at (-2,320, -954, 3,207) at 4,060, then hops north to y +63
+  (49.75%). Spawns from 3903 on are already mid-launch.
+* The greedy (22.16B, ep 8) at the same lip: h ~3,650 (MORE than the chain's ~3,500 after its launch), but its
+  launch is soft (vz 256 -> 456 over 15 ticks, horizontal 1,062 -> 959): it reaches (-2,420, -1,256, 3,080), ~180 u
+  below the chain at that y, circles a full turn in the air and falls back south-east. Energetically it could make
+  the 3,207 floor with ~800 u/s to spare; what it lacks is the CONVERSION of speed into height at the lip, and the
+  chain gets that from a faster (x1.12), 48 u higher approach that the policy's own line does not have.
+* So k02 is a dead end for the greedy as built: the band before the launch is ~0%, and even a learned launch would
+  start from a state 12% faster than the policy's own line. The next lever is upstream and generic: search gate 14
+  (44.2%) for a line that keeps its energy (round 3's "pick by energy, not depth"), or search the lip from the
+  policy's own (unboosted) states for a chain that launches high; GE stage 1 (x1.04) already reached 47.52% at
+  (-2,411, -1,167, 3,212), level with the record, ~200 u short of the floor.
+* **The exact chain on the box (t11/auto/k02/ge3 link actions, 17:25 UTC):** from 3890, 3896, 3898 and 3902 the
+  chain's own actions launch (vz max 659, z max 3,270, d 29,770 after 200 ticks) - at 8 ms, and at [8,8,7] too
+  (vz 641-653; the run then dies later in the hops, except from 3902). The SAME actions with **duck held**: vz max
+  368-372, z max 3,069-3,071, d 30,650 - the greedy's failure to the unit (the greedy holds jump+duck, buttons 6,
+  through the lip; the chain launches unducked and ducks only at 3920). In the policy's frame (view along the
+  velocity, the chain's raw keys / the spine's translated keys): vz 200-320, no launch - the 8-direction key
+  translation cannot express this contact, so the k02 band spawns cannot even be replayed open-loop.
+* **And from the GREEDY's own approach (22.16B ep 8, rows 3990-4013, local [8,8,7] sweep of 9 held key pairs x 13
+  view offsets x duck for 60 ticks): z max is capped at 3,092 unducked / 3,110 ducked whatever is held** - a ceiling
+  at z ~3,128 above the place the greedy launches (vz up to 676 there, straight into it). The chain reaches the lip
+  48 u higher and 12% faster and launches further west, past the ceiling. So gate 15 is the APPROACH line (set at
+  gate 14 and the ramp before the lip), not a missing input at the lip: no curriculum on the lip alone can fix it,
+  and un-ducking alone does not either.
+* Next round, generically: an energy-ranked search from roots before gate 14 whose chains are scored at the lip
+  (height + speed on arrival, not depth), and a policy-frame explorer for contacts like this one (a continuous
+  view offset, not 8 key directions, if the spine is to carry it).
+
 ### pbr4b3 round 4 lesson (DRAFT 16:57 UTC, finalised at wrap-up)
 * **Score 24.737 -> 47.253** (pbr4b3_t11 21.250B, 9/9 greedy episodes at 47.1-47.25% from the true start). Gates
   10, 11, 12, 13 (the auto-spine's 35/41/43.7/45.2% lines) and 14 passed; gate 15 (47.3%) had a x1.12 GE spine at
