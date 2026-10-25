@@ -2124,3 +2124,23 @@ over-subscribes the quota. This branch's surfgym now caps numba; the operator ma
   23.364B and being learned when the round ended. Gate 16 (~51%, a fail trigger at the north end of the corridor)
   fell to the policy's own beam line within ~150M steps. The loop is running: let its patience fire before
   intervening.
+
+## pbr5b3 (round 5, slot 3) - 2026-10-25 19:48 UTC start
+
+Incumbent: pbr4b3_t11 traj_23590338560 (52.937), weights ckpt_23551016960 (md5 7fbcd458...). Plan: resume it
+with t11's flag set (NOTES "To continue (next round)"), the k05 spine (to 56.22%) and the trainer's --auto-spine.
+
+### No box at the start (19:50 UTC)
+* `box.py rent` refused: the other branches' boxes already burn 0.984 of the fleet's 1.2 $/h, and the only
+  acceptable offers were two 5080s at 0.621 $/h. A retry loop (`box.py rent` every 3 min, deadline = wrapup + 12
+  min) runs in the background; analysis meanwhile.
+
+### Past 52%: what the record does (ANALYSIS ONLY, levels.py on the WR demo vs the incumbent eval's ep4)
+* The record covers 52% -> 100% in 31.6 s (43.85 -> 75.44 s); the greedy reaches 52% at 35.67 s, 8 s ahead.
+* 50-52%: the greedy keeps the record's energy (h 3,617-3,653 at 50%, record 3,544-3,565) until 52.0%, then loses
+  ~800 u/s in 0.6 s at (-2,412..-2,433, 631..852, ~2,600) (|v| 1,191 -> 374, h 3,458 -> 2,689) near func_conveyor
+  *162 (z 2,533, x -2,564..-2,127, y 554..717); the record keeps 966-1,077 u/s through 52.25-52.5% (h ~3,200).
+  So past 52% our line runs ~500 u of energy height under the record, and the k05 spine ~750-1,000 u under it
+  (54.76%: h 2,131 vs the record's ~3,224 at 54%; k05 ends at 56.22% crawling at 209 u/s, h 1,994, where the
+  record has 1,181 u/s). The record's next climb (58%: z 2,508) needs more energy than k05's end has: expect the
+  loop to need a more energetic line through 52% before it gets much past 56%.
