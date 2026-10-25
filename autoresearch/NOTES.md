@@ -1797,3 +1797,21 @@ throttled) and could read it as a bad box. The fix is one line in python/train_f
   1 ep 3,549. The record (ANALYSIS): ~3,796 / 3,583 / ~3,610 / 3,600 / ~3,710 / ~3,720. This round's
   policy already lands gate 8's corridor ~60 u softer than the incumbent; the median 25.5% figure
   (3,236) is the walk on the upper floor (the east flight is the max column).
+
+### The north gap (gate 12, ~27.0%) is an energy gate with a slot (11:43-11:55 UTC)
+* c7 evals (impact rows on): 26.946 / 27.043 / 27.049 / **27.114** (16.781B, median 26.9%; exact
+  weights ckpt_16780886016.pt md5 14fd99cd..., pulled). Energy at first arrival (pb_energy_profile)
+  creeps up: 21% 3,454-3,488, 24% 3,382-3,414, 25.5% 3,446-3,492 (now the median: most episodes
+  fly east over the upper floor), 26.5% 3,486-3,528 (3-5 episodes) - +20-40 u over c6.
+* Core probe (a ducked hull dropped through z ~3,165 on a 50 u grid, ANALYSIS ONLY): the fall-catch
+  sheet kills everywhere over x 3,150-3,850, y -2,500..-1,250 EXCEPT a slot at y ~-1,575..-1,425,
+  x ~3,225..3,725 - where the record dives through (ANALYSIS: (3,539, -1,558, 3,192) -> (3,466,
+  -1,555, 3,128) at 27.3-27.4 s). Our lines come down 400 u (unboosted dh10, (3,452, -1,978)) to
+  120 u (GE x1.25, (3,466, -1,695)) short of it.
+* Boosted Go-Explore at the north ramp (10 min, 12 threads, roots 21.9-22.8 s of dh10 x 1.15 /
+  1.25): deepest 27.48% from a x1.25 root - apex z 3,416 at y -2,123 (the record's apex height) but
+  ~600 u/s horizontal (record ~705), so it comes down short of the slot. From that apex ~700 u/s is
+  needed (0.79 s of fall to z ~3,190 covers ~550 u): h ~3,720 at the north ramp, ~+200 u over our
+  unboosted lines - the record's own figure.
+* The training frontier does not reach the gap either: the frontier-perturb rows (speed x1.0-1.3 at
+  the reservoir's band, ~26.0-26.1%) top out at 26.37% (the crawl line's catch).
