@@ -1357,3 +1357,7 @@ shorter budget_end_hours. Written down for the operator; nothing is worked aroun
   waypoint of the route (energy_waypoint.py; the run's own greedy line as the reference) so the pump is
   only completed by coming back onto the route faster. Round 1's version of this (archive spawns WITHOUT
   energy shaping) taught the greedy to go east and die in the half-pipe's bottom.
+* 06:42 UTC: a box slot freed (fleet burn 0.578 $/h; an RTX 4080 at 0.299 $/h, i9-14900F 32 threads, would
+  have rented) - 17 min before wrapup_at. Not rented: rent + deploy + the launch's record gate do not fit
+  before the wrap-up (which launches nothing new), and a run that short could only re-score the incumbent's
+  own weights. The slot is left to the fleet.
