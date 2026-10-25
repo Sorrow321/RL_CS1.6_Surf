@@ -1474,3 +1474,29 @@ as7's 24.555 eval (ep0) vs the WR demo:
   (beam_tas --score dh) instead of -d alone, so lineages that gain energy AGAINST the field are
   not culled. Nothing in it names the ramp: on any map it asks "is there a start that buys
   energy the field-follower never collects?"
+
+### The first ramp: what the generic searches did (03:23-03:52 UTC)
+* Energy-ranked branched beams from the true start (beam_tas --score dh --score-energy 3/8/15,
+  3,072 of 4,096 copies forked with random view commands, protected up to 5 s): the fork lands on
+  the first resample boundary (1.0 s at --resample-every 25, by then every copy has turned west),
+  and at --resample-every 5 (fork at 0.2 s) the forked copies still walk the normal west line -
+  view-only branching cannot turn a keys-hold policy around (its keys and habit dominate).
+* `beam_tas --start-state NPY[:I]` (new, off = byte-identical): the population starts from any
+  state - the explorer finds WHERE, the policy's own proposals find HOW. `tools/ge_energy_picks.py`
+  (new): an exact-chains archive's VIABLE cells (some cell's parent - energy alone picked states
+  plunging into a death or riding the spawn doorway's push-down trigger) BEHIND the start on the
+  field (d above the spawn's), ranked by energy height, with their chains.
+* GE from the true spawn (64 u x energy 32, 6 min, 16 threads): the field-opposed side's best
+  viable energy is only +136..+160 u over the spawn (3,789-3,813) - uniform actions do not pump
+  (as in rounds 1-2) - and from every half-pipe pick ALL 4,096 policy copies died within 1 s (the
+  policy has never surfed there; round 1's half-pipe deaths at z ~3,290-3,310). The near-spawn pick
+  only replays the normal line, later.
+* So the pump needs the POLICY to practise the half-pipe (surfing it for speed is a skill, not a
+  search result). **pbr3b4_as11** (03:52 UTC): as10's 13.661B weights + the k02 curriculum +
+  milestone 44,939 + --energy-pot 12 (per-call: every energy gain in the half-pipe pays) +
+  --spawn-states runs/spawn_both.npy at 0.25 = the start-room entry states + the 1,891 viable
+  explorer cells BEHIND the start (both directions, nothing named) - does the greedy start
+  pumping, and does it come back with more energy? (Round 1 saw half-pipe spawns teach a weak
+  surfer to go east and die there; this policy surfs at 1,000+ u/s.)
+* as10 evals: 24.737 (13.500B = as9's 13.4999B weights, pinned as pbr3b4_as10/ckpt_13499891712.pt)
+  / 24.548 / 24.733; U-turn-exit energy 3,348-3,386 (flat under K 12).
