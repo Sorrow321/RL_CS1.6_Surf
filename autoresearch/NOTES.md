@@ -1950,3 +1950,17 @@ over-subscribes the quota. This branch's surfgym now caps numba; the operator ma
   dropped on the swap. **pbr4b3_t10** (14:56 UTC): t9's 20.189B weights (md5 a228de09...) + k04 with its held keys
   (autoresearch/spines/pbr4b3_auto_t9k04.*, `--demo-keys`, `--demo-tau0 4629`) + all nine milestones + the trainer
   that keeps keys across auto-spine swaps (4c8f7cb), the rest as t9.
+
+### 28-44% is flown above the record's energy; gate 14 is a crash at 44.2% (15:15-15:22 UTC)
+* t10 (k04 + its held keys, all nine milestones): evals 44.127 / 44.327 / 44.276 / **44.373** (20.416B) / 44.322;
+  the band at k04's end [4629] rose 2-4% -> 7.5% with the keys - it sits on a hop's landing in a slow
+  bunny-hop crawl at 44.8-45.2% (k04 ends there). Handoff milestone ckpt_20389560320 pulled.
+* Beams on t10's 20.54B weights (d-ranked x2, dh K 3): 31,175 / 31,191 / 31,163 = 45.45% - the same crawl.
+* The beam line (s51) against the record (ANALYSIS ONLY), first arrival at each level: 28% 1,279 u/s h 3,920
+  (record 1,043 / 3,533); 32% 1,315 / 3,819 (1,131 / 3,552); 36% 1,347 / 3,886 (1,187 / 3,638); 40% 1,453 / 3,869
+  (1,279 / 3,602); 44% 1,350 / 3,908 (1,213 / 3,674) - on the record's own route within ~50 u, FASTER and ~250 u
+  higher in energy all the way: the 7.63 ms tick did what the per-frame physics said.
+* Gate 14: at 28.46 s the line, falling at vz -686, hits a floor + wall corner at (-964, -1,395, 2,612): |v| 1,419 ->
+  341, h 3,915 -> 2,696 in two ticks, then crawls (45% only 8 s later). The record passes there 150-200 u higher
+  (z 2,755-2,837) and keeps 1,071+ u/s. A line-shape gate (too steep), not energy.
+* GE18 (15:22 UTC, view-follow, 8 ms, 12 min): 40 roots on the s51 line over 26.4-28.4 s (before the crash), x1.0.
