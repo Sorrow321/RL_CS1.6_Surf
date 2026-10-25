@@ -3,11 +3,11 @@
  "round": 4,
  "final": false,
  "best": {
-  "score": 24.491,
-  "eval_file": "/home/steam/ar_pb/runs/pbr4b1/pbr4b1_t8c/traj_13500416000.jsonl",
+  "score": 26.333,
+  "eval_file": "/home/steam/ar_pb/runs/pbr4b1/pbr4b1_t8c/traj_13651410944.jsonl",
   "run": "pbr4b1_t8c",
-  "step": 13500416000,
-  "ckpt": null,
+  "step": 13651410944,
+  "ckpt": "/home/steam/ar_pb/runs/pbr4b1/pbr4b1_t8c/ckpt_latest.pt",
   "recipe": [
    "resume of the round-3 incumbent (13.4999B) at --tick-ms 8 (125 Hz physics)",
    "--demo-file autoresearch/spines/pbr4b1_k05_t8.npy (+ the round-3 curriculum flags, --demo-rate 0.2)",
@@ -15,7 +15,9 @@
    "--energy-pot 12 --respawn-greedy 0.2 ... (round-3 flag set) --ep-secs 120"
   ],
   "resume_from": "/home/steam/ar_pb/incumbent/r3/ckpt.pt (13,499,891,712)",
-  "commit": "0a76880"
+  "commit": "0a76880",
+  "ckpt_step": 13688635392,
+  "ckpt_md5": "fd3b59e19243ae81540667c35be5eac7"
  },
- "summary": "Gate 10 opens at an 8 ms physics tick (125 Hz; the WR player ran 131 fps): the policy's own beam proposals climb the gate-10 ramp from its own unboosted state (26.27%) and from the TRUE START (26.18%, spine k05) where the same beam at 10 ms stalls at 24.75%. Box only from 10:51 (fleet cap); t8c = the incumbent resumed at --tick-ms 8 on the k05 curriculum + milestones + auto-spine. First eval (frozen weights at 8 ms) 24.491: 2/9 reach the crawl, 5/9 die at the 13% catch - re-fit running."
+ "summary": "Score 24.737 -> 26.333 (t8c 13.651B: 2/9 greedy episodes from the true start pass gate 10 at 125 Hz and reach 26.33%, the rest crawl at 24.1-24.6%). Lever: the physics tick at the WR player's frame-rate class (--tick-ms 8; the record ran 131 fps; air acceleration is per frame): the policy's own beam climbs the gate-10 ramp unboosted at 8 ms (26.18-26.28%) where it stalls at 24.75% at 10 ms -> spine k05 -> the incumbent resumed at --tick-ms 8 on that curriculum + milestones + auto-spine. Box only from 10:51 (fleet cap), then a 128-CPU/30.7-quota box that throttled evals until run_arm.sh pinned the launch."
 }

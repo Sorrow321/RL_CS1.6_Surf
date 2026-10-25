@@ -1742,3 +1742,12 @@ This branch did its analysis and search locally on CPU meanwhile (gate 10 at 125
   pace, not a defect; ~240M steps/h). First eval (13.500B = the frozen incumbent at 8 ms): **24.491**,
   median 13.4% - 2/9 to the crawl (24.05, 24.49%), 5/9 die at the 13% fall catch (z ~2,933), 1 at 16%,
   1 at 4.9%. The curriculum walked k05's end band at once (100% over 328 eps).
+* t8c evals: 24.491 (13.500B, frozen) / 24.603 (13.576B, median 24.3% - the route re-fitted in 75M
+  steps) / **26.333** (13.651B, median 24.5%): **2 of 9 greedy episodes from the true start pass gate
+  10 at 125 Hz** and die at 26.33% (3,464-3,481, -2,346..-2,352, 3,188) at 22.4-22.9 s - the k05
+  line's end, gate 11; 6/9 crawl at 24.1-24.6%, 1/9 stays in the pit. Throughput 111k steps/s after
+  warm-up. Curriculum oscillating at k05 state ~2180 (21.5%, the climb after gate 8's corridor
+  landing: 11-47% success). Pulled ckpt_latest 13,688,635,392 (md5 fd3b59e1...); a box-side watcher
+  (/root/snap_watch.py) now copies ckpt_latest to ckpt_<S>.pt right after each eval traj_<S> (the
+  trainer saves ckpt_latest at the end of the eval's own iteration, same step and weights) so a later
+  best eval has its exact weights to hand on (`box.py pull --snapshot S`).
