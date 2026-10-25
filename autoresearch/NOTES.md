@@ -1294,3 +1294,21 @@ one box at a time (e.g. a box-hours budget instead of a $/h rate), is needed for
   test_beam_start_state (loader, keys-hold, start state, flag-off byte-identity, Pareto count),
   test_demo_success_energy (announce/dump/refusal, unreachable energy pays nothing, flag-off
   bit-identity).
+* The staged first box run (never launched: no box), for copying:
+  `box.py deploy --agent A --branch ar/A --ckpt $AR_HOME/incumbent/ckpt.pt`, then
+  `box.py launch --agent A --run A_ab1 --steps 1.5e9 --resume --self-states "<spines/README.md
+  provenance of pbr2b3_beam_ge_g16 + pbr1b1_entry_ge_states; --auto-beam swaps in the run's own
+  beam_tas frontier lines and --auto-ge chains rooted at their own states>" -- --maxvel 3500
+  --demo-file autoresearch/spines/pbr2b3_beam_ge_g16.npy --demo-window 5 --demo-grow 5
+  --demo-grow-max 40 --demo-cooldown 5 --demo-rate 0.3 --demo-front-frac 0.4 --demo-success-d 100
+  --demo-success-bonus 50 --keys-hold-spawn-duck --yaw-entropy 0 --demo-front-temp 0.5
+  --demo-front-ticks 40 --demo-front-view 6 --respawn-greedy 0.2 --respawn-greedy-window 0.25 2.0
+  --respawn-greedy-stuck 200 --respawn-front-perturb 0.2 --respawn-front-perturb-band 0.005
+  --respawn-front-perturb-speed 1.0 1.3 --respawn-front-perturb-turn 90 --energy-pot 8
+  --energy-pot-front 0 --energy-pot-front-bonus 0 --no-respawn-novel --respawn-backward-mix 0
+  --int-real-only 0 --spawn-states autoresearch/spines/pbr1b1_entry_ge_states.npy
+  --spawn-states-frac 0.2 --auto-beam 4096 --auto-ge 10 --auto-beam-retry 6` (--auto-beam 2048 on a
+  12 GB card). The incumbent's greedy line is past ge_g16's success line, so the first eval
+  triggers the search. Watch for "--auto-beam #k" lines in runs/A_ab1_launch.txt; a swapped spine
+  lives in runs/A_ab1/auto_spine_<k>.npy on the box (box.py pull does not fetch it: copy it with
+  `box.py ssh -- base64 -w0 <file>`; a resume reads it from the checkpoint's demo_file).
