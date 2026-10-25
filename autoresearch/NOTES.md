@@ -1955,3 +1955,11 @@ throttled) and could read it as a bad box. The fix is one line in python/train_f
   (20.88B, beams only) found nothing past the greedy.
 * Search 9 (15:48 UTC, ANALYSIS): beams (d and dh K 10, 4,096 copies, 25 s cap) from the x1.45
   launch state that crossed the slot, to map what lies past the gap for whoever gets the energy.
+* Search 9 result (past the gap, ANALYSIS): from the x1.45 launch (h 3,757) both beams fly north over
+  the catch at 830-870 u/s (h rising to 3,810 by strafing), dive through the slot at (3,451, -1,486,
+  3,181) at +1.2 s - the landing below it costs ~300 u (3,810 -> 3,493) - then head west and down to
+  (2,943, -1,359, 2,858) = **28.83%** at +2.0 s and every copy dies. The record (ANALYSIS) also loses
+  ~235 u landing under the slot ((3,224, -1,678, 2,835) at 27.8 s), then surfs west at ~1,000 u/s
+  ~300 u further SOUTH (y -1,650..-1,712, z 2,771-2,909), turns north at x ~2,500 (28.6 s) and runs
+  north along x ~2,400-2,500 to y -104 by 30.0 s (31.7%). So past the gap: a landing under the slot,
+  then a west surf whose line must stay south (our boosted line drifts ~300 u north and dies).
