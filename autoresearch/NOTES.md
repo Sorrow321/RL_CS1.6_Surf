@@ -2168,3 +2168,17 @@ Incumbent: pbr4b3_t11 traj_23590338560 (52.937, 9/9 greedy at 52.8-52.94%), weig
   in the explorer's reach; nothing viable past 53% in this small a search (the box's 8-min x 30-thread
   stage is ~40x it). Plan: launch the plain continuation (k05, t11's flags) with --auto-spine-pick-energy,
   and if the loop stalls past ~56% for energy, search upstream (roots before 51%) for a smoother line.
+
+### First box: a power-capped RTX 4060 Ti, blocklisted (21:19-21:26 UTC)
+* The watcher's 70th try rented box 57723385 (RTX 4060 Ti 16 GB, 0.165 $/h, Ryzen 9 3950X 32 thr, machine
+  148894). deploy_box.sh's GPU-health gate refused it: power limit 100 W of 165 W default (61%), bf16 GEMM
+  37 TFLOPS at sm 2,145 MHz (~84% of the 4060 Ti's ~44 TFLOPS dense fp32-accumulate spec), copy 246 GB/s.
+  Blocklisted (vast_pick --block, reason gpu_capped) BEFORE release, per CLAUDE.md section 1.
+* The watcher now deploys + launches by itself and handles that case (blocklist, release, keep watching).
+
+### Harness issue: gpu_health has no reference for the cheap tier
+`tools/gpu_health.py` REFERENCE holds the 5090, 3090 and 5080 only. Every card of the 2026-10-25 cheap
+tier (3080 / 4070 / 5070 / 4060 Ti / 5060 Ti) is "UNJUDGED" and fails the deploy whenever its host set a
+power limit under 85% of the default (as vast hosts often do), however close to spec it measures; one
+that is uncapped passes unjudged. A 4060 Ti reference (spec ~44 TFLOPS bf16 fp32-acc, ~245 GB/s copy at
+the 85% copy ratio of the other references) would let the gate measure instead of guess.
