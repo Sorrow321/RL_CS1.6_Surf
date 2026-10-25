@@ -128,3 +128,8 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   the velocity x1.04: a loop at the ramp top gaining energy (h 3,564 -> 3,612), then north-west at
   760-820 u/s over gate 11 to 26.85%. Views along the velocity on the chain. No demo, no record
   (pbr4b1, round 4).
+* `pbr4b1_k08_t8.npy` (2,700 states, md5 2c07668a0b8679061a3ed64ca38e096a): the energy-ranked
+  branched beam line of pbr4b1_k07_t8.npy ALONE (no Go-Explore part, no boost): the policy's own
+  actions from the true spawn through gates 2-10 and the soft gate-10 ramp-top turn to 26.50% at
+  21.6 s (beam_tas `--score dh --score-energy 3`, half the copies forked at 15.0 s with held view
+  offsets, 8 ms tick, t8e's weights). No demo, no record (pbr4b1, round 4).
