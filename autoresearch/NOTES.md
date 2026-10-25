@@ -2247,7 +2247,7 @@ minute). Incumbent: pbr4b3_t11 ckpt_23551016960 (md5 7fbcd458...), eval 52.937 a
   README): c1-search-1 beam line to 4,372 (51.2%) + stage-1 GE chain A (root x1.04) to the most energetic U-bottom
   cell (h 2,741) + the policy's own greedy rollout from it (64 ticks) + GE-E's chain (root x1.08) to 62.25%. Energy
   along it: 52% 3,097 / 53% 3,055 / 54.5% 2,742 (the beam line: 2,770 / 2,379 / 2,380).
-* **pbr5b2_c3** (21:50 UTC): c2's 24.162B weights (md5 e72262ca...) + spine e1 + its keys + milestones: the 14 + 25,121
+* **pbr5b2_c3** (21:42 UTC): c2's 24.162B weights (md5 e72262ca...) + spine e1 + its keys + milestones: the 14 + 25,121
   (k05's line, crossed by the greedy) + 24,479 / 23,400 / 22,500 (57.2 / 59.05 / 60.6% along e1: the climb and two
   partial payments, so the success line at 62.07% is not the only one) + c2's other flags (--respawn-greedy-energy 3,
   --auto-spine-delay 4e8), 4e9 steps.

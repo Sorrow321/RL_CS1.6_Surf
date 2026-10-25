@@ -322,6 +322,12 @@ def go_explore(a, out: Path, line, end: int, boosts=None, tag: str = "ge", line_
         # the policy flies another tick (--tick-ms-schedule): so does the explorer, rounded to
         # whole ms (10 = the explorer's default, byte-identical)
         cmd += ["--tick-ms", int(round(a.tick))]
+    if int(a.ge_cell_heading) > 0:
+        # --ge-cell-heading H: the cell key also holds H heading sectors x rising / not (pbr5b2:
+        # at princessburglar's 56.6% shaft a state rising up it and one crossing it sideways shared
+        # a 64 u x energy cell, the first found kept it, and no stage found the rise until the key
+        # split them: H = 1 is that split alone, x2 keys)
+        cmd += ["--cell-heading", int(a.ge_cell_heading)]
     if a.ge_view_follow and str(a.ge_view_follow).lower() != "none":
         # explore_phase1 --view-follow: the explorer's view holds offsets from the velocity
         # heading (the policy's frame), so a chain's held keys mean what they would mean to the
@@ -406,6 +412,10 @@ def main(argv=None) -> int:
                     help="E stages: how many of the largest losses get roots")
     ap.add_argument("--energy-lead", type=float, default=1.0,
                     help="E stages: roots over this many seconds before each loss")
+    ap.add_argument("--ge-cell-heading", type=int, default=1,
+                    help="explore_phase1 --cell-heading for the Go-Explore stages: H heading "
+                         "sectors x rising / not in the cell key (1 = the rising / not split alone; "
+                         "0 = the key without it, as before pbr5b2)")
     ap.add_argument("--ge-view-follow", default="-90,-60,-30,-15,0,15,30,60,90",
                     help="explore_phase1 --view-follow offsets (deg from the velocity heading) for "
                          "the Go-Explore stages; 'none' = the uniform yaw-rate explorer")

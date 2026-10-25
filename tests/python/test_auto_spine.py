@@ -421,3 +421,30 @@ def test_energy_forks_branch_before_the_plain_lines_losses(tmp_path, monkeypatch
     assert forks == [(950, "beam_br"), (850, "beam_br2"), (650, "beam_br3")]
     info = json.loads((out / "spine.json").read_text())
     assert info["energy_forks"] == [650, 350] and info["source"] == "beam_br3"
+
+
+def test_ge_command_carries_the_rising_split(tmp_path, monkeypatch):
+    """--ge-cell-heading (default 1): the explorer's cell key splits rising from not rising
+    (explore_phase1 --cell-heading 1); 0 leaves the flag out."""
+    sys.path.insert(0, str(ROOT / "tools"))
+    import auto_spine
+    from surfgym.core import STATE_DTYPE
+    seen = []
+
+    def fake_run(cmd, log, timeout):
+        seen.append([str(c) for c in cmd])
+        return 1
+    monkeypatch.setattr(auto_spine, "run", fake_run)
+    line = np.zeros(200, STATE_DTYPE)
+    line["origin"][:, 0] = np.arange(200.0)
+    for h, want in ((1, True), (0, False)):
+        a = auto_spine.main.__globals__["argparse"].Namespace(
+            map="m.bsp", envs=64, ge_cell=64.0, ge_energy=32.0, act_every=4, ge_minutes=1.0,
+            seed=0, maxvel=None, threads=0, tick=10.0, ge_view_follow="none", roots_secs=1.0,
+            roots_n=8, ge_boost="1.0", ge_cell_heading=h, field="f.npz")
+        seen.clear()
+        auto_spine.go_explore(a, tmp_path / f"h{h}", line, 150, boosts=[1.0])
+        cmd = seen[0]
+        assert ("--cell-heading" in cmd) == want
+        if want:
+            assert cmd[cmd.index("--cell-heading") + 1] == "1"
