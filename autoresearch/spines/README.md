@@ -118,3 +118,12 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
 * `pbr4b2_t1_auto_k02.npy` (2,900 states, md5 40acc9979e899a12e6a3f4089ebb4a19): found BY THE TRAINER
   (search 2 of pbr4b2_t1 at 14.69B): the dh-ranked beam line alone (the run's own weights from the
   true spawn, 7.667 ms states) to d 40,609 (28.94%). No demo, no record data (pbr4b2, round 4).
+* `pbr4b2_m2_ge763.npy` (3,451 states, md5 8fcb44b652c71aca5811cc5fe0ac45f2): tools/auto_spine.py run by
+  hand on pbr4b2_t1's 15.45B weights (7.63 ms tick) with the TICK-AWARE Go-Explore (82c640b): the
+  dh-ranked beam line from the true spawn (the run's own weights, 4,096 copies, 7.667 ms states) to its
+  state 2,676 (the north side after gate 11), then the deepest chain of an explore_phase1
+  --exact-chains --tick-ms 7.63 run ([8,8,7] ms, 64 u x energy 32 cells, 8 min, uniform random
+  actions) rooted at that line's last 4 s, the chosen root with +40 u of energy height (x1.034),
+  replayed exactly by ge_replay at the same tick and phases (20/20 links): over gate 12 (the lower
+  ramp, a north turn at x ~2,540) and on north-west to 35.25% (d 37,005) at (1,497, 1,468, 2,596),
+  where it falls. Views along the velocity on the explorer's part. No demo, no record data (pbr4b2).
