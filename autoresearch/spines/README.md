@@ -110,3 +110,11 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   TRUE spawn on the run's own weights (4,096 copies, 32 greedy, d-ranked), the frontier lineage
   replayed and cut at its best d - 26.05% at 22 s (up the gate-10 ramp, then it stalls). Used by
   pbr4b4_c3. No boost, no demo, no record.
+* `pbr4b4_ge_s3.npy` (2,303 states, md5 0ed79e64fc2d2413deef895108012f41): the frontier lineage of
+  tools/beam_tas.py (`--score dh --score-energy 3`, 4,096 copies, 32 greedy) from the TRUE spawn on
+  pbr4b4_c3's own 15.688B weights up to its state at 20.4 s (flying off the gate-10 ramp's top at
+  ~660 u/s), + the deepest chain of explore_phase1 --exact-chains (64 u x energy 32 cells, uniform
+  random actions, 4,096 envs, 10 min, NO speed boost) rooted at 27 of that line's own states over
+  20.0-21.3 s, replayed exactly (8/8 links), views along the velocity: it flies EAST over the upper
+  floor without landing, surfs the east wall, climbs the north ramp to z 3,355 and falls into the
+  fall-catch sheet at 26.67% (cut at its best d). No boost, no demo, no record (pbr4b4).

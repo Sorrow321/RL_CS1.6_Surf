@@ -1716,3 +1716,32 @@ throttled) and could read it as a bad box. The fix is one line in python/train_f
   more air-accelerate impulses per second). Not acted on: changing the core's tick changes the
   task every round inherits (a --tick-ms-schedule ramp; auto_spine assumes 10 ms) - written down
   for the user / next rounds.
+
+### Gate 11 is a FLOOR LANDING, not missing energy (10:15-10:30 UTC)
+* Search 2 (c3's 15.688B weights, 8 beams from the true start at full CPU, 32 s each: d-ranked x2
+  seeds, dh K 3, view-branched at 19.5 / 20.5 / 22.5 s d- and dh-ranked): every frontier at
+  42,077-42,109 = 26.34-26.37%, the gate-11 catch. View branching cannot change it.
+* But these lines are much FASTER than s1's (energy height at first arrival, dh3 line): 24% at
+  19.88 s / 3,451, 25% 20.66 s / 3,534, 25.5% 21.15 s / 3,560 (s1: 3,352 at 24%, 25.5% at 27 s).
+  The c3 policy now climbs the gate-10 ramp at 640-700 u/s and flies east over the upper floor
+  (z 3,196-3,248, ducked, h rising 3,450 -> 3,562 by strafing) the record's way (record h ~3,700).
+* Then at 21.3 s it LANDS flat on the upper floor ((3,306, -2,672, 3,197), vz -292) and ground
+  friction (4%/tick) takes it from 708 to 250 u/s in 0.3 s: h 3,562 -> 3,236. It walks at 250 u/s
+  to (3,490, -2,550), turns north, jumps onto the north ramp and slides back into the catch. With
+  ~700 u/s kept (h ~3,560) the north ramp's crest (z ~3,417) is within reach.
+* Why the policy never keeps it: GoldSrc's PM_Jump sets oldbuttons |= IN_JUMP whenever jump is
+  held in the air, so a jump held through the landing does nothing; only a jump PRESSED at the
+  landing decision (released before) skips the friction. The policy's beams never sample that.
+* Search 3 (10:26 UTC): explore_phase1 --exact-chains (64 u x energy 32, 4,096 envs, 30 threads,
+  10 min) rooted at 19 of the dh3 line's own states over 20.0-21.3 s (the flight before the
+  landing), no boost - uniform random keys include the jump.
+* Search 3 result (10 min, 4.0M runs, 78k cells): the deepest chain (9 cells, 263 ticks, rooted at
+  the dh3 line's 20.4 s state, x1.0) flies EAST over the upper floor without landing (z 3,243-3,251,
+  674 u/s - the record's way), surfs the east wall ((3,432-3,481, -2,851..-2,803), vz -71 -> +95),
+  climbs north-east onto the north ramp (z 3,355 at (3,634, -2,385) at 22.4 s, h ~3,480, vh 446;
+  the record has 674 u/s and h ~3,700 there) and falls back west into the catch at 26.67%. So the
+  floor landing was the leak: flying over the floor keeps h ~3,470-3,535 to the north ramp. Short
+  of the crest (z ~3,417) by energy and steering.
+* Spine autoresearch/spines/pbr4b4_ge_s3.npy (2,303 states, end 26.67%, success line 42,007 =
+  26.50%). **pbr4b4_c4** (10:41 UTC): c3's 15.688B weights + that spine + milestones
+  44939,43426,42363,42171 (k01's line added) + the c3 flags (auto-spine delay 6e8), 4B steps.
