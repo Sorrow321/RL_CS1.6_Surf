@@ -1870,3 +1870,8 @@ Box: 57632318, RTX 4080 + i9-14900F (32 thr), 0.30 $/h, UK (machine 151788), ren
   --demo-front-ticks 120 --demo-front-view 40 --demo-front-hold` - the band spawn's view noise HELD
   for 0.92 s at sigma x40 (~34 deg), i.e. the same kind of held view offset the line was found with;
   the rest as t5.
+* t6 (held view noise sigma x40 for 0.92 s): the ledge bands OPENED - the curriculum went 2704 ->
+  2564-2579 (19.7 s, before the branched beam's fork at 20.1 s) within ~15 min, bands at 18-35%
+  (t5 sat at 0-3.4% there). The first measured effect of --demo-front-hold: the held noise
+  reproduces the kind of manoeuvre the line was found with (a held view offset). Greedy 29.03-29.16
+  so far.
