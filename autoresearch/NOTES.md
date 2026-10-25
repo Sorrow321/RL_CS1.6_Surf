@@ -1737,3 +1737,8 @@ This branch did its analysis and search locally on CPU meanwhile (gate 10 at 125
 * Fix (tools/run_arm.sh): when nproc exceeds the cgroup quota + 1, the launcher re-execs itself under
   taskset pinned to the quota's CPU count (everything it starts inherits it). Every earlier box's quota
   covered its CPUs, so their launches are unchanged.
+* **pbr4b1_t8c** (11:45 UTC, launched pinned; record gate passed, 4 recordings in 125 s): the same
+  flags as t8a + --ep-secs 120. ~66k steps/s, the 5060 Ti's GPU at 97% (GPU-bound: this card class's
+  pace, not a defect; ~240M steps/h). First eval (13.500B = the frozen incumbent at 8 ms): **24.491**,
+  median 13.4% - 2/9 to the crawl (24.05, 24.49%), 5/9 die at the 13% fall catch (z ~2,933), 1 at 16%,
+  1 at 4.9%. The curriculum walked k05's end band at once (100% over 328 eps).
