@@ -127,3 +127,10 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   replayed exactly by ge_replay at the same tick and phases (20/20 links): over gate 12 (the lower
   ramp, a north turn at x ~2,540) and on north-west to 35.25% (d 37,005) at (1,497, 1,468, 2,596),
   where it falls. Views along the velocity on the explorer's part. No demo, no record data (pbr4b2).
+* `pbr4b2_br_ledge.npy` (4,300 states, md5 bc3ff3f8e962d0f48446253ec61f985a): the policy's OWN line from
+  the true spawn (beam_tas on pbr4b2_t4's 16.7B weights, 7.63 ms tick, 4,096 copies, dh-ranked), with
+  half the copies forked at 20.1 s (tick 2,620) holding random VIEW offsets U(-90, 90) deg for 0.25 s
+  at a time over 1.5 s (--branch-at t2620:2048 --branch-hold 32 --branch-jitter 90 --branch-view-only;
+  the keys are the policy's own): it lands on a ledge north of gate 12's catch (z ~2,964-3,003, y
+  ~-1,150), crawls west along it for ~10 s and drops off its west end at 30.03% (d 39,985) - the
+  frontier lineage replayed exactly, kept whole. No demo, no record data (pbr4b2, round 4).
