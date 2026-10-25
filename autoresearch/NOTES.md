@@ -1308,3 +1308,33 @@ or cheaper offers in the query (a 3090 at <= 0.18 $/h would fit beside the 5080)
   energy short; a pumped start is the upstream fix. Exploiting it needs a new start line and the
   route re-learned at higher speed - next round's work, not this one's.
 * c4 evals: ... / 20.449 (10.452B). Best this round still c3's 20.475.
+
+### THE USER'S MAP INSIGHT (relayed by the operator, 2026-10-25 ~03:20 UTC) - read this first
+* "At the very start, after start_run, the policy ignores the FIRST ramp - it runs against the
+  geodesic field - and jumps straight onto the second ramp (the first ramp the policy uses today).
+  A human surfs that first ramp first to gain momentum and only then goes to the second ramp,
+  arriving with more speed", and the user expects that extra energy to break gates the policy
+  faces later. The user asks for the policy to use that first ramp.
+* Rules that still apply (the user, same message): CLAUDE.md 0b - nothing hand-placed for this ramp
+  (no reward term, spawn rule, target box or spine aimed at it); the mechanism must be generic,
+  one that would also find a field-opposed momentum ramp on a map nobody has opened. A search or
+  exploration that finds the line on its own, then the line -> curriculum loop, is fine. Section
+  0: the WR demo stays analysis only.
+* How it lines up with this lineage's measurements: the first ramp is the EAST HALF-PIPE behind
+  the start (round 1: the record goes east for ~6 s, d rises 1,520 u = 2.7% of d0, and gains
+  ~230-280 u of energy height before it flies back west through the passage north of the spawn
+  into the crouch tunnel at 500-600 u/s). Every gate since 7% has been ~100-300 u of energy short
+  (round 2's table: tunnel exit h ~3,814 policy vs ~3,978 record; this round the gate after the
+  20% ramp needs ~200-300 u more). The pump is the upstream fix.
+* Status at 03:21 UTC: the generic velocity-frame explorer (explore_phase1 --view-velocity
+  --exact-chains, rooted only at the true spawn, no target) pumps the half-pipe to h 3,983 in 15
+  min (record ~3,930-3,950); re-rooted at its 48 highest-energy cells (GE_pump2, 15 min) the
+  tunnel is entered at <= 408 u/s, h <= 3,875, and the best state past 1% has h 3,855 (the policy's
+  line ~3,810). The fast entry (flying west at z ~3,720-3,760, ducking into the tunnel mouth at
+  speed) is the missing link.
+* Generic next steps: (1) keep searching with the velocity-frame explorer, roots chosen by a
+  generic rule (the archive's highest-energy cells that are deeper than the start on the field),
+  until a line from the true spawn carries ~+100-170 u of h through the tunnel; (2) exact chain
+  -> spine (spine_tool / ge_replay, views along the velocity) -> backward curriculum with the
+  success bonus at the spine's end, the round-2 recipe; (3) the downstream route was learned at
+  the old energy and will need the curriculum to re-fit it at the higher speed.
