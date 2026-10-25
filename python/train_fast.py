@@ -2134,6 +2134,33 @@ def milestone_pay(rec, ended, ms, paid):
     return hit.sum(axis=1), paid
 
 
+def energy_height(states, gravity: float = 800.0) -> np.ndarray:
+    """z + |v|^2 / 2g of STATE_DTYPE rows (or anything with origin / velocity fields)."""
+    o = np.asarray(states["origin"], np.float64).reshape(-1, 3)
+    v = np.asarray(states["velocity"], np.float64).reshape(-1, 3)
+    return o[:, 2] + (v * v).sum(axis=1) / (2.0 * float(gravity))
+
+
+def demo_energy_gate(rec, paid, ended, end_d, h, end_h):
+    """--demo-success-energy: the success line's crossing gated on the energy height.
+
+    ``rec`` (N,) ratchet records after this reward call, ``paid`` (N,) the episodes already
+    judged against the line, ``ended`` the rows whose episode just ended (their record is the
+    next episode's spawn), ``h`` (N,) each row's energy height now. -> (pay, paid, ok): ``pay`` the
+    rows paid the bonus this call (crossed the line with h >= end_h), the updated ``paid`` (a
+    crossing SHORT of the energy is judged once and never paid later - the gate asks for the
+    spine end's energy AT the depth, not eventually), and ``ok`` = ``pay`` (the curriculum's
+    success for the episode)."""
+    rec = np.asarray(rec, np.float64)
+    ended = np.asarray(ended, bool)
+    paid = np.asarray(paid, bool).copy()
+    cross = (~ended) & (~paid) & (rec <= float(end_d))
+    ok = cross & (np.asarray(h, np.float64) >= float(end_h))
+    paid |= cross
+    paid[ended] = rec[ended] <= float(end_d)
+    return ok, paid, ok
+
+
 def demo_hot_mask(demo_idx, band, ep_len, ticks):
     """--demo-front-temp: the envs whose episode STARTED on the curriculum's frontier band
     ``band`` = (lo, hi) inclusive (``demo_idx`` is the spine index of each env's spawn, -1 for
@@ -4788,6 +4815,16 @@ def main() -> None:
                          "curriculum's success becomes the objective's too, so a line whose "
                          "payoff lies seconds past a nearer field optimum is worth flying. "
                          "Config only when set; ckpt restores")
+    ap.add_argument("--demo-success-energy", type=float, default=None,   # None = off
+                    help="--demo-success-d: the spine's success line counts only when the "
+                         "episode's ENERGY HEIGHT (z + |v|^2/2g) at the crossing is at least the "
+                         "spine end's minus this margin (u): the bonus, the curriculum's success "
+                         "and the --auto-spine quorum all ask for the spine end's state - its "
+                         "depth AND its energy - so a spine found by an energy search through the "
+                         "losses before a gate pays only the line that keeps the energy, not the "
+                         "greedy's own (shallower-energy) line through the same depth. A crossing "
+                         "short of the energy is judged once and never paid later. Config only when "
+                         "set; not restored (it belongs to its --demo-file)")
     ap.add_argument("--demo-success-d", type=float, default=None,   # None = off
                     help="--demo-file: an episode started from the spine counts as a SUCCESS "
                          "for the backward curriculum when its ratchet RECORD (the deepest "
@@ -14612,6 +14649,9 @@ def main() -> None:
     if args.demo_file and args.demo_success_bonus is not None:
         # --demo-success-bonus: dumped only when set; a resume restores it
         meta["config"]["demo_success_bonus"] = float(args.demo_success_bonus)
+    if args.demo_file and args.demo_success_energy is not None:
+        # --demo-success-energy: dumped only when set; not restored (it belongs to its spine)
+        meta["config"]["demo_success_energy"] = float(args.demo_success_energy)
     if args.auto_spine:
         # --auto-spine: dumped only when on (a flag-off run.json is the control's byte for
         # byte); never restored - the loop is a property of the run, not of the weights
@@ -15585,6 +15625,18 @@ def main() -> None:
         DEMO_BONUS = float(args.demo_success_bonus)
         print(f"--demo-success-bonus {DEMO_BONUS:g}: an episode whose record crosses d <= "
               f"{DEMO_END_D:,.0f} is paid {DEMO_BONUS:g} once (one that starts past it never is)")
+    # --demo-success-energy M: the crossing must also carry the spine end's energy height - M
+    DEMO_END_H = [None]
+    DEMO_OK = np.zeros(N, bool)
+    if args.demo_success_energy is not None:
+        if DEMO_END_D is None:
+            raise SystemExit("--demo-success-energy gates the --demo-success-d line: give it")
+        DEMO_END_H[0] = (float(energy_height(demo.S[-1:], args.sv_gravity)[0])
+                         - float(args.demo_success_energy))
+        print(f"--demo-success-energy {float(args.demo_success_energy):g}: the success line counts "
+              f"only with energy height >= {DEMO_END_H[0]:,.0f} at the crossing (the spine end's "
+              f"{DEMO_END_H[0] + float(args.demo_success_energy):,.0f} - "
+              f"{float(args.demo_success_energy):g})")
 
     # --demo-milestones / --auto-spine-milestones: further success lines, each paid the bonus
     # once per episode (MILES[0] = the distances, MILES[1] = the (N, M) paid table or None)
@@ -15608,7 +15660,16 @@ def main() -> None:
         if DEMO_PAID[0] is None:
             DEMO_PAID[0] = rec <= DEMO_END_D
         paid = DEMO_PAID[0]
-        hit = (~ended) & (~paid) & (rec <= DEMO_END_D)
+        if DEMO_END_H[0] is not None:
+            # --demo-success-energy: the crossing pays only with the spine end's energy; a
+            # crossing short of it is judged now and never paid later
+            hit, DEMO_PAID[0], _ok = demo_energy_gate(
+                rec, paid, ended, DEMO_END_D, energy_height(sv_view, args.sv_gravity),
+                DEMO_END_H[0])
+            DEMO_OK[_ok] = True
+            paid = DEMO_PAID[0]
+        else:
+            hit = (~ended) & (~paid) & (rec <= DEMO_END_D)
         if hit.any():
             if DEMO_BONUS_N[0] == 0:
                 print(f"--demo-success-bonus: first payment at step {global_step:,}", flush=True)
@@ -15649,12 +15710,18 @@ def main() -> None:
             return
         from surfgym.greedy_spawn import last_contact_vz
         tps = 1000.0 / float(args.tick_ms or 10.0)
-        bests, lens, launches, stalls = [], [], [], []
+        bests, lens, launches, stalls, e_ok = [], [], [], [], []
         for e in eps:
             d = np.asarray(_f.sample(np.asarray(e[:, 1:4], np.float64)), np.float64)
             d = np.where(d < _f.reach_max - 0.5 * _f.cell, d, np.inf)
             bests.append(float(d.min()))
             lens.append(len(e))
+            if DEMO_END_H[0] is not None:
+                # --demo-success-energy: past the line only with the energy at the first crossing
+                _x = np.flatnonzero(d <= DEMO_END_D)
+                _hx = (float(e[_x[0], 3]) + float((np.asarray(e[_x[0], 4:7], np.float64) ** 2).sum())
+                       / (2.0 * float(args.sv_gravity))) if len(_x) else -np.inf
+                e_ok.append(bool(len(_x)) and _hx >= DEMO_END_H[0])
             # where the episode stopped making progress: the first tick within the
             # auto_spine stall margin (500 u) of its best d
             _ok = np.flatnonzero(d <= float(d.min()) + 500.0)
@@ -15668,7 +15735,8 @@ def main() -> None:
                 if len(e) - 1 - _c > int(0.25 * tps):
                     launches.append(_c)
         bests = np.asarray(bests)
-        m = int((bests <= DEMO_END_D).sum())
+        m = (int(np.sum(e_ok)) if DEMO_END_H[0] is not None
+             else int((bests <= DEMO_END_D).sum()))
         med = float(np.median(bests))
         if AUTO["last"] is None:
             AUTO["last"] = int(global_step)
@@ -15755,6 +15823,11 @@ def main() -> None:
                   + ", ".join(f"{v:,.0f}" for v in MILES[0]), flush=True)
         _de = float(_f.sample(np.asarray(demo.S[-1]["origin"], np.float64)[None])[0])
         DEMO_END_D = _de + float(args.demo_success_d)
+        if DEMO_END_H[0] is not None:
+            # --demo-success-energy: the new spine end's energy height
+            DEMO_END_H[0] = (float(energy_height(demo.S[-1:], args.sv_gravity)[0])
+                             - float(args.demo_success_energy))
+            DEMO_OK[:] = False
         DEMO_PAID[0] = None
         demo_idx[:] = -1
         AUTO["last"] = int(global_step)
@@ -19032,7 +19105,11 @@ def main() -> None:
                                 # --demo-success-d: the ended episodes' records as they stood
                                 # before this call re-anchored them on the new spawns
                                 _rb = getattr(slots[0].reward_fn, "_rec_boot", None)
-                                if _rb is not None:
+                                if DEMO_END_H[0] is not None:
+                                    # --demo-success-energy: success = crossed with the energy
+                                    goal_now = goal_now | DEMO_OK[ei]
+                                    DEMO_OK[ei] = False
+                                elif _rb is not None:
                                     goal_now = goal_now | (np.asarray(_rb)[ei] <= DEMO_END_D)
                             known = demo_idx[ei] >= 0
                             if known.any():

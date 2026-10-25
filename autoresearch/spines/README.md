@@ -205,3 +205,10 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
 * CORRECTION to `pbr5b1_spawn_energy.npy` above: its four "energized" chains end in FATAL FALLS (stepping the core from
   their states with any actions - the chain's own included - every run is teleported to the start room at the chain's
   last state). Free fall conserves energy height, which is why an energy pick chose them. Do not use that file.
+* `pbr5b1_e1.npy` + `.keys.npy` (4,678 rows; md5 42037f15db9eda6271e8d9b7f0701890 /
+  8d457c428f7127e7df500e69ad6cfb1b): an ENERGY spine for gate 18 (for train_fast --demo-success-energy): pbr5b1_c1's
+  search-1 beam line (the policy's own) to its state 4,354 (51.4%, just before its flat landing at 51.55%), then a
+  SURVIVING view-follow Go-Explore chain (GE_e1 cell 136515, unboosted, picked by energy height among cells whose
+  subtree reaches >= 300 u deeper) that zigzags down the shaft past the 52.8% ledge without landing (h ~2,940 where the
+  policy's line has ~2,330 after the ledge), then the POLICY's own beam_tas --start-state line from the chain's end,
+  cut before its crash at 55.41% (h 2,701; the greedy line has ~2,310 there). No demo, no record (pbr5b1, round 5).
