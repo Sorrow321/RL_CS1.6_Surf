@@ -1874,3 +1874,19 @@ over-subscribes the quota. This branch's surfgym now caps numba; the operator ma
   67975c22...) + the same spine with `--demo-tau0 2884` + `--demo-front-temp 1.0 --demo-front-view 25
   --demo-front-ticks 60` (band spawns: keys at T 2, yaw sigma ~0.4 rad, for 0.46 s), the rest unchanged.
   t5's handoff: t4's ckpt_latest (the weights t5 resumed) placed as pbr4b3_t5/ckpt_17222860800.pt.
+* t6 (band keys at T 2, yaw sigma x25 for 60 ticks): band [2879] 1.4-1.7% (worse), band [2884] 67-70% (was
+  92%); evals 29.272 / 29.276 / 29.265 / **29.303** (17.956B) / 29.285 / 29.272 / 29.273 / 29.265. Per-decision
+  noise does not find the manoeuvre and costs the easy band.
+* More probes (record_ckpt from spine states 2800 / 2830 / 2850 / 2865 / 2875, greedy + 4 stochastic each):
+  28.8-29.8% from all of them - the policy surfs the ramp from no state of the drop; only from 2884 on.
+  beam_tas --start-state 2879 (works here: 4,096 alive at 0.77 s): extinct by 1.5 s; branched from tick 20
+  (resample every 5) with held view offsets +-45 / +-90 deg: extinct by 1.8 s, frontier 29.9%. Key bursts
+  are refused on a --keys-hold checkpoint (view-only branching).
+* The explorer's raw actions through the ramp contact (spine 2869-2885): yaw bin 11 (turning left), FORWARD
+  held, side bin 0, jump - a wishdir relative to the explorer's own arbitrary view; the canonical spine view
+  hides it, and the policy (view along the velocity) holds right strafe instead. Round 2's gate-2 picture
+  (the explorer's view vs the policy's). PPO's signal at the band is ~3 successes per iteration.
+* **pbr4b3_t7** (13:10 UTC): t6's 18.274B weights (md5 9053241a...) + `--demo-front-frac 0.8` (twice the band's
+  share of the demo draws) with t5's band temperature (0.5 / 6 / 40), tau0 2884, the rest unchanged.
+  GE15 beside it: 50 unboosted roots over the gate-11 flight, hole and drop (spine 2600-2880), 15 min - other
+  ways onto the ramp, to probe with the policy.
