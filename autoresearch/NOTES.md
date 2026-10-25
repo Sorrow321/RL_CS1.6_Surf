@@ -1674,3 +1674,21 @@ the x1.12 boost gave the k03 chain.
 * 09:10 UTC: still no box - three boxes hold 1.026 of the fleet's 1.2 $/h; the only offers under
   the 0.174 left (a 4060 Ti at 0.150, a 4070 at 0.156) sit on blocklisted hosts; the cheapest
   acceptable offer is a 3090 at 0.377. The rent loop retries every 90 s.
+* Gate-10 probe, frozen incumbent spawned at the k03 line's own UNBOOSTED states just before the
+  x1.12 root (spine states 1690-1716, ~17 s, h 3,423-3,479), 8 greedy episodes per tick (local CPU):
+  at 10 ms best 24.37-24.60% (median 24.39), max z on the ramp (x > 2,400) median 2,906; at 8 ms best
+  24.45-24.61% (median 24.58), max z median 3,017 - the same weights climb ~110 u higher up the
+  gate-10 ramp at 125 Hz from the same states, and still stall at ~(2,800, -2,790, 3,010) (the ramp
+  tops out near z ~3,290). Plus ~+100 u of strafing energy upstream from the true start.
+
+### GATE 10 OPENS AT 125 Hz for the policy's own proposals (09:15 UTC, local CPU)
+* beam_tas --start-state (k03 spine state 1716 = the policy's own UNBOOSTED state just before the
+  x1.12 root, h 3,430), 256 stochastic copies of the incumbent's weights, `--score dh
+  --score-energy 2`, seed 2:
+  - 10 ms: frontier **24.75%** (stalls at the ramp foot, min d rising after gen 3);
+  - 8 ms: frontier **26.28%** - over the gate-9 wall (h 3,430 -> 3,581 at 23%), the ramp catch at
+    x ~2,470 and UP the gate-10 ramp (z 3,135 at 24.5%, 3,219 at 25%, h 3,521), north to
+    (3,499, -2,365, 3,207) - the boosted k03 chain's route (26.66%), with no boost.
+  Same state, weights, population and ranking: the tick is the difference.
+* Spine autoresearch/spines/pbr4b1_k04_t8.npy (2,416 states) = k03's first 1,717 states + that 8 ms
+  beam line; success line d 42,230 (26.11%).

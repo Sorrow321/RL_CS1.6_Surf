@@ -97,3 +97,11 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   rollouts survive 1 s (x 863-2,380: the east half-pipe; energy median 3,649, max 3,815). The
   explorer's states in both directions, nothing aimed at a ramp; used by pbr3b4_as12 (the policy
   learned to survive there and to come back to the tunnel; it did not pump). No demo, no record.
+* `pbr4b1_k04_t8.npy` (2,416 states, md5 98ff0487e83372fb7273e1e5a51efd66): pbr3b4_auto_k03.npy's
+  first 1,717 states (the policy's own beam line from the true spawn to ~17.2 s, the state just
+  before that spine's x1.12 root - UNBOOSTED) + the frontier lineage of a policy-guided beam from
+  that state (tools/beam_tas.py --start-state, 256 stochastic copies of the round-3 incumbent's
+  13.4999B weights, `--score dh --score-energy 2`, 8 ms physics tick, local CPU, replayed exactly)
+  over the gate-9 wall and up the gate-10 ramp to 26.28% (cut at its best d). The same beam at the
+  10 ms tick stalls at 24.75%. The policy's own actions throughout (views need no canonicalising);
+  no demo, no record, no boost (pbr4b1, round 4). The suffix states follow 8 ms dynamics.
