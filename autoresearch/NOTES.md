@@ -2237,3 +2237,22 @@ minute). Incumbent: pbr4b3_t11 ckpt_23551016960 (md5 7fbcd458...), eval 52.937 a
   sideways with the same |v|, and under --exact-chains the first one found keeps the cell. GE-E (21:32 UTC, 10 min)
   = 147 roots (chain A's last 1.3 s at the energetic U-bottom + the policy's U exit from it, x1.0 / 1.04 / 1.08) with
   `--cell-heading 1` (the existing heading key with one sector: only the rising / not split, x2 keys).
+* **GE-E (rising split) passes the climb: 62.25%.** 241,622 cells, 3,627 on the upper level (z >= 2,300; GE-C 6,
+  GE-D 0), deepest d 21,577 = 62.25% (the 56.86% wall) - but from ONE root only: root 139 = the policy's own U-exit
+  state rollB[64] x1.08 (|v| 1,385 -> 1,495); every x1.0 / x1.04 root stopped at 56.2-56.84%. The chain (ge_replay
+  46/46, 6,292 ticks) goes up the shaft in one rise to z ~2,378 at 56.9%, then CRAWLS the upper level at 100-260 u/s
+  (energy height ~2,400) for ~40 s to 60.5%, then 61-62.25% at ~600 u/s. The record (ANALYSIS ONLY) crosses 57-60.6%
+  in ~5 s at 650-850 u/s with h ~2,800: the line is energy-starved past the climb.
+* Spine `autoresearch/spines/pbr5b2_e1.npy` + keys (10,952 rows; tools/stitch_spine.py, provenance in the spines
+  README): c1-search-1 beam line to 4,372 (51.2%) + stage-1 GE chain A (root x1.04) to the most energetic U-bottom
+  cell (h 2,741) + the policy's own greedy rollout from it (64 ticks) + GE-E's chain (root x1.08) to 62.25%. Energy
+  along it: 52% 3,097 / 53% 3,055 / 54.5% 2,742 (the beam line: 2,770 / 2,379 / 2,380).
+* **pbr5b2_c3** (21:50 UTC): c2's 24.162B weights (md5 e72262ca...) + spine e1 + its keys + milestones: the 14 + 25,121
+  (k05's line, crossed by the greedy) + 24,479 / 23,400 / 22,500 (57.2 / 59.05 / 60.6% along e1: the climb and two
+  partial payments, so the success line at 62.07% is not the only one) + c2's other flags (--respawn-greedy-energy 3,
+  --auto-spine-delay 4e8), 4e9 steps.
+* Lesson so far (generic): (1) Go-Explore's cell needs the vertical-velocity sign at a CLIMB - a rising state and a
+  sideways one share a 64 u x energy cell, and the first found keeps it; `--cell-heading 1` (rising / not) found
+  the shaft rise where four ladder stages and two focused runs did not. (2) "Pick by energy, then hand over": the
+  stage-1 archive held a U-bottom state with +360 u of energy over the policy's line; the policy rolled out from it
+  and GE rooted on that rollout carried it up the shaft. Neither the policy nor the explorer did it alone.
