@@ -1973,3 +1973,10 @@ over-subscribes the quota. This branch's surfgym now caps numba; the operator ma
   success line d <= 30,286 = 47.00%).
 * **pbr4b3_t11** (15:36 UTC): t10's 20.947B weights (md5 6a247ef4...) + that spine + `--demo-keys` + ten
   milestones (..., 32260, 31429), the rest as t10.
+
+### GATE 14 PASSED by the greedy line: 47.253 (2026-10-25 15:57 UTC)
+* t11 (keyed spine pbr4b3_ge18ck): evals 44.545 / 44.519 / 44.493 / 45.101 (one episode through) then **47.253**
+  (21.250B, 9/9 greedy episodes at 47.09-47.25%) ~300M steps after the launch: the greedy rebounds off the 44.2%
+  corner and flies the corridor west to the spine's end. The 9/9 quorum fired the trainer's auto-spine search 1
+  at once (running). Handoff: the EXACT weights of the eval (ckpt_latest saved by the search at 21,249,916,928)
+  pinned as pbr4b3_t11/ckpt_21249916928.pt and pulled (md5 32bc5715...).
