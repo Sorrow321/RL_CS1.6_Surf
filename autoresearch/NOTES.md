@@ -1317,7 +1317,7 @@ shorter budget_end_hours. Written down for the operator; nothing is worked aroun
   trainer's --keys-hold-spawn-duck rule); the ratchet / compass / pot-rate feeds re-anchored at the start
   state. save_frontier_line already replays from any row0, so the exactness check carries over.
 
-### pbr3b2 round 3 lesson (drafted 04:35 UTC; no box all round)
+### pbr3b2 round 3 lesson (drafted 04:30 UTC; no box all round)
 * No score: the budget pace allowed no rental at the start ($18 credit), then one box fleet-wide, and the
   1.2 $/h cap (from 23:40) was held by two other branches with no cheap 32-thread card on offer. Everything
   below was built and measured on the 4-vCPU droplet.
