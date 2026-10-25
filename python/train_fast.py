@@ -83,6 +83,12 @@ def _cgroup_cpu_quota():
 
 
 os.environ.setdefault("OMP_NUM_THREADS", _default_omp_threads())
+# numba's prange kernels (surfgym.goalfield's fused sample runs per tick in the reward) size
+# their team from the VISIBLE core count, not the CFS quota: on a 64-thread Threadripper box
+# with a 30.7-CPU container quota numba asked for 64 threads beside the 15-thread OMP team,
+# 75% of CFS periods were throttled and the trainer ran at ~12k steps/s instead of 100-250k
+# (pbr4b4, 2026-10-25). The kernels are per-point, so the team size cannot change a result.
+os.environ.setdefault("NUMBA_NUM_THREADS", os.environ["OMP_NUM_THREADS"])
 
 import argparse
 import csv
