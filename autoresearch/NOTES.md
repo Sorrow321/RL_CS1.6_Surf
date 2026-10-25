@@ -2220,3 +2220,11 @@ The trainer used ~12 of the box's 30.7-CPU quota, so each stage ran beside it at
 * **pbr5b4_c2** (23:36 UTC): c1's 24.0365B weights + spine pbr5b4_e1 (success line d <= 26,365 = 53.87%) + the same
   14 milestones and flags (auto-spine with the energy pick). Question: does the greedy learn the smooth landing
   (and then carry ~+500 u into 54-56%, where k05's line had too little for the climb after 56%)?
+* c2 evals: 52.860 (24.037B, c1's weights) / 52.909 / **52.815 with an erosion** (24.188B: 4/9 die at gate 9's x 1,104
+  wall at 21.5%, 1 at the gate-10 crawl, 1 at 4.9%, 3 at 50.3-52.8%; training kl 0.02-0.07, ev 0.98-1.0 - watching
+  whether it is a transient). The curriculum on e1 walked 4,647 -> ~4,527-4,542 (inside GE#2's chain) and oscillates
+  there (bands 0-56%).
+* GE#3 (15 min beside c2, 32 u x energy 16, roots = GE#2's most energetic viable cells at 53.8-54.6%): the SECOND loss
+  at ~54.5% stays - viable max h 2,990 at 54-54.5% -> 2,352 at 54.5-55% (-640; the record loses ~260 from 54 to 55%,
+  ANALYSIS ONLY), deepest viable 56.33% (h 2,035). Every line of four GE stages stalls at ~56.3% with h <= ~2,250
+  (record 2,772 at 56%). GE#4 (00:00 UTC): roots at 54.0-54.7% (24 u apart), finer energy bins (8 u).
