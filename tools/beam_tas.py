@@ -124,7 +124,7 @@ import torch
 from eval_honesty import corridor_progress, load_route
 from surfgym import SurfCore, default_config
 from surfgym.bc import make_eval_feeds, rank_lineages
-from surfgym.core import SURF_IN_DUCK, SURF_IN_JUMP, phys_to_dict
+from surfgym.core import STATE_DTYPE, SURF_IN_DUCK, SURF_IN_JUMP, phys_to_dict
 from surfgym.rewards import cc_draw, map_spawn_pool
 from surfgym.route import ArcProgress
 from surfgym.tick import TickClock, header_fields, ticks_to_secs
@@ -1795,6 +1795,14 @@ def main():
                     "head independently goes uniform over its bins with "
                     "this probability at every decision (0 = pure pi, "
                     "byte-identical to the eps-free tool)")
+    ap.add_argument("--start-states", default=None, metavar="NPY[:IDX]",
+                    help="start the population at ONE given STATE_DTYPE state (row IDX of a .npy, "
+                         "or of a beam_frontier.npz's states; default the last) instead of the map's "
+                         "spawn: the spawn pool becomes that state, so the gate capture, the first "
+                         "observation, the search and the exact replay all start there. Works on a "
+                         "--keys-hold checkpoint (no raw engine row is written; a ducked state holds "
+                         "duck if the checkpoint has --keys-hold-spawn-duck, record_ckpt's rule). "
+                         "A search from an archived state the policy never reaches by itself")
     ap.add_argument("--view-temp", type=float, default=1.0,
                     help="--greedy-envs population: the sampled envs draw the continuous YAW with "
                          "sigma x this (a policy whose yaw sigma collapsed proposes almost one view "
@@ -2244,6 +2252,21 @@ def main():
         pool["pitch"] = float(cfg["fix_pitch"])
     d0 = float(np.mean(gf.sample(raw["origin"])))
     print(f"race: start geodesic {d0:.0f}u, spawn pool {len(pool)} points")
+    if args.start_states:
+        _sspec = str(args.start_states)
+        _sp, _, _si = _sspec.rpartition(":")
+        _spath, _sidx = ((Path(_sp), int(_si)) if _sp and _si.lstrip("-").isdigit()
+                         else (Path(_sspec), -1))
+        _ss = np.load(_spath, allow_pickle=False)
+        _ss = _ss["states"] if hasattr(_ss, "files") else _ss
+        _ss = np.asarray(_ss, STATE_DTYPE)
+        pool = _ss[_sidx:_sidx + 1].copy() if _sidx != -1 else _ss[-1:].copy()
+        pool["tick"] = 0
+        pool["stuck_ticks"] = 0
+        print(f"--start-states {_spath.name}[{_sidx}]: the population starts at "
+              f"{np.asarray(pool[0]['origin']).round(0)} |v| "
+              f"{float(np.linalg.norm(pool[0]['velocity'])):.0f} (ducked {int(pool[0]['ducked'])}), "
+              f"d {float(gf.sample(np.asarray(pool['origin'], np.float64))[0]):,.0f}u")
 
     def arm(core):
         core.set_goal_box(zones["end"]["mins"], zones["end"]["maxs"])
@@ -2608,6 +2631,11 @@ def main():
         gpolN = GreedyTorchPolicy(policy, packer, device, lidar, coreN,
                                   K, stack, extra_slot=esN, extra_fn=efN,
                                   latch_fn=latchN, cc_fn=cc_fnN, keys_hold=KEYS, **xkwN)
+    if args.start_states and KEYS and cfg.get("keys_hold_spawn_duck"):
+        # --keys-hold-spawn-duck (the checkpoint's, record_ckpt's mirror): a crouched start holds duck
+        for _w in (spol, locals().get("gpolN")):
+            if _w is not None:
+                _w.spawn_duck = True
     value_fn = None
     if args.boundary_v or args.score in ("v", "dv"):
         def value_fn(o):
