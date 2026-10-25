@@ -2182,3 +2182,16 @@ tier (3080 / 4070 / 5070 / 4060 Ti / 5060 Ti) is "UNJUDGED" and fails the deploy
 power limit under 85% of the default (as vast hosts often do), however close to spec it measures; one
 that is uncapped passes unjudged. A 4060 Ti reference (spec ~44 TFLOPS bf16 fp32-acc, ~245 GB/s copy at
 the 85% copy ratio of the other references) would let the gate measure instead of guess.
+
+### pbr5b4_c1: the continuation, launched 22:39 UTC
+* Box 57730863: RTX 5060 Ti 16 GB (180 W of 180 W, uncapped; passed deploy's gpu_health unjudged), AMD EPYC
+  7B13 (128 visible threads, cgroup v1 quota 30.7 CPUs), 0.163 $/h, machine 148540; rented 22:36 UTC by the
+  watcher (try 61), deadline 6 h (04:36 UTC, to be extended toward the 07:07 wrap-up).
+* Launch (box.py launch --resume, the incumbent's ckpt_23551016960 pushed md5-verified): t11's flag set on
+  spine k05 + keys, milestones 44939 ... 27001 (14), --auto-spine (gain 500, GE 8 min, retry 4e8, patience
+  1.2e9) + --auto-spine-pick-energy. The record gate passed (4 recordings in 36 s).
+* Throughput: ~157k steps/s live (18 iterations of 524,288 per minute), the trainer at ~1,170% CPU of the
+  30.7-CPU quota (omp 15) and the GPU ~33% busy - latency-bound on this card + CPU; round 4's 5080/3090 boxes
+  ran ~330-350k. One 75M-step eval per ~8 min.
+* First eval (23,551,541,248 = the incumbent's own weights): **52.893** (5/9 at 52.83-52.89%, 4/9 at
+  50.2-51.1%); the curriculum walked k05 back 5001 -> 4726 within ~10M steps (bands 57-100%).
