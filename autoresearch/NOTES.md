@@ -1775,3 +1775,5 @@ tools/auto_spine.py by hand on t8c's 13.905B weights, --tick-ms 8, pinned to the
   t8d stopped. **pbr4b1_t8e** (13:27 UTC): t8c's ckpt_latest at 13,688,635,392 (pulled at 12:14,
   md5 fd3b59e1...; before the instability, 37M steps after the 26.333 eval) + k06 + milestones
   44939 / 43426 / 42286 + **--lr 1e-4** (was 3e-4; sidistic R7's cut that held its finishing skill).
+* t8e up (record gate passed; "optimizer lr: 0.0003 (ckpt state) -> 0.0001"). First eval (13.689B,
+  the 13.6886B weights): 24.513, median 24.1%, 9/9 to the gate-10 crawl - the route intact.
