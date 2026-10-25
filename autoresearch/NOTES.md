@@ -1415,3 +1415,40 @@ or cheaper offers in the query (a 3090 at <= 0.18 $/h would fit beside the 5080)
   Then it oscillates at band [941,945] (0.0-0.8% success, 30-37% at [946]) - a turn-around at the
   top of a half-pipe pass, the next precise piece. Greedy evals 20.288 / 20.251 / 20.220 (the
   greedy line still takes the old precision entry: the walk-back has not reached the spawn).
+
+### pbr3b1 round 3 lesson (written 06:30 UTC, finalised at wrap-up)
+* **Score 20.414 -> 20.475** (pbr3b1_c3 traj_10165944320; handed-on checkpoint pbr3b1_c3/ckpt_latest.pt,
+  10,224,664,576, md5 bb75e80e, pulled). A marginal gain: 9/9 greedy episodes still die at the 20.4%
+  catch. No box until 23:42 UTC (budget pace; the operator's mid-round change), ~7 h of box time.
+* **What worked (generic, for any map):**
+  1. `explore_phase1 --view-velocity` - random view TARGETS in the velocity frame (the policy's own
+     action space) instead of per-tick yaw deltas. At the 20.4% gate, compute-matched: 21.54% vs
+     21.06%, 2.6-6.7x more cells past the gate, 365 u more energy at the frontier. From the true
+     spawn it pumps the field-opposed east half-pipe (the user's "first ramp") to carryable energy
+     3,941 in 15 min and 4,073 with re-rooting - rounds 1-2 called that pump closed to search.
+  2. CARRYABLE energy height z + (vx^2 + vy^2 + max(vz,0)^2)/2g, push volumes excluded, as the
+     root rule and as a selection weight (`--select-energy T`); `--select-depth-cost L` trades it
+     against chain length. Plain z + |v|^2/2g is fooled by a push trigger's downward speed.
+  3. Exact archives chained root to root, followed back by exact state matches, give one exact
+     line from the true spawn (pbr3b1_pump_long: pump -> tunnel at 642 u/s -> 2.77% with 3,852;
+     pbr3b1_pump_short: 13.8 s to 1.33% with 3,864 via the south passage).
+  4. The backward curriculum DOES teach the first-ramp line: c5 walked 1,376 -> 946 (4.3 s of the
+     pump line's tail) in under 30 min from c3's weights before a turn-around band held it.
+  5. Tools: gate_search.py (one gate as one command), spine_tool.py, pull_parallel.sh (a 22 KB/s box
+     beats box.py's 30-min scp timeout with 8 parallel chunks), beam_tas --prop-keys-temp /
+     --prop-yaw-scale, entry_search --alive-after / --view-velocity.
+* **What did not:**
+  1. The 20.4%-gate spine (pbr3b1_vvel_g20, to 21.54%) ends in a DOOMED flight: every spawn at its
+     end falls into the pit-floor catch (the next landing needs ~200-300 u more energy than the
+     line has; a ramp-rooted GE found nothing past 21.58%). The success line d(end)+100 then paid
+     doomed flights; c1-c4 oscillated at the curved-ramp band (the policy exits east early - the
+     full ride costs ~0.2% of field progress before it pays); each relaxation of the success line
+     moved the wall only 5-10 states; c4's route eroded (eval 4.842). Probe a spine's END
+     (record_ckpt --spawn-states from its last state) before training on it.
+  2. Local CPU search (two 512-copy beams, 1.6M random bursts, GE at ~1/50 box scale) never passes
+     a gate like this one; it needs box-scale GE.
+* **Next (in this order):** (1) the first ramp: continue the curriculum on pbr3b1_pump_short.npy
+  from the start (c5's settings; it walks back ~15 states/min until the turn-around bands), then
+  let the downstream route re-fit at the higher energy; (2) with the pump's +50-150 u, re-search
+  the 20.4% gate's launch and the post-ramp landing (velocity-frame GE, carryable-energy roots);
+  (3) for any new spine, probe its end first and set the success line where survivors reach.
