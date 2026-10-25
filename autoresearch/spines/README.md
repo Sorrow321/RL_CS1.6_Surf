@@ -158,3 +158,10 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   d97584f6519581659368871f242ad83c): found BY THE TRAINER (pbr4b3_t9's auto-spine search 4 at 20.127B, 74 s):
   its branched beam on t9's own weights from the true spawn (7.67 ms) to 45.18%; keys = the beam's own held
   keys per row. No demo, no record (pbr4b3, round 4).
+* `pbr4b3_ge18ck.npy` + `.keys.npy` (4,134 rows; md5 edb1a8a33acdea05284adcc78a25026b /
+  717f5e12ed93de3f09bea31a4ba2164f): gate 14 (a crash into a floor + wall corner at 44.2%) - the policy's own
+  7.67 ms beam line (beam_tas on pbr4b3_t10's 20.54B weights, seed 51) to its state 3,557 (42.08%), then the exact
+  view-follow Go-Explore chain (explore_phase1 --exact-chains --tick-ms 8 --view-follow, 12 min) rooted there
+  UNBOOSTED, replayed 14/14 links exactly: it rebounds off the corner instead of stopping and flies west along the
+  record's corridor to 47.18%. Views along the velocity with the held keys translated (spine_canon_keys); the
+  beam rows' keys are the beam's own. No demo, no record (pbr4b3, round 4).
