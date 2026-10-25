@@ -1751,3 +1751,21 @@ This branch did its analysis and search locally on CPU meanwhile (gate 10 at 125
   (/root/snap_watch.py) now copies ckpt_latest to ckpt_<S>.pt right after each eval traj_<S> (the
   trainer saves ckpt_latest at the end of the eval's own iteration, same step and weights) so a later
   best eval has its exact weights to hand on (`box.py pull --snapshot S`).
+* t8c later evals: 24.790 / 24.775 (0/9 past gate 10) / 26.020 (2/9): the gate-10 pass is intermittent,
+  the median holds 24.3-24.4%; the curriculum sat at k05 state ~2080 (the gate-8 corridor turn, 17-25%).
+
+### Gate 11 by search at 8 ms (12:42-13:18 UTC, the trainer paused with SIGSTOP)
+tools/auto_spine.py by hand on t8c's 13.905B weights, --tick-ms 8, pinned to the quota (taskset 0-29),
+--greedy-d 42,100 (the greedy's best 26.33%, not its median: the median sits at gate 10) --gain 500:
+* beam (63 s) 26.36%; branched beams forked at 21.4 / 20.4 / 19.4 s: 26.38 / 26.36 / 26.36% - every
+  lineage dies at the climb north after the gate-10 ramp; GE stage 1 (x1.0/1.04, 8 min, 0.9M ticks/s)
+  26.39%; stage 2 (x1.08) 26.62%; stage 3 (x1.12) **27.04%** (404 u past the greedy: under the 500 u
+  gain, no spine written). The x1.12 chain, rooted at the branched beam's own state at the foot of the
+  gate-10 ramp, makes the ramp-top turn for -113 u (the beam lines: -298 u) and is at z 3,349 at 26%
+  where the beam lines are at ~3,197 (the record, ANALYSIS ONLY, 3,333 at 26.2%), flying north at
+  729 u/s at its end - gate 11 is the climb, and it needs the energy the ramp-top contact throws away.
+* The beam line's biggest loss is gate 8's corridor landing: **-441 u** at 20.3% (h 3,815 -> 3,363;
+  the record -169): at 8 ms the policy carries more energy INTO gate 8 and loses more of it there.
+* Spine pbr4b1_k06_t8.npy (2,727 states, success line d 41,796 = 26.86%) taken by hand.
+  **pbr4b1_t8d** (13:20 UTC): t8c's 13.9046B weights (md5 68f68cf8...) + k06 + milestones
+  44939 / 43426 / 42286 (k05's line, so gate 10 keeps paying) + the t8c flag set, 2B steps.
