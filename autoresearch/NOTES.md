@@ -2269,3 +2269,10 @@ Incumbent: pbr4b3_t11 traj_23590338560 (52.937), weights ckpt_23551016960 (md5 7
   reaches the same depth). Asking the spine's success for the spine end's ENERGY at its depth made the bypass the
   objective; the policy learned it from its own state in ~230M steps and the next gate's search needed only the
   policy's own beam.
+* c5 evals on k01: 56.992 / 61.489 / **61.514** (26.091B) / 61.504 / 61.510 (26.242B: 9/9 at 61.45-61.51%, median 61.5%).
+  Handoff snapshot for 61.514: ckpt_26037714944 (53M before), pulled. Search 2 fired at 26.242B (6/9 past k01's line):
+  beams 21,975 / 21,971 (no gain over the greedy's 22,001), GE ladder (now up to x1.3) running.
+* Gate 19 (61.5%): all 9 greedy episodes die at (-1,970, 2,480, z 2,364) at 46.7 s - kill sheet *211 (x -2,150..-1,793,
+  y 2,042..2,624, z 2,317-2,343) under the room's floor level. The line BUNNY-HOPS across the room's floor at ~350 u/s
+  (h ~2,490; the bhop cap holds the hop speed) and lands on the sheet; the record (ANALYSIS ONLY) circles the room up
+  on its walls at 700-800 u/s (h ~2,800) and crosses that corner at z 2,420-2,470, exiting west down to 62-64%.

@@ -3,11 +3,11 @@
  "round": 5,
  "final": false,
  "best": {
-  "score": 61.398,
-  "eval_file": "/home/steam/ar_pb/runs/pbr5b1/pbr5b1_c5/traj_25864175616.jsonl",
+  "score": 61.514,
+  "eval_file": "/home/steam/ar_pb/runs/pbr5b1/pbr5b1_c5/traj_26090668032.jsonl",
   "run": "pbr5b1_c5",
-  "step": 25864175616,
-  "ckpt": "/home/steam/ar_pb/runs/pbr5b1/pbr5b1_c5/ckpt_25837436928.pt",
+  "step": 26090668032,
+  "ckpt": "/home/steam/ar_pb/runs/pbr5b1/pbr5b1_c5/ckpt_26037714944.pt",
   "recipe": [
    "resume chain c1 -> c2 -> c3 -> c4 -> c5 from the round-4 incumbent (t11's flag set throughout)",
    "--demo-file autoresearch/spines/pbr5b1_e1.npy --demo-keys autoresearch/spines/pbr5b1_e1.keys.npy (own beam to 51.4% + a SURVIVING view-follow GE chain past the 52.8% ledge + the policy's own continuation to 55.41%)",
@@ -17,5 +17,5 @@
   "resume_from": "pbr5b1_c4 ckpt_latest 25,637,158,912 (tick 7.667 ms)",
   "commit": "43672ed"
  },
- "summary": "52.937 -> 61.398 (pbr5b1_c5 25.864B; 2/9 greedy at 61.3-61.4%, median 56.7%). Gate 18 (56.1%) was ENERGY: the line lost ~1,650 u of energy height in hard landings at 50-53%; the 52.8% ledge landing reset h to ~2,330 whatever came in; the climb past the gate needs ~2,700 (x1.3 at 56.1%). Fix: an energy spine through a SURVIVING explorer chain that passes the ledge without landing (GE picked by energy among cells whose subtree goes on) + train_fast --demo-success-energy (the spine's success line counts only with the spine end's energy). ~230M steps after the fix the greedy carried the energy through the gate; the trainer's own search swapped in its plain beam line to 61.66% (k01). Retracted: energy picks without a survival filter pick fatal falls. Next: let the loop learn k01."
+ "summary": "52.937 -> 61.514 (pbr5b1_c5 26.091B; 61.398 at 25.864B first, then 61.49-61.51 x4 with median 61.3-61.5%). Gate 18 (56.1%) was ENERGY: the line lost ~1,650 u of energy height in hard landings at 50-53%; the 52.8% ledge landing reset h to ~2,330 whatever came in; the climb past the gate needs ~2,700 (x1.3 at 56.1%). Fix: an energy spine through a SURVIVING explorer chain that passes the ledge without landing (GE picked by energy among cells whose subtree goes on) + train_fast --demo-success-energy (the spine's success line counts only with the spine end's energy). ~230M steps after the fix the greedy carried the energy through the gate; the trainer's own search swapped in its plain beam line to 61.66% (k01). Retracted: energy picks without a survival filter pick fatal falls. Next: let the loop learn k01."
 }
