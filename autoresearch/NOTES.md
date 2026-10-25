@@ -1286,3 +1286,27 @@ shorter budget_end_hours. Written down for the operator; nothing is worked aroun
 * Stage 2 (04:02 UTC): rooted at stage 1's 24 states of most usable energy (3,801-3,817 at ~300 u/s - the
   start room's two exits, the tunnel mouth and the south passage, NOT the half-pipe, whose fast states
   move downward), 25 min.
+* Stage 2 result (04:28 UTC, 25 min, 1.06M runs, 22,748 cells; runs/pbr3b2/_ge_pump/s2): the furthest
+  same-way on-route state with >= 50 u of surplus is the tunnel mouth (649, -2,854, 3,776) heading west
+  at 278 u/s, +70 u over the greedy line there; the surplus fades to +30 by x 536 (the greedy strafes up
+  to speed inside the tunnel), and nothing on the route carries >= 25 u past 2.4 s of the greedy line.
+  Its exact line from the true spawn (energy_waypoint.py --prefix-archive, 19/19 + 1/1 links,
+  runs/pbr3b2/_ge_pump/wp_s2.npy, 2,034 states) is NOT the half-pipe pump: it walks the south passage
+  west, loops into the tunnel's far end, runs EAST through the tunnel and turns back on the mouth's shelf -
+  a tunnel run-up (round 1's GE6 found the same kind) - 18 s of detour for ~+30 u at the exit. Not worth
+  teaching; kept in runs only.
+* So the first ramp is out of reach of UNIFORM-action search (rounds 1-3: half-pipe h <= ~3,840 against
+  the record's 3,931 on its way back west): pumping a half-pipe is a SKILL - hold the strafe into each wall
+  with the view along the velocity, which the policy already does near-optimally in flight (78% of the
+  strafe optimum, side key 98% of air ticks). What is left to try, in order of how directly it uses that
+  skill (all generic, none names the ramp):
+  1. let the POLICY explore from the archive's own states: --ge-minutes / --spawn-states over a reward-free
+     archive rooted at the true spawn (round 1 did this once, without energy: the greedy learned to go east
+     and die in the half-pipe - the way out and the energy payoff were never asked for), now WITH the
+     per-call energy shaping (--energy-pot 8) and --demo-success-energy on an energy waypoint further on, so
+     the pump pays only when it comes back onto the route with energy to spare;
+  2. a policy-guided beam that can start from archive states (beam_tas has no keys-hold start-state yet:
+     its --prefix-line / --greedy-prefix are refused under --keys-hold), ranked by --score dh, so the
+     policy's surfing pumps inside the half-pipe and the d term brings it back;
+  3. an energy-ratchet Go-Explore (re-root every few minutes at the states of most usable energy; round 2's
+     second stage gained +35 u in the half-pipe).
