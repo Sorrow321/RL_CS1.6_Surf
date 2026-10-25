@@ -17,7 +17,7 @@
    "--auto-spine --auto-spine-milestones --auto-spine-delay 3e8 --auto-spine-retry 4e8 --auto-spine-patience 1.2e9 --auto-spine-gain 500 --auto-spine-ge-minutes 8"
   ],
   "resume_from": "pbr4b1_t8f ckpt_latest 14,153,154,560 (8 ms)",
-  "commit": "f17d1d0",
+  "commit": "29f337c",
   "ckpt_step": 14304673792,
   "ckpt_md5": "f2a4c1c2385149131af40353625dc8c6"
  },
