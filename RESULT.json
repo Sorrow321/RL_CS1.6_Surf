@@ -1,7 +1,7 @@
 {
  "agent": "pbr3b4",
  "round": 3,
- "final": false,
+ "final": true,
  "best": {
   "score": 24.737,
   "eval_file": "/home/steam/ar_pb/runs/pbr3b4/pbr3b4_as10/traj_13500416000.jsonl",
@@ -23,7 +23,8 @@
    "--demo-rate 0.2 (as8 on; was 0.3)"
   ],
   "resume_from": "pbr3b4_as9 ckpt_latest 13.4999B (these exact weights; as10 resumed them and scored 24.737 at 13.5004B)",
-  "commit": "cc39ff4"
+  "commit": "cc39ff4",
+  "ckpt_latest": "/home/steam/ar_pb/runs/pbr3b4/pbr3b4_as10/ckpt_latest.pt (13.661B, md5 e988a96fb89ee598407a5234fb1ccd00)"
  },
- "summary": "Score 20.414 -> 24.737 (as10 13.50B; as9 13.01B 24.641; as7 12.32B 24.555; 9/9 greedy episodes from the true start pass the 20.4% catch (gate 8) and the 21.5% wall (gate 9) and reach 24.4-24.6%, crawling on a floor = gate 10, a landing ~250 u north of a ramp). Gate 8 found by Go-Explore --exact-chains at x1.04 speed from the policy's own launch states -> spine -> curriculum. Gate 9 found by the trainer itself (train_fast --auto-spine: its branched beam, 46 s). A x1.12 spine past gate 10 eroded the route (beam10 again) until --auto-spine-milestones / --demo-milestones (old success lines keep paying); under milestones the route holds but the boosted ramp catch is stuck at ~25% band success. New code: --auto-spine + tools/auto_spine.py (beam -> branched beams -> GE escalation ladder -> spine swap), milestones, --respawn-greedy-contact, beam_tas --view-temp/--keys-temp, tools/ge_spine.py, ge_roots_best.py."
+ "summary": "Score 20.414 -> 24.737 (pbr3b4_as10 13.50B; 108 valid evals; 9/9 greedy episodes from the true start pass gate 8 (the 20.4% catch) and gate 9 (the 21.5% wall) and reach the crawl at 24.4-24.7%). Gate 8: Go-Explore --exact-chains at x1.04 speed from the policy's own launch states -> spine -> curriculum; the greedy flew it unboosted. Gate 9: found by the trainer itself (train_fast --auto-spine + tools/auto_spine.py: beam -> branched beams -> GE escalation ladder -> spine swap), branched beam, 46 s. A x1.12 spine for gate 10 eroded the route until --auto-spine-milestones/--demo-milestones (old success lines keep paying). Gate 10 (a ramp climb at 24.4%) needs ~+220 u of energy height out of gate 8's corridor U-turn; only a x1.12 GE root has passed it. User's first-ramp idea: survivable field-opposed explorer spawns taught the policy to survive the half-pipe and return to the tunnel; no pumping yet; the objective does not pay a 6 s detour (NOTES). Next: the energy out of gate 8's landing, or a pumped start on a line that needs it."
 }

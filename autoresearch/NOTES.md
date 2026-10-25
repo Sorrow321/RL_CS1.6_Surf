@@ -1552,3 +1552,59 @@ as7's 24.555 eval (ep0) vs the WR demo:
   survivable field-opposed spawns taught it to survive the half-pipe and to come back onto its
   route; pumping (gaining energy there) has not appeared yet.
 * as12 evals to 15.80B: 24.52-24.70, 0/9 east of the spawn, tunnel exit h 3,812-3,816.
+
+### pbr3b4 round 3 lesson (wrap-up, 2026-10-25 07:01 UTC)
+* **Score 20.414 -> 24.737** (best eval pbr3b4_as10 traj_13500416000, median 24.5%; 108 valid
+  greedy evals this round). Handed-on checkpoint: pbr3b4_as10/ckpt_13499891712.pt (md5
+  a3a21331..., the exact weights that eval ran - as9's ckpt_latest, resumed by as10; handon_ckpt
+  checked); as10's ckpt_latest (13.661B, md5 e988a96f...) pulled beside it. All 9 greedy episodes
+  from the true start pass gate 8 (the 20.4% catch) and gate 9 (the 21.5% wall) and crawl on a
+  floor at 24.4-24.7% (gate 10).
+* **What worked, in order:**
+  1. Gate 8 by SEARCH with a speed boost: Go-Explore --exact-chains rooted at the policy's own
+     launch states x1.04, the trainer stopped and the CPU whole, roots focused on 1.6 s around the
+     launch (2 min to the record's corridor manoeuvre; 15-min runs with 96 roots spread wide beside
+     the trainer never found it). Spine + curriculum: the greedy flew it WITHOUT the boost ~150M
+     steps later. The boost buys the uniform explorer the energy its random actions waste.
+  2. Gate 9 by THE TRAINER ITSELF: train_fast --auto-spine (tools/auto_spine.py: beam ->
+     branched beams -> Go-Explore escalation ladder -> spine swap, run after a quorum of greedy
+     episodes crosses the spine's success line): its branched beam found the line over the wall in
+     46 s and swapped it in; the greedy followed in ~150M steps.
+  3. Milestones (--auto-spine-milestones / --demo-milestones): a spine whose success line jumped
+     2.5% (a x1.12 root) eroded the greedy 24.29 -> 21.5 in 75M steps (round 2's beam10 again);
+     with the old success lines paying, the same spine held the route for 3B+ steps.
+  4. Cheap generic fixes found by running: the branched beam's fork at an episode's stall when
+     the patience cut ended it mid-hop; branched beams at the fork tick and 1 s / 2 s before it;
+     auto_spine's --cut best (the contact trim cut both passing gate-8 lines at the landing); GE
+     picks by energy and by rollout SURVIVABILITY (a cell with children can still be doomed).
+* **What did not:** yaw temperature on beam proposals; branched beams forking at the commitment
+  point itself; GE at x1.00 for gates 8 and 10, and every GE stage up to x1.08 (8 and 25 min) for
+  gate 10; speed-boosted greedy spawns at gate 8; K 12 energy shaping (no gain at the gate-8 U-turn
+  exit in ~1.5B steps); the boosted k03 curriculum (its band before the x1.12 root stays at 0%).
+* **Gate 10** (where it stands): a ramp CLIMB at x ~2,444-3,103 after the crawl landing. The greedy
+  reaches the corridor U-turn exit with energy height ~3,340-3,390; the x1.12 chain that passes
+  gate 10 had 3,607, the record ~3,600 (ANALYSIS). The deficit is made at gate 8's corridor
+  landing (-353 u for us, -213 for the record), not in the start room (the greedy recovers the
+  start room's 156 u by 10%). An unboosted GE chain does reach the ramp (picked by energy, not
+  depth - on the ramp the field reads like the crawl) but cannot climb it.
+* **The user's first-ramp insight** (2026-10-25): generic attempts and where they stand are in the
+  sections above - the policy now survives the half-pipe and can fly back to the tunnel from it
+  (survivable field-opposed explorer spawns, ~1.6B steps), but it does not pump, and under this
+  objective a 6 s field-opposed detour does not pay unless its energy unlocks a gate within the
+  ~20 s horizon. Next: the skill (spawns there until a --start-state beam GAINS energy), then a
+  line where the pumped energy is necessary past gate 10, distilled with milestones on.
+* **To continue** (the flag set of the best run, a resume - shape flags come from the checkpoint):
+  `box.py launch --resume --self-states "<spines README provenance>" -- --maxvel 3500
+  --demo-file autoresearch/spines/pbr3b4_auto_k02.npy --demo-window 5 --demo-grow 5
+  --demo-grow-max 40 --demo-cooldown 5 --demo-rate 0.3 --demo-front-frac 0.4 --demo-success-d 100
+  --demo-success-bonus 50 --demo-milestones 44939 --keys-hold-spawn-duck --yaw-entropy 0
+  --demo-front-temp 0.5 --demo-front-ticks 40 --demo-front-view 6 --respawn-greedy 0.2
+  --respawn-greedy-window 0.25 2.0 --respawn-greedy-stuck 200 --respawn-greedy-contact
+  --respawn-greedy-temp 0.5 --respawn-greedy-temp-ticks 100 --respawn-greedy-temp-view 6
+  --respawn-front-perturb 0.2 --respawn-front-perturb-band 0.005 --respawn-front-perturb-speed
+  1.0 1.3 --respawn-front-perturb-turn 90 --energy-pot 12 --energy-pot-front 0
+  --energy-pot-front-bonus 0 --no-respawn-novel --respawn-backward-mix 0 --int-real-only 0
+  --spawn-states autoresearch/spines/pbr1b1_entry_ge_states.npy --spawn-states-frac 0.2`
+  (+ `--auto-spine --auto-spine-milestones --auto-spine-gain 500 --auto-spine-ge-minutes 8` to let
+  the trainer search; the as10 run had it off). Box 57557523 (RTX 5080, 0.56 $/h), released at
+  wrap-up.
