@@ -1798,3 +1798,13 @@ over-subscribes the quota. This branch's surfgym now caps numba; the operator ma
   [2300,...] (the boosted chain) 96%, band [2295,2299] (the line's own unboosted states) 0.0% - round 3's
   k03 picture - yet the greedy line follows the chain most of the way with its own (7.63 ms) energy.
 * Handoff snapshot pulled: pbr4b3_t2/ckpt_15390998528.pt (the milestone at or before the 27.287 eval).
+* t2's last eval **27.409** (15.519B, median 27.19%). Beams on t2's 15.47B weights at their own 7.67 ms:
+  **40,393 = 29.31%** (seed 4) / 29.19% / 28.96% (a branched one): the POLICY'S OWN population now flies
+  gate 11 - the ridge north, the launch, the lethal floor, DOWN THE HOLE at 28.0%, on to 29.31% where it
+  falls toward trigger_teleport *128 (a catch sheet at z ~2,577 over x -1,344..3,840, y -1,824..2,064):
+  gate 12. Its energy height at 20 / 25 / 26%: 3,896 / 3,742 / 3,759 - above the record's (~3,796 /
+  3,680 / 3,702, ANALYSIS ONLY) and ~+500 u over the 10 ms line at 26%. The frame rate was the deficit.
+* Spine autoresearch/spines/pbr4b3_beam_g11.npy (that line, 2,900 states, success line d <= 40,497 =
+  29.14%). **pbr4b3_t3** (10:46 UTC): t2's 15.551B weights (md5 ec14781b...) + that spine + milestones
+  44939,43426,42182,41015 + the same flags (tick held at 7.63 ms by the checkpoint's ramp), 3B steps.
+  t2's ckpt_latest (the 27.409 handoff) pulled.

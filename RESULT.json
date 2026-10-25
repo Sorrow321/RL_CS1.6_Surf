@@ -3,11 +3,11 @@
  "round": 4,
  "final": false,
  "best": {
-  "score": 27.287,
-  "eval_file": "/home/steam/ar_pb/runs/pbr4b3/pbr4b3_t2/traj_15443951616.jsonl",
+  "score": 27.409,
+  "eval_file": "/home/steam/ar_pb/runs/pbr4b3/pbr4b3_t2/traj_15519449088.jsonl",
   "run": "pbr4b3_t2",
-  "step": 15443951616,
-  "ckpt": "/home/steam/ar_pb/runs/pbr4b3/pbr4b3_t2/ckpt_15390998528.pt (the milestone at or before the eval)",
+  "step": 15519449088,
+  "ckpt": "/home/steam/ar_pb/runs/pbr4b3/pbr4b3_t2/ckpt_latest.pt (15,550,906,368, md5 ec14781b155ccbbc46ae7f805596bd9a; 31M steps after the eval, more than twice as near as the 15.391B milestone, also pulled)",
   "recipe": [
    "resume of the round-3 incumbent (pbr3b4_as10 13.4999B)",
    "--demo-file autoresearch/spines/pbr4b3_ge12_x132.npy (own beam line + an 8 ms x1.32 GE chain over gate 11, cut at 28.41%) --demo-window 5 --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5 --demo-rate 0.3 --demo-front-frac 0.4 --demo-success-d 100 --demo-success-bonus 50",
@@ -22,5 +22,5 @@
   "resume_from": "pbr4b3_t1 ckpt_latest 14.990B (md5 ab8d9f51...), tick 8.2 ms -> 7.63 ms from 15.165B",
   "commit": "ad5f905"
  },
- "summary": "24.737 -> 27.287 (pbr4b3_t2 15.444B: 8/9 greedy episodes launch over the gate-11 sheet to 26.8-27.3%; t1 26.374 at 14.516B, from 14.89B 9/9 greedy episodes over gate 10, the 26.4% sheet death at gate 11). A plain beam on the incumbent's weights already passed gate 10. Gate 11 needs ~+250-400 u of energy height (GE boosts at 10 ms: x1.3 -> 27.42%; at 8 ms x1.32 -> 30.48%, down the hole that leads on). The record runs 131 fps and air-strafe gain is per frame: t1 ramps the tick 10 -> 7.63 ms (+30% gain), and the ramp alone took gate 10 from 1-3/9 to 9/9. Now pbr4b3_t2: curriculum on the 8 ms x1.32 GE chain over gate 11 (spine cut at 28.41%) with milestones. Also fixed: numba pool oversubscription (7k -> 350k steps/s), a tick-aware explorer for auto_spine."
+ "summary": "24.737 -> 27.409 (pbr4b3_t2 15.519B: 8/9 greedy episodes launch over the gate-11 sheet to 26.8-27.3%; t1 26.374 at 14.516B, from 14.89B 9/9 greedy episodes over gate 10, the 26.4% sheet death at gate 11). A plain beam on the incumbent's weights already passed gate 10. Gate 11 needs ~+250-400 u of energy height (GE boosts at 10 ms: x1.3 -> 27.42%; at 8 ms x1.32 -> 30.48%, down the hole that leads on). The record runs 131 fps and air-strafe gain is per frame: t1 ramps the tick 10 -> 7.63 ms (+30% gain), and the ramp alone took gate 10 from 1-3/9 to 9/9. Now pbr4b3_t2: curriculum on the 8 ms x1.32 GE chain over gate 11 (spine cut at 28.41%) with milestones. Also fixed: numba pool oversubscription (7k -> 350k steps/s), a tick-aware explorer for auto_spine. t2's weights' own beam now passes gate 11 to 29.31% (7.67 ms): pbr4b3_t3 = curriculum on that unboosted line."
 }
