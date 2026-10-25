@@ -2,6 +2,18 @@
  "agent": "pbr3b1",
  "round": 3,
  "final": false,
- "best": null,
- "summary": "Box 57580595 (RTX 3090, 0.386 $/h) rented 23:42 UTC after the operator's mid-round budget change. Box beam (4096 copies) on the incumbent: its deepest lineage crash-lands past the 20.4% catch on a low surface (20.58%, ~300 u/s, a dead end). Running two compute-matched 12-min Go-Explores from the policy's own surf-face states (yaw-delta vs velocity-frame actions) to find the launch + corner line onto the ramp, then the curriculum resume."
+ "best": {
+  "score": 20.224,
+  "eval_file": "/home/steam/ar_pb/runs/pbr3b1/pbr3b1_c1/traj_9479127040.jsonl",
+  "run": "pbr3b1_c1",
+  "step": 9479127040,
+  "ckpt": null,
+  "recipe": [
+   "resume of the incumbent (9.478B) with round 2's curriculum flag set on autoresearch/spines/pbr3b1_vvel_g20.npy"
+  ],
+  "resume_from": "/home/steam/ar_pb/incumbent/r2/ckpt.pt",
+  "commit": "7090ffb",
+  "note": "the resume's first eval = the incumbent's own weights on a 3090"
+ },
+ "summary": "Box 57580595 (3090) from 23:42 UTC. The 20.4% gate (a launch off a surf face, a tunnel with a falling ceiling, a hard right round a block corner onto the only ramp over a catch floor) fell to box Go-Explore with velocity-frame random actions (new explore_phase1 --view-velocity: 21.54% vs 21.06% for the yaw-delta explorer at matched compute, 2.6-6.7x more cells past the gate). Spine pbr3b1_vvel_g20 (to 21.54%); pbr3b1_c1 = the incumbent + round 2's curriculum on it, first eval 20.224 (incumbent weights on a 3090)."
 }
