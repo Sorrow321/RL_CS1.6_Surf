@@ -1709,3 +1709,9 @@ acceptable offer was a 3090 at 0.377. With the good cards at 0.34-0.60 $/h the c
 not four, unless one branch rents a cheap card; whichever branch is slowest to rent at the round
 start waits for another's release. (One of the three live boxes may be the operator's sidx loop.)
 This branch did its analysis and search locally on CPU meanwhile (gate 10 at 125 Hz, above).
+* Gate 11 (local 8 ms beam, 256 copies, from k05's own state on the gate-10 ramp at 25.0%, h 3,523):
+  a -259 u contact at 25.2% where the line turns north off the ramp top, a slow crawl to 26.26% at
+  (3,507, -2,372, 3,214) at ~400 u/s, the population extinct by 3.2 s. The record (ANALYSIS ONLY)
+  makes that turn keeping h ~3,700 (ours ~3,280 after the hit), passes (3,527, -2,493, 3,222) at
+  875 u/s climbing (vz +377) and tops out at z 3,417 at (3,584, -1,998) (26.7%) before a long drop
+  west: gate 11 is another energy climb, ~200-400 u of energy height short.
