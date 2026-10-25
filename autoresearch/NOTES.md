@@ -1812,3 +1812,23 @@ Box: 57632318, RTX 4080 + i9-14900F (32 thr), 0.30 $/h, UK (machine 151788), ren
 * Harness lesson (again, CLAUDE.md warns): `pgrep -f '<pattern>'` inside an ssh command whose own
   text contains the pattern matches the remote shell itself; `kill $(pgrep ...)` then kills the
   session, not the trainer. Use the pid.
+* t3 (keys at temperature 3 for 0.46 s on band spawns): band [2790] still 0.0% over ~500M steps
+  ([2795] 37-39%); greedy evals 29.12-29.18. Hot keys per decision do not crack it.
+* More probes on t3's weights (trainer paused): beams from the spine's north-side states with the
+  proposal keys at temperature 2 and 4 - the whole population dead within 0.3-0.9 s, every time.
+  Branched beams from the true start with WIDE held view offsets (jitter 90 / 180 deg, held 0.25 s,
+  forks at 20.1 / 20.4 / 20.7 s): 39,985-40,104 (29.8-30.0%) - a dead-end ledge north of the catch
+  (z ~2,964-3,003, y ~-1,150) that the line crawls along for 10 s, not the lower ramp. Every chain
+  of the tick-aware GE archive (manual2) that gets past 29.5% - roots on the north ramp or the
+  north side, x1.0 or +40 - goes onto the lower ramp by a HOOK (north to y ~-1,525, a bounce east /
+  south, then west onto the ramp at x ~2,970-3,350); the record (ANALYSIS ONLY) drops onto it from
+  y ~-1,700 going west. Unboosted roots reach 30.4-31.5% that way.
+* Diagnosis: the hook / landing needs a SUSTAINED manoeuvre (the explorer holds its random action
+  with p 0.95 per decision); per-decision noise - the band temperature, the beams' hot keys - only
+  "discovers falling, not ramps" (beam_tas's own --branch-hold note, round 27).
+* `--demo-front-hold` (new, default off): inside --demo-front-temp's hot window an env draws with
+  HELD noise - the key heads' Gumbel uniforms and the view's standard normals drawn once at the
+  band spawn's first decision and reused for the window - temporally correlated exploration in
+  which every draw is still an exact sample of the tempered policy (PPO's ratio unchanged).
+  tests/python/test_demo_front_hold.py (held rows repeat their draw; the log-prob is the tempered
+  joint's; hold=None is the shipped draw; flag-off bit-identity against the trainer before it).
