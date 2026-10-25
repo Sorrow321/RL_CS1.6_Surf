@@ -1746,7 +1746,7 @@ throttled) and could read it as a bad box. The fix is one line in python/train_f
   26.50%). **pbr4b4_c4** (10:39 UTC): c3's 15.688B weights + that spine + milestones
   44939,43426,42363,42171 (k01's line added) + the c3 flags (auto-spine delay 6e8), 4B steps.
 
-### c4 learns the east flight; energy-ranked beams reach the north gap (10:41-11:12 UTC)
+### c4 learns the east flight; energy-ranked beams reach the north gap (10:41-11:10 UTC)
 * c4 evals (spine ge_s3): 26.355 / 26.351 / 26.372 (median 26.4%) / 26.622 / 26.388 / **26.733**
   (16.066B) / **26.896** (16.142B, median 26.3%; exact weights ckpt_16141778944.pt md5 a4e8166d...,
   pulled): most greedy episodes reach the gate-11 catch, the best fly east over the upper floor
@@ -1766,6 +1766,6 @@ throttled) and could read it as a bad box. The fix is one line in python/train_f
 * `auto_spine --beam-energy K` / `train_fast --auto-spine-beam-energy K` (new, d891120; off = the
   old search byte for byte; tests/python/test_auto_spine.py test_energy_beam_command_and_choice):
   the trainer's search also runs the beam ranked by -d + K x energy height and keeps the deeper line.
-* **pbr4b4_c6** (11:12 UTC): c4's final 16.208B weights -> c5 (14M steps, restarted for the flag)
+* **pbr4b4_c6** (11:10 UTC): c4's final 16.208B weights -> c5 (14M steps, restarted for the flag)
   -> c6 = spine dh10 (--demo-tau0 2280) + milestones 44939,43426,42363,42171,42007 +
   --auto-spine-beam-energy 10 (delay 5e8), the rest as c4, 4B steps.
