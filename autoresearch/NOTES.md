@@ -1417,3 +1417,16 @@ as7's 24.555 eval (ep0) vs the WR demo:
   ~2,444; only a x1.12 GE root has passed it (spine pbr3b4_auto_k03.npy); the deficit (~250 u of
   energy height vs the record) is made at gate 8's corridor landing (-353 u for us, -213 for the
   record), not in the start room (the greedy recovers that by 10%).
+
+### Gate 10 without a boost: the explorer had found the ramp - pick by energy, not depth (02:34 UTC)
+* The 25-min GE archive (runs/_auto_r3f/ge on the box) has UNBOOSTED cells on the ramp the record
+  surfs: cell 195108 at (2,854, -2,981, 3,004), 850 u/s, energy height 3,455 (the greedy has ~3,300
+  at 24%), whose 93-tick chain starts at the beam line's OWN state at 19.3 s ((2,093, -2,934, 2,831),
+  1,002 u/s - after the gate-9 wall, before the crawl landing) and rides UP the ramp (z 2,831 ->
+  3,004 at y ~-2,960..-3,060) keeping h ~3,430-3,455 instead of landing on the floor.
+* The deepest-cell pick cannot see it: on the ramp at 24.45% the field reads like the crawl
+  (24.4-24.6%); only later, up the ramp and north, does the ramp line's progress pull away. Among
+  the archive's cells at or past the greedy frontier the right pick was the max-ENERGY one (the
+  highest-progress ones there were slow states on a ledge by the crawl).
+* GE #7 (02:33 UTC): rooted at 18 of that chain's ramp states, x1.0, 64 u x energy 32, 10 min, 16
+  threads beside as8 - to extend the line up the ramp until its progress clears the crawl's.
