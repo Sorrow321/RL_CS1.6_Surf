@@ -2161,6 +2161,14 @@ def demo_energy_gate(rec, paid, ended, end_d, h, end_h):
     return ok, paid, ok
 
 
+def demo_energy_spawn_ok(rec_new, end_d, h_new, end_h):
+    """--demo-success-energy: the fresh episodes that SPAWN past the success line hold it
+    already - the old rule's immediate success - when their spawn carries the energy too
+    (a curriculum band at the spine's end starts past the line by --demo-success-d)."""
+    return ((np.asarray(rec_new, np.float64) <= float(end_d))
+            & (np.asarray(h_new, np.float64) >= float(end_h)))
+
+
 def demo_hot_mask(demo_idx, band, ep_len, ticks):
     """--demo-front-temp: the envs whose episode STARTED on the curriculum's frontier band
     ``band`` = (lo, hi) inclusive (``demo_idx`` is the spine index of each env's spawn, -1 for
@@ -19108,7 +19116,12 @@ def main() -> None:
                                 if DEMO_END_H[0] is not None:
                                     # --demo-success-energy: success = crossed with the energy
                                     goal_now = goal_now | DEMO_OK[ei]
-                                    DEMO_OK[ei] = False
+                                    # the fresh episodes: one that spawns past the line with the
+                                    # energy holds it already (the old rule's immediate success)
+                                    DEMO_OK[ei] = demo_energy_spawn_ok(
+                                        np.asarray(slots[0].reward_fn._rec)[ei], DEMO_END_D,
+                                        energy_height(sv_view[ei], args.sv_gravity),
+                                        DEMO_END_H[0])
                                 elif _rb is not None:
                                     goal_now = goal_now | (np.asarray(_rb)[ei] <= DEMO_END_D)
                             known = demo_idx[ei] >= 0

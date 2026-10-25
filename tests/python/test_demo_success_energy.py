@@ -58,6 +58,13 @@ def test_flag_default_off_and_train_only():
     assert '"demo_success_energy"' in rc
 
 
+def test_a_spawn_past_the_line_holds_it_with_the_energy():
+    # a curriculum band at the spine's end starts past the success line: the old rule counts it
+    # at once (record <= line); the energy rule does too, if the spawn carries the energy
+    ok = tf.demo_energy_spawn_ok([990.0, 990.0, 1010.0], 1000.0, [600.0, 400.0, 900.0], 500.0)
+    assert ok.tolist() == [True, False, False]
+
+
 # ---- trainer smoke (CPU, princessburglar): on = message + key; off = bit-identical ------------
 import json  # noqa: E402
 import shutil  # noqa: E402
