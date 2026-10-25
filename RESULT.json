@@ -1,28 +1,19 @@
 {
- "agent": "pbr4b3",
- "round": 4,
- "final": true,
+ "agent": "pbr5b1",
+ "round": 5,
+ "final": false,
  "best": {
-  "score": 52.937,
-  "eval_file": "/home/steam/ar_pb/runs/pbr4b3/pbr4b3_t11/traj_23590338560.jsonl",
-  "run": "pbr4b3_t11",
-  "step": 23590338560,
-  "ckpt": "/home/steam/ar_pb/runs/pbr4b3/pbr4b3_t11/ckpt_23551016960.pt",
+  "score": 56.204,
+  "eval_file": "/home/steam/ar_pb/runs/pbr5b1/pbr5b1_c1/traj_24231018496.jsonl",
+  "run": "pbr5b1_c1",
+  "step": 24231018496,
+  "ckpt": "/home/steam/ar_pb/runs/pbr5b1/pbr5b1_c1/ckpt_24151851008.pt",
   "recipe": [
-   "resume of the round-3 incumbent (pbr3b4_as10 13.4999B)",
-   "--demo-file autoresearch/spines/pbr4b3_ge18ck.npy --demo-keys autoresearch/spines/pbr4b3_ge18ck.keys.npy (own beam line + an unboosted view-follow GE chain past the 44.2% crash, to 47.18%; canonical views, translated keys) --demo-window 5 --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5 --demo-rate 0.3 --demo-front-frac 0.8 --demo-success-d 100 --demo-success-bonus 50",
-   "--demo-milestones 44939,43426,42182,41015,40497,39943,37251,33777,32260,31429 --keys-hold-spawn-duck --yaw-entropy 0 --demo-front-temp 0.5 --demo-front-ticks 40 --demo-front-view 6",
-   "--respawn-greedy 0.2 --respawn-greedy-window 0.25 2.0 --respawn-greedy-stuck 200 --respawn-greedy-contact --respawn-greedy-temp 0.5 --respawn-greedy-temp-ticks 100 --respawn-greedy-temp-view 6",
-   "--respawn-front-perturb 0.2 --respawn-front-perturb-band 0.005 --respawn-front-perturb-speed 1.0 1.3 --respawn-front-perturb-turn 90",
-   "--energy-pot 12 --energy-pot-front 0 --energy-pot-front-bonus 0 --no-respawn-novel --respawn-backward-mix 0 --int-real-only 0",
-   "--spawn-states autoresearch/spines/pbr1b1_entry_ge_states.npy --spawn-states-frac 0.2 --maxvel 3500",
-   "--auto-spine --auto-spine-milestones --auto-spine-gain 500 --auto-spine-ge-minutes 8 --auto-spine-retry 4e8 --auto-spine-patience 1.2e9",
-   "--tick-ms-schedule 10:7.63:800e6 --ckpt-every 2e8",
-   "t9's own --auto-spine then swapped in four policy beam lines: k01 34.99% (19.598B), k02 41.07% (19.674B), k03 43.73% (19.976B), k04 45.18% (20.127B); t11's auto-spine (resumed from t10 20.947B): search 2 k02 (x1.12 GE, 49.75%, 21.70B; its curriculum stalled at the launch), search 3 on patience k03 (x1.08 GE chain to d 28,683 = 49.81%, 22.91B), passed by the greedy within ~150M steps (50.72 at 23.06B), search 4 k04 = the policy's own beam line to d 26,901 = 52.93% (23.06B); search 5 (quorum at 23.364B, 638 s) k05 = beam + GE to d 25,021 = 56.22%"
+   "resume of the round-4 incumbent (pbr4b3_t11 ckpt_23551016960) with t11's flag set",
+   "--demo-file autoresearch/spines/pbr4b3_auto_t11k05.npy --demo-keys autoresearch/spines/pbr4b3_auto_t11k05.keys.npy --demo-milestones 44939,...,27001 (14) --auto-spine (quorum 5, patience 1.2e9)"
   ],
-  "resume_from": "pbr4b3_t10 ckpt_latest 20.947B (tick 7.667 ms)",
-  "commit": "a08a5e2",
-  "ckpt_note": "the newest snapshot at or before the 52.937 eval: step 23,551,016,960 (39M steps before it), md5 7fbcd458dcc650454a7ca3979babb55d; ckpt_latest.pt pulled at wrap-up is step 23,665,836,032 (75M after, md5 d6d9edd0...; its own eval 52.920), so the rule hands on the snapshot. Also pulled: ckpt_23350738944 (after the 52.911 eval), ckpt_23150460928, ckpt_22950182912, ckpt_21249916928 (the exact 47.253 weights)."
+  "resume_from": "pbr4b3_t11 ckpt_23551016960 (tick 7.667 ms)",
+  "commit": "9912a67"
  },
- "summary": "24.737 -> 52.937 (pbr4b3_t11 23.590B, 9/9 greedy at 52.8-52.94%, median 52.85%; 52.930 at 23.515B; 51.093 at 23.137B, 47.253 at 21.250B; t10 44.505; t9 44.025). Gate 10: a plain beam on the incumbent's weights. Gates 10-11 were ENERGY: air-strafe gain is per frame and the record runs 131 fps; --tick-ms-schedule 10 -> 7.63 ms took gate 10 from 1-3/9 to 9/9, then gate 11 by GE + the policy's own beam. Gate 12 (a ramp surf) needed the spawn's HELD KEYS: tools/spine_canon_keys.py + train_fast --demo-keys. Gates 13-14 by the trainer's own --auto-spine loop and the view-follow explorer. Gate 15 (47.2%, a launch off a ramp lip under a ceiling) fell to the loop's third search (a x1.08 GE chain) ~150M steps after its swap; the x1.12 chain before it had stalled its curriculum at the launch. Also: numba pool fix (7k -> 350k steps/s), tick-aware + view-follow explorer. Gate 16 (~51%) fell to the policy's own beam line k04 within ~150M steps of its swap (52.9% from 23.29B)."
+ "summary": "pbr5b1_c1 = resume of the incumbent (52.937) on spine k05 + milestones + --auto-spine. 56.151 at 24.004B (1/9 through gate 17), 56.138 at 24.080B (5/9) -> auto-spine search 1 found nothing past 56.6% (28 min); 56.204 at 24.231B (8/9 at 56.1-56.2%). Gate 18 (56.14%) is ENERGY: the line loses ~1,650 u of energy height in hard landings/walls over 50-56% and dies spiralling up into kill volume *210/*192. An energy-ranked GE rooted before those landings (tools/ge_energy_pick.py) found chains +570..+715 u above the line at 52-53%; stage-2 GE from those states running (trainer stopped at 24.384B)."
 }

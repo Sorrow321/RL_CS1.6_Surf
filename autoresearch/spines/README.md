@@ -183,3 +183,16 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   view-follow Go-Explore stage-1 chain (663 states) to d 25,021 = 56.22%. Views along the velocity, keys translated;
   the beam rows' keys are the beam's own. The spine t11 trained on at the end of round 4 and the --demo-file /
   --demo-keys for a resume of its checkpoint. No demo, no record (pbr4b3, round 4).
+* `pbr5b1_b13c.npy` + `.keys.npy` (5,515 rows; md5 cca46926b6810bc487871970c57532e7 /
+  d96f14bf2647ee1af7dcf4a3f6802423): gate 18 (56.14%, an energy gate: the policy's line arrives with ~2,300 of energy
+  height where the climb past it needs ~300-400 u more) - pbr5b1_c1's auto-spine search 1 beam line (beam_tas from
+  the true spawn on c1's 24.080B weights, 7.67 ms; the policy's own) to its state 4,848 (56.1%), then the exact
+  view-follow Go-Explore chain (explore_phase1 --exact-chains --tick-ms 8 --view-follow, 12 min) rooted there at x1.3
+  speed, cut at its first stop on the floor beyond the gate (58.15%; tools/chain_spine.py: views along the velocity,
+  the explorer's keys translated, the beam rows' keys the beam's own). x1.2 roots reached only 56.77%. No demo, no
+  record (pbr5b1, round 5).
+* `pbr5b1_spawn_energy.npy` (12,911 rows; md5 ce4b966a4f88e218ecadfb2b939473a4): `pbr1b1_entry_ge_states.npy` (7,399)
+  + 8 copies of four exact view-follow Go-Explore chains (689 states) rooted UNBOOSTED on the same c1 beam line at
+  49-52.8% and picked by ENERGY HEIGHT at matched depth (tools/ge_energy_pick.py): they skip the line's hard landings
+  at 51.8% / 52.8% and arrive at 52-54% with +420..+715 u of energy height over the policy's own line. For
+  --spawn-states (the policy's own search, SELF_STATES). No demo, no record (pbr5b1, round 5).

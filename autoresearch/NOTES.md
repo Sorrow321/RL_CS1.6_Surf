@@ -2124,3 +2124,68 @@ over-subscribes the quota. This branch's surfgym now caps numba; the operator ma
   23.364B and being learned when the round ended. Gate 16 (~51%, a fail trigger at the north end of the corridor)
   fell to the policy's own beam line within ~150M steps. The loop is running: let its patience fire before
   intervening.
+
+## pbr5b1 (round 5, slot 1) - 2026-10-25 19:51 UTC start
+
+Box: 57714381, RTX 5080 + Threadripper 3970X (64 visible threads, cgroup quota 30.72 CPUs), 0.363 $/h,
+Ireland (machine 145348, round 4's box). Credit at the start $22.98 (reserve $10, fleet cap 1.2 $/h).
+Incumbent: pbr4b3_t11 traj_23590338560 (52.937), weights ckpt_23551016960 (md5 7fbcd458...).
+
+* **pbr5b1_c1** (19:51 UTC): resume of the incumbent's weights with round 4's t11 flag set on spine k05
+  (autoresearch/spines/pbr4b3_auto_t11k05.npy + .keys.npy, success line d <= 25,121 = 56.0%), milestones
+  44939 ... 27001 (14), --auto-spine (quorum 5, patience 1.2e9, retry 4e8, gain 500, GE 8 min), --ckpt-every 2e8,
+  4e9 steps. The checkpoint carries the 7.63 ms tick.
+* c1 evals: 52.909 / 52.905 / 52.903 / 52.917 / 52.919 / 52.892 (23.55-23.93B: 9/9 die at gate 17, (-2,420, 1,090,
+  z 2,200) at 52.8%, ~36.3 s) then **56.151** (24.004B, ~450M steps in: ep7 follows k05 through gate 17 to 56.15% at
+  (-2,361, 2,465, 1,937), 39.4 s). The k05 curriculum walked 5001 -> ~4,400 (the GE chain's root is 4,344) in ~450M
+  steps, bands 3-50%. ~310k steps/s on this box. Snapshot before the eval pulled: ckpt_23951572992.
+* 20:50 UTC: c1 24.080B eval **56.138** (5/9 at 56.13-56.14%, median 56.1%) fired the quorum: auto-spine search 1
+  (1,671 s, trainer waiting) found NOTHING 500 u past the greedy (d 25,072): beam 24,915 / branched beams (forks 5006,
+  4875, 4745) 24,915 / 24,810 / 24,925 / GE x1.0-1.04 24,848 / x1.08 24,789 / x1.12 (~24,8xx) - all 56.4-56.6%.
+* Gate 18 (56.14%): every passing greedy episode spirals UP (vz +330..+590, the horizontal velocity rotating ~360 deg)
+  at (-2,310, 2,540, z ~1,990) and touches kill volume *210 (a sheet, z 2,010-2,028) / *192 (z 2,017-2,340). The record
+  (ANALYSIS ONLY) passes ~100 u further west at the same height and rises on to z ~2,500 by 57-58% with h ~2,800; our
+  line arrives with h ~2,300 (it cannot reach z 2,500 at all): an ENERGY gate.
+* Where the energy goes (the search-1 beam line, the policy's own, crash = h drop events): 50.23% a wall (vx -704 -> 0,
+  -287 u), 51.8% a flat landing on a floor at z ~2,554 (vz -1,069 -> 0, -707 u), 52.8% a landing at z 2,206 (vz -763 ->
+  0, -451 u), 56.12% a wall (-210 u): ~1,650 u lost over 50-56%. The record (ANALYSIS ONLY) loses ~430 u there in one
+  softer landing at 51.4-51.9% and flies 52-54% at 1,000-1,240 u/s ~150-250 u higher. Energy at 53%: line 2,319 /
+  record ~3,230.
+* A dh-ranked (K 2) beam with half the copies forked 0.9 s before the 50.23% wall (view bursts): frontier 24,812
+  (56.58%), every forked lineage dead, the energy profile within ~100 u of the plain beam's - ranking by energy does not
+  change the policy's landings (round 4's finding again).
+* GE_e1 (20:50 UTC, beside the trainer, 14 threads, 12 min): explore_phase1 --exact-chains --view-follow --tick-ms 8,
+  unboosted, rooted at 48 of the search-1 beam line's states over 49.0-52.8% (BEFORE its three hard landings); the pick
+  is by ENERGY at matched depth (tools/ge_energy_pick.py, new: the archive's most energetic cells past a field depth,
+  compared with the line's energy at the same depth), not by depth.
+* c1 evals after search 1: 56.119 / **56.204** (24.231B, 8/9 at 56.1-56.2%) / 56.144 / 56.180 (24.382B). Handoff snapshot
+  for 56.204 pulled: ckpt_24151851008.
+* **GE_e1 result (12 min beside the trainer, 183,882 cells): the energy picks beat the policy's line at matched depth** -
+  52.0%: h 3,329 vs the line's 2,755 (+574 u); 53.0%: 3,044 vs 2,329 (**+715 u**); 54.0%: 2,795 vs 2,378 (+417); 55.0%:
+  2,535 vs 2,315 (+220); 56.0%: 2,219 vs 2,080 (+140). All from the roots just before the line's 51.8% flat landing:
+  the explorer avoids that landing (and the 52.8% one) and keeps ~700 u, then wastes it over the next 3 s (uniform
+  actions; the policy strafes energy IN). The deepest-cell pick (auto_spine's rule) can never see this: at 56% the
+  energetic chains are no deeper than the line.
+* Trainer stopped at 24.384B (21:07 UTC; ckpt_latest 24,379,392,000; curriculum at k05 tau 4346) so the
+  next search gets the whole CPU instead of the trainer's futile retry (search 2 at 24.48B would have repeated search 1).
+* **GE_e2** (21:05 UTC, 30 threads, 10 min): rooted at the last 1.2 s of the three most energetic chains (to 53.2% h 3,036,
+  53.0% h 3,043, 54.0% h 2,795; replayed exactly 5/5, 4/4, 10/10 links), unboosted, view-follow - a DEPTH search from the
+  energized states: does the climb past 56.6% open with ~+700 u?
+* **GE_e2** (stage 2, from the energized chains' last 1.2 s, unboosted, 10 min, 30 threads): deepest 56.21% - the
+  explorer spends the extra energy again before the climb (h ~2,190 there). beam_tas --start-state from the energized
+  chain ends (53.2% / 54.0%): every one of 4,096 copies dead within 100 ticks (round 4's start-state defect: the start
+  path is not the trainer's spawn), so the policy's own flight from those states could not be measured that way.
+* **GE_b1** (21:18 UTC, 12 min, 30 threads): 128 roots = the c1 beam line's last 4 s before its stall x1.2 / x1.3 + the
+  energized chains' last 1.2 s x1.1 / x1.2. Deepest per group: beam x1.3 **62.24%** (root = beam state 4,848, 56.1%;
+  sibling root 4,834: 59.27%), beam x1.2 56.77%, energized chains x1.1-1.2 53.5-55.4% (their roots are 2-3% back; 12
+  min did not carry them to the gate). Gate 18 needs ~+300-400 u of energy height at 56.1% (x1.3 at |v| ~975 = +410 u;
+  x1.2 = +260 u is not enough). The x1.3 chain past the gate: up to z ~2,350 at 56.9%, then it lands on a big floor
+  (z ~2,378) and WALKS it at 0-400 u/s for ~50 s to 62.24% (the record circles that room at 650-830 u/s on its walls
+  and ramps, ANALYSIS ONLY).
+* Spine autoresearch/spines/pbr5b1_b13c.npy + .keys.npy (tools/chain_spine.py, new): the beam line to 4,848 + the x1.3
+  chain cut at its first stop on that floor (58.15%, success line d <= 24,017 = 57.97%). Spawn file
+  autoresearch/spines/pbr5b1_spawn_energy.npy: the start-room states + 8 copies of the four energized chains (43% of
+  the --spawn-states draws), so training also practises the line that keeps its energy through 51-54% - the gate
+  passes on the policy's own energy only if it arrives with ~+300 u.
+* **pbr5b1_c2** (21:38 UTC): c1's ckpt_latest (24,379,392,000, md5 cb671f5f...) + spine b13c + its keys + milestones
+  44939 ... 27001, 25121 (k05's line) + spawn_energy (0.2) + c1's other flags, --auto-spine as before, 4e9 steps.
