@@ -149,3 +149,8 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   duck; engine bins) are the policy's own resolved beam keys on the g11 rows and the explorer's on the chain
   rows (pbr4b3_ge16vf.keys.npy, md5 baf91cbccc1580b0145cd6b609b9dc21, before translation); for train_fast
   --demo-keys. No demo, no record (pbr4b3, round 4).
+* `pbr4b3_auto_t9k01.npy` + `.keys.npy` (5,100 rows; md5 32fbfb3b05a6251f71a9404715701a4b /
+  26abfd8a3fedb29086b0c76fe360f976): found BY THE TRAINER (pbr4b3_t9's auto-spine search 1 at 19.598B, 64 s):
+  its branched beam - beam_tas from the true spawn on t9's weights at their own 7.67 ms tick, half the copies
+  forked 1 s before the greedy line's stall with held view offsets - past gate 12 to 34.99%. The keys are the
+  beam's own resolved held keys per row (auto_spine.keys_from_acts). No demo, no record (pbr4b3, round 4).

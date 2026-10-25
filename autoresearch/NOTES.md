@@ -1929,3 +1929,16 @@ over-subscribes the quota. This branch's surfgym now caps numba; the operator ma
   view along the velocity - exactly what the policy has to learn to keep.
 * **pbr4b3_t9** (14:04 UTC): t8's 19.296B weights (md5 d717d97d...) + that spine + `--demo-keys` + t8's other flags.
   t8's handoff: t7's ckpt_latest (the weights t8 resumed) placed as pbr4b3_t8/ckpt_18770558976.pt.
+
+### GATE 12 OPENS WITH THE HELD KEYS, AND THE LOOP RUNS: 33.376 -> 36.211 (2026-10-25 14:20-14:32 UTC)
+* t9 (spine pbr4b3_ge16ck = the canonical view + translated held keys, `--demo-keys`): evals 29.295 / 29.283 /
+  29.317 / 29.227 then **33.376** (19.598B, 8/9 greedy episodes at 33.0-33.4%) - the ramp band that held t4-t8
+  for 2.5 hours (0-9%) passed as soon as a spawn there held the left strafe the line was flown with.
+* The 8/9 quorum fired the trainer's own auto-spine: search 1 (64 s) - the branched beam past gate 12 to 34.99%
+  (k01, 5,100 states); search 2 at 19.674B (43 s) - the PLAIN beam to **41.07%** (k02, 5,400 states, success
+  line 40.9%). Evals **35.830** (19.674B) / **36.211** (19.749B, median 35.58%). The curriculum walks k02 back at
+  74-84% band success, 40 states a move. Handoff milestone ckpt_19696451584 pulled.
+* The swap dropped --demo-keys (the old trainer had no keys for an auto spine): fixed for the next launch
+  (4c8f7cb: auto_spine writes spine.keys.npy - a beam line's from its own action table, a GE splice's from the
+  archive's link actions translated with the view - and --demo-keys loads it on a swap). t9 runs on unchanged
+  (the beam lines are the policy's own, and their bands pass anyway).
