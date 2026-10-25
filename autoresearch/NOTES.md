@@ -1856,3 +1856,33 @@ throttled) and could read it as a bad box. The fix is one line in python/train_f
   Round 2: K 3 -> 8 carried the x -1,015 wall after ~800M steps; round 3: K 8 -> 12 did not move the
   gate-8 U-turn energy. Read-out: pb_energy_profile at 21-26.5% against c8's, and any eval past
   27.114.
+
+### pbr4b4 round 4 lesson (DRAFT 12:16 UTC, finalised at wrap-up)
+* **Score 24.737 -> 27.114** (pbr4b4_c7 16.78B; median episode 26.9%): the greedy line from the
+  true start passes gate 10 (the 24.4% ramp climb), gate 11 (the upper floor: fly EAST over it
+  without landing, surf the east wall, climb the north ramp) and dies in the north gap's fall-catch
+  sheet at 27.0-27.1%. Gate 12 (the gap) needs ~+190 u of energy height (a slot at y -1,575..-1,425
+  that the record reaches at ~705 u/s; we arrive at ~560-600).
+* **What worked, in order:**
+  1. A plain beam on the incumbent's weights already reached 26.39% (round 3's k03 curriculum had
+     taught the ramp) -> spine -> curriculum + milestones -> the greedy followed in ~1.1B steps.
+  2. Gate 11 is a FLOOR LANDING, not missing energy: ground friction (4%/tick) took 708 -> 250 u/s
+     in 0.3 s and CS's bhop cap (jump > 300 u/s -> 240) forbids a jump-landing; an unboosted GE
+     (uniform random actions, rooted at the line's own 20.0-21.3 s) found the east flight that never
+     lands; the curriculum crossed it in ~370M steps.
+  3. Energy-ranked beams (beam_tas --score dh K 10) found 26.99% where d-ranked stopped at 26.33%
+     from the same weights (they keep the lineages that do not lose speed) -> auto_spine
+     --beam-energy so the trainer's own search runs one.
+  4. Two trainer fixes that every future run needs: NUMBA_NUM_THREADS capped at the OMP team (a
+     64-thread host with a 30.7-CPU quota ran the trainer at 12k steps/s, 341k after) and
+     --save-best-eval (the exact weights of every new best eval, named at its step - three times
+     this round the best eval fell between 1e9 snapshots and ckpt_latest moved on within a minute).
+* **What did not:** view-branched beams at gates 11/12; boosted GE (x1.08, x1.15, x1.25) at the gap
+  (x1.25 got to 27.48% and still short of the slot); --respawn-greedy-impacts (K 2/3: +20-40 u
+  early, then flat over ~800M steps); the trainer's GE ladder at the gap (x1.12 cannot buy 190 u).
+* **The energy question, for the user and the next rounds:** the policy already strafes at the
+  10 ms tick's free-flight ceiling (56 u/s of energy height per second); from 10% to 26.5% it gains
+  ~470 u while the record (131 fps, ceiling 74) nets ~170 u more. A 7.63 ms tick would scale our
+  gains by ~1.31 (+~145 u by the gap) - written above as a recommendation, not acted on (it changes
+  the task every round inherits). The user's first-ramp pump: the record's +154 u at 1% has shrunk
+  to +25 u by 10% (it spends it in the tunnel and the drops), so it is not what the later gates lack.
