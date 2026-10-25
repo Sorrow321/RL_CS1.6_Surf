@@ -2124,3 +2124,31 @@ over-subscribes the quota. This branch's surfgym now caps numba; the operator ma
   23.364B and being learned when the round ended. Gate 16 (~51%, a fail trigger at the north end of the corridor)
   fell to the policy's own beam line within ~150M steps. The loop is running: let its patience fire before
   intervening.
+
+## pbr5b4 (round 5, slot 4) - 2026-10-25 19:48 UTC start
+
+Incumbent: pbr4b3_t11 traj_23590338560 (52.937, 9/9 greedy at 52.8-52.94%), weights ckpt_23551016960
+(md5 7fbcd458..., = $AR_HOME/incumbent/r4/ckpt.pt; tick 7.667 ms, spine k05 swapped in at 23.364B).
+
+### No box at the start (19:50-20:05 UTC)
+* `box.py rent` refused: two boxes already hold 0.984 of the fleet's 1.2 $/h cap and the only offer that
+  passes the query is a 0.62 $/h 5080 (no 3080 / 4070 / 60 Ti class offer with >= 32 threads at the
+  time). A background watcher retries the rent every 60 s; deploy + launch are scripted to follow it.
+
+### Where the incumbent's line loses its energy (ANALYSIS of our own lines; the record is ANALYSIS ONLY)
+* The incumbent greedy dies at 52.9% falling at vz -903 into a fail volume at z ~2,200 (-2,434, 1,100),
+  36.5 s in; its energy height h = z + |v|^2/1600 is ~3,680 at 50%, ~3,520 at 51%, ~2,810 at 52% (the
+  record: 3,565 / 3,614 / 3,193).
+* Spine k05 (the beam to 4,344 + an unboosted view-follow GE chain to 56.22%) is a chain of crashes
+  from 50% on: single-tick losses of 254 (wall, 50.2%), ~245 (51.0-51.2%), ~330 (51.6-51.7%), 335 (a
+  landing at 52.7%), 348 (54.0%), 171 (56.1%) u of h. From 50% to 56% it loses ~1,620 u (3,772 ->
+  2,151); the record ~790 (3,565 -> 2,772). k05 ends at 56.22% at 209 u/s (h ~1,993) at the top of a
+  climb (z 1,966); the record's route climbs on to z ~2,508 by 58% with h ~2,845. Prediction: once the
+  greedy flies k05, the next gate needs ~+600-800 u of energy height, beyond the GE ladder's x1.12.
+* `--auto-spine-pick-energy` (new, 42e46d9; off = byte-identical; TRAIN_ONLY): a GE stage's chain ends
+  at the archive cell past the spine's bar (greedy frontier - gain) with the highest training
+  potential -100 d / d0 + K h / 1000 (K = the run's --energy-pot, the objective's own two terms) that
+  survives >= 25% of 32 uniform-random 1 s rollouts (a fall into a fatal volume keeps its h until it
+  hits), instead of the deepest cell; the spine ends at the pick. tools/ge_replay.py --pick-energy /
+  --pick-max-d / --pick-d0, tools/auto_spine.py --ge-pick-energy / --d0. Generic: the reward's own
+  potential, no map constant. Tests: test_auto_spine.py (pick order, plumbing, the cut, survival).
