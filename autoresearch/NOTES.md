@@ -1308,3 +1308,22 @@ the budget pace (0.69 $/h) admit one box; until then every rent was refused (0.1
   no extend into the $10 reserve. No change to this branch's runs.
 * **pbr3b4_as5** (23:49 UTC): as4's 11.191B weights (md5 e71cecf4...) + the same flags, trainer
   0835494+ (the stall-aware branch fork) and auto_spine b4e1103, --auto-spine-delay 1e8, 3B steps.
+
+### Gate 10 (the crawl at 24.2%): a landing, and the k03 curriculum under milestones (00:20-00:37 UTC)
+* as5 evals: 24.427 / 24.511 / 24.420 (9/9 greedy episodes past the 24.0% line every time).
+  as5 search 1 (1,537 s): beam 43,240 / branched beam (asked 19.1 s, forked at the next resample
+  boundary 20.0 s = the crawl landing itself) 43,245 / GE x1.0-1.04 43,006 / x1.08 42,954 / x1.12
+  42,964 - no line 500 u past the greedy (43,235).
+* Manual branched beams on as5's weights forking EARLIER: at 17 s 43,261, at 18 s 43,133-43,183
+  (1,836 forked lineages alive at 20 s, none deeper). auto_spine now runs branched beams at the fork
+  tick and 1 s and 2 s before it (--branch-extra-secs 1,2; ~20 s each), aa20918, with a test.
+* Gate 10 is a LANDING: the greedy line flies over the gate-9 wall at y ~-2,870 and drifts north,
+  landing hard on a floor at (2,372, -2,752) (912 -> 548 u/s, energy height -540 u) and crawling;
+  the x1.12 chain (k03) and the record stay ~150-250 u further south (y ~-3,000..-3,115) and catch
+  a ramp at x ~2,444 rising to z ~3,234 (vz +649 there), then north at x ~3,600.
+* **pbr3b4_as6** (00:36 UTC): as5's 11.377B weights (md5 d14fc257...) + spine k03 (success line
+  26.49%) + --demo-milestones 44939,43426 (the k01 and k02 lines: the greedy's current crossings
+  keep paying, so the beam10 erosion of as3's k03 phase cannot repeat) + --auto-spine
+  --auto-spine-milestones (delay 6e8, patience 6e8), 3B steps. Question: does the curriculum get
+  through the boosted chain's ramp-catch band (as3: 0-30% at ~1,885 for ~150M steps) when the
+  route is protected, and does the greedy follow?
