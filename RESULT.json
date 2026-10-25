@@ -3,27 +3,27 @@
  "round": 4,
  "final": false,
  "best": {
-  "score": 27.114,
-  "eval_file": "/home/steam/ar_pb/runs/pbr4b4/pbr4b4_c7/traj_16780886016.jsonl",
-  "run": "pbr4b4_c7",
-  "step": 16780886016,
-  "ckpt": "/home/steam/ar_pb/runs/pbr4b4/pbr4b4_c7/ckpt_16780886016.pt",
-  "ckpt_step": 16780886016,
-  "ckpt_md5": "14fd99cd83c00901acfe31a010214a13",
+  "score": 27.165,
+  "eval_file": "/home/steam/ar_pb/runs/pbr4b4/pbr4b4_c10/traj_17915445248.jsonl",
+  "run": "pbr4b4_c10",
+  "step": 17915445248,
+  "ckpt": "/home/steam/ar_pb/runs/pbr4b4/pbr4b4_c10/ckpt_17915445248.pt",
+  "ckpt_step": 17915445248,
+  "ckpt_md5": "f85344427fdb844a641bb2dabae7d5c6",
   "recipe": [
    "resume of the incumbent pbr3b4_as10 13.4999B weights",
-   "--demo-file runs/spine_dh10.npy (autoresearch/spines/pbr4b4_beam_dh10.npy: c4's own beam ranked by -d + 10 x energy height, to 26.99%) --demo-tau0 1740 --demo-window 5 --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5 --demo-rate 0.3 --demo-front-frac 0.4 --demo-success-d 100 --demo-success-bonus 50 --demo-milestones 44939,43426,42363,42171,42007",
+   "--demo-file runs/spine_dh10.npy (autoresearch/spines/pbr4b4_beam_dh10.npy: c4's own beam ranked by -d + 10 x energy height, to 26.99%) --demo-tau0 1730 --demo-window 5 --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5 --demo-rate 0.3 --demo-front-frac 0.4 --demo-success-d 100 --demo-success-bonus 50 --demo-milestones 44939,43426,42363,42171,42007",
    "--keys-hold-spawn-duck --yaw-entropy 0 --demo-front-temp 0.5 --demo-front-ticks 40 --demo-front-view 6",
-   "--respawn-greedy 0.25 --respawn-greedy-impacts 2 --respawn-greedy-window 0.25 2.0 --respawn-greedy-stuck 200 --respawn-greedy-contact --respawn-greedy-temp 0.5 --respawn-greedy-temp-ticks 100 --respawn-greedy-temp-view 6 --respawn-greedy-speed 1.0 1.05",
+   "--respawn-greedy 0.25 --respawn-greedy-impacts 3 --respawn-greedy-window 0.25 2.0 --respawn-greedy-stuck 200 --respawn-greedy-contact --respawn-greedy-temp 0.5 --respawn-greedy-temp-ticks 100 --respawn-greedy-temp-view 6 --respawn-greedy-speed 1.0 1.05",
    "--respawn-front-perturb 0.2 --respawn-front-perturb-band 0.005 --respawn-front-perturb-speed 1.0 1.3 --respawn-front-perturb-turn 90",
-   "--energy-pot 12 --energy-pot-front 0 --energy-pot-front-bonus 0 --no-respawn-novel --respawn-backward-mix 0 --int-real-only 0",
+   "--energy-pot 24 --energy-pot-front 0 --energy-pot-front-bonus 0 --no-respawn-novel --respawn-backward-mix 0 --int-real-only 0",
    "--spawn-states autoresearch/spines/pbr1b1_entry_ge_states.npy --spawn-states-frac 0.2 --maxvel 3500",
-   "--auto-spine --auto-spine-milestones --auto-spine-delay 5e8 --auto-spine-retry 4e8 --auto-spine-patience 1.5e9 --auto-spine-gain 500 --auto-spine-ge-minutes 8",
+   "--auto-spine --auto-spine-milestones --auto-spine-delay 2e8 --auto-spine-retry 6e8 --auto-spine-patience 1.5e9 --auto-spine-gain 200 --auto-spine-ge-minutes 0",
    "--save-best-eval 1",
    "--auto-spine-beam-energy 10"
   ],
-  "resume_from": "pbr4b4_c6 ckpt_latest 16.554B <- c5 16.222B <- c4 16.208B <- c3 15.688B <- c2 15.052B <- incumbent pbr3b4_as10 13.4999B",
+  "resume_from": "pbr4b4_c9 ckpt_latest 17.915B (these weights; c10's resume eval) <- c8 17.349B <- c7 16.906B <- c6 16.554B <- c5 <- c4 <- c3 <- c2 <- incumbent pbr3b4_as10 13.4999B",
   "commit": "3383db2"
  },
- "summary": "Score 24.737 -> 27.114 (pbr4b4_c7 16.78B, exact weights by --save-best-eval). Chain: the incumbent's own beam passed gate 10 (26.39%) -> curriculum (c2) -> the trainer's own spine k01 (c3) -> an unboosted Go-Explore chain past the upper-floor landing (east flight; c4, 26.896) -> c4's own beam ranked by -d + 10 x energy height to the north gap (26.99%; c6, 27.056). Next gate: the gap north of the north ramp (record ~690 u/s there, ours ~600, ~200 u of energy short; lost at the gate-8 corridor landing, the gate-9 wall clip and the upper-floor contact). New this round: numba thread cap (12k -> 341k steps/s), --save-best-eval, auto_spine --beam-energy, --respawn-greedy-impacts (c7: energy at matched progress +20-40 u so far)."
+ "summary": "Score 24.737 -> 27.165 (c9's final weights, evaluated at pbr4b4_c10's resume 17.915B, exact weights by --save-best-eval). Chain: the incumbent's own beam passed gate 10 (26.39%) -> curriculum (c2) -> the trainer's own spine k01 (c3) -> an unboosted Go-Explore chain past the upper-floor landing (east flight; c4, 26.896) -> c4's own beam ranked by -d + 10 x energy height to the north gap (26.99%; c6, 27.056). Next gate: the gap north of the north ramp (record ~690 u/s there, ours ~600, ~200 u of energy short; lost at the gate-8 corridor landing, the gate-9 wall clip and the upper-floor contact). New this round: numba thread cap (12k -> 341k steps/s), --save-best-eval, auto_spine --beam-energy, --respawn-greedy-impacts (c7: energy at matched progress +20-40 u so far)."
 }
