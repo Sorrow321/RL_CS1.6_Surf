@@ -1924,3 +1924,7 @@ throttled) and could read it as a bad box. The fix is one line in python/train_f
   pulled). The energy rises at last: 22% median 3,516-3,528 (was ~3,410: the gate-9 clip is gone
   from most episodes), 24% 3,450-3,465, 26.5% **3,559-3,578** (c10 ~3,515). The gap wants ~3,735.
   Box extended to 17:14 UTC (14:14).
+* c11 at 19.76B: one eval collapsed to **10.386** (9/9 died at the 10.3-10.4% drop-surf landing - one
+  of the impact-approach anchors, whose rows are also boosted x1.0-1.5 by --respawn-greedy-speed),
+  then 26.953 / 27.143 / 27.161 (19.84-19.99B) and the energy fell back (26.5%: 3,527-3,536; the
+  gate-9 clip back in some episodes). The c11 gain is noisy: best 27.226, energy +0..60 u.
