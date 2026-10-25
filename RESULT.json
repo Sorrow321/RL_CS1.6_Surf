@@ -3,10 +3,10 @@
  "round": 5,
  "final": false,
  "best": {
-  "score": 52.893,
-  "eval_file": "/home/steam/ar_pb/runs/pbr5b4/pbr5b4_c1/traj_23551541248.jsonl",
+  "score": 52.937,
+  "eval_file": "/home/steam/ar_pb/runs/pbr5b4/pbr5b4_c1/traj_23627038720.jsonl",
   "run": "pbr5b4_c1",
-  "step": 23551541248,
+  "step": 23627038720,
   "ckpt": "/home/steam/ar_pb/incumbent/r4/ckpt.pt",
   "recipe": [
    "resume of the round-4 incumbent (pbr4b3_t11 ckpt_23551016960)",
@@ -17,5 +17,5 @@
   "resume_from": "pbr4b3_t11 ckpt_23551016960 (tick 7.667 ms)",
   "commit": "0294841"
  },
- "summary": "pbr5b4_c1 (launched 22:39 UTC on a 0.163 $/h RTX 5060 Ti, ~157k steps/s): the incumbent resumed on spine k05 with t11's flags + the trainer's --auto-spine loop + --auto-spine-pick-energy (new: a GE chain ends at the viable cell past the bar with the highest progress + energy-pot potential, not the deepest). First eval 52.893 (the incumbent's own weights). Before that: no box for 2.8 h (fleet cap), one capped 4060 Ti blocklisted. Watching for the greedy to fly k05 (to 56.2%) and for an energy wall after it."
+ "summary": "pbr5b4_c1 (the incumbent on k05, RTX 5060 Ti ~150k steps/s): flat 52.85-52.94 (best 52.937) while its curriculum walked k05 back to the 52.7% landing. Two Go-Explore stages beside the trainer found that landing kept smooth (energy height ~3,000 through 53-54% vs k05's ~2,450; the record lands there at 1,278 u/s): spine pbr5b4_e1 (own beam + 2 stacked GE chains, tools/ge_stack_spine.py, chosen by the new --pick-energy). pbr5b4_c2 (23:36 UTC) = c1's weights on that spine + auto-spine with the energy pick. Fixed: auto_spine took held keys from the deepest chain, not the picked one."
 }

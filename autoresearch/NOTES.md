@@ -2195,3 +2195,28 @@ the 85% copy ratio of the other references) would let the gate measure instead o
   ran ~330-350k. One 75M-step eval per ~8 min.
 * First eval (23,551,541,248 = the incumbent's own weights): **52.893** (5/9 at 52.83-52.89%, 4/9 at
   50.2-51.1%); the curriculum walked k05 back 5001 -> 4726 within ~10M steps (bands 57-100%).
+* c1 evals (23.55-24.00B, the curriculum on k05): 52.893 / **52.937** / 52.927 / 52.889 / 52.911 / 52.853 /
+  52.937 - flat at the greedy's 52.9% death while the curriculum walked k05 back to ~4,401-4,411 (k05's GE root is
+  4,344) and oscillated there (bands 0.4-45%). Stopped at 24.04B (ckpt_latest 24,036,507,648, md5 16829d98...).
+
+### Two Go-Explore stages beside the trainer find a smooth 52.7% landing (22:50-23:30 UTC)
+The trainer used ~12 of the box's 30.7-CPU quota, so each stage ran beside it at 12 threads (the trainer lost ~5%):
+* GE#1 (15 min, 4,096 envs, view-follow, 8 ms, 64 u x energy 32, 48 roots = k05's own beam rows 3,822-4,344, i.e.
+  the 4 s before its GE root; 220,551 cells; deepest viable 56.35% at h 2,259, 266 u above k05's end): viable
+  cells reach h 3,560 at 51.5-52% (k05 3,176) and 3,060 at 52-52.5% (k05 2,866), but EVERY line falls to h <= ~2,465
+  at 53-54% - the floor landing at 52.7% (k05 hits it at vz -726: -335 u in one tick). The record (ANALYSIS ONLY)
+  is at that floor's height at 53% at 1,278 u/s (h ~3,234): it lands tangentially.
+* GE#2 (15 min, 32 u x energy 16, roots = GE#1's 32 most energetic VIABLE cells at 51.4-52.2%, >= 48 u apart;
+  1,315,658 cells): the landing kept - viable max h 3,010 at 52.5-53%, **3,017 at 53-53.5% (k05 2,457), 2,983 at
+  53.5-54%, 2,990 at 54-54.5%**; then a second loss at ~54.5% (2,507 at 54.5-55%, ~2,300 at 55-56%; record 2,961 at
+  55%). ge_replay --pick-energy at the 53.72% bar picks 54.04% (h 2,990, 1,527 u/s, lived 1.2 s on).
+* A real bug found on the way: auto_spine.chain_keys always rebuilt the held keys from the DEEPEST cell's chain,
+  so with --pick-energy the keys of a picked chain were dropped or wrong. Fixed (5e994a1): ge_replay writes
+  <line>.cell.json and chain_keys reads that cell; test_chain_keys_follow_the_chosen_cell. The box pulled it.
+* tools/ge_stack_spine.py (new): replays each stage's exact chain to its end cell, splices it where its root sits
+  on the line built so far, views along the velocity, keys translated. Spine autoresearch/spines/pbr5b4_e1.npy (+
+  keys): k05's beam rows 0-4,233 + GE#1's chain (191) + GE#2's chain (225) = 4,648 states to 54.04%, energy height
+  ~3,000 all through 51.5-54% (k05: 3,176 / 2,852 / 2,427 / 2,442 / 2,476 at 51.5 / 52 / 52.8 / 53 / 54%).
+* **pbr5b4_c2** (23:36 UTC): c1's 24.0365B weights + spine pbr5b4_e1 (success line d <= 26,365 = 53.87%) + the same
+  14 milestones and flags (auto-spine with the energy pick). Question: does the greedy learn the smooth landing
+  (and then carry ~+500 u into 54-56%, where k05's line had too little for the climb after 56%)?
