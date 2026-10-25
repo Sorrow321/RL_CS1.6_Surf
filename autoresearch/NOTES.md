@@ -1942,3 +1942,11 @@ over-subscribes the quota. This branch's surfgym now caps numba; the operator ma
   (4c8f7cb: auto_spine writes spine.keys.npy - a beam line's from its own action table, a GE splice's from the
   archive's link actions translated with the view - and --demo-keys loads it on a swap). t9 runs on unchanged
   (the beam lines are the policy's own, and their bands pass anyway).
+* t9 evals 38.765 / 37.487 / **42.963** / 43.211 / **44.025** (20.127B, median 43.82%): the trainer's auto-spine
+  ran itself - search 3 (19.976B, 127 s): branched beam to 43.73% (k03, 6,200 states); search 4 (20.127B, 74 s):
+  branched beam to 45.18% (k04, 4,700 states). Four swaps in 30 min, milestones accumulating (44939 ... 32260).
+  Handoff milestone ckpt_20097007616 pulled (and t9's ckpt_latest 20.189B).
+* k04's band [4629,4633] sat at 2-4% against [4624,...] 99% (a cliff like the gate-12 ramp's), with the keys
+  dropped on the swap. **pbr4b3_t10** (14:56 UTC): t9's 20.189B weights (md5 a228de09...) + k04 with its held keys
+  (autoresearch/spines/pbr4b3_auto_t9k04.*, `--demo-keys`, `--demo-tau0 4629`) + all nine milestones + the trainer
+  that keeps keys across auto-spine swaps (4c8f7cb), the rest as t9.
