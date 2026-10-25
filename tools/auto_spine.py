@@ -112,13 +112,13 @@ def run(cmd, log, timeout):
     return rc
 
 
-def beam(a, out: Path, branch_tick: int = 0):
+def beam(a, out: Path, branch_tick: int = 0, tag: str = None):
     """beam_tas from the true start; ``branch_tick`` > 0 forks half the population there
     with held VIEW offsets (--branch-at, --branch-view-only: the policy's own keys) for
     --branch-burst-secs, protected --branch-protect generations - a different manoeuvre at the
     place the greedy line commits to its death, which the policy's own narrow proposals
     (a collapsed yaw sigma) never try."""
-    tag = "beam" if branch_tick <= 0 else "beam_br"
+    tag = tag or ("beam" if branch_tick <= 0 else "beam_br")
     bd = out / tag
     bd.mkdir(parents=True, exist_ok=True)
     cmd = [sys.executable, "-u", ROOT / "tools" / "beam_tas.py", a.ckpt, "--map", a.map,
@@ -261,6 +261,9 @@ def main(argv=None) -> int:
     ap.add_argument("--branch-tick", type=int, default=0,
                     help="> 0: when the plain beam falls short, a second beam forks half its "
                          "population at this tick (the greedy line's commitment point)")
+    ap.add_argument("--branch-extra-secs", default="1,2",
+                    help="comma list: further branched beams forking this many seconds before "
+                         "--branch-tick (each ~20 s on a 5080), the deepest line kept")
     ap.add_argument("--branch-burst-secs", type=float, default=2.0)
     ap.add_argument("--branch-hold-secs", type=float, default=0.5)
     ap.add_argument("--branch-jitter", type=int, default=45,
@@ -290,20 +293,30 @@ def main(argv=None) -> int:
               f"frontier {a.greedy_d:,.0f}", flush=True)
         if de < a.greedy_d - a.gain:
             best_src = ("beam", line[:e + 1], de)
-        if best_src is None and a.branch_tick > 0:
-            bl, bi = beam(a, out, a.branch_tick)
+        # branched beams: the fork at --branch-tick and --branch-extra-secs earlier (a fork AT
+        # the commitment point only perturbs what is already decided; each beam costs ~20 s)
+        forks = [] if a.branch_tick <= 0 else [a.branch_tick] + [
+            int(a.branch_tick - float(x) * TICKS_PER_S) for x in
+            str(a.branch_extra_secs).split(",") if x.strip()]
+        for k, ft in enumerate([f for f in forks if f > 0]):
+            if best_src is not None:
+                break
+            tag = "beam_br" if k == 0 else f"beam_br{k + 1}"
+            bl, bi = beam(a, out, ft, tag=tag)
             res.update(bi)
-            if bl is not None and len(bl):
-                bd_ = field_d(field, bl)
-                be, bde = cut_line(bl, bd_, a.contact_tol, a.cut)
-                res.update(br_len=int(len(bl)), br_end=be, br_end_d=bde,
-                           br_best_d=float(bd_.min()))
-                print(f"branched beam line (fork at tick {a.branch_tick}): {len(bl)} states, "
-                      f"best d {bd_.min():,.0f}, cut at {be} d {bde:,.0f}", flush=True)
-                if bde < a.greedy_d - a.gain:
-                    best_src = ("beam_br", bl[:be + 1], bde)
-                elif bde < de:
-                    line, d, e, de = bl, bd_, be, bde     # GE roots on the deeper line
+            if bl is None or not len(bl):
+                continue
+            bd_ = field_d(field, bl)
+            be, bde = cut_line(bl, bd_, a.contact_tol, a.cut)
+            pre = "br" if k == 0 else f"br{k + 1}"
+            res.update({f"{pre}_len": int(len(bl)), f"{pre}_end": be, f"{pre}_end_d": bde,
+                        f"{pre}_best_d": float(bd_.min()), f"{pre}_fork": int(ft)})
+            print(f"branched beam line (fork at tick {ft}): {len(bl)} states, "
+                  f"best d {bd_.min():,.0f}, cut at {be} d {bde:,.0f}", flush=True)
+            if bde < a.greedy_d - a.gain:
+                best_src = (tag, bl[:be + 1], bde)
+            elif bde < de:
+                line, d, e, de = bl, bd_, be, bde     # GE roots on the deepest line
         if best_src is None and a.ge_minutes > 0:
             st = min(e, stall_tick(d, a.stall_margin))
             res.update(beam_stall=st)

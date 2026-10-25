@@ -179,7 +179,7 @@ def test_ge_ladder_escalates_until_a_stage_passes(tmp_path, monkeypatch):
         s["velocity"][:, 0] = 500.0
         return s
     monkeypatch.setattr(auto_spine, "beam",
-                        lambda a, out, branch_tick=0: (line_to(600.0), {"beam_rc": 0}))
+                        lambda a, out, branch_tick=0, tag=None: (line_to(600.0), {"beam_rc": 0}))
     calls = []
 
     def fake_ge(a, out, line, end, boosts=None, tag="ge"):
@@ -261,3 +261,40 @@ def test_milestone_pay_rule():
     rec = np.array([99.0, 45.0, 10.0])           # row 2 was at 30 when 20 appeared: pays now
     n, paid = milestone_pay(rec, np.zeros(3, bool), ms + [20.0], paid)
     assert n.tolist() == [0, 0, 1]
+
+
+def test_branched_beams_fork_at_the_tick_and_earlier(tmp_path, monkeypatch):
+    """--branch-tick T --branch-extra-secs 1,2: branched beams fork at T, T - 1 s and T - 2 s
+    until one passes; the passing one is the spine."""
+    sys.path.insert(0, str(ROOT / "tools"))
+    import auto_spine
+    from surfgym.core import STATE_DTYPE
+    nx, ny, nz, cell = 64, 4, 4, 32.0
+    grid = np.zeros((nz, ny, nx), np.float32)
+    grid[:] = (10000.0 - (np.arange(nx) + 0.5) * cell)[None, None, :]
+    fp = tmp_path / "field.npz"
+    np.savez(fp, grid=grid, quant=np.float64(1.0), mins=np.zeros(3), cell=np.float64(cell),
+             reach_max=np.float64(20000.0))
+
+    def line_to(x_end, n=50):
+        s = np.zeros(n, STATE_DTYPE)
+        s["origin"][:, 0] = np.linspace(100.0, x_end, n)
+        s["origin"][:, 1:] = 50.0
+        return s
+    forks = []
+
+    def fake_beam(a, out, branch_tick=0, tag=None):
+        if branch_tick <= 0:
+            return line_to(600.0), {"beam_rc": 0}
+        forks.append((branch_tick, tag))
+        return line_to(1500.0 if branch_tick == 1500 else 650.0), {f"{tag}_rc": 0}
+    monkeypatch.setattr(auto_spine, "beam", fake_beam)
+    out = tmp_path / "k01"
+    rc = auto_spine.main(["--ckpt", "c.pt", "--map", "m.bsp", "--field", str(fp),
+                          "--out", str(out), "--greedy-d", "9400", "--gain", "500",
+                          "--branch-tick", "1700", "--branch-extra-secs", "1,2",
+                          "--ge-minutes", "0"])
+    assert rc == 0
+    assert forks == [(1700, "beam_br"), (1600, "beam_br2"), (1500, "beam_br3")]
+    info = json.loads((out / "spine.json").read_text())
+    assert info["source"] == "beam_br3" and info["br3_fork"] == 1500
