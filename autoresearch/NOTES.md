@@ -1950,3 +1950,8 @@ throttled) and could read it as a bad box. The fix is one line in python/train_f
   26.5% in the last one, gate-9 clean (22%: ~3,480), energy at 26.5% ~3,520-3,535. Stopped at
   20.651B (ckpt_latest md5 605c43e0..., pulled). **pbr4b4_c12** (15:20 UTC) = the same flags from
   those weights, to the round's end.
+* c12 evals (c11's flags continued): 27.117 / 27.198 / 27.089 / 27.095 / 27.078 / 27.047 / 26.355
+  (20.65-21.10B; the last a gate-9 dip): the 10 ms plateau is 27.0-27.2%. Its auto-spine search
+  (20.88B, beams only) found nothing past the greedy.
+* Search 9 (15:49 UTC, ANALYSIS): beams (d and dh K 10, 4,096 copies, 25 s cap) from the x1.45
+  launch state that crossed the slot, to map what lies past the gap for whoever gets the energy.
