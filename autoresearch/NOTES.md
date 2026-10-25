@@ -1452,3 +1452,7 @@ or cheaper offers in the query (a 3090 at <= 0.18 $/h would fit beside the 5080)
   let the downstream route re-fit at the higher energy; (2) with the pump's +50-150 u, re-search
   the 20.4% gate's launch and the post-ramp landing (velocity-frame GE, carryable-energy roots);
   (3) for any new spine, probe its end first and set the success line where survivors reach.
+* c5's last minutes (to 06:32 UTC, 10.51B): band [941,945] passed once at 73%, tau 931 (36%), then
+  [936] 0.0% and back to 941 (4.4%) - still walking into the pump; greedy evals 20.251 / 20.220 /
+  20.354. Box 57580595 released 06:34 UTC (everything cited is pulled: c1-c5 logs and evals, c3's
+  handed-on checkpoint, the three spines in autoresearch/spines/).
