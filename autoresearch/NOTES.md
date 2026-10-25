@@ -1540,3 +1540,7 @@ as7's 24.555 eval (ep0) vs the WR demo:
   3. view-only branching cannot turn a keys-hold policy around at the spawn (tried: K 3/8/15,
      forks at 0.2 s and 1 s) - forcing the first decisions needs the keys too, or a spawn-side
      exploration like (1).
+* as12 later evals (14.82-15.20B): 20.446 / 20.538 (two evals back at the gate-8 catch - a transient
+  the milestones pulled back) / 24.551 / 24.644 / 24.688 / 24.591; still 0/9 east of the spawn,
+  tunnel exit h ~3,815. The half-pipe practice disturbs the route a little and has not yet
+  changed the start.
