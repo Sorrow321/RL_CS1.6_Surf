@@ -1170,3 +1170,31 @@ one box at a time (e.g. a box-hours budget instead of a $/h rate), is needed for
   burn is capped at a flat 1.2 $/h and tier 0 now holds the 3080 / 4070 / 5070 / 60 Ti class
   under 0.20-0.30 $/h caps. A 3090 at 0.386 $/h passed at 23:41 and another branch rented it
   first (fleet burn 0.964); a waiter now rents the moment the dry-run passes.
+
+### pbr3b3 round 3 lesson (drafted 02:51 UTC, finalised at wrap-up)
+* **No box all round** (19:40 -> at least 02:50 UTC): first the budget pacer (0.174 $/h against
+  0.56+ $/h offers), then from 23:40 the operator's flat 1.2 $/h cap with two other branches'
+  boxes live (0.964 $/h) and no offer under the remaining 0.236 $/h. One 3090 slot opened at
+  23:41 and went to another branch within a minute. So: no eval, no score this round.
+* **Built for the lineage (CPU-tested, every flag off = bit-identical, all pushed):**
+  1. `train_fast --auto-beam N [--auto-ge M]` - round 2's search -> curriculum loop inside the
+     run: when a greedy eval has half its episodes past the spine's success line, beam_tas from
+     the map start on the current weights; the frontier line cut at its LAST CONTACT before its
+     deepest point becomes the spine (success line moved, tau at its end, demo_file in the
+     config); if not deep enough, Go-Explore --exact-chains from the line's own last 5 s,
+     replayed and spliced with canonical views; else retry after --auto-beam-retry evals. The CPU
+     pre-rent check ran it end to end on the incumbent (beam -> cut 17.43% -> GE -> not taken).
+  2. `beam_tas --start-state FILE[:I]` (searches from the policy's own state, keys-hold OK) and
+     `--prop-keys-temp / --prop-view-scale` (tempered proposals beside the greedy floor).
+* **Gate 8 (20.4%) understood, not passed:** the greedy line takes off at 17.46% (x -929) with
+  vz +280 and h ~3,654, then free-falls 1.45 s into trigger *187; the record (analysis only)
+  leaves the same ramp with vz +467 and h ~3,750 and lands on ramps at z ~2,900-2,960 that our
+  flight passes below. Energy deficit along the whole route 63-172 u (largest at the start pump
+  and at 13-17%). Local CPU search cannot cross it (2 GE root windows, 3 beams up to 1,024 envs,
+  tempered or not: every lineage flies the same flight). The reservoir past 20.4% is a dead-end
+  pocket at the catch's east edge.
+* **Next:** run the staged launch (runs/pbr3b3/_launch/ab1_launch.sh: the incumbent + beam12's
+  flags + `--auto-beam 4096 --auto-ge 10 --auto-beam-retry 6`; use --auto-beam 2048 on a 12 GB
+  card) and give gate 8 time under per-call energy shaping, as the x -1,015 wall needed ~830M
+  steps in round 2. If the loop's searches keep failing there, the upstream energy (13-17%) is
+  the lever, not the search width.
