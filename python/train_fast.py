@@ -7158,6 +7158,17 @@ def main() -> None:
                          "HI - LO seconds up to the launch, where the decisions that led to "
                          "the death were made (after it only air strafing acts). Off = the "
                          "death anchor, bit-identical; not restored")
+    ap.add_argument("--respawn-greedy-impacts", type=int, default=0,
+                    help="--respawn-greedy: K > 0 = the pool also holds the window's HI..LO "
+                         "seconds before each failed or stuck greedy episode's K largest drops "
+                         "of the energy height z + |v|^2/2g (over 0.1 s, >= "
+                         "--respawn-greedy-impact-min u, >= 1 s apart): the landings and wall "
+                         "hits where the deployed line loses energy (pbr4b4: princessburglar's "
+                         "later gates are all energy). With --respawn-greedy-temp those spawns "
+                         "explore; per-call energy shaping pays a softer landing at once. 0 = "
+                         "off, bit-identical")
+    ap.add_argument("--respawn-greedy-impact-min", type=float, default=40.0,
+                    help="--respawn-greedy-impacts: the smallest drop (u of energy height) kept")
     ap.add_argument("--respawn-greedy-temp", type=float, default=None,   # None = off
                     help="--respawn-greedy: T > 0 = an env whose episode STARTED on a greedy-line "
                          "row samples the keys at 1 + T and the yaw sigma x --respawn-greedy-"
@@ -11987,7 +11998,11 @@ def main() -> None:
                                     stuck=int(args.respawn_greedy_stuck or 0),
                                     turn=float(args.respawn_greedy_turn or 0.0),
                                     speed=args.respawn_greedy_speed,
-                                    contact=bool(args.respawn_greedy_contact))
+                                    contact=bool(args.respawn_greedy_contact),
+                                    **({"impacts": int(args.respawn_greedy_impacts),
+                                        "impact_min": float(args.respawn_greedy_impact_min),
+                                        "gravity": float(args.sv_gravity or 800.0)}
+                                       if int(args.respawn_greedy_impacts or 0) > 0 else {}))
         except ValueError as _e:
             raise SystemExit(str(_e))
         print(f"respawn GREEDY: {GREEDY.frac:.0%} of the non-start pool = the policy's own "
@@ -12003,6 +12018,8 @@ def main() -> None:
                  "(--respawn-greedy-contact)" if GREEDY.contact else ""))
     elif args.respawn_greedy_contact:
         raise SystemExit("--respawn-greedy-contact anchors the --respawn-greedy rows")
+    elif int(args.respawn_greedy_impacts or 0) > 0:
+        raise SystemExit("--respawn-greedy-impacts adds to the --respawn-greedy rows")
     if args.respawn_backward:
         for _i, slot in enumerate(slots):
             _fld = (slot.reward_field if slot.reward_field is not None
@@ -14773,6 +14790,9 @@ def main() -> None:
             meta["config"]["respawn_greedy_stuck"] = int(GREEDY.stuck)
         if GREEDY.contact:
             meta["config"]["respawn_greedy_contact"] = 1
+        if int(args.respawn_greedy_impacts or 0) > 0:
+            meta["config"]["respawn_greedy_impacts"] = int(args.respawn_greedy_impacts)
+            meta["config"]["respawn_greedy_impact_min"] = float(args.respawn_greedy_impact_min)
         if GREEDY.turn > 0.0:
             meta["config"]["respawn_greedy_turn"] = float(GREEDY.turn)
         if GREEDY.speed is not None:

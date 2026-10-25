@@ -47,6 +47,30 @@ def as_truncated(summaries, idx) -> list:
     return [dict(s, end="trunc") if i in idx else s for i, s in enumerate(summaries)]
 
 
+def energy_drops(ep, k: int, min_drop: float, gravity: float, per_s: float,
+                 before: int) -> list:
+    """The ticks of an episode's ``k`` largest drops of the energy height z + |v|^2/2g over
+    0.1 s (the drop's first tick), each at least ``min_drop`` u, at least 1 s apart, all
+    before tick ``before`` - where the line lost energy to a landing or a wall."""
+    o = np.asarray(ep["origin"], np.float64).reshape(-1, 3)
+    v = np.asarray(ep["velocity"], np.float64).reshape(-1, 3)
+    h = o[:, 2] + (v ** 2).sum(1) / (2.0 * float(gravity))
+    w = max(1, int(round(0.1 * per_s)))
+    n = min(len(h) - w, int(before))
+    if n <= 0 or k <= 0:
+        return []
+    drop = h[w:w + n] - h[:n]
+    order = np.argsort(drop, kind="stable")
+    gap = int(round(per_s))
+    out = []
+    for t in order:
+        if drop[t] > -float(min_drop) or len(out) >= int(k):
+            break
+        if all(abs(int(t) - u) >= gap for u in out):
+            out.append(int(t))
+    return sorted(out)
+
+
 def last_contact(ep, tail: int, tol: float = 1.0) -> int:
     """The index of the last state the map pushed back on, for an episode whose end is a
     ballistic flight: between contacts vz changes by one gravity step per tick, taken as the
@@ -74,7 +98,8 @@ def last_contact_vz(vz, tail: int, tol: float = 1.0) -> int:
 
 class GreedyLinePool:
     def __init__(self, frac: float, window=(0.5, 5.0), seed: int = 0, stuck: int = 0,
-                 turn: float = 0.0, speed=None, contact: bool = False):
+                 turn: float = 0.0, speed=None, contact: bool = False, impacts: int = 0,
+                 impact_min: float = 40.0, gravity: float = 800.0):
         frac = float(frac)
         if not 0.0 < frac < 1.0:
             raise ValueError(f"--respawn-greedy F needs 0 < F < 1, got {frac!r}")
@@ -106,6 +131,19 @@ class GreedyLinePool:
         # last contact nothing but air strafing acts, so the decisions that led to the death
         # are the ones before it. Off = the death anchor, as before
         self.contact = bool(contact)
+        # --respawn-greedy-impacts K (pbr4b4, 2026-10-25): also the HI..LO seconds before each
+        # unfinished greedy episode's K largest drops of the energy height z + |v|^2/2g (over
+        # 0.1 s, at least ``impact_min`` u, >= 1 s apart, before its last HI seconds) - the
+        # landings and wall hits where the line loses the energy its later gates need; under
+        # per-call energy shaping a softer landing is paid at once, so exploring there has a
+        # signal. 0 = off: the pool is the death / stop anchors' windows, as before
+        if int(impacts) < 0:
+            raise ValueError(f"--respawn-greedy-impacts K needs K >= 0, got {impacts!r}")
+        if not float(impact_min) > 0.0 or not float(gravity) > 0.0:
+            raise ValueError("--respawn-greedy-impacts needs impact_min > 0 and gravity > 0")
+        self.impacts = int(impacts)
+        self.impact_min = float(impact_min)
+        self.gravity = float(gravity)
         self._prng = np.random.default_rng(int(seed) + 7717)
         self.rng = np.random.default_rng(int(seed))
         self.rows = np.zeros(0, STATE_DTYPE)
@@ -179,7 +217,7 @@ class GreedyLinePool:
         self._eps, self._cur = [], []
         per_s = 1000.0 / float(tick_ms)
         lo_t, hi_t = int(round(self.lo * per_s)), int(round(self.hi * per_s))
-        keep, deaths, stops, launches, n_used = [], [], [], [], 0
+        keep, deaths, stops, launches, impacts, n_used = [], [], [], [], [], 0
         for i, ep in enumerate(eps):
             end = summaries[i].get("end") if i < len(summaries) else None
             n = len(ep)
@@ -207,6 +245,12 @@ class GreedyLinePool:
                             # the stalled stretch after the stop, evenly spaced
                             idx.append(np.unique(np.linspace(
                                 tb, n - 1, num=min(self.stuck, n - tb)).astype(np.int64)))
+            if self.impacts > 0:
+                for ti in energy_drops(ep, self.impacts, self.impact_min, self.gravity,
+                                       per_s, n - hi_t):
+                    if ti - lo_t > max(0, ti - hi_t):
+                        idx.append(np.arange(max(0, ti - hi_t), ti - lo_t))
+                        impacts.append(round(ti / per_s, 2))
             if idx:
                 keep.append(ep[np.unique(np.concatenate(idx))])
                 n_used += 1
@@ -220,6 +264,8 @@ class GreedyLinePool:
         self.info = {"eps": len(eps), "fail": n_used, "deaths_s": deaths, "stops_s": stops}
         if self.contact:
             self.info["launches_s"] = launches
+        if self.impacts > 0:
+            self.info["impacts_s"] = impacts
         return dict(self.info, rows=self.size)
 
     # -- the pool ------------------------------------------------------------
@@ -278,7 +324,11 @@ class GreedyLinePool:
                         ", ".join(f"{v:.1f}" for v in d) if d else "-", self.hi, self.lo,
                         ", ".join(f"{v:.1f}" for v in b) if b else "-", self.frac)
                 + ("" if la is None else "; fatal flights anchored at their last contact ({} s)"
-                   .format(", ".join(f"{v:.1f}" for v in la) if la else "none")))
+                   .format(", ".join(f"{v:.1f}" for v in la) if la else "none"))
+                + ("" if "impacts_s" not in self.info else
+                   "; + the approaches to {} energy drops >= {:g} u ({} s)".format(
+                       len(self.info["impacts_s"]), self.impact_min,
+                       ", ".join(f"{v:.1f}" for v in sorted(self.info["impacts_s"])) or "-")))
 
     # -- persistence ---------------------------------------------------------
     def state_dict(self) -> dict:
