@@ -64,3 +64,13 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   that line's own states before the impact (32 u x energy 16 cells, 12 min, 1.27M cells; ge_replay
   15/15 links): ~6.8 s of back-and-forth on the ramps there (h 2,972 -> ~3,220, a small pump), then
   east at 640-1,078 u/s to 18.86%. Views along the velocity. No demo, no record data (pbr2b3).
+* `pbr3b3_ge_ramp_11399.npy` (358 states, md5 f15f7f9b70cf65d333bdfa5cdccb7147): a line from the TRUE
+  SPAWN into the field-opposed half-pipe east of it (the user's "first ramp", NOTES 2026-10-25),
+  found by a generic rule: `tools/explore_phase1.py --exact-chains` from the true spawn (reward-free
+  uniform bursts, 64 u x energy 32 cells, 12 min on ~1 CPU core, runs/pbr3b3/_mom/ge_spawn), the
+  archive's highest-energy cell BEHIND the start on the shaping field (cell 11399, h 3,802), its chain
+  replayed exactly by `tools/ge_replay.py --cell 11399` (4/4 links) and cut at its last contact with
+  the map before that cell (train_fast.last_contact_cut: the chain's end falls into the half-pipe's
+  fatal bottom, trigger *127), views along the velocity (spine_canon_view). It walks east at 250 u/s,
+  drops in, crosses the bottom at ~806 u/s and climbs the far wall (h 3,653 -> 3,732 at the cut).
+  Stage (1) of NOTES's energy loop; never trained on yet. No demo, no record data (pbr3b3, round 3).
