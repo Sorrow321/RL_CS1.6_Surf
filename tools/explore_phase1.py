@@ -854,6 +854,15 @@ def explore(args) -> int:
     rew_h = np.zeros((ticks, n), np.float32)
     rid_h = np.full((ticks, n), -1, np.int32)
     act = np.zeros((n, 6), np.int32)
+    # --view-follow: each burst holds a view OFFSET from the horizontal velocity heading (the
+    # policy's --view-absolute velocity frame) instead of a yaw RATE, so a chain's manoeuvre is
+    # one the policy can express (keys relative to a view near the velocity); None = off
+    vf_set = (None if not getattr(args, "view_follow", None) else
+              np.array([float(x) for x in str(args.view_follow).split(",") if x.strip()]))
+    vf_off = np.zeros(n, np.float64)
+    if vf_set is not None:
+        from surfgym.core import YAW_BINS
+        vf_bins = YAW_BINS.astype(np.float64) * (float(cfg.yaw_rate_max_deg) / 10.0)
     cur_run = np.full(n, -1, np.int32)
     sv = core.states_view
     pitch_bin = 3                                  # PITCH_BINS[3] == 0 deg
@@ -869,6 +878,9 @@ def explore(args) -> int:
         act[idx, 3] = rng.integers(0, ACTION_NVEC[3], m)
         act[idx, 4] = rng.integers(0, ACTION_NVEC[4], m)
         act[idx, 5] = rng.integers(0, ACTION_NVEC[5], m) if args.duck else 0
+        if vf_set is not None:
+            # drawn after every existing draw: the flag-off random stream is untouched
+            vf_off[idx] = vf_set[rng.integers(0, vf_set.size, m)]
 
     # per-chunk run bookkeeping (parallel lists indexed by run id)
     r_t0: list[int] = []
@@ -931,6 +943,18 @@ def explore(args) -> int:
                     live = np.flatnonzero((cur_run >= 0)
                                           & (rng.random(n) >= args.repeat_p))
                     fresh_actions(live)
+                if vf_set is not None:
+                    # steer the view toward heading(v_h) + the burst's offset at the core's yaw
+                    # rate; below 100 u/s the drawn yaw rate stands (the policy's view mode is a
+                    # per-tick delta there too). The bins actually used are what acts_h records,
+                    # so ge_replay's chains stay exact
+                    vel = np.asarray(sv["velocity"], np.float64)
+                    fast = np.hypot(vel[:, 0], vel[:, 1]) >= 100.0
+                    want = np.degrees(np.arctan2(vel[:, 1], vel[:, 0])) + vf_off
+                    dlt = (want - np.asarray(sv["yaw"], np.float64) + 180.0) % 360.0 - 180.0
+                    dlt = np.clip(dlt, vf_bins[0], vf_bins[-1])
+                    b = np.abs(vf_bins[None, :] - dlt[:, None]).argmin(axis=1)
+                    act[fast, 0] = b[fast]
                 acts_h[t] = act
                 _, rew, done, trunc, _ = core.step(act)
                 rew_h[t] = rew
@@ -1141,6 +1165,8 @@ def meta_dict(args, bsp, hasher, arch, it, n_goal, extra=None) -> dict:
     if getattr(args, "tick_ms", None) is not None:
         # --tick-ms only (ge_replay steps its core at this tick): the flag-off meta is unchanged
         out["tick_ms"] = int(args.tick_ms)
+    if getattr(args, "view_follow", None):
+        out["view_follow"] = str(args.view_follow)
     if float(getattr(args, "cell_energy", 0.0) or 0.0) > 0.0:
         out["cell_energy"] = float(args.cell_energy)
     if int(getattr(args, "cell_heading", 0) or 0) > 0:
@@ -1781,6 +1807,14 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--maxvel", type=float, default=None,
                     help="sv_maxvelocity for the search core (default: the core's 2000); "
                          "train_fast --ge-minutes passes the run's own --maxvel")
+    ap.add_argument("--view-follow", default=None, metavar="DEG,DEG,...",
+                    help="each burst holds a view OFFSET from the horizontal velocity heading, "
+                         "drawn from this list, and the view is steered to it every tick (above "
+                         "100 u/s): the search acts in the policy's --view-absolute velocity frame, "
+                         "so a chain's keys mean what they would mean to the policy (a uniform yaw "
+                         "RATE leaves the view anywhere, and a canonicalised spine then hides the "
+                         "manoeuvre: round 4's gate-12 ramp needed a strafe the policy never "
+                         "pressed). None = off, byte-identical")
     ap.add_argument("--tick-ms", type=int, default=None,
                     help="the search core's physics tick, WHOLE ms (default: the core's 10, "
                          "byte-identical). A policy trained under --tick-ms-schedule flies "
