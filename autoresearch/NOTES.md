@@ -1224,3 +1224,12 @@ shorter budget_end_hours. Written down for the operator; nothing is worked aroun
   spines README). Planned arm pbr3b2_en1 (scratchpad go_en.sh): resume the incumbent with round 2's
   beam12 flags, --demo-file pbr3b2_beam_dh2.npy --demo-success-energy 50 + --auto-spine. Readout: the greedy
   evals' energy at the last ramp contact (3,609 now) and progress past 20.4%.
+* 1,024-copy energy-ranked beam (`--score dh --score-energy 2`, 20 min on the idle droplet,
+  runs/pbr3b2/_beam_dh2_1k/): extinct at 1700 like every other; its deepest contact 17.42% with h 3,724
+  (near the record's 3,751) but vz +238. More energy alone does not land it: the TAKEOFF ANGLE is the
+  rest. At the shared ramp lip the record (ANALYSIS ONLY) arrives heading further south (v (937, -618,
+  475)) than the policy (964, -492, 336) or its energy-ranked samples (vz 238-254), and the lip turns the
+  southward component into lift. No sample of the current policy has that approach, so no spine can be cut
+  for it; the energy curriculum (--demo-success-energy) can teach the energy half, the approach has to
+  come from training's own exploration (or a search that varies the approach heading over the last ~1 s
+  before the lip - the policy's yaw sigma is 0.75 deg).
