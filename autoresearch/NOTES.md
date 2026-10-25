@@ -1863,3 +1863,10 @@ Box: 57632318, RTX 4080 + i9-14900F (32 thr), 0.30 $/h, UK (machine 151788), ren
 * **pbr4b2_t5** (12:45 UTC): t4's 16.840B weights + the curriculum on pbr4b2_br_ledge.npy from its
   end (success line 40,085 = 29.86%) + milestones 44,939 / 43,426 / 42,188 / 41,607 / 40,709 + round
   3's band temperature (0.5 / 40 ticks, no hold) + auto-spine (tick-aware GE, dh, +H ladder), 5B steps.
+* t5 (ledge spine, mild band temperature): the curriculum walked 4299 -> ~2700 (20.7 s) in ~15 min,
+  then [2699] 38%, [2704] 0.0%, [2709] 3.4%: the stretch where the branched beam's HELD view
+  offsets (up to 90 deg) put the line onto the ledge. Greedy 29.10-29.17.
+* **pbr4b2_t6** (13:00 UTC): t5's 17.188B weights, tau0 2704, `--demo-front-temp 0.5
+  --demo-front-ticks 120 --demo-front-view 40 --demo-front-hold` - the band spawn's view noise HELD
+  for 0.92 s at sigma x40 (~34 deg), i.e. the same kind of held view offset the line was found with;
+  the rest as t5.
