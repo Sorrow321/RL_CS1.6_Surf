@@ -2169,3 +2169,27 @@ minute). Incumbent: pbr4b3_t11 ckpt_23551016960 (md5 7fbcd458...), eval 52.937 a
   x1.0 / 1.2 / 1.4): every episode dies in the fall catch at z ~1,190 under the U's bottom; x1.0 from
   4,780 reaches 56.15% then falls; with more speed the policy flies another line and dies sooner. More
   energy alone does nothing for weights not trained there (a WON'T, not a CAN'T).
+
+### c1 reaches k05's end: 56.341 (24.0045B); search 1 and the 56.6% shaft (20:20-20:45 UTC)
+* c1 evals: 52.92 / 52.86 / 52.90 / 52.85 / 52.88 / 52.86 (23.55-23.93B, while the curriculum walked k05
+  back to ~4,370 = 51.2% at ~300k steps/s), then **56.341** (24.0045B, a few episodes through) and
+  **56.252** (24.080B, median 56.12%, 6/9 past k05's success line 56.05%) -> the trainer's quorum fired
+  auto-spine search 1 at 24.080B (ckpt_latest saved there, md5 adb0febb..., pulled with the snapshot
+  ckpt_23951572992, md5 be54db67..., the hand-on rule's pick for the 56.341 eval).
+* Where they die: 6/9 rise at (-2,260..-2,350, 2,470-2,540, z ~1,997-1,999) into trigger_teleport *192 /
+  *210 (fall catches) under a ceiling; 2/9 still die at the 52.8% floor, 1 at 47.4%. Core probes
+  (hull traces + play_step teleport tests over xy slices): the way up is a SHAFT ~64-96 u wide at
+  x ~-2,476..-2,412 through solid at z ~2,000-2,100 into an upper room (z ~2,150-2,250, x -2,476..-2,220),
+  then another rise to z ~2,350 (free x -2,316..-2,220), which the field's path takes at 57.0%. The record
+  (ANALYSIS ONLY) goes up the shaft at (-2,411, 2,568, 2,020) at 1,103 u/s and on to z 2,446-2,486 with
+  h ~2,800; the greedy arrives with h ~2,290 at 56.1% (it can rise to ~2,290 at most).
+* Greedy energy vs the record, first arrival (ANALYSIS ONLY): 50% 3,680 vs 3,562 (ours higher), then three
+  hard impacts the record does not have - 50.2% -191, 51.7-51.95% -687 (record -317), 52.8% -490 (a floor
+  landing at (-2,346, 1,166, 2,206); the record flies over that floor ~100-250 u higher and ~300 u further
+  north) - 56.1% 2,288 vs 2,797. ~630 u lost to impacts over 50-56% beyond the record's.
+* Search 1 (24.080B, greedy median d 25,079, gain 500 -> needs d < 24,579): plain beam 24,807 (56.59%);
+  three --branch-tick beams 24,807-24,810; the two NEW energy forks (0.5 s before the plain line's largest
+  losses, ticks ~4,500) 24,810-24,812 with ALL 2,048 forked lineages dead (the whole population is at
+  203/4,096 valid 3.8 s after the fork: the descent is narrow at 1,000+ u/s, a +-45 deg held view kills);
+  GE stage 1 (last 4 s, x1.0 / 1.04) deepest 24,798 = 56.61% IN the upper room (-2,316, 2,466, 2,155): its
+  archive has 320 cells in the upper room with h <= 2,395, none at z >= 2,300 - the energy wall.

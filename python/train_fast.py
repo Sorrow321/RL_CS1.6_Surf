@@ -7106,6 +7106,15 @@ def main() -> None:
                          "HI - LO seconds up to the launch, where the decisions that led to "
                          "the death were made (after it only air strafing acts). Off = the "
                          "death anchor, bit-identical; not restored")
+    ap.add_argument("--respawn-greedy-energy", type=int, default=None,   # 0 = off
+                    help="--respawn-greedy: also anchor each failed greedy episode at the N "
+                         "largest losses of its energy height (z + |v|^2/2g) in its last "
+                         "--respawn-greedy-energy-secs before its best-progress stop - the HI..LO "
+                         "seconds before each crash, where the line spends the energy a later "
+                         "climb needs (with --respawn-greedy-temp, exploration there). 0 = off, "
+                         "bit-identical; not restored")
+    ap.add_argument("--respawn-greedy-energy-secs", type=float, default=None,   # 12
+                    help="--respawn-greedy-energy: the window before the stop searched, seconds")
     ap.add_argument("--respawn-greedy-temp", type=float, default=None,   # None = off
                     help="--respawn-greedy: T > 0 = an env whose episode STARTED on a greedy-line "
                          "row samples the keys at 1 + T and the yaw sigma x --respawn-greedy-"
@@ -11935,7 +11944,9 @@ def main() -> None:
                                     stuck=int(args.respawn_greedy_stuck or 0),
                                     turn=float(args.respawn_greedy_turn or 0.0),
                                     speed=args.respawn_greedy_speed,
-                                    contact=bool(args.respawn_greedy_contact))
+                                    contact=bool(args.respawn_greedy_contact),
+                                    energy=int(args.respawn_greedy_energy or 0),
+                                    energy_secs=float(args.respawn_greedy_energy_secs or 12.0))
         except ValueError as _e:
             raise SystemExit(str(_e))
         print(f"respawn GREEDY: {GREEDY.frac:.0%} of the non-start pool = the policy's own "
@@ -11948,9 +11959,14 @@ def main() -> None:
               + (f"; velocity scaled by U({GREEDY.speed[0]:g}, {GREEDY.speed[1]:g})"
                  if GREEDY.speed is not None else "")
               + ("; a fatal ballistic flight is anchored at its LAST MAP CONTACT "
-                 "(--respawn-greedy-contact)" if GREEDY.contact else ""))
+                 "(--respawn-greedy-contact)" if GREEDY.contact else "")
+              + (f"; + the {GREEDY.energy} largest energy-height losses of each episode's last "
+                 f"{GREEDY.energy_secs:g} s before its stop (--respawn-greedy-energy)"
+                 if GREEDY.energy else ""))
     elif args.respawn_greedy_contact:
         raise SystemExit("--respawn-greedy-contact anchors the --respawn-greedy rows")
+    elif args.respawn_greedy_energy:
+        raise SystemExit("--respawn-greedy-energy anchors the --respawn-greedy rows")
     if args.respawn_backward:
         for _i, slot in enumerate(slots):
             _fld = (slot.reward_field if slot.reward_field is not None
@@ -14739,6 +14755,9 @@ def main() -> None:
             meta["config"]["respawn_greedy_stuck"] = int(GREEDY.stuck)
         if GREEDY.contact:
             meta["config"]["respawn_greedy_contact"] = 1
+        if GREEDY.energy:
+            meta["config"]["respawn_greedy_energy"] = int(GREEDY.energy)
+            meta["config"]["respawn_greedy_energy_secs"] = float(GREEDY.energy_secs)
         if GREEDY.turn > 0.0:
             meta["config"]["respawn_greedy_turn"] = float(GREEDY.turn)
         if GREEDY.speed is not None:

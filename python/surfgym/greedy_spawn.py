@@ -72,9 +72,40 @@ def last_contact_vz(vz, tail: int, tol: float = 1.0) -> int:
     return int(hit[-1]) + 1 if len(hit) else 0
 
 
+G_ENERGY = 800.0           # sv_gravity: h = z + |v|^2 / (2 g)
+
+
+def energy_losses(ep, stop: int, per_s: float, secs: float, n: int, win: float = 0.1,
+                  gap: float = 0.5) -> list:
+    """[(tick, loss)] of the ``n`` largest losses of an episode's energy height over ``win``
+    seconds, at least ``gap`` s apart, in its last ``secs`` s up to ``stop`` (tools/auto_spine's
+    energy_roots rule); the tick is the largest one-tick loss inside each window."""
+    o = np.asarray(ep["origin"], np.float64).reshape(-1, 3)
+    v = np.asarray(ep["velocity"], np.float64).reshape(-1, 3)
+    h = o[:, 2] + (v * v).sum(axis=1) / (2.0 * G_ENERGY)
+    stop = int(min(max(int(stop), 1), len(h) - 1))
+    w = max(1, int(round(win * per_s)))
+    lo = max(0, stop - int(round(secs * per_s)))
+    if stop - lo <= w:
+        return []
+    t = np.arange(lo, stop - w + 1)
+    dh = h[t + w] - h[t]
+    out, picked = [], []
+    for tt in t[np.argsort(dh, kind="stable")]:
+        if len(picked) >= int(n) or h[tt + w] - h[tt] >= 0.0:
+            break
+        if all(abs(int(tt) - p) >= gap * per_s for p in picked):
+            picked.append(int(tt))
+            seg = np.diff(h[tt:tt + w + 1])
+            m = int(tt + int(np.argmin(seg)))
+            out.append((m, float(h[m + 1] - h[m])))
+    return out
+
+
 class GreedyLinePool:
     def __init__(self, frac: float, window=(0.5, 5.0), seed: int = 0, stuck: int = 0,
-                 turn: float = 0.0, speed=None, contact: bool = False):
+                 turn: float = 0.0, speed=None, contact: bool = False, energy: int = 0,
+                 energy_secs: float = 12.0):
         frac = float(frac)
         if not 0.0 < frac < 1.0:
             raise ValueError(f"--respawn-greedy F needs 0 < F < 1, got {frac!r}")
@@ -106,6 +137,18 @@ class GreedyLinePool:
         # last contact nothing but air strafing acts, so the decisions that led to the death
         # are the ones before it. Off = the death anchor, as before
         self.contact = bool(contact)
+        # --respawn-greedy-energy N (pbr5b2, 2026-10-25): also anchor each episode at the N
+        # largest losses of its energy height h = z + |v|^2 / (2 g) in its last ENERGY_SECS s
+        # before its stop (its best-progress tick, else its end) - the HI..LO seconds before each
+        # crash, where a line spends the energy a later climb needs (a princessburglar descent
+        # lost ~1,200 u to three landings that the line seconds later could not make up). With
+        # --respawn-greedy-temp those spawns explore there. 0 = off: no energy anchor
+        if int(energy) < 0:
+            raise ValueError(f"--respawn-greedy-energy N needs N >= 0, got {energy!r}")
+        if not float(energy_secs) > 0.0:
+            raise ValueError(f"--respawn-greedy-energy-secs S needs S > 0, got {energy_secs!r}")
+        self.energy = int(energy)
+        self.energy_secs = float(energy_secs)
         self._prng = np.random.default_rng(int(seed) + 7717)
         self.rng = np.random.default_rng(int(seed))
         self.rows = np.zeros(0, STATE_DTYPE)
@@ -179,7 +222,7 @@ class GreedyLinePool:
         self._eps, self._cur = [], []
         per_s = 1000.0 / float(tick_ms)
         lo_t, hi_t = int(round(self.lo * per_s)), int(round(self.hi * per_s))
-        keep, deaths, stops, launches, n_used = [], [], [], [], 0
+        keep, deaths, stops, launches, losses, n_used = [], [], [], [], [], 0
         for i, ep in enumerate(eps):
             end = summaries[i].get("end") if i < len(summaries) else None
             n = len(ep)
@@ -195,11 +238,13 @@ class GreedyLinePool:
             elif end == "fail" and n - lo_t > max(0, n - hi_t):
                 idx.append(np.arange(max(0, n - hi_t), n - lo_t))
                 deaths.append(round(n / per_s, 2))
+            stop = n - 1
             if d_fn is not None:
                 d = np.asarray(d_fn(np.asarray(ep["origin"], np.float64)), np.float64)
                 d = np.where(np.isfinite(d), d, np.inf)
                 if np.isfinite(d).any():
                     tb = int(np.argmin(d))
+                    stop = max(1, tb)
                     if tb < n - hi_t and tb > 0:
                         idx.append(np.arange(max(0, tb - hi_t), tb + 1))
                         stops.append(round(tb / per_s, 2))
@@ -207,6 +252,11 @@ class GreedyLinePool:
                             # the stalled stretch after the stop, evenly spaced
                             idx.append(np.unique(np.linspace(
                                 tb, n - 1, num=min(self.stuck, n - tb)).astype(np.int64)))
+            if self.energy > 0:
+                for m, dh in energy_losses(ep, stop, per_s, self.energy_secs, self.energy):
+                    if m - lo_t > max(0, m - hi_t):
+                        idx.append(np.arange(max(0, m - hi_t), m - lo_t))
+                        losses.append((round(m / per_s, 2), round(dh)))
             if idx:
                 keep.append(ep[np.unique(np.concatenate(idx))])
                 n_used += 1
@@ -220,6 +270,8 @@ class GreedyLinePool:
         self.info = {"eps": len(eps), "fail": n_used, "deaths_s": deaths, "stops_s": stops}
         if self.contact:
             self.info["launches_s"] = launches
+        if self.energy:
+            self.info["energy_losses"] = losses
         return dict(self.info, rows=self.size)
 
     # -- the pool ------------------------------------------------------------
@@ -278,7 +330,10 @@ class GreedyLinePool:
                         ", ".join(f"{v:.1f}" for v in d) if d else "-", self.hi, self.lo,
                         ", ".join(f"{v:.1f}" for v in b) if b else "-", self.frac)
                 + ("" if la is None else "; fatal flights anchored at their last contact ({} s)"
-                   .format(", ".join(f"{v:.1f}" for v in la) if la else "none")))
+                   .format(", ".join(f"{v:.1f}" for v in la) if la else "none"))
+                + ("" if not self.energy else "; energy losses anchored ({})".format(
+                    ", ".join(f"{du:,} u at {s:.1f} s" for s, du in self.info.get(
+                        "energy_losses", [])) or "none")))
 
     # -- persistence ---------------------------------------------------------
     def state_dict(self) -> dict:
