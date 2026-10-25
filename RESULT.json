@@ -18,5 +18,5 @@
   "commit": "256b467",
   "ckpt_md5": "b1dca100ac6f7435852ff962d43cc35b"
  },
- "summary": "Gate 10 by the policy's own beam line + curriculum (c1 26.371 at 10 ms); the tick ramped 10 -> 7.63 ms (the WR's 131 fps; t1): 9/9 over gate 10 with ~+100 u of energy. The trainer's own auto-spine (dh beams, +H energy GE ladder) took gates 11-12a by itself: 28.626 -> 29.003 -> 29.210 (15.22B, 9/9 to ~29.2%). Its GE chains were found at 10 ms; Go-Explore at the policy's own tick (new, 82c640b) found a line to 35.25% (spine pbr4b2_m2_ge763) -> run t2 (10:56 UTC) with milestones up to 38,250."
+ "summary": "Gate 10 by the policy's own beam line + curriculum (c1 26.371 at 10 ms); the tick ramped 10 -> 7.63 ms (the WR's 131 fps; t1) and the trainer's own auto-spine (dh beams, +H energy GE ladder) took gates 10-12a: best 29.210 (t1 15.22B). Tick-aware Go-Explore found a line to 35.25% (m2), but its lower-ramp landing is unflyable for the policy (0% band in t2-t4 despite hot / held exploration noise, probes from every deep chain). t5 (12:45) banks the policy's own branched-beam line onto a ledge (30.03%)."
 }

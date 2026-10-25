@@ -1845,3 +1845,21 @@ Box: 57632318, RTX 4080 + i9-14900F (32 thr), 0.30 $/h, UK (machine 151788), ren
   explorer's exact contact sequence hands later states the velocity the next landing (y ~-519)
   needs, and no policy-like action sequence from 2786-2796 reproduces it. A line can be past the
   frontier and still not be flyable by the policy that has to learn it.
+* Why the policy cannot take the lower ramp (core + probe traces from 2790): the spine rides the
+  ramp's curve - deflected LEFT and UP (v (-1,157, -67, -127) -> (-874, -505, +435) in 13 ticks),
+  then swung north at x ~2,540; the policy at once turns RIGHT (north), leaves the ramp, falls to
+  z ~2,620 and crawls. With fixed neutral / left / right inputs from 2790 the core gives no such
+  deflection either (vz stays -107..-193): the explorer's exact contact (its own view, its keys)
+  is what puts the player into the curve. And every d- or dh-ranked resample culls the left curve
+  at once (it goes AWAY from the goal for ~0.3 s): a short field deception.
+* Flyability of the other deep chains of the tick-aware archive (beams of the policy from their
+  states every 0.4 s for 1.6 s; c252146 35.23%, c230063 31.46%, c177426 30.44%, c165301 30.42%):
+  every one is unflyable over the same hook / landing stretch (whole population dead within
+  0.3-1.4 s) and flyable before it and after it (the policy then flies on 1.5 s at a time). Gate
+  12's lower-ramp landing is beyond the policy's own action distribution as it stands.
+* So bank what the policy CAN fly: probe 4's branched-beam line onto the ledge north of the catch
+  (the policy's own keys, held view offsets) -> spine autoresearch/spines/pbr4b2_br_ledge.npy (4,300
+  states, 30.03%, a crawl along the ledge and a drop off its west end).
+* **pbr4b2_t5** (12:45 UTC): t4's 16.840B weights + the curriculum on pbr4b2_br_ledge.npy from its
+  end (success line 40,085 = 29.86%) + milestones 44,939 / 43,426 / 42,188 / 41,607 / 40,709 + round
+  3's band temperature (0.5 / 40 ticks, no hold) + auto-spine (tick-aware GE, dh, +H ladder), 5B steps.
