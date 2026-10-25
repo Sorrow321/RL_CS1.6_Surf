@@ -247,6 +247,11 @@ def go_explore(a, out: Path, line, end: int, boosts=None, tag: str = "ge", line_
         # the policy flies another tick (--tick-ms-schedule): so does the explorer, rounded to
         # whole ms (10 = the explorer's default, byte-identical)
         cmd += ["--tick-ms", int(round(a.tick))]
+    if a.ge_view_follow and str(a.ge_view_follow).lower() != "none":
+        # explore_phase1 --view-follow: the explorer's view holds offsets from the velocity
+        # heading (the policy's frame), so a chain's held keys mean what they would mean to the
+        # policy (round 4: gates 12 and 14 fell to such chains, unboosted)
+        cmd += [f"--view-follow={a.ge_view_follow}"]
     rc = run(cmd, out / f"{tag}.log", a.ge_minutes * 60 + 600)
     info = {"ge_rc": rc, "ge_roots": [int(i) for i in idx], "ge_boost": boosts}
     if not (gd / "archive.npz").exists():
@@ -315,6 +320,9 @@ def main(argv=None) -> int:
                          "above 1.04: the deepest chain of a mixed stage is the most boosted "
                          "one, and a x1.12 root put a spine out of the greedy line's reach "
                          "(round 3, auto-spine search 3)")
+    ap.add_argument("--ge-view-follow", default="-90,-60,-30,-15,0,15,30,60,90",
+                    help="explore_phase1 --view-follow offsets (deg from the velocity heading) for "
+                         "the Go-Explore stages; 'none' = the uniform yaw-rate explorer")
     ap.add_argument("--roots-secs", type=float, default=4.0,
                     help="Go-Explore roots: the line's last seconds before it stalls")
     ap.add_argument("--stall-margin", type=float, default=500.0,
