@@ -1195,3 +1195,16 @@ shorter budget_end_hours. Written down for the operator; nothing is worked aroun
   ~31% (an untested lever for ALL the energy gates ahead), at a transfer risk: the start room's
   duck-jump lands on the conveyor plate with ~1 u of margin at 10 ms. Physics parity with how the game
   is played, not a reward term - but a change of the problem the lineage would have to own.
+* More local beams at gate 8 (256 copies of the incumbent from the true start, droplet idle, ~5 min each;
+  runs/pbr3b2/_beam_*): `--score dh --score-energy 2` (rank by -d + 2 x energy height), resample 25:
+  extinct at 1700; its frontier lineage reaches the takeoff with h 3,735 (the greedy 3,609, the record
+  3,751) at |v| 1,202 but leaves the ramp FLATTER (vz +254 vs the greedy's +336, the record's +475) and
+  falls the same way. Resample 50 (2 s between selections, so a lineage flying higher toward the landing
+  is not culled while the deeper fallers are still alive), d-ranked and dh-ranked: extinct at 1800 both.
+  Five searches from the policy's own line (3 beams, 2 GE), nothing lands past the catch.
+* What they say: (1) the policy's own sampling CONTAINS the energy the gate needs (selection for energy
+  found +126 u at the takeoff - smoother landings / strafing upstream), so the deficit is not only the
+  start room; (2) the takeoff ANGLE is the other half (the record leaves the lip at 23 deg, the policy at
+  12-17 deg). A generic follow-up for energy gates (not built): let the curriculum teach a line's STATE,
+  not only its position - success = the record reaches d(end) + M with energy height >= h(end) - eps -
+  and accept an energy-ranked beam line that is as deep as the greedy's but carries more energy.
