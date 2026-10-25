@@ -1890,3 +1890,14 @@ over-subscribes the quota. This branch's surfgym now caps numba; the operator ma
   share of the demo draws) with t5's band temperature (0.5 / 6 / 40), tau0 2884, the rest unchanged.
   GE15 beside it: 50 unboosted roots over the gate-11 flight, hole and drop (spine 2600-2880), 15 min - other
   ways onto the ramp, to probe with the policy.
+* The explorer's view on the gate-12 ramp (GE14's line before canon_view): a steady **+46 deg LEFT of the
+  velocity**, keys forward + side bin 0: wishdir ~91 deg left of the velocity - an optimal LEFT air strafe
+  while riding the ramp. The policy (view along the velocity) holds right strafe there. Under --keys-hold a
+  single left sample persists unless the policy overrides it, which fits the band's 2-4%.
+* t7 (`--demo-front-frac 0.8`, t5's band temperature): band [2879] 8.1-8.3% in its first minutes (t5: 3-4%).
+* `explore_phase1 --view-follow DEG,...` (new; flag off bit-identical, tests/python/test_ge_view_follow.py):
+  each burst holds a view OFFSET from the velocity heading drawn from the list and the view is steered to it
+  every tick above 100 u/s - the search acts in the policy's view frame, so a chain's keys mean what they
+  would mean to the policy. GE16 (13:16 UTC): GE15's 50 unboosted roots (spine 2600-2880) with
+  `--view-follow=-90,-60,-30,-15,0,15,30,60,90`, 15 min (GE15, the uniform-view twin, stopped at 4 min:
+  30.46%, GE14's kind of chains).
