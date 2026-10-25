@@ -3,21 +3,23 @@
  "round": 4,
  "final": false,
  "best": {
-  "score": 26.333,
-  "eval_file": "/home/steam/ar_pb/runs/pbr4b1/pbr4b1_t8c/traj_13651410944.jsonl",
-  "run": "pbr4b1_t8c",
-  "step": 13651410944,
-  "ckpt": "/home/steam/ar_pb/runs/pbr4b1/pbr4b1_t8c/ckpt_latest.pt",
+  "score": 26.547,
+  "eval_file": "/home/steam/ar_pb/runs/pbr4b1/pbr4b1_t8g/traj_14304673792.jsonl",
+  "run": "pbr4b1_t8g",
+  "step": 14304673792,
+  "ckpt": "/home/steam/ar_pb/runs/pbr4b1/pbr4b1_t8g/ckpt_14304673792.pt",
   "recipe": [
-   "resume of the round-3 incumbent (13.4999B) at --tick-ms 8 (125 Hz physics)",
-   "--demo-file autoresearch/spines/pbr4b1_k05_t8.npy (+ the round-3 curriculum flags, --demo-rate 0.2)",
-   "--demo-milestones 44939,43426 --auto-spine --auto-spine-milestones --auto-spine-delay 3e8 --auto-spine-retry 4e8 --auto-spine-patience 1.2e9 --auto-spine-gain 500 --auto-spine-ge-minutes 8",
-   "--energy-pot 12 --respawn-greedy 0.2 ... (round-3 flag set) --ep-secs 120"
+   "resume chain: incumbent 13.4999B -> t8c (--tick-ms 8, spine k05, lr 3e-4) 13.6886B -> t8e (k06, lr 1e-4) 13.9377B -> t8f (k07) 14.1532B -> t8g",
+   "--tick-ms 8 --demo-file autoresearch/spines/pbr4b1_k08_t8.npy --demo-window 5 --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5 --demo-rate 0.2 --demo-front-frac 0.4 --demo-success-d 100 --demo-success-bonus 50 --demo-milestones 44939,43426,42286",
+   "--keys-hold-spawn-duck --yaw-entropy 0 --demo-front-temp 0.5 --demo-front-ticks 40 --demo-front-view 6 --respawn-greedy 0.2 --respawn-greedy-window 0.25 2.0 --respawn-greedy-stuck 200 --respawn-greedy-contact --respawn-greedy-temp 0.5 --respawn-greedy-temp-ticks 100 --respawn-greedy-temp-view 6 --respawn-greedy-speed 1.0 1.05",
+   "--respawn-front-perturb 0.2 --respawn-front-perturb-band 0.005 --respawn-front-perturb-speed 1.0 1.3 --respawn-front-perturb-turn 90 --energy-pot 12 --energy-pot-front 0 --energy-pot-front-bonus 0 --no-respawn-novel --respawn-backward-mix 0 --int-real-only 0",
+   "--spawn-states autoresearch/spines/pbr1b1_entry_ge_states.npy --spawn-states-frac 0.2 --maxvel 3500 --ep-secs 120 --lr 1e-4",
+   "--auto-spine --auto-spine-milestones --auto-spine-delay 3e8 --auto-spine-retry 4e8 --auto-spine-patience 1.2e9 --auto-spine-gain 500 --auto-spine-ge-minutes 8"
   ],
-  "resume_from": "/home/steam/ar_pb/incumbent/r3/ckpt.pt (13,499,891,712)",
-  "commit": "0a76880",
-  "ckpt_step": 13688635392,
-  "ckpt_md5": "fd3b59e19243ae81540667c35be5eac7"
+  "resume_from": "pbr4b1_t8f ckpt_latest 14,153,154,560 (8 ms)",
+  "commit": "f17d1d0",
+  "ckpt_step": 14304673792,
+  "ckpt_md5": "f2a4c1c2385149131af40353625dc8c6"
  },
- "summary": "Score 24.737 -> 26.333 (t8c 13.651B: 2/9 greedy episodes from the true start pass gate 10 at 125 Hz and reach 26.33%, the rest crawl at 24.1-24.6%). Lever: the physics tick at the WR player's frame-rate class (--tick-ms 8; the record ran 131 fps; air acceleration is per frame): the policy's own beam climbs the gate-10 ramp unboosted at 8 ms (26.18-26.28%) where it stalls at 24.75% at 10 ms -> spine k05 -> the incumbent resumed at --tick-ms 8 on that curriculum + milestones + auto-spine. Gate 11 (26.3%, the climb north after the gate-10 ramp) by a hand-run auto_spine at 8 ms: beams 26.36-26.38%, GE x1.0-1.08 <= 26.62%, x1.12 27.04% -> spine k06; t8d = t8c's weights on it with milestones keeping gates 8-10 paid."
+ "summary": "Score 24.737 -> 26.547 (t8g 14.305B; 26.333 at t8c 13.651B before). Lever: an 8 ms physics tick (125 Hz; the WR player ran 131 fps, air acceleration is per frame): the policy's own beam climbs the gate-10 ramp unboosted at 8 ms (26.2%) where it stalls at 10 ms (24.75%); the incumbent resumed at --tick-ms 8 on that line passed gate 10 (2/9 at 13.65B). Gate 11 (a climb after the ramp): energy-ranked beams (--score dh) find the soft ramp-top turn unboosted (26.50%) -> spine k08 -> t8g at lr 1e-4 (lr 3e-4 went kl-unstable). x1.04 GE chain past gate 11 to 26.85% (k07). Box only from 10:51 (fleet cap); a 128-CPU/30.7-quota box throttled evals until run_arm.sh pinned the launch."
 }

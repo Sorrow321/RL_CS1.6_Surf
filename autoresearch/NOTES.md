@@ -1811,3 +1811,8 @@ beam_tas from the true start on t8e's weights (8 ms, 4,096 copies, 30 s):
   spine **k08** = the energy-ranked beam line alone (the policy's own actions through the soft turn
   to 26.50%, no boost; success line d 42,103 = 26.33%) + milestones 44939 / 43426 / 42286 +
   --lr 1e-4 + --auto-spine (its search from the greedy's line once 5/9 cross 26.33%).
+* t8g evals: 24.681 / 24.591 / **26.547** (14.305B: 1/9 at 26.55% (3,476, -2,226, 3,189), ~120 u
+  further north than t8c's gate-11 deaths; the rest at the crawl). The k08 curriculum walked back from
+  2699 to ~2050 (the gate-8 corridor landing, 20.4%) in ~25 min and oscillates there (10-23%).
+  The box watcher snapshotted that eval's exact weights: pbr4b1_t8g/ckpt_14304673792.pt (pulled, md5
+  f2a4c1c2...), the handoff.
