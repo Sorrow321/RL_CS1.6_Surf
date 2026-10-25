@@ -1967,3 +1967,63 @@ throttled) and could read it as a bad box. The fix is one line in python/train_f
   27.178 / 27.163 - the most reliable policy of the round (21.78B: 9/9 episodes at 26.5% with median
   h 3,570, max 3,587; gate 9 clean, 22% ~3,490). The energy creeps up ~+20-40 u per 1B steps under
   c11/c12's flags; the gap wants ~3,735.
+
+### pbr4b4 round 4 lesson (wrap-up, 2026-10-25 19:06 UTC)
+* **Score 24.737 -> 27.226** (best eval pbr4b4_c11 traj_19382927360, 19.383B; handed-on checkpoint:
+  its exact weights pbr4b4_c11/ckpt_19382927360.pt, md5 03113356..., written by --save-best-eval and
+  pulled). The greedy line from the true start passes gate 10 (the 24.4% ramp climb), gate 11 (the
+  upper floor: fly EAST over it without landing, surf the east wall, climb the north ramp) and dies
+  in the north gap's fall-catch sheet at 27.0-27.2%; from c12 on it does so in 9/9 episodes (median
+  27.1%). c12's most consolidated weights (its own best evals 27.208 / 27.211 at 23.60B / 24.28B,
+  ckpt_23596105728.pt md5 737f6589..., ckpt_24275582976.pt) are pulled beside it.
+* **Gates passed, in order, and what passed each:**
+  1. Gate 10 (24.4%): a plain beam on the incumbent's weights already reached 26.39% (round 3's k03
+     curriculum had taught the ramp) -> spine pbr4b4_beam_s1 -> curriculum + milestones (c2): the
+     greedy followed in ~1.1B steps (26.370).
+  2. Gate 11 (26.4%, the upper floor): not missing energy but a FLOOR LANDING - ground friction took
+     708 -> 250 u/s in 0.3 s, and CS's bhop cap forbids a jump-landing above 300 u/s. An unboosted
+     Go-Explore (uniform actions, rooted at the line's own 20.0-21.3 s) found the flight that never
+     lands (spine pbr4b4_ge_s3, c4: 26.896); an energy-ranked beam (beam_tas --score dh K 10) then
+     found the policy's own version to 26.99% (spine pbr4b4_beam_dh10, c6/c7: 27.114).
+  3. Consolidation: --respawn-greedy-speed 1.0 1.5 on the greedy-line rows anchored at the north-ramp
+     launch (c11/c12) - boosted copies can cross the gap - raised the energy carried into the gap a
+     little (median h at 26.5% ~3,515 -> 3,550-3,570), removed most gate-9 clips, gave 27.203 /
+     27.226 and the 9/9 reliability.
+* **Trainer / tool changes that every future run needs:** NUMBA_NUM_THREADS capped at the OMP team
+  (a 64-thread host with a 30.7-CPU quota trained at 12k steps/s, 341k after; 0c64956);
+  --save-best-eval (exact weights of every new best eval - three times this round the best eval fell
+  between snapshots); auto_spine --beam-energy / train_fast --auto-spine-beam-energy (an energy-ranked
+  beam in the trainer's own search); --respawn-greedy-impacts K (rows before the greedy line's K
+  largest energy drops: correct, but no measurable energy gain alone); pb_energy_profile.py.
+* **What did not:** view-branched beams at gates 11/12; boosted GE x1.08-1.25 at the gap; the
+  trainer's GE ladder (<= x1.12) at a ~200 u gap (switched off: --auto-spine-ge-minutes 0);
+  --energy-pot 24 (no energy gain in ~550M steps); --respawn-greedy-impacts 2/3 alone.
+* **Gate 12, the north gap (~27.0%):** the fall-catch sheet (trigger_teleport *35, x 3,111-3,840,
+  y -2,481..-1,277, z 3,161-3,169) has ONE slot (y ~-1,575..-1,425, x ~3,225..3,725). From the north
+  ramp's apex the line needs ~700 u/s to reach it (the record 705; ours 560-600): ~+215 u of energy
+  height at the launch (the policy crosses from its own launch state at x1.45 speed, not at x1.3).
+  Past the slot: a landing that costs ~250-300 u, then a west surf that must stay ~300 u further south
+  than our boosted line, then north along x ~2,400-2,500 (the record: 31.7% by 30 s).
+* **The energy question for the user (written up above, measured, not acted on):** the policy
+  already strafes at the 10 ms tick's free-flight ceiling (56 u/s of energy per s; the record at
+  131 fps reaches 69, ceiling 74). Run on the record's frame time (--tick-ms 7.63, never trained at
+  it), the same weights from the same mid-route states carry +86..+98 u more energy by 26% after only
+  3-6 s of the route (26.47% -> 27.10% from the 16 s state). A --tick-ms-schedule ramp is the one
+  lever measured this round that is the size of the gap; it changes the task every later round
+  inherits, so it is the user's / operator's call.
+* **To continue** (the flags of c11/c12, a resume - shape flags come from the checkpoint): `--maxvel
+  3500 --demo-file <dh10 spine> --demo-tau0 1725 --demo-window 5 --demo-grow 5 --demo-grow-max 40
+  --demo-cooldown 5 --demo-rate 0.3 --demo-front-frac 0.4 --demo-success-d 100 --demo-success-bonus 50
+  --demo-milestones 44939,43426,42363,42171,42007 --keys-hold-spawn-duck --yaw-entropy 0
+  --demo-front-temp 0.5 --demo-front-ticks 40 --demo-front-view 6 --respawn-greedy 0.25
+  --respawn-greedy-window 0.25 2.0 --respawn-greedy-stuck 200 --respawn-greedy-contact
+  --respawn-greedy-impacts 3 --respawn-greedy-temp 0.5 --respawn-greedy-temp-ticks 100
+  --respawn-greedy-temp-view 6 --respawn-greedy-speed 1.0 1.5 --respawn-front-perturb 0.2
+  --respawn-front-perturb-band 0.005 --respawn-front-perturb-speed 1.0 1.3
+  --respawn-front-perturb-turn 90 --energy-pot 24 --energy-pot-front 0 --energy-pot-front-bonus 0
+  --no-respawn-novel --respawn-backward-mix 0 --int-real-only 0 --spawn-states
+  autoresearch/spines/pbr1b1_entry_ge_states.npy --spawn-states-frac 0.2 --auto-spine
+  --auto-spine-milestones --auto-spine-delay 2e8 --auto-spine-retry 6e8 --auto-spine-patience 1.5e9
+  --auto-spine-gain 200 --auto-spine-ge-minutes 0 --auto-spine-beam-energy 10 --save-best-eval 1`
+  (spine file: autoresearch/spines/pbr4b4_beam_dh10.npy). Box 57632515 (RTX 5080, 0.363 $/h),
+  released at wrap-up.
