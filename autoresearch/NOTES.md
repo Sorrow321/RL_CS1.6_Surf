@@ -2162,3 +2162,9 @@ Incumbent: pbr4b3_t11 traj_23590338560 (52.937, 9/9 greedy at 52.8-52.94%), weig
   continuation. Every viable chain past 53.7% has h <= ~2,330: on this route the energy is gone by
   the 52-54% landings (the record: h 3,193-3,234 at 52-53%). If 56% is an energy wall, the fix is
   upstream (a smoother line through 50-54%), not a deeper pick.
+* Second local check (20:41-20:50 UTC, 6 min x 2 threads, 48 roots = k05's own beam rows 3,822-4,344 =
+  the 4 s before the GE root, 89,339 cells, deepest 53.36%): viable (>= 1 s lived) cells reach h 3,431 at
+  51.5-52% (k05 3,176) and 3,005 at 52-52.5% (k05 2,866) - smoother variants of the 51-52% crashes exist
+  in the explorer's reach; nothing viable past 53% in this small a search (the box's 8-min x 30-thread
+  stage is ~40x it). Plan: launch the plain continuation (k05, t11's flags) with --auto-spine-pick-energy,
+  and if the loop stalls past ~56% for energy, search upstream (roots before 51%) for a smoother line.
