@@ -298,3 +298,67 @@ def test_branched_beams_fork_at_the_tick_and_earlier(tmp_path, monkeypatch):
     assert forks == [(1700, "beam_br"), (1600, "beam_br2"), (1500, "beam_br3")]
     info = json.loads((out / "spine.json").read_text())
     assert info["source"] == "beam_br3" and info["br3_fork"] == 1500
+
+
+def test_energy_beam_command_and_choice(tmp_path, monkeypatch):
+    """--beam-energy K (pbr4b4): the extra beam is ranked by beam_tas --score dh
+    --score-energy K (flags beam_tas's parser accepts), the d-ranked beam's command is the old
+    one byte for byte, and the deeper of the two lines goes on to the cut / spine."""
+    sys.path.insert(0, str(ROOT / "tools"))
+    import auto_spine
+    from surfgym.core import STATE_DTYPE
+    seen = []
+
+    def fake_run(cmd, log, timeout):
+        seen.append([str(c) for c in cmd])
+        return 0
+    monkeypatch.setattr(auto_spine, "run", fake_run)
+    a = auto_spine.main.__globals__["argparse"].Namespace(
+        ckpt="c.pt", map="m.bsp", envs=64, greedy_envs=4, beam_ticks=100, seed=0, timeout=10)
+    auto_spine.beam(a, tmp_path)
+    auto_spine.beam(a, tmp_path, tag="beam_dh", energy=10.0)
+    d_cmd, e_cmd = seen
+    i = d_cmd.index("--score")
+    assert d_cmd[i + 1] == "d" and "--score-energy" not in d_cmd
+    j = e_cmd.index("--score")
+    assert e_cmd[j + 1] == "dh" and e_cmd[e_cmd.index("--score-energy") + 1] == "10"
+    assert e_cmd[:j] == d_cmd[:i] and e_cmd[j + 4:] == [
+        x.replace(str(tmp_path / "beam"), str(tmp_path / "beam_dh")) for x in d_cmd[i + 2:]]
+    import beam_tas
+    ap_src = Path(beam_tas.__file__).read_text(encoding="utf-8")
+    assert '"--score-energy", type=float' in ap_src and '"dh"' in ap_src
+
+    # the choice: the energy-ranked line is deeper -> it is the one cut into the spine
+    nx, ny, nz, cell = 64, 4, 4, 32.0
+    grid = np.zeros((nz, ny, nx), np.float32)
+    grid[:] = (10000.0 - (np.arange(nx) + 0.5) * cell)[None, None, :]
+    fp = tmp_path / "field.npz"
+    np.savez(fp, grid=grid, quant=np.float64(1.0), mins=np.zeros(3), cell=np.float64(cell),
+             reach_max=np.float64(20000.0))
+
+    def line_to(x_end, n=50):
+        s = np.zeros(n, STATE_DTYPE)
+        s["origin"][:, 0] = np.linspace(100.0, x_end, n)
+        s["origin"][:, 1:] = 50.0
+        return s
+    calls = []
+
+    def fake_beam(a, out, branch_tick=0, tag=None, energy=0.0):
+        calls.append((tag, energy))
+        return line_to(1500.0 if energy > 0 else 600.0), {f"{tag or 'beam'}_rc": 0}
+    monkeypatch.setattr(auto_spine, "beam", fake_beam)
+    out = tmp_path / "k01"
+    rc = auto_spine.main(["--ckpt", "c.pt", "--map", "m.bsp", "--field", str(fp),
+                          "--out", str(out), "--greedy-d", "9400", "--gain", "500",
+                          "--ge-minutes", "0", "--beam-energy", "10"])
+    assert rc == 0 and calls == [(None, 0.0), ("beam_dh", 10.0)]
+    info = json.loads((out / "spine.json").read_text())
+    assert info["beam_src"] == "beam_dh" and info["source"] == "beam"
+    assert float(np.load(out / "spine.npy")["origin"][-1, 0]) == pytest.approx(1500.0)
+    # without the flag: one beam, the old behaviour
+    calls.clear()
+    out2 = tmp_path / "k02"
+    auto_spine.main(["--ckpt", "c.pt", "--map", "m.bsp", "--field", str(fp),
+                     "--out", str(out2), "--greedy-d", "9400", "--gain", "500",
+                     "--ge-minutes", "0"])
+    assert calls == [(None, 0.0)]

@@ -112,17 +112,20 @@ def run(cmd, log, timeout):
     return rc
 
 
-def beam(a, out: Path, branch_tick: int = 0, tag: str = None):
+def beam(a, out: Path, branch_tick: int = 0, tag: str = None, energy: float = 0.0):
     """beam_tas from the true start; ``branch_tick`` > 0 forks half the population there
     with held VIEW offsets (--branch-at, --branch-view-only: the policy's own keys) for
     --branch-burst-secs, protected --branch-protect generations - a different manoeuvre at the
     place the greedy line commits to its death, which the policy's own narrow proposals
-    (a collapsed yaw sigma) never try."""
+    (a collapsed yaw sigma) never try. ``energy`` > 0 ranks the population by -d + energy x the
+    energy height z + |v|^2/2g (beam_tas --score dh) instead of by d alone."""
     tag = tag or ("beam" if branch_tick <= 0 else "beam_br")
+    score = (["--score", "d"] if energy <= 0
+             else ["--score", "dh", "--score-energy", f"{float(energy):g}"])
     bd = out / tag
     bd.mkdir(parents=True, exist_ok=True)
     cmd = [sys.executable, "-u", ROOT / "tools" / "beam_tas.py", a.ckpt, "--map", a.map,
-           "--envs", a.envs, "--resample-every", 25, "--score", "d",
+           "--envs", a.envs, "--resample-every", 25, *score,
            "--greedy-envs", a.greedy_envs, "--allow-nonfinisher", "--save-frontier",
            "--skip-gate", "--route-file", "none", "--max-ticks", a.beam_ticks,
            "--torch-seed", a.seed, "--log-every", 5, "--out-dir", bd]
@@ -230,6 +233,10 @@ def main(argv=None) -> int:
     ap.add_argument("--gain", type=float, default=200.0,
                     help="u of field distance a new spine must beat --greedy-d by")
     ap.add_argument("--beam-ticks", type=int, default=4000, help="beam_tas --max-ticks")
+    ap.add_argument("--beam-energy", type=float, default=0.0,
+                    help="> 0: also run the beam ranked by -d + K x the energy height (beam_tas "
+                         "--score dh --score-energy K) and go on with the deeper of the two "
+                         "lines; 0 = the d-ranked beam only (the old search)")
     ap.add_argument("--envs", type=int, default=4096)
     ap.add_argument("--greedy-envs", type=int, default=32)
     ap.add_argument("--seed", type=int, default=0)
@@ -282,6 +289,17 @@ def main(argv=None) -> int:
     res = {"greedy_d": a.greedy_d, "gain": a.gain, "spine": None}
     line, info = beam(a, out)
     res.update(info)
+    if a.beam_energy > 0:
+        # --beam-energy K (pbr4b4, 2026-10-25): the same beam ranked by -d + K x the energy
+        # height. On princessburglar's energy gates the d-ranked population culls the lineages
+        # that keep their speed (a slower landing reads as less progress for a second): from the
+        # same weights d-ranking stopped at 26.33%, K 10 at 26.99%. The deeper line goes on.
+        el, ei = beam(a, out, tag="beam_dh", energy=a.beam_energy)
+        res.update(ei)
+        if el is not None and len(el) and (line is None or not len(line) or
+                                           field_d(field, el).min() < field_d(field, line).min()):
+            line = el
+            res["beam_src"] = "beam_dh"
     best_src = None
     if line is not None and len(line):
         d = field_d(field, line)

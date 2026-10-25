@@ -4888,6 +4888,11 @@ def main() -> None:
                     help="--auto-spine: Go-Explore budget when the beam falls short (0 = none)")
     ap.add_argument("--auto-spine-extra-secs", type=float, default=15.0,
                     help="--auto-spine: the beam runs this long past the eval's longest episode")
+    ap.add_argument("--auto-spine-beam-energy", type=float, default=0.0,
+                    help="--auto-spine: > 0 also runs the search's beam ranked by -d + K x the "
+                         "energy height and keeps the deeper line (tools/auto_spine.py "
+                         "--beam-energy; pbr4b4: d-ranked 26.33%% vs K 10 26.99%% from the same "
+                         "weights at an energy gate); 0 = off")
     ap.add_argument("--auto-spine-timeout", type=float, default=2400.0,
                     help="--auto-spine: wall-clock cap (s) of one search")
     ap.add_argument("--demo-cooldown", type=int, default=None,   # None = 20
@@ -14654,6 +14659,8 @@ def main() -> None:
             auto_spine_timeout=float(args.auto_spine_timeout))
         if args.auto_spine_milestones:
             meta["config"]["auto_spine_milestones"] = 1
+        if float(args.auto_spine_beam_energy) > 0:
+            meta["config"]["auto_spine_beam_energy"] = float(args.auto_spine_beam_energy)
     if args.demo_milestones:
         meta["config"]["demo_milestones"] = [float(x) for x in
                                              str(args.demo_milestones).split(",") if x.strip()]
@@ -15739,6 +15746,8 @@ def main() -> None:
                "--timeout", f"{float(args.auto_spine_timeout):g}"]
         if args.maxvel is not None:
             cmd += ["--maxvel", f"{float(args.maxvel):g}"]
+        if float(args.auto_spine_beam_energy) > 0:
+            cmd += ["--beam-energy", f"{float(args.auto_spine_beam_energy):g}"]
         t0 = time.time()
         print(f"[{global_step:>13,d}] auto-spine search {AUTO['k']}: " + " ".join(cmd),
               flush=True)
