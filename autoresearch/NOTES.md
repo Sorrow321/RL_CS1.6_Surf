@@ -1515,3 +1515,28 @@ as7's 24.555 eval (ep0) vs the WR demo:
   energy median 3,649 / max 3,815. runs/spawn_both2.npy = the start-room entry states + those.
 * **pbr3b4_as12** (04:31 UTC): as11's 14.217B weights (md5 bf1b76a5...) + the same flags with
   --spawn-states runs/spawn_both2.npy (0.25), 4B steps (to the round's end).
+
+### The first ramp: where it stands at the end of round 3 (05:04 UTC)
+* as12 (survivable both-direction explorer spawns 0.25, K 12; 14.22-14.72B): greedy evals
+  24.49-24.60, still 0/9 east of the spawn, tunnel exit h 3,812-3,820 at 3.6-3.9 s.
+* Skill probe (beam_tas --start-state from the 3 most energetic survivable half-pipe cells, as12's
+  14.72B weights, dh K 8, 8 s): the policy now SURVIVES there (253-1,809 of 4,096 copies alive at
+  6-7 s, where as11's weights died to the last copy within 1 s), but it does not pump: the lines
+  lose energy (3,793 -> 3,541 and similar) climbing slowly back up toward the spawn (70-409 u/s).
+* Why the greedy will not take the detour under this objective (an estimate): a ~6 s detour
+  against the field delays everything after it - the ratchet's progress, and the milestone
+  bonuses at 21.37% / 24.0% (+50 each at ~18-20 s, ~5 units of discounted value each lost to a 6 s
+  delay under gamma 0.9995/tick) - for ~3-4 units of energy shaping during the pump, much of it
+  charged back at later landings; and the only gate the extra energy could unlock (gate 10, ~20 s
+  in) sits at the edge of the 20 s discount horizon.
+* So, for whoever continues the user's first-ramp idea (all generic, nothing aimed at the ramp):
+  1. the SKILL - spawns on the explorer's own SURVIVABLE states behind the start (the as12 file's
+     construction, tools/ge_energy_picks.py's rollout filter) with per-call energy shaping, until
+     a --start-state beam from those states shows lineages GAINING energy;
+  2. a LINE on which the pump is necessary - a search from the true start whose early ranking is
+     energy (beam_tas --score dh, or GE picked by energy) carried on past gate 10, so that the
+     curriculum's success line (past gate 10) is reachable only with the pumped energy; then the
+     usual curriculum, with --demo-milestones keeping the current route paid;
+  3. view-only branching cannot turn a keys-hold policy around at the spawn (tried: K 3/8/15,
+     forks at 0.2 s and 1 s) - forcing the first decisions needs the keys too, or a spawn-side
+     exploration like (1).
