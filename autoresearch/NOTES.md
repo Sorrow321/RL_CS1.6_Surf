@@ -1743,5 +1743,5 @@ throttled) and could read it as a bad box. The fix is one line in python/train_f
   floor landing was the leak: flying over the floor keeps h ~3,470-3,535 to the north ramp. Short
   of the crest (z ~3,417) by energy and steering.
 * Spine autoresearch/spines/pbr4b4_ge_s3.npy (2,303 states, end 26.67%, success line 42,007 =
-  26.50%). **pbr4b4_c4** (10:41 UTC): c3's 15.688B weights + that spine + milestones
+  26.50%). **pbr4b4_c4** (10:39 UTC): c3's 15.688B weights + that spine + milestones
   44939,43426,42363,42171 (k01's line added) + the c3 flags (auto-spine delay 6e8), 4B steps.
