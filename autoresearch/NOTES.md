@@ -1912,3 +1912,20 @@ over-subscribes the quota. This branch's surfgym now caps numba; the operator ma
 * **pbr4b3_t8** (13:36 UTC): t7's 18.771B weights (md5 fce2c1c7...) + spine autoresearch/spines/pbr4b3_ge16vf.npy
   (the g11 line to 2743 + GE16's chain to its 30.28% landing, the explorer's own views - no canon_view;
   success line d <= 39,943 = 30.11%) + milestones 44939,43426,42182,41015,40497 + band share 0.8, the rest as t7.
+* t8 (the view-follow spine, explorer's views kept): the curriculum walked 3073 -> 2873 and stalled at the same
+  ramp: band [2873,2877] 0.0-0.2%, [2878,...] 45-49%; evals 29.301 / **29.318** (18.847B) / 29.307 / 29.286 /
+  29.285 / 29.316 / 29.310. GE17 (view-follow, rooted on GE16's flight north before its hard landing):
+  **33.14%** from (2,491, -1,151, 2,860) - the next gate's material.
+* Why the band stays shut, again: under --keys-hold the movement keys are HELD STATE the policy observes, and a
+  spine spawn resets them to neutral; the explorer held forward (with its view ~89 deg left of the velocity)
+  through the ramp, so every band spawn started from a different state than the line's own - the
+  --keys-hold-spawn-duck defect for every held key. And keeping the explorer's view does not help a policy that
+  re-aims its view at ~0 offset within ~9 ticks.
+* Two generic fixes (ba7088f, tests/python/test_demo_keys.py: flag off bit-identical, a bad file refused;
+  test_spine_canon_keys.py): `tools/spine_canon_keys.py` puts every fast row's view along the velocity AND
+  translates its held keys so the wish direction survives (forward at +89 deg -> left strafe at 0 deg), and
+  `train_fast --demo-keys K.npy` (TRAIN_ONLY) starts a spine spawn holding its row's keys. Spine
+  autoresearch/spines/pbr4b3_ge16ck.npy + .keys.npy: on the ramp band the spawn now holds LEFT strafe with the
+  view along the velocity - exactly what the policy has to learn to keep.
+* **pbr4b3_t9** (14:04 UTC): t8's 19.296B weights (md5 d717d97d...) + that spine + `--demo-keys` + t8's other flags.
+  t8's handoff: t7's ckpt_latest (the weights t8 resumed) placed as pbr4b3_t8/ckpt_18770558976.pt.
