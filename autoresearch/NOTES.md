@@ -1185,3 +1185,13 @@ shorter budget_end_hours. Written down for the operator; nothing is worked aroun
   passing the query at 23:46 were 5080s at 0.621 (storage included), so 0.236 $/h of room fits no card
   yet. The watcher now dry-runs the rent every ~16 min to catch a cheap card.
 * The CPU trainer swap test passes on the final auto-spine code (deepest-contact cut, stall, backoff).
+* The frame-rate question (00:55 UTC, numbers from the measurements above; the record is ANALYSIS ONLY):
+  GoldSrc's air acceleration saturates at 30 u/s per FRAME, and the record was played at 131 fps
+  (7.62 ms frames), so its physics allows ~31% more strafe gain per second than our 10 ms tick
+  (CLAUDE.md --tick-ms). But measured per 10 ms of flight the policy already gains +0.48 u/s against
+  the record's +0.42 (the record's ~51% of its own per-frame optimum, the policy's 78% of ours), so
+  the frame rate is not what separates them today: the ~145 u at gate 8 is the start room's pump plus
+  landing losses. `--tick-ms-schedule 10:7.63:N` would still raise every flight's gain by up to
+  ~31% (an untested lever for ALL the energy gates ahead), at a transfer risk: the start room's
+  duck-jump lands on the conveyor plate with ~1 u of margin at 10 ms. Physics parity with how the game
+  is played, not a reward term - but a change of the problem the lineage would have to own.
