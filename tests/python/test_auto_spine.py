@@ -347,3 +347,17 @@ def test_beam_score_passthrough(tmp_path, monkeypatch):
     import beam_tas
     src = Path(beam_tas.__file__).read_text(encoding="utf-8")
     assert '"--score-energy", type=float' in src
+
+
+def test_ticks_per_s_follows_the_checkpoint(tmp_path):
+    """auto_spine converts seconds at the checkpoint's own tick (a --tick-ms-schedule run ends at
+    7.667 ms = 130.4 ticks/s); an unreadable checkpoint keeps the old 100."""
+    sys.path.insert(0, str(ROOT / "tools"))
+    import torch
+    import auto_spine
+    p = tmp_path / "c.pt"
+    torch.save({"config": {"tick_ms": 7.63, "tick_ms_eff": 7.666667}}, p)
+    assert abs(auto_spine.ckpt_ticks_per_s(p) - 1000.0 / 7.666667) < 1e-6
+    torch.save({"config": {}}, p)
+    assert auto_spine.ckpt_ticks_per_s(p) == 100.0
+    assert auto_spine.ckpt_ticks_per_s(tmp_path / "missing.pt") == 100.0

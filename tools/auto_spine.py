@@ -47,7 +47,22 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "python"))
 sys.path.insert(0, str(ROOT / "tools"))
 
-TICKS_PER_S = 100          # the beam and the explorer run the checkpoint's tick: 10 ms here
+TICKS_PER_S = 100          # the beam runs the checkpoint's tick: 10 ms unless main() reads
+                           # another from the checkpoint (a --tick-ms / ramp run, pbr4b2)
+
+
+def ckpt_ticks_per_s(path) -> float:
+    """Ticks per second of the checkpoint's own physics tick (its config's tick_ms_eff,
+    else tick_ms, else 10 ms): beam_tas runs that tick, so every seconds -> ticks conversion
+    of the beam's line (the branch burst / hold / fork offsets, the GE roots' window) uses it.
+    100 when the checkpoint cannot be read (the old constant)."""
+    try:
+        import torch
+        cfg = torch.load(path, map_location="cpu", weights_only=False).get("config") or {}
+        ms = float(cfg.get("tick_ms_eff") or cfg.get("tick_ms") or 10.0)
+    except Exception:  # noqa: BLE001 - a fake path in the tests, an unreadable file
+        return 100.0
+    return 1000.0 / ms
 
 
 def load_field(path):
@@ -326,6 +341,11 @@ def main(argv=None) -> int:
             ap.error(f"--{k} is required")
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
+    global TICKS_PER_S
+    TICKS_PER_S = ckpt_ticks_per_s(a.ckpt)
+    if abs(TICKS_PER_S - 100.0) > 1e-6:
+        print(f"checkpoint tick {1000.0 / TICKS_PER_S:.4f} ms: {TICKS_PER_S:.2f} ticks/s for "
+              f"the beam's seconds", flush=True)
     field = load_field(a.field)
     res = {"greedy_d": a.greedy_d, "gain": a.gain, "spine": None}
     line, info = beam(a, out)
