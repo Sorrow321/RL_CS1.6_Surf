@@ -3188,3 +3188,8 @@ the operator's); this branch keeps a waiter on `box.py rent` and works offline m
   **2,120-2,140**. The 32 u GE archives' highest states at the wall approach reach z 2,121-2,135 (apex <= 2,135; a
   ducked ledge ride east at (-1,100, 1,731, 2,135), where the wall is higher) and a 15-min boosted run (x1.0/1.04/1.08,
   36 roots at 72.1-73.3%, 182k cells) the same (apex 2,122): ~10-30 u short, 0 cells past. The record crosses at ~2,166.
+* 25-min local GE (32 u, select-energy 3, 30 roots = k02 rows 6,600-6,740 = 72.4-73.5% x1.0/1.04/1.08/1.12; 1.34M runs,
+  209k cells): max apex at the wall approach (y 1,450-1,700) **2,134**, deepest 74.42%, 0 cells past the wall. From
+  k02's chain (which enters the pipe late and high, after its brake) no boost up to x1.12 clears it: the record's speed
+  comes from dropping into the pipe at its TOP (71.5%, z ~1,977, hs 1,033 -> 1,241 at the bottom). Next local test:
+  the same GE rooted on the policy's own beam prefix at 70.2-70.8% (before the pipe; k02 rows 6,330-6,386, x1.0/1.04/1.08).
