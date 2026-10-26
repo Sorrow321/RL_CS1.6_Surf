@@ -111,6 +111,35 @@ class DemoCurriculum:
         self._key = {tuple(np.round(np.asarray(r["origin"], np.float64), 1)): i
                      for i, r in enumerate(self.S)}
         self.last_info = ""
+        # --demo-cliff-cut K (0 = off; the detector only watches tau's moves, it never changes
+        # them or the draws): a SUCCESS CLIFF is a band that keeps failing (success below a third
+        # of the advance rate) at one place while the band just after it passes - the curriculum
+        # then oscillates there for good (pbr6b3: the policy's own departure from an explorer
+        # crawl is fatal before the cliff and fine after it). K such backoffs within 4 windows
+        # of the first one -> cliff() names the row before which train_fast cuts the spine.
+        self.cliff_k = 0
+        self._cliff_lo = None
+        self._cliff_n = 0
+
+    def cliff(self):
+        """--demo-cliff-cut: the first row of the failing band (the spine is cut before it), or
+        None while fewer than cliff_k backoffs have failed there."""
+        if self.cliff_k > 0 and self._cliff_lo is not None and self._cliff_n >= self.cliff_k:
+            return int(self._cliff_lo)
+        return None
+
+    def _note_cliff(self, lo: int, r: float, moved: int) -> None:
+        if not self.cliff_k:
+            return
+        span = 4 * self.D
+        if moved > 0 and r < self.rate / 3.0:
+            if self._cliff_lo is not None and abs(lo - self._cliff_lo) <= span:
+                self._cliff_n += 1
+                self._cliff_lo = min(self._cliff_lo, lo)
+            else:
+                self._cliff_lo, self._cliff_n = lo, 1
+        elif moved < 0 and self._cliff_lo is not None and self.tau < self._cliff_lo - span:
+            self._cliff_lo, self._cliff_n = None, 0       # the band got past it
 
     def reset_spine(self, states, tau0=None) -> None:
         """Swap in a new spine mid-run (train_fast --auto-spine): the curriculum restarts at
@@ -126,6 +155,7 @@ class DemoCurriculum:
         self._key = {tuple(np.round(np.asarray(r["origin"], np.float64), 1)): i
                      for i, r in enumerate(self.S)}
         self.last_info = ""
+        self._cliff_lo, self._cliff_n = None, 0
 
     def _band(self) -> tuple[int, int]:
         """Inclusive [lo, hi] of the frontier band scoring the advance."""
@@ -193,6 +223,7 @@ class DemoCurriculum:
                     self._step = self.grow
             if moved:
                 self._cool = self.cooldown
+                self._note_cliff(lo, r, moved)
         d_lo, d_hi = self._draw()
         self.last_info = (f"demo starts [{d_lo},{d_hi}]/{self.n} "
                           f"(frontier band [{lo},{hi}]) "

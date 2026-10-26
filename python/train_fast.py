@@ -2154,6 +2154,16 @@ def spine_energy_rule(res, end_state, gain):
             - 0.5 * float(gain))
 
 
+def cliff_cut_spine(states, keys, row: int):
+    """--demo-cliff-cut: the spine (and its --demo-keys rows, None stays None) cut before
+    spine row ``row``, the first row of the band at the success cliff -> (states[:row], keys)."""
+    row = int(row)
+    if not 0 < row <= len(states):
+        raise ValueError(f"cliff row {row} outside the spine (1..{len(states)})")
+    k = None if keys is None else np.array(np.asarray(keys)[:row], copy=True)
+    return np.array(np.asarray(states)[:row], copy=True), k
+
+
 def milestone_pay(rec, ended, ms, paid):
     """--demo-milestones: (bonus count per row, the updated (N, M) paid table) for records
     ``rec`` (N,) against milestone distances ``ms`` (M,). A row is paid each milestone its
@@ -4912,6 +4922,14 @@ def main() -> None:
                          "depth curriculum at a landing, its energy cut was learned in ~15 min and "
                          "the next plain beam passed the drop unboosted). Config only when set; "
                          "not restored")
+    ap.add_argument("--demo-cliff-cut", type=int, default=0,    # 0 = off
+                    help="--demo-file with --demo-success-d: K > 0 cuts the spine before a "
+                         "curriculum SUCCESS CLIFF - a band that backed off K times with success "
+                         "under a third of --demo-rate at one place (within 4 windows) while the "
+                         "band after it passed - and moves the success line to the new end; the "
+                         "old line stays paid as a milestone (pbr6b3: explorer crawls hold places "
+                         "where the policy's own departure is fatal before and fine after, and the "
+                         "band oscillates there for good). Config only when set; not restored")
     ap.add_argument("--demo-cooldown", type=int, default=None,   # None = 20
                     help="--demo-file: iterations between two moves of the curriculum's tau "
                          "(default 20, the reference implementation's constant): every move "
@@ -11686,6 +11704,16 @@ def main() -> None:
             if args.auto_spine:
                 raise SystemExit("--demo-success-energy is for a spine chosen for its energy; "
                                  "--auto-spine swaps in depth spines")
+        if int(args.demo_cliff_cut) < 0:
+            raise SystemExit("--demo-cliff-cut K: K backoffs, >= 0")
+        if int(args.demo_cliff_cut) > 0:
+            if args.demo_success_d is None:
+                raise SystemExit("--demo-cliff-cut moves the --demo-success-d line: give it")
+            demo.cliff_k = int(args.demo_cliff_cut)
+            print(f"--demo-cliff-cut {demo.cliff_k}: a band that backs off "
+                  f"{demo.cliff_k} times at one place with success under "
+                  f"{args.demo_rate / 3.0:.0%} while the next band passes cuts the spine "
+                  f"before it (the old success line stays paid as a milestone)")
         if args.demo_success_d is not None:
             if not args.race_ratchet:
                 raise SystemExit("--demo-success-d reads the ratchet record: it needs "
@@ -14754,6 +14782,8 @@ def main() -> None:
             meta["config"]["auto_spine_energy"] = float(args.auto_spine_energy)
         if args.auto_spine_energy_cut:
             meta["config"]["auto_spine_energy_cut"] = 1
+    if int(args.demo_cliff_cut or 0) > 0:
+        meta["config"]["demo_cliff_cut"] = int(args.demo_cliff_cut)
     if args.demo_milestones:
         meta["config"]["demo_milestones"] = [float(x) for x in
                                              str(args.demo_milestones).split(",") if x.strip()]
@@ -15701,6 +15731,7 @@ def main() -> None:
               f"{args.tail_min_n} the groups are too fine to estimate a tail")
     demo_idx = np.full(N, -1, np.int64)   # demo index of each env's start
     DEMO_END_D = None                     # --demo-success-d: the spine end's d + margin
+    CLIFF_N = [0]                         # --demo-cliff-cut: cuts made so far
     if demo is not None and args.demo_success_d is not None:
         _df = slots[0].reward_field if slots[0].reward_field is not None else slots[0].goal_field
         _de = float(_df.sample(np.asarray(demo.S[-1]["origin"], np.float64)[None])[0])
@@ -18326,6 +18357,49 @@ def main() -> None:
                 # paper resets to the demonstration state itself)
                 _dpool = demo.build_pool(_s.pool,
                                          fresh_frac=1.0 - args.respawn_frac)
+                _cr = demo.cliff()
+                if _cr is not None and _cr > int(demo.D) and DEMO_END_D is not None:
+                    # --demo-cliff-cut: the band oscillates at a success cliff; cut the spine
+                    # before it and move the success line to the new end (the next gate only),
+                    # the old line staying paid as a milestone. The next pools draw from the
+                    # cut spine; this iteration's was built before the cut
+                    _old_end = float(DEMO_END_D)
+                    _cut = cliff_cut_spine(demo.S, DEMO_KEYS[0], _cr)
+                    demo.reset_spine(_cut[0])
+                    if DEMO_KEYS[0] is not None:
+                        DEMO_KEYS[0] = _cut[1]
+                    _cdf = (slots[0].reward_field if slots[0].reward_field is not None
+                            else slots[0].goal_field)
+                    _cde = float(_cdf.sample(np.asarray(demo.S[-1]["origin"],
+                                                        np.float64)[None])[0])
+                    DEMO_END_D = _cde + float(args.demo_success_d)
+                    if DEMO_H_MIN is not None:
+                        # an energy spine keeps its rule: the new end's height - the same margin
+                        # (--demo-success-energy M, or the loop's G / 2)
+                        _cv = np.asarray(demo.S[-1]["velocity"], np.float64)
+                        DEMO_H_MIN = (float(np.asarray(demo.S[-1]["origin"], np.float64)[2])
+                                      + float((_cv * _cv).sum()) / 1600.0
+                                      - (float(args.demo_success_energy)
+                                         if args.demo_success_energy is not None
+                                         else 0.5 * float(args.auto_spine_energy)))
+                    if DEMO_BONUS and _old_end < DEMO_END_D:
+                        MILES[0] = np.append(MILES[0], _old_end)
+                    DEMO_PAID[0] = None
+                    demo_idx[:] = -1
+                    if args.auto_spine:
+                        AUTO["last"] = int(global_step)
+                    CLIFF_N[0] += 1
+                    _cdir = out / "cliff"
+                    _cdir.mkdir(parents=True, exist_ok=True)
+                    np.save(_cdir / f"cut{CLIFF_N[0]:02d}.npy", demo.S)
+                    if DEMO_KEYS[0] is not None:
+                        np.save(_cdir / f"cut{CLIFF_N[0]:02d}.keys.npy", DEMO_KEYS[0])
+                    print(f"[{global_step:>13,d}] --demo-cliff-cut: a success cliff at spine "
+                          f"row {_cr}: the spine is cut to {demo.n} states (end d {_cde:,.0f}); "
+                          f"success line d <= {DEMO_END_D:,.0f}"
+                          + (f", the old line {_old_end:,.0f} a milestone" if DEMO_BONUS
+                             and _old_end < DEMO_END_D else "")
+                          + f" -> {_cdir / f'cut{CLIFF_N[0]:02d}.npy'}", flush=True)
                 if ((FPERT > 0.0 or GREEDY is not None) and _s.respawn is not None
                         and _s.respawn.size >= 2000):
                     # --respawn-front-perturb / --respawn-greedy with the curriculum: the
