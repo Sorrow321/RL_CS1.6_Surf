@@ -2945,3 +2945,30 @@ the round. (pbr6b3 released its box 19 min early once it stopped improving.)
   For the next round: `--target-kl 0.3` (stops above 0.45: above every lineage p90 here, so ordinary updates are
   untouched, and it truncates the 0.5-12 spikes) is the obvious first guard against b1's collapse - untested on this
   map (no box), a candidate, not a result.
+
+### Gate 20 offline: what the explorer finds past the climb (13:17-13:45 UTC, local CPU, no box; ANALYSIS)
+* Two Go-Explore probes rooted on the policy's own line (b2k02 rows 0-5,717 = search 2's plain beam line, 30.10B),
+  run the way the loop runs them (auto_spine.go_explore: explore_phase1 --exact-chains, x1.0 / 1.04,
+  --roots-keep-all, cell 64 u x energy 32 u, --cell-heading 1, view-follow) on this machine's CPU at
+  0.11-0.12M ticks/s for 8-10 min: ~1/10 of ONE 5-min stage on the 4080 box (1.33M ticks/s). Weak evidence, both ways.
+  1. **The loop's energy stage** (energy_roots = the beam line's 3 largest losses in its last 12 s: -360 u at 51.7%,
+     -304 at 50.3%, -104 at 62.4%; window 48.8-64.6%): 16,273 candidates; the deepest keeping >= 150 u is a 16-tick
+     chain from a x1.04 root at 51.77% (+186 u, 68 of them the boost: the line flies 1,154 u/s there), i.e. energy
+     kept through the line's -414 u impact at 51.72-51.76% - 13% of the map BEHIND the frontier. Nothing past 55%
+     keeps more than +111 u. So if the depth ladder fails at gate 20, the energy stage would hand back a spine far
+     upstream, and round 5 showed one corner per energy spine (the energy is lost again at the next corners).
+  2. **Tail roots** (59.65-64.61%, the depth ladder's stage 1, which found the crawl) + `--select-energy 2`: the
+     archive reaches ~70% like the box's crawl, but every state past the climb is slow - max h per 0.5% bin 2,561 /
+     2,521 / 2,527 / 2,523 / 2,472 / 2,372 over 65.0-68.0% (the crawl 2,428-2,491; the beam line 2,589 at 64.5-65%).
+     ANALYSIS ONLY: the record keeps 2,707-2,765 over 65-71%: it climbs onto the ledge level (z 2,417-2,453) at
+     628-713 u/s horizontal while GAINING energy, then flies on at 930-1,107 u/s.
+* So gate 20 is the climb taken at speed: past 65% the policy's beam and the explorer both lose ~200-300 u, and
+  nothing the explorer found comes near the record's energy. The crawl is a real route (to 70.74%), only slow: for
+  the SCORE (progress first) the to-continue launch above stands (the crawl, cut at its cliffs by the trainer). For
+  the time, the climb's energy has to come from the policy (its greedy was gaining at 63.7-64.5% under b4's band),
+  through the energy rule on a spine that arrives at the climb with more h, and no search has made one yet. If the
+  loop's energy stage hands back a spine >5% behind the greedy frontier, expect little at the gate from it; the
+  quorum on it triggers the next search.
+* Negative result, not committed: a "net of the root's boost" rule for the energy stage's gain. I built it on a
+  mis-estimate that probe 1's pick was all boost; it was 68 of 186 u (c7's gate-19 pick: 24 of 217 u). The boost's
+  share of real energy picks is small, and b1 showed the policy can learn a boosted root's energy anyway. Reverted.
