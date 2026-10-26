@@ -3175,3 +3175,11 @@ its lesson): c12's ckpt_latest (36.668B, md5 d802b3e8...) and its search-2 spine
   (roots 70.4-73.0%, 2.6 min) 1,118 / 23 (max z 2,087) / 0, GE3 (roots 70.0-70.8%, 12 min) 1,115 / 0 / 0. The finer
   key gets ~30 u from the wall's top (2,150) where the 64 u key stalls lower: c13's loop runs its searches with
   `--auto-spine-args "--ge-select-energy 3 --ge-cell 32"` (a box has ~30x this compute per stage).
+
+### Harness issue: at 1.2 $/h the fleet fits two of this round's four branches (20:34-21:45 UTC)
+`box.py rent` has refused every 2.5 min since 20:34 UTC (16 tries): the two live boxes burn 1.031 $/h of the 1.2 cap,
+so a third box must cost <= 0.169 $/h, and the cheapest acceptable offers (32+ threads, verified, the whitelisted
+cards) have been 0.35-0.62 $/h all evening (a 5080 at 0.35, 3090s at 0.377-0.422, a 4080S at 0.41). Each of the two
+boxes was the cheapest offer when it was rented (0.41 + 0.62), so the cap admits whichever two branches rented first
+and the other two wait for a release. Nothing on the branch side can change that (the cap and the offer query are
+the operator's); this branch keeps a waiter on `box.py rent` and works offline meanwhile.
