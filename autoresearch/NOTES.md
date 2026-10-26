@@ -2309,3 +2309,12 @@ The trainer used ~12 of the box's 30.7-CPU quota, so each stage ran beside it at
   A boosted root, like round 4's x1.12 k02 (stalled) and x1.32 gate-11 chain (passed after the tick ramp): the
   question is whether, with the shaft paid, the policy finds the ~+450 u upstream (the 52.7% landing is where it loses
   the most) - the score cannot fall below the pinned 56.564.
+* c5 evals: 56.393 (25.181B, c4's weights) / **56.592** (25.2565B, the round's best by a hair) / 56.588 - the route holds
+  (median 56.4%, start room intact). The curriculum walked the shaft chain back to the x1.3 root within ~20 min and sits
+  there (bands just before it 0%); the TRAINING reservoir's deepest is d 22,159 = 61.2% (boosted spawns climb the shaft
+  and fly on). Greedy energy height at 55.5% unchanged: ~2,317-2,334 in every c4/c5 eval (needed ~2,750).
+* Where the greedy's energy goes (median over 9 episodes, c4/c5): 52% ~2,700-2,816 -> 53% ~2,355-2,361: the 52.7%
+  landing takes ~450 u in EVERY episode, ~the whole shaft deficit. (m1 itself: 3,523 at 51.5% -> 2,872 at 52% -> 2,318
+  at 52.8%; the record ~3,614 -> 3,193 -> 3,234, ANALYSIS ONLY.)
+* GE_l1 (03:05 UTC, beside c5): 39 roots on m1's own approach to the landing (rows 4,432-4,554, 51.5-52.6%), 32 u x
+  energy 16, 12 min - a smooth landing from the policy's own approach, then start-state beams from it to the shaft.

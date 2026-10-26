@@ -3,21 +3,21 @@
  "round": 5,
  "final": false,
  "best": {
-  "score": 56.564,
-  "eval_file": "/home/steam/ar_pb/runs/pbr5b4/pbr5b4_c4/traj_24842338304.jsonl",
-  "run": "pbr5b4_c4",
-  "step": 24842338304,
-  "ckpt": "/home/steam/ar_pb/runs/pbr5b4/pbr5b4_c4/ckpt_24842338304.pt",
+  "score": 56.592,
+  "eval_file": "/home/steam/ar_pb/runs/pbr5b4/pbr5b4_c5/traj_25256525824.jsonl",
+  "run": "pbr5b4_c5",
+  "step": 25256525824,
+  "ckpt": "(c5 has no snapshot at or before this eval: the hand-on rule takes c5's newest pulled checkpoint; the 56.564 eval's exact weights are /home/steam/ar_pb/runs/pbr5b4/pbr5b4_c4/ckpt_24842338304.pt)",
   "recipe": [
    "resume of pbr5b4_c2 ckpt_latest 24,766,316,544 (incumbent + k05 485M + spine e1 730M steps)",
-   "--demo-file autoresearch/spines/pbr5b4_beam_m1_5060.npy --demo-keys autoresearch/spines/pbr5b4_beam_m1_5060.keys.npy (the policy's own beam line to 56.38%, cut before its low-speed hopping)",
-   "--demo-milestones 44939,43426,42182,41015,40497,39943,37251,33777,32260,31429,30286,28818,28783,27001,26365,25121",
+   "--demo-file autoresearch/spines/pbr5b4_shaft_x13_5150.npy (+ .keys): own line to 55.55% + the x1.3 start-state beam up the 56.6% shaft to 57.04% (c4 used pbr5b4_beam_m1_5060)",
+   "--demo-milestones 44939,...,27001,26365,25121,25016 (17)",
    "t11's flag set (demo window/grow 5, grow-max 40, cooldown 5, rate 0.3, front-frac 0.8, success-d 100, bonus 50, keys-hold-spawn-duck, yaw-entropy 0, demo-front-temp 0.5/40/6, respawn-greedy 0.2 + contact + temp, front-perturb 0.2, energy-pot 12 per call, spawn-states entry_ge 0.2)",
    "--auto-spine --auto-spine-milestones --auto-spine-gain 500 --auto-spine-ge-minutes 8 --auto-spine-retry 4e8 --auto-spine-patience 1.2e9 --auto-spine-pick-energy"
   ],
-  "resume_from": "pbr5b4_c2 ckpt_latest 24,766,316,544 (md5 066e70a3...)",
-  "commit": "7ad0194",
+  "resume_from": "pbr5b4_c4 ckpt_latest 25,180,504,064 (md5 ccb19a24...)",
+  "commit": "e5d5a70",
   "ckpt_md5": "a5875bb55ef16c360758c534727d2e64"
  },
- "summary": "56.564 (pbr5b4_c4 24.842B: 5/9 greedy at 56.31-56.56%, median 56.3%; incumbent 52.937). Path: the incumbent on k05 (c1, flat 52.9) -> two Go-Explore stages beside the trainer found a smooth 52.7% landing -> spine e1 (c2: 54.556) -> the trainer's search run by hand on c2's weights: the policy's OWN beam to 56.59%, past every GE stall -> its full line (c3) lost the start room within 150M steps (the spine's last 2 s are low-speed hopping) -> the same line cut before the hopping (c4): 56.564 in 75M steps. New: --auto-spine-pick-energy, tools/ge_stack_spine.py, auto_spine keys of the picked chain. The trainer's own search 1 is running."
+ "summary": "56.592 (pbr5b4_c5 25.2565B; 56.564 pbr5b4_c4 24.842B: 5/9 greedy at 56.3-56.6%, now 9/9 at ~56.4%; incumbent 52.937). Path: k05 (c1, flat) -> GE smooth-landing spine e1 (c2 54.556) -> the policy's own beam on c2's weights to 56.59% -> c3 lost the start room on its low-speed end -> the line cut before the hopping (c4 56.564). Gate 17 = a spiral shaft at 56.6%: energy, not skill (a x1.3 start-state beam spirals to 58.84%); the greedy arrives ~420 u short, lost at the 52.7% landing (-450 u every episode). c5 trains a x1.3 shaft spine; GE from the policy's own approach looks for a smooth landing."
 }
