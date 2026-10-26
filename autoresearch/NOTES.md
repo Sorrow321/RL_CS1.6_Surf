@@ -2330,3 +2330,11 @@ Incumbent: pbr4b3_t11 traj_23590338560 (52.937), weights ckpt_23551016960 (md5 7
   test_auto_spine.py 10/10 and the selftest pass.
 * GE_wall (01:47 UTC, 14 min, 30 threads, 8,8,7): rooted at 24 of GE_r19's surviving, most energetic wall-riding cells
   (59.5-61.2%, h 2,520-2,666, >= 300 u/s) x1.0 / 1.1 / 1.2 - the record's way over the sheet is speed on the walls.
+* **GE_wall result (14 min at 8,8,7):** 129,701 cells, 19 STANDING on the exit platform, 1,385 past 61.6%, deepest
+  surviving chains to 62.3% through the exit hole - ALL from one root: GE_r19's wall-riding cell 129650 (59.67%,
+  |v| 555, h 2,630) at **x1.2**. So at the policy's tick the sheet needs the wall ride (+150 u over the line) plus ~20%
+  speed (~+100 u more). Gate 18's recipe again, in stages: first an energy spine to the wall ride.
+* **pbr5b1_c7** (01:58 UTC): c6's ckpt_latest (27,416,592,384, md5 dc834f00...) + spine autoresearch/spines/pbr5b1_w1.npy
+  (the beam line + GE_r19's chain to cell 129650, ending AT the energetic state) + --demo-success-energy **50** (success:
+  record past d(59.67%) + 100 with h >= 2,580; the greedy's line has ~2,480 there) + milestones ..., 22012 (k01),
+  21681 (r19: pays only past the sheet) + c6's other flags. auto_spine's GE now runs 8,8,7 (b6bd24f, on the box).

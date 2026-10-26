@@ -218,3 +218,10 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   lands in the room), then an UNBOOSTED view-follow exact Go-Explore chain (GE_r19, 12 min) rooted there that walks the
   room for ~35 s, onto a platform on its north side and one beside the exit (staying off the sheet), and drops out of
   the exit to 62.24%. Views along the velocity, keys translated. No demo, no record (pbr5b1, round 5).
+* `pbr5b1_w1.npy` + `.keys.npy` (7,587 rows; md5 cf9cddc5cb50074960cb531334d25047 /
+  f9c377d6d1c71a26fd2b913a94918118): a stage-1 ENERGY spine for gate 19 (for train_fast --demo-success-energy): the
+  pbr5b1_c5 search-2 beam line (the policy's own) to its state 4,975 (58.0%), then the GE_r19 exact chain (unboosted,
+  8 ms) to its most energetic SURVIVING wall-riding cell at 59.67% (h 2,630, the policy's line ~2,480 there), not cut
+  at its best depth (tools/chain_spine.py --no-cut); the chain's 22 links survive at 8,8,7 too and its end state stands
+  at every phase. The only crossings of the room's kill sheet at the policy's tick (GE_wall, 8,8,7) start from this
+  cell with x1.2 speed. No demo, no record (pbr5b1, round 5).

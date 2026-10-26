@@ -40,6 +40,9 @@ def main(argv=None):
     ap.add_argument("--out", required=True)
     ap.add_argument("--map", default=str(ROOT / "maps" / "surf_princessburglar_b26.bsp"))
     ap.add_argument("--field", default=str(ROOT / "maps" / "surf_princessburglar_b26.goalc_32.npz"))
+    ap.add_argument("--no-cut", action="store_true",
+                    help="keep the line to the last chain's own end (an energy pick's state) instead "
+                         "of cutting it at its best depth")
     a = ap.parse_args(argv)
     if a.line.endswith(".npz"):
         z = np.load(a.line, allow_pickle=False)
@@ -103,7 +106,7 @@ def main(argv=None):
         info["chains"].append({"spec": spec, "root_index": j, "root_boost": round(boost, 3),
                                "chain_len": int(len(gl))})
     d = field_d(field, line)
-    e = int(np.argmin(d))
+    e = len(line) - 1 if a.no_cut else int(np.argmin(d))
     sp = clean(line[:e + 1])
     np.save(a.out, sp)
     kp = a.out[:-4] + ".keys.npy"
