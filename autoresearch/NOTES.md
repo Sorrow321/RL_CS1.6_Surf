@@ -2288,3 +2288,13 @@ The trainer used ~12 of the box's 30.7-CPU quota, so each stage ran beside it at
 * Diagnostic running (02:05 UTC): beam_tas --start-state from the policy's own line (m1 rows 4,900 / 4,950 = 55.1 /
   55.6%) with velocity x1.0 / 1.15 / 1.3, c4's 56.564 weights, 2,048 envs beside the trainer - can the policy's
   own proposals spiral up the shaft when given the energy?
+* **The shaft is ENERGY, not skill** (beam_tas --start-state, c4's 56.564 weights, 2,048 copies beside the trainer):
+  from m1's own state at 55.07% with velocity x1.0 / 1.15 / 1.3 -> 56.59 / 56.81 / 56.59%; from 55.55% (|v| 1,021, h
+  ~2,309) x1.0 / 1.15 -> 56.58 / 56.70%, **x1.3 (|v| 1,327, h ~2,757 - the record has ~2,770 at 56%) -> d 23,522 =
+  58.84%**: the policy's own proposals spiral up the shaft and fly on when they enter it with the record's energy.
+  So gate 17 needs ~+450 u of energy height at 55.5% from upstream - the 52.7% landing is where the policy's line loses
+  the most against e1's smooth chain (~+600 u at 53-54%).
+* c4 eval 56.407 (24.918B, median 56.4%: 9/9-style consolidation at the ledge).
+* Running (02:15 UTC): beam_tas --score dh (-d + K x energy height) K 3 and 8 from the true start on c4's 24.988B
+  weights - does the policy's own distribution hold an energetic line (smooth landing) that reaches the shaft with
+  enough energy to spiral?
