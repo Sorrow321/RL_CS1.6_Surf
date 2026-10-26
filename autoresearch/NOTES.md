@@ -2928,6 +2928,8 @@ Incumbent: pbr5b2_c7 ckpt_29123674112 (62.369, md5 afb44185...).
   The curriculum restarted at k02's end, [5543,5548] at 16-62%. This is gate 19's pattern again (energy spine,
   then the policy's own beam passes once it has trained on it); `--auto-spine-energy-patience 3e8` runs the next
   search after 300M steps on it.
+* Box 57819941 extended again at 15:21 to 18:51 UTC (5.4 h in all, under the 6 h cap): a4 trains until ~18:35,
+  then the harvest (evals, ckpt_latest, the snapshot before the best eval, auto/) and release before the deadline.
 
 ### pbr6b1 round 6 lesson (DRAFT 10:06 UTC; finalised at wrap-up)
 * **Score 62.369 -> 62.373** (a1 29.200B: the incumbent's weights 75M steps on, same gate; all 9 fall at the 62.3% drop).
