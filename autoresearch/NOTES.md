@@ -2278,3 +2278,13 @@ The trainer used ~12 of the box's 30.7-CPU quota, so each stage ran beside it at
 * The 5/9 quorum fired the trainer's own auto-spine search 1 at 24.842B (with the energy pick on).
 * Handoff for 56.564: ckpt_latest saved by the search at exactly 24,842,338,304 = the eval's weights, pinned as
   pbr5b4_c4/ckpt_24842338304.pt (md5 a5875bb5...) and pulled.
+* The trainer's search 1 (24.842B): the plain beam and three branched beams all stop at d 24,806 = 56.59% (the
+  ledge); GE stage 1 was running when I stopped it at 913 s (02:03 UTC) - my x1.3 probe had already shown the
+  explorer cannot pass there - so the trainer resumed (next search at 25.24B).
+* Gate 17 = the SHAFT at 56.6% (the record is ANALYSIS ONLY): from 55.5% the record spirals UP a shaft around
+  (-2,300, 2,550) - velocity heading rotating ~90 deg per 0.2 s, z 1,620 -> 2,470 in ~1 s - keeping its energy
+  height ~2,770-2,850; it enters at 1,458 u/s with h 2,949 (vz +1,188). Our line reaches the shaft at ~800 u/s, h
+  ~2,320, and hops on a ledge inside it at z ~2,135. So: ~+500 u of energy at the entry AND a continuous wall surf.
+* Diagnostic running (02:05 UTC): beam_tas --start-state from the policy's own line (m1 rows 4,900 / 4,950 = 55.1 /
+  55.6%) with velocity x1.0 / 1.15 / 1.3, c4's 56.564 weights, 2,048 envs beside the trainer - can the policy's
+  own proposals spiral up the shaft when given the energy?
