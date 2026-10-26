@@ -3115,3 +3115,17 @@ ckpt_35907960832 (md5 160da9eb...), eval 73.590 at 35.918B. Credit at the start:
 * **pbr7b2_c2** (21:07 UTC): c1 stopped at 36.947B, its ckpt_latest (36.945B, md5 242f1a2a...) staged as runs_ckpt.pt on
   the box, the box re-deployed on 45ff5c2, launched with c1's flags + `--demo-tau0 6436` + `--auto-spine-async`. Record
   gate passed (4 recordings). ~4 min of training lost to the relaunch.
+* c2 evals 73.509 / 73.567 / 73.584 / 73.644 (36.95-37.17B, medians 73.3-73.5%): steady, every passing episode on the
+  73.5% catch sheet. The curriculum sits at k02's platform hop: rows 6,426-6,437 fall onto the platform's edge (ground
+  entity 87 at (-1,042, 3,193, 1,896), 71.37%) and the chain JUMPS off it on the landing tick (vz 0 -> +440, horizontal
+  931 -> 756 u/s, h 2,645 -> 2,509), where the greedy lands and stops (h 2,593 -> 1,995) and climbs out for ~20 s. Band
+  [6,436,...] 40-42%, band [6,431,...] 21-26% (rate 0.3): a bunny-hop timing band.
+* **Look-ahead GE 1** (21:09-21:24 UTC, beside the trainer, 12 threads nice 10, 0.62M ticks/s; analysis, never training):
+  explore_phase1 with auto_spine's GE settings (64 u x energy 32, rising split, view-follow, 8 ms, exact chains) rooted
+  at 32 rows of k02's chain end (rows 6,600-6,851, 72.2-74.32%) x1.0 / 1.04: 37,253 cells, 5.6M runs, deepest **74.42%**
+  at (-860, 1,535, 2,090) - nothing past it. The chain's end is an energy dead end for the explorer: there it has h
+  ~2,258-2,390 at 500-660 u/s, and the record (yardstick only) passes the same point (74.34%: (-928, 1,553, 2,158))
+  at 950 u/s with h ~2,723, then loops over catch volume *158 (x -793..-514, y 1,135..1,699, z 1,670..1,984) at
+  ~950-1,000 u/s and dives east to 76%. Our line is ~465 u of energy height short there; the greedy (platform line)
+  ~770 u (h ~1,930 at 73.5%). The next gate is energy again - the loop's energy stage's kind.
+* Look-ahead GE 2 (21:31 UTC, the same 32 roots x1.08 / 1.16 / 1.24, 15 min): how much boost passes 74.42%?
