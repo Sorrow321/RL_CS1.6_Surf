@@ -2360,3 +2360,10 @@ The trainer used ~12 of the box's 30.7-CPU quota, so each stage ran beside it at
 * **pbr5b4_c8** (04:36 UTC): c5's final weights + c5's flags + `--target-kl 0.05` (Schulman 2017 / SB3: an update stops
   once its approx KL exceeds 0.075; existing flag, TRAIN_ONLY) - does it hold the route to the wrap-up?
 * GE_r1 (from GE#2's smooth-landing cells at 52.8-53.7%): the 54.5% ramp loss stays (viable max h 2,353 at 54.5-55%).
+* c8 (c5's final weights + `--target-kl 0.05`) is STABLE: evals 56.439 / 56.590 / 56.586 / 56.591 / 56.589 / 56.593
+  (25.64-26.01B, medians 56.4-56.6%) through the window where c6 and c7 collapsed. Every update stops at epoch 1,
+  minibatch 1 (0-indexed: one full epoch of 16 minibatches plus one, ~27% of the 4-epoch update) with approx KL ~0.10
+  - so at this point in training ONE epoch already moves the policy ~0.1 nats, and four epochs at lr 3e-4 are what
+  ran c5 -> c7 into the collapse. The yaw head's sigma is not the cause (0.020-0.039 rad in c4 / c5 / c7 / c8).
+* Recipe for resuming this lineage's late checkpoints: keep `--target-kl 0.05` (TRAIN_ONLY, existing flag) - it costs
+  nothing when the KL is small and caps exactly the updates that broke c3 / c6 / c7.
