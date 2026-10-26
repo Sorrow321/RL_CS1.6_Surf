@@ -3031,3 +3031,41 @@ Germany (machine 56783), rented 08:05 UTC for 2 h.
   (6,416 states, end d 16,352, taught with the energy rule h >= 2,100); its curriculum walked back 6,415 -> 4,630 in ~10
   min, and at 36.446B 7/9 greedy episodes crossed its line with the energy -> search 2 started (running at the
   wrap-up). Evals 36.295-36.446B 73.503 / 71.475 (median 61.5%) / 73.518; the best stays 73.590.
+
+### pbr6b4 round 6 lesson (wrap-up, 2026-10-26 19:15 UTC) - supersedes the DRAFT above
+* **Score 62.369 -> 73.590** (pbr6b4_c12, eval 35.917922304B; best episode 73.59%; hand-on ckpt_35907960832, 10.0M before
+  the eval, md5 160da9eb..., pulled). Three gates passed by the greedy line from the true start this round: gate 19 (the
+  62.3% drop: 65.391, c9, 08:59 UTC), gate 20 (the 64.9% ledge catch + the walkway over a catch sheet: 71.270 -> 71.499,
+  c11, 14:19-15:11 UTC) and the 71.3% landing + climb (73.472 -> 73.590, c12, 17:05-18:01 UTC); at 36.295B 6/9 and at
+  36.446B 7/9 greedy episodes pass the landing (medians 73.4%), all stopping at ~73.5% (the same catch sheet further on).
+  Box time ~7.4 h on two cards (RTX 4080S 08:05-09:47; RTX 4080 13:34-19:12; the credit sat at the $10 reserve 09:47-13:32).
+* **What did it, in order:**
+  1. **Gate 19: measure where the GREEDY loses energy on its own eval** (one corner at 59.9%: a floor landing and a ground
+     jump cut by CS's bunny-hop cap), **cut the stalled depth spine before its stuck band and teach that stretch with the
+     energy rule** (k02e, `--demo-success-energy 150`, newly allowed with `--auto-spine-energy`): the energetic quorum fired
+     the loop's own search and its plain beam passed the drop unboosted.
+  2. **Gate 20: the FULL loop spine, no cut** (c11): its success line lay past the walkway's hole, out of a death-dive's
+     reach, and the backward curriculum taught the walkway from the hole back, then the platform, then the catch, in
+     ~45 min - a stretch neither the greedy (0/18) nor the policy's own sampling (0/36) ever stayed on. c10's hand cut
+     inside the walkway (a line within a dive's reach) had sat 30 min on fake successes.
+  3. **The loop kept going by itself**: 5/9 past the walkway fired its search, whose plain beam found the line to 72.93%;
+     6/9 past that line fired the next, whose energy stage found a +253 u line; 7/9 energetic crossings fired a third.
+  4. **A curriculum bookkeeping bug** (c11 froze 50 min: a band inside a stood-still run of identical origins was never
+     credited, because the origin key kept only the last copy) - fixed by `--demo-match-band`; the relaunch (c12) moved
+     at once and learned the 71.3% precision landing (arrive at ~900 u/s, stop on a small platform above a catch sheet).
+* **What did not:** a local unboosted GE before the gate-19 corner; c10's hand cut at 66.4% (stuck on the walkway's dive
+  band); `--demo-success-alive` as first written (it would have deadlocked a spine ending mid-fall - capped since at the
+  spine's own survival); one silent trainer death after a resume's first eval (the identical relaunch ran).
+* **New, generic, default off and bit-identical (CPU-tested):** `--demo-stall-cut STEPS` (a770eda, never run at a gate),
+  `--demo-success-alive SECS` (17b60a8 + 6bdb0ed, never run at a gate) and `--demo-match-band` (3654fc4, run in c12: the fix
+  that unfroze the curriculum).
+* **Generic rules learned:** (1) the gate is where the greedy loses energy, measured on its own eval; (2) when a depth
+  curriculum stalls past where the greedy diverges, move the line back before that band - energy rule if no deeper than
+  the greedy, depth rule if deeper; (3) keep the success line where only the skill reaches it (past a death-dive's
+  reach) and let the curriculum make the increments - a stretch no cold or sampled policy ever flew was learned that way;
+  (4) a curriculum that stops moving may be a bookkeeping failure, not a learning one: check that its band still records
+  outcomes (`demo starts ... over N eps`, `demohot`) before reading a stall as difficulty.
+* **Next (if the program continues):** resume c12's ckpt_latest (36.6B, md5 d802b3e8..., pulled) on its auto/k02 spine
+  (search 2's result at the wrap-up: beam + GE, 6,852 states to d 14,673 = 74.33%, md5 0aced692...; in
+  runs/pbr6b4/pbr6b4_c12/auto/k02, pulled) with the loop on and `--demo-match-band`; the next stop is the catch sheet at
+  ~73.5% after the climb. Last evals 73.503 / 71.475 / 73.518 / 73.586 / 73.443 (medians 61.5-73.4%).
