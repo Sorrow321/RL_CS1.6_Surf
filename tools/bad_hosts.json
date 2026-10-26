@@ -2824,6 +2824,60 @@
       "detail": "autoresearch pbr5b3 2026-10-25: RTX 4060 Ti 16GB (power limit 100 W of 165 W) + Ryzen 9 3950X listed 32 effective threads, but the host runs a foreign niced load (host /proc/stat 62% ni, 0% idle; loadavg 42 on 32 threads) - the trainer got ~14 cores and ran 61k steps/s (3.67M steps in 60 s) on the incumbent's flag set vs ~330k on a 5080/TR box; gpu_health: 37 TFLOPS bf16, 246 GB/s, no reference -> UNJUDGED",
       "run": "",
       "reason": "cpu_bound"
+    },
+    {
+      "ip": "216.49.136.176",
+      "machine_id": 128875,
+      "host_id": 455641,
+      "date": "2026-10-26",
+      "detail": "autoresearch pbr6b2 2026-10-26: RTX 4080 SUPER power limit 240 W of 320 W default (75%), gpu_health UNHEALTHY (bf16 103 TFLOPS, sm 2625 MHz under load); deploy refused",
+      "run": "",
+      "reason": "gpu_capped"
+    },
+    {
+      "ip": "122.61.229.144",
+      "machine_id": 144089,
+      "host_id": 612485,
+      "date": null,
+      "detail": "autoresearch pbr6b3: not running after 330 s (status loading, #7 164.9 Setting up python3-httplib2 (0.20.2-2ubuntu0.1) ...\r\n)",
+      "run": "",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "86.41.104.10",
+      "machine_id": 145348,
+      "host_id": 315562,
+      "date": null,
+      "detail": "autoresearch pbr6b2: not running after 330 s (status loading, )",
+      "run": "",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "175.143.181.143",
+      "machine_id": 148540,
+      "host_id": 60685,
+      "date": "2026-10-26",
+      "detail": "autoresearch pbr6b3 2026-10-26 14:10 UTC: box.py deploy's checkpoint push ran at ~15 KB/s (5.9 MB of 64 MB in 8 min, ~70 min projected); the operator machine's whole outbound traffic was that scp (15.8 KB/s), and this round's 08:05 deploy pushed the same 64 MB to another host in < 2 min. RTX 5060 Ti 16 GB, AMD EPYC 7B13 128 thr (loadavg 51), Malaysia, machine 148540",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "93.241.214.122",
+      "machine_id": 56783,
+      "host_id": 212182,
+      "date": "2026-10-26",
+      "detail": "went offline mid-run (ssh: No route to host; vast status offline >= 7 min) 1.9 h after create, 2026-10-26 15:32 UTC; pbr6b2",
+      "run": "",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "116.127.115.18",
+      "machine_id": 136901,
+      "host_id": 132677,
+      "date": "2026-10-26",
+      "detail": "autoresearch pbr6b3 2026-10-26: the instance REBOOTED twice mid-run (uptime reset at ~14:48 and ~15:37 UTC, 13 days up at 14:16), each time killing the trainer silently (cgroup oom_kill 0, no traceback; files intact). RTX 5070 Ti 16 GB, Ryzen 9 7950X 32 thr, South Korea, machine 136901; otherwise fine (~340k steps/s on the incumbent recipe)",
+      "run": "",
+      "reason": "unreliable"
     }
   ],
   "known_good": [
