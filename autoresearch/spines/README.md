@@ -246,3 +246,6 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   `pbr6b3_b2k02` cut at its row 7,540 (70.28%, d 16,982), the last row before the chain's hard air turn (yaw 8 -> 262
   deg over ~10 ticks at 70.30%, then a landing and a jump) where the curriculum's band sat at 0-0.7% success - the
   next gate only. Same provenance as `pbr6b3_b2k02`.
+* `pbr6b3_b2k02d.npy` + `.keys.npy` (6,716 rows): `pbr6b3_b2k02` cut at its row 6,715 (65.96%), before the second
+  success cliff of its curriculum (band [6,720..6,735] at 0.5-8% vs 35-53% from 6,740, in the chain's walk north along
+  the wall at x -3,561). Same provenance as `pbr6b3_b2k02`.
