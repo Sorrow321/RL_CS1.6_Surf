@@ -2900,3 +2900,33 @@ spine left whole, the trainer passing `--cut-ahead`, both refusals, TRAIN_ONLY).
   erased the start room's precision duck-jump (the lineage's gate 1), not a late-route skill. c5s1's approach rows
   6,000-6,250 hop in place at the strip's edge (jump / duck toggling every few decisions) - a jump-head pattern that
   may have overwritten the start-room one; not verified.
+
+### Why c6 / c7 collapsed: the training logs (2026-10-26 11:57 UTC, no box; ANALYSIS of our own runs)
+* c5's last eval (30.306B): 62.341, median 62.3%. c5 held to its end (287M steps on k01c).
+* Both collapses have ONE signature, inside ~5M steps (progress.csv, one row per PPO iteration).
+  c7 at +21M after its launch (30,387.7M): approx_kl 0.42, then explained variance 0.995 -> 0.972 and training
+  reward 190 -> 123 -> 101 -> 84 -> 54 -> 26 in five iterations, while act/fwd_air (airborne decisions with W or S
+  held) went 0.14 -> 0.21 and the categorical entropy 2.96 -> 3.10 nats (train/entropy_loss -2.96 -> -3.10).
+  c6 at +52M: kl 0.38 / 0.50, ev 0.994 -> 0.965, reward 173 -> 19 (52-56.6M), fwd_air 0.11 -> 0.21.
+* The same signature shows, smaller and RECOVERED, in runs that did not collapse: c4 at +100-130M (fwd_air 0.16-0.19
+  per 10M bin, reward ~100 against ~180, back by +140M) and at +220-234M (fwd_air 0.14 -> 0.18, reward 134; that is
+  the 30.072B eval with median 24.2%); c5 at +110-130M (fwd_air 0.13-0.16, reward 95-146). In c6 and c7 it did not
+  recover: fwd_air 0.17-0.28 for 90M steps (c6) and 0.19-0.39 for 140M steps (c7), reward 19-49. So the collapse is
+  the lineage's recurring PPO instability gone deep, not a failure only c5s1 can cause; what kept it down on c5s1 is
+  still open.
+* Not the trigger: approx_kl spikes (every run has 0.25-8 routinely; c5 survived 7.66 and 7.28; c6 read 88.6 at +5M
+  and held for 47M more); the reservoir filling to 100k states (c5 at +16M, c6 / c7 at +16-17M; c5 never collapsed);
+  the spines' held keys (c5s1 holds W or S on 1-3% of rows 6,000-6,370).
+* After a collapse the spawn pools FOLLOW it, which holds it there: the greedy-line pool (20% of the non-start pool)
+  is rebuilt from the collapsed greedy (c7 30.442B: 8,187 states from 9 episodes stuck in the start room), and the
+  reservoir median d moved 40k -> 54-56k (the start room; d0 57,149) in c6 / c7, against 40-44k throughout c5.
+* A candidate mechanism, UNTESTED and generic. The PPO ratio is the JOINT ratio over all heads (train_fast
+  seq_loss / mb_step: ratio = exp(logp - old_logp), logp = the categorical heads + the view Gaussians), and the clip
+  zeroes a row's gradient for EVERY head once that ratio is past the clip in the advantage's direction. The yaw
+  head's sigma is 0.020 (--yaw-entropy 0, no floor), so a yaw-mean move of 0.01 z (a fraction of a degree) is ~0.5
+  nats of the joint log-ratio against the clip's +-0.2: the pitch-head defect --pitch-sigma-min fixed in round 5
+  (approx_kl 1-22), now on the yaw head. A row clipped by the yaw gives the key heads no policy gradient, while the
+  entropy bonus (unclipped; x1.2 under --unstuck T 0.2) still pushes their entropy up - "entropy up and W / S held
+  in the air up" is what every dip shows. Two generic tests for a next program: clip each head's ratio separately
+  (per-head PPO), or floor the yaw sigma as --pitch-sigma-min floors the pitch. Watch act/fwd_air and the
+  entropy loss each iteration: both rose together with the reward's fall in every dip.
