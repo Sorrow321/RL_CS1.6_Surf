@@ -3009,3 +3009,8 @@ Germany (machine 56783), rented 08:05 UTC for 2 h.
   70.93%, h 2,520) and brakes onto the platform area by row 6,480 (71.25%, horizontal 104 u/s, h 1,935), a precision stop
   above the catch sheet. Evals 34.106-34.483B 71.489 / 71.436 / 71.389 / 71.351 / 71.453 / 71.401 (medians 71.2-71.3%,
   the greedy dies at that landing); the best stays 71.499.
+* **17:05 UTC: 73.472** (c12, eval 34.785B): one episode lands on the platform, climbs out and reaches 73.47% (past k01's
+  end; it dies on the catch sheet *184 at (-875, 2,040, z 1,719)); 6/9 still die at the landing (70.9-71.2%), 1/9 at the
+  ledge catch (64.8%), 1/9 at 11.8%. Hand-on ckpt_34706292736 (79.2M before the eval, md5 79b56f8d..., pulled). c12's
+  curriculum is past the landing band, at k01's [6,339 / 6,354] (the fast flight before it, 30-44% bands). Other c12 evals
+  71.20-71.47 (35.012B: median 61.4%, an unsteady one).
