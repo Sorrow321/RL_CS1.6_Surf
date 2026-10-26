@@ -3014,3 +3014,7 @@ Germany (machine 56783), rented 08:05 UTC for 2 h.
   ledge catch (64.8%), 1/9 at 11.8%. Hand-on ckpt_34706292736 (79.2M before the eval, md5 79b56f8d..., pulled). c12's
   curriculum is past the landing band, at k01's [6,339 / 6,354] (the fast flight before it, 30-44% bands). Other c12 evals
   71.20-71.47 (35.012B: median 61.4%, an unsteady one).
+* 17:34 UTC: c12 evals 35.087-35.540B 71.317 / 71.209 / 71.330 / **73.488** / 71.168 / **73.499 (35.465B, the best)** /
+  71.274: in the two high ones one episode lands and climbs to 73.5% (the next stop, the same catch sheet further on);
+  medians 71.1-71.2% (the landing still kills most). The curriculum oscillates [6,314 / 6,319] (31-34% / 14-19%), the
+  fast flight before the landing. Hand-on for 73.499: ckpt_35307126784 (157.8M before, md5 f2781ad5..., pulled).
