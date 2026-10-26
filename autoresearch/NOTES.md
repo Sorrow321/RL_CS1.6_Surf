@@ -2770,3 +2770,9 @@ Germany (machine 56783), rented 08:05 UTC for 2 h.
   The x1.12 boost of k02's root was never learned around: the energy rule made the corner's side ride pay for itself.
 * Budget: $1.03 above the reserve at 1.01 $/h of fleet burn, so no extension can move the 10:09 UTC deadline; c9 runs
   to it and is harvested before.
+* c9 on k01 (the policy's own 64.77% line): evals 30.109B **65.391** (best 65.39%, median 62.3%) / 30.184B 64.818 (median
+  64.3%) / 30.260B 64.782 (**7/9 past the drop**, median 64.7%) -> the depth quorum fired the loop's search 2 at 30.260B
+  (ckpt_latest saved for it, md5 55384f10..., pulled). The k01 curriculum had walked back 5,699 -> ~4,540 (57.5%, the
+  corridor before the corner) in ~25 min at 18-53% bands, step 40 on the easy stretches.
+* Search 2 (08:56 UTC on): plain beam d 19,937 (65.1%), branched beams 19,937 / 19,732 (65.47%) / ... / 19,949 - the gain
+  rule needs d < 19,683 (500 u past the greedy median 20,183); the GE ladder (3 min stages) runs next.
