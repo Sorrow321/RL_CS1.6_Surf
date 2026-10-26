@@ -246,3 +246,9 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   run pbr6b4_c11's search 1 on its 32.390B weights (5/9 greedy episodes past the 70.13% walkway line): the policy's own
   plain beam_tas line from the true spawn (tools/auto_spine.py, 4,096 stochastic copies, d-ranked, no fork, no boost, no
   explorer chain) to d 15,471 = 72.93%. Keys = the beam's own held keys. No demo, no record (pbr6b4, round 6).
+* `pbr6b4_c12k02.npy` + `.keys.npy` (6,852 rows; md5 0aced6925bb21e8b7ec73c434dcfa7e5 / 8b172e13693f889c3997b17f648aaa7b):
+  run pbr6b4_c12's search 2 on its 36.446B weights (7/9 greedy episodes crossed search 1's energy line with its energy):
+  tools/auto_spine.py's plain beam_tas line from the true spawn (4,096 stochastic copies of the policy, d-ranked; frontier
+  d 15,046 = 73.67%) to its row 6,387, then one exact explore_phase1 --exact-chains chain (reward-free search, that row's
+  state x1.04, 466 ticks) to d 14,673 = 74.33%. Keys = the beam's and the chain's own held keys. Copied from
+  runs/pbr6b4/pbr6b4_c12/auto/k02 (the round-6 winner's handoff). No demo, no record (pbr6b4, round 6; committed by pbr7b1).
