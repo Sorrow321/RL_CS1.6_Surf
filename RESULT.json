@@ -3,5 +3,5 @@
  "round": 7,
  "final": false,
  "best": null,
- "summary": "Round 7 start (2026-10-26 20:40 UTC): resuming pbr6b4_c12's ckpt_latest (36.6B) on the loop's k02 spine (to 74.33%) with the loop on; no eval of this branch yet."
+ "summary": "No box yet (20:33-23:00 UTC the fleet's 1.2 $/h cap was held by two boxes, offers >= 0.386 $/h); local analysis: the k02 spine (pbr6b4_c12's search 2, to 74.33%) ends at a ledge needing ~+160 u of energy height (only x1.2 GE roots cross it, to 77.68%); built --auto-spine-root-energy (7a425b4, CPU-tested, off = bit-identical): a boosted-root depth spine's energy is taught first. Next: resume c12's ckpt_latest on k02 with the loop (+ the new flag, M 25) as soon as a box is free."
 }
