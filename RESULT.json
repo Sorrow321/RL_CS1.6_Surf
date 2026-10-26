@@ -3,18 +3,21 @@
  "round": 5,
  "final": false,
  "best": {
-  "score": 54.556,
-  "eval_file": "/home/steam/ar_pb/runs/pbr5b4/pbr5b4_c2/traj_24716509184.jsonl",
-  "run": "pbr5b4_c2",
-  "step": 24716509184,
-  "ckpt": "/home/steam/ar_pb/runs/pbr5b4/pbr5b4_c2/ckpt_24637341696.pt",
+  "score": 56.564,
+  "eval_file": "/home/steam/ar_pb/runs/pbr5b4/pbr5b4_c4/traj_24842338304.jsonl",
+  "run": "pbr5b4_c4",
+  "step": 24842338304,
+  "ckpt": "/home/steam/ar_pb/runs/pbr5b4/pbr5b4_c4/ckpt_24842338304.pt",
   "recipe": [
-   "resume of pbr5b4_c1 24.0365B (= the round-4 incumbent + 485M steps on k05)",
-   "--demo-file autoresearch/spines/pbr5b4_e1.npy --demo-keys autoresearch/spines/pbr5b4_e1.keys.npy (own beam + 2 stacked GE stages, smooth 52.7% landing)",
-   "t11's flag set, milestones 44939..27001, --auto-spine --auto-spine-milestones --auto-spine-gain 500 --auto-spine-ge-minutes 8 --auto-spine-retry 4e8 --auto-spine-patience 1.2e9 --auto-spine-pick-energy"
+   "resume of pbr5b4_c2 ckpt_latest 24,766,316,544 (incumbent + k05 485M + spine e1 730M steps)",
+   "--demo-file autoresearch/spines/pbr5b4_beam_m1_5060.npy --demo-keys autoresearch/spines/pbr5b4_beam_m1_5060.keys.npy (the policy's own beam line to 56.38%, cut before its low-speed hopping)",
+   "--demo-milestones 44939,43426,42182,41015,40497,39943,37251,33777,32260,31429,30286,28818,28783,27001,26365,25121",
+   "t11's flag set (demo window/grow 5, grow-max 40, cooldown 5, rate 0.3, front-frac 0.8, success-d 100, bonus 50, keys-hold-spawn-duck, yaw-entropy 0, demo-front-temp 0.5/40/6, respawn-greedy 0.2 + contact + temp, front-perturb 0.2, energy-pot 12 per call, spawn-states entry_ge 0.2)",
+   "--auto-spine --auto-spine-milestones --auto-spine-gain 500 --auto-spine-ge-minutes 8 --auto-spine-retry 4e8 --auto-spine-patience 1.2e9 --auto-spine-pick-energy"
   ],
-  "resume_from": "pbr5b4_c1 ckpt_latest 24,036,507,648",
-  "commit": "313fab5"
+  "resume_from": "pbr5b4_c2 ckpt_latest 24,766,316,544 (md5 066e70a3...)",
+  "commit": "7ad0194",
+  "ckpt_md5": "a5875bb55ef16c360758c534727d2e64"
  },
- "summary": "54.556 (pbr5b4_c2 24.7165B, 1/9 through the 52.7% landing to 54.56%; incumbent 52.937). c1 = incumbent on k05, flat 52.9. GE beside the trainer -> spine e1 (smooth landing) -> c2 54.556. Manual auto_spine on c2's weights: the policy's own beam to 56.59% -> c3 54.514 (median 54.1%) then collapsed to the gate-8 catch and the start room (0.4%) - likely the curriculum on the spine's last 2 s of low-speed hopping overwrote the start room's low-speed duck-jumps. pbr5b4_c4 (01:36 UTC) = c2's weights on that beam line cut before its hopping (56.38%)."
+ "summary": "56.564 (pbr5b4_c4 24.842B: 5/9 greedy at 56.31-56.56%, median 56.3%; incumbent 52.937). Path: the incumbent on k05 (c1, flat 52.9) -> two Go-Explore stages beside the trainer found a smooth 52.7% landing -> spine e1 (c2: 54.556) -> the trainer's search run by hand on c2's weights: the policy's OWN beam to 56.59%, past every GE stall -> its full line (c3) lost the start room within 150M steps (the spine's last 2 s are low-speed hopping) -> the same line cut before the hopping (c4): 56.564 in 75M steps. New: --auto-spine-pick-energy, tools/ge_stack_spine.py, auto_spine keys of the picked chain. The trainer's own search 1 is running."
 }

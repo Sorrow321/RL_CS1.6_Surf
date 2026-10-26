@@ -2270,3 +2270,11 @@ The trainer used ~12 of the box's 30.7-CPU quota, so each stage ran beside it at
 * **pbr5b4_c4** (01:36 UTC): c2's 24.766B weights again + spine pbr5b4_beam_m1_5060 (m1 cut at row 5,060 = 56.38%,
   the top of its fast climb, before the hopping; success line ~56.2%) + the same flags and 16 milestones. If the
   start room erodes again: lower the learning rate.
+
+### c4: 56.564 - the greedy flies the policy's own line through the landing and the climb (01:52 UTC)
+* c4 evals: 54.214 (24.767B, the resumed c2 weights - c3's first eval of the same weights read 52.923: eval-to-eval
+  variation of one episode at the landing) / **56.564** (24.842B, 75M steps in): 5/9 greedy episodes at 56.31-56.56%
+  (one hops on the ledge top for 30 s until the patience cut), 3/9 still die at 52.7%, 1 at 50.9%. Median 56.3%.
+* The 5/9 quorum fired the trainer's own auto-spine search 1 at 24.842B (with the energy pick on).
+* Handoff for 56.564: ckpt_latest saved by the search at exactly 24,842,338,304 = the eval's weights, pinned as
+  pbr5b4_c4/ckpt_24842338304.pt (md5 a5875bb5...) and pulled.
