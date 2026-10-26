@@ -3160,3 +3160,9 @@ a 5080 at 0.621 $/h, so `rent` was REFUSED (budget pace); a local retry every 5 
   * CPU results (23:00 UTC): test_auto_spine_root_energy 5/5 (166 s; the trainer run held the x1.12 spine at the first
     search and released it at the next eval's energetic quorum); regression test_demo_stall_cut + test_auto_spine_energy
     + test_demo_match_band 14/14 (313 s).
+* What the x1.2 chain shows past the ledge (ge_replay of the boosted archive's deepest cell, 440 ticks, local, ANALYSIS of
+  a reward-free search line): over the ledge at z ~2,148 (74.38%), down the shaft at ~690 u/s (h 2,447), a LANDING on the
+  76.14% ramp at (-170, 1,198, 1,493) that costs -419 u of h (the record, ANALYSIS ONLY: ~-75..-150 u there), east at
+  900-970 u/s at z 1,409 -> 1,263 (the record is at z ~1,450-1,525 there, 200-250 u higher), then a crash at 77.52%
+  ((663, 1,235, 1,297), h 1,882 -> 1,329, -553 u) and a fall toward the catch *183 (z 1,207-1,440). So after the ledge
+  the next gates are energy again: the ramp landing at 76.1% and the eastward surf at 76.5-77.5%.
