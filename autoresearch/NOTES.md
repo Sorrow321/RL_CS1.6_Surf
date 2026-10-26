@@ -3076,3 +3076,11 @@ c5 had dips (median down to 24%) that recovered, c6 / c7 did not (see the collap
   left, RTX 5080 at 0.621 $/h, do not fit; a 4090 at 0.411 was taken between listing and renting). A background
   retry of `box.py rent` every 2 min (the door, no workaround). Plan on a box: c12 = c11's command (--ppo-head-clip,
   --demo-tau0 6107) on the c9 snapshot.
+* 16:12 UTC: still no box - the other branches' burn rose to 1.09 $/h (0.11 left under the cap). The rent retry
+  continues through box.py.
+* **To continue from here (supersedes the c5 recipe above):** deploy `pbr6b2_c9/ckpt_31297372160.pt` (md5 32f4c3fb...,
+  the 62.371 hand-on) and launch c5's exact command (NOTES "The exact c5 launch") with `--auto-spine-patience 4e9`
+  (not 6e8) and `--demo-tau0 6107 --diag-ratio-split 4096 --ppo-head-clip` appended - c11's command. The curriculum
+  then works backward from row 6,107 through the approach's hop-and-stop bands toward the fork at 5,827, where the
+  greedy's own route meets the line; the greedy can only pass the drop after that. Read each band's success per
+  visit and the evals' medians (a collapse shows as a median drop within ~75M steps).
