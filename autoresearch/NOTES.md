@@ -2165,3 +2165,10 @@ other references' copy ratio) failed the deploy. This branch's deploy_box.sh tak
   reason cpu_bound) and released. The rent retry runs on.
 * Its one greedy eval (traj_23551541248, the incumbent's own weights 0.5M steps after the resume): **52.930**,
   median 52.84% (0/9 past k05's success line d <= 25,121) - pulled to runs/pbr5b3/pbr5b3_c1/.
+
+### Harness issue: one branch starves under the flat 1.2 $/h fleet cap (19:50-00:50 UTC)
+With three boxes live the fleet burned 0.984 -> 1.148 $/h, so the fourth branch could only rent an offer under
+0.216 -> 0.052 $/h; from 19:50 to 00:50 UTC (5 h of a 12 h round) the only fitting offer was one 0.165 $/h 4060 Ti
+on a CPU-starved host (above). Acceptable offers meanwhile sat at 0.23-0.62 $/h (4070 Ti 0.228, 4080 0.299, 4080S
+0.31-0.41, 5080 0.387-0.621, 4090 0.449). Operator: a per-branch share of the cap (1.2 / 4 = 0.30 $/h) or a
+reservation for a boxless branch would keep all four forks running; as it is, a fork that rents last does not run.
