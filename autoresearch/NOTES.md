@@ -3145,3 +3145,17 @@ Independence: only this branch and $AR_HOME/incumbent/ are read. c12's later wei
   tau0: from the end), the 25 milestones (+ k01-old's 15,570.6), **`--auto-spine-async`** (its first run), --steps 3e9.
   Same box and card as c13 (no hardware transfer). Record gate passed. First minutes: the curriculum at 100% / 85% bands,
   6,939 -> 6,824. Box extended to 00:28 UTC.
+* c14 (k01b, async loop; 36.470-36.978B, 21:27-21:53 UTC, 330k steps/s): the curriculum walked 6,939 -> 6,449 in ~12
+  min and then oscillated [6,449 / 6,454] at 12-16% / 46-49% for ~15 min (rising slowly; it once reached 6,439): the
+  band is the chain's ramp bounce ~52 rows after the x1.04 root (6,450-6,480: vz -607 -> +454, 860 -> 530 u/s, -320 u
+  of h). Evals 71.403 / 71.422 / 71.422 / **54.589 / 54.680** / 71.517 / (36.92B) - two evals in which ALL 9 greedy
+  episodes died at (-2,557, ~2,150, z 1,204), 54.6%, a gate the lineage passed in round 5, then recovered. 0/9 past the
+  74.09% line throughout; no search fired.
+* **The update size**: train/approx_kl (the update's KL at its last minibatch) medians per 100M steps: c12 (the
+  incumbent's run) 0.08-0.11, p90 0.14-0.22; c13 before its spine swap 0.07-0.10; c13 after it 0.11-0.12; **c14
+  0.11-0.22, p90 0.24-0.49, single updates at 0.37 and 0.79** at 36.61-36.63B - right before the two 54.6% collapses.
+  The chain's band (80% of spine draws on 5 hard rows) makes large updates, and one of them broke an early gate.
+* **pbr7b4_c15** (21:54 UTC): resume of c14's ckpt_latest (36.978B, md5 5b8e57f2...) with c14's flags + `--demo-tau0
+  6449` + **`--target-kl 0.15`** (the trainer's PPO early stop, SB3's target_kl, already in the code and off in this
+  lineage until now: an update stops once its KL passes 0.225 - above c12's p90, so normal updates run whole and only
+  the spikes are cut). Same box. A stability fix, generic (no map constant).
