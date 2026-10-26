@@ -2283,6 +2283,45 @@ def logprob_entropy_view(padded, actions, mu, log_std, z,
     return logp, ent
 
 
+def ratio_split_parts(padded, actions, mu, log_std, z, temp=None, temp_view=None):
+    """--diag-ratio-split: logprob_entropy_view's joint log-prob in three parts, each (B,):
+    the keys heads' categorical log-prob, the yaw Gaussian(s)' and the pitch Gaussian's (the
+    last view head). Same temperatures, same expressions; the three sum to the joint."""
+    logp_c, _ = logprob_entropy_padded(padded[:, N_VIEW:], actions[:, N_VIEW:], temp)
+    ls = _temper_log_std(log_std, temp if temp_view is None else temp_view)
+    g = -0.5 * ((z - mu) / ls.exp()).pow(2) - ls - 0.5 * LOG2PI       # (B, n_z), gauss_logp's terms
+    return logp_c, g[..., :-1].sum(-1), g[..., -1]
+
+
+def ratio_split_stats(before, after, adv, clip: float) -> dict:
+    """--diag-ratio-split's read-out over one update's sampled rows. ``before`` / ``after``:
+    ratio_split_parts of the same rows and stored actions under the policy before the
+    update's first step and after its last; ``adv``: the rows' advantages centred on the
+    update's mean (the sign PPO's clip reads). A row is DEAD under a log-ratio when it lies
+    past the clip in its advantage's direction - PPO's min() then gives the row no policy
+    gradient on ANY head. ``by_view``: dead under the joint ratio but not under the keys
+    heads' own, i.e. rows a per-head clip would still let train the keys."""
+    lo, hi = math.log(1.0 - clip), math.log(1.0 + clip)
+    dk, dy, dp = (a.float() - b.float() for a, b in zip(after, before))
+    dj = dk + dy + dp
+    pos, neg = adv > 0, adv < 0
+
+    def dead(x):
+        return (pos & (x > hi)) | (neg & (x < lo))
+
+    def share(m):
+        return float(m.float().mean())
+
+    dj_dead, dk_dead = dead(dj), dead(dk)
+    return {"n": int(dj.numel()),
+            "out_joint": share((dj > hi) | (dj < lo)),
+            "dead_joint": share(dj_dead), "dead_keys": share(dk_dead),
+            "dead_view": share(dead(dy + dp)), "by_view": share(dj_dead & ~dk_dead),
+            "rms_keys": float(dk.pow(2).mean().sqrt()), "rms_yaw": float(dy.pow(2).mean().sqrt()),
+            "rms_pitch": float(dp.pow(2).mean().sqrt()),
+            "kl_keys": float(-dk.mean()), "kl_yaw": float(-dy.mean()), "kl_pitch": float(-dp.mean())}
+
+
 # --------------------------------------------------------------------------
 # --curiosity-cond (docs/curiosity_cond.md): the family's conditioning column
 # and its per-env KEYS temperature, trainer / eval / tool side. The draw,
@@ -4541,6 +4580,16 @@ def main() -> None:
                          "sigma at 0.034, and never found it again (2026-10-06). One host sync "
                          "per minibatch. Unset / 0 = off (bit-identical). Not restored from a "
                          "checkpoint")
+    ap.add_argument("--diag-ratio-split", type=int, default=0,
+                    help="R (MEASUREMENT only, --view-continuous): every update scores R rows of "
+                         "its buffer (a private generator) before its first step and after its "
+                         "last, and splits PPO's JOINT log-ratio into the keys heads', the yaw "
+                         "head's and the pitch head's parts: how many rows sit past the clip, "
+                         "how many get no policy gradient (past it in the advantage's direction) "
+                         "and how many of those would still train the keys heads under a "
+                         "keys-only ratio. pbr6b2 2026-10-26: the c6 / c7 collapses (keys "
+                         "entropy and W/S-in-the-air up) with the yaw sigma at 0.020. 0 = off "
+                         "(bit-identical). TRAIN_ONLY; not restored from a checkpoint")
     ap.add_argument("--wd", type=float, default=None,      # 0 = Adam, bit-identical
                     help="decoupled weight decay (AdamW); 0 keeps plain Adam. ckpt restores")
     ap.add_argument("--dropout", type=float, default=None,  # 0 = off
@@ -14739,6 +14788,9 @@ def main() -> None:
     if float(args.target_kl or 0.0) > 0.0:
         # --target-kl: an optimizer setting, recorded for provenance (TRAIN_ONLY in record_ckpt)
         meta["config"]["target_kl"] = float(args.target_kl)
+    if int(args.diag_ratio_split or 0) > 0:
+        # --diag-ratio-split: a measurement, dumped only when on (TRAIN_ONLY in record_ckpt)
+        meta["config"]["diag_ratio_split"] = int(args.diag_ratio_split)
     if args.split_trunk:
         meta["config"]["split_trunk"] = 1
     if args.obs_views > 1:
@@ -18361,6 +18413,21 @@ def main() -> None:
     if TKL > 0.0:
         print(f"--target-kl {TKL:g}: an update stops once its approx KL exceeds {1.5 * TKL:g}")
     tkl_acc = [0, 0, [], 0]           # updates, stops, the stops' (epoch, mb, kl), stops ever
+    DIAG_RS = int(args.diag_ratio_split or 0)
+    rs_gen, rs_n = None, 0            # --diag-ratio-split: its private row generator, updates read
+    if DIAG_RS < 0:
+        raise SystemExit(f"--diag-ratio-split must be >= 0, got {DIAG_RS}")
+    if DIAG_RS > 0:
+        if not VIEWC or RNN or H > 0 or STACK != 1 or YCOND or MASKS.on:
+            raise SystemExit("--diag-ratio-split splits the --view-continuous joint of the plain "
+                             "update (refused with --rnn, --chunk, --frame-stack, --yaw-cond and "
+                             "the action masks)")
+        DIAG_RS = min(DIAG_RS, T * N)
+        rs_gen = torch.Generator(device=device)
+        rs_gen.manual_seed(int(args.seed) + 7919)
+        print(f"--diag-ratio-split {DIAG_RS}: every update scores {DIAG_RS} of its rows before its "
+              "first step and after its last and splits the joint log-ratio into the keys / yaw / "
+              "pitch heads (measurement only; the rows come from a private generator)")
     while global_step < int(args.steps):
         it_no += 1
         tm.start_iter()
@@ -20062,6 +20129,27 @@ def main() -> None:
         # state stay bit-identical to the resumed checkpoint (kl / losses
         # log 0)
         tkl_hit = None                 # --target-kl: (epoch, minibatch, kl) of an early stop
+        rs_rows = rs_before = None
+        if DIAG_RS > 0 and not FREEZE and not warming:
+            # --diag-ratio-split: the sampled rows' log-prob parts BEFORE the update's first step,
+            # scored as mb_step scores them (same temperatures, no augmentation)
+            rs_rows = torch.randperm(T * N, device=device, generator=rs_gen)[:DIAG_RS]
+
+            def rs_parts(rows):
+                with torch.no_grad():
+                    with amp:
+                        lg, _ = policy.forward_split(
+                            f_scal[rows], f_img[rows],
+                            priv=(None if f_priv is None else f_priv[rows]))
+                    cat_, mu_ = split_view(lg.float())
+                    tk = temp_t if f_cct is None else f_cct[rows]
+                    tv = tempv_t
+                    if FRONT and f_ctv is not None:
+                        tv = f_ctv[rows]
+                    return ratio_split_parts(packer.pad(cat_), f_act[rows], mu_,
+                                             policy.log_std(), f_z[rows], tk, tv)
+
+            rs_before = rs_parts(rs_rows)
         for _ep in range(0 if FREEZE else args.epochs):
             if tkl_hit is not None:
                 break
@@ -20199,6 +20287,22 @@ def main() -> None:
                 if rnd is not None:
                     rnd.train_step(f_scal[idx])   # tiny MLP, outside compile
                 last_diag = (idx, logp, vl, pg, el)
+        if rs_before is not None:
+            # --diag-ratio-split: the same rows AFTER the update's last step
+            rs_after = rs_parts(rs_rows)
+            with torch.no_grad():
+                rs_chk = float((sum(rs_before) - f_logp[rs_rows]).abs().mean())
+                rs = ratio_split_stats(rs_before, rs_after, f_adv[rs_rows] - f_adv.mean(),
+                                       float(args.clip))
+            rs_n += 1
+            if D.is_main and (rs_n <= 10 or rs_n % 25 == 0):
+                print(f"ratio-split [{global_step:,}] {rs['n']} rows: past the clip "
+                      f"{rs['out_joint']:.1%}, no policy gradient {rs['dead_joint']:.1%} (by the keys' "
+                      f"own ratio {rs['dead_keys']:.1%}, by the view's own {rs['dead_view']:.1%}; "
+                      f"cut by the view {rs['by_view']:.1%}) | rms log-ratio keys "
+                      f"{rs['rms_keys']:.3f} yaw {rs['rms_yaw']:.3f} pitch {rs['rms_pitch']:.3f} | kl "
+                      f"keys {rs['kl_keys']:.4f} yaw {rs['kl_yaw']:.4f} pitch {rs['kl_pitch']:.4f} | "
+                      f"|parts - stored logp| {rs_chk:.1e}")
         if TKL > 0.0:
             # --target-kl: one line per 25 updates with how often and where the update stopped
             tkl_acc[0] += 1
