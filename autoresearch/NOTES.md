@@ -2368,7 +2368,7 @@ The trainer used ~12 of the box's 30.7-CPU quota, so each stage ran beside it at
 * Recipe for resuming this lineage's late checkpoints: keep `--target-kl 0.05` (TRAIN_ONLY, existing flag) - it costs
   nothing when the KL is small and caps exactly the updates that broke c3 / c6 / c7.
 
-### pbr5b4 round 5 lesson (DRAFT 05:05 UTC, finalised at wrap-up)
+### pbr5b4 round 5 lesson (drafted 05:05 UTC; final version at the end of this section, 07:10 UTC)
 * **Score 52.937 -> 56.594** (pbr5b4_c5 25.5585B; c4's 56.564 at 24.842B was the jump: 5/9 greedy episodes through the
   52.7% landing to 56.3-56.6%; by c5/c8 9/9-style at 56.4-56.6%). The box came 2.8 h late (fleet cap) and ran ~150k
   steps/s (an RTX 5060 Ti + EPYC under a 30.7-CPU quota), half of round 4's boxes.
@@ -2413,3 +2413,27 @@ The trainer used ~12 of the box's 30.7-CPU quota, so each stage ran beside it at
   after the grader's rounding (unrounded 56.594193 vs c5's 56.594273); score_branch takes whichever run directory it
   lists first, so both hand-on files are pulled: c5's ckpt_latest (25,634,537,472, md5 a9247ead...) and c8's
   ckpt_26635927552 (the snapshot 132M before its 56.594 eval, md5 f6ed6f97..., trained under --target-kl 0.05).
+
+### pbr5b4 round 5 lesson (wrap-up, 2026-10-26 07:10 UTC)
+* **Score 52.937 -> 56.594** (best eval pbr5b4_c5 traj_25558515712, 75 valid greedy evals this round). Hand-on checkpoint:
+  pbr5b4_c5/ckpt_latest.pt (step 25,634,537,472, md5 a9247ead...; the rule's pick: 76M after the eval vs the snapshot 178M
+  before). c8 tied at 56.594 under --target-kl 0.05 (its snapshot ckpt_26635927552, md5 f6ed6f97..., pulled). The greedy
+  from the true start: start room -> ... -> the smooth-enough 52.7% landing -> 54-56% -> the shaft's ledge at 56.3-56.6%.
+* **Resume the hand-on weights WITH `--target-kl 0.05`.** Without it, two resumes of c5's end (c6, c7) lost the start room
+  within 150-250M steps (update KL 0.15-0.4, single updates at 2.6 / 4.1); with it (c8) the route held for 2.2B steps,
+  every update stopping after about one epoch.
+* **What worked:** (1) the policy's own beam on the newest weights (56.59%, beyond four Go-Explore stages); (2) cutting a
+  spine before a low-speed end; (3) Go-Explore beside the trainer on a box with idle CPU (~5% trainer cost) - the smooth
+  52.7% landing came from two stacked stages (tools/ge_stack_spine.py) and gave the first eval past the incumbent; (4)
+  start-state beams with scaled velocity as the energy-vs-skill instrument; (5) --target-kl for late checkpoints.
+* **What did not:** the plain k05 continuation (flat 52.9 for 485M steps); explorer chains with hard surf turns as spines
+  (curriculum cliffs); energy-ranked beams; a x1.3-boosted shaft spine (curriculum stuck at the root, the route held);
+  --energy-pot 24 on a resume (destabilised); the energy pick as such found no better route than depth here (the
+  explorer's chains all crashed at the same two places) - it stays as an option, and its picked-chain key bug is fixed.
+* **Gate 17** (for whoever continues): a spiral shaft at 56.6%. It needs energy height >= ~2,740 at 55.55% (x1.30 start-state
+  beam passes to 58.84%, x1.25 stops at 56.92%); the greedy brings ~2,330. The deficit is made at the 52.7% floor landing
+  (-450 u in every greedy episode) and at a ramp at ~54.5% that every faster line meets falling steeply (-640 u). A line
+  smooth at BOTH, then the policy's own spiral, is the target; see the "for whoever continues gate 17" list above.
+* **Ops:** no box for the first 2.8 h (two boxes held 0.98 of the 1.2 $/h cap; a watcher rented, deployed and launched by
+  itself); a power-capped 4060 Ti failed gpu_health and was blocklisted (harness issue: no cheap-tier references); the
+  5060 Ti box ran ~150k steps/s. Box 57730863 released at 07:09 UTC.

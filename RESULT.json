@@ -1,24 +1,31 @@
 {
  "agent": "pbr5b4",
  "round": 5,
- "final": false,
+ "final": true,
  "best": {
   "score": 56.594,
   "eval_file": "/home/steam/ar_pb/runs/pbr5b4/pbr5b4_c5/traj_25558515712.jsonl",
   "run": "pbr5b4_c5",
   "step": 25558515712,
   "ckpt": "/home/steam/ar_pb/runs/pbr5b4/pbr5b4_c5/ckpt_latest.pt",
-  "recipe": [
-   "resume of pbr5b4_c2 ckpt_latest 24,766,316,544 (incumbent + k05 485M + spine e1 730M steps)",
-   "--demo-file autoresearch/spines/pbr5b4_shaft_x13_5150.npy (+ .keys): own line to 55.55% + the x1.3 start-state beam up the 56.6% shaft to 57.04% (c4 used pbr5b4_beam_m1_5060)",
-   "--demo-milestones 44939,...,27001,26365,25121,25016 (17)",
-   "t11's flag set (demo window/grow 5, grow-max 40, cooldown 5, rate 0.3, front-frac 0.8, success-d 100, bonus 50, keys-hold-spawn-duck, yaw-entropy 0, demo-front-temp 0.5/40/6, respawn-greedy 0.2 + contact + temp, front-perturb 0.2, energy-pot 12 per call, spawn-states entry_ge 0.2)",
-   "--auto-spine --auto-spine-milestones --auto-spine-gain 500 --auto-spine-ge-minutes 8 --auto-spine-retry 4e8 --auto-spine-patience 1.2e9 --auto-spine-pick-energy"
-  ],
-  "resume_from": "pbr5b4_c4 ckpt_latest 25,180,504,064 (md5 ccb19a24...)",
-  "commit": "e5d5a70",
   "ckpt_md5": "a9247eada8051bd469f8758a4382bda1",
-  "ckpt_note": "c5's 56.594 -> c5 ckpt_latest 25,634,537,472 (md5 a9247ead..., the hand-on pick: 76M after vs ckpt_25380782080 178M before, also pulled). c8 ties at 56.594 (26.7675B, unrounded 56.594193 vs c5's 56.594273): its hand-on snapshot ckpt_26635927552 (md5 f6ed6f97..., trained under --target-kl 0.05) is pulled too. Resume either WITH --target-kl 0.05 (c6/c7 collapsed resuming c5's end without it)."
+  "ckpt_step": 25634537472,
+  "recipe": [
+   "resume chain: round-4 incumbent pbr4b3_t11 ckpt_23551016960 -> c1 (k05, 485M) -> c2 (spine e1, 730M) -> c4 (spine pbr5b4_beam_m1_5060, 414M) -> c5",
+   "--demo-file autoresearch/spines/pbr5b4_shaft_x13_5150.npy --demo-keys autoresearch/spines/pbr5b4_shaft_x13_5150.keys.npy (the policy's own beam line to 55.55% + a x1.3 start-state beam up the 56.6% shaft to 57.04%)",
+   "--demo-window 5 --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5 --demo-rate 0.3 --demo-front-frac 0.8 --demo-success-d 100 --demo-success-bonus 50",
+   "--demo-milestones 44939,43426,42182,41015,40497,39943,37251,33777,32260,31429,30286,28818,28783,27001,26365,25121,25016",
+   "--keys-hold-spawn-duck --yaw-entropy 0 --demo-front-temp 0.5 --demo-front-ticks 40 --demo-front-view 6",
+   "--respawn-greedy 0.2 --respawn-greedy-window 0.25 2.0 --respawn-greedy-stuck 200 --respawn-greedy-contact --respawn-greedy-temp 0.5 --respawn-greedy-temp-ticks 100 --respawn-greedy-temp-view 6",
+   "--respawn-front-perturb 0.2 --respawn-front-perturb-band 0.005 --respawn-front-perturb-speed 1.0 1.3 --respawn-front-perturb-turn 90",
+   "--energy-pot 12 --energy-pot-front 0 --energy-pot-front-bonus 0 --no-respawn-novel --respawn-backward-mix 0 --int-real-only 0",
+   "--spawn-states autoresearch/spines/pbr1b1_entry_ge_states.npy --spawn-states-frac 0.2 --maxvel 3500 --ckpt-every 2e8",
+   "--auto-spine --auto-spine-milestones --auto-spine-gain 500 --auto-spine-ge-minutes 8 --auto-spine-retry 4e8 --auto-spine-patience 1.2e9 --auto-spine-pick-energy",
+   "RESUME WITH --target-kl 0.05 (c6/c7 resumed c5's end without it and lost the start room; c8 with it held 56.6% for 2.2B steps)"
+  ],
+  "resume_from": "pbr5b4_c4 ckpt_latest 25,180,504,064",
+  "commit": "3431db0",
+  "ckpt_note": "hand-on pick for the 56.594 eval: c5's ckpt_latest (25,634,537,472; 76M after the eval vs ckpt_25380782080 178M before, md5 030dd172..., also pulled). c8 (same config + --target-kl 0.05) tied at 56.594 (26.7675B, unrounded 56.594193 vs c5's 56.594273); its snapshot ckpt_26635927552 (md5 f6ed6f97...) is pulled too. The exact weights of c4's 56.564: runs/pbr5b4/pbr5b4_c4/ckpt_24842338304.pt (md5 a5875bb5...)."
  },
- "summary": "56.594 (pbr5b4_c5 25.5585B, 9/9-style at 56.4-56.6%; 56.564 c4; incumbent 52.937). Path: k05 (c1 flat) -> GE smooth-landing spine e1 (c2 54.556) -> the policy's own beam on c2's weights to 56.59% -> cut before its low-speed hopping (c4 56.564; c3 on the uncut line lost the start room). Gate 17 = a spiral shaft at 56.6%: a pure energy gate (x1.30 start-state beam -> 58.84%, x1.25 -> 56.92%): needs h >= ~2,740 at 55.55%, the greedy brings ~2,330 - lost at the 52.7% landing (-450 u every episode). c5 trained a x1.3 shaft spine (route held, curriculum stuck at the boosted root); c6 = the same with --energy-pot 24."
+ "summary": "52.937 -> 56.594 (pbr5b4_c5 25.5585B; greedy 9/9-style at 56.4-56.6%; 56.564 at c4 24.842B was the jump). Box 2.8 h late (fleet cap), a 150k steps/s 5060 Ti. Path: k05 continuation flat (c1) -> Go-Explore BESIDE the trainer found a smooth 52.7% landing -> spine e1 (c2 54.556) -> the trainer's search by hand on c2's weights: the policy's OWN beam to 56.59%, past every GE stall -> cut before its low-speed hopping (c4 56.564; c3 on the uncut line lost the start room). Gate 17 = a spiral shaft at 56.6%: pure energy (start-state beam x1.30 at 55.55% -> 58.84%, x1.25 -> 56.92%; needs h >= ~2,740, the greedy brings ~2,330, lost at the 52.7% landing (-450 u) and the 54.5% ramp at speed). Training KL ran away on the late runs (c5 0.06 -> 0.15; c6/c7 collapsed): --target-kl 0.05 fixes it (c8). New: --auto-spine-pick-energy, tools/ge_stack_spine.py, auto_spine picked-chain keys."
 }
