@@ -4978,7 +4978,9 @@ def main() -> None:
                          "kept for the move, so an upward conveyor launches like the WR demo "
                          "shows (SURF_CONVEYOR=1 for the core and every subprocess: the "
                          "auto-spine beams / Go-Explore). Default off = the old core bit for "
-                         "bit; ckpt restores")
+                         "bit = the engine's own code (ReHLDS SV_RunCmd + CS pm_shared, read "
+                         "2026-10-26: no launch). NOT restored from a checkpoint: a resume "
+                         "runs the standard core unless --conveyor 1 is passed again")
     ap.add_argument("--maxvel", type=float, default=None,
                     help="sv_maxvelocity (default 2000, the GoldSrc stock "
                          "value all pre-race runs trained on; real surf "
@@ -7685,9 +7687,11 @@ def main() -> None:
         if args.maxvel is None and ck_cfg.get("maxvel") is not None:
             args.maxvel = float(ck_cfg["maxvel"])
             restored.append(f"maxvel={args.maxvel:g}")
-        if args.conveyor is None and ck_cfg.get("conveyor") is not None:
-            args.conveyor = int(ck_cfg["conveyor"])
-            restored.append(f"conveyor={args.conveyor}")
+        if args.conveyor is None and ck_cfg.get("conveyor"):
+            # NOT restored (pbr5b3, 2026-10-26): the engine's own code gives no conveyor launch
+            # (NOTES), so a resume runs the standard core unless --conveyor 1 is passed again
+            print("!! the checkpoint was trained with the EXPERIMENTAL --conveyor 1; this resume "
+                  "runs the standard core (pass --conveyor 1 to keep it)")
         if args.respawn_frac is None and ck_cfg.get("respawn_frac") is not None:
             args.respawn_frac = float(ck_cfg["respawn_frac"])
             restored.append(f"respawn_frac={args.respawn_frac:g}")
@@ -8852,7 +8856,8 @@ def main() -> None:
         # inherited by every subprocess (auto_spine.py -> beam_tas / explore_phase1 / ge_replay)
         os.environ["SURF_CONVEYOR"] = "1"
         print("--conveyor 1: EXPERIMENTAL conveyor physics (SURF_CONVEYOR=1): upward conveyors "
-              "launch a standing player (vz -> +speed), the WR demo's behaviour")
+              "launch a standing player (vz -> +speed), fitted to the WR demo; the engine's own "
+              "code (ReHLDS / ReGameDLL) has no such launch")
     if args.reward is None:
         args.reward = "forward"
     if args.blend_start is None:
@@ -14630,7 +14635,7 @@ def main() -> None:
         # --demo-success-bonus: dumped only when set; a resume restores it
         meta["config"]["demo_success_bonus"] = float(args.demo_success_bonus)
     if args.conveyor:
-        # --conveyor: dumped only when on (flag-off run.json byte-identical); a resume restores it
+        # --conveyor: dumped only when on (flag-off run.json byte-identical); never restored
         meta["config"]["conveyor"] = 1
     if args.auto_spine:
         # --auto-spine: dumped only when on (a flag-off run.json is the control's byte for

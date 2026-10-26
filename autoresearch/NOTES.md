@@ -2288,6 +2288,29 @@ reservation for a boxless branch would keep all four forks running; as it is, a 
   h 2,389 (record 2,772). c3's search 2 (25.138B) plain beam: the ledge again (24,814); killed.
 * Manual GE #2 (05:07 UTC): rooted at that spine's 52-53% states (ticks 4,640-4,780), x1.0 / 1.04, 12 min.
 
+### The engine's own code: an upward conveyor does NOT launch (2026-10-26 06:34 UTC; `--conveyor 1` is not fidelity)
+Read in the reverse-engineered engine and game code (ReHLDS = HLDS 6153, `rehlds/engine/sv_user.cpp` and
+`sv_phys.cpp`; ReGameDLL_CS = CS 1.6 mp.dll, `regamedll/pm_shared/pm_shared.cpp`, `dlls/player.cpp`; the HLSDK's
+`pm_shared/pm_shared.c` agrees line for line on this path). Downloaded to the session scratchpad, read only.
+* `SV_RunCmd` calls `SV_CheckMovingGround` BEFORE the PM (sv_user.cpp:846). On an FL_CONVEYOR ground entity it SETS
+  basevelocity = movedir x speed and FL_BASEVELOCITY, so nothing is folded while the player stands there.
+* `PM_AddCorrectGravity` (pm_shared.cpp:621-623) adds basevelocity[2] x frametime (250 x 0.00767 = 1.9 u/s) and
+  zeroes basevelocity[2]. The ground branch of `PM_PlayerMove` then zeroes vz before friction, so the player stays on
+  the ground, and nothing vertical reaches `PM_CategorizePosition`'s vz > 180 test.
+* `SV_RunCmd` copies pmove->basevelocity BACK into the entity after the PM (sv_user.cpp:1012-1014), so the zeroed
+  [2] sticks. When the player leaves the plate, the fold (sv_user.cpp:709-712, (1 + dt/2) x basevelocity) carries
+  only the horizontal part. `SV_Physics` skips clients (sv_phys.cpp:1491), so nothing else touches it.
+* The only conveyor code on the player side is `CBasePlayer::Jump` (player.cpp:4535-4537): it adds basevelocity on a
+  jump PRESS, and then `PM_Jump` SETS vz = 268. The record presses no jump.
+* **So on the engine's code an upward conveyor is the friction floor that our standard core already has.** The
+  record's +249 at both plates is the fold of a basevelocity[2] of 250 that survived the PM. These sources cannot
+  produce that, so the record's server ran something else (another engine build or a plugin; unknown).
+  `--conveyor 1` reproduces THAT server, fitted to two frames of the demo, and is not a fidelity fix. Whether the
+  target is the record server's physics or the engine's is the operator's call.
+* Changed (python/train_fast.py, this commit): a resume NO LONGER restores `conveyor` from a checkpoint. It prints a
+  `!!` notice and runs the standard core unless `--conveyor 1` is passed again. record_ckpt still mirrors the
+  checkpoint's own `conveyor`, so a recording of c3's weights replays the physics they were trained in.
+
 ### pbr5b3 round 5 lesson (DRAFT, finalised at wrap-up)
 * **Score 52.937 -> 56.594** (pbr5b3_c2 24.3825B: 9/9 greedy episodes from the true start at 56.59%). No box until
   02:45 UTC (the fleet's 1.2 $/h cap was full for 7 h; a 4060 Ti host at 21:27 ran at 61k steps/s - a foreign niced
@@ -2310,7 +2333,8 @@ reservation for a boxless branch would keep all four forks running; as it is, a 
 * c3 evals (conveyor on): 52.961 / 56.593 / 56.590 / 56.591 / **56.598** / 56.588 / 56.592 / **56.642** (25.289B) /
   56.591 - the same ledge as c2 under the standard physics (56.594), within its crawl noise. Stopped 05:21 UTC at
   25.436B (nothing left on the box worth its rent before the wrap-up); box 57755386 released 05:24 UTC.
-* **Handoff, and a decision for the next round**: the round's best eval is c3's 56.642 (conveyor ON); its snapshot
-  ckpt_25160581120 (md5 a3ddb3c1...) carries `conveyor: 1`, so **a plain resume of it RUNS THE EXPERIMENTAL CONVEYOR
-  PHYSICS** (train_fast restores it); pass `--conveyor 0` for the standard core. The standard-physics equivalent is
-  c2's ckpt_24307040256 (56.575-56.594). Both policies fly the same line to the 56.6% ledge.
+* **Handoff, and a decision for the next round**: the round's best eval is c3's 56.642, with conveyor ON. Its
+  snapshot ckpt_25160581120 (md5 a3ddb3c1...) carries `conveyor: 1`. Since 06:34 UTC a resume does NOT restore that
+  flag (the engine's code has no launch, above). A plain resume of it therefore trains on the STANDARD core, which is
+  the physics c2 reached the same ledge in (56.575-56.594, ckpt_24307040256). Pass `--conveyor 1` only as a
+  deliberate choice of the record server's physics. Both policies fly the same line to the 56.6% ledge.
