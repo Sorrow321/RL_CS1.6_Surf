@@ -3197,8 +3197,9 @@ Independence: only this branch and $AR_HOME/incumbent/ are read. c12's later wei
   tests/python/test_auto_spine_near_gain.py 5/5 + the ladder tests. For the next relaunch: M = 100.
 
 ### THE 73.5% GAP PASSED by the greedy line: 74.078 (2026-10-26 23:22 UTC, c17)
-* c17 evals 38.076-38.604B: 73.207 / 73.xxx / **74.078 (38.227B, median 73.35%)** / 73.635 / **74.012 (38.378B)** /
-  73.420 / 73.608 (medians 73.3-73.4% in 4 of 5): most greedy episodes now pass the 71% section. In the 74.078 eval
+* c17 evals 38.076-38.604B: 73.998 (median 73.2%) / 55.611 (a collapse, median 50.1%) / **74.078 (38.227B, median
+  73.35%)** / 73.635 / **74.012 (38.378B)** / 73.420 / 73.608 / 73.568 (median 73.5%): most greedy episodes now pass
+  the 71% section. In the 74.078 eval
   ep7 takes the CHAIN route - south along x ~-1,040..-1,200 at y ~2,000, climbs into the passage and reaches 74.08% at
   (-990, 1,572, 1,962) at **64.1 s** (the walkway episodes stop at 73.4-73.5% at 73.9-75.9 s), then falls back onto the
   sheet at (-938, 1,765); ep1 / ep4 die on the same route before the climb (73.35-73.50%). 0/9 past k01b's line
