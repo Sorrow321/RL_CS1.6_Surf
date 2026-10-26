@@ -2298,3 +2298,14 @@ The trainer used ~12 of the box's 30.7-CPU quota, so each stage ran beside it at
 * Running (02:15 UTC): beam_tas --score dh (-d + K x energy height) K 3 and 8 from the true start on c4's 24.988B
   weights - does the policy's own distribution hold an energetic line (smooth landing) that reaches the shaft with
   enough energy to spiral?
+* dh beams (K 3, K 8) from the true start on c4's 24.988B weights: 56.58% both - the ledge. Energetic ranking does
+  not find the energy in the policy's own distribution.
+* Start-state beams from e1's smooth-landing states: from 54.04% (|v| 1,527, h 2,990) the policy's own proposals reach
+  only 56.04% (the high-speed lines lose their energy at the 54.5% obstacle, as GE#3/#4 did; m1's slower line passes
+  it losing ~100 u); from 52.9% (ducked mid-air) every copy died within 0.8 s (start-state path, held keys/duck).
+* c4 consolidated: 56.446 / 56.395 / 56.383 (25.0-25.14B, 9/9 at 56.3-56.5%). Stopped at 25.18B (md5 ccb19a24...).
+* **pbr5b4_c5** (02:38 UTC): c4's 25.18B weights + spine pbr5b4_shaft_x13_5150 (m1 to 55.55% + the x1.3 start-state
+  beam line up the shaft, cut at 57.04% before it slows; success line ~56.9%) + 17 milestones (c4's 25,016 added).
+  A boosted root, like round 4's x1.12 k02 (stalled) and x1.32 gate-11 chain (passed after the tick ramp): the
+  question is whether, with the shaft paid, the policy finds the ~+450 u upstream (the 52.7% landing is where it loses
+  the most) - the score cannot fall below the pinned 56.564.
