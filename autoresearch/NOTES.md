@@ -2855,3 +2855,42 @@ spine left whole, the trainer passing `--cut-ahead`, both refusals, TRAIN_ONLY).
   (credit $9.81, below the $10 reserve: no rent or extend is possible for the rest of the round).
 * Branch best: **62.364** = pbr6b2_c5 traj_30079451136 (median 62.35%), hand-on pbr6b2_c5/ckpt_30078926848.pt (md5
   c94d8bbd..., the exact weights of that eval). Incumbent 62.369 (round 5).
+* (CPU check, 10:52 UTC) The three spines' held keys agree with their own states: the duck key equals the IN_DUCK
+  button on the same row in 100% of rows (k01c, c5s1, s6), fwd / side histograms alike - a key misalignment does not
+  explain c5s1's collapse.
+
+### pbr6b2 round 6 lesson (DRAFT 10:55 UTC; finalised at wrap-up)
+* **Score: 62.364** (pbr6b2_c5 30.079B, median 62.35%) - below the incumbent's 62.369; every greedy episode of the round
+  still falls into the catch at the 62.3% drop (gate 19). One 3 h box (RTX 5060 Ti, 0.163 $/h); the credit fell under
+  the $10 reserve at 09:53 and no box could be rented after it.
+* **Gate 19 is a BOUNCE, and it is in the policy's own distribution.** The trainer's search 1 on the inherited weights
+  (c1) found it unboosted: a branched beam (held view offsets at the fork) pauses at the strip's edge, drops nearly
+  vertically and, on the tick the hull meets the ramp's foot just above the catch trigger, JUMPS (vz -754 -> +257,
+  duck released; the bunny-hop cap takes h ~2,500 -> ~2,115) and slides on west. A manual search on c5's weights found
+  another such line to 63.45% (c5s1). The record (ANALYSIS ONLY) instead catches the ramp at ~1,040 u/s; the energy
+  route (round 5's k02, x1.12) was not pursued this round.
+* **New, generic, all default-off:**
+  1. `--auto-spine-cut-ahead A` (auto_spine --cut-ahead): a depth spine ends A u past the greedy frontier. k01's full
+     line (an explorer crawl 1.4% past the greedy) stalled its curriculum at 0% bands 1,000 rows past the drop; cut at
+     300 u past the greedy (62.83%), the curriculum reached the drop in ~5 min.
+  2. `--demo-phase`: a spine spawn's first decision on the line's own decision grid. A respawn happens mid-decision
+     (the leftover 0..K-1 ticks run the old action), so a spawn's first decision has a random phase, and a tick-exact
+     input of the line - here a jump that only a fresh press on the ground makes - capped its band near 1/K (16-20%
+     against the 0.3 rate: 1 h of oscillation in c2-c4). The grid is read off the line's own input changes (every one
+     of a beam line's key / button changes sits on one residue mod K). A CPU probe from the on-grid contact state: the
+     trained greedy bounces and flies to 63.29%. (First version had a bug - band statistics followed the move, so a
+     one-row band at an off-grid spine end never filled; fixed in b8d51d9.)
+  3. `--auto-spine-energy-first B` (auto_spine --energy-before): the energy stage before boosted depth stages. Never
+     fired this round (search 1 found an x1.0 line at its first GE stage).
+* **What did not work / is open:** the approach to the drop was never learned by the greedy in the time left (the
+  curriculum needed: hold duck one decision before the contact, then the beam's pause at the edge, rows ~6,000-6,350);
+  `--demo-rate 0.15` let the curriculum past the contact band only to stall at the band before it (0.1-0.6%: the
+  policy released duck one decision early); training on c5s1 collapsed the route twice within ~76M steps (c6: 20.47,
+  c7: 0.35 / 20.35; cause not established - see c7) while the same flags on k01c held it (c5).
+* **To continue** (if a box exists): resume pbr6b2_c5/ckpt_30078926848.pt (62.364's weights, tick 7.67 ms carried) with
+  c5's flags - spine `autoresearch/spines/pbr6b2_c1k01c.npy` + keys, `--demo-phase --demo-rate 0.2 --demo-tau0 6337`,
+  milestones the 18 + 23216,20589,21624,20774, `--auto-spine --auto-spine-milestones --auto-spine-gain 500
+  --auto-spine-ge-minutes 5 --auto-spine-retry 4e8 --auto-spine-patience 6e8 --auto-spine-energy 150
+  --auto-spine-energy-first 1.04 --auto-spine-cut-ahead 300` and the rest of the round-5 block (NOTES "To continue",
+  pbr5b2) - and watch the greedy's median every eval: a collapse shows within ~75M steps. Avoid c5s1 until its
+  collapse is understood.
