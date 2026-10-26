@@ -3182,3 +3182,16 @@ Independence: only this branch and $AR_HOME/incumbent/ are read. c12's later wei
   TRAIN_ONLY).
 * **pbr7b4_c17** (22:29 UTC): c16's flags + `--demo-replay-frac 0.1` (band 80% / ahead 10% / behind 10%), --demo-tau0
   6399, from c16's snapshot ckpt_37471387648 (37.471B, 3.7M steps before c16's healthy 71.381 eval; md5 f4a2fadf...).
+* c17 evals (37.472-38.000B): 71.385 (the resume, median 61.4%) / 71.318 / 73.130 / 73.567 / **73.651 (37.774B, the
+  round's best: one episode down the OLD walkway route to 73.65% at (-937, 1,911), t 74.9 s; 7/9 die at the 71.3%
+  landing)** / 72.891 (median 55.2%) / 73.454 (median 57.0%) / 73.207. Hand-on for 73.651: ckpt_37671665664 (102M
+  before the eval, md5 8f69f64a..., pulled). Collapses in 2 of 7 post-resume evals (c16: 5 of 9). Note: score.py --best
+  on $AR_HOME/runs/$AR_AGENT/ finds nothing (it globs one level); the orchestrator scores each run dir (best_in).
+* c17's curriculum passed the x1.04 root and sits at [6,359 / 6,364] (26-29% / 34-37%): the beam line's turn at 70.3%.
+  **That is where the greedy leaves the line**: in c17's 38.000B eval every episode tracks the beam line within 7-60 u
+  up to ~70.3% (row ~6,355), then drifts to 80-160 u off by 71.0-71.3% (rows 6,420-6,456) and dies at the old landing.
+  So the curriculum is teaching exactly the stretch the greedy needs; past it the greedy should take the chain route.
+* **`auto_spine --near-gain M` / `train_fast --auto-spine-near-gain M` (new, 56fbd80)**: when a more boosted GE stage
+  passes the gain, the first earlier stage whose line ended within M u of the gain line is the spine instead (the
+  least boost that reaches nearly as deep) - the k01b choice made by the trainer. 0 = off (the command unchanged).
+  tests/python/test_auto_spine_near_gain.py 5/5 + the ladder tests. For the next relaunch: M = 100.
