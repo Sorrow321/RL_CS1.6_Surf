@@ -2972,3 +2972,18 @@ the round. (pbr6b3 released its box 19 min early once it stopped improving.)
 * Negative result, not committed: a "net of the root's boost" rule for the energy stage's gain. I built it on a
   mis-estimate that probe 1's pick was all boost; it was 68 of 186 u (c7's gate-19 pick: 24 of 217 u). The boost's
   share of real energy picks is small, and b1 showed the policy can learn a boosted root's energy anyway. Reverted.
+
+### The credit came back; c1 = the to-continue launch (13:42-14:20 UTC)
+* 13:42: credit $39.68 (from $9.80), 3 boxes burning 0.844 $/h of the 1.2 cap: rent REFUSED (no allowed offer within
+  the fleet's remaining 0.356 $/h); 13:58 retry rented box 57823534 (RTX 5060 Ti, 0.163 $/h, Malaysia, machine
+  148540), but box.py deploy's checkpoint push ran at ~15 KB/s (5.9 of 64 MB in 8 min; this machine's whole outbound
+  was that scp, and the 08:05 deploy pushed the same 64 MB elsewhere in < 2 min) -> blocklisted `network` (commit
+  06705e8) and released. 14:12 box **57825139: RTX 5070 Ti, 0.217 $/h, South Korea, machine 136901, Ryzen 9 7950X**;
+  deployed 06705e8 + b3's hand-on ckpt_30394548224 (md5 8bac378e... on the box) in 3 min.
+* **c1** = the to-continue launch exactly as written above (`--auto-spine-energy-cut --demo-cliff-cut 4
+  --target-kl 0.3` on pbr6b3_b2k02 + keys, b3's flags, --steps 1.5e9 -> stop at 31.8945B); record gates PASSED (2 +
+  4 recordings); resumed 30,394,548,224 at 14:19. First eval (30.395B, the weights as handed on): greedy median
+  deepest d 20,141 (64.76%), 0/9 past the crawl's success line (70.74%). `--target-kl` first early stop at 30.4003B
+  (epoch 2 mb 9, kl 0.52). **121-129k steps/s** (GPU 38%: CPU-bound on this box, vs ~227k on the 4080): ~75M
+  steps (one eval) per ~10 min. Judged at ~30 min (~225M steps) against b3's 64.900: kept only if the greedy
+  passes the climb or the cliff cuts walk the band back toward it.
