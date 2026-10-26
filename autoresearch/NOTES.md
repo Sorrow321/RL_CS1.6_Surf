@@ -3009,3 +3009,11 @@ c5 had dips (median down to 24%) that recovered, c6 / c7 did not (see the collap
   KL of 0.32 and 7.06 (RMS log-ratio 2.8 and 37 over 4,096 rows: a few rows with an extreme pitch-mean move, which
   dominate a MEAN like approx_kl; the logged spikes of every run are likely such outliers, not policy-wide moves).
   |parts - stored logp| reads 0.02-0.04 here (bf16 rollout vs the eager diagnostic forward; 1e-6 on CPU fp32).
+* c8's curriculum on these weights (13:39-13:43 UTC): the contact band [6,337, 6,341] passes at 41-49% (c5 had
+  6.6-14.4% on it) and the band before it, [6,332, 6,336] (spawns snapped to the grid rows 6,332 / 6,336: hold duck
+  one decision, then jump on the contact), sits at 9-12% (c4: 0.1-0.6%); the curriculum alternates between the two.
+  First eval 62.353 (30.250B, median 62.3%).
+* **c9** (13:44 UTC) = c8 restarted from the same 30.250B snapshot with `--auto-spine-patience 4e9` (was 6e8): the
+  patience search would have fired ~600M steps in (~14:25 UTC) and, finding a line deeper than the greedy, swapped
+  k01c for a new spine - the way c6 / c7 landed on c5s1 and collapsed. With 4e9 the spine changes only when >= 5 of 9
+  greedy episodes pass k01c's success line (the loop's other trigger). c8 (4 min) stopped and pulled.
