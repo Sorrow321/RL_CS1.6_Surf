@@ -3195,3 +3195,14 @@ Independence: only this branch and $AR_HOME/incumbent/ are read. c12's later wei
   passes the gain, the first earlier stage whose line ended within M u of the gain line is the spine instead (the
   least boost that reaches nearly as deep) - the k01b choice made by the trainer. 0 = off (the command unchanged).
   tests/python/test_auto_spine_near_gain.py 5/5 + the ladder tests. For the next relaunch: M = 100.
+
+### THE 73.5% GAP PASSED by the greedy line: 74.078 (2026-10-26 23:22 UTC, c17)
+* c17 evals 38.076-38.604B: 73.207 / 73.xxx / **74.078 (38.227B, median 73.35%)** / 73.635 / **74.012 (38.378B)** /
+  73.420 / 73.608 (medians 73.3-73.4% in 4 of 5): most greedy episodes now pass the 71% section. In the 74.078 eval
+  ep7 takes the CHAIN route - south along x ~-1,040..-1,200 at y ~2,000, climbs into the passage and reaches 74.08% at
+  (-990, 1,572, 1,962) at **64.1 s** (the walkway episodes stop at 73.4-73.5% at 73.9-75.9 s), then falls back onto the
+  sheet at (-938, 1,765); ep1 / ep4 die on the same route before the climb (73.35-73.50%). 0/9 past k01b's line
+  (74.09%) yet; the greedy median d 15,175-15,269.
+* Hand-on for 74.078: ckpt_38072221696 (154.7M before the eval, md5 77019fe4..., pulled). Box extended to 02:23 UTC
+  (a gate the incumbent never cleared).
+* The curriculum at [6,354 / 6,359] (29-34%), the beam line's turn at 70.3%, where the greedy left the line.
