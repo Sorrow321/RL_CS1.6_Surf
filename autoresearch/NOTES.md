@@ -2825,3 +2825,29 @@ Germany (machine 56783), rented 08:05 UTC for 2 h.
   energy rule if the cut line is no deeper than the greedy, the depth rule if it is deeper (round 2's "one gate at a time"
   plus round 5's energy rule); (3) the x1.12 boost of k02's root never had to be learned around: once the corner's
   energy was there, the policy's own population found its own way past the drop.
+
+### `--demo-stall-cut STEPS`: the two cuts of this round, by the trainer (10:10 UTC, local, no box)
+* Today's two interventions were one generic rule applied by hand: a backward curriculum that STALLS on a band (tau
+  reaches no new minimum) past where the greedy leaves the line -> cut the spine just before that band; the cut's
+  success line is either already crossed by the greedy (k02e: then the depth rule would be trivial, so the ENERGY rule)
+  or deeper than it (k02c: the depth rule). `train_fast --demo-stall-cut STEPS` (default 0 = off, nothing runs or is
+  dumped; requires --auto-spine and --auto-spine-energy G) watches the curriculum's lowest tau; after STEPS steps without
+  a new minimum it cuts the spine --demo-window rows before it, compares the cut's line with the last greedy eval's median
+  deepest d (train_fast.stall_cut_plan), sets the energy floor (cut end's h - G) or the depth rule, keeps the old line as
+  a milestone, restarts the curriculum at the cut and writes runs/<run>/auto/cutNN.json. The loop's quorum then fires
+  its search exactly as it did after k02e (energetic crossings) and k02c (depth crossings).
+* Tests (CPU): tests/python/test_demo_stall_cut.py (the rule's two branches and its None cases; a princessburglar
+  trainer run that cuts once at row 34 of a 40-state spine; the refusal without --auto-spine-energy; TRAIN_ONLY) +
+  test_auto_spine_energy + test_demo_success_energy: 13/13. Untested at a gate. A patience of ~2e8 steps matches what
+  I waited by hand (c8's landing band ~15 min at ~300k steps/s before I cut it).
+* **To continue (next round, if any):** resume c10's ckpt_latest (runs/pbr6b4/pbr6b4_c10/ckpt_latest.pt, 31.1815B, md5
+  6955707b...; or c9's search-2 save ckpt_latest 30.2598B, md5 55384f10...) on the loop's own spine past gate 20,
+  `autoresearch/spines/pbr6b4_c9k02` + keys (success line 17,070 = 70.13%), with c9's flag set (the c8 block above with
+  `--demo-file autoresearch/spines/pbr6b4_c9k02.npy --demo-keys autoresearch/spines/pbr6b4_c9k02.keys.npy`, no tau0, no
+  --demo-success-energy, milestones `44939,43426,42182,41015,40497,39943,37251,33777,32260,31429,30286,28818,28783,27001,
+  25121,24479,23400,22500,21624.107,23215.873,20589.457,22013.855,20231.945`, `--auto-spine --auto-spine-milestones
+  --auto-spine-gain 500 --auto-spine-ge-minutes 5 --auto-spine-retry 4e8 --auto-spine-patience 0 --auto-spine-energy 150`)
+  + `--demo-stall-cut 2e8` - the trainer then makes the k02c-style cut itself when k02's curriculum stalls in the
+  explorer chain's slow floor walk (66.5%), and gate 20 (the 64.8% ledge catch, in the branched-beam prefix) is taught
+  from the cut. The checkpoint carries the 7.67 ms tick and the keys-hold / potential / view shapes; never pass shape or
+  tick flags to it.
