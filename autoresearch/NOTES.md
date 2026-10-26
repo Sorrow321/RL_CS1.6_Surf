@@ -2827,3 +2827,11 @@ spine left whole, the trainer passing `--cut-ahead`, both refusals, TRAIN_ONLY).
   The trainer's own patience search would only have fired at ~30.68B (~10:45).
 * **c6** (10:13 UTC) = c5's snapshot at 30,366,236,672 (md5 06af7d8c...) + spine pbr6b2_c5s1 (+keys) from its end +
   milestones +21,344 (k01c's line) +20,986 (c5s1's full line's end + 100) + the c5 flags (--demo-phase, rate 0.2).
+* **c6 found a bug in --demo-phase (fixed, see the commit):** the curriculum starts with a band of ONE row, the spine's
+  last (6,689 here, off the grid); every spawn drawn there was moved to 6,688 and, with demo_idx following the move, the
+  band never collected an episode - the curriculum sat at the spine's end ("0 eps"), ~70% of all spawns on one ramp
+  state past the success line. Its 30.442B eval had the greedy median at 20% (d 45,480; training reward ~27 against
+  ~150-200). Fix: demo_idx keeps the DRAWN row (the band statistics), a separate demo_kidx carries the moved row for the
+  held keys. (c5 never hit it: tau0 6,337 put the band on [6,337, 6,341], which holds the grid row 6,340.)
+* c5s1's drop is the same bounce: a vz jump of +300 or more only at row 6,353 (the jump decided at state row 6,352, on
+  its grid: all 907 button and 782 key changes at residue 1).

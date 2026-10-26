@@ -15780,6 +15780,9 @@ def main() -> None:
               f"mean 1 per group. Watch tail/n_med: if it falls under "
               f"{args.tail_min_n} the groups are too fine to estimate a tail")
     demo_idx = np.full(N, -1, np.int64)   # demo index of each env's start
+    # --demo-phase: the grid row a fresh spine spawn was moved to (-1 = not moved); demo_idx
+    # keeps the DRAWN row, which is what the curriculum's band statistics are counted on
+    demo_kidx = np.full(N, -1, np.int64)
     DEMO_END_D = None                     # --demo-success-d: the spine end's d + margin
     if demo is not None and args.demo_success_d is not None:
         _df = slots[0].reward_field if slots[0].reward_field is not None else slots[0].goal_field
@@ -19495,13 +19498,17 @@ def main() -> None:
                     # --demo-phase: a fresh spine spawn has run its L leftover ticks; its first
                     # decision moves it to the line's grid row nearest r + L (BEFORE the held
                     # keys below and fill_vision read the spawn)
+                    demo_kidx[ended_acc] = -1
                     _dp = np.flatnonzero(ended_acc & (demo_idx >= 0))
                     if _dp.size:
                         _row = np.minimum(demo_idx[_dp] + ep_len[_dp], demo.n - 1)
                         _to = DEMO_SNAP[0][np.minimum(_row, len(DEMO_SNAP[0]) - 1)]
                         for _i, _r in zip(_dp.tolist(), _to.tolist()):
                             slots[0].core.set_state(int(_i), demo.S[int(_r)])
-                        demo_idx[_dp] = _to
+                        # the band statistics stay on the DRAWN row (a band of one off-grid row -
+                        # every spine's first, at its end - would otherwise never collect an
+                        # episode: pbr6b2_c6's curriculum sat at its end); the keys follow the move
+                        demo_kidx[_dp] = _to
                 if N_KEYS:
                     # --keys-hold: the same rule and the same place. Every
                     # episode start - the autoreset, a reservoir respawn, a
@@ -19522,7 +19529,8 @@ def main() -> None:
                         # the line held there (demo_idx was set when the old episode ended)
                         _de = np.flatnonzero(ended_acc & (demo_idx >= 0))
                         if _de.size:
-                            keys.state[_de] = DEMO_KEYS[0][demo_idx[_de]]
+                            keys.state[_de] = DEMO_KEYS[0][np.where(
+                                demo_kidx[_de] >= 0, demo_kidx[_de], demo_idx[_de])]
                 if surf_flag is not None:
                     # --obs-surf: every episode start forgets the previous decision's vz (a
                     # fresh spawn has nothing to compare with, so its first flag reads 0).
