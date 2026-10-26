@@ -459,6 +459,12 @@ def test_tail_roots_cover_the_end_of_a_crawling_line():
     r = auto_spine.tail_roots(1000, 600, 100.0, 4.0, 48)
     assert r is not None and r.max() == 1000 and r.min() == 200
     assert ((r >= 200) & (r <= 600)).sum() >= 20 and ((r >= 600) & (r <= 1000)).sum() >= 20
+    # search 3's line at the checkpoint's 7.67 ms tick: its end 1.7 s past its stall, a 4 s window
+    tps = 1000.0 / 7.667
+    st, en = 5679, 5679 + int(round(1.7 * tps))
+    r = auto_spine.tail_roots(en, st, tps, 4.0, 48)
+    assert r is not None and r.max() == en
+    assert auto_spine.tail_roots(st + int(round(0.5 * tps)), st, tps, 4.0, 48) is None
 
 
 def test_mixed_boost_stage_keeps_all_roots(tmp_path, monkeypatch):

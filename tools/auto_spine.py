@@ -286,9 +286,11 @@ def tail_roots(end: int, stall: int, tps: float, secs: float, n: int):
     before the stall). A line that CRAWLS on past its stall (its best d comes long after the first
     tick within --stall-margin of it) dies at its end, not at its stall: then half the roots go in
     the --roots-secs before the stall and half in the --roots-secs before the end (pbr5b2 search 3:
-    every stage rooted at 58-61.5% while the line fell at 62.3%, 1.7 s past its 'stall')."""
+    every stage rooted at 58-61.5% while the line fell at 62.3%, 1.7 s past its 'stall'). A line
+    crawls when its last --stall-margin u take more than a quarter of the root window (the first
+    threshold, half the window, was 2.0 s at 7.67 ms and missed search 3's 1.7 s)."""
     w = int(round(secs * tps))
-    if int(end) - int(stall) <= w // 2:
+    if int(end) - int(stall) <= w // 4:
         return None
     a = np.linspace(max(0, int(stall) - w), int(stall), max(2, int(n) // 2))
     b = np.linspace(max(0, int(end) - w), int(end), max(2, int(n) - int(n) // 2))
