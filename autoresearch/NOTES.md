@@ -2978,3 +2978,10 @@ Germany (machine 56783), rented 08:05 UTC for 2 h.
   **71.499 (32.918B, median 71.4%: most greedy episodes now pass the walkway and stop at the ~71.5% gate)**; the
   curriculum sits at k01's [6,904 / 6,909] (at that gate, 19-43% bands, rising), 0/9 past its 72.75% line. Hand-on for
   71.499: ckpt_32783728640 (134.7M before the eval, md5 91badb50..., pulled).
+* 15:36 UTC: c11 evals 32.994-33.371B 71.372 / 71.273 / 71.355 / 71.456 / 71.396 / 71.420 (medians 70.8-71.4%; the best
+  stays 71.499), 0/9 past k01's 72.75% line. **The ~71.4% gate is a landing + a climb** (k01 = the loop's beam line, fetched
+  from the box: auto/ via a base64 tar, md5 392147eb...): at 71.31% (row ~6,640) the beam lands on a small brush-entity
+  platform (ground entity 87, z ~1,845) just above the catch sheet *184 (z 1,663-1,842), then climbs out with slow
+  duck-jumps (z 1,845 -> 2,115, 30-300 u/s, ~18 s to row 9,000 = 72.93%) and walks south at y 3,200 -> 2,426. The greedy
+  misses the platform and dies on the sheet at z ~1,720. The curriculum is teaching the climb backward (k01's
+  [6,819 / 6,844], 78-82% bands, 6,904 -> 6,819 in 25 min); the landing at ~6,640 is next.
