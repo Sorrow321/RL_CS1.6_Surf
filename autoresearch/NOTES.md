@@ -3066,3 +3066,13 @@ c5 had dips (median down to 24%) that recovered, c6 / c7 did not (see the collap
   0.016, pitch 0.027 vs 0.035 (the pitch moves less, RMS log-ratio 0.29 vs 0.49).
 * c11's evals 31.298-31.675B: 62.338 / 62.370 / 62.330 / 62.319 / 62.342 / 62.315 (medians 62.3%; the drop). The
   curriculum is ~275 rows from the fork (5,827) where the greedy's own approach meets the line.
+
+### Box 57820906 went OFFLINE mid-run; c11's last 30 min lost (15:32 UTC)
+* At 15:32 UTC ssh said "No route to host" and vast listed the instance `offline` (polled every 30 s until 15:39:
+  offline throughout; last good contact ~15:04). Blocklisted (machine 56783, host 212182, reason unreliable) and
+  released 15:39. c11's files up to 15:04 are pulled (evals to 31.675B); its weights after the head-clip band
+  learning were only on the box. The c9 snapshot pbr6b2_c9/ckpt_31297372160.pt (the 62.371 hand-on) is local.
+* Replacement: `box.py rent` REFUSED at 15:40 (burn 0.739 $/h of the 1.2 cap from the other branches; the only offers
+  left, RTX 5080 at 0.621 $/h, do not fit; a 4090 at 0.411 was taken between listing and renting). A background
+  retry of `box.py rent` every 2 min (the door, no workaround). Plan on a box: c12 = c11's command (--ppo-head-clip,
+  --demo-tau0 6107) on the c9 snapshot.
