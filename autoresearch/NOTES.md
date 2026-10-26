@@ -3022,3 +3022,7 @@ Germany (machine 56783), rented 08:05 UTC for 2 h.
   five evals in a row with one episode past the landing to 73.5-73.6%, medians 71.2%. The curriculum's newest states at
   [6,314] rose 14-19% -> 24-28% (the advance threshold is 30%). Hand-on for 73.590: ckpt_35907960832 (10.0M before the
   eval, md5 160da9eb..., pulled).
+* 18:28 UTC: **at 36.295B 6/9 greedy episodes past k01's 72.75% line** (median 73.44%; the landing is learned) - the loop's
+  search 1 of c12 fired (on c12's ckpt_latest). Evals 36.069-36.295B 71.282 / 73.489 / 73.528 / 73.503; every episode
+  past the landing stops at ~73.5% (the catch sheet *184 again, at (-875, 2,040)); the best stays 73.590. The curriculum
+  had reached [6,304] (30.8%).
