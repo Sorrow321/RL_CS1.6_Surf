@@ -2535,3 +2535,16 @@ current spine) before `box.py release`. The operator may want `pull` to fetch `a
   read with tools/energy_pick.py against s6 over 58-62% (cells keeping h >= the line + 150 u, chains not slower
   than it). Then, if one arm finds such a line: stitch + --demo-success-energy (the playbook below), then the
   policy's own beam.
+* **--select-energy A/B, local CPU** (04:16-04:24 UTC; explore_phase1 4 min x 2 threads x 256 envs each, same seed,
+  96 roots = s6 rows 4,600-4,860 x1.0 / 1.04, --roots-keep-all --cell 64 --cell-energy 32 --cell-heading 1
+  --view-follow, 8 ms; read on the scorer's field against s6): K = 3 vs 0 -> deepest **61.41% vs 59.42%**, cells past
+  57 / 59 / 61%: **2,782 / 867 / 125 vs 1,324 / 105 / 0**; on-route, not-slower cells with >= +100 / +200 u of energy
+  over s6: 511 / 76 vs 92 / 11 (max +256 vs +242, all at 56-58%: the shaft exit, e.g. h 2,725 at 734 u/s at
+  (-2,505, 2,457, 2,388) where s6 has 2,476). Past 58% neither arm beats the line (gains median -21..-58, max
+  +27..+75) and every deep chain is 3-5x slower than it (e.g. 3,452 vs 852 ticks): the explorer crawls the corridor
+  as the policy does. One run each: the flag reaches much further in matched compute; it did not find the
+  corridor's energy here.
+* c6's own greedy (the 62.367 eval, h / |v| at first arrival): 55.5% 2,790-2,805 / 1,360; 57% ~2,660 / 650-670;
+  58% 2,625-2,704 / 608-703; **59% ~2,505 / 440-470; 60% ~2,472 / 310-320**; 61% ~2,465 / 280-315. So c6 (k01 / k02's
+  lines) already exits the shaft with the energy s6 lost (s6: 2,483 at 57%), and loses ~200 u at **58-60%** instead.
+  The corridor search must root at c6's own states at ~57.5-58.5% (h ~2,680), not at s6's.
