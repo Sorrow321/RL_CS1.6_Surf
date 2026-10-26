@@ -3184,3 +3184,17 @@ ckpt_35907960832 (md5 160da9eb...), eval 73.590 at 35.918B. Credit at the start:
   apex. e1's h at the launch ~2,360-2,436, the record's ~2,700-2,745: the ~300 u deficit is made upstream (66% walkway
   walked at 250 u/s: h 2,428 vs the record's 2,745; 68-71%: -200..-250; the hop -136).
 * Look-ahead GE 5 (22:35 UTC): e1 rows 6,690-6,812 x1.12 / 1.2 / 1.28, 12 min - the boost the climb needs from e1.
+* **Look-ahead GE 5** (e1 rows 6,690-6,812 x1.12 / 1.2 / 1.28, 12 min): 74.39 / 74.43 / **78.17%** (x1.28 only, roots at
+  rows 6,721-6,737 = the launch). From e1's low route the climb needs ~+300 u at the launch (h ~2,680), more than
+  k02's slightly higher line (x1.24 = h ~2,449 at row 6,746, heading east-south-east (580, -342, 527)): the launch
+  state (place, direction, energy), not energy alone. Look-ahead 3's archive holds ~1,000 cells at 73.2-73.8% with
+  h >= 2,400, some within 30 u of k02's launch point, all heading south / south-west - none passed.
+* **Look-ahead GE 6** (k02 rows 6,280-6,400 = 69.4-70.9%, before the platform, x1.0 / 1.04, --select-energy 3, 8
+  threads, 20 min): deepest 74.24%, but max h over 71.25-73.0% 2,550-2,734 vs k02's 2,332-2,585 (+150..+235 u; the
+  explorer avoids the hop / the 72.25% impact), 73.5% 2,451 (+165). Unboosted energy now exists at the launch.
+* c3 evals 74.247 (38.113B) / 74.269 / 73.474 / **74.352** (38.339B: ep7 crosses e1's line with the energy - h 2,381 at
+  71.5% (the hop kept), 2,401 at 73.0% at 947 u/s, 2,400 at 74.3%; the quorum line reads "1/9 greedy episodes cross
+  d <= 14,789 with energy height >= 2,332"). Handoff: c3's ckpt_latest 38.397B (md5 b30831e3..., 58M after the eval,
+  > 2x nearer than ckpt_38210633728, both pulled). The curriculum at [6,347 / 6,352] (70.3%, before the hop).
+* Look-ahead GE 7 (23:00 UTC): rooted at look-ahead 6's 64 most energetic non-plunging launch-zone states (72.8-73.55%,
+  h 2,406-2,463, one per 48 u x 30 deg cell), x1.0, 15 min - "pick by energy, then hand over" (round 5's gate 17).

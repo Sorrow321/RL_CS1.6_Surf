@@ -3,17 +3,18 @@
  "round": 7,
  "final": false,
  "best": {
-  "score": 74.287,
-  "eval_file": "/home/steam/ar_pb/runs/pbr7b2/pbr7b2_c2/traj_37474009088.jsonl",
-  "run": "pbr7b2_c2",
-  "step": 37474009088,
-  "ckpt": "/home/steam/ar_pb/runs/pbr7b2/pbr7b2_c2/ckpt_latest.pt",
+  "score": 74.352,
+  "eval_file": "/home/steam/ar_pb/runs/pbr7b2/pbr7b2_c3/traj_38339084288.jsonl",
+  "run": "pbr7b2_c3",
+  "step": 38339084288,
+  "ckpt": "/home/steam/ar_pb/runs/pbr7b2/pbr7b2_c3/ckpt_latest.pt",
   "recipe": [
    "c1: resume of round 6's c12 ckpt_latest (36.659B, md5 d802b3e8...) on the loop's own spine pbr6b4_c12k02 (beam to 70.8% + an x1.04 GE chain to 74.33%) + keys, c12's flag set (to-continue block + --demo-match-band, --auto-spine-patience 0, --auto-spine-ge-minutes 5, --auto-spine-energy 150), 26 milestones; evals 73.567 / 73.671 / 73.466 / 73.601",
-   "c2: resume of c1's ckpt_latest (36.945B) with c1's flags + --demo-tau0 6436 + --auto-spine-async (new: the search runs beside the training); evals 73.51-73.66, then 74.287 at 37.474B (1/9 greedy episodes makes the chain's platform hop and flies k02's line to 74.29% at 56.5 s)"
+   "c2: resume of c1's ckpt_latest (36.945B) with c1's flags + --demo-tau0 6436 + --auto-spine-async (new: the search runs beside the training); evals 73.51-73.66, then 74.287 at 37.474B (1/9 greedy episodes makes the chain's platform hop and flies k02's line to 74.29% at 56.5 s)",
+   "c3: resume of c2's ckpt_latest (37.810B) on the energy spine pbr7b2_e1 (k02 to row 6,468 + an unboosted GE chain keeping +153 u to 74.30%, the low route; tools/energy_splice.py = the loop's energy-stage rule on a look-ahead archive) + keys, --demo-success-energy 75 (cross 74.13% with h >= 2,332), k02's line as a 27th milestone, the loop async with the energy stage; evals 73.52-74.27, then 74.352 at 38.339B (1/9 crosses with the energy: h 2,400 at 74.3%)"
   ],
-  "resume_from": "pbr7b2_c1 ckpt_latest 36.945B <- pbr6b4_c12 ckpt_latest 36.659B <- incumbent r6 (73.590)",
-  "commit": "61300b6"
+  "resume_from": "pbr7b2_c2 ckpt_latest 37.810B <- pbr7b2_c1 36.945B <- pbr6b4_c12 ckpt_latest 36.659B <- incumbent r6 (73.590)",
+  "commit": "da22224"
  },
- "summary": "c1/c2 = round 6's loop continued on its spine k02 (to 74.33%): 73.590 -> 73.671 (c1) -> 74.287 (c2 37.474B: one greedy episode makes k02's platform hop and flies the chain to 74.29%). New --auto-spine-async (search beside training). Look-ahead GE beside the trainer: past k02's end the way needs ~+100-150 u of energy at ~73.5% (x1.16-1.24 roots pass, x1.0-1.08 stop at 74.45%). tools/energy_splice.py applied the loop's energy-stage rule to a look-ahead archive -> energy spine pbr7b2_e1 (+153 u at 74.30%, the record-like low route at ~1,000 u/s, unboosted root); c3 (22:15) teaches it with --demo-success-energy 75, the loop on."
+ "summary": "73.590 -> 73.671 (c1) -> 74.287 (c2) -> 74.352 (c3 38.339B). c1/c2: round 6's loop on its spine k02; the greedy learns k02's platform hop (1/9 fly the chain to 74.3%). New --auto-spine-async (search beside training, CPU-tested). Look-aheads beside the trainer size the 74.4% gate: a ramp launch at ~73.5% needs h ~2,450 heading ESE on k02's line (x1.24) or ~2,680 on the low route (x1.28); the explorer's unboosted chains keep up to +150-230 u through 71-73% but not to the climb. c3 teaches the energy spine e1 (energy rule); next: root the explorer at its most energetic launch states (look-ahead 7) and let the loop's quorum search."
 }
