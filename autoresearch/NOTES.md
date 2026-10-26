@@ -2942,3 +2942,27 @@ Germany (machine 56783), rented 08:05 UTC for 2 h.
   uses the spine's own ticks past its line). A spine ending in a fall asks no more survival than it flew itself; a spawn
   at its last rows succeeds as before; a dive that dies sooner after the line than the spine did still fails.
   test_demo_success_alive 7/7 (flag off still bit-identical). c11 keeps running without the flag.
+* c11, first 18 min (13:37-13:55 UTC, 332k steps/s): the curriculum walked k02 back from its end 7,327 -> 6,717 (the hops
+  before the walkway's hole, where c9 sat) in ~5 min at 100% / 71% bands, then through the hole region onto the strip:
+  at 13:55 it oscillates [6,312 / 6,317] (66.42%, the chain's slow point on the strip at (-3,256, 3,480)), the newest
+  states' success rising 21.4 -> 29.5% over six visits, the band behind them 54.7 -> 64.3%. So the walkway IS being
+  taught backward from the hole, an increment at a time - what a cold policy (0/36 on the strip) never showed. Evals
+  64.844 (31.182B, the resume) / 64.773 / 64.896 / 64.818 / 65.132 (31.484B, best 65.1%: one episode on the platform);
+  0/9 greedy past the 70.13% line.
+
+### GATE 20 PASSED by the greedy line: 71.270 (2026-10-26 14:19 UTC, c11)
+* c11's curriculum walked the full loop spine back 7,327 -> 6,717 (5 min) -> 6,312 (the strip's slow point, 18 min) ->
+  5,667 (the climb before the ledge, 42 min): the walkway, the platform and the catch were each learned backward from
+  the hole, an increment at a time, at 30-64% bands (the newest states at 5-31%).
+* Evals (9 greedy episodes from the true start): 64.844 (31.182B, the resume) / 64.773 / 64.896 / 64.818 / 65.132 /
+  65.095 / 64.856 / 65.352 / 65.215 / 65.227 / **71.270 (31.937B)**: 8/9 catch the ledge (65.06-65.37%; 7 of them then
+  die on the platform's north edge at z ~2,369, on the catch sheet), **1/9 walks the strip, drops through the hole and
+  surfs on to 71.27%** (past k02's own end; it dies at (-1,113, 3,168, 1,723), above the next catch sheet *184), 1/9 dies
+  early at 55.0%. The loop: "1/9 greedy episodes past the success line d <= 17,070; greedy frontier 19,887" (5/9 fires
+  search 3).
+* Hand-on snapshot ckpt_31782338560 (154.7M steps before the eval, md5 71d7ab34..., pulled); the eval's own checkpoint
+  is between it and ckpt_31982616576. Box 57820687 extended to 19:28 UTC (the run is the first to clear gate 20).
+* So the plan held without any cut: on the FULL spine (its line past the death-dive's reach), the backward curriculum
+  taught a stretch that neither the greedy (0/18) nor the policy's own sampling (0/36) ever flew - the increments were
+  small enough. The lesson of c10 (hand cut at 66.4%, line within a dive's reach, stuck 30 min) and c11 together: keep
+  the success line where only the skill reaches it, and let the curriculum make the increments.
