@@ -2914,3 +2914,15 @@ the round. (pbr6b3 released its box 19 min early once it stopped improving.)
   round 5's box; the greedy flies the same west strip): **cut row 5,403 (61.52%, h 2,721, +264..+278 u)** every time -
   27 rows before b1's hand cut (5,430) and before the chain's landing at 5,433; the rows in between fall faster than
   energy_pick's not-plunging filter (vz < -300). The flag would have made b1's spine by itself.
+
+### b1's collapse followed a KL-11.8 update (11:10 UTC, from the pulled progress.csv)
+* b1 (the energy curriculum) ran with much larger updates than the depth curricula: train/approx_kl median 0.105, p90
+  0.36, 20+ updates above 0.5 incl. **11.76 at 29.8634B** and 1.0-1.55 after it; the collapsed eval (9/9 at the 20.4%
+  catch) came at 29.8996B, the next eval after that update (the 29.824B eval before it was healthy). b2 (the k01 beam
+  curriculum right after b1's energy): median 0.106, p90 0.28, max 3.19 (its 30.024B dip came after a run of
+  0.5-1.3 updates); b3 / b4 (the crawl cuts): median 0.07, p90 0.12, max 0.79 / 2.46; a1 0.08 / 0.13 / 1.25.
+* `train_fast --target-kl T` already exists (SB3's target_kl: an update stops once its running approx KL exceeds 1.5 T;
+  added after the uf2 lineage lost a learned landing to ONE update at kl 0.42) and is NOT in this program's recipe.
+  For the next round: `--target-kl 0.3` (stops above 0.45: above every lineage p90 here, so ordinary updates are
+  untouched, and it truncates the 0.5-12 spikes) is the obvious first guard against b1's collapse - untested on this
+  map (no box), a candidate, not a result.
