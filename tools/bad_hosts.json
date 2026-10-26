@@ -2842,6 +2842,15 @@
       "detail": "autoresearch pbr6b3 2026-10-26 14:10 UTC: box.py deploy's checkpoint push ran at ~15 KB/s (5.9 MB of 64 MB in 8 min, ~70 min projected); the operator machine's whole outbound traffic was that scp (15.8 KB/s), and this round's 08:05 deploy pushed the same 64 MB to another host in < 2 min. RTX 5060 Ti 16 GB, AMD EPYC 7B13 128 thr (loadavg 51), Malaysia, machine 148540",
       "run": "",
       "reason": "network"
+    },
+    {
+      "ip": "116.127.115.18",
+      "machine_id": 136901,
+      "host_id": 132677,
+      "date": "2026-10-26",
+      "detail": "autoresearch pbr6b3 2026-10-26: the instance REBOOTED twice mid-run (uptime reset at ~14:48 and ~15:37 UTC, 13 days up at 14:16), each time killing the trainer silently (cgroup oom_kill 0, no traceback; files intact). RTX 5070 Ti 16 GB, Ryzen 9 7950X 32 thr, South Korea, machine 136901; otherwise fine (~340k steps/s on the incumbent recipe)",
+      "run": "",
+      "reason": "unreliable"
     }
   ],
   "known_good": [

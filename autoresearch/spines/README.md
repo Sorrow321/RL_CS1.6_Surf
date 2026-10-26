@@ -261,3 +261,7 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   runs/pbr6b3_c1/auto/k02, same bytes). No demo, no record (pbr6b3, round 6).
 * Run pbr6b3_c1's `--demo-cliff-cut` cuts (runs/pbr6b3/pbr6b3_c1/cliff/cut01-03 on the box) are prefixes of
   `pbr6b3_b2k02`: rows 0-7,544, 0-6,708 and 0-6,392 (the trainer's own cuts; same provenance as `pbr6b3_b2k02`).
+* `pbr6b3_c2k02.npy` + `.keys.npy` (5,900 rows; md5 e14ede3f4a4368c34e024fcdade6b343 / 914527a16a469a5a193a6844f9fba0db):
+  found BY THE TRAINER (run pbr6b3_c2's auto-spine search 2 at 31.226B, 35 s): the POLICY'S OWN plain beam line
+  (beam_tas on c2's 31.226B weights, 7.67 ms, 4,096 envs) from the true spawn to d 18,632 = 67.40%. Keys = the beam's own
+  held keys. Run pbr6b3_c3 starts on it. No demo, no record (pbr6b3, round 6).
