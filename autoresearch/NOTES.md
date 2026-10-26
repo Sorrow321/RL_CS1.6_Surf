@@ -2354,7 +2354,7 @@ Incumbent: pbr4b3_t11 traj_23590338560 (52.937), weights ckpt_23551016960 (md5 7
   --demo-tau0 7873 --demo-rate 0.15 (round 3 passed a 24-29% band at 0.2): let the curriculum walk on through the wall
   ride toward the x1.2 root instead of oscillating on a band the policy passes one time in seven.
 
-### pbr5b1 round 5 lesson (DRAFT, finalised at wrap-up)
+### pbr5b1 round 5 lesson
 * **52.937 -> 62.310** (best eval pbr5b1_c12 traj_31323586560, weights ckpt_31323586560.pt; before it 61.561 at c6 =
   c5's final weights): gate 17 (k05), gate 18 (the 56.1% climb), the k01 beam line to 61.5%, and gate 19 (the kill
   sheet at 61.5%, crossed by the greedy at 31.32B on spine y).
@@ -2378,7 +2378,7 @@ Incumbent: pbr4b3_t11 traj_23590338560 (52.937), weights ckpt_23551016960 (md5 7
   (62.310, 9/9)** - no new mechanism in the last 1.4B steps, only patience on a crossing that exists at the policy's tick.
 * **Next round (6):** resume pbr5b1_c12/ckpt_31323586560.pt (62.310) with c12's flags and spine y (its quorum fires at
   once: 9/9 past the line). Gate 20 is the drop from the exit platform into kill sheet *210 (z 2010-2028); the trainer's
-  x1.0-1.12 search on the crossing weights found no surviving continuation in 8 min per stage. Search FROM THE PLATFORM's
+  x1.0-1.3 search on the crossing weights found no surviving continuation in 8 min per stage. Search FROM THE PLATFORM's
   standing states (8,8,7, survival filter, longer than 8 min, x1.2-1.3), and lower --auto-spine-gain to ~150-200 u with
   --ge-survive. Expect a quorum search to block the trainer for up to its timeout (40 min here).
 * c9 (demo-rate 0.15): band [7873] passes at ~16%, the next band [7868,7872] is 0.0% - the landing's approach is a
@@ -2431,13 +2431,16 @@ Incumbent: pbr4b3_t11 traj_23590338560 (52.937), weights ckpt_23551016960 (md5 7
   trigger_teleport *210 (z 2010-2028, x -3577..-1793, y 2042..2724; a larger *184 lies at z 1663-1842 under it): the
   last row of every episode is at (-2,124, 2,270, z 2,048) falling at -772 u/s. The x1.08 chain that built spine y died
   the same way (its replay's end at 62.25%). Where the route goes after the platform is the next round's question.
-* **c12's auto-spine search 1 (06:21-07:01 UTC, on the crossing weights) found nothing past gate 20:** beams 21,569 /
-  21,569 / 21,480 / 21,537 vs the greedy 21,575 (<= 95 u); GE x1.0 / 1.04 / 1.08 / 1.12 surviving chains end at
-  21,550 / 21,551 / 21,514 (fallback: none of the 64 deepest survives) / (x1.12 still running at the wrap-up). Every GE
-  stage logs "best ~19,3xx u" - **do not read that as 66%**: those cells are the fatal fall onto *210 at
-  (-2,156, 2,302, z 2,049), v (-319, 243, -782), and the grader's goalc reads 21,514 at the same spot (ge3_replay); the
-  explorer's archive `dist` is not the grader's d there. The trainer is blocked for the whole search (no evals
-  06:21-07:01): a quorum search started late in a round costs its last evals.
+* **c12's auto-spine search 1 (06:21-07:05 UTC, 2,625 s, on the crossing weights): NO new spine - nothing past gate
+  20.** Beams 21,569 / 21,569 / 21,480 / 21,537 vs the greedy 21,575 (<= 95 u); GE stages x1.0-1.04 / x1.08 / x1.12 /
+  x1.2 / x1.3 (8 min each, 8,8,7, survival filter) end at 21,550 / 21,551 / 21,514 (fallback: none of the 64 deepest
+  survives) / 21,574 / 21,582. Every GE stage logs "best ~19,3xx u" - **do not read that as 66%**: those cells are the
+  fatal fall onto *210 at (-2,156, 2,302, z 2,049), v (-319, 243, -782) (x1.12 archive), and the grader's goalc reads
+  21,514 at the same spot (its replay); the explorer's archive `dist` is not the grader's d there. The trainer was
+  blocked for the whole search (no evals 06:21-07:05): a quorum search started late in a round costs its last evals.
+* Wrap-up (07:09 UTC): the eval after the search (31.399B) re-crossed, 62.296 (median 62.3%) - the crossing is stable.
+  Pulled pbr5b1_c12 with ckpt_latest (~31.40B, md5 888fc17d...) and the snapshot ckpt_31323586560.pt (md5 802b37dc...,
+  the exact weights of the 62.310 eval = the handoff); box 57714381 released.
 * Recommendation for the loop (not changed tonight, untested): twice the trainer's own search found the right gate-19
   material 420 u past the greedy and rejected it under --auto-spine-gain 500 (r19's platform route; the x1.08 crossing).
   The gain exists to keep a fatal fall from counting as progress (round 3); with --ge-survive (chains end at surviving

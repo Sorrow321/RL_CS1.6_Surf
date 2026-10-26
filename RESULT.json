@@ -1,7 +1,7 @@
 {
  "agent": "pbr5b1",
  "round": 5,
- "final": false,
+ "final": true,
  "best": {
   "score": 62.31,
   "eval_file": "/home/steam/ar_pb/runs/pbr5b1/pbr5b1_c12/traj_31323586560.jsonl",
@@ -17,5 +17,5 @@
   "resume_from": "pbr5b1_c12 ckpt_31323586560.pt = c12's ckpt_latest frozen at the eval step (global_step 31,323,586,560, the exact weights of this eval; md5 802b37dccd26e1c2a44417e9a454f3f0)",
   "commit": "c0a18dd (= c12's code commit bd4c610 + spine y; later commits are notes/tests only)"
  },
- "summary": "52.937 -> 62.310 (pbr5b1_c12, eval 31.324B: 9/9 episodes past gate 19, median 62.2%; the eval's exact weights are ckpt_31323586560.pt). Gate 17 by the k05 spine. Gate 18 (56.1%) was an ENERGY deficit made by one ledge landing at 52.8%: passed with an energy spine through a SURVIVING explorer chain that bypasses the ledge + train_fast --demo-success-energy (success needs the spine end's energy at the crossing) -> 61.56 (c6). Gate 19 (61.5%, a kill sheet in a room): crossings exist at the policy's 8,8,7 tick only with a wall ride + boost (x1.2 / x1.08), found with the new explore_phase1 --tick-pattern and auto_spine --ge-survive; spine y; its landing band sat at 13-16% for ~1.4B steps (c11-c12) before the greedy line crossed. Traps recorded: energy picks pick fatal falls without a survival filter; a contact found at 8 ms did not exist at 8,8,7; an archive's deepest cell can be a dying run. Next: resume ckpt_31323586560.pt with the auto-spine search it triggered (the line now dies at z 2,062 past the exit platform)."
+ "summary": "52.937 -> 62.310 (pbr5b1_c12, eval 31.324B: 9/9 past gate 19, median 62.2%; exact weights ckpt_31323586560.pt; the next eval 31.399B re-crossed at 62.296).\nGate 17 by the k05 spine. Gate 18 (56.1%) was an ENERGY deficit made by one ledge landing at 52.8%: passed with an energy spine through a SURVIVING explorer chain + the new train_fast --demo-success-energy (success needs the spine end's energy at the crossing) -> 61.56 (c6).\nGate 19 (61.5%, a kill sheet in a room): crossings exist at the policy's 8,8,7 tick only with a wall ride + boost (x1.2 / x1.08), found with the new explore_phase1 --tick-pattern and auto_spine --ge-survive; on spine y the landing band sat at 13-16% for ~1.4B steps before the greedy crossed.\nGate 20 (62.3%): the line drops from the exit platform into kill sheet *210; the trainer's x1.0-1.3 search on the crossing weights found no surviving continuation.\nTraps: energy picks pick fatal falls without a survival filter; a contact found at 8 ms did not exist at 8,8,7; an archive's deepest cell can be a dying run; GE's archive dist is not the grader's d past gate 20.\nNext: resume ckpt_31323586560.pt with spine y; search gate 20 from the platform's standing states (8,8,7, survival filter, >8 min) with --auto-spine-gain ~150-200."
 }
