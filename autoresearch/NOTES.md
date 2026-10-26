@@ -2995,6 +2995,13 @@ Incumbent: pbr5b2_c7 ckpt_29123674112 (62.369, md5 afb44185...).
   has carried to the ledge), ep1 64.74%; the other 7 at gate 9 (20.4-21.6%) in that eval. Snapshot
   ckpt_31963217920.pt (2M steps before the eval) pulled. Other a8 evals: 64.606, 64.673, 64.638 (31.96-32.19B).
   The curriculum on k02 walked to 4,609-4,619 (~55%) by 17:46.
+* a8 after the best: 64.606, 64.673, 64.638, 64.614, 64.623, 64.735 (31.98-32.42B), then from 32.494B the greedy WALKS
+  ON THE START PLATFORM in 6 evals running (0.40-0.43) - the a5 failure, under a curriculum that was by then at
+  ~4,20x (~50%, far upstream of the ledge) and with 40% fresh starts: the start platform is this lineage's most
+  fragile behaviour, it comes and goes with every distribution shift.
+* **Harvest 18:33 UTC**: a8 stopped (kill pid), pulled a8 (16 evals, ckpt_latest, ckpt_31963217920.pt md5 944ede4f...)
+  and a5-a7's evals; a4's snapshots / k01-k03 spines were pulled before. **Box 57819941 released 18:33:49**
+  (`box.py status`: no box). Box time today: 1 h 54 min + 5 h 06 min.
 
 ### pbr6b1 round 6 lesson (DRAFT 10:06 UTC; finalised at wrap-up)
 * **Score 62.369 -> 62.373** (a1 29.200B: the incumbent's weights 75M steps on, same gate; all 9 fall at the 62.3% drop).
