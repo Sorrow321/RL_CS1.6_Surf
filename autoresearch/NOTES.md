@@ -2909,3 +2909,8 @@ Round 6 started with $11.74 of credit against the $10 reserve ($1.74 above it). 
 extend for the remaining ~9.5 h. A per-branch share of (credit - reserve) at the round's start, or a rent that
 refuses a deadline the fleet's burn would pay out of the reserve (extend's rule), would spread the same money over
 the round. (pbr6b3 released its box 19 min early once it stopped improving.)
+* **The energy cut, validated offline on the real case** (10:40 UTC): `auto_spine.energy_cut(k02, root 5,017, line,
+  field, d0, 150)` with the line = each of c7's 29.124B greedy episodes 0-3 (the search's own beam line died with
+  round 5's box; the greedy flies the same west strip): **cut row 5,403 (61.52%, h 2,721, +264..+278 u)** every time -
+  27 rows before b1's hand cut (5,430) and before the chain's landing at 5,433; the rows in between fall faster than
+  energy_pick's not-plunging filter (vz < -300). The flag would have made b1's spine by itself.
