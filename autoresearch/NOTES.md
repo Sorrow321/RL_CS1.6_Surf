@@ -3198,3 +3198,17 @@ ckpt_35907960832 (md5 160da9eb...), eval 73.590 at 35.918B. Credit at the start:
   > 2x nearer than ckpt_38210633728, both pulled). The curriculum at [6,347 / 6,352] (70.3%, before the hop).
 * Look-ahead GE 7 (23:00 UTC): rooted at look-ahead 6's 64 most energetic non-plunging launch-zone states (72.8-73.55%,
   h 2,406-2,463, one per 48 u x 30 deg cell), x1.0, 15 min - "pick by energy, then hand over" (round 5's gate 17).
+* **Look-ahead GE 7** (rooted at look-ahead 6's 64 most energetic non-plunging launch-zone states, h 2,406-2,463,
+  x1.0, 15 min): deepest 74.31% - unboosted energy at that level, in the explorer's hands, does not climb.
+* **The policy's own beam on c3's 38.629B weights** (beam_tas from the true start, 4,096 copies, d-ranked, the loop's
+  settings, 151 s beside the trainer): frontier 74.36% (d 14,652). It flies e1's low route with MORE energy than e1
+  (h 2,472 at 73.0%, 2,452 at 73.5%, 2,483 at 74.3%; e1 2,436 / 2,359 / 2,400), but leaves the launch ramp at 73.5%
+  ((-1,281, 1,734, 1,932)) with vz 445 at 912 u/s and peaks at z ~2,061 - e1's apex. The record (yardstick) leaves the
+  same spot (within 25 u) at vz 623 and 1,114 u/s (apex ~2,161): ~200 u/s more and a steeper launch. Two branched beams
+  forked 0.5-0.9 s before the launch (held view offsets +-45 deg, 2,048 copies, the loop's settings): 74.36% both -
+  no forked lineage beats the plain line.
+* Where the speed goes (beam line vs record, |v|): 71.2% 1,000 vs ~1,056; 72.0% 819 vs 1,223; 72.5-73.0% ~1,010 vs
+  ~1,230. From 71% the record surfs DOWNHILL along x ~-1,300 (z 2,065 -> 1,798 by 72%) and gains speed; every line of
+  ours detours east to the platform (x ~-1,000), stays high (z ~2,090 at 72%), hops, and drops back west later.
+* Look-ahead GE 8 (23:30 UTC): the beam line's own rows 6,610-6,790 (72.5-74.2%) x1.0 / 1.08 / 1.16 - the boost the
+  policy's current best line needs at the launch (if x1.08, the loop's own ladder finds it at the quorum).
