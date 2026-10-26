@@ -467,6 +467,11 @@ def main(argv=None) -> int:
     ap.add_argument("--ge-keep-all", type=int, default=1, choices=(0, 1),
                     help="1 = a stage with more than one --ge-boost factor runs explore_phase1 "
                          "--roots-keep-all (every boosted copy its own root cell); 0 = as before")
+    ap.add_argument("--near-gain", type=float, default=0.0,
+                    help="M > 0 (u): a GE stage whose line ends within M u of the --gain line is a "
+                         "NEAR MISS; when a later, more boosted stage then passes the gain, the "
+                         "first near miss is the spine instead (the least boost that reaches "
+                         "nearly as deep). 0 = off: the first stage past the gain, as before")
     ap.add_argument("--energy-gain", type=float, default=0.0,
                     help="G > 0: when no stage finds a deeper line, an ENERGY stage (GE before "
                          "the line's largest energy losses) hands back the line to the deepest "
@@ -598,6 +603,7 @@ def main(argv=None) -> int:
             # no line past the greedy frontier. The boost buys the uniform explorer the energy
             # its random actions waste; the trained policy has flown the route it found with
             # its own (round 3: gate 8's chain needed x1.04, the greedy passed unboosted)
+            near = None     # --near-gain: the first stage whose line came within M u of the gain
             for k, (mode, boosts) in enumerate(stage_specs(a.ge_boost)):
                 tag = "ge" if k == 0 else f"ge{k + 1}"
                 kw = {}
@@ -633,7 +639,23 @@ def main(argv=None) -> int:
                       f"{gd_.min():,.0f}, cut at {ge_e} d {ge_de:,.0f}", flush=True)
                 if ge_de < a.greedy_d - a.gain:
                     best_src = (f"beam+{tag}", gl[:ge_e + 1], ge_de)
+                    if near is not None:
+                        # --near-gain M (pbr7b4): a later, more boosted stage passed the gain, so
+                        # the route exists; the earlier stage's line came within M u of it from a
+                        # smaller boost, and a depth curriculum stalls at a boosted root (rounds
+                        # 4-5: x1.08 / x1.12 roots stalled, x1.04 roots were learned; pbr7b4_c13's
+                        # x1.08 root at 0-22% where the x1.04 stage-1 line, 12 u short, was
+                        # learned) - the least boosted line that reaches nearly as deep is taken
+                        res.update(near_pick=near[0], near_over=f"beam+{tag}",
+                                   near_over_end_d=float(ge_de))
+                        print(f"--near-gain {a.near_gain:g}: {near[0]} (d {near[2]:,.0f}, within "
+                              f"{a.near_gain:g} u of the gain line) is taken over beam+{tag} "
+                              f"(d {ge_de:,.0f}): the smaller boost", flush=True)
+                        best_src = near
                     break
+                if (float(a.near_gain) > 0 and near is None
+                        and ge_de < a.greedy_d - a.gain + float(a.near_gain)):
+                    near = (f"beam+{tag}", gl[:ge_e + 1], ge_de)
         if best_src is None and a.ge_minutes > 0 and float(a.energy_gain) > 0:
             # --energy-gain G: no line is deeper, so the gate may be ENERGY lost upstream (pbr5b2:
             # gate 17's shaft climb, gate 19's corridor): search before the line's largest

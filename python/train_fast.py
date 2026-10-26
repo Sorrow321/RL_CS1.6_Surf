@@ -4998,6 +4998,12 @@ def main() -> None:
                     help="--auto-spine: the beam runs this long past the eval's longest episode")
     ap.add_argument("--auto-spine-timeout", type=float, default=2400.0,
                     help="--auto-spine: wall-clock cap (s) of one search")
+    ap.add_argument("--auto-spine-near-gain", type=float, default=0.0,   # 0 = off
+                    help="--auto-spine: M > 0 (u) passes auto_spine --near-gain M - when a more "
+                         "boosted Go-Explore stage passes the gain, an earlier, less boosted "
+                         "stage's line that ended within M u of the gain line is the spine "
+                         "instead (depth curricula stall at x1.08 / x1.12 roots; pbr7b4_c13). "
+                         "0 = off, the search command unchanged; config only when set")
     ap.add_argument("--auto-spine-async", action="store_true",
                     help="--auto-spine: run the search in the BACKGROUND (pbr7b4). The trainer "
                          "copies ckpt_latest for it (auto/kNN/search_ckpt.pt), keeps training on "
@@ -11871,6 +11877,13 @@ def main() -> None:
         raise SystemExit("--auto-spine needs --demo-file (the first spine) and --demo-success-d")
     if args.auto_spine_energy is not None and not args.auto_spine:
         raise SystemExit("--auto-spine-energy is a stage of --auto-spine's search: give it")
+    if float(args.auto_spine_near_gain or 0.0) != 0.0:
+        if not args.auto_spine or float(args.auto_spine_near_gain) < 0.0:
+            raise SystemExit("--auto-spine-near-gain M (> 0) is a rule of --auto-spine's search: "
+                             "give --auto-spine")
+        print(f"--auto-spine-near-gain {float(args.auto_spine_near_gain):g}: when a more boosted "
+              f"Go-Explore stage passes the gain, an earlier stage's line within "
+              f"{float(args.auto_spine_near_gain):g} u of the gain line is taken instead")
     if args.auto_spine_async:
         if not args.auto_spine:
             raise SystemExit("--auto-spine-async runs --auto-spine's search in the background: "
@@ -14918,6 +14931,8 @@ def main() -> None:
             meta["config"]["auto_spine_milestones"] = 1
         if args.auto_spine_async:
             meta["config"]["auto_spine_async"] = 1
+        if float(args.auto_spine_near_gain or 0.0) > 0.0:
+            meta["config"]["auto_spine_near_gain"] = float(args.auto_spine_near_gain)
         if args.auto_spine_energy is not None:
             meta["config"]["auto_spine_energy"] = float(args.auto_spine_energy)
         if float(args.demo_stall_cut or 0.0) > 0.0:
@@ -16095,6 +16110,8 @@ def main() -> None:
             cmd += ["--maxvel", f"{float(args.maxvel):g}"]
         if args.auto_spine_energy is not None:
             cmd += ["--energy-gain", f"{float(args.auto_spine_energy):g}"]
+        if float(args.auto_spine_near_gain or 0.0) > 0.0:
+            cmd += ["--near-gain", f"{float(args.auto_spine_near_gain):g}"]
         t0 = time.time()
         if args.auto_spine_async:
             # --auto-spine-async: the search reads its OWN copy of the weights (ckpt_latest is
