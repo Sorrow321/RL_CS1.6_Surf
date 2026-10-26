@@ -3045,3 +3045,15 @@ the round. (pbr6b3 released its box 19 min early once it stopped improving.)
   RTX 3090, 0.567 $/h (box.py's cheapest acceptable at the fleet's pace), Quebec, machine 37076**, deadline 18:53.
 * **c3** = resume of c2's 31.453B ckpt_latest, c2's flags, on pbr6b3_c2k02 + keys and the loop's 39 milestones
   (c2's current.json). The first eval should re-run the search the reboot killed (5/9 were past k02's line).
+
+### c3 on the 3090: a transient collapse, then 67.440 (16:05-16:27 UTC)
+* ~230k steps/s on the 3090 (98k in the first minute). c3's first eval with c2's 31.453B weights: 67.409 but 1/9 past
+  the beam's line (5/9 on the 5070 Ti: the GPU forks the greedy), then 31.529B **67.424** (4/9) | 31.604B 67.368 (two
+  early deaths, 24.3% / 33.3%) | 31.680B **66.405, median 24.8%**: 5/9 stuck at ~24.4-24.8% until the eval's patience
+  cut, the other 4 at 66.1-66.4% - while the curriculum band had walked back on c2k02 to row 4,599 (55%) | 31.755B
+  **67.440, median 67.4%**: recovered by itself within one eval (no update above kl 0.3 in the last 40 rows: not b1's
+  KL spike), 5/9 past the beam's line -> c3 search 1.
+* So the "early map forgotten" dip happens even with --target-kl 0.3 while the band is far upstream, and here it
+  healed in ~75M steps. The plain beam's end (67.40%) is the greedy's new median: the next search decides gate 21.
+* Hand-on: c3's ckpt_latest pulled while search 1 held the trainer at the eval's step (global_step 31,755,075,584
+  verified), kept as runs/pbr6b3/pbr6b3_c3/ckpt_31755075584.pt (md5 afdd8c0e...).
