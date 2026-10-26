@@ -2851,3 +2851,9 @@ Germany (machine 56783), rented 08:05 UTC for 2 h.
   explorer chain's slow floor walk (66.5%), and gate 20 (the 64.8% ledge catch, in the branched-beam prefix) is taught
   from the cut. The checkpoint carries the 7.67 ms tick and the keys-hold / potential / view shapes; never pass shape or
   tick flags to it.
+* Gate 20 (the 64.8% ledge), offline (10:40 UTC): the greedy (c10's last eval) and the branched-beam prefix of k02 are the
+  SAME line to within ~30 u from 63% to 64.7% (h 2,545-2,565, 520-600 u/s horizontal, the same positions); at 64.89% the
+  beam line strikes the ledge's edge at (-3,411, 2,654, 2,360) (|v| 599 -> 328, -140 u) and lands on it at z 2,377, the
+  greedy meets it a few units differently and falls into the catch at z ~2,066. A precision catch like gate 18's gap hop,
+  not energy: rows ~5,700-5,760 of pbr6b4_c9k02 are the band to teach (c10's curriculum never got back past 6,095).
+  Also in the regression pass: test_auto_spine 16/16 with --demo-stall-cut in the trainer (flag-off identity holds).
