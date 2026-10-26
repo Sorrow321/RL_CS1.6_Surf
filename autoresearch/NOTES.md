@@ -2796,3 +2796,15 @@ fleet's credit was $11.74 against the $10 reserve at the start, so extensions ar
 * **pbr6b3_b4** (09:25 UTC) = resume of b3's ckpt_latest (30.478B, md5 ce1016c0...) with the loop on
   `pbr6b3_b2k02d` = b2k02 cut at row 6,715 (65.96%; success line d <= 19,557 = 65.8%) + the same milestones (+ 17,082).
   ~40 min of box left: does the band walk back to the greedy's 64.8% frontier and the greedy climb onto the floor?
+
+### b4: a third cliff at 65.3%; harvest (09:25-09:55 UTC)
+* b4 evals (spine b2k02d, success line 65.8%): 30.479B 64.897 / 30.554B 64.766 / 30.630B 64.774 / 30.705B 64.794
+  (medians 64.8%). The band walked 6,715 -> ~6,410 and sat at a third cliff: [6,400..6,410] 0.2-0.7%, [6,410..]
+  34-58% (k02's walk north at 65.3%). The explorer's 15 s crawl has a cliff every few hundred rows for the policy;
+  with ~20 min of box left the band could not reach the greedy's 64.8% frontier. The fleet's credit reached the $10
+  reserve at ~09:45 (4 boxes at 1.01 $/h), so no extension and no new box this round.
+* b4's last evals 30.781B 64.772 / 30.856B 64.795 (flat at gate 20). **Box 57784693 released 09:45 UTC** (credit $10.03,
+  the fleet at the reserve; 19 min of its deadline left unused). Pulled: every eval of a1 / b1-b4 (23), b1's
+  ckpt_29797384192 (the 64.374 hand-on) + ckpt_latest (the collapsed 29.902B), b2's ckpt_29997662208 (the 64.801
+  hand-on), b3's ckpt_30394548224 (the 64.900 hand-on, md5 8bac378e...), a1's ckpt_latest; b2's auto/ (k01, k02 +
+  their logs) by scp. Branch best **64.900** (b3 30.421B).
