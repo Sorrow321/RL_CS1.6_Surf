@@ -44,7 +44,7 @@ class DemoCurriculum:
     def __init__(self, states, window: int = 10, rate: float = 0.2,
                  min_ep: float = 50.0, seed: int = 29,
                  grow: int = 0, front_frac: float = 0.0, tau0=None,
-                 cooldown: int = 20, grow_max: int = 0) -> None:
+                 cooldown: int = 20, grow_max: int = 0, match_band: bool = False) -> None:
         self.S = np.asarray(states, STATE_DTYPE)
         self.n = len(self.S)
         self.D = int(window)
@@ -110,6 +110,13 @@ class DemoCurriculum:
         self.rng = np.random.default_rng(seed)
         self._key = {tuple(np.round(np.asarray(r["origin"], np.float64), 1)): i
                      for i, r in enumerate(self.S)}
+        # --demo-match-band (pbr6b4, 2026-10-26; False = off, byte-identical matches): a spine
+        # that stood still repeats one origin over several rows, and the key above keeps only
+        # the LAST of them - a frontier band inside such a run then never sees an outcome and
+        # the curriculum never moves again. On, such a spawn is credited to its copy inside the
+        # frontier band when there is one.
+        self.match_band = bool(match_band)
+        self._dups = self._dup_rows() if self.match_band else {}
         self.last_info = ""
 
     def reset_spine(self, states, tau0=None) -> None:
@@ -125,7 +132,15 @@ class DemoCurriculum:
         self._step = self.grow
         self._key = {tuple(np.round(np.asarray(r["origin"], np.float64), 1)): i
                      for i, r in enumerate(self.S)}
+        self._dups = self._dup_rows() if self.match_band else {}
         self.last_info = ""
+
+    def _dup_rows(self) -> dict:
+        """--demo-match-band: {rounded origin: [rows]} for the origins the spine repeats."""
+        rows: dict = {}
+        for i, r in enumerate(self.S):
+            rows.setdefault(tuple(np.round(np.asarray(r["origin"], np.float64), 1)), []).append(i)
+        return {k: v for k, v in rows.items() if len(v) > 1}
 
     def _band(self) -> tuple[int, int]:
         """Inclusive [lo, hi] of the frontier band scoring the advance."""
@@ -162,8 +177,15 @@ class DemoCurriculum:
     def match(self, origins: np.ndarray) -> np.ndarray:
         """Demo index of each position, -1 if not a demo spawn."""
         out = np.full(len(origins), -1, np.int64)
+        if self._dups:
+            lo, hi = self._band()
         for j, o in enumerate(np.asarray(origins, np.float64)):
             out[j] = self._key.get(tuple(np.round(o, 1)), -1)
+            if self._dups:
+                # --demo-match-band: a repeated origin goes to its copy inside the band
+                inb = [i for i in self._dups.get(tuple(np.round(o, 1)), ()) if lo <= i <= hi]
+                if inb:
+                    out[j] = inb[0]
         return out
 
     def note_outcomes(self, idxs: np.ndarray, wins: np.ndarray) -> None:

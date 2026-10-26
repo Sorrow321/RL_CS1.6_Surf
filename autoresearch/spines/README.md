@@ -242,3 +242,7 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
 * `pbr6b4_c9k02c.npy` + `.keys.npy` (6,301 rows; md5 7999b8d227db83c12e0bd6f7a20216ba / 3c30cae919c342025d6ebfbdd96bff68):
   `pbr6b4_c9k02` cut at row 6,300 (66.42%, success line 66.25%), before the explorer chain's slow hopping at 66.5% where
   c9's curriculum oscillated (one gate past the greedy at a time; round 2's lesson). No demo, no record (pbr6b4, round 6).
+* `pbr6b4_c11k01.npy` + `.keys.npy` (9,000 rows; md5 392147eb7a57d7664fa8ee888fa7dc16 / 68057ce2fabc77f34146f3b8aca34ac7):
+  run pbr6b4_c11's search 1 on its 32.390B weights (5/9 greedy episodes past the 70.13% walkway line): the policy's own
+  plain beam_tas line from the true spawn (tools/auto_spine.py, 4,096 stochastic copies, d-ranked, no fork, no boost, no
+  explorer chain) to d 15,471 = 72.93%. Keys = the beam's own held keys. No demo, no record (pbr6b4, round 6).

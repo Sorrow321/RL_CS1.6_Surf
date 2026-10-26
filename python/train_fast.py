@@ -4929,6 +4929,13 @@ def main() -> None:
                          "descent, no deeper than the greedy's) is taught for that and not for "
                          "the depth the greedy reaches already. A low-energy crossing spends the "
                          "episode's chance. Off = the depth rule, bit-identical; not restored")
+    ap.add_argument("--demo-match-band", action="store_true",
+                    help="--demo-file: a spawn whose origin the spine repeats (the line stood "
+                         "still over several rows) is credited to its copy inside the frontier "
+                         "band, not to the last copy (the default, under which a band inside "
+                         "such a run never sees an outcome and the curriculum stops moving: "
+                         "pbr6b4_c11 at the loop's spine row 6,819). Off = byte-identical; "
+                         "config only when on, not restored")
     ap.add_argument("--demo-success-alive", type=float, default=0.0,   # 0 = off
                     help="--demo-success-d + --demo-success-bonus: SECS > 0 - a crossing of the "
                          "success line (with the energy, under --demo-success-energy) counts "
@@ -11744,6 +11751,8 @@ def main() -> None:
             if not args.demo_grow or int(args.demo_grow_max) < int(args.demo_grow):
                 raise SystemExit("--demo-grow-max G needs --demo-grow S and G >= S")
             _dkw["grow_max"] = int(args.demo_grow_max)
+        if args.demo_match_band:
+            _dkw["match_band"] = True
         demo = DemoCurriculum(np.load(args.demo_file),
                               window=args.demo_window, rate=args.demo_rate,
                               min_ep=args.demo_min_ep, grow=args.demo_grow,
@@ -14846,6 +14855,9 @@ def main() -> None:
     if args.demo_file and args.demo_success_energy is not None:
         # --demo-success-energy: dumped only when set (not restored: it belongs to its spine)
         meta["config"]["demo_success_energy"] = float(args.demo_success_energy)
+    if args.demo_file and args.demo_match_band:
+        # --demo-match-band: dumped only when on (not restored: a property of the run)
+        meta["config"]["demo_match_band"] = 1
     if args.demo_file and float(args.demo_success_alive or 0.0) > 0.0:
         # --demo-success-alive: dumped only when on (not restored: a property of the run)
         meta["config"]["demo_success_alive"] = float(args.demo_success_alive)
