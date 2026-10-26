@@ -2721,3 +2721,31 @@ Germany (machine 56783), rented 08:05 UTC for 2 h.
   once the curriculum has walked k02's chain back toward its x1.12 root at row 5,017), --steps 1.2e9. A WARM resume
   measuring AT the wall (gate 19). Record gate passed (4 recordings in 16 s).
 * First minutes: the band at [5,423, 5,428] (61.6%, the east lane's south part) oscillates 1.6-53% per visit.
+* c8 evals: 62.366 (29.4996B, the resume) / 62.338 / 62.340 / (29.726B); 9/9 still fall at the 62.3% drop. Its curriculum
+  sat ~15 min at band [5,423, 5,427] (12-16%; the band after it 55-58%): k02's chain LANDS there on a surf slope at
+  (-1,895, 2,276, z 2,386) falling at vz -484 (-172 u), 0.05-0.08 s after those spawns; then it passed and walked the
+  east lane back 5,428 -> 5,368 at 29-40% in ~8 min. Stopped at 29.806B (ckpt_latest md5 d9ffb9c7...): its patience
+  search was due at the next eval, and on c7's record (its x1.12 stage) it would have swapped in another k02-like
+  chain and restarted the curriculum at that spine's end.
+* Local GE (8 min x 2 threads x 256 envs, 20 roots = k02's own beam rows 4,940-5,016 at 58.0-58.6%, x1.0, 64 u x energy
+  32 x rising split, view-follow, 8 ms): 106,657 cells, deepest 61.46%, and NO side ride - past 60% its best energy is
+  2,527 (the greedy ~2,480, the chain 2,783): +20..+43 u over the greedy's line (energy_pick on a reference line = k02's
+  beam rows + the greedy's own continuation). From the policy's unboosted states the corner trick was not found at this
+  compute; the x1.12 chain enters the corner at 842 u/s horizontal, the greedy at ~690.
+
+### The starting spine as an ENERGY spine; c9 = k02 cut before its stuck landing (08:20-08:31 UTC)
+* `train_fast --demo-success-energy M` was refused with `--auto-spine` (the loop swaps in depth spines). With
+  `--auto-spine-energy G` the loop already teaches its own energy spines with that rule and counts only energetic
+  crossings for its quorum, so the pair is now allowed there (8a1cccc): the starting spine is an energy spine, a swap
+  sets the rule anew; without --auto-spine-energy it stays refused. Test test_an_energy_starting_spine_runs_the_loop
+  (7/7 of test_auto_spine_energy pass, CPU 72 s).
+* Spine `autoresearch/spines/pbr6b4_k02e` = k02 cut at row 5,420 (61.65%, h 2,721), before the landing band its depth
+  curriculum stalled on; success line row 5,399 (61.49%, d <= 22,014) with h >= 2,571 (M 150). The greedy crosses that
+  line on the west strip with h ~2,440, so it fails the rule; the chain crosses it in the east lane with ~2,721. The
+  curriculum now asks for the corner (59.9%) and the east lane flown with energy, not for the landing and the drop.
+* **pbr6b4_c9** (08:30 UTC): c8's 29.806B weights + k02e + keys, `--demo-tau0 5368` (c8's position),
+  `--demo-success-energy 150`, milestones + k02's own line 20,589 (paid once per episode on crossing 64%), the loop on
+  with `--auto-spine-patience 0` (quorum only: 5/9 greedy crossings WITH the energy) and `--auto-spine-ge-minutes 3`.
+  The first launch's trainer died silently after its first eval (log cut mid-line, no traceback, GPU free after);
+  the identical relaunch ran. First minutes: band [5,333, 5,420] 99.6% (spawns past the line with the chain's energy
+  succeed at once), step 40.
