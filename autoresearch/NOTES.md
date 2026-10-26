@@ -2380,3 +2380,18 @@ Incumbent: pbr4b3_t11 traj_23590338560 (52.937), weights ckpt_23551016960 (md5 7
   SURVIVES 0.5 s with neutral keys at the policy's tick in every phase (auto_spine.survives / deepest_surviving), not at
   the deepest cell. Checked on the box: rejects GE_tp's deepest (61.71%, dead in 2 ticks) and spine x's raw end (dead in
   24 ticks), accepts w1's end; GE_tp has no surviving cell among its 64 deepest (correct: no real crossing there).
+* GE_post (02:51 UTC, c9 stopped at ~28.4B; 30 threads, 14 min, 8,8,7): rooted at the k02 beam line's 56.5-57.8%
+  (the climb out of gate 18 and the room's entry, BEFORE its drop onto the floor), x1.0 / 1.05 - a chain that keeps
+  the post-climb h ~2,690 on the room's walls would reach the wall-ride point with the ~2,714 the crossing needs, no boost.
+* **GE_post result** (14 min, 144,240 cells, 8,8,7): no crossing (0 cells on the platform, deepest 61.58%), but energy
+  picks among surviving cells keep the climb's energy on the room's WEST wall: 58.5% h 2,716 (+230 over the line),
+  59.0% 2,677 (+216) - the level of GE_wall's x1.2 root (h ~2,714), unboosted and reachable from the policy's own
+  post-climb states. The three chains replay exactly (10/10, 12/12, 13/13 links) and their ends survive at 8,8,7.
+* GE_cross (03:07 UTC, 14 min, 30 threads, 8,8,7): rooted at those chains' last second, x1.0 / 1.05 - does the
+  crossing exist from the energy the policy can actually carry?
+* GE_cross result (14 min, 127,538 cells, 8,8,7, from the energetic west-wall chains' last second x1.0 / 1.05): no
+  crossing (deepest 61.57%, none of the 128 deepest cells survives). The x1.2 crossing exists only from GE_r19's NW-corner
+  cell; the west-wall energy (h ~2,700 at 58.5-59%) does not lead over the sheet in 14 min of uniform search.
+* **pbr5b1_c10** (03:24 UTC, the round's last run): c9's ckpt_latest (28,417,458,176) + spine x, demo-rate 0.15,
+  tau0 7873, --auto-spine-patience 6e8 (the trainer's own search on newer weights within ~35 min, now with the
+  8,8,7 explorer and the survival filter), c9's other flags; runs to the wrap-up.
