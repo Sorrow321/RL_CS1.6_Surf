@@ -2787,3 +2787,12 @@ Incumbent: pbr5b2_c7 ckpt_29123674112 (62.369, md5 afb44185...).
   the route recovered from the erosion on the depth curriculum) - the greedy's corridor energy unchanged (h ~2,47x at
   60-61%, 2,51x-2,53x at 62-62.3%); the m2 curriculum raced back to the drop (98% at row 5,484) and then held at the
   stretch just after the 60% corner (rows 5,289-5,299, 15-38%) for 15+ min.
+* a2 final evals 29.952B 62.317 / 30.027B 62.295 (medians 62.3%, 6/9 at the drop, the greedy's corridor energy unchanged);
+  the m2 curriculum held at rows 5,284-5,299 (60.6%, the stretch after the corner) at 17-35% for the run's last 20 min.
+  Pulled: all 5 evals, ckpt_latest (30.03B, md5 of the pulled file in box.log), and the snapshot set's 29.82B on the box
+  died with it. **Box 57783819 released 09:48 UTC** (deadline 09:54; the fleet credit $9.97, under the $10 reserve: no
+  extension or new rent possible). Box time this round: 07:54-09:48, ~$0.43.
+* `auto_spine --beam-seeds N` (235c98e) + `train_fast --auto-spine-beam-seeds N` (23db08b): the plain beam again with
+  other torch seeds while no line reaches past the greedy frontier by --gain, the deepest kept; off = unchanged.
+  Tests: test_auto_spine_beam_seeds.py (5, incl. a CPU trainer smoke run: notice, config key, `--beam-seeds` on the
+  search line, the refusal without --auto-spine). Motivation: m1 (seed 7) vs m2 (seed 9) on the same weights.

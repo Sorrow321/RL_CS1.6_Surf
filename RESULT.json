@@ -10,10 +10,12 @@
   "ckpt": "/home/steam/ar_pb/runs/pbr6b1/pbr6b1_a1/ckpt_29123674112.pt",
   "recipe": [
    "a1: resume of the round-5 incumbent (pbr5b2_c7 29.124B, md5 afb44185...) with c7's flag set on spine pbr5b2_c7k01 + 19 milestones (the 18 + s6's 21,624) + --auto-spine-energy 150 --auto-spine-ge-minutes 5 --auto-spine-delay 2e8",
-   "auto_spine (068f27f): ENERGY BEFORE BOOST - the default ladder is 1.0,1.04;G;1.08;1.12, the --energy-gain stage runs before the x1.08 / x1.12 stages"
+   "auto_spine (068f27f): ENERGY BEFORE BOOST - the default ladder is 1.0,1.04;G;1.08;1.12, the --energy-gain stage runs before the x1.08 / x1.12 stages",
+   "a1 search 1 -> energy spine pbr6b1_a1k01 (unboosted chain from 48.9%, rides the 60% corner's side: +153 u at 61.2%); ~370M steps on it -> the policy's own beam (seed 9) past the 62.3% drop to 63.43% (spine pbr6b1_m2), unboosted",
+   "a2: the 29.72B weights + the depth curriculum on pbr6b1_m2: 62.29-62.32 in 300M steps (the box's deadline)"
   ],
   "resume_from": "pbr5b2_c7 ckpt_29123674112 (62.369) <- the round-5 lineage",
   "commit": "068f27f"
  },
- "summary": "62.373 (a1 29.200B, median 62.4%) - the incumbent's level, same gate (all 9 fall at the 62.3% drop). a1 = the trainer's own search loop with the energy stage moved before the boosted Go-Explore stages (068f27f). Search 1 (878 s, the boosted stages skipped): an ENERGY spine from the policy's own UNBOOSTED state at 48.9% that rides the 60% corner's sloped side instead of landing and hopping (h 2,597 at 61.2%, +153 u over the policy's line); being taught with the energy rule. Next: the energetic quorum fires search 2 on those weights (the drop at 62.3%)."
+ "summary": "62.373 (a1 29.200B, median 62.4%) - the incumbent's level; all 9 still fall at the 62.3% drop. NEW: the loop's energy stage moved before the boosted Go-Explore stages (068f27f) found an UNBOOSTED energy spine at the 60% corner in its first search (878 s); after ~370M steps on it the policy's own beam (seed 9; seed 7 did not) passed the drop to 63.43% unboosted (spine pbr6b1_m2, h ~2,72x-2,82x over 60-62.3%). The greedy did not follow before the box's deadline (a2: 62.29-62.32). Cost: the energy phase made the line faster upstream and the greedy eroded at gate 8's landing (8/9 at 21%), recovered on the depth curriculum. Also new: auto_spine --beam-seeds / train_fast --auto-spine-beam-seeds. Box released 09:48 UTC (credit at the reserve)."
 }
