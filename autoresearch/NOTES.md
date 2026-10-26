@@ -2963,3 +2963,34 @@ python autoresearch/box.py launch --agent pbr6b2 --run pbr6b2_c5 --steps 2.5e9 -
 (launch prepends config.incumbent_recipe; the resume restores the shape flags, the tick and the view mode from the
 checkpoint, so none of those is passed.) Use a new --run name. Read each eval's median, not only its best: c4 and
 c5 had dips (median down to 24%) that recovered, c6 / c7 did not (see the collapse section above).
+
+### MEASURED: the view heads spend ~80% of PPO's joint clip (2026-10-26 13:33 UTC, local CPU, no box)
+* New, default off: `--diag-ratio-split R` (56e8048; tests/python/test_diag_ratio_split.py, incl. a flag-off
+  bit-identity run against the pre-change trainer; TRAIN_ONLY). Every update scores R rows of its buffer (a private
+  generator) before its first step and after its last and splits the joint log-ratio into the keys heads', the yaw
+  head's and the pitch head's parts. A row is "dead" when the ratio lies past the clip in its advantage's direction
+  (PPO's min() then gives it no policy gradient on ANY head); "cut by the view" = dead under the joint ratio but not
+  under the keys heads' own, i.e. a row a per-head clip would still let train the keys.
+* Probe: a CPU resume of pbr6b2_c5/ckpt_30078926848.pt (the 62.364 weights) with c5's training flags minus the
+  auto-spine, 128 envs (minibatches of 1,024 rows against the box's 8,192), fp32, 8 updates, R = 4,096; the parts
+  sum to the stored rollout log-probs to 1e-6. Its logged approx_kl, 0.027-0.112, is the box's range (run medians
+  0.04-0.11), so the updates are representative in size. Log and script: $AR_HOME/runs/pbr6b2/drs_probe/.
+* Means over the 8 updates (min-max), at each update's END:
+  * rows past the clip 34.0% (23.5-51.3%); rows with no policy gradient 17.5% (10.2-26.8%);
+  * dead by the keys' own ratio 5.3% (1.5-12.0%); **cut by the view 13.7% (9.0-18.7%) = 80% of the dead rows**;
+  * per-head KL keys 0.014, yaw 0.026, pitch 0.027: **the two view heads carry 77% of the joint KL, the pitch head
+    alone 41%** - and the pitch only moves the camera (no physics effect; its sigma sits at the 0.5 cap); RMS
+    log-ratio keys 0.17, yaw 0.24 (0.53 in the update with the largest KL), pitch 0.26.
+* So the joint clip is spent mostly by the view heads, and the keys heads (W/S, A/D, jump, duck - the heads every
+  gate of this lineage is about) lose their policy gradient on ~14% of the rows of a typical update while the
+  entropy bonus still acts on them. The yaw sigma is 0.018 here: a yaw-mean move of ~0.01 z (a fraction of a degree)
+  is ~0.5 nats. This MEASURES the mechanism of the collapse hypothesis above at its calm-training size; it does not
+  show that it caused the c6 / c7 collapses (the high-KL updates that preceded every dip would sit far past this:
+  at approx_kl 0.4-8 nearly every row is dead by the update's end).
+* Caveats: one resume, 8 updates, CPU physics and 1/8 of the box's minibatch rows; the shares are end-of-update
+  values (a row goes dead part-way through the update, so the gradient actually lost is smaller); the advantage
+  sign is read against the update's mean, not each minibatch's.
+* Generic tests for a next program (no map constant in either): (1) clip each head group's ratio separately (keys /
+  yaw / pitch: per-head PPO) so a view move cannot switch the keys' gradient off; (2) take the pitch out of the
+  ratio (a fixed or deterministic camera pitch) - it is 41% of the joint KL for no physics effect. Read
+  `--diag-ratio-split 4096` on the box first: it costs two extra forward passes of R rows per update.
