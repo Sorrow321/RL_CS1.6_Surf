@@ -231,3 +231,10 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   at x1.2: east along the room's north wall at ~700 u/s, south along its east wall ABOVE kill sheet *211 (z ~2,420-
   2,470, the record's way), onto the exit platform (entity 28); cut standing on it at 61.82% (the chain's drop through
   the exit hole ends in a fatal fall within 24 ticks). Views along the velocity, keys translated. No demo, no record.
+* `pbr5b1_y.npy` + `.keys.npy` (8,608 rows; md5 3860e5194f35bb68c3525918d3bbde33 /
+  3cebcebeafcaf20104be6b09e5a47aa5): gate 19, found BY THE TRAINER (pbr5b1_c10's auto-spine search 1 on patience at
+  29.022B): the policy's own 7.67 ms beam line to its state 5,397 (~60%), then the exact Go-Explore chain of the x1.08
+  stage, run AT the policy's 8,8,7 tick (explore_phase1 --tick-pattern via auto_spine): onto the room's north platform,
+  south over kill sheet *211 at ~550 u/s and onto the exit platform; cut standing on it at 61.84% (the chain's drop
+  through the exit hole ends in a fatal fall; the cut state survives at 8,8,7). 420 u past the greedy, under the
+  loop's 500 u gain, so built by hand from the trainer's archive. No demo, no record (pbr5b1, round 5).

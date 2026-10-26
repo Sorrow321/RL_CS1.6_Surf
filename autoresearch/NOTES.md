@@ -2395,3 +2395,12 @@ Incumbent: pbr4b3_t11 traj_23590338560 (52.937), weights ckpt_23551016960 (md5 7
 * **pbr5b1_c10** (03:24 UTC, the round's last run): c9's ckpt_latest (28,417,458,176) + spine x, demo-rate 0.15,
   tau0 7873, --auto-spine-patience 6e8 (the trainer's own search on newer weights within ~35 min, now with the
   8,8,7 explorer and the survival filter), c9's other flags; runs to the wrap-up.
+* c10 (spine x, rate 0.15): band [7868] reached ~16% (it had been 0%), [7863] 0%. Its patience search (29.022B, the
+  first live search with the 8,8,7 explorer + survival filter): beams 21,984 (no gain); GE x1.0-1.04 surviving chain
+  22,108; **GE x1.08: a chain over the sheet onto the exit platform** (701 of its states stand on it, to 61.84%; the
+  replay's end at 62.25% is the fatal drop through the exit hole - none of the archive's 64 deepest cells survives, so
+  the survival filter fell back to the deepest), 420 u past the greedy: under the 500 u gain, rejected. I stopped the
+  search in its x1.12 stage and built spine pbr5b1_y from that chain (cut on the platform; the cut state survives).
+* **pbr5b1_c11** (04:21 UTC): c10's ckpt_latest (29,021,962,240, md5 04db85e1...) + spine y (x1.08 at ~60% instead of x
+  x1.2) + --demo-rate 0.2 + --auto-spine-patience 2e9 (no 40-min patience search before the wrap-up; the quorum still
+  searches) + c10's other flags.
