@@ -3150,3 +3150,24 @@ ckpt_35907960832 (md5 160da9eb...), eval 73.590 at 35.918B. Credit at the start:
   (-928, 1,553, 2,158), 75.20% at (-573, 1,204, 1,866), 76.47% at (25, 1,231, 1,415)) is the same loop, flown with
   h ~2,720-2,740. So the gate is the climb north-east at 74.2% (to z ~2,150): it needs h >= ~2,400-2,450 at ~73.5%
   (k02's chain has 2,283, the platform line ~1,930).
+* c2 later evals: 73.500 / 73.656 / 73.544 / **74.287** / 73.569 / 74.228 (37.625B, median 21.4%: unsteady) / 74.283 /
+  73.592 (to 37.776B); 1-2/9 on k02's chain each time, the curriculum at the hop band [6,421 / 6,426] (27-35%).
+* **Look-ahead GE 3** (21:51-22:06 UTC; k02 rows 6,400-6,600 x1.0 / 1.04, --select-energy 3, 15 min, 58,187 cells):
+  deepest 74.35% (still nothing past 74.45%), but the archive keeps far more energy than k02's chain at matched
+  progress: max h over 72.5-74.25% +220..+286 u (73.5%: 2,506 vs 2,286).
+* `tools/energy_splice.py` (new, 58bb644): the loop's energy-stage pick (auto_spine.energy_cell: the DEEPEST cell with
+  >= G u more than the line, on the route, not plunging, not slower) + ge_replay + splice at the root + canonical views +
+  translated keys, on an archive searched by hand. On look-ahead 3 with G 150: cell 48,251 at 74.30%, h 2,407 (+153 u),
+  an UNBOOSTED root at k02 row 6,468 (71.86%, after the hop), 345 states (k02 needs 375 ticks to the same progress) ->
+  spine **`autoresearch/spines/pbr7b2_e1`** (6,813 rows, k02 rows 0-6,468 unchanged + the chain). The chain flies LOW
+  along x ~-1,230..-1,340 at z 1,780-1,850 and ~1,000 u/s over 72.25-73.5% (h 2,430-2,440; k02's chain 2,330-2,520
+  higher up at ~800 u/s), climbs to (-1,166, 1,514, 2,027) at 74%, and heads east-north-east at 741 u/s to 74.30% -
+  the record's route through 72-74.2% (yardstick: 72% (-1,256, 2,730, 1,798), 73% (-1,249, 2,156, 1,809), 74.21%
+  (-1,026, 1,503, 2,133)), found reward-free from the policy's own state, with ~300 u less energy than the record.
+* **pbr7b2_c3** (22:15 UTC): c2 stopped at 37.81B (curriculum at [6,421 / 6,426], the hop band, in e1's shared prefix),
+  its ckpt_latest (37.810B, md5 5f865cd9...) resumed on e1 + keys with `--demo-success-energy 75` (success = cross
+  d <= 14,789 (74.13%) with h >= 2,332; the loop's own G/2 rule) and k02's line 14,773 added as the 27th milestone
+  (crossing it still pays), the loop as in c2 (async, energy 150: its quorum counts energetic crossings). Why not
+  wait for the loop: its quorum needed 5/9 greedy episodes on k02's chain (1-2/9 after 50 min) and then a ~30-min
+  search whose energy stage would do this same pick with a 5-min explorer; the e1 prefix keeps what the curriculum
+  had learned. First eval (c2's weights): 0/9 cross 74.13% with the energy (the chain-flying greedy has ~2,300 there).

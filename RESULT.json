@@ -15,5 +15,5 @@
   "resume_from": "pbr7b2_c1 ckpt_latest 36.945B <- pbr6b4_c12 ckpt_latest 36.659B <- incumbent r6 (73.590)",
   "commit": "61300b6"
  },
- "summary": "c1/c2 = round 6's loop continued on its spine k02 (to 74.33%). 73.590 -> 73.671 (c1 36.735B, 7/9 past the 71.3% landing) -> 74.287 (c2 37.474B: one greedy episode makes k02's touch-and-go hop on the 71.4% platform and flies the chain to 74.29%, 20 s faster than the platform line). New flag --auto-spine-async (search beside training; CPU-tested, off = bit-identical). Look-ahead GE beside the trainer: past k02's end x1.0-1.08 roots stop at 74.42-74.45%, x1.16 reach 75.2%, x1.24 78.4%: the next gate needs ~+100-150 u of energy at ~73.6%."
+ "summary": "c1/c2 = round 6's loop continued on its spine k02 (to 74.33%): 73.590 -> 73.671 (c1) -> 74.287 (c2 37.474B: one greedy episode makes k02's platform hop and flies the chain to 74.29%). New --auto-spine-async (search beside training). Look-ahead GE beside the trainer: past k02's end the way needs ~+100-150 u of energy at ~73.5% (x1.16-1.24 roots pass, x1.0-1.08 stop at 74.45%). tools/energy_splice.py applied the loop's energy-stage rule to a look-ahead archive -> energy spine pbr7b2_e1 (+153 u at 74.30%, the record-like low route at ~1,000 u/s, unboosted root); c3 (22:15) teaches it with --demo-success-energy 75, the loop on."
 }
