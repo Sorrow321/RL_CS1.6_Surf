@@ -3131,3 +3131,8 @@ a 5080 at 0.621 $/h, so `rent` was REFUSED (budget pace); a local retry every 5 
   73.6% - more than the loop's x1.12 ladder buys, i.e. its ENERGY stage (G 150) is what should take this gate, as at gates
   17 and 19. Expected loop sequence after k02 is learned: search 1 ladder fails at the ledge (~20 min) -> energy spine ->
   ~10-30 min to learn -> energetic quorum -> search 2 (beam / GE) past the ledge.
+* Third local GE (same settings + --select-energy 3, 10 min, 679k runs; 24 roots at k02 rows 6,380-6,434 = before the
+  chain's -208 u platform touch, x1.0 / x1.04): nothing past 74.30%, but cells keeping more energy than k02 at matched
+  progress: +75 (71.5%), +214 (72.5%), +93 (73.5%), +138..+140 u (73.9-74.35%, h 2,389-2,391 at z ~1,894-2,026). The
+  ledge asks ~+160 u at 73.6% (the x1.2 probe): the energy stage's G 150 is the right size; the uniform explorer alone did
+  not convert it into the crossing in 10 min x 2 threads. Offline probing ends here; the loop does the rest on a box.
