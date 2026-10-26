@@ -2294,3 +2294,22 @@ Incumbent: pbr4b3_t11 traj_23590338560 (52.937), weights ckpt_23551016960 (md5 7
 * **pbr5b1_c6** (00:24 UTC): c5's ckpt_latest (26,241,662,976, md5 a2fe2899...) + spine autoresearch/spines/pbr5b1_r19.npy
   + keys (success line d <= 21,681 = 62.07%) + milestones ..., 25583 (e1), 22012 (k01) + --demo-success-energy 150 (not
   binding here: the spine's end h is 2,292) + c5's other flags.
+* c6 (spine r19): the curriculum came back 9,500 -> 8,515 in ~20 min (bands 94-100%) and stops at a precision move:
+  band [8510,8514] 0.7-1.2% vs [8515,...] 95%. There the explorer comes south over the kill sheet at ~190 u/s ducked,
+  touches the edge of the exit platform (entity 28) for a tick and jumps at once (vz -237 -> +209), then lands on the
+  platform and walks off its far side into the exit. The greedy (61.51-61.56% x5) dies exactly there.
+* The record (ANALYSIS ONLY) crosses that corner 80-130 u above the sheet at ~700 u/s. Energetic surviving cells of
+  GE_r19 just before the sheet (60.3-60.9%, h +127..+199 over the line, riding the room's east wall at 330-640 u/s):
+  the policy started there (start-state beams, chain keys held) dies within 1.5-2.3 s - untrained there.
+* c6's first eval **61.561** (26.242B = c5's final weights, 0.5M steps after the resume) is the round's best by a hair;
+  those exact weights placed as pbr5b1_c6/ckpt_26241662976.pt (md5 a2fe2899...) and pulled for the handoff.
+* **Why c6's band sits at 1% (01:09 UTC, core replays from the RAW chain states with the explorer's own
+  actions):** at 8 ms (the explorer's tick) the edge-hop works from every state 8,490-8,520; at the policy's [8,8,7]
+  pattern - every phase - and at 7 ms the same actions die at state ~8,514 on the kill sheet. A one-tick edge contact
+  plus a jump that only fires on the first tick of a 4-tick decision (oldbuttons) does not survive the change of tick:
+  the spine's crossing is physically invalid for the policy. (The policy's own 4,096-copy beam from 8,480-8,505 at its
+  tick: extinct in 100 ticks.) Lesson for searched spines: a precision contact found at the explorer's whole-ms tick
+  must be checked at the policy's realised tick pattern before a curriculum is spent on it.
+* GE_r19b (01:18 UTC, 10 min, 14 threads beside c6): rooted at the k02 beam line's own approach to the sheet
+  (60.8-61.5%, 40 states) - a crossing that takes off from the floor north of the sheet and lands on the platform
+  ~180-240 u south (a hop's length at 350-450 u/s) does not depend on a one-tick contact.
