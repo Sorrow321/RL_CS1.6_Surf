@@ -2974,3 +2974,7 @@ Germany (machine 56783), rented 08:05 UTC for 2 h.
   (-979..-1,176, 3,215-3,675, z 1,718-1,880), onto the next catch sheet (*184, z 1,663-1,842) in the surf section after the
   hole (the next gate, ~71%); 2/9 on the walkway (65.0-66.0%), 2/9 short of the catch (64.7-64.9%).
 * Hand-on for 71.381: ckpt_31982616576 (180.9M before the eval, md5 dca6920f..., pulled).
+* 15:11 UTC: c11 on k01 (the loop's 72.93% beam line): evals 32.541-32.918B 71.288 / 71.357 / 71.127 / 71.268 / 71.192 /
+  **71.499 (32.918B, median 71.4%: most greedy episodes now pass the walkway and stop at the ~71.5% gate)**; the
+  curriculum sits at k01's [6,904 / 6,909] (at that gate, 19-43% bands, rising), 0/9 past its 72.75% line. Hand-on for
+  71.499: ckpt_32783728640 (134.7M before the eval, md5 91badb50..., pulled).
