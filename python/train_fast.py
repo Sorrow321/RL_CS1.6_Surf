@@ -2135,6 +2135,25 @@ def energy_gate(hit, ended, paid, ok, h, rec, end_d, h_min):
     return pay, ok, boot
 
 
+def crossed_with_energy(d, h, end_d, h_min) -> bool:
+    """--auto-spine-energy: an eval episode counts for the quorum of an ENERGY spine only if, at
+    the first tick its d reaches the success line, its energy height is >= ``h_min`` (such a
+    spine is usually no deeper than the greedy, whose plain crossing proves nothing)."""
+    k = np.flatnonzero(np.asarray(d, np.float64) <= float(end_d))
+    return bool(len(k)) and float(np.asarray(h, np.float64)[int(k[0])]) >= float(h_min)
+
+
+def spine_energy_rule(res, end_state, gain):
+    """--auto-spine-energy G: the energy success floor for a spine the search returned -> the
+    spine end's energy height - G / 2 for a spine marked ``energy`` (half the gain it keeps over
+    the policy's line must be kept to succeed), None (the depth rule) for any other."""
+    if gain is None or not (res or {}).get("energy"):
+        return None
+    v = np.asarray(end_state["velocity"], np.float64)
+    return (float(np.asarray(end_state["origin"], np.float64)[2]) + float((v * v).sum()) / 1600.0
+            - 0.5 * float(gain))
+
+
 def milestone_pay(rec, ended, ms, paid):
     """--demo-milestones: (bonus count per row, the updated (N, M) paid table) for records
     ``rec`` (N,) against milestone distances ``ms`` (M,). A row is paid each milestone its
@@ -4871,6 +4890,14 @@ def main() -> None:
                     help="--auto-spine: the beam runs this long past the eval's longest episode")
     ap.add_argument("--auto-spine-timeout", type=float, default=2400.0,
                     help="--auto-spine: wall-clock cap (s) of one search")
+    ap.add_argument("--auto-spine-energy", type=float, default=None,   # None = off
+                    help="--auto-spine: G > 0 adds an ENERGY stage to the search (auto_spine "
+                         "--energy-gain G): when no deeper line exists, a line keeping >= G u "
+                         "more energy height than the policy's own. Such a spine is taught with "
+                         "the energy success rule (success only with the spine end's energy "
+                         "height - G/2, the --demo-success-energy rule) and its quorum counts "
+                         "only greedy crossings with that energy; a depth spine goes back to the "
+                         "depth rule. Config only when set; not restored")
     ap.add_argument("--demo-cooldown", type=int, default=None,   # None = 20
                     help="--demo-file: iterations between two moves of the curriculum's tau "
                          "(default 20, the reference implementation's constant): every move "
@@ -11667,8 +11694,24 @@ def main() -> None:
                   f"episode; Go-Explore {float(args.auto_spine_ge_minutes):g} min when the beam"
                   f" falls short); a spine beating the greedy frontier by "
                   f"{float(args.auto_spine_gain):g}u replaces this one")
+            if args.auto_spine_energy is not None:
+                if not float(args.auto_spine_energy) > 0:
+                    raise SystemExit("--auto-spine-energy G: the energy gain must be > 0")
+                if not float(args.demo_success_bonus or 0.0) > 0.0:
+                    raise SystemExit("--auto-spine-energy gates the --demo-success-bonus "
+                                     "crossings: give it")
+                if args.reward_per_decision:
+                    raise SystemExit("--auto-spine-energy reads the crossing tick's state: it "
+                                     "needs the per-tick reward path (no --reward-per-decision)")
+                print(f"--auto-spine-energy {float(args.auto_spine_energy):g}: when no line is "
+                      f"deeper, the search looks for one keeping >= "
+                      f"{float(args.auto_spine_energy):g} u more energy height; such a spine "
+                      f"succeeds only with its end's energy - "
+                      f"{0.5 * float(args.auto_spine_energy):g}")
     elif args.auto_spine:
         raise SystemExit("--auto-spine needs --demo-file (the first spine) and --demo-success-d")
+    if args.auto_spine_energy is not None and not args.auto_spine:
+        raise SystemExit("--auto-spine-energy is a stage of --auto-spine's search: give it")
     if args.demo_file:
         if float(args.demo_front_frac) > 0.0:
             print(f"--demo-front-frac {args.demo_front_frac:g}: that share of "
@@ -14685,6 +14728,8 @@ def main() -> None:
             auto_spine_timeout=float(args.auto_spine_timeout))
         if args.auto_spine_milestones:
             meta["config"]["auto_spine_milestones"] = 1
+        if args.auto_spine_energy is not None:
+            meta["config"]["auto_spine_energy"] = float(args.auto_spine_energy)
     if args.demo_milestones:
         meta["config"]["demo_milestones"] = [float(x) for x in
                                              str(args.demo_milestones).split(",") if x.strip()]
@@ -15724,7 +15769,7 @@ def main() -> None:
     def _auto_spine_after_eval(ev_path):
         """Read the greedy eval; on the quorum (or the patience) run tools/auto_spine.py on
         ckpt_latest and swap a spine that beats the greedy frontier into the curriculum."""
-        nonlocal DEMO_END_D
+        nonlocal DEMO_END_D, DEMO_H_MIN
         import subprocess as _sp
         from surfgym.route import episodes_from_traj
         _f = slots[0].reward_field if slots[0].reward_field is not None else slots[0].goal_field
@@ -15735,10 +15780,16 @@ def main() -> None:
         from surfgym.greedy_spawn import last_contact_vz
         tps = 1000.0 / float(args.tick_ms or 10.0)
         bests, lens, launches, stalls = [], [], [], []
+        n_en = 0                          # --auto-spine-energy: crossings with the energy
         for e in eps:
             d = np.asarray(_f.sample(np.asarray(e[:, 1:4], np.float64)), np.float64)
             d = np.where(d < _f.reach_max - 0.5 * _f.cell, d, np.inf)
             bests.append(float(d.min()))
+            if args.auto_spine_energy is not None and DEMO_H_MIN is not None:
+                _v = np.asarray(e[:, 4:7], np.float64)
+                n_en += crossed_with_energy(d, np.asarray(e[:, 3], np.float64)
+                                            + (_v * _v).sum(axis=1) / 1600.0, DEMO_END_D,
+                                            DEMO_H_MIN)
             lens.append(len(e))
             # where the episode stopped making progress: the first tick within the
             # auto_spine stall margin (500 u) of its best d
@@ -15754,6 +15805,13 @@ def main() -> None:
                     launches.append(_c)
         bests = np.asarray(bests)
         m = int((bests <= DEMO_END_D).sum())
+        if args.auto_spine_energy is not None and DEMO_H_MIN is not None:
+            # an energy spine: its success line is no deeper than the greedy, so the quorum
+            # counts the crossings that carry the spine's energy
+            print(f"[{global_step:>13,d}] auto-spine: energy spine - {n_en}/{len(eps)} greedy "
+                  f"episodes cross d <= {DEMO_END_D:,.0f} with energy height >= "
+                  f"{DEMO_H_MIN:,.0f} ({m} cross it)", flush=True)
+            m = int(n_en)
         med = float(np.median(bests))
         if AUTO["last"] is None:
             AUTO["last"] = int(global_step)
@@ -15797,6 +15855,8 @@ def main() -> None:
                "--timeout", f"{float(args.auto_spine_timeout):g}"]
         if args.maxvel is not None:
             cmd += ["--maxvel", f"{float(args.maxvel):g}"]
+        if args.auto_spine_energy is not None:
+            cmd += ["--energy-gain", f"{float(args.auto_spine_energy):g}"]
         t0 = time.time()
         print(f"[{global_step:>13,d}] auto-spine search {AUTO['k']}: " + " ".join(cmd),
               flush=True)
@@ -15844,9 +15904,20 @@ def main() -> None:
         demo_idx[:] = -1
         AUTO["last"] = int(global_step)
         AUTO["retry_at"] = 0
+        _en = {}
+        if args.auto_spine_energy is not None:
+            # an energy spine is taught with the energy success rule, a depth spine without it
+            DEMO_H_MIN = spine_energy_rule(res, demo.S[-1], float(args.auto_spine_energy))
+            DEMO_OK[0] = DEMO_OK[1] = None
+            _en = {"energy_h_min": DEMO_H_MIN}
+            print(f"[{global_step:>13,d}] auto-spine search {AUTO['k']}: "
+                  + (f"an ENERGY spine (+{float(res.get('energy_gain', 0.0)):,.0f} u over the "
+                     f"policy's line): success only with energy height >= {DEMO_H_MIN:,.0f}"
+                     if DEMO_H_MIN is not None else "a depth spine: the depth success rule"),
+                  flush=True)
         (adir / "current.json").write_text(json.dumps(
             {"step": int(global_step), "k": AUTO["k"], "spine": res["spine"],
-             "success_d": DEMO_END_D, "milestones": [float(v) for v in MILES[0]], **res},
+             "success_d": DEMO_END_D, "milestones": [float(v) for v in MILES[0]], **_en, **res},
             indent=1), encoding="utf-8")
         print(f"[{global_step:>13,d}] auto-spine search {AUTO['k']}: NEW SPINE from "
               f"{res.get('source')} ({demo.n} states, end d {_de:,.0f}, greedy frontier "

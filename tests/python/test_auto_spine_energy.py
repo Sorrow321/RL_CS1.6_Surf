@@ -152,3 +152,60 @@ def test_main_runs_the_energy_stage_only_when_asked(tmp_path, monkeypatch):
     assert rc == 2 and [c[0] for c in calls] == ["ge", "ge_energy"]
     info = json.loads((out / "spine.json").read_text()) if (out / "spine.json").exists() else {}
     assert not info.get("energy")
+
+
+def test_trainer_energy_rules():
+    from train_fast import crossed_with_energy, spine_energy_rule
+    d = np.array([900.0, 700.0, 480.0, 400.0])
+    h = np.array([2600.0, 2550.0, 2490.0, 2700.0])
+    assert crossed_with_energy(d, h, 500.0, 2480.0)          # first at the line: 2,490
+    assert not crossed_with_energy(d, h, 500.0, 2500.0)      # 2,700 later does not count
+    assert not crossed_with_energy(d, h, 300.0, 0.0)         # never crossed
+    s = np.zeros(1, STATE_DTYPE)[0]
+    s["origin"] = (0.0, 0.0, 2400.0)
+    s["velocity"] = (400.0, 0.0, 0.0)                        # h = 2,400 + 100
+    assert spine_energy_rule({"energy": True}, s, 150.0) == 2500.0 - 75.0
+    assert spine_energy_rule({"source": "beam"}, s, 150.0) is None
+    assert spine_energy_rule({"energy": True}, s, None) is None
+
+
+def test_the_trainer_passes_and_refuses_the_energy_stage(tmp_path):
+    sys.path.insert(0, str(ROOT / "tests" / "python"))
+    import shutil
+    from test_demo_success_d import _run_demo
+    from test_ge_minutes import needs_pb  # noqa: F401
+    from test_ge_minutes import PB
+    if not PB.exists():
+        import pytest
+        pytest.skip("no princessburglar")
+    run = "aspe_smoke"
+    try:
+        r = _run_demo(run, ["--demo-success-d", "50", "--demo-success-bonus", "50",
+                            "--auto-spine", "--auto-spine-quorum", "1",
+                            "--auto-spine-patience", "1", "--auto-spine-envs", "16",
+                            "--auto-spine-ge-minutes", "0", "--auto-spine-extra-secs", "1",
+                            "--auto-spine-retry", "1", "--record-every", "2048",
+                            "--eval-eps", "2", "--ep-ticks", "300",
+                            "--auto-spine-energy", "150"], tmp_path)
+        out = r.stdout + r.stderr
+        assert r.returncode == 0, out[-6000:]
+        assert "--auto-spine-energy 150: when no line is deeper" in out
+        assert "auto-spine search 1:" in out and "--energy-gain 150" in out, out[-6000:]
+        cfg = json.loads((ROOT / "runs" / run / "run.json").read_text())["config"]
+        assert cfg["auto_spine_energy"] == 150.0
+    finally:
+        shutil.rmtree(ROOT / "runs" / run, ignore_errors=True)
+    for name, extra, msg in (
+            ("aspe_bad1", ["--demo-success-d", "50", "--demo-success-bonus", "50",
+                           "--auto-spine-energy", "150"], "is a stage of --auto-spine"),
+            ("aspe_bad2", ["--demo-success-d", "50", "--auto-spine", "--auto-spine-energy", "150"],
+             "gates the --demo-success-bonus")):
+        bad = _run_demo(name, extra, tmp_path)
+        assert bad.returncode != 0 and msg in (bad.stdout + bad.stderr), \
+            (bad.stdout + bad.stderr)[-3000:]
+        shutil.rmtree(ROOT / "runs" / name, ignore_errors=True)
+
+
+def test_record_ckpt_knows_the_flag():
+    import record_ckpt
+    assert "auto_spine_energy" in record_ckpt.TRAIN_ONLY
