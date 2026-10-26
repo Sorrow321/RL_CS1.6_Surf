@@ -4936,6 +4936,14 @@ def main() -> None:
                          "such a run never sees an outcome and the curriculum stops moving: "
                          "pbr6b4_c11 at the loop's spine row 6,819). Off = byte-identical; "
                          "config only when on, not restored")
+    ap.add_argument("--demo-replay-frac", type=float, default=0.0,     # 0 = off
+                    help="--demo-file + --demo-grow: a share R of the demo draws uniform over the "
+                         "spine rows BEHIND the curriculum, [0, tau) - the policy's own line from "
+                         "the true start, which its greedy already flies - as rehearsal: the grown "
+                         "range [tau, n-1] never draws them, and a hard band ahead broke the gates "
+                         "behind it (pbr7b4_c14 / c16: greedy evals collapsing to 54.6-62%%). Taken "
+                         "out of the non-band share; the advance rule is untouched. 0 = off, "
+                         "byte-identical draws; config only when on, not restored")
     ap.add_argument("--demo-success-alive", type=float, default=0.0,   # 0 = off
                     help="--demo-success-d + --demo-success-bonus: SECS > 0 - a crossing of the "
                          "success line (with the energy, under --demo-success-energy) counts "
@@ -11763,6 +11771,18 @@ def main() -> None:
             _dkw["grow_max"] = int(args.demo_grow_max)
         if args.demo_match_band:
             _dkw["match_band"] = True
+        if float(args.demo_replay_frac or 0.0) != 0.0:
+            _rf = float(args.demo_replay_frac)
+            if not args.demo_grow:
+                raise SystemExit("--demo-replay-frac draws the rows behind a --demo-grow "
+                                 "curriculum: give --demo-grow")
+            if not 0.0 < _rf < 1.0 or _rf + float(args.demo_front_frac) > 1.0:
+                raise SystemExit(f"--demo-replay-frac R must be in (0, 1) with R + "
+                                 f"--demo-front-frac <= 1, got {_rf:g}")
+            _dkw["replay_frac"] = _rf
+            print(f"--demo-replay-frac {_rf:g}: that share of the demo draws is uniform over the "
+                  f"spine rows behind the curriculum [0, tau) - rehearsal of the policy's own "
+                  f"line from the start")
         demo = DemoCurriculum(np.load(args.demo_file),
                               window=args.demo_window, rate=args.demo_rate,
                               min_ep=args.demo_min_ep, grow=args.demo_grow,
@@ -14875,6 +14895,9 @@ def main() -> None:
     if args.demo_file and args.demo_match_band:
         # --demo-match-band: dumped only when on (not restored: a property of the run)
         meta["config"]["demo_match_band"] = 1
+    if args.demo_file and float(args.demo_replay_frac or 0.0) > 0.0:
+        # --demo-replay-frac: dumped only when on (not restored: a property of the run)
+        meta["config"]["demo_replay_frac"] = float(args.demo_replay_frac)
     if args.demo_file and float(args.demo_success_alive or 0.0) > 0.0:
         # --demo-success-alive: dumped only when on (not restored: a property of the run)
         meta["config"]["demo_success_alive"] = float(args.demo_success_alive)

@@ -44,7 +44,8 @@ class DemoCurriculum:
     def __init__(self, states, window: int = 10, rate: float = 0.2,
                  min_ep: float = 50.0, seed: int = 29,
                  grow: int = 0, front_frac: float = 0.0, tau0=None,
-                 cooldown: int = 20, grow_max: int = 0, match_band: bool = False) -> None:
+                 cooldown: int = 20, grow_max: int = 0, match_band: bool = False,
+                 replay_frac: float = 0.0) -> None:
         self.S = np.asarray(states, STATE_DTYPE)
         self.n = len(self.S)
         self.D = int(window)
@@ -117,6 +118,21 @@ class DemoCurriculum:
         # frontier band when there is one.
         self.match_band = bool(match_band)
         self._dups = self._dup_rows() if self.match_band else {}
+        # --demo-replay-frac R (pbr7b4, 2026-10-26; 0 = off, byte-identical draws): under
+        # --demo-grow a share R of the demo draws is uniform over the rows BEHIND the curriculum,
+        # [0, tau) - the spine's own earlier states, i.e. the policy's own line from the true
+        # start that its greedy already flies. The grown range [tau, n-1] never draws them, so the
+        # gates behind the curriculum were kept only by the start-pool episodes, and a hard band
+        # ahead (80% of the draws on five rows) could break them (pbr7b4_c14 / c16: greedy evals
+        # collapsing to 54.6-62% gates the lineage had passed rounds before). Rehearsal, taken
+        # out of the non-band share; the band's advance rule is untouched.
+        if not 0.0 <= float(replay_frac) < 1.0:
+            raise ValueError(f"replay_frac must be in [0, 1), got {replay_frac}")
+        if float(replay_frac) > 0.0 and not self.grow:
+            raise ValueError("replay_frac needs grow > 0")
+        if float(replay_frac) + self.front_frac > 1.0:
+            raise ValueError("replay_frac + front_frac must be <= 1")
+        self.replay_frac = float(replay_frac)
         self.last_info = ""
 
     def reset_spine(self, states, tau0=None) -> None:
@@ -163,14 +179,20 @@ class DemoCurriculum:
         n_demo = pool_size - n_fresh
         self._move()
         d_lo, d_hi = self._draw()
+        # --demo-replay-frac: the rows behind the curriculum (none at tau 0, or with the flag off)
+        n_rep = (int(round(n_demo * self.replay_frac))
+                 if self.replay_frac > 0.0 and self.tau > 0 else 0)
         if self.front_frac > 0.0:
             b_lo, b_hi = self._band()
             n_front = int(round(n_demo * self.front_frac))
             idx = np.concatenate([
                 self.rng.integers(b_lo, b_hi + 1, n_front),
-                self.rng.integers(d_lo, d_hi + 1, n_demo - n_front)])
+                self.rng.integers(d_lo, d_hi + 1, n_demo - n_front - n_rep)]
+                + ([self.rng.integers(0, self.tau, n_rep)] if n_rep else []))
         else:
-            idx = self.rng.integers(d_lo, d_hi + 1, n_demo)
+            idx = self.rng.integers(d_lo, d_hi + 1, n_demo - n_rep)
+            if n_rep:
+                idx = np.concatenate([idx, self.rng.integers(0, self.tau, n_rep)])
         fresh = start_pool[self.rng.integers(0, len(start_pool), n_fresh)]
         return np.concatenate([fresh, self.S[idx].copy()])
 
@@ -223,6 +245,9 @@ class DemoCurriculum:
             b_lo, b_hi = self._band()
             self.last_info += (f" | {self.front_frac:.0%} of demo draws on "
                                f"the band [{b_lo},{b_hi}]")
+        if self.replay_frac > 0.0 and self.tau > 0:
+            self.last_info += (f" | {self.replay_frac:.0%} behind it [0,{self.tau - 1}] "
+                               f"(--demo-replay-frac)")
         if moved:
             d_lo, d_hi = self._draw()
             print(f"demo curriculum: tau {'<- earlier' if moved < 0 else '-> later (backoff)'}"
