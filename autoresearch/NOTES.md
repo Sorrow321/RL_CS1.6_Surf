@@ -2917,3 +2917,23 @@ Germany (machine 56783), rented 08:05 UTC for 2 h.
   "along the wall" for a second against the field's pull. (`--bc-file` would distil the chain, but it is refused with
   --keys-hold, which these weights carry.) c11 as planned is still the honest next run; its curriculum should be
   expected to sit on the walkway, and a band at ~0% for 2e8 steps there is the signal to stop it.
+
+### Credit topped up ($39.78 at 13:32 UTC); a flaw in `--demo-success-alive`; c11 without it
+* **`--demo-success-alive` must NOT be used on a spine whose end is doomed**, which the loop's GE chains usually are: a
+  chain ends at its deepest cell, often mid-fall (pbr6b4_c9k02's row 7,325: z 1,872, vz -502, right above the catch
+  sheet *184 at z 1,663-1,842). The first bands spawn past the success line (100 u before the end), and with the rule
+  they must then survive SECS - they cannot, so the curriculum could never leave the spine's end. The CPU tests used a
+  safe 40-state walk and could not show it. The right requirement is min(SECS, the spine's own ticks from its crossing
+  of the line to its end) - derived from the spine, so a doomed end shrinks it - not yet built. Until then the flag is
+  only for lines cut inside a survivable stretch (a --demo-stall-cut line), and c11 runs without it: its line (70.13%)
+  lies past the walkway's hole, out of any dive's reach.
+* Box 57820687: RTX 4080, 0.299 $/h, United Kingdom (machine 151788), rented 13:34 UTC for 3 h (credit $39.78, the fleet
+  at 0.22 $/h before it). Deployed ar/pbr6b4 946a19e with c10's ckpt_latest (31.1815B, md5 6955707b...).
+* **pbr6b4_c11** (launched 13:37 UTC, pid 3508): resume of c10's ckpt_latest (31.1815B) on the FULL loop spine
+  `pbr6b4_c9k02` + keys (7,328 states, success line d <= 17,070 = 70.13%, past the walkway's hole), c9's flag set without
+  tau0 or the energy rule, the 23 milestones (c10's 24 minus k02's own line), the loop as in the to-continue block
+  (`--auto-spine --auto-spine-milestones --auto-spine-gain 500 --auto-spine-ge-minutes 5 --auto-spine-retry 4e8
+  --auto-spine-patience 0 --auto-spine-energy 150`), no --demo-stall-cut, no --demo-success-alive; --steps 5e9 (stop at
+  36.18B; it will be stopped before the 19:12 UTC wrap-up). Record gate passed (4 recordings in 16 s). A warm resume
+  measuring AT the wall (gate 20: the catch and the walkway). The question: does the backward curriculum teach the
+  walkway from the hole back, an increment at a time, where a cold policy never stays on it?
