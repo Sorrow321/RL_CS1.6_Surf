@@ -2228,3 +2228,26 @@ reservation for a boxless branch would keep all four forks running; as it is, a 
   *261-*264 (rendermode 4 glass walls, 26 x 107-172 x 527 u, x -1,138..343, y -3,850..-3,403). None of them collide in
   our core; in the real game they do. Raising the cap changes the start room's geometry under a trained policy (the
   precision entry lands next to *250) - a question for a round with time to re-learn it, not a drive-by fix.
+* c2's auto-spine search 1 (24.307B; gain bar d < 24,406 = 57.29%): beam 24,811, branched beam 24,809 - the same
+  ledge as c1's; killed after 203 s (the trainer resumed; next try 24.707B) to free the box for energy-ranked branched
+  beams forked BEFORE the 52% plate (beam_tas --score dh --score-energy 2, forks at 32 / 33 / 34 s + a plain one):
+  the depth-ranked searches cut every lineage that keeps energy but reads no deeper at 52-56%.
+* **Correction + the evidence (04:20 UTC): upward conveyors are LAUNCH PADS in the real game, and our core cannot
+  produce that.** The WR demo (ANALYSIS ONLY; its header: col 8 = the HL usercmd button mask) never presses IN_JUMP
+  or IN_DUCK in any row, so the bunny-hop reading is out. At both upward conveyors (*162 at 52%, *242 at ~62%;
+  angles -90 0 0, speed 250, no trigger_push on either) the record lands and is thrown up at vz ~+249 (= 250 x
+  (1 + dt/2) minus a frame of gravity), keeping its horizontal speed: *162 1,040 -> 979 u/s (about two frames of
+  friction), *242 669 -> 670 u/s (none: launched the very next frame). Our PM follows the HL SDK order
+  (PM_AddCorrectGravity consumes basevelocity[2] as + speed x dt and zeroes it before friction and the move;
+  src/pm.c pm_tick), and with SV_CheckMovingGround's conveyor block prototyped on top it still gives a plain floor
+  (identical trajectories, friction ~23 u/s per tick). A reading that fits every frame: a grounded player's vertical
+  conveyor basevelocity reaches the move, PM_CategorizePosition's "vz > 180 -> airborne" fires, and the next frame's
+  basevelocity fold adds (1 + dt/2) x 250; the start room's conveyors *249 / *250 push at 181 (= just over 180) under
+  2,500 u/s push-DOWN triggers *252 / *253, which looks deliberate under that reading. Settling it needs the engine's
+  real code (HLDS sv_phys.c / sv_user.c + CS pm_shared), not a rule fitted to two frames.
+* Why it matters: on our core every line that touches *162 loses ~850 u of energy height there (the 4 energy-ranked
+  beams: h ~3,750 at 50% -> ~2,800 at 52%; the record -350), which is the whole gate-17 deficit (~500 u at 56%), and
+  *242 sits on the record's route again at ~62%. A simulator-fidelity question for the operator; any fix changes the
+  start room (*249 / *250, also dropped by MAX_SOLIDS) under a trained policy.
+* The 4 energy-ranked beams (dh K 2 on c2's 56.575 weights: plain, forks at 32 / 33 / 34 s): all four end on the same
+  ledge at 56.58-56.59% with h 2,323-2,345 at 56% - ranking by energy does not find a line that skips the plate.
