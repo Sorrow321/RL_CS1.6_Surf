@@ -3083,3 +3083,14 @@ the round. (pbr6b3 released its box 19 min early once it stopped improving.)
   32.510B **71.650** (best 71.7%) | 32.586B 71.254; the trainer cut the beam's success cliffs at row 7,314 (71.89%,
   32.512B) and 6,718 (71.37%, 32.641B): the next wall is between 71.4% and 72%. Hand-on of 71.650:
   ckpt_32453951488 (56M before it, right after the 70.7%-median eval; md5 in the pull log), pulled.
+
+### c3 ends at its budget; c4 continues the loop for the last hour (17:35-17:58 UTC)
+* c3's last evals: 32.661B 71.365 (4/9 past the 71.2% cut line) | 32.737B **24.525** (another collapse: median 21.6%)
+  | 32.812B 67.645 | 32.888B 71.492 (median 70.9%); done at 32,953,073,664 (1.5e9 steps, avg 229.5k steps/s).
+  Pulled: 20 evals, ckpt_final (md5 8f35b2ba...); the 71.650 hand-on stays ckpt_32453951488.
+* The greedy's evals swing between ~71.5% and early collapses (0.4%, 21-25%): the policy flies the whole known line
+  in most evals and loses the start or the early map in about one eval of four. The score takes the best eval, so the
+  loop keeps paying off; a recipe would want the greedy start to be robust (the start ledge climb at x 649 is 0.4% in).
+* **c4** (17:57 UTC): resume of c3's ckpt_final (32.953B) with c3's flags on c3's current spine (its own cliff cut 04
+  of search 3's beam: rows 0-6,717, 71.37%; box path runs/pbr6b3_c3/cliff/cut04, md5 a18a6ed7...) and the loop's 46
+  milestones; --steps 0.8e9 (ends ~18:55); record gates PASSED. Pulled at the 19:12 wrap-up.
