@@ -14,5 +14,5 @@
   "resume_from": "pbr5b2_c7 ckpt_latest 29,499,064,320 (md5 a17970d6...)",
   "commit": "190ea91"
  },
- "summary": "c1 (08:19 UTC): resume of pbr5b2_c7's latest weights (29.499B) on spine s6 with the loop's energy stage ordered before the boosted depth stages (--auto-spine-energy-first 1.04, new). First eval 62.354 (the inherited weights, median 62.3%); search 1 running. Box 57785934 (RTX 5060 Ti + shared EPYC, 0.163 $/h)."
+ "summary": "c1 (08:19 UTC): resume of pbr5b2_c7's latest weights (29.499B) with the loop; its search 1 found an UNBOOSTED line past the 62.3% drop (the policy's branched beam lands on the ramp + a GE crawl to 63.83%, spine pbr6b2_c1k01). Its curriculum stalled in the crawl 1.4% past the greedy, so c2 runs the spine cut 300 u past the greedy (62.83%, pbr6b2_c1k01c), and c3 adds --auto-spine-cut-ahead 300 (new: the loop cuts its depth spines one gate ahead) and --auto-spine-energy-first 1.04 (new). Evals so far 62.342-62.354 (median 62.3%), curriculum at the drop's ramp landing."
 }

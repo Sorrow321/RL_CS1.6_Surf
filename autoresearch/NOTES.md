@@ -2757,3 +2757,7 @@ Energy spines are never cut. A < --auto-spine-gain (refused otherwise: the cut m
 A = 300 is a field distance like the gain (500) and the stall margin (500): the same on any map. Tests:
 test_auto_spine_energy.py (the cut row, the line untouched before it, spine.json's cut_ahead / full_n, an energy
 spine left whole, the trainer passing `--cut-ahead`, both refusals, TRAIN_ONLY).
+* c2's evals: 62.354 (29.573B) / 62.342 (29.648B), medians 62.3%, 0/9 past 62.65%. Its curriculum went 6,362 -> 6,337
+  and oscillated there (band [6,337,6,341] 7.5-15%, [6,342,...] 45-64%: the beam line's impact on the ramp).
+* **c3** (08:54 UTC) = c2's snapshot at 29,661,069,312 (md5 d052c353...) + the same flags + `--auto-spine-cut-ahead 300`
+  (5972f50, pulled on the box) + `--demo-tau0 6337` (the curriculum where c2 left it).
