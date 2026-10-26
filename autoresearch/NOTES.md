@@ -2859,3 +2859,30 @@ fleet's credit was $11.74 against the $10 reserve at the start, so extensions ar
 * For the lineage: prefer the policy's own beam over an explorer chain wherever the beam reaches; when a GE chain is
   needed, cut it before the first cliff and re-search on the new weights (the beam then usually takes the policy's own
   line), rather than teach the whole crawl.
+
+### Two loop automations from this round (offline, 09:50-10:20 UTC; flags default off, tested)
+* **`train_fast --auto-spine-energy-cut`** (auto_spine `--energy-cut`; commit 9c1c02e): when the depth ladder hands
+  back a spine whose GE chain starts from a root boosted above x1.04, the search cuts it at the chain's deepest row
+  keeping >= G (= --auto-spine-energy) more energy height than the policy's line at the same progress (energy_pick's
+  filters, via energy_cut) and returns it marked `energy`, so the trainer teaches it with the energy rule (floor =
+  end h - G/2) and its quorum counts energetic crossings; the next search on those weights goes deeper. b1, by the loop.
+  tests/python/test_auto_spine_energy_cut.py (the rule, main cuts a x1.12 chain only when asked and never a x1.04
+  one, the trainer passes / refuses the flag, record_ckpt TRAIN_ONLY); regression 24/24 (test_auto_spine,
+  test_auto_spine_energy, test_energy_pick).
+* **`train_fast --demo-cliff-cut K`** (DemoCurriculum.cliff, train_fast.cliff_cut_spine): K backoffs at one place
+  (within 4 windows) with band success under a third of --demo-rate, while the band after it passes = a success
+  cliff -> the spine is cut before the failing band, the success line moves to the new end (an energy spine keeps its
+  margin), the old line stays paid as a milestone, the cut spine is saved to runs/<run>/cliff/cutNN.npy (+ keys).
+  The detector only watches tau's moves (the trajectory is identical with it on or off). b3 / b4's hand cuts, by the
+  trainer. tests/python/test_demo_cliff_cut.py (6).
+* `record_ckpt --spawn-keys F,S,D`: a bench spawn that holds a spine row's keys, as training does (the cliff probe).
+
+### To continue (if the program goes on past round 6)
+* Resume the 64.900 hand-on (`runs/pbr6b3/pbr6b3_b3/ckpt_30394548224.pt`, md5 8bac378e..., 7.67 ms tick carried)
+  with b3's flag set (the round-5 to-continue block + `--auto-spine-energy 150 --auto-spine-ge-minutes 5`) plus
+  `--auto-spine-energy-cut --demo-cliff-cut 4` on spine `autoresearch/spines/pbr6b3_b2k02.npy` + keys (the loop's
+  70.74% line; the trainer will cut its cliffs itself) and milestones
+  `44939,43426,42182,41015,40497,39943,37251,33777,32260,31429,30286,28818,28783,27001,25121,24479,23400,22500,21624,23216,20589,21975,20227,19683,19254,18701,18263,17418,17082`.
+  The greedy is at gate 20 (64.8%: it rises at x ~-3,380 and falls into *210 where the chain climbs onto the ledge
+  at x -3,561). Watch for b1's collapse mode (the band far upstream, the early map forgotten): hand on a snapshot
+  between two healthy evals.
