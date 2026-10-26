@@ -2281,3 +2281,27 @@ reservation for a boxless branch would keep all four forks running; as it is, a 
 * Manual GE (04:49 UTC, conveyor on, 12 min, 16 threads beside c3): exact view-follow chains rooted at the conveyor
   beam's own launched line (runs/manual/conv_beam1, h 3,075 at 52%, dead at 53.45%) over its last 2 s, x1.0 / 1.04
   (runs/manual/ge_launch.py on the box = auto_spine.go_explore on a given line).
+* Manual GE #1 under conveyor physics (12 min, 12.3M runs, 192k cells): deepest d 24,769 = 56.66% - the same ledge.
+  Its spine (runs/manual/ge_launch/spine.npy on the box, 5,198 states) TAKES the launch: h 3,000 / 3,010 at 52 / 52.5%,
+  at the record's own position at 52.5% ((-2,577, 1,340, 2,467) vs the record's (-2,582, 1,384, 2,486), h 3,211) -
+  then loses ~370 u before 53% at (-2,271, 1,431, 2,216), where the record passes at 1,278 u/s (h 3,234): 56% with
+  h 2,389 (record 2,772). c3's search 2 (25.138B) plain beam: the ledge again (24,814); killed.
+* Manual GE #2 (05:07 UTC): rooted at that spine's 52-53% states (ticks 4,640-4,780), x1.0 / 1.04, 12 min.
+
+### pbr5b3 round 5 lesson (DRAFT, finalised at wrap-up)
+* **Score 52.937 -> 56.594** (pbr5b3_c2 24.3825B: 9/9 greedy episodes from the true start at 56.59%). No box until
+  02:45 UTC (the fleet's 1.2 $/h cap was full for 7 h; a 4060 Ti host at 21:27 ran at 61k steps/s - a foreign niced
+  load - and was blocklisted); ~4.3 h of a 5080 after that.
+* What worked: the lineage's loop as handed on. c1 (the incumbent + spine k05) flew k05's GE chain to 56.1% within
+  ~450M steps (52.9 -> 56.142); c2 = the policy's own branched-beam line from c1's search 1 (56.59%) taken by hand
+  (the gain rule wanted +500 u) -> 56.575-56.594 within ~230M steps.
+* **Gate 17 (56.6%) is a simulator-fidelity wall, not a search failure.** Every line (beams d / dh K 2, branched
+  forks at 32-38 s, GE x1.0-1.12, 4 searches) ends on the same ledge with h ~2,330-2,440 at 56%; the record has 2,772
+  and climbs to z 2,480 by 57%. Our line loses ~850 u at 52% on the up-conveyor *162 / the block *161 on it; the WR
+  demo shows upward conveyors LAUNCH a landing player (vz ~+249, speed kept), our core makes them friction floors.
+  Under the experimental `--conveyor 1` (core physics, gated, tested) the launch is there (h 3,000-3,075 at 52%),
+  the policy re-adapted to the new physics in ~75M steps (56.593), but its line lands on *161 instead of the
+  conveyor, and the GE line that takes the launch loses its gain again at 52.8-53%.
+* Found on the way: MAX_SOLIDS 128 drops 7 solids on this map (the start room's conveyor plates *249 / *250 among
+  them); deploy's GPU gate rejects every power-capped cheap card (no reference); the flat fleet cap starves the
+  fourth branch.
