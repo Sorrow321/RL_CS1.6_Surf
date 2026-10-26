@@ -229,3 +229,8 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   just before the landing band [5,423, 5,427] its depth curriculum could not pass (12-16% for ~15 min in pbr6b4_c8).
   Taught with the energy rule (train_fast --demo-success-energy 150: cross d(end)+100 with h >= 2,571) for the
   stretch where the greedy leaves the line (the 59.9% corner and the east lane). No demo, no record (pbr6b4, round 6).
+* `pbr6b4_c9k01.npy` + `.keys.npy` (5,700 rows; md5 6023ae916420321e9680d41bb7bc980d / 4bc964a7280e57e42fb0b0c10173f60a):
+  the first line of the POLICY'S OWN past princessburglar's 62.3% drop (gate 19): run pbr6b4_c9's search 1 on its 29.958B
+  weights (after the energy spine pbr6b4_k02e taught the 59.9% corner) - tools/auto_spine.py's plain beam_tas from the true
+  spawn, 4,096 stochastic copies of the policy, d-ranked, no fork, no boost, no explorer chain - to d 20,132 = 64.77%. Keys =
+  the beam's own held keys. No demo, no record (pbr6b4, round 6).
