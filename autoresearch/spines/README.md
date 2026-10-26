@@ -209,3 +209,11 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   on pbr5b2_c5's 25.876B weights at their 7.67 ms tick) to d 21,524 = 62.34%: after c5 learned the cleaner 51.7-54.5%
   descent (energy height 2,962 at 53%) the policy's own population goes up the 56.3% shaft and over the upper level by
   itself, unboosted. Keys = the beam's own held keys. No demo, no record (pbr5b2, round 5).
+* `pbr5b2_c7k01.npy` + `.keys.npy` (5,142 rows; md5 fb5d000a28d3bc9574c4a77511ba0e3a / 75874412312ab0137543e2240f3ab3c2):
+  the first ENERGY spine of the trainer's own loop (train_fast --auto-spine-energy 150, run pbr5b2_c7 search 1 on c6's
+  62.367 weights at 29.048B): the POLICY'S OWN plain beam line (tools/auto_spine.py: beam_tas from the true spawn) to its
+  row 4,814, then one exact explore_phase1 --exact-chains chain (reward-free search; 328 ticks from that row's state with
+  its velocity x1.04) to archive cell 251,579 at 59.55% with energy height 2,701, +217 u over the beam line there (the
+  energy stage's pick: the deepest cell keeping >= 150 u). Keys = the beam's and the chain's own held keys. Taught with the
+  energy success rule (h >= 2,626 at d <= 23,216) it put the greedy's h at 58.2% from ~2,480 to 2,683-2,751 in 75M steps.
+  No demo, no record (pbr5b2, round 5).
