@@ -2234,3 +2234,24 @@ The trainer used ~12 of the box's 30.7-CPU quota, so each stage ran beside it at
   56.06%). Four stages of the uniform view-follow explorer cannot ride what costs our lines ~640 u there.
 * GE#5 (00:20 UTC): a boost probe - the 12 most energetic viable cells at 55.0-56.3% (h 2,262-2,327, >= 64 u apart)
   x velocity 1.0 / 1.1 / 1.2 / 1.3 - how much energy does the climb after ~56.3% need?
+* c2 evals 52.838 / 52.854 then **54.556** (24.7165B: ep3 through the 52.7% landing to 54.56% at (-2,546, 2,133,
+  1,204), 38.8 s; the other 8 still die at 52.8%) - the first eval of the round past the incumbent. The curriculum was
+  stuck at e1's 4,367 cliff (GE#1's chain surfs a curved face, turning ~170 deg in 18 ticks, and releases at
+  4,367-4,370; band [4367] 4-8%, [4372] 64-74%). Handoff snapshot for it: c2's ckpt_24637341696 (pulled).
+* GE#5 boost probe (12 viable cells at 55.0-56.3% x velocity factor): x1.00 56.12% / x1.10 56.49% / x1.20 56.54% /
+  x1.30 56.85% (deepest viable). The climb after ~56.3% (the record: z 1,900 -> 2,508 by 58%, h ~2,800, ANALYSIS
+  ONLY) is beyond the uniform explorer even at +30% speed.
+
+### The policy's own beam passes every explorer stall: 56.59% (00:53 UTC)
+* tools/auto_spine.py by hand on c2's 24.6B weights (--ge-minutes 0, --gain 300; the trainer kept running): the
+  PLAIN beam (4,096 stochastic copies + 32 greedy, d-ranked, 125 s) reached d 24,806 = **56.59%** - it lands on the
+  52.7% floor where the greedy falls into a fail volume (k05's kind of landing, h 2,318 at 52.8%), then carries more
+  energy than k05 through 54-56% (h 2,305-2,320 vs ~2,130-2,150) and hop-climbs a ledge at (-2,300, 2,465) to z ~2,135
+  (the explorer's best viable z there: 2,074-2,299 with x1.3). Spine autoresearch/spines/pbr5b4_beam_m1.npy (+ keys,
+  the beam's own).
+* Lesson (again, as round 4's gate 10 and gate 16): after ~700M steps on spines through this stretch (k05 in c1,
+  e1 in c2) the POLICY'S OWN proposals go further than four Go-Explore stages - search on the newest weights before
+  concluding a gate is closed.
+* **pbr5b4_c3** (00:56 UTC): c2's 24.766B weights + spine pbr5b4_beam_m1 (success line d <= 24,906 = 56.42%) +
+  milestones 44939 ... 27001 plus e1's 26,365 (53.87%) and k05's 25,121 (56.04%) as intermediate lines + the same
+  flags (auto-spine with the energy pick).
