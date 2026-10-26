@@ -3197,3 +3197,12 @@ the operator's); this branch keeps a waiter on `box.py rent` and works offline m
   population forked at once with held view offsets +-45 deg for 1 s, protect 3; 900 ticks in 335 s): frontier only
   72.88% (the platform crawl), every branched lineage dead by the end. The policy's own proposals from 70% do not find
   the pipe either; local CPU is too slow for real beams (688 env-steps/s).
+* 25-min local GE (32 u, select-energy 3) rooted on the POLICY'S OWN beam prefix at 70.2-70.8% (k02 rows 6,330-6,386 x1.0/
+  1.04/1.08; 1.56M runs, 379k cells): the explorer does enter the pipe (9,218 cells at its top, 5,841 at its bottom) but
+  at <= 995 u/s (the record: 1,033 -> 1,241 down the pipe), and its best apex at the wall is 2,086; 0 past. Our line
+  arrives at 70.8% ~140 u/s / ~150 u of h below the record (the walkway deficit) and the explorer's falls into the pipe
+  do not surf it for speed.
+* **Re-reading round 4's gate 15** (a launch at a lip, also diagnosed as an upstream-energy dead end): the loop passed it
+  anyway, on PATIENCE (1.2e9 steps without a quorum), with the ladder's x1.08 stage from a later root on newer weights.
+  So c13 now also carries `--auto-spine-patience 8e8` (c12: 0): if the greedy stalls at the wall short of k02's quorum,
+  the search still runs every ~45-55 min of training, each time with 32 u / energy-weighted Go-Explore stages.
