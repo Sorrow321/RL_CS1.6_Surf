@@ -2818,3 +2818,12 @@ spine left whole, the trainer passing `--cut-ahead`, both refusals, TRAIN_ONLY).
   must teach next is to HOLD duck for the decision before it, and then the beam's approach (the pause at the edge,
   rows ~6,025-6,250) that the greedy does not fly (it goes over the edge at ~400 u/s west and dies at x ~-2,160).
 * c5 evals continue: 62.358 (30.230B).
+* c5's band at the contact state rose 6.6% -> 14.4% in 20 min (the policy learning the bounce at its own grid row);
+  last eval 30.306B (below).
+* **A manual auto_spine on c5's 30.250B weights (beam + branched beams, no GE, --cut-ahead 300; 10:04-10:10 UTC beside
+  the trainer): the branched beam forked at tick 5,696 goes OVER the 62.3% drop to d 20,886 = 63.45%** - the policy's own
+  population now passes the gate (c1's search on the inherited weights needed an explorer crawl past the ramp foot;
+  the plain beam and the 5,827 fork still fall at 62.37%). Spine `pbr6b2_c5s1` (+keys), cut at row 6,689 (62.83%).
+  The trainer's own patience search would only have fired at ~30.68B (~10:45).
+* **c6** (10:13 UTC) = c5's snapshot at 30,366,236,672 (md5 06af7d8c...) + spine pbr6b2_c5s1 (+keys) from its end +
+  milestones +21,344 (k01c's line) +20,986 (c5s1's full line's end + 100) + the c5 flags (--demo-phase, rate 0.2).
