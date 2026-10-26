@@ -2870,6 +2870,13 @@ Incumbent: pbr5b2_c7 ckpt_29123674112 (62.369, md5 afb44185...).
   curriculum stood) + the loop (`--auto-spine ... --auto-spine-beam-seeds 3 --auto-spine-energy-patience 3e8`, the
   full line in the a3 launch txt). Budget 1.5e9 steps (stops at 31.52B).
 * Eval 0 (a2's weights on this card): 62.288 (best 62.3%, median 61.7%), against a2's 62.29-62.32 on the 3090.
+* 13:54 UTC (30.33B, 310M steps in): the curriculum went 5,284 -> 5,164 in ~20 min, i.e. its band is now BEFORE the
+  corner (5,200 = 59.84%), and oscillates [5164,5168] 15-16% / [5169,5173] 30-40%. Evals 62.288, 0.350, 62.307,
+  44.825, 62.265. The 0.350 one: all 9 walked on the start platform (max |v| 251) until the 30 s patience cut, one
+  eval later it was gone; the 44.8 one: 8/9 at the gate-9 landing (21-26%), the a2 erosion again, back to 1/9 an eval
+  later (the greedy-death rows). Energy vs m2 at 30.32B (h, greedy / m2): 57% 2,59x-2,71x / 2,718; 59.5% 2,47x-2,70x /
+  2,737; 59.8% 2,46x-2,50x / 2,705; 60.6% ~2,46x / 2,749; 62% ~2,51x / 2,804. The ~250 u loss now often comes
+  before 59.5% (5 of 8), i.e. upstream of the band; the curriculum has ~300 more rows (to ~4,830, 57%) to cover it.
 
 ### pbr6b1 round 6 lesson (DRAFT 10:06 UTC; finalised at wrap-up)
 * **Score 62.369 -> 62.373** (a1 29.200B: the incumbent's weights 75M steps on, same gate; all 9 fall at the 62.3% drop).
