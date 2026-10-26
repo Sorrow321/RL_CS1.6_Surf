@@ -234,3 +234,8 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   pbr6b2_c1k01 cut at its row 6,547 = the first row 300 u past the greedy frontier it was searched from (d 21,244,
   62.83%, on the ramp just past the drop): the next gate only - the full line's curriculum stalled in the explorer's
   crawl 1.4% past the greedy (bands 7,416-7,455 at 0.0%). Same provenance as pbr6b2_c1k01.
+* `pbr6b2_c5s1.npy` + `.keys.npy` (6,690 rows; md5 3d84eddff92e6459301e6a9033019862 / 9ff1904e94b6011f670eaf0b2a036777):
+  tools/auto_spine.py run by hand on pbr6b2_c5's 30.250B weights (beam + branched beams only, `--cut-ahead 300`): the
+  POLICY'S OWN branched beam line from the true spawn (beam_tas, 4,096 stochastic copies, half forked at tick 5,696
+  with held view offsets U(-45, 45) deg) over the 62.3% drop to d 20,886 = 63.45%, cut at its row 6,689 (d 21,239,
+  62.83%, 300 u past the greedy frontier). Keys = the beam's own held keys. No demo, no record (pbr6b2, round 6).
