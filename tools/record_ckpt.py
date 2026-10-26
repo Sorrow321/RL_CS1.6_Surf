@@ -118,6 +118,8 @@ TRAIN_ONLY = frozenset({
     "auto_spine_gain", "auto_spine_envs", "auto_spine_ge_minutes", "auto_spine_extra_secs",
     "auto_spine_timeout", "auto_spine_energy", "demo_stall_cut", "demo_success_alive",
     "demo_match_band",
+    # --auto-spine-args: extra arguments of the TRAINING loop's search command (pbr7b1)
+    "auto_spine_args",
     # --respawn-greedy-temp: the TRAINING rollout's sampling temperature for greedy-row spawns
     "respawn_greedy_temp", "respawn_greedy_temp_ticks", "respawn_greedy_temp_view",
     # --ge-minutes: a share of the TRAINING spawn pool drawn from the run's own Go-Explore

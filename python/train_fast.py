@@ -4998,6 +4998,12 @@ def main() -> None:
                          "height - G/2, the --demo-success-energy rule) and its quorum counts "
                          "only greedy crossings with that energy; a depth spine goes back to the "
                          "depth rule. Config only when set; not restored")
+    ap.add_argument("--auto-spine-args", default=None,   # None = off
+                    help="--auto-spine: extra arguments appended to every tools/auto_spine.py "
+                         "search command (one shell-quoted string, e.g. '--ge-select-energy 3'; "
+                         "appended last, so a repeated option replaces the trainer's own). The "
+                         "search's own knobs (its explorer's selection, ladder, roots) without a "
+                         "trainer flag each (pbr7b1). Config only when set; not restored")
     ap.add_argument("--demo-stall-cut", type=float, default=0.0,   # 0 = off
                     help="--auto-spine with --auto-spine-energy G: STEPS > 0 - when the backward "
                          "curriculum's tau reaches no new minimum for STEPS env steps, the spine "
@@ -11841,6 +11847,19 @@ def main() -> None:
         raise SystemExit("--auto-spine needs --demo-file (the first spine) and --demo-success-d")
     if args.auto_spine_energy is not None and not args.auto_spine:
         raise SystemExit("--auto-spine-energy is a stage of --auto-spine's search: give it")
+    if args.auto_spine_args is not None:
+        if not args.auto_spine:
+            raise SystemExit("--auto-spine-args goes on --auto-spine's search command: give "
+                             "--auto-spine")
+        import shlex as _shlex
+        try:
+            _asa = _shlex.split(str(args.auto_spine_args))
+        except ValueError as ex:
+            raise SystemExit(f"--auto-spine-args: not a shell-quoted argument list ({ex})")
+        if not _asa:
+            raise SystemExit("--auto-spine-args: empty (omit the flag instead)")
+        print("--auto-spine-args: every tools/auto_spine.py search also gets "
+              + " ".join(_shlex.quote(x) for x in _asa))
     if float(args.demo_success_alive or 0.0) != 0.0 and not args.demo_file:
         raise SystemExit("--demo-success-alive gates a --demo-file spine's success line: give it")
     if float(args.demo_stall_cut or 0.0) < 0.0:
@@ -14878,6 +14897,8 @@ def main() -> None:
             meta["config"]["auto_spine_milestones"] = 1
         if args.auto_spine_energy is not None:
             meta["config"]["auto_spine_energy"] = float(args.auto_spine_energy)
+        if args.auto_spine_args is not None:
+            meta["config"]["auto_spine_args"] = str(args.auto_spine_args)
         if float(args.demo_stall_cut or 0.0) > 0.0:
             meta["config"]["demo_stall_cut"] = float(args.demo_stall_cut)
     if args.demo_milestones:
@@ -16049,6 +16070,10 @@ def main() -> None:
             cmd += ["--maxvel", f"{float(args.maxvel):g}"]
         if args.auto_spine_energy is not None:
             cmd += ["--energy-gain", f"{float(args.auto_spine_energy):g}"]
+        if args.auto_spine_args is not None:
+            # --auto-spine-args: appended last, so a repeated option replaces the trainer's own
+            import shlex as _shlex
+            cmd += _shlex.split(str(args.auto_spine_args))
         t0 = time.time()
         print(f"[{global_step:>13,d}] auto-spine search {AUTO['k']}: " + " ".join(cmd),
               flush=True)
