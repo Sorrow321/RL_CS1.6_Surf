@@ -2905,3 +2905,15 @@ Germany (machine 56783), rented 08:05 UTC for 2 h.
   walkway (c9 sat at [6,702 / 6,707] near the hole, c10 at [6,095 / 6,100]), and a cut there - even with the survival
   rule - would only move the line onto the strip and stall again 5 rows back. What the policy has to learn there is to
   stay on the strip (east to the wall after the catch, then north along it to the hole), taught backward from the hole.
+
+### The walkway is not in the policy's own sampling either (12:28-12:33 UTC, local, no box)
+* The same bench with `--stochastic` (the training distribution: keys sampled, yaw sigma 0.017), 18 episodes per band:
+  **0/18 survive from the strip band** (rows 6,090-6,104: every one dies at 65.92-66.26% within 36-104 ticks, x -3,278..
+  -3,322) and **0/18 from the platform band** (rows 5,770-5,800: 65.03-65.45%, 22-112 ticks). The dive is the policy's
+  only behaviour there; the curriculum's front temperature (keys / 1.5, yaw sigma x 6) lasts 40 ticks, and the strip
+  has to be held for ~130-260 ticks (1-2 s) before the hole. So no backward curriculum on these weights can be expected
+  to find the walk by sampling; the searches did (the branched beam took the platform to the wall, the reward-free GE
+  chain walked the strip). This is CLAUDE.md 0c's case for macro exploration: a 25 Hz policy that cannot commit to
+  "along the wall" for a second against the field's pull. (`--bc-file` would distil the chain, but it is refused with
+  --keys-hold, which these weights carry.) c11 as planned is still the honest next run; its curriculum should be
+  expected to sit on the walkway, and a band at ~0% for 2e8 steps there is the signal to stop it.
