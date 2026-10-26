@@ -3049,3 +3049,20 @@ c5 had dips (median down to 24%) that recovered, c6 / c7 did not (see the collap
   call left the new f_lpg buffer None; fixed in 74a6e65) and it ran the eager update at ~210k steps/s; in its 5 min
   band [6,107] read 1.6% / 4.7% / 4.5% / 4.5% (c9: 1.6-4.1%) - too early to call. **c11** (14:47 UTC) = c10 with the
   fix (compiled in 35 s). Readout: band [6,107]'s success against c9's flat ~3%, at matched minutes.
+
+### --ppo-head-clip on the stalled band: c11 learns it, c9 did not (15:04 UTC; one seed)
+* Band [6,107] (release jump before the landing, re-press after 4 ticks of friction), success per visit (~500
+  episodes, ~1 min each): **c9 (joint ratio) 1.6-4.1% for ~20 visits / ~25 min, no trend**; **c11 (`--ppo-head-clip`,
+  from c9's 31.297B weights) 4.8, 3.3, 4.2, 3.9, 5.2, 4.9, 4.5, 4.2, 5.0, 6.0, 8.9, 10.5, 9.4, 11.4, 13.1, 15.0, 15.3,
+  14.6, 16.1, 16.8, 19.0, 20.6% -> PASSED in ~15 min**, and it holds at 18-27% since. The next band, [6,102] (one more
+  airborne decision: release jump at 6,100, re-press at 6,104 in the air, release all at 6,108), went 0.1-0.3% ->
+  7-11% in the following ~25 min. Caveat: one seed, and c11 starts from weights c9 had already trained on that band
+  for 25 min - c9 might have taken off at the same time; what argues against it is c9's flat series against c11's
+  steady rise from its 10th visit.
+* Training stats per 50M steps (c11 vs c9): the key heads' entropy LOWER (train/entropy_loss -2.82..-2.90 vs
+  -2.87..-2.97: more decisive keys), reward 209-231 vs 162-227, act/fwd_air ~0.105 vs ~0.110, approx_kl median
+  0.054-0.064 vs 0.044-0.105, explained variance 0.997 both. The diagnostic beside it (medians, 42 vs 94 readings):
+  per-update KL keys **0.0082 vs 0.0066 (+24%: the keys keep the gradient the view used to cut)**, yaw 0.018 vs
+  0.016, pitch 0.027 vs 0.035 (the pitch moves less, RMS log-ratio 0.29 vs 0.49).
+* c11's evals 31.298-31.675B: 62.338 / 62.370 / 62.330 / 62.319 / 62.342 / 62.315 (medians 62.3%; the drop). The
+  curriculum is ~275 rows from the fork (5,827) where the greedy's own approach meets the line.
