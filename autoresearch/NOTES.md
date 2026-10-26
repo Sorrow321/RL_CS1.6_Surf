@@ -2859,6 +2859,18 @@ Incumbent: pbr5b2_c7 ckpt_29123674112 (62.369, md5 afb44185...).
   the trainer no longer contains (`N_ROUTE = N_FAN + ... + N_RATCHET`, `keys_hold=bool(args.keys_hold))`).
   test_keys_hold + test_demo_keys otherwise 25 passed, 1 skipped.
 
+### a3: m2's curriculum on through the 60% corner (13:29 UTC, box 57819941)
+* The fleet credit came back above the reserve at 13:26 (39.8). Box 57819941: RTX 4070 Ti, 0.223 $/h, machine
+  149163 (GB), 2 h rent (deadline ~15:28 UTC). Instantaneous ~230k steps/s (GPU 99%), so it is not a slow box.
+* Why this idea gets more box time (PROTOCOL: extend only if promising): the policy's own beam cleared the 62.3%
+  drop, which no greedy or beam of this lineage had, and 300M steps of m2's curriculum moved the greedy's basin on
+  m2's line from 62.15% back to 60.65% (the bench above). The open question is whether the backward curriculum
+  gets the greedy through the corner (59.84-60.25%, 0/8 for every checkpoint).
+* WARM resume at the wall: a2's 30.03B (md5 41dc1790...) with a2's flag set, `--demo-tau0 5284` (where a2's
+  curriculum stood) + the loop (`--auto-spine ... --auto-spine-beam-seeds 3 --auto-spine-energy-patience 3e8`, the
+  full line in the a3 launch txt). Budget 1.5e9 steps (stops at 31.52B).
+* Eval 0 (a2's weights on this card): 62.288 (best 62.3%, median 61.7%), against a2's 62.29-62.32 on the 3090.
+
 ### pbr6b1 round 6 lesson (DRAFT 10:06 UTC; finalised at wrap-up)
 * **Score 62.369 -> 62.373** (a1 29.200B: the incumbent's weights 75M steps on, same gate; all 9 fall at the 62.3% drop).
   1 h 54 min of box (one 2 h rent; the fleet's credit reached the $10 reserve at ~09:46 and no extension or new rent was
