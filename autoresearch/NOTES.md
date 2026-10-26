@@ -2724,3 +2724,26 @@ fleet's credit was $11.74 against the $10 reserve at the start, so extensions ar
   with ~2,440-2,486, so its crossings do not count) and milestone 20,589 (k02's line past the drop, paid to any
   training episode that gets there). The questions: does the band walk back through the east lane and the corner,
   and does the greedy's h at 60-61.7% rise (it is ~2,455-2,504 at 60%)?
+
+### b1: the energy rule teaches the east lane in ~15 min, one greedy episode passes the drop: 64.374 (08:22-08:35 UTC)
+* Curriculum (energy rule, success = d <= 21,975 with h >= 2,646): the band walked 5,430 -> 4,640 at once (the east
+  lane, the corner and k02's x1.12 root at 5,017 never stalled), then 4,640 -> 3,740 at 31-79% success, ~1,700 rows in
+  ~15 min at 310k steps/s (this box: 4080 + i9-14900F).
+* Evals (scorer): 29.598B 62.351 / 29.673B 62.353 / **29.749B 64.374** (best 64.37%, median 62.24%: one episode flew
+  the east lane, h 2,668 at 975 u/s at 62.5%, and went on to 64.4%) / 29.824B 62.291 / 29.900B **20.472**.
+* The greedy's energy at first arrival (h / horizontal speed): 61.7% went from ~2,472-2,480 / 310-330 (29.598B, the
+  west strip) to **2,781-2,832 / 651-701 in 7/9** (29.824B, the east lane, more than k02's own 2,721); 59.9-60.5%
+  from ~2,46x-2,50x to up to 2,77x-2,81x. At 29.824B 0/9 reach 62.3%: they die at the landing / the turn west just
+  past the cut (61.75-62.3%), which the energy spine does not cover (a1 / c7's [5,413,...] stall).
+* **The collapse at 29.900B:** all 9 greedy episodes died at 18.7-20.5% (gate 8, the 20.4% catch) - forgetting,
+  ~75M steps after a healthy eval, while the band sat ~1,700 rows upstream of the spine's end (the spine's long
+  10 s+ band episodes crowd the early map). The rebuild-at-every-eval greedy spawns would have put training back at
+  gate 8, but b1 was stopped there. Hand-on for 64.374: b1's snapshot ckpt_29797384192 (49M steps after the eval,
+  between the 64.374 and the healthy 62.291 eval; md5 3ac556c4..., pulled); ckpt_latest 29.902B (md5 d48c3fab...,
+  the collapsed weights, pulled) is NOT a hand-on.
+
+### b2: the loop takes over from the 29.797B snapshot (08:39 UTC)
+* **pbr6b3_b2** = resume of b1's ckpt_29797384192 with a1's loop flags (--auto-spine, quorum 5/9, gain 500,
+  --auto-spine-energy 150, GE 5 min) on spine k02e under the DEPTH rule (no --demo-success-energy: refused with
+  --auto-spine) + the 21 milestones. 8/9 greedy episodes already cross k02e's line (61.55%), so the first eval's
+  quorum should run the policy's own search at once: the depth ladder on weights whose greedy now flies the east lane.
