@@ -2901,3 +2901,11 @@ fleet's credit was $11.74 against the $10 reserve at the start, so extensions ar
   the rise (b3's 4/9 at 64.8% came from the rise at x ~-3,380, see above). Gate 20 = the 63.7% impact + the climb
   onto the 2,389-2,435 level: the loop's energy stage (or --auto-spine-energy-cut on a boosted chain) is the right
   tool there, and b2k02's x1.0 crawl along the ledge (its depth answer) is not the line to teach.
+
+### Harness issue: the round's whole budget went in its first 2 hours
+Round 6 started with $11.74 of credit against the $10 reserve ($1.74 above it). All four branches rented within
+~15 min (box.py rent checks only credit > reserve and the 1.2 $/h burn cap, not the rental's length), the fleet burned
+~1.01 $/h, and the credit reached the reserve at ~09:45 UTC, 1 h 52 min into a 12 h round: no branch could rent or
+extend for the remaining ~9.5 h. A per-branch share of (credit - reserve) at the round's start, or a rent that
+refuses a deadline the fleet's burn would pay out of the reserve (extend's rule), would spread the same money over
+the round. (pbr6b3 released its box 19 min early once it stopped improving.)
