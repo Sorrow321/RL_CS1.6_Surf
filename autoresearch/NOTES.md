@@ -2799,3 +2799,12 @@ spine left whole, the trainer passing `--cut-ahead`, both refusals, TRAIN_ONLY).
   0.1-0.6% band.
 * **c5** (09:40 UTC) = c4's snapshot at 30,078,926,848 (md5 c94d8bbd...) + `--demo-phase` (de85d71; the trainer: "4,821
   of 6,548 spine rows are off it") + `--demo-rate 0.2`, tau0 6,337, the rest as c4.
+* c5 (--demo-phase, rate 0.2): band [6,342,6,346] 84-93%; band [6,337,6,341] - which with the move counts only the spawns
+  that make their first decision AT the contact state 6,340 - 6.6% -> 9.9% over 10 min: the policy rarely presses the
+  jump (+ duck release, the line's keys at 6,341: [1 0 0]) at that one decision, even with ~70% of all training spawns
+  on this band (respawn_frac 0.9 x front-frac 0.8). The band's keys temperature (--demo-front-temp 0.5: keys at T 1.5
+  for 40 ticks) may cost it a two-head coincidence (jump AND duck release); untested.
+  Evals: **62.364** (30.079B = c4's last weights, median 62.4%, 8/9 at 62.3%; the c4 dip was a transient) / 62.354
+  (30.155B).
+* Budget: credit $9.96 at 09:53 UTC, below the $10 reserve - no rent, no extend for anyone; this box dies at its
+  11:16 deadline.

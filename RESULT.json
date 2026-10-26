@@ -3,17 +3,18 @@
  "round": 6,
  "final": false,
  "best": {
-  "score": 62.358,
-  "eval_file": "/home/steam/ar_pb/runs/pbr6b2/pbr6b2_c4/traj_29920591872.jsonl",
-  "run": "pbr6b2_c4",
-  "step": 29920591872,
+  "score": 62.364,
+  "eval_file": "/home/steam/ar_pb/runs/pbr6b2/pbr6b2_c5/traj_30079451136.jsonl",
+  "run": "pbr6b2_c5",
+  "step": 30079451136,
   "ckpt": null,
   "recipe": [
    "c1: resume of pbr5b2_c7 ckpt_latest (29.499B) with c7's flags + --auto-spine-patience 6e8 + --auto-spine-energy-first 1.04 (new); search 1 -> spine pbr6b2_c1k01",
-   "c2-c4: spine pbr6b2_c1k01c (k01 cut 300 u past the greedy) + milestones +21624,20774; c3 + --auto-spine-cut-ahead 300 (new); c4 + --demo-rate 0.15"
+   "c2-c4: spine pbr6b2_c1k01c (k01 cut 300 u past the greedy) + milestones +21624,20774; c3 + --auto-spine-cut-ahead 300 (new); c4 + --demo-rate 0.15",
+   "c5: + --demo-phase (new: spine spawns on the line's decision grid), --demo-rate 0.2"
   ],
-  "resume_from": "pbr6b2_c3 snapshot 29,844,570,112 (md5 cef71918...) <- c2 <- c1 <- pbr5b2_c7 ckpt_latest",
+  "resume_from": "pbr6b2_c4 snapshot 30,078,926,848 (md5 c94d8bbd...) <- c3 <- c2 <- c1 <- pbr5b2_c7 ckpt_latest",
   "commit": "de85d71"
  },
- "summary": "c1-c4 (08:19-09:21 UTC): resume of pbr5b2_c7's latest weights with the loop; search 1 found an UNBOOSTED line past the 62.3% drop (the policy's branched beam bounces off the ramp's foot with a jump at the contact tick + a GE crawl to 63.83%, spine pbr6b2_c1k01). Cut 300 u past the greedy (pbr6b2_c1k01c; new --auto-spine-cut-ahead makes the loop do this). The curriculum sat at the bounce band (16-18%): a spawn's first decision has a random phase (mid-decision autoreset), so a tick-exact jump caps a band near 1/K=25% < the 0.3 rate; c4 runs --demo-rate 0.15. Evals 62.289-62.354 (median 62.3%). New flags: --auto-spine-energy-first, --auto-spine-cut-ahead."
+ "summary": "Round 6: resume of pbr5b2_c7's latest weights with the loop. Search 1 found an UNBOOSTED line past the 62.3% drop (the policy's branched beam bounces off the ramp's foot with a jump on the contact tick; spine pbr6b2_c1k01, cut 300 u past the greedy as k01c). The curriculum stalled at that bounce: a spine spawn's first decision has a random phase (mid-decision autoreset), so the tick-exact jump capped the band near 1/K. New, all default-off: --auto-spine-energy-first, --auto-spine-cut-ahead, --demo-phase. Best 62.364 (c5 30.079B, median 62.4%), incumbent 62.369; the greedy still falls at the drop. Credit hit the reserve at 09:53: no more box after 11:16."
 }
