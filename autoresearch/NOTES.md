@@ -2376,3 +2376,7 @@ minute). Incumbent: pbr4b3_t11 ckpt_23551016960 (md5 7fbcd458...), eval 52.937 a
   of z + |v|^2/2g vs a line that keeps it), find a line that keeps it (the archive's most energetic non-plunging state
   at matched depth, often from a slightly boosted root), and teach THAT with an energy success rule; then let the
   policy's own search take the next gate.
+* c6 evals 27.39-27.61B: 61.447 / **61.731** (27.462B: ep0 / ep5 hop the 61.5% gap and die further along the strip at
+  y ~2,350, 61.72-61.73%) / 61.395 / 61.444; medians 61.27-61.32% (the rest still at the gap). Handoff for 61.731: the
+  snapshot at or before it, ckpt_27278180352 (md5 600c77a8..., pulled; ckpt_27478458368 16M after it pulled as well).
+  The k01 curriculum's gap band [5,669,...] at 28.4-29.9% (the 30% rate).
