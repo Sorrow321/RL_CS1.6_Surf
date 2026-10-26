@@ -84,6 +84,57 @@ def ckpt_tick_pattern(ckpt):
     return None
 
 
+def survives(map_path, state, maxvel=None, tick_ms=10, tick_pattern=None, secs=0.5) -> bool:
+    """Whether a state lives ``secs`` with neutral keys (duck held if it is ducked) at the
+    policy's tick, in EVERY phase of its pattern: an archive's deepest cell is often a run
+    on its way into a kill volume (free fall keeps the depth gain coming), and a spine ending
+    there trains the curriculum on a doomed state (pbr5b1, 2026-10-26, twice in one night)."""
+    from surfgym.core import SurfCore, default_config
+    cfg = default_config(num_envs=1, spawn_mode=2, max_episode_ticks=20000, water_fail=1,
+                         yaw_jitter_deg=0.0, lidar_w=0, lidar_h=0)
+    if maxvel:
+        cfg.phys.sv_maxvelocity = float(maxvel)
+    cfg.phys.msec = int(tick_pattern[0]) if tick_pattern else int(round(tick_ms))
+    core = SurfCore(str(map_path), cfg)
+    core.set_teleport_fail(True)
+    s0 = np.array(np.asarray(state).reshape(1), copy=True)
+    s0["tick"] = 0
+    s0["stuck_ticks"] = 0
+    duck = int(bool(int(s0[0]["ducked"])))
+    act = np.array([[7, 3, 1, 1, 0, duck]], np.int32)
+    phases = range(len(tick_pattern)) if tick_pattern else (0,)
+    mean_ms = (sum(tick_pattern) / len(tick_pattern)) if tick_pattern else float(tick_ms)
+    n = int(round(secs * 1000.0 / mean_ms))
+    for ph in phases:
+        core.reset(0)
+        core.set_state(0, s0)
+        if tick_pattern:
+            core.set_tick_pattern(list(tick_pattern))
+            core.set_tick_phase(ph)
+        for _ in range(n):
+            _o, _r, done, trunc, _i = core.step(act)
+            if (int(done[0]) | int(trunc[0])) != 0:
+                return False
+        if tick_pattern:
+            core.set_tick_pattern(None)
+    return True
+
+
+def deepest_surviving(a, archive, k: int = 64):
+    """The archive's deepest cell that survives (above), testing at most the ``k`` deepest;
+    None when none of them does."""
+    z = np.load(archive, allow_pickle=False)
+    field = load_field(a.field)
+    d = np.asarray(field.sample(np.asarray(z["state"]["origin"], np.float64)), np.float64)
+    d[d >= field.reach_max - 0.5 * field.cell] = np.inf
+    for c in np.argsort(d)[:int(k)]:
+        if not np.isfinite(d[c]):
+            break
+        if survives(a.map, z["state"][c], a.maxvel, a.tick, getattr(a, "tick_pattern", None)):
+            return int(c)
+    return None
+
+
 def load_field(path):
     from surfgym.goalfield import GoalField
     z = np.load(path, allow_pickle=False)
@@ -276,9 +327,16 @@ def go_explore(a, out: Path, line, end: int, boosts=None, tag: str = "ge", line_
     info = {"ge_rc": rc, "ge_roots": [int(i) for i in idx], "ge_boost": boosts}
     if not (gd / "archive.npz").exists():
         return None, info
+    cell_arg = []
+    if getattr(a, "ge_survive", 1):
+        # the deepest SURVIVING cell, not the deepest cell (a run dying into a kill volume)
+        _c = deepest_surviving(a, gd / "archive.npz")
+        info["ge_survive_cell"] = _c
+        if _c is not None:
+            cell_arg = ["--cell", _c]
     rc2 = run([sys.executable, "-u", ROOT / "tools" / "ge_replay.py", "--map", a.map,
-               "--archive", gd / "archive.npz", "--field", a.field, "--out", gd / "line.npy"],
-              out / f"{tag}_replay.log", 1200)
+               "--archive", gd / "archive.npz", "--field", a.field, "--out", gd / "line.npy"]
+              + cell_arg, out / f"{tag}_replay.log", 1200)
     info["ge_replay_rc"] = rc2
     if not (gd / "line.npy").exists():
         return None, info
@@ -368,6 +426,10 @@ def main(argv=None) -> int:
     ap.add_argument("--branch-jitter", type=int, default=45,
                     help="deg: the held view offset is U(-J, J) around the policy's own aim")
     ap.add_argument("--branch-protect", type=int, default=3)
+    ap.add_argument("--ge-survive", type=int, default=1, choices=(0, 1),
+                    help="1 = a Go-Explore stage's chain ends at the archive's deepest cell that "
+                         "SURVIVES 0.5 s with neutral keys at the policy's tick in every phase "
+                         "(the deepest cell is often a dying run); 0 = the deepest cell")
     ap.add_argument("--ge-tick-pattern", type=int, default=1, choices=(0, 1),
                     help="1 = the Go-Explore stages run the checkpoint's realised tick pattern "
                          "(explore_phase1 --tick-pattern) when it has one; 0 = the old whole-ms "

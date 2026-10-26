@@ -2345,3 +2345,38 @@ Incumbent: pbr4b3_t11 traj_23590338560 (52.937), weights ckpt_23551016960 (md5 7
 * **pbr5b1_c8** (02:05 UTC): c7's ckpt_latest (27,558,674,432, md5 66aa180f...) + spine autoresearch/spines/pbr5b1_x.npy
   (w1's line + the 8,8,7 GE_wall chain over the sheet onto the exit platform, x1.2 at 59.67%, cut on the platform at
   61.82%; success line 61.65%) + c7's milestones + --demo-success-energy 150 (not binding here) + c7's other flags.
+* c8 (spine x, the 8,8,7 crossing): the curriculum walked x back 8,403 -> 7,878 in ~10 min (bands 99-100%) and now
+  learns the platform landing at the end of the east-wall ride over the sheet: band [7873,7877] 15-16% (vs ~1% for the
+  8 ms edge-hop of r19), [7878,...] 99%. Evals 61.513-61.529 (27.56-27.86B). Box extended to 07:25 UTC (budget: credit
+  $15.79, fleet 1.15 $/h, 5.0 h to the reserve).
+* c8 to 28.38B: band [7873,7877] (the platform landing after the east-wall ride) flat at 14-16% for 40 min, evals
+  61.513-61.529. **pbr5b1_c9** (02:48 UTC): c8's ckpt_latest (28,376,563,712, md5 ebeec575...) + the same spine with
+  --demo-tau0 7873 --demo-rate 0.15 (round 3 passed a 24-29% band at 0.2): let the curriculum walk on through the wall
+  ride toward the x1.2 root instead of oscillating on a band the policy passes one time in seven.
+
+### pbr5b1 round 5 lesson (DRAFT, finalised at wrap-up)
+* **52.937 -> 61.561** (best eval pbr5b1_c6 traj_26242187264 = c5's final weights; c5 61.398 / 61.514): gate 17 (k05),
+  gate 18 (the 56.1% climb) and the k01 beam line to 61.5%.
+* **Gate 18 was an energy deficit made by ONE ledge landing** (52.8%: landing on it resets the energy height to ~2,330
+  whatever the line brings in); boosts and depth-only curricula could not fix it (a boosted spine's band before the root
+  sat at 0.0%; the greedy's own line reaches the same depth without the energy). What worked: an energy search rooted
+  BEFORE the losses, picked by energy among SURVIVING cells (tools/ge_energy_pick.py), a spine through the bypass plus
+  the policy's own continuation (tools/chain_spine.py), and **train_fast --demo-success-energy M**: the spine's success
+  line counts only with the spine end's energy at the crossing - the curriculum then pays only for the line that keeps
+  the energy. ~230M steps after the fix the greedy passed; the trainer's own search swapped in its beam line to 61.66%.
+* **Three traps, each a measurement error that cost an hour:** (1) energy picks without a survival filter pick fatal
+  falls (free fall conserves z + |v|^2/2g); (2) a precision contact found at the explorer's whole-ms tick (8 ms) did not
+  exist at the policy's 8,8,7 pattern (gate 19's edge-hop: the band sat at ~1%) - explore_phase1 --tick-pattern now, and
+  auto_spine's GE runs the checkpoint's pattern; (3) an archive's deepest cell can be a dying run - step the end state at
+  the policy's tick before training on it. Plus: an energy spine must end at its deepest point, or the gate's spawn rule
+  (spawns past the line judged by spawn energy) decides the band.
+* **Gate 19** (61.5%, kill sheet *211 under a room): at the policy's tick the only crossings found need the wall ride
+  (+150 u over the line) and x1.2 at 59.67% (GE_wall); spine pbr5b1_x (over the sheet onto the exit platform) - the
+  curriculum learns its landing at ~15%.
+* c9 (demo-rate 0.15): band [7873] passes at ~16%, the next band [7868,7872] is 0.0% - the landing's approach is a
+  precise few ticks. GE_wall's 19 platform landings and all 1,430 cells past 61.6% come from x1.2 roots (no x1.0 / x1.1
+  crossing at the policy's tick): gate 19 needs ~20% more speed than the line has, plus a precise approach.
+* tools/auto_spine.py **--ge-survive** (default 1): a Go-Explore stage's chain ends at the archive's deepest cell that
+  SURVIVES 0.5 s with neutral keys at the policy's tick in every phase (auto_spine.survives / deepest_surviving), not at
+  the deepest cell. Checked on the box: rejects GE_tp's deepest (61.71%, dead in 2 ticks) and spine x's raw end (dead in
+  24 ticks), accepts w1's end; GE_tp has no surviving cell among its 64 deepest (correct: no real crossing there).
