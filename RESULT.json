@@ -3,19 +3,19 @@
  "round": 5,
  "final": false,
  "best": {
-  "score": 62.264,
-  "eval_file": "/home/steam/ar_pb/runs/pbr5b2/pbr5b2_c6/traj_28066185216.jsonl",
+  "score": 62.358,
+  "eval_file": "/home/steam/ar_pb/runs/pbr5b2/pbr5b2_c6/traj_28745662464.jsonl",
   "run": "pbr5b2_c6",
-  "step": 28066185216,
-  "ckpt": "/home/steam/ar_pb/runs/pbr5b2/pbr5b2_c6/ckpt_27879014400.pt",
+  "step": 28745662464,
+  "ckpt": "/home/steam/ar_pb/runs/pbr5b2/pbr5b2_c6/ckpt_28680126464.pt",
   "recipe": [
    "c1: resume of the round-4 incumbent pbr4b3_t11 ckpt_23551016960 with t11's flag set on spine k05 (56.341)",
    "c2-c4: + --respawn-greedy-energy 3; c4 = spine pbr5b2_e1c (stitched: beam + GE chain A x1.04 + rollout + GE --cell-heading 1 chain x1.08) (56.579)",
    "c5: spine pbr5b2_e1d (to GE chain A's end) + --demo-success-energy 200: the greedy learns the cleaner descent (56.711)",
-   "c6: spine pbr5b2_s6 = the policy's own plain beam line on c5's weights to 62.34% + keys, milestones ...,25121,24479,23400,22500, --auto-spine (GE --cell-heading 1 default); its patience search 1 swapped in k01 (the plain beam on c6's weights, 62.32%) -> 62.264"
+   "c6: spine pbr5b2_s6 = the policy's own plain beam line on c5's weights to 62.34% + keys, milestones ...,25121,24479,23400,22500, --auto-spine (GE --cell-heading 1 default); its patience search 1 swapped in k01 (the plain beam on c6's weights, 62.32%) -> 62.358 (k01, then k02 from its search 2)"
   ],
   "resume_from": "pbr5b2_c5 ckpt_latest 25.876B (<- c4 <- c3 <- c2 <- c1 <- incumbent r4)",
   "commit": "e993d06"
  },
- "summary": "52.937 -> 62.264 (c6 28.066B: 3/9 hop the 61.5% gap to 62.26%; 61.566 at 26.103B with 9/9 past the 56.6% shaft climb). Gate 17 (the climb at 56.6%) needed energy the policy's descent lost to crashes: a GE chain flew a cleaner descent (x1.04 root); --demo-success-energy (new: a curriculum success needs the spine end's energy) taught it in ~20 min (energy height at 53% 2,330 -> 2,880); then the plain policy beam reached 62.34% and the greedy followed it within ~75M steps. Also new: GE --cell-heading 1 (rising/not split) as auto_spine's default, tools/stitch_spine.py, --respawn-greedy-energy. Next gate: a floor-edge hop corridor at 61.4% (teleport sheet), then a fall at 62.3%."
+ "summary": "52.937 -> 62.358 (c6 28.746B; 3/9 hop the 61.5% gap from 28.07B; 61.566 at 26.103B with 9/9 past the 56.6% shaft climb). Gate 17 (the climb at 56.6%) needed energy the policy's descent lost to crashes: a GE chain flew a cleaner descent (x1.04 root); --demo-success-energy (new: a curriculum success needs the spine end's energy) taught it in ~20 min (energy height at 53% 2,330 -> 2,880); then the plain policy beam reached 62.34% and the greedy followed it within ~75M steps. Also new: GE --cell-heading 1 (rising/not split) as auto_spine's default, tools/stitch_spine.py, --respawn-greedy-energy. Next gate: a floor-edge hop corridor at 61.4% (teleport sheet), then a fall at 62.3%."
 }
