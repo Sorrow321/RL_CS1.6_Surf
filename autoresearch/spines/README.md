@@ -199,3 +199,7 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   keeps more energy than k05 through 54-56% (h ~2,310-2,320) and hop-climbs a ledge to z ~2,135 at 56.59%, past
   every Go-Explore stall of the round (~56.3%). Keys = the beam's own held keys per row. No demo, no record
   (pbr5b4, round 5).
+* `pbr5b4_beam_m1_5060.npy` + `.keys.npy` (5,061 rows; md5 2c9372e5b440dc9b17557b6c7610dc0c / b3139ccb76a06269e19a859677d2562c): pbr5b4_beam_m1 cut
+  at row 5,060 (56.38%, the top of its fast climb, 384 u/s), before ~2 s of hopping in place under 110 u/s on the
+  ledge: the curriculum on the full line (pbr5b4_c3) lost the start room within ~150M steps while its band sat at the
+  climb (the start room's precision duck-jumps are the same low-speed control regime). No demo, no record (pbr5b4).
