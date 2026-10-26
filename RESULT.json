@@ -3,19 +3,20 @@
  "round": 6,
  "final": false,
  "best": {
-  "score": 64.9,
-  "eval_file": "/home/steam/ar_pb/runs/pbr6b3/pbr6b3_b3/traj_30421286912.jsonl",
-  "run": "pbr6b3_b3",
-  "step": 30421286912,
-  "ckpt": "/home/steam/ar_pb/runs/pbr6b3/pbr6b3_b3/ckpt_30394548224.pt",
+  "score": 65.425,
+  "eval_file": "/home/steam/ar_pb/runs/pbr6b3/pbr6b3_c1/traj_30470569984.jsonl",
+  "run": "pbr6b3_c1",
+  "step": 30470569984,
+  "ckpt": "/home/steam/ar_pb/runs/pbr6b3/pbr6b3_c1/ckpt_30795104256.pt",
   "recipe": [
    "a1: resume of pbr5b2_c7 ckpt_latest (29.499B) with c7's flags on spine pbr5b2_c7k02 + --demo-tau0 5423 (62.371; the curriculum stuck at k02's landing, 61.7%)",
    "b1: resume of a1 (29.597B) with a1's flags minus --auto-spine*, spine pbr6b3_k02e (k02 cut at row 5430, 61.72%, before the landing) + keys, --demo-success-energy 75, milestones + 20589: the greedy learned the 60% corner / east lane energy (h at 61.7% ~2,475 -> 2,781-2,832 in 7/9) and one episode passed the 62.3% drop (64.374 at 29.749B)",
    "b2: resume of b1's 29.797B snapshot with a1's loop flags (--auto-spine, energy 150) on k02e under the depth rule: the first eval's quorum ran search 1 - the policy's own PLAIN beam to 64.78% (spine pbr6b3_b2k01, unboosted, 51 s); the greedy followed within 75M steps: 64.789 (29.873B), 64.801 (29.949B, 4/9 past the drop to 64.8%)",
-   "b2 search 2 (30.10B): beam + an UNBOOSTED GE chain to 70.74% (spine pbr6b3_b2k02); its curriculum stalled at a 70.3% air-turn cliff -> b3 = the loop on b2k02 cut at row 7,540 (pbr6b3_b2k02c) + milestones every ~1% along the chain: 64.900 (30.421B); its band then hit a second cliff at 66.0% -> b4 on b2k02 cut at row 6,715 (pbr6b3_b2k02d)"
+   "b2 search 2 (30.10B): beam + an UNBOOSTED GE chain to 70.74% (spine pbr6b3_b2k02); its curriculum stalled at a 70.3% air-turn cliff -> b3 = the loop on b2k02 cut at row 7,540 (pbr6b3_b2k02c) + milestones every ~1% along the chain: 64.900 (30.421B); its band then hit a second cliff at 66.0% -> b4 on b2k02 cut at row 6,715 (pbr6b3_b2k02d)",
+   "c1 (14:19 UTC, box 57825139 RTX 5070 Ti): resume of b3's ckpt_30394548224 with b3's flags + --auto-spine-energy-cut --demo-cliff-cut 4 --target-kl 0.3 on the whole loop line pbr6b3_b2k02 (70.74%): the trainer cut the crawl's success cliffs itself (rows 7545 / 6709 / 6393 at 30.43 / 30.57 / 30.60B; the hand cuts were 7540 / 6715), the greedy passed the climb's start: 65.425 (30.471B), 65.380 (30.773B), 65.337 (30.848B, 5/9 past the 65.04% cut line -> search 1: plain beam to 66.18% in 36 s)"
   ],
-  "resume_from": "pbr6b3_b2 ckpt_latest 30.194B <- b1 29.797B <- a1 29.597B <- pbr5b2_c7 29.499B",
-  "commit": "c591fa2"
+  "resume_from": "pbr6b3_b3 ckpt_30394548224 (30.394B) <- b2 ckpt_latest 30.194B <- b1 29.797B <- a1 29.597B <- pbr5b2_c7 29.499B",
+  "commit": "06705e8"
  },
- "summary": "62.369 -> 64.900 (b3 30.421B; 64.801 b2, 64.374 b1). Gate 19 (the 62.3% drop): the greedy reached 59.5% with enough energy but lost ~340 u landing on the corridor floor at 59.9% and took the west strip; c7's x1.12 depth line (k02) stalled its curriculum at a landing. b1: k02 cut at its last row keeping +250 u over the greedy (61.7%) and taught with --demo-success-energy 75 -> the greedy learned the corner and the airborne east lane in ~15 min (64.374); b2: the loop's next search found the drop with the PLAIN beam, unboosted (64.78%), the greedy followed in 75M steps (64.801). Gate 20 (64.8%, energy lost in a 63.7% impact): search 2's x1.0 GE crawl to 70.74%, cut before its curriculum's success cliffs (b3 64.900, b4); the box ran out (fleet credit at the reserve at 09:45). Offline: --auto-spine-energy-cut (b1's cut by the loop; reproduces it on the real k02), --demo-cliff-cut K, tools/energy_profile.py, record_ckpt --spawn-keys; b1's collapse followed an approx_kl 11.76 update (--target-kl 0.3 suggested). Next: resume b3's ckpt_30394548224 with both new flags on pbr6b3_b2k02 (NOTES 'To continue')."
+ "summary": "62.369 -> 65.425 (c1 30.471B; 64.900 b3, 64.801 b2, 64.374 b1). Gate 19 (the 62.3% drop): energy cut of c7's x1.12 line taught with the energy rule (b1), then the loop's plain beam passed the drop unboosted (b2). Gate 20 (the climb at 64.8%): the loop's x1.0 GE crawl to 70.74% is full of curriculum success cliffs; b3/b4 cut them by hand before the box ran out at 09:45. After the credit came back (13:42), c1 = the same line with the new automations (--demo-cliff-cut 4: three cuts in 13 min matching the hand cuts; --auto-spine-energy-cut; --target-kl 0.3): the greedy passed the climb's start (65.425; 5/9 past 65.04% at 30.848B) and the loop's next plain beam reached 66.18%. Offline: gate 20 is the climb taken at speed (past 65% the explorer keeps <= 2,56x of the record's ~2,7xx, ANALYSIS ONLY). Next: c1 continues on the beam spine; hand-on ckpt_30795104256 (between the 65.380 / 65.337 evals)."
 }

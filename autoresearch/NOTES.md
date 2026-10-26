@@ -2987,3 +2987,20 @@ the round. (pbr6b3 released its box 19 min early once it stopped improving.)
   (epoch 2 mb 9, kl 0.52). **121-129k steps/s** (GPU 38%: CPU-bound on this box, vs ~227k on the 4080): ~75M
   steps (one eval) per ~10 min. Judged at ~30 min (~225M steps) against b3's 64.900: kept only if the greedy
   passes the climb or the cliff cuts walk the band back toward it.
+
+### c1: the cliff cut walks the crawl back by itself; the greedy passes the climb's start - 65.425 (14:19-14:45 UTC)
+* Throughput settled at **~331k steps/s** after the first minute (121-129k at the start was warm-up): 453M steps in
+  23 min, an eval per ~4 min of wall clock.
+* **`--demo-cliff-cut 4` cut the crawl's success cliffs itself, where the hand cuts were:** row 7,545 at 30.4255B
+  (31M steps after the resume; b3's hand cut 7,540), row 6,709 at 30.5655B (b4's hand cut 6,715), row 6,393 at
+  30.6006B (65.21%, new); each moved the success line to the cut's end (d <= 17,073 -> 19,570 -> 19,981) and kept the
+  old one paid as a milestone (cut spines + keys in runs/pbr6b3_c1/cliff/cut01-03).
+* Evals (scorer): 30.395B 64.891 (the hand-on as is) | 30.471B **65.425** (best 65.4%, median 64.8%) | 30.546B 64.900 |
+  30.622B 64.881 | 30.697B 64.890 | 30.773B 65.380 (median 64.9%) | 30.848B 65.337 (**median 65.1%**: 5/9 past the
+  65.04% cut line). The greedy passes the start of the climb (gate 20) for the first time.
+* That quorum ran **search 1** (30.848B): the PLAIN beam to d 19,329 (66.18%, 6,100 states, 36 s) -> spine k01, the
+  depth rule, success line d <= 19,429; the curriculum restarts at its end. The policy's own population now takes
+  the first part of the climb.
+* `--target-kl 0.3` early-stopped its first update at 30.4003B (kl 0.52); no collapse so far.
+* Box extended to 18:56 UTC (promising: a gate the incumbent never cleared). Pulled: 7 evals + snapshot
+  ckpt_30795104256 (md5 54d23e3f..., between the 65.380 and 65.337 evals) = the hand-on in RESULT.json.
