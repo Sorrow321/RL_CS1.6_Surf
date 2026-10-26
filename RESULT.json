@@ -2,6 +2,19 @@
  "agent": "pbr6b4",
  "round": 6,
  "final": false,
- "best": null,
- "summary": "Round 6 start (07:53 UTC): no eval of this branch yet. Incumbent 62.369 (pbr5b2_c7 29.124B). Plan: resume c7's weights on the loop's spine k02 (past the 62.3% drop) with c7's flags + the energy stage; budget is $1.74 above the reserve, so one well-chosen run."
+ "best": {
+  "score": 64.692,
+  "eval_file": "/home/steam/ar_pb/runs/pbr6b4/pbr6b4_c9/traj_30033313792.jsonl",
+  "run": "pbr6b4_c9",
+  "step": 30033313792,
+  "ckpt": "/home/steam/ar_pb/runs/pbr6b4/pbr6b4_c9/ckpt_30006575104.pt",
+  "recipe": [
+   "c8: resume of pbr5b2_c7's ckpt_latest (29.499B) with c7's flags on the loop's spine k02 (past the 62.3% drop, x1.12 GE root at 58.6%), --demo-tau0 5423, patience 4e8; its curriculum stalled ~15 min at k02's landing band (61.7%) then walked the east lane back to row 5,368",
+   "c9: resume of c8's 29.806B with spine pbr6b4_k02e = k02 cut at row 5,420 (before that landing) taught with the ENERGY rule (--demo-success-energy 150 with --auto-spine-energy 150: newly allowed together), --demo-tau0 5368, quorum only (patience 0), GE 3 min",
+   "c9 at 29.958B: 6/9 greedy episodes crossed 61.49% with h >= 2,571 -> the loop's search 1: the PLAIN BEAM on those weights to d 20,132 (64.77%) in 46 s -> depth spine k01; next eval 30.033B: 2/9 greedy past the drop, 64.692"
+  ],
+  "resume_from": "pbr6b4_c8 ckpt_latest 29.806B <- pbr5b2_c7 ckpt_latest 29.499B <- incumbent r5 (62.369)",
+  "commit": "8a1cccc"
+ },
+ "summary": "62.369 -> 64.692 (c9 30.033B, 2/9 greedy episodes past the 62.3% drop to 64.7%). Gate 19's energy was lost in ONE corner (59.9%: a floor landing + CS's bhop cap, -350 u). The loop's k02 (x1.12 root) depth curriculum stalled at a landing band; cut before it and taught with the energy rule (newly allowed with --auto-spine-energy), the greedy kept the corner's energy in ~150M steps, the energetic quorum fired the loop's search and the policy's own plain beam passed the drop (k01, 64.77%). Running: c9 on that depth spine."
 }
