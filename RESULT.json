@@ -14,5 +14,5 @@
   "resume_from": "pbr5b2_c7 ckpt_latest 29,499,064,320 (md5 a17970d6...)",
   "commit": "190ea91"
  },
- "summary": "c1 (08:19 UTC): resume of pbr5b2_c7's latest weights (29.499B) with the loop; its search 1 found an UNBOOSTED line past the 62.3% drop (the policy's branched beam lands on the ramp + a GE crawl to 63.83%, spine pbr6b2_c1k01). Its curriculum stalled in the crawl 1.4% past the greedy, so c2 runs the spine cut 300 u past the greedy (62.83%, pbr6b2_c1k01c), and c3 adds --auto-spine-cut-ahead 300 (new: the loop cuts its depth spines one gate ahead) and --auto-spine-energy-first 1.04 (new). Evals so far 62.342-62.354 (median 62.3%), curriculum at the drop's ramp landing."
+ "summary": "c1-c4 (08:19-09:21 UTC): resume of pbr5b2_c7's latest weights with the loop; search 1 found an UNBOOSTED line past the 62.3% drop (the policy's branched beam bounces off the ramp's foot with a jump at the contact tick + a GE crawl to 63.83%, spine pbr6b2_c1k01). Cut 300 u past the greedy (pbr6b2_c1k01c; new --auto-spine-cut-ahead makes the loop do this). The curriculum sat at the bounce band (16-18%): a spawn's first decision has a random phase (mid-decision autoreset), so a tick-exact jump caps a band near 1/K=25% < the 0.3 rate; c4 runs --demo-rate 0.15. Evals 62.289-62.354 (median 62.3%). New flags: --auto-spine-energy-first, --auto-spine-cut-ahead."
 }

@@ -2761,3 +2761,19 @@ spine left whole, the trainer passing `--cut-ahead`, both refusals, TRAIN_ONLY).
   and oscillated there (band [6,337,6,341] 7.5-15%, [6,342,...] 45-64%: the beam line's impact on the ramp).
 * **c3** (08:54 UTC) = c2's snapshot at 29,661,069,312 (md5 d052c353...) + the same flags + `--auto-spine-cut-ahead 300`
   (5972f50, pulled on the box) + `--demo-tau0 6337` (the curriculum where c2 left it).
+* c3 evals 62.322 (29.662B) / 62.289 (29.737B) / see below (29.813B); the curriculum oscillated between band
+  [6,342,6,346] (77-81%) and [6,337,6,341] (16-18%) for 20 min.
+* **Why that band cannot pass a 0.3 rate - the decision phase of a spine spawn (a generic defect, like the crouched
+  spawns, the explorer's views and the held keys of earlier rounds).** At the ramp contact (state row 6,340 -> 6,341)
+  the beam line JUMPS: v (-170, 317, -754) -> (-78, 74, 257), duck released, h 2,499 -> 2,114 (the bunny-hop cap on a
+  ground jump) - a bounce off the ramp's foot just above the catch trigger. A jump fires only on a fresh press while
+  on the ground (pm_jump: edge-triggered; held through the air it is spent), so the jump must come from the decision
+  that STARTS at state row 6,340; the line's key changes sit at rows = 1 (mod 4), its decision grid. But the trainer
+  autoresets a dead env in place mid-decision and the leftover 0-3 ticks run the previous episode's action, so a spine
+  spawn's first own decision starts at a random phase: from any row before the contact only ~1 spawn in K = 4 can
+  press the jump on the contact tick. Such a band is capped near 1/K = 25% (observed 16-18%) and a 0.3 advance rate
+  is never met. (The greedy eval has a fixed phase from tick 0 - the beam's own - so a line like this is flyable by
+  the greedy; it is the curriculum's spawns that are off-grid.)
+* **c4** (09:21 UTC) = c3's snapshot at 29,844,570,112 (md5 cef71918...) with `--demo-rate 0.15` (< 1/K) and
+  `--demo-tau0 6337`, the rest as c3. The proper fix (spawn a spine row so its first decision lands on the line's
+  own grid) is not built.
