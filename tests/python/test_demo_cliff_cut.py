@@ -110,6 +110,32 @@ def test_the_trainer_announces_dumps_and_refuses(tmp_path):
     shutil.rmtree(ROOT / "runs" / "dcc_bad", ignore_errors=True)
 
 
+def test_the_trainer_cuts_at_a_cliff(tmp_path):
+    """end to end: a band started mid-spine (--demo-tau0) whose success line is out of reach
+    (-100 u past the spine's end) fails, backs off once and K = 1 cuts the spine there."""
+    import shutil
+    from test_demo_success_d import _run_demo
+    from test_ge_minutes import PB
+    if not PB.exists():
+        import pytest
+        pytest.skip("no princessburglar")
+    run = "dcc_cut"
+    try:
+        r = _run_demo(run, ["--demo-success-d", "-100", "--demo-success-bonus", "50",
+                            "--demo-cliff-cut", "1", "--demo-tau0", "20", "--demo-rate", "0.99",
+                            "--demo-min-ep", "1", "--demo-cooldown", "1", "--demo-grow", "1",
+                            "--steps", "81920", "--record-every", "1e9", "--ep-ticks", "200"],
+                      tmp_path)
+        out = r.stdout + r.stderr
+        assert r.returncode == 0, out[-6000:]
+        assert "--demo-cliff-cut: a success cliff at spine row 20: the spine is cut to 20 states" \
+            in out, out[-6000:]
+        cut = np.load(ROOT / "runs" / run / "cliff" / "cut01.npy")
+        assert cut.dtype == STATE_DTYPE and len(cut) == 20
+    finally:
+        shutil.rmtree(ROOT / "runs" / run, ignore_errors=True)
+
+
 def test_record_ckpt_knows_the_flag():
     import record_ckpt
     assert "demo_cliff_cut" in record_ckpt.TRAIN_ONLY

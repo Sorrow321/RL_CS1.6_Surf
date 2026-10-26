@@ -18382,6 +18382,7 @@ def main() -> None:
                                       - (float(args.demo_success_energy)
                                          if args.demo_success_energy is not None
                                          else 0.5 * float(args.auto_spine_energy)))
+                        DEMO_OK[0] = DEMO_OK[1] = None
                     if DEMO_BONUS and _old_end < DEMO_END_D:
                         MILES[0] = np.append(MILES[0], _old_end)
                     DEMO_PAID[0] = None
