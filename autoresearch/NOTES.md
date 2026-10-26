@@ -2718,3 +2718,26 @@ Incumbent: pbr5b2_c7 ckpt_29123674112 (62.369, md5 afb44185...).
 * First eval (29.124B, the resumed weights): **62.371** (median 62.34%) - the incumbent's level.
   Hand-on for it: the incumbent's file placed as runs/pbr6b1/pbr6b1_a1/ckpt_29123674112.pt.
 * `score.py --best $AR_HOME/runs/$AR_AGENT/` globs only that directory (n_evals 0); score per run dir.
+* a1 search 1 (29.351B, the hand-on's weights): plain + five branched beams d 21,490-21,521 (greedy median
+  21,534, needs < 21,034), GE stage 1 (x1.0/1.04) no deeper line -> the energy stage runs next (G).
+* **The 60% corner, tick by tick** (this search's plain beam line vs k02's x1.12 chain; h = z + |v|^2/1600 on
+  the grader field; analysis of our own lines): the beam line holds h 2,806-2,838 at 59.5-60.0% (the record's
+  level there, ~2,830), turns from north to east LOW and LANDS on the corridor floor at (-2,486, 2,895, z 2,360)
+  at row 5,212 (vz -456 -> 0: -135 u), slides 3 ticks (-19..-21 each) and JUMPS from the ground at 723 u/s - the
+  stock bhop cap rescales it to 240 u/s: **-187 u in one tick**; then it hops east at 250-360 u/s (h ~2,450-2,505,
+  another landing -63 u at row 5,310). k02's chain (x1.12 root at row 5,017, 58.6%: 842 u/s) turns EARLIER and
+  HIGHER: it meets the corner's sloped side at z ~2,384-2,400 (vz -236 -> +372: the side lifts it; losses
+  -46 / -8 / -7 / -8 / -7), then flies east AIRBORNE at 685 u/s along y ~2,960 (apex z 2,489) to 60.7% with h
+  2,783 = +330 u over the beam line at 60.5%. So the 60% corner is a LINE gate (ride the side, never land and
+  jump), not an energy deficit: the policy arrives with the record's energy and throws ~380 u away in 5 ticks.
+* **a1 search 1 result (08:33 UTC, 878 s; c7's search 2 on the same weights took 1,169 s with the boosted stages):
+  the energy stage (G, before x1.08/x1.12) handed back an ENERGY spine** - roots before the beam line's losses
+  (-309 u at tick 4,386, -241 at 5,212 = the 60% corner landing, -263 at 4,228; 48 roots x 1.0/1.04), 10,549
+  candidates, pick cell 234,157 at 61.21% with h 2,597 = +153 u over the line. Its chain starts at the policy's own
+  UNBOOSTED state at row 4,101 (48.88%, |v| ratio 1.000) and runs 10.2 s: at the 60% corner it RIDES THE SIDE
+  (59.62% h 2,788 -> vz +294, h 2,703 at 59.65%), flies east airborne (h 2,653, 492 u/s, z 2,501 -> 2,422), lands at
+  60.62% and SLIDES 616 u/s along the floor without jumping (no bhop cap), turns south up a side (vz +183) and holds
+  h 2,590-2,597 to 61.21% (beam line 2,452 / 250 u/s there; greedy evals 2,39x-2,49x at 61.2%). Spine 5,436 rows
+  (md5 0947dbca...), success = d <= 22,270 with h >= 2,522. k02's x1.12 chain had ~2,720 there.
+* Evals 29.200B **62.373** / 29.275B 62.366 / 29.351B 62.354 (the search's eval). The curriculum on the energy spine
+  walked back 5,435 -> 5,320 in ~3 min, then sat at the chain's floor landing (band [5,320] 2.2% -> [5,335] 36%).

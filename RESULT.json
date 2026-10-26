@@ -3,10 +3,10 @@
  "round": 6,
  "final": false,
  "best": {
-  "score": 62.371,
-  "eval_file": "/home/steam/ar_pb/runs/pbr6b1/pbr6b1_a1/traj_29124198400.jsonl",
+  "score": 62.373,
+  "eval_file": "/home/steam/ar_pb/runs/pbr6b1/pbr6b1_a1/traj_29199695872.jsonl",
   "run": "pbr6b1_a1",
-  "step": 29124198400,
+  "step": 29199695872,
   "ckpt": "/home/steam/ar_pb/runs/pbr6b1/pbr6b1_a1/ckpt_29123674112.pt",
   "recipe": [
    "a1: resume of the round-5 incumbent (pbr5b2_c7 29.124B, md5 afb44185...) with c7's flag set on spine pbr5b2_c7k01 + 19 milestones (the 18 + s6's 21,624) + --auto-spine-energy 150 --auto-spine-ge-minutes 5 --auto-spine-delay 2e8",
@@ -15,5 +15,5 @@
   "resume_from": "pbr5b2_c7 ckpt_29123674112 (62.369) <- the round-5 lineage",
   "commit": "068f27f"
  },
- "summary": "62.371 = the resume eval of the incumbent's weights (29.124B, median 62.34%). Running a1: the trainer's own search loop with the energy stage moved before the boosted Go-Explore stages (a boosted depth spine stalled at its root in most uses; energy spines were learned in ~75M steps). First search at ~29.35B."
+ "summary": "62.373 (a1 29.200B, median 62.4%) - the incumbent's level, same gate (all 9 fall at the 62.3% drop). a1 = the trainer's own search loop with the energy stage moved before the boosted Go-Explore stages (068f27f). Search 1 (878 s, the boosted stages skipped): an ENERGY spine from the policy's own UNBOOSTED state at 48.9% that rides the 60% corner's sloped side instead of landing and hopping (h 2,597 at 61.2%, +153 u over the policy's line); being taught with the energy rule. Next: the energetic quorum fires search 2 on those weights (the drop at 62.3%)."
 }
