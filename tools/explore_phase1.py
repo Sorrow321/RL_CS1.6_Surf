@@ -172,8 +172,9 @@ class CellHash:
                 * (self.N_ENERGY if self.energy > 0.0 else 1)
                 * (2 * self.heading if self.heading > 0 else 1))
 
-    def keys(self, states: np.ndarray) -> np.ndarray:
-        """STATE_DTYPE array of any shape -> int64 keys of the same shape."""
+    def pos_keys(self, states: np.ndarray) -> np.ndarray:
+        """The position part of keys(): the --cell place, every gaze / speed / energy / heading
+        bucket of it (--select-energy ranks the cells of one place)."""
         p = states["origin"].astype(np.float64)
         ix = np.clip(((p[..., 0] - self.mins[0]) // self.cell).astype(np.int64),
                      0, self.dims[0] - 1)
@@ -181,7 +182,11 @@ class CellHash:
                      0, self.dims[1] - 1)
         iz = np.clip(((p[..., 2] - self.mins[2]) // self.cell).astype(np.int64),
                      0, self.dims[2] - 1)
-        key = ix + self.dims[0] * (iy + self.dims[1] * iz)
+        return ix + self.dims[0] * (iy + self.dims[1] * iz)
+
+    def keys(self, states: np.ndarray) -> np.ndarray:
+        """STATE_DTYPE array of any shape -> int64 keys of the same shape."""
+        key = self.pos_keys(states)
         if self.view > 0:
             yb = np.floor((states["yaw"].astype(np.float64) % 360.0)
                           / 360.0 * self.view).astype(np.int64)
@@ -282,6 +287,9 @@ class Archive:
         # to the first entry - so every chain replays exactly (tools/ge_replay.py)
         self.exact = False
         self.link_acts: dict[int, np.ndarray] = {}
+        # --select-energy K: the most energetic cell (z + |v|^2 / 2g) of each place is drawn
+        # (1 + K) times as often as its W says; 0 = the Nature weight alone
+        self.select_energy = 0.0
 
     def _grow(self, cap: int) -> None:
         old = getattr(self, "key", None)
@@ -422,7 +430,25 @@ class Archive:
         """Cache the cumulative selection weight. W = 1/sqrt(C_seen + 1)
         (Nature Extended Data Table 1a, robustification treatment)."""
         w = 1.0 / np.sqrt(self.seen[:self.size].astype(np.float64) + 1.0)
+        if self.select_energy > 0.0 and self.size:
+            w[self.energy_tops()] *= 1.0 + self.select_energy
         self._cum = np.cumsum(w)
+
+    def energy_tops(self) -> np.ndarray:
+        """--select-energy: the index of the most energetic cell of each place (pos_keys), the
+        first one on a tie. A surf map is energy-gated and count-based selection expands a place's
+        rare fast state no more often than its slow ones (pbr5b2: GE-G's one 583 u/s cell in the
+        lane a line needed went no further)."""
+        st = self.state[:self.size]
+        pos = self.h.pos_keys(st)
+        o = st["origin"].astype(np.float64)
+        v = st["velocity"].astype(np.float64)
+        e = o[:, 2] + (v * v).sum(axis=1) / (2.0 * CellHash.G_ENERGY)
+        order = np.lexsort((-e, pos))
+        ps = pos[order]
+        first = np.ones(len(order), bool)
+        first[1:] = ps[1:] != ps[:-1]
+        return order[first]
 
     def draw(self, n: int, rng: np.random.Generator) -> np.ndarray:
         """Sample ``n`` archive indices with probability proportional to W."""
@@ -840,6 +866,10 @@ def explore(args) -> int:
                       heading=int(getattr(args, "cell_heading", 0) or 0))
     arch = Archive(hasher, max_cells=args.max_cells)
     arch.exact = bool(getattr(args, "exact_chains", False))
+    arch.select_energy = float(getattr(args, "select_energy", 0.0) or 0.0)
+    if arch.select_energy > 0.0:
+        print(f"--select-energy {arch.select_energy:g}: the most energetic cell of each "
+              f"{args.cell:g} u place drawn x{1.0 + arch.select_energy:g}")
     rk = hasher.keys(roots)
     keep_all = bool(getattr(args, "roots_keep_all", False))
     for j in range(len(roots)):
@@ -1197,6 +1227,8 @@ def meta_dict(args, bsp, hasher, arch, it, n_goal, extra=None) -> dict:
         out["cell_heading"] = int(args.cell_heading)
     if getattr(args, "roots_keep_all", False):
         out["roots_keep_all"] = True
+    if float(getattr(args, "select_energy", 0.0) or 0.0) > 0.0:
+        out["select_energy"] = float(args.select_energy)
     if getattr(args, "exact_chains", False):
         out["exact_chains"] = True
         out["ep_ticks"] = int(args.ep_ticks)
@@ -1812,6 +1844,10 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--roots-keep-all", action="store_true",
                     help="every root gets its own cell even when two share a key (boosted copies "
                          "of one state usually do); off = the first root of a key only, as before")
+    ap.add_argument("--select-energy", type=float, default=0.0,
+                    help="selection: the most energetic cell (z + |v|^2 / 2g) of each --cell "
+                         "place is drawn (1 + K) times as often as W = 1/sqrt(C_seen+1) says "
+                         "(0 = off, the Nature weight alone)")
     ap.add_argument("--roots-ticks", default=None,
                     help="--roots-spine: keep states whose tick is in LO:HI (e.g. the room-entry "
                          "to ramp-1 approach, 8000:8300 on cannonball at 131 Hz); wins the "

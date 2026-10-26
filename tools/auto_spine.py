@@ -349,6 +349,11 @@ def go_explore(a, out: Path, line, end: int, boosts=None, tag: str = "ge", line_
         # a 64 u x energy cell, the first found kept it, and no stage found the rise until the key
         # split them: H = 1 is that split alone, x2 keys)
         cmd += ["--cell-heading", int(a.ge_cell_heading)]
+    if float(getattr(a, "ge_select_energy", 0.0) or 0.0) > 0.0:
+        # explore_phase1 --select-energy K: each place's most energetic cell drawn (1 + K) times
+        # as often (pbr5b2's gate 19 needs ~300 u more energy height than the line keeps; the
+        # explorer's rare fast cells were expanded no more than its slow ones)
+        cmd += ["--select-energy", float(a.ge_select_energy)]
     if a.ge_view_follow and str(a.ge_view_follow).lower() != "none":
         # explore_phase1 --view-follow: the explorer's view holds offsets from the velocity
         # heading (the policy's frame), so a chain's held keys mean what they would mean to the
@@ -436,6 +441,9 @@ def main(argv=None) -> int:
     ap.add_argument("--ge-keep-all", type=int, default=1, choices=(0, 1),
                     help="1 = a stage with more than one --ge-boost factor runs explore_phase1 "
                          "--roots-keep-all (every boosted copy its own root cell); 0 = as before")
+    ap.add_argument("--ge-select-energy", type=float, default=0.0,
+                    help="explore_phase1 --select-energy for the Go-Explore stages: each place's "
+                         "most energetic cell drawn (1 + K) times as often (0 = off, as before)")
     ap.add_argument("--ge-cell-heading", type=int, default=1,
                     help="explore_phase1 --cell-heading for the Go-Explore stages: H heading "
                          "sectors x rising / not in the cell key (1 = the rising / not split alone; "
