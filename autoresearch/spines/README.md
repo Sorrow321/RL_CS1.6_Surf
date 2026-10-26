@@ -192,3 +192,10 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   -100 d / d0 + 12 h / 1000 among cells past 53.72% that lived >= 1 s on). Stacked with tools/ge_stack_spine.py
   (views along the velocity, held keys translated). Energy height ~3,000 through 51.5-54% where k05 had
   2,430-2,480. No demo, no record (pbr5b4, round 5).
+* `pbr5b4_beam_m1.npy` + `.keys.npy` (5,598 rows; md5 b578cd841be6e97ecb02019176050ac7 /
+  6b9d5eb86a10d7ad1b1155ee24e4ec5f): the policy's OWN line to 56.59% - tools/auto_spine.py run by hand on pbr5b4_c2's 24.6B weights
+  (beam_tas from the true spawn at their own 7.67 ms tick, 4,096 stochastic copies, 32 greedy, d-ranked, resample
+  every 25 decisions; the plain beam, 125 s): it lands on the 52.7% floor where the greedy falls into a fail volume,
+  keeps more energy than k05 through 54-56% (h ~2,310-2,320) and hop-climbs a ledge to z ~2,135 at 56.59%, past
+  every Go-Explore stall of the round (~56.3%). Keys = the beam's own held keys per row. No demo, no record
+  (pbr5b4, round 5).
