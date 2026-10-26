@@ -3068,3 +3068,12 @@ the round. (pbr6b3 released its box 19 min early once it stopped improving.)
   until the eval's patience cut (31 s). The greedy's mean action there flips with ~75M steps of training while the
   sampled policy passes it (training keeps flying): a fragile greedy maneuver 0.4% into the map. Not seen on the 5070
   Ti (c1 / c2); the score takes the best eval, so a collapsed eval costs only its quorum (no search from it).
+
+### c3 passes 71%: 71.638 (16:50-17:12 UTC)
+* Evals: 32.057B 67.443 (recovered from the start flip) | 32.133B **71.448** (best 71.5%, 2/9 past the branched beam's
+  71.13% line) | 32.208B **71.638** (best 71.6%, median 67.7%, 4/9 past) | 32.284B 71.414 (9/9 past the line of a cliff
+  cut at row 5,574 = 64.3%, behind the greedy again -> **search 3: the PLAIN beam to d 15,734 = 72.47%**, 8,500
+  states, 59 s; its curriculum's first band at 100%). The policy's own population now goes 5% further than it did
+  two hours ago (67.4% -> 72.47%), and the greedy follows each line within ~150-225M steps.
+* Hand-on of 71.638: ckpt_32053395456 (the snapshot before the eval, md5 91ff8a10..., pulled; the next one,
+  32.2537B, is 46M after it). Box extended to 19:20 UTC so the final pull happens at the 19:12 wrap-up.
