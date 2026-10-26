@@ -2842,3 +2842,16 @@ spine left whole, the trainer passing `--cut-ahead`, both refusals, TRAIN_ONLY).
 * **c7** (10:30 UTC) = c5's snapshot at 30,366,236,672 (md5 06af7d8c..., c6's own start) + spine pbr6b2_c5s1 + the
   fixed --demo-phase (b8d51d9) + `--demo-tau0 6350` (c5s1's bounce band: the contact decision is at state row 6,352)
   + the c6 flags.
+* **c7 collapsed too, with the fixed curriculum:** evals 62.329 (30.367B, the resume) / **0.354** (30.442B: all 9 stuck
+  in the start room, patience-cut at ~4,060 ticks) / 20.348 (30.518B, the gate-8 catch). Its curriculum walked c5s1
+  back from 6,370 to ~6,000 in 15 min (bands 20-31%), and within ~25M steps of the launch the training reward fell
+  ~170-250 -> 20-50, explained variance 0.995 -> 0.92-0.95, stalled episodes 9% -> 25-41% (c5 on k01c with the same
+  flags: reward 150-300, ev 0.99, the route held). So training on c5s1 damages the policy fast, whatever the
+  curriculum does; the cause is NOT established (candidates: the branched beam's held keys for that spine, the
+  double +50 at almost the same line - k01c's milestone 21,344 and c5s1's success line 21,339 - or --demo-phase's
+  stale first observation on the slow edge-pause rows 6,000-6,350). c6/c7 weights are not used. Stopped 10:47 UTC.
+* All seven runs pulled (evals, run.json, progress.csv, launch logs); spines k01 / k01c / c5s1 and the manual search's
+  log in the repo or in $AR_HOME/runs/pbr6b2/{pbr6b2_c1/auto/k01, manual_s1}. **Box 57785934 released 10:48 UTC**
+  (credit $9.81, below the $10 reserve: no rent or extend is possible for the rest of the round).
+* Branch best: **62.364** = pbr6b2_c5 traj_30079451136 (median 62.35%), hand-on pbr6b2_c5/ckpt_30078926848.pt (md5
+  c94d8bbd..., the exact weights of that eval). Incumbent 62.369 (round 5).
