@@ -2318,3 +2318,13 @@ The trainer used ~12 of the box's 30.7-CPU quota, so each stage ran beside it at
   at 52.8%; the record ~3,614 -> 3,193 -> 3,234, ANALYSIS ONLY.)
 * GE_l1 (03:05 UTC, beside c5): 39 roots on m1's own approach to the landing (rows 4,432-4,554, 51.5-52.6%), 32 u x
   energy 16, 12 min - a smooth landing from the policy's own approach, then start-state beams from it to the shaft.
+* GE_l1 (12 min from m1's own approach to the 52.7% landing): viable h at 53-53.5% 2,626 (m1 2,378: +248), 53.5-54%
+  2,609, then the explorer wastes it (55-55.5% 2,362, m1 2,313). Start-state beam (c5's weights) from its smoothest
+  landing state (53.76%, h 2,609): the ledge, 56.59%.
+* The shaft's threshold (start-state beams from m1's 55.55% state, c5's weights): x1.20 -> 56.82%, x1.25 -> 56.92%,
+  x1.30 -> 58.84%: it needs energy height >= ~2,740 at 55.55%; the greedy brings ~2,330 (-410).
+* c5 evals 56.589 / 56.588 / **56.594** (25.5585B) / 56.587 (25.634B). Stopped at 25.6345B; pulled ckpt_latest (md5
+  a9247ead..., the hand-on pick for 56.594: 76M after it vs the snapshot ckpt_25380782080 178M before, also pulled).
+* **pbr5b4_c6** (03:28 UTC): c5's weights + the same shaft spine and flags with --energy-pot 24 (was 12): a 450 u
+  landing loss costs twice as much while the shaft (success line ~56.9%) pays only with the energy. Last lever of the
+  round; the best eval stays c5's 56.594.

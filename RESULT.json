@@ -3,11 +3,11 @@
  "round": 5,
  "final": false,
  "best": {
-  "score": 56.592,
-  "eval_file": "/home/steam/ar_pb/runs/pbr5b4/pbr5b4_c5/traj_25256525824.jsonl",
+  "score": 56.594,
+  "eval_file": "/home/steam/ar_pb/runs/pbr5b4/pbr5b4_c5/traj_25558515712.jsonl",
   "run": "pbr5b4_c5",
-  "step": 25256525824,
-  "ckpt": "(c5 has no snapshot at or before this eval: the hand-on rule takes c5's newest pulled checkpoint; the 56.564 eval's exact weights are /home/steam/ar_pb/runs/pbr5b4/pbr5b4_c4/ckpt_24842338304.pt)",
+  "step": 25558515712,
+  "ckpt": "/home/steam/ar_pb/runs/pbr5b4/pbr5b4_c5/ckpt_latest.pt",
   "recipe": [
    "resume of pbr5b4_c2 ckpt_latest 24,766,316,544 (incumbent + k05 485M + spine e1 730M steps)",
    "--demo-file autoresearch/spines/pbr5b4_shaft_x13_5150.npy (+ .keys): own line to 55.55% + the x1.3 start-state beam up the 56.6% shaft to 57.04% (c4 used pbr5b4_beam_m1_5060)",
@@ -17,7 +17,8 @@
   ],
   "resume_from": "pbr5b4_c4 ckpt_latest 25,180,504,064 (md5 ccb19a24...)",
   "commit": "e5d5a70",
-  "ckpt_md5": "a5875bb55ef16c360758c534727d2e64"
+  "ckpt_md5": "a9247eada8051bd469f8758a4382bda1",
+  "ckpt_note": "c5 stopped at 25,634,537,472 (0.5M after its last eval, 56.587); the hand-on rule picks this ckpt_latest (76M after the 56.594 eval) over ckpt_25380782080 (178M before, md5 030dd172..., pulled); the 56.564 eval's exact weights: runs/pbr5b4/pbr5b4_c4/ckpt_24842338304.pt (md5 a5875bb5...)"
  },
- "summary": "56.592 (pbr5b4_c5 25.2565B; 56.564 pbr5b4_c4 24.842B: 5/9 greedy at 56.3-56.6%, now 9/9 at ~56.4%; incumbent 52.937). Path: k05 (c1, flat) -> GE smooth-landing spine e1 (c2 54.556) -> the policy's own beam on c2's weights to 56.59% -> c3 lost the start room on its low-speed end -> the line cut before the hopping (c4 56.564). Gate 17 = a spiral shaft at 56.6%: energy, not skill (a x1.3 start-state beam spirals to 58.84%); the greedy arrives ~420 u short, lost at the 52.7% landing (-450 u every episode). c5 trains a x1.3 shaft spine; GE from the policy's own approach looks for a smooth landing."
+ "summary": "56.594 (pbr5b4_c5 25.5585B, 9/9-style at 56.4-56.6%; 56.564 c4; incumbent 52.937). Path: k05 (c1 flat) -> GE smooth-landing spine e1 (c2 54.556) -> the policy's own beam on c2's weights to 56.59% -> cut before its low-speed hopping (c4 56.564; c3 on the uncut line lost the start room). Gate 17 = a spiral shaft at 56.6%: a pure energy gate (x1.30 start-state beam -> 58.84%, x1.25 -> 56.92%): needs h >= ~2,740 at 55.55%, the greedy brings ~2,330 - lost at the 52.7% landing (-450 u every episode). c5 trained a x1.3 shaft spine (route held, curriculum stuck at the boosted root); c6 = the same with --energy-pot 24."
 }
