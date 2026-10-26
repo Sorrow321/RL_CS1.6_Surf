@@ -3,19 +3,20 @@
  "round": 5,
  "final": false,
  "best": {
-  "score": 62.367,
-  "eval_file": "/home/steam/ar_pb/runs/pbr5b2/pbr5b2_c6/traj_29047652352.jsonl",
-  "run": "pbr5b2_c6",
-  "step": 29047652352,
-  "ckpt": "/home/steam/ar_pb/runs/pbr5b2/pbr5b2_c6/ckpt_29047652352.pt",
+  "score": 62.369,
+  "eval_file": "/home/steam/ar_pb/runs/pbr5b2/pbr5b2_c7/traj_29123674112.jsonl",
+  "run": "pbr5b2_c7",
+  "step": 29123674112,
+  "ckpt": "/home/steam/ar_pb/runs/pbr5b2/pbr5b2_c7/ckpt_29123674112.pt",
   "recipe": [
    "c1: resume of the round-4 incumbent pbr4b3_t11 ckpt_23551016960 with t11's flag set on spine k05 (56.341)",
    "c2-c4: + --respawn-greedy-energy 3; c4 = spine pbr5b2_e1c (stitched: beam + GE chain A x1.04 + rollout + GE --cell-heading 1 chain x1.08) (56.579)",
    "c5: spine pbr5b2_e1d (to GE chain A's end) + --demo-success-energy 200: the greedy learns the cleaner descent (56.711)",
-   "c6: spine pbr5b2_s6 = the policy's own plain beam line on c5's weights to 62.34% + keys, milestones ...,25121,24479,23400,22500, --auto-spine (GE --cell-heading 1 default); its patience search 1 swapped in k01 (the plain beam on c6's weights, 62.32%) -> 62.367 (k01, then k02 from its search 2; 7/9 at k02's end)"
+   "c6: spine pbr5b2_s6 = the policy's own plain beam line on c5's weights to 62.34% + keys, milestones ...,25121,24479,23400,22500, --auto-spine (GE --cell-heading 1 default); its patience search 1 swapped in k01 (the plain beam on c6's weights, 62.32%) -> 62.367 (k01, then k02 from its search 2; 7/9 at k02's end)",
+   "c7: resume of c6's 62.367 hand-on with c6's flags + --auto-spine-energy 150 (new: the loop's energy stage), --auto-spine-ge-minutes 5; search 1's depth ladder found nothing past the 62.3% drop, its energy stage a line keeping +217 u at 59.55% (h 2,701); taught with the energy rule, the greedy's h at 58.2% went 2,46x-2,51x -> 2,683-2,751 (9/9) in 75M steps -> 62.369 (29.124B, median 62.4%)"
   ],
-  "resume_from": "pbr5b2_c5 ckpt_latest 25.876B (<- c4 <- c3 <- c2 <- c1 <- incumbent r4)",
-  "commit": "e993d06"
+  "resume_from": "pbr5b2_c6 ckpt_29047652352 (62.367) <- c5 <- c4 <- c3 <- c2 <- c1 <- incumbent r4",
+  "commit": "aec7ef7"
  },
- "summary": "52.937 -> 62.367 (c6 29.048B, median 62.34%; 81 valid evals). Gate 17 (the 56.6% shaft climb) needed energy the policy's descent lost to crashes: a GE chain flew a cleaner descent; --demo-success-energy (new) taught it in ~20 min; then the policy's own beam made the climb (62.34%) and the greedy followed. Also new: GE --cell-heading 1 (rising/not) default in auto_spine, tools/stitch_spine.py, --respawn-greedy-energy, tools/energy_pick.py, explore_phase1 --roots-keep-all and --select-energy (default off, unproven), auto_spine tail roots (threshold fixed 04:00). Gate 18 (a hop over a gap at 61.5%) fell to the loop. Gate 19 (the drop at 62.3%): a probe of the policy at its own strip-end states with x1.0-1.8 horizontal speed never makes the ramp - it needs ~+300 u of energy height (h 2,500 -> ~2,800), lost upstream in the 57.5-61% corridor, which the record (analysis only) rides on its sloped sides while our policy lands on the floor and bunny-hops under CS's hop cap. New for the next round: the trainer's loop handles an ENERGY gate itself (train_fast --auto-spine-energy G + auto_spine --energy-gain G, default off, tested end to end on CPU, untested at a gate). No box since 02:45 (released at the plateau; rent refused 04:04-04:32, the fleet at its 1.2 $/h cap); offline: the probe, a local GE A/B, the to-continue block in NOTES."
+ "summary": "52.937 -> 62.369 (c7 29.124B, median 62.4%; c6's 62.367 at 29.048B before it). Gate 17 (the 56.6% shaft climb) needed energy the policy's descent lost to crashes: a GE chain flew a cleaner descent; --demo-success-energy (new) taught it in ~20 min; then the policy's own beam made the climb (62.34%) and the greedy followed. Also new: GE --cell-heading 1 (rising/not) default in auto_spine, tools/stitch_spine.py, --respawn-greedy-energy, tools/energy_pick.py, explore_phase1 --roots-keep-all and --select-energy (default off, unproven), auto_spine tail roots (threshold fixed 04:00). Gate 18 (a hop over a gap at 61.5%) fell to the loop. Gate 19 (the drop at 62.3%): a probe of the policy at its own strip-end states with x1.0-1.8 horizontal speed never makes the ramp - it needs ~+300 u of energy height (h 2,500 -> ~2,800), lost upstream in the 57.5-61% corridor, which the record (analysis only) rides on its sloped sides while our policy lands on the floor and bunny-hops under CS's hop cap. New for the next round: the trainer's loop handles an ENERGY gate itself (train_fast --auto-spine-energy G + auto_spine --energy-gain G, default off, tested end to end on CPU, untested at a gate). No box since 02:45 (released at the plateau; rent refused 04:04-04:32, the fleet at its 1.2 $/h cap); offline: the probe, a local GE A/B, the to-continue block in NOTES."
 }

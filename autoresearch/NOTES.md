@@ -2631,3 +2631,14 @@ demo_success_energy suites' trainer-before-the-flag tests still pass):
   328-tick chain from an x1.04 root at line row 4,814 -> spine k01 (5,142 states + keys), success = crossing d <=
   23,216 with h >= 2,626 (the end's - 75). The policy's line has ~2,480-2,505 there (c6's evals: 59% ~2,505).
   The trainer resumed at 227k steps/s (GPU 99%; progress.csv's time/fps averages over the search's pause).
+* **c7's energy spine taught the 58% corner in 75M steps (~5.5 min at 227k steps/s).** Greedy h / horizontal speed
+  at first arrival (scorer's field), the eval at the resume (29.048B) vs the first eval on the energy spine
+  (29.124B): at 58.2% 2,461-2,519 (one 2,573) / 268-333 u/s -> **2,683-2,751 in 9/9 / 557-665 u/s**; at the success
+  line (59.4%) 2,473-2,500 -> 2,633-2,783 in 7/9 (the quorum: "energy spine - 7/9 greedy episodes cross d <= 23,216
+  with energy height >= 2,626 (9 cross it)" -> search 2 at once). Then it is lost at the NEXT corner: by 60% every
+  episode is back at 2,455-2,496 / 256-364 u/s (the corridor's north end, (-2,690, 2,683) -> (-2,530, 2,891)). One
+  corner per energy spine - the loop now walks the corridor corner by corner by itself.
+* **Score 62.369** (29.124B, median 62.4%; scorer: best 62.4%, 0/9 finishes) - c6's 62.367 by a hair, same gate (all
+  9 still fall at the 62.3% drop). Hand-on: ckpt_latest saved for search 2 at exactly the eval's step (global_step
+  29,123,674,112), pulled and pinned as runs/pbr5b2/pbr5b2_c7/ckpt_29123674112.pt (md5 afb44185...). These weights
+  carry the corner's energy: the better start for the next round.
