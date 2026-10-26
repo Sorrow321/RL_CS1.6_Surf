@@ -3,17 +3,24 @@
  "round": 5,
  "final": false,
  "best": {
-  "score": 52.93,
-  "eval_file": "/home/steam/ar_pb/runs/pbr5b3/pbr5b3_c1/traj_23551541248.jsonl",
+  "score": 56.108,
+  "eval_file": "/home/steam/ar_pb/runs/pbr5b3/pbr5b3_c1/traj_24004526080.jsonl",
   "run": "pbr5b3_c1",
-  "step": 23551541248,
-  "ckpt": "/home/steam/ar_pb/incumbent/r4/ckpt.pt",
+  "step": 24004526080,
+  "ckpt": "/home/steam/ar_pb/runs/pbr5b3/pbr5b3_c1/ckpt_23951572992.pt",
   "recipe": [
-   "resume of the round-4 incumbent pbr4b3_t11 ckpt_23551016960 with t11's flags + spine k05 (pbr4b3_auto_t11k05 + keys) + 14 milestones + --auto-spine"
+   "resume of the round-4 incumbent pbr4b3_t11 ckpt_23551016960",
+   "--demo-file autoresearch/spines/pbr4b3_auto_t11k05.npy --demo-keys autoresearch/spines/pbr4b3_auto_t11k05.keys.npy --demo-window 5 --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5 --demo-rate 0.3 --demo-front-frac 0.8 --demo-success-d 100 --demo-success-bonus 50",
+   "--demo-milestones 44939,43426,42182,41015,40497,39943,37251,33777,32260,31429,30286,28818,28783,27001 --keys-hold-spawn-duck --yaw-entropy 0 --demo-front-temp 0.5 --demo-front-ticks 40 --demo-front-view 6",
+   "--respawn-greedy 0.2 --respawn-greedy-window 0.25 2.0 --respawn-greedy-stuck 200 --respawn-greedy-contact --respawn-greedy-temp 0.5 --respawn-greedy-temp-ticks 100 --respawn-greedy-temp-view 6",
+   "--respawn-front-perturb 0.2 --respawn-front-perturb-band 0.005 --respawn-front-perturb-speed 1.0 1.3 --respawn-front-perturb-turn 90",
+   "--energy-pot 12 --energy-pot-front 0 --energy-pot-front-bonus 0 --no-respawn-novel --respawn-backward-mix 0 --int-real-only 0",
+   "--spawn-states autoresearch/spines/pbr1b1_entry_ge_states.npy --spawn-states-frac 0.2 --maxvel 3500 --ckpt-every 2e8",
+   "--auto-spine --auto-spine-milestones --auto-spine-gain 500 --auto-spine-ge-minutes 8 --auto-spine-retry 4e8 --auto-spine-patience 1.2e9"
   ],
   "resume_from": "pbr4b3_t11 ckpt_23551016960 (the incumbent ckpt.pt, md5 7fbcd458...)",
-  "commit": "825f021",
-  "ckpt_note": "the eval ran the incumbent's own weights 0.5M steps after the resume; no checkpoint of this run was pulled (box released after 8 min: 61k steps/s, a CPU-starved host)"
+  "commit": "c1d9873",
+  "ckpt_note": "the milestone at or before the 56.108 eval (53M steps before it); box 57755386 (5080)"
  },
- "summary": "Round 5: no box until 21:27 UTC (fleet cap full); the first, a 4060 Ti on a CPU-starved host (61k steps/s), was blocklisted and released after 8 min. Its only eval = the incumbent's weights: 52.930. Rent retry running; plan unchanged: resume the incumbent with t11's flags + k05 + --auto-spine."
+ "summary": "Round 5: no box until 02:45 UTC (fleet cap full; a CPU-starved 4060 Ti host at 21:27 was blocklisted). pbr5b3_c1 = the incumbent resumed with t11's flags on spine k05 (+ keys, 14 milestones, --auto-spine) at 335k steps/s: 52.9 for ~450M steps, then 56.108 at 24.0045B (2/9 greedy episodes fly k05's chain to 56.1%, 7/9 still at the 52.85% catch)."
 }

@@ -2180,3 +2180,8 @@ reservation for a boxless branch would keep all four forks running; as it is, a 
 * pbr5b3_c1 relaunched there 02:49 UTC with the same flags (scratchpad launch_c1.sh: resume of the incumbent ckpt
   23,551,016,960 + t11's flag set + spine k05 + keys + 14 milestones + --auto-spine): 335k steps/s instantaneous
   (20.4M steps in 61 s). First eval 23.5515B: 0/9 past k05's success line, greedy median d 26,940.
+* c1 evals (5080): 52.895 (23.5515B, the resume) / 52.919 / 52.865 / 52.913 / 52.902 / 52.906 / **56.108** (24.0045B,
+  ~450M steps in: 2/9 greedy episodes fly k05's GE chain to 56.1% and fail at (-2,302..-2,315, 2,561..2,573, 1,997)
+  by its end; 7/9 still fall into the 52.85% catch at (-2,380..-2,430, 1,080..1,290, z 2,200)). The curriculum had
+  walked k05 back to [4391,...] (47-51%) by then - the greedy leaves k05 at spine state ~4,541 (52.70%), inside its
+  GE chain (4,345-5,001). Handoff milestone ckpt_23951572992 (53M before the eval) pulled.
