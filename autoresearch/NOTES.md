@@ -2985,3 +2985,22 @@ Germany (machine 56783), rented 08:05 UTC for 2 h.
   duck-jumps (z 1,845 -> 2,115, 30-300 u/s, ~18 s to row 9,000 = 72.93%) and walks south at y 3,200 -> 2,426. The greedy
   misses the platform and dies on the sheet at z ~1,720. The curriculum is teaching the climb backward (k01's
   [6,819 / 6,844], 78-82% bands, 6,904 -> 6,819 in 25 min); the landing at ~6,640 is next.
+
+### c11's curriculum stopped on a bookkeeping bug, not on the skill; `--demo-match-band`; c12 (16:04-16:16 UTC)
+* From 33.06B (~15:20 UTC) c11's curriculum never moved again: the band [6,819 / 6,823] showed "success 0.0% over 0 eps"
+  for 50 min, the spine's per-decile episode counts froze, and `demohot` (envs in a band spawn's hot window) dropped from
+  0.5-1.0% to exactly 0.0% at the move. Cause: k01's rows ~6,818-6,825 are the beam STANDING STILL at one origin
+  (-1,075.2, 3,190.1, 1,898.7), and DemoCurriculum re-identifies spawns by rounded origin with a key that keeps only the
+  LAST row of a repeated origin (6,825, outside the band) - every band spawn was credited outside the band, which never
+  reached its 50-episode minimum. Any spine that stands still at a band boundary can freeze a curriculum this way.
+* `train_fast --demo-match-band` (3654fc4; default off = byte-identical matches): a repeated origin is credited to its
+  copy inside the frontier band when there is one, else as before. tests/python/test_demo_match_band.py 4/4 (the stuck
+  case reproduced: a run of 8 copies past the band's end - 0 outcomes in the band off, 45.3 on), and the trainer's
+  flag-off identity test still passes.
+* c11 stopped 16:13 UTC at 34.105B (ckpt_latest md5 8b4619dc..., pulled; 39 evals, best 71.499). Box re-deployed on
+  3654fc4 (the checkout is fetched, runs/ kept) and **pbr6b4_c12** launched 16:16 UTC (pid 12964): resume of that
+  checkpoint on the loop's spine committed as `autoresearch/spines/pbr6b4_c11k01` (+keys) with `--demo-tau0 6819` (where
+  c11's curriculum stood) and `--demo-match-band`, the 24 milestones (+ k02's 17,070), the loop flags as in c11; --steps
+  5e9. Record gate passed.
+* c12's first minute: the same band that sat at "0 eps" for 50 min - "tau <- earlier [6,814] (success 69.0% over 64
+  eps)", then [6,804] 49.8%, [6,784] 55.0%, a backoff to [6,789]; demohot back at 0.4-0.5%. The fix is the whole story.
