@@ -3098,3 +3098,11 @@ a 5080 at 0.621 $/h, so `rent` was REFUSED (budget pace); a local retry every 5 
 * Plan: resume c12's ckpt_latest (36.659B, md5 d802b3e8...) on k02 + keys with `--demo-tau0 6531` (where c12's
   curriculum stood) and `--demo-match-band`, c12's flag set and the loop, the 26 milestones of c12's current.json
   (scratchpad launch script mirrored below when it runs). A warm resume pushing the frontier past the 73.5% catch.
+
+### Harness issue: the 1.2 $/h fleet cap admits 2-3 of 4 branch boxes at tonight's prices (21:40 UTC)
+* From 20:33 to at least 21:36 UTC `box.py rent` refused every 5 min: "no offer passes ... within the budget pace:
+  burn 1.031 $/h, limit 1.2 $/h" with 2 boxes live (credit $33.15, 22.9 h to the reserve). The cheapest offers passing
+  config.offer_query (cpu_cores_effective >= 32 etc.) were a 3090 at 0.386, a 4080S at 0.410, a 5080 at 0.621 and a 5090
+  at 0.589 $/h; nothing under the 0.169 $/h of headroom. So at these prices the cap holds 2-3 boxes and at least one
+  branch has no GPU until another releases; a branch without a box this round scores nothing. Not worked around: the
+  local retry calls box.py rent unchanged.
