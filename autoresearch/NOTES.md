@@ -3157,3 +3157,6 @@ a 5080 at 0.621 $/h, so `rent` was REFUSED (budget pace); a local retry every 5 
     x1.12 spine (held at the first search, released at the next eval's energetic quorum), the refusal, TRAIN_ONLY, and
     flag-off identity with the loop on (config, progress.csv, final weights vs the trainer before the flag).
   * Not yet run at a gate. M = 25 in pbr7b3_c1 (a tolerance, not a margin: the explorer ran 8 ms ticks, the policy 7.67).
+  * CPU results (23:00 UTC): test_auto_spine_root_energy 5/5 (166 s; the trainer run held the x1.12 spine at the first
+    search and released it at the next eval's energetic quorum); regression test_demo_stall_cut + test_auto_spine_energy
+    + test_demo_match_band 14/14 (313 s).
