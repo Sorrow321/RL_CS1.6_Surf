@@ -2642,3 +2642,13 @@ demo_success_energy suites' trainer-before-the-flag tests still pass):
   9 still fall at the 62.3% drop). Hand-on: ckpt_latest saved for search 2 at exactly the eval's step (global_step
   29,123,674,112), pulled and pinned as runs/pbr5b2/pbr5b2_c7/ckpt_29123674112.pt (md5 afb44185...). These weights
   carry the corner's energy: the better start for the next round.
+* **c7 search 2 (06:20-06:39 UTC, 1,169 s) on the weights that learned the corner: the FIRST LINE PAST THE 62.3% DROP.**
+  Plain beam 21,611, branched 21,601-21,614, GE x1.0,1.04 21,490, x1.08 21,454, **x1.12 20,489 (64.15%)** - an 807-tick
+  chain from line row 5,017 (~60%, the next corner, where the greedy now loses the energy) with the root's velocity
+  x1.12: 1,022 u past the greedy frontier -> depth spine k02 (5,824 states + keys; committed as
+  autoresearch/spines/pbr5b2_c7k02 with provenance), success line d <= 20,589. Exactly gate 17's sequence, now by the
+  loop alone: the energy first (k01, one corner), then the search passes the gate (here with a x1.12 root).
+* The caveat for the next round: k02's root is boosted x1.12 at the 60% corner, and a DEPTH curriculum stalls at a
+  boosted root (round 4's k02, c4's x1.08 at gate 17) unless the policy learns to arrive there with the speed - which is
+  what the energy rule teaches. A generic fix worth building: when the depth ladder's spine starts from a boosted root
+  (x > 1.04), teach the stretch up to the root with the energy rule first (h at the root - G/2), then the depth spine.
