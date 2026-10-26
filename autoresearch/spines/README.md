@@ -223,3 +223,10 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   the next corner), then one exact explore_phase1 --exact-chains chain (reward-free search; 807 ticks from that row's state
   with its velocity x1.12, the ladder's third stage) to d 20,489 = 64.15%. Keys = the beam's and the chain's own held keys.
   No demo, no record (pbr5b2, round 5).
+* `pbr6b3_k02e.npy` + `.keys.npy` (5,431 rows; md5 7ec93bd8379710dc96e4c6577e91e7b0 / da5ef616c5681d43bc82eff17d55518d):
+  `pbr5b2_c7k02` cut at its row 5,430 (61.72%, d 21,875, energy height 2,721), the last row before the chain's landing at
+  the east lane's south end (row 5,433, -172 u) - an ENERGY spine for `--demo-success-energy`: through 59.6-61.7% the
+  chain flies the corner off the north wall and the airborne east lane keeping ~+250 u over the greedy (h 2,721 vs
+  2,437-2,486 at 61.5%; the greedy lands on the corridor floor at 59.9%, -340 u, and takes the west strip). Same
+  provenance as `pbr5b2_c7k02` (the policy's own beam line + one exact reward-free explore_phase1 chain); no demo, no
+  record (pbr6b3, round 6).
