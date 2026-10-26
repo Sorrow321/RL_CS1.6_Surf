@@ -2857,3 +2857,51 @@ Germany (machine 56783), rented 08:05 UTC for 2 h.
   greedy meets it a few units differently and falls into the catch at z ~2,066. A precision catch like gate 18's gap hop,
   not energy: rows ~5,700-5,760 of pbr6b4_c9k02 are the band to teach (c10's curriculum never got back past 6,095).
   Also in the regression pass: test_auto_spine 16/16 with --demo-stall-cut in the trainer (flag-off identity holds).
+
+### Gate 20 is TWO gates: the ledge catch, then a one-hull walkway over a catch sheet (11:37-12:00 UTC, local, no box; ANALYSIS of our own states)
+* Credit $9.80 at 11:37 UTC (below the $10 reserve), fleet burn 0: no box can be rented. Offline bench instead:
+  `tools/record_ckpt.py --spawn-states` with c10's ckpt_latest (31.18B, md5 6955707b...), greedy, CPU, from windows of
+  the loop's own spine `pbr6b4_c9k02` (no keys at spawn, so not exactly the curriculum's spawns):
+  * rows 5,700-5,740 (the branched beam's climb to the ledge, 64.65-64.89%): **8/9 CATCH the ledge** (on to 65.32-65.42%),
+    1/9 falls short into the catch below (trigger_teleport *210, z 2,010-2,028: the greedy evals' 64.8% death);
+  * rows 5,770-5,800 (on the landing platform, 64.92-65.06%): **9/9 die at 65.43-65.50%**, at (-3,331..-3,342,
+    2,904-2,948, z 2,369);
+  * rows 6,090-6,104 (the explorer chain walking north at 250 u/s, 65.81-65.85%): **6/6 die at 65.91-66.25%**, x -3,278..
+    -3,320, z 2,369-2,383.
+* The geometry (map entities and the field, measurement only): north of the landing platform the only floor is a strip one
+  hull wide along a wall at x ~-3,256 (the explorer chain walks it at exactly x -3,256 from y 2,944 to 3,626), and just
+  below the strip's level lies a fatal catch sheet (*186: x -3,577..-3,240, y 2,682..3,751, z 2,324-2,350) with a hole near
+  its north end (the chain drops through at (-3,351, 3,513) to z ~2,000 and surfs east to 70.3%). The trigger is invisible
+  to the lidar (the policy sees the floor at z ~2,000 through it). The field is defined in the air above the sheet (z
+  2,389, y 3,150: 65.85-65.88% for every x from -3,256 to -3,420; the sheet's own cells unreachable) and descends north at
+  ~1 u per u of y with a faint westward slope, so the policy strafe-jumps north-north-west off the strip and sinks onto
+  the sheet: free flight through open space again (CLAUDE.md's gravity-dir note), here at walking speed.
+* **The 65.391 eval's best episode (65.39%) is that death**: it caught the ledge and fell onto the sheet. A greedy that
+  learns only the catch gains ~0.1; the next real gain (the hole, then the surf to 70.3%) needs the walk along the wall.
+* **c10's stall at [6,095 / 6,100] (6.7-31%) was a death-dive at the line's margin**: k02c's line (d <= 19,291 = 66.244%)
+  is where those dives end (66.22-66.25% from 65.81-65.85% spawns), so its "successes" were dives that crossed the line
+  and died on the sheet. The walk itself was never paid apart from the dive.
+* **What that means for `--demo-stall-cut`:** a cut inside the walkway puts the success line within a dive's reach (the
+  bench's dives gain +0.1..+0.42% before they die), and the curriculum would walk back on dives. The generic guard is
+  `--demo-success-alive SECS` (new, below): a crossing counts only if the episode survives it.
+
+### `--demo-success-alive SECS`: a crossing counts only if the episode survives it (11:45-12:05 UTC, local, no box)
+* `train_fast --demo-success-alive SECS` (default 0 = off; needs --demo-success-d and --demo-success-bonus, the per-tick
+  reward path): a crossing of the spine's success line (with the energy under --demo-success-energy) counts for the
+  curriculum's outcome, the bonus and --auto-spine's quorum only once its episode has stayed alive SECS past it, or it
+  finishes; the bonus is paid then, not at the crossing. An episode that spawns past the line counts from its spawn
+  (unpaid), so a band whose spawns die within SECS fails honestly. The quorum counts the eval episodes that stay alive
+  SECS (rows = physics ticks) past their first crossing, or end at the finish. Generic: dying right after the line is not
+  the skill on any map; it closes the death-dive door that a near line (a stall cut, a short spine) opens.
+  (train_fast.alive_gate / crossed_and_alive; the state resets on every spine swap and stall cut.)
+* Tests (CPU): tests/python/test_demo_success_alive.py 5/5 in 147 s - the gate (a survived crossing is paid once, a
+  dive that dies within the ticks fails, a spawn past the line succeeds unpaid), the quorum rule (survival, energy,
+  finish), a princessburglar trainer run (notice, config key, the refusals), **flag off bit-identical to the trainer
+  before the change** (config, every progress.csv number but time/*, final weights), TRAIN_ONLY. Untested at a gate.
+* **To continue, revised (supersedes the c11 line of the block above):** c10's ckpt_latest (31.18B) on the FULL loop
+  spine `pbr6b4_c9k02` + keys (its line 70.13% lies past the walkway's hole, so no dive off the strip can reach it), c9's
+  flag set, the milestones and the loop exactly as in that block, plus `--demo-success-alive 1` (a guard; it changes
+  nothing while the line is that far), and **without `--demo-stall-cut`**: on this spine a stall would come on the
+  walkway (c9 sat at [6,702 / 6,707] near the hole, c10 at [6,095 / 6,100]), and a cut there - even with the survival
+  rule - would only move the line onto the strip and stall again 5 rows back. What the policy has to learn there is to
+  stay on the strip (east to the wall after the catch, then north along it to the hole), taught backward from the hole.
