@@ -2806,6 +2806,24 @@
       "detail": "autoresearch pbr2b2: not running after 330 s (status loading, )",
       "run": "",
       "reason": "unreliable"
+    },
+    {
+      "ip": "46.205.240.99",
+      "machine_id": 148894,
+      "host_id": 491607,
+      "date": "2026-10-25",
+      "detail": "RTX 4060 Ti power-capped 100 W of 165 W default (61%): bf16 GEMM 37 TFLOPS (~84% of the 4060 Ti's ~44 dense fp32-acc spec), sm 2145 MHz under load, copy 246 GB/s; gpu_health UNHEALTHY (no reference + cap). Ryzen 9 3950X 32 thr, machine 148894",
+      "run": "pbr5b4 deploy",
+      "reason": "gpu_capped"
+    },
+    {
+      "ip": "46.205.240.99",
+      "machine_id": 148894,
+      "host_id": 491607,
+      "date": "2026-10-25",
+      "detail": "autoresearch pbr5b3 2026-10-25: RTX 4060 Ti 16GB (power limit 100 W of 165 W) + Ryzen 9 3950X listed 32 effective threads, but the host runs a foreign niced load (host /proc/stat 62% ni, 0% idle; loadavg 42 on 32 threads) - the trainer got ~14 cores and ran 61k steps/s (3.67M steps in 60 s) on the incumbent's flag set vs ~330k on a 5080/TR box; gpu_health: 37 TFLOPS bf16, 246 GB/s, no reference -> UNJUDGED",
+      "run": "",
+      "reason": "cpu_bound"
     }
   ],
   "known_good": [
