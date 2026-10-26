@@ -2404,3 +2404,7 @@ Incumbent: pbr4b3_t11 traj_23590338560 (52.937), weights ckpt_23551016960 (md5 7
 * **pbr5b1_c11** (04:21 UTC): c10's ckpt_latest (29,021,962,240, md5 04db85e1...) + spine y (x1.08 at ~60% instead of x
   x1.2) + --demo-rate 0.2 + --auto-spine-patience 2e9 (no 40-min patience search before the wrap-up; the quorum still
   searches) + c10's other flags.
+* c11 (spine y, x1.08, rate 0.2; 29.02-29.44B): the curriculum came back to the flight over the sheet in ~15 min and
+  stops at the same place as spine x: band [7682,7686] (just before the platform landing) 13-15%, [7687,...] 97-99%.
+  Evals 61.512-61.527. The landing on the exit platform at the end of the flight over the sheet is the precise part of
+  both crossings (x: 14-16%, y: 13-15%).
