@@ -2889,8 +2889,14 @@ Incumbent: pbr5b2_c7 ckpt_29123674112 (62.369, md5 afb44185...).
   So the corner is no longer the gate when the greedy arrives in m2's state; the gap is the greedy's OWN arrival (it
   leaves m2's energy between 58% and 59.5%). The curriculum is now on exactly that stretch.
 * **Extended** (PROTOCOL: a gate no checkpoint had cleared): box 57819941 extended at 14:28 to 16:28 UTC (extend sets
-  now + hours). a3's budget ends at 31.52B (~15:40); then a4 = the same flags from its weights at the curriculum's
-  tau then.
+  now + hours).
+* **a3 stopped at 14:31 (30.779B, `kill <pid>` 7 s after its ckpt_latest save), a4 launched 14:32 from those weights
+  (md5 14f78aa7...; the box copy runs/pbr6b1_a3/ckpt_a3_end.pt)**: a3's `--auto-spine-patience 1.2e9` would have run
+  a search at its 31.23B eval - the trainer BLOCKS for the search (~15 min) and a new spine RESTARTS the curriculum
+  at the new spine's end (`demo.reset_spine`), which would throw away 5,600 -> 4,994 of m2's curriculum exactly when
+  it reached the stretch the greedy loses. a4 = a3's flags with `--demo-tau0 4994` and no patience (the search runs
+  only on the quorum: 5/9 greedy episodes past m2's end), budget 3.2e9 (to 33.98B, cut at the wrap-up).
+  General lesson for the loop: a patience search should not replace a spine whose curriculum is still advancing.
 
 ### pbr6b1 round 6 lesson (DRAFT 10:06 UTC; finalised at wrap-up)
 * **Score 62.369 -> 62.373** (a1 29.200B: the incumbent's weights 75M steps on, same gate; all 9 fall at the 62.3% drop).
