@@ -315,6 +315,32 @@ def energy_cell(st, parent, depth, line, field, d0: float, lo: float, hi: float,
     return max(ok, key=lambda c: (c["progress"], c["gain"])), len(cands)
 
 
+ENERGY_CUT_BOOST = 1.05   # --energy-cut: a chain rooted above x1.04 (the ladder's x1.08 / x1.12 stages)
+
+
+def energy_cut(spine, j: int, line, field, d0: float, gain_min: float, **kw):
+    """--energy-cut: the row of ``spine`` at which to cut a depth spine whose chain starts at line
+    row ``j`` -> (row or None, its energy_pick candidate). The row is the DEEPEST chain state that
+    keeps >= ``gain_min`` u more energy height than the policy's line at the same progress, with
+    energy_cell's filters (on the route, not plunging, not slower than the line; rows past the
+    line's own frontier have nothing to compare with and are not taken). pbr6b3 (2026-10-26): the
+    ladder's x1.12 chain past princessburglar's 62.3% drop (pbr5b2_c7k02) stalled the depth
+    curriculum for ~50 min at the chain's landing 2.5% short of its end; the same chain cut at its
+    last row keeping +250 u over the greedy (61.72%, before that landing) and taught with the energy
+    success rule taught the greedy the corner and the airborne lane in ~15 min, and the next search's
+    PLAIN beam passed the drop unboosted (64.78%)."""
+    chain = np.asarray(spine[int(j):])
+    n = len(chain)
+    if n < 2:
+        return None, None
+    parent = np.arange(-1, n - 1, dtype=np.int64)          # one path: each row's parent is the last
+    depth = np.arange(n, dtype=np.int64)                   # ticks since the root
+    c, _n = energy_cell(chain, parent, depth, line, field, d0, -1e9, 1e9, gain_min, **kw)
+    if c is None or int(c["cell"]) < 1:
+        return None, c
+    return int(j) + int(c["cell"]), c
+
+
 def go_explore(a, out: Path, line, end: int, boosts=None, tag: str = "ge", line_keys=None,
                roots=None, pick=None):
     """GE --exact-chains rooted at the line's last --roots-secs before ``end`` (or at the line
@@ -474,6 +500,11 @@ def main(argv=None) -> int:
                          "progress, marked energy (train_fast --auto-spine-energy); 0 = off")
     ap.add_argument("--energy-boost", default="1.0,1.04",
                     help="the energy stage's speed factors (one stage of --ge-boost's syntax)")
+    ap.add_argument("--energy-cut", action="store_true",
+                    help="with --energy-gain G: a depth spine whose GE chain starts from a root "
+                         f"boosted above x{ENERGY_CUT_BOOST:g} is cut at its deepest row keeping >= "
+                         "G u more energy height than the line at the same progress and handed "
+                         "back as an ENERGY spine (energy_cut); no such row = the depth spine")
     ap.add_argument("--ge-select-energy", type=float, default=0.0,
                     help="explore_phase1 --select-energy for the Go-Explore stages: each place's "
                          "most energetic cell drawn (1 + K) times as often (0 = off, as before)")
@@ -633,6 +664,31 @@ def main(argv=None) -> int:
                       f"{gd_.min():,.0f}, cut at {ge_e} d {ge_de:,.0f}", flush=True)
                 if ge_de < a.greedy_d - a.gain:
                     best_src = (f"beam+{tag}", gl[:ge_e + 1], ge_de)
+                    if (getattr(a, "energy_cut", False) and float(a.energy_gain) > 0
+                            and float(gi.get("ge_root_boost", 1.0)) > ENERGY_CUT_BOOST):
+                        # --energy-cut: a chain this boosted asks for speed the policy's own line
+                        # does not have; teach the energy it keeps first (the trainer's energy
+                        # success rule), then let the next search on those weights go deeper
+                        fin = np.isfinite(d)
+                        d0 = float(d[0]) if fin[0] else float(d[fin].max())
+                        r, c = energy_cut(gl[:ge_e + 1], int(gi["ge_root_index"]), line, field,
+                                          d0, a.energy_gain)
+                        if r is not None:
+                            eh = float(energy_height(gl[r:r + 1])[0])
+                            res.update(energy=True, energy_gain=round(float(c["gain"]), 1),
+                                       energy_h=round(eh, 1),
+                                       energy_progress=round(float(c["progress"]), 3),
+                                       energy_cut={"row": int(r), "depth_n": int(ge_e + 1),
+                                                   "depth_end_d": float(ge_de),
+                                                   "root_boost": float(gi["ge_root_boost"])})
+                            best_src = (f"beam+{tag}", gl[:r + 1],
+                                        float(field_d(field, gl[r:r + 1])[0]))
+                            print(f"energy cut: the x{gi['ge_root_boost']:g} chain cut at row {r} "
+                                  f"({c['progress']:.2f}%, h {eh:,.0f}, {c['gain']:+,.0f} u over "
+                                  f"the line) of {ge_e + 1}: an energy spine", flush=True)
+                        else:
+                            print(f"energy cut: no row of the x{gi['ge_root_boost']:g} chain keeps "
+                                  f"{a.energy_gain:g} u over the line: the depth spine", flush=True)
                     break
         if best_src is None and a.ge_minutes > 0 and float(a.energy_gain) > 0:
             # --energy-gain G: no line is deeper, so the gate may be ENERGY lost upstream (pbr5b2:

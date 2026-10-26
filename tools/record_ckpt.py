@@ -116,7 +116,7 @@ TRAIN_ONLY = frozenset({
     "respawn_greedy_contact", "respawn_greedy_energy", "respawn_greedy_energy_secs",
     "demo_success_energy",
     "auto_spine_gain", "auto_spine_envs", "auto_spine_ge_minutes", "auto_spine_extra_secs",
-    "auto_spine_timeout", "auto_spine_energy",
+    "auto_spine_timeout", "auto_spine_energy", "auto_spine_energy_cut",
     # --respawn-greedy-temp: the TRAINING rollout's sampling temperature for greedy-row spawns
     "respawn_greedy_temp", "respawn_greedy_temp_ticks", "respawn_greedy_temp_view",
     # --ge-minutes: a share of the TRAINING spawn pool drawn from the run's own Go-Explore
@@ -710,6 +710,10 @@ def main(argv=None, build_only: bool = False, device=None):
                          "recording (comma list of target surfaces) - a bench that spawns the "
                          "policy part way along its list (with --spawn-states) and must show it "
                          "the targets from THAT point; never used to make training data")
+    ap.add_argument("--spawn-keys", default=None, metavar="F,S,D",
+                    help="a BENCH for --spawn-states with --keys-hold: every episode starts holding "
+                         "these key bins (fwd,side,duck), as a training spine spawn holds its row's "
+                         "--demo-keys (default: neutral, the recorder's old rule)")
     ap.add_argument("--spawn-states", default=None,
                     help="a STATE_DTYPE .npy (a demo spine, or a window of "
                          "one cut from a --dump-states dump by "
@@ -2701,6 +2705,11 @@ def main(argv=None, build_only: bool = False, device=None):
     if keys_hold and cfg.get("keys_hold_spawn_duck"):
         # --keys-hold-spawn-duck: a crouched spawn (a --spawn-states row) holds duck, as in training
         _pol.spawn_duck = True
+    if args.spawn_keys:
+        if not keys_hold:
+            raise SystemExit("--spawn-keys: this checkpoint has no --keys-hold")
+        _pol.spawn_keys = np.asarray([int(x) for x in str(args.spawn_keys).split(",")], np.int32)
+        print(f"--spawn-keys: every episode starts holding key bins {_pol.spawn_keys.tolist()}")
     if locals().get("_psearch") is not None:
         # --plan-search M (--goal-planner primlearn): a scratch core of M envs built like this one,
         # its own fan line, and a fresh greedy wrapper of the SAME executor per simulation

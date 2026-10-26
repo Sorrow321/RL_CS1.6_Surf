@@ -2926,12 +2926,17 @@ class _TorchPolicyBase:
             if self._keys_tick is not None:
                 fresh = tick < self._keys_tick + self._period
                 self.keys.reset(fresh)
-            elif getattr(self, "spawn_duck", False):
+            elif (getattr(self, "spawn_duck", False)
+                  or getattr(self, "spawn_keys", None) is not None):
                 fresh = np.ones(n, bool)
             if getattr(self, "spawn_duck", False) and fresh is not None and fresh.any():
                 # --keys-hold-spawn-duck (the checkpoint's): a crouched spawn holds duck, as
                 # the trainer does
                 self.keys.state[fresh & (np.asarray(self.core.states_view["ducked"]) > 0), 2] = 1
+            if getattr(self, "spawn_keys", None) is not None and fresh is not None and fresh.any():
+                # record_ckpt --spawn-keys (a bench): every fresh episode holds these keys, as a
+                # training spine spawn holds its row's --demo-keys
+                self.keys.state[fresh] = np.asarray(self.spawn_keys, self.keys.state.dtype)
             self._keys_tick = tick.copy()
 
     def act(self, obs):
@@ -4898,6 +4903,15 @@ def main() -> None:
                          "height - G/2, the --demo-success-energy rule) and its quorum counts "
                          "only greedy crossings with that energy; a depth spine goes back to the "
                          "depth rule. Config only when set; not restored")
+    ap.add_argument("--auto-spine-energy-cut", action="store_true",
+                    help="--auto-spine-energy: a depth spine the search found from a Go-Explore "
+                         "root boosted above x1.04 is first cut at its deepest row keeping >= G u "
+                         "more energy height than the policy's line (auto_spine --energy-cut) and "
+                         "taught as an energy spine; the next search on those weights goes deeper "
+                         "(pbr6b3: the x1.12 line past princessburglar's 62.3% drop stalled its "
+                         "depth curriculum at a landing, its energy cut was learned in ~15 min and "
+                         "the next plain beam passed the drop unboosted). Config only when set; "
+                         "not restored")
     ap.add_argument("--demo-cooldown", type=int, default=None,   # None = 20
                     help="--demo-file: iterations between two moves of the curriculum's tau "
                          "(default 20, the reference implementation's constant): every move "
@@ -11708,10 +11722,18 @@ def main() -> None:
                       f"{float(args.auto_spine_energy):g} u more energy height; such a spine "
                       f"succeeds only with its end's energy - "
                       f"{0.5 * float(args.auto_spine_energy):g}")
+                if args.auto_spine_energy_cut:
+                    print(f"--auto-spine-energy-cut: a depth spine from a GE root boosted above "
+                          f"x1.04 is cut at its deepest row keeping >= "
+                          f"{float(args.auto_spine_energy):g} u over the policy's line and taught "
+                          f"as an energy spine first")
     elif args.auto_spine:
         raise SystemExit("--auto-spine needs --demo-file (the first spine) and --demo-success-d")
     if args.auto_spine_energy is not None and not args.auto_spine:
         raise SystemExit("--auto-spine-energy is a stage of --auto-spine's search: give it")
+    if args.auto_spine_energy_cut and args.auto_spine_energy is None:
+        raise SystemExit("--auto-spine-energy-cut keeps --auto-spine-energy G over the line: "
+                         "give it")
     if args.demo_file:
         if float(args.demo_front_frac) > 0.0:
             print(f"--demo-front-frac {args.demo_front_frac:g}: that share of "
@@ -14730,6 +14752,8 @@ def main() -> None:
             meta["config"]["auto_spine_milestones"] = 1
         if args.auto_spine_energy is not None:
             meta["config"]["auto_spine_energy"] = float(args.auto_spine_energy)
+        if args.auto_spine_energy_cut:
+            meta["config"]["auto_spine_energy_cut"] = 1
     if args.demo_milestones:
         meta["config"]["demo_milestones"] = [float(x) for x in
                                              str(args.demo_milestones).split(",") if x.strip()]
@@ -15857,6 +15881,8 @@ def main() -> None:
             cmd += ["--maxvel", f"{float(args.maxvel):g}"]
         if args.auto_spine_energy is not None:
             cmd += ["--energy-gain", f"{float(args.auto_spine_energy):g}"]
+        if args.auto_spine_energy_cut:
+            cmd += ["--energy-cut"]
         t0 = time.time()
         print(f"[{global_step:>13,d}] auto-spine search {AUTO['k']}: " + " ".join(cmd),
               flush=True)
