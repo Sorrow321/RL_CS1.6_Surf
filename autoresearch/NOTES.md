@@ -2373,7 +2373,14 @@ Incumbent: pbr4b3_t11 traj_23590338560 (52.937), weights ckpt_23551016960 (md5 7
   (spawns past the line judged by spawn energy) decides the band.
 * **Gate 19** (61.5%, kill sheet *211 under a room): at the policy's tick the only crossings found need the wall ride
   (+150 u over the line) and x1.2 at 59.67% (GE_wall); spine pbr5b1_x (over the sheet onto the exit platform) - the
-  curriculum learns its landing at ~15%.
+  curriculum learns its landing at ~15%. Then spine pbr5b1_y (the trainer's own x1.08 chain, c10's search): the landing
+  band held 13-16% for ~1.4B steps (c11-c12) while the band before it rose 0 -> 6%, and **the greedy crossed at 31.32B
+  (62.310, 9/9)** - no new mechanism in the last 1.4B steps, only patience on a crossing that exists at the policy's tick.
+* **Next round (6):** resume pbr5b1_c12/ckpt_31323586560.pt (62.310) with c12's flags and spine y (its quorum fires at
+  once: 9/9 past the line). Gate 20 is the drop from the exit platform into kill sheet *210 (z 2010-2028); the trainer's
+  x1.0-1.12 search on the crossing weights found no surviving continuation in 8 min per stage. Search FROM THE PLATFORM's
+  standing states (8,8,7, survival filter, longer than 8 min, x1.2-1.3), and lower --auto-spine-gain to ~150-200 u with
+  --ge-survive. Expect a quorum search to block the trainer for up to its timeout (40 min here).
 * c9 (demo-rate 0.15): band [7873] passes at ~16%, the next band [7868,7872] is 0.0% - the landing's approach is a
   precise few ticks. GE_wall's 19 platform landings and all 1,430 cells past 61.6% come from x1.2 roots (no x1.0 / x1.1
   crossing at the policy's tick): gate 19 needs ~20% more speed than the line has, plus a precise approach.
@@ -2420,6 +2427,17 @@ Incumbent: pbr4b3_t11 traj_23590338560 (52.937), weights ckpt_23551016960 (md5 7
   ~1.36B steps on spine y (c11 + c12) at a 13-16% landing band, no new mechanism - patience on the x1.08 spine. The quorum
   then started auto-spine search 1 (06:21 UTC). The eval's exact weights: c12's ckpt_latest at global_step 31,323,586,560,
   frozen on the box as pbr5b1_c12/ckpt_31323586560.pt (md5 802b37dc...) and pulled.
+* **Gate 20 (62.3%)**: the crossing line drops from the exit platform through the exit hole into ANOTHER kill sheet,
+  trigger_teleport *210 (z 2010-2028, x -3577..-1793, y 2042..2724; a larger *184 lies at z 1663-1842 under it): the
+  last row of every episode is at (-2,124, 2,270, z 2,048) falling at -772 u/s. The x1.08 chain that built spine y died
+  the same way (its replay's end at 62.25%). Where the route goes after the platform is the next round's question.
+* **c12's auto-spine search 1 (06:21-07:01 UTC, on the crossing weights) found nothing past gate 20:** beams 21,569 /
+  21,569 / 21,480 / 21,537 vs the greedy 21,575 (<= 95 u); GE x1.0 / 1.04 / 1.08 / 1.12 surviving chains end at
+  21,550 / 21,551 / 21,514 (fallback: none of the 64 deepest survives) / (x1.12 still running at the wrap-up). Every GE
+  stage logs "best ~19,3xx u" - **do not read that as 66%**: those cells are the fatal fall onto *210 at
+  (-2,156, 2,302, z 2,049), v (-319, 243, -782), and the grader's goalc reads 21,514 at the same spot (ge3_replay); the
+  explorer's archive `dist` is not the grader's d there. The trainer is blocked for the whole search (no evals
+  06:21-07:01): a quorum search started late in a round costs its last evals.
 * Recommendation for the loop (not changed tonight, untested): twice the trainer's own search found the right gate-19
   material 420 u past the greedy and rejected it under --auto-spine-gain 500 (r19's platform route; the x1.08 crossing).
   The gain exists to keep a fatal fall from counting as progress (round 3); with --ge-survive (chains end at surviving
