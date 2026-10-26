@@ -3100,3 +3100,11 @@ the round. (pbr6b3 released its box 19 min early once it stopped improving.)
   71.2% -> **c4 search 1: plain beam to d 15,023 = 73.71%**, 7,200 states, 60 s) | 33.256B **71.690** (best 71.7%,
   median 71.3%). Medians now hold at 71.0-71.3% in 4 of 5 evals: the greedy owns the line to 71.3%, and the beam
   runs ~2.4% further. Hand-on of 71.690: ckpt_33153351680 (the snapshot 103M before it), pulled.
+
+### c4 ends; box released (18:20-19:03 UTC)
+* c4's later evals: 33.331B 71.396 (median 71.3%) | 33.407B 71.500 | 33.482B 71.638 (median 71.0%) | 33.558B
+  26.336 | 33.633B **0.317** | 33.709B **6.638** (the start / early-map collapse, three evals running at the end); done
+  at 33,753,137,152 (avg 239.7k steps/s). Pulled: 11 evals + ckpt_final (md5 002b396e...); spine c4k01 (beam to
+  73.71%) and the loop's 47 milestones in autoresearch/spines/. Box 57837903 released at 19:03 (status: no box).
+* Branch best per run (scorer): a1 62.371 | b1 64.374 | b2 64.801 | b3 64.900 | b4 64.897 | c1 66.225 | c2 67.397 |
+  c3 71.650 | **c4 71.690** (traj_33255587840; hand-on ckpt_33153351680, the snapshot before it).
