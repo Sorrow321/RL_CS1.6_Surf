@@ -3077,3 +3077,9 @@ the round. (pbr6b3 released its box 19 min early once it stopped improving.)
   two hours ago (67.4% -> 72.47%), and the greedy follows each line within ~150-225M steps.
 * Hand-on of 71.638: ckpt_32053395456 (the snapshot before the eval, md5 91ff8a10..., pulled; the next one,
   32.2537B, is 46M after it). Box extended to 19:20 UTC so the final pull happens at the 19:12 wrap-up.
+
+### c3 at the 71.4-72% wall: 71.650 (17:12-17:35 UTC)
+* On search 3's plain beam to 72.47%: 32.359B 71.514 | 32.435B 71.532 (**median 70.7%**, the best median yet) |
+  32.510B **71.650** (best 71.7%) | 32.586B 71.254; the trainer cut the beam's success cliffs at row 7,314 (71.89%,
+  32.512B) and 6,718 (71.37%, 32.641B): the next wall is between 71.4% and 72%. Hand-on of 71.650:
+  ckpt_32453951488 (56M before it, right after the 70.7%-median eval; md5 in the pull log), pulled.
