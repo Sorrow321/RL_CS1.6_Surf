@@ -3212,3 +3212,24 @@ ckpt_35907960832 (md5 160da9eb...), eval 73.590 at 35.918B. Credit at the start:
   ours detours east to the platform (x ~-1,000), stays high (z ~2,090 at 72%), hops, and drops back west later.
 * Look-ahead GE 8 (23:30 UTC): the beam line's own rows 6,610-6,790 (72.5-74.2%) x1.0 / 1.08 / 1.16 - the boost the
   policy's current best line needs at the launch (if x1.08, the loop's own ladder finds it at the quorum).
+* **What stops every line at 74.4% (core hull traces, measurement only):** a block across the corridor (y ~1,500-1,700)
+  with its west face at x ~-853 and its top at standing-hull origin z ~2,137-2,150 (x -853..-800); west of it the pit
+  (a fall lands at z ~1,714 = the level where every greedy episode dies), east of it a floor at z 2,017. Every chain
+  meets the face at z 2,047-2,080 and falls back. Clearing it needs an apex >= ~2,155 from the ~73.5% launch ramp:
+  vz ~600 there (ours 445 at 912 u/s; the record, yardstick, 623 at 1,114 u/s).
+* **Look-ahead GE 8** (the c3 beam line's own rows 6,610-6,790 x1.0 / 1.08 / 1.16): 74.37 / 74.38 / **78.18%** - from the
+  policy's current line x1.16 passes (from e1 it took x1.28). The deepest x1.16 chain (ge_replay 21/21) roots at beam row
+  6,645 (72.9%: the beam's own state at 1,008 -> 1,169 u/s, about the record's speed there) and ends at (1,004, 1,369,
+  1,247) = 78.18%; stitched with the beam line -> d1 (7,275 rows, md5 828108c8...; on the box, not trained). The x1.16
+  root asks ~+160 u/s (~+220 u of energy height) at 72.9%.
+* The policy's own lines at 72.9%: plain beam h 2,468 / 1,007 u/s, two branched beams forked before the launch 2,429, two
+  energy-ranked (`--score dh --score-energy 3`) branched beams forked at 70.0 / 70.4% 2,444-2,449 - all within ~40 u:
+  its population does not carry the energy, and none passes (74.27-74.36%).
+* **The fork (the record as a yardstick):** at 70.5% the record and the policy's beam line are at the SAME point
+  ((-1,299, 3,633-3,635, 2,110-2,117)); the record heads more south (v (502, -874), 1,009 u/s) and within 0.12 s turns
+  to south-south-west ((-255, -984) at 70.8%) onto a downhill surf along x ~-1,300 (z 2,093 -> 1,798 by 72%, 1,030 ->
+  1,223 u/s, h ~2,750 held); the beam (858 u/s) keeps heading south-east ((578, -641) at 70.8%) to the platform at
+  x ~-1,000, hops it (h 2,610 -> 2,497) and reaches 72% at 819 u/s. A speed-preserving air turn of ~45 deg at 70.5% is
+  the difference.
+* Look-ahead GE 9 (23:41 UTC): the beam's own rows 6,330-6,385 (70.3-70.8%) with the velocity turned 0 / -20 / -40 /
+  -60 deg (clockwise, |v| kept: the recipe's front-perturb heading turn, here as search roots), 15 min.
