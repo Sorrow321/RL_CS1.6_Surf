@@ -265,3 +265,11 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   found BY THE TRAINER (run pbr6b3_c2's auto-spine search 2 at 31.226B, 35 s): the POLICY'S OWN plain beam line
   (beam_tas on c2's 31.226B weights, 7.67 ms, 4,096 envs) from the true spawn to d 18,632 = 67.40%. Keys = the beam's own
   held keys. Run pbr6b3_c3 starts on it. No demo, no record (pbr6b3, round 6).
+* `pbr6b3_c3k02.npy` + `.keys.npy` (6,300 rows; md5 d9c6c80cba09e1b0c53266a97baa6d88 / 8d1ab4069d07170a56aec62d9942a664):
+  found BY THE TRAINER (run pbr6b3_c3's auto-spine search 2 at 31.906B, 139 s): the POLICY'S OWN branched beam line
+  (beam_tas on c3's 31.906B weights on an RTX 3090, half the population forked at tick 5,639) from the true spawn to
+  d 16,399 = 71.30%. Keys = the beam's own held keys. c3's greedy reached 71.6% on it (71.638). No demo, no record.
+* `pbr6b3_c3k03.npy` + `.keys.npy` (8,500 rows; md5 7d4744467d8c7717c584b05725105831 / b6c93bdcb4e6419ee4f68e9a83d7886b):
+  found BY THE TRAINER (run pbr6b3_c3's auto-spine search 3 at 32.284B, 59 s): the POLICY'S OWN plain beam line
+  (beam_tas on c3's 32.284B weights, 4,096 envs) from the true spawn to d 15,734 = 72.47%. Keys = the beam's own held
+  keys. The line to continue from. No demo, no record (pbr6b3, round 6).
