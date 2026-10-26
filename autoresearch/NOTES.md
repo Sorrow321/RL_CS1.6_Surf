@@ -2776,3 +2776,15 @@ Germany (machine 56783), rented 08:05 UTC for 2 h.
   corridor before the corner) in ~25 min at 18-53% bands, step 40 on the easy stretches.
 * Search 2 (08:56 UTC on): plain beam d 19,937 (65.1%), branched beams 19,937 / 19,732 (65.47%) / ... / 19,949 - the gain
   rule needs d < 19,683 (500 u past the greedy median 20,183); the GE ladder (3 min stages) runs next.
+* Search 2's result (427 s): GE stage 1 (x1.0 / 1.04, 3 min) - a chain from the branched beam line's row 5,976 (65.47%) x1.04,
+  1,352 ticks, to d 16,970 = **70.31%** -> depth spine k02 (7,328 states, autoresearch/spines/pbr6b4_c9k02), success line
+  70.13%. The chain walks a floor north at x -3,256 at 210-260 u/s (65.5 -> 66.4%), hops slowly for ~400 rows at
+  (-3,306, 3,560, 2,360-2,385) (66.5%), then drops to z ~2,000 and surfs east at 600-740 u/s to 70.3%. The prefix (the
+  policy's branched beam) passes gate 20 itself (the ramp climb at 64.7-65.4%, where 7-9/9 greedy episodes die).
+* c9 evals on k02: 64.813 / 64.829 / 64.827 / 64.835 (30.34-30.56B, medians 64.7-64.8%): the drop is now reliable,
+  gate 20 holds. The curriculum oscillated at k02's [6,702 / 6,707] (21-55%) - inside the explorer's slow hopping,
+  ~730 rows after the chain's root.
+* **pbr6b4_c10** (09:16 UTC): c9's ckpt_latest (30.574B, md5 5db99696...) + spine `pbr6b4_c9k02c` = k02 cut at row 6,300
+  (66.42%, success line 66.25%: one gate past the greedy, before the hopping) + keys, the depth rule, the 24 milestones
+  (+ k02e's 22,014, k01's 20,232, k02's 17,070), NO --auto-spine (a search now would only stop the last evals before the
+  10:09 deadline). Question: does the greedy take gate 20 (the climb) within the box's last ~45 min?
