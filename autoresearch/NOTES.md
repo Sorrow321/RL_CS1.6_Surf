@@ -2966,3 +2966,11 @@ Germany (machine 56783), rented 08:05 UTC for 2 h.
   taught a stretch that neither the greedy (0/18) nor the policy's own sampling (0/36) ever flew - the increments were
   small enough. The lesson of c10 (hand cut at 66.4%, line within a dive's reach, stuck 30 min) and c11 together: keep
   the success line where only the skill reaches it, and let the curriculum make the increments.
+* c11 evals 31.937-32.465B: 71.270 / 71.266 / 71.325 / **71.381 (32.163B, the best)** / 71.290 / 71.158 / 71.189 / 71.132;
+  past-the-line counts 1, 1, 4, 2, 3, 1, **5**/9. At 32.390B (median 70.45%) the quorum fired the loop's search (its 1st in
+  c11): **the PLAIN BEAM on those weights to d 15,471 = 72.93% in 55 s** -> depth spine c11/auto/k01 (9,000 states, md5
+  392147eb..., success line d <= 15,571 = 72.75%), the 70.13% line kept as a milestone; its curriculum walked back from
+  8,999 at 100% bands, step 40 (8,244 by 14:45). That eval's episodes: 5/9 past the walkway, dying at 70.45-71.19% at
+  (-979..-1,176, 3,215-3,675, z 1,718-1,880), onto the next catch sheet (*184, z 1,663-1,842) in the surf section after the
+  hole (the next gate, ~71%); 2/9 on the walkway (65.0-66.0%), 2/9 short of the catch (64.7-64.9%).
+* Hand-on for 71.381: ckpt_31982616576 (180.9M before the eval, md5 dca6920f..., pulled).
