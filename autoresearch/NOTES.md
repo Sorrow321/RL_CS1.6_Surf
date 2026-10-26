@@ -2786,3 +2786,13 @@ fleet's credit was $11.74 against the $10 reserve at the start, so extensions ar
   18,263 / 17,418 = 65.6 / 66.3 / 67.3 / 68.0 / 69.5%), so greedy-spawn and band episodes that pass gate 20 are paid
   before the far success line. Generic rule worth automating: when a spine's band sits at a success cliff near its
   end, cut the spine before the cliff (the next gate only) and let the policy's own search take the cliff later.
+
+### b3: 64.900; a second cliff at 66.0%; b4 on the 66% cut (09:10-09:25 UTC)
+* b3 evals (spine b2k02c, success line 70.1%): 30.195B 64.772 / 30.270B 64.778 / 30.346B 64.795 / **30.421B 64.900**
+  (median 64.8%). The band walked 7,540 -> ~6,720 in ~12 min, then sat at a second cliff: [6,725..6,735] at 0.5-8%,
+  [6,740..] 35-53%, in the chain's walk north along the wall at x -3,561 (on the ground, keys [2,1,0] -> [1,0,0] at
+  6,728; nothing in the state marks it - the cause is not visible from the spine alone). Hand-on for 64.900: b3's
+  ckpt_30394548224 (27M before the eval; md5 8bac378e..., pulled).
+* **pbr6b3_b4** (09:25 UTC) = resume of b3's ckpt_latest (30.478B, md5 ce1016c0...) with the loop on
+  `pbr6b3_b2k02d` = b2k02 cut at row 6,715 (65.96%; success line d <= 19,557 = 65.8%) + the same milestones (+ 17,082).
+  ~40 min of box left: does the band walk back to the greedy's 64.8% frontier and the greedy climb onto the floor?

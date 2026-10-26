@@ -3,18 +3,19 @@
  "round": 6,
  "final": false,
  "best": {
-  "score": 64.801,
-  "eval_file": "/home/steam/ar_pb/runs/pbr6b3/pbr6b3_b2/traj_29948903424.jsonl",
-  "run": "pbr6b3_b2",
-  "step": 29948903424,
-  "ckpt": "/home/steam/ar_pb/runs/pbr6b3/pbr6b3_b2/ckpt_29997662208.pt",
+  "score": 64.9,
+  "eval_file": "/home/steam/ar_pb/runs/pbr6b3/pbr6b3_b3/traj_30421286912.jsonl",
+  "run": "pbr6b3_b3",
+  "step": 30421286912,
+  "ckpt": "/home/steam/ar_pb/runs/pbr6b3/pbr6b3_b3/ckpt_30394548224.pt",
   "recipe": [
    "a1: resume of pbr5b2_c7 ckpt_latest (29.499B) with c7's flags on spine pbr5b2_c7k02 + --demo-tau0 5423 (62.371; the curriculum stuck at k02's landing, 61.7%)",
    "b1: resume of a1 (29.597B) with a1's flags minus --auto-spine*, spine pbr6b3_k02e (k02 cut at row 5430, 61.72%, before the landing) + keys, --demo-success-energy 75, milestones + 20589: the greedy learned the 60% corner / east lane energy (h at 61.7% ~2,475 -> 2,781-2,832 in 7/9) and one episode passed the 62.3% drop (64.374 at 29.749B)",
-   "b2: resume of b1's 29.797B snapshot with a1's loop flags (--auto-spine, energy 150) on k02e under the depth rule: the first eval's quorum ran search 1 - the policy's own PLAIN beam to 64.78% (spine pbr6b3_b2k01, unboosted, 51 s); the greedy followed within 75M steps: 64.789 (29.873B), 64.801 (29.949B, 4/9 past the drop to 64.8%)"
+   "b2: resume of b1's 29.797B snapshot with a1's loop flags (--auto-spine, energy 150) on k02e under the depth rule: the first eval's quorum ran search 1 - the policy's own PLAIN beam to 64.78% (spine pbr6b3_b2k01, unboosted, 51 s); the greedy followed within 75M steps: 64.789 (29.873B), 64.801 (29.949B, 4/9 past the drop to 64.8%)",
+   "b2 search 2 (30.10B): beam + an UNBOOSTED GE chain to 70.74% (spine pbr6b3_b2k02); its curriculum stalled at a 70.3% air-turn cliff -> b3 = the loop on b2k02 cut at row 7,540 (pbr6b3_b2k02c) + milestones every ~1% along the chain: 64.900 (30.421B); its band then hit a second cliff at 66.0% -> b4 on b2k02 cut at row 6,715 (pbr6b3_b2k02d)"
   ],
-  "resume_from": "pbr6b3_b1 ckpt_29797384192 (29.797B) <- pbr6b3_a1 29.597B <- pbr5b2_c7 ckpt_latest 29.499B",
-  "commit": "bfeee48"
+  "resume_from": "pbr6b3_b2 ckpt_latest 30.194B <- b1 29.797B <- a1 29.597B <- pbr5b2_c7 29.499B",
+  "commit": "c591fa2"
  },
- "summary": "a1 = c7's loop on k02: 62.371, stuck at k02's landing (61.7%). Diagnosis: the greedy lands on the corridor floor at 59.9% (-340 u) and takes the west strip; k02 deflects off the north wall into the airborne east lane. b1 = k02 cut before the landing (pbr6b3_k02e) + --demo-success-energy 75: the greedy learned the east lane's energy in ~15 min (h at 61.7% ~2,475 -> 2,78x-2,83x), 64.374, then collapsed at 29.900B (forgetting at 20.4%). b2 = the loop from b1's 29.797B snapshot: its first search's PLAIN beam passed the drop unboosted (64.78%); the greedy followed in 75M steps: 64.789 / 64.801 (4/9 to 64.8%, gate 20: a fall into the *210 catch sheet at (-3,350..-3,400, 2,631)). The energy-first-then-own-search sequence of gate 17, here with a hand cut of the loop's boosted depth spine."
+ "summary": "a1 = c7's loop on k02: 62.371, stuck at k02's landing (61.7%). Diagnosis: the greedy lands on the corridor floor at 59.9% (-340 u) and takes the west strip; k02 deflects off the north wall into the airborne east lane. b1 = k02 cut before the landing (pbr6b3_k02e) + --demo-success-energy 75: the greedy learned the east lane's energy in ~15 min (h at 61.7% ~2,475 -> 2,78x-2,83x), 64.374, then collapsed at 29.900B (forgetting at 20.4%). b2 = the loop from b1's 29.797B snapshot: its first search's PLAIN beam passed the drop unboosted (64.78%); the greedy followed in 75M steps: 64.789 / 64.801 (4/9 to 64.8%, gate 20: a fall into the *210 catch sheet at (-3,350..-3,400, 2,631)). The energy-first-then-own-search sequence of gate 17, here with a hand cut of the loop's boosted depth spine. Then: search 2 found an unboosted GE line past gate 20 to 70.74%; cut before two curriculum cliffs (70.3%, 66.0%): b3 64.900 (30.421B); b4 running on the 66% cut."
 }
