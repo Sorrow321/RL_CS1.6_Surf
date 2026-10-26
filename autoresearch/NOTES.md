@@ -3108,3 +3108,40 @@ the round. (pbr6b3 released its box 19 min early once it stopped improving.)
   73.71%) and the loop's 47 milestones in autoresearch/spines/. Box 57837903 released at 19:03 (status: no box).
 * Branch best per run (scorer): a1 62.371 | b1 64.374 | b2 64.801 | b3 64.900 | b4 64.897 | c1 66.225 | c2 67.397 |
   c3 71.650 | **c4 71.690** (traj_33255587840; hand-on ckpt_33153351680, the snapshot before it).
+
+### pbr6b3 round 6 lesson (wrap-up, 2026-10-26 19:13 UTC) - supersedes the DRAFT above
+* **Score 62.369 -> 71.690** (c4 33.256B, median 71.3%; c3 71.650, c2 67.397, c1 66.225, b3 64.900). Gates passed: 19 (the 62.3% drop), 20 (the climb at 64.8%), the 66.2%
+  and 67.4% walls, and the greedy now owns the line to ~71.3% (medians 71.0-71.3% in most evals); the loop's own
+  plain beam reaches 73.71%. Box time: ~1.7 h on a 4080 (08:05-09:45), then (after the credit came back at 13:42)
+  ~5 h: a 5060 Ti (13 min, no run), a 5070 Ti (14:15-15:57) and a 3090 (16:00-19:03). 0 finishes.
+* **What worked, in order of effect:**
+  1. **The trainer's own loop with two automations from this round, unattended for ~5 h**: `--demo-cliff-cut 4`
+     (the curriculum's success cliffs in explorer crawls AND in beam lines, cut by the trainer - 3 cuts in c1's first
+     13 min matching the hand cuts of b3 / b4 to within 6 rows; 10 more over c2-c3 alone) + the auto-spine quorum ->
+     search -> swap: c1 64.9 -> 66.2%, c2 -> 67.4%, c3 -> 71.6%, c4 -> 71.7%, each new beam line learned by the
+     greedy within ~75-225M steps. The policy's own plain / branched beam took over from the explorer crawl at
+     gate 20 as soon as the greedy had crossed the climb's start.
+  2. **The energy cut + energy rule at gate 19** (b1, by hand; now `--auto-spine-energy-cut`) and the loop's plain
+     beam passing the drop unboosted (b2).
+  3. `--target-kl 0.3` (new on this map): no KL-spike collapse in ~3.5B steps; the dips that remained (below) were
+     not KL events.
+* **What did not / what to fix next:**
+  - **The greedy start is fragile**: in ~1 eval of 4 the greedy loses the start-ledge climb at x 649 (0.4%) or the
+    early map (21-25%) and the eval collapses, then recovers the next eval; the sampled policy never shows it.
+    Generic candidates: a share of the training spawns at the true start that does not shrink as the band walks
+    upstream, or an eval-side check that a collapse is not training on (the score takes the best eval, but the loop
+    loses that eval's quorum).
+  - **A cliff cut can land behind the greedy's frontier** (beam states at a contact differ from the greedy's):
+    cost one 35-60 s re-search; a guard "never cut a line the greedy already passes" would save the restart.
+  - **Boxes**: one 5060 Ti with a ~15 KB/s link (blocklisted `network`), one 5070 Ti that rebooted twice mid-run
+    (blocklisted `unreliable`); `pgrep -f` over ssh matches itself - check liveness with `ps | grep '[t]rain_fast'`
+    and nvidia-smi.
+  - The loop's energy stage at gate 20 would root before upstream losses (offline probe): if it ever runs there,
+    expect an energy spine far behind the frontier.
+* **Generic rules learned:** (1) let the trainer cut its curriculum at success cliffs and re-search on the new
+  weights instead of teaching a whole explorer crawl - the policy's own beam takes over within a search or two;
+  (2) energy first where a boosted root is needed (gate 19), depth otherwise; (3) hand on the snapshot before the
+  best eval, and keep ckpt_latest of a search (saved at the eval's own step) under its step name when it matters.
+* **To continue:** resume the hand-on (`runs/pbr6b3/pbr6b3_c4/ckpt_33153351680.pt`, md5 8e3f8132...) with c4's flags on the loop's last spine (autoresearch/spines/pbr6b3_c4k01 = the
+  plain beam to 73.71%) and its milestones (pbr6b3_c4k01.milestones.txt); the launch line is c4's
+  (`--auto-spine-energy-cut --demo-cliff-cut 4 --target-kl 0.3` + b3's flag set).
