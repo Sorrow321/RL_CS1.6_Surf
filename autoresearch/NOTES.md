@@ -2931,8 +2931,8 @@ spine left whole, the trainer passing `--cut-ahead`, both refusals, TRAIN_ONLY).
   (per-head PPO), or floor the yaw sigma as --pitch-sigma-min floors the pitch. Watch act/fwd_air and the
   entropy loss each iteration: both rose together with the reward's fall in every dip.
 * How far past the clip an update runs, from the logs: train/approx_kl is the k1 estimate mean(old logp - new logp)
-  of the JOINT log-prob on the update's LAST minibatch (64 of 64 steps, read before its own step). In calm phases
-  it sits at 0.03-0.10 in every run of the round (c5's 10M-bin medians), i.e. an RMS per-row log-ratio of ~0.25-0.45
+  of the JOINT log-prob on the update's LAST minibatch (64 of 64 steps, read before its own step). Its median is
+  0.04-0.11 in all seven runs of the round (10M-bin medians 0.03-0.20), i.e. an RMS per-row log-ratio of ~0.3-0.45
   against the clip's [ln 0.8, ln 1.2] = [-0.22, +0.18]: by the update's end a large share of rows is past the clip
   (for a single Gaussian head moved by that KL, ~50% of rows, half of them in the advantage's direction and so with
   no gradient on ANY head). Which head moves them is not in the logs; that split is the measurement to make first.
