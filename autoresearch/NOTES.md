@@ -2345,3 +2345,18 @@ The trainer used ~12 of the box's 30.7-CPU quota, so each stage ran beside it at
 * GE_r1 (04:15 UTC, 15 min beside c7): 32 roots = GE#2's most energetic viable cells at 52.8-53.7% (h 2,985-3,017,
   before e1's steep fall) - a tangential approach to the 54.5% ramp that keeps >= 2,740 to the shaft entry? For the
   next round if not this one.
+
+### Why c3 / c6 / c7 lost the start room: the update KL ran away (04:35 UTC)
+* c7 (c5's exact config from c5's final weights) collapsed as well: 56.588 / 56.584 / 56.580, then 0.421 / 0.137
+  (25.86-25.94B: 9/9 die in the start room at 0.7-1.5 s). So K 24 was not the cause of c6's collapse.
+* Training KL, median per quarter of each run: c4 0.049 / 0.055 / 0.061 / 0.050 (stable; spikes to 5.8 do happen);
+  c5 0.061 / 0.068 / 0.095 / **0.153** (climbing); c6 0.22-0.36; c7 0.15-0.40 with single updates at 2.6 and 4.1. The
+  policy drifted into an unstable regime during c5 (the shaft spine: its band at the boosted root succeeds 88-94% and
+  pays the success bonus + milestones on most band episodes; the yaw head's sigma is ~0.01-0.03 rad, so small mean
+  shifts are large KL), and every run continuing from c5's end collapsed within ~150-250M steps. c3 (m1's full line)
+  is likely the same failure.
+* **Warning for the next round:** c5's final weights (the hand-on checkpoint for 56.594) sit at a training KL of ~0.15-
+  0.18. Resume them with PPO's target-KL early stop on (or a lower learning rate), not bare.
+* **pbr5b4_c8** (04:36 UTC): c5's final weights + c5's flags + `--target-kl 0.05` (Schulman 2017 / SB3: an update stops
+  once its approx KL exceeds 0.075; existing flag, TRAIN_ONLY) - does it hold the route to the wrap-up?
+* GE_r1 (from GE#2's smooth-landing cells at 52.8-53.7%): the 54.5% ramp loss stays (viable max h 2,353 at 54.5-55%).
