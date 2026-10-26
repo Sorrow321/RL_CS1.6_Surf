@@ -2808,3 +2808,54 @@ fleet's credit was $11.74 against the $10 reserve at the start, so extensions ar
   ckpt_29797384192 (the 64.374 hand-on) + ckpt_latest (the collapsed 29.902B), b2's ckpt_29997662208 (the 64.801
   hand-on), b3's ckpt_30394548224 (the 64.900 hand-on, md5 8bac378e...), a1's ckpt_latest; b2's auto/ (k01, k02 +
   their logs) by scp. Branch best **64.900** (b3 30.421B).
+
+### pbr6b3 round 6 lesson (DRAFT, 09:55 UTC; finalised at wrap-up)
+* **Score 62.369 -> 64.900** (b3 30.421B; 64.801 / 64.789 / 64.780 / 64.771 from b2-b3 before it, 64.374 from b1).
+  Gates passed: 19 = the 62.3% drop (the 60% corner + the airborne east lane, then the policy's own beam line), and a
+  first step past gate 20 (64.8%). ~1.7 box-hours in all (one RTX 4080, 08:05-09:45 UTC), the fleet's credit at the
+  reserve after that.
+* **What worked, in order of effect:**
+  1. **An energy cut of the loop's boosted depth spine** (b1): c7's x1.12 line past the drop (k02) stalled its depth
+     curriculum for ~50 min at a landing 2.5% short of its end (a1 / c7). The same line cut at its last row keeping
+     +250 u over the greedy (61.72%, before that landing), taught with `--demo-success-energy 75` (the loop's G/2),
+     walked back ~1,700 rows in ~15 min - past the x1.12 root, which never stalled - and the greedy's energy at 61.7%
+     went ~2,475 -> 2,78x-2,83x. On those weights the loop's next search found the drop with the PLAIN BEAM (64.78%,
+     51 s, unboosted) and the greedy followed in 75M steps (b2: 64.789 / 64.801). Gate 17's sequence again (energy
+     first, then the policy's own search); now automated as `train_fast --auto-spine-energy-cut` (below).
+  2. **The diagnosis that made the cut**: the greedy was NOT short of energy upstream - it reached 59.5% with the beam
+     line's h ~2,786 and lost ~340 u in ONE floor landing at 59.9%, then took the west strip (the record's route,
+     ANALYSIS ONLY, and k02's chain take the east lane airborne). Per-progress energy profiles of the greedy vs the
+     spine (first arrival) found it in minutes.
+  3. **The loop on unboosted GE at gate 20** (b2 search 2): the depth ladder's stage 1 (x1.0 / 1.04) found an x1.0
+     chain to 70.74% (onto a floor further west, then a walk north); cut before its curriculum's success cliffs (b3:
+     70.3% -> 64.900; b4: 66.0%) the band walked back but met a new cliff every few hundred rows of the explorer's
+     15 s crawl; the box ran out before the greedy followed.
+* **What did not:** continuing c7's k02 depth curriculum (a1: the [5,413] cliff, 0-6% success, never passed in ~35 min
+  over c7 + a1); waiting at curriculum cliffs; lr 3e-4 with a band far upstream (b1 collapsed at 29.900B: 9/9 greedy
+  episodes at the 20.4% catch, ~75M steps after a 64.374 eval - keep the snapshot between two healthy evals, never
+  the latest, as the hand-on).
+* **Generic rules learned:** (1) when the loop hands back a depth spine from a boosted root, teach its energy first: cut
+  it at its deepest row keeping >= G over the policy's line (that cut also lands before the chain's next energy-losing
+  contact, which is usually where its depth curriculum would stall) - now one flag; (2) a curriculum "success cliff"
+  (the band's success falling from 30-60% to ~0% within 5-10 rows) is a contact the policy does not reproduce from a
+  spawn just before it; cut the spine before it and let the next search take it; (3) the hand-on is a snapshot
+  between two healthy evals.
+
+### What a curriculum "success cliff" is (10:06-10:12 UTC, local CPU probe; new `record_ckpt --spawn-keys`)
+* `record_ckpt --spawn-states <one spine row> --spawn-keys <that row's --demo-keys>` (new bench option, commit
+  9c1c02e: a recording spawn holds the row's keys as a training spine spawn does) with b3's 30.39B weights (trained on
+  b3's band at exactly this place), 6 stochastic episodes per row, k02 rows 6,715-6,750 (b3's cliff at [6,725..6,735]):
+  - the chain WALKS north for ~7 s (rows ~6,000-6,860) along a ~40 u ledge at x -3,561 (z 2,389) hugging the west
+    wall at 85-258 u/s, and leaves it east only at y ~3,440 (66.4%);
+  - from EVERY probed row the policy leaves the chain within 26-43 ticks (0.2-0.33 s), stepping EAST off the ledge
+    (x -3,505..-3,521). From rows 6,715-6,735 (y 3,268-3,307) it falls off the edge at y ~3,310-3,330 (44 ticks,
+    fail at 66.1%) or jumps up and dies at 66.3-66.4%; from rows 6,742-6,750 (y >= 3,320) the same eastward
+    departure often lands: 67.2-67.3% in 5/12 episodes (where the chain itself goes at 67.28%).
+* So a cliff is the place where the POLICY'S OWN preferred departure from an idiosyncratic explorer path stops being
+  fatal - not a skill the policy lacks at the cliff, and not a state-copy artefact (the spine rows carry no stuck
+  ticks or base velocity). The band before the cliff asks the policy to imitate the explorer (walk the ledge 0.2-0.5 s
+  longer) for ~5% success. Explorer crawls (b2k02: 15 s of walking and slow hops) are full of such places; beam lines
+  (the policy's own population) are not, which is why the beam spines k01 / b2k01 walked back without cliffs.
+* For the lineage: prefer the policy's own beam over an explorer chain wherever the beam reaches; when a GE chain is
+  needed, cut it before the first cliff and re-search on the new weights (the beam then usually takes the policy's own
+  line), rather than teach the whole crawl.
