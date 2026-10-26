@@ -2221,6 +2221,59 @@ def spine_energy_rule(res, end_state, gain):
             - 0.5 * float(gain))
 
 
+# --auto-spine-root-energy: the ladder's x1.04 stage roots were learned as plain depth spines
+# (princessburglar's gates 8 and 20); from x1.08 on, a depth curriculum stalled at the root
+# (gate 15's x1.12, gate 17's x1.08, gate 19's x1.12) until the energy was taught first
+ROOT_ENERGY_MIN_BOOST = 1.06
+
+
+def root_energy_spine(spine, root_idx, boost, sample, success_d, margin):
+    """--auto-spine-root-energy M (pbr7b3, 2026-10-26): the ENERGY spine that teaches a depth
+    spine's boosted root first -> None, or {"spine": the rows to teach, "n": their count, "line":
+    the success line d, "h_min": the energy floor, "root": the root row, "h_root": the boosted
+    root's energy height}.
+
+    auto_spine splices a Go-Explore chain onto the policy's line at row ``root_idx`` (that row is
+    the line's own, unboosted state) and the chain starts from that state with its velocity x
+    ``boost``. The energy spine is the depth spine up to the first row ``c`` past the root whose d
+    is ``success_d`` deeper than every row up to the root, with the root row boosted as the chain
+    flew it: its success line (d(c) + ``success_d``) is then reached only on the chain's own rows,
+    and the floor is the least energy height the chain holds from the boosted root to row c, less
+    ``margin``. An episode succeeds when it ARRIVES at the chain with the chain's energy - the
+    energy the boost gave the explorer for free. ``sample`` maps (N, 3) positions to d."""
+    j = int(root_idx)
+    if not (float(boost) > 1.0) or j < 1 or j >= len(spine) - 2:
+        return None
+    o = np.asarray(spine["origin"], np.float64)
+    d = np.asarray(sample(o), np.float64)
+    pre = float(np.min(d[:j + 1]))
+    past = np.flatnonzero(d[j + 1:] + float(success_d) < pre)
+    if not len(past):
+        return None
+    c = j + 1 + int(past[0])
+    e = np.array(spine[:c + 1], copy=True)
+    e[j]["velocity"] = (np.asarray(e[j]["velocity"], np.float64)
+                        * float(boost)).astype(e["velocity"].dtype)
+    v = np.asarray(e["velocity"][j:], np.float64)
+    h = np.asarray(e["origin"][j:, 2], np.float64) + (v * v).sum(axis=1) / 1600.0
+    return {"spine": e, "n": int(c + 1), "line": float(d[c]) + float(success_d),
+            "h_min": float(h.min()) - float(margin), "root": j, "h_root": float(h[0])}
+
+
+def root_boost_of(res):
+    """--auto-spine-root-energy: (root row, boost) of a search result whose spine ends in a
+    Go-Explore chain (source "beam+ge", "beam+ge2", ...), else None - the stage's own keys
+    (ge_root_index / ge_root_boost, ge2_root_index / ...) in auto_spine's AUTO_SPINE json."""
+    src = str((res or {}).get("source") or "")
+    tag = src.split("+")[-1] if "+" in src else ""
+    if not tag.startswith("ge") or tag == "ge_energy" or (res or {}).get("energy"):
+        return None
+    j, b = res.get(f"{tag}_root_index"), res.get(f"{tag}_root_boost")
+    if j is None or b is None:
+        return None
+    return int(j), float(b)
+
+
 def stall_cut_plan(spine, cut, sample, success_d, greedy_d, gain):
     """--demo-stall-cut (pbr6b4, 2026-10-26): the cut of a stalled curriculum's spine at row ``cut``
     (the rows after it go) -> {"line": the cut's success line d(row cut) + ``success_d``, "h_min":
@@ -4998,6 +5051,16 @@ def main() -> None:
                          "height - G/2, the --demo-success-energy rule) and its quorum counts "
                          "only greedy crossings with that energy; a depth spine goes back to the "
                          "depth rule. Config only when set; not restored")
+    ap.add_argument("--auto-spine-root-energy", type=float, default=None,   # None = off
+                    help="--auto-spine with --auto-spine-energy: M >= 0 - a depth spine the "
+                         "search spliced onto a Go-Explore chain from a BOOSTED root (x"
+                         f"{ROOT_ENERGY_MIN_BOOST:g} or more: the ladder's x1.08 / x1.12 stages) "
+                         "is held back, and an energy spine is taught first: the line up to the "
+                         "chain's first rows, the root boosted as the chain flew it, success "
+                         "only on arriving at the chain with its energy height - M (the energy "
+                         "the boost gave the explorer). When the quorum's greedy crossings carry "
+                         "it, the held depth spine is swapped in (no new search). Config only "
+                         "when set; not restored")
     ap.add_argument("--demo-stall-cut", type=float, default=0.0,   # 0 = off
                     help="--auto-spine with --auto-spine-energy G: STEPS > 0 - when the backward "
                          "curriculum's tau reaches no new minimum for STEPS env steps, the spine "
@@ -11854,6 +11917,18 @@ def main() -> None:
               f"no new minimum for that many steps is cut {int(args.demo_window)} states before "
               f"it (energy rule - {float(args.auto_spine_energy):g} u if the greedy already "
               f"crosses the cut's line, else the depth rule)")
+    if args.auto_spine_root_energy is not None:
+        if not (args.auto_spine and args.auto_spine_energy is not None):
+            raise SystemExit("--auto-spine-root-energy teaches an --auto-spine depth spine's "
+                             "boosted root with the energy rule: give --auto-spine and "
+                             "--auto-spine-energy")
+        if float(args.auto_spine_root_energy) < 0.0:
+            raise SystemExit("--auto-spine-root-energy M: the margin must be >= 0")
+        print(f"--auto-spine-root-energy {float(args.auto_spine_root_energy):g}: a depth spine "
+              f"from a Go-Explore root boosted x{ROOT_ENERGY_MIN_BOOST:g} or more is held back; "
+              f"first an energy spine to the chain's first rows (success only with the chain's "
+              f"energy height - {float(args.auto_spine_root_energy):g}), then, on its energetic "
+              f"quorum, the held depth spine")
     if args.demo_file:
         if float(args.demo_front_frac) > 0.0:
             print(f"--demo-front-frac {args.demo_front_frac:g}: that share of "
@@ -14880,6 +14955,8 @@ def main() -> None:
             meta["config"]["auto_spine_energy"] = float(args.auto_spine_energy)
         if float(args.demo_stall_cut or 0.0) > 0.0:
             meta["config"]["demo_stall_cut"] = float(args.demo_stall_cut)
+        if args.auto_spine_root_energy is not None:
+            meta["config"]["auto_spine_root_energy"] = float(args.auto_spine_root_energy)
     if args.demo_milestones:
         meta["config"]["demo_milestones"] = [float(x) for x in
                                              str(args.demo_milestones).split(",") if x.strip()]
@@ -16011,6 +16088,43 @@ def main() -> None:
         pat = (float(args.auto_spine_patience) > 0
                and global_step - AUTO["last"] >= float(args.auto_spine_patience))
         go = (quorum or pat) and global_step >= AUTO["retry_at"]
+        if AUTO.get("held") is not None and quorum:
+            # --auto-spine-root-energy: the greedy now ARRIVES at the boosted root's chain with
+            # its energy, so the depth spine held back at the search goes in - no new search, it
+            # is the line past the gate the search found
+            print(f"[{global_step:>13,d}] auto-spine: {m}/{len(eps)} greedy episodes reach the "
+                  f"root's chain with its energy (d <= {DEMO_END_D:,.0f}"
+                  + (f", h >= {DEMO_H_MIN:,.0f}" if DEMO_H_MIN is not None else "")
+                  + f"); greedy frontier {med:,.0f}  -> the HELD depth spine",
+                  flush=True)
+            hd, AUTO["held"] = AUTO["held"], None
+            demo.reset_spine(hd["spine"])
+            if DEMO_KEYS[0] is not None or hd["keys"] is not None:
+                DEMO_KEYS[0] = hd["keys"]
+            if args.auto_spine_milestones:
+                MILES[0] = np.append(MILES[0], float(DEMO_END_D))
+                print(f"[{global_step:>13,d}] auto-spine milestones: "
+                      + ", ".join(f"{v:,.0f}" for v in MILES[0]), flush=True)
+            DEMO_END_D, DEMO_H_MIN = float(hd["line"]), None
+            DEMO_PAID[0] = None
+            DEMO_OK[0] = DEMO_OK[1] = None
+            ALV[:] = [None, None, None, None, None]
+            demo_idx[:] = -1
+            AUTO["last"] = int(global_step)
+            AUTO["retry_at"] = 0
+            adir = out / "auto"
+            adir.mkdir(parents=True, exist_ok=True)
+            (adir / "current.json").write_text(json.dumps(
+                {"step": int(global_step), "k": AUTO["k"], "spine": hd["res"].get("spine"),
+                 "success_d": DEMO_END_D, "milestones": [float(v) for v in MILES[0]],
+                 "energy_h_min": None, "root_energy": "released", **hd["res"]},
+                indent=1), encoding="utf-8")
+            print(f"[{global_step:>13,d}] --auto-spine-root-energy: the held depth spine from "
+                  f"{hd['res'].get('source')} ({demo.n} states, end d {hd['end_d']:,.0f}); "
+                  f"success line d <= {DEMO_END_D:,.0f}; the curriculum restarts at its end",
+                  flush=True)
+            STALL["tau"] = None
+            return
         print(f"[{global_step:>13,d}] auto-spine: {m}/{len(eps)} greedy episodes past the "
               f"success line d <= {DEMO_END_D:,.0f}; greedy frontier (median deepest d) "
               f"{med:,.0f}" + ("  -> SEARCH" + (" (patience)" if pat and not quorum else "")
@@ -16108,6 +16222,38 @@ def main() -> None:
                      f"policy's line): success only with energy height >= {DEMO_H_MIN:,.0f}"
                      if DEMO_H_MIN is not None else "a depth spine: the depth success rule"),
                   flush=True)
+        if args.auto_spine_root_energy is not None:
+            # --auto-spine-root-energy: a new spine replaces whatever was held back; a depth spine
+            # whose chain starts from a boosted root is itself held back behind an energy spine
+            AUTO["held"] = None
+            _rb = root_boost_of(res) if DEMO_H_MIN is None else None
+            _re = (root_energy_spine(demo.S, _rb[0], _rb[1], _f.sample,
+                                     float(args.demo_success_d),
+                                     float(args.auto_spine_root_energy))
+                   if _rb is not None and _rb[1] >= ROOT_ENERGY_MIN_BOOST else None)
+            if _rb is not None:
+                print(f"[{global_step:>13,d}] --auto-spine-root-energy: the chain's root is row "
+                      f"{_rb[0]} x{_rb[1]:g}" + ("" if _re is not None else
+                                                  " - taught as a depth spine"), flush=True)
+            if _re is not None:
+                AUTO["held"] = {"spine": np.array(demo.S, copy=True),
+                                "keys": (None if DEMO_KEYS[0] is None
+                                         else np.array(DEMO_KEYS[0], copy=True)),
+                                "line": float(DEMO_END_D), "end_d": _de, "res": res}
+                demo.reset_spine(_re["spine"])
+                if DEMO_KEYS[0] is not None:
+                    DEMO_KEYS[0] = np.asarray(DEMO_KEYS[0][:_re["n"]], np.int32)
+                DEMO_END_D, DEMO_H_MIN = _re["line"], _re["h_min"]
+                DEMO_OK[0] = DEMO_OK[1] = None
+                _en = {"energy_h_min": DEMO_H_MIN,
+                       "root_energy": {k: _re[k] for k in ("n", "line", "h_min", "root",
+                                                           "h_root")}}
+                _hc = _re["h_min"] + float(args.auto_spine_root_energy)
+                print(f"[{global_step:>13,d}] --auto-spine-root-energy: the depth spine is HELD; "
+                      f"first an energy spine to row {_re['n'] - 1} (the root's energy height "
+                      f"{_re['h_root']:,.0f}, the chain's least to there {_hc:,.0f}): success "
+                      f"only on crossing d <= {DEMO_END_D:,.0f} with energy height >= "
+                      f"{DEMO_H_MIN:,.0f}", flush=True)
         (adir / "current.json").write_text(json.dumps(
             {"step": int(global_step), "k": AUTO["k"], "spine": res["spine"],
              "success_d": DEMO_END_D, "milestones": [float(v) for v in MILES[0]], **_en, **res},
@@ -16144,6 +16290,7 @@ def main() -> None:
                   flush=True)
             return
         old = float(DEMO_END_D)
+        AUTO["held"] = None               # --auto-spine-root-energy: a cut ends the held phase
         demo.reset_spine(np.array(demo.S[:cut + 1], copy=True))
         if DEMO_KEYS[0] is not None:
             DEMO_KEYS[0] = np.asarray(DEMO_KEYS[0][:cut + 1], np.int32)
