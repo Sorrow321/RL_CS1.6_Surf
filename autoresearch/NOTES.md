@@ -3207,3 +3207,18 @@ Independence: only this branch and $AR_HOME/incumbent/ are read. c12's later wei
 * Hand-on for 74.078: ckpt_38072221696 (154.7M before the eval, md5 77019fe4..., pulled). Box extended to 02:23 UTC
   (a gate the incumbent never cleared).
 * The curriculum at [6,354 / 6,359] (29-34%), the beam line's turn at 70.3%, where the greedy left the line.
+* 23:47 UTC: c17 evals 38.680-39.057B 73.4-73.6 / **74.042** (39.057B), 0/9 past k01b's line (74.09%) every time; the
+  curriculum walked the beam's approach back to [6,284] (69.5%). **The chain's end is a dead end**: k01b's last rows
+  are a ballistic flight east at 443 u/s (z 2,111 -> 2,061 at x -1,167..-967, vz -104..-296) that falls below the
+  passage (the field: open at z >= ~2,050 from x ~-820 east, y 1,476-1,668) before it gets there - the GE's deepest
+  cell, mid-fall. The greedy flies it and falls at 73.9-74.08%, so the quorum may never come. The record (ANALYSIS
+  ONLY) crosses there at 925-958 u/s rising to z 2,119-2,150: the next gate is ENERGY again (~+450 u of h at the
+  climb: the chain's 2,240 vs the record's ~2,700; the chain loses ~320 u in its 71.6% ramp bounce).
+* So the search is run BY HAND, in the background on the box (c17 keeps training; the async idea without a relaunch):
+  tools/auto_spine.py on a copy of c17's ckpt_latest (39.167B) with the loop's settings (--gain 500 --envs 4096
+  --ge-minutes 5 --energy-gain 150, --near-gain 100, the beam ticks / branch tick from the 39.057B eval by the trainer's
+  arithmetic) but **--greedy-d 14,808 = k01b's success line** instead of the greedy median (15,397): measured from
+  the median, the plain beam's ~74.1% line would already "beat the greedy by 500 u" and come back SHALLOWER than k01b.
+  Expected: the depth ladder fails, the energy stage roots before the line's largest losses (the bounce) -> an energy
+  spine for the next launch. (tools/auto_spine.py updated on the box from 56fbd80 only: a full redeploy could rebuild
+  the core under the running trainer.) Out: runs/pbr7b4_c17/manual_k01/.
