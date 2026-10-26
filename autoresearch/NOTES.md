@@ -3159,3 +3159,9 @@ Independence: only this branch and $AR_HOME/incumbent/ are read. c12's later wei
   6449` + **`--target-kl 0.15`** (the trainer's PPO early stop, SB3's target_kl, already in the code and off in this
   lineage until now: an update stops once its KL passes 0.225 - above c12's p90, so normal updates run whole and only
   the spikes are cut). Same box. A stability fix, generic (no map constant).
+* c14's last eval 36.924B: **55.654** (median 55.5%) - a third collapse; c15's first eval at its resume (36.978B, c14's
+  ckpt_latest): median deepest d 24,697 (56.8%), i.e. the weights c15 resumed were collapsed. --target-kl did cut the
+  spikes (9/25 and 7/25 updates stopped early in c15's first 50 iterations, kl up to 0.846 before the stop). c15 stopped
+  after 2 minutes.
+* **pbr7b4_c16** (21:59 UTC): c15's flags (incl. --target-kl 0.15, tau0 6449) from **c14's snapshot ckpt_36870553600**
+  (36.871B, 23M steps after c14's last healthy eval 71.517 at 36.848B; md5 52c56ce3...).
