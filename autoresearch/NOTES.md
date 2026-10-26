@@ -2741,3 +2741,45 @@ Incumbent: pbr5b2_c7 ckpt_29123674112 (62.369, md5 afb44185...).
   (md5 0947dbca...), success = d <= 22,270 with h >= 2,522. k02's x1.12 chain had ~2,720 there.
 * Evals 29.200B **62.373** / 29.275B 62.366 / 29.351B 62.354 (the search's eval). The curriculum on the energy spine
   walked back 5,435 -> 5,320 in ~3 min, then sat at the chain's floor landing (band [5,320] 2.2% -> [5,335] 36%).
+* a1 evals on the energy spine: 29.426B 62.363 / 29.501B 62.369 / 29.577B 62.346 / 29.653B 62.368 (all 9/9 at
+  61.7-62.4%, the greedy's h at 60% unchanged ~2,45x-2,50x, 0/9 energetic crossings), then **EROSION**: 29.728B
+  62.321 (median 26.2%: 5/9 die early - 1.4% in the start room, 21.5%, 24.1-26.3%) and 29.804B (8/9 at gate 9:
+  20.7-21.0% at ~17.7 s, the catch after the corridor U-turn at (940-1,100, -2,860..-3,100, z ~2,400)) - a gate this
+  lineage had flown 9/9 since round 3. Training: episode reward ~300-460 before the swap -> ~200 after; value loss
+  ~20-60 -> 100-140 and explained variance 0.997 -> 0.97-0.98 from ~29.66B. The curriculum meanwhile walked the energy
+  chain back past the 60% corner ([5,150] 2-8% <-> [5,155] 31-42% for ~10 min, then on to [5,020-5,030] = 58.4% at
+  29.80B). Milestones (19 + k01's 23,216) were paying throughout. Cause not established. Candidate: after the swap
+  every curriculum spawn sits in the energy chain (48.9-61.2%, the band at its far end), where before it the k01
+  curriculum had walked back across the whole route; the route's middle (gates 8-10) then lives only on full
+  episodes from the start room - round 3 / round 5 saw one- or two-episode dips of this kind, not 8/9.
+* a1 stopped at 29.80B (09:12 UTC: it could not beat the incumbent before the box's deadline). Snapshots on the box:
+  29.324 / 29.524 / 29.725B.
+* **Manual search on the 29.725B snapshot (the corner band trained, the greedy at the erosion onset)**, auto_spine
+  beams + GE x1.0/1.04, no energy stage: the plain beam's best d 21,504 (62.37%) - the same drop - but its line now
+  RIDES THE 60% CORNER: h 2,634-2,667 at 59.75-60.25% (airborne, z ~2,419 at 60.0%) where the 29.35B beam landed
+  (2,838 -> 2,483 at 60.25%): +184 u. And it LOSES it at the next landing, 60.3-60.5% (h 2,667 -> 2,470, |v_h| 630 ->
+  273), where the energy chain slid along the floor at 616 u/s without jumping; from 60.5% on it is the old profile
+  (61% 2,477, 62.3% 2,512). The energy spine taught its first corner to the policy's population in ~350M steps (the
+  greedy had not shown it yet), and the next floor contact took it back: round 5's "one corner per energy spine" again.
+  The beam's largest energy losses before its stall are now the descent's (-318 u at tick 4,209, -279 at 4,365), not
+  the 60% corner.
+* The manual search on the 29.725B snapshot (m1, seed 7): beams 21,499-21,511, GE x1.0/1.04 21,492 - nothing past
+  the drop. **A second plain beam on the SAME weights with seed 9 (m2: auto_spine `--ge-boost G --energy-gain 150
+  --branch-energy 0`, so the beam first) reached d 20,902 = 63.43%, PAST THE 62.3% DROP, unboosted** - 632 u past the
+  greedy frontier, a depth spine by the loop's own rule. Its energy profile: h 2,715-2,817 over 60-62.3% (the 29.35B
+  beam: ~2,450-2,510 there; the record ~2,830, ANALYSIS ONLY), the drop crossed at 750 u/s horizontal, the ramp at
+  955 u/s (62.5%), then an impact at 63.4%. Spine autoresearch/spines/pbr6b1_m2 (+ keys). So gate 19 went the gate-17
+  way, now by the loop's own pieces: the energy spine first (unboosted, from the energy-before-boost ladder), ~370M
+  steps of it, then the policy's own beam passes the gate. The population is at the threshold (seed 7 did not).
+* Why the greedy eroded (traj_29577183232 healthy vs traj_29803675648 eroded, first arrival per level): the eroded
+  episodes reach 20% with MORE energy and speed (h 3,916-3,930 at 1,294-1,307 u/s vs 3,878-3,888 at 1,269-1,272),
+  then CRASH at gate 8's corridor ramp landing - h 3,16x-3,20x at 20.4% (healthy 3,644-3,754) - and cannot make
+  gate 9's climb. The energy training made the line faster upstream and the memorised gate-8 landing broke at the
+  new speed (the xQR32 / tick-transfer pattern of CLAUDE.md: a memorised line does not transfer to other dynamics);
+  under the curriculum the demo rows REPLACE the reservoir, so gate 8 (20%) was only practised by true-start episodes.
+  A generic guard worth building: keep a share of spawns on the policy's own greedy line along its WHOLE length (route
+  rehearsal at the current speed profile), not only the curriculum band and the seconds before a death.
+* **pbr6b1_a2** (09:24 UTC, box deadline 09:54): the 29.725B snapshot + the depth curriculum on pbr6b1_m2 (+ keys) +
+  milestones (the 19 + 23,216 + 22,270) + a1's other flags WITHOUT --auto-spine (no searches: the box has 30 min),
+  4e8 steps. Resume eval 29.725B: 62.288 (median 21.4%: the eroded greedy). The curriculum raced back to row 5,484
+  (62.15%, just before the drop) at 98% band success within 2 min.
