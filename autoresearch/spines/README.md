@@ -236,3 +236,9 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   weights - after the energy spine `pbr6b3_k02e` taught the 60% corner and the airborne east lane - to d 20,127 =
   64.78%: the first unboosted line past the 62.3% drop (h ~2,800 over 58-62%, onto the west ramp at ~955 u/s). Keys =
   the beam's own held keys. No demo, no record (pbr6b3, round 6).
+* `pbr6b3_b2k02.npy` + `.keys.npy` (7,701 rows; md5 808eb3b7176b5620f3273e7edd233751 / a29656bfe08b17c0316b9ac754d4aef1):
+  found BY THE TRAINER (run pbr6b3_b2's auto-spine search 2 at 30.100B, 615 s, the greedy's quorum past b2k01): the
+  POLICY'S OWN plain beam line from the true spawn (beam_tas on b2's 30.10B weights, 7.67 ms) to its row 5,717
+  (64.7%), then one exact UNBOOSTED (x1.0) view-follow explore_phase1 --exact-chains chain (reward-free search, 1,985
+  ticks) to d 16,722 = 70.74%: past gate 20 (64.8%) by landing on the floor at x ~-3,561, z ~2,389 and walking north
+  (65-66.2%). Keys = the beam's and the chain's own held keys. No demo, no record (pbr6b3, round 6).
