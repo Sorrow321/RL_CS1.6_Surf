@@ -3134,3 +3134,34 @@ its lesson): c12's ckpt_latest (36.668B, md5 d802b3e8...) and its search-2 spine
   gain over k02 in 72.5-74.3% is only **+79 u** (72.95%, 965 u/s): the high-h cells were dives. So no hand-built energy
   spine from 2-thread local searches; c13 stays the plain continuation on k02, and the loop's energy stage (now with
   `--ge-select-energy 3`, ~10x this compute on a box) does the energy search when its quorum fires.
+* **Bench (local CPU, c12's ckpt_latest 36.659B, greedy, record_ckpt --spawn-states, 6 episodes per window; ANALYSIS of
+  our own states):** from k02 rows 6,600-6,622 (72.2-72.5%) and 6,536-6,558 (just past the brake): **10/12 follow
+  k02's chain to 74.2-74.33%** and die at its end (falling to z ~1,720 at (-850..-1,060, 1,524-1,624)), carrying h
+  2,339-2,389 / 664-779 u/s at 74.0% (MORE than the chain's own 2,252 / 485); from rows 6,380-6,398 (the x1.04 root,
+  70.8%) **6/6 take the OLD route** (land on the platform, crawl at 40-250 u/s, die at 73.40-73.48%). So c12 learned
+  k02's tail from the brake on; the root -> bounce -> brake stretch (rows 6,387-6,531) is still to teach, and even then
+  k02 ends at a doomed 74.3%: c13's first greedy gain is expected at ~74.3%, then the loop's energy search.
+  From an energetic GE state (GE from the beam prefix at 70.0-70.8%, x1.0/1.04/1.08, select-energy 3, 12 min: +152 u
+  at 72.32%, straight south at x -1,259) the policy dies within 100 ticks (6/6 at 72.9-73.05%): off its distribution.
+
+### The 74.3% gate is a WALL cleared by a ramp launch, NOT energy (21:30-21:45 UTC, local CPU bench, no box)
+* **Speed probe** (c12's ckpt_latest, greedy, spawned at k02 rows 6,650-6,677 = 72.9-73.2% with the horizontal velocity
+  x1.1 / 1.2 / 1.3 / 1.45; 6 episodes each): **every one dies at 74.0-74.35%**, even x1.45 (h 2,864, 1,269 u/s - more
+  than the record's 2,745 / 1,220 there). Energy at 74.0% rises with the boost (2,433 -> 2,838) and changes nothing.
+* What kills them (a traced x1.3 episode): the policy rides the 73.4% ramp (vz 132 -> 341 at 73.5%), peaks at z ~1,980,
+  turns east and hits a WALL at x = -853 (hull centre; vx 784 -> 0 at (-853, 1,667, 1,977)), slides north along it,
+  circles back and falls onto the catch sheet at z 1,720. The record (ANALYSIS ONLY) passes the same x at y ~1,610 at
+  **z 2,166**: its ramp kick is vz 10 -> **624** (apex 1,924 + 624^2/1600 = 2,167; ours 1,918 + 341^2/1600 = 1,991). It
+  enters the ramp's bottom at z ~1,807-1,814 (y 2,190 -> 2,010); our line flies 40-50 u higher there (z 1,846-1,858)
+  and meets only the ramp's upper part. Lowering our spawns by 25-40 u embeds the hull (stuck in 5 ticks) or drops it
+  into the catch at x -1,290: the low entry is narrow and further east (x ~-1,250).
+* **So the loop as it stands will likely stall at 74.3%:** its depth ladder boosts speed (x1.04-1.12, and x1.45 does not
+  help) and its energy stage looks for energy (not the issue). What has to be found is a HEIGHT/precision variant: the
+  ramp entered from its bottom for a ~600 u/s kick. Testing whether a finer Go-Explore cell (32 u: 1,810 vs 1,858 share a
+  64 u cell) finds it: local GE, 80 roots = k02 rows 6,560-6,680 x1.0/1.04, select-energy 3, 10 min.
+* **Measured (hull traces, measurement only):** the wall's face is at x ~-837 (a standing hull stops at x -853) from z
+  <= 1,950 up to **2,120**, clear from **~2,150** (y 1,610) / 2,180 (y 1,660). So the line must cross x -853 at z >~ 2,150.
+  The record (ANALYSIS ONLY) gets there by SURFING DOWN a pipe at 71.8-72.6% (z 1,977 at y 3,108 -> 1,775 at y 2,511,
+  hs 1,033 -> 1,241, h kept 2,731-2,785) and up its far side (z 1,811 at y 2,070, then the kick to vz 624 at y ~1,750).
+  k02 / the policy fly ~90 u above the pipe's bottom (z 1,854-1,869) without touching it: no speed from the dip, and
+  they meet the far ramp's upper part (kick vz ~340). The skill to find: drop into the pipe and surf it.
