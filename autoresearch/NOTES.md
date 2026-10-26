@@ -2774,6 +2774,23 @@ spine left whole, the trainer passing `--cut-ahead`, both refusals, TRAIN_ONLY).
   press the jump on the contact tick. Such a band is capped near 1/K = 25% (observed 16-18%) and a 0.3 advance rate
   is never met. (The greedy eval has a fixed phase from tick 0 - the beam's own - so a line like this is flyable by
   the greedy; it is the curriculum's spawns that are off-grid.)
-* **c4** (09:21 UTC) = c3's snapshot at 29,844,570,112 (md5 cef71918...) with `--demo-rate 0.15` (< 1/K) and
+* **c4** (09:14 UTC) = c3's snapshot at 29,844,570,112 (md5 cef71918...) with `--demo-rate 0.15` (< 1/K) and
   `--demo-tau0 6337`, the rest as c3. The proper fix (spawn a spine row so its first decision lands on the line's
   own grid) is not built.
+* c4 (--demo-rate 0.15): band [6,337,6,341] now passes (17-20%) but the next one, [6,332,6,336], is at 0.1-0.6%: from
+  there the right-phase spawns must NOT jump on their first decision and jump on the next, and the policy learned "jump
+  on the first decision" from the [6,337] successes. The curriculum alternates 6,332 <-> 6,337. Evals 62.292 (29.845B) /
+  **62.358** (29.921B, best 62.4%, median 61.7%) / 62.357 (29.996B).
+
+### `--demo-phase` (new, off = byte-identical): spine spawns on the line's own decision grid
+* `demo_phase_snap` reads a line's decision grid off its own input changes: a line flown with one decision every K
+  ticks changes its held inputs (oldbuttons, the held keys) only on a decision's first tick. On pbr6b2_c1k01c every one
+  of the beam part's 682 key changes and 544 button changes sits on rows = 1 (mod 4) (decision states at rows = 0 mod
+  4); the explorer chain after row 6,400 has changes on every residue (no grid). The grid at a row is read on the 256
+  rows before it (>= 8 changes, >= 90% on one residue), else on the 256 after it - a centred window mixes a segment's
+  grid with the next segment's noise right at the junction (the bounce sits 60 rows before one).
+* In the trainer, at the first decision boundary after a spine spawn (row r, L leftover ticks run under the old
+  episode's action), the env is moved (core.set_state) to the grid row nearest r + L, before the held keys and
+  fill_vision read it; the decision sees the leftover ticks' scalar observation (<= 2 rows apart). demo_idx follows
+  the move (band statistics count where the episode's own decisions began). Recomputed on an auto-spine swap.
+  Single-slot runs only (refused otherwise). TRAIN_ONLY in record_ckpt. Tests: tests/python/test_demo_phase.py.

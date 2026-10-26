@@ -2174,6 +2174,49 @@ def milestone_pay(rec, ended, ms, paid):
     return hit.sum(axis=1), paid
 
 
+def demo_phase_snap(states, keys, k: int, win: int = 256, min_n: int = 8,
+                    min_share: float = 0.9) -> np.ndarray:
+    """--demo-phase: for each spine row, the nearest row ON THE LINE'S OWN DECISION GRID (the row
+    itself where no grid can be read). A line flown with one decision every ``k`` ticks changes
+    its held inputs (oldbuttons, and the held keys when given) only on the first tick of a
+    decision, so those changes sit on one residue mod k. The grid at a row is read on the ``win``
+    rows BEFORE it (>= ``min_n`` changes, >= ``min_share`` of them on one residue), else on the
+    ``win`` rows after it: a spine is spliced from segments (a beam line flown from tick 0, a
+    reward-free explorer's chain re-rooted at arbitrary ticks, which has no grid), and a centred
+    window would mix a segment's own grid with its neighbour's noise right at the junction."""
+    n = len(states)
+    out = np.arange(n, dtype=np.int64)
+    if n < 2 or k < 2:
+        return out
+    ch = np.zeros(n, bool)
+    btn = np.asarray(states["oldbuttons"], np.int64)
+    ch[1:] |= btn[1:] != btn[:-1]
+    if keys is not None:
+        kk = np.asarray(keys)
+        ch[1:] |= np.any(kk[1:] != kk[:-1], axis=1)
+    rows = np.arange(n)
+    # a change at row c means a decision started at state row c - 1
+    cs = np.zeros((k, n + 1), np.int64)
+    for p in range(k):
+        cs[p, 1:] = np.cumsum(ch & (((rows - 1) % k) == p))
+
+    def _read(lo, hi):
+        cnt = cs[:, hi] - cs[:, lo]                               # (k, n)
+        tot = cnt.sum(axis=0)
+        ph = np.argmax(cnt, axis=0)
+        ok = (tot >= min_n) & (cnt[ph, rows] >= min_share * np.maximum(tot, 1))
+        return ph, ok
+    ph_l, ok_l = _read(np.maximum(0, rows - win), rows + 1)
+    ph_r, ok_r = _read(rows, np.minimum(n, rows + win + 1))
+    ph = np.where(ok_l, ph_l, ph_r)
+    ok = ok_l | ok_r
+    fwd = (ph - rows) % k
+    back = (rows - ph) % k
+    snap = np.where(fwd <= back, rows + fwd, rows - back)
+    out[ok] = np.clip(snap[ok], 0, n - 1)
+    return out
+
+
 def demo_hot_mask(demo_idx, band, ep_len, ticks):
     """--demo-front-temp: the envs whose episode STARTED on the curriculum's frontier band
     ``band`` = (lo, hi) inclusive (``demo_idx`` is the spine index of each env's spawn, -1 for
@@ -4929,6 +4972,18 @@ def main() -> None:
                          "4's gate-12 ramp was surfed with forward + left strafe held, and every "
                          "spawn there started neutral). Dropped when --auto-spine swaps the spine "
                          "(a new spine has no keys). Not restored; off = today, byte-identical")
+    ap.add_argument("--demo-phase", action="store_true",
+                    help="--demo-file: a spine spawn's first decision lands on the LINE'S OWN "
+                         "decision grid. The trainer autoresets a dead env mid-decision and the "
+                         "leftover 0..K-1 ticks run the old episode's action, so a spawn on row r "
+                         "makes its first decision at row r + L, off the grid the line was flown "
+                         "on in 3 of 4 cases: a tick-exact input of the line (pbr6b2: a jump on "
+                         "the tick the hull meets a ramp, which only a fresh press on the ground "
+                         "makes) is then out of reach and its band caps near 1/K. With the flag "
+                         "the env is moved, at that first decision, to the grid row nearest r + L "
+                         "(the grid read off the line's own input changes: demo_phase_snap); the "
+                         "decision sees the observation of the leftover ticks (<= 2 rows apart). "
+                         "Single-slot runs only. Off = today, byte-identical")
     ap.add_argument("--demo-front-temp", type=float, default=None,   # None = off
                     help="--demo-file: T > 0 = an env whose episode STARTED on the curriculum's "
                          "frontier band [tau, tau+D-1] samples the keys and the yaw at 1 + T "
@@ -12538,6 +12593,18 @@ def main() -> None:
         _nn = int((_dk != np.asarray(keyshold.NEUTRAL)).any(axis=1).sum())
         print(f"--demo-keys {args.demo_keys}: a spine spawn starts holding its row's keys "
               f"({_nn} of {_ns} rows hold something other than neutral)")
+    DEMO_SNAP = [None]                    # --demo-phase: each spine row's nearest grid row
+    if args.demo_phase:
+        if not args.demo_file:
+            raise SystemExit("--demo-phase puts --demo-file spawns on the line's decision grid: "
+                             "give it")
+        if len(slots) != 1:
+            raise SystemExit("--demo-phase is single-slot (it moves env i of slots[0].core)")
+        DEMO_SNAP[0] = demo_phase_snap(demo.S, DEMO_KEYS[0], K)
+        _grid = int((DEMO_SNAP[0] != np.arange(len(DEMO_SNAP[0]))).sum())
+        print(f"--demo-phase: the line's decision grid read on its own input changes; "
+              f"{_grid:,} of {len(DEMO_SNAP[0]):,} spine rows are off it and a spawn's first "
+              f"decision there moves to the nearest grid row")
     # --ramp-obs-pass: the pass flag, LAST of all - after the ratchet gap - so a checkpoint
     # without it grows onto it by widen_for_obs' trailing zero-pad (its own function at step 0)
     N_PASS = 1 if (RPLAN and int(args.ramp_obs_pass or 0)) else 0
@@ -14737,6 +14804,9 @@ def main() -> None:
     if args.demo_keys:
         # --demo-keys: dumped only when on (not restored: it belongs to its --demo-file)
         meta["config"]["demo_keys"] = str(args.demo_keys)
+    if args.demo_phase:
+        # --demo-phase: dumped only when on (not restored)
+        meta["config"]["demo_phase"] = 1
     if args.demo_file and args.demo_success_bonus is not None:
         # --demo-success-bonus: dumped only when set; a resume restores it
         meta["config"]["demo_success_bonus"] = float(args.demo_success_bonus)
@@ -15931,6 +16001,9 @@ def main() -> None:
                 DEMO_KEYS[0] = None
                 print(f"[{global_step:>13,d}] --demo-keys dropped: the new spine has no held "
                       f"keys", flush=True)
+        if DEMO_SNAP[0] is not None:
+            # --demo-phase: the new line's own decision grid
+            DEMO_SNAP[0] = demo_phase_snap(demo.S, DEMO_KEYS[0], K)
         if args.auto_spine_milestones:
             # the line the greedy just crossed keeps paying (a milestone), the new one is next
             MILES[0] = np.append(MILES[0], float(DEMO_END_D))
@@ -19418,6 +19491,17 @@ def main() -> None:
                     # terminal history) and BEFORE fill_vision, which is the
                     # observation the fresh episode's first decision reads.
                     obs_aux.reset(ended_acc)
+                if DEMO_SNAP[0] is not None and ended_acc.any():
+                    # --demo-phase: a fresh spine spawn has run its L leftover ticks; its first
+                    # decision moves it to the line's grid row nearest r + L (BEFORE the held
+                    # keys below and fill_vision read the spawn)
+                    _dp = np.flatnonzero(ended_acc & (demo_idx >= 0))
+                    if _dp.size:
+                        _row = np.minimum(demo_idx[_dp] + ep_len[_dp], demo.n - 1)
+                        _to = DEMO_SNAP[0][np.minimum(_row, len(DEMO_SNAP[0]) - 1)]
+                        for _i, _r in zip(_dp.tolist(), _to.tolist()):
+                            slots[0].core.set_state(int(_i), demo.S[int(_r)])
+                        demo_idx[_dp] = _to
                 if N_KEYS:
                     # --keys-hold: the same rule and the same place. Every
                     # episode start - the autoreset, a reservoir respawn, a
