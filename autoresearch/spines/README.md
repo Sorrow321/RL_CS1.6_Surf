@@ -223,3 +223,10 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   the next corner), then one exact explore_phase1 --exact-chains chain (reward-free search; 807 ticks from that row's state
   with its velocity x1.12, the ladder's third stage) to d 20,489 = 64.15%. Keys = the beam's and the chain's own held keys.
   No demo, no record (pbr5b2, round 5).
+* `pbr6b1_a1k01.npy` + `.keys.npy` (5,436 rows; md5 0947dbca976a4a64d4922687114480f5 / b095a5004155964f3c530e6923e53a83):
+  an ENERGY spine of the trainer's own loop with the energy stage before the boosted stages (tools/auto_spine.py 068f27f,
+  run pbr6b1_a1's search 1 on the round-5 incumbent's 29.35B weights): the POLICY'S OWN plain beam line from the true
+  spawn to its row 4,101 (48.88%), then one exact explore_phase1 --exact-chains chain (reward-free search; 1,334 ticks from
+  that row's state, UNBOOSTED) to archive cell 234,157 at 61.21% with energy height 2,597, +153 u over the beam line there
+  (it rides the 60% corner's sloped side instead of landing and jumping into the bhop cap). Keys = the beam's and the
+  chain's own held keys. Success rule: d <= 22,270 with h >= 2,522. No demo, no record (pbr6b1, round 6).
