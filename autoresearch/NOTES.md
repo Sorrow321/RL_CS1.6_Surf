@@ -2387,3 +2387,11 @@ minute). Incumbent: pbr4b3_t11 ckpt_23551016960 (md5 7fbcd458...), eval 52.937 a
 * Gate 19 (the fall at 62.3%, ANALYSIS of the record only as a yardstick): the record leaves (-2,013, 2,234, 2,290) at
   ~900-1,000 u/s heading west with energy height ~2,800 and is at (-2,853, 2,477, 2,082) 1 s later (63.7%); our line
   leaves the same spot at 400-720 u/s with h ~2,515 and drops into a catch. Energy again (~300 u).
+* c6's patience search 2 (28.293B, 82 s): the branched beam to d 21,550 (62.29%) -> spine k02, no deeper than k01 (the
+  greedy median had moved to 22,052, so +502 u passed the gain). Every policy line ends in the 62.3% fall: gate 19 holds
+  for the plain and branched beams. Energy along k02: 57% 2,730 (680 u/s) / 59% 2,514 / 61% 2,438 (228 u/s) / 62% 2,491;
+  the record (ANALYSIS ONLY) ~2,830 throughout 57-61%: our line hops the upper-level corridor and loses ~300 u to the
+  landings where the record surfs its walls.
+* The gate-17 recipe again: GE-G (01:34 UTC, 12 min, 12 threads beside c6, rising split, view-follow, 8 ms) rooted at
+  k02's own upper-level states over 57-61.5% (47 x1.0 / 1.04) - an energetic corridor line to teach with
+  --demo-success-energy, then the policy's own search for the fall.
