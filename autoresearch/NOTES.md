@@ -2207,3 +2207,24 @@ reservation for a boxless branch would keep all four forks running; as it is, a 
 * **pbr5b3_c2** (03:50 UTC): c1's exact 56.142 weights (ckpt_24080023552) + the beam_br2 line as the spine
   (autoresearch/spines/pbr5b3_c1k01br2 + keys; success line d <= 24,910) + milestones + 25,121 (k05's line) + c1's
   other flags. A small step (+0.4% if the greedy follows it) that the loop's gain rule would not take; the loop runs on.
+* c2 evals: 56.153 (24.0805B, the resume) / 56.361 / 56.427 / **56.575** (24.307B, 6/9 past the br2 line's success
+  mark 24,910, median 56.42%) -> c2's auto-spine search 1 (24.307B). Handoff: ckpt_latest saved before the search =
+  the eval's exact weights, pinned as ckpt_24307040256.pt (md5 a25aa5f2...) and pulled.
+
+### The 52% plate, the core's solid cap (03:50-04:00 UTC; for the lineage)
+* The record (ANALYSIS ONLY) meets func_conveyor *162 (z 2,534, x -2,564..-2,127, y 554..717; angles -90 0 0, speed
+  250 = an upward conveyor) at 43.53 s falling at vz -668 and leaves it at vz +231 three frames later keeping ~980 of
+  its ~1,040 u/s horizontal; our hull landing there (core probe, neutral keys) stands on it and loses ~23 u/s per tick
+  to friction (815 -> 348 u/s in 20 ticks). That is where our line's ~500 u energy deficit at 56% starts (the 52.8%
+  landing adds more).
+* The core does not model FL_CONVEYOR (src/bsp.c says so). I prototyped SV_CheckMovingGround's conveyor block
+  (basevelocity = movedir * speed while standing on one; reverted, not committed): for an UPWARD conveyor it changes
+  nothing - PM_AddCorrectGravity turns basevelocity[2] into +speed * dt (~1.9 u/s) and zeroes it, and the ground step
+  zeroes vz - so the record's bounce is not the conveyor push as our PM reads it. A jump on landing without CS's bhop
+  cap (our core runs enable_bhop_cap 1; the WR header says the server's is unknown) fits the record's frames as well;
+  not settled.
+* **src/sim.h MAX_SOLIDS = 128 drops 7 solid entities on this map** (dump_map: `solids 128`): func_button *247
+  (counter_start, in the start room), **func_conveyor *249 / *250 (the start-room doorway plates)** and func_wall
+  *261-*264 (rendermode 4 glass walls, 26 x 107-172 x 527 u, x -1,138..343, y -3,850..-3,403). None of them collide in
+  our core; in the real game they do. Raising the cap changes the start room's geometry under a trained policy (the
+  precision entry lands next to *250) - a question for a round with time to re-learn it, not a drive-by fix.

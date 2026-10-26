@@ -3,24 +3,24 @@
  "round": 5,
  "final": false,
  "best": {
-  "score": 56.142,
-  "eval_file": "/home/steam/ar_pb/runs/pbr5b3/pbr5b3_c1/traj_24080023552.jsonl",
-  "run": "pbr5b3_c1",
-  "step": 24080023552,
-  "ckpt": "/home/steam/ar_pb/runs/pbr5b3/pbr5b3_c1/ckpt_24080023552.pt",
+  "score": 56.575,
+  "eval_file": "/home/steam/ar_pb/runs/pbr5b3/pbr5b3_c2/traj_24307040256.jsonl",
+  "run": "pbr5b3_c2",
+  "step": 24307040256,
+  "ckpt": "/home/steam/ar_pb/runs/pbr5b3/pbr5b3_c2/ckpt_24307040256.pt",
   "recipe": [
-   "resume of the round-4 incumbent pbr4b3_t11 ckpt_23551016960",
-   "--demo-file autoresearch/spines/pbr4b3_auto_t11k05.npy --demo-keys autoresearch/spines/pbr4b3_auto_t11k05.keys.npy --demo-window 5 --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5 --demo-rate 0.3 --demo-front-frac 0.8 --demo-success-d 100 --demo-success-bonus 50",
-   "--demo-milestones 44939,43426,42182,41015,40497,39943,37251,33777,32260,31429,30286,28818,28783,27001 --keys-hold-spawn-duck --yaw-entropy 0 --demo-front-temp 0.5 --demo-front-ticks 40 --demo-front-view 6",
+   "resume of pbr5b3_c1 ckpt_24080023552 (c1 = the round-4 incumbent pbr4b3_t11 ckpt_23551016960 resumed on spine k05)",
+   "--demo-file autoresearch/spines/pbr5b3_c1k01br2.npy --demo-keys autoresearch/spines/pbr5b3_c1k01br2.keys.npy --demo-window 5 --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5 --demo-rate 0.3 --demo-front-frac 0.8 --demo-success-d 100 --demo-success-bonus 50",
+   "--demo-milestones 44939,43426,42182,41015,40497,39943,37251,33777,32260,31429,30286,28818,28783,27001,25121 --keys-hold-spawn-duck --yaw-entropy 0 --demo-front-temp 0.5 --demo-front-ticks 40 --demo-front-view 6",
    "--respawn-greedy 0.2 --respawn-greedy-window 0.25 2.0 --respawn-greedy-stuck 200 --respawn-greedy-contact --respawn-greedy-temp 0.5 --respawn-greedy-temp-ticks 100 --respawn-greedy-temp-view 6",
    "--respawn-front-perturb 0.2 --respawn-front-perturb-band 0.005 --respawn-front-perturb-speed 1.0 1.3 --respawn-front-perturb-turn 90",
    "--energy-pot 12 --energy-pot-front 0 --energy-pot-front-bonus 0 --no-respawn-novel --respawn-backward-mix 0 --int-real-only 0",
    "--spawn-states autoresearch/spines/pbr1b1_entry_ge_states.npy --spawn-states-frac 0.2 --maxvel 3500 --ckpt-every 2e8",
    "--auto-spine --auto-spine-milestones --auto-spine-gain 500 --auto-spine-ge-minutes 8 --auto-spine-retry 4e8 --auto-spine-patience 1.2e9"
   ],
-  "resume_from": "pbr4b3_t11 ckpt_23551016960 (the incumbent ckpt.pt, md5 7fbcd458...)",
+  "resume_from": "pbr5b3_c1 ckpt_24080023552 (the 56.142 weights)",
   "commit": "c1d9873",
-  "ckpt_note": "the exact weights of the 56.142 eval: ckpt_latest saved by the trainer right before auto-spine search 1 at 24,080,023,552, pinned as ckpt_24080023552.pt (md5 4f12812f...); box 57755386 (5080)"
+  "ckpt_note": "the exact weights of the 56.575 eval: ckpt_latest saved by the trainer right before c2's auto-spine search 1 at 24,307,040,256, pinned as ckpt_24307040256.pt (md5 a25aa5f2...); box 57755386 (5080)"
  },
- "summary": "Round 5: no box until 02:45 UTC (fleet cap full; a CPU-starved 4060 Ti host at 21:27 was blocklisted). pbr5b3_c1 = the incumbent resumed with t11's flags on spine k05 (+ keys, 14 milestones, --auto-spine) at 335k steps/s: 52.9 for ~450M steps, 56.108 at 24.0045B (2/9 through k05's chain), 56.142 at 24.080B (6/9, median 56.1%) -> auto-spine search 1. Gate 17 at 56.1%: the line climbs into trigger_teleport *192 (a lethal box over a shaft) ~500 u of energy height under the record."
+ "summary": "Round 5: no box until 02:45 UTC (fleet cap full; a CPU-starved 4060 Ti host at 21:27 was blocklisted). pbr5b3_c1 = the incumbent resumed with t11's flags on spine k05 at 335k steps/s: 56.142 at 24.080B (6/9 through k05's chain). Its auto-spine search 1 found nothing past the 56.97% gain bar (gate 17: a climb into a lethal box ~500 u of energy short); pbr5b3_c2 = c1's 56.142 weights on its own branched-beam line to 56.59% (by hand, + milestone 25,121): 56.575 at 24.307B (6/9 past 56.4%)."
 }
