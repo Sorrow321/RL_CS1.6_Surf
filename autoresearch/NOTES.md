@@ -3026,3 +3026,8 @@ Germany (machine 56783), rented 08:05 UTC for 2 h.
   search 1 of c12 fired (on c12's ckpt_latest). Evals 36.069-36.295B 71.282 / 73.489 / 73.528 / 73.503; every episode
   past the landing stops at ~73.5% (the catch sheet *184 again, at (-875, 2,040)); the best stays 73.590. The curriculum
   had reached [6,304] (30.8%).
+* 18:53 UTC: c12's search 1 (fired at 36.295B on 6/9) took 1,661 s - beam, branches and the GE ladder found no line
+  deeper than the greedy's 73.5%, and the ENERGY stage returned a line keeping +253 u of energy height over the policy's
+  (6,416 states, end d 16,352, taught with the energy rule h >= 2,100); its curriculum walked back 6,415 -> 4,630 in ~10
+  min, and at 36.446B 7/9 greedy episodes crossed its line with the energy -> search 2 started (running at the
+  wrap-up). Evals 36.295-36.446B 73.503 / 71.475 (median 61.5%) / 73.518; the best stays 73.590.
