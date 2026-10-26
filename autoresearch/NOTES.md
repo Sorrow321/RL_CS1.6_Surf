@@ -3093,3 +3093,28 @@ Independence: only this branch and $AR_HOME/incumbent/ are read. c12's later wei
   turned at ~36.03B and walked back at 47-75% (step 40: 6,574 -> 6,419 in ~5 min). The optimizer state IS restored
   (train_fast opt.load_state_dict), so the cause is elsewhere (the first rollouts' reward terms?); worth knowing when a
   resume's first 150M steps look like a regression. Not chased further.
+* c13 evals 36.134B 73.469 (1/9 past) / **36.210B 73.550** (7/9 past k01's line, median 73.4%) -> the loop's search 1
+  fired at 36.210B (synchronous: training paused, as in c12). The curriculum was back at c12's state, oscillating
+  [6,314 / 6,319] at 43-46% / 25-27%.
+* **The ~73.5% stop is a GAP, i.e. an energy gate** (field slices + the eval's deaths; the record only as a yardstick):
+  every episode past the landing walks the walkway south at z ~2,114 (k01's end, (-962, 2,411)) at 30-300 u/s and
+  falls at y ~2,000-2,100, x -850..-895 onto the catch sheet *184 (z ~1,720). The field's way on is a passage at
+  z >= ~2,050 around (-820..-500, 1,476-1,668) (74%), ~450 u south of the walkway's end: a flight of ~0.5 s needs
+  ~900 u/s horizontally. On a floor the bunny-hop cap keeps the policy under ~300 u/s, so the speed has to come from
+  upstream: the record (ANALYSIS ONLY) never lands on the 71.3% platform - it slides south at x ~-1,250-1,330,
+  z 1,780-2,056, 1,000-1,240 u/s, and climbs into that passage at (-1,282, 1,628, 2,005) with vz +524. Our line brakes
+  onto the platform (~900 -> ~100 u/s), duck-jumps out for ~18 s and arrives at the gap with h ~2,120 (the record's
+  h ~2,700-2,750 there). c12's loop went energy spine -> k02 (6,852 states to 74.33%, i.e. ~2,100 rows SHORTER than
+  k01's 9,000 - a faster line), so the loop is already on this.
+
+### `--auto-spine-async` (new, 401cbc5): the search no longer pauses training (20:50-21:00 UTC, local, CPU tests)
+* The search ran with `subprocess.run` and the trainer waited: c12's two searches stopped its training ~45 min (the GPU
+  idle), about 40% of its wall clock once the loop runs. On this box (Ryzen 9 5900XT, 32 threads, quota 30.7) the
+  trainer's OMP team is 15 and its load ~8.5, so a search's own 15-thread team mostly lands on idle CPUs.
+* With the flag the trainer copies ckpt_latest to auto/kNN/search_ckpt.pt, starts tools/auto_spine.py with Popen (log
+  in kNN/auto_spine.log), keeps training on the current spine, and swaps the result in at the first iteration after
+  the search ends (the same apply code as the synchronous path, now one function); no second search starts while one
+  runs; the run's end waits for a running search so its spine and current.json exist for the next launch. Off = the
+  synchronous loop, bit-identical to the trainer before the change. tests/python/test_auto_spine_async.py 3/3 (the
+  background smoke run + refusal 46 s; the synchronous loop vs the pre-change trainer: config, progress.csv, the
+  search's outcome line, 160 s); TRAIN_ONLY in record_ckpt.
