@@ -2276,3 +2276,21 @@ Incumbent: pbr4b3_t11 traj_23590338560 (52.937), weights ckpt_23551016960 (md5 7
   y 2,042..2,624, z 2,317-2,343) under the room's floor level. The line BUNNY-HOPS across the room's floor at ~350 u/s
   (h ~2,490; the bhop cap holds the hop speed) and lands on the sheet; the record (ANALYSIS ONLY) circles the room up
   on its walls at 700-800 u/s (h ~2,800) and crosses that corner at z 2,420-2,470, exiting west down to 62-64%.
+* Search 2 (26.242B): beams 21,975 / 21,971; GE x1.0-1.04 21,903, x1.08 21,985, x1.12 21,898 (61.7%, no gain); I
+  stopped it in the x1.2 stage at 00:10 UTC with the trainer (ckpt_latest 26,241,662,976): the boost stages root in
+  the room where the line hops at ~350 u/s (x1.3 there adds ~+50 u of h), and the deficit is made before that.
+* Gate 19's energy (the newest beam line, k02's): 56.0% h 2,739 (gate 18's fix holds: the old line had ~2,320), 57.0%
+  2,688 (z 2,392 after the climb), then it drops onto the room's floor and hops: 57.5% 2,605, 58.0% 2,461, 59-61.5%
+  ~2,470-2,490 (the record ~2,800-2,850 on the room's walls, ANALYSIS ONLY). So the same recipe as gate 18: GE_r19
+  (00:12 UTC, 12 min, 30 threads, unboosted + x1.05) rooted at that line's 56.5-58.2% (the climb and the landing),
+  energy picks among SURVIVING cells (tools/ge_energy_pick.py now filters by default: --alive-margin 300), the
+  policy's continuation from the pick, an energy-gated spine.
+* **GE_r19 result** (12 min, 132,984 cells, rooted at the k02 beam line's 56.5-58.2%, x1.0 / 1.05): the deepest chain
+  is UNBOOSTED from the line's state 4,975 (58.0%, the landing in the room) and reaches **62.24%** (d 21,581, 420 u past
+  the greedy - under auto_spine's 500 u gain, which is why the trainer's search never took a chain like it): it walks the
+  room (35 s), climbs onto a platform on the north side (entity 116, z ~2,485) and one beside the exit (entity 28, z
+  ~2,386) - off the kill sheet - and drops out of the exit on the record's way west and down. Energy picks among
+  surviving cells: +144..+199 u at 58.5-60% (the explorer rides the room's walls), all from the same root.
+* **pbr5b1_c6** (00:24 UTC): c5's ckpt_latest (26,241,662,976, md5 a2fe2899...) + spine autoresearch/spines/pbr5b1_r19.npy
+  + keys (success line d <= 21,681 = 62.07%) + milestones ..., 25583 (e1), 22012 (k01) + --demo-success-energy 150 (not
+  binding here: the spine's end h is 2,292) + c5's other flags.

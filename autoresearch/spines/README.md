@@ -212,3 +212,9 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   subtree reaches >= 300 u deeper) that zigzags down the shaft past the 52.8% ledge without landing (h ~2,940 where the
   policy's line has ~2,330 after the ledge), then the POLICY's own beam_tas --start-state line from the chain's end,
   cut before its crash at 55.41% (h 2,701; the greedy line has ~2,310 there). No demo, no record (pbr5b1, round 5).
+* `pbr5b1_r19.npy` + `.keys.npy` (9,501 rows; md5 915b87888990ee6c29a123f2964db052 /
+  5759911c9ddb872373d92c0d88e63e3a): gate 19 (61.5%, kill sheet *211 under a room the line hops across) - pbr5b1_c5's
+  auto-spine search 2 beam line (the policy's own, 7.67 ms, from the true spawn) to its state 4,975 (58.0%, where it
+  lands in the room), then an UNBOOSTED view-follow exact Go-Explore chain (GE_r19, 12 min) rooted there that walks the
+  room for ~35 s, onto a platform on its north side and one beside the exit (staying off the sheet), and drops out of
+  the exit to 62.24%. Views along the velocity, keys translated. No demo, no record (pbr5b1, round 5).

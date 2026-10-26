@@ -45,6 +45,12 @@ def main(argv=None):
     ap.add_argument("--min-sep", type=float, default=128.0,
                     help="picks at least this far apart (u), so --top is not one cluster")
     ap.add_argument("--line", default=None)
+    ap.add_argument("--alive-margin", type=float, default=300.0,
+                    help="keep only cells whose SUBTREE (the explorer's runs restored from them and "
+                         "their descendants) reaches at least this many u deeper: free fall conserves "
+                         "z + |v|^2/2g, so without it an energy pick chooses runs on their way into a "
+                         "kill volume (pbr5b1, 2026-10-25: all four first picks were fatal falls). "
+                         "0 = off")
     a = ap.parse_args(argv)
     f = load_field(a.field)
     z = np.load(a.archive, allow_pickle=False)
@@ -52,7 +58,17 @@ def main(argv=None):
     d = np.asarray(f.sample(np.asarray(st["origin"], np.float64)), np.float64)
     d[d >= f.reach_max - 0.5 * f.cell] = np.inf
     h = energy(st)
-    ok = np.flatnonzero(d <= a.d_max)
+    alive = np.ones(len(st), bool)
+    if a.alive_margin > 0:
+        # the subtree's deepest d, pushed up from children (appended after their parents)
+        sub = d.copy()
+        par = np.asarray(parent, np.int64)
+        for c in range(len(st) - 1, -1, -1):
+            p = par[c]
+            if p >= 0 and sub[c] < sub[p]:
+                sub[p] = sub[c]
+        alive = sub <= d - float(a.alive_margin)
+    ok = np.flatnonzero((d <= a.d_max) & alive)
     if not len(ok):
         print(json.dumps({"picks": 0, "cells": int(len(st)), "best_d": float(d.min())}))
         return 2
