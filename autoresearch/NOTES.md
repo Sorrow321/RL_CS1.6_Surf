@@ -2749,3 +2749,24 @@ Germany (machine 56783), rented 08:05 UTC for 2 h.
   The first launch's trainer died silently after its first eval (log cut mid-line, no traceback, GPU free after);
   the identical relaunch ran. First minutes: band [5,333, 5,420] 99.6% (spawns past the line with the chain's energy
   succeed at once), step 40.
+
+### GATE 19 PASSED by the greedy line: 64.692 (2026-10-26 08:43 UTC)
+* c9 (the energy spine k02e) evals: 62.344 (29.807B, the resume) / 62.288 / 62.366 (29.958B) - and at 29.958B the
+  energy quorum fired: "energy spine - 6/9 greedy episodes cross d <= 22,014 with energy height >= 2,571 (9 cross
+  it)", ~150M steps (~9 min) after the launch. The curriculum had walked k02e back 5,368 -> ~5,270 (the east lane's
+  entry, 60.7%) at 30-40% band success.
+* **The loop's search 1 (46 s): the PLAIN BEAM on those weights went past the drop**: d 20,132 = 64.77%, no fork, no
+  boost, no explorer chain -> depth spine k01 (5,700 states + the beam's own keys; committed as
+  autoresearch/spines/pbr6b4_c9k01), success line d <= 20,232. Its line: rides the corridor's side at the 59.9% corner
+  ((-2,741, 2,884, z 2,375), vz +220), crosses at z ~2,543 with h 2,816 (the greedy used to land at z 2,360 and keep
+  ~2,480), the east lane at (-1,876, 2,796) h 2,791, (-1,931, 2,245) h 2,847 at 61.8%, over the drop at (-2,513, 2,158,
+  2,111) 930 u/s (62.85%), on to (-3,004, 2,504) at 64%.
+* **Eval 30.033B: score 64.692** (best 64.69%, median 62.25%): 2/9 greedy episodes past the drop to the k01 line's
+  end region, ~75M steps after the swap. Hand-on snapshot ckpt_30006575104 (26.7M steps before the eval, md5
+  51111d5a..., pulled).
+* So gate 19 went exactly as gate 17 did, and this time with the loop doing every search: an ENERGY lesson on the
+  stretch where the greedy loses it (here a depth spine's own chain, cut before the band its depth curriculum stalled
+  on) -> the energetic quorum -> the policy's own plain beam passes the gate unboosted -> a depth curriculum on that.
+  The x1.12 boost of k02's root was never learned around: the energy rule made the corner's side ride pay for itself.
+* Budget: $1.03 above the reserve at 1.01 $/h of fleet burn, so no extension can move the 10:09 UTC deadline; c9 runs
+  to it and is harvested before.
