@@ -2339,3 +2339,8 @@ minute). Incumbent: pbr4b3_t11 ckpt_23551016960 (md5 7fbcd458...), eval 52.937 a
   (e1c) taught the policy to AIM at the shaft (2/9 into the upper room, 56.579) but stalled at the x1.08 root; (3) an
   ENERGY-gated curriculum on the descent alone (e1d) taught the energy in ~20 min; (4) on those weights the policy's own
   plain beam made the climb unboosted (62.34%); (5) the usual depth curriculum on that line -> 9/9 within ~75M steps.
+* Gate 18, probed (record_ckpt, c6's 26.76B weights, single s6 rows): from rows 6,150 / 6,158 the policy dies within
+  0.1-0.2 s ON the beam line's x (-2,019..-2,029) at y ~2,444, z 2,363 (the teleport sheet under the strip); from row
+  6,165 it goes on to 62.29%. The strip has a gap at y ~2,450: the beam lands at y ~2,470 (rows 6,160-6,170: vz -208 ->
+  +194, duck released) and hops over it; the greedy and every band spawn before the landing do not jump - a timing
+  gate, not a drift. c6's band [6,158,6,162] at 2.2% for ~25 min; evals flat at 61.4% median (26.4-26.7B).
