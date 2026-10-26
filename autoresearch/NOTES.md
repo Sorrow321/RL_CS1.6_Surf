@@ -3129,3 +3129,16 @@ ckpt_35907960832 (md5 160da9eb...), eval 73.590 at 35.918B. Credit at the start:
   ~950-1,000 u/s and dives east to 76%. Our line is ~465 u of energy height short there; the greedy (platform line)
   ~770 u (h ~1,930 at 73.5%). The next gate is energy again - the loop's energy stage's kind.
 * Look-ahead GE 2 (21:31 UTC, the same 32 roots x1.08 / 1.16 / 1.24, 15 min): how much boost passes 74.42%?
+* **Look-ahead GE 2** (x1.08 / 1.16 / 1.24 on the same 32 roots, 15 min, 92,960 cells): per root group (root cell ->
+  boost by velocity ratio) - x1.08: nothing past 74.45%; **x1.16: 74.61-75.23%** (spine rows 6,746-6,762, ~73.6%);
+  **x1.24: 75.8-78.43%** (rows 6,730-6,770; the deepest (1,137, 1,482, 1,251) at 114 u/s, h 1,301 - a long descent
+  east). So the way past 74.4% needs ~+100-150 u of energy height at ~73.6% (x1.16 at |v| ~670 = +96 u, x1.24 = +149 u)
+  - beyond the loop's depth ladder (x1.0-1.12): its energy stage (+150 u) is the one that should find it.
+* **c2 eval 37.474B: score 74.287** (best 74.29%, median 73.5%): ep2 makes k02's touch-and-go hop at 71.4% (h 2,277
+  at 505 u/s at 71.5%, where the platform-line episodes have ~1,910-2,070 at 30-320 u/s), flies the chain at 840-870
+  u/s over 72.5-73% and reaches 74.29% at 56.5 s (the platform line reaches 73.5% at 70-80 s), then falls into the
+  catch at (-1,054, 1,514, 1,722). 8/9 others: the platform line (73.4-73.5%, one at 17.8%). Handoff: ckpt_latest
+  37.5296B (55.6M after the eval, md5 2643d415..., > 2x nearer than snapshot ckpt_37345558528, md5 0acedfd7..., both
+  pulled). The curriculum: through the hop band to [6,416 / 6,421] (bands 17-30%).
+* Look-ahead GE 3 (21:51 UTC): roots = k02 rows 6,400-6,600 (after the x1.04 root, through the hop and the 72.25%
+  impact) x1.0 / 1.04 with --select-energy 3, 15 min: an impact-free line that keeps the energy and goes past 74.42%?

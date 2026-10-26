@@ -3,16 +3,17 @@
  "round": 7,
  "final": false,
  "best": {
-  "score": 73.671,
-  "eval_file": "/home/steam/ar_pb/runs/pbr7b2/pbr7b2_c1/traj_36735287296.jsonl",
-  "run": "pbr7b2_c1",
-  "step": 36735287296,
-  "ckpt": "/home/steam/ar_pb/runs/pbr7b2/pbr7b2_c1/ckpt_latest.pt",
+  "score": 74.287,
+  "eval_file": "/home/steam/ar_pb/runs/pbr7b2/pbr7b2_c2/traj_37474009088.jsonl",
+  "run": "pbr7b2_c2",
+  "step": 37474009088,
+  "ckpt": "/home/steam/ar_pb/runs/pbr7b2/pbr7b2_c2/ckpt_latest.pt",
   "recipe": [
-   "c1: resume of round 6's c12 ckpt_latest (36.659B, md5 d802b3e8...) on the loop's own spine pbr6b4_c12k02 (beam to 70.8% + an x1.04 GE chain to 74.33%) + keys, c12's flag set (to-continue block + --demo-match-band, --auto-spine-patience 0, --auto-spine-ge-minutes 5, --auto-spine-energy 150), 26 milestones"
+   "c1: resume of round 6's c12 ckpt_latest (36.659B, md5 d802b3e8...) on the loop's own spine pbr6b4_c12k02 (beam to 70.8% + an x1.04 GE chain to 74.33%) + keys, c12's flag set (to-continue block + --demo-match-band, --auto-spine-patience 0, --auto-spine-ge-minutes 5, --auto-spine-energy 150), 26 milestones; evals 73.567 / 73.671 / 73.466 / 73.601",
+   "c2: resume of c1's ckpt_latest (36.945B) with c1's flags + --demo-tau0 6436 + --auto-spine-async (new: the search runs beside the training); evals 73.51-73.66, then 74.287 at 37.474B (1/9 greedy episodes makes the chain's platform hop and flies k02's line to 74.29% at 56.5 s)"
   ],
-  "resume_from": "pbr6b4_c12 ckpt_latest 36.659B <- incumbent r6 (73.590)",
-  "commit": "b7e0ef0"
+  "resume_from": "pbr7b2_c1 ckpt_latest 36.945B <- pbr6b4_c12 ckpt_latest 36.659B <- incumbent r6 (73.590)",
+  "commit": "61300b6"
  },
- "summary": "c1 (c12's loop continued on its search-2 spine k02 to 74.33%): evals 73.567 (36.660B, the resumed weights: 4/9 past the 71.3% landing) / 73.671 (36.735B: 7/9 past the landing, best 73.67%, median 73.42%). Every passing episode still dies on the catch sheet at ~73.5% (z ~1,720). The curriculum walked k02 back 6,851 -> 6,531 in ~5 min and works at an impact band at 72.25% (rows 6,526-6,535). Box 57867173 RTX 4080S, ~218k steps/s."
+ "summary": "c1/c2 = round 6's loop continued on its spine k02 (to 74.33%). 73.590 -> 73.671 (c1 36.735B, 7/9 past the 71.3% landing) -> 74.287 (c2 37.474B: one greedy episode makes k02's touch-and-go hop on the 71.4% platform and flies the chain to 74.29%, 20 s faster than the platform line). New flag --auto-spine-async (search beside training; CPU-tested, off = bit-identical). Look-ahead GE beside the trainer: past k02's end x1.0-1.08 roots stop at 74.42-74.45%, x1.16 reach 75.2%, x1.24 78.4%: the next gate needs ~+100-150 u of energy at ~73.6%."
 }
