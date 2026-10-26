@@ -129,7 +129,7 @@ def run(cmd, log, timeout):
     return rc
 
 
-def beam(a, out: Path, branch_tick: int = 0, tag: str = None):
+def beam(a, out: Path, branch_tick: int = 0, tag: str = None, seed: int = None):
     """beam_tas from the true start; ``branch_tick`` > 0 forks half the population there
     with held VIEW offsets (--branch-at, --branch-view-only: the policy's own keys) for
     --branch-burst-secs, protected --branch-protect generations - a different manoeuvre at the
@@ -142,7 +142,7 @@ def beam(a, out: Path, branch_tick: int = 0, tag: str = None):
            "--envs", a.envs, "--resample-every", 25, "--score", "d",
            "--greedy-envs", a.greedy_envs, "--allow-nonfinisher", "--save-frontier",
            "--skip-gate", "--route-file", "none", "--max-ticks", a.beam_ticks,
-           "--torch-seed", a.seed, "--log-every", 5, "--out-dir", bd]
+           "--torch-seed", a.seed if seed is None else seed, "--log-every", 5, "--out-dir", bd]
     if branch_tick > 0:
         cmd += ["--branch-at", f"t{int(branch_tick)}:{int(a.envs) // 2}",
                 "--branch-burst", int(round(a.branch_burst_secs * TICKS_PER_S)),
@@ -445,6 +445,11 @@ def main(argv=None) -> int:
     ap.add_argument("--gain", type=float, default=200.0,
                     help="u of field distance a new spine must beat --greedy-d by")
     ap.add_argument("--beam-ticks", type=int, default=4000, help="beam_tas --max-ticks")
+    ap.add_argument("--beam-seeds", type=int, default=1,
+                    help="N > 1: when the plain beam's line does not reach past the greedy "
+                         "frontier by --gain, run it again with torch seeds --seed + 1000 j "
+                         "(j < N) until one does; the deepest line is kept (1 = one beam, as "
+                         "before)")
     ap.add_argument("--envs", type=int, default=4096)
     ap.add_argument("--greedy-envs", type=int, default=32)
     ap.add_argument("--seed", type=int, default=0)
@@ -548,6 +553,28 @@ def main(argv=None) -> int:
     line_tag = "beam"
     res.update(info)
     best_src = None
+    # --beam-seeds N (pbr6b1): the plain beam again with other torch seeds while no line reaches
+    # past the greedy frontier by --gain; the deepest line is kept. A population at a gate's
+    # threshold passes it on some seeds only: on one set of weights seed 7 stopped at the 62.3%
+    # drop (d 21,504) and seed 9 went past it (20,902), ~45 s per beam
+    for j in range(1, max(1, int(a.beam_seeds))):
+        if line is not None and len(line):
+            _d = field_d(field, line)
+            if cut_line(line, _d, a.contact_tol, a.cut)[1] < a.greedy_d - a.gain:
+                break
+        tag = f"beam_s{j + 1}"
+        bl, bi = beam(a, out, tag=tag, seed=int(a.seed) + 1000 * j)
+        res.update(bi)
+        if bl is None or not len(bl):
+            continue
+        bde = cut_line(bl, field_d(field, bl), a.contact_tol, a.cut)[1]
+        print(f"beam seed {int(a.seed) + 1000 * j} ({tag}): {len(bl)} states, cut d {bde:,.0f}",
+              flush=True)
+        if line is None or not len(line) or bde < cut_line(
+                line, field_d(field, line), a.contact_tol, a.cut)[1]:
+            line, line_tag = bl, tag
+    if line_tag != "beam":
+        res.update(beam_tag=line_tag)
     if line is not None and len(line):
         d = field_d(field, line)
         e, de = cut_line(line, d, a.contact_tol, a.cut)
@@ -557,7 +584,7 @@ def main(argv=None) -> int:
               f"(last contact {contact_cut_states(line, a.contact_tol)}) d {de:,.0f}; greedy "
               f"frontier {a.greedy_d:,.0f}", flush=True)
         if de < a.greedy_d - a.gain:
-            best_src = ("beam", line[:e + 1], de)
+            best_src = (line_tag, line[:e + 1], de)
         # branched beams: the fork at --branch-tick and --branch-extra-secs earlier (a fork AT
         # the commitment point only perturbs what is already decided; each beam costs ~20 s)
         forks = [] if a.branch_tick <= 0 else [a.branch_tick] + [

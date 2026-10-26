@@ -2783,3 +2783,7 @@ Incumbent: pbr5b2_c7 ckpt_29123674112 (62.369, md5 afb44185...).
   milestones (the 19 + 23,216 + 22,270) + a1's other flags WITHOUT --auto-spine (no searches: the box has 30 min),
   4e8 steps. Resume eval 29.725B: 62.288 (median 21.4%: the eroded greedy). The curriculum raced back to row 5,484
   (62.15%, just before the drop) at 98% band success within 2 min.
+* a2 evals: 29.725B 62.288 (median 21.4%) / 29.801B 62.324 / 29.876B 62.323 (medians 62.3%: 6/9 back at the drop -
+  the route recovered from the erosion on the depth curriculum) - the greedy's corridor energy unchanged (h ~2,47x at
+  60-61%, 2,51x-2,53x at 62-62.3%); the m2 curriculum raced back to the drop (98% at row 5,484) and then held at the
+  stretch just after the 60% corner (rows 5,289-5,299, 15-38%) for 15+ min.
