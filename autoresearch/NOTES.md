@@ -2185,3 +2185,16 @@ reservation for a boxless branch would keep all four forks running; as it is, a 
   by its end; 7/9 still fall into the 52.85% catch at (-2,380..-2,430, 1,080..1,290, z 2,200)). The curriculum had
   walked k05 back to [4391,...] (47-51%) by then - the greedy leaves k05 at spine state ~4,541 (52.70%), inside its
   GE chain (4,345-5,001). Handoff milestone ckpt_23951572992 (53M before the eval) pulled.
+* c1 eval 24.080B: **56.142** (6/9 greedy episodes at 56.0-56.1%, median 56.1%) -> the quorum fired auto-spine search 1
+  (03:17 UTC). Handoff: ckpt_latest saved right before the search = the eval's exact weights, pinned as
+  ckpt_24080023552.pt (md5 4f12812f...) and pulled. (A manual auto_spine run I had started at the same minute with
+  the same purpose was killed so the trainer's search has the CPU; the main trainer thread is stuck at nice 10 - the
+  container cannot lower a nice value - its 48 worker threads are at 0.)
+* Gate 17 (56.1%): every passing episode climbs out of the drop at ~680-760 u/s (energy height ~2,285) into
+  trigger_teleport *192 (target start; AABB x -2,521..-2,182, y 2,446..2,733, z 2,017..2,340: a lethal box over a
+  shaft whose trigger_push *212 / *213 (angles 90 0 0 = down, speed 30 / 50) and func_illusionary *197 / *198 mark
+  its floor and top). The record (ANALYSIS ONLY) passes under it at z ~1,900 with 1,181 u/s (h 2,772) and leaves
+  south-west (58%: (-2,617, 1,880, 2,508)). Our line loses ~560 u of h landing at (-2,303, 1,263, 2,230) at 52.8%
+  (|v| 1,007 -> 312) right after the 52% conveyor stretch.
+* Search 1's plain beam: frontier d 24,912 (56.41%) at 38.3 s, population stuck at ~25,182 - short of the gain
+  rule's 24,590; the branched beams and the GE ladder run next (trainer waiting).
