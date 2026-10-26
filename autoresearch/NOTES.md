@@ -2610,3 +2610,15 @@ demo_success_energy suites' trainer-before-the-flag tests still pass):
   searches found +167..+200 u through the 58% corner in 8 min x 2 threads). Expect the first search's depth ladder
   to fail at the drop and its energy stage to root at c6's corridor losses (58.0-58.2%); the curriculum then
   teaches that corner's energy, and the next quorum (energetic crossings) searches again from the new weights.
+
+### c7: the energy stage at gate 19 (05:41-05:50 UTC, box 57771742)
+* The fleet's burn fell to 0.527 $/h at 05:41 and a box fit: RTX 4070 Ti, 0.229 $/h, 32 threads, deadline 07:25
+  (`extend --hours` is from NOW, not added: 0.5 h would have shortened it). Deployed aec7ef7 + c6's hand-on
+  ckpt_29047652352 (md5 2411cd53... on the box).
+* **c7 = resume of the 62.367 weights with the to-continue flags + `--auto-spine-energy 150`,
+  `--auto-spine-ge-minutes 5`** (8 in c6: the depth ladder is expected to fail at the drop, as search 3's did, and the
+  first test of an idea is <= 30 min of box time), --steps 1.2e9; spines s6 + keys and pbr1b1_entry_ge_states as in c6
+  (provenance in autoresearch/spines/README.md; no demo). A WARM resume measuring AT the wall: does the loop's own
+  energy stage find and teach gate 19's lost energy? Record gate passed (4 recordings in 24 s).
+* First eval (29.048B): 7/9 greedy past s6's success line (d <= 21,624; median deepest 21,536) -> search 1 at once,
+  with `--energy-gain 150` on its command line.
