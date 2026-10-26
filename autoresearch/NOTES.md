@@ -2766,3 +2766,23 @@ fleet's credit was $11.74 against the $10 reserve at the start, so extensions ar
   with 940-1,009 u/s (h 2,705-2,735, no loss) and climbs (vz +599 at 64.56%) to z 2,361 by 64.82% and 2,435 by 65.1%
   (h ~2,690-2,710), then north at z ~2,400-2,460 to 66.6%; the greedy reaches 64.5% with h 2,444-2,517 after the
   line's ~-260 u impact at 63.9%. Energy again (~200 u), lost one impact upstream.
+
+### b2 search 2 passes gate 20 unboosted (70.74%); its curriculum hits a cliff at 70.3%; b3 on the cut (09:03-09:09 UTC)
+* **Search 2** (30.100B, 615 s): plain beam 19,803 (65.35%), branched beams 19,812-19,938 (energy forks before the
+  line's -358 / -273 u losses at ticks 4,357 / 4,205), then **GE stage 1 (x1.0 / 1.04): an UNBOOSTED (x1.0) chain**
+  from beam row 5,717 (64.7%), 1,985 ticks, to d 16,722 = **70.74%** -> spine k02 (7,701 rows; committed as
+  `pbr6b3_b2k02`). The chain climbs onto a floor further west (x ~-3,561, z ~2,389) at 64.84% instead of the greedy's
+  rise at x ~-3,380 that falls into *210, WALKS north on it at 85-258 u/s (65-66.2%), drops east at 66.4% and crawls
+  on at 225-740 u/s to 70.7%. Slow (the record flies 65-66.6% at 600-700 u/s, ANALYSIS ONLY), but past gate 20.
+* Evals on k02: 30.175B 64.771 (median 64.8%).
+* The k02 curriculum stalled within 10 min at a SUCCESS CLIFF near the chain's end: band [7,545..7,555] at 0.0-0.7%,
+  [7,565..] at ~33%: at rows 7,544-7,554 (70.30%) the chain makes a hard air turn (yaw 8 -> 262 deg in ~10 ticks,
+  ducked, keys [1,2,1]), lands at 7,566 (-200 u) and jumps at 7,576 - an explorer manoeuvre the policy does not
+  reproduce from a spawn 10 ticks before it (a1 / c7's [5,413] cliff was the same kind: a sharp drop in band success
+  within 5-10 rows).
+* **pbr6b3_b3** (09:09 UTC) = resume of b2's ckpt_latest (30.194B, md5 8dd325ff...; its 30.175B eval 64.771) with the
+  loop on spine `pbr6b3_b2k02c` = k02 cut at row 7,540 (70.28%, before the turn; success line d <= 17,082 = 70.1%) +
+  milestones along the chain at its running-min d every ~1% past the greedy frontier (19,683 / 19,254 / 18,701 /
+  18,263 / 17,418 = 65.6 / 66.3 / 67.3 / 68.0 / 69.5%), so greedy-spawn and band episodes that pass gate 20 are paid
+  before the far success line. Generic rule worth automating: when a spine's band sits at a success cliff near its
+  end, cut the spine before the cliff (the next gate only) and let the policy's own search take the cliff later.
