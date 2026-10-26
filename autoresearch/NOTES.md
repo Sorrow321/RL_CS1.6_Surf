@@ -3024,3 +3024,12 @@ c5 had dips (median down to 24%) that recovered, c6 / c7 did not (see the collap
   gradient 15.9% of rows; dead by the keys' own ratio 2.7%; **cut by the view 13.7% = 87% of the dead rows**; KL keys
   0.0065, yaw 0.017, **pitch 0.046 - the view heads 92% of the joint KL, the camera-only pitch head alone 67%**
   (its RMS log-ratio median 0.66, max 37). The CPU probe's picture, sharper.
+* `--ppo-head-clip` (new, default off, 61e5806): PPO's clipped surrogate per head GROUP (keys / yaw / pitch), each on
+  its own ratio, summed; on-policy its gradient is the joint one's, and a group past the clip goes flat alone. The old
+  group log-probs are scored once per update (one no-grad pass over the buffer). Tests: tests/python/
+  test_ppo_head_clip.py (gradient equality on-policy, a group past the clip, a trainer smoke run with the diagnostic
+  beside it, flag-off bit-identity against the pre-change trainer, TRAIN_ONLY). Not run on a box yet.
+* c9 at 14:13 UTC (30.84B): the curriculum walked 6,327 -> 6,172 in ~8 min (bands [6,177] 23-28%, [6,172] 17-20%:
+  the edge-pause rows of the approach). Evals 62.350 (30.703B) / 62.288 (30.779B), medians 62.3%. The line forks
+  from the greedy's own beam at tick 5,827 (the branched beam's held view offsets), so the curriculum has ~345 rows
+  to go before the greedy's own approach meets it.
