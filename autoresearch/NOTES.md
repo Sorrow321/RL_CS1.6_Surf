@@ -2344,3 +2344,35 @@ minute). Incumbent: pbr4b3_t11 ckpt_23551016960 (md5 7fbcd458...), eval 52.937 a
   6,165 it goes on to 62.29%. The strip has a gap at y ~2,450: the beam lands at y ~2,470 (rows 6,160-6,170: vz -208 ->
   +194, duck released) and hops over it; the greedy and every band spawn before the landing do not jump - a timing
   gate, not a drift. c6's band [6,158,6,162] at 2.2% for ~25 min; evals flat at 61.4% median (26.4-26.7B).
+* c6's own patience search 1 (27.085B, 38 s): the plain beam on c6's weights to d 21,536 (62.32%) - a faster, more
+  energetic line of the policy's own (61% at row 5,542 vs s6's 6,042; energy height at 57% 2,729 vs 2,475) that crosses
+  the gap stretch at x ~-1,993..-2,003 -> spine k01 swapped in (success line 21,636; s6's 21,624 became a milestone).
+  c6 evals 61.41-61.53 (26.86-27.16B), median 61.3-61.4%; the curriculum on k01 at the gap band (row 5,674: 27.8%).
+
+### pbr5b2 round 5 lesson (DRAFT, 00:25 UTC; finalised at wrap-up)
+* **Score 52.937 -> 61.566** (so far; c6 26.103B, median 61.41%). Gates passed: k05's descent to 56.2% (c1, the
+  inherited loop: 56.341), the 56.6% shaft climb (gate 17: 56.579 -> 56.711 -> 61.566).
+* **What worked, in order of effect:**
+  1. **An energy-gated curriculum (`train_fast --demo-success-energy M`)** for a line found for its ENERGY, not depth:
+     Go-Explore's chain A flew the 51.7-54.5% descent ~600 u of energy height cleaner than the policy's line but no
+     deeper; with the depth rule every crossing counts (the greedy already flies past it), with M = 200 a spine episode
+     succeeds only if it arrives with the spine end's energy. ~20 min / ~400M steps: the greedy's energy at 53% went
+     2,330 -> 2,880, and it walked past the chain's x1.04 root, where every boosted DEPTH spine of this lineage stalled.
+  2. **The rising / not split in Go-Explore's cell key** (`explore_phase1 --cell-heading 1`, now auto_spine's default
+     `--ge-cell-heading 1`): a state rising up the 56.3% shaft and one crossing it sideways shared a 64 u x energy cell;
+     four ladder stages and two focused runs stopped under the climb; with the split GE-E went up it (62.25%).
+  3. **Energy first, then the policy's own search:** on the weights that had learned the descent, the PLAIN beam made
+     the climb unboosted (62.34%); a depth curriculum on that line put 9/9 greedy episodes past the climb within ~75M
+     steps (56.71 -> 61.51). Boosted GE spines only taught the AIM (c4: up the shaft into the upper room).
+  4. Tools: `tools/stitch_spine.py` (beam / GE chain / policy rollout segments -> one spine + keys; e1, e1c, e1d),
+     `--respawn-greedy-energy N` (greedy-line spawns before the line's largest energy losses; no measurable effect on
+     its own here), energy forks and E stages in auto_spine (nulls at their first use; the E stage left the default).
+* **What did not:** energy-weighted beams (`--score dh`, with or without keys temperature: the same three impacts);
+  branched beams forked before the impacts (every forked lineage dead: the descent is a narrow tube for the policy);
+  Go-Explore from pre-crash roots (the uniform explorer adds its own crashes); a curriculum on the full stitched line
+  e1 (stalled at once on an explorer impact 5% past the greedy); a boosted depth curriculum (e1c: stalled at its
+  x1.08 root, as round 4's k02 did).
+* **Generic rule learned:** when the gate is energy, find WHERE the energy is lost (the line's largest one-tick losses
+  of z + |v|^2/2g vs a line that keeps it), find a line that keeps it (the archive's most energetic non-plunging state
+  at matched depth, often from a slightly boosted root), and teach THAT with an energy success rule; then let the
+  policy's own search take the next gate.
