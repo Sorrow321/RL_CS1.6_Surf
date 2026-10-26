@@ -2251,3 +2251,23 @@ reservation for a boxless branch would keep all four forks running; as it is, a 
   start room (*249 / *250, also dropped by MAX_SOLIDS) under a trained policy.
 * The 4 energy-ranked beams (dh K 2 on c2's 56.575 weights: plain, forks at 32 / 33 / 34 s): all four end on the same
   ledge at 56.58-56.59% with h 2,323-2,345 at 56% - ranking by energy does not find a line that skips the plate.
+
+### Experimental conveyor physics: `--conveyor 1` (04:00-04:30 UTC; commit ef5e852)
+* Core (gated by SURF_CONVEYOR=1, read at map load; off = bit-identical to the parent commit's core,
+  tests/python/test_conveyor.py): a solid func_conveyor (not SF_CONVEYOR_VISUAL) carries convey = movedir x speed
+  (SetMovedir; speed 0 -> 100); a player standing on it gets basevelocity = convey (SV_CheckMovingGround, all three
+  fold sites in env.c) and, while standing on a conveyor with a vertical push, PM_AddCorrectGravity leaves
+  basevelocity[2] for the move (pm.c). Effect on *162: one frame of friction on the plate, then vz +241 and the
+  horizontal speed kept (the record: vz ~+247-249 with 1-2 frames of friction). On this map only *162 (52%) and *242
+  (~62%) change: the start room's *249 / *250 are not solids in our core (MAX_SOLIDS), so the entry is untouched.
+* train_fast `--conveyor 1` sets SURF_CONVEYOR=1 before any core (auto_spine's beams / Go-Explore inherit it; a resume
+  restores it from the checkpoint's config `conveyor`); record_ckpt mirrors it. EXPERIMENTAL: the mechanism is fitted
+  to the WR demo's two conveyor contacts, not read from the engine's code.
+* First measurement (beam_tas on c2's 56.575 weights, conveyor on): the policy's own population keeps h ~3,075 at 52%
+  and ~3,134 at 53% (no-conveyor lines ~2,800 / ~2,330; the record 3,193 / 3,234) - and, trained to slide on the plate,
+  every copy dies by 38.3 s after the launch (frontier 53.45%). The energy wall is gone; the route after the plate has
+  to be re-learned.
+* **pbr5b3_c3** (04:27 UTC): c2's ckpt_latest (24.760B, md5 0122ccce...) + `--conveyor 1` + c2's flags (spine br2,
+  keys, milestones + 24,910) with `--auto-spine-patience 3e8 --auto-spine-retry 3e8` (a search ~15 min in, in the new
+  physics). First eval 24.7605B: greedy median 52.53% (launched at the plate, then dead), as the beam predicted.
+  The round's score keeps its best eval (c2's 56.587 under the old physics) whatever c3 does.
