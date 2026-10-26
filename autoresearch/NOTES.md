@@ -2198,3 +2198,12 @@ reservation for a boxless branch would keep all four forks running; as it is, a 
   (|v| 1,007 -> 312) right after the 52% conveyor stretch.
 * Search 1's plain beam: frontier d 24,912 (56.41%) at 38.3 s, population stuck at ~25,182 - short of the gain
   rule's 24,590; the branched beams and the GE ladder run next (trainer waiting).
+* Search 1 (24.080B, 1,679 s, trainer waiting): beam 24,912 (56.41%); branched beams 24,912 / 24,811 (56.59%, fork
+  1 s earlier) / 24,912; GE x1.0-1.04 24,840; x1.08 24,801; x1.12 no gain - nothing under the 24,590 the gain rule
+  asked (greedy median 25,090 - 500). The GE archives hold cells with h 3,030-3,090 at 53-54.5% (the record's ~3,230
+  there), all from one unboosted early root and all dead ends (subtrees of 1-8 cells: falls); at 56% the best cells
+  have h ~2,450 (record 2,772; our greedy ~2,285). The beam_br2 line climbs onto a ledge at (-2,290..-2,380,
+  2,465..2,500, z 2,040-2,135) instead of the teleport and crawls there for 6 s to 56.59%.
+* **pbr5b3_c2** (03:50 UTC): c1's exact 56.142 weights (ckpt_24080023552) + the beam_br2 line as the spine
+  (autoresearch/spines/pbr5b3_c1k01br2 + keys; success line d <= 24,910) + milestones + 25,121 (k05's line) + c1's
+  other flags. A small step (+0.4% if the greedy follows it) that the loop's gain rule would not take; the loop runs on.
