@@ -3100,3 +3100,26 @@ its lesson): c12's ckpt_latest (36.668B, md5 d802b3e8...) and its search-2 spine
   south to 89%, east/north to 90.5%, then a ~4,200 u fall to the finish box. The field is monotone along it from 70% on
   (no deceptive dip visible); the record flies there at h 2,720-2,750 where k02's chain end has 2,252 (-470 u), so an
   ENERGY gate is the likely next kind (the climb at 79-82%).
+
+### The next gate (74.3%) is ENERGY; `--auto-spine-args` (20:45-21:05 UTC, local, no box)
+* **Energy at first arrival, k02 (beam prefix to 70.8% + the x1.04 GE chain) vs the record (ANALYSIS ONLY, a
+  yardstick):** 60-65% k02 is ABOVE the record (+30..+106 u); **65.5-66.5% the walkway costs ~-230 u** (k02 walks the
+  one-hull strip at 250 u/s, the record flies 40-100 u above catch sheet *186 at 650-710 u/s); 67-70.5% -150..-250 u;
+  71-74% the chain's own losses (a bounce off the landing platform -100 u at row 6,436, a BRAKE -116 u at 6,532, more
+  at 72.4-74%): **-455 u at 74.0%** (k02 2,252 vs 2,707).
+* Kill volumes near the route past 70% (map entities, measurement only): *184 (z 1,663-1,842, the greedy's 73.5% death),
+  *158 (x -793..-514, y 1,135..1,699, z 1,670..1,984) right in front of k02's end, *183 / *265 (z <= 1,440) under the
+  record's 76-84% flight at z 1,446-1,690, *128 a ceiling at z 2,576.
+* **k02's end is doomed**: local GE (2 threads x 256 envs, 8 ms, x1.0 / 1.04, 96 roots = k02 rows 6,660-6,851, 2.7 min)
+  - 90% of runs die, best never beyond the roots (falling at 485 u/s into *158's top, z 1,984). A depth search from the
+  chain's end cannot pass; the loop's next search will need its energy stage.
+* Local energy GE (`--select-energy 3`, roots = k02 rows 6,280-6,700 x1.0 / 1.04, 2.6 min): 58k cells, nothing past
+  k02's end in depth, but `energy_pick` against k02 over 70.5-75%: **+205 u at 72.42%** (cell 27,500: 861 u/s at
+  (-1,104, 2,646, 2,102), 26 ticks from root row 6,519 - it turns south BEFORE k02's brake instead of braking west).
+* **New: `train_fast --auto-spine-args STR`** (f1f5b3c; default off, bit-identical; TRAIN_ONLY): extra arguments
+  appended LAST to every tools/auto_spine.py search the loop runs. The search's own knobs were unreachable from the
+  trainer - in particular `--ge-select-energy K` (pbr5b2's local A/B: K = 3 reached 61.41% vs 59.42% at matched
+  compute, 2.1x the cells past 57%), which the loop's GE stages never used. tests/python/test_auto_spine_args.py 4/4
+  (the search line ends with the args, refusals, TRAIN_ONLY, flag off identical to the trainer before it, config and
+  every progress.csv number); test_auto_spine + test_auto_spine_energy 23/23. c13 will run with
+  `--auto-spine-args "--ge-select-energy 3"`.
