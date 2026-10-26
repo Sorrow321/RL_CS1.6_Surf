@@ -3069,3 +3069,34 @@ Germany (machine 56783), rented 08:05 UTC for 2 h.
   (search 2's result at the wrap-up: beam + GE, 6,852 states to d 14,673 = 74.33%, md5 0aced692...; in
   runs/pbr6b4/pbr6b4_c12/auto/k02, pulled) with the loop on and `--demo-match-band`; the next stop is the catch sheet at
   ~73.5% after the climb. Last evals 73.503 / 71.475 / 73.518 / 73.586 / 73.443 (medians 61.5-73.4%).
+
+## pbr7b1 (round 7, slot 1) - 2026-10-26 20:25 UTC start
+
+Incumbent: pbr6b4_c12 ckpt_35907960832 (md5 160da9eb...), eval 73.590 at 35.918B. The round-6 handoff used here (named in
+its lesson): c12's ckpt_latest (36.668B, md5 d802b3e8...) and its search-2 spine `auto/k02` (6,852 states to d 14,673 =
+74.33%), committed as `autoresearch/spines/pbr6b4_c12k02` (+keys, provenance in the spines README).
+
+### No box at the start: the fleet's burn leaves 0.17 $/h (20:34-20:45 UTC)
+* `box.py rent` refused at 20:34: burn 1.031 $/h of the 1.2 cap with 2 boxes live, and the market had ONE acceptable offer
+  (an RTX 5080 at 0.621 $/h, Florida). A background waiter (`box.py rent` every 150 s, then deploy + launch of c13 below)
+  holds the slot; the rent goes through as soon as a box is released or a cheap offer appears.
+* **pbr7b1_c13 (planned)** = resume of c12's ckpt_latest on `pbr6b4_c12k02` + keys with c12's flag set (the flags a resume
+  does not restore, found by diffing c12's run.json config against the trainer's defaults and its restore list):
+  `--demo-tau0 6531` (where c12's curriculum stood: band [6,531 / 6,536] at 25% / 70%), `--demo-cooldown 5
+  --demo-grow-max 40 --demo-front-temp 0.5 --demo-front-ticks 40 --demo-front-view 6 --demo-match-band`, the 26 milestones
+  of c12's current.json (c12's 24 + 15,571 + 16,452), `--auto-spine --auto-spine-milestones --auto-spine-gain 500
+  --auto-spine-ge-minutes 5 --auto-spine-retry 4e8 --auto-spine-patience 0 --auto-spine-energy 150`, `--respawn-greedy-contact
+  --respawn-greedy-energy 3 --respawn-greedy-temp 0.5 --respawn-greedy-temp-ticks 100 --respawn-greedy-temp-view 6`.
+  A warm resume pushing the frontier past the 73.5% catch sheet.
+* What c12's last evals show (36.52B / 36.60B, scorer's field): 4/9 and 3/9 reach 73.4-73.6% (the landing + slow climb
+  route, dying on catch sheet *184 at (-875..-922, 1,900-2,046, z 1,718)), and at 36.60B **5/9 die at the 71.4% landing
+  again** - after the swap to k02 (whose x1.04 GE chain flies past the landing platform at 750-930 u/s instead of stopping
+  on it) the greedy is between two routes. Expect the first evals of c13 to be unsteady until k02's chain is learned.
+* k02's hard band at the end of c12 ([6,531, 6,535], 25%): the chain presses BACK for a few ticks at row 6,532 (hs 791 ->
+  663, -116 u of energy height) to make its turn west at (-1,080, 2,761, z 2,122); spawns after the brake succeed 70%,
+  spawns before it 25%. A precision brake, not a bookkeeping stall (the band records 500 episodes).
+* The record's route past 74% (ANALYSIS ONLY): descends to (-364, 1,198, 1,683) at 75.7%, east at ~1,200 u/s and z
+  1,450-1,520 to 78.3%, climbs to (2,537, 2,272, 1,835) at 81.7%, north and down to z ~850 at 85.6%, a U-turn west and
+  south to 89%, east/north to 90.5%, then a ~4,200 u fall to the finish box. The field is monotone along it from 70% on
+  (no deceptive dip visible); the record flies there at h 2,720-2,750 where k02's chain end has 2,252 (-470 u), so an
+  ENERGY gate is the likely next kind (the climb at 79-82%).
