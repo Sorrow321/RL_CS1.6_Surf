@@ -2350,8 +2350,9 @@ minute). Incumbent: pbr4b3_t11 ckpt_23551016960 (md5 7fbcd458...), eval 52.937 a
   c6 evals 61.41-61.53 (26.86-27.16B), median 61.3-61.4%; the curriculum on k01 at the gap band (row 5,674: 27.8%).
 
 ### pbr5b2 round 5 lesson (DRAFT, 00:25 UTC; finalised at wrap-up)
-* **Score 52.937 -> 61.566** (so far; c6 26.103B, median 61.41%). Gates passed: k05's descent to 56.2% (c1, the
-  inherited loop: 56.341), the 56.6% shaft climb (gate 17: 56.579 -> 56.711 -> 61.566).
+* **Score 52.937 -> 62.367** (c6 29.048B, median 62.34%; 81 valid evals). Gates passed: k05's descent to 56.2% (c1,
+  the inherited loop: 56.341), the 56.6% shaft climb (gate 17: 56.579 -> 56.711 -> 61.566), the 61.5% gap hop (gate
+  18, by the loop's own k01/k02 lines and the curriculum: 61.731 -> 62.264 -> 62.367). Stopped at gate 19 (62.3%).
 * **What worked, in order of effect:**
   1. **An energy-gated curriculum (`train_fast --demo-success-energy M`)** for a line found for its ENERGY, not depth:
      Go-Explore's chain A flew the 51.7-54.5% descent ~600 u of energy height cleaner than the policy's line but no
@@ -2490,3 +2491,10 @@ minute). Incumbent: pbr4b3_t11 ckpt_23551016960 (md5 7fbcd458...), eval 52.937 a
 Things that did NOT work at energy gates (round 5): energy-weighted beams (--score dh), branched beams forked before
 the impacts (the descent was a narrow tube: every fork died), GE from pre-crash roots with the energy STAGE as a
 depth search (the explorer adds its own crashes), a depth curriculum on a boosted stitched line (stalls at the root).
+
+### Harness issue: `box.py pull` does not fetch a run's auto-spine spines
+`box.py pull --run R` fetches run.json, progress.csv, the launch log, the greedy evals and checkpoints, not
+`runs/R/auto/k*/spine.npy` / `spine.keys.npy` / `spine.json`. With `--auto-spine` the run's CURRENT spine and its keys
+live only there, so a released box takes them along (pbr5b2 lost c6's k01 / k02 this way; the next round has to
+rebuild them with one search). Workaround on the branch side: scp `runs/R/auto/` (or `auto/current.json` + the
+current spine) before `box.py release`. The operator may want `pull` to fetch `auto/*/spine*` and `auto/current.json`.
