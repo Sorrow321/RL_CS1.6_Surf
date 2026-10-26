@@ -3206,3 +3206,16 @@ the operator's); this branch keeps a waiter on `box.py rent` and works offline m
   anyway, on PATIENCE (1.2e9 steps without a quorum), with the ladder's x1.08 stage from a later root on newer weights.
   So c13 now also carries `--auto-spine-patience 8e8` (c12: 0): if the greedy stalls at the wall short of k02's quorum,
   the search still runs every ~45-55 min of training, each time with 32 u / energy-weighted Go-Explore stages.
+* **Pipe geometry (hull traces down, measurement only):** the "pipe" is two surf ramps facing east/north-east (normals
+  (0.76, 0, 0.65) and (0.75, 0.17, 0.64), ~49 deg) with a GAP between them: ramp 1 over y 2,900 -> 2,300 (face z 1,861 at
+  x -1,300, 1,803 at x -1,250), nothing solid over y 2,200-2,100 (the floor under the catch at z 1,714), ramp 2 over y
+  2,000 -> 1,800 (z 1,826 -> 1,878 at x -1,250, rising south). The record (ANALYSIS ONLY) surfs ramp 1 low on its face
+  (x -1,236..-1,250, z 1,775-1,800, 1,230 u/s), leaves it rising (vz +150), crosses the gap at z 1,797-1,809 and meets
+  ramp 2 at its bottom (z ~1,811) - the kick. k02 / the policy ride ramp 1 high (x -1,294, z ~1,854: crosses the gap,
+  meets ramp 2 high, weak kick); the explorer's fast states sit low (z 1,750-1,770) and fall into the gap.
+* Bench from the 24 fastest GE states on ramp 1 (c12, greedy): 15/24 fall into the gap (72.9-73.2%), 9/24 reach the wall
+  (73.8-74.39%) and hit it. A local policy beam (256 envs, CPU, branched at once with +-30 deg view offsets) from one of
+  the wall-reaching states: frontier 74.07%, the whole population dead at the wall by 3 s. So the gate needs BOTH the
+  record's speed on ramp 1 (~1,230 vs our <= 1,015) and its height band there - the speed is upstream energy (the
+  walkway -230 u, 70.8-72.4% -100..-200 u), the height is precision. Expect c13 (k02 + the loop) to reach ~74.3-74.45%
+  (the wall face) and the loop's energy stage to have to rebuild the upstream energy first.

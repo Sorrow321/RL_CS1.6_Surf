@@ -3,5 +3,5 @@
  "round": 7,
  "final": false,
  "best": null,
- "summary": "Round 7 start (20:25 UTC): no box yet - the fleet's burn (1.031 $/h of the 1.2 cap) leaves 0.17 $/h and the only acceptable offer is a 0.621 $/h 5080; retrying each wakeup. Plan: resume c12's ckpt_latest (36.67B, md5 d802b3e8) on its search-2 spine pbr6b4_c12k02 (74.33%, committed) with the loop on, --demo-tau0 6531 (where c12's curriculum stood) and --demo-match-band."
+ "summary": "No box since the round start (20:25 UTC): the fleet's 1.2 $/h cap is held by two branches' boxes (1.031 $/h) and the cheapest acceptable offer is 0.35-0.39; a waiter retries box.py rent every 75 s and launches c13 (c12's ckpt_latest 36.67B on its search-2 spine pbr6b4_c12k02 to 74.33%, the loop with --auto-spine-args '--ge-select-energy 3 --ge-cell 32' and --auto-spine-patience 8e8). Offline (local CPU, no box): the next gate (74.3%) is a WALL at x -837 (clear from z ~2,140 standing / 2,120 ducked), passed by the record via a precise two-ramp surf at 72.5-73.5% at ~1,230 u/s; c12's policy hits it at z ~1,980 even with x1.45 speed; local Go-Explore (32 u cells, boosts to x1.2) reaches apex 2,124-2,135 and never past. New flag --auto-spine-args (CPU-tested, off = bit-identical)."
 }
