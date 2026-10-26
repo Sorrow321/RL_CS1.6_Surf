@@ -2622,3 +2622,12 @@ demo_success_energy suites' trainer-before-the-flag tests still pass):
   energy stage find and teach gate 19's lost energy? Record gate passed (4 recordings in 24 s).
 * First eval (29.048B): 7/9 greedy past s6's success line (d <= 21,624; median deepest 21,536) -> search 1 at once,
   with `--energy-gain 150` on its command line.
+* **c7 search 1 (05:49-06:14 UTC, 1,498 s): the loop's energy stage FOUND gate 19's lost energy and swapped it in.**
+  Depth: plain beam 21,490 (62.40%), five branched beams (incl. energy forks at ticks 4,072 / 4,230) 21,490-21,497,
+  GE x1.0,1.04 / x1.08 / x1.12 21,483 / 21,483 / 21,476 - the tail roots now fire ("the line crawls 1.6 s past its
+  stall (tick 5,689) to its end (5,899): roots before both") and still nothing is 500 u deeper. Energy stage: 48 roots
+  before the beam line's largest losses (-337 u at tick 4,138, -233 at 4,296, -136 at 4,892), window 48.75-62.40%,
+  10,063 candidates; the deepest keeping >= 150 u: cell 251,579 at **59.55%, h 2,701 (+217 u over the line)**, a
+  328-tick chain from an x1.04 root at line row 4,814 -> spine k01 (5,142 states + keys), success = crossing d <=
+  23,216 with h >= 2,626 (the end's - 75). The policy's line has ~2,480-2,505 there (c6's evals: 59% ~2,505).
+  The trainer resumed at 227k steps/s (GPU 99%; progress.csv's time/fps averages over the search's pause).
