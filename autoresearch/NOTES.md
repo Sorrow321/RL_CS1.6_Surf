@@ -3106,3 +3106,21 @@ a 5080 at 0.621 $/h, so `rent` was REFUSED (budget pace); a local retry every 5 
   at 0.589 $/h; nothing under the 0.169 $/h of headroom. So at these prices the cap holds 2-3 boxes and at least one
   branch has no GPU until another releases; a branch without a box this round scores nothing. Not worked around: the
   local retry calls box.py rent unchanged.
+
+### The gate after k02 (74.3%) is a LEDGE that needs ~+100-150 u of energy height (22:10-22:25 UTC, local, no box)
+* Local GE (explore_phase1, 2 threads x 256 envs, 10 min, 690k runs, 55k cells; --exact-chains --cell 64 --cell-energy 32
+  --cell-heading 1 --view-follow, 8 ms, 3500 maxvel) rooted at k02's last 4 s (48 rows 6,329-6,851): **nothing past
+  74.32%** on the grader field. The chain's end is a wall.
+* Geometry (core point / hull traces, measurement only): the chain ends in an open well west of x -816 (floor z 1,678 = the
+  catch sheet *184's level, fatal); east of it a thin ledge (x -830..-800, top z 2,103.5, sloped normal (0,-0.14,0.99));
+  the standing hull passes east over it only with its origin at z >= ~2,140 (blocked at 2,130, free at 2,160); past it a
+  shaft (x -800..-512, y 1,136..1,712, floor z ~1,981-1,994) that drops south and opens east at z <= ~1,900 into a room
+  (x >= -512, y 1,136..1,648, z ~1,450-1,700).
+* The k02 chain arrives with h ~2,252-2,258 and peaks at z ~2,105 (row 6,812): ~35 u short of the 2,140 the hull needs,
+  and to clear it at v_h u/s it needs h >= 2,140 + v_h^2/1600, i.e. ~+100-150 u at any useful speed. Its largest one-tick
+  loss on the way is -208 u at 71.37% (row 6,436: it lands on the small platform entity 87 at vz -571 and hops off);
+  sum of losses 71.0-74.3% -588 u, gains +245 u. As a yardstick only (ANALYSIS, CLAUDE.md 0): the record flies
+  74.1-76.1% without a single contact, h 2,710-2,745, over the ledge at z 2,160-2,175, down the shaft in a descending
+  loop and onto a ramp at 76.16%.
+* So when the greedy has learned k02 (5/9 at 74.15% fires the quorum), the gate is ENERGY: expect the loop's depth ladder
+  to stop at the ledge unless a boosted stage clears it, and the energy stage to root before the 71.37% landing.
