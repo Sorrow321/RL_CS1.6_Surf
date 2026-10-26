@@ -2411,3 +2411,15 @@ minute). Incumbent: pbr4b3_t11 ckpt_23551016960 (md5 7fbcd458...), eval 52.937 a
 * GE-I (01:56 UTC, 15 min, 12 threads beside c6): roots on k02's 57-59.5% (43 states, still at h ~2,700) x1.0 / 1.08 (x1.04
   collapses), --cell-energy 16 + the rising split: an airborne, energy-keeping corridor line to teach with
   --demo-success-energy.
+* c6 evals 28.90-29.05B: 62.295 / 62.359 / **62.367** (29.048B, median 62.34%: 7/9 at k02's end) -> the quorum fired
+  search 3. Handoff for 62.367: c6's ckpt_latest saved for that search at exactly 29,047,652,352 (the eval's step),
+  pinned as runs/pbr5b2_c6/ckpt_29047652352.pt (md5 2411cd53..., pulled).
+* GE-I (15 min, roots k02 57-59.5% x1.0 / 1.08, --cell-energy 16 + rising split, 12 threads): a null - deepest 61.61%,
+  its unboosted cells within +0..90 u of k02's energy.
+* **Why the corridor is slow: the core runs CS 1.6's stock bunny-hop cap** (src/pm.c pm_prevent_mega_bunny_jumping,
+  `enable_bhop_cap` 1, train_fast --bhop-cap default 1): a jump from the GROUND above 1.2 x 250 = 300 u/s rescales the
+  velocity to 0.8 x 300 = 240 u/s. Every hop of the policy's corridor / strip line pays it (hence 240-400 u/s there);
+  the record (ANALYSIS ONLY) never takes off from that floor - it stays airborne above it. The WR server's setting is
+  unknown (not in its movevars; CS 1.6 default on), so the stock cap stays: the gate needs a line across the upper
+  level without ground jumps. (Not a reward or map constant: a physics fact worth knowing for every later gate.)
+* Search 3 (29.048B): plain and branched beams 21,485-21,496 (62.40%); GE stage 1 61.68%; x1.08 / x1.12 stages next.
