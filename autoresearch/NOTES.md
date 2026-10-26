@@ -3097,3 +3097,21 @@ ckpt_35907960832 (md5 160da9eb...), eval 73.590 at 35.918B. Credit at the start:
 * The curriculum: 6,851 -> 6,496 in ~4 min (bands 48-100%), then backed off to [6,531] and oscillates [6,526] <-> [6,531]
   (band [6,531,6,535] 25 -> 43%, band [6,526,6,530] 4 -> 9%): the chain clips something at rows 6,532-6,535 ((-1,081,
   2,761, 2,122): horizontal 792 -> 652 u/s, -124 u) and the spawns just before it rarely make the line.
+* c1 evals 3-4: 73.466 (36.811B) / 73.601 (36.886B: 6/9 past the landing; 3 die at it, 1 at 45%); the curriculum
+  passed the 72.25% impact band (~10 min) and walked to [6,436 / 6,441] (71.5%, 49 rows after the chain's x1.04 root
+  at 6,387): band [6,441,...] 60-70%, band [6,436,...] 10-15%.
+
+### `--auto-spine-async`: the trainer's search beside the training (20:55-21:05 UTC, local CPU; 45ff5c2)
+* Why: on this box the trainer uses ~6.8 of its 30.72-CPU quota and the GPU ~15% (it is single-thread bound), and a
+  blocking search held it for up to ~28 min per gate (pbr6b4_c12's search 1: 1,661 s; the explorer inherits the
+  trainer's OMP_NUM_THREADS=15, half the quota). With the flag the search runs on a copy of ckpt_latest
+  (auto/kNN/ckpt.pt; ckpt_latest is rewritten every minute and the search loads it once per beam), its log goes to
+  auto/kNN/auto_spine.log, the trainer polls it every iteration and applies its outcome (swap or retry) at the first
+  iteration after it ends; no second search while one runs; a run that ends kills it. Generic: no constant.
+* Tests (CPU): tests/python/test_auto_spine_async.py 3/3 - TRAIN_ONLY in record_ckpt; a smoke run in which search 1
+  starts, ends while the training goes on (step later than the start) and its outcome is applied, the copy and its
+  path in the search's log, the refusal without --auto-spine (232 s); **flag off bit-identical** to the trainer
+  before the change with a blocking search firing in both (config, every progress.csv number but time/*; 125 s).
+* **pbr7b2_c2** (21:07 UTC): c1 stopped at 36.947B, its ckpt_latest (36.945B, md5 242f1a2a...) staged as runs_ckpt.pt on
+  the box, the box re-deployed on 45ff5c2, launched with c1's flags + `--demo-tau0 6436` + `--auto-spine-async`. Record
+  gate passed (4 recordings). ~4 min of training lost to the relaunch.
