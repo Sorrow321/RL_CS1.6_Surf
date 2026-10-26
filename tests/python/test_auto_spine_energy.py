@@ -255,3 +255,48 @@ def test_default_ladder_puts_energy_before_boost():
     assert [m for m, _b in specs] == ["tail", "gain", "tail", "tail"]
     # without --energy-gain the G is skipped: the GE stages are the old default's
     assert auto_spine.boost_stages(seen["ge_boost"]) == auto_spine.boost_stages("1.0,1.04;1.08;1.12")
+
+
+def test_search_patience_on_an_energy_spine():
+    """--auto-spine-energy-patience (pbr6b1): the energy patience applies only while the current
+    spine is an energy spine; off (None) the old --auto-spine-patience everywhere."""
+    from train_fast import search_patience
+    assert search_patience(1.2e9, None, True) == 1.2e9
+    assert search_patience(1.2e9, None, False) == 1.2e9
+    assert search_patience(1.2e9, 3e8, True) == 3e8
+    assert search_patience(1.2e9, 3e8, False) == 1.2e9
+    assert search_patience(0.0, None, False) == 0.0
+
+
+def test_record_ckpt_knows_the_energy_patience():
+    import record_ckpt
+    assert "auto_spine_energy_patience" in record_ckpt.TRAIN_ONLY
+
+
+def test_the_trainer_takes_and_refuses_the_energy_patience(tmp_path):
+    sys.path.insert(0, str(ROOT / "tests" / "python"))
+    import shutil
+    from test_demo_success_d import _run_demo
+    from test_ge_minutes import PB
+    if not PB.exists():
+        import pytest
+        pytest.skip("no princessburglar")
+    run = "asep_smoke"
+    try:
+        r = _run_demo(run, ["--demo-success-d", "50", "--demo-success-bonus", "50",
+                            "--auto-spine", "--auto-spine-quorum", "9", "--auto-spine-envs", "16",
+                            "--auto-spine-ge-minutes", "0", "--record-every", "2048",
+                            "--eval-eps", "2", "--ep-ticks", "300", "--auto-spine-energy", "150",
+                            "--auto-spine-energy-patience", "3e8"], tmp_path)
+        out = r.stdout + r.stderr
+        assert r.returncode == 0, out[-6000:]
+        assert "--auto-spine-energy-patience 300,000,000: on an energy spine" in out
+        cfg = json.loads((ROOT / "runs" / run / "run.json").read_text())["config"]
+        assert cfg["auto_spine_energy_patience"] == 3e8
+    finally:
+        shutil.rmtree(ROOT / "runs" / run, ignore_errors=True)
+    bad = _run_demo("asep_bad", ["--demo-success-d", "50", "--demo-success-bonus", "50",
+                                 "--auto-spine", "--auto-spine-energy-patience", "3e8"], tmp_path)
+    assert bad.returncode != 0 and "the patience of --auto-spine-energy's" in (bad.stdout +
+                                                                                bad.stderr)
+    shutil.rmtree(ROOT / "runs" / "asep_bad", ignore_errors=True)

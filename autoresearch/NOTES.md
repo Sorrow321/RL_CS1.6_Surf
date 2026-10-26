@@ -2796,3 +2796,17 @@ Incumbent: pbr5b2_c7 ckpt_29123674112 (62.369, md5 afb44185...).
   other torch seeds while no line reaches past the greedy frontier by --gain, the deepest kept; off = unchanged.
   Tests: test_auto_spine_beam_seeds.py (5, incl. a CPU trainer smoke run: notice, config key, `--beam-seeds` on the
   search line, the refusal without --auto-spine). Motivation: m1 (seed 7) vs m2 (seed 9) on the same weights.
+* Why a2's greedy did not follow m2 (m2 rows vs a2's 30.03B ep2, first arrival): m2 rides the 60% corner's SIDE
+  (59.84%: z 2,392, vz +189, |v_h| 680, h 2,703), flies east ducked with alternating side strafes (held keys
+  [none, left/right, duck], view along the velocity), lands at 60.6% on a sloped part of the floor and SLIDES ducked -
+  |v_h| RISES 712 -> 777 u/s, no jump, so no bhop cap - then rides the next side up (vz +129 -> +310), h 2,73x-2,75x
+  throughout. The greedy still cuts the FIRST corner low: on the floor at 59.75% ((-2,680, 2,851), z 2,362, vz -424)
+  and h 2,736 -> 2,492 by 60.0%. The backward curriculum held at 60.6% (the slide, rows 5,284-5,299) - downstream of
+  the corner where the greedy fails - so in 30 min it never reached the place that decides the greedy's line.
+* `train_fast --auto-spine-energy-patience P` (new, off = unchanged; `search_patience`): while the current spine is an
+  ENERGY spine the trainer's search also runs after P steps without a new spine (instead of --auto-spine-patience):
+  in a1 the population had learned the energy spine's corner within ~370M steps while the greedy never reached the
+  energetic quorum, so the loop would have waited the full 1.2e9 patience. Tests: test_search_patience_on_an_energy_spine,
+  test_the_trainer_takes_and_refuses_the_energy_patience (CPU smoke), test_record_ckpt_knows_the_energy_patience.
+  Regression 10:04 UTC (local CPU): test_auto_spine + test_auto_spine_energy + test_auto_spine_beam_seeds 32/32
+  (incl. the trainer smoke runs and the flag-off bit-identity test).

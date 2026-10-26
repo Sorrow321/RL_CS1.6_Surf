@@ -2143,6 +2143,16 @@ def crossed_with_energy(d, h, end_d, h_min) -> bool:
     return bool(len(k)) and float(np.asarray(h, np.float64)[int(k[0])]) >= float(h_min)
 
 
+def search_patience(patience, energy_patience, energy_spine):
+    """--auto-spine-energy-patience: steps without a new spine before the trainer's search runs
+    anyway -> the energy patience while the current spine is an ENERGY spine (pbr6b1: on one, the
+    policy's own search population had learned the spine's corner within ~370M steps while the
+    greedy never reached the energetic quorum), else --auto-spine-patience (0 = never)."""
+    if energy_patience is not None and energy_spine:
+        return float(energy_patience)
+    return float(patience)
+
+
 def spine_energy_rule(res, end_state, gain):
     """--auto-spine-energy G: the energy success floor for a spine the search returned -> the
     spine end's energy height - G / 2 for a spine marked ``energy`` (half the gain it keeps over
@@ -4896,6 +4906,12 @@ def main() -> None:
                          "--auto-spine-gain (auto_spine --beam-seeds N; pbr6b1: on one set of "
                          "weights seed 7 stopped at princessburglar's 62.3% drop and seed 9 "
                          "passed it). Config only when set; not restored")
+    ap.add_argument("--auto-spine-energy-patience", type=float, default=None,   # None = off
+                    help="--auto-spine-energy: while the current spine is an ENERGY spine, the "
+                         "search also runs after this many steps without a new spine (instead "
+                         "of --auto-spine-patience): the policy's population may learn the "
+                         "spine's energy before its greedy line carries it past the success "
+                         "line (pbr6b1). Config only when set; not restored")
     ap.add_argument("--auto-spine-energy", type=float, default=None,   # None = off
                     help="--auto-spine: G > 0 adds an ENERGY stage to the search (auto_spine "
                          "--energy-gain G): when no deeper line exists, a line keeping >= G u "
@@ -11718,6 +11734,14 @@ def main() -> None:
         raise SystemExit("--auto-spine needs --demo-file (the first spine) and --demo-success-d")
     if args.auto_spine_energy is not None and not args.auto_spine:
         raise SystemExit("--auto-spine-energy is a stage of --auto-spine's search: give it")
+    if args.auto_spine_energy_patience is not None:
+        if args.auto_spine_energy is None:
+            raise SystemExit("--auto-spine-energy-patience is the patience of --auto-spine-energy's "
+                             "spines: give it")
+        if not float(args.auto_spine_energy_patience) > 0:
+            raise SystemExit("--auto-spine-energy-patience P: P must be > 0")
+        print(f"--auto-spine-energy-patience {float(args.auto_spine_energy_patience):,.0f}: on an "
+              f"energy spine the search also runs after that many steps without a new spine")
     if args.auto_spine_beam_seeds is not None:
         if not args.auto_spine:
             raise SystemExit("--auto-spine-beam-seeds is a stage of --auto-spine's search: give it")
@@ -14746,6 +14770,8 @@ def main() -> None:
             meta["config"]["auto_spine_energy"] = float(args.auto_spine_energy)
         if args.auto_spine_beam_seeds is not None:
             meta["config"]["auto_spine_beam_seeds"] = int(args.auto_spine_beam_seeds)
+        if args.auto_spine_energy_patience is not None:
+            meta["config"]["auto_spine_energy_patience"] = float(args.auto_spine_energy_patience)
     if args.demo_milestones:
         meta["config"]["demo_milestones"] = [float(x) for x in
                                              str(args.demo_milestones).split(",") if x.strip()]
@@ -15832,8 +15858,9 @@ def main() -> None:
         if AUTO["last"] is None:
             AUTO["last"] = int(global_step)
         quorum = m >= int(args.auto_spine_quorum)
-        pat = (float(args.auto_spine_patience) > 0
-               and global_step - AUTO["last"] >= float(args.auto_spine_patience))
+        _patience = search_patience(args.auto_spine_patience, args.auto_spine_energy_patience,
+                                    args.auto_spine_energy is not None and DEMO_H_MIN is not None)
+        pat = _patience > 0 and global_step - AUTO["last"] >= _patience
         go = (quorum or pat) and global_step >= AUTO["retry_at"]
         print(f"[{global_step:>13,d}] auto-spine: {m}/{len(eps)} greedy episodes past the "
               f"success line d <= {DEMO_END_D:,.0f}; greedy frontier (median deepest d) "
