@@ -246,3 +246,13 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   run pbr6b4_c11's search 1 on its 32.390B weights (5/9 greedy episodes past the 70.13% walkway line): the policy's own
   plain beam_tas line from the true spawn (tools/auto_spine.py, 4,096 stochastic copies, d-ranked, no fork, no boost, no
   explorer chain) to d 15,471 = 72.93%. Keys = the beam's own held keys. No demo, no record (pbr6b4, round 6).
+* `pbr7b4_c13k01.npy` + `.keys.npy` (6,854 rows; md5 91b819789d81c505a2e570ea479abb48 / 52c224771f21b367c581ed4779ee87a2):
+  run pbr7b4_c13's search 1 on its 36.210B weights (7/9 greedy episodes past the 72.75% line): the policy's own plain
+  beam_tas line from the true spawn (4,096 stochastic copies, d-ranked; it flies the 71% section at ~845 u/s) to its row
+  6,443 (71.25%), then one exact explore_phase1 --exact-chains chain (reward-free search, that row's state x1.08, GE
+  stage 2) to d 14,663 = 74.34%. Keys = the beam's and the chain's own held keys. No demo, no record (pbr7b4, round 7).
+* `pbr7b4_c13k01b.npy` + `.keys.npy` (6,940 rows; md5 a57b7606a786a6e1dc73c802950db30e / b9567f5e1e77456f6fe5597fe07a996b):
+  the same search's GE STAGE 1 chain (root = the beam line's row 6,397 at 70.63%, x1.04; 544 states to d 14,708 =
+  74.26%, 12 u short of the loop's 500 u margin, so the loop took stage 2) spliced onto the same beam line exactly as
+  auto_spine.go_explore splices (canonical views, the chain's keys translated; rows 0-6,397 identical to
+  pbr7b4_c13k01's). A x1.04 root instead of x1.08. No demo, no record (pbr7b4, round 7).
