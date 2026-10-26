@@ -2579,3 +2579,34 @@ current spine) before `box.py release`. The operator may want `pull` to fetch `a
   trainer's loop - when the depth ladder finds nothing and the line's largest energy losses lie upstream, an energy
   stage (GE before the losses, picked by energy_pick, handed back as a spine with the energy success rule; lift the
   --demo-success-energy + --auto-spine refusal for it). Every piece exists and is tested; the glue does not.
+
+### The loop's ENERGY stage: `--auto-spine-energy G` (04:55-05:14 UTC, local; c9dd964 + 4c3b20d)
+The gate-17 playbook (find the loss, search for energy, pick by energy, teach with the energy rule) was manual; gates
+17 and 19 are both energy gates, and a recipe that needs an operator at every energy gate is not one recipe. Now the
+trainer's own loop does it, behind one flag (default off; flag-off bit-identity: the auto_spine and
+demo_success_energy suites' trainer-before-the-flag tests still pass):
+* `tools/auto_spine.py --energy-gain G`: when the depth ladder finds no deeper line, an ENERGY stage runs Go-Explore
+  (`--energy-boost` 1.0,1.04, --roots-keep-all) rooted before the line's largest energy losses (energy_roots, as the
+  E stage), and `energy_cell` picks the DEEPEST archive cell keeping >= G u more energy height than the line at the
+  same progress (energy_pick's filters: on the route, not plunging, not slower than the line; the deepest, not the
+  largest gain, because a large gain is often a state a few ticks before the place where the line loses its own -
+  the corridor analysis above). Its chain is replayed exactly (ge_replay --cell), spliced onto the line, and the
+  spine is marked `energy` (energy_gain, energy_h, energy_window in spine.json).
+* `train_fast --auto-spine-energy G` passes `--energy-gain G`; on an energy spine the success rule becomes the
+  --demo-success-energy rule with floor = the spine end's h - G/2 (`spine_energy_rule`), the quorum counts only
+  greedy crossings that carry it (`crossed_with_energy`: the energy at the first tick past the line - an energy
+  spine is no deeper than the greedy, so a plain crossing proves nothing), current.json records `energy_h_min`;
+  a depth spine goes back to the depth rule. Refused without --auto-spine, without --demo-success-bonus, or with
+  --reward-per-decision; TRAIN_ONLY in record_ckpt.
+* Tests: tests/python/test_auto_spine_energy.py (the pick rule; go_explore replays the picked cell and nothing on
+  None; the stage runs only when asked and only after the ladder failed; the trainer's two rules; a trainer smoke
+  run with the flag - its notice, config key and `--energy-gain` on the search line - and both refusals). Regression
+  39/39 (auto_spine, auto_spine_energy, demo_success_energy, ge_select_energy, ge_roots_keep_all, energy_pick,
+  stitch_spine, respawn_greedy_energy). End to end on CPU (a smoke trainer, the depth ladder forced to fail with
+  --auto-spine-gain 1e6, G = 1): "an ENERGY spine (+7 u over the policy's line): success only with energy height
+  >= 3,720" swapped in, then "energy spine - 0/2 greedy episodes cross ... with energy height >= 3,720".
+* **Untested at a gate.** The next round's gate-19 run: the to-continue launch (c6's 62.367 hand-on, spine s6) plus
+  `--auto-spine-energy 150` (G set once, a physical margin: ~13% of the speed at 700 u/s; the local corridor
+  searches found +167..+200 u through the 58% corner in 8 min x 2 threads). Expect the first search's depth ladder
+  to fail at the drop and its energy stage to root at c6's corridor losses (58.0-58.2%); the curriculum then
+  teaches that corner's energy, and the next quorum (energetic crossings) searches again from the new weights.
