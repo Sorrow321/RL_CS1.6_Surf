@@ -181,14 +181,17 @@ def keys_from_acts(acts, k: int, n: int) -> np.ndarray:
     return out
 
 
-def chain_keys(archive, field, n_states: int):
-    """(n_states - 1, 3) held keys of ge_replay's deepest chain past its root: the per-tick link
-    actions of every cell on the chain (explore_phase1 --exact-chains), as ge_replay walks it."""
+def chain_keys(archive, field, n_states: int, cell=None):
+    """(n_states - 1, 3) held keys of ge_replay's deepest chain (or of the chain to ``cell``) past
+    its root: the per-tick link actions of every cell on the chain (explore_phase1
+    --exact-chains), as ge_replay walks it."""
     from ge_replay import chain_to
     z = np.load(archive, allow_pickle=False)
-    d = np.asarray(field.sample(z["state"]["origin"].astype(np.float64)), np.float64)
-    d[d >= field.reach_max - 0.5 * field.cell] = np.inf
-    ch = chain_to(z["parent"], int(np.argmin(d)))
+    if cell is None:
+        d = np.asarray(field.sample(z["state"]["origin"].astype(np.float64)), np.float64)
+        d[d >= field.reach_max - 0.5 * field.cell] = np.inf
+        cell = int(np.argmin(d))
+    ch = chain_to(z["parent"], int(cell))
     seq = np.concatenate([z["link_acts"][z["link_off"][c]:z["link_off"][c + 1]]
                           for c in ch[1:]]) if len(ch) > 1 else np.zeros((0, 6), np.int64)
     if len(seq) != n_states - 1:
@@ -297,10 +300,26 @@ def tail_roots(end: int, stall: int, tps: float, secs: float, n: int):
     return np.unique(np.concatenate([a, b]).round().astype(int))
 
 
+def energy_cell(st, parent, depth, line, field, d0: float, lo: float, hi: float,
+                gain_min: float, **kw):
+    """The energy stage's pick -> (candidate dict or None, number of candidates): of the archive
+    cells tools/energy_pick.pick accepts in [lo, hi] % (on the route, not plunging, not slower
+    than the line), the DEEPEST with >= ``gain_min`` u more energy height than the line at the
+    same progress - energy kept as far as the search kept it (the largest gain alone is often a
+    state a few ticks before the place where the line loses its own; pbr5b2's corridor)."""
+    from energy_pick import pick
+    _best, cands = pick(st, parent, depth, line, field, d0, lo, hi, **kw)
+    ok = [c for c in cands if c["gain"] >= float(gain_min)]
+    if not ok:
+        return None, len(cands)
+    return max(ok, key=lambda c: (c["progress"], c["gain"])), len(cands)
+
+
 def go_explore(a, out: Path, line, end: int, boosts=None, tag: str = "ge", line_keys=None,
-               roots=None):
+               roots=None, pick=None):
     """GE --exact-chains rooted at the line's last --roots-secs before ``end`` (or at the line
-    indices ``roots``); the deepest chain replayed and spliced onto the line at its root ->
+    indices ``roots``); the deepest chain (or the chain to the cell ``pick(archive path)``
+    returns; None = no chain) replayed and spliced onto the line at its root ->
     (spliced states, info)."""
     from spine_canon_view import canon_view
     from surfgym.core import STATE_DTYPE
@@ -363,8 +382,15 @@ def go_explore(a, out: Path, line, end: int, boosts=None, tag: str = "ge", line_
     info = {"ge_rc": rc, "ge_roots": [int(i) for i in idx], "ge_boost": boosts}
     if not (gd / "archive.npz").exists():
         return None, info
+    cell = None
+    if pick is not None:
+        cell = pick(gd / "archive.npz")
+        info["ge_pick"] = cell
+        if cell is None:
+            return None, info
     rc2 = run([sys.executable, "-u", ROOT / "tools" / "ge_replay.py", "--map", a.map,
-               "--archive", gd / "archive.npz", "--field", a.field, "--out", gd / "line.npy"],
+               "--archive", gd / "archive.npz", "--field", a.field, "--out", gd / "line.npy"]
+              + (["--cell", int(cell)] if cell is not None else []),
               out / f"{tag}_replay.log", 1200)
     info["ge_replay_rc"] = rc2
     if not (gd / "line.npy").exists():
@@ -384,7 +410,7 @@ def go_explore(a, out: Path, line, end: int, boosts=None, tag: str = "ge", line_
         return None, info
     chain, _m = canon_view(gl[1:])
     if line_keys is not None:
-        ck = chain_keys(gd / "archive.npz", load_field(a.field), len(gl))
+        ck = chain_keys(gd / "archive.npz", load_field(a.field), len(gl), cell=cell)
         if ck is not None:
             # the explorer's keys meant what they did relative to ITS view; the chain's views
             # are now along the velocity, so the keys move with them (spine_canon_keys)
@@ -441,6 +467,13 @@ def main(argv=None) -> int:
     ap.add_argument("--ge-keep-all", type=int, default=1, choices=(0, 1),
                     help="1 = a stage with more than one --ge-boost factor runs explore_phase1 "
                          "--roots-keep-all (every boosted copy its own root cell); 0 = as before")
+    ap.add_argument("--energy-gain", type=float, default=0.0,
+                    help="G > 0: when no stage finds a deeper line, an ENERGY stage (GE before "
+                         "the line's largest energy losses) hands back the line to the deepest "
+                         "cell with >= G u more energy height than the line at the same "
+                         "progress, marked energy (train_fast --auto-spine-energy); 0 = off")
+    ap.add_argument("--energy-boost", default="1.0,1.04",
+                    help="the energy stage's speed factors (one stage of --ge-boost's syntax)")
     ap.add_argument("--ge-select-energy", type=float, default=0.0,
                     help="explore_phase1 --select-energy for the Go-Explore stages: each place's "
                          "most energetic cell drawn (1 + K) times as often (0 = off, as before)")
@@ -601,6 +634,51 @@ def main(argv=None) -> int:
                 if ge_de < a.greedy_d - a.gain:
                     best_src = (f"beam+{tag}", gl[:ge_e + 1], ge_de)
                     break
+        if best_src is None and a.ge_minutes > 0 and float(a.energy_gain) > 0:
+            # --energy-gain G: no line is deeper, so the gate may be ENERGY lost upstream (pbr5b2:
+            # gate 17's shaft climb, gate 19's corridor): search before the line's largest
+            # energy losses and hand back the line to the deepest cell that keeps >= G u more
+            # energy height than the line at the same progress - a spine for the trainer's
+            # energy success rule (train_fast --auto-spine-energy), not for its depth rule
+            st = min(e, stall_tick(d, a.stall_margin))
+            ridx, losses = energy_roots(line, st, TICKS_PER_S, a.energy_roots_secs,
+                                        a.energy_drops, a.energy_lead, a.roots_n)
+            fin = np.isfinite(d)
+            d0 = float(d[0]) if fin[0] else float(d[fin].max())
+            prog = np.maximum.accumulate(np.where(fin, 100.0 * (d0 - d) / d0, -1e9))
+            lo_p, hi_p = float(prog[int(ridx.min())]), float(prog[int(e)])
+            got = {}
+
+            def _pick(arch):
+                z = np.load(arch, allow_pickle=False)
+                c, n = energy_cell(z["state"], z["parent"], z["depth"], line, field, d0,
+                                   lo_p, hi_p, a.energy_gain)
+                got.update(energy_candidates=int(n), energy_pick=c)
+                return None if c is None else int(c["cell"])
+            print(f"energy stage: roots before the losses " + ", ".join(
+                f"{dh:,.0f} u at tick {t}" for t, dh in losses) + f" ({len(ridx)} roots), "
+                f"a cell >= {a.energy_gain:g} u above the line's energy over "
+                f"{lo_p:.2f}-{hi_p:.2f}%", flush=True)
+            gl, gi = go_explore(a, out, line, st, boosts=boost_stages(a.energy_boost)[0],
+                                tag="ge_energy", line_keys=KEYS.get(line_tag), roots=ridx,
+                                pick=_pick)
+            res.update({f"ge_energy_{kk[3:] if kk.startswith('ge_') else kk}": vv
+                        for kk, vv in gi.items()})
+            res.update(energy_losses=[[int(t), round(dh, 1)] for t, dh in losses],
+                       energy_window=[round(lo_p, 3), round(hi_p, 3)],
+                       energy_candidates=got.get("energy_candidates", 0))
+            c = got.get("energy_pick")
+            if gl is not None and c is not None:
+                eh = float(energy_height(gl[-1:])[0])
+                res.update(energy=True, energy_gain=round(float(c["gain"]), 1),
+                           energy_h=round(eh, 1), energy_progress=round(float(c["progress"]), 3))
+                best_src = ("beam+ge_energy", gl, float(field_d(field, gl[-1:])[0]))
+                print(f"energy stage: a line to cell {c['cell']} at {c['progress']:.2f}% with h "
+                      f"{eh:,.0f} ({c['gain']:+,.0f} u over the line), {len(gl)} states",
+                      flush=True)
+            else:
+                print(f"energy stage: no cell keeps {a.energy_gain:g} u more than the line "
+                      f"({got.get('energy_candidates', 0)} candidates)", flush=True)
     if best_src is not None:
         src, sp, de = best_src
         sp = clean(sp)
