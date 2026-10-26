@@ -2747,3 +2747,22 @@ fleet's credit was $11.74 against the $10 reserve at the start, so extensions ar
   --auto-spine-energy 150, GE 5 min) on spine k02e under the DEPTH rule (no --demo-success-energy: refused with
   --auto-spine) + the 21 milestones. 8/9 greedy episodes already cross k02e's line (61.55%), so the first eval's
   quorum should run the policy's own search at once: the depth ladder on weights whose greedy now flies the east lane.
+
+### b2: the policy's own plain beam passes the drop; the greedy follows in 75M steps: 64.801 (08:37-08:56 UTC)
+* b2's first eval (29.798B, the 29.797B snapshot's weights): 9/9 past k02e's line (61.55%) -> **search 1: the PLAIN
+  BEAM** (4,096 copies, d-ranked, 51 s) reached d 20,127 = 64.78% -> spine k01 (5,700 states, committed as
+  `autoresearch/spines/pbr6b3_b2k01`), success line d <= 20,227 (64.61%). The beam line keeps h ~2,770-2,830 over
+  58-62% at 700-750 u/s (the corner off the north wall with ~-25 u, the east lane airborne), turns west at 61.7%
+  WITHOUT k02's landing, rides the west ramp at ~955 u/s (62.5-63.5%), loses ~260 u in an impact at 63.9% and ends
+  climbing at 64.78% (z 2,257, 429 u/s). Unboosted, the policy's own: exactly gate 17's sequence (energy first,
+  then the plain beam takes the gate), the energy taught here from a hand cut of the loop's boosted depth spine.
+* Evals: 29.798B 62.327 / **29.873B 64.789** / **29.949B 64.801** (4/9 at 64.76-64.80%) / 30.024B 62.296 (median
+  56.6%: 7/9 died rising at the top of the 56.3% shaft, z ~2,280, while the band sat at ~51%; transient) / 30.100B
+  **64.780** (median 64.7%, 7/9 at 64.25-64.78%) -> the quorum (6/9 past 64.61%) fired **search 2** at 30.10B.
+  Hand-on for 64.801: b2's ckpt_29997662208 (49M after the eval; md5 de246804..., pulled).
+* The k01 curriculum walked 5,699 -> ~4,200 (k01's ~51%) in ~15 min (20-48% success at the band).
+* **Gate 20 (64.8%)**: 7/9 greedy episodes rise to (-3,371..-3,385, 2,631-2,660, z 2,259-2,295) and fall into the big
+  catch sheet *210 (z 2,010-2,028). ANALYSIS ONLY (the record as a yardstick): the record passes 63.7-64.1% at z ~2,080
+  with 940-1,009 u/s (h 2,705-2,735, no loss) and climbs (vz +599 at 64.56%) to z 2,361 by 64.82% and 2,435 by 65.1%
+  (h ~2,690-2,710), then north at z ~2,400-2,460 to 66.6%; the greedy reaches 64.5% with h 2,444-2,517 after the
+  line's ~-260 u impact at 63.9%. Energy again (~200 u), lost one impact upstream.
