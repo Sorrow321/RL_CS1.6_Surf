@@ -3165,3 +3165,20 @@ Independence: only this branch and $AR_HOME/incumbent/ are read. c12's later wei
   after 2 minutes.
 * **pbr7b4_c16** (21:59 UTC): c15's flags (incl. --target-kl 0.15, tau0 6449) from **c14's snapshot ckpt_36870553600**
   (36.871B, 23M steps after c14's last healthy eval 71.517 at 36.848B; md5 52c56ce3...).
+* c16 (target-kl 0.15, from c14's 36.871B; 21:57-22:28 UTC, 370k steps/s): --target-kl stopped 25/25 updates early at
+  first, then 13-14/25 (the stops' kl up to 0.28-0.34: the yaw head's sigma is 0.020, so a small mean shift is a large
+  KL). The curriculum PASSED the bounce band in ~12 min ([6,449] 12-16% -> 30%+) and reached the x1.04 root, oscillating
+  [6,399 / 6,404] at 24-28% / 35-47%. Evals 71.573 / 71.247 / 71.436 / 62.275 / 71.518 / 71.383 / 56.575 / **73.553**
+  (37.400B: one episode down the OLD walkway route to 73.55%, 6/9 dead at the 56.7% shaft) / 71.381 - the KL cap did not
+  stop the early-gate collapses (medians 55-62% in 4 of 9 evals).
+* **Per-eval mean progress** (race/eval_progress / d0): c12 mostly 63-71% (lows 57-60%); c13 64.6-71.7%; c14 48.6-70%;
+  c16 47.7-69.5%. The early gates (54.6% descent, 56.7% shaft, 61.5% gap) break about every second eval since the
+  curriculum moved onto the GE chain: under --demo-grow the draws are [tau, n-1] = 70.6-74.3% only, so nothing behind
+  the curriculum is rehearsed except by the start-pool episodes.
+* **`--demo-replay-frac R` (new, a5fad7c)**: a share R of the demo draws uniform over the spine rows BEHIND the curriculum
+  [0, tau) - the policy's own beam line from the true start - taken out of the non-band share; the advance rule is
+  untouched. Generic rehearsal against forgetting. Off = draws byte-identical to DemoCurriculum before the change
+  (tests/python/test_demo_replay_frac.py 6/6, incl. the pre-change module loaded from git; trainer smoke + refusal;
+  TRAIN_ONLY).
+* **pbr7b4_c17** (22:29 UTC): c16's flags + `--demo-replay-frac 0.1` (band 80% / ahead 10% / behind 10%), --demo-tau0
+  6399, from c16's snapshot ckpt_37471387648 (37.471B, 3.7M steps before c16's healthy 71.381 eval; md5 f4a2fadf...).
