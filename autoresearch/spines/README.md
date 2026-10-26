@@ -203,3 +203,9 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   at row 5,060 (56.38%, the top of its fast climb, 384 u/s), before ~2 s of hopping in place under 110 u/s on the
   ledge: the curriculum on the full line (pbr5b4_c3) lost the start room within ~150M steps while its band sat at the
   climb (the start room's precision duck-jumps are the same low-speed control regime). No demo, no record (pbr5b4).
+* `pbr5b4_shaft_x13_5150.npy` + `.keys.npy` (5,151 rows; md5 9a10dedca6dfb0f3a7726529067e733e / 19cd593b68b123b828daa96aa384d674): gate 17 (a spiral
+  shaft at 56.6%) - the policy's own line pbr5b4_beam_m1 to its row 4,949 (55.55%), then the frontier lineage of
+  beam_tas --start-state from m1's row 4,950 with the velocity x1.3 (|v| 1,327, energy height 2,758) on pbr5b4_c4's
+  24.842B weights (2,048 stochastic copies, d-ranked; the policy's own proposals and held keys): it spirals up the
+  shaft to 57.04% (cut there, before the line slows under 300 u/s at the top). A BOOSTED root (x1.3) like round 4's
+  gate-11 x1.32 chain: the policy's own unboosted line has ~450 u less energy at 55.5%. No demo, no record (pbr5b4).
