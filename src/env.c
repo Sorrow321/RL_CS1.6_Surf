@@ -148,6 +148,23 @@ static float wrap180(float d) {
     return d;
 }
 
+/* SV_CheckMovingGround's conveyor block (sv_phys.c): a player standing on a FL_CONVEYOR
+ * entity gets basevelocity = movedir * speed (added to a trigger_push's when FL_BASEVELOCITY is
+ * already set) and FL_BASEVELOCITY, so the fold below skips that frame. st->onground is the
+ * previous tick's ground entity (0 = world, i + 1 = solids[i]). convey is 0 for every solid
+ * unless the map was loaded with SURF_CONVEYOR=1 (bsp.c): a no-op then. */
+static void conveyor_ground(const BspMap* m, SurfState* st) {
+    if (st->onground <= 0 || st->onground > m->numsolids) return;
+    const float* cv = m->solids[st->onground - 1].convey;
+    if (cv[0] == 0.0f && cv[1] == 0.0f && cv[2] == 0.0f) return;
+    if (st->base_vel_flag) {
+        st->basevelocity[0] += cv[0]; st->basevelocity[1] += cv[1]; st->basevelocity[2] += cv[2];
+    } else {
+        st->basevelocity[0] = cv[0]; st->basevelocity[1] = cv[1]; st->basevelocity[2] = cv[2];
+    }
+    st->base_vel_flag = 1;
+}
+
 static float surf_yaw_delta_abs(const SurfSim* s, const SurfState* st,
                                 float cmd) {
     float base = 0.0f;                    /* mode 2: cmd IS the world yaw */
@@ -710,6 +727,7 @@ static void step_impl(SurfSim* s, const int32_t* actions, const float* view,
         s->last_pitch_delta[i] = pd;
 
         /* SV_CheckMovingGround basevelocity fold */
+        conveyor_ground(&s->map, st);
         if (!st->base_vel_flag) {
             float sc = s->frametime * 0.5f + 1.0f;
             st->velocity[0] += sc * st->basevelocity[0];
@@ -952,6 +970,7 @@ void surf_pm_step_usercmd(SurfSim* s, SurfState* st, float yaw, float pitch,
         return;
     }
     float ft = (float)(msec * 0.001);
+    conveyor_ground(&s->map, st);
     if (!st->base_vel_flag) {
         float sc = ft * 0.5f + 1.0f;
         st->velocity[0] += sc * st->basevelocity[0];
@@ -974,6 +993,7 @@ int32_t surf_play_step(SurfSim* s, SurfState* st, float yaw, float pitch,
         return f | surf_play_step(s, st, yaw, pitch, fmove, smove, buttons, half);
     }
     float ft = (float)(msec * 0.001);
+    conveyor_ground(&s->map, st);
     if (!st->base_vel_flag) {                        /* basevelocity fold */
         float sc = ft * 0.5f + 1.0f;
         st->velocity[0] += sc * st->basevelocity[0];

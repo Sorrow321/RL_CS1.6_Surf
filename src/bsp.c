@@ -265,6 +265,22 @@ static int parse_entities(BspMap* m, char* err, int errlen) {
                 SolidEnt* s = &m->solids[m->numsolids];
                 s->model = model; v3copy(s->origin, origin);
                 ent_bounds(m, model, origin, s->absmin, s->absmax);
+                v3zero(s->convey);
+                /* SURF_CONVEYOR=1 (pbr5b3, 2026-10-26, EXPERIMENTAL): the FL_CONVEYOR push of a
+                 * solid func_conveyor (CFuncConveyor::Spawn: SetMovedir, speed 0 -> 100, FL_CONVEYOR
+                 * unless SF_CONVEYOR_VISUAL 1), turned into the player's basevelocity while it stands
+                 * on it (env.c conveyor_ground) and kept for the move (pm.c). Unset: convey stays 0
+                 * and nothing changes. */
+                if (!strcmp(cls, "func_conveyor") && !((int)kv_float(kv, n, "spawnflags", 0) & 1)) {
+                    const char* ev = getenv("SURF_CONVEYOR");
+                    if (ev && ev[0] == '1') {
+                        float angles[3]; kv_vec(kv, n, "angles", angles);
+                        float movedir[3]; set_movedir(angles, movedir);
+                        float speed = kv_float(kv, n, "speed", 0.0f);
+                        if (speed == 0.0f) speed = 100.0f;
+                        for (int i = 0; i < 3; i++) s->convey[i] = movedir[i] * speed;
+                    }
+                }
                 m->numsolids++;
             }
             /* func_illusionary skin>=-1, triggers we don't model, buyzones etc: non-solid, ignored */

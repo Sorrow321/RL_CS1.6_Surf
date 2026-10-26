@@ -149,8 +149,16 @@ static void pm_add_correct_gravity(PmCtx* c) {
     /* source is a float compound-assign with a double RHS: the SUBTRACTION happens
      * in double and rounds to float ONCE (Add's expression is double-led, literal 0.5f) */
     c->st->velocity[2] = (float)(c->st->velocity[2] - ent_gravity * c->ph->sv_gravity * 0.5f * c->frametime);
-    c->st->velocity[2] += c->st->basevelocity[2] * c->frametime;
-    c->st->basevelocity[2] = 0;
+    /* SURF_CONVEYOR=1 (EXPERIMENTAL): a player standing on a vertically pushing conveyor keeps
+     * its push for the move, so PM_CategorizePosition's vz > 180 test lifts it and the next
+     * fold adds (1 + dt/2) x speed - what the WR demo shows on surf_princessburglar_b26's 250 u/s
+     * conveyors (vz -> +249, horizontal speed kept). convey is 0 unless SURF_CONVEYOR=1. */
+    const SurfState* st0 = c->st;
+    if (!(st0->onground > 0 && st0->onground <= c->map->numsolids
+          && c->map->solids[st0->onground - 1].convey[2] != 0.0f)) {
+        c->st->velocity[2] += c->st->basevelocity[2] * c->frametime;
+        c->st->basevelocity[2] = 0;
+    }
     pm_check_velocity(c);
 }
 static void pm_fixup_gravity_velocity(PmCtx* c) {

@@ -84,7 +84,9 @@ typedef struct {
     int32_t push_once;               /* SF_TRIGGER_PUSH_ONCE */
 } Trigger;
 
-typedef struct { int32_t model; float origin[3]; float absmin[3], absmax[3]; } SolidEnt;
+typedef struct { int32_t model; float origin[3]; float absmin[3], absmax[3];
+                 float convey[3];   /* FL_CONVEYOR push movedir*speed; 0 unless SURF_CONVEYOR=1 */
+} SolidEnt;
 typedef struct { int32_t model; float origin[3]; int32_t skin; float absmin[3], absmax[3]; } ContentsEnt;
 typedef struct { float origin[3]; float yaw; } SpawnPoint;
 

@@ -4971,6 +4971,14 @@ def main() -> None:
                          "speed is multiplied by up to 0.88 per tick and a second jump is lower. "
                          "0 = a no-slowdown server. Physics: restored from a checkpoint, mirrored "
                          "by record_ckpt")
+    ap.add_argument("--conveyor", type=int, default=None,
+                    help="1 = EXPERIMENTAL conveyor physics (pbr5b3, 2026-10-26): a solid "
+                         "func_conveyor's FL_CONVEYOR push becomes the player's basevelocity "
+                         "while it stands on it (SV_CheckMovingGround) and a vertical push is "
+                         "kept for the move, so an upward conveyor launches like the WR demo "
+                         "shows (SURF_CONVEYOR=1 for the core and every subprocess: the "
+                         "auto-spine beams / Go-Explore). Default off = the old core bit for "
+                         "bit; ckpt restores")
     ap.add_argument("--maxvel", type=float, default=None,
                     help="sv_maxvelocity (default 2000, the GoldSrc stock "
                          "value all pre-race runs trained on; real surf "
@@ -7677,6 +7685,9 @@ def main() -> None:
         if args.maxvel is None and ck_cfg.get("maxvel") is not None:
             args.maxvel = float(ck_cfg["maxvel"])
             restored.append(f"maxvel={args.maxvel:g}")
+        if args.conveyor is None and ck_cfg.get("conveyor") is not None:
+            args.conveyor = int(ck_cfg["conveyor"])
+            restored.append(f"conveyor={args.conveyor}")
         if args.respawn_frac is None and ck_cfg.get("respawn_frac") is not None:
             args.respawn_frac = float(ck_cfg["respawn_frac"])
             restored.append(f"respawn_frac={args.respawn_frac:g}")
@@ -8836,6 +8847,12 @@ def main() -> None:
             restored.append("eval_greedy_only")
         if restored:
             print("restored from checkpoint config: " + ", ".join(restored))
+    if args.conveyor:
+        # --conveyor: read by the core at map load (src/bsp.c), so set before any SurfCore and
+        # inherited by every subprocess (auto_spine.py -> beam_tas / explore_phase1 / ge_replay)
+        os.environ["SURF_CONVEYOR"] = "1"
+        print("--conveyor 1: EXPERIMENTAL conveyor physics (SURF_CONVEYOR=1): upward conveyors "
+              "launch a standing player (vz -> +speed), the WR demo's behaviour")
     if args.reward is None:
         args.reward = "forward"
     if args.blend_start is None:
@@ -14612,6 +14629,9 @@ def main() -> None:
     if args.demo_file and args.demo_success_bonus is not None:
         # --demo-success-bonus: dumped only when set; a resume restores it
         meta["config"]["demo_success_bonus"] = float(args.demo_success_bonus)
+    if args.conveyor:
+        # --conveyor: dumped only when on (flag-off run.json byte-identical); a resume restores it
+        meta["config"]["conveyor"] = 1
     if args.auto_spine:
         # --auto-spine: dumped only when on (a flag-off run.json is the control's byte for
         # byte); never restored - the loop is a property of the run, not of the weights

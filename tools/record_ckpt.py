@@ -15,6 +15,7 @@ import argparse
 import json
 import time
 import ast
+import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -973,6 +974,9 @@ def main(argv=None, build_only: bool = False, device=None):
     say("loading checkpoint", 5)
     ck = torch.load(args.ckpt, map_location="cpu", weights_only=False)
     cfg = ck.get("config") or {}
+    if cfg.get("conveyor"):
+        # train_fast --conveyor (MIRRORED: it is physics): the core reads SURF_CONVEYOR at map load
+        os.environ["SURF_CONVEYOR"] = "1"
     step = int(ck.get("global_step", 0))
     cfg_map = cfg.get('map', 'surf_ski_2')
     # --maps: a multi-map checkpoint carries the whole list; "map" is still
