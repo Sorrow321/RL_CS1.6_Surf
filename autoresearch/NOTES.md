@@ -3018,3 +3018,7 @@ Germany (machine 56783), rented 08:05 UTC for 2 h.
   71.274: in the two high ones one episode lands and climbs to 73.5% (the next stop, the same catch sheet further on);
   medians 71.1-71.2% (the landing still kills most). The curriculum oscillates [6,314 / 6,319] (31-34% / 14-19%), the
   fast flight before the landing. Hand-on for 73.499: ckpt_35307126784 (157.8M before, md5 f2781ad5..., pulled).
+* 18:01 UTC: c12 evals 35.616-36.069B 73.475 / 73.532 / 73.580 / 73.556 / **73.590 (35.918B, the best)** / 71.284 / 71.282:
+  five evals in a row with one episode past the landing to 73.5-73.6%, medians 71.2%. The curriculum's newest states at
+  [6,314] rose 14-19% -> 24-28% (the advance threshold is 30%). Hand-on for 73.590: ckpt_35907960832 (10.0M before the
+  eval, md5 160da9eb..., pulled).
