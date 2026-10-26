@@ -2154,7 +2154,7 @@ def alive_gate(cross, ended, start, age, ok, real, step, need):
     an ended row's new spawn there counts from its spawn, unpaid; ``age`` = ticks alive since the
     crossing (-1: none yet), ``ok`` = the episodes that survived theirs, ``real`` = the crossing was
     flown, not spawned past (all three None on the first call); ``step`` = the ticks this call
-    covers. -> (pay, age, ok, real, ok_boot): the rows to pay now (a flown crossing survived), the
+    covers; ``need`` a tick count or one per row (alive_need). -> (pay, age, ok, real, ok_boot): the rows to pay now (a flown crossing survived), the
     updated state (the ended rows re-anchored on their new spawns) and a copy of ``ok`` taken
     before that - the ended episodes' own outcomes."""
     cross = np.asarray(cross, bool)
@@ -2168,7 +2168,7 @@ def alive_gate(cross, ended, start, age, ok, real, step, need):
     new = cross & ~e
     age[new] = 0
     real = real | new
-    done = (~e) & (~ok) & (age >= int(need))
+    done = (~e) & (~ok) & (age >= np.asarray(need, np.int64))
     pay = done & real
     ok = ok | done
     boot = ok.copy()
@@ -2190,6 +2190,24 @@ def crossed_and_alive(d, h, end_d, h_min, need, fin_d) -> bool:
     if h_min is not None and float(np.asarray(h, np.float64)[k0]) < float(h_min):
         return False
     return len(d) - 1 - k0 >= int(need) or bool(d[-1] <= float(fin_d))
+
+
+def spine_cross_row(spine, sample, line) -> int:
+    """--demo-success-alive: the first row of ``spine`` whose d is at or past the success line
+    (the last row when none is)."""
+    d = np.asarray(sample(np.asarray(spine["origin"], np.float64)), np.float64)
+    k = np.flatnonzero(d <= float(line))
+    return int(k[0]) if len(k) else len(spine) - 1
+
+
+def alive_need(n, cross_row, idx, secs_ticks):
+    """--demo-success-alive: the ticks an episode must stay alive past its crossing -> min(SECS,
+    the spine's OWN ticks from where it is past the line to its end): from the spine's crossing
+    row ``cross_row`` for an episode started before it or off the spine (``idx`` -1), from the
+    spawn row for one started past it. A spine that ends in a fall (a search chain stops at its
+    deepest state) asks no more survival than it flew itself."""
+    own = (int(n) - 1) - np.maximum(int(cross_row), np.asarray(idx, np.int64))
+    return np.minimum(int(secs_ticks), np.maximum(own, 0))
 
 
 def spine_energy_rule(res, end_state, gain):
@@ -15819,6 +15837,10 @@ def main() -> None:
               f"succeeds only if it crosses d <= {DEMO_END_D:,.0f} with energy height >= "
               f"{DEMO_H_MIN:,.0f} (the spine end's - {float(args.demo_success_energy):g})")
 
+    def _alive_field():
+        return (slots[0].reward_field if slots[0].reward_field is not None
+                else slots[0].goal_field)
+
     def _en_height():
         sv = slots[0].core.states_view
         v = np.asarray(sv["velocity"], np.float64)
@@ -15828,14 +15850,16 @@ def main() -> None:
         print(f"--demo-success-bonus {DEMO_BONUS:g}: an episode whose record crosses d <= "
               f"{DEMO_END_D:,.0f} is paid {DEMO_BONUS:g} once (one that starts past it never is)")
     # --demo-success-alive SECS: a crossing pays and succeeds only once its episode has stayed
-    # alive SECS past it (ALV = [ticks since the crossing, survived, flown, survived boot copy])
+    # alive SECS past it, or as long as the spine itself did (ALV = [ticks since the crossing,
+    # survived, flown, survived boot copy, the spine's own crossing row])
     ALIVE_T = 0
-    ALV = [None, None, None, None]
+    ALV = [None, None, None, None, None]
     if DEMO_BONUS and float(args.demo_success_alive or 0.0) > 0.0:
         ALIVE_T = max(1, int(TICK.secs_to_ticks(float(args.demo_success_alive))))
         print(f"--demo-success-alive {float(args.demo_success_alive):g}: a crossing of the "
               f"success line counts (the curriculum's outcome, the bonus, the auto-spine quorum) "
-              f"only once its episode has stayed alive {ALIVE_T} ticks past it, or it finishes")
+              f"only once its episode has stayed alive {ALIVE_T} ticks past it (at most as long as "
+              f"the spine itself did past its line), or it finishes")
 
     # --demo-milestones / --auto-spine-milestones: further success lines, each paid the bonus
     # once per episode (MILES[0] = the distances, MILES[1] = the (N, M) paid table or None)
@@ -15875,8 +15899,11 @@ def main() -> None:
             _st = rec <= DEMO_END_D
             if DEMO_H_MIN is not None:
                 _st = _st & (_en_height() >= DEMO_H_MIN)
-            pay, ALV[0], ALV[1], ALV[2], ALV[3] = alive_gate(pay, ended, _st, ALV[0], ALV[1],
-                                                             ALV[2], 1, ALIVE_T)
+            if ALV[4] is None:
+                ALV[4] = spine_cross_row(demo.S, _alive_field().sample, DEMO_END_D)
+            pay, ALV[0], ALV[1], ALV[2], ALV[3] = alive_gate(
+                pay, ended, _st, ALV[0], ALV[1], ALV[2], 1,
+                alive_need(demo.n, ALV[4], demo_idx, ALIVE_T))
         if pay.any():
             if DEMO_BONUS_N[0] == 0:
                 print(f"--demo-success-bonus: first payment at step {global_step:,}", flush=True)
@@ -15920,6 +15947,10 @@ def main() -> None:
         bests, lens, launches, stalls = [], [], [], []
         n_en = 0                          # --auto-spine-energy: crossings with the energy
         n_alive = 0                       # --demo-success-alive: crossings their episodes survived
+        if ALIVE_T:
+            if ALV[4] is None:
+                ALV[4] = spine_cross_row(demo.S, _f.sample, DEMO_END_D)
+            need_q = int(alive_need(demo.n, ALV[4], -1, ALIVE_T))
         for e in eps:
             d = np.asarray(_f.sample(np.asarray(e[:, 1:4], np.float64)), np.float64)
             d = np.where(d < _f.reach_max - 0.5 * _f.cell, d, np.inf)
@@ -15933,7 +15964,7 @@ def main() -> None:
                 _v = np.asarray(e[:, 4:7], np.float64)
                 n_alive += crossed_and_alive(d, np.asarray(e[:, 3], np.float64)
                                              + (_v * _v).sum(axis=1) / 1600.0, DEMO_END_D,
-                                             DEMO_H_MIN, ALIVE_T, float(_f.cell))
+                                             DEMO_H_MIN, need_q, float(_f.cell))
             lens.append(len(e))
             # where the episode stopped making progress: the first tick within the
             # auto_spine stall margin (500 u) of its best d
@@ -15958,7 +15989,7 @@ def main() -> None:
             m = int(n_en)
         if ALIVE_T:
             print(f"[{global_step:>13,d}] auto-spine: --demo-success-alive - {n_alive}/{len(eps)} "
-                  f"greedy episodes stay alive {ALIVE_T} ticks past their crossing", flush=True)
+                  f"greedy episodes stay alive {need_q} ticks past their crossing", flush=True)
             m = int(n_alive)
         med = float(np.median(bests))
         AUTO["med"] = med                 # --demo-stall-cut reads the greedy frontier
@@ -16050,7 +16081,7 @@ def main() -> None:
         _de = float(_f.sample(np.asarray(demo.S[-1]["origin"], np.float64)[None])[0])
         DEMO_END_D = _de + float(args.demo_success_d)
         DEMO_PAID[0] = None
-        ALV[:] = [None, None, None, None]
+        ALV[:] = [None, None, None, None, None]
         demo_idx[:] = -1
         AUTO["last"] = int(global_step)
         AUTO["retry_at"] = 0
@@ -16110,7 +16141,7 @@ def main() -> None:
         DEMO_END_D, DEMO_H_MIN = plan["line"], plan["h_min"]
         DEMO_PAID[0] = None
         DEMO_OK[0] = DEMO_OK[1] = None
-        ALV[:] = [None, None, None, None]
+        ALV[:] = [None, None, None, None, None]
         demo_idx[:] = -1
         AUTO["last"] = int(global_step)
         AUTO["retry_at"] = 0

@@ -2937,3 +2937,8 @@ Germany (machine 56783), rented 08:05 UTC for 2 h.
   36.18B; it will be stopped before the 19:12 UTC wrap-up). Record gate passed (4 recordings in 16 s). A warm resume
   measuring AT the wall (gate 20: the catch and the walkway). The question: does the backward curriculum teach the
   walkway from the hole back, an increment at a time, where a cold policy never stays on it?
+* **Fixed (13:45 UTC):** `--demo-success-alive SECS` now asks min(SECS, the spine's own ticks from its crossing of the
+  line - or from the spawn row, for a spawn past it - to its end) (train_fast.alive_need / spine_cross_row; the quorum
+  uses the spine's own ticks past its line). A spine ending in a fall asks no more survival than it flew itself; a spawn
+  at its last rows succeeds as before; a dive that dies sooner after the line than the spine did still fails.
+  test_demo_success_alive 7/7 (flag off still bit-identical). c11 keeps running without the flag.

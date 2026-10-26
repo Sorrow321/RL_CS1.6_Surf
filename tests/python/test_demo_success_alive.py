@@ -42,6 +42,24 @@ def test_alive_gate_pays_a_survived_crossing_and_fails_a_dive():
     assert boot[0] and not st[1][0] and st[0][0] == -1   # its outcome, then re-anchored
 
 
+def test_the_requirement_is_capped_by_the_spine_s_own_survival():
+    from train_fast import alive_gate, alive_need, spine_cross_row
+    from surfgym.core import STATE_DTYPE
+    sp = np.zeros(100, STATE_DTYPE)
+    sp["origin"][:, 0] = np.arange(100, dtype=np.float32) * 10.0
+    sample = lambda p: 10000.0 - np.asarray(p, np.float64)[:, 0]     # d(row) = 10,000 - 10 row
+    c = spine_cross_row(sp, sample, 9010.0 + 100.0)                  # the line 100 u before the end
+    assert c == 89
+    idx = np.array([-1, 0, 50, 89, 95, 99])
+    assert alive_need(100, c, idx, 30).tolist() == [10, 10, 10, 10, 4, 0]   # the spine's own ticks
+    assert alive_need(100, c, idx, 5).tolist() == [5, 5, 5, 5, 4, 0]        # capped at SECS
+    # a spawn at the doomed end (need 0) succeeds at once; one before the line still waits
+    F, T = False, True
+    pay, age, ok, real, boot = alive_gate([F, F], [F, F], [T, F], None, None, None, 1,
+                                          alive_need(100, c, np.array([99, 0]), 30))
+    assert boot.tolist() == [T, F] and not pay.any()
+
+
 def test_the_quorum_counts_the_crossings_that_were_survived():
     from train_fast import crossed_and_alive
     d = np.linspace(1000.0, 0.0, 101)               # reaches 500 at row 50
@@ -96,7 +114,10 @@ def test_the_loop_counts_survived_crossings_for_its_quorum(tmp_path):
                       tmp_path)
         out = r.stdout + r.stderr
         assert r.returncode == 0, out[-6000:]
-        assert "greedy episodes stay alive 50 ticks past their crossing" in out, out[-6000:]
+        import re
+        m = re.search(r"greedy episodes stay alive (\d+) ticks past their crossing", out)
+        assert m, out[-6000:]
+        assert 0 <= int(m.group(1)) <= 50          # min(0.5 s, the spine's own ticks past its line)
     finally:
         shutil.rmtree(ROOT / "runs" / run, ignore_errors=True)
 
