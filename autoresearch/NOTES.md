@@ -2409,3 +2409,7 @@ The trainer used ~12 of the box's 30.7-CPU quota, so each stage ran beside it at
   3. Resume late checkpoints with --target-kl 0.05; do not change --energy-pot by 2x on a resume.
   4. beam_tas --start-state from a DUCKED mid-air state needs the trainer's spawn semantics (held duck / keys) to mean
      anything; from unducked states it is a sound instrument.
+* c8 evals 56.591 / 56.588 / **56.594** (26.7675B) / 56.587 (26.62-26.84B; medians 56.4-56.6%). c8's 56.594 ties c5's
+  after the grader's rounding (unrounded 56.594193 vs c5's 56.594273); score_branch takes whichever run directory it
+  lists first, so both hand-on files are pulled: c5's ckpt_latest (25,634,537,472, md5 a9247ead...) and c8's
+  ckpt_26635927552 (the snapshot 132M before its 56.594 eval, md5 f6ed6f97..., trained under --target-kl 0.05).

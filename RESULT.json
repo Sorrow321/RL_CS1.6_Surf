@@ -18,7 +18,7 @@
   "resume_from": "pbr5b4_c4 ckpt_latest 25,180,504,064 (md5 ccb19a24...)",
   "commit": "e5d5a70",
   "ckpt_md5": "a9247eada8051bd469f8758a4382bda1",
-  "ckpt_note": "c5 stopped at 25,634,537,472 (0.5M after its last eval, 56.587); the hand-on rule picks this ckpt_latest (76M after the 56.594 eval) over ckpt_25380782080 (178M before, md5 030dd172..., pulled); the 56.564 eval's exact weights: runs/pbr5b4/pbr5b4_c4/ckpt_24842338304.pt (md5 a5875bb5...)"
+  "ckpt_note": "c5's 56.594 -> c5 ckpt_latest 25,634,537,472 (md5 a9247ead..., the hand-on pick: 76M after vs ckpt_25380782080 178M before, also pulled). c8 ties at 56.594 (26.7675B, unrounded 56.594193 vs c5's 56.594273): its hand-on snapshot ckpt_26635927552 (md5 f6ed6f97..., trained under --target-kl 0.05) is pulled too. Resume either WITH --target-kl 0.05 (c6/c7 collapsed resuming c5's end without it)."
  },
  "summary": "56.594 (pbr5b4_c5 25.5585B, 9/9-style at 56.4-56.6%; 56.564 c4; incumbent 52.937). Path: k05 (c1 flat) -> GE smooth-landing spine e1 (c2 54.556) -> the policy's own beam on c2's weights to 56.59% -> cut before its low-speed hopping (c4 56.564; c3 on the uncut line lost the start room). Gate 17 = a spiral shaft at 56.6%: a pure energy gate (x1.30 start-state beam -> 58.84%, x1.25 -> 56.92%): needs h >= ~2,740 at 55.55%, the greedy brings ~2,330 - lost at the 52.7% landing (-450 u every episode). c5 trained a x1.3 shaft spine (route held, curriculum stuck at the boosted root); c6 = the same with --energy-pot 24."
 }
