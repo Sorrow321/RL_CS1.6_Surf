@@ -3084,3 +3084,6 @@ c5 had dips (median down to 24%) that recovered, c6 / c7 did not (see the collap
   then works backward from row 6,107 through the approach's hop-and-stop bands toward the fork at 5,827, where the
   greedy's own route meets the line; the greedy can only pass the drop after that. Read each band's success per
   visit and the evals' medians (a collapse shows as a median drop within ~75M steps).
+* 15:40-18:35 UTC: `box.py rent` refused every 2 min throughout (the other branches' burn 0.739 -> 1.09 $/h of the 1.2
+  cap; the only acceptable offers RTX 5080 at 0.621 $/h). No box after the offline host: the matched check of
+  --ppo-head-clip (the joint-ratio control from the c9 snapshot at band 6,107) is left for the next program.
