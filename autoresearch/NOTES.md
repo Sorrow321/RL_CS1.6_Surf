@@ -3057,3 +3057,14 @@ the round. (pbr6b3 released its box 19 min early once it stopped improving.)
   healed in ~75M steps. The plain beam's end (67.40%) is the greedy's new median: the next search decides gate 21.
 * Hand-on: c3's ckpt_latest pulled while search 1 held the trainer at the eval's step (global_step 31,755,075,584
   verified), kept as runs/pbr6b3/pbr6b3_c3/ckpt_31755075584.pt (md5 afdd8c0e...).
+
+### c3: the greedy's start flips; search 2's branched beam to 71.30% (16:27-16:50 UTC)
+* Evals: 31.831B **0.424** (9/9 stuck at the start) | 31.906B **67.442** (best/median 67.4%; 9/9 past the 67.0%
+  line -> search 2: plain beam not deeper, the 2nd branched beam to d 16,399 = **71.30%**, 6,300 states, 139 s) |
+  31.982B **0.423** (9/9 stuck at the start again). In between, a cliff cut at row 5,809 (66.27%) of search 1's spine.
+* **The start collapse** (traj_31981568000 / 31830573056 vs 31906070528 / 31755075584, episode 0): every greedy
+  episode walks west from the spawn to the wall at x 649 and climbs; the good ones are at z 3,724-3,729 rising north
+  at t 200, the collapsed ones sit on the z 3,714 ledge against the wall (x 649.0, vy +-50, a hop every ~200 ticks)
+  until the eval's patience cut (31 s). The greedy's mean action there flips with ~75M steps of training while the
+  sampled policy passes it (training keeps flying): a fragile greedy maneuver 0.4% into the map. Not seen on the 5070
+  Ti (c1 / c2); the score takes the best eval, so a collapsed eval costs only its quorum (no search from it).
