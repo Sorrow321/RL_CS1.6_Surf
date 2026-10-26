@@ -7,7 +7,7 @@
   "eval_file": "/home/steam/ar_pb/runs/pbr6b2/pbr6b2_c5/traj_30079451136.jsonl",
   "run": "pbr6b2_c5",
   "step": 30079451136,
-  "ckpt": null,
+  "ckpt": "/home/steam/ar_pb/runs/pbr6b2/pbr6b2_c5/ckpt_30078926848.pt",
   "recipe": [
    "c1: resume of pbr5b2_c7 ckpt_latest (29.499B) with c7's flags + --auto-spine-patience 6e8 + --auto-spine-energy-first 1.04 (new); search 1 -> spine pbr6b2_c1k01",
    "c2-c4: spine pbr6b2_c1k01c (k01 cut 300 u past the greedy) + milestones +21624,20774; c3 + --auto-spine-cut-ahead 300 (new); c4 + --demo-rate 0.15",

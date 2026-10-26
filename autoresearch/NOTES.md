@@ -2808,3 +2808,13 @@ spine left whole, the trainer passing `--cut-ahead`, both refusals, TRAIN_ONLY).
   (30.155B).
 * Budget: credit $9.96 at 09:53 UTC, below the $10 reserve - no rent, no extend for anyone; this box dies at its
   11:16 deadline.
+* **Probe (local CPU, record_ckpt from single k01c rows, c5's 30.250B weights, snapshot pulled as
+  pbr6b2_c5/ckpt_30249844736.pt):** from the ON-GRID contact state 6,340 the greedy policy jumps on its first tick
+  (vz -754 -> +257, the line's bounce) and flies on to **63.29%** (past k01c's end, 62.83%, dying at (-2,681, 2,335,
+  2,048)); stochastic 2/4 bounce (63.20 / 63.21%), 2/4 die in 3 ticks. From row 6,336 (4 ticks before the contact) the
+  greedy dies after 4 ticks at z 2,069 (the line is at 2,063 there and alive): its first decision changes the hull
+  (most likely the duck release it learned for the contact decision, made one decision early; a standing hull's feet
+  reach 18 u lower, into the catch trigger). So the bounce is IN the policy at the contact decision; what the curriculum
+  must teach next is to HOLD duck for the decision before it, and then the beam's approach (the pause at the edge,
+  rows ~6,025-6,250) that the greedy does not fly (it goes over the edge at ~400 u/s west and dies at x ~-2,160).
+* c5 evals continue: 62.358 (30.230B).
