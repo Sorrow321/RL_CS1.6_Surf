@@ -2,6 +2,17 @@
  "agent": "pbr7b2",
  "round": 7,
  "final": false,
- "best": null,
- "summary": "Round 7 start (20:41 UTC): pbr7b2_c1 = resume of round 6's c12 ckpt_latest (36.659B, md5 d802b3e8...) on the loop's own spine pbr6b4_c12k02 (to 74.33%) with c12's flag set, 26 milestones and the trainer's auto-spine loop (quorum 5/9, energy stage 150). Box 57867173 RTX 4080S 0.41 $/h. No eval yet; incumbent 73.590."
+ "best": {
+  "score": 73.671,
+  "eval_file": "/home/steam/ar_pb/runs/pbr7b2/pbr7b2_c1/traj_36735287296.jsonl",
+  "run": "pbr7b2_c1",
+  "step": 36735287296,
+  "ckpt": "/home/steam/ar_pb/runs/pbr7b2/pbr7b2_c1/ckpt_latest.pt",
+  "recipe": [
+   "c1: resume of round 6's c12 ckpt_latest (36.659B, md5 d802b3e8...) on the loop's own spine pbr6b4_c12k02 (beam to 70.8% + an x1.04 GE chain to 74.33%) + keys, c12's flag set (to-continue block + --demo-match-band, --auto-spine-patience 0, --auto-spine-ge-minutes 5, --auto-spine-energy 150), 26 milestones"
+  ],
+  "resume_from": "pbr6b4_c12 ckpt_latest 36.659B <- incumbent r6 (73.590)",
+  "commit": "b7e0ef0"
+ },
+ "summary": "c1 (c12's loop continued on its search-2 spine k02 to 74.33%): evals 73.567 (36.660B, the resumed weights: 4/9 past the 71.3% landing) / 73.671 (36.735B: 7/9 past the landing, best 73.67%, median 73.42%). Every passing episode still dies on the catch sheet at ~73.5% (z ~1,720). The curriculum walked k02 back 6,851 -> 6,531 in ~5 min and works at an impact band at 72.25% (rows 6,526-6,535). Box 57867173 RTX 4080S, ~218k steps/s."
 }

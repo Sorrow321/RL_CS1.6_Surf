@@ -3082,3 +3082,18 @@ ckpt_35907960832 (md5 160da9eb...), eval 73.590 at 35.918B. Credit at the start:
   c12's flag set (the round-5 to-continue block + --demo-match-band, --auto-spine-patience 0, --auto-spine-ge-minutes 5,
   --auto-spine-energy 150), the 26 milestones of c12's auto/current.json, --steps 6e9. Record gate passed (4 recordings).
   A warm resume measuring AT the wall (the ~73.5% catch sheet after the climb) - the inherited loop, run as it was.
+* c1 evals: **73.567** (36.660B = the resumed weights: 4/9 past the 71.3% landing, 5/9 die at it) / **73.671** (36.735B:
+  7/9 past the landing at 73.34-73.67%, median 73.42% - the branch's first best over the incumbent's 73.590). Every
+  passing episode climbs off the platform slowly (~20 s: 71.5% at ~54 s, 73.5% at 70-78 s) and dies on catch sheet *184
+  at (-850..-1,130, 1,780-2,080, z ~1,720). Handoff candidate: c1's ckpt_latest 36.777B (md5 3aabb185..., pulled).
+* Throughput: 218k steps/s measured over 60 s (EPYC 7K62 host, cgroup quota 30.72 CPUs; the trainer uses ~6.8 of them,
+  GPU ~15% busy - ~23 CPUs of the quota idle beside it).
+* The k02 spine vs the greedy (ANALYSIS of our own lines): the spine's GE chain (x1.04 root at row 6,387, 70.79%) flies
+  WEST of the platform without landing on it - 72.2% at h ~2,520 (vh ~760), 73.35% at (-1,267, 1,922, 1,855) h 2,321,
+  74.32% at (-907, 1,563, 2,067) h 2,258 at 52.5 s - where the greedy lands on the platform (h 2,593 -> 1,995) and
+  reaches 73.5% ~20 s later with h ~1,930. The record (yardstick only) is at 74% with h ~2,707 at 61 s. c12's search-2
+  beam line itself (its frontier, cut at 6,387 for the GE root) had stayed high at z ~2,120 over 72-73% and crawled
+  (50-90 u/s) to 73.68% at 55.8 s.
+* The curriculum: 6,851 -> 6,496 in ~4 min (bands 48-100%), then backed off to [6,531] and oscillates [6,526] <-> [6,531]
+  (band [6,531,6,535] 25 -> 43%, band [6,526,6,530] 4 -> 9%): the chain clips something at rows 6,532-6,535 ((-1,081,
+  2,761, 2,122): horizontal 792 -> 652 u/s, -124 u) and the spawns just before it rarely make the line.
