@@ -16,5 +16,5 @@
   "resume_from": "pbr5b4_c1 ckpt_latest 24,036,507,648",
   "commit": "313fab5"
  },
- "summary": "54.556 (pbr5b4_c2 24.7165B: 1/9 greedy through the 52.7% landing to 54.56%; incumbent 52.937). c1 = the incumbent on k05: flat 52.9. Two Go-Explore stages beside the trainer found a smooth 52.7% landing (energy ~3,000 vs k05's ~2,450) -> spine e1 (tools/ge_stack_spine.py, --pick-energy) -> c2 got 54.556. Then the trainer's search run by hand on c2's weights: the policy's OWN beam to 56.59% (past every GE stall ~56.3%; a x1.3 boost probe got the explorer only to 56.85%) -> spine beam_m1 -> pbr5b4_c3 (00:56 UTC). Fixed: auto_spine held keys came from the deepest chain, not the picked one."
+ "summary": "54.556 (pbr5b4_c2 24.7165B, 1/9 through the 52.7% landing to 54.56%; incumbent 52.937). c1 = incumbent on k05, flat 52.9. GE beside the trainer -> spine e1 (smooth landing) -> c2 54.556. Manual auto_spine on c2's weights: the policy's own beam to 56.59% -> c3 54.514 (median 54.1%) then collapsed to the gate-8 catch and the start room (0.4%) - likely the curriculum on the spine's last 2 s of low-speed hopping overwrote the start room's low-speed duck-jumps. pbr5b4_c4 (01:36 UTC) = c2's weights on that beam line cut before its hopping (56.38%)."
 }

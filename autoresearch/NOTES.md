@@ -2255,3 +2255,18 @@ The trainer used ~12 of the box's 30.7-CPU quota, so each stage ran beside it at
 * **pbr5b4_c3** (00:56 UTC): c2's 24.766B weights + spine pbr5b4_beam_m1 (success line d <= 24,906 = 56.42%) +
   milestones 44939 ... 27001 plus e1's 26,365 (53.87%) and k05's 25,121 (56.04%) as intermediate lines + the same
   flags (auto-spine with the energy pick).
+
+### c3 lost the start room; c4 on the beam line cut before its hopping (01:00-01:36 UTC)
+* c3 (c2's 24.766B weights + the full own-beam spine m1): evals 52.923 / **54.514** (24.842B: 5/9 through the
+  52.7% landing to 54.15-54.51%, median 54.1%; they die at z ~1,203 by the 54.5% loss) / then 20.424 (24.918B: 9/9
+  slide off the gate-8 corridor ramp into the 20.4% catch) / **0.439 / 0.414** (24.99-25.07B: 9/9 crawl at <= 248 u/s
+  in the START ROOM until the patience cut). Training looked normal (kl 0.02-0.07, ev ~0.97) except the yaw head's
+  sigma collapsing 0.017 -> 0.009 and the stalled share of training episodes rising 47% -> 70%; after the collapse
+  the reservoir's median jumped from 25,448 to 55,368 (start-room states).
+* Likely cause (not proven): every demo spawn sat in m1's last 14% (curriculum band 4,817-4,887, 80% of draws), whose
+  success needs ~2 s of hopping in place under 110 u/s up a ledge (rows 5,066+); the start room's precision
+  duck-jumps are the same low-speed control regime (below 100 u/s the yaw command is a per-tick delta). c2 (band in
+  e1's fast chain) only had a one-eval gate-9 transient.
+* **pbr5b4_c4** (01:36 UTC): c2's 24.766B weights again + spine pbr5b4_beam_m1_5060 (m1 cut at row 5,060 = 56.38%,
+  the top of its fast climb, before the hopping; success line ~56.2%) + the same flags and 16 milestones. If the
+  start room erodes again: lower the learning rate.
