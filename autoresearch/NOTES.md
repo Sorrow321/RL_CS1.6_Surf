@@ -2994,3 +2994,18 @@ c5 had dips (median down to 24%) that recovered, c6 / c7 did not (see the collap
   yaw / pitch: per-head PPO) so a view move cannot switch the keys' gradient off; (2) take the pitch out of the
   ratio (a fixed or deterministic camera pitch) - it is 41% of the joint KL for no physics effect. Read
   `--diag-ratio-split 4096` on the box first: it costs two extra forward passes of R rows per update.
+
+### Credit topped up ($39.77 at 13:35 UTC): box 57820906, c8 = c5 continued (13:39 UTC)
+* Box 57820906: RTX 4080 SUPER on an i9-14900KF (32 threads, quota 30.7 CPUs), 0.322 $/h, Germany, deadline 5.5 h
+  (19:06 UTC, before the 19:12 wrap-up). Deployed ar/pbr6b2 at 56e8048 + pbr6b2_c5/ckpt_30249844736.pt (md5 9522789c...,
+  c5's 171M-step snapshot: the CPU probe saw these weights bounce from the on-grid contact state).
+* **pbr6b2_c8** = c5's exact command (NOTES "The exact c5 launch") on that snapshot + `--diag-ratio-split 4096`, run
+  name pbr6b2_c8, --steps 4e9, --demo-tau0 6337 (c5's band when the snapshot was taken). Why continue c5: it is the
+  only configuration of the round that held the route (287M steps, evals 62.364 / 62.354 / 62.358 / 62.341, its
+  curriculum on the contact band rising 6.6% -> 14.4%); it was stopped for c6's c5s1 spine, not for failing. Record
+  gate passed (4 recordings). First eval (30.250B): median deepest d 21,543 (62.3%), 0/9 past k01c's 21,344.
+* On the box (1,024 envs, bf16), the first 10 updates of `--diag-ratio-split`: cut by the view 8.3-18.4% of rows (mean
+  ~14%), dead by the keys' own ratio 2.2-6.5% - the CPU probe's numbers at the full batch. Two updates had a pitch
+  KL of 0.32 and 7.06 (RMS log-ratio 2.8 and 37 over 4,096 rows: a few rows with an extreme pitch-mean move, which
+  dominate a MEAN like approx_kl; the logged spikes of every run are likely such outliers, not policy-wide moves).
+  |parts - stored logp| reads 0.02-0.04 here (bf16 rollout vs the eager diagnostic forward; 1e-6 on CPU fp32).
