@@ -230,3 +230,9 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   2,437-2,486 at 61.5%; the greedy lands on the corridor floor at 59.9%, -340 u, and takes the west strip). Same
   provenance as `pbr5b2_c7k02` (the policy's own beam line + one exact reward-free explore_phase1 chain); no demo, no
   record (pbr6b3, round 6).
+* `pbr6b3_b2k01.npy` + `.keys.npy` (5,700 rows; md5 6a664afbca234c1e86cff4ec876e9dda / see `md5sum`): found BY THE TRAINER
+  (run pbr6b3_b2's auto-spine search 1 at 29.798B, 51 s): the POLICY'S OWN plain beam line (tools/auto_spine.py ->
+  beam_tas from the true spawn, 4,096 stochastic copies, d-ranked, at the checkpoint's 7.67 ms tick) on b1's 29.797B
+  weights - after the energy spine `pbr6b3_k02e` taught the 60% corner and the airborne east lane - to d 20,127 =
+  64.78%: the first unboosted line past the 62.3% drop (h ~2,800 over 58-62%, onto the west ramp at ~955 u/s). Keys =
+  the beam's own held keys. No demo, no record (pbr6b3, round 6).
