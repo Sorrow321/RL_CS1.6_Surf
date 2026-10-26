@@ -3018,3 +3018,18 @@ the round. (pbr6b3 released its box 19 min early once it stopped improving.)
   spine (runs/pbr6b3_c1/auto/k02 on the box, copied to autoresearch/spines/pbr6b3_c1k02) and the loop's 34
   milestones (c1's current.json: the 29 + 16,822 / 17,073 / 19,570 / 19,981 / 19,429, the old success lines);
   record gates PASSED. Hand-on of the 66.225 eval = c1's ckpt_latest (pulled, md5 a9428a72...).
+
+### c2: cut, search, cut, search - 67.370 (15:10-15:35 UTC)
+* c2's loop on search 2's branched beam (71.25%): cliff cuts at row 6,304 (67.21%, 30.967B, 43M steps in) and row
+  6,003 (65.57%, 31.088B) -> 6/9 past 65.4% at 31.151B -> **c2 search 1: plain beam to 67.43%** (5,900 states, 35 s)
+  -> a cliff cut at row 5,554 (64.16%, 31.204B: BEHIND the greedy's 66.2% - spawning from the beam's states in the
+  63.7% impact / climb fails while the greedy flies through) -> 8/9 past that line -> **search 2: plain beam to
+  67.40%** (35 s) -> curriculum walking back on it (band [5,239..] at 31.40B, 32% success).
+* Evals: 30.924B 66.204 | 30.999B 66.221 | 31.075B 66.092 | 31.151B 66.217 | 31.226B 66.294 | 31.302B 66.335 |
+  **31.377B 67.370** (best 67.4%, median 66.2%: one greedy episode to the beam's end). The plain beam stops at ~67.4%
+  in both searches: the population's own frontier now, and the greedy's next wall.
+* Two loop behaviours to note: (1) a cliff cut can land behind the greedy's frontier (the beam's states at a contact
+  are not the greedy's); the cost is one immediate 35 s re-search on newer weights, so it is benign here, but a cut
+  line the greedy already passes is a wasted curriculum restart; (2) the box ran ~340k steps/s after the reboot, no
+  second reboot (up 44 min at 15:33).
+* Hand-on of 67.370: c2's ckpt_31324110848 (53M steps before the eval; md5 f4229e00...), pulled.
