@@ -242,3 +242,7 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   (64.7%), then one exact UNBOOSTED (x1.0) view-follow explore_phase1 --exact-chains chain (reward-free search, 1,985
   ticks) to d 16,722 = 70.74%: past gate 20 (64.8%) by landing on the floor at x ~-3,561, z ~2,389 and walking north
   (65-66.2%). Keys = the beam's and the chain's own held keys. No demo, no record (pbr6b3, round 6).
+* `pbr6b3_b2k02c.npy` + `.keys.npy` (7,541 rows; md5 5a4d590959370a066db2bc5f121ef1a5 / 333f1dc9916ce06067312142e58e99a2):
+  `pbr6b3_b2k02` cut at its row 7,540 (70.28%, d 16,982), the last row before the chain's hard air turn (yaw 8 -> 262
+  deg over ~10 ticks at 70.30%, then a landing and a jump) where the curriculum's band sat at 0-0.7% success - the
+  next gate only. Same provenance as `pbr6b3_b2k02`.
