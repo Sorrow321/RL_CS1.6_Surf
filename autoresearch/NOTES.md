@@ -2688,3 +2688,27 @@ demo_success_energy suites' trainer-before-the-flag tests still pass):
   boosted root asks for speed the policy does not have: teach the stretch up to the root for energy first (not built).
 * **Next round:** resume c7's hand-on (runs/pbr5b2/pbr5b2_c7/ckpt_29123674112.pt, 62.369, md5 afb44185...; or ckpt_latest at 29.46B, md5 a17970d6..., mid-way through k02's curriculum) with c7's flags (the to-continue block + `--auto-spine-energy 150
   --auto-spine-ge-minutes 5`) on spine `autoresearch/spines/pbr5b2_c7k02` (+ keys): the loop's current spine, past the drop.
+
+## pbr6b4 (round 6, slot 4) - 2026-10-26 07:53 UTC start
+
+Incumbent: pbr5b2_c7 ckpt_29123674112 (md5 afb44185...), eval 62.369 at 29.124B. Credit at the start: $11.74, i.e.
+$1.74 above the $10 reserve for the whole fleet - one well-chosen run, not a sweep. Box 57784754: RTX 4080S, 0.322 $/h,
+Germany (machine 56783), rented 08:05 UTC for 2 h.
+
+### Where the greedy loses gate 19's energy: ONE corner, a landing + the bunny-hop cap (08:00 UTC, local, ANALYSIS of our own lines)
+* The 62.369 eval (29.124B), h = z + |v|^2/1600 / horizontal speed at first arrival, 9 episodes: 59.5% ~2,720-2,790 /
+  640-730 u/s (two episodes already ~2,470); **60.0% 2,455-2,504 / 256-364** (every episode); 61.5% ~2,440 / 205-340.
+  The k02 chain (the loop's line past the drop) at the same levels: 2,871 / 842, **2,783 / 685**, 2,721 / 545.
+* What happens in the corner (ep0, ticks 5,341-5,350, at (-2,569, 2,894)): the line descends onto the corridor floor
+  at z 2,360 (vz -458 -> 0: -140 u), then JUMPS off the ground at 701 u/s and CS's bunny-hop cap (src/pm.c: a ground
+  jump above 300 u/s is rescaled to 240) cuts it to 244 u/s (-207 u). ~350 u in 0.03 s; the rest of the corridor,
+  the strip and the drop are flown on what is left.
+* What k02's chain does there (rows 5,106-5,300): it brushes the corridor's SLOPED side at (-2,745, 2,800, 2,391)
+  (vz -223 -> -70, -46 u), rides it up and round (vz +29 -> +365 at y 2,880-2,935) and crosses east at z 2,446-2,489,
+  never touching the floor (h 2,783 held from 59.8% to 60.6%); the same side ride at (-1,954, 2,913) throws it up
+  (vz +424) into the east lane over the catch sheet. The record's "ride the sides" (round 5's analysis), found by
+  the loop's own search from an x1.12 root at row 5,017 (58.61%, |v| 778 -> 873, h 2,770 -> 2,867: +97 u).
+* So the skill k02's curriculum has to teach is the side ride at the corridor's north end; the boost at the root is
+  +97 u, smaller than the 350 u the greedy throws away in the corner. Plan: continue c7's k02 curriculum (c7's
+  ckpt_latest 29.46B, md5 a17970d6..., had walked it back 5,823 -> 5,423 in 28 min) with the loop on and a shorter
+  patience (4e8, ~30 min), so the trainer's own search runs on the weights that have learned the corridor.
