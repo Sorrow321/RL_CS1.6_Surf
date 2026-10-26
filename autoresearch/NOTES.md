@@ -3069,3 +3069,32 @@ Germany (machine 56783), rented 08:05 UTC for 2 h.
   (search 2's result at the wrap-up: beam + GE, 6,852 states to d 14,673 = 74.33%, md5 0aced692...; in
   runs/pbr6b4/pbr6b4_c12/auto/k02, pulled) with the loop on and `--demo-match-band`; the next stop is the catch sheet at
   ~73.5% after the climb. Last evals 73.503 / 71.475 / 73.518 / 73.586 / 73.443 (medians 61.5-73.4%).
+
+## pbr7b3 (round 7, slot 3) - 2026-10-26 20:26 UTC start
+
+Incumbent: pbr6b4_c12 ckpt_35907960832 (md5 160da9eb...), eval 73.590 at 35.918B. Credit $34.25 at the start, the fleet
+cap 1.2 $/h; at 20:33 UTC the other branches' boxes burned 1.031 $/h and the cheapest passing offers were a 5090 at 0.589 /
+a 5080 at 0.621 $/h, so `rent` was REFUSED (budget pace); a local retry every 5 min (box.py rent, no workaround).
+
+### Where the line stands, and what the k02 spine is (20:30-20:45 UTC, local, ANALYSIS of our own lines)
+* c12's last evals (36.07-36.60B): 71.28 / 73.49 / 73.53 / 73.50 / 71.48 / 73.52 / 73.59 / 73.44; at 36.52B 5/9 at 73.4-73.6%.
+  Every episode past the 71.3% landing climbs out of the platform SLOWLY (71.3% at ~53 s, 73.4% at 72-79 s) and drops onto
+  the catch sheet *184 at z ~1,718 near (-875..-1,000, 2,000-2,070).
+* `pbr6b4_c12k02` (committed now with provenance; c12's search 2 at 36.446B): the policy's plain beam to row 6,387 (70.8%,
+  49 s), then a GE chain from that row x1.04: **71.3% at 49.3 s -> 73.5% at 51.6 s -> 74.32% at 52.5 s** (h 2,645 -> 2,328
+  -> 2,254), over the platform area at 760-930 u/s and WEST to x -1,298 at 73% - not the platform climb. As a yardstick only
+  (ANALYSIS ONLY, CLAUDE.md 0): the record is at (-1,249, 2,156) at 73% too, at 1,222 u/s, h 2,745, and reaches 74.33% at
+  61.2 s of its 75.44 s run, i.e. our k02 chain is ~9 s ahead of the record's clock there; the greedy's platform climb
+  costs ~20 s.
+* c12's curriculum at its end (19:13 UTC) stood at k02's [6,531] (70% bands), 144 rows past the chain's x1.04 root.
+  CPU bench (record_ckpt --spawn-states, c12's ckpt_latest 36.659B, greedy, no keys at spawn): from the root band (rows
+  6,380-6,391) 6/6 episodes fly the policy's OWN platform line (73.33-73.46% after 16-23 s) and die on the catch sheet:
+  the chain is not learned from its root yet.
+* The rest of the course on the record's route (ANALYSIS ONLY, a yardstick): d on the grader field falls monotonically
+  along it from 73% to the finish at 0.25 s sampling (no potential rise), so the field is not deceptive there on the
+  record's line; the course loops east (y ~1,200, 76-80%), north (81%), west (82-84%), drops ~800 u (84.8-85.6%), loops
+  west/south/east/north at z ~820-960 (86-91%) and ends in a ~4,200 u spiral descent (92-100%) into the finish box. The
+  record's energy height there: 2,720 (75%) / 2,420 (80%) / 2,220 (84%) / 1,880 (86-92%).
+* Plan: resume c12's ckpt_latest (36.659B, md5 d802b3e8...) on k02 + keys with `--demo-tau0 6531` (where c12's
+  curriculum stood) and `--demo-match-band`, c12's flag set and the loop, the 26 milestones of c12's current.json
+  (scratchpad launch script mirrored below when it runs). A warm resume pushing the frontier past the 73.5% catch.
