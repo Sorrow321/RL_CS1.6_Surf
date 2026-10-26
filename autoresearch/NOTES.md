@@ -3017,3 +3017,10 @@ c5 had dips (median down to 24%) that recovered, c6 / c7 did not (see the collap
   patience search would have fired ~600M steps in (~14:25 UTC) and, finding a line deeper than the greedy, swapped
   k01c for a new spine - the way c6 / c7 landed on c5s1 and collapsed. With 4e9 the spine changes only when >= 5 of 9
   greedy episodes pass k01c's success line (the loop's other trigger). c8 (4 min) stopped and pulled.
+* c9 at 14:05 UTC (30.67B, 330k steps/s cumulative): the curriculum walked past the contact band - [6,332, 6,336]
+  (hold duck one decision, then the jump) now passes at 21-36% (c8: 9-12%), [6,327, 6,331] sits at 9-17% and rises.
+  Evals 62.353 / 62.355 / 62.265 / 62.347 / 62.330 / 62.361 (30.250-30.628B, medians 62.2-62.3%): the route holds.
+* **The ratio split at full scale** (c9, 42 readings over ~800 updates, 1,024 envs, bf16; medians): no policy
+  gradient 15.9% of rows; dead by the keys' own ratio 2.7%; **cut by the view 13.7% = 87% of the dead rows**; KL keys
+  0.0065, yaw 0.017, **pitch 0.046 - the view heads 92% of the joint KL, the camera-only pitch head alone 67%**
+  (its RMS log-ratio median 0.66, max 37). The CPU probe's picture, sharper.
