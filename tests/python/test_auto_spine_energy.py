@@ -206,6 +206,40 @@ def test_the_trainer_passes_and_refuses_the_energy_stage(tmp_path):
         shutil.rmtree(ROOT / "runs" / name, ignore_errors=True)
 
 
+def test_an_energy_starting_spine_runs_the_loop(tmp_path):
+    """pbr6b4: --demo-success-energy with --auto-spine-energy - the starting spine is taught with
+    the energy rule and the loop's quorum counts only crossings that carry the energy; without
+    --auto-spine-energy the pair stays refused (the loop would swap in depth spines)."""
+    sys.path.insert(0, str(ROOT / "tests" / "python"))
+    import shutil
+    from test_demo_success_d import _run_demo
+    from test_ge_minutes import PB
+    if not PB.exists():
+        import pytest
+        pytest.skip("no princessburglar")
+    run = "aspe_start"
+    try:
+        r = _run_demo(run, ["--demo-success-d", "50", "--demo-success-bonus", "50",
+                            "--demo-success-energy", "100", "--auto-spine",
+                            "--auto-spine-quorum", "9", "--auto-spine-energy", "150",
+                            "--auto-spine-ge-minutes", "0", "--record-every", "2048",
+                            "--eval-eps", "2", "--ep-ticks", "300"], tmp_path)
+        out = r.stdout + r.stderr
+        assert r.returncode == 0, out[-6000:]
+        assert "the starting spine is an ENERGY spine" in out, out[-6000:]
+        assert "--demo-success-energy 100: a spine episode succeeds only if it crosses" in out
+        assert "auto-spine: energy spine - " in out, out[-6000:]
+        cfg = json.loads((ROOT / "runs" / run / "run.json").read_text())["config"]
+        assert cfg["demo_success_energy"] == 100.0 and cfg["auto_spine_energy"] == 150.0
+    finally:
+        shutil.rmtree(ROOT / "runs" / run, ignore_errors=True)
+    bad = _run_demo("aspe_start_bad", ["--demo-success-d", "50", "--demo-success-bonus", "50",
+                                       "--demo-success-energy", "100", "--auto-spine"], tmp_path)
+    assert bad.returncode != 0 and "--auto-spine swaps in depth spines" in (
+        bad.stdout + bad.stderr), (bad.stdout + bad.stderr)[-3000:]
+    shutil.rmtree(ROOT / "runs" / "aspe_start_bad", ignore_errors=True)
+
+
 def test_record_ckpt_knows_the_flag():
     import record_ckpt
     assert "auto_spine_energy" in record_ckpt.TRAIN_ONLY

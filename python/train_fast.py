@@ -11669,9 +11669,17 @@ def main() -> None:
             if args.reward_per_decision:
                 raise SystemExit("--demo-success-energy reads the crossing tick's state: it needs "
                                  "the per-tick reward path (no --reward-per-decision)")
-            if args.auto_spine:
+            if args.auto_spine and args.auto_spine_energy is None:
                 raise SystemExit("--demo-success-energy is for a spine chosen for its energy; "
-                                 "--auto-spine swaps in depth spines")
+                                 "--auto-spine swaps in depth spines (with --auto-spine-energy "
+                                 "the loop keeps an energy rule: the starting spine is one)")
+            if args.auto_spine:
+                # pbr6b4: --auto-spine-energy already teaches the loop's own energy spines with
+                # this rule and counts only energetic crossings for its quorum; the starting
+                # spine can be one too (a depth spine cut before a band its curriculum cannot
+                # pass, taught for the energy it carries there), and a swap sets the rule anew
+                print("--demo-success-energy with --auto-spine-energy: the starting spine is an "
+                      "ENERGY spine (its quorum counts crossings with the energy)")
         if args.demo_success_d is not None:
             if not args.race_ratchet:
                 raise SystemExit("--demo-success-d reads the ratchet record: it needs "

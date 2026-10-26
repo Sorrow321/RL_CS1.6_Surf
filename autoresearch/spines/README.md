@@ -223,3 +223,9 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   the next corner), then one exact explore_phase1 --exact-chains chain (reward-free search; 807 ticks from that row's state
   with its velocity x1.12, the ladder's third stage) to d 20,489 = 64.15%. Keys = the beam's and the chain's own held keys.
   No demo, no record (pbr5b2, round 5).
+* `pbr6b4_k02e.npy` + `.keys.npy` (5,421 rows; md5 c54ecba0b952d488611e2135758be3e9 / 6010cf9384a9a56203cccd7253178d9b):
+  `pbr5b2_c7k02` (the loop's own line past the 62.3% drop: the policy's plain beam from the true spawn to row 5,017,
+  then one exact reward-free explore_phase1 chain from that row's state x1.12) CUT at row 5,420 (61.65%, h 2,721),
+  just before the landing band [5,423, 5,427] its depth curriculum could not pass (12-16% for ~15 min in pbr6b4_c8).
+  Taught with the energy rule (train_fast --demo-success-energy 150: cross d(end)+100 with h >= 2,571) for the
+  stretch where the greedy leaves the line (the 59.9% corner and the east lane). No demo, no record (pbr6b4, round 6).
