@@ -2367,3 +2367,30 @@ The trainer used ~12 of the box's 30.7-CPU quota, so each stage ran beside it at
   ran c5 -> c7 into the collapse. The yaw head's sigma is not the cause (0.020-0.039 rad in c4 / c5 / c7 / c8).
 * Recipe for resuming this lineage's late checkpoints: keep `--target-kl 0.05` (TRAIN_ONLY, existing flag) - it costs
   nothing when the KL is small and caps exactly the updates that broke c3 / c6 / c7.
+
+### pbr5b4 round 5 lesson (DRAFT 05:05 UTC, finalised at wrap-up)
+* **Score 52.937 -> 56.594** (pbr5b4_c5 25.5585B; c4's 56.564 at 24.842B was the jump: 5/9 greedy episodes through the
+  52.7% landing to 56.3-56.6%; by c5/c8 9/9-style at 56.4-56.6%). The box came 2.8 h late (fleet cap) and ran ~150k
+  steps/s (an RTX 5060 Ti + EPYC under a 30.7-CPU quota), half of round 4's boxes.
+* **What worked, in order:**
+  1. The policy's OWN beam on the newest weights (tools/auto_spine.py run by hand, plain beam): after ~1.2B steps on
+     spines through 50-56% (k05, then e1) it flew to 56.59%, past every Go-Explore stall of the round (~56.3%). As in
+     round 4 (gates 10, 16): search the newest weights before concluding a gate is closed.
+  2. Cut a spine before its low-speed end: the full own line (c3) lost the start room in ~150M steps; the same line cut
+     at its fast climb's top (c4) gave 56.564 in 75M steps. (Later evidence says the collapse is the KL runaway below;
+     the cut may have helped by keeping the curriculum's band on a fast stretch.)
+  3. Go-Explore BESIDE the trainer: the trainer used ~12 of 30.7 CPUs; 12-thread GE stages cost it ~5% and ran six
+     15-min searches during training. Two stacked stages found the smooth 52.7% landing (spine e1, tools/ge_stack_spine.py,
+     the new --pick-energy) -> c2 54.556, the first eval past the incumbent.
+  4. Start-state beams (beam_tas --start-state, velocity scaled) as a WON'T-vs-CAN'T instrument: they showed the 56.6%
+     gate is pure ENERGY (x1.30 at 55.55% -> 58.84%, x1.25 -> 56.92%), not a missing skill.
+  5. `--target-kl 0.05` keeps a late checkpoint stable (c8) where the bare resume collapsed twice (c6, c7).
+* **What did not:** the k05 continuation alone (flat 52.9 for 485M steps); explorer chains with a hard surf turn (e1's
+  GE#1 part: the curriculum cliff at 4,367); energy-ranked beams (dh K 3 / 8); start-states from e1's / GE's
+  high-energy states (the 54.5% ramp eats it); a x1.3-boosted shaft spine (c5: the curriculum sits at the boosted root);
+  --energy-pot 24 on a resume (c6: KL 0.22-0.36, start room lost).
+* **Gate 17 (where it stands):** a spiral SHAFT at 56.6% (the record climbs it at ~1,450 u/s with energy height ~2,950,
+  ANALYSIS ONLY). Our greedy enters with ~2,330 and needs >= ~2,740. The deficit is made at two places: the 52.7% floor
+  landing (-450 u in every greedy episode; e1's explorer chain lands smoothly, h ~3,000) and a ramp at ~54.5% that every
+  high-speed line meets falling steeply (-640 u; the slow m1 line loses ~100 there; the record rides it at ~1,620 u/s).
+  A line that is smooth at BOTH, then the policy's own spiral, is what passes; no search of this round found the second.
