@@ -3123,3 +3123,14 @@ its lesson): c12's ckpt_latest (36.668B, md5 d802b3e8...) and its search-2 spine
   (the search line ends with the args, refusals, TRAIN_ONLY, flag off identical to the trainer before it, config and
   every progress.csv number); test_auto_spine + test_auto_spine_energy 23/23. c13 will run with
   `--auto-spine-args "--ge-select-energy 3"`.
+* **Where the 74.3% gate's energy goes (ANALYSIS ONLY for the record's numbers):** the record meets the 73.4% ramp at
+  1,220 u/s (h 2,745, z 1,810), is kicked up (vz 10 -> 624 in ~0.2 s, hs -> 918, h -50 u) and air-strafes east over
+  *158 at 905-927 u/s to (-1,044, 1,501, 2,128). k02 meets the same ramp at ~875 u/s (h 2,337): after the +245 u
+  climb it has 485-562 u/s and falls into *158. A local GE from an energetic early-south variant (chain A, +205 u at
+  72.4%; `--select-energy 3`, 42 roots, 4 min) kept +260..+280 u to 73.25% (h 2,621-2,644 at 880-900 u/s) and LOST it
+  on the same ramp (73.5% 2,378, 74.0% 2,242: its deepest cell 74.21% = k02's end again). The uniform explorer cannot
+  ride the ramp; the policy may (round 5: the energy first, then the policy's own beam passes unboosted).
+* With energy_pick's filters (not plunging, on the route, not slower than k02 by > 130 ticks) that GE's best usable
+  gain over k02 in 72.5-74.3% is only **+79 u** (72.95%, 965 u/s): the high-h cells were dives. So no hand-built energy
+  spine from 2-thread local searches; c13 stays the plain continuation on k02, and the loop's energy stage (now with
+  `--ge-select-energy 3`, ~10x this compute on a box) does the energy search when its quorum fires.
