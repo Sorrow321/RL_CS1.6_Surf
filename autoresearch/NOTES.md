@@ -2949,6 +2949,17 @@ Incumbent: pbr5b2_c7 ckpt_29123674112 (62.369, md5 afb44185...).
   "beats the greedy by the gain" (the loop's own admission rule) it starts just past the gate. This is an operator
   application of a candidate loop rule (to become an auto-spine flag: success line = greedy_d - gain, tau0 = the row
   before it), not a map constant. The quorum search still runs when 5/9 greedy pass 65.44%.
+* **a5 COLLAPSED (15:50-16:15, 31.38B -> 31.69B)**: the curriculum went fast (6,302 -> 5,672 = 64.4%, before the
+  ledge, by 16:10; band [5672,5676] at 74-79%), but the greedy evals went 64.632 (eval 0, a4's weights) -> 24.143
+  -> 0.423 -> 0.062 -> 0.131: from 31.49B the greedy WALKS ON THE START PLATFORM (|v_h| <= 93-251) until the patience
+  cut, and training stalls in 40-72% of episodes (rew ~200 -> ~20). Just before it, updates at kl 0.66, 0.55, 0.38
+  (a4: 0.05-0.1, spikes 0.24-0.40). Reading: the corridor past the ledge is a slow ON-GROUND walk, unlike any surf
+  section; the curriculum's success bonus there produced large advantages and large updates, and the walk took over
+  the other on-ground low-speed state, the start platform. The one-eval start-platform failures of a3 / a4 (30.096B,
+  30.855B) were the same failure in small.
+* **a6 (16:16 UTC): a5 again from a4's 31.38B weights + `--target-kl 0.1`** (the trainer's PPO early stop: an update
+  stops once its approx KL passes 0.15; TRAIN_ONLY, generic). The first update already stopped early (kl 0.191).
+  Budget 2e9, cut at ~18:35 for the harvest.
 
 ### pbr6b1 round 6 lesson (DRAFT 10:06 UTC; finalised at wrap-up)
 * **Score 62.369 -> 62.373** (a1 29.200B: the incumbent's weights 75M steps on, same gate; all 9 fall at the 62.3% drop).
