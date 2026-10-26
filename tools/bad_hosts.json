@@ -2833,6 +2833,15 @@
       "detail": "autoresearch pbr6b3: not running after 330 s (status loading, #7 164.9 Setting up python3-httplib2 (0.20.2-2ubuntu0.1) ...\r\n)",
       "run": "",
       "reason": "unreliable"
+    },
+    {
+      "ip": "175.143.181.143",
+      "machine_id": 148540,
+      "host_id": 60685,
+      "date": "2026-10-26",
+      "detail": "autoresearch pbr6b3 2026-10-26 14:10 UTC: box.py deploy's checkpoint push ran at ~15 KB/s (5.9 MB of 64 MB in 8 min, ~70 min projected); the operator machine's whole outbound traffic was that scp (15.8 KB/s), and this round's 08:05 deploy pushed the same 64 MB to another host in < 2 min. RTX 5060 Ti 16 GB, AMD EPYC 7B13 128 thr (loadavg 51), Malaysia, machine 148540",
+      "run": "",
+      "reason": "network"
     }
   ],
   "known_good": [
