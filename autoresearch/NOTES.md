@@ -2548,3 +2548,16 @@ current spine) before `box.py release`. The operator may want `pull` to fetch `a
   58% 2,625-2,704 / 608-703; **59% ~2,505 / 440-470; 60% ~2,472 / 310-320**; 61% ~2,465 / 280-315. So c6 (k01 / k02's
   lines) already exits the shaft with the energy s6 lost (s6: 2,483 at 57%), and loses ~200 u at **58-60%** instead.
   The corridor search must root at c6's own states at ~57.5-58.5% (h ~2,680), not at s6's.
+* **How the record crosses the corridor (ANALYSIS ONLY, CLAUDE.md section 0; contacts = frames whose vz departs from
+  free fall by > 30 u/s):** over 56.5-61.5% (5.7 s) it keeps h 2,773-2,852 at 640-840 u/s horizontal and touches
+  something on only 44 of 569 frames, ALL at z 2,391-2,455 - 27-91 u above the flat floor our lines land on (z 2,364):
+  short rides up the corridor's sloped sides that turn speed upward (57.7%: hspd 789 -> 728, vz -1 -> +246; 58.6-58.9%,
+  19 frames: 840 -> 718, vz -165 -> +384), h nearly kept through each. A half-pipe ridden on its sides; the flat floor
+  (and with it the bhop cap) is never touched. Our lines land in the middle and hop (s6 / c6: every large one-tick
+  loss over 57.5-60.5% is at z 2,364). The missing skill: ride the sides.
+* c6's own corridor states, exactly (local CPU; the GPU line does not reproduce on CPU from the true start - it fell
+  at the shaft, 56.36% - nor from s6's 55.5% state, which exits the shaft like s6): record_ckpt --dump-states of c6's
+  hand-on weights spawned at its OWN eval row at 56.0% (ep2 of the 62.367 eval; position / velocity / view from the
+  .jsonl on an s6 state 38 u away as the template for the bookkeeping fields) -> h / |v| 2,681 / 689 at 57%,
+  2,713 / 690 at 57.5%, 2,683 / 685 at 58%, then **2,501 / 427 at 58.5%**, 2,477 / 322 at 60% - the GPU evals'
+  profile (died at 61.22%, gate 18, on CPU).
