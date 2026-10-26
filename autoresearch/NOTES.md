@@ -2380,3 +2380,10 @@ minute). Incumbent: pbr4b3_t11 ckpt_23551016960 (md5 7fbcd458...), eval 52.937 a
   y ~2,350, 61.72-61.73%) / 61.395 / 61.444; medians 61.27-61.32% (the rest still at the gap). Handoff for 61.731: the
   snapshot at or before it, ckpt_27278180352 (md5 600c77a8..., pulled; ckpt_27478458368 16M after it pulled as well).
   The k01 curriculum's gap band [5,669,...] at 28.4-29.9% (the 30% rate).
+* c6 evals 27.69-28.14B: 61.561 / 61.489 / 61.443 / **62.257** (27.915B) / 61.470 / **62.264** (28.066B: 3/9 hop the
+  gap and ride k01 to its end, falling at 62.25-62.26% into a catch at z ~2,052, x ~-2,155) / 61.536; medians
+  61.3-61.4%. Handoff for 62.264: the snapshot at or before it, ckpt_27879014400 (md5 7675bd94..., pulled;
+  ckpt_28079292416 13M after it pulled too). The k01 gap band passing at 31-32% (row 5,664).
+* Gate 19 (the fall at 62.3%, ANALYSIS of the record only as a yardstick): the record leaves (-2,013, 2,234, 2,290) at
+  ~900-1,000 u/s heading west with energy height ~2,800 and is at (-2,853, 2,477, 2,082) 1 s later (63.7%); our line
+  leaves the same spot at 400-720 u/s with h ~2,515 and drops into a catch. Energy again (~300 u).
