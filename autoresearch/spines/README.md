@@ -183,3 +183,10 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   view-follow Go-Explore stage-1 chain (663 states) to d 25,021 = 56.22%. Views along the velocity, keys translated;
   the beam rows' keys are the beam's own. The spine t11 trained on at the end of round 4 and the --demo-file /
   --demo-keys for a resume of its checkpoint. No demo, no record (pbr4b3, round 4).
+* `pbr5b3_c1k01br2.npy` + `.keys.npy` (5,694 rows; md5 378c95f93b9ab04043371ae70a3d1242 /
+  2158f01568a38d05cb79ce7c071aa9e6): the policy's own 7.67 ms branched beam from the true spawn (pbr5b3_c1's
+  auto-spine search 1 at 24.080B, beam_br2: beam_tas on c1's own weights, 4,096 copies, half forked at tick 4,865
+  with held view offsets U(-45, 45) deg for 0.5 s each over 2 s, the policy's own keys) to d 24,810 = 56.59% (a slow
+  climb onto a ledge at (-2,290..-2,380, 2,465..2,500, z 2,040-2,135) instead of the trigger_teleport the greedy
+  dies in at 56.1%); cut at its best d; keys = the beam's own held keys per row (auto_spine.keys_from_acts). Used by
+  pbr5b3_c2 by hand (search 1's gain rule needed 56.97%). No demo, no record (pbr5b3, round 5).
