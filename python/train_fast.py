@@ -4990,6 +4990,14 @@ def main() -> None:
                     help="--auto-spine: the beam runs this long past the eval's longest episode")
     ap.add_argument("--auto-spine-timeout", type=float, default=2400.0,
                     help="--auto-spine: wall-clock cap (s) of one search")
+    ap.add_argument("--auto-spine-async", action="store_true",
+                    help="--auto-spine: run the search BESIDE the training instead of pausing "
+                         "it - on a copy of ckpt_latest, its log in auto/kNN/auto_spine.log; the "
+                         "trainer polls it every iteration and swaps the spine in when it ends "
+                         "(no second search while one runs). The trainer is single-thread bound "
+                         "and leaves most of a box's CPU quota idle; a blocking search held it "
+                         "for up to ~28 min (pbr6b4_c12). Off = the trainer waits, as before; "
+                         "config only when on; never restored")
     ap.add_argument("--auto-spine-energy", type=float, default=None,   # None = off
                     help="--auto-spine: G > 0 adds an ENERGY stage to the search (auto_spine "
                          "--energy-gain G): when no deeper line exists, a line keeping >= G u "
@@ -11841,6 +11849,12 @@ def main() -> None:
         raise SystemExit("--auto-spine needs --demo-file (the first spine) and --demo-success-d")
     if args.auto_spine_energy is not None and not args.auto_spine:
         raise SystemExit("--auto-spine-energy is a stage of --auto-spine's search: give it")
+    if args.auto_spine_async:
+        if not args.auto_spine:
+            raise SystemExit("--auto-spine-async runs --auto-spine's search beside the training: "
+                             "give --auto-spine")
+        print("--auto-spine-async: the search runs BESIDE the training (on a copy of "
+              "ckpt_latest); its spine is swapped in at the first iteration after it ends")
     if float(args.demo_success_alive or 0.0) != 0.0 and not args.demo_file:
         raise SystemExit("--demo-success-alive gates a --demo-file spine's success line: give it")
     if float(args.demo_stall_cut or 0.0) < 0.0:
@@ -14876,6 +14890,8 @@ def main() -> None:
             auto_spine_timeout=float(args.auto_spine_timeout))
         if args.auto_spine_milestones:
             meta["config"]["auto_spine_milestones"] = 1
+        if args.auto_spine_async:
+            meta["config"]["auto_spine_async"] = 1
         if args.auto_spine_energy is not None:
             meta["config"]["auto_spine_energy"] = float(args.auto_spine_energy)
         if float(args.demo_stall_cut or 0.0) > 0.0:
@@ -16017,6 +16033,12 @@ def main() -> None:
                                if go else ""), flush=True)
         if not go:
             return
+        if AUTO.get("proc") is not None:
+            # --auto-spine-async: one search at a time; the running one decides
+            print(f"[{global_step:>13,d}] auto-spine search {AUTO['k']} still running beside "
+                  f"the training ({time.time() - AUTO['proc'][2]:.0f}s); no second search",
+                  flush=True)
+            return
         adir = out / "auto"
         adir.mkdir(parents=True, exist_ok=True)
         if AUTO["field"] is None:
@@ -16050,8 +16072,29 @@ def main() -> None:
         if args.auto_spine_energy is not None:
             cmd += ["--energy-gain", f"{float(args.auto_spine_energy):g}"]
         t0 = time.time()
+        if args.auto_spine_async:
+            # the search reads its weights more than once (the beam, each branched beam), and
+            # ckpt_latest is rewritten every minute while the training goes on: a copy
+            import shutil as _sh
+            kdir.mkdir(parents=True, exist_ok=True)
+            _sh.copyfile(out / "ckpt_latest.pt", kdir / "ckpt.pt")
+            cmd[cmd.index("--ckpt") + 1] = str(kdir / "ckpt.pt")
         print(f"[{global_step:>13,d}] auto-spine search {AUTO['k']}: " + " ".join(cmd),
               flush=True)
+        if args.auto_spine_async:
+            try:
+                fh = open(kdir / "auto_spine.log", "w", encoding="utf-8", errors="replace")
+                proc = _sp.Popen(cmd, stdout=fh, stderr=_sp.STDOUT)
+            except OSError as ex:
+                AUTO["retry_at"] = int(global_step + float(args.auto_spine_retry))
+                AUTO["last"] = int(global_step)
+                print(f"!! auto-spine search {AUTO['k']} did not start: {ex}; next try at step "
+                      f"{AUTO['retry_at']:,}", flush=True)
+                return
+            AUTO["proc"] = (proc, fh, t0, kdir, med)
+            print(f"[{global_step:>13,d}] auto-spine search {AUTO['k']}: running beside the "
+                  f"training (pid {proc.pid}, log {kdir / 'auto_spine.log'})", flush=True)
+            return
         res = None
         try:
             r = _sp.run(cmd, capture_output=True, text=True, encoding="utf-8",
@@ -16063,7 +16106,51 @@ def main() -> None:
                     break
         except (_sp.TimeoutExpired, OSError, ValueError) as ex:
             print(f"!! auto-spine search {AUTO['k']} failed: {ex}", flush=True)
-        dt = time.time() - t0
+        _auto_spine_finish(res, time.time() - t0, med)
+
+    def _auto_spine_poll():
+        """--auto-spine-async: when the search running beside the training has ended (or
+        outlived its cap: killed), read its AUTO_SPINE line and swap its spine in."""
+        pr = AUTO.get("proc")
+        if pr is None:
+            return
+        proc, fh, t0, kdir, med = pr
+        if proc.poll() is None:
+            if time.time() - t0 <= float(args.auto_spine_timeout) + 900:
+                return
+            proc.kill()
+            proc.wait()
+            print(f"!! auto-spine search {AUTO['k']} killed after {time.time() - t0:.0f}s",
+                  flush=True)
+        fh.close()
+        AUTO["proc"] = None
+        res = None
+        try:
+            txt = (kdir / "auto_spine.log").read_text(encoding="utf-8", errors="replace")
+            for ln in txt.splitlines()[::-1]:
+                if ln.startswith("AUTO_SPINE "):
+                    res = json.loads(ln[len("AUTO_SPINE "):])
+                    break
+        except (OSError, ValueError) as ex:
+            print(f"!! auto-spine search {AUTO['k']} failed: {ex}", flush=True)
+        print(f"[{global_step:>13,d}] auto-spine search {AUTO['k']}: ended beside the training "
+              f"(exit {proc.returncode})", flush=True)
+        _auto_spine_finish(res, time.time() - t0, med)
+
+    def _auto_spine_kill():
+        pr = AUTO.get("proc")
+        if pr is not None and pr[0].poll() is None:
+            pr[0].kill()
+
+    if AUTO_SPINE and args.auto_spine_async:
+        import atexit
+        atexit.register(_auto_spine_kill)
+
+    def _auto_spine_finish(res, dt, med):
+        """A search's result: no spine -> retry later; a spine -> it replaces the curriculum's."""
+        nonlocal DEMO_END_D, DEMO_H_MIN
+        _f = slots[0].reward_field if slots[0].reward_field is not None else slots[0].goal_field
+        adir = out / "auto"
         if not res or not res.get("spine"):
             AUTO["retry_at"] = int(global_step + float(args.auto_spine_retry))
             AUTO["last"] = int(global_step)
@@ -21275,6 +21362,15 @@ def main() -> None:
                       f"finished {agg_fin_trig:6.2%} "
                       f"({AGG['n_trigger']} maps)")
         tm.add("record", t_rec)
+        if AUTO_SPINE and AUTO.get("proc") is not None:
+            # --auto-spine-async: a search running beside the training may have ended
+            try:
+                _auto_spine_poll()
+            except Exception as _ex:         # a failed search never ends the run
+                AUTO["proc"] = None
+                AUTO["retry_at"] = int(global_step + float(args.auto_spine_retry))
+                print(f"!! auto-spine: {type(_ex).__name__}: {_ex}; next try at step "
+                      f"{AUTO['retry_at']:,}", flush=True)
         if AUTO_SPINE and AUTO["eval"] is not None:
             # --auto-spine: the greedy eval just written decides whether to search
             _ap, AUTO["eval"] = AUTO["eval"], None
