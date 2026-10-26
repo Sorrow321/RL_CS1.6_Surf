@@ -3136,3 +3136,24 @@ a 5080 at 0.621 $/h, so `rent` was REFUSED (budget pace); a local retry every 5 
   progress: +75 (71.5%), +214 (72.5%), +93 (73.5%), +138..+140 u (73.9-74.35%, h 2,389-2,391 at z ~1,894-2,026). The
   ledge asks ~+160 u at 73.6% (the x1.2 probe): the energy stage's G 150 is the right size; the uniform explorer alone did
   not convert it into the crossing in 10 min x 2 threads. Offline probing ends here; the loop does the rest on a box.
+
+### `--auto-spine-root-energy M`: a boosted root's energy is taught before its depth spine (22:45-23:05 UTC, local, no box)
+* The lineage wrote down twice (rounds 5 and 6) "a depth spine from a boosted root asks for speed the policy does not have:
+  teach the stretch up to the root for energy first (not built)". Every x1.08 / x1.12 root of this map stalled a depth
+  curriculum (gate 15's x1.12 for 1.2e9 steps until patience found a x1.08 chain from a later root; gate 17's e1c x1.08
+  until the energy rule's e1d; gate 19's x1.12 until the k02e energy cut); the x1.04 roots (gates 8, 20) were learned as
+  plain depth spines. Built now (7a425b4), default off, TRAIN_ONLY:
+  * `train_fast --auto-spine-root-energy M` (needs --auto-spine and --auto-spine-energy): when the search returns a depth
+    spine spliced onto a Go-Explore chain whose root was boosted x1.06 or more (auto_spine's `<stage>_root_index` /
+    `<stage>_root_boost`), the depth spine is HELD and an ENERGY spine goes in first: the spine up to the first chain row
+    c whose d is --demo-success-d deeper than every row up to the root, with the root row boosted as the chain flew it
+    (train_fast.root_energy_spine); success = crossing d(c) + success_d with energy height >= the chain's least energy
+    from the root to c, less M. Its line is reached on the chain's own rows only, so a band succeeds only by ARRIVING at
+    the chain with the energy the boost gave the explorer. On that spine's quorum (greedy crossings WITH the energy) the
+    held depth spine is swapped in - no new search - and its curriculum restarts at its end; a new search's spine or a
+    --demo-stall-cut discards the held one.
+  * Tests (CPU): tests/python/test_auto_spine_root_energy.py - the rule (cut row, line, floor incl. a dip on the chain,
+    the None cases), the result parser, a trainer run in a copy of the tree whose stand-in tools/auto_spine.py returns a
+    x1.12 spine (held at the first search, released at the next eval's energetic quorum), the refusal, TRAIN_ONLY, and
+    flag-off identity with the loop on (config, progress.csv, final weights vs the trainer before the flag).
+  * Not yet run at a gate. M = 25 in pbr7b3_c1 (a tolerance, not a margin: the explorer ran 8 ms ticks, the policy 7.67).
