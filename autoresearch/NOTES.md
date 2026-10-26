@@ -3094,3 +3094,9 @@ the round. (pbr6b3 released its box 19 min early once it stopped improving.)
 * **c4** (17:57 UTC): resume of c3's ckpt_final (32.953B) with c3's flags on c3's current spine (its own cliff cut 04
   of search 3's beam: rows 0-6,717, 71.37%; box path runs/pbr6b3_c3/cliff/cut04, md5 a18a6ed7...) and the loop's 46
   milestones; --steps 0.8e9 (ends ~18:55); record gates PASSED. Pulled at the 19:12 wrap-up.
+
+### c4: 71.690; the plain beam reaches 73.71% (17:58-18:20 UTC)
+* Evals: 32.954B 71.400 (median 71.0%) | 33.029B 71.596 | 33.105B 71.432 | 33.180B 71.629 (5/9 past the cut line at
+  71.2% -> **c4 search 1: plain beam to d 15,023 = 73.71%**, 7,200 states, 60 s) | 33.256B **71.690** (best 71.7%,
+  median 71.3%). Medians now hold at 71.0-71.3% in 4 of 5 evals: the greedy owns the line to 71.3%, and the beam
+  runs ~2.4% further. Hand-on of 71.690: ckpt_33153351680 (the snapshot 103M before it), pulled.
