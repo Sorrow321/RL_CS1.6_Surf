@@ -3,19 +3,18 @@
  "round": 6,
  "final": false,
  "best": {
-  "score": 62.373,
-  "eval_file": "/home/steam/ar_pb/runs/pbr6b1/pbr6b1_a1/traj_29199695872.jsonl",
-  "run": "pbr6b1_a1",
-  "step": 29199695872,
-  "ckpt": "/home/steam/ar_pb/runs/pbr6b1/pbr6b1_a1/ckpt_29123674112.pt",
+  "score": 64.604,
+  "eval_file": "/home/steam/ar_pb/runs/pbr6b1/pbr6b1_a4/traj_31006392320.jsonl",
+  "run": "pbr6b1_a4",
+  "step": 31006392320,
+  "ckpt": "/home/steam/ar_pb/runs/pbr6b1/pbr6b1_a4/ckpt_30979653632.pt",
   "recipe": [
-   "a1: resume of the round-5 incumbent (pbr5b2_c7 29.124B, md5 afb44185...) with c7's flag set on spine pbr5b2_c7k01 + 19 milestones (the 18 + s6's 21,624) + --auto-spine-energy 150 --auto-spine-ge-minutes 5 --auto-spine-delay 2e8",
-   "auto_spine (068f27f): ENERGY BEFORE BOOST - the default ladder is 1.0,1.04;G;1.08;1.12, the --energy-gain stage runs before the x1.08 / x1.12 stages",
-   "a1 search 1 -> energy spine pbr6b1_a1k01 (unboosted chain from 48.9%, rides the 60% corner's side: +153 u at 61.2%); ~370M steps on it -> the policy's own beam (seed 9) past the 62.3% drop to 63.43% (spine pbr6b1_m2), unboosted",
-   "a2: the 29.72B weights + the depth curriculum on pbr6b1_m2: 62.29-62.32 in 300M steps (the box's deadline)"
+   "a1: resume of the round-5 incumbent (pbr5b2_c7 29.124B) with c7's flag set + --auto-spine-energy 150 --auto-spine-ge-minutes 5: the loop's ENERGY-BEFORE-BOOST ladder (068f27f) found an unboosted energy spine at gate 19's 60% corner; ~370M steps on it -> the policy's own beam (seed 9) past the 62.3% drop to 63.43% (spine pbr6b1_m2)",
+   "a2 -> a3 -> a4: the backward curriculum on pbr6b1_m2 with its held keys (--demo-file autoresearch/spines/pbr6b1_m2.npy --demo-keys ... --demo-success-d 100 --demo-grow 5 --demo-grow-max 40 --demo-front-frac 0.8 + 21 milestones), warm, 5,5xx -> 5,284 (a2, 300M) -> 4,994 (a3, 760M) -> the greedy passes the corner and the drop",
+   "a4 (from a3's 30.779B, --demo-tau0 4994, the search on the quorum only): evals 63.343, 64.555 (6/9 past the drop), 64.604; the quorum (5/9 past m2's end) ran search 1 -> the policy's own beam to 64.64% (spine k01), curriculum restarted on it"
   ],
-  "resume_from": "pbr5b2_c7 ckpt_29123674112 (62.369) <- the round-5 lineage",
-  "commit": "068f27f"
+  "resume_from": "pbr6b1_a3 ckpt_latest 30.779B <- a2 30.03B <- a1 29.72B <- pbr5b2_c7 29.124B (the round-5 incumbent)",
+  "commit": "68baf9a"
  },
- "summary": "62.373 (a1 29.200B, median 62.4%) - the incumbent's level; all 9 still fall at the 62.3% drop. NEW: the loop's energy stage moved before the boosted Go-Explore stages (068f27f) found an UNBOOSTED energy spine at the 60% corner in its first search (878 s); after ~370M steps on it the policy's own beam (seed 9; seed 7 did not) passed the drop to 63.43% unboosted (spine pbr6b1_m2, h ~2,72x-2,82x over 60-62.3%). The greedy did not follow before the box's deadline (a2: 62.29-62.32). Cost: the energy phase made the line faster upstream and the greedy eroded at gate 8's landing (8/9 at 21%), recovered on the depth curriculum. Also new: auto_spine --beam-seeds / train_fast --auto-spine-beam-seeds. Box released 09:48 UTC (credit at the reserve). CPU bench (no box, 11:30): on m2's line the greedy passes the drop from 62.15% (incumbent) -> 60.65% (a2), the 60% corner 0/8 for every checkpoint; next: m2's curriculum through the corner (tau0 5,284). a3 (13:29 UTC, box 57819941, RTX 4070 Ti): m2's curriculum resumed from a2's 30.03B at tau0 5,284 + the loop; the curriculum passed the corner (tau 4,99x = 58.3% by 14:15) and a CPU bench of 30.632B passes the corner from m2's rows 4-6/8 (a2: 0/8), to 63.4-64.45%; the true-start greedy still leaves m2's energy at 58-59.5% (evals 62.25-62.31). Box extended to 16:28 UTC. a3 stopped at 30.779B (14:31) before its patience search could restart the curriculum; a4 continues from those weights at tau0 4,994 (search on the quorum only)."
+ "summary": "64.604 (a4 31.006B; 64.555 at 30.931B with 6/9 past the 62.3% drop) vs the incumbent's 62.369: GATE 19 PASSED by the greedy. How: the loop's energy-before-boost search (068f27f) found an unboosted energy spine at the 60% corner; on it the policy's own beam passed the drop (m2, 63.43%); the backward curriculum on m2 with held keys then taught the corner (CPU bench: a2 0/8 -> a3 4-6/8 from m2's rows) and, once it reached the approach (58.3%), the true-start greedy followed m2's energy (h 2,75x-2,85x at 60.6-62%) past the drop. a3 was stopped before a patience search could restart the curriculum (a search blocks the trainer and a new spine restarts at its end). a4's quorum search -> spine k01 (own beam to 64.64%), its curriculum is walking back (4,884 by 14:54). Box 57819941 (RTX 4070 Ti) to 16:28 UTC."
 }

@@ -2898,6 +2898,27 @@ Incumbent: pbr5b2_c7 ckpt_29123674112 (62.369, md5 afb44185...).
   only on the quorum: 5/9 greedy episodes past m2's end), budget 3.2e9 (to 33.98B, cut at the wrap-up).
   General lesson for the loop: a patience search should not replace a spine whose curriculum is still advancing.
 
+### a4: GATE 19 PASSED BY THE GREEDY - 64.604 (14:54 UTC, box 57819941)
+* Evals: 63.343 (eval 0 = a3's 30.779B weights: 2/9 past the drop), 0.422 (the start-platform wander again),
+  **64.555 (30.931B: 6/9 past the drop, two to 64.56%)**, **64.604 (31.006B: 4/9 past, best 64.60%)**.
+  Score `score.py --best runs/pbr6b1/pbr6b1_a4/` = 64.604; hand-on snapshot ckpt_30979653632.pt (md5 f9507e6c...,
+  pulled; 27M steps before the eval, ckpt_latest 61M after it).
+* The passing episodes ride m2's energy through the whole stretch (h, greedy / m2): 59.5% 2,72x-2,80x / 2,737; 60.6%
+  2,73x-2,79x / 2,749; 62% 2,78x-2,85x / 2,804; 62.3% 2,73x-2,86x / 2,819. The failing ones still drop ~250 u at
+  58-59.5% and die at the drop (62.2-62.3%) or at 61.2-61.7%: the same fork as before, now taken the right way in
+  4-6 of 9.
+* At 30.931B the quorum (5/9 past m2's success line d <= 21,002) ran search 1: the plain beam (seed 1, 4096 envs,
+  65 s) to d 20,210 = 64.64% -> spine k01 (5,800 rows, its keys; copied to autoresearch/spines/pbr6b1_a4k01.*, md5
+  0a07c9a7...; h 2,819 at 62.3%, 2,554 at 63%, 2,307 at 64%). The curriculum restarted at k01's end and walked back
+  at 40 rows per advance (40-55% success) to 4,884 by 14:54: the policy already knows most of its own beam's line.
+* Where the greedy stops now: 63.3-63.5% (5 episodes over the two evals: the landing after the drop, h ~2,53x-2,73x)
+  and 64.55-64.60% (3 episodes, h ~2,21x-2,41x at 64%; k01 2,307).
+* What did it, in order: (1) the loop's energy-before-boost search found the energy spine at the corner (a1);
+  (2) training on it let the policy's own beam pass the drop (m2); (3) the backward curriculum on m2 WITH ITS HELD
+  KEYS walked from the drop back through the corner (a2, a3: the corner went 0/8 -> 4-6/8 from m2's rows on the CPU
+  bench); (4) once the curriculum covered the stretch where the greedy loses its energy (58-59.5%), the true-start
+  greedy took m2's branch. ~1.06B steps of curriculum on m2 in total (a2 300M + a3 760M) before the first passing eval.
+
 ### pbr6b1 round 6 lesson (DRAFT 10:06 UTC; finalised at wrap-up)
 * **Score 62.369 -> 62.373** (a1 29.200B: the incumbent's weights 75M steps on, same gate; all 9 fall at the 62.3% drop).
   1 h 54 min of box (one 2 h rent; the fleet's credit reached the $10 reserve at ~09:46 and no extension or new rent was

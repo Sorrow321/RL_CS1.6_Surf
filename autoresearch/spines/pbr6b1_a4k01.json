@@ -1,0 +1,18 @@
+{
+ "greedy_d": 20954.4,
+ "gain": 500.0,
+ "spine": "/root/RL_Surf/runs/pbr6b1_a4/auto/k01/spine.npy",
+ "beam_rc": 0,
+ "beam_replay_ok": 1,
+ "beam_frontier_d": 20209.859375,
+ "beam_frontier_tick": 5800,
+ "beam_len": 5800,
+ "beam_end": 5799,
+ "beam_end_d": 20209.9765625,
+ "beam_best_d": 20209.9765625,
+ "source": "beam",
+ "n": 5800,
+ "end_d": 20209.9765625,
+ "md5": "0a07c9a730fbe70f6edc37b2a37818b2",
+ "keys": "/root/RL_Surf/runs/pbr6b1_a4/auto/k01/spine.keys.npy"
+}
