@@ -3,18 +3,19 @@
  "round": 6,
  "final": false,
  "best": {
-  "score": 62.364,
-  "eval_file": "/home/steam/ar_pb/runs/pbr6b2/pbr6b2_c5/traj_30079451136.jsonl",
-  "run": "pbr6b2_c5",
-  "step": 30079451136,
-  "ckpt": "/home/steam/ar_pb/runs/pbr6b2/pbr6b2_c5/ckpt_30078926848.pt",
+  "score": 62.371,
+  "eval_file": "/home/steam/ar_pb/runs/pbr6b2/pbr6b2_c9/traj_31307333632.jsonl",
+  "run": "pbr6b2_c9",
+  "step": 31307333632,
+  "ckpt": "/home/steam/ar_pb/runs/pbr6b2/pbr6b2_c9/ckpt_31297372160.pt",
   "recipe": [
    "c1: resume of pbr5b2_c7 ckpt_latest (29.499B) with c7's flags + --auto-spine-patience 6e8 + --auto-spine-energy-first 1.04 (new); search 1 -> spine pbr6b2_c1k01",
    "c2-c4: spine pbr6b2_c1k01c (k01 cut 300 u past the greedy) + milestones +21624,20774; c3 + --auto-spine-cut-ahead 300 (new); c4 + --demo-rate 0.15",
-   "c5: + --demo-phase (new: spine spawns on the line's decision grid), --demo-rate 0.2"
+   "c5: + --demo-phase (new: spine spawns on the line's decision grid), --demo-rate 0.2",
+   "c9: c5's exact command on c5's 30.250B snapshot + --auto-spine-patience 4e9 + --diag-ratio-split 4096 (new, measurement only), --demo-tau0 6337"
   ],
-  "resume_from": "pbr6b2_c4 snapshot 30,078,926,848 (md5 c94d8bbd...) <- c3 <- c2 <- c1 <- pbr5b2_c7 ckpt_latest",
-  "commit": "de85d71"
+  "resume_from": "pbr6b2_c5 snapshot 30,249,844,736 (md5 9522789c...) <- c4 30.079B <- c3 <- c2 <- c1 <- pbr5b2_c7 ckpt_latest",
+  "commit": "56e8048"
  },
  "summary": "Round 6 (one 3 h box, the credit hit the reserve at 09:53): resume of pbr5b2_c7's latest weights with the loop. Gate 19 (the 62.3% drop) is a BOUNCE: the policy's own branched beams pass it by a jump on the tick the hull meets the ramp's foot (search 1: k01 + a GE crawl to 63.83%; a manual search on c5's weights: c5s1 to 63.45%). A spine spawn's first decision had a random phase (mid-decision autoreset), so the tick-exact jump capped its band near 1/K; --demo-phase (new) moves spawns onto the line's own decision grid, and a CPU probe showed the trained policy bounces from the on-grid contact state to 63.29%. The greedy never got the approach in the time left; training on c5s1 collapsed the route twice (c6, c7): the logs show the lineage's recurring PPO dip (W/S held in the air and the key heads' entropy up, reward down; c4 and c5 had it and recovered) gone deep, with the spawn pools then following the collapsed greedy; a CPU probe with the new --diag-ratio-split measured PPO's joint clip spent ~80% by the two view heads (the camera-only pitch 41% of the KL), the keys heads losing their policy gradient on ~14% of each update's rows; the link to the collapses is not shown. New, default off: --auto-spine-energy-first, --auto-spine-cut-ahead, --demo-phase, --diag-ratio-split. Best 62.364 (c5 30.079B), incumbent 62.369."
 }
