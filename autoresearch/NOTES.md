@@ -2498,3 +2498,6 @@ depth search (the explorer adds its own crashes), a depth curriculum on a booste
 live only there, so a released box takes them along (pbr5b2 lost c6's k01 / k02 this way; the next round has to
 rebuild them with one search). Workaround on the branch side: scp `runs/R/auto/` (or `auto/current.json` + the
 current spine) before `box.py release`. The operator may want `pull` to fetch `auto/*/spine*` and `auto/current.json`.
+* Regression pass (02:58 UTC, local CPU, 5 min): 34/34 - test_auto_spine (incl. the trainer smoke + flag-off
+  bit-identity + milestone tests), test_respawn_greedy_energy, test_demo_success_energy, test_stitch_spine,
+  test_ge_roots_keep_all, test_energy_pick, test_respawn_greedy_contact.
