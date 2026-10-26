@@ -2423,3 +2423,15 @@ minute). Incumbent: pbr4b3_t11 ckpt_23551016960 (md5 7fbcd458...), eval 52.937 a
   unknown (not in its movevars; CS 1.6 default on), so the stock cap stays: the gate needs a line across the upper
   level without ground jumps. (Not a reward or map constant: a physics fact worth knowing for every later gate.)
 * Search 3 (29.048B): plain and branched beams 21,485-21,496 (62.40%); GE stage 1 61.68%; x1.08 / x1.12 stages next.
+* Search 3 (29.048B, 1,729 s): NO spine. Beams 21,488-21,500; GE x1.0/1.04 21,898, x1.08 21,550, x1.12 21,506 (62.4%)
+  - every stage rooted at line row 5,679 (61.5%): the stall rule (first tick within 500 u of the best d) fires early
+  on a line that CRAWLS to its end, so the roots (4 s before the stall) cover 58-61.5% and miss the strip's end and
+  the drop entirely. A generic auto_spine flaw (fix below).
+* GE-G's "energetic" corridor cells (h 2,616-2,641 at 60.5-60.9%) are slow chains (e.g. 1,665 ticks, 12.8 s, from
+  59.5% to 60.88% where the line takes ~5 s): their energy is HEIGHT gathered while wandering, ~100 u above the floor.
+  Restricted to chains no slower than the line, nothing beats the line's energy. A stitched spine to one of them
+  (runs/_stitch/spine_g.npy on the box, gone) was not trained.
+* c6 last evals 62.343 / 62.354 / 62.363 (29.12-29.27B), medians 62.30-62.33%; the training frontier flat (front band
+  >60.8%, front-perturb best 35,640 u on the trainer's field the whole last hour). **Box 57714456 released 02:45 UTC**:
+  the branch's best (62.367, c6 29.048B, hand-on ckpt_29047652352 pinned + pulled) stands, every search ends at the
+  62.3% drop, and the program's credit above the reserve (~$5.5) is what round 6 runs on.
