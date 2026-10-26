@@ -2652,3 +2652,39 @@ demo_success_energy suites' trainer-before-the-flag tests still pass):
   boosted root (round 4's k02, c4's x1.08 at gate 17) unless the policy learns to arrive there with the speed - which is
   what the energy rule teaches. A generic fix worth building: when the depth ladder's spine starts from a boosted root
   (x > 1.04), teach the stretch up to the root with the energy rule first (h at the root - G/2), then the depth spine.
+* c7 on k02 (06:39-07:07 UTC): evals 29.199 / 29.275 / 29.350 / 29.426B = 62.362 / 62.326 / 62.366 / 62.357, 0/9 past
+  k02's success line each time (medians 21,516-21,559); the curriculum band went [5,473 ...] -> [5,423, 5,823] at
+  7-47% success, still ~3.5 s of line short of the x1.12 root (row 5,017). Pulled at wrap-up: 6 evals, ckpt_latest
+  (29.46B, md5 a17970d6...), snapshots ckpt_29247930368 (md5 6fa55d5e...) and ckpt_29448208384 (md5 ce3d39f0...), the
+  hand-on ckpt_29123674112 (62.369, md5 afb44185...), auto/k01 + k02 spines (also in autoresearch/spines/) and
+  current_final.json. Box 57771742 released at wrap-up.
+
+### pbr5b2 round 5 lesson (wrap-up, 2026-10-26 07:09 UTC) - supersedes the DRAFT above
+* **Score 52.937 -> 62.369** (c7 29.124B, median 62.36%; c6's 62.367 at 29.048B before it). Gates passed: k05's descent (c1), gate 17 = the 56.6% shaft climb (c4-c6),
+  gate 18 = the 61.5% gap hop (c6's loop). Gate 19 = the 62.3% drop: the loop's own search found the first line past it
+  (k02, 64.15%) 27 min before wrap-up; the greedy had not followed it by wrap-up (k02's curriculum band at row ~5,423 of 5,823, 3.5 s short of its x1.12 root at row 5,017; evals 62.33-62.37%).
+* **What worked, in order of effect:**
+  1. **ENERGY gates handled by the trainer's own loop** (`train_fast --auto-spine-energy 150`, `auto_spine --energy-gain`,
+     new this round, default off): when no deeper line exists, Go-Explore before the line's largest energy losses, the
+     deepest cell keeping >= 150 u more energy height than the policy's line, taught with the energy success rule (h >= the
+     end's - 75) with an energy quorum. At gate 19, first use: +217 u at 59.55% found in one search (25 min), learned by the
+     greedy in 75M steps (h at 58.2% 2,46x-2,51x -> 2,683-2,751, 9/9); the NEXT search then passed the drop by depth
+     (x1.12 GE from the next corner, 64.15%). Gate 17's sequence (energy first, then the search passes) without an operator.
+  2. **The energy-gated curriculum itself** (`--demo-success-energy`, round 5's first new piece): gate 17's cleaner descent
+     taught in ~20 min where every boosted DEPTH spine of the lineage had stalled at its root.
+  3. **The rising / not split in GE's cell key** (`--cell-heading 1`, auto_spine's default): the shaft climb.
+  4. Loop fixes: tail roots (a crawling line's end gets roots; the threshold now fires at 7.67 ms) and --roots-keep-all
+     (boosted copies are explored, not dropped as duplicates).
+  5. Diagnostics that decided where to look: a probe of the policy at its own states with scaled speed (gate 19's drop needs
+     ~+300 u: x1.8 at the strip's edge still falls short) and the per-progress energy profile of the greedy (c6 loses
+     ~200 u at the 58% corner, s6 at the shaft top) - and, as ANALYSIS ONLY, the record rides the corridor's sloped sides
+     while our policy lands on its floor under CS's bunny-hop cap.
+* **What did not:** energy-weighted beams; branched beams before the impacts; GE from pre-crash roots; a depth curriculum on
+  a boosted stitched line (stalls at the root); strip-end searches at gate 19 (the energy is lost 3-4% earlier);
+  `--select-energy` (GE selection by energy: a big reach gain in one local A/B, none in the other - unproven, default off).
+* **Generic rules learned:** (1) when a gate is energy, find where it is lost and teach a line that keeps it with an energy
+  success rule, then let the policy's own search take the gate - now one flag; (2) energy is lost corner by corner (flat
+  floors, the hop cap): one energy spine per corner, ~25 min of search + ~6 min of training each; (3) a depth spine from a
+  boosted root asks for speed the policy does not have: teach the stretch up to the root for energy first (not built).
+* **Next round:** resume c7's hand-on (runs/pbr5b2/pbr5b2_c7/ckpt_29123674112.pt, 62.369, md5 afb44185...; or ckpt_latest at 29.46B, md5 a17970d6..., mid-way through k02's curriculum) with c7's flags (the to-continue block + `--auto-spine-energy 150
+  --auto-spine-ge-minutes 5`) on spine `autoresearch/spines/pbr5b2_c7k02` (+ keys): the loop's current spine, past the drop.
