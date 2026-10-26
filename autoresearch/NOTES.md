@@ -2960,6 +2960,14 @@ Incumbent: pbr5b2_c7 ckpt_29123674112 (62.369, md5 afb44185...).
 * **a6 (16:16 UTC): a5 again from a4's 31.38B weights + `--target-kl 0.1`** (the trainer's PPO early stop: an update
   stops once its approx KL passes 0.15; TRAIN_ONLY, generic). The first update already stopped early (kl 0.191).
   Budget 2e9, cut at ~18:35 for the harvest.
+* **a6 eroded too (16:16-16:36)**: evals 64.678, 64.663, 64.646, then 22.461, 24.190, 21.432, 21.494 (31.61-31.83B):
+  the greedy dies at gate 9 (21%), the a2/a3 erosion, four evals running. And `--target-kl 0.1` stopped EVERY update
+  after 1-3 minibatches of the first epoch (kl 0.28-0.35 at the stop): one Adam step on this low-entropy policy
+  (sigma 0.017-0.024) already moves kl ~0.1-0.3, so the cap cut learning ~30x and the erosion came anyway. The update
+  size is not the cause; the training DISTRIBUTION is: with 90% of starts on the curriculum (k03 at the corridor)
+  the upstream gates are practised only by the ~10% full episodes.
+* **a7 (16:38 UTC)**: a5's flags from a4's 31.38B with `--respawn-frac 0.6` (40% fresh starts: the map start and the
+  start-room states; the checkpoint's 0.9 otherwise) and no kl cap.
 
 ### pbr6b1 round 6 lesson (DRAFT 10:06 UTC; finalised at wrap-up)
 * **Score 62.369 -> 62.373** (a1 29.200B: the incumbent's weights 75M steps on, same gate; all 9 fall at the 62.3% drop).
