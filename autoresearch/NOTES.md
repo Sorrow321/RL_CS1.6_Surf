@@ -2688,3 +2688,33 @@ demo_success_energy suites' trainer-before-the-flag tests still pass):
   boosted root asks for speed the policy does not have: teach the stretch up to the root for energy first (not built).
 * **Next round:** resume c7's hand-on (runs/pbr5b2/pbr5b2_c7/ckpt_29123674112.pt, 62.369, md5 afb44185...; or ckpt_latest at 29.46B, md5 a17970d6..., mid-way through k02's curriculum) with c7's flags (the to-continue block + `--auto-spine-energy 150
   --auto-spine-ge-minutes 5`) on spine `autoresearch/spines/pbr5b2_c7k02` (+ keys): the loop's current spine, past the drop.
+
+## pbr6b1 (round 6, slot 1) - 2026-10-26 07:52 UTC start
+
+Box: 57783819, RTX 4070 Ti (12 GB) + 32 threads (cgroup quota 30.72), 0.229 $/h, UK (machine 149163),
+rented 07:54, deadline 09:54 (2 h). Credit at the start: $11.74, $1.74 above the $10 reserve: the
+whole fleet has ~7 box-hours at ~0.25 $/h unless topped up, so extensions are unlikely.
+Incumbent: pbr5b2_c7 ckpt_29123674112 (62.369, md5 afb44185...).
+
+### a1: the loop with ENERGY BEFORE BOOST (08:04 UTC)
+* Why: at gate 19 the loop's search 2 (round 5) passed the drop only with a x1.12 Go-Explore root at
+  the 60% corner (spine k02), and a DEPTH spine from a root boosted above x1.04 stalled at that root
+  in most of this lineage's uses (round 3 k03 x1.12, round 4 k02 x1.12, round 5 e1c x1.08; the one
+  exception: round 4's gate-15 x1.08 chain, passed ~150M steps after its swap), while ENERGY spines
+  from x1.04 roots were learned fast (round 5 e1d ~20 min, k01 75M steps). The round-5 lesson's own
+  suggestion was to teach the energy up to a boosted root first. Generic version: let the loop's
+  energy stage run BEFORE the boosted depth stages.
+* `tools/auto_spine.py` (068f27f): a bare `G` in `--ge-boost` places the `--energy-gain` stage in the
+  ladder; the default ladder is now `1.0,1.04;G;1.08;1.12` (without --energy-gain G is skipped = the
+  old ladder; a ladder with no G runs the energy stage last, as before). An energy pick ends the
+  search like a deeper line does. Tests: test_energy_before_boost_ladder,
+  test_default_ladder_puts_energy_before_boost (+ the 13 non-trainer auto_spine tests pass).
+* **pbr6b1_a1** = resume of the incumbent's weights with c7's flags (the round-5 to-continue block +
+  --auto-spine-energy 150 --auto-spine-ge-minutes 5) on spine pbr5b2_c7k01 (the greedy already crosses
+  its line: 9/9 at the first eval, so the quorum fires once the delay is over) + milestones (the 18 +
+  s6's 21,624) + --auto-spine-delay 2e8 (the search waits until the ladder change is on the box), 2e9
+  steps. Search 1 at ~29.35B on these weights = c7's search 2 with the new order: beams, GE x1.0/1.04,
+  then the energy stage before x1.08 / x1.12.
+* First eval (29.124B, the resumed weights): **62.371** (median 62.34%) - the incumbent's level.
+  Hand-on for it: the incumbent's file placed as runs/pbr6b1/pbr6b1_a1/ckpt_29123674112.pt.
+* `score.py --best $AR_HOME/runs/$AR_AGENT/` globs only that directory (n_evals 0); score per run dir.
