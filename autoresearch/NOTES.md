@@ -2470,3 +2470,23 @@ minute). Incumbent: pbr4b3_t11 ckpt_23551016960 (md5 7fbcd458...), eval 52.937 a
   1.04 with --roots-keep-all) rooted at the policy's corridor states from ~59.5% that keeps >= ~550 u/s through the
   corridor's last turn into the EAST lane; then a spine to that chain with `--demo-success-energy` (M below the gap
   between the chain's end energy and the greedy's), then the policy's own beam.
+
+### Playbook: an ENERGY gate by the gate-17 recipe (pbr5b2; all tools in the repo)
+1. Diagnose: the greedy's energy height h = z + |v|^2/1600 at first arrival per progress level
+   (autoresearch NOTES scripts: per-eval h at matched progress) and the policy beam line's largest one-tick losses;
+   the gate is energy when the line arrives where it dies with too little h (a climb it cannot make, a gap it cannot
+   clear) and loses it to impacts upstream.
+2. Search with energy in mind: `explore_phase1 --exact-chains --cell 64 --cell-energy 32 --cell-heading 1
+   --view-follow=-90,-60,-30,-15,0,15,30,60,90 --tick-ms 8 --roots-keep-all` rooted at the policy line's own states
+   BEFORE its largest losses, x1.0 / 1.04 (10-15 min, the whole CPU if you can pause the trainer).
+3. Pick: `tools/energy_pick.py --archive A --line <beam npz or spine> --field F --lo L --hi H --out pick.json
+   --replay chain.npy --map M` (the most energy over the line at matched progress, chain not slower than the line).
+4. Stitch: `tools/stitch_spine.py --out spine.npy --field F --no-cut beam:<beam npz> ge:A:chain.npy` (+ keys).
+5. Teach the ENERGY: resume with `--demo-file spine.npy --demo-keys spine.keys.npy --demo-success-energy M` (M below
+   the gap between the chain end's h and the greedy's there; 200 for a ~400-600 u gap) and NO --auto-spine (refused
+   with the energy rule). Watch the greedy's h at the chain's end per eval; round 5: ~400M steps (~20 min).
+6. Then the policy's OWN search on the new weights (tools/auto_spine.py by hand, or relaunch with --auto-spine): at
+   gate 17 the plain beam made the climb unboosted the first time; a normal depth curriculum on that line followed.
+Things that did NOT work at energy gates (round 5): energy-weighted beams (--score dh), branched beams forked before
+the impacts (the descent was a narrow tube: every fork died), GE from pre-crash roots with the energy STAGE as a
+depth search (the explorer adds its own crashes), a depth curriculum on a boosted stitched line (stalls at the root).
