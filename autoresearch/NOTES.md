@@ -2336,3 +2336,12 @@ The trainer used ~12 of the box's 30.7-CPU quota, so each stage ran beside it at
   shaft spine) - a healthy run to the wrap-up.
 * Probe (04:01 UTC): start-state beams (c5's weights) from GE#1's most energetic viable states at 51.4-51.8% (h
   3,435-3,560, the record ~3,614 at 51%) - does the policy land smoothly from there and reach the shaft with >= 2,740?
+* Start-state beams (c5's weights) from GE#1's most energetic viable states at 51.4-51.8% (h 3,435-3,560): all four
+  end on the ledge (56.59%) - from record-like energy at 51.5% the policy's own habit still loses it before the shaft.
+* So two obstacles eat the shaft's energy: the 52.7% floor landing (e1's explorer chain passes it smoothly: h ~3,000
+  at 53-54%) and the ramp at ~54.5% (every high-speed line - e1's end, GE#3/#4 - meets it falling steeply, vz
+  ~-1,330, and loses ~640 u; the record rides it north at a constant ~1,620 u/s, ANALYSIS ONLY).
+* c7 evals 56.588 / 56.584 (25.64-25.71B, healthy).
+* GE_r1 (04:15 UTC, 15 min beside c7): 32 roots = GE#2's most energetic viable cells at 52.8-53.7% (h 2,985-3,017,
+  before e1's steep fall) - a tangential approach to the 54.5% ramp that keeps >= 2,740 to the shaft entry? For the
+  next round if not this one.
