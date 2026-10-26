@@ -2811,6 +2811,54 @@ Incumbent: pbr5b2_c7 ckpt_29123674112 (62.369, md5 afb44185...).
   Regression 10:04 UTC (local CPU): test_auto_spine + test_auto_spine_energy + test_auto_spine_beam_seeds 32/32
   (incl. the trainer smoke runs and the flag-off bit-identity test).
 
+### The greedy's basin on m2's line, benched on CPU (11:08-11:30 UTC, no box)
+* Tool: `tools/band_bench.py` (record_ckpt from single m2 rows, 8 greedy episodes per row, the checkpoint's 8 deg
+  spawn yaw jitter makes them differ; spawns hold m2's keys through the new `record_ckpt --spawn-keys`, 78931a3;
+  success = m2's line d <= 21,002 = 63.25%, the curriculum's --demo-success-d 100). ~25 s per row on 2 CPU threads.
+  Greedy passes / 8 (progress and h of the m2 row; inc = the round-5 incumbent 29.12B, a1 = 29.72B after ~600M steps
+  of the energy spine, a2 = 30.03B after 300M more on m2's curriculum):
+
+      m2 row  progress  h      inc   a1    a2
+      5,200   59.84%   2,703   -     0/8   0/8     the 60% corner: side ride, airborne
+      5,230   60.06%   2,718   -     -     0/8
+      5,250   60.25%   2,729   -     -     0/8
+      5,260   60.35%   2,735   0/8   1/8   4/8
+      5,270   60.45%   2,740   -     -     0/8
+      5,276   60.52%   2,744   -     -     2/8
+      5,280   60.56%   2,746   -     -     1/8
+      5,284   60.61%   2,748   -     -     0/8     a2's curriculum band [5284,5288]: 13-19% stochastic
+      5,288   60.65%   2,750   0/8   0/8   5/8
+      5,292   60.68%   2,735   -     -     3/8
+      5,296   60.70%   2,736   -     -     4/8
+      5,300   60.72%   2,738   0/8   2/8   3/8
+      5,320   60.74%   2,737   -     -     3/8
+      5,350   60.83%   2,736   4/8   4/8   8/8
+      5,400   61.28%   2,764   3/8   7/8   2/2
+      5,450   61.82%   2,792   4/8   5/8   -
+      5,484   62.15%   2,810   7/8   8/8   2/2     just before the drop
+      5,520   62.60%   2,682   8/8   8/8   -
+
+  (a2 at rows 4,100-5,150, 48.97-59.57%, 2 episodes each: 0/2 everywhere, all to the 62.3% drop.)
+* What it says:
+  1. **The drop itself is not the gate.** The incumbent, which never trained on m2, passes it 7/8 from m2's row 5,484
+     (62.15%, h 2,810): arriving with m2's energy is enough. Its greedy evals arrive there at ~2,51x.
+  2. **The m2 curriculum moves the greedy's basin BACK along the line**: 7/8 from 62.15% (inc) -> 7/8 from 61.28% (a1)
+     -> 8/8 from 60.83% and 3-5/8 over 60.65-60.74% (a2, 300M steps). That is ~1.5 s of line in 300M steps, the easy
+     downstream part first.
+  3. **The 60% corner is outside every checkpoint's basin**: 0/8 from 59.84-60.25% even when placed ON m2's line just
+     before it. The side ride (59.84%) -> airborne -> the landing slide at 60.6% is the skill still missing; a2's
+     curriculum oscillated between [5284,5288] (13-19%) and [5289,5293] (29-37%) for its last 25 min, the band
+     success at 5,284 rising 12.7% -> 19.1%.
+  4. **The greedy from the true start** (a2 30.03B eval, first arrival, h / |v_h|): 40-140 u under m2 at 57-59.5%, and
+     8/9 episodes lose ~200 u between 59.5% and 60.0%. ep2 reaches the corner WITH m2's energy (2,736 at 59.75%; m2
+     2,701) and still loses it (2,492 at 60.0%): the corner decides it, not the approach.
+* For a continuation: the curriculum has ~100-130 rows left (to ~5,150, 59.6%) through the corner; tau0 5,284.
+  After that the greedy's own approach (40-140 u short over 57-59.5%) is the next question.
+* Pre-existing test failures, NOT from this change (they fail at 54b086b too): test_keys_hold.py
+  test_the_obs_block_is_seven_columns_at_the_tail and test_the_incompatible_flags_are_refused assert source strings
+  the trainer no longer contains (`N_ROUTE = N_FAN + ... + N_RATCHET`, `keys_hold=bool(args.keys_hold))`).
+  test_keys_hold + test_demo_keys otherwise 25 passed, 1 skipped.
+
 ### pbr6b1 round 6 lesson (DRAFT 10:06 UTC; finalised at wrap-up)
 * **Score 62.369 -> 62.373** (a1 29.200B: the incumbent's weights 75M steps on, same gate; all 9 fall at the 62.3% drop).
   1 h 54 min of box (one 2 h rent; the fleet's credit reached the $10 reserve at ~09:46 and no extension or new rent was
@@ -2830,6 +2878,8 @@ Incumbent: pbr5b2_c7 ckpt_29123674112 (62.369, md5 afb44185...).
   1. The GREEDY did not follow in the time left: on the energy spine it never carried the energy past the success line
      (0/9 energetic crossings in 450M steps), and on the depth curriculum (a2, 300M steps) it still cut the 60% corner
      low; the backward curriculum held at the slide after the corner (60.6%, 17-35%) and never reached the corner itself.
+     The CPU bench (above) measures what it did reach: the greedy's basin on m2's line went from 62.15% (the incumbent)
+     to 60.65-60.83% (a2), while from the corner (59.84-60.25%) every checkpoint passes 0/8.
   2. **Erosion from the energy phase**: the energy training made the greedy FASTER upstream (+40-50 u of h, +30-40 u/s at
      17-20%) and the memorised gate-8 landing broke at the new speed (8/9 greedy episodes died at gate 9, 21%, at 29.80B);
      the depth curriculum + greedy-death rows restored 6/9 within 75M steps. Under the curriculum the demo rows replace
