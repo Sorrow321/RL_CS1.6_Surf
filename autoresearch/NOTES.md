@@ -3004,3 +3004,8 @@ Germany (machine 56783), rented 08:05 UTC for 2 h.
   5e9. Record gate passed.
 * c12's first minute: the same band that sat at "0 eps" for 50 min - "tau <- earlier [6,814] (success 69.0% over 64
   eps)", then [6,804] 49.8%, [6,784] 55.0%, a backoff to [6,789]; demohot back at 0.4-0.5%. The fix is the whole story.
+* 16:38 UTC: c12's curriculum walked k01 back 6,819 -> 6,459 in 22 min (the climb and the platform hops learned) and
+  oscillates [6,459 / 6,464] (33-37% / the newest states 6-8%): the LANDING - the beam arrives at ~900 u/s (row 6,440,
+  70.93%, h 2,520) and brakes onto the platform area by row 6,480 (71.25%, horizontal 104 u/s, h 1,935), a precision stop
+  above the catch sheet. Evals 34.106-34.483B 71.489 / 71.436 / 71.389 / 71.351 / 71.453 / 71.401 (medians 71.2-71.3%,
+  the greedy dies at that landing); the best stays 71.499.
