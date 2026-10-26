@@ -154,6 +154,29 @@ def test_main_runs_the_energy_stage_only_when_asked(tmp_path, monkeypatch):
     assert not info.get("energy")
 
 
+def test_energy_before_runs_the_energy_stage_ahead_of_boosted_stages(tmp_path, monkeypatch):
+    """--energy-before B (pbr6b2): the energy stage runs before the first --ge-boost stage boosted
+    above B; an energy line ends the search there, no energy line lets the boosted stage run."""
+    lad = ["--ge-boost", "1.0;1.08"]
+    rc, calls, out = _main(tmp_path / "off", monkeypatch, lad + ["--energy-gain", "100"])
+    assert rc == 0 and [c[0] for c in calls] == ["ge", "ge2", "ge_energy"]   # the old order
+    rc, calls, out = _main(tmp_path / "on", monkeypatch,
+                           lad + ["--energy-gain", "100", "--energy-before", "1.04"])
+    assert rc == 0 and [c[0] for c in calls] == ["ge", "ge_energy"]          # x1.08 never runs
+    info = json.loads((out / "spine.json").read_text())
+    assert info["source"] == "beam+ge_energy" and info["energy"] is True
+    assert info["energy_before"] == 1.04 and info["energy_before_stage"] == 2
+    rc, calls, out = _main(tmp_path / "none", monkeypatch,
+                           lad + ["--energy-gain", "300", "--energy-before", "1.04"])
+    assert rc == 2 and [c[0] for c in calls] == ["ge", "ge_energy", "ge2"]   # then the boost
+    assert calls[2][1] == (1.08,)
+    rc, calls, out = _main(tmp_path / "noen", monkeypatch, lad + ["--energy-before", "1.04"])
+    assert rc == 2 and [c[0] for c in calls] == ["ge", "ge2"]                # no stage to move
+    rc, calls, out = _main(tmp_path / "low", monkeypatch,
+                           lad + ["--energy-gain", "100", "--energy-before", "1.1"])
+    assert rc == 0 and [c[0] for c in calls] == ["ge", "ge2", "ge_energy"]   # nothing above B
+
+
 def test_trainer_energy_rules():
     from train_fast import crossed_with_energy, spine_energy_rule
     d = np.array([900.0, 700.0, 480.0, 400.0])
@@ -186,20 +209,26 @@ def test_the_trainer_passes_and_refuses_the_energy_stage(tmp_path):
                             "--auto-spine-ge-minutes", "0", "--auto-spine-extra-secs", "1",
                             "--auto-spine-retry", "1", "--record-every", "2048",
                             "--eval-eps", "2", "--ep-ticks", "300",
-                            "--auto-spine-energy", "150"], tmp_path)
+                            "--auto-spine-energy", "150", "--auto-spine-energy-first", "1.04"],
+                      tmp_path)
         out = r.stdout + r.stderr
         assert r.returncode == 0, out[-6000:]
         assert "--auto-spine-energy 150: when no line is deeper" in out
         assert "auto-spine search 1:" in out and "--energy-gain 150" in out, out[-6000:]
+        assert "--auto-spine-energy-first 1.04: the energy stage runs before" in out
+        assert "--energy-before 1.04" in out, out[-6000:]
         cfg = json.loads((ROOT / "runs" / run / "run.json").read_text())["config"]
-        assert cfg["auto_spine_energy"] == 150.0
+        assert cfg["auto_spine_energy"] == 150.0 and cfg["auto_spine_energy_first"] == 1.04
     finally:
         shutil.rmtree(ROOT / "runs" / run, ignore_errors=True)
     for name, extra, msg in (
             ("aspe_bad1", ["--demo-success-d", "50", "--demo-success-bonus", "50",
                            "--auto-spine-energy", "150"], "is a stage of --auto-spine"),
             ("aspe_bad2", ["--demo-success-d", "50", "--auto-spine", "--auto-spine-energy", "150"],
-             "gates the --demo-success-bonus")):
+             "gates the --demo-success-bonus"),
+            ("aspe_bad3", ["--demo-success-d", "50", "--demo-success-bonus", "50", "--auto-spine",
+                           "--auto-spine-energy-first", "1.04"],
+             "orders --auto-spine-energy's stage")):
         bad = _run_demo(name, extra, tmp_path)
         assert bad.returncode != 0 and msg in (bad.stdout + bad.stderr), \
             (bad.stdout + bad.stderr)[-3000:]
@@ -209,3 +238,4 @@ def test_the_trainer_passes_and_refuses_the_energy_stage(tmp_path):
 def test_record_ckpt_knows_the_flag():
     import record_ckpt
     assert "auto_spine_energy" in record_ckpt.TRAIN_ONLY
+    assert "auto_spine_energy_first" in record_ckpt.TRAIN_ONLY

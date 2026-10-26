@@ -474,6 +474,14 @@ def main(argv=None) -> int:
                          "progress, marked energy (train_fast --auto-spine-energy); 0 = off")
     ap.add_argument("--energy-boost", default="1.0,1.04",
                     help="the energy stage's speed factors (one stage of --ge-boost's syntax)")
+    ap.add_argument("--energy-before", type=float, default=0.0,
+                    help="B > 0 (with --energy-gain): the energy stage runs BEFORE the first "
+                         "--ge-boost stage whose largest speed factor exceeds B, and those "
+                         "boosted depth stages only when it finds no energy line. A depth "
+                         "spine from a boosted root asks the greedy for speed it does not have "
+                         "(pbr5b2's k02: x1.12 at gate 19, its curriculum 3.5 s short of the "
+                         "root; round 4's k02 x1.12 stalled 1.2e9 steps at its root) - teach "
+                         "the energy first. 0 = the energy stage after the whole ladder")
     ap.add_argument("--ge-select-energy", type=float, default=0.0,
                     help="explore_phase1 --select-energy for the Go-Explore stages: each place's "
                          "most energetic cell drawn (1 + K) times as often (0 = off, as before)")
@@ -591,55 +599,16 @@ def main(argv=None) -> int:
             elif bde < de:
                 line, d, e, de = bl, bd_, be, bde     # GE roots on the deepest line
                 line_tag = tag
-        if best_src is None and a.ge_minutes > 0:
-            st = min(e, stall_tick(d, a.stall_margin))
-            res.update(beam_stall=st)
-            # the escalation ladder: a stage's speed factors only if the previous stage found
-            # no line past the greedy frontier. The boost buys the uniform explorer the energy
-            # its random actions waste; the trained policy has flown the route it found with
-            # its own (round 3: gate 8's chain needed x1.04, the greedy passed unboosted)
-            for k, (mode, boosts) in enumerate(stage_specs(a.ge_boost)):
-                tag = "ge" if k == 0 else f"ge{k + 1}"
-                kw = {}
-                if mode == "tail":
-                    tr = tail_roots(e, st, TICKS_PER_S, a.roots_secs, a.roots_n)
-                    if tr is not None:
-                        kw["roots"] = tr
-                        res.update({f"{tag}_tail_roots": [int(tr.min()), int(tr.max())]})
-                        print(f"GE stage {k + 1}: the line crawls {(e - st) / TICKS_PER_S:.1f} s past its "
-                              f"stall (tick {st}) to its end ({e}): roots before both", flush=True)
-                if mode == "energy":
-                    # roots before the line's largest energy losses (the line's own states
-                    # with the energy it still had), not in its last seconds before the stall
-                    ridx, losses = energy_roots(line, st, TICKS_PER_S, a.energy_roots_secs,
-                                                a.energy_drops, a.energy_lead, a.roots_n)
-                    kw["roots"] = ridx
-                    res.update({f"{tag}_energy_losses": [[t, round(dh, 1)] for t, dh in losses]})
-                    print(f"GE stage {k + 1}: energy roots before the losses "
-                          + ", ".join(f"{dh:,.0f} u at tick {t}" for t, dh in losses)
-                          + f" ({len(ridx)} roots)", flush=True)
-                gl, gi = go_explore(a, out, line, st, boosts=boosts, tag=tag,
-                                    line_keys=KEYS.get(line_tag), **kw)
-                res.update({(kk if k == 0 else f"{tag}_{kk[3:]}" if kk.startswith("ge_")
-                             else f"{tag}_{kk}"): vv for kk, vv in gi.items()})
-                if gl is None:
-                    continue
-                gd_ = field_d(field, gl)
-                ge_e, ge_de = cut_line(gl, gd_, a.contact_tol, a.cut)
-                res.update({f"{tag}_len": int(len(gl)), f"{tag}_end": ge_e,
-                            f"{tag}_end_d": ge_de, f"{tag}_best_d": float(gd_.min())})
-                print(f"GE stage {k + 1} ({'energy roots, ' if mode == 'energy' else ''}"
-                      f"speed x {boosts}): {len(gl)} states, best d "
-                      f"{gd_.min():,.0f}, cut at {ge_e} d {ge_de:,.0f}", flush=True)
-                if ge_de < a.greedy_d - a.gain:
-                    best_src = (f"beam+{tag}", gl[:ge_e + 1], ge_de)
-                    break
-        if best_src is None and a.ge_minutes > 0 and float(a.energy_gain) > 0:
+        energy_on = a.ge_minutes > 0 and float(a.energy_gain) > 0
+        energy_done = False
+
+        def _energy_stage():
             # --energy-gain G: no line is deeper, so the gate may be ENERGY lost upstream (pbr5b2:
             # gate 17's shaft climb, gate 19's corridor): search before the line's largest
             # energy losses and hand back the line to the deepest cell that keeps >= G u more
             # energy height than the line at the same progress - a spine for the trainer's
             # energy success rule (train_fast --auto-spine-energy), not for its depth rule
+            nonlocal best_src
             st = min(e, stall_tick(d, a.stall_margin))
             ridx, losses = energy_roots(line, st, TICKS_PER_S, a.energy_roots_secs,
                                         a.energy_drops, a.energy_lead, a.roots_n)
@@ -679,6 +648,62 @@ def main(argv=None) -> int:
             else:
                 print(f"energy stage: no cell keeps {a.energy_gain:g} u more than the line "
                       f"({got.get('energy_candidates', 0)} candidates)", flush=True)
+
+        if best_src is None and a.ge_minutes > 0:
+            st = min(e, stall_tick(d, a.stall_margin))
+            res.update(beam_stall=st)
+            # the escalation ladder: a stage's speed factors only if the previous stage found
+            # no line past the greedy frontier. The boost buys the uniform explorer the energy
+            # its random actions waste; the trained policy has flown the route it found with
+            # its own (round 3: gate 8's chain needed x1.04, the greedy passed unboosted)
+            for k, (mode, boosts) in enumerate(stage_specs(a.ge_boost)):
+                if (energy_on and not energy_done and float(a.energy_before) > 0
+                        and max(boosts) > float(a.energy_before)):
+                    # --energy-before B: teach the energy before a boosted depth spine
+                    energy_done = True
+                    print(f"energy stage before GE stage {k + 1} (speed x {boosts} > "
+                          f"{float(a.energy_before):g}): --energy-before", flush=True)
+                    res.update(energy_before=float(a.energy_before), energy_before_stage=k + 1)
+                    _energy_stage()
+                    if best_src is not None:
+                        break
+                tag = "ge" if k == 0 else f"ge{k + 1}"
+                kw = {}
+                if mode == "tail":
+                    tr = tail_roots(e, st, TICKS_PER_S, a.roots_secs, a.roots_n)
+                    if tr is not None:
+                        kw["roots"] = tr
+                        res.update({f"{tag}_tail_roots": [int(tr.min()), int(tr.max())]})
+                        print(f"GE stage {k + 1}: the line crawls {(e - st) / TICKS_PER_S:.1f} s past its "
+                              f"stall (tick {st}) to its end ({e}): roots before both", flush=True)
+                if mode == "energy":
+                    # roots before the line's largest energy losses (the line's own states
+                    # with the energy it still had), not in its last seconds before the stall
+                    ridx, losses = energy_roots(line, st, TICKS_PER_S, a.energy_roots_secs,
+                                                a.energy_drops, a.energy_lead, a.roots_n)
+                    kw["roots"] = ridx
+                    res.update({f"{tag}_energy_losses": [[t, round(dh, 1)] for t, dh in losses]})
+                    print(f"GE stage {k + 1}: energy roots before the losses "
+                          + ", ".join(f"{dh:,.0f} u at tick {t}" for t, dh in losses)
+                          + f" ({len(ridx)} roots)", flush=True)
+                gl, gi = go_explore(a, out, line, st, boosts=boosts, tag=tag,
+                                    line_keys=KEYS.get(line_tag), **kw)
+                res.update({(kk if k == 0 else f"{tag}_{kk[3:]}" if kk.startswith("ge_")
+                             else f"{tag}_{kk}"): vv for kk, vv in gi.items()})
+                if gl is None:
+                    continue
+                gd_ = field_d(field, gl)
+                ge_e, ge_de = cut_line(gl, gd_, a.contact_tol, a.cut)
+                res.update({f"{tag}_len": int(len(gl)), f"{tag}_end": ge_e,
+                            f"{tag}_end_d": ge_de, f"{tag}_best_d": float(gd_.min())})
+                print(f"GE stage {k + 1} ({'energy roots, ' if mode == 'energy' else ''}"
+                      f"speed x {boosts}): {len(gl)} states, best d "
+                      f"{gd_.min():,.0f}, cut at {ge_e} d {ge_de:,.0f}", flush=True)
+                if ge_de < a.greedy_d - a.gain:
+                    best_src = (f"beam+{tag}", gl[:ge_e + 1], ge_de)
+                    break
+        if best_src is None and energy_on and not energy_done:
+            _energy_stage()
     if best_src is not None:
         src, sp, de = best_src
         sp = clean(sp)

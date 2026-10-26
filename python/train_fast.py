@@ -4898,6 +4898,12 @@ def main() -> None:
                          "height - G/2, the --demo-success-energy rule) and its quorum counts "
                          "only greedy crossings with that energy; a depth spine goes back to the "
                          "depth rule. Config only when set; not restored")
+    ap.add_argument("--auto-spine-energy-first", type=float, default=None,   # None = off
+                    help="--auto-spine-energy: B > 0 runs the search's energy stage BEFORE the "
+                         "Go-Explore ladder's stages whose speed boost exceeds B (auto_spine "
+                         "--energy-before B), and those only when it finds no energy line: a "
+                         "depth spine from a boosted root asks the greedy for speed it does not "
+                         "have, an energy spine teaches it. Config only when set; not restored")
     ap.add_argument("--demo-cooldown", type=int, default=None,   # None = 20
                     help="--demo-file: iterations between two moves of the curriculum's tau "
                          "(default 20, the reference implementation's constant): every move "
@@ -11712,6 +11718,15 @@ def main() -> None:
         raise SystemExit("--auto-spine needs --demo-file (the first spine) and --demo-success-d")
     if args.auto_spine_energy is not None and not args.auto_spine:
         raise SystemExit("--auto-spine-energy is a stage of --auto-spine's search: give it")
+    if args.auto_spine_energy_first is not None:
+        if args.auto_spine_energy is None:
+            raise SystemExit("--auto-spine-energy-first orders --auto-spine-energy's stage: "
+                             "give it")
+        if not float(args.auto_spine_energy_first) > 0:
+            raise SystemExit("--auto-spine-energy-first B: the speed factor must be > 0")
+        print(f"--auto-spine-energy-first {float(args.auto_spine_energy_first):g}: the energy "
+              f"stage runs before any Go-Explore stage boosted above "
+              f"x{float(args.auto_spine_energy_first):g}")
     if args.demo_file:
         if float(args.demo_front_frac) > 0.0:
             print(f"--demo-front-frac {args.demo_front_frac:g}: that share of "
@@ -14730,6 +14745,8 @@ def main() -> None:
             meta["config"]["auto_spine_milestones"] = 1
         if args.auto_spine_energy is not None:
             meta["config"]["auto_spine_energy"] = float(args.auto_spine_energy)
+        if args.auto_spine_energy_first is not None:
+            meta["config"]["auto_spine_energy_first"] = float(args.auto_spine_energy_first)
     if args.demo_milestones:
         meta["config"]["demo_milestones"] = [float(x) for x in
                                              str(args.demo_milestones).split(",") if x.strip()]
@@ -15857,6 +15874,8 @@ def main() -> None:
             cmd += ["--maxvel", f"{float(args.maxvel):g}"]
         if args.auto_spine_energy is not None:
             cmd += ["--energy-gain", f"{float(args.auto_spine_energy):g}"]
+        if args.auto_spine_energy_first is not None:
+            cmd += ["--energy-before", f"{float(args.auto_spine_energy_first):g}"]
         t0 = time.time()
         print(f"[{global_step:>13,d}] auto-spine search {AUTO['k']}: " + " ".join(cmd),
               flush=True)

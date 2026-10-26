@@ -2688,3 +2688,24 @@ demo_success_energy suites' trainer-before-the-flag tests still pass):
   boosted root asks for speed the policy does not have: teach the stretch up to the root for energy first (not built).
 * **Next round:** resume c7's hand-on (runs/pbr5b2/pbr5b2_c7/ckpt_29123674112.pt, 62.369, md5 afb44185...; or ckpt_latest at 29.46B, md5 a17970d6..., mid-way through k02's curriculum) with c7's flags (the to-continue block + `--auto-spine-energy 150
   --auto-spine-ge-minutes 5`) on spine `autoresearch/spines/pbr5b2_c7k02` (+ keys): the loop's current spine, past the drop.
+
+## pbr6b2 (round 6, slot 2) - 2026-10-26 07:52 UTC start
+
+Incumbent: pbr5b2_c7 traj_29123674112 (62.369), hand-on ckpt_29123674112 (md5 afb44185...). Credit at
+the start $11.74 (only $1.74 above the $10 reserve), another branch already renting: box time is the
+scarce thing this round.
+
+### Box 1 (57783919) refused by gpu_health; box 2 (08:01 UTC)
+* RTX 4080 SUPER on an i9-14900K, 0.297 $/h: deploy_box.sh's gpu_health said UNHEALTHY (power limit
+  240 W of the 320 W default, "treat as a defect"; bf16 103 TFLOPS). Blocklisted (machine 128875,
+  reason gpu_capped) and released within 5 min of READY, per CLAUDE.md section 1.
+
+### `--auto-spine-energy-first B` / `auto_spine --energy-before B` (new, off = the old order)
+Round 5's caveat made into a rule of the loop: a DEPTH spine from a boosted root asks the greedy for
+speed it does not have (k02: x1.12 at gate 19, its curriculum 3.5 s short of the root at wrap-up;
+round 4's k02 x1.12 stalled 1.2e9 steps at its root; c4's x1.08 at gate 17), while an ENERGY spine
+teaches the speed (gate 17, gate 19's 58% corner: learned in ~75M steps). With B the search runs the
+energy stage BEFORE the first Go-Explore stage boosted above xB; the boosted depth stages run only when
+no line keeps >= G u more energy. Generic: no map constant, one ordering of the loop's own stages.
+Tests: tests/python/test_auto_spine_energy.py (the order with / without B, the fallback, a trainer
+smoke run that passes `--energy-before`, the refusal without --auto-spine-energy, TRAIN_ONLY).
