@@ -2313,3 +2313,12 @@ Incumbent: pbr4b3_t11 traj_23590338560 (52.937), weights ckpt_23551016960 (md5 7
 * GE_r19b (01:18 UTC, 10 min, 14 threads beside c6): rooted at the k02 beam line's own approach to the sheet
   (60.8-61.5%, 40 states) - a crossing that takes off from the floor north of the sheet and lands on the platform
   ~180-240 u south (a hop's length at 350-450 u/s) does not depend on a one-tick contact.
+* GE_r19b (from the k02 beam line's own approach to the sheet, 10 min at 14 threads): nothing past 61.55%. The policy's
+  own start-state beam from just before the hop, 4,096 copies with the band's temperature (keys / 1.5, yaw sigma x6):
+  extinct within 100 ticks.
+* **explore_phase1 --tick-pattern MS,MS,... (new; off = byte-identical)**: the explorer cycles the policy's realised
+  integer-ms pattern (8,8,7 for the 7.63 ms checkpoints), phase reset at every iteration, each exact-chain link stores
+  its start phase (archive link_phase) and tools/ge_replay.py replays it (local check: 2/2 links exact). Chains found
+  this way exist at the tick the policy trains and is evaluated at - a whole-ms explorer's precision contact may not.
+* GE_tp (01:24 UTC, c6 stopped at 27.417B, 30 threads, 12 min): --tick-pattern 8,8,7, rooted at r19's raw chain on its
+  way to the platform edge (spine 8,300-8,505) + the k02 beam line's approach to the sheet.

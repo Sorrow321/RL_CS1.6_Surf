@@ -282,6 +282,9 @@ class Archive:
         # to the first entry - so every chain replays exactly (tools/ge_replay.py)
         self.exact = False
         self.link_acts: dict[int, np.ndarray] = {}
+        # --tick-pattern: each link's start phase in the pattern (ge_replay sets it per link)
+        self.tick_pat_len = 0
+        self.link_phase: dict[int, int] = {}
 
     def _grow(self, cap: int) -> None:
         old = getattr(self, "key", None)
@@ -453,6 +456,9 @@ class Archive:
                 if i < n:
                     flat[off[i]:off[i + 1]] = a
             extra = dict(link_acts=flat, link_off=off)
+            if self.tick_pat_len:
+                extra["link_phase"] = np.array([int(self.link_phase.get(i, 0)) for i in range(n)],
+                                               np.int8)
         np.savez(path,
                  key=self.key[:n], state=self.state[:n], seen=self.seen[:n],
                  chosen=self.chosen[:n], parent=self.parent[:n],
@@ -741,6 +747,15 @@ def explore(args) -> int:
     core = SurfCore(str(bsp), cfg)
     if not args.keep_teleports:
         core.set_teleport_fail(True)
+    tick_pat = None
+    if getattr(args, "tick_pattern", None):
+        # --tick-pattern: the policy's realised integer-ms tick pattern (e.g. 8,8,7 for 7.63 ms),
+        # one element per batch step, its phase reset to 0 at every iteration's first tick; a
+        # precision contact found at a whole-ms tick may not exist at the policy's pattern
+        tick_pat = tuple(int(v) for v in str(args.tick_pattern).split(",") if v.strip())
+        if len(tick_pat) < 2:
+            raise SystemExit("--tick-pattern wants >= 2 whole-ms ticks (one tick: --tick-ms)")
+        core.set_tick_pattern(tick_pat)
 
     zones = load_zones(str(bsp))
     if not zones.get("end"):
@@ -823,6 +838,8 @@ def explore(args) -> int:
                       heading=int(getattr(args, "cell_heading", 0) or 0))
     arch = Archive(hasher, max_cells=args.max_cells)
     arch.exact = bool(getattr(args, "exact_chains", False))
+    if getattr(args, "tick_pattern", None):
+        arch.tick_pat_len = len([v for v in str(args.tick_pattern).split(",") if v.strip()])
     rk = hasher.keys(roots)
     for j in range(len(roots)):
         i = arch.add(int(rk[j]), roots[j], depth=0, parent=-1)
@@ -926,6 +943,8 @@ def explore(args) -> int:
             # stuck bookkeeping (surf_set_state does not); then every env is
             # placed on its own selected cell.
             core.reset(args.seed + it)
+            if tick_pat is not None:
+                core.set_tick_phase(0)
             r_t0.clear()
             r_d0.clear()
             r_org.clear()
@@ -1086,6 +1105,9 @@ def fold_chunk(arch: Archive, hasher: CellHash, hist, rid_h, r_t0, r_d0,
         for i, j in zip(added.tolist(), ent):
             t0 = int(r_t0[int(g_run[j])])
             arch.link_acts[i] = acts_h[t0:int(g_tick[j]), int(g_env[j])].copy()
+            if arch.tick_pat_len:
+                # --tick-pattern: the phase is reset to 0 at every iteration's tick 0
+                arch.link_phase[i] = t0 % arch.tick_pat_len
     if added.size:
         arch.dist[added] = dist.sample(arch.state[added]["origin"])
 
@@ -1167,6 +1189,8 @@ def meta_dict(args, bsp, hasher, arch, it, n_goal, extra=None) -> dict:
         out["tick_ms"] = int(args.tick_ms)
     if getattr(args, "view_follow", None):
         out["view_follow"] = str(args.view_follow)
+    if getattr(args, "tick_pattern", None):
+        out["tick_pattern"] = [int(v) for v in str(args.tick_pattern).split(",") if v.strip()]
     if float(getattr(args, "cell_energy", 0.0) or 0.0) > 0.0:
         out["cell_energy"] = float(args.cell_energy)
     if int(getattr(args, "cell_heading", 0) or 0) > 0:
@@ -1815,6 +1839,11 @@ def build_parser() -> argparse.ArgumentParser:
                          "RATE leaves the view anywhere, and a canonicalised spine then hides the "
                          "manoeuvre: round 4's gate-12 ramp needed a strafe the policy never "
                          "pressed). None = off, byte-identical")
+    ap.add_argument("--tick-pattern", default=None, metavar="MS,MS,...",
+                    help="the policy's realised integer-ms tick PATTERN (e.g. 8,8,7 for a 7.63 ms "
+                         "checkpoint), cycled one element per step with its phase reset at every "
+                         "iteration; each exact-chain link records its start phase (link_phase) "
+                         "and tools/ge_replay.py replays it. None = byte-identical")
     ap.add_argument("--tick-ms", type=int, default=None,
                     help="the search core's physics tick, WHOLE ms (default: the core's 10, "
                          "byte-identical). A policy trained under --tick-ms-schedule flies "

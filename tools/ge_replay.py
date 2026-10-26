@@ -72,6 +72,12 @@ def main(argv=None):
     core = SurfCore(str(a.map), cfg)
     if not meta.get("keep_teleports", False):
         core.set_teleport_fail(True)
+    phase = None
+    if meta.get("tick_pattern"):
+        # explore_phase1 --tick-pattern: each link starts at its recorded phase of the pattern
+        core.set_tick_pattern([int(v) for v in meta["tick_pattern"]])
+        phase = (np.asarray(z["link_phase"], np.int64) if "link_phase" in z.files
+                 else np.zeros(len(st), np.int64))
     line = [st[chain[0]].copy()]
     ok = 0
     for k in range(1, len(chain)):
@@ -82,6 +88,8 @@ def main(argv=None):
         s0["tick"] = 0
         s0["stuck_ticks"] = 0
         core.set_state(0, s0)
+        if phase is not None:
+            core.set_tick_phase(int(phase[c]))
         seg = []
         dead = False
         for t in range(len(la)):
