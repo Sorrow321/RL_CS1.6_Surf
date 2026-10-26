@@ -2877,6 +2877,20 @@ Incumbent: pbr5b2_c7 ckpt_29123674112 (62.369, md5 afb44185...).
   later (the greedy-death rows). Energy vs m2 at 30.32B (h, greedy / m2): 57% 2,59x-2,71x / 2,718; 59.5% 2,47x-2,70x /
   2,737; 59.8% 2,46x-2,50x / 2,705; 60.6% ~2,46x / 2,749; 62% ~2,51x / 2,804. The ~250 u loss now often comes
   before 59.5% (5 of 8), i.e. upstream of the band; the curriculum has ~300 more rows (to ~4,830, 57%) to cover it.
+* 14:18 UTC (30.55B): the curriculum went on through the corner, 5,164 -> 4,989-4,999 (58.3%) by 14:15 (advances of
+  40 rows at 34-49% success). Evals 62.287, 62.277, 62.251 (6/9 at gate 9 again in the last), 0/9 past the drop: the
+  greedy from the true start still loses ~200 u between 58% (2,70x vs m2's 2,764) and 59.5% (2,47x-2,50x vs 2,737).
+* **CPU bench of a3's 30.632B (14:20-14:27, same tool as above): the greedy now PASSES THE CORNER from m2's line.**
+
+      m2 row   5,000  5,076  5,139  5,175  5,200  5,230  5,260  5,288
+      a2       -      -      -      -      0/8    0/8    4/8    5/8
+      a3       4/8    4/8    6/8    6/8    5/8    4/8    6/8    6/8     (max progress 63.4-64.45%)
+
+  So the corner is no longer the gate when the greedy arrives in m2's state; the gap is the greedy's OWN arrival (it
+  leaves m2's energy between 58% and 59.5%). The curriculum is now on exactly that stretch.
+* **Extended** (PROTOCOL: a gate no checkpoint had cleared): box 57819941 extended at 14:28 to 16:28 UTC (extend sets
+  now + hours). a3's budget ends at 31.52B (~15:40); then a4 = the same flags from its weights at the curriculum's
+  tau then.
 
 ### pbr6b1 round 6 lesson (DRAFT 10:06 UTC; finalised at wrap-up)
 * **Score 62.369 -> 62.373** (a1 29.200B: the incumbent's weights 75M steps on, same gate; all 9 fall at the 62.3% drop).
