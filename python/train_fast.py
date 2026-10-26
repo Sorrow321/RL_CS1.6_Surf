@@ -4890,6 +4890,12 @@ def main() -> None:
                     help="--auto-spine: the beam runs this long past the eval's longest episode")
     ap.add_argument("--auto-spine-timeout", type=float, default=2400.0,
                     help="--auto-spine: wall-clock cap (s) of one search")
+    ap.add_argument("--auto-spine-beam-seeds", type=int, default=None,   # None = off
+                    help="--auto-spine: N > 1 runs the search's plain beam again with other "
+                         "torch seeds while none reaches past the greedy frontier by "
+                         "--auto-spine-gain (auto_spine --beam-seeds N; pbr6b1: on one set of "
+                         "weights seed 7 stopped at princessburglar's 62.3% drop and seed 9 "
+                         "passed it). Config only when set; not restored")
     ap.add_argument("--auto-spine-energy", type=float, default=None,   # None = off
                     help="--auto-spine: G > 0 adds an ENERGY stage to the search (auto_spine "
                          "--energy-gain G): when no deeper line exists, a line keeping >= G u "
@@ -11712,6 +11718,14 @@ def main() -> None:
         raise SystemExit("--auto-spine needs --demo-file (the first spine) and --demo-success-d")
     if args.auto_spine_energy is not None and not args.auto_spine:
         raise SystemExit("--auto-spine-energy is a stage of --auto-spine's search: give it")
+    if args.auto_spine_beam_seeds is not None:
+        if not args.auto_spine:
+            raise SystemExit("--auto-spine-beam-seeds is a stage of --auto-spine's search: give it")
+        if int(args.auto_spine_beam_seeds) < 1:
+            raise SystemExit("--auto-spine-beam-seeds N: N must be >= 1")
+        print(f"--auto-spine-beam-seeds {int(args.auto_spine_beam_seeds)}: the search's plain "
+              f"beam runs with up to {int(args.auto_spine_beam_seeds)} torch seeds until one "
+              f"reaches past the greedy frontier")
     if args.demo_file:
         if float(args.demo_front_frac) > 0.0:
             print(f"--demo-front-frac {args.demo_front_frac:g}: that share of "
@@ -14730,6 +14744,8 @@ def main() -> None:
             meta["config"]["auto_spine_milestones"] = 1
         if args.auto_spine_energy is not None:
             meta["config"]["auto_spine_energy"] = float(args.auto_spine_energy)
+        if args.auto_spine_beam_seeds is not None:
+            meta["config"]["auto_spine_beam_seeds"] = int(args.auto_spine_beam_seeds)
     if args.demo_milestones:
         meta["config"]["demo_milestones"] = [float(x) for x in
                                              str(args.demo_milestones).split(",") if x.strip()]
@@ -15857,6 +15873,8 @@ def main() -> None:
             cmd += ["--maxvel", f"{float(args.maxvel):g}"]
         if args.auto_spine_energy is not None:
             cmd += ["--energy-gain", f"{float(args.auto_spine_energy):g}"]
+        if args.auto_spine_beam_seeds is not None:
+            cmd += ["--beam-seeds", str(int(args.auto_spine_beam_seeds))]
         t0 = time.time()
         print(f"[{global_step:>13,d}] auto-spine search {AUTO['k']}: " + " ".join(cmd),
               flush=True)

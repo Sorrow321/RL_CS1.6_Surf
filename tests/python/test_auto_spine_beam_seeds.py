@@ -81,3 +81,39 @@ def test_all_seeds_short_keeps_the_deepest_line(tmp_path, monkeypatch, capsys):
     # (branched beams, Go-Explore roots) work on
     line = [ln for ln in capsys.readouterr().out.splitlines() if ln.startswith("beam line:")][-1]
     assert "best d 9,350" in line
+
+
+def test_record_ckpt_knows_the_trainer_flag():
+    import record_ckpt
+    assert "auto_spine_beam_seeds" in record_ckpt.TRAIN_ONLY
+
+
+def test_the_trainer_passes_and_refuses_beam_seeds(tmp_path):
+    sys.path.insert(0, str(ROOT / "tests" / "python"))
+    import shutil
+    from test_demo_success_d import _run_demo
+    from test_ge_minutes import PB
+    if not PB.exists():
+        import pytest
+        pytest.skip("no princessburglar")
+    run = "asbs_smoke"
+    try:
+        r = _run_demo(run, ["--demo-success-d", "50", "--demo-success-bonus", "50",
+                            "--auto-spine", "--auto-spine-quorum", "1",
+                            "--auto-spine-patience", "1", "--auto-spine-envs", "16",
+                            "--auto-spine-ge-minutes", "0", "--auto-spine-extra-secs", "1",
+                            "--auto-spine-retry", "1", "--record-every", "2048",
+                            "--eval-eps", "2", "--ep-ticks", "300",
+                            "--auto-spine-beam-seeds", "2"], tmp_path)
+        out = r.stdout + r.stderr
+        assert r.returncode == 0, out[-6000:]
+        assert "--auto-spine-beam-seeds 2: the search's plain beam" in out
+        assert "auto-spine search 1:" in out and "--beam-seeds 2" in out, out[-6000:]
+        cfg = json.loads((ROOT / "runs" / run / "run.json").read_text())["config"]
+        assert cfg["auto_spine_beam_seeds"] == 2
+    finally:
+        shutil.rmtree(ROOT / "runs" / run, ignore_errors=True)
+    bad = _run_demo("asbs_bad", ["--demo-success-d", "50", "--auto-spine-beam-seeds", "2"],
+                    tmp_path)
+    assert bad.returncode != 0 and "is a stage of --auto-spine" in (bad.stdout + bad.stderr)
+    shutil.rmtree(ROOT / "runs" / "asbs_bad", ignore_errors=True)
