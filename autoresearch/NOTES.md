@@ -2930,6 +2930,25 @@ Incumbent: pbr5b2_c7 ckpt_29123674112 (62.369, md5 afb44185...).
   search after 300M steps on it.
 * Box 57819941 extended again at 15:21 to 18:51 UTC (5.4 h in all, under the 6 h cap): a4 trains until ~18:35,
   then the harvest (evals, ckpt_latest, the snapshot before the best eval, auto/) and release before the deadline.
+* 15:44 UTC: the energy quorum on k02 (5/9 greedy crossing d <= 20,875 with h >= 2,596) came after only 151M steps
+  and ran **search 3 (722 s)**: the plain beams again stop at d 20,14x-20,177 (64.8%) - they ran to 8,657 ticks, so
+  that is a real stop, not the tick cap - and GE stage 1 found a line to **70.29%** from the policy's own state at
+  63.4% with a x1.04 root -> depth spine **k03** (8,005 rows; autoresearch/spines/pbr6b1_a4k03.*, md5 b562cbb0...).
+  **The 64.8% gate is a LEDGE**: k03 flies to 64.83% (row 5,720), drops onto a ledge at x ~-3,561 where its
+  progress goes BACK to 64.64% (row 5,800: the record stalls for ~360 rows, 2.8 s), then walks a corridor at
+  |v_h| 0-260 (on the ground) to 66.1% before speeding up again (67%: 607 u/s). A deceptive detour: a beam scored
+  on d cannot keep it, cell-based Go-Explore found it. The greedy flies past the ledge and dies at 64.5-64.72%.
+* Evals after k03: 64.477 (6 at the drop or earlier, the curriculum far from them), 64.569. k03's curriculum restarted
+  at its end and walked 8,004 -> 7,719 (69.3%) in ~25 min (~90 rows per 10 min once in new territory): ~2,000 rows
+  short of the ledge, i.e. hours.
+* **a5 (15:50 UTC, from a4's 31.38B, md5 4ea50dee...): the same spine with the success line at the QUALIFYING depth**,
+  i.e. the greedy frontier minus the gain that admitted the spine (20,250 - 500 = 19,750 = 65.44%, k03 row 6,307):
+  `--demo-success-d 2769.4 --demo-tau0 6302` on k03, every other flag as a4 (+ the loop's 3 added milestones 21,002,
+  20,310, 20,875). Rationale, generic: a search line's END is wherever its explorer's budget ran out (k03: 5.6% past
+  the greedy), so a curriculum anchored there first spends hours on terrain the greedy cannot reach; anchored at
+  "beats the greedy by the gain" (the loop's own admission rule) it starts just past the gate. This is an operator
+  application of a candidate loop rule (to become an auto-spine flag: success line = greedy_d - gain, tau0 = the row
+  before it), not a map constant. The quorum search still runs when 5/9 greedy pass 65.44%.
 
 ### pbr6b1 round 6 lesson (DRAFT 10:06 UTC; finalised at wrap-up)
 * **Score 62.369 -> 62.373** (a1 29.200B: the incumbent's weights 75M steps on, same gate; all 9 fall at the 62.3% drop).
