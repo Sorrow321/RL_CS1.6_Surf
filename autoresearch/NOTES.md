@@ -2918,6 +2918,16 @@ Incumbent: pbr5b2_c7 ckpt_29123674112 (62.369, md5 afb44185...).
   KEYS walked from the drop back through the corner (a2, a3: the corner went 0/8 -> 4-6/8 from m2's rows on the CPU
   bench); (4) once the curriculum covered the stretch where the greedy loses its energy (58-59.5%), the true-start
   greedy took m2's branch. ~1.06B steps of curriculum on m2 in total (a2 300M + a3 760M) before the first passing eval.
+* **15:19 UTC: 64.724 (31.082B, median 64.67%)**: 8/9 through the corner (h 2,77x-2,80x at 59.5%), 7/9 past 63.4%,
+  6 stop at 64.5-64.72%. Snapshot ckpt_31079792640.pt (2M steps before the eval) pulled. The next gate is at ~64.8%.
+* That eval made the quorum on k01 (d <= 20,310) and ran **search 2 (1,089 s, the trainer blocked)**: plain beams
+  (3 seeds) and 5 branched beams all stop at d 20,095-20,133 (64.8-64.85%), GE x1.0/x1.04 at 20,066: nothing 500 u
+  past the greedy (20,191). The energy stage (roots before the greedy's losses: -259 u at tick 4,363, -273 u at
+  4,210, -248 u at 5,610, the landing after the drop) -> **energy spine k02**: 5,619 rows to 63.65% with h 2,671,
+  +216 u over the greedy's line (autoresearch/spines/pbr6b1_a4k02.*, md5 0792f271...); success needs h >= 2,596.
+  The curriculum restarted at k02's end, [5543,5548] at 16-62%. This is gate 19's pattern again (energy spine,
+  then the policy's own beam passes once it has trained on it); `--auto-spine-energy-patience 3e8` runs the next
+  search after 300M steps on it.
 
 ### pbr6b1 round 6 lesson (DRAFT 10:06 UTC; finalised at wrap-up)
 * **Score 62.369 -> 62.373** (a1 29.200B: the incumbent's weights 75M steps on, same gate; all 9 fall at the 62.3% drop).
