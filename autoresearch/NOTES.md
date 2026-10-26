@@ -2172,3 +2172,11 @@ With three boxes live the fleet burned 0.984 -> 1.148 $/h, so the fourth branch 
 on a CPU-starved host (above). Acceptable offers meanwhile sat at 0.23-0.62 $/h (4070 Ti 0.228, 4080 0.299, 4080S
 0.31-0.41, 5080 0.387-0.621, 4090 0.449). Operator: a per-branch share of the cap (1.2 / 4 = 0.30 $/h) or a
 reservation for a boxless branch would keep all four forks running; as it is, a fork that rents last does not run.
+
+### Box 57755386 at 02:45 UTC: pbr5b3_c1 relaunched, 335k steps/s
+* The retry loop rented an RTX 5080 at 0.337 $/h on machine 145348 (Ireland; Threadripper 3970X, 64 visible threads,
+  quota 30.72 CPUs) - round 4's box host - once a slot freed. Host check before deploying: 86% idle, no foreign load.
+  gpu_health passed (5080 reference). Deadline ~07:20 UTC.
+* pbr5b3_c1 relaunched there 02:49 UTC with the same flags (scratchpad launch_c1.sh: resume of the incumbent ckpt
+  23,551,016,960 + t11's flag set + spine k05 + keys + 14 milestones + --auto-spine): 335k steps/s instantaneous
+  (20.4M steps in 61 s). First eval 23.5515B: 0/9 past k05's success line, greedy median d 26,940.
