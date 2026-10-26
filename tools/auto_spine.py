@@ -474,6 +474,12 @@ def main(argv=None) -> int:
                          "progress, marked energy (train_fast --auto-spine-energy); 0 = off")
     ap.add_argument("--energy-boost", default="1.0,1.04",
                     help="the energy stage's speed factors (one stage of --ge-boost's syntax)")
+    ap.add_argument("--cut-ahead", type=float, default=0.0,
+                    help="A > 0: a DEPTH spine that passed the --gain test is cut at its first row "
+                         "A u past --greedy-d, so its success line sits one gate ahead of the "
+                         "greedy instead of at the far end of an explorer's crawl (pbr6b2: k01's "
+                         "curriculum stalled at a 0% band 1.4% past the greedy, 1,000 rows past the "
+                         "drop it had to teach). Energy spines are never cut. 0 = off")
     ap.add_argument("--energy-before", type=float, default=0.0,
                     help="B > 0 (with --energy-gain): the energy stage runs BEFORE the first "
                          "--ge-boost stage whose largest speed factor exceeds B, and those "
@@ -706,6 +712,17 @@ def main(argv=None) -> int:
             _energy_stage()
     if best_src is not None:
         src, sp, de = best_src
+        if float(a.cut_ahead) > 0 and not res.get("energy") and np.isfinite(a.greedy_d):
+            # --cut-ahead A: the next gate only - the first row A u past the greedy frontier
+            dd = field_d(field, sp)
+            j = np.flatnonzero(dd <= a.greedy_d - float(a.cut_ahead))
+            if len(j) and int(j[0]) < len(sp) - 1:
+                c = int(j[0])
+                res.update(cut_ahead=float(a.cut_ahead), full_n=int(len(sp)), full_end_d=float(de))
+                print(f"--cut-ahead {float(a.cut_ahead):g}: the spine ends at its row {c} (d "
+                      f"{float(dd[c]):,.0f}, {float(a.cut_ahead):g} u past the greedy frontier "
+                      f"{a.greedy_d:,.0f}) instead of {len(sp) - 1} (d {de:,.0f})", flush=True)
+                sp, de = sp[:c + 1], float(dd[c])
         sp = clean(sp)
         p = out / "spine.npy"
         np.save(p, sp)

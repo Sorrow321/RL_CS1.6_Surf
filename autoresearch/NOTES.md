@@ -2727,3 +2727,33 @@ smoke run that passes `--energy-before`, the refusal without --auto-spine-energy
   from the ground that trips CS's bunny-hop cap (pm_prevent_mega_bunny_jumping: |v| > 300 -> x
   0.8 x 300/|v|; v (630, 252, 0) -> (234, 60, 263), -188 u). The energy stage's roots (1 s before
   the line's largest losses) should sit right before it.
+* **c1's search 1 (08:22-08:35 UTC, 790 s): a line past the 62.3% drop at x1.0.** Plain beam 21,504 (62.37%) and five
+  branched beams 21,480-21,525 - but the branched beam forked at tick 5,827 (held view offsets U(-45, 45) deg for 0.5 s
+  over 2 s) is NOT a fall: it lands on the west-running ramp after the drop at ~240 u/s (row 6,399: (-2,179, 2,316,
+  2,100), 62.42%, energy height 2,143). GE stage 1 (x1.0 / 1.04, tail roots - "the line crawls 3.3 s past its stall")
+  then rooted its deepest chain at that line's LAST state, unboosted (x1.000), 1,408 ticks crawling the ramp west at
+  50-450 u/s to d 20,674 = 63.83% (+870 u over the greedy) -> depth spine k01 (7,772 rows; autoresearch/spines/
+  pbr6b2_c1k01). The energy-first ordering never came into play (stage 1 found the line).
+* k01's curriculum: the chain's last 350 rows at 100% in ~5 min, then held at rows 7,416-7,455 (0.0-0.3% over ~400
+  episodes per band, backing off 5 rows at a time) - the explorer flies west at 449 u/s ducked and bounces off a wall
+  at ~7,470 (-152 u); the success line (63.65%) is 1.4% past the greedy and 1,000 rows of explorer crawl past the
+  drop, which is the actual gate. (A cut at the gain margin, 500 u past the greedy, lands at row 7,412 - exactly the
+  stuck band.)
+* So **c2** (08:45 UTC) = c1's snapshot at 29,572,464,640 (md5 5ed351ad...; c1 stopped there) with the same flags on
+  `pbr6b2_c1k01c` = k01 cut at its row 6,547, the first row 300 u past the greedy frontier it was searched from (62.83%,
+  on the ramp; success line d <= 21,344 = 62.65%, ~180 u past the best catch fall at 62.37%) + milestones +21,624 (s6)
+  and +20,774 (k01's full line). Round 2's and round 5's lesson again: the success line one gate past the greedy.
+  Throughput on this box: ~173k steps/s between searches.
+* c2's first eval (29,572,988,928, c1's 73M steps on s6 / k01's crawl): 62.354 again (median 62.3%, 0/9 past k01c's
+  62.65% line). The k01c curriculum walked 6,547 -> 6,362 in ~5 min and oscillates at the drop's landing on the ramp
+  (bands 6,362-6,372 at 9-17%, 6,382 at 69%): the beam line hits the ramp at row ~6,350 ((-2,118, 2,281, 2,081), vz
+  +202 after the impact) and slides on west.
+
+### `--auto-spine-cut-ahead A` / `auto_spine --cut-ahead A` (new, off = as before)
+The hand cut of k01 as a rule of the loop: a DEPTH spine that passed the --gain test is cut at its first row A u past
+the greedy frontier, so its success line sits one gate ahead of the greedy rather than at the end of the search's line
+(the end of a GE chain is often an explorer's crawl the curriculum cannot fly: k01's 0% bands 1.4% past the greedy).
+Energy spines are never cut. A < --auto-spine-gain (refused otherwise: the cut must lie inside the accepted line).
+A = 300 is a field distance like the gain (500) and the stall margin (500): the same on any map. Tests:
+test_auto_spine_energy.py (the cut row, the line untouched before it, spine.json's cut_ahead / full_n, an energy
+spine left whole, the trainer passing `--cut-ahead`, both refusals, TRAIN_ONLY).

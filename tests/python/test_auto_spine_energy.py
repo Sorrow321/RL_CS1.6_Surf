@@ -177,6 +177,40 @@ def test_energy_before_runs_the_energy_stage_ahead_of_boosted_stages(tmp_path, m
     assert rc == 0 and [c[0] for c in calls] == ["ge", "ge2", "ge_energy"]   # nothing above B
 
 
+def test_cut_ahead_ends_a_depth_spine_one_gate_past_the_greedy(tmp_path, monkeypatch):
+    """--cut-ahead A (pbr6b2): a depth spine that passed the gain test ends at its first row A u
+    past --greedy-d; off (0) it ends at its best d as before; an energy spine is never cut."""
+    fp = _field(tmp_path)
+    monkeypatch.setattr(auto_spine, "beam",
+                        lambda a, out, branch_tick=0, tag=None: (_line(), {"beam_rc": 0}))
+    monkeypatch.setattr(auto_spine, "go_explore",
+                        lambda a, out, line, end, boosts=None, tag="ge", line_keys=None,
+                        roots=None, pick=None: (_line(1600.0), {"ge_rc": 0}))
+    args = ["--ckpt", "c.pt", "--map", "m.bsp", "--field", str(fp), "--greedy-d", "9400",
+            "--gain", "500", "--ge-boost", "1.0", "--ge-minutes", "1", "--stall-margin", "50",
+            "--branch-energy", "0"]
+    rc = auto_spine.main(args + ["--out", str(tmp_path / "full")])
+    full = np.load(tmp_path / "full" / "spine.npy")
+    assert rc == 0 and len(full) == 400                                # the best d: the end
+    rc = auto_spine.main(args + ["--out", str(tmp_path / "cut"), "--cut-ahead", "300"])
+    cut = np.load(tmp_path / "cut" / "spine.npy")
+    d = auto_spine.field_d(auto_spine.load_field(fp), full)
+    c = int(np.flatnonzero(d <= 9400.0 - 300.0)[0])
+    assert rc == 0 and len(cut) == c + 1 and 0 < c < 399
+    assert np.array_equal(cut["origin"], full["origin"][:c + 1])
+    info = json.loads((tmp_path / "cut" / "spine.json").read_text())
+    assert info["cut_ahead"] == 300.0 and info["full_n"] == 400 and info["n"] == c + 1
+    assert abs(info["end_d"] - float(d[c])) < 1e-3 and info["end_d"] <= 9100.0
+
+
+def test_cut_ahead_leaves_an_energy_spine_whole(tmp_path, monkeypatch):
+    rc, calls, out = _main(tmp_path / "en", monkeypatch, ["--energy-gain", "100",
+                                                          "--cut-ahead", "300"])
+    info = json.loads((out / "spine.json").read_text())
+    assert rc == 0 and info["energy"] is True and "cut_ahead" not in info
+    assert len(np.load(out / "spine.npy")) == 201 + 100
+
+
 def test_trainer_energy_rules():
     from train_fast import crossed_with_energy, spine_energy_rule
     d = np.array([900.0, 700.0, 480.0, 400.0])
@@ -209,7 +243,8 @@ def test_the_trainer_passes_and_refuses_the_energy_stage(tmp_path):
                             "--auto-spine-ge-minutes", "0", "--auto-spine-extra-secs", "1",
                             "--auto-spine-retry", "1", "--record-every", "2048",
                             "--eval-eps", "2", "--ep-ticks", "300",
-                            "--auto-spine-energy", "150", "--auto-spine-energy-first", "1.04"],
+                            "--auto-spine-energy", "150", "--auto-spine-energy-first", "1.04",
+                            "--auto-spine-gain", "500", "--auto-spine-cut-ahead", "300"],
                       tmp_path)
         out = r.stdout + r.stderr
         assert r.returncode == 0, out[-6000:]
@@ -217,8 +252,11 @@ def test_the_trainer_passes_and_refuses_the_energy_stage(tmp_path):
         assert "auto-spine search 1:" in out and "--energy-gain 150" in out, out[-6000:]
         assert "--auto-spine-energy-first 1.04: the energy stage runs before" in out
         assert "--energy-before 1.04" in out, out[-6000:]
+        assert "--auto-spine-cut-ahead 300: a new depth spine ends" in out
+        assert "--cut-ahead 300" in out, out[-6000:]
         cfg = json.loads((ROOT / "runs" / run / "run.json").read_text())["config"]
         assert cfg["auto_spine_energy"] == 150.0 and cfg["auto_spine_energy_first"] == 1.04
+        assert cfg["auto_spine_cut_ahead"] == 300.0
     finally:
         shutil.rmtree(ROOT / "runs" / run, ignore_errors=True)
     for name, extra, msg in (
@@ -228,7 +266,13 @@ def test_the_trainer_passes_and_refuses_the_energy_stage(tmp_path):
              "gates the --demo-success-bonus"),
             ("aspe_bad3", ["--demo-success-d", "50", "--demo-success-bonus", "50", "--auto-spine",
                            "--auto-spine-energy-first", "1.04"],
-             "orders --auto-spine-energy's stage")):
+             "orders --auto-spine-energy's stage"),
+            ("aspe_bad4", ["--demo-success-d", "50", "--demo-success-bonus", "50", "--auto-spine",
+                           "--auto-spine-cut-ahead", "300"],
+             "must be < --auto-spine-gain"),
+            ("aspe_bad5", ["--demo-success-d", "50", "--demo-success-bonus", "50",
+                           "--auto-spine-cut-ahead", "100"],
+             "cuts --auto-spine's spines")):
         bad = _run_demo(name, extra, tmp_path)
         assert bad.returncode != 0 and msg in (bad.stdout + bad.stderr), \
             (bad.stdout + bad.stderr)[-3000:]
@@ -239,3 +283,4 @@ def test_record_ckpt_knows_the_flag():
     import record_ckpt
     assert "auto_spine_energy" in record_ckpt.TRAIN_ONLY
     assert "auto_spine_energy_first" in record_ckpt.TRAIN_ONLY
+    assert "auto_spine_cut_ahead" in record_ckpt.TRAIN_ONLY

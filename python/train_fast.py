@@ -4898,6 +4898,11 @@ def main() -> None:
                          "height - G/2, the --demo-success-energy rule) and its quorum counts "
                          "only greedy crossings with that energy; a depth spine goes back to the "
                          "depth rule. Config only when set; not restored")
+    ap.add_argument("--auto-spine-cut-ahead", type=float, default=None,   # None = off
+                    help="--auto-spine: A > 0 cuts a new DEPTH spine at its first row A u past the "
+                         "greedy frontier (auto_spine --cut-ahead A): its success line one gate "
+                         "ahead of the greedy, not at the end of the search's line. Config only "
+                         "when set; not restored")
     ap.add_argument("--auto-spine-energy-first", type=float, default=None,   # None = off
                     help="--auto-spine-energy: B > 0 runs the search's energy stage BEFORE the "
                          "Go-Explore ladder's stages whose speed boost exceeds B (auto_spine "
@@ -11718,6 +11723,16 @@ def main() -> None:
         raise SystemExit("--auto-spine needs --demo-file (the first spine) and --demo-success-d")
     if args.auto_spine_energy is not None and not args.auto_spine:
         raise SystemExit("--auto-spine-energy is a stage of --auto-spine's search: give it")
+    if args.auto_spine_cut_ahead is not None:
+        if not args.auto_spine:
+            raise SystemExit("--auto-spine-cut-ahead cuts --auto-spine's spines: give it")
+        if not float(args.auto_spine_cut_ahead) > 0:
+            raise SystemExit("--auto-spine-cut-ahead A: the margin must be > 0")
+        if float(args.auto_spine_cut_ahead) >= float(args.auto_spine_gain):
+            raise SystemExit("--auto-spine-cut-ahead A must be < --auto-spine-gain (a spine's end "
+                             "beats the greedy by the gain; the cut lies inside it)")
+        print(f"--auto-spine-cut-ahead {float(args.auto_spine_cut_ahead):g}: a new depth spine "
+              f"ends {float(args.auto_spine_cut_ahead):g} u past the greedy frontier")
     if args.auto_spine_energy_first is not None:
         if args.auto_spine_energy is None:
             raise SystemExit("--auto-spine-energy-first orders --auto-spine-energy's stage: "
@@ -14747,6 +14762,8 @@ def main() -> None:
             meta["config"]["auto_spine_energy"] = float(args.auto_spine_energy)
         if args.auto_spine_energy_first is not None:
             meta["config"]["auto_spine_energy_first"] = float(args.auto_spine_energy_first)
+        if args.auto_spine_cut_ahead is not None:
+            meta["config"]["auto_spine_cut_ahead"] = float(args.auto_spine_cut_ahead)
     if args.demo_milestones:
         meta["config"]["demo_milestones"] = [float(x) for x in
                                              str(args.demo_milestones).split(",") if x.strip()]
@@ -15876,6 +15893,8 @@ def main() -> None:
             cmd += ["--energy-gain", f"{float(args.auto_spine_energy):g}"]
         if args.auto_spine_energy_first is not None:
             cmd += ["--energy-before", f"{float(args.auto_spine_energy_first):g}"]
+        if args.auto_spine_cut_ahead is not None:
+            cmd += ["--cut-ahead", f"{float(args.auto_spine_cut_ahead):g}"]
         t0 = time.time()
         print(f"[{global_step:>13,d}] auto-spine search {AUTO['k']}: " + " ".join(cmd),
               flush=True)
