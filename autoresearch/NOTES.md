@@ -3118,3 +3118,30 @@ Independence: only this branch and $AR_HOME/incumbent/ are read. c12's later wei
   synchronous loop, bit-identical to the trainer before the change. tests/python/test_auto_spine_async.py 3/3 (the
   background smoke run + refusal 46 s; the synchronous loop vs the pre-change trainer: config, progress.csv, the
   search's outcome line, 160 s); TRAIN_ONLY in record_ckpt.
+
+### c13's search 1: the policy's own beam is already FAST through 71%; a x1.08 root; k01b at x1.04 (21:00-21:28 UTC)
+* Search 1 (36.210B, synchronous, 1,033 s): the plain beam (4,096 copies on c13's weights) runs a 7,200-tick line to
+  d 15,042 (73.68%) - ~1,800 ticks shorter than k01's 9,000 rows: it does NOT brake onto the 71.3% platform (845 u/s,
+  h 2,613 at 71.20%) but dies at the same gap. Five branched beams 15,042-15,058. GE stage 1 (x1.0 / 1.04, tail roots):
+  a chain from the line's row 6,397 (70.63%) **x1.04** to d 14,709 = 74.26% - 487 u past the greedy median, i.e. 12 u
+  short of the 500 u margin; GE stage 2 (x1.08): a chain from row 6,443 (71.25%) to d 14,663 = 74.34% -> NEW SPINE
+  k01 (beam + ge2, 6,854 states, success line d <= 14,763). Both chains take the record's way (ANALYSIS: the record
+  slides south at x ~-1,250-1,330): off the line at 71.6% (a ramp bounce, vz -522 -> +540), west to x ~-1,265..-1,331,
+  south at 820-900 u/s along x ~-1,240 (72.2-73.3%), a climb at y ~1,840-1,660 to z ~2,067 (73.6%), then ballistic east
+  through the passage at y ~1,530-1,630 (74.1-74.3%).
+* c13 on k01 (x1.08 root): the curriculum walked 6,853 -> ~6,448 in ~10 min, then backed off at the root: [6,453]
+  0.0% / [6,458] 1.1% / [6,463] 0.0% / [6,468] 21.9% - rows just past the x1.08 root (the ramp bounce right after it).
+  Evals after the swap 36.286 / 36.361 / 36.437B: 71.219 / 71.375 / 71.314, 0/9 past - the greedy now dies at the 71.3%
+  landing (before the swap 7/9 passed it): training at the landing's place now teaches flying THROUGH it, which the
+  greedy does not yet follow. Expected in the transition; the round's best stays 73.605.
+* The lineage's rule (rounds 4-5): depth curricula stall at x1.08 / x1.12 roots, x1.04 roots get learned. So spine
+  **pbr7b4_c13k01b** = the same beam line + GE STAGE 1's x1.04 chain (spliced exactly as auto_spine.go_explore does:
+  tools-free script on the box, rows 0-6,397 identical to k01's; 6,940 states, end d 14,708 = 74.26%, success line
+  d <= 14,808). Both spines committed with provenance (autoresearch/spines/README.md).
+* A generic loop rule this suggests (not built): when a later, more boosted GE stage passes the gain, prefer an earlier
+  stage's line that came within a small margin of it (the least boost that reaches nearly as deep).
+* c13 stopped 21:25 UTC at 36.490B (ckpt_latest 36.470B, md5 9eb33bfa...). Box re-deployed on 6207f6d.
+* **pbr7b4_c14** (21:27 UTC): resume of c13's ckpt_latest (36.470B) with c13's flags on spine pbr7b4_c13k01b + keys (no
+  tau0: from the end), the 25 milestones (+ k01-old's 15,570.6), **`--auto-spine-async`** (its first run), --steps 3e9.
+  Same box and card as c13 (no hardware transfer). Record gate passed. First minutes: the curriculum at 100% / 85% bands,
+  6,939 -> 6,824. Box extended to 00:28 UTC.

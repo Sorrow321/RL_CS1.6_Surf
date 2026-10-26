@@ -14,5 +14,5 @@
   "resume_from": "incumbent r6 (pbr6b4_c12 ckpt_35907960832, 73.590)",
   "commit": "3047914"
  },
- "summary": "c13 (20:37 UTC): the incumbent's recipe continued from its hand-on; evals 73.490 (35.908B, 3/9 past the landing) / 73.605 (35.984B). The ~73.5% stop after the landing's climb holds."
+ "summary": "c13: the incumbent's recipe from its hand-on; best 73.605 (35.984B), 7/9 past the landing at 36.210B; the loop's search found the policy's own fast line + GE chains past the 73.5% gap (74.26% x1.04 / 74.34% x1.08). c14 (21:27 UTC): c13's 36.470B weights on the x1.04 spine (pbr7b4_c13k01b) with --auto-spine-async (new: the search no longer pauses training)."
 }
