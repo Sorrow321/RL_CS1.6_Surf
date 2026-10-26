@@ -3171,3 +3171,16 @@ ckpt_35907960832 (md5 160da9eb...), eval 73.590 at 35.918B. Credit at the start:
   wait for the loop: its quorum needed 5/9 greedy episodes on k02's chain (1-2/9 after 50 min) and then a ~30-min
   search whose energy stage would do this same pick with a 5-min explorer; the e1 prefix keeps what the curriculum
   had learned. First eval (c2's weights): 0/9 cross 74.13% with the energy (the chain-flying greedy has ~2,300 there).
+* c3 (e1, energy rule) first 20 min: the curriculum walked e1's new chain back 6,812 -> 6,457 in ~2 min (bands 62-81%,
+  step 40: the low route is easy from its own states) and is back on the hop band [6,422 / 6,427] (22-34%). Evals 73.517
+  / 73.555 / 73.812 / 73.345 (38.037B: median 71.5%, 4/9 die at the landing again, 1/9 makes the hop and dies at 73.0%):
+  the policy is between the platform line and the hop.
+* **Look-ahead GE 4** (e1 rows 6,690-6,812 = 73.4-74.3% x1.0 / 1.04 / 1.08, 15 min): 74.35 / 74.35 / 74.38% - every chain
+  ends at (-870, 1,500-1,550, z 2,047-2,080). The +153 u of e1 does not open it for the explorer.
+* What the gate is (the record as a yardstick only): the way on is a long rising arc from a ramp LAUNCH at ~73.3-73.5%
+  ((-1,246, 1,876, 1,854), vz +411 -> +623 at 1,160 u/s) to an apex z ~2,174 at (-854, 1,638) at 74.36%, over the next
+  catch. e1 launches at the same place (vz +389-411) with |v| ~910 and peaks at z ~2,057 - ~100 u short; the x1.24 k02
+  root (h 2,449) peaked at 2,153. In free flight horizontal speed cannot become height: the launch's energy sets the
+  apex. e1's h at the launch ~2,360-2,436, the record's ~2,700-2,745: the ~300 u deficit is made upstream (66% walkway
+  walked at 250 u/s: h 2,428 vs the record's 2,745; 68-71%: -200..-250; the hop -136).
+* Look-ahead GE 5 (22:35 UTC): e1 rows 6,690-6,812 x1.12 / 1.2 / 1.28, 12 min - the boost the climb needs from e1.
