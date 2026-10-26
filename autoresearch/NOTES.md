@@ -2930,3 +2930,36 @@ spine left whole, the trainer passing `--cut-ahead`, both refusals, TRAIN_ONLY).
   in the air up" is what every dip shows. Two generic tests for a next program: clip each head's ratio separately
   (per-head PPO), or floor the yaw sigma as --pitch-sigma-min floors the pitch. Watch act/fwd_air and the
   entropy loss each iteration: both rose together with the reward's fall in every dip.
+* How far past the clip an update runs, from the logs: train/approx_kl is the k1 estimate mean(old logp - new logp)
+  of the JOINT log-prob on the update's LAST minibatch (64 of 64 steps, read before its own step). In calm phases
+  it sits at 0.03-0.10 in every run of the round (c5's 10M-bin medians), i.e. an RMS per-row log-ratio of ~0.25-0.45
+  against the clip's [ln 0.8, ln 1.2] = [-0.22, +0.18]: by the update's end a large share of rows is past the clip
+  (for a single Gaussian head moved by that KL, ~50% of rows, half of them in the advantage's direction and so with
+  no gradient on ANY head). Which head moves them is not in the logs; that split is the measurement to make first.
+
+### The exact c5 launch, to continue from 62.364 (2026-10-26 13:05 UTC)
+The command that ran pbr6b2_c5 (the round's best eval is its first, on c4's last weights), kept here because the
+session scratchpad does not outlive the session. Push the weights first:
+`box.py deploy --agent pbr6b2 --branch ar/pbr6b2 --ckpt $AR_HOME/runs/pbr6b2/pbr6b2_c5/ckpt_30078926848.pt`
+(md5 c94d8bbd...), then:
+```
+python autoresearch/box.py launch --agent pbr6b2 --run pbr6b2_c5 --steps 2.5e9 --resume \
+  --self-states "spine pbr6b2_c1k01c (+keys) = the policy own branched beam line from the true spawn + one unboosted reward-free GE exact chain from its last state (pbr6b2 round 6); spawn states pbr1b1_entry_ge_states = reward-free Go-Explore + entry_search bursts from the true spawn plus the GE forward cells (pbr1b1 round 1); provenance in autoresearch/spines/README.md; no demo, no record" \
+  -- --maxvel 3500 --ckpt-every 2e8 \
+  --demo-file autoresearch/spines/pbr6b2_c1k01c.npy --demo-keys autoresearch/spines/pbr6b2_c1k01c.keys.npy \
+  --demo-window 5 --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5 --demo-rate 0.2 --demo-phase --demo-front-frac 0.8 \
+  --demo-success-d 100 --demo-success-bonus 50 \
+  --demo-milestones 44939,43426,42182,41015,40497,39943,37251,33777,32260,31429,30286,28818,28783,27001,25121,24479,23400,22500,23216,20589,21624,20774 \
+  --keys-hold-spawn-duck --yaw-entropy 0 --demo-front-temp 0.5 --demo-front-ticks 40 --demo-front-view 6 \
+  --respawn-greedy 0.2 --respawn-greedy-window 0.25 2.0 --respawn-greedy-stuck 200 --respawn-greedy-contact \
+  --respawn-greedy-energy 3 --respawn-greedy-temp 0.5 --respawn-greedy-temp-ticks 100 --respawn-greedy-temp-view 6 \
+  --respawn-front-perturb 0.2 --respawn-front-perturb-band 0.005 --respawn-front-perturb-speed 1.0 1.3 \
+  --respawn-front-perturb-turn 90 --energy-pot 12 --energy-pot-front 0 --energy-pot-front-bonus 0 --no-respawn-novel \
+  --respawn-backward-mix 0 --int-real-only 0 --spawn-states autoresearch/spines/pbr1b1_entry_ge_states.npy \
+  --spawn-states-frac 0.2 --auto-spine --auto-spine-milestones --auto-spine-gain 500 --auto-spine-ge-minutes 5 \
+  --auto-spine-retry 4e8 --auto-spine-patience 6e8 --auto-spine-energy 150 --auto-spine-energy-first 1.04 \
+  --auto-spine-cut-ahead 300 --demo-tau0 6337
+```
+(launch prepends config.incumbent_recipe; the resume restores the shape flags, the tick and the view mode from the
+checkpoint, so none of those is passed.) Use a new --run name. Read each eval's median, not only its best: c4 and
+c5 had dips (median down to 24%) that recovered, c6 / c7 did not (see the collapse section above).
