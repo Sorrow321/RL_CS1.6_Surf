@@ -3193,3 +3193,7 @@ the operator's); this branch keeps a waiter on `box.py rent` and works offline m
   k02's chain (which enters the pipe late and high, after its brake) no boost up to x1.12 clears it: the record's speed
   comes from dropping into the pipe at its TOP (71.5%, z ~1,977, hs 1,033 -> 1,241 at the bottom). Next local test:
   the same GE rooted on the policy's own beam prefix at 70.2-70.8% (before the pipe; k02 rows 6,330-6,386, x1.0/1.04/1.08).
+* Local branched beam (beam_tas --start-state, c12's weights, 256 envs on CPU, from k02 row 6,340 = 70.2%, half the
+  population forked at once with held view offsets +-45 deg for 1 s, protect 3; 900 ticks in 335 s): frontier only
+  72.88% (the platform crawl), every branched lineage dead by the end. The policy's own proposals from 70% do not find
+  the pipe either; local CPU is too slow for real beams (688 env-steps/s).
