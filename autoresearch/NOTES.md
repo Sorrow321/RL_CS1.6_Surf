@@ -2394,3 +2394,18 @@ The trainer used ~12 of the box's 30.7-CPU quota, so each stage ran beside it at
   landing (-450 u in every greedy episode; e1's explorer chain lands smoothly, h ~3,000) and a ramp at ~54.5% that every
   high-speed line meets falling steeply (-640 u; the slow m1 line loses ~100 there; the record rides it at ~1,620 u/s).
   A line that is smooth at BOTH, then the policy's own spiral, is what passes; no search of this round found the second.
+* Last probe (05:05 UTC, c8's weights): start-state beams from GE#2's smooth-landing cells at 52.8-53.3% (h ~3,010,
+  before the steep fall into the 54.5% ramp): two populations extinct within 100 ticks (ducked mid-air states: beam_tas's
+  start path releases the held duck - round 4's caveat), one to the ledge (56.59%). No complete line through the shaft
+  this round.
+* c8 evals 56.586 / 56.592 / 56.592 (26.24-26.39B): stable under --target-kl 0.05 for 750M+ steps.
+* For whoever continues gate 17 (all generic):
+  1. A line smooth at BOTH energy sinks, then the policy's own spiral: stack (a) the policy's own approach, (b) an explorer
+     chain through the 52.7% landing picked by energy (--pick-energy / ge_stack_spine), (c) an explorer or policy chain
+     through the 54.5% ramp that arrives TANGENTIALLY (none found: GE#3/#4/r1 from 52.8-54.6% roots all lose ~640 u
+     there - try roots earlier on the smooth line with heading-aware cells, or a branched beam forking just before the
+     ramp), (d) the start-state-beam spiral (x1.3 line pbr5b4_shaft_x13_5150 shows the policy can climb with h ~2,750).
+  2. Test any candidate first with start-state beams at the shaft entry: >= ~2,740 energy height at 55.55% passes.
+  3. Resume late checkpoints with --target-kl 0.05; do not change --energy-pot by 2x on a resume.
+  4. beam_tas --start-state from a DUCKED mid-air state needs the trainer's spawn semantics (held duck / keys) to mean
+     anything; from unducked states it is a sound instrument.
