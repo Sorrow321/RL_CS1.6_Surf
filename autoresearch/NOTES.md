@@ -2501,3 +2501,37 @@ current spine) before `box.py release`. The operator may want `pull` to fetch `a
 * Regression pass (02:58 UTC, local CPU, 5 min): 34/34 - test_auto_spine (incl. the trainer smoke + flag-off
   bit-identity + milestone tests), test_respawn_greedy_energy, test_demo_success_energy, test_stitch_spine,
   test_ge_roots_keep_all, test_energy_pick, test_respawn_greedy_contact.
+
+### Gate 19 needs ~+300 u of energy at the strip's end, not ~+50; GE --select-energy (03:57-04:14 UTC, no box)
+* `box.py rent` REFUSED at 04:04 (and 04:13): the fleet burns 0.863 $/h of the 1.2 cap (3 boxes) and the cheapest
+  passing offer is a 5080 at 0.387 / a 4080S at 0.410 $/h. Retrying each wakeup; offline work meanwhile.
+* **Fix (3a7d523): `auto_spine.tail_roots` never fired on its own case.** At the checkpoint's 7.67 ms tick the 4 s
+  root window is 522 ticks and the rule's threshold (half of it) 2.0 s; search 3's line crawled 1.7 s past its
+  stall. Now a quarter of the window (1.0 s); test at the real tick. (The keep-all fix only ever mattered for the
+  mixed x1.0,1.04 stage: search 3's x1.08 / x1.12 stages were boosted properly and found nothing either.)
+* **Probe (local CPU, record_ckpt, c6's 62.367 hand-on ckpt_29047652352, single s6 rows, horizontal velocity
+  scaled; a diagnostic bench, never training):** from row 6,342 (the strip's edge, z 2,335, still turning:
+  v (-51, 345, -368)) x1.0 / 1.25 / 1.5 / 1.8 all fall into the catch within 0.5 s (62.26-62.35%); from row 6,354
+  (heading west, airborne, (-2,015, 2,261, 2,298), 360 u/s horizontal, h 2,501): x1.0 62.35%, x1.25 62.39%, x1.5
+  62.57%, x1.8 (626 u/s, h 2,683) 62.61% - past the ramp's x at z 2,049, below it, into the catch. The record
+  (ANALYSIS ONLY, as a yardstick) passes the same point (-2,013, 2,234, 2,290) at ~900-1,000 u/s, h ~2,800. So the
+  drop needs ~+300 u of energy height where our line has 2,500 - my earlier "~480 u/s" (+50 u) was far too low -
+  and no strip-end search at the default x1.0-1.12 ladder (+0..+30 u there) can cross it.
+* Where s6 (c5's beam, the line c6 learned) loses it (h = z + |v|^2/1600 at first arrival): 55.5% 2,740
+  (1,325 u/s up the shaft) / 56.0% 2,709 / 56.5% 2,559 / **57.0% 2,483** (418 u/s; the largest one-tick loss of
+  56.5-61%, -101 u, at row 4,803 = 56.88%) / 58-61% 2,429-2,505 (bunny hops: -953 u of losses, +838 of gains over
+  10 s). The record (ANALYSIS ONLY) holds ~2,830 over 57-61%. **Gate 19 is lost at the top of the 56.3% shaft and
+  in the upper corridor, 5-6% of the route before the drop**: the line must leave the shaft without the impact
+  and cross the corridor without landing (the bhop cap), i.e. keep the shaft's ~2,700.
+* **New: `explore_phase1 --select-energy K`** (7d63e22; `auto_spine --ge-select-energy K`, both default 0 =
+  bit-identical, tests/python/test_ge_select_energy.py: the weights, the explorer flag-off archive + meta identical
+  to 3a7d523 and the flag live, ge_replay exact; the explorer's selftest 99/99): each place's (64 u, every energy /
+  heading bucket) most energetic cell is drawn (1 + K) x as often as W = 1/sqrt(C_seen+1). Count-based selection
+  expanded GE-G's one 583 u/s east-lane cell no more often than the slow cells around it, and its chain went no
+  further. Untested at a gate.
+* The run for gate 19 when a box is free (search only, ~25 min): two explorers side by side, 16 threads each,
+  --select-energy 3 vs 0 (the control), roots = s6 rows 4,600-4,860 (55.2-57%, the shaft top, h 2,740 -> 2,483)
+  x1.0 + x1.04 with --roots-keep-all, --cell 64 --cell-energy 32 --cell-heading 1 --view-follow, 8 ms, 20 min;
+  read with tools/energy_pick.py against s6 over 58-62% (cells keeping h >= the line + 150 u, chains not slower
+  than it). Then, if one arm finds such a line: stitch + --demo-success-energy (the playbook below), then the
+  policy's own beam.
