@@ -253,3 +253,11 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   x1.04, view-follow, rising split) to d 14,673 = 74.33% (success line d <= 14,773). Keys = the beam's and the chain's
   own held keys. Copied unchanged from the box's runs/pbr6b4_c12/auto/k02 (pulled at round 6's wrap-up). No demo, no
   record (pbr6b4, round 6; committed by pbr7b2, round 7).
+* `pbr7b2_e1.npy` + `.keys.npy` (6,813 rows; md5 aa851e756427a0ed4c4991b72b86a6b1 / e6a29daa51635ee673ce161bac93888b):
+  an ENERGY spine built with the loop's own energy-stage rule by tools/energy_splice.py (auto_spine.energy_cell: the
+  deepest archive cell keeping >= 150 u more energy height than the line at the same progress, on the route, not
+  plunging, not slower): `pbr6b4_c12k02` rows 0-6,468 (unchanged, keys included) + one exact explore_phase1
+  --exact-chains chain (reward-free search, view-follow, rising split, --select-energy 3; rooted at k02 rows
+  6,400-6,600 x1.0 / 1.04, here an UNBOOSTED root at row 6,468, 71.86%) to cell 48,251 at 74.30% with h 2,407 (+153 u
+  over k02's line there), views along the velocity, the chain's keys translated with them. Taught with
+  train_fast --demo-success-energy 75 (cross d(end)+100 with h >= 2,332). No demo, no record (pbr7b2, round 7).
