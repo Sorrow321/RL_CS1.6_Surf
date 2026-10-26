@@ -234,3 +234,11 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   weights (after the energy spine pbr6b4_k02e taught the 59.9% corner) - tools/auto_spine.py's plain beam_tas from the true
   spawn, 4,096 stochastic copies of the policy, d-ranked, no fork, no boost, no explorer chain - to d 20,132 = 64.77%. Keys =
   the beam's own held keys. No demo, no record (pbr6b4, round 6).
+* `pbr6b4_c9k02.npy` + `.keys.npy` (7,328 rows; md5 121ba05fe03e0ed183419040a44cb745 / b76a0f43199ccb90680400460792b761):
+  run pbr6b4_c9's search 2 on its 30.260B weights (7/9 greedy episodes past the 62.3% drop): the policy's own branched
+  beam line (tools/auto_spine.py: beam_tas from the true spawn, half the copies forked with held view offsets) to its row
+  5,976 (65.47%), then one exact explore_phase1 --exact-chains chain (reward-free search, that row's state x1.04) to
+  d 16,970 = 70.31%. Keys = the beam's and the chain's own held keys. No demo, no record (pbr6b4, round 6).
+* `pbr6b4_c9k02c.npy` + `.keys.npy` (6,301 rows; md5 7999b8d227db83c12e0bd6f7a20216ba / 3c30cae919c342025d6ebfbdd96bff68):
+  `pbr6b4_c9k02` cut at row 6,300 (66.42%, success line 66.25%), before the explorer chain's slow hopping at 66.5% where
+  c9's curriculum oscillated (one gate past the greedy at a time; round 2's lesson). No demo, no record (pbr6b4, round 6).
