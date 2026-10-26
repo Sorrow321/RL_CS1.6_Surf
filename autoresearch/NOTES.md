@@ -2408,3 +2408,11 @@ Incumbent: pbr4b3_t11 traj_23590338560 (52.937), weights ckpt_23551016960 (md5 7
   stops at the same place as spine x: band [7682,7686] (just before the platform landing) 13-15%, [7687,...] 97-99%.
   Evals 61.512-61.527. The landing on the exit platform at the end of the flight over the sheet is the precise part of
   both crossings (x: 14-16%, y: 13-15%).
+* c11 to 29.96B: band [7682] 13-15% throughout, evals 61.51-61.53. **pbr5b1_c12** (05:11 UTC, the round's last run):
+  c11's ckpt_latest (29,964,107,776, md5 67eccc9a...) + spine y with --demo-tau0 7682 --demo-rate 0.12, the rest as c11:
+  past the platform-landing band, back along the crossing toward its x1.08 root (+~50 u of h - round 4's greedy
+  followed an x1.08 spine within ~150M steps).
+* Recommendation for the loop (not changed tonight, untested): twice the trainer's own search found the right gate-19
+  material 420 u past the greedy and rejected it under --auto-spine-gain 500 (r19's platform route; the x1.08 crossing).
+  The gain exists to keep a fatal fall from counting as progress (round 3); with --ge-survive (chains end at surviving
+  cells) and a cut back to the last surviving state, a smaller gain (~150-200 u) would have taken both.
