@@ -717,6 +717,11 @@ def main(argv=None, build_only: bool = False, device=None):
                          "tools/gate_bench.py spine): every episode starts "
                          "from a uniform draw of these full core states. "
                          "The gate benchmark's pre-gate starts")
+    ap.add_argument("--spawn-keys", default=None, metavar="NPY",
+                    help="with --spawn-states on a --keys-hold checkpoint: the held keys "
+                         "(fwd, side, duck engine bins, one row per --spawn-states row) each "
+                         "spawn starts with, as the trainer's --demo-keys does for a spine; "
+                         "default: neutral (and --keys-hold-spawn-duck's duck)")
     ap.add_argument("--eval-stall", type=int, default=None,
                     choices=[0, 1],
                     help="apply TRAINING's stall rule to the recorded "
@@ -970,6 +975,8 @@ def main(argv=None, build_only: bool = False, device=None):
                          "VELOCITY (and the view yaw) by this many degrees, "
                          "then let the policy run. The body, not the aim")
     args = ap.parse_args(argv)
+    if args.spawn_keys and not args.spawn_states:
+        raise SystemExit("--spawn-keys gives the held keys of the --spawn-states rows")
 
     say = _phase_writer(args.progress_file)
     say("loading checkpoint", 5)
@@ -1249,6 +1256,11 @@ def main(argv=None, build_only: bool = False, device=None):
                              f"{pool.dtype} is not STATE_DTYPE")
         spawn = "states"
         print(f"spawn-states pool: {len(pool)} states from {args.spawn_states}")
+        if args.spawn_keys:
+            spawn_keys = np.asarray(np.load(args.spawn_keys), np.int64)
+            if spawn_keys.shape != (len(pool), 3):
+                raise SystemExit(f"--spawn-keys {args.spawn_keys}: shape {spawn_keys.shape}, "
+                                 f"the --spawn-states pool has {len(pool)} rows of 3 keys")
     elif gf is not None and args.spawn is None:
         # race default: the run is judged from the map's real start line
         spawn = "start"
@@ -2702,6 +2714,13 @@ def main(argv=None, build_only: bool = False, device=None):
     if keys_hold and cfg.get("keys_hold_spawn_duck"):
         # --keys-hold-spawn-duck: a crouched spawn (a --spawn-states row) holds duck, as in training
         _pol.spawn_duck = True
+    if args.spawn_keys:
+        if not keys_hold:
+            raise SystemExit("--spawn-keys: this checkpoint has no --keys-hold")
+        # --spawn-keys: each --spawn-states row's held keys, found by the spawn's origin
+        _pol.spawn_keys = (np.asarray(pool["origin"], np.float64),
+                           spawn_keys.astype(np.int32))
+        print(f"--spawn-keys {args.spawn_keys}: a spawn holds its row's keys")
     if locals().get("_psearch") is not None:
         # --plan-search M (--goal-planner primlearn): a scratch core of M envs built like this one,
         # its own fan line, and a fresh greedy wrapper of the SAME executor per simulation

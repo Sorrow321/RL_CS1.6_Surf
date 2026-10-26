@@ -2936,12 +2936,24 @@ class _TorchPolicyBase:
             if self._keys_tick is not None:
                 fresh = tick < self._keys_tick + self._period
                 self.keys.reset(fresh)
-            elif getattr(self, "spawn_duck", False):
+            elif (getattr(self, "spawn_duck", False)
+                  or getattr(self, "spawn_keys", None) is not None):
                 fresh = np.ones(n, bool)
             if getattr(self, "spawn_duck", False) and fresh is not None and fresh.any():
                 # --keys-hold-spawn-duck (the checkpoint's): a crouched spawn holds duck, as
                 # the trainer does
                 self.keys.state[fresh & (np.asarray(self.core.states_view["ducked"]) > 0), 2] = 1
+            _sk = getattr(self, "spawn_keys", None)
+            if _sk is not None and fresh is not None and fresh.any():
+                # record_ckpt --spawn-keys: a fresh episode on a --spawn-states row holds that
+                # row's keys, as the trainer's --demo-keys does. The row is found by its origin
+                # (a spawn copies it exactly); a start that matches no row stays neutral
+                _org = np.asarray(self.core.states_view["origin"], np.float64)
+                for _i in np.flatnonzero(fresh):
+                    _dd = np.abs(_sk[0] - _org[_i]).max(axis=1)
+                    _j = int(_dd.argmin())
+                    if _dd[_j] < 1e-3:
+                        self.keys.state[_i] = _sk[1][_j]
             self._keys_tick = tick.copy()
 
     def act(self, obs):

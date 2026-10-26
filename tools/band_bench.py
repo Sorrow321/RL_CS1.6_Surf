@@ -46,6 +46,23 @@ def mode_flags(m: str) -> list[str]:
     raise SystemExit(f"unknown mode {m!r}")
 
 
+def spine_keys(spine_path: str, keys: str | None, n: int):
+    """The held keys of a spine's rows (int32, n x 3), or None: --keys none, or no
+    <spine>.keys.npy beside the spine when --keys is not given."""
+    if keys is not None and str(keys).lower() == "none":
+        return None
+    if keys is None:
+        kp = Path(str(spine_path)[:-4] + ".keys.npy" if str(spine_path).endswith(".npy")
+                  else str(spine_path) + ".keys.npy")
+        if not kp.exists():
+            return None
+        keys = str(kp)
+    k = np.asarray(np.load(keys), np.int32)
+    if k.shape != (n, 3):
+        raise SystemExit(f"--keys {keys}: shape {k.shape}, the spine has {n} rows of 3 keys")
+    return k
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -60,6 +77,10 @@ def main(argv=None):
     ap.add_argument("--d-success", type=float, default=None, help="an absolute success line")
     ap.add_argument("--out-dir", default="runs/bench")
     ap.add_argument("--seed", type=int, default=1)
+    ap.add_argument("--keys", default=None,
+                    help="the spine's held keys (one row of 3 per state; default: <spine>.keys.npy "
+                         "beside it when it exists, 'none' = neutral): a band spawn holds its row's "
+                         "keys (record_ckpt --spawn-keys), as train_fast --demo-keys does")
     ap.add_argument("--extra", nargs=argparse.REMAINDER, default=[],
                     help="passed to record_ckpt verbatim")
     a = ap.parse_args(argv)
@@ -67,24 +88,31 @@ def main(argv=None):
     import score as grader
     f = grader.field()
     spine = np.load(a.spine)
+    keys = spine_keys(a.spine, a.keys, len(spine))
     d_end = float(f.sample(spine["origin"][-1:].astype(np.float64))[0])
     line = a.d_success if a.d_success is not None else d_end + a.success_d
     d0 = float(grader.START_D)
     out = Path(a.out_dir)
     out.mkdir(parents=True, exist_ok=True)
     print(f"spine {a.spine}: {len(spine)} states, d(end) {d_end:,.0f}; success line d <= "
-          f"{line:,.0f} ({100 * (d0 - line) / d0:.2f}%)", flush=True)
+          f"{line:,.0f} ({100 * (d0 - line) / d0:.2f}%)"
+          + ("" if keys is None else "; spawns hold the rows' keys"), flush=True)
     rows = []
     for band in a.bands.split(","):
         lo, hi = (int(x) for x in band.split(":"))
         bf = out / f"band_{lo}_{hi}.npy"
         np.save(bf, spine[lo:hi + 1])
+        kf = out / f"band_{lo}_{hi}.keys.npy"
+        if keys is not None:
+            np.save(kf, keys[lo:hi + 1])
         for m in a.modes.split(","):
             name = f"{Path(a.ckpt).stem}_{lo}_{hi}_{m}"
             tj = out / f"{name}.jsonl"
             cmd = [sys.executable, str(ROOT / "tools" / "record_ckpt.py"), a.ckpt,
                    "--spawn-states", str(bf), "--episodes", str(a.episodes),
                    "--ep-ticks", str(a.ep_ticks), "--out", str(tj), "--seed", str(a.seed)]
+            if keys is not None:
+                cmd += ["--spawn-keys", str(kf)]
             cmd += mode_flags(m) + list(a.extra)
             t0 = time.time()
             r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
