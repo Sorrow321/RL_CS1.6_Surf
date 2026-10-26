@@ -3033,3 +3033,15 @@ the round. (pbr6b3 released its box 19 min early once it stopped improving.)
   line the greedy already passes is a wasted curriculum restart; (2) the box ran ~340k steps/s after the reboot, no
   second reboot (up 44 min at 15:33).
 * Hand-on of 67.370: c2's ckpt_31324110848 (53M steps before the eval; md5 f4229e00...), pulled.
+
+### c2 reaches 67.397; the 5070 Ti box rebooted again -> blocklisted; c3 on a 3090 (15:35-16:02 UTC)
+* c2's eval at **31.453B: 67.397** (best 67.4%, **median 67.3%**: 5/9 past search 2's beam line, d <= 18,732) -> c2's
+  search 3 started, and **the box rebooted a second time at ~15:37** (uptime 1,096 s at 15:55; the trainer's last
+  write 15:35:48). Note: `pgrep -f train_fast.py` over `box.py ssh` matches its own command line and reported
+  TRAINER-ALIVE on a dead box; `ps aux | grep '[t]rain_fast'` and nvidia-smi told the truth.
+* Pulled c2's evals + ckpt_latest (step 31,452,561,408 = the 67.397 eval's own step, md5 94838d67...) = the hand-on
+  in RESULT.json; its search-2 spine copied to autoresearch/spines/pbr6b3_c2k02 (beam to 67.40%).
+* Box 57825139 (machine 136901) blocklisted `unreliable` (two reboots in 50 min) and released; new box **57837903:
+  RTX 3090, 0.567 $/h (box.py's cheapest acceptable at the fleet's pace), Quebec, machine 37076**, deadline 18:53.
+* **c3** = resume of c2's 31.453B ckpt_latest, c2's flags, on pbr6b3_c2k02 + keys and the loop's 39 milestones
+  (c2's current.json). The first eval should re-run the search the reboot killed (5/9 were past k02's line).
