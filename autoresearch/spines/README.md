@@ -230,3 +230,8 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   that row's state, UNBOOSTED) to archive cell 234,157 at 61.21% with energy height 2,597, +153 u over the beam line there
   (it rides the 60% corner's sloped side instead of landing and jumping into the bhop cap). Keys = the beam's and the
   chain's own held keys. Success rule: d <= 22,270 with h >= 2,522. No demo, no record (pbr6b1, round 6).
+* `pbr6b1_m2.npy` + `.keys.npy` (5,600 rows; md5 bcdc6207626f7c24a4df4816246aaaa0 / 46ff65bd866789979c5b6b98ec721dc9):
+  the POLICY'S OWN plain beam line (tools/auto_spine.py's beam: beam_tas from the true spawn, 4,096 stochastic copies + 32
+  greedy, d-ranked, seed 9) on pbr6b1_a1's 29.72B weights - after ~370M steps of the energy spine pbr6b1_a1k01 - to
+  d 20,902 = 63.43%, past princessburglar's 62.3% drop (gate 19) UNBOOSTED: h 2,715-2,817 over 60-62.3%, the drop crossed
+  at 750 u/s, the ramp at 955 u/s. Keys = the beam's own held keys. No demo, no record (pbr6b1, round 6).
