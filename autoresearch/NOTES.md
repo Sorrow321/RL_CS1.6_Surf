@@ -2878,14 +2878,33 @@ fleet's credit was $11.74 against the $10 reserve at the start, so extensions ar
 * `record_ckpt --spawn-keys F,S,D`: a bench spawn that holds a spine row's keys, as training does (the cliff probe).
 
 ### To continue (if the program goes on past round 6)
-* Resume the 64.900 hand-on (`runs/pbr6b3/pbr6b3_b3/ckpt_30394548224.pt`, md5 8bac378e..., 7.67 ms tick carried)
-  with b3's flag set (the round-5 to-continue block + `--auto-spine-energy 150 --auto-spine-ge-minutes 5`) plus
-  `--auto-spine-energy-cut --demo-cliff-cut 4` on spine `autoresearch/spines/pbr6b3_b2k02.npy` + keys (the loop's
-  70.74% line; the trainer will cut its cliffs itself) and milestones
-  `44939,43426,42182,41015,40497,39943,37251,33777,32260,31429,30286,28818,28783,27001,25121,24479,23400,22500,21624,23216,20589,21975,20227,19683,19254,18701,18263,17418,17082`.
-  The greedy is at gate 20 (64.8%: it rises at x ~-3,380 and falls into *210 where the chain climbs onto the ledge
-  at x -3,561). Watch for b1's collapse mode (the band far upstream, the early map forgotten): hand on a snapshot
-  between two healthy evals.
+* Resume the 64.900 hand-on (`runs/pbr6b3/pbr6b3_b3/ckpt_30394548224.pt`, md5 8bac378e..., 7.67 ms tick carried;
+  `$AR_HOME/incumbent/ckpt.pt` if this branch wins) with b3's flag set (the round-5 to-continue block +
+  `--auto-spine-energy 150 --auto-spine-ge-minutes 5`) plus `--auto-spine-energy-cut --demo-cliff-cut 4
+  --target-kl 0.3` on the loop's whole 70.74% line `autoresearch/spines/pbr6b3_b2k02.npy` + keys: the trainer cuts
+  the crawl's cliffs itself (b3 / b4's hand cuts at 70.3% / 66.0% / 65.3%) and the loop re-searches once the greedy
+  crosses the cut line. The greedy is at gate 20 (64.8%: it rises at x ~-3,380 and falls into *210 where the chain
+  climbs onto the ledge at x -3,561).
+* **The exact launch, checked locally (2026-10-26 13:10-13:14 UTC):** a CPU resume of that checkpoint with every flag
+  below (plus `--envs 64 --n-steps 8 --epochs 1 --minibatches 2 --no-compile --fp32` for the CPU) ran 4 iterations,
+  rc 0, printed each notice (`--auto-spine-energy-cut: ...`, `--demo-cliff-cut 4: ...`, `--target-kl 0.3: an update
+  stops once its approx KL exceeds 0.45`), run.json carries auto_spine_energy_cut 1 / demo_cliff_cut 4 / target_kl
+  0.3, and `tools/record_gate.py` on its ckpt_latest PASSED (greedy + POV + stoch + mixed, 68 s), so the box's
+  launch gate will pass:
+  ```
+  python autoresearch/box.py deploy --agent $AR_AGENT --branch ar/$AR_AGENT --ckpt $AR_HOME/incumbent/ckpt.pt
+  python autoresearch/box.py launch --agent $AR_AGENT --run ${AR_AGENT}_c1 --steps 1.5e9 --resume --self-states "spine pbr6b3_b2k02 = run pbr6b3_b2's auto-spine search 2 (the policy's own plain beam line from the true spawn + one exact unboosted reward-free explore_phase1 chain); spawn states pbr1b1_entry_ge_states = round 1's reward-free Go-Explore archive from the true spawn; later spines come from this run's own auto-spine searches and cliff cuts; provenance in autoresearch/spines/README.md, no demo, no record" -- --maxvel 3500 --ckpt-every 2e8 --demo-file autoresearch/spines/pbr6b3_b2k02.npy --demo-keys autoresearch/spines/pbr6b3_b2k02.keys.npy --demo-window 5 --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5 --demo-rate 0.3 --demo-front-frac 0.8 --demo-success-d 100 --demo-success-bonus 50 --demo-milestones 44939,43426,42182,41015,40497,39943,37251,33777,32260,31429,30286,28818,28783,27001,25121,24479,23400,22500,21624,23216,20589,21975,20227,19683,19254,18701,18263,17418,17082 --keys-hold-spawn-duck --yaw-entropy 0 --demo-front-temp 0.5 --demo-front-ticks 40 --demo-front-view 6 --respawn-greedy 0.2 --respawn-greedy-window 0.25 2.0 --respawn-greedy-stuck 200 --respawn-greedy-contact --respawn-greedy-energy 3 --respawn-greedy-temp 0.5 --respawn-greedy-temp-ticks 100 --respawn-greedy-temp-view 6 --respawn-front-perturb 0.2 --respawn-front-perturb-band 0.005 --respawn-front-perturb-speed 1.0 1.3 --respawn-front-perturb-turn 90 --energy-pot 12 --energy-pot-front 0 --energy-pot-front-bonus 0 --no-respawn-novel --respawn-backward-mix 0 --int-real-only 0 --spawn-states autoresearch/spines/pbr1b1_entry_ge_states.npy --spawn-states-frac 0.2 --auto-spine --auto-spine-milestones --auto-spine-gain 500 --auto-spine-ge-minutes 5 --auto-spine-retry 4e8 --auto-spine-patience 1.2e9 --auto-spine-energy 150 --auto-spine-energy-cut --demo-cliff-cut 4 --target-kl 0.3
+  ```
+* Why the crawl and not the energy stage at gate 20: the loop's energy stage runs only when the depth ladder finds
+  nothing deeper, and there the ladder's x1.0 stage finds the ledge crawl first (b2 search 2). The crawl is
+  teachable up to its first cliff (the cut keeps exactly that part), and under b4's band the greedy's own energy at
+  63.7-64.5% was already rising (the gate 20 table below). If the loop keeps answering with crawls whose first cliff
+  lies before the greedy's frontier, the next automation is to run the energy stage alongside a crawl (a chain much
+  slower than its line) and teach its answer first, as at gates 17 and 19.
+* `--target-kl 0.3` is new on this map (the guard against b1's collapse, below): if the first ~30 min learn visibly
+  slower than b2 / b3 did (b2's greedy followed a new beam spine within 75M steps), it is the first suspect. Watch
+  for b1's collapse mode anyway (the band far upstream, the early map forgotten): hand on a snapshot between two
+  healthy evals.
 
 ### Gate 20 is an energy gate the training was already learning (10:25 UTC, ANALYSIS of our evals)
 * `tools/energy_profile.py` (new; tests/python/test_energy_profile.py): h at first arrival per progress level, evals
