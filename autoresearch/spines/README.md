@@ -225,3 +225,9 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   at its best depth (tools/chain_spine.py --no-cut); the chain's 22 links survive at 8,8,7 too and its end state stands
   at every phase. The only crossings of the room's kill sheet at the policy's tick (GE_wall, 8,8,7) start from this
   cell with x1.2 speed. No demo, no record (pbr5b1, round 5).
+* `pbr5b1_x.npy` + `.keys.npy` (8,404 rows; md5 4074f342db8990d7d82dc8e70e82e1b9 /
+  dc9fb956c520f1e32051827205d8d1a8): gate 19 by a crossing that exists at the POLICY's tick: pbr5b1_w1's line to the
+  wall-riding cell (59.67%), then the exact GE_wall chain found with explore_phase1 --tick-pattern 8,8,7 from that cell
+  at x1.2: east along the room's north wall at ~700 u/s, south along its east wall ABOVE kill sheet *211 (z ~2,420-
+  2,470, the record's way), onto the exit platform (entity 28); cut standing on it at 61.82% (the chain's drop through
+  the exit hole ends in a fatal fall within 24 ticks). Views along the velocity, keys translated. No demo, no record.

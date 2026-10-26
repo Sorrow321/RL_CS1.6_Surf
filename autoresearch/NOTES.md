@@ -2338,3 +2338,10 @@ Incumbent: pbr4b3_t11 traj_23590338560 (52.937), weights ckpt_23551016960 (md5 7
   (the beam line + GE_r19's chain to cell 129650, ending AT the energetic state) + --demo-success-energy **50** (success:
   record past d(59.67%) + 100 with h >= 2,580; the greedy's line has ~2,480 there) + milestones ..., 22012 (k01),
   21681 (r19: pays only past the sheet) + c6's other flags. auto_spine's GE now runs 8,8,7 (b6bd24f, on the box).
+* c7 (energy spine w1, margin 50): the curriculum's band [7471] read 0.0% vs [7476] 40% - not a skill wall: w1's chain
+  overshoots to 60.06% and comes back to its 59.67% end, so its late states lie PAST the success line and the energy
+  gate judges those spawns by their spawn energy alone (h ~2,579-2,584 against a 2,580 threshold). Lesson: an energy
+  spine must end at its deepest point (a monotone tail), or the spawn rule decides the band. Stopped at 27.56B.
+* **pbr5b1_c8** (02:05 UTC): c7's ckpt_latest (27,558,674,432, md5 66aa180f...) + spine autoresearch/spines/pbr5b1_x.npy
+  (w1's line + the 8,8,7 GE_wall chain over the sheet onto the exit platform, x1.2 at 59.67%, cut on the platform at
+  61.82%; success line 61.65%) + c7's milestones + --demo-success-energy 150 (not binding here) + c7's other flags.
