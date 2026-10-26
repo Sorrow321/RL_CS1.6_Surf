@@ -3004,3 +3004,17 @@ the round. (pbr6b3 released its box 19 min early once it stopped improving.)
 * `--target-kl 0.3` early-stopped its first update at 30.4003B (kl 0.52); no collapse so far.
 * Box extended to 18:56 UTC (promising: a gate the incumbent never cleared). Pulled: 7 evals + snapshot
   ckpt_30795104256 (md5 54d23e3f..., between the 65.380 and 65.337 evals) = the hand-on in RESULT.json.
+
+### c1 learns search 1's beam spine in 75M steps: 66.225; search 2's branched beam to 71.25%; the box rebooted -> c2 (14:45-15:10 UTC)
+* c1's eval at **30.923B: 66.225** (best 66.2%, median 66.1%): 5/9 past search 1's success line (d <= 19,429, 66.0%),
+  75M steps after that spine was swapped in -> **search 2** (71 s): plain beam 19,265 (not 500 u deeper), then the
+  BRANCHED beam (fork at tick 5,915) to **d 16,430 = 71.25%** (6,700 states + keys, md5 3b208f95...), success line
+  d <= 16,530. The curriculum restarted at its end and its first band passed (99.2% over 394 eps).
+* **The box rebooted at ~14:48** (uptime 18 min at 15:06 vs 13 days at 14:16; cgroup oom_kill 0; no traceback):
+  the trainer died at 30.936B and the box sat idle ~18 min before this wakeup saw it. Files survived intact (c1's
+  ckpt_latest = step 30,923,554,816 loads, md5 a9428a72...; k02's spine md5 matches its spine.json, and a rebuild
+  from beam_br/beam_frontier.npz gives the same bytes). Not blocklisted on one reboot; a second one moves the run.
+* **c2** (15:10 UTC): resume of c1's ckpt_latest (30.923B, the 66.225 eval's own step) with c1's flags on search 2's
+  spine (runs/pbr6b3_c1/auto/k02 on the box, copied to autoresearch/spines/pbr6b3_c1k02) and the loop's 34
+  milestones (c1's current.json: the 29 + 16,822 / 17,073 / 19,570 / 19,981 / 19,429, the old success lines);
+  record gates PASSED. Hand-on of the 66.225 eval = c1's ckpt_latest (pulled, md5 a9428a72...).
