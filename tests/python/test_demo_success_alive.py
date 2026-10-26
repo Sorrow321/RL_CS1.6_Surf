@@ -81,6 +81,26 @@ def test_the_trainer_runs_the_rule_and_refuses_it_alone(tmp_path):
         shutil.rmtree(ROOT / "runs" / "dsa_bad", ignore_errors=True)
 
 
+def test_the_loop_counts_survived_crossings_for_its_quorum(tmp_path):
+    from test_demo_success_d import _run_demo
+    from test_ge_minutes import PB
+    if not PB.exists():
+        pytest.skip("no princessburglar")
+    run = "dsa_loop"
+    try:
+        r = _run_demo(run, ["--demo-success-d", "50", "--demo-success-bonus", "50",
+                            "--auto-spine", "--auto-spine-quorum", "9",
+                            "--auto-spine-energy", "150", "--auto-spine-ge-minutes", "0",
+                            "--demo-success-alive", "0.5", "--record-every", "2048",
+                            "--eval-eps", "2", "--ep-ticks", "300", "--steps", "8192"],
+                      tmp_path)
+        out = r.stdout + r.stderr
+        assert r.returncode == 0, out[-6000:]
+        assert "greedy episodes stay alive 50 ticks past their crossing" in out, out[-6000:]
+    finally:
+        shutil.rmtree(ROOT / "runs" / run, ignore_errors=True)
+
+
 def test_flag_off_is_bit_identical_to_the_trainer_before_the_change(tmp_path):
     import subprocess
     import torch

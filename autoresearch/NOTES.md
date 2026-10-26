@@ -2894,10 +2894,10 @@ Germany (machine 56783), rented 08:05 UTC for 2 h.
   SECS (rows = physics ticks) past their first crossing, or end at the finish. Generic: dying right after the line is not
   the skill on any map; it closes the death-dive door that a near line (a stall cut, a short spine) opens.
   (train_fast.alive_gate / crossed_and_alive; the state resets on every spine swap and stall cut.)
-* Tests (CPU): tests/python/test_demo_success_alive.py 5/5 in 147 s - the gate (a survived crossing is paid once, a
+* Tests (CPU): tests/python/test_demo_success_alive.py 6/6 (147 s + 20 s) - the gate (a survived crossing is paid once, a
   dive that dies within the ticks fails, a spawn past the line succeeds unpaid), the quorum rule (survival, energy,
-  finish), a princessburglar trainer run (notice, config key, the refusals), **flag off bit-identical to the trainer
-  before the change** (config, every progress.csv number but time/*, final weights), TRAIN_ONLY. Untested at a gate.
+  finish), a princessburglar trainer run (notice, config key, the refusals), one with --auto-spine whose eval hook counts the survived crossings for the quorum, **flag off bit-identical to the trainer
+  before the change** (config, every progress.csv number but time/*, final weights), TRAIN_ONLY. Regression: test_demo_stall_cut + test_auto_spine_energy + test_demo_success_energy + test_demo_success_d 15/15 (1 skip: the old --demo-success-d identity test finds no pre-change trainer in its 200-commit window). Untested at a gate.
 * **To continue, revised (supersedes the c11 line of the block above):** c10's ckpt_latest (31.18B) on the FULL loop
   spine `pbr6b4_c9k02` + keys (its line 70.13% lies past the walkway's hole, so no dive off the strip can reach it), c9's
   flag set, the milestones and the loop exactly as in that block, plus `--demo-success-alive 1` (a guard; it changes
