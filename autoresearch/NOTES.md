@@ -2788,3 +2788,12 @@ Germany (machine 56783), rented 08:05 UTC for 2 h.
   (66.42%, success line 66.25%: one gate past the greedy, before the hopping) + keys, the depth rule, the 24 milestones
   (+ k02e's 22,014, k01's 20,232, k02's 17,070), NO --auto-spine (a search now would only stop the last evals before the
   10:09 deadline). Question: does the greedy take gate 20 (the climb) within the box's last ~45 min?
+* c10 evals (k02c, the depth rule, no loop; 30.574-31.178B, 9 evals): 64.764 / 64.830 / 64.773 / 64.836 / 64.779 / 64.752 /
+  64.898 / 64.769 / 64.832, medians 64.7-64.8%: 9/9 past the drop in most evals, every one stopping at gate 20 (the ledge
+  catch at 64.8%: the greedy rises to z ~2,240-2,300 at (-3,385, 2,640), the branched beam line to z 2,324 with vz +297
+  and lands on a ledge at z ~2,377). The curriculum sat on the chain's floor walk at [6,095 / 6,100] (6.7-31%) the whole
+  ~30 min - the walk at exactly 250 u/s (ground speed) on the floor at x -3,256, 65.8% - and never reached the climb.
+* **Box 57784754 released 09:47 UTC** (deadline 10:05; the credit at $10.01, i.e. AT the reserve, so no extension).
+  Pulled: c8 / c9 / c10 evals and logs, c9's ckpt_30006575104 (the hand-on for the 65.391 eval, md5 51111d5a...) and its
+  search-2 save ckpt_latest (30.2598B, md5 55384f10...), c10's ckpt_latest (31.1815B, md5 6955707b...: the newest weights,
+  the drop reliable), the auto spines k01 / k02 (also in autoresearch/spines/).
