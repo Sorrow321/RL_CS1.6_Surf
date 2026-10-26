@@ -2810,3 +2810,38 @@ Incumbent: pbr5b2_c7 ckpt_29123674112 (62.369, md5 afb44185...).
   test_the_trainer_takes_and_refuses_the_energy_patience (CPU smoke), test_record_ckpt_knows_the_energy_patience.
   Regression 10:04 UTC (local CPU): test_auto_spine + test_auto_spine_energy + test_auto_spine_beam_seeds 32/32
   (incl. the trainer smoke runs and the flag-off bit-identity test).
+
+### pbr6b1 round 6 lesson (DRAFT 10:06 UTC; finalised at wrap-up)
+* **Score 62.369 -> 62.373** (a1 29.200B: the incumbent's weights 75M steps on, same gate; all 9 fall at the 62.3% drop).
+  1 h 54 min of box (one 2 h rent; the fleet's credit reached the $10 reserve at ~09:46 and no extension or new rent was
+  possible after it).
+* **What worked:**
+  1. **Energy before boost** (auto_spine's ladder `1.0,1.04;G;1.08;1.12`, 068f27f): the loop's first search on the
+     incumbent's weights returned an UNBOOSTED energy spine at gate 19's 60% corner (a 10.2 s Go-Explore chain from the
+     policy's own state at 48.9% that rides the corner's sloped side instead of landing and jumping into the bhop cap:
+     +153 u at 61.2%) in 878 s, instead of the x1.12 depth spine (k02) round 5's ladder had produced from the same
+     weights. Boosted depth spines had stalled at their roots in most of this lineage's uses.
+  2. **Energy first, then the policy's own search passes the gate - again** (round 5's gate-17 sequence): after ~370M
+     steps on the energy spine the policy's own plain beam went PAST THE DROP to 63.43% unboosted (spine pbr6b1_m2: h
+     ~2,72x-2,82x over 60-62.3%, the record's level; ANALYSIS ONLY), where the incumbent's beams all stopped at 62.4%.
+     Only one of two beam seeds did (seed 7 stopped at the drop on the same weights): the population was at the gate's
+     threshold. Hence `--beam-seeds`.
+* **What did not / costs:**
+  1. The GREEDY did not follow in the time left: on the energy spine it never carried the energy past the success line
+     (0/9 energetic crossings in 450M steps), and on the depth curriculum (a2, 300M steps) it still cut the 60% corner
+     low; the backward curriculum held at the slide after the corner (60.6%, 17-35%) and never reached the corner itself.
+  2. **Erosion from the energy phase**: the energy training made the greedy FASTER upstream (+40-50 u of h, +30-40 u/s at
+     17-20%) and the memorised gate-8 landing broke at the new speed (8/9 greedy episodes died at gate 9, 21%, at 29.80B);
+     the depth curriculum + greedy-death rows restored 6/9 within 75M steps. Under the curriculum the demo rows replace
+     the reservoir, so gate 8 is practised only by full episodes. A memorised line does not transfer to new dynamics
+     (CLAUDE.md's tick-transfer result), and a policy whose speed profile changes is new dynamics for every gate upstream.
+* **Loop fixes left in the code (all off by default, tested):** `auto_spine --beam-seeds N` / `train_fast
+  --auto-spine-beam-seeds N` (the plain beam with N seeds until one passes); `train_fast --auto-spine-energy-patience P`
+  (on an energy spine, search after P steps even without the greedy's energetic quorum).
+* **To continue** (a WARM resume at the wall; the checkpoint carries the 7.67 ms tick and every shape flag): resume
+  runs/pbr6b1/pbr6b1_a2/ckpt_latest.pt (30.03B, on m2's curriculum) or runs/pbr6b1/pbr6b1_a1/ckpt_29724508160.pt (the
+  weights whose beam passed the drop) with a2's flags + `--demo-file autoresearch/spines/pbr6b1_m2.npy --demo-keys
+  autoresearch/spines/pbr6b1_m2.keys.npy --demo-tau0 5289` (where a2's curriculum stood) + `--auto-spine
+  --auto-spine-milestones --auto-spine-gain 500 --auto-spine-ge-minutes 5 --auto-spine-retry 4e8 --auto-spine-patience 1.2e9
+  --auto-spine-energy 150 --auto-spine-energy-patience 3e8 --auto-spine-beam-seeds 3` and the 21 milestones
+  (44939,...,21624,23216,22270).
