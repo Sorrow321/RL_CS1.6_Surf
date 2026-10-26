@@ -2305,3 +2305,12 @@ reservation for a boxless branch would keep all four forks running; as it is, a 
 * Found on the way: MAX_SOLIDS 128 drops 7 solids on this map (the start room's conveyor plates *249 / *250 among
   them); deploy's GPU gate rejects every power-capped cheap card (no reference); the flat fleet cap starves the
   fourth branch.
+* Manual GE #2 (conveyor on, rooted at GE #1's spine over 52-53%, 12 min, 12.2M runs, 165k cells): deepest
+  d 24,941 = 56.36% - the ledge again. Neither GE from the launched line keeps the record's speed through 52.5-53%.
+* c3 evals (conveyor on): 52.961 / 56.593 / 56.590 / 56.591 / **56.598** / 56.588 / 56.592 / **56.642** (25.289B) /
+  56.591 - the same ledge as c2 under the standard physics (56.594), within its crawl noise. Stopped 05:21 UTC at
+  25.436B (nothing left on the box worth its rent before the wrap-up); box 57755386 released 05:24 UTC.
+* **Handoff, and a decision for the next round**: the round's best eval is c3's 56.642 (conveyor ON); its snapshot
+  ckpt_25160581120 (md5 a3ddb3c1...) carries `conveyor: 1`, so **a plain resume of it RUNS THE EXPERIMENTAL CONVEYOR
+  PHYSICS** (train_fast restores it); pass `--conveyor 0` for the standard core. The standard-physics equivalent is
+  c2's ckpt_24307040256 (56.575-56.594). Both policies fly the same line to the 56.6% ledge.
