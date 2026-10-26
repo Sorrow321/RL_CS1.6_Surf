@@ -2395,3 +2395,19 @@ minute). Incumbent: pbr4b3_t11 ckpt_23551016960 (md5 7fbcd458...), eval 52.937 a
 * The gate-17 recipe again: GE-G (01:34 UTC, 12 min, 12 threads beside c6, rising split, view-follow, 8 ms) rooted at
   k02's own upper-level states over 57-61.5% (47 x1.0 / 1.04) - an energetic corridor line to teach with
   --demo-success-energy, then the policy's own search for the fall.
+* c6 evals 28.44-28.82B: **62.314** / 61.484 / 61.495 / 61.581 / **62.358** (28.746B) / 62.294; medians 61.25-61.54%.
+  Handoff for 62.358: ckpt_28680126464 (md5 854471c7..., pulled).
+* GE-G (12 min, 12 threads, roots on k02's 57-61.5% x1.0 / 1.04): deepest 61.69%; its most energetic non-plunging cells
+  beat k02's line by only +70..+160 u over 58.5-61.5% (e.g. 2,617-2,633 vs ~2,480). GE-H (10 min, roots on k02's last 4 s
+  before its end x1.0 / 1.04 / 1.08 - which collapsed into 48 cells: a 4-8% boost at 500-700 u/s stays in the same 32 u
+  energy bucket, so the boosted copies were dropped as duplicates): deepest 62.32%, every deep cell falling into the
+  catch at z ~2,050.
+* Gate 19 (the fall at 62.3%): the record (ANALYSIS ONLY) leaves the strip's end at vx ~-720 and catches a west-running
+  surf ramp at (-2,234, 2,273, ~2,097) (62.5%) at ~1,040 u/s; our lines leave at 330-400 u/s horizontal and drop short
+  into the catch, ~80-100 u east of the ramp. Where the energy goes (k02, 57% -> its end): -1,388 u of losses (13 hop
+  landings / wall hits of 42-160 u, vz ~-280 -> 0 on the corridor floor, and ~600 u of small ones) against +1,168 of gains
+  (strafes, jumps): the policy lands and bunny-hops at 300-400 u/s; the record stays AIRBORNE above the corridor floor
+  (z 2,415-2,576) at 650-850 u/s. The missing skill is staying in the air through the corridor.
+* GE-I (01:56 UTC, 15 min, 12 threads beside c6): roots on k02's 57-59.5% (43 states, still at h ~2,700) x1.0 / 1.08 (x1.04
+  collapses), --cell-energy 16 + the rising split: an airborne, energy-keeping corridor line to teach with
+  --demo-success-energy.
