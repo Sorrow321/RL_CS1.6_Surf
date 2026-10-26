@@ -3069,3 +3069,27 @@ Germany (machine 56783), rented 08:05 UTC for 2 h.
   (search 2's result at the wrap-up: beam + GE, 6,852 states to d 14,673 = 74.33%, md5 0aced692...; in
   runs/pbr6b4/pbr6b4_c12/auto/k02, pulled) with the loop on and `--demo-match-band`; the next stop is the catch sheet at
   ~73.5% after the climb. Last evals 73.503 / 71.475 / 73.518 / 73.586 / 73.443 (medians 61.5-73.4%).
+
+## pbr7b4 (round 7, slot 4) - 2026-10-26 20:27 UTC start
+
+Incumbent: pbr6b4_c12 ckpt_35907960832 (md5 160da9eb...), eval 73.590 at 35.918B (1/9 past the 71.3% landing, median
+71.2%). Credit at the start $34.25 ($24.25 above the reserve), fleet burn 0. Box 57867615: RTX 5080, 0.621 $/h, Florida
+(machine 118632), rented 20:33 UTC for 2.5 h (the cheapest acceptable offer at that minute).
+Independence: only this branch and $AR_HOME/incumbent/ are read. c12's later weights (36.6B) and its auto/k02 spine
+(74.33%) live in pbr6b4's runs dir and are NOT used; the loop has to find them again from the hand-on.
+
+### c13: c12's recipe continued from the hand-on (20:37 UTC, box 57867615)
+* **pbr7b4_c13** = resume of the incumbent hand-on (35.908B) with c12's flag set (round 5's to-continue block + the loop
+  as in c11/c12: `--auto-spine --auto-spine-milestones --auto-spine-gain 500 --auto-spine-ge-minutes 5 --auto-spine-retry
+  4e8 --auto-spine-patience 0 --auto-spine-energy 150`, `--demo-match-band`, the 24 milestones) on spine
+  `pbr6b4_c11k01` + keys with `--demo-tau0 6314` (where c12's curriculum stood at 35.9B), --steps 3e9. A warm resume
+  measuring AT the wall (the 73.5% stop after the climb). Record gate passed (4 recordings in 20 s). Expectation from
+  c12: 6/9 past the landing by ~36.3B, then the loop's search 1 (an energy spine), then search 2 (beam + GE to ~74.3%).
+* c13's first evals: 35.908B **73.490** (the resume; 3/9 past k01's 72.75% line) / 35.984B **73.605** (2/9; best so far, a
+  hair above the incumbent's 73.590) / 36.059B 0/9 past the line (median 71.2%).
+* **A resume transient, ~150M steps**: kl 0.06 -> 0.20 / 0.42 / 0.34 in the first iterations (intrinsic reward 45/ep in
+  the first iteration, 0.5/ep in steady state; energy terms +62,663 / -109,416 u per episode), and the curriculum BACKED
+  OFF from tau0 6,314 to 6,574 at 0-2% band success - bands c12 had passed at 30%+ with the same weights - before it
+  turned at ~36.03B and walked back at 47-75% (step 40: 6,574 -> 6,419 in ~5 min). The optimizer state IS restored
+  (train_fast opt.load_state_dict), so the cause is elsewhere (the first rollouts' reward terms?); worth knowing when a
+  resume's first 150M steps look like a regression. Not chased further.

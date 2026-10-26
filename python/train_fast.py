@@ -4990,6 +4990,16 @@ def main() -> None:
                     help="--auto-spine: the beam runs this long past the eval's longest episode")
     ap.add_argument("--auto-spine-timeout", type=float, default=2400.0,
                     help="--auto-spine: wall-clock cap (s) of one search")
+    ap.add_argument("--auto-spine-async", action="store_true",
+                    help="--auto-spine: run the search in the BACKGROUND (pbr7b4). The trainer "
+                         "copies ckpt_latest for it (auto/kNN/search_ckpt.pt), keeps training on "
+                         "the current spine while it runs - the search's OMP team takes the "
+                         "CPUs the trainer's own team leaves idle, and the GPU was idle during "
+                         "a search anyway - and swaps its spine in at the first iteration after "
+                         "it ends; no second search starts while one runs. At the run's end a "
+                         "running search is waited for (its timeout bounds it) so its result is "
+                         "logged. Off = the search pauses training, as before; config only when "
+                         "on; never restored")
     ap.add_argument("--auto-spine-energy", type=float, default=None,   # None = off
                     help="--auto-spine: G > 0 adds an ENERGY stage to the search (auto_spine "
                          "--energy-gain G): when no deeper line exists, a line keeping >= G u "
@@ -11841,6 +11851,13 @@ def main() -> None:
         raise SystemExit("--auto-spine needs --demo-file (the first spine) and --demo-success-d")
     if args.auto_spine_energy is not None and not args.auto_spine:
         raise SystemExit("--auto-spine-energy is a stage of --auto-spine's search: give it")
+    if args.auto_spine_async:
+        if not args.auto_spine:
+            raise SystemExit("--auto-spine-async runs --auto-spine's search in the background: "
+                             "give --auto-spine")
+        print("--auto-spine-async: the search runs in the background on a copy of ckpt_latest; "
+              "training goes on, and its spine is swapped in at the first iteration after it "
+              "ends")
     if float(args.demo_success_alive or 0.0) != 0.0 and not args.demo_file:
         raise SystemExit("--demo-success-alive gates a --demo-file spine's success line: give it")
     if float(args.demo_stall_cut or 0.0) < 0.0:
@@ -14876,6 +14893,8 @@ def main() -> None:
             auto_spine_timeout=float(args.auto_spine_timeout))
         if args.auto_spine_milestones:
             meta["config"]["auto_spine_milestones"] = 1
+        if args.auto_spine_async:
+            meta["config"]["auto_spine_async"] = 1
         if args.auto_spine_energy is not None:
             meta["config"]["auto_spine_energy"] = float(args.auto_spine_energy)
         if float(args.demo_stall_cut or 0.0) > 0.0:
@@ -15938,7 +15957,7 @@ def main() -> None:
     # --auto-spine: the search -> curriculum loop (tools/auto_spine.py). AUTO["eval"] is set by
     # the greedy eval below; the hook after the eval block reads it.
     AUTO_SPINE = bool(args.auto_spine) and demo is not None and DEMO_END_D is not None
-    AUTO = {"eval": None, "last": None, "retry_at": 0, "k": 0, "field": None}
+    AUTO = {"eval": None, "last": None, "retry_at": 0, "k": 0, "field": None, "job": None}
     if AUTO_SPINE and float(args.auto_spine_delay) > 0:
         AUTO["retry_at"] = int(global_step + float(args.auto_spine_delay))
         print(f"--auto-spine-delay: no search before step {AUTO['retry_at']:,}")
@@ -16010,11 +16029,15 @@ def main() -> None:
         quorum = m >= int(args.auto_spine_quorum)
         pat = (float(args.auto_spine_patience) > 0
                and global_step - AUTO["last"] >= float(args.auto_spine_patience))
-        go = (quorum or pat) and global_step >= AUTO["retry_at"]
+        # --auto-spine-async: no second search while one runs in the background
+        busy = AUTO["job"] is not None
+        go = (quorum or pat) and global_step >= AUTO["retry_at"] and not busy
         print(f"[{global_step:>13,d}] auto-spine: {m}/{len(eps)} greedy episodes past the "
               f"success line d <= {DEMO_END_D:,.0f}; greedy frontier (median deepest d) "
               f"{med:,.0f}" + ("  -> SEARCH" + (" (patience)" if pat and not quorum else "")
-                               if go else ""), flush=True)
+                               if go else "")
+              + (f"  (search {AUTO['job']['k']} running in the background, "
+                 f"{time.time() - AUTO['job']['t0']:.0f}s)" if busy else ""), flush=True)
         if not go:
             return
         adir = out / "auto"
@@ -16050,8 +16073,24 @@ def main() -> None:
         if args.auto_spine_energy is not None:
             cmd += ["--energy-gain", f"{float(args.auto_spine_energy):g}"]
         t0 = time.time()
+        if args.auto_spine_async:
+            # --auto-spine-async: the search reads its OWN copy of the weights (ckpt_latest is
+            # rewritten every minute while training goes on) and logs to its kdir
+            import shutil as _sh
+            kdir.mkdir(parents=True, exist_ok=True)
+            _sck = kdir / "search_ckpt.pt"
+            _sh.copyfile(out / "ckpt_latest.pt", _sck)
+            cmd[cmd.index("--ckpt") + 1] = str(_sck)
         print(f"[{global_step:>13,d}] auto-spine search {AUTO['k']}: " + " ".join(cmd),
               flush=True)
+        if args.auto_spine_async:
+            _fh = open(kdir / "auto_spine.log", "w", encoding="utf-8", errors="replace")
+            _p = _sp.Popen(cmd, stdout=_fh, stderr=_sp.STDOUT, stdin=_sp.DEVNULL)
+            AUTO["job"] = {"proc": _p, "fh": _fh, "t0": t0, "k": AUTO["k"], "kdir": kdir,
+                           "med": med, "step": int(global_step)}
+            print(f"[{global_step:>13,d}] auto-spine search {AUTO['k']}: running in the "
+                  f"background (pid {_p.pid}); training goes on", flush=True)
+            return
         res = None
         try:
             r = _sp.run(cmd, capture_output=True, text=True, encoding="utf-8",
@@ -16064,10 +16103,60 @@ def main() -> None:
         except (_sp.TimeoutExpired, OSError, ValueError) as ex:
             print(f"!! auto-spine search {AUTO['k']} failed: {ex}", flush=True)
         dt = time.time() - t0
+        _auto_spine_apply(res, dt, med)
+
+    def _auto_spine_poll(final=False):
+        """--auto-spine-async: pick up a background search that has ended and swap its spine in
+        (final: the run is ending - wait for it, bounded by its own timeout, so its result is
+        logged and current.json written for the next launch)."""
+        job = AUTO["job"]
+        if job is None:
+            return
+        import subprocess as _sp
+        p = job["proc"]
+        cap = float(args.auto_spine_timeout) + 900
+        if final and p.poll() is None:
+            _left = max(1.0, cap - (time.time() - job["t0"]))
+            print(f"[{global_step:>13,d}] auto-spine search {job['k']}: the run ends - waiting "
+                  f"for the background search (at most {_left:.0f}s)", flush=True)
+            try:
+                p.wait(timeout=_left)
+            except _sp.TimeoutExpired:
+                pass
+        if p.poll() is None:
+            if time.time() - job["t0"] < cap:
+                return
+            p.kill()
+            p.wait()
+            print(f"!! auto-spine search {job['k']} killed after {time.time() - job['t0']:.0f}s "
+                  f"(the --auto-spine-timeout cap + 900 s)", flush=True)
+        job["fh"].close()
+        AUTO["job"] = None
+        res = None
+        try:
+            _txt = (job["kdir"] / "auto_spine.log").read_text(encoding="utf-8", errors="replace")
+            for ln in _txt.splitlines()[::-1]:
+                if ln.startswith("AUTO_SPINE "):
+                    res = json.loads(ln[len("AUTO_SPINE "):])
+                    break
+        except (OSError, ValueError) as ex:
+            print(f"!! auto-spine search {job['k']} failed: {ex}", flush=True)
+        print(f"[{global_step:>13,d}] auto-spine search {job['k']}: the background search "
+              f"(launched at step {job['step']:,}) ended", flush=True)
+        _auto_spine_apply(res, time.time() - job["t0"], job["med"], k=job["k"])
+
+    def _auto_spine_apply(res, dt, med, k=None):
+        """Swap a search's spine into the curriculum (or schedule the retry when it found none).
+        k: the search's number (the background search's; the last one launched otherwise)."""
+        nonlocal DEMO_END_D, DEMO_H_MIN
+        _f = slots[0].reward_field if slots[0].reward_field is not None else slots[0].goal_field
+        adir = out / "auto"
+        if k is None:
+            k = AUTO["k"]
         if not res or not res.get("spine"):
             AUTO["retry_at"] = int(global_step + float(args.auto_spine_retry))
             AUTO["last"] = int(global_step)
-            print(f"[{global_step:>13,d}] auto-spine search {AUTO['k']}: NO new spine in "
+            print(f"[{global_step:>13,d}] auto-spine search {k}: NO new spine in "
                   f"{dt:.0f}s ({json.dumps(res) if res else 'no result'}); next try at "
                   f"step {AUTO['retry_at']:,}", flush=True)
             return
@@ -16103,16 +16192,16 @@ def main() -> None:
             DEMO_H_MIN = spine_energy_rule(res, demo.S[-1], float(args.auto_spine_energy))
             DEMO_OK[0] = DEMO_OK[1] = None
             _en = {"energy_h_min": DEMO_H_MIN}
-            print(f"[{global_step:>13,d}] auto-spine search {AUTO['k']}: "
+            print(f"[{global_step:>13,d}] auto-spine search {k}: "
                   + (f"an ENERGY spine (+{float(res.get('energy_gain', 0.0)):,.0f} u over the "
                      f"policy's line): success only with energy height >= {DEMO_H_MIN:,.0f}"
                      if DEMO_H_MIN is not None else "a depth spine: the depth success rule"),
                   flush=True)
         (adir / "current.json").write_text(json.dumps(
-            {"step": int(global_step), "k": AUTO["k"], "spine": res["spine"],
+            {"step": int(global_step), "k": k, "spine": res["spine"],
              "success_d": DEMO_END_D, "milestones": [float(v) for v in MILES[0]], **_en, **res},
             indent=1), encoding="utf-8")
-        print(f"[{global_step:>13,d}] auto-spine search {AUTO['k']}: NEW SPINE from "
+        print(f"[{global_step:>13,d}] auto-spine search {k}: NEW SPINE from "
               f"{res.get('source')} ({demo.n} states, end d {_de:,.0f}, greedy frontier "
               f"{med:,.0f}) in {dt:.0f}s -> {res['spine']}; success line d <= "
               f"{DEMO_END_D:,.0f}; the curriculum restarts at its end", flush=True)
@@ -21284,6 +21373,15 @@ def main() -> None:
                 AUTO["retry_at"] = int(global_step + float(args.auto_spine_retry))
                 print(f"!! auto-spine: {type(_ex).__name__}: {_ex}; next try at step "
                       f"{AUTO['retry_at']:,}", flush=True)
+        if AUTO_SPINE and AUTO["job"] is not None:
+            # --auto-spine-async: a background search that has ended swaps its spine in
+            try:
+                _auto_spine_poll()
+            except Exception as _ex:         # a failed search never ends the run
+                AUTO["job"] = None
+                AUTO["retry_at"] = int(global_step + float(args.auto_spine_retry))
+                print(f"!! auto-spine (background): {type(_ex).__name__}: {_ex}; next try at "
+                      f"step {AUTO['retry_at']:,}", flush=True)
         t_ck = tm.now()
         if global_step >= next_ckpt:
             next_ckpt = global_step + int(args.ckpt_every)
@@ -21560,6 +21658,10 @@ def main() -> None:
                 D.assert_equal(f"ddp_state@it{it_no}", torch.tensor(
                     chk, dtype=torch.int64, device=device))
 
+    if AUTO_SPINE and AUTO["job"] is not None:
+        # --auto-spine-async: a search still running at the end is waited for, so its result
+        # is logged (and current.json written) for the next launch
+        _auto_spine_poll(final=True)
     meta["finished"] = time.strftime("%Y-%m-%dT%H:%M:%S")
     meta["duration_s"] = round(time.perf_counter() - t_start, 1)
     meta["total_steps"] = global_step
