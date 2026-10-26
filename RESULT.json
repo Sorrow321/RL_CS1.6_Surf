@@ -1,7 +1,7 @@
 {
  "agent": "pbr5b3",
  "round": 5,
- "final": false,
+ "final": true,
  "best": {
   "score": 56.642,
   "eval_file": "/home/steam/ar_pb/runs/pbr5b3/pbr5b3_c3/traj_25289031680.jsonl",
@@ -23,5 +23,5 @@
   "commit": "ef5e852",
   "ckpt_note": "the newest snapshot at or before the 56.642 eval: ckpt_25160581120 (128M steps before; md5 a3ddb3c1...); c3's ckpt_latest (25,436,356,608, md5 ca47a9b0...) is 147M after, not twice as near. BOTH carry config conveyor=1 (record_ckpt replays it; a resume no longer restores it). The same ledge (56.6%) is reached under the standard physics: pbr5b3_c2 24.3825B 56.594 (ckpt_24307040256, md5 a25aa5f2..., 75M before it)."
  },
- "summary": "Round 5: no box until 02:45 UTC (fleet cap full; a CPU-starved 4060 Ti host blocklisted). c1 = the incumbent on spine k05: 56.142; c2 = c1's weights on its own branched-beam line: 56.594 (9/9 on a dead-end ledge at 56.6%). Gate 17 (56.6%) is an energy wall made at the 52% up-conveyor *162: the WR demo shows upward conveyors LAUNCH a landing player, our core makes them friction floors (-850 u). Experimental --conveyor 1 (gated core physics, tested, bit-identical off): c3 adapted in 75M steps, best 56.642 (the same ledge: its line lands on the block *161, not the conveyor). Next: decide --conveyor knowingly; under it, learn the record's line onto the conveyor strip north of *161 and the surf through 52.5-53%."
+ "summary": "Round 5: 52.937 -> 56.642 (0 finishes; 9/9 greedy episodes on a dead-end ledge at 56.6%). No box until 02:45 UTC (fleet cap full; a CPU-starved 4060 Ti host was blocklisted), then ~2.6 h of a 5080. c1 = the incumbent on spine k05: 56.142. c2 = c1's weights on its own branched-beam line: 56.594 (standard core). c3 = c2 + experimental --conveyor 1: 56.642, the same ledge. Gate 17 (56.6%) is an energy wall made at the 52% up-conveyor *162 / the block *161. Every beam / branched beam / Go-Explore search ends on the ledge under both physics. The WR demo launches off upward conveyors; the engine's own code (ReHLDS + ReGameDLL) does not, so --conveyor 1 is the record server's physics, not fidelity. Since ddfc341 a resume does not restore it. Next: resume ckpt_25160581120 on the standard core and find a line through 52-53% that keeps its energy (or choose --conveyor 1 deliberately and learn the record's landing north of *161)."
 }

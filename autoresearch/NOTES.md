@@ -2311,10 +2311,12 @@ Read in the reverse-engineered engine and game code (ReHLDS = HLDS 6153, `rehlds
   `!!` notice and runs the standard core unless `--conveyor 1` is passed again. record_ckpt still mirrors the
   checkpoint's own `conveyor`, so a recording of c3's weights replays the physics they were trained in.
 
-### pbr5b3 round 5 lesson (DRAFT, finalised at wrap-up)
-* **Score 52.937 -> 56.594** (pbr5b3_c2 24.3825B: 9/9 greedy episodes from the true start at 56.59%). No box until
-  02:45 UTC (the fleet's 1.2 $/h cap was full for 7 h; a 4060 Ti host at 21:27 ran at 61k steps/s - a foreign niced
-  load - and was blocklisted); ~4.3 h of a 5080 after that.
+### pbr5b3 round 5 lesson (wrap-up, 2026-10-26 07:08 UTC)
+* **Score 52.937 -> 56.642** (pbr5b3_c3 traj_25289031680, conveyor ON: 0/9 finishes, all 9 greedy episodes from the
+  true start on the 56.6% ledge, median 56.59%). The standard core reaches the same ledge: pbr5b3_c2
+  traj_24382537728 56.594. c1 56.142. No box until 02:45 UTC: the fleet's 1.2 $/h cap was full for 7 h, and a 4060 Ti
+  host rented at 21:27 ran at 61k steps/s (a foreign niced load) and was blocklisted. After that, ~2.6 h of a 5080
+  (02:45-05:24 UTC).
 * What worked: the lineage's loop as handed on. c1 (the incumbent + spine k05) flew k05's GE chain to 56.1% within
   ~450M steps (52.9 -> 56.142); c2 = the policy's own branched-beam line from c1's search 1 (56.59%) taken by hand
   (the gain rule wanted +500 u) -> 56.575-56.594 within ~230M steps.
@@ -2338,3 +2340,37 @@ Read in the reverse-engineered engine and game code (ReHLDS = HLDS 6153, `rehlds
   flag (the engine's code has no launch, above). A plain resume of it therefore trains on the STANDARD core, which is
   the physics c2 reached the same ledge in (56.575-56.594, ckpt_24307040256). Pass `--conveyor 1` only as a
   deliberate choice of the record server's physics. Both policies fly the same line to the 56.6% ledge.
+* **The conveyor question, as far as the engine's code settles it** (06:34 UTC entry above). ReHLDS + ReGameDLL leave
+  an upward conveyor a friction floor, which is what the standard core does. The record's launch comes from something
+  its server ran that these sources do not contain. So `--conveyor 1` is the record server's physics, not fidelity.
+  c3's 56.642 under it and c2's 56.594 without it are the same ledge, so this round's score does not depend on it.
+* **What did not work** (all of it measured on our own lines; the demo was analysis only):
+  * the depth-ranked and the energy-ranked (dh K 2) beams, and branched beams forked at 32-38 s;
+  * GE x1.0-1.12 in the trainer's searches, plus two manual GEs on the launched line;
+  * under both physics, every one of them ends on the 56.6% ledge.
+  The trainer's gain rule (+500 u) did not take c1's +0.4% ledge line; taking it by hand (c2) was worth +0.45.
+* **To continue (next round):** resume pbr5b3_c3's ckpt_25160581120.pt (the RESULT.json ckpt).
+  * Since commit ddfc341 a plain resume runs the STANDARD core; add `--conveyor 1` only as a decision.
+  * Use c3's flags (the session's launch_c3.sh, = RESULT.json's recipe): `--maxvel 3500 --ckpt-every 2e8`
+  `--demo-file autoresearch/spines/pbr5b3_c1k01br2.npy --demo-keys autoresearch/spines/pbr5b3_c1k01br2.keys.npy
+  --demo-window 5 --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5 --demo-rate 0.3 --demo-front-frac 0.8
+  --demo-success-d 100 --demo-success-bonus 50 --demo-milestones
+  44939,43426,42182,41015,40497,39943,37251,33777,32260,31429,30286,28818,28783,27001,25121,24910
+  --keys-hold-spawn-duck --yaw-entropy 0 --demo-front-temp 0.5 --demo-front-ticks 40 --demo-front-view 6
+  --respawn-greedy 0.2 --respawn-greedy-window 0.25 2.0 --respawn-greedy-stuck 200 --respawn-greedy-contact
+  --respawn-greedy-temp 0.5 --respawn-greedy-temp-ticks 100 --respawn-greedy-temp-view 6 --respawn-front-perturb 0.2
+  --respawn-front-perturb-band 0.005 --respawn-front-perturb-speed 1.0 1.3 --respawn-front-perturb-turn 90
+  --energy-pot 12 --energy-pot-front 0 --energy-pot-front-bonus 0 --no-respawn-novel --respawn-backward-mix 0
+  --int-real-only 0 --spawn-states autoresearch/spines/pbr1b1_entry_ge_states.npy --spawn-states-frac 0.2
+  --auto-spine --auto-spine-milestones --auto-spine-gain 500 --auto-spine-ge-minutes 8 --auto-spine-retry 3e8
+  --auto-spine-patience 3e8`.
+  * Launch through `box.py launch --resume --self-states "..."`; the spines are the policy's own lines (spines/README.md).
+  * The checkpoint carries the 7.63 ms tick and the keys-hold / potential / view shapes: pass no shape flag and no
+    --tick-ms-schedule.
+* **Where it stands:** gate 17 is open. The ledge at 56.6% is a dead end; the record passes under the lethal
+  teleport *192 at h ~2,772, and our line has ~2,330-2,440 there. Our line loses its energy at the 52% plate
+  (*161 / *162) and again at the 52.8% floor; to pass, the line through 52-53% has to change.
+  * Under the standard (engine) physics that needs a line that never touches *162 or *161, and no search found one.
+  * Under `--conveyor 1` it needs the record's landing on the conveyor strip north of *161.
+  * The core also drops 7 solids on this map (MAX_SOLIDS 128: the start room's *247 / *249 / *250 and the glass
+    walls *261-*264). Raising the cap changes the start room under a trained policy.
