@@ -3165,3 +3165,13 @@ its lesson): c12's ckpt_latest (36.668B, md5 d802b3e8...) and its search-2 spine
   hs 1,033 -> 1,241, h kept 2,731-2,785) and up its far side (z 1,811 at y 2,070, then the kick to vz 624 at y ~1,750).
   k02 / the policy fly ~90 u above the pipe's bottom (z 1,854-1,869) without touching it: no speed from the dip, and
   they meet the far ramp's upper part (kick vz ~340). The skill to find: drop into the pipe and surf it.
+* **Heading probe** (c12, greedy, k02 rows 6,366-6,384 = 70.6-70.8% with velocity and view turned 20 / 40 deg toward the
+  record's southward heading; 8 episodes each): the policy turns back to its platform route (13/16: crawl, die at
+  73.4-73.6%) or, at -40 deg, falls into the pipe at x -1,165 and dies on the catch (3/8 at 71.6%). It does not know the
+  pipe.
+* **Go-Explore cell size at the gate** (local, 2 threads x 256 envs, select-energy 3, k02 roots; counts of archive cells
+  in the pipe's bottom (x -1,330..-1,180, y 2,250..2,750, z < 1,830), "high at the wall" (x -1,000..-840, y 1,450..1,750,
+  z > 2,050) and past it): **32 u cells (roots 72.1-73.3%, 7 min): 4,965 / 744 (max z 2,121) / 0**; 64 u cells: GE-en
+  (roots 70.4-73.0%, 2.6 min) 1,118 / 23 (max z 2,087) / 0, GE3 (roots 70.0-70.8%, 12 min) 1,115 / 0 / 0. The finer
+  key gets ~30 u from the wall's top (2,150) where the 64 u key stalls lower: c13's loop runs its searches with
+  `--auto-spine-args "--ge-select-energy 3 --ge-cell 32"` (a box has ~30x this compute per stage).
