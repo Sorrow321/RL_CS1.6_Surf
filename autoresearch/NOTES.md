@@ -2688,3 +2688,39 @@ demo_success_energy suites' trainer-before-the-flag tests still pass):
   boosted root asks for speed the policy does not have: teach the stretch up to the root for energy first (not built).
 * **Next round:** resume c7's hand-on (runs/pbr5b2/pbr5b2_c7/ckpt_29123674112.pt, 62.369, md5 afb44185...; or ckpt_latest at 29.46B, md5 a17970d6..., mid-way through k02's curriculum) with c7's flags (the to-continue block + `--auto-spine-energy 150
   --auto-spine-ge-minutes 5`) on spine `autoresearch/spines/pbr5b2_c7k02` (+ keys): the loop's current spine, past the drop.
+
+## pbr6b3 (round 6, slot 3) - 2026-10-26 07:53 UTC start
+
+Box: 57784693, RTX 4080 + i9-14900F (32 thr, quota 30.7 CPUs), 0.299 $/h, UK, deadline ~10:04 UTC (2 h; the
+fleet's credit was $11.74 against the $10 reserve at the start, so extensions are unlikely). The first offer (a
+0.283 5080 in NZ) sat in `loading` for 330 s and was blocklisted by box.py.
+
+### a1: c7's loop on k02, continued - stuck where c7 was (08:10-08:20 UTC)
+* **pbr6b3_a1** = resume of c7's ckpt_latest (29.499B, md5 a17970d6...) with c7's flags on spine
+  `pbr5b2_c7k02` + keys + `--demo-tau0 5423` (c7's last band) + milestones (the 18 + 21,624 + 23,216). Evals
+  29.4996B **62.353** / 29.575B **62.371** (median 62.4%; incumbent 62.369 - same gate, noise). ~150-185k steps/s
+  in the first minutes (the box's fps line rises as the average settles).
+* The curriculum oscillated between band [5,423,...] (50-53% success) and [5,413,...] (5-6%), exactly c7's last
+  20 min. k02 rows 5,413-5,432 are ballistic (held keys [2,0,0], constant (60, -542) u/s, falling at the east
+  lane's south end); at 5,433 the chain touches a floor at z 2,386 (feet 2,350, 7 u above the catch sheet *211,
+  -172 u of h), slides south and turns west at 5,454 (y ~2,195), then dives onto the west ramp at 62.41%.
+  Spawned 20 ticks before that landing the policy fails 94% of the time, 10 ticks before it succeeds half the time.
+* **Where the greedy loses gate 19 (ANALYSIS of our own lines; c7's 62.369 eval ep0 vs k02):** the greedy is at
+  59.5% with h ~2,786 (as much as the beam line before k02's x1.12 root), then at 59.9% it comes down at vz -415
+  heading north-east and LANDS on the corridor floor at (-2,548, 2,892, z 2,395): h 2,804 -> 2,464 (-340 u) in one
+  contact, then bunny-hops east and south down the WEST strip at 250-370 u/s and drops off its end at 61.9% at
+  ~400 u/s, ~100 u north of the line k02 takes and ~130 u lower at matched x. k02's chain flies north at x ~-2,740
+  (842 u/s with the x1.12 boost), deflects off the north wall UP and east (vz +327, -50 u), flies east airborne at
+  z 2,465-2,487 (685 u/s) and south down the EAST lane (x ~-1,860..-1,935, z 2,530 -> 2,390, over the catch sheet)
+  keeping h 2,721 to 61.72% - ~+250 u over the greedy there. So the 60% corner is a TECHNIQUE (take the wall, stay
+  airborne), not an upstream energy deficit; the x1.12 boost adds only ~+90 u of h.
+
+### b1: k02 cut before the landing, taught with the energy rule (08:21 UTC)
+* Spine `pbr6b3_k02e` = k02 rows 0-5,430 (61.72%, d 21,875, h 2,721; provenance in the spines README). The loop's
+  own energy-stage pick would be the same state: the deepest state of a search chain keeping >= 150 u over the
+  policy's line (the energy floor is the loop's G/2 = 75).
+* **pbr6b3_b1** = resume of a1's ckpt_latest (29.597B, md5 49d3870e...) with a1's flags minus --auto-spine*, plus
+  `--demo-success-energy 75` (success: d <= 21,975 with h >= 2,646; the greedy crosses that d on the west strip
+  with ~2,440-2,486, so its crossings do not count) and milestone 20,589 (k02's line past the drop, paid to any
+  training episode that gets there). The questions: does the band walk back through the east lane and the corner,
+  and does the greedy's h at 60-61.7% rise (it is ~2,455-2,504 at 60%)?
