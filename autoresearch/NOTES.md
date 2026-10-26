@@ -2886,3 +2886,18 @@ fleet's credit was $11.74 against the $10 reserve at the start, so extensions ar
   The greedy is at gate 20 (64.8%: it rises at x ~-3,380 and falls into *210 where the chain climbs onto the ledge
   at x -3,561). Watch for b1's collapse mode (the band far upstream, the early map forgotten): hand on a snapshot
   between two healthy evals.
+
+### Gate 20 is an energy gate the training was already learning (10:25 UTC, ANALYSIS of our evals)
+* `tools/energy_profile.py` (new; tests/python/test_energy_profile.py): h at first arrival per progress level, evals
+  vs a spine - the energy playbook's step 1 as a tool. On b2k01 (the policy's beam past the drop) and the last evals:
+  | level | b2k01 beam (h / hs) | b3 30.421B (64.900) | b4 30.856B (the last) | record (ANALYSIS ONLY) |
+  |---|---|---|---|---|
+  | 63.5% | 2,710 / 964 | 2,673-2,706 | 2,670-2,776 | 2,729 |
+  | 63.7% | 2,434 / 731 (an impact, -276 u) | 2,424-2,567 | **2,504-2,730** | 2,735 |
+  | 64.5% | 2,413 / 419 | 2,417-2,559 | **2,498-2,622** | 2,684 |
+  | 64.8% | (the beam's end 64.78%) | 4/9 at 2,438-2,575 | 0/9 | 2,696 |
+* So in b4's ~30 min the greedy learned to keep part of the 63.7% impact's energy (max 2,730 vs the record's 2,735)
+  and arrives at the climb with up to ~+200 u over b3, still ~60-190 u under the record's; it now dies at 64.7% on
+  the rise (b3's 4/9 at 64.8% came from the rise at x ~-3,380, see above). Gate 20 = the 63.7% impact + the climb
+  onto the 2,389-2,435 level: the loop's energy stage (or --auto-spine-energy-cut on a boosted chain) is the right
+  tool there, and b2k02's x1.0 crawl along the ledge (its depth answer) is not the line to teach.
