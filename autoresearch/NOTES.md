@@ -2894,3 +2894,9 @@ spine left whole, the trainer passing `--cut-ahead`, both refusals, TRAIN_ONLY).
   --auto-spine-energy-first 1.04 --auto-spine-cut-ahead 300` and the rest of the round-5 block (NOTES "To continue",
   pbr5b2) - and watch the greedy's median every eval: a collapse shows within ~75M steps. Avoid c5s1 until its
   collapse is understood.
+* What c7's collapsed greedy does (30.442B eval, ep0): it walks from the spawn to the start room's west wall (x
+  650-800, y ~-2,900) and wanders there for the whole 30 s patience window at z 3,652 - it NEVER JUMPS; the healthy c5
+  greedy (30.079B) duck-jumps onto the conveyor plate at t ~150 (z 3,695) and is in the tunnel by t 300. The collapse
+  erased the start room's precision duck-jump (the lineage's gate 1), not a late-route skill. c5s1's approach rows
+  6,000-6,250 hop in place at the strip's edge (jump / duck toggling every few decisions) - a jump-head pattern that
+  may have overwritten the start-room one; not verified.
