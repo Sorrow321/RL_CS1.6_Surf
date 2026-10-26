@@ -3183,3 +3183,8 @@ cards) have been 0.35-0.62 $/h all evening (a 5080 at 0.35, 3090s at 0.377-0.422
 boxes was the cheapest offer when it was rented (0.41 + 0.62), so the cap admits whichever two branches rented first
 and the other two wait for a release. Nothing on the branch side can change that (the cap and the offer query are
 the operator's); this branch keeps a waiter on `box.py rent` and works offline meanwhile.
+* **The wall's clearance by y (hull traces east from x -1,000 to -650, measurement only):** a standing hull passes from
+  z **2,140-2,155** at y 1,500-1,650 (2,265 at y 1,700; no passage at y <= 1,450 or >= 1,750), a ducked hull from
+  **2,120-2,140**. The 32 u GE archives' highest states at the wall approach reach z 2,121-2,135 (apex <= 2,135; a
+  ducked ledge ride east at (-1,100, 1,731, 2,135), where the wall is higher) and a 15-min boosted run (x1.0/1.04/1.08,
+  36 roots at 72.1-73.3%, 182k cells) the same (apex 2,122): ~10-30 u short, 0 cells past. The record crosses at ~2,166.
