@@ -2794,3 +2794,8 @@ spine left whole, the trainer passing `--cut-ahead`, both refusals, TRAIN_ONLY).
   fill_vision read it; the decision sees the leftover ticks' scalar observation (<= 2 rows apart). demo_idx follows
   the move (band statistics count where the episode's own decisions began). Recomputed on an auto-spine swap.
   Single-slot runs only (refused otherwise). TRAIN_ONLY in record_ckpt. Tests: tests/python/test_demo_phase.py.
+* c4's last eval (30.072B): 62.351 but median 24.2% - 3/9 at 62.3%, 6/9 back at gates 10-11 (22.5-27.3%), where the
+  eval before had 8/9 at 62.3% (one at 10%): erosion or a transient, after ~25 min with 80% of the demo draws on a
+  0.1-0.6% band.
+* **c5** (09:40 UTC) = c4's snapshot at 30,078,926,848 (md5 c94d8bbd...) + `--demo-phase` (de85d71; the trainer: "4,821
+  of 6,548 spine rows are off it") + `--demo-rate 0.2`, tau0 6,337, the rest as c4.
