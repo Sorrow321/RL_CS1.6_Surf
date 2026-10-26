@@ -17868,6 +17868,7 @@ def main() -> None:
                     f_ctv=(b_ftv.reshape(T * N, NZ) if FRONT else None),
                     f_bkt=(torch.zeros(T * N, dtype=torch.long, device=device)
                            if CC_BKT else None),
+                    **({"f_lpg": torch.zeros(T * N, 3, device=device)} if HEADCLIP else {}),
                     )[0].backward()
             opt.zero_grad(set_to_none=True)
             print(f"torch.compile: minibatch step compiled in "
