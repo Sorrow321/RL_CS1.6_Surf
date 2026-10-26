@@ -2797,3 +2797,31 @@ Germany (machine 56783), rented 08:05 UTC for 2 h.
   Pulled: c8 / c9 / c10 evals and logs, c9's ckpt_30006575104 (the hand-on for the 65.391 eval, md5 51111d5a...) and its
   search-2 save ckpt_latest (30.2598B, md5 55384f10...), c10's ckpt_latest (31.1815B, md5 6955707b...: the newest weights,
   the drop reliable), the auto spines k01 / k02 (also in autoresearch/spines/).
+
+### pbr6b4 round 6 lesson (DRAFT, 09:50 UTC; finalised at wrap-up)
+* **Score 62.369 -> 65.391** (c9 30.109B; best episode 65.39%; from 30.26B on 7-9/9 greedy episodes past the 62.3% drop,
+  medians 64.7-64.8% over 12 evals). Gate 19 (the 62.3% drop, which held the lineage from 28.07B to 29.96B) passed by the
+  greedy line ~150M steps after the change that opened it; gate 20 (a ledge catch at 64.8%) holds. ~1.6 h of box time
+  in all (the program's credit hit the reserve at 09:47).
+* **What did it, in order:**
+  1. **Measure where the energy goes, tick by tick, on the greedy's own eval** (not the beam's, not the spine's): the whole
+     gate-19 deficit was ONE corner at 59.9% - a floor landing at vz -458 (-140 u) and a ground jump at 701 u/s that CS's
+     bunny-hop cap cut to 244 u/s (-207 u). The loop's k02 chain rides the corridor's sloped side there instead.
+  2. **A depth curriculum stalled far from where the greedy leaves the line -> cut the spine before the stalled band
+     and teach that stretch with the energy rule.** k02's curriculum sat at a landing band 2% past the corner; k02 cut
+     before it (k02e) has a success line the greedy already crosses, so the depth rule would be trivial - with
+     `--demo-success-energy 150` it asks for the corner's energy. 150M steps: 6/9 greedy episodes crossed with it.
+  3. **`--demo-success-energy` with `--auto-spine-energy`** (new, 8a1cccc): the starting spine can be an energy spine and the
+     loop's energetic quorum fires its own search. That search's PLAIN BEAM passed the drop unboosted in 46 s (k01, 64.77%):
+     gate 17's sequence (energy first, then the policy's own search), the third time in this lineage.
+  4. The depth curriculum on the policy's own line (k01) made the drop reliable (2/9 -> 7/9 in ~225M steps) and fired
+     search 2 by quorum, which found the next line (k02, 70.3%, x1.04 GE root at 65.47%).
+* **What did not:** a local unboosted GE from the policy's states before the corner (8 min x 2 threads: no side ride,
+  +20-43 u); c10's cut of search 2's spine at 66.4% (depth rule): its curriculum sat ~30 min on the explorer chain's slow
+  floor walk (6.7-31%) and never reached gate 20's climb. One silent trainer death right after a resume's first eval (no
+  traceback; the identical relaunch ran).
+* **Generic rules learned:** (1) the gate is where the GREEDY loses energy, measured on its own eval; (2) when a depth
+  curriculum stalls at a band past where the greedy diverges, move the success line back before that band - with the
+  energy rule if the cut line is no deeper than the greedy, the depth rule if it is deeper (round 2's "one gate at a time"
+  plus round 5's energy rule); (3) the x1.12 boost of k02's root never had to be learned around: once the corner's
+  energy was there, the policy's own population found its own way past the drop.
