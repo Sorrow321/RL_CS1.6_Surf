@@ -2709,3 +2709,21 @@ energy stage BEFORE the first Go-Explore stage boosted above xB; the boosted dep
 no line keeps >= G u more energy. Generic: no map constant, one ordering of the loop's own stages.
 Tests: tests/python/test_auto_spine_energy.py (the order with / without B, the fallback, a trainer
 smoke run that passes `--energy-before`, the refusal without --auto-spine-energy, TRAIN_ONLY).
+
+### c1: the loop with the energy stage first (08:19 UTC, box 57785934)
+* Box 3 (after box 2's offer, machine 145348, never left `loading` in 330 s and was blocklisted by
+  box.py): RTX 5060 Ti 16 GB on a shared 128-thread EPYC 7B13 (host load ~53, container quota 30.7
+  CPUs), 0.163 $/h, Malaysia, deadline 11:16 UTC.
+* **pbr6b2_c1** = resume of pbr5b2_c7's ckpt_latest (step 29,499,064,320, md5 a17970d6...: c7's
+  340M steps on the k02 curriculum after the 62.369 hand-on) with c7's flag set on spine s6 (+keys),
+  milestones the 18 + 23,216 (k01's line) + 20,589 (k02's line, past the 62.3% drop),
+  --auto-spine-patience 6e8 (1.2e9 in c7: a 3 h box), --auto-spine-ge-minutes 5, --auto-spine-energy
+  150 and the new --auto-spine-energy-first 1.04. Record gate passed (2 + 4 recordings).
+* First eval (29.4996B, the inherited weights): **62.354**, median 62.3%, 7/9 past s6's line ->
+  search 1 at once ("--energy-gain 150 --energy-before 1.04" on its command line).
+* The incumbent eval's energy, per episode (h = z + |v|^2/1600 / horizontal speed at first arrival):
+  57-59.5% 2,670-2,790 / 600-730 u/s, then **60% 2,455-2,504 / 256-364 u/s** in 9/9. The loss is one
+  place: a floor landing at (-2,574, 2,892, 2,364) at vz -470 (-141 u) and, on the next tick, a jump
+  from the ground that trips CS's bunny-hop cap (pm_prevent_mega_bunny_jumping: |v| > 300 -> x
+  0.8 x 300/|v|; v (630, 252, 0) -> (234, 60, 263), -188 u). The energy stage's roots (1 s before
+  the line's largest losses) should sit right before it.

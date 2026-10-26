@@ -1,22 +1,18 @@
 {
- "agent": "pbr5b2",
- "round": 5,
- "final": true,
+ "agent": "pbr6b2",
+ "round": 6,
+ "final": false,
  "best": {
-  "score": 62.369,
-  "eval_file": "/home/steam/ar_pb/runs/pbr5b2/pbr5b2_c7/traj_29123674112.jsonl",
-  "run": "pbr5b2_c7",
-  "step": 29123674112,
-  "ckpt": "/home/steam/ar_pb/runs/pbr5b2/pbr5b2_c7/ckpt_29123674112.pt",
+  "score": 62.354,
+  "eval_file": "/home/steam/ar_pb/runs/pbr6b2/pbr6b2_c1/traj_29499588608.jsonl",
+  "run": "pbr6b2_c1",
+  "step": 29499588608,
+  "ckpt": "/home/steam/ar_pb/runs/pbr5b2/pbr5b2_c7/ckpt_latest.pt",
   "recipe": [
-   "c1: resume of the round-4 incumbent pbr4b3_t11 ckpt_23551016960 with t11's flag set on spine k05 (56.341)",
-   "c2-c4: + --respawn-greedy-energy 3; c4 = spine pbr5b2_e1c (stitched: beam + GE chain A x1.04 + rollout + GE --cell-heading 1 chain x1.08) (56.579)",
-   "c5: spine pbr5b2_e1d (to GE chain A's end) + --demo-success-energy 200: the greedy learns the cleaner descent (56.711)",
-   "c6: spine pbr5b2_s6 = the policy's own plain beam line on c5's weights to 62.34% + keys, milestones ...,25121,24479,23400,22500, --auto-spine (GE --cell-heading 1 default); its patience search 1 swapped in k01 (the plain beam on c6's weights, 62.32%) -> 62.367 (k01, then k02 from its search 2; 7/9 at k02's end)",
-   "c7: resume of c6's 62.367 hand-on with c6's flags + --auto-spine-energy 150 (new: the loop's energy stage), --auto-spine-ge-minutes 5; search 1's depth ladder found nothing past the 62.3% drop, its energy stage a line keeping +217 u at 59.55% (h 2,701); taught with the energy rule, the greedy's h at 58.2% went 2,46x-2,51x -> 2,683-2,751 (9/9) in 75M steps -> 62.369 (29.124B, median 62.4%)"
+   "c1: resume of pbr5b2_c7 ckpt_latest (29.499B) with c7's flags on spine pbr5b2_s6 + --auto-spine-patience 6e8 + --auto-spine-energy-first 1.04 (new)"
   ],
-  "resume_from": "pbr5b2_c6 ckpt_29047652352 (62.367) <- c5 <- c4 <- c3 <- c2 <- c1 <- incumbent r4",
-  "commit": "aec7ef7"
+  "resume_from": "pbr5b2_c7 ckpt_latest 29,499,064,320 (md5 a17970d6...)",
+  "commit": "190ea91"
  },
- "summary": "52.937 -> 62.369 (c7 29.124B, median 62.36%; c6's 62.367 at 29.048B before it). Gate 17 (the 56.6% shaft climb): a Go-Explore chain flew the descent with ~600 u more energy, --demo-success-energy (new) taught it in ~20 min, then the policy's own beam made the climb. Gate 18 (the 61.5% gap hop) fell to the loop. Gate 19 (the 62.3% drop) needs ~+300 u of energy at the strip's end (a probe: x1.8 speed at the edge still falls short), lost corner by corner in the 57.5-61% corridor. New at the end: the trainer's loop handles ENERGY gates itself (--auto-spine-energy 150): c7's search 1 found +217 u at 59.55% from the policy's own states, the greedy learned it in 75M steps (h at 58.2% ~2,480 -> 2,683-2,751, 9/9), and search 2 on those weights found the first line PAST the drop (k02, 64.15%, a x1.12 GE root at the next corner; spine committed). The greedy had not followed by wrap-up (the curriculum still 3.5 s short of the boosted root). Also new: GE --cell-heading 1, --roots-keep-all, tail-root fix, tools/stitch_spine.py, tools/energy_pick.py, --respawn-greedy-energy, --select-energy (unproven). Continue from c7 ckpt_latest (29.46B, mid-k02) or the hand-on, with c7's flags on spine autoresearch/spines/pbr5b2_c7k02."
+ "summary": "c1 (08:19 UTC): resume of pbr5b2_c7's latest weights (29.499B) on spine s6 with the loop's energy stage ordered before the boosted depth stages (--auto-spine-energy-first 1.04, new). First eval 62.354 (the inherited weights, median 62.3%); search 1 running. Box 57785934 (RTX 5060 Ti + shared EPYC, 0.163 $/h)."
 }

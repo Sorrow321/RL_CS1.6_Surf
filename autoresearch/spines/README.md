@@ -223,3 +223,14 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   the next corner), then one exact explore_phase1 --exact-chains chain (reward-free search; 807 ticks from that row's state
   with its velocity x1.12, the ladder's third stage) to d 20,489 = 64.15%. Keys = the beam's and the chain's own held keys.
   No demo, no record (pbr5b2, round 5).
+* `pbr6b2_c1k01.npy` + `.keys.npy` (7,772 rows; md5 0087d298912fd0e8b3cc50dac02abed6 / 2d988f0bba93b062af2f6f46df67dcab):
+  run pbr6b2_c1's auto-spine search 1 on pbr5b2_c7's 29.499B weights: the POLICY'S OWN branched beam line from the
+  true spawn (tools/auto_spine.py: beam_tas, 4,096 stochastic copies, half forked at tick 5,827 with held view offsets
+  U(-45, 45) deg) to its row 6,399 (62.42%: it lands on the west-running ramp after the 62.3% drop at ~240 u/s), then
+  one exact explore_phase1 --exact-chains chain (reward-free search; 1,408 ticks from that row's state, UNBOOSTED x1.0)
+  crawling the ramp to d 20,674 = 63.83%. Keys = the beam's and the chain's own held keys. No demo, no record (pbr6b2,
+  round 6).
+* `pbr6b2_c1k01c.npy` + `.keys.npy` (6,548 rows; md5 6d9ee7c0e08689f913a7f64f5e74ee3c / eca9a95177db71aafa5261b12113bcc4):
+  pbr6b2_c1k01 cut at its row 6,547 = the first row 300 u past the greedy frontier it was searched from (d 21,244,
+  62.83%, on the ramp just past the drop): the next gate only - the full line's curriculum stalled in the explorer's
+  crawl 1.4% past the greedy (bands 7,416-7,455 at 0.0%). Same provenance as pbr6b2_c1k01.
