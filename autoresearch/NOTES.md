@@ -3142,3 +3142,11 @@ ckpt_35907960832 (md5 160da9eb...), eval 73.590 at 35.918B. Credit at the start:
   pulled). The curriculum: through the hop band to [6,416 / 6,421] (bands 17-30%).
 * Look-ahead GE 3 (21:51 UTC): roots = k02 rows 6,400-6,600 (after the x1.04 root, through the hop and the 72.25%
   impact) x1.0 / 1.04 with --select-energy 3, 15 min: an impact-free line that keeps the energy and goes past 74.42%?
+* The x1.24 look-ahead chain to 78.43%, replayed exactly (ge_replay 18/18 links; analysis): from k02 row 6,746 x1.24
+  ((-1,300, 1,679, 1,992), 73.53%, h 2,449) it rises NORTH-EAST to (-979, 1,682, 2,153) at 74.16% (vz +143), loops
+  south-east over catch volume *158 ((-698, 1,528, 2,129) 74.7%, (-590, 1,229, 1,921) 75.15%), dives east to
+  (-254, 1,209, 1,529) at 75.96% (vz -1,009), lands hard at ~76.3% (h 2,509 -> 1,938), runs east at ~820 u/s to 78.0%
+  and crashes at ~78.2% (h 1,944 -> 1,316), crawling to 78.43%. The record's own route there (yardstick: 74.34% at
+  (-928, 1,553, 2,158), 75.20% at (-573, 1,204, 1,866), 76.47% at (25, 1,231, 1,415)) is the same loop, flown with
+  h ~2,720-2,740. So the gate is the climb north-east at 74.2% (to z ~2,150): it needs h >= ~2,400-2,450 at ~73.5%
+  (k02's chain has 2,283, the platform line ~1,930).
