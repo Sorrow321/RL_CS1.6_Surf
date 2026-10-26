@@ -2985,6 +2985,12 @@ Incumbent: pbr5b2_c7 ckpt_29123674112 (62.369, md5 afb44185...).
   63.65% with h >= 2,596), tau0 5,614, `--respawn-frac 0.6`; NO --auto-spine (the trainer refuses
   --demo-success-energy with it: a search swaps in depth spines). What to read: the greedy's h at 63.65% / 64.5%
   and whether any eval episode reaches the ledge (z ~2,38x at x ~-3,56x).
+* a8 at 17:23 (31.66B -> 31.89B, 230M steps): evals 23.713 (eval 0 = a7's last weights: a gate-9 dip), 64.653,
+  64.639, 64.549 (3 at 24-29% in the last). The curriculum walked k02 back 5,614 -> 4,919 (~58%) in 20 min at 31-33%.
+  **The landing is being learned**: h at 63.65% (a4 31.082B -> a8 31.814B / 31.890B): 2,36x-2,66x (4 of 8 under
+  2,46x) -> 2,61x-2,73x in 11 of 13 crossing episodes; at 64.5%: 2,37x-2,55x -> 2,47x-2,62x (one at 2,615 = k03's).
+  The greedy still stops at 64.5-64.6%: it now has most of the energy but not the route up onto the ledge, which
+  nothing in a8 teaches (k02 ends at 63.65%).
 
 ### pbr6b1 round 6 lesson (DRAFT 10:06 UTC; finalised at wrap-up)
 * **Score 62.369 -> 62.373** (a1 29.200B: the incumbent's weights 75M steps on, same gate; all 9 fall at the 62.3% drop).
