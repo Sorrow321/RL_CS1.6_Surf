@@ -2835,3 +2835,10 @@ spine left whole, the trainer passing `--cut-ahead`, both refusals, TRAIN_ONLY).
   held keys. (c5 never hit it: tau0 6,337 put the band on [6,337, 6,341], which holds the grid row 6,340.)
 * c5s1's drop is the same bounce: a vz jump of +300 or more only at row 6,353 (the jump decided at state row 6,352, on
   its grid: all 907 button and 782 key changes at residue 1).
+* c6's evals: 62.313 (30.367B, the resume) then **20.470** (30.442B: all 9 greedy episodes dead at the gate-8 catch,
+  20.4%) - 76M steps with ~70% of all spawns on one ramp state PAST the spine's success line (no bonus reachable,
+  the frozen curriculum) wrecked the route from 20% on. (c5 put the same share on the bounce band, whose spawns could
+  earn the success bonus, and its route held at 62.3%.) Stopped; c6's weights are not used.
+* **c7** (10:30 UTC) = c5's snapshot at 30,366,236,672 (md5 06af7d8c..., c6's own start) + spine pbr6b2_c5s1 + the
+  fixed --demo-phase (b8d51d9) + `--demo-tau0 6350` (c5s1's bounce band: the contact decision is at state row 6,352)
+  + the c6 flags.
