@@ -2154,6 +2154,23 @@ def spine_energy_rule(res, end_state, gain):
             - 0.5 * float(gain))
 
 
+def stall_cut_plan(spine, cut, sample, success_d, greedy_d, gain):
+    """--demo-stall-cut (pbr6b4, 2026-10-26): the cut of a stalled curriculum's spine at row ``cut``
+    (the rows after it go) -> {"line": the cut's success line d(row cut) + ``success_d``, "h_min":
+    the cut end's energy height - ``gain`` when the greedy frontier ``greedy_d`` (its median deepest
+    d) is already at or past that line - such a cut is no deeper than the greedy and its depth rule
+    would be trivial - else None (the depth rule)}, or None when there is no greedy frontier yet or
+    the cut leaves no spine. ``sample`` maps (N, 3) positions to field distances."""
+    if greedy_d is None or cut < 1 or cut >= len(spine) - 1:
+        return None
+    e = spine[int(cut)]
+    o = np.asarray(e["origin"], np.float64)
+    v = np.asarray(e["velocity"], np.float64)
+    line = float(np.asarray(sample(o[None]), np.float64)[0]) + float(success_d)
+    h_end = float(o[2]) + float((v * v).sum()) / 1600.0
+    return {"line": line, "h_min": (h_end - float(gain)) if line >= float(greedy_d) else None}
+
+
 def milestone_pay(rec, ended, ms, paid):
     """--demo-milestones: (bonus count per row, the updated (N, M) paid table) for records
     ``rec`` (N,) against milestone distances ``ms`` (M,). A row is paid each milestone its
@@ -4898,6 +4915,16 @@ def main() -> None:
                          "height - G/2, the --demo-success-energy rule) and its quorum counts "
                          "only greedy crossings with that energy; a depth spine goes back to the "
                          "depth rule. Config only when set; not restored")
+    ap.add_argument("--demo-stall-cut", type=float, default=0.0,   # 0 = off
+                    help="--auto-spine with --auto-spine-energy G: STEPS > 0 - when the backward "
+                         "curriculum's tau reaches no new minimum for STEPS env steps, the spine "
+                         "is CUT one --demo-window before that minimum (the stalled band and what "
+                         "lies past it are dropped) and the curriculum restarts at the cut's end. "
+                         "A cut whose success line the greedy already crosses (median deepest d) "
+                         "is taught with the energy rule (success only with the cut end's energy "
+                         "height - G), a deeper one with the depth rule; the old success line stays "
+                         "a milestone. 0 = off (pbr6b4: the two cuts that opened princessburglar's "
+                         "gate 19 and moved gate 20's line, by hand). Config only when set")
     ap.add_argument("--demo-cooldown", type=int, default=None,   # None = 20
                     help="--demo-file: iterations between two moves of the curriculum's tau "
                          "(default 20, the reference implementation's constant): every move "
@@ -11720,6 +11747,17 @@ def main() -> None:
         raise SystemExit("--auto-spine needs --demo-file (the first spine) and --demo-success-d")
     if args.auto_spine_energy is not None and not args.auto_spine:
         raise SystemExit("--auto-spine-energy is a stage of --auto-spine's search: give it")
+    if float(args.demo_stall_cut or 0.0) < 0.0:
+        raise SystemExit("--demo-stall-cut STEPS must be >= 0 (0 = off)")
+    if float(args.demo_stall_cut or 0.0) > 0.0:
+        if not (args.auto_spine and args.auto_spine_energy is not None):
+            raise SystemExit("--demo-stall-cut cuts --auto-spine's curriculum and picks the energy "
+                             "or the depth rule for the cut: give --auto-spine and "
+                             "--auto-spine-energy")
+        print(f"--demo-stall-cut {float(args.demo_stall_cut):,.0f}: a curriculum whose tau reaches "
+              f"no new minimum for that many steps is cut {int(args.demo_window)} states before "
+              f"it (energy rule - {float(args.auto_spine_energy):g} u if the greedy already "
+              f"crosses the cut's line, else the depth rule)")
     if args.demo_file:
         if float(args.demo_front_frac) > 0.0:
             print(f"--demo-front-frac {args.demo_front_frac:g}: that share of "
@@ -14738,6 +14776,8 @@ def main() -> None:
             meta["config"]["auto_spine_milestones"] = 1
         if args.auto_spine_energy is not None:
             meta["config"]["auto_spine_energy"] = float(args.auto_spine_energy)
+        if float(args.demo_stall_cut or 0.0) > 0.0:
+            meta["config"]["demo_stall_cut"] = float(args.demo_stall_cut)
     if args.demo_milestones:
         meta["config"]["demo_milestones"] = [float(x) for x in
                                              str(args.demo_milestones).split(",") if x.strip()]
@@ -15821,6 +15861,7 @@ def main() -> None:
                   f"{DEMO_H_MIN:,.0f} ({m} cross it)", flush=True)
             m = int(n_en)
         med = float(np.median(bests))
+        AUTO["med"] = med                 # --demo-stall-cut reads the greedy frontier
         if AUTO["last"] is None:
             AUTO["last"] = int(global_step)
         quorum = m >= int(args.auto_spine_quorum)
@@ -15931,6 +15972,63 @@ def main() -> None:
               f"{res.get('source')} ({demo.n} states, end d {_de:,.0f}, greedy frontier "
               f"{med:,.0f}) in {dt:.0f}s -> {res['spine']}; success line d <= "
               f"{DEMO_END_D:,.0f}; the curriculum restarts at its end", flush=True)
+        STALL["tau"] = None               # --demo-stall-cut: a new spine, a new watch
+
+    # --demo-stall-cut STEPS (pbr6b4): the curriculum's lowest tau is watched; when it has not
+    # fallen for STEPS steps the spine is cut one window before it and the cut is taught with the
+    # rule its line asks for (the two cuts of princessburglar's gates 19 and 20, by the trainer)
+    STALL_CUT = AUTO_SPINE and float(args.demo_stall_cut or 0.0) > 0.0
+    STALL = {"tau": None, "step": None, "n": 0}
+
+    def _demo_stall_check():
+        nonlocal DEMO_END_D, DEMO_H_MIN
+        if STALL["tau"] is None or demo.tau < STALL["tau"]:
+            STALL["tau"], STALL["step"] = int(demo.tau), int(global_step)
+            return
+        if int(global_step) - STALL["step"] < float(args.demo_stall_cut):
+            return
+        STALL["step"] = int(global_step)          # one attempt per patience
+        med = AUTO.get("med")
+        cut = int(STALL["tau"]) - int(args.demo_window)
+        _sf = slots[0].reward_field if slots[0].reward_field is not None else slots[0].goal_field
+        plan = stall_cut_plan(demo.S, cut, _sf.sample, float(args.demo_success_d), med,
+                              float(args.auto_spine_energy))
+        if plan is None:
+            print(f"[{global_step:>13,d}] --demo-stall-cut: tau stalled at {STALL['tau']} of "
+                  f"{demo.n}; " + ("no greedy eval yet" if med is None
+                                    else f"a cut at {cut} leaves no spine") + ", not cut",
+                  flush=True)
+            return
+        old = float(DEMO_END_D)
+        demo.reset_spine(np.array(demo.S[:cut + 1], copy=True))
+        if DEMO_KEYS[0] is not None:
+            DEMO_KEYS[0] = np.asarray(DEMO_KEYS[0][:cut + 1], np.int32)
+        if not np.any(np.isclose(MILES[0], old)):
+            # the line the cut dropped stays the goal past it: a milestone
+            MILES[0] = np.append(MILES[0], old)
+        DEMO_END_D, DEMO_H_MIN = plan["line"], plan["h_min"]
+        DEMO_PAID[0] = None
+        DEMO_OK[0] = DEMO_OK[1] = None
+        demo_idx[:] = -1
+        AUTO["last"] = int(global_step)
+        AUTO["retry_at"] = 0
+        STALL["tau"] = None
+        STALL["n"] += 1
+        adir = out / "auto"
+        adir.mkdir(parents=True, exist_ok=True)
+        (adir / f"cut{STALL['n']:02d}.json").write_text(json.dumps(
+            {"step": int(global_step), "cut_row": cut, "n": int(demo.n), "success_d": plan["line"],
+             "energy_h_min": plan["h_min"], "greedy_d": med, "old_success_d": old,
+             "milestones": [float(v) for v in MILES[0]]}, indent=1), encoding="utf-8")
+        print(f"[{global_step:>13,d}] --demo-stall-cut {STALL['n']}: tau had not fallen below "
+              f"{cut + int(args.demo_window)} for {float(args.demo_stall_cut):,.0f} steps; the "
+              f"spine is cut at row {cut} (success line d <= {plan['line']:,.0f}, greedy "
+              f"frontier {med:,.0f}): "
+              + (f"the greedy already crosses it - the ENERGY rule, success only with energy "
+                 f"height >= {plan['h_min']:,.0f}" if plan["h_min"] is not None
+                 else "deeper than the greedy - the depth rule")
+              + f"; the old line {old:,.0f} is a milestone; the curriculum restarts at the cut",
+              flush=True)
     b_logp = torch.zeros((T, N), device=device)
     b_val = torch.zeros((T, N), device=device)
     b_rew = torch.zeros((T, N), device=device)
@@ -18301,6 +18399,9 @@ def main() -> None:
                 _pool = _pool.copy()
                 _pool[_pos] = SPAWN_STATES[SS_RNG.integers(0, len(SPAWN_STATES), _m)]
             _slot.core.set_spawn_pool(_pool)
+        if STALL_CUT and demo is not None:
+            # --demo-stall-cut: before this iteration's draws (a cut spine is drawn at once)
+            _demo_stall_check()
         for _s in slots:
             if demo is not None:
                 # Salimans-Chen: the reservoir share of the pool is replaced
