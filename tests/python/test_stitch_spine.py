@@ -99,3 +99,54 @@ def test_refuses_a_chain_off_the_line(tmp_path):
         stitch_spine.main(["--out", str(tmp_path / "s.npy"), "--field", str(fp),
                            f"beam:{tmp_path / 'beam.npz'}",
                            f"ge:{tmp_path / 'arch.npz'}:{tmp_path / 'chain.npy'}"])
+
+
+def test_stitch_spine_ge_ge(tmp_path):
+    """pbr7b2: a spine + its keys as the first segment, then two chained GE segments (the second
+    rooted at the first chain's end); keys row for row, the spine's own kept."""
+    import stitch_spine
+    fp = _field(tmp_path)
+    sp0 = _line(100.0, 1000.0, 40)
+    k0 = np.tile(np.int32([2, 1, 0]), (40, 1))
+    np.save(tmp_path / "sp0.npy", sp0)
+    np.save(tmp_path / "sp0.keys.npy", k0)
+    c1 = _line(float(sp0["origin"][20, 0]), 1500.0, 8, vx=520.0)
+    c1[0] = sp0[20]
+    st1 = np.zeros(2, STATE_DTYPE)
+    st1[0], st1[1] = c1[0], c1[7]
+    la1 = np.zeros((7, 6), np.int64)
+    la1[:, 2], la1[:, 3], la1[:, 5] = 2, 1, 1            # fwd, no side, duck
+    np.savez(tmp_path / "a1.npz", state=st1, parent=np.array([-1, 0]), link_acts=la1,
+             link_off=np.array([0, 0, 7]))
+    np.save(tmp_path / "c1.npy", c1)
+    c2 = _line(1500.0, 2200.0, 6, vx=560.0)
+    c2[0] = c1[-1]
+    st2 = np.zeros(2, STATE_DTYPE)
+    st2[0], st2[1] = c2[0], c2[5]
+    la2 = np.zeros((5, 6), np.int64)
+    la2[:, 2], la2[:, 3], la2[:, 5] = 1, 1, 0            # neutral
+    np.savez(tmp_path / "a2.npz", state=st2, parent=np.array([-1, 0]), link_acts=la2,
+             link_off=np.array([0, 0, 5]))
+    np.save(tmp_path / "c2.npy", c2)
+    out = tmp_path / "spine.npy"
+    rc = stitch_spine.main(["--out", str(out), "--field", str(fp), "--no-cut",
+                            f"spine:{tmp_path / 'sp0.npy'}:{tmp_path / 'sp0.keys.npy'}",
+                            f"ge:{tmp_path / 'a1.npz'}:{tmp_path / 'c1.npy'}",
+                            f"ge:{tmp_path / 'a2.npz'}:{tmp_path / 'c2.npy'}"])
+    assert rc == 0
+    sp = np.load(out)
+    keys = np.load(tmp_path / "spine.keys.npy")
+    assert len(sp) == 21 + 7 + 5 == len(keys)
+    assert np.allclose(sp["origin"][:21], sp0["origin"][:21])
+    assert np.allclose(sp["origin"][21:28], c1["origin"][1:])
+    assert np.allclose(sp["origin"][28:], c2["origin"][1:])
+    assert np.all(keys[:21] == k0[:21])
+    assert np.all(keys[21:28, 2] == 1) and np.all(keys[28:, 2] == 0)
+    info = json.loads((tmp_path / "spine.json").read_text())
+    assert [s["seg"] for s in info["segments"]] == ["spine", "ge", "ge"]
+    assert info["segments"][1]["root"] == 20 and info["segments"][2]["root"] == 27
+    import pytest
+    with pytest.raises(SystemExit):              # a spine is only ever the first segment
+        stitch_spine.main(["--out", str(tmp_path / "x.npy"), "--field", str(fp),
+                           f"ge:{tmp_path / 'a1.npz'}:{tmp_path / 'c1.npy'}",
+                           f"spine:{tmp_path / 'sp0.npy'}:{tmp_path / 'sp0.keys.npy'}"])

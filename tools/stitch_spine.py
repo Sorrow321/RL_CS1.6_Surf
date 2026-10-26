@@ -13,6 +13,8 @@ explorer's own exact trajectory, each starting at the previous one's state:
             state of the line so far (matched by position; a boosted root keeps its velocity)
     roll  : the policy's own greedy rollout from the line's last state (record_ckpt
             --dump-states npz + its .jsonl for the held keys)
+    spine : (first segment only, in place of beam) a curriculum spine and its held keys
+            (spine:NPY:KEYS.npy) - the loop's own spines carry both
 
     python tools/stitch_spine.py --out runs/x/spine.npy --field runs/x/field.npz \\
         beam:runs/k01/beam/beam_frontier.npz \\
@@ -92,7 +94,8 @@ def splice_at(line, keys, chain):
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("segments", nargs="+", help="beam:NPZ | ge:ARCHIVE:CHAIN.npy | roll:NPZ:JSONL")
+    ap.add_argument("segments", nargs="+", help="beam:NPZ | spine:NPY[:KEYS.npy] | ge:ARCHIVE:CHAIN.npy | "
+                                                "roll:NPZ:JSONL")
     ap.add_argument("--out", required=True)
     ap.add_argument("--field", required=True)
     ap.add_argument("--no-cut", action="store_true", help="keep the line past its best d")
@@ -111,8 +114,21 @@ def main(argv=None) -> int:
                     if "acts" in z.files else np.tile(np.int32(NEUTRAL), (len(line), 1)))
             info.append({"seg": "beam", "file": rest, "n": int(len(line))})
             continue
+        if kind == "spine":
+            # a curriculum spine and its held keys as the first segment (pbr7b2: a spine is the
+            # policy's beam line + the loop's own chains, with keys row for row)
+            sp, _, kf = rest.partition(":")
+            if line is not None:
+                raise SystemExit("a spine segment is the first one")
+            line = np.asarray(np.load(sp), STATE_DTYPE)
+            keys = (np.asarray(np.load(kf), np.int32) if kf
+                    else np.tile(np.int32(NEUTRAL), (len(line), 1)))
+            if keys.shape != (len(line), 3):
+                raise SystemExit(f"{kf}: {keys.shape} keys for {len(line)} states")
+            info.append({"seg": "spine", "file": sp, "keys": kf, "n": int(len(line))})
+            continue
         if line is None:
-            raise SystemExit("the first segment must be the beam line")
+            raise SystemExit("the first segment must be the beam line (or a spine)")
         if kind == "ge":
             arch, _, cf = rest.partition(":")
             chain = np.asarray(np.load(cf), STATE_DTYPE)
