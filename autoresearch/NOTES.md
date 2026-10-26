@@ -3033,3 +3033,19 @@ c5 had dips (median down to 24%) that recovered, c6 / c7 did not (see the collap
   the edge-pause rows of the approach). Evals 62.350 (30.703B) / 62.288 (30.779B), medians 62.3%. The line forks
   from the greedy's own beam at tick 5,827 (the branched beam's held view offsets), so the curriculum has ~345 rows
   to go before the greedy's own approach meets it.
+
+### c9: a new branch best 62.371; band [6,107] stalls; c11 tests --ppo-head-clip there (14:35-14:50 UTC)
+* c9's evals 30.854-31.307B: 62.344 / 62.367 / 62.346 / 62.294 / 62.294 / 62.353 / **62.371** (31,307,333,632: best
+  62.37%, median 62.28%, 0/9 finishes; still the catch at the drop - a few u deeper than the incumbent's 62.369,
+  not a new gate). Hand-on: pbr6b2_c9/ckpt_31297372160.pt (md5 32f4c3fb..., the newest snapshot before that eval,
+  10M steps earlier). RESULT.json updated.
+* c9's curriculum walked back to the approach's hop-and-stop at the strip's edge: the line lands at row 6,109 with
+  jump + duck released (btn 6 -> 0 on the decision at 6,108), lets ground friction take vx -206 -> -67 for 4 ticks
+  and presses jump again on the decision at 6,112 (a FRESH press: jump is edge-triggered). Band [6,112] passed at
+  21-31%; band [6,107] (spawns snapped to 6,108 / 6,112: release jump before the landing, then re-press) sat at
+  1.6-4.1% for ~20 visits / ~25 min with no trend - the policy holds jump in the air (act/jump_air ~0.45).
+* A key-head timing skill with a flat band is the test case for `--ppo-head-clip`: **c10** (14:39 UTC) = c9's command
+  on its 31.297B snapshot + `--ppo-head-clip` + `--demo-tau0 6107`. Its torch.compile warm-up failed (the warm-up
+  call left the new f_lpg buffer None; fixed in 74a6e65) and it ran the eager update at ~210k steps/s; in its 5 min
+  band [6,107] read 1.6% / 4.7% / 4.5% / 4.5% (c9: 1.6-4.1%) - too early to call. **c11** (14:47 UTC) = c10 with the
+  fix (compiled in 35 s). Readout: band [6,107]'s success against c9's flat ~3%, at matched minutes.
