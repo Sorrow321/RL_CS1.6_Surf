@@ -24,7 +24,7 @@
    "RESUME WITH --target-kl 0.05 (c6/c7 resumed c5's end without it and lost the start room; c8 with it held 56.6% for 2.2B steps)"
   ],
   "resume_from": "pbr5b4_c4 ckpt_latest 25,180,504,064",
-  "commit": "3431db0",
+  "commit": "4e3ea0e",
   "ckpt_note": "hand-on pick for the 56.594 eval: c5's ckpt_latest (25,634,537,472; 76M after the eval vs ckpt_25380782080 178M before, md5 030dd172..., also pulled). c8 (same config + --target-kl 0.05) tied at 56.594 (26.7675B, unrounded 56.594193 vs c5's 56.594273); its snapshot ckpt_26635927552 (md5 f6ed6f97...) is pulled too. The exact weights of c4's 56.564: runs/pbr5b4/pbr5b4_c4/ckpt_24842338304.pt (md5 a5875bb5...)."
  },
  "summary": "52.937 -> 56.594 (pbr5b4_c5 25.5585B; greedy 9/9-style at 56.4-56.6%; 56.564 at c4 24.842B was the jump). Box 2.8 h late (fleet cap), a 150k steps/s 5060 Ti. Path: k05 continuation flat (c1) -> Go-Explore BESIDE the trainer found a smooth 52.7% landing -> spine e1 (c2 54.556) -> the trainer's search by hand on c2's weights: the policy's OWN beam to 56.59%, past every GE stall -> cut before its low-speed hopping (c4 56.564; c3 on the uncut line lost the start room). Gate 17 = a spiral shaft at 56.6%: pure energy (start-state beam x1.30 at 55.55% -> 58.84%, x1.25 -> 56.92%; needs h >= ~2,740, the greedy brings ~2,330, lost at the 52.7% landing (-450 u) and the 54.5% ramp at speed). Training KL ran away on the late runs (c5 0.06 -> 0.15; c6/c7 collapsed): --target-kl 0.05 fixes it (c8). New: --auto-spine-pick-energy, tools/ge_stack_spine.py, auto_spine picked-chain keys."
