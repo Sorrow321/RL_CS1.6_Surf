@@ -2436,7 +2436,7 @@ minute). Incumbent: pbr4b3_t11 ckpt_23551016960 (md5 7fbcd458...), eval 52.937 a
   the branch's best (62.367, c6 29.048B, hand-on ckpt_29047652352 pinned + pulled) stands, every search ends at the
   62.3% drop, and the program's credit above the reserve (~$5.5) is what round 6 runs on.
 
-### Gate 19, offline (03:05 UTC, no box): two lanes; and two loop fixes
+### Gate 19, offline (02:49 UTC, no box): two lanes; and two loop fixes
 * The record (ANALYSIS ONLY) does NOT use the west floor strip at 61.2-62% that every policy line hops (x -1,980..-2,060,
   with the 61.5% gap): from (-1,944, 2,945, 2,433) at 60.64% it flies SOUTH down an EAST lane at x ~-1,830..-1,944,
   airborne over the fall-catch sheet (trigger_teleport *211, x -2,150..-1,793, z 2,317-2,343) at ~670 u/s, descending
@@ -2451,12 +2451,14 @@ minute). Incumbent: pbr4b3_t11 ckpt_23551016960 (md5 7fbcd458...), eval 52.937 a
   crawls on past its stall dies at its END (search 3's three stages all rooted at 58-61.5% while it fell at 62.3%,
   1.7 s past the 'stall') - half the roots now go before the stall and half before the end.
 * **To continue (next round)** - resume the 62.367 weights (runs/pbr5b2/pbr5b2_c6/ckpt_29047652352.pt, the hand-on,
-  tick 7.67 ms carried) with c6's flags and its last spine k02 (copy runs/pbr5b2_c6/auto/k02/spine.npy + spine.keys.npy
-  from the pulled run into autoresearch/spines/, or let the trainer's first search on the quorum make the next one):
+  tick 7.67 ms carried) with c6's flags. c6's last spines k01 / k02 lived in the box's runs/pbr5b2_c6/auto/ (box.py
+  pull does not fetch it) and died with the box: start from `autoresearch/spines/pbr5b2_s6.npy` + `.keys.npy` (the
+  policy's own 62.34% line, success line 62.16%) - the greedy is already past it, so the first eval's quorum fires
+  the trainer's own search, which makes the next spine:
   `box.py launch --resume --self-states "<the spines README provenance>" -- --maxvel 3500 --ckpt-every 2e8
-  --demo-file <k02 spine> --demo-keys <k02 keys> --demo-window 5 --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5
+  --demo-file autoresearch/spines/pbr5b2_s6.npy --demo-keys autoresearch/spines/pbr5b2_s6.keys.npy --demo-window 5 --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5
   --demo-rate 0.3 --demo-front-frac 0.8 --demo-success-d 100 --demo-success-bonus 50 --demo-milestones
-  44939,43426,42182,41015,40497,39943,37251,33777,32260,31429,30286,28818,28783,27001,25121,24479,23400,22500,21624,21636
+  44939,43426,42182,41015,40497,39943,37251,33777,32260,31429,30286,28818,28783,27001,25121,24479,23400,22500
   --keys-hold-spawn-duck --yaw-entropy 0 --demo-front-temp 0.5 --demo-front-ticks 40 --demo-front-view 6
   --respawn-greedy 0.2 --respawn-greedy-window 0.25 2.0 --respawn-greedy-stuck 200 --respawn-greedy-contact
   --respawn-greedy-energy 3 --respawn-greedy-temp 0.5 --respawn-greedy-temp-ticks 100 --respawn-greedy-temp-view 6
