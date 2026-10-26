@@ -281,6 +281,20 @@ def energy_roots(line, end: int, tps: float, secs: float = 12.0, drops: int = 3,
     return np.unique(np.concatenate(idx)), loss
 
 
+def tail_roots(end: int, stall: int, tps: float, secs: float, n: int):
+    """GE roots for a 'tail' stage -> line indices, or None for the old rule (the --roots-secs
+    before the stall). A line that CRAWLS on past its stall (its best d comes long after the first
+    tick within --stall-margin of it) dies at its end, not at its stall: then half the roots go in
+    the --roots-secs before the stall and half in the --roots-secs before the end (pbr5b2 search 3:
+    every stage rooted at 58-61.5% while the line fell at 62.3%, 1.7 s past its 'stall')."""
+    w = int(round(secs * tps))
+    if int(end) - int(stall) <= w // 2:
+        return None
+    a = np.linspace(max(0, int(stall) - w), int(stall), max(2, int(n) // 2))
+    b = np.linspace(max(0, int(end) - w), int(end), max(2, int(n) - int(n) // 2))
+    return np.unique(np.concatenate([a, b]).round().astype(int))
+
+
 def go_explore(a, out: Path, line, end: int, boosts=None, tag: str = "ge", line_keys=None,
                roots=None):
     """GE --exact-chains rooted at the line's last --roots-secs before ``end`` (or at the line
@@ -322,6 +336,11 @@ def go_explore(a, out: Path, line, end: int, boosts=None, tag: str = "ge", line_
         # the policy flies another tick (--tick-ms-schedule): so does the explorer, rounded to
         # whole ms (10 = the explorer's default, byte-identical)
         cmd += ["--tick-ms", int(round(a.tick))]
+    if len(boosts) > 1 and getattr(a, "ge_keep_all", 1):
+        # a boosted copy usually shares its original's 64 u x energy cell and the explorer kept
+        # the first root of a key only, so a mixed stage ran unboosted (pbr5b2's GE-H: 144 roots
+        # -> 48 cells); explore_phase1 --roots-keep-all gives every root its own cell
+        cmd += ["--roots-keep-all"]
     if int(a.ge_cell_heading) > 0:
         # --ge-cell-heading H: the cell key also holds H heading sectors x rising / not (pbr5b2:
         # at princessburglar's 56.6% shaft a state rising up it and one crossing it sideways shared
@@ -412,6 +431,9 @@ def main(argv=None) -> int:
                     help="E stages: how many of the largest losses get roots")
     ap.add_argument("--energy-lead", type=float, default=1.0,
                     help="E stages: roots over this many seconds before each loss")
+    ap.add_argument("--ge-keep-all", type=int, default=1, choices=(0, 1),
+                    help="1 = a stage with more than one --ge-boost factor runs explore_phase1 "
+                         "--roots-keep-all (every boosted copy its own root cell); 0 = as before")
     ap.add_argument("--ge-cell-heading", type=int, default=1,
                     help="explore_phase1 --cell-heading for the Go-Explore stages: H heading "
                          "sectors x rising / not in the cell key (1 = the rising / not split alone; "
@@ -536,6 +558,13 @@ def main(argv=None) -> int:
             for k, (mode, boosts) in enumerate(stage_specs(a.ge_boost)):
                 tag = "ge" if k == 0 else f"ge{k + 1}"
                 kw = {}
+                if mode == "tail":
+                    tr = tail_roots(e, st, TICKS_PER_S, a.roots_secs, a.roots_n)
+                    if tr is not None:
+                        kw["roots"] = tr
+                        res.update({f"{tag}_tail_roots": [int(tr.min()), int(tr.max())]})
+                        print(f"GE stage {k + 1}: the line crawls {(e - st) / TICKS_PER_S:.1f} s past its "
+                              f"stall (tick {st}) to its end ({e}): roots before both", flush=True)
                 if mode == "energy":
                     # roots before the line's largest energy losses (the line's own states
                     # with the energy it still had), not in its last seconds before the stall

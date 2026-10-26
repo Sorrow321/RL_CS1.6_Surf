@@ -448,3 +448,33 @@ def test_ge_command_carries_the_rising_split(tmp_path, monkeypatch):
         assert ("--cell-heading" in cmd) == want
         if want:
             assert cmd[cmd.index("--cell-heading") + 1] == "1"
+
+
+def test_tail_roots_cover_the_end_of_a_crawling_line():
+    """tail_roots (pbr5b2): a line whose end lies far past its stall gets roots before both; one
+    that stalls near its end keeps the old rule (None)."""
+    sys.path.insert(0, str(ROOT / "tools"))
+    import auto_spine
+    assert auto_spine.tail_roots(1000, 950, 100.0, 4.0, 48) is None
+    r = auto_spine.tail_roots(1000, 600, 100.0, 4.0, 48)
+    assert r is not None and r.max() == 1000 and r.min() == 200
+    assert ((r >= 200) & (r <= 600)).sum() >= 20 and ((r >= 600) & (r <= 1000)).sum() >= 20
+
+
+def test_mixed_boost_stage_keeps_all_roots(tmp_path, monkeypatch):
+    """A stage with two boost factors passes explore_phase1 --roots-keep-all; one factor does not."""
+    sys.path.insert(0, str(ROOT / "tools"))
+    import auto_spine
+    from surfgym.core import STATE_DTYPE
+    seen = []
+    monkeypatch.setattr(auto_spine, "run", lambda cmd, log, timeout: seen.append(
+        [str(c) for c in cmd]) or 1)
+    line = np.zeros(200, STATE_DTYPE)
+    line["origin"][:, 0] = np.arange(200.0)
+    a = auto_spine.main.__globals__["argparse"].Namespace(
+        map="m.bsp", envs=64, ge_cell=64.0, ge_energy=32.0, act_every=4, ge_minutes=1.0, seed=0,
+        maxvel=None, threads=0, tick=10.0, ge_view_follow="none", roots_secs=1.0, roots_n=8,
+        ge_boost="1.0,1.04", ge_cell_heading=1, ge_keep_all=1, field="f.npz")
+    auto_spine.go_explore(a, tmp_path / "two", line, 150, boosts=[1.0, 1.04])
+    auto_spine.go_explore(a, tmp_path / "one", line, 150, boosts=[1.08])
+    assert "--roots-keep-all" in seen[0] and "--roots-keep-all" not in seen[1]

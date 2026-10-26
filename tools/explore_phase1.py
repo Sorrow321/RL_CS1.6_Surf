@@ -318,6 +318,23 @@ class Archive:
 
     # -- writing ------------------------------------------------------------
 
+    def add_root(self, key: int, state) -> int:
+        """--roots-keep-all: a root ALWAYS gets its own cell, even when its key is already in the
+        archive (the index keeps the first one; the extra root is a restore point only). Boosted
+        copies of a line's states (auto_spine's --ge-boost) often share their original's 64 u x
+        energy cell, and add() would drop them (pbr5b2, 2026-10-26)."""
+        key = int(key)
+        if key not in self.index:
+            return self.add(key, state, depth=0, parent=-1)
+        self._reserve(1)
+        i = self.size
+        self.key[i] = key
+        self.state[i] = state
+        self.depth[i] = 0
+        self.parent[i] = -1
+        self.size = i + 1
+        return i
+
     def add(self, key: int, state, depth: int = 0, parent: int = -1) -> int:
         """Insert a cell (no-op returning the existing index if present)."""
         key = int(key)
@@ -824,9 +841,16 @@ def explore(args) -> int:
     arch = Archive(hasher, max_cells=args.max_cells)
     arch.exact = bool(getattr(args, "exact_chains", False))
     rk = hasher.keys(roots)
+    keep_all = bool(getattr(args, "roots_keep_all", False))
     for j in range(len(roots)):
-        i = arch.add(int(rk[j]), roots[j], depth=0, parent=-1)
+        if keep_all:
+            i = arch.add_root(int(rk[j]), roots[j])
+        else:
+            i = arch.add(int(rk[j]), roots[j], depth=0, parent=-1)
         arch.dist[i] = dist.sample(roots[j]["origin"][None, :])[0]
+    if keep_all:
+        print(f"--roots-keep-all: {len(roots)} roots -> {arch.size} root cells "
+              f"({len(set(int(k) for k in rk))} distinct keys)")
 
     print(f"map {bsp.stem} | envs {n} | cell {args.cell:g}u"
           f"{f' x view{args.cell_view}' if args.cell_view else ''}"
@@ -1171,6 +1195,8 @@ def meta_dict(args, bsp, hasher, arch, it, n_goal, extra=None) -> dict:
         out["cell_energy"] = float(args.cell_energy)
     if int(getattr(args, "cell_heading", 0) or 0) > 0:
         out["cell_heading"] = int(args.cell_heading)
+    if getattr(args, "roots_keep_all", False):
+        out["roots_keep_all"] = True
     if getattr(args, "exact_chains", False):
         out["exact_chains"] = True
         out["ep_ticks"] = int(args.ep_ticks)
@@ -1783,6 +1809,9 @@ def build_parser() -> argparse.ArgumentParser:
                     help="STATE_DTYPE spine (.npy) whose states become the roots and the "
                          "autoreset pool instead of the map spawns - explore from where the "
                          "policy already gets to (the finish room), champion-free")
+    ap.add_argument("--roots-keep-all", action="store_true",
+                    help="every root gets its own cell even when two share a key (boosted copies "
+                         "of one state usually do); off = the first root of a key only, as before")
     ap.add_argument("--roots-ticks", default=None,
                     help="--roots-spine: keep states whose tick is in LO:HI (e.g. the room-entry "
                          "to ramp-1 approach, 8000:8300 on cannonball at 131 Hz); wins the "
