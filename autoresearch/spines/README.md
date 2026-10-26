@@ -273,3 +273,9 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   found BY THE TRAINER (run pbr6b3_c3's auto-spine search 3 at 32.284B, 59 s): the POLICY'S OWN plain beam line
   (beam_tas on c3's 32.284B weights, 4,096 envs) from the true spawn to d 15,734 = 72.47%. Keys = the beam's own held
   keys. The line to continue from. No demo, no record (pbr6b3, round 6).
+* `pbr6b3_c4k01.npy` + `.keys.npy` (7,200 rows; md5 945a2c7ae1f08b58e3b8a4578ac63a98 / 8334b4b9e2372e9e71afd27b095957d3):
+  found BY THE TRAINER (run pbr6b3_c4's auto-spine search 1 at 33.180B, 60 s, the greedy's quorum past its cliff-cut
+  line at 71.2%): the POLICY'S OWN plain beam line (beam_tas on c4's 33.180B weights, RTX 3090, 4,096 envs) from the
+  true spawn to d 15,023 = 73.71%. Keys = the beam's own held keys. `pbr6b3_c4k01.milestones.txt` = the loop's 47
+  milestones at that search (c4's current.json), for `--demo-milestones`. The line to continue from (round 6's end).
+  No demo, no record (pbr6b3, round 6).
