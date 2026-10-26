@@ -2561,3 +2561,21 @@ current spine) before `box.py release`. The operator may want `pull` to fetch `a
   .jsonl on an s6 state 38 u away as the template for the bookkeeping fields) -> h / |v| 2,681 / 689 at 57%,
   2,713 / 690 at 57.5%, 2,683 / 685 at 58%, then **2,501 / 427 at 58.5%**, 2,477 / 322 at 60% - the GPU evals'
   profile (died at 61.22%, gate 18, on CPU).
+* **Corridor search from c6's own states, A/B (local CPU, 04:32-04:49 UTC; 8 min x 2 threads x 256 envs each, same
+  seed, 96 roots = the c6 CPU line's rows 108-300 (57.0-58.3%, h ~2,680-2,713, ~690 u/s) x1.0 / 1.04
+  --roots-keep-all, the s6 A/B's other settings; read against the c6 line):** --select-energy 3 vs 0: deepest
+  61.41% vs 61.52%; cells past 57 / 59 / 61%: 4,581 / 994 / 161 vs 4,470 / 1,001 / 189; best energy over the line
+  at 58-58.5%: +200 vs +167 (12 vs 5 cells >= +100), at 58.5-59%: +26 vs -10, past 59%: nothing either way. The
+  best cell takes c6's 58.0-58.2% corner (where c6's velocity turns (-437, -498) -> (-202, +199) and h drops
+  2,683 -> 2,473 in 0.34 s) WIDE, on the floor (-2,729, 1,924, z 2,360, vz 0) at 694 u/s - and loses it in the next
+  stretch: friction and the hop cap again, not the record's side riding. **Verdict on --select-energy: not
+  established** - a large reach effect from the shaft-top roots (61.41 vs 59.42%), none from the corridor roots, a
+  small energy effect; one run each, 1/20-1/60 of a box-scale search. Default stays off.
+* **For the next round (gate 19, generic):** the corridor 57.5-61% must be flown on its sloped sides, corner by
+  corner (c6 loses ~200 u at the 58.0-58.2% corner, ~40 u more by 60%). (1) A box-scale Go-Explore (16-32 threads,
+  20-30 min) from c6's OWN corridor states (record_ckpt --dump-states of the hand-on weights spawned at their own
+  56% eval row - the procedure above; the CPU line reproduces the GPU profile through 61%), then energy_pick +
+  stitch_spine + --demo-success-energy per corner (the gate-17 playbook). (2) Better: automate the playbook in the
+  trainer's loop - when the depth ladder finds nothing and the line's largest energy losses lie upstream, an energy
+  stage (GE before the losses, picked by energy_pick, handed back as a spine with the energy success rule; lift the
+  --demo-success-energy + --auto-spine refusal for it). Every piece exists and is tested; the glue does not.
