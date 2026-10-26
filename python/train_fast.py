@@ -2293,6 +2293,17 @@ def ratio_split_parts(padded, actions, mu, log_std, z, temp=None, temp_view=None
     return logp_c, g[..., :-1].sum(-1), g[..., -1]
 
 
+def ppo_group_surrogate(a, lp_new, lp_old, clip: float):
+    """--ppo-head-clip: PPO's clipped surrogate per head GROUP, summed over the groups. ``a`` (B,)
+    the normalised advantages; ``lp_new`` / ``lp_old`` (B, G) the groups' log-probs. On-policy
+    (every ratio 1) its gradient is the joint surrogate's; once one group's ratio is past the clip
+    in its advantage's direction only THAT group's term goes flat - the joint ratio would switch
+    every head's gradient off."""
+    r = torch.exp(lp_new - lp_old)
+    a = a.unsqueeze(-1)
+    return torch.max(-a * r, -a * torch.clamp(r, 1 - clip, 1 + clip)).sum(-1).mean()
+
+
 def ratio_split_stats(before, after, adv, clip: float) -> dict:
     """--diag-ratio-split's read-out over one update's sampled rows. ``before`` / ``after``:
     ratio_split_parts of the same rows and stored actions under the policy before the
@@ -4590,6 +4601,16 @@ def main() -> None:
                          "keys-only ratio. pbr6b2 2026-10-26: the c6 / c7 collapses (keys "
                          "entropy and W/S-in-the-air up) with the yaw sigma at 0.020. 0 = off "
                          "(bit-identical). TRAIN_ONLY; not restored from a checkpoint")
+    ap.add_argument("--ppo-head-clip", action="store_true",
+                    help="--view-continuous: PPO's clipped surrogate per head GROUP - the keys "
+                         "heads, the yaw head, the pitch head - each on its own ratio, the three "
+                         "surrogates summed (their gradient equals the joint one on-policy). The "
+                         "joint ratio lets one group switch every head's gradient off: measured "
+                         "with --diag-ratio-split (pbr6b2, 2026-10-26, 1,024 envs): the view heads "
+                         "carry 92% of the joint KL (the camera-only pitch 67%) and cut the keys' "
+                         "gradient on ~14% of each update's rows. The old group log-probs are "
+                         "scored once per update (one no-grad pass over the buffer). Off = the "
+                         "joint ratio, bit-identical. Not restored from a checkpoint; TRAIN_ONLY")
     ap.add_argument("--wd", type=float, default=None,      # 0 = Adam, bit-identical
                     help="decoupled weight decay (AdamW); 0 keeps plain Adam. ckpt restores")
     ap.add_argument("--dropout", type=float, default=None,  # 0 = off
@@ -10440,6 +10461,7 @@ def main() -> None:
     # planner tools (beam_tas branching, dagger relabelling) still do not
     # clone h, so an --rnn checkpoint is not a planner seed.
     VIEWC = bool(args.view_continuous)
+    HEADCLIP = bool(args.ppo_head_clip)   # --ppo-head-clip: a Python constant, traced once
     if VIEWC:
         _bad = []
         if YCOND:
@@ -14791,6 +14813,9 @@ def main() -> None:
     if int(args.diag_ratio_split or 0) > 0:
         # --diag-ratio-split: a measurement, dumped only when on (TRAIN_ONLY in record_ckpt)
         meta["config"]["diag_ratio_split"] = int(args.diag_ratio_split)
+    if args.ppo_head_clip:
+        # --ppo-head-clip: an optimizer setting, dumped only when on (TRAIN_ONLY in record_ckpt)
+        meta["config"]["ppo_head_clip"] = 1
     if args.split_trunk:
         meta["config"]["split_trunk"] = 1
     if args.obs_views > 1:
@@ -17487,7 +17512,8 @@ def main() -> None:
                 f_age=None, f_code=None, f_dmask=None,
                 adv_mean=None, adv_std=None, f_air=None, f_jblk=None,
                 f_priv=None, f_z=None, f_temp=None, f_tempv=None,
-                f_cct=None, f_bkt=None, f_reti=None, f_ctv=None):
+                f_cct=None, f_bkt=None, f_reti=None, f_ctv=None, f_lpg=None):
+        # f_lpg: --ppo-head-clip's (rows, 3) old log-probs of the keys / yaw / pitch groups.
         # f_temp / f_tempv: --unstuck's sampling temperatures (the static
         # tensors the rollout drew under: the categorical heads' and one per
         # Gaussian head), so pi_new is scored on the SAME tempered
@@ -17589,6 +17615,11 @@ def main() -> None:
                     logp, ent = logprob_entropy_view(
                         padded, f_act[idx], mu, policy.log_std(), f_z[idx],
                         PITCH_ENT, f_temp, f_tempv, yaw_ent=YAW_ENT)
+                    if HEADCLIP:
+                        # --ppo-head-clip: the same joint in its keys / yaw / pitch groups
+                        lp_g = torch.stack(ratio_split_parts(
+                            padded, f_act[idx], mu, policy.log_std(), f_z[idx],
+                            f_temp, f_tempv), -1)
                 else:
                     logp, ent = logprob_entropy_padded(padded, f_act[idx],
                                                        f_temp)
@@ -17617,8 +17648,12 @@ def main() -> None:
             # rescale each rank's loss by its own sample std (~1.1% sd at
             # 4096 rows) — systematic, permanent, and absent from every log
             a = (a - adv_mean) / (adv_std + 1e-8)
-        pg = torch.max(-a * ratio,
-                       -a * torch.clamp(ratio, 1 - args.clip, 1 + args.clip)).mean()
+        if HEADCLIP:
+            # --ppo-head-clip: one clipped surrogate per head group, each on its own ratio
+            pg = ppo_group_surrogate(a, lp_g, f_lpg[idx], args.clip)
+        else:
+            pg = torch.max(-a * ratio,
+                           -a * torch.clamp(ratio, 1 - args.clip, 1 + args.clip)).mean()
         vl = 0.5 * (value - f_ret[idx]).pow(2).mean()
         if INT_SPLIT:
             # the intrinsic value loss rides inside `vl` at int_vf / vf, so
@@ -18428,6 +18463,14 @@ def main() -> None:
         print(f"--diag-ratio-split {DIAG_RS}: every update scores {DIAG_RS} of its rows before its "
               "first step and after its last and splits the joint log-ratio into the keys / yaw / "
               "pitch heads (measurement only; the rows come from a private generator)")
+    if HEADCLIP:
+        if not VIEWC or RNN or H > 0 or STACK != 1 or YCOND or MASKS.on:
+            raise SystemExit("--ppo-head-clip splits the --view-continuous joint of the plain "
+                             "update (refused with --rnn, --chunk, --frame-stack, --yaw-cond and "
+                             "the action masks)")
+        print("--ppo-head-clip: PPO's clipped surrogate per head group (keys / yaw / pitch), each "
+              f"on its own ratio, clip {args.clip:g}; the old group log-probs are scored once per "
+              "update")
     while global_step < int(args.steps):
         it_no += 1
         tm.start_iter()
@@ -20129,13 +20172,11 @@ def main() -> None:
         # state stay bit-identical to the resumed checkpoint (kl / losses
         # log 0)
         tkl_hit = None                 # --target-kl: (epoch, minibatch, kl) of an early stop
-        rs_rows = rs_before = None
-        if DIAG_RS > 0 and not FREEZE and not warming:
-            # --diag-ratio-split: the sampled rows' log-prob parts BEFORE the update's first step,
-            # scored as mb_step scores them (same temperatures, no augmentation)
-            rs_rows = torch.randperm(T * N, device=device, generator=rs_gen)[:DIAG_RS]
-
+        rs_rows = rs_before = f_lpg = None
+        if (DIAG_RS > 0 or HEADCLIP) and not FREEZE:
             def rs_parts(rows):
+                # the rows' (keys, yaw, pitch) log-prob parts under the CURRENT policy, scored as
+                # mb_step scores them (same temperatures, no augmentation)
                 with torch.no_grad():
                     with amp:
                         lg, _ = policy.forward_split(
@@ -20149,6 +20190,13 @@ def main() -> None:
                     return ratio_split_parts(packer.pad(cat_), f_act[rows], mu_,
                                              policy.log_std(), f_z[rows], tk, tv)
 
+        if HEADCLIP and not FREEZE:
+            # --ppo-head-clip: every row's OLD group log-probs, before the update's first step
+            f_lpg = torch.cat([torch.stack(rs_parts(_r), -1) for _r in
+                               torch.arange(T * N, device=device).split(mb)])
+        if DIAG_RS > 0 and not FREEZE and not warming:
+            # --diag-ratio-split: the sampled rows' log-prob parts BEFORE the update's first step
+            rs_rows = torch.randperm(T * N, device=device, generator=rs_gen)[:DIAG_RS]
             rs_before = rs_parts(rs_rows)
         for _ep in range(0 if FREEZE else args.epochs):
             if tkl_hit is not None:
@@ -20215,7 +20263,8 @@ def main() -> None:
                         None if a_std is None else a_std[k_mb],
                         f_air, f_jblk, f_priv, f_z=f_z, f_temp=temp_t,
                         f_tempv=tempv_t, f_cct=f_cct, f_bkt=f_bkt,
-                        f_reti=f_reti, **({"f_ctv": f_ctv} if FRONT else {}))
+                        f_reti=f_reti, **({"f_ctv": f_ctv} if FRONT else {}),
+                        **({"f_lpg": f_lpg} if HEADCLIP else {}))
                     loss, pg, vl, el, logp = _mbo[:5]
                     if AUG_ON:
                         # --aug-*: (G_pi, G_V) summed over the update, one read per iteration
