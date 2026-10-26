@@ -3069,3 +3069,16 @@ Germany (machine 56783), rented 08:05 UTC for 2 h.
   (search 2's result at the wrap-up: beam + GE, 6,852 states to d 14,673 = 74.33%, md5 0aced692...; in
   runs/pbr6b4/pbr6b4_c12/auto/k02, pulled) with the loop on and `--demo-match-band`; the next stop is the catch sheet at
   ~73.5% after the climb. Last evals 73.503 / 71.475 / 73.518 / 73.586 / 73.443 (medians 61.5-73.4%).
+
+## pbr7b2 (round 7, slot 2) - 2026-10-26 20:42 UTC start
+
+Box: 57867173, RTX 4080S, 0.41 $/h, Ontario CA (machine 141481), rented 20:33 UTC for 3 h. Incumbent: pbr6b4_c12
+ckpt_35907960832 (md5 160da9eb...), eval 73.590 at 35.918B. Credit at the start: $34.25, fleet burn 0.
+
+### c1: c12's loop, continued on its last spine (20:41 UTC)
+* **pbr7b2_c1** = resume of c12's ckpt_latest (step 36,659,265,536, md5 d802b3e8...; round 6's last evals 73.44-73.59 with
+  6-7/9 past the 71.3% landing) on the loop's own search-2 spine, committed as  (+keys;
+  6,852 rows, the policy's plain beam to row 6,387 + an x1.04 GE chain to 74.33%, success line d <= 14,773 = 74.15%),
+  c12's flag set (the round-5 to-continue block + --demo-match-band, --auto-spine-patience 0, --auto-spine-ge-minutes 5,
+  --auto-spine-energy 150), the 26 milestones of c12's auto/current.json, --steps 6e9. Record gate passed (4 recordings).
+  A warm resume measuring AT the wall (the ~73.5% catch sheet after the climb) - the inherited loop, run as it was.
