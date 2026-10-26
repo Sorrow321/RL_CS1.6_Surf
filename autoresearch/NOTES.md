@@ -3002,6 +3002,16 @@ Incumbent: pbr5b2_c7 ckpt_29123674112 (62.369, md5 afb44185...).
 * **Harvest 18:33 UTC**: a8 stopped (kill pid), pulled a8 (16 evals, ckpt_latest, ckpt_31963217920.pt md5 944ede4f...)
   and a5-a7's evals; a4's snapshots / k01-k03 spines were pulled before. **Box 57819941 released 18:33:49**
   (`box.py status`: no box). Box time today: 1 h 54 min + 5 h 06 min.
+* **CPU bench, a8's best (31.963B) on k03's rows (18:34-18:36, no box; success = k03's qualifying depth 65.44%):**
+
+      k03 row  5,600 (63.42%, the unboosted beam state)  0/8  median 64.55%  (= the true-start greedy's stop)
+               5,660 (64.17%, the x1.04 chain, h 2,616)  0/8  median 64.91%  ONTO THE LEDGE (past 64.83%)
+               5,700 (64.66%, h 2,612)                    0/8  median 65.39%  ledge + most of the corridor
+               5,760 (just before the landing)            0/8  median 64.80%, max 65.00%
+
+  So the policy already climbs onto the ledge and walks most of the corridor when it holds k03's energy at 64.2-64.7%;
+  from the unboosted state at 63.4% it stops where the true-start greedy stops. The remaining gap is ENERGY over
+  63.4-64.2% (k03 ~2,62x vs a8's greedy 2,45x-2,59x at 64%), plus whatever stops the walk at 65.39%.
 
 ### pbr6b1 round 6 lesson (DRAFT 10:06 UTC; finalised at wrap-up)
 * **Score 62.369 -> 62.373** (a1 29.200B: the incumbent's weights 75M steps on, same gate; all 9 fall at the 62.3% drop).
