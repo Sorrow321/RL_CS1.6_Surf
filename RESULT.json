@@ -1,7 +1,7 @@
 {
  "agent": "pbr6b1",
  "round": 6,
- "final": false,
+ "final": true,
  "best": {
   "score": 64.771,
   "eval_file": "/home/steam/ar_pb/runs/pbr6b1/pbr6b1_a8/traj_31965315072.jsonl",
@@ -19,5 +19,5 @@
   "resume_from": "pbr6b1_a7 31.66B <- pbr6b1_a4 31.38B <- a3 30.779B <- a2 30.03B <- a1 29.72B <- pbr5b2_c7 29.124B (the round-5 incumbent)",
   "commit": "68baf9a"
  },
- "summary": "64.771 (a8 31.965B; 64.724 at a4 31.082B with median 64.67%) vs the incumbent's 62.369: GATE 19 PASSED by the greedy; the next gate is a LEDGE at 64.8%. How: the loop's energy-before-boost search found an unboosted energy spine at the 60% corner; on it the policy's own beam passed the drop (m2); the backward curriculum on m2 with held keys taught the corner and the approach and the true-start greedy followed past the drop (a4). The ledge is an ENERGY gate (the greedy arrives 100-120 u low after losing ~150 u at the 63.4-63.65% landing): k02 taught to its end lifts that energy (a8) but the ledge route is still untaught. Ledge curricula near the gate collapsed or eroded the greedy (a5-a6) unless 40% of starts stayed fresh (a7). Box 57819941 (RTX 4070 Ti) 13:27-18:51 UTC."
+ "summary": "64.771 (a8 31.965B; a4's 64.724 at 31.082B, median 64.67%, is the steadier eval) vs the incumbent's 62.369: GATE 19 (the 60% corner + the 62.3% drop) PASSED by the true-start greedy. How: the loop's energy-before-boost search found an unboosted energy spine at the corner; trained on it, the policy's own beam passed the drop (m2, 63.43%); the backward curriculum on m2 with held keys taught the corner (CPU bench 0/8 -> 4-6/8) and the approach, and the greedy followed past the drop (a4: 63.3 -> 64.7 in 300M steps). The next gate is a LEDGE at 64.8%, an energy gate: the greedy arrives 100-120 u low after losing ~150 u at the 63.4-63.65% landing; k02 taught to its end lifted that energy (a8) and a CPU bench shows the greedy already climbs the ledge from an energetic state. Curricula at the ledge collapsed the greedy (start-platform walk, gate-9 erosion) unless 40% of starts stayed fresh. Next: a8's 31.963B with k02 to its end until ~2,6xx at 64.5%, then k03 at the qualifying depth. Box time 1 h 54 min + 5 h 06 min; box released 18:33."
 }

@@ -3049,3 +3049,57 @@ Incumbent: pbr5b2_c7 ckpt_29123674112 (62.369, md5 afb44185...).
   --auto-spine-milestones --auto-spine-gain 500 --auto-spine-ge-minutes 5 --auto-spine-retry 4e8 --auto-spine-patience 1.2e9
   --auto-spine-energy 150 --auto-spine-energy-patience 3e8 --auto-spine-beam-seeds 3` and the 21 milestones
   (44939,...,21624,23216,22270).
+
+### pbr6b1 round 6 lesson (wrap-up, 2026-10-26 19:14 UTC) - supersedes the DRAFT above
+* **Score 62.369 -> 64.771** (a8 31.965B, hand-on snapshot runs/pbr6b1/pbr6b1_a8/ckpt_31963217920.pt; the steadier
+  eval is a4's 64.724 at 31.082B, median 64.67%, snapshot runs/pbr6b1/pbr6b1_a4/ckpt_31079792640.pt). GATE 19 (the 60%
+  corner + the 62.3% drop) is passed by the true-start greedy; the next gate is a LEDGE at 64.8%. Box: 1 h 54 min in
+  the morning (the fleet credit reached the $10 reserve at ~09:46, back at 13:26) + 5 h 06 min on 57819941 (RTX 4070 Ti,
+  0.223 $/h, 13:27-18:33).
+* **What worked - the same generic sequence as round 5's gate 17, now at gate 19:**
+  1. The loop's ENERGY-BEFORE-BOOST search (068f27f) found an unboosted energy spine at the corner (a1).
+  2. ~370M steps on it, then the policy's own plain beam passed the gate (m2, 63.43%; 1 of 2 beam seeds: `--beam-seeds`).
+  3. The backward curriculum on that beam line WITH ITS HELD KEYS walked back through the corner (a2 300M + a3 760M; the
+     CPU bench with `record_ckpt --spawn-keys` / `band_bench --keys`, 78931a3: the corner 0/8 -> 4-6/8 from m2's rows).
+  4. Once it covered the stretch where the greedy loses its energy (58-59.5%), the true-start greedy took the energetic
+     branch: 63.343 -> 64.555 -> 64.604 -> 64.724 within 300M steps (a4, ~1.06B steps of curriculum on m2 in all).
+  5. The quorum search then extended the line in 67 s (k01, the policy's own beam to 64.64%).
+* **The 64.8% LEDGE is an energy gate.** k03 (search 3: GE from the policy's own state at 63.4%, x1.04 root, to 70.29%)
+  shows it: fly to 64.83%, climb onto a ledge at z ~2,38x, then a slow on-ground corridor walk (|v_h| 0-260) to 66.1%,
+  with the progress record stalled ~2.8 s (a deceptive detour no d-scored beam keeps). The greedy reaches the ledge's
+  approach on k03's path ~100-120 u too low and falls; it loses ~150 u at the landing at 63.4-63.65%, which k02 (the
+  energy spine, h 2,671 at 63.65%) keeps. Taught to its END with its energy (a8: `--demo-success-d 0
+  --demo-success-energy 75`), k02 lifted the greedy's h at 63.65% from 2,36x-2,66x to 2,61x-2,73x and at 64.5% from
+  2,37x-2,55x to 2,47x-2,62x (64.771: 2,567 at 64.75%). The CPU bench of that checkpoint (18:34) shows the climb
+  is NOT the missing piece: from k03's energetic rows at 64.17% / 64.66% the greedy gets onto the ledge (64.91%) and
+  through most of the corridor (65.39%); from the unboosted row at 63.42% it stops at 64.55%, like the true-start
+  greedy. What is missing is ~+50-150 u of energy over 63.4-64.2%.
+* **What did not / costs:**
+  1. A patience search (`--auto-spine-patience`) replaces a spine whose curriculum is still advancing and restarts it at
+     the new spine's end; a search also BLOCKS the trainer (67 s - 18 min). a3 was stopped before one fired.
+  2. A curriculum anchored at a Go-Explore spine's far end (k03: 5.6% past the greedy) crawls through terrain the greedy
+     cannot reach (~90 rows / 10 min): hours from the gate.
+  3. **Curricula at the ledge broke the greedy**: a5 (90% of starts on the curriculum; updates at kl 0.4-0.66; the greedy
+     then WALKS ON THE START PLATFORM until the patience cut, 4 evals running) and a6 (`--target-kl 0.1` stopped every
+     update after 1-3 minibatches, and gate 9 eroded anyway: the update size is not the cause). a7 (`--respawn-frac 0.6`,
+     40% fresh starts) held the greedy (one dip in 4 evals) but its curriculum crawled in the corridor. And a8 (40%
+     fresh starts, its curriculum far upstream at ~50%) still lost the start platform after 830M steps (6 evals at
+     0.4%). The corridor is on-ground, slow movement unlike any surf section, and training it bleeds into the two
+     other places where the policy is on the ground: the start platform and gate 8's landing. The start platform is
+     this lineage's most fragile behaviour; it failed for one eval in a3 and a4 too.
+  4. k02's success line at its end + `--demo-success-d 100` sat INSIDE the 63.4-63.65% loss it was found for, so the energy
+     quorum fired after 151M steps without the skill and search 3 replaced it.
+* **Loop rules this round points to (generic, NOT yet flags):** (a) no patience search while the curriculum's tau is
+  still moving; (b) a spine's success line at the depth that admitted it (greedy frontier - `--auto-spine-gain`), tau0
+  the row before it, instead of wherever the explorer's budget ran out (a5-a7 used it by hand: 65.44% on k03);
+  (c) an energy spine's success line at its END (success_d 0), and `--demo-success-energy` usable with `--auto-spine` for
+  the first spine (the trainer refuses the pair today); (d) >= 40% fresh starts while a curriculum trains terrain unlike
+  the rest of the map.
+* **Code this round** (all off by default, tested): `auto_spine --beam-seeds N` / `train_fast --auto-spine-beam-seeds N`,
+  `train_fast --auto-spine-energy-patience P`, and CPU-side `record_ckpt --spawn-keys` / `band_bench --keys` (78931a3).
+  a3-a8 ran on 68baf9a; the rules (a)-(d) were applied by hand through existing flags, not coded.
+* **To continue** (WARM at the wall; the checkpoint carries the 7.67 ms tick and every shape flag): resume
+  runs/pbr6b1/pbr6b1_a8/ckpt_31963217920.pt (NOT a8's ckpt_latest: it walks on the start platform) with a8's flags
+  (k02 = autoresearch/spines/pbr6b1_a4k02 to its end with its energy, `--respawn-frac 0.6`) until the greedy holds
+  ~2,6xx at 64.5%, then k03 (autoresearch/spines/pbr6b1_a4k03, keys beside it) with `--demo-success-d 2769.4
+  --demo-tau0 6302 --respawn-frac 0.6` and the 24 milestones of a5-a8.
