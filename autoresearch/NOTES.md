@@ -2968,6 +2968,23 @@ Incumbent: pbr5b2_c7 ckpt_29123674112 (62.369, md5 afb44185...).
   the upstream gates are practised only by the ~10% full episodes.
 * **a7 (16:38 UTC)**: a5's flags from a4's 31.38B with `--respawn-frac 0.6` (40% fresh starts: the map start and the
   start-room states; the checkpoint's 0.9 otherwise) and no kl cap.
+* a7 (16:38-16:59, 31.38B -> 31.66B): evals 64.639, 24.597, 64.657, 64.580 - one gate-9 dip, then held (40% fresh
+  starts kept the greedy where a5 / a6 lost it). But its curriculum crawled: 6,302 -> 6,232-6,247 (65.2%, in the
+  corridor) at 7-47%, ~60 rows in 20 min, ~500 rows short of the ledge.
+* **WHY THE LEDGE IS AN ENERGY GATE (16:57, a4's 31.082B eval vs k03):** the greedy reaches the ledge's approach on
+  k03's path (x -3,33x..-3,46x, y ~2,60x-2,63x) but ~100-120 u LOWER (z 2,242-2,276, v_z 14-180), turns back and
+  falls; k03 arrives at the same x at z 2,268-2,363 climbing at v_z 297-425, which carries it to z ~2,381, the
+  ledge (x -3,561, z 2,376-2,393, on the ground). In energy: the greedy loses ~150 u at the landing between 63.4%
+  and 63.65% (2,586 -> 2,444 in ep0) and has 2,37x-2,55x at 64.5%; k03 (and k02, h 2,671 at 63.65%) keep ~2,61x.
+* **And why k02 did not teach it**: k02's success line was its end + `--demo-success-d 100` = d 20,875 = 63.47%, which
+  is INSIDE the 63.4-63.65% landing where the energy is lost. The greedy crossed it with h >= 2,596 in 5/9 episodes
+  after only 151M steps (the energy quorum) without having learned the landing, and search 3 replaced k02. Loop
+  lesson (generic): an ENERGY spine's success line belongs at its end (success_d 0), where its energy advantage was
+  measured, not 100 u before it.
+* **a8 (17:01 UTC)**: from a7's 31.66B, k02 with `--demo-success-d 0 --demo-success-energy 75` (cross d <= 20,775 =
+  63.65% with h >= 2,596), tau0 5,614, `--respawn-frac 0.6`; NO --auto-spine (the trainer refuses
+  --demo-success-energy with it: a search swaps in depth spines). What to read: the greedy's h at 63.65% / 64.5%
+  and whether any eval episode reaches the ledge (z ~2,38x at x ~-3,56x).
 
 ### pbr6b1 round 6 lesson (DRAFT 10:06 UTC; finalised at wrap-up)
 * **Score 62.369 -> 62.373** (a1 29.200B: the incumbent's weights 75M steps on, same gate; all 9 fall at the 62.3% drop).
