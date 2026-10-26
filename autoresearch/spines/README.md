@@ -249,3 +249,15 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
 * `pbr6b3_b2k02d.npy` + `.keys.npy` (6,716 rows): `pbr6b3_b2k02` cut at its row 6,715 (65.96%), before the second
   success cliff of its curriculum (band [6,720..6,735] at 0.5-8% vs 35-53% from 6,740, in the chain's walk north along
   the wall at x -3,561). Same provenance as `pbr6b3_b2k02`.
+* `pbr6b3_c1k01.npy` + `.keys.npy` (6,100 rows; md5 ed8e6a3c5bfd0ff687a4642776f0ca34 / 0dc89622788fcc9fe49e34af1fb7fa5c):
+  found BY THE TRAINER (run pbr6b3_c1's auto-spine search 1 at 30.848B, 36 s, the greedy's quorum past the third
+  `--demo-cliff-cut` line at 65.04%): the POLICY'S OWN plain beam line from the true spawn (beam_tas on c1's 30.848B
+  weights, 7.67 ms, 4,096 envs) to d 19,329 = 66.18%, past the start of gate 20's climb. Keys = the beam's own held
+  keys. No demo, no record (pbr6b3, round 6).
+* `pbr6b3_c1k02.npy` + `.keys.npy` (6,700 rows; md5 3b208f95b26f622d9603984cfa29135d / 9ee247af893f299834b9fa8109a9eb78):
+  found BY THE TRAINER (run pbr6b3_c1's auto-spine search 2 at 30.923B, 71 s, the greedy's quorum past c1k01's line):
+  the POLICY'S OWN BRANCHED beam line (beam_tas on c1's 30.923B weights, half the population forked at tick 5,915) from
+  the true spawn to d 16,430 = 71.25%. Keys = the beam's own held keys. Run pbr6b3_c2 trains on it (from the box path
+  runs/pbr6b3_c1/auto/k02, same bytes). No demo, no record (pbr6b3, round 6).
+* Run pbr6b3_c1's `--demo-cliff-cut` cuts (runs/pbr6b3/pbr6b3_c1/cliff/cut01-03 on the box) are prefixes of
+  `pbr6b3_b2k02`: rows 0-7,544, 0-6,708 and 0-6,392 (the trainer's own cuts; same provenance as `pbr6b3_b2k02`).
