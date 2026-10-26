@@ -3124,3 +3124,10 @@ a 5080 at 0.621 $/h, so `rent` was REFUSED (budget pace); a local retry every 5 
   loop and onto a ramp at 76.16%.
 * So when the greedy has learned k02 (5/9 at 74.15% fires the quorum), the gate is ENERGY: expect the loop's depth ladder
   to stop at the ledge unless a boosted stage clears it, and the energy stage to root before the 71.37% landing.
+* Boosted local GE (same settings, 10 min, 601k runs, 93k cells; 24 roots along the whole k02 chain, rows 6,387-6,851, each
+  x1.08 / x1.12 / x1.2 with --roots-keep-all): **only x1.2 crosses the ledge** - from row 6,750 (73.6%, h ~2,330 -> ~2,490
+  boosted) to **77.68%** (8,349 cells past 76%: down the shaft and into the room past it). x1.08 stops at 74.38% (root
+  6,730), x1.12 at 74.42% (root 6,770): over the ledge's line by a hair, not down the shaft. So the ledge asks ~+160 u at
+  73.6% - more than the loop's x1.12 ladder buys, i.e. its ENERGY stage (G 150) is what should take this gate, as at gates
+  17 and 19. Expected loop sequence after k02 is learned: search 1 ladder fails at the ledge (~20 min) -> energy spine ->
+  ~10-30 min to learn -> energetic quorum -> search 2 (beam / GE) past the ledge.
