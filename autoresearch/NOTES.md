@@ -2712,3 +2712,12 @@ Germany (machine 56783), rented 08:05 UTC for 2 h.
   +97 u, smaller than the 350 u the greedy throws away in the corner. Plan: continue c7's k02 curriculum (c7's
   ckpt_latest 29.46B, md5 a17970d6..., had walked it back 5,823 -> 5,423 in 28 min) with the loop on and a shorter
   patience (4e8, ~30 min), so the trainer's own search runs on the weights that have learned the corridor.
+
+### c8: c7's k02 curriculum continued, the loop on (08:11-08:15 UTC, box 57784754)
+* **pbr6b4_c8** = resume of c7's ckpt_latest (29.499B, md5 a17970d6...; c7's evals 62.33-62.37 there) with c7's flag set
+  on spine `autoresearch/spines/pbr5b2_c7k02` + keys, `--demo-tau0 5423` (where c7's curriculum stood at wrap-up), the
+  20 milestones of c7's current_final.json (the 18 + s6's 21,624 + k01's 23,216), `--auto-spine-energy 150
+  --auto-spine-ge-minutes 5`, and `--auto-spine-patience 4e8` (c7: 1.2e9; ~30 min here, so the loop's own search runs
+  once the curriculum has walked k02's chain back toward its x1.12 root at row 5,017), --steps 1.2e9. A WARM resume
+  measuring AT the wall (gate 19). Record gate passed (4 recordings in 16 s).
+* First minutes: the band at [5,423, 5,428] (61.6%, the east lane's south part) oscillates 1.6-53% per visit.
