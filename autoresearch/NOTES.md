@@ -2271,3 +2271,13 @@ reservation for a boxless branch would keep all four forks running; as it is, a 
   keys, milestones + 24,910) with `--auto-spine-patience 3e8 --auto-spine-retry 3e8` (a search ~15 min in, in the new
   physics). First eval 24.7605B: greedy median 52.53% (launched at the plate, then dead), as the beam predicted.
   The round's score keeps its best eval (c2's 56.587 under the old physics) whatever c3 does.
+* c3 (conveyor on) evals: 52.961 (24.7605B, the resume: launched at the plate, then dead) / **56.593** (24.836B, 8/9
+  back on the 56.6% ledge within 75M steps) -> auto-spine search 1 (beam 24,764 = 56.67%, branched 24,764-24,782,
+  GE x1.0-1.04 / x1.08 no gain; killed at 1,002 s). The greedy does NOT use the launch: at 35.27 s, falling at 1,189
+  u/s, it lands on TOP of func_wall *161 (x -2,480..-2,224, y 554..644, z 2,533-2,628: a 95 u block on the
+  conveyor's south half) and loses 724 u of h in 5 ticks, slides off north past the plate, and loses 489 more at the
+  52.8% floor (z ~2,199). The record passes just north of *161 (43.52 s at (-2,335, 644, 2,557)) and lands on the
+  conveyor's 73 u strip beyond it. With the launch modelled the line has to change ~0.5 s earlier.
+* Manual GE (04:49 UTC, conveyor on, 12 min, 16 threads beside c3): exact view-follow chains rooted at the conveyor
+  beam's own launched line (runs/manual/conv_beam1, h 3,075 at 52%, dead at 53.45%) over its last 2 s, x1.0 / 1.04
+  (runs/manual/ge_launch.py on the box = auto_spine.go_explore on a given line).
