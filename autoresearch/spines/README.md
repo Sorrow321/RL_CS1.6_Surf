@@ -217,3 +217,9 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   energy stage's pick: the deepest cell keeping >= 150 u). Keys = the beam's and the chain's own held keys. Taught with the
   energy success rule (h >= 2,626 at d <= 23,216) it put the greedy's h at 58.2% from ~2,480 to 2,683-2,751 in 75M steps.
   No demo, no record (pbr5b2, round 5).
+* `pbr5b2_c7k02.npy` + `.keys.npy` (5,824 rows; md5 71c6f3e22042d30d70fc0641cd0928e9 / 7d3c279bacc6f144fb5855c4ab1c8b80):
+  the first line PAST princessburglar's 62.3% drop (gate 19): run pbr5b2_c7's search 2 on its 29.124B weights (after the
+  energy spine k01 taught the 58% corner) - the POLICY'S OWN plain beam line from the true spawn to its row 5,017 (~60%,
+  the next corner), then one exact explore_phase1 --exact-chains chain (reward-free search; 807 ticks from that row's state
+  with its velocity x1.12, the ladder's third stage) to d 20,489 = 64.15%. Keys = the beam's and the chain's own held keys.
+  No demo, no record (pbr5b2, round 5).
