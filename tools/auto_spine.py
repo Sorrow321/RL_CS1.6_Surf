@@ -67,6 +67,23 @@ def ckpt_tick(ckpt) -> float:
     return 10.0
 
 
+def ckpt_tick_pattern(ckpt):
+    """The checkpoint's realised integer-ms tick PATTERN (config ``tick_pattern_ms``, e.g.
+    [8, 8, 7] for a 7.63 ms run), or None for a whole-ms tick. The explorer runs it
+    (explore_phase1 --tick-pattern): a precision contact found at the rounded whole-ms tick
+    may not exist at the policy's own (pbr5b1, 2026-10-26: gate 19's edge-hop at 8 ms died at
+    8,8,7 in every phase)."""
+    import torch
+    try:
+        c = torch.load(str(ckpt), map_location="cpu", weights_only=False)
+    except Exception:                                    # noqa: BLE001
+        return None
+    pat = (c.get("config") or {}).get("tick_pattern_ms")
+    if pat and len(pat) > 1:
+        return [int(v) for v in pat]
+    return None
+
+
 def load_field(path):
     from surfgym.goalfield import GoalField
     z = np.load(path, allow_pickle=False)
@@ -243,7 +260,10 @@ def go_explore(a, out: Path, line, end: int, boosts=None, tag: str = "ge", line_
         cmd += ["--maxvel", a.maxvel]
     if a.threads:
         cmd += ["--threads", a.threads]
-    if int(round(a.tick)) != 10:
+    if getattr(a, "tick_pattern", None):
+        # the policy's realised tick pattern (e.g. 8,8,7): chains that exist at its own tick
+        cmd += ["--tick-pattern", ",".join(str(v) for v in a.tick_pattern)]
+    elif int(round(a.tick)) != 10:
         # the policy flies another tick (--tick-ms-schedule): so does the explorer, rounded to
         # whole ms (10 = the explorer's default, byte-identical)
         cmd += ["--tick-ms", int(round(a.tick))]
@@ -348,6 +368,10 @@ def main(argv=None) -> int:
     ap.add_argument("--branch-jitter", type=int, default=45,
                     help="deg: the held view offset is U(-J, J) around the policy's own aim")
     ap.add_argument("--branch-protect", type=int, default=3)
+    ap.add_argument("--ge-tick-pattern", type=int, default=1, choices=(0, 1),
+                    help="1 = the Go-Explore stages run the checkpoint's realised tick pattern "
+                         "(explore_phase1 --tick-pattern) when it has one; 0 = the old whole-ms "
+                         "rounding (--tick-ms)")
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args(argv)
     if a.selftest:
@@ -359,6 +383,7 @@ def main(argv=None) -> int:
     out.mkdir(parents=True, exist_ok=True)
     global TICKS_PER_S
     a.tick = ckpt_tick(a.ckpt)
+    a.tick_pattern = ckpt_tick_pattern(a.ckpt) if a.ge_tick_pattern else None
     TICKS_PER_S = 1000.0 / a.tick
     if int(round(a.tick)) != 10:
         print(f"checkpoint tick {a.tick:.4f} ms: the beam runs it (physics parity), the explorer "

@@ -2322,3 +2322,11 @@ Incumbent: pbr4b3_t11 traj_23590338560 (52.937), weights ckpt_23551016960 (md5 7
   this way exist at the tick the policy trains and is evaluated at - a whole-ms explorer's precision contact may not.
 * GE_tp (01:24 UTC, c6 stopped at 27.417B, 30 threads, 12 min): --tick-pattern 8,8,7, rooted at r19's raw chain on its
   way to the platform edge (spine 8,300-8,505) + the k02 beam line's approach to the sheet.
+* GE_tp result (12 min, 126,429 cells at 8,8,7): the deepest cells (61.71%) are runs dying on the sheet (stepped at
+  8,8,7 in every phase: dead in 2 ticks), NO cell stands on the exit platform (entity 28; GE_r19 at 8 ms had 13). Full
+  beams from the true start on c6's 27.42B weights (two seeds): 22,026 / 22,027 = 61.46% - the population does not cross.
+* tools/auto_spine.py: the Go-Explore stages now run the checkpoint's realised tick PATTERN (explore_phase1
+  --tick-pattern from config tick_pattern_ms; --ge-tick-pattern 0 = the old whole-ms rounding). tests/python/
+  test_auto_spine.py 10/10 and the selftest pass.
+* GE_wall (01:47 UTC, 14 min, 30 threads, 8,8,7): rooted at 24 of GE_r19's surviving, most energetic wall-riding cells
+  (59.5-61.2%, h 2,520-2,666, >= 300 u/s) x1.0 / 1.1 / 1.2 - the record's way over the sheet is speed on the walls.
