@@ -3,18 +3,21 @@
  "round": 6,
  "final": false,
  "best": {
-  "score": 64.724,
-  "eval_file": "/home/steam/ar_pb/runs/pbr6b1/pbr6b1_a4/traj_31081889792.jsonl",
-  "run": "pbr6b1_a4",
-  "step": 31081889792,
-  "ckpt": "/home/steam/ar_pb/runs/pbr6b1/pbr6b1_a4/ckpt_31079792640.pt",
+  "score": 64.771,
+  "eval_file": "/home/steam/ar_pb/runs/pbr6b1/pbr6b1_a8/traj_31965315072.jsonl",
+  "run": "pbr6b1_a8",
+  "step": 31965315072,
+  "ckpt": "/home/steam/ar_pb/runs/pbr6b1/pbr6b1_a8/ckpt_31963217920.pt",
   "recipe": [
    "a1: resume of the round-5 incumbent (pbr5b2_c7 29.124B) with c7's flag set + --auto-spine-energy 150 --auto-spine-ge-minutes 5: the loop's ENERGY-BEFORE-BOOST ladder (068f27f) found an unboosted energy spine at gate 19's 60% corner; ~370M steps on it -> the policy's own beam (seed 9) past the 62.3% drop to 63.43% (spine pbr6b1_m2)",
    "a2 -> a3 -> a4: the backward curriculum on pbr6b1_m2 with its held keys (--demo-file autoresearch/spines/pbr6b1_m2.npy --demo-keys ... --demo-success-d 100 --demo-grow 5 --demo-grow-max 40 --demo-front-frac 0.8 + 21 milestones), warm, 5,5xx -> 5,284 (a2, 300M) -> 4,994 (a3, 760M) -> the greedy passes the corner and the drop",
-   "a4 (from a3's 30.779B, --demo-tau0 4994, the search on the quorum only): evals 63.343, 64.555 (6/9 past the drop), 64.604, 64.724 (median 64.67%); quorum search 1 -> spine k01 (own beam to 64.64%); quorum search 2 -> ENERGY spine k02 (+216 u at 63.65%); energy quorum search 3 -> GE depth spine k03 (x1.04 root at 63.4%, to 70.29%) over the 64.8% LEDGE gate"
+   "a4 (from a3's 30.779B, --demo-tau0 4994, the search on the quorum only): evals 63.343, 64.555 (6/9 past the drop), 64.604, 64.724 (median 64.67%); quorum search 1 -> spine k01 (own beam to 64.64%); quorum search 2 -> ENERGY spine k02 (+216 u at 63.65%); energy quorum search 3 -> GE depth spine k03 (x1.04 root at 63.4%, to 70.29%) over the 64.8% LEDGE gate",
+   "a4 (from a3's 30.779B, --demo-tau0 4994, the search on the quorum only): evals 63.343, 64.555, 64.604, 64.724 (median 64.67%); quorum searches -> k01 (own beam 64.64%), k02 (ENERGY, +216 u at 63.65%), k03 (GE from the policy's state at 63.4%, x1.04 root, to 70.29%, over the 64.8% LEDGE)",
+   "a5-a7 (ledge curriculum on k03 at the qualifying depth): a5 collapsed (start-platform walk after kl 0.4-0.66 updates), a6 (--target-kl 0.1) eroded at gate 9, a7 (--respawn-frac 0.6) held but crawled in the corridor",
+   "a8 (from a7's 31.66B): k02 taught to its END with its energy (--demo-success-d 0 --demo-success-energy 75 --respawn-frac 0.6, no --auto-spine): h at 63.65% 2,36x-2,66x -> 2,61x-2,73x; 64.771 at 31.965B (one episode to 64.77% with h 2,567 at the ledge; 7/9 at gate 9 in that eval)"
   ],
-  "resume_from": "pbr6b1_a3 ckpt_latest 30.779B <- a2 30.03B <- a1 29.72B <- pbr5b2_c7 29.124B (the round-5 incumbent)",
+  "resume_from": "pbr6b1_a7 31.66B <- pbr6b1_a4 31.38B <- a3 30.779B <- a2 30.03B <- a1 29.72B <- pbr5b2_c7 29.124B (the round-5 incumbent)",
   "commit": "68baf9a"
  },
- "summary": "64.724 (a4 31.082B, median 64.67%) vs the incumbent's 62.369: GATE 19 PASSED by the greedy; the next gate is a LEDGE at 64.8% (a deceptive detour: the line drops onto it and its progress goes back 0.2% for 2.8 s). How: the loop's energy-before-boost search found an unboosted energy spine at the 60% corner; on it the policy's own beam passed the drop (m2); the backward curriculum on m2 with held keys taught the corner and the approach, and the true-start greedy followed m2's energy past the drop. a4's searches: k01 (own beam, 64.64%), k02 (energy, +216 u at 63.65%), k03 (GE from the policy's state at 63.4%, x1.04 root, to 70.29%, over the ledge). a5 (15:50): k03 with the success line at the qualifying depth (greedy frontier - gain = 65.44%) instead of its end 5.6% further, so the curriculum starts just past the ledge. Box 57819941 to 18:51 UTC."
+ "summary": "64.771 (a8 31.965B; 64.724 at a4 31.082B with median 64.67%) vs the incumbent's 62.369: GATE 19 PASSED by the greedy; the next gate is a LEDGE at 64.8%. How: the loop's energy-before-boost search found an unboosted energy spine at the 60% corner; on it the policy's own beam passed the drop (m2); the backward curriculum on m2 with held keys taught the corner and the approach and the true-start greedy followed past the drop (a4). The ledge is an ENERGY gate (the greedy arrives 100-120 u low after losing ~150 u at the 63.4-63.65% landing): k02 taught to its end lifts that energy (a8) but the ledge route is still untaught. Ledge curricula near the gate collapsed or eroded the greedy (a5-a6) unless 40% of starts stayed fresh (a7). Box 57819941 (RTX 4070 Ti) 13:27-18:51 UTC."
 }

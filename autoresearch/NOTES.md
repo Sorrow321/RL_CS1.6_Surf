@@ -2991,6 +2991,10 @@ Incumbent: pbr5b2_c7 ckpt_29123674112 (62.369, md5 afb44185...).
   2,46x) -> 2,61x-2,73x in 11 of 13 crossing episodes; at 64.5%: 2,37x-2,55x -> 2,47x-2,62x (one at 2,615 = k03's).
   The greedy still stops at 64.5-64.6%: it now has most of the energy but not the route up onto the ledge, which
   nothing in a8 teaches (k02 ends at 63.65%).
+* **17:46 UTC: NEW BEST 64.771 (a8 31.965B)**: ep7 to 64.77% with h 2,567 at 64.75% (the most energy a greedy episode
+  has carried to the ledge), ep1 64.74%; the other 7 at gate 9 (20.4-21.6%) in that eval. Snapshot
+  ckpt_31963217920.pt (2M steps before the eval) pulled. Other a8 evals: 64.606, 64.673, 64.638 (31.96-32.19B).
+  The curriculum on k02 walked to 4,609-4,619 (~55%) by 17:46.
 
 ### pbr6b1 round 6 lesson (DRAFT 10:06 UTC; finalised at wrap-up)
 * **Score 62.369 -> 62.373** (a1 29.200B: the incumbent's weights 75M steps on, same gate; all 9 fall at the 62.3% drop).
