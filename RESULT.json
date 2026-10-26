@@ -3,19 +3,19 @@
  "round": 5,
  "final": false,
  "best": {
-  "score": 61.561,
-  "eval_file": "/home/steam/ar_pb/runs/pbr5b1/pbr5b1_c6/traj_26242187264.jsonl",
-  "run": "pbr5b1_c6",
-  "step": 26242187264,
-  "ckpt": "/home/steam/ar_pb/runs/pbr5b1/pbr5b1_c6/ckpt_26241662976.pt",
+  "score": 62.31,
+  "eval_file": "/home/steam/ar_pb/runs/pbr5b1/pbr5b1_c12/traj_31323586560.jsonl",
+  "run": "pbr5b1_c12",
+  "step": 31323586560,
+  "ckpt": "/home/steam/ar_pb/runs/pbr5b1/pbr5b1_c12/ckpt_31323586560.pt",
   "recipe": [
-   "resume chain c1 -> c2 -> c3 -> c4 -> c5 from the round-4 incumbent (t11's flag set throughout)",
-   "--demo-file autoresearch/spines/pbr5b1_e1.npy --demo-keys autoresearch/spines/pbr5b1_e1.keys.npy (own beam to 51.4% + a SURVIVING view-follow GE chain past the 52.8% ledge + the policy's own continuation to 55.41%)",
-   "--demo-success-energy 150 (NEW: the success line counts only with the spine end's energy height - 150 at the crossing) --demo-success-d 100 --demo-success-bonus 50",
-   "--demo-milestones 44939,...,27001,25121,24017 (16) --auto-spine (quorum 5 counting energy crossings, patience 1.2e9); auto_spine GE ladder to x1.3"
+   "resume chain c1 -> ... -> c12 from the round-4 incumbent (t11's flag set throughout)",
+   "c1-c6 (gate 18): --demo-file autoresearch/spines/pbr5b1_e1.npy (+ .keys.npy) energy spine through a SURVIVING view-follow GE chain past the 52.8% ledge; --demo-success-energy 150 (NEW: the success line counts only with the spine end's energy height - 150 at the crossing)",
+   "c7-c12 (gate 19): --demo-file autoresearch/spines/pbr5b1_y.npy --demo-keys autoresearch/spines/pbr5b1_y.keys.npy (the auto-spine search's x1.08 wall-ride chain over the kill sheet at the policy's 8,8,7 tick, cut on the exit platform at 61.84%)",
+   "c12: --demo-success-energy 150 --demo-success-d 100 --demo-success-bonus 50 --demo-rate 0.12 --demo-tau0 7682 --demo-milestones (19) --auto-spine (quorum 5, gain 500, patience 2e9); tools: explore_phase1 --tick-pattern, auto_spine --ge-survive"
   ],
-  "resume_from": "pbr5b1_c5 ckpt_latest 26,241,662,976 (the exact weights of this eval: c6's first, 0.5M steps after the resume)",
-  "commit": "43672ed"
+  "resume_from": "pbr5b1_c12 ckpt_31323586560.pt = c12's ckpt_latest frozen at the eval step (global_step 31,323,586,560, the exact weights of this eval; md5 802b37dccd26e1c2a44417e9a454f3f0)",
+  "commit": "c0a18dd (= c12's code commit bd4c610 + spine y; later commits are notes/tests only)"
  },
- "summary": "52.937 -> 61.561 (pbr5b1_c6's first eval 26.242B = c5's final weights; c5: 61.398 at 25.864B, 61.49-61.51 x4, median 61.5%). Gate 17 by the k05 spine; gate 18 (56.1%) was an ENERGY deficit made by one ledge landing at 52.8%: passed with an energy spine through a SURVIVING explorer chain that bypasses the ledge + train_fast --demo-success-energy (success needs the spine end's energy at the crossing); the trainer's own beam then reached 61.66%. Gate 19 (61.5%, kill sheet in a room): crossings exist at the policy's 8,8,7 tick only with a wall ride + x1.2 (found with the new explore_phase1 --tick-pattern); spine x, its landing band at ~15%. Traps recorded: energy picks pick fatal falls without a survival filter; a precision contact found at 8 ms did not exist at 8,8,7; an archive's deepest cell can be a dying run (auto_spine --ge-survive now)."
+ "summary": "52.937 -> 62.310 (pbr5b1_c12, eval 31.324B: 9/9 episodes past gate 19, median 62.2%; the eval's exact weights are ckpt_31323586560.pt). Gate 17 by the k05 spine. Gate 18 (56.1%) was an ENERGY deficit made by one ledge landing at 52.8%: passed with an energy spine through a SURVIVING explorer chain that bypasses the ledge + train_fast --demo-success-energy (success needs the spine end's energy at the crossing) -> 61.56 (c6). Gate 19 (61.5%, a kill sheet in a room): crossings exist at the policy's 8,8,7 tick only with a wall ride + boost (x1.2 / x1.08), found with the new explore_phase1 --tick-pattern and auto_spine --ge-survive; spine y; its landing band sat at 13-16% for ~1.4B steps (c11-c12) before the greedy line crossed. Traps recorded: energy picks pick fatal falls without a survival filter; a contact found at 8 ms did not exist at 8,8,7; an archive's deepest cell can be a dying run. Next: resume ckpt_31323586560.pt with the auto-spine search it triggered (the line now dies at z 2,062 past the exit platform)."
 }

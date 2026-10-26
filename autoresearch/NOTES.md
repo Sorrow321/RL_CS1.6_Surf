@@ -2355,8 +2355,9 @@ Incumbent: pbr4b3_t11 traj_23590338560 (52.937), weights ckpt_23551016960 (md5 7
   ride toward the x1.2 root instead of oscillating on a band the policy passes one time in seven.
 
 ### pbr5b1 round 5 lesson (DRAFT, finalised at wrap-up)
-* **52.937 -> 61.561** (best eval pbr5b1_c6 traj_26242187264 = c5's final weights; c5 61.398 / 61.514): gate 17 (k05),
-  gate 18 (the 56.1% climb) and the k01 beam line to 61.5%.
+* **52.937 -> 62.310** (best eval pbr5b1_c12 traj_31323586560, weights ckpt_31323586560.pt; before it 61.561 at c6 =
+  c5's final weights): gate 17 (k05), gate 18 (the 56.1% climb), the k01 beam line to 61.5%, and gate 19 (the kill
+  sheet at 61.5%, crossed by the greedy at 31.32B on spine y).
 * **Gate 18 was an energy deficit made by ONE ledge landing** (52.8%: landing on it resets the energy height to ~2,330
   whatever the line brings in); boosts and depth-only curricula could not fix it (a boosted spine's band before the root
   sat at 0.0%; the greedy's own line reaches the same depth without the energy). What worked: an energy search rooted
@@ -2412,6 +2413,13 @@ Incumbent: pbr4b3_t11 traj_23590338560 (52.937), weights ckpt_23551016960 (md5 7
   c11's ckpt_latest (29,964,107,776, md5 67eccc9a...) + spine y with --demo-tau0 7682 --demo-rate 0.12, the rest as c11:
   past the platform-landing band, back along the crossing toward its x1.08 root (+~50 u of h - round 4's greedy
   followed an x1.08 spine within ~150M steps).
+* **c12 CROSSED GATE 19 at 31.324B: 62.310** (traj_31323586560: 9/9 greedy episodes past the success line, median 62.2%,
+  all ending together at (-2,125, 2,252, z 2,062) t 47.3 s - below the sheet's height, past the exit platform; the eval
+  before ended ON the sheet at z 2,364, 61.52). The band before the landing ([7677]) went 0.0% -> 0.4 -> 0.7 -> 2.5 -> 3.1
+  -> 4.2 -> 5.4 -> 5.9% over its last 7 visits (band [7682] 12-16% throughout), and the greedy flipped while it was at ~6%:
+  ~1.36B steps on spine y (c11 + c12) at a 13-16% landing band, no new mechanism - patience on the x1.08 spine. The quorum
+  then started auto-spine search 1 (06:21 UTC). The eval's exact weights: c12's ckpt_latest at global_step 31,323,586,560,
+  frozen on the box as pbr5b1_c12/ckpt_31323586560.pt (md5 802b37dc...) and pulled.
 * Recommendation for the loop (not changed tonight, untested): twice the trainer's own search found the right gate-19
   material 420 u past the greedy and rejected it under --auto-spine-gain 500 (r19's platform route; the x1.08 crossing).
   The gain exists to keep a fatal fall from counting as progress (round 3); with --ge-survive (chains end at surviving
