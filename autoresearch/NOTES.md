@@ -2435,3 +2435,36 @@ minute). Incumbent: pbr4b3_t11 ckpt_23551016960 (md5 7fbcd458...), eval 52.937 a
   >60.8%, front-perturb best 35,640 u on the trainer's field the whole last hour). **Box 57714456 released 02:45 UTC**:
   the branch's best (62.367, c6 29.048B, hand-on ckpt_29047652352 pinned + pulled) stands, every search ends at the
   62.3% drop, and the program's credit above the reserve (~$5.5) is what round 6 runs on.
+
+### Gate 19, offline (03:05 UTC, no box): two lanes; and two loop fixes
+* The record (ANALYSIS ONLY) does NOT use the west floor strip at 61.2-62% that every policy line hops (x -1,980..-2,060,
+  with the 61.5% gap): from (-1,944, 2,945, 2,433) at 60.64% it flies SOUTH down an EAST lane at x ~-1,830..-1,944,
+  airborne over the fall-catch sheet (trigger_teleport *211, x -2,150..-1,793, z 2,317-2,343) at ~670 u/s, descending
+  2,442 -> 2,290, and curves west to (-2,013, 2,234) and onto the west-running ramp at (-2,234, 2,273, ~2,097). GE-G's
+  one fast cell at 61.0-61.5% (583 u/s at (-1,865, 2,698, 2,404), an x1.04 root) sat in that lane; its chain went no
+  further. Gate 19 = the airborne east lane at ~600-700 u/s, which needs the corridor before it flown fast (the policy
+  slows from ~500 u/s to ~230 in the corridor's last turn at 60.5-61%, and the bhop cap makes the strip's hops cost speed).
+* Two generic flaws of the trainer's own search, FIXED (87f3097; tests/python/test_ge_roots_keep_all.py,
+  test_auto_spine.py): (1) `explore_phase1 --roots-keep-all` (auto_spine passes it for stages with more than one
+  --ge-boost factor): boosted copies of a state usually share their original's 64 u x energy cell and were dropped
+  before exploring - a mixed stage ran unboosted (GE-H 144 roots -> 48 cells); (2) `auto_spine.tail_roots`: a line that
+  crawls on past its stall dies at its END (search 3's three stages all rooted at 58-61.5% while it fell at 62.3%,
+  1.7 s past the 'stall') - half the roots now go before the stall and half before the end.
+* **To continue (next round)** - resume the 62.367 weights (runs/pbr5b2/pbr5b2_c6/ckpt_29047652352.pt, the hand-on,
+  tick 7.67 ms carried) with c6's flags and its last spine k02 (copy runs/pbr5b2_c6/auto/k02/spine.npy + spine.keys.npy
+  from the pulled run into autoresearch/spines/, or let the trainer's first search on the quorum make the next one):
+  `box.py launch --resume --self-states "<the spines README provenance>" -- --maxvel 3500 --ckpt-every 2e8
+  --demo-file <k02 spine> --demo-keys <k02 keys> --demo-window 5 --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5
+  --demo-rate 0.3 --demo-front-frac 0.8 --demo-success-d 100 --demo-success-bonus 50 --demo-milestones
+  44939,43426,42182,41015,40497,39943,37251,33777,32260,31429,30286,28818,28783,27001,25121,24479,23400,22500,21624,21636
+  --keys-hold-spawn-duck --yaw-entropy 0 --demo-front-temp 0.5 --demo-front-ticks 40 --demo-front-view 6
+  --respawn-greedy 0.2 --respawn-greedy-window 0.25 2.0 --respawn-greedy-stuck 200 --respawn-greedy-contact
+  --respawn-greedy-energy 3 --respawn-greedy-temp 0.5 --respawn-greedy-temp-ticks 100 --respawn-greedy-temp-view 6
+  --respawn-front-perturb 0.2 --respawn-front-perturb-band 0.005 --respawn-front-perturb-speed 1.0 1.3
+  --respawn-front-perturb-turn 90 --energy-pot 12 --energy-pot-front 0 --energy-pot-front-bonus 0 --no-respawn-novel
+  --respawn-backward-mix 0 --int-real-only 0 --spawn-states autoresearch/spines/pbr1b1_entry_ge_states.npy
+  --spawn-states-frac 0.2 --auto-spine --auto-spine-milestones --auto-spine-gain 500 --auto-spine-ge-minutes 8
+  --auto-spine-retry 4e8 --auto-spine-patience 1.2e9`. For gate 19 by the gate-17 recipe: a GE (rising split, x1.0 /
+  1.04 with --roots-keep-all) rooted at the policy's corridor states from ~59.5% that keeps >= ~550 u/s through the
+  corridor's last turn into the EAST lane; then a spine to that chain with `--demo-success-energy` (M below the gap
+  between the chain's end energy and the greedy's), then the policy's own beam.
