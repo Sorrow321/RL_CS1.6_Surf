@@ -2328,3 +2328,11 @@ The trainer used ~12 of the box's 30.7-CPU quota, so each stage ran beside it at
 * **pbr5b4_c6** (03:28 UTC): c5's weights + the same shaft spine and flags with --energy-pot 24 (was 12): a 450 u
   landing loss costs twice as much while the shaft (success line ~56.9%) pays only with the energy. Last lever of the
   round; the best eval stays c5's 56.594.
+* c6 (--energy-pot 24 on c5's weights + the shaft spine): 56.593 / 56.594 then **6.697 / 0.594** (25.79-25.86B):
+  the start room lost again, training kl 0.23 (was 0.02-0.07), 100% of training episodes crawling. Doubling the
+  per-call energy price rescales the return enough to destabilise a 25B-step policy within ~150M steps - do not
+  change K on a resume by 2x; if at all, in small steps. Stopped at 25.9B.
+* **pbr5b4_c7** (03:59 UTC): c5's final weights (25,634,537,472 = the hand-on checkpoint) + c5's exact flags (K 12,
+  shaft spine) - a healthy run to the wrap-up.
+* Probe (04:01 UTC): start-state beams (c5's weights) from GE#1's most energetic viable states at 51.4-51.8% (h
+  3,435-3,560, the record ~3,614 at 51%) - does the policy land smoothly from there and reach the shaft with >= 2,740?
