@@ -2228,3 +2228,9 @@ The trainer used ~12 of the box's 30.7-CPU quota, so each stage ran beside it at
   at ~54.5% stays - viable max h 2,990 at 54-54.5% -> 2,352 at 54.5-55% (-640; the record loses ~260 from 54 to 55%,
   ANALYSIS ONLY), deepest viable 56.33% (h 2,035). Every line of four GE stages stalls at ~56.3% with h <= ~2,250
   (record 2,772 at 56%). GE#4 (00:00 UTC): roots at 54.0-54.7% (24 u apart), finer energy bins (8 u).
+* c2 later evals: 52.913 / 52.889 / 52.874 (24.26-24.41B): the 24.19B erosion was a transient (medians back at 52.8%).
+  The curriculum reached ~4,372-4,407 (GE#1's chain; the policy's own beam rows end at 4,233) by 00:18 UTC.
+* GE#4 (roots at 54.0-54.7%, energy bins 8 u): the 54.5% loss stays (viable max h 2,250 at 54.5-55%, deepest viable
+  56.06%). Four stages of the uniform view-follow explorer cannot ride what costs our lines ~640 u there.
+* GE#5 (00:20 UTC): a boost probe - the 12 most energetic viable cells at 55.0-56.3% (h 2,262-2,327, >= 64 u apart)
+  x velocity 1.0 / 1.1 / 1.2 / 1.3 - how much energy does the climb after ~56.3% need?
