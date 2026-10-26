@@ -209,3 +209,49 @@ def test_the_trainer_passes_and_refuses_the_energy_stage(tmp_path):
 def test_record_ckpt_knows_the_flag():
     import record_ckpt
     assert "auto_spine_energy" in record_ckpt.TRAIN_ONLY
+
+
+def test_energy_before_boost_ladder(tmp_path, monkeypatch):
+    """pbr6b1: a G in --ge-boost is where the --energy-gain stage runs. With G after the first
+    stage, an energy pick ends the search before the boosted stage (ENERGY BEFORE BOOST); with
+    no pick the ladder goes on to the boosted stage and the energy stage does not run twice;
+    without --energy-gain G is skipped (the old default ladder); a ladder without G runs the
+    energy stage last, as before."""
+    assert auto_spine.stage_specs("1.0,1.04;G;1.08;1.12") == [
+        ("tail", [1.0, 1.04]), ("gain", []), ("tail", [1.08]), ("tail", [1.12])]
+    assert auto_spine.boost_stages("1.0,1.04;G;1.08") == [[1.0, 1.04], [1.08]]
+    ladder = ["--ge-boost", "1.0;G;1.08"]
+    rc, calls, out = _main(tmp_path / "first", monkeypatch, ladder + ["--energy-gain", "100"])
+    assert rc == 0 and [c[0] for c in calls] == ["ge", "ge_energy"]
+    info = json.loads((out / "spine.json").read_text())
+    assert info["source"] == "beam+ge_energy" and info["energy"] is True
+    rc, calls, out = _main(tmp_path / "nopick", monkeypatch, ladder + ["--energy-gain", "300"])
+    assert rc == 2 and [c[0] for c in calls] == ["ge", "ge_energy", "ge2"]
+    assert calls[2][1] == (1.08,)
+    rc, calls, out = _main(tmp_path / "off", monkeypatch, ladder)
+    assert rc == 2 and [c[0] for c in calls] == ["ge", "ge2"]
+    rc, calls, out = _main(tmp_path / "last", monkeypatch,
+                           ["--ge-boost", "1.0;1.08", "--energy-gain", "100"])
+    assert rc == 0 and [c[0] for c in calls] == ["ge", "ge2", "ge_energy"]
+
+
+def test_default_ladder_puts_energy_before_boost():
+    import argparse
+    seen = {}
+
+    def grab(self, args=None, namespace=None):
+        seen["ge_boost"] = [x for x in self._actions if x.dest == "ge_boost"][0].default
+        raise SystemExit(0)
+    orig = argparse.ArgumentParser.parse_args
+    argparse.ArgumentParser.parse_args = grab
+    try:
+        try:
+            auto_spine.main([])
+        except SystemExit:
+            pass
+    finally:
+        argparse.ArgumentParser.parse_args = orig
+    specs = auto_spine.stage_specs(seen["ge_boost"])
+    assert [m for m, _b in specs] == ["tail", "gain", "tail", "tail"]
+    # without --energy-gain the G is skipped: the GE stages are the old default's
+    assert auto_spine.boost_stages(seen["ge_boost"]) == auto_spine.boost_stages("1.0,1.04;1.08;1.12")
