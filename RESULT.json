@@ -1,7 +1,7 @@
 {
  "agent": "pbr6b2",
  "round": 6,
- "final": false,
+ "final": true,
  "best": {
   "score": 62.371,
   "eval_file": "/home/steam/ar_pb/runs/pbr6b2/pbr6b2_c9/traj_31307333632.jsonl",
@@ -17,5 +17,5 @@
   "resume_from": "pbr6b2_c5 snapshot 30,249,844,736 (md5 9522789c...) <- c4 30.079B <- c3 <- c2 <- c1 <- pbr5b2_c7 ckpt_latest",
   "commit": "56e8048"
  },
- "summary": "Round 6 (one 3 h box, the credit hit the reserve at 09:53): resume of pbr5b2_c7's latest weights with the loop. Gate 19 (the 62.3% drop) is a BOUNCE: the policy's own branched beams pass it by a jump on the tick the hull meets the ramp's foot (search 1: k01 + a GE crawl to 63.83%; a manual search on c5's weights: c5s1 to 63.45%). A spine spawn's first decision had a random phase (mid-decision autoreset), so the tick-exact jump capped its band near 1/K; --demo-phase (new) moves spawns onto the line's own decision grid, and a CPU probe showed the trained policy bounces from the on-grid contact state to 63.29%. The greedy never got the approach in the time left; training on c5s1 collapsed the route twice (c6, c7): the logs show the lineage's recurring PPO dip (W/S held in the air and the key heads' entropy up, reward down; c4 and c5 had it and recovered) gone deep, with the spawn pools then following the collapsed greedy; a CPU probe with the new --diag-ratio-split measured PPO's joint clip spent ~80% by the two view heads (the camera-only pitch 41% of the KL), the keys heads losing their policy gradient on ~14% of each update's rows; the link to the collapses is not shown. New, default off: --auto-spine-energy-first, --auto-spine-cut-ahead, --demo-phase, --diag-ratio-split. After a credit top-up (13:35), c9 = c5 continued on k01c: the curriculum walked back from the contact to row 6,107 of the approach; best 62.371 (c9 31.307B, median 62.28%, still at the drop), incumbent 62.369."
+ "summary": "Round 6 (pbr6b2): best 62.371 (c9 31.307B, median 62.28%, 0/9 finishes) vs incumbent 62.369 - every greedy episode still falls into the catch at the 62.3% drop (gate 19); the gain is a few u, not a gate. Gate 19 is a bounce the policy's own branched beams find (a jump on the tick the hull meets the ramp's foot); --demo-phase (spawns on the line's decision grid) made that tick-exact band learnable (7-14% -> 41-49%), and c9 walked the curriculum from the contact back into the approach (6,337 -> 6,107) with the route intact. Measured with the new --diag-ratio-split: PPO's joint-ratio clip is spent ~90% by the view heads (the camera-only pitch 67% of the KL) and the keys lose their gradient on ~14% of each update's rows; the new --ppo-head-clip (per-group clip) passed a band c9 sat flat on for 25 min (1.6-4.1% -> 20.6% in ~15 min; one seed, no matched control). Lost time: the credit at the reserve 09:53-13:35, a box host offline mid-run at 15:32, no box under the cap after 15:40. New, default off: --auto-spine-energy-first, --auto-spine-cut-ahead, --demo-phase, --diag-ratio-split, --ppo-head-clip. Next: the matched joint-vs-head-clip check from pbr6b2_c9/ckpt_31297372160.pt at --demo-tau0 6107, then c11's command until the curriculum reaches the fork at row 5,827."
 }

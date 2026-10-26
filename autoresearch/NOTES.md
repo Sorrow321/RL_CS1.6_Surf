@@ -3087,3 +3087,36 @@ c5 had dips (median down to 24%) that recovered, c6 / c7 did not (see the collap
 * 15:40-18:35 UTC: `box.py rent` refused every 2 min throughout (the other branches' burn 0.739 -> 1.09 $/h of the 1.2
   cap; the only acceptable offers RTX 5080 at 0.621 $/h). No box after the offline host: the matched check of
   --ppo-head-clip (the joint-ratio control from the c9 snapshot at band 6,107) is left for the next program.
+
+### pbr6b2 round 6 lesson (wrap-up, 2026-10-26 19:14 UTC) - supersedes the DRAFT above
+* **Score: 62.371** = pbr6b2_c9 traj_31307333632 (median 62.28%, 0/9 finishes), hand-on pbr6b2_c9/ckpt_31297372160.pt
+  (md5 32f4c3fb..., 10M steps before the eval). Every greedy episode of the round still falls into the catch at the
+  62.3% drop (gate 19); 62.371 is a few u deeper than the incumbent's 62.369, not a new gate.
+* Box time: RTX 5060 Ti 08:16-10:48 UTC; the credit sat under the $10 reserve 09:53-13:35; RTX 4080 SUPER 13:36-15:32,
+  when its host went offline mid-run (blocklisted, unreliable); from 15:40 no offer fit the 1.2 $/h cap beside the
+  other branches' boxes (a box.py rent retry every 2 min, refused throughout).
+* **What worked:**
+  1. Gate 19 is a BOUNCE that the policy's own branched beams find (a jump on the tick the hull meets the ramp's
+     foot). `--demo-phase` (spine spawns on the line's own decision grid) made that tick-exact band learnable: the
+     contact band went 7-14% (c5) -> 41-49% (c8, the same weights 171M steps later).
+  2. c9 (c5's command, `--auto-spine-patience 4e9` so the spine is not swapped by the patience search) walked the
+     curriculum from the contact back into the approach, 6,337 -> 6,107, in ~50 min with the route intact (evals
+     62.27-62.37, no collapse).
+  3. **Measured** (`--diag-ratio-split`, CPU probe and 1,024 envs on the box): PPO's JOINT ratio clip is spent ~90% by
+     the two view heads - the camera-only pitch head alone carries 67% of the joint KL - and the keys heads lose their
+     policy gradient on ~14% of each update's rows (87% of the rows PPO switches off).
+  4. **`--ppo-head-clip`** (each head group - keys / yaw / pitch - clipped on its own ratio): the band where c9 sat flat
+     at 1.6-4.1% for 25 min (release jump before a landing, re-press after 4 ticks of friction) rose to 20.6% in ~15
+     min and passed; the next band went 0.3% -> 11% in 25 min; the keys' KL per update +24%, their entropy lower.
+     One seed and no matched control (c11 started from weights c9 had already trained on that band).
+* **What did not / is open:** training on c5s1 collapsed the route twice (c6, c7); the collapse signature (W/S held
+  in the air and the keys' entropy up, reward down) also appears in c4 / c5 as dips that recovered - consistent with
+  the joint-ratio mechanism of item 3, not proven. c11's head-clip progress was lost with the offline host. The
+  greedy needs the curriculum back to the fork at row 5,827 (~275 rows of hop-and-stop at the strip's edge) before
+  its own approach meets the line.
+* New flags, all default off and bit-identical when off: `--auto-spine-energy-first`, `--auto-spine-cut-ahead`,
+  `--demo-phase`, `--diag-ratio-split` (measurement only), `--ppo-head-clip`.
+* **To continue:** the matched check first - from pbr6b2_c9/ckpt_31297372160.pt at `--demo-tau0 6107`, ~20 min with the
+  joint ratio (c11's command without `--ppo-head-clip`) and ~20 min with it, reading band [6,107]'s success per
+  visit; then c11's command (NOTES "To continue from here") until the curriculum reaches the fork at 5,827 and the
+  greedy follows.
