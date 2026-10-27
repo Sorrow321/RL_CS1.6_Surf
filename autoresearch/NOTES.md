@@ -3665,3 +3665,14 @@ ckpt_45558005760 (82.652 at 45.564B).
     are already the policy's; the hard part is the platform landing and walk (81.9-84.5%) and the fork before it.
   - shaft, success = the finish: [8,880] / [9,000] / [9,100] / [9,200] 0/12 (medians 93.7 / 94.7 / 96.5 / 98.4%); [9,300]
     **3/12 greedy finish** (the curriculum's band was at ~9,360 by then); [9,400] 0/12 (99.5%).
+* c3 to 10:49 UTC (47.975B): its band crawled through the GE chain to [9,263 / 9,268] (57% / 10%; 110 rows in 25 min; the
+  junction with b3's own line is at 9,180); evals 82.61-83.04 (flat). Update kl median 0.36, p90 0.69, 50 of 1,233 > 1 (max
+  10.0) - c9's regime (0.30), above round 7's c8 (0.12-0.19). Re-bench of the middle after ~45 min of uniform b3-middle
+  spawns: unchanged within noise ([7,080] 0/12, [7,200] 0-1/12, [7,400] 3/12, [7,600] 2/12, [7,800] 3/12) - uniform
+  spawn-states over ~900 rows carry too few samples per window and no bonus after the hard part.
+* **pbr8b1_c4** (10:51 UTC): c3's ckpt_latest (47.975B, md5 7e544085...) on **b3c** = b3f cut at row 8,200 (86.31%; success
+  line 86.13%, past the drop and its landing on the lower level - round 7's k04c rule: the success bonus right after the
+  greedy's failure), c3's flags otherwise, `--spawn-states autoresearch/spines/pbr8b1_entry_shaft2_states.npy` (start room +
+  the shaft frontier c3 had reached, b3f rows 9,250-9,350, ~25% + the shaft from 92.4% uniformly ~25%). Why: bank the
+  platform (the greedy's failure, 81.9-84.6%) first - from 84.4% the policy already flies 12/12 to ~93% - instead of
+  grinding the chain first; later return to b3f with `--demo-tau0 ~9,263` and 7,926 as a milestone. Record gate passed.
