@@ -3411,3 +3411,15 @@ ckpt_35907960832 (md5 160da9eb...), eval 73.590 at 35.918B. Credit at the start:
 * (A process note: `pgrep -f auto_spine.py` inside a `box.py ssh` command matches its own shell - CLAUDE.md's pkill warning - and
   read as a leftover search; `ps ... | grep -v grep` showed none. And Python's atexit does not run on SIGTERM, so a trainer killed
   that way while an async search runs would orphan the search - kill it by hand, or SIGINT the trainer.)
+* **c7 collapsed too, and this time the cause is visible.** Its curriculum walked d2c back at 100% bands and got PAST the turned
+  root (row 6,356) within ~10 min - from its own SSE heading the policy learned the turn and the block crossing (bands at
+  71.9% 35-66% by 04:28) - but the greedy evals went 74.304 -> **56.364 / 56.232 / 55.637** (medians ~55.5%: every episode dies
+  at the 56% shaft). From the first iteration the value loss was 275 and the episode reward 480, and the updates ran at kl
+  0.4-1.35 with one at **kl 4.5** (43.003B) just before the first collapsed eval. Spawns on d2c's chain cross a PILE of bonuses
+  within a second: the success line (74.63%) and three milestones within 21 u of each other (k01 14,794 / e1 14,789 / k02
+  14,773 at 74.11-74.15%), + e5 / e6's two lines 89 u apart - ~200 u of reward the value head had never seen, huge advantages,
+  destructive updates. c4's collapse (kl 0.92) also followed a sudden wave of bonuses (its first 9/9 energetic quorum).
+* **pbr7b2_c8** (04:31 UTC): c6's pre-collapse ckpt_latest (42.928B, md5 eced6274...) on d2c again with the milestones
+  DE-CLUSTERED (one line at 74.15%, one of e5 / e6's; 29 in all) and `--lr 1e-4` (was 3e-4; the sidistic lineage's late lr cuts
+  held a fragile skill the same way). Generic: milestones closer than the bonus they each pay are one line; the lr is a
+  stability knob, not a map constant.
