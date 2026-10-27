@@ -4074,3 +4074,19 @@ Only a FASTER 9/9 eval beats it (one finisher fewer costs 1.11 = 33 s of time; o
   on the north ramp at (1,166, 3,491, ~870), which turns the fall into only ~1,030 u/s westward (h ~1,440). The record
   curves along the shaft (S, then NE, then W in ~0.6 s at 850-970 u/s) and leaves the ramp at ~1,290 (h ~1,880). So the
   next skill is a CURVE in the top of the drop shaft that keeps ~900 u/s into the ramp: ~1-1.5 s over 86-92%.
+* **GE5 (the shaft curve, roots = h1 rows 7,572-7,614, x1.0, 50-decision bursts, heading split 4, --select-energy 6,
+  10 min, 231k cells): no faster entry.** Its best lower-level state after the north ramp (86.37%) carries 1,110 u/s and
+  h 1,528 (the line: ~1,030 / ~1,440), but its chain scrapes the platform edge and meanders 0.6 s in the shaft: it reaches
+  86.1% ~0.5 s LATER than the line, which the extra ~7% of lower-level speed only pays back. The curve the record flies
+  (yardstick) is a wall-surf spiral at ~900 u/s that 4 x 8-10 min of 2-thread search did not produce.
+
+### `--bc-view-coef C` (new; tests/python/test_bc_view_coef.py, 2/2 pass, 22:43 UTC): BC on the key heads only
+* Round 8's distil steps (expert loop) collapsed the policy on the first BC update (kl ~17 at --bc-coef 0.5 AND 0.05): the
+  BC loss already prices the view heads at a FIXED reference sigma (BC_VIEW_SIGMA 0.3), but the targets sat ~1.3 z RMS from
+  a yaw head whose own sigma is ~0.013, so any weight on them moves mu by many of the policy's own sigmas. C weights the view
+  heads' terms (the executed z's NLL and, for --bc-target dist, the cross-entropy to the elite copies' moments); 0 = BC on
+  the four categorical heads (fwd / side / jump / duck), whose targets are the planner copies' own categorical draws.
+  Default 1 = byte-identical (config and progress.csv vs a9e11cb, CPU smoke on princessburglar, keys-hold + absolute view).
+* Use (box): beam_tas --objective finish --score dv on the current weights -> plan_to_bc -> `--bc-file F --bc-coef 0.5
+  --bc-coef-final 0 --bc-steps 3e8 --bc-target dist --bc-view-coef 0`; watch the first updates' kl (resumes without BC read
+  ~0.03).

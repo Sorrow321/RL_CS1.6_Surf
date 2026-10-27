@@ -5111,6 +5111,15 @@ def main() -> None:
                          "only the winner survived the search) the "
                          "distribution IS the one-hot and 'dist' is 'argmax' "
                          "exactly")
+    ap.add_argument("--bc-view-coef", type=float, default=1.0,   # 1 = as before
+                    help="--bc-file under --view-continuous: weight of the VIEW heads' terms in "
+                         "the BC loss (the Gaussian NLL of the row's executed z and, for "
+                         "--bc-target dist, the cross-entropy to the elite copies' N(vmu, vsd)). "
+                         "0 = BC on the four categorical (key) heads only: a policy whose yaw "
+                         "head runs at sigma ~0.013 reads a view target ~1 z off its mu as a "
+                         "KL of ~17 on the first update at any --bc-coef (pbr8b1, round 8), "
+                         "while the keys a search chose are the policy's own categorical "
+                         "draws. 1 = byte-identical; config only when set")
     ap.add_argument("--bc-value-coef", type=float, default=0.0,
                     help="--bc-file: weight of a value term on the planner "
                          "line's own realised return-to-go (AlphaZero's "
@@ -14503,6 +14512,9 @@ def main() -> None:
                        "bc_target": args.bc_target if args.bc_file else None,
                        "bc_value_coef": (args.bc_value_coef if args.bc_file
                                          else None),
+                       # --bc-view-coef: dumped only when set off its default
+                       **({"bc_view_coef": float(args.bc_view_coef)}
+                          if args.bc_file and float(args.bc_view_coef) != 1.0 else {}),
                        "race_kill_aware": args.race_kill_aware,
                        "race_field_blur": args.race_field_blur,
                        "respawn_reservoir": args.respawn_reservoir,
@@ -18208,6 +18220,11 @@ def main() -> None:
                   "search window ended). The value term is a NO-OP this "
                   "round; bc/value_mse will be blank.")
 
+        BC_VIEW_W = float(args.bc_view_coef)
+        if BC_VIEW_W != 1.0:
+            print(f"bc: --bc-view-coef {BC_VIEW_W:g} - the view heads' terms weighted "
+                  f"{BC_VIEW_W:g} in the BC loss" + (" (keys only)" if BC_VIEW_W == 0.0 else ""))
+
         def bc_loss_fn(scal, img, act, w, probs, z, zmask, priv,
                        vz=None, vmu=None, vsd=None):
             with amp:
@@ -18247,6 +18264,10 @@ def main() -> None:
                     nll_mm = (_ls + 0.5 * LOG2PI
                               + (vsd.pow(2) + (vmu - mu).pow(2))
                               / _var2).sum(-1)
+                    if BC_VIEW_W != 1.0:
+                        # --bc-view-coef: the view heads' share of the loss (0 = keys only)
+                        nll_pt = BC_VIEW_W * nll_pt
+                        nll_mm = BC_VIEW_W * nll_mm
                     logp = logp_c - nll_pt
                 else:
                     logp, _ent = logprob_entropy_padded(padded, act)

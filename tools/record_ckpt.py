@@ -397,7 +397,7 @@ TRAIN_ONLY = frozenset({
     # auxiliary loss regresses onto (the action index, the search's
     # distribution over first decisions, the planner line's return-to-go).
     # Still a training-time loss; a recording is unaffected.
-    "bc_target", "bc_value_coef",
+    "bc_target", "bc_value_coef", "bc_view_coef",
     # tools/ckpt_qr_to_scalar.py stamps the source path of a collapsed
     # quantile checkpoint; provenance only
     "qr_source",
