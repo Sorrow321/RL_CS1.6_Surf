@@ -115,6 +115,12 @@ def clean(states):
     return out
 
 
+def cut_ahead(d, greedy_d: float, ahead: float):
+    """--cut-ahead: the first row at least `ahead` u past the greedy frontier, else None."""
+    idx = np.flatnonzero(np.asarray(d, np.float64) <= float(greedy_d) - float(ahead))
+    return int(idx[0]) if len(idx) else None
+
+
 def run(cmd, log, timeout):
     print("+ " + " ".join(str(c) for c in cmd), flush=True)
     t0 = time.time()
@@ -515,6 +521,15 @@ def main(argv=None) -> int:
     ap.add_argument("--branch-jitter", type=int, default=45,
                     help="deg: the held view offset is U(-J, J) around the policy's own aim")
     ap.add_argument("--branch-protect", type=int, default=3)
+    ap.add_argument("--cut-ahead", type=float, default=0.0,
+                    help="G > 0: a DEPTH spine that runs more than G u past --greedy-d ends at "
+                         "its first row G u past it (G below --gain is raised to --gain). A beam "
+                         "line can run far past the greedy frontier (pbr7b2 search 4: 92.5% "
+                         "against a greedy at 80.4%), and the backward curriculum then starts at "
+                         "its end and spends its time where the greedy never goes (c8 sat at "
+                         "84.5% for an hour); cut by hand at ~940 u past the frontier, c9 "
+                         "learned the next turn in 25 min. The next quorum's search, from "
+                         "better weights, makes the next segment. 0 = off (the whole line)")
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args(argv)
     if a.selftest:
@@ -682,6 +697,15 @@ def main(argv=None) -> int:
     if best_src is not None:
         src, sp, de = best_src
         sp = clean(sp)
+        if float(a.cut_ahead) > 0 and not res.get("energy") and np.isfinite(a.greedy_d):
+            c = cut_ahead(field_d(field, sp), a.greedy_d, max(float(a.cut_ahead), a.gain))
+            if c is not None and c < len(sp) - 1:
+                res.update(cut_ahead_row=int(c), uncut_n=int(len(sp)), uncut_end_d=float(de))
+                sp = sp[:c + 1]
+                de = float(field_d(field, sp[-1:])[0])
+                print(f"--cut-ahead {a.cut_ahead:g}: the line ({res['uncut_n']} states, end d "
+                      f"{res['uncut_end_d']:,.0f}) ends at row {c}, d {de:,.0f} (greedy frontier "
+                      f"{a.greedy_d:,.0f})", flush=True)
         p = out / "spine.npy"
         np.save(p, sp)
         import hashlib

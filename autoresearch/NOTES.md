@@ -3537,3 +3537,33 @@ ckpt_35907960832 (md5 160da9eb...), eval 73.590 at 35.918B. Credit at the start:
   the loop's k04 in full (runs/pbr7b2/pbr7b2_c8/auto_k04, md5 f3f74722..., to 92.54%), with the c8/c9 flags (lr 1e-4, the 33
   milestones, the loop async); the next stops are the 5-row window on the south ramp at 78.9% (rows 6,810-6,815) and the turn
   north at ~80.4% (*265), then the drop to the lower level at ~84.5%.
+
+## pbr8b3 (round 8, slot 3) - 2026-10-27 08:33 UTC start
+
+Box: 57938261, RTX 3090, 0.377 $/h, Missouri US (machine 153789), rented 08:35 UTC for 3 h. Incumbent: pbr7b2_c9
+ckpt_45558005760 (md5 6dec286c...), eval 82.652 at 45.564B. Credit at the start: $22.03, fleet burn 0.
+
+### c1: c9's loop, continued from its last weights (08:40 UTC)
+* c9's later evals (scored here): 82.477 (45.640B) / 82.152 / 82.454 / 80.717 / 80.644 / **82.564 (46.017B: 6/9 past the
+  80.4% turn at 80.7-82.56%, median 81.9%, 5/9 past k04c's success line 81.86% = the loop's quorum)**. Every passing
+  episode dies on the *265 sheet (z ~1,460) at (2,325-2,533, 2,256-2,601); 2/9 at 73.5-74.3% (the old block).
+* **pbr8b3_c1** = resume of c9's ckpt_latest (46,023,049,216, md5 50c3a56e..., 6M after that eval) on k04c + keys with
+  c9's flag set reconstructed from its run.json (the round-5 to-continue block + --demo-match-band, --auto-spine-patience 0,
+  --auto-spine-ge-minutes 5, --auto-spine-energy 150, --auto-spine-async, --lr 1e-4, the 33 milestones), --steps 6e9.
+  A warm resume pushing the frontier: the quorum is met, so search 5 (the policy's own beam on these weights) should
+  fire at the first eval and give the next spine past the *265 sheet.
+* `tools/snapcopy.py` (new, ops): the per-minute ckpt_latest -> ckpt_<step>.pt copier of round 7, now in the repo, with
+  pruning (keeps the last 30 min, and the newest snapshot at or before every eval).
+* c1 first evals: **82.359** (46.0236B = the resumed weights: 2/9 past 81.86%, 4/9 die at the 80.4% turn, 3/9 at the old
+  74.4% block region 73.4-73.5% - the greedy is chaotic: the same weights 6M steps earlier gave 6/9 past the turn) /
+  82.425 (46.099B, median 80.5%). Record gate passed (4 recordings, POV ok); config = c9's but --steps; 209k steps/s on
+  the 3090 (GPU ~70%). The first updates after the resume logged kl 7.58 / 3.40 / 2.22 (c9's own start: 8.58 / 4.53
+  at its 6th-7th updates, and c9 still made 82.652) - the curriculum's restart at the spine's end; watch for erosion.
+  The curriculum walked k04c back from 7,450 to [6,645 / 6,650] (78.6%) in ~25 min (bands 71-78% at step 40, then
+  6.8% at 6,650).
+* Where the passing greedy episodes die vs the k04 line (the loop's own search-4 beam, 9,200 rows to 92.54%; rows ~
+  ticks at 7.67 ms): after the turn north k04 climbs to z 1,814 at (2,647, 1,935) (81.08%), goes EAST to (2,912, 2,245)
+  and lands at z 1,547 (81.27%), climbs north to (2,735, 2,663, 1,588) (81.84%) and walks a platform at z 1,565 west
+  from (2,611, 2,817) at 50-240 u/s (82.2-83.3%), then drops to the lower level at 84.5-85.9% (z 1,571 -> 834) and runs a
+  loop at ~900 u/s to 91.5% (846 z). The greedy episodes that pass the turn head NORTH-WEST directly (x 2,325-2,533 at y
+  2,256-2,601) and fall onto the *265 sheet (z ~1,460) - they cut the corner that k04 takes east to x ~2,912.

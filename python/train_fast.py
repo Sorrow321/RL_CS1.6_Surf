@@ -4998,6 +4998,14 @@ def main() -> None:
                          "and leaves most of a box's CPU quota idle; a blocking search held it "
                          "for up to ~28 min (pbr6b4_c12). Off = the trainer waits, as before; "
                          "config only when on; never restored")
+    ap.add_argument("--auto-spine-cut-ahead", type=float, default=0.0,   # 0 = off
+                    help="--auto-spine: G > 0 - a new DEPTH spine that runs more than G u past "
+                         "the greedy frontier ends G u past it (auto_spine --cut-ahead; G below "
+                         "--auto-spine-gain is raised to it): the backward curriculum then "
+                         "starts just past where the greedy fails, not at the end of a beam "
+                         "line that ran 10%% further (pbr7b2's k04 -> k04c by hand), and the "
+                         "next quorum's search makes the next segment. Config only when set; "
+                         "not restored")
     ap.add_argument("--auto-spine-energy", type=float, default=None,   # None = off
                     help="--auto-spine: G > 0 adds an ENERGY stage to the search (auto_spine "
                          "--energy-gain G): when no deeper line exists, a line keeping >= G u "
@@ -11849,6 +11857,16 @@ def main() -> None:
         raise SystemExit("--auto-spine needs --demo-file (the first spine) and --demo-success-d")
     if args.auto_spine_energy is not None and not args.auto_spine:
         raise SystemExit("--auto-spine-energy is a stage of --auto-spine's search: give it")
+    if float(args.auto_spine_cut_ahead or 0.0) < 0.0:
+        raise SystemExit("--auto-spine-cut-ahead G must be >= 0 (0 = off)")
+    if float(args.auto_spine_cut_ahead or 0.0) > 0.0:
+        if not args.auto_spine:
+            raise SystemExit("--auto-spine-cut-ahead cuts --auto-spine's new spines: give "
+                             "--auto-spine")
+        print(f"--auto-spine-cut-ahead {float(args.auto_spine_cut_ahead):g}: a new depth spine "
+              f"ends at its first row "
+              f"{max(float(args.auto_spine_cut_ahead), float(args.auto_spine_gain)):g} u past "
+              f"the greedy frontier")
     if args.auto_spine_async:
         if not args.auto_spine:
             raise SystemExit("--auto-spine-async runs --auto-spine's search beside the training: "
@@ -14894,6 +14912,8 @@ def main() -> None:
             meta["config"]["auto_spine_async"] = 1
         if args.auto_spine_energy is not None:
             meta["config"]["auto_spine_energy"] = float(args.auto_spine_energy)
+        if float(args.auto_spine_cut_ahead or 0.0) > 0.0:
+            meta["config"]["auto_spine_cut_ahead"] = float(args.auto_spine_cut_ahead)
         if float(args.demo_stall_cut or 0.0) > 0.0:
             meta["config"]["demo_stall_cut"] = float(args.demo_stall_cut)
     if args.demo_milestones:
@@ -16071,6 +16091,8 @@ def main() -> None:
             cmd += ["--maxvel", f"{float(args.maxvel):g}"]
         if args.auto_spine_energy is not None:
             cmd += ["--energy-gain", f"{float(args.auto_spine_energy):g}"]
+        if float(args.auto_spine_cut_ahead or 0.0) > 0.0:
+            cmd += ["--cut-ahead", f"{float(args.auto_spine_cut_ahead):g}"]
         t0 = time.time()
         if args.auto_spine_async:
             # the search reads its weights more than once (the beam, each branched beam), and
