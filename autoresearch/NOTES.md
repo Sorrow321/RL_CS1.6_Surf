@@ -3858,3 +3858,15 @@ ckpt_45558005760 (82.652 at 45.564B).
   on the record's west-high path over 82-83% (h 2,368 at 82%, 2,197 at 83%), lands near 83.5-84% and walks the platform's
   last stretch, then the drop. plan_to_bc -> fin4/bc_w0.npz (18,576 rows, 8 lines) + spine_w0 (9,286 states) on the box.
   Seeds 71-74 running (16:07 UTC) for the fastest line to distil.
+
+### The expert loop, distil step (16:18-16:24 UTC): BC on the policy's own planner lines
+* Planner seeds on c7's 52.6B weights (beam_tas --objective finish --score dv, 4,096 copies): 71.19 / 71.20 / 71.75 / 71.77 /
+  71.20 s - the population converges at ~71.2 s (hybrid: airborne over 82-83%, walks the platform's last stretch).
+* tools/plan_to_bc.py over the five waves -> runs/pbr8b1_look/fin4/bc_all.npz (93,176 decision rows from 40 finishing lineages,
+  best 71.19 s; md5 4d11fc39...; policy-space keys-hold targets + held-key columns) + spine_best.npy (9,286 states).
+* **pbr8b1_c8** (16:21 UTC): c7's ckpt_latest (52.926B, md5 a820ba08...) with c7's flags (f1e + --demo-success-energy 150,
+  `--demo-tau0 6490` = c7's band) + `--bc-file runs/pbr8b1_look/fin4/bc_all.npz --bc-coef 0.5 --bc-coef-final 0 --bc-steps 3e8
+  --bc-target dist` (exit_local's settings) but NO --bc-value-coef: plan_to_bc's returns do not contain this run's milestone
+  and energy bonuses, so a value term would pull the critic toward the wrong targets. BC step compiled in 82 s; record gate
+  passed. The point: the reward barely prices a 1-2 s faster line (time_pen), BC on the policy's own fastest lines does.
+* c7's last evals before the stop: 115.366 (7/9, 72.35 s) / 115.355 (7/9, 72.69 s); its greedy never crossed 83% airborne.
