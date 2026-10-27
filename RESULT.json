@@ -13,7 +13,7 @@
    "c2: resume of c1's ckpt_latest (46.384B, md5 d8dce63d...) on spine pbr8b3_k01c (search 1's line cut by the new --auto-spine-cut-ahead rule at 83.92%) with c1's flags + --auto-spine-cut-ahead 1000, 34 milestones; 83.103 at 46.384B; the greedy learned the 81% ramp ride onto the 82.5% platform in ~35 min: 90.697 (46.913B), 92.699 (47.064B: ep5 through the platform walk, the 84.5% drop and the loop to the finish shaft, 92.70% at z 280), 90.875; the loop's search 1 in c2 (47.22B) swapped in its plain beam cut at d 8,049 (85.9%) by the rule"
   ],
   "resume_from": "pbr7b2_c9/ckpt_latest.pt (46,023,049,216, md5 50c3a56e3d70db7bc66b59bbfac2caa9)",
-  "commit": "(see git log)"
+  "commit": "ee1acc7"
  },
  "summary": "c1 resumed c9's last weights (46.023B) on k04c (82.36-82.53); its loop search found a branched beam to 94.59%. New generic flag --auto-spine-cut-ahead G: the loop's new depth spines end G u past the greedy frontier (round 7's k04 -> k04c hand cut as a rule; flag off bit-identical). c2 = c1's weights on search 1's line cut by the rule (k01c, 83.92%) + --auto-spine-cut-ahead 1000: 83.103, then the greedy learned the 81% ramp onto the platform and flew on: 90.697 / 92.699 (47.064B: one episode into the finish shaft at 92.7%) / 90.875. Look-ahead (analysis): the shaft's twisting catch blade above the finish box falls to a 0.1-min Go-Explore from the policy's own states. Reliability is the issue now (3/9 still die at the 74.4% block)."
 }
