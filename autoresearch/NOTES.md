@@ -3956,3 +3956,44 @@ of its 1.2 $/h cap; the only other passing offer was a 0.621 $/h 5080). Incumben
   times fall as the curriculum walks k02 back (at [1,978] now, ~22% of the line).
 * c10 18:29-18:57 UTC: 116.539 (8/9) / 117.628 (9/9) / 117.651 (9/9, 70.48 s) / 116.556 (8/9, a 70.00 s finish) / 116.542 /
   **117.663** (58.238B: 9/9, best 70.10 s; handoff ckpt_58229522432, 8.9M before, pulled) / 116.534 (8/9): 8-9/9 every eval.
+* c10 19:00-19:57 UTC: 114.351 / 115.427 / 114.316 / 115.433 / 115.402 / 115.425 / 116.551 / **117.664** (59.144B: 9/9, best
+  70.08 s; handoff ckpt_59125006336, 19.4M before, md5 95ef9d63..., pulled) / 115.423 / 116.536 / 116.526 / 117.642 (9/9).
+  c10's ckpt_latest 59,576,418,304 (md5 1272299d...) pulled too.
+
+### pbr8b4 round 8 lesson (wrap-up, 2026-10-27 19:58 UTC) - supersedes the DRAFT above
+* **Score 82.652 -> 117.664: surf_princessburglar_b26 FINISHED by the greedy policy from the true start, 9/9 episodes, best
+  70.08 s** (pbr8b4_c10 eval 59.144404992B; hand-on ckpt_59125006336, md5 95ef9d63ad78b02a5004c84554feb3c0, pulled). The first
+  greedy finish at ~15:45 UTC (c9, 72.80 s), 7/9 at ~16:00 (c9 115.411), 9/9 from ~17:42 (c10 117.628 -> 117.664), every eval
+  after 16:15 with >= 3/9 finishing. The human record is 75.18 s (zone to zone; a yardstick, never a constant). One box all
+  round: 57938936, RTX 5070 Ti + Ryzen 9 7950X3D, 0.269 $/h, ~340k steps/s, ~11.3 h.
+* **The gates, in route order, and what passed each:**
+  1. 80.4-82% - the greedy dived north onto catch sheet *265 (c9 had learned the dive: k04c's success line was within its
+     reach) instead of riding the east face onto a one-hull LEDGE; k04's slow states did not transfer (the greedy arrives
+     ~250 u/s faster). Fixed by **a reward-free GE rooted at the policy's OWN fast beam line (la2) -> bridge spine b1/b1c**,
+     curriculum started at its ledge landing (`--demo-tau0`); the transition then consolidated through the spawn mix.
+  2. 84.7% - the hole in the sheet: k04d's cut (success line only past the hole), c1.
+  3. 90.7% - a d-trap POCKET (lower d than the route, a dead end): b3p = b3 cut past la2's way round it (c8, ~25 min).
+  4. 92-100% - the finish tube, ~8 kill plates in a 4,000 u fall: the explorer's lines (la1, la5) needed a lip landing and a
+     hover catch the policy would not learn (doomed 5-row bands; a duck habit); **the policy's own beam went down ducked with
+     no hover at all** - the loop's k01 to 99.04%, then a by-hand beam on c8's weights FINISHED (fin1, 67.87 s) -> fin1's
+     backward curriculum gave the first greedy finish in ~1 h; c9k02 (the loop's next finishing beam) took it to 9/9.
+* **Generic rules learned:**
+  1. Cut a long line just past the greedy's gate, at a success line only the skill can reach (dives / dead ends checked by d).
+  2. When the greedy's own approach differs from the spine's, bridge from the greedy's line (a GE rooted at the policy's own
+     beam states before the divergence), not from the spine's.
+  3. Once the policy is near a stretch, its OWN beam is the better spine; explorer chains carry contacts / timings it will not
+     learn (doomed bands that a backward curriculum retries forever after each backoff).
+  4. Measure a curriculum band cold: band heat that explores where the policy cannot do a band also hides that it can
+     (6/8 cold vs 5-31% hot) - `--demo-front-cold`.
+  5. After the greedy finishes, the loop's energy stage is a detour (it swapped in an intermediate line; 7/9 -> 3/9): run the
+     policy's finishing beam with the loop off.
+* **New, generic, default off / bit-identical:** `train_fast --demo-front-cold F` (50fd1e0; tests/python/test_demo_front_cold.py,
+  CPU, incl. off vs the pre-change trainer); `beam_tas --save-frontier` saves a CROSSING winner (a381745; before it a finishing
+  beam left no states, so auto_spine could not take one); `autoresearch/analysis/pb_snapcopy.py` (per-minute ckpt_latest
+  copies, pruned, pinnable) and the in-place `--spawn-states` re-read (mix1..mix6: a stretch trained beside a curriculum
+  elsewhere).
+* **Next (round 9):** resume ckpt_59125006336 (or c10's ckpt_latest, 59.576B) on the finishing spine autoresearch/spines/
+  pbr8b4_c9k02 (or a newer finishing beam: `beam_tas --save-frontier` from the true start on the newest weights), the loop OFF
+  or without its energy stage, the c10 flags (lr 1e-4, mix5, `--demo-front-temp 0.5 --demo-front-view 3 --demo-front-cold
+  0.5`). 9/9 is in hand; what is left is the time term (+0.033 / s): the policy's beam lines finish in ~68 s, the greedy in
+  ~70 s; the record's 75.18 s is already beaten.
