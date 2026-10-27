@@ -3947,3 +3947,6 @@ ckpt_45558005760 (82.652 at 45.564B).
 * **pbr8b1_c12** (18:45 UTC, the last hour): the pre-collapse snapshot ckpt_54585196544 on f1e + the energy rule (c11's flags,
   --demo-tau0 5555) at **--lr 5e-5** (sidistic R7: a fragile finishing skill held at its peak by the lr cut) and WITHOUT
   --auto-spine (no spine swap in the last hour). Aim: a 9/9 eval at ~69.4 s (score ~117.69 > c6's 117.582).
+* c12 (lr 5e-5, no auto-spine) 18:45-19:02 UTC: evals 112.142 (4/9, 69.06 s) / 113.249 (5/9, 69.20 s) / 114.377 (6/9, **68.69 s**,
+  the round's fastest) / 115.476 (7/9, 69.04 s) - finishes climbing with every eval, the band walked f1e back to 4,705; update
+  kl median 0.226 (4 of 557 > 0.8, one 8.6). Hand-on of the 68.69 s eval pulled.
