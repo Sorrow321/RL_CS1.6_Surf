@@ -268,3 +268,10 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   that row's state x1.04) over gate 20's catch sheet, west of the walkway strip, to cell 60,145 at 66.59% with h 2,684
   (+153 u over the policy's line at the same progress, 108 ticks sooner). Keys = the beam's own and the chain's
   translated. Taught with train_fast --demo-success-energy 75. No demo, no record (pbr7b2, round 7).
+* `pbr7b2_e5.npy` + `.keys.npy` (6,426 rows; md5 17ecf712c7871dd63e324a6d70c939a4 / 72e9e5a5fcfd13932d9939a6322b3681): an ENERGY spine by the loop's
+  energy-stage rule (tools/energy_splice.py, G 150): the policy's OWN plain beam_tas line from the true spawn (run
+  pbr7b2_c4's 40.246B weights, after it learned e3's walkway corner; the loop's settings) to its row 6,320 (71.08%), then
+  one exact explore_phase1 --exact-chains chain (reward-free, view-follow, rising split, --select-energy 3; rooted at that
+  row's state x1.04) that stays airborne past the 71.4% platform (no hop) to cell 57,109 at 72.32% with h 2,735 (+217 u
+  over the policy's line there, 105 ticks against its 197). Keys = the beam's own and the chain's translated. Taught with
+  train_fast --demo-success-energy 75. No demo, no record (pbr7b2, round 7).
