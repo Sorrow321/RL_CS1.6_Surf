@@ -3261,3 +3261,12 @@ ckpt_35907960832 (md5 160da9eb...), eval 73.590 at 35.918B. Credit at the start:
   paying), the loop as in c3. First eval: "0/9 cross with the energy (9 cross it)". The plan: the walkway's energy (+150 u
   at 66.5%) carried to the 74.4% block, whose launch lacks ~+180-220 u (x1.16 passes from the policy's line); then the
   loop's own search (its energetic quorum on e3) on the more energetic weights.
+* **Look-ahead GE 11** (e3 rows 5,790-5,883 x1.0 / 1.04, --select-energy 3, 15 min): +242 u over the beam at 66.5% (h 2,767),
+  +118 at 67.0%, +45 at 67.5%, +24 at 68-69% - the explorer's own hole drop sheds it; whether the policy keeps it is
+  what c4 measures.
+* c4 evals 73.527 / 73.398 / 74.247 / 74.254 / 74.271 (39.54-39.85B): "0/9 cross d <= 19,194 with h >= 2,609 (7-8 cross
+  it)". The GREEDY's walkway (39.846B eval): 65.5-66.4% at 232-291 u/s with h ~2,423-2,442 - it WALKS the strip at the
+  bunny-hop-capped ground speed (~250 u/s), ~320 u under the record and ~150 u under its own best stochastic copy (the
+  beam flew 65.0-66.35% at 540-794 u/s, h 2,574-2,773); through the hole it gains back to ~2,500 at 67-68%. The
+  curriculum walked e3 back past its x1.04 root (5,711) and the wall slide (66.2%, ~0.3% for a few minutes) to the beam's
+  ledge approach [5,613 / 5,618] (bands ~50% / 7%) in ~20 min.
