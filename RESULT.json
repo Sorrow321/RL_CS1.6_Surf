@@ -18,7 +18,7 @@
    "c7: the 112.071 weights (c6's ckpt_51837927424) on spine pbr8b3_f1 (g2's greedy line + branched beam + an UNBOOSTED Go-Explore chain into the finish box; c6's own search 2 had handed back a x1.04-boosted chain whose last 0.5 s its curriculum failed 100%) with c6's flags, 40 milestones; 108.721 (1/9), 110.969 (3/9, 70.93 s), 110.936, 114.281 (52.140B: 6/9 finish, median 100%, best 71.58 s); 114.310 (52.216B: 6/9, best 70.70 s); then 4-6/9 per eval (112.07-114.28); 115.371 (52.593B, 7/9), 117.636 (52.895B: 9/9 FINISH, best 70.91 s)"
   ],
   "resume_from": "pbr7b2_c9/ckpt_latest.pt (46,023,049,216, md5 50c3a56e3d70db7bc66b59bbfac2caa9)",
-  "commit": "94ab7d1"
+  "commit": "c118758"
  },
  "summary": "GREEDY FINISHES from the true start, 6/9 by the end: 109.846 (c6, 2/9, 71.28 s) -> 112.071 (c6, 4/9) -> 114.310 (c7, 6/9, 70.70 s) -> 117.636 (c7 52.895B: 9/9 FINISH, best 70.91 s) vs the human record's 75.18 s. New generic loop flags: --auto-spine-cut-ahead (segments end 1,000 u past the greedy), --auto-spine-from-spine (beams start on the spine), --auto-spine-ge-boost (unboosted Go-Explore first) + auto_spine's prefix fallback. Lesson: Go-Explore chains from x1.04-boosted roots stalled the curriculum three times in the finish shaft; spines from the policy's own lines (its greedy recording, its own beams) + short unboosted chains carried it."
 }
