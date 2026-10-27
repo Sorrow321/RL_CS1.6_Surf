@@ -3266,3 +3266,8 @@ the operator's); this branch keeps a waiter on `box.py rent` and works offline m
 * Hand-on: the search's own 37.490B save was overwritten at 37.605B before I could pull it; pinned instead the
   ckpt_latest pulled at 05:48 as **runs/pbr7b1/pbr7b1_c13/ckpt_37292081152.pt** (198M steps before the 74.317 eval, md5
   2ee0445d...; its own evals 37.339-37.490B: 74.236 / 74.230 / 74.317), plus ckpt_latest at 37.605B.
+* 06:33 UTC, c13 on k01 (37.49-37.94B, 259k steps/s): evals 74.087 / 73.653 / 74.322 / 73.630 / **74.325 (37.868B)** /
+  74.282; 1/9 greedy episodes past k01's 74.21% line in the last two (the quorum needs 5). The curriculum walked k01 back
+  6,977 -> 6,487 in ~25 min (bands 17-21% under --demo-rate 0.2). Hand-on for 74.325: the trainer's own snapshot
+  **ckpt_37659607040.pt** (208M before the eval, md5 bc0906cb..., pulled). The next patience search is due at the eval
+  after 38.29B (~06:52 UTC).
