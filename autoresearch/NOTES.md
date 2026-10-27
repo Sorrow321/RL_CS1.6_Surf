@@ -3912,3 +3912,7 @@ of its 1.2 $/h cap; the only other passing offer was a 0.621 $/h 5080). Incumben
   each, the tube a few, the rest single - reliability is now a sum of small per-gate risks, not one gate.
 * c10 to 17:05 UTC: 114.278 / 112.071 (4/9) / 114.273 / 114.265 / 113.165 (5/9) / 113.157 / 114.276 (6/9): a 4-7/9 plateau
   (best times 71.2-72.1 s); curriculum on k02 at [4,528] (mid-route), walking back with 80% band / 20% uniform draws.
+* c10 17:05-17:32 UTC: 114.319 (6/9, 70.44 s) / **116.541** (56.125B: **8/9 finish, best 70.45 s**; handoff ckpt_56117690368,
+  6.8M before, md5 3caf9b5b..., pulled) / 116.517 (56.200B, 8/9, 71.16 s; ckpt_56193712128 pinned on the box) / 114.298 /
+  114.291 / 114.302 / 114.298 (6/9, 70.9-71.3 s). Curriculum on k02 at [3,908] (~44% of the line). Box extended to 20:33 UTC
+  (past the round's end).
