@@ -3684,7 +3684,7 @@ ckpt_45558005760 (82.652 at 45.564B).
   over a long stretch were not (the k04t / b3-middle pools). Moved the focus back to rows 9,150-9,260
   (`pbr8b1_entry_shaft3_states.npy`, md5 e51d44c2..., swapped into c4's spawn-states path; re-read at 48.310B).
 
-### The whole line is now the policy's own: b3s (11:29-11:45 UTC)
+### The whole line is now the policy's own: b3s (11:29-11:36 UTC)
 * c4 at 11:29 UTC (48.58B): band at [7,260] (82.3%), 7,715 -> 7,260 in 21 min; evals 82.77 / 83.03 / 82.95 / 83.07.
 * Shaft bench (c4 48.58B, b3f bands, success = finish): [9,300] 5/12 greedy, 11/12 stoch; [9,230] / [9,180] 0/12, every
   episode at 96.6% (the z -1,700 kill ring the explorer's chain threads precisely); [9,120]-[8,940] 0/12. The focus window on
@@ -3698,6 +3698,6 @@ ckpt_45558005760 (82.652 at 45.564B).
 * **`autoresearch/spines/pbr8b1_b3s`** (9,340 rows) = b3f rows 0-8,900 + that 439-state own-beam finish (stitch_spine roll
   segment, keys from the beam's trajectory). Every row is a beam of the policy itself (c1 46.17B to 92.2%, c4 48.58B for the
   shaft); no explorer chain. c4's spawn pool swapped to start room + b3s's shaft rows 8,937-9,338 (re-read at 48.698B).
-* c4 at 11:45 UTC: the band is AT the platform landing, [7,100 / 7,105] (81.9%), 9-29% band success.
+* c4 at 11:36 UTC: the band is AT the platform landing, [7,100 / 7,105] (81.9%), 9-29% band success.
 * Plan: when c4's greedy passes the platform (score ~93), relaunch on b3s (tau0 = the finish: the shaft and the lower level
   are now the policy's own and should re-walk fast) with b3c's 86.13% line (7,926) as a milestone.
