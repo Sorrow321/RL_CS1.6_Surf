@@ -3452,6 +3452,12 @@ energy.
 
   A curriculum on this spine from tau0 ~6,645 starts with a passing band (~60%). Its hard bands are the turn-in
   (6,573-6,645), then the 72.5-73.1% run, then e01's bounce.
+* **A repeat did NOT find it (06:58-07:10 UTC, local).** I ran the same search (pb_ge_from_greedy.py, x1.0, 12 min,
+  3 threads, the last 0.6 s before the greedy's stall) from c17's own greedy flight from c21app01's row 6,560:
+  48 roots over 72.80-73.51%, 37,494 cells. Its deepest cell was 74.38%: no turn-in. So the turn-in is a narrow
+  target. One search out of two found it from a slightly different approach (c21's line, roots from 72.60%; the
+  winning root was at 72.94%). A box GE has ~6x this throughput (14 threads), and the loop could run it in the
+  background. Treat the spine as an existence proof plus a curriculum line, not as a reliable search rule yet.
 
 ### To continue (next round, if this branch wins)
 * Hand-on: c17's ckpt_39674445824 (74.345; the k01b chain route: medians 73.3%, best episodes 74.2-74.35% in the
