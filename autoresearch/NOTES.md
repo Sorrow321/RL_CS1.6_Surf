@@ -3247,3 +3247,17 @@ ckpt_35907960832 (md5 160da9eb...), eval 73.590 at 35.918B. Credit at the start:
   round 6's curriculum taught the policy to WALK (the only behaviour it ever found there).
 * Look-ahead GE 10 (00:00 UTC): the beam's rows 5,680-5,775 (64.9-65.7%, before the strip landing) x1.0 / 1.04,
   --select-energy 3, 15 min: a line over the sheet that keeps the energy (the gate-17 / gate-19 recipe, one corner).
+* c3 later evals 74.309 / 74.321 / 74.286 / 74.315 / 74.334 / 74.275 (39.09-39.47B; at 39.547B "3/9 past e1's line"):
+  steady at 1-3/9 on e1's route, all stopped by the 74.4% block. Stopped at 39.547B (ckpt_latest 39.543B, md5 75891496...).
+* **Look-ahead GE 10** (the c3 beam's rows 5,680-5,775 x1.0 / 1.04, --select-energy 3, 15 min, 14 threads, 10.1M runs):
+  the explorer gets OVER the catch sheet west of the strip (x ~-3,430..-3,561, z ~2,390-2,445, the record's side) keeping
+  +142 u over the beam line at 66.0% and +211 u at 66.5% (h 2,736); through the hole and the surf after it the gain falls
+  to +71..+94 (67-68%) and below the beam past 68.5% (the explorer's clumsy drop, not the policy's).
+* **Energy spine `autoresearch/spines/pbr7b2_e3`** (tools/energy_splice.py, G 150 = the loop's own): the policy's own beam
+  (c3 38.629B) to row 5,711 (65.18%) + a 173-state chain from that state x1.04 to cell 60,145 at 66.59%, h 2,684 (+153 u
+  over the beam line there; 172 ticks against the beam's 280 to the same progress), airborne all the way at 690-775 u/s.
+* **pbr7b2_c4** (00:21 UTC): c3's ckpt_latest (39.543B) on e3 + keys with `--demo-success-energy 75` (cross d <= 19,194 =
+  66.41% with h >= 2,609; the beam line has ~2,574 there) + the 27 milestones + e1's line 14,789 (crossing 74.13% keeps
+  paying), the loop as in c3. First eval: "0/9 cross with the energy (9 cross it)". The plan: the walkway's energy (+150 u
+  at 66.5%) carried to the 74.4% block, whose launch lacks ~+180-220 u (x1.16 passes from the policy's line); then the
+  loop's own search (its energetic quorum on e3) on the more energetic weights.
