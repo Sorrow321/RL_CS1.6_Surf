@@ -4083,3 +4083,20 @@ Box: 58011053, RTX 4080S, 0.41 $/h, Ontario CA (machine 141481, the box rounds 7
 * Planner wave (beam_tas --objective finish --score dv, 4,096 copies, greedy-envs 32, on the incumbent's weights from the true
   start, beside c3, 155 s): first finish 69.08 s vs its greedy gate's 69.07 s - the population converges on the greedy line;
   no faster line to distil on these weights (round 8's planner found ~1 s on c5/c7 weights).
+
+### The greedy switches to the fly-over (c3, 22:20-22:35 UTC)
+* c3 evals 55.85-56.08B: 115.372 (7/9, 0 energetic crossings, but 7 crossings 3-6 s LATE: a slow dawdle on the platform, finishes
+  72-75 s - the transition) / 114.362 (6/9, **3/9 fly over**) / 115.498 (56.000B: 7/9, **5/9 fly over**, best **68.38 s**) /
+  112.143 (56.075B: 4/9, 5/9 fly over). The strict band walked back to 73.6-74% (rows 6,372-6,432) at 22-68%: real fly-overs.
+* Split times, fly-over vs landing (same evals): 80% -> 86.35% in 4.15-4.71 s flying vs 5.20 s landing (the incumbent's greedy:
+  5.39 s) - the predicted ~1 s. But c3's episodes reach 80% ~0.5 s later than the incumbent's (55.3-56.6 vs 55.0-55.7 s), so the
+  finishes are 68.4-69.5 s, not ~67.7.
+* Reliability under the curricula: c3's 17 deaths in 7 evals - 6 at 71-78% (the 71% crash and after: c1 never died there; the
+  band's temperature and lr 1e-4 walked over that stretch), 4 at the fly-over (84.1-84.9%, the transition), 2 in the shaft, 5
+  early. No 83% sheet deaths since c3 started (c1: 4-5 per ~10 evals).
+* **GE 3** (22:15 UTC, 12 min, 188,681 cells): rooted at 43 of fo1's own drop states (rows 7,596-7,680), unboosted: the chain's
+  hard landing on the lower level (h 2,000 -> 1,560) has a soft variant - cell 141561 from row 7,638 lands at h 1,741 and
+  flies the lower level at 1,170-1,256 u/s: d <= 6,900 (88%) at 60.32-60.60 s vs fo1's chain 60.76 s and the incumbent's
+  greedy 61.89 s; d <= 5,000 (91.25%) at 62.83 s (the incumbent's greedy ~64.5 s). -> spine **pbr9b1_fo2** (fo1 to row 7,638 +
+  that chain, to 88.12%, h 1,807) + pool pbr9b1_fo2dec_states (md5 889cd89d...), for an energy cut at 88% once c3's fly-over is
+  solid (moving the gate before that would stop paying a fly-over that lands hard, and could undo it).
