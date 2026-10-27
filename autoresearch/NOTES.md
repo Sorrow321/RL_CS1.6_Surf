@@ -3368,3 +3368,7 @@ Independence: only this branch and $AR_HOME/incumbent/ are read. c12's later wei
   enter the passage: with e02's approach the entry is not in reach of uniform actions; the x1.12 line entered from the
   beam's approach. c21 (04:00 UTC): the contact band rising again 11-13% -> 15-18%; evals 74.198 / 74.181 / 74.248 /
   73.034, 0/9 energetic.
+* 04:27 UTC: c21's contact band 14-16% (no rise since 04:00); evals 74.180 (median 44.0%) / 73.051 / 73.056 / 74.290 /
+  74.176, 0/9 energetic. Kept running (box extended to 07:22 UTC, credit $26.04): its weights carry the partial bounce
+  skill, and they reach the next round only if one of its evals beats 74.345 (the hand-on is the snapshot behind the
+  round's best eval) - it is at 74.29-74.34.
