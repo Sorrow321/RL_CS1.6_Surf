@@ -297,3 +297,8 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   from the true spawn to d 4,265 = 92.54%, 9,200 states, its own held keys; md5 f3f74722... / 36d3f5e9...) cut at row 7,450
   (82.04%, past the turn north at ~80.4% where every greedy episode dies on the fall-catch sheet *265; success line d <= 10,366
   = 81.86%, out of a death-dive's reach: the sheet sits at d ~11,050+). No demo, no record (pbr7b2, round 7).
+* `pbr8b1_k04.npy` + `.keys.npy` (9,200 rows; md5 f3f74722b2f182d2ead9c818210800f7 / 36d3f5e9ec96b3db850990768364878d): the
+  same search-4 spine in FULL (run pbr7b2_c8, auto/k04: the PLAIN beam_tas line on c8's own 44,891,635,712-step weights from
+  the true spawn to d 4,265 = 92.54%; k04c is its first 7,451 rows). Its end was cut by the beam's HORIZON (--beam-ticks
+  9,262), not by a death: row 9,199 is (637, 2,918, 470) falling at 1,017 u/s into the final shaft. Success line d <= 4,365
+  (92.36%). No demo, no record (pbr8b1, round 8).
