@@ -392,3 +392,7 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   of d <= 8,719 with h >= 2,129 succeeds (the greedy's landing route crosses it at h ~1,700).
 * `pbr9b1_fo1after_states.npy` (2,780 rows; md5 90aa9780d2c848e3c7e90ced0bb78e01): fo1 rows 7,603-7,741 (past the fo1e cut:
   the drop and the lower-level landing) tiled 20x, a `--spawn-states` pool.
+* `pbr9b1_fo1dec_states.npy` (4,280 rows; md5 0fa67ef5dd931ed5f4f6be0a2355a176): a `--spawn-states` pool on the fly-over
+  DECISION: fo1 rows 7,380-7,511 (the incumbent's own greedy line, 82.1-83.6%, the approach to the junction) x15 + rows
+  7,512-7,602 (the chain's fly-over to the fo1e cut) x10 + rows 7,603-7,741 (past the cut) x10. Swapped into pbr9b1_c2's
+  pool path (pbr9b1_fo1after_states.npy on the box) at 21:36 UTC through the trainer's mtime re-read.
