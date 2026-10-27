@@ -3728,3 +3728,12 @@ ckpt_45558005760 (82.652 at 45.564B).
   sheets; each is a window to teach.
 * 12:33 UTC: c5's spawn pool swapped (re-read at 49.596B) to `pbr8b1_entry_b3sw2_states.npy` (md5 f207260f...): start room
   + b3s rows 9,130-9,205 (48x) + rows 8,960-9,095 (27x) - two focused windows one step ahead of the trainer's band.
+* c5 at 12:50 UTC (49.85B): evals 93.454 / 93.806 / 90.692 / 93.817 (medians 92.7 / 90.9 / 82.8 / 83.0%: the greedy wavers
+  between the shaft route and dying earlier); the band still oscillates [9,239] 25-28% / [9,244] 37-39% (35 min).
+  Bench (49.85B): unchanged - [9,190] 0/12 at 98.40%, [9,140] 0/12 at 96.47%, [9,080] 94.58%, [9,020] 94.88%, [8,900] 93.00%;
+  [9,240] 5-6/12. The deaths are DETERMINISTIC precision misses: from [9,190] the episodes track the line within 20-50 u
+  but reach the z -2,700 sheet ~50-80 u WEST of its hole (x 608-704) with v_x 92-621 vs the line's 655 (an air strafe east
+  slightly too late), dying at z -2,596; from [9,140] they are ~30-40 u too far south-east at z -1,700 and clip the centre
+  kill of the ring. The two windows of 12:33 were too far up: their finish bonus was 2-3 s and 2-3 sheets away, so only the
+  shaping paid them. 12:53 UTC: pool -> `pbr8b1_entry_b3sw3_states.npy` (md5 a65c7271...; start room + rows 9,170-9,238,
+  the hole approach right above the band, 53x + rows 9,100-9,169, the ring, 52x), re-read at 49.921B.
