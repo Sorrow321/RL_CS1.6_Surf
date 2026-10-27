@@ -3444,6 +3444,14 @@ energy.
   rows. So the policy's skill boundary is the wall turn itself: the ~40 deg turn-in and the turn east on the wall,
   about 0.3 s of the line. That is what a curriculum on this spine has to teach, and the energy for it is already in
   the policy's own greedy line (it flew this approach from e01's row).
+* The same bench with **c17's hand-on (39.67B, the weights the next round inherits)**, 06:55 UTC:
+  * rows 6,645-6,652 (the wall turn): **5/8** in the passage (75.09-76.24%);
+  * rows 6,560-6,567 (72.8-72.9%, the approach): 0/8. All eight reach the climb with h 2,448-2,471 and stop at
+    74.34-74.40%;
+  * rows 6,540-6,547 (72.5%): 6/8 crash at 73.07-73.13%, before the climb; 2/8 reach 74.35%.
+
+  A curriculum on this spine from tau0 ~6,645 starts with a passing band (~60%). Its hard bands are the turn-in
+  (6,573-6,645), then the 72.5-73.1% run, then e01's bounce.
 
 ### To continue (next round, if this branch wins)
 * Hand-on: c17's ckpt_39674445824 (74.345; the k01b chain route: medians 73.3%, best episodes 74.2-74.35% in the
