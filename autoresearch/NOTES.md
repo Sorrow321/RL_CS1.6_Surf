@@ -3615,3 +3615,10 @@ block): its quorum fired search 1 at 46.017B and the search died with the box at
   pre-change respawn.py when off (tested against it from git). tests/python/test_auto_spine_cut.py 8/8.
 * Planned c1 (now): c9's ckpt_latest on **f1** + keys with c9's flags + `--auto-spine-cut-secs 4 --auto-spine-cut-beyond 0.2`
   and NO search (`--auto-spine-delay 1e12`, patience 0): f1 ends at the finish, so no search line could replace it.
+
+### Harness issue: a round's 4th branch can be locked out of a box for most of the round (pbr8b2, 2026-10-27)
+* From 08:44 UTC the fleet's three boxes burned 1.056 $/h of config.budget_rate_usd_h 1.2; the cheapest offer passing
+  config.offer_query + the caps was 0.297 $/h (only 1-4 offers pass at all), so `box.py rent` refused pbr8b2 every 90 s for
+  2+ hours (rent waiter log). At that burn `box.py budget` gave hours_to_reserve 9.4 at 10:33 - about the round's end - so
+  nothing forces a release, and the slot's branch can only analyse. A fair-share rule (per-branch cap = limit / branches,
+  or one reserved slot per branch) would keep all four slots training.
