@@ -309,3 +309,9 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   stitched with tools/stitch_spine.py (views canonical, keys translated). The chain dives the final shaft's kill sheets (z 463
   -> -939 east of the z ~200 and z -800 sheets), floats ~10 s in a trigger_push field at z -939, descends through the z -1,300
   west gap, the z -1,700 ring and the z -2,700 hole, and ends at d 8 above the finish trigger. No demo, no record (pbr8b1).
+* `pbr8b1_k04t.npy` + `.keys.npy` (9,807 rows; md5 edaf415bd5e107d83e17fb8df981e1b6 / 1801de5c39c055ed51bf210f2d0c5d02): the
+  FASTER LINE FROM THE TRUE START TO THE FINISH BOX (use this one, not k04s). pbr8b1_k04 rows 0-9,071 (91.27%) + a 736-state
+  exact Go-Explore chain (explore_phase1 --exact-chains, the loop's GE settings, rooted at 64 states of k04's own rows
+  9,050-9,199 x1.0 only - no boost - 1.3 min to the first goal hit; ge_replay 16/16 links) rooted at k04 row 9,071 UNBOOSTED.
+  The chain spirals down the shaft between the kill sheets in 5.9 s (|v| 550 -> 1,930 u/s) to d 9 above the finish
+  trigger. No demo, no record (pbr8b1).
