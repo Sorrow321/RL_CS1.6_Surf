@@ -3246,3 +3246,9 @@ the operator's); this branch keeps a waiter on `box.py rent` and works offline m
   to (and, if the loop finds the ramp kick, past) the 74.3% wall; ~2.6 h before the 07:45 wrap-up.
 * First minute: with --demo-rate 0.2 the brake band passed at once ("tau <- earlier starts [6526,6851] (success 28.4%)");
   fps 108-115k during warm-up (GPU 37%, the 4080 boxes of round 6 ran 240-330k).
+* c13, first 20 min (05:06-05:26 UTC, 36.659 -> 36.94B; fps 249k once warm): evals **36.6598B 73.697** (the resume's own:
+  c12's weights + one update, best episode 73.7%, median 73.4%) / 36.735B 73.640 / 36.811B 73.364 / 36.886B 73.602;
+  0/9 past k02's line (74.15%) each, greedy medians d 15,153-16,293 (the old platform route). The curriculum with
+  --demo-rate 0.2 went 6,531 -> 6,526 at once, oscillated ~5 min on the brake ([6,526] 3%, [6,531] 25-33%), then walked
+  back to the platform bounce: at 05:25 it oscillates [6,431] (14%) / [6,436] (70%) - the bounce row (vz -558 -> +453).
+  Next: the x1.04 root at 6,387, then the beam prefix; the greedy should switch to k02's route (bench: 74.2-74.33%).
