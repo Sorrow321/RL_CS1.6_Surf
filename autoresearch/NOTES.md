@@ -3990,3 +3990,38 @@ ckpt_45558005760 (82.652 at 45.564B).
   then a 3.7 s drop where the record takes ~1.4 s) and the lower level (the policy ~1.5 s slower than the record over 86-92%):
   the planner on the new weights (beam_tas --objective finish --score dv, ~2.5 min a wave) is the way to find the next line;
   distil it only after BC is fixed for the narrow yaw head.
+
+## pbr9b1 (round 9, slot 1) - 2026-10-27 20:42 UTC start
+
+Box: 58011053, RTX 4080S, 0.41 $/h, Ontario CA (machine 141481, the box rounds 7 and 8 used), rented 20:45 UTC for 4 h;
+~190-210k steps/s. Credit at the start $34.91 (reserve $10, fleet cap 1.2 $/h). Incumbent: pbr8b1_c12 ckpt_55038705664
+(117.711: 9/9 finish, best 68.66 s).
+
+### Where the 68.66 s goes, and how reliable 9/9 is (20:45-21:00 UTC; the record as a YARDSTICK only)
+* Split times at first arrival (`autoresearch/analysis` style: d on the grader field, the incumbent eval's 9 episodes vs the
+  record's line): the policy is ahead of the record everywhere (4.3 s by 2%, ~9 s by 70%) EXCEPT two stretches:
+  - **71.4-72.2%**: the greedy overshoots ~400 u east of the line to (-888, 3,079), bounces up (vz +546, h -150 u) and loops
+    back west to x -1,341 (progress flat 72.03-72.04% for ~0.7 s); the record goes straight south at x ~-1,300. ~0.8 s.
+  - **84.5% -> 92%**: the greedy LANDS on the platform's west end at (1,168, 3,062, 1,565) (onground at row 7,588 of the
+    greedy recording; h 2,169 -> 1,652, vh 675 -> 258), walks/hops ~1 s, falls into the drop at 400-490 u/s horizontal and
+    reaches the lower level (86%) with h ~1,430 -> crosses it at ~1,000 u/s. The record stays airborne ~250 u further east
+    ((1,427, 3,159, 1,639) at 84.4%), reaches the lower level with h ~1,880 and crosses it at ~1,250-1,300 u/s. 84 -> 94%:
+    policy 8.86 s, record 6.31 s.
+* **Reliability is the bigger lever**: c1's first eval (= the incumbent's weights, 55.039B) is 6/9 (114.368; deaths at 44.9%,
+  51.1%, 83.0%); the second 7/9 (115.492, best **68.56 s**; deaths 26.1% and 83.5%); a 3-episode record_ckpt of the
+  incumbent: 2/3 (a death in the shaft at 93.7%). Eval episodes differ by the spawn yaw jitter (+-8 deg, --yaw-jitter's
+  default) only. So the incumbent's 9/9 was a good draw: per-episode reliability ~0.8, P(9/9) per eval ~0.15-0.25. Each
+  extra finisher is worth 1.11, a second 0.033: a 9/9 eval with a best below 68.66 s is the target.
+* Two of the five deaths so far are on the z ~1,460 sheet by the platform (83.0-83.5%), i.e. the airborne crossing that
+  round 8's f1e stage 2 taught.
+
+### c1: the incumbent, continued (20:47 UTC)
+* **pbr9b1_c1**: box.py launch --resume of ckpt_55038705664 (md5 bc483e2f...) with c12's exact flags (round 8's "Next
+  round" line: f1e + keys, --demo-success-energy 150, 36 milestones, spawn pool f1after, lr 5e-5, --demo-tau0 5555, no
+  --auto-spine). Record gate passed. First updates kl 2.1 / 9.0 / 1.9 (the narrow yaw head, sigma 0.012), then 0.07-0.28.
+  tools/snapcopy.py beside it. Evals: 114.368 (55.039B, 6/9, 68.95 s) / 115.492 (55.115B, 7/9, **68.56 s**).
+* GE 1 (20:54 UTC, beside the trainer, 12 threads, nice 10, 15 min): explore_phase1 --exact-chains with the loop's GE
+  settings (64 u x energy 32, heading split, view-follow, 8 ms, --select-energy 3) rooted at the incumbent's own greedy
+  line (record_ckpt --dump-states, ep 1, runs/pbr9b1/look/g0_states.npz md5 6c32b52b...) rows 7,372-7,580 every 4th
+  (82.1-84.3%, before the landing) x1.0 and x1.04 (106 roots). Picked by the EARLIEST arrival from the true start past the
+  lower-level landing (autoresearch/analysis/ge_fast_pick.py: root row x 7.667 ms + chain ticks x 8 ms), with its energy.

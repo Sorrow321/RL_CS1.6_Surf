@@ -379,3 +379,16 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   80.4% junction.
 * `pbr8b1_f1after_states.npy` (8,115 rows; md5 c9a7fb08cb4beb684e80122eaba02b58): f1 rows 7,521-8,061 (past the f1e cut: the
   platform-end landing, the hop-off and the drop to the lower level) tiled 15x, practised while f1e's spine stops at 83%.
+* `pbr9b1_fo1.npy` + `.keys.npy` (7,742 rows; md5 3c4d23c0417b3de28979c2a31ecf78b9 / a249811d22a398803507e002406f633d): the
+  incumbent's (pbr8b1_c12 ckpt_55038705664) own greedy line from the true start (record_ckpt --dump-states, episode 1, a
+  69.02 s finish; runs/pbr9b1/look/g0_states.npz md5 6c32b52b...) rows 0-7,512 (to 83.59%), then a Go-Explore chain
+  (explore_phase1 --exact-chains, the loop's GE settings, 15 min) rooted at that line's row 7,512 with its velocity x1.04,
+  replayed exactly by ge_replay (7/7 links; cell 172811): it turns north at x ~1,450 and FLIES over the platform's end
+  (h 2,279, vh 964; the greedy lands there at 84.47% and loses ~500 u), spirals down the drop and reaches the lower level
+  (d 7,799, 86.35%) at 59.42 s from the spawn on the line's clock (the greedy 60.52 s). Stitched with tools/stitch_spine.py.
+  No demo, no record data (pbr9b1, round 9).
+* `pbr9b1_fo1e.npy` + `.keys.npy` (7,603 rows; md5 b1967be397ef241604b68779d49b3203 / c0008d72ff1a7724119ac51d3a572976):
+  fo1 cut at row 7,602 (84.92%, airborne over the platform's end, h 2,279) - for `--demo-success-energy 150`: only a crossing
+  of d <= 8,719 with h >= 2,129 succeeds (the greedy's landing route crosses it at h ~1,700).
+* `pbr9b1_fo1after_states.npy` (2,780 rows; md5 90aa9780d2c848e3c7e90ced0bb78e01): fo1 rows 7,603-7,741 (past the fo1e cut:
+  the drop and the lower-level landing) tiled 20x, a `--spawn-states` pool.
