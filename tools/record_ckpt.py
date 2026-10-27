@@ -120,6 +120,8 @@ TRAIN_ONLY = frozenset({
     "demo_match_band",
     # --auto-spine-async: WHEN the training curriculum's search runs (beside it, not paused)
     "auto_spine_async",
+    # --auto-spine-cut-secs: where the TRAINING curriculum's spine is cut (pbr8b2)
+    "auto_spine_cut_secs",
     # --respawn-greedy-temp: the TRAINING rollout's sampling temperature for greedy-row spawns
     "respawn_greedy_temp", "respawn_greedy_temp_ticks", "respawn_greedy_temp_view",
     # --ge-minutes: a share of the TRAINING spawn pool drawn from the run's own Go-Explore

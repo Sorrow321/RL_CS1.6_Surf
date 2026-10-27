@@ -2238,6 +2238,31 @@ def stall_cut_plan(spine, cut, sample, success_d, greedy_d, gain):
     return {"line": line, "h_min": (h_end - float(gain)) if line >= float(greedy_d) else None}
 
 
+def spine_cut_ahead(spine, sample, greedy_d, ticks):
+    """--auto-spine-cut-secs (pbr8b2, 2026-10-27): the last row to keep of a spine that runs far
+    past the greedy frontier -> ``ticks`` rows past the first row whose d reaches the greedy
+    eval's median deepest d ``greedy_d``; None when there is no frontier yet, the line never
+    reaches it, or it ends before that row (nothing to cut). ``sample`` maps (N, 3) positions to
+    field distances."""
+    if greedy_d is None or len(spine) < 2:
+        return None
+    d = np.asarray(sample(np.asarray(spine["origin"], np.float64).reshape(-1, 3)), np.float64)
+    hit = np.flatnonzero(d <= float(greedy_d))
+    if not len(hit):
+        return None
+    rc = int(hit[0]) + max(1, int(round(float(ticks))))
+    return rc if rc < len(spine) - 1 else None
+
+
+def milestone_clear(ms, v, others, sep) -> bool:
+    """--auto-spine-cut-secs: a success line ``v`` the cut rolls past becomes a milestone only
+    when no milestone in ``ms`` and no line in ``others`` lies within ``sep`` u of it - bonuses
+    that land together are one bonus (pbr7b2_c7: three lines within 21 u and the success line,
+    crossed within a second by every spawn, gave kl 4.5 and a collapsed greedy)."""
+    near = [float(x) for x in np.asarray(ms, np.float64).ravel()] + [float(x) for x in others]
+    return all(abs(float(v) - x) >= float(sep) for x in near)
+
+
 def milestone_pay(rec, ended, ms, paid):
     """--demo-milestones: (bonus count per row, the updated (N, M) paid table) for records
     ``rec`` (N,) against milestone distances ``ms`` (M,). A row is paid each milestone its
@@ -4998,6 +5023,20 @@ def main() -> None:
                          "and leaves most of a box's CPU quota idle; a blocking search held it "
                          "for up to ~28 min (pbr6b4_c12). Off = the trainer waits, as before; "
                          "config only when on; never restored")
+    ap.add_argument("--auto-spine-cut-secs", type=float, default=0.0,   # 0 = off
+                    help="--auto-spine: SECS > 0 - the curriculum's spine is the stored line CUT "
+                         "SECS of line past the first row that reaches the greedy eval's "
+                         "frontier (its median deepest d): the launch spine at the first eval, "
+                         "and at every quorum the cut ROLLS on along the stored line (no search "
+                         "needed while it lasts; the search still runs, and its line replaces "
+                         "the stored one only when it ends deeper by --auto-spine-gain). A "
+                         "line the cut rolls past becomes a milestone unless one lies within "
+                         "--demo-success-d of it. Round 7's k04c rule as the loop's own: a spine "
+                         "far longer than the gap to the greedy's failure point spends the "
+                         "backward curriculum where the greedy never goes (pbr7b2_c8 on the "
+                         "92.54% line sat ~1,200 rows past the greedy's death for 55 min; cut "
+                         "at 82.04% the greedy cleared the turn in ~25 min). 0 = off, "
+                         "bit-identical; config only when set; never restored")
     ap.add_argument("--auto-spine-energy", type=float, default=None,   # None = off
                     help="--auto-spine: G > 0 adds an ENERGY stage to the search (auto_spine "
                          "--energy-gain G): when no deeper line exists, a line keeping >= G u "
@@ -11855,6 +11894,20 @@ def main() -> None:
                              "give --auto-spine")
         print("--auto-spine-async: the search runs BESIDE the training (on a copy of "
               "ckpt_latest); its spine is swapped in at the first iteration after it ends")
+    if float(args.auto_spine_cut_secs or 0.0) < 0.0:
+        raise SystemExit("--auto-spine-cut-secs SECS must be >= 0 (0 = off)")
+    if float(args.auto_spine_cut_secs or 0.0) > 0.0:
+        if not args.auto_spine:
+            raise SystemExit("--auto-spine-cut-secs cuts --auto-spine's curriculum spine: give "
+                             "--auto-spine")
+        if float(args.demo_stall_cut or 0.0) > 0.0:
+            raise SystemExit("--auto-spine-cut-secs and --demo-stall-cut both cut the spine: "
+                             "give one")
+        print(f"--auto-spine-cut-secs {float(args.auto_spine_cut_secs):g}: the curriculum's spine "
+              f"is the stored line cut {float(args.auto_spine_cut_secs):g} s past the greedy "
+              f"frontier (the launch spine at the first eval); a quorum rolls the cut on along "
+              f"it, and a search line replaces it only when it ends deeper by "
+              f"{float(args.auto_spine_gain):g}u")
     if float(args.demo_success_alive or 0.0) != 0.0 and not args.demo_file:
         raise SystemExit("--demo-success-alive gates a --demo-file spine's success line: give it")
     if float(args.demo_stall_cut or 0.0) < 0.0:
@@ -14892,6 +14945,8 @@ def main() -> None:
             meta["config"]["auto_spine_milestones"] = 1
         if args.auto_spine_async:
             meta["config"]["auto_spine_async"] = 1
+        if float(args.auto_spine_cut_secs or 0.0) > 0.0:
+            meta["config"]["auto_spine_cut_secs"] = float(args.auto_spine_cut_secs)
         if args.auto_spine_energy is not None:
             meta["config"]["auto_spine_energy"] = float(args.auto_spine_energy)
         if float(args.demo_stall_cut or 0.0) > 0.0:
@@ -15958,6 +16013,80 @@ def main() -> None:
     if AUTO_SPINE and float(args.auto_spine_delay) > 0:
         AUTO["retry_at"] = int(global_step + float(args.auto_spine_delay))
         print(f"--auto-spine-delay: no search before step {AUTO['retry_at']:,}")
+    # --auto-spine-cut-secs: CUT = the stored line (the launch spine, then each deeper search
+    # line) and its held keys; the curriculum's spine is CUT["S"][:demo.n], cut CUT_T ticks past
+    # the greedy frontier at the first eval ("pending") and rolled on at every quorum
+    CUT_T = 0
+    CUT = {"S": None, "keys": None, "end_d": None, "pending": False, "n": 0}
+    if AUTO_SPINE and float(args.auto_spine_cut_secs or 0.0) > 0.0:
+        CUT_T = max(1, int(TICK.secs_to_ticks(float(args.auto_spine_cut_secs))))
+        CUT.update(S=np.array(demo.S, copy=True),
+                   keys=None if DEMO_KEYS[0] is None else np.array(DEMO_KEYS[0], copy=True),
+                   end_d=float(DEMO_END_D) - float(args.demo_success_d), pending=True)
+        print(f"--auto-spine-cut-secs: {CUT_T} ticks past the greedy frontier; the launch spine "
+              f"({demo.n} rows, end d {CUT['end_d']:,.0f}) is the stored line, cut at the first "
+              f"greedy eval", flush=True)
+
+    def _cut_apply(n_keep, why, tau0=None):
+        """--auto-spine-cut-secs: the curriculum's spine becomes the stored line's first
+        ``n_keep`` rows; its success line moves to that end; the old line stays paying as a
+        milestone (on a roll, unless another line lies within --demo-success-d of it)."""
+        nonlocal DEMO_END_D
+        _f = slots[0].reward_field if slots[0].reward_field is not None else slots[0].goal_field
+        old = float(DEMO_END_D)
+        demo.reset_spine(np.array(CUT["S"][:n_keep], copy=True), tau0=tau0)
+        if CUT["keys"] is not None:
+            DEMO_KEYS[0] = np.asarray(CUT["keys"][:n_keep], np.int32)
+        _de = float(_f.sample(np.asarray(demo.S[-1]["origin"], np.float64)[None])[0])
+        DEMO_END_D = _de + float(args.demo_success_d)
+        kept = ""
+        if why == "roll" and args.auto_spine_milestones:
+            if milestone_clear(MILES[0], old, [DEMO_END_D], float(args.demo_success_d)):
+                MILES[0] = np.append(MILES[0], old)
+                kept = f"; the old line {old:,.0f} is a milestone"
+            else:
+                kept = f"; the old line {old:,.0f} lies within a line of another: no milestone"
+        DEMO_PAID[0] = None
+        DEMO_OK[0] = DEMO_OK[1] = None
+        ALV[:] = [None, None, None, None, None]
+        demo_idx[:] = -1
+        STALL["tau"] = None
+        CUT["n"] += 1
+        adir = out / "auto"
+        adir.mkdir(parents=True, exist_ok=True)
+        (adir / f"cutahead{CUT['n']:02d}.json").write_text(json.dumps(
+            {"step": int(global_step), "why": why, "rows": int(n_keep),
+             "stored_rows": int(len(CUT["S"])), "stored_end_d": float(CUT["end_d"]),
+             "success_d": float(DEMO_END_D), "old_success_d": old, "greedy_d": AUTO.get("med"),
+             "milestones": [float(v) for v in MILES[0]]}, indent=1), encoding="utf-8")
+        return kept
+
+    def _cut_roll(med):
+        """--auto-spine-cut-secs: the first eval cuts the launch spine, a quorum rolls the cut on
+        CUT_T ticks past the new greedy frontier ``med`` (never back)."""
+        _f = slots[0].reward_field if slots[0].reward_field is not None else slots[0].goal_field
+        rc = spine_cut_ahead(CUT["S"], _f.sample, med, CUT_T)
+        n_keep = len(CUT["S"]) if rc is None else rc + 1
+        first = bool(CUT["pending"])
+        CUT["pending"] = False
+        if n_keep <= demo.n and not (first and n_keep < demo.n):
+            print(f"[{global_step:>13,d}] --auto-spine-cut-secs: "
+                  + ("the stored line is in use to its end" if demo.n == len(CUT["S"])
+                     else f"the cut stays at row {demo.n - 1} of {len(CUT['S'])} (the frontier's "
+                          f"cut row is {n_keep - 1})")
+                  + ("; not cut" if first else "; no roll") + f" (greedy frontier {med:,.0f})",
+                  flush=True)
+            return
+        # the first cut keeps the curriculum where the launch put it (--demo-tau0), when inside
+        t0 = int(demo.tau) if first and int(demo.tau) < n_keep - 1 else None
+        kept = _cut_apply(n_keep, "first" if first else "roll", tau0=t0)
+        print(f"[{global_step:>13,d}] --auto-spine-cut-secs: "
+              + ("the launch spine CUT" if first else "the cut ROLLS on")
+              + f" at row {n_keep - 1} of the stored line's {len(CUT['S'])} ({CUT_T} ticks past "
+              f"its first row at the greedy frontier {med:,.0f}); success line d <= "
+              f"{DEMO_END_D:,.0f}" + kept + ("; the curriculum restarts at the cut's end"
+                                             if t0 is None else f"; the curriculum stays at {t0}"),
+              flush=True)
 
     def _auto_spine_after_eval(ev_path):
         """Read the greedy eval; on the quorum (or the patience) run tools/auto_spine.py on
@@ -16031,6 +16160,10 @@ def main() -> None:
               f"success line d <= {DEMO_END_D:,.0f}; greedy frontier (median deepest d) "
               f"{med:,.0f}" + ("  -> SEARCH" + (" (patience)" if pat and not quorum else "")
                                if go else ""), flush=True)
+        if CUT_T and (CUT["pending"] or quorum):
+            # --auto-spine-cut-secs: the first eval cuts the launch spine, a quorum rolls the cut
+            # on along the stored line; the search (if due) still runs below
+            _cut_roll(med)
         if not go:
             return
         if AUTO.get("proc") is not None:
@@ -16056,7 +16189,9 @@ def main() -> None:
         br_tick = (int(max(1, np.median(launches) - 0.5 * tps))
                    if len(launches) * 2 > len(eps)
                    else int(max(1, np.median(stalls) - 1.0 * tps)))
-        cmd = [sys.executable, "-u", str(Path(__file__).resolve().parents[1] / "tools"
+        # RLSURF_AUTO_SPINE_TOOL: a test seam (a stub search for the swap paths); unset = the tool
+        cmd = [sys.executable, "-u", str(os.environ.get("RLSURF_AUTO_SPINE_TOOL")
+                                         or Path(__file__).resolve().parents[1] / "tools"
                                          / "auto_spine.py"),
                "--ckpt", str(out / "ckpt_latest.pt"), "--map", str(slots[0].core.bsp_path),
                "--field", str(AUTO["field"]), "--out", str(kdir), "--greedy-d", f"{med:.1f}",
@@ -16159,11 +16294,37 @@ def main() -> None:
                   f"step {AUTO['retry_at']:,}", flush=True)
             return
         sp = np.load(res["spine"])
+        if CUT_T:
+            # --auto-spine-cut-secs: a search line replaces the stored line only when it ends
+            # deeper by the gain; it is then cut CUT_T ticks past the LATEST greedy frontier
+            _sd = float(_f.sample(np.asarray(sp[-1]["origin"], np.float64)[None])[0])
+            if CUT["S"] is not None and _sd > float(CUT["end_d"]) - float(args.auto_spine_gain):
+                AUTO["last"] = int(global_step)
+                AUTO["retry_at"] = 0
+                print(f"[{global_step:>13,d}] auto-spine search {AUTO['k']}: its line ends at d "
+                      f"{_sd:,.0f}, not {float(args.auto_spine_gain):g}u deeper than the stored "
+                      f"line's {float(CUT['end_d']):,.0f}: the stored line stays (curriculum "
+                      f"spine {demo.n} of {len(CUT['S'])} rows) after {dt:.0f}s", flush=True)
+                return
+            _kp = res.get("keys")
+            _fk = np.asarray(np.load(_kp), np.int32) if _kp and Path(_kp).exists() else None
+            CUT.update(S=np.array(sp, copy=True), end_d=_sd, pending=False,
+                       keys=_fk if _fk is not None and _fk.shape == (len(sp), 3) else None)
+            _rc = spine_cut_ahead(sp, _f.sample, AUTO.get("med", med), CUT_T)
+            if _rc is not None:
+                sp = np.array(sp[:_rc + 1], copy=True)
+                res = dict(res, cut_rows=int(_rc + 1), stored_rows=int(len(CUT["S"])))
+                print(f"[{global_step:>13,d}] --auto-spine-cut-secs: search {AUTO['k']}'s line "
+                      f"({len(CUT['S'])} rows, end d {_sd:,.0f}) is the stored line, cut at row "
+                      f"{_rc} ({CUT_T} ticks past the greedy frontier "
+                      f"{float(AUTO.get('med', med)):,.0f})", flush=True)
         demo.reset_spine(sp)
         if DEMO_KEYS[0] is not None:
             # the new spine's held keys (auto_spine writes them next to it), else none
             _kp = res.get("keys")
             _nk = np.asarray(np.load(_kp), np.int32) if _kp and Path(_kp).exists() else None
+            if CUT_T and _nk is not None and len(_nk) > len(sp):
+                _nk = _nk[:len(sp)]
             if _nk is not None and _nk.shape == (len(sp), 3):
                 DEMO_KEYS[0] = _nk
                 print(f"[{global_step:>13,d}] --demo-keys: the new spine's held keys from {_kp}",
@@ -16172,8 +16333,13 @@ def main() -> None:
                 DEMO_KEYS[0] = None
                 print(f"[{global_step:>13,d}] --demo-keys dropped: the new spine has no held "
                       f"keys", flush=True)
-        if args.auto_spine_milestones:
+        if args.auto_spine_milestones and not (CUT_T and not milestone_clear(
+                MILES[0], DEMO_END_D, [float(_f.sample(np.asarray(demo.S[-1]["origin"],
+                                                                  np.float64)[None])[0])
+                                       + float(args.demo_success_d)],
+                float(args.demo_success_d))):
             # the line the greedy just crossed keeps paying (a milestone), the new one is next
+            # (--auto-spine-cut-secs: unless another line lies within --demo-success-d of it)
             MILES[0] = np.append(MILES[0], float(DEMO_END_D))
             print(f"[{global_step:>13,d}] auto-spine milestones: "
                   + ", ".join(f"{v:,.0f}" for v in MILES[0]), flush=True)
