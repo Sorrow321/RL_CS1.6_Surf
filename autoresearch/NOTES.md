@@ -3760,3 +3760,17 @@ ckpt_45558005760 (md5 6dec286c...), eval 82.652 at 45.564B. Credit at the start:
 * So (14:30 UTC): auto_spine.py by hand with the GREEDY's own recorded line as `--start-spine` (episode 5 + its held
   keys from the .jsonl, `--start-row 9425` = just before its death, so the line IS the greedy's), `--greedy-d 1997`,
   and `--ge-boost "1.0;1.04;1.08"` (UNBOOSTED first, a stage of its own): GE roots in the greedy's own last 4 s.
+* **98.484** (c5, 51.022B: ep3 98.48% and ep0 98.35% past the z -1,640 blade to z ~-2,580 at (522-560, 2,777-2,831),
+  the next blade; 5/9 at 96.5%). Hand-on: the copier's ckpt_51014795264 (6.8M before the eval, md5
+  f027b8f1f6de9686c4170a2c4b472000), pulled. The next eval (51.097B) eroded: 5/9 back at the 74.4% block region, the
+  boosted-chain band at 0.0%.
+* The greedy-rooted search (auto_spine.py by hand, `--start-spine` = the greedy's own recorded line, episode 5 of the
+  96.582 weights, + its keys, `--start-row 9170` = 2 s before its death; `--ge-boost "1.0;1.04;1.08"`): the plain beam
+  2,752; the ENERGY-FORK branched beam (forked at 9,172, right at the start) to **d 1,069 = 98.13%** - beats the greedy by
+  928 u with no Go-Explore -> spine **`pbr8b3_g2`** (the greedy's own line + the policy's own branched beam). (A first try
+  with `--start-row 9425`, a few ticks before the death, gave no line at all: the beam went extinct without a frontier,
+  and auto_spine skips every later stage when the plain beam returns nothing.)
+* `--auto-spine-ge-boost SPEC` (new, generic, default off; c70f589): the loop's Go-Explore ladder for auto_spine
+  --ge-boost; tests/python/test_auto_spine_ge_boost.py 3/3 incl. flag-off bit-identity (157 s, CPU).
+* **pbr8b3_c6** (14:57 UTC): the 98.484 weights (c5's ckpt_51014795264, before the erosion) on g2 + keys, every c5 flag +
+  `--auto-spine-ge-boost "1.0;1.04;1.08;1.12"` (unboosted roots first, a stage of their own), 39 milestones.
