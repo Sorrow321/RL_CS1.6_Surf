@@ -315,3 +315,7 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   9,050-9,199 x1.0 only - no boost - 1.3 min to the first goal hit; ge_replay 16/16 links) rooted at k04 row 9,071 UNBOOSTED.
   The chain spirals down the shaft between the kill sheets in 5.9 s (|v| 550 -> 1,930 u/s) to d 9 above the finish
   trigger. No demo, no record (pbr8b1).
+* `pbr8b1_entry_shaft_states.npy` (14,739 rows; md5 86ce11fa084409657060903362bf3152): `--spawn-states` pool = the 7,399
+  start-room states of pbr1b1_entry_ge_states.npy + pbr8b1_k04t's 734 shaft-chain rows 9,072-9,805 (the GE 2 chain, own
+  search from the policy's own k04 states) tiled 10x, so the 20% spawn-states share splits ~50/50 between the start room and
+  the final shaft: the shaft is practised while the curriculum works on the middle of the line. Clocks zeroed. No demo.

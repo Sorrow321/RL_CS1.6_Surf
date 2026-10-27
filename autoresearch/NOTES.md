@@ -3597,3 +3597,14 @@ ckpt_45558005760 (82.652 at 45.564B).
   the greedy at 82.2-82.9%); when its greedy reaches ~92%, relaunch on k04s (tau0 = the finish) with 4,365 as a milestone.
   Two trainers on this box are not worth it: the GPU alternates 22% / 97% busy (rollout / update), so they would contend.
 * GE 2 (09:24 UTC): the same settings rooted at k04 rows 9,050-9,199 x1.0 only (no boost at the junction), 20 min.
+* **GE 2** (09:24 UTC; rooted at k04 rows 9,050-9,199 x1.0 only, 64 roots): a goal hit after **1.3 min** (743k runs). Its chain
+  (ge_replay 16/16 links) roots at k04 row 9,071 (91.27%, on the shaft's rim at (972, 2,747, 875), unboosted) and SPIRALS down
+  between the sheets in 736 ticks = 5.9 s (|v| 550 -> 1,930 u/s; the record, yardstick only, ~3 s) to d 9. Stitched ->
+  **`autoresearch/spines/pbr8b1_k04t`** (9,807 rows: k04 rows 0-9,071 + the chain) - the line to use (k04s floats 10 s in the
+  push field and roots on a x1.04 boost). The loop's own GE fallback (5 min, x1.0 first) should find such a chain by itself
+  once the greedy reaches the shaft's rim.
+* c2 at 09:35 UTC: evals 82.83 / 82.93 / 82.78 (medians 82.2-82.6%: most die on the z ~1,460 sheet at 82.4-82.9%, cutting
+  west before k04's platform at z 1,565); the curriculum oscillates at the hop band [8,124 / 8,129] (75% / 22-24%, from 10%);
+  update kl median 0.24, p90 0.44, 10 of 810 updates > 1 (max 6.4) - higher than c8's 0.12-0.19 at the same lr; watched.
+* band_bench on c2's 46.7B weights, k04t's shaft bands, success = the finish: [9,071-9,075] greedy 0/12 (median 93.50%, max
+  94.55%), stoch 0/12 - the shaft is new to the policy, as expected.
