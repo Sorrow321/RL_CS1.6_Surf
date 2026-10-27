@@ -3,16 +3,18 @@
  "round": 9,
  "final": false,
  "best": {
-  "score": 117.692,
-  "eval_file": "/home/steam/ar_pb/runs/pbr9b3/pbr9b3_c1/traj_55341219840.jsonl",
-  "run": "pbr9b3_c1",
-  "step": 55341219840,
-  "ckpt": "/home/steam/ar_pb/runs/pbr9b3/pbr9b3_c1/ckpt_55334928384.pt",
+  "score": 117.705,
+  "eval_file": "/home/steam/ar_pb/runs/pbr9b3/pbr9b3_c4/traj_56963366912.jsonl",
+  "run": "pbr9b3_c4",
+  "step": 56963366912,
+  "ckpt": "/home/steam/ar_pb/runs/pbr9b3/pbr9b3_c4/ckpt_56958648320.pt",
   "recipe": [
-   "c1: resume of the incumbent ckpt_55038705664 (pbr8b1_c12) on pbr8b1_f1e + keys with c12's exact flag set (--demo-success-energy 150, --lr 5e-5, no --auto-spine, --demo-tau0 5555)"
+   "c1: resume of the incumbent (pbr8b1_c12 55.039B) with c12's flags (f1e, energy 150, lr 5e-5)",
+   "c2/c3: f2e (planner line + an unboosted GE glide past the 84% platform + own finish, cut at 84.95%) with --demo-success-energy 300 (c2 lr 1e-4 collapsed; c3 lr 5e-5 from c2's 55.84B snapshot)",
+   "c4: c3's 56.736B weights + --demo-milestone-energy 9821:2173 (round 8's 82.8% airborne gate kept paying) + a flying-only spawn pool at the decision point, lr 5e-5; 117.705 at 56.963B (9/9, 68.86 s)"
   ],
   "resume_from": "/home/steam/ar_pb/incumbent/r8/ckpt.pt",
-  "commit": "a9e11cb92ed046d4da8913d9fd4d0122e3e15c54"
+  "commit": "21282d59"
  },
- "summary": "c1 (the incumbent's run continued, c12 flags, lr 5e-5): best 117.692 (55.341B: 9/9, 69.25 s; other evals 5-8/9 at 68.29-68.93 s). Split times vs the record (yardstick only): the policy loses ~0.8 s at a 72% corner loop and ~1-2 s by LANDING on the 84% platform. GE from the planner line's own 83% states found an UNBOOSTED glide past the platform (+700 u energy height at 85%); f2 = planner line + that chain + the policy's own finish = ~67.3 s on its clock. c2 = f2 cut at 84.95% with --demo-success-energy 300 at lr 1e-4: sampled spawns from 70% glide within 35 min, the greedy did not switch, and the run COLLAPSED at 56.0B (kl 0.6-3.5 updates). c3 = c2's 55.84B snapshot at lr 5e-5 (running). New: --demo-success-time (a time gate, off by default) and tools/splice_roll.py."
+ "summary": "Best 117.705 (c4 56.963B: 9/9, 68.86 s; incumbent 117.711). c1 (the incumbent continued) 117.692. The policy loses time at a 72% corner loop (~0.8 s) and by landing on the 84% platform (~1-2 s). An unboosted Go-Explore glide past the platform (f2, ~67.3 s on its clock) was found, but 2 h of energy-gated curriculum taught nothing: a finish counted as curriculum success, so the band walked back on finishes while 0/16 sampled episodes glided (band_bench). Replacing round 8's f1e also dropped its 82.8% airborne gate and the greedy began walking the platform again; c4 restored it as an energy-gated milestone and got 8-9/9. New generic flags (off by default, tested bit-identical): --demo-milestone-energy, --demo-success-strict, --demo-success-time; tools/pull_split.sh for slow boxes. c5 = c4 + --demo-success-strict with the band in the turn (running)."
 }

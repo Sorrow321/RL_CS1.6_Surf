@@ -4106,3 +4106,18 @@ Workaround on the branch: `tools/pull_split.sh <port> <host> <remote> <local> [p
 a time, retry until every chunk's md5 matches, join, md5 against the box's file), then the file sits where `box.py pull` would
 have put it (`$AR_HOME/runs/<agent>/<run>/ckpt_<step>.pt`). c1's hand-on ckpt_55334928384.pt (md5 70a66fb338d8cd0fdd98f65b09c5cf49)
 was fetched that way. The operator may want box.py's pull to split large files the same way.
+* **c4 (the 82.8% energy milestone restored)**: evals 116.598 (8/9, 68.72 s) / 116.593 (8/9) / 116.584 (8/9) / **117.705**
+  (56.963B: **9/9, best 68.86 s** - 0.006 under the incumbent; hand-on ckpt_56958648320, 4.7M before) / 115.470 (7/9): the
+  flight over 82-84% came back at once (all but one crossing of 82.8% at h 2,349-2,514) and reliability rose (8-9/9).
+* **The glide was never being learned - the curriculum's success had a loophole.** band_bench on c4's 57.0B weights, f2 bands,
+  16 episodes, energy at the 84.77% line: from rows 7,250-7,440 (81.6-83.6%, up to the middle of the chain's turn) **0/16**
+  energetic, greedy AND stochastic (every crossing at h ~1,696: they all land); from rows 7,450-7,512 (after the turn, gliding)
+  15-16/16 (h 2,431-2,467). The missing skill is the turn itself: heading W -> NNW (~40 deg) in ~0.15 s at 83.4-83.7%. Yet the
+  band of c2-c4 walked 7,520 -> 5,965 at ~50% "success": under --demo-success-energy a FINISH also counts as a success (goal_now
+  = finished OR energetic crossing), and from 67% the policy finishes half the time. So the band moved on finishes, the glide
+  bonus was never collected, and nothing taught it. Lesson: **bench the gated crossing itself before trusting a band's success
+  rate** (band_bench + the energy at the line from its trajectories).
+* `train_fast --demo-success-strict` (new, generic, default off; tests/python/test_demo_success_strict.py: dump / refusal, flag
+  off bit-identical to f146a8b): under --demo-success-energy the curriculum's outcome is the gated crossing alone.
+* **pbr9b3_c5** (00:00 UTC): c4's ckpt_latest (57.057B, md5 03faecf2...) with c4's flags + `--demo-success-strict`,
+  `--demo-tau0 7445` (the band starts in the turn, where the bench fails), lr 5e-5.
