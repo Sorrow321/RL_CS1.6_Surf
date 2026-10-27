@@ -3719,3 +3719,12 @@ ckpt_45558005760 (82.652 at 45.564B).
   success = the finish), milestones + 7,926 (b3c's 86.13% line; 36 in all - not k01's 94.0% line, which sits ~1 s after the
   92.36% one in the shaft: round 7's stacked-bonus collapse), spawn pool start room + b3s's own shaft rows 8,937-9,338,
   --auto-spine-extra-secs 45, every other flag as c4. Record gate passed (4).
+* c5 at 12:29 UTC (49.53B, 16 min in): evals 92.581 / 93.857 / **93.946** (49.402B, new best; hand-on ckpt_49398939648,
+  2.6M before, pulled) / 93.934, medians 82.1 -> 82.6 -> 84.5 -> 90.9% (the greedy consolidates the route to the shaft).
+  The curriculum walked b3s 9,339 -> 9,239 and stalls there (band [9,239] 17-20%, [9,244] 31-33%).
+* band_bench on c5's 49.53B weights, b3s's shaft (success = the finish): [9,290] 9/12 greedy, [9,240] 5/12, [9,190] 0/12 (all
+  at 98.4%), [9,140] 0/12 (96.5%), [9,080] / [9,020] 0/12 (94.6-94.8%), [8,960] / [8,900] 0/12 (~93%). The rim beam's 1,604
+  finishes came from selection (resample every 25 decisions): one sampled copy of the policy rarely survives the four
+  sheets; each is a window to teach.
+* 12:33 UTC: c5's spawn pool swapped (re-read at 49.596B) to `pbr8b1_entry_b3sw2_states.npy` (md5 f207260f...): start room
+  + b3s rows 9,130-9,205 (48x) + rows 8,960-9,095 (27x) - two focused windows one step ahead of the trainer's band.
