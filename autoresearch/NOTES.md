@@ -4025,3 +4025,27 @@ Box: 58011053, RTX 4080S, 0.41 $/h, Ontario CA (machine 141481, the box rounds 7
   line (record_ckpt --dump-states, ep 1, runs/pbr9b1/look/g0_states.npz md5 6c32b52b...) rows 7,372-7,580 every 4th
   (82.1-84.3%, before the landing) x1.0 and x1.04 (106 roots). Picked by the EARLIEST arrival from the true start past the
   lower-level landing (autoresearch/analysis/ge_fast_pick.py: root row x 7.667 ms + chain ticks x 8 ms), with its energy.
+* c1 evals to its stop (21:16 UTC, 55.44B): 114.368 (6/9) / **115.492** (7/9, 68.56 s) / 114.368 (6/9) / 113.265 (5/9) /
+  113.262 (5/9) / 113.262 (5/9). Deaths over 6 evals: the z ~1,460 sheet at (2,103-2,110, 2,650-2,661) at 83.0% x4 (+1 at
+  83.5%), 26.1% at (3,539-3,616, -2,420, 3,189) x2, the shaft 90.8-93.7% x3, and one-offs at 3% (a 30 s stall in the start
+  room), 9.5%, 12%, 20.4%, 28.5%, 44.9%, 51.1%. c12's own 8 evals were 4,5,6,7,3,7,9,7 of 9: the same regime. Continuing the
+  incumbent's recipe does not raise reliability; the 9/9 is ~1 eval in 8.
+
+### GE 1 / GE 2 results and c2 = the fly-over (21:00-21:20 UTC)
+* **GE 1** (rooted at the greedy line 82.1-84.3% x1.0 / x1.04; 15 min, 184,828 cells; `ge_fast_pick.py`): x1.04 roots reach
+  the lower level (d <= 7,800, 86.35%) at **59.42 s** from the spawn (the greedy 60.52 s) with h ~1,490-1,570; d <= 6,900
+  (88%) at 60.76 s (greedy 61.89 s). x1.0 roots: to the drop's bottom (d 8,300) 0.55 s sooner but no faster to the lower
+  level (h 973 there: they land hard). The x1.04 chain (cell 172811, root row 7,512 = 83.59%) turns north at x ~1,450 and
+  stays airborne over the platform's end at h 2,279 (the greedy continues NW to x ~1,170 and lands at 84.47%), spirals down
+  the drop bouncing off its walls (h 2,279 -> 2,000) and lands hard on the lower level at 85.7% (h -> 1,560; the record,
+  yardstick only, keeps ~1,880 there).
+* **GE 2** (rooted at the greedy line 69.8-71.4% x1.0 / x1.04; 12 min, 128,614 cells): x1.04 roots (row 6,328) go straight
+  south at x ~-900 with no loop: d <= 15,000 (73.75%) at 50.32 s (greedy 51.24 s, -0.92 s), h ~2,740 (greedy ~2,577). x1.0
+  roots: nothing faster. Not used yet (one curriculum at a time; the 84% fix is bigger and sits on the commonest death).
+* Spines (autoresearch/spines/README.md): **pbr9b1_fo1** = greedy rows 0-7,512 + chain 172811 (7,742 rows, to 86.35%);
+  **pbr9b1_fo1e** = fo1 cut at row 7,602 (84.92%, airborne, h 2,279): with --demo-success-energy 150 only a crossing of
+  d <= 8,719 with h >= 2,129 succeeds (the greedy's landing route has h ~1,700 there); **pbr9b1_fo1after_states** = fo1
+  rows 7,603-7,741 x20 (the drop and the landing, past the cut).
+* **pbr9b1_c2** (21:18 UTC): the incumbent ckpt_55038705664 (not c1's weights: c1's last three evals were 5/9 and it showed
+  more early-course deaths) on fo1e + keys, c12's flags otherwise, spawn pool fo1after, **--lr 1e-4** (learning a route
+  change; c12's 5e-5 is for holding), band from the cut. First minutes: band 100% at [7,597] and [7,587]; kl 0.3-0.8.

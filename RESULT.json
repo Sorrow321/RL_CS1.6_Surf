@@ -2,6 +2,17 @@
  "agent": "pbr9b1",
  "round": 9,
  "final": false,
- "best": null,
- "summary": "round 9 start (20:42 UTC): incumbent 117.711 (pbr8b1_c12 55.039B, 9/9 finish, best 68.66 s). Plan: c1 = resume the incumbent on f1e with c12's flags (consolidate 9/9, faster best); beside it, planner search for a faster line and where the time goes."
+ "best": {
+  "score": 115.492,
+  "eval_file": "/home/steam/ar_pb/runs/pbr9b1/pbr9b1_c1/traj_55114727424.jsonl",
+  "run": "pbr9b1_c1",
+  "step": 55114727424,
+  "ckpt": null,
+  "recipe": [
+   "c1: resume of the incumbent ckpt_55038705664 with pbr8b1_c12's exact flags (f1e + --demo-success-energy 150, lr 5e-5)"
+  ],
+  "resume_from": "incumbent r8 ckpt_55038705664 (md5 bc483e2f...)",
+  "commit": "77d2151"
+ },
+ "summary": "c1 (incumbent continued, c12's flags): evals 6,7,6,5,5,5 of 9 finish, best 68.56 s (115.492) - reliability ~0.65/episode, deaths spread over the course (83% sheet the commonest). Split times vs the record (yardstick): the greedy lands on the platform's end at 84.5% (~500 u energy lost, lower level at ~1,000 u/s) and loops at 71-72%. GE rooted at the greedy line found a fly-over at 84% (x1.04 root, 1.1 s faster to the lower level) and a straight line at 71% (x1.04, 0.9 s). c2 (21:18 UTC): the incumbent on fo1e (greedy line + the fly-over chain, cut at 84.92% with --demo-success-energy 150), lr 1e-4."
 }
