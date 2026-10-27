@@ -3674,3 +3674,27 @@ of its 1.2 $/h cap; the only other passing offer was a 0.621 $/h 5080). Incumben
 * Plan when the greedy passes the hole (5/9 past 85.53% fires the loop's async search): look at the loop's new spine; if
   it stops at the pocket or a plate, extend it down the tube with a GE chain from its own last states (la1's recipe) and
   relaunch on that, else let the loop run.
+
+### The greedy's approach is faster than k04's: a bridge from its own line (la2), b1 / b1c, and c2 (10:45-11:10 UTC)
+* By 10:45 c1's curriculum stood at the turn (tau 6,955-7,060 = 80.3-80.6%, bands 37-81%) but the greedy did not follow:
+  evals 82.265-83.021 (to 48.74B), all dying on the sheet. At matched progress (eval 48.44B vs k04): at 80.0% the greedy is
+  within 30 u of k04's line but at ~850 u/s against k04's 610 (k04 loses ~300 u of energy height at ~78.3% that the greedy
+  keeps); at 80.8% both are at (2,40x, 1,69x) but k04 has slowed to ~700 u/s rising and swings EAST onto the slanted east face
+  (x ~2,917 at 81.2%), which leads onto the ledge, while the greedy keeps NORTH at ~935 u/s over the sheet and dives. So k04's
+  slow states do not transfer to the greedy's approach; c9's k04c success line (81.86%), reachable by that dive, had taught it.
+* **The policy's own beam on the 48.49B weights**: extinct at t = 7,400, frontier 83.0% - still the dive.
+* **Look-ahead GE la2** (rooted at 37 of that beam line's own states over 78.8-80.9%, ~1,110-1,200 u/s, x1.0, 10 min, 12
+  threads beside c1, 5.8M runs, 213,648 cells): deepest d **1,989 = 96.5%** (ge_replay 50/50 links, 3,967 states): from the
+  beam's 80.20% state (2,102, 1,469, 1,613) at 1,118 u/s it surfs UP the east face (z 1,755 at 81.84%), lands on the ledge at
+  (2,458, 2,922) at 82.51%, walks / hops it west (slowly, ~13 s), drops through the hole at ~85.3%, flies the lower level at
+  ~880-980 u/s (avoiding the 90.7% pocket: 90.15% at (1,519, 2,543, 836) -> (1,167, 2,855, 926)), stands on a ledge inside the
+  tube's top at (682, 3,021, 367), and threads the top plates and the hover zone to z -1,653 (96.5%).
+* **Spines `pbr8b4_b1`** (the 48.49B beam line to row 6,911 + la2's chain, 10,877 rows to 96.5%) and **`pbr8b4_b1c`** (cut at
+  row 9,100 = 85.92% on the lower level past the hole; success line d <= 8,147 = 85.74%).
+* **pbr8b4_c2** (11:07 UTC): c1 stopped at ~48.87B (SIGINT is ignored by the background trainer - a non-interactive shell's
+  background job ignores SIGINT; SIGTERM, no async search running); its ckpt_latest 48,868,884,480 (md5 5cd530cd...) resumed
+  on b1c + keys with **`--demo-tau0 7211`** (the chain's ledge landing, 82.5%: c1 had learned to fly ledge -> hole on k04d,
+  so the curriculum starts at the transition and walks back into the greedy-like beam approach), `--spawn-states
+  autoresearch/spines/pbr8b4_mix2.npy` explicitly, every other flag as c1 (34 milestones). Record gate passed (2 + 4).
+* Box slip #2: `pkill -f 'pb_snapcopy.py runs/pbr8b4_c1'` inside a box.py ssh command killed its own shell (CLAUDE.md's
+  warning, verbatim); only c1's copier and that shell matched. Use `ps | grep '[p]attern'` + kill PID.
