@@ -371,3 +371,5 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   the policy otherwise walks + the plain beam_tas finish of c5's own weights from the chain's end (8.77 s). No demo, no record.
 * `pbr8b1_f1w_states.npy` (11,176 rows; md5 a17948a7f0ad062972f0680ec41a3a2f): `--spawn-states` pool = f1 rows 7,450-7,582 (the
   airborne crossing past the 81.86% milestone) 12x + rows 7,583-8,061 (the chain's drop to the lower level, 84-86.2%) 20x.
+* `pbr8b1_f1w2_states.npy` (md5 in NOTES): f1 rows 7,450-7,640 (the airborne crossing past the 81.86% milestone, to 84.06%) 25x
+  + rows 7,641-7,800 (the landing on the platform's west end and the hop-off) 20x - one step ahead of c6's band.
