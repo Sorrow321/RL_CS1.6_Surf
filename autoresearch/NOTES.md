@@ -3730,3 +3730,15 @@ ckpt_45558005760 (md5 6dec286c...), eval 82.652 at 45.564B. Credit at the start:
   walked back to [8,827 / 8,832] (z ~150-200, the shaft's top catch approach; 4-33%) by 13:43 - it is retracing the
   shaft toward where the greedy's approach first leaves the spine's line. Box extended to 16:43 UTC; the credit was
   topped up ($41.6 at 13:44, 29.9 h to the reserve).
+* **Where the greedy loses the blade (13:55-14:05 UTC, box, ANALYSIS of our own lines):** three greedy recordings of
+  c5's 50.53B weights (record_ckpt --dump-states, seeds 0-2) all die at 94.56-94.59% (x 533-547, z -588..-597). Aligned
+  by field d, the greedy tracks k03p within 20-80 u through the whole 86-91% loop (~250 rows / 2 s later in time: it
+  walks the platform slower) up to the shaft entry (spine row 8,700 (783, 2,687, 789) vs greedy (764, 2,672, 826)), and
+  LEAVES it at the entry (spine rows 8,740-8,780): the spine turns north-west (v (-592, 676) at (510, 2,662, 631)), the
+  greedy heads north (v (-50, 956) at (531, 2,727, 660)), then reverses early on the way down and meets the -600 blade
+  ~150 u west. Probes (beam_tas --start-state on the greedy's OWN dumped states, 4,096 copies): from its states after
+  the entry (z 600 / 300 / 0) the whole population dies at the blade within 100-200 ticks; from its state at the loop's
+  start (row 8,310, (1,221, 3,441, 897)) the population flies the loop, enters like the spine and passes the blade to
+  **d 1,778 = 96.9%**. So the gate is the shaft-entry maneuver (~0.3 s), ~50-90 rows before c5's curriculum band (8,827).
+  (A first, wrong reading - a "shortcut" to the shaft's north lip - came from matching the greedy and the spine by
+  height instead of by d: the greedy's first z 900 crossing is the loop's start, the spine's the shaft entry.)
