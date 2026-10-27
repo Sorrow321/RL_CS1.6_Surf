@@ -3583,3 +3583,17 @@ ckpt_45558005760 (82.652 at 45.564B).
   1,000-1,800 u/s horizontal (72.5 s z 689 -> 75.25 s z -3,062).
 * GE 1 (09:04 UTC, beside the trainer, 12 threads, nice 10): explore_phase1 --exact-chains with the loop's GE settings rooted
   at k04 rows 8,950-9,199 (x1.0 / 1.04), 15 min - a line through the sheets to the finish, to stitch onto k04.
+
+### A LINE FROM THE TRUE START TO THE FINISH BOX: k04 + one GE chain through the shaft (09:04-09:22 UTC)
+* **GE 1** (explore_phase1 --exact-chains, the loop's GE settings - 64 u x energy 32 cells, heading split, view-follow, 8 ms -
+  rooted at 96 states = k04 rows 8,950-9,199 x1.0 / x1.04, 12 threads beside the trainer, 13.9 min, 3.2M runs, 124,799
+  cells): best d 2,151 after 0.4 min, 895 after 4.4 min, then **one goal hit** (d 8). ge_replay: 2,572 states, 35/35 links.
+* The chain (rooted at k04's LAST row x1.04): dives from z 463 east of the z ~200 sheet's kill and of the z -800 sheet,
+  FLOATS ~10 s at z -939 inside a trigger_push field (vz -3; the shaft holds three push volumes, z -2,496..729), wanders to
+  the z -1,300 sheet's west gap, through the z -1,700 ring and the z -2,700 hole, and falls to d 8 above the finish trigger
+  at 1,527 u/s. 20.6 s for the shaft (the record, yardstick only, takes ~3 s at speed: the push field does not stop a fast
+  fall). Stitched with tools/stitch_spine.py -> **`autoresearch/spines/pbr8b1_k04s`** (11,771 rows, end d 8).
+* The plan: c2 keeps k04 (success 92.36%) to bank the middle section first (its curriculum is at k04's 84.2% hop band,
+  the greedy at 82.2-82.9%); when its greedy reaches ~92%, relaunch on k04s (tau0 = the finish) with 4,365 as a milestone.
+  Two trainers on this box are not worth it: the GPU alternates 22% / 97% busy (rollout / update), so they would contend.
+* GE 2 (09:24 UTC): the same settings rooted at k04 rows 9,050-9,199 x1.0 only (no boost at the junction), 20 min.
