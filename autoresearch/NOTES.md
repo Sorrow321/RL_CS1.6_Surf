@@ -3282,3 +3282,42 @@ the operator's); this branch keeps a waiter on `box.py rent` and works offline m
   wall's clearance there (2,140-2,155 standing), and falls to the catch at z 1,718; 7/9 still on the platform route
   (73.3-73.6%), 1/9 at 62.0%. Hand-on: the trainer's snapshot **ckpt_38659948544.pt** (38M steps before the eval, md5
   a13107e9..., pulled). The curriculum walked the new k02 back 6,798 -> 6,213 in ~25 min (17-24% bands).
+
+### pbr7b1 round 7 lesson (wrap-up, 2026-10-27 07:46 UTC)
+* **Score 73.590 -> 74.405** (pbr7b1_c13, eval 38.698B; best episode 74.41% = the face of the 74.3% wall; hand-on
+  ckpt_38659948544, 38M steps before the eval, md5 a13107e9..., pulled; ckpt_latest 39.098B md5 2a4bd931... pulled too).
+  Box time 2.7 h only (RTX 3090, 0.377 $/h, 05:04-07:46 UTC): from 20:34 to 05:04 every `box.py rent` (~240) was refused -
+  two other boxes held 1.031 of the fleet's 1.2 $/h cap all night (see the harness issue above).
+* **What worked, in order:**
+  1. **The round-6 handoff, continued with a faster curriculum.** c12's ckpt_latest on its own search-2 spine (k02, x1.04
+     GE chain to 74.33%) with `--demo-rate 0.2` (c12 had ended oscillating at 25% under 0.3 on k02's brake band): the
+     curriculum walked past the brake, the platform bounce and the x1.04 root in ~40 min, and from 37.04B one greedy
+     episode per eval flew the fast route to the wall area (74.09 -> 74.33%).
+  2. **Search patience** (`--auto-spine-patience 8e8`; the quorum of 5/9 never came because 7-8/9 episodes kept the old
+     platform route): two searches, both answered by the PLAIN BEAM in 54 / 111 s - the policy's own line to the wall's
+     face (74.38%, then 74.44%), spines committed as autoresearch/spines/pbr7b1_c13k01 / k02. On them: 74.317 -> 74.325
+     -> 74.405 (an episode at (-854, 1,517, z 2,075), ~70 u under the wall's top).
+* **What the round established offline (local CPU, analysis of our own states + the record as a yardstick only):** the
+  next gate is a WALL at x -837 (y 1,500-1,650; a standing hull clears it from z 2,140-2,155, a ducked one from 2,120-
+  2,140), with kill volume *158 behind it. It is NOT an energy gate in the ordinary sense: c12's policy spawned at 73% with
+  x1.1-1.45 speed (up to the record's energy) still hits it at z ~1,980 - the height comes from the TECHNIQUE on a two-ramp
+  "pipe" at 72.5-73.5% (ramp 1 surfed low on its face at ~1,230 u/s, a gap, ramp 2 met at its bottom lip for a vz-624
+  kick). Our lines ride ramp 1 high (z ~1,854) at <= 1,015 u/s and get vz ~340. Local Go-Explore (2 threads; 32 u cells
+  beat 64 u: apex 2,121-2,135 vs 2,087; boosts to x1.2; 25-min runs; select-energy) never crossed; the policy from the
+  explorer's best states (in the record's height band, or already kicked to apex 2,159-2,207) never crossed either (best
+  74.40%). The speed deficit is upstream: -230 u of energy height at the 65.5-66.5% walkway (walked at 250 u/s where the
+  record flies over the catch sheet) and -100..-200 u at 70.8-72.4%.
+* **What did not / caveats:** the loop's Go-Explore stages never ran in c13 - the gain rule compares the beam with the
+  greedy's MEDIAN, and while most greedy episodes take the slow route the beam's fast route always clears 500 u. Searches
+  will only attack the wall (with the 32 u / select-energy GE that `--auto-spine-args` now passes) once the median sits
+  at the wall. The 74.317 eval's exact weights were lost (the search's save is overwritten ~115M steps later: pull it
+  right after a search fires).
+* **New, generic, default off and bit-identical (CPU-tested):** `train_fast --auto-spine-args STR` (f1f5b3c) - extra
+  arguments appended to every auto_spine.py search the loop runs (used: `--ge-select-energy 3 --ge-cell 32`).
+* **Next (if the program continues):** resume ckpt_38659948544 (or ckpt_latest 39.098B) on `autoresearch/spines/
+  pbr7b1_c13k02` (+keys; success line 74.27%) with c13's flags (the c12 block of round 6 + `--demo-rate 0.2
+  --demo-match-band --auto-spine-patience 8e8 --auto-spine-args "--ge-select-energy 3 --ge-cell 32"`, the 28 milestones
+  of runs/pbr7b1/pbr7b1_c13/auto/current.json; --demo-tau0 at the band c13's curriculum reached, ~6,213). When the greedy
+  median reaches the wall, watch the first GE-ladder search: the wall wants ramp 2's kick (z >= 2,140 at x -853), i.e. a
+  surf low on ramp 1 at ~1,200 u/s - probably an energy search upstream first (the walkway, 70.8-72.4%) and then the
+  policy's own beam with that energy (gates 17 and 19's pattern).
