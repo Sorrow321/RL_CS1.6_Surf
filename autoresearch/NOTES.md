@@ -3623,3 +3623,18 @@ ckpt_45558005760 (md5 6dec286c...), eval 82.652 at 45.564B. Credit at the start:
   2,228-2,248) but keeps it as horizontal speed (|vh| ~970-1,000), peaks at z 1,676 and drifts WEST (vx -330..-600), so
   at y 2,628 it is at x 2,246, z 1,523 - below and west of the platform - and drops onto the *265 sheet.
 * Box extended to 12:42 UTC (09:42; credit $20.9, fleet burn 1.06 $/h with 3 boxes).
+
+### THE PLATFORM FALLS: 83.103 -> 92.699 (2026-10-27 ~09:50 UTC, c2)
+* c2 evals after the curriculum passed the 81% ramp: **90.697** (46.913B), 84.726, **92.699** (47.064B), 90.875 (47.139B),
+  84.158 (47.215B). At 47.064B ep5 rides the ramp onto the platform, walks it, drops, flies the 86-91% loop and dies in the
+  finish shaft at (647, 2,829, z 280) at 80.4 s (92.70%: the top of catch *181, whose hull covers ~59% of the column at
+  z 200); the others: 84.1-84.4% (2), 82.2-82.8% (2), the 74.4% block region 73.5-74.4% (3), 12.0% (1). Hand-on for 92.699:
+  the copier's ckpt_47061139456 (2.6M before the eval, md5 b8e5c78f0eb54f2ea3914f1ee6c97bbe), pulled.
+* The stops now (47.14-47.21B): **84.1%** - 6/9 at 47.215B fall off the platform's WEST END at (1,654-1,670, 3,153-3,172)
+  onto a sheet at z 1,479 (search 1's line leaves the platform airborne there: (1,646, 3,201, 1,604) ducked at 84.12%,
+  then (1,462, 3,315, 1,586) and the drop to z 1,232 at 85.25%); **90.7%** - at 47.139B 3/9 flew the loop and CRAWLED at
+  its exit (x 1,171-1,325, y 2,668-2,936, z 709-844) until the eval's 30 s patience; **92.7%** - the shaft's top catch.
+* **The loop under the cut rule (first live use):** c2's search 1 fired at ~47.215B (quorum: 5+/9 past 83.75%), ran 397 s
+  beside the training, and its PLAIN beam (7,845 states) was cut by `--auto-spine-cut-ahead 1000` at d 8,049 = 85.9%
+  (greedy frontier 9,052 - 1,000) -> swapped in at 47.224B, success line d <= 8,149 (85.74%); the curriculum walked it
+  back at 100% bands, 40 rows a step.

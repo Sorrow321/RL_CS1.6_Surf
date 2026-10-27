@@ -3,17 +3,17 @@
  "round": 8,
  "final": false,
  "best": {
-  "score": 83.103,
-  "eval_file": "/home/steam/ar_pb/runs/pbr8b3/pbr8b3_c2/traj_46384283648.jsonl",
+  "score": 92.699,
+  "eval_file": "/home/steam/ar_pb/runs/pbr8b3/pbr8b3_c2/traj_47063760896.jsonl",
   "run": "pbr8b3_c2",
-  "step": 46384283648,
-  "ckpt": "/home/steam/ar_pb/runs/pbr8b3/pbr8b3_c2/ckpt_46384283648.pt",
+  "step": 47063760896,
+  "ckpt": "/home/steam/ar_pb/runs/pbr8b3/pbr8b3_c2/ckpt_47061139456.pt",
   "recipe": [
    "c1: resume of pbr7b2_c9 ckpt_latest (46.023B, md5 50c3a56e...) on spine pbr7b2_k04c with c9's flag set (round-5 to-continue block + --demo-match-band --auto-spine-patience 0 --auto-spine-ge-minutes 5 --auto-spine-energy 150 --auto-spine-async --lr 1e-4, 33 milestones); evals 82.359-82.528; the loop's search 1 (46.175B) found a branched beam line to 94.59%",
-   "c2: resume of c1's ckpt_latest (46.384B, md5 d8dce63d...) on spine pbr8b3_k01c (search 1's line cut by the new --auto-spine-cut-ahead rule at 83.92%) with c1's flags + --auto-spine-cut-ahead 1000, 34 milestones; first eval 83.103 (46.384B, ep5 to 83.10%, 7/9 past the 80.4% turn)"
+   "c2: resume of c1's ckpt_latest (46.384B, md5 d8dce63d...) on spine pbr8b3_k01c (search 1's line cut by the new --auto-spine-cut-ahead rule at 83.92%) with c1's flags + --auto-spine-cut-ahead 1000, 34 milestones; 83.103 at 46.384B; the greedy learned the 81% ramp ride onto the 82.5% platform in ~35 min: 90.697 (46.913B), 92.699 (47.064B: ep5 through the platform walk, the 84.5% drop and the loop to the finish shaft, 92.70% at z 280), 90.875; the loop's search 1 in c2 (47.22B) swapped in its plain beam cut at d 8,049 (85.9%) by the rule"
   ],
   "resume_from": "pbr7b2_c9/ckpt_latest.pt (46,023,049,216, md5 50c3a56e3d70db7bc66b59bbfac2caa9)",
-  "commit": "4b81cfd"
+  "commit": "(see git log)"
  },
- "summary": "c1 resumed c9's last weights (46.023B) on k04c with c9's flags: 82.359-82.528, and the loop's search 1 found a branched beam line to 94.59% (into the finish shaft). New generic flag --auto-spine-cut-ahead G (the loop's new depth spines end G u past the greedy frontier: round 7's k04 -> k04c hand cut as a rule; CPU-tested, flag off bit-identical). c2 = c1's final weights on search 1's line cut by that rule (k01c, 83.92%) + --auto-spine-cut-ahead 1000: first eval 83.103 (46.384B, the branch's best, > the incumbent 82.652). Next: the greedy must fly high over the *265 sheet to the 82.5% platform; then the loop's segments to the finish shaft (92-100%, a spiral descent)."
+ "summary": "c1 resumed c9's last weights (46.023B) on k04c (82.36-82.53); its loop search found a branched beam to 94.59%. New generic flag --auto-spine-cut-ahead G: the loop's new depth spines end G u past the greedy frontier (round 7's k04 -> k04c hand cut as a rule; flag off bit-identical). c2 = c1's weights on search 1's line cut by the rule (k01c, 83.92%) + --auto-spine-cut-ahead 1000: 83.103, then the greedy learned the 81% ramp onto the platform and flew on: 90.697 / 92.699 (47.064B: one episode into the finish shaft at 92.7%) / 90.875. Look-ahead (analysis): the shaft's twisting catch blade above the finish box falls to a 0.1-min Go-Explore from the policy's own states. Reliability is the issue now (3/9 still die at the 74.4% block)."
 }
