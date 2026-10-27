@@ -3951,3 +3951,6 @@ of its 1.2 $/h cap; the only other passing offer was a 0.621 $/h 5080). Incumben
   ckpt_56728485888 at the eval's own step, md5 7978612a..., pulled) / 116.519 (8/9) / 114.278 (6/9) / 115.388 (7/9) /
   114.323 (6/9, a 70.30 s finish) / 116.520 (8/9). Curriculum on k02 at [2,988] (~34% of the line, 72% band).
 * Every greedy episode of an eval finishes the hardest map of the program from the true start, ~4 s under the human record.
+* c10 18:00-18:29 UTC: 117.641 (9/9, 70.76 s) / 116.506 / 116.525 / 116.527 (8/9) / 115.430 / 115.449 (7/9, a 69.87 s finish) /
+  **117.660** (57.634B: 9/9, best 70.19 s; handoff ckpt_57626066944, 8.4M before, pulled) / 117.653 (9/9, 70.40 s). The finish
+  times fall as the curriculum walks k02 back (at [1,978] now, ~22% of the line).
