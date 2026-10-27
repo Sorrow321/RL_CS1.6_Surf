@@ -3720,14 +3720,14 @@ of its 1.2 $/h cap; the only other passing offer was a 0.621 $/h 5080). Incumben
 * Plan: let c2 consolidate the transition (the greedy past the hole, the quorum 5/9 past 85.74%), then relaunch on b2 from
   its END (the backward curriculum through the plates, the pocket's way round, then b1c's part which the policy knows).
 
-### c2: 90.682 - the greedy over the ledge for the first time; c3 = b2 from the finish (11:40-11:50 UTC)
+### c2: 90.682 - the greedy over the ledge for the first time; c3 = b2 from the finish (11:40-11:44 UTC)
 * c2 evals: 82.931 / **84.769** (49.020B) / 82.889 / 82.566 / 82.639 (49.247B: median 61.5% - 4/9 died at the 56% shaft for
   one eval, then back to medians 82.2-82.6%) / 83.013 / **90.682** (49.398B: ep2 rides the face onto the ledge, walks it,
   drops through the hole and flies the lower level into the 90.7% pocket at (1,194, 2,911, 744), cut there by the eval
   patience at 119 s; the other 8 still die at the ledge, 82.4-82.7%) / 82.915. Handoff for 90.682: the copier's
   ckpt_49386881024 (11.0M before the eval, md5 7fcdb47f..., pulled).
 * c2's curriculum sat 20+ min on band [6,956] (80.5%, 45 rows after the bridge's root: the face surf) at 15-36%.
-* **pbr8b4_c3** (11:50 UTC): c2 stopped at ~49.57B (SIGTERM), its ckpt_latest 49,573,527,552 (md5 aef2555f...) on **b2 + keys
+* **pbr8b4_c3** (11:43 UTC): c2 stopped at ~49.57B (SIGTERM), its ckpt_latest 49,573,527,552 (md5 aef2555f...) on **b2 + keys
   from its END** (the default tau0: the backward curriculum starts at the finish box and walks up the tube's kill plates, the
   lower level round the pocket, then b1c's part), `--spawn-states autoresearch/spines/pbr8b4_mix4.npy` (the 78.6-82.5%
   approach and face surf x4 + the 82.5-85.9% ledge / hole once + 600 start-room rows: ~8% / ~9% / ~3% of all spawns, so the
