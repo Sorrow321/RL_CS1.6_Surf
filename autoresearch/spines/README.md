@@ -303,3 +303,8 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   66e9d4d5...) cut by the `--auto-spine-cut-ahead` rule at row 7,739 (83.92%, d 9,188: the first row 1,000 u past the greedy
   frontier 10,191; success line d <= 9,288.5 = 83.75%), on the platform walk at (1,732, 3,120, 1,565). No demo, no record
   (pbr8b3, round 8).
+* `pbr8b3_k01d.npy` + `.keys.npy` (8,837 rows; md5 12b65898f234e971868c6d8478773961 / cd96fcb5e78d30c61626eecc6025681a): the same
+  search-1 line of run pbr8b3_c1 (auto/k01, md5 afbb89b6...) cut by the `--auto-spine-cut-ahead` rule against c2's greedy
+  frontier at 47.89B (median deepest d 5,323 = 90.7%): row 8,836, d 4,322 = 92.44%, in the upper finish shaft at (729,
+  2,673, 506) falling; success line d <= 4,422 = 92.26%. Applied by hand because c2's search 2 (beam from the true start)
+  could not reach the greedy's frontier (its stochastic population died at the 80.4% turn / 84.5%). No demo (pbr8b3).
