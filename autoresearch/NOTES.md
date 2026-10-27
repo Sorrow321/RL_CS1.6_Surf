@@ -3335,3 +3335,15 @@ ckpt_35907960832 (md5 160da9eb...), eval 73.590 at 35.918B. Credit at the start:
   in 2 h.
 * Look-ahead GE 17 (02:48 UTC): c5's population line rows 6,263-6,323 (70.6-71.35%, before that descent) x1.0 / 1.04,
   --select-energy 3, 15 min; the energy pick to be restricted to the ramp-entry window (72.6-73.0%).
+* **Look-ahead GE 17** (c5's population line rows 6,263-6,323 = 70.6-71.35%, x1.0 / 1.04, --select-energy 3): +108..+211 u over
+  that line over 71.5-73.25% (72.5%: h 2,680 at 1,063 u/s at (-1,283, 2,453, 1,975), ON the launch ramp's approach line);
+  near the ramp entry (72.9%) its fastest state is 1,062 u/s; deepest 74.32%.
+* c5's last evals 74.279 / **74.374** (41.734B, median 74.3%: most episodes now reach the block) / 74.358 / 74.318; its curriculum
+  sat 90 min at e5's band [6,345 / 6,350] (20-25% / 85%), 0/9 energetic crossings of e5's line (h >= 2,660 at 72.14%).
+* **Energy spine `autoresearch/spines/pbr7b2_e6`** (energy_splice G 150, window 72.2-72.8% = the ramp's approach): c5's
+  population line (beam on ~41.2B) to row 6,294 (71.01%) + a 137-state chain from it x1.04, airborne over the platform and
+  back onto the ramp line, to cell 86,087 at 72.47% ((-1,255, 2,521, 1,993) heading south at 1,045 u/s, h 2,675 = +205 u). A
+  clean drop from there onto the ramp at 72.9% gives ~1,158 u/s - the speed the passing x1.16 chains had.
+* **pbr7b2_c6** (03:09 UTC): c5's ckpt_latest (41.936B, md5 30fea41a...) on e6 + keys, `--demo-success-energy 75` (cross
+  d <= 15,831 = 72.30% with h >= 2,600), 31 milestones (+ e5's 15,920), the loop as before. First eval: 0/9 with the energy,
+  9/9 cross the line.
