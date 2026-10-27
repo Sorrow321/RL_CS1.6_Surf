@@ -302,3 +302,10 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   the true spawn to d 4,265 = 92.54%; k04c is its first 7,451 rows). Its end was cut by the beam's HORIZON (--beam-ticks
   9,262), not by a death: row 9,199 is (637, 2,918, 470) falling at 1,017 u/s into the final shaft. Success line d <= 4,365
   (92.36%). No demo, no record (pbr8b1, round 8).
+* `pbr8b1_k04s.npy` + `.keys.npy` (11,771 rows; md5 1953271132ec4e4d1b192a7b7e5b9ab4 / 84144fcb43a126469ff14f8f683a4ac9): the
+  FIRST LINE FROM THE TRUE START TO THE FINISH BOX. pbr8b1_k04 (rows 0-9,199, the policy's own beam to 92.54%) + a 2,571-state
+  exact Go-Explore chain (tools/explore_phase1.py --exact-chains, the loop's GE settings, rooted at 96 states of k04's own rows
+  8,950-9,199 x1.0 / x1.04, 13.9 min, 3.2M runs, one goal hit; tools/ge_replay.py 35/35 links) rooted at k04's LAST row x1.04,
+  stitched with tools/stitch_spine.py (views canonical, keys translated). The chain dives the final shaft's kill sheets (z 463
+  -> -939 east of the z ~200 and z -800 sheets), floats ~10 s in a trigger_push field at z -939, descends through the z -1,300
+  west gap, the z -1,700 ring and the z -2,700 hole, and ends at d 8 above the finish trigger. No demo, no record (pbr8b1).
