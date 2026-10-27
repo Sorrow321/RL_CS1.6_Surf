@@ -330,3 +330,7 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   row 9,179 (96.0%, z -1,295 in the final shaft) + a 395-state exact Go-Explore chain (explore_phase1 --exact-chains, the
   loop's GE settings, rooted at 48 of that line's own rows 9,080-9,199 x1.0, goal hit after 0.2 min; ge_replay 7/7 links)
   rooted UNBOOSTED at row 9,179, to d 4.6 above the finish trigger. Stitched with tools/stitch_spine.py. No demo, no record.
+* `pbr8b1_entry_b3mid_states.npy` (14,903 rows; md5 f3368dd076f4d76e4cc49a0c96a001f2): `--spawn-states` pool = the 7,399
+  start-room states + pbr8b1_b3f rows 7,163-8,100 (the policy's own beam line from just past the 81.86% milestone, d 10,299,
+  over the platform walk and the hops to the drop at 85.46%) tiled 8x: ~half of the 20% spawn-states share each. Clocks
+  zeroed. No demo.
