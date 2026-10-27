@@ -323,3 +323,10 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   start-room states + pbr8b1_k04 rows 7,420-8,130 (the policy's own beam line from just past the 81.86% milestone, d 10,341,
   to the curriculum's hop band, d 9,004: where the greedy dies) tiled 10x + k04t's shaft rows 9,072-9,805 tiled 10x: ~1/3
   each of the 20% spawn-states share. Clocks zeroed. No demo.
+* `pbr8b1_b3f.npy` + `.keys.npy` (9,574 rows; md5 ce58c2884380c193396a4bde8a90bef0 / 2850804f272bce947a6f2f382b662b71): A LINE
+  FROM THE TRUE START TO THE FINISH, 96% OF IT THE POLICY'S OWN. Rows 0-9,179: the trainer loop's own search-1 spine of run
+  pbr8b1_c1 (auto/k01: tools/auto_spine.py on c1's own 46,174,568,448-step weights; its THIRD branched beam_tas line, forked
+  at tick 6,936, ran to d 2,020 = 96.47% in 9,200 states, cut by its horizon; md5 b92fbd61b983c6ef4b06febe3ca8b648) up to
+  row 9,179 (96.0%, z -1,295 in the final shaft) + a 395-state exact Go-Explore chain (explore_phase1 --exact-chains, the
+  loop's GE settings, rooted at 48 of that line's own rows 9,080-9,199 x1.0, goal hit after 0.2 min; ge_replay 7/7 links)
+  rooted UNBOOSTED at row 9,179, to d 4.6 above the finish trigger. Stitched with tools/stitch_spine.py. No demo, no record.
