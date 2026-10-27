@@ -3824,3 +3824,59 @@ ckpt_45558005760 (md5 6dec286c...), eval 82.652 at 45.564B. Credit at the start:
   Every greedy episode of the eval finishes the map from the true start, ~4.3 s under the human record (75.18 s on our
   zones). Hand-on: the copier's ckpt_52889124864 (6.3M before the eval, md5 75c1eb52542b9a99231cb6a44b55ddfb), pulled.
   Credit $38.34 at 16:48 (fleet burn 1.06 $/h).
+* c7 evals after 9/9: 116.523 (53.046B: 8/9) / 114.293 (6/9) / 114.302 (6/9) / 113.200 (5/9, 70.67 s) / 115.417 (7/9) -
+  5-9 finishes per eval; the best stays 117.636 (only a 9/9 eval with a faster best time beats it now). Box extended to
+  20:16 UTC (17:17).
+
+### pbr8b3 round 8 lesson (DRAFT, 17:20 UTC; finalised at wrap-up)
+* **Score 82.652 -> 117.636: the map is FINISHED by the greedy from the true start, 9/9 in one eval, best 70.91 s**
+  (70.67-70.70 s in others) against the human record's 75.18 s on our zones. Gates passed this round: the *265 sheet
+  (82.5% platform), the 84.5% platform end, the 86-91% loop, the finish shaft's entry maneuver, its z -600 / -1,640 /
+  -2,580 catch blades and the twisting catch blade *132 above the box. Box: one RTX 3090 (57938261, 0.377 $/h) all round.
+* **What did it, in order:**
+  1. **`--auto-spine-cut-ahead G`** (87d095c): the loop's new depth spines end G u (1,000) past the greedy frontier, so the
+     backward curriculum starts just past where the greedy fails (round 7's k04 -> k04c hand cut as a rule). c2 on
+     search 1's line cut at 83.92%: 82.53 -> 92.70 in ~1 h.
+  2. **`--auto-spine-from-spine S`** (58da965): the search's beams start on the CURRENT spine S s (4) before the greedy
+     frontier, not at the true start. From the true start the stochastic population (temperature 1) lost its leaders at
+     gates the greedy had learned (c2's search 2: 172 of 4,096 alive at the 80.4% turn, frontier 84.5% vs a greedy at
+     90.7%, no line in 18 min); from the spine c4's search 1 took 19 s and reached the blade above the box (99.05%).
+  3. **Spines from the policy's OWN lines, not boosted explorer chains.** In the finish shaft the stochastic population is
+     weaker than the greedy, so every loop search fell to Go-Explore, whose stage 1 mixes x1.0 and x1.04 roots and whose
+     deepest chain was the boosted one THREE times (k02 in c4, c5's k01, c6's k02): the curriculum stalled on each (c4: 1 h
+     at one band; c6: 0% even 0.5 s before the box) and c5 eroded (5/9 back at the 74.4% block). What carried the greedy
+     instead: k03p (the policy's own plain beam through the z -600 blade), **g2** (the greedy's own recorded line,
+     record_ckpt --dump-states + its .jsonl keys, to 2 s before its death + its own energy-fork branched beam: 98.13%, no
+     GE) and **f1** (g2 + a 386-state UNBOOSTED GE chain from the ledge at the spiral's bottom into the box). c6 on g2
+     made the first finish (109.846, 2/9, 71.28 s) ~25 min after its launch; c7 on f1 reached 6/9 in ~35 min and 9/9 in
+     ~70 min. New: **`--auto-spine-ge-boost SPEC`** (c70f589; '1.0;1.04;1.08;1.12' = unboosted roots as a stage of their
+     own) and auto_spine's prefix fallback (a start-spine search whose plain beam leaves no line still runs its later stages).
+  4. **Diagnose with the policy's own probes before acting**: beam_tas --start-state from spine rows and from the greedy's
+     dumped states told, in seconds, whether the population passes a gate from a given state (k02's chain: no; the greedy's
+     post-entry states: no; its pre-entry state: yes), which located the shaft-entry maneuver and the boosted-chain trap.
+* **What did not / costs:** the greedy recorder (record_ckpt) does not reproduce the trainer's eval - the same weights that
+  finish 4/9 in the eval finish 0/9 there (spawn draws differ; the policy is specialised to the eval's spawn) - so the
+  greedy's own FINISHING line could not be dumped; three boosted-chain spines (~2.5 h of curriculum time in all); the
+  shortcut misreading (matching lines by height instead of by d); a `pkill -f` self-match over ssh.
+* **Generic rules:** (1) cut a new spine just past the greedy's failure; (2) search from the spine (or the greedy's own
+  line), not from the true start, once the greedy is better than its stochastic population; (3) prefer a line the policy
+  itself flew (its greedy recording, its beam) and unboosted explorer chains; a boosted chain is a last resort; (4) when
+  the curriculum sits at one band for 30+ min, probe the population from the spine's own states - if it cannot pass from
+  there either, the spine is the problem, not the training.
+* **Next (if the program continues):** resume the 117.636 hand-on (pbr8b3_c7/ckpt_52889124864.pt, md5 75c1eb52...) on
+  `autoresearch/spines/pbr8b3_f1` with c7's flags (below); the loop's distance search is over (the frontier is ~d 0), so
+  the remaining gains are the time (0.033 per s; the policy flies 70.7-72 s) and holding 9/9.
+  c7's launch: `box.py launch --resume --self-states "<spines README provenance of f1>" -- --maxvel 3500 --ckpt-every 2e8
+  --demo-file autoresearch/spines/pbr8b3_f1.npy --demo-keys autoresearch/spines/pbr8b3_f1.keys.npy --demo-window 5
+  --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5 --demo-rate 0.3 --demo-front-frac 0.8 --demo-success-d 100
+  --demo-success-bonus 50 --demo-milestones <the 33 of round 7 + 10366.326171875,9288.5380859375,8149.1171875,
+  4422.37744140625,3281.73486328125,2227.531494140625,1168.9366455078125> --keys-hold-spawn-duck --yaw-entropy 0
+  --demo-front-temp 0.5 --demo-front-ticks 40 --demo-front-view 6 --respawn-greedy 0.2 --respawn-greedy-window 0.25 2.0
+  --respawn-greedy-stuck 200 --respawn-greedy-contact --respawn-greedy-energy 3 --respawn-greedy-temp 0.5
+  --respawn-greedy-temp-ticks 100 --respawn-greedy-temp-view 6 --respawn-front-perturb 0.2 --respawn-front-perturb-band
+  0.005 --respawn-front-perturb-speed 1.0 1.3 --respawn-front-perturb-turn 90 --energy-pot 12 --energy-pot-front 0
+  --energy-pot-front-bonus 0 --no-respawn-novel --respawn-backward-mix 0 --int-real-only 0 --spawn-states
+  autoresearch/spines/pbr1b1_entry_ge_states.npy --spawn-states-frac 0.2 --auto-spine --auto-spine-milestones
+  --auto-spine-gain 500 --auto-spine-ge-minutes 5 --auto-spine-retry 4e8 --auto-spine-patience 0 --auto-spine-energy 150
+  --auto-spine-async --demo-match-band --lr 1e-4 --auto-spine-cut-ahead 1000 --auto-spine-from-spine 4
+  --auto-spine-ge-boost "1.0;1.04;1.08;1.12"`.
