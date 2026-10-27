@@ -4059,7 +4059,7 @@ $34.91 (reserve $10), no other box live. Incumbent: pbr8b1_c12 ckpt_55038705664 
   spawn at row i counts its crossing of the success line only if it comes within (the spine's first row past the line - i)
   ticks + SECS - the time analog of the energy gate, for a line found for its SPEED (a search line that skips a detour the
   greedy flies). Map starts (row 0) and spawns off the spine are not timed. Not used yet (no faster loop line to teach).
-* **pbr9b3_c3** (22:14 UTC): c2's snapshot ckpt_55840342016 (55.840B, md5 6a96132e...; before c2's worst kl window; its eval
+* **pbr9b3_c3** (22:08 UTC): c2's snapshot ckpt_55840342016 (55.840B, md5 6a96132e...; before c2's worst kl window; its eval
   right after: 7/9) on f2e with c2's flags at **--lr 5e-5** and `--demo-tau0 6560` (c2's band at that step).
 * Box link: downloads from this box run ~20-50 KB/s (a 63 MB checkpoint takes 20-50 min; the c1 117.692 snapshot pull got 29 MB
   in the first try) - pull hand-on checkpoints early, not at wrap-up.
