@@ -3314,3 +3314,10 @@ Independence: only this branch and $AR_HOME/incumbent/ are read. c12's later wei
   `pbr7b4_spawnmix01` at `--spawn-states-frac 0.25` = the start-room GE states (as before, now 74% of the pool) + the x1.12
   chain's passage states (26%): ~6.5% of all spawns practise the passage, the room, the drop and the surf from the
   policy's own search chain while the curriculum works on the energetic bounce. The async loop stays on.
+* **`--auto-spine-beyond-line` (new, 14c17fd)**: when the greedy median has not reached a DEPTH spine's success line (a
+  patience search), the search's new spine is measured against that line by the gain, not only against the greedy
+  median (train_fast.search_ref_d; energy spines keep the median), so a search never swaps in a line shallower than
+  the one being taught. With --auto-spine-async a patience search costs no training; with this rule it is also safe:
+  `--auto-spine-patience P --auto-spine-beyond-line` is the trainer doing what I did by hand at 23:47 UTC (which found
+  the 77.86% line). tests/python/test_auto_spine_beyond_line.py 3/3; the loop's flag-off identity test still passes.
+* c21's first minutes: the contact band 3.4-4.6% (c20: 0.3 -> 2.9%), the band after it 49-51%; evals 74.260 / 74.008.
