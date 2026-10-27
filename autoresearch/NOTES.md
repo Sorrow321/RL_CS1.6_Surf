@@ -3658,3 +3658,10 @@ ckpt_45558005760 (82.652 at 45.564B).
   greedy unchanged, as expected until the band reaches the stretch it fails in, ~80-82%). Update kl ~0.36. b3f's own clock:
   9,180 rows of the beam at 7.667 ms (70.4 s) + 395 chain ticks at 8 ms (3.2 s) = ~73.6 s from the spawn to the finish
   (the record, yardstick only, 75.18 s).
+* **band_bench on c3's 47.5B weights, b3f** (12 episodes per band; ANALYSIS):
+  - middle, success = past the drop (d <= 8,300 = 85.5%): [6,940] (80.3%, b3's fork) 0/12 greedy (median 83.0%); [7,080]
+    (81.9%, the platform landing) 0/12, all at 82.3%; [7,200] 0/12 (max 84.6%); [7,400] 5/12; [7,600] 2/12; [7,800] 6/12;
+    [7,950] (84.4%) **12/12, and on to ~93%**. So from the hop-off at 84.5% the drop, the lower level and the upper shaft
+    are already the policy's; the hard part is the platform landing and walk (81.9-84.5%) and the fork before it.
+  - shaft, success = the finish: [8,880] / [9,000] / [9,100] / [9,200] 0/12 (medians 93.7 / 94.7 / 96.5 / 98.4%); [9,300]
+    **3/12 greedy finish** (the curriculum's band was at ~9,360 by then); [9,400] 0/12 (99.5%).
