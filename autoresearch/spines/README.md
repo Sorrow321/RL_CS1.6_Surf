@@ -330,3 +330,9 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
 * `pbr8b4_b1c.npy` + `.keys.npy` (9,101 rows; md5 46086c49bc753efa564f677e9ce8eb42 / bacb9f09d252fd5edbffbff513a6000a): b1 cut at
   row 9,100 (85.92%, on the lower level flying west past the hole; success line d <= 8,147 = 85.74%, reached only through the
   hole). No demo, no record (pbr8b4, round 8).
+* `pbr8b4_b2.npy` + `.keys.npy` (11,715 rows; md5 bd970fc057a25987d5749e1de167121d / 44dc14fc0eb1b4be9b6606dba4d43ddd): b1 to its row
+  10,755 (in the finish tube above the hover zone, z ~-500) + ONE exact explore_phase1 --exact-chains chain (runs/la5 on the
+  pbr8b4 box: reward-free, auto_spine's GE settings, rooted at 41 of b1's own rows with z -256..-919, x1.0; the first goal hit
+  after 0.2 min, ge_replay 9/9 links, 960 states) through the hover zone and the lower kill plates (the z -1,100 shaft, the
+  z ~-1,700 chamber's ring, -2,700 / -2,850 / -3,200) to d 0 at (835, 2,774, -3,441) in the finish box. A finishing line from
+  the true start: the policy's own fast beam line + two reward-free chains. No demo, no record (pbr8b4, round 8).
