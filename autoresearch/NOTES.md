@@ -3537,3 +3537,49 @@ ckpt_35907960832 (md5 160da9eb...), eval 73.590 at 35.918B. Credit at the start:
   the loop's k04 in full (runs/pbr7b2/pbr7b2_c8/auto_k04, md5 f3f74722..., to 92.54%), with the c8/c9 flags (lr 1e-4, the 33
   milestones, the loop async); the next stops are the 5-row window on the south ramp at 78.9% (rows 6,810-6,815) and the turn
   north at ~80.4% (*265), then the drop to the lower level at ~84.5%.
+
+## pbr8b1 (round 8, slot 1) - 2026-10-27 08:33 UTC start
+
+Box: 57938480, RTX 4080S, 0.41 $/h, Ontario CA (machine 141481, the box round 7 used), rented 08:37 UTC for 4 h; ~250-270k
+steps/s. Credit at the start $22.03 (reserve $10), another branch's box already at 0.377 $/h. Incumbent: pbr7b2_c9
+ckpt_45558005760 (82.652 at 45.564B).
+
+### c1: c9's loop continued; 83.205 (08:41-08:58 UTC)
+* c9's own last eval (46.017B, in runs/pbr7b2/pbr7b2_c9, not in the incumbent dir) had 5/9 past k04c's success line (81.86%),
+  median 81.9% and scores 82.564 - its search 1 was cut off by the round-7 wrap-up. So c1 resumed c9's ckpt_latest (46.023B,
+  md5 50c3a56e...) rather than the hand-on, on k04c with c9's exact flags (checked by parsing the flag list with the trainer's
+  own parser against c9's run.json: only checkpoint-restored keys differ). Record gate passed.
+* Evals 82.210 (46.024B = c9's final weights, 2/9 past 81.86%) / 82.373 / **83.205** (46.174B: 9/9 past 81.86%, median 82.4%;
+  hand-on the copier's ckpt_46166704128, 7.9M before, pulled) / 82.844 (46.250B). The 9/9 fired the loop's search 1.
+* `tools/snapcopy.py` (new, committed): round 7's per-minute ckpt_latest copier as a tool; it prunes copies older than 45 min
+  except the newest one at or before each eval, so every eval keeps its hand-on candidate. Start it on the box beside each
+  run (`nohup python3 tools/snapcopy.py runs/<run> --pid <trainer pid> > runs/<run>_snapcopy.txt 2>&1 < /dev/null &`).
+* Ops: a `box.py ssh` command of the form `cd X && nohup cmd > log 2>&1 < /dev/null & ...` hangs until cmd exits - the `&`
+  backgrounds the whole `&&` list, whose stdout is ssh's pipe. Use `cd X; nohup cmd ... &`. And SIGINT does not stop the
+  trainer (a nohup'd background job ignores SIGINT): SIGTERM it and kill its async search (auto_spine.py / beam_tas.py) by pid.
+
+### The searches on the current weights stop at ~83%; round 7's k04 line was cut by its HORIZON (08:50-09:00 UTC)
+* A hand auto_spine on c1's 46.12B weights with a 16,000-tick horizon: the plain beam dies out at 7,100 ticks, best d 9,789
+  (82.87%); the trainer's own search 1 (46.17B weights): plain beam 9,681 (83.06%), branched beam 9,681 - not 500 u past the
+  greedy frontier (10,059). The current population dies just past its own gate: each loop cycle would add ~0.5-1%.
+* Round 7's k04 (the plain beam on c8's 44.89B weights to d 4,265 = 92.54%) was run with `--beam-ticks 9262` and has 9,200
+  states: it ended at its HORIZON, alive, falling into the final shaft at (637, 2,918, 470). So the policy's own lineage has
+  a line to 92.5% already; the current weights were trained only on its first 7,451 rows (k04c).
+* **pbr8b1_c2** (09:00 UTC): c1's ckpt_latest (46.2569B, md5 45b7176a...) on the FULL k04 (committed as
+  `autoresearch/spines/pbr8b1_k04` + keys; success line d <= 4,365 = 92.36%), c9's flags + milestone 10,366 (k04c's line;
+  34 milestones, none within 1,000 u of another) + `--auto-spine-extra-secs 45` (the next search's beam must not be cut by its
+  horizon in the shaft again). First 4 min: the curriculum walked back 9,199 -> 8,244 at 94-99% band success.
+
+### The final shaft (92.5% -> finish), mapped (09:00-09:05 UTC, field + hull probes; the record as a yardstick only)
+* The finish box (z -3,509..-3,474) sits at the bottom of a ~600 u wide vertical shaft (x 416-1,024, y 2,464-3,072) that
+  falls ~4,200 u from z ~700. The shaft is a stack of trigger_teleport KILL SHEETS whose gaps alternate: z ~640-700 kill
+  over all but the WEST side (x ~400-640); z ~200-243 kill over the WEST, gap EAST (x ~800-1,000); small kill pillars at z 0
+  and -540; z -800 kill west, gap east of a narrower tube; z -1,300 kill east, gap west; z -1,700 kill in the CENTRE, the
+  gap a ring around it; z -2,700 nearly solid kill with one narrow hole (x ~608-704, y 2,656-2,880); z -3,000 a kill band
+  across the middle; z -3,300 kill west, gap east. The goal field is NOT kill-aware there (kill cells carry finite d), so
+  the shaping pulls straight down into the sheets.
+* A beam of the current weights started at k04 row 9,100 (2,048 copies): extinct within 300 ticks (2.3 s), best d 3,346
+  (94.1%) - the policy falls straight into a sheet. The record (yardstick only) threads the gaps in a ~3 s spiral at
+  1,000-1,800 u/s horizontal (72.5 s z 689 -> 75.25 s z -3,062).
+* GE 1 (09:04 UTC, beside the trainer, 12 threads, nice 10): explore_phase1 --exact-chains with the loop's GE settings rooted
+  at k04 rows 8,950-9,199 (x1.0 / 1.04), 15 min - a line through the sheets to the finish, to stitch onto k04.
