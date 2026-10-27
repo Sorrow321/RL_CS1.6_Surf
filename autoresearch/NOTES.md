@@ -3270,3 +3270,15 @@ ckpt_35907960832 (md5 160da9eb...), eval 73.590 at 35.918B. Credit at the start:
   beam flew 65.0-66.35% at 540-794 u/s, h 2,574-2,773); through the hole it gains back to ~2,500 at 67-68%. The
   curriculum walked e3 back past its x1.04 root (5,711) and the wall slide (66.2%, ~0.3% for a few minutes) to the beam's
   ledge approach [5,613 / 5,618] (bands ~50% / 7%) in ~20 min.
+* c4 evals to 40.148B: 73.396 / 74.281 / 74.308 / 74.273, but per-episode the route ERODES - some evals have 4-5 of 9 die at
+  5.9-9.3 / 27 / 46 / 56.5-62.5% (c3's evals were nearly all at 73-74%): 99% of the curriculum's episodes sit in e3's last
+  decile (61-66.6%) and nothing in the spine covers 67-74% any more. Probe (record_ckpt, c4's 40.246B weights, greedy,
+  spawned at e3's last rows, h 2,684): 3/4 crash in the hole drop at ~67.6% (h 2,226-2,251 at 67%), 1/4 falls back to the
+  platform line to 73.62% (h 2,102 at 72%) - from e3's end the greedy does not yet know the hole.
+* **But the policy's POPULATION learned e3** (beam_tas from the true start on c4's 40.246B weights, the loop's settings):
+  frontier 74.33%; it flies west over the sheet (x -3,539..-3,561 at 65.5-66%) and carries +83..+136 u over c3's beam line
+  through the hole and the surf - h 2,694 at 66% / 2,652 at 67% (954 u/s) / 2,654 at 70% / **2,704 at 71.2% (1,066 u/s)** -
+  then the PLATFORM HOP takes it (2,586 at 72%, 2,517 at 72.9%, 2,486 at 73.5%: +34 at the launch). One corner learned,
+  the next one (71.2-72.9%, -190 u) exposed - round 5's corridor picture ("one energy spine per corner").
+* Look-ahead GE 12 (01:12 UTC): that beam line's rows 6,260-6,343 (70.3-71.35%, before the hop) x1.0 / 1.04,
+  --select-energy 3, 15 min: a hop-free line that keeps the energy to the launch - and over the block?
