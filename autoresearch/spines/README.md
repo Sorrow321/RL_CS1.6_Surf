@@ -308,3 +308,11 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   frontier at 47.89B (median deepest d 5,323 = 90.7%): row 8,836, d 4,322 = 92.44%, in the upper finish shaft at (729,
   2,673, 506) falling; success line d <= 4,422 = 92.26%. Applied by hand because c2's search 2 (beam from the true start)
   could not reach the greedy's frontier (its stochastic population died at the 80.4% turn / 84.5%). No demo (pbr8b3).
+* `pbr8b3_k03p.npy` + `.keys.npy` (8,998 rows; md5 6a84d56f316bfa68d85c4f1b67930dbe / 2dc9b6fefd366ddd8500d5d02585e70e): run
+  pbr8b3_c4's search-1 spine (auto/k01: k01d's rows to 8,313 + the from-spine beam on c4's own 48.24B weights) rows 0-8,699
+  + the PLAIN beam_tas line of the policy's own population (c4's 48.7B weights, 4,096 copies, from that spine's row 8,700 =
+  91.6%, no fork, no boost; auto_spine.py's dry run of 11:56 UTC, runs/pbr8b3_la/dry1/beam) to d 1,358 = 97.6%, held keys
+  translated from its own actions; cut by the `--auto-spine-cut-ahead` rule against c4's greedy frontier at 49.75B (median
+  deepest d 3,128): row 8,997, d 2,128 = 96.28%, in the finish shaft at (705, 2,915, -1,482); success line d <= 2,228.
+  It passes the z -600 blade on the policy's own line, where c4's search-2 spine (k02) is a Go-Explore chain from a x1.04
+  boosted root. No demo, no record (pbr8b3, round 8).
