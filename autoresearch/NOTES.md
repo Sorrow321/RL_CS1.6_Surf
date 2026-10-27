@@ -3754,3 +3754,19 @@ ckpt_45558005760 (82.652 at 45.564B).
   2/12 stoch; [8,940] 0-1/12; [8,980] 1/12; [9,020] 6/12; [9,080] 1/12; [9,140] 1-2/12; [9,190] 5/12 (it was 0/12 above
   9,240 at 49.85B). 13:17 UTC: pool -> `pbr8b1_b3sw5_states.npy` (md5 83aa6005...; b3s rows 8,937-9,039 34x, 9,040-9,169
   35x, 9,170-9,249 30x), re-read at 50.309B.
+
+### THE FIRST GREEDY FINISH FROM THE TRUE START: 108.664, 73.42 s (2026-10-27 13:33 UTC, c5)
+* c5 (b3s, the policy's own line start-to-finish; shaft-only spawn pool from 13:00) - evals 93.540 (50.308B) / 92.884 /
+  **108.626** (50.459B: ep8 finishes in 74.57 s) / **108.664** (50.534B: ep8 finishes in **73.42 s**; the record, yardstick
+  only, 75.18 s). Hand-ons pulled: ckpt_50534023168.pt (the eval's own step) and ckpt_50456428544.pt (2.1M before 108.626).
+  The curriculum's band was at b3s rows 8,804-8,814 (just above the shaft's rim) when the first finish came.
+* The other 8/9 of 50.534B: 4 die on the z ~200-243 kill sheet at z ~265 (92.5-92.9%) 130-290 u WEST of where the line crosses
+  it (x 804-955: the sheet kills the west side), 1 on the z 0 pillar (93.5%), 3 earlier (81.7% / 73.4% / 61.3%) - the next
+  lever is reliability (each extra finishing episode of 9 is worth +1.11; a second off the time 0.033).
+* What did it, in order: (1) the trainer loop's own search found the policy's line to 96.47% (a branched beam) and the
+  horizon cut it - kept and used, not discarded; (2) the k04c rule (cut just past the greedy's failure, success bonus right
+  after it) taught the 82-84.5% platform (c4: 83 -> 93.8); (3) the shaft: mapped (rotating teleport kill sheets), then the
+  policy's OWN beam from the rim (1,604 / 4,096 finish) gave the line - no explorer chain survived into the final spine;
+  (4) a spawn share is not a sample share: the shaft band stalled 40 min until the 70 s start-room spawns were taken out
+  of the spawn-states pool (shaft-only windows), then the curriculum crossed the hole, the ring and the upper sheets in ~35
+  min and the greedy finished.
