@@ -4062,3 +4062,15 @@ Only a FASTER 9/9 eval beats it (one finisher fewer costs 1.11 = 33 s of time; o
   at the finish enforces every faster section of the spine at once (energy can be regained by a later fall, so an energy
   gate only polices the section just before it). Flag off: the trainer's config and every progress.csv number are
   identical to a9e11cb's (CPU smoke run, princessburglar).
+
+### The whole route's energy vs the record (22:05-22:12 UTC; the record as a YARDSTICK only)
+* Energy height at first arrival, the best greedy episode (68.66 s) vs the record: the policy carries MORE energy over
+  8-50% (+300-400 u at 28-44%) and loses ~640 u at 51.6-51.8% (a fall at (-2,393, 568, 2,676)) that costs no time (the
+  56.6% shaft climb levels both lines). The deficits that cost time: 72-76% (-100 to -130 u, the bulge, ~0.9 s), and 86-98%
+  (-430 to -1,060 u, ~2.7 s): the platform landing (-600), the ramp landing (-361) and the rim (-523 then -131).
+* **Why the platform skip alone gains only ~0.4 s:** in the incumbent's rollout from the skip state (h1 rows 7,617+), the
+  policy enters the drop shaft heading NORTH at 964 u/s and hits the shaft's north wall at y ~3,451 within 0.1 s
+  (85.04-85.09%: v (173, 953) -> (-307, 159), h 2,324 -> 1,811), falls nearly vertically at ~330 u/s horizontal and lands
+  on the north ramp at (1,166, 3,491, ~870), which turns the fall into only ~1,030 u/s westward (h ~1,440). The record
+  curves along the shaft (S, then NE, then W in ~0.6 s at 850-970 u/s) and leaves the ramp at ~1,290 (h ~1,880). So the
+  next skill is a CURVE in the top of the drop shaft that keeps ~900 u/s into the ramp: ~1-1.5 s over 86-92%.

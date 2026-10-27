@@ -3,5 +3,5 @@
  "round": 9,
  "final": false,
  "best": null,
- "summary": "Round 9 start (20:43 UTC). Incumbent 117.711 (pbr8b1_c12 55.039B: 9/9, best 68.66 s). No box yet: rent refused at the fleet's 1.2 $/h cap (burn 1.154 by the other branches). Local analysis: split times vs the record (yardstick only) put the policy's remaining losses at three energy hits - 70.4-72.2% (an eastward bulge + bump, ~0.9 s), the 84.4% landing on the platform's west end (h 2,270 -> 1,650; the lower level then flown ~25% slower, ~2 s), the 91.9% rim landing (~0.8 s). Plan: Go-Explore from the policy's own states before each loss, energy_pick, stitch, energy-gated cut (the round-8 f1e recipe), resume the incumbent at lr 5e-5."
+ "summary": "No box yet (fleet cap 1.2 $/h full since 20:47 UTC; retrying every ~10 min). Local CPU work: split times vs the record (yardstick) put the incumbent's losses at three energy hits (70-72% bulge, the 84.4% platform landing, the 91.9% rim). Go-Explore from the incumbent's own states found a platform SKIP the policy can carry to the finish (spine pbr9b4_h1, 68.27 s on its clock vs 68.66 s); the rim and bulge chains were faster but the policy dies from their states. New flag --demo-success-time (time-gated spine success, off = bit-identical, tests pass). Ready to launch c1: the incumbent on h1e (cut at 84.98%) with --demo-success-energy 200 at lr 5e-5."
 }
