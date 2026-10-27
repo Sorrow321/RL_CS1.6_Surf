@@ -3940,3 +3940,10 @@ ckpt_45558005760 (82.652 at 45.564B).
   71.63 s) / 112.053 / 109.815. The loop's search 1 had ended in its ENERGY stage and swapped in its own energy spine (7,296
   rows, success d <= 9,222 = 83.9% with h >= 1,753) before 54.207B; the band works it at [6,510 / 6,515].
 * The branch's best SCORE stays 117.582 (c6: 9/9 at 72.53 s; a 9/9 eval at ~70 s would score ~117.67).
+* c11 18:20-18:44 UTC: evals 113.242 (5/9, **69.41 s**) / 112.129 (4/9, 69.47 s) / **116.575** (54.585B: 8/9, **69.41 s**; hand-on
+  ckpt_54585196544 = the eval's own step, md5 f0da6a18..., pulled) / then **56.575** (54.661B: COLLAPSE, every greedy episode
+  dead at the 56% shaft). Before it, five updates at kl 0.9-1.5 with the value loss climbing 45 -> 136 (54.56-54.66B), ~350M
+  steps after the loop's energy-stage spine replaced f1e. Round 7's collapse pattern again.
+* **pbr8b1_c12** (18:45 UTC, the last hour): the pre-collapse snapshot ckpt_54585196544 on f1e + the energy rule (c11's flags,
+  --demo-tau0 5555) at **--lr 5e-5** (sidistic R7: a fragile finishing skill held at its peak by the lr cut) and WITHOUT
+  --auto-spine (no spine swap in the last hour). Aim: a 9/9 eval at ~69.4 s (score ~117.69 > c6's 117.582).
