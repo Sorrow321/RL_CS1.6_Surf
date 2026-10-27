@@ -3362,3 +3362,10 @@ ckpt_35907960832 (md5 160da9eb...), eval 73.590 at 35.918B. Credit at the start:
 * **New best 74.399** (c6's first eval, 41.936B = c5's final weights, median 74.3%: most episodes now reach the block); c5 also
   had 74.396 at 41.205B. Handoff: c5's ckpt_latest (41.9357B, md5 30fea41a...) placed as pbr7b2_c6/ckpt_41935699968.pt (the
   eval's exact weights). c6 evals after it 74.341 / 74.340 / 74.329 / 74.337; 1/9 energetic crossing of e6's line at 42.163B.
+* **Energy-ranked branched beams on c6's ~42.2B weights** (beam_tas --score dh --score-energy 3, half the copies forked at the
+  population line's 70.25% / 70.55% ticks with held view offsets +-45 deg): both give the same frontier line, the most
+  energetic this round - h 2,791 at 70.5% (1,078 u/s), **2,818 at 71.2% (1,163 u/s)**, 2,706 at 72.0% (east of the platform,
+  x -877), 2,691 at 72.5% (1,113 u/s), **2,637 at 72.9% at 1,124 u/s on the ramp line (x -1,295)**, frontier 74.26%: within ~4%
+  of the x1.16 chain's 1,165 u/s at the ramp, and still not over the block. Saved as runs/pbr7b2_r5/b4.npy + keys on the box.
+* Look-ahead GE 19 (03:40 UTC): that line's ramp approach (rows 6,307-6,393 = 72.4-73.45%) x1.0 / 1.04 / 1.08, 12 min - is x1.04
+  (the mildest boost, learned without the boost by round 3's greedy at gate 8) now enough?
