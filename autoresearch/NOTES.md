@@ -3849,3 +3849,20 @@ of its 1.2 $/h cap; the only other passing offer was a 0.621 $/h 5080). Incumben
 * Lesson (generic): once the policy is good enough near a stretch, its OWN beam is a better spine than a reward-free chain -
   a chain can need contacts / timings (a lip, a ledge catch) the policy will not learn, while the beam is on its own
   distribution by construction. The loop already does this; the hand-built chains were for getting the policy near enough.
+
+### THE POLICY'S OWN BEAM FINISHES THE MAP FROM THE TRUE START: 67.87 s (14:42-14:50 UTC)
+* c8 on k01 (the loop's swap): evals 93.498 / **93.552** (52.765B, median 92.8%; handoff ckpt_52755431424, 9.4M before, md5
+  3f9ff7f9..., pulled) / 92.990 / 92.916 / 92.895 / 93.048 - the greedy at the tube's top plate. k01's curriculum walked
+  9,599 -> 9,324 in ~25 min, then oscillated [9,324] 28-38% <-> [9,319] 2-3% (cold): k01 drops ducked through the top
+  plate's east opening and air-strafes hard west at z ~36..-139 to make the -136 band's north opening (x < 870); from rows
+  9,319-9,323 (x ~911, 0.17 s above the band) the turn must start at once - a timing the policy is still learning.
+* **beam_tas on c8's 53,151,268,864-step weights from the TRUE start** (the loop's settings, 4,096 envs, --max-ticks 14000,
+  91 s on the box): **CROSSING in 67.87 s, replay bit-exact** (8,852 ticks). The first finish of this lineage from the true
+  start by anything; under the human record's 75.18 s (zone to zone; ours is spawn to finish box, the same start moment) -
+  a search line, not yet the greedy policy's. Saved as beam_frontier.npz by the crossing case of --save-frontier (a381745;
+  before it a finishing beam left no states) -> **spine `autoresearch/spines/pbr8b4_fin1`** (+ its own keys). The trajectory
+  is kept as $AR_HOME/runs/pbr8b4/fin1_beam_best.jsonl.
+* **pbr8b4_c9** (14:48 UTC): c8 stopped at ~53.18B, ckpt_latest 53,181,153,280 (md5 b7444e8d...) on fin1 + keys from its END
+  (the backward curriculum from the finish box), 37 milestones (c8's 36 incl. b3p's 4,791 + k01's 651), `--spawn-states
+  pbr8b4_mix5` (no hover-catch states: not on this line), the cold/hot band split as c8. The loop stays on: its quorum is now
+  5/9 greedy FINISHES.
