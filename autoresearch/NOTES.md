@@ -3682,3 +3682,11 @@ ckpt_45558005760 (md5 6dec286c...), eval 82.652 at 45.564B. Credit at the start:
   3,182, 94.4%), success line d <= 3,282; the whole search 19 s (c2's search 2 from the true start: 1,100+ s, no line).
   The curriculum then worked the shaft's top section (rows 8,722-8,727: 3-28%).
 * Box extended to 14:24 UTC (11:24; credit $19.09, fleet burn 1.06 $/h, 8.6 h to the reserve).
+* c4 evals 93.451 / 94.669 / 93.655 / 94.775 / 94.685 (48.39-48.70B, medians 90.7-93.0%; 0-1/9 past 94.26%). The shaft is
+  a stack of catch blades: at 48.62B 6/9 enter the shaft and die in catch *181's top part at z ~262 (92.4-93.0%), 1/9
+  goes on to z -647 (94.78%) and dies a tick later at 1,350 u/s; at 48.70B 4/9 crawl at the 90.7% entry gate again.
+  The curriculum works the entry approach (rows 8,557-8,562 of c4's k01, 20-43%). Stable: update kl median 0.28 (p90
+  0.52; the 7.51 max is the resume spike), stall fraction 19-26% (c2: 66%), 257k steps/s.
+* Endgame dry run (11:56 UTC, box CPU/GPU beside the trainer, ANALYSIS): auto_spine.py as the loop would call it near the
+  end - `--start-spine` c4's k01 at row 8,700 (91.6%), a pretend greedy frontier d 900, --cut-ahead 1000, energy 150,
+  GE 5 min/stage - to check the path beam-from-spine (stops at the blade, d ~540) -> GE stages -> a line to the finish.
