@@ -268,3 +268,10 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   --exact-chains chain (reward-free, that row's state x1.04, rooted before the line's largest energy loss, the 71.6%
   ramp bounce) to the deepest archive cell keeping >= 150 u more energy height than the line: 71.99%, h 2,494 (+154 u).
   An energy spine (success needs h >= its end's - 75). Keys = the beam's and the chain's own. No demo, no record.
+* `pbr7b4_c18e02.npy` + `.keys.npy` (6,577 rows; md5 f719594a45b566e5ef0c967fdc8ab3c6 / 3776b8337126e3672855efd98333377c):
+  a focused ENERGY-only tools/auto_spine.py search on run pbr7b4_c18's 40.511B weights (`--ge-boost ''`, --energy-gain
+  120, --ge-minutes 15, --energy-roots-secs 6, --ge-energy 16, --ge-select-energy 1): the policy's own plain beam_tas line
+  from the true spawn to its row 6,266 (70.1%), then one exact explore_phase1 --exact-chains chain (reward-free, that
+  row's state x1.04, 311 states) to the deepest cell keeping >= 120 u more energy height than the line: 73.61%, h 2,471
+  (+125 u; it glides from the 71.6% bounce to the 73.1% ramp and reaches the climb at 989 u/s). An energy spine.
+  Keys = the beam's and the chain's own. No demo, no record (pbr7b4, round 7).
