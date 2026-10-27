@@ -3,16 +3,16 @@
  "round": 8,
  "final": false,
  "best": {
-  "score": 82.359,
-  "eval_file": "/home/steam/ar_pb/runs/pbr8b3/pbr8b3_c1/traj_46023573504.jsonl",
+  "score": 82.512,
+  "eval_file": "/home/steam/ar_pb/runs/pbr8b3/pbr8b3_c1/traj_46174568448.jsonl",
   "run": "pbr8b3_c1",
-  "step": 46023573504,
-  "ckpt": "/home/steam/ar_pb/runs/pbr8b3/pbr8b3_c1/ckpt_46023573504.pt",
+  "step": 46174568448,
+  "ckpt": "/home/steam/ar_pb/runs/pbr8b3/pbr8b3_c1/ckpt_46154645504.pt",
   "recipe": [
    "c1: resume of pbr7b2_c9 ckpt_latest (46.023B, md5 50c3a56e...) on spine pbr7b2_k04c with c9's flag set (round-5 to-continue block + --demo-match-band --auto-spine-patience 0 --auto-spine-ge-minutes 5 --auto-spine-energy 150 --auto-spine-async --lr 1e-4, 33 milestones)"
   ],
   "resume_from": "pbr7b2_c9/ckpt_latest.pt (46,023,049,216, md5 50c3a56e3d70db7bc66b59bbfac2caa9)",
-  "commit": "663b0d6"
+  "commit": "87d095c"
  },
- "summary": "c1 (08:40 UTC): resume of pbr7b2_c9's ckpt_latest (46.023B, md5 50c3a56e...; its last eval 82.564, 6/9 past the 80.4% turn, median 81.9%) on spine pbr7b2_k04c with c9's flag set (the loop async, lr 1e-4, 33 milestones). Waiting for its first evals; the loop's search 5 should fire on the first 5/9 quorum past 81.86%."
+ "summary": "c1 (08:40 UTC): resume of pbr7b2_c9's ckpt_latest (46.023B) on k04c with c9's flags; evals 82.359 / 82.425 / 82.512 (46.175B: 6/9 past the 80.4% turn, all die on the *265 sheet at 82.1-82.5%). The loop's search 1 fired at 46.175B (6/9 quorum). New: --auto-spine-cut-ahead G (the loop's spines end G u past the greedy frontier; round 7's k04 -> k04c hand cut as a rule), CPU-tested, to be used from c2."
 }

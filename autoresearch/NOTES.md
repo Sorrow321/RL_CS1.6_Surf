@@ -3567,3 +3567,25 @@ ckpt_45558005760 (md5 6dec286c...), eval 82.652 at 45.564B. Credit at the start:
   from (2,611, 2,817) at 50-240 u/s (82.2-83.3%), then drops to the lower level at 84.5-85.9% (z 1,571 -> 834) and runs a
   loop at ~900 u/s to 91.5% (846 z). The greedy episodes that pass the turn head NORTH-WEST directly (x 2,325-2,533 at y
   2,256-2,601) and fall onto the *265 sheet (z ~1,460) - they cut the corner that k04 takes east to x ~2,912.
+* c1 evals 3-5: 82.512 (46.175B, median 82.2%: 6/9 past the turn, all on the *265 sheet at 82.1-82.5%; 1/9 at 24.2%) /
+  82.302 / 82.528 (46.326B, median 82.3%). The quorum (6/9 past 81.86%) fired **search 1** at 46.175B (442 s beside the
+  training): plain beam 9,700 (83.03%, beats the greedy frontier 10,191 by 491 < the gain 500), branched beams 9,695 / 9,701,
+  then the third branched beam (forked at tick 6,951: 2 s before the first fork at 7,212, which is 0.5 s before the greedy's median fatal launch) to **d 3,091
+  = 94.59%** (9,000 states) -> swapped in at 46.261B, success line d <= 3,191 - and the curriculum restarted at 94.6% while
+  the greedy dies at 82%: the k04 situation of round 7 again, by the loop's own hand.
+* Search 1's line (runs/pbr8b3/pbr8b3_c1/auto_k01, analysis of our own line): after the turn it flies NORTH directly like the
+  greedy but HIGH (z 1,794 at (2,500, 1,999) 81.31%, 1,730 at (2,572, 2,626) 82.0%; the greedy is at z ~1,460 there, on the
+  sheet), lands on the platform at (2,464, 2,920, 1,565) 82.5%, walks it west at 250 u/s (the bunny-hop cap) to 83.8%, drops
+  at 84.1-85.25% (z 1,604 -> 1,232 -> 802), runs a loop at 960-1,027 u/s (86-91.4%: (212, 3,391) -> (-71, 2,727) -> (997,
+  2,003) -> (1,521, 2,497) -> (923, 2,862)) and drops into the finish shaft: 92.11% (520, 2,657, 608), 93.05% (986, 2,794,
+  207), 94.59% (650, 2,816, -539) at |v| 1,344, vz -1,169, t 69.0 s. The beam ran 9,467 ticks; its 85 surviving copies all
+  died within ~100 ticks after tick 9,000 (gen 90: 85 valid, min d 3,085; 0 finishes).
+* The finish shaft (the record as a YARDSTICK only): from 92% the record spirals down a ~400 x 400 u column (x 531-917, y
+  2,583-2,989), its horizontal velocity reversing every ~0.2 s, 1,400 -> 2,200 u/s, z 720 at 92.07% -> -531 at 94.56% ->
+  -1,637 at 96.5% -> -2,961 at 99.2% -> the box (z -3,509..-3,474) at 75.44 s. Not a free fall: ~4,200 u of descent ridden
+  along the shaft's walls. The last 8% may be the hardest stretch, and a beam's horizon must reach it.
+* **pbr8b3_c2** (09:08 UTC): c1 stopped (SIGTERM: the nohup'd trainer IGNORES SIGINT; no search was running) at ckpt_latest
+  46,383,759,360 (md5 d8dce63d...), box re-deployed on 87d095c, resumed on **`autoresearch/spines/pbr8b3_k01c`** (search 1's
+  line cut by the cut-ahead rule at row 7,739 = 83.92%, d 9,188, on the platform walk; success line d <= 9,288.5 = 83.75%)
+  with c1's flags + `--auto-spine-cut-ahead 1000` and the 34 milestones the swap had made (+ k04c's 10,366). Record gate
+  passed. Generic: G = 2 x the loop's own gain (500), a field-distance margin, no map constant.
