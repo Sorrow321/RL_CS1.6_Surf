@@ -3643,3 +3643,13 @@ ckpt_45558005760 (82.652 at 45.564B).
   the lower level at 85%, flies it at ~950-1,000 u/s (86-91%), and spirals down the shaft: 93.2% z 191, 94.8% z -760, 96.5% z
   -1,583 at 1,520 u/s. Its end is doomed: a beam of the same weights from row 9,199 dies out within 100 ticks.
 * GE 3 (10:02 UTC): rooted at b3 rows 9,080-9,199 (93.9-96.5%) x1.0, 10 min - a way from b3's shaft line to the finish.
+* **GE 3**: a goal hit after **0.2 min** (181k runs). ge_replay 7/7: a 395-state chain rooted UNBOOSTED at b3 row 9,179 (96.0%,
+  z -1,295) to d 4.6. Stitched -> **`autoresearch/spines/pbr8b1_b3f`** (9,574 rows): the policy's own beam line for 96% of
+  the route + a 3 s explorer chain. (A beam of the 46.17B weights from b3's very last row died out in 100 ticks: its end is
+  doomed, the chain roots 20 rows earlier.)
+* c2 stopped at 47.236B (evals to the end 82.81-82.93; ckpt_latest md5 02901a64...; its curriculum at k04's [8,104 / 8,109]).
+* **pbr8b1_c3** (10:03 UTC): c2's ckpt_latest on **b3f** + keys (success = the finish: d <= 104.6), c2's flags, milestones +
+  4,365 (k04's 92.36% line; 35 in all), `--spawn-states autoresearch/spines/pbr8b1_entry_b3mid_states.npy` (start room +
+  b3f rows 7,163-8,100 = 82.0-85.5%, ~half the 20% share each: the stretch where the greedy dies, practised from the
+  policy's own line while the curriculum walks back from the finish), --auto-spine-extra-secs 45. Record gate passed (4).
+  First minute: the curriculum walks back from the finish at 87-100% band success ([9,498, 9,573]).

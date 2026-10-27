@@ -14,5 +14,5 @@
   "resume_from": "pbr7b2_c9/ckpt_latest.pt (46,023,049,216, md5 50c3a56e3d70db7bc66b59bbfac2caa9)",
   "commit": "e45a4f2"
  },
- "summary": "c1 (08:41 UTC): the round-7 loop continued from pbr7b2_c9's latest weights (46.023B) on k04c with c9's exact flags; evals 82.210 / 82.373 / 83.205 (46.174B: 9/9 greedy past the 81.86% success line, median 82.4%) -> the loop's search 1 fired. A hand search with a long horizon on 46.12B weights reached only 82.87% (the population dies past its gate), while round 7's k04 line (c8's weights) runs to 92.54% and was cut by its beam horizon (9,262 ticks), still falling down the final shaft."
+ "summary": "c1 83.205 (46.174B, c9's loop continued). c2 trained round 7's full k04 (to 92.54%): its curriculum ground k04's platform hop-walk (rows 8,104-8,129) and the greedy stayed at 82.8-82.9. The shaft to the finish was mapped (rotating teleport kill sheets) and solved by short Go-Explore runs from the policy's own lines (GE 2: 1.3 min, GE 3: 0.2 min). c1's own search 1 had found a branched beam to 96.47% (b3, horizon-cut) before c1 was stopped: b3 + a 3 s GE chain = b3f, a line from the true start to the finish. c3 (10:03 UTC) trains on b3f from the finish backward."
 }
