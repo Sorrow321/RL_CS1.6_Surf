@@ -3721,3 +3721,8 @@ ckpt_45558005760 (md5 6dec286c...), eval 82.652 at 45.564B. Credit at the start:
   flag as c4 (from-spine 4, cut-ahead 1000), 38 milestones. Generic lesson: the loop's GE stage may hand back a chain from
   a boosted root; when the curriculum stalls inside such a chain, a plain beam of the policy's own population through
   the same gate (when one exists) is the better spine.
+* c5 evals 94.819 (49.814B = c4's weights) / 94.864 / 94.534 / 94.553 / 94.667 (to 50.116B, medians 94.4-94.6%): 0/9
+  past 96.28%. Its curriculum walked k03p back from 8,997 to rows 8,857-8,867 (z -60..-108, ~0.5 s before the z -600
+  blade) - the same rows c4 stalled at on k02 - and is LEARNING there: band 8,867 42-49%, 8,862 19-48%, 8,857 3.6 -> 4.4
+  -> 6.4 -> 9.9 -> 13.9% over ~15 min (the advance threshold is 30%). The blade is hard for the policy on its own line
+  too; the approach (x ~720-790 at z -600, the greedy comes in at 564-682) is set ~0.5 s before it.
