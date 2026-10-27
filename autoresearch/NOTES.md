@@ -3222,3 +3222,11 @@ Independence: only this branch and $AR_HOME/incumbent/ are read. c12's later wei
   Expected: the depth ladder fails, the energy stage roots before the line's largest losses (the bounce) -> an energy
   spine for the next launch. (tools/auto_spine.py updated on the box from 56fbd80 only: a full redeploy could rebuild
   the core under the running trainer.) Out: runs/pbr7b4_c17/manual_k01/.
+* 00:06 UTC: c17 evals 39.133-39.359B 73.452 / **74.203 (39.208B, median 73.4%; ep0 74.20% at (-961, 1,528, 2,008) at
+  59.5 s, ep4 74.10% at 62.6 s - 2/9 past k01b's 74.09% line, both on the chain route into the passage, both falling
+  back to z 1,720)** / 73.532 / 74.177. Hand-on for 74.203: ckpt_39073611776 (134.7M before the eval, md5 f333fea5...,
+  pulled). The curriculum at [6,289 / 6,294] (34-35% / 22%).
+* The manual search (started 23:49 on c17's 39.167B weights): the PLAIN BEAM runs 6,900 ticks to d 14,625 = 74.41%,
+  past k01b's own end (74.26%) - the policy's own sampling now takes the route; five branched beams 14,625-14,651;
+  GE stage 1 (x1.0 / 1.04) 14,615; none passes the 14,308 bar (k01b's line - 500). Trainer under the search:
+  338k steps/s against ~356k before it (the GE stage's 14-thread team at ~980% CPU): the async cost is ~5%.
