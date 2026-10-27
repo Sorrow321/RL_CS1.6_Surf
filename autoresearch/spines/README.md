@@ -259,3 +259,7 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   --exact-chains chain (reward-free search, GE stage 1, 521 ticks from that row's state with its velocity x1.04) over the
   ledge, down the shaft and east to d 12,680 = 77.81%. Keys = the beam's and the chain's own held keys. No demo, no
   record (pbr7b3, round 7).
+* `pbr7b3_m02c.npy` + `.keys.npy` (7,201 rows; md5 0bce93e703608ae62ab020378cca7dee / 458f4ad559961cfc7214969eb3e690fc):
+  `pbr7b3_m02` cut at row 7,200 (77.34%, flying east at ~870 u/s, h 1,869; success line 77.16%), before the explorer chain's
+  crash at rows 7,219-7,220 (v (795, 355, -465) -> (193, 86, +262), -538 u) whose bounce alone reaches m02's own line:
+  pbr7b3_c2's curriculum sat at 0.0% over 500 episodes on the band just before it. Same provenance as pbr7b3_m02.
