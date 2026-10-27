@@ -3737,3 +3737,13 @@ ckpt_45558005760 (82.652 at 45.564B).
   kill of the ring. The two windows of 12:33 were too far up: their finish bonus was 2-3 s and 2-3 sheets away, so only the
   shaping paid them. 12:53 UTC: pool -> `pbr8b1_entry_b3sw3_states.npy` (md5 a65c7271...; start room + rows 9,170-9,238,
   the hole approach right above the band, 53x + rows 9,100-9,169, the ring, 52x), re-read at 49.921B.
+* A beam from the TRUE START on c5's 49.9B weights (4,096 copies, 11,000-tick horizon): 0 finishes, frontier d 1,612 =
+  97.2% at 72.8 s (extinct at 9,800 ticks) - the population now passes the upper sheets and the ring by selection; the z
+  -2,700 hole stops it. Saved: runs/pbr8b1_look/fs1/beam/beam_frontier.npz (9,500 states) on the box.
+* **Why the shaft learns slowly - the sample share**: a start-room spawn (half of the 20% spawn-states share) and a fresh map
+  start (10% of spawns) each run a full ~70 s episode, while a shaft band spawn lives ~1 s; so although ~35% of spawns aim at
+  the shaft, it gets a few % of the training samples (the trainer's own log: `demohot` 0.5-1.3% of envs in a band episode's
+  hot window). 13:00 UTC: pool -> **`pbr8b1_b3sw4_states.npy`** (md5 7d13c4e9...; b3s's shaft rows ONLY: 9,170-9,238 60x,
+  9,100-9,169 55x, 8,940-9,099 19x; no start-room states - the 10% fresh map starts keep the start room), re-read at 49.984B.
+  The generic lesson for the recipe: a spawn share is not a sample share; weight spawn sources by 1 / expected episode
+  length when a short stretch must be learned.
