@@ -3573,3 +3573,43 @@ of its 1.2 $/h cap; the only other passing offer was a 0.621 $/h 5080). Incumben
   crossing it still pays). Record gate passed (2 + 4 recordings). A warm resume pushing the frontier past the wall.
 * Ops: `autoresearch/analysis/pb_snapcopy.py` (new) on the box keeps ckpt_latest as ckpt_<step>.pt once a minute (pruned
   after 45 min unless listed in runs/<run>/snap_keep.txt), so a best eval's hand-on snapshot is within ~16M steps of it.
+
+### The finish tube, and the lineage's first line to the finish (08:51-09:00 UTC, box beside c1)
+* The last ~8% is a vertical TUBE over the finish box (func_wall *43 walls, x 528-912 / y 2,576-2,960 outer; the trigger
+  start-teleports *181 / *132 line them, so a wall touch is fatal) with UPWARD trigger_pushes (angles -90 0 0 = up): *195
+  175 u/s (z -218..729), *196 375 (z -975..-218), *48 425 (z -2,496..-975) - a non-once push sets basevelocity.
+* **Look-ahead GE la1** (explore_phase1 with auto_spine's GE settings, 12 threads nice 10 beside the trainer, 1.7M ticks/s;
+  roots = 31 of k04's own rows 9,050-9,199 = 91.1-92.54%, x1.0): **a goal hit after 0.8 min** (--goals 1 stops there;
+  52,860 cells). ge_replay 21/21 links: 1,334 states from k04 row 9,185 (92.2%, (573, 2,888, 546) falling) down the tube to
+  d 11 at (819, 2,762, -3,424). On the way it HOVERS ~600 ticks (~4.8 s) at z ~-950, where the hull overlaps *196 and *48
+  (basevelocity +800 = 375 + 425: an equilibrium against gravity), then drops through *48 to the finish. So the tube is not
+  a hard gate for exploration; the hover is a trap a fast line must pass without hanging in it.
+* **Spine `autoresearch/spines/pbr8b4_f1`** (stitch_spine: k04 to row 9,185 + that chain; 10,519 rows, end d 10.8): the
+  lineage's first line from the true start to the finish, entirely the policy's own beam + one reward-free chain. Not
+  trained yet: the greedy dies at 80.4-82.6%, ~10% short of where f1's curriculum would start being useful to it (round 7's
+  k04 lesson); it is the line for when the greedy is past the 85% hole, or for the loop's next search to beat.
+* c1's curriculum at 09:00 UTC: k04d's end walked back 8,375 -> [8,115 / 8,125] (84.2%, the hops 1-2 before the hole) in ~6
+  min, then oscillates (12.8% / 45.1%): round 7's k04 curriculum stalled in the same place (~8,180). c1 evals: 82.372
+  (46.024B = the resumed weights, median 80.5%: 3/9 at 82.3%, 4/9 die at the turn) / 46.099B frontier median d 11,071.
+
+### c1: 83.096; the 82% gate is a one-hull LEDGE; the policy already flies 84-93% (09:16-09:35 UTC)
+* c1 evals: 82.714 / 82.846 / 83.024 / **83.042** (46.326B; handoff ckpt_46322417664, md5 56805fee..., pulled) / 82.358 /
+  82.886 / 82.416 / 82.511 / **83.096** (46.703B, median 82.1%; handoff ckpt_46695710720, 7.3M before, md5 f6f99208...,
+  pulled) / 82.851. From ~46.25B 7/9 greedy episodes pass the 80.4% turn (4/9 at the resume) and die at 82.1-83.1% on sheet
+  *265 at hull z ~1,461, all of them; the best ones reach (2,105, 2,731) = 83.04%.
+* **The by-hand loop beam on the 46.64B weights** (beam_tas, the loop's settings, 4,096 envs, max 13,000 ticks, 60 s): the
+  population goes EXTINCT at t = 7,300 (56 s), frontier d 9,946 = 82.6% - the policy's own search does not pass the gate.
+* **The gate is a one-hull LEDGE** (hull_probe of the world's HULL-1 clipnodes at origin z 1,562 / 1,567, a 25 u grid,
+  measurement only): what k04 "walks" over 82.15-83.6% (rows 7,475-7,975, gnd 0 at z 1,565, 50-250 u/s) is the contour of a
+  big slanted block's face, one cell wide, running diagonally from (2,625, 2,800) to (1,900-2,050, 3,050) and on to (1,500,
+  3,475); the hole in *265 is just west of its end. Round 6's gate 20 was the same kind (a one-hull walkway over a catch
+  sheet), taught by the backward curriculum in ~45 min. The record (yardstick) flies ~260 u above it on the block's slope
+  with ~900 u more energy height - not a line our energy allows.
+* **Probes** (record_ckpt, greedy, the 46.64B weights, 8 episodes each, spawned on k04d windows):
+  * rows 8,100-8,110 (84.1%, the hop band where the curriculum is): 6/8 drop through the hole; 3 fly on to **92.9-93.7%**
+    and die in the finish tube (z 262 / 213 / -136), 3 reach 90.7-90.9% and get STUCK (no death, the 320 s cap) at
+    (1,373-1,404, 2,908-2,998, z 709-743), ~150 u under k04's line there; 2/8 miss the hole by ~100 u.
+  * rows 7,440-7,450 (82.0%, k04's arrival on the ledge): **0/8** - all fall off the ledge onto the sheet (82.7-84.3%).
+  So the policy (trained up to k04d's end at 85.7% and by its own reservoir past it) already flies most of 84-93%; what
+  stops the greedy is the ledge walk, ~650 rows behind the curriculum's tau.
+* The curriculum: [8,080 / 8,105] at 24-34% for ~35 min (the hop band before the hole). It walks, slowly.

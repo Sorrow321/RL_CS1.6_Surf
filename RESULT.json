@@ -2,6 +2,17 @@
  "agent": "pbr8b4",
  "round": 8,
  "final": false,
- "best": null,
- "summary": "08:47 UTC: pbr8b4_c1 = resume of the incumbent lineage's c9 ckpt_latest (46.023B, md5 50c3a56e...; its last eval 82.564, median 81.9%, 5/9 past k04c's 81.86% line) on spine pbr8b4_k04d (the loop's search-4 line cut at 85.71%, past the 82-83.6% platform walk and the hole in the *265 catch sheet), c9's flags + k04c's line as a milestone, the loop async. Box 57938936 RTX 5070 Ti 0.269 $/h. No eval yet."
+ "best": {
+  "score": 83.096,
+  "eval_file": "/home/steam/ar_pb/runs/pbr8b4/pbr8b4_c1/traj_46703050752.jsonl",
+  "run": "pbr8b4_c1",
+  "step": 46703050752,
+  "ckpt": "/home/steam/ar_pb/runs/pbr8b4/pbr8b4_c1/ckpt_46695710720.pt",
+  "recipe": [
+   "c1: resume of pbr7b2_c9's ckpt_latest (46,023,049,216, md5 50c3a56e...) on spine pbr8b4_k04d (the loop's search-4 plain beam line cut at row 8,375 = 85.71%, past the 82.1-83.6% ledge walk and the hole in catch sheet *265; success line 85.53%) + keys, c9's flag set unchanged (--lr 1e-4, the loop async, --auto-spine-energy 150, gain 500, 33 milestones) + k04c's 10,366 line as the 34th milestone"
+  ],
+  "resume_from": "pbr7b2_c9/ckpt_latest.pt (46,023,049,216, md5 50c3a56e3d70db7bc66b59bbfac2caa9)",
+  "commit": "3d7effb"
+ },
+ "summary": "c1 (k04d, c9's flags): 82.372 (resumed weights) -> 83.042 (46.326B) -> 83.096 (46.703B, median 82.1%; hand-on ckpt_46695710720, md5 f6f99208..., pulled). The greedy now passes the 80.4% turn 7/9 and dies at 82.1-83.1% falling off a one-hull LEDGE (the contour of a slanted block, 82.1-83.6%) onto catch sheet *265; the curriculum works the hop band before the sheet's hole (row ~8,080-8,105, 84.1%). Probes: from the hop band the greedy passes the hole 6/8 and flies to 90.7-93.7%; a reward-free GE from the loop line's 92% states reached the FINISH in 0.8 min -> spine pbr8b4_f1 (the lineage's first line to the finish). Next: the ledge, then f1 / the loop's own search for 85.7-100%."
 }
