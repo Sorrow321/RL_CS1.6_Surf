@@ -4119,5 +4119,5 @@ was fetched that way. The operator may want box.py's pull to split large files t
   rate** (band_bench + the energy at the line from its trajectories).
 * `train_fast --demo-success-strict` (new, generic, default off; tests/python/test_demo_success_strict.py: dump / refusal, flag
   off bit-identical to f146a8b): under --demo-success-energy the curriculum's outcome is the gated crossing alone.
-* **pbr9b3_c5** (00:00 UTC): c4's ckpt_latest (57.057B, md5 03faecf2...) with c4's flags + `--demo-success-strict`,
+* **pbr9b3_c5** (23:45 UTC): c4's ckpt_latest (57.057B, md5 03faecf2...) with c4's flags + `--demo-success-strict`,
   `--demo-tau0 7445` (the band starts in the turn, where the bench fails), lr 5e-5.
