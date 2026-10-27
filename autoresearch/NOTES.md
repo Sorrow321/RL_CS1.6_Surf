@@ -3796,7 +3796,7 @@ of its 1.2 $/h cap; the only other passing offer was a 0.621 $/h 5080). Incumben
   `--spawn-states autoresearch/spines/pbr8b4_mix5.npy` (the committed mix5: the 78.6-91.8% stretch incl. the way round the
   pocket), --demo-front-temp 0.2, every other flag as c5. Credit $17.3.
 
-### c6 crossed the hover in 20 min; the next stall is a DUCK habit; `--demo-front-cold` (13:26-13:40 UTC)
+### c6 crossed the hover in 20 min; the next stall is a DUCK habit; `--demo-front-cold` (13:26-13:37 UTC)
 * c6 (b3 from its end, mild heat): the policy's own beam line (428 rows) and the hover zone (b2 rows 10,860-11,160) were
   walked in ~20 min; the curriculum then oscillated [10,812] (31-34%) <-> [10,807] (**0.0% over ~500 eps**, twice). c6 evals
   **90.710** (51.178B = c5's final weights; handoff the copier's ckpt_51177848832 at the eval's step, md5 c21bb128...,
@@ -3813,6 +3813,6 @@ of its 1.2 $/h cap; the only other passing offer was a 0.621 $/h 5080). Incumben
   tests/python/test_demo_front_cold.py on CPU, 119 s, incl. off vs the pre-change trainer with --demo-front-temp on;
   TRAIN_ONLY in record_ckpt): a share F of the band spawns runs COLD (its own temperature) and the curriculum's advance /
   backoff counts only the band episodes that ran cold (every off-band spawn as before); the hot share explores.
-* **pbr8b4_c7** (13:40 UTC): c6 stopped at ~51.78B, ckpt_latest 51,782,352,896 (md5 2323825e...) at `--demo-tau0 10812`,
+* **pbr8b4_c7** (13:36 UTC): c6 stopped at ~51.78B, ckpt_latest 51,782,352,896 (md5 2323825e...) at `--demo-tau0 10812`,
   **`--demo-front-temp 2.0 --demo-front-view 1.5 --demo-front-cold 0.5`** (hot half: keys at 3.0 to flip the duck, yaw x1.5;
   cold half scores the band), every other flag as c6. Record gate passed (2 + 4).
