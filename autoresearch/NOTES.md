@@ -3288,3 +3288,19 @@ Independence: only this branch and $AR_HOME/incumbent/ are read. c12's later wei
   `--demo-success-energy 60` (success = crossing d <= 15,179 = 73.44% with h >= 2,411, the end's - 60 = half this
   search's G), the energy quorum (`--auto-spine-energy 150`), the async loop with `--auto-spine-near-gain 100`, the 26
   milestones, --demo-replay-frac 0.1, --target-kl 0.15; --steps 3e9.
+* c20 (e02, 01:31 UTC on): the curriculum walked the glide back to the bounce and stands at its contact cliff:
+  [6,361] 0.3-0.9% / [6,366] 35-39%. Evals 74.147 / 74.327 / 74.111 / 74.294 / 74.173 / 74.235 / 74.194, 0/9
+  energetic crossings. The greedy's h at first arrival (41.379B eval): 70.5% ~2,570-2,606, 71.2% ~2,604-2,638, **71.8%
+  1,978-2,290** (the bounce costs it 340-620 u; e02's chain loses 97), 73.44% 1,905-2,237.
+* The keys at the contact (spine rows): e02 holds (fwd none, side right) to row 6,366, then forward (6,368) and forward
+  + right (6,370) - the contact is at 6,371/6,372 (vz -528 -> +444). e01 likewise forward from 6,342, contact at 6,373.
+* **Bench (record_ckpt from exact e02 rows, c20's 41.4B weights, greedy, 12 episodes each)**: from rows 6,356-6,365
+  (before the contact) 0/12 succeed - h at 71.8% 2,021-2,635 (11/12 below 2,400), at 73.44% <= 2,324; from rows
+  6,372-6,379 (after it) **12/12 succeed: h ~2,597 at 71.8% and 2,496-2,614 at 73.44% - yet every one stops at
+  74.16-74.28%**: with MORE energy at the climb than the x1.12 root had (2,476), the policy still falls short of the
+  passage. So two skills are missing, not one: the energetic bounce (a keys-timing contact in the last 2-5 ticks), and
+  the passage technique itself (the policy flies the k01b chain's slow eastward glide, which falls short whatever its
+  energy; the x1.12 chain climbed differently).
+* 02:05 UTC: Go-Explore from e02's own last second (rows ~6,446-6,576, the climb with its real energy, x1.0, 10 min;
+  runs/ge_from_end.py = auto_spine.go_explore on a spine's end) -> a stitched spine e02 + a passage chain, so the
+  curriculum can teach the passage from real (unboosted) energetic states.
