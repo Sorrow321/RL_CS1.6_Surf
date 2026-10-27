@@ -4087,3 +4087,14 @@ used for the search work below and then blocklisted and released.
   100-265, 92.5-95%) the population dies within 100 ticks every time; at ticks 30-83 (91.4-92%) it finishes (the greedy envs
   in 3.88-4.63 s), for ~65.70 s in all - no better than g2's own 65.73 s. Not used: the gain lies where only the explorer's
   own precise sheet-threading keeps it.
+* c4 22:35-23:00 UTC: evals 111.021 (3/9) / 113.279 (5/9, **68.29 s**, the fastest greedy finish so far) / 113.259 (5/9) /
+  112.141 (4/9) - reliability DOWN from ~7/9. New failure clusters: 83.5-84.9% (5 of 18 episodes die on the z ~1,460 kill
+  sheet under the platform: the greedy is trying a faster line there) and 72.7-73.9% (5 of 18). Finishers still reach 85% at
+  59.0-59.6 s (g2: 57.63; the incumbent's fast mode ~59.1, its slow mode 62-63.6 - the incumbent's weights finish bimodally,
+  68.7-69 s or 72-73.5 s). The band crawled 7,403 -> 7,268 (83.4%) in ~25 min at 20-33% success.
+* Planner wave from the true start on the incumbent weights (beam_tas --objective finish --score dv, 4,096): 66.77 s (6,997
+  finishes) - 1.0 s slower than g2: chain C's shortcut is not in the population's reach, so g2 stays the target.
+* 23:05 UTC: c4's pool swapped (mtime re-read at 55.636B) to `pb9_g2hop_states.npy` (md5 bc8ef6ff...): g2 rows 7,180-7,420
+  (the hop, just ahead of the band) x8 + rows 7,509-8,572. These states match spine rows, so they are time- and
+  energy-gated and feed the band's own per-row statistics (round 8's narrow-window trick). NB the box's tracked
+  autoresearch/spines/pb9_g2after_states.npy now holds this pool: `git checkout` it before the next deploy.
