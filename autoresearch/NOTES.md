@@ -3772,5 +3772,5 @@ ckpt_45558005760 (md5 6dec286c...), eval 82.652 at 45.564B. Credit at the start:
   and auto_spine skips every later stage when the plain beam returns nothing.)
 * `--auto-spine-ge-boost SPEC` (new, generic, default off; c70f589): the loop's Go-Explore ladder for auto_spine
   --ge-boost; tests/python/test_auto_spine_ge_boost.py 3/3 incl. flag-off bit-identity (157 s, CPU).
-* **pbr8b3_c6** (14:57 UTC): the 98.484 weights (c5's ckpt_51014795264, before the erosion) on g2 + keys, every c5 flag +
+* **pbr8b3_c6** (14:28 UTC): the 98.484 weights (c5's ckpt_51014795264, before the erosion) on g2 + keys, every c5 flag +
   `--auto-spine-ge-boost "1.0;1.04;1.08;1.12"` (unboosted roots first, a stage of their own), 39 milestones.
