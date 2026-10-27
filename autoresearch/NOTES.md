@@ -3347,3 +3347,8 @@ ckpt_35907960832 (md5 160da9eb...), eval 73.590 at 35.918B. Credit at the start:
 * **pbr7b2_c6** (03:09 UTC): c5's ckpt_latest (41.936B, md5 30fea41a...) on e6 + keys, `--demo-success-energy 75` (cross
   d <= 15,831 = 72.30% with h >= 2,600), 31 milestones (+ e5's 15,920), the loop as before. First eval: 0/9 with the energy,
   9/9 cross the line.
+* **Probe from e6's end** (record_ckpt, c6's starting weights 41.936B, greedy, 6 episodes at e6's last 21 rows): the speed is
+  there - 72.9% at 1,137-1,144 u/s, h ~2,697 - but all 6 die at 73.04-73.06% within ~0.7 s: they descend at vz -128 -> -570
+  and hit the launch ramp's FRONT EDGE at y ~2,100, z ~1,785 (vy -> 0, then a slide down the face to the death level), ~50 u
+  under its top; the x1.16 chain meets the ramp LEVEL (z ~1,837, vz ~0 at y ~2,060) and rides it up to vz 560. e6 ends ~160 u
+  too high for a clean entry. Look-ahead GE 18 (03:11 UTC): e6 rows 6,380-6,430 x1.0 / 1.04 - a clean ramp entry from there?
