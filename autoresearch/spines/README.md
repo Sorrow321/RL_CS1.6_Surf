@@ -262,3 +262,9 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   into the passage), then one exact explore_phase1 --exact-chains chain (reward-free, that row's state x1.12, GE stage
   3; 2,636 states: into the passage, ~15 s across the room behind it, the drop at (-336, 1,161) and the surf east) to
   d 12,652 = 77.86%. Keys = the beam's and the chain's own held keys. No demo, no record (pbr7b4, round 7).
+* `pbr7b4_c17e01.npy` + `.keys.npy` (6,424 rows; md5 4204bded853c8be4732c8b65ce0872bc / 881ad987e63906058e017727b43863ea):
+  an ENERGY-only tools/auto_spine.py search (`--ge-boost ''`, --energy-gain 150) on run pbr7b4_c17's 39.804B weights: the
+  policy's own plain beam_tas line from the true spawn to its row 6,340 (71.03%), then one exact explore_phase1
+  --exact-chains chain (reward-free, that row's state x1.04, rooted before the line's largest energy loss, the 71.6%
+  ramp bounce) to the deepest archive cell keeping >= 150 u more energy height than the line: 71.99%, h 2,494 (+154 u).
+  An energy spine (success needs h >= its end's - 75). Keys = the beam's and the chain's own. No demo, no record.
