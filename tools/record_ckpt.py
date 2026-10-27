@@ -103,7 +103,7 @@ TRAIN_ONLY = frozenset({
     "demo_success_bonus",
     # --demo-front-temp: the TRAINING rollout's sampling temperature for curriculum-band spawns;
     # a recording spawns at the map start and samples at its own --temp
-    "demo_front_temp", "demo_front_ticks", "demo_front_view",
+    "demo_front_temp", "demo_front_ticks", "demo_front_view", "demo_front_cold",
     # --demo-keys: the held keys a training spine spawn starts with - TRAIN_ONLY likewise
     "demo_keys",
     # --demo-cooldown / --demo-grow-max: the TRAINING curriculum's pace

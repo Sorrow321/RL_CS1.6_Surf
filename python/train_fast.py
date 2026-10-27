@@ -5052,6 +5052,15 @@ def main() -> None:
     ap.add_argument("--demo-front-view", type=float, default=None,  # None = 1 + T
                     help="--demo-front-temp: the yaw head's sigma multiplier inside the hot "
                          "window, instead of 1 + T (the keys stay at 1 + T)")
+    ap.add_argument("--demo-front-cold", type=float, default=0.0,   # 0 = off
+                    help="--demo-front-temp: F in (0, 1) - that share of the frontier-band "
+                         "spawns runs COLD (no band heat), and the curriculum's advance / "
+                         "backoff counts only the band episodes that ran cold (every spawn off "
+                         "the band counts as before). The hot share keeps exploring where the "
+                         "policy cannot yet do the band; the cold share measures what the "
+                         "policy can do, so the heat cannot hold back a band the policy already "
+                         "flies (pbr8b4: a band the policy finished 6/8 cold scored 5-31%% hot). "
+                         "0 = off, bit-identical; config only when on, never restored")
     # ---- expert iteration: distil the planner's line (surfgym/bc.py) ----
     ap.add_argument("--bc-file", default=None,
                     help="behaviour-cloning rows from tools/plan_to_bc.py "
@@ -9177,6 +9186,11 @@ def main() -> None:
                              + ", ".join(_bad))
     elif args.demo_front_ticks is not None or args.demo_front_view is not None:
         raise SystemExit("--demo-front-ticks / --demo-front-view need --demo-front-temp")
+    if float(args.demo_front_cold or 0.0) != 0.0:
+        if args.demo_front_temp is None:
+            raise SystemExit("--demo-front-cold splits --demo-front-temp's band spawns: give it")
+        if not 0.0 < float(args.demo_front_cold) < 1.0:
+            raise SystemExit("--demo-front-cold F needs 0 < F < 1 (0 = off)")
     if args.respawn_greedy_temp is not None:
         if float(args.respawn_greedy_temp) <= 0.0:
             raise SystemExit("--respawn-greedy-temp T needs T > 0 (absent = off)")
@@ -15043,6 +15057,9 @@ def main() -> None:
         meta["config"]["demo_front_ticks"] = int(args.demo_front_ticks)
         meta["config"]["demo_front_view"] = (float(args.demo_front_view)
                                              if args.demo_front_view is not None else None)
+    if float(args.demo_front_cold or 0.0) > 0.0:
+        # --demo-front-cold: written ONLY when on (a record of the run, never restored)
+        meta["config"]["demo_front_cold"] = float(args.demo_front_cold)
     # --unstuck: written ONLY when set (a control run's config dump stays
     # byte-identical); every knob rides along so a resume restores them
     if UNSTUCK:
@@ -15842,6 +15859,12 @@ def main() -> None:
               f"mean 1 per group. Watch tail/n_med: if it falls under "
               f"{args.tail_min_n} the groups are too fine to estimate a tail")
     demo_idx = np.full(N, -1, np.int64)   # demo index of each env's start
+    # --demo-front-cold F: which band spawns run cold (no band heat) and which ran hot (their
+    # outcomes do not score the band); its own rng, so the off path draws nothing
+    DFC = float(args.demo_front_cold or 0.0)
+    demo_cold = np.zeros(N, bool)
+    demo_hotsp = np.zeros(N, bool)
+    DFC_RNG = np.random.default_rng(int(args.seed) + 7919) if DFC > 0.0 else None
     DEMO_END_D = None                     # --demo-success-d: the spine end's d + margin
     if demo is not None and args.demo_success_d is not None:
         _df = slots[0].reward_field if slots[0].reward_field is not None else slots[0].goal_field
@@ -16464,6 +16487,10 @@ def main() -> None:
               f"curriculum's frontier band samples the keys at {_dft_k:g} and the yaw sigma "
               f"x {_dft_v:g} for its first {DFT_TICKS} ticks; PPO scores each row at its own "
               f"temperature")
+        if DFC > 0.0:
+            print(f"--demo-front-cold {DFC:g}: {DFC:.0%} of the band spawns run cold (no band "
+                  f"heat); the curriculum's advance / backoff counts only the band episodes "
+                  f"that ran cold (and every off-band spawn)")
 
     def set_front_temp() -> None:
         """--front-temp: this decision's per-env temperatures from the band (reward_fn._d is
@@ -16479,6 +16506,9 @@ def main() -> None:
             # --demo-front-temp: the envs whose episode started on the curriculum's frontier
             # band (demo_idx is the spine index of each env's spawn), inside the hot window
             hot = demo_hot_mask(demo_idx, demo._band(), _dft_len[0], DFT_TICKS)
+            if DFC > 0.0:
+                # --demo-front-cold: the band spawns drawn cold keep their own temperature
+                hot = hot & ~demo_cold
             ftk_np[hot] = _dft_k
             # the yaw head(s); the pitch head (the last column) moves only the camera, so it
             # keeps the cold value
@@ -19541,10 +19571,21 @@ def main() -> None:
                                 if _rb is not None:
                                     goal_now = goal_now | (np.asarray(_rb)[ei] <= DEMO_END_D)
                             known = demo_idx[ei] >= 0
+                            if DFC > 0.0:
+                                # --demo-front-cold: a band episode that ran hot does not score
+                                # the band (only its cold twins and every off-band spawn do)
+                                known = known & ~demo_hotsp[ei]
                             if known.any():
                                 demo.note_outcomes(demo_idx[ei][known],
                                                    goal_now[known])
                             demo_idx[ei] = demo.match(sv_view[ei]["origin"])
+                            if DFC > 0.0:
+                                # the new spawns: cold with probability F; a band spawn that
+                                # is not cold runs hot (the heat's own window rule)
+                                demo_cold[ei] = DFC_RNG.random(len(ei)) < DFC
+                                _blo, _bhi = demo._band()
+                                demo_hotsp[ei] = ((demo_idx[ei] >= _blo) & (demo_idx[ei] <= _bhi)
+                                                  & ~demo_cold[ei])
                         if GTEMP and ended.any():
                             # --respawn-greedy-temp: which fresh spawns are greedy-line rows
                             _gei = np.flatnonzero(ended)
