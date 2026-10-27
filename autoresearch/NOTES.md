@@ -3802,5 +3802,5 @@ ckpt_45558005760 (md5 6dec286c...), eval 82.652 at 45.564B. Credit at the start:
   dumped.
 * (A process slip: `pkill -f 'runs/pbr8b3_la/gs3'` over box.py ssh matched its own shell - CLAUDE.md's self-match
   warning - and killed the session before the next command; the trainer was untouched.)
-* **pbr8b3_c7** (15:41 UTC): the 112.071 weights (c6's ckpt_51837927424) on f1 + keys (success line d <= 101), c6's flags,
+* **pbr8b3_c7** (15:35 UTC): the 112.071 weights (c6's ckpt_51837927424) on f1 + keys (success line d <= 101), c6's flags,
   40 milestones (+ g2's 1,169). c6 stopped at ~52.0B.
