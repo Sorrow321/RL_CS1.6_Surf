@@ -3775,3 +3775,23 @@ of its 1.2 $/h cap; the only other passing offer was a 0.621 $/h 5080). Incumben
 * **pbr8b4_c5** (12:58 UTC): c4 stopped at ~51.01B, ckpt_latest 51,009,552,384 (md5 dcc026b5...) at **`--demo-tau0 11290`**
   (above the doomed slice), every other flag as c4. A generic remedy would be a band skip (when a band fails while the next
   later one succeeds >= 90%, retreat tau by more than one window) or wider windows; not built.
+
+### The policy's own beam from a tube state, a finishing-beam fix for the loop, b3 and c6 (12:58-13:05 UTC)
+* c5 (tau0 11,290): backed off at once - bands 11,290-11,314 at 0.9-1.6% (the policy cannot aim for la5's lip from higher
+  up either), 11,315 at 41-44%: the explorer's chamber passage is not learnable from above. c5 evals: 90.699 (median 84.5%) /
+  **90.696 (51.086B, median 90.7%: >= 5/9 greedy episodes over the ledge, through the hole, into the 90.7% pocket)** /
+  90.699 (median 76.2%). The transition (from the spawn mix) is consolidating.
+* `beam_tas --start-state pbr8b4_b2.npy:R` (the policy's own population, 4,096 envs, the loop's settings, c5's 51.094B
+  weights) from b2's rows: **R = 11,160 (the hover exit): a FINISH in 428 ticks (3.28 s)**, through the shaft, the chamber
+  (no lip) and the lower plates; R = 11,100 / 11,000 / 10,900 (in the hover) and 10,800 / 10,755 / 10,700 (above it):
+  extinct within 100-300 ticks. So the hover itself is the policy's next tube gate (b2 hovers at (785-840, 2,692-2,731,
+  -1,004), just south of the hover shaft's kill bar at y 2,770-2,800, and leaves south-west past the -1,100 kill corner).
+* **A loop bug, fixed (a381745):** `beam_tas --save-frontier` saved beam_frontier.npz only when the beam did NOT cross, and
+  tools/auto_spine.py reads only that file - so a loop search whose beam FINISHES would have reported no spine at all. Now a
+  crossing beam also replays its winner the frontier way and saves its per-tick states (checked on the box: 428 states,
+  replay best d 0, row 0 bit-identical to the start state). A search without a crossing is unchanged.
+* **Spine `autoresearch/spines/pbr8b4_b3`** (11,588 rows): b2 to row 11,159 + that beam line to the finish (keys: b2's + the
+  beam's own).
+* **pbr8b4_c6** (13:03 UTC): c5 stopped at ~51.18B, ckpt_latest 51,177,324,544 (md5 e1078fc2...) on b3 + keys from its END,
+  `--spawn-states autoresearch/spines/pbr8b4_mix5.npy` (the committed mix5: the 78.6-91.8% stretch incl. the way round the
+  pocket), --demo-front-temp 0.2, every other flag as c5. Credit $17.3.
