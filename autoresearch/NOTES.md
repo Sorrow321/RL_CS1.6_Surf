@@ -3203,3 +3203,12 @@ a 5080 at 0.621 $/h, so `rent` was REFUSED (budget pace); a local retry every 5 
 * **pbr7b3_c2** (05:53 UTC): c1 killed (it was paused), runs_ckpt.pt = c1's 37.106B weights (ckpt_search.pt, md5
   bb22bc30...), box checkout fetched to e21e65c, launch with c1's flags on spine m02 + keys (no tau0: the curriculum starts
   at its end), milestones + k02's line 14,773, `--auto-spine-root-energy 25`.
+* c2 (05:53-06:10 UTC, 37.120 -> 37.402B, spine m02): evals 73.692 / 73.622 / 73.555 / 73.530 (all 9/9 on the slow platform
+  route to ~73.5%; none on k02's fast chain this time). Its curriculum walked m02 back from 7,308 only to [7,218] (61%)
+  and sat there: the band [7,213, 7,217] at **0.0% over 500 episodes** - the m02 chain CRASHES at rows 7,219-7,220
+  ((636, 1,382, 1,260): v (795, 355, -465) -> (193, 86, +262), -538 u) and only that bounce drifts on to m02's line
+  (77.65%); spawned 1-6 ticks before it, the policy's own small deviations miss it. The e1 failure of round 5 again (an
+  explorer impact the curriculum must pass). Cut: `autoresearch/spines/pbr7b3_m02c` = m02 rows 0-7,200 (77.34%, line
+  77.16%, still far deeper than the greedy -> depth rule).
+* **pbr7b3_c3** (06:11 UTC): c2's ckpt_latest (37.402B, md5 9560bae2...) on m02c + keys, c2's flags, milestones + m02's line
+  12,780 (the goal past the cut).
