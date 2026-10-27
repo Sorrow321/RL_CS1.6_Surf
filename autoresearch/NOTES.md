@@ -3620,3 +3620,8 @@ ckpt_45558005760 (82.652 at 45.564B).
   curriculum's band keeps its share). Re-read confirmed in the log. Why: the backward curriculum learns one window at a time
   and the shaft is independent of the middle section, so its learning time comes off the critical path; when the greedy
   reaches the rim (91.3%), k04t's curriculum (or the greedy itself) should find the shaft already practised.
+* 09:33 UTC (c2 at 46.770B): the pool replaced again by **`pbr8b1_entry_mid_shaft_states.npy`** (21,849 rows): + k04 rows
+  7,420-8,130 tiled 10x - the stretch between where the greedy dies (82.0-82.9%, k04 ~7,450-7,800) and the curriculum's hop
+  band (8,124), which nothing else practises from the right line (the greedy-respawn states are the greedy's own wrong line).
+  It starts just PAST the 81.86% milestone (d 10,341 < 10,366) so no spawn collects an easy +50 (the bonus waves that
+  collapsed round 7's c4 / c7). ~1/3 each of the 20% share: start room / middle / shaft. Re-read confirmed.
