@@ -334,3 +334,10 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   start-room states + pbr8b1_b3f rows 7,163-8,100 (the policy's own beam line from just past the 81.86% milestone, d 10,299,
   over the platform walk and the hops to the drop at 85.46%) tiled 8x: ~half of the 20% spawn-states share each. Clocks
   zeroed. No demo.
+* `pbr8b1_b3c.npy` + `.keys.npy` (8,201 rows; md5 b53ed8d3c1c5c089ed23e1eff6df286b / f3a1bac6081fa04db95e969fa6a66a56):
+  pbr8b1_b3f cut at row 8,200 (86.31%, d 7,826: past the drop to the lower level and its landing; success line d <= 7,926 =
+  86.13%, out of reach of a failed platform hop-off, which dies at d ~8,800+). The k04c-style cut: the curriculum works the
+  platform landing / walk / hop-off (81.9-84.6%), the greedy's current failure, with the success bonus right after it.
+* `pbr8b1_entry_shaft2_states.npy` (14,601 rows; md5 203e1b969308284474eb3c75bcab4edb): `--spawn-states` pool = the 7,399
+  start-room states + b3f rows 9,250-9,350 tiled 37x (the shaft frontier c3's curriculum had reached: ~25%) + b3f rows
+  8,880-9,572 tiled 5x (the whole shaft: ~25%), to keep the shaft practised while the curriculum works the platform.
