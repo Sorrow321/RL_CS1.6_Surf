@@ -3219,3 +3219,39 @@ a 5080 at 0.621 $/h, so `rent` was REFUSED (budget pace); a local retry every 5 
   Evals 37.40-38.01B: 73.589 / 73.609 / 73.637 / 73.522 / 73.548 / 73.566 / 73.566 / 73.634 / 73.563 - every greedy episode
   on the slow platform route (~73.5%); the fast-route episodes of c1's 74.260 eval did not come back in c2 / c3, whose
   curricula trained the far end (74-77%) and not the 71-74% approach.
+
+### pbr7b3 round 7 lesson (wrap-up, 2026-10-27 07:45 UTC)
+* **Score 73.590 -> 74.260** (pbr7b3_c1, eval 36.961779712B; best episode 74.26%, median 73.4%; hand-on
+  ckpt_36859543552, 102M steps before the eval, md5 fbece0f7..., pulled; c1's ckpt_latest 37.12B md5 bb22bc30... pulled
+  too). 2/9 greedy episodes flew k02's fast chain over the 71.3% platform to the 74.3% ledge at ~56 s (the incumbent's
+  greedy climbs out of the platform slowly and reaches 73.5% at ~75 s). Box time 2.7 h (05:06-07:45 UTC) of an 11.3 h
+  round: from 20:33 to 05:05 UTC `box.py rent` was refused every 2-5 min (the fleet's 1.2 $/h cap held by two other
+  branches' boxes, every passing offer >= 0.386 $/h).
+* **What did it, in order:**
+  1. **c1 = the round-6 continuation** (c12's ckpt_latest on its search-2 spine k02 + `--demo-tau0 6531`, the loop):
+     the first eval of the resumed weights scored 73.618, the 5th 74.260 (2/9 on k02's fast chain, +91..+163 u of energy
+     height over the spine at 73-74%).
+  2. **The loop's own search, run BY HAND with the trainer paused** (the quorum 5/9 had not fired in 7 evals, 2 h left):
+     auto_spine with the trainer's arguments and `--branch-tick 0 --branch-energy 0` (five branched beams would have cost
+     ~12 min on this box). The plain beam reached the ledge (74.31%, 15 u short of the gain); **GE stage 1 crossed it from
+     an x1.04 root at row 6,788 to 77.81%** (spine m02). The ledge that a local probe on k02 said needs ~+160 u (only x1.2
+     roots crossed it) fell to x1.04 once the weights carried the energy k02 taught.
+  3. **A stall at an explorer CRASH fixed by a cut** (round 5's e1 lesson): c2 sat at 0.0% / 500 episodes on the band
+     before m02's chain hits a wall at 77.5% (v (795, 355, -465) -> (193, 86, +262)) and drifts on to its line; cut at row
+     7,200 (m02c, line 77.16%), c3's curriculum walked m02c back over the shaft, the 76% landing and the LEDGE in ~16 min.
+* **What did not / open:** c3's curriculum then sat 1 h at the GE chain's ramp ride right after its x1.04 root (band
+  [6,810] < 30%, [6,815] 52-67%), and no c2 / c3 eval had a fast-route episode (73.52-73.70): their curricula trained
+  74-77% while the 71-74% approach (k02's platform touch-and-hop) went untrained. A local GE before k02's platform touch
+  (energy-biased) kept +140 u at the ledge but did not cross it.
+* **New, generic, default off and bit-identical (CPU-tested, never fired at a gate):** `--auto-spine-root-energy M`
+  (7a425b4): a depth spine from a Go-Explore root boosted >= x1.06 is held back behind an energy spine that asks the
+  greedy to ARRIVE at the chain with the chain's energy (root_energy_spine), then released without a new search.
+* **Harness issue:** with every passing offer at 0.39-0.62 $/h, the 1.2 $/h fleet cap holds 2-3 of the 4 branch boxes; a
+  branch can wait the whole night (this one: 8.5 h).
+* **To continue (next round):** resume c3's ckpt_latest (the newest weights; it has learned 73.9-77.3% of m02c) or c1's
+  hand-on on `autoresearch/spines/pbr7b3_m02c` (+keys) with `--demo-tau0 6815` (where c3's curriculum stood), c3's flag
+  set (the launch_c3 block: c12's flags + the loop + `--auto-spine-root-energy 25`, milestones + 14,773 + 12,780). Expect
+  the curriculum to need the chain's x1.04 root ramp ([6,810]) and then k02's platform touch-and-hop ([6,436]) before
+  the greedy flies the fast route over the ledge; past m02c lies the 77.5% east surf (where m02's explorer crashed).
+* c3's ckpt_latest: step 38,929,432,576, md5 e047da77083db6226656a85d94a679ba (pulled to runs/pbr7b3/pbr7b3_c3/). The exact c3 launch (box.py launch --resume, runs_ckpt.pt = c2's ckpt_latest; the extra flags):
+  `--maxvel 3500 --ckpt-every 2e8 --demo-file autoresearch/spines/pbr7b3_m02c.npy --demo-keys autoresearch/spines/pbr7b3_m02c.keys.npy --demo-match-band --demo-window 5 --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5 --demo-rate 0.3 --demo-front-frac 0.8 --demo-success-d 100 --demo-success-bonus 50 --demo-milestones 44939,43426,42182,41015,40497,39943,37251,33777,32260,31429,30286,28818,28783,27001,25121,24479,23400,22500,21624.107,23215.873,20589.457,22013.855,20231.945,17069.684,15570.604,16451.872,14773.074,12780.337 --keys-hold-spawn-duck --yaw-entropy 0 --demo-front-temp 0.5 --demo-front-ticks 40 --demo-front-view 6 --respawn-greedy 0.2 --respawn-greedy-window 0.25 2.0 --respawn-greedy-stuck 200 --respawn-greedy-contact --respawn-greedy-energy 3 --respawn-greedy-temp 0.5 --respawn-greedy-temp-ticks 100 --respawn-greedy-temp-view 6 --respawn-front-perturb 0.2 --respawn-front-perturb-band 0.005 --respawn-front-perturb-speed 1.0 1.3 --respawn-front-perturb-turn 90 --energy-pot 12 --energy-pot-front 0 --energy-pot-front-bonus 0 --no-respawn-novel --respawn-backward-mix 0 --int-real-only 0 --spawn-states autoresearch/spines/pbr1b1_entry_ge_states.npy --spawn-states-frac 0.2 --auto-spine --auto-spine-milestones --auto-spine-gain 500 --auto-spine-ge-minutes 5 --auto-spine-retry 4e8 --auto-spine-patience 0 --auto-spine-energy 150 --auto-spine-root-energy 25`

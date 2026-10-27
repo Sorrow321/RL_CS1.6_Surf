@@ -1,7 +1,7 @@
 {
  "agent": "pbr7b3",
  "round": 7,
- "final": false,
+ "final": true,
  "best": {
   "score": 74.26,
   "eval_file": "/home/steam/ar_pb/runs/pbr7b3/pbr7b3_c1/traj_36961779712.jsonl",
@@ -9,10 +9,11 @@
   "step": 36961779712,
   "ckpt": "/home/steam/ar_pb/runs/pbr7b3/pbr7b3_c1/ckpt_36859543552.pt",
   "recipe": [
-   "pbr7b3_c1: resume of pbr6b4_c12's ckpt_latest (36.659B, md5 d802b3e8...) on the loop's spine autoresearch/spines/pbr6b4_c12k02 (+keys; c12's search 2: the policy's beam to row 6,387 + a x1.04 GE chain to 74.33%) with --demo-tau0 6531 --demo-match-band, c12's flag set and loop (--auto-spine --auto-spine-milestones --auto-spine-gain 500 --auto-spine-ge-minutes 5 --auto-spine-retry 4e8 --auto-spine-patience 0 --auto-spine-energy 150), the 26 milestones of c12's current.json, and the new --auto-spine-root-energy 25 (7a425b4)"
+   "pbr7b3_c1: resume of pbr6b4_c12's ckpt_latest (36.659B, md5 d802b3e8...) on the loop's spine autoresearch/spines/pbr6b4_c12k02 (+keys; c12's search 2: the policy's beam to row 6,387 + a x1.04 GE chain to 74.33%) with --demo-tau0 6531 --demo-match-band, c12's flag set and loop (--auto-spine --auto-spine-milestones --auto-spine-gain 500 --auto-spine-ge-minutes 5 --auto-spine-retry 4e8 --auto-spine-patience 0 --auto-spine-energy 150), the 26 milestones of c12's current.json, and the new --auto-spine-root-energy 25 (7a425b4)",
+   "hand search (trainer paused) on c1's 37.12B weights, branched beams off: plain beam to the 74.3% ledge, GE stage 1 from an x1.04 root over the ledge to 77.81% -> spine pbr7b3_m02; c2 on it stalled at the chain's crash (77.5%), cut -> pbr7b3_m02c (77.34%); c3 on m02c walked back over the shaft, the 76% landing and the ledge to row 6,815 in 16 min, then sat 1 h at the chain root's ramp ride; c2 / c3 evals 73.52-73.70"
   ],
   "resume_from": "pbr6b4_c12 ckpt_latest 36.659B <- pbr6b4_c11 34.105B <- ... <- incumbent r6 (73.590)",
   "commit": "e60c99a"
  },
- "summary": "No box from 20:33 to 05:05 UTC (the fleet's 1.2 $/h cap held by two boxes); box 57919948 (RTX 4080S, 0.41 $/h) from 05:06. pbr7b3_c1 = c12's ckpt_latest on the k02 spine (74.33%) with the loop + the new --auto-spine-root-energy 25: first eval 73.618, then 74.260 at 36.962B (2/9 greedy episodes fly k02's fast chain over the 71.3% platform to the 74.3% ledge at ~56 s with +150 u of energy height over the spine; hand-on ckpt_36859543552). The curriculum oscillates at the chain's platform touch [6,436] (21-28% vs the 30% rate). Next gate: the 74.3% ledge (~+160 u needed; only x1.2 GE roots crossed it locally, to 77.68%)."
+ "summary": "73.590 -> 74.260 (pbr7b3_c1, eval 36.962B: 2/9 greedy episodes fly k02's fast chain over the 71.3% platform to the 74.3% ledge at ~56 s with +91..+163 u of energy height over the spine; hand-on ckpt_36859543552). Only 2.7 h of box time: from 20:33 to 05:05 UTC rent was refused by the fleet's 1.2 $/h cap (two other boxes, offers >= 0.386 $/h). The loop's search run by hand (trainer paused, branched beams off) crossed the 74.3% ledge (GE x1.04 -> 77.81%, spine m02); a curriculum stall on that chain's crash at 77.5% was cut (m02c) and c3 taught 73.9-77.3% backward in 16 min, then sat at the chain root's ramp. New (CPU-tested, never fired): --auto-spine-root-energy. Next: c3's ckpt_latest on m02c, --demo-tau0 6815, the loop."
 }
