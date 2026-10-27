@@ -3726,3 +3726,7 @@ ckpt_45558005760 (md5 6dec286c...), eval 82.652 at 45.564B. Credit at the start:
   blade) - the same rows c4 stalled at on k02 - and is LEARNING there: band 8,867 42-49%, 8,862 19-48%, 8,857 3.6 -> 4.4
   -> 6.4 -> 9.9 -> 13.9% over ~15 min (the advance threshold is 30%). The blade is hard for the policy on its own line
   too; the approach (x ~720-790 at z -600, the greedy comes in at 564-682) is set ~0.5 s before it.
+* c5 evals 94.844 / 94.989 / 94.864 / 94.655 (50.27-50.49B; 0/9 past 96.28%). The curriculum passed the 8,857 band and
+  walked back to [8,827 / 8,832] (z ~150-200, the shaft's top catch approach; 4-33%) by 13:43 - it is retracing the
+  shaft toward where the greedy's approach first leaves the spine's line. Box extended to 16:43 UTC; the credit was
+  topped up ($41.6 at 13:44, 29.9 h to the reserve).
