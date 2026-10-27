@@ -3832,3 +3832,20 @@ of its 1.2 $/h cap; the only other passing offer was a 0.621 $/h 5080). Incumben
   d >= 5,230 against the line's 4,791) from its end, `--spawn-states pbr8b4_mix6` (mix5 + the learned tube rows 10,812-11,587,
   ~2.4% of spawns, so the tube skill keeps training), `--demo-front-temp 0.5 --demo-front-view 3 --demo-front-cold 0.5`,
   every other flag as c7. The k04d / k04c pattern: a cut just past the greedy's gate, then the next spine.
+
+### c8: round the pocket to the tube's top plate - 92.990; the loop's search finds the policy's own line to 99.04% (14:00-14:20 UTC)
+* c8 (b3p, cold/hot split) evals: 90.685 / 90.779 / 90.778 / **92.916** (52.463B) / 92.975 / **92.990** (52.614B, median 92.5%:
+  5/9 reach the tube's top kill plate at z ~262-265 and die on it; 2/9 at the old 74.4% block, 1 at the ledge, 1 at the start).
+  Handoff for 92.990: the copier's ckpt_52596572160 (17.3M before, md5 a77b043d..., pulled). The curriculum walked b3p from
+  91.79% back through la2's way round the pocket at 77-100% bands; the greedy went round the pocket ~25 min after the launch.
+* **The quorum (5/9 past 91.62%) fired the loop's async search 1** (52.632B, 88 s beside the training): the PLAIN beam from the
+  true start on the 52.63B weights, 4,096 envs, horizon 98.5 s -> extinct at 74 s with **frontier d 538 / spine end d 551 =
+  99.04%** (9,600 states) -> spine k01, success line d <= 651, swapped in; its curriculum walks back from 99% at 100% bands
+  (step 40). The policy's own line through the tube: DUCKED all the way, falling fast (1,195-1,860 u/s) and zig-zagging at
+  500-650 u/s sideways - through the hover zone at -1,341 u/s without hovering, the -1,100 shaft, the chamber's NORTH ring
+  ((684, 2,975, -1,641)), to (676, 2,798, -2,884) above the last two plates (-2,850 open north-west, -3,200 open east), where
+  every copy died. So the duck habit that stalled the explorer-chain curricula (c6 / c7) is part of the policy's own way
+  down; the explorer's lines (la5's hover catch, its lip landing) were the wrong lines to teach.
+* Lesson (generic): once the policy is good enough near a stretch, its OWN beam is a better spine than a reward-free chain -
+  a chain can need contacts / timings (a lip, a ledge catch) the policy will not learn, while the beam is on its own
+  distribution by construction. The loop already does this; the hand-built chains were for getting the policy near enough.
