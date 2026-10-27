@@ -3219,3 +3219,8 @@ the operator's); this branch keeps a waiter on `box.py rent` and works offline m
   record's speed on ramp 1 (~1,230 vs our <= 1,015) and its height band there - the speed is upstream energy (the
   walkway -230 u, 70.8-72.4% -100..-200 u), the height is precision. Expect c13 (k02 + the loop) to reach ~74.3-74.45%
   (the wall face) and the loop's energy stage to have to rebuild the upstream energy first.
+* Last local probes (00:40-00:50 UTC): 96 STOCHASTIC rollouts of c12 from the 24 fastest ramp-1 GE states: best 74.40%,
+  none past the wall; 40 greedy rollouts from GE states inside the record's band at ramp 1's exit (y 2,230-2,330, z
+  1,785-1,820, moving south, up to 1,100 u/s; 183 such cells over the four archives): best 74.32%. Even placed in the
+  height band with ~90% of the record's speed, the policy does not get ramp 2's kick - it has never been trained on
+  that contact. A spine through the kick has to come from a search that finds it, then the curriculum teaches it.
