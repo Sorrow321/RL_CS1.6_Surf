@@ -310,3 +310,9 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   auto_spine's GE settings - 64 u x energy 32 cells, rising split, view-follow, 8 ms - rooted at 31 of k04's own rows 9,050-9,199,
   x1.0; the first goal hit after 0.8 min, ge_replay 21/21 links exact, 1,334 states) down the tube to the finish box. Keys = k04's
   own and the chain's translated (tools/stitch_spine.py). No demo, no record (pbr8b4, round 8).
+* `pbr8b4_mix1.npy` (4,286 rows; md5 837a974e94dc6a893a67fccec13213c0): a --spawn-states pool, half and half: 2,143 rows drawn
+  (seed 0, sorted) from `pbr1b1_entry_ge_states.npy` (start-room states from reward-free search lines) and pbr8b4_f1's rows
+  8,376-10,518 (85.71% -> the finish: the loop's search-4 beam line on its own weights from k04d's end to 92.2%, then la1's
+  reward-free Go-Explore chain down the finish tube). Every row is the policy's own line or a reward-free search from it; no
+  demo, no record (pbr8b4, round 8). Swapped in for pbr8b4_c1's spawn-states pool on the box (atomic replace of the launch
+  path; the trainer re-reads the file on an mtime change).
