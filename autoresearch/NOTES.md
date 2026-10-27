@@ -3817,3 +3817,10 @@ ckpt_45558005760 (md5 6dec286c...), eval 82.652 at 45.564B. Credit at the start:
   the -1,640 blade (1), 78.9 / 73.0 / 64.2% (old gates) - general reliability, no single gate. c7's search 1 ran 1,433 s
   beside the training and found nothing (frontier d 11.5: nothing can beat it by 500), as expected; the curriculum got
   through its 0.2% band and walked f1's chain back to row ~9,490.
+
+### 9/9 GREEDY FINISHES: 117.636 (2026-10-27 ~16:40 UTC, c7)
+* c7 evals 115.371 (52.593B: 7/9, 72.19 s) / 110.943 (3/9) / 114.306 (6/9, 70.81 s) / 112.060 (4/9) / **117.636
+  (52.895B: 9/9 FINISH, best 70.91 s)** / and the trainer's next line "fin 7/9 mean 72.28 s best 71.72 s" (52.971B).
+  Every greedy episode of the eval finishes the map from the true start, ~4.3 s under the human record (75.18 s on our
+  zones). Hand-on: the copier's ckpt_52889124864 (6.3M before the eval, md5 75c1eb52542b9a99231cb6a44b55ddfb), pulled.
+  Credit $38.34 at 16:48 (fleet burn 1.06 $/h).
