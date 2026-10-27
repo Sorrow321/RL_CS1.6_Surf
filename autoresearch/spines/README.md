@@ -379,3 +379,17 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   80.4% junction.
 * `pbr8b1_f1after_states.npy` (8,115 rows; md5 c9a7fb08cb4beb684e80122eaba02b58): f1 rows 7,521-8,061 (past the f1e cut: the
   platform-end landing, the hop-off and the drop to the lower level) tiled 15x, practised while f1e's spine stops at 83%.
+* `pbr9b4_h1.npy` + `.keys.npy` (8,903 rows; md5 154c2e1861a72836903fcfc444ea35ec / 3ca826d9a8244df21f6b095f791877f0): a
+  FASTER LINE, the true start to the finish (clock 68.27 s; the incumbent's best greedy 68.66 s). Rows 0-7,560: the incumbent
+  (pbr8b1_c12 ckpt_55038705664)'s OWN greedy episode recorded on CPU (record_ckpt --dump-states; keys from its jsonl), to
+  84.20% at (1,242, 2,959, 1,649), airborne, energy height 2,266; rows 7,561-7,616: an exact Go-Explore chain (explore_phase1
+  --exact-chains, 64 u x energy 32 cells, heading split, view-follow, 8 ms, --select-energy 3, rooted at 30 of that line's own
+  rows 7,430-7,570 x1.0 / x1.04, 8 min on 2 local threads; cell 27245, picked by the EARLIEST arrival at 86%, unboosted root
+  row 7,560) that passes ~50 u east of the platform's west end instead of landing on it (h 2,318 at 84.98% where the greedy
+  lands and keeps ~1,650); rows 7,617-8,902: the incumbent's own greedy rollout from the chain's state at 84.98% to the
+  finish (record_ckpt --spawn-states, CPU, 9.87 s). No demo, no record (pbr9b4).
+* `pbr9b4_h1e.npy` + `.keys.npy` (7,617 rows; md5 91b4cd0c5718a2e3d8f96eef1d1a5bc2 / 3e4a534087d079522b07215026a73978): h1 cut at
+  row 7,616 (84.98%, in the drop shaft with energy height 2,318) - for --demo-success-energy: success only for a crossing that
+  kept the energy (a platform landing crosses 85% at ~1,730 u).
+* `pbr9b4_h1after_states.npy` (384 rows; md5 e6132f780f65f8d3dfc46613801e7f4e): h1 rows 7,617-8,000 (past the h1e cut: the drop
+  and the ramp onto the lower level, the incumbent's own rollout), the --spawn-states pool for runs on h1e.

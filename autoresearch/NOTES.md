@@ -4019,3 +4019,10 @@ Only a FASTER 9/9 eval beats it (one finisher fewer costs 1.11 = 33 s of time; o
   (84% at 57.84 s vs 57.7 s) and lands on the platform at (1,139, 3,128, 1,547) at 84.58% (h 2,203 -> 1,649); past 86% it
   diverges (CPU numerics) and sticks at 90.86% until the cap. Its states 82-84.5% are the roots for the search:
   runs/pbr9b4/look/inc_greedy_cpu_states.npz.
+
+### Harness issue: the 1.2 $/h fleet cap fits three boxes, not four (20:47-21:20 UTC)
+* Three branch boxes at ~0.38 $/h each put the fleet's burn at 1.154 $/h within the round's first ~4 minutes; the
+  fourth branch's `box.py rent` is refused (`no offer passes ... within the budget pace`) until one of them is
+  released - the cheapest acceptable offer would have to cost under 0.046 $/h. This branch had no box from 20:43 UTC on
+  and did its search on the agent host's CPU (2 threads, nice 10). The operator may want the cap at ~1.6 $/h, a per-agent
+  share (cap / 4), or a rent queue.

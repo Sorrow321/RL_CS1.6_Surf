@@ -1,0 +1,24 @@
+{
+ "n": 8903,
+ "segments": [
+  {
+   "seg": "roll",
+   "file": "inc_greedy_cpu_states.npz",
+   "rows": "0-7560"
+  },
+  {
+   "seg": "ge",
+   "archive": "ge1/archive.npz",
+   "cell": 27245,
+   "rows": "1-56",
+   "root_row": 7560
+  },
+  {
+   "seg": "roll",
+   "file": "roll_r56_states.npz",
+   "n": 1287
+  }
+ ],
+ "md5": "154c2e1861a72836903fcfc444ea35ec",
+ "keys_md5": "3ca826d9a8244df21f6b095f791877f0"
+}
