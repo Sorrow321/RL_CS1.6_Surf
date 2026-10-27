@@ -477,6 +477,12 @@ def main(argv=None) -> int:
                          "the line's largest energy losses) hands back the line to the deepest "
                          "cell with >= G u more energy height than the line at the same "
                          "progress, marked energy (train_fast --auto-spine-energy); 0 = off")
+    ap.add_argument("--energy-minutes", type=float, default=0.0,
+                    help="the energy stage's Go-Explore budget (min; 0 = --ge-minutes)")
+    ap.add_argument("--energy-cell-energy", type=float, default=0.0,
+                    help="the energy stage's explore_phase1 --cell-energy (u; 0 = --ge-energy)")
+    ap.add_argument("--energy-select", type=float, default=0.0,
+                    help="the energy stage's explore_phase1 --select-energy (0 = --ge-select-energy)")
     ap.add_argument("--energy-boost", default="1.0,1.04",
                     help="the energy stage's speed factors (one stage of --ge-boost's syntax)")
     ap.add_argument("--ge-select-energy", type=float, default=0.0,
@@ -681,9 +687,24 @@ def main(argv=None) -> int:
                 f"{dh:,.0f} u at tick {t}" for t, dh in losses) + f" ({len(ridx)} roots), "
                 f"a cell >= {a.energy_gain:g} u above the line's energy over "
                 f"{lo_p:.2f}-{hi_p:.2f}%", flush=True)
-            gl, gi = go_explore(a, out, line, st, boosts=boost_stages(a.energy_boost)[0],
-                                tag="ge_energy", line_keys=KEYS.get(line_tag), roots=ridx,
-                                pick=_pick)
+            # --energy-minutes / --energy-cell-energy / --energy-select (pbr7b4): the energy stage's
+            # own explorer budget, energy-cell size and energy-weighted selection (0 = the GE ladder's;
+            # pbr7b4's focused energy search - 15 min, 16 u cells, select 1, roots in the last 6 s -
+            # found the line keeping +125 u to the 74.4% climb where the 5-min default kept it only
+            # through the bounce before it)
+            _saved = (a.ge_minutes, a.ge_energy, a.ge_select_energy)
+            if float(a.energy_minutes or 0) > 0:
+                a.ge_minutes = float(a.energy_minutes)
+            if float(a.energy_cell_energy or 0) > 0:
+                a.ge_energy = float(a.energy_cell_energy)
+            if float(a.energy_select or 0) > 0:
+                a.ge_select_energy = float(a.energy_select)
+            try:
+                gl, gi = go_explore(a, out, line, st, boosts=boost_stages(a.energy_boost)[0],
+                                    tag="ge_energy", line_keys=KEYS.get(line_tag), roots=ridx,
+                                    pick=_pick)
+            finally:
+                a.ge_minutes, a.ge_energy, a.ge_select_energy = _saved
             res.update({f"ge_energy_{kk[3:] if kk.startswith('ge_') else kk}": vv
                         for kk, vv in gi.items()})
             res.update(energy_losses=[[int(t), round(dh, 1)] for t, dh in losses],

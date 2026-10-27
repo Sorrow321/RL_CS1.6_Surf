@@ -5010,6 +5010,11 @@ def main() -> None:
                     help="--auto-spine: the beam runs this long past the eval's longest episode")
     ap.add_argument("--auto-spine-timeout", type=float, default=2400.0,
                     help="--auto-spine: wall-clock cap (s) of one search")
+    ap.add_argument("--auto-spine-search-args", default=None,
+                    help="--auto-spine: extra tools/auto_spine.py arguments appended to every search "
+                         "command, one shell-quoted string (e.g. pbr7b4's focused energy stage: "
+                         "'--energy-minutes 15 --energy-roots-secs 6 --energy-cell-energy 16 "
+                         "--energy-select 1'). Unset = the command unchanged; config only when set")
     ap.add_argument("--auto-spine-beyond-line", action="store_true",
                     help="--auto-spine: when the greedy median has not reached a DEPTH spine's "
                          "success line (a --auto-spine-patience search), the new spine must beat "
@@ -11895,6 +11900,8 @@ def main() -> None:
         raise SystemExit("--auto-spine needs --demo-file (the first spine) and --demo-success-d")
     if args.auto_spine_energy is not None and not args.auto_spine:
         raise SystemExit("--auto-spine-energy is a stage of --auto-spine's search: give it")
+    if args.auto_spine_search_args and not args.auto_spine:
+        raise SystemExit("--auto-spine-search-args extends --auto-spine's search: give --auto-spine")
     if args.auto_spine_beyond_line and not args.auto_spine:
         raise SystemExit("--auto-spine-beyond-line is a rule of --auto-spine's search: give "
                          "--auto-spine")
@@ -14956,6 +14963,8 @@ def main() -> None:
             meta["config"]["auto_spine_near_gain"] = float(args.auto_spine_near_gain)
         if args.auto_spine_beyond_line:
             meta["config"]["auto_spine_beyond_line"] = 1
+        if args.auto_spine_search_args:
+            meta["config"]["auto_spine_search_args"] = str(args.auto_spine_search_args)
         if args.auto_spine_energy is not None:
             meta["config"]["auto_spine_energy"] = float(args.auto_spine_energy)
         if float(args.demo_stall_cut or 0.0) > 0.0:
@@ -16140,6 +16149,9 @@ def main() -> None:
             cmd += ["--energy-gain", f"{float(args.auto_spine_energy):g}"]
         if float(args.auto_spine_near_gain or 0.0) > 0.0:
             cmd += ["--near-gain", f"{float(args.auto_spine_near_gain):g}"]
+        if args.auto_spine_search_args:
+            import shlex as _shx
+            cmd += _shx.split(str(args.auto_spine_search_args))
         t0 = time.time()
         if args.auto_spine_async:
             # --auto-spine-async: the search reads its OWN copy of the weights (ckpt_latest is
