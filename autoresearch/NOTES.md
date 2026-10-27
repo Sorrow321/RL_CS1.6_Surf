@@ -4018,3 +4018,48 @@ $34.91 (reserve $10), no other box live. Incumbent: pbr8b1_c12 ckpt_55038705664 
 * GE1 (21:03 UTC, beside c1, 12 threads, 15 min): explore_phase1 with the loop's GE settings (--exact-chains, 64 u x energy 32,
   --cell-heading 1, view-follow, 8 ms, --select-energy 3, --roots-keep-all) rooted at the planner line's rows 7,330-7,495
   (82.1-84.25%, every 3rd) x1.0 / x1.03 (112 roots): a line that does not land on the platform.
+* **GE1** (x1.0 + x1.03 roots, 12.8 min, 210,887 cells, one goal hit): every top energy cell came from ONE x1.03 root (row
+  7,405) - `--select-energy` draws the most energetic cell of a place, so the boosted copies took 201,055 of the cells and the
+  x1.0 roots 9,832. Its best chains glide NNW past the platform and reach 90.0% with energy height 1,641 vs the line's 1,368
+  ~1.35 s sooner. **Lesson: run boosted and unboosted roots as separate searches** - mixed, the boost wins the draw.
+* **GE1b** (x1.0 roots only, rows 7,360-7,440 every 2nd, 8 min, 159,561 cells): UNBOOSTED chains do it too, and better - cell
+  105344 from row 7,410: 86.09% with energy height 1,727 vs the line's 1,319 (+408), |v| 1,275, 110 ticks sooner. The move: a
+  sharp turn north at 83.3% (heading W -> NNW in ~0.3 s) then a no-strafe glide (-504, 971) that passes ~200 u east of the
+  platform's west end (z 1,569 at (1,363, 3,092)), the spiral drop, out at 85.87%.
+* **Handover (the policy's own beam_tas finish from chain states)**: from a chain state that plunges into the lower level's
+  floor (chain ends at 86.1-86.3%, vz -580..-680) the population crashes (|v| 1,282 -> 296 in 0.8 s) and then STALLS on the
+  final shaft's rim ledge (d ~4,380-4,450, just short of the 92.36% milestone) for 20 s: 0-4 finishes of 4,096. From the
+  chain's states in the drop or in level flight (rows 170 / 190 of the unboosted chain; rows 220 / 300 / 460 of the boosted
+  one) 4,084-4,096 of 4,096 finish in 7.0-9.25 s. Pick the junction, not just the energy.
+* **`pbr9b3_f2`** (spines README): planner line to 83.25% + GE1b chain to 85.81% + the policy's own finish = **~67.31 s** on its
+  own clock (planner 68.32 s, incumbent 68.66 s). Caveat: f2's own drop exit loses 540 u (h 1,980 -> 1,440 at 85.99%; the record,
+  yardstick only, loses ~220 there), so on the lower level f2 is no faster than before - its gain is the platform alone
+  (~1.0 s). The drop exit is the next target. `tools/splice_roll.py` (new): cut a stitched spine at a row and continue it with
+  a policy rollout from that row (stitch_spine appends rolls only at a line's end, and a cut chain loses its keys).
+* **c1's evals** (lr 5e-5, c12's flags): 115.486 / 115.502 (7/9, **68.29 s**) / 116.597 (8/9) / 115.482 / **117.692** (55.341B:
+  **9/9, best 69.25 s** - 0.019 under the incumbent; newest snapshot at or before it: ckpt_55334928384) / 113.258 (5/9) / 2
+  more not scored yet. The incumbent's own regime gives 5-9/9 per eval at 68.3-69.3 s; its 117.711 was a good draw.
+* **pbr9b3_c2** (21:37 UTC): c1's ckpt_latest (55.618B, md5 101df9b2...) on **f2e** + keys with c12's flags except
+  `--demo-success-energy 300` (success line d <= 8,702 = 84.77% with energy height >= 2,131: only the glide past the platform),
+  `--spawn-states pbr9b3_f2after_states.npy` (the spiral + the lower-level entry), `--lr 1e-4` (a new route to learn; c12's 5e-5
+  for the consolidation later), no --demo-tau0 (the band starts at the cut), the same 36 milestones (none within 700 u of the
+  new line). Record gate passed (4). First curriculum lines: band [7,505-7,520] at 100% success.
+* **c2 (lr 1e-4) learned the glide in SAMPLING within minutes, then COLLAPSED.** Its curriculum walked f2e 7,520 -> 6,245 (84.95%
+  -> 70.2%) in ~35 min at 33-100% band success (sampled spawns from 70% glide past the platform with the energy), but its
+  greedy never crossed with the energy (every eval crossing at h ~1,700) and its evals were 114.359 / 112.128 / 113.257 /
+  115.470 / 115.475 (4-7/9, 69.0-69.5 s), then **6.686** at 55.996B (0/9: every episode dead at 6.7% after ~38 s). The updates:
+  mean kl 0.35-0.58 per 50M steps with 7-28 updates > 0.6 and peaks of 1.4-3.5 (c1 at 5e-5: mean 0.24-0.30, 1-4 > 0.6 per 100M);
+  value loss 50-230. **lr 1e-4 is too hot for these weights** (round 8's c11 collapse was at 1e-4 too).
+* GE2 (rooted in f2's own spiral states, 84.95-85.81%, 9 min): its drop exits keep 150-200 u more energy height at 86.5-89.6%
+  but are NOT faster (the gain is height, |v| ~1,000-1,040 like the line's) - no better exit found.
+* GE3 (the 72% loop; rooted at the planner line's rows 6,250-6,386 = 69.9-71.4%, x1.0, 9 min): 90% of the bursts die there;
+  nothing reaches 73.3% faster, and 4 cells at 72.8% save ~0.4 s with less speed and energy. The loop stays for now.
+* `train_fast --demo-success-time SECS` (new, generic, default off; commit 76735f4; tests/python/test_demo_success_time.py: the
+  pure gate, the trainer's print / dump / refusals, flag off bit-identical to a3d63d2): under --demo-success-energy, a spine
+  spawn at row i counts its crossing of the success line only if it comes within (the spine's first row past the line - i)
+  ticks + SECS - the time analog of the energy gate, for a line found for its SPEED (a search line that skips a detour the
+  greedy flies). Map starts (row 0) and spawns off the spine are not timed. Not used yet (no faster loop line to teach).
+* **pbr9b3_c3** (22:14 UTC): c2's snapshot ckpt_55840342016 (55.840B, md5 6a96132e...; before c2's worst kl window; its eval
+  right after: 7/9) on f2e with c2's flags at **--lr 5e-5** and `--demo-tau0 6560` (c2's band at that step).
+* Box link: downloads from this box run ~20-50 KB/s (a 63 MB checkpoint takes 20-50 min; the c1 117.692 snapshot pull got 29 MB
+  in the first try) - pull hand-on checkpoints early, not at wrap-up.
