@@ -3224,3 +3224,8 @@ the operator's); this branch keeps a waiter on `box.py rent` and works offline m
   1,785-1,820, moving south, up to 1,100 u/s; 183 such cells over the four archives): best 74.32%. Even placed in the
   height band with ~90% of the record's speed, the policy does not get ramp 2's kick - it has never been trained on
   that contact. A spine through the kick has to come from a search that finds it, then the curriculum teaches it.
+* The explorer does get ramp 2's kick sometimes (vz up to 583 over 4 archives; 83 cells with a ballistic apex 2,159-
+  2,207 > the wall's 2,140-2,155), but at 500-670 u/s horizontal, 400-480 u west of the wall and pointing anywhere
+  (heading 25-345 deg). From those 36 kicked states c12 never crosses (48 greedy: best 74.14%; 96 stochastic: 74.27%).
+  Local probing ends here: crossing needs height AND eastward speed together at ramp 2's lip (the record: vz 624 with
+  918 u/s still heading south-south-west, then an air-strafe turn east keeping ~920 u/s).
