@@ -126,6 +126,8 @@ TRAIN_ONLY = frozenset({
     "auto_spine_from_spine",
     # --auto-spine-ge-boost: the TRAINING curriculum's search's Go-Explore ladder
     "auto_spine_ge_boost",
+    # --eval-dump-states: what the TRAINER's eval writes beside its .jsonl
+    "eval_dump_states",
     # --respawn-greedy-temp: the TRAINING rollout's sampling temperature for greedy-row spawns
     "respawn_greedy_temp", "respawn_greedy_temp_ticks", "respawn_greedy_temp_view",
     # --ge-minutes: a share of the TRAINING spawn pool drawn from the run's own Go-Explore

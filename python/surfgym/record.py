@@ -361,3 +361,54 @@ def record_rollout_parallel(
             f.write(json.dumps(trailer, separators=(",", ":")) + "\n")
             summaries.append({**trailer, "ep_return": _round(ep_ret[i], 4)})
     return summaries
+
+
+class StateDump:
+    """The FULL per-tick states of a recording's episodes (pbr8b3, 2026-10-27), for a spine cut
+    from the greedy eval's own line (the trajectory .jsonl is lossy). ``hook(n_envs)`` gives a
+    fresh ``on_tick`` for one recording - record_rollout_parallel's rule with ``n_envs`` > 0
+    (env i's FIRST episode is episode i), env 0's episodes in order otherwise - and ``save``
+    writes ``ep_0000, ep_0001, ...`` to an .npz (record_ckpt --dump-states' layout)."""
+
+    def __init__(self):
+        self._eps: List[np.ndarray] = []
+
+    def hook(self, n_envs: int = 0):
+        from .core import STATE_DTYPE
+        self._eps = []
+        if n_envs > 0:
+            cur: List[list] = [[] for _ in range(int(n_envs))]
+            eps: List[Optional[np.ndarray]] = [None] * int(n_envs)
+            live = np.ones(int(n_envs), bool)
+            self._par = (eps, cur)
+
+            def on_tick_par(t, states, rewards, done, trunc):
+                for i in np.flatnonzero(live):
+                    cur[i].append(states[i].copy())
+                    if bool(done[i]) or bool(trunc[i]):
+                        eps[i] = np.array(cur[i], dtype=STATE_DTYPE)
+                        cur[i] = []
+                        live[i] = False
+            return on_tick_par
+        self._par = None
+        cur0: list = []
+
+        def on_tick(t, states, rewards, done, trunc):
+            cur0.append(states[0].copy())
+            if bool(done[0]) or bool(trunc[0]):
+                self._eps.append(np.array(cur0, dtype=STATE_DTYPE))
+                cur0.clear()
+        return on_tick
+
+    def episodes(self) -> List[np.ndarray]:
+        from .core import STATE_DTYPE
+        if self._par is not None:
+            eps, cur = self._par
+            return [e if e is not None else np.array(c, dtype=STATE_DTYPE)
+                    for e, c in zip(eps, cur)]
+        return list(self._eps)
+
+    def save(self, path: Union[str, os.PathLike]) -> int:
+        eps = self.episodes()
+        np.savez(path, **{f"ep_{i:04d}": e for i, e in enumerate(eps)})
+        return len(eps)

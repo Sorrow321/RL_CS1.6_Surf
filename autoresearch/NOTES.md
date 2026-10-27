@@ -3880,3 +3880,11 @@ ckpt_45558005760 (md5 6dec286c...), eval 82.652 at 45.564B. Credit at the start:
   --auto-spine-gain 500 --auto-spine-ge-minutes 5 --auto-spine-retry 4e8 --auto-spine-patience 0 --auto-spine-energy 150
   --auto-spine-async --demo-match-band --lr 1e-4 --auto-spine-cut-ahead 1000 --auto-spine-from-spine 4
   --auto-spine-ge-boost "1.0;1.04;1.08;1.12"`.
+* **`--eval-dump-states`** (new, generic, default off; for the next round): the trainer's greedy eval also writes the FULL
+  per-tick states of every episode to traj_<step>.states.npz (record_ckpt --dump-states' layout; surfgym.record.
+  StateDump, GREEDY.hook's capture rule). Why: record_ckpt cannot replay the trainer's eval - the eval runs its 9
+  episodes side by side from ONE core.reset(global_step & 0x7FFFFFFF) with batched forwards (record_rollout_parallel),
+  record_ckpt runs batch-1 episodes from its own spawn seeds, and surf is chaotic - so the greedy's own FINISHING line
+  (the best spine for holding 9/9 or for time) could not be dumped this round. With the flag, cut it from the eval's own
+  .npz (+ its keys from the .jsonl, stitch_spine.roll_keys' rule). tests/python/test_eval_dump_states.py 4/4 (both eval
+  modes match the .jsonl row for row; flag off bit-identical incl. the trajectory bytes; 72 s CPU).

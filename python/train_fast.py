@@ -6824,6 +6824,14 @@ def main() -> None:
     ap.add_argument("--cc-temp-gain", type=float, default=None,  # 0.25
                     help="--curiosity-cond: the keys temperature's gain per "
                          "unit of T (default 0.25: 1.5 at T = 2)")
+    ap.add_argument("--eval-dump-states", action="store_true",
+                    help="also write the FULL per-tick states of every greedy eval episode to "
+                         "traj_<step>.states.npz beside its .jsonl (ep_0000, ...; record_ckpt "
+                         "--dump-states' layout), so a spine can be cut from the eval's own "
+                         "greedy line: record_ckpt cannot replay it (its spawn draws and its "
+                         "batch-1 forwards differ from the side-by-side eval, and the same "
+                         "weights finished 4/9 in the eval and 0/9 there, pbr8b3). Config only "
+                         "when on; never restored")
     ap.add_argument("--eval-patience", type=float, default=None,   # 0 = off
                     help="SECONDS: end a greedy EVAL episode once its best field progress "
                          "has not grown by 32u (cumulative, any rate) for this long - the "
@@ -15087,6 +15095,9 @@ def main() -> None:
     # --eval-parallel: written ONLY when on, like the patience rule above
     if N_EVAL_PAR:
         meta["config"]["eval_parallel"] = 1
+    # --eval-dump-states: written ONLY when on
+    if args.eval_dump_states:
+        meta["config"]["eval_dump_states"] = 1
     # --front-temp: written ONLY when on
     if float(args.front_temp or 0.0) > 0.0:
         meta["config"]["front_temp"] = float(args.front_temp)
@@ -21117,6 +21128,12 @@ def main() -> None:
                     # --respawn-greedy: keep this recording's states (env 0, pre-step; every
                     # env's first episode under --eval-parallel)
                     _ev_tick = chain_ticks(_ev_tick, GREEDY.hook(N_EVAL_PAR))
+                _sdump = None
+                if args.eval_dump_states:
+                    # --eval-dump-states: the same pre-step states, every episode, to an .npz
+                    from surfgym.record import StateDump
+                    _sdump = StateDump()
+                    _ev_tick = chain_ticks(_ev_tick, _sdump.hook(N_EVAL_PAR))
 
                 def _rec_par(core_, pol_, path_, episodes, max_ticks, seed, on_tick,
                              episode_meta, header_extra):
@@ -21168,6 +21185,8 @@ def main() -> None:
                                seed=global_step & 0x7FFFFFFF,
                                on_tick=_ev_tick, episode_meta=_ev_meta,
                                header_extra=_ghdr)
+                if _sdump is not None:
+                    _sdump.save(path.with_name(path.stem + ".states.npz"))
                 if _rg_cap:
                     _tpat = tuple(getattr(_s.eval_core, "tick_pattern",
                                           (int(_s.eval_core.config.phys.msec),)))
