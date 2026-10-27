@@ -4089,3 +4089,11 @@ $34.91 (reserve $10), no other box live. Incumbent: pbr8b1_c12 ckpt_55038705664 
   a pool must be filtered to the skill's states. pool_dec2 (7,186 states): the greedy's own FLYING states at 81-83.4% with h >=
   2,150 (389 x8), f2 rows 7,250-7,450 (the planner's flight into the turn, h 2,413-2,500; 200 x15), f2's spiral rows 7,521-7,700
   (179 x6).
+* GE4 (rooted at c3's greedy states at 82.3-83.4%, 6 min): no glide - those states are already on the regressed route (heading
+  NORTH at x ~2,450, descending at vz -456..-628 onto the platform at (2,376, 2,969), where the planner and the incumbent fly
+  WEST over the platform's south side at z ~1,700). From the walking route there is no glide; the 82.8% gate must come first.
+* c3 stopped at 56.740B (evals 116.571 (8/9, 69.53 s) / 114.360 / 113.262 / 114.362 / 115.475 (7/9, 69.08 s); band 5,965).
+* **pbr9b3_c4** (23:21 UTC): c3's ckpt_latest (56.736B, md5 338d8414...) on f2e (the glide gate, 84.77% with h >= 2,131) +
+  `--demo-milestone-energy 9821:2173` (round 8's f1e line, an airborne crossing of 82.8%, paid again) + `--spawn-states
+  pbr9b3_dec2_states.npy` (flying states only) at lr 5e-5, --demo-tau0 5965, c3's flags otherwise. Box checkout moved to
+  f146a8b (python only, no rebuild). Record gate passed (4).
