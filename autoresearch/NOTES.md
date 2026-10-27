@@ -4038,3 +4038,38 @@ used for the search work below and then blocklisted and released.
   greedy's landing route at the same progress, so `--demo-success-energy 200` (h_min 2,008) lets only the flight over the
   platform succeed (round 8's f1e rule). Spawn pool `pb9_g1after_states.npy` (1,947 rows): g1 rows 7,605-7,729 (the
   chain's drop, 8x) + 7,730-8,676 (the policy's 7.27 s beam line), past the cut.
+
+### Box 58015530 (21:35 UTC): RTX 4070 Ti + Ryzen 9 5900XT, 0.226 $/h, UK (machine 149163), uplink ~8 MB/s
+* Same incumbent weights, three cards: the incumbent's own eval of ckpt_55038705664 was 9/9 (4080S), c1's first eval 7/9
+  (3090), c2's 5/9 and c3's 7/9 (4070 Ti). The greedy forks on tiny numeric differences: the 9/9 was a good draw of a ~7/9
+  policy. Failures are spread (stuck at 3% / 5.7%, the 55% shaft, the 94% kill sheet).
+
+### c2 / c3: g1e with the energy gate (21:44-22:10 UTC)
+* c2 (lr 1e-4): update kl median 0.52, p90 0.92, 8 updates > 1 in 55M steps, value loss 25 -> 178 - twice c12's kl (0.23 /
+  0.36 at 5e-5) and round 8's c11 collapse regime. Stopped after 10 min.
+* c3 (lr 5e-5, otherwise c2): kl median 0.27; evals 115.478 (7/9) / 116.599 (8/9, 68.70 s) / 113.236 (5/9). The band went
+  7,604 -> 6,889 (78%) in 20 min - a FINISH counts as band success under the energy rule, so the band runs back even while
+  the greedy still walks the platform; only the +50 is gated.
+
+### GE C: the 71-72.5% loop (21:47-22:03 UTC) and g2, a 65.8 s line
+* GE C = GE A's settings rooted at 48 airborne greedy-ep1 states over 69.8-71.3%: from root row 6296 (70.15%) the explorer
+  reaches 72.5-74% 0.68-0.84 s sooner. Its chain leaves the greedy's line at ~71% (the greedy swings EAST onto a ramp at
+  71.5%, x -906, and back; the explorer goes straight down x ~-1,230) and REJOINS it at 72.55-72.78% within 14-28 u, same
+  heading, 0.67 s ahead. The chain ends (73.5% / 74.07%) are doomed (a policy beam from them dies in 100 ticks).
+* Hand-over at chain tick 195 (72.78%): a policy beam (`--score d`, 4,096) from there finishes in **15.96 s** (13,579
+  finishing lineages); the greedy line from the same progress takes 18.52 s. It hops the 84% platform (4 ground ticks, not
+  a walk) and spirals down the drop at h ~1,930-1,990.
+* **`autoresearch/spines/pb9_g2`** (8,573 rows, md5 ee86abd2...): greedy ep1 rows 0-6296 + GE C chain 88828 ticks 1-195 +
+  that beam = **65.77 s** on its own clock (g1 66.58, ep1 69.02, the incumbent's best eval 68.66; the record, yardstick
+  only, 75.18). vs g1: -0.66 s at 72.78%, -1.16 s at 83.3%, -0.8 s from 85% on (the beam's own polish).
+* **`pb9_g2e`** = g2 cut at row 7,508 (85.01%, h 1,938; the walking route has ~1,700-1,730 there); spawn pool
+  `pb9_g2after_states.npy` = g2 rows 7,509-8,572 (the beam's lower level and shaft).
+
+### `--demo-success-time SECS` (new, flag off bit-identical; tests/python/test_demo_success_time.py)
+* A spine episode's crossing of the success line pays the --demo-success-bonus and succeeds only if it comes no later than
+  the spine itself did from the row the episode spawned at, + SECS (train_fast.time_gate_ok: ticks since spawn <= spine
+  crossing row - spawn row + slack; spine rows carry tick 0; a spawn off the spine is not gated; the map start matches row
+  0). With --demo-success-energy both must hold. Under the time rule the band's outcome is the gated crossing only (a finish
+  out of time is no success), so the band stays where the pace fails. Refused with --auto-spine, --demo-success-alive and
+  --reward-per-decision. TRAIN_ONLY in record_ckpt. The point: the policy's own fastest line (beam + a GE hand-over) sets
+  the bar, generically - nothing map-specific; the slack is the only constant.

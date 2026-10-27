@@ -1,0 +1,28 @@
+{
+ "n": 8573,
+ "end_d": 10.760009765625,
+ "segments": [
+  {
+   "seg": "spine",
+   "file": "runs/pb9look/inc_ep1.npy",
+   "keys": "runs/pb9look/inc_ep1.keys.npy",
+   "n": 9002
+  },
+  {
+   "seg": "ge",
+   "archive": "runs/pb9look/geC/archive.npz",
+   "chain": "runs/pb9look/chainC_88828.npy",
+   "cell": 88828,
+   "root": 6296,
+   "root_boost": 1.0,
+   "n": 196
+  },
+  {
+   "seg": "roll",
+   "file": "runs/pb9look/beamC195_line.npz",
+   "n": 2082
+  }
+ ],
+ "md5": "ee86abd2bb205c2789e773d7821e383f",
+ "keys_md5": "b68a9acf191306b3a1fda3d6e2b32a6b"
+}

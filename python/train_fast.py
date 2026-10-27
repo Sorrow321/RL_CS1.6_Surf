@@ -2135,6 +2135,19 @@ def energy_gate(hit, ended, paid, ok, h, rec, end_d, h_min):
     return pay, ok, boot
 
 
+def time_gate_ok(ticks, idx, cross_row, slack_ticks):
+    """--demo-success-time (pbr9b2, 2026-10-27): whether each row is still IN TIME for the success
+    line - its physics ticks since its spawn (``ticks``; a spine row is stored with tick 0) at most
+    the spine's own ticks from the row it spawned at (``idx``) to the spine's crossing row
+    ``cross_row``, plus ``slack_ticks``. A spawn at or past the crossing row gets the slack alone;
+    a row that did not spawn on the spine (``idx`` -1) is not gated (True). The spine is the
+    policy's own fastest line, so the line's pace is the bar: a crossing that is right but slow
+    (a longer route, a landing walked) succeeds no more than a miss."""
+    idx = np.asarray(idx, np.int64)
+    allowed = np.maximum(0, int(cross_row) - idx) + int(slack_ticks)
+    return (idx < 0) | (np.asarray(ticks, np.int64) <= allowed)
+
+
 def crossed_with_energy(d, h, end_d, h_min) -> bool:
     """--auto-spine-energy: an eval episode counts for the quorum of an ENERGY spine only if, at
     the first tick its d reaches the success line, its energy height is >= ``h_min`` (such a
@@ -4929,6 +4942,17 @@ def main() -> None:
                          "descent, no deeper than the greedy's) is taught for that and not for "
                          "the depth the greedy reaches already. A low-energy crossing spends the "
                          "episode's chance. Off = the depth rule, bit-identical; not restored")
+    ap.add_argument("--demo-success-time", type=float, default=None,   # None = off
+                    help="--demo-success-d: a spine episode SUCCEEDS (and is paid "
+                         "--demo-success-bonus) only if its record crosses the success line no "
+                         "later than the spine itself did from the row the episode spawned at, "
+                         "plus SECS (a spawn off the spine is not gated; the map start is the "
+                         "spine's row 0). The spine is the policy's own fastest line, so a "
+                         "crossing on a slower route succeeds no more than a miss - a TIME "
+                         "rule beside --demo-success-energy's energy one (both may be given: "
+                         "both must hold). The curriculum's band counts only such crossings "
+                         "(a finish out of time is no success), so it stays where the pace "
+                         "fails. Off = bit-identical; config only when set, not restored")
     ap.add_argument("--demo-match-band", action="store_true",
                     help="--demo-file: a spawn whose origin the spine repeats (the line stood "
                          "still over several rows) is credited to its copy inside the frontier "
@@ -11800,6 +11824,20 @@ def main() -> None:
                 # pass, taught for the energy it carries there), and a swap sets the rule anew
                 print("--demo-success-energy with --auto-spine-energy: the starting spine is an "
                       "ENERGY spine (its quorum counts crossings with the energy)")
+        if args.demo_success_time is not None:
+            if args.demo_success_d is None or not float(args.demo_success_bonus or 0.0) > 0.0:
+                raise SystemExit("--demo-success-time gates the --demo-success-d line and its "
+                                 "--demo-success-bonus: give all three")
+            if float(args.demo_success_time) < 0.0:
+                raise SystemExit("--demo-success-time SECS must be >= 0")
+            if args.reward_per_decision:
+                raise SystemExit("--demo-success-time reads the crossing tick: it needs the "
+                                 "per-tick reward path (no --reward-per-decision)")
+            if args.auto_spine:
+                raise SystemExit("--demo-success-time is for a spine chosen for its pace; "
+                                 "--auto-spine swaps spines (not combined)")
+            if float(args.demo_success_alive or 0.0) > 0.0:
+                raise SystemExit("--demo-success-time and --demo-success-alive are not combined")
         if float(args.demo_success_alive or 0.0) < 0.0:
             raise SystemExit("--demo-success-alive SECS must be >= 0 (0 = off)")
         if float(args.demo_success_alive or 0.0) > 0.0:
@@ -14869,6 +14907,9 @@ def main() -> None:
     if args.demo_file and args.demo_success_energy is not None:
         # --demo-success-energy: dumped only when set (not restored: it belongs to its spine)
         meta["config"]["demo_success_energy"] = float(args.demo_success_energy)
+    if args.demo_file and args.demo_success_time is not None:
+        # --demo-success-time: dumped only when set (not restored: it belongs to its spine)
+        meta["config"]["demo_success_time"] = float(args.demo_success_time)
     if args.demo_file and args.demo_match_band:
         # --demo-match-band: dumped only when on (not restored: a property of the run)
         meta["config"]["demo_match_band"] = 1
@@ -15864,6 +15905,17 @@ def main() -> None:
         print(f"--demo-success-energy {float(args.demo_success_energy):g}: a spine episode "
               f"succeeds only if it crosses d <= {DEMO_END_D:,.0f} with energy height >= "
               f"{DEMO_H_MIN:,.0f} (the spine end's - {float(args.demo_success_energy):g})")
+    # --demo-success-time SECS: the crossing counts only in the spine's own time from the spawn
+    # row + SECS (DEMO_T = [slack ticks, the spine's crossing row])
+    DEMO_T = None
+    if DEMO_END_D is not None and args.demo_success_time is not None:
+        _tf = slots[0].reward_field if slots[0].reward_field is not None else slots[0].goal_field
+        DEMO_T = [max(0, int(round(TICK.secs_to_ticks(float(args.demo_success_time))))),
+                  spine_cross_row(demo.S, _tf.sample, DEMO_END_D)]
+        print(f"--demo-success-time {float(args.demo_success_time):g}: a spine episode succeeds "
+              f"only if it crosses d <= {DEMO_END_D:,.0f} within the spine's own ticks from its "
+              f"spawn row to row {DEMO_T[1]:,} + {DEMO_T[0]} ticks (spawns off the spine are not "
+              f"gated; the map start is row 0: {DEMO_T[1] + DEMO_T[0]:,} ticks)")
 
     def _alive_field():
         return (slots[0].reward_field if slots[0].reward_field is not None
@@ -15913,13 +15965,21 @@ def main() -> None:
         paid = DEMO_PAID[0]
         hit = (~ended) & (~paid) & (rec <= DEMO_END_D)
         pay = hit
-        if DEMO_H_MIN is not None:
+        if DEMO_H_MIN is not None and DEMO_T is None:
             # --demo-success-energy: only a crossing with the energy pays and succeeds (a
             # low-energy one is spent below); DEMO_OK[1] = the episodes' outcomes before the
             # ended rows re-anchor, which the curriculum's outcome count reads
             pay, DEMO_OK[0], DEMO_OK[1] = energy_gate(hit, ended, paid, DEMO_OK[0],
                                                        _en_height(), rec, DEMO_END_D,
                                                        DEMO_H_MIN)
+        elif DEMO_T is not None:
+            # --demo-success-time (with or without the energy rule): a row out of time reads an
+            # energy height below any floor, so the energy gate's bookkeeping does the rest
+            _h = np.where(time_gate_ok(slots[0].core.states_view["tick"], demo_idx, DEMO_T[1],
+                                       DEMO_T[0]), _en_height(), -1e30)
+            pay, DEMO_OK[0], DEMO_OK[1] = energy_gate(
+                hit, ended, paid, DEMO_OK[0], _h, rec, DEMO_END_D,
+                DEMO_H_MIN if DEMO_H_MIN is not None else -1e29)
         if ALIVE_T:
             # --demo-success-alive: a crossing (with the energy) pays and succeeds only once its
             # episode has stayed alive ALIVE_T ticks past it; ALV[3] = the outcomes before the
@@ -19529,11 +19589,17 @@ def main() -> None:
                                 # --demo-success-alive: the ended episodes' survived crossings
                                 if ALV[3] is not None:
                                     goal_now = goal_now | np.asarray(ALV[3])[ei]
-                            elif DEMO_END_D is not None and DEMO_H_MIN is not None:
-                                # --demo-success-energy: the ended episodes' energy crossings as
-                                # they stood before this tick re-anchored them
+                            elif DEMO_END_D is not None and (DEMO_H_MIN is not None
+                                                             or DEMO_T is not None):
+                                # --demo-success-energy / -time: the ended episodes' gated
+                                # crossings as they stood before this tick re-anchored them
                                 if DEMO_OK[1] is not None:
-                                    goal_now = goal_now | np.asarray(DEMO_OK[1])[ei]
+                                    if DEMO_T is not None:
+                                        # --demo-success-time: a finish out of time is no
+                                        # success either - the band stays where the pace fails
+                                        goal_now = np.asarray(DEMO_OK[1])[ei]
+                                    else:
+                                        goal_now = goal_now | np.asarray(DEMO_OK[1])[ei]
                             elif DEMO_END_D is not None:
                                 # --demo-success-d: the ended episodes' records as they stood
                                 # before this call re-anchored them on the new spawns
