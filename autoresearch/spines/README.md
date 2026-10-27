@@ -353,3 +353,7 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   pocket; success line d <= 4,791 = 91.62%, out of reach from the pocket, whose states sit at d 5,230-5,407). No demo, no record.
 * `pbr8b4_mix6.npy` (6,613 rows; md5 f9ad3bf1cb3f007147a7fd01384d72f6): mix5 + b3 rows 10,812-11,587 (the hover to the finish, the
   part of the tube the policy has learned) once, so the tube skill keeps training while a curriculum works elsewhere.
+* `pbr8b4_c8k01.npy` + `.keys.npy` (9,600 rows): the trainer loop's own search-1 spine of run pbr8b4_c8 (auto/k01: the PLAIN
+  beam_tas line on c8's own 52.63B weights from the true spawn, 4,096 envs, horizon 98.5 s; extinct at 74 s) to d 551 = 99.04%
+  at (676, 2,798, -2,884), above the finish tube's last two kill plates; ducked through the whole tube. Its own held keys. No
+  demo, no record (pbr8b4, round 8).
