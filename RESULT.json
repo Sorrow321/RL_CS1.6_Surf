@@ -3,16 +3,17 @@
  "round": 8,
  "final": false,
  "best": {
-  "score": 83.139,
-  "eval_file": "/home/steam/ar_pb/runs/pbr8b4/pbr8b4_c1/traj_47080538112.jsonl",
-  "run": "pbr8b4_c1",
-  "step": 47080538112,
-  "ckpt": "/home/steam/ar_pb/runs/pbr8b4/pbr8b4_c1/ckpt_47073722368.pt",
+  "score": 90.682,
+  "eval_file": "/home/steam/ar_pb/runs/pbr8b4/pbr8b4_c2/traj_49397891072.jsonl",
+  "run": "pbr8b4_c2",
+  "step": 49397891072,
+  "ckpt": "/home/steam/ar_pb/runs/pbr8b4/pbr8b4_c2/ckpt_49386881024.pt",
   "recipe": [
-   "c1: resume of pbr7b2_c9's ckpt_latest (46,023,049,216, md5 50c3a56e...) on spine pbr8b4_k04d (the loop's search-4 plain beam line cut at row 8,375 = 85.71%, past the 82.1-83.6% ledge walk and the hole in catch sheet *265; success line 85.53%) + keys, c9's flag set unchanged (--lr 1e-4, the loop async, --auto-spine-energy 150, gain 500, 33 milestones) + k04c's 10,366 line as the 34th milestone"
+   "c1: resume of pbr7b2_c9's ckpt_latest (46,023,049,216, md5 50c3a56e...) on spine pbr8b4_k04d (the loop's search-4 plain beam line cut at 85.71%, past the 82.1-83.6% ledge walk and the hole in catch sheet *265) + keys, c9's flag set unchanged (--lr 1e-4, the loop async, --auto-spine-energy 150, gain 500, 33 milestones) + k04c's 10,366 line as the 34th milestone; from 47.48B the --spawn-states pool swapped in place for mix1 (start room + the post-hole line and tube chain), from 48.09B for mix2 (weighted to the tube plates); 82.372 -> 83.139 (47.081B)",
+   "c2 (11:07 UTC): c1's ckpt_latest (48,868,884,480, md5 5cd530cd...) on bridge spine pbr8b4_b1c (the policy's own plain beam line on c1's 48.487B weights to 80.20% + a reward-free GE chain rooted at that line's own fast states, la2: face surf -> ledge -> hole; cut at 85.92%, success line 85.74%) + keys, --demo-tau0 7211 (the chain's ledge landing), --spawn-states pbr8b4_mix2, every other flag as c1: 84.769 (49.020B), 90.682 (49.398B: 1/9 over the ledge and through the hole to the 90.7% pocket)"
   ],
-  "resume_from": "pbr7b2_c9/ckpt_latest.pt (46,023,049,216, md5 50c3a56e3d70db7bc66b59bbfac2caa9)",
-  "commit": "3d7effb"
+  "resume_from": "pbr8b4_c1/ckpt_latest (48,868,884,480, md5 5cd530cdb838282de931933553e13865)",
+  "commit": "b0c7ae7"
  },
- "summary": "c1 (k04d = the loop's search-4 line cut at 85.71%, c9's flags): 82.372 (resumed weights) -> 83.139 (47.081B, median 82.6%; hand-on ckpt_47073722368, pulled). The greedy dies at 82.3-83.1% diving onto catch sheet *265 instead of riding the east face onto a one-hull ledge (82.1-83.6%); k04's slow states did not transfer (the greedy arrives ~250 u/s faster). A reward-free GE rooted at the policy's own fast beam line (la2) found the face -> ledge -> hole -> tube line to 96.5% -> spines b1 / b1c; c2 (11:07 UTC) = c1's 48.869B weights on b1c from tau 7,211 (the ledge landing). f1 (the loop's line + a tube chain) and the spawn mix (mix2) train the tube beside. Next: the greedy over the ledge, then a finishing spine (b1 + a tube chain)."
+ "summary": "c1 (k04d, c9's flags): 82.372 -> 83.139; the greedy dived onto catch sheet *265 instead of riding the east face onto a one-hull ledge: k04's slow states did not transfer (the greedy arrives ~250 u/s faster). A reward-free GE rooted at the policy's own fast beam line (la2) found face -> ledge -> hole -> tube to 96.5% -> b1 / b1c; c2 on b1c from the ledge landing: 84.769, then 90.682 (49.398B; 1/9 over the ledge, through the hole, into the 90.7% pocket; hand-on ckpt_49386881024, md5 7fcdb47f..., pulled). la5 from b1's tube states reached the finish -> b2 (the policy's beam + 2 reward-free chains, true start to finish). c3 (11:50 UTC) = c2's 49.574B weights on b2 from its END (the tube's ~8 kill plates, the pocket's way round), the 80-86% stretch kept in the spawn pool (mix4). Next: the greedy through the tube to a finish."
 }
