@@ -288,4 +288,4 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   climb ramp (vz +561 at 73.48%), turn east on its wall, fly through the passage without stopping (571 u/s at 74.77%),
   drop and surf east to d 12,491 = 78.14%. The only boosted root is e01's x1.04. Keys = e01's, the greedy's own
   (fwd / side / duck of the action that produced each state) and the chain's (translated to the canonical views as
-  auto_spine.go_explore does). No demo, no record (pbr7b4, round 7).
+  auto_spine.go_explore does). Built by `autoresearch/analysis/pb_ge_from_greedy.py` (the root window [72.60, 73.44] % = the greedy's last 0.6 s before its stall by auto_spine's 500 u rule). No demo, no record (pbr7b4, round 7).

@@ -23,3 +23,7 @@ pbr7b4 (round 7) additions, ANALYSIS ONLY:
   fields): ~35 s for 8 short episodes, a few minutes for long ones (CUDA_VISIBLE_DEVICES=-1 nice -n 10).
 * `pb_approach.py L1,L2,... traj.jsonl|spine.npy[:lo:hi] ...` - the state at the first arrival at each progress level
   (position, |vxy|, heading, vz, h), per episode or spine: where two lines part at a gate.
+* `pb_ge_from_greedy.py` - the script that built spine `pbr7b4_c21app01` (a SEARCH on the policy's own states, not
+  a bench): the policy's greedy continuation of a spine row (record_ckpt --dump-states, step 1 in its docstring), then
+  auto_spine.go_explore rooted at that greedy line's states in a progress window (= its last 0.6 s before its stall by
+  auto_spine's rule), the deepest chain spliced, and the held keys. 12 min on 3 local threads found the passage.
