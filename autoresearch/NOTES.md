@@ -3271,3 +3271,9 @@ the operator's); this branch keeps a waiter on `box.py rent` and works offline m
   6,977 -> 6,487 in ~25 min (bands 17-21% under --demo-rate 0.2). Hand-on for 74.325: the trainer's own snapshot
   **ckpt_37659607040.pt** (208M before the eval, md5 bc0906cb..., pulled). The next patience search is due at the eval
   after 38.29B (~06:52 UTC).
+* 06:58 UTC: search 2 fired on patience at 38.321B (111 s): **the plain beam again**, to d 14,607 = 74.44% (598 u past the
+  greedy MEDIAN 15,205, which is still on the platform route at ~73.4%) -> spine k02 (autoresearch/spines/pbr7b1_c13k02),
+  success line 74.27%. So no Go-Explore stage has run in c13: the gain rule compares the beam with the greedy's median,
+  and while 8/9 greedy episodes take the slow route the beam's fast route to the wall's face always clears 500 u. The
+  32 u / select-energy GE only gets the wall once the median itself sits at the wall. Evals 37.94-38.32B: 74.282 /
+  74.224 / 73.683 / 74.255 / 73.983 / 74.255 (best still 74.325).

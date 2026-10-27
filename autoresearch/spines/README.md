@@ -257,3 +257,7 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   brake): tools/auto_spine.py's plain beam_tas line from the true spawn (4,096 stochastic copies of the policy, d-ranked,
   no fork, no boost, no explorer chain) to d 14,640 = 74.38% (the face of the 74.3% wall). Keys = the beam's own held
   keys. No demo, no record (pbr7b1, round 7).
+* `pbr7b1_c13k02.npy` + `.keys.npy` (6,799 rows; md5 902430b7d35f9596dd2dc6f8430bc97d / c836bc13bfb37bfc8756d9e597f0cf7f):
+  run pbr7b1_c13's search 2 (patience, 38.321B, on weights trained ~45 min on pbr7b1_c13k01): the plain beam_tas line from
+  the true spawn (4,096 stochastic copies, d-ranked, no fork, no boost, no explorer chain) to d 14,607 = 74.44% (the 74.3%
+  wall's face; the line's last contact at row 6,700). Keys = the beam's own held keys. No demo, no record (pbr7b1, round 7).
