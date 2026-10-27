@@ -379,3 +379,17 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   80.4% junction.
 * `pbr8b1_f1after_states.npy` (8,115 rows; md5 c9a7fb08cb4beb684e80122eaba02b58): f1 rows 7,521-8,061 (past the f1e cut: the
   platform-end landing, the hop-off and the drop to the lower level) tiled 15x, practised while f1e's spine stops at 83%.
+* `pbr9b3_f2.npy` + `.keys.npy` (8,772 rows; md5 2dc2bd73798caaf56a345522af470b0e / 65541444c930e80c6157c21782909214): a
+  FASTER LINE (clock ~67.31 s; the incumbent's greedy 68.66-69.61 s, the planner's 68.32 s): the plain beam_tas finish-objective
+  winner on the incumbent's own weights (pbr8b1_c12 55.039B; beam_best_states.py, keys from its trajectory) to row 7,410
+  (83.25%) + an UNBOOSTED exact Go-Explore chain (GE1b: explore_phase1 --exact-chains, 64 u x energy 32, --cell-heading 1,
+  view-follow, 8 ms, --select-energy 3, rooted at that line's own rows 7,360-7,440 x1.0; cell 105344 picked by
+  tools/energy_pick.py at 85.8-86.6%) cut at its row 190 (85.81%, in the drop) - it turns north at 83.3% and GLIDES past the
+  84% platform the policy lands on (energy height 2,431 at 84.95% vs the policy's ~1,720) - + the policy's own beam_tas finish
+  from that chain state (4,096/4,096 copies finish, 8.99 s). Built with stitch_spine.py (--no-cut) + tools/splice_roll.py.
+  No demo, no record.
+* `pbr9b3_f2e.npy` + `.keys.npy` (7,521 rows; md5 8ecd466f347996b749963df8f43603c7 / 8e1707a2ad08ee9839182170e0055f54): f2 cut
+  at row 7,520 (84.95%, the glide past the platform, energy height 2,431 u) - for --demo-success-energy 300: success only for a
+  crossing of d <= 8,702 (84.77%) with energy height >= 2,131 (the landing on the platform leaves ~1,650-1,750).
+* `pbr9b3_f2after_states.npy` (7,200 rows; md5 0f3e71307f262d9c630b866fd51e7f0d): f2 rows 7,521-7,700 (past the f2e cut: the
+  chain's spiral drop, the policy's own exit at its bottom and the start of the lower level) tiled 40x.

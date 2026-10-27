@@ -3990,3 +3990,31 @@ ckpt_45558005760 (82.652 at 45.564B).
   then a 3.7 s drop where the record takes ~1.4 s) and the lower level (the policy ~1.5 s slower than the record over 86-92%):
   the planner on the new weights (beam_tas --objective finish --score dv, ~2.5 min a wave) is the way to find the next line;
   distil it only after BC is fixed for the narrow yaw head.
+
+## pbr9b3 (round 9, slot 3) - 2026-10-27 20:42 UTC start
+
+Box: 58010989, RTX 3090, 0.372 $/h, Thailand (machine 141910; 64 visible threads, a 30.7-CPU quota), rented 20:45 UTC for
+3 h; the trainer ~233k steps/s. Slow link: `box.py pull` of two evals took ~5 min, scp of 1 MB ~1 min. Credit at the start
+$34.91 (reserve $10), no other box live. Incumbent: pbr8b1_c12 ckpt_55038705664 (117.711: 9/9 at 68.66 s).
+
+### Where the 68.66 s goes (20:50-21:10 UTC; the incumbent eval vs the record, YARDSTICK ONLY)
+* The 9 finishers of the incumbent eval are tightly bunched (68.66-69.61 s; first arrival at 80% 55.0-55.7 s). Against the
+  record the policy is ~9 s ahead at 70% and loses time in two places only:
+  1. **70.5-73% (~0.8 s)**: at the 70.3% corner (east -> south) the policy turns less tightly than the record, drifts to x
+     ~-980 (record x ~-1,300), bumps a wall at 71.5% (vz +669, energy 2,768 -> 2,619) and LOOPS west and back south
+     (72.0-72.06% for ~0.7 s). Round 7's "detour toward the 71.4% platform and back west", still in the line.
+  2. **84.3% -> 92% (~2.2 s)**: the policy flies over the 82-84% platform now, but descends too early (z 1,605 at 84.06% vs
+     the record's 1,683; the record gets a small upward kick at ~83.3%) and LANDS on the platform's west end at
+     (1,205, 3,010, 1,565): |v| 1,049 -> 347, energy 2,251 -> 1,648; then the spiral drop from a near standstill and the
+     lower level (86-92%) at ~1,000 u/s with energy ~1,400-1,480, where the record flies it at ~1,250-1,300 u/s with ~1,880.
+     A second landing at 91-92% (energy 1,481 -> 835) and the shaft entry cost ~0.4 s more.
+* The planner (beam_tas --objective finish --score dv, 4,096 copies, greedy-envs 32) on the incumbent weights: greedy 69.07 s
+  (and one greedy spawn FAILED at 59.98 s), best line **68.32 s** (+0.75 s), all 4,096 copies finish - and the line lands on
+  the platform at 84.36% exactly like the greedy (energy 2,420 -> 1,737) and on the lower level at 85.66% (-440 u). As in
+  round 8, the planner polishes, it does not change the route. Line states: runs/pbr9b3/look/plan1/line.npz (8,911 states).
+* c1 (20:48 UTC) = the incumbent's run continued: ckpt_55038705664 on f1e + keys with c12's exact flag set (round 8's "Next
+  round" command, --steps 6e9). Evals 115.486 (55.039B, 7/9, 68.75 s) / 115.502 (55.115B, 7/9, **68.29 s**). Per-minute
+  snapcopy beside it.
+* GE1 (21:03 UTC, beside c1, 12 threads, 15 min): explore_phase1 with the loop's GE settings (--exact-chains, 64 u x energy 32,
+  --cell-heading 1, view-follow, 8 ms, --select-energy 3, --roots-keep-all) rooted at the planner line's rows 7,330-7,495
+  (82.1-84.25%, every 3rd) x1.0 / x1.03 (112 roots): a line that does not land on the platform.
