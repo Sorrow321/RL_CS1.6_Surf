@@ -2,6 +2,18 @@
  "agent": "pbr7b1",
  "round": 7,
  "final": false,
- "best": null,
- "summary": "No box since the round start (20:25 UTC): the fleet's 1.2 $/h cap is held by two branches' boxes (1.031 $/h) and the cheapest acceptable offer is 0.35-0.39; a waiter retries box.py rent every 75 s and launches c13 (c12's ckpt_latest 36.67B on its search-2 spine pbr6b4_c12k02 to 74.33%, the loop with --auto-spine-args '--ge-select-energy 3 --ge-cell 32' and --auto-spine-patience 8e8). Offline (local CPU, no box): the next gate (74.3%) is a WALL at x -837 (clear from z ~2,140 standing / 2,120 ducked), passed by the record via a precise two-ramp surf at 72.5-73.5% at ~1,230 u/s; c12's policy hits it at z ~1,980 even with x1.45 speed; local Go-Explore (32 u cells, boosts to x1.2) reaches apex 2,124-2,135 and never past. New flag --auto-spine-args (CPU-tested, off = bit-identical)."
+ "best": {
+  "score": 73.697,
+  "eval_file": "/home/steam/ar_pb/runs/pbr7b1/pbr7b1_c13/traj_36659789824.jsonl",
+  "run": "pbr7b1_c13",
+  "step": 36659789824,
+  "ckpt": "/home/steam/ar_pb/runs/pbr7b1/pbr7b1_c13/ckpt_latest.pt",
+  "recipe": [
+   "c13: resume of pbr6b4_c12's ckpt_latest (36.659B, md5 d802b3e8) on spine autoresearch/spines/pbr6b4_c12k02 (+keys; c12's search-2 line to 74.33%) with c12's flag set + --demo-tau0 6531 --demo-rate 0.2 --demo-match-band --auto-spine-patience 8e8 --auto-spine-args '--ge-select-energy 3 --ge-cell 32' (the 26 milestones of c12's current.json)",
+   "73.697 is the run's FIRST eval (36.6598B, one PPO update after the resume): c12's weights re-measured, one episode at 73.7%"
+  ],
+  "resume_from": "pbr6b4_c12 ckpt_latest 36.659B <- the round-6 lineage",
+  "commit": "a0bee95"
+ },
+ "summary": "No box until 05:04 UTC (the fleet's 1.2 $/h cap held by two boxes since 20:34); then RTX 3090 box 57919810 and c13 (c12's ckpt_latest on its 74.33% spine k02, demo-rate 0.2, search patience 8e8, the loop's Go-Explore with --ge-select-energy 3 --ge-cell 32 via the new --auto-spine-args flag). Best so far 73.697 = c13's first eval (c12's weights). Offline: the next gate (74.3%) is a WALL at x -837 (clear from z ~2,140) that the record passes by a precise two-ramp surf at ~1,230 u/s; c12's policy hits it at z ~1,980 even with x1.45 speed; local Go-Explore (32 u cells, boosts to x1.2) gets to apex 2,135 and never past."
 }
