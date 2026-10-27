@@ -3,21 +3,22 @@
  "round": 8,
  "final": false,
  "best": {
-  "score": 112.071,
-  "eval_file": "/home/steam/ar_pb/runs/pbr8b3/pbr8b3_c6/traj_51845791744.jsonl",
-  "run": "pbr8b3_c6",
-  "step": 51845791744,
-  "ckpt": "/home/steam/ar_pb/runs/pbr8b3/pbr8b3_c6/ckpt_51837927424.pt",
+  "score": 114.281,
+  "eval_file": "/home/steam/ar_pb/runs/pbr8b3/pbr8b3_c7/traj_52140441600.jsonl",
+  "run": "pbr8b3_c7",
+  "step": 52140441600,
+  "ckpt": "/home/steam/ar_pb/runs/pbr8b3/pbr8b3_c7/ckpt_52140441600.pt",
   "recipe": [
    "c1: resume of pbr7b2_c9 ckpt_latest (46.023B, md5 50c3a56e...) on spine pbr7b2_k04c with c9's flag set (round-5 to-continue block + --demo-match-band --auto-spine-patience 0 --auto-spine-ge-minutes 5 --auto-spine-energy 150 --auto-spine-async --lr 1e-4, 33 milestones); evals 82.359-82.528; the loop's search 1 (46.175B) found a branched beam line to 94.59%",
    "c2: resume of c1's ckpt_latest (46.384B, md5 d8dce63d...) on spine pbr8b3_k01c (search 1's line cut by the new --auto-spine-cut-ahead rule at 83.92%) with c1's flags + --auto-spine-cut-ahead 1000, 34 milestones; 83.103 at 46.384B; the greedy learned the 81% ramp ride onto the 82.5% platform in ~35 min: 90.697 (46.913B), 92.699 (47.064B: ep5 through the platform walk, the 84.5% drop and the loop to the finish shaft, 92.70% at z 280), 90.875; the loop's search 1 in c2 (47.22B) swapped in its plain beam cut at d 8,049 (85.9%) by the rule",
    "c3: resume of c2's ckpt_latest (47.936B) on spine pbr8b3_k01d (search 1's c1 line cut by the cut-ahead rule against the 90.7% greedy frontier, 92.44%; c2's search 2 from the true start could not reach the greedy) with c2's flags, 36 milestones; 92.660 / 92.550",
    "c4: resume of c3's ckpt_latest (48.015B) on k01d with --demo-tau0 7951 and the new --auto-spine-from-spine 4 (the loop's beams start on the current spine 4 s before the greedy frontier), every other flag as c3; 94.852 (48.167B), 95.383 (48.922B: ep3 to z -1,033 in the finish shaft); the loop's from-spine searches: 1 (19 s, cut at 94.4%), 2 (beam+GE, 259 s, cut at 96.5%)",
    "c5: resume of c4's ckpt_latest (49.813B) on spine pbr8b3_k03p (c4's search-1 spine to row 8,699 + the policy's own plain beam from there, cut by the rule at 96.28%; k02's x1.04-boosted GE chain had stalled the curriculum) with c4's flags (from-spine 4, cut-ahead 1000), 38 milestones; the curriculum taught the shaft-entry maneuver: 96.500 (50.795B), 96.582 (50.871B, median 96.4%); 98.484 (51.022B: 2/9 past the z -1,640 blade to 98.35/98.48% at z ~-2,580, 5/9 at 96.5%) while its curriculum walked a x1.04-boosted GE chain from its search 1 (erosion at 51.097B: 5/9 back at the 74.4% block)",
-   "c6: the 98.484 weights (c5's ckpt_51014795264) on spine pbr8b3_g2 (the policy's own greedy line to 2 s before its death at the z -1,640 blade + the policy's own energy-fork branched beam to 98.13%) with c5's flags + --auto-spine-ge-boost '1.0;1.04;1.08;1.12', 39 milestones; 98.341 / 98.461 / 98.452 (median 98.4%), then 109.846 at 51.393B: 2/9 greedy episodes FINISH from the true start, best 71.28 s (the human record on our zones: 75.18 s); 110.969 (51.770B, 3/9, best 70.94 s), 112.071 (51.846B: 4/9 finish, best 71.22 s, median 99.7%)"
+   "c6: the 98.484 weights (c5's ckpt_51014795264) on spine pbr8b3_g2 (the policy's own greedy line to 2 s before its death at the z -1,640 blade + the policy's own energy-fork branched beam to 98.13%) with c5's flags + --auto-spine-ge-boost '1.0;1.04;1.08;1.12', 39 milestones; 98.341 / 98.461 / 98.452 (median 98.4%), then 109.846 at 51.393B: 2/9 greedy episodes FINISH from the true start, best 71.28 s (the human record on our zones: 75.18 s); 110.969 (51.770B, 3/9, best 70.94 s), 112.071 (51.846B: 4/9 finish, best 71.22 s, median 99.7%)",
+   "c7: the 112.071 weights (c6's ckpt_51837927424) on spine pbr8b3_f1 (g2's greedy line + branched beam + an UNBOOSTED Go-Explore chain into the finish box; c6's own search 2 had handed back a x1.04-boosted chain whose last 0.5 s its curriculum failed 100%) with c6's flags, 40 milestones; 108.721 (1/9), 110.969 (3/9, 70.93 s), 110.936, 114.281 (52.140B: 6/9 finish, median 100%, best 71.58 s)"
   ],
   "resume_from": "pbr7b2_c9/ckpt_latest.pt (46,023,049,216, md5 50c3a56e3d70db7bc66b59bbfac2caa9)",
-  "commit": "25d92de"
+  "commit": "(see git log)"
  },
- "summary": "GREEDY FINISHES from the true start: 109.846 (c6 51.393B, 2/9, 71.28 s) -> 112.071 (c6 51.846B, 4/9, best 71.22 s; 70.94 s at 51.770B) vs the record's 75.18 s. Path: c1 82.53 -> c2 83.10/92.70 (new --auto-spine-cut-ahead: the loop's spines end 1,000 u past the greedy frontier) -> c4 94.85/95.38 (new --auto-spine-from-spine: the loop's beams start on its spine, not the true start) -> c5 96.58/98.48 (k03p: the policy's own beam through the shaft's z -600 blade, replacing a x1.04-boosted GE chain) -> c6 finishes (g2: the greedy's own recorded line + its own branched beam; new --auto-spine-ge-boost for unboosted-first GE). Next: reliability (2/9 -> 9/9) and time."
+ "summary": "GREEDY FINISHES from the true start, 6/9 by the end: 109.846 (c6, 2/9, 71.28 s) -> 112.071 (c6, 4/9) -> 114.281 (c7 52.140B: 6/9 finish, best 71.58 s; 70.93-70.94 s in earlier evals) vs the human record's 75.18 s. New generic loop flags: --auto-spine-cut-ahead (segments end 1,000 u past the greedy), --auto-spine-from-spine (beams start on the spine), --auto-spine-ge-boost (unboosted Go-Explore first) + auto_spine's prefix fallback. Lesson: Go-Explore chains from x1.04-boosted roots stalled the curriculum three times in the finish shaft; spines from the policy's own lines (its greedy recording, its own beams) + short unboosted chains carried it."
 }

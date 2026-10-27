@@ -3804,3 +3804,10 @@ ckpt_45558005760 (md5 6dec286c...), eval 82.652 at 45.564B. Credit at the start:
   warning - and killed the session before the next command; the trainer was untouched.)
 * **pbr8b3_c7** (15:35 UTC): the 112.071 weights (c6's ckpt_51837927424) on f1 + keys (success line d <= 101), c6's flags,
   40 milestones (+ g2's 1,169). c6 stopped at ~52.0B.
+* **c7 on f1: 99.450 (51.838B = c6's 112.071 weights) / 108.721 (1/9) / 110.969 (3/9, 70.93 s) / 110.936 (3/9) / 114.281
+  (52.140B: 6/9 FINISH, median 100%, best 71.58 s; episodes 71.6-72.6 s)**; the others 99.06% and 99.73% (the final
+  blade) and 72.9% (the old 74.4% block). Hand-on: ckpt_52140441600 (the copier's copy of the search's own save AT the
+  eval step, md5 20ba145cbc5130211742daef42e48007), pulled. The quorum (6/9 past d <= 101, greedy frontier d 12) fired
+  search 1, which cannot beat a frontier of 12 by 500: the distance loop is over - from here the gains are reliability
+  (6/9 -> 9/9, +1.11 each) and time (0.033 per s). f1's curriculum sits at rows 9,645-9,650 (inside the GE chain) at
+  0.2% while the greedy finishes on its own route.
