@@ -3480,3 +3480,9 @@ ckpt_35907960832 (md5 160da9eb...), eval 73.590 at 35.918B. Credit at the start:
   1,565 at ~50-240 u/s (rows 7,500-7,900, 82.2-83.3%: a walk), drops to z ~800-900 at 85-90% and ends at (637, 2,918, 470) falling
   at 1,017 u/s, t 70.5 s. The record (ANALYSIS ONLY) runs the same corridor (82% (2,445, 2,408, 1,823), 86% (894, 3,563, 838),
   92% (637, 2,892, 739)). What stops the greedy is the turn north at ~80.4% (the *265 sheet), where the sampled beam survives.
+* c8 after k04's swap: evals 80.796 / 80.780 / 80.731 (44.97-45.12B, medians 80.3-80.6%): every greedy still dies at the 80.4% turn
+  north, while k04's curriculum, walking back from 92.5%, sat at rows ~8,180 (84.5%, the drop to the lower level) at 27-36% - ~1,200
+  rows before the turn with ~55 min left. So **c9** (06:55 UTC): c8's ckpt_latest (45,186,285,568, md5 90410697...) on
+  **k04c** = k04 cut at row 7,450 (82.04%; success line d <= 10,366 = 81.86%, past the turn and the climb to z ~1,814, out of a
+  dive's reach), the 33 milestones c8 carried (+ 14,499 / 13,097 / 12,500 / 11,634), every other flag as c8. The loop stays on: 5/9
+  past 81.86% fires search 5. First eval 80.543 (median 78.0%). A second copier keeps c9's per-minute snapshots.
