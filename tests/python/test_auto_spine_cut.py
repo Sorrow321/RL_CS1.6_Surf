@@ -66,6 +66,7 @@ def test_train_only():
     sys.path.insert(0, str(ROOT / "tools"))
     import record_ckpt
     assert "auto_spine_cut_secs" in record_ckpt.TRAIN_ONLY
+    assert "auto_spine_cut_beyond" in record_ckpt.TRAIN_ONLY
 
 
 @needs_pb
@@ -80,7 +81,8 @@ def test_the_first_eval_cuts_the_launch_spine(tmp_path):
         # the first eval decides: a cut (the spine reaches the frontier and runs 5 ticks past it)
         # or none (it does not)
         assert ("--auto-spine-cut-secs: the launch spine CUT at row" in out
-                or "--auto-spine-cut-secs: the stored line ends" in out), out[-6000:]
+                or "--auto-spine-cut-secs: the stored line is in use to its end; not cut" in out
+                or "; not cut (greedy frontier" in out), out[-6000:]
         cfg = json.loads((ROOT / "runs" / run / "run.json").read_text())["config"]
         assert cfg["auto_spine_cut_secs"] == 0.05
     finally:
@@ -186,3 +188,78 @@ def test_flag_off_is_bit_identical(tmp_path):
     finally:
         for dd in (a, b):
             shutil.rmtree(dd, ignore_errors=True)
+
+
+def _old_respawn():
+    """surfgym/respawn.py as it was before --auto-spine-cut-beyond (first-parent history)."""
+    import importlib.util
+    import tempfile
+    r = subprocess.run(["git", "rev-list", "--first-parent", "--max-count=200", "HEAD"],
+                       capture_output=True, text=True, cwd=str(ROOT), timeout=60)
+    for ref in (r.stdout.split() if r.returncode == 0 else ()):
+        s = subprocess.run(["git", "show", f"{ref}:python/surfgym/respawn.py"],
+                           capture_output=True, cwd=str(ROOT))
+        if s.returncode == 0 and b"beyond_frac" not in s.stdout:
+            p = Path(tempfile.mkdtemp()) / "respawn_old.py"
+            p.write_bytes(s.stdout)
+            spec = importlib.util.spec_from_file_location("surfgym.respawn_old", p)
+            m = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(m)
+            return m
+    return None
+
+
+def _demo(mod, n=200):
+    s = _line(n)
+    return mod.DemoCurriculum(s, window=5, rate=0.3, grow=5, front_frac=0.8, seed=7), s
+
+
+def test_beyond_draws_and_flag_off_identity():
+    import surfgym.respawn as new
+    old = _old_respawn()
+    if old is None:
+        pytest.skip("no pre-change respawn.py in the first-parent history")
+    start = _line(3)
+    a, _ = _demo(new)
+    b, _ = _demo(old)
+    for _ in range(3):                                # off: byte-identical pools, same rng stream
+        pa, pb = a.build_pool(start, 512), b.build_pool(start, 512)
+        assert pa.tobytes() == pb.tobytes()
+    c, _ = _demo(new)
+    c.beyond_frac = 0.25                              # a share with nothing beyond the cut: off
+    assert c.build_pool(start, 512).tobytes() == _demo(new)[0].build_pool(start, 512).tobytes()
+    far = _line(50, step=-10.0)                       # stand-in rows past the cut (x <= 0)
+    c.beyond = far
+    p = c.build_pool(start, 512)
+    n_fresh = max(1, int(round(512 * 0.10)))
+    n_beyond = int(round((512 - n_fresh) * 0.25))
+    assert len(p) == 512
+    tail = p[-n_beyond:]
+    assert np.all(tail["origin"][:, 0] <= 0.0) and len(np.unique(tail["origin"][:, 0])) > 10
+    body = p[n_fresh:-n_beyond]
+    assert np.all(body["origin"][:, 0] >= 0.0)       # the spine draws stay on the spine
+
+
+@needs_pb
+def test_the_beyond_share_follows_the_cut(tmp_path):
+    k = ROOT / "autoresearch" / "spines" / "pbr7b2_k04c.npy"
+    if not k.exists():
+        pytest.skip("no k04c spine")
+    line = tmp_path / "line.npy"
+    np.save(line, np.load(k)[:1000])
+    run = "aspc_beyond"
+    try:
+        r = _run_demo(run, LOOP + ["--auto-spine-cut-secs", "0.05", "--auto-spine-cut-beyond",
+                                   "0.2", "--steps", "4096", "--demo-file", str(line)], tmp_path)
+        out = r.stdout + r.stderr
+        assert r.returncode == 0, out[-6000:]
+        assert "--auto-spine-cut-beyond 0.2: that share of the curriculum's spine draws" in out
+        assert "the launch spine CUT at row" in out, out[-6000:]
+        assert "--auto-spine-cut-beyond: 20% of the spine draws over the" in out
+        cfg = json.loads((ROOT / "runs" / run / "run.json").read_text())["config"]
+        assert cfg["auto_spine_cut_beyond"] == 0.2
+    finally:
+        shutil.rmtree(ROOT / "runs" / run, ignore_errors=True)
+    bad = _run_demo("aspc_bad3", LOOP + ["--auto-spine-cut-beyond", "0.2"], tmp_path)
+    assert bad.returncode != 0 and "give it" in (bad.stdout + bad.stderr)
+    shutil.rmtree(ROOT / "runs" / "aspc_bad3", ignore_errors=True)

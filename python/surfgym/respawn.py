@@ -157,10 +157,20 @@ class DemoCurriculum:
     def _lo(self) -> int:
         return self._band()[0]
 
+    # train_fast --auto-spine-cut-beyond X (pbr8b2): a share X of the demo draws uniform over
+    # ``beyond`` = the stored line past the cut spine's end (untracked spawns: they are not
+    # rows of this spine). None / 0 = off, the draws byte-identical
+    beyond = None
+    beyond_frac = 0.0
+
     def build_pool(self, start_pool: np.ndarray, pool_size: int = 4096,
                    fresh_frac: float = 0.10) -> np.ndarray:
         n_fresh = max(1, int(round(pool_size * fresh_frac)))
         n_demo = pool_size - n_fresh
+        n_beyond = 0
+        if self.beyond is not None and len(self.beyond) and self.beyond_frac > 0.0:
+            n_beyond = int(round(n_demo * self.beyond_frac))
+            n_demo -= n_beyond
         self._move()
         d_lo, d_hi = self._draw()
         if self.front_frac > 0.0:
@@ -172,6 +182,10 @@ class DemoCurriculum:
         else:
             idx = self.rng.integers(d_lo, d_hi + 1, n_demo)
         fresh = start_pool[self.rng.integers(0, len(start_pool), n_fresh)]
+        if n_beyond:
+            far = np.asarray(self.beyond, STATE_DTYPE)
+            return np.concatenate([fresh, self.S[idx].copy(),
+                                   far[self.rng.integers(0, len(far), n_beyond)].copy()])
         return np.concatenate([fresh, self.S[idx].copy()])
 
     def match(self, origins: np.ndarray) -> np.ndarray:

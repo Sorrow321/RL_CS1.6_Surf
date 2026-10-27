@@ -5037,6 +5037,15 @@ def main() -> None:
                          "92.54% line sat ~1,200 rows past the greedy's death for 55 min; cut "
                          "at 82.04% the greedy cleared the turn in ~25 min). 0 = off, "
                          "bit-identical; config only when set; never restored")
+    ap.add_argument("--auto-spine-cut-beyond", type=float, default=0.0,   # 0 = off
+                    help="--auto-spine-cut-secs: a share X in [0, 1) of the curriculum's spine "
+                         "draws is uniform over the STORED line past the cut (the stretch the "
+                         "rolls have not reached yet), taken proportionally from the band and "
+                         "the uniform draws: the later segments are practised while the cut "
+                         "walks toward them (the reverse curriculum's replay of the part near "
+                         "the goal). Such spawns are not curriculum outcomes and are paid by the "
+                         "ratchet and the finish bonus only (the success line lies behind them). "
+                         "0 = off, bit-identical; config only when set; never restored")
     ap.add_argument("--auto-spine-energy", type=float, default=None,   # None = off
                     help="--auto-spine: G > 0 adds an ENERGY stage to the search (auto_spine "
                          "--energy-gain G): when no deeper line exists, a line keeping >= G u "
@@ -11908,6 +11917,14 @@ def main() -> None:
               f"frontier (the launch spine at the first eval); a quorum rolls the cut on along "
               f"it, and a search line replaces it only when it ends deeper by "
               f"{float(args.auto_spine_gain):g}u")
+    if not 0.0 <= float(args.auto_spine_cut_beyond or 0.0) < 1.0:
+        raise SystemExit("--auto-spine-cut-beyond X must be in [0, 1) (0 = off)")
+    if float(args.auto_spine_cut_beyond or 0.0) > 0.0:
+        if not float(args.auto_spine_cut_secs or 0.0) > 0.0:
+            raise SystemExit("--auto-spine-cut-beyond draws from the stored line past "
+                             "--auto-spine-cut-secs's cut: give it")
+        print(f"--auto-spine-cut-beyond {float(args.auto_spine_cut_beyond):g}: that share of the "
+              f"curriculum's spine draws is uniform over the stored line past the cut")
     if float(args.demo_success_alive or 0.0) != 0.0 and not args.demo_file:
         raise SystemExit("--demo-success-alive gates a --demo-file spine's success line: give it")
     if float(args.demo_stall_cut or 0.0) < 0.0:
@@ -14947,6 +14964,8 @@ def main() -> None:
             meta["config"]["auto_spine_async"] = 1
         if float(args.auto_spine_cut_secs or 0.0) > 0.0:
             meta["config"]["auto_spine_cut_secs"] = float(args.auto_spine_cut_secs)
+        if float(args.auto_spine_cut_beyond or 0.0) > 0.0:
+            meta["config"]["auto_spine_cut_beyond"] = float(args.auto_spine_cut_beyond)
         if args.auto_spine_energy is not None:
             meta["config"]["auto_spine_energy"] = float(args.auto_spine_energy)
         if float(args.demo_stall_cut or 0.0) > 0.0:
@@ -16026,6 +16045,17 @@ def main() -> None:
         print(f"--auto-spine-cut-secs: {CUT_T} ticks past the greedy frontier; the launch spine "
               f"({demo.n} rows, end d {CUT['end_d']:,.0f}) is the stored line, cut at the first "
               f"greedy eval", flush=True)
+        if float(args.auto_spine_cut_beyond or 0.0) > 0.0:
+            demo.beyond_frac = float(args.auto_spine_cut_beyond)
+
+    def _cut_beyond():
+        """--auto-spine-cut-beyond: the curriculum draws its share past the cut from the stored
+        line's rows beyond the curriculum spine's end."""
+        if float(args.auto_spine_cut_beyond or 0.0) > 0.0 and CUT["S"] is not None:
+            demo.beyond = np.array(CUT["S"][demo.n:], copy=True)
+            print(f"[{global_step:>13,d}] --auto-spine-cut-beyond: "
+                  f"{float(args.auto_spine_cut_beyond):.0%} of the spine draws over the "
+                  f"{len(demo.beyond)} stored rows past the cut", flush=True)
 
     def _cut_apply(n_keep, why, tau0=None):
         """--auto-spine-cut-secs: the curriculum's spine becomes the stored line's first
@@ -16035,6 +16065,7 @@ def main() -> None:
         _f = slots[0].reward_field if slots[0].reward_field is not None else slots[0].goal_field
         old = float(DEMO_END_D)
         demo.reset_spine(np.array(CUT["S"][:n_keep], copy=True), tau0=tau0)
+        _cut_beyond()
         if CUT["keys"] is not None:
             DEMO_KEYS[0] = np.asarray(CUT["keys"][:n_keep], np.int32)
         _de = float(_f.sample(np.asarray(demo.S[-1]["origin"], np.float64)[None])[0])
@@ -16319,6 +16350,8 @@ def main() -> None:
                       f"{_rc} ({CUT_T} ticks past the greedy frontier "
                       f"{float(AUTO.get('med', med)):,.0f})", flush=True)
         demo.reset_spine(sp)
+        if CUT_T:
+            _cut_beyond()
         if DEMO_KEYS[0] is not None:
             # the new spine's held keys (auto_spine writes them next to it), else none
             _kp = res.get("keys")
