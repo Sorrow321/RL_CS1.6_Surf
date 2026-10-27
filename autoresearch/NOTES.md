@@ -3613,3 +3613,7 @@ of its 1.2 $/h cap; the only other passing offer was a 0.621 $/h 5080). Incumben
   So the policy (trained up to k04d's end at 85.7% and by its own reservoir past it) already flies most of 84-93%; what
   stops the greedy is the ledge walk, ~650 rows behind the curriculum's tau.
 * The curriculum: [8,080 / 8,105] at 24-34% for ~35 min (the hop band before the hole). It walks, slowly.
+* 09:51 UTC: the curriculum got through the hop band (8,080 -> 7,820 in ~20 min; bands 33-38%) and walks the ledge. Evals
+  82.530 / 82.768 / **83.139** (47.081B, median 82.6%: 8/9 past the turn, all dying on the sheet at 82.3-83.1%, creeping
+  north-west; handoff ckpt_47073722368, 6.8M before, md5 c4bfbd75..., pulled) / 82.903 / 83.020 / 82.803. Update kl median
+  0.23-0.32 (c9 ran at 0.27-0.35 with spikes to 8.6 and held), value loss ~55-63.
