@@ -3,19 +3,21 @@
  "round": 8,
  "final": false,
  "best": {
-  "score": 90.699,
-  "eval_file": "/home/steam/ar_pb/runs/pbr8b4/pbr8b4_c4/traj_50633113600.jsonl",
-  "run": "pbr8b4_c4",
-  "step": 50633113600,
-  "ckpt": "/home/steam/ar_pb/runs/pbr8b4/pbr8b4_c4/ckpt_50633113600.pt",
+  "score": 90.71,
+  "eval_file": "/home/steam/ar_pb/runs/pbr8b4/pbr8b4_c6/traj_51177848832.jsonl",
+  "run": "pbr8b4_c6",
+  "step": 51177848832,
+  "ckpt": "/home/steam/ar_pb/runs/pbr8b4/pbr8b4_c6/ckpt_51177848832.pt",
   "recipe": [
    "c1: resume of pbr7b2_c9's ckpt_latest (46,023,049,216, md5 50c3a56e...) on spine pbr8b4_k04d (the loop's search-4 plain beam line cut at 85.71%, past the 82.1-83.6% ledge walk and the hole in catch sheet *265) + keys, c9's flag set unchanged (--lr 1e-4, the loop async, --auto-spine-energy 150, gain 500, 33 milestones) + k04c's 10,366 line as the 34th milestone; from 47.48B the --spawn-states pool swapped in place for mix1 (start room + the post-hole line and tube chain), from 48.09B for mix2 (weighted to the tube plates); 82.372 -> 83.139 (47.081B)",
    "c2 (11:07 UTC): c1's ckpt_latest (48,868,884,480, md5 5cd530cd...) on bridge spine pbr8b4_b1c (the policy's own plain beam line on c1's 48.487B weights to 80.20% + a reward-free GE chain rooted at that line's own fast states, la2: face surf -> ledge -> hole; cut at 85.92%, success line 85.74%) + keys, --demo-tau0 7211 (the chain's ledge landing), --spawn-states pbr8b4_mix2, every other flag as c1: 84.769 (49.020B), 90.682 (49.398B: 1/9 over the ledge and through the hole to the 90.7% pocket)",
    "c3 (11:43 UTC): c2's ckpt_latest (49,573,527,552, md5 aef2555f...) on finishing spine pbr8b4_b2 (b1 to row 10,755 + a reward-free GE chain la5 through the tube's lower kill plates to the finish) + keys from its END, --spawn-states pbr8b4_mix4 (b2's 78.6-85.9% rows: the approach, face surf, ledge, hole), b1c's 8,147 line as the 35th milestone: 90.647 / 90.660 / 90.685",
-   "c4 (12:35 UTC): c3's ckpt_latest (50,632,589,312, md5 000893fa...) at --demo-tau0 11314 with --demo-front-temp 0.2 (band keys 1.2, yaw sigma x1.2; was 0.5 / x6): 90.699 at 50.633B (= c3's final weights), 90.698 / 90.695 / 90.684"
+   "c4 (12:35 UTC): c3's ckpt_latest (50,632,589,312, md5 000893fa...) at --demo-tau0 11314 with --demo-front-temp 0.2 (band keys 1.2, yaw sigma x1.2; was 0.5 / x6): 90.699 at 50.633B (= c3's final weights), 90.698 / 90.695 / 90.684",
+   "c5 (12:58 UTC): c4's ckpt_latest (51,009,552,384) at --demo-tau0 11290 (above b2's doomed lip rows; it backed off at once): 90.699 / 90.696 (51.086B, median 90.7%) / 90.699; spawn pool swapped in place for mix5 (+ the lower level round the 90.7% pocket)",
+   "c6 (13:03 UTC): c5's ckpt_latest (51,177,324,544, md5 e1078fc2...) on spine pbr8b4_b3 (b2 to the tube's hover exit + the policy's own beam_tas line from there to the finish, found with --start-state) from its END, --spawn-states pbr8b4_mix5: 90.710 at 51.178B (= c5's final weights), medians to 90.7%"
   ],
-  "resume_from": "pbr8b4_c3/ckpt_latest (50,632,589,312, md5 000893fa655cebf526b8d993d066550b)",
-  "commit": "c94c5c6"
+  "resume_from": "pbr8b4_c5/ckpt_latest (51,177,324,544, md5 e1078fc266f7971dc69b8105fdcf8e13)",
+  "commit": "50fd1e0"
  },
  "summary": "82.652 -> 90.699 (pbr8b4_c4 50.633B; hand-on ckpt_50633113600, md5 9a4224ab..., pulled). c1 (the loop's k04 cut at 85.71%): 83.139; the greedy dived onto catch sheet *265 instead of riding the east face onto a one-hull ledge. A reward-free GE from the policy's own fast beam line (la2) found face -> ledge -> hole -> tube: b1 / b1c; c2 on b1c: 90.682 (the first greedy over the ledge, to the 90.7% pocket). la5 finished the tube from b1's states: b2, a finishing line from the true start (the policy's beam + 2 reward-free chains); c3/c4/c5 = b2's backward curriculum from the finish: through the 3 lower kill plates and the chamber's ring in ~25 min, then stuck on 5 'doomed' rows (11,314-11,318: 0.03 s above a slanted lip the chain clipped) - c4's milder band heat (0.2, x1.2) took the next band to 95-97%, and c5 (12:58 UTC) restarts at tau 11,290 above the doomed slice. Next: the tube's upper half, the pocket, then a greedy finish."
 }
