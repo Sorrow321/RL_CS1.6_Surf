@@ -3441,3 +3441,7 @@ ckpt_35907960832 (md5 160da9eb...), eval 73.590 at 35.918B. Credit at the start:
   over; (3) stability - c7 learned the same line in ~10 min at lr 3e-4 and collapsed (stacked milestone bonuses -> kl 4.5);
   c8 at lr 1e-4 with one line per crossing took ~55 min and held; (4) the loop then ran itself (quorum 7/9 -> async search ->
   the policy's own beam line as the next spine).
+* c8 after the block: evals 77.469 / 77.688 / 77.638 / **78.219** (43.986B, median 77.6%) - the loop runs itself: search 2 fired at
+  43.835B (7/9 past k01's 77.08% line), ran 192 s beside the training and swapped in the BRANCHED beam (7,100 states to 78.30%,
+  success line 78.13%); 1/9 past it at 43.986B. Handoff for 78.219: ckpt_43929567232 (56M before, md5 75e0993a..., pulled);
+  c8's ckpt_latest 44.061B pulled too. Update kl median 0.13 (spikes to 1.5 still occur; no collapse).
