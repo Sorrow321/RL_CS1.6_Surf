@@ -3396,3 +3396,18 @@ ckpt_35907960832 (md5 160da9eb...), eval 73.590 at 35.918B. Credit at the start:
 * **What did not work / cost time:** e1 (the low route: energy after the launch, not before it); e5 (passes the platform high and
   meets the ramp from the wrong place); turned roots at the fork (survive, keep no energy); a kl 0.92 update right after the
   first energetic quorum collapsed c4 to 61.5% (restarted from the search's own copy of the pre-collapse weights).
+* **Look-ahead GE 20: THE BLOCK FALLS TO THE APPROACH DIRECTION, not to more energy.** Roots = the energetic dh line's own states
+  at 72.55-73.05% (rows 6,322-6,358, heading SSE at ~1,1xx u/s, vz -228..-462) with the horizontal velocity TURNED to head
+  straight south, speed kept, x1.0 and x1.04: one x1.0 root (row 6,356, 73.0%) goes **over the block to 77.95%** (x1.04: 74.45%
+  - a precise, chaotic entry). The energy the policy now carries is enough; what it lacks is a ~20 deg heading change toward
+  straight south in the last ~0.05-0.3 s before the launch ramp (an air turn of ~3 deg/tick at 1,100 u/s - in its reach).
+* **Depth spine `autoresearch/spines/pbr7b2_d2`** (stitch_spine: the dh beam line to row 6,356 + that chain, 8,520 rows to 77.95%;
+  ge_replay 25/25 exact): it rides the ramp (vz +183 -> +529 over 73.24-73.44%), crosses the block DUCKED at z ~2,086-2,132, lands
+  on the floor beyond at ~74.4% and then crawls (explorer-style, ~0-260 u/s) for ~8 s to 75.7%, drops, and crashes at 77.6%.
+  `pbr7b2_d2c` = d2 cut at row 7,010 (74.80%, on the floor past the block; success line d <= 14,499 = 74.63%, out of reach of any
+  line that does not clear the block).
+* **pbr7b2_c7** (04:14 UTC): c6's ckpt_latest (42.928B, md5 eced6274...) on d2c + keys, the depth rule, 32 milestones (+ e6's
+  15,831), the loop as before. First eval: 0/9 past 74.63%, greedy median 14,707 (74.27%).
+* (A process note: `pgrep -f auto_spine.py` inside a `box.py ssh` command matches its own shell - CLAUDE.md's pkill warning - and
+  read as a leftover search; `ps ... | grep -v grep` showed none. And Python's atexit does not run on SIGTERM, so a trainer killed
+  that way while an async search runs would orphan the search - kill it by hand, or SIGINT the trainer.)
