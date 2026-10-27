@@ -316,3 +316,6 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   reward-free Go-Explore chain down the finish tube). Every row is the policy's own line or a reward-free search from it; no
   demo, no record (pbr8b4, round 8). Swapped in for pbr8b4_c1's spawn-states pool on the box (atomic replace of the launch
   path; the trainer re-reads the file on an mtime change).
+* `pbr8b4_mix2.npy` (4,094 rows; md5 below in NOTES): mix1 reweighted toward the finish tube's kill plates: 1,071 start-room
+  rows (seed 1) + f1 rows 8,376-10,518 once + f1 rows 9,185-9,335 (the z ~250 plate approach) and 9,335-9,405 (the z ~-136
+  plate) four more times each. Same provenance as mix1 (policy's own line + a reward-free chain from it); no demo, no record.
