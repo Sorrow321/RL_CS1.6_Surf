@@ -3282,3 +3282,24 @@ ckpt_35907960832 (md5 160da9eb...), eval 73.590 at 35.918B. Credit at the start:
   the next one (71.2-72.9%, -190 u) exposed - round 5's corridor picture ("one energy spine per corner").
 * Look-ahead GE 12 (01:12 UTC): that beam line's rows 6,260-6,343 (70.3-71.35%, before the hop) x1.0 / 1.04,
   --select-energy 3, 15 min: a hop-free line that keeps the energy to the launch - and over the block?
+* **The loop's own energetic quorum fired on e3** (c4): energetic crossings 0/9 for 50 min, then 4/9 (40.374B) and **9/9**
+  (40.450B: "9/9 greedy episodes cross d <= 19,194 with energy height >= 2,609") - the GREEDY learned the walkway corner in
+  ~900M steps (~60 min). Search 1 ran BESIDE the training (`--auto-spine-async`, first live use: launched at 40.450B on a
+  copy of ckpt_latest, ended at 40.519B after 298 s, the trainer at ~256k steps/s throughout) and swapped in the plain beam
+  as a depth spine k01 (6,600 states to 74.29%, success line 74.11%; saved in runs/pbr7b2/pbr7b2_c4/auto_k01/).
+* **Then c4 collapsed**: evals 61.505 (40.525B) / 62.261 (40.601B), medians 61.2-61.5% - every episode dies at gate 18 (the
+  61.5% gap hop), a skill held for two rounds. One update at 40.468B logged **kl 0.92** (the run's usual 0.05-0.3); episode
+  length fell ~3,000 -> ~1,800, reward ~300 -> ~210. The eval right before (40.450B: 74.267, 9/9 energetic crossings) was
+  healthy and the swap came only 6M steps before the first collapsed eval. Cause not established: the search ran in its own
+  process (training numerics untouched; GPU / CPU only shared), and a kl spike also followed the first wave of success
+  bonuses (9/9 energetic crossings -> many +50 payments at once). Watch the next async search for a repeat.
+* **Look-ahead GE 12** (the e3-trained beam's rows 6,260-6,343 = 70.3-71.35%, x1.0 / 1.04, --select-energy 3): the explorer
+  keeps +146..+251 u over that beam through 71.5-73.0% (e.g. h 2,764 at 1,091 u/s at 72.75%, on the west side, no hop) and
+  +129..+178 at 73.25-74.0%; deepest 74.38% (its energetic cells near 73.5% lie east of the launch ramp).
+* **Energy spine `autoresearch/spines/pbr7b2_e5`** (energy_splice G 150): that beam (c4 40.246B) to row 6,320 (71.08%) + a
+  106-state chain from it x1.04, airborne past the platform (no hop), to cell 57,109 at 72.32%, h 2,735 (+217 u over the
+  beam there, 105 ticks against 197), ~1,030-1,080 u/s.
+* **pbr7b2_c5** (01:33 UTC): resumed from the search's own copy of c4's weights at 40.4499B (auto/k01/ckpt.pt, md5
+  20f467f8...: the 9/9-energetic, pre-collapse weights) on e5 + keys, `--demo-success-energy 75` (cross d <= 15,920 = 72.14%
+  with h >= 2,660), 30 milestones (+ e3's 19,194 and k01's 14,794), the loop as in c4. First eval: 0/9 with the energy, 8/9
+  cross the line.
