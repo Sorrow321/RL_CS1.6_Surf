@@ -3321,3 +3321,29 @@ Independence: only this branch and $AR_HOME/incumbent/ are read. c12's later wei
   `--auto-spine-patience P --auto-spine-beyond-line` is the trainer doing what I did by hand at 23:47 UTC (which found
   the 77.86% line). tests/python/test_auto_spine_beyond_line.py 3/3; the loop's flag-off identity test still passes.
 * c21's first minutes: the contact band 3.4-4.6% (c20: 0.3 -> 2.9%), the band after it 49-51%; evals 74.260 / 74.008.
+
+### pbr7b4 round 7 lesson (DRAFT, 02:50 UTC; finalised at wrap-up)
+* **Score 73.590 -> 74.345** (pbr7b4_c17, eval 39.737B; best episode 74.35%; hand-on ckpt_39674445824, md5 54d3e59a...,
+  pulled). The gate the lineage stopped at - the 73.5% gap at the end of the walkway after the 71.3% landing - was passed
+  by the greedy line from the true start (74.078 at 38.227B, 23:22 UTC; medians 73.3-73.5% from then on): the greedy
+  no longer brakes onto the platform but flies the policy's own fast line through 71% (845 u/s), bounces off a ramp at
+  71.6%, runs south along x ~-1,250 and climbs into the 74.4% passage, where it falls short (the passage needs ~+125 u
+  of energy at the climb and a different climb).
+* **What did it:** the loop's search on c13 (the incumbent's recipe continued) found the policy's OWN beam already fast
+  through 71% plus GE chains past the gap; the x1.04 chain (GE stage 1, 12 u short of the loop's gain, chosen by hand -
+  then built as `--auto-spine-near-gain`) was learned by the backward curriculum in ~1.5 h (c14-c17), where the loop's
+  own x1.08 pick stalled at its root. Stability fixes were needed on the way: `--target-kl 0.15` (single updates at kl
+  0.4-0.8 preceded early-gate collapses) and `--demo-replay-frac 0.1` (rehearsal of the spine behind the curriculum;
+  collapses in 5/9 evals in c16 -> 2/7 in c17).
+* **New, generic, default off, bit-identical, CPU-tested:** `--auto-spine-async` (the search runs in the background,
+  ~5% of training throughput instead of 20-30 min of paused GPU per search), `--demo-replay-frac R`,
+  `--auto-spine-near-gain M` (auto_spine --near-gain), `--auto-spine-beyond-line` (a patience search measured from the
+  taught line). The searches of this round ran by hand in the background (the async idea) and found: the x1.12 line to
+  77.86% (pbr7b4_c17m01), an energy line through the bounce (+154 u, e01) and a focused energy line to the climb
+  (+125 u at 73.6%, e02: 15 min of GE, roots in the last 6 s, finer energy cells, energy-weighted selection).
+* **What is open (the next gate, 74.4%):** two skills, measured by a bench from exact spine rows: (1) the ENERGETIC
+  bounce at 71.6% - a keys-timing contact (forward + right strafe in the last 2-5 ticks; the greedy loses 340-620 u
+  there, e02's chain 97); curricula on e01/e02 sat at its contact band for an hour+ (0.3-4% -> 9-11% in c21); (2) the
+  passage TECHNIQUE - from rows after the energetic contact the greedy keeps h ~2,500-2,600 at the climb (more than
+  the x1.12 root) and still stops at 74.2% 12/12: it flies the old chain's slow glide; the x1.12 chain climbs
+  differently (rising up the ramp, landing in the passage at x -803).
