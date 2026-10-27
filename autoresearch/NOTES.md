@@ -3707,3 +3707,17 @@ ckpt_45558005760 (md5 6dec286c...), eval 82.652 at 45.564B. Credit at the start:
   -559) at row 8,880, then (688, 2,711, -1,007) at 95.31%); 0/9 past k02's line (96.3%). The curriculum's band is that very
   crossing (rows 8,882-8,887, 12-52%): the right window, learning. Box extended to 15:33 UTC (credit $17.84, fleet burn
   1.06 $/h, 7.4 h to the reserve).
+* c4 evals 94.827 / 94.881 / 94.641 / 94.845 (49.53-49.75B): still at the z -600 blade, 0/9 past 96.3%; the curriculum
+  oscillated at rows 8,862 (8% success) <-> 8,867 (64%) for ~40 min. **Why**: k02 (search 2's line) is the plain beam only
+  to row 8,738 (92.2%); from there it is the GE stage-1 chain from a **x1.04 boosted root** (uniform explorer actions,
+  606 states, uncut to the finish, d 0), so the curriculum asks the greedy to copy an explorer's precise path at 4% more
+  speed than it has - round 5's lesson ("a depth spine from a boosted root asks for speed the policy does not have"). A
+  probe confirms it: from k02's own rows 8,760 / 8,820 / 8,850 the policy's whole population (4,096, c4's 49.8B weights)
+  dies at the blade (frontier d 3,161-3,356, extinct within 200-400 ticks).
+* **pbr8b3_c5** (13:10 UTC): c4 stopped at 49.813B (no search running), resumed on **`autoresearch/spines/pbr8b3_k03p`**:
+  c4's search-1 spine rows 0-8,699 + the PLAIN beam of the policy's own population from row 8,700 (the endgame dry run's,
+  c4's 48.7B weights: no fork, no boost) to 97.6%, cut by the cut-ahead rule against c4's frontier 3,128 at row 8,997
+  (96.28%), success line d <= 2,228; it crosses the blade at x ~720-790 like k02, on the policy's own line. Every other
+  flag as c4 (from-spine 4, cut-ahead 1000), 38 milestones. Generic lesson: the loop's GE stage may hand back a chain from
+  a boosted root; when the curriculum stalls inside such a chain, a plain beam of the policy's own population through
+  the same gate (when one exists) is the better spine.
