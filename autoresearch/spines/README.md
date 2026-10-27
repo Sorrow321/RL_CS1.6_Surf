@@ -275,3 +275,6 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   row's state x1.04, 311 states) to the deepest cell keeping >= 120 u more energy height than the line: 73.61%, h 2,471
   (+125 u; it glides from the 71.6% bounce to the 73.1% ramp and reaches the climb at 989 u/s). An energy spine.
   Keys = the beam's and the chain's own. No demo, no record (pbr7b4, round 7).
+* `pbr7b4_spawnmix01.npy` (10,035 rows): a --spawn-states pool = `pbr1b1_entry_ge_states.npy` (7,399 rows, as before)
+  + rows 6,797-9,432 of `pbr7b4_c17m01.npy` (2,636 rows: the x1.12 GE chain from the policy's own beam line through the
+  74.4% passage, the room behind it, the drop and the surf to 77.86%). Both policy-derived; no demo, no record.
