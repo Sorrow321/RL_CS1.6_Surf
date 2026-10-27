@@ -3702,3 +3702,8 @@ ckpt_45558005760 (md5 6dec286c...), eval 82.652 at 45.564B. Credit at the start:
   (8.9M before the eval, md5 d8173269cea1dbcc294a8f93d50fa887), pulled. The loop's **search 2** (from the spine, quorum
   ~48.997B) ended at 49.063B after 259 s: NEW SPINE from **beam+ge** (the GE stage beat the beam), cut by the rule at d
   2,016 (96.5%), success line d <= 2,116 (96.3%); greedy frontier then 3,027 (94.7%).
+* c4 evals 94.847 / 94.712 / 94.882 / 94.701 (49.15-49.37B): **8/9 greedy episodes now reach 94.5-94.7%** and die at the
+  same blade, z -575..-625 at (564-682, 2,838-2,941) - 150-180 u WEST of where c4's k02 crosses that height ((745, 2,906,
+  -559) at row 8,880, then (688, 2,711, -1,007) at 95.31%); 0/9 past k02's line (96.3%). The curriculum's band is that very
+  crossing (rows 8,882-8,887, 12-52%): the right window, learning. Box extended to 15:33 UTC (credit $17.84, fleet burn
+  1.06 $/h, 7.4 h to the reserve).

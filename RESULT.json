@@ -15,7 +15,7 @@
    "c4: resume of c3's ckpt_latest (48.015B) on k01d with --demo-tau0 7951 and the new --auto-spine-from-spine 4 (the loop's beams start on the current spine 4 s before the greedy frontier), every other flag as c3; 94.852 (48.167B), 95.383 (48.922B: ep3 to z -1,033 in the finish shaft); the loop's from-spine searches: 1 (19 s, cut at 94.4%), 2 (beam+GE, 259 s, cut at 96.5%)"
   ],
   "resume_from": "pbr7b2_c9/ckpt_latest.pt (46,023,049,216, md5 50c3a56e3d70db7bc66b59bbfac2caa9)",
-  "commit": "(see git log)"
+  "commit": "429bcee"
  },
  "summary": "New generic loop flags this round: --auto-spine-cut-ahead G (new depth spines end G u past the greedy frontier) and --auto-spine-from-spine S (the search's beams start on the current spine S s before the greedy frontier: from the true start the stochastic population lost its leaders at gates the greedy passes). c1 82.53 -> c2 (k01c, cut 83.92%) 83.103 -> 92.699 (the platform falls) -> c3 (k01d, cut 92.44%) 92.660 -> c4 (from-spine) 94.852 -> 95.383 (48.922B, one episode to z -1,033 in the finish shaft; medians up to 94.7%). Look-ahead (analysis): the shaft's twisting catch blade above the finish box falls to a 0.1-min Go-Explore from the policy's own states. Open: reliability (3-4/9 die at 61-83%), the shaft's catches, the blade."
 }
