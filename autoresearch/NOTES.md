@@ -4073,3 +4073,17 @@ used for the search work below and then blocklisted and released.
   out of time is no success), so the band stays where the pace fails. Refused with --auto-spine, --demo-success-alive and
   --reward-per-decision. TRAIN_ONLY in record_ckpt. The point: the policy's own fastest line (beam + a GE hand-over) sets
   the bar, generically - nothing map-specific; the slack is the only constant.
+
+### c4: g2e + the time gate (22:13 UTC -) and GE B2 on the shaft rim (22:15-22:45 UTC)
+* **pbr9b2_c4** = the incumbent on `pb9_g2e` (+ keys), `--demo-success-time 0.5 --demo-success-energy 150` (a crossing of
+  d <= 8,669 = 84.83% counts within the spine's own ticks from the spawn row to row 7,458 + 65; from the map start 7,523 ticks
+  = 57.7 s, where the incumbent's greedy needs ~59.2 s; and h >= 1,788), spawn pool `pb9_g2after_states.npy`, c3's other
+  flags, lr 5e-5. kl median 0.27 / p90 0.42. The band holds at rows 7,403-7,408 = the beam's 84% PLATFORM HOP (4 ground
+  ticks) with success swinging 25-66%: the time gate binds exactly where the walking route loses. Evals 115.478 (7/9,
+  69.01 s) / 114.358 (6/9) / 113.247 (5/9) / 115.476 (7/9) - the greedy unchanged so far.
+* GE B2 (GE A's settings, rooted at 48 airborne g2 states over 90.0-91.15%, before g2's own 12-tick landing on the shaft rim
+  at 91.19%, -500 u): 9.6 min to a goal hit; the explorer skips the rim landing (h ~1,700 at 92% vs 1,233) and reaches 92-95%
+  0.47-0.59 s sooner, but is slower than the policy below 96%. Hand-overs to the policy's beam: inside the shaft (chain ticks
+  100-265, 92.5-95%) the population dies within 100 ticks every time; at ticks 30-83 (91.4-92%) it finishes (the greedy envs
+  in 3.88-4.63 s), for ~65.70 s in all - no better than g2's own 65.73 s. Not used: the gain lies where only the explorer's
+  own precise sheet-threading keeps it.
