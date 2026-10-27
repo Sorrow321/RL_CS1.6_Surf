@@ -3267,7 +3267,7 @@ Independence: only this branch and $AR_HOME/incumbent/ are read. c12's later wei
   72.25-72.5%, +23 at 72.75-73.0%, negative from 73.25% (the climb). So the explorer's energetic bounce keeps ~+200 u
   but its chains lose it again on the south run within ~1 s: a learned bounce alone may not bring the x1.12 root's
   +125 u to the climb. (The record, ANALYSIS: same lane at x ~-1,245, 1,225 u/s, h ~2,740, gaining slightly on the run.)
-* **pbr7b4_c19** (01:11 UTC): c18 continued (its ckpt_latest 40.511B, md5 6c4e413c...; c18's flags + --demo-tau0 6368).
+* **pbr7b4_c19** (01:06 UTC): c18 continued (its ckpt_latest 40.511B, md5 6c4e413c...; c18's flags + --demo-tau0 6368).
   In parallel, a FOCUSED energy search on the same weights (runs/pbr7b4_c18/manual_e02/): energy stage only, 15 min of
   GE (was 5), `--energy-roots-secs 6` (roots before the largest losses of the last 6 s before the climb, not 12),
   `--ge-energy 16` (finer energy cells), `--ge-select-energy 1`, --energy-gain 120: a line keeping the energy TO the
