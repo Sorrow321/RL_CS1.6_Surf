@@ -3816,3 +3816,19 @@ of its 1.2 $/h cap; the only other passing offer was a 0.621 $/h 5080). Incumben
 * **pbr8b4_c7** (13:36 UTC): c6 stopped at ~51.78B, ckpt_latest 51,782,352,896 (md5 2323825e...) at `--demo-tau0 10812`,
   **`--demo-front-temp 2.0 --demo-front-view 1.5 --demo-front-cold 0.5`** (hot half: keys at 3.0 to flip the duck, yaw x1.5;
   cold half scores the band), every other flag as c6. Record gate passed (2 + 4).
+
+### The hover is a contact, not the pushes; c7 null at the duck band; c8 = the pocket first (13:55-14:05 UTC)
+* The core folds basevelocity.z into velocity at +bv x frametime per tick (pm_add_correct_gravity), so the two pushes'
+  800 u/s exactly CANCEL gravity: they hold vz constant, they do not stop a fall. la5's chain went -1,184 -> -3 u/s in two
+  ticks at (846, 2,703, -1,004) because its STANDING hull hit something at the hover shaft's east edge (x ~846; the shaft
+  at z -948 is open over x ~600-840); then it floats at vz ~0 for ~300 rows. A ducked hull misses that contact and falls on
+  at full speed into *181 (the probe's 8/8). So the band needs "do not duck here" - a habit, learnable only from examples.
+* c7 (`--demo-front-cold 0.5`, hot half keys 3.0 / yaw x1.5), 20 min: cold band [10,807] 0.0-0.1%, [10,812] 43-45% - the hot
+  half did not produce enough no-duck entries to teach it. c7 evals 90.694 / 90.687 / 90.700 / 90.633 / 90.693 / 90.650
+  (medians 74.4-90.6%: most greedy episodes now reach the 90.7% pocket).
+* **pbr8b4_c8** (13:59 UTC): the greedy's next gate is the pocket, the curriculum is ~1,000 rows of tube away from it. c7
+  stopped at ~52.24B, ckpt_latest 52,235,862,016 (md5 82fafefc...) on **`autoresearch/spines/pbr8b4_b3p`** (b3 cut at row
+  9,950 = 91.79%, on the tube-top ledge past la2's way round the pocket; success line 91.62%, out of the pocket's reach: its
+  d >= 5,230 against the line's 4,791) from its end, `--spawn-states pbr8b4_mix6` (mix5 + the learned tube rows 10,812-11,587,
+  ~2.4% of spawns, so the tube skill keeps training), `--demo-front-temp 0.5 --demo-front-view 3 --demo-front-cold 0.5`,
+  every other flag as c7. The k04d / k04c pattern: a cut just past the greedy's gate, then the next spine.
