@@ -3537,3 +3537,49 @@ ckpt_35907960832 (md5 160da9eb...), eval 73.590 at 35.918B. Credit at the start:
   the loop's k04 in full (runs/pbr7b2/pbr7b2_c8/auto_k04, md5 f3f74722..., to 92.54%), with the c8/c9 flags (lr 1e-4, the 33
   milestones, the loop async); the next stops are the 5-row window on the south ramp at 78.9% (rows 6,810-6,815) and the turn
   north at ~80.4% (*265), then the drop to the lower level at ~84.5%.
+
+## pbr8b2 (round 8, slot 2) - 2026-10-27 08:33 UTC start
+
+Incumbent: pbr7b2_c9 82.652 (45.564B, hand-on ckpt_45558005760). c9's LAST eval (46.017B) was 82.564 with median 81.9%
+(5/9 past k04c's 81.86% line, dying on the *265 sheet at z ~1,460 north of the turn; 2/9 at the turn, 2/9 back at the 74.4%
+block): its quorum fired search 1 at 46.017B and the search died with the box at wrap-up. c9's ckpt_latest = 46,023,049,216
+(md5 50c3a56e3d70db7bc66b59bbfac2caa9), 6M steps after that eval: the start of this round.
+
+### Budget: locked out at the start (08:40-09:10 UTC)
+* Credit $22.0, reserve $10, fleet cap 1.2 $/h. At 08:40 the fleet burned 0.787 $/h and the cheapest passing offer (3090 0.422)
+  missed by $0.009; at 08:44 a third box took it to 1.056 $/h. Only 1-3 offers pass the filters (>= 32 threads, verified...).
+  A background waiter retries the protocol's `box.py rent` every 90 s (one waiter; it exits when a box is READY).
+
+### What the loop's k04 line says about the finish (analysis; the record as a yardstick only)
+* k04 (the loop's search-4 plain beam, 92.54%) ENDS at (637, 2,918, 470) falling at 1,017 u/s at 70.5 s: inside the finish
+  box's x/y (560-880, 2,608-2,928), ~3,950 u above it, at the top of the final shaft. The beam's horizon (the eval's longest
+  episode + 15 s, --auto-spine-extra-secs) ran out there; the line did not die.
+* The shaft is not a free fall: a solid slab func_wall *40 (x 560-880, y 2,608-2,928, z -1,737..-1,702) sits right over the
+  finish box, a solid block *43 (528-912, 2,576-2,960, z -2,688..-1,408) in its middle, trigger_push volumes *195/*196/*48
+  (angles -90: up, 175/375/425 u/s) and fall-catch teleports *181/*132 whose AABBs span the shaft (hull-probed, not boxes).
+  The record (yardstick) is at 92% at 72.4 s at (637, 2,892, 739) and SPIRALS down it (x 500-925, y 2,570-3,000, horizontal
+  ~1,200 u/s, vz to -2,000) into the finish at 75.45 s - 3 s. k04 is 1.7 s ahead of it at 92%.
+* Timing (yardstick): the policy line is far ahead of the record early (80% at 53.7 s vs 64.6 s) and gives most of it back
+  over 82-84% (k04 lands on a platform at z 1,565 and WALKS it west at 50-240 u/s for ~3 s, rows 7,487-7,850; the record
+  flies it at z ~1,700-1,800 at ~925 u/s). A finish by this line would be ~73-74 s, about the record's 75.18 s.
+* So: `--auto-spine-extra-secs 30` (generic: a search budget) gives the next searches room to find the descent.
+
+### `--auto-spine-cut-secs S` (new, c18a4a6; generic, default off, bit-identical)
+* Round 7's manual k04c cut as the loop's own rule. The launch spine (and every DEEPER search line) is the STORED line; the
+  curriculum's spine is it cut S s of line past the first row that reaches the greedy eval's median deepest d - at the first
+  eval, then ROLLED on at every quorum without waiting for a search. The search still runs at each quorum (and at the
+  patience); its line replaces the stored one only when it ends deeper by --auto-spine-gain. A line the cut rolls past
+  becomes a milestone unless another lies within --demo-success-d (round 7's de-cluster rule). No map constant: S is seconds
+  of the policy's own line past its own greedy frontier.
+* Tests (CPU, tests/python/test_auto_spine_cut.py, 6/6): the cut-row rule and the de-cluster on synthetic lines; TRAIN_ONLY in
+  record_ckpt; a smoke run whose first eval cuts / declines to cut the launch spine; a STUB search (RLSURF_AUTO_SPINE_TOOL, a
+  test seam: unset = the tool) whose deeper line replaces the stored line (cut, keys sliced) and whose equal line is kept
+  out; flag off bit-identical to the trainer before the change (config + every progress.csv number but time/*). Also checked
+  by hand on k04c's first 1,000 rows: "the launch spine CUT at row 39", "the cut ROLLS on at row 41", the clustered old line
+  not made a milestone.
+* On k04 with c9's last frontier (median deepest d 10,331 = 81.92%, first reached at k04 row 7,427): S = 4 s cuts at row
+  7,949 (83.44%, success line 83.27%) - past the platform walk the greedy misses (it falls to *265 at z ~1,460 instead of
+  landing at z 1,565), before the drop at ~85%.
+* Planned c1: resume c9's ckpt_latest on the FULL k04 (`autoresearch/spines/pbr7b2_k04`, committed with provenance) + keys,
+  c9's flags (lr 1e-4, the 33 milestones, the loop async) + `--auto-spine-cut-secs 4 --auto-spine-patience 3e8
+  --auto-spine-extra-secs 30` (no --demo-tau0: the curriculum restarts at the cut's end).
