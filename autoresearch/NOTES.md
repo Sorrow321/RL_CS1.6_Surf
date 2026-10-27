@@ -3895,3 +3895,36 @@ ckpt_45558005760 (82.652 at 45.564B).
 * c11 (17:10-17:32 UTC, stage 2, no BC): evals **116.501** (53.302B = c9's final weights: 8/9 finish, **71.65 s**, the fastest
   greedy finish of the round) / 114.247 / 112.040 / 113.140 / 114.270 (6/9, 71.90 s); the band walked f1e back to 6,070 (77%);
   the quorum fired at 53.604B (5/9 past 82.8%) -> the loop's search 1 beside the training. Credit topped up to $37.56.
+
+### pbr8b1 round 8 lesson (DRAFT, 17:36 UTC; finalised at wrap-up)
+* **Score 82.652 -> 117.582**: the FIRST GREEDY FINISHES FROM THE TRUE START (108.664 at 13:33 UTC, 73.42 s) and then **9/9
+  finishing** (c6 51.894B, best 72.53 s; hand-on ckpt_51886161920, pulled); fastest greedy finish of the round 71.65 s (c11).
+  The human record (yardstick only) is 75.18 s.
+* **What did it, in order:**
+  1. Keep the search's lines - c1's loop search found a branched beam to 96.47% that the horizon cut and the trainer never
+     applied (I stopped c1 first). Two horizon-cut lines (k04 92.54%, b3 96.47%) were the policy's own and far ahead of the
+     greedy. `--auto-spine-extra-secs 45` for the next search; check `auto/kNN/spine.json` before stopping any run.
+  2. The k04c rule again: b3 cut just past the greedy's failure (b3c, 86.31%) taught the 82-84.5% platform in ~65 min
+     (83.2 -> 93.8).
+  3. The final shaft (a stack of rotating teleport kill sheets, mapped with hull probes) was crossed by the POLICY'S OWN
+     beam from the rim (1,604/4,096 finishes); short GE runs from the policy's own states found the goal in 0.2-1.3 min
+     but their chains were slower and harder to learn than the beam line. tools/beam_best_states.py turns a finishing beam
+     into per-tick states for stitch_spine.
+  4. **A spawn share is not a sample share**: a start-room or map-start spawn runs a 70 s episode, a shaft spawn ~1 s, so the
+     shaft got a few % of the samples while ~35% of spawns aimed at it; the band stalled 40 min, then crossed the whole
+     shaft in ~35 min after the start-room states left the `--spawn-states` pool. The trainer re-reads that pool when its
+     mtime changes, so a NARROW window of own-line states just ahead of the trainer's band is a second backward curriculum
+     that needs no restart - it worked wherever the window's bonus (finish or milestone) was within ~1-1.5 s, and failed as
+     uniform practice over long stretches.
+  5. Reliability came with training on the full line (c5 -> c6: 1/9 -> 9/9 in ~1.5 h).
+* **The time (user goal since 13:39: < 70 s) - not reached; the analysis for the next round:** split times vs the record say
+  the policy is ~9 s ahead at 80% and loses it on the 82-86% platform (walked at the 250 u/s ground cap; the record flies it
+  at ~950 u/s) and in the drop / lower level. An airborne route exists (GE 6: from the planner line's own 80.4% state x1.04
+  over the platform, -3.9 s to 84.3%), f1 = planner + that chain + the policy's own finish = 70.81 s. Stage 2 (f1 cut at
+  83% with `--demo-success-energy 150`: only an AIRBORNE crossing succeeds) taught sampled spawns to fly unboosted in ~20
+  min, and the greedy began to switch (up to 4/9 airborne crossings, finishes 71.65-72.0 s). The planner (beam_tas
+  --objective finish --score dv) tops out at ~71.2 s on these weights.
+* **What did not work:** BC (the expert loop's distil step): the first update reads kl ~17 at coef 0.5 AND 0.05 (resumes
+  without BC: ~0.03) - the yaw head's sigma is ~0.013 and the BC view targets (rebuilt from the rows' physical view) sit ~1.3 z
+  from mu. Needs a trainer change (BC on the categorical heads only, or the planner's own drawn z as the view target). Also:
+  uniform spawn practice over long stretches; energy-ranked planner waves (die at 81%); branched planner waves (no faster).
