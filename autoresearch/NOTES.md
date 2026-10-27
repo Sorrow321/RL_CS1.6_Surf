@@ -3632,3 +3632,18 @@ of its 1.2 $/h cap; the only other passing offer was a 0.621 $/h 5080). Incumben
   trained by the policy; f1's backward curriculum teaches it bottom-up from the finish. Plan: k04d until the greedy passes
   the hole (the ledge), then f1 (or the loop's own search spine, extended down the tube by a GE chain like la1 if its beam
   stops at a plate).
+
+### c1's spawn-states pool swapped for mix1: the tube trained beside the ledge (10:15 UTC)
+* Why not a second trainer on the box (GPU ~37% busy between 99% update spikes, trainer ~6.5 of 32 threads): a parallel run
+  on f1 would learn the tube while c1 learns the ledge, but two policies cannot be merged, each would still need the other's
+  half, and both would run slower. One policy has to get both.
+* `--spawn-states` is RE-READ when the file's mtime changes (train_fast: "an outer loop can refresh the own-state pool
+  without restarting the run; replace it atomically") and fills 20% of every training spawn pool. So the launch path
+  (autoresearch/spines/pbr1b1_entry_ge_states.npy ON THE BOX; the committed file is unchanged, the original kept as
+  runs/pbr1b1_entry_ge_states.orig.npy there) was atomically replaced by **`autoresearch/spines/pbr8b4_mix1`** (4,286 rows,
+  md5 837a974e...: 2,143 of the start-room states + f1's rows 8,376-10,518 = the loop line from k04d's end to 92.2% + la1's
+  tube chain to the finish). Re-read at step 47,480,045,568. From there ~10% of the training episodes start somewhere
+  between 85.7% and the finish (uniform over the line, the hover included), ~10% in the start room (was 20%), while the k04d
+  curriculum (the reservoir share) works the ledge. Generic: uniform starts over the policy's own line + a reward-free chain
+  (Florensa-style replayed starts), no new code.
+* Curriculum at the swap: [7,750] (82.7%, mid-ledge) at 36%; it walked 7,820 -> 7,750 in ~15 min.
