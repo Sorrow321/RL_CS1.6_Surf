@@ -3906,3 +3906,37 @@ ckpt_45558005760 (md5 6dec286c...), eval 82.652 at 45.564B. Credit at the start:
   trainer's SB3-style PPO early stop: an update halts once its approx KL exceeds 0.75; c7's p90 was ~0.55) - the generic
   guard against one destructive update, for the last ~35 min and for the next round's runs. Its FIRST early stop came
   on the very first update after the resume (kl 0.94, epoch 1 minibatch 9) - the resume spike every relaunch had.
+* c8 (19:15-19:53, the 117.660 weights + `--target-kl 0.5`): 115.450 (7/9, **69.84 s** - the fastest finish of the round)
+  / 116.546 (8/9) / 117.624 (9/9) / 116.547 (8/9) / 109.825 (2/9: a dip, 6/9 at 56.6%) / 115.414 (7/9) / 116.535 (8/9) /
+  117.636 (9/9, 70.92 s) / 113.192 (5/9) - no collapse in 9 evals (c7 collapsed after 3.4 h, so this is not yet proof).
+
+### pbr8b3 round 8 lesson (wrap-up, 2026-10-27 19:59 UTC) - supersedes the DRAFT above
+* **Score 82.652 -> 117.660: the map is FINISHED by the greedy from the true start - 9/9 in one eval, best 70.20 s**
+  (pbr8b3_c7, eval 54,556,360,704; hand-on ckpt_54553214976, 3.1M before the eval, md5 7337cc4d3714077bc6172eed477f358a,
+  pulled; c7's ckpt_latest is the COLLAPSED 55.1B weights, ~550M after, so the hand-on rule keeps the snapshot). The human
+  record on our zones is 75.18 s; the policy's finishes ran 69.84-72.6 s and from 52.9B on every eval of c7 / c8
+  finished 5-9 of 9 (bar the collapse). Score path: 82.53 (c1) -> 83.10 / 92.70 (c2) -> 94.85 / 95.38 (c4) -> 96.58 /
+  98.48 (c5) -> 109.85 (c6, the first finish, 2/9) -> 112.07 (4/9) -> 114.28 (c7, 6/9) -> 117.64 (9/9) -> 117.66 (9/9,
+  70.20 s). Box: one RTX 3090 (57938261, 0.377 $/h), 08:35-20:00 UTC.
+* **What did it, in order:**
+  1. `--auto-spine-cut-ahead 1000` (87d095c): the loop's new depth spines end 1,000 u past the greedy frontier.
+  2. `--auto-spine-from-spine 4` (58da965): the search's beams start on the current spine 4 s before the greedy frontier
+     (from the true start the stochastic population died at gates the greedy had learned; from the spine: 19 s searches).
+  3. Spines from the policy's OWN lines when the loop's Go-Explore stage handed back x1.04-boosted chains (three times;
+     each stalled the curriculum, c5 eroded): k03p (its own plain beam), **g2** (its own recorded greedy line + its own
+     branched beam: the first finish ~25 min later), **f1** (g2 + a short UNBOOSTED chain into the box: 6/9 in ~35 min,
+     9/9 in ~70 min). `--auto-spine-ge-boost` (c70f589) lets the loop run unboosted roots as a stage of their own;
+     auto_spine's prefix fallback keeps its later stages alive when the plain beam leaves no line.
+  4. Diagnosis by probes (beam_tas --start-state from spine rows and from the greedy's own dumped states) before acting.
+* **What did not / costs:** boosted GE chains (~2.5 h of curriculum time); record_ckpt cannot replay the trainer's
+  side-by-side eval (fixed for the next round by `--eval-dump-states`, 3d4301f); **c7 collapsed after 3.4 h stable**
+  (kl 3.36 / 2.81 updates -> 0/9, every episode back at the 56.6% shaft); a height-matched misreading; a `pkill -f`
+  self-match over ssh.
+* **Generic rules:** (1) cut a new spine just past the greedy's failure; (2) search from the spine or the greedy's own
+  line once the greedy beats its stochastic population; (3) prefer lines the policy flew and unboosted explorer chains;
+  (4) when the curriculum sits at one band for 30+ min, probe the population from the spine's own states; (5) guard a
+  valuable policy with `--target-kl` (0.5: an update stops past kl 0.75) - one destructive update undid 3.4 h.
+* **Next (if the program continues):** resume the hand-on (pbr8b3_c7/ckpt_54553214976.pt) on
+  `autoresearch/spines/pbr8b3_f1` with c8's flags (c7's launch line in the DRAFT above + `--target-kl 0.5`), and add
+  `--eval-dump-states` to cut a spine from the eval's own fastest finishing line. The distance loop is over (frontier
+  d ~0): the score's remaining headroom is time (0.033 per s; the policy flies 69.8-72 s) with 9/9 held.
