@@ -3757,3 +3757,21 @@ of its 1.2 $/h cap; the only other passing offer was a 0.621 $/h 5080). Incumben
   heat is a curriculum knob, the same on any map; the measurement says x6 yaw noise turns an able policy's 75% into the
   curriculum's 5-31% at precision bands. (A principled version: count the advance on cold band episodes only and keep a
   hot share for exploration - not built.)
+
+### Doomed rows: the curriculum stuck on 5 spine states it can never win from; c5 (12:51-12:58 UTC)
+* c4 evals: **90.699** (50.633B = c3's final weights; handoff the copier's ckpt_50633113600 at the eval's step, md5
+  9a4224ab..., pulled) / 90.622 / 88.074 / 90.698 (median 84.5%) / 90.695 / 90.684: every eval has 1-2 episodes over the
+  ledge into the 90.7% pocket.
+* c4's curriculum with the milder heat: band [11,319-11,323] at **95.7-97.5%** (it had been 14-31% hot), but tau oscillated
+  [11,319] <-> [11,314] for 15 min: "tau <- earlier [11,314] (94.3%)", then "backoff (17.6% over 348 eps)". b2's rows
+  11,314-11,317 fall at -558..-564 u/s with ~30 u/s horizontal; at row 11,318 the velocity drops to ~0 at (665, 2,900, -1,430):
+  the chain lands on a slanted lip at the shaft's mouth and slides off it north-west into the chamber's ring. From 0.03 s
+  above the lip with no horizontal speed (air acceleration adds <= 30 u/s along the wish direction) whether the hull clips
+  it is already decided: those rows are DOOMED (17.6% by chance), and after every backoff the step resets to 5 and the
+  curriculum tries the same 5 rows again - it can never pass by construction.
+* Probes (c4's 51.0B weights, greedy, 8 each): rows 11,160-11,170 (hover exit) 0/8 (the -1,100 shaft's kill corner),
+  11,240-11,250 0/8, 11,290-11,300 0/8 finishes but 3/8 past the disk (dying on the lower plates), 11,303-11,313 0/8 (the
+  disk) - above the doomed slice the policy was never trained (tau never got there).
+* **pbr8b4_c5** (12:58 UTC): c4 stopped at ~51.01B, ckpt_latest 51,009,552,384 (md5 dcc026b5...) at **`--demo-tau0 11290`**
+  (above the doomed slice), every other flag as c4. A generic remedy would be a band skip (when a band fails while the next
+  later one succeeds >= 90%, retreat tau by more than one window) or wider windows; not built.
