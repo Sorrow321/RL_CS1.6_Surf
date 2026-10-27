@@ -323,3 +323,10 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   population, a 2 s held-view burst at the fork, then its own actions; `--start-spine` the greedy line, `--start-row 9170`)
   to d 1,069 = 98.13%, no Go-Explore, no boost; not cut (the line ends before the rule's d 997); success line d <= 1,169.
   No demo, no record (pbr8b3, round 8).
+* `pbr8b3_f1.npy` + `.keys.npy` (9,801 rows; md5 71308f4c6672cab08d9177192539f43e / 80a59efc70b7bcc76d9b7b3f00c64018): a line
+  from the true start INTO THE FINISH BOX (d 1.1), by auto_spine.py (pbr8b3's start-spine fallback, `--ge-boost
+  "1.0;1.04;1.08"`) on c6's 51.37B weights: `--start-spine` pbr8b3_g2 at its last row 9,669 (the ledge at the spiral's
+  bottom); the plain beam from there to d 1,047; GE stage 1 UNBOOSTED (x1.0, tail roots: that line crawls 2.4 s past its
+  stall) -> a 386-state chain from row 9,415 (g2's own branched-beam part, z ~-1,300) around the twisting catch blade
+  into the box. Rows 0-9,170 are the policy's own greedy line (g2), 9,170-9,415 its own branched beam, the rest the
+  reward-free explorer's chain. No demo, no record (pbr8b3, round 8).
