@@ -3455,3 +3455,14 @@ ckpt_35907960832 (md5 160da9eb...), eval 73.590 at 35.918B. Credit at the start:
   170 u north of it and ~150 u too low: a dead end ~4-7 ticks above the catch sheet. The record (ANALYSIS ONLY) keeps z ~1,500
   along the south wall at y ~1,190-1,250 and surfs that ramp up (z 1,462 at 78.6%, 1,542 at 79%, 1,687 at 80%).
 * Look-ahead GE 21 (05:53 UTC, beside c8): k02 rows 6,880-7,095 (76.0-78.2%), x1.0 / x1.04 / turned -20 / +20 deg, 12 min.
+* Search 3 (44.212B, 236 s beside the training): the PLAIN beam on the eval's weights to d 11,534 = **79.82%** -> spine k03 (6,900
+  states, success line d <= 11,634 = 79.64%), swapped in at 44.267B; milestones + 12,500 (k02's line). k03 stays higher than k02
+  (z 1,419-1,455 at x 274-624), meets the south ramp's north edge at x ~1,200-1,250 (rows ~6,760-6,780: vz -373 -> +368, |v|
+  1,228 -> 804, a hard landing) and rides it up to z 1,539 at x 1,670, ending at (1,880, 1,366, 1,496) descending. The
+  curriculum works that landing (bands at rows 6,749-6,764, 24-31%; 86% from 6,759) as it worked k02's kick.
+* **78.906** (44.439B, median 78.64%; 0/9 past k03's line yet). Handoff: ckpt_44330123264 (108M before; pulled). From 06:08 UTC a
+  copier on the box (runs/pbr7b2_snapcopy.py) keeps ckpt_latest as ckpt_<step>.pt once a minute, so later bests have a snapshot
+  within ~16M steps before them (the trainer's own cadence is 2e8).
+* **Look-ahead GE 21** (k02 rows 6,880-7,095, x1.0 / 1.04 / turned +-20 deg, 12 min, 9.7M runs, 75,959 cells): deepest **80.75%**
+  on the grader's field, but CRAWLING (|v| ~150-300, h ~1,520-1,560, at (2,220-2,350, 1,590-1,690, z ~1,460-1,510)); 2,151 cells
+  past k03's 79.82%. The loop's own k03 line is the better target (it keeps ~700-780 u/s); left as is.
