@@ -3372,3 +3372,13 @@ Independence: only this branch and $AR_HOME/incumbent/ are read. c12's later wei
   74.176, 0/9 energetic. Kept running (box extended to 07:22 UTC, credit $26.04): its weights carry the partial bounce
   skill, and they reach the next round only if one of its evals beats 74.345 (the hand-on is the snapshot behind the
   round's best eval) - it is at 74.29-74.34.
+* c21 ended at its --steps (44.83B, 04:55 UTC). Last evals 74.212 / 74.171 / 74.201 / 74.212 / 74.157 / 74.253 (best
+  of the run 74.342 at 43.264B; 0/9 energetic in all 40 evals). **Bench of its final weights** (record_ckpt from the
+  exact e02 rows, greedy, 12 each): before the contact **4/12** make the energetic bounce (c20's weights 0/12; h
+  2,490-2,676 at 71.8%); after it 12/12 keep the energy and **all stop at 74.15-74.23%** - the 2.5 h of x1.12 passage
+  states in the spawn pool did not teach the steer-in. And the good-bounce episodes reach LESS far (74.24-74.27%) than
+  the bad-bounce ones (74.31-74.36%, the old k01b way): the energetic glide without the passage technique brings the
+  greedy to the wall faster, not further. So the next gate needs the passage technique first (or together).
+* Box 57867615 released 05:03 UTC (nothing ahead of it could beat 74.345 in the 2.7 h left). Pulled: every c13-c21
+  eval, c17's hand-on ckpt_39674445824 (md5 54d3e59a...) and c21's ckpt_final (44.83B, md5 4e8dc997..., the partial
+  bounce skill; not a hand-on: its best eval is 74.342).
