@@ -3229,3 +3229,10 @@ the operator's); this branch keeps a waiter on `box.py rent` and works offline m
   (heading 25-345 deg). From those 36 kicked states c12 never crosses (48 greedy: best 74.14%; 96 stochastic: 74.27%).
   Local probing ends here: crossing needs height AND eastward speed together at ramp 2's lip (the record: vz 624 with
   918 u/s still heading south-south-west, then an air-strafe turn east keeping ~920 u/s).
+
+### Still no box (02:25 UTC, 145 refused rents); c13 now with `--demo-rate 0.2`
+* The fleet has burned 1.031 $/h on the same two boxes since 20:34 UTC; offers 0.386-0.621 $/h, so a box needs a release.
+  Any box from here gives at most ~5 h before the 07:45 wrap-up, so the curriculum's pace matters more than its per-band
+  mastery: c13 adds `--demo-rate 0.2` (c12: 0.3; round 3's as8 passed a ramp-catch band stuck at 24-29% under 0.3 the
+  same way). c12's curriculum ended oscillating between k02's brake band [6,531] (25%) and [6,536] (70%). The patience
+  (8e8) still fires a search if the quorum never comes.
