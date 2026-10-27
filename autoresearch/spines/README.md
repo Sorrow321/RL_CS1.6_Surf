@@ -297,3 +297,9 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   from the true spawn to d 4,265 = 92.54%, 9,200 states, its own held keys; md5 f3f74722... / 36d3f5e9...) cut at row 7,450
   (82.04%, past the turn north at ~80.4% where every greedy episode dies on the fall-catch sheet *265; success line d <= 10,366
   = 81.86%, out of a death-dive's reach: the sheet sits at d ~11,050+). No demo, no record (pbr7b2, round 7).
+* `pbr8b4_k04d.npy` + `.keys.npy` (8,376 rows; md5 ac3760af979e24251de882683f50ea48 / c5cd9eeed6e26cae6205fb790a125d4c): the
+  trainer loop's own search-4 spine (run pbr7b2_c8, auto/k04: the PLAIN beam_tas line on c8's own 44,891,635,712-step weights
+  from the true spawn to d 4,265 = 92.54%, its own held keys; md5 f3f74722...) cut at row 8,375 (85.71%, d 8,168: past the
+  platform walk at z ~1,565 over 82.15-83.6% and the drop through the hole in fall-catch sheet *265 at ~84.7-85.5%, on the
+  lower level heading west at ~880 u/s; success line d <= 8,268 = 85.53%, reached only through the hole). Its first 7,451 rows
+  are pbr7b2_k04c exactly. No demo, no record (pbr8b4, round 8).
