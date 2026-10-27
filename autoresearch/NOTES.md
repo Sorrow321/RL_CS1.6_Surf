@@ -3357,3 +3357,9 @@ Independence: only this branch and $AR_HOME/incumbent/ are read. c12's later wei
   energy alone, carried straight along the ramp, goes east too low.
 * 03:20 UTC: one more Go-Explore from e02's own climb (its last 0.6 s, x1.0, 15 min, --ge-energy 16, --select-energy 1)
   -> runs/pbr7b4_c21/stitch_p02: an unboosted energetic line through the passage, if the explorer finds the steer-in.
+* The GE from e02's climb (last 0.6 s, x1.0, 15 min, energy cells 16, energy-weighted selection): deepest 74.36%
+  (from e02 row 6,520, 189 states) - with e02's energy the explorer does not get into the passage from e02's approach
+  (SSE, from x -1,331); the x1.12 line came in from the beam's SSW approach, into the ramp. c21 evals 43.113-43.340B:
+  74.246 / 72.878 / **74.342** / 74.236 (0/9 energetic); the contact band 11-13% (from the post-contact band's ~50%,
+  the policy already makes the good bounce ~25% of the time from those rows). 03:38 UTC: a GE from e02's last 2.5 s
+  (the south run + the climb, room to change the approach) -> runs/pbr7b4_c21/stitch_p03.
