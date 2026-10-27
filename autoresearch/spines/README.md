@@ -303,3 +303,10 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   platform walk at z ~1,565 over 82.15-83.6% and the drop through the hole in fall-catch sheet *265 at ~84.7-85.5%, on the
   lower level heading west at ~880 u/s; success line d <= 8,268 = 85.53%, reached only through the hole). Its first 7,451 rows
   are pbr7b2_k04c exactly. No demo, no record (pbr8b4, round 8).
+* `pbr8b4_f1.npy` + `.keys.npy` (10,519 rows; md5 46a16fdd53f1b086dc49b6d50ca776d3 / b709399413bc3954a5312dd679bff8ef): the
+  lineage's FIRST LINE TO THE FINISH (end d 10.8 at (819, 2,762, -3,424)): the trainer loop's own search-4 spine (run pbr7b2_c8,
+  auto/k04: the PLAIN beam_tas line on c8's own 44.892B weights from the true spawn, its own held keys) to its row 9,185 (92.2%,
+  inside the top of the finish tube), then ONE exact explore_phase1 --exact-chains chain (runs/la1 on the pbr8b4 box: reward-free,
+  auto_spine's GE settings - 64 u x energy 32 cells, rising split, view-follow, 8 ms - rooted at 31 of k04's own rows 9,050-9,199,
+  x1.0; the first goal hit after 0.8 min, ge_replay 21/21 links exact, 1,334 states) down the tube to the finish box. Keys = k04's
+  own and the chain's translated (tools/stitch_spine.py). No demo, no record (pbr8b4, round 8).

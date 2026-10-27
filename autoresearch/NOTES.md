@@ -3537,3 +3537,39 @@ ckpt_35907960832 (md5 160da9eb...), eval 73.590 at 35.918B. Credit at the start:
   the loop's k04 in full (runs/pbr7b2/pbr7b2_c8/auto_k04, md5 f3f74722..., to 92.54%), with the c8/c9 flags (lr 1e-4, the 33
   milestones, the loop async); the next stops are the 5-row window on the south ramp at 78.9% (rows 6,810-6,815) and the turn
   north at ~80.4% (*265), then the drop to the lower level at ~84.5%.
+
+## pbr8b4 (round 8, slot 4) - 2026-10-27 08:32 UTC start
+
+Box: 57938936, RTX 5070 Ti + Ryzen 9 7950X3D (32 thr), 0.269 $/h, rented 08:44 UTC for 3 h (the fleet sat at 0.787-1.056
+of its 1.2 $/h cap; the only other passing offer was a 0.621 $/h 5080). Incumbent: pbr7b2_c9 ckpt_45558005760 (82.652 at
+45.564B). Credit at the start: $22.03 ($12 above the reserve).
+
+### Where c9 stood when round 7 stopped (08:35 UTC, ANALYSIS of our own evals and lines)
+* c9's evals after the incumbent's 82.652: 82.477 / 82.152 / 82.454 / 80.717 / 80.644 / **82.564 (46.017B, median 81.9%)**:
+  at 46.017B 5/9 greedy episodes were past k04c's success line (81.86%) and the loop's async search 1 had JUST fired
+  (beam horizon 13,119 ticks = 100.6 s) when the round ended; ckpt_latest 46.023B (md5 50c3a56e...) is 6M after that eval.
+* The 5 episodes past the line all die on fall-catch sheet *265 (trigger_teleport, x 1,040-2,928, y 1,170-3,767, z
+  1,415-1,440) at hull z ~1,460, at (2,325-2,533, 2,256-2,601): south of where k04 goes. The k04 line (the loop's search-4
+  beam to 92.54%) lands at row ~7,470 on a PLATFORM at hull z 1,565 at (2,616, 2,806), walks it west at 50-250 u/s over
+  82.15-83.6% (rows 7,475-7,975, to x ~1,900, y ~3,050), bunny-hops west at 300-430 u/s at z ~1,570-1,600 to 84.55%
+  (row 8,200, (1,439, 3,293)), drops through a HOLE in the sheet at (1,320, 3,420) (z 1,515 -> 853 over rows 8,225-8,350,
+  84.7-85.5%) and flies west on the lower level at ~850-880 u/s (85.9% at (963, 3,542, 834)). So k04c's success line
+  (81.86%) is within a dive's reach now (the sheet runs north to y 3,767), and the greedy's next gate is the platform
+  landing at ~82.1%, then the hole.
+* k04's end (92.54%, (637, 2,918, 470) falling at vz -744) is inside the finish box's x-y footprint (x 560-880, y
+  2,608-2,928); the field under it: something solid at z ~200, then a clear shaft (d falls 3,692 at z 50 -> 35 at z -3,400).
+  The shaft (brush entities): trigger_push *195 / *196 / *48 (speeds 175 / 375 / 425) over z -2,496..729, start-teleports
+  *181 (AABB z -2,687..243) / *132 (z -3,374..-1,679) / *182 (z 609-673) whose real brushes are thinner than their boxes,
+  func_walls / func_illusionary. The beam's horizon (eval's longest episode + 15 s) ended k04 at 70.5 s.
+* Why not the full k04: round 7's k04 curriculum, walking back from 92.5%, sat at the 84.5% drop band (rows ~8,180) at
+  27-36% for ~55 min while the greedy died at 80.4%; the success of a band is the product of the survival of everything
+  after it, and nothing before tau is drawn.
+
+### c1: c9's weights on k04d (08:47 UTC, box 57938936)
+* **Spine `autoresearch/spines/pbr8b4_k04d`** = k04 cut at row 8,375 (85.71%, d 8,168: on the lower level past the hole;
+  success line d <= 8,268 = 85.53%, reached only through the hole). Its first 7,451 rows are k04c exactly (checked).
+* **pbr8b4_c1** = resume of c9's ckpt_latest (46.023B) on k04d + keys, c9's flag set unchanged (lr 1e-4, the loop async,
+  energy 150, gain 500, ...) and k04c's 10,366 line as the 34th milestone (the loop's own rule when a spine is replaced:
+  crossing it still pays). Record gate passed (2 + 4 recordings). A warm resume pushing the frontier past the wall.
+* Ops: `autoresearch/analysis/pb_snapcopy.py` (new) on the box keeps ckpt_latest as ckpt_<step>.pt once a minute (pruned
+  after 45 min unless listed in runs/<run>/snap_keep.txt), so a best eval's hand-on snapshot is within ~16M steps of it.
