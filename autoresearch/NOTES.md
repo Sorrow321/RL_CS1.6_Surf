@@ -3810,3 +3810,24 @@ ckpt_45558005760 (82.652 at 45.564B).
   (16,587 rows, 7 finishing lines, best 72.65 s) + spine_w0.npy (9,476 states) on the box.
 * GE 6 (14:25 UTC, 15 min): rooted at the planner line's own rows 7,270-7,345 (80.0-80.6%, BEFORE the 232 u loss) x1.0 / x1.04,
   --select-energy 3: an unboosted airborne route over the platform?
+
+### c5's reliability and the sub-70 s route (14:41-15:06 UTC)
+* c5 evals 14:20-15:04: 109.743 / 109.788 (2/9, 73.04 s) / **114.231** (51.440B: **6/9 finish**, median 100%, 73.08 s;
+  hand-on ckpt_51439992832 = the eval's own step, pulled) / 112.009 (4/9) / 112.005 / 110.884 / 113.129 (5/9, **72.80 s**).
+* **GE 6** (rooted at the planner line's rows 7,270-7,345 x1.0 / x1.04, before the 232 u loss; 15 min, 239,741 cells, 101 goal
+  hits): x1.04 roots (row 7,313-7,320) FLY OVER the platform - d <= 9,000 (84.3%) at 58.31 s vs the planner's 62.22 s (-3.9
+  s); x1.0 roots still die before 83.4%. The explorer's own drop is slow (84.3 -> 86.2% in 3.74 s; the record ~1.4 s), so its
+  best full chain to the finish is 72.06 s. GE 7 (rooted on that chain before the drop, 12 min): no faster drop (62.17 s at
+  the lower level vs GE 6's 62.05).
+* Handover to the policy (c5's own beams from chain states): from the chain at 83.0-84.3% (airborne, 1,100-1,200 u/s) the
+  population dies out in 100-200 ticks every time (unfamiliar states); from the chain on the lower level (cell 163849, d
+  7,885) it finishes in 8.72-8.77 s over 6 seeds. -> **`pbr8b1_f1`**: planner to 80.4% + GE 6 chain (x1.04) to the lower level
+  + the policy's own finish = **70.81 s** on its own clock.
+* Reward check: a 2 s faster route is worth ~0.2 reward units through --time-pen; the milestones and the finish pay both
+  routes alike, and --finish-k (a time-scaled finish bonus, keyed on EPISODE time) would pay mid-course spawns far more than
+  start spawns for the same state (an unobserved quantity -> noisy advantages), so it is not used. The route will be forced
+  by the curriculum: stage 1 (now) f1 in full from the finish backward, the chain's states practised; stage 2 an energy rule
+  (--demo-success-energy) on a cut at ~84% so only an AIRBORNE crossing succeeds (walking: h ~1,600; flying: h ~2,415).
+* **pbr8b1_c6** (15:05 UTC): c5's ckpt_latest (51.818B, md5 0680f5d4...) on **f1** + keys, c5's flags (36 milestones), spawn
+  pool `pbr8b1_f1w_states.npy` (f1 rows 7,450-7,582 airborne 12x + 7,583-8,061 the drop 20x). Record gate passed. c5's loop
+  had fired a search at its 5/9 quorum (auto/k01; a finishing line cannot beat a finishing greedy frontier, so no swap).
