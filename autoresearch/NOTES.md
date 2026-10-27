@@ -4113,3 +4113,18 @@ Box: 58011053, RTX 4080S, 0.41 $/h, Ontario CA (machine 141481, the box rounds 7
   fo2's soft landing reaches it at ~60.6 s with h ~1,800 - a new skill worth ~0.7-1 s.
 * **pbr9b1_c4** (22:55 UTC): c3's ckpt_latest (56.4580B, md5 d3ff7962...) on **fo2** + keys, `--demo-success-energy 150
   --demo-success-strict` (success = d <= 6,890 with h >= 1,657), pool pbr9b1_fo2dec_states, c3's flags otherwise, lr 1e-4.
+
+### 117.719: 9/9 at 68.43 s (2026-10-27 23:00 UTC, c4 56.534B) - then a collapse at lr 1e-4
+* c4 (fo2, strict energy cut at 88%, lr 1e-4) evals: 113.251 (56.458B = c3's final weights: 5/9) / **117.719** (56.534B: **9/9
+  finish, best 68.43 s**; 7/9 fly over the platform's end, 2 take a slow landing variant, 74.0 / 77.7 s) / 112.140 (4/9) /
+  **56.555** (56.685B: 0/9, every episode dead at ~37 s, 54.7%) / 114.344 (56.760B: 6/9, routes mixed). No soft landing in any
+  greedy episode (h at 88%: 1,305-1,526); the strict band oscillated on fo2 rows 7,618-7,623 (the drop's spiral before the soft
+  landing's root) at 8-69% for ~20 min.
+* Hand-on of the 117.719 eval: **ckpt_56525586432** (8.4M steps before it; md5 334c06016ec13cbf4f8d5d795efadd81) and
+  ckpt_56538693632 (4.7M after; md5 1a3d6a4b...), both pulled to runs/pbr9b1/pbr9b1_c4/.
+* The collapse: one update at 56.6315B read **kl 2.45**, then 0.71 / 1.09 / 0.81; explained variance 0.995 -> 0.971 and the
+  training reward ~300 -> ~115 within 3M steps; the 0/9 eval came 50M steps later; the reward recovered by ~56.70B but the
+  greedy stayed mixed (6/9). Round 8's c11 collapse again (lr 1e-4, the narrow yaw head, sigma 0.013).
+* **pbr9b1_c5** (23:16 UTC): ckpt_56525586432 on fo2 + the strict energy cut, c4's flags, **--lr 5e-5** (round 8's c12 rule:
+  a fragile skill at its peak, held by the lr cut), --demo-tau0 7618. First minute: the band backs off from 7,618-7,628 (0% with
+  these weights there).
