@@ -1,0 +1,13 @@
+{
+ "line": "runs/pb9look/inc_ep1.npy",
+ "chain": "runs/pb9look/chainC_88828.npy",
+ "archive": "runs/pb9look/geC/archive.npz",
+ "root_row": 6296,
+ "k": 195,
+ "handover_progress": 72.77652051818492,
+ "base": "runs/pb9look/inc_ep1.npy",
+ "base_join_row": 6587,
+ "seam_u": 14.406414633552872,
+ "n": 8907,
+ "rows_saved": -96
+}

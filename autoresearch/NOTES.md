@@ -4098,3 +4098,21 @@ used for the search work below and then blocklisted and released.
   (the hop, just ahead of the band) x8 + rows 7,509-8,572. These states match spine rows, so they are time- and
   energy-gated and feed the band's own per-row statistics (round 8's narrow-window trick). NB the box's tracked
   autoresearch/spines/pb9_g2after_states.npy now holds this pool: `git checkout` it before the next deploy.
+* c4 23:05-23:27 UTC: evals 113.263 (5/9) / 112.118 (4/9) / 112.121 (4/9) / 112.106 (4/9, 70.14 s) / 116.571 (8/9, 69.54 s).
+  STOPPED (55.95B): the greedy got SLOWER and walked the platform MORE (3 of 4 finishers at 55.79B had t84 61.5-62.9 s, the
+  walking mode; the incumbent's own eval had 0 of 9); t72.78 slid from 50.3-51.0 to 51.1-51.7 s. Reading: from the beam's
+  hop states the fast route succeeded only 20-33% (the band's rate), and a fall there costs the milestones + finish
+  downstream (~150) against a +50 gate bonus, so walking became the policy's best bet. A time gate must sit on a fast route
+  the policy can fly RELIABLY; the beam's 4-ground-tick platform hop is a lucky line, not one.
+* The incumbent's weights finish BIMODALLY: fast ~68.7-69.1 s (the west-high flight over the 82-84% platform, round 8's
+  f1e) or slow ~72-73.5 s (east at 81-82% and WALK the platform at 250 u/s: t84 59.7-61.4 vs 57.6-58.0). c3's 55.115B eval:
+  5 of 8 finishers slow. Even c1 (c12's exact recipe) drifted 9/9 -> 5/9: the incumbent sits on a transient peak.
+
+### c5: one known-safe shortcut, taught with both gates (g3, 23:30 UTC)
+* **`pb9_g3`** (8,907 rows, md5 8ba749a7...) = greedy ep1 rows 0-6296 + GE C chain ticks 1-195 + ep1 from row 6587 (the
+  rejoin at 72.78%, seam 14 u) = ep1's own line with only the 0.67 s straight segment: **~68.35 s**. Many GE C cells reach
+  73% within 0.01 s of each other along that straight segment (a broad route, not a lucky line).
+* **`pb9_g3e`** = g3 cut at row 7,344 (83.01%, airborne, h 2,225 - the f1e rule: the walking route crosses ~82.8% at h
+  ~1,604) with `--demo-success-energy 150` (keeps the platform flight, as c12) + `--demo-success-time 0.25` (the shortcut:
+  from a spawn before 70.15% the old swing east arrives ~0.67 s late; the greedy's own timing spread is ~0.4 s at 72-83%).
+  Pool `pb9_g3after_states.npy` = g3 rows 7,345-8,906 (ep1's own 83-100%).
