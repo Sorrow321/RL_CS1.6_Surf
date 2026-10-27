@@ -3178,3 +3178,11 @@ a 5080 at 0.621 $/h, so `rent` was REFUSED (budget pace); a local retry every 5 
 * First eval (36.6598B, one update after the resume): **73.618** (best 73.62%, median 71.4%): 3/9 climb out of the
   platform to 73.45-73.62% (70.9-74.4 s), 6/9 die at the 71.3-71.4% landing (51.7-53.2 s). The curriculum at k02's
   [6,531] (62-72%) / [6,536] (17-28%), as c12 left it.
+* c1 evals 36.66-37.04B: 73.618 / 73.553 / 73.538 / 73.518 / **74.260 (36.962B)** / 73.573. In the 74.260 eval 2/9 greedy
+  episodes (ep5, ep7) fly k02's fast chain over the 71.3% platform and reach the 74.3% ledge at 55-56 s (the slow climb:
+  73.4% at ~75 s), with energy height +91..+163 u ABOVE the spine at 73-74% (~2,405 at 74%); ep7 dies just west of the
+  ledge at (-862, 1,551, 2,008) -> the catch below. The ledge needs the hull at z >= ~2,140 (~+160 u over k02): these
+  episodes are close. Hand-on snapshot ckpt_36859543552 (102M steps before the eval; md5 fbece0f7..., pulled).
+* The curriculum: [6,531] -> 6,426 in ~10 min, then it oscillates [6,441] (77-80%) / [6,436] (21-28%, under the 30%
+  rate) for 15+ min: the band is the chain's platform touch (row 6,437: lands on entity 87 at vz -571 -> 0, -208 u, and
+  hops off at 6,438 with vz +453; jump held in oldbuttons). A precision touch-and-hop, like round 6's landings.
