@@ -3,5 +3,5 @@
  "round": 8,
  "final": false,
  "best": null,
- "summary": "Round 8 start (08:33 UTC). Plan: resume pbr7b2_c9's ckpt_latest (46,023,049,216, md5 50c3a56e...; its last eval 82.564, median 81.9%, 5/9 past k04c's 81.86% line) on k04c with c9's flags, the loop async, and a longer search horizon (--auto-spine-extra-secs 30: the loop's 92.54% beam k04 ended at the top of the final shaft, ~3 s above the finish, where its 15 s horizon ran out). Waiting for fleet budget (1.056 of 1.2 $/h used at 08:45)."
+ "summary": "Round 8 (no box yet: fleet at 1.056 of 1.2 $/h since 08:44). Found locally: the loop's 92.54% line k04 fell into the final shaft's first kill sheet; the shaft is a stack of kill sheets with alternating gaps. Two short reward-free Go-Explore look-aheads rooted at k04's own states reached the finish box -> spine autoresearch/spines/pbr8b2_f1 (k04 + 2 exact chains, true start to finish, ~78 s). New generic flags --auto-spine-cut-secs (the loop's spine = stored line cut S s past the greedy frontier, rolled on at each quorum) and --auto-spine-cut-beyond (a share of draws past the cut), CPU-tested 8/8 incl. bit-identity. Plan c1: resume pbr7b2_c9 ckpt_latest 46.023B (last eval 82.564, median 81.9%) on f1 with cut 4 s, beyond 0.2, no search."
 }
