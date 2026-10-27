@@ -3638,3 +3638,10 @@ ckpt_45558005760 (md5 6dec286c...), eval 82.652 at 45.564B. Credit at the start:
   beside the training, and its PLAIN beam (7,845 states) was cut by `--auto-spine-cut-ahead 1000` at d 8,049 = 85.9%
   (greedy frontier 9,052 - 1,000) -> swapped in at 47.224B, success line d <= 8,149 (85.74%); the curriculum walked it
   back at 100% bands, 40 rows a step.
+* c2 evals 84.472 / 90.672 / **92.570** / 90.780 / 92.437 (47.29-47.59B; medians 84.2-84.4%): 4/9 past the new success line
+  (85.74%) at 47.517B and 47.592B - one short of the quorum. Where they stop (47.517 / 47.592B): 84.4% (falls off the
+  platform's end, 2-3/9), **90.6-90.8% (4-5/9: they fly the 86-90% loop and then CRAWL ~30 s at (1,190-1,320, 2,500-2,920,
+  z ~710-750) until the eval patience)**, 92.4% (1/9: into the shaft, dies on catch *181's top at (515, 2,772, 280) - search
+  1's line passes it on the EAST side at (986, 2,794, 207)), 82.5-82.8% (1-2), 72.9% (1), 3.6% (1). The policy's own
+  line from search 1 crosses the 90.7% spot ~150 u higher (z 870-940), flying WEST over it into the shaft. The training
+  stall fraction rose 33% -> 66% (crawl 70-83%) over 47.41-47.60B: the training episodes stall there too.
