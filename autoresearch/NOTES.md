@@ -3795,3 +3795,18 @@ ckpt_45558005760 (82.652 at 45.564B).
 * GE 5 (14:02 UTC, beside c5, 12 threads, 15 min): explore_phase1 rooted at b3s rows 6,900-7,100 (80.2-81.9%, before the
   platform landing) x1.0 / 1.04 / 1.08, --select-energy 3 - an AIRBORNE line over the platform; picked by the earliest
   arrival past the drop (root row x 7.67 ms + chain ticks x 8 ms), not by depth.
+* c5 13:50-14:20 UTC: evals 108.632 / 108.630 / 0-finish / **109.779** (50.912B: 2/9 finish, best 73.30 s; hand-on
+  ckpt_50903121920, pulled) / 92.995 / 109.719 (51.063B: 2/9, 75.10 s). Its band walked b3s back to the platform (7,889).
+* **GE 5** (b3s rows 6,900-7,100 x1.0/1.04/1.08, --select-energy 3, 15 min, 188k cells): an AIRBORNE route past the drop -
+  d <= 8,300 (85.5%) at 57.06 s against b3s's 62.13 s (**-5.07 s**) - but only from x1.08 roots (row 6,951); x1.0 roots
+  reach 82.5% 2 s sooner and die before 83.4%; x1.04 reach 83.4% 1.2 s sooner (landing on the platform).
+  (tools picking: arrival = root row x 7.667 ms + chain depth x 8 ms, runs/pbr8b1_look/fast_pick.py on the box.)
+* Energy (the 50.91B finisher vs the record, yardstick only): on the record's west-high route at 80.5-82% within 30-100 u,
+  h -4 u at 80.5%, but 80.5 -> 81% loses 154 u (record 59). The planner's 72.65 s line: h 2,449 at 80.5% (record 2,395),
+  then -232 u by 81% (z +120 while |v| 1,143 -> 862: a climbing turn north that scrubs speed), NE to the platform, lands at
+  82.5% and walks 82.5 -> 84.5% (4.6 s). The x1.08 roots supplied ~+100-150 u - the size of that one loss.
+* Energy-ranked planner waves (--score dh --score-energy 3 / 6, finish objective): 0 finishes, extinct at ~81% - chasing
+  energy off the route. Plain-wave lines distilled for the expert loop's fallback: plan_to_bc on fin1/w0 -> bc_w0.npz
+  (16,587 rows, 7 finishing lines, best 72.65 s) + spine_w0.npy (9,476 states) on the box.
+* GE 6 (14:25 UTC, 15 min): rooted at the planner line's own rows 7,270-7,345 (80.0-80.6%, BEFORE the 232 u loss) x1.0 / x1.04,
+  --select-energy 3: an unboosted airborne route over the platform?
