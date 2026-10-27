@@ -3892,3 +3892,6 @@ ckpt_45558005760 (82.652 at 45.564B).
   own spread. Fix for a later round (a trainer change, default off): BC on the categorical heads only, or view targets taken
   from the planner's own drawn z. c10 stopped after ~2.5M steps; **pbr8b1_c11** (17:10 UTC) = c9's ckpt_latest (53.301B, md5
   6060ae15...) on stage 2 without BC (c9's flags, --demo-tau0 6350).
+* c11 (17:10-17:32 UTC, stage 2, no BC): evals **116.501** (53.302B = c9's final weights: 8/9 finish, **71.65 s**, the fastest
+  greedy finish of the round) / 114.247 / 112.040 / 113.140 / 114.270 (6/9, 71.90 s); the band walked f1e back to 6,070 (77%);
+  the quorum fired at 53.604B (5/9 past 82.8%) -> the loop's search 1 beside the training. Credit topped up to $37.56.
