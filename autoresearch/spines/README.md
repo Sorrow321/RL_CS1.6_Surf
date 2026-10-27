@@ -373,3 +373,9 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   airborne crossing past the 81.86% milestone) 12x + rows 7,583-8,061 (the chain's drop to the lower level, 84-86.2%) 20x.
 * `pbr8b1_f1w2_states.npy` (md5 in NOTES): f1 rows 7,450-7,640 (the airborne crossing past the 81.86% milestone, to 84.06%) 25x
   + rows 7,641-7,800 (the landing on the platform's west end and the hop-off) 20x - one step ahead of c6's band.
+* `pbr8b1_f1e.npy` + `.keys.npy` (7,521 rows; md5 0ccaa042bbc79b71078e0645c7f80310 / 9275c8b0f3ffef3837e6ba49952d15e4): f1 cut at
+  row 7,520 (82.99%, d 9,721, airborne over the platform with energy height 2,323 u) - for --demo-success-energy: success only
+  for an AIRBORNE crossing (the walking route crosses 83% at ~1,600 u), so the curriculum forces the faster route at the
+  80.4% junction.
+* `pbr8b1_f1after_states.npy` (8,115 rows; md5 c9a7fb08cb4beb684e80122eaba02b58): f1 rows 7,521-8,061 (past the f1e cut: the
+  platform-end landing, the hop-off and the drop to the lower level) tiled 15x, practised while f1e's spine stops at 83%.
