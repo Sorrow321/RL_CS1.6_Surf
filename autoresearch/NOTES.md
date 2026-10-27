@@ -3785,3 +3785,13 @@ ckpt_45558005760 (82.652 at 45.564B).
   2 s burst, protected 3 generations - can the population find the airborne route?
 * Dashboard for the user: tools/dashboard.py on the box (127.0.0.1:8600); a self-healing tools/tunnel.sh on the agent host
   forwards its localhost:8601 to it (kill it at wrap-up).
+* Branched waves (fork 2,048 copies at d 11,300 / 10,900 / 10,500, held view +-45 deg 0.5 s, protect 3): crossings in 75.10 /
+  75.26 / 73.00 s (the last not a branch lineage) - none beats the plain wave's 72.65 s. The population finishes very
+  reliably under selection (3,978-7,887 finishes per wave) but never proposes flying over the 82-86% platform: the planner
+  alone polishes (~72.6 s), it does not change the route.
+* Viewer assets for the user's dashboard: tools/export_map.py -> viewer/assets/surf_princessburglar_b26.mesh.json (6.3 MB,
+  92,717 verts, 265 brushes) and tools/export_goalfield.py -> .goalfield.json (0.3 MB; it baked a cell-16 free-space field
+  on the box, ~8 min CPU); force-added to git like the cannonball / petrus assets (viewer/assets/*.mesh.json is ignored).
+* GE 5 (14:02 UTC, beside c5, 12 threads, 15 min): explore_phase1 rooted at b3s rows 6,900-7,100 (80.2-81.9%, before the
+  platform landing) x1.0 / 1.04 / 1.08, --select-energy 3 - an AIRBORNE line over the platform; picked by the earliest
+  arrival past the drop (root row x 7.67 ms + chain ticks x 8 ms), not by depth.
