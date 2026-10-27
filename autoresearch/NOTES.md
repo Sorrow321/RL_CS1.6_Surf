@@ -3896,3 +3896,12 @@ ckpt_45558005760 (md5 6dec286c...), eval 82.652 at 45.564B. Credit at the start:
   md5 cc6e1c2a1105d798f89a24f4d17cef02), pulled.
 * c7 evals 115.399 (7/9) / 115.429 (7/9, 70.46 s) / **117.660 (54.556B: 9/9, best 70.20 s - the round's best)** / 116.523
   (8/9) / 117.628 (9/9). Hand-on for 117.660: the copier's ckpt_54553214976 (3.1M before the eval, md5 7337cc4d3714077bc6172eed477f358a), pulled.
+* c7 evals 116.544 (8/9, 70.34 s) / 116.544 (8/9, 70.33 s) / 115.401 (7/9) / then **COLLAPSE: 56.506 (55.009B, 0/9, median
+  56.5%) / 61.354 (55.085B)** - every episode back at gate 17 (the 56.6% shaft climb). Cause visible: updates at **kl 3.36
+  (54.953B) and 2.81 (55.003B)** (+ several 1.5-1.6 around 54.96-54.97B; c7's median kl ~0.3-0.5), then the value loss
+  19 -> 130 and shorter episodes - round 7's c4 / c7 failure again, now after ~3.4 h of a stable run. The round's best is
+  untouched (117.660's hand-on is ckpt_54553214976, 3.1M before its eval; the collapsed ckpt_latest is ~500M later, so
+  the hand-on rule keeps the snapshot).
+* **pbr8b3_c8** (19:16 UTC): the 117.660 weights (ckpt_54553214976) on f1 with c7's flags + **`--target-kl 0.5`** (the
+  trainer's SB3-style PPO early stop: an update halts once its approx KL exceeds 0.75; c7's p90 was ~0.55) - the generic
+  guard against one destructive update, for the last ~35 min and for the next round's runs.
