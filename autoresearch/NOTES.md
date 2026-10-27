@@ -3256,3 +3256,19 @@ Independence: only this branch and $AR_HOME/incumbent/ are read. c12's later wei
   14,808), `--auto-spine-near-gain 100` (first use), the async loop, --demo-replay-frac 0.1, --target-kl 0.15; --steps
   3e9. The gate-19 sequence: the energy first, then the loop's own search on weights that carry it (the passage climb
   needs ~+125 u at 73.4%; the x1.12 depth line pbr7b4_c17m01 to 77.86% is kept for later).
+* c18 (00:39-01:10 UTC, 40.03-40.51B): evals 74.285 / 74.301 / 74.170 / 73.787 (median 27.3%, a collapse) / 74.224 /
+  73.577 / (40.48B); energetic crossings 0/9 for six evals, then **1/9 at 40.482B** (the line itself crossed by 3-9/9
+  without the energy). The curriculum stood at a cliff inside the energy chain: [6,373] 64-65%, [6,368] 2.9-4.1% flat
+  for 20 min - rows 1-5 before the bounce's contact (spawns after it already carry the energy; before it they must make
+  the contact).
+* **The energy archive, read at larger gains** (runs/energy_alts.py on the box, the 13,971 candidates of the energy
+  stage's GE): the best gain over the line per progress is +45..+51 at 70.0-70.75%, NEGATIVE right before the bounce
+  (71.0-71.25%: the line itself is at h ~2,690 there), +195..+203 at 71.5-71.75% (after it), +172 at 72.0%, +113 at
+  72.25-72.5%, +23 at 72.75-73.0%, negative from 73.25% (the climb). So the explorer's energetic bounce keeps ~+200 u
+  but its chains lose it again on the south run within ~1 s: a learned bounce alone may not bring the x1.12 root's
+  +125 u to the climb. (The record, ANALYSIS: same lane at x ~-1,245, 1,225 u/s, h ~2,740, gaining slightly on the run.)
+* **pbr7b4_c19** (01:11 UTC): c18 continued (its ckpt_latest 40.511B, md5 6c4e413c...; c18's flags + --demo-tau0 6368).
+  In parallel, a FOCUSED energy search on the same weights (runs/pbr7b4_c18/manual_e02/): energy stage only, 15 min of
+  GE (was 5), `--energy-roots-secs 6` (roots before the largest losses of the last 6 s before the climb, not 12),
+  `--ge-energy 16` (finer energy cells), `--ge-select-energy 1`, --energy-gain 120: a line keeping the energy TO the
+  climb, if the explorer can find one.
