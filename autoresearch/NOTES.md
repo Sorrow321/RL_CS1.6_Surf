@@ -3849,3 +3849,12 @@ ckpt_45558005760 (82.652 at 45.564B).
   energetic greedy crossings), spawn pool `pbr8b1_f1after_states.npy` (f1 rows 7,521-8,061: the chain's landing and drop,
   practised past the cut), c6's flags otherwise. The band starts at the cut and walks back over the airborne crossing to the
   80.4% junction, where it can only succeed by FLYING.
+* c7 (stage 2) 15:47-16:09 UTC: the energy-gated band walked from the 83% cut back PAST the 80.4% junction to 6,490 (78%) in
+  ~20 min - sampled spawns from before the junction fly over the platform with the energy >= 30% of the time, UNBOOSTED. The
+  greedy still walks (every eval crossing of 83% at h ~1,604; quorum line "0/9 ... with energy height >= 2,173 (8 cross
+  it)") and finishes reliably: evals 109.784 / 112.026 / 114.237 / 115.351 / 115.366 (7/9, **72.35 s**, the fastest greedy
+  finish so far). 1-2 early deaths (7-35 s) per eval - watched.
+* The expert loop's planner on c7's 52.6B weights: a crossing in **71.19 s** (72.65 s on c5's weights): a hybrid line - airborne
+  on the record's west-high path over 82-83% (h 2,368 at 82%, 2,197 at 83%), lands near 83.5-84% and walks the platform's
+  last stretch, then the drop. plan_to_bc -> fin4/bc_w0.npz (18,576 rows, 8 lines) + spine_w0 (9,286 states) on the box.
+  Seeds 71-74 running (16:07 UTC) for the fastest line to distil.
