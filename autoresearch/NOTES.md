@@ -3954,3 +3954,5 @@ of its 1.2 $/h cap; the only other passing offer was a 0.621 $/h 5080). Incumben
 * c10 18:00-18:29 UTC: 117.641 (9/9, 70.76 s) / 116.506 / 116.525 / 116.527 (8/9) / 115.430 / 115.449 (7/9, a 69.87 s finish) /
   **117.660** (57.634B: 9/9, best 70.19 s; handoff ckpt_57626066944, 8.4M before, pulled) / 117.653 (9/9, 70.40 s). The finish
   times fall as the curriculum walks k02 back (at [1,978] now, ~22% of the line).
+* c10 18:29-18:57 UTC: 116.539 (8/9) / 117.628 (9/9) / 117.651 (9/9, 70.48 s) / 116.556 (8/9, a 70.00 s finish) / 116.542 /
+  **117.663** (58.238B: 9/9, best 70.10 s; handoff ckpt_58229522432, 8.9M before, pulled) / 116.534 (8/9): 8-9/9 every eval.
