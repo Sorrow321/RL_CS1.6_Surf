@@ -3382,3 +3382,38 @@ Independence: only this branch and $AR_HOME/incumbent/ are read. c12's later wei
 * Box 57867615 released 05:03 UTC (nothing ahead of it could beat 74.345 in the 2.7 h left). Pulled: every c13-c21
   eval, c17's hand-on ckpt_39674445824 (md5 54d3e59a...) and c21's ckpt_final (44.83B, md5 4e8dc997..., the partial
   bounce skill; not a hand-on: its best eval is 74.342).
+* **`auto_spine --energy-minutes / --energy-cell-energy / --energy-select`** (9330261: the energy stage's own GE budget,
+  energy cells and energy-weighted selection; 0 = the ladder's) and **`train_fast --auto-spine-search-args STR`**
+  (extra auto_spine options on every loop search) - the focused energy search by the loop.
+  **`auto_spine --energy-first B`** (0a212be): when the deepest line rides a GE root boosted above B, the energy stage
+  runs too and its line (if any) is the spine, the depth line kept as spine_depth.npy - the energy-first sequence of
+  gates 17 / 19, which this round did by hand. All default off, unit-tested (test_auto_spine_energy_budget 5/5);
+  regression 05:10 UTC: demo_match_band + demo_success_energy + auto_spine_energy + demo_replay_frac 20/20,
+  auto_spine units 13/13, the loop's flag-off identity (test_auto_spine_async) passes.
+
+### To continue (next round, if this branch wins)
+* Hand-on: c17's ckpt_39674445824 (74.345; the k01b chain route: medians 73.3%, best episodes 74.2-74.35% in the
+  passage flight; tick 7.67 ms, keys-hold / potential / view shapes carried - never pass shape or tick flags).
+* The base flag set (c21's, the whole lineage block): `--maxvel 3500 --ckpt-every 2e8 --target-kl 0.15
+  --demo-replay-frac 0.1 --demo-match-band --demo-window 5 --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5
+  --demo-rate 0.3 --demo-front-frac 0.8 --demo-success-d 100 --demo-success-bonus 50 --demo-milestones
+  44939,43426,42182,41015,40497,39943,37251,33777,32260,31429,30286,28818,28783,27001,25121,24479,23400,22500,21624.107,23215.873,20589.457,22013.855,20231.945,17069.684,15570.604,14808.185
+  --keys-hold-spawn-duck --yaw-entropy 0 --demo-front-temp 0.5 --demo-front-ticks 40 --demo-front-view 6
+  --respawn-greedy 0.2 --respawn-greedy-window 0.25 2.0 --respawn-greedy-stuck 200 --respawn-greedy-contact
+  --respawn-greedy-energy 3 --respawn-greedy-temp 0.5 --respawn-greedy-temp-ticks 100 --respawn-greedy-temp-view 6
+  --respawn-front-perturb 0.2 --respawn-front-perturb-band 0.005 --respawn-front-perturb-speed 1.0 1.3
+  --respawn-front-perturb-turn 90 --energy-pot 12 --energy-pot-front 0 --energy-pot-front-bonus 0 --no-respawn-novel
+  --respawn-backward-mix 0 --int-real-only 0 --spawn-states autoresearch/spines/pbr1b1_entry_ge_states.npy
+  --spawn-states-frac 0.2 --auto-spine --auto-spine-async --auto-spine-near-gain 100 --auto-spine-milestones
+  --auto-spine-gain 500 --auto-spine-ge-minutes 5 --auto-spine-retry 4e8 --auto-spine-patience 0
+  --auto-spine-energy 150` + a spine (`--demo-file` / `--demo-keys`, and `--demo-success-energy 60` for an energy
+  spine). New and worth adding: `--auto-spine-beyond-line --auto-spine-patience 6e8` (periodic async searches that
+  can only go deeper) and `--auto-spine-search-args "--energy-first 1.04 --energy-minutes 15 --energy-roots-secs 6
+  --energy-cell-energy 16 --energy-select 1"`.
+* The gate at 74.4% needs two skills (see the bench above): the PASSAGE TECHNIQUE (steer south-west into the climb
+  ramp at 73.3-73.5% and rise at ~+460 u/s; spine `pbr7b4_c17m01` shows it from a x1.12 root) and the ENERGY to do it
+  unboosted (~+125 u at the climb: spine `pbr7b4_c18e02`'s glide carries it, its 71.6% bounce is a keys-timing contact
+  the curriculum learned only to ~4/12 in 2.5 h). The energetic glide alone made the greedy WORSE (it reaches the
+  wall faster). Untested ideas: a curriculum on `pbr7b4_c17m01` (the technique from its chain) with the root band's
+  boost annealed toward x1.0; or a stitched line e02 + a passage chain found from e02's states with a longer GE than
+  the three 10-15 min runs here (all stopped at 74.32-74.36%).
