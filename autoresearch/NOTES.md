@@ -3645,3 +3645,21 @@ ckpt_45558005760 (md5 6dec286c...), eval 82.652 at 45.564B. Credit at the start:
   1's line passes it on the EAST side at (986, 2,794, 207)), 82.5-82.8% (1-2), 72.9% (1), 3.6% (1). The policy's own
   line from search 1 crosses the 90.7% spot ~150 u higher (z 870-940), flying WEST over it into the shaft. The training
   stall fraction rose 33% -> 66% (crawl 70-83%) over 47.41-47.60B: the training episodes stall there too.
+* c2 evals 92.606 / 92.342 / 92.364 / 90.837 (47.67-47.89B): **the median greedy episode now reaches 90.7%** (d ~5,323;
+  6/9 past 85.74% at 47.819B). The quorum fired **search 2 at 47.668B, and it could not reach the greedy**: its plain
+  beam from the true start lost its leaders at the 80.4% turn / the *265 sheet (gen 70, t 7,000: 172 of 4,096 copies
+  valid, min d 10,419) and its best line died at the platform's end (d 8,860 = 84.5%, t 55.2 s); the population then
+  re-cloned from copies stuck at the 74.4% block (gen 75: 4,096 valid, min d 15,585). The greedy floor (32 envs) is ONE
+  trajectory - every search draws spawn seed 0, and that draw's greedy line dies at 84.5% where the eval's nine greedy
+  episodes pass 5-6 times out of 9. Its branched beams forked after that (ticks 8,647-8,778) and gave the same line; it
+  went on to GE stages from 84.5% that cannot beat a 90.7% frontier by 500 u. The stochastic population is much weaker
+  than the greedy at the gates the greedy has learned.
+* **pbr8b3_c3** (10:59 UTC): c2 stopped at 47.936B (search 2's process tree killed by hand first: SIGTERM skips the
+  trainer's atexit), resumed on **`autoresearch/spines/pbr8b3_k01d`** = search 1's c1 line cut by the cut-ahead rule
+  against c2's frontier (5,323): row 8,836, d 4,322 = 92.44%, in the upper shaft; success line 92.26%. 36 milestones
+  (+ k01c's 9,288.5 and c2-k01's 8,149). Every other flag as c2. First eval 92.660 (median 90.7%, 1/9 past 92.26%).
+* **`--auto-spine-from-spine S`** (new, generic, default off; tools/auto_spine.py --start-spine / --start-keys /
+  --start-row): the search's beams start from the CURRENT spine S seconds before the row where it reaches the greedy
+  frontier (before its end if it never does), and the new line = the spine's rows before that + the beam's own states
+  (+ keys). The beam then only has to fly from just before the greedy's failure point, not the whole route at
+  temperature 1. Look-ahead evidence for it: from search 1's line at 84.12-88.5% the policy's beam reached 94.8-98.9%.

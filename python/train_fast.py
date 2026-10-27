@@ -4998,6 +4998,15 @@ def main() -> None:
                          "and leaves most of a box's CPU quota idle; a blocking search held it "
                          "for up to ~28 min (pbr6b4_c12). Off = the trainer waits, as before; "
                          "config only when on; never restored")
+    ap.add_argument("--auto-spine-from-spine", type=float, default=0.0,   # 0 = off
+                    help="--auto-spine: S > 0 - the search's beams start from the CURRENT spine "
+                         "S seconds before the row where it reaches the greedy frontier (before "
+                         "its end if it never does) instead of the true spawn, and the new line "
+                         "is the spine up to there + the beam (auto_spine --start-spine). A "
+                         "stochastic population flown from the true start loses its leaders at "
+                         "gates the greedy passes (pbr8b3_c2's search 2: 172 of 4,096 alive at "
+                         "the 80.4%% turn, frontier 84.5%% against a greedy at 90.7%%). Config "
+                         "only when set; not restored")
     ap.add_argument("--auto-spine-cut-ahead", type=float, default=0.0,   # 0 = off
                     help="--auto-spine: G > 0 - a new DEPTH spine that runs more than G u past "
                          "the greedy frontier ends G u past it (auto_spine --cut-ahead; G below "
@@ -11857,6 +11866,15 @@ def main() -> None:
         raise SystemExit("--auto-spine needs --demo-file (the first spine) and --demo-success-d")
     if args.auto_spine_energy is not None and not args.auto_spine:
         raise SystemExit("--auto-spine-energy is a stage of --auto-spine's search: give it")
+    if float(args.auto_spine_from_spine or 0.0) < 0.0:
+        raise SystemExit("--auto-spine-from-spine S must be >= 0 (0 = off)")
+    if float(args.auto_spine_from_spine or 0.0) > 0.0:
+        if not args.auto_spine:
+            raise SystemExit("--auto-spine-from-spine starts --auto-spine's beams on its spine: "
+                             "give --auto-spine")
+        print(f"--auto-spine-from-spine {float(args.auto_spine_from_spine):g}: the search's beams "
+              f"start from the current spine {float(args.auto_spine_from_spine):g} s before it "
+              f"reaches the greedy frontier")
     if float(args.auto_spine_cut_ahead or 0.0) < 0.0:
         raise SystemExit("--auto-spine-cut-ahead G must be >= 0 (0 = off)")
     if float(args.auto_spine_cut_ahead or 0.0) > 0.0:
@@ -14914,6 +14932,8 @@ def main() -> None:
             meta["config"]["auto_spine_energy"] = float(args.auto_spine_energy)
         if float(args.auto_spine_cut_ahead or 0.0) > 0.0:
             meta["config"]["auto_spine_cut_ahead"] = float(args.auto_spine_cut_ahead)
+        if float(args.auto_spine_from_spine or 0.0) > 0.0:
+            meta["config"]["auto_spine_from_spine"] = float(args.auto_spine_from_spine)
         if float(args.demo_stall_cut or 0.0) > 0.0:
             meta["config"]["demo_stall_cut"] = float(args.demo_stall_cut)
     if args.demo_milestones:
@@ -16093,6 +16113,18 @@ def main() -> None:
             cmd += ["--energy-gain", f"{float(args.auto_spine_energy):g}"]
         if float(args.auto_spine_cut_ahead or 0.0) > 0.0:
             cmd += ["--cut-ahead", f"{float(args.auto_spine_cut_ahead):g}"]
+        if float(args.auto_spine_from_spine or 0.0) > 0.0:
+            # the beams start on the current spine, S s before it reaches the greedy frontier
+            _sd = np.asarray(_f.sample(np.asarray(demo.S["origin"], np.float64)), np.float64)
+            _hit = np.flatnonzero(_sd <= med)
+            _r0 = int(_hit[0]) if len(_hit) else len(demo.S) - 1
+            _r0 = max(0, _r0 - int(round(float(args.auto_spine_from_spine) * tps)))
+            kdir.mkdir(parents=True, exist_ok=True)
+            np.save(kdir / "start_spine.npy", np.asarray(demo.S))
+            cmd += ["--start-spine", str(kdir / "start_spine.npy"), "--start-row", str(_r0)]
+            if DEMO_KEYS[0] is not None and len(DEMO_KEYS[0]) == len(demo.S):
+                np.save(kdir / "start_spine.keys.npy", np.asarray(DEMO_KEYS[0], np.int32))
+                cmd += ["--start-keys", str(kdir / "start_spine.keys.npy")]
         t0 = time.time()
         if args.auto_spine_async:
             # the search reads its weights more than once (the beam, each branched beam), and

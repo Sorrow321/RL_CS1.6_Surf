@@ -142,13 +142,22 @@ def beam(a, out: Path, branch_tick: int = 0, tag: str = None):
     place the greedy line commits to its death, which the policy's own narrow proposals
     (a collapsed yaw sigma) never try."""
     tag = tag or ("beam" if branch_tick <= 0 else "beam_br")
+    # --start-spine / --start-row: the population starts from that row of the trainer's spine
+    # (ticks below are the full line's: the spine's rows are its ticks from the true start)
+    off = int(a.start_row) if (a.start_spine and int(a.start_row) >= 0) else 0
+    if branch_tick > 0 and branch_tick - off <= 0:
+        return None, {f"{tag}_skipped": "fork before --start-row"}
     bd = out / tag
     bd.mkdir(parents=True, exist_ok=True)
     cmd = [sys.executable, "-u", ROOT / "tools" / "beam_tas.py", a.ckpt, "--map", a.map,
            "--envs", a.envs, "--resample-every", 25, "--score", "d",
            "--greedy-envs", a.greedy_envs, "--allow-nonfinisher", "--save-frontier",
-           "--skip-gate", "--route-file", "none", "--max-ticks", a.beam_ticks,
+           "--skip-gate", "--route-file", "none",
+           "--max-ticks", max(int(a.beam_ticks) - off, int(round(30.0 * TICKS_PER_S))),
            "--torch-seed", a.seed, "--log-every", 5, "--out-dir", bd]
+    if off:
+        cmd += ["--start-state", f"{a.start_spine}:{off}"]
+        branch_tick -= off if branch_tick > 0 else 0
     if branch_tick > 0:
         cmd += ["--branch-at", f"t{int(branch_tick)}:{int(a.envs) // 2}",
                 "--branch-burst", int(round(a.branch_burst_secs * TICKS_PER_S)),
@@ -161,11 +170,22 @@ def beam(a, out: Path, branch_tick: int = 0, tag: str = None):
     if not f.exists():
         return None, {f"{tag}_rc": rc}
     z = np.load(f, allow_pickle=False)
+    states = z["states"]
     if "acts" in z.files and "act_every" in z.files:
-        KEYS[tag] = keys_from_acts(z["acts"], int(z["act_every"]), len(z["states"]))
-    return z["states"], {f"{tag}_rc": rc, f"{tag}_replay_ok": int(z["replay_ok"]),
-                         f"{tag}_frontier_d": float(z["frontier_d"]),
-                         f"{tag}_frontier_tick": int(z["frontier_tick"])}
+        KEYS[tag] = keys_from_acts(z["acts"], int(z["act_every"]), len(states))
+    if off:
+        # the line from the true start: the spine's rows before the start row, then the beam's
+        # own states (its first is that row, replayed)
+        pre = clean(np.load(a.start_spine)[:off])
+        states = np.concatenate([pre, np.asarray(states, pre.dtype)])
+        pk = np.load(a.start_keys) if a.start_keys and Path(a.start_keys).exists() else None
+        KEYS[tag] = (np.concatenate([np.asarray(pk[:off], np.int32),
+                                     np.asarray(KEYS[tag], np.int32)])
+                     if pk is not None and len(pk) >= off and KEYS.get(tag) is not None
+                     else None)
+    return states, {f"{tag}_rc": rc, f"{tag}_replay_ok": int(z["replay_ok"]),
+                    f"{tag}_frontier_d": float(z["frontier_d"]),
+                    f"{tag}_frontier_tick": int(z["frontier_tick"]) + off}
 
 
 # the held keys (fwd, side, duck; engine bins) each line's states were reached with, by line
@@ -521,6 +541,17 @@ def main(argv=None) -> int:
     ap.add_argument("--branch-jitter", type=int, default=45,
                     help="deg: the held view offset is U(-J, J) around the policy's own aim")
     ap.add_argument("--branch-protect", type=int, default=3)
+    ap.add_argument("--start-spine", default=None,
+                    help="a STATE_DTYPE spine (the trainer's current one): every beam starts "
+                         "from its row --start-row instead of the true spawn, and its line is "
+                         "the spine's rows before that + the beam's own states (pbr8b3: a "
+                         "stochastic population flown from the true start lost its leaders at "
+                         "gates the greedy passes, 172 of 4,096 alive at the 80.4%% turn, and "
+                         "never reached the greedy's 90.7%% frontier). None = the true start")
+    ap.add_argument("--start-keys", default=None,
+                    help="--start-spine's held keys (fwd, side, duck per row), prefixed to the "
+                         "beam line's own")
+    ap.add_argument("--start-row", type=int, default=-1)
     ap.add_argument("--cut-ahead", type=float, default=0.0,
                     help="G > 0: a DEPTH spine that runs more than G u past --greedy-d ends at "
                          "its first row G u past it (G below --gain is raised to --gain). A beam "
