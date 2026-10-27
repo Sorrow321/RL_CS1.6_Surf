@@ -3990,3 +3990,51 @@ ckpt_45558005760 (82.652 at 45.564B).
   then a 3.7 s drop where the record takes ~1.4 s) and the lower level (the policy ~1.5 s slower than the record over 86-92%):
   the planner on the new weights (beam_tas --objective finish --score dv, ~2.5 min a wave) is the way to find the next line;
   distil it only after BC is fixed for the narrow yaw head.
+
+## pbr9b2 (round 9, slot 2) - 2026-10-27 20:41 UTC start
+
+Incumbent: pbr8b1_c12 ckpt_55038705664 (117.711: 9/9 finish, best 68.66 s). Credit at the start $34.91 (reserve $10).
+Box 58010900 (RTX 3090 + EPYC 7502, 0.37 $/h, Thailand, machine 141910): ~210k steps/s, but its UPLINK ran at 19-22 KB/s
+(a 63 MB checkpoint would take ~55 min, past box.py pull's 30-min scp window; the local downlink was 5-14 MB/s), so it was
+used for the search work below and then blocklisted and released.
+
+### c1: the incumbent's c12 recipe continued (20:47-21:32 UTC) - DRIFTS DOWN
+* Resume of the incumbent with c12's exact flags (+ `--demo-tau0 4705`): evals 115.487 (7/9, = the incumbent's weights:
+  the incumbent's own eval of them was 9/9) / **117.707** (55.115B: 9/9, 68.79 s) / 115.484 / 115.487 / 114.355 (6/9) /
+  114.365 (6/9) / 113.262 (5/9). Reliability falls with more training at lr 5e-5 on f1e; times stay 68.7-69.3 s.
+  Stopped at ~55.5B. A pure continuation is a lottery ticket, not a path down.
+
+### Where the 68.7 s goes (ANALYSIS: the record as a yardstick only; the policy's own greedy states)
+* Split times (first arrival at each % of the grader field's start d) of the incumbent's fastest eval episode vs the
+  record: the policy is ~4-10 s AHEAD of the record from 2% to 84%, and LOSES time at 71-74% (+0.85 s: its line swings
+  east to x -906 at 72% and back, landing on a ramp at 71.5%), 84-86% (+0.73 s), 86-92% (+1.9 s), 92-94% (+0.4 s).
+* record_ckpt --dump-states on the incumbent (3 greedy episodes, 66.4 s fail in the shaft / 69.02 / 69.90 s): per-tick
+  energy height h = z + |v|^2/1600 on ep1: it LANDS on the platform's west end at 84.40% (tick 7579) and walks/hops ~1 s
+  (h 2,219 -> 1,739), drops with an impact at 85.65% (-250), flies the lower level at h ~1,430 (|v| ~1,010; the record
+  ~1,880 / ~1,290), and lands on the shaft rim at 91.9% (-634).
+
+### GE A: the policy's own state at 83.3% + the explorer = 1 s off the drop (21:10-21:30 UTC, box CPU beside c1)
+* `explore_phase1 --exact-chains --cell 64 --cell-energy 32 --cell-heading 1 --view-follow=-90..90 --tick-ms 8
+  --select-energy 3 --maxvel 3500 --threads 12`, 15 min, rooted at 48 airborne states of the greedy ep1 between 83.30%
+  and 84.40% (BEFORE the platform landing), x1.0 only: 173k cells, 2.4M runs.
+* Pick by EARLIEST ARRIVAL (new `autoresearch/analysis/pb9_fastpick.py`: root row x 7.667 ms + chain depth x 8 ms vs the
+  line's own first arrival): every level from 86% to 90.5% is reached 1.2-1.45 s sooner than the greedy, all from the
+  EARLIEST root (row 7479, 83.30%): the explorer flies NORTH over the platform's west end, ducked, without landing, and
+  drops straight to the lower level. Its lower level is airborne throughout at h ~1,585 (greedy ~1,430).
+* Traps on the way: (1) h at 86% read 1,990 for one chain - its vz was -1,219 one tick above a FLAT landing (|v| 1,398 ->
+  374): falling energy is not energy; pick at a level after the landing. (2) A policy beam from a chain END that sits off
+  the policy's line (87%: z 100 u low; 90.5%: cutting a corner 260 u off the line) stalls or crawls (no finish in 1,600
+  ticks). (3) `beam_tas --score dv` switches to the critic below d 20,000, i.e. at once here: from an unfamiliar state
+  it crawled to the rim; `--score d` from the same state finished.
+* HAND-OVER: chain 144505 at its tick 250 (86.26%) is 17 u from the greedy's own line, same heading, +75 u/s. A policy
+  beam from there (`beam_tas --start-state chainA_144505.npy:250 --skip-gate --score d`, 4,096 copies) finishes in
+  **7.27 s** (8,498 finishing lineages; the greedy envs of a dv beam from the same state: 8.39 s; the greedy line from
+  its own 86.26% state: 8.62 s).
+* **`autoresearch/spines/pb9_g1`** (8,677 rows, md5 e96697b7...; ends in the finish box) = the incumbent's greedy ep1
+  rows 0-7479 + GE A chain 144505 ticks 1-250 + the policy's 7.27 s beam (tools/beam_best_states.py) = **~66.6 s** on its
+  own clock (7,479 x 7.667 ms + 250 x 8 ms + 947 x 7.667 ms), vs 69.02 s for ep1 and 68.66 s for the incumbent's best.
+  `tools/stitch_spine.py` gained `ge:ARCHIVE:CHAIN.npy:N` (keep the chain's first N ticks: a hand-over part-way along).
+* **`pb9_g1e`** = g1 cut at row 7604 (84.96%, the chain falling past the platform): h 2,208 there vs 1,724 for the
+  greedy's landing route at the same progress, so `--demo-success-energy 200` (h_min 2,008) lets only the flight over the
+  platform succeed (round 8's f1e rule). Spawn pool `pb9_g1after_states.npy` (1,947 rows): g1 rows 7,605-7,729 (the
+  chain's drop, 8x) + 7,730-8,676 (the policy's 7.27 s beam line), past the cut.

@@ -94,7 +94,7 @@ def splice_at(line, keys, chain):
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("segments", nargs="+", help="beam:NPZ | spine:NPY[:KEYS.npy] | ge:ARCHIVE:CHAIN.npy | "
+    ap.add_argument("segments", nargs="+", help="beam:NPZ | spine:NPY[:KEYS.npy] | ge:ARCHIVE:CHAIN.npy[:N] | "
                                                 "roll:NPZ:JSONL")
     ap.add_argument("--out", required=True)
     ap.add_argument("--field", required=True)
@@ -131,12 +131,18 @@ def main(argv=None) -> int:
             raise SystemExit("the first segment must be the beam line (or a spine)")
         if kind == "ge":
             arch, _, cf = rest.partition(":")
+            # ge:ARCHIVE:CHAIN.npy[:N] keeps the chain's first N + 1 states (the root and N
+            # ticks): a hand-over to the policy's own line part-way along the chain (pbr9b2)
+            cf, _, cut = cf.partition(":")
             chain = np.asarray(np.load(cf), STATE_DTYPE)
             j, err = splice_at(line, keys, chain)
             if err > 1.0:
                 raise SystemExit(f"{cf}: its root matches no state of the line (nearest {err:.1f} u)")
             cell = chain_cell(arch, chain)
             ck = chain_keys_cell(arch, cell, len(chain))
+            if cut:
+                chain = chain[:int(cut) + 1]
+                ck = None if ck is None else ck[:int(cut)]
             cv, _m = canon_view(chain[1:])
             if ck is None:
                 ck = np.tile(np.int32(NEUTRAL), (len(chain) - 1, 1))
