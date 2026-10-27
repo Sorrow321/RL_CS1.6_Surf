@@ -357,3 +357,7 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   94.6% death) tiled 27x: the hand-run parallel curriculum, one step ahead of the trainer's band (9,239).
 * `pbr8b1_entry_b3sw3_states.npy` (md5 in NOTES): start room + b3s rows 9,170-9,238 (the z -2,700 hole approach, right above
   the trainer's band) tiled 53x + rows 9,100-9,169 (the z -1,700 ring) tiled 52x: windows whose finish bonus is ~1-1.5 s away.
+* `pbr8b1_b3sw4_states.npy` (md5 in NOTES): `--spawn-states` pool of b3s's own shaft line ONLY (no start-room states): rows
+  9,170-9,238 (the z -2,700 hole approach) 60x, 9,100-9,169 (the z -1,700 ring) 55x, 8,940-9,099 (the upper sheets) 19x.
+  Why: start-room spawns each run a full ~70 s episode while a shaft spawn lives ~1 s, so they took most of the training
+  samples; the start room is practised by the 10% fresh map starts anyway.
