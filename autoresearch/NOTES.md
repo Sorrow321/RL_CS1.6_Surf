@@ -4097,3 +4097,12 @@ $34.91 (reserve $10), no other box live. Incumbent: pbr8b1_c12 ckpt_55038705664 
   `--demo-milestone-energy 9821:2173` (round 8's f1e line, an airborne crossing of 82.8%, paid again) + `--spawn-states
   pbr9b3_dec2_states.npy` (flying states only) at lr 5e-5, --demo-tau0 5965, c3's flags otherwise. Box checkout moved to
   f146a8b (python only, no rebuild). Record gate passed (4).
+
+### Harness issue: `box.py pull` cannot fetch a checkpoint from a slow box (pbr9b3, 2026-10-27 23:30 UTC)
+From box 58010989 (Thailand) one scp stream runs at ~20-30 KB/s, so a 63 MB checkpoint needs 30-50 min; `box.py pull --snapshot`
+gives scp 30 min, then finds the md5 short and keeps nothing (it did exactly that with c1's 117.692 hand-on). The limit is per
+connection: 16 parallel 4 MB chunks fetched the same file in ~3 min (2 of 16 logins were refused at 16 at once - at most ~8-10).
+Workaround on the branch: `tools/pull_split.sh <port> <host> <remote> <local> [par]` (split on the box, fetch the chunks <= par at
+a time, retry until every chunk's md5 matches, join, md5 against the box's file), then the file sits where `box.py pull` would
+have put it (`$AR_HOME/runs/<agent>/<run>/ckpt_<step>.pt`). c1's hand-on ckpt_55334928384.pt (md5 70a66fb338d8cd0fdd98f65b09c5cf49)
+was fetched that way. The operator may want box.py's pull to split large files the same way.
