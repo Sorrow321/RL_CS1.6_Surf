@@ -3244,3 +3244,15 @@ Independence: only this branch and $AR_HOME/incumbent/ are read. c12's later wei
   rooted before the beam line's largest energy losses in its last 12 s before the climb, the deepest cell keeping
   >= 150 u more energy height than the line) -> runs/pbr7b4_c17/manual_e01/. Then: teach it with the energy rule, the
   loop on, so its energetic quorum fires the next search on weights that carry the energy.
+* c17's last evals 39.812-39.963B: 74.280 / 74.296 / 73.706 (0-1/9 past 74.09%). Stopped 00:38 UTC at 40.03B.
+* **The energy-only search's result (00:26-00:36 UTC, 10 min)**: the beam (6,800 ticks to 74.39%), then the energy stage
+  rooted before the beam line's three largest losses (-243 u at tick 6,375 = the 71.6% ramp bounce, -128 u at 5,599,
+  -77 u at 5,722; 48 roots x1.0 / 1.04, 13,975 candidates over 63.2-74.4%): **cell 104,417 at 71.99% with h 2,494
+  (+154 u over the line)**, an 84-row chain from the beam's row 6,340 x1.04 that takes the bounce heading SOUTH at
+  705-723 u/s (the beam line loses its speed there). Spine `pbr7b4_c17e01` (6,424 states; committed).
+* **pbr7b4_c18** (00:39 UTC): resume of c17's ckpt_latest (40.028B, md5 31756fbe...) on spine pbr7b4_c17e01 + keys with
+  **`--demo-success-energy 75`** (success = crossing d <= 16,106 = 71.82% with h >= 2,419, the end's - 75: the loop's
+  own energy rule) and `--auto-spine-energy 150` (its quorum counts energetic crossings), the 26 milestones (+ k01b's
+  14,808), `--auto-spine-near-gain 100` (first use), the async loop, --demo-replay-frac 0.1, --target-kl 0.15; --steps
+  3e9. The gate-19 sequence: the energy first, then the loop's own search on weights that carry it (the passage climb
+  needs ~+125 u at 73.4%; the x1.12 depth line pbr7b4_c17m01 to 77.86% is kept for later).
