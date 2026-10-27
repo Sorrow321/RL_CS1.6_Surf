@@ -4128,3 +4128,12 @@ Box: 58011053, RTX 4080S, 0.41 $/h, Ontario CA (machine 141481, the box rounds 7
 * **pbr9b1_c5** (23:16 UTC): ckpt_56525586432 on fo2 + the strict energy cut, c4's flags, **--lr 5e-5** (round 8's c12 rule:
   a fragile skill at its peak, held by the lr cut), --demo-tau0 7618. First minute: the band backs off from 7,618-7,628 (0% with
   these weights there).
+
+### 117.732: 9/9 at 68.03 s (2026-10-27 23:45 UTC, c5 56.979B)
+* c5 (fo2 strict energy cut, lr 5e-5, from c4's 9/9 hand-on) evals: 114.383 (6/9, 68.50 s) / 114.385 (6/9, 68.46) / 113.279
+  (5/9, 68.29) / 116.623 (8/9, **67.97 s**) / 113.287 (5/9, 68.05) / 115.517 (7/9, **67.83 s**, the round's fastest finish) /
+  **117.732** (56.979B: **9/9, best 68.03 s**, all nine 68.0-69.2 s). Hand-on: **ckpt_56979095552** = the eval's own step
+  (md5 9f5670f59aa09e1dba465a750de7b47a), pulled to runs/pbr9b1/pbr9b1_c5/.
+* Every finisher flies over the platform's end; none lands softly yet (h at 88%: 1,282-1,616); the strict band works fo2 rows
+  7,618-7,628 (the drop's spiral) at 10-83%. Update kl mean 0.30; spikes 1.7-2.3 only in the first iterations after the resume
+  (as in every resume of this lineage), then isolated 1.0-1.2.
