@@ -96,3 +96,54 @@ def test_the_trainer_passes_the_search_args(tmp_path):
     shutil.rmtree(ROOT / "runs" / "asa_bad", ignore_errors=True)
     assert '"auto_spine_search_args"' in (ROOT / "tools" / "record_ckpt.py").read_text(
         encoding="utf-8")
+
+
+def _run_ladder(tmp_path, monkeypatch, extra):
+    """GE ladder '1.0;1.08': stage 1 short of the gain, stage 2 past it from a x1.08 root."""
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    fp = _field(tmp_path)
+    monkeypatch.setattr(auto_spine, "beam",
+                        lambda a, out, branch_tick=0, tag=None: (_line(), {"beam_rc": 0}))
+    seen = []
+
+    def fake_ge(a, out, line, end, boosts=None, tag="ge", line_keys=None, roots=None, pick=None):
+        seen.append(tag)
+        if pick is None:
+            if tag == "ge":
+                return _line(650.0), {"ge_rc": 0, "ge_root_boost": 1.0}
+            return _line(1500.0), {"ge_rc": 0, "ge_root_boost": 1.08}
+        arch = out / tag / "archive.npz"
+        arch.parent.mkdir(parents=True, exist_ok=True)
+        _archive(line, arch)
+        cell = pick(arch)
+        if cell is None:
+            return None, {"ge_rc": 0, "ge_pick": None}
+        z = np.load(arch)
+        chain = np.concatenate([line[201:300], z["state"][cell:cell + 1]])
+        return np.concatenate([line[:201], chain]), {"ge_rc": 0, "ge_pick": cell}
+    monkeypatch.setattr(auto_spine, "go_explore", fake_ge)
+    out = tmp_path / "k01"
+    rc = auto_spine.main(["--ckpt", "c.pt", "--map", "m.bsp", "--field", str(fp), "--out",
+                          str(out), "--greedy-d", "9400", "--gain", "500", "--ge-boost", "1.0;1.08",
+                          "--ge-minutes", "1", "--stall-margin", "50", "--branch-energy", "0",
+                          "--energy-gain", "100"] + extra)
+    info = json.loads((out / "spine.json").read_text())
+    return rc, seen, info, out
+
+
+def test_energy_first_teaches_the_energy_line_first(tmp_path, monkeypatch):
+    rc, seen, info, out = _run_ladder(tmp_path / "on", monkeypatch, ["--energy-first", "1.04"])
+    assert rc == 0 and seen == ["ge", "ge2", "ge_energy"]
+    assert info["source"] == "beam+ge_energy" and info["energy"] is True
+    dd = info["deferred_depth"]
+    assert dd["source"] == "beam+ge2" and dd["root_boost"] == 1.08
+    assert (out / "spine_depth.npy").exists()
+    assert float(np.load(out / "spine_depth.npy")["origin"][-1, 0]) == 1500.0
+
+
+def test_energy_first_off_or_below_the_boost(tmp_path, monkeypatch):
+    rc, seen, info, out = _run_ladder(tmp_path / "off", monkeypatch, [])
+    assert rc == 0 and seen == ["ge", "ge2"] and info["source"] == "beam+ge2"
+    assert "deferred_depth" not in info
+    rc, seen, info, out = _run_ladder(tmp_path / "high", monkeypatch, ["--energy-first", "1.10"])
+    assert rc == 0 and seen == ["ge", "ge2"] and info["source"] == "beam+ge2"

@@ -477,6 +477,10 @@ def main(argv=None) -> int:
                          "the line's largest energy losses) hands back the line to the deepest "
                          "cell with >= G u more energy height than the line at the same "
                          "progress, marked energy (train_fast --auto-spine-energy); 0 = off")
+    ap.add_argument("--energy-first", type=float, default=0.0,
+                    help="B > 0: when the deepest line rides a GE root boosted above B (e.g. 1.04), "
+                         "the energy stage (--energy-gain) runs too and its line, if any, is the "
+                         "spine; the depth line is kept as spine_depth.npy. 0 = off")
     ap.add_argument("--energy-minutes", type=float, default=0.0,
                     help="the energy stage's Go-Explore budget (min; 0 = --ge-minutes)")
     ap.add_argument("--energy-cell-energy", type=float, default=0.0,
@@ -662,7 +666,21 @@ def main(argv=None) -> int:
                 if (float(a.near_gain) > 0 and near is None
                         and ge_de < a.greedy_d - a.gain + float(a.near_gain)):
                     near = (f"beam+{tag}", gl[:ge_e + 1], ge_de)
-        if best_src is None and a.ge_minutes > 0 and float(a.energy_gain) > 0:
+        first = None
+        if (best_src is not None and float(a.energy_first or 0) > 0 and float(a.energy_gain) > 0
+                and a.ge_minutes > 0 and best_src[0].startswith("beam+ge")):
+            # --energy-first B (pbr7b4): the deepest line rides a GE root boosted above B - a depth
+            # curriculum stalls at such a root (rounds 4, 5 and 7: x1.08 / x1.12 roots), so the
+            # energy stage runs too and its line, when it finds one, is the spine taught first; the
+            # depth line is kept as spine_depth.npy for the search after the energetic quorum
+            _tag = best_src[0].split("+", 1)[1]
+            _rb = res.get("ge_root_boost" if _tag == "ge" else f"{_tag}_root_boost")
+            if _rb is not None and float(_rb) > float(a.energy_first):
+                first = (best_src, float(_rb))
+                print(f"--energy-first {a.energy_first:g}: the deepest line ({best_src[0]}) rides a "
+                      f"x{float(_rb):g} root - the energy stage runs too", flush=True)
+        if (best_src is None or first is not None) and a.ge_minutes > 0 \
+                and float(a.energy_gain) > 0:
             # --energy-gain G: no line is deeper, so the gate may be ENERGY lost upstream (pbr5b2:
             # gate 17's shaft climb, gate 19's corridor): search before the line's largest
             # energy losses and hand back the line to the deepest cell that keeps >= G u more
@@ -719,6 +737,21 @@ def main(argv=None) -> int:
                 print(f"energy stage: a line to cell {c['cell']} at {c['progress']:.2f}% with h "
                       f"{eh:,.0f} ({c['gain']:+,.0f} u over the line), {len(gl)} states",
                       flush=True)
+                if first is not None:
+                    # --energy-first: the boosted depth line waits as spine_depth.npy (+ keys)
+                    (dsrc, dsp, dde), drb = first
+                    dsp = clean(dsp)
+                    dp = out / "spine_depth.npy"
+                    np.save(dp, dsp)
+                    dkt = dsrc.split("+")[-1]
+                    if KEYS.get(dkt) is not None and len(KEYS[dkt]) >= len(dsp):
+                        np.save(out / "spine_depth.keys.npy",
+                                np.asarray(KEYS[dkt][:len(dsp)], np.int32))
+                    res.update(deferred_depth={"spine": str(dp), "source": dsrc,
+                                               "end_d": float(dde), "root_boost": drb,
+                                               "n": int(len(dsp))})
+                    print(f"--energy-first: the energy line is the spine; the x{drb:g} depth line "
+                          f"({dsrc}, end d {dde:,.0f}) waits in {dp}", flush=True)
             else:
                 print(f"energy stage: no cell keeps {a.energy_gain:g} u more than the line "
                       f"({got.get('energy_candidates', 0)} candidates)", flush=True)
