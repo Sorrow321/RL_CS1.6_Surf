@@ -1,7 +1,7 @@
 {
  "agent": "pbr7b2",
  "round": 7,
- "final": false,
+ "final": true,
  "best": {
   "score": 82.652,
   "eval_file": "/home/steam/ar_pb/runs/pbr7b2/pbr7b2_c9/traj_45564297216.jsonl",
@@ -22,5 +22,5 @@
   "resume_from": "pbr7b2_c8/ckpt_latest.pt (45,186,285,568, md5 904106974ca64795d75ee4ddb6d7ff5f)",
   "commit": "21a31d7"
  },
- "summary": "73.590 -> 82.652 (c9 45.564B, median 80.6%; c8 80.856 at 44.816B; the 74.4% block passed by 8/9 greedy episodes from 43.68B). The block needed a launch-ramp entry heading straight south at ~1,100+ u/s: energy spines by the loop's own rule (tools/energy_splice.py) gave the energy (e3: gate 20's walkway; e5/e6: the 71-72.5% descent), and look-ahead 20 found the way over it from the policy's own energetic line with only its heading turned (no boost) -> depth spine d2c; c8 (lr 1e-4, de-clustered milestones after c7's kl-4.5 collapse) learned it, then the loop's async search swapped in the policy's own beam to 77.26%. New: --auto-spine-async, energy_splice, stitch_spine spine segments, analysis/pb_energy_profile.py."
+ "summary": "73.590 -> 82.652 (pbr7b2_c9, eval 45.564B, median 80.56%; hand-on ckpt_45558005760, 6.3M before). Energy spines by the loop's own rule (e3, e5/e6) gave the energy; look-ahead 20's heading-turned root found the way over the 74.4% block (d2c); c8 at lr 1e-4 with de-clustered milestones learned it and held (c4/c7 had collapsed on stacked bonuses). Then the loop ran itself: --auto-spine-async fired 4 searches in 75 min (77.26 / 78.30 / 79.82 / 92.54%), 77.042 -> 80.856. c9 = c8's weights on the loop's 92.54% line cut at 82.04% (k04c) learned the 80.4% turn in ~25 min: 82.652. Next: resume c9's ckpt_latest (46,023,049,216, md5 50c3a56e...) on k04c or the full k04 with the c8/c9 flags; the stops are the turn at 80.4% (7/9 still die there), the *265 sheet further north, and the drop at ~84.5%."
 }

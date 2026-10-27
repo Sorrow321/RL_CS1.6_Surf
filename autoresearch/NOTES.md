@@ -3491,3 +3491,49 @@ ckpt_35907960832 (md5 160da9eb...), eval 73.590 at 35.918B. Credit at the start:
   rows 6,810-6,815: 3% -> 51% by 07:22); from 45.56B one greedy episode per eval clears the turn north and the climb (z ~1,814)
   and dies further north on the same sheet (*265, z ~1,461 at (2,285, 2,627): 82.65%); the rest still die at the turn (80.5-80.9%).
   Handoff for 82.652: the copier's ckpt_45558005760 (6.3M before the eval, md5 6dec286c...), pulled.
+
+### pbr7b2 round 7 lesson (wrap-up, 2026-10-27 07:45 UTC) - supersedes the DRAFT above
+* **Score 73.590 -> 82.652** (pbr7b2_c9, eval 45.564297216B; best episode 82.65%, median 80.56%; hand-on ckpt_45558005760, 6.3M before the eval, md5 6dec286ccb0d92de94a797ea61eb2d89, pulled). Gates passed by
+  the greedy line from the true start this round: the 71.3% landing + the platform climb (73.67 -> 74.40, c1-c6), **the 74.4%
+  block** (74.399 -> 77.042, c8, 05:20 UTC), then three more catch levels in ~1.5 h with no hand work at all - the loop's own
+  searches (k01 77.26%, k02 78.30%, k03 79.82%) carried the greedy over gate 22's catch sheet (*183, z ~1,226) onto the south
+  ramp and past k03's end to the turn north at ~80.4% (the *265 sheet), 77.042 -> 80.856 (c8 44.816B); then c9, on
+  the loop's search-4 line cut at 82.04% (k04c), learned the turn: 80.952 -> **82.652** (45.564B; 1-2/9 greedy past it per eval). Box: one RTX 4080S
+  (57867173, 0.41 $/h) for the whole round, ~11 h.
+* **What did it, in order:**
+  1. **Energy at the right place**, each found by a reward-free search from the policy's own states and picked/taught with
+     the loop's energy rule: e3 (gate 20's walkway, +~250 u), e5 / e6 (the 71-72.5% descent). Measured, not guessed:
+     `autoresearch/analysis/pb_energy_profile.py` (energy, speed, position at first arrival per progress level).
+  2. **The APPROACH, not more energy, at a block**: 19 look-aheads characterised the 74.4% block; the 20th rooted the search at
+     the policy line's own states with the horizontal velocity TURNED (the recipe's front-perturb turn as a search root, no
+     boost) and found the only way over (d2 -> d2c).
+  3. **Stability**: c4 (kl 0.92 after the first energetic quorum) and c7 (kl 4.5: three milestones within 21 u of each other
+     plus the success line, crossed within a second by every spawn on the new chain) both collapsed the greedy (61.5%, 56%).
+     c8 at `--lr 1e-4` with milestones de-clustered (lines closer than the bonus they pay are one line) learned the same
+     crossing in ~55 min and held (update kl median 0.12-0.19 for 2.7 h).
+  4. **The loop runs itself once the policy is stable**: `--auto-spine-async` (the search beside the training, 136-236 s,
+     the trainer at full speed) fired four times in 75 min (quorum 7/9, 7/9, 7/9, 5+/9) - plain beam 77.26%, branched beam
+     78.30%, plain beam 79.82%, plain beam **92.54%** (9,200 states) - each swapped in at the next iteration; the backward
+     curriculum learned each new segment's one hard tick-window (k02's ramp kick at rows 6,944-6,954, k03's ramp landing at
+     6,750-6,765) in 15-40 min.
+* **What did not / open:** e1, e5's route and turned roots at the fork (survive, keep no energy); look-ahead 21 (a hand-run GE
+  from k02's rows, 80.75% but crawling at ~200 u/s) - the loop's own beam was the better line; k04 in full: its curriculum,
+  walking back from 92.5%, sat at the drop to the lower level (84.5%, 27-36%) ~1,200 rows before where the greedy dies (fixed by
+  the cut: c9 on k04c walked back to the turn in ~8 min, to 78.9% in ~15, worked a 5-row window on the south ramp (rows
+  6,810-6,815, 3% -> 51%) and its greedy cleared the turn ~25 min after the relaunch). Still open: most greedy episodes (7/9)
+  still die AT the turn; the one that clears it dies further north on the same sheet (*265, z ~1,461 at (2,285, 2,627)).
+* **New, generic, default off and bit-identical (CPU-tested):** `--auto-spine-async` (45ff5c2; TRAIN_ONLY in record_ckpt;
+  tests/python/test_auto_spine_async.py incl. bit-identity against the pre-change trainer); `tools/energy_splice.py` (58bb644:
+  the loop's energy-stage pick + splice for an archive searched by hand); `tools/stitch_spine.py` spine segments (c3c87fb).
+  Ops: a per-minute ckpt_latest copier on the box (runs/pbr7b2_snapcopy.py) so a best eval's hand-on snapshot is within ~16M
+  steps of it (the trainer's own cadence is 2e8).
+* **Generic rules learned:** (1) at a block the policy reaches with enough energy, try the approach DIRECTION before more energy:
+  turned roots are a cheap generic search perturbation; (2) bonuses that land together are one bonus: de-cluster milestones,
+  and cut the lr for a fragile skill rather than let one update undo it; (3) never stop the training for the search; (4) a
+  beam line ends where its horizon ends, sometimes a few ticks above a catch sheet (k02) - harmless, the next quorum's search
+  from the policy's own weights replaces it; (5) a spine much longer than the gap to the greedy's failure point spends the
+  curriculum's time where the greedy never goes - cut it just past that point (k04c) when time is short.
+* **Next (if the program continues):** resume c9's ckpt_latest (46,023,049,216, md5 50c3a56e3d70db7bc66b59bbfac2caa9, pulled) on k04c (autoresearch/spines/pbr7b2_k04c, md5 814044ec...) or on
+  the loop's k04 in full (runs/pbr7b2/pbr7b2_c8/auto_k04, md5 f3f74722..., to 92.54%), with the c8/c9 flags (lr 1e-4, the 33
+  milestones, the loop async); the next stops are the 5-row window on the south ramp at 78.9% (rows 6,810-6,815) and the turn
+  north at ~80.4% (*265), then the drop to the lower level at ~84.5%.
