@@ -4090,3 +4090,8 @@ Only a FASTER 9/9 eval beats it (one finisher fewer costs 1.11 = 33 s of time; o
 * Use (box): beam_tas --objective finish --score dv on the current weights -> plan_to_bc -> `--bc-file F --bc-coef 0.5
   --bc-coef-final 0 --bc-steps 3e8 --bc-target dist --bc-view-coef 0`; watch the first updates' kl (resumes without BC read
   ~0.03).
+
+### Waiting for a box (22:56 UTC)
+* `runs/pbr9b4/autorent.sh` (agent host, background): `box.py rent` every 120 s; on a box it runs `box.py deploy` (branch +
+  the incumbent checkpoint) and `launch_c1.sh` (pbr9b4_c1: the incumbent on h1e + --demo-success-energy 200, c12's flags
+  otherwise, lr 5e-5) at once, and releases the box if either step fails. Log: runs/pbr9b4/autorent.log.
