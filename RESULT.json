@@ -3,17 +3,18 @@
  "round": 9,
  "final": false,
  "best": {
-  "score": 116.598,
-  "eval_file": "/home/steam/ar_pb/runs/pbr9b1/pbr9b1_c3/traj_55773233152.jsonl",
-  "run": "pbr9b1_c3",
-  "step": 55773233152,
-  "ckpt": null,
+  "score": 117.719,
+  "eval_file": "/home/steam/ar_pb/runs/pbr9b1/pbr9b1_c4/traj_56533975040.jsonl",
+  "run": "pbr9b1_c4",
+  "step": 56533975040,
+  "ckpt": "/home/steam/ar_pb/runs/pbr9b1/pbr9b1_c4/ckpt_56525586432.pt",
   "recipe": [
-   "c2: the incumbent ckpt_55038705664 on pbr9b1_fo1e (own greedy line + a GE fly-over chain at 84%, cut at 84.92%) + --demo-success-energy 150, lr 1e-4, pool fo1after then fo1dec",
-   "c3: c2's ckpt_latest (55.6217B) + --demo-success-strict (new: the curriculum counts the energetic crossing alone), pool fo1dec, lr 1e-4"
+   "c2: the incumbent ckpt_55038705664 on pbr9b1_fo1e (own greedy line + a GE fly-over chain at 84%, cut at 84.92%) + --demo-success-energy 150, lr 1e-4",
+   "c3: c2's ckpt_latest (55.6217B) + --demo-success-strict (new: the curriculum counts the energetic crossing alone), pool fo1dec, lr 1e-4 - the greedy adopts the fly-over",
+   "c4: c3's ckpt_latest (56.4580B) on pbr9b1_fo2 (fo1 + a GE soft landing on the lower level, cut at 88.12%) + --demo-success-energy 150 --demo-success-strict, pool fo2dec, lr 1e-4; 117.719 at 56.534B (9/9, best 68.43 s)"
   ],
-  "resume_from": "pbr9b1_c2 ckpt_latest 55.6217B (md5 91eefc4e...)",
-  "commit": "1ff21f6"
+  "resume_from": "pbr9b1_c3 ckpt_latest 56.4580B (md5 d3ff7962...)",
+  "commit": "f3d725d"
  },
- "summary": "c1 (incumbent, c12's flags): 5-7/9, best 68.56 s - no reliability gain. GE at the incumbent's own line: a fly-over of the 84% platform end (x1.04 root; 1.1 s faster to the lower level) -> spine fo1e (energy cut at 84.92%). c2 on it: the band walked back on FINISHES (the energy rule counted any finish as a curriculum success; 1/72 bench fly-overs) -> new flag --demo-success-strict. c3 (strict): the band holds at the junction and walks back past it at 27-47% real fly-overs; evals 7/9, 7/9, 8/9 (116.598, 68.74 s); the greedy has not switched yet. The planner (beam_tas from the true start) finds nothing faster than the greedy (69.08 vs 69.07 s)."
+ "summary": "117.719 (c4 56.534B: 9/9 finish, best 68.43 s; hand-on ckpt_56525586432 md5 334c0601..., pulled) > incumbent 117.711. How: GE at the incumbent's own line found a fly-over of the 84% platform end (spine fo1e, energy cut); the energy rule's curriculum counted finishes as successes (band walked back without fly-overs) -> new --demo-success-strict; c3 taught the greedy the fly-over (~1 s over 83-86%); c4 moved the energy gate to 88% on fo2 (+ a GE soft landing). c4 then collapsed (0/9 at 56.685B, deaths at ~55%) - next: the pre-collapse snapshot at lr 5e-5."
 }
