@@ -3701,3 +3701,8 @@ ckpt_45558005760 (82.652 at 45.564B).
 * c4 at 11:36 UTC: the band is AT the platform landing, [7,100 / 7,105] (81.9%), 9-29% band success.
 * Plan: when c4's greedy passes the platform (score ~93), relaunch on b3s (tau0 = the finish: the shaft and the lower level
   are now the policy's own and should re-walk fast) with b3c's 86.13% line (7,926) as a milestone.
+* c4 at 11:52 UTC (48.96B): the band passed the platform landing (7,100) and sits at b3's FORK, [6,950 / 6,955] (~80.3%; the
+  branched beam's held view offset ran rows 6,936-7,001): band [6,950] 13-17%, [6,955] 48-50%. Evals 82.69 / 83.02 / 82.82 /
+  82.92; the 48.88B eval shows the transition - 3/9 greedy episodes now take the eastward turn at 80.3% and fall on the
+  z ~1,460 sheet at (2,113, 1,462-1,481), 4/9 still go west to 82.3-82.9%, one fell back to the 72% platform line, one died at
+  46.5% (watched: early-course failures would mean drift).
