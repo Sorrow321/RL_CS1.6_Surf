@@ -3950,3 +3950,10 @@ ckpt_45558005760 (82.652 at 45.564B).
 * c12 (lr 5e-5, no auto-spine) 18:45-19:02 UTC: evals 112.142 (4/9, 69.06 s) / 113.249 (5/9, 69.20 s) / 114.377 (6/9, **68.69 s**,
   the round's fastest) / 115.476 (7/9, 69.04 s) - finishes climbing with every eval, the band walked f1e back to 4,705; update
   kl median 0.226 (4 of 557 > 0.8, one 8.6). Hand-on of the 68.69 s eval pulled.
+
+### 9/9 UNDER 1:10: 117.711 (2026-10-27 19:16 UTC, c12 55.039B)
+* c12 evals 19:03-19:19 UTC: 111.025 (3/9) / 115.504 (7/9, **68.22 s** - the round's fastest finish; snapshot ckpt near 54.963B
+  pulled) / **117.711 (55.039B: 9/9 finish, best 68.66 s, median 100%)** / 115.474 (7/9, 69.12 s). Hand-on ckpt_55038705664 =
+  the eval's own step (md5 bc483e2fe136e6ff4594e564b64e671a), pulled. The record (yardstick only) is 75.18 s.
+* What held it: c11's pre-collapse snapshot, lr 5e-5 (from 1e-4), no auto-spine swap, the energy-gated f1e curriculum (the
+  greedy now flies the 82-86% platform) - update kl median 0.23.
