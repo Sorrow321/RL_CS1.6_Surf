@@ -3314,3 +3314,9 @@ ckpt_35907960832 (md5 160da9eb...), eval 73.590 at 35.918B. Credit at the start:
   walkway (h 2,630-2,791 at 66% where c3 walked at ~2,425; ~2,600-2,670 at 71.2%), still lands on the platform at 72% (8/9);
   0/9 cross e5's line with h >= 2,660 yet. Handoff for 74.374: ckpt_40650145792 (26.7M before the eval, md5 4ee0add1...,
   pulled; ckpt_latest 40.790B pulled too).
+* **Probe from e5's end** (record_ckpt, c5's 40.807B weights, greedy, 6 episodes spawned at e5's last 26 rows): the policy
+  CARRIES the energy into the launch zone - h 2,743-2,779 at 72.5-73.3% at 1,038-1,180 u/s (the x1.16 chain's speed) -
+  but reaches 73.3% at x -1,161..-1,240, EAST of the ramp line (-1,280..-1,320), loses ~400 u there (h -> 2,196-2,393 at
+  73.5%) instead of launching, and dies at 74.19-74.27%. The energy is now reachable; the missing skill is entering the
+  launch ramp on its line at that speed - after e5's end, so taught only by the episodes that continue past it.
+* Look-ahead GE 14 (01:57 UTC): e5 rows 6,385-6,425 x1.0 / 1.08 / 1.16 - the boost the explorer needs from there.
