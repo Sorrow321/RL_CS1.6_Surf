@@ -3,17 +3,19 @@
  "round": 8,
  "final": false,
  "best": {
-  "score": 92.699,
-  "eval_file": "/home/steam/ar_pb/runs/pbr8b3/pbr8b3_c2/traj_47063760896.jsonl",
-  "run": "pbr8b3_c2",
-  "step": 47063760896,
-  "ckpt": "/home/steam/ar_pb/runs/pbr8b3/pbr8b3_c2/ckpt_47061139456.pt",
+  "score": 94.852,
+  "eval_file": "/home/steam/ar_pb/runs/pbr8b3/pbr8b3_c4/traj_48166862848.jsonl",
+  "run": "pbr8b3_c4",
+  "step": 48166862848,
+  "ckpt": "/home/steam/ar_pb/runs/pbr8b3/pbr8b3_c4/ckpt_48162144256.pt",
   "recipe": [
    "c1: resume of pbr7b2_c9 ckpt_latest (46.023B, md5 50c3a56e...) on spine pbr7b2_k04c with c9's flag set (round-5 to-continue block + --demo-match-band --auto-spine-patience 0 --auto-spine-ge-minutes 5 --auto-spine-energy 150 --auto-spine-async --lr 1e-4, 33 milestones); evals 82.359-82.528; the loop's search 1 (46.175B) found a branched beam line to 94.59%",
-   "c2: resume of c1's ckpt_latest (46.384B, md5 d8dce63d...) on spine pbr8b3_k01c (search 1's line cut by the new --auto-spine-cut-ahead rule at 83.92%) with c1's flags + --auto-spine-cut-ahead 1000, 34 milestones; 83.103 at 46.384B; the greedy learned the 81% ramp ride onto the 82.5% platform in ~35 min: 90.697 (46.913B), 92.699 (47.064B: ep5 through the platform walk, the 84.5% drop and the loop to the finish shaft, 92.70% at z 280), 90.875; the loop's search 1 in c2 (47.22B) swapped in its plain beam cut at d 8,049 (85.9%) by the rule"
+   "c2: resume of c1's ckpt_latest (46.384B, md5 d8dce63d...) on spine pbr8b3_k01c (search 1's line cut by the new --auto-spine-cut-ahead rule at 83.92%) with c1's flags + --auto-spine-cut-ahead 1000, 34 milestones; 83.103 at 46.384B; the greedy learned the 81% ramp ride onto the 82.5% platform in ~35 min: 90.697 (46.913B), 92.699 (47.064B: ep5 through the platform walk, the 84.5% drop and the loop to the finish shaft, 92.70% at z 280), 90.875; the loop's search 1 in c2 (47.22B) swapped in its plain beam cut at d 8,049 (85.9%) by the rule",
+   "c3: resume of c2's ckpt_latest (47.936B) on spine pbr8b3_k01d (search 1's c1 line cut by the cut-ahead rule against the 90.7% greedy frontier, 92.44%; c2's search 2 from the true start could not reach the greedy) with c2's flags, 36 milestones; 92.660 / 92.550",
+   "c4: resume of c3's ckpt_latest (48.015B) on k01d with --demo-tau0 7951 and the new --auto-spine-from-spine 4 (the loop's beams start on the current spine 4 s before the greedy frontier), every other flag as c3; 92.925, 94.852 (48.167B: ep7 to 94.85% at z -710 in the finish shaft); its search 1 (19 s, from the spine) swapped in a line cut at 94.4%"
   ],
   "resume_from": "pbr7b2_c9/ckpt_latest.pt (46,023,049,216, md5 50c3a56e3d70db7bc66b59bbfac2caa9)",
   "commit": "ee1acc7"
  },
- "summary": "c1 resumed c9's last weights (46.023B) on k04c (82.36-82.53); its loop search found a branched beam to 94.59%. New generic flag --auto-spine-cut-ahead G: the loop's new depth spines end G u past the greedy frontier (round 7's k04 -> k04c hand cut as a rule; flag off bit-identical). c2 = c1's weights on search 1's line cut by the rule (k01c, 83.92%) + --auto-spine-cut-ahead 1000: 83.103, then the greedy learned the 81% ramp onto the platform and flew on: 90.697 / 92.699 (47.064B: one episode into the finish shaft at 92.7%) / 90.875. Look-ahead (analysis): the shaft's twisting catch blade above the finish box falls to a 0.1-min Go-Explore from the policy's own states. Reliability is the issue now (3/9 still die at the 74.4% block)."
+ "summary": "New generic loop flags this round: --auto-spine-cut-ahead G (new depth spines end G u past the greedy frontier) and --auto-spine-from-spine S (the search's beams start on the current spine S s before the greedy frontier: from the true start the stochastic population lost its leaders at gates the greedy passes). c1 82.53 -> c2 (k01c, cut 83.92%) 83.103 -> 92.699 (the platform falls) -> c3 (k01d, cut 92.44%) 92.660 -> c4 (from-spine) 94.852 (48.167B, one episode to z -710 in the finish shaft). Look-ahead (analysis): the shaft's twisting catch blade above the finish box falls to a 0.1-min Go-Explore from the policy's own states. Open: reliability (3-4/9 die at 61-83%), the shaft's catches, the blade."
 }

@@ -3670,3 +3670,15 @@ ckpt_45558005760 (md5 6dec286c...), eval 82.652 at 45.564B. Credit at the start:
   failed: the k01c files I had written on the box before committing them were untracked there and blocked the checkout;
   removed, same md5 as the commit), resumed on k01d with `--demo-tau0 7951` (c3's last band) and
   **`--auto-spine-from-spine 4`** (S = the loop's own --roots-secs), every other flag and the 36 milestones as c3.
+
+### The loop starts on its own spine: 92.699 -> 94.852 (2026-10-27 11:10-11:25 UTC, c4)
+* c4 evals 90.698 (48.016B = c3's weights; median 72.9%) / 92.925 / **94.852** (48.167B) / 93.637 (median 92.7%) / 92.860.
+  At 48.167B ep7 reached **94.85% at (663, 2,771, z -710)** in the finish shaft at 73.3 s; the others: 92.5-93.1% (3, the
+  shaft's top catch *181), 90.85% (1, the crawl), 82.6-82.9% (2), 68.4% (1), 61.4% (1). Hand-on: the copier's
+  ckpt_48162144256 (4.7M before the eval, md5 9cf130ab26140376eeb39f8b42869fa8), pulled.
+* **The first live `--auto-spine-from-spine` search** (c4's search 1, quorum at ~48.24B): `--start-row 8313` (k01d's row at
+  (-58, 2,635, 858) in the 86-91% loop, 4 s before the greedy frontier 4,184), beam 1,300 ticks x 4,096 in **10 s**,
+  frontier **d 542 = 99.05% (the blade)**; the line (9,413 rows) cut by `--auto-spine-cut-ahead 1000` at row 8,967 (d
+  3,182, 94.4%), success line d <= 3,282; the whole search 19 s (c2's search 2 from the true start: 1,100+ s, no line).
+  The curriculum then worked the shaft's top section (rows 8,722-8,727: 3-28%).
+* Box extended to 14:24 UTC (11:24; credit $19.09, fleet burn 1.06 $/h, 8.6 h to the reserve).
