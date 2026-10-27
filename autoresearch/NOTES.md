@@ -3258,3 +3258,11 @@ the operator's); this branch keeps a waiter on `box.py rent` and works offline m
   x1.04 root and oscillates on the beam prefix at [6,341 / 6,346 / 6,351] (12-31%; ~70.2%). Pulled ckpt_latest at
   37.292B (md5 2ee0445d...). The patience (8e8 from the resume's eval) fires the loop's first search at the eval after
   37.46B (~06:00 UTC): its beam should follow k02's route (faster at matched time), its 32 u / select-energy GE the wall.
+* **06:08 UTC: 74.317** (c13, eval 37.490B; evals 37.339 / 37.415B 74.236 / 74.230: one episode per eval on k02's route
+  to 74.2-74.3%, the rest on the platform route). At 37.490B the patience fired search 1: **the PLAIN BEAM on c13's
+  weights to d 14,640 = 74.38% in 54 s** (553 u past the greedy frontier 15,193; no GE stage ran) -> depth spine k01
+  (6,978 states + keys, committed as autoresearch/spines/pbr7b1_c13k01), success line 74.21%. The curriculum restarted
+  at its end (bands [6,552 / 6,557] at 14-20%); eval 37.566B 74.087 (median 61.5%, the swap's usual wobble).
+* Hand-on: the search's own 37.490B save was overwritten at 37.605B before I could pull it; pinned instead the
+  ckpt_latest pulled at 05:48 as **runs/pbr7b1/pbr7b1_c13/ckpt_37292081152.pt** (198M steps before the 74.317 eval, md5
+  2ee0445d...; its own evals 37.339-37.490B: 74.236 / 74.230 / 74.317), plus ckpt_latest at 37.605B.
