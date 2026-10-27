@@ -3192,3 +3192,14 @@ a 5080 at 0.621 $/h, so `rent` was REFUSED (budget pace); a local retry every 5 
   37.106B, md5 bb22bc30...) `--field maps/...goalc_32.npz --greedy-d 15164 --gain 500 --beam-ticks 12256 --envs 4096
   --ge-minutes 5 --branch-tick 7150 --energy-gain 150 --maxvel 3500` (OMP / NUMBA 30 threads: the box's whole quota
   while the trainer is stopped), out runs/pbr7b3_c1/auto/m01.
+* The hand search (05:39-05:50 UTC): the first try (branched beams on) was stopped after its plain beam - 74.31% at 52.9 s
+  (d 14,679, 15 u short of the gain over the greedy's 15,164) - because its five branched beams would cost ~150 s each on
+  this box; rerun with `--branch-tick 0 --branch-energy 0`: the same plain beam, then **GE stage 1 (x1.0 / 1.04, 5 min)
+  found a chain from the beam line's row 6,788 (x1.04) over the 74.3% ledge to d 12,680 = 77.81%** -> spine
+  `autoresearch/spines/pbr7b3_m02` (+keys; 7,309 rows, md5 ed6f2233...): over the ledge at z 2,168 (h 2,408), down the
+  shaft, the 76% ramp landing (h 2,438 -> 1,846), east at ~870 u/s, a crash at 77.8% (its end). So on weights that fly
+  the k02 chain with +100-160 u, the uniform explorer from an x1.04 root crosses the ledge - the energy the local x1.2 probe
+  measured on k02 was the energy the greedy now carries.
+* **pbr7b3_c2** (05:53 UTC): c1 killed (it was paused), runs_ckpt.pt = c1's 37.106B weights (ckpt_search.pt, md5
+  bb22bc30...), box checkout fetched to e21e65c, launch with c1's flags on spine m02 + keys (no tau0: the curriculum starts
+  at its end), milestones + k02's line 14,773, `--auto-spine-root-energy 25`.
