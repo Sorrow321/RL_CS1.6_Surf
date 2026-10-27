@@ -3230,3 +3230,17 @@ Independence: only this branch and $AR_HOME/incumbent/ are read. c12's later wei
   past k01b's own end (74.26%) - the policy's own sampling now takes the route; five branched beams 14,625-14,651;
   GE stage 1 (x1.0 / 1.04) 14,615; none passes the 14,308 bar (k01b's line - 500). Trainer under the search:
   338k steps/s against ~356k before it (the GE stage's 14-thread team at ~980% CPU): the async cost is ~5%.
+* **The manual search's result (00:20 UTC, 31 min): GE stage 3 (x1.12) to d 12,652 = 77.86%** - stages 1 (x1.0 / 1.04)
+  and 2 (x1.08) stayed at 74.42-74.43%. Spine committed as `pbr7b4_c17m01` (9,433 states). The x1.12 root is the beam
+  line's row 6,797 (73.44%, the start of the climb into the passage, |v| 885 -> 991, h 2,351 -> 2,476: +125 u); the
+  chain climbs at ~880 u/s, lands IN the passage at 74.6% (x -803, z 2,120, stopping at 55 u/s), crosses the room behind
+  it for ~2,000 rows (15 s, walking at 0-260 u/s around x -800..-223, y 1,145-1,520, z ~1,790-1,850), drops at
+  (-336, 1,161) to z 1,424 (76.1%) and surfs east at 650-720 u/s to (748, 1,380, 1,297) at 77.8% (the record's east
+  surf, ANALYSIS: it does that stretch at ~1,200 u/s).
+* So the passage needs ~+125 u of energy height at the climb that the unboosted policy does not have: the "boosted
+  root" case (rounds 4-5: depth curricula stall at x1.08 / x1.12 roots; round 6 / gate 19: teach the ENERGY first,
+  then the policy's own search passes the gate). Started at 00:26 UTC: an ENERGY-ONLY search on c17's 39.804B weights
+  (auto_spine with `--ge-boost ''` = no depth stage, no branched beams, --energy-gain 150: the beam, then Go-Explore
+  rooted before the beam line's largest energy losses in its last 12 s before the climb, the deepest cell keeping
+  >= 150 u more energy height than the line) -> runs/pbr7b4_c17/manual_e01/. Then: teach it with the energy rule, the
+  loop on, so its energetic quorum fires the next search on weights that carry the energy.

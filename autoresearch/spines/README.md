@@ -256,3 +256,9 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   74.26%, 12 u short of the loop's 500 u margin, so the loop took stage 2) spliced onto the same beam line exactly as
   auto_spine.go_explore splices (canonical views, the chain's keys translated; rows 0-6,397 identical to
   pbr7b4_c13k01's). A x1.04 root instead of x1.08. No demo, no record (pbr7b4, round 7).
+* `pbr7b4_c17m01.npy` + `.keys.npy` (9,433 rows; md5 999cdf68d8678f9cc3743c4b2218437e / ce029e1637daaff8e28e92aaba5e6457):
+  a manual tools/auto_spine.py search on run pbr7b4_c17's 39.167B weights (--greedy-d 14,808 = the pbr7b4_c13k01b line):
+  the policy's own plain beam_tas line from the true spawn (6,900 ticks to 74.41%) to its row 6,797 (73.44%, the climb
+  into the passage), then one exact explore_phase1 --exact-chains chain (reward-free, that row's state x1.12, GE stage
+  3; 2,636 states: into the passage, ~15 s across the room behind it, the drop at (-336, 1,161) and the surf east) to
+  d 12,652 = 77.86%. Keys = the beam's and the chain's own held keys. No demo, no record (pbr7b4, round 7).
