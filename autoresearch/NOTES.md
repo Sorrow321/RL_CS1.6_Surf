@@ -3871,3 +3871,9 @@ of its 1.2 $/h cap; the only other passing offer was a 0.621 $/h 5080). Incumben
   ~4.3 s): ducked, 400-1,750 u/s, the top plate crossed in its EAST opening at (992, 2,861, 262) where the greedy dies
   further west (x 587-789). Evals 92.882 / **93.824** (53.333B; handoff ckpt_53332148224, 0.5M before, md5 f415e5fd...,
   pulled) / 92.951 / 92.940 / 92.887 / 92.865 (medians 92.7-92.8%).
+* 15:29 UTC: c9's curriculum at [8,306 / 8,311] (92.1%, the tube's entry, 29-40% bands); evals 92.773-93.025 (medians
+  92.5-92.8%). Greedy vs fin1 at matched progress (eval 54.012B): within ~20-80 u from 88% to 91.5% (at 91.5% (823-829,
+  2,645-2,664, 820-835) vs fin1's (820, 2,674, 855), similar velocity); then the greedy enters the tube top ~90 u further
+  SOUTH (92.3%: y 2,857-2,870 vs 2,952), so it misses the ledge fin1 LANDS on at z ~349 (fin1 at 92.6%: (675, 2,996, 349)
+  vz 0, then east along it to x 842 and down the top plate's east opening) and falls at -880 u/s onto the plate's killing
+  west part (x 728-762, z 262). The curriculum is ~60 rows from where the two lines still agree (row ~8,245).
