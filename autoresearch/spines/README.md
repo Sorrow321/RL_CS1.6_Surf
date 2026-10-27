@@ -343,3 +343,8 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
 * `pbr8b4_mix5.npy` (5,837 rows): mix4 + b2 rows 9,101-9,950 twice (la2's lower level from the hole's exit at 85.9% round the
   90.7% pocket into the tube's top at 91.9%). Same provenance; no demo, no record. Swapped in for c5's spawn pool (the mix4
   launch path on the box, atomic replace; the trainer re-reads on an mtime change).
+* `pbr8b4_b3.npy` + `.keys.npy` (11,588 rows; md5 a68d4948fee4e1d518d56355ac74a946 / eaa017c87fb22f236f61a91383bbf367): b2 to row
+  11,159 + the policy's OWN beam_tas line (runs/bm3b: c5's 51.094B weights, `--start-state pbr8b4_b2.npy:11160` = b2's hover exit,
+  4,096 envs, the loop's settings, --save-frontier now saving a crossing winner) from b2's row 11,160 to the finish box in 428
+  ticks (3.28 s, replay bit-exact). It replaces la5's lower tube, whose chamber passage clipped a slanted lip from 5 rows the
+  policy cannot win from. Keys: b2's + the beam's own (auto_spine.keys_from_acts). No demo, no record (pbr8b4, round 8).
