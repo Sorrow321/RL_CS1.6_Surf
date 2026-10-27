@@ -3706,3 +3706,16 @@ ckpt_45558005760 (82.652 at 45.564B).
   82.92; the 48.88B eval shows the transition - 3/9 greedy episodes now take the eastward turn at 80.3% and fall on the
   z ~1,460 sheet at (2,113, 1,462-1,481), 4/9 still go west to 82.3-82.9%, one fell back to the 72% platform line, one died at
   46.5% (watched: early-course failures would mean drift).
+
+### THE PLATFORM FALLS: 83.205 -> 93.819 (2026-10-27 12:05 UTC, c4)
+* c4's curriculum (b3c, success line 86.13%) walked 8,200 -> 6,950 in ~65 min (the 84.5% hop-off, the platform walk, the
+  81.9% landing, then b3's fork at 80.3%: band [6,950] 13-17% for ~15 min); the greedy switched route: evals 92.982 (49.108B)
+  and **93.819** (49.183B, median 92.5%): 5/9 fly the platform, the drop and the lower level into the final shaft (92.5-93.8%
+  at ~70 s) and die on its upper kill sheets at z -130..+282; 1/9 at 90.7% (lower level), 1/9 at the hop-off (84.6%), 2/9
+  still take the old west route (82.1-82.6%). Hand-on: ckpt_49183457280.pt (the eval's own step, md5 recorded by box.py
+  pull). The loop's search 1 fired on the quorum (5/9 past 86.13%) at 49.21B: a beam to d 3,326 = 94.18% (8,500 states)
+  swapped in (spine k01, success line 94.0%).
+* **pbr8b1_c5** (12:13 UTC): c4's ckpt_latest (49.250B, md5 90845323...) on **b3s** (the policy's own line to the finish;
+  success = the finish), milestones + 7,926 (b3c's 86.13% line; 36 in all - not k01's 94.0% line, which sits ~1 s after the
+  92.36% one in the shaft: round 7's stacked-bonus collapse), spawn pool start room + b3s's own shaft rows 8,937-9,338,
+  --auto-spine-extra-secs 45, every other flag as c4. Record gate passed (4).
