@@ -3391,6 +3391,60 @@ Independence: only this branch and $AR_HOME/incumbent/ are read. c12's later wei
   regression 05:10 UTC: demo_match_band + demo_success_energy + auto_spine_energy + demo_replay_frac 20/20,
   auto_spine units 13/13, the loop's flag-off identity (test_auto_spine_async) passes.
 
+### The 74.4% passage is an APPROACH gate: the policy already flies the passage from the right state (06:17-06:35 UTC, local CPU, no box; ANALYSIS of our own lines)
+Bench = `autoresearch/analysis/pb_bench_spine.py` run locally (record_ckpt greedy from exact spine rows, 8 episodes each;
+CPU, so not bit-identical with the box's evals), the levels 73.44% (the climb) and 74.6% (the passage floor):
+
+| weights | spawn rows | the state there | in the passage | best progress |
+|---|---|---|---|---|
+| c17 hand-on (39.67B) | c17m01 6,798-6,805 | the x1.12 chain on the climb ramp: heading SSW, vz +500-560, h 2,433-2,463 | **8/8** | 75.27-76.07% |
+| c21 final (44.83B) | the same | the same | **8/8** | 76.10-77.30% (the room, the drop, the east surf) |
+| c17 | c17m01 6,789-6,796 | the beam line just before that root: same place and heading, h ~2,355 | 0/8 | 74.28-74.38% |
+| c21 | the same | the same | 0/8 | 74.27-74.36% |
+| c21 | e01 6,376-6,383 | just after e01's energetic 71.6% bounce, heading S | 0/8 | 73.60-74.35%, **h 2,452-2,479 at 73.44%** |
+| c17 | the same | the same | 0/8 | 73.05-73.43% (crashes before the climb) |
+| c21 / c17 | e01 6,416-6,423 | e01's end (72%) | 0/8 / 0/8 | 72.77-74.31% / 73.06-73.09% |
+
+The approach, at first arrival (heading in degrees: -90 = south, more negative = west of south):
+* the beam (c17m01, unboosted): 73.3% heading -85, vz +136, |vxy| 923; 73.44% heading -103, vz +407, |vxy| 789, h 2,352.
+  It turns ~18 deg west INTO the climb ramp, and the ramp turns its speed into vz.
+* c21 from e01 (energetic): 73.3% heading -82, vz +99, |vxy| 1,013; 73.44% heading -95, vz +329, |vxy| 936, h 2,452;
+  73.6% at (-1,262, 1,625, 1,960) heading -65, vz +414. It turns only ~13 deg and keeps its speed horizontal. Its
+  ballistic peak z + vz^2/1,600 at 73.6% is ~2,020-2,070, below the passage floor (~2,120). The x1.12 chain leaves the
+  ramp at (-1,235, 1,705, 1,983) with vz +480 (peak 2,127) and lands in the passage.
+* e02: 73.44% heading -77, vz -7 (flat, arriving from the west side).
+
+So: (1) the passage skill itself is in the policy: 8/8 from the right state, c17 and c21 alike. This corrects the DRAFT
+lesson's "passage technique missing". (2) The energy is in the policy's own lines: e01's bounce, and c21 carries
+h ~2,460 to the climb. (3) What is missing is turning INTO the climb ramp at 73.3-73.44% with that energy, i.e. the
+vertical speed at the ramp's top. Each half exists in a line of its own: the beam has the approach, e01 / e02 the
+energy.
+
+### AN UNBOOSTED LINE THROUGH THE 74.4% PASSAGE, to 78.14%: Go-Explore from the policy's own energetic approach (06:34-06:48 UTC, local CPU, no box)
+* The roots: c21's final weights flown greedy from e01's row 6,378 (just after the energetic bounce; record_ckpt
+  --dump-states, one episode, 465 ticks to 74.35%). On the way to the climb this greedy line takes its own route
+  (heading SW to (-1,328, 2,947) at 71.7%, then S along x ~-1,265 at ~1,020 u/s, h ~2,470). explore_phase1
+  --exact-chains (through auto_spine.go_explore; driver in the session scratchpad) rooted at 48 of its states over
+  72.60-73.44%, **x1.0**, 12 min, 1,024 envs, 3 threads (0.16M ticks/s locally against the box's ~1M+), 58,955 cells.
+* **The deepest chain** (root = the greedy's tick 194 at 72.94%, 637 states): it turns ~40 deg west INTO the climb ramp
+  (heading -101 -> -125, vz +409 -> +561 at 73.43-73.48%), turns east on the ramp's wall (heading -6 at 73.61%,
+  vz +433), flies through the passage WITHOUT stopping (74.03% at z 2,130; 571 u/s at 74.77%; the x1.12 chain stopped
+  in the room and walked for 15 s), drops (75.8%, vz -898) and surfs east at ~1,030 u/s to d 12,491 = **78.14%**, past
+  the x1.12 line's 77.86%. Spine **`pbr7b4_c21app01`** + keys (7,210 rows, committed; provenance in
+  autoresearch/spines/README.md). Its only boosted root is e01's x1.04 at 71.03%, the kind of root the curriculum
+  learned in c14-c17 (k01b's).
+* Three GE runs from e02's states (10-15 min each on the box, 02:03-03:56 UTC) never entered the passage. This one,
+  from the policy's own greedy states with the energy, did in 12 minutes on 3 local threads. The approach decides:
+  e02 reaches the climb flat from the west side; this greedy line arrives heading S along the beam's lane with the
+  energy, and the turn-in is within reach of the uniform explorer from there.
+* Bench from the chain's own rows (local, greedy, 8 each). Rows 6,600-6,607 (73.33-73.40%, before the turn-in): c21
+  0/8, 73.83-74.33%. Rows 6,625-6,632 (73.44-73.47%, the turn-in): c21 0/8 (74.24-74.37%), c17 0/8 (74.25-74.39%).
+  Rows 6,645-6,652 (the turn on the wall, heading -125 -> -76, vz +561 -> +497): c21 **3/8** in the passage
+  (75.15-75.94%: the later rows), 5/8 at 74.36%. Rows past the turn are ones the policy already flies, like the x1.12
+  rows. So the policy's skill boundary is the wall turn itself: the ~40 deg turn-in and the turn east on the wall,
+  about 0.3 s of the line. That is what a curriculum on this spine has to teach, and the energy for it is already in
+  the policy's own greedy line (it flew this approach from e01's row).
+
 ### To continue (next round, if this branch wins)
 * Hand-on: c17's ckpt_39674445824 (74.345; the k01b chain route: medians 73.3%, best episodes 74.2-74.35% in the
   passage flight; tick 7.67 ms, keys-hold / potential / view shapes carried - never pass shape or tick flags).
@@ -3410,6 +3464,13 @@ Independence: only this branch and $AR_HOME/incumbent/ are read. c12's later wei
   spine). New and worth adding: `--auto-spine-beyond-line --auto-spine-patience 6e8` (periodic async searches that
   can only go deeper) and `--auto-spine-search-args "--energy-first 1.04 --energy-minutes 15 --energy-roots-secs 6
   --energy-cell-energy 16 --energy-select 1"`.
+* **First thing to try (06:52 UTC finding): the curriculum on `pbr7b4_c21app01` + its keys** (an unboosted line
+  through the 74.4% passage to 78.14%; only e01's x1.04 root at 71.03%), with the depth rule (`--demo-success-d 100`) and
+  the base flag set below. Start the curriculum just before the wall turn (`--demo-tau0 ~6,645`: from there c21 flies
+  the passage 3/8), so it walks back through the turn-in (rows 6,573-6,648, the explorer's chain), the greedy's own
+  approach (6,378-6,572), e01's energetic bounce (6,340-6,377, the x1.04 root) and the beam. With
+  `--auto-spine-beyond-line` a patience search can only go deeper than this line. The two "skills" below came down to
+  one at the bench: the turn into the ramp with the energy.
 * The gate at 74.4% needs two skills (see the bench above): the PASSAGE TECHNIQUE (steer south-west into the climb
   ramp at 73.3-73.5% and rise at ~+460 u/s; spine `pbr7b4_c17m01` shows it from a x1.12 root) and the ENERGY to do it
   unboosted (~+125 u at the climb: spine `pbr7b4_c18e02`'s glide carries it, its 71.6% bounce is a keys-timing contact

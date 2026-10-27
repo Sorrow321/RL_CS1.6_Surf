@@ -19,4 +19,7 @@ pbr7b4 (round 7) additions, ANALYSIS ONLY:
 * `pb_bench_spine.py CKPT SPINE LO HI OUT [N] [L1,L2] [HMIN]` - on the box: record_ckpt greedy episodes from exact
   spine rows [LO, HI), the best progress and the energy at two levels per episode, and how many cross L2 with
   h >= HMIN. Benching just before and just after a contact separates "the contact is missing" from "what follows it
-  is missing".
+  is missing". It also runs locally from the worktree root (the maps are symlinks to the main checkout's prebaked
+  fields): ~35 s for 8 short episodes, a few minutes for long ones (CUDA_VISIBLE_DEVICES=-1 nice -n 10).
+* `pb_approach.py L1,L2,... traj.jsonl|spine.npy[:lo:hi] ...` - the state at the first arrival at each progress level
+  (position, |vxy|, heading, vz, h), per episode or spine: where two lines part at a gate.

@@ -278,3 +278,14 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
 * `pbr7b4_spawnmix01.npy` (10,035 rows): a --spawn-states pool = `pbr1b1_entry_ge_states.npy` (7,399 rows, as before)
   + rows 6,797-9,432 of `pbr7b4_c17m01.npy` (2,636 rows: the x1.12 GE chain from the policy's own beam line through the
   74.4% passage, the room behind it, the drop and the surf to 77.86%). Both policy-derived; no demo, no record.
+* `pbr7b4_c21app01.npy` + `.keys.npy` (7,210 rows; md5 254d2c45d048737f068deef3a862fe0f / 6a10199dc400e4a0ea0912cebaa9f4fe):
+  `pbr7b4_c17e01` to its row 6,377 (the policy's own beam line to row 6,340 at 71.03%, then the energy chain from that
+  row x1.04 through the energetic 71.6% bounce), then the GREEDY episode of run pbr7b4_c21's final weights (44.83B;
+  record_ckpt --dump-states from e01's row 6,378, local CPU) to its tick 194 (72.94%, heading S at 1,024 u/s, h 2,472),
+  then one exact explore_phase1 --exact-chains chain (reward-free; that state x1.0, one of 48 roots over the greedy's
+  72.60-73.44%; 12 min, 1,024 envs, 3 threads, 64 u x energy 32 u cells with the rising split, view-follow; the
+  driver = auto_spine.go_explore) to the archive's deepest cell: 637 states that turn ~40 deg west into the 74.4%
+  climb ramp (vz +561 at 73.48%), turn east on its wall, fly through the passage without stopping (571 u/s at 74.77%),
+  drop and surf east to d 12,491 = 78.14%. The only boosted root is e01's x1.04. Keys = e01's, the greedy's own
+  (fwd / side / duck of the action that produced each state) and the chain's (translated to the canonical views as
+  auto_spine.go_explore does). No demo, no record (pbr7b4, round 7).
