@@ -3811,3 +3811,9 @@ ckpt_45558005760 (md5 6dec286c...), eval 82.652 at 45.564B. Credit at the start:
   search 1, which cannot beat a frontier of 12 by 500: the distance loop is over - from here the gains are reliability
   (6/9 -> 9/9, +1.11 each) and time (0.033 per s). f1's curriculum sits at rows 9,645-9,650 (inside the GE chain) at
   0.2% while the greedy finishes on its own route.
+* c7 evals 114.310 (52.216B: 6/9, **best 70.70 s**; hand-on ckpt_52215939072 AT the eval step, md5
+  f9f39ade5412b772b3c12e9842eb0460, pulled) / 112.087 (4/9, 70.73 s) / 114.284 (6/9) / 112.074 (4/9) / 113.182 (5/9):
+  steady at 4-6/9. The non-finishers are spread: the final blade 99.2-99.8% (3), the shaft's top catch 92.7-92.9% (2),
+  the -1,640 blade (1), 78.9 / 73.0 / 64.2% (old gates) - general reliability, no single gate. c7's search 1 ran 1,433 s
+  beside the training and found nothing (frontier d 11.5: nothing can beat it by 500), as expected; the curriculum got
+  through its 0.2% band and walked f1's chain back to row ~9,490.
