@@ -344,3 +344,11 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   keep the shaft practised while the curriculum works the platform.
 * `pbr8b1_entry_shaft3_states.npy` (15,001 rows; md5 e51d44c27bdd87967761683c7c3358ab): as shaft2 with the focus window moved back to b3f rows
   9,150-9,260 (tiled 34x) - the hand-run parallel curriculum's next band (rows 9,300+ finish 9-12/12 on c4's 48.2B weights).
+* `pbr8b1_b3s.npy` + `.keys.npy` (9,340 rows; md5 a92aa28155fa3e3d0a0d2123bb2581d5 / 470056cde169d32bb9ab35badd4c41f7): A LINE
+  FROM THE TRUE START TO THE FINISH, ALL OF IT THE POLICY'S OWN. Rows 0-8,900: pbr8b1_b3f (c1's search-1 branched beam, 46.17B
+  weights) to 92.17% on the final shaft's rim; rows 8,901-9,339: the PLAIN beam_tas winner of pbr8b1_c4's own 48.58B weights
+  started at b3f row 8,900 (4,096 copies: 1,604 finishes within 700 ticks; the fastest, 440 ticks = 3.37 s, replayed
+  bit-exact by tools/beam_best_states.py and appended with tools/stitch_spine.py's roll segment, keys from its trajectory).
+  End d 6.4. No explorer chain, no demo, no record (pbr8b1).
+* `pbr8b1_entry_b3sshaft_states.npy` (14,635 rows; md5 92e4471739f0913f59f92e9fda2f773e): `--spawn-states` pool = the 7,399
+  start-room states + b3s rows 8,937-9,338 (its own-beam shaft line from just past the 92.36% milestone) tiled 18x (~half).
