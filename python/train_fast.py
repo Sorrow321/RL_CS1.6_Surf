@@ -4950,6 +4950,14 @@ def main() -> None:
                          "descent, no deeper than the greedy's) is taught for that and not for "
                          "the depth the greedy reaches already. A low-energy crossing spends the "
                          "episode's chance. Off = the depth rule, bit-identical; not restored")
+    ap.add_argument("--demo-success-strict", action="store_true",
+                    help="--demo-success-energy: the curriculum's outcome is the gated crossing "
+                         "ALONE - a finish no longer counts as a success of its own (every "
+                         "finish from before the line crossed it, with or without the energy). "
+                         "Without it a band from which the policy finishes the map walks back "
+                         "past the skill the energy line was cut for (pbr9b3: f2e's band went "
+                         "84.95% -> 66.7% on finishes while 0/16 sampled episodes glided). "
+                         "Off = bit-identical; config only when on, not restored")
     ap.add_argument("--demo-success-time", type=float, default=None,   # None = off
                     help="--demo-success-energy: SECS - a spine spawn's crossing of the success "
                          "line also has to be ON TIME: no more physics ticks since its spawn "
@@ -11838,6 +11846,9 @@ def main() -> None:
                 # pass, taught for the energy it carries there), and a swap sets the rule anew
                 print("--demo-success-energy with --auto-spine-energy: the starting spine is an "
                       "ENERGY spine (its quorum counts crossings with the energy)")
+        if args.demo_success_strict and args.demo_success_energy is None:
+            raise SystemExit("--demo-success-strict makes --demo-success-energy's gated crossing "
+                             "the curriculum's only success: give it")
         if args.demo_success_time is not None:
             if args.demo_success_energy is None:
                 raise SystemExit("--demo-success-time rides on --demo-success-energy's outcome "
@@ -14914,6 +14925,9 @@ def main() -> None:
     if args.demo_file and args.demo_success_energy is not None:
         # --demo-success-energy: dumped only when set (not restored: it belongs to its spine)
         meta["config"]["demo_success_energy"] = float(args.demo_success_energy)
+    if args.demo_file and args.demo_success_strict:
+        # --demo-success-strict: dumped only when on (not restored: a property of the run)
+        meta["config"]["demo_success_strict"] = 1
     if args.demo_file and args.demo_success_time is not None:
         # --demo-success-time: dumped only when set (not restored: it belongs to its spine)
         meta["config"]["demo_success_time"] = float(args.demo_success_time)
@@ -19618,6 +19632,11 @@ def main() -> None:
                             elif DEMO_END_D is not None and DEMO_H_MIN is not None:
                                 # --demo-success-energy: the ended episodes' energy crossings as
                                 # they stood before this tick re-anchored them
+                                if args.demo_success_strict:
+                                    # --demo-success-strict: a finish is no success of its own;
+                                    # only the gated crossing (every finish from before the
+                                    # line made one) counts
+                                    goal_now = np.zeros_like(goal_now)
                                 if DEMO_OK[1] is not None:
                                     goal_now = goal_now | np.asarray(DEMO_OK[1])[ei]
                             elif DEMO_END_D is not None:
