@@ -3277,3 +3277,8 @@ the operator's); this branch keeps a waiter on `box.py rent` and works offline m
   and while 8/9 greedy episodes take the slow route the beam's fast route to the wall's face always clears 500 u. The
   32 u / select-energy GE only gets the wall once the median itself sits at the wall. Evals 37.94-38.32B: 74.282 /
   74.224 / 73.683 / 74.255 / 73.983 / 74.255 (best still 74.325).
+* 07:27 UTC, c13 on search 2's k02 (38.32-38.77B): evals 74.273 / 73.594 / 74.383 / 73.597 / **74.405 (38.698B)** / 73.427.
+  The 74.405 episode flies the fast route to **the wall's face itself: (-854, 1,517, z 2,075)**, 65-80 u under the
+  wall's clearance there (2,140-2,155 standing), and falls to the catch at z 1,718; 7/9 still on the platform route
+  (73.3-73.6%), 1/9 at 62.0%. Hand-on: the trainer's snapshot **ckpt_38659948544.pt** (38M steps before the eval, md5
+  a13107e9..., pulled). The curriculum walked the new k02 back 6,798 -> 6,213 in ~25 min (17-24% bands).

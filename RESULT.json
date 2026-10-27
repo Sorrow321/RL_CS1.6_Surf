@@ -3,19 +3,20 @@
  "round": 7,
  "final": false,
  "best": {
-  "score": 74.325,
-  "eval_file": "/home/steam/ar_pb/runs/pbr7b1/pbr7b1_c13/traj_37867749376.jsonl",
+  "score": 74.405,
+  "eval_file": "/home/steam/ar_pb/runs/pbr7b1/pbr7b1_c13/traj_38698221568.jsonl",
   "run": "pbr7b1_c13",
-  "step": 37867749376,
-  "ckpt": "/home/steam/ar_pb/runs/pbr7b1/pbr7b1_c13/ckpt_37659607040.pt",
+  "step": 38698221568,
+  "ckpt": "/home/steam/ar_pb/runs/pbr7b1/pbr7b1_c13/ckpt_38659948544.pt",
   "recipe": [
    "c13: resume of pbr6b4_c12's ckpt_latest (36.659B, md5 d802b3e8) on spine autoresearch/spines/pbr6b4_c12k02 (+keys; c12's search-2 line to 74.33%) with c12's flag set + --demo-tau0 6531 --demo-rate 0.2 --demo-match-band --auto-spine-patience 8e8 --auto-spine-args '--ge-select-energy 3 --ge-cell 32' (the 26 milestones of c12's current.json)",
    "evals 36.660-37.566B: 73.697 (the resume's own) / 73.640 / 73.364 / 73.602 / 73.685 / 74.092 / 73.501 / 73.583 / 73.629 / 74.236 / 74.230 / **74.317 (37.490B)** / 74.087: from 37.037B one episode per eval flies k02's fast route to the wall area (74.1-74.3%); the curriculum walked k02 back 6,531 -> 6,346 (past the brake, the platform bounce and the x1.04 root) in ~40 min",
    "search 1 on patience at 37.490B (54 s): the PLAIN BEAM on those weights to d 14,640 = 74.38% (the wall's face) -> depth spine k01 (autoresearch/spines/pbr7b1_c13k01), success line 74.21%; c13 continues on it",
-   "on k01 (37.49-37.94B): evals 74.087 / 73.653 / 74.322 / 73.630 / **74.325 (37.868B, 1/9 past k01's 74.21% line)** / 74.282; the curriculum walked k01 back 6,977 -> 6,487 in ~25 min (17-21% bands)"
+   "on k01 (37.49-37.94B): evals 74.087 / 73.653 / 74.322 / 73.630 / **74.325 (37.868B, 1/9 past k01's 74.21% line)** / 74.282; the curriculum walked k01 back 6,977 -> 6,487 in ~25 min (17-21% bands)",
+   "search 2 on patience at 38.321B (111 s): the plain beam again, to d 14,607 = 74.44% -> spine k02 (autoresearch/spines/pbr7b1_c13k02); on it evals 74.273 / 73.594 / 74.383 / 73.597 / **74.405 (38.698B: ep5 at the wall's face, (-854, 1,517, z 2,075), ~70 u under its top)** / 73.427"
   ],
   "resume_from": "pbr6b4_c12 ckpt_latest 36.659B <- the round-6 lineage",
   "commit": "a0bee95"
  },
- "summary": "No box until 05:04 UTC (the fleet's 1.2 $/h cap held by two boxes since 20:34); then RTX 3090 box 57919810 and c13 (c12's ckpt_latest on its 74.33% spine k02, demo-rate 0.2, search patience 8e8, the loop's Go-Explore with --ge-select-energy 3 --ge-cell 32 via the new --auto-spine-args flag). Best so far 74.325 (c13, 37.868B, on the loop's k01 spine; 74.317 at 37.490B on k02; k02's fast route to the wall in 1/9 per eval since 37.04B) after the curriculum walked back past k02's brake, bounce and x1.04 root in ~40 min; the patience search's plain beam then found the policy's own line to 74.38% (spine k01). Offline: the next gate (74.3%) is a WALL at x -837 (clear from z ~2,140) that the record passes by a precise two-ramp surf at ~1,230 u/s; c12's policy hits it at z ~1,980 even with x1.45 speed; local Go-Explore (32 u cells, boosts to x1.2) gets to apex 2,135 and never past."
+ "summary": "No box until 05:04 UTC (the fleet's 1.2 $/h cap held by two boxes since 20:34); then RTX 3090 box 57919810 and c13 (c12's ckpt_latest on its 74.33% spine k02, demo-rate 0.2, search patience 8e8, the loop's Go-Explore with --ge-select-energy 3 --ge-cell 32 via the new --auto-spine-args flag). Best 74.405 (c13, 38.698B, on the loop's own k02 beam spine: one episode at the wall's face; 74.325 on k01, 74.317 on c12's k02; k02's fast route to the wall in 1/9 per eval since 37.04B) after the curriculum walked back past k02's brake, bounce and x1.04 root in ~40 min; the patience search's plain beam then found the policy's own line to 74.38% (spine k01). Offline: the next gate (74.3%) is a WALL at x -837 (clear from z ~2,140) that the record passes by a precise two-ramp surf at ~1,230 u/s; c12's policy hits it at z ~1,980 even with x1.45 speed; local Go-Explore (32 u cells, boosts to x1.2) gets to apex 2,135 and never past."
 }
