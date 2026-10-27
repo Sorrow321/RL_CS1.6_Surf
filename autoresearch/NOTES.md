@@ -3363,3 +3363,8 @@ Independence: only this branch and $AR_HOME/incumbent/ are read. c12's later wei
   74.246 / 72.878 / **74.342** / 74.236 (0/9 energetic); the contact band 11-13% (from the post-contact band's ~50%,
   the policy already makes the good bounce ~25% of the time from those rows). 03:38 UTC: a GE from e02's last 2.5 s
   (the south run + the climb, room to change the approach) -> runs/pbr7b4_c21/stitch_p03.
+* The wider GE from e02's last 2.5 s (x1.0, 15 min, 03:38-03:56 UTC): deepest 74.35% (from e02's row 6,368, the
+  contact itself, 415 states). Three explorer runs from e02's own states (1 s / 0.6 s / 2.5 s, 10-15 min each) never
+  enter the passage: with e02's approach the entry is not in reach of uniform actions; the x1.12 line entered from the
+  beam's approach. c21 (04:00 UTC): the contact band rising again 11-13% -> 15-18%; evals 74.198 / 74.181 / 74.248 /
+  73.034, 0/9 energetic.
