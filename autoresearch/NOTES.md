@@ -4049,3 +4049,30 @@ Box: 58011053, RTX 4080S, 0.41 $/h, Ontario CA (machine 141481, the box rounds 7
 * **pbr9b1_c2** (21:18 UTC): the incumbent ckpt_55038705664 (not c1's weights: c1's last three evals were 5/9 and it showed
   more early-course deaths) on fo1e + keys, c12's flags otherwise, spawn pool fo1after, **--lr 1e-4** (learning a route
   change; c12's 5e-5 is for holding), band from the cut. First minutes: band 100% at [7,597] and [7,587]; kl 0.3-0.8.
+* c2 (21:18-21:57 UTC, 55.039 -> 55.634B, lr 1e-4): evals 114.388 (6/9, **68.37 s**: the round's fastest single finish) /
+  114.344 / 113.249 / 114.379 / 112.133 (4/9) / 112.153 (4/9) / 114.358 / 115.469 (7/9) - **no greedy episode ever crossed
+  the cut with the energy** (every crossing of d 8,719 at h 1,690-1,710: the landing route). Its band walked back from the
+  cut to 70.6% in 30 min at 50-80% band success. New failure: a crash into the 71.25% surface (the one the greedy bounces
+  off; h 2,744 -> 1,970), then a crawl along a ledge to a 30 s stall at 73.1% (5 of 63 episodes, none after 55.42B).
+* 21:36 UTC: c2's pool swapped to **pbr9b1_fo1dec_states** (fo1 rows 7,380-7,511 = the greedy approach 82.1-83.6% x15, the
+  chain's fly-over x10, past the cut x10) - the energetic bonus is paid to ANY episode that flies over, so the decision
+  window itself is practised. No effect on the greedy in 20 min.
+* **Why the band walked back without a single fly-over** - band_bench on c2's 55.6B weights from fo1e bands [7,380-7,395]
+  / [7,440-7,455] / [7,495-7,511] (12 episodes x greedy / stoch, energy read from the trajectories): **1 energetic crossing
+  in 72** (stoch, h 2,273). The curriculum's outcome under --demo-success-energy is "finished OR crossed with the energy"
+  (`goal_hits | DEMO_OK[1]`): from 70% the policy FINISHES half the time on its landing route, so the band walked back on
+  finishes. The energy gate held for the bonus, not for the curriculum. (Round 8's stage 2 had the same loophole: its
+  "band walked back past the junction" may have been finishes too.)
+
+### `--demo-success-strict` (21:45-22:00 UTC, commit 447ef33)
+* New trainer flag, default off: under --demo-success-energy the curriculum's outcome is the energetic crossing ALONE (a
+  finish without one is a failure). `strict_outcomes()` + the respawn block's branch; config dumped only when on; TRAIN_ONLY
+  in record_ckpt. tests/python/test_demo_success_strict.py: the pure rule, the trainer's print / dump / refusal, and the flag
+  off byte-identical to the pre-change trainer (4096-step CPU smoke, config + every progress.csv row): 3 passed locally.
+* Generic: a bookkeeping correction of the energy rule (no map constant). The band now stays where ~30% of its episodes
+  really fly over, so its exploration temperature (keys x1.5, yaw sigma x6 for 40 ticks) lands on the decision.
+* Ops: the box's checkout was at the round-start commit with hand-copied spine files (untracked): deploy's `git checkout`
+  refused until they were moved aside (runs/pbr9b1_look/old_spines/). And `pkill -f '<pattern>'` inside a box.py ssh command
+  killed the ssh shell itself (CLAUDE.md's warning): use `pgrep -af '[s]napcopy'`-style patterns.
+* **pbr9b1_c3** (22:00 UTC): c2's ckpt_latest (55.6217B, md5 91eefc4e...) on fo1e + keys, c2's flags + --demo-success-strict,
+  spawn pool pbr9b1_fo1dec_states (committed), lr 1e-4.
