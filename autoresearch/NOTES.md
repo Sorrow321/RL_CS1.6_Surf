@@ -3423,3 +3423,21 @@ ckpt_35907960832 (md5 160da9eb...), eval 73.590 at 35.918B. Credit at the start:
   DE-CLUSTERED (one line at 74.15%, one of e5 / e6's; 29 in all) and `--lr 1e-4` (was 3e-4; the sidistic lineage's late lr cuts
   held a fragile skill the same way). Generic: milestones closer than the bonus they each pay are one line; the lr is a
   stability knob, not a map constant.
+
+### THE 74.4% BLOCK FALLS: 74.399 -> 77.042 (2026-10-27 05:20 UTC, c8)
+* c8 (d2c, lr 1e-4, 29 de-clustered milestones): stable (update kl median 0.12), evals 74.30-74.36 for ~55 min while the
+  curriculum worked the block crossing and the launch band (rows 6,400-6,404 at 0.3-0.4% for ~15 min), then **75.422** (43.533B,
+  1/9 over the block) and **76.864** (43.608B: 7/9 over it, median 75.8%) - at 74.4% the episodes pass (-823..-846, 1,630-1,653) at
+  z 2,125-2,138, over the block's top. 7/9 past d2c's line fired the loop's async search 1 (158 s beside the training): the PLAIN
+  beam on those weights to d 12,997 = 77.26% -> depth spine k01 (6,773 states, success line 77.08%). Next eval **77.042**
+  (43.684B, 8/9 over the block at 75.2-77.04%, median 76.32%): every passing episode dies at z ~1,261-1,265 between x -335 and
+  432 (75.8-77.0%) - the next catch level, gate 22.
+* Handoff: c8's ckpt_latest at 43,706,744,832 (23M after the 77.042 eval, > 2x nearer than ckpt_43608178688; md5 recorded by
+  box.py), pulled and pinned as pbr7b2_c8/ckpt_43706744832.pt; ckpt_43608178688.pt (the exact weights of the 76.864 eval, the
+  search's own copy) and ckpt_43529011200.pt pulled too.
+* What did it, in order: (1) energy at the right place - gate 20's walkway (e3) and the 71-72.5% descent (e5/e6), each found by
+  a reward-free search from the policy's own states and picked by the loop's energy rule; (2) the APPROACH, not more energy -
+  look-ahead 20's heading-turned root (the recipe's front-perturb turn as a search root, no speed change) found the only way
+  over; (3) stability - c7 learned the same line in ~10 min at lr 3e-4 and collapsed (stacked milestone bonuses -> kl 4.5);
+  c8 at lr 1e-4 with one line per crossing took ~55 min and held; (4) the loop then ran itself (quorum 7/9 -> async search ->
+  the policy's own beam line as the next spine).
