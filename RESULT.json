@@ -17,7 +17,7 @@
    "c6: the 98.484 weights (c5's ckpt_51014795264) on spine pbr8b3_g2 (the policy's own greedy line to 2 s before its death at the z -1,640 blade + the policy's own energy-fork branched beam to 98.13%) with c5's flags + --auto-spine-ge-boost '1.0;1.04;1.08;1.12', 39 milestones; 98.341 / 98.461 / 98.452 (median 98.4%), then 109.846 at 51.393B: 2/9 greedy episodes FINISH from the true start, best 71.28 s (the human record on our zones: 75.18 s)"
   ],
   "resume_from": "pbr7b2_c9/ckpt_latest.pt (46,023,049,216, md5 50c3a56e3d70db7bc66b59bbfac2caa9)",
-  "commit": "(see git log)"
+  "commit": "25d92de"
  },
  "summary": "FIRST GREEDY FINISH from the true start: 109.846 (pbr8b3_c6, 51.393B, 2/9 finishes, best 71.28 s vs the record's 75.18 s). Path: c1 82.53 -> c2 83.10/92.70 (new --auto-spine-cut-ahead: the loop's spines end 1,000 u past the greedy frontier) -> c4 94.85/95.38 (new --auto-spine-from-spine: the loop's beams start on its spine, not the true start) -> c5 96.58/98.48 (k03p: the policy's own beam through the shaft's z -600 blade, replacing a x1.04-boosted GE chain) -> c6 finishes (g2: the greedy's own recorded line + its own branched beam; new --auto-spine-ge-boost for unboosted-first GE). Next: reliability (2/9 -> 9/9) and time."
 }
