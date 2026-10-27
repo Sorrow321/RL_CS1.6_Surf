@@ -3466,3 +3466,9 @@ ckpt_35907960832 (md5 160da9eb...), eval 73.590 at 35.918B. Credit at the start:
 * **Look-ahead GE 21** (k02 rows 6,880-7,095, x1.0 / 1.04 / turned +-20 deg, 12 min, 9.7M runs, 75,959 cells): deepest **80.75%**
   on the grader's field, but CRAWLING (|v| ~150-300, h ~1,520-1,560, at (2,220-2,350, 1,590-1,690, z ~1,460-1,510)); 2,151 cells
   past k03's 79.82%. The loop's own k03 line is the better target (it keeps ~700-780 u/s); left as is.
+* **80.623** (44.514B) and **80.644** (44.665B, median 79.21%; 3/9 past k03's line 79.64%): the curriculum is through k03's ramp
+  landing (bands at rows 6,634-6,639 now, 9% vs 86-89%); 3/9 episodes ride the south ramp past k03's own end (79.82%) and die at
+  z ~1,459-1,461 at (2,173-2,402, 1,424-1,557) - the fall-catch sheet *265 (x 1,040-2,928, top ~1,440) - while turning north;
+  4/9 still miss the ramp (z ~1,243 on *183 at x 1,204-1,440) and 2/9 die at z ~1,321-1,334 at x ~1,611 (79.2%). The record
+  (ANALYSIS ONLY) is ~230 u higher there (z 1,687 at 80%, 1,823 at 82% at (2,445, 2,408)). Handoff for 80.644: the copier's
+  ckpt_44658851840 (6.3M before the eval, md5 f8de566d...), pulled.
