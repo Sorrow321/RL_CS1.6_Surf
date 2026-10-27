@@ -3895,4 +3895,4 @@ ckpt_45558005760 (md5 6dec286c...), eval 82.652 at 45.564B. Credit at the start:
   117.633 (9/9, 71.01 s) / 116.521 (8/9). Hand-on for 117.647: the copier's ckpt_54017916928 (10.0M before the eval,
   md5 cc6e1c2a1105d798f89a24f4d17cef02), pulled.
 * c7 evals 115.399 (7/9) / 115.429 (7/9, 70.46 s) / **117.660 (54.556B: 9/9, best 70.20 s - the round's best)** / 116.523
-  (8/9) / 117.628 (9/9). Hand-on for 117.660: the copier's ckpt_54553214976, pulled.
+  (8/9) / 117.628 (9/9). Hand-on for 117.660: the copier's ckpt_54553214976 (3.1M before the eval, md5 7337cc4d3714077bc6172eed477f358a), pulled.
