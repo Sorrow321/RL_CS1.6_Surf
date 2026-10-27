@@ -3303,3 +3303,14 @@ ckpt_35907960832 (md5 160da9eb...), eval 73.590 at 35.918B. Credit at the start:
   20f467f8...: the 9/9-energetic, pre-collapse weights) on e5 + keys, `--demo-success-energy 75` (cross d <= 15,920 = 72.14%
   with h >= 2,660), 30 milestones (+ e3's 19,194 and k01's 14,794), the loop as in c4. First eval: 0/9 with the energy, 8/9
   cross the line.
+* **Look-ahead GE 13** (e5 rows 6,370-6,425 = 71.9-72.32% x1.0 / 1.04, 15 min): the explorer reaches the RECORD's energy at
+  the launch zone (h 2,804-2,827 over 72.5-73.75%) and still stops at 74.37% - its energetic cells drift EAST of the launch
+  ramp line (x -1,122..-1,214 at 73.3-73.5%). How the x1.16 chain (d1) clears the block: it reaches the ramp line (x
+  ~-1,280..-1,320, y 2,060-1,700) at 1,165 u/s (c3's line 1,007), rides it to vz 560 at z 1,957 (73.41%), peaks at z ~2,153
+  at 74.36% and crosses the block's face (x -861) DUCKED at z 2,151 (a ducked hull clears ~18 u lower than a standing one).
+  So energy is necessary, not sufficient: the launch must start on the ramp line at ~1,160+ u/s. e5 ends ON that line high
+  (z 2,074, h 2,735): dropping to the ramp would give ~1,190 u/s.
+* c5 evals: 74.262 / 74.242 / **74.370** / **74.374** (40.677B, the branch's best by a hair) / 74.346. The GREEDY now flies e3's
+  walkway (h 2,630-2,791 at 66% where c3 walked at ~2,425; ~2,600-2,670 at 71.2%), still lands on the platform at 72% (8/9);
+  0/9 cross e5's line with h >= 2,660 yet. Handoff for 74.374: ckpt_40650145792 (26.7M before the eval, md5 4ee0add1...,
+  pulled; ckpt_latest 40.790B pulled too).

@@ -3,18 +3,20 @@
  "round": 7,
  "final": false,
  "best": {
-  "score": 74.352,
-  "eval_file": "/home/steam/ar_pb/runs/pbr7b2/pbr7b2_c3/traj_38339084288.jsonl",
-  "run": "pbr7b2_c3",
-  "step": 38339084288,
-  "ckpt": "/home/steam/ar_pb/runs/pbr7b2/pbr7b2_c3/ckpt_latest.pt",
+  "score": 74.374,
+  "eval_file": "/home/steam/ar_pb/runs/pbr7b2/pbr7b2_c5/traj_40676884480.jsonl",
+  "run": "pbr7b2_c5",
+  "step": 40676884480,
+  "ckpt": "/home/steam/ar_pb/runs/pbr7b2/pbr7b2_c5/ckpt_40650145792.pt",
   "recipe": [
    "c1: resume of round 6's c12 ckpt_latest (36.659B, md5 d802b3e8...) on the loop's own spine pbr6b4_c12k02 (beam to 70.8% + an x1.04 GE chain to 74.33%) + keys, c12's flag set (to-continue block + --demo-match-band, --auto-spine-patience 0, --auto-spine-ge-minutes 5, --auto-spine-energy 150), 26 milestones; evals 73.567 / 73.671 / 73.466 / 73.601",
    "c2: resume of c1's ckpt_latest (36.945B) with c1's flags + --demo-tau0 6436 + --auto-spine-async (new: the search runs beside the training); evals 73.51-73.66, then 74.287 at 37.474B (1/9 greedy episodes makes the chain's platform hop and flies k02's line to 74.29% at 56.5 s)",
-   "c3: resume of c2's ckpt_latest (37.810B) on the energy spine pbr7b2_e1 (k02 to row 6,468 + an unboosted GE chain keeping +153 u to 74.30%, the low route; tools/energy_splice.py = the loop's energy-stage rule on a look-ahead archive) + keys, --demo-success-energy 75 (cross 74.13% with h >= 2,332), k02's line as a 27th milestone, the loop async with the energy stage; evals 73.52-74.27, then 74.352 at 38.339B (1/9 crosses with the energy: h 2,400 at 74.3%)"
+   "c3: resume of c2's ckpt_latest (37.810B) on the energy spine pbr7b2_e1 (k02 to row 6,468 + an unboosted GE chain keeping +153 u to 74.30%, the low route; tools/energy_splice.py = the loop's energy-stage rule on a look-ahead archive) + keys, --demo-success-energy 75 (cross 74.13% with h >= 2,332), k02's line as a 27th milestone, the loop async with the energy stage; evals 73.52-74.27, then 74.352 at 38.339B (1/9 crosses with the energy: h 2,400 at 74.3%)",
+   "c4: resume of c3's ckpt_latest (39.543B) on energy spine pbr7b2_e3 (the c3 policy's beam to 65.18% + an over-the-sheet GE chain keeping +153 u at gate 20's walkway; the 74.4% block's deficit is made there) + keys, --demo-success-energy 75, 28 milestones, the loop async; 9/9 greedy energetic crossings at 40.450B -> the loop's async search 1 (298 s beside training) swapped in a depth spine; a kl 0.92 update then collapsed the greedy to 61.5%",
+   "c5: resume of the search's own copy of c4's 40.4499B weights (pre-collapse) on energy spine pbr7b2_e5 (the e3-trained beam to 71.08% + a hop-free airborne GE chain keeping +217 u past the 71.4% platform) + keys, --demo-success-energy 75, 30 milestones, the loop async; evals 74.26-74.37, 74.374 at 40.677B"
   ],
-  "resume_from": "pbr7b2_c2 ckpt_latest 37.810B <- pbr7b2_c1 36.945B <- pbr6b4_c12 ckpt_latest 36.659B <- incumbent r6 (73.590)",
-  "commit": "da22224"
+  "resume_from": "pbr7b2_c4 auto/k01/ckpt.pt 40.4499B <- pbr7b2_c3 39.543B <- c2 37.810B <- c1 36.945B <- pbr6b4_c12 ckpt_latest 36.659B <- incumbent r6 (73.590)",
+  "commit": "2b52a07"
  },
- "summary": "73.590 -> 73.671 (c1) -> 74.287 (c2) -> 74.352 (c3 38.339B). c1/c2: round 6's loop on its spine k02 (the policy learns k02's platform hop); c3: energy spine e1 (the loop's energy rule on a look-ahead archive; the policy flies it with h ~2,450 at 73.5%). The 74.4% wall is a block (top z ~2,150) that needs a ramp launch ~+200 u stronger (x1.16 from the policy's line passes to 78.2%). Profiling the policy against the record (yardstick) put the deficit 8% upstream: the 65.9% walkway landing (-250 u). c4 (00:21) teaches energy spine e3 (+153 u over the sheet at 66.6%), the loop on. New: --auto-spine-async, tools/energy_splice.py, stitch_spine spine segments."
+ "summary": "73.590 -> 74.374 (c5 40.677B). The 74.4% wall is a block (top z ~2,150) needing a ramp launch at ~1,165+ u/s (x1.16 from the policy's line passes to 78.2%); profiling the policy vs the record (yardstick) put the deficit at gate 20's walkway (65.9%, -250 u) and the 71.4% platform hop (-190 u). Energy spines by the loop's own rule (tools/energy_splice.py on look-ahead archives): e3 (walkway, learned 9/9 in ~60 min by c4) and e5 (platform hop, being taught by c5). New: --auto-spine-async (search beside training; first live use 298 s, no slowdown), energy_splice, stitch_spine spine segments."
 }
