@@ -11,3 +11,9 @@ Both run ON THE BOX from /root/RL_Surf (copy the .py files and the .npy there), 
   way --respawn-novel moves them; `sid_corridor_east.npy` both lanes, `_py.npy` the +y lane)
   and report how far east it gets, whether it reaches the ramp (x > 5,300) and how far west
   it comes back (`xret`). Map coordinates are measurement boxes only.
+
+# pbr7b2 (round 7) analysis scripts (ANALYSIS ONLY - never training; CLAUDE.md sections 0 / 0b)
+
+* `pb_energy_profile.py LEVELS traj.jsonl [...]` - per episode, at the first arrival at each progress level: time, energy
+  height z + |v|^2/1600, speed and position. Run it on an eval and on a reference (the policy's own beam line saved as a
+  trajectory, or the WR demo `$AR_HOME/incumbent/wr/pb_wr.jsonl` as a yardstick) to see where a gate's energy is lost.
