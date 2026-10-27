@@ -3831,3 +3831,12 @@ ckpt_45558005760 (82.652 at 45.564B).
 * **pbr8b1_c6** (15:05 UTC): c5's ckpt_latest (51.818B, md5 0680f5d4...) on **f1** + keys, c5's flags (36 milestones), spawn
   pool `pbr8b1_f1w_states.npy` (f1 rows 7,450-7,582 airborne 12x + 7,583-8,061 the drop 20x). Record gate passed. c5's loop
   had fired a search at its 5/9 quorum (auto/k01; a finishing line cannot beat a finishing greedy frontier, so no swap).
+* **117.582** (c6, 51.894B: **9/9 greedy episodes finish**, best 72.53 s; hand-on ckpt_51886161920, pulled). c6's first eval
+  (= c5's final weights, 51.818B) finished in **72.42 s** (3/9). c6's curriculum walked f1 9,204 -> 7,644 in ~20 min (the
+  own-beam finish and the explorer's drop) and works the chain's landing on the platform's west end (7,644 / 7,649: 64% /
+  10%). Its loop fired at the 5/9 quorum: no new spine (a finishing frontier cannot be beaten; retry every 4e8).
+* f1's chain by rows: 7,320 junction (x1.04) -> 7,320-7,520 airborne at h ~2,340-2,364 (80.4-83.0%) -> 7,520-7,550 a bump
+  (-290 u) -> airborne to 84.06% (7,640) -> lands on the platform's WEST end (7,670) and walks ~1 s -> hop-off (7,790) and the
+  drop (84.6-86.2%). Pool moved ahead of the band at 15:31 UTC: `pbr8b1_f1w2_states.npy` (md5 46ed4a94...; rows 7,450-7,640
+  25x + 7,641-7,800 20x), re-read at 52.164B. Stage 2 (energy-gated cut at ~83%, row 7,520: airborne h 2,323 vs walking
+  ~1,600) goes in once the band has passed the junction.
