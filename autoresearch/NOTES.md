@@ -3617,3 +3617,18 @@ of its 1.2 $/h cap; the only other passing offer was a 0.621 $/h 5080). Incumben
   82.530 / 82.768 / **83.139** (47.081B, median 82.6%: 8/9 past the turn, all dying on the sheet at 82.3-83.1%, creeping
   north-west; handoff ckpt_47073722368, 6.8M before, md5 c4bfbd75..., pulled) / 82.903 / 83.020 / 82.803. Update kl median
   0.23-0.32 (c9 ran at 0.27-0.35 with spikes to 8.6 and held), value loss ~55-63.
+
+### The finish tube is a four-plate maze (10:00 UTC, hull_probe of the world and the start-teleports; measurement only)
+* The 3 probe episodes that reached the tube (rows 8,100-8,110 spawns, 46.64B weights) all died INSIDE start-teleport *181
+  at z 262 / 213 / -136, entering at vx +240..+490. *181 / *132 are not a wall lining: they are KILL PLATES across the
+  tube, each with its opening somewhere else (30 u grid, x 420-1,020 / y 2,470-3,070):
+  * z ~150-250: the plate covers the west 2/3; open only in the east third (x >= ~840-990);
+  * z ~-136: a kill band across the middle (y 2,680-2,830) and on the sides; open in the north part (y ~2,860-3,040);
+  * z ~-950 (the hover zone, the overlap of pushes *196 / *48): a narrow world shaft (x ~600-840, y ~2,650-2,890) with a
+    kill bar across it at y 2,770-2,800; open on either side of the bar;
+  * z ~-3,000: kill on the south / west; open in the north-east part (x ~630-840, y ~2,800-2,890).
+* la1's chain (f1's tail) threads all four: east at the top (x 916-948 at z 91-276), north at -194, the hover, then down
+  the open side. So the tube is a precision gate sequence (steer to each opening while falling against the pushes), never
+  trained by the policy; f1's backward curriculum teaches it bottom-up from the finish. Plan: k04d until the greedy passes
+  the hole (the ledge), then f1 (or the loop's own search spine, extended down the tube by a GE chain like la1 if its beam
+  stops at a plate).
