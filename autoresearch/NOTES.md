@@ -3928,3 +3928,7 @@ ckpt_45558005760 (82.652 at 45.564B).
   without BC: ~0.03) - the yaw head's sigma is ~0.013 and the BC view targets (rebuilt from the rows' physical view) sit ~1.3 z
   from mu. Needs a trainer change (BC on the categorical heads only, or the planner's own drawn z as the view target). Also:
   uniform spawn practice over long stretches; energy-ranked planner waves (die at 81%); branched planner waves (no faster).
+* c11 17:35-17:56 UTC: evals 116.484 (8/9) / 115.400 (7/9, **71.32 s**) / 115.397 (7/9, 71.44 s) / 112.060 / 116.502 (8/9, 71.61
+  s) - the greedy's finish times fall as more of it flies (3/9 airborne crossings of 83% at 53.98B); the band walked f1e
+  back to 5,555 (72%). The loop's search 1 (started 53.604B) ran its GE ladder (x1.08 to 92.9%, x1.12 to 95.6% - no deeper
+  than a finishing greedy) and is in its ENERGY stage (a cell >= 150 u above the line's energy over 69.6-84.1%) at 17:56.
