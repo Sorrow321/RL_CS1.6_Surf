@@ -2135,6 +2135,18 @@ def energy_gate(hit, ended, paid, ok, h, rec, end_d, h_min):
     return pay, ok, boot
 
 
+def time_gate_ok(tick, idx, cross_row, slack):
+    """--demo-success-time (pbr9b4, 2026-10-27): True where a crossing of the success line NOW is in
+    time - no later than the spine's own ticks from the episode's spawn row ``idx`` to its crossing
+    row ``cross_row``, plus ``slack`` ticks. ``tick`` = each row's physics ticks since its spawn (the
+    core's clock, zeroed on every respawn). A spawn off the spine (idx -1) or at / past the crossing
+    row has no clock to beat and is always in time; so is a fresh spawn (tick 0)."""
+    tick = np.asarray(tick, np.int64)
+    idx = np.asarray(idx, np.int64)
+    on = (idx >= 0) & (idx < int(cross_row))
+    return ~on | (tick <= int(cross_row) - idx + int(slack))
+
+
 def crossed_with_energy(d, h, end_d, h_min) -> bool:
     """--auto-spine-energy: an eval episode counts for the quorum of an ENERGY spine only if, at
     the first tick its d reaches the success line, its energy height is >= ``h_min`` (such a
@@ -4929,6 +4941,18 @@ def main() -> None:
                          "descent, no deeper than the greedy's) is taught for that and not for "
                          "the depth the greedy reaches already. A low-energy crossing spends the "
                          "episode's chance. Off = the depth rule, bit-identical; not restored")
+    ap.add_argument("--demo-success-time", type=float, default=None,   # None = off
+                    help="--demo-success-d: SECS - a spine episode SUCCEEDS (and is paid "
+                         "--demo-success-bonus) only if its record crosses the success line no "
+                         "later than the spine itself did from the episode's spawn row (the "
+                         "spine's rows are physics ticks), plus SECS. A spine built from the "
+                         "policy's own faster line then teaches its PACE, not only its depth: "
+                         "time lost anywhere before the line cannot be won back later, so one "
+                         "line gates every section before it (energy can be regained by a fall). "
+                         "A spawn off the spine (match -1) or past its crossing row is ungated; a "
+                         "late crossing spends the episode's chance. Combines with "
+                         "--demo-success-energy (both must hold). Off = bit-identical; not "
+                         "restored")
     ap.add_argument("--demo-match-band", action="store_true",
                     help="--demo-file: a spawn whose origin the spine repeats (the line stood "
                          "still over several rows) is credited to its copy inside the frontier "
@@ -14869,6 +14893,9 @@ def main() -> None:
     if args.demo_file and args.demo_success_energy is not None:
         # --demo-success-energy: dumped only when set (not restored: it belongs to its spine)
         meta["config"]["demo_success_energy"] = float(args.demo_success_energy)
+    if args.demo_file and args.demo_success_time is not None:
+        # --demo-success-time: dumped only when set (not restored: it belongs to its spine)
+        meta["config"]["demo_success_time"] = float(args.demo_success_time)
     if args.demo_file and args.demo_match_band:
         # --demo-match-band: dumped only when on (not restored: a property of the run)
         meta["config"]["demo_match_band"] = 1
@@ -15873,6 +15900,21 @@ def main() -> None:
         sv = slots[0].core.states_view
         v = np.asarray(sv["velocity"], np.float64)
         return np.asarray(sv["origin"], np.float64)[:, 2] + (v * v).sum(axis=1) / 1600.0
+    # --demo-success-time SECS: the crossing counts only by the spine's own clock (+ SECS);
+    # DEMO_T = [the spine's crossing row, the slack in ticks, late crossings spent so far, the rows
+    # whose episode crossed late (a later finish is no success), its copy before re-anchoring]
+    DEMO_T = None
+    if DEMO_END_D is not None and args.demo_success_time is not None:
+        if float(args.demo_success_alive or 0.0) > 0.0 or args.auto_spine or args.demo_stall_cut:
+            raise SystemExit("--demo-success-time is a rule of ONE fixed spine: not with "
+                             "--demo-success-alive, --auto-spine or --demo-stall-cut")
+        _cr = spine_cross_row(demo.S, _alive_field().sample, DEMO_END_D)
+        DEMO_T = [int(_cr), int(round(TICK.secs_to_ticks(float(args.demo_success_time)))), 0,
+                  None, None]
+        print(f"--demo-success-time {float(args.demo_success_time):g}: a spine episode succeeds "
+              f"only if it crosses d <= {DEMO_END_D:,.0f} within the spine's own ticks from its "
+              f"spawn row to row {DEMO_T[0]:,} (its first row past the line) + {DEMO_T[1]} ticks; "
+              f"from row 0 that is {(DEMO_T[0] + DEMO_T[1]) * TICK.ms / 1000.0:.2f} s")
     if DEMO_END_D is not None and float(args.demo_success_bonus or 0.0) > 0.0:
         DEMO_BONUS = float(args.demo_success_bonus)
         print(f"--demo-success-bonus {DEMO_BONUS:g}: an episode whose record crosses d <= "
@@ -15913,7 +15955,24 @@ def main() -> None:
         paid = DEMO_PAID[0]
         hit = (~ended) & (~paid) & (rec <= DEMO_END_D)
         pay = hit
-        if DEMO_H_MIN is not None:
+        if DEMO_T is not None:
+            # --demo-success-time: only a crossing in time (with the energy too, under
+            # --demo-success-energy) pays and succeeds - energy_gate's bookkeeping run on a 0 / 1
+            # "the gate holds" height, so a late crossing is spent and DEMO_OK[1] feeds the
+            # curriculum's outcome count exactly as the energy rule's does
+            _g = time_gate_ok(slots[0].core.states_view["tick"], demo_idx, DEMO_T[0], DEMO_T[1])
+            DEMO_T[2] += int((hit & ~_g).sum())
+            if DEMO_H_MIN is not None:
+                _g = _g & (_en_height() >= DEMO_H_MIN)
+            pay, DEMO_OK[0], DEMO_OK[1] = energy_gate(hit, ended, paid, DEMO_OK[0],
+                                                       _g.astype(np.float64), rec, DEMO_END_D,
+                                                       0.5)
+            # an episode that crossed out of time (or without the energy) does not succeed by
+            # finishing later either: the flag, its copy for the ended episodes, then re-anchored
+            DEMO_T[3] = (np.zeros(len(rec), bool) if DEMO_T[3] is None else DEMO_T[3]) | (hit & ~_g)
+            DEMO_T[4] = DEMO_T[3].copy()
+            DEMO_T[3][np.asarray(ended, bool)] = False
+        elif DEMO_H_MIN is not None:
             # --demo-success-energy: only a crossing with the energy pays and succeeds (a
             # low-energy one is spent below); DEMO_OK[1] = the episodes' outcomes before the
             # ended rows re-anchor, which the curriculum's outcome count reads
@@ -18815,7 +18874,8 @@ def main() -> None:
         if demo is not None and it_no % 100 == 1 and demo.last_info:
             print(f"  {demo.last_info}  |  demo-tracked eps "
                   f"{demo.ep.sum():,.0f}  wins {demo.win.sum():,.1f}"
-                  + (f"  |  spine-line bonuses {DEMO_BONUS_N[0]:,}" if DEMO_BONUS else ""))
+                  + (f"  |  spine-line bonuses {DEMO_BONUS_N[0]:,}" if DEMO_BONUS else "")
+                  + (f"  |  late crossings {DEMO_T[2]:,}" if DEMO_T is not None else ""))
             print(f"  {demo.region_report()}")
         tm.add("pool", t_pool)
         # PPO hygiene counters: per-ITERATION deltas, zeroed here, not
@@ -19529,6 +19589,14 @@ def main() -> None:
                                 # --demo-success-alive: the ended episodes' survived crossings
                                 if ALV[3] is not None:
                                     goal_now = goal_now | np.asarray(ALV[3])[ei]
+                            elif DEMO_END_D is not None and DEMO_T is not None:
+                                # --demo-success-time: a finish after a late crossing is no
+                                # success; the in-time crossings as they stood before this tick
+                                # re-anchored them are
+                                if DEMO_T[4] is not None:
+                                    goal_now = goal_now & ~np.asarray(DEMO_T[4])[ei]
+                                if DEMO_OK[1] is not None:
+                                    goal_now = goal_now | np.asarray(DEMO_OK[1])[ei]
                             elif DEMO_END_D is not None and DEMO_H_MIN is not None:
                                 # --demo-success-energy: the ended episodes' energy crossings as
                                 # they stood before this tick re-anchored them

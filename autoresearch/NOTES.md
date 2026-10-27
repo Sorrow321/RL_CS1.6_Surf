@@ -3990,3 +3990,32 @@ ckpt_45558005760 (82.652 at 45.564B).
   then a 3.7 s drop where the record takes ~1.4 s) and the lower level (the policy ~1.5 s slower than the record over 86-92%):
   the planner on the new weights (beam_tas --objective finish --score dv, ~2.5 min a wave) is the way to find the next line;
   distil it only after BC is fixed for the narrow yaw head.
+
+## pbr9b4 (round 9, slot 4) - 2026-10-27 20:43 UTC start
+
+Incumbent 117.711 (pbr8b1_c12 ckpt_55038705664: 9/9 greedy finishes, best 68.66 s, the others 68.98-69.61 s).
+Only a FASTER 9/9 eval beats it (one finisher fewer costs 1.11 = 33 s of time; one second is worth 0.033).
+
+### No box at the start: the fleet's 1.2 $/h cap was full (20:47 UTC)
+* `box.py rent` refused at 20:47 and 20:50 UTC: burn 1.154 $/h of 1.2 (three other branches rented within the round's
+  first ~4 minutes). Analysis and search run locally (4 vCPU, nice 10, one job at a time) until a box frees up.
+
+### Where the 68.66 s goes: three energy hits (20:48-20:58 UTC, local; the record as a YARDSTICK only)
+* Split times at first arrival, the incumbent eval's 9 finishers vs the record (75.18 s): the policy is ahead almost
+  everywhere and slower only at 70-75% (4.48 vs 3.62 s), 84-85% (1.36 vs 0.74), 86-92% (5.16 vs 3.70), 92-94% (1.42 vs
+  1.06). Best-of-segments over the 9 episodes sums to 67.39 s (the 68.66 s episode loses ~1.3 s to its own spread).
+* All three are ENERGY losses at contacts (h = z + |v|^2/1600 on the best episode, ep6):
+  1. 70.4-72.2%: the line bulges EAST to x ~-920 at (-918, 3,125) and bumps a ramp (h 2,763 -> 2,614, |v_h| 1,039 -> 800),
+     climbs, turns back west to x ~-1,340; the record (yardstick) runs straight south at x ~-1,300 at 1,030-1,220 u/s.
+  2. 84.37%: LANDS on the platform's west end at (1,198, 3,016, 1,565) (h 2,273 -> 1,656, |v_h| 963 -> 270), hops off and
+     falls down the drop shaft at ~300-470 u/s; reaches the lower level (86-92%) at h ~1,420 and |v_h| ~1,000 where the
+     record (yardstick) carries h ~1,880 and ~1,250-1,300 u/s: ~2 s over 84-92%. The record passes ~150-250 u further
+     east and ~60 u higher (z 1,622 at y 3,211) and drops north of the platform without touching it.
+  3. 91.93%: lands on the shaft's rim at (538-689, 2,596-2,636, ~690) (h 1,488 -> 836, |v_h| 959 -> 489) and spirals the
+     shaft at ~500-660 u/s horizontal (the record ~1,200).
+* f1 (the spine c6-c12 were taught on) has the same two contacts (rows 7,660-7,700 on the platform's west end, row
+  ~8,700 on the rim), so the greedy inherited them from its own spine.
+* A CPU greedy recording of the incumbent (record_ckpt --dump-states, 4.8 min on 2 threads) follows the GPU line to ~86%
+  (84% at 57.84 s vs 57.7 s) and lands on the platform at (1,139, 3,128, 1,547) at 84.58% (h 2,203 -> 1,649); past 86% it
+  diverges (CPU numerics) and sticks at 90.86% until the cap. Its states 82-84.5% are the roots for the search:
+  runs/pbr9b4/look/inc_greedy_cpu_states.npz.
