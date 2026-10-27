@@ -261,7 +261,7 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   6,400-6,600 x1.0 / 1.04, here an UNBOOSTED root at row 6,468, 71.86%) to cell 48,251 at 74.30% with h 2,407 (+153 u
   over k02's line there), views along the velocity, the chain's keys translated with them. Taught with
   train_fast --demo-success-energy 75 (cross d(end)+100 with h >= 2,332). No demo, no record (pbr7b2, round 7).
-* `pbr7b2_e3.npy` + `.keys.npy` (5,884 rows; md5 a1922fb2ee92dc8308266242eca56b34 / see git): an ENERGY spine by the loop's
+* `pbr7b2_e3.npy` + `.keys.npy` (5,884 rows; md5 a1922fb2ee92dc8308266242eca56b34 / 72af08fdce73e868e7c4db5bfc48267e): an ENERGY spine by the loop's
   energy-stage rule (tools/energy_splice.py, G 150): the policy's OWN plain beam_tas line from the true spawn (run
   pbr7b2_c3's 38.629B weights, 4,096 stochastic copies, d-ranked; the loop's settings) to its row 5,711 (65.18%), then one
   exact explore_phase1 --exact-chains chain (reward-free search, view-follow, rising split, --select-energy 3; rooted at
