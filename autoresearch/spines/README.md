@@ -336,3 +336,7 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   after 0.2 min, ge_replay 9/9 links, 960 states) through the hover zone and the lower kill plates (the z -1,100 shaft, the
   z ~-1,700 chamber's ring, -2,700 / -2,850 / -3,200) to d 0 at (835, 2,774, -3,441) in the finish box. A finishing line from
   the true start: the policy's own fast beam line + two reward-free chains. No demo, no record (pbr8b4, round 8).
+* `pbr8b4_mix4.npy` (4,137 rows; md5 546970dca2d072430e3781d8fa3e6c03): a --spawn-states pool for the tube curriculum, keeping
+  the 80-86% stretch trained beside it: 600 start-room rows (seed 4) + b2 rows 6,800-7,211 (the policy's own beam approach at
+  78.6-80.2% and la2's face surf to the ledge landing at 82.5%) x4 + b2 rows 7,212-9,100 (la2's ledge walk, the hole, the lower
+  level to 85.9%) once: 15% / 40% / 46%. The policy's own lines and reward-free chains from them; no demo, no record.
