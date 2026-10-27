@@ -3945,3 +3945,9 @@ of its 1.2 $/h cap; the only other passing offer was a 0.621 $/h 5080). Incumben
 * **Next (round 9):** resume c10's best snapshot (ckpt_56117690368) or its ckpt_latest on the finishing spine (c9k02 or a
   newer finishing beam: `beam_tas --save-frontier` from the true start on the newest weights), loop OFF or without the
   energy stage; goals: 9/9 finishes, then speed (the beam lines finish in ~68 s; the greedy ~70.5 s).
+
+### 9/9 GREEDY FINISHES: 117.628 (2026-10-27 17:50 UTC, c10 56.728B)
+* c10 17:32-18:00 UTC: 116.513 (8/9) / **117.628** (56.728B: **9/9 finish**, 71.15-72.6 s; handoff the copier's
+  ckpt_56728485888 at the eval's own step, md5 7978612a..., pulled) / 116.519 (8/9) / 114.278 (6/9) / 115.388 (7/9) /
+  114.323 (6/9, a 70.30 s finish) / 116.520 (8/9). Curriculum on k02 at [2,988] (~34% of the line, 72% band).
+* Every greedy episode of an eval finishes the hardest map of the program from the true start, ~4 s under the human record.
