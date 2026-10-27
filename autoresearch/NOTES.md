@@ -3698,3 +3698,24 @@ of its 1.2 $/h cap; the only other passing offer was a 0.621 $/h 5080). Incumben
   autoresearch/spines/pbr8b4_mix2.npy` explicitly, every other flag as c1 (34 milestones). Record gate passed (2 + 4).
 * Box slip #2: `pkill -f 'pb_snapcopy.py runs/pbr8b4_c1'` inside a box.py ssh command killed its own shell (CLAUDE.md's
   warning, verbatim); only c1's copier and that shell matched. Use `ps | grep '[p]attern'` + kill PID.
+
+### The rest of the tube, and b2 = the first finishing line from the greedy's own approach (11:10-11:25 UTC)
+* Below the hover zone (hull_probe, 30 u grid): z -1,100 a shaft open only south-west; z -1,650..-1,750 a chamber with a KILL
+  DISK in the middle (x ~510-930, y ~2,590-2,950), open only in a ~60-90 u ring by the wall; open chamber to -2,500; z -2,700
+  open west; -2,850 open north-west; -3,200 open east (x ~780-840); -3,420 open above the finish box. With the top plate (east),
+  the -136 band (north) and the bar in the hover shaft (y 2,770-2,800), ~8 kill plates in a ~4,000 u fall: a vertical maze.
+* la2's chain ended over the chamber's disk falling at ~1,200-1,400 u/s with no sideways speed: la3 / la4 rooted at its last
+  states (z -693..-1,642 / -1,004..-1,490) died at once (634,683 / 820,101 deaths in ~0.2-0.4 min, no progress) - too fast,
+  too centred to reach the ring. **la5** rooted at b1's own rows above the hover zone (z -256..-919, 41 roots x1.0): **a goal
+  hit after 0.2 min** (ge_replay 9/9 links, 960 states, d 0 at (835, 2,774, -3,441)).
+* **Spine `autoresearch/spines/pbr8b4_b2`** (stitch: b1 to row 10,755 + la5's chain; 11,715 rows, end d 0): a finishing line
+  from the true start whose approach is the policy's own fast beam line (b1's), not k04's.
+* Probes on c2's 48.954B weights (greedy, 8 episodes each): f1's tube entry 0/8 (the top plate); **b2's hole exit (rows
+  9,081-9,091, 85.7%): 7/8 STUCK in the 90.7% pocket**, 1/8 on the top plate; b2 above the hover zone (rows 10,755-10,765):
+  0/8, all dead within 16-33 ticks on the hover shaft's kill bar at y ~2,762-2,787. So ~1 h of uniform tube spawns (mix1 /
+  mix2, each plate's approach ~1% of the episodes, against ~60% for a curriculum band) has taught none of the plates.
+* c2's curriculum (b1c, tau0 7,211): the chain's ledge landing is flown at once (band [7,181] 81.4%) - c1's ledge / hole skill
+  carries over - and it walks back into the face surf (the transition). c2 evals: 48.869B frontier median d 9,931; 48.945B
+  10,026 (none past the hole yet).
+* Plan: let c2 consolidate the transition (the greedy past the hole, the quorum 5/9 past 85.74%), then relaunch on b2 from
+  its END (the backward curriculum through the plates, the pocket's way round, then b1c's part which the policy knows).
