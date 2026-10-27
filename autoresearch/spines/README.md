@@ -282,3 +282,13 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   state x1.04) airborne over the 71.4% platform and back onto the ramp line, to cell 86,087 at 72.47% ((-1,255, 2,521,
   1,993) heading south at 1,045 u/s, h 2,675 = +205 u over the policy's line there). Keys = the beam's own and the chain's
   translated. Taught with train_fast --demo-success-energy 75. No demo, no record (pbr7b2, round 7).
+* `pbr7b2_d2.npy` + `.keys.npy` (8,520 rows; md5 5e7424fde691687cd5c0b1ba963a13d9 / be2b1d40f899fda52ec64f9ef7dc7084): the first
+  line of this lineage OVER the 74.4% block: the policy's OWN energy-ranked branched beam line from the true spawn (run
+  pbr7b2_c6's ~42.2B weights; beam_tas --score dh --score-energy 3, half the copies forked at 70.25% with held view offsets) to
+  its row 6,356 (73.0%, on the launch ramp's approach at ~1,124 u/s), then one exact explore_phase1 --exact-chains chain
+  (reward-free; rooted at that row's own state with its horizontal velocity TURNED to head straight south, speed kept, no
+  boost - the recipe's front-perturb heading turn as a search root) that rides the ramp, crosses the block ducked and crawls on
+  to d 12,601 = 77.95%. Keys = the beam's own and the chain's translated (tools/stitch_spine.py). No demo, no record.
+* `pbr7b2_d2c.npy` + `.keys.npy` (7,011 rows; md5 30b4d558489a50f0ccfac27c8d9ae66e / 95d3a8d68adb3d8ec36597676b4a299c): d2 cut at
+  row 7,010 (74.80%, on the floor past the block; success line d <= 14,499 = 74.63%, out of reach of any line that does not
+  clear the block). No demo, no record (pbr7b2, round 7).
