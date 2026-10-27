@@ -3320,3 +3320,18 @@ ckpt_35907960832 (md5 160da9eb...), eval 73.590 at 35.918B. Credit at the start:
   73.5%) instead of launching, and dies at 74.19-74.27%. The energy is now reachable; the missing skill is entering the
   launch ramp on its line at that speed - after e5's end, so taught only by the episodes that continue past it.
 * Look-ahead GE 14 (01:57 UTC): e5 rows 6,385-6,425 x1.0 / 1.08 / 1.16 - the boost the explorer needs from there.
+* **Look-ahead GE 14** (e5's end, rows 6,385-6,425, x1.0 / 1.08 / 1.16): 74.21 / 74.30 / 74.40% - even x1.16 from e5's end
+  does not clear the block: e5 passes the platform HIGH (z ~2,070 at 72.3%) and comes into the launch ramp from the wrong
+  place; the boosted chains that pass start LOW on the ramp line (z ~1,840 at 72.9%), the record's west downhill line.
+* **Look-ahead GE 15** (the e3-trained beam's own rows 6,252-6,307 = 70.2-70.9%, h 2,663-2,693, |v| 958-1,013, velocity
+  turned 0 / -20 / -35 / -50 deg): every turn now survives (with c3's energy -40 / -60 died by 71.9%) but none clears the
+  block (74.43 / 74.00 / 74.15 / 74.27%) and none keeps the record's energy on the west line (2,420-2,520 at 72.9-73.5%).
+* c5's population (beam on its 41.2B weights): h 2,629 at 66% (over the sheet), 2,696 at 71.2% (1,062 u/s), then WEST of the
+  platform at 72.0% (x -1,323: e5's skip) but at 2,542, 2,469 at 72.5%, 2,475 / 1,019 u/s at 72.9%; frontier 74.31%.
+  **Look-ahead GE 16** from its ramp approach (72.4-73.45%) x1.08 / x1.12: 74.38 / 74.43% - no pass; the block needs ~1,160+
+  u/s on the ramp line (x1.16 of c3's 1,007 passed), ~+15% over the population's ~1,020. The next loss: 71.2 -> 72.0%
+  -154 u where the record (yardstick) surfs DOWNHILL (z 2,027 -> 1,798) gaining 1,090 -> 1,223 u/s and losing ~38 u.
+* c5 evals 74.215 / 74.291 / 74.318 / 74.329 / ... (to 41.58B, medians 73.1-73.2%): 0/9 cross e5's line with h >= 2,660
+  in 2 h.
+* Look-ahead GE 17 (02:48 UTC): c5's population line rows 6,263-6,323 (70.6-71.35%, before that descent) x1.0 / 1.04,
+  --select-energy 3, 15 min; the energy pick to be restricted to the ramp-entry window (72.6-73.0%).
