@@ -319,3 +319,14 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
 * `pbr8b4_mix2.npy` (4,094 rows; md5 below in NOTES): mix1 reweighted toward the finish tube's kill plates: 1,071 start-room
   rows (seed 1) + f1 rows 8,376-10,518 once + f1 rows 9,185-9,335 (the z ~250 plate approach) and 9,335-9,405 (the z ~-136
   plate) four more times each. Same provenance as mix1 (policy's own line + a reward-free chain from it); no demo, no record.
+* `pbr8b4_b1.npy` + `.keys.npy` (10,877 rows; md5 60eeeaae0756377b441d2ddf48397375 / 24cf64917c8098f877a33c0fc870c3a6): a BRIDGE
+  from the policy's own fast approach: its PLAIN beam_tas line on run pbr8b4_c1's own 48,487,202,816-step weights from the true
+  spawn (the loop's settings, 4,096 envs; extinct at 83.0% on catch sheet *265) to its row 6,911 (80.20%, 1,118 u/s), then ONE
+  exact explore_phase1 --exact-chains chain (runs/la2 on the pbr8b4 box: reward-free, auto_spine's GE settings, rooted at 37 of
+  that beam line's own states over 78.8-80.9% x1.0, 10 min) that surfs up the east face, lands on the one-hull ledge at 82.5%,
+  walks it, drops through the sheet's hole, flies the lower level and threads the finish tube's top plates and the hover zone
+  to d 1,989 = 96.5% (ge_replay 50/50 links). Keys = the beam's own and the chain's translated (tools/stitch_spine.py). No demo,
+  no record (pbr8b4, round 8).
+* `pbr8b4_b1c.npy` + `.keys.npy` (9,101 rows; md5 46086c49bc753efa564f677e9ce8eb42 / bacb9f09d252fd5edbffbff513a6000a): b1 cut at
+  row 9,100 (85.92%, on the lower level flying west past the hole; success line d <= 8,147 = 85.74%, reached only through the
+  hole). No demo, no record (pbr8b4, round 8).
