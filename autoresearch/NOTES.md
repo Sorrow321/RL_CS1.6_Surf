@@ -3770,3 +3770,18 @@ ckpt_45558005760 (82.652 at 45.564B).
   (4) a spawn share is not a sample share: the shaft band stalled 40 min until the 70 s start-room spawns were taken out
   of the spawn-states pool (shaft-only windows), then the curriculum crossed the hole, the ring and the upper sheets in ~35
   min and the greedy finished.
+
+### The time: where the 73.42 s goes, and the expert loop (13:39-13:50 UTC; user: "below 1:10")
+* Split times at first arrival (the 73.42 s finisher vs the record as a YARDSTICK only): the policy is ~4.6 s ahead by 5%
+  (its own start-room exit), ~9-10 s ahead from 45% to 82%, then LOSES it: 82->84% 4.05 vs 1.24 s, 84->86% 3.22 vs 1.55 s
+  (the policy WALKS b3's platform at the 250 u/s ground cap; the record flies over that area at ~920-1,000 u/s, ~230 u
+  higher, touching a ledge at 83.26%), 86->92% ~1.9 s more, 72->74% 2.19 vs 1.20 s. So < 70 s needs a ROUTE change over
+  82-86%, not polish: flying it would save ~3-4.5 s.
+* Expert loop, plan step (beam_tas --objective finish --score dv --greedy-envs 32 --keep-finishers 8, 4,096 copies, from the
+  true start; needs --allow-nonfinisher, the 1/9 greedy fails beam_tas's 3-episode finish gate): wave 0 on c5's 50.69B
+  weights -> a crossing in **72.65 s** (replay bit-exact; 136 s wall) - local polish on the same walking route.
+* Branched waves (13:44 UTC, background on the box): fork 2,048 of the 4,096 copies when the leader first reaches d
+  11,300 / 10,900 / 10,500 (80.2 / 80.9 / 81.6%, before the platform landing), held view offsets +-45 deg for 0.5 s over a
+  2 s burst, protected 3 generations - can the population find the airborne route?
+* Dashboard for the user: tools/dashboard.py on the box (127.0.0.1:8600); a self-healing tools/tunnel.sh on the agent host
+  forwards its localhost:8601 to it (kill it at wrap-up).
