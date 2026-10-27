@@ -3,11 +3,11 @@
  "round": 7,
  "final": false,
  "best": {
-  "score": 80.856,
-  "eval_file": "/home/steam/ar_pb/runs/pbr7b2/pbr7b2_c8/traj_44816138240.jsonl",
-  "run": "pbr7b2_c8",
-  "step": 44816138240,
-  "ckpt": "/home/steam/ar_pb/runs/pbr7b2/pbr7b2_c8/ckpt_44809846784.pt",
+  "score": 82.652,
+  "eval_file": "/home/steam/ar_pb/runs/pbr7b2/pbr7b2_c9/traj_45564297216.jsonl",
+  "run": "pbr7b2_c9",
+  "step": 45564297216,
+  "ckpt": "/home/steam/ar_pb/runs/pbr7b2/pbr7b2_c9/ckpt_45558005760.pt",
   "recipe": [
    "c1: resume of round 6's c12 ckpt_latest (36.659B, md5 d802b3e8...) on the loop's own spine pbr6b4_c12k02 (beam to 70.8% + an x1.04 GE chain to 74.33%) + keys, c12's flag set (to-continue block + --demo-match-band, --auto-spine-patience 0, --auto-spine-ge-minutes 5, --auto-spine-energy 150), 26 milestones; evals 73.567 / 73.671 / 73.466 / 73.601",
    "c2: resume of c1's ckpt_latest (36.945B) with c1's flags + --demo-tau0 6436 + --auto-spine-async (new: the search runs beside the training); evals 73.51-73.66, then 74.287 at 37.474B (1/9 greedy episodes makes the chain's platform hop and flies k02's line to 74.29% at 56.5 s)",
@@ -16,10 +16,11 @@
    "c5: resume of the search's own copy of c4's 40.4499B weights (pre-collapse) on energy spine pbr7b2_e5 (the e3-trained beam to 71.08% + a hop-free airborne GE chain keeping +217 u past the 71.4% platform) + keys, --demo-success-energy 75, 30 milestones, the loop async; evals 74.26-74.37, 74.374 at 40.677B",
    "c6: resume of c5's ckpt_latest (41.9357B) on energy spine pbr7b2_e6 (c5's population line to 71.01% + a GE chain keeping +205 u onto the launch ramp's approach) + keys, --demo-success-energy 75, 31 milestones; its first eval (= c5's final weights) 74.399 (median 74.3%: most episodes reach the 74.4% block)",
    "c7: d2c (the first line over the 74.4% block: the policy's energy-ranked branched beam to 73.0% + an unboosted GE chain from that row's own state with its heading turned straight south) at lr 3e-4 - the curriculum passed the turned root in ~10 min but stacked bonuses (3 milestones within 21 u + the success line) gave kl up to 4.5 and the greedy collapsed to 56%",
-   "c8: resume of c6's pre-collapse 42.928B on d2c with the milestones de-clustered (29) and --lr 1e-4; the greedy cleared the block at 43.53-43.61B (7/9: 75.422, 76.864), the loop's async search 1 (158 s) swapped in the policy's own beam to 77.26%; 77.042 at 43.684B (8/9 past the block, median 76.32%); the loop's async search 2 at 43.835B (7/9 past 77.08%, 192 s) swapped in a branched-beam line to 78.30%; 78.219 at 43.986B, 78.619 at 44.137B, 78.858 at 44.212B (median 78.5%, 7/9 past k02's line -> the loop's search 3: the plain beam to 79.82%, swapped in at 44.267B); 78.906 at 44.439B; 80.623 at 44.514B; 80.644 at 44.665B; 80.856 at 44.816B (median 79.6%); search 4 at 44.892B: the plain beam on those weights to d 4,265 = 92.54% (9,200 states), swapped in at 44.923B"
+   "c8: resume of c6's pre-collapse 42.928B on d2c with the milestones de-clustered (29) and --lr 1e-4; the greedy cleared the block at 43.53-43.61B (7/9: 75.422, 76.864), the loop's async search 1 (158 s) swapped in the policy's own beam to 77.26%; 77.042 at 43.684B (8/9 past the block, median 76.32%); the loop's async search 2 at 43.835B (7/9 past 77.08%, 192 s) swapped in a branched-beam line to 78.30%; 78.219 at 43.986B, 78.619 at 44.137B, 78.858 at 44.212B (median 78.5%, 7/9 past k02's line -> the loop's search 3: the plain beam to 79.82%, swapped in at 44.267B); 78.906 at 44.439B; 80.623 at 44.514B; 80.644 at 44.665B; 80.856 at 44.816B (median 79.6%); search 4 at 44.892B: the plain beam on those weights to d 4,265 = 92.54% (9,200 states), swapped in at 44.923B",
+   "c9 (06:55 UTC): c8's ckpt_latest on spine pbr7b2_k04c (the loop's search-4 plain beam line cut at row 7,450 = 82.04%, success line 81.86%), the 33 milestones c8 carried, every other flag as c8; 80.952 at 45.489B, 82.652 at 45.564B (1/9 past the 80.4% turn, to 82.65%), 82.477 at 45.640B"
   ],
-  "resume_from": "pbr7b2_c6 ckpt_latest 42.928B <- c5 41.936B <- c4 auto/k01 40.4499B <- c3 39.543B <- c2 37.810B <- c1 36.945B <- pbr6b4_c12 ckpt_latest 36.659B <- incumbent r6 (73.590)",
-  "commit": "00f9888"
+  "resume_from": "pbr7b2_c8/ckpt_latest.pt (45,186,285,568, md5 904106974ca64795d75ee4ddb6d7ff5f)",
+  "commit": "21a31d7"
  },
- "summary": "73.590 -> 80.856 (c8 44.816B, median 79.6%; the 74.4% block passed by 8/9 greedy episodes from 43.68B). The block needed a launch-ramp entry heading straight south at ~1,100+ u/s: energy spines by the loop's own rule (tools/energy_splice.py) gave the energy (e3: gate 20's walkway; e5/e6: the 71-72.5% descent), and look-ahead 20 found the way over it from the policy's own energetic line with only its heading turned (no boost) -> depth spine d2c; c8 (lr 1e-4, de-clustered milestones after c7's kl-4.5 collapse) learned it, then the loop's async search swapped in the policy's own beam to 77.26%. New: --auto-spine-async, energy_splice, stitch_spine spine segments, analysis/pb_energy_profile.py."
+ "summary": "73.590 -> 82.652 (c9 45.564B, median 80.6%; c8 80.856 at 44.816B; the 74.4% block passed by 8/9 greedy episodes from 43.68B). The block needed a launch-ramp entry heading straight south at ~1,100+ u/s: energy spines by the loop's own rule (tools/energy_splice.py) gave the energy (e3: gate 20's walkway; e5/e6: the 71-72.5% descent), and look-ahead 20 found the way over it from the policy's own energetic line with only its heading turned (no boost) -> depth spine d2c; c8 (lr 1e-4, de-clustered milestones after c7's kl-4.5 collapse) learned it, then the loop's async search swapped in the policy's own beam to 77.26%. New: --auto-spine-async, energy_splice, stitch_spine spine segments, analysis/pb_energy_profile.py."
 }

@@ -3486,3 +3486,8 @@ ckpt_35907960832 (md5 160da9eb...), eval 73.590 at 35.918B. Credit at the start:
   **k04c** = k04 cut at row 7,450 (82.04%; success line d <= 10,366 = 81.86%, past the turn and the climb to z ~1,814, out of a
   dive's reach), the 33 milestones c8 carried (+ 14,499 / 13,097 / 12,500 / 11,634), every other flag as c8. The loop stays on: 5/9
   past 81.86% fires search 5. First eval 80.543 (median 78.0%). A second copier keeps c9's per-minute snapshots.
+* **c9 passes the turn: 80.952 (45.489B), 82.652 (45.564B), 82.477 (45.640B)** (medians 80.5-80.6%). c9's curriculum walked k04c
+  back from 82.04% to the turn (rows ~6,945-6,990, 36-51%) in ~8 min and on to 78.9% in ~15 (a 5-row window on the south ramp,
+  rows 6,810-6,815: 3% -> 51% by 07:22); from 45.56B one greedy episode per eval clears the turn north and the climb (z ~1,814)
+  and dies further north on the same sheet (*265, z ~1,461 at (2,285, 2,627): 82.65%); the rest still die at the turn (80.5-80.9%).
+  Handoff for 82.652: the copier's ckpt_45558005760 (6.3M before the eval, md5 6dec286c...), pulled.
