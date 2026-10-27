@@ -3608,3 +3608,15 @@ ckpt_45558005760 (82.652 at 45.564B).
   update kl median 0.24, p90 0.44, 10 of 810 updates > 1 (max 6.4) - higher than c8's 0.12-0.19 at the same lr; watched.
 * band_bench on c2's 46.7B weights, k04t's shaft bands, success = the finish: [9,071-9,075] greedy 0/12 (median 93.50%, max
   94.55%), stoch 0/12 - the shaft is new to the policy, as expected.
+* Shaft bench BEFORE practice (c2 46.7B weights; k04t bands, 12 episodes each, success = the finish): every band 0/12 greedy
+  and stoch - [9,071] median 93.5%, [9,150] 92.9%, [9,230] 93.1%, [9,320] 93.3%, [9,410] 94.7%, [9,500] 94.6%, [9,590] 95.9%,
+  [9,680] 98.4%. Even 0.9 s from the finish the policy dies on a lower sheet.
+* **The shaft practised IN PARALLEL with the curriculum, no restart** (09:31 UTC, c2 at 46.749B): the trainer re-reads its
+  `--spawn-states` file when the file's mtime changes (every 20 iterations; replace atomically), so the box's
+  autoresearch/spines/pbr1b1_entry_ge_states.npy (the path c2 was launched with) was replaced by
+  **`autoresearch/spines/pbr8b1_entry_shaft_states.npy`** (14,739 rows: the 7,399 start-room states + k04t's 734 shaft rows
+  9,072-9,805 tiled 10x). The 20% spawn-states share of every pool now goes ~10% to the start room and ~10% to uniform points
+  of the shaft chain (paid by the ratchet shaping and the finish bonus; the replaced pool positions are uniform, so the
+  curriculum's band keeps its share). Re-read confirmed in the log. Why: the backward curriculum learns one window at a time
+  and the shaft is independent of the middle section, so its learning time comes off the critical path; when the greedy
+  reaches the rim (91.3%), k04t's curriculum (or the greedy itself) should find the shaft already practised.
