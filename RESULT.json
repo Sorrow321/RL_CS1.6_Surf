@@ -19,7 +19,7 @@
    "c8 (last 35 min): the 117.660 weights + --target-kl 0.5 (c7 had collapsed to 0/9 after updates at kl 3.36 / 2.81): 7-9/9 per eval, best 117.636 (9/9, 70.92 s), 69.84 s fastest single finish (7/9 eval); no collapse"
   ],
   "resume_from": "pbr7b2_c9/ckpt_latest.pt (46,023,049,216, md5 50c3a56e3d70db7bc66b59bbfac2caa9)",
-  "commit": "c197fa8"
+  "commit": "6880ba1"
  },
  "summary": "82.652 -> 117.660: the map FINISHED by the greedy from the true start, 9/9 in one eval, best 70.20 s (human record 75.18 s on our zones); hand-on pbr8b3_c7/ckpt_54553214976 (md5 7337cc4d...). Path: c1 82.53 -> c2 92.70 (--auto-spine-cut-ahead: segments end 1,000 u past the greedy) -> c4 95.38 (--auto-spine-from-spine: the loop's beams start on its spine; from the true start the stochastic population died at gates the greedy passes) -> c5 98.48 (k03p: the policy's own beam through the shaft, replacing a x1.04-boosted GE chain) -> c6 109.85 first finish (g2: the greedy's own recorded line + its own branched beam) -> c7 117.66 (f1: + a short UNBOOSTED GE chain into the box; 7-9/9 every eval). New default-off flags: --auto-spine-cut-ahead, --auto-spine-from-spine, --auto-spine-ge-boost, --eval-dump-states. Lessons: boosted GE chains stalled the curriculum 3 times; c7 collapsed after 3.4 h on kl-3.36 updates -> use --target-kl 0.5 (c8: no collapse). Next: time (0.033/s), held 9/9."
 }
