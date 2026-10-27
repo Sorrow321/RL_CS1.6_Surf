@@ -3905,3 +3905,8 @@ of its 1.2 $/h cap; the only other passing offer was a 0.621 $/h 5080). Incumben
 * **pbr8b4_c10** (16:15 UTC): c9 stopped at ~54.92B, ckpt_latest 54,916,022,272 (md5 98e4de80...) on c9k02 + keys at
   `--demo-tau0 8068` (where c9's curriculum stood), the loop OFF (no --auto-spine*), 38 milestones (c9's minus the duplicate
   100), every other flag as c9 (lr 1e-4, mix5, the cold/hot band split).
+* c10 to 16:38 UTC: 114.272 (6/9) / 115.377 (7/9) / 114.291 / 114.296 / 114.285 (6/9 each, best 71.13-71.84 s) / **7.055**
+  (55.294B: ALL 9 died at 5.9-7.1%, the early pit area - a one-eval collapse) / 114.287 (6/9, recovered). Curriculum walked k02
+  back to [5,863] (~66% of the line). The non-finishers are now spread along the route (75.8 / 45 / 27.2 / 82.8 / 92.5 /
+  82.1 / 96.6 x2 / 82.0 / 93.7 / 75.9 / 90.7 / 64.5 / 74.4 / 68.3 / 78.2 / 73.8%): the 74.4% block and the ~82% ledge 3-4
+  each, the tube a few, the rest single - reliability is now a sum of small per-gate risks, not one gate.
