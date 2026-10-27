@@ -3212,3 +3212,10 @@ a 5080 at 0.621 $/h, so `rent` was REFUSED (budget pace); a local retry every 5 
   77.16%, still far deeper than the greedy -> depth rule).
 * **pbr7b3_c3** (06:11 UTC): c2's ckpt_latest (37.402B, md5 9560bae2...) on m02c + keys, c2's flags, milestones + m02's line
   12,780 (the goal past the cut).
+* c3 (06:12-06:51 UTC, 37.402 -> 38.04B, spine m02c): the curriculum walked m02c back 7,200 -> 6,815 (73.9%) in ~16 min -
+  the east surf, the 76% ramp landing, the shaft and the LEDGE crossing taught backward, as round 6's c11 taught the
+  walkway - then oscillated [6,815] (52-66%) / [6,810] (< 30%) for 30+ min: the GE chain's ramp ride right after its
+  x1.04 root (row 6,788; rows 6,789-6,820 rise vz +296 -> +588 along a ramp, h 2,420-2,428, the root's unboosted 2,374).
+  Evals 37.40-38.01B: 73.589 / 73.609 / 73.637 / 73.522 / 73.548 / 73.566 / 73.566 / 73.634 / 73.563 - every greedy episode
+  on the slow platform route (~73.5%); the fast-route episodes of c1's 74.260 eval did not come back in c2 / c3, whose
+  curricula trained the far end (74-77%) and not the 71-74% approach.
