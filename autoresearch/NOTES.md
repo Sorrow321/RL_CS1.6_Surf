@@ -3877,3 +3877,16 @@ of its 1.2 $/h cap; the only other passing offer was a 0.621 $/h 5080). Incumben
   SOUTH (92.3%: y 2,857-2,870 vs 2,952), so it misses the ledge fin1 LANDS on at z ~349 (fin1 at 92.6%: (675, 2,996, 349)
   vz 0, then east along it to x 842 and down the top plate's east opening) and falls at -880 u/s onto the plate's killing
   west part (x 728-762, z 262). The curriculum is ~60 rows from where the two lines still agree (row ~8,245).
+
+### THE FIRST GREEDY FINISH FROM THE TRUE START: 108.731 - 71.41 s, under the 75.18 s record (2026-10-27 15:45 UTC, c9)
+* c9 evals after 15:29: 93.177 / 93.566 / **99.461** (54.239B) / 92.962 / **108.685** (54.390B: 1/9 finishes in 72.80 s) /
+  **108.731** (54.465B: ep3 finishes in **71.41 s**; 4/9 die at the tube's top plate at 92.7-92.9%, 1 at the -136 band at
+  93.73%, 3 earlier at 11.9 / 61.5 / 83.9%). Handoffs: ckpt_54450454528 (14.7M before 108.731, md5 0dc50bcf...) and
+  ckpt_54387539968 (2.1M before 108.685, md5 a21dd094...), both pulled. The human world record is 75.18 s zone to zone
+  (ANALYSIS only, never a constant); ours is spawn to finish box from the same start moment.
+* The curriculum at the time: [8,106 / 8,111] (~90%: fin1's approach to the tube), bands 14-52%; the loop's quorum (5/9
+  greedy finishes) not met (1/9).
+* What carried the last mile: fin1 - the policy's OWN beam line from the true start that finished (67.87 s) - as the spine,
+  its backward curriculum from the finish box: the policy needed ~1 h from the launch (14:48) to the first greedy finish,
+  the tube (~560 rows of fin1) walked in ~25 min, the tube-top entry (where the greedy entered ~90 u south of fin1 and missed
+  the ledge it lands on) ~25 min more.
