@@ -4026,3 +4026,39 @@ Only a FASTER 9/9 eval beats it (one finisher fewer costs 1.11 = 33 s of time; o
   released - the cheapest acceptable offer would have to cost under 0.046 $/h. This branch had no box from 20:43 UTC on
   and did its search on the agent host's CPU (2 threads, nice 10). The operator may want the cap at ~1.6 $/h, a per-agent
   share (cap / 4), or a rent queue.
+
+### Local searches from the incumbent's own states (20:56-21:37 UTC; explore_phase1 --exact-chains, 64 u x energy 32,
+### heading split, view-follow, 8 ms, --select-energy 3, 512 envs x 2 threads x 8 min each; arrival = root time + depth x 8 ms)
+* **GE1 (the platform, roots = the CPU greedy rows 7,430-7,570, 83.0-84.3%, x1.0 / x1.04): FOUND the skip.** Cell 27245
+  (root row 7,560, unboosted): 56 ticks that pass ~50 u east of the platform's west end instead of landing on it, energy
+  height 2,318 at 84.98% (the greedy lands and crosses 85% at ~1,730). The incumbent rolled out from that state (CPU,
+  record_ckpt --spawn-states) falls down the drop shaft, takes the north ramp onto the lower level like its own line
+  (h ~1,450 there, as before) and FINISHES at 68.27 s on the stitched clock (its own best greedy 68.66 s): ~0.7 s gained by
+  86%, ~0.4 s at the finish. -> spines pbr9b4_h1 / h1e / h1after (README). From LATER chain states (rows 96, 120: the
+  chain spirals the shaft's west side) the policy lands on the pit floor at z ~709 and crawls (87% after 4 s): the only good
+  entry to the lower level is the north ramp at (1,100-1,200, 3,460-3,530), which the record (yardstick) hits at ~960 u/s
+  horizontal and leaves at ~1,290, while the policy's line arrives at ~330 and leaves at ~1,030.
+* **GE2 (the shaft, roots = chain rows 40-72 + the rollout's first 60 rows): no better ramp entry.** It finds fast states at
+  the shaft's bottom (86.0%: |v| 1,451, h 2,045 vs the line's 1,443) but all of them land south-west of the ramp, on the
+  pit floor; the policy rolled out from them crawls at ~230 u/s. The ramp-entry speed is the remaining ~1-1.5 s over 86-92%.
+* **GE3 (the rim, roots = the rollout's rows 600-770, 90.2-91.9%): a faster line to 96%, unusable as it is.** Flying straight
+  west at y ~2,900 instead of curving south-west onto the rim, the explorer reaches 93 / 94 / 95 / 96% 0.6 / 0.7 / 0.8 /
+  0.7 s sooner than the policy's line, then dies before 97%. The incumbent rolled out from its states at 92.2-94.9% dies in
+  the kill sheets within 0.2-0.9 s every time: a new shaft arrival is a new shaft line to teach (round 8 needed hours for
+  the first one). Not pursued without a box.
+* **GE4 (the 70-72% bulge, roots = the CPU greedy rows 6,270-6,348, 69.8-70.6%, x1.0 / x1.04): nothing usable.** ~90% of
+  the explorer's runs die there (kill volumes); its fastest chains reach 72.5% 0.7 s and 73% 0.3 s sooner than the line, but
+  they run south at x ~-1,100 and the incumbent rolled out from their states (72.4-73.1%) falls into a kill volume within
+  0.4-3 s (or at once). The record's (yardstick) way is straight south at x ~-1,300 with no bump.
+* So the platform skip (h1 / h1e) is the one local find that the policy itself can carry to the finish (~0.4 s).
+
+### `--demo-success-time SECS` (new, commit 2a377ce; tests/python/test_demo_success_time.py, 4/4 pass, 21:57 UTC)
+* A spine episode succeeds (and is paid --demo-success-bonus) only if it crosses the success line no later than the spine
+  itself did from the episode's spawn row (rows are physics ticks), plus SECS; a late crossing spends the episode's chance,
+  and a FINISH after a late crossing is no curriculum success either (the energy rule lets a finish count). Spawns off the
+  spine (match -1) or past its crossing row are ungated. Combines with --demo-success-energy (both must hold); refused with
+  --demo-success-alive / --auto-spine / --demo-stall-cut (rules that move the spine). Mirrored TRAIN_ONLY in record_ckpt.
+* Why time and not energy for a policy-own FASTER line: time lost anywhere before the line cannot be won back, so one gate
+  at the finish enforces every faster section of the spine at once (energy can be regained by a later fall, so an energy
+  gate only polices the section just before it). Flag off: the trainer's config and every progress.csv number are
+  identical to a9e11cb's (CPU smoke run, princessburglar).
