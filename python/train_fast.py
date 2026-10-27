@@ -2210,6 +2210,18 @@ def alive_need(n, cross_row, idx, secs_ticks):
     return np.minimum(int(secs_ticks), np.maximum(own, 0))
 
 
+def search_ref_d(med, line_d, h_min, beyond):
+    """The frontier an --auto-spine search's new spine must beat by the gain: the greedy median
+    deepest d, or with --auto-spine-beyond-line (``beyond``) the DEPTH spine's success line when
+    the greedy median has not reached it (``line_d < med``; an energy spine, ``h_min`` set, keeps
+    the median: its line is no deeper than the greedy). A new spine then never comes back
+    shallower than the one being taught (pbr7b4's manual search at 74.09%: the policy's own beam
+    reached 74.41%, 650 u past the greedy median and short of the taught spine's end)."""
+    if beyond and h_min is None and line_d is not None and float(line_d) < float(med):
+        return float(line_d)
+    return med
+
+
 def spine_energy_rule(res, end_state, gain):
     """--auto-spine-energy G: the energy success floor for a spine the search returned -> the
     spine end's energy height - G / 2 for a spine marked ``energy`` (half the gain it keeps over
@@ -4998,6 +5010,12 @@ def main() -> None:
                     help="--auto-spine: the beam runs this long past the eval's longest episode")
     ap.add_argument("--auto-spine-timeout", type=float, default=2400.0,
                     help="--auto-spine: wall-clock cap (s) of one search")
+    ap.add_argument("--auto-spine-beyond-line", action="store_true",
+                    help="--auto-spine: when the greedy median has not reached a DEPTH spine's "
+                         "success line (a --auto-spine-patience search), the new spine must beat "
+                         "that line by --auto-spine-gain, not only the greedy median - a search then "
+                         "never swaps in a line shallower than the one being taught (pbr7b4). Off = "
+                         "the greedy median, as before; config only when on")
     ap.add_argument("--auto-spine-near-gain", type=float, default=0.0,   # 0 = off
                     help="--auto-spine: M > 0 (u) passes auto_spine --near-gain M - when a more "
                          "boosted Go-Explore stage passes the gain, an earlier, less boosted "
@@ -11877,6 +11895,9 @@ def main() -> None:
         raise SystemExit("--auto-spine needs --demo-file (the first spine) and --demo-success-d")
     if args.auto_spine_energy is not None and not args.auto_spine:
         raise SystemExit("--auto-spine-energy is a stage of --auto-spine's search: give it")
+    if args.auto_spine_beyond_line and not args.auto_spine:
+        raise SystemExit("--auto-spine-beyond-line is a rule of --auto-spine's search: give "
+                         "--auto-spine")
     if float(args.auto_spine_near_gain or 0.0) != 0.0:
         if not args.auto_spine or float(args.auto_spine_near_gain) < 0.0:
             raise SystemExit("--auto-spine-near-gain M (> 0) is a rule of --auto-spine's search: "
@@ -14933,6 +14954,8 @@ def main() -> None:
             meta["config"]["auto_spine_async"] = 1
         if float(args.auto_spine_near_gain or 0.0) > 0.0:
             meta["config"]["auto_spine_near_gain"] = float(args.auto_spine_near_gain)
+        if args.auto_spine_beyond_line:
+            meta["config"]["auto_spine_beyond_line"] = 1
         if args.auto_spine_energy is not None:
             meta["config"]["auto_spine_energy"] = float(args.auto_spine_energy)
         if float(args.demo_stall_cut or 0.0) > 0.0:
@@ -16095,10 +16118,15 @@ def main() -> None:
         br_tick = (int(max(1, np.median(launches) - 0.5 * tps))
                    if len(launches) * 2 > len(eps)
                    else int(max(1, np.median(stalls) - 1.0 * tps)))
+        ref_d = search_ref_d(med, DEMO_END_D, DEMO_H_MIN, bool(args.auto_spine_beyond_line))
+        if ref_d != med:
+            print(f"[{global_step:>13,d}] auto-spine search {AUTO['k']}: --auto-spine-beyond-line - "
+                  f"the new spine must beat the success line d <= {ref_d:,.0f} (the greedy median "
+                  f"{med:,.0f} has not reached it)", flush=True)
         cmd = [sys.executable, "-u", str(Path(__file__).resolve().parents[1] / "tools"
                                          / "auto_spine.py"),
                "--ckpt", str(out / "ckpt_latest.pt"), "--map", str(slots[0].core.bsp_path),
-               "--field", str(AUTO["field"]), "--out", str(kdir), "--greedy-d", f"{med:.1f}",
+               "--field", str(AUTO["field"]), "--out", str(kdir), "--greedy-d", f"{ref_d:.1f}",
                "--gain", f"{float(args.auto_spine_gain):g}",
                "--beam-ticks", str(int(max(lens) + float(args.auto_spine_extra_secs) * tps)),
                "--envs", str(int(args.auto_spine_envs)),
