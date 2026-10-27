@@ -3879,3 +3879,16 @@ ckpt_45558005760 (82.652 at 45.564B).
   The planner half of the expert loop (beam_tas) is fine and was used throughout.
 * **pbr8b1_c9** (16:44 UTC): c7's pre-BC ckpt_latest (52.926B, md5 a820ba08...) with c7's flags + `--demo-tau0 6490` (stage
   2 continued: f1e, the energy rule). c8 stopped at ~53.17B.
+* c9 (16:44-17:08 UTC, stage 2 without BC): evals 115.365 (7/9, 72.40 s) / 114.266 (6/9, **72.03 s**) / 113.139 / 109.823 (2/9,
+  **71.99 s**) / 112.040 (4/9, 72.14 s); energetic greedy crossings of 83% 1/9, 0/9, **4/9**, 0/9 - the greedy is switching
+  but unstably; the one clearly airborne greedy episode (h 2,424 at 83%) fell on the z ~1,460 sheet at 83.4%, ~300 u NE of
+  f1's chain (its own flight does not yet connect to the chain's landing on the platform's west end). Planner on c9's
+  53.2B weights: 71.25 / 71.84 s (the ~71.2 s ceiling of c7's).
+* **c10 (BC at coef 0.05, constant): the first update read kl 16.9 again** (c8 at 0.5: 18.3; every resume WITHOUT BC: ~0.03
+  - c5 0.027, c6 0.032, c7 0.033, c9 0.034). So it is not the coefficient: the policy's yaw head runs at sigma ~0.013, where a
+  shift of mu by ~0.07 z is already a KL of ~15, and the BC view targets (reconstructed from the rows' PHYSICAL view in the
+  velocity frame) sit ~1.3 z RMS from mu (BC view-mse 1.82) even though the planner's copies sampled from this very policy -
+  the reconstruction does not match the z the policy drew. Any BC weight on the view head moves mu by more than the policy's
+  own spread. Fix for a later round (a trainer change, default off): BC on the categorical heads only, or view targets taken
+  from the planner's own drawn z. c10 stopped after ~2.5M steps; **pbr8b1_c11** (17:10 UTC) = c9's ckpt_latest (53.301B, md5
+  6060ae15...) on stage 2 without BC (c9's flags, --demo-tau0 6350).
