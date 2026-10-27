@@ -3735,3 +3735,9 @@ of its 1.2 $/h cap; the only other passing offer was a 0.621 $/h 5080). Incumben
   as c2. Record gate passed (2 + 4). Why now and not at c2's quorum: the tube (~8 plates + the pocket) is the longer pole;
   the transition is already partly learned (1/9) and stays in the spawn pool.
 * Box extended to 14:43 UTC (credit $18.8, fleet burn 1.06 $/h).
+* c3 at 12:05 UTC (~22 min in): evals 82.786-83.041 (medians 82.5-82.9%) and **90.647** (50.027B: one episode over the ledge
+  into the 90.7% pocket again). Curriculum from b2's end 11,714 -> 11,354 (z ~-1,450, 96.2%) in ~20 min, bands 7-36%: the
+  -3,200 / -2,850 / -2,700 plates and the chamber's ring (b2 rows ~11,460-11,520, (535-559, 2,959-2,961, z -1,674..-1,922))
+  are behind it; ahead: the -1,100 shaft (~11,200-11,280), the hover (rows 10,860-11,160 at z -1,004, bv +800), the tube's
+  top where la2's chain stands on ledges at z 367 / 709 (rows ~10,000-10,500), the top plate (~10,600-10,700), then the lower
+  level and the pocket's way round (9,600-9,800). Update kl median 0.26-0.33, value loss 93 -> 68.
