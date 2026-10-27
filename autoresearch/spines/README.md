@@ -348,3 +348,8 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   4,096 envs, the loop's settings, --save-frontier now saving a crossing winner) from b2's row 11,160 to the finish box in 428
   ticks (3.28 s, replay bit-exact). It replaces la5's lower tube, whose chamber passage clipped a slanted lip from 5 rows the
   policy cannot win from. Keys: b2's + the beam's own (auto_spine.keys_from_acts). No demo, no record (pbr8b4, round 8).
+* `pbr8b4_b3p.npy` + `.keys.npy` (9,951 rows; md5 77dc4cb9032984de1d46be10c7552f28 / 150932bc86e7c17eabce9687052f7777): b3 cut at
+  row 9,950 (91.79%, standing on the ledge inside the finish tube's top at (750, 2,983, 709), past la2's way round the 90.7%
+  pocket; success line d <= 4,791 = 91.62%, out of reach from the pocket, whose states sit at d 5,230-5,407). No demo, no record.
+* `pbr8b4_mix6.npy` (6,613 rows; md5 f9ad3bf1cb3f007147a7fd01384d72f6): mix5 + b3 rows 10,812-11,587 (the hover to the finish, the
+  part of the tube the policy has learned) once, so the tube skill keeps training while a curriculum works elsewhere.
