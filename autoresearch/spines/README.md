@@ -396,3 +396,11 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   DECISION: fo1 rows 7,380-7,511 (the incumbent's own greedy line, 82.1-83.6%, the approach to the junction) x15 + rows
   7,512-7,602 (the chain's fly-over to the fo1e cut) x10 + rows 7,603-7,741 (past the cut) x10. Swapped into pbr9b1_c2's
   pool path (pbr9b1_fo1after_states.npy on the box) at 21:36 UTC through the trainer's mtime re-read.
+* `pbr9b1_fo2.npy` + `.keys.npy` (7,889 rows; md5 7b3ece416cd8edea942929bd9ef2ab57 / 4b8bdda9ae29ec66f5cdc5274de60418): fo1 rows
+  0-7,638 (the greedy line + the fly-over chain into the drop's spiral, 85.32%) + a second Go-Explore chain (GE 3: rooted at
+  43 of fo1's own drop states, rows 7,596-7,680, unboosted; cell 141561, ge_replay 4/4 links) that LANDS SOFTLY on the lower
+  level (h 2,023 -> 1,741 at 85.66%; fo1's chain lands at 1,560) and flies it at vh 1,170-1,256 to d 6,790 (88.12%, h 1,807)
+  at 60.60 s on the line's clock (fo1's chain to 88%: 60.76 s; the incumbent's greedy 61.89 s). For an energy cut at its end
+  (`--demo-success-energy 150` -> h >= 1,657 at d <= 6,890). No demo, no record data (pbr9b1, round 9).
+* `pbr9b1_fo2dec_states.npy` (md5 in NOTES): fo2 rows 7,380-7,511 (the greedy approach) x10 + 7,512-7,637 (the fly-over) x8 +
+  7,638-7,888 (the soft landing and the lower level) x8, a `--spawn-states` pool.
