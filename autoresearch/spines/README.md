@@ -362,3 +362,6 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   the TRUE spawn, 4,096 envs, the loop's settings, --max-ticks 14000) that CROSSES the finish in 8,852 ticks = 67.87 s (replay
   bit-exact; saved by beam_tas --save-frontier's crossing case), its own held keys (auto_spine.keys_from_acts). No demo, no
   record, no search chain: every row is the policy's own population (pbr8b4, round 8).
+* `pbr8b4_c9k02.npy` + `.keys.npy` (8,864 rows; md5 d83eecee3c710c651501e1cea6154e6b / ab935e3ee50482f9f6812ab9767140d2): the trainer
+  loop's own search-2 spine of run pbr8b4_c9 (auto/k02: the PLAIN beam_tas line on c9's own 54.86B weights from the true spawn,
+  4,096 envs) that FINISHES (8,864 ticks = 67.96 s), its own held keys. No demo, no record (pbr8b4, round 8).
