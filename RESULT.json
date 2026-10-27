@@ -1,7 +1,7 @@
 {
  "agent": "pbr8b1",
  "round": 8,
- "final": false,
+ "final": true,
  "best": {
   "score": 117.711,
   "eval_file": "/home/steam/ar_pb/runs/pbr8b1/pbr8b1_c12/traj_55038705664.jsonl",
@@ -19,7 +19,7 @@
    "c12: c11's pre-collapse snapshot (54.585B) on f1e + --demo-success-energy 150 (only an airborne crossing of the 82-86% platform succeeds), --lr 5e-5, no --auto-spine, --demo-tau0 5555; finishes climbing 4 -> 9/9; 117.711 at 55.039B: 9/9 finish, best 68.66 s (fastest of the round 68.22 s at 54.963B)"
   ],
   "resume_from": "pbr8b1_c11 ckpt_54585196544 (its own pre-collapse snapshot, md5 f0da6a18...)",
-  "commit": "c12 on the f1e commit"
+  "commit": "38c752b"
  },
- "summary": "117.711 (c12, 55.039B: 9/9 greedy finishes from the true start, best 68.66 s; fastest single finish 68.22 s) - under the user's 1:10 target with every episode finishing. Path: c1 continued round 7's loop (83.205); c1's own search found a branched beam to 96.47%; cut past the drop the curriculum taught the 82-86% platform (93.819); the final shaft (rotating teleport kill sheets) by the policy's own beam from the rim -> the first finish 108.664 (73.42 s) once the spawn pool targeted the shaft (a spawn share is not a sample share); f1 (planner line + an airborne GE chain over the platform + own finish) -> 9/9 (117.582, 72.53 s); an energy-gated cut at 83% (only an airborne crossing succeeds) taught the greedy to fly the platform -> 69.74 s, then 68.2-68.7 s; c11 collapsed after the loop swapped in an energy spine (kl 1-1.5 run); c12 = the pre-collapse snapshot at lr 5e-5 without the loop -> 9/9 at 68.66 s. BC (the expert loop's distil step) breaks these checkpoints (kl ~17 at any coef: yaw sigma 0.013)."
+ "summary": "FINAL 117.711 (c12, 55.039B: 9/9 greedy finishes from the true start, best 68.66 s; fastest single finish 68.22 s; hand-on ckpt_55038705664 = the eval's own step, md5 bc483e2f...). From 82.652: first finish 108.664 (73.42 s, 13:33 UTC), 9/9 117.582 (72.53 s), under 1:10 (69.74 s at 18:13), 9/9 at 68.66 s (19:16). How: the loop's own search lines (a horizon-cut branched beam to 96.47%), k04c-style cuts, the shaft by the policy's own beam from the rim, a shaft-only spawn pool (a spawn share is not a sample share), f1 = planner line + an airborne Go-Explore chain over the 82-86% platform + own finish, and an energy-gated cut (--demo-success-energy: only an AIRBORNE crossing succeeds) that taught the greedy to fly it; c12 = the pre-collapse snapshot at lr 5e-5 without auto-spine. BC (expert-loop distil) breaks these checkpoints (kl ~17 at any coef: yaw sigma 0.013) - needs a categorical-only BC. Next: resume ckpt_55038705664 on pbr8b1_f1e with c12's flags."
 }

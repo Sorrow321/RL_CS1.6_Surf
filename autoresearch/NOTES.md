@@ -3957,3 +3957,36 @@ ckpt_45558005760 (82.652 at 45.564B).
   the eval's own step (md5 bc483e2fe136e6ff4594e564b64e671a), pulled. The record (yardstick only) is 75.18 s.
 * What held it: c11's pre-collapse snapshot, lr 5e-5 (from 1e-4), no auto-spine swap, the energy-gated f1e curriculum (the
   greedy now flies the 82-86% platform) - update kl median 0.23.
+
+### pbr8b1 round 8 lesson (wrap-up, 2026-10-27 19:56 UTC) - supersedes the DRAFT above
+* **Score 82.652 -> 117.711** (pbr8b1_c12, eval 55.038705664B: **9/9 greedy episodes finish from the true start, best 68.66 s**,
+  median 100%; hand-on ckpt_55038705664 = the eval's own step, md5 bc483e2fe136e6ff4594e564b64e671a, pulled; c12's
+  ckpt_latest pulled too). Fastest single greedy finish 68.22 s (c12 54.963B). The record (yardstick only) is 75.18 s.
+  Milestones: first finish 108.664 (73.42 s, 13:33 UTC); 9/9 117.582 (72.53 s, c6 15:20); under 1:10 (69.74 s, c11 18:13);
+  9/9 at 68.66 s (c12 19:16). Box 57938480 (RTX 4080S, 0.41 $/h) the whole round.
+* **What did it, in order:** (1) keep the loop's own search lines - a horizon-cut branched beam to 96.47% that the trainer never
+  applied (check auto/kNN/spine.json before stopping a run; --auto-spine-extra-secs 45); (2) k04c-style cuts just past the
+  greedy's failure (b3c taught the 82-86% platform); (3) the final shaft (rotating teleport kill sheets; tools/beam_best_states.py
+  for a finishing beam's per-tick states) by the policy's OWN beam from the rim; (4) **a spawn share is not a sample share** - a
+  70 s start-room spawn outweighs ~70 shaft spawns; a narrow --spawn-states window of own-line states just ahead of the band,
+  swapped in through the trainer's mtime re-read, is a second curriculum with no restart (it needs its bonus within ~1-1.5 s);
+  (5) for the TIME: the split times vs the record showed the loss was a ROUTE (walking the 82-86% platform at the 250 u/s ground
+  cap); a Go-Explore run rooted on the policy's own planner line just before an energy loss found the airborne route (x1.04);
+  f1 = planner line + that chain + the policy's own finish (70.81 s); then **an energy-gated cut** (f1e: f1 cut at 83% with
+  --demo-success-energy 150 - only an AIRBORNE crossing succeeds; the walking route crosses at h ~1,600) taught the greedy to fly
+  it unboosted: finishes 72.4 -> 69.7 -> 68.2 s; (6) stability at the end: c11 collapsed (a run of kl 1-1.5 updates, value loss
+  45 -> 136) ~350M steps after the loop swapped in its own energy spine; c12 = the pre-collapse snapshot at --lr 5e-5 without
+  --auto-spine went 4/9 -> 9/9 in 35 min.
+* **What did not:** BC (tools/expert_loop.py / exit_local.py's distil step): kl ~17 on the first update at coef 0.5 AND 0.05
+  (resumes without BC: ~0.03) - the yaw head's sigma is ~0.013 and the BC view targets (rebuilt from the physical view in the
+  velocity frame) sit ~1.3 z from mu; needs BC on the categorical heads only, or the planner's own drawn z (a trainer flag,
+  default off). Also: uniform spawn practice over long stretches; energy-ranked (dh) and branched planner waves; GE chains
+  where the policy's own beam works (slower, harder to learn); the loop's energy-stage swap in the last hours (preceded c11's
+  collapse).
+* **Next round (to continue):** resume ckpt_55038705664 (pulled to runs/pbr8b1/pbr8b1_c12/) on autoresearch/spines/pbr8b1_f1e +
+  keys with c12's flag set (box.py launch --resume -- ...):
+  `--maxvel 3500 --ckpt-every 2e8 --demo-file autoresearch/spines/pbr8b1_f1e.npy --demo-keys autoresearch/spines/pbr8b1_f1e.keys.npy --demo-window 5 --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5 --demo-rate 0.3 --demo-front-frac 0.8 --demo-success-d 100 --demo-success-bonus 50 --demo-milestones 44939,43426,42182,41015,40497,39943,37251,33777,32260,31429,30286,28818,28783,27001,25121,24479,23400,22500,21624.107,23215.873,20589.457,22013.855,20231.945,17069.684,15570.603515625,16451.8720703125,14773.07421875,19194.404296875,15831.419921875,14499,13097,12500,11634,10366,4365,7926 --keys-hold-spawn-duck --yaw-entropy 0 --demo-front-temp 0.5 --demo-front-ticks 40 --demo-front-view 6 --respawn-greedy 0.2 --respawn-greedy-window 0.25 2.0 --respawn-greedy-stuck 200 --respawn-greedy-contact --respawn-greedy-energy 3 --respawn-greedy-temp 0.5 --respawn-greedy-temp-ticks 100 --respawn-greedy-temp-view 6 --respawn-front-perturb 0.2 --respawn-front-perturb-band 0.005 --respawn-front-perturb-speed 1.0 1.3 --respawn-front-perturb-turn 90 --energy-pot 12 --energy-pot-front 0 --energy-pot-front-bonus 0 --no-respawn-novel --respawn-backward-mix 0 --int-real-only 0 --spawn-states autoresearch/spines/pbr8b1_f1after_states.npy --spawn-states-frac 0.2 --demo-match-band --demo-success-energy 150 --lr 5e-5 --demo-tau0 5555`
+  The time is now set by the drop after the platform (the explorer's chain lands on the platform's west end and walks ~1 s,
+  then a 3.7 s drop where the record takes ~1.4 s) and the lower level (the policy ~1.5 s slower than the record over 86-92%):
+  the planner on the new weights (beam_tas --objective finish --score dv, ~2.5 min a wave) is the way to find the next line;
+  distil it only after BC is fixed for the narrow yaw head.
