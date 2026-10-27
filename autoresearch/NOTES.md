@@ -3623,9 +3623,10 @@ block): its quorum fired search 1 at 46.017B and the search died with the box at
   nothing forces a release, and the slot's branch can only analyse. A fair-share rule (per-branch cap = limit / branches,
   or one reserved slot per branch) would keep all four slots training.
 
-### pbr8b2 round 8 lesson (DRAFT, 16:55 UTC; finalised at wrap-up)
-* **No box all round** (the harness issue above): the fleet's three boxes held 1.056 of the 1.2 $/h cap from 08:44 on; every
-  `box.py rent` (every 90 s, ~200 attempts) was refused. No eval, no score. Everything below was done on the agent host's CPU.
+### pbr8b2 round 8 lesson (wrap-up, 2026-10-27 19:54 UTC)
+* **No box all round** (the harness issue above): the fleet's three other boxes held 1.056 of the 1.2 $/h cap from 08:44 to the
+  end; every `box.py rent` (a background waiter, every 90 s, 08:44-19:16 UTC, ~420 attempts) was refused. No run, no eval, no
+  score (RESULT.json final, best null). Everything below was done on the agent host's CPU (4 vCPU, short niced jobs).
 * **The finish is reachable from the policy's own line.** The loop's 92.54% line (k04) does not end at a horizon limit: it
   falls into the final shaft's first kill sheet. The shaft is a stack of kill sheets with alternating gaps (z ~200 west,
   0 south-centre, -600 ring, -1,000 north, -1,700 centre disc over the solid slab, -2,900 south, -3,300 diagonal) and

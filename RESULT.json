@@ -1,7 +1,7 @@
 {
  "agent": "pbr8b2",
  "round": 8,
- "final": false,
+ "final": true,
  "best": null,
- "summary": "Round 8 (no box yet: fleet at 1.056 of 1.2 $/h since 08:44). Found locally: the loop's 92.54% line k04 fell into the final shaft's first kill sheet; the shaft is a stack of kill sheets with alternating gaps. Two short reward-free Go-Explore look-aheads rooted at k04's own states reached the finish box -> spine autoresearch/spines/pbr8b2_f1 (k04 + 2 exact chains, true start to finish, ~78 s). New generic flags --auto-spine-cut-secs (the loop's spine = stored line cut S s past the greedy frontier, rolled on at each quorum) and --auto-spine-cut-beyond (a share of draws past the cut), CPU-tested 8/8 incl. bit-identity. Plan c1: resume pbr7b2_c9 ckpt_latest 46.023B (last eval 82.564, median 81.9%) on f1 with cut 4 s, beyond 0.2, no search."
+ "summary": "No box all round: the fleet's three other boxes held 1.056 of the 1.2 $/h cap from 08:44 to the end, so every box.py rent (every 90 s, 08:44-19:16 UTC) was refused; no run, no eval, no score. Work done on the agent host's CPU: (1) the loop's 92.54% line k04 falls into the final shaft's first kill sheet; the shaft is a stack of kill sheets with alternating gaps; (2) two 5-min Go-Explore look-aheads (the loop's GE settings) rooted at k04's own states reached the finish box -> spine autoresearch/spines/pbr8b2_f1 = k04 + 2 exact reward-free chains, the first line from the true start to the finish (~78.4 s); (3) probes: c9's weights handle f1 up to ~84.5% only; (4) new generic flags --auto-spine-cut-secs / --auto-spine-cut-beyond (default off, bit-identical, CPU-tested 8/8), never run on a box. Next: resume the incumbent on f1 with autoresearch/spines/pbr8b2_f1.flags.txt."
 }
