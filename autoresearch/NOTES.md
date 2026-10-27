@@ -3932,3 +3932,11 @@ ckpt_45558005760 (82.652 at 45.564B).
   s) - the greedy's finish times fall as more of it flies (3/9 airborne crossings of 83% at 53.98B); the band walked f1e
   back to 5,555 (72%). The loop's search 1 (started 53.604B) ran its GE ladder (x1.08 to 92.9%, x1.12 to 95.6% - no deeper
   than a finishing greedy) and is in its ENERGY stage (a cell >= 150 u above the line's energy over 69.6-84.1%) at 17:56.
+
+### UNDER 1:10: a greedy finish in 69.74 s (2026-10-27 18:13 UTC, c11 54.283B)
+* c11's eval at 54.283B: 6/9 finish (score 114.342); **ep4 finishes in 69.74 s** from the true spawn and is the one that crossed
+  83% AIRBORNE (energy height 2,442); the five walking finishers took 72.38-73.04 s (h 1,604 at 83%) - the flight over the
+  82-86% platform is worth ~2.7 s. Hand-on ckpt_54274818048 (8.4M before the eval), pulled. Evals before it 114.279 (6/9,
+  71.63 s) / 112.053 / 109.815. The loop's search 1 had ended in its ENERGY stage and swapped in its own energy spine (7,296
+  rows, success d <= 9,222 = 83.9% with h >= 1,753) before 54.207B; the band works it at [6,510 / 6,515].
+* The branch's best SCORE stays 117.582 (c6: 9/9 at 72.53 s; a 9/9 eval at ~70 s would score ~117.67).
