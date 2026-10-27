@@ -302,3 +302,12 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   the true spawn to d 4,265 = 92.54% at 70.5 s, ending at the top of the final shaft (637, 2,918, 470) falling at 1,017 u/s
   where the beam's horizon ran out; its own held keys); k04c is its first 7,451 rows. Committed by pbr8b2 (round 8) as the
   stored line of `--auto-spine-cut-secs`. No demo, no record.
+* `pbr8b2_f1.npy` + `.keys.npy` (10,185 rows; md5 074555921156e360da91de0ffd3b989d / 24753705bab2389ad5781e0028b34b0d): the
+  FIRST LINE FROM THE TRUE START TO THE FINISH (end d 0). tools/stitch_spine.py of three segments: (1) pbr7b2_k04 rows 0-9,190
+  (the loop's search-4 plain beam on pbr7b2_c8's own 44.892B weights, to 92.42%; its own held keys); (2) an exact Go-Explore
+  chain (tools/explore_phase1.py --exact-chains with auto_spine's GE settings: 64 u x energy 32 cells, --cell-heading 1,
+  view-follow, --tick-ms 8, --maxvel 3500; 40 roots = k04 rows 9,000-9,199 every 5th; 5 min, 2 threads) from k04 row 9,190
+  to archive cell 35,559 at (857, 2,726, -999), 318 states, replayed exactly by tools/ge_replay.py (8/8 links); (3) a second
+  exact chain rooted at 240 of the first archive's own column cells (z -1,640..-900; + --select-energy 3, --roots-keep-all)
+  that hit the finish box after 0.6 min: cell 9,969 (d 0), 678 states (9/9 links). The explorer's actions are uniform (no
+  policy, no reward); the roots are the policy's own line and the explorer's own cells. No demo, no record (pbr8b2, round 8).
