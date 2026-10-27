@@ -3627,6 +3627,17 @@ def main():
     if _pre > 0:
         cad_suffix = cadence_from_traj(rpath, TICK, _sv_g, start=_pre)
         print_cadence(cad_suffix, f"searched suffix, from tick {_pre}")
+    if args.save_frontier:
+        # --save-frontier with a crossing (pbr8b4): the winner IS the deepest line, so it is saved
+        # the frontier way too (beam_frontier.npz with its per-tick states): a curriculum, and
+        # tools/auto_spine.py (which reads only beam_frontier.npz), can then take a FINISHING line.
+        # Before this a finishing beam left no frontier file and auto_spine saw no spine at all.
+        # A search without a crossing never reaches this line: unchanged
+        save_frontier_line({"acts": best["acts"],
+                            "view": (best.get("view") if VIEWC else None),
+                            "tick": int(best["tick"]), "d": 0.0},
+                           cfg, map_path, ep_cap, TICK, arm, row0, obs_start, gate_seed, K,
+                           out_dir, ogf)
 
     # every kept lineage, deduplicated (clones that crossed on the same
     # tick share a history), fastest first, padded to one table so the
