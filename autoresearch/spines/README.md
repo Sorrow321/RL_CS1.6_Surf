@@ -316,3 +316,10 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   deepest d 3,128): row 8,997, d 2,128 = 96.28%, in the finish shaft at (705, 2,915, -1,482); success line d <= 2,228.
   It passes the z -600 blade on the policy's own line, where c4's search-2 spine (k02) is a Go-Explore chain from a x1.04
   boosted root. No demo, no record (pbr8b3, round 8).
+* `pbr8b3_g2.npy` + `.keys.npy` (9,670 rows; md5 84fc016a96a2f1adcdbc530ad87efdb5 / 89c88c7029f348e420d914d307c6f398): the
+  policy's OWN GREEDY line (record_ckpt --dump-states of c5's 50,862,227,456-step weights, seed 105 = episode 5 of seeds
+  100-108, 96.51% at 72.3 s; held keys from its .jsonl, stitch_spine.roll_keys' rule; md5 b2979114...) to row 9,170 (2 s
+  before its death at the z -1,640 blade) + auto_spine.py's energy-fork BRANCHED beam from that row (the policy's own
+  population, a 2 s held-view burst at the fork, then its own actions; `--start-spine` the greedy line, `--start-row 9170`)
+  to d 1,069 = 98.13%, no Go-Explore, no boost; not cut (the line ends before the rule's d 997); success line d <= 1,169.
+  No demo, no record (pbr8b3, round 8).

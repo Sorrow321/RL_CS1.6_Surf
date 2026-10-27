@@ -4998,6 +4998,14 @@ def main() -> None:
                          "and leaves most of a box's CPU quota idle; a blocking search held it "
                          "for up to ~28 min (pbr6b4_c12). Off = the trainer waits, as before; "
                          "config only when on; never restored")
+    ap.add_argument("--auto-spine-ge-boost", default=None,   # None = auto_spine's own default
+                    help="--auto-spine: the search's Go-Explore escalation ladder (auto_spine "
+                         "--ge-boost SPEC, e.g. '1.0;1.04;1.08;1.12': unboosted roots as a stage "
+                         "of their own). auto_spine's default mixes 1.0 and 1.04 in its first "
+                         "stage, whose deepest chain is usually the boosted one, and a spine from "
+                         "a boosted root asks for speed the policy does not have (pbr8b3: two "
+                         "such chains stalled the curriculum in the finish shaft). Config only "
+                         "when set; not restored")
     ap.add_argument("--auto-spine-from-spine", type=float, default=0.0,   # 0 = off
                     help="--auto-spine: S > 0 - the search's beams start from the CURRENT spine "
                          "S seconds before the row where it reaches the greedy frontier (before "
@@ -11866,6 +11874,22 @@ def main() -> None:
         raise SystemExit("--auto-spine needs --demo-file (the first spine) and --demo-success-d")
     if args.auto_spine_energy is not None and not args.auto_spine:
         raise SystemExit("--auto-spine-energy is a stage of --auto-spine's search: give it")
+    if args.auto_spine_ge_boost is not None:
+        if not args.auto_spine:
+            raise SystemExit("--auto-spine-ge-boost sets --auto-spine's Go-Explore ladder: give "
+                             "--auto-spine")
+        try:
+            # auto_spine.stage_specs' syntax: a stage may be prefixed E (energy roots)
+            _ladder = [[float(x) for x in (st[1:] if st[0] in "Ee" else st).split(",")
+                        if x.strip()]
+                       for st in (s.strip() for s in str(args.auto_spine_ge_boost).split(";"))
+                       if st]
+        except ValueError:
+            _ladder = []
+        if not _ladder or not all(_ladder) or any(x <= 0 for st in _ladder for x in st):
+            raise SystemExit(f"--auto-spine-ge-boost {args.auto_spine_ge_boost!r}: ';'-separated "
+                             "stages of ','-separated positive speed factors")
+        print(f"--auto-spine-ge-boost {args.auto_spine_ge_boost}: the search's Go-Explore stages")
     if float(args.auto_spine_from_spine or 0.0) < 0.0:
         raise SystemExit("--auto-spine-from-spine S must be >= 0 (0 = off)")
     if float(args.auto_spine_from_spine or 0.0) > 0.0:
@@ -14934,6 +14958,8 @@ def main() -> None:
             meta["config"]["auto_spine_cut_ahead"] = float(args.auto_spine_cut_ahead)
         if float(args.auto_spine_from_spine or 0.0) > 0.0:
             meta["config"]["auto_spine_from_spine"] = float(args.auto_spine_from_spine)
+        if args.auto_spine_ge_boost is not None:
+            meta["config"]["auto_spine_ge_boost"] = str(args.auto_spine_ge_boost)
         if float(args.demo_stall_cut or 0.0) > 0.0:
             meta["config"]["demo_stall_cut"] = float(args.demo_stall_cut)
     if args.demo_milestones:
@@ -16113,6 +16139,8 @@ def main() -> None:
             cmd += ["--energy-gain", f"{float(args.auto_spine_energy):g}"]
         if float(args.auto_spine_cut_ahead or 0.0) > 0.0:
             cmd += ["--cut-ahead", f"{float(args.auto_spine_cut_ahead):g}"]
+        if args.auto_spine_ge_boost is not None:
+            cmd += ["--ge-boost", str(args.auto_spine_ge_boost)]
         if float(args.auto_spine_from_spine or 0.0) > 0.0:
             # the beams start on the current spine, S s before it reaches the greedy frontier
             _sd = np.asarray(_f.sample(np.asarray(demo.S["origin"], np.float64)), np.float64)
