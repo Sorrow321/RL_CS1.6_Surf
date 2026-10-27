@@ -4063,3 +4063,14 @@ $34.91 (reserve $10), no other box live. Incumbent: pbr8b1_c12 ckpt_55038705664 
   right after: 7/9) on f2e with c2's flags at **--lr 5e-5** and `--demo-tau0 6560` (c2's band at that step).
 * Box link: downloads from this box run ~20-50 KB/s (a 63 MB checkpoint takes 20-50 min; the c1 117.692 snapshot pull got 29 MB
   in the first try) - pull hand-on checkpoints early, not at wrap-up.
+* c3 to 22:33 UTC (lr 5e-5): kl mean 0.18-0.29 per 50M steps (one 10.6 spike on the first update after the resume), evals
+  114.356 / 115.465 / 114.348 / 114.360 / 113.238 (5-7/9, 69.2-69.6 s), every eval crossing of 84.77% still at h ~1,700 (the
+  greedy LANDS); band at f2e row 6,010 (67%) with 59% band success - the sampled policy glides, the greedy does not switch.
+  A greedy recording of c3's 56.18B weights (record_ckpt --dump-states, 3 episodes): one finish (73.1 s), one death at 80.7% on
+  the z ~1,480 sheet, one STALL on a ledge at 90.7% ((1,196, 2,913, 749)) for 214 s until the 320.9 s cap (evals end it after
+  30 s without progress).
+* 22:37 UTC: c3's spawn pool swapped (same path, atomic mv; re-read at 56.217B) to the DECISION POINT: 10,896 states = the
+  greedy's OWN states at 81.5-83.3% from that recording (608 x12, 67%) + f2 rows 7,300-7,450 (the planner line before and into
+  the turn, 150 x12) + one tile of the old pool's spiral rows (180 x10). From there the +50 of the energy line (84.77%) comes
+  within ~1-2 s (round 8: a window works when its bonus is within ~1-1.5 s). Backup of the old pool:
+  runs/pbr9b3_look/f2after_backup.npy on the box.
