@@ -4093,7 +4093,7 @@ $34.91 (reserve $10), no other box live. Incumbent: pbr8b1_c12 ckpt_55038705664 
   NORTH at x ~2,450, descending at vz -456..-628 onto the platform at (2,376, 2,969), where the planner and the incumbent fly
   WEST over the platform's south side at z ~1,700). From the walking route there is no glide; the 82.8% gate must come first.
 * c3 stopped at 56.740B (evals 116.571 (8/9, 69.53 s) / 114.360 / 113.262 / 114.362 / 115.475 (7/9, 69.08 s); band 5,965).
-* **pbr9b3_c4** (23:21 UTC): c3's ckpt_latest (56.736B, md5 338d8414...) on f2e (the glide gate, 84.77% with h >= 2,131) +
+* **pbr9b3_c4** (23:18 UTC): c3's ckpt_latest (56.736B, md5 338d8414...) on f2e (the glide gate, 84.77% with h >= 2,131) +
   `--demo-milestone-energy 9821:2173` (round 8's f1e line, an airborne crossing of 82.8%, paid again) + `--spawn-states
   pbr9b3_dec2_states.npy` (flying states only) at lr 5e-5, --demo-tau0 5965, c3's flags otherwise. Box checkout moved to
   f146a8b (python only, no rebuild). Record gate passed (4).
