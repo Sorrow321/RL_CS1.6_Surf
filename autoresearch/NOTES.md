@@ -3445,3 +3445,13 @@ ckpt_35907960832 (md5 160da9eb...), eval 73.590 at 35.918B. Credit at the start:
   43.835B (7/9 past k01's 77.08% line), ran 192 s beside the training and swapped in the BRANCHED beam (7,100 states to 78.30%,
   success line 78.13%); 1/9 past it at 43.986B. Handoff for 78.219: ckpt_43929567232 (56M before, md5 75e0993a..., pulled);
   c8's ckpt_latest 44.061B pulled too. Update kl median 0.13 (spikes to 1.5 still occur; no collapse).
+* **78.619** (44.137B) and **78.858** (44.212B, median 78.46%): the curriculum got through k02's ramp kick (rows 6,944-6,954, where
+  the spine lands on the ramp at x ~0-50, z ~1,412 and vz goes -189 -> +297; bands there at 13-41% for ~40 min) and walked back
+  to row 6,229 within minutes; 7/9 past k02's line fired search 3 at 44.212B. Handoff for 78.858: the search's own copy of the
+  eval's weights (auto/k03/ckpt.pt, global_step 44,212,158,464, md5 665370e8...), pulled as pbr7b2_c8/ckpt_44212158464.pt.
+* Where k02 ends (geometry, hull traces): the corridor past 77% is free from z 1,260 (the floor with the fall-catch teleport *183
+  lying on it, x -514..1,984) to 1,660 (ceiling). A surf ramp rises SOUTHWARD along y ~1,150-1,330 from x ~1,100 (hull-centre top
+  1,412 at y 1,300, 1,524 at y 1,200) and climbs eastward (+50-60 u by x 1,400). k02's end (1,070, 1,378, 1,273, vz -573) is
+  170 u north of it and ~150 u too low: a dead end ~4-7 ticks above the catch sheet. The record (ANALYSIS ONLY) keeps z ~1,500
+  along the south wall at y ~1,190-1,250 and surfs that ramp up (z 1,462 at 78.6%, 1,542 at 79%, 1,687 at 80%).
+* Look-ahead GE 21 (05:53 UTC, beside c8): k02 rows 6,880-7,095 (76.0-78.2%), x1.0 / x1.04 / turned -20 / +20 deg, 12 min.
