@@ -355,3 +355,5 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
 * `pbr8b1_entry_b3sw2_states.npy` (14,719 rows; md5 in NOTES): `--spawn-states` pool = the 7,399 start-room states + two
   focused windows of b3s's own shaft line - rows 9,130-9,205 (the 96.5% / 98.4% deaths) tiled 48x and rows 8,960-9,095 (the
   94.6% death) tiled 27x: the hand-run parallel curriculum, one step ahead of the trainer's band (9,239).
+* `pbr8b1_entry_b3sw3_states.npy` (md5 in NOTES): start room + b3s rows 9,170-9,238 (the z -2,700 hole approach, right above
+  the trainer's band) tiled 53x + rows 9,100-9,169 (the z -1,700 ring) tiled 52x: windows whose finish bonus is ~1-1.5 s away.
