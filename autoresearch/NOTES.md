@@ -3888,3 +3888,6 @@ ckpt_45558005760 (md5 6dec286c...), eval 82.652 at 45.564B. Credit at the start:
   (the best spine for holding 9/9 or for time) could not be dumped this round. With the flag, cut it from the eval's own
   .npz (+ its keys from the .jsonl, stitch_spine.roll_keys' rule). tests/python/test_eval_dump_states.py 4/4 (both eval
   modes match the .jsonl row for row; flag off bit-identical incl. the trajectory bytes; 72 s CPU).
+* c7 evals 114.320 (6/9, **70.41 s**) / **117.629 (9/9)** / **117.631 (9/9)** / 115.422 (7/9, 70.68 s) / 115.415 (7/9) /
+  116.532 (8/9) to 53.877B: the greedy now finishes 7-9/9 in every eval (best times 70.4-71.1 s); the round's best stays
+  117.636 (9/9, 70.91 s at 52.895B) - a 9/9 eval under 70.91 s is the only thing that beats it.
