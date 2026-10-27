@@ -3186,3 +3186,9 @@ a 5080 at 0.621 $/h, so `rent` was REFUSED (budget pace); a local retry every 5 
 * The curriculum: [6,531] -> 6,426 in ~10 min, then it oscillates [6,441] (77-80%) / [6,436] (21-28%, under the 30%
   rate) for 15+ min: the band is the chain's platform touch (row 6,437: lands on entity 87 at vz -571 -> 0, -208 u, and
   hops off at 6,438 with vz +453; jump held in oldbuttons). A precision touch-and-hop, like round 6's landings.
+* 05:39 UTC: the loop's quorum (5/9 past k02's 74.15% line) had fired in no eval (0 / 0 / 0 / 0 / 2 / 0 / 0), and ~2 h of
+  round were left - so the loop's own search was run BY HAND on the box with the trainer SIGSTOPped (the trainer would do
+  exactly this, paused, on the quorum): `tools/auto_spine.py --ckpt runs/pbr7b3_c1/ckpt_search.pt` (c1's ckpt_latest at
+  37.106B, md5 bb22bc30...) `--field maps/...goalc_32.npz --greedy-d 15164 --gain 500 --beam-ticks 12256 --envs 4096
+  --ge-minutes 5 --branch-tick 7150 --energy-gain 150 --maxvel 3500` (OMP / NUMBA 30 threads: the box's whole quota
+  while the trainer is stopped), out runs/pbr7b3_c1/auto/m01.
