@@ -3870,3 +3870,12 @@ ckpt_45558005760 (82.652 at 45.564B).
   and energy bonuses, so a value term would pull the critic toward the wrong targets. BC step compiled in 82 s; record gate
   passed. The point: the reward barely prices a 1-2 s faster line (time_pen), BC on the policy's own fastest lines does.
 * c7's last evals before the stop: 115.366 (7/9, 72.35 s) / 115.355 (7/9, 72.69 s); its greedy never crossed 83% airborne.
+* **c8 COLLAPSED on the first BC update: kl 18.3, BC cross-entropy 18.1 nats** - its first eval (one iteration after the
+  resume) died in the start room on 9/9 (score 3.22), then 6.68 / 21.4 / 72.5 as the BC coefficient decayed (kl back to
+  ~0.05). Cause: this policy's continuous yaw head runs at sigma ~0.014, so the BC log-likelihood of the planner's executed
+  view targets has gradients ~1/sigma^2 - one 0.5-weighted step overwrote the policy. **BC (tools/expert_loop.py,
+  exit_local.py) is unusable on these checkpoints as it stands**: it needs BC on the discrete heads only, or a separate,
+  much smaller weight for the view term (a trainer change: a flag, default off, bit-identical) - not built this round.
+  The planner half of the expert loop (beam_tas) is fine and was used throughout.
+* **pbr8b1_c9** (16:44 UTC): c7's pre-BC ckpt_latest (52.926B, md5 a820ba08...) with c7's flags + `--demo-tau0 6490` (stage
+  2 continued: f1e, the energy rule). c8 stopped at ~53.17B.
