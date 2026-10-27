@@ -3916,3 +3916,32 @@ of its 1.2 $/h cap; the only other passing offer was a 0.621 $/h 5080). Incumben
   6.8M before, md5 3caf9b5b..., pulled) / 116.517 (56.200B, 8/9, 71.16 s; ckpt_56193712128 pinned on the box) / 114.298 /
   114.291 / 114.302 / 114.298 (6/9, 70.9-71.3 s). Curriculum on k02 at [3,908] (~44% of the line). Box extended to 20:33 UTC
   (past the round's end).
+
+### pbr8b4 round 8 lesson (DRAFT, 17:35 UTC; finalised at wrap-up)
+* **Score 82.652 -> 116.541 - the map FINISHED from the true start by the greedy policy**: the first greedy finish at 15:45 UTC
+  (c9 54.390B, 72.80 s), 7/9 at 54.616B (115.411, 70.99 s), **8/9 at 56.125B (116.541, 70.45 s)** - under the 75.18 s human
+  record (a bar to read against, never a constant). Box 57938936 (RTX 5070 Ti, 0.269 $/h) for the whole round, ~340k steps/s.
+* **What did it, in order:**
+  1. **Cut the loop's long line just past the greedy's gate, where only the skill can reach the success line** (k04d: past the
+     catch sheet's hole; b3p: past the 90.7% d-trap pocket). The sheet under the 82-85% corridor makes every earlier line a
+     dive target; the pocket's d (>= 5,230) cannot fake b3p's 4,791.
+  2. **When the greedy's own approach differs from the spine's (faster, other heading), bridge from the GREEDY'S line**: a
+     reward-free GE rooted at the policy's own beam states before the divergence (la2) found the face -> ledge -> hole line
+     the greedy could join; k04's slow states did not transfer (c1's curriculum stood at the turn while the greedy dived).
+  3. **The policy's OWN beam beats explorer chains once the policy is near**: the hand-built tube lines (la5's hover catch,
+     its lip landing) needed contacts the policy would not learn (doomed rows, a duck habit); the loop's search on the
+     pocket-trained weights went ducked through the whole tube to 99.04% (k01), and a by-hand beam on c8's weights FINISHED
+     (fin1, 67.87 s). fin1's backward curriculum gave the first greedy finish in ~1 h.
+  4. **Generic fixes this round, default off / bit-identical:** `beam_tas --save-frontier` now saves a CROSSING winner
+     (a381745: before it a finishing beam left no states and auto_spine saw no spine at all); `train_fast --demo-front-cold
+     F` (50fd1e0, CPU-tested: a cold share of the band spawns scores the curriculum's advance, the hot share explores -
+     the band heat had held a 6/8-cold band at 5-31%); `--spawn-states` re-read in place (mix1..mix6: the transition, the
+     lower level, the learned tube trained beside a curriculum elsewhere); `autoresearch/analysis/pb_snapcopy.py`.
+* **What did not / cost time:** the full k04 (stalls at the drop, as in round 7); k04's slow states at the transition; the
+  explorer's tube chains (c3-c7: the chamber lip, the hover catch - "doomed" 5-row bands the curriculum retries forever after
+  each backoff); the band heat at precision bands (fixed by the cold share); the loop's ENERGY stage after a finish (it
+  swapped in an intermediate energy spine and finishes fell 7/9 -> 3/9 until the next search) - with a finishing greedy run
+  the curriculum on the policy's finishing beam with the loop off (c10).
+* **Next (round 9):** resume c10's best snapshot (ckpt_56117690368) or its ckpt_latest on the finishing spine (c9k02 or a
+  newer finishing beam: `beam_tas --save-frontier` from the true start on the newest weights), loop OFF or without the
+  energy stage; goals: 9/9 finishes, then speed (the beam lines finish in ~68 s; the greedy ~70.5 s).
