@@ -3236,3 +3236,13 @@ the operator's); this branch keeps a waiter on `box.py rent` and works offline m
   mastery: c13 adds `--demo-rate 0.2` (c12: 0.3; round 3's as8 passed a ramp-catch band stuck at 24-29% under 0.3 the
   same way). c12's curriculum ended oscillating between k02's brake band [6,531] (25%) and [6,536] (70%). The patience
   (8e8) still fires a search if the quorum never comes.
+
+### Box at last: c13 launched 05:06 UTC (box 57919810)
+* A box fit at 05:04 UTC (the 120th rent of the waiter's last run; ~240 refused since 20:34): **RTX 3090, 0.377 $/h,
+  48 threads, box 57919810** (ssh -p 40040 root@136.34.53.121), rented for 3 h. The waiter deployed ar/pbr7b1 with c12's
+  ckpt_latest (md5 d802b3e8... on the box; step 36,659,265,536) and launched **pbr7b1_c13** at 05:06 (pid 3688), record
+  gates passed (2 + 4 recordings). Flags: c12's (the to-continue set above) + `--demo-tau0 6531 --demo-rate 0.2
+  --auto-spine-patience 8e8 --auto-spine-args "--ge-select-energy 3 --ge-cell 32"`. A warm resume pushing the frontier
+  to (and, if the loop finds the ramp kick, past) the 74.3% wall; ~2.6 h before the 07:45 wrap-up.
+* First minute: with --demo-rate 0.2 the brake band passed at once ("tau <- earlier starts [6526,6851] (success 28.4%)");
+  fps 108-115k during warm-up (GPU 37%, the 4080 boxes of round 6 ran 240-330k).
