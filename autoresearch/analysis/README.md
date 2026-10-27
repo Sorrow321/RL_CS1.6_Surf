@@ -11,3 +11,12 @@ Both run ON THE BOX from /root/RL_Surf (copy the .py files and the .npy there), 
   way --respawn-novel moves them; `sid_corridor_east.npy` both lanes, `_py.npy` the +y lane)
   and report how far east it gets, whether it reaches the ramp (x > 5,300) and how far west
   it comes back (`xret`). Map coordinates are measurement boxes only.
+
+pbr7b4 (round 7) additions, ANALYSIS ONLY:
+
+* `pb_energy_at.py <traj> L1,L2,...` - each greedy episode's energy height at its first arrival at the given
+  progress levels (where the greedy loses a gate's energy).
+* `pb_bench_spine.py CKPT SPINE LO HI OUT [N] [L1,L2] [HMIN]` - on the box: record_ckpt greedy episodes from exact
+  spine rows [LO, HI), the best progress and the energy at two levels per episode, and how many cross L2 with
+  h >= HMIN. Benching just before and just after a contact separates "the contact is missing" from "what follows it
+  is missing".
