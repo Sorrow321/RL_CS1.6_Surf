@@ -3891,3 +3891,6 @@ ckpt_45558005760 (md5 6dec286c...), eval 82.652 at 45.564B. Credit at the start:
 * c7 evals 114.320 (6/9, **70.41 s**) / **117.629 (9/9)** / **117.631 (9/9)** / 115.422 (7/9, 70.68 s) / 115.415 (7/9) /
   116.532 (8/9) to 53.877B: the greedy now finishes 7-9/9 in every eval (best times 70.4-71.1 s); the round's best stays
   117.636 (9/9, 70.91 s at 52.895B) - a 9/9 eval under 70.91 s is the only thing that beats it.
+* c7 evals 114.314 (6/9, 70.57 s) / **117.647 (54.028B: 9/9, best 70.60 s - the round's best)** / 115.407 (7/9) /
+  117.633 (9/9, 71.01 s) / 116.521 (8/9). Hand-on for 117.647: the copier's ckpt_54017916928 (10.0M before the eval,
+  md5 cc6e1c2a1105d798f89a24f4d17cef02), pulled.
