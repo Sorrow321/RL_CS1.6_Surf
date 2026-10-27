@@ -3,11 +3,11 @@
  "round": 8,
  "final": false,
  "best": {
-  "score": 93.946,
-  "eval_file": "/home/steam/ar_pb/runs/pbr8b1/pbr8b1_c5/traj_49401561088.jsonl",
+  "score": 93.984,
+  "eval_file": "/home/steam/ar_pb/runs/pbr8b1/pbr8b1_c5/traj_50156535808.jsonl",
   "run": "pbr8b1_c5",
-  "step": 49401561088,
-  "ckpt": "/home/steam/ar_pb/runs/pbr8b1/pbr8b1_c5/ckpt_49398939648.pt",
+  "step": 50156535808,
+  "ckpt": "/home/steam/ar_pb/runs/pbr8b1/pbr8b1_c5/ckpt_50151817216.pt",
   "recipe": [
    "c1: resume of pbr7b2_c9's ckpt_latest (46.023B, md5 50c3a56e...) on spine pbr7b2_k04c + keys with c9's exact flag set (lr 1e-4, 33 milestones, the loop async with the energy stage)",
    "c2: c1's ckpt_latest (46.257B) on round 7's full k04 (to 92.54%) + milestone 10,366 + --auto-spine-extra-secs 45; its curriculum ground k04's platform hop-walk (8,104-8,129), evals 82.2-83.2",

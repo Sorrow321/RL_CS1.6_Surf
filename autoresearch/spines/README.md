@@ -361,3 +361,5 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   9,170-9,238 (the z -2,700 hole approach) 60x, 9,100-9,169 (the z -1,700 ring) 55x, 8,940-9,099 (the upper sheets) 19x.
   Why: start-room spawns each run a full ~70 s episode while a shaft spawn lives ~1 s, so they took most of the training
   samples; the start room is practised by the 10% fresh map starts anyway.
+* `pbr8b1_b3sw5_states.npy` (md5 in NOTES): b3s's shaft rows only - 8,937-9,039 (the upper sheets, past the 92.36% milestone)
+  34x, 9,040-9,169 (the 94.6-96.5% sheets, the weakest on the 50.2B bench) 35x, 9,170-9,249 (the hole approach) 30x.
