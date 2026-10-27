@@ -2,6 +2,17 @@
  "agent": "pbr7b3",
  "round": 7,
  "final": false,
- "best": null,
- "summary": "No box yet (20:33-23:00 UTC the fleet's 1.2 $/h cap was held by two boxes, offers >= 0.386 $/h); local analysis: the k02 spine (pbr6b4_c12's search 2, to 74.33%) ends at a ledge needing ~+160 u of energy height (only x1.2 GE roots cross it, to 77.68%); built --auto-spine-root-energy (7a425b4, CPU-tested, off = bit-identical): a boosted-root depth spine's energy is taught first. Next: resume c12's ckpt_latest on k02 with the loop (+ the new flag, M 25) as soon as a box is free."
+ "best": {
+  "score": 73.618,
+  "eval_file": "/home/steam/ar_pb/runs/pbr7b3/pbr7b3_c1/traj_36659789824.jsonl",
+  "run": "pbr7b3_c1",
+  "step": 36659789824,
+  "ckpt": "/home/steam/ar_pb/runs/pbr7b3/pbr7b3_c1/ckpt_latest.pt",
+  "recipe": [
+   "pbr7b3_c1: resume of pbr6b4_c12's ckpt_latest (36.659B, md5 d802b3e8...) on the loop's spine autoresearch/spines/pbr6b4_c12k02 (+keys; c12's search 2: the policy's beam to row 6,387 + a x1.04 GE chain to 74.33%) with --demo-tau0 6531 --demo-match-band, c12's flag set and loop (--auto-spine --auto-spine-milestones --auto-spine-gain 500 --auto-spine-ge-minutes 5 --auto-spine-retry 4e8 --auto-spine-patience 0 --auto-spine-energy 150), the 26 milestones of c12's current.json, and the new --auto-spine-root-energy 25 (7a425b4)"
+  ],
+  "resume_from": "pbr6b4_c12 ckpt_latest 36.659B <- pbr6b4_c11 34.105B <- ... <- incumbent r6 (73.590)",
+  "commit": "e60c99a"
+ },
+ "summary": "No box from 20:33 to 05:05 UTC (the fleet's 1.2 $/h cap held by two boxes); box 57919948 (RTX 4080S, 0.41 $/h) from 05:06. pbr7b3_c1 = c12's ckpt_latest on the k02 spine (74.33%) with the loop + the new --auto-spine-root-energy 25; its first eval (the resumed weights) scored 73.618 (best 73.62%, median 71.4%). Local analysis while blocked: k02 ends at a ledge needing ~+160 u of energy height (only x1.2 GE roots cross it, to 77.68%); the gates after it are energy too (76.1% landing, 77.5% crash)."
 }

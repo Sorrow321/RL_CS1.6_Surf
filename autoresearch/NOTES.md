@@ -3166,3 +3166,15 @@ a 5080 at 0.621 $/h, so `rent` was REFUSED (budget pace); a local retry every 5 
   900-970 u/s at z 1,409 -> 1,263 (the record is at z ~1,450-1,525 there, 200-250 u higher), then a crash at 77.52%
   ((663, 1,235, 1,297), h 1,882 -> 1,329, -553 u) and a fall toward the catch *183 (z 1,207-1,440). So after the ledge
   the next gates are energy again: the ramp landing at 76.1% and the eastward surf at 76.5-77.5%.
+
+### pbr7b3_c1: a box at last (05:06 UTC); first eval 73.618
+* Box 57919948: RTX 4080S, 0.41 $/h, Ontario CA (machine 141481, AMD EPYC 7K62, 96 visible threads under a 30.7-CPU
+  cgroup quota, omp 15), rented 05:06 UTC by the local 2-min retry (try ~190) for 3 h (deadline ~08:05). Deployed e60c99a
+  + c12's ckpt_latest (md5 d802b3e8 verified on the box). ~280k steps/s after compile, GPU ~25% busy.
+* **pbr7b3_c1** launched 05:07-05:11 UTC (pid 4276; record gates passed: 2 + 4 recordings): resume of c12's ckpt_latest
+  (36.659B) on `autoresearch/spines/pbr6b4_c12k02` + keys, `--demo-tau0 6531 --demo-match-band`, c12's flag set and loop,
+  the 26 milestones, `--auto-spine-root-energy 25`; --steps 1e10 (it will be stopped at the wrap-up). A warm resume
+  pushing the frontier past the 73.5% catch sheet.
+* First eval (36.6598B, one update after the resume): **73.618** (best 73.62%, median 71.4%): 3/9 climb out of the
+  platform to 73.45-73.62% (70.9-74.4 s), 6/9 die at the 71.3-71.4% landing (51.7-53.2 s). The curriculum at k02's
+  [6,531] (62-72%) / [6,536] (17-28%), as c12 left it.
