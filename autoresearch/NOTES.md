@@ -3774,3 +3774,13 @@ ckpt_45558005760 (md5 6dec286c...), eval 82.652 at 45.564B. Credit at the start:
   --ge-boost; tests/python/test_auto_spine_ge_boost.py 3/3 incl. flag-off bit-identity (157 s, CPU).
 * **pbr8b3_c6** (14:28 UTC): the 98.484 weights (c5's ckpt_51014795264, before the erosion) on g2 + keys, every c5 flag +
   `--auto-spine-ge-boost "1.0;1.04;1.08;1.12"` (unboosted roots first, a stage of their own), 39 milestones.
+
+### THE FIRST GREEDY FINISH FROM THE TRUE START: 109.846 (2026-10-27 ~14:55 UTC, c6)
+* c6 (the 98.484 weights on g2, unboosted-first GE ladder) evals: 96.565 (51.015B = c5's weights) / 96.589 / 98.341 /
+  98.461 / 98.452 (51.317B, median 98.4%) / **109.846 (51.393B): 2/9 greedy episodes FINISH** - ep8 in **71.28 s** (the
+  score's time; episode 71.3 s), ep3 72.5 s - both dropping into the box at (785-858, 2,703-2,732, z -3,422..-3,448)
+  at ~2,300 u/s; 5/9 die at the ledge-level blade (98.23-98.50%, z ~-2,575..-2,604), 1 at 95.35%, 1 at 94.55%, 1 at
+  78.2%. **The human world record on our zones is 75.18 s**; the policy's best finish is 3.9 s faster. Next evals
+  98.501 / 99.052 (median 98.5%; 7/9 past g2's success line 97.95%).
+* Hand-on for 109.846: the copier's ckpt_51386515456 (6.3M before the eval, md5 153e975f0e669867dec84d0715c33cdf),
+  pulled.
