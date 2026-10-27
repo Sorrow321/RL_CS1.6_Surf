@@ -3304,3 +3304,13 @@ Independence: only this branch and $AR_HOME/incumbent/ are read. c12's later wei
 * 02:05 UTC: Go-Explore from e02's own last second (rows ~6,446-6,576, the climb with its real energy, x1.0, 10 min;
   runs/ge_from_end.py = auto_spine.go_explore on a spine's end) -> a stitched spine e02 + a passage chain, so the
   curriculum can teach the passage from real (unboosted) energetic states.
+* The GE from e02's last second (02:03-02:14 UTC, x1.0, 10 min): its deepest chain (from e02's row 6,526, 157 states)
+  stops at 74.32% - with e02's REAL energy at the climb the explorer does not get into the passage either. The
+  geometry differs: the x1.12 root (beam row 6,797) is already rising up the climb ramp (vz +465 x1.12 at 73.44%),
+  e02 reaches 73.46% flat (vz +14, 989 u/s heading south). Energy at the climb is necessary, not sufficient.
+* c20's last evals (41.605-41.832B): 73.099 / 72.877 (0/9 even reach 73.44%) / 73.611 / 74.290; 0/9 energetic crossings
+  in all its 12 evals. The contact band rose 0.3-0.9% -> 1.8-2.9%, the band after it 35-39% -> 48%.
+* **pbr7b4_c21** (02:18 UTC): c20 continued (ckpt_latest 41.829B, md5 2a8fb4fd...; tau0 6361) with the spawn pool
+  `pbr7b4_spawnmix01` at `--spawn-states-frac 0.25` = the start-room GE states (as before, now 74% of the pool) + the x1.12
+  chain's passage states (26%): ~6.5% of all spawns practise the passage, the room, the drop and the surf from the
+  policy's own search chain while the curriculum works on the energetic bounce. The async loop stays on.
