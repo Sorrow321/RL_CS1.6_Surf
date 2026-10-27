@@ -3902,6 +3902,7 @@ ckpt_45558005760 (md5 6dec286c...), eval 82.652 at 45.564B. Credit at the start:
   19 -> 130 and shorter episodes - round 7's c4 / c7 failure again, now after ~3.4 h of a stable run. The round's best is
   untouched (117.660's hand-on is ckpt_54553214976, 3.1M before its eval; the collapsed ckpt_latest is ~500M later, so
   the hand-on rule keeps the snapshot).
-* **pbr8b3_c8** (19:16 UTC): the 117.660 weights (ckpt_54553214976) on f1 with c7's flags + **`--target-kl 0.5`** (the
+* **pbr8b3_c8** (19:15 UTC): the 117.660 weights (ckpt_54553214976) on f1 with c7's flags + **`--target-kl 0.5`** (the
   trainer's SB3-style PPO early stop: an update halts once its approx KL exceeds 0.75; c7's p90 was ~0.55) - the generic
-  guard against one destructive update, for the last ~35 min and for the next round's runs.
+  guard against one destructive update, for the last ~35 min and for the next round's runs. Its FIRST early stop came
+  on the very first update after the resume (kl 0.94, epoch 1 minibatch 9) - the resume spike every relaunch had.
