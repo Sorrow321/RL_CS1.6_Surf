@@ -3611,3 +3611,7 @@ ckpt_45558005760 (md5 6dec286c...), eval 82.652 at 45.564B. Credit at the start:
      2,814-2,850 into the box ((855, 2,815, -3,431)), 184 states (ge_replay links 2/2). Saved in runs/pbr8b3/pbr8b3_la/.
   So the end is in reach of the loop's own GE stage from the policy's states; nothing map-specific is needed. The route
   from 83.9% to the shaft (the platform walk, the 84.5% drop, the 86-91% loop) is the policy's own (search 1's line).
+  4. The policy's own beam on c2's ~46.47B weights from search 1's line at row 7,800 (84.12%, on the platform's west end):
+     d 2,990 (94.8%); from 8,000 (85.25%, mid-drop): d 648 (98.9%, the blade); from 8,400 (88.53%): d 2,812. Past the 83.8%
+     platform the POPULATION already flies the rest down to the blade; what is left is the greedy's reliability over
+     82-84% (c2's curriculum band now) and the blade (a GE stage's find).
