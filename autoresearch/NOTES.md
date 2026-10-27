@@ -3653,3 +3653,8 @@ ckpt_45558005760 (82.652 at 45.564B).
   b3f rows 7,163-8,100 = 82.0-85.5%, ~half the 20% share each: the stretch where the greedy dies, practised from the
   policy's own line while the curriculum walks back from the finish), --auto-spine-extra-secs 45. Record gate passed (4).
   First minute: the curriculum walks back from the finish at 87-100% band success ([9,498, 9,573]).
+* c3 at 10:18 UTC (47.48B, 14 min in): the curriculum walked b3f back from the finish to [9,378] (inside the GE chain,
+  rows 9,180-9,573; one sticky window at [9,448 / 9,453]: 67-71% vs 30%); evals 82.749 / 82.748 / 82.865 / 82.675 (the
+  greedy unchanged, as expected until the band reaches the stretch it fails in, ~80-82%). Update kl ~0.36. b3f's own clock:
+  9,180 rows of the beam at 7.667 ms (70.4 s) + 395 chain ticks at 8 ms (3.2 s) = ~73.6 s from the spawn to the finish
+  (the record, yardstick only, 75.18 s).
