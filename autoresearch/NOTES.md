@@ -3647,3 +3647,30 @@ of its 1.2 $/h cap; the only other passing offer was a 0.621 $/h 5080). Incumben
   curriculum (the reservoir share) works the ledge. Generic: uniform starts over the policy's own line + a reward-free chain
   (Florensa-style replayed starts), no new code.
 * Curriculum at the swap: [7,750] (82.7%, mid-ledge) at 36%; it walked 7,820 -> 7,750 in ~15 min.
+
+### Probes at 47.94B: the tube's first plate holds everyone; a d-trap pocket at 90.7%; mix2 (10:20-10:35 UTC)
+* c1 evals 47.46-47.91B: 82.743 / 82.823 / 82.593 / 82.923 / 82.806 / 82.859 / 82.649 (medians 82.0-82.6%; none past the
+  ledge yet). The curriculum walked the whole ledge and the arrival on it: 7,750 (10:15) -> 7,495 (48%) -> 7,395 -> 7,320
+  (66%) -> 7,270 (81.4%, the approach from the turn) by 10:33 UTC (the "0.0% over ~60 eps" lines are the first reading
+  after each move).
+* Probes (record_ckpt, greedy, ckpt_latest 47.944B, 8 episodes each, spawned on f1 windows):
+  * f1 rows 9,180-9,190 (the tube entry): **0/8** - all die on the top kill plate at (777-792, 2,864-2,879, z 262-283)
+    within ~45 ticks: they fall straight down where the opening is ~60-200 u further east (la1's chain moves east to x ~916).
+  * rows 8,900-8,910 (90.0%): 0/8 - all reach the tube and die on the same plate (92.35-92.79%).
+  * rows 8,376-8,386 (k04d's end, 85.7%): 5/8 STUCK (the 320 s cap) at 90.68-90.88% in a pocket at (1,173-1,234,
+    2,731-2,981, z ~709-746), 3/8 die on the top plate. The pocket's d (~5,330-5,450) is LOWER than k04's route at the
+    same time (row 8,900: d 5,878; k04 goes ~700 u south of it, (1,119-1,370, 2,016-2,249, z 840-895), then loops north to
+    the tube): a deception of the field, a dead end.
+* So ~470M steps of mix1 (each plate's approach ~0.5% of the training episodes) did not teach the first plate.
+  **`autoresearch/spines/pbr8b4_mix2`** (4,102 rows, md5 a43a13d3...): 1,071 start-room rows + f1's rows 8,376-10,518 + the
+  two upper plates' approaches (f1 rows 9,185-9,335 and 9,335-9,405) x4 more: 74% of the spawn-states share past the hole
+  (~15% of all training spawns), the top plate's approach ~3.7%. The spawn states replace a fixed 20% of pool positions
+  whatever they held, so the curriculum's share is unchanged; only the start room's share drops (20% -> ~5%; plus the 10% of
+  episodes from the true start). Swapped in the same way; re-read at step 48,088,219,648.
+* A slip on the box: a `git stash` before `git pull` there stashed the swapped launch-path file and a reformatted
+  zones.json; both were restored from that stash within ~2 min (the trainer never re-read the original in between: the
+  only re-reads logged are mix1 at 47.48B and mix2 at 48.09B), the box stash dropped. Do not run git stash on a box with a
+  live swapped file.
+* Plan when the greedy passes the hole (5/9 past 85.53% fires the loop's async search): look at the loop's new spine; if
+  it stops at the pocket or a plate, extend it down the tube with a GE chain from its own last states (la1's recipe) and
+  relaunch on that, else let the loop run.
