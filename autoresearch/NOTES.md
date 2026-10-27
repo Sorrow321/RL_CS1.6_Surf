@@ -3866,3 +3866,8 @@ of its 1.2 $/h cap; the only other passing offer was a 0.621 $/h 5080). Incumben
   (the backward curriculum from the finish box), 37 milestones (c8's 36 incl. b3p's 4,791 + k01's 651), `--spawn-states
   pbr8b4_mix5` (no hover-catch states: not on this line), the cold/hot band split as c8. The loop stays on: its quorum is now
   5/9 greedy FINISHES.
+* c9 at 15:09 UTC (~20 min in): the curriculum walked fin1 from the finish (8,851) back to [8,506] (93.6%, z -33, between
+  the top plate and the -136 band) at 29-48% bands; fin1's whole tube is only ~560 rows (92.0% at row 8,290 -> the finish,
+  ~4.3 s): ducked, 400-1,750 u/s, the top plate crossed in its EAST opening at (992, 2,861, 262) where the greedy dies
+  further west (x 587-789). Evals 92.882 / **93.824** (53.333B; handoff ckpt_53332148224, 0.5M before, md5 f415e5fd...,
+  pulled) / 92.951 / 92.940 / 92.887 / 92.865 (medians 92.7-92.8%).
