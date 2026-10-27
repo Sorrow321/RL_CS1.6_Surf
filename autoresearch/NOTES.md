@@ -3589,3 +3589,25 @@ ckpt_45558005760 (md5 6dec286c...), eval 82.652 at 45.564B. Credit at the start:
   line cut by the cut-ahead rule at row 7,739 = 83.92%, d 9,188, on the platform walk; success line d <= 9,288.5 = 83.75%)
   with c1's flags + `--auto-spine-cut-ahead 1000` and the 34 milestones the swap had made (+ k04c's 10,366). Record gate
   passed. Generic: G = 2 x the loop's own gain (500), a field-distance margin, no map constant.
+* **c2's first eval: 83.103** (46.3843B = c1's final weights after one update; ep5 to 83.10% at (2,076, 2,746, 1,459), 7/9
+  past the turn, median 82.42%) - the branch's first best over the incumbent (82.652). Hand-on: the copier's
+  ckpt_46384283648 (the eval's own step, md5 7af70f27...), pulled. Second eval 82.597. c2's curriculum walked k01c back
+  from 7,739 to [7,114 / 7,119] (~82.0%, the flight north over the *265 sheet to the 82.5% platform) in ~10 min and works
+  it there (4.7-32% bands) - exactly where the greedy falls.
+* **The finish shaft, look-ahead (09:12-09:17 UTC, box CPU/GPU beside the trainer, ANALYSIS ONLY, never training):**
+  1. The policy's own beam (beam_tas --start-state on c2's 46.43B weights, 4,096 copies) from search 1's line at row 8,800
+     (92.11%, (520, 2,657, 608)) spirals down the shaft to **d 632 = 98.9%** ((649, 2,765, -2,788), vz -1,817) in 3.1 s,
+     then the whole population dies within 0.8 s, 0 finishes; from row 8,700 (91.42%): d 3,166.
+  2. Why (core probe, runs/pbr8b3/pbr8b3_la/shaft_probe.py, + zones.hull_probe of the brushes): every copy dies in
+     trigger_teleport *132 (target start), a TWISTING central blade above the finish box - its deadly standing-hull region
+     is a diamond at z -2,800, a block x 576-896 / y 2,624-2,784 at -2,900, other rotated shapes down to -3,370 - inside
+     an AABB (416..1,024, 2,464..3,072, -3,374..-1,679) that covers the whole column. The finish trigger *123 (z -3,509..
+     -3,474) and the fatal tlp_end teleport *148 (z -3,532..-3,497) sit right below; the core tests the goal box (swept
+     segment) BEFORE triggers, so tlp_end cannot pre-empt a finish. The shaft above is a spiral func_wall (*43, z -2,688..
+     -1,408) with trigger_push volumes (*195 / *196 / *48) and catch teleports (*181, small *254-*256).
+  3. **Go-Explore (the loop's GE settings, 12 threads, roots = the 98.9% lineage's own states at z -1,028..-2,720) found
+     the FINISH in 0.1 min** (2 iterations, 67k runs, 1 goal hit, d 4): from (565, 2,746, -2,558) at vz -1,713 it lands on a
+     ledge at the spiral's bottom (z ~-2,613), drifts east around the blade at 230-340 u/s and drops at x 720-855, y
+     2,814-2,850 into the box ((855, 2,815, -3,431)), 184 states (ge_replay links 2/2). Saved in runs/pbr8b3/pbr8b3_la/.
+  So the end is in reach of the loop's own GE stage from the policy's states; nothing map-specific is needed. The route
+  from 83.9% to the shaft (the platform walk, the 84.5% drop, the 86-91% loop) is the policy's own (search 1's line).

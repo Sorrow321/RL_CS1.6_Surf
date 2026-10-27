@@ -3,16 +3,17 @@
  "round": 8,
  "final": false,
  "best": {
-  "score": 82.512,
-  "eval_file": "/home/steam/ar_pb/runs/pbr8b3/pbr8b3_c1/traj_46174568448.jsonl",
-  "run": "pbr8b3_c1",
-  "step": 46174568448,
-  "ckpt": "/home/steam/ar_pb/runs/pbr8b3/pbr8b3_c1/ckpt_46154645504.pt",
+  "score": 83.103,
+  "eval_file": "/home/steam/ar_pb/runs/pbr8b3/pbr8b3_c2/traj_46384283648.jsonl",
+  "run": "pbr8b3_c2",
+  "step": 46384283648,
+  "ckpt": "/home/steam/ar_pb/runs/pbr8b3/pbr8b3_c2/ckpt_46384283648.pt",
   "recipe": [
-   "c1: resume of pbr7b2_c9 ckpt_latest (46.023B, md5 50c3a56e...) on spine pbr7b2_k04c with c9's flag set (round-5 to-continue block + --demo-match-band --auto-spine-patience 0 --auto-spine-ge-minutes 5 --auto-spine-energy 150 --auto-spine-async --lr 1e-4, 33 milestones)"
+   "c1: resume of pbr7b2_c9 ckpt_latest (46.023B, md5 50c3a56e...) on spine pbr7b2_k04c with c9's flag set (round-5 to-continue block + --demo-match-band --auto-spine-patience 0 --auto-spine-ge-minutes 5 --auto-spine-energy 150 --auto-spine-async --lr 1e-4, 33 milestones); evals 82.359-82.528; the loop's search 1 (46.175B) found a branched beam line to 94.59%",
+   "c2: resume of c1's ckpt_latest (46.384B, md5 d8dce63d...) on spine pbr8b3_k01c (search 1's line cut by the new --auto-spine-cut-ahead rule at 83.92%) with c1's flags + --auto-spine-cut-ahead 1000, 34 milestones; first eval 83.103 (46.384B, ep5 to 83.10%, 7/9 past the 80.4% turn)"
   ],
   "resume_from": "pbr7b2_c9/ckpt_latest.pt (46,023,049,216, md5 50c3a56e3d70db7bc66b59bbfac2caa9)",
-  "commit": "87d095c"
+  "commit": "4b81cfd"
  },
- "summary": "c1 (08:40 UTC): resume of pbr7b2_c9's ckpt_latest (46.023B) on k04c with c9's flags; evals 82.359 / 82.425 / 82.512 (46.175B: 6/9 past the 80.4% turn, all die on the *265 sheet at 82.1-82.5%). The loop's search 1 fired at 46.175B (6/9 quorum). New: --auto-spine-cut-ahead G (the loop's spines end G u past the greedy frontier; round 7's k04 -> k04c hand cut as a rule), CPU-tested, to be used from c2."
+ "summary": "c1 resumed c9's last weights (46.023B) on k04c with c9's flags: 82.359-82.528, and the loop's search 1 found a branched beam line to 94.59% (into the finish shaft). New generic flag --auto-spine-cut-ahead G (the loop's new depth spines end G u past the greedy frontier: round 7's k04 -> k04c hand cut as a rule; CPU-tested, flag off bit-identical). c2 = c1's final weights on search 1's line cut by that rule (k01c, 83.92%) + --auto-spine-cut-ahead 1000: first eval 83.103 (46.384B, the branch's best, > the incumbent 82.652). Next: the greedy must fly high over the *265 sheet to the 82.5% platform; then the loop's segments to the finish shaft (92-100%, a spiral descent)."
 }
