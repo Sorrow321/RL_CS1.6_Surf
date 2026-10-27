@@ -3625,3 +3625,21 @@ ckpt_45558005760 (82.652 at 45.564B).
   band (8,124), which nothing else practises from the right line (the greedy-respawn states are the greedy's own wrong line).
   It starts just PAST the 81.86% milestone (d 10,341 < 10,366) so no spawn collects an easy +50 (the bonus waves that
   collapsed round 7's c4 / c7). ~1/3 each of the 20% share: start room / middle / shaft. Re-read confirmed.
+
+### c1's lost search: the policy's own branched beam to 96.47% (09:55-10:05 UTC)
+* Shaft bench after 335M steps of uniform shaft spawns (c2 47.105B): still 0/12 from every band, even [9,740] (0.3 s before
+  the finish: all thread into the z -3,000 kill band). Uniform spawns over 734 rows are too thin for precise gaps.
+* The k04 middle is slow for the curriculum: rows 7,500-8,180 hop-walk a platform at 50-340 u/s with a landing every few
+  dozen rows; c2's tau moved 8,124 -> 8,104 in ~40 min, the greedy flat at 82.8-82.9 (medians 82.2-82.5%).
+* The greedy vs the record (yardstick only) at 82.5%: the same x, y ((2,281, 2,566) vs (2,271, 2,583)) and about the same energy
+  height (2,310 vs 2,362), but **232 u lower** (z 1,526 vs 1,758) - it descends too early and lands on the z ~1,460 sheet; the
+  record stays high, touches a ledge at (1,920, 2,712, ~1,619) at 83.26% and flies the platform area at ~920-1,000 u/s.
+* **c1's search 1 had FINISHED before I stopped c1** (its spine.json was on the box; the trainer applies a finished async
+  search at the next iteration, and I SIGTERMed it first - lesson: before stopping a run with the loop on, check
+  `auto/kNN/spine.json`). Its plain and first two branched beams stopped at 83.06-83.21%, but the THIRD branched beam (forked
+  at tick 6,936 = 80.3%, on the 46.174B weights) ran to **d 2,020 = 96.47%** in 9,200 states - cut by its horizon AGAIN
+  (--beam-ticks 939x = the eval's longest episode + 15 s). Saved as runs/pbr8b1_look/b3.npy (md5 b92fbd61...). The line: up
+  onto k04's platform at 82.46%, WALKS it on the ground at 250 u/s to 83.9% (k04 hops it), hops off at 84.1-84.6%, drops to
+  the lower level at 85%, flies it at ~950-1,000 u/s (86-91%), and spirals down the shaft: 93.2% z 191, 94.8% z -760, 96.5% z
+  -1,583 at 1,520 u/s. Its end is doomed: a beam of the same weights from row 9,199 dies out within 100 ticks.
+* GE 3 (10:02 UTC): rooted at b3 rows 9,080-9,199 (93.9-96.5%) x1.0, 10 min - a way from b3's shaft line to the finish.
