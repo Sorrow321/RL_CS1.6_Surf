@@ -3252,3 +3252,9 @@ the operator's); this branch keeps a waiter on `box.py rent` and works offline m
   --demo-rate 0.2 went 6,531 -> 6,526 at once, oscillated ~5 min on the brake ([6,526] 3%, [6,531] 25-33%), then walked
   back to the platform bounce: at 05:25 it oscillates [6,431] (14%) / [6,436] (70%) - the bounce row (vz -558 -> +453).
   Next: the x1.04 root at 6,387, then the beam prefix; the greedy should switch to k02's route (bench: 74.2-74.33%).
+* **05:47 UTC: 74.092** (c13, eval 37.037B): ep5 flies k02's fast route (57 s to 74.09% at (-1,014, 1,492, 1,967), dying
+  past the ramps at the wall area, z 1,720 at (-1,040, 1,629)); 7/9 still take the old platform route (73.4-73.5%, ~75 s),
+  1/9 died at 61.4%. Other evals 37.11-37.26B: 73.501 / 73.583 / 73.629. The curriculum is past k02's brake, bounce and
+  x1.04 root and oscillates on the beam prefix at [6,341 / 6,346 / 6,351] (12-31%; ~70.2%). Pulled ckpt_latest at
+  37.292B (md5 2ee0445d...). The patience (8e8 from the resume's eval) fires the loop's first search at the eval after
+  37.46B (~06:00 UTC): its beam should follow k02's route (faster at matched time), its 32 u / select-energy GE the wall.
