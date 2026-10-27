@@ -3741,3 +3741,19 @@ of its 1.2 $/h cap; the only other passing offer was a 0.621 $/h 5080). Incumben
   are behind it; ahead: the -1,100 shaft (~11,200-11,280), the hover (rows 10,860-11,160 at z -1,004, bv +800), the tube's
   top where la2's chain stands on ledges at z 367 / 709 (rows ~10,000-10,500), the top plate (~10,600-10,700), then the lower
   level and the pocket's way round (9,600-9,800). Update kl median 0.26-0.33, value loss 93 -> 68.
+
+### The band heat holds the curriculum back where the policy is already able: c4 (12:32-12:36 UTC)
+* c3 12:05-12:32: the curriculum crept 11,354 -> 11,314 (bands 4.6-31%) in the shaft above the chamber's kill disk, while
+  the evals improved on the transition (from the spawn mix): 82.984 / 84.706 / **90.660** / **90.685** (50.405B) / 83.176 /
+  88.751 - 4 of 6 evals with an episode over the ledge, all stopped by the 90.7% pocket.
+* **Probe** (record_ckpt, c3's 50.614B weights, spawned on b2 rows 11,314-11,324 = the stuck band): greedy **6/8 finish**,
+  stochastic (the policy's own temperature, no band heat) **6/8 finish**; the 2 failures (the same spawn state) die on the
+  disk. The curriculum measured 5-31% on the same band: its band spawns run HOT (`--demo-front-temp 0.5 --demo-front-view
+  6`: keys at 1.5, yaw sigma x6 for 40 ticks = 0.3 s), and in the tube a plate is 0.2-0.5 s of fall away. The same gap was
+  seen at c1's hop band (greedy 6/8 vs 24-34%) and c2's face surf (15-36% for 20+ min).
+* **pbr8b4_c4** (12:35 UTC): c3 stopped at ~50.63B (SIGTERM), ckpt_latest 50,632,589,312 (md5 000893fa...) on b2 + keys,
+  `--demo-tau0 11314`, **`--demo-front-temp 0.2` (keys 1.2, yaw sigma x1.2 = the flag's default 1+T; --demo-front-view
+  dropped)**, every other flag as c3 (mix4 spawn states, 35 milestones, the loop async). Generic: the band's exploration
+  heat is a curriculum knob, the same on any map; the measurement says x6 yaw noise turns an able policy's 75% into the
+  curriculum's 5-31% at precision bands. (A principled version: count the advance on cold band episodes only and keep a
+  hot share for exploration - not built.)
