@@ -357,3 +357,8 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   beam_tas line on c8's own 52.63B weights from the true spawn, 4,096 envs, horizon 98.5 s; extinct at 74 s) to d 551 = 99.04%
   at (676, 2,798, -2,884), above the finish tube's last two kill plates; ducked through the whole tube. Its own held keys. No
   demo, no record (pbr8b4, round 8).
+* `pbr8b4_fin1.npy` + `.keys.npy` (8,852 rows; md5 2a212d4b2225d0438ca4aa212fa51265 / f0526a2c95d9ecac9d0e45f96f01cc14): **the policy's
+  own FINISHING line**: the PLAIN beam_tas line (runs/bm5 on the pbr8b4 box: run pbr8b4_c8's own 53,151,268,864-step weights, from
+  the TRUE spawn, 4,096 envs, the loop's settings, --max-ticks 14000) that CROSSES the finish in 8,852 ticks = 67.87 s (replay
+  bit-exact; saved by beam_tas --save-frontier's crossing case), its own held keys (auto_spine.keys_from_acts). No demo, no
+  record, no search chain: every row is the policy's own population (pbr8b4, round 8).
