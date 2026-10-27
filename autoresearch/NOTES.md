@@ -3697,3 +3697,8 @@ ckpt_45558005760 (md5 6dec286c...), eval 82.652 at 45.564B. Credit at the start:
   ~72.7 s from the start (the record: 75.18 s). Saved as runs/pbr8b3/pbr8b3_la/dry1/spine.npy (+keys, md5 560a4cba...).
   Kept in reserve: the loop will build its own when the greedy reaches the blade; a full spine now would put the
   curriculum at the finish, ~6 shaft blades ahead of where the greedy dies (round 7's k04 lesson).
+* c4 evals 94.990 / **95.383** (48.922B: ep3 to (685, 2,744, z -1,033), ep2 94.61% at z -603; 5/9 die on *181's top at z
+  ~262, 1/9 at 82.0%, 1/9 at 72.4%) / 94.825 (median 94.7%) / 94.812. Hand-on for 95.383: the copier's ckpt_48912924672
+  (8.9M before the eval, md5 d8173269cea1dbcc294a8f93d50fa887), pulled. The loop's **search 2** (from the spine, quorum
+  ~48.997B) ended at 49.063B after 259 s: NEW SPINE from **beam+ge** (the GE stage beat the beam), cut by the rule at d
+  2,016 (96.5%), success line d <= 2,116 (96.3%); greedy frontier then 3,027 (94.7%).
