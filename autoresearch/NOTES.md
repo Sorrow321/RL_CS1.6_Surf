@@ -3747,3 +3747,10 @@ ckpt_45558005760 (82.652 at 45.564B).
   9,100-9,169 55x, 8,940-9,099 19x; no start-room states - the 10% fresh map starts keep the start room), re-read at 49.984B.
   The generic lesson for the recipe: a spawn share is not a sample share; weight spawn sources by 1 / expected episode
   length when a short stretch must be learned.
+* **The shaft-only pool unstuck the curriculum**: 13:00 -> 13:15 UTC the band went 9,239 -> 9,019 (through the z -2,700
+  hole and the ring; now the 94.6-94.9% sheet). Evals 92.989 / 93.699 / **93.984** (50.157B; hand-on ckpt_50151817216, pulled)
+  / 93.051 - medians a steady 92.7-92.8% (the greedy now reaches the shaft every time and dies on its upper sheets).
+* Bench (c5 50.24B, b3s, success = the finish): **finishes from every shaft band, the rim included** - [8,900] 1/12 greedy,
+  2/12 stoch; [8,940] 0-1/12; [8,980] 1/12; [9,020] 6/12; [9,080] 1/12; [9,140] 1-2/12; [9,190] 5/12 (it was 0/12 above
+  9,240 at 49.85B). 13:17 UTC: pool -> `pbr8b1_b3sw5_states.npy` (md5 83aa6005...; b3s rows 8,937-9,039 34x, 9,040-9,169
+  35x, 9,170-9,249 30x), re-read at 50.309B.
