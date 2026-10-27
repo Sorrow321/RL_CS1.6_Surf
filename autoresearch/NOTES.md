@@ -3233,3 +3233,17 @@ ckpt_35907960832 (md5 160da9eb...), eval 73.590 at 35.918B. Credit at the start:
   the difference.
 * Look-ahead GE 9 (23:41 UTC): the beam's own rows 6,330-6,385 (70.3-70.8%) with the velocity turned 0 / -20 / -40 /
   -60 deg (clockwise, |v| kept: the recipe's front-perturb heading turn, here as search roots), 15 min.
+* **Look-ahead GE 9** (turned roots at the 70.5% fork): 0 deg 73.70%, -20 deg 74.22%, **-40 / -60 deg die by 71.7-71.9%**:
+  with the policy's ~850-900 u/s the record's westward line is not viable - the record carries ~1,009 u/s and h ~2,746
+  there (ours 2,577): the deficit exists before the platform.
+* **Where the energy deficit is made (c3's beam line vs the record, energy height h at first arrival, yardstick):**
+  56-65.5% the policy is AT the record's energy (gap -90..+82 u; at 65.75% its h 2,773 is above the record's 2,733);
+  65.75 -> 65.90% it LANDS on gate 20's one-hull walkway strip at x -3,256 (h 2,773 -> 2,610 in 20 ticks, 794 -> 587 u/s),
+  walks it (540-600 u/s), drops through the hole at ~880 u/s and reaches 67% with h ~2,516 (gap -246); the gap holds at
+  -160..-200 to 71% and the platform hop adds ~-70..-110. At 65.6% the two are in nearly the SAME state ((-3,328..-3,348,
+  3,008-3,013, 2,420-2,442), vz -161..-205); in the next 0.15 s the record contacts something that throws it up and WEST
+  (vz +193 at (-3,441, 3,122, 2,426)), flies over the catch sheet *186 at z ~2,390-2,450 and ~690-775 u/s to the hole and
+  drops through at 983-1,111 u/s with h ~2,760 held. So the 74.4% block is paid for 8% upstream, at the walkway that
+  round 6's curriculum taught the policy to WALK (the only behaviour it ever found there).
+* Look-ahead GE 10 (00:00 UTC): the beam's rows 5,680-5,775 (64.9-65.7%, before the strip landing) x1.0 / 1.04,
+  --select-energy 3, 15 min: a line over the sheet that keeps the energy (the gate-17 / gate-19 recipe, one corner).
