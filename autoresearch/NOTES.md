@@ -3690,3 +3690,10 @@ ckpt_45558005760 (md5 6dec286c...), eval 82.652 at 45.564B. Credit at the start:
 * Endgame dry run (11:56 UTC, box CPU/GPU beside the trainer, ANALYSIS): auto_spine.py as the loop would call it near the
   end - `--start-spine` c4's k01 at row 8,700 (91.6%), a pretend greedy frontier d 900, --cut-ahead 1000, energy 150,
   GE 5 min/stage - to check the path beam-from-spine (stops at the blade, d ~540) -> GE stages -> a line to the finish.
+* **The endgame dry run reaches the FINISH by the loop's own rule** (one auto_spine call, ~6 min, analysis only): beam from
+  c4's spine row 8,700 -> d 1,358 (97.6%); the energy-fork branched beam (fork at tick 8,946, before a -1,518 u loss) ->
+  d 420 (99.3%); GE stage 1 (tail roots: that line crawls 1.6 s past its stall) -> **d 0**: a 9,488-row line from the
+  true start into the finish box at (861, 2,754, -3,435), the GE chain 125 states from an UNBOOSTED root at row 9,363,
+  ~72.7 s from the start (the record: 75.18 s). Saved as runs/pbr8b3/pbr8b3_la/dry1/spine.npy (+keys, md5 560a4cba...).
+  Kept in reserve: the loop will build its own when the greedy reaches the blade; a full spine now would put the
+  curriculum at the finish, ~6 shaft blades ahead of where the greedy dies (round 7's k04 lesson).
