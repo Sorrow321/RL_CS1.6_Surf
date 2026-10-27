@@ -3272,3 +3272,19 @@ Independence: only this branch and $AR_HOME/incumbent/ are read. c12's later wei
   GE (was 5), `--energy-roots-secs 6` (roots before the largest losses of the last 6 s before the climb, not 12),
   `--ge-energy 16` (finer energy cells), `--ge-select-energy 1`, --energy-gain 120: a line keeping the energy TO the
   climb, if the explorer can find one.
+* c19 (01:06-01:29 UTC, 40.51-40.93B): evals 74.181 / 74.129 / 56.916 (a collapse) / 74.164 / 73.432 / 74.172;
+  energetic crossings stayed at 1/9; the curriculum at the contact cliff ([6,368] 3.6-4.5% / [6,373] 64-67%).
+* **The focused energy search's result (01:10-01:27 UTC)**: roots before the losses of the beam line's last 6 s before
+  the climb (-201 u at tick 6,379 = the bounce, -134 u at 6,557 = the 73.1% ramp, -60 u at 6,438), 21,797 candidates
+  over 69.9-74.4%: **cell 178,080 at 73.61% with h 2,471 (+125 u over the line)** = the x1.12 root's energy (2,476)
+  at the climb, unboosted but for its x1.04 root. The chain (beam row 6,266 at 70.1% x1.04, 311 states): turns south
+  at x ~-1,181 at 952 u/s (h 2,683), bounces at 71.6% losing only ~97 u (the line ~320) and heads SOUTH-WEST
+  (-231, -873) at 903 u/s in a clean ballistic glide over the catch sheet from (-1,083, 3,088) to (-1,331, 2,108) at
+  73.1% (the record's lane, ANALYSIS), takes the 73.1% ramp to 991 u/s and reaches the climb at (-1,240, 1,811, 1,852)
+  at 989 u/s. Spine `pbr7b4_c18e02` (committed). What made it findable: 3x the GE minutes, roots only in the last 6 s
+  before the climb, finer energy cells and energy-weighted selection - the loop's energy stage at 5 min had found the
+  bounce (+154 u at 72%) but not the glide.
+* **pbr7b4_c20** (01:31 UTC): c19's ckpt_latest (40.925B, md5 23b40834...) on spine pbr7b4_c18e02 + keys,
+  `--demo-success-energy 60` (success = crossing d <= 15,179 = 73.44% with h >= 2,411, the end's - 60 = half this
+  search's G), the energy quorum (`--auto-spine-energy 150`), the async loop with `--auto-spine-near-gain 100`, the 26
+  milestones, --demo-replay-frac 0.1, --target-kl 0.15; --steps 3e9.
