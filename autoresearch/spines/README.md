@@ -252,3 +252,10 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   row 6,387 (~73%), then one exact explore_phase1 --exact-chains chain (reward-free search, 466 ticks from that row's state
   with its velocity x1.04, GE stage 1) to d 14,673 = 74.33%. Keys = the beam's and the chain's own held keys. Copied from
   runs/pbr6b4/pbr6b4_c12/auto/k02 (pulled at round 6's wrap-up) by pbr7b3. No demo, no record (pbr6b4, round 6).
+* `pbr7b3_m02.npy` + `.keys.npy` (7,309 rows; md5 ed6f223324219f6f9aa3a1637b025f96 / 6113e89e074ab3e9e80b6b8dc0fa3184):
+  the trainer's own search (tools/auto_spine.py with the trainer's arguments, run by hand on pbr7b3_c1's 37.106B weights
+  with the trainer paused; --branch-tick 0 --branch-energy 0): the POLICY'S OWN plain beam_tas line from the true spawn
+  (4,096 stochastic copies, d-ranked) to its row 6,788 (~74.2%, at the 74.3% ledge), then one exact explore_phase1
+  --exact-chains chain (reward-free search, GE stage 1, 521 ticks from that row's state with its velocity x1.04) over the
+  ledge, down the shaft and east to d 12,680 = 77.81%. Keys = the beam's and the chain's own held keys. No demo, no
+  record (pbr7b3, round 7).
