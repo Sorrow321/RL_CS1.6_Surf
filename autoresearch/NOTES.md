@@ -3891,7 +3891,7 @@ of its 1.2 $/h cap; the only other passing offer was a 0.621 $/h 5080). Incumben
   the tube (~560 rows of fin1) walked in ~25 min, the tube-top entry (where the greedy entered ~90 u south of fin1 and missed
   the ledge it lands on) ~25 min more.
 
-### 7/9 greedy finishes: 115.411; the loop's energy stage after a finish is a detour; c10 without the loop (15:50-16:20 UTC)
+### 7/9 greedy finishes: 115.411; the loop's energy stage after a finish is a detour; c10 without the loop (15:50-16:16 UTC)
 * c9 evals after the first finish: **110.933** (54.541B, 3/9, 72.01 s) / **115.411** (54.616B: **7/9 finish, best 70.99 s**,
   median 100%; handoff ckpt_54598828032, 17.3M before, md5 38052c85..., pulled) / 115.366 (7/9, 72.36 s; ckpt_54682714112
   pinned on the box) / 114.261 (6/9) / 110.933 (3/9). 
@@ -3902,6 +3902,6 @@ of its 1.2 $/h cap; the only other passing offer was a 0.621 $/h 5080). Incumben
   autoresearch/spines/pbr8b4_c9k02). A loop flaw for the post-finish phase: once the greedy finishes, the depth rule has
   nothing to find and the energy stage picks an intermediate line. (Also: after the swap the success line d <= 100 and the
   milestone 100 that fin1 left were the same line - two bonuses on one crossing.)
-* **pbr8b4_c10** (16:19 UTC): c9 stopped at ~54.92B, ckpt_latest 54,916,022,272 (md5 98e4de80...) on c9k02 + keys at
+* **pbr8b4_c10** (16:15 UTC): c9 stopped at ~54.92B, ckpt_latest 54,916,022,272 (md5 98e4de80...) on c9k02 + keys at
   `--demo-tau0 8068` (where c9's curriculum stood), the loop OFF (no --auto-spine*), 38 milestones (c9's minus the duplicate
   100), every other flag as c9 (lr 1e-4, mix5, the cold/hot band split).
