@@ -4076,3 +4076,10 @@ Box: 58011053, RTX 4080S, 0.41 $/h, Ontario CA (machine 141481, the box rounds 7
   killed the ssh shell itself (CLAUDE.md's warning): use `pgrep -af '[s]napcopy'`-style patterns.
 * **pbr9b1_c3** (22:00 UTC): c2's ckpt_latest (55.6217B, md5 91eefc4e...) on fo1e + keys, c2's flags + --demo-success-strict,
   spawn pool pbr9b1_fo1dec_states (committed), lr 1e-4.
+* c3 to 22:13 UTC: evals 115.461 (7/9) / 115.474 (7/9) / **116.598** (55.773B: 8/9, 68.74 s); still no energetic greedy
+  crossing. The STRICT band: oscillates on the chain right past the junction (rows 7,522-7,537, success 3.6-79%) for ~5 min,
+  then walks back PAST the junction onto the greedy line's own rows, [7,427-7,457] (82.6-82.9%) at 27-47% band success -
+  real fly-overs from the policy's own approach states now (c2's weights benched 1/72 there).
+* Planner wave (beam_tas --objective finish --score dv, 4,096 copies, greedy-envs 32, on the incumbent's weights from the true
+  start, beside c3, 155 s): first finish 69.08 s vs its greedy gate's 69.07 s - the population converges on the greedy line;
+  no faster line to distil on these weights (round 8's planner found ~1 s on c5/c7 weights).

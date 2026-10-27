@@ -3,16 +3,17 @@
  "round": 9,
  "final": false,
  "best": {
-  "score": 115.492,
-  "eval_file": "/home/steam/ar_pb/runs/pbr9b1/pbr9b1_c1/traj_55114727424.jsonl",
-  "run": "pbr9b1_c1",
-  "step": 55114727424,
+  "score": 116.598,
+  "eval_file": "/home/steam/ar_pb/runs/pbr9b1/pbr9b1_c3/traj_55773233152.jsonl",
+  "run": "pbr9b1_c3",
+  "step": 55773233152,
   "ckpt": null,
   "recipe": [
-   "c1: resume of the incumbent ckpt_55038705664 with pbr8b1_c12's exact flags (f1e + --demo-success-energy 150, lr 5e-5)"
+   "c2: the incumbent ckpt_55038705664 on pbr9b1_fo1e (own greedy line + a GE fly-over chain at 84%, cut at 84.92%) + --demo-success-energy 150, lr 1e-4, pool fo1after then fo1dec",
+   "c3: c2's ckpt_latest (55.6217B) + --demo-success-strict (new: the curriculum counts the energetic crossing alone), pool fo1dec, lr 1e-4"
   ],
-  "resume_from": "incumbent r8 ckpt_55038705664 (md5 bc483e2f...)",
-  "commit": "77d2151"
+  "resume_from": "pbr9b1_c2 ckpt_latest 55.6217B (md5 91eefc4e...)",
+  "commit": "1ff21f6"
  },
- "summary": "c1 (incumbent continued, c12's flags): evals 6,7,6,5,5,5 of 9 finish, best 68.56 s (115.492) - reliability ~0.65/episode, deaths spread over the course (83% sheet the commonest). Split times vs the record (yardstick): the greedy lands on the platform's end at 84.5% (~500 u energy lost, lower level at ~1,000 u/s) and loops at 71-72%. GE rooted at the greedy line found a fly-over at 84% (x1.04 root, 1.1 s faster to the lower level) and a straight line at 71% (x1.04, 0.9 s). c2 (21:18 UTC): the incumbent on fo1e (greedy line + the fly-over chain, cut at 84.92% with --demo-success-energy 150), lr 1e-4."
+ "summary": "c1 (incumbent, c12's flags): 5-7/9, best 68.56 s - no reliability gain. GE at the incumbent's own line: a fly-over of the 84% platform end (x1.04 root; 1.1 s faster to the lower level) -> spine fo1e (energy cut at 84.92%). c2 on it: the band walked back on FINISHES (the energy rule counted any finish as a curriculum success; 1/72 bench fly-overs) -> new flag --demo-success-strict. c3 (strict): the band holds at the junction and walks back past it at 27-47% real fly-overs; evals 7/9, 7/9, 8/9 (116.598, 68.74 s); the greedy has not switched yet. The planner (beam_tas from the true start) finds nothing faster than the greedy (69.08 vs 69.07 s)."
 }
