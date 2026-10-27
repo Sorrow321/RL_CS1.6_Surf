@@ -3417,3 +3417,9 @@ Independence: only this branch and $AR_HOME/incumbent/ are read. c12's later wei
   wall faster). Untested ideas: a curriculum on `pbr7b4_c17m01` (the technique from its chain) with the root band's
   boost annealed toward x1.0; or a stitched line e02 + a passage chain found from e02's states with a longer GE than
   the three 10-15 min runs here (all stopped at 74.32-74.36%).
+
+### Harness issue: `score.py --best $AR_HOME/runs/$AR_AGENT/` finds no eval
+PROTOCOL.md gives `python autoresearch/score.py --best $AR_HOME/runs/$AR_AGENT/` as the branch's score, but score.py
+globs `traj_*.jsonl` one level deep, and the agent dir holds run dirs: it prints `"best": null, "n_evals": 0`. The
+orchestrator itself is right (orchestrator.score_branch passes every run dir to best_in), and
+`score.py --best $AR_HOME/runs/$AR_AGENT/*` works. Either the protocol's command or a recursive glob would fix it.
