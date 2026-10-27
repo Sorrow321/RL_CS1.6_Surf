@@ -1,0 +1,9 @@
+{
+ "n": 8582,
+ "parts": [
+  "pb9_g3 rows 0-7384 (= greedy ep1 0-6296 + GE C 195 ticks + ep1 6587-7479)",
+  "pb9_g1 rows 7480-8676 (GE A chain 144505 ticks 1-250 + the policy's beam A250d)"
+ ],
+ "cut_e": 7634,
+ "time_s": 65.94
+}

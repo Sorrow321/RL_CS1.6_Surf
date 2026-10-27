@@ -4116,3 +4116,13 @@ used for the search work below and then blocklisted and released.
   ~1,604) with `--demo-success-energy 150` (keeps the platform flight, as c12) + `--demo-success-time 0.25` (the shortcut:
   from a spawn before 70.15% the old swing east arrives ~0.67 s late; the greedy's own timing spread is ~0.4 s at 72-83%).
   Pool `pb9_g3after_states.npy` = g3 rows 7,345-8,906 (ep1's own 83-100%).
+* c5 23:28-23:50 UTC: evals 115.478 (7/9) / 114.359 (6/9) / 113.257 (5/9) / 115.496 (7/9, **68.46 s**; every finisher in
+  the fast mode, t84 57.2-58.3 bar one); kl median 0.36 / p90 0.53. The band walked g3e back 7,344 -> 6,354 (chain C tick
+  58, ~71%) in 20 min and swings 25-53% there: it now asks for the straight segment.
+* band_bench of the incumbent's weights on GE A's chain (g1 rows; success d <= 7,700 = 86.53%, 12 episodes): root 7,479 11/12
+  greedy (it walks the platform end and still gets there), 7,520 8/12, **7,560 (84.3%, mid-flight over the platform end) 5/12**,
+  7,600+ 12/12 - learnable, the hard part is the middle of the flight.
+* Next stage prepared: **`pb9_g4`** (8,582 rows, md5 3ef81aec...) = g3 rows 0-7,384 + g1 rows 7,480-8,676 (GE A's 250 ticks +
+  the policy's 7.27 s beam; g3[7,384] IS g1[7,479], ep1's own 83.30% state, so no seam) = **65.94 s**. `pb9_g4e` = cut at row
+  7,634 (86.26%, GE A's hand-over; h 1,584 vs ep1's 1,441 - the gain is time, so the time gate alone); pool
+  `pb9_g4after_states.npy` = g4 rows 7,635-8,581.
