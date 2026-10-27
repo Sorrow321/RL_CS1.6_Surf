@@ -3472,3 +3472,11 @@ ckpt_35907960832 (md5 160da9eb...), eval 73.590 at 35.918B. Credit at the start:
   4/9 still miss the ramp (z ~1,243 on *183 at x 1,204-1,440) and 2/9 die at z ~1,321-1,334 at x ~1,611 (79.2%). The record
   (ANALYSIS ONLY) is ~230 u higher there (z 1,687 at 80%, 1,823 at 82% at (2,445, 2,408)). Handoff for 80.644: the copier's
   ckpt_44658851840 (6.3M before the eval, md5 f8de566d...), pulled.
+* **80.856** (44.816B, median 79.58%; handoff the copier's ckpt_44809846784, 6.3M before, md5 c2cc9b8a..., pulled) and 80.686
+  (44.892B, median 80.4%: 5+/9 past k03's line) -> **search 4** (136 s beside the training): the PLAIN beam on the 44.892B weights
+  runs to **d 4,265 = 92.54%** (9,200 states; beam_tas 4,096 envs, resample 25, its horizon = the eval's longest episode + 15 s)
+  -> spine k04, success line d <= 4,365, swapped in at 44.923B; the curriculum walks it back at 99-100% bands, 40 rows a step.
+  k04 (rows ~ ticks at 7.67 ms): climbs from 80.8% (2,400, 1,696, 1,630, vz +403) to z 1,814 at x 2,647, crosses a platform at z
+  1,565 at ~50-240 u/s (rows 7,500-7,900, 82.2-83.3%: a walk), drops to z ~800-900 at 85-90% and ends at (637, 2,918, 470) falling
+  at 1,017 u/s, t 70.5 s. The record (ANALYSIS ONLY) runs the same corridor (82% (2,445, 2,408, 1,823), 86% (894, 3,563, 838),
+  92% (637, 2,892, 739)). What stops the greedy is the turn north at ~80.4% (the *265 sheet), where the sampled beam survives.
