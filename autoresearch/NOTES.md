@@ -3742,3 +3742,21 @@ ckpt_45558005760 (md5 6dec286c...), eval 82.652 at 45.564B. Credit at the start:
   **d 1,778 = 96.9%**. So the gate is the shaft-entry maneuver (~0.3 s), ~50-90 rows before c5's curriculum band (8,827).
   (A first, wrong reading - a "shortcut" to the shaft's north lip - came from matching the greedy and the spine by
   height instead of by d: the greedy's first z 900 crossing is the loop's start, the spine's the shaft entry.)
+
+### The shaft-entry maneuver learned: 95.383 -> 96.582 (2026-10-27 ~14:05 UTC, c5)
+* c5 evals 95.370 / **96.500** (50.795B) / **96.582** (50.871B: 6/9 at 96.44-96.58%, all dying together at the next
+  blade, z ~-1,635..-1,653 at x 648-749) / 96.536 (50.946B, the same 6/9). The curriculum on k03p (the policy's own beam
+  line) taught the entry maneuver in ~55 min. Hand-on for 96.582: the copier's ckpt_50862227456 (8.4M before the eval,
+  md5 b30fef4a0180681fbba2a1ddd50be98b), pulled.
+* c5's search 1 (from the spine, start row 8,474, 213 s) handed back **another x1.04-boosted GE chain**: its beam reached
+  only d 2,311 (96.0%) - less than the greedy (2,034) - and GE stage 1 (factors [1.0, 1.04] in ONE stage: the deepest
+  chain wins and is usually the boosted one) rooted a 659-state chain at row 8,737, before the shaft entry, uncut to the
+  finish; cut by the rule at 98.2% (success line 98.04%). The curriculum now walks an explorer's route through the whole
+  shaft - the k02 trap again.
+* Probes (box, ANALYSIS): in the shaft the policy's stochastic population is WEAKER than its greedy - from the greedy's
+  own dumped states 1-4 s before its 96.5% death (record_ckpt --dump-states, the 96.582 weights, episode 5 of seeds
+  100-108: 96.51%) the beam's frontier is d 2,755-2,916 or extinct; so a beam cannot extend the greedy here and the
+  loop's search falls to GE, whose stage 1 mixes boosted roots.
+* So (14:30 UTC): auto_spine.py by hand with the GREEDY's own recorded line as `--start-spine` (episode 5 + its held
+  keys from the .jsonl, `--start-row 9425` = just before its death, so the line IS the greedy's), `--greedy-d 1997`,
+  and `--ge-boost "1.0;1.04;1.08"` (UNBOOSTED first, a stage of its own): GE roots in the greedy's own last 4 s.
