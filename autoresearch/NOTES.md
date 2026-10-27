@@ -3352,3 +3352,13 @@ ckpt_35907960832 (md5 160da9eb...), eval 73.590 at 35.918B. Credit at the start:
   and hit the launch ramp's FRONT EDGE at y ~2,100, z ~1,785 (vy -> 0, then a slide down the face to the death level), ~50 u
   under its top; the x1.16 chain meets the ramp LEVEL (z ~1,837, vz ~0 at y ~2,060) and rides it up to vz 560. e6 ends ~160 u
   too high for a clean entry. Look-ahead GE 18 (03:11 UTC): e6 rows 6,380-6,430 x1.0 / 1.04 - a clean ramp entry from there?
+* **Look-ahead GE 18** (e6's end, rows 6,380-6,430 x1.0 / 1.04): deepest 74.34%; its fastest state RISING on the ramp does 955
+  u/s. Across look-aheads 6 / 12 / 17 / 18 the low on-line states at the ramp approach (72.3-72.95%, z 1,800-1,900, x within 70
+  u of -1,280, heading south) top out at **~1,013-1,025 u/s** - the same ceiling as the policy's best greedy episodes (960-1,056
+  u/s at 72.9% in c5's 41.73-41.81B evals); the record (yardstick) does ~1,223 there. The greedy's 71.2% energy is now the
+  record's (h 2,673-2,762 at 1,068-1,126 u/s) and is lost by 72.5% (-150..-290 u): the record falls 312 u along x ~-1,300 from
+  the 70.5% fork with no contact loss (|v| 1,009 -> 1,223, h held); every line of ours first heads toward the platform
+  (x ~-1,000 at 71.2%) and comes back west. Kept to 72.9% at z ~1,850 the greedy's 71.2% energy would be ~1,187 u/s - enough.
+* **New best 74.399** (c6's first eval, 41.936B = c5's final weights, median 74.3%: most episodes now reach the block); c5 also
+  had 74.396 at 41.205B. Handoff: c5's ckpt_latest (41.9357B, md5 30fea41a...) placed as pbr7b2_c6/ckpt_41935699968.pt (the
+  eval's exact weights). c6 evals after it 74.341 / 74.340 / 74.329 / 74.337; 1/9 energetic crossing of e6's line at 42.163B.
