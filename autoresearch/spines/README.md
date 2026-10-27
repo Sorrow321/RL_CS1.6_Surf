@@ -363,3 +363,11 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   samples; the start room is practised by the 10% fresh map starts anyway.
 * `pbr8b1_b3sw5_states.npy` (md5 in NOTES): b3s's shaft rows only - 8,937-9,039 (the upper sheets, past the 92.36% milestone)
   34x, 9,040-9,169 (the 94.6-96.5% sheets, the weakest on the 50.2B bench) 35x, 9,170-9,249 (the hole approach) 30x.
+* `pbr8b1_f1.npy` + `.keys.npy` (9,205 rows; md5 fd2e95323440d7d322401f42e1168d5b / 4fc85e3ff59d2fdbd0ed50367b93fda5): a
+  FASTER LINE (clock 70.81 s; the greedy's best so far 73.04 s): the plain beam_tas finish-objective winner on pbr8b1_c5's own
+  50.69B weights (72.65 s; plan_to_bc's spine, its keys from the action table) to row 7,320 (80.4%) + an exact Go-Explore
+  chain (GE 6: explore_phase1 rooted at that line's own rows 7,270-7,345 x1.0 / x1.04, --select-energy 3; cell 163849, picked
+  by the EARLIEST arrival on the lower level, d 7,885 at 62.05 s; root row 7,320 at x1.04) that FLIES OVER the 82-86% platform
+  the policy otherwise walks + the plain beam_tas finish of c5's own weights from the chain's end (8.77 s). No demo, no record.
+* `pbr8b1_f1w_states.npy` (11,176 rows; md5 a17948a7f0ad062972f0680ec41a3a2f): `--spawn-states` pool = f1 rows 7,450-7,582 (the
+  airborne crossing past the 81.86% milestone) 12x + rows 7,583-8,061 (the chain's drop to the lower level, 84-86.2%) 20x.
