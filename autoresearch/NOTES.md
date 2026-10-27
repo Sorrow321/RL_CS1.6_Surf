@@ -3840,3 +3840,12 @@ ckpt_45558005760 (82.652 at 45.564B).
   drop (84.6-86.2%). Pool moved ahead of the band at 15:31 UTC: `pbr8b1_f1w2_states.npy` (md5 46ed4a94...; rows 7,450-7,640
   25x + 7,641-7,800 20x), re-read at 52.164B. Stage 2 (energy-gated cut at ~83%, row 7,520: airborne h 2,323 vs walking
   ~1,600) goes in once the band has passed the junction.
+* c6 to 15:46 UTC (52.43B): evals 116.459 (8/9) / 115.356 (7/9, 72.66 s) / 114.219 (6/9) / 113.075 (5/9) - reliable on the
+  walking route; its band walked f1 back to 7,504 (83.0%, in the airborne crossing; the platform-end landing and the bump
+  passed in ~15 min). Stopped (ckpt_latest md5 bb57d0ab...).
+* **pbr8b1_c7** (15:47 UTC, STAGE 2): c6's ckpt_latest (52.429B) on **f1e** (f1 cut at 83%, row 7,520, airborne, h 2,323) +
+  keys with `--demo-success-energy 150` (success and its +50 only for a crossing of 82.8% with h >= 2,173: the walking route
+  crosses at ~1,600, so only the flight over the platform counts; the trainer makes it an ENERGY spine, its quorum counting
+  energetic greedy crossings), spawn pool `pbr8b1_f1after_states.npy` (f1 rows 7,521-8,061: the chain's landing and drop,
+  practised past the cut), c6's flags otherwise. The band starts at the cut and walks back over the airborne crossing to the
+  80.4% junction, where it can only succeed by FLYING.
