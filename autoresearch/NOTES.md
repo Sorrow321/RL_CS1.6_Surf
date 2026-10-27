@@ -4100,3 +4100,16 @@ Box: 58011053, RTX 4080S, 0.41 $/h, Ontario CA (machine 141481, the box rounds 7
   greedy 61.89 s; d <= 5,000 (91.25%) at 62.83 s (the incumbent's greedy ~64.5 s). -> spine **pbr9b1_fo2** (fo1 to row 7,638 +
   that chain, to 88.12%, h 1,807) + pool pbr9b1_fo2dec_states (md5 889cd89d...), for an energy cut at 88% once c3's fly-over is
   solid (moving the gate before that would stop paying a fly-over that lands hard, and could undo it).
+* c3 to its stop (22:53 UTC, 56.4617B, ckpt_latest md5 d3ff7962...): evals after the switch 115.501 (7/9, **68.32 s**) / 113.269
+  (5/9) / 116.596 (56.302B: 8/9, 68.78 s) / 113.269 (5/9) / 115.492 (7/9, 68.57 s); fly-overs among the episodes reaching the
+  cut 7/8, 6/6, 8/8, 6/6 - the greedy's route now. c3 over 12 evals: 7,7,8,7,6,7,4,7,5,8,5,7 of 9 (0.72 per episode).
+* Median splits of c3's finishers (last 4 evals, n 25) vs the incumbent's 9/9 eval: +0.68 s by 70% (a steady +0.05-0.22 s per
+  10% over 20-70% - drift of the early-mid course under lr 1e-4 curricula), +0.48 s over 70-72% (the 71% surface), -0.42 s
+  72-75%, **-0.81 s over 83-84.74% and -0.23 s to 86.35% (the fly-over)**; median finish 69.02 vs 69.34 s.
+* c3's deaths (last 4 evals): the 28.5% ramp entry x3 (at (2,966-3,048, -1,560/-1,630, ~2,600): one episode ~80 u/s straighter
+  west at 28.3% hits an edge and loses 1,000 u, the others catch the ramp - a precision spot present in c1/c2 too), 84.6-84.8%
+  x2 (a fly-over falling onto the z 1,463 sheet), 90.7% (stall), 92.75% (shaft), 3.2%, 11.3%, 26%, 46.5%.
+* At 88% (d <= 6,890) c3's fly-overs arrive with h 1,254-1,522 at 61.24-62.83 s (the incumbent's landing route 1,308-1,460);
+  fo2's soft landing reaches it at ~60.6 s with h ~1,800 - a new skill worth ~0.7-1 s.
+* **pbr9b1_c4** (22:55 UTC): c3's ckpt_latest (56.4580B, md5 d3ff7962...) on **fo2** + keys, `--demo-success-energy 150
+  --demo-success-strict` (success = d <= 6,890 with h >= 1,657), pool pbr9b1_fo2dec_states, c3's flags otherwise, lr 1e-4.
