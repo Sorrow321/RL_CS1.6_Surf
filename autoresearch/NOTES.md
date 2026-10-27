@@ -3369,3 +3369,30 @@ ckpt_35907960832 (md5 160da9eb...), eval 73.590 at 35.918B. Credit at the start:
   of the x1.16 chain's 1,165 u/s at the ramp, and still not over the block. Saved as runs/pbr7b2_r5/b4.npy + keys on the box.
 * Look-ahead GE 19 (03:40 UTC): that line's ramp approach (rows 6,307-6,393 = 72.4-73.45%) x1.0 / 1.04 / 1.08, 12 min - is x1.04
   (the mildest boost, learned without the boost by round 3's greedy at gate 8) now enough?
+* **Look-ahead GE 19** (the energetic dh line's ramp approach, 72.4-73.45%, x1.0 / 1.04 / 1.08): 74.35 / 74.34 / 74.44% - even
+  x1.08 (~1,214 u/s at the ramp) does not clear the block from it. Speed is not the whole threshold: the x1.16 chain that passes
+  enters the ramp heading straight SOUTH (v (1, -1,165, 44)) along x ~-1,275, level at z ~1,833; this line swings back west from
+  the platform side (x -877 at 72.0%) and enters at an angle. c6's greedy: 2/9 then **4/9** energetic crossings of e6's line
+  (42.39 / 42.46B), then 1/9 - its quorum is close.
+
+### pbr7b2 round 7 lesson (DRAFT, 03:56 UTC; finalised at wrap-up)
+* **Score 73.590 -> 74.399** (c6 41.936B = c5's final weights, median 74.3%). The 71.3% landing and the platform climb fell to the
+  inherited loop (c1/c2: k02's touch-and-go hop, 73.67 -> 74.29); everything since stops at one wall at 74.4%.
+* **The 74.4% wall, fully characterised** (hull traces, look-aheads 1-19, the record as a yardstick): a block across the corridor
+  (top z ~2,150, death pit before it) that is cleared only by a launch-ramp entry at ~73.0% heading straight south along x ~-1,275,
+  level at z ~1,835, at ~1,160+ u/s, then a DUCKED crossing (x1.16 of the policy's line passes to 78.2%; x1.0-1.12 and every
+  energetic explorer state at the record's energy, coming in from another direction or height, fail). The record does it with
+  energy kept from the 70.5% fork (a 312 u contact-free fall along x ~-1,300 to 1,223 u/s); our lines detour toward the 71.4%
+  platform and come back west, and both the policy and the uniform explorer top out at ~1,020-1,060 u/s on the low ramp approach.
+* **Where the energy goes, measured** (`autoresearch/analysis/pb_energy_profile.py`): the policy matches the record's energy from
+  56% to 65.75%; it lost ~250 u at gate 20's walkway (landing on the one-hull strip and walking it at the bunny-hop-capped 250 u/s)
+  - **fixed this round** by energy spine e3 (an over-the-sheet line found by a reward-free search from the policy's own states,
+  picked and taught with the loop's own energy rule; the greedy learned it 9/9 in ~60 min); then -150..-290 u over 71.2-72.5%
+  (the platform detour) - e5 / e6 taught part of it (the greedy now carries the record's energy at 71.2%, h ~2,700-2,760).
+* **New, generic, default off and bit-identical:** `--auto-spine-async` (the loop's search beside the training; its first live
+  search ran 298 s with the trainer at full speed - a blocking search held it up to ~28 min); `tools/energy_splice.py` (the loop's
+  energy-stage pick + splice on an archive searched by hand, so an energy spine can be built without waiting for the quorum);
+  `stitch_spine.py` spine segments.
+* **What did not work / cost time:** e1 (the low route: energy after the launch, not before it); e5 (passes the platform high and
+  meets the ramp from the wrong place); turned roots at the fork (survive, keep no energy); a kl 0.92 update right after the
+  first energetic quorum collapsed c4 to 61.5% (restarted from the search's own copy of the pre-collapse weights).
