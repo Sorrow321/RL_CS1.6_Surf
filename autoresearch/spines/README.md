@@ -342,3 +342,5 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   start-room states + b3f rows 9,250-9,350 tiled 37x (the shaft frontier c3's curriculum had reached: ~25%) + b3f rows
   8,935-9,572 tiled 6x (the shaft from just past the 92.36% milestone, d 4,300, so no spawn collects an easy +50: ~25%), to
   keep the shaft practised while the curriculum works the platform.
+* `pbr8b1_entry_shaft3_states.npy` (14,965 rows; md5 below in NOTES): as shaft2 with the focus window moved back to b3f rows
+  9,150-9,260 (tiled 34x) - the hand-run parallel curriculum's next band (rows 9,300+ finish 9-12/12 on c4's 48.2B weights).
