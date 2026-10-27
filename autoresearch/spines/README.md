@@ -319,3 +319,7 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   start-room states of pbr1b1_entry_ge_states.npy + pbr8b1_k04t's 734 shaft-chain rows 9,072-9,805 (the GE 2 chain, own
   search from the policy's own k04 states) tiled 10x, so the 20% spawn-states share splits ~50/50 between the start room and
   the final shaft: the shaft is practised while the curriculum works on the middle of the line. Clocks zeroed. No demo.
+* `pbr8b1_entry_mid_shaft_states.npy` (21,849 rows; md5 718b3a08864b2a0a3a91f40f378fa901): `--spawn-states` pool = the 7,399
+  start-room states + pbr8b1_k04 rows 7,420-8,130 (the policy's own beam line from just past the 81.86% milestone, d 10,341,
+  to the curriculum's hop band, d 9,004: where the greedy dies) tiled 10x + k04t's shaft rows 9,072-9,805 tiled 10x: ~1/3
+  each of the 20% spawn-states share. Clocks zeroed. No demo.
