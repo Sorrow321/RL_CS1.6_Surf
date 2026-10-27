@@ -2135,6 +2135,17 @@ def energy_gate(hit, ended, paid, ok, h, rec, end_d, h_min):
     return pay, ok, boot
 
 
+def strict_outcomes(goal_hits, ok_boot):
+    """--demo-success-strict (pbr9b1, 2026-10-27): the curriculum's outcome of the ended spine
+    episodes under --demo-success-energy when only the energetic crossing counts: ``ok_boot``
+    (the episodes' energetic outcomes before the ended rows re-anchored; None before the first
+    reward call = nothing crossed yet), never a bare finish (``goal_hits``, for the shape)."""
+    g = np.asarray(goal_hits, bool)
+    if ok_boot is None:
+        return np.zeros(g.shape, bool)
+    return np.asarray(ok_boot, bool).copy()
+
+
 def crossed_with_energy(d, h, end_d, h_min) -> bool:
     """--auto-spine-energy: an eval episode counts for the quorum of an ENERGY spine only if, at
     the first tick its d reaches the success line, its energy height is >= ``h_min`` (such a
@@ -4929,6 +4940,14 @@ def main() -> None:
                          "descent, no deeper than the greedy's) is taught for that and not for "
                          "the depth the greedy reaches already. A low-energy crossing spends the "
                          "episode's chance. Off = the depth rule, bit-identical; not restored")
+    ap.add_argument("--demo-success-strict", action="store_true",
+                    help="--demo-success-energy: the curriculum's outcome for a spine episode is "
+                         "the energetic crossing ALONE - an episode that reaches the finish "
+                         "without one is a failure. The default counts every finish too, so a "
+                         "band far behind the cut walks back on finishes while nothing crosses "
+                         "with the energy (pbr9b1_c2: 1 of 72 bench episodes from the band's "
+                         "states crossed with it, the band walked back 14% of the map). Off = "
+                         "byte-identical; config only when on, not restored")
     ap.add_argument("--demo-match-band", action="store_true",
                     help="--demo-file: a spawn whose origin the spine repeats (the line stood "
                          "still over several rows) is credited to its copy inside the frontier "
@@ -11800,6 +11819,15 @@ def main() -> None:
                 # pass, taught for the energy it carries there), and a swap sets the rule anew
                 print("--demo-success-energy with --auto-spine-energy: the starting spine is an "
                       "ENERGY spine (its quorum counts crossings with the energy)")
+        if args.demo_success_strict:
+            if args.demo_success_energy is None:
+                raise SystemExit("--demo-success-strict counts the --demo-success-energy "
+                                 "crossings alone: give --demo-success-energy")
+            if float(args.demo_success_alive or 0.0) > 0.0:
+                raise SystemExit("--demo-success-strict is the energy rule's outcome; "
+                                 "--demo-success-alive has its own")
+            print("--demo-success-strict: a spine episode's curriculum outcome is its energetic "
+                  "crossing alone (a finish without one is a failure)")
         if float(args.demo_success_alive or 0.0) < 0.0:
             raise SystemExit("--demo-success-alive SECS must be >= 0 (0 = off)")
         if float(args.demo_success_alive or 0.0) > 0.0:
@@ -14872,6 +14900,9 @@ def main() -> None:
     if args.demo_file and args.demo_match_band:
         # --demo-match-band: dumped only when on (not restored: a property of the run)
         meta["config"]["demo_match_band"] = 1
+    if args.demo_file and args.demo_success_strict:
+        # --demo-success-strict: dumped only when on (not restored: a property of the run)
+        meta["config"]["demo_success_strict"] = 1
     if args.demo_file and float(args.demo_success_alive or 0.0) > 0.0:
         # --demo-success-alive: dumped only when on (not restored: a property of the run)
         meta["config"]["demo_success_alive"] = float(args.demo_success_alive)
@@ -19529,6 +19560,12 @@ def main() -> None:
                                 # --demo-success-alive: the ended episodes' survived crossings
                                 if ALV[3] is not None:
                                     goal_now = goal_now | np.asarray(ALV[3])[ei]
+                            elif (DEMO_END_D is not None and DEMO_H_MIN is not None
+                                  and args.demo_success_strict):
+                                # --demo-success-strict: the energetic crossing alone
+                                goal_now = strict_outcomes(
+                                    goal_now, None if DEMO_OK[1] is None
+                                    else np.asarray(DEMO_OK[1])[ei])
                             elif DEMO_END_D is not None and DEMO_H_MIN is not None:
                                 # --demo-success-energy: the ended episodes' energy crossings as
                                 # they stood before this tick re-anchored them

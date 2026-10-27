@@ -118,6 +118,8 @@ TRAIN_ONLY = frozenset({
     "auto_spine_gain", "auto_spine_envs", "auto_spine_ge_minutes", "auto_spine_extra_secs",
     "auto_spine_timeout", "auto_spine_energy", "demo_stall_cut", "demo_success_alive",
     "demo_match_band",
+    # --demo-success-strict: the TRAINING curriculum's outcome rule under --demo-success-energy
+    "demo_success_strict",
     # --auto-spine-async: WHEN the training curriculum's search runs (beside it, not paused)
     "auto_spine_async",
     # --respawn-greedy-temp: the TRAINING rollout's sampling temperature for greedy-row spawns
