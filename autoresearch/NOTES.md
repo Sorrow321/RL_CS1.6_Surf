@@ -3583,3 +3583,35 @@ block): its quorum fired search 1 at 46.017B and the search died with the box at
 * Planned c1: resume c9's ckpt_latest on the FULL k04 (`autoresearch/spines/pbr7b2_k04`, committed with provenance) + keys,
   c9's flags (lr 1e-4, the 33 milestones, the loop async) + `--auto-spine-cut-secs 4 --auto-spine-patience 3e8
   --auto-spine-extra-secs 30` (no --demo-tau0: the curriculum restarts at the cut's end).
+
+### The final shaft, measured; the first line from the true start to the finish (09:37-09:50 UTC, local CPU)
+* **Probe** (record_ckpt, c9's last weights 46.023B, greedy, spawned at k04's last 50 rows, 92.0-92.5%): 8/8 die within 0.3-0.6 s
+  at z ~262-282 - k04 was falling INTO the top of fall-catch teleport *181 (z 243; a standing hull touches it at origin
+  z ~279). The line was doomed there, not only cut by its horizon.
+* **The shaft (hull probes of the kill models + the field's free cells, x 400-1,030 / y 2,450-3,080):** a stack of kill
+  sheets with alternating gaps - z ~200 *181 west half (free east), z 0 *255 a south-centre disc, z -600 *181 a ring (free
+  centre), z -1,000 north half (free south strip), z -1,700 *132 a central disc (free outer ring; the solid slab *40 sits over
+  the finish box), z -2,900 south (free north), z -3,300 diagonal (free south-east), then the finish box. trigger_push
+  volumes push UP (175 / 375 / 425 u/s); where two touch, +800 = gravity: a HOVER at z -999.
+* **Go-Explore look-ahead 1** (explore_phase1 with auto_spine's GE settings, 40 roots = k04 rows 9,000-9,199, 512 envs, 2 threads,
+  5 min, 139k runs): through the first four sheets to z -1,636 (96.44%), stuck in the central column above the *132 disc
+  (its cells move at 100-480 u/s horizontally; the outer ring needs more). **Look-ahead 2** (roots = 240 of its own column
+  cells z -1,640..-900, --select-energy 3 --roots-keep-all): **GOAL after 0.6 min** (cell 9,969, d 0).
+* **Spine `autoresearch/spines/pbr8b2_f1`** (tools/stitch_spine.py: k04 rows 0-9,190 + chain 1 (318 states, ge_replay 8/8) +
+  chain 2 (678 states, 9/9); 10,185 rows, end d 0, ~78.4 s from the spawn): THE FIRST LINE FROM THE TRUE START TO THE FINISH.
+  The chain hovers ~2 s at (857, 2,726, -999) (basevelocity +800) and is DUCKED for much of the descent: with duck held, row
+  9,850 survives; released, the standing hull touches the kill volume on the first tick (core test).
+* **Segment probe** (c9's 46.023B weights greedy from f1 rows, 4 episodes each): 82.0% -> 84.56% (2/4) or dies on *265 at
+  82.75-83.84%; from 84-88% one or two of four reach the 90.7% stall (stuck at (1,200, 2,900, 740) until the 30 s cap) or die
+  at the first sheet (92.6-93.0%); from 90-93% all die at the first sheets; on the hover 4/4 die within 0.2 s (they move 20 u
+  north into the kill); 97.6% 4/4 die at z -2,601. The current policy knows nothing past ~84.5% of this line: what the
+  curriculum has to teach is ~16% of the course, the shaft's precise steering last.
+
+### `--auto-spine-cut-beyond X` (new, cc37292; default off, bit-identical)
+* With --auto-spine-cut-secs: X of the curriculum's spine draws is uniform over the STORED line past the cut (the stretch the
+  rolls have not reached), taken proportionally from the band and the uniform draws - the later segments are practised while
+  the cut walks toward them (Florensa's replay near the goal, for the part the cut hides). Untracked spawns (not rows of the
+  cut spine), paid by the ratchet and the finish bonus only. DemoCurriculum.beyond / beyond_frac; draws byte-identical to the
+  pre-change respawn.py when off (tested against it from git). tests/python/test_auto_spine_cut.py 8/8.
+* Planned c1 (now): c9's ckpt_latest on **f1** + keys with c9's flags + `--auto-spine-cut-secs 4 --auto-spine-cut-beyond 0.2`
+  and NO search (`--auto-spine-delay 1e12`, patience 0): f1 ends at the finish, so no search line could replace it.
