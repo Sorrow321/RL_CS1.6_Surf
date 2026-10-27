@@ -3622,3 +3622,27 @@ block): its quorum fired search 1 at 46.017B and the search died with the box at
   2+ hours (rent waiter log). At that burn `box.py budget` gave hours_to_reserve 9.4 at 10:33 - about the round's end - so
   nothing forces a release, and the slot's branch can only analyse. A fair-share rule (per-branch cap = limit / branches,
   or one reserved slot per branch) would keep all four slots training.
+
+### pbr8b2 round 8 lesson (DRAFT, 16:55 UTC; finalised at wrap-up)
+* **No box all round** (the harness issue above): the fleet's three boxes held 1.056 of the 1.2 $/h cap from 08:44 on; every
+  `box.py rent` (every 90 s, ~200 attempts) was refused. No eval, no score. Everything below was done on the agent host's CPU.
+* **The finish is reachable from the policy's own line.** The loop's 92.54% line (k04) does not end at a horizon limit: it
+  falls into the final shaft's first kill sheet. The shaft is a stack of kill sheets with alternating gaps (z ~200 west,
+  0 south-centre, -600 ring, -1,000 north, -1,700 centre disc over the solid slab, -2,900 south, -3,300 diagonal) and
+  upward trigger_push volumes (a +800 hover where two touch). Two 5-minute, 2-thread Go-Explore look-aheads with the loop's
+  own GE settings, rooted at k04's last states and then at the first archive's column cells (--select-energy 3), reached the
+  finish box. **`autoresearch/spines/pbr8b2_f1`** = k04 + the two exact chains: the true start to the finish, ~78.4 s
+  (the record, a yardstick: 75.18 s). Many of its shaft states are DUCKED (released, the standing hull touches the kill
+  volume on the first tick): --keys-hold-spawn-duck and the spine's held keys matter there.
+* **What the policy can do on that line today** (c9's 46.023B weights, greedy probes from f1's rows): up to ~84.5% (the
+  82-83.3% platform is where most greedy episodes die now); 85-90% partly; the 90.7% fork (a stall area east of the shaft);
+  nothing in the shaft. So ~16% of the course is left, the shaft's precise steering last.
+* **New, generic, default off, bit-identical (CPU-tested, tests/python/test_auto_spine_cut.py 8/8), never run on a box:**
+  `--auto-spine-cut-secs S` (round 7's k04c cut as the loop's own rule: the curriculum's spine = the stored line cut S s past
+  the greedy's median frontier, rolled on at each quorum; a search line replaces the stored one only when deeper) and
+  `--auto-spine-cut-beyond X` (X of the spine draws over the stored line past the cut). Test seam RLSURF_AUTO_SPINE_TOOL.
+* **Next round (if this branch is the seed):** resume the incumbent on f1 + keys with c9's flags + the cut flags and no search:
+  `box.py launch --resume --self-states "<f1 provenance, spines README>" -- $(cat autoresearch/spines/pbr8b2_f1.flags.txt)`
+  (the one-line flag set, parsed by the trainer's own argparse; f1 ends at the finish, so no search line can replace it:
+  --auto-spine-delay 1e12). Watch the first eval's cut line
+  ("the launch spine CUT at row ~7,949", success line ~83.27%), the rolls, and update kl (c4 / c7 collapsed on kl spikes).
