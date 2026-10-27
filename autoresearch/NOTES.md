@@ -3676,3 +3676,10 @@ ckpt_45558005760 (82.652 at 45.564B).
   the shaft frontier c3 had reached, b3f rows 9,250-9,350, ~25% + the shaft from 92.4% uniformly ~25%). Why: bank the
   platform (the greedy's failure, 81.9-84.6%) first - from 84.4% the policy already flies 12/12 to ~93% - instead of
   grinding the chain first; later return to b3f with `--demo-tau0 ~9,263` and 7,926 as a milestone. Record gate passed.
+* c4 at 11:08 UTC (48.20B, 16 min in): the curriculum walked b3c 8,200 -> 7,715 (through the 84.5% hop-off; now the platform
+  walk at ~83.8%); evals 82.99 / 83.12 / 83.01 / 82.75 (greedy unchanged until the band passes the landing and the fork).
+* **The focused shaft practice works** (band_bench, c4 48.2B, success = the finish): [9,400] **12/12** greedy finish (0/12
+  at 47.5B), [9,300] 9/12 (3/12), [9,260] 3/12, [9,200] 0-1/12, [9,100] / [9,000] 0/12. So a narrow window of own-line
+  spawn states, paid by the finish bonus, is a second backward curriculum that runs beside the trainer's own; uniform spawns
+  over a long stretch were not (the k04t / b3-middle pools). Moved the focus back to rows 9,150-9,260
+  (`pbr8b1_entry_shaft3_states.npy`, md5 e51d44c2..., swapped into c4's spawn-states path; re-read at 48.310B).
