@@ -1,21 +1,21 @@
 {
  "agent": "pbr7b4",
  "round": 7,
- "final": false,
+ "final": true,
  "best": {
-  "score": 74.345,
-  "eval_file": "/home/steam/ar_pb/runs/pbr7b4/pbr7b4_c17/traj_39736836096.jsonl",
+  "score": 74.411,
+  "eval_file": "/home/steam/ar_pb/runs/pbr7b4/pbr7b4_c17/traj_39434846208.jsonl",
   "run": "pbr7b4_c17",
-  "step": 39736836096,
-  "ckpt": "/home/steam/ar_pb/runs/pbr7b4/pbr7b4_c17/ckpt_39674445824.pt",
+  "step": 39434846208,
+  "ckpt": "/home/steam/ar_pb/runs/pbr7b4/pbr7b4_c17/ckpt_39073611776.pt",
   "recipe": [
    "c13: resume of the incumbent hand-on (pbr6b4_c12 ckpt_35907960832) with c12's flag set on spine pbr6b4_c11k01 + keys, --demo-tau0 6314, --demo-match-band, the 24 milestones, the loop (--auto-spine --auto-spine-milestones --auto-spine-gain 500 --auto-spine-ge-minutes 5 --auto-spine-retry 4e8 --auto-spine-patience 0 --auto-spine-energy 150); its search 1 (36.210B): the policy's own beam + GE chains past the 73.5% gap",
    "c14: c13's 36.470B weights on spine pbr7b4_c13k01b (beam + GE stage-1 x1.04 chain to 74.26%) with --auto-spine-async (new)",
    "c16: c14's snapshot 36.871B + --target-kl 0.15, --demo-tau0 6449",
-   "c17: c16's snapshot 37.471B + --demo-replay-frac 0.1 (new), --demo-tau0 6399; evals 37.774B 73.651 (walkway route), 38.227B 74.078 39.208B 74.203 and 39.737B 74.345 (median 73.4%: the greedy takes the chain route through 71-73.4% and climbs into the passage past the 73.5% gap)"
+   "c17: c16's snapshot 37.471B + --demo-replay-frac 0.1 (new), --demo-tau0 6399; evals 37.774B 73.651 (walkway route), 38.227B 74.078, 39.208B 74.203, **39.435B 74.411** (the round's best: best episode 74.41%, median 73.3%) and 39.737B 74.345: the greedy takes the chain route through 71-73.4% and climbs toward the 74.4% passage past the 73.5% gap. Hand-on = the snapshot at or before the eval, ckpt_39073611776 (361M before it, md5 f333fea5...; ckpt_39674445824, 240M after, also pulled)"
   ],
   "resume_from": "pbr7b4_c16 ckpt_37471387648 <- pbr7b4_c14 ckpt_36870553600 <- pbr7b4_c13 ckpt_latest 36.470B <- incumbent r6 (73.590)",
   "commit": "56fbd80"
  },
- "summary": "73.590 -> 74.345 (c17 39.737B; median 73.3%). The 73.5% gap (the walkway's end) is passed by the greedy line for the first time: the loop's search found the policy's own fast line through 71% + a GE chain from a x1.04 root (spine pbr7b4_c13k01b), and the backward curriculum taught it (c14-c17). New generic flags: --auto-spine-async, --demo-replay-frac, --auto-spine-near-gain, --auto-spine-beyond-line, --auto-spine-search-args (+ auto_spine --energy-first / --energy-minutes / --energy-cell-energy / --energy-select); --target-kl 0.15 against KL spikes. The next gate (74.4% passage), local bench: the policy flies it 8/8 from the x1.12 chain's ramp states, 0/8 from the beam's ~100 u less energetic ones, and with e01's energetic bounce it brings the energy but does not turn into the ramp. A GE from that energetic greedy line found an UNBOOSTED chain through the passage to 78.14% (spine pbr7b4_c21app01, committed): next = the curriculum on it, from the wall turn (tau0 ~6,645) back."
+ "summary": "73.590 -> 74.411 (c17 39.435B; best episode 74.41%, median 73.3%; hand-on ckpt_39073611776). The lineage's 73.5% gap (the walkway's end) is passed by the greedy line for the first time: the loop's search found the policy's own fast line through 71% + a GE chain from a x1.04 root (spine pbr7b4_c13k01b), and the backward curriculum taught it (c14-c17). New generic flags (default off, CPU-tested): --auto-spine-async, --demo-replay-frac, --auto-spine-near-gain, --auto-spine-beyond-line, --auto-spine-search-args; auto_spine --energy-first / --energy-minutes / --energy-cell-energy / --energy-select; --target-kl 0.15 against KL spikes. Energy curricula (c18-c21) did not teach the energetic 71.6% bounce from the start. The 74.4% passage (local bench): the policy flies it 8/8 from the x1.12 chain's ramp states, 0/8 from the beam's (~100 u less energy); with e01's energetic bounce it carries the energy but does not turn into the ramp. A GE from that energetic greedy line found an UNBOOSTED chain through the passage to 78.14% (spine pbr7b4_c21app01; a repeat from c17's flight did not). Next: the curriculum on that spine from the wall turn (tau0 ~6,645) back."
 }

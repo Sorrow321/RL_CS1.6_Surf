@@ -3460,8 +3460,12 @@ energy.
   background. Treat the spine as an existence proof plus a curriculum line, not as a reliable search rule yet.
 
 ### To continue (next round, if this branch wins)
-* Hand-on: c17's ckpt_39674445824 (74.345; the k01b chain route: medians 73.3%, best episodes 74.2-74.35% in the
-  passage flight; tick 7.67 ms, keys-hold / potential / view shapes carried - never pass shape or tick flags).
+* Hand-on: c17's **ckpt_39073611776** (md5 f333fea5...; corrected at wrap-up). The round's best eval is 74.411 at
+  39.435B, not 74.345 at 39.737B, and by the hand-on rule the snapshot at or before it is 39.074B, 361M steps before.
+  That snapshot's own nearest eval, 39.208B, scored 74.203. The k01b chain route: medians 73.3%, best episodes
+  74.2-74.41% in the passage flight. Tick 7.67 ms; the keys-hold / potential / view shapes are carried: never pass
+  shape or tick flags. The benches of 06:17-06:55 UTC used c17's 39.674B snapshot, 600M steps later than the
+  hand-on: re-bench the hand-on before relying on its numbers.
 * The base flag set (c21's, the whole lineage block): `--maxvel 3500 --ckpt-every 2e8 --target-kl 0.15
   --demo-replay-frac 0.1 --demo-match-band --demo-window 5 --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5
   --demo-rate 0.3 --demo-front-frac 0.8 --demo-success-d 100 --demo-success-bonus 50 --demo-milestones
@@ -3492,6 +3496,51 @@ energy.
   wall faster). Untested ideas: a curriculum on `pbr7b4_c17m01` (the technique from its chain) with the root band's
   boost annealed toward x1.0; or a stitched line e02 + a passage chain found from e02's states with a longer GE than
   the three 10-15 min runs here (all stopped at 74.32-74.36%).
+
+### pbr7b4 round 7 lesson (wrap-up, 2026-10-27 07:50 UTC) - supersedes the DRAFT above
+* **Score 73.590 -> 74.411** (pbr7b4_c17, eval 39.435B; best episode 74.41%, median 73.3%). The hand-on is
+  ckpt_39073611776 (md5 f333fea5..., pulled), the snapshot at or before the eval by the rule; ckpt_39674445824 is also
+  pulled. **Correction:** until the wrap-up this branch recorded 74.345 (39.737B) as its best. The grader's
+  `score.py --best` over every pulled run found 39.435B higher. The snapshot just before it, ~39.27B, was never pulled
+  and died with the box at 05:03. Lesson: re-score every pulled run with score.py --best before each RESULT update,
+  and pull the snapshot before EVERY eval within reach of the best.
+* The lineage's 73.5% gap (the walkway's end, after the 71.3% landing) was passed by the greedy line from the true
+  start (74.078 at 38.227B, 2026-10-26 23:22 UTC; medians 73.3-73.5% from then on). The greedy flies the policy's
+  own fast line through 71%, bounces off the 71.6% ramp, runs south along x ~-1,250 and climbs toward the 74.4%
+  passage, where it falls short.
+* **What did it:** the loop's search on c13 (the incumbent's recipe continued) found the policy's own beam already fast
+  through 71% plus GE chains past the gap. The x1.04 chain (GE stage 1, 12 u short of the loop's gain, chosen by hand,
+  then built as `--auto-spine-near-gain`) was learned by the backward curriculum in ~1.5 h (c14-c17), where the loop's
+  own x1.08 pick stalled at its root. Stability: `--target-kl 0.15` (single updates at kl 0.4-0.8 preceded early-gate
+  collapses) and `--demo-replay-frac 0.1` (collapses in 5/9 evals in c16 -> 2/7 in c17).
+* **New, generic, default off, bit-identical, CPU-tested:** `--auto-spine-async`, `--demo-replay-frac R`,
+  `--auto-spine-near-gain M`, `--auto-spine-beyond-line`, `--auto-spine-search-args STR`; auto_spine `--near-gain`,
+  `--energy-minutes` / `--energy-cell-energy` / `--energy-select`, `--energy-first B`. Analysis scripts:
+  pb_energy_at.py, pb_bench_spine.py, pb_approach.py; the search script pb_ge_from_greedy.py.
+* **What did not work (c18-c21, ~4 h on the box):**
+  * Curricula on the energy spines e01 / e02 (energy success rule, the async loop on): the greedy from the start never
+    made the energetic 71.6% bounce (0/9 energetic crossings in ~60 evals). The contact band rose to 15-18%, and a
+    bench from pre-contact rows reached 4/12.
+  * The x1.12 chain's passage states in the spawn pool (c21, 2.5 h) did not change the greedy's approach.
+  * Three Go-Explore runs from e02's states (10-15 min each) never entered the passage.
+* **The 74.4% gate, measured at the end (local bench, 06:17-06:55 UTC):**
+  * The policy flies the passage 8/8 from the x1.12 chain's ramp states, and 0/8 from the beam's states at the same
+    place (~100 u less energy).
+  * With e01's energetic bounce it carries the energy to the climb (h ~2,460) but does not turn into the ramp.
+  * A Go-Explore (x1.0, 12 min on 3 local threads) from that energetic greedy line's own states found the turn-in.
+    The result is spine `pbr7b4_c21app01`: an unboosted line through the passage to 78.14%; its only boosted root is
+    e01's x1.04.
+  * On that spine the policy's skill boundary is a ~0.3 s turn on the ramp wall. From just after it, c21 gets through
+    the passage 3/8 times and c17's 39.674B snapshot 5/8; from just before it, 0/8 for both.
+* **Lessons:**
+  1. Bench from exact spine rows before teaching. It separated "energy" from "approach" in minutes, where the
+     curricula spent hours.
+  2. A boosted root marks a missing upstream skill. The cheapest diagnosis is a bench at the same place with and
+     without the boost.
+  3. Root Go-Explore at the policy's own greedy continuation of an energy spine, not only at the explorer's chain. The
+     policy carries the energy that the explorer's uniform actions lose. From its states the passage was within reach,
+     but narrowly: 1 of 2 local 12-min runs found it.
+* **Next:** the curriculum on `pbr7b4_c21app01` + its keys (see "To continue").
 
 ### Harness issue: `score.py --best $AR_HOME/runs/$AR_AGENT/` finds no eval
 PROTOCOL.md gives `python autoresearch/score.py --best $AR_HOME/runs/$AR_AGENT/` as the branch's score, but score.py
