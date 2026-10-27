@@ -3,19 +3,20 @@
  "round": 8,
  "final": false,
  "best": {
-  "score": 93.819,
-  "eval_file": "/home/steam/ar_pb/runs/pbr8b1/pbr8b1_c4/traj_49183457280.jsonl",
-  "run": "pbr8b1_c4",
-  "step": 49183457280,
-  "ckpt": "/home/steam/ar_pb/runs/pbr8b1/pbr8b1_c4/ckpt_49183457280.pt",
+  "score": 93.946,
+  "eval_file": "/home/steam/ar_pb/runs/pbr8b1/pbr8b1_c5/traj_49401561088.jsonl",
+  "run": "pbr8b1_c5",
+  "step": 49401561088,
+  "ckpt": "/home/steam/ar_pb/runs/pbr8b1/pbr8b1_c5/ckpt_49398939648.pt",
   "recipe": [
    "c1: resume of pbr7b2_c9's ckpt_latest (46.023B, md5 50c3a56e...) on spine pbr7b2_k04c + keys with c9's exact flag set (lr 1e-4, 33 milestones, the loop async with the energy stage)",
    "c2: c1's ckpt_latest (46.257B) on round 7's full k04 (to 92.54%) + milestone 10,366 + --auto-spine-extra-secs 45; its curriculum ground k04's platform hop-walk (8,104-8,129), evals 82.2-83.2",
    "c3: c2's ckpt_latest (47.236B) on pbr8b1_b3f (c1's own search-1 branched beam to 96.0% + a 3 s GE chain to the finish), milestone 4,365, spawn pool start room + b3f 82-85.5%; its band crawled through the GE chain, evals 82.6-83.0",
-   "c4: c3's ckpt_latest (47.975B) on pbr8b1_b3c (b3f cut at 86.31%, success line 86.13%), c3's flags, spawn pool start room + b3f/b3s shaft rows (swapped while running); the curriculum walked 8,200 -> 6,950 (platform hop-off, walk, landing, the 80.3% fork) in ~65 min; eval 92.982 at 49.108B and 93.819 at 49.183B (median 92.5%: the greedy now flies to the final shaft)"
+   "c4: c3's ckpt_latest (47.975B) on pbr8b1_b3c (b3f cut at 86.31%, success line 86.13%), c3's flags, spawn pool start room + b3f/b3s shaft rows (swapped while running); the curriculum walked 8,200 -> 6,950 (platform hop-off, walk, landing, the 80.3% fork) in ~65 min; eval 92.982 at 49.108B and 93.819 at 49.183B (median 92.5%: the greedy now flies to the final shaft)",
+   "c5: c4's ckpt_latest (49.250B) on pbr8b1_b3s (the policy's own line to the finish: b3 to 92.2% + c4's own beam from the rim), milestones + 7,926, spawn pool start room + b3s shaft rows; 93.857 / 93.946 / 93.934 (medians 82.6 -> 90.9%) while its curriculum walks the shaft back"
   ],
-  "resume_from": "pbr8b1_c3 ckpt_latest (47.975B, md5 7e544085...)",
-  "commit": "c4 launched on 9c686fa"
+  "resume_from": "pbr8b1_c4 ckpt_latest (49.250B, md5 90845323...)",
+  "commit": "8f8b71b"
  },
  "summary": "93.819 (c4, 49.183B, median 92.5%) from 83.205: the policy's own branched beam b3 (c1's lost search-1, to 96.47%) taught backward from a cut just past the drop (86.31%) took the greedy over the 82-84.5% platform and through the lower level to the final shaft (a stack of rotating teleport kill sheets). The shaft is solved by the policy's own beam from the rim (1,604 of 4,096 copies finish): b3s = b3 to 92.2% + that beam = the policy's own line from the true start to the finish. Next: c5 on b3s from the finish backward."
 }

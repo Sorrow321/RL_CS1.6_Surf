@@ -352,3 +352,6 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   End d 6.4. No explorer chain, no demo, no record (pbr8b1).
 * `pbr8b1_entry_b3sshaft_states.npy` (14,635 rows; md5 92e4471739f0913f59f92e9fda2f773e): `--spawn-states` pool = the 7,399
   start-room states + b3s rows 8,937-9,338 (its own-beam shaft line from just past the 92.36% milestone) tiled 18x (~half).
+* `pbr8b1_entry_b3sw2_states.npy` (14,719 rows; md5 in NOTES): `--spawn-states` pool = the 7,399 start-room states + two
+  focused windows of b3s's own shaft line - rows 9,130-9,205 (the 96.5% / 98.4% deaths) tiled 48x and rows 8,960-9,095 (the
+  94.6% death) tiled 27x: the hand-run parallel curriculum, one step ahead of the trainer's band (9,239).
