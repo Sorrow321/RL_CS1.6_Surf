@@ -340,3 +340,6 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   the 80-86% stretch trained beside it: 600 start-room rows (seed 4) + b2 rows 6,800-7,211 (the policy's own beam approach at
   78.6-80.2% and la2's face surf to the ledge landing at 82.5%) x4 + b2 rows 7,212-9,100 (la2's ledge walk, the hole, the lower
   level to 85.9%) once: 15% / 40% / 46%. The policy's own lines and reward-free chains from them; no demo, no record.
+* `pbr8b4_mix5.npy` (5,837 rows): mix4 + b2 rows 9,101-9,950 twice (la2's lower level from the hole's exit at 85.9% round the
+  90.7% pocket into the tube's top at 91.9%). Same provenance; no demo, no record. Swapped in for c5's spawn pool (the mix4
+  launch path on the box, atomic replace; the trainer re-reads on an mtime change).
