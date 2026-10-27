@@ -3663,3 +3663,10 @@ ckpt_45558005760 (md5 6dec286c...), eval 82.652 at 45.564B. Credit at the start:
   frontier (before its end if it never does), and the new line = the spine's rows before that + the beam's own states
   (+ keys). The beam then only has to fly from just before the greedy's failure point, not the whole route at
   temperature 1. Look-ahead evidence for it: from search 1's line at 84.12-88.5% the policy's beam reached 94.8-98.9%.
+* c3 evals 92.660 / 92.550 (47.94 / 48.01B, medians 90.7%, 1-2/9 past 92.26%); its curriculum walked k01d back through
+  the shaft entry and the 86-90% loop at 80-89% bands in ~10 min to the 84.5% drop band (rows 7,946-7,951, 8-17%).
+  Tests: --auto-spine-from-spine smoke + bit-identity, --auto-spine-cut-ahead bit-identity re-run, 5/5 (143 s, CPU).
+* **pbr8b3_c4** (11:02 UTC): c3 stopped at 48.015B (no search running), box re-deployed on 58da965 (a first deploy
+  failed: the k01c files I had written on the box before committing them were untracked there and blocked the checkout;
+  removed, same md5 as the commit), resumed on k01d with `--demo-tau0 7951` (c3's last band) and
+  **`--auto-spine-from-spine 4`** (S = the loop's own --roots-secs), every other flag and the 36 milestones as c3.
