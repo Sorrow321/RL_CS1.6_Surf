@@ -3615,3 +3615,11 @@ ckpt_45558005760 (md5 6dec286c...), eval 82.652 at 45.564B. Credit at the start:
      d 2,990 (94.8%); from 8,000 (85.25%, mid-drop): d 648 (98.9%, the blade); from 8,400 (88.53%): d 2,812. Past the 83.8%
      platform the POPULATION already flies the rest down to the blade; what is left is the greedy's reliability over
      82-84% (c2's curriculum band now) and the blade (a GE stage's find).
+* c2 evals 82.597 / 82.712 / 82.343 / 82.891 / 82.951 / 82.921 (to 46.837B, medians 82.1-82.5%; 8/9 past the turn, 0/9
+  past k01c's success line 83.75%). The curriculum got through the 82% band (the flight to the platform) in ~25 min and
+  walked back to [6,869] (79.4%, bands 29-48%). Where the greedy still fails, vs k01c (ANALYSIS of our own lines): at
+  80.6-81.2% the spine RIDES the ramp up (|vh| 933 -> 816, vz +304..+449, apex z 1,825 at 81.69%) and flies straight north
+  at x ~2,550 (823 u/s) onto the platform (z 1,565 at (2,581, 2,844)); the greedy carries MORE energy (h 2,251-2,293 vs
+  2,228-2,248) but keeps it as horizontal speed (|vh| ~970-1,000), peaks at z 1,676 and drifts WEST (vx -330..-600), so
+  at y 2,628 it is at x 2,246, z 1,523 - below and west of the platform - and drops onto the *265 sheet.
+* Box extended to 12:42 UTC (09:42; credit $20.9, fleet burn 1.06 $/h with 3 boxes).
