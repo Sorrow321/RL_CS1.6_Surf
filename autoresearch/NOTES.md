@@ -3347,3 +3347,13 @@ Independence: only this branch and $AR_HOME/incumbent/ are read. c12's later wei
   passage TECHNIQUE - from rows after the energetic contact the greedy keeps h ~2,500-2,600 at the climb (more than
   the x1.12 root) and still stops at 74.2% 12/12: it flies the old chain's slow glide; the x1.12 chain climbs
   differently (rising up the ramp, landing in the passage at x -803).
+* 03:15 UTC: c21's contact band plateaued at 10-12% (03:00-03:15); evals 72.892 / 74.162 (median 74.1%) / 72.950 /
+  74.180 / 74.243; 0/9 energetic crossings in every eval.
+* **What the passage needs (traces, ANALYSIS of our own lines)**: the bench's energetic episodes (h ~2,620) reach the
+  climb at (-1,255, 1,769) heading straight SOUTH at 1,045 u/s with vz +252, skim along the ramp, top out at z ~1,975
+  at x -901 (vz +83 -> -64) and turn back north; the x1.12 chain arrives heading SOUTH-WEST INTO the ramp
+  ((-269, -654) at 73.48%, vz +483), rises at vz +461, peaks at z 2,127 at x -930 and lands on the passage floor
+  (z ~2,120) at x -806. So the passage technique is to steer into the climb ramp and turn speed into height; the
+  energy alone, carried straight along the ramp, goes east too low.
+* 03:20 UTC: one more Go-Explore from e02's own climb (its last 0.6 s, x1.0, 15 min, --ge-energy 16, --select-energy 1)
+  -> runs/pbr7b4_c21/stitch_p02: an unboosted energetic line through the passage, if the explorer finds the steer-in.
