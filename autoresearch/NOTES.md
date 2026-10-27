@@ -3784,3 +3784,23 @@ ckpt_45558005760 (md5 6dec286c...), eval 82.652 at 45.564B. Credit at the start:
   98.501 / 99.052 (median 98.5%; 7/9 past g2's success line 97.95%).
 * Hand-on for 109.846: the copier's ckpt_51386515456 (6.3M before the eval, md5 153e975f0e669867dec84d0715c33cdf),
   pulled.
+* c6 evals after the first finish: 98.501 / 99.052 / 99.185 / **110.969** (51.770B: 3/9 finish, best 70.94 s) /
+  **112.071** (51.846B: 4/9 finish, best 71.22 s, median 99.7%) / 99.430 / 108.657 (51.997B: 1/9, 73.63 s). Hand-on for
+  112.071: the copier's ckpt_51837927424 (7.9M before the eval, md5 0456576922a3e79de68ef4e450eef01b), pulled.
+* c6's search 2 (from-spine on g2, retried at ~51.72B with the patched auto_spine) took 625 s: its beam from the spine
+  reached only d 4,677; GE stage 1 (x1.0) d 926 - short of the greedy (867) - and stage 2 (x1.04) rooted a 755-state
+  chain at row 9,061 (the shaft entry) into the box -> spine k02 to d 0, success line d <= 100. Its curriculum: **0.0%**
+  at rows 9,750-9,815 (0.5 s before the box) - spawns on a boosted explorer chain fail even there (finishes DO count as
+  successes: the outcome ORs fleet.goal_hits()). Same trap a third time.
+* A hand search rooted at g2's END (auto_spine.py, `--start-spine` g2, `--start-row 9669` = the ledge at the spiral's
+  bottom; the first try from row 9,400 put GE's roots above the ledge and found only d 1,961 / 903) - plain beam d 1,047,
+  then **GE stage 1 UNBOOSTED -> d 1.1 (the finish box)**: a 386-state chain from row 9,415 -> spine
+  **`pbr8b3_f1`** (the greedy's own line + its branched beam + a short unboosted chain into the box).
+* The greedy recorder does not reproduce the trainer's eval: record_ckpt on the 112.071 weights (seeds 300-308) gives 0/9
+  finishes and mostly early deaths (56-82%; one 320 s truncation), where the trainer's evals of those weights finish
+  4/9. Spawn draws differ; the policy is specialised to the eval's spawn. So the greedy's own FINISHING line could not be
+  dumped.
+* (A process slip: `pkill -f 'runs/pbr8b3_la/gs3'` over box.py ssh matched its own shell - CLAUDE.md's self-match
+  warning - and killed the session before the next command; the trainer was untouched.)
+* **pbr8b3_c7** (15:41 UTC): the 112.071 weights (c6's ckpt_51837927424) on f1 + keys (success line d <= 101), c6's flags,
+  40 milestones (+ g2's 1,169). c6 stopped at ~52.0B.
