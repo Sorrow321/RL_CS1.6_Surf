@@ -4074,3 +4074,18 @@ $34.91 (reserve $10), no other box live. Incumbent: pbr8b1_c12 ckpt_55038705664 
   the turn, 150 x12) + one tile of the old pool's spiral rows (180 x10). From there the +50 of the energy line (84.77%) comes
   within ~1-2 s (round 8: a window works when its bonus is within ~1-1.5 s). Backup of the old pool:
   runs/pbr9b3_look/f2after_backup.npy on the box.
+* **Why the greedy does not glide - and a REGRESSION**: c3's greedy recording at 56.18B (ep2) LANDS on the platform at 82.68%
+  ((2,376, 2,969, 1,565), |v| 1,085 -> 230) and WALKS it at 250 u/s to 84.4% - the walking route round 8's f1e gate (success
+  only for an airborne crossing of 82.8%, h >= 2,173) had eliminated. Replacing f1e by f2e took that gate away: the new line
+  (84.77%, h >= 2,131) is passed by neither the walk nor the incumbent's flight to the platform's west end (both cross at h
+  ~1,700), so nothing paid the flight over 82-84% any more. In c3's evals 1 of 8 crossings of 82.8% already walks (h 1,809;
+  the others fly at 2,356-2,503); every 84.77% crossing is at h ~1,700. Lesson: **an energy gate is a skill's only payment -
+  replacing a spine removes it; keep the old line paying while the next is taught.**
+* `train_fast --demo-milestone-energy D:H,...` (new, generic, default off; tests/python/test_demo_milestone_energy.py: the pure
+  rule, the trainer's print / dump / refusals, flag off bit-identical to 76735f4 with milestones on): further milestones, each
+  paid the --demo-success-bonus once per episode whose record crosses d <= D with energy height >= H (a crossing without the
+  energy is spent) - an energy spine's line kept paying after the curriculum moves on.
+* The 22:37 pool (pool_dec1) held the greedy's own WALKING states (on the platform at h ~1,600, from which no glide exists) -
+  a pool must be filtered to the skill's states. pool_dec2 (7,186 states): the greedy's own FLYING states at 81-83.4% with h >=
+  2,150 (389 x8), f2 rows 7,250-7,450 (the planner's flight into the turn, h 2,413-2,500; 200 x15), f2's spiral rows 7,521-7,700
+  (179 x6).

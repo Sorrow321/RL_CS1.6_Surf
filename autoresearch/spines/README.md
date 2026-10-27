@@ -393,3 +393,7 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   crossing of d <= 8,702 (84.77%) with energy height >= 2,131 (the landing on the platform leaves ~1,650-1,750).
 * `pbr9b3_f2after_states.npy` (7,200 rows; md5 0f3e71307f262d9c630b866fd51e7f0d): f2 rows 7,521-7,700 (past the f2e cut: the
   chain's spiral drop, the policy's own exit at its bottom and the start of the lower level) tiled 40x.
+* `pbr9b3_dec2_states.npy` (7,186 rows; md5 624d43f2114bc0d7c7bfc76a4e480b5f): `--spawn-states` pool at the glide's DECISION
+  POINT, flying states only: the greedy's OWN states at 81-83.4% with energy height >= 2,150 and airborne (record_ckpt
+  --dump-states of pbr9b3_c3's 56.18B weights, 3 greedy episodes from the true start; 389 x8) + f2 rows 7,250-7,450 (the planner
+  line's flight into the turn; 200 x15) + f2 rows 7,521-7,700 (the spiral past the cut; 179 x6).

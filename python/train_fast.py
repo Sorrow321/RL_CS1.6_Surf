@@ -2254,12 +2254,15 @@ def stall_cut_plan(spine, cut, sample, success_d, greedy_d, gain):
     return {"line": line, "h_min": (h_end - float(gain)) if line >= float(greedy_d) else None}
 
 
-def milestone_pay(rec, ended, ms, paid):
+def milestone_pay(rec, ended, ms, paid, h=None, h_min=None):
     """--demo-milestones: (bonus count per row, the updated (N, M) paid table) for records
     ``rec`` (N,) against milestone distances ``ms`` (M,). A row is paid each milestone its
     record crosses during the episode, once; ``paid`` None (or a narrower table: milestones
     added since) marks the rows already past a new milestone as paid; ended rows (their record
-    is already the next episode's spawn) are re-marked by where they respawned."""
+    is already the next episode's spawn) are re-marked by where they respawned.
+    --demo-milestone-energy (pbr9b3): with ``h`` (N,) the rows' energy heights and ``h_min``
+    (M,) a floor per milestone (-inf = ungated), a crossing below its milestone's floor is
+    spent unpaid, like a low-energy crossing of the --demo-success-energy line."""
     rec = np.asarray(rec, np.float64)
     ended = np.asarray(ended, bool)
     ms = np.asarray(ms, np.float64)[None, :]
@@ -2271,6 +2274,8 @@ def milestone_pay(rec, ended, ms, paid):
     hit = (~ended)[:, None] & (~paid) & (rec[:, None] <= ms)
     paid |= hit
     paid[ended] = rec[ended][:, None] <= ms
+    if h is not None:
+        hit = hit & (np.asarray(h, np.float64)[:, None] >= np.asarray(h_min, np.float64)[None, :])
     return hit.sum(axis=1), paid
 
 
@@ -4994,6 +4999,14 @@ def main() -> None:
                          "--demo-success-bonus once per episode whose record crosses it (one "
                          "that spawns past it never is): a relaunch's way to keep the success "
                          "lines its previous --auto-spine run had passed. Off = none")
+    ap.add_argument("--demo-milestone-energy", default=None,
+                    help="comma list D:H - further milestones, each paid the "
+                         "--demo-success-bonus once per episode whose record crosses distance D "
+                         "with energy height z + |v|^2/2g >= H (a crossing without the energy is "
+                         "spent): an energy spine's line kept paying after the curriculum moves "
+                         "to the next spine (pbr9b3: round 8's airborne gate over a platform, "
+                         "kept while the next spine teaches what follows it). Off = none, "
+                         "bit-identical; config only when set, not restored")
     ap.add_argument("--auto-spine-quorum", type=int, default=5,
                     help="--auto-spine: greedy-eval episodes that must cross the success line")
     ap.add_argument("--auto-spine-patience", type=float, default=0.0,
@@ -14934,6 +14947,9 @@ def main() -> None:
     if args.demo_milestones:
         meta["config"]["demo_milestones"] = [float(x) for x in
                                              str(args.demo_milestones).split(",") if x.strip()]
+    if args.demo_milestone_energy:
+        # --demo-milestone-energy: dumped only when set (not restored: it belongs to its spines)
+        meta["config"]["demo_milestone_energy"] = str(args.demo_milestone_energy)
     if args.race_sr:
         # --race-sr: dumped only when on, so a flag-off run.json is the
         # control's byte for byte (test_int_split's identity check)
@@ -15949,6 +15965,23 @@ def main() -> None:
     if args.auto_spine_milestones and not (args.auto_spine and DEMO_BONUS):
         raise SystemExit("--auto-spine-milestones keeps --auto-spine's old success lines paying "
                          "the --demo-success-bonus: give both")
+    MILES_H = None                        # --demo-milestone-energy: a floor per milestone or None
+    if args.demo_milestone_energy:
+        _me = [tuple(float(y) for y in x.split(":")) for x in
+               str(args.demo_milestone_energy).split(",") if x.strip()]
+        if not DEMO_BONUS or any(len(x) != 2 for x in _me):
+            raise SystemExit("--demo-milestone-energy D:H,... pays the --demo-success-bonus at "
+                             "distance D for a crossing with energy height >= H: give the bonus "
+                             "and D:H pairs")
+        if args.auto_spine:
+            raise SystemExit("--demo-milestone-energy is not built for --auto-spine")
+        MILES_H = np.concatenate([np.full(len(MILES[0]), -np.inf),
+                                  np.asarray([x[1] for x in _me], np.float64)])
+        MILES[0] = np.concatenate([MILES[0], np.asarray([x[0] for x in _me], np.float64)])
+        print("--demo-milestone-energy: "
+              + ", ".join(f"{d:,.0f} for energy height >= {hh:,.0f}" for d, hh in _me)
+              + f" - each paid {DEMO_BONUS:g} once per episode whose record crosses it with "
+                f"the energy (a crossing without it is spent)")
 
     def _demo_bonus_pay(r, ended):
         """--demo-success-bonus: pay the rows whose ratchet record (after this reward call; an
@@ -15992,7 +16025,9 @@ def main() -> None:
         paid |= hit
         paid[ended] = rec[ended] <= DEMO_END_D
         if len(MILES[0]):
-            nm, MILES[1] = milestone_pay(rec, ended, MILES[0], MILES[1])
+            nm, MILES[1] = milestone_pay(rec, ended, MILES[0], MILES[1],
+                                         *((_en_height(), MILES_H) if MILES_H is not None
+                                           else ()))
             if nm.any():
                 if MILES_N[0] == 0:
                     print(f"--demo-milestones: first milestone payment at step {global_step:,}",
