@@ -581,6 +581,16 @@ def main(argv=None) -> int:
     line, info = beam(a, out)
     line_tag = "beam"
     res.update(info)
+    if (line is None or not len(line)) and a.start_spine and int(a.start_row) >= 0:
+        # --start-spine: a population that dies before its first frontier save leaves no line;
+        # the spine up to the start row is the policy's own line there, so the later stages
+        # (forks past the start row, Go-Explore from its last seconds) still run on it
+        line = clean(np.load(a.start_spine)[:int(a.start_row) + 1])
+        if a.start_keys and Path(a.start_keys).exists():
+            KEYS["beam"] = np.asarray(np.load(a.start_keys)[:len(line)], np.int32)
+        res.update(beam_prefix_only=1)
+        print(f"beam: no line from --start-row {int(a.start_row)}; the spine's {len(line)} rows "
+              f"up to it are the line", flush=True)
     best_src = None
     if line is not None and len(line):
         d = field_d(field, line)
