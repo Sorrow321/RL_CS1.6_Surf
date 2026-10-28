@@ -4177,3 +4177,5 @@ used for the search work below and then blocklisted and released.
 * **pbr9b2_c9** (02:35 UTC): c8's own snapshot `ckpt_56011784192` (just before its 56.021B 8/9 eval, inside the low-value-loss
   stretch; md5 abf46b61..., copied to the box's runs_ckpt.pt) with c8's flags at **--lr 2e-5** and `--demo-tau0 5753` (c8's
   band) - round 8's c12 move: the pre-break snapshot at a lower lr. NB the box's runs_ckpt.pt is no longer the incumbent.
+* c9 02:35-02:58 UTC: evals 115.489 (7/9, 68.66 s) / 115.483 (7/9) / 116.590 (8/9) / 116.579 (8/9); value loss 82-84, kl 0.19
+  - the pre-break snapshot at lr 2e-5 is stable; band at 5,748.
