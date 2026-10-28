@@ -502,3 +502,22 @@ def test_the_bc_pitch_coef_flag_surface_and_the_default_sum():
     assert "nll_pt, nll_mm = nll_pt.sum(-1), nll_mm.sum(-1)" in tf
     rc = (ROOT / "tools" / "record_ckpt.py").read_text(encoding="utf-8")
     assert '"bc_keys_engine", "bc_pitch_coef",' in rc
+
+
+# --------------------------------------------------------------------------
+# 8. exit_local --gate-evals: N shared-seed 9-episode evals per side
+# --------------------------------------------------------------------------
+def test_gate_evals_seeds_and_files(tmp_path):
+    import exit_local
+    assert exit_local.gate_seed(5, 0) == 7005                # the one gate eval, as before
+    seeds = {exit_local.gate_seed(r, k) for r in range(40) for k in range(3)}
+    assert len(seeds) == 120                                   # distinct across rounds and evals
+    assert exit_local.gate_files(tmp_path, 1) == [tmp_path / "eval.jsonl"]
+    assert exit_local.gate_files(tmp_path, 3, incumbent=True) == [
+        tmp_path / "eval_incumbent.jsonl", tmp_path / "eval_incumbent_1.jsonl",
+        tmp_path / "eval_incumbent_2.jsonl"]
+    src = (ROOT / "tools" / "exit_local.py").read_text(encoding="utf-8")
+    assert 'ap.add_argument("--gate-evals", type=int, default=1,' in src
+    # the first eval's command is the one that always ran (seed 7000 + r, eval.jsonl)
+    assert 'ev_seed = ["--seed", 7000 + r] if args.gate_rematch else []' in src
+    assert "--gate-evals N > 1 compares on shared spawns" in src

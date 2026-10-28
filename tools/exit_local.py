@@ -101,6 +101,19 @@ def episode_times(traj: Path):
     return out
 
 
+def gate_seed(r: int, k: int) -> int:
+    """The spawn seed of the k-th gate eval of round r, the same for the challenger and the
+    incumbent's rematch: 7000 + r for the first (as it always was), then 20000 + 100 r + k."""
+    return 7000 + r if k == 0 else 20000 + 100 * r + k
+
+
+def gate_files(rdir: Path, n: int, incumbent: bool = False):
+    """The gate's eval files of one round: eval.jsonl (eval_incumbent.jsonl) as before, then
+    eval_<k>.jsonl (eval_incumbent_<k>.jsonl) for k = 1 .. n-1."""
+    stem = "eval_incumbent" if incumbent else "eval"
+    return [rdir / f"{stem}.jsonl"] + [rdir / f"{stem}_{k}.jsonl" for k in range(1, max(1, n))]
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--ckpt", required=True, help="the seed checkpoint (policy-derived only)")
@@ -175,6 +188,15 @@ def main() -> int:
                          "more often first, then faster, for a seed that does not finish yet")
     ap.add_argument("--grader", default="C:/RL_Surf/autoresearch/score.py",
                     help="--gate-rule score: the score.py whose score_file grades an eval")
+    ap.add_argument("--gate-evals", type=int, default=1,
+                    help="evals per side per round: the challenger's eval and the incumbent's "
+                         "rematch are each N record_ckpt runs of --eval-eps episodes on the same N "
+                         "spawn seeds (gate_seed), and --gate-rule score gates on the MEAN grader "
+                         "score over them (finishes and the paired time over all of them). The "
+                         "grader counts only its first score_episodes (9) episodes of a file, so a "
+                         "longer --eval-eps does not reduce the gate's noise; more files do (pbx "
+                         "2026-10-28: one finisher of 9 is 1.11 points, a second of best time "
+                         "0.03). 1 = one eval per side, as before")
     ap.add_argument("--demo-keys", choices=("auto", "off"), default="auto",
                     help="auto: when plan_to_bc wrote the spine's held keys (<spine>.keys.npy, a "
                          "--keys-hold checkpoint), train with --demo-keys so a spawn on the "
@@ -187,6 +209,9 @@ def main() -> int:
     plan_extra = shlex.split(args.plan_args)
     distil_extra = shlex.split(args.distil_args)
     grade = None
+    if args.gate_evals > 1 and not (args.gate and args.gate_rematch):
+        raise SystemExit("--gate-evals N > 1 compares on shared spawns: needs --gate 1 "
+                         "--gate-rematch 1")
     if args.gate_rule == "score":
         if not (args.gate and args.gate_rematch):
             raise SystemExit("--gate-rule score compares on the same spawns: needs --gate 1 "
@@ -367,7 +392,16 @@ def main() -> int:
         run([PY, "-u", ROOT / "tools" / "record_ckpt.py", final, "--map", args.map,
              "--episodes", args.eval_eps, "--ep-ticks", args.max_ticks, "--out", ev, *ev_seed],
             rdir / "eval.log", timeout=3600)
-        fins, n = finish_times(ev) if ev.exists() else ([], 0)
+        # --gate-evals N: N - 1 more evals on their own shared seeds (gate_seed)
+        evs = gate_files(rdir, args.gate_evals)
+        for k, e in enumerate(evs[1:], start=1):
+            run([PY, "-u", ROOT / "tools" / "record_ckpt.py", final, "--map", args.map,
+                 "--episodes", args.eval_eps, "--ep-ticks", args.max_ticks, "--out", e,
+                 "--seed", gate_seed(r, k)], rdir / f"eval_{k}.log", timeout=3600)
+        fins, n = [], 0
+        for e in evs:
+            _f, _n = finish_times(e) if e.exists() else ([], 0)
+            fins, n = fins + _f, n + _n
         row["eval"] = {"finishes": len(fins), "episodes": n,
                        "best_s": round(min(fins), 3) if fins else None,
                        "mean_s": round(sum(fins) / len(fins), 3) if fins else None}
@@ -394,7 +428,16 @@ def main() -> int:
                 run([PY, "-u", ROOT / "tools" / "record_ckpt.py", best_mean_ck, "--map", args.map,
                      "--episodes", args.eval_eps, "--ep-ticks", args.max_ticks, "--out", evi,
                      *ev_seed], rdir / "eval_incumbent.log", timeout=3600)
-                fi, ni = finish_times(evi) if evi.exists() else ([], 0)
+                evis = gate_files(rdir, args.gate_evals, incumbent=True)
+                for k, e in enumerate(evis[1:], start=1):
+                    run([PY, "-u", ROOT / "tools" / "record_ckpt.py", best_mean_ck, "--map",
+                         args.map, "--episodes", args.eval_eps, "--ep-ticks", args.max_ticks,
+                         "--out", e, "--seed", gate_seed(r, k)],
+                        rdir / f"eval_incumbent_{k}.log", timeout=3600)
+                fi, ni = [], 0
+                for e in evis:
+                    _f, _n = finish_times(e) if e.exists() else ([], 0)
+                    fi, ni = fi + _f, ni + _n
                 bar = (sum(fi) / len(fi)) if (fi and len(fi) == ni) else float("inf")
                 row["eval_incumbent"] = {"ckpt": str(best_mean_ck), "finishes": len(fi),
                                          "episodes": ni, "mean_s": round(bar, 3) if fi else None}
@@ -413,8 +456,8 @@ def main() -> int:
                 # set its mean to inf and handed the gate to a challenger 0.33 s SLOWER on the 8
                 # spawns both finished. Compare on the spawns both finished; the challenger must
                 # still finish all of its own.
-                ci = episode_times(ev) if ev.exists() else []
-                ii = episode_times(evi) if evi.exists() else []
+                ci = [t for e in evs for t in (episode_times(e) if e.exists() else [])]
+                ii = [t for e in evis for t in (episode_times(e) if e.exists() else [])]
                 pairs = [(a, b) for a, b in zip(ci, ii) if a is not None and b is not None]
                 paired = (sum(a - b for a, b in pairs) / len(pairs)) if pairs else None
                 row["paired_s"] = round(paired, 3) if paired is not None else None
@@ -425,7 +468,18 @@ def main() -> int:
                     # the grader on the same spawns: more finishes first, then the faster best
                     # finish, then the deeper best progress (sidistic 2026-10-23: the seed
                     # finishes 0/9 greedy, so the mean rule above could never accept)
-                    sc_c, sc_i = grade(ev), grade(evi)
+                    if args.gate_evals > 1:
+                        # --gate-evals: the mean grader score over the N shared-seed evals (a
+                        # file the grader cannot read makes that side's score None)
+                        def _mean_grade(files):
+                            g = [grade(e) for e in files]
+                            return (None if any(x is None for x in g)
+                                    else round(sum(g) / len(g), 3))
+                        sc_c, sc_i = _mean_grade(evs), _mean_grade(evis)
+                        row["score_evals"] = {"challenger": [grade(e) for e in evs],
+                                              "incumbent": [grade(e) for e in evis]}
+                    else:
+                        sc_c, sc_i = grade(ev), grade(evi)
                     row["score"] = {"challenger": sc_c, "incumbent": sc_i}
                     accept = sc_c is not None and (sc_i is None or sc_c > sc_i)
                     log(fh, f"round {r}: grader {sc_c} (challenger) vs {sc_i} (incumbent) "
