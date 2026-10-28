@@ -4137,3 +4137,12 @@ was fetched that way. The operator may want box.py's pull to split large files t
   - with a ninth finish that eval would have beaten the incumbent). The strict band sits IN the turn (rows 7,435-7,440, ~64% /
   ~6% band success alternately) - the curriculum now waits where the skill is missing; the greedy's 84.77% crossings are still at
   h ~1,700.
+* **c6: THE GREEDY GLIDES - and loses reliability.** From ~57.33B every eval crossing of 84.77% is energetic (h 2,256-2,401): the
+  greedy turns north at 83.4% and glides past the platform; the strict band walked 7,440 -> 6,310 (70.5%) in ~25 min once the turn
+  was learned. But the evals fell apart at the same time: 113.255 (5/9) / **108.761 (1/9)** / 61.455 (0/9) / 112.122 (4/9) / 110.987
+  (3/9), deaths all over the course (11-97 s), kl 0.32-0.38 per 50M steps, value loss 95 -> 135-174. Split times of the gliders
+  (57.488B) vs the landers (57.186B): the glide saves ~0.9 s over 84-85% (0.6 s vs 1.5 s) but the weights got slower EVERYWHERE
+  before it (+0.4 s by 50%, +1.0 s by 70%, +1.1 s by 80%), so the gliders finish in 69.7-70.5 s against the landers' 68.65-69.6 s.
+* **pbr9b3_c7** (01:03 UTC): c6's snapshot at its 4/9 gliding eval (ckpt_57487654912, md5 c62ef8a6...) at **lr 2.5e-5**, non-strict
+  (consolidation, not learning), --critic-warmup 50, --demo-tau0 6310, the same gates. Plan B at ~02:15 UTC if it does not
+  recover: c4's 9/9 snapshot in c4's regime for a 9/9 under 68.66 s.
