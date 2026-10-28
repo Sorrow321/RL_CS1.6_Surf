@@ -4188,3 +4188,12 @@ was fetched that way. The operator may want box.py's pull to split large files t
   `pbr9b3_shaftdec_states.npy` (f2 rows 8,250-8,520 - the rim and upper sheets of the policy's own beam finish - x15 + half of
   dec2), --critic-warmup 50, lr 5e-5. c9 (the gentle glide) keeps running beside it: its band sits at the turn (7,435-7,440) with
   kl 0.16; evals 116.578 (8/9) / 113.251 (5/9), no glide yet.
+* **c9 (the gentle glide: strict, critic warmup 100, lr 2.5e-5 from the start) ADOPTED THE GLIDE WITHOUT THE DEGRADATION.** Evals
+  116.578 / 113.251 / 114.362 / **117.702** (57.261B: 9/9, 68.95 s, still landing) / 112.162 (57.337B: **7 of 8 crossings of
+  84.77% energetic**, finishes **68.49** / 68.80 / 69.39 s, 4/9). The 68.49 s glider is at 80% at 55.4 s like the best landers (no
+  general slow-down this time: c6 had +1.1 s by 80%) and gains ~1 s over 84-85%. kl 0.14 (max 0.51), value loss ~61. Its band
+  walked 7,440 -> 6,960 (79%). The gliders' failures are the old ones: 4 of 5 on the final shaft's upper sheet (92.6-92.9%, z
+  ~263-283), 1 on the 83% sheet.
+* 02:53 UTC: c10 stopped (116.572 / 115.464 after its snapshot eval; the box goes to c9 alone) and c9's spawn pool swapped in place
+  (same path autoresearch/spines/pbr9b3_dec2_states.npy on the box, atomic mv; re-read at 57.409B) to the content of
+  pbr9b3_shaftdec_states.npy (the shaft rows of the policy's own beam finish x15 + half of dec2) - shaft practice for the gliders.
