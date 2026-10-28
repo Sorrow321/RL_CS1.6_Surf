@@ -3,18 +3,19 @@
  "round": 9,
  "final": false,
  "best": {
-  "score": 117.705,
-  "eval_file": "/home/steam/ar_pb/runs/pbr9b3/pbr9b3_c4/traj_56963366912.jsonl",
-  "run": "pbr9b3_c4",
-  "step": 56963366912,
-  "ckpt": "/home/steam/ar_pb/runs/pbr9b3/pbr9b3_c4/ckpt_56958648320.pt",
+  "score": 117.734,
+  "eval_file": "/home/steam/ar_pb/runs/pbr9b3/pbr9b3_c11/traj_57789644800.jsonl",
+  "run": "pbr9b3_c11",
+  "step": 57789644800,
+  "ckpt": "/home/steam/ar_pb/runs/pbr9b3/pbr9b3_c11/ckpt_57789644800.pt",
   "recipe": [
    "c1: resume of the incumbent (pbr8b1_c12 55.039B) with c12's flags (f1e, energy 150, lr 5e-5)",
-   "c2/c3: f2e (planner line + an unboosted GE glide past the 84% platform + own finish, cut at 84.95%) with --demo-success-energy 300 (c2 lr 1e-4 collapsed; c3 lr 5e-5 from c2's 55.84B snapshot)",
-   "c4: c3's 56.736B weights + --demo-milestone-energy 9821:2173 (round 8's 82.8% airborne gate kept paying) + a flying-only spawn pool at the decision point, lr 5e-5; 117.705 at 56.963B (9/9, 68.86 s)"
+   "c2-c4: f2e = f2 (planner line + an UNBOOSTED Go-Explore glide past the 84% platform + own finish) cut at 84.95% with --demo-success-energy 300; c4 added --demo-milestone-energy 9821:2173 (round 8's 82.8% airborne gate kept paying) and a flying-only decision-point pool (dec2); 117.705 at 56.963B (9/9, 68.86 s, landing)",
+   "c9: c4's 9/9 snapshot (56.9586B) + --demo-success-strict (a finish is no curriculum success of its own), --demo-tau0 7445 (the band in the turn), --critic-warmup 100, lr 2.5e-5: the greedy adopted the glide without degrading; pool swapped in place to shaft rows + half dec2 (shaftdec) at 57.409B; collapsed at 58.09B after a second swap",
+   "c11: c9's snapshot ckpt_57487130624 at lr 1.5e-5, --critic-warmup 50, strict, --demo-tau0 6260, --spawn-states pbr9b3_shaftdec_states.npy; 117.734 at 57.790B (9/9, 8 gliders, best 67.98 s)"
   ],
-  "resume_from": "/home/steam/ar_pb/incumbent/r8/ckpt.pt",
-  "commit": "21282d59"
+  "resume_from": "/home/steam/ar_pb/runs/pbr9b3/pbr9b3_c4/ckpt_56958648320.pt (c9) <- incumbent r8 ckpt",
+  "commit": "9c6465e9e4d142973e64f7950b28b8ee48fc2498"
  },
- "summary": "Best 117.705 (c4 56.963B: 9/9, 68.86 s; incumbent 117.711). c1 (the incumbent continued) 117.692. The policy loses time at a 72% corner loop (~0.8 s) and by landing on the 84% platform (~1-2 s). An unboosted Go-Explore glide past the platform (f2, ~67.3 s on its clock) was found, but 2 h of energy-gated curriculum taught nothing: a finish counted as curriculum success, so the band walked back on finishes while 0/16 sampled episodes glided (band_bench). Replacing round 8's f1e also dropped its 82.8% airborne gate and the greedy began walking the platform again; c4 restored it as an energy-gated milestone and got 8-9/9. New generic flags (off by default, tested bit-identical): --demo-milestone-energy, --demo-success-strict, --demo-success-time; tools/pull_split.sh for slow boxes. c5 = c4 + --demo-success-strict with the band in the turn (running)."
+ "summary": "117.734 (c11 57.790B: 9/9 finish, best 67.98 s; incumbent 117.711 = 9/9 at 68.66 s). The time came from a ROUTE change: the policy landed on the 84% platform; an unboosted Go-Explore glide from the planner's own 83% states (a 40-deg turn north + no-strafe glide) was taught with an energy-gated cut once three curriculum traps were fixed generically: a finish counted as curriculum success (--demo-success-strict), replacing a spine dropped its energy gate (--demo-milestone-energy), and resumes spiked kl into collapses at the 56.6% shaft (--critic-warmup, lr 2.5e-5/1.5e-5). The gliders finish 68.0-68.5 s; reliability is 6-9/9 (the shaft sheet at 92.7% is the main killer). New tools: splice_roll.py, pull_split.sh; --demo-success-time unused."
 }
