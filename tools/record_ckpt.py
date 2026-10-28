@@ -120,6 +120,8 @@ TRAIN_ONLY = frozenset({
     "demo_match_band",
     # --demo-success-strict: the TRAINING curriculum's outcome rule under --demo-success-energy
     "demo_success_strict",
+    # --demo-success-pace: the TRAINING curriculum's time rule for its spine's success line
+    "demo_success_pace",
     # --auto-spine-async: WHEN the training curriculum's search runs (beside it, not paused)
     "auto_spine_async",
     # --respawn-greedy-temp: the TRAINING rollout's sampling temperature for greedy-row spawns

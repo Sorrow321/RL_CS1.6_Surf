@@ -2135,6 +2135,37 @@ def energy_gate(hit, ended, paid, ok, h, rec, end_d, h_min):
     return pay, ok, boot
 
 
+def pace_allowed(n, cross_row, frac, slack_ticks):
+    """--demo-success-pace (pbr9b1, 2026-10-28): the ticks an episode spawned at each spine row may
+    take to cross the success line -> (n,) int64: (cross_row - row) x (1 + frac) + slack_ticks for a
+    row before the crossing row, slack_ticks from it on (a spawn past the line is not timed)."""
+    rows = np.arange(int(n), dtype=np.float64)
+    left = np.maximum(float(cross_row) - rows, 0.0)
+    return np.floor(left * (1.0 + float(frac)) + float(slack_ticks)).astype(np.int64)
+
+
+def pace_gate(hit, ended, paid, ok, idx, elapsed, allowed, rec, end_d):
+    """--demo-success-pace: the success line's crossings, gated on time (energy_gate's shape).
+    ``hit`` = the rows whose record crosses the line on this call; ``paid`` = the rows whose episode
+    already crossed (or spawned past) it; ``ok`` = the rows whose episode SUCCEEDED (None on the first
+    call); ``idx`` = each row's spawn row on the spine (-1: off the spine - never paced); ``elapsed`` =
+    ticks since each episode's spawn; ``allowed`` = pace_allowed(); ``rec`` = the records (an ended
+    row's is its new spawn's). -> (pay, ok, ok_boot): the rows to pay now, the updated outcomes (the
+    ended rows re-anchored on their new spawns: a spawn past the line succeeds unpaid) and a copy
+    taken before that re-anchoring - the ended episodes' own outcomes."""
+    idx = np.asarray(idx, np.int64)
+    if ok is None:
+        ok = np.asarray(paid, bool).copy()
+    on = idx >= 0
+    lim = np.where(on, np.asarray(allowed, np.int64)[np.clip(idx, 0, len(allowed) - 1)], -1)
+    pay = np.asarray(hit, bool) & on & (np.asarray(elapsed, np.int64) <= lim)
+    ok = ok | pay
+    boot = ok.copy()
+    e = np.asarray(ended, bool)
+    ok[e] = np.asarray(rec)[e] <= end_d
+    return pay, ok, boot
+
+
 def strict_outcomes(goal_hits, ok_boot):
     """--demo-success-strict (pbr9b1, 2026-10-27): the curriculum's outcome of the ended spine
     episodes under --demo-success-energy when only the energetic crossing counts: ``ok_boot``
@@ -4940,6 +4971,17 @@ def main() -> None:
                          "descent, no deeper than the greedy's) is taught for that and not for "
                          "the depth the greedy reaches already. A low-energy crossing spends the "
                          "episode's chance. Off = the depth rule, bit-identical; not restored")
+    ap.add_argument("--demo-success-pace", type=float, nargs=2, default=None,   # None = off
+                    metavar=("FRAC", "SECS"),
+                    help="--demo-success-d + --demo-success-bonus: a spine episode SUCCEEDS (and "
+                         "is paid the bonus) only if it crosses the success line no slower than "
+                         "the spine itself did from the episode's spawn row: within (rows from "
+                         "the spawn row to the spine's crossing row) x (1 + FRAC) + SECS. An "
+                         "episode off the spine is never paced (no bonus, no success); a finish "
+                         "without the paced crossing is a failure (the --demo-success-strict "
+                         "rule). For a line found for its TIME (a search line that is faster, "
+                         "not deeper or more energetic, than the greedy's). Off = byte-"
+                         "identical; config only when set, not restored")
     ap.add_argument("--demo-success-strict", action="store_true",
                     help="--demo-success-energy: the curriculum's outcome for a spine episode is "
                          "the energetic crossing ALONE - an episode that reaches the finish "
@@ -11819,6 +11861,22 @@ def main() -> None:
                 # pass, taught for the energy it carries there), and a swap sets the rule anew
                 print("--demo-success-energy with --auto-spine-energy: the starting spine is an "
                       "ENERGY spine (its quorum counts crossings with the energy)")
+        if args.demo_success_pace is not None:
+            if args.demo_success_d is None or not float(args.demo_success_bonus or 0.0) > 0.0:
+                raise SystemExit("--demo-success-pace gates the --demo-success-d line and its "
+                                 "--demo-success-bonus: give both")
+            if args.demo_success_energy is not None or float(args.demo_success_alive or 0.0) > 0.0:
+                raise SystemExit("--demo-success-pace is its own success rule: not with "
+                                 "--demo-success-energy or --demo-success-alive")
+            if args.auto_spine:
+                raise SystemExit("--demo-success-pace times the starting spine: not with "
+                                 "--auto-spine (a swapped spine has another clock)")
+            if args.reward_per_decision:
+                raise SystemExit("--demo-success-pace reads the crossing tick: it needs the "
+                                 "per-tick reward path (no --reward-per-decision)")
+            _pf, _ps = (float(x) for x in args.demo_success_pace)
+            if _pf < 0.0 or _ps < 0.0:
+                raise SystemExit("--demo-success-pace FRAC SECS must be >= 0")
         if args.demo_success_strict:
             if args.demo_success_energy is None:
                 raise SystemExit("--demo-success-strict counts the --demo-success-energy "
@@ -14900,6 +14958,9 @@ def main() -> None:
     if args.demo_file and args.demo_match_band:
         # --demo-match-band: dumped only when on (not restored: a property of the run)
         meta["config"]["demo_match_band"] = 1
+    if args.demo_file and args.demo_success_pace is not None:
+        # --demo-success-pace: dumped only when set (not restored: it belongs to its spine)
+        meta["config"]["demo_success_pace"] = [float(x) for x in args.demo_success_pace]
     if args.demo_file and args.demo_success_strict:
         # --demo-success-strict: dumped only when on (not restored: a property of the run)
         meta["config"]["demo_success_strict"] = 1
@@ -15896,6 +15957,19 @@ def main() -> None:
               f"succeeds only if it crosses d <= {DEMO_END_D:,.0f} with energy height >= "
               f"{DEMO_H_MIN:,.0f} (the spine end's - {float(args.demo_success_energy):g})")
 
+    # --demo-success-pace FRAC SECS: the crossing counts only within the spine's own time from the
+    # episode's spawn row (x (1 + FRAC) + SECS); PACE = the allowed ticks per spine row
+    PACE = None
+    if DEMO_END_D is not None and args.demo_success_pace is not None:
+        _pf, _ps = (float(x) for x in args.demo_success_pace)
+        _pff = slots[0].reward_field if slots[0].reward_field is not None else slots[0].goal_field
+        _pcr = spine_cross_row(demo.S, _pff.sample, DEMO_END_D)
+        PACE = pace_allowed(demo.n, _pcr, _pf, TICK.secs_to_ticks(_ps))
+        print(f"--demo-success-pace {_pf:g} {_ps:g}: a spine episode succeeds only if it crosses "
+              f"d <= {DEMO_END_D:,.0f} within (spine row {_pcr:,} - its spawn row) x {1.0 + _pf:g} "
+              f"+ {int(TICK.secs_to_ticks(_ps))} ticks (from the map start: {int(PACE[0]):,} "
+              f"ticks); off the spine never, a finish without it is a failure")
+
     def _alive_field():
         return (slots[0].reward_field if slots[0].reward_field is not None
                 else slots[0].goal_field)
@@ -15951,6 +16025,11 @@ def main() -> None:
             pay, DEMO_OK[0], DEMO_OK[1] = energy_gate(hit, ended, paid, DEMO_OK[0],
                                                        _en_height(), rec, DEMO_END_D,
                                                        DEMO_H_MIN)
+        if PACE is not None:
+            # --demo-success-pace: only a crossing on the spine's own pace pays and succeeds;
+            # DEMO_OK[1] = the episodes' outcomes before the ended rows re-anchor
+            pay, DEMO_OK[0], DEMO_OK[1] = pace_gate(hit, ended, paid, DEMO_OK[0], demo_idx,
+                                                     ep_len + 1, PACE, rec, DEMO_END_D)
         if ALIVE_T:
             # --demo-success-alive: a crossing (with the energy) pays and succeeds only once its
             # episode has stayed alive ALIVE_T ticks past it; ALV[3] = the outcomes before the
@@ -19560,6 +19639,11 @@ def main() -> None:
                                 # --demo-success-alive: the ended episodes' survived crossings
                                 if ALV[3] is not None:
                                     goal_now = goal_now | np.asarray(ALV[3])[ei]
+                            elif DEMO_END_D is not None and PACE is not None:
+                                # --demo-success-pace: the paced crossing alone
+                                goal_now = strict_outcomes(
+                                    goal_now, None if DEMO_OK[1] is None
+                                    else np.asarray(DEMO_OK[1])[ei])
                             elif (DEMO_END_D is not None and DEMO_H_MIN is not None
                                   and args.demo_success_strict):
                                 # --demo-success-strict: the energetic crossing alone
