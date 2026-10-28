@@ -521,3 +521,20 @@ def test_gate_evals_seeds_and_files(tmp_path):
     # the first eval's command is the one that always ran (seed 7000 + r, eval.jsonl)
     assert 'ev_seed = ["--seed", 7000 + r] if args.gate_rematch else []' in src
     assert "--gate-evals N > 1 compares on shared spawns" in src
+
+
+# --------------------------------------------------------------------------
+# 9. beam_tas --view-hold: a held yaw offset per proposal env (the planner's --view-ou-sigma)
+# --------------------------------------------------------------------------
+def test_view_hold_is_off_by_default_greedy_untouched_and_cloned():
+    bt = (ROOT / "tools" / "beam_tas.py").read_text(encoding="utf-8")
+    assert 'ap.add_argument("--view-hold", type=float, nargs=2, default=None' in bt
+    assert "self._vh = None\n        if view_hold is not None:" in bt          # off: no state
+    # applied to every env, then the greedy envs take mu (they never carry an offset)
+    i_add = bt.index("z[:, 0] = z[:, 0] + self._vh_c")
+    i_greedy = bt.index("z[:self._ng] = mu[:self._ng]", i_add)
+    assert i_add < i_greedy
+    # a private generator (the policy's own draw stream is untouched) and the clone at a resample
+    assert "self._vh_gen = torch.Generator(device=z.device)" in bt
+    assert "spol._vh_c[_li] = spol._vh_c[_di]" in bt
+    assert "--view-hold offsets the proposal envs' yaw draws: needs --greedy-envs" in bt
