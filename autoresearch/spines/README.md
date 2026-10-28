@@ -400,6 +400,6 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
 * `pbr9b3_shaftdec_states.npy` (7,658 rows): `--spawn-states` pool for reliability - f2 rows 8,250-8,520 (91.5-94.1%: the final
   shaft's rim and upper kill sheets on the policy's own beam finish, where the greedy's most common failure is: the z ~240 sheet
   crossed too far west) x15 + every second state of pbr9b3_dec2_states.
-* `pbr9b3_shaftglide_states.npy` (7,525 rows): f2 rows 8,250-8,520 (the shaft's rim and upper sheets) x10 + f2 rows 7,480-7,600
+* `pbr9b3_shaftglide_states.npy` (7,526 rows; md5 0a702edfc55863f0adcfd24231df0338): f2 rows 8,250-8,520 (the shaft's rim and upper sheets) x10 + f2 rows 7,480-7,600
   (the end of the glide and the start of the spiral drop, where gliders fall into the z ~1,460 sheet) x20 + every third state of
   pbr9b3_dec2_states. Swapped into pbr9b3_c9's pool path in place (03:37 UTC).

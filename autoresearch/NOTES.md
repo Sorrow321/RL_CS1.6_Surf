@@ -4202,3 +4202,8 @@ was fetched that way. The operator may want box.py's pull to split large files t
   the finish times moved down to 68.2-69.7 s (the landers' 68.65-69.6 s): a 9/9 eval of these weights beats the incumbent. Failures:
   the shaft sheets (92.7 / 93.5 / 95.4%) and the z ~1,460 sheet under the 80-85% platform region (80.6 / 83.0 / 84.7%). kl 0.16, no
   update above 0.33.
+* c9 to 03:35 UTC: 116.601 (8/9, 68.64 s) / 114.367 (6/9) / 113.272 (5/9, 68.52 s) / 109.907 (2/9) - no 9/9 since it glides (0 of 9
+  evals). Failures of the last three: the shaft sheets 92.7-94.5% (4), the z ~1,460 sheet at 84.7-84.9% where the glide enters the
+  spiral drop ((1,193-1,332, 3,219-3,469); 3 - the glide's own new failure), a 106 s stall on the 90.7% rim ledge (1), scattered
+  (40.6 / 56.6 / 61.4 / 71.6 / 73.1%). 03:37 UTC: c9's pool swapped in place to pbr9b3_shaftglide_states (the shaft rows x10 +
+  the glide's end and the spiral's start, f2 rows 7,480-7,600, x20 + a third of dec2); re-read at 57.965B.
