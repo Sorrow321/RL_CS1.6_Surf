@@ -418,3 +418,12 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   first 900 ticks (72.4-83.3%) x2 + pbr9b1_fo2dec_states x1 (the fly-over and the soft landing), a `--spawn-states` pool.
 * `pbr9b1_s71dec2_states.npy` (13,584 rows; md5 72aba8a25abc402633f68c20884ca2c5): pbr9b1_s71dec_states + the s71 beam line's own
   shaft passage (ticks 1,511-2,211: 90% -> the finish, after its soft landing) x3, a `--spawn-states` pool.
+* `pbr9b1_s71d.npy` + `.keys.npy` (6,477 rows; md5 39b920caed473f7d1ca030ce29615fde / 9679b98ee41ecf418258203046956233): fo2 rows
+  0-6,388 (the incumbent's own greedy line to 71.2%, 0.15 s before its bounce) + GE 4's chain cell 46772 (root row 6,388 with the
+  heading turned -4 deg, unboosted; ge_replay 4/4 links): it meets the 71.3% surface heading south-west and goes south at x
+  ~-1,150 instead of bouncing north-east into the loop; cut at chain index 88 (72.31%, d 15,825), ~0.56 s ahead of the greedy line.
+  Beams of pbr9b1_c6's weights from chain index 60 / 88 finish (67.21 s / 67.28 s from the spawn on the line's clock; from index
+  100 every copy dies). For `--demo-success-pace`. No demo, no record data (pbr9b1, round 9).
+* `pbr9b1_s71dbeam_states.npy` (2,297 rows; md5 22d3d1b8d4b994503126f521fc009327): that beam's line from s71d's last state to the finish.
+* `pbr9b1_s71ddec_states.npy` (11,334 rows; md5 2151cc182b69b5ec96987c690aebd10c): s71d rows 6,300-6,387 (the approach) x20 + the chain
+  (6,388-6,476) x15 + its beam's first 900 ticks x2 + pbr9b1_fo2dec_states x1 + the s71 beam's shaft passage x3.
