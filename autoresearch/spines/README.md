@@ -404,3 +404,15 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   (`--demo-success-energy 150` -> h >= 1,657 at d <= 6,890). No demo, no record data (pbr9b1, round 9).
 * `pbr9b1_fo2dec_states.npy` (md5 in NOTES): fo2 rows 7,380-7,511 (the greedy approach) x10 + 7,512-7,637 (the fly-over) x8 +
   7,638-7,888 (the soft landing and the lower level) x8, a `--spawn-states` pool.
+* `pbr9b1_s71c.npy` + `.keys.npy` (6,465 rows; md5 b8950d1c242c117036c1ed72ec0525fe / 2c11b5da062e4089a86b3a9c3b339757): fo2 rows
+  0-6,274 (the incumbent's own greedy line to 69.75%) + a Go-Explore chain (GE 4: 161 roots = 23 of the line's own states over
+  69.1-71.4% x the velocity heading turned 0 / +-4 / +-8 / +-12 deg, unboosted; cell 104115, root row 6,274 turned +12 deg,
+  ge_replay 6/6 links) that turns south ~150 u earlier and skips the greedy's bounce-and-loop at 71.5-72.1%; cut at chain index
+  190 (72.41%, d 15,766): a beam of pbr9b1_c5's weights (beam_tas, 4,096 copies, --objective finish) from there FINISHES (6,987
+  finishes; first at 16.96 s -> 66.58 s from the spawn on the line's clock), while from the chain's end (73.76%) every copy dies
+  within 1.5 s. For `--demo-success-pace` (time, not energy: the chain reaches 72.41% ~0.7 s sooner with LESS energy). No demo,
+  no record data (pbr9b1, round 9).
+* `pbr9b1_s71beam_states.npy` (2,212 rows; md5 in NOTES): that beam's per-tick line from s71c's last state to the finish
+  (tools/beam_best_states.py, bit-exact replay).
+* `pbr9b1_s71dec_states.npy` (md5 in NOTES): s71c rows 6,150-6,273 (the approach) x20 + 6,274-6,464 (the chain) x15 + the beam's
+  first 900 ticks (72.4-83.3%) x2 + pbr9b1_fo2dec_states x1 (the fly-over and the soft landing), a `--spawn-states` pool.
