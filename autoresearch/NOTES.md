@@ -4258,3 +4258,10 @@ Box: 58011053, RTX 4080S, 0.41 $/h, Ontario CA (machine 141481, the box rounds 7
   kl-2.12 update at its very end: drift of the early course after 3B steps whose curriculum, pool and reservoir all sat past 77%.
 * **pbr9b1_c9** (04:51 UTC, the last ~3 h): re-anchored on the 117.780 hand-on ckpt_59018051584 (two 9/9 evals in a row from there),
   c8's flags (fo2t strict energy cut, --demo-tau0 0, pool pbr9b1_late2_states) at **--lr 3e-5** (slower drift), --steps 4e9.
+
+### 117.785: c9 re-anchored, 0.91 per episode (2026-10-28 05:13 UTC)
+* c9 (the 117.780 hand-on, c8's flags, lr 3e-5) evals: **117.785** (59.0186B - the first eval, one update after the resume: **9/9, best
+  66.45 s**; 8 of 9 land softly) / 115.543 (7/9) / 116.667 (8/9, 66.65) / 116.664 (8/9, 66.74) / **117.775** (59.321B: 9/9, 66.75 s) -
+  41 of 45 episodes (0.91), the most reliable stretch of the lineage. Hand-ons pulled: **ckpt_59018575872** (= the eval's own step, md5
+  ba0a10a531759f19961719ec85525616) and ckpt_59312177152 (8.4M before the second 9/9; md5 caf83c71...). Resume kl 2.0 / 1.4 / 2.9 in
+  the first updates (the artifact), then <= 0.5.
