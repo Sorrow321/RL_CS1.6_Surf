@@ -416,3 +416,5 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   (tools/beam_best_states.py, bit-exact replay).
 * `pbr9b1_s71dec_states.npy` (md5 in NOTES): s71c rows 6,150-6,273 (the approach) x20 + 6,274-6,464 (the chain) x15 + the beam's
   first 900 ticks (72.4-83.3%) x2 + pbr9b1_fo2dec_states x1 (the fly-over and the soft landing), a `--spawn-states` pool.
+* `pbr9b1_s71dec2_states.npy` (13,584 rows; md5 72aba8a25abc402633f68c20884ca2c5): pbr9b1_s71dec_states + the s71 beam line's own
+  shaft passage (ticks 1,511-2,211: 90% -> the finish, after its soft landing) x3, a `--spawn-states` pool.
