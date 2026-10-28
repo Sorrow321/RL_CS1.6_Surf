@@ -4219,3 +4219,5 @@ used for the search work below and then blocklisted and released.
   for ~1.2B steps (c8: frequent 8/9, a 68.33 s finish) and then broke too (c9, c11: every greedy episode dead at the 44.5%
   gate after the early splits slowed). (5) Ops: a 20 KB/s uplink box is unusable for hand-ons (blocklisted); `box.py extend`
   counts from now.
+* c12 04:22-04:46 UTC: evals 114.383 (6/9, 68.51 s) / 114.361 (6/9) / 116.600 (8/9, 68.66 s) / 116.599 (8/9, 68.70) /
+  116.598 (8/9, 68.73) - three 8/9 in a row at 68.66-68.73 s; kl 0.17, value loss 85.
