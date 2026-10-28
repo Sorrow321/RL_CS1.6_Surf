@@ -490,3 +490,15 @@ def test_the_bc_keys_engine_flag_surface():
     assert "lsm = keys_engine_logp(lsm, held)" in tf
     rc = (ROOT / "tools" / "record_ckpt.py").read_text(encoding="utf-8")
     assert '"bc_keys_engine",' in rc                              # TRAIN_ONLY
+
+
+def test_the_bc_pitch_coef_flag_surface_and_the_default_sum():
+    tf = (ROOT / "python" / "train_fast.py").read_text(encoding="utf-8")
+    assert '"--bc-pitch-coef", type=float, default=None' in tf
+    assert 'meta["config"]["bc_pitch_coef"] = float(args.bc_pitch_coef)' in tf
+    assert "--bc-pitch-coef needs --bc-file and --view-continuous" in tf
+    # off: the view term is today's per-head sum (the weights are applied only when set)
+    assert "if BC_VW is not None:\n                        # --bc-pitch-coef" in tf
+    assert "nll_pt, nll_mm = nll_pt.sum(-1), nll_mm.sum(-1)" in tf
+    rc = (ROOT / "tools" / "record_ckpt.py").read_text(encoding="utf-8")
+    assert '"bc_keys_engine", "bc_pitch_coef",' in rc

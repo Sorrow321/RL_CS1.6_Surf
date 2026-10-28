@@ -5211,6 +5211,15 @@ def main() -> None:
                          "weights value 0.25 against 1.0 for policy). 0 = "
                          "off and byte-identical; the value is read with the "
                          "privileged block under --priv-critic")
+    ap.add_argument("--bc-pitch-coef", type=float, default=None,   # None = off (today)
+                    help="--bc-file + --view-continuous: the weight of the PITCH head in the "
+                         "cloning loss's view term (and in view-mse); 0 drops it. Under "
+                         "--view-absolute the pitch target only aims the camera, the planner "
+                         "never selects on it, and its draws are pure noise around a mean the "
+                         "policy can park deep in the tanh tail (pbr9b1_c9: |z| median 6, max "
+                         "148, the target saturated at +30 deg) - noise the fixed BC sigma 0.3 "
+                         "turns into the largest gradient of the term. Config only when set; "
+                         "not restored")
     ap.add_argument("--bc-keys-engine", action="store_const", const=1, default=None,
                     help="--bc-file + --keys-hold: score each HELD key head (fwd, side, duck) "
                          "by the ENGINE action it yields: the target's log-probability is "
@@ -14996,6 +15005,9 @@ def main() -> None:
     if args.bc_keys_engine:
         # --bc-keys-engine: written ONLY when set (a loss option of the BC term)
         meta["config"]["bc_keys_engine"] = 1
+    if args.bc_pitch_coef is not None:
+        # --bc-pitch-coef: written ONLY when set (a loss option of the BC term)
+        meta["config"]["bc_pitch_coef"] = float(args.bc_pitch_coef)
     if float(args.ge_minutes or 0.0) > 0.0:
         # --ge-minutes: written ONLY when on (a control run's config dump is unchanged); a
         # resume restores the four and reuses runs/<run>/ge_states.npy
@@ -18238,6 +18250,13 @@ def main() -> None:
     if BCKE and not (args.bc_file and N_KEYS):
         raise SystemExit("--bc-keys-engine needs --bc-file and --keys-hold (it scores the held "
                          "key heads by their engine action)")
+    # --bc-pitch-coef: the pitch head's weight in the BC view term (None = today's sum)
+    BCPC = None if args.bc_pitch_coef is None else float(args.bc_pitch_coef)
+    if BCPC is not None and not (args.bc_file and VIEWC):
+        raise SystemExit("--bc-pitch-coef needs --bc-file and --view-continuous (it weights the "
+                         "pitch head of the BC view term)")
+    if BCPC is not None and BCPC < 0.0:
+        raise SystemExit("--bc-pitch-coef must be >= 0")
     bc_stats = None
     if args.bc_file:
         if MULTI or route is not None or STACK > 1 or H > 0:
@@ -18331,6 +18350,14 @@ def main() -> None:
 
         # --bc-keys-engine: the held state of each BC row, off its own 7 held-key columns
         BC_KC = bc.keys_col if BCKE else None
+        # --bc-pitch-coef: per-view-head weights, the pitch head LAST (n_z(VIEW_ABS) heads)
+        BC_VW = None
+        if BCPC is not None:
+            _nzv = n_z(VIEW_ABS)
+            BC_VW = torch.ones(_nzv, device=device)
+            BC_VW[_nzv - 1] = BCPC
+            print(f"bc: --bc-pitch-coef {BCPC:g} - the pitch head's weight in the view term "
+                  f"(and in view-mse)")
         if BCKE:
             if BC_KC is None:
                 raise SystemExit(f"--bc-keys-engine: {args.bc_file} carries no held-key columns")
@@ -18381,10 +18408,14 @@ def main() -> None:
                     _ls = float(np.log(BC_VIEW_SIGMA))
                     _var2 = 2.0 * BC_VIEW_SIGMA * BC_VIEW_SIGMA
                     nll_pt = (_ls + 0.5 * LOG2PI
-                              + (vz - mu).pow(2) / _var2).sum(-1)
+                              + (vz - mu).pow(2) / _var2)
                     nll_mm = (_ls + 0.5 * LOG2PI
                               + (vsd.pow(2) + (vmu - mu).pow(2))
-                              / _var2).sum(-1)
+                              / _var2)
+                    if BC_VW is not None:
+                        # --bc-pitch-coef: the per-head weights (pitch last)
+                        nll_pt, nll_mm = nll_pt * BC_VW, nll_mm * BC_VW
+                    nll_pt, nll_mm = nll_pt.sum(-1), nll_mm.sum(-1)
                     logp = logp_c - nll_pt
                 elif BCKE:
                     logp = keys_engine_logp(F.log_softmax(padded, dim=-1), held).gather(
@@ -18430,7 +18461,8 @@ def main() -> None:
                     # agreement over the four categorical heads; the view
                     # heads report the mean squared z error of mu instead
                     agree = _am[:, N_VIEW:] == _tg[:, N_VIEW:]
-                    _vm = (vz - mu).pow(2).mean(-1)
+                    _vm = ((vz - mu).pow(2).mean(-1) if BC_VW is None else
+                           ((vz - mu).pow(2) * BC_VW).sum(-1) / BC_VW.sum().clamp_min(1e-6))
                     view_mse = (_vm * w).sum() / w.sum().clamp_min(1e-6)
                 else:
                     agree = _am == _tg
