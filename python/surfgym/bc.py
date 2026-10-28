@@ -109,7 +109,9 @@ __all__ = ["BC_VERSION", "BC_VERSIONS", "NACT", "NPAD", "REWARD_SLOT",
            "rank_lineages", "contact_rows", "last_contact_cut",
            "subsample_by_path", "onehot_probs", "check_probs",
            "survivor_probs", "count_probs", "gumbel_improved_probs",
-           "decision_gamma", "returns_to_go", "make_line_reward"]
+           "decision_gamma", "returns_to_go", "make_line_reward",
+           "keys_policy_rows", "keys_resolve_rows", "keys_policy_probs", "spawn_held",
+           "line_held_keys"]
 
 #: 1 = actions only (the CAT target); 2 adds ``probs`` / ``zret`` / ``zmask``.
 #: Both load. A writer that is handed none of the three writes 1, so an
@@ -560,7 +562,7 @@ def count_probs(actions, weights=None) -> np.ndarray:
     return _accumulate(a, w)
 
 
-def survivor_probs(tables, weights, ref: int) -> np.ndarray:
+def survivor_probs(tables, weights, ref: int, prefix_tables=None) -> np.ndarray:
     """Per-decision first-decision distributions along lineage ``ref``.
 
     ``tables`` is a list of (D_i, 6) action tables searched from ONE spawn
@@ -574,12 +576,24 @@ def survivor_probs(tables, weights, ref: int) -> np.ndarray:
     rejoins, and a line that ended is gone), so this is one pass. Where the
     set has collapsed to ``ref`` alone the row is ``ref``'s own one-hot -
     the CAT target, unchanged, which on the measured 95.4%-identical waves
-    is most of the line."""
+    is most of the line.
+
+    ``prefix_tables`` (a list of (D_i, P) arrays, one per table, default None = the action
+    tables themselves) decide WHO stood at ref's state when the action tables cannot: under
+    --keys-hold the targets are POLICY-space rows, where KEEP and the explicit bin of the held
+    key are one engine action, and under --view-continuous a line is its bins AND its float
+    view - the copies at a state are the ones whose engine rows and views agree on 0..d-1,
+    while the histogram is taken over the action tables (pbx 2026-10-28)."""
     tabs = [np.asarray(t, np.int64).reshape(-1, NACT) for t in tables]
     M = len(tabs)
     if M == 0:
         raise ValueError("survivor_probs needs at least one table")
     lens = np.array([len(t) for t in tabs], np.int64)
+    if prefix_tables is not None:
+        if len(prefix_tables) != M:
+            raise ValueError("survivor_probs: one prefix table per action table")
+        if any(len(np.asarray(q)) != n for q, n in zip(prefix_tables, lens)):
+            raise ValueError("survivor_probs: a prefix table and its action table differ in length")
     ref = int(ref)
     D = int(lens[ref])
     out = np.zeros((D, NACT, NPAD), np.float32)
@@ -594,7 +608,15 @@ def survivor_probs(tables, weights, ref: int) -> np.ndarray:
         n = min(len(t), D)
         A[i, :n] = t[:n]
     long_enough = lens[:, None] > np.arange(D)[None, :]          # (M, D)
-    agree = np.all(A == A[ref][None, :, :], axis=2) & long_enough
+    if prefix_tables is None:
+        agree = np.all(A == A[ref][None, :, :], axis=2) & long_enough
+    else:
+        pt = [np.asarray(q, np.float64).reshape(len(q), -1) for q in prefix_tables]
+        P = np.zeros((M, D, pt[0].shape[1]), np.float64)
+        for i, q in enumerate(pt):
+            n = min(len(q), D)
+            P[i, :n] = q[:n]
+        agree = np.all(P == P[ref][None, :, :], axis=2) & long_enough
     # a line is in decision d's survivor set iff it HAS decision d and it
     # agreed with ref on every decision before d; agreement is monotone, so
     # the prefix product is the whole rule (and ref is always in its own set)
@@ -775,17 +797,21 @@ def make_line_reward(cfg: dict, field, d0: float, k: int,
 # --------------------------------------------------------------------------
 # the file
 # --------------------------------------------------------------------------
-def keys_policy_rows(engine_acts):
+def keys_policy_rows(engine_acts, start=None):
     """--keys-hold: ENGINE action rows of ONE line from a spawn -> (policy-space rows, the held
     state each decision SAW as (D, 3) engine bins, its (D, 7) observation features).
 
-    The line starts NEUTRAL (every spawn does). On a held head the policy row is KEEP when the
-    engine value equals what is held, else engine bin + 1; yaw, pitch and jump pass through."""
+    The line starts NEUTRAL (every map-start spawn does; ``start`` names another held state, e.g.
+    :func:`spawn_held`'s crouched spawn). On a held head the policy row is KEEP when the engine
+    value equals what is held, else engine bin + 1; yaw, pitch and jump pass through. That is
+    ONE of the policy rows that yield these engine rows (an explicit bin of the held value is
+    the other): a planner that recorded the rows its policy chose hands them to
+    :func:`keys_resolve_rows` instead."""
     from .keyshold import HELD_HEADS, KEEP, NEUTRAL, KeysHold
     a = np.asarray(engine_acts, np.int64).reshape(-1, 6)
     held = np.empty((len(a), 3), np.int64)
     pol = a.copy()
-    st = np.asarray(NEUTRAL, np.int64).copy()
+    st = np.asarray(NEUTRAL if start is None else start, np.int64).reshape(3).copy()
     for t in range(len(a)):
         held[t] = st
         for c, h in enumerate(HELD_HEADS):
@@ -793,6 +819,61 @@ def keys_policy_rows(engine_acts):
             st[c] = a[t, h]
     feat = KeysHold._encode(held.astype(np.int32), None)
     return pol, held, feat
+
+
+def keys_resolve_rows(policy_acts, start=None):
+    """--keys-hold: the POLICY-space rows a planner's policy chose along ONE line (beam_tas
+    acts_pol) -> (the engine rows they resolve to, the held state each decision SAW as (D, 3)
+    engine bins, its (D, 7) observation features) - KeysHold.resolve's rule from ``start``
+    (default NEUTRAL). A row of -1 (not the policy's own) or a bin outside a widened head
+    raises: the caller then has no policy-space target for that line."""
+    from .keyshold import HELD_HEADS, KEEP, NEUTRAL, KeysHold, nvec_with_keep
+    p = np.asarray(policy_acts, np.int64).reshape(-1, 6)
+    hi = np.asarray(nvec_with_keep(ACTION_NVEC), np.int64)
+    if (p < 0).any() or (p >= hi[None, :]).any():
+        raise ValueError("policy rows out of range for the keys-hold heads (or -1: not the "
+                         "policy's own row)")
+    eng = p.copy()
+    held = np.empty((len(p), 3), np.int64)
+    st = np.asarray(NEUTRAL if start is None else start, np.int64).reshape(3).copy()
+    for t in range(len(p)):
+        held[t] = st
+        for c, h in enumerate(HELD_HEADS):
+            v = st[c] if p[t, h] == KEEP else p[t, h] - 1
+            eng[t, h] = v
+            st[c] = v
+    feat = KeysHold._encode(held.astype(np.int32), None)
+    return eng, held, feat
+
+
+def spawn_held(spawn_state, spawn_duck: bool):
+    """The held keys (fwd, side, duck; engine bins) a --keys-hold episode starts with at this
+    STATE_DTYPE spawn row: NEUTRAL, with duck held when the checkpoint's
+    --keys-hold-spawn-duck is on and the row is crouched - the trainer's and every eval
+    wrapper's rule (a map-start spawn is standing: NEUTRAL)."""
+    from .keyshold import NEUTRAL
+    st = np.asarray(NEUTRAL, np.int64).copy()
+    row = np.asarray(spawn_state).reshape(-1)[0]
+    if spawn_duck and int(row["ducked"]) > 0:
+        st[2] = 1
+    return st
+
+
+def line_held_keys(engine_acts, k: int, n_states: int, start=None):
+    """(n_states, 3) int32: the keys (fwd, side, duck; engine bins) HELD at each per-tick state
+    of a line replayed from its spawn - state t was reached under tick t-1's engine row (the
+    decision covering tick t-1, ``engine_acts[(t - 1) // k]``) and state 0 holds ``start``
+    (default NEUTRAL). tools/stitch_spine.py's roll_keys convention, i.e. what train_fast
+    --demo-keys reads: a spine spawn on row t starts holding what the line held there."""
+    from .keyshold import HELD_HEADS, NEUTRAL
+    a = np.asarray(engine_acts, np.int64).reshape(-1, 6)
+    out = np.empty((int(n_states), 3), np.int32)
+    out[:] = np.asarray(NEUTRAL if start is None else start, np.int32).reshape(3)
+    if n_states > 1 and len(a):
+        t = np.arange(1, int(n_states))
+        d = np.minimum((t - 1) // int(k), len(a) - 1)
+        out[1:] = a[d][:, list(HELD_HEADS)]
+    return out
 
 
 def keys_policy_probs(probs, held):
@@ -847,7 +928,7 @@ def _xcols_checked(xcols, n: int, meta: dict) -> dict:
 def save_bc_dataset(path, states, scal, latch, actions, weights, line_id,
                     meta: dict, probs=None, zret=None, zmask=None,
                     view=None, view_zmu=None, view_zsd=None, keys=None,
-                    xcols=None) -> None:
+                    xcols=None, view_z=None) -> None:
     """Write a BC file. With none of ``probs`` / ``zret`` / ``zmask`` this
     writes VERSION 1 - the same keys, in the same order, that shipped - so
     an untreated round's file is byte-identical to the one it always wrote
@@ -857,7 +938,12 @@ def save_bc_dataset(path, states, scal, latch, actions, weights, line_id,
     zero return with a zero mask, i.e. no value target).
 
     ``xcols`` ({block: (n, w)}, names from XBLOCKS, listed in meta['xcols']) are written after
-    every other key, so a file without them is byte-identical to before."""
+    every other key, so a file without them is byte-identical to before.
+
+    ``view_z`` ((n, n_z) float32, --view-continuous) is the pre-tanh z the planner's policy
+    DREW at each row (beam_tas hist_z): the view heads' point target, which BCDataset prefers
+    to one rebuilt from the physical ``view`` (tanh saturates, so the rebuild is clipped at
+    |u| 0.999 and loses every draw beyond it). Written last, only when given."""
     states = np.ascontiguousarray(states, dtype=STATE_DTYPE)
     n = len(states)
     xc = _xcols_checked(xcols, n, meta)
@@ -901,6 +987,12 @@ def save_bc_dataset(path, states, scal, latch, actions, weights, line_id,
                 raise ValueError("view_zsd must be >= 0")
     elif view_zmu is not None or view_zsd is not None:
         raise ValueError("view moments without the executed view")
+    if view_z is not None:
+        if view is None:
+            raise ValueError("view_z without the executed view")
+        xc["view_z"] = np.ascontiguousarray(view_z, np.float32).reshape(n, -1)
+        if xc["view_z"].shape[1] not in (2, 3) or not np.isfinite(xc["view_z"]).all():
+            raise ValueError("view_z must be finite and (n, 2) or (n, 3)")
     if probs is None and zret is None and zmask is None:
         np.savez(path, version=np.int32(1), states=states, scal=scal,
                  latch=latch, actions=actions, weights=weights,
@@ -969,6 +1061,8 @@ def load_bc_arrays(path) -> dict:
             # the extra scalar blocks (XBLOCKS), {} when the file has none
             "xcols": {k[2:]: np.asarray(z[k], np.float32) for k in z.files
                       if k.startswith("x_")},
+            # --view-continuous: the planner's drawn z, None when the file has none
+            "view_z": (np.asarray(z["view_z"], np.float32) if "view_z" in z.files else None),
             "meta": json.loads(str(z["meta"]))}
 
 
@@ -1012,7 +1106,7 @@ def merge_bc_files(paths, out) -> dict:
                     zret=cat("zret") if has_v2 else None,
                     zmask=cat("zmask") if has_v2 else None,
                     view=cat("view"), view_zmu=cat("view_zmu"), view_zsd=cat("view_zsd"),
-                    keys=cat("keys"), xcols=xcols)
+                    keys=cat("keys"), xcols=xcols, view_z=cat("view_z"))
     return meta
 
 
@@ -1188,8 +1282,17 @@ class BCDataset:
                 view = bin_to_view(act, bool(yaw_adaptive),
                                    float(pitch_rate_max_deg))
                 self.view_note = "view DERIVED from the bins"
-            vz = z_from_view_any(view, self.view_absolute,
-                                 float(pitch_rate_max_deg))
+            if "view_z" in z.files:
+                # the z the planner's policy DREW (plan_to_bc from beam_tas hist_z): exact,
+                # where z_from_view_any below is clipped at |tanh z| 0.999
+                vz = np.asarray(z["view_z"], np.float32).reshape(self.n, -1)
+                if vz.shape[1] != nz:
+                    raise SystemExit(f"{path}: view_z is {vz.shape[1]} wide, this policy "
+                                     f"has {nz} view heads")
+                self.view_note += " + the planner's drawn z"
+            else:
+                vz = z_from_view_any(view, self.view_absolute,
+                                     float(pitch_rate_max_deg))
             if "view_zmu" in z.files and "view_zsd" in z.files:
                 vmu = np.asarray(z["view_zmu"], np.float32).reshape(self.n, -1)
                 vsd = np.asarray(z["view_zsd"], np.float32).reshape(self.n, -1)

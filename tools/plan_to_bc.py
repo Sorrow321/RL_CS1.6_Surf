@@ -90,7 +90,8 @@ from surfgym.bc import (check_probs, contact_rows, decision_gamma,
                         last_contact_cut, make_eval_feeds, make_line_reward,
                         rank_lineages, replay_line, returns_to_go,
                         save_bc_dataset, subsample_by_path, survivor_probs,
-                        keys_policy_probs, keys_policy_rows)
+                        keys_policy_probs, keys_policy_rows, keys_resolve_rows,
+                        line_held_keys, spawn_held)
 from surfgym.core import phys_to_dict
 from surfgym.rewards import map_spawn_pool
 from surfgym.tick import TickClock, ticks_to_secs
@@ -232,13 +233,19 @@ def load_plans(plan_files):
             va = np.asarray(z["view_all"], np.float32) if viewc else None
             if viewc and va is None:
                 raise SystemExit(f"{f}: continuous plan without view_all")
+            # what the planner's POLICY chose (beam_tas hist_p / hist_z), absent in older plans
+            pa = np.asarray(z["acts_pol_all"]) if "acts_pol_all" in z.files else None
+            za = np.asarray(z["view_z_all"], np.float32) if "view_z_all" in z.files else None
             for j in range(len(aa)):
                 ft = int(ta[j])
+                n_d = int(al[j])
                 lines.append({
                     "finish_tick": ft,
-                    "acts": np.asarray(aa[j, :int(al[j])], np.int64),
+                    "acts": np.asarray(aa[j, :n_d], np.int64),
                     "view": (None if va is None
-                             else np.asarray(va[j, :int(al[j])], np.float32)),
+                             else np.asarray(va[j, :n_d], np.float32)),
+                    "pacts": None if pa is None else np.asarray(pa[j, :n_d], np.int64),
+                    "view_z": None if za is None else np.asarray(za[j, :n_d], np.float32),
                     "src": str(f),
                     "best_arc": float(z["arc_all"][j]) if has_arc else 0.0,
                     "arc_tick": int(z["arc_tick_all"][j]) if has_arc else 0,
@@ -250,6 +257,10 @@ def load_plans(plan_files):
                           "acts": np.asarray(z["acts"], np.int64),
                           "view": (np.asarray(z["view"], np.float32)
                                    if viewc else None),
+                          "pacts": (np.asarray(z["acts_pol"], np.int64)
+                                    if "acts_pol" in z.files else None),
+                          "view_z": (np.asarray(z["view_z"], np.float32)
+                                     if "view_z" in z.files else None),
                           "src": str(f), "best_arc": 0.0, "arc_tick": 0,
                           "end_tick": ft})
     head["lines"] = rank_lineages(lines)
@@ -361,6 +372,34 @@ def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
     pl = plans["lines"][:lines] if lines > 0 else plans["lines"]
     if not pl:
         raise SystemExit("the plan carries no lineage at all")
+    # --keys-hold: the held keys every line STARTS with - the spawn's own (a crouched spawn holds
+    # duck under the checkpoint's --keys-hold-spawn-duck, as in training and in every eval)
+    KSTART = (spawn_held(spawn_state, bool(cfg.get("keys_hold_spawn_duck"))) if KEYS
+              else None)
+
+    # the planner's OWN rows (beam_tas since pbx 2026-10-28: acts_pol / view_z): the policy-
+    # space row its policy chose before the keep bins resolved, and the pre-tanh z its view
+    # heads drew. They are the targets when EVERY kept line carries them - and, for the rows,
+    # resolves back to the engine rows it executed from the spawn's held keys; otherwise the
+    # targets are rebuilt from the engine rows and the view as they always were. A rebuilt
+    # keys row is KEEP wherever a key is unchanged, while the policy as often re-presses the
+    # held key (the same engine action), and a rebuilt z is clipped where tanh saturates:
+    # on pbr9b1_c9's own greedy line that read head-acc 0.65, joint-acc 0.16, view-mse 304.
+    def _pol_ok(c):
+        if c.get("pacts") is None:
+            return False
+        try:
+            eng, _h, _f = keys_resolve_rows(c["pacts"], KSTART)
+        except ValueError:
+            return False
+        return bool(np.array_equal(eng, np.asarray(c["acts"], np.int64)))
+    USE_P = bool(KEYS and all(_pol_ok(c) for c in pl))
+    USE_Z = bool(VIEWC and all(c.get("view_z") is not None
+                               and len(c["view_z"]) == len(c["acts"]) for c in pl))
+    if KEYS and not USE_P and any(c.get("pacts") is not None for c in pl):
+        print(f"WARNING: {sum(1 for c in pl if not _pol_ok(c))} of {len(pl)} kept lines carry "
+              "no policy rows that resolve to their engine rows - every line's keys targets "
+              "are rebuilt from the engine rows (the keep rule)")
     fin_ticks = [c["finish_tick"] for c in pl if c["finish_tick"] > 0]
     nonfin = [c for c in pl if c["finish_tick"] <= 0]
     end_all = [max(int(c["finish_tick"]), int(c["end_tick"]),
@@ -460,15 +499,33 @@ def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
 
     tables = [np.asarray(c["acts"], np.int64) for c in pl]
     line_w = [line_weight(c) for c in pl]
-    line_probs = ([survivor_probs(tables, line_w, j) for j in range(len(pl))]
+    # with the planner's own rows the histogram is over THEM (policy space) while the copies
+    # that stood at a line's state are the ones whose ENGINE rows - and views - agree: a KEEP
+    # and an explicit press of the held key put two copies in one state
+    prefix_tabs = None
+    if USE_P or USE_Z:
+        prefix_tabs = [np.concatenate([np.asarray(c["acts"], np.float64),
+                                       np.asarray(c["view"], np.float64)], axis=1)
+                       if VIEWC else np.asarray(c["acts"], np.float64) for c in pl]
+    target_tabs = [np.asarray(c["pacts"], np.int64) for c in pl] if USE_P else tables
+    line_probs = ([survivor_probs(target_tabs, line_w, j, prefix_tables=prefix_tabs)
+                   for j in range(len(pl))]
                   if search_target else None)
     # --view-continuous, P2's twin for the view heads: the survivor set at
     # decision d of line j is the same prefix-agreeing set (bins AND views
     # identical on 0..d-1), and its members' z at decision d give the
-    # moment-matched Gaussian target (surfgym.view.z_from_view per line)
+    # moment-matched Gaussian target (surfgym.view.z_from_view per line;
+    # the planner's drawn z where it recorded one)
     line_zmom = None
+    n_zrebuilt = 0
     if VIEWC:
         ztabs = [z_from_view_any(c["view"], VIEW_ABS, pitch_max) for c in pl]
+        if USE_Z:
+            for zt, c in zip(ztabs, pl):
+                rz = np.asarray(c["view_z"], np.float32).reshape(len(zt), -1)
+                ok = np.isfinite(rz).all(1)
+                zt[ok] = rz[ok]
+                n_zrebuilt += int((~ok).sum())
         vtabs = [np.asarray(c["view"], np.float32) for c in pl]
         line_zmom = [survivor_view_moments(tables, vtabs, ztabs, line_w, j)
                      for j in range(len(pl))] if search_target else None
@@ -492,9 +549,10 @@ def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
     all_states, all_scal, all_latch, all_act, all_w, all_id = \
         [], [], [], [], [], []
     all_probs, all_z, all_zm = [], [], []
-    all_view, all_vmu, all_vsd = [], [], []
+    all_view, all_vmu, all_vsd, all_vz = [], [], [], []
     best_states = None
     best_line = None
+    best_acts = None
     kept, dropped = [], []
     for j, c in enumerate(pl):
         acts = c["acts"]
@@ -600,8 +658,14 @@ def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
         if best_states is None:
             best_states = np.ascontiguousarray(states_arr[:cut + 1]).copy()
             best_line = info
+            best_acts = np.asarray(acts, np.int64)
         if KEYS:
-            _pol, _held, _feat = keys_policy_rows(np.asarray(acts, np.int64)[:, :6])
+            if USE_P:
+                # the rows the planner's policy chose (resolving to `acts`: checked above)
+                _pol = np.asarray(c["pacts"], np.int64)
+                _eng, _held, _feat = keys_resolve_rows(_pol, KSTART)
+            else:
+                _pol, _held, _feat = keys_policy_rows(np.asarray(acts, np.int64)[:, :6], KSTART)
         for ri, ((st, scal, latch, act), jd) in enumerate(zip(rows, keep_jd)):
             all_states.append(st)
             all_scal.append(scal)
@@ -618,12 +682,15 @@ def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
             all_w.append(w)
             all_id.append(j)
             if line_probs is not None:
+                # policy-space already when taken over the planner's own rows
                 all_probs.append(keys_policy_probs(line_probs[j][jd][None], _held[jd:jd + 1])[0]
-                                 if KEYS else line_probs[j][jd])
+                                 if KEYS and not USE_P else line_probs[j][jd])
             all_z.append(float(z_line[jd]) if jd < len(z_line) else 0.0)
             all_zm.append(zm_line if jd < len(z_line) else 0.0)
             if VIEWC:
                 all_view.append(views_out[ri])
+                if USE_Z:
+                    all_vz.append(ztabs[j][jd])
                 if line_zmom is not None:
                     all_vmu.append(line_zmom[j][0][jd])
                     all_vsd.append(line_zmom[j][1][jd])
@@ -705,6 +772,14 @@ def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
     meta["value_target"] = bool(value_target)
     if KEYS:
         meta["keys_hold"] = 1
+        meta["keys_start"] = [int(v) for v in KSTART]
+        meta["keys_targets"] = ("the planner's policy rows" if USE_P
+                                else "rebuilt from the engine rows (keep rule)")
+    if VIEWC:
+        meta["view_z_targets"] = ("the planner's drawn z" if USE_Z
+                                  else "rebuilt from the view")
+        if USE_Z:
+            meta["view_z_rebuilt_rows"] = int(n_zrebuilt)
     from surfgym.bc import XBLOCKS
     xcols = {name: np.array(all_x[name], np.float32).reshape(n_rows, -1) for name in xlay}
     if xcols:
@@ -727,7 +802,9 @@ def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
                     probs=probs, zret=zret, zmask=zmask,
                     view=view_arr, view_zmu=vmu_arr, view_zsd=vsd_arr,
                     keys=(np.array(all_keys, np.float32) if KEYS else None),
-                    xcols=(xcols or None))
+                    xcols=(xcols or None),
+                    view_z=(np.array(all_vz, np.float32).reshape(n_rows, -1) if USE_Z
+                            else None))
     lead = (f"best {secs(t_best):.2f}s" if t_best is not None
             else f"best arc {meta['best_arc']:,.0f}u")
     print(f"bc: {n_rows:,} rows from {len(kept)} line(s) "
@@ -738,7 +815,13 @@ def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
               f"one-hot (only the winner survived there), mean top-1 "
               f"{meta['target_top1_mean']:.3f}, mean per-head entropy "
               f"{meta['target_entropy_mean'] / 6.0:.4f} nats")
+    if KEYS:
+        print(f"  keys: targets = {meta['keys_targets']}, every line starts holding "
+              f"{meta['keys_start']} (fwd, side, duck)")
     if VIEWC:
+        print(f"  view z: {meta['view_z_targets']}"
+              + (f" ({n_zrebuilt} decisions rebuilt: planner edits / replayed prefix)"
+                 if USE_Z and n_zrebuilt else ""))
         print(f"  view: {n_rows:,} rows carry the executed view "
               f"{view_desc(VIEW_ABS)}"
               + (f"; z moments over the survivors on "
@@ -757,6 +840,14 @@ def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
         sel = subsample_by_path(best_states, float(spine_spacing))
         spine_states = np.ascontiguousarray(best_states[sel]).copy()
         np.save(spine, spine_states)
+        if KEYS:
+            # --keys-hold: the keys the line HELD at each spine state (train_fast --demo-keys,
+            # tools/stitch_spine.py's <spine>.keys.npy): a spawn on row t starts holding them
+            # rather than neutral, the state the line itself was in there
+            kp = Path(spine).with_suffix(".keys.npy")
+            np.save(kp, line_held_keys(best_acts, K, len(best_states), KSTART)[sel])
+            meta["spine_keys"] = str(kp)
+            print(f"spine keys: the held (fwd, side, duck) of each spine state -> {kp}")
         o = np.asarray(best_states["origin"], np.float64)
         path_len = float(np.linalg.norm(np.diff(o, axis=0), axis=1).sum()) \
             if len(o) > 1 else 0.0

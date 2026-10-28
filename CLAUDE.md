@@ -810,8 +810,12 @@ core at that tick; measured on the same scripted 3 s air strafe: **391 vs
   `build_spine`, `expert_dagger`, all through `beam_tas.build_sim` -
   now REFUSES a recording, plan or checkpoint at another tick rather than
   mis-time it**; wiring `build_sim(..., tick=)` through them is the open
-  item, and note that `build_sim`'s `tick_env` scales the yaw ceiling
-  WITHOUT the `--yaw-adaptive` gate the trainer and recorder use.
+  item. (`build_sim` HAS the `--yaw-adaptive` gate the trainer and the
+  recorder use; since 2026-10-28 it and `record_ckpt` also anchor the view
+  ceilings to a `--tick-ms-schedule`'s START tick, the trainer's
+  `VIEW_TICK` - before that, a ramped checkpoint was searched and recorded
+  pitching at 1.02 deg/tick against the trainer's 1.33:
+  `surfgym.tick.view_tick`.)
 * **A recorded `phys` block states the core's NOMINAL tick**
   (`SurfCore.nominal_msec`), not the phase `config.phys.msec` is sitting
   in: `step` mirrors each pattern element into that field, so

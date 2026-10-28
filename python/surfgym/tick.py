@@ -302,6 +302,27 @@ class TickSchedule:
         return out
 
 
+def view_tick(cfg: Optional[Dict[str, Any]], tick: Optional["TickClock"]) -> Optional["TickClock"]:
+    """The tick a checkpoint's VIEW CEILINGS (deg PER TICK in the core) are scaled at, by
+    train_fast's VIEW_TICK rule: under a --tick-ms-schedule the ceilings are baked into the core
+    at surf_create and cannot follow the ramp, so the trainer anchors them to the ramp's START
+    tick (and a resume keeps the anchor the checkpoint's schedule names); without a schedule,
+    the tick the core runs at. ``cfg`` is the checkpoint config, ``tick`` the tick a tool runs
+    the core at (None = the 10 ms reference) -> a TickClock, or ``tick`` itself when the config
+    names no schedule (a checkpoint without one gets exactly what it got before).
+
+    pbx 2026-10-28: beam_tas.build_sim and record_ckpt scaled the ceilings to the CURRENT tick,
+    so on the princessburglar lineage (10 -> 7.63 ms ramp) the search and every recording
+    pitched at 1.02 deg/tick against the trainer's 1.33."""
+    sched = (cfg or {}).get("tick_schedule")
+    if not sched:
+        return tick
+    if isinstance(sched, dict):
+        return TickClock(float(sched["from_ms"]))
+    # a spec string FROM:TO:STEPS[@ORIGIN] (defensive: configs dump the dict form)
+    return TickClock(float(str(sched).split(":")[0]))
+
+
 # ---------------------------------------------------------------------------
 # trajectory headers: the recorder's time base
 # ---------------------------------------------------------------------------

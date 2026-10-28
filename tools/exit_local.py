@@ -175,6 +175,11 @@ def main() -> int:
                          "more often first, then faster, for a seed that does not finish yet")
     ap.add_argument("--grader", default="C:/RL_Surf/autoresearch/score.py",
                     help="--gate-rule score: the score.py whose score_file grades an eval")
+    ap.add_argument("--demo-keys", choices=("auto", "off"), default="auto",
+                    help="auto: when plan_to_bc wrote the spine's held keys (<spine>.keys.npy, a "
+                         "--keys-hold checkpoint), train with --demo-keys so a spawn on the "
+                         "spine starts holding the keys the line held there instead of neutral "
+                         "(pbx 2026-10-28); off: never (the command line before the option)")
     ap.add_argument("--extra", nargs=argparse.REMAINDER, default=[],
                     help="extra train_fast flags (everything after --extra)")
     args = ap.parse_args()
@@ -274,7 +279,7 @@ def main() -> int:
             import numpy as np
             sys.path.insert(0, str(ROOT / "python"))
             from surfgym.bc import merge_bc_files
-            parts, spines, rc = [], [], 0
+            parts, spines, skeys, rc = [], [], [], 0
             for i, z in enumerate(npzs):
                 bi, si = rdir / f"bc_{i}.npz", rdir / f"spine_{i}.npy"
                 rc = run([PY, "-u", ROOT / "tools" / "plan_to_bc.py", "--plan", z, "--ckpt", cur,
@@ -284,9 +289,14 @@ def main() -> int:
                     break
                 parts.append(bi)
                 spines.append(np.load(si))
+                ki = si.with_suffix(".keys.npy")
+                skeys.append(np.load(ki) if ki.exists() else None)
             if rc == 0 and parts:
                 merge_bc_files(parts, bc)
                 np.save(spine, np.concatenate(spines))
+                if skeys and all(k is not None for k in skeys):
+                    # the spines' held keys, concatenated in the same order
+                    np.save(spine.with_suffix(".keys.npy"), np.concatenate(skeys))
         else:
             rc = run([PY, "-u", ROOT / "tools" / "plan_to_bc.py", "--plan", *npzs, "--ckpt", cur,
                       "--out", bc, "--spine", spine, "--map", args.map, *distil_extra],
@@ -309,10 +319,18 @@ def main() -> int:
                 pmeta = merge_bc_files([bc] + [h / "bc.npz" for h in hist], bc_train)
                 np.save(spine_train, np.concatenate([np.load(spine)]
                                                     + [np.load(h / "spine.npy") for h in hist]))
+                _kf = [spine.with_suffix(".keys.npy")] + [h / "spine.keys.npy" for h in hist]
+                if all(k.exists() for k in _kf):
+                    np.save(spine_train.with_suffix(".keys.npy"),
+                            np.concatenate([np.load(k) for k in _kf]))
                 row["bc_pool"] = [h.name for h in hist]
                 log(fh, f"round {r}: BC pool = this round + {[h.name for h in hist]} "
                         f"({pmeta.get('lines')} lines)")
         spine_len = int(np.load(spine_train).shape[0])
+        # --demo-keys auto: the spine's held keys, when plan_to_bc wrote them (keys-hold)
+        keys_train = spine_train.with_suffix(".keys.npy")
+        demo_keys = (["--demo-keys", keys_train]
+                     if args.demo_keys == "auto" and keys_train.exists() else [])
         # 3. TRAIN -----------------------------------------------------------------------------
         t0 = time.time()
         run_name = f"{out.name}_r{r}"
@@ -326,7 +344,7 @@ def main() -> int:
                   "--bc-steps", args.train_steps, "--bc-target", args.bc_target,
                   "--bc-value-coef", args.bc_value_coef,
                   "--demo-file", spine_train, "--demo-window", spine_len, "--demo-rate", "2.0",
-                  "--demo-min-ep", "1e9", "--demo-grow", "0", *args.extra],
+                  "--demo-min-ep", "1e9", "--demo-grow", "0", *demo_keys, *args.extra],
                  rdir / "train.log", env_extra={"SELF_STATES": "1"}, timeout=4 * 3600)
         final = ROOT / "runs" / run_name / "ckpt_final.pt"
         if bc_train != bc:

@@ -127,8 +127,8 @@ from surfgym.bc import make_eval_feeds, rank_lineages
 from surfgym.core import SURF_IN_DUCK, SURF_IN_JUMP, phys_to_dict
 from surfgym.rewards import cc_draw, map_spawn_pool
 from surfgym.route import ArcProgress
-from surfgym.tick import TickClock, header_fields, ticks_to_secs
-from surfgym.view import (K_MAX, bin_to_view, off_warp, view_desc,
+from surfgym.tick import TickClock, header_fields, ticks_to_secs, view_tick
+from surfgym.view import (K_MAX, bin_to_view, n_z, off_warp, view_desc,
                           view_mode_code, warp, wrap180)
 from train_fast import (A_FWD_NONE, H_FWD, H_SIDE, H_YAW, N_VIEW, NVEC,
                         NEUTRAL_ACT, GreedyTorchPolicy, HeadPacker, Policy,
@@ -314,6 +314,30 @@ class XBundle:
                 setattr(o, k, a)
 
 
+def keys_snapshot(pol):
+    """--keys-hold: a wrapper's held-key state, taken before a critic probe runs its _obs a
+    second time on one tick (value_fn). _obs runs _keys_sync, which stamps the probe's tick as
+    the last decision's; the decision that follows on the SAME tick then read every env as
+    freshly spawned and reset its held keys to NEUTRAL - after every resample boundary once
+    --score dv had switched to the critic (pbx 2026-10-28: the all-greedy beam finished 17 ticks
+    off the greedy gate's line). -> an opaque snapshot for keys_restore."""
+    k = getattr(pol, "keys", None)
+    t = getattr(pol, "_keys_tick", None)
+    return (k, None if t is None else np.array(t, copy=True),
+            None if k is None else k.state.copy(), None if k is None else k.boot.copy())
+
+
+def keys_restore(pol, snap) -> None:
+    """Put back what keys_snapshot took: the KeysHold object (or none), its state and boot
+    rows and the tick _keys_sync compares the next decision against."""
+    k, t, st, bt = snap
+    pol.keys = k
+    pol._keys_tick = t
+    if k is not None:
+        k.state[:] = st
+        k.boot[:] = bt
+
+
 def resolve_map(name_or_path, cfg_map):
     p = str(name_or_path or cfg_map)
     if p.lower().endswith(".bsp"):
@@ -334,18 +358,26 @@ def build_sim(cfg, map_path, num_envs, ep_cap, tick=None):
     physics tick the way record_ckpt --tick-ms does: the view rates are
     deg PER TICK in the core, so both are rescaled to keep the same deg
     per SECOND. None / the 10 ms reference builds exactly the core built
-    before the flag (no pattern, nothing rescaled). A checkpoint trained
+    before the flag (no pattern, nothing rescaled). A checkpoint whose
+    config carries a --tick-ms-schedule gets its view ceilings at the
+    ramp's START tick, as the trainer builds them (surfgym.tick.view_tick),
+    whatever tick the core runs at. A checkpoint trained
     with --view-absolute gets the matching ``view_mode`` (1 velocity /
     2 world): its view rows are TARGETS and a delta-mode core would read a
     90-degree target as a 90 deg/tick command (record_ckpt's rule)."""
     fix_pitch = cfg.get("fix_pitch")
     pitch_rate = 0.0 if fix_pitch is not None else float(
         cfg.get("pitch_rate", -1.0))
-    if tick is None or tick.is_reference:
-        pitch_rate_core, _tick_env, tick_ms = pitch_rate, {}, None
+    tick_ms = None if (tick is None or tick.is_reference) else tick.requested_ms
+    # the view ceilings are scaled at train_fast's VIEW_TICK, not at the tick the core runs at:
+    # under a --tick-ms-schedule the trainer anchors them to the ramp's START (surfgym.tick
+    # .view_tick; without a schedule this is `tick` itself, i.e. what this function always did)
+    vtick = view_tick(cfg, tick)
+    if vtick is None or vtick.is_reference:
+        pitch_rate_core, _tick_env = pitch_rate, {}
     else:
         pitch_rate_core = (0.0 if pitch_rate == 0.0 else
-                           tick.per_tick(10.0 if pitch_rate < 0 else pitch_rate))
+                           vtick.per_tick(10.0 if pitch_rate < 0 else pitch_rate))
         # --yaw-adaptive redefines a yaw bin as K_BINS * atan(30/|v|) - the
         # optimal-strafe angle per FRAME, which does NOT depend on the tick.
         # yaw_rate_max_deg is then only (a) a per-tick clamp and (b) the
@@ -356,8 +388,7 @@ def build_sim(cfg, map_path, num_envs, ep_cap, tick=None):
         # policy reads by 1.304x. Fixed bins scale; adaptive bins keep the
         # reference ceiling (record_ckpt / train_fast, the tick-ms review).
         _tick_env = ({} if cfg.get("yaw_adaptive")
-                     else {"yaw_rate_max_deg": tick.per_tick(10.0)})
-        tick_ms = tick.requested_ms
+                     else {"yaw_rate_max_deg": vtick.per_tick(10.0)})
     _view_env = ({"view_mode": view_mode_code(cfg.get("view_absolute"))}
                  if cfg.get("view_absolute") else {})
     return SurfCore(map_path, default_config(
@@ -575,7 +606,7 @@ class LineageHall:
         return b
 
     def offer(self, best_arc, arc_tick, end_tick, get_acts, raw_arc=None,
-              get_view=None):
+              get_view=None, get_policy=None):
         best_arc, arc_tick = float(best_arc), int(arc_tick)
         w = self._worst()
         if len(self.items) >= self.cap and w is not None and (
@@ -590,11 +621,14 @@ class LineageHall:
         if key in self._seen:
             return False
         self._seen.add(key)
+        # the policy's own rows beside the engine ones (beam_tas hist_p / hist_z), or None
+        pacts, vz = (None, None) if get_policy is None else get_policy()
         self.items.append({"finish_tick": 0, "best_arc": best_arc,
                            "arc_tick": arc_tick, "end_tick": int(end_tick),
                            "raw_arc": (best_arc if raw_arc is None
                                        else float(raw_arc)),
-                           "acts": acts, "view": view})
+                           "acts": acts, "view": view,
+                           "pacts": pacts, "view_z": vz})
         self.items.sort(key=lambda c: (-c["best_arc"], c["arc_tick"],
                                        c["end_tick"]))
         if len(self.items) > self.cap:
@@ -2111,6 +2145,10 @@ def main():
     # packer, the Policy's action head and the wrappers read at construction time. This module's
     # own NVEC import stays the ENGINE's, which is what every raw-row editor below writes in.
     KEYS = bool(cfg.get("keys_hold"))
+    # --keys-hold-spawn-duck: MIRRORED (record_ckpt's rule) - an episode that spawns crouched
+    # holds duck from its first decision in training and in every eval, so the search's wrappers
+    # do too (a map-start spawn is standing: nothing changes there)
+    SPAWN_DUCK = bool(KEYS and cfg.get("keys_hold_spawn_duck"))
     import train_fast as _tf
     _tf.set_keys_hold(KEYS)
     if KEYS:
@@ -2500,6 +2538,7 @@ def main():
             gpol = GreedyTorchPolicy(policy, packer, device, lidar, core1,
                                      K, stack, extra_slot=es1, extra_fn=ef1,
                                      latch_fn=lf1, cc_fn=cc_fn1, keys_hold=KEYS, **xkw1)
+            gpol.spawn_duck = SPAWN_DUCK
             end, ticks, fin, _ = run_episode(core1, gpol, obs, f,
                                              ep_cap, header1, e)
             print(f"greedy ep{e} (spawn seed {args.seed + e}): {end} in "
@@ -2633,6 +2672,12 @@ def main():
         gpolN = GreedyTorchPolicy(policy, packer, device, lidar, coreN,
                                   K, stack, extra_slot=esN, extra_fn=efN,
                                   latch_fn=latchN, cc_fn=cc_fnN, keys_hold=KEYS, **xkwN)
+    for _w in (spol, gpolN):
+        if _w is not None:
+            _w.spawn_duck = SPAWN_DUCK
+            # every decision publishes the POLICY-space row (before the keep bins resolve) and
+            # the drawn view z next to the engine row: the BC targets plan_to_bc writes
+            _w.record_policy_act = True
     value_fn = None
     if args.boundary_v or args.score in ("v", "dv"):
         def value_fn(o):
@@ -2645,6 +2690,8 @@ def main():
             lsaved = (None if latchN is None
                       else (latchN.state.get("f"), latchN.state.get("tick")))
             xsaved = xfeN.snapshot()
+            # --keys-hold: the held keys and their episode-start tick (keys_snapshot's note)
+            ksaved = keys_snapshot(spol)
             with torch.inference_mode():
                 _, v = policy(spol._obs(o))
             if feed_state is not None:
@@ -2652,6 +2699,7 @@ def main():
             if lsaved is not None:
                 latchN.state["f"], latchN.state["tick"] = lsaved
             XBundle.restore(xsaved)
+            keys_restore(spol, ksaved)
             return v.detach().float().reshape(-1).cpu().numpy()
     scorer = make_scorer(ogf, args.route_file, args.corridor, args.score,
                          value_fn=value_fn, v_switch=args.v_switch,
@@ -2819,7 +2867,7 @@ def main():
         del dnf
         v1_search = False
         fin_hist = [(best["tick"], best["acts"].copy(), 0.0, 0,
-                     best.get("view"))]
+                     best.get("view"), best.get("pacts"), best.get("view_z"))]
     else:
         v1_search = True
     if v1_search:
@@ -2828,6 +2876,14 @@ def main():
         # --view-continuous: the per-decision view twin of `hist`, cloned,
         # captured and saved beside it everywhere hist is
         hist_v = np.zeros((D_total, N, 2), np.float32) if VIEWC else None
+        # what the POLICY chose, beside the engine rows: under --keys-hold the row before its
+        # keep bins resolve (-1 = not the policy's own row), under --view-continuous the
+        # pre-tanh z its view heads drew (NaN = not the policy's own draw: a --prefix-line
+        # replay or a planner edit, which plan_to_bc rebuilds from the view). Cloned, captured
+        # and saved beside hist everywhere hist is; they are plan_to_bc's BC targets
+        hist_p = np.full((D_total, N, 6), -1, np.int8) if KEYS else None
+        hist_z = (np.full((D_total, N, n_z(VIEW_ABS)), np.nan, np.float32) if VIEWC
+                  else None)
         valid = np.ones(N, bool)   # history describes this env from tick 0
         idx = np.arange(N)
         # ---- --prefix-line: open-loop replay into every env -------------
@@ -2887,7 +2943,7 @@ def main():
         # histories, captured AT the finish (the env autoresets on that
         # tick and the next resample clones over it). Lockstep means the
         # first K hits are the K fastest, so a bounded append is enough.
-        fin_hist = []              # (tick, (D, 6) int8 acts, arc, arc_tick)
+        fin_hist = []              # (tick, (D, 6) int8 acts, arc, arc_tick, view, policy rows, view z)
         best = None
         gen, best_gen = 0, None
         dth_t, dth_o = [], []
@@ -3004,6 +3060,18 @@ def main():
                 hist[d] = a                # bins < 15: int8 is lossless
                 if VIEWC:
                     hist_v[d] = v
+                _wd = gpolN if t < prefix else spol
+                if hist_p is not None:
+                    hist_p[d] = _wd.policy_act
+                    # an editor that rewrote an env's engine row leaves no policy row behind
+                    _ek = np.any(np.asarray(a) != np.asarray(_wd._held), axis=1)
+                    if _ek.any():
+                        hist_p[d, _ek] = -1
+                if hist_z is not None:
+                    hist_z[d] = _wd.view_z
+                    _ev = np.any(np.asarray(v) != np.asarray(_wd.view), axis=1)
+                    if _ev.any():
+                        hist_z[d, _ev] = np.nan
             sv = coreN.states_view
             pre_o = sv["origin"].copy()
             pre_v = sv["velocity"].copy()
@@ -3045,12 +3113,20 @@ def main():
                                          (int(arc_tick[i]) if arcp is not None
                                           else 0),
                                          (hist_v[:d + 1, i].copy() if VIEWC
-                                          else None)))
+                                          else None),
+                                         (None if hist_p is None
+                                          else hist_p[:d + 1, i].copy()),
+                                         (None if hist_z is None
+                                          else hist_z[:d + 1, i].copy())))
                     if best is None:       # lockstep: first hit is fastest
                         best = {"tick": t + 1, "env": int(i),
                                 "acts": hist[:d + 1, i].copy(),
                                 "view": (hist_v[:d + 1, i].copy() if VIEWC
                                          else None),
+                                "pacts": (None if hist_p is None
+                                          else hist_p[:d + 1, i].copy()),
+                                "view_z": (None if hist_z is None
+                                           else hist_z[:d + 1, i].copy()),
                                 "pre_origin": pre_o[i].copy(),
                                 "pre_vel": pre_v[i].copy()}
                         best_gen = gen
@@ -3082,7 +3158,10 @@ def main():
                                    raw_arc=raw_arc[i],
                                    get_view=((lambda i=i, d=d:
                                               hist_v[:d + 1, i].copy())
-                                             if VIEWC else None))
+                                             if VIEWC else None),
+                                   get_policy=(lambda i=i, d=d: (
+                                       None if hist_p is None else hist_p[:d + 1, i].copy(),
+                                       None if hist_z is None else hist_z[:d + 1, i].copy())))
                 valid &= ~dead
             if best is not None and args.gens > 0 \
                     and gen - best_gen >= args.gens:
@@ -3142,6 +3221,10 @@ def main():
                 hist[:d + 1, losers] = hist[:d + 1, donors]
                 if VIEWC:
                     hist_v[:d + 1, losers] = hist_v[:d + 1, donors]
+                if hist_p is not None:
+                    hist_p[:d + 1, losers] = hist_p[:d + 1, donors]
+                if hist_z is not None:
+                    hist_z[:d + 1, losers] = hist_z[:d + 1, donors]
                 if KEYS and getattr(spol, "keys", None) is not None:
                     # --keys-hold: the held keys are episode history - the loser now holds what
                     # the donor holds (the policy reads them as 7 obs columns next decision)
@@ -3331,8 +3414,10 @@ def main():
                   "best_arc": float(fa), "arc_tick": int(fat),
                   "end_tick": int(ft), "raw_arc": float(fa),
                   "view": (None if av is None
-                           else np.asarray(av, np.float32))}
-                 for ft, ah, fa, fat, av in fin_hist]
+                           else np.asarray(av, np.float32)),
+                  "pacts": (None if ap is None else np.asarray(ap, np.int8)),
+                  "view_z": (None if az is None else np.asarray(az, np.float32))}
+                 for ft, ah, fa, fat, av, ap, az in fin_hist]
         if arcp is not None:
             for i in np.nonzero(valid)[0]:
                 hall.offer(best_arc[i], arc_tick[i], t + 1,
@@ -3340,7 +3425,10 @@ def main():
                            raw_arc=raw_arc[i],
                            get_view=((lambda i=i, d=d:
                                       hist_v[:d + 1, i].copy())
-                                     if VIEWC else None))
+                                     if VIEWC else None),
+                           get_policy=(lambda i=i, d=d: (
+                               None if hist_p is None else hist_p[:d + 1, i].copy(),
+                               None if hist_z is None else hist_z[:d + 1, i].copy())))
             cands += list(hall.items)
         lines = rank_lineages(cands, int(args.keep_finishers))
         if int(getattr(args, 'robust', 0) or 0) > 0 and len(lines) > 1:
@@ -3399,6 +3487,14 @@ def main():
                    "raw_arc_all": np.zeros(n, np.float64)}
             if VIEWC:
                 out["view_all"] = np.zeros((n, d_max, 2), np.float32)
+            # the policy's own rows (hist_p / hist_z), padded like acts_all: -1 / NaN where a
+            # line has none (plan_to_bc then rebuilds that line's targets from its engine rows)
+            has_p = any(c.get("pacts") is not None for c in lines)
+            has_z = any(c.get("view_z") is not None for c in lines)
+            if has_p:
+                out["acts_pol_all"] = np.full((n, d_max, 6), -1, np.int8)
+            if has_z:
+                out["view_z_all"] = np.full((n, d_max, n_z(VIEW_ABS)), np.nan, np.float32)
             for j, c in enumerate(lines):
                 ah = c["acts"]
                 out["acts_all"][j, :len(ah)] = ah
@@ -3406,6 +3502,10 @@ def main():
                 if VIEWC:
                     out["view_all"][j, :len(ah)] = np.asarray(c["view"],
                                                              np.float32)
+                if has_p and c.get("pacts") is not None:
+                    out["acts_pol_all"][j, :len(ah)] = np.asarray(c["pacts"], np.int8)
+                if has_z and c.get("view_z") is not None:
+                    out["view_z_all"][j, :len(ah)] = np.asarray(c["view_z"], np.float32)
                 out["finish_ticks_all"][j] = int(c["finish_tick"])
                 out["arc_all"][j] = float(c.get("best_arc") or 0.0)
                 out["arc_tick_all"][j] = int(c.get("arc_tick") or 0)
@@ -3644,6 +3744,10 @@ def main():
               "finish_ticks_all": np.array([best["tick"]], np.int32)}
         if VIEWC:
             pk["view_all"] = np.asarray(best["view"], np.float32)[None]
+        if best.get("pacts") is not None:
+            pk["acts_pol_all"] = np.asarray(best["pacts"], np.int8)[None]
+        if best.get("view_z") is not None:
+            pk["view_z_all"] = np.asarray(best["view_z"], np.float32)[None]
         lines_ok, n_bad = [None], 0
         extra = {"view_continuous": np.int32(1 if VIEWC else 0),
                  "view_mode": np.int32(view_mode_code(VIEW_ABS))}
@@ -3652,6 +3756,11 @@ def main():
              acts=best["acts"], act_every=np.int32(K),
              **({"view": np.asarray(best["view"], np.float32)}
                 if VIEWC else {}),
+             # the winner's POLICY-space rows and drawn view z (hist_p / hist_z), when recorded
+             **({"acts_pol": np.asarray(best["pacts"], np.int8)}
+                if best.get("pacts") is not None else {}),
+             **({"view_z": np.asarray(best["view_z"], np.float32)}
+                if best.get("view_z") is not None else {}),
              finish_ticks=np.int32(best["tick"]),
              spawn_state=row0,
              # the spawn's 15 core scalars (the reset obs): a replay from

@@ -3018,6 +3018,16 @@ class _TorchPolicyBase:
         self.view_absolute = getattr(policy, "view_absolute", None)
         self._pitch_max = (float(core.config.pitch_rate_max_deg)
                            if core is not None else 10.0)
+        # record_policy_act (a planner's opt-in, tools/beam_tas.py; off everywhere else, where
+        # nothing below runs): each decision also publishes the row the POLICY chose, before
+        # --keys-hold resolves its keep bins into engine keys (`policy_act`, (N, 6) int32), and
+        # the pre-tanh z its view heads drew (`view_z`, (N, n_z) float32). An engine row cannot
+        # say which of KEEP and the explicit bin of the held key the policy picked, and a
+        # target rebuilt from the physical view is clipped where tanh saturates - BC on the
+        # rebuilt rows fought the policy's representation (pbx 2026-10-28).
+        self.record_policy_act = False
+        self.policy_act = None
+        self.view_z = None
 
     def _finish_view(self, cat_act, z):
         """--view-continuous: assemble the int action row (NEUTRAL in the two
@@ -3030,6 +3040,8 @@ class _TorchPolicyBase:
         self.view = np.ascontiguousarray(
             view_from_z_t(z, self._pitch_max, self.view_absolute)
             .to("cpu").numpy(), np.float32)
+        if self.record_policy_act:
+            self.view_z = np.ascontiguousarray(z.detach().float().to("cpu").numpy(), np.float32)
         self._mask_note(act)
         return act
 
@@ -3063,6 +3075,9 @@ class _TorchPolicyBase:
     def act(self, obs):
         if self._held is None or self._tick % self._k == 0:
             self._held = self._decide(obs)
+            if self.record_policy_act:
+                # the policy's own row, before the keep bins resolve (see __init__)
+                self.policy_act = self._held.copy()
             if self.keys_hold:
                 # POLICY-space -> ENGINE-space, and the held state moves on.
                 # BEFORE aux.push, which records what the engine is about to

@@ -1105,6 +1105,23 @@ def main(argv=None, build_only: bool = False, device=None):
             ep_ticks = TICK.secs_to_ticks(_cap_s, "round")
             print(f"tick: episode cap {_cap_s:g} s -> {ep_ticks} ticks at "
                   f"{TICK.ms:.4f} ms (pass --ep-ticks to override)")
+    # the view ceilings at train_fast's VIEW_TICK (surfgym.tick.view_tick): the ramp's START tick
+    # when the checkpoint carries a --tick-ms-schedule - the trainer bakes them into its cores
+    # there, and a recording at the ramp's end tick pitched 0.767x slower than every training
+    # and eval core (pbx 2026-10-28). Without a schedule VTICK is TICK and nothing below runs.
+    from surfgym.tick import view_tick
+    VTICK = view_tick(cfg, TICK)
+    if VTICK is not TICK:
+        if VTICK.is_reference:
+            pitch_rate_core, _tick_env = pitch_rate, {}
+        else:
+            pitch_rate_core = (0.0 if pitch_rate == 0.0
+                               else VTICK.per_tick(10.0 if pitch_rate < 0 else pitch_rate))
+            _tick_env = ({} if cfg.get("yaw_adaptive")
+                         else {"yaw_rate_max_deg": VTICK.per_tick(10.0)})
+        print(f"tick: view ceilings at the --tick-ms-schedule's START tick {VTICK.requested_ms:g} ms "
+              f"(train_fast's VIEW_TICK): pitch {pitch_rate_core:.4g} deg/tick, not scaled to the "
+              f"{TICK.requested_ms:g} ms the core runs at")
     # --view-absolute is MIRRORED: the view row is a TARGET the core
     # approaches (view_mode 1 / 2), and a core left in delta mode would read
     # a 90-degree target as a 90 deg/tick command clamped to the ceiling.
