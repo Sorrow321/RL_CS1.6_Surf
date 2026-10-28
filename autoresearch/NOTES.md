@@ -4132,3 +4132,8 @@ was fetched that way. The operator may want box.py's pull to split large files t
   first 100 updates = 52M steps, so a resume onto a new curriculum does not start with value-noise advantages).
   Plan: if the greedy has not switched to the glide by ~03:00 UTC, spend the rest of the round on c4's regime (8-9/9 per eval)
   for a 9/9 under 68.66 s.
+* c6 to 00:32 UTC: the critic warmup removed the resume spike (kl 0.02-0.03 over the frozen 52M steps, then 0.19-0.35, max 0.80;
+  no collapse). Evals **117.702** (56.959B = c4's 9/9 weights: 9/9 again, 68.95 s) / 114.360 / 115.470 / 116.601 (8/9, **68.65 s**
+  - with a ninth finish that eval would have beaten the incumbent). The strict band sits IN the turn (rows 7,435-7,440, ~64% /
+  ~6% band success alternately) - the curriculum now waits where the skill is missing; the greedy's 84.77% crossings are still at
+  h ~1,700.
