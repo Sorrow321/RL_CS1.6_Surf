@@ -3,21 +3,21 @@
  "round": 9,
  "final": false,
  "best": {
-  "score": 117.787,
-  "eval_file": "/home/steam/ar_pb/runs/pbr9b1/pbr9b1_c9/traj_59622555648.jsonl",
+  "score": 117.8,
+  "eval_file": "/home/steam/ar_pb/runs/pbr9b1/pbr9b1_c9/traj_60075540480.jsonl",
   "run": "pbr9b1_c9",
-  "step": 59622555648,
-  "ckpt": "/home/steam/ar_pb/runs/pbr9b1/pbr9b1_c9/ckpt_59618885632.pt",
+  "step": 60075540480,
+  "ckpt": "/home/steam/ar_pb/runs/pbr9b1/pbr9b1_c9/ckpt_60072394752.pt",
   "recipe": [
    "c2: the incumbent ckpt_55038705664 on pbr9b1_fo1e (own greedy line + a GE fly-over chain at 84%, cut at 84.92%) + --demo-success-energy 150, lr 1e-4",
    "c3: c2's ckpt_latest + --demo-success-strict (new), pool fo1dec, lr 1e-4 - the greedy adopts the fly-over",
    "c4: c3's ckpt_latest on pbr9b1_fo2 (fo1 + a GE soft landing, cut at 88.12%) + strict energy cut, lr 1e-4: 117.719, then a kl-2.45 collapse",
    "c5: c4's ckpt_56525586432 on fo2 strict, lr 5e-5, --demo-tau0 7618: 117.732 at 56.979B (9/9, 68.03 s)",
    "c8: c5's ckpt_56979095552 on pbr9b1_fo2t (fo2 from 77.1%: the band cannot reach the 71% region) + --demo-success-energy 150 --demo-success-strict, --demo-tau0 618, pool pbr9b1_late_states then late2 (+ own shaft entries), lr 5e-5; 117.755 at 58.037B (9/9, 67.36 s), 117.780 at 59.018B (9/9, best 66.61 s, all nine land softly, 66.6-67.6 s), 117.766 at 59.094B (9/9, 67.01 s)",
-   "c9: c8's ckpt_59018051584 (117.780) re-anchored with c8's flags at --lr 3e-5, --demo-tau0 0, pool late2: evals 9,7,8,8,9,9,8,8,9,6 of 9 (0.90 per episode; 117.785 at 59.0186B, 117.775, 117.784, **117.787 at 59.6226B: 9/9, best 66.39 s**)"
+   "c9: c8's ckpt_59018051584 (117.780) re-anchored with c8's flags at --lr 3e-5, --demo-tau0 0, pool late2: 9/9 in 9 of its first 20 evals (117.785 at 59.0186B, 117.787 at 59.6226B, **117.800 at 60.0755B: 9/9, best 66.01 s**, 117.786, 117.788)"
   ],
   "resume_from": "pbr9b1_c8 ckpt_59018051584 (the 117.780 hand-on, md5 29645289...)",
   "commit": "9afd39b"
  },
- "summary": "117.787 (c9 59.6226B: 9/9 finish, best 66.39 s; hand-on ckpt_59618885632, 3.7M before the eval, md5 in NOTES, pulled) > incumbent 117.711. c9 (the 117.780 snapshot re-anchored at lr 3e-5) went 9/9 in 4 of its first 10 evals (0.90 per episode). How: GE from the policy's own line found a fly-over of the 84% platform end and a soft landing on the lower level; taught with energy-gated spines + a new --demo-success-strict (the energy rule had counted plain finishes); lr 5e-5 after a kl-2.45 collapse at 1e-4; a spine starting at 77% so the band never enters the fragile 71% bounce; re-anchoring to the 9/9 snapshot at lr 3e-5 when late-course-only training drifted the early course. Median finish ~1.7 s under the incumbent's."
+ "summary": "117.800 (c9 60.0755B: 9/9 finish, best 66.01 s; hand-on ckpt_60072394752, 3.1M before the eval, pulled) > incumbent 117.711. c9 (the 117.780 snapshot re-anchored at lr 3e-5) went 9/9 in 9 of its first 20 evals. How: GE from the policy's own line found a fly-over of the 84% platform end and a soft landing on the lower level; taught with energy-gated spines + a new --demo-success-strict (the energy rule had counted plain finishes); lr 5e-5 after a kl-2.45 collapse at 1e-4; a spine starting at 77% so the band never enters the fragile 71% bounce; re-anchoring to the 9/9 snapshot at lr 3e-5 when late-course-only training drifted the early course. Median finish ~1.7 s under the incumbent's."
 }
