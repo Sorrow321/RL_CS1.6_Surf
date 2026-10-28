@@ -4165,3 +4165,6 @@ used for the search work below and then blocklisted and released.
 * Ops 01:16 UTC: box 58015530's 4 h deadline (01:35) extended with `box.py extend --hours 4` -> 05:16 UTC (the extension
   counts from NOW, not from the old deadline); extend again before 05:16 to reach the 08:01 wrap-up. Credit $30.24, fleet
   burn 1.01 $/h.
+* c8 01:13-01:40 UTC: evals 116.596 (8/9, 68.80 s) / 114.364 (6/9) / 114.369 (6/9) / 116.586 (8/9) / 116.590 (8/9, 68.98 s)
+  - three 8/9 in the last four; kl median 0.19 (last 50), value loss 87 and falling; the band at 5,833 (~67.5%). Split times
+  still the greedy's (t70 48.4-49.1); a 9/9 needs a best finish < 68.66 s to beat the incumbent.
