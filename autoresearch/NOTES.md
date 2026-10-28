@@ -4252,3 +4252,9 @@ Box: 58011053, RTX 4080S, 0.41 $/h, Ontario CA (machine 141481, the box rounds 7
 * c8 04:00-04:25 UTC: 115.551 (7/9, 66.79) / 115.554 (7/9, 66.71) / 114.442 (6/9, 66.73) / 115.562 (7/9, 66.49) / 115.561 (7/9, 66.52) /
   116.662 (8/9, 66.79) / 116.687 (8/9, **66.06 s**) / 114.446 (6/9, 66.63) / 114.457 (6/9, 66.30) - finishes still falling (bests
   66.1-66.8 s); no 9/9 since 59.094B. Box extended to 08:32 UTC (credit $27.43 at 04:03).
+* c8 ended on its own at 59.9796B (its --steps 3e9 budget from the 56.98B resume ran out ~04:47 UTC - size --steps for the whole
+  remaining round). Its last evals (59.47-59.92B): 7/9 (66.52) / 8/9 (66.79) / 8/9 (66.06) / 6/9 / 6/9 / 7/9 / 6/9 (66.38) - with deaths
+  moving EARLY (3.7%, 5.9%, 9.7%, 11.9%, 16.1%, 18.3%, 24.2%, 44.8% over the last 5 evals; none before 20% in its first 15 evals) and a
+  kl-2.12 update at its very end: drift of the early course after 3B steps whose curriculum, pool and reservoir all sat past 77%.
+* **pbr9b1_c9** (04:51 UTC, the last ~3 h): re-anchored on the 117.780 hand-on ckpt_59018051584 (two 9/9 evals in a row from there),
+  c8's flags (fo2t strict energy cut, --demo-tau0 0, pool pbr9b1_late2_states) at **--lr 3e-5** (slower drift), --steps 4e9.
