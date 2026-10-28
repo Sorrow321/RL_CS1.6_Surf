@@ -4171,3 +4171,9 @@ used for the search work below and then blocklisted and released.
 * c8 01:40-02:06 UTC: evals 116.586 (8/9) / 116.590 (8/9) / 113.259 (5/9) / 116.585 (8/9) / 115.482 (7/9) / 114.376 (6/9,
   68.72 s); kl 0.20, value loss 75; band 5,753 (~66.5%). Pace moving only at the end of the band's reach (a few episodes now
   at 84% by 57.4-57.6 s, the greedy's 57.8-58.3). Kept as is: the first stable regime with a pace incentive.
+* c8 02:06-02:33 UTC: evals 116.588 (8/9) / 114.366 (6/9) / 112.137 (4/9) / 113.235 (5/9, 69.62 s) - turned down as the value
+  loss jumped: median 82-95 per 100M steps over 55.44-56.14B (the stretch of 8/9 evals) -> **199 at 56.24-56.34B**. Stopped at
+  ~56.31B.
+* **pbr9b2_c9** (02:35 UTC): c8's own snapshot `ckpt_56011784192` (just before its 56.021B 8/9 eval, inside the low-value-loss
+  stretch; md5 abf46b61..., copied to the box's runs_ckpt.pt) with c8's flags at **--lr 2e-5** and `--demo-tau0 5753` (c8's
+  band) - round 8's c12 move: the pre-break snapshot at a lower lr. NB the box's runs_ckpt.pt is no longer the incumbent.
