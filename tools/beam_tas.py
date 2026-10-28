@@ -2214,7 +2214,8 @@ def main():
         _raw = [f for f, on in (("--eps", args.eps > 0.0), ("--dedup", args.dedup),
                                 ("--commit", args.commit > 0),
                                 ("--greedy-prefix", args.greedy_prefix > 0),
-                                ("--prefix-line", bool(args.prefix_line)),
+                                # (--prefix-line is not an editor any more: prefix_sync sets the
+                                # held keys from each replayed engine row, as resolve would)
                                 ("--branch-at", bool(args.branch_at)
                                  and not (args.branch_view_only
                                           and cfg.get("view_continuous"))),

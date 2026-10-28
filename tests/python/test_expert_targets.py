@@ -592,3 +592,6 @@ def test_prefix_line_replay_keeps_the_wrappers_feeds_and_held_keys():
     i = bt.index("prefix_sync(spol, coreN, pre_acts[t // K])")
     assert bt.index("hist[t // K] = pre_acts[t // K][None, :]", i) - i < 120
     assert "if t % K == 0:" in bt[i - 300:i]
+    # and so --prefix-line is no longer refused on a --keys-hold checkpoint
+    i_k = bt.index('_raw = [f for f, on in (("--eps", args.eps > 0.0)')
+    assert '("--prefix-line", bool(args.prefix_line))' not in bt[i_k:i_k + 1200]
