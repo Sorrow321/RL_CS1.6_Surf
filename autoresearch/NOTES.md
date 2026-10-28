@@ -4310,3 +4310,49 @@ Box: 58011053, RTX 4080S, 0.41 $/h, Ontario CA (machine 141481, the box rounds 7
   on the best 9/9 snapshot every ~2 h if early-course deaths reappear. The time left is the 71% bounce (+0.5-0.8 s) and the early-mid
   drift (+0.2 s); the 71% fix needs a gentler teacher than a band walking through it (e.g. --demo-success-pace with a narrow --spawn-states
   window AT the decision and the band parked elsewhere, at a low lr).
+
+## pbx-expert (operator task: the expert loop on one box) - 2026-10-28 08:50 UTC start
+
+Box 58072366, RTX 5080, 0.38 $/h, Utah, rented 09:14 UTC. Seed: pbr9b1_c9 ckpt_60897624064 (md5 998f57e1).
+
+### The expert loop's training half was broken on this lineage; fixed (commits 5b85c94, 3302a37, 9fdfa90)
+* Acceptance test (operator's): BC on the policy's OWN greedy line (beam_tas --greedy-envs = --envs, plan_to_bc
+  --no-value-target, one trainer iteration with the loop's arguments at lr 1e-12) must read head-acc ~1, joint-acc ~1,
+  view-mse ~0. It read 0.654 / 0.163 / 304, and the first update at lr 3e-5 read kl 4.1-4.9.
+* Causes and fixes:
+  1. beam_tas stored ENGINE rows; plan_to_bc rebuilt policy rows with the keep rule, while this policy as often re-presses
+     the held key (the same engine action). The search wrappers now publish the row the policy chose
+     (`_TorchPolicyBase.record_policy_act`, off by default) and beam_tas saves it (`acts_pol`); plan_to_bc uses it, checked
+     to resolve back to the executed engine rows. Survivor targets are taken over copies whose engine rows AND views agree.
+  2. The view target was rebuilt from the physical view, clipped at |tanh z| 0.999. This policy's pitch mean sits at |z|
+     6-148 (camera only, target pinned at +30 deg), so 68% of rows were clipped: that was the 304. The drawn z is now
+     recorded (`view_z`) and BCDataset prefers it.
+  3. beam_tas.build_sim and record_ckpt scaled the view ceilings to the current tick (pitch 1.02 deg/tick); the trainer
+     anchors them to the tick ramp's start (1.33). `surfgym.tick.view_tick` now gives both tools the trainer's VIEW_TICK.
+     NB: every record_ckpt recording and loop gate eval of a ramped checkpoint before 2026-10-28 ran the slower pitch.
+  4. Under `--score dv` the critic probe ran the wrapper's _obs on the decision tick; the next decision then read every
+     env as freshly spawned and reset its held keys to NEUTRAL (every boundary near the goal). Fixed by
+     keys_snapshot / keys_restore; the all-greedy line is now byte-identical under --score d and dv.
+  5. `--keys-hold-spawn-duck` mirrored in beam_tas / plan_to_bc (the map start is standing: no effect there); plan_to_bc
+     writes `<spine>.keys.npy` and exit_local passes `--demo-keys`, so spine spawns hold the line's own keys.
+  6. New trainer flags (default off, dumped only when set, TRAIN_ONLY in record_ckpt): `--bc-keys-engine` scores the held
+     key heads by the ENGINE action (log(p[e+1] + p[KEEP] if e is held)); the KEEP-vs-explicit split was ~1.9 of the
+     2.8 nats. `--bc-pitch-coef C` weights the pitch head in the BC view term (0 = drop the camera-only head).
+* After the fixes, lr 1e-12: 0.994 / 0.977 / 0.131 in bf16, **1.000 / 0.999 / 0.0000 with --fp32** - the residual is the
+  trainer's bf16 (images + autocast) against the fp32 planner. lr 3e-5: first kl 0.033-0.043 (c9's own resume 0.027).
+* A 64-env greedy beam and the 1-env greedy gate diverge at tick 89 by 0.01 deg of yaw (batch-size dependent fp32
+  numerics): "all-greedy search = greedy gate" is not a usable test; each line's own replay is bit-exact.
+* Tests: tests/python/test_expert_targets.py (26, CPU).
+
+### The loop on the box (exit_local, runs/pbEXIT2, from 09:36 UTC)
+`--waves 3 --plan-envs 4096 --greedy-envs 128 --resample 25 --score dv --keep 16 --spawn-per-wave 1 --max-ticks 9800
+--train-steps 3e8 --envs 1024 --lr 3e-5 --bc-coef 0.5 --bc-value-coef 0 --bc-target dist --eval-eps 9 --gate 1
+--gate-rematch 1 --gate-rule score --grader autoresearch/score.py "--plan-args=--allow-nonfinisher --v-switch 5000"
+--distil-args=--no-value-target --extra --no-respawn-novel --respawn-backward-mix 0 --respawn-front-perturb 0
+--respawn-greedy 0 --respawn-greedy-stuck 0 --int-real-only 0 --respawn-greedy-speed 1 1 --respawn-greedy-turn 0
+--demo-front-frac 0 --spawn-states= --demo-success-bonus 0 --bc-keys-engine --bc-pitch-coef 0`. ~19 min per round on
+the 5080 (plan 3 min, train 3e8 steps 15 min, evals 1 min).
+* Rounds 0-7 (to 11:53 UTC): planner best 63.79 -> 62.43 -> 62.33 -> 62.31 -> **61.94 s**; the policy's fastest finish
+  65.92 -> 64.36 s (round 6, 8/9); 9/9 evals: round 2's policy rematched on rounds 3 and 4 (best 65.08 / 65.59 s, mean
+  66.34 / 66.58 s, grader 117.831 / 117.814). The seed scored 5/9 in the loop's own record_ckpt eval (9/9 in the
+  trainer's), so reliability in record_ckpt is the weak side; challengers run 6-8/9.
