@@ -4161,3 +4161,13 @@ Box: 58011053, RTX 4080S, 0.41 $/h, Ontario CA (machine 141481, the box rounds 7
   takes 1.52 s, the bounce-and-loop ~2.2 s.
 * c5 meanwhile (to 57.43B): 113.277 (5/9, 68.36) / 114.389 (6/9, 68.33) / 115.490 (7/9, 68.63); its strict band walked from the
   soft landing's root (7,618) back past the fly-over chain to 7,463 (82.9%) - the soft landing now reached from the fly-over.
+* c5 to its stop (00:41 UTC, 57.860B, ckpt_latest md5 999dd1d7...): after 57.43B the greedy began LANDING SOFTLY (energetic at
+  88%: 1/9, 3/9, 2/9, 5/9 in the last four evals; those finish in 67.4-68.0 s - fastest single finish of the round **67.41 s**,
+  57.659B) but reliability fell: 114.404 (6/9, 67.87) / 112.197 (4/9, 67.41) / 111.079 (3/9, 67.63) / 113.299 (5/9, 67.70).
+  Deaths in those four evals: the shaft after a soft landing x5 (92.45-93.41%: the faster entry meets the upper kill sheets),
+  **stalls at 72.4-72.5% x4** + a fall at 71.7% (the band had walked back through the 71% bounce, as c2/c3's did), the fly-over
+  x3, 82.2%, 61.3% x2, 54.9%, 27.3%. Its strict band walked fo2 back from 7,463 to 6,383 (73.7%).
+* **pbr9b1_c6** (00:43 UTC): c5's ckpt_latest (57.8442B, md5 999dd1d7...) on **s71c** + keys with `--demo-success-pace 0.01 0.3`
+  (success: d <= 15,866 within (6,452 - spawn row) x 1.01 + 39 ticks; 6,555 ticks = 50.3 s from the map start), pool
+  **pbr9b1_s71dec2_states** (md5 72aba8a2...: the 71% approach x20, the chain x15, the beam continuation 72.4-83.3% x2, fo2dec x1,
+  the beam's shaft passage 90-100% x3), lr 5e-5, c5's other flags (no energy rule now). Box redeployed at 6127782.
