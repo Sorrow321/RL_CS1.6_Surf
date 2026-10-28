@@ -550,3 +550,45 @@ def test_exit_local_paired_gate_rule():
     # speed first: faster on the shared finishes, at most tol fewer finishes
     assert "accept = bool(pairs) and paired < 0.0 and len(fins) >= len(fi) - tol" in src
     assert "tol = max(1, int(round(args.gate_finish_tol * max(n, ni))))" in src
+
+
+def test_prefix_line_replay_keeps_the_wrappers_feeds_and_held_keys():
+    """beam_tas --prefix-line replays a saved line open-loop, then searches from its state. The
+    replay must advance what the wrapper's act() advances per decision - the compass block, the
+    ratchet, the surf tracker, the held keys and the aux history - or the first searched
+    decision reads the junction as a fresh spawn (keys NEUTRAL, compass progress 1.0)."""
+    import train_fast
+    import beam_tas
+    K, n = 4, 3
+    tick = np.zeros(n, np.int64)
+    core = types.SimpleNamespace(num_envs=n, states_view={
+        "origin": np.zeros((n, 3), np.float32), "yaw": np.zeros(n, np.float32), "tick": tick,
+        "onground": np.zeros(n, np.int32), "velocity": np.zeros((n, 3), np.float32),
+        "ducked": np.zeros(n, np.int32)})
+    calls = {"eval": [], "push": [], "ratchet": 0, "surf": 0}
+    aux = types.SimpleNamespace(
+        eval_features=lambda o, y, t: calls["eval"].append(np.asarray(t).copy()),
+        push=lambda a: calls["push"].append(np.asarray(a).copy()))
+    pol = types.SimpleNamespace(aux=aux, keys_hold=True, keys=None, _keys_tick=None, core=core,
+                                _period=K, spawn_duck=False,
+                                ratchet_fn=lambda c: calls.__setitem__("ratchet", calls["ratchet"] + 1),
+                                surf_fn=lambda c, m: calls.__setitem__("surf", calls["surf"] + 1))
+    pol._keys_sync = types.MethodType(train_fast._TorchPolicyBase._keys_sync, pol)
+    rows = np.array([[3, 0, 0, 2, 0, 0], [5, 0, 2, 0, 0, 1], [7, 0, 2, 2, 1, 1]], np.int32)
+    for d, r in enumerate(rows):
+        tick[:] = d * K                       # the decision's tick, before the core steps it
+        beam_tas.prefix_sync(pol, core, r)
+    assert (pol.keys.state == rows[-1][list(HELD_HEADS)][None, :]).all()
+    assert (pol.keys.boot == pol.keys.state).all()
+    assert len(calls["eval"]) == 3 and [int(t[0]) for t in calls["eval"]] == [0, K, 2 * K]
+    assert calls["ratchet"] == 3 and calls["surf"] == 3
+    assert len(calls["push"]) == 3 and (calls["push"][-1] == rows[-1][None, :]).all()
+    # the first SEARCHED decision, one decision later: not an episode start, keys still held
+    tick[:] = len(rows) * K
+    pol._keys_sync(n)
+    assert (pol.keys.state == rows[-1][list(HELD_HEADS)][None, :]).all()
+    # wired into the replay loop at the decision boundary, before the history row is written
+    bt = (ROOT / "tools" / "beam_tas.py").read_text(encoding="utf-8")
+    i = bt.index("prefix_sync(spol, coreN, pre_acts[t // K])")
+    assert bt.index("hist[t // K] = pre_acts[t // K][None, :]", i) - i < 120
+    assert "if t % K == 0:" in bt[i - 300:i]

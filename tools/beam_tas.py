@@ -125,6 +125,7 @@ from eval_honesty import corridor_progress, load_route
 from surfgym import SurfCore, default_config
 from surfgym.bc import make_eval_feeds, rank_lineages
 from surfgym.core import SURF_IN_DUCK, SURF_IN_JUMP, phys_to_dict
+from surfgym.keyshold import HELD_HEADS
 from surfgym.rewards import cc_draw, map_spawn_pool
 from surfgym.route import ArcProgress
 from surfgym.tick import TickClock, header_fields, ticks_to_secs, view_tick
@@ -336,6 +337,32 @@ def keys_restore(pol, snap) -> None:
     if k is not None:
         k.state[:] = st
         k.boot[:] = bt
+
+
+def prefix_sync(pol, core, row) -> None:
+    """--prefix-line: what the wrapper's own act() advances once per DECISION, for one replayed
+    ENGINE row (the obs-reward feed and the latch are the caller's efN / latchN): its _obs feeds
+    (the compass block's episode-start d, the ratchet's best d, the surf tracker), the held keys,
+    which after the decision ARE the engine row's fwd / side / duck, and the action history the
+    aux block pushes. Without it the first searched decision read the junction as a freshly
+    spawned episode - compass progress ratio 1.0, ratchet gap 0, held keys NEUTRAL (pbx
+    2026-10-28). Call it at the decision's tick, before the core steps it."""
+    sv = core.states_view
+    n = core.num_envs
+    if pol.aux is not None:
+        pol.aux.eval_features(sv["origin"], sv["yaw"], sv["tick"])
+    if pol.keys_hold:
+        pol._keys_sync(n)
+    if pol.ratchet_fn is not None:
+        pol.ratchet_fn(core)
+    if pol.surf_fn is not None:
+        pol.surf_fn(core, n)
+    a = np.repeat(np.asarray(row, np.int32).reshape(1, -1), n, axis=0)
+    if pol.keys_hold:
+        pol.keys.state[:] = a[:, list(HELD_HEADS)]
+        pol.keys.boot[:] = pol.keys.state
+    if pol.aux is not None:
+        pol.aux.push(a)
 
 
 def resolve_map(name_or_path, cfg_map):
@@ -2936,6 +2963,7 @@ def main():
                         efN(coreN)
                     if latchN is not None:
                         latchN(coreN)
+                    prefix_sync(spol, coreN, pre_acts[t // K])
                     hist[t // K] = pre_acts[t // K][None, :]
                     if VIEWC:
                         hist_v[t // K] = pre_view[t // K][None, :]
