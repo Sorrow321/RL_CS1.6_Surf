@@ -4249,3 +4249,6 @@ Box: 58011053, RTX 4080S, 0.41 $/h, Ontario CA (machine 141481, the box rounds 7
   ckpt_59085160448 (8.4M before the second 9/9; md5 278105ca...).
 * c8's reliability rose as the soft landing settled: 0.78 per episode over 57.81-58.72B, then 9/9, 9/9. Remaining deaths: the 71-75%
   region (4 in 5 evals - the bounce, never touched by c8's band), 80.6% (2, just past the band's parked rows), the shaft (2).
+* c8 04:00-04:25 UTC: 115.551 (7/9, 66.79) / 115.554 (7/9, 66.71) / 114.442 (6/9, 66.73) / 115.562 (7/9, 66.49) / 115.561 (7/9, 66.52) /
+  116.662 (8/9, 66.79) / 116.687 (8/9, **66.06 s**) / 114.446 (6/9, 66.63) / 114.457 (6/9, 66.30) - finishes still falling (bests
+  66.1-66.8 s); no 9/9 since 59.094B. Box extended to 08:32 UTC (credit $27.43 at 04:03).
