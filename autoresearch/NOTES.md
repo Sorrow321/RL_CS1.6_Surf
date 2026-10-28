@@ -4294,3 +4294,9 @@ was fetched that way. The operator may want box.py's pull to split large files t
 * **Next**: see "Next round: how to continue from 117.734" above - resume c11's hand-on with its flags, critic warmup on every
   resume, lr <= 1.5e-5; the planner finds 66.95 s on these weights (~1.2 s of polish over the first half of the course), which
   `--demo-success-time` was built to teach without BC.
+
+### pbr9b3 wrap-up (2026-10-28 08:03 UTC)
+* ROUND OVER. Nothing launched after 07:02 UTC. Best re-scored locally with score.py --best over pbr9b3_*: **117.734**
+  (pbr9b3_c11/traj_57789644800.jsonl, 9/9, best 67.98 s, 14 evals valid, none rejected). The hand-on is
+  pbr9b3_c11/ckpt_57789644800.pt (md5 065e6de9ad6fc2b7c08bd66460f1d429), the eval's own step; run.json and progress.csv
+  are beside it. Trainer code unchanged since 9c6465e (RESULT.json's commit). Box: none (box.py status: "pbr9b3: no box").
