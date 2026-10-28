@@ -4130,3 +4130,22 @@ Only a FASTER 9/9 eval beats it (one finisher fewer costs 1.11 = 33 s of time; o
   resumed with c12's exact flags (f1e + --demo-success-energy 150, f1after spawn states, lr 5e-5, --demo-tau0 4705); 242k
   steps/s; snapcopy beside it. Evals: 55.039B 7/9, best 68.58 s (115.492); 55.115B 6/9, best 68.51 s (114.383). Best
   single finishes below the incumbent's 68.66 s; the score needs a 9/9 to pass 117.711.
+
+### pbr9b4 round 9 lesson (wrap-up, 2026-10-28 08:05 UTC) - supersedes the DRAFT above
+* **Score 116.613** (pbr9b4_c1b, eval 55.643B: 8/9 greedy finishes, best 68.26 s; hand-on candidate ckpt_55639539712, md5
+  9f845355..., pulled) - below the incumbent's 117.711 (9/9, 68.66 s), which stands. The branch had NO box from 20:47 to
+  07:10 UTC (fleet cap full, then one acceptable offer); the late box (RTX 5080, 0.35 $/h) ran the incumbent continued
+  unchanged for 45 min: 13 evals, 4-8/9 finishing, single best finishes 68.26-69.05 s (four evals had a finish under the
+  incumbent's 68.66 s, none was 9/9). So the incumbent's weights produce faster single finishes often; the lottery needs
+  RELIABILITY (a 9/9 eval) more than speed - c12's own record was one 9/9 in ~8 evals, this run none in 13.
+* **What the CPU-only search found (for whoever has a box):** the incumbent loses its time at CONTACTS, not in flight: the
+  84.4% platform-west-end landing (h -600), the 85.05% drop-shaft north wall (h -510; the lower level's speed is set by the
+  ramp entry that follows), the 91.9% rim (h -650) and the 70-72% bulge. A 56-tick own-state Go-Explore chain skips the
+  platform landing and the policy carries it to the finish (spine pbr9b4_h1, 68.27 s; cut h1e + --demo-success-energy 200,
+  launch_c1.sh). Faster chains past the rim (96% 0.7 s sooner) and the bulge die in kill volumes when the policy takes over.
+* **Two generic flags, both off by default and tested byte-identical:** `--demo-success-time SECS` (a spine's success counts
+  only by the spine's own clock + SECS: one gate at the finish polices every faster section of a policy-own line) and
+  `--bc-view-coef C` (C = 0: BC on the key heads only - round 8's expert-loop distil collapsed these checkpoints because the
+  view targets sat ~1 z off a sigma-0.013 yaw head).
+* **Ops:** with a 1.2 $/h fleet cap and ~0.35-0.4 $/h boxes, the first three branches to rent take the round; the fourth
+  should keep a `box.py rent` retry loop that deploys and launches on success (runs/pbr9b4/autorent*.sh) from minute one.
