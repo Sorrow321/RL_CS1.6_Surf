@@ -7,12 +7,13 @@
   "eval_file": "/home/steam/ar_pb/runs/pbr9b2/pbr9b2_c1/traj_55114727424.jsonl",
   "run": "pbr9b2_c1",
   "step": 55114727424,
-  "ckpt": "/home/steam/ar_pb/runs/pbr9b2/pbr9b2_c1/ckpt_latest.pt",
+  "ckpt": null,
   "recipe": [
-   "c1: resume of the incumbent (pbr8b1_c12 ckpt_55038705664, md5 bc483e2f...) with c12's exact flags (f1e + --demo-success-energy 150, --lr 5e-5, --demo-tau0 4705)"
+   "c1: the incumbent (pbr8b1_c12 ckpt_55038705664) resumed with c12's exact flags (f1e + --demo-success-energy 150, --lr 5e-5, --demo-tau0 4705); its checkpoint was lost with box 58010900 (20 KB/s uplink)",
+   "runner-up WITH a checkpoint: pbr9b2_c13 traj_56762040320 = 117.706 (9/9, 68.81 s), snapshot ckpt_56755224576 pulled (md5 2f65637a...): c8 (incumbent on the policy's own planner line pb9_pl0e + energy 330 + additive pace bonus, lr 3e-5) -> its 56.012B snapshot -> c12 (lr 5e-6) -> its 56.384B snapshot -> c13 (lr 2e-6)"
   ],
   "resume_from": "incumbent r8 ckpt_55038705664 (pbr8b1_c12)",
-  "commit": "a9e11cb"
+  "commit": "a7ae75e"
  },
- "summary": "Best 117.707 (c1 = incumbent recipe continued: 9/9, 68.79 s). Route changes found by GE on the policy's own states (GE C straight 71-72.8%, GE A over the platform end) did not transfer: c4 (time gate on a beam hop) walked more, c5 (subtractive time gate) collapsed to 0/9, c7 (additive time bonus, --demo-success-time-bonus) crashed on the 71.5% ramp. New: the policy's own planner line from the true start (66.77 s) is the SAME route as the greedy, 2.25 s faster by polish. c8 (00:52 UTC): incumbent on the policy's own planner line (pb9_pl0e, cut 83%), energy floor at c12's 2,174, additive pace bonus 50, lr 3e-5: stable 1.2B steps with frequent 8/9 evals (best 68.33 s at 8/9), then the value loss jumped 90 -> 199 and evals fell to 4-5/9. c9 (c8's pre-jump snapshot, lr 2e-5) held 7-8/9 for ~0.25B steps, then collapsed at the 44.5% gate like c5 (early splits SLOWED first). Hypothesis: the pace gate also applied to fresh map starts (row 0). New --demo-success-time-nostart. c11 (03:33 UTC): c8's snapshot + c9's recipe + nostart, lr 2e-5."
+ "summary": "Best 117.707 (c1: incumbent recipe continued, 9/9 at 68.79 s; ckpt lost with a slow-uplink box) and 117.706 (c13: 9/9 at 68.81 s, snapshot pulled) - both just under the incumbent's 117.711. Found: the greedy loses time at 71-74% (a loop) and 84-86% (platform end + drop); GE on the policy's own states finds both shortcuts; the policy's own planner line is the same route 2.25 s faster (polish). Teaching pace through the curriculum's success rule (new flags --demo-success-time / -time-bonus / -time-nostart, flag-off bit-identical) never stuck: the subtractive form collapsed c5, the additive one held ~1.2B steps (c8: frequent 8/9, a 68.33 s finish) then broke (c9, c11: all greedy dead at the 44.5% gate after the early splits slowed), map-start gating not the cause. Late hours: the most reliable weights (c8 -> c12 stretch of four 8/9) at lr 2e-6 (c13) for evals."
 }
