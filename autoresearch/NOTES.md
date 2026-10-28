@@ -4137,3 +4137,27 @@ Box: 58011053, RTX 4080S, 0.41 $/h, Ontario CA (machine 141481, the box rounds 7
 * Every finisher flies over the platform's end; none lands softly yet (h at 88%: 1,282-1,616); the strict band works fo2 rows
   7,618-7,628 (the drop's spiral) at 10-83%. Update kl mean 0.30; spikes 1.7-2.3 only in the first iterations after the resume
   (as in every resume of this lineage), then isolated 1.0-1.2.
+
+### The 71% bounce: a turned-root search and a pace gate (23:50-00:20 UTC)
+* Median splits, c5's finishers (29, evals 56.75-56.98B) vs the incumbent's 9/9: c5 is 0.90 s faster at the finish (68.58 vs
+  69.48 s): -0.84 s over 83-84.7% (the fly-over), -0.18 s to 86.3%; but +0.32 s by 60% (drift) and **+0.60 s over 70-72%**
+  (the bounce at 71.5% and the loop back), mostly recovered over 72-75% (-0.52 s).
+* GE 4 (15 min, 141,085 cells; 23 of fo2's own states over 69.1-71.4% x heading turned 0 / +-4 / +-8 / +-12 deg, UNBOOSTED -
+  round 7's rule, the approach direction before more energy): +12 deg roots reach 73.76% at 50.52 s (the incumbent's greedy line
+  51.24 s), turn south ~150 u earlier and never bounce; x1.0 unturned roots found nothing faster (as GE 2's). The chain arrives
+  with LESS energy (h 2,491 vs ~2,580) - an energy gate cannot pick it, only time can.
+* Beams of c5's weights from the chain (4,096 copies, --objective finish): from its END (73.76%) every copy dies within 1.5 s;
+  from index 240 (73.0%) no finish; from index 140 (71.7%) finishes but slow (72.4 s total); from **index 190 (72.41%)**: 6,987
+  finishes, the first 16.96 s later = **66.58 s from the spawn** on the line's clock (c5's greedy: 68.0-68.6 s).
+* **`--demo-success-pace FRAC SECS`** (new trainer flag, commit 5b9294e, default off): a spine episode succeeds (curriculum outcome
+  and bonus) only if it crosses the success line within (rows from its spawn row to the spine's crossing row) x (1 + FRAC) +
+  SECS; off the spine never; a finish without it is a failure. pace_allowed() / pace_gate() + the trainer's branches; refused with
+  the energy / alive rules, --auto-spine and --reward-per-decision; TRAIN_ONLY in record_ckpt; tests/python/test_demo_success_pace.py
+  (pure rules, print / dump / refusals, flag off byte-identical to the pre-change trainer over a 4096-step smoke): 4 passed (+ the
+  strict tests, 7 in all, 181 s on this host's CPU).
+* Spine **pbr9b1_s71c** = fo2 rows 0-6,274 + GE 4's chain to index 190 (6,465 rows, cut at 72.41%); pool pbr9b1_s71dec_states
+  (md5 f785e150...) = the approach x20 + the chain x15 + the beam's continuation (72.4-83.3%) x2 + fo2dec x1; the beam line itself
+  pbr9b1_s71beam_states (md5 fca49496...). With pace 0.01 0.3 a band spawn at the junction has 1.76 s to reach 72.41%: the chain
+  takes 1.52 s, the bounce-and-loop ~2.2 s.
+* c5 meanwhile (to 57.43B): 113.277 (5/9, 68.36) / 114.389 (6/9, 68.33) / 115.490 (7/9, 68.63); its strict band walked from the
+  soft landing's root (7,618) back past the fly-over chain to 7,463 (82.9%) - the soft landing now reached from the fly-over.
