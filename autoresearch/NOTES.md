@@ -4162,3 +4162,6 @@ used for the search work below and then blocklisted and released.
   incumbent's reliability band (no degradation, unlike c4/c5/c7); kl median 0.25, value loss 104-126. The band walked pl0e
   back 7,163 -> 6,023 (~70%) in 20 min and holds there at 21-35% (from 70% the planner is 0.42 s faster to the cut than the
   greedy; slack 0.25). Split times unchanged so far (t70 48.1-48.8 s vs the planner's 46.40; t84 57.6-58.6 vs 55.66).
+* Ops 01:16 UTC: box 58015530's 4 h deadline (01:35) extended with `box.py extend --hours 4` -> 05:16 UTC (the extension
+  counts from NOW, not from the old deadline); extend again before 05:16 to reach the 08:01 wrap-up. Credit $30.24, fleet
+  burn 1.01 $/h.
