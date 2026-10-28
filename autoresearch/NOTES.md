@@ -4274,3 +4274,39 @@ Box: 58011053, RTX 4080S, 0.41 $/h, Ontario CA (machine 141481, the box rounds 7
 * c9 06:20-07:01 UTC: 116.693 (8/9, **65.88 s** finish) / 116.662 (8/9) / 115.562 (7/9) / 115.559 (7/9) / 116.664 (8/9) / 115.565 (7/9) /
   **117.801** (60.906B: **9/9, best 65.97 s**) / 117.786 (9/9, 66.43) / 114.452 (6/9). 9/9 in 11 of c9's first 25 evals. Hand-on of 117.801:
   **ckpt_60897624064** (8.4M before the eval; md5 998f57e19792ec287aeb6836d1f929ac), pulled to runs/pbr9b1/pbr9b1_c9/.
+
+### pbr9b1 round 9 lesson (wrap-up, 2026-10-28 08:05 UTC) - supersedes the DRAFT above
+* **Score 117.711 -> 117.801** (pbr9b1_c9, eval 60.906012672B: **9/9 greedy finishes from the true start, best 65.97 s**; hand-on
+  **ckpt_60897624064**, 8.4M steps before the eval, md5 998f57e19792ec287aeb6836d1f929ac, pulled to runs/pbr9b1/pbr9b1_c9/ with c9's
+  ckpt_latest, 62.04B, md5 7f174a93...). Steps: 117.719 (c4, 68.43 s) -> 117.732 (c5, 68.03) -> 117.755 (c8, 67.36) -> 117.780 (c8,
+  66.61) -> 117.785 / 117.787 / 117.800 (c9) -> 117.801 (c9, 65.97 s). Fastest single greedy finish 65.88 s. The record (yardstick only)
+  is 75.18 s. Box 58011053 (RTX 4080S, 0.41 $/h) the whole round.
+* **Reliability by run** (finishes per episode / 9/9 evals): c1 0.63/0 (the incumbent's recipe continued), c2 0.61/0, c3 0.72/0, c4
+  0.53/1, c5 0.65/1, c6 0.56/0, c7 0.42/0, c8 0.74/3, **c9 0.89 / 13 of 40**. The incumbent's 9/9 had been a ~1-in-8 draw.
+* **What did it, in order:**
+  1. **Measure where the time goes** - split times at first arrival vs the incumbent (and the record as a yardstick): the greedy LANDED on
+     the 84.5% platform's end (~500 u of energy lost) and crossed the lower level at ~1,000 u/s.
+  2. **Go-Explore rooted at the policy's own greedy line** (record_ckpt --dump-states), picked by the EARLIEST ARRIVAL from the true start
+     (autoresearch/analysis/ge_fast_pick.py): a fly-over of the platform's end (x1.04 root) and then, rooted at that chain's own drop
+     states, a soft landing on the lower level (unboosted). Spines fo1e (cut at 84.92%) and fo2 (cut at 88.12%), energy-gated.
+  3. **`--demo-success-strict`** (new trainer flag, default off, tested): under --demo-success-energy the curriculum counted any FINISH as a
+     band success, so a band far behind the cut walked back on finishes while 1/72 bench episodes flew over. With it the band holds at the
+     decision; the greedy adopted the fly-over in ~25 min (c3) and the soft landing in ~1 h (c5/c8).
+  4. **lr**: 1e-4 collapsed c4 right after its 9/9 (kl 2.45); 5e-5 then 3e-5 held for 6+ h.
+  5. **Keep the band out of fragile places**: every run whose band walked through the 71% bounce (c2, c3, c5 late, c6, c7) grew crashes and
+     30 s stalls there; c8's spine fo2t starts at 77% so its band can never get there.
+  6. **Re-anchor on the 9/9 snapshot when it drifts**: c8's late-course-only training wore the early course down after ~3B steps (deaths at
+     3-24%); c9 = c8's 117.780 snapshot at lr 3e-5 went 9/9 in 13 of 40 evals with bests 65.97-66.6 s.
+* **What did not:** the planner (beam_tas from the true start) on these weights finds nothing faster than the greedy (69.08 vs 69.07 s);
+  the 71% shortcut - GE 4 with turned roots found two lines (beams of the policy finish from them at 66.6-67.3 s) and the new
+  **`--demo-success-pace FRAC SECS`** (time-gated success, default off, tested) can select them, but neither decision (+12 deg at 69.8%,
+  -4 deg at 71.2%) was learned in 15-25 min and both runs lost reliability.
+* **Ops lessons**: size --steps for the whole remaining round (c8's 3e9 ran out unnoticed); a deploy refuses while hand-copied files are
+  untracked on the box (move them aside or commit them first); never `pkill -f` a pattern inside box.py ssh (it kills the shell);
+  `tools/snapcopy.py` beside every run kept a hand-on within ~8M steps of every eval.
+* **Next round (to continue):** resume ckpt_60897624064 (runs/pbr9b1/pbr9b1_c9/) with c9's flags (box.py launch --resume -- ...):
+  `--maxvel 3500 --ckpt-every 2e8 --demo-file autoresearch/spines/pbr9b1_fo2t.npy --demo-keys autoresearch/spines/pbr9b1_fo2t.keys.npy --demo-window 5 --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5 --demo-rate 0.3 --demo-front-frac 0.8 --demo-success-d 100 --demo-success-bonus 50 --demo-milestones 44939,43426,42182,41015,40497,39943,37251,33777,32260,31429,30286,28818,28783,27001,25121,24479,23400,22500,21624.107,23215.873,20589.457,22013.855,20231.945,17069.684,15570.603515625,16451.8720703125,14773.07421875,19194.404296875,15831.419921875,14499,13097,12500,11634,10366,4365,7926 --keys-hold-spawn-duck --yaw-entropy 0 --demo-front-temp 0.5 --demo-front-ticks 40 --demo-front-view 6 --respawn-greedy 0.2 --respawn-greedy-window 0.25 2.0 --respawn-greedy-stuck 200 --respawn-greedy-contact --respawn-greedy-energy 3 --respawn-greedy-temp 0.5 --respawn-greedy-temp-ticks 100 --respawn-greedy-temp-view 6 --respawn-front-perturb 0.2 --respawn-front-perturb-band 0.005 --respawn-front-perturb-speed 1.0 1.3 --respawn-front-perturb-turn 90 --energy-pot 12 --energy-pot-front 0 --energy-pot-front-bonus 0 --no-respawn-novel --respawn-backward-mix 0 --int-real-only 0 --spawn-states autoresearch/spines/pbr9b1_late2_states.npy --spawn-states-frac 0.2 --demo-match-band --demo-success-energy 150 --demo-success-strict --lr 3e-5 --demo-tau0 0`
+  (+ the --self-states sentence: fo2t and late2 are the policy's own greedy line, its own GE chains and its own beams' states). Re-anchor
+  on the best 9/9 snapshot every ~2 h if early-course deaths reappear. The time left is the 71% bounce (+0.5-0.8 s) and the early-mid
+  drift (+0.2 s); the 71% fix needs a gentler teacher than a band walking through it (e.g. --demo-success-pace with a narrow --spawn-states
+  window AT the decision and the band parked elsewhere, at a low lr).

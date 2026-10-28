@@ -1,7 +1,7 @@
 {
  "agent": "pbr9b1",
  "round": 9,
- "final": false,
+ "final": true,
  "best": {
   "score": 117.801,
   "eval_file": "/home/steam/ar_pb/runs/pbr9b1/pbr9b1_c9/traj_60906012672.jsonl",
@@ -14,10 +14,10 @@
    "c4: c3's ckpt_latest on pbr9b1_fo2 (fo1 + a GE soft landing, cut at 88.12%) + strict energy cut, lr 1e-4: 117.719, then a kl-2.45 collapse",
    "c5: c4's ckpt_56525586432 on fo2 strict, lr 5e-5, --demo-tau0 7618: 117.732 at 56.979B (9/9, 68.03 s)",
    "c8: c5's ckpt_56979095552 on pbr9b1_fo2t (fo2 from 77.1%: the band cannot reach the 71% region) + --demo-success-energy 150 --demo-success-strict, --demo-tau0 618, pool pbr9b1_late_states then late2 (+ own shaft entries), lr 5e-5; 117.755 at 58.037B (9/9, 67.36 s), 117.780 at 59.018B (9/9, best 66.61 s, all nine land softly, 66.6-67.6 s), 117.766 at 59.094B (9/9, 67.01 s)",
-   "c9: c8's ckpt_59018051584 (117.780) re-anchored with c8's flags at --lr 3e-5, --demo-tau0 0, pool late2: 9/9 in 11 of its first 25 evals (117.785, 117.787, 117.800 at 60.0755B, **117.801 at 60.906B: 9/9, best 65.97 s**)"
+   "c9: c8's ckpt_59018051584 (117.780) re-anchored with c8's flags at --lr 3e-5, --demo-tau0 0, pool late2: 40 evals, 0.89 per episode, 9/9 in 13+ of them; best 117.801 at 60.906B (9/9, best 65.97 s)"
   ],
   "resume_from": "pbr9b1_c8 ckpt_59018051584 (the 117.780 hand-on, md5 29645289...)",
   "commit": "9afd39b"
  },
- "summary": "117.801 (c9 60.906B: 9/9 finish, best 65.97 s; hand-on ckpt_60897624064, pulled; 117.800 at 60.0755B, 66.01 s) > incumbent 117.711. c9 (the 117.780 snapshot re-anchored at lr 3e-5) went 9/9 in 9 of its first 20 evals. How: GE from the policy's own line found a fly-over of the 84% platform end and a soft landing on the lower level; taught with energy-gated spines + a new --demo-success-strict (the energy rule had counted plain finishes); lr 5e-5 after a kl-2.45 collapse at 1e-4; a spine starting at 77% so the band never enters the fragile 71% bounce; re-anchoring to the 9/9 snapshot at lr 3e-5 when late-course-only training drifted the early course. Median finish ~1.7 s under the incumbent's."
+ "summary": "FINAL 117.801 (pbr9b1_c9 60.906B: 9/9 greedy finishes from the true start, best 65.97 s; hand-on ckpt_60897624064, 8.4M before the eval, md5 998f57e1..., pulled; c9's ckpt_latest pulled too). Incumbent 117.711 (9/9, 68.66 s). How: (1) Go-Explore rooted at the policy's own greedy line, picked by earliest arrival, found a fly-over of the 84.5% platform end (where the greedy landed and lost ~500 u) and a soft landing on the lower level; (2) taught by energy-gated spines with a new --demo-success-strict (the energy rule had counted plain finishes as curriculum successes); (3) lr 5e-5 after a kl-2.45 collapse at 1e-4; (4) a spine truncated at 77% so the band never walks into the fragile 71% bounce; (5) re-anchoring on the 9/9 snapshot at lr 3e-5 when late-course-only training drifted the early course: 0.89 per episode, 9/9 in a third of evals. Median finish ~1.7 s under the incumbent's. Not done: the 71% bounce (+0.5-0.8 s) - GE lines and a new --demo-success-pace exist, the policy did not learn the decision in 15-25 min and bands there destabilised it. Next: resume ckpt_60897624064 with c9's flags."
 }
