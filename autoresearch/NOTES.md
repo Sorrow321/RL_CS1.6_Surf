@@ -4095,3 +4095,6 @@ Only a FASTER 9/9 eval beats it (one finisher fewer costs 1.11 = 33 s of time; o
 * `runs/pbr9b4/autorent.sh` (agent host, background): `box.py rent` every 120 s; on a box it runs `box.py deploy` (branch +
   the incumbent checkpoint) and `launch_c1.sh` (pbr9b4_c1: the incumbent on h1e + --demo-success-energy 200, c12's flags
   otherwise, lr 5e-5) at once, and releases the box if either step fails. Log: runs/pbr9b4/autorent.log.
+* (00:02 UTC) Still no box. The fleet's burn sits at 1.008 $/h (three branch boxes) and `box.py offers` lists ONE acceptable
+  offer (an RTX 5080 at 0.621 $/h; at 20:47 there were three 5080s at 0.417-0.624): even with one ~0.4 $/h box released the
+  fleet would be at ~1.2 + and the rent would still be refused. Credit $31.50 (21.3 h to the reserve at this burn).
