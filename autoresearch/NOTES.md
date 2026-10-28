@@ -4121,3 +4121,14 @@ was fetched that way. The operator may want box.py's pull to split large files t
   off bit-identical to f146a8b): under --demo-success-energy the curriculum's outcome is the gated crossing alone.
 * **pbr9b3_c5** (23:45 UTC): c4's ckpt_latest (57.057B, md5 03faecf2...) with c4's flags + `--demo-success-strict`,
   `--demo-tau0 7445` (the band starts in the turn, where the bench fails), lr 5e-5.
+* **c5 (strict) taught the glide in sampling - and COLLAPSED at once.** Its band walked 7,445 -> 6,560 in ~20 min at 30-55% REAL
+  success (energetic crossings only), but its evals went 112.130 (57.057B = c4's final weights, 4/9) -> **56.661 / 56.668 /
+  56.793** (0/9: every episode dead at 56.6% after ~38 s - the 56.6% shaft climb, round 8's c11 collapse spot). The kl in its first
+  25M steps: mean 0.59, max **8.92** (then 0.23-0.51). Every resume of this round spiked on its first updates (c1 3.7, c2 3.5, c3
+  10.6, c5 8.9) although the Adam state is restored: the first batches come from a new spawn distribution and the critic's values
+  are off for it. c4's hand-on snapshot (56.9586B, 9/9 eval) pulled with tools/pull_split.sh (md5 1604d45e...).
+* **pbr9b3_c6** (00:10 UTC): c4's 9/9 snapshot ckpt_56958648320 with c5's flags (strict, --demo-tau0 7445, lr 5e-5) +
+  `--critic-warmup 100` (the trainer's reward-switch procedure: actor and trunk frozen, the value tower alone trained for the
+  first 100 updates = 52M steps, so a resume onto a new curriculum does not start with value-noise advantages).
+  Plan: if the greedy has not switched to the glide by ~03:00 UTC, spend the rest of the round on c4's regime (8-9/9 per eval)
+  for a 9/9 under 68.66 s.
