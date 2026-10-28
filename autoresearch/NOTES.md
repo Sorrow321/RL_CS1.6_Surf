@@ -4258,3 +4258,14 @@ was fetched that way. The operator may want box.py's pull to split large files t
   (6/9) / 115.492 (7/9, 68.58 s). Its first eval (the actor still frozen by the critic warmup, so the 117.734 weights exactly)
   scored 114.375, not 117.734: with TWO trainers on the GPU the greedy eval is not bit-reproducible (alone, c6 and c8 had
   reproduced 117.702 exactly) - the 9/9 at 67.98 s was partly a draw of the eval itself.
+* c13 to 06:59 UTC: 114.388 / 114.385 / 113.264 / 116.616 (8/9, 68.18 s) / 113.280 / 111.037 / 116.610 (8/9, 68.36 s) / 114.371 /
+  116.592 (8/9) / 113.281 / 111.034 / 111.020 / 109.914 - drifting down; stopped 07:00 UTC.
+* **The planner on the 117.734 weights** (beam_tas --objective finish --score dv, 4,096 copies, from the true start): best line
+  **66.95 s**, 4,095 / 4,096 finish (the greedy's own episode 69.42 s; the 9/9's best 67.98 s). Split times: the planner is ~1.2 s
+  ahead of the 9/9's best episode by 50% and holds that gap to the finish - the next second is POLISH over the first half of the
+  course, not a route. BC is still unusable on these weights (round 8: the narrow yaw head); `--demo-success-time` (built this
+  round, unused) is the RL way to teach it: the planner's line as the spine, cut where it leads, success only on the line's own
+  pace (+ slack) from the spawn row, with --demo-success-energy at a large M (it rides on that bookkeeping) and
+  --demo-success-strict. Untested in a real run.
+* Box 58010989 released at 07:02 UTC (credit $24.40). Pulled locally: c1 (117.692 + ckpt_55334928384), c4 (117.705 +
+  ckpt_56958648320), c11 (117.734 + ckpt_57789644800, run.json, progress.csv).
