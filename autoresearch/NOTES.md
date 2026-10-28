@@ -4227,3 +4227,27 @@ was fetched that way. The operator may want box.py's pull to split large files t
   065e6de9ad6fc2b7c08bd66460f1d429), pulled with
   tools/pull_split.sh. c11's evals around it: 114.387 (6/9) / **117.734** / 115.496 (7/9, 68.46 s) / 114.385 (6/9, 68.46 s).
 * c12 (c4's 9/9 snapshot, landing route, beside c11): 117.702 (its snapshot's own eval) / 114.378 / 113.267 (68.66 s).
+* c11 after the 9/9 (05:11 UTC): 115.496 / 114.385 / 115.487 / 115.490 / 114.378 / 114.376 (6-7/9, best 68.64-68.72 s): the 9/9 at
+  67.98 s was a good draw of weights that finish 6-9/9; kl 0.14 throughout, no collapse at lr 1.5e-5 so far.
+
+### Next round: how to continue from 117.734 (pbr9b3, 05:15 UTC)
+* **Resume**: the hand-on ckpt_57789644800 (pbr9b3_c11) with c11's flag set (box.py launch --resume --self-states ... --):
+  `--maxvel 3500 --ckpt-every 2e8 --demo-file autoresearch/spines/pbr9b3_f2e.npy --demo-keys autoresearch/spines/pbr9b3_f2e.keys.npy
+  --demo-window 5 --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5 --demo-rate 0.3 --demo-front-frac 0.8 --demo-success-d 100
+  --demo-success-bonus 50 --demo-milestones 44939,43426,42182,41015,40497,39943,37251,33777,32260,31429,30286,28818,28783,27001,25121,24479,23400,22500,21624.107,23215.873,20589.457,22013.855,20231.945,17069.684,15570.603515625,16451.8720703125,14773.07421875,19194.404296875,15831.419921875,14499,13097,12500,11634,10366,4365,7926
+  --demo-milestone-energy 9821:2173 --keys-hold-spawn-duck --yaw-entropy 0 --demo-front-temp 0.5 --demo-front-ticks 40
+  --demo-front-view 6 --respawn-greedy 0.2 --respawn-greedy-window 0.25 2.0 --respawn-greedy-stuck 200 --respawn-greedy-contact
+  --respawn-greedy-energy 3 --respawn-greedy-temp 0.5 --respawn-greedy-temp-ticks 100 --respawn-greedy-temp-view 6
+  --respawn-front-perturb 0.2 --respawn-front-perturb-band 0.005 --respawn-front-perturb-speed 1.0 1.3 --respawn-front-perturb-turn 90
+  --energy-pot 12 --energy-pot-front 0 --energy-pot-front-bonus 0 --no-respawn-novel --respawn-backward-mix 0 --int-real-only 0
+  --spawn-states autoresearch/spines/pbr9b3_shaftdec_states.npy --spawn-states-frac 0.2 --demo-match-band --demo-success-energy 300
+  --demo-success-strict --lr 1.5e-5 --demo-tau0 6260 --critic-warmup 50`
+  ALWAYS with `--critic-warmup` (>= 50) on a resume, and never above lr 2.5e-5 on these weights: three collapses this round
+  (c2 at 1e-4, c5 and c9 at 5e-5 / 2.5e-5 after a reward or pool change), all into the 56.6% shaft climb.
+* **Reliability is the score now** (each extra finish of 9 is +1.11; a second off the best 0.033): the gliding weights finish 6-9/9.
+  The killers, in order: the final shaft's upper kill sheet at 92.7-93.5% (z ~262-283, crossed too far WEST; the policy cannot see
+  trigger kill volumes), the z ~1,460 sheet where the glide enters the spiral drop (84.8-84.9%), scattered early deaths. A narrow
+  own-line spawn window per killer (round 8's method) is the tool; swap pools only with a critic warmup.
+* **Time left on the table** (vs the record, yardstick only): the 72% corner loop (~0.8 s; GE3 found nothing in 9 min - 90% of
+  bursts die there) and the drop's exit at 85.8% (the policy loses ~540 u of energy there, the record ~220; GE2's exits keep height,
+  not speed). Then the lower level would be flown at ~1,250 u/s instead of ~1,000.
