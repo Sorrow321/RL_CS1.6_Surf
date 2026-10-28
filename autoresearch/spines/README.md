@@ -397,3 +397,6 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   POINT, flying states only: the greedy's OWN states at 81-83.4% with energy height >= 2,150 and airborne (record_ckpt
   --dump-states of pbr9b3_c3's 56.18B weights, 3 greedy episodes from the true start; 389 x8) + f2 rows 7,250-7,450 (the planner
   line's flight into the turn; 200 x15) + f2 rows 7,521-7,700 (the spiral past the cut; 179 x6).
+* `pbr9b3_shaftdec_states.npy` (7,658 rows): `--spawn-states` pool for reliability - f2 rows 8,250-8,520 (91.5-94.1%: the final
+  shaft's rim and upper kill sheets on the policy's own beam finish, where the greedy's most common failure is: the z ~240 sheet
+  crossed too far west) x15 + every second state of pbr9b3_dec2_states.
