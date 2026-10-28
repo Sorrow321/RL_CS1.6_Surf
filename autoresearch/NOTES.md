@@ -4237,3 +4237,8 @@ used for the search work below and then blocklisted and released.
   then 116.592 (8/9) / 114.374 (6/9) / 114.376 (6/9, 68.71 s). Both 9/9 evals sit just under the incumbent's 117.711 (68.66 s).
   NB orchestrator.py replaces the incumbent checkpoint only when the round winner's score EXCEEDS the incumbent's; the
   winning branch's head seeds the next round either way - so c1's missing checkpoint only matters above 117.711.
+* c13 05:59-07:13 UTC: evals 116.602 (8/9, 68.61 s) / 112.151 (4/9) / 116.594 (8/9) / 115.480 (7/9) / 115.491 (7/9, 68.61) /
+  116.587 (8/9) / 115.491 (7/9, 68.61) / 114.366 (6/9) / 116.593 (8/9) / 116.591 (8/9) / 114.353 (6/9) / 111.030 (3/9) - no
+  second 9/9; drifting at the end even at lr 2e-6. Stopped at ~57.9B.
+* **pbr9b2_c14** (07:15 UTC): the same peak snapshot (c12's ckpt_56384028672) and recipe as c13 - fresh evals of the round's
+  best weights for the last 45 min.
