@@ -4181,3 +4181,10 @@ was fetched that way. The operator may want box.py's pull to split large files t
 * **pbr9b3_c9** (02:03 UTC, beside c8 on the same box - one trainer leaves the GPU partly idle): a gentler second glide attempt from
   c4's 9/9 snapshot: --demo-success-strict, --demo-tau0 7445, **--critic-warmup 100, lr 2.5e-5 from the start**, c4's flags
   otherwise. c8 keeps buying 9/9 chances in c4's regime.
+* c8 to 02:21 UTC (beside c9): 115.486 / 115.470 / 116.572 / 113.251 - no 9/9 in 8 evals after the snapshot's own. Where c4 + c8's
+  greedy episodes die (14 evals): the final shaft's upper kill sheets at 92.4-93.9% (z ~262-283, x 475-794: the z ~240 sheet
+  crossed too far WEST - f2's own line crosses it at x ~871, in the gap) 7 times, 83.5% (z ~1,461 sheet) 2, 61% 2, 72-74% 2, 51-57%
+  3, early 4. **pbr9b3_c10** (02:25 UTC) replaces c8: c4's 9/9 snapshot in c4's regime with the pool
+  `pbr9b3_shaftdec_states.npy` (f2 rows 8,250-8,520 - the rim and upper sheets of the policy's own beam finish - x15 + half of
+  dec2), --critic-warmup 50, lr 5e-5. c9 (the gentle glide) keeps running beside it: its band sits at the turn (7,435-7,440) with
+  kl 0.16; evals 116.578 (8/9) / 113.251 (5/9), no glide yet.
