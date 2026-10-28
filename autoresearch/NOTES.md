@@ -4196,3 +4196,26 @@ used for the search work below and then blocklisted and released.
 * c11 03:33-03:56 UTC: evals 115.489 (7/9, 68.66 s) / 115.469 (7/9) / 116.591 (8/9) / 112.132 (4/9); value loss 75, kl 0.18;
   early splits t44 28.91 / 29.26 / 29.26 / 29.10 - not yet distinguishable from c9 (7/9, 7/9, 8/9, 8/9 over the same steps).
   Box extended to 08:26 UTC (credit $27.54).
+* **c11 COLLAPSED at the same point as c9** (04:20 UTC): 115.474 (7/9) / 111.011 (3/9) / 114.361 (6/9) / 111.023 (3/9) /
+  **84.041 (0/9, median 44.4%)**; early splits slowed the same way (t10 10.50 -> 10.67, t44 29.11 -> 29.64). The map-start
+  hypothesis is REFUTED: with the map start un-gated the run broke at the same step (~56.5-56.6B from the 56.012B
+  snapshot). What is left: every pace-gated curriculum here (c4, c5, c7, c8 -> c9 / c11) degrades within ~0.5-1.3B steps,
+  the energy-only curriculum (c3, c1, c6; round 8's c12) does not in the spans seen. Mechanism not found this round.
+* **pbr9b2_c12** (04:22 UTC): the 56.012B snapshot again with c9's recipe at **--lr 5e-6** - the remaining hours spent on
+  the most reliable weights (its first evals across c9 / c10 / c11: 7, 7, 8, 8, 7, 7, 7, 8 of 9, against ~6.4/9 for the
+  incumbent's own weights on this card), restarted from the snapshot if its evals turn down.
+
+### pbr9b2 round 9 lesson (DRAFT, 04:25 UTC; finalised at wrap-up)
+* Score so far 117.707 (c1 = the incumbent's recipe continued, 9/9 at 68.79 s), below the incumbent's 117.711. The incumbent's
+  9/9 was a good draw of a ~6.5-7.5/9 policy; continued training of it drifts.
+* What was learned (for the next round): (1) the time is in the 71-74% loop and the 84-86% platform end + drop (split
+  analysis vs the record as a yardstick; the greedy's own states); (2) GE rooted on the policy's own greedy states finds both
+  (GE A over the platform end, GE C a straight 71-72.8% line, -0.67 s) in 10-15 min; hand-over to the policy's beam must be at
+  a state ON the policy's line (traps: falling energy just above a landing, chain ends that are doomed, --score dv ranking by
+  the critic from unfamiliar states); (3) the policy's own planner line from the true start is the SAME route 2.25 s faster
+  (66.77 s): polish, not a new route; (4) teaching pace through the curriculum's success rule (`--demo-success-time`,
+  `--demo-success-time-bonus`, `--demo-success-time-nostart`; all flag-off bit-identical, tested) did NOT work here: the
+  subtractive form took the habitual +50 away (c4 more walking, c5 collapse), the additive one held the incumbent's reliability
+  for ~1.2B steps (c8: frequent 8/9, a 68.33 s finish) and then broke too (c9, c11: every greedy episode dead at the 44.5%
+  gate after the early splits slowed). (5) Ops: a 20 KB/s uplink box is unusable for hand-ons (blocklisted); `box.py extend`
+  counts from now.
