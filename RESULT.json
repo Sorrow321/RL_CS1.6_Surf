@@ -2,6 +2,17 @@
  "agent": "pbr9b4",
  "round": 9,
  "final": false,
- "best": null,
- "summary": "No box yet (fleet cap 1.2 $/h full since 20:47 UTC; retrying every ~10 min). Local CPU work: split times vs the record (yardstick) put the incumbent's losses at three energy hits (70-72% bulge, the 84.4% platform landing, the 91.9% rim). Go-Explore from the incumbent's own states found a platform SKIP the policy can carry to the finish (spine pbr9b4_h1, 68.27 s on its clock vs 68.66 s); the rim and bulge chains were faster but the policy dies from their states. New flag --demo-success-time (time-gated spine success, off = bit-identical, tests pass). Ready to launch c1: the incumbent on h1e (cut at 84.98%) with --demo-success-energy 200 at lr 5e-5."
+ "best": {
+  "score": 115.492,
+  "eval_file": "/home/steam/ar_pb/runs/pbr9b4/pbr9b4_c1b/traj_55039229952.jsonl",
+  "run": "pbr9b4_c1b",
+  "step": 55039229952,
+  "ckpt": null,
+  "recipe": [
+   "c1b: the incumbent (pbr8b1_c12 ckpt_55038705664) resumed with c12's exact flags (spine pbr8b1_f1e + --demo-success-energy 150, spawn states pbr8b1_f1after, lr 5e-5, --demo-tau0 4705) on a 5080 box that came free at 07:10 UTC"
+  ],
+  "resume_from": "incumbent r8 ckpt_55038705664 (md5 bc483e2f...)",
+  "commit": "e000e401"
+ },
+ "summary": "No box from 20:47 to 07:10 UTC (fleet cap full). Local CPU work: the incumbent's time losses are contacts (70-72% bulge, 84.4% platform landing, 85.05% drop-shaft north wall, 91.9% rim); a GE chain skipping the platform landing that the policy carries to the finish (spine pbr9b4_h1, 68.27 s clock; h1e energy cut prepared); new flags --demo-success-time (time-gated spine success) and --bc-view-coef (BC on key heads only), both tested byte-identical when off. 07:18 UTC: c1b = the incumbent continued unchanged on the late box (the lottery for a faster 9/9): evals 7/9 68.58 s (115.492), 6/9 68.51 s."
 }

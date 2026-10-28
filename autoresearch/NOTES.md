@@ -4123,3 +4123,10 @@ Only a FASTER 9/9 eval beats it (one finisher fewer costs 1.11 = 33 s of time; o
 * (03:20 UTC) Still no box. The retry loop now launches the plain incumbent continuation (launch_c1b.sh: c12's exact flags,
   f1e + its energy rule, lr 5e-5) for a box that comes after 03:30 - too late to teach the skip and reach a reliable 9/9
   (round 8's energy-gated switch took ~3.5 h), so a late box buys the lottery for a faster 9/9 instead.
+
+### A box at last: c1b, the incumbent continued (07:10-07:23 UTC)
+* `box.py rent` (the retry loop) got box 58062210, RTX 5080, 0.35 $/h, at 07:10 UTC (the fleet's burn had dropped). With 50 min
+  to the wrap-up the loop launched the late-box fallback **pbr9b4_c1b**: the incumbent ckpt_55038705664 (md5 bc483e2f...)
+  resumed with c12's exact flags (f1e + --demo-success-energy 150, f1after spawn states, lr 5e-5, --demo-tau0 4705); 242k
+  steps/s; snapcopy beside it. Evals: 55.039B 7/9, best 68.58 s (115.492); 55.115B 6/9, best 68.51 s (114.383). Best
+  single finishes below the incumbent's 68.66 s; the score needs a 9/9 to pass 117.711.
