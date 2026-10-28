@@ -4210,3 +4210,7 @@ Box: 58011053, RTX 4080S, 0.41 $/h, Ontario CA (machine 141481, the box rounds 7
   **117.755** (58.037B: **9/9, best 67.36 s**; 8 of 9 land softly at 88% (h 1,721-1,937) and finish in 67.36-69.1 s, one slow variant
   75.0 s). Hand-on: **ckpt_58032914432** (3.7M steps before the eval; md5 08601077dba29a9a41b0a4c0229960d1), pulled to
   runs/pbr9b1/pbr9b1_c8/. The band reached fo2t's first row (tau 0, 77.1%) - the soft landing is the greedy's route now.
+* Median splits, c8's soft-landing finishers (n 17, evals 57.89-58.04B, finishes < 70 s) vs the incumbent's 9/9: **-1.71 s at the
+  finish (67.77 vs 69.48 s)**: -0.80 s over 83-84.7% (the fly-over), -0.44 s to 86.3% (the drop), -0.35 / -0.31 s over 86.3-90%
+  (the soft landing and the faster lower level), -0.15 s the shaft; +0.21 s of drift by 70% and +0.54 s at the 71% bounce, given
+  back over 72-75% (-0.51 s). Fastest c8 finish 67.22 s.
