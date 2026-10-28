@@ -4146,3 +4146,12 @@ was fetched that way. The operator may want box.py's pull to split large files t
 * **pbr9b3_c7** (01:00 UTC): c6's snapshot at its 4/9 gliding eval (ckpt_57487654912, md5 c62ef8a6...) at **lr 2.5e-5**, non-strict
   (consolidation, not learning), --critic-warmup 50, --demo-tau0 6310, the same gates. Plan B at ~02:15 UTC if it does not
   recover: c4's 9/9 snapshot in c4's regime for a 9/9 under 68.66 s.
+* c7 (the gliding weights at lr 2.5e-5, non-strict) did not recover in 28 min: kl calm (0.10-0.23, no spike after the warmup) but
+  the value loss stayed at 160-199 (c4: ~80) and the evals were 109.911 / 109.903 (2/9) / 113.226 / 113.257 (5/9) / 109.883 (2/9),
+  gliders at 69.0-70.5 s. A likely mechanism for c6's degradation EVERYWHERE (not just near the glide): actor and critic share the
+  conv trunk, the +50 glide bonus newly collected over 70-84% puts large value errors on many states, and their gradients move the
+  trunk under the actor. For a next attempt: a smaller bonus for the new line, or --critic-warmup long enough for the value head to
+  absorb it before the actor moves, and lr 2.5e-5 from the start.
+* **pbr9b3_c8** (01:30 UTC, plan B): c4's 9/9 snapshot ckpt_56958648320 in c4's regime (f2e non-strict + the 82.8% energy milestone
+  + pool dec2, lr 5e-5, --demo-tau0 5965) + --critic-warmup 50 - the regime that gave 8/8/8/9/7 of 9 (and 9/9 again as c6's first
+  eval), for a 9/9 under the incumbent's 68.66 s for the rest of the round.
