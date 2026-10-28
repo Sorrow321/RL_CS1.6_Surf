@@ -4223,6 +4223,7 @@ was fetched that way. The operator may want box.py's pull to split large files t
 ### 9/9 WITH THE GLIDE: 117.734, 67.98 s (2026-10-28 04:49 UTC, c11 57.790B)
 * c11 (c9's gliding snapshot at lr 1.5e-5) eval at 57.790B: **9/9 finish, best 67.98 s, score 117.734** (incumbent 117.711 at
   68.66 s; the record, yardstick only, 75.18 s). 8 of 9 episodes glide past the 84% platform (energy height 2,263-2,422 at 84.77%),
-  finishes 68.0-69.7 s; the ninth lands and still finishes. Hand-on: ckpt_57789644800 (the eval's own step), pulled with
+  finishes 68.0-69.7 s; the ninth lands and still finishes. Hand-on: ckpt_57789644800 (the eval's own step; md5
+  065e6de9ad6fc2b7c08bd66460f1d429), pulled with
   tools/pull_split.sh. c11's evals around it: 114.387 (6/9) / **117.734** / 115.496 (7/9, 68.46 s) / 114.385 (6/9, 68.46 s).
 * c12 (c4's 9/9 snapshot, landing route, beside c11): 117.702 (its snapshot's own eval) / 114.378 / 113.267 (68.66 s).
