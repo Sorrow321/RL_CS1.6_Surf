@@ -4185,3 +4185,14 @@ Box: 58011053, RTX 4080S, 0.41 $/h, Ontario CA (machine 141481, the box rounds 7
   ~1.26 s.
 * **pbr9b1_c7** (01:07 UTC): c6's ckpt_latest (58.2101B) on s71d + keys, --demo-success-pace 0.01 0.3, pool s71ddec, lr 5e-5.
   First minute: the band walked the chain 6,476 -> 6,401 at 98-100% (13 rows from the junction).
+* c7 (01:07-01:24 UTC, s71d pace) evals: 111.042 (3/9) / 108.784 (1/9) / 114.392 (6/9) / 113.301 (5/9, 67.65 s); every greedy
+  episode still bounced, and stalls appeared in the 71% loop (7.6-24 s over 69.75-72.41%). Its band reached the junction (rows
+  6,386-6,396) within minutes and oscillated there at 12-47% - the -4 deg decision is not made by the policy either.
+* **Lesson (five times now: c2, c3, c5 late, c6, c7): a curriculum band that walks through the 71% bounce destabilises the greedy
+  there** (crashes, 30 s stalls at 72.4-73.1%), and a decision at a bounce surface was not learned in 15-25 min at lr 5e-5. The
+  71% fix is dropped for this round; the GE 4 chains, the beams' finish times (66.6-67.3 s) and the pace gate are kept for the
+  next.
+* **pbr9b1_c8** (01:25 UTC, consolidation for the rest of the round): the 117.732 hand-on ckpt_56979095552 (md5 9f5670f5...) on
+  **pbr9b1_fo2t** (fo2 rows 7,000-7,888, 77.1-88.1%: the band can never walk back into the 71% region) + keys,
+  --demo-success-energy 150 --demo-success-strict (the soft landing), --demo-tau0 618 (= fo2 row 7,618, where c5's band worked),
+  pool **pbr9b1_late_states** (fo2dec + the s71 beam's shaft passage x3), lr 5e-5, c5's other flags.
