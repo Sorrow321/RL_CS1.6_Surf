@@ -4158,3 +4158,7 @@ used for the search work below and then blocklisted and released.
   pace paid on top: `--demo-success-time 0.25 --demo-success-time-bonus 50`. Pool `pb9_pl0after_states.npy` = the planner
   line's rows 7,164-8,708. A curriculum form of expert iteration (the planner's pace distilled through the success rule)
   that needs no BC.
+* c8 00:52-01:13 UTC: evals 113.250 (5/9) / **116.611 (8/9, 68.33 s)** / 115.473 (7/9) / 114.375 (6/9, 68.76 s) - the
+  incumbent's reliability band (no degradation, unlike c4/c5/c7); kl median 0.25, value loss 104-126. The band walked pl0e
+  back 7,163 -> 6,023 (~70%) in 20 min and holds there at 21-35% (from 70% the planner is 0.42 s faster to the cut than the
+  greedy; slack 0.25). Split times unchanged so far (t70 48.1-48.8 s vs the planner's 46.40; t84 57.6-58.6 vs 55.66).
