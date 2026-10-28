@@ -4269,3 +4269,28 @@ was fetched that way. The operator may want box.py's pull to split large files t
   --demo-success-strict. Untested in a real run.
 * Box 58010989 released at 07:02 UTC (credit $24.40). Pulled locally: c1 (117.692 + ckpt_55334928384), c4 (117.705 +
   ckpt_56958648320), c11 (117.734 + ckpt_57789644800, run.json, progress.csv).
+
+### pbr9b3 round 9 lesson (final, written 07:06 UTC; supersedes the DRAFT above)
+* **Score 117.711 -> 117.734** (pbr9b3_c11, eval 57.789644800B: **9/9 greedy finishes from the true start, best 67.98 s**, median
+  100%; hand-on ckpt_57789644800 = the eval's own step, md5 065e6de9ad6fc2b7c08bd66460f1d429, pulled). The record (yardstick only)
+  is 75.18 s. Box 58010989 (RTX 3090, Thailand, 0.37 $/h) the whole round, released 07:02 UTC.
+* **The time came from a route change found by search and taught by an energy gate**: split times showed the policy LANDING on the
+  84% platform (energy 2,250 -> 1,650); a Go-Explore run rooted at the planner's own 83% states, UNBOOSTED roots only, found a
+  sharp turn north + a no-strafe glide past it (GE1b; the mixed boosted run gave every cell to the boosted roots); f2 = planner
+  line + chain + the policy's own finish; f2e = f2 cut at 84.95% with `--demo-success-energy 300`.
+* **It took four generic fixes to the curriculum before the greedy would glide** (all flags default off, tested bit-identical):
+  `--demo-success-strict` (a finish was counted as the energy line's success, so the band walked back on finishes while 0/16
+  sampled episodes glided - bench the gated crossing itself before trusting a band's success rate), `--demo-milestone-energy`
+  (replacing f1e dropped round 8's 82.8% airborne gate and the greedy went back to WALKING the platform within ~2 h), a spawn
+  pool of the skill's own states (the greedy's walking states held no glide), and `--critic-warmup` + low lr on every resume
+  (resumes spiked kl 3.5-10.6; c2, c5, c9 and c11 collapsed into the 56.6% shaft climb at lr 1e-4 .. 2.5e-5; the gentle c9 -
+  critic warmup 100, lr 2.5e-5 - adopted the glide without the general slow-down c6 suffered at 5e-5).
+* **What the 9/9 is**: weights that finish 2-9/9 per eval (gliders 68.0-68.7 s); the eval is not bit-reproducible with two
+  trainers on one GPU (the same frozen weights scored 117.734 and 114.375), so 67.98 s was partly a good draw. Reliability is
+  the next lever: the shaft's upper kill sheet at 92.7-93.5% and the glide's own sheet at 84.9% kill most episodes.
+* **What did not work**: GE for the 72% corner loop (90% of bursts die; nothing faster), GE for a better drop exit (keeps height,
+  not speed), lr 1e-4 (collapse), in-place pool swaps without a warmup (c9 collapsed after its second), the c4 landing route
+  as a lottery (8-9/9 but never under 68.66 s).
+* **Next**: see "Next round: how to continue from 117.734" above - resume c11's hand-on with its flags, critic warmup on every
+  resume, lr <= 1.5e-5; the planner finds 66.95 s on these weights (~1.2 s of polish over the first half of the course), which
+  `--demo-success-time` was built to teach without BC.
