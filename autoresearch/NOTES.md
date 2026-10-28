@@ -4233,3 +4233,7 @@ used for the search work below and then blocklisted and released.
 * Hand-on caveat: c1's 117.707 eval (the branch's best so far) has NO checkpoint - it was on box 58010900, destroyed with its
   20 KB/s uplink. Its weights were the incumbent's + 76M steps of the incumbent's own recipe at lr 5e-5; the closest
   available hand-on is the incumbent itself ($AR_HOME/incumbent/r8/ckpt.pt).
+* c13 05:35-05:59 UTC: **117.706 (56.762B: 9/9, best 68.81 s)** - the round's second 9/9 (c1's 117.707 at 68.79 s the first),
+  then 116.592 (8/9) / 114.374 (6/9) / 114.376 (6/9, 68.71 s). Both 9/9 evals sit just under the incumbent's 117.711 (68.66 s).
+  NB orchestrator.py replaces the incumbent checkpoint only when the round winner's score EXCEEDS the incumbent's; the
+  winning branch's head seeds the next round either way - so c1's missing checkpoint only matters above 117.711.
