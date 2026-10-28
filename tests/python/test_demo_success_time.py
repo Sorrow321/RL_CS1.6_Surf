@@ -106,3 +106,23 @@ def test_flag_off_is_the_trainer_before_it(tmp_path):
         pre.unlink(missing_ok=True)
         for dd in (a, b):
             shutil.rmtree(dd, ignore_errors=True)
+
+
+@needs_pb
+def test_additive_time_bonus_says_dumps_and_refuses(tmp_path):
+    run = "dstb_on"
+    try:
+        r = _run_demo(run, ["--demo-success-d", "50", "--demo-success-bonus", "50",
+                            "--demo-success-time", "0.5", "--demo-success-time-bonus", "25"],
+                      tmp_path)
+        out = r.stdout + r.stderr
+        assert r.returncode == 0, out[-4000:]
+        assert "--demo-success-time-bonus 25: ADDITIVE" in out
+        cfg = json.loads((ROOT / "runs" / run / "run.json").read_text())["config"]
+        assert cfg["demo_success_time_bonus"] == 25.0 and cfg["demo_success_time"] == 0.5
+    finally:
+        shutil.rmtree(ROOT / "runs" / run, ignore_errors=True)
+    bad = _run_demo("dstb_bad", ["--demo-success-d", "50", "--demo-success-bonus", "50",
+                                 "--demo-success-time-bonus", "25"], tmp_path)
+    assert bad.returncode != 0 and "additive form of" in (bad.stdout + bad.stderr)
+    shutil.rmtree(ROOT / "runs" / "dstb_bad", ignore_errors=True)

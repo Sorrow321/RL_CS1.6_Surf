@@ -4953,6 +4953,15 @@ def main() -> None:
                          "both must hold). The curriculum's band counts only such crossings "
                          "(a finish out of time is no success), so it stays where the pace "
                          "fails. Off = bit-identical; config only when set, not restored")
+    ap.add_argument("--demo-success-time-bonus", type=float, default=None,   # None = off
+                    help="--demo-success-time made ADDITIVE: the --demo-success-bonus is paid for "
+                         "every crossing that passes the other rules (the energy one, if given) "
+                         "exactly as without the time rule, and this much MORE for a crossing that "
+                         "is also in time; the band still counts only the in-time crossings. "
+                         "Taking the bonus away from the policy's habitual crossing collapsed two "
+                         "runs (pbr9b2_c4, _c5: the critic relearns a -50 for the old route); this "
+                         "pays the pace without punishing the route. Off = --demo-success-time as "
+                         "documented; config only when set, not restored")
     ap.add_argument("--demo-match-band", action="store_true",
                     help="--demo-file: a spawn whose origin the spine repeats (the line stood "
                          "still over several rows) is credited to its copy inside the frontier "
@@ -11838,6 +11847,12 @@ def main() -> None:
                                  "--auto-spine swaps spines (not combined)")
             if float(args.demo_success_alive or 0.0) > 0.0:
                 raise SystemExit("--demo-success-time and --demo-success-alive are not combined")
+        if args.demo_success_time_bonus is not None:
+            if args.demo_success_time is None:
+                raise SystemExit("--demo-success-time-bonus is the additive form of "
+                                 "--demo-success-time: give it")
+            if not float(args.demo_success_time_bonus) > 0.0:
+                raise SystemExit("--demo-success-time-bonus B must be > 0")
         if float(args.demo_success_alive or 0.0) < 0.0:
             raise SystemExit("--demo-success-alive SECS must be >= 0 (0 = off)")
         if float(args.demo_success_alive or 0.0) > 0.0:
@@ -14910,6 +14925,9 @@ def main() -> None:
     if args.demo_file and args.demo_success_time is not None:
         # --demo-success-time: dumped only when set (not restored: it belongs to its spine)
         meta["config"]["demo_success_time"] = float(args.demo_success_time)
+    if args.demo_file and args.demo_success_time_bonus is not None:
+        # --demo-success-time-bonus: dumped only when set (not restored)
+        meta["config"]["demo_success_time_bonus"] = float(args.demo_success_time_bonus)
     if args.demo_file and args.demo_match_band:
         # --demo-match-band: dumped only when on (not restored: a property of the run)
         meta["config"]["demo_match_band"] = 1
@@ -15916,6 +15934,12 @@ def main() -> None:
               f"only if it crosses d <= {DEMO_END_D:,.0f} within the spine's own ticks from its "
               f"spawn row to row {DEMO_T[1]:,} + {DEMO_T[0]} ticks (spawns off the spine are not "
               f"gated; the map start is row 0: {DEMO_T[1] + DEMO_T[0]:,} ticks)")
+    DEMO_TB = 0.0     # --demo-success-time-bonus: the additive extra for an in-time crossing
+    if DEMO_T is not None and args.demo_success_time_bonus is not None:
+        DEMO_TB = float(args.demo_success_time_bonus)
+        print(f"--demo-success-time-bonus {DEMO_TB:g}: ADDITIVE - every crossing that passes the "
+              f"other rules is paid the --demo-success-bonus as before; one in time is paid "
+              f"{DEMO_TB:g} more (the band counts only the in-time ones)")
 
     def _alive_field():
         return (slots[0].reward_field if slots[0].reward_field is not None
@@ -15960,6 +15984,7 @@ def main() -> None:
         ended row's is already the NEW episode's spawn) has just crossed the spine's success
         line; an episode is paid once, and one that spawns past the line never."""
         rec = np.asarray(reward_fn._rec)
+        t_extra = None
         if DEMO_PAID[0] is None:
             DEMO_PAID[0] = rec <= DEMO_END_D
         paid = DEMO_PAID[0]
@@ -15975,11 +16000,17 @@ def main() -> None:
         elif DEMO_T is not None:
             # --demo-success-time (with or without the energy rule): a row out of time reads an
             # energy height below any floor, so the energy gate's bookkeeping does the rest
+            _he = _en_height()
+            _hm = DEMO_H_MIN if DEMO_H_MIN is not None else -1e29
             _h = np.where(time_gate_ok(slots[0].core.states_view["tick"], demo_idx, DEMO_T[1],
-                                       DEMO_T[0]), _en_height(), -1e30)
+                                       DEMO_T[0]), _he, -1e30)
             pay, DEMO_OK[0], DEMO_OK[1] = energy_gate(
-                hit, ended, paid, DEMO_OK[0], _h, rec, DEMO_END_D,
-                DEMO_H_MIN if DEMO_H_MIN is not None else -1e29)
+                hit, ended, paid, DEMO_OK[0], _h, rec, DEMO_END_D, _hm)
+            if DEMO_TB:
+                # --demo-success-time-bonus: the base bonus as without the time rule, the extra
+                # for the in-time crossings (DEMO_OK, the band's outcome, stays the timed one)
+                t_extra = pay
+                pay = np.asarray(hit, bool) & (_he >= _hm)
         if ALIVE_T:
             # --demo-success-alive: a crossing (with the energy) pays and succeeds only once its
             # episode has stayed alive ALIVE_T ticks past it; ALV[3] = the outcomes before the
@@ -15998,6 +16029,10 @@ def main() -> None:
             r = np.array(r, copy=True)
             r[pay] += DEMO_BONUS
             DEMO_BONUS_N[0] += int(pay.sum())
+        if t_extra is not None and t_extra.any():
+            # --demo-success-time-bonus: the in-time crossings' extra
+            r = np.array(r, copy=True)
+            r[t_extra] += DEMO_TB
         paid |= hit
         paid[ended] = rec[ended] <= DEMO_END_D
         if len(MILES[0]):

@@ -4126,3 +4126,18 @@ used for the search work below and then blocklisted and released.
   the policy's 7.27 s beam; g3[7,384] IS g1[7,479], ep1's own 83.30% state, so no seam) = **65.94 s**. `pb9_g4e` = cut at row
   7,634 (86.26%, GE A's hand-over; h 1,584 vs ep1's 1,441 - the gain is time, so the time gate alone); pool
   `pb9_g4after_states.npy` = g4 rows 7,635-8,581.
+
+### c5 COLLAPSED (00:17 UTC); the time rule made additive
+* c5 evals after 23:50: 114.355 (6/9) / 111.028 (3/9) / **0/9 (73.0%) / 0/9 (44.9%) / 0/9 (44.6%)** - every greedy episode
+  dead at the 44.5% gate (round 4's gate 14) after first dying in GE C's region at 71.6-73%. kl median 0.24-0.37 (normal) but
+  the value loss ran at median 117-176 (c12 86, c3 66, c4 55). The band had walked to row 6,059 (68.4%) with 9-42% in-time
+  success - some band episodes DID take the shortcut. Stopped at ~55.68B.
+* Reading (c4 and c5): `--demo-success-time` as built takes the +50 away from the crossing the incumbent always made (c12
+  paid every energetic crossing): the critic must relearn ~-20 (c5's band at 68%, 15 s before the line) to -50 (c4's, 1-2 s
+  before) for the policy's HABITUAL route - a large negative advantage on its normal behaviour, and the shared network breaks
+  elsewhere. A pace incentive must ADD to what the policy earns, not take it away.
+* **`--demo-success-time-bonus B`** (new; flag off bit-identical - same test file, 5/5 passed): with --demo-success-time, the
+  --demo-success-bonus is paid for every crossing that passes the other rules (the energy one) exactly as before, and B MORE
+  for one that is also in time; the band still counts only in-time crossings.
+* **pbr9b2_c6** (00:18 UTC): the incumbent on c12's exact recipe (f1e, energy 150, --demo-tau0 4705) at **--lr 3e-5** - the
+  steady baseline while the additive rule was built.
