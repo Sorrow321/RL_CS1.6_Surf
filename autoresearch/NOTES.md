@@ -4171,3 +4171,17 @@ Box: 58011053, RTX 4080S, 0.41 $/h, Ontario CA (machine 141481, the box rounds 7
   (success: d <= 15,866 within (6,452 - spawn row) x 1.01 + 39 ticks; 6,555 ticks = 50.3 s from the map start), pool
   **pbr9b1_s71dec2_states** (md5 72aba8a2...: the 71% approach x20, the chain x15, the beam continuation 72.4-83.3% x2, fo2dec x1,
   the beam's shaft passage 90-100% x3), lr 5e-5, c5's other flags (no energy rule now). Box redeployed at 6127782.
+* c6 (00:43-01:06 UTC, s71c pace 0.01 0.3, lr 5e-5) evals: 113.318 (5/9, **67.13 s** - the round's fastest finish) / 114.417 (6/9,
+  67.50) / 112.186 (4/9, 67.76) / 115.507 (7/9, 68.12) / 111.060 (3/9, 68.21). No greedy episode took the new line (every one
+  bounced: 2.30-2.51 s over 69.75-72.41% and east to x -861..-946; the chain: 1.52 s, x ~-1,200). Its pace band lived at s71c rows
+  6,319-6,369 (0.35-0.75 s INTO the chain, 70.7-71.0%) for 23 min and never reached the junction (6,274): the policy follows the
+  chain once it has turned south, but does not make the +12 deg turn itself. KL after the resume 5.46 / 2.68 / 2.0 (the resume
+  artifact), then <= 1.1. Stopped at 58.210B (ckpt_latest md5 a5fdfe59...).
+* Plan B, a smaller perturbation right at the surface: GE 4's -4 deg chain (cell 46772, root = the greedy line's row 6,388 =
+  71.2%, 0.15 s before the bounce) meets the surface heading south-west and goes south at x ~-1,150. Beams of c6's weights from its
+  index 60 (the GREEDY env finishes first, 67.21 s total) and 88 (67.28 s; 72.31%, ~0.56 s ahead of the greedy line); from 75 slow,
+  from 100 every copy dies. -> spine **pbr9b1_s71d** (cut at index 88), pool s71ddec (approach x20, chain x15, its beam's first
+  900 ticks x2, fo2dec, the shaft x3). From the junction a band spawn has 0.98 s to the cut; the chain takes 0.70 s, the bounce
+  ~1.26 s.
+* **pbr9b1_c7** (01:07 UTC): c6's ckpt_latest (58.2101B) on s71d + keys, --demo-success-pace 0.01 0.3, pool s71ddec, lr 5e-5.
+  First minute: the band walked the chain 6,476 -> 6,401 at 98-100% (13 rows from the junction).
