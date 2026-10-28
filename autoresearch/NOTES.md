@@ -4199,3 +4199,8 @@ Box: 58011053, RTX 4080S, 0.41 $/h, Ontario CA (machine 141481, the box rounds 7
 * c8 (fo2t parked band, from the 117.732 snapshot) evals 01:26-01:46 UTC: 116.618 (8/9, 68.14 s) / 116.616 (8/9, 68.19) / 113.299
   (5/9, 67.69) / 115.510 (7/9, 68.03) / 116.619 (8/9, 68.10) - **7.2 of 9 per eval, the most reliable stretch of the round**
   (c3 6.5, c5 6.3, c1 5.7, the incumbent's c12 6.0). The band stays parked at fo2t rows 613-618 (the soft landing's spiral).
+* c8's deaths over its first 5 evals (9 of 45): the shaft's first kill sheet x4 (92.4-93.0%, z 262-284, x 458-787 - the sheet kills
+  the west side; mostly episodes that reached 88% slow, h 1,000-1,170), the 83% sheet, 76.6%, 71.6%, 64.3%, 55.2%.
+* 01:49 UTC: c8's pool swapped (mtime re-read) to **pbr9b1_late2_states** (md5 937e907c...): fo2dec + the s71 beam's shaft x2 + the
+  89-94.5% shaft entries of three finishing greedy episodes of c8's own 57.34B weights (record_ckpt --dump-states, seed 11: 3 of 6
+  finished - 69.53 / 70.10 / 73.58 s; one died on that same sheet at 92.87%) x8.
