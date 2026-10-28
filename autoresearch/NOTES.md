@@ -4197,3 +4197,8 @@ was fetched that way. The operator may want box.py's pull to split large files t
 * 02:53 UTC: c10 stopped (116.572 / 115.464 after its snapshot eval; the box goes to c9 alone) and c9's spawn pool swapped in place
   (same path autoresearch/spines/pbr9b3_dec2_states.npy on the box, atomic mv; re-read at 57.409B) to the content of
   pbr9b3_shaftdec_states.npy (the shaft rows of the policy's own beam finish x15 + half of dec2) - shaft practice for the gliders.
+* c9 to 03:14 UTC (gliding, shaft pool): evals 109.936 (2/9, 68.60 s) / **116.611** (57.488B: 8/9, all 8 finishers glided, best
+  **68.33 s**) / 114.380 (6/9, 68.61 s) / 115.505 (57.639B: 7/9, best **68.19 s**). The greedy glides on nearly every episode now and
+  the finish times moved down to 68.2-69.7 s (the landers' 68.65-69.6 s): a 9/9 eval of these weights beats the incumbent. Failures:
+  the shaft sheets (92.7 / 93.5 / 95.4%) and the z ~1,460 sheet under the 80-85% platform region (80.6 / 83.0 / 84.7%). kl 0.16, no
+  update above 0.33.
