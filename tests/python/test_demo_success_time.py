@@ -126,3 +126,31 @@ def test_additive_time_bonus_says_dumps_and_refuses(tmp_path):
                                  "--demo-success-time-bonus", "25"], tmp_path)
     assert bad.returncode != 0 and "additive form of" in (bad.stdout + bad.stderr)
     shutil.rmtree(ROOT / "runs" / "dstb_bad", ignore_errors=True)
+
+
+def test_time_gate_nostart_frees_the_map_start_only():
+    from train_fast import time_gate_ok
+    idx = np.array([0, 0, 60, 60, -1])
+    ticks = np.array([110, 111, 50, 51, 99999])
+    assert time_gate_ok(ticks, idx, 100, 10).tolist() == [True, False, True, False, True]
+    assert time_gate_ok(ticks, idx, 100, 10, start_free=True).tolist() == [True, True, True, False, True]
+
+
+@needs_pb
+def test_nostart_says_dumps_and_refuses(tmp_path):
+    run = "dstn_on"
+    try:
+        r = _run_demo(run, ["--demo-success-d", "50", "--demo-success-bonus", "50",
+                            "--demo-success-time", "0.5", "--demo-success-time-bonus", "25",
+                            "--demo-success-time-nostart"], tmp_path)
+        out = r.stdout + r.stderr
+        assert r.returncode == 0, out[-4000:]
+        assert "--demo-success-time-nostart: a fresh map start" in out
+        cfg = json.loads((ROOT / "runs" / run / "run.json").read_text())["config"]
+        assert cfg["demo_success_time_nostart"] == 1
+    finally:
+        shutil.rmtree(ROOT / "runs" / run, ignore_errors=True)
+    bad = _run_demo("dstn_bad", ["--demo-success-d", "50", "--demo-success-bonus", "50",
+                                 "--demo-success-time-nostart"], tmp_path)
+    assert bad.returncode != 0 and "qualifies --demo-success-time" in (bad.stdout + bad.stderr)
+    shutil.rmtree(ROOT / "runs" / "dstn_bad", ignore_errors=True)

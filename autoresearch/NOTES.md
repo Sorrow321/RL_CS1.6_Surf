@@ -4179,3 +4179,14 @@ used for the search work below and then blocklisted and released.
   band) - round 8's c12 move: the pre-break snapshot at a lower lr. NB the box's runs_ckpt.pt is no longer the incumbent.
 * c9 02:35-02:58 UTC: evals 115.489 (7/9, 68.66 s) / 115.483 (7/9) / 116.590 (8/9) / 116.579 (8/9); value loss 82-84, kl 0.19
   - the pre-break snapshot at lr 2e-5 is stable; band at 5,748.
+* **c9 COLLAPSED like c5** (03:24 UTC): evals 116.579 (8/9) / 114.362 (6/9) / 113.234 (5/9) / 112.127 (4/9) / **0/9 (61.5%)
+  / 0/9 (every episode dead at 44.4-44.6%)** - at lr 2e-5 with a NORMAL value loss (93). Same gate as c5 (round 4's gate 14).
+  Median early splits before both collapses got SLOWER, not faster: c9 t10 10.50 -> 10.54 -> 10.68 -> 10.86 s, t44 29.06 ->
+  29.16 -> 29.24 -> 29.51 (c8's good stretch 10.37-10.43 / 28.87-29.03); gate 14 needs that speed.
+* Hypothesis: the time rule also gates the FRESH MAP STARTS (the map start matches the spine's row 0, so a map start must
+  beat the whole planner line to the cut: 55.1 s where the greedy needs ~56.9) - the map starts are the long, 70 s episodes,
+  a large SAMPLE share, and the incentive there is unreachable. Untested; c4/c7 (also gated from row 0) degraded too.
+* **`--demo-success-time-nostart`** (new, off = bit-identical): the map start (row 0) is not gated; only the curriculum's
+  own spawns are asked for the line's pace.
+* **pbr9b2_c10** (03:26 UTC): c8's good snapshot ckpt_56011784192 again (c9's start) with c9's recipe at --lr 1e-5 - evals
+  from the good weights while the flag was built.

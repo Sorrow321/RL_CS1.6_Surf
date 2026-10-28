@@ -2135,7 +2135,7 @@ def energy_gate(hit, ended, paid, ok, h, rec, end_d, h_min):
     return pay, ok, boot
 
 
-def time_gate_ok(ticks, idx, cross_row, slack_ticks):
+def time_gate_ok(ticks, idx, cross_row, slack_ticks, start_free=False):
     """--demo-success-time (pbr9b2, 2026-10-27): whether each row is still IN TIME for the success
     line - its physics ticks since its spawn (``ticks``; a spine row is stored with tick 0) at most
     the spine's own ticks from the row it spawned at (``idx``) to the spine's crossing row
@@ -2145,7 +2145,12 @@ def time_gate_ok(ticks, idx, cross_row, slack_ticks):
     (a longer route, a landing walked) succeeds no more than a miss."""
     idx = np.asarray(idx, np.int64)
     allowed = np.maximum(0, int(cross_row) - idx) + int(slack_ticks)
-    return (idx < 0) | (np.asarray(ticks, np.int64) <= allowed)
+    ok = (idx < 0) | (np.asarray(ticks, np.int64) <= allowed)
+    if start_free:
+        # --demo-success-time-nostart: a fresh map start (it matches the spine's row 0) is not
+        # gated - only the curriculum's own spawns are asked for the line's pace
+        ok = ok | (idx == 0)
+    return ok
 
 
 def crossed_with_energy(d, h, end_d, h_min) -> bool:
@@ -4962,6 +4967,12 @@ def main() -> None:
                          "runs (pbr9b2_c4, _c5: the critic relearns a -50 for the old route); this "
                          "pays the pace without punishing the route. Off = --demo-success-time as "
                          "documented; config only when set, not restored")
+    ap.add_argument("--demo-success-time-nostart", action="store_true",
+                    help="--demo-success-time: do not gate a fresh map start (it matches the spine's "
+                         "row 0, so by default it is asked for the whole line's pace). pbr9b2_c5 and "
+                         "_c9 collapsed with every greedy episode dead at the 44.5%% gate after their "
+                         "early splits SLOWED; the map starts are the long episodes, a large sample "
+                         "share. Off = the default rule, bit-identical; config only when on")
     ap.add_argument("--demo-match-band", action="store_true",
                     help="--demo-file: a spawn whose origin the spine repeats (the line stood "
                          "still over several rows) is credited to its copy inside the frontier "
@@ -11847,6 +11858,8 @@ def main() -> None:
                                  "--auto-spine swaps spines (not combined)")
             if float(args.demo_success_alive or 0.0) > 0.0:
                 raise SystemExit("--demo-success-time and --demo-success-alive are not combined")
+        if args.demo_success_time_nostart and args.demo_success_time is None:
+            raise SystemExit("--demo-success-time-nostart qualifies --demo-success-time: give it")
         if args.demo_success_time_bonus is not None:
             if args.demo_success_time is None:
                 raise SystemExit("--demo-success-time-bonus is the additive form of "
@@ -14925,6 +14938,9 @@ def main() -> None:
     if args.demo_file and args.demo_success_time is not None:
         # --demo-success-time: dumped only when set (not restored: it belongs to its spine)
         meta["config"]["demo_success_time"] = float(args.demo_success_time)
+    if args.demo_file and args.demo_success_time_nostart:
+        # --demo-success-time-nostart: dumped only when on (not restored)
+        meta["config"]["demo_success_time_nostart"] = 1
     if args.demo_file and args.demo_success_time_bonus is not None:
         # --demo-success-time-bonus: dumped only when set (not restored)
         meta["config"]["demo_success_time_bonus"] = float(args.demo_success_time_bonus)
@@ -15934,6 +15950,9 @@ def main() -> None:
               f"only if it crosses d <= {DEMO_END_D:,.0f} within the spine's own ticks from its "
               f"spawn row to row {DEMO_T[1]:,} + {DEMO_T[0]} ticks (spawns off the spine are not "
               f"gated; the map start is row 0: {DEMO_T[1] + DEMO_T[0]:,} ticks)")
+    DEMO_TS = bool(DEMO_T is not None and args.demo_success_time_nostart)
+    if DEMO_TS:
+        print("--demo-success-time-nostart: a fresh map start (the spine's row 0) is not gated")
     DEMO_TB = 0.0     # --demo-success-time-bonus: the additive extra for an in-time crossing
     if DEMO_T is not None and args.demo_success_time_bonus is not None:
         DEMO_TB = float(args.demo_success_time_bonus)
@@ -16003,7 +16022,7 @@ def main() -> None:
             _he = _en_height()
             _hm = DEMO_H_MIN if DEMO_H_MIN is not None else -1e29
             _h = np.where(time_gate_ok(slots[0].core.states_view["tick"], demo_idx, DEMO_T[1],
-                                       DEMO_T[0]), _he, -1e30)
+                                       DEMO_T[0], DEMO_TS), _he, -1e30)
             pay, DEMO_OK[0], DEMO_OK[1] = energy_gate(
                 hit, ended, paid, DEMO_OK[0], _h, rec, DEMO_END_D, _hm)
             if DEMO_TB:
