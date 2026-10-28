@@ -427,3 +427,8 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
 * `pbr9b1_s71dbeam_states.npy` (2,297 rows; md5 22d3d1b8d4b994503126f521fc009327): that beam's line from s71d's last state to the finish.
 * `pbr9b1_s71ddec_states.npy` (11,334 rows; md5 2151cc182b69b5ec96987c690aebd10c): s71d rows 6,300-6,387 (the approach) x20 + the chain
   (6,388-6,476) x15 + its beam's first 900 ticks x2 + pbr9b1_fo2dec_states x1 + the s71 beam's shaft passage x3.
+* `pbr9b1_fo2t.npy` + `.keys.npy` (889 rows; md5 in NOTES): fo2 rows 7,000-7,888 (80.0-88.1%: the greedy approach, the fly-over chain,
+  the soft landing) - fo2 with its first 7,000 rows dropped, so a curriculum on it can never walk its band back into the 71%
+  region (whose bounce every band that crossed it destabilised, pbr9b1 c2/c3/c5/c6/c7).
+* `pbr9b1_late_states.npy` (md5 in NOTES): pbr9b1_fo2dec_states + the s71 beam's shaft passage (90% -> the finish) x3, a
+  `--spawn-states` pool for the late course.
