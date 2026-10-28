@@ -4251,3 +4251,5 @@ was fetched that way. The operator may want box.py's pull to split large files t
 * **Time left on the table** (vs the record, yardstick only): the 72% corner loop (~0.8 s; GE3 found nothing in 9 min - 90% of
   bursts die there) and the drop's exit at 85.8% (the policy loses ~540 u of energy there, the record ~220; GE2's exits keep height,
   not speed). Then the lower level would be flown at ~1,250 u/s instead of ~1,000.
+* **pbr9b3_c13** (05:15 UTC, beside c11): the 117.734 weights themselves (ckpt_57789644800) with c11's flags at lr 1e-5 and
+  --critic-warmup 50 - draws near the 9/9 weights until the wrap-up.
