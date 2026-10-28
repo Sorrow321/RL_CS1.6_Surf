@@ -4193,3 +4193,6 @@ used for the search work below and then blocklisted and released.
 * c10 (03:26-03:31 UTC): one eval, 115.489 (7/9, 68.67 s) - the snapshot's own weights. Stopped for:
 * **pbr9b2_c11** (03:33 UTC): the same snapshot (c8's ckpt_56011784192) with c9's exact recipe (lr 2e-5) +
   `--demo-success-time-nostart` - the direct test: c9 declined after ~0.25B steps and collapsed at the 44.5% gate by ~0.53B.
+* c11 03:33-03:56 UTC: evals 115.489 (7/9, 68.66 s) / 115.469 (7/9) / 116.591 (8/9) / 112.132 (4/9); value loss 75, kl 0.18;
+  early splits t44 28.91 / 29.26 / 29.26 / 29.10 - not yet distinguishable from c9 (7/9, 7/9, 8/9, 8/9 over the same steps).
+  Box extended to 08:26 UTC (credit $27.54).
