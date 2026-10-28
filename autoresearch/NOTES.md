@@ -4120,3 +4120,6 @@ Only a FASTER 9/9 eval beats it (one finisher fewer costs 1.11 = 33 s of time; o
   BC with --bc-view-coef 0, or its spine with --demo-success-time 0.3; the shaft curve (keep ~900 u/s into the north ramp)
   is the next ~1-1.5 s and needs either the policy's own population search (beam_tas from 84%) or a longer GE than this
   host can run.
+* (03:20 UTC) Still no box. The retry loop now launches the plain incumbent continuation (launch_c1b.sh: c12's exact flags,
+  f1e + its energy rule, lr 5e-5) for a box that comes after 03:30 - too late to teach the skip and reach a reliable 9/9
+  (round 8's energy-gated switch took ~3.5 h), so a late box buys the lottery for a faster 9/9 instead.
