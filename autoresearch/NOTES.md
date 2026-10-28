@@ -4190,3 +4190,6 @@ used for the search work below and then blocklisted and released.
   own spawns are asked for the line's pace.
 * **pbr9b2_c10** (03:26 UTC): c8's good snapshot ckpt_56011784192 again (c9's start) with c9's recipe at --lr 1e-5 - evals
   from the good weights while the flag was built.
+* c10 (03:26-03:31 UTC): one eval, 115.489 (7/9, 68.67 s) - the snapshot's own weights. Stopped for:
+* **pbr9b2_c11** (03:33 UTC): the same snapshot (c8's ckpt_56011784192) with c9's exact recipe (lr 2e-5) +
+  `--demo-success-time-nostart` - the direct test: c9 declined after ~0.25B steps and collapsed at the 44.5% gate by ~0.53B.
