@@ -4242,3 +4242,44 @@ used for the search work below and then blocklisted and released.
   second 9/9; drifting at the end even at lr 2e-6. Stopped at ~57.9B.
 * **pbr9b2_c14** (07:15 UTC): the same peak snapshot (c12's ckpt_56384028672) and recipe as c13 - fresh evals of the round's
   best weights for the last 45 min.
+* c14 07:15-08:02 UTC (c13's start again): evals 116.604 (8/9, 68.54 s) / 115.488 / 115.490 / 115.497 (7/9, 68.42) / 114.372 /
+  114.377 / 115.489 / 116.607 (8/9, 68.47) / 116.591 (8/9) - no 9/9.
+
+### pbr9b2 round 9 lesson (wrap-up, 2026-10-28 08:05 UTC) - supersedes the DRAFT above
+* **Score 117.707** (pbr9b2_c1, eval 55.114727424B: 9/9 at 68.79 s; c12's recipe continued 76M steps from the incumbent; its
+  checkpoint was lost with the 20 KB/s-uplink box) and **117.706** (pbr9b2_c13, eval 56.762040320B: 9/9 at 68.81 s; snapshot
+  `ckpt_56755224576`, md5 2f65637a..., pulled with ckpt_latest to runs/pbr9b2/pbr9b2_c13/). Both just UNDER the incumbent's
+  117.711 (9/9 at 68.66 s). Fastest greedy finishes of the round: 68.29 s (c4), 68.33 s (c8), 68.42 s (c14) - all in 7-8/9
+  evals. Boxes: 58010900 (3090, Thailand; blocklisted, uplink), then 58015530 (4070 Ti + Ryzen 9 5900XT, 0.226 $/h, UK) for
+  the rest.
+* **What is now known about the time** (the record only as a yardstick; analysis on the policy's own states):
+  - the greedy is ahead of the record from 2% to 84% and loses time at 71-74% (a swing east onto a ramp and back, ~0.9 s) and
+    at 84-86% (lands and walks on the platform's west end, then a lossy drop: the lower level flown at h ~1,430 vs ~1,880);
+  - Go-Explore rooted at the policy's OWN greedy states, earliest-arrival pick (`autoresearch/analysis/pb9_fastpick.py`),
+    finds both in 10-15 min (GE C: a straight 71-72.8% line rejoining the greedy's own line 0.67 s ahead; GE A: north over the
+    platform end, ducked, ~1 s ahead at 85.7%), and the policy's own beam from a good hand-over (a chain state ON the policy's
+    line) finishes fast: `pb9_g2` = 65.77 s, `pb9_g4` = 65.94 s, `pb9_g3` (only GE C) = 68.35 s;
+  - hand-over traps: "energy" of a state falling onto a flat landing (h counts vertical speed it will lose); chain ENDS are
+    doomed frontier states; `beam_tas --score dv` ranks by the critic below d 20,000 (here: at once), useless from unfamiliar
+    states - use `--score d`; explorer lines through the final shaft cannot be handed over at all (GE B2);
+  - **the policy's own planner line from the true start (66.77 s) is the SAME route as the greedy, 2.25 s faster** - spread
+    over the map (`pb9_pl0`): polish, not new maneuvers.
+* **What did NOT work: teaching pace through the curriculum's success rule.** New flags (all off = bit-identical, tests in
+  tests/python/test_demo_success_time.py): `--demo-success-time SECS` (a band crossing succeeds only within the spine's own
+  ticks from the spawn row + SECS), `--demo-success-time-bonus B` (additive form: the base bonus stays, B more in time),
+  `--demo-success-time-nostart` (map starts not gated). Results: the subtractive form took the habitual +50 away - c4 (g2e)
+  walked the platform MORE, c5 (g3e) collapsed to 0/9; the additive form on GE C's segment (c7) crashed on the 71.5% ramp; on
+  the planner line (c8) it held the incumbent's reliability for ~1.2B steps (frequent 8/9, a 68.33 s finish) and then the
+  value loss jumped and the evals fell; restarts from its good snapshot collapsed at the same STEP regardless of lr (c9 2e-5,
+  c11 2e-5 with map starts un-gated, c12 5e-6, c13 2e-6 drifting): every greedy episode dead at the 44.5% gate after the
+  early splits had SLOWED. Mechanism not found. The energy-only curriculum (round 8's) does not decay this way in the spans
+  seen (c1, c3, c6).
+* **Reliability is the score**: one more finish of 9 is worth 1.11 = 33 s; the incumbent's weights give ~6.5/9 on this card
+  (its own 9/9 eval was a good draw), the c8 -> c12 stretch ~7.5/9 (c12's 56.384B snapshot: four 8/9 in a row) - the most
+  reliable weights of the round are c12's `ckpt_56384028672` and c13's `ckpt_56755224576`.
+* **For the next round**: (1) the gains are mapped and the lines exist (`pb9_g2/g3/g4`, `pb9_pl0` in autoresearch/spines):
+  what is missing is a way to TEACH pace that does not decay - candidates: BC on the categorical heads only (round 8: the yaw
+  head's sigma ~0.013 breaks continuous BC), or find what the pace bonus does to the band episodes' values/advantages before
+  using it again; (2) start from c13's pulled snapshot (more reliable than the incumbent's weights) if the incumbent is not
+  replaced; (3) ops: `box.py extend` counts from now; a slow-uplink box loses every hand-on - test the uplink first (8 MB/s here,
+  20 KB/s on the blocklisted one); `pkill -f <pattern>` kills the shell that runs it.

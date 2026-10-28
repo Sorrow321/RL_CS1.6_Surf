@@ -1,7 +1,7 @@
 {
  "agent": "pbr9b2",
  "round": 9,
- "final": false,
+ "final": true,
  "best": {
   "score": 117.707,
   "eval_file": "/home/steam/ar_pb/runs/pbr9b2/pbr9b2_c1/traj_55114727424.jsonl",
@@ -9,11 +9,11 @@
   "step": 55114727424,
   "ckpt": null,
   "recipe": [
-   "c1: the incumbent (pbr8b1_c12 ckpt_55038705664) resumed with c12's exact flags (f1e + --demo-success-energy 150, --lr 5e-5, --demo-tau0 4705); its checkpoint was lost with box 58010900 (20 KB/s uplink)",
-   "runner-up WITH a checkpoint: pbr9b2_c13 traj_56762040320 = 117.706 (9/9, 68.81 s), snapshot ckpt_56755224576 pulled (md5 2f65637a...): c8 (incumbent on the policy's own planner line pb9_pl0e + energy 330 + additive pace bonus, lr 3e-5) -> its 56.012B snapshot -> c12 (lr 5e-6) -> its 56.384B snapshot -> c13 (lr 2e-6)"
+   "c1: the incumbent (pbr8b1_c12 ckpt_55038705664) resumed with c12's exact flags (f1e + --demo-success-energy 150, --lr 5e-5, --demo-tau0 4705): 9/9 at 68.79 s at its 2nd eval; its checkpoint was lost with box 58010900 (20 KB/s uplink, blocklisted)",
+   "runner-up WITH a checkpoint: pbr9b2_c13 traj_56762040320 = 117.706 (9/9, 68.81 s); snapshot ckpt_56755224576 (md5 2f65637a9e629efffa8cfa4999d2bb2f) pulled to runs/pbr9b2/pbr9b2_c13/ with ckpt_latest. Lineage: c8 = incumbent on autoresearch/spines/pb9_pl0e (the policy's own planner line, cut 83%) + --demo-success-energy 330 --demo-success-time 0.25 --demo-success-time-bonus 50, lr 3e-5 -> its snapshot 56.012B -> c12 (same flags, lr 5e-6, --demo-tau0 5753) -> its snapshot 56.384B (four 8/9 evals in a row, 68.59-68.73 s) -> c13 (lr 2e-6, --demo-tau0 5748)"
   ],
   "resume_from": "incumbent r8 ckpt_55038705664 (pbr8b1_c12)",
   "commit": "a7ae75e"
  },
- "summary": "Best 117.707 (c1: incumbent recipe continued, 9/9 at 68.79 s; ckpt lost with a slow-uplink box) and 117.706 (c13: 9/9 at 68.81 s, snapshot pulled) - both just under the incumbent's 117.711. Found: the greedy loses time at 71-74% (a loop) and 84-86% (platform end + drop); GE on the policy's own states finds both shortcuts; the policy's own planner line is the same route 2.25 s faster (polish). Teaching pace through the curriculum's success rule (new flags --demo-success-time / -time-bonus / -time-nostart, flag-off bit-identical) never stuck: the subtractive form collapsed c5, the additive one held ~1.2B steps (c8: frequent 8/9, a 68.33 s finish) then broke (c9, c11: all greedy dead at the 44.5% gate after the early splits slowed), map-start gating not the cause. Late hours: the most reliable weights (c8 -> c12 stretch of four 8/9) at lr 2e-6 (c13) for evals."
+ "summary": "FINAL 117.707 (c1, 9/9 at 68.79 s, ckpt lost) / 117.706 (c13, 9/9 at 68.81 s, snapshot pulled) - both just under the incumbent's 117.711. Found (record as yardstick only; policy's own states): the greedy loses time on a 71-72.5% loop and at the 84-86% platform end + drop; GE rooted on its own greedy states finds both shortcuts (GE C -0.67 s, GE A over the platform end); the policy's own planner line from the true start is the SAME route 2.25 s faster (66.77 s): polish. Teaching pace through the curriculum's success rule (new flags --demo-success-time / -time-bonus / -time-nostart, flag-off bit-identical, tested) never stuck: subtractive collapsed c5, additive held ~1.2B steps (c8: frequent 8/9, 68.33 s) then broke (c9, c11, c12, c13: every greedy dead at the 44.5% gate or drifting) - not the map starts. Next: find why pace-gated curricula decay (value/advantage of band episodes?), or teach pace without the curriculum (BC on categorical heads only); the most reliable weights are c12's 56.384B / c13's 56.755B snapshots (~7.5/9 vs the incumbent's ~6.5/9)."
 }
