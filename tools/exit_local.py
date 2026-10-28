@@ -180,12 +180,19 @@ def main() -> int:
     ap.add_argument("--distil-args", default="",
                     help="extra tools/plan_to_bc.py flags, one string (e.g. '--no-value-target' "
                          "for a lineage whose reward plan_to_bc's line reward does not mirror)")
-    ap.add_argument("--gate-rule", choices=("mean", "score"), default="mean",
+    ap.add_argument("--gate-rule", choices=("mean", "score", "paired"), default="mean",
                     help="mean: every eval episode finished and the mean beats the bar (as "
                          "before). score: the GRADER's number (--grader: best progress + 10 x "
                          "finish fraction + the time term) of the challenger beats the "
                          "incumbent's on the same spawns (needs --gate-rematch 1) - finishing "
                          "more often first, then faster, for a seed that does not finish yet")
+    ap.add_argument("--gate-finish-tol", type=float, default=0.1,
+                    help="--gate-rule paired: the challenger may finish this fraction of the eval "
+                         "episodes FEWER than the incumbent (at least 1) and still be accepted when "
+                         "it is faster on the spawns both finished. 'paired' is speed first with a "
+                         "reliability floor; 'score' is the grader, where one more finisher of 9 "
+                         "outweighs 37 s of best time (pbx 2026-10-28: round 23 replaced a 0.1 s "
+                         "faster incumbent on one extra finish and the next planner lines lost 0.5 s)")
     ap.add_argument("--grader", default="C:/RL_Surf/autoresearch/score.py",
                     help="--gate-rule score: the score.py whose score_file grades an eval")
     ap.add_argument("--gate-evals", type=int, default=1,
@@ -209,6 +216,9 @@ def main() -> int:
     plan_extra = shlex.split(args.plan_args)
     distil_extra = shlex.split(args.distil_args)
     grade = None
+    if args.gate_rule == "paired" and not (args.gate and args.gate_rematch):
+        raise SystemExit("--gate-rule paired compares on the same spawns: needs --gate 1 "
+                         "--gate-rematch 1")
     if args.gate_evals > 1 and not (args.gate and args.gate_rematch):
         raise SystemExit("--gate-evals N > 1 compares on shared spawns: needs --gate 1 "
                          "--gate-rematch 1")
@@ -464,6 +474,12 @@ def main() -> int:
                 accept = mean != float("inf") and (paired < 0.0 if pairs else True)
                 log(fh, f"round {r}: paired on {len(pairs)} shared finishes: "
                         f"{'n/a' if paired is None else f'{paired:+.3f} s'} (challenger - incumbent)")
+                if args.gate_rule == "paired":
+                    # speed first with a reliability floor: faster on the shared finishes, and no
+                    # more than --gate-finish-tol of the episodes fewer finishes
+                    tol = max(1, int(round(args.gate_finish_tol * max(n, ni))))
+                    accept = bool(pairs) and paired < 0.0 and len(fins) >= len(fi) - tol
+                    row["paired_rule"] = {"tol": tol, "finishes": [len(fins), len(fi)]}
                 if args.gate_rule == "score":
                     # the grader on the same spawns: more finishes first, then the faster best
                     # finish, then the deeper best progress (sidistic 2026-10-23: the seed
@@ -491,6 +507,8 @@ def main() -> int:
                 rejects_in_row = 0
                 why = (f"grader {row['score']['challenger']} vs {row['score']['incumbent']}, "
                        f"{len(fins)}/{n} finished" if args.gate_rule == "score"
+                       else f"paired {row.get('paired_s')} s, {len(fins)}/{n} vs {len(fi)}/{ni} "
+                            f"finished" if args.gate_rule == "paired"
                        else f"mean {mean:.2f} s vs {bar:.2f} s, all {n} finished")
                 log(fh, f"round {r}: gate ACCEPTED ({why}) -> {best_mean_ck}")
                 if args.target_mean is not None and mean <= args.target_mean:
@@ -503,7 +521,10 @@ def main() -> int:
                 row["gate"] = "rejected"
                 rejects_in_row += 1
                 why = (f"grader {row['score']['challenger']} vs {row['score']['incumbent']}"
-                       if args.gate_rule == "score" else f"mean {mean:.2f} s vs {bar:.2f} s")
+                       if args.gate_rule == "score"
+                       else f"paired {row.get('paired_s')} s, {len(fins)}/{n} vs {len(fi)}/{ni} "
+                            f"finished" if args.gate_rule == "paired"
+                       else f"mean {mean:.2f} s vs {bar:.2f} s")
                 log(fh, f"round {r}: gate rejected ({why}) - the next round plans from "
                         f"{best_mean_ck}")
                 if (args.lr_halve_after and rejects_in_row >= args.lr_halve_after

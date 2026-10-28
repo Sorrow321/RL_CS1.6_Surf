@@ -541,3 +541,12 @@ def test_view_hold_is_off_by_default_greedy_untouched_and_cloned():
     i_c = bt.index("spol._vh_c[_li] = spol._vh_c[_di]")
     assert "with torch.inference_mode():" in bt[i_c - 400:i_c]
     assert "--view-hold offsets the proposal envs' yaw draws: needs --greedy-envs" in bt
+
+
+def test_exit_local_paired_gate_rule():
+    src = (ROOT / "tools" / "exit_local.py").read_text(encoding="utf-8")
+    assert 'choices=("mean", "score", "paired")' in src
+    assert "--gate-rule paired compares on the same spawns" in src
+    # speed first: faster on the shared finishes, at most tol fewer finishes
+    assert "accept = bool(pairs) and paired < 0.0 and len(fins) >= len(fi) - tol" in src
+    assert "tol = max(1, int(round(args.gate_finish_tol * max(n, ni))))" in src
