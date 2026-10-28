@@ -4141,3 +4141,20 @@ used for the search work below and then blocklisted and released.
   for one that is also in time; the band still counts only in-time crossings.
 * **pbr9b2_c6** (00:18 UTC): the incumbent on c12's exact recipe (f1e, energy 150, --demo-tau0 4705) at **--lr 3e-5** - the
   steady baseline while the additive rule was built.
+
+### c7 (additive time bonus on g3e) - no gain; the planner line is the better target (00:25-00:52 UTC)
+* **pbr9b2_c7** = the incumbent on g3e + energy 150 + `--demo-success-time 0.25 --demo-success-time-bonus 50` (additive),
+  lr 3e-5: evals 113.250 (5/9) / 115.480 (7/9, 68.93 s) / 112.138 (4/9) / 114.363 (6/9) / 114.360 (6/9); value loss
+  median 124-138 (c5's level); the band stuck on GE C's chain (rows 6,354-6,359, ~71%) at 0-30%; greedy episodes now lose
+  their speed on the 71.5% ramp (|v| 998 -> 39) and crawl along the ledge for ~20 s. The straight segment is not a line this
+  policy flies from its own states; stopped at ~55.37B.
+* **The planner's line is POLISH, not a new route**: the 66.77 s planner wave from the true start (incumbent weights,
+  beam_tas --objective finish --score dv, 4,096) stays within 7-87 u of the greedy ep1 at every mark and gains steadily:
+  -0.38 s by 5%, -0.80 by 40%, -1.30 by 50%, -1.80 by 70%, -2.22 by 84%, -2.55 by 86% (the platform end), then flat;
+  2.25 s in all. The population's best pace on the policy's OWN route.
+* **`pb9_pl0`** (8,709 rows, md5 0d3cefaf...; beam_best_states of that wave, keys from its trajectory) and **`pb9_pl0e`** =
+  cut at row 7,163 (83.0%, airborne, h 2,504). Energy floor kept where c12's was: `--demo-success-energy 330` -> h_min 2,174
+  (the greedy's habitual fast-mode crossing has h ~2,225 and keeps its base +50; the walking route ~1,604 does not), and the
+  pace paid on top: `--demo-success-time 0.25 --demo-success-time-bonus 50`. Pool `pb9_pl0after_states.npy` = the planner
+  line's rows 7,164-8,708. A curriculum form of expert iteration (the planner's pace distilled through the success rule)
+  that needs no BC.
