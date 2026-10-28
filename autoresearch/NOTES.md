@@ -4214,3 +4214,29 @@ Box: 58011053, RTX 4080S, 0.41 $/h, Ontario CA (machine 141481, the box rounds 7
   finish (67.77 vs 69.48 s)**: -0.80 s over 83-84.7% (the fly-over), -0.44 s to 86.3% (the drop), -0.35 / -0.31 s over 86.3-90%
   (the soft landing and the faster lower level), -0.15 s the shaft; +0.21 s of drift by 70% and +0.54 s at the 71% bounce, given
   back over 72-75% (-0.51 s). Fastest c8 finish 67.22 s.
+
+### pbr9b1 round 9 lesson (DRAFT, 02:40 UTC; finalised at wrap-up)
+* **Score 117.711 -> 117.755** (pbr9b1_c8 58.037B: 9/9 from the true start, best 67.36 s; hand-on ckpt_58032914432, pulled). Steps:
+  117.719 (c4, 9/9 68.43 s) -> 117.732 (c5, 9/9 68.03 s) -> 117.755 (c8, 9/9 67.36 s). Fastest single greedy finish 67.13 s (c6).
+* **Reliability, not speed, sets the score at the top**: the incumbent's 9/9 was a ~1-in-8 draw (its own run c12: 4,5,6,7,3,7,9,7 of
+  9); per-episode finish rates this round 0.57-0.73 per run. Eval episodes differ only by the spawn yaw jitter (+-8 deg). A 9/9 eval
+  appears ~once per 7-15 evals at 0.7 per episode: keep a stable policy evaluating for hours, pull every 9/9's snapshot at once.
+* **Where the time was** (split times at first arrival vs the incumbent, the record as a yardstick only): the incumbent LANDED on the
+  84.5% platform's end (~500 u of energy lost) and crossed the lower level at ~1,000 u/s. Go-Explore rooted at the policy's own
+  greedy line (record_ckpt --dump-states) found (1) a fly-over of the platform's end (x1.04 root, 1.1 s faster to 86%), (2) a soft
+  landing on the lower level (unboosted roots on that chain's own drop states, h +200-300 u). Picked by EARLIEST ARRIVAL from the
+  true start (autoresearch/analysis/ge_fast_pick.py: root row x line tick + chain ticks x 8 ms), not by depth.
+* **Taught by energy-gated cuts, but only after a fix**: under --demo-success-energy the curriculum counted ANY finish as a band
+  success, so c2's band walked 14% of the map back on finishes while 1/72 bench episodes flew over. **--demo-success-strict** (new,
+  default off, tested) counts the energetic crossing alone; then the band holds at the decision and the greedy switched in ~25 min
+  (c3: 0 -> 5/9 -> 7/9 fly-overs). The soft landing (fo2, cut at 88%) took ~1 h at lr 5e-5.
+* **Stability**: lr 1e-4 collapsed c4 (one update at kl 2.45, value fit 0.995 -> 0.97, 0/9 an eval later) right after its 9/9; lr
+  5e-5 held for 4+ h. Resume artifacts: the first 2-4 updates after any resume read kl 1.7-5.5 (the narrow yaw head), then settle.
+* **The 71% bounce (+0.5-0.8 s) is NOT fixed, and the lesson is about bands**: GE 4 with TURNED roots (round 7's rule; unboosted)
+  found two lines past it (+12 deg at 69.8%, -4 deg at 71.2%; beams of the policy finish from them in 66.6-67.3 s on the line's
+  clock); the new **--demo-success-pace** (time-gated success, default off, tested) can select a line that is faster but not more
+  energetic. But neither decision was learned in 15-25 min, and every run whose band walked through the 71% region (c2, c3, c5 late,
+  c6, c7) grew 30 s stalls / crashes there. c8's fix: a spine truncated to start at 77% (pbr9b1_fo2t) so the band can never get there
+  - the most reliable run of the round (7.2/9 over its first 5 evals).
+* **Next**: resume c8's hand-on on fo2t + late2 with c8's flags (lr 5e-5) for more 9/9s; the 71% line needs a gentler teacher
+  (e.g. the pace gate with a narrow spawn window AT the decision and NO band walking past it, or a long run at lower lr).
