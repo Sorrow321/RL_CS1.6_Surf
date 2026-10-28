@@ -4214,3 +4214,8 @@ was fetched that way. The operator may want box.py's pull to split large files t
 * **pbr9b3_c11** (04:03 UTC): c9's snapshot ckpt_57487130624 (md5 8d3039fe...; its next eval 116.611: 8/9 all gliding, 68.33 s) at
   **lr 1.5e-5**, --critic-warmup 50, strict, --demo-tau0 6260 (c9's band then), --spawn-states pbr9b3_shaftdec_states.npy (the pool
   c9 had for those evals), no more pool swaps - hold the 8/9 gliding weights and draw a 9/9 from them.
+* c11 to 04:24 UTC: 115.510 (57.488B: 7/9, best **68.04 s** - a different draw from c9's 116.611 at the same step: the snapshot
+  is one update earlier) / 109.913 (2/9) / 113.277 (5/9, 68.37 s) / 114.387 (6/9, 68.39 s); kl 0.13. The gliding weights finish
+  fast (68.0-68.4 s) but 2-8/9: the shaft sheet (92.7-93.5%), the glide's sheet (84.9%), a few early.
+* **pbr9b3_c12** (04:27 UTC, beside c11): c4's 9/9 snapshot in c4's exact regime (dec2 pool, lr 5e-5) + --critic-warmup 50 - the
+  landing route's 8-9/9 against the glide's speed; two draws per ~9 min for the last ~3 h.
