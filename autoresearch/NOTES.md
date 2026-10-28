@@ -4168,3 +4168,6 @@ used for the search work below and then blocklisted and released.
 * c8 01:13-01:40 UTC: evals 116.596 (8/9, 68.80 s) / 114.364 (6/9) / 114.369 (6/9) / 116.586 (8/9) / 116.590 (8/9, 68.98 s)
   - three 8/9 in the last four; kl median 0.19 (last 50), value loss 87 and falling; the band at 5,833 (~67.5%). Split times
   still the greedy's (t70 48.4-49.1); a 9/9 needs a best finish < 68.66 s to beat the incumbent.
+* c8 01:40-02:06 UTC: evals 116.586 (8/9) / 116.590 (8/9) / 113.259 (5/9) / 116.585 (8/9) / 115.482 (7/9) / 114.376 (6/9,
+  68.72 s); kl 0.20, value loss 75; band 5,753 (~66.5%). Pace moving only at the end of the band's reach (a few episodes now
+  at 84% by 57.4-57.6 s, the greedy's 57.8-58.3). Kept as is: the first stable regime with a pace incentive.
