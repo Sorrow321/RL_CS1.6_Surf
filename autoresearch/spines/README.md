@@ -432,3 +432,6 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   region (whose bounce every band that crossed it destabilised, pbr9b1 c2/c3/c5/c6/c7).
 * `pbr9b1_late_states.npy` (md5 in NOTES): pbr9b1_fo2dec_states + the s71 beam's shaft passage (90% -> the finish) x3, a
   `--spawn-states` pool for the late course.
+* `pbr9b1_late2_states.npy` (md5 in NOTES): pbr9b1_fo2dec_states + the s71 beam's shaft passage x2 + the 89-94.5% shaft entries of
+  three FINISHING greedy episodes of pbr9b1_c8's own 57.34B weights (record_ckpt --dump-states, seed 11) x8 - a `--spawn-states`
+  pool aimed at the shaft's first kill sheet (z ~265), c8's commonest death.
