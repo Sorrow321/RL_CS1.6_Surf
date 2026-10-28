@@ -4240,3 +4240,12 @@ Box: 58011053, RTX 4080S, 0.41 $/h, Ontario CA (machine 141481, the box rounds 7
   - the most reliable run of the round (7.2/9 over its first 5 evals).
 * **Next**: resume c8's hand-on on fo2t + late2 with c8's flags (lr 5e-5) for more 9/9s; the 71% line needs a gentler teacher
   (e.g. the pace gate with a narrow spawn window AT the decision and NO band walking past it, or a long run at lower lr).
+
+### 117.780: 9/9 at 66.61 s, twice 9/9 in a row (2026-10-28 03:35 UTC, c8 59.018B)
+* c8 evals 02:55-03:39 UTC: 112.200 (4/9) / 116.654 (8/9, 67.05) / 115.543 (7/9, 67.03) / 116.670 (8/9, 66.57) / 114.433 (6/9, 67.00) /
+  114.462 (6/9, **66.13 s**, the round's fastest finish) / 116.662 (8/9, 66.80) / 115.557 (7/9, 66.62) / 116.665 (8/9, 66.73) / 115.547
+  (7/9) / 114.441 (6/9) / 116.664 (8/9) / **117.780** (59.018B: **9/9, best 66.61 s**, all nine land softly, 66.6-67.6 s) / **117.766**
+  (59.094B: 9/9, 67.01 s). Hand-ons pulled: **ckpt_59018051584** (= the eval's own step, md5 29645289e572eff298cb173e5086c653) and
+  ckpt_59085160448 (8.4M before the second 9/9; md5 278105ca...).
+* c8's reliability rose as the soft landing settled: 0.78 per episode over 57.81-58.72B, then 9/9, 9/9. Remaining deaths: the 71-75%
+  region (4 in 5 evals - the bounce, never touched by c8's band), 80.6% (2, just past the band's parked rows), the shaft (2).
