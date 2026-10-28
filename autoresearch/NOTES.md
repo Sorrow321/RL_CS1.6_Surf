@@ -4207,3 +4207,10 @@ was fetched that way. The operator may want box.py's pull to split large files t
   spiral drop ((1,193-1,332, 3,219-3,469); 3 - the glide's own new failure), a 106 s stall on the 90.7% rim ledge (1), scattered
   (40.6 / 56.6 / 61.4 / 71.6 / 73.1%). 03:37 UTC: c9's pool swapped in place to pbr9b3_shaftglide_states (the shaft rows x10 +
   the glide's end and the spiral's start, f2 rows 7,480-7,600, x20 + a third of dec2); re-read at 57.965B.
+* **c9 COLLAPSED at ~58.09B** (0/9 x3, every episode dead at the 56.6% shaft climb after ~38 s - c5's and round 8's c11 spot)
+  ~130M steps after its second in-place pool swap (shaftglide at 57.965B): 10 updates above kl 0.6 (max 1.22) after it. Its last
+  good evals: 113.277 (58.016B, 5/9, 68.36 s). **The 56.6% shaft climb is the lineage's most fragile skill: three collapses this
+  round (c2, c5, c9) all land there.** Lesson: a sudden spawn-pool change is a reward shift too - give it a critic warmup or don't.
+* **pbr9b3_c11** (04:03 UTC): c9's snapshot ckpt_57487130624 (md5 8d3039fe...; its next eval 116.611: 8/9 all gliding, 68.33 s) at
+  **lr 1.5e-5**, --critic-warmup 50, strict, --demo-tau0 6260 (c9's band then), --spawn-states pbr9b3_shaftdec_states.npy (the pool
+  c9 had for those evals), no more pool swaps - hold the 8/9 gliding weights and draw a 9/9 from them.
