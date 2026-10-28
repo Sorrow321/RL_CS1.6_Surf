@@ -4253,3 +4253,8 @@ was fetched that way. The operator may want box.py's pull to split large files t
   not speed). Then the lower level would be flown at ~1,250 u/s instead of ~1,000.
 * **pbr9b3_c13** (05:15 UTC, beside c11): the 117.734 weights themselves (ckpt_57789644800) with c11's flags at lr 1e-5 and
   --critic-warmup 50 - draws near the 9/9 weights until the wrap-up.
+* 05:40 UTC: c11 went unstable after the 9/9 - 9 updates above kl 0.6 (max 1.60) - with evals 56.613 / 80.621 (0/9, the 56.6%
+  shaft again) / 112.130 (4/9); stopped. c13 (lr 1e-5 from the 117.734 weights) is calm (kl 0.10, max 0.22): 114.375 / 114.369
+  (6/9) / 115.492 (7/9, 68.58 s). Its first eval (the actor still frozen by the critic warmup, so the 117.734 weights exactly)
+  scored 114.375, not 117.734: with TWO trainers on the GPU the greedy eval is not bit-reproducible (alone, c6 and c8 had
+  reproduced 117.702 exactly) - the 9/9 at 67.98 s was partly a draw of the eval itself.
