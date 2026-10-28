@@ -4356,3 +4356,37 @@ the 5080 (plan 3 min, train 3e8 steps 15 min, evals 1 min).
   65.92 -> 64.36 s (round 6, 8/9); 9/9 evals: round 2's policy rematched on rounds 3 and 4 (best 65.08 / 65.59 s, mean
   66.34 / 66.58 s, grader 117.831 / 117.814). The seed scored 5/9 in the loop's own record_ckpt eval (9/9 in the
   trainer's), so reliability in record_ckpt is the weak side; challengers run 6-8/9.
+
+### pbx-expert: the loop to 22:30 UTC - search line 63.79 -> 60.28 s, policy 9/9 at 63.23 s (DRAFT, finalised at release)
+* **Results (clock: from spawn, 7.667 ms tick).** Search line (open-loop, replay bit-exact): **60.283 s** (round 29
+  wave 2, from pbEXIT2_r28; the operator's local round 0: 63.795 s). Best 9/9 greedy policy eval: **pbEXIT2_r28
+  9/9 at best 63.227 s, mean 64.170 s, grader 117.892** (r22: 63.265 / 64.092, 117.891; r20: 27/27 in its own
+  evals). The seed c9: 9/9 best 65.97 s (trainer eval) and 5/9 in record_ckpt.
+* **What moved the search line** (all generic): (1) the training-half fixes above (BC now distils the planner's
+  own choices); (2) **`--score d`** for this policy (0.1 s over dv: the critic ranking cost time everywhere -
+  `--score v` 64.1 s, `--v-switch 20000` 62.9-63.5 s); (3) **BC held at 0.5** (`--bc-coef-final 0.5`) instead of
+  decaying to 0 - the next round's finishers' mean fell 0.47 s, the biggest step of the day; (4) a gate that keeps
+  the FASTEST policy as the planning base (below); (5) 5 waves per round. Not helpful: proposal temperature
+  (`--view-temp` 3 / 10: +0.4 / +2 s), held yaw offsets (new `--view-hold`: +1.7 s), resample every 12/18/50
+  decisions, a 4x population (-0.05 s only), elite 1/16 (+-0).
+* **The gate, three lessons.** (a) The grader counts only the first 9 episodes of a file (`score_episodes`), so
+  `--eval-eps 18` did not reduce the gate's noise: `--gate-evals N` (new) grades N separate 9-episode evals on
+  shared seeds. (b) At 0.8-0.9 finishes per episode a 9-episode gate is a coin flip: round 7 replaced a 0.92
+  policy with a 0.72 one by 0.006 points. (c) The grader puts one finisher (1.11 points) above 37 s of best time:
+  for a SEARCH target it kept slower policies as the planning base (round 23: +0.107 s slower on shared finishes,
+  accepted on one extra finish; the next lines lost 0.5 s). **`--gate-rule paired`** (new: faster on the shared
+  finishes, at most 10% fewer finishes) fixed it: rounds 25-31 accepted only faster policies.
+* **The plateau (rounds 25-34, ~50 waves):** the fastest lines are ONE route (splits agree to ~0.05 s at 5 / 20 / 50
+  / 80%; the spawn yaw moves the 5% split by 0.1 s only); the planner refines it to a floor of ~60.2-60.3 s while the
+  policy keeps getting faster (finishers' mean 64.60 -> 63.92 s). Against the record (yardstick only) the line is
+  faster everywhere except the 71% bounce (+0.42 s) and the shaft (+0.44 s): < 60 s needs a different ROUTE there,
+  which neither the policy's proposals nor any planner knob produced.
+* **Next (not built):** Go-Explore rooted along the best line with turned headings (round 9 found bounce-free lines
+  that way), spliced into an open-loop line. Blocker: explore_phase1 runs ONE integer msec for the whole core and a
+  step pattern is per CORE, not per env, so a restored cell steps another [8,8,7] phase than it had on the line -
+  exact splicing needs phase-aligned restoration in the explorer, then prefix + chain + the policy's own beam from
+  the chain's end (`--start-state`, held keys set at the junction), verified by an open-loop replay.
+* **Ops:** `pgrep -f`/`pkill -f` with a pattern that appears in your own ssh command kills that ssh (CLAUDE.md) - it
+  took the loop down for a minute; anchor patterns (`^python3 -u tools/exit_local`) and use `setsid nohup ... &
+  disown` to launch. `timeout` puts its child in another process group, so a group kill misses it. `box.py extend
+  --hours N` counts from NOW, not from the old deadline.
