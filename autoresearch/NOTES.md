@@ -4221,3 +4221,9 @@ used for the search work below and then blocklisted and released.
   counts from now.
 * c12 04:22-04:46 UTC: evals 114.383 (6/9, 68.51 s) / 114.361 (6/9) / 116.600 (8/9, 68.66 s) / 116.599 (8/9, 68.70) /
   116.598 (8/9, 68.73) - three 8/9 in a row at 68.66-68.73 s; kl 0.17, value loss 85.
+* c12 04:46-05:09 UTC: evals 116.602 (8/9, **68.59 s**) then 113.254 (5/9) / 112.150 (4/9) - FOUR 8/9 in a row (56.163-56.390B,
+  best 68.59-68.73 s; a 9/9 at 68.59 s would score 117.713), then the turn at ~56.47B: about the SAME step where c9 and c11
+  (lr 2e-5) turned, at a quarter of their lr - the decline tracks steps of this recipe, not the size of the weight change.
+  The weights of that 8/9 stretch are the round's most reliable (better than the 56.012B snapshot they started from).
+* **pbr9b2_c13** (05:11 UTC): c12's snapshot `ckpt_56384028672` (md5 c27a198f..., just before the 68.59 s eval) at **--lr 2e-6**,
+  c12's recipe, `--demo-tau0 5748` (c12's band) - evals of the round's best weights while they last.
