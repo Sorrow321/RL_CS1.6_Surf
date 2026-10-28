@@ -4155,3 +4155,26 @@ was fetched that way. The operator may want box.py's pull to split large files t
 * **pbr9b3_c8** (01:30 UTC, plan B): c4's 9/9 snapshot ckpt_56958648320 in c4's regime (f2e non-strict + the 82.8% energy milestone
   + pool dec2, lr 5e-5, --demo-tau0 5965) + --critic-warmup 50 - the regime that gave 8/8/8/9/7 of 9 (and 9/9 again as c6's first
   eval), for a 9/9 under the incumbent's 68.66 s for the rest of the round.
+* c8 to 01:57 UTC: evals **117.702** (56.959B: the snapshot's own weights - c6's first eval of the same weights scored exactly the
+  same, 9/9 68.95 s: the greedy eval is DETERMINISTIC given the weights, so the spread between evals comes from training alone) /
+  115.459 (7/9) / 116.588 (8/9) / 114.365 (6/9) / 115.486 (7/9, 68.75 s); kl 0.21-0.24, value loss 75-110.
+
+### pbr9b3 round 9 lesson (DRAFT, 02:00 UTC; finalised at wrap-up)
+* **Score 117.705** (c4 56.963B: 9/9, best 68.86 s) against the incumbent's 117.711 (9/9, 68.66 s) - no gain on the time yet.
+* **Where the time is** (split times vs the record, a yardstick only): the policy is ~9 s ahead of the record at 70% and loses
+  ~0.8 s at a 72% corner (under-turned, a wall bump, a loop - in the line since round 7) and ~1-2 s by LANDING on the 84%
+  platform's west end (energy 2,250 -> 1,650) then flying the lower level ~450 u short of energy.
+* **The fix exists and is learnable**: an UNBOOSTED Go-Explore glide (GE1b, rooted at the planner's own 83% states) turns north
+  ~40 deg in 0.15 s at 83.4% and glides past the platform: f2 (planner line + chain + own finish) ~67.3 s on its clock. With the
+  strict curriculum (c6) the greedy adopted it in ~50 min - but the weights degraded everywhere at the same time (0-5/9, the
+  gliders slower BEFORE 80% by ~1 s), and c7 at lr 2.5e-5 did not recover in 30 min.
+* **Four traps of the energy-gated curriculum, found the hard way (all fixed generically, flags default off):**
+  1. A finish counts as the curriculum's success, so a band from which the policy finishes walks back past the skill it was cut
+     for (f2e: 84.95% -> 66.7% while 0/16 sampled episodes glided) -> `--demo-success-strict`. Bench the gated crossing itself
+     (band_bench + the energy at the line) before trusting a band's success rate.
+  2. Replacing a spine removes its energy gate - the only thing paying that skill - and the skill erodes (the greedy walked the
+     82-84% platform again within ~2 h) -> `--demo-milestone-energy D:H` keeps an old gate paying.
+  3. A spawn pool must hold the skill's states: the greedy's own states included its walking states, from which no glide exists.
+  4. Every resume spiked kl on its first updates (3.5-10.6) and two collapsed into the 56.6% shaft (c2 at lr 1e-4, c5 at 5e-5) ->
+     `--critic-warmup N` (an existing flag: actor frozen, value head trained for N updates) removed the spike (kl 0.02-0.03).
+* Also new: `--demo-success-time` (a time gate, unused), `tools/splice_roll.py`, `tools/pull_split.sh` (slow-box pulls).
