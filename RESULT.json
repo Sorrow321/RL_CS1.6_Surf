@@ -3,19 +3,20 @@
  "round": 9,
  "final": false,
  "best": {
-  "score": 117.732,
-  "eval_file": "/home/steam/ar_pb/runs/pbr9b1/pbr9b1_c5/traj_56979095552.jsonl",
-  "run": "pbr9b1_c5",
-  "step": 56979095552,
-  "ckpt": "/home/steam/ar_pb/runs/pbr9b1/pbr9b1_c5/ckpt_56979095552.pt",
+  "score": 117.755,
+  "eval_file": "/home/steam/ar_pb/runs/pbr9b1/pbr9b1_c8/traj_58036584448.jsonl",
+  "run": "pbr9b1_c8",
+  "step": 58036584448,
+  "ckpt": "/home/steam/ar_pb/runs/pbr9b1/pbr9b1_c8/ckpt_58032914432.pt",
   "recipe": [
    "c2: the incumbent ckpt_55038705664 on pbr9b1_fo1e (own greedy line + a GE fly-over chain at 84%, cut at 84.92%) + --demo-success-energy 150, lr 1e-4",
-   "c3: c2's ckpt_latest + --demo-success-strict (new: the curriculum counts the energetic crossing alone), pool fo1dec, lr 1e-4 - the greedy adopts the fly-over",
-   "c4: c3's ckpt_latest on pbr9b1_fo2 (fo1 + a GE soft landing, cut at 88.12%) + strict energy cut, pool fo2dec, lr 1e-4: 117.719 (9/9, 68.43 s) at 56.534B, then a kl-2.45 collapse",
-   "c5: c4's ckpt_56525586432 (the 9/9 hand-on) on fo2 + strict energy cut, pool fo2dec, lr 5e-5, --demo-tau0 7618; 117.732 at 56.979B (9/9, best 68.03 s)"
+   "c3: c2's ckpt_latest + --demo-success-strict (new), pool fo1dec, lr 1e-4 - the greedy adopts the fly-over",
+   "c4: c3's ckpt_latest on pbr9b1_fo2 (fo1 + a GE soft landing, cut at 88.12%) + strict energy cut, lr 1e-4: 117.719, then a kl-2.45 collapse",
+   "c5: c4's ckpt_56525586432 on fo2 strict, lr 5e-5, --demo-tau0 7618: 117.732 at 56.979B (9/9, 68.03 s)",
+   "c8: c5's ckpt_56979095552 on pbr9b1_fo2t (fo2 from 77.1%: the band cannot reach the 71% region) + --demo-success-energy 150 --demo-success-strict, --demo-tau0 618, pool pbr9b1_late_states then late2 (+ own shaft entries), lr 5e-5; 117.755 at 58.037B (9/9, best 67.36 s; 8/9 land softly)"
   ],
-  "resume_from": "pbr9b1_c4 ckpt_56525586432 (md5 334c0601...)",
-  "commit": "cc0154d"
+  "resume_from": "pbr9b1_c5 ckpt_56979095552 (md5 9f5670f5...)",
+  "commit": "771b84f"
  },
- "summary": "117.732 (c5 56.979B: 9/9 finish, best 68.03 s; hand-on ckpt_56979095552 = the eval's own step, pulled) > incumbent 117.711. GE at the incumbent's own line found a fly-over of the 84% platform end; the energy rule's curriculum counted finishes as successes -> new --demo-success-strict; c3 taught the greedy the fly-over (~1 s over 83-86%); c4 moved the gate to 88% (GE soft landing) and hit 9/9 (117.719) before a kl-2.45 collapse at lr 1e-4; c5 = that snapshot at lr 5e-5: 6,6,5,8,5,7,9 of 9, finishes down to 67.83 s. Soft landing not yet adopted."
+ "summary": "117.755 (c8 58.037B: 9/9 finish, best 67.36 s; hand-on ckpt_58032914432, 3.7M before the eval, md5 08601077..., pulled) > incumbent 117.711. GE from the policy's own line found a fly-over of the 84% platform end and a soft landing on the lower level; taught with energy-gated spines and a new --demo-success-strict (the energy rule had counted plain finishes); a kl-2.45 collapse at lr 1e-4 -> lr 5e-5; c8 = a consolidation run whose spine starts at 77% so its band never enters the fragile 71% bounce (5 runs that walked through it lost reliability). Tried and dropped: the 71% shortcut (GE + new --demo-success-pace; its decision was not learned in 15-25 min)."
 }

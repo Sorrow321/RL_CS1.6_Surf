@@ -4204,3 +4204,9 @@ Box: 58011053, RTX 4080S, 0.41 $/h, Ontario CA (machine 141481, the box rounds 7
 * 01:49 UTC: c8's pool swapped (mtime re-read) to **pbr9b1_late2_states** (md5 937e907c...): fo2dec + the s71 beam's shaft x2 + the
   89-94.5% shaft entries of three finishing greedy episodes of c8's own 57.34B weights (record_ckpt --dump-states, seed 11: 3 of 6
   finished - 69.53 / 70.10 / 73.58 s; one died on that same sheet at 92.87%) x8.
+
+### 117.755: 9/9 at 67.36 s (2026-10-28 02:30 UTC, c8 58.037B)
+* c8 evals 02:10-02:30 UTC: 112.185 (4/9, 67.78) / 111.076 (3/9, 67.72) / 113.315 (5/9, **67.22 s**) / 113.299 (5/9, 67.69) /
+  **117.755** (58.037B: **9/9, best 67.36 s**; 8 of 9 land softly at 88% (h 1,721-1,937) and finish in 67.36-69.1 s, one slow variant
+  75.0 s). Hand-on: **ckpt_58032914432** (3.7M steps before the eval; md5 08601077dba29a9a41b0a4c0229960d1), pulled to
+  runs/pbr9b1/pbr9b1_c8/. The band reached fo2t's first row (tau 0, 77.1%) - the soft landing is the greedy's route now.
