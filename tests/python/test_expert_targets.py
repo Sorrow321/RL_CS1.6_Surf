@@ -537,4 +537,7 @@ def test_view_hold_is_off_by_default_greedy_untouched_and_cloned():
     # a private generator (the policy's own draw stream is untouched) and the clone at a resample
     assert "self._vh_gen = torch.Generator(device=z.device)" in bt
     assert "spol._vh_c[_li] = spol._vh_c[_di]" in bt
+    # the offsets are inference tensors: the clone runs under inference_mode
+    i_c = bt.index("spol._vh_c[_li] = spol._vh_c[_di]")
+    assert "with torch.inference_mode():" in bt[i_c - 400:i_c]
     assert "--view-hold offsets the proposal envs' yaw draws: needs --greedy-envs" in bt

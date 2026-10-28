@@ -3263,9 +3263,11 @@ def main():
                     hist_z[:d + 1, losers] = hist_z[:d + 1, donors]
                 if getattr(spol, "_vh", None) is not None and spol._vh_c is not None:
                     # --view-hold: the held offset is part of the lineage's manoeuvre
-                    _li = torch.as_tensor(losers, device=spol._vh_c.device)
-                    _di = torch.as_tensor(donors, device=spol._vh_c.device)
-                    spol._vh_c[_li] = spol._vh_c[_di]
+                    # (an inference tensor: _decide made it under torch.inference_mode)
+                    with torch.inference_mode():
+                        _li = torch.as_tensor(losers, device=spol._vh_c.device)
+                        _di = torch.as_tensor(donors, device=spol._vh_c.device)
+                        spol._vh_c[_li] = spol._vh_c[_di]
                 if KEYS and getattr(spol, "keys", None) is not None:
                     # --keys-hold: the held keys are episode history - the loser now holds what
                     # the donor holds (the policy reads them as 7 obs columns next decision)
