@@ -4178,3 +4178,6 @@ was fetched that way. The operator may want box.py's pull to split large files t
   4. Every resume spiked kl on its first updates (3.5-10.6) and two collapsed into the 56.6% shaft (c2 at lr 1e-4, c5 at 5e-5) ->
      `--critic-warmup N` (an existing flag: actor frozen, value head trained for N updates) removed the spike (kl 0.02-0.03).
 * Also new: `--demo-success-time` (a time gate, unused), `tools/splice_roll.py`, `tools/pull_split.sh` (slow-box pulls).
+* **pbr9b3_c9** (02:03 UTC, beside c8 on the same box - one trainer leaves the GPU partly idle): a gentler second glide attempt from
+  c4's 9/9 snapshot: --demo-success-strict, --demo-tau0 7445, **--critic-warmup 100, lr 2.5e-5 from the start**, c4's flags
+  otherwise. c8 keeps buying 9/9 chances in c4's regime.
