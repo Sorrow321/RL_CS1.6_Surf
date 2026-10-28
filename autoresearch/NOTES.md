@@ -4098,3 +4098,25 @@ Only a FASTER 9/9 eval beats it (one finisher fewer costs 1.11 = 33 s of time; o
 * (00:02 UTC) Still no box. The fleet's burn sits at 1.008 $/h (three branch boxes) and `box.py offers` lists ONE acceptable
   offer (an RTX 5080 at 0.621 $/h; at 20:47 there were three 5080s at 0.417-0.624): even with one ~0.4 $/h box released the
   fleet would be at ~1.2 + and the rent would still be refused. Credit $31.50 (21.3 h to the reserve at this burn).
+
+### pbr9b4 round 9 lesson (DRAFT, 01:24 UTC; finalised at wrap-up)
+* **No box all round so far** (the 1.2 $/h fleet cap filled within the first 4 minutes; later only one acceptable offer at
+  0.621 $/h). Everything below was found on the agent host's CPU (2 threads), so nothing here is trained yet.
+* **Where the incumbent's 68.66 s goes** (split times + energy height vs the record as a yardstick): ahead nearly everywhere,
+  behind only where it HITS something: the 70-72% bulge (~0.9 s), the 84.4% landing on the platform's west end (h -600),
+  the drop-shaft north wall at 85.05% (h -510: the policy enters the shaft heading north at 964 u/s and stops on the wall,
+  then lands on the north ramp at ~330 u/s horizontal and leaves it at ~1,030; the record curves along the shaft and leaves
+  at ~1,290), and the 91.9% rim landing (h -523 -131). The 86-92% lower level is energy-neutral: its speed is set at the
+  ramp entry.
+* **What the policy can carry:** a Go-Explore chain from its own 84.2% state that skips the platform landing (56 ticks);
+  the incumbent rolled out from the chain's end finishes at 68.27 s on the stitched clock (spine pbr9b4_h1, cut h1e for an
+  energy-gated curriculum, prepared as c1). Chains for the rim (to 96% 0.7 s sooner) and the bulge (73% 0.3 s sooner) are
+  faster but the policy dies in kill volumes from their states: a new arrival into a kill-sheet shaft is a new line to teach.
+* **New flags (both default-off / byte-identical, tested on CPU):** `--demo-success-time SECS` (time-gated spine success: one
+  gate at the finish polices every faster section of a policy-own line, because lost time cannot be won back) and
+  `--bc-view-coef C` (C = 0: BC on the key heads only - the fix round 8 asked for to distil the planner's lines).
+* **Next (for whoever has a box):** c1 = the incumbent on h1e with --demo-success-energy 200 at lr 5e-5 (runs/pbr9b4/
+  launch_c1.sh); beside it the planner (beam_tas --objective finish --score dv) on the incumbent's weights -> plan_to_bc ->
+  BC with --bc-view-coef 0, or its spine with --demo-success-time 0.3; the shaft curve (keep ~900 u/s into the north ramp)
+  is the next ~1-1.5 s and needs either the policy's own population search (beam_tas from 84%) or a longer GE than this
+  host can run.
