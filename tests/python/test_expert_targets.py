@@ -404,3 +404,89 @@ def test_the_planner_records_and_the_distiller_uses_the_policys_rows():
     ex = (ROOT / "tools" / "exit_local.py").read_text(encoding="utf-8")
     assert '"--demo-grow", "0", *demo_keys, *args.extra]' in ex
     assert 'args.demo_keys == "auto" and keys_train.exists()' in ex
+
+
+# --------------------------------------------------------------------------
+# 7. --bc-keys-engine: the held key heads scored by their engine action
+# --------------------------------------------------------------------------
+def _padded_logits(B, seed=0):
+    """(B, 6, 15) padded policy logits of a keys-hold policy (heads 15, 7, 4, 4, 2, 3), NEG past
+    each head's bins as HeadPacker pads them."""
+    import torch
+    g = torch.Generator().manual_seed(seed)
+    x = torch.randn((B, 6, 15), generator=g)
+    for h, n in enumerate((15, 7, 4, 4, 2, 3)):
+        x[:, h, n:] = -1e30
+    return x
+
+
+def test_held_state_is_read_back_from_the_seven_columns():
+    import torch
+    from train_fast import keys_held_from_features
+    st = np.array([[0, 2, 1], [1, 1, 0], [2, 0, 1], [1, 2, 0]], np.int32)
+    feat = torch.as_tensor(KeysHold._encode(st, None))
+    np.testing.assert_array_equal(keys_held_from_features(feat).numpy(), st)
+
+
+def test_keep_and_the_explicit_held_bin_are_one_engine_class():
+    import torch
+    import torch.nn.functional as F
+    from train_fast import keys_engine_bins, keys_engine_logp
+    B = 64
+    lsm = F.log_softmax(_padded_logits(B), dim=-1)
+    g = torch.Generator().manual_seed(1)
+    held = torch.stack([torch.randint(0, 3, (B,), generator=g),
+                        torch.randint(0, 3, (B,), generator=g),
+                        torch.randint(0, 2, (B,), generator=g)], 1)
+    lq = keys_engine_logp(lsm, held)
+    p = lsm.exp()
+    r = torch.arange(B)
+    for c, h in enumerate(HELD_HEADS):
+        hb = held[:, c] + 1
+        both = p[r, h, 0] + p[r, h, hb]
+        torch.testing.assert_close(lq[r, h, 0].exp(), both)
+        torch.testing.assert_close(lq[r, h, hb].exp(), both)
+        other = torch.ones((B, 15), dtype=torch.bool)
+        other[:, 0] = False
+        other[r, hb] = False
+        torch.testing.assert_close(lq[:, h][other], lsm[:, h][other])
+    for h in (0, 1, 4):                                         # yaw, pitch, jump untouched
+        torch.testing.assert_close(lq[:, h], lsm[:, h])
+    # a one-hot target at KEEP and one at the explicit held bin score the same ...
+    keep = torch.zeros((B, 6), dtype=torch.long)
+    expl = keep.clone()
+    for c, h in enumerate(HELD_HEADS):
+        expl[:, h] = held[:, c] + 1
+    a = lq.gather(-1, keep.unsqueeze(-1)).squeeze(-1)
+    b = lq.gather(-1, expl.unsqueeze(-1)).squeeze(-1)
+    torch.testing.assert_close(a[:, list(HELD_HEADS)], b[:, list(HELD_HEADS)])
+    # ... and the engine-level agreement reads them as one action
+    torch.testing.assert_close(keys_engine_bins(keep, held)[:, list(HELD_HEADS)],
+                               keys_engine_bins(expl, held)[:, list(HELD_HEADS)])
+
+
+def test_a_policy_split_between_keep_and_the_held_key_pays_nothing():
+    import torch
+    import torch.nn.functional as F
+    from train_fast import keys_engine_logp
+    lg = torch.full((1, 6, 15), -1e30)
+    lg[0, :, 0] = 0.0
+    lg[0, 0, :15] = 0.0                                          # yaw / pitch: irrelevant here
+    lg[0, 1, :7] = 0.0
+    lg[0, 3, 0], lg[0, 3, 1] = 0.0, 0.0                          # side: KEEP 0.5 | A 0.5
+    lg[0, 2, 0], lg[0, 5, 0], lg[0, 4, 0] = 0.0, 0.0, 0.0
+    lsm = F.log_softmax(lg, dim=-1)
+    held = torch.tensor([[1, 0, 0]])                             # A (engine 0) is held
+    lq = keys_engine_logp(lsm, held)
+    assert abs(float(lsm[0, 3, 0]) - float(np.log(0.5))) < 1e-6  # the policy-space loss: log 2
+    assert abs(float(lq[0, 3, 0])) < 1e-6 and abs(float(lq[0, 3, 1])) < 1e-6
+
+
+def test_the_bc_keys_engine_flag_surface():
+    tf = (ROOT / "python" / "train_fast.py").read_text(encoding="utf-8")
+    assert '"--bc-keys-engine", action="store_const", const=1, default=None' in tf
+    assert 'meta["config"]["bc_keys_engine"] = 1' in tf          # dumped only when set
+    assert "--bc-keys-engine needs --bc-file and --keys-hold" in tf
+    assert "lsm = keys_engine_logp(lsm, held)" in tf
+    rc = (ROOT / "tools" / "record_ckpt.py").read_text(encoding="utf-8")
+    assert '"bc_keys_engine",' in rc                              # TRAIN_ONLY

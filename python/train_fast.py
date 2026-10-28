@@ -2026,6 +2026,43 @@ def logprob_entropy_padded(padded, actions, temp=None):
     return logp, ent
 
 
+def keys_held_from_features(feat):
+    """The 7 --keys-hold observation columns (fwd one-hot 3 | side one-hot 3 | duck) of a batch
+    of rows -> (B, 3) long, the held ENGINE bins in keyshold.HELD_HEADS order."""
+    return torch.stack([feat[:, 0:3].argmax(-1), feat[:, 3:6].argmax(-1),
+                        (feat[:, 6] > 0.5).long()], 1)
+
+
+def keys_engine_logp(lsm, held):
+    """--bc-keys-engine: per-bin log-probabilities (B, NACT, NPAD) of the padded POLICY heads ->
+    the same table with, on each held key head, the KEEP bin and the explicit bin of the held
+    engine value both replaced by log(p[KEEP] + p[held + 1]): the log-probability of the ENGINE
+    action either bin yields. Indexed by a policy bin it is then that bin's engine-action
+    log-probability, so a one-hot target is scored by its engine action and a policy-space
+    distribution target by its engine marginal (sum_b P(b) log q(e(b)) = sum_e P_e(e) log q(e)).
+    ``held`` is (B, 3) long, keys_held_from_features'."""
+    P = lsm.shape[-1]
+    bins = torch.arange(P, device=lsm.device).unsqueeze(0)
+    rows = []
+    for h in range(lsm.shape[1]):
+        lh = lsm[:, h, :]
+        if h in keyshold.HELD_HEADS:
+            idx = held[:, keyshold.HELD_HEADS.index(h)].long().unsqueeze(1) + 1
+            both = torch.logaddexp(lh[:, :1], lh.gather(1, idx))
+            lh = torch.where((bins == keyshold.KEEP) | (bins == idx), both, lh)
+        rows.append(lh)
+    return torch.stack(rows, 1)
+
+
+def keys_engine_bins(bins, held):
+    """(B, NACT) POLICY-space bins -> the bins the engine-level agreement compares: on each held
+    key head the engine value (the held one for KEEP, else bin - 1), elsewhere the bin itself."""
+    out = bins.clone()
+    for c, h in enumerate(keyshold.HELD_HEADS):
+        out[:, h] = torch.where(bins[:, h] == keyshold.KEEP, held[:, c], bins[:, h] - 1)
+    return out
+
+
 # --------------------------------------------------------------------------
 # --view-continuous: the mixed distribution (surfgym/view.py has the numpy
 # half and the rationale; tests/python/test_view_continuous.py pins the
@@ -5174,6 +5211,16 @@ def main() -> None:
                          "weights value 0.25 against 1.0 for policy). 0 = "
                          "off and byte-identical; the value is read with the "
                          "privileged block under --priv-critic")
+    ap.add_argument("--bc-keys-engine", action="store_const", const=1, default=None,
+                    help="--bc-file + --keys-hold: score each HELD key head (fwd, side, duck) "
+                         "by the ENGINE action it yields: the target's log-probability is "
+                         "log(p[engine bin + 1] + p[KEEP] if that bin is the one held), so "
+                         "KEEP and an explicit press of the held key - one engine action - are "
+                         "one class, and head-acc / joint-acc compare engine actions. Without "
+                         "it a policy that splits its mass between the two pays the split as "
+                         "cloning loss and BC fights a representation (pbx 2026-10-28: on "
+                         "pbr9b1_c9's own greedy line ~1.9 nats of the four categorical "
+                         "heads' 2.8 were that split). Config only when set; not restored")
     ap.add_argument("--respawn-killsafe", type=int, default=None,  # 0 = off
                     help="bin reservoir states on the KILL-MASKED goal field "
                          "(goalk cache): states inside fail/teleport volumes "
@@ -14946,6 +14993,9 @@ def main() -> None:
     if args.race_no_corner_cut:
         # written ONLY when set: a control run's config dump is unchanged
         meta["config"]["race_no_corner_cut"] = 1
+    if args.bc_keys_engine:
+        # --bc-keys-engine: written ONLY when set (a loss option of the BC term)
+        meta["config"]["bc_keys_engine"] = 1
     if float(args.ge_minutes or 0.0) > 0.0:
         # --ge-minutes: written ONLY when on (a control run's config dump is unchanged); a
         # resume restores the four and reuses runs/<run>/ge_states.npy
@@ -18183,6 +18233,11 @@ def main() -> None:
     bc_zsig = torch.ones((), device=device)
     BCV = float(args.bc_value_coef or 0.0) if args.bc_file else 0.0
     BCDIST = bool(args.bc_file) and args.bc_target == "dist"
+    # --bc-keys-engine: the held key heads scored by the engine action they yield
+    BCKE = bool(args.bc_keys_engine)
+    if BCKE and not (args.bc_file and N_KEYS):
+        raise SystemExit("--bc-keys-engine needs --bc-file and --keys-hold (it scores the held "
+                         "key heads by their engine action)")
     bc_stats = None
     if args.bc_file:
         if MULTI or route is not None or STACK > 1 or H > 0:
@@ -18274,8 +18329,19 @@ def main() -> None:
                   "search window ended). The value term is a NO-OP this "
                   "round; bc/value_mse will be blank.")
 
+        # --bc-keys-engine: the held state of each BC row, off its own 7 held-key columns
+        BC_KC = bc.keys_col if BCKE else None
+        if BCKE:
+            if BC_KC is None:
+                raise SystemExit(f"--bc-keys-engine: {args.bc_file} carries no held-key columns")
+            print("bc: --bc-keys-engine - the held key heads (fwd, side, duck) are scored by the "
+                  "ENGINE action they yield (KEEP and an explicit press of the held key are one "
+                  "class); head-acc / joint-acc compare engine actions")
+
         def bc_loss_fn(scal, img, act, w, probs, z, zmask, priv,
                        vz=None, vmu=None, vsd=None):
+            held = (keys_held_from_features(scal[:, BC_KC:BC_KC + keyshold.N_FEATURES])
+                    if BCKE else None)
             with amp:
                 logits, value = policy.forward_split(scal, img, priv=priv)
                 if VIEWC:
@@ -18304,8 +18370,14 @@ def main() -> None:
                     # sqrt(2 pi) + (vsd^2 + (vmu - mu)^2) / (2 s^2). A row
                     # a single line survived at has vsd = 0 and the two
                     # coincide, as the one-hot does with the argmax loss.
-                    logp_c, _ent = logprob_entropy_padded(
-                        padded[:, N_VIEW:], act[:, N_VIEW:])
+                    if BCKE:
+                        # the categorical heads at their ENGINE actions (keys_engine_logp)
+                        _lk = keys_engine_logp(F.log_softmax(padded, dim=-1), held)
+                        logp_c = _lk[:, N_VIEW:].gather(
+                            -1, act[:, N_VIEW:].unsqueeze(-1)).squeeze(-1).sum(-1)
+                    else:
+                        logp_c, _ent = logprob_entropy_padded(
+                            padded[:, N_VIEW:], act[:, N_VIEW:])
                     _ls = float(np.log(BC_VIEW_SIGMA))
                     _var2 = 2.0 * BC_VIEW_SIGMA * BC_VIEW_SIGMA
                     nll_pt = (_ls + 0.5 * LOG2PI
@@ -18314,6 +18386,9 @@ def main() -> None:
                               + (vsd.pow(2) + (vmu - mu).pow(2))
                               / _var2).sum(-1)
                     logp = logp_c - nll_pt
+                elif BCKE:
+                    logp = keys_engine_logp(F.log_softmax(padded, dim=-1), held).gather(
+                        -1, act.unsqueeze(-1)).squeeze(-1).sum(-1)
                 else:
                     logp, _ent = logprob_entropy_padded(padded, act)
             # weighted per-row negative log-likelihood of the six factored
@@ -18326,6 +18401,9 @@ def main() -> None:
             # drop out exactly - which is why a one-hot target reproduces
             # `nll` bit for bit rather than approximately.
             lsm = F.log_softmax(padded, dim=-1)
+            if BCKE:
+                # a policy-space target distribution scored by its engine marginal
+                lsm = keys_engine_logp(lsm, held)
             if VIEWC:
                 ce_row = (-(probs[:, N_VIEW:] * lsm[:, N_VIEW:]).sum(-1).sum(-1)
                           + nll_mm)
@@ -18344,14 +18422,18 @@ def main() -> None:
                 # are in the same units and C is a plain ratio
                 loss = loss + BCV * 0.5 * v_mse
             with torch.no_grad():
+                _am, _tg = padded.argmax(-1), act
+                if BCKE:
+                    # --bc-keys-engine: agreement of the ENGINE actions on the held key heads
+                    _am, _tg = keys_engine_bins(_am, held), keys_engine_bins(act, held)
                 if VIEWC:
                     # agreement over the four categorical heads; the view
                     # heads report the mean squared z error of mu instead
-                    agree = padded[:, N_VIEW:].argmax(-1) == act[:, N_VIEW:]
+                    agree = _am[:, N_VIEW:] == _tg[:, N_VIEW:]
                     _vm = (vz - mu).pow(2).mean(-1)
                     view_mse = (_vm * w).sum() / w.sum().clamp_min(1e-6)
                 else:
-                    agree = padded.argmax(-1) == act
+                    agree = _am == _tg
                     view_mse = torch.zeros((), device=w.device)
                 stats = torch.stack([
                     nll.detach(), agree.float().mean(),

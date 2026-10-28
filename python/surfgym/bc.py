@@ -1197,9 +1197,13 @@ class BCDataset:
         if bool(self.meta.get("keys_hold")) != bool(keys_hold):
             raise SystemExit(f"{path}: built for keys_hold={bool(self.meta.get('keys_hold'))}, "
                              f"the trainer has keys_hold={bool(keys_hold)}")
+        # where the 7 held-key columns sit in the assembled scalar row (--bc-keys-engine reads
+        # the held state off them); None without --keys-hold
+        self.keys_col = None
         if keys_hold:
             if "keys" not in z.files:
                 raise SystemExit(f"{path}: keys_hold meta but no keys columns")
+            self.keys_col = int(sum(c.shape[1] for c in cols))
             cols.append(np.asarray(z["keys"], np.float32).reshape(self.n, -1))
         # --race-ratchet, --obs-surf, --obs-pot-rate: after the held keys, in that order
         for name in ("ratchet", "surf", "prate"):

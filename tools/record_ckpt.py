@@ -402,6 +402,8 @@ TRAIN_ONLY = frozenset({
     # distribution over first decisions, the planner line's return-to-go).
     # Still a training-time loss; a recording is unaffected.
     "bc_target", "bc_value_coef",
+    # --bc-keys-engine: how that loss scores the held key heads (by their engine action)
+    "bc_keys_engine",
     # tools/ckpt_qr_to_scalar.py stamps the source path of a collapsed
     # quantile checkpoint; provenance only
     "qr_source",
