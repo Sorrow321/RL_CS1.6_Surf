@@ -4227,3 +4227,9 @@ used for the search work below and then blocklisted and released.
   The weights of that 8/9 stretch are the round's most reliable (better than the 56.012B snapshot they started from).
 * **pbr9b2_c13** (05:11 UTC): c12's snapshot `ckpt_56384028672` (md5 c27a198f..., just before the 68.59 s eval) at **--lr 2e-6**,
   c12's recipe, `--demo-tau0 5748` (c12's band) - evals of the round's best weights while they last.
+* c13 05:11-05:35 UTC (lr 2e-6, weights nearly fixed): evals 116.593 (8/9, 68.87 s) / 114.369 (6/9) / **116.607 (8/9, 68.45 s)** /
+  115.486 (7/9) / 114.364 (6/9); kl 0.14, value loss 74 - ~7/9 per eval from GPU noise alone on fixed weights. Evals kept at
+  the standard --record-every (more frequent evals would buy lottery tickets, not a better policy).
+* Hand-on caveat: c1's 117.707 eval (the branch's best so far) has NO checkpoint - it was on box 58010900, destroyed with its
+  20 KB/s uplink. Its weights were the incumbent's + 76M steps of the incumbent's own recipe at lr 5e-5; the closest
+  available hand-on is the incumbent itself ($AR_HOME/incumbent/r8/ckpt.pt).
