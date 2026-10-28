@@ -4265,3 +4265,6 @@ Box: 58011053, RTX 4080S, 0.41 $/h, Ontario CA (machine 141481, the box rounds 7
   41 of 45 episodes (0.91), the most reliable stretch of the lineage. Hand-ons pulled: **ckpt_59018575872** (= the eval's own step, md5
   ba0a10a531759f19961719ec85525616) and ckpt_59312177152 (8.4M before the second 9/9; md5 caf83c71...). Resume kl 2.0 / 1.4 / 2.9 in
   the first updates (the artifact), then <= 0.5.
+* c9 05:15-05:35 UTC: **117.784** (59.396B: 9/9, 66.49 s) / 116.670 (8/9) / 116.668 (8/9) / **117.787** (59.6226B: **9/9, best 66.39 s**) /
+  114.443 (6/9). c9 so far: 9,7,8,8,9,9,8,8,9,6 of 9 = 0.90 per episode, four 9/9 evals in ten. Hand-on of 117.787:
+  **ckpt_59618885632** (3.7M before the eval), pulled to runs/pbr9b1/pbr9b1_c9/.
