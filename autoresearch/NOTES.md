@@ -4196,3 +4196,6 @@ Box: 58011053, RTX 4080S, 0.41 $/h, Ontario CA (machine 141481, the box rounds 7
   **pbr9b1_fo2t** (fo2 rows 7,000-7,888, 77.1-88.1%: the band can never walk back into the 71% region) + keys,
   --demo-success-energy 150 --demo-success-strict (the soft landing), --demo-tau0 618 (= fo2 row 7,618, where c5's band worked),
   pool **pbr9b1_late_states** (fo2dec + the s71 beam's shaft passage x3), lr 5e-5, c5's other flags.
+* c8 (fo2t parked band, from the 117.732 snapshot) evals 01:26-01:46 UTC: 116.618 (8/9, 68.14 s) / 116.616 (8/9, 68.19) / 113.299
+  (5/9, 67.69) / 115.510 (7/9, 68.03) / 116.619 (8/9, 68.10) - **7.2 of 9 per eval, the most reliable stretch of the round**
+  (c3 6.5, c5 6.3, c1 5.7, the incumbent's c12 6.0). The band stays parked at fo2t rows 613-618 (the soft landing's spiral).
