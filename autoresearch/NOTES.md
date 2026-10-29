@@ -4557,3 +4557,16 @@ gpu_health passed. The host is shared: load average 124-220 at 13:33 (other tena
 `--target-kl` (early stop at 1.5 x 0.05): every update stops after its FIRST minibatch step (kl 0.13 on the second
 minibatch's forward) - so an update is 1 Adam step of 64. Reported kl 0.03-0.05. Curriculum: 1085 -> 1075 (60% over
 320 eps) -> backoff 1080 (7%). Watching whether that is enough learning to walk the band back.
+
+### c2 (lr 5e-5, target-kl 0.05): stable but ~1/64 of an update; c3 (+ --yaw-sigma-min 0.05): a mistake (13:37-13:56 UTC)
+* c2, 185M steps (68.108 -> 68.294B, ~266k steps/s): every update stopped after ONE minibatch step (the second
+  minibatch's forward read kl 0.10-0.43); the band walked 1085 -> 1015 in ~150M steps; training finishes 24-45%; its
+  three greedy evals all 0.405 (the bounce). Too slow for the rows ahead (the basin, the jump in).
+* `--yaw-sigma-min S` (new, 81992e9; default off bit-identical, tests/python/test_yaw_sigma_min.py): the
+  --pitch-sigma-min floor for the yaw head(s). c3 = c2's weights + the floor at 0.05: the first step still read kl
+  0.096 (the yaw head was NOT the main source) and the training finish rate fell 25-45% -> 1-2% at once - yaw noise of
+  0.05 in z is several degrees at the large offsets this policy flies with. Stopped after 20M steps. The flag stays
+  (off); it is not a fix for this checkpoint.
+* c4 = c2's weights, lr 5e-5, `--target-kl 0.3` (stop at 0.45), no floor: updates run 11-35 of 64 minibatch steps,
+  kl 0.27-0.41, training finishes 17-29%. c1 ran at 1-4.7 for ~50 updates without collapsing, so this budget is
+  ~5-10x under what this run has already survived.
