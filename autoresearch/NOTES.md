@@ -4526,3 +4526,17 @@ The incumbent recipe's resume ran at 218-274k steps/s on it.
 * cur2 at 12:22 UTC (68.47B): tau 1764 -> ~1519 in 13 min (bands 25-65%, a 0-4% stall at [1514,1519] = the top of the
   east side before the last descent), kl median 0.75 at lr 5e-5, greedy evals still at the doorway (0.38-0.46%).
   Box extended to 15:22 UTC.
+* cur2 stalled 12:25-12:46 at tau 1384-1404 (band [1384,1388] 0.0% on every visit of ~100-140 episodes, then a backoff
+  to 1389-1399 at 19-54%). Spine rows 1361-1406 are the explorer's full AIR LOOP at the top of the east side (a 190 deg
+  constant-rate strafe turn at z ~3,780). Stochastic probes of cur2's 68.746B weights (record_ckpt --spawn-states one row,
+  9 eps): from row 1394 (heading S at the top) 7/9 descend diagonally along y -2,940..-2,880, climb, enter the tunnel and
+  fly on (28-46% in 31 s); from 1384 and 1340 0/9 - they drift NORTH while crossing and die in the half-pipe's north
+  bottom (kill volume, y ~-2,840, z ~3,290) within 1.2-3.6 s. A skill gap (stay on the slope's safe side), not loop
+  geometry.
+* **Why the curriculum could not teach it: the band got ~2% of the training DECISIONS.** A failing band episode lasts
+  1-3 s, a successful one flies the course for ~60 s, so with --demo-front-frac 0.4 (36% of spawns in the band) the
+  long course episodes carried ~98% of every update. --demo-front-frac 0.8 (the old lineage's late setting) gives the
+  band ~5x the decisions. cur2 itself ENDED at its 6e8 budget at 12:46 (box idle ~6 min: size --steps to the watch).
+* **cur3** (12:53 UTC): cur2's ckpt_final (68.756B, md5 f4296227...) + the same flags with `--demo-front-frac 0.8
+  --demo-tau0 1389`, 1.5e9 steps. It crossed the 1384 stall within ~3 min (12:56: tau ~1289-1304, bands 58-88% with
+  some 0% first visits).
