@@ -4731,3 +4731,11 @@ so the curriculum values are all passed). Success line d <= 55,533 (+2.83%). Rec
 * c11 at 17:09 (71.27B): band at 309-314 (~70 states in 25 min, ~2.8/min; 314 at 44-60% and rising,
   309 = the high arc of the earlier east-end U-turn at ~0.5-1.3%). Greedy evals 0.389-0.405, 0/9 onto
   the ridge yet. Box extended to 23:27 UTC.
+* **c11 result** (70.60-71.57B, 16:15-17:31 UTC): band 429 -> 309 in ~75 min (the face wall, the
+  apex taps 404-414, the west end ~375-400, ... down to the high arc of the earlier east-end
+  U-turn at 309: 314 at 74-77%, 309 rising 1% -> 12.6% in 20 min). Training healthy (reward 18-30,
+  value fit 0.97-0.99, KL 0.41-0.73). Greedy evals 0.336-0.407 (still the doorway, 0/9 onto the
+  ridge).
+* **c12** (17:33 UTC): c11's ckpt_latest, `--demo-bc 0.5`, `--demo-rate 0.10`, the stratified
+  course pool named explicitly (the box's tracked reservoir file restored), `--demo-tau0 309`, 3B
+  steps.
