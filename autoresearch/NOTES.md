@@ -4518,3 +4518,11 @@ The incumbent recipe's resume ran at 218-274k steps/s on it.
   resume artefacts usually settle after 2-4 updates). Stopped at 68.174B.
 * cur2 (12:09 UTC): cur1's ckpt_latest (68.156B, md5 a1a27d48...) at **lr 5e-5**, `--demo-tau0 1764`, same flags.
   The pristine incumbent stays on the box as runs_incumbent_r38.pt.
+* **Probe (12:24 UTC): the course after the start is intact.** record_ckpt of cur2's ckpt_latest (68.48B), 9 greedy
+  episodes spawned at spine row 1880 (in the tunnel, (407, -2,883, 3,724), 400 u/s, ducked): **7/9 FINISH, 61.9-63.0 s
+  from there**; 2 die at 62.4% / 63.4% (x -2,163..-2,741, y ~2,300, z ~2,050). So the only thing between this policy and a
+  greedy finish from the true start is the start room; the rest of the map, learned on the old core, flies on the
+  corrected one. Expected time from the spawn = the pump (the line: 15 s; the record 5.3 s) + ~62 s.
+* cur2 at 12:22 UTC (68.47B): tau 1764 -> ~1519 in 13 min (bands 25-65%, a 0-4% stall at [1514,1519] = the top of the
+  east side before the last descent), kl median 0.75 at lr 5e-5, greedy evals still at the doorway (0.38-0.46%).
+  Box extended to 15:22 UTC.

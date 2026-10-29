@@ -2,6 +2,17 @@
  "agent": "pbfr1b3",
  "round": 1,
  "final": false,
- "best": null,
- "summary": "Round start 11:38 UTC. No eval yet. Plan: Go-Explore (exact chains, view-follow, energy cells) from the TRUE spawn on the corrected core to find a pumped line out of the start room (east half-pipe -> tunnel), then a backward curriculum on that line warm from the incumbent (pbEXIT2_r38, 0.405)."
+ "best": {
+  "score": 0.405,
+  "eval_file": "/home/steam/ar_pb/runs/pbfr1b3/pbfr1b3_cur1/traj_68108156928.jsonl",
+  "run": "pbfr1b3_cur1",
+  "step": 68108156928,
+  "ckpt": "/home/steam/ar_pb/incumbent/ckpt.pt",
+  "recipe": [
+   "resume incumbent pbEXIT2_r38 + backward curriculum on autoresearch/spines/pbfr1b3_ge1_lineA_canon.npy (own GE from the true spawn) --demo-min-ep 50 ... lr 1e-4 -> cur2 at 5e-5"
+  ],
+  "resume_from": "incumbent pbEXIT2_r38 (fx0)",
+  "commit": "see git log"
+ },
+ "summary": "12:10 UTC: Go-Explore with the velocity-frame explorer (--view-follow, energy cells, --select-energy 3) found the corrected core's real way out of the start room from the true spawn in ~3 min (pump the east half-pipe to h 3,954, fly NW, duck into the tunnel). A backward curriculum on that line (warm from the incumbent) runs as pbfr1b3_cur2 (lr 5e-5); training episodes from the line's tunnel end already finish the map at ~62 s. Best eval so far = the incumbent's 0.405 (the curriculum has not reached the true start yet)."
 }
