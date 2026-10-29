@@ -4703,3 +4703,13 @@ so the curriculum values are all passed). Success line d <= 55,533 (+2.83%). Rec
   reward-free search line (the lineage's SELF_STATES rule), the mechanism is the expert loop's
   distillation. It would flip a course habit at every spine state at once instead of one 5-state
   band per ~30 min.
+* **`--demo-bc C` (new, commits 084945e + 033891f; off = byte-identical, not restored, TRAIN_ONLY;
+  tests/python/test_demo_bc.py, 4 CPU; CPU smokes on princessburglar)**: at the first decision
+  after a spine spawn ON THE CURRICULUM'S FRONTIER BAND, add C x the engine-scored NLL of the
+  spine's next held keys (KEEP and an explicit press of the held value one class), on the
+  trainer's own rollout row; masked inside mb_step, no host sync; rows tagged where --demo-keys
+  sets a fresh spawn's keys. **c10** (16:11, all spine spawns tagged, C 0.3): within minutes
+  the band backed off 429 -> 454 at 0-1% (reward ~1 vs c9's 11-15, win 1-3% vs 14-20%, value fit
+  0.80 vs 0.98) - pulling the rows BEHIND the band, where the policy already succeeds with its own
+  actions, toward the explorer's random-ish keys broke them. Stopped after ~3 min; **c11** (16:15
+  UTC) = band-only tagging, from c9's ckpt_latest (not c10's), C 0.3, rate 0.15, SIL 0.4.
