@@ -4710,3 +4710,6 @@ The incumbent recipe's resume ran at 218-274k steps/s on it.
   of every run today), and a small shift of the line upstream is enough to kill it 9/9.
 * cur10 (cur7's recipe from the 117.762 weights) evals 75.28-75.73B: 9/9 (67.18) / 9/9 (67.57) / 8/9 / 9/9 (67.16) / 6/9 /
   **9/9 (traj_75659476992, best 67.11 s: 117.763)** / 7/9 - the recipe is healthy again.
+* **117.770** (cur10 76.263B, traj_76263456768): 9/9, best 66.89 s; hand-on runs/pbfr1b3/pbfr1b3_cur10/ckpt_76262932480.pt
+  (the eval's own weights, md5 c5ef19ae33a020b04bb03c7fdac5c20d). cur10's 15 evals: six 9/9 (66.89-67.57 s), best times
+  now under 67 s (66.85 s in an 8/9 eval).

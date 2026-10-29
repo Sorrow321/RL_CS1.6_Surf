@@ -3,11 +3,11 @@
  "round": 1,
  "final": false,
  "best": {
-  "score": 117.763,
-  "eval_file": "/home/steam/ar_pb/runs/pbfr1b3/pbfr1b3_cur10/traj_75659476992.jsonl",
+  "score": 117.77,
+  "eval_file": "/home/steam/ar_pb/runs/pbfr1b3/pbfr1b3_cur10/traj_76263456768.jsonl",
   "run": "pbfr1b3_cur10",
-  "step": 75659476992,
-  "ckpt": "/home/steam/ar_pb/runs/pbfr1b3/pbfr1b3_cur10/ckpt_75658952704.pt (the eval's own weights, one iteration before it; md5 231b196f7ef66dba97c9dc809c11c703)",
+  "step": 76263456768,
+  "ckpt": "/home/steam/ar_pb/runs/pbfr1b3/pbfr1b3_cur10/ckpt_76262932480.pt (the eval's own weights, one iteration before it; md5 c5ef19ae33a020b04bb03c7fdac5c20d)",
   "recipe": [
    "resume incumbent pbEXIT2_r38",
    "backward curriculum on autoresearch/spines/pbfr1b3_ge1_lineA_canon.npy (the run's own Go-Explore line from the true spawn: explore_phase1 --exact-chains --view-follow --cell-energy 32 --select-energy 3, ge_replay)",
@@ -21,5 +21,5 @@
   "resume_from": "incumbent pbEXIT2_r38 (fx0) via cur1..cur3",
   "commit": "see git log ar/pbfr1b3"
  },
- "summary": "19:22 UTC: 117.763 = 9/9 greedy finishes from the true start on the corrected core, best 67.11 s (the WR is 75.18 s). Velocity-frame Go-Explore found the real way out (pump the east half-pipe, duck into the tunnel) from the true spawn in ~3 min; a backward curriculum on that line warm from the incumbent taught it in ~2.6 h (front-frac 0.85, rate 0.2, lr 5e-5); greedy-death respawns took 7/9 -> 9/9; start-band key exploration (T 2 for 3 s) moved the drop off the spawn floor 2.9 -> 1.85 s and the mean finish 70.6 -> ~67.5 s. A pace curriculum on the policy's own 65.77 s beam line did not help (cur8 stalled, cur9's cut spine collapsed the greedy at 51-53%). Running: cur10 = cur7's recipe."
+ "summary": "19:49 UTC: 117.770 = 9/9 greedy finishes from the true start on the corrected core, best 66.89 s (the WR is 75.18 s). Velocity-frame Go-Explore found the real way out (pump the east half-pipe, duck into the tunnel) from the true spawn in ~3 min; a backward curriculum on that line warm from the incumbent taught it in ~2.6 h (front-frac 0.85, rate 0.2, lr 5e-5); greedy-death respawns took 7/9 -> 9/9; start-band key exploration (T 2 for 3 s) moved the drop off the spawn floor 2.9 -> 1.85 s and the mean finish 70.6 -> ~67.3 s. A pace curriculum on the policy's own 65.77 s beam line did not help (cur8 stalled, cur9's cut spine collapsed the greedy at 51-53%). Running: cur10 = cur7's recipe."
 }
