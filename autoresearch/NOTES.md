@@ -4675,3 +4675,34 @@ steps/s, kl ~0.2 (updates stop after 2-3 minibatch steps), training finishes 60-
 * Hand-on: **ckpt_71505018880.pt** (md5 72afe1984684aadd7619c411add5189c, 0.5M steps before the 9/9 eval, pulled).
 * After the peak the evals swing 3-8/9 at lr 5e-5 / target-kl 0.15. **c12** (19:46) = the 9/9 snapshot + lr 2e-5 +
   target-kl 0.05 (the old lineage's peak re-anchoring at a lower lr), the same pools, tau 0, per-eval snapshots.
+
+### pbfr1b4 round 1 lesson (DRAFT, 20:15 UTC; finalised at wrap-up)
+* **Score 0.405 -> 117.722** (c12 72.563B: 9/9 greedy finishes from the true start on the corrected core, best 68.33 s,
+  mean 70.01 s). Hand-on: pbfr1b4_c12/ckpt_72561983488.pt (md5 35499b28..., 0.5M steps before that eval). Progression:
+  108.698 (c9, the first finish, 1/9, 72.4 s) -> 114.356 (c10, 6/9) -> 117.706 (c11, 9/9, 68.83 s) -> 117.722 (c12).
+* **The route is the corrected core's doorway staircase** (crouch-jump into the func_conveyor *249 basin, a duck-jump
+  out of the push field onto the *250 strip, a running jump onto the passage ramp). OPEN QUESTION for the operator:
+  does it exist in the real game? If not, this round's finishes are sim-only like the first lineage's, the core needs
+  another fix, and the record's half-pipe route is the problem the next lineage must solve (below).
+* **What worked, in order:**
+  1. Go-Explore phase 1 from the TRUE spawn (cell 64 x energy 32, exact chains, 5 min on 2 laptop threads) finds the
+     staircase and reaches the old gate-2 pit; its deepest chain cut at the tunnel's end is the spine.
+  2. A backward curriculum on that spine, warm from the incumbent (the course after the start is in its weights: from
+     the strip it finishes): `--demo-success-d 100 --demo-success-bonus 50 --demo-rate 0.2 --demo-window 5
+     --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5 --demo-min-ep 50 --demo-front-frac 0.4 --demo-front-temp 0.5`.
+  3. **`--demo-match-band`**: a GE line idles; 232 of its rows share an origin with another, and without the flag a
+     band inside such a stretch never collects an outcome (c5 froze at row 820 for 250M steps).
+  4. **A 30% `--spawn-states` pool of the policy's OWN course states** (record_ckpt --dump-states of the incumbent's
+     greedy flights from the strip, past 1.4%): without it the course eroded under the curriculum (c5: training
+     finishes 29% -> 0%); with it they held 47-74%.
+  5. **`--target-kl 0.15` at lr 5e-5**: this policy reads kl 1-4.7 per update at lr 1e-4 (c1), ~0.13 after ONE Adam
+     step at 5e-5; target-kl 0.05 allowed one minibatch step per update (c2: stable, too slow), 0.3 eroded the course
+     (c4/c5). Then lr 2e-5 / target-kl 0.05 on the 9/9 peak (c12): 7-9/9 per eval.
+  6. A fast box: the 4080 + Ryzen 9950X ran ~800-870k steps/s (the 5070s 200-270k): the whole curriculum, 938 rows,
+     took ~1 h.
+* **What did not:** `--yaw-sigma-min` (new, off by default): the yaw head was not the kl source and a 0.05 floor broke
+  the course's training episodes (finishes 25-45% -> 1%); trimming the spine's idle stretches (c8): the basin's
+  2.7 s of "idling" was the stamina wait, the band stalled at the landing (1-2%) until c9 put the rows back.
+* **Ops:** pull the checkpoint a run will build on BEFORE building on it (box 58254955 went offline at 15:05 with
+  c2's weights; ckpt_latest is overwritten at every eval, so a peak needs `--ckpt-every 7.5e7` snapshots). The fleet
+  cap left this branch without a box 11:51-13:25 and 15:19-18:08 (Harness issue above).
