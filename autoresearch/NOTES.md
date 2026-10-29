@@ -4666,3 +4666,12 @@ steps/s, kl ~0.2 (updates stop after 2-3 minibatch steps), training finishes 60-
   near its best (ckpt-every 1e9). Hand-on for 114.356: c10's ckpt_latest (71.354B, md5 fc51f699..., pulled).
 * **c11** (19:26) = c10's ckpt_latest + the same flags (`--demo-tau0 0`) + `--ckpt-every 7.5e7` (a snapshot beside
   every eval), 2.5e9 steps.
+
+### 117.706: 9/9 at 68.83 s (2026-10-29 19:35 UTC, c11 71.506B) - the start the corrected core allows, then the course
+* c11 = c10's ckpt_latest + `--demo-tau0 0 --ckpt-every 7.5e7` (a snapshot beside every eval), 71.354 -> 72.336B at
+  ~846k steps/s. Evals (score.py): 114.341 (6/9) / 116.555 (8/9) / **117.706 (9/9, mean 69.73 s, best 68.83 s,
+  71.506B)** / 113.190 (5/9) / 115.480 (7/9, 68.94) / 113.257 (5/9) / 114.367 (6/9) / 115.478 (7/9) / 112.124 (4/9) /
+  115.468 (7/9) / 114.338 (6/9) / 110.918 (3/9) / 115.446 (7/9) / 115.499 (7/9, **68.36 s**). Training finishes ~74%.
+* Hand-on: **ckpt_71505018880.pt** (md5 72afe1984684aadd7619c411add5189c, 0.5M steps before the 9/9 eval, pulled).
+* After the peak the evals swing 3-8/9 at lr 5e-5 / target-kl 0.15. **c12** (19:46) = the 9/9 snapshot + lr 2e-5 +
+  target-kl 0.05 (the old lineage's peak re-anchoring at a lower lr), the same pools, tau 0, per-eval snapshots.
