@@ -3,11 +3,11 @@
  "round": 1,
  "final": false,
  "best": {
-  "score": 117.654,
-  "eval_file": "/home/steam/ar_pb/runs/pbfr1b3/pbfr1b3_cur5/traj_71399112704.jsonl",
+  "score": 117.666,
+  "eval_file": "/home/steam/ar_pb/runs/pbfr1b3/pbfr1b3_cur5/traj_71776600064.jsonl",
   "run": "pbfr1b3_cur5",
-  "step": 71399112704,
-  "ckpt": "/home/steam/ar_pb/runs/pbfr1b3/pbfr1b3_cur5/ckpt_71372374016.pt (26.7M steps before the eval, md5 245eda397badc0b8ed9a7c01e28ebb27)",
+  "step": 71776600064,
+  "ckpt": "/home/steam/ar_pb/runs/pbfr1b3/pbfr1b3_cur5/ckpt_71772930048.pt (3.7M steps before the eval, md5 06d696d20536d0c2afcdb08cc4fd3a4c)",
   "recipe": [
    "resume incumbent pbEXIT2_r38",
    "backward curriculum on autoresearch/spines/pbfr1b3_ge1_lineA_canon.npy (the run's own Go-Explore line from the true spawn: explore_phase1 --exact-chains --view-follow --cell-energy 32 --select-energy 3, ge_replay)",
@@ -18,5 +18,5 @@
   "resume_from": "incumbent pbEXIT2_r38 (fx0) via cur1..cur3",
   "commit": "see git log ar/pbfr1b3"
  },
- "summary": "15:10 UTC: 9/9 GREEDY FINISHES FROM THE TRUE START on the corrected core: 117.654 (best 70.38 s, mean 72.30 s; the WR is 75.18 s), twice (117.646 at 71.626B). Velocity-frame Go-Explore found the real way out (pump the east half-pipe, duck into the tunnel) from the true spawn in ~3 min; a backward curriculum on that line warm from the incumbent taught it in ~2.6 h (front-frac 0.85, rate 0.2, lr 5e-5); the incumbent's course after the tunnel survived the core fix; greedy-death respawns took 7/9 -> 9/9. Evals swing 5-9/9. Next: the start's first 2.8 s (slow crouch-hops on the spawn floor, the record drops off the ledge at 0.5 s) and reliability."
+ "summary": "15:10 UTC: 9/9 GREEDY FINISHES FROM THE TRUE START on the corrected core: 117.654 (70.38 s) -> 117.666 (9/9, best 70.02 s, every episode on the one-lap pump; the WR is 75.18 s), three 9/9 evals. Velocity-frame Go-Explore found the real way out (pump the east half-pipe, duck into the tunnel) from the true spawn in ~3 min; a backward curriculum on that line warm from the incumbent taught it in ~2.6 h (front-frac 0.85, rate 0.2, lr 5e-5); the incumbent's course after the tunnel survived the core fix; greedy-death respawns took 7/9 -> 9/9. Evals swing 5-9/9. Next: the start's first 2.8 s (slow crouch-hops on the spawn floor, the record drops off the ledge at 0.5 s) and reliability."
 }
