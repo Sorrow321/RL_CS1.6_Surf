@@ -4732,3 +4732,9 @@ Box 58244389 (RTX 5080, Ryzen 9 7945HX 32 thr / quota 30.7, 0.387 $/h, South Car
   this round (~0.03 points); for the next round it is the cheapest second left in the run.
 * x8 (19:39 UTC) = x7's final + BC r8 + spawn-states r8 + the pace curriculum (row 381, rate 0.3) + greedy respawns,
   lr 2e-5, 1.5e9 steps (to ~20:50 UTC).
+* x8 evals (round 8, lr 2e-5, from x7's final): 8/9 / 9/9 65.97 / 7/9 / 8/9 / 7/9 / 8/9 / 8/9 64.41 / 6/9 / 6/9 /
+  7/9 / 9/9 64.88 / 7/9 / 7/9 / 8/9 64.38 / 6/9 / 6/9 / 8/9 / 9/9 65.63 / 8/9 / **9/9 64.15 s = 117.862 (74.978B,
+  the run's last eval; hand-on `pbfr1b2_x8/ckpt_74970562560.pt`, 7.9M steps before)**.
+* Round 9 plan on x8's final (75.043B): 61.40 / **61.08** / 61.50 / 62.84 s. x9 (20:57 UTC) = x8's final + BC r9 +
+  spawn-states r9, x8's flags, lr 2e-5, 1.8e9 steps, evals every 50M steps (`box.py launch --record-every 50e6`) -
+  the last run of the round (stopped for the wrap-up at ~22:35).
