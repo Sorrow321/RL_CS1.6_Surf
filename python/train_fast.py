@@ -5155,6 +5155,16 @@ def main() -> None:
                          "(S, 2S, 4S ... up to this); a backoff moves back by S and resets the "
                          "step to S. Easy stretches cross in a few moves, precise ones at S. "
                          "Config only when set; not restored")
+    ap.add_argument("--demo-bc", type=float, default=None,   # None/0 = off
+                    help="--demo-file + --demo-keys + --keys-hold: C > 0 adds C x the NLL of the "
+                         "spine's NEXT held keys (fwd, side, duck; scored by the ENGINE action they "
+                         "yield, keys_engine_logp's rule) at the FIRST decision after every spine "
+                         "spawn, on the trainer's own rollout row - an online distillation of the "
+                         "curriculum's line at the curriculum's own starts (pbfr1b1, 2026-10-29: the "
+                         "policy's course habit pressed strafe-left + jump on a face where the line "
+                         "holds strafe-right, and per-decision exploration almost never finds a "
+                         "sustained hold). The spine must be the agent's own (SELF_STATES). Not "
+                         "restored; config only when set; off = byte-identical")
     ap.add_argument("--demo-keys", default=None, metavar="NPY",
                     help="--demo-file + --keys-hold: a (spine rows, 3) int array of the HELD keys "
                          "(fwd, side, duck in engine bins) each spine row was reached with; an "
@@ -12845,6 +12855,18 @@ def main() -> None:
         _nn = int((_dk != np.asarray(keyshold.NEUTRAL)).any(axis=1).sum())
         print(f"--demo-keys {args.demo_keys}: a spine spawn starts holding its row's keys "
               f"({_nn} of {_ns} rows hold something other than neutral)")
+    DEMO_BC = float(args.demo_bc or 0.0)
+    if DEMO_BC < 0.0:
+        raise SystemExit("--demo-bc is a loss coefficient: >= 0")
+    if DEMO_BC > 0.0:
+        if DEMO_KEYS[0] is None:
+            raise SystemExit("--demo-bc distils the spine's held keys: needs --demo-keys "
+                             "(and --demo-file, --keys-hold)")
+        if args.chunk or (args.rnn not in (None, "none")) or args.maps:
+            raise SystemExit("--demo-bc runs in the flat single-map update: not with --chunk, "
+                             "--rnn or --maps")
+        print(f"--demo-bc {DEMO_BC:g}: the first decision after every spine spawn adds "
+              f"{DEMO_BC:g} x the engine-scored NLL of the spine's next held keys (fwd, side, duck)")
     # --ramp-obs-pass: the pass flag, LAST of all - after the ratchet gap - so a checkpoint
     # without it grows onto it by widen_for_obs' trailing zero-pad (its own function at step 0)
     N_PASS = 1 if (RPLAN and int(args.ramp_obs_pass or 0)) else 0
@@ -15042,6 +15064,9 @@ def main() -> None:
     if args.race_ratchet_start_cap:
         # --race-ratchet-start-cap: written ONLY when set (a flag-off run.json is the control's)
         meta["config"]["race_ratchet_start_cap"] = 1
+    if DEMO_BC > 0.0:
+        # --demo-bc: written ONLY when set; not restored (a training term of this run)
+        meta["config"]["demo_bc"] = float(DEMO_BC)
     if args.bc_pitch_coef is not None:
         # --bc-pitch-coef: written ONLY when set (a loss option of the BC term)
         meta["config"]["bc_pitch_coef"] = float(args.bc_pitch_coef)
@@ -15930,6 +15955,14 @@ def main() -> None:
     b_act = torch.zeros((T, N, NACT) if H == 0 else (T, N, H, NACT),
                         dtype=torch.long, device=device)
     ACT_FLAT = (T * N, NACT) if H == 0 else (T * N, H, NACT)
+    # --demo-bc: per stored decision, the spine's next held keys (fwd, side, duck; engine bins) when
+    # that decision was the FIRST of an episode spawned on spine row i, else -1 (no target). The
+    # rows are tagged when the spawn's held keys are set (--demo-keys) and written at the next
+    # decision, whose row is the fresh episode's first. None without the flag.
+    b_dbc = (torch.full((T, N, 3), -1, dtype=torch.long, device=device) if DEMO_BC > 0.0
+             else None)
+    dbc_pending = np.zeros(N, bool)
+    dbc_tgt = np.full((N, 3), -1, np.int64)
     # --view-continuous: the pre-tanh z of the two view heads per decision,
     # the action PPO scores (the int row above keeps NEUTRAL there)
     NZ = int(getattr(policy, "n_z", N_VIEW)) if VIEWC else 0   # 3 in world mode
@@ -17883,7 +17916,7 @@ def main() -> None:
                 f_age=None, f_code=None, f_dmask=None,
                 adv_mean=None, adv_std=None, f_air=None, f_jblk=None,
                 f_priv=None, f_z=None, f_temp=None, f_tempv=None,
-                f_cct=None, f_bkt=None, f_reti=None, f_ctv=None):
+                f_cct=None, f_bkt=None, f_reti=None, f_ctv=None, f_dbc=None):
         # f_temp / f_tempv: --unstuck's sampling temperatures (the static
         # tensors the rollout drew under: the categorical heads' and one per
         # Gaussian head), so pi_new is scored on the SAME tempered
@@ -17955,6 +17988,20 @@ def main() -> None:
                     padded = packer.pad(cat)
                 else:
                     padded = packer.pad(logits.float())
+                if f_dbc is not None:
+                    # --demo-bc: the engine-scored NLL of the spine's next held keys on the rows
+                    # that were the first decision after a spine spawn (target -1 elsewhere),
+                    # under the policy's own (untempered) distribution; masked, no host sync
+                    _dt = f_dbc[idx]
+                    _dm = (_dt[:, 0] >= 0).float()
+                    _held = keys_held_from_features(
+                        f_scal[idx][:, KEYS0:KEYS0 + keyshold.N_FEATURES])
+                    _lt = keys_engine_logp(F.log_softmax(padded, dim=-1), _held)
+                    _lp = torch.zeros_like(_dm)
+                    for _c, _h in enumerate(keyshold.HELD_HEADS):
+                        _lp = _lp + _lt[:, _h, :].gather(
+                            1, (_dt[:, _c].clamp_min(0) + 1).unsqueeze(1)).squeeze(1)
+                    dbc_term = -(_lp * _dm).sum() / _dm.sum().clamp_min(1.0)
                 if YCOND:
                     # PLACE 2 of 4 for --yaw-cond. The STORED yaw action,
                     # gathered by the same idx, so pi_new conditions on
@@ -18024,6 +18071,9 @@ def main() -> None:
             vl = vl + INT_VF_RATIO * 0.5 * (value_i - f_reti[idx]).pow(2).mean()
         el = -ent.mean()
         loss = pg + args.vf * vl + ent_coef * el
+        if f_dbc is not None:
+            # --demo-bc: the spine's held keys at the curriculum's own starts
+            loss = loss + DEMO_BC * dbc_term
         if H > 0:
             # two entropy terms, opposite jobs: ent_coef keeps CODE CHOICE
             # exploratory, dec_ent lets a code crystallize into a distinct
@@ -18229,6 +18279,7 @@ def main() -> None:
                     f_ctv=(b_ftv.reshape(T * N, NZ) if FRONT else None),
                     f_bkt=(torch.zeros(T * N, dtype=torch.long, device=device)
                            if CC_BKT else None),
+                    **({"f_dbc": b_dbc.reshape(T * N, 3)} if b_dbc is not None else {}),
                     )[0].backward()
             opt.zero_grad(set_to_none=True)
             print(f"torch.compile: minibatch step compiled in "
@@ -19152,6 +19203,11 @@ def main() -> None:
                 policy_step()
                 t_sync = tm.now()
                 b_scal[t].copy_(static_obs[:, :SCAL])
+                if b_dbc is not None:
+                    # --demo-bc: this decision is the first of the episodes tagged pending
+                    b_dbc[t].copy_(torch.from_numpy(
+                        np.where(dbc_pending[:, None], dbc_tgt, -1).astype(np.int64)))
+                    dbc_pending[:] = False
                 if CRL:
                     # --crl: the critic's raw state AT the decision (the core
                     # has not stepped yet: the same instant static_obs shows)
@@ -20033,6 +20089,12 @@ def main() -> None:
                         _de = np.flatnonzero(ended_acc & (demo_idx >= 0))
                         if _de.size:
                             keys.state[_de] = DEMO_KEYS[0][demo_idx[_de]]
+                            if b_dbc is not None:
+                                # --demo-bc: the next decision is this episode's first; its
+                                # target is the line's held keys one row on (what it pressed next)
+                                dbc_pending[_de] = True
+                                dbc_tgt[_de] = DEMO_KEYS[0][np.minimum(demo_idx[_de] + 1,
+                                                                       len(DEMO_KEYS[0]) - 1)]
                 if surf_flag is not None:
                     # --obs-surf: every episode start forgets the previous decision's vz (a
                     # fresh spawn has nothing to compare with, so its first flag reads 0).
@@ -20629,7 +20691,8 @@ def main() -> None:
                         None if a_std is None else a_std[k_mb],
                         f_air, f_jblk, f_priv, f_z=f_z, f_temp=temp_t,
                         f_tempv=tempv_t, f_cct=f_cct, f_bkt=f_bkt,
-                        f_reti=f_reti, **({"f_ctv": f_ctv} if FRONT else {}))
+                        f_reti=f_reti, **({"f_ctv": f_ctv} if FRONT else {}),
+                        **({"f_dbc": b_dbc.reshape(T * N, 3)} if b_dbc is not None else {}))
                     loss, pg, vl, el, logp = _mbo[:5]
                     if AUG_ON:
                         # --aug-*: (G_pi, G_V) summed over the update, one read per iteration
@@ -21893,6 +21956,9 @@ def main() -> None:
         if DFT:
             # --demo-front-temp: the share of envs hot at the last decision
             hyg_note += f"  demohot {dft_share:.1%}"
+        if b_dbc is not None:
+            # --demo-bc: how many stored decisions of this rollout carried a spine-key target
+            hyg_note += f"  dbc {int((b_dbc[..., 0] >= 0).sum().item())}"
         if GTEMP:
             # --respawn-greedy-temp: the share of envs hot at the last decision
             hyg_note += f"  greedyhot {gt_share:.1%}"
