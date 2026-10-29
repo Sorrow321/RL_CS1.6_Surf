@@ -224,6 +224,17 @@ run, velocity as part of the state) and the design discussion live in
   and rebakes nothing. `fetch_pool.sh` does it automatically and
   `check_deps.py` fails on it. Same family as the worktree bake below.
 
+* **The core's entity tables dropped brush entities SILENTLY until 2026-10-29 (6bd7f931).**
+  `src/sim.h` held 128 solid brush entities, 128 triggers, 64 contents and 64 spawns, and
+  `bsp.c` skipped the excess without a word. surf_princessburglar_b26 has 135 solids: it lost a
+  3 u slab on a doorway floor by the spawn, which turned a 65 u ledge (above the 63 u
+  crouch-jump) into a 62 u one, and EVERY princessburglar finish before the fix climbed through
+  that gap (fork-and-flush rounds 1-9, the expert loop's 62.9 s policies, a 60.07 s search
+  line - none of it is possible in the game). surf_src_sidistic lost 10 of 138 triggers (no
+  line enters them). The tables are 512 now (GoldSrc's MAX_MODELS) and a map that overflows one
+  is REFUSED at load (`tests/python/test_entity_tables.py`). **A move that looks impossible in
+  the game is a simulator bug until proved otherwise**: check it tick by tick against the
+  engine before building on it.
 * **Working in a git worktree silently triggers a 30-minute goal-field
   re-bake.** `train_fast.py` and `record_ckpt.py` resolve a checkpoint's map
   as `<repo>/maps/<stem>.bsp`, and in a worktree that is a *copy* with

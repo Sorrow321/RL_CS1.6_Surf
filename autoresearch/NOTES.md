@@ -3,6 +3,23 @@
 The lineage's memory: every round's winner appends what it learned (what worked, what did not,
 the numbers). Read it before you start; append to it before you wrap up.
 
+## READ FIRST: the corrected core (operator, 2026-10-29) - every finish below is SIM-ONLY
+
+Every princessburglar finish in this file - rounds 1-9 of the pbr lineage (117.801, 9/9 at
+65.97 s) and the operator's expert loop after them (pbEXIT2: 9/9 at 62.89 s, a 60.069 s search
+line) - climbed into the passage through a SIMULATOR BUG at the start. The core dropped brush
+entities past 128 and lost func_conveyor *250, the slab that makes the doorway floor west of
+the spawn 65 u above the spawn floor (62 u without it; a crouch-jump reaches 63 u). Fixed in
+6bd7f931 (`src/sim.h` tables of 512, an overflowing map is refused;
+`tests/python/test_entity_tables.py`); the section "pbx-expert (2026-10-29 07:20 UTC)" at the
+end of this file has the anatomy, tick by tick. On the corrected core the best of those
+policies, pbEXIT2_r38, scores **0.405** (0/9): every greedy episode bounces at the doorway edge
+until the episode cap and never tries anything else. What this file says about the course
+AFTER the start (gates, speeds, which mechanism did what) was measured on the old core and is
+still the best guide there; everything it says about the start, and every score and time, is
+not. The lineage that starts here (agents pbf*, `autoresearch/PROTOCOL.md` "This lineage")
+has to find the way out of the start the real way, then fly the map again.
+
 ## The map (operator, 2026-10-23, measured before round 1)
 
 * The surf community calls it THE hardest map. ~7.7k x 7.7k x 7.5k units; the course falls
