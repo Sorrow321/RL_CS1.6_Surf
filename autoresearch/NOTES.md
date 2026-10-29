@@ -4765,3 +4765,9 @@ so the curriculum values are all passed). Success line d <= 55,533 (+2.83%). Rec
   ridge's SOUTH face heading east, ducked, strafe-LEFT (into that face) at low energy (h ~3,660):
   the mirror of the north-face skill. Greedy evals 0.392-0.431 (the 0.431 at 73.055B is the
   branch's best so far, a start-room score); episodes reach x 870-1,025, short of the arch.
+* **c14 result** (72.60-73.41B, 18:55-19:57 UTC, bc 2.0, rate 0.04): band 144 -> 94-99 (99 passes at
+  12-18%; 94, the south-face hold, 0.4% -> 2.7% in 20 min). Training reward 4-6, KL 0.83-1.03,
+  value fit 0.96-0.97. Greedy evals 0.392-0.431 (best 0.431 at 73.055B; snapshot
+  ckpt_73002385408 at or before it).
+* **c15** (19:59 UTC): c14's ckpt_latest, `--demo-rate 0.02`, `--demo-tau0 94`, else as c14. Plan:
+  push the band until ~21:30, then consolidate the course for the hand-off checkpoint.
