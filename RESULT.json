@@ -3,11 +3,11 @@
  "round": 1,
  "final": false,
  "best": {
-  "score": 117.762,
-  "eval_file": "/home/steam/ar_pb/runs/pbfr1b3/pbfr1b3_cur7/traj_75281989632.jsonl",
-  "run": "pbfr1b3_cur7",
-  "step": 75281989632,
-  "ckpt": "/home/steam/ar_pb/runs/pbfr1b3/pbfr1b3_cur7/ckpt_75281465344.pt (the eval's own weights, one iteration before it; md5 8ed9fcfe78eb974efa39216f21bda3b6)",
+  "score": 117.763,
+  "eval_file": "/home/steam/ar_pb/runs/pbfr1b3/pbfr1b3_cur10/traj_75659476992.jsonl",
+  "run": "pbfr1b3_cur10",
+  "step": 75659476992,
+  "ckpt": "/home/steam/ar_pb/runs/pbfr1b3/pbfr1b3_cur10/ckpt_75658952704.pt (the eval's own weights, one iteration before it; md5 231b196f7ef66dba97c9dc809c11c703)",
   "recipe": [
    "resume incumbent pbEXIT2_r38",
    "backward curriculum on autoresearch/spines/pbfr1b3_ge1_lineA_canon.npy (the run's own Go-Explore line from the true spawn: explore_phase1 --exact-chains --view-follow --cell-energy 32 --select-energy 3, ge_replay)",
@@ -15,10 +15,11 @@
    "cur1 lr 1e-4 -> cur2 lr 5e-5 -> cur3 --demo-front-frac 0.8 -> cur4 --demo-rate 0.2 --demo-front-frac 0.85 --respawn-frac 0.97 --demo-match-band",
    "cur5 = cur4's final + --respawn-greedy 0.2 --respawn-greedy-window 0.25 2.0 --respawn-greedy-stuck 200 --ckpt-every 2e8, curriculum at tau 0, lr 5e-5",
    "cur6 = cur5's final + --demo-front-temp 1.0 --demo-front-ticks 400 (the band is the true start at tau 0: keys at T 2, yaw sigma x6 for the first 3 s of 85% of training episodes)",
-   "cur7 = cur6's ckpt_73469526016 + cur6's flags + --ckpt-every 75e6 (a snapshot beside every eval)"
+   "cur7 = cur6's ckpt_73469526016 + cur6's flags + --ckpt-every 75e6 (a snapshot beside every eval)",
+   "cur10 = cur7's recipe from cur7's ckpt_75281465344 (cur8/cur9's pace curricula on the policy's own 65.77 s beam line did not speed the greedy; cur9's cut spine collapsed it to 0/9)"
   ],
   "resume_from": "incumbent pbEXIT2_r38 (fx0) via cur1..cur3",
   "commit": "see git log ar/pbfr1b3"
  },
- "summary": "18:10 UTC: 117.762 = 9/9 greedy finishes from the true start on the corrected core, best 67.13 s, mean 67.50 s (the WR is 75.18 s); nine 9/9 evals in cur7's 27. Velocity-frame Go-Explore found the real way out (pump the east half-pipe, duck into the tunnel) from the true spawn in ~3 min; a backward curriculum on that line warm from the incumbent taught it in ~2.6 h (front-frac 0.85, rate 0.2, lr 5e-5); greedy-death respawns took 7/9 -> 9/9; start-band key exploration (T 2 for 3 s) moved the drop off the spawn floor 2.9 -> 1.85 s and the mean finish 70.6 -> ~68 s. Running: cur8, a pace curriculum (--demo-success-pace) on the policy's own 65.77 s beam line (1.5 s faster after the tunnel)."
+ "summary": "19:22 UTC: 117.763 = 9/9 greedy finishes from the true start on the corrected core, best 67.11 s (the WR is 75.18 s). Velocity-frame Go-Explore found the real way out (pump the east half-pipe, duck into the tunnel) from the true spawn in ~3 min; a backward curriculum on that line warm from the incumbent taught it in ~2.6 h (front-frac 0.85, rate 0.2, lr 5e-5); greedy-death respawns took 7/9 -> 9/9; start-band key exploration (T 2 for 3 s) moved the drop off the spawn floor 2.9 -> 1.85 s and the mean finish 70.6 -> ~67.5 s. A pace curriculum on the policy's own 65.77 s beam line did not help (cur8 stalled, cur9's cut spine collapsed the greedy at 51-53%). Running: cur10 = cur7's recipe."
 }
