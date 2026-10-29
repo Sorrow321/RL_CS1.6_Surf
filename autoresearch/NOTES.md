@@ -4619,3 +4619,15 @@ so the curriculum values are all passed). Success line d <= 55,533 (+2.83%). Rec
   the trainer no longer contains (stale, unrelated).
 * **c4** (14:23 UTC): c3's ckpt_latest + c3's flags + `--race-ratchet-start-cap 1`,
   `--demo-tau0 439`, 800M steps. Question: does the band now pass 434 (the east-end U-turn)?
+* **c4 result** (69.29-69.55B, 14:23-14:44 UTC): the wall moved one band - 434 now 50-55% (was
+  0-58%), 429 0.0% over 500 episodes every time. Greedy evals 0.40. Recorded from 429 (c4 weights,
+  stochastic): all 6 slide off the ridge's north face NORTH into the kill floor within ~67 ticks.
+  Spine state 429 is low on the face at ~890 u/s heading east, where staying on needs the strafe
+  key held INTO the face; a curriculum spawn starts with NEUTRAL held keys. The explorer held
+  `back` there with its view far off the velocity, which in the canonical (view-along-velocity)
+  frame is strafe-RIGHT = into the north face. From 434 (stochastic) they turn back early again and
+  arrive at the shelf's height but too far east / too low (0/6).
+* **c5** (14:45 UTC): c4's ckpt_latest + `--demo-keys` with the explorer's held keys translated into
+  the canonical view frame (`tools/spine_canon_keys.py`, round 4's tool; 1,186 of 2,732 rows change:
+  `pbfr1b1_ge_pump_k4.keys.npy`; the states are byte-identical to `_a4`), `--demo-tau0 434`, other
+  flags as c4.
