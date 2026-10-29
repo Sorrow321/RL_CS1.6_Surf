@@ -4644,7 +4644,7 @@ Box 58244389 (RTX 5080, Ryzen 9 7945HX 32 thr / quota 30.7, 0.387 $/h, South Car
   planner keeps the same NW-corner detour (0.99 s) and *249 / *250 times (2.54 / 2.91 s) - its gain is the PLATE ->
   north gap step (gap at 3.20 s vs the greedy's 4.1-4.3 s: the greedy dawdles ~1.3 s on *250 inside the push field)
   and the tunnel at ~400 u/s (the greedy 150-350).
-* x3 (15:41 UTC) = x2's ckpt_final (71.243B) + BC on round 3's planner (`runs/plan/r3/bc.npz`, 4 waves) + the planner
+* x3 (15:29 UTC) = x2's ckpt_final (71.243B) + BC on round 3's planner (`runs/plan/r3/bc.npz`, 4 waves) + the planner
   lines as `--spawn-states` 0.4 (the course) + a PACE-GATED backward curriculum on the fastest r3 line's first 5.04 s
   (`tools/cut_start_spine.py` -> runs/plan/r3/start.npy, 657 rows, true start -> 1.6%): `--demo-success-d 100
   --demo-success-pace 0.15 0.25 --demo-success-bonus 50 --demo-match-band`, window 5 / grow 5-40 / rate 0.3 /
