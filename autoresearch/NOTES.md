@@ -4748,3 +4748,12 @@ so the curriculum values are all passed). Success line d <= 55,533 (+2.83%). Rec
 * c13 at 18:32 (72.28B): band 239 -> 169-174 in 32 min (174 passes at 6-12%; 169 = the explorer's
   FIRST, low-energy east-end U-turn, h ~3,712-3,725, at 0.2-2.2%). Training: reward 8-16, value fit
   0.956-0.968, KL ~0.6. Greedy evals 0.352-0.403, 0/9 onto the ridge yet.
+* **c13 result** (71.90-72.59B, 18:00-18:53 UTC, bc 1.0, rate 0.06): band 239 -> 144-149 (149 passes
+  at 9-18%; 144 = climbing the east end on the south side, first turn, ~0.5%). Training reward fell
+  to 5.5-8 (win 5-6%; the band is in harder territory), value fit 0.97. **The greedy's start
+  changed**: the last eval (72.58B, 0.263) no longer bounces at the doorway - every episode jumps
+  north-east from the spawn toward the shelf's south edge (x 880-990, y -2,903..-2,930, z
+  3,659-3,697) and dies in the fatal teleport *257 over the shelf's east part within 2-7 s. The
+  doorway habit is gone; the walk east through the arch is what the remaining ~144 band states
+  must teach.
+* **c14** (18:55 UTC): c13's ckpt_latest, `--demo-bc 2.0 --demo-rate 0.04`, `--demo-tau0 144`.
