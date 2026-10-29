@@ -4561,3 +4561,17 @@ deepest +3.21% (the pit past the tunnel)**; ridge h max 4,124. Shortest chain pe
 autoresearch/spines/pbfr1b1_r38_reservoir.npy --spawn-states-frac 0.25 --lr 5e-5` (r38's config had
 demo_window 39,740 / demo_rate 2.0 / demo_min_ep 1e9 - the expert loop's uniform-spine settings -
 so the curriculum values are all passed). Success line d <= 55,533 (+2.83%). Record gate passed.
+* **c1 result (400M steps, 12:44-13:15 UTC, ~211k steps/s on the 4070 Ti box).** Greedy evals from
+  the true start unchanged: 0.406 / 0.402 / 0.397 / 0.403 / 0.402 / 0.402, 0/9 go east (the doorway
+  bounce). The curriculum walked back from 2,731 to ~1,886-1,925 in ~300M steps (bands at 2,716,
+  2,576, 2,536, ~2,050 at 20-56% success, then 2,006 at 6-31%), and stalls at 1,886-1,925 (0-0.7%):
+  there the explorer's line dives from high in the ridge room's east part (x ~2,100-2,200, z
+  ~3,730 -> 3,543) onto the north face for the run-in (states 2,005-2,050: west at ~950 u/s, h
+  ~3,950), launched through the arch at ~2,140. KL stayed 0.9-2.4 the whole run (the narrow yaw head,
+  sigma 0.018-0.021, on a new state distribution).
+* **Downstream erosion, measured**: `record_ckpt --spawn-states` from 9 of the incumbent's own
+  reservoir states (3 / 8 / 15 / 25 / 40 / 55 / 70 / 82 / 92%), 18 greedy episodes each checkpoint:
+  r38 14/18 finishes (mean gain 43.1%), c1 final 11/18 (36.4%) - the losses are from the 8-25%
+  states. c2 therefore runs lr 3e-5 and the reservoir pool at 0.35.
+* **c2** (13:19 UTC): c1's ckpt_final (68.508B) + the same flags with `--demo-tau0 1921
+  --spawn-states-frac 0.35 --lr 3e-5`, 800M steps.
