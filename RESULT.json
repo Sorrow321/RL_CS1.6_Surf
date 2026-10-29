@@ -3,11 +3,11 @@
  "round": 1,
  "final": false,
  "best": {
-  "score": 117.744,
-  "eval_file": "/home/steam/ar_pb/runs/pbfr1b3/pbfr1b3_cur7/traj_73696542720.jsonl",
+  "score": 117.758,
+  "eval_file": "/home/steam/ar_pb/runs/pbfr1b3/pbfr1b3_cur7/traj_74602512384.jsonl",
   "run": "pbfr1b3_cur7",
-  "step": 73696542720,
-  "ckpt": "/home/steam/ar_pb/runs/pbfr1b3/pbfr1b3_cur7/ckpt_73696018432.pt (the eval's own weights, one iteration before it; md5 ceb1f64ee4fdee5f2118cc852d1fad75)",
+  "step": 74602512384,
+  "ckpt": "/home/steam/ar_pb/runs/pbfr1b3/pbfr1b3_cur7/ckpt_74601988096.pt (the eval's own weights, one iteration before it; md5 b666f2b8d901d7ff0201f3e75ff67f53)",
   "recipe": [
    "resume incumbent pbEXIT2_r38",
    "backward curriculum on autoresearch/spines/pbfr1b3_ge1_lineA_canon.npy (the run's own Go-Explore line from the true spawn: explore_phase1 --exact-chains --view-follow --cell-energy 32 --select-energy 3, ge_replay)",
@@ -20,5 +20,5 @@
   "resume_from": "incumbent pbEXIT2_r38 (fx0) via cur1..cur3",
   "commit": "see git log ar/pbfr1b3"
  },
- "summary": "17:02 UTC: 117.744 = 9/9 greedy finishes from the true start on the corrected core, best 67.67 s (the WR is 75.18 s); four 9/9 evals in cur7's eight (67.67-67.86 s). Velocity-frame Go-Explore found the real way out (pump the east half-pipe, duck into the tunnel) from the true spawn in ~3 min; a backward curriculum on that line warm from the incumbent taught it in ~2.6 h (front-frac 0.85, rate 0.2, lr 5e-5); greedy-death respawns took 7/9 -> 9/9; start-band key exploration (T 2 for 3 s) moved the drop off the spawn floor 2.9 -> 1.85 s and the mean finish 70.6 -> ~68 s. Next: the floor (record leaves it at 0.53 s) and the 53%/72% deaths."
+ "summary": "17:29 UTC: 117.758 = 9/9 greedy finishes from the true start on the corrected core, best 67.27 s, mean 67.47 s (the WR is 75.18 s); eight 9/9 evals in cur7's sixteen (67.27-68.33 s). Velocity-frame Go-Explore found the real way out (pump the east half-pipe, duck into the tunnel) from the true spawn in ~3 min; a backward curriculum on that line warm from the incumbent taught it in ~2.6 h (front-frac 0.85, rate 0.2, lr 5e-5); greedy-death respawns took 7/9 -> 9/9; start-band key exploration (T 2 for 3 s) moved the drop off the spawn floor 2.9 -> 1.85 s and the mean finish 70.6 -> ~68 s. Next: the floor (record leaves it at 0.53 s) and the 53%/72% deaths."
 }

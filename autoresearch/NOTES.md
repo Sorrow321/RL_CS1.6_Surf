@@ -4662,3 +4662,6 @@ The incumbent recipe's resume ran at 218-274k steps/s on it.
   drop -> tunnel is now ~4.55 s, level with the record's 4.6 s (yardstick only); the floor is the gap left (record 0.53 s).
   After the tunnel 61.3-62.0 s. Deaths 53% / 72% (downstream). Snapshot per eval: ckpt_73696018432 = the 67.67 s eval's
   weights (one iteration before it).
+* **117.758** (cur7 74.603B, traj_74602512384): 9/9, best 67.27 s, mean 67.47 s; hand-on runs/pbfr1b3/pbfr1b3_cur7/
+  ckpt_74601988096.pt (the eval's own weights, md5 b666f2b8d901d7ff0201f3e75ff67f53). cur7's 16 evals: eight 9/9
+  (67.27-68.33 s best), the rest 6-8/9. Box extended to 21:28 UTC.
