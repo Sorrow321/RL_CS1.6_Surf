@@ -4757,3 +4757,7 @@ so the curriculum values are all passed). Success line d <= 55,533 (+2.83%). Rec
   doorway habit is gone; the walk east through the arch is what the remaining ~144 band states
   must teach.
 * **c14** (18:55 UTC): c13's ckpt_latest, `--demo-bc 2.0 --demo-rate 0.04`, `--demo-tau0 144`.
+* c14 at 19:14 (72.83B, bc 2.0, rate 0.04): band 144 -> 104-109 in 19 min (104 = the low-energy
+  descent onto the ridge heading east, 2-3.4%). KL 0.78-0.86, value fit 0.97. Greedy evals
+  0.377-0.404: the episodes now wander the spawn room 20-80 s and die near the north wall /
+  doorway; 2/9 reached x ~1,090-1,100 (the arch) in the last one.
