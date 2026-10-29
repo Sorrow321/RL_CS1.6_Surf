@@ -450,3 +450,8 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   *250 strip (top 3681), a running jump off the strip's north-east end onto the ramp north of the corridor, west along
   the passage ducked. No demo, no record data, no box or place chosen by hand. OPEN QUESTION for the operator (NOTES):
   whether that staircase exists in the real game.
+* `pbfr1b4_south_a.npy` + `.keys.npy` (2,092 rows; md5 in NOTES / `md5sum`): the same explorer settings with
+  `--seed 1`, 8 min (675,608 runs); the chain to cell 9646 (13 cells, exact), the archive's SHORTEST chain past 1.2%
+  (16.7 s): crouch-jump into the basin, a duck-jump onto the SOUTH *250 strip, a jump south into the south gap, the
+  crouch passage west along y ~-3,120 into the tunnel at x ~340, 1.34% at its end; canonicalised like stair_a. No demo,
+  no record data, nothing chosen by hand but the "shortest chain past 1.2%" rule.
