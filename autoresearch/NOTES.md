@@ -4654,3 +4654,11 @@ so the curriculum values are all passed). Success line d <= 55,533 (+2.83%). Rec
 * **c7** (15:33 UTC): c6's ckpt_latest, `--sil-coef 0.4 --sil-top 128` (stronger, keeps more
   successes per rollout; the SIL buffer is not checkpointed, so it refills) and `--demo-rate 0.2`
   (advance at 20% band success), `--demo-tau0 429`, 1.2B steps.
+* **Downstream erosion, again** (same 9 own-reservoir states x 18 greedy episodes): r38 14/18
+  finishes (mean gain 43.1%), c1 11/18 (36.4%), **c6 4/18 (20.9%)**, failing from every level
+  including 3% (the pit right after the tunnel). ~1.5B steps of start-focused training (spawns ~46%
+  spine, ~35% r38 course pool, ~9% course-end perturbations, ~10% true start; KL 0.6-1.5 per update,
+  SIL in c6) eat the course skill. Since the score is the BEST eval, an early exit from the start
+  still pays, but once the curriculum reaches the start the course must be re-anchored (more
+  course spawns, SIL off, lower lr), and a future round should protect it from the start (e.g. a
+  larger course share, or SIL rows restricted to the band).
