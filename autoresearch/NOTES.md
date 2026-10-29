@@ -4498,3 +4498,16 @@ sits at 0.95 $/h of the 1.2 cap with three boxes, and the cheapest offer (a 3090
   on this route (this branch's included) is sim-only.
 * Spine for a backward curriculum: `autoresearch/spines/pbfr1b4_stair_a.npy` (+ `.keys.npy`), the chain cut at
   1.39% (provenance in the spines README).
+
+### Launch traps on a resume of the incumbent (12:30-12:42 UTC, local CPU smoke, 16 envs)
+* The incumbent's checkpoint config carries the EXPERT LOOP's spine settings and a resume restores them:
+  `demo_min_ep 1e9` (a fixed full-spine window), `demo_rate 2.0`, `demo_window 39740`, `demo_grow 0`,
+  `demo_success_bonus 0`. A backward curriculum on a new spine therefore needs `--demo-min-ep 50` (the default)
+  passed explicitly, or the trainer says "the curriculum can never advance" and every demo spawn is the spine's last
+  state. `bc_file` is NOT restored (only demo_file is, and the operator removed it).
+* Also restored and harmless at the start: the unstuck state from the old core (best 54,367 u, "stuck 17.6B", T at
+  its 0.2 cap on the key heads) and `--front-temp 1` keyed to the old reservoir's deepest (93%: no env qualifies).
+* The smoke command (CPU, ~3 min): `SELF_STATES=1 CUDA_VISIBLE_DEVICES=-1 python3 python/train_fast.py --run X --ckpt
+  <copy of incumbent ckpt> --steps <ckpt step + 4096> --envs 16 --n-steps 8 --epochs 1 --minibatches 2 --record-every
+  1e12 --eval-eps 1 --eval-greedy-only --ckpt-every 1e9 <the arm's flags>`; the princessburglar caches in a worktree
+  are symlinks to the main checkout and match the bsp (no rebake).
