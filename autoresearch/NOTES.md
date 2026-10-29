@@ -4390,3 +4390,34 @@ the 5080 (plan 3 min, train 3e8 steps 15 min, evals 1 min).
   took the loop down for a minute; anchor patterns (`^python3 -u tools/exit_local`) and use `setsid nohup ... &
   disown` to launch. `timeout` puts its child in another process group, so a group kill misses it. `box.py extend
   --hours N` counts from NOW, not from the old deadline.
+
+### pbx-expert wrap-up (2026-10-29 03:20 UTC): search line 60.283 -> 60.069 s by splicing, policy 9/9 at 62.89 s
+(Supersedes the DRAFT above. The loop ran to round 39 and was stopped at 00:57 UTC to give the GPU to the line
+search: its waves had not beaten 60.283 s since round 29 and the policy was flat. Box 58072366 released 03:18 UTC.
+Bundle with the plan re-simulated on a droplet CPU core: `~/ar_pb/pbx/line_60.069/`.)
+* **Results (clock: from spawn, 7.667 ms tick).** Search line (open-loop, replay bit-exact): **60.069 s** (7835
+  ticks; `tools/refine_arch.py` attempt a5054, spliced from the policy's own lines, proposals pbEXIT2_r38). Under 60 s
+  needs 7826 ticks: **not reached** (9 ticks short). Best 9/9 greedy eval: **pbEXIT2_r33 9/9 at best 62.890 s, mean
+  63.998 s, grader 117.904** (round 33's eval; the paired gate rejected r33 on +0.238 s). The loop's final incumbent
+  pbEXIT2_r38: 51/54 finishes over its own evals and round 39's rematch, 9/9 at 63.089 / 64.138 s (117.897).
+* **Why the loop's waves stalled at ~60.3 s:** beam_tas populations collapse onto ONE lineage (all 4096 envs within
+  ~20 u of each other the whole way), so each wave re-draws the whole line and the best of ~200 waves was a lucky
+  draw. ~480 ticks before the finish most lines touch ground on a ledge (onground 5-19 ticks, 1515 -> 1256 u/s);
+  the 60.283 s line passed it ~17 u higher. Re-searching that line's own 80-90% states never cleared the ledge
+  (0/9); its 20-50% states often did (4/6). `--score dh` (energy height) did not help (60.45-60.48 s).
+* **What moved the line: splice-and-search over an ARCHIVE** (`tools/refine_arch.py`, 9ec9b60): replay a base
+  line's first J ticks open-loop (`beam_tas --prefix-line`), search the rest with the policy's proposals, keep the
+  6 fastest distinct lines. Best-line-only: 0 gains in 30 attempts; the archive: 60.283 -> 60.245 -> 60.199 ->
+  60.145 -> 60.069 s in ~165 attempts, **every record from a NON-best base**; then flat for ~420 attempts (588 in
+  all; the archive converged to 7835-7844 ticks). Throughput: ~210 attempts/h with 3 workers on one 5080 (GPU-bound,
+  30-80 s per attempt by junction). Gains came only from junctions at 20-40%
+  (rare, large: -23 / -14 ticks) and 75-90% (small); 50-65% never in 85 attempts.
+* **The prefix replay was silently wrong for this lineage (c607de1, 0ed178a):** it advanced only the obs-reward
+  feed and the latch, so the first searched decision read the junction as a fresh spawn - the compass block's
+  episode-start d re-armed (progress ratio 1.0), the ratchet gap 0, the surf tracker fresh, the held keys NEUTRAL -
+  and beam_tas refused `--prefix-line` on a `--keys-hold` checkpoint outright. `prefix_sync` mirrors the
+  wrapper's act() per replayed decision. Any tool that restores a mid-episode state for a wrapper with stateful
+  feeds needs the same.
+* **Next:** the archive converges; more diversity in the bases (seed it from different routes, or archive by a
+  behaviour descriptor rather than finish time alone) and/or a proposal policy distilled from the archive's lines
+  (the loop's BC on the spliced lines, not only on whole waves) are the obvious levers for the last 0.07 s.
