@@ -4626,3 +4626,11 @@ Box 58244389 (RTX 5080, Ryzen 9 7945HX 32 thr / quota 30.7, 0.387 $/h, South Car
   planner's decisions are close to the policy's own, as on the old core).
 * Why not tools/exit_local.py itself: it launches train_fast outside box.py launch (PROTOCOL: never launch around
   launch), so each round is run by hand: plan (ssh) -> distil (ssh) -> train (box.py launch) -> the trainer's evals.
+* x1 evals (6e8 steps, BC r1): 7/9 66.55 / 7/9 66.26 / 8/9 66.14 / 8/9 66.12 / **9/9 66.33 (117.789)** / 6/9 65.98 /
+  8/9 65.88 / ... - the best finish creeps 66.5 -> 65.9 s, not a step; BC joint-acc 0.994-0.997 by the end.
+* Round 2 plan on x1's ckpt_final (70.642B; `tools/xround_plan.sh CKPT OUT 4 10`, 4 waves, ~55 s each with the
+  trainer stopped): **62.99 / 63.12 / 62.31 / 62.47 s** (round 1: 63.62-63.83 s) - the planner gains faster than
+  the greedy (65.62-66.28 s in the waves' own greedy floors). x2 (14:55 UTC) = x1's final + bc/spine r2 (4 waves,
+  spine 32,725 states), x1's flags otherwise.
+* Ops: `box.py deploy` while a trainer runs fails its GPU health gate (the busy GPU measures low TFLOPS) after the
+  git update has already happened - the code is current; deploy on an idle box, and never blocklist on that reading.
