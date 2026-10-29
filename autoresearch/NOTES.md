@@ -4600,3 +4600,15 @@ The incumbent recipe's resume ran at 218-274k steps/s on it.
   first (x 860 -> 1,265; the explorer line's dither, inherited) - the record walks off the ledge at 0.5 s. Then the drop
   (3.2 s), the east side (4.8 s), back west (6.4 s at 884 u/s), the west climb (7.6 s), the passage, the tunnel at
   8.4-8.6 s (7/9 episodes); 2/9 take extra laps (tunnel at 13.3 / 17.8 s -> 75.3 / 80.4 s). After the tunnel ~62 s.
+* **117.666** (cur5 71.777B, traj_71776600064): 9/9, best 70.02 s, mean 70.61 s - every episode on the one-lap pump
+  (tunnel at 8.4-8.7 s); hand-on ckpt_71772930048.pt (3.7M before, md5 06d696d20536d0c2afcdb08cc4fd3a4c). cur5 ended
+  (15:16 UTC, 71.876B) with four 9/9 evals in its last six.
+* **The start is the time left on the table**: the greedy hops east on the spawn floor for ~2.8 s before the drop (the
+  record leaves the floor at 0.5 s and is in the tunnel at 5.1 s; ours 8.4 s). A policy beam from the true start
+  (beam_tas, 4,096 envs, --score v, --keys-temp 1.5, 1,600 ticks, 13 s on the 5080; runs/beam_start1) found the SAME
+  start (tunnel at 8.43 s): the policy's own sampling does not contain the early drop. `--macro-hold` (held-key
+  proposals) is refused on a --keys-hold checkpoint.
+* **cur6** (15:17 UTC): cur5's final (71.876B, md5 cbc06f73...) + cur5's flags with `--demo-front-temp 1.0
+  --demo-front-ticks 400` (was 0.5 / 40): the band is now the true start itself (tau 0), so 85% of training episodes
+  sample the keys at T 2 and the yaw sigma x6 for their first 3 s - exploration for the start's keys, the greedy eval
+  untouched. Hand-on for its first eval (= cur5's final weights): runs/pbfr1b3_cur6/ckpt_71875690496.pt.
