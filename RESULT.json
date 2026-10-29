@@ -3,14 +3,14 @@
  "round": 1,
  "final": false,
  "best": {
-  "score": 117.797,
-  "eval_file": "/home/steam/ar_pb/runs/pbfr1b2/pbfr1b2_x1/traj_70571261952.jsonl",
-  "run": "pbfr1b2_x1",
-  "step": 70571261952,
-  "ckpt": "/home/steam/ar_pb/runs/pbfr1b2/pbfr1b2_x1/ckpt_70555009024.pt",
+  "score": 117.803,
+  "eval_file": "/home/steam/ar_pb/runs/pbfr1b2/pbfr1b2_x2/traj_70718586880.jsonl",
+  "run": "pbfr1b2_x2",
+  "step": 70718586880,
+  "ckpt": "/home/steam/ar_pb/runs/pbfr1b2/pbfr1b2_x2/ckpt_70708625408.pt",
   "recipe": [
    "--bc-file",
-   "runs/plan/bc_r1.npz",
+   "runs/plan/r2/bc.npz",
    "--bc-coef",
    "0.5",
    "--bc-coef-final",
@@ -23,9 +23,9 @@
    "--bc-pitch-coef",
    "0",
    "--demo-file",
-   "runs/plan/spine_r1.npy",
+   "runs/plan/r2/spine.npy",
    "--demo-window",
-   "24931",
+   "32725",
    "--demo-rate",
    "2.0",
    "--demo-min-ep",
@@ -40,8 +40,8 @@
    "--maxvel",
    "3500"
   ],
-  "resume_from": "incumbent fx0 -> pbfr1b2_c1..c5 (staircase curriculum) -> x1 (expert iteration round 1: BC on the policy's own beam_tas lines)",
+  "resume_from": "incumbent fx0 -> pbfr1b2_c1..c5 (staircase curriculum) -> x1 -> x2 (expert iteration rounds 1-2: BC on the policy's own beam_tas lines)",
   "commit": "9f72a7e7"
  },
- "summary": "Go-Explore (uniform, view-follow, energy cells) from the true start on the corrected core finds a doorway STAIRCASE in 2 min (func_conveyor *249 at 41 u -> *250; both slabs were missing in the old core). A backward curriculum on that line, warm on the incumbent (+ its own course states 0.3), teaches the two new jumps; everything after *250 is the incumbent's old route. Best: 117.797 = 9/9 greedy finishes from the true start, best 66.10 s (x1 eval 70.571B, expert iteration round 1; before: 117.794, 66.19 s; incumbent 0.405; record 75.18 s). Evals since 69.06B: 9/9 leave the start, 6-9/9 finish. h1 (half-pipe energy spine, the record's start) stalled at the fly-back: not learned in 30 min. x1 (14:15 UTC): expert iteration by hand - the policy's own planner finds 63.6-63.8 s lines, distilled by BC. Operator: please confirm the *249/*250 staircase in the real game."
+ "summary": "Go-Explore (uniform, view-follow, energy cells) from the true start on the corrected core finds a doorway STAIRCASE in 2 min (func_conveyor *249 at 41 u -> *250; both slabs were missing in the old core). A backward curriculum on that line, warm on the incumbent (+ its own course states 0.3), teaches the two new jumps; everything after *250 is the incumbent's old route. Best: 117.803 = 9/9 greedy finishes from the true start, best 65.90 s (x2 eval 70.719B, expert iteration round 2; before: 117.797 x1, 117.794 c4; incumbent 0.405; record 75.18 s). Evals since 69.06B: 9/9 leave the start, 6-9/9 finish. h1 (half-pipe energy spine, the record's start) stalled at the fly-back: not learned in 30 min. x1 (14:15 UTC): expert iteration by hand - the policy's own planner finds 63.6-63.8 s lines, distilled by BC. Operator: please confirm the *249/*250 staircase in the real game."
 }
