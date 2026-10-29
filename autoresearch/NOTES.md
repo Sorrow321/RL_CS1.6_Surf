@@ -4634,3 +4634,19 @@ Box 58244389 (RTX 5080, Ryzen 9 7945HX 32 thr / quota 30.7, 0.387 $/h, South Car
   spine 32,725 states), x1's flags otherwise.
 * Ops: `box.py deploy` while a trainer runs fails its GPU health gate (the busy GPU measures low TFLOPS) after the
   git update has already happened - the code is current; deploy on an idle box, and never blocklist on that reading.
+* x2 evals (6e8 steps, BC r2): 5/9 65.93 / **9/9 65.90 (117.803, best; hand-on `pbfr1b2_x2/ckpt_70708625408.pt`,
+  10M steps before the eval)** / 7/9 66.09 / 6/9 65.70 / 6/9 66.16 / 9/9 66.05 / 8/9 66.07 / 8/9 66.19.
+  Expert iteration moves the GREEDY ~0.1-0.2 s per round here, the planner ~0.5-1 s (round 3 on x2's final:
+  62.46 / 62.54 / 62.22 / 62.37 s).
+* WHERE the greedy loses its ~4 s to the planner (r2's 62.31 s line vs x2's 9/9 eval, split times at first arrival):
+  **1.6 s at the start** (tunnel exit 4.73 s vs 6.33 s median), then +0.24 s by 5%, ~+0.1 s per 5% to 45%, +0.27 at
+  50%, **+0.49 at 70%** (the old lineage's "71% bounce"), +0.32 at 75%, ~+0.1 per 5% after. Inside the start, the
+  planner keeps the same NW-corner detour (0.99 s) and *249 / *250 times (2.54 / 2.91 s) - its gain is the PLATE ->
+  north gap step (gap at 3.20 s vs the greedy's 4.1-4.3 s: the greedy dawdles ~1.3 s on *250 inside the push field)
+  and the tunnel at ~400 u/s (the greedy 150-350).
+* x3 (15:41 UTC) = x2's ckpt_final (71.243B) + BC on round 3's planner (`runs/plan/r3/bc.npz`, 4 waves) + the planner
+  lines as `--spawn-states` 0.4 (the course) + a PACE-GATED backward curriculum on the fastest r3 line's first 5.04 s
+  (`tools/cut_start_spine.py` -> runs/plan/r3/start.npy, 657 rows, true start -> 1.6%): `--demo-success-d 100
+  --demo-success-pace 0.15 0.25 --demo-success-bonus 50 --demo-match-band`, window 5 / grow 5-40 / rate 0.3 /
+  front 0.6 / front-temp 0.5. A spine episode succeeds only if it reaches d <= 56,332 within 1.15x the planner's
+  own time from its spawn row + 32 ticks (from the map start: 751 ticks = 5.76 s; the greedy needs 6.0-6.3 s).
