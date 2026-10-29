@@ -4688,3 +4688,18 @@ so the curriculum values are all passed). Success line d <= 55,533 (+2.83%). Rec
 * **c9** (16:03 UTC): c8's ckpt_latest, `--demo-rate 0.06 --demo-grow-max 10` (advance at 6% band
   success, never leap more than 10 states), SIL 0.4 / top 128, `--demo-tau0 424`, 2B steps. The
   last ~2 h of the round go to consolidation (course re-anchor) whatever the band reaches.
+* **The face segment is ONE action** (spine k4 keys 415-435 are all strafe-right, canonical; the
+  explorer's line is airborne the whole way): local `play_step` holding strafe-right with the view
+  along the velocity from ticks 1,660 / 1,680 / 1,696 / 1,716 (thinned 415 / 420 / 424 / 429) rides
+  the east-end U-turn to h max 3,991-3,993 (the explorer reached 3,923-3,952); from 1,620 / 1,640
+  (405 / 410) the same hold lands on the flat apex strip (h 3,498, stopped) - the explorer's line taps
+  left / forward at 412-413 there. So the band's walls 415-429 are one skill (hold the strafe into
+  the face while heading east) that the policy's course habit (left + jump + duck there) blocks.
+* c9 at 16:04: 429 at 13.7-16.7%, 424 and 419 at 0.0%; the band shuttles 429 <-> 424/419.
+* **For the next round - the build I would do first**: an online distillation term for curriculum
+  spawns: at the first decision after a spine spawn at row i, add C x the engine-scored NLL of the
+  spine's next held keys (keys_engine_logp's rule) and of a yaw offset 0 (view along the velocity);
+  the observation is the trainer's own rollout row, so no BC file is needed. The spine is our own
+  reward-free search line (the lineage's SELF_STATES rule), the mechanism is the expert loop's
+  distillation. It would flip a course habit at every spine state at once instead of one 5-state
+  band per ~30 min.
