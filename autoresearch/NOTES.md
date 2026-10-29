@@ -4421,3 +4421,30 @@ Bundle with the plan re-simulated on a droplet CPU core: `~/ar_pb/pbx/line_60.06
 * **Next:** the archive converges; more diversity in the bases (seed it from different routes, or archive by a
   behaviour descriptor rather than finish time alone) and/or a proposal policy distilled from the archive's lines
   (the loop's BC on the spliced lines, not only on whole waves) are the obvious levers for the last 0.07 s.
+
+### pbx-expert (2026-10-29 07:20 UTC): EVERY finish of this lineage climbed through a SIMULATOR BUG at the start
+* The user saw the agent's start jump and asked whether it was possible in the real game. It is not. `src/sim.h`
+  held 128 solid brush entities and bsp.c dropped the rest SILENTLY; this map has 135. The 131st,
+  **func_conveyor *250**, is a solid slab (z 3678..3681) on the floor of the doorway west of the spawn
+  (x 648..718, y -3054..-2946; under trigger_push *252, 2500 u/s down). With it, that floor is 65 u above the
+  spawn floor - above the 63 u crouch-jump (45 jump + 18 duck); without it, 62 u. Also dropped: func_button
+  *247, func_conveyor *249, func_wall *261-*264 (south of the course, x -1143..343, y -3850..-3403).
+* The climb, tick by tick in the old core (`~/ar_pb/pbx/jump/replay_probe.py`): crouch-jump from the spawn floor,
+  apex +45.0 u, ducked feet 1 u over the 3678 floor -> lands on the doorway's north edge with 0.13-0.85 u of hull
+  overlap; unducks; jumps out of *252's push field (its z base velocity acts as -19.2 u/s per tick, as in
+  PM_AddCorrectGravity) and ducks to lift the feet above it; a stamina jump into the passage. Every step but the
+  missing slab is engine-exact (jump / duck / stamina / unduck-before-jump; trigger touch = ReHLDS SV_TouchLinks:
+  BoundsIntersect + the hull point-contents test, not under REHLDS_FIXES).
+* Proof: with the tables enlarged the doorway reads 3681 and the 60.069 s plan's first jump never lands (no
+  finish); all 9 episodes of r33's 9/9 eval cross *250's volume at 1.1-2.3 s. The WR never touches it: it pumps
+  in the east half-pipe for ~6 s and flies back west into the tunnel - the real way in.
+* Fixed (this commit): tables of 512 (GoldSrc's MAX_MODELS bounds every brush entity), the push-once bitset
+  sized from MAX_TRIGGERS, and a map that overflows a table is REFUSED (`surf_create failed: map has N more
+  ...`); tests/python/test_entity_tables.py fails on the old core. Bit-identical on maps under the old tables
+  (ski_2, cannonball 113 solids, petrus: seeded 64-env x 1500-step rollouts hash equal). sidistic (138 triggers)
+  now loads 10 more teleports; 3 are sidstart kill teleports and no sidistic search line enters them.
+* Consequences: the 60.069 s line, the 62.89 s / 63.09 s policies and every earlier princessburglar finish are
+  SIM-ONLY. The goal field / grader field were baked by the old core: its occupancy differs in 314 voxels, all
+  around *261-*264 (off the course); the field along the course is unaffected, a rebake is optional.
+* Next (the user, 07:40 UTC): a new lineage that passes the start the real way - energy from the east half-pipe,
+  then the passage north of the spawn - warm-started from this lineage's checkpoint for the rest of the map.

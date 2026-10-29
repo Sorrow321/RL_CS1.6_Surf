@@ -40,7 +40,7 @@ typedef struct SurfSim {
     int32_t* side_tick;      /* tick of its last change */
     float* last_pitch_delta;
     uint64_t* rng;
-    uint64_t (*once_used)[2];      /* consumed SF_TRIGGER_PUSH_ONCE triggers per env */
+    uint64_t (*once_used)[ONCE_WORDS];  /* consumed SF_TRIGGER_PUSH_ONCE triggers per env, 1 bit each */
     PmPersist single_pp;           /* for the single-step API (single caller) */
 } SurfSim;
 
@@ -375,7 +375,7 @@ static void reset_env(SurfSim* s, int i) {
     uint64_t* r = &s->rng[i];
     memset(st, 0, sizeof(*st));
     memset(&s->pp[i], 0, sizeof(PmPersist));
-    s->once_used[i][0] = s->once_used[i][1] = 0;
+    memset(s->once_used[i], 0, sizeof(s->once_used[i]));
     s->last_yaw_delta[i] = 0;
     s->last_pitch_delta[i] = 0;
     s->side_held[i] = 1;   /* neutral */
@@ -544,7 +544,7 @@ SurfSim* surf_create(const char* bsp_path, const SurfEnvConfig* cfg, char* err, 
     s->side_tick = (int32_t*)calloc((size_t)n, sizeof(int32_t));
     s->last_pitch_delta = (float*)calloc((size_t)n, sizeof(float));
     s->rng = (uint64_t*)calloc((size_t)n, sizeof(uint64_t));
-    s->once_used = (uint64_t(*)[2])calloc((size_t)n, sizeof(uint64_t[2]));
+    s->once_used = (uint64_t(*)[ONCE_WORDS])calloc((size_t)n, sizeof(uint64_t[ONCE_WORDS]));
     s->goal_hit = (uint8_t*)calloc((size_t)n, sizeof(uint8_t));
     s->pending_fail = (uint8_t*)calloc((size_t)n, sizeof(uint8_t));
     if (!s->st || !s->pp || !s->last_yaw_delta || !s->last_pitch_delta ||

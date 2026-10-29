@@ -88,10 +88,19 @@ typedef struct { int32_t model; float origin[3]; float absmin[3], absmax[3]; } S
 typedef struct { int32_t model; float origin[3]; int32_t skin; float absmin[3], absmax[3]; } ContentsEnt;
 typedef struct { float origin[3]; float yaw; } SpawnPoint;
 
-#define MAX_SOLIDS   128
-#define MAX_TRIGGERS 128
-#define MAX_CONTENTS 64
-#define MAX_SPAWNS   64
+/* Entity tables. GoldSrc loads at most MAX_MODELS 512 models per map (the brush models among
+ * them), so 512 holds every brush entity of any map the engine runs; parse_entities FAILS on a
+ * map that exceeds a table instead of dropping the excess. (Until 2026-10-29 these were 128 /
+ * 128 / 64 / 64 and the excess was dropped silently: surf_princessburglar_b26 has 135 solid
+ * brush entities and lost func_conveyor *250, a 3 u slab that makes the doorway by the spawn
+ * 65 u high, above the 63 u crouch-jump - every finish of that lineage climbed through it;
+ * surf_src_sidistic has 138 teleport/push/hurt triggers and lost 10 teleports.) */
+#define MAX_SOLIDS   512
+#define MAX_TRIGGERS 512
+#define MAX_CONTENTS 512
+#define MAX_SPAWNS   512
+#define MAX_POINTS   2048   /* targetname'd point entities: teleport destinations */
+#define ONCE_WORDS   ((MAX_TRIGGERS + 63) / 64)   /* env.c's push-once bitset, 1 bit per trigger */
 
 typedef struct BspMap {
     BPlane*    planes;      int32_t numplanes;
