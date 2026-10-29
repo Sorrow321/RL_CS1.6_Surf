@@ -3,6 +3,6 @@
  "round": 1,
  "final": false,
  "best": null,
- "summary": "Box 58247606 (4070 Ti). Reward-free GE from the true start (energy + heading cells, --select-energy 3, velocity-frame strafes) found the real way out (ridge pump -> arch -> spawn room -> tunnel, to +3.2%). Backward curriculum on that line with the incumbent's weights: c1 walked it back 2,731 -> ~1,900, c2 to 1,786 (0.4 states/M steps); c3 (13:49 UTC) uses the spine thinned to one state per decision. Greedy evals still ~0.40 (doorway bounce) until the band nears the start. Downstream erosion measured (r38 14/18 vs c1 11/18 finishes from mid-course states). Suspect sim moves (doorway *249/*250 climb, wall-face hang) noted, not used.",
- "commit": "6d260b62"
+ "summary": "Box 58247606 (4070 Ti). Reward-free GE from the true start found the real way out (ridge pump -> arch -> tunnel, to +3.2%); backward curriculum on it with the incumbent's weights walked back to the east-end U-turn of the pump (spine 2,731 -> ~1,740 per-tick) and stalled there: the policy turns back west too early. Cause: the ratchet paid ~2.5 for returning from a spawn behind the start. New --race-ratchet-start-cap (record starts at min(spawn d, start d); off = byte-identical, tested) -> c4 (14:23 UTC). From a state just past the wall the c3 policy already flies through the tunnel to 24.7% (1/6). Greedy evals from the true start still ~0.40 (doorway bounce) until the band nears the start. Suspect sim moves (doorway *249/*250 climb, wall-face hang) noted, not used.",
+ "commit": "2c153e11"
 }

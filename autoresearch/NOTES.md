@@ -4617,3 +4617,5 @@ so the curriculum values are all passed). Success line d <= 55,533 (+2.83%). Rec
   had no `.config`, which RaceReward.on_reset reads since the energy / surf terms); fixed, 23/24
   pass - the remaining failure asserts a `RATCHET_COL = N_SCALAR + N_ROUTE - N_PASS - 1` string
   the trainer no longer contains (stale, unrelated).
+* **c4** (14:23 UTC): c3's ckpt_latest + c3's flags + `--race-ratchet-start-cap 1`,
+  `--demo-tau0 439`, 800M steps. Question: does the band now pass 434 (the east-end U-turn)?
