@@ -453,3 +453,8 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   pbEXIT2_r38's OWN respawn reservoir (`ckpt['respawn']['states']`, harvested from its own training
   episodes on the old core), the rows deeper than 2% on the grader field (2-94%), clocks zeroed. Used
   as --spawn-states to keep the course after the start practised while the curriculum works on it.
+* `pbfr1b2_door2.npy` (1,183 states, md5 78266008c685889d1aa7c783cf691b9c) + `pbfr1b2_door2.keys.npy` (md5
+  d705d0649287db63fcba873208d66d7c): pbfr1b2_door.npy without rows 491-528 (the explorer's mid-air turnaround
+  after its jump from *250: a uniform yaw RATE spinning the view with the back key held, which a velocity-frame
+  policy cannot express; c2's curriculum sat at 2% success there against 60% one band later). Row 490 (on *250,
+  before the jump) is followed by old row 529 (landed in the south gap). Same provenance.
