@@ -4706,3 +4706,15 @@ steps/s, kl ~0.2 (updates stop after 2-3 minibatch steps), training finishes 60-
 * **Ops:** pull the checkpoint a run will build on BEFORE building on it (box 58254955 went offline at 15:05 with
   c2's weights; ckpt_latest is overwritten at every eval, so a peak needs `--ckpt-every 7.5e7` snapshots). The fleet
   cap left this branch without a box 11:51-13:25 and 15:19-18:08 (Harness issue above).
+
+### The half-pipe route, measured without the doorway (box, 19:47-20:17 UTC; ANALYSIS - a virtual kill volume, never training)
+`explore_phase1` from the true spawn with the doorway (the *249 basin, the *250 strips and the air above them) made a
+virtual kill volume by a wrapper (runs/ge_nodoor/ge_nodoor.py on the box: force_fail inside the box), 4,096 envs,
+12 threads beside the trainer, 30 min, 2.0M ticks/s: **44.4M runs, 15,654 cells, deepest 0.40% (the doorway bounce),
+no cell in the passage.** But the energy IS reached: behind the start h median 3,725, p90 3,887, **max 3,965** (the
+record enters the passage at ~3,930); all 2,908 cells above 3,850 lie at x 1,193-2,380 (deep in the half-pipe), and
+the 35 cells near the passage entrance (x 840-1000, y -2930..-2860) peak at z 3,697 / h 3,840 - under the ~3,720-3,764
+the record flies there. So for a uniform explorer the bottleneck is not the pump but the way BACK west over the rim,
+through trigger_teleport *257's airspace (x 865-1151, z 3696-3780), which in our core a standing hull cannot cross at
+the record's height (a ducked one can; round 1 of the first lineage). If the staircase is ruled out, that crossing is
+the gate to study (and whether the core's *257 test matches the game, since the record crosses it).
