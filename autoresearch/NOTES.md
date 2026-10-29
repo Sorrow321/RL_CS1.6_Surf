@@ -4511,3 +4511,21 @@ sits at 0.95 $/h of the 1.2 cap with three boxes, and the cheapest offer (a 3090
   <copy of incumbent ckpt> --steps <ckpt step + 4096> --envs 16 --n-steps 8 --epochs 1 --minibatches 2 --record-every
   1e12 --eval-eps 1 --eval-greedy-only --ckpt-every 1e9 <the arm's flags>`; the princessburglar caches in a worktree
   are symlinks to the main checkout and match the bsp (no rebake).
+
+### Harness issue: one branch can starve for hours under the flat 1.2 $/h fleet cap (12:45 UTC)
+From 11:51 to at least 12:45 UTC this branch had no box: the other three branches' boxes held the fleet at
+0.95 -> 1.16 $/h, and every acceptable offer cost more than the remaining headroom (0.25 -> 0.04 $/h). When a
+0.211 $/h 4070 Ti appeared (12:20), another agent's rent took the slot first. box.py's cap is first-come: a branch
+that loses its first box (a failed gpu_health here) can lose its whole round, which also biases the round's
+comparison. A per-agent share (cap / branches) or a queue would keep every slot alive. Worked around on the branch
+side only by a background loop that retries `box.py rent` the moment an offer fits (box.py still enforces every cap).
+
+### Without the doorway, uniform Go-Explore does not find the half-pipe way in (12:47-12:52 UTC, local CPU, ANALYSIS)
+Same explorer settings as the staircase run (5 min, 256 envs, 2 threads) with the doorway (x 632..735, y -3060..-2935,
+z 3600..3725: the *249 basin, the *250 strips and the air just above them) made a virtual kill volume by a wrapper
+that force-fails any env inside it (scratch script, a measurement instrument only, never a training rule): 458,542
+runs, deepest 0.40% (the incumbent's bounce point), 0 cells past 0.45%. Behind the start 10,147 cells, energy height
+median 3,655, p90 3,783, max 3,860 (the record enters the passage at ~3,930; the staircase run's max was 3,819). So
+on the corrected core the staircase is the easy way out by a wide margin, and the record's route (pump, then back
+west into the passage at ~3,720-3,760) is a real exploration problem for uniform actions: the energy is reached,
+the way back with it is not. If the staircase is ruled out, this is the benchmark the program wants.
