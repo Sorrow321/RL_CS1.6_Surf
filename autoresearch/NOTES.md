@@ -4780,6 +4780,14 @@ so the curriculum values are all passed). Success line d <= 55,533 (+2.83%). Rec
 * c15 at 21:01 (74.17B): band stalled at 24-29 (29 passes at 3-7%, 24 at 0.2-0.4%) - ~1 s into the
   walk east from the spawn. Training healthy (reward ~8.8, value fit 0.98, KL 0.83-0.86).
 
+* **c15 result** (73.41-74.22B, 19:59-21:02 UTC, bc 2.0, rate 0.02): band 94 -> 24 (24 passed at 3.4%
+  over 500 episodes just before the stop). Greedy evals 0.401-0.433; **0.433 at 74.023B is the
+  branch's best** (start room; snapshot `ckpt_74018979840.pt` pulled, the hand-off under the
+  protocol's rule).
+* **c16** (21:08 UTC): c15's ckpt_latest (74.22B, md5 79113e53...), c15's flags with `--demo-tau0 14`,
+  2B steps (to wrap-up). The restart dip again: 14 and 24 read 0.0% over ~450 episodes each in the
+  first minutes and the band backed off to 29.
+
 ### pbfr1b1 round 1 lesson (DRAFT, 21:05 UTC; finalised at wrap-up)
 * **Score**: best eval 0.431 (c14 73.055B), a start-room score (incumbent 0.405) - the greedy never
   left the start room on the corrected core. The real gain of the round is what the next round

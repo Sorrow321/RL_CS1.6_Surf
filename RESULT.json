@@ -3,24 +3,24 @@
  "round": 1,
  "final": false,
  "best": {
-  "score": 0.431,
-  "eval_file": "/home/steam/ar_pb/runs/pbfr1b1/pbfr1b1_c14/traj_73055338496.jsonl",
-  "run": "pbfr1b1_c14",
-  "step": 73055338496,
-  "ckpt": "/home/steam/ar_pb/runs/pbfr1b1/pbfr1b1_c14/ckpt_latest.pt (pulled at wrap-up)",
+  "score": 0.433,
+  "eval_file": "/home/steam/ar_pb/runs/pbfr1b1/pbfr1b1_c15/traj_74022649856.jsonl",
+  "run": "pbfr1b1_c15",
+  "step": 74022649856,
+  "ckpt": "/home/steam/ar_pb/runs/pbfr1b1/pbfr1b1_c15/ckpt_74018979840.pt",
   "recipe": [
-   "resume chain from the incumbent fx0 (pbEXIT2_r38): c1..c14",
+   "resume chain from the incumbent fx0 (pbEXIT2_r38): c1..c15",
    "--race-ratchet-start-cap 1 (new)",
    "--demo-file autoresearch/spines/pbfr1b1_ge_pump_k4.npy --demo-keys ..._k4.keys.npy",
    "--demo-bc 2.0 (new, band-only)",
    "--sil-coef 0.4 --sil-top 128 --sil-tempered 1 --front-temp 0",
-   "--demo-rate 0.04 --demo-window 5 --demo-grow 5 --demo-grow-max 10 --demo-front-frac 0.8 --demo-success-d 100 --demo-success-bonus 50",
+   "--demo-rate 0.02 --demo-window 5 --demo-grow 5 --demo-grow-max 10 --demo-front-frac 0.8 --demo-success-d 100 --demo-success-bonus 50",
    "--spawn-states autoresearch/spines/pbfr1b1_r38_reservoir_strat.npy --spawn-states-frac 0.35",
    "--energy-pot 12 --lr 3e-5"
   ],
-  "resume_from": "pbfr1b1_c13 ckpt_latest (chain c1..c13 from the incumbent fx0)",
+  "resume_from": "pbfr1b1_c14 ckpt_latest (chain c1..c14 from the incumbent fx0)",
   "commit": "7cca1dad"
  },
- "summary": "Box 58247606 (4070 Ti). Reward-free GE from the true start found the real way out (ridge pump -> arch -> tunnel, to +3.2%). A backward curriculum on it with the incumbent's weights walked the spine 683 -> ~95 (of 684) via new generic tools: --race-ratchet-start-cap, translated spawn keys, SIL, and --demo-bc (distil the spine's held keys at frontier-band spawns; band-only). The greedy's doorway habit is gone (it now heads for the arch) but it does not exit yet: best eval 0.431 (start room). The course after the tunnel is eroded (4/18 vs r38's 14/18).",
+ "summary": "Box 58247606 (4070 Ti). Reward-free GE from the true start found the real way out (ridge pump -> arch -> tunnel, to +3.2%). A backward curriculum on it with the incumbent's weights walked the spine 683 -> ~24 (of 684) via new generic tools: --race-ratchet-start-cap, translated spawn keys, SIL, and --demo-bc (distil the spine's held keys at frontier-band spawns; band-only). The greedy's doorway habit is gone but it does not exit yet: best eval 0.433 (c15 74.02B, start room; incumbent 0.405). The course after the tunnel is eroded (4/18 vs r38's 14/18). c16 continues the band from c15's latest.",
  "commit": "7cca1dad"
 }
