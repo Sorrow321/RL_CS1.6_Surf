@@ -4663,3 +4663,13 @@ Box 58244389 (RTX 5080, Ryzen 9 7945HX 32 thr / quota 30.7, 0.387 $/h, South Car
   --respawn-greedy-stuck 200` back on** (the BC rounds had it off as in the pbx loop; x3's misses are crashes at
   63-67% of the course, and the greedy rows put training spawns 2-0.25 s before each eval failure). Box extended to
   20:10 UTC.
+* x4 evals (BC r4 + pace curriculum from row 376 + greedy respawns): 9/9 65.69 / 9/9 65.17 (117.828) / 7/9 64.92 /
+  7/9 65.93 / **9/9 64.48 s = 117.851 (72.345B; hand-on `pbfr1b2_x4/ckpt_72343355392.pt`, 2.1M steps before)** /
+  9/9 64.55 (117.848) / 7/9 64.38 / 8/9 64.49 / 9/9 65.06 / 8/9 65.86 / 8/9 65.73. Four 9/9 evals in eleven (x3:
+  one in eleven) - the greedy-death respawns look like they help reliability at the faster pace. The greedy's MEDIAN
+  start is unchanged (*250 2.9 s, gap 4.35 s, tunnel exit 6.3 s), but every eval now has an episode taking the fast
+  plate -> gap jump (best exit 4.74 s = the planner's): those episodes carry the 64.4-64.5 s finishes. The pace band
+  371-375 is at 23-25% (the advance needs 30%).
+* Round 5 plan on x4's final (72.843B): 61.69 / 61.90 / 61.87 / 61.77 s - the planner levels off at ~61.6-61.9 s
+  (round 4: 61.59-61.78). x5 (17:00 UTC) = x4's final + BC r5 + spawn-states r5 + the pace curriculum from row 381,
+  x4's flags otherwise, 8e8 steps.
