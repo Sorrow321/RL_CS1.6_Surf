@@ -4719,3 +4719,12 @@ so the curriculum values are all passed). Success line d <= 55,533 (+2.83%). Rec
   5. Training healthy: reward 14-18, win 12-17%, value fit 0.97-0.98, KL 0.49-0.61, 160-180
   distilled rows per rollout. The new wall 404-409 is where the explorer's line taps left / forward
   (412-413) to avoid landing on the apex strip.
+* c11 at 16:44 (70.95B): band ~379-394 (~1.5 spine states/min through mixed walls; at this pace the
+  start is ~4 h away). Greedy evals 0.336-0.402. Course check (9 own-reservoir states x 18 greedy):
+  **c11 4/18** finishes (mean gain 18.8%; r38 14/18, c6 4/18), failing from 3% onward - the early
+  course right after the pit is where an exit would end.
+* The course pool, rebalanced live: `--spawn-states` is re-read when its file changes, so on the
+  box `autoresearch/spines/pbfr1b1_r38_reservoir.npy` was overwritten with
+  `pbfr1b1_r38_reservoir_strat.npy` (600 states per 5% bin; the early course was 357-587 per bin
+  against 1,100-2,000 late) at 71.001B, no restart. NB the box's copy of that tracked file now
+  differs from git; later launches name the `_strat` file.
