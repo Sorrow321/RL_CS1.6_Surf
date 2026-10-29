@@ -4582,3 +4582,15 @@ minibatch's forward) - so an update is 1 Adam step of 64. Reported kl 0.03-0.05.
   field: slab-solid) -> the tunnel at x ~340 (16 s) -> 1.31% at 16.6 s (chain 13 cells, all links exact). The
   incumbent drifts SOUTH from the basin by itself (rows 100/400 above), so this is the spare spine if the north one
   stalls at the basin.
+
+### c5 eroded the COURSE; c6 protects it with the policy's own course states (14:55-15:03 UTC)
+* c5's training finish rate (race/success_rate) fell steadily 0.29 -> 0.00 over its 400M steps while the band sat at
+  row 820 from ~68.71B (evals 0.405-0.415, the greedy walking less each eval: path 3,706 -> 2,133 u). The start region
+  was learning; the course after it was being forgotten - c4/c5's kl budget (0.3 per update, ~10x c2's) on a
+  curriculum whose spawns all lie in the first 1.4% of the map. c2 (kl 0.05) had held 24-45%.
+* c2's weights FROM THE STRIP (spine row 1050, record_ckpt on the box): greedy FINISHES in 81.9 s; stochastic 3/6
+  finish (64.0 / 66.4 s ...), 3 fail at 51-55%. So with c2's weights the whole map after the strip is there.
+* Spawn pool `runs/pool/course_c2.npy` (on the box, md5 17d37277...): those 7 recordings (the policy's OWN states),
+  every 5th tick past 1.4% and >= 2 s before an episode's end: 7,245 states, progress p10 6.7 / p50 39.8 / p90 77.8%.
+* c6 = c2's weights (68.294B) + the curriculum (demo-rate 0.2, tau0 1015) + `--spawn-states course_c2.npy
+  --spawn-states-frac 0.3` + `--target-kl 0.15`, 6e8 steps. Box extended to 18:03 UTC.
