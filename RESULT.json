@@ -3,18 +3,19 @@
  "round": 1,
  "final": false,
  "best": {
-  "score": 114.356,
-  "eval_file": "/home/steam/ar_pb/runs/pbfr1b4/pbfr1b4_c10/traj_71209844736.jsonl",
-  "run": "pbfr1b4_c10",
-  "step": 71209844736,
-  "ckpt": "/home/steam/ar_pb/runs/pbfr1b4/pbfr1b4_c10/ckpt_latest.pt",
+  "score": 117.706,
+  "eval_file": "/home/steam/ar_pb/runs/pbfr1b4/pbfr1b4_c11/traj_71505543168.jsonl",
+  "run": "pbfr1b4_c11",
+  "step": 71505543168,
+  "ckpt": "/home/steam/ar_pb/runs/pbfr1b4/pbfr1b4_c11/ckpt_71505018880.pt",
   "recipe": [
    "c8: incumbent fx0 + --demo-file pbfr1b4_stair_t.npy --demo-match-band --demo-rate 0.2 --spawn-states pbfr1b4_course_r38.npy --spawn-states-frac 0.3 --lr 5e-5 --target-kl 0.15 (+ the curriculum flags in NOTES)",
    "c9: c8's ckpt_latest + the FULL spine pbfr1b4_stair_a.npy --demo-tau0 423 (first finish 108.698)",
-   "c10: c9's ckpt_final + --demo-tau0 63: the band reached the true spawn; 114.356 (6/9, 69.31 s)"
+   "c10: c9's ckpt_final + --demo-tau0 63: the band reached the true spawn; 114.356 (6/9)",
+   "c11: c10's ckpt_latest + --demo-tau0 0 --ckpt-every 7.5e7: 117.706 (9/9, best 68.83 s, mean 69.73 s)"
   ],
-  "resume_from": "pbfr1b4_c9 ckpt_final 70.379B <- c8 <- incumbent fx0",
+  "resume_from": "pbfr1b4_c10 ckpt_latest 71.354B <- c9 <- c8 <- incumbent fx0",
   "commit": "fa3236c7"
  },
- "summary": "114.356 (c10 71.210B: 6/9 greedy finishes from the true start on the corrected core, best 69.31 s; 108.698 at the first finish, c9). Route: a doorway staircase the fix exposed (*249 basin -> *250 strip -> passage; OPEN QUESTION for the operator: is it in the real game?). Recipe: Go-Explore from the true spawn (5 min) -> a backward curriculum on its line warm from the incumbent, --demo-match-band, a 30% pool of the incumbent's own course states, --target-kl 0.15, lr 5e-5, demo-rate 0.2; ~800k steps/s on a 4080. Running c11 (c10's weights, per-eval snapshots) for 9/9."
+ "summary": "117.706 (c11 71.506B: 9/9 greedy finishes from the true start on the corrected core, best 68.83 s, mean 69.73 s; hand-on ckpt_71505018880, 0.5M steps before the eval). Route: a doorway staircase the fix exposed (*249 basin -> *250 strip -> passage; OPEN QUESTION for the operator: is it in the real game?). Recipe: Go-Explore from the true spawn (5 min) -> a backward curriculum on its line warm from the incumbent, --demo-match-band, a 30% pool of the incumbent's own course states, --target-kl 0.15, lr 5e-5, demo-rate 0.2; ~845k steps/s on a 4080. Evals after the peak swing 3-8/9."
 }
