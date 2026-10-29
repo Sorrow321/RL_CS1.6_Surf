@@ -3,11 +3,11 @@
  "round": 1,
  "final": false,
  "best": {
-  "score": 117.719,
-  "eval_file": "/home/steam/ar_pb/runs/pbfr1b3/pbfr1b3_cur6/traj_72631189504.jsonl",
+  "score": 117.738,
+  "eval_file": "/home/steam/ar_pb/runs/pbfr1b3/pbfr1b3_cur6/traj_73461661696.jsonl",
   "run": "pbfr1b3_cur6",
-  "step": 72631189504,
-  "ckpt": "/home/steam/ar_pb/runs/pbfr1b3/pbfr1b3_cur6/ckpt_72476524544.pt (155M steps before the eval, md5 d848e8e92376607a49e1e3f2aa2576ac)",
+  "step": 73461661696,
+  "ckpt": "/home/steam/ar_pb/runs/pbfr1b3/pbfr1b3_cur6/ckpt_73469526016.pt (cur6's ckpt_latest frozen 7.9M steps after the eval, md5 b992854bed16ac0f2a0b2a2f61c551aa)",
   "recipe": [
    "resume incumbent pbEXIT2_r38",
    "backward curriculum on autoresearch/spines/pbfr1b3_ge1_lineA_canon.npy (the run's own Go-Explore line from the true spawn: explore_phase1 --exact-chains --view-follow --cell-energy 32 --select-energy 3, ge_replay)",
@@ -19,5 +19,5 @@
   "resume_from": "incumbent pbEXIT2_r38 (fx0) via cur1..cur3",
   "commit": "see git log ar/pbfr1b3"
  },
- "summary": "16:07 UTC: 117.719 = 9/9 greedy finishes from the true start on the corrected core, best 68.44 s, mean 69.20 s (the WR is 75.18 s). Velocity-frame Go-Explore found the real way out (pump the east half-pipe, duck into the tunnel) from the true spawn in ~3 min; a backward curriculum on that line warm from the incumbent taught it in ~2.6 h (front-frac 0.85, rate 0.2, lr 5e-5); greedy-death respawns took 7/9 -> 9/9; start-band key exploration (T 2 for 3 s) cut the mean finish 70.6 -> 69.1 s. Evals swing 7-9/9. Next: the rest of the start (the record drops off the floor at 0.5 s, ours ~2.2-2.9 s) and reliability."
+ "summary": "16:07 UTC: 117.738 = 9/9 greedy finishes from the true start on the corrected core, best 67.87 s, mean 68.32 s (the WR is 75.18 s). Velocity-frame Go-Explore found the real way out (pump the east half-pipe, duck into the tunnel) from the true spawn in ~3 min; a backward curriculum on that line warm from the incumbent taught it in ~2.6 h (front-frac 0.85, rate 0.2, lr 5e-5); greedy-death respawns took 7/9 -> 9/9; start-band key exploration (T 2 for 3 s) cut the mean finish 70.6 -> 68.3 s. Evals 8-9/9. Next: the rest of the start (the record drops off the floor at 0.5 s, ours ~2.2-2.9 s) and reliability."
 }
