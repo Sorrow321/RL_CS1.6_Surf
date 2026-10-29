@@ -467,3 +467,7 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   relative to its own view. For `train_fast --demo-keys`: a spine spawn then starts holding the
   line's physical input (e.g. strafe-right into the ridge's north face while heading east)
   instead of neutral keys. Same provenance (pbfr1b1).
+* `pbfr1b1_r38_reservoir_strat.npy` (11,400 states, md5 3246b684a689c2cb00d3382516c4c19e): `pbfr1b1_r38_reservoir.npy`
+  resampled to 600 states per 5% progress bin (0-95%, with replacement where a bin is short), so
+  the early course (where the curriculum-trained policies erode first) is drawn as often as the
+  late course. Same provenance (the incumbent's own reservoir; pbfr1b1).
