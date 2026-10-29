@@ -460,3 +460,10 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
 * `pbfr1b1_ge_pump_a4.npy` (684 states, `.keys.npy` alike): `pbfr1b1_ge_pump_a.npy` thinned to every 4th
   row (+ its last row) - one spine state per policy decision (act_every 4) instead of per physics
   tick, so each curriculum advance covers 4x the play time. Same provenance (pbfr1b1).
+* `pbfr1b1_ge_pump_k.npy` / `pbfr1b1_ge_pump_k4.npy` (2,732 / 684 states; the states are byte-identical
+  to `_a` / `_a4`) with `.keys.npy` = the explorer's held keys TRANSLATED into the canonical view
+  frame by `tools/spine_canon_keys.py` (1,186 rows changed): the (fwd, side) pair whose wish
+  direction relative to the view-along-velocity is closest to what the explorer's keys did
+  relative to its own view. For `train_fast --demo-keys`: a spine spawn then starts holding the
+  line's physical input (e.g. strafe-right into the ridge's north face while heading east)
+  instead of neutral keys. Same provenance (pbfr1b1).
