@@ -170,8 +170,10 @@ static int parse_entities(BspMap* m, char* err, int errlen) {
         "func_wall", "func_breakable", "func_pushable", "func_button", "func_train",
         "func_conveyor", "func_wall_toggle", "func_rotating", "func_door_rotating", NULL
     };
-    PointEnt* points = (PointEnt*)calloc(1024, sizeof(PointEnt));
+    PointEnt* points = (PointEnt*)calloc(MAX_POINTS, sizeof(PointEnt));
     int npoints = 0;
+    int overflow = 0;                  /* entities a full table could not hold (-> load fails) */
+    const char* over_what = "";
     typedef struct { int trig; char target[64]; } Pending;
     Pending pend[MAX_TRIGGERS]; int npend = 0;
 
@@ -187,13 +189,13 @@ static int parse_entities(BspMap* m, char* err, int errlen) {
         float origin[3]; kv_vec(kv, n, "origin", origin);
 
         if (!strncmp(cls, "info_player_start", 17) || !strncmp(cls, "info_player_deathmatch", 22)) {
-            if (m->numspawns < MAX_SPAWNS) {
+            if (m->numspawns >= MAX_SPAWNS) { overflow++; over_what = "spawn points"; } else {
                 v3copy(m->spawns[m->numspawns].origin, origin);
                 m->spawns[m->numspawns].yaw = parse_yaw(kv, n);
                 m->numspawns++;
             }
         } else if (!strcmp(cls, "trigger_teleport") && model >= 0) {
-            if (m->numtriggers < MAX_TRIGGERS) {
+            if (m->numtriggers >= MAX_TRIGGERS) { overflow++; over_what = "teleport/push/hurt triggers"; } else {
                 Trigger* t = &m->triggers[m->numtriggers];
                 memset(t, 0, sizeof(*t));
                 t->kind = TRIG_TELEPORT; t->model = model; v3copy(t->origin, origin);
@@ -207,7 +209,7 @@ static int parse_entities(BspMap* m, char* err, int errlen) {
                 m->numtriggers++;
             }
         } else if (!strcmp(cls, "trigger_hurt") && model >= 0) {
-            if (m->numtriggers < MAX_TRIGGERS) {
+            if (m->numtriggers >= MAX_TRIGGERS) { overflow++; over_what = "teleport/push/hurt triggers"; } else {
                 Trigger* t = &m->triggers[m->numtriggers];
                 memset(t, 0, sizeof(*t));
                 t->kind = TRIG_HURT; t->model = model; v3copy(t->origin, origin);
@@ -216,7 +218,7 @@ static int parse_entities(BspMap* m, char* err, int errlen) {
                 m->numtriggers++;
             }
         } else if (!strcmp(cls, "trigger_push") && model >= 0) {
-            if (m->numtriggers < MAX_TRIGGERS) {
+            if (m->numtriggers >= MAX_TRIGGERS) { overflow++; over_what = "teleport/push/hurt triggers"; } else {
                 Trigger* t = &m->triggers[m->numtriggers];
                 memset(t, 0, sizeof(*t));
                 t->kind = TRIG_PUSH; t->model = model; v3copy(t->origin, origin);
@@ -241,7 +243,7 @@ static int parse_entities(BspMap* m, char* err, int errlen) {
                     (!strcmp(cls, "func_door") && kv_float(kv, n, "skin", 0.0f) < -1.0f)) && model >= 0) {
             /* SOLID_NOT contents volumes (docs/02 §4): func_water, skin<-1 illusionary,
              * doors with skin!=0; func_ladder = CONTENTS_LADDER */
-            if (m->numcontents < MAX_CONTENTS) {
+            if (m->numcontents >= MAX_CONTENTS) { overflow++; over_what = "contents entities"; } else {
                 ContentsEnt* c = &m->contents[m->numcontents];
                 c->model = model; v3copy(c->origin, origin);
                 c->skin = !strcmp(cls, "func_ladder") ? CONTENTS_LADDER
@@ -261,7 +263,7 @@ static int parse_entities(BspMap* m, char* err, int errlen) {
              * a mirrored solid-class list with the same gate.) */
             if (solid && !strcmp(cls, "func_conveyor") &&
                 ((int)kv_float(kv, n, "spawnflags", 0) & 2)) solid = 0;
-            if (solid && m->numsolids < MAX_SOLIDS) {
+            if (solid && m->numsolids >= MAX_SOLIDS) { overflow++; over_what = "solid brush entities"; } else if (solid) {
                 SolidEnt* s = &m->solids[m->numsolids];
                 s->model = model; v3copy(s->origin, origin);
                 ent_bounds(m, model, origin, s->absmin, s->absmax);
@@ -271,7 +273,7 @@ static int parse_entities(BspMap* m, char* err, int errlen) {
         } else {
             /* point entity: remember targetname for teleport destination lookup */
             const char* tn = kv_get(kv, n, "targetname");
-            if (tn && npoints < 1024) {
+            if (tn && npoints >= MAX_POINTS) { overflow++; over_what = "targetname'd point entities"; } else if (tn) {
                 strncpy(points[npoints].targetname, tn, 63); points[npoints].targetname[63] = 0;
                 v3copy(points[npoints].origin, origin);
                 points[npoints].yaw = parse_yaw(kv, n);
@@ -293,7 +295,15 @@ static int parse_entities(BspMap* m, char* err, int errlen) {
         }
     }
     free(points);
-    (void)err; (void)errlen;
+    if (overflow) {
+        /* a dropped entity is a silent physics change (a missing wall, floor or kill trigger):
+         * refuse the map instead */
+        char msg[192];
+        snprintf(msg, sizeof msg, "map has %d more %s than the core's tables hold (src/sim.h MAX_*)",
+                 overflow, over_what);
+        seterr(err, errlen, msg);
+        return -1;
+    }
     return 0;
 }
 
