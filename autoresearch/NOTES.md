@@ -4644,3 +4644,15 @@ steps/s, kl ~0.2 (updates stop after 2-3 minibatch steps), training finishes 60-
   instead of bouncing to the cap. c8's ckpt_latest pulled (68.878B on the box, md5 3b161ce6...).
 * **c9** (18:29) = c8's weights + the FULL stair_a spine + `--demo-tau0 423` (c8's 41% band), match-band, the course
   pool, target-kl 0.15, 1.5e9 steps. Box extended to ~22:59 UTC (wrap-up 22:57).
+
+### THE FIRST FINISH FROM THE TRUE START ON THE CORRECTED CORE: 0.415 -> 108.698 (2026-10-29 ~18:55 UTC, c9 70.313B)
+* c9 (c8's weights + the full stair_a spine from row 423 + match-band + the course pool 0.3 + target-kl 0.15 + lr 5e-5
+  + demo-rate 0.2; 68.878 -> 70.379B, 1.5e9 steps in 30 min at ~846k steps/s): the band walked 423 -> 58-63 (mid-air
+  after the crouch-jump from the spawn floor; success 23-26% at rows 63-67, 11-16% at 58-62 and rising), training
+  finishes 51-66%.
+* Eval traj_70313312256 (score.py): **108.698, 1/9 finishes, best 72.38 s** - episode 7 is in the basin at 6.3 s, on
+  the strip at 7.3 s, in the tunnel at 9.6 s, past 1.4% at 11.0 s, and flies the rest of the map (the incumbent's
+  course). The other 8 still bounce/die at the doorway (0.40-0.42%): the approach rows 0-57 are not trained yet.
+  For scale only: the WR is 75.18 s via the half-pipe; this route is the corrected core's staircase (open question).
+* Hand-on (the round-end rule): c9's ckpt_final.pt (70.379B, md5 25f00cbc..., 66M after the eval, vs the
+  69.879B snapshot 434M before; both pulled). c10 (19:05) = ckpt_final + the same flags + `--demo-tau0 63`, 2e9 steps.
