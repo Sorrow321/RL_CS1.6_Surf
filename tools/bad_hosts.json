@@ -2896,6 +2896,15 @@
       "detail": "autoresearch pbr9b4: not running after 330 s (status offline, )",
       "run": "",
       "reason": "unreliable"
+    },
+    {
+      "ip": "47.160.211.234",
+      "machine_id": 138344,
+      "host_id": 555054,
+      "date": "2026-10-29",
+      "detail": "RTX 5070 power limit 175 W of 250 W default (70%), gpu_health UNHEALTHY; bf16 GEMM 67 TFLOPS; machine 138344 Texas; pbfr1b1 2026-10-29",
+      "run": "",
+      "reason": "gpu_capped"
     }
   ],
   "known_good": [
