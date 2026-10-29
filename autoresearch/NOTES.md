@@ -4681,3 +4681,15 @@ The incumbent recipe's resume ran at 218-274k steps/s on it.
   beam line from its spawn row + 0.5 s), `--respawn-frac 0.7` (30% true-start episodes keep the start practised; there the
   start-band exploration no longer applies), the band at --demo-front-temp 0.5 / 40 ticks, cur7's other flags. The
   curriculum walks back from the finish; it should stall where the line is faster (70-75%, then 45-50%).
+* cur8 (pace on the full 65.77 s line, 75.48-76.01B): evals 8/9 / 7/9 / 9/9 (67.55) / 7/9 / 8/9 / 8/9 / 8/9 / 9/9 (67.50) -
+  no faster greedy yet. Its curriculum walked back from the finish 8,578 -> 7,358 (~80.5%) in ~20 min, then STALLED there
+  (15-23% per band): the pace rule judges a band on its time all the way to the FINISH, so a band at 80% needs the policy
+  within 0.5 s of the line over 80-100%, where the line is ~0.37 s faster than the greedy's best episode and more than
+  its typical one. A full-line pace spine teaches the end first and stalls on accumulated small deficits.
+* **cur9** (18:34 UTC): cur8's ckpt_latest (76.012B, md5 afd81f1d...) on the SAME line cut at its first 78% crossing
+  (autoresearch/spines/pbfr1b3_beam2_c78 + keys, 7,193 rows, success d <= 12,672), same flags: the pace is judged locally,
+  and the band reaches the 70-75% section (the line's +0.72 s) after passing 75-78%, where the greedy is already faster.
+* Harness issue: `box.py launch`'s ssh dropped (exit 255) after the source record gate; the trainer (started detached)
+  kept running but box.py printed REFUSED and did not record the run. I ran the run's own record gate by hand
+  (tools/record_gate.py pbfr1b3_cur9: PASSED) and added the run to boxes/pbfr1b3.json with a note. The link to this
+  Utah box drops connections all afternoon (scp truncations, ssh timeouts); pulls need retries.
