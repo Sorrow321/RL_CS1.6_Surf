@@ -4620,3 +4620,9 @@ The incumbent recipe's resume ran at 218-274k steps/s on it.
   best 68.44 s, mean 69.20 s)** / 7/9 (68.37) / 8/9 / 7/9 - the start-band exploration cut the mean finish ~70.6 -> ~69.1 s
   in ~1 h (the drop off the floor moves earlier). Hand-on for the 68.44 s eval: ckpt_72476524544 (155M before it; the
   2e8 cadence); for the 68.98 s one ckpt_72276246528.
+* **117.719** (cur6 72.631B, traj_72631189504): 9/9, best 68.44 s, mean 69.20 s; hand-on runs/pbfr1b3/pbfr1b3_cur6/
+  ckpt_72476524544.pt (md5 d848e8e92376607a49e1e3f2aa2576ac, 155M before the eval). Splits of its 9 episodes: drop off
+  the spawn floor 2.18-2.24 s (8/9; 2.91 s once), tunnel 7.25-7.54 s, then 61.2-62.0 s to the finish. Against the record
+  (yardstick only: tunnel at 5.1 s) the start still has ~2 s - ~1.7 s of crouch-hopping east on the floor (the record runs
+  up a small rise at x ~965 and leaves the floor at 0.53 s; ours hops to the edge at x ~1,290) and ~0.45 s in the lap.
+  The course after the tunnel (~61.6 s) is the incumbent's, within ~0.5 s of what the old core's expert loop policy flew.
