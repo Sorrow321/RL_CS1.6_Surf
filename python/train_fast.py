@@ -3101,8 +3101,12 @@ class _TorchPolicyBase:
             if self._keys_tick is not None:
                 fresh = tick < self._keys_tick + self._period
                 self.keys.reset(fresh)
-            elif getattr(self, "spawn_duck", False):
+            elif getattr(self, "spawn_duck", False) or getattr(self, "spawn_keys", None) is not None:
                 fresh = np.ones(n, bool)
+            if getattr(self, "spawn_keys", None) is not None and fresh is not None and fresh.any():
+                # record_ckpt --spawn-keys (diagnostics): a fresh episode starts holding these
+                # engine keys (fwd, side, duck), as a training spine spawn does with --demo-keys
+                self.keys.state[fresh] = np.asarray(self.spawn_keys, np.int32)
             if getattr(self, "spawn_duck", False) and fresh is not None and fresh.any():
                 # --keys-hold-spawn-duck (the checkpoint's): a crouched spawn holds duck, as
                 # the trainer does
