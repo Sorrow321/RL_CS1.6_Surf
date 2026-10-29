@@ -457,3 +457,6 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   the crouch tunnel at ~480 u/s, out of it and into the pit at (861, -3,135, 3,337) = +3.00%. No
   contact with the doorway or its conveyors. Uniform random actions in the policy's velocity frame;
   no policy, no demo, no record (pbfr1b1, round 1 of the corrected-core lineage).
+* `pbfr1b1_ge_pump_a4.npy` (684 states, `.keys.npy` alike): `pbfr1b1_ge_pump_a.npy` thinned to every 4th
+  row (+ its last row) - one spine state per policy decision (act_every 4) instead of per physics
+  tick, so each curriculum advance covers 4x the play time. Same provenance (pbfr1b1).
