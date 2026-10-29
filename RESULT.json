@@ -3,6 +3,6 @@
  "round": 1,
  "final": false,
  "best": null,
- "summary": "Box 58247606 (4070 Ti). Reward-free GE from the true start found the real way out (ridge pump -> arch -> tunnel, to +3.2%); a backward curriculum on it with the incumbent's weights walked back to the pump's east-end U-turn and stalls there. Generic fixes that each moved it: --race-ratchet-start-cap (new: no pay for returning from a spawn behind the start), translated held keys at spine spawns (--demo-keys via spine_canon_keys), self-imitation (0.2 -> 0.4: the wall state 0.2% -> 14%). The skill there is a sustained strafe hold (core-measured). c8 (15:56 UTC) advances at 12%. Greedy evals still ~0.41; the course after the tunnel is eroding (4/18 vs r38 14/18 from mid-course states).",
- "commit": "67835e4f"
+ "summary": "Box 58247606 (4070 Ti). Reward-free GE from the true start found the real way out (ridge pump -> arch -> tunnel, to +3.2%); backward curriculum on it with the incumbent's weights. Walls fell to generic fixes: --race-ratchet-start-cap (new), translated held keys at spine spawns, SIL, and --demo-bc (new: distil the spine's held keys at frontier-band spawns; band-only - all-spawn distillation broke learned rows). c11 (16:15 UTC) took the band 429 -> ~409 in 10 min. Greedy evals still ~0.41 until the band nears the start; the course after the tunnel is eroded (4/18 vs r38 14/18) and gets a re-anchor at the end.",
+ "commit": "27cd220f"
 }

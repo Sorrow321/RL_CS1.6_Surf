@@ -4713,3 +4713,9 @@ so the curriculum values are all passed). Success line d <= 55,533 (+2.83%). Rec
   0.80 vs 0.98) - pulling the rows BEHIND the band, where the policy already succeeds with its own
   actions, toward the explorer's random-ish keys broke them. Stopped after ~3 min; **c11** (16:15
   UTC) = band-only tagging, from c9's ckpt_latest (not c10's), C 0.3, rate 0.15, SIL 0.4.
+* **c11 BREAKS THE WALL** (band-only `--demo-bc 0.3`, from c9's 70.60B, 16:15 UTC): after the usual
+  restart dip, in ~10 min the band went 429 (c9: 15-18%) -> 424 passed at 57% -> 414 at 23-58% ->
+  shuttling 409 / 414 (409 at 0-41%, 404 at 0%) - ~20 spine states where SIL alone took ~30 min per
+  5. Training healthy: reward 14-18, win 12-17%, value fit 0.97-0.98, KL 0.49-0.61, 160-180
+  distilled rows per rollout. The new wall 404-409 is where the explorer's line taps left / forward
+  (412-413) to avoid landing on the apex strip.
