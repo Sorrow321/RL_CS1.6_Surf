@@ -4581,3 +4581,12 @@ The incumbent recipe's resume ran at 218-274k steps/s on it.
 * Hand-on: runs/pbfr1b3/pbfr1b3_cur4/ckpt_71150600192.pt (md5 79af5e10a730dc57f5815de140de897a) = cur4's ckpt_latest
   copied to a step-named snapshot 11M steps after the 114.305 eval (run_arm's --ckpt-every 1e9 left only 70.856B, from
   before the greedy could finish, at or before the eval). Next runs get `--ckpt-every 2e8`.
+* **115.422** (cur5's first eval, traj_71172620288 = cur4's final weights 71.172B, 1 update after the resume): **7/9
+  finish, median 100%, best 70.66 s** (mean 72.27 s). Two start lines in one policy: 5 episodes reach the tunnel at
+  8.7-8.8 s and finish in 70.7-71.2 s (the policy found a ~6 s shorter pump than the explorer's 14.4 s line), 2 take a
+  13.3 s pump and finish in 75.3-76.1 s; one falls into the half-pipe's north bottom kill volume at 4.9 s, one dies at
+  54% (47.5 s). Hand-on for it: runs/pbfr1b3/pbfr1b3_cur5/ckpt_71172096000.pt (= runs_ckpt.pt of cur5, md5
+  3706c62da1796d01754e95a6aabf478f).
+* **cur5** (14:45 UTC): that checkpoint + cur4's flags at tau0 0 + `--respawn-greedy 0.2 --respawn-greedy-window 0.25 2.0
+  --respawn-greedy-stuck 200` (the recipe's own greedy-death spawns: the downstream deaths are now the frontier) +
+  `--ckpt-every 2e8`; 3e9 steps.
