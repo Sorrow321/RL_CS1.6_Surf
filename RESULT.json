@@ -3,16 +3,19 @@
  "round": 1,
  "final": false,
  "best": {
-  "score": 0.42,
-  "eval_file": "/home/steam/ar_pb/runs/pbfr1b3/pbfr1b3_cur2/traj_68231888896.jsonl",
-  "run": "pbfr1b3_cur2",
-  "step": 68231888896,
-  "ckpt": "(box) runs/pbfr1b3_cur2/ckpt_final.pt",
+  "score": 114.305,
+  "eval_file": "/home/steam/ar_pb/runs/pbfr1b3/pbfr1b3_cur4/traj_71139590144.jsonl",
+  "run": "pbfr1b3_cur4",
+  "step": 71139590144,
+  "ckpt": "/home/steam/ar_pb/runs/pbfr1b3/pbfr1b3_cur4/ckpt_71150600192.pt (11M steps after the eval; the box's milestones are 1e9 apart)",
   "recipe": [
-   "resume incumbent pbEXIT2_r38 + backward curriculum on autoresearch/spines/pbfr1b3_ge1_lineA_canon.npy (own GE from the true spawn), --demo-min-ep 50, lr 1e-4 (cur1) -> 5e-5 (cur2) -> --demo-front-frac 0.8 (cur3)"
+   "resume incumbent pbEXIT2_r38",
+   "backward curriculum on autoresearch/spines/pbfr1b3_ge1_lineA_canon.npy (the run's own Go-Explore line from the true spawn: explore_phase1 --exact-chains --view-follow --cell-energy 32 --select-energy 3, ge_replay)",
+   "--demo-window 5 --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5 --demo-min-ep 50 --demo-success-d 100 --demo-success-bonus 50 --keys-hold-spawn-duck --yaw-entropy 0 --demo-front-temp 0.5 --demo-front-ticks 40 --demo-front-view 6 --no-respawn-novel --respawn-backward-mix 0 --int-real-only 0 --respawn-front-perturb 0 --respawn-greedy 0 --respawn-greedy-stuck 0",
+   "cur1 lr 1e-4 -> cur2 lr 5e-5 -> cur3 --demo-front-frac 0.8 -> cur4 --demo-rate 0.2 --demo-front-frac 0.85 --respawn-frac 0.97 --demo-match-band"
   ],
-  "resume_from": "incumbent pbEXIT2_r38 (fx0)",
+  "resume_from": "incumbent pbEXIT2_r38 (fx0) via cur1..cur3",
   "commit": "see git log ar/pbfr1b3"
  },
- "summary": "12:57 UTC: velocity-frame Go-Explore found the corrected core's real way out of the start room (pump the east half-pipe, duck into the tunnel); a backward curriculum on that line (warm from the incumbent) is at tau ~1290 of 1900 (cur3, front-frac 0.8). From the tunnel the greedy finishes 7/9 at ~62 s. Best eval so far 0.42 (the greedy still bounces at the doorway until the curriculum reaches the spawn)."
+ "summary": "14:44 UTC: FIRST REAL FINISHES on the corrected core. The greedy from the true start pumps the east half-pipe, ducks into the tunnel and flies the map: evals 111.924 (4/9, 75.62 s) -> 113.153 (5/9, 72.09 s) -> 114.305 (6/9, best 70.85 s; the WR is 75.18 s). How: velocity-frame Go-Explore (--view-follow, energy cells, --select-energy 3) found the real way out from the true spawn in ~3 min; a backward curriculum on that line, warm from the incumbent (whose course after the tunnel survives the core fix), walked it back in ~2.6 h once the band got enough of the training decisions (--demo-front-frac 0.85) and stopped oscillating (--demo-rate 0.2). Next: reliability (failures at 44-91% downstream) and time."
 }

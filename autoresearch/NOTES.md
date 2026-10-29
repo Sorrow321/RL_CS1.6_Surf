@@ -4564,3 +4564,20 @@ The incumbent recipe's resume ran at 218-274k steps/s on it.
   change**: in the 70.762B eval 4/9 episodes head EAST, drop off the ledge ~130 u south of the line's drop (y -3,174..
   -3,203 vs -3,048) and die in the half-pipe's bottom kill volume (z ~3,290); the rest stop in the room (score 0.317:
   going east costs field progress first). kl median 1.4.
+
+### THE FIRST REAL FINISHES FROM THE TRUE START: 111.9 -> 113.2 -> 114.3 (2026-10-29 14:44 UTC, cur4)
+* cur4's curriculum reached tau 0 (the true spawn) at ~14:40 UTC (it went ~310 -> 0 in ~15 min, the last bands at
+  21-27%). The greedy evals from the true start (best progress): 5.7% (70.837B) -> 22.2% (70.913B) -> **113.153**
+  (70.988B: 5/9 finish, median 100%, best **72.09 s**) / 111.924 (71.064B: 4/9, 75.62 s) / **114.305** (71.140B: **6/9,
+  best 70.85 s**). The human record is 75.18 s (yardstick only). Every episode pumps the east half-pipe (energy height up
+  to 4,010-4,072) and ducks into the tunnel at 9.2-14.2 s; the non-finishers die downstream at 44-91%.
+* So the whole chain works on the corrected core, champion-free and generic: velocity-frame Go-Explore from the true
+  spawn (3 min) -> one exact line -> a backward curriculum on it warm from the incumbent (~2.6 h, cur1-cur4) -> the
+  incumbent's course after the tunnel, learned on the old core, carries the rest.
+* What the curriculum needed, in the order it bit: `--demo-min-ep 50` (the checkpoint carries the expert loop's 1e9);
+  lr 5e-5, not 1e-4 (kl 2-3.5 per update at 1e-4); `--demo-front-frac 0.8-0.85` (a failing band episode is 1-3 s, a
+  succeeding one ~60 s of course: at 0.4 the band had ~2% of the decisions); `--demo-rate 0.2` (a band at 20-29% made
+  tau oscillate band <-> band+5 at 0.3, 4.6 rows/min; at 0.2 ~12-20 rows/min); `--respawn-frac 0.97`.
+* Hand-on: runs/pbfr1b3/pbfr1b3_cur4/ckpt_71150600192.pt (md5 79af5e10a730dc57f5815de140de897a) = cur4's ckpt_latest
+  copied to a step-named snapshot 11M steps after the 114.305 eval (run_arm's --ckpt-every 1e9 left only 70.856B, from
+  before the greedy could finish, at or before the eval). Next runs get `--ckpt-every 2e8`.
