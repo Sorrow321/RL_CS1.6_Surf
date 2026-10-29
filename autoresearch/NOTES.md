@@ -4565,3 +4565,31 @@ Box 58244389 (RTX 5080, Ryzen 9 7945HX 32 thr / quota 30.7, 0.387 $/h, South Car
   78.12 s). In the 112.092 eval: 2/9 still in the start room, 7/9 out; the 3 that got out but did not finish left
   LATE (25-30 s in the room) and died at energy gates (the pit 3.2%, the x -1,015 wall 6.7%) or at 46% - a late,
   slow exit looks like the next reliability problem, not the course.
+
+### 9/9 FROM THE TRUE START: 117.779, best 66.62 s (2026-10-29 13:05 UTC, c3 69.290B)
+* c3 evals after the first finish: 116.644 (69.064B, 8/9, 67.34 s) / 114.427 (6/9) / 116.654 (8/9, 67.06) /
+  **117.779 (69.290B, 9/9, best 66.62 s)** / 115.549 / 115.558 / 115.568 (7/9, 66.28) / 114.466 (6/9, 66.03) /
+  116.682 (8/9, 66.21). From 69.06B on every episode of every eval leaves the start room (tunnel exit, 1.4%, at
+  6.2-6.8 s with h 3,818-3,826). Hand-on: `runs/pbfr1b2/pbfr1b2_c3/ckpt_69290426368.pt` (md5 280cf25c..., the
+  eval's own weights - snapcopy's copy at the eval step). The curriculum reached the true start at ~69.7B (band
+  [0,4] 84% success). Training finish rate 73% at the end.
+* Time budget vs the old lineage (yardstick only): its bug start left the tunnel at 3.6-3.9 s and finished in 62.9-66 s;
+  this start leaves it at 6.2-6.8 s and finishes in 66.0-67.3 s, i.e. the course after the tunnel is flown at the
+  old speed and the ~2.5 s are the staircase (the greedy still walks NW to its old north-corner spot first, then
+  back east to *249). A direct line (west onto *249, duck-jump onto *250's north part, jump + duck into the north
+  gap) is ~2 s faster in principle.
+* c4 (13:23 UTC) = c3's final weights + spine `pbfr1b2_door3.npy` (rows 0-490 of door2: the start room only) with
+  `--demo-success-d -665` (the same line, d <= 56,253) and `--demo-tau0 0`: evals 116.677 (8/9, 66.36 s) / 116.680
+  (8/9, 66.28) / 116.699 (8/9, 65.70). Stopped at 69.989B (ckpt_latest) for h1.
+
+### h1: the half-pipe start as an ENERGY spine (13:32 UTC, 30-min first test)
+* Why: (1) the staircase's in-game legality is the operator's call; the half-pipe is the record's way and needs no
+  ruling. (2) Energy: the staircase leaves the tunnel with h ~3,820, the record ~3,957; the old lineage's notes put
+  its later energy gates down to that start-room deficit.
+* Spine `pbfr1b2_hp1.npy` (spines README): the archive's chain to cell 25745 - east, ~14 s of pumping, back into the
+  north tunnel's east end at 602 u/s with h 3,960. `--demo-success-d -652` (the same line, d <= 56,253, past the
+  tunnel exit) `--demo-success-energy 80` (only crossings with h >= 3,880 count; the staircase crosses with
+  3,813-3,842) `--demo-success-strict` (a finish without the energetic crossing is a failure: otherwise the
+  staircase's finishes would walk the curriculum back) `--demo-match-band`; the rest = c4's flags. Generic: the
+  lineage's energy-spine rule (gate-17 playbook), the spine is the explorer's own line, nothing names the half-pipe.
+* First bands (spawned in the tunnel entrance at 600 u/s): 28-44% energetic crossings.
