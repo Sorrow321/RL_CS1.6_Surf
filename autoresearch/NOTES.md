@@ -4624,3 +4624,9 @@ before building on it. A backup course pool is being recorded locally from the i
   --no-respawn-novel --respawn-backward-mix 0 --int-real-only 0 --maxvel 3500`.
 * (16:24 UTC) Harness issue, continued: since the offline box's release at 15:19 no acceptable offer has fit the
   0.22 $/h of fleet headroom (cheapest 0.31-0.62). Box time this round so far: 13:25-15:05 only (~1.7 h of 4.75).
+
+### Box 58288288 (RTX 4080 + Ryzen 9 9950X, 0.39 $/h, Japan), rented 18:08 UTC; c8 launched 18:12
+c8 = the incumbent + `pbfr1b4_stair_t` (939 rows) + `--demo-match-band` + `--spawn-states pbfr1b4_course_r38.npy
+--spawn-states-frac 0.3` + `--target-kl 0.15 --lr 5e-5 --demo-rate 0.2`, 1.2e9 steps. First minute: ~316k
+steps/s, kl ~0.2 (updates stop after 2-3 minibatch steps), training finishes 60-67% (the course pool), band
+938 -> 743 at 98% success.
