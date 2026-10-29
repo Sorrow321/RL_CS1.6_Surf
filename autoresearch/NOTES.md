@@ -4626,3 +4626,33 @@ The incumbent recipe's resume ran at 218-274k steps/s on it.
   (yardstick only: tunnel at 5.1 s) the start still has ~2 s - ~1.7 s of crouch-hopping east on the floor (the record runs
   up a small rise at x ~965 and leaves the floor at 0.53 s; ours hops to the edge at x ~1,290) and ~0.45 s in the lap.
   The course after the tunnel (~61.6 s) is the incumbent's, within ~0.5 s of what the old core's expert loop policy flew.
+* cur6 to 16:33 UTC (73.48B): 9/9 (68.30 s) / 8/9 / 8/9 / 9/9 (68.28) / 8/9 / **9/9 (traj_73461661696, best 67.87 s, mean
+  68.32 s)** - mean finish ~68.3 s now, 8-9/9 per eval. Hand-on for it: ckpt_73469526016.pt (cur6's ckpt_latest frozen 7.9M
+  steps after the eval, md5 b992854bed16ac0f2a0b2a2f61c551aa; the 2e8 cadence left 73.2776B, 184M before).
+* **cur7** (16:34 UTC): ckpt_73469526016 + cur6's flags with `--ckpt-every 75e6` (a snapshot beside every eval, so the
+  hand-on rule finds the weights of the best eval itself), 4e9 steps.
+
+### pbfr1b3 round 1 lesson (DRAFT 16:35 UTC; finalised at wrap-up)
+* **Score 0.405 -> 117.738 (9/9 greedy finishes from the true start on the corrected core, best 67.87 s; the human
+  record is 75.18 s).** The first lineage's start (a bug climb) is replaced by the real one: pump the east half-pipe
+  one lap, fly back north-west over the spawn room, duck into the passage beside the fatal teleport *257, run the tunnel.
+* **What found it: Go-Explore with the policy's own action FRAME.** explore_phase1 --view-follow (bursts hold a view offset
+  from the velocity heading, the --view-absolute velocity frame) + energy cells + --select-energy 3 + --exact-chains, from
+  the true spawn, 4,096 envs: half-pipe energy height 4,077 and 197 tunnel cells in 2.7 min. The first lineage's uniform
+  yaw-rate explorer never passed 3,839 in 6-15 min and concluded the pump was "a policy skill"; it was the explorer's
+  action space. Generic: nothing in the search names a place, and the constants are the auto_spine GE settings.
+* **What taught it: the backward curriculum on that one exact line, warm from the incumbent**, whose course after the
+  tunnel (learned on the old core) still flies on the corrected one (7/9 from a tunnel spawn before any start training).
+  The four settings that bit, in order: `--demo-min-ep 50` (the incumbent's config carries the expert loop's 1e9: the
+  trainer refuses); lr 5e-5 (1e-4 read kl 2-3.5 per update with the value loss climbing); `--demo-front-frac 0.85` (a
+  failing band episode lasts 1-3 s, a passing one flies 60 s of course, so at 0.4 the band had ~2% of the decisions);
+  `--demo-rate 0.2` (bands at 20-29% made tau oscillate at 0.3: 4.6 -> 12-20 rows/min). ~2.6 h for 1,900 rows.
+* **Then, at tau 0 (the band = the true start):** greedy-death spawns (`--respawn-greedy 0.2`, the recipe's) 7/9 -> 9/9;
+  start-band key exploration (`--demo-front-temp 1.0 --demo-front-ticks 400`: keys at T 2 for 3 s) moved the drop off the
+  floor 2.9 -> 2.2 s and the mean finish 70.6 -> 68.3 s in ~1.5 h. The policy found a one-lap pump by itself (the
+  explorer's line was 2.5 laps, 14.4 s to the tunnel; the policy's 7.3 s).
+* **Ops:** run_arm's --ckpt-every 1e9 leaves no snapshot near a transient best eval - use 75e6-2e8 (or copy ckpt_latest to
+  ckpt_<step>.pt by hand); size --steps to the watch (cur2 ended unwatched); `box.py pull` over this link is slow - run it
+  in the background; beam_tas refuses --macro-hold on a --keys-hold checkpoint.
+* **Next (where the time is):** the start still has ~2 s against the record (yardstick only): ~1.7 s of crouch-hopping on
+  the spawn floor before the drop and ~0.45 s in the lap; the course after the tunnel is ~61.2-62 s. Reliability is 8-9/9.
