@@ -455,3 +455,13 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   (16.7 s): crouch-jump into the basin, a duck-jump onto the SOUTH *250 strip, a jump south into the south gap, the
   crouch passage west along y ~-3,120 into the tunnel at x ~340, 1.34% at its end; canonicalised like stair_a. No demo,
   no record data, nothing chosen by hand but the "shortest chain past 1.2%" rule.
+* `pbfr1b4_stair_t.npy` + `.keys.npy` (939 rows; md5 b5dddd4eda70dfe038b0e640e1bc49be / 35922255066f66c4b94211cb1af7bf2e):
+  pbfr1b4_stair_a with its two IDLE stretches removed (rows 128-418: wandering in the basin after the landing; rows
+  496-1018: wandering on the north strip), cut by the line's own contacts (first *249 contact + 15, last *249 contact
+  - 40 .. first *250 contact + 25, last rest on *250 - 10 .. end). A backward curriculum only spawns from rows, so
+  the cut removes ~800 near-identical bands, not a transition.
+* `pbfr1b4_course_r38.npy` (2,547 rows; md5 fc4e620e9a7d6b0982b1d1828a5cc290): a `--spawn-states` pool of the
+  INCUMBENT's own states down the course: its greedy flights (record_ckpt --dump-states, corrected core) from
+  pbfr1b4_stair_a rows 1050 (to 63.5%, then a fall) and 1100 (a FINISH, 62.5 s), every 5th tick past 1.4% (a failed
+  episode's last 260 ticks dropped); progress p10 / p50 / p90 7.2 / 43.9 / 80.7%. Keeps the course practised while a
+  curriculum trains the start (pbfr1b4 c5 lost it: training finishes 29% -> 0%).
