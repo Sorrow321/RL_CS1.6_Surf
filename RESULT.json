@@ -3,6 +3,6 @@
  "round": 1,
  "final": false,
  "best": null,
- "summary": "No eval yet (box refused at the fleet's 1.2 $/h cap; one 5070 box was power-capped, blocklisted, released). Analysis: on the corrected core the way out is east through a low arch onto a surf ridge, pump, back up the ridge's west end, through the arch, onto the north shelf (feet ~3,704, x 660-880) and into the crouch tunnel; ~h 3,880 needed. Local Go-Explore with energy cells + --select-energy 3 + --view-follow pumps to h 4,053 (old lineage ~3,840) and brings states back west at h ~3,930; shelf not reached yet. Next: a bigger GE on a box, then a backward curriculum on the found line with the incumbent's weights.",
- "commit": "a46c649d"
+ "summary": "Box 58247606 (4070 Ti). A reward-free Go-Explore from the true start (energy + heading cells, --select-energy 3, velocity-frame strafes, 15 min) found the real way out on the corrected core: pump on the ridge, back through the arch at h ~3,945, over the spawn room into the crouch tunnel, to +3.21%. c1 (12:47 UTC): the incumbent resumed on a backward curriculum along that chain (2,732 states, success at +2.83%), own reservoir 25%, energy-pot 12, lr 5e-5. A shorter chain climbs the doorway via conveyor *249/*250 against the push fields - flagged as a sim suspect, not used. No eval yet.",
+ "commit": "5bd3c548"
 }

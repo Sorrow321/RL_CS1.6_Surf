@@ -4507,3 +4507,57 @@ in the spawn room's east half (|v| 683) and 3,912 in its west half (|v| 604 at (
 3,684)) - the energy is there, but those states cross at the arch's centre line (the doorway's
 push-down field), not onto the shelf; 0 shelf / tunnel cells. Report:
 `autoresearch/analysis/pbf_ge_report.py <archive.npz>` (measurement boxes only).
+* Local GE 2 (same flags, 3 threads, 12 min, seed 1): 18,922 cells, 1.06M runs, saturated; ridge h
+  max 4,047, arch 4,033, spawn room 3,944-3,960 - and still 0 shelf / tunnel cells. The energetic
+  states at the arch FALL onto the ridge's west end from high flights (vz -400..-640): landing on the
+  rising end clips away the westward speed. The ridge's apex line (y -3,000) is a flat standable
+  strip at feet 3,488 with ground friction and a step at x ~1,433 (a neutral westward slide stops
+  there); the west end rises 3,488 -> 3,560 (x 1,450 -> 1,200), then a steep lip to the arch floor
+  3,616. The record rides the NORTH FACE low westward and is thrown up by the faces' curved west end
+  (x ~1,410 z 3,426 vz +461 -> x 1,290 z 3,564 vz +569). Position + KE cells keep whichever state
+  reached a place first, so "rising westward off the curve" and "falling from a high flight" share a
+  cell: local GE 3 adds `--cell-heading 8` (8 velocity sectors x rising).
+* The record's exit, 10 ms rows (ANALYSIS ONLY): it comes back WEST low on the ridge's NORTH face
+  (y ~-2,875, z ~3,350, |v_h| ~930, h ~3,886 at x ~1,750), the face's curved west end throws it up
+  and south-west (x 1,462 z 3,399 vz +322 -> x 1,297 y -2,999 z 3,553 vz +584), through the arch
+  centre rising (x 1,160 z 3,692 vz +344), apex ~3,764 at x ~970 while its velocity swings north-west
+  (heading 180 -> ~140 deg and back), lands on the shelf at x ~725-760 (z 3,722) and slides west into
+  the tunnel at ~570-580 u/s (h ~3,925). From the bottom of the face to the tunnel: ~2 s.
+
+### THE WAY OUT FOUND BY THE EXPLORER, reward-free from the true start (box GE, 12:21-12:36 UTC)
+Box 58247606 (RTX 4070 Ti, 0.211 $/h, UK, Ryzen 9 5900XT 32 thr), rented by a background loop the
+moment the fleet's burn allowed it. `explore_phase1 --cell 64 --cell-energy 32 --cell-heading 8
+--select-energy 3 --view-follow 0,0,30,-30,60,-60,90,-90 --decisions 100 --act-every 4 --maxvel 3500
+--tick-ms 8 --exact-chains --envs 4096 --threads 30 --max-minutes 15` from the true spawn: 1.14M
+ticks/s, **347,600 cells, 7.0M runs; 657 cells on the shelf, 1,495 in the tunnel, 50k past +0.5%,
+deepest +3.21% (the pit past the tunnel)**; ridge h max 4,124. Shortest chain per level
+(`autoresearch/analysis/pbf_ge_depths.py`): +0.5% 1,274 ticks, +1.0% 2,433, +1.4% 2,487, +2.0%
+2,558, +3.0% 2,731 (8 ms ticks).
+* The +3.0% chain (`autoresearch/spines/pbfr1b1_ge_pump_a.npy`, 2,732 states): ~17 s of pumping on
+  the ridge, back through the arch at h ~3,945, over the spawn room ducked, a swoop up to z ~3,840
+  above the doorway's west end, down into the tunnel at (624, -2,879, 3,731) at 478 u/s, out and
+  into the pit. No doorway contact.
+* **SIM SUSPECT - not used: the +0.5% chain (1,274 ticks) never leaves the spawn room.** It
+  duck-jumps onto func_conveyor *249 (the doorway's lower plate, top 3,657 = 41 u up; it was ALSO
+  missing in the old core), then up 24 u onto the *250 strips (3,681), then 17 u into the north gap
+  (3,698) - each jump inside the doorway's two 2,500 u/s push-down fields (*252, *253), where a jump
+  still rises 6-11 u (the push acts as -19.2 u/s per tick, PM_AddCorrectGravity) and the in-air duck
+  adds 18 u. The mapper's push fields exist to block exactly this; the core does not model a solid
+  func_conveyor's FL_CONVEYOR push (these two push vertically: angles 90 0 0, speed -181, which the
+  game folds away on the ground, so probably not the difference). Whether the game allows it needs
+  an engine check BEFORE any lineage builds on it (CLAUDE.md: a move that looks impossible in the
+  game is a simulator bug until proved otherwise). A policy may find it by itself: watch the evals
+  for doorway climbs (origin on *249 / *250, x 648-718, y -3,054..-2,946).
+
+### c1: the backward curriculum on the pump spine (launched 12:47 UTC)
+`box.py launch --run pbfr1b1_c1 --steps 4e8 --resume` (the incumbent fx0 = pbEXIT2_r38) with
+`--maxvel 3500 --ckpt-every 1e8 --demo-file autoresearch/spines/pbfr1b1_ge_pump_a.npy --demo-window 5
+--demo-grow 5 --demo-grow-max 40 --demo-cooldown 5 --demo-rate 0.3 --demo-min-ep 50 --demo-front-frac
+0.8 --demo-success-d 100 --demo-success-bonus 50 --keys-hold-spawn-duck --yaw-entropy 0
+--demo-front-temp 0.5 --demo-front-ticks 40 --demo-front-view 6 --respawn-greedy 0
+--respawn-front-perturb 0.1 --respawn-front-perturb-band 0.005 --respawn-front-perturb-speed 1.0 1.3
+--respawn-front-perturb-turn 90 --energy-pot 12 --energy-pot-front 0 --energy-pot-front-bonus 0
+--no-respawn-novel --respawn-backward-mix 0 --int-real-only 0 --spawn-states
+autoresearch/spines/pbfr1b1_r38_reservoir.npy --spawn-states-frac 0.25 --lr 5e-5` (r38's config had
+demo_window 39,740 / demo_rate 2.0 / demo_min_ep 1e9 - the expert loop's uniform-spine settings -
+so the curriculum values are all passed). Success line d <= 55,533 (+2.83%). Record gate passed.
