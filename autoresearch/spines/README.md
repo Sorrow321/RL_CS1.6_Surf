@@ -435,3 +435,13 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
 * `pbr9b1_late2_states.npy` (md5 in NOTES): pbr9b1_fo2dec_states + the s71 beam's shaft passage x2 + the 89-94.5% shaft entries of
   three FINISHING greedy episodes of pbr9b1_c8's own 57.34B weights (record_ckpt --dump-states, seed 11) x8 - a `--spawn-states`
   pool aimed at the shaft's first kill sheet (z ~265), c8's commonest death.
+* `pbfr1b3_ge1_lineA.npy` (1,900 rows; md5 4ae2170ac85f5deb022e50483020e961) and `pbfr1b3_ge1_lineA_canon.npy` (the same
+  states, yaw = the velocity heading on the 1,708 rows with |v_h| >= 100, tools/spine_canon_view.py; md5
+  57272e3d2da5f9a756fa76d850612836): the CORRECTED core's (6bd7f931) way out of the start room, found by the run's own
+  reward-free search FROM THE TRUE SPAWN - tools/explore_phase1.py --exact-chains --cell 64 --cell-energy 32 --cell-heading 1
+  --view-follow=-90,-60,-30,-15,0,15,30,60,90 --select-energy 3 --tick-ms 8 --act-every 4 --decisions 100 --maxvel 3500,
+  4,096 envs, 30 threads, archive snapshot at ~5.5 min (pbfr1b3_ge1), cell 37817 = the most energetic archive cell inside
+  the crouch tunnel at x 300-500 moving west, ge_replay 26/26 links exact. The line walks east off the spawn ledge, surfs
+  ~2.5 laps of the east half-pipe (energy height 3,653 -> 3,954), climbs its west side, flies north-west over the spawn
+  room, ducks into the passage at 488 u/s and runs west in the tunnel (end (342, -2,889, 3,715), 444 u/s, h 3,839, d 56,574
+  = 1.01%). No demo, no record data, no policy, no reward; nothing in the search names a place (pbfr1b3, round 1).
