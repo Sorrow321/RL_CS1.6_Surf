@@ -4674,7 +4674,7 @@ Box 58244389 (RTX 5080, Ryzen 9 7945HX 32 thr / quota 30.7, 0.387 $/h, South Car
   (round 4: 61.59-61.78). x5 (17:00 UTC) = x4's final + BC r5 + spawn-states r5 + the pace curriculum from row 381,
   x4's flags otherwise, 8e8 steps.
 
-### pbfr1b2 round 1 lesson (DRAFT, 17:05 UTC; finalised at wrap-up)
+### pbfr1b2 round 1 lesson (DRAFT, 17:00 UTC; finalised at wrap-up)
 * **Score 0.405 -> 117.851** (9/9 greedy finishes from the true start on the corrected core, best 64.48 s; the
   record, a yardstick only, is 75.18 s). First finish at 12:42 UTC (109.914, ~45 min of training after the first
   launch), 9/9 at 13:05 (117.779), then expert iteration for speed.
