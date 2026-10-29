@@ -4630,3 +4630,17 @@ c8 = the incumbent + `pbfr1b4_stair_t` (939 rows) + `--demo-match-band` + `--spa
 --spawn-states-frac 0.3` + `--target-kl 0.15 --lr 5e-5 --demo-rate 0.2`, 1.2e9 steps. First minute: ~316k
 steps/s, kl ~0.2 (updates stop after 2-3 minibatch steps), training finishes 60-67% (the course pool), band
 938 -> 743 at 98% success.
+
+### c8 (18:12-18:28 UTC, 4080 box at ~790k steps/s): the trimmed spine walks to the basin, then a gap
+* c8 = the incumbent + stair_t + match-band + the course pool (30%) + target-kl 0.15, 68.108 -> 68.878B (770M steps
+  in ~16 min). The band went 938 -> 123 in ~10 min (the passage, the strip exit and the duck-jump onto the strip all
+  passed), training finishes held 47-67% (the course pool works: compare c5's 29% -> 0%).
+* Then it oscillated between trimmed rows 128 (41% success) and 123 (1.3-2.2% over ~400 episodes, six times, no
+  trend). Trimmed 123-127 = the line just after LANDING in the basin (ducked at its east edge, stamina fuser2 ~660-700);
+  trimmed 128 = original row 419, rested and walking north to the jump. My trim had cut the 2.7 s in between (rows
+  128-418: the stamina recovering, the walk to the jump spot), so the band had no bridge. Lesson: trim idling only
+  where nothing the policy needs happens; a stamina wait is not idle.
+* c8's greedy evals: no episode reaches the basin yet (the approach rows were not reached); they now die in 3-52 s
+  instead of bouncing to the cap. c8's ckpt_latest pulled (68.878B on the box, md5 3b161ce6...).
+* **c9** (18:29) = c8's weights + the FULL stair_a spine + `--demo-tau0 423` (c8's 41% band), match-band, the course
+  pool, target-kl 0.15, 1.5e9 steps. Box extended to ~22:59 UTC (wrap-up 22:57).
