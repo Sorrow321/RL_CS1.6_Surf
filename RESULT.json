@@ -3,17 +3,18 @@
  "round": 1,
  "final": false,
  "best": {
-  "score": 108.698,
-  "eval_file": "/home/steam/ar_pb/runs/pbfr1b4/pbfr1b4_c9/traj_70313312256.jsonl",
-  "run": "pbfr1b4_c9",
-  "step": 70313312256,
-  "ckpt": "/home/steam/ar_pb/runs/pbfr1b4/pbfr1b4_c9/ckpt_final.pt",
+  "score": 114.356,
+  "eval_file": "/home/steam/ar_pb/runs/pbfr1b4/pbfr1b4_c10/traj_71209844736.jsonl",
+  "run": "pbfr1b4_c10",
+  "step": 71209844736,
+  "ckpt": "/home/steam/ar_pb/runs/pbfr1b4/pbfr1b4_c10/ckpt_latest.pt",
   "recipe": [
-   "c8: incumbent fx0 + --demo-file pbfr1b4_stair_t.npy (GE staircase, idle cut) --demo-match-band --demo-rate 0.2 --spawn-states pbfr1b4_course_r38.npy --spawn-states-frac 0.3 --lr 5e-5 --target-kl 0.15 (+ the curriculum flags in NOTES)",
-   "c9: c8's ckpt_latest (68.878B) + the FULL spine pbfr1b4_stair_a.npy --demo-tau0 423, same flags"
+   "c8: incumbent fx0 + --demo-file pbfr1b4_stair_t.npy --demo-match-band --demo-rate 0.2 --spawn-states pbfr1b4_course_r38.npy --spawn-states-frac 0.3 --lr 5e-5 --target-kl 0.15 (+ the curriculum flags in NOTES)",
+   "c9: c8's ckpt_latest + the FULL spine pbfr1b4_stair_a.npy --demo-tau0 423 (first finish 108.698)",
+   "c10: c9's ckpt_final + --demo-tau0 63: the band reached the true spawn; 114.356 (6/9, 69.31 s)"
   ],
-  "resume_from": "pbfr1b4_c8 ckpt_latest 68.878B <- incumbent fx0",
+  "resume_from": "pbfr1b4_c9 ckpt_final 70.379B <- c8 <- incumbent fx0",
   "commit": "fa3236c7"
  },
- "summary": "108.698: the FIRST finish from the true start on the corrected core (c9 70.313B, 1/9, 72.4 s), through a doorway staircase the fix exposed (func_conveyor *249 basin -> *250 strip -> passage; OPEN QUESTION for the operator: is it in the real game?). How: Go-Explore from the true spawn finds the staircase in 5 min; a backward curriculum on its line, warm from the incumbent, with --demo-match-band (repeated origins froze the band), a 30% pool of the incumbent's own course states (without it the course eroded 29%->0% finishes) and --target-kl 0.15 (this policy reads kl 1-4.7 at lr 1e-4); at ~800k steps/s on a 4080 box. Next: continue c9 (band at spine rows 58-63) for reliability."
+ "summary": "114.356 (c10 71.210B: 6/9 greedy finishes from the true start on the corrected core, best 69.31 s; 108.698 at the first finish, c9). Route: a doorway staircase the fix exposed (*249 basin -> *250 strip -> passage; OPEN QUESTION for the operator: is it in the real game?). Recipe: Go-Explore from the true spawn (5 min) -> a backward curriculum on its line warm from the incumbent, --demo-match-band, a 30% pool of the incumbent's own course states, --target-kl 0.15, lr 5e-5, demo-rate 0.2; ~800k steps/s on a 4080. Running c11 (c10's weights, per-eval snapshots) for 9/9."
 }

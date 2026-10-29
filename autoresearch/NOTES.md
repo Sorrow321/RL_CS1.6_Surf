@@ -4656,3 +4656,13 @@ steps/s, kl ~0.2 (updates stop after 2-3 minibatch steps), training finishes 60-
   For scale only: the WR is 75.18 s via the half-pipe; this route is the corrected core's staircase (open question).
 * Hand-on (the round-end rule): c9's ckpt_final.pt (70.379B, md5 25f00cbc..., 66M after the eval, vs the
   69.879B snapshot 434M before; both pulled). c10 (19:05) = ckpt_final + the same flags + `--demo-tau0 63`, 2e9 steps.
+
+### c10: the band reaches the TRUE SPAWN; 114.356 = 6/9 at 69.31 s (19:05-19:25 UTC, 70.379 -> 71.354B)
+* c10 = c9's ckpt_final + the same flags + `--demo-tau0 63`: the band walked 63 -> 0 (success at row 0: 42%).
+  Greedy evals (score.py, first 9 episodes): 110.821 (3/9, 75.36 s), 108.559 (1/9), 108.608 (1/9), 109.774 (2/9),
+  113.206 (5/9, 70.50), 107.956 (1/9), 113.232 (5/9, 69.71), 112.161 (4/9, **68.51 s**), 110.837 (3/9), 111.995
+  (4/9), 113.141 (5/9, 72.43), **114.356 (6/9, mean 71.13 s, best 69.31 s, 71.210B)**. Training finishes 74%.
+* ckpt_latest is overwritten at every eval, so the weights of a peak are gone ~75M steps later; c10 had no snapshot
+  near its best (ckpt-every 1e9). Hand-on for 114.356: c10's ckpt_latest (71.354B, md5 fc51f699..., pulled).
+* **c11** (19:26) = c10's ckpt_latest + the same flags (`--demo-tau0 0`) + `--ckpt-every 7.5e7` (a snapshot beside
+  every eval), 2.5e9 steps.
