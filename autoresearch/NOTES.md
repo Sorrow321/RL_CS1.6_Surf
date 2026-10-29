@@ -4544,3 +4544,19 @@ Box 58244389 (RTX 5080, Ryzen 9 7945HX 32 thr / quota 30.7, 0.387 $/h, South Car
   3,430 at ~150-320 u/s (both stop at old gate 2, the pit's U-turn climb).
 * Archive: `runs/pbfr1b2/_ge/s1_archive.npz` (+ .meta.json, md5 of the npz in the file listing). If the operator
   rules the staircase out, this is the real-game start, and the archive already holds lines for a curriculum.
+
+### THE FIRST GREEDY FINISH ON THE CORRECTED CORE: 109.914, 2/9 at 69.26 s (2026-10-29 12:42 UTC, c3 68.837B)
+* c3's 4th eval (traj_68837441536, ~227M steps into c3, ~730M after the incumbent): **2 of 9 greedy episodes finish
+  from the true start, best 69.26 s (9,034 ticks at 7.667 ms), 70.72 s**; the other 7 still stop in the start room
+  (0.33-0.61%). Incumbent 0.405. Hand-on: `runs/pbfr1b2/pbfr1b2_c3/ckpt_68810702848.pt` (md5 97140e09..., 26.7M
+  steps before the eval); tools/snapcopy.py now runs beside c3 (per-minute snapshots).
+* The finishing line (both episodes, the same): walk NW to the north wall, back east, jump onto *249 (~3.6-4.0 s),
+  duck-jump onto *250's NORTH part (~5 s; the curriculum's spine used *250's SOUTH part - the policy generalised),
+  then the incumbent's own OLD route: north gap (644, -2,909) at ~6.4 s -> north tunnel (crawl/slide 150 -> 350 u/s)
+  -> tunnel exit (132, -2,896) at 8.4 s with h ~3,784-3,799 -> drop -> pit at 800+ u/s -> U-turn (926, -2,749) at
+  10.4 s -> the old course to the finish. So two new moves (floor -> *249 -> *250) were enough: everything after
+  *250 is the old lineage's skill, and gate 2 passes with the old tunnel-exit energy (~3,790), not the record's.
+  (A local CPU bench of the incumbent spawned at the SOUTH passage's exit - the GE line's route - bounces in the pit
+  at 3.0-3.2% even with the record's energy (h 3,946 at 557 u/s): its gate-2 skill belongs to the north tunnel's
+  exit. Spawned on *250's north part, the incumbent walks off the plate: the old move needs the new approach.)
+* Curriculum at that eval: tau 481-486 (on *250's south-west part, the jump band); success 13% -> 30% over ~10 min.
