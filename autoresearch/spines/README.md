@@ -435,3 +435,21 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
 * `pbr9b1_late2_states.npy` (md5 in NOTES): pbr9b1_fo2dec_states + the s71 beam's shaft passage x2 + the 89-94.5% shaft entries of
   three FINISHING greedy episodes of pbr9b1_c8's own 57.34B weights (record_ckpt --dump-states, seed 11) x8 - a `--spawn-states`
   pool aimed at the shaft's first kill sheet (z ~265), c8's commonest death.
+
+# pbfr1b2 (corrected-core lineage, round 1) - machine-generated, the policy's own / own search
+
+* `pbfr1b2_door.npy` (1,221 states, md5 a8e3855136b935ef3768c754c7da4cb4) + `pbfr1b2_door.keys.npy`
+  (md5 5a9a4303d7dce999fca59ff2715e2eea): ONE exact line from the map's TRUE spawn (860, -3005, 3653)
+  out of the start room on the CORRECTED core (6bd7f931): `tools/explore_phase1.py --exact-chains`
+  (reward-free uniform bursts, 64 u x --cell-energy 32 cells, --view-follow, --select-energy 1,
+  --tick-ms 8, 4,096 envs, 12 min on box 58244389), deepest chain (23 cells) replayed exactly by a
+  ge_replay variant that also records the held keys (22/22 links); ticks 0..2440 of the 3,706-tick
+  chain, every 2nd tick, views/keys put along the velocity where |v_h| >= 100 (spine_canon_keys).
+  Route: walk west, jump onto func_conveyor *249 (the doorway's centre step, top 3657, 41 u above the
+  spawn floor; inside trigger_push *253), duck-jump onto *250 (3681), jump + duck out of *252's
+  push field into the SOUTH gap (floor 3696), crawl west through the south passage (y ~-3110),
+  drop onto the ledge at (165, -3048, 3524). No demo, no record, no policy, no reward.
+* `pbfr1b2_r38_course_states.npy` (19,621 states, md5 1e8c5e2dda5c61a9fb3fd7f2d9e62cfd): the incumbent
+  pbEXIT2_r38's OWN respawn reservoir (`ckpt['respawn']['states']`, harvested from its own training
+  episodes on the old core), the rows deeper than 2% on the grader field (2-94%), clocks zeroed. Used
+  as --spawn-states to keep the course after the start practised while the curriculum works on it.
