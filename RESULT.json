@@ -3,11 +3,11 @@
  "round": 1,
  "final": false,
  "best": {
-  "score": 117.779,
-  "eval_file": "/home/steam/ar_pb/runs/pbfr1b2/pbfr1b2_c3/traj_69290426368.jsonl",
-  "run": "pbfr1b2_c3",
-  "step": 69290426368,
-  "ckpt": "/home/steam/ar_pb/runs/pbfr1b2/pbfr1b2_c3/ckpt_69290426368.pt",
+  "score": 117.794,
+  "eval_file": "/home/steam/ar_pb/runs/pbfr1b2/pbfr1b2_h1/traj_69989826560.jsonl",
+  "run": "pbfr1b2_h1",
+  "step": 69989826560,
+  "ckpt": "/home/steam/ar_pb/runs/pbfr1b2/pbfr1b2_h1/ckpt_69989826560.pt",
   "recipe": [
    "--demo-file",
    "autoresearch/spines/pbfr1b2_door2.npy",
@@ -71,8 +71,8 @@
    "--maxvel",
    "3500"
   ],
-  "resume_from": "incumbent fx0 (pbEXIT2_r38) -> pbfr1b2_c1 -> c2 -> c3",
+  "resume_from": "incumbent fx0 (pbEXIT2_r38) -> pbfr1b2_c1 -> c2 -> c3 -> c4 (ckpt_latest 69.989B) -> h1 (this eval is h1's first: c4's weights + 0.5M steps)",
   "commit": "9f72a7e7"
  },
- "summary": "Go-Explore (uniform, view-follow, energy cells) from the true start on the corrected core finds a doorway STAIRCASE in 2 min (func_conveyor *249 at 41 u -> *250; both slabs were missing in the old core). A backward curriculum on that line, warm on the incumbent (+ its own course states 0.3), teaches the two new jumps; everything after *250 is the incumbent's old route. c3 69.290B: 9/9 greedy finishes from the true start, best 66.62 s, score 117.779 (incumbent 0.405; record 75.18 s). Evals from 69.06B on: 9/9 leave the start room, 6-9/9 finish, bests 66.0-67.3 s. Operator: please confirm the *249/*250 staircase in the real game (NOTES.md). Next: speed (start line), the half-pipe start as the record's alternative."
+ "summary": "Go-Explore (uniform, view-follow, energy cells) from the true start on the corrected core finds a doorway STAIRCASE in 2 min (func_conveyor *249 at 41 u -> *250; both slabs were missing in the old core). A backward curriculum on that line, warm on the incumbent (+ its own course states 0.3), teaches the two new jumps; everything after *250 is the incumbent's old route. Best: 117.794 = 9/9 greedy finishes from the true start, best 66.19 s (c4's weights, eval 69.990B; incumbent 0.405; record 75.18 s). Evals since 69.06B: 9/9 leave the start, 6-9/9 finish. h1 (half-pipe energy spine, the record's start) stalled at the fly-back: not learned in 30 min. x1 (14:15 UTC): expert iteration by hand - the policy's own planner finds 63.6-63.8 s lines, distilled by BC. Operator: please confirm the *249/*250 staircase in the real game."
 }

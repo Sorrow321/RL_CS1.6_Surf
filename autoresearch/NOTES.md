@@ -4593,3 +4593,36 @@ Box 58244389 (RTX 5080, Ryzen 9 7945HX 32 thr / quota 30.7, 0.387 $/h, South Car
   staircase's finishes would walk the curriculum back) `--demo-match-band`; the rest = c4's flags. Generic: the
   lineage's energy-spine rule (gate-17 playbook), the spine is the explorer's own line, nothing names the half-pipe.
 * First bands (spawned in the tunnel entrance at 600 u/s): 28-44% energetic crossings.
+* h1 result (13:32-14:05 UTC, 8e8 steps): NOT promising, stopped at its budget. The greedy never went east (0/9 in
+  every eval; 6-9/9 finishes by the staircase, so the half-pipe spawns did not hurt it); the curriculum walked back
+  only 90 rows (1165 -> 1075) and stalled at the FLY-BACK - rows ~1075-1084, the half-pipe bottom at ~1,060 u/s
+  before the climb up the west side and the flight over the room into the tunnel: 0.3-0.7% energetic crossings over
+  ~10 checks, no rise. A precision launch at speed that the explorer hit once; the policy does not find it from
+  there. For whoever picks the half-pipe up: try spines that enter the SOUTH passage (archive cells 27285-27295,
+  h ~3,936 at ~590 u/s - its entry is wider?), a softer energy margin first (M 150-200, then tighten), or a
+  search (beam_tas --start-state) from the band's own rows for the policy's own fly-back before the curriculum.
+* New best from h1's FIRST eval (69.990B = c4's ckpt_latest + 0.5M steps): **117.794 (9/9, best 66.19 s)**; hand-on
+  `runs/pbfr1b2/pbfr1b2_h1/ckpt_69989826560.pt` (md5 b06c142a..., the eval's own weights). c5 (= c4's ckpt_latest
+  + the door3 curriculum again, 14:08 UTC) reproduced it exactly as its own first eval (deterministic evals), then
+  117.793 (9/9, 66.22 s) / 115.569 (7/9).
+
+### x1: expert iteration by hand - the policy's own planner, distilled (14:15 UTC)
+* `tools/beam_tas.py` from the TRUE start on c5's 70.042B weights (4,096 copies, 128 greedy envs, `--score d`,
+  resample every 25 decisions, 16 finishers kept, `--route-file none --allow-nonfinisher`), 3 waves (torch seeds
+  0-2, spawn seeds 1-3), ~80 s each beside the trainer: best lines **63.83 / 63.69 / 63.62 s** against the greedy's
+  66.81-66.89 s (8,191 finishing copies in wave 0). The planner keeps the policy's start (NW corner 0.98 s, *249
+  2.53, *250 2.71, gap 4.06, tunnel exit 5.87 s) - the 3 s come from the course (50% at 33.7 s, 90% at 59.4 s).
+* `tools/plan_to_bc.py --no-value-target` per wave (`--ckpt` = the planning checkpoint), merged with
+  surfgym.bc.merge_bc_files -> runs/plan/bc_r1.npz (91,437 decisions, 44 lines) + spine_r1.npy (the 3 best lines,
+  24,931 states) + keys, on the box (md5 e21bbe59 / ad9c354b / a9a578ce).
+* x1 = `box.py launch --resume` (runs_ckpt.pt = the planning checkpoint) with the pbx expert loop's train step:
+  `--bc-file runs/plan/bc_r1.npz --bc-coef 0.5 --bc-coef-final 0.5 --bc-steps 6e8 --bc-target dist
+  --bc-value-coef 0 --bc-keys-engine --bc-pitch-coef 0 --demo-file runs/plan/spine_r1.npy --demo-keys ...
+  --demo-window 24931 --demo-rate 2.0 --demo-min-ep 1e9 --demo-grow 0 --demo-success-d 100 --demo-success-bonus 0
+  --no-respawn-novel --respawn-backward-mix 0 --respawn-front-perturb 0 --respawn-greedy 0 --respawn-greedy-stuck 0
+  --int-real-only 0 --respawn-greedy-speed 1 1 --respawn-greedy-turn 0 --demo-front-frac 0 --spawn-states=
+  --keys-hold-spawn-duck --yaw-entropy 0 --energy-pot 12 --energy-pot-front 0 --energy-pot-front-bonus 0
+  --maxvel 3500 --lr 3e-5`, 6e8 steps. First BC readings: head-acc 0.986-0.994, joint-acc 0.945-0.978 (the
+  planner's decisions are close to the policy's own, as on the old core).
+* Why not tools/exit_local.py itself: it launches train_fast outside box.py launch (PROTOCOL: never launch around
+  launch), so each round is run by hand: plan (ssh) -> distil (ssh) -> train (box.py launch) -> the trainer's evals.
