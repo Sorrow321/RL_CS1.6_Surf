@@ -4465,3 +4465,56 @@ Bundle with the plan re-simulated on a droplet CPU core: `~/ar_pb/pbx/line_60.06
   around *261-*264 (off the course); the field along the course is unaffected, a rebake is optional.
 * Next (the user, 07:40 UTC): a new lineage that passes the start the real way - energy from the east half-pipe,
   then the passage north of the spawn - warm-started from this lineage's checkpoint for the rest of the map.
+
+## pbfr1b3 (corrected-core lineage, round 1, slot 3) - 2026-10-29 11:38 UTC start
+
+Box 58244289, RTX 5080 + i9-14900K (32 thr, quota 30.7 CPUs), 0.38 $/h, Utah (machine 147030), rented 11:49 UTC.
+The incumbent recipe's resume ran at 218-274k steps/s on it.
+
+### The start room on the corrected core, probed (11:40-12:00 UTC, analysis tools; the record as a yardstick only)
+* Ducked-hull free space around the spawn (core traces): the spawn floor is feet 3,616; the crouch tunnel west of the
+  room (y -2,885..-2,915, x <= 640) has its floor at feet 3,696-3,704 (80-88 u up; a crouch-jump is 63 u); the north side
+  of the room (y > -2,895, x 680-1,120) is a steep slanted underside, not a floor. So from the floor nothing reaches the
+  tunnel: it is entered from ABOVE, flying in from the east at height.
+* trigger_teleport *257 (fatal, `target start`) has an AABB over the whole spawn floor (x 865-1,151, y -3,172..-2,829,
+  z 3,696-3,780) but is not a box: the record's line home from the half-pipe (4.27-4.85 s, z 3,620-3,764) is free for a
+  standing hull, while (873, -2,875, 3,748) and west of it kills a STANDING hull and spares a DUCKED one - the passage
+  entry is a duck-in-time gate next to a kill volume.
+* The record (ANALYSIS ONLY): walks east off the spawn ledge at 0.5 s, surfs ONE lap of the east half-pipe (energy
+  height h = z + |v|^2/1600: 3,655 -> 3,797 at the first bottom -> 3,843 east top -> 3,886 -> 3,929 at the west top,
+  4.72 s), flies NW over the room at z ~3,760 and ducks into the passage at x ~800 at ~520-580 u/s (5.1 s).
+
+### Go-Explore with the VELOCITY-FRAME explorer pumps the half-pipe and finds the real way out in ~3 min (pbfr1b3_ge1)
+* `tools/explore_phase1.py --exact-chains --cell 64 --cell-energy 32 --cell-heading 1
+  --view-follow=-90,-60,-30,-15,0,15,30,60,90 --select-energy 3 --tick-ms 8 --act-every 4 --decisions 100 --maxvel 3500
+  --envs 4096 --threads 30` from the TRUE spawn (the zones file's), 2.0M ticks/s, stopped at 8.7 min (47,692 cells;
+  archive on the box runs/pbfr1b3_ge1/archive.npz, snapA.npz = the 5.5-min snapshot).
+* At the first snapshot (2.7 min): half-pipe h max **4,077** (4,284 cells with h >= 3,950); 197 cells INSIDE the crouch
+  tunnel; the pit at 3.21% on the grader's field. The first lineage's uniform-yaw GE never pumped (half-pipe h max
+  3,804-3,839 in 6-15 min, rounds 1-3: "the pump stays closed to uniform-action search; it is a policy skill"). That
+  conclusion was about the explorer's ACTION SPACE: bursts that hold a view offset from the velocity heading (the
+  policy's own --view-absolute frame, round 4's `--view-follow`) strafe-surf by chance often enough to pump, and
+  `--select-energy` + energy cells keep and re-explore the gains. Every tunnel cell descends from one lineage.
+* The line (ge_replay --cell 37817, the most energetic cell in the tunnel at x 300-500 moving west, 26/26 links exact,
+  1,900 ticks at 8 ms = 15.2 s): dithers at the spawn 1.8 s, walks east off the ledge, surfs ~2.5 laps (h 3,653 -> 3,954),
+  climbs the west side, flies NW over the room, ducks at (853, -2,907, 3,734), enters the passage at 488 u/s and runs
+  west at ~440 u/s (end (342, -2,889, 3,715), h 3,839, d 56,574 = 1.01%). At that tunnel spot the incumbent's own
+  old-core line had h 3,802-3,839 - the pump delivers the energy the bug used to. Spine: autoresearch/spines/
+  pbfr1b3_ge1_lineA_canon.npy (views along the velocity, tools/spine_canon_view.py; provenance in spines/README.md).
+
+### The backward curriculum on it, warm from the incumbent (pbfr1b3_cur1 -> cur2, from 12:03 UTC)
+* Flags (resume of $AR_HOME/incumbent/ckpt.pt): `--demo-file autoresearch/spines/pbfr1b3_ge1_lineA_canon.npy
+  --demo-window 5 --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5 --demo-rate 0.3 --demo-min-ep 50 --demo-front-frac
+  0.4 --demo-success-d 100 --demo-success-bonus 50 --keys-hold-spawn-duck --yaw-entropy 0 --demo-front-temp 0.5
+  --demo-front-ticks 40 --demo-front-view 6 --no-respawn-novel --respawn-backward-mix 0 --int-real-only 0
+  --respawn-front-perturb 0 --respawn-greedy 0 --respawn-greedy-stuck 0`.
+* **The incumbent's checkpoint carries the expert loop's `demo_min_ep 1e9` (and demo_rate 2.0, demo_window 39,740):
+  a resume with --demo-file must pass `--demo-min-ep 50`** or the trainer refuses ("the curriculum can never advance").
+* cur1 (lr 1e-4, 68.108-68.174B): **training episodes spawned on the spine's tunnel end FINISH THE MAP** - "win 97% @
+  61 s" in the first iterations, 16-52% later as the spawns moved back: the course after the start is in the weights and
+  flies on the corrected core. The curriculum went 1899 -> 1744 in ~4 min at 100% per band, backed off at
+  [1744-1764] (the duck into the passage beside *257: 8-10%), then reached 87% there. But approx_kl stayed at median
+  2-3.5 per update (max 32) with the value loss rising 0.08 -> 3.4 (the old lineage's pre-collapse signature at 1e-4;
+  resume artefacts usually settle after 2-4 updates). Stopped at 68.174B.
+* cur2 (12:09 UTC): cur1's ckpt_latest (68.156B, md5 a1a27d48...) at **lr 5e-5**, `--demo-tau0 1764`, same flags.
+  The pristine incumbent stays on the box as runs_incumbent_r38.pt.
