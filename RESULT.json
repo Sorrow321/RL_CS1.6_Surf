@@ -3,5 +3,5 @@
  "round": 1,
  "final": false,
  "best": null,
- "summary": "No eval yet (no box: the fleet at its 1.2 $/h cap since 11:51; a 5070 failed gpu_health). Local finding: the corrected core still has a doorway route - a 3-step staircase via func_conveyor *249 (crouch-jump 41 u into the basin, a duck-jump out of the push field onto the *250 strip, a jump onto the passage ramp); a 5-min local Go-Explore from the true spawn reached 3.21% (the old gate-2 pit) that way. Open question for the operator: is it possible in the real game? Next: a backward curriculum on that line (autoresearch/spines/pbfr1b4_stair_a.npy) warm from the incumbent."
+ "summary": "Best eval so far 0.405 (the incumbent's bounce; no eval past it yet). The corrected core still has a doorway route: a 3-step staircase via func_conveyor *249 (open question for the operator: is it in the real game?); a 5-min local Go-Explore from the true spawn reached 3.21% that way, and from the *250 strip the incumbent already flies 26% of the course. Running: a backward curriculum on that GE line (spine pbfr1b4_stair_a), warm from the incumbent (c4: c2's weights, lr 5e-5, --target-kl 0.3); the band is at row ~1015-1035 of 1753 and has to walk back through the basin jump and the spawn jump. lr 1e-4 read kl 1-4.7 per update; a yaw sigma floor (new --yaw-sigma-min) broke the course's training episodes."
 }
