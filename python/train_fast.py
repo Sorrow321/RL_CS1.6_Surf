@@ -5159,7 +5159,9 @@ def main() -> None:
                     help="--demo-file + --demo-keys + --keys-hold: C > 0 adds C x the NLL of the "
                          "spine's NEXT held keys (fwd, side, duck; scored by the ENGINE action they "
                          "yield, keys_engine_logp's rule) at the FIRST decision after every spine "
-                         "spawn, on the trainer's own rollout row - an online distillation of the "
+                         "spawn ON THE CURRICULUM'S FRONTIER BAND (behind it the policy already "
+                         "succeeds with its own actions), on the trainer's own rollout row - an "
+                         "online distillation of the "
                          "curriculum's line at the curriculum's own starts (pbfr1b1, 2026-10-29: the "
                          "policy's course habit pressed strafe-left + jump on a face where the line "
                          "holds strafe-right, and per-decision exploration almost never finds a "
@@ -20091,10 +20093,17 @@ def main() -> None:
                             keys.state[_de] = DEMO_KEYS[0][demo_idx[_de]]
                             if b_dbc is not None:
                                 # --demo-bc: the next decision is this episode's first; its
-                                # target is the line's held keys one row on (what it pressed next)
-                                dbc_pending[_de] = True
-                                dbc_tgt[_de] = DEMO_KEYS[0][np.minimum(demo_idx[_de] + 1,
-                                                                       len(DEMO_KEYS[0]) - 1)]
+                                # target is the line's held keys one row on (what it pressed next).
+                                # ONLY spawns on the curriculum's frontier band: behind it the
+                                # policy already succeeds with its OWN actions, and pulling those
+                                # rows toward the explorer's keys broke them (pbfr1b1 c10: band
+                                # success 92% -> 1% within minutes)
+                                _blo, _bhi = demo._band()
+                                _db = _de[(demo_idx[_de] >= _blo) & (demo_idx[_de] <= _bhi)]
+                                if _db.size:
+                                    dbc_pending[_db] = True
+                                    dbc_tgt[_db] = DEMO_KEYS[0][np.minimum(
+                                        demo_idx[_db] + 1, len(DEMO_KEYS[0]) - 1)]
                 if surf_flag is not None:
                     # --obs-surf: every episode start forgets the previous decision's vz (a
                     # fresh spawn has nothing to compare with, so its first flag reads 0).
