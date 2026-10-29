@@ -4819,3 +4819,47 @@ so the curriculum values are all passed). Success line d <= 55,533 (+2.83%). Rec
   (spawn-states share 0.5+, SIL / demo-bc off on the course, maybe the r38 weights' own course
   rows as BC). The suspect doorway climb (*249 / *250 against the push fields) and the wall-face
   hang stay unverified: check them against the engine before anyone trains on them.
+
+### pbfr1b1 round 1 lesson (wrap-up, 2026-10-29 21:18 UTC, ROUND OVER) - supersedes the DRAFT above
+* **c16 result** (74.22-74.31B, 21:08-21:13 UTC, stopped at ROUND OVER): after the restart dip the
+  band shuttled 24 <-> 29 again (29 passes at 3.7-5.1%, 24 at 0.2-0.7%); one greedy eval, 0.405.
+* **Score 0.433** (c15 74.023B, `traj_74022649856.jsonl`): 0/9, best progress 0.43%, a start-room
+  score (incumbent 0.405). Every run's best: c1 0.406, c2 0.403, c3 0.403, c4 0.411, c5 0.421, c6
+  0.418, c7 0.409, c8 0.411, c9 0.408, c11 0.407, c12 0.412, c13 0.403, c14 0.431, c15 0.433, c16
+  0.405 - between 0.40 and 0.43 the score is the start room's noise, not progress.
+* **What is handed on** (pulled to `$AR_HOME/runs/pbfr1b1/`): the snapshot behind the best eval,
+  `pbfr1b1_c15/ckpt_74018979840.pt` (md5 d07457e6...; band ~24-29); c15's ckpt_latest (74.22B, md5
+  79113e53...) and c16's ckpt_latest (74.31B, md5 23aedda7...), both with the band at 24-29.
+* **The course in the hand-off weights is nearly gone** (9 of r38's own reservoir states at
+  3/8/15/25/40/55/70/82/92%, 18 greedy episodes, `record_ckpt --spawn-states runs/ds9.npy --seed 3
+  --ep-ticks 9800`): r38 **14/18** finishes (mean gain 43.1%) -> c11 4/18 (18.8%) -> **c15 74.02B 3/18
+  (6.3%)**, failing from every level including 3%. Once the start is passed, the hand-off needs the
+  course rebuilt.
+* **The wall at spine 24-29, read from the spine** (`pbfr1b1_ge_pump_k4.npy` + keys, analysis):
+  states 1-42 walk east at 250 u/s holding the same canonical keys (forward) the whole way. From
+  state 26 the line veers RIGHT about 2 deg per decision (heading 0 -> 329 deg by state 42) into the
+  south wall (y -3,048 at x ~1,163), slides along it, jumps at x ~1,190 (state 47) and ducks in the
+  air at 57. In the canonical frame the spawn's view IS the velocity heading, so the turn lives only
+  in a small view offset that canonicalization removed and `--demo-bc` (keys only) cannot distil.
+  This is a hypothesis, not a measurement. If it holds, the walk east needs the band to distil the
+  spine's view too: a yaw target from the explorer's raw line (`pbfr1b1_ge_pump_a.npy`'s source
+  chain, before canonicalization), or the offset from consecutive velocity headings.
+* **What worked** (generic, all default-off flags, tests on CPU): reward-free GE with energy +
+  heading cells and velocity-frame strafes finds the exit (`--select-energy 3`, `--view-follow`);
+  the backward curriculum on its line with translated spawn keys; `--race-ratchet-start-cap 1` (no
+  pay for undoing a spawn's displacement behind the start); SIL on the rare wall successes;
+  **`--demo-bc C` on the frontier band only** (~30 min per 5 states -> 2-6 states/min; all-spawn
+  tagging broke learned rows within minutes). Low advance rates (0.02-0.06) only helped once the
+  distillation was on. Thinning the spine to one state per decision did not help by itself.
+* **What did not**: rebalancing the course pool (35%, stratified from 16:47) did not stop the
+  erosion; policy beams (beam_tas) from ridge states never pumped; KL ran 0.8-1.0 per update all
+  round (the narrow continuous yaw head), so it is no signal of a policy shift.
+* **Round 2, in order**: (1) protect or rebuild the course before more start training, ideally with
+  a generic teacher term toward the incumbent's own course behaviour on the course-pool spawns
+  (the r38 weights, if still reachable, plus the tracked `pbfr1b1_r38_reservoir_strat.npy` states),
+  or at least a larger course share, re-measured with the same 9 x 18 check; (2) finish the band
+  (24 -> 0) with view distillation added; (3) the suspect doorway climb (*249 / *250 against the
+  push fields) and the wall-face hang chain stay unverified, so check them against the engine before
+  anyone trains on them.
+* The worktree's `autoresearch/config.json` had an uncommitted `budget_rate_usd_h` 1.2 -> 1.5
+  edit (file time 18:02 UTC) that this session did not make; left uncommitted for the operator.

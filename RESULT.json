@@ -1,7 +1,7 @@
 {
  "agent": "pbfr1b1",
  "round": 1,
- "final": false,
+ "final": true,
  "best": {
   "score": 0.433,
   "eval_file": "/home/steam/ar_pb/runs/pbfr1b1/pbfr1b1_c15/traj_74022649856.jsonl",
@@ -21,6 +21,6 @@
   "resume_from": "pbfr1b1_c14 ckpt_latest (chain c1..c14 from the incumbent fx0)",
   "commit": "7cca1dad"
  },
- "summary": "Box 58247606 (4070 Ti). Reward-free GE from the true start found the real way out (ridge pump -> arch -> tunnel, to +3.2%). A backward curriculum on it with the incumbent's weights walked the spine 683 -> ~24 (of 684) via new generic tools: --race-ratchet-start-cap, translated spawn keys, SIL, and --demo-bc (distil the spine's held keys at frontier-band spawns; band-only). The greedy's doorway habit is gone but it does not exit yet: best eval 0.433 (c15 74.02B, start room; incumbent 0.405). The course after the tunnel is eroded (4/18 vs r38's 14/18). c16 continues the band from c15's latest.",
+ "summary": "Corrected core, box 58247606 (4070 Ti). Reward-free Go-Explore from the true start (energy + heading cells, velocity-frame strafes) found the real way out: ridge pump -> arch -> shelf -> tunnel (+3.2%).\nA backward curriculum on that line from the incumbent's weights (c1-c16, ~6B steps) walked the band 683 -> 24 of 684 spine states using new generic tools: --race-ratchet-start-cap, translated spawn keys, SIL, and --demo-bc (distil the spine's held keys at frontier-band spawns only; distilling at every spine spawn broke learned rows).\nScore 0.433 (c15 74.023B): the greedy's doorway bounce is gone but it still dies in the start room (incumbent 0.405). Hand-off snapshot ckpt_74018979840.pt.\nThe course after the tunnel has eroded in the hand-off weights: 3/18 greedy finishes from 9 of r38's own course states, mean gain 6.3% (r38 14/18, 43.1%).\nNext: re-anchor the course first (teacher term toward r38's own course actions, or a larger course share), then finish the band. The wall at spine 24 is a veer: the view turns ~2 deg per decision with the keys unchanged, and --demo-bc only distils keys, so it needs yaw distillation too.",
  "commit": "7cca1dad"
 }
