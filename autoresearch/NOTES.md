@@ -4774,3 +4774,6 @@ so the curriculum values are all passed). Success line d <= 55,533 (+2.83%). Rec
 * c15 at 20:20 (73.65B, rate 0.02): band 94 -> 39 in 20 min at 2-4% band success (one update read
   KL 3.14, then 1.15; value fit 0.96). Greedy evals 0.403 x4: still wandering the spawn room
   (x 860-1,012) and dying; the band is now inside the walk east from the spawn (spine 0-50).
+* c15 at 20:41 (73.95B): band 39 -> 24-29 (29 at 2-3%, 24 at 0.5-1%). Greedy evals 0.401-0.429:
+  most episodes never move east of the spawn (x max 860; one reached 1,108) - the first decisions
+  of the walk east are not learned yet.
