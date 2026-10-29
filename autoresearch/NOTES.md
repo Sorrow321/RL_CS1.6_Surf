@@ -4714,3 +4714,10 @@ Box 58244389 (RTX 5080, Ryzen 9 7945HX 32 thr / quota 30.7, 0.387 $/h, South Car
   9/9 in 13 of 40 evals from c8's snapshot) - with x4's recipe exactly (pace rate 0.3 from row 376, greedy
   respawns 0.2) at **lr 2e-5**, BC + spawn-states from a fresh round-7 plan on the snapshot (61.56 / 61.62 / 61.58
   / 61.66 s), 1.2e9 steps.
+* x7 evals (re-anchored on x4's 117.851 weights, lr 2e-5): 5/9 64.62 / 7/9 66.16 / 7/9 64.37 / 6/9 65.78 / 7/9
+  64.56 / 7/9 64.45 / 7/9 65.79 / 8/9 **64.00 s** (the lineage's fastest greedy finish). Its FIRST eval is x4's 9/9
+  weights + 0.5M steps and scored 5/9 on other seeds: **a 9/9 eval is the lucky tail of a ~7/9 policy**, so the
+  score at this stage is a draw from many evals, not a property of one checkpoint. Re-anchoring + lr 2e-5 did not
+  move the mean (~6.8/9). x7's 18 misses are spread over the course - the start (1), the passage drop (1), the pit
+  (2), 12% (2), 27%, 44-47% (4), 67%, the 71% bounce (2), 80%, the final shaft 91-93% (3): fast and slightly
+  fragile everywhere, no single gate to fix.
