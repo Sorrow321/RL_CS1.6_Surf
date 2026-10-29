@@ -458,3 +458,8 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   after its jump from *250: a uniform yaw RATE spinning the view with the back key held, which a velocity-frame
   policy cannot express; c2's curriculum sat at 2% success there against 60% one band later). Row 490 (on *250,
   before the jump) is followed by old row 529 (landed in the south gap). Same provenance.
+* `pbfr1b2_door3.npy` (491 states, md5 498a7b28c88aa5718796b3f6f366c593) + `pbfr1b2_door3.keys.npy` (md5
+  01177b201e976e10d999df7962c5cfd8): pbfr1b2_door2.npy rows 0-490 only (true start -> *249 -> *250, ending on *250
+  before the gap jump), used with `--demo-success-d -665` = the same success line as door2 (d <= 56,253, past the
+  passages). c3's finishing greedy line leaves *250 by the NORTH gap (the old route), so the south passage rows only
+  spent training on a route whose exit the policy cannot fly (gate 2 from the south ledge). Same provenance.
