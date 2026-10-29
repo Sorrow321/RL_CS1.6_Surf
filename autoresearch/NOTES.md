@@ -4716,4 +4716,4 @@ The incumbent recipe's resume ran at 218-274k steps/s on it.
 * **117.779** (cur10 76.565B, traj_76565446656): 9/9, best 66.62 s; hand-on runs/pbfr1b3/pbfr1b3_cur10/ckpt_76564922368.pt
   (the eval's own weights, md5 19e9e6404534faa072b9900ef73b759f). cur10's 23 evals: eight 9/9; best times 66.62-67.4 s.
 * **117.787** (cur10 77.622B, traj_77622411264): 9/9, best 66.39 s; hand-on runs/pbfr1b3/pbfr1b3_cur10/ckpt_77621886976.pt
-  (the eval's own weights, md5 6aa9b4dd443fec2458a53e94c42f3587). cur10's 38 evals: fourteen 9/9; best times 66.39-67.4 s.
+  (the eval's own weights, md5 6aa9b4dd443fec2458a53e94c42f3587). cur10's 38 evals: sixteen 9/9 (counted with score.py); best times 66.39-67.6 s.
