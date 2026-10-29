@@ -4465,3 +4465,57 @@ Bundle with the plan re-simulated on a droplet CPU core: `~/ar_pb/pbx/line_60.06
   around *261-*264 (off the course); the field along the course is unaffected, a rebake is optional.
 * Next (the user, 07:40 UTC): a new lineage that passes the start the real way - energy from the east half-pipe,
   then the passage north of the spawn - warm-started from this lineage's checkpoint for the rest of the map.
+
+## pbfr1b2 (corrected-core lineage, round 1, slot 2) - 2026-10-29 11:38 UTC start
+
+Box 58244389 (RTX 5080, Ryzen 9 7945HX 32 thr / quota 30.7, 0.387 $/h, South Carolina), rented 11:51 UTC.
+
+### FOR THE OPERATOR: the doorway is a STAIRCASE on the corrected core - Go-Explore walks out in 2 min (12:00 UTC)
+* `explore_phase1.py --exact-chains --cell 64 --cell-energy 32 --view-follow=-150,...,180 --select-energy 1
+  --tick-ms 8 --maxvel 3500 --envs 4096 --threads 30` from the TRUE spawn (reward-free uniform bursts), 12 min:
+  the deepest cell went 0.46% (0.3 min) -> 3.2% (1.7 min) on the grader field and stopped there (the pit, gate 2
+  of the old lineage). 25,529 cells, 10.1M runs. `runs/pbfr1b2/_ge/s1_line.npy` (3,706 ticks, 22/22 links exact).
+* The line does NOT go east. It uses the doorway, through TWO func_conveyor slabs the old core had both dropped
+  (BSP models: `*249` (648..712, -3043..-2957, z 3654..3657) and `*250` (648..718, -3054..-2946, z 3678..3681,
+  ring-shaped: a standing hull dropped onto the doorway lands on 3657 in the middle, 3681 around it)):
+  1. spawn floor (3616) -> a standing jump onto *249's east edge (41 u; tick 257-294, lands at x 728.0, i.e. on
+     the edge of *253's push field);
+  2. *249 -> a duck-jump INSIDE trigger_push *253 (-2500 u/s: vz falls ~26 u/s per tick, apex ~+11 u, +18 from
+     the duck) onto *250 (3681; tick 444-458, ~5 u of margin);
+  3. *250 -> jump, duck on the next tick: the ducked feet (3,702.9) leave *252's field (top 3698) and the jump
+     runs at normal gravity (tick 981-1058) -> the SOUTH gap (floor 3696);
+  4. crawl west through the south passage (y ~-3110) and drop onto a ledge at (165, -3048, 3524), then the pit.
+* Both conveyors are solid in the BSP (`spawnflags` absent: neither NOTSOLID (2) nor VISUAL (1)), `angles 90 0 0`
+  (movedir (0,0,-1)), `speed -181`, so in the game standing on them sets basevelocity (0,0,+181)
+  (SV_CheckMovingGround) - the core does not model FL_CONVEYOR (src/bsp.c says so). As far as I can read the HL
+  SDK / engine, it cannot matter here: PM_AddCorrectGravity turns basevelocity.z into +181*ft on vz and zeroes it,
+  on the ground vz is zeroed again, and PM_Jump SETS vz = 268.3 (CS 1.6). The push fields act exactly as the
+  operator's 07:20 anatomy describes (-19.2 u/s per tick at 7.67 ms, the duck lifting the feet out of the field).
+  So unless something else differs, the doorway is passable in the real game too: 41 / 24 / 17 u steps, every
+  one under a 45 u jump (+18 duck). The operator's "65 u above the spawn floor" is *250's height; *249 sits in
+  its hole 24 u lower. **Please check it in the game**: if it is not passable there, every result of this branch
+  is sim-only again (it is what the grader's core allows, so the protocol scores it).
+* Probes (`/tmp/.../scratchpad/probe_*.py`, kept in NOTES only): the start room is x ~650-1,130, y ~-3,150..-2,850,
+  floor 3616; shelves north/south at z ~3696-3704; trigger_teleport *257 is NOT a box over the ledge but thin slanted
+  sheets on the room's north and south edges at x ~880-1,120 (and a sheet on the north shelf's top for x >= 888);
+  *127 (the half-pipe's kill teleport) has an AABB down the whole half-pipe. The record (ANALYSIS ONLY) bunny-hops
+  east, pumps the half-pipe (h 3,655 -> ~3,920 in 4.3 s), flies off the west ramp at (1,240, -3,017, 3,622) with
+  vz 481 / |v_h| 480, apex 3,764 at x 968, and lands in the north tunnel at x ~800 (floor 3703) at ~570 u/s.
+
+### c1: the staircase as a backward curriculum on the incumbent (12:08 UTC, warm resume = measuring AT the wall)
+* Spine `autoresearch/spines/pbfr1b2_door.npy` (+ keys; README there): the GE line's ticks 0..2440 every 2nd
+  tick (1,221 states), views/keys along the velocity where |v_h| >= 100. Success line d <= 56,253 (the spine end
+  56,153 + 100: past the south passage). `--spawn-states pbfr1b2_r38_course_states.npy` 0.3 = r38's own reservoir
+  past 2% (19,621 rows, 2-94%), so the course after the start stays practised (with a demo file the 90% reservoir
+  share of the pool goes to the spine).
+* `box.py launch --resume --steps 4e8 -- --maxvel 3500 --lr 3e-5 --ckpt-every 1e8 --demo-file .../pbfr1b2_door.npy
+  --demo-keys .../pbfr1b2_door.keys.npy --demo-window 5 --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5
+  --demo-rate 0.3 --demo-min-ep 50 --demo-front-frac 0.6 --demo-success-d 100 --demo-success-bonus 50
+  --keys-hold-spawn-duck --yaw-entropy 0 --demo-front-temp 0.5 --demo-front-ticks 40 --demo-front-view 6
+  --respawn-greedy 0.2 --respawn-greedy-window 0.25 2.0 --respawn-greedy-stuck 200 --respawn-front-perturb 0
+  --energy-pot 12 --energy-pot-front 0 --energy-pot-front-bonus 0 --no-respawn-novel --respawn-backward-mix 0
+  --int-real-only 0 --spawn-states .../pbfr1b2_r38_course_states.npy --spawn-states-frac 0.3`.
+  NB for a resume of fx0: its config carries the expert loop's `demo_window 39740 / demo_rate 2 / demo_min_ep 1e9
+  / demo_grow 0` and the trainer RESTORES them when the flags are absent - pass all four.
+* First minutes: ~140k steps/s, kl 0.9-1.6 (the incumbent's own resumes read ~0.03; the yaw sigma is 0.017, so
+  small mean moves on the new low-speed states read as large KL), training finishes ~20% (course-state spawns).
