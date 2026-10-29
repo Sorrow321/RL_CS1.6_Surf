@@ -4662,3 +4662,7 @@ so the curriculum values are all passed). Success line d <= 55,533 (+2.83%). Rec
   still pays, but once the curriculum reaches the start the course must be re-anchored (more
   course spawns, SIL off, lower lr), and a future round should protect it from the start (e.g. a
   larger course share, or SIL rows restricted to the band).
+* c7 at 18 min (70.38B): band 429 12.6-13.7% (c6's end ~8%), 434 ~92%; the SIL lift is real but
+  slow (~+0.3 %/min). Policy beams on c7's 70.36B weights from spine state 75 (the ridge entry,
+  2,048 copies + 32 greedy, 23 s, `--score d` and `--score dh --score-energy 4`): both stay at the
+  ridge's west end (d 57,483-57,600) - the early-ridge pump is not in the policy yet.
