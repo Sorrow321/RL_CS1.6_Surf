@@ -4718,3 +4718,7 @@ the record flies there. So for a uniform explorer the bottleneck is not the pump
 through trigger_teleport *257's airspace (x 865-1151, z 3696-3780), which in our core a standing hull cannot cross at
 the record's height (a ducked one can; round 1 of the first lineage). If the staircase is ruled out, that crossing is
 the gate to study (and whether the core's *257 test matches the game, since the record crosses it).
+* Where the 117.722 eval's time goes (pb_stair_eval, the 9 episodes): the basin at 2.8-6.2 s, the strip 3.4-7.1 s, the
+  tunnel 5.6-9.2 s, 1.4% at 7.1-10.8 s, finishes 68.3-72.0 s (ep 0: 5% at 10.8 s, 25% at 23.2, 50% at 36.8, 90% at
+  64.3). The GE line reached the basin at 1.0 s: the policy DAWDLES 2-5 s at the spawn before its first jump - the
+  first time target for the next round (0.033 per second; 9/9 already).
