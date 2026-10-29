@@ -1,7 +1,7 @@
 {
  "agent": "pbfr1b4",
  "round": 1,
- "final": false,
+ "final": true,
  "best": {
   "score": 117.762,
   "eval_file": "/home/steam/ar_pb/runs/pbfr1b4/pbfr1b4_c12/traj_73921462272.jsonl",
@@ -18,5 +18,5 @@
   "resume_from": "pbfr1b4_c11 ckpt_71505018880 (the 9/9 eval) <- c10 <- c9 <- c8 <- incumbent fx0",
   "commit": "fa3236c7"
  },
- "summary": "117.762 (c12 73.921B: 9/9 greedy finishes from the true start on the corrected core, best 67.14 s, mean 71.88 s; hand-on ckpt_73920937984). First finish 108.698 (c9), 9/9 first at 117.706 (c11). Route: a doorway staircase the fix exposed (*249 basin -> *250 strip -> passage; OPEN QUESTION for the operator: is it in the real game?). Recipe: Go-Explore from the true spawn (5 min) -> a backward curriculum on its line warm from the incumbent, --demo-match-band, a 30% pool of the incumbent's own course states, --target-kl 0.15 / lr 5e-5, then lr 2e-5 / kl 0.05 on the 9/9 peak. Without the doorway a box-scale uniform GE (31M runs) finds no way in: the half-pipe route stays open."
+ "summary": "FINAL 117.762 (pbfr1b4_c12 73.921B: 9/9 greedy finishes from the true start on the corrected core, best 67.14 s, mean 71.88 s; hand-on ckpt_73920937984, md5 ea0b7b51, 0.5M steps before the eval; c12's ckpt_final pulled too). Incumbent 0.405. Route: the doorway staircase the 6bd7f931 fix exposed (*249 basin -> *250 strip -> passage), CONFIRMED legal in CS 1.6 by the user (operator, 21:10 UTC). How: Go-Explore from the true spawn finds it in 5 min; a backward curriculum on its line warm from the incumbent with --demo-match-band, a 30% pool of the incumbent's own course states and --target-kl 0.15 (lr 5e-5), then lr 2e-5 / kl 0.05 on the 9/9 peak. Also: with the doorway excluded (analysis only), a view-follow Go-Explore finds the record's half-pipe route. Next: the 2-5 s the policy dawdles at the spawn (time), then the half-pipe line as a speed/energy alternative."
 }

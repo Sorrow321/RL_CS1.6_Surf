@@ -4738,3 +4738,36 @@ the gate to study (and whether the core's *257 test matches the game, since the 
   out and the core fixed, the generic recipe for the start is: explore_phase1 with --view-follow + energy and
   heading cells from the true spawn -> the deepest chain -> the backward curriculum of this round (match-band, the
   own-course pool, target-kl), with nothing map-specific in it.
+
+### pbfr1b4 round 1 lesson (wrap-up, 2026-10-29 21:13 UTC) - supersedes the DRAFT above
+* **CONFIRMED (operator pbx, 21:10 UTC): the user reproduced the *249/*250 doorway staircase in the REAL GAME (CS
+  1.6). It is legal, and this round's finishes through it count.** The open question above is closed: the corrected
+  core's start is the staircase (crouch-jump into the func_conveyor *249 basin, a duck-jump out of the 2500 u/s
+  push-down field onto the *250 strip, a running jump onto the passage ramp), not only the record's half-pipe. The
+  user ended this lineage at the same time (ROUND OVER).
+* **Score 0.405 -> 117.762** (pbfr1b4_c12 73.921B: 9/9 greedy finishes from the true start, best **67.14 s**, mean
+  71.88 s; the record is 75.18 s via the half-pipe). Hand-on: pbfr1b4_c12/ckpt_73920937984.pt (md5
+  ea0b7b51051d948069ff8fa73227fa02, 0.5M steps before that eval); c12's ckpt_final pulled beside it. Progression:
+  108.698 (c9, the first finish, 1/9) -> 114.356 (c10, 6/9) -> 117.706 (c11, 9/9, 68.83 s) -> 117.722 -> 117.762
+  (c12, nine 9/9 evals at lr 2e-5).
+* **The recipe that did it** (all generic; constants not read off the map):
+  1. Go-Explore phase 1 from the TRUE spawn (`explore_phase1 --cell 64 --cell-energy 32 --exact-chains --act-every 4
+     --tick-ms 8 --select-energy 2 --maxvel 3500`): the staircase and the old gate-2 pit in 5 min on 2 CPU threads;
+     its deepest chain, cut at the tunnel's end, is the spine (`ge_line_keys.py` + `spine_canon_keys.py`).
+  2. A backward curriculum on it, WARM from the incumbent (the course after the start was in its weights): the
+     flags in the c8 entry, notably `--demo-rate 0.2 --demo-success-d 100 --demo-success-bonus 50` and
+     **`--demo-match-band`** (a GE line idles: repeated origins froze the band for 250M steps without it).
+  3. **A 30% `--spawn-states` pool of the policy's own course states** (its greedy flights from the strip, past 1.4%):
+     without it the course eroded under the curriculum (training finishes 29% -> 0%).
+  4. **`--target-kl 0.15` at lr 5e-5**, then **lr 2e-5 / target-kl 0.05** on the first 9/9 snapshot (this policy reads
+     kl 1-4.7 per update at lr 1e-4).
+  5. Keep idle rows that are not idle (the basin's 2.7 s is the stamina wait: trimming it stalled c8 at the landing).
+  6. `--ckpt-every 7.5e7`: a snapshot beside every eval, so a peak can be handed on (ckpt_latest is overwritten).
+* **Also found (analysis):** with the doorway excluded, uniform Go-Explore pumps the half-pipe (energy height to
+  3,965) but never carries it back over the rim; with `--view-follow` bursts and heading cells it finds the record's
+  route by itself (24.4 s to the tunnel's end, ~22 s of pumping, the passage at ~600 u/s): spines/
+  pbfr1b4_halfpipe_nodoor.npy, labelled do-not-train-as-is (found under a hand-placed exclusion).
+* **Next, for whoever continues:** time (0.033 per second; 9/9 holds): the policy dawdles 2-5 s at the spawn before its
+  first jump (the GE line jumps at 0.4 s); then the downstream course with the first lineage's search/distil tools.
+* **Ops:** the fleet cap left this branch boxless 11:51-13:25 and 15:19-18:08; a 5070 box went offline mid-run with the
+  only curriculum-trained weights (pull before building on a checkpoint); the 4080 + 9950X box ran ~840k steps/s.
