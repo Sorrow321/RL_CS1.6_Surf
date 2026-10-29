@@ -4559,3 +4559,8 @@ The incumbent recipe's resume ran at 218-274k steps/s on it.
   20-29% oscillation. Now on lap 1's first descent into the half-pipe (row ~540 = 4.3 s into the line). kl median 1.9
   (max 4.0), explained variance 0.98, value loss 1.5; training finishes 41% at ~72 s (from spawns ~4-8 s into the
   line); greedy evals still at the doorway (0.38-0.43%).
+* cur4 at 14:25 UTC (70.76B): tau ~309-314 (walking east on the spawn floor, 2.4 s into the line), ~12 rows/min (each
+  floor band reads 0% first: the old habit near the spawn is "go west to the doorway"). **The greedy has started to
+  change**: in the 70.762B eval 4/9 episodes head EAST, drop off the ledge ~130 u south of the line's drop (y -3,174..
+  -3,203 vs -3,048) and die in the half-pipe's bottom kill volume (z ~3,290); the rest stop in the room (score 0.317:
+  going east costs field progress first). kl median 1.4.
