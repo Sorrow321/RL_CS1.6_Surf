@@ -4650,3 +4650,8 @@ Box 58244389 (RTX 5080, Ryzen 9 7945HX 32 thr / quota 30.7, 0.387 $/h, South Car
   --demo-success-pace 0.15 0.25 --demo-success-bonus 50 --demo-match-band`, window 5 / grow 5-40 / rate 0.3 /
   front 0.6 / front-temp 0.5. A spine episode succeeds only if it reaches d <= 56,332 within 1.15x the planner's
   own time from its spawn row + 32 ticks (from the map start: 751 ticks = 5.76 s; the greedy needs 6.0-6.3 s).
+* x3 evals (BC r3 + pace-gated start curriculum): 5/9 65.59 / 7/9 66.20 / 7/9 66.22 / 8/9 65.25 / 8/9 65.74 /
+  8/9 **64.81** / 8/9 65.96 / 8/9 **64.44 s** (116.741) - the fastest finishes of the lineage, but 8/9: the misses
+  are crashes at 63-67% (~47-49 s; the stretch before the old 71% bounce) and once a death at the tunnel entrance.
+  The pace curriculum walked 656 -> ~376 rows in ~25 min and sits at the plate -> north-gap jump (rows 371-375:
+  6.5% paced successes; 376-380: 32%).
