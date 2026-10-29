@@ -4738,3 +4738,54 @@ Box 58244389 (RTX 5080, Ryzen 9 7945HX 32 thr / quota 30.7, 0.387 $/h, South Car
 * Round 9 plan on x8's final (75.043B): 61.40 / **61.08** / 61.50 / 62.84 s. x9 (20:57 UTC) = x8's final + BC r9 +
   spawn-states r9, x8's flags, lr 2e-5, 1.8e9 steps, evals every 50M steps (`box.py launch --record-every 50e6`) -
   the last run of the round (stopped for the wrap-up at ~22:35).
+* x9 evals (round 9, evals every 50M steps; stopped at ROUND OVER): 8/9 65.51 / 9/9 64.49 (117.850) / 8/9 64.23 /
+  6/9 / 8/9 / 8/9 / 9/9 65.74 / 7/9 64.64 / 8/9 - no new best.
+
+### pbfr1b2 round 1 lesson (wrap-up, 2026-10-29 21:18 UTC) - supersedes the DRAFT above
+* **THE STAIRCASE IS LEGAL (operator pbx, 21:10 UTC): the user reproduced the *249 / *250 doorway staircase in the
+  real game (CS 1.6); the finishes through it count.** The "FOR THE OPERATOR" question above is closed: the
+  corrected core's doorway (func_conveyor *249 at 41 u above the spawn floor, *250 at 65 u, then a gap at 80 u, each
+  step under a jump (+ duck) and the push fields escaped by ducking) is a real way out of the start room. The record's
+  half-pipe pump is the other one (faster later energy, slower start in our hands: h1 below).
+* **Score 0.405 -> 117.862** (branch best; 141 valid evals): **x8's eval 74.978B, 9/9 greedy finishes from the true
+  start, best 64.15 s** (the record, a yardstick only, is 75.18 s). Hand-on: `runs/pbfr1b2/pbfr1b2_x8/
+  ckpt_74970562560.pt` (md5 7d72c338fd49968c787777dbfb45bcc4, 7.9M steps before the eval); x8's ckpt_final (75.043B,
+  md5 c0be29b4...) pulled beside it. Box 58244389 (RTX 5080 + Ryzen 9 7945HX, 0.387 $/h, 340-415k steps/s) the whole
+  round, released at wrap-up.
+* **Milestones:** first finish 12:42 UTC (109.914, 2/9, 69.26 s; ~730M steps after the incumbent, ~45 min of box
+  time) -> 9/9 13:05 (117.779, 66.62 s) -> 117.794 / 117.797 / 117.803 / 117.811 (65.67 s) -> 117.851 (64.48 s, x4)
+  -> **117.862 (64.15 s, x8)**. Fastest single greedy finish 64.00 s (x7, 8/9).
+* **What did it, in order:**
+  1. **Go-Explore phase 1 from the TRUE start on the corrected core** (`explore_phase1 --exact-chains --cell 64
+     --cell-energy 32 --view-follow=-150,...,180 --select-energy 1 --tick-ms 8 --maxvel 3500`, 4,096 envs, 12 min):
+     the staircase in 2 min (to the pit at 3.2%). `--view-follow` also made the uniform explorer PUMP the half-pipe
+     (h up to 4,126 vs ~3,815 without it in earlier rounds) and fly back into both passages at the record's energy.
+  2. **A backward curriculum on that one line, warm on the incumbent**, with the incumbent's own reservoir states as
+     `--spawn-states` 0.3 so the course stays practised: the policy needed only floor -> *249 -> *250; after *250 it
+     flies the old lineage's route (north gap, tunnel, the whole course) - the old core's course skill transferred
+     intact. Two spine fixes mattered: cut the explorer's uniform-yaw-rate mid-air turnaround (an unlearnable band:
+     2% vs 60% one band later), and cut the spine at the end of the start room so its uniform spawns stay where the
+     skill is missing.
+  3. **Expert iteration by hand** (tools/xround_plan.sh = 4 beam_tas waves + plan_to_bc on one checkpoint; then
+     `box.py launch --resume --bc-file ... --bc-coef 0.5 --bc-coef-final 0.5` with the planner's lines as spawns):
+     the planner 63.7 -> 62.3 -> 62.2 -> 61.6 -> 61.7 -> 61.55 -> 61.6 -> 61.36 -> 61.08 s by round; the greedy's
+     9/9 best 66.6 -> 65.9 -> 65.7 -> 64.5 -> ... -> 64.15 s. exit_local.py itself was not used: it launches the
+     trainer outside box.py.
+  4. **A pace-gated start curriculum on the planner's own start** (`tools/cut_start_spine.py` + `--demo-success-pace
+     0.15 0.25`): the planner's start beats the greedy's by 1.6 s at the tunnel exit, all in the plate -> north gap
+     step; the curriculum reached that band and every eval since x4 has episodes doing the fast jump. Lowering its
+     advance rate to 0.25 (x6) cost start reliability; 0.3 is the setting.
+  5. **Greedy-death respawns back on in the BC rounds** (`--respawn-greedy 0.2`): 9/9 in 4 of 11 evals (x4) against
+     1 of 11 (x3).
+* **What did not:** (a) h1, the half-pipe start as an energy spine (`--demo-success-energy 80 --demo-success-strict`
+  on the explorer's pump line): stalled at the fly-back from the half-pipe bottom (<1% energetic crossings), the
+  greedy never went east; (b) the incumbent's old north-edge move from *250's north part (it walks off the plate);
+  (c) re-anchoring on the best snapshot at lr 2e-5 (x7) did not raise the ~7/9 mean - a 9/9 eval is the lucky tail,
+  the same weights scored 9/9 and 5/9 on different seeds; (d) view-only branched beams cannot change the start (a
+  keys-hold checkpoint refuses key bursts in beam_tas).
+* **For the next round (generic levers left):** the start's NW-corner detour (~1.5 s) is the SPAWN's habit - from a
+  state of the explorer's direct walk the policy goes straight onto *249 - so a start spine that joins a direct walk
+  to the planner's fast plate -> gap is ~1 s; the planner is 3 s faster than the greedy over the course (biggest
+  chunks at 50% and the 71% bounce); reliability is ~7/9 per eval with misses spread thinly over the course.
+  Ops: deploy only on an idle box (its GPU gate fails under a trainer); snapcopy beside every run (the hand-on
+  snapshots came from it); `score.py --best` wants a run directory, the orchestrator scores `runs/<agent>/*/`.

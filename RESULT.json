@@ -1,7 +1,7 @@
 {
  "agent": "pbfr1b2",
  "round": 1,
- "final": false,
+ "final": true,
  "best": {
   "score": 117.862,
   "eval_file": "/home/steam/ar_pb/runs/pbfr1b2/pbfr1b2_x8/traj_74978426880.jsonl",
@@ -65,5 +65,5 @@
   "resume_from": "incumbent fx0 -> pbfr1b2_c1..c5 (staircase curriculum) -> x1..x4 -> x7 (re-anchored on x4's 117.851 snapshot, lr 2e-5) -> x8 (expert iteration round 8)",
   "commit": "9f72a7e7"
  },
- "summary": "Go-Explore (uniform, view-follow, energy cells) from the true start on the corrected core finds a doorway STAIRCASE in 2 min (func_conveyor *249 at 41 u -> *250; both slabs were missing in the old core). A backward curriculum on that line, warm on the incumbent (+ its own course states 0.3), teaches the two new jumps; everything after *250 is the incumbent's old route. Best: 117.862 = 9/9 greedy finishes from the true start, best 64.15 s (x8 eval 74.978B, expert iteration round 8 at lr 2e-5; before: 117.851 x4, 117.811 x3, 117.803 x2, 117.797 x1, 117.794 c4; incumbent 0.405; record 75.18 s). Evals since 69.06B: 9/9 leave the start, 6-9/9 finish. h1 (half-pipe energy spine, the record's start) stalled at the fly-back: not learned in 30 min. x1 (14:15 UTC): expert iteration by hand - the policy's own planner finds 63.6-63.8 s lines, distilled by BC. Operator: please confirm the *249/*250 staircase in the real game."
+ "summary": "0.405 -> 117.862: 9/9 greedy finishes from the true start on the corrected core, best 64.15 s (record 75.18 s), x8 eval 74.978B, hand-on ckpt_74970562560 (7.9M steps before). (1) Go-Explore from the true start (uniform bursts, --view-follow, energy cells) found the doorway staircase in 2 min: func_conveyor *249 (41 u) -> *250 -> a gap; both slabs were missing in the old core. The user reproduced it in CS 1.6: legal (operator, 21:10 UTC). (2) A backward curriculum on that line, warm on the incumbent, taught the two new jumps: first finish 12:42, 9/9 at 13:05 (117.779, 66.62 s); after *250 the policy flies its old route. (3) Expert iteration by hand (beam_tas -> plan_to_bc -> box.py launch --bc-file) + a pace-gated start curriculum + greedy-death respawns: planner 63.7 -> 61.1 s, greedy 9/9 best 66.6 -> 64.15 s. Null: the half-pipe start as an energy spine (stalled at the fly-back). Next: the start's NW detour (~1.5 s, the spawn's habit) and reliability (~7/9 per eval)."
 }
