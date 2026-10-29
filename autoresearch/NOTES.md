@@ -4607,3 +4607,18 @@ pbr6b4_c11) credits it to the copy inside the band. Every GE spine with idling n
 Not pulled from it: c2's ckpt_latest (68.294B, the curriculum's stable weights), the course pool
 (runs/pool/course_c2.npy) and c6/c7. Lesson: pull the checkpoint a later run is to be built on (`box.py pull --ckpt`)
 before building on it. A backup course pool is being recorded locally from the incumbent (record_ckpt on CPU).
+
+### Box lost; the next launch rebuilt from the repo (15:18-15:30 UTC, local)
+* 58254955 stayed offline 13+ min: released 15:19, machine 151122 blocklisted (unreliable). Lost with it: c2's
+  weights (the only curriculum-trained checkpoint), the box-side course pool, c6/c7. Since then no offer fits the
+  fleet's headroom (0.22 $/h; the only acceptable offer a 0.62 5080). A rent loop retries every 30 s.
+* The INCUMBENT from the strip (local record_ckpt greedy, corrected core): row 1050 -> 63.5% then a fall at 42.9 s
+  (3/3 stochastic copies fall off the strip; c2's weights had finished from the same state), row 1100 (airborne after
+  the strip's NE jump) -> a FINISH in 62.5 s, row 1200 (on the ramp) -> back to the doorway.
+* Committed for the next box (no box-side files needed): `pbfr1b4_stair_t` (the spine without its idle stretches,
+  939 rows) and `pbfr1b4_course_r38` (the incumbent's own course states, 2,547 rows, p10/50/90 7/44/81%).
+* c8 (ready, CPU-smoked): incumbent + `--demo-file pbfr1b4_stair_t.npy --demo-keys ... --demo-match-band
+  --demo-rate 0.2 --demo-window 5 --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5 --demo-min-ep 50
+  --demo-front-frac 0.4 --demo-success-d 100 --demo-success-bonus 50 --demo-front-temp 0.5 --demo-front-ticks 40
+  --demo-front-view 6 --spawn-states pbfr1b4_course_r38.npy --spawn-states-frac 0.3 --lr 5e-5 --target-kl 0.15
+  --no-respawn-novel --respawn-backward-mix 0 --int-real-only 0 --maxvel 3500`.

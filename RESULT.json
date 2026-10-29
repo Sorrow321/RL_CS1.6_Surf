@@ -2,6 +2,17 @@
  "agent": "pbfr1b4",
  "round": 1,
  "final": false,
- "best": null,
- "summary": "Best eval so far 0.405 (the incumbent's bounce; no eval past it yet). The corrected core still has a doorway route: a 3-step staircase via func_conveyor *249 (open question for the operator: is it in the real game?); a 5-min local Go-Explore from the true spawn reached 3.21% that way, and from the *250 strip the incumbent already flies 26% of the course. Running: a backward curriculum on that GE line (spine pbfr1b4_stair_a), warm from the incumbent (c4: c2's weights, lr 5e-5, --target-kl 0.3); the band is at row ~1015-1035 of 1753 and has to walk back through the basin jump and the spawn jump. lr 1e-4 read kl 1-4.7 per update; a yaw sigma floor (new --yaw-sigma-min) broke the course's training episodes."
+ "best": {
+  "score": 0.415,
+  "eval_file": "/home/steam/ar_pb/runs/pbfr1b4/pbfr1b4_c5/traj_68936007680.jsonl",
+  "run": "pbfr1b4_c5",
+  "step": 68936007680,
+  "ckpt": null,
+  "recipe": [
+   "incumbent fx0 resumed with a backward curriculum on autoresearch/spines/pbfr1b4_stair_a.npy (GE staircase line), lr 5e-5, --target-kl 0.3, --demo-rate 0.2 (c5; c4's weights)"
+  ],
+  "resume_from": "pbfr1b4_c4 ckpt_latest (68.558B) <- c2 <- incumbent fx0",
+  "commit": "fa3236c7"
+ },
+ "summary": "Best 0.415 (c5: still the doorway bounce, +0.01 over the incumbent). Found: the corrected core admits a 3-step doorway staircase via func_conveyor *249 (open question for the operator), a 5-min GE from the true spawn reaches the pit; from the *250 strip the incumbent/c2 fly the whole map (finish). The backward curriculum through the GE line was slowed by this policy's kl sensitivity (lr 1e-4: kl 1-4.7), course erosion at kl budget 0.3 (finishes 29%->0%), and repeated spine origins freezing the band (--demo-match-band). Box lost offline 15:05 with c2's weights. Ready: c8 = incumbent + trimmed spine pbfr1b4_stair_t + match-band + own course pool pbfr1b4_course_r38 (30%), kl 0.15."
 }
