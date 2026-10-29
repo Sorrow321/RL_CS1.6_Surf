@@ -4745,3 +4745,6 @@ so the curriculum values are all passed). Success line d <= 55,533 (+2.83%). Rec
 * **c13** (18:00 UTC): c12's ckpt_latest, `--demo-bc 1.0 --demo-rate 0.06`, `--demo-tau0 239`, else
   as c12 - the clock (5 h left, ~240 states to go) over per-band competence; the replay behind
   the band, SIL and the band distillation keep raising it.
+* c13 at 18:32 (72.28B): band 239 -> 169-174 in 32 min (174 passes at 6-12%; 169 = the explorer's
+  FIRST, low-energy east-end U-turn, h ~3,712-3,725, at 0.2-2.2%). Training: reward 8-16, value fit
+  0.956-0.968, KL ~0.6. Greedy evals 0.352-0.403, 0/9 onto the ridge yet.
