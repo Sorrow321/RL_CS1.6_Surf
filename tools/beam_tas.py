@@ -2451,7 +2451,10 @@ def main():
                     view_continuous=VIEWC, view_absolute=VIEW_ABS,
                     # --pitch-sigma-min: MIRRORED (record_ckpt) - the pitch head's sigma floor is
                     # what the proposals sample the camera with
-                    pitch_sigma_min=float(cfg.get("pitch_sigma_min") or 0.0)
+                    pitch_sigma_min=float(cfg.get("pitch_sigma_min") or 0.0),
+                    # --yaw-sigma-min: MIRRORED the same way (the yaw head's sigma floor is
+                    # what a stochastic sample draws the yaw with; the greedy mean ignores it)
+                    yaw_sigma_min=float(cfg.get("yaw_sigma_min") or 0.0)
                     ).to(device)
     policy.load_state_dict(ck["policy"])
     policy.eval()
