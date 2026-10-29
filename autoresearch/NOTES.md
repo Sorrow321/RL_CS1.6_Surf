@@ -4771,3 +4771,6 @@ so the curriculum values are all passed). Success line d <= 55,533 (+2.83%). Rec
   ckpt_73002385408 at or before it).
 * **c15** (19:59 UTC): c14's ckpt_latest, `--demo-rate 0.02`, `--demo-tau0 94`, else as c14. Plan:
   push the band until ~21:30, then consolidate the course for the hand-off checkpoint.
+* c15 at 20:20 (73.65B, rate 0.02): band 94 -> 39 in 20 min at 2-4% band success (one update read
+  KL 3.14, then 1.15; value fit 0.96). Greedy evals 0.403 x4: still wandering the spawn room
+  (x 860-1,012) and dying; the band is now inside the walk east from the spawn (spine 0-50).
