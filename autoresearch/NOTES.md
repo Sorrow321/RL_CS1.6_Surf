@@ -4631,3 +4631,20 @@ so the curriculum values are all passed). Success line d <= 55,533 (+2.83%). Rec
   the canonical view frame (`tools/spine_canon_keys.py`, round 4's tool; 1,186 of 2,732 rows change:
   `pbfr1b1_ge_pump_k4.keys.npy`; the states are byte-identical to `_a4`), `--demo-tau0 434`, other
   flags as c4.
+* **c5 result** (69.55-69.88B, 14:45-15:11 UTC, translated keys): the band went 444 -> 434 (60%)
+  -> 414 (40%) at once, then back, and settled into 434 (66-70%) <-> 429 (0.1-0.4%). Greedy evals
+  0.405-0.421 (still the doorway).
+* **The 429 skill, measured in the core** (local `play_step` from spine tick 1,716, the view held
+  along the velocity): neutral keys, left, forward and forward+right all die within 60-91 ticks;
+  **strafe-RIGHT alone rides up the east-end curve and GAINS energy (h 3,861 -> 3,951, more than
+  the explorer's 3,931)**. The surf primitive (view along the velocity, the strafe key into the
+  face) IS the pump. The policy needs to KEEP that key for ~5 decisions; per-decision sampling
+  (even hot) almost never yields a sustained hold: p(good) ~0.3 per decision over 5 decisions
+  ~= the observed 0.1-0.4%. The critic already values 429 low, so failures carry ~0 advantage
+  and only the rare successes teach.
+* **No shortcut from earlier spine states** (c5 weights, stochastic, 5 episodes each from thinned
+  360 / 375 / 390 / 400 / 410 / 420, h 3,856-3,924): best progress -1.6% .. +0.38% - those states
+  are untrained.
+* **c6** (15:12 UTC): self-imitation for the rare successes - `--sil-coef 0.2 --sil-top 64
+  --sil-tempered 1`; SIL is refused with the per-env temperature machinery, so `--front-temp 0` and
+  no `--demo-front-temp`. Otherwise c5's flags, c5's ckpt_latest, `--demo-tau0 434`.
