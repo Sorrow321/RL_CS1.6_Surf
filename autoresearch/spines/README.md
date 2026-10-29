@@ -465,3 +465,13 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   pbfr1b4_stair_a rows 1050 (to 63.5%, then a fall) and 1100 (a FINISH, 62.5 s), every 5th tick past 1.4% (a failed
   episode's last 260 ticks dropped); progress p10 / p50 / p90 7.2 / 43.9 / 80.7%. Keeps the course practised while a
   curriculum trains the start (pbfr1b4 c5 lost it: training finishes 29% -> 0%).
+* `pbfr1b4_halfpipe_nodoor.npy` + `.keys.npy` (3,046 rows, 24.4 s at 8 ms; md5 6a222b8151198e8c9988136cb870e336 /
+  c62942f5a4453f9ad4342163398e0e76): **THE RECORD'S KIND OF ROUTE, FOUND BY A GENERIC EXPLORER - BUT UNDER AN
+  ANALYSIS-ONLY DOORWAY EXCLUSION. DO NOT TRAIN ON IT AS IS.** `explore_phase1 --cell 64 --cell-energy 32
+  --cell-heading 8 --select-energy 2 --view-follow=-150,...,180 --exact-chains` (4,096 envs, 12 threads, 30 min, 20.7M
+  runs) from the true spawn, with the doorway (*249 basin + *250 strips + the air above them) force-failed by a wrapper
+  (a hand-placed box: CLAUDE.md 0b forbids it in training). Its deepest chain (54 cells, replayed exact by
+  ge_line_keys, cut at 1.39%): ~22 s of pumping in the east half-pipe (energy height 3,653 -> ~4,000), then west over
+  the rim ducked through *257's airspace (64 of 80 rows ducked) and the passage at ~600 u/s. Legitimate to train on
+  only if the operator rules the staircase out and fixes the core, and the same explorer WITHOUT the exclusion then
+  reproduces such a line (the generic recipe).

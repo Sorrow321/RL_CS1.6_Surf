@@ -4722,3 +4722,19 @@ the gate to study (and whether the core's *257 test matches the game, since the 
   tunnel 5.6-9.2 s, 1.4% at 7.1-10.8 s, finishes 68.3-72.0 s (ep 0: 5% at 10.8 s, 25% at 23.2, 50% at 36.8, 90% at
   64.3). The GE line reached the basin at 1.0 s: the policy DAWDLES 2-5 s at the spawn before its first jump - the
   first time target for the next round (0.033 per second; 9/9 already).
+
+### A GENERIC EXPLORER FINDS THE HALF-PIPE WAY IN when the doorway is unavailable (20:31-21:01 UTC, box; ANALYSIS)
+* The uniform explorer (above) pumped but never came back over the rim. Changed only the burst rule and the cell key:
+  `--view-follow=-150,-120,-90,-60,-30,0,30,60,90,120,150,180` (each burst holds a view OFFSET from the velocity
+  heading - the policy's own action frame, i.e. surf-like strafing) and `--cell-heading 8` (the velocity heading x
+  rising in the key), with the same virtual doorway kill volume: 30 min, 20.7M runs, 357,766 cells, **deepest 3.3%**;
+  2,000+ cells past 3%, 46,102 past 1.4%. The deepest chain = the record's route in kind: east into the half-pipe,
+  ~22 s of pumping across it (h 3,653 -> ~4,000; the archive's max 4,127), back west at ~640 u/s over the rim ducked
+  (the *257 airspace) and through the passage at 535-600 u/s (the record: 520-600 u/s), the tunnel's end at 24.4 s.
+  Saved as autoresearch/spines/pbfr1b4_halfpipe_nodoor.npy (labelled DO NOT TRAIN AS IS: the exclusion is a
+  hand-placed box).
+* So the hidden skill of this map (energy from a field-opposed half-pipe, carried back) IS discoverable by reward-free
+  Go-Explore once its bursts act in the velocity frame; uniform yaw rates cannot surf it. If the staircase is ruled
+  out and the core fixed, the generic recipe for the start is: explore_phase1 with --view-follow + energy and
+  heading cells from the true spawn -> the deepest chain -> the backward curriculum of this round (match-band, the
+  own-course pool, target-kl), with nothing map-specific in it.
