@@ -445,3 +445,9 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   ~2.5 laps of the east half-pipe (energy height 3,653 -> 3,954), climbs its west side, flies north-west over the spawn
   room, ducks into the passage at 488 u/s and runs west in the tunnel (end (342, -2,889, 3,715), 444 u/s, h 3,839, d 56,574
   = 1.01%). No demo, no record data, no policy, no reward; nothing in the search names a place (pbfr1b3, round 1).
+* `pbfr1b3_beam2.npy` + `.keys.npy` (8,579 rows; md5 ca929505a2b5341796308c43693c8158 / c9c242f4c9451b8c167be13f624f51e7): the
+  policy's OWN beam-search line from the true spawn to the finish, 65.77 s (bit-exact replay): beam_tas of pbfr1b3_cur7's
+  ckpt_75356962816 (4,096 envs, --resample-every 25, --score d, --greedy-envs 32) with --prefix-line = the first 1,000
+  ticks of that checkpoint's own --score v beam line (68.14 s; runs/beam_full1 on the box), then tools/beam_best_states.py +
+  tools/stitch_spine.py --no-cut. 1.5 s faster than the greedy's best 67.27 s (+0.44 s at 45-50%, +0.72 s at 70-75%). For
+  `--demo-success-pace`. No demo, no record data (pbfr1b3, round 1).
