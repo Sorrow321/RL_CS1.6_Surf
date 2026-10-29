@@ -4777,3 +4777,37 @@ so the curriculum values are all passed). Success line d <= 55,533 (+2.83%). Rec
 * c15 at 20:41 (73.95B): band 39 -> 24-29 (29 at 2-3%, 24 at 0.5-1%). Greedy evals 0.401-0.429:
   most episodes never move east of the spawn (x max 860; one reached 1,108) - the first decisions
   of the walk east are not learned yet.
+* c15 at 21:01 (74.17B): band stalled at 24-29 (29 passes at 3-7%, 24 at 0.2-0.4%) - ~1 s into the
+  walk east from the spawn. Training healthy (reward ~8.8, value fit 0.98, KL 0.83-0.86).
+
+### pbfr1b1 round 1 lesson (DRAFT, 21:05 UTC; finalised at wrap-up)
+* **Score**: best eval 0.431 (c14 73.055B), a start-room score (incumbent 0.405) - the greedy never
+  left the start room on the corrected core. The real gain of the round is what the next round
+  can build on:
+  1. **The way out exists and is findable reward-free**: explore_phase1 with energy + heading
+     cells, `--select-energy 3` and velocity-frame strafes (`--view-follow`) from the true spawn
+     found the ridge pump -> arch -> shelf -> tunnel line in 15 min on 30 threads (the first
+     lineage's uniform GE never pumped above h ~3,840; the line needs ~3,880+ at the arch).
+     Spine: `autoresearch/spines/pbfr1b1_ge_pump_k4.npy` (+ `.keys.npy` in the canonical frame).
+  2. **A backward curriculum on that line, with the incumbent's weights, walked 683 -> ~25 of 684
+     spine states** (c1-c15, ~9 h). Each wall was a SKILL the policy's course habits blocked; the
+     generic fixes that broke them, in order of effect:
+     - `--demo-bc C` (new; band-only!): distil the spine's held keys at frontier-band spawns. It
+       turned ~30 min per 5-state band into ~2-6 states/min. Distilling at ALL spine spawns broke
+       learned rows within minutes (c10) - keep it on the band.
+     - translated held keys at spine spawns (`--demo-keys` from `spine_canon_keys.py`): a spawn
+       on a surf face with neutral keys slides off it.
+     - SIL (`--sil-coef 0.4 --sil-top 128 --sil-tempered 1`): lifted a 0.2% wall to 14%.
+     - `--race-ratchet-start-cap 1` (new): no ratchet pay for returning from a spawn behind the
+       start (the lure that turned the policy back before the energy-gaining U-turn).
+     - thinning the spine to one state per decision did NOT help by itself (the walls are
+       skills, not band width); low advance rates (0.02-0.06) did, once the distillation was on.
+  3. **The course erodes** under ~10B steps of start training: 9 own-reservoir states x 18 greedy
+     episodes, r38 14/18 finishes -> c6 4/18 -> c11 4/18 (fails from 3% onward), even with 35% of
+     spawns on the incumbent's own course states (stratified from 16:47). A finish needs both.
+* **Next (round 2), concretely**: resume `runs/pbfr1b1/pbfr1b1_c15/ckpt_latest.pt` (the most
+  advanced curriculum; pulled at wrap-up) with c15's flags and `--demo-tau0 ~25`; once the band
+  is at 0 and the greedy goes east, keep the band at the start and re-anchor the course
+  (spawn-states share 0.5+, SIL / demo-bc off on the course, maybe the r38 weights' own course
+  rows as BC). The suspect doorway climb (*249 / *250 against the push fields) and the wall-face
+  hang stay unverified: check them against the engine before anyone trains on them.
