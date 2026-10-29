@@ -4622,3 +4622,5 @@ before building on it. A backup course pool is being recorded locally from the i
   --demo-front-frac 0.4 --demo-success-d 100 --demo-success-bonus 50 --demo-front-temp 0.5 --demo-front-ticks 40
   --demo-front-view 6 --spawn-states pbfr1b4_course_r38.npy --spawn-states-frac 0.3 --lr 5e-5 --target-kl 0.15
   --no-respawn-novel --respawn-backward-mix 0 --int-real-only 0 --maxvel 3500`.
+* (16:24 UTC) Harness issue, continued: since the offline box's release at 15:19 no acceptable offer has fit the
+  0.22 $/h of fleet headroom (cheapest 0.31-0.62). Box time this round so far: 13:25-15:05 only (~1.7 h of 4.75).
