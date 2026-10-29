@@ -4529,3 +4529,13 @@ median 3,655, p90 3,783, max 3,860 (the record enters the passage at ~3,930; the
 on the corrected core the staircase is the easy way out by a wide margin, and the record's route (pump, then back
 west into the passage at ~3,720-3,760) is a real exploration problem for uniform actions: the energy is reached,
 the way back with it is not. If the staircase is ruled out, this is the benchmark the program wants.
+
+### What the incumbent already does from the staircase's states (13:20-13:28 UTC, local CPU, record_ckpt greedy)
+`record_ckpt.py <incumbent> --episodes 1 --spawn-states <one spine row> --ep-ticks 2600` (20 s; ~30 s of CPU each):
+* row 1050 (north strip, x 677, moving east 86 u/s): into the tunnel at 2.5 s and down the course - **26.46% in
+  20 s** (cut by the cap). The course after the start is intact in the weights on the corrected core.
+* row 700 (north strip, at rest): steps north off the strip onto the corridor floor and bounces at 0.41%.
+* row 400 (in the basin on *249, ducked) and row 100 (falling into the basin): drawn SOUTH onto the south strip
+  (the field's descent toward the south gap), bounces there at 0.38-0.42%; never the tunnel.
+So the curriculum has to teach the crouch-jump into the basin, the duck-jump onto the NORTH strip and the jump from
+the strip into the passage; everything after that is the incumbent's own. Started at `--demo-tau0 1050`.
