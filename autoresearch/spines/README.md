@@ -463,3 +463,10 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   before the gap jump), used with `--demo-success-d -665` = the same success line as door2 (d <= 56,253, past the
   passages). c3's finishing greedy line leaves *250 by the NORTH gap (the old route), so the south passage rows only
   spent training on a route whose exit the policy cannot fly (gate 2 from the south ledge). Same provenance.
+* `pbfr1b2_hp1.npy` (1,166 states, md5 2ba382a82550f4f4b215f94528aef3e2) + `pbfr1b2_hp1.keys.npy` (md5
+  c27a2708d13b69d906a2831fcbfa35cc): the SAME Go-Explore archive's chain to cell 25745 (26 cells, 2,331 ticks at
+  8 ms, replayed exactly with held keys): from the TRUE spawn east to the half-pipe lip (3.2 s), ~14 s of pumping
+  in the half-pipe (h 3,740 -> 4,035), back west over the spawn room at z ~3,800 into the NORTH tunnel's east end
+  (680, -2,887, 3,734) at 602 u/s with h 3,960 - the record's kind of start (ANALYSIS ONLY: the record pumps ~4 s
+  and enters the same tunnel at ~570 u/s, h ~3,925). Every 2nd tick, views/keys along the velocity. An ENERGY
+  spine: used with --demo-success-energy (the staircase reaches the same depth with h ~3,750). No demo, no record.

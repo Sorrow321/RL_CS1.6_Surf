@@ -3,11 +3,11 @@
  "round": 1,
  "final": false,
  "best": {
-  "score": 112.092,
-  "eval_file": "/home/steam/ar_pb/runs/pbfr1b2/pbfr1b2_c3/traj_68912939008.jsonl",
+  "score": 117.779,
+  "eval_file": "/home/steam/ar_pb/runs/pbfr1b2/pbfr1b2_c3/traj_69290426368.jsonl",
   "run": "pbfr1b2_c3",
-  "step": 68912939008,
-  "ckpt": "/home/steam/ar_pb/runs/pbfr1b2/pbfr1b2_c3/ckpt_68910841856.pt",
+  "step": 69290426368,
+  "ckpt": "/home/steam/ar_pb/runs/pbfr1b2/pbfr1b2_c3/ckpt_69290426368.pt",
   "recipe": [
    "--demo-file",
    "autoresearch/spines/pbfr1b2_door2.npy",
@@ -74,5 +74,5 @@
   "resume_from": "incumbent fx0 (pbEXIT2_r38) -> pbfr1b2_c1 -> c2 -> c3",
   "commit": "9f72a7e7"
  },
- "summary": "Go-Explore (uniform, view-follow, energy cells) from the true start on the corrected core finds a doorway staircase in 2 min (func_conveyor *249 at 41 u -> *250 -> south gap; both slabs were missing in the old core). Backward curriculum on that line (spine door2) warm on the incumbent + its own course states 0.3: c3's 68.913B eval = 4/9 greedy finishes from the true start, best 70.57 s, score 112.092 (68.837B: 2/9, 69.26 s, 109.914) (incumbent 0.405). Curriculum still walking back through the plate (tau ~481); next: reliability (curriculum to the start, auto-spine), operator to confirm the staircase in-game."
+ "summary": "Go-Explore (uniform, view-follow, energy cells) from the true start on the corrected core finds a doorway STAIRCASE in 2 min (func_conveyor *249 at 41 u -> *250; both slabs were missing in the old core). A backward curriculum on that line, warm on the incumbent (+ its own course states 0.3), teaches the two new jumps; everything after *250 is the incumbent's old route. c3 69.290B: 9/9 greedy finishes from the true start, best 66.62 s, score 117.779 (incumbent 0.405; record 75.18 s). Evals from 69.06B on: 9/9 leave the start room, 6-9/9 finish, bests 66.0-67.3 s. Operator: please confirm the *249/*250 staircase in the real game (NOTES.md). Next: speed (start line), the half-pipe start as the record's alternative."
 }
