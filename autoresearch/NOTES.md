@@ -4547,3 +4547,11 @@ The incumbent recipe's resume ran at 218-274k steps/s on it.
   record 4.7 s) - the explorer pumps slowly; the policy has to learn the efficient pump itself.
 * Tunnel probe again (cur3 69.33B, row 1880, 9 greedy): 6/9 finish at 62.0-62.4 s, fails at 10 / 33 / 51 s - the course
   holds while the start room is taught (cur2 68.48B: 7/9); downstream reliability ~70% is the next problem after the start.
+* cur3 at 13:42 UTC (69.83B): tau ~974-989 (lap 1's west-side climb, a mid-air 150 deg strafe turn; the explorer
+  releases duck at row 977) - only ~4.6 rows/min over the last 24 min. The log shows why: the frontier band sits at
+  10-30% (under the 30% advance threshold), so tau oscillates band <-> band+5 (two 7-s moves per cycle) while it improves;
+  every new band reads ~0% on its first visit. kl median 1.6, value loss 3.6.
+* **cur4** (13:44 UTC): cur3's ckpt_latest (69.856B, md5 4dfbc672...), tau0 969, with `--demo-rate 0.2` (advance a band
+  at 20%: no oscillation at 20-29%), `--demo-front-frac 0.85`, `--respawn-frac 0.97` (3% true-start spawns instead of 10%:
+  while the greedy cannot leave the room those 15-s doorway bounces were ~10% of all decisions), `--demo-match-band`
+  (round 6's repeated-origin fix; the spine stands still at the spawn); 2.5e9 steps. Box extended to 17:14 UTC.
