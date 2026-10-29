@@ -3,11 +3,11 @@
  "round": 1,
  "final": false,
  "best": {
-  "score": 114.305,
-  "eval_file": "/home/steam/ar_pb/runs/pbfr1b3/pbfr1b3_cur4/traj_71139590144.jsonl",
-  "run": "pbfr1b3_cur4",
-  "step": 71139590144,
-  "ckpt": "/home/steam/ar_pb/runs/pbfr1b3/pbfr1b3_cur4/ckpt_71150600192.pt (11M steps after the eval; the box's milestones are 1e9 apart)",
+  "score": 115.422,
+  "eval_file": "/home/steam/ar_pb/runs/pbfr1b3/pbfr1b3_cur5/traj_71172620288.jsonl",
+  "run": "pbfr1b3_cur5",
+  "step": 71172620288,
+  "ckpt": "/home/steam/ar_pb/runs/pbfr1b3/pbfr1b3_cur5/ckpt_71172096000.pt (the weights the eval ran: cur4's final, md5 3706c62d)",
   "recipe": [
    "resume incumbent pbEXIT2_r38",
    "backward curriculum on autoresearch/spines/pbfr1b3_ge1_lineA_canon.npy (the run's own Go-Explore line from the true spawn: explore_phase1 --exact-chains --view-follow --cell-energy 32 --select-energy 3, ge_replay)",
@@ -17,5 +17,5 @@
   "resume_from": "incumbent pbEXIT2_r38 (fx0) via cur1..cur3",
   "commit": "see git log ar/pbfr1b3"
  },
- "summary": "14:44 UTC: FIRST REAL FINISHES on the corrected core. The greedy from the true start pumps the east half-pipe, ducks into the tunnel and flies the map: evals 111.924 (4/9, 75.62 s) -> 113.153 (5/9, 72.09 s) -> 114.305 (6/9, best 70.85 s; the WR is 75.18 s). How: velocity-frame Go-Explore (--view-follow, energy cells, --select-energy 3) found the real way out from the true spawn in ~3 min; a backward curriculum on that line, warm from the incumbent (whose course after the tunnel survives the core fix), walked it back in ~2.6 h once the band got enough of the training decisions (--demo-front-frac 0.85) and stopped oscillating (--demo-rate 0.2). Next: reliability (failures at 44-91% downstream) and time."
+ "summary": "14:44 UTC: FIRST REAL FINISHES on the corrected core. The greedy from the true start pumps the east half-pipe, ducks into the tunnel and flies the map: evals 111.924 (4/9, 75.62 s) -> 113.153 (5/9, 72.09 s) -> 114.305 (6/9, 70.85 s) -> 115.422 (7/9, best 70.66 s, mean 72.27 s; the WR is 75.18 s). How: velocity-frame Go-Explore (--view-follow, energy cells, --select-energy 3) found the real way out from the true spawn in ~3 min; a backward curriculum on that line, warm from the incumbent (whose course after the tunnel survives the core fix), walked it back in ~2.6 h once the band got enough of the training decisions (--demo-front-frac 0.85) and stopped oscillating (--demo-rate 0.2). Next: reliability (failures at 44-91% downstream) and time."
 }
