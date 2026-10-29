@@ -19,7 +19,7 @@
   "budget_reserve_usd": 10.0,
   "budget_end_hours": 25,
   "_budget_end_hours_doc": "Hours from THIS program's start (state.json started) over which box.py spreads the credit above the reserve: 2 rounds x 12 h + scoring; 78 since 2026-10-24 = the 29.5 h restart + rounds 3-6 (4 x 12 h) + scoring; 127 since 2026-10-26 = the 78.2 h restart + rounds 7-10 (4 x 12 h) + scoring. Move it with rounds. 25 since 2026-10-29: the corrected-core lineage's own state.json start + 2 x 12 h + scoring.",
-  "budget_rate_usd_h": 1.2,
+  "budget_rate_usd_h": 1.5,
   "_budget_rate_usd_h_doc": "The user, 2026-10-25, with three of four agents refused a box by the pacer (0.70 $/h): 'we make the budget equal to $1 an hour, or actually $1.2 an hour.' A flat cap on the fleet's burn, live boxes plus the one being rented, while the credit is above the reserve; it replaces the pacer ((credit - reserve) / hours left until budget_end_hours, +10%) and its slack. A flat rate can outspend the credit ($31.4 above the reserve that night = 26 h at 1.2 $/h, against ~44 h of program left), so box.py extend refuses an extension the fleet's burn would pay out of the reserve: a run-out stops every box on the account at once (2026-10-09). Remove the key to go back to the pacer.",
   "gpu_tiers": [
     [

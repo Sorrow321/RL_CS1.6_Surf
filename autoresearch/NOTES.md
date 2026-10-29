@@ -4717,3 +4717,43 @@ The incumbent recipe's resume ran at 218-274k steps/s on it.
   (the eval's own weights, md5 19e9e6404534faa072b9900ef73b759f). cur10's 23 evals: eight 9/9; best times 66.62-67.4 s.
 * **117.787** (cur10 77.622B, traj_77622411264): 9/9, best 66.39 s; hand-on runs/pbfr1b3/pbfr1b3_cur10/ckpt_77621886976.pt
   (the eval's own weights, md5 6aa9b4dd443fec2458a53e94c42f3587). cur10's 38 evals: sixteen 9/9 (counted with score.py); best times 66.39-67.6 s.
+
+### pbfr1b3 round 1 lesson (wrap-up, 2026-10-29 21:15 UTC) - supersedes the DRAFT above
+* **Score 0.405 -> 117.787**: 9/9 greedy finishes from the TRUE start on the CORRECTED core, best **66.39 s** (the human
+  record is 75.18 s, yardstick only). Best eval runs/pbfr1b3/pbfr1b3_cur10/traj_77622411264.jsonl (77.622B); hand-on
+  ckpt_77621886976.pt = that eval's own weights (md5 6aa9b4dd443fec2458a53e94c42f3587); cur10's ckpt_latest (78.23B, md5
+  10e59e1a20089371d6e80669d2e15e8b) beside it. cur10: 16 of 40 evals 9/9, the rest mostly 7-8/9, best times 66.4-67.6 s.
+* **The start, the real way** (one pumped lap of the east half-pipe, back NW over the spawn room at z ~3,760, duck into
+  the passage beside the fatal teleport *257, the tunnel). Found by Go-Explore in the POLICY'S ACTION FRAME:
+  `explore_phase1 --exact-chains --cell 64 --cell-energy 32 --cell-heading 1 --view-follow=-90,-60,-30,-15,0,15,30,60,90
+  --select-energy 3 --tick-ms 8` from the true spawn, 4,096 envs: energy height 4,077 and 197 tunnel cells in 2.7 min.
+  The first lineage concluded the pump was "a policy skill" closed to search; it was the uniform-yaw explorer.
+* **Taught by one backward curriculum on that exact line, warm from the incumbent** (its course after the tunnel, learned
+  on the old core, flew on the corrected one: 7/9 from a tunnel spawn). What bit, in order: `--demo-min-ep 50` (the
+  checkpoint carries the expert loop's 1e9); lr 5e-5 (1e-4: kl 2-3.5/update); `--demo-front-frac 0.85` (a failing band
+  episode lasts 1-3 s and a passing one ~60 s, so at 0.4 the band had ~2% of the decisions); `--demo-rate 0.2` (bands at
+  20-29% oscillated at 0.3); `--respawn-frac 0.97`. 1,900 rows in ~2.6 h; the greedy followed within ~5 min of tau 0.
+* **Then reliability and time at tau 0** (the band = the true start): `--respawn-greedy 0.2 ...` (the recipe's greedy-death
+  spawns) 7/9 -> 9/9 within ~30 min; `--demo-front-temp 1.0 --demo-front-ticks 400` (keys at T 2 for the first 3 s of 85%
+  of episodes) moved the drop off the spawn floor 2.9 -> 2.2 -> 1.85 s and the tunnel 8.5 -> 6.4 s in ~2 h, the mean
+  finish 70.6 -> ~67 s. The lap is now level with the record's; the floor (1.85 vs 0.53 s) is the start's remaining gap.
+* **What did NOT work: pace curricula on the policy's own faster line.** A policy beam (beam_tas --score d with
+  --prefix-line over the start) found 65.77 s, 1.5 s under the greedy (+0.44 s at 45-50%, +0.72 s at 70-75%). As a
+  `--demo-success-pace 0 0.5` spine: the full line STALLED at 80% (the pace is judged to the finish, so small deficits at
+  85-100% block every earlier band); cut at 78% it COLLAPSED the greedy to 0/9 within 75M steps (every episode died on the
+  51-53% descent: the line shifted upstream). A pace curriculum moves the greedy far from its band - watch the greedy.
+  `--macro-hold` and `--greedy-prefix` are refused on --keys-hold checkpoints; `--prefix-line` works.
+* **Ops:** `--ckpt-every 75e6` (a snapshot beside every eval) - run_arm's 1e9 left no snapshot near a transient best; size
+  --steps to the watch; the Utah box's link dropped scp/ssh all afternoon (a launch "REFUSED" with exit 255 while the
+  trainer kept running: run its record gate by hand); pulls in the background with retries.
+* **Next round, in order of value:** (1) the 51-53% descent (x ~-2,300, y 400-900), the commonest death of every run -
+  greedy-death spawns + exploration there (`--respawn-greedy-temp`), or a GE line through it; (2) the start floor (~1.3 s):
+  keep the start-band exploration on, or GE for an earlier drop; (3) the beam's 1.5 s downstream, taught without moving
+  the rest of the line (BC distillation of beam lines, the expert loop's way, rather than a pace curriculum).
+  To continue: resume ckpt_77621886976 with cur10's flags (the cur7 block: `--ckpt-every 75e6 --demo-file
+  autoresearch/spines/pbfr1b3_ge1_lineA_canon.npy --demo-window 5 --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5
+  --demo-rate 0.2 --demo-min-ep 50 --demo-front-frac 0.85 --demo-match-band --respawn-frac 0.97 --demo-success-d 100
+  --demo-success-bonus 50 --keys-hold-spawn-duck --yaw-entropy 0 --demo-front-temp 1.0 --demo-front-ticks 400
+  --demo-front-view 6 --no-respawn-novel --respawn-backward-mix 0 --int-real-only 0 --respawn-front-perturb 0
+  --respawn-greedy 0.2 --respawn-greedy-window 0.25 2.0 --respawn-greedy-stuck 200 --lr 5e-5 --demo-tau0 0`).
+* Box 58244289 (RTX 5080, Utah) released at wrap-up.
