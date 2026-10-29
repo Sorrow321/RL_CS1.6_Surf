@@ -4673,3 +4673,29 @@ Box 58244389 (RTX 5080, Ryzen 9 7945HX 32 thr / quota 30.7, 0.387 $/h, South Car
 * Round 5 plan on x4's final (72.843B): 61.69 / 61.90 / 61.87 / 61.77 s - the planner levels off at ~61.6-61.9 s
   (round 4: 61.59-61.78). x5 (17:00 UTC) = x4's final + BC r5 + spawn-states r5 + the pace curriculum from row 381,
   x4's flags otherwise, 8e8 steps.
+
+### pbfr1b2 round 1 lesson (DRAFT, 17:05 UTC; finalised at wrap-up)
+* **Score 0.405 -> 117.851** (9/9 greedy finishes from the true start on the corrected core, best 64.48 s; the
+  record, a yardstick only, is 75.18 s). First finish at 12:42 UTC (109.914, ~45 min of training after the first
+  launch), 9/9 at 13:05 (117.779), then expert iteration for speed.
+* **What did it, in order:**
+  1. **Go-Explore from the true start with `--view-follow` and energy cells** (explore_phase1, 12 min, uniform
+     bursts): the doorway on the corrected core is a STAIRCASE - func_conveyor *249 (41 u above the spawn floor,
+     inside trigger_push *253) -> *250 (3681) -> a gap - and the explorer walked it in 2 min. Both slabs were
+     missing in the old core. The same archive also pumped the half-pipe to the record's energy (view-follow is
+     what made uniform actions pump) and flew back into both passages: a champion-free record-like start.
+  2. **A backward curriculum on that one line, warm on the incumbent** (`--demo-file` + `--demo-success-d`, the
+     incumbent's own reservoir as `--spawn-states` 0.3 for the course): the policy needed only the two new jumps;
+     after *250 it took its OLD route (north gap, tunnel, the whole course). Cut the explorer's unlearnable band (a
+     uniform-yaw-rate mid-air turnaround below 100 u/s) out of the spine; cut the spine after the start room so the
+     uniform demo spawns stay where the skill is missing.
+  3. **Expert iteration by hand** (beam_tas waves -> plan_to_bc -> `box.py launch --resume --bc-file`): the planner
+     goes 63.7 -> 62.3 -> 62.2 -> 61.6 -> 61.7 s by round, the greedy's 9/9 best 66.6 -> 65.9 -> 65.7 -> 64.5 s.
+  4. **A pace-gated start curriculum on the planner's own start** (`--demo-success-pace 0.15 0.25`): the planner's
+     start is 1.6 s faster than the greedy's at the tunnel exit, all of it in the plate -> north gap step; and
+     **greedy-death respawns back on** in the BC rounds (four 9/9 evals in eleven, against one in eleven).
+* **What did not:** h1, the half-pipe start as an ENERGY spine (the record's way): the curriculum stalled at the
+  fly-back from the half-pipe bottom (<1% energetic crossings) and the greedy never went east.
+* **Open for the operator:** whether the *249/*250 staircase is passable in the real game (section "FOR THE
+  OPERATOR" above). If it is not, the half-pipe archive (`runs/pbfr1b2/_ge/s1_archive.npz`) and spine hp1 are the
+  start of the real-game route.
