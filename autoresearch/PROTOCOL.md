@@ -184,7 +184,7 @@ final before `wrapup_at`.
   user's view, which you do not read: see Independence). That replaces CLAUDE.md's per-box
   dashboard tunnel. A dashboard on the box is optional, and no tunnel is needed.
 * **Budget.** The total is the vast credit. box.py caps the fleet's burn at
-  config.budget_rate_usd_h ($1.2/h, the user, 2026-10-25) and keeps the $10 reserve: no rent
+  config.budget_rate_usd_h ($1.5/h, the user, 2026-10-29; $1.2/h from 2026-10-25) and keeps the $10 reserve: no rent
   at the reserve, and no `extend` that the fleet's burn would pay out of it.
 
 ## Code changes

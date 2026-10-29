@@ -59,7 +59,7 @@ and what it starts from.
   destroys any instance on the account that breaks them, whoever rented it. It needs two
   consecutive sightings before acting.
 * **Budget.** No new box once the credit falls to the $10 reserve. The fleet's burn (live
-  boxes plus the new one) may not exceed config.budget_rate_usd_h, $1.2/h since 2026-10-25
+  boxes plus the new one) may not exceed config.budget_rate_usd_h, $1.5/h since 2026-10-29 ($1.2/h from 2026-10-25)
   (the user); without that key, (credit - reserve) / hours left until budget_end_hours.
   `box.py extend` is refused when the fleet's burn over the extension would come out of the
   reserve.
