@@ -4616,3 +4616,7 @@ The incumbent recipe's resume ran at 218-274k steps/s on it.
   (69.61) / 7/9 (**69.02 s**) / 7/9 (69.56). The START IS SPEEDING UP: some episodes now drop off the floor at 2.2-2.5 s
   (was 2.9 s) and reach the tunnel at 7.4-8.1 s (was 8.4-8.5); but one episode in 3 of the last 4 evals now dies in the
   start room (0% progress) - the price of the noisier start - plus the usual scattered downstream deaths (20-90%).
+* cur6 at 16:06 UTC (72.91B): evals 9/9 (traj_72404697088, best 68.98 s, mean 69.54) / 7/9 / 7/9 / **9/9 (traj_72631189504,
+  best 68.44 s, mean 69.20 s)** / 7/9 (68.37) / 8/9 / 7/9 - the start-band exploration cut the mean finish ~70.6 -> ~69.1 s
+  in ~1 h (the drop off the floor moves earlier). Hand-on for the 68.44 s eval: ckpt_72476524544 (155M before it; the
+  2e8 cadence); for the 68.98 s one ckpt_72276246528.
