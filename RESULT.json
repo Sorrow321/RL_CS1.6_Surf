@@ -16,7 +16,7 @@
    "lineage cur1 (lr 1e-4) -> cur2 (5e-5) -> cur3 (front-frac 0.8) -> cur4 (rate 0.2, front-frac 0.85, respawn-frac 0.97) -> cur5 (greedy-death spawns) -> cur6/cur7 (start-band T 2 for 3 s) -> cur10 (= cur7's recipe from cur7's 117.762 weights)"
   ],
   "resume_from": "incumbent pbEXIT2_r38 (fx0), via cur1-cur7",
-  "commit": "3689829198ad7e57f78130b77a1bd3a1a264143a"
+  "commit": "134b1959 (branch head at wrap-up: spines + notes); the trainer code the box ran is the base 1d8d64c7, unchanged this round"
  },
  "summary": "FINAL 117.787 (incumbent 0.405): 9/9 greedy finishes from the TRUE start on the CORRECTED core, best 66.39 s (the human WR is 75.18 s); 16 of cur10's 40 evals 9/9. How: (1) Go-Explore with the policy's own velocity-frame view (--view-follow) + energy cells + --select-energy found the real way out of the start room (pump the east half-pipe, fly NW over the room, duck into the tunnel) from the true spawn in ~3 min - the first lineage's uniform-yaw explorer never pumped; (2) a backward curriculum on that one exact line, warm from the incumbent, whose course after the tunnel survived the core fix (--demo-min-ep 50, lr 5e-5, front-frac 0.85, rate 0.2); (3) at tau 0: greedy-death spawns (7/9 -> 9/9) and start-band key exploration (drop off the floor 2.9 -> 1.85 s; mean finish 70.6 -> ~67 s). Not helpful: pace curricula (--demo-success-pace) on the policy's own 65.77 s beam line - full line stalled at 80%, a 78% cut collapsed the greedy to 0/9 at 51-53%. Next: the start floor (~1.3 s vs the record), the 51-53% descent (commonest death), and teaching the beam's 1.5 s without breaking the line."
 }
