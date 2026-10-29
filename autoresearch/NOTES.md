@@ -4655,3 +4655,11 @@ Box 58244389 (RTX 5080, Ryzen 9 7945HX 32 thr / quota 30.7, 0.387 $/h, South Car
   are crashes at 63-67% (~47-49 s; the stretch before the old 71% bounce) and once a death at the tunnel entrance.
   The pace curriculum walked 656 -> ~376 rows in ~25 min and sits at the plate -> north-gap jump (rows 371-375:
   6.5% paced successes; 376-380: 32%).
+* x3 later evals: 7/9 64.61 / 8/9 65.91 / **9/9 65.67 s = 117.811 (71.998B, the best; hand-on
+  `pbfr1b2_x3/ckpt_71998373888.pt`, the eval's own weights)**. The pace band 371-375 rose 6.5% -> 18%.
+* Round 4 plan on x3's ckpt_final (72.043B): **61.78 / 61.59 / 61.73 / 61.69 s** (planner by round: 63.6-63.8 ->
+  62.3-63.1 -> 62.2-62.5 -> 61.6-61.8 s). x4 (16:15 UTC) = x3's final + BC r4 + spawn-states r4 0.4 + the r3
+  start pace curriculum continued (`--demo-tau0 376`) + **`--respawn-greedy 0.2 --respawn-greedy-window 0.25 2.0
+  --respawn-greedy-stuck 200` back on** (the BC rounds had it off as in the pbx loop; x3's misses are crashes at
+  63-67% of the course, and the greedy rows put training spawns 2-0.25 s before each eval failure). Box extended to
+  20:10 UTC.
