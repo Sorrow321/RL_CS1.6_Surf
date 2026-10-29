@@ -4560,3 +4560,8 @@ Box 58244389 (RTX 5080, Ryzen 9 7945HX 32 thr / quota 30.7, 0.387 $/h, South Car
   at 3.0-3.2% even with the record's energy (h 3,946 at 557 u/s): its gate-2 skill belongs to the north tunnel's
   exit. Spawned on *250's north part, the incumbent walks off the plate: the old move needs the new approach.)
 * Curriculum at that eval: tau 481-486 (on *250's south-west part, the jump band); success 13% -> 30% over ~10 min.
+* c3 evals: 0.363 / 0.420 / 0.448 / **109.914** (68.837B, 2/9, 69.26 s) / **112.092** (68.913B, **4/9**, best 70.57 s,
+  median 46.3%; hand-on `ckpt_68910841856.pt`, md5 in box.py's pull log, 2.1M steps before) / 109.618 (68.988B, 2/9,
+  78.12 s). In the 112.092 eval: 2/9 still in the start room, 7/9 out; the 3 that got out but did not finish left
+  LATE (25-30 s in the room) and died at energy gates (the pit 3.2%, the x -1,015 wall 6.7%) or at 46% - a late,
+  slow exit looks like the next reliability problem, not the course.
