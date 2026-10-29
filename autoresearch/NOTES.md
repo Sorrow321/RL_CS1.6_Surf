@@ -4539,3 +4539,21 @@ the way back with it is not. If the staircase is ruled out, this is the benchmar
   (the field's descent toward the south gap), bounces there at 0.38-0.42%; never the tunnel.
 So the curriculum has to teach the crouch-jump into the basin, the duck-jump onto the NORTH strip and the jump from
 the strip into the passage; everything after that is the incumbent's own. Started at `--demo-tau0 1050`.
+
+### Box 58254955 (RTX 5070 + EPYC 7702, 128 threads, cgroup quota 61.4 CPUs, 0.187 $/h), rented 13:25 UTC
+gpu_health passed. The host is shared: load average 124-220 at 13:33 (other tenants), and c1 ran at a cumulative 50k
+-> 110k steps/s; c2 at ~200k from 13:39 once the host quietened.
+
+### c1: the staircase curriculum at lr 1e-4 - stopped for kl 1-4.7 on EVERY update (13:28-13:37 UTC)
+`box.py launch --resume` of the incumbent + `--demo-file pbfr1b4_stair_a.npy --demo-keys ... --demo-window 5
+--demo-grow 5 --demo-grow-max 40 --demo-cooldown 5 --demo-rate 0.3 --demo-min-ep 50 --demo-front-frac 0.4
+--demo-success-d 100 --demo-success-bonus 50 --demo-front-temp 0.5 --demo-front-ticks 40 --demo-front-view 6
+--demo-tau0 1050 --no-respawn-novel --respawn-backward-mix 0 --int-real-only 0 --lr 1e-4`.
+* The band at 1050 first backed off to 1085 (success 2-27%), then advanced back to 1050 at 43-53% within ~30M steps;
+  training episodes FINISHED 27-47% of the time at ~63 s (the course downstream of the strip intact).
+* But approx_kl read 1.0-4.7 on every update: the yaw head is near-deterministic (sigma 0.017-0.019) and the old
+  lineage's two collapses at lr 1e-4 (round 8 c11, round 9 c4) followed ONE update at kl 2.45. Stopped at 68.156B.
+### c2 = c1 at `--lr 5e-5 --target-kl 0.05`, `--demo-tau0 1085` (13:37 UTC)
+`--target-kl` (early stop at 1.5 x 0.05): every update stops after its FIRST minibatch step (kl 0.13 on the second
+minibatch's forward) - so an update is 1 Adam step of 64. Reported kl 0.03-0.05. Curriculum: 1085 -> 1075 (60% over
+320 eps) -> backoff 1080 (7%). Watching whether that is enough learning to walk the band back.
