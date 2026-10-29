@@ -4693,3 +4693,13 @@ The incumbent recipe's resume ran at 218-274k steps/s on it.
   kept running but box.py printed REFUSED and did not record the run. I ran the run's own record gate by hand
   (tools/record_gate.py pbfr1b3_cur9: PASSED) and added the run to boxes/pbfr1b3.json with a note. The link to this
   Utah box drops connections all afternoon (scp truncations, ssh timeouts); pulls need retries.
+* **cur9 COLLAPSED** (76.012-76.47B): its first eval (the source weights) 7/9 at 67.63 s, then SIX evals at **0/9, every
+  episode dying at 51-53%** (the old recurring death spot near (-2,300, 500..900)). The damage came within the first ~75M
+  steps, while the band was still at 75-78% (the curriculum itself walked 7,192 -> ~5,510 in 21 min at 15-36% bands, i.e.
+  "passed" the 70-75% section on paced crossings). So training on the cut line's 70-78% states with a +50 PACED bonus at
+  78% broke a different stretch of the greedy line; cause not yet isolated (candidates: the mid-course success bonus
+  reshaping the critic before it, or a manoeuvre learned at 70-75% generalising to the similar-looking 51-53%).
+  Stopped at 18:57 UTC. Lesson: a pace curriculum on a mid-course cut changes the greedy far from the band; watch the
+  greedy evals, not the band.
+* **cur10** (18:59 UTC): back to cur7's recipe (explorer spine at tau 0, start-band T 2 / 3 s, greedy-death spawns,
+  --respawn-frac 0.97, lr 5e-5, --ckpt-every 75e6) from cur7's ckpt_75281465344 (the 117.762 eval's weights).
