@@ -4648,3 +4648,9 @@ so the curriculum values are all passed). Success line d <= 55,533 (+2.83%). Rec
 * **c6** (15:12 UTC): self-imitation for the rare successes - `--sil-coef 0.2 --sil-top 64
   --sil-tempered 1`; SIL is refused with the per-env temperature machinery, so `--front-temp 0` and
   no `--demo-front-temp`. Otherwise c5's flags, c5's ckpt_latest, `--demo-tau0 434`.
+* **c6 result** (69.91-70.14B, 15:12-15:31 UTC, SIL 0.2 / top 64): **SIL works on the wall** -
+  band 434 rose to 92-93% (c5: 66-70%) and 429 from 0.1-0.4% to 5.0-8.4% in ~15 min (rising
+  ~0.2 %/min), short of the 30% advance rate. Greedy evals 0.407-0.418. KL ~0.6.
+* **c7** (15:33 UTC): c6's ckpt_latest, `--sil-coef 0.4 --sil-top 128` (stronger, keeps more
+  successes per rollout; the SIL buffer is not checkpointed, so it refills) and `--demo-rate 0.2`
+  (advance at 20% band success), `--demo-tau0 429`, 1.2B steps.
