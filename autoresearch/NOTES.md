@@ -4665,3 +4665,19 @@ The incumbent recipe's resume ran at 218-274k steps/s on it.
 * **117.758** (cur7 74.603B, traj_74602512384): 9/9, best 67.27 s, mean 67.47 s; hand-on runs/pbfr1b3/pbfr1b3_cur7/
   ckpt_74601988096.pt (the eval's own weights, md5 b666f2b8d901d7ff0201f3e75ff67f53). cur7's 16 evals: eight 9/9
   (67.27-68.33 s best), the rest 6-8/9. Box extended to 21:28 UTC.
+
+### Speed after the tunnel: the policy's own beam has 1.5 s more; a PACE curriculum on it (17:55-18:09 UTC)
+* cur7's evals after 74.6B: 8/9, 8/9, 8/9, 7/9 x4, then **9/9 (traj_75281989632, best 67.13 s, mean 67.50 s, ~117.762)**,
+  7/9, 8/9. The start is now identical in every episode (drop 1.85 s, tunnel 6.2-6.5 s); the deaths are downstream and
+  scattered (18%, 46%, 51-52% around (-2,300, 500..900), 72%).
+* Policy beams (beam_tas, 4,096 envs, ~90 s on the 5080): from the true spawn with `--score v` (critic ranking) the best
+  finish is 68.14 s - the critic keeps the greedy's own line. `--greedy-prefix` and `--macro-hold` are refused on a
+  --keys-hold checkpoint; `--prefix-line` works: replaying the 68.14 s line's first 1,000 ticks (7.67 s, past the tunnel)
+  and ranking by `--score d` from there found **65.77 s** (bit-exact), 1.5 s under the greedy's best. Splits vs the greedy's
+  67.27 s episode: -0.46 s at 5% (an older start in the prefix), then +0.44 s at 45-50% and +0.72 s at 70-75% (the old
+  notes' 71% bounce), +0.24 s at 90-95%. So the course after the tunnel holds ~2 s inside the policy's own proposals.
+* **cur8** (18:08 UTC): cur7's final (75.476B, md5 05a2c0b9...) on that line as a spine (autoresearch/spines/pbfr1b3_beam2 +
+  keys) with `--demo-success-pace 0.0 0.5` (a band episode succeeds only if it reaches the finish line no slower than the
+  beam line from its spawn row + 0.5 s), `--respawn-frac 0.7` (30% true-start episodes keep the start practised; there the
+  start-band exploration no longer applies), the band at --demo-front-temp 0.5 / 40 ticks, cur7's other flags. The
+  curriculum walks back from the finish; it should stall where the line is faster (70-75%, then 45-50%).
