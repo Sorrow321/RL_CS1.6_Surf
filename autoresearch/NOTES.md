@@ -4519,3 +4519,28 @@ Box 58244389 (RTX 5080, Ryzen 9 7945HX 32 thr / quota 30.7, 0.387 $/h, South Car
   / demo_grow 0` and the trainer RESTORES them when the flags are absent - pass all four.
 * First minutes: ~140k steps/s, kl 0.9-1.6 (the incumbent's own resumes read ~0.03; the yaw sigma is 0.017, so
   small mean moves on the new low-speed states read as large KL), training finishes ~20% (course-state spawns).
+* c1 (400M steps, 17 min at ~385k steps/s on this 7945HX box): 5 evals 0.400-0.406 (still at the doorway - the
+  curriculum had not reached the start), curriculum tau 1220 -> 505; training finish rate 15-25% steady (the
+  course-state spawns: the course skill is not eroding), kl 0.3-0.7 after a first update of 12.5.
+* c2 (= c1's final weights, `--demo-tau0 505`, 12:27 UTC) sat at one band: rows 500-504 at 1-3% success against
+  59-67% for rows 505-509, ten advance/backoff cycles. Rows 491-528 are the explorer's MID-AIR TURNAROUND after its
+  jump from *250 (velocity +x -> -x,-y in 0.2 s with a uniform yaw RATE spinning the view 10 deg/tick and the back
+  key held): a velocity-frame policy cannot express it. Spine `pbfr1b2_door2.npy` = door minus rows 491-528 (row
+  490, on *250 about to jump, is followed by the south-gap landing). Lesson for GE spines: a uniform-yaw-rate
+  manoeuvre below 100 u/s (where the view is not put along the velocity) can be an unlearnable band; cut it and let
+  the policy make the jump its own way.
+* c3 (12:32 UTC) = c2's ckpt_latest (68.610B) + door2, `--demo-tau0 491`, otherwise c1's flags, 1.2e9 steps.
+
+### The SAME explorer run also pumped the half-pipe and came back west at the record's energy (12:25 UTC)
+* With `--view-follow` (a burst holds a view OFFSET from the velocity heading, i.e. the policy's own action frame)
+  and `--select-energy 1`, the uniform explorer pumps: half-pipe cells reach h = z + |v|^2/1600 up to 4,126 (p99
+  4,093; the old lineage's explorers without view-follow topped out at ~3,815, the record pumps to ~3,930).
+* 23,669 of 27,551 cells sit on chains that went east of x 1,300 first. E.g. cell 27486 (depth 2,574 ticks =
+  20.6 s at 8 ms): east into the half-pipe, pumps h 3,653 -> 4,040 over ~16 s, flies back west over the ledge at
+  z ~3,750-3,814 (between *257's sheets), enters the SOUTH passage at x ~725 (y -3,124, z 3,758) at ~585 u/s,
+  leaves it at its west end with h ~3,940 / ~555 u/s and turns into the north tunnel's west end (154, -2,889):
+  the record's start (pump, then a passage at ~570 u/s, h ~3,925), found champion-free. The deepest half-pipe
+  cells reach the pit at 2.96% with h ~3,540-3,610 at ~600-680 u/s; the staircase chains reach 3.21% with h ~3,380-
+  3,430 at ~150-320 u/s (both stop at old gate 2, the pit's U-turn climb).
+* Archive: `runs/pbfr1b2/_ge/s1_archive.npz` (+ .meta.json, md5 of the npz in the file listing). If the operator
+  rules the staircase out, this is the real-game start, and the archive already holds lines for a curriculum.
