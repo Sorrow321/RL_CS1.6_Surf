@@ -1,6 +1,6 @@
 {
   "_doc": "Fork-and-flush autoresearch on surf_princessburglar_b26 (arXiv 2610.07447), the harness's second program (the first: surf_src_sidistic, ~/ar, 2026-10-20..23). Read autoresearch/README.md. Every number here is a HARD limit that box.py, the orchestrator and the fleet watchdog enforce; change it here, nowhere else.",
-  "goal": "Pass surf_princessburglar_b26 from the TRUE map start (greedy eval; the start_run teleport destination, declared as the spawn in maps/surf_princessburglar_b26.zones.json): finish it, then finish it reliably, then faster than 75.18 s, the human world record (its demo on our zones, analysis only). Champion-free and generic (CLAUDE.md sections 0 and 0b): the record's time is the bar a result is read against, never a constant in the reward, the spawn rule or a schedule.",
+  "goal": "Pass surf_princessburglar_b26 from the TRUE map start on the CORRECTED core (6bd7f931 and its descendants load every brush entity; every finish of the first lineage - rounds 1-9 and the operator's expert loop - climbed a doorway that is 65 u high in the game and was 62 u in the old core) (greedy eval; the start_run teleport destination, declared as the spawn in maps/surf_princessburglar_b26.zones.json): finish it, then finish it reliably, then faster than 75.18 s, the human world record (its demo on our zones, analysis only). Champion-free and generic (CLAUDE.md sections 0 and 0b): the record's time is the bar a result is read against, never a constant in the reward, the spawn rule or a schedule.",
   "map": "maps/surf_princessburglar_b26.bsp",
   "field": "maps/surf_princessburglar_b26.goalc_32.npz",
   "_field_doc": "The grader's field is the goal graph WITHOUT corner cutting (build_goal_field no_corner_cut=True), the field the recipe shapes on (--race-no-corner-cut 1), at the recipe's lidar cell 32: 507,547 reachable voxels, start d 57,149 u (54,367 u on the corner-cutting field). Baked 2026-10-23 by the operator's local smoke run.",
@@ -8,8 +8,8 @@
   "_score_episodes_doc": "score.py counts only the first N episodes of an eval (header episode index < N): its score is a max over episodes, so an eval with more episodes would buy lottery tickets (r6b1 scored 98.418 with 54-episode evals of the incumbent's weights). 0 = all.",
   "branches_per_round": 4,
   "round_hours": 12,
-  "rounds": 10,
-  "_rounds_doc": "The user (2026-10-23): 'let's see if the sidistic recipe will converge quick on princess' - two rounds first, extended (with budget_end_hours) if it is progressing and the credit allows. 2026-10-24, after round 2's 20.414 (pbr2b3): 'The rounds need to keep going' - rounds 3-6 added (the first program's length), the orchestrator restarted from state.json at 29.5 h. 2026-10-26, after round 6's 73.59 (pbr6b4) and the program's end: 'continue rounds working' - rounds 7-10 added (four more, as on 10-24), restarted from state.json at 78.2 h.",
+  "rounds": 2,
+  "_rounds_doc": "The user (2026-10-23): 'let's see if the sidistic recipe will converge quick on princess' - two rounds first, extended (with budget_end_hours) if it is progressing and the credit allows. 2026-10-24, after round 2's 20.414 (pbr2b3): 'The rounds need to keep going' - rounds 3-6 added (the first program's length), the orchestrator restarted from state.json at 29.5 h. 2026-10-26, after round 6's 73.59 (pbr6b4) and the program's end: 'continue rounds working' - rounds 7-10 added (four more, as on 10-24), restarted from state.json at 78.2 h. 2026-10-29: a NEW LINEAGE on the corrected core (agents pbf*, a fresh state.json; the first lineage's is ~/ar_pb/state_pbr_oldcore.json), the user: 'spawn a new lineage of agents. Trying to beat the initial part of the map ... we gotta fix the start of the map' - 2 rounds, what the topped-up credit holds at the 1.2 $/h cap.",
   "wrapup_minutes": 40,
   "max_agents": 5,
   "max_boxes": 5,
@@ -17,8 +17,8 @@
   "ablation_minutes_first": 30,
   "ablation_minutes_max": 360,
   "budget_reserve_usd": 10.0,
-  "budget_end_hours": 127,
-  "_budget_end_hours_doc": "Hours from THIS program's start (state.json started) over which box.py spreads the credit above the reserve: 2 rounds x 12 h + scoring; 78 since 2026-10-24 = the 29.5 h restart + rounds 3-6 (4 x 12 h) + scoring; 127 since 2026-10-26 = the 78.2 h restart + rounds 7-10 (4 x 12 h) + scoring. Move it with rounds.",
+  "budget_end_hours": 25,
+  "_budget_end_hours_doc": "Hours from THIS program's start (state.json started) over which box.py spreads the credit above the reserve: 2 rounds x 12 h + scoring; 78 since 2026-10-24 = the 29.5 h restart + rounds 3-6 (4 x 12 h) + scoring; 127 since 2026-10-26 = the 78.2 h restart + rounds 7-10 (4 x 12 h) + scoring. Move it with rounds. 25 since 2026-10-29: the corrected-core lineage's own state.json start + 2 x 12 h + scoring.",
   "budget_rate_usd_h": 1.2,
   "_budget_rate_usd_h_doc": "The user, 2026-10-25, with three of four agents refused a box by the pacer (0.70 $/h): 'we make the budget equal to $1 an hour, or actually $1.2 an hour.' A flat cap on the fleet's burn, live boxes plus the one being rented, while the credit is above the reserve; it replaces the pacer ((credit - reserve) / hours left until budget_end_hours, +10%) and its slack. A flat rate can outspend the credit ($31.4 above the reserve that night = 26 h at 1.2 $/h, against ~44 h of program left), so box.py extend refuses an extension the fleet's burn would pay out of the reserve: a run-out stops every box on the account at once (2026-10-09). Remove the key to go back to the pacer.",
   "gpu_tiers": [
@@ -195,7 +195,7 @@
   "effort": "max",
   "_offer_query_doc": "Scratch training here is CPU-bound: the trainer takes half the container's CPUs for physics. A 16-thread 3090 box ran the incumbent recipe at ~36k steps/s (2026-10-20, smoke_x1) against ~420k on the 5090 PC, so boxes need >= 32 effective threads on a fast CPU. Measured the same night on a 3090 + Ryzen 9 5950X box (32 threads, quota 30.7 CPUs, omp 15): ~194k steps/s, GPU 30% busy. gpu_ram>=12 (GB; 2026-10-25): the cheaper cards' 8 GB variants are out, every good card has 16-24 GB.",
   "_incumbent_recipe_doc": "The sidistic lineage's final training flags (r7b2_bel, its first greedy finish), FROM SCRATCH: run_arm.sh SCRATCH's baseline is overridden by these (later flags win). Plus --maxvel 3500, the server's sv_maxvelocity in the WR demo's movevars (sidistic was trained at 4000).",
-  "agent_prefix": "pb",
-  "_agent_prefix_doc": "Agents pbr<round>b<k>, branches ar/pbr<round>b<k>: the first program's ar/r<n>b<k> are on origin.",
+  "agent_prefix": "pbf",
+  "_agent_prefix_doc": "Agents pbr<round>b<k>, branches ar/pbr<round>b<k>: the first program's ar/r<n>b<k> are on origin. pbf since 2026-10-29: the corrected-core lineage, agents pbfr<round>b<k>; new names, so no old-core run under $AR_HOME/runs/pbr* is ever scored as a new branch's.",
   "maps_tarball": "pb_maps.tar.gz"
 }
