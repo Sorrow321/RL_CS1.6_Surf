@@ -445,3 +445,15 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   inside the restored conveyor slab *250. A `--spawn-states` pool that keeps the course after the
   start practised while a curriculum teaches the start. The policy's own states, no demo, no record
   (pbfr1b1, round 1 of the corrected-core lineage).
+* `pbfr1b1_ge_pump_a.npy` (2,732 states, md5 c9bc13fd1081d0099b4f83139637c9af; `.keys.npy` = the
+  explorer's held fwd / side / duck per row): the WAY OUT OF THE START on the corrected core, found
+  reward-free from the map's true spawn. `tools/explore_phase1.py --cell 64 --cell-energy 32
+  --cell-heading 8 --select-energy 3 --view-follow 0,0,30,-30,60,-60,90,-90 --decisions 100
+  --act-every 4 --maxvel 3500 --tick-ms 8 --exact-chains --envs 4096 --threads 30`, 15 min on box
+  58247606 (347,600 cells, 7.0M runs), then `tools/ge_replay.py --cell 335864` (46/46 links exact)
+  and `tools/ge_start_spine.py` (views along the velocity, cut at its best d). The chain with the
+  fewest ticks to +3.0% on the grader field: east through the arch onto the ridge, ~17 s of pumping
+  there (max d 58,720 = -2.75%), back through the arch at h ~3,945, over the spawn room, down into
+  the crouch tunnel at ~480 u/s, out of it and into the pit at (861, -3,135, 3,337) = +3.00%. No
+  contact with the doorway or its conveyors. Uniform random actions in the policy's velocity frame;
+  no policy, no demo, no record (pbfr1b1, round 1 of the corrected-core lineage).
