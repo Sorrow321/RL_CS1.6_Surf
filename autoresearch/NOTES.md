@@ -4590,3 +4590,13 @@ The incumbent recipe's resume ran at 218-274k steps/s on it.
 * **cur5** (14:45 UTC): that checkpoint + cur4's flags at tau0 0 + `--respawn-greedy 0.2 --respawn-greedy-window 0.25 2.0
   --respawn-greedy-stuck 200` (the recipe's own greedy-death spawns: the downstream deaths are now the frontier) +
   `--ckpt-every 2e8`; 3e9 steps.
+
+### 9/9 FROM THE TRUE START: 117.654 (2026-10-29 15:10 UTC, cur5 71.399B)
+* cur5 (cur4's final + greedy-death spawns, curriculum at tau 0) evals 71.172-71.701B: 115.422 (7/9) / 113.182 (5/9) /
+  114.310 (6/9) / **117.654 (9/9, best 70.38 s, mean 72.30 s)** / 113.217 (5/9, 70.14 s) / 116.546 (8/9) / **117.646 (9/9,
+  70.63 s)** / 116.545 (8/9). Hand-on: runs/pbfr1b3/pbfr1b3_cur5/ckpt_71372374016.pt (26.7M before the 117.654 eval, md5
+  245eda397badc0b8ed9a7c01e28ebb27); ckpt_71572652032.pt (53M before the 117.646 one, md5 17468271...) pulled too.
+* The start now (9/9 eval, ep0): ONE pumped lap like the record, but 2.8 s of slow crouch-hops east on the spawn floor
+  first (x 860 -> 1,265; the explorer line's dither, inherited) - the record walks off the ledge at 0.5 s. Then the drop
+  (3.2 s), the east side (4.8 s), back west (6.4 s at 884 u/s), the west climb (7.6 s), the passage, the tunnel at
+  8.4-8.6 s (7/9 episodes); 2/9 take extra laps (tunnel at 13.3 / 17.8 s -> 75.3 / 80.4 s). After the tunnel ~62 s.
