@@ -4570,3 +4570,15 @@ minibatch's forward) - so an update is 1 Adam step of 64. Reported kl 0.03-0.05.
 * c4 = c2's weights, lr 5e-5, `--target-kl 0.3` (stop at 0.45), no floor: updates run 11-35 of 64 minibatch steps,
   kl 0.27-0.41, training finishes 17-29%. c1 ran at 1-4.7 for ~50 updates without collapsing, so this budget is
   ~5-10x under what this run has already survived.
+
+### c4 stalled at the strip; c5 (--demo-rate 0.2) walks the band back (14:14-14:32 UTC)
+* c4 (lr 5e-5, target-kl 0.3, demo-rate 0.3; 68.294 -> 68.558B, ~220k steps/s): the band oscillated in rows 1010-1035
+  for ~250M steps (success 15-45% around the 0.3 threshold): those rows are the GE line's 4.6 s of idling DUCKED AT
+  REST on the north strip, from where the policy has to stand, run and jump. Evals 0.405-0.407 (the bounce).
+* c5 = c4's weights + `--demo-rate 0.2` (Salimans-Chen's rho): rows 1015 -> 820 in ~200M steps (band success
+  22-57%); training finishes fell 25% -> ~4% (more spawns on the hard strip states); evals still the bounce.
+* A second local GE (seed 1, 8 min) found the SOUTH way in: basin (2.2 s) -> the SOUTH strip (4.2 s) -> a jump south
+  into the south gap (7.0 s, feet ~3,696) -> the south room -> the crouch passage west along y -3,100..-3,138 (off the
+  field: slab-solid) -> the tunnel at x ~340 (16 s) -> 1.31% at 16.6 s (chain 13 cells, all links exact). The
+  incumbent drifts SOUTH from the basin by itself (rows 100/400 above), so this is the spare spine if the north one
+  stalls at the basin.
