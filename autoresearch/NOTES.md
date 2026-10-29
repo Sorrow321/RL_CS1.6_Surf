@@ -4728,3 +4728,6 @@ so the curriculum values are all passed). Success line d <= 55,533 (+2.83%). Rec
   `pbfr1b1_r38_reservoir_strat.npy` (600 states per 5% bin; the early course was 357-587 per bin
   against 1,100-2,000 late) at 71.001B, no restart. NB the box's copy of that tracked file now
   differs from git; later launches name the `_strat` file.
+* c11 at 17:09 (71.27B): band at 309-314 (~70 states in 25 min, ~2.8/min; 314 at 44-60% and rising,
+  309 = the high arc of the earlier east-end U-turn at ~0.5-1.3%). Greedy evals 0.389-0.405, 0/9 onto
+  the ridge yet. Box extended to 23:27 UTC.
