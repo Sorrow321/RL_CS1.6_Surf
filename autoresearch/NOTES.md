@@ -4656,3 +4656,9 @@ The incumbent recipe's resume ran at 218-274k steps/s on it.
   in the background; beam_tas refuses --macro-hold on a --keys-hold checkpoint.
 * **Next (where the time is):** the start still has ~2 s against the record (yardstick only): ~1.7 s of crouch-hopping on
   the spawn floor before the drop and ~0.45 s in the lap; the course after the tunnel is ~61.2-62 s. Reliability is 8-9/9.
+* cur7 to 17:01 UTC (74.05B): 9/9 (67.86) / 8/9 / 8/9 / **9/9 (traj_73696542720, best 67.67 s)** / 7/9 / 9/9 (67.77) / 6/9 /
+  9/9 (67.78, mean 67.99). The start keeps shortening under the start-band exploration: every episode of the last three
+  evals drops off the floor at **1.85 s** (cur6: 2.2 s) and enters the tunnel at 6.34-6.6 s (cur6: 7.3-7.5); the lap
+  drop -> tunnel is now ~4.55 s, level with the record's 4.6 s (yardstick only); the floor is the gap left (record 0.53 s).
+  After the tunnel 61.3-62.0 s. Deaths 53% / 72% (downstream). Snapshot per eval: ckpt_73696018432 = the 67.67 s eval's
+  weights (one iteration before it).
