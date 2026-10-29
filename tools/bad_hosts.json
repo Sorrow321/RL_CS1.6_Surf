@@ -2905,6 +2905,15 @@
       "detail": "RTX 5070 power limit 175 W of 250 W default (70%), bf16 GEMM 67 TFLOPS, gpu_health UNHEALTHY (no reference for the model); machine 138344 Ryzen 7950X",
       "run": "pbfr1b4 (deploy gpu_health)",
       "reason": "gpu_capped"
+    },
+    {
+      "ip": "68.188.102.65",
+      "machine_id": 151122,
+      "host_id": null,
+      "date": "2026-10-29",
+      "detail": "autoresearch pbfr1b4: box 58254955 (RTX 5070, EPYC 7702, host load avg 124-220 from other tenants) went OFFLINE at ~15:05 UTC mid-run, ssh timing out for 13+ min; destroyed 15:19",
+      "run": "pbfr1b4_c7",
+      "reason": "unreliable"
     }
   ],
   "known_good": [
