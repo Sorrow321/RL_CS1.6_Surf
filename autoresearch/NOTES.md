@@ -4703,3 +4703,10 @@ The incumbent recipe's resume ran at 218-274k steps/s on it.
   greedy evals, not the band.
 * **cur10** (18:59 UTC): back to cur7's recipe (explorer spine at tau 0, start-band T 2 / 3 s, greedy-death spawns,
   --respawn-frac 0.97, lr 5e-5, --ckpt-every 75e6) from cur7's ckpt_75281465344 (the 117.762 eval's weights).
+* cur9's death, traced (its 76.088B eval vs cur7's 75.282B, same place): both reach 49% at (-2,300, -240, 3,100) at
+  ~1,130 u/s; cur9 is already 1.2 s later there (36.05 vs 34.84 s - its training also slowed the earlier course), and on
+  the 50-51% descent its line runs ~50 u further east ((-2,265, 425, 3,086) vs (-2,316, 441, 3,159)) and ends at 37.8 s,
+  where cur7 keeps falling to z 2,932 and on. The 51-53% descent is the course's most fragile stretch (the commonest death
+  of every run today), and a small shift of the line upstream is enough to kill it 9/9.
+* cur10 (cur7's recipe from the 117.762 weights) evals 75.28-75.73B: 9/9 (67.18) / 9/9 (67.57) / 8/9 / 9/9 (67.16) / 6/9 /
+  **9/9 (traj_75659476992, best 67.11 s: 117.763)** / 7/9 - the recipe is healthy again.
