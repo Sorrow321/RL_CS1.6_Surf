@@ -73,6 +73,9 @@ def main(argv=None):
     if not meta.get("keep_teleports", False):
         core.set_teleport_fail(True)
     line = [st[chain[0]].copy()]
+    # the held keys (fwd, side, duck in engine bins) each row was reached with - the explorer's own
+    # actions - for train_fast --demo-keys (<out>.keys.npy); the root row holds neutral keys
+    keys = [np.array([1, 1, 0], np.int8)]
     ok = 0
     for k in range(1, len(chain)):
         p, c = chain[k - 1], chain[k]
@@ -83,6 +86,7 @@ def main(argv=None):
         s0["stuck_ticks"] = 0
         core.set_state(0, s0)
         seg = []
+        segk = []
         dead = False
         for t in range(len(la)):
             _, _, done, trunc, _ = core.step(la[t][None, :])
@@ -90,6 +94,7 @@ def main(argv=None):
                 dead = True
                 break
             seg.append(core.get_states()[0].copy())
+            segk.append(la[t][[2, 3, 5]].astype(np.int8))
         err = (float(np.linalg.norm(seg[-1]["origin"].astype(np.float64)
                                     - st[c]["origin"].astype(np.float64)))
                if seg and not dead else float("inf"))
@@ -98,11 +103,13 @@ def main(argv=None):
                   f"{'died' if dead else f'end off by {err:.2f} u'}; the line stops at link {ok}")
             break
         line.extend(seg)
+        keys.extend(segk)
         ok = k
     out = np.array(line, dtype=STATE_DTYPE)
     out["tick"] = 0
     out["stuck_ticks"] = 0
     np.save(a.out, out)
+    np.save(str(Path(a.out).with_suffix(".keys.npy")), np.stack(keys).astype(np.int64))
     dl = f.sample(out["origin"].astype(np.float64))
     print(f"{len(out)} states -> {a.out}; links {ok}/{len(chain) - 1}; line end d "
           f"{float(dl[-1]):,.0f}, best d {float(dl.min()):,.0f}")

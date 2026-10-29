@@ -4465,3 +4465,45 @@ Bundle with the plan re-simulated on a droplet CPU core: `~/ar_pb/pbx/line_60.06
   around *261-*264 (off the course); the field along the course is unaffected, a rebake is optional.
 * Next (the user, 07:40 UTC): a new lineage that passes the start the real way - energy from the east half-pipe,
   then the passage north of the spawn - warm-started from this lineage's checkpoint for the rest of the map.
+
+## pbfr1b1 (corrected-core lineage, round 1, slot 1) - 2026-10-29 11:37 UTC start
+
+Box: none yet at 12:05 UTC. 58244703 (RTX 5070, 0.233 $/h, machine 138344) failed gpu_health
+(power limit 175 W of the 250 W default) -> blocklisted (tools/bad_hosts.json) and released; the
+fleet then sat at 0.953 of its 1.2 $/h cap with no offer under the 0.247 $/h left.
+
+### The start on the corrected core, measured (11:40-12:00 UTC, local core traces; the record ANALYSIS ONLY)
+* Probes: `SurfCore.trace` (hull 0 standing, 1 ducked, 2 point) for floors / free intervals, and
+  `play_step` from a placed hull for trigger touches. `build/dump_map` lists the triggers.
+* Spawn floor feet z 3,616 (x 680-1,120, y -2,900..-3,080). The ONLY floor exit east is a low ARCH at
+  x ~1,140-1,180, y -2,960..-3,040: ducked origin <= 3,726 at its centre (standing <= 3,708), 3,708 /
+  3,696 at its sides. Beyond it the "half-pipe" is a long east-west SURF RIDGE (apex line y ~-3,000,
+  x 1,200-2,440, apex feet ~3,460-3,520, both faces surf ramps n_z < 0.7) whose west end curves up
+  to the arch floor (a kicker). Flat floors at feet 3,267 north and south of it are inside teleport
+  *127 (AABB 191..2,397 x -3,257..-2,741 x 3,235..3,668): falling off the ridge kills.
+* North SHELF along the spawn room's north wall, y ~-2,860..-2,900, top feet ~3,704 (3,722 at
+  y -2,870), x 660..1,120; it leads west into the crouch tunnel (entrance x ~640-660, ducked origin
+  window ~3,714..3,755, tunnel floor ~3,696-3,704, ceiling ~3,776). Teleport *257 (AABB
+  864..1,152 x -3,173..-2,828 x 3,695..3,781) is NOT a box: it covers the shelf's top at x >= ~900
+  (and its south twin); the middle of the room (y -2,940..-3,060) is free at every height.
+  So a landing on the shelf must be at x ~660-890. The doorway (*250 conveyor top 3,681) and the
+  shelf (3,704) are 65 / 88 u above the spawn floor: a 63 u crouch-jump reaches neither.
+* The record (analysis only; its rows are 10 ms): east over the spawn floor, through the arch, down
+  the ridge's NORTH face to x ~1,700, over the apex to the south side near x 2,200-2,330, back west
+  on the north face, up the ridge's west-end kicker (1,290, -3,004, z 3,564, vz +569), through the
+  arch at z 3,681 rising, apex ~3,766 at x ~950, lands on the shelf at x ~770 and slides into the
+  tunnel ducked at ~580 u/s, ~6.8 s after the start. Energy h = z + |v|^2/1600: 3,669 -> ~3,915 at
+  the arch -> 3,930 on the shelf.
+* Energy needed (ballistics from the arch to the shelf west of x ~890, ducked origin >= 3,722):
+  h ~3,880 at the arch. The first lineage's uniform Go-Explore never got above ~3,840 anywhere.
+* Grader field: spawn 57,149 (0%); arch -0.53%; ridge -0.8..-2.6%; shelf +0.2..+0.4%; tunnel
+  +0.6% (x 600) .. +1.36% (x 100); the pit +2.5%.
+
+### Go-Explore with energy selection pumps (local, 2 threads, 6 min; scratch archive)
+`explore_phase1 --cell 64 --cell-energy 32 --select-energy 3 --view-follow 0,0,30,-30,60,-60,90,-90
+--decisions 100 --act-every 4 --maxvel 3500 --tick-ms 8 --exact-chains --envs 512` from the true
+start: 18,494 cells, 452k runs; ridge-room h max **4,053** (|v| 1,097), 3,975 at the arch, 3,935
+in the spawn room's east half (|v| 683) and 3,912 in its west half (|v| 604 at (699, -2,997,
+3,684)) - the energy is there, but those states cross at the arch's centre line (the doorway's
+push-down field), not onto the shelf; 0 shelf / tunnel cells. Report:
+`autoresearch/analysis/pbf_ge_report.py <archive.npz>` (measurement boxes only).
