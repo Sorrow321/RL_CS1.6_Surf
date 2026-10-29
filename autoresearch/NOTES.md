@@ -4575,3 +4575,20 @@ so the curriculum values are all passed). Success line d <= 55,533 (+2.83%). Rec
   states. c2 therefore runs lr 3e-5 and the reservoir pool at 0.35.
 * **c2** (13:19 UTC): c1's ckpt_final (68.508B) + the same flags with `--demo-tau0 1921
   --spawn-states-frac 0.35 --lr 3e-5`, 800M steps.
+* **c2** (68.508-68.866B, 13:19-13:47 UTC): the band went 1,921 -> 1,786 (the 1,886-1,925 dive got
+  learned: 0.3% -> 39-46% success after ~150M steps), ~0.4 spine states per M steps - the remaining
+  ~1,786 per-tick states would have taken ~6 h. Greedy evals 0.351-0.403 (still the doorway).
+  KL 0.9-1.5 at lr 3e-5 (not much lower than 5e-5's 1-2).
+* **A policy beam does not pump yet**: beam_tas on c2's 68.84B weights from spine state 300 (the
+  explorer's ridge entry, h 3,743), 2,048 copies + 32 greedy, `--score dh --score-energy 4`, 23 s:
+  the population drifts back to the ridge's west end (d ~57,600) and stays; frontier d 57,532.
+* **Local depth-minimising GE** (no --exact-chains, so each cell keeps its fastest arrival; 3
+  threads, 20 min, 198k cells): its earliest chains into the tunnel never visit the ridge (max d =
+  the start's) - another suspect: a chain that sits ~900 ticks in one cell at the north wall's face
+  (662, -2,898, z ~3,697) and next appears inside the tunnel at (600, -2,883, 3,734). Not used; same
+  family as the *249 climb. `tools/ge_chain_spine.py` (new): earliest-arrival chain to a level, with
+  `--exclude-box` for suspect simulator moves (a validity filter, never a recipe component).
+* **c3** (13:49 UTC): the spine thinned to one state per decision (`pbfr1b1_ge_pump_a4.npy`, 684
+  states) - an advance of 10 states is now ~0.3 s of play instead of ~0.08 s, at the same per-advance
+  cost in iterations. c2's ckpt_latest (68.866B), `--demo-tau0 444` (= per-tick 1,776), other flags as
+  c2, 800M steps.

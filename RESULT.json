@@ -3,6 +3,6 @@
  "round": 1,
  "final": false,
  "best": null,
- "summary": "Box 58247606 (4070 Ti). A reward-free Go-Explore from the true start (energy + heading cells, --select-energy 3, velocity-frame strafes, 15 min) found the real way out on the corrected core: pump on the ridge, back through the arch at h ~3,945, over the spawn room into the crouch tunnel, to +3.21%. c1 (12:47 UTC): the incumbent resumed on a backward curriculum along that chain (2,732 states, success at +2.83%), own reservoir 25%, energy-pot 12, lr 5e-5. A shorter chain climbs the doorway via conveyor *249/*250 against the push fields - flagged as a sim suspect, not used. No eval yet.",
- "commit": "5bd3c548"
+ "summary": "Box 58247606 (4070 Ti). Reward-free GE from the true start (energy + heading cells, --select-energy 3, velocity-frame strafes) found the real way out (ridge pump -> arch -> spawn room -> tunnel, to +3.2%). Backward curriculum on that line with the incumbent's weights: c1 walked it back 2,731 -> ~1,900, c2 to 1,786 (0.4 states/M steps); c3 (13:49 UTC) uses the spine thinned to one state per decision. Greedy evals still ~0.40 (doorway bounce) until the band nears the start. Downstream erosion measured (r38 14/18 vs c1 11/18 finishes from mid-course states). Suspect sim moves (doorway *249/*250 climb, wall-face hang) noted, not used.",
+ "commit": "6d260b62"
 }
