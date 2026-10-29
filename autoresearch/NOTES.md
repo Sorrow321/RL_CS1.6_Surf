@@ -4666,3 +4666,10 @@ so the curriculum values are all passed). Success line d <= 55,533 (+2.83%). Rec
   slow (~+0.3 %/min). Policy beams on c7's 70.36B weights from spine state 75 (the ridge entry,
   2,048 copies + 32 greedy, 23 s, `--score d` and `--score dh --score-energy 4`): both stay at the
   ridge's west end (d 57,483-57,600) - the early-ridge pump is not in the policy yet.
+* **c7 result** (70.14-70.41B, 15:33-15:54 UTC): band 429 plateaued at 12.5-14.4% (434 at
+  92-93%); greedy evals 0.391-0.409. `--side-hold N` (env.c's minimum side-key hold) considered and
+  rejected: its latch starts released at a reset, so it would not hold a spawn's demo key, and it
+  changes the action semantics of the whole course.
+* **c8** (15:56 UTC): c7's ckpt_latest, `--demo-rate 0.12` (advance at 12% band success; the
+  uniform 20% replay over [tau, end] keeps raising competence behind the band), SIL 0.4 / top 128,
+  `--demo-tau0 429`, 1.5B steps.

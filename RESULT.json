@@ -3,6 +3,6 @@
  "round": 1,
  "final": false,
  "best": null,
- "summary": "Box 58247606 (4070 Ti). Reward-free GE from the true start found the real way out (ridge pump -> arch -> tunnel, to +3.2%); backward curriculum on it with the incumbent's weights walked back to the east-end U-turn of the pump (spine 2,731 -> ~1,740 per-tick) and stalled there: the policy turns back west too early. Cause: the ratchet paid ~2.5 for returning from a spawn behind the start. New --race-ratchet-start-cap (record starts at min(spawn d, start d); off = byte-identical, tested) -> c4 (14:23 UTC). From a state just past the wall the c3 policy already flies through the tunnel to 24.7% (1/6). Greedy evals from the true start still ~0.40 (doorway bounce) until the band nears the start. Suspect sim moves (doorway *249/*250 climb, wall-face hang) noted, not used.",
- "commit": "2c153e11"
+ "summary": "Box 58247606 (4070 Ti). Reward-free GE from the true start found the real way out (ridge pump -> arch -> tunnel, to +3.2%); a backward curriculum on it with the incumbent's weights walked back to the pump's east-end U-turn and stalls there. Generic fixes that each moved it: --race-ratchet-start-cap (new: no pay for returning from a spawn behind the start), translated held keys at spine spawns (--demo-keys via spine_canon_keys), self-imitation (0.2 -> 0.4: the wall state 0.2% -> 14%). The skill there is a sustained strafe hold (core-measured). c8 (15:56 UTC) advances at 12%. Greedy evals still ~0.41; the course after the tunnel is eroding (4/18 vs r38 14/18 from mid-course states).",
+ "commit": "67835e4f"
 }
