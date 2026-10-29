@@ -435,3 +435,18 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
 * `pbr9b1_late2_states.npy` (md5 in NOTES): pbr9b1_fo2dec_states + the s71 beam's shaft passage x2 + the 89-94.5% shaft entries of
   three FINISHING greedy episodes of pbr9b1_c8's own 57.34B weights (record_ckpt --dump-states, seed 11) x8 - a `--spawn-states`
   pool aimed at the shaft's first kill sheet (z ~265), c8's commonest death.
+
+## pbfr1b4 (corrected core, lineage pbf*, round 1) - 2026-10-29
+
+* `pbfr1b4_stair_a.npy` + `.keys.npy` (1,753 rows; md5 3892849cd9f832d4f3ac7321f51b01cd /
+  11084147e642f251c6e483ee93c8aa6d): Go-Explore phase 1 (`tools/explore_phase1.py --cell 64 --cell-energy 32
+  --exact-chains --act-every 4 --decisions 100 --maxvel 3500 --tick-ms 8 --select-energy 2`, 256 envs, 5 min on the
+  droplet CPU, 273,677 runs) from the TRUE spawn on the CORRECTED core (6bd7f931 tables: func_conveyor *249 and *250 and
+  trigger_push *252 / *253 all loaded). Reward-free uniform random actions; the deepest exact chain (24 cells, 23/23 links
+  bit-exact) replayed by `tools/ge_line_keys.py` (the line + the engine fwd/side/duck it was flown with) and cut at its
+  first row at 1.39% (the crouch tunnel's west end, before the drop); views/keys put in the policy's velocity frame by
+  `tools/spine_canon_keys.py` (689 rows at >= 100 u/s). Its route: crouch-jump from the spawn floor west into the
+  doorway's basin (func_conveyor *249, top z 3657, 41 u up), a duck-jump inside the 2500 u/s push-down field onto the
+  *250 strip (top 3681), a running jump off the strip's north-east end onto the ramp north of the corridor, west along
+  the passage ducked. No demo, no record data, no box or place chosen by hand. OPEN QUESTION for the operator (NOTES):
+  whether that staircase exists in the real game.

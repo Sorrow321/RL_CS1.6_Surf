@@ -4465,3 +4465,36 @@ Bundle with the plan re-simulated on a droplet CPU core: `~/ar_pb/pbx/line_60.06
   around *261-*264 (off the course); the field along the course is unaffected, a rebake is optional.
 * Next (the user, 07:40 UTC): a new lineage that passes the start the real way - energy from the east half-pipe,
   then the passage north of the spawn - warm-started from this lineage's checkpoint for the rest of the map.
+
+## pbfr1b4 (corrected-core lineage, round 1, slot 4) - 2026-10-29 11:38 UTC start
+
+Box: none yet. 11:48 rented 58244045 (RTX 5070 + Ryzen 7950X, 0.233 $/h): gpu_health UNHEALTHY (power limit 175 W of
+the 5070's 250 W, no reference for the model), blocklisted (machine 138344) and released at 11:51. Since then the fleet
+sits at 0.95 $/h of the 1.2 cap with three boxes, and the cheapest offer (a 3090 at 0.276) would take it to 1.23.
+
+### THE CORRECTED CORE STILL HAS A DOORWAY ROUTE: a 3-step staircase via func_conveyor *249 (11:55-12:08 UTC, local CPU)
+* The fix (6bd7f931) loaded EVERY dropped brush entity, not only *250. One of them, **func_conveyor *249**
+  (AABB x 648..712, y -3043..-2957, top z 3657), is the floor of the doorway's middle: 41 u above the spawn floor, open
+  to the east (hull traces: the *250 strips at 3681 cover y <= -3030 and y >= -2966 only). A crouch-jump (63 u) reaches
+  it. The push-down fields (trigger_push *253 over *249 to z 3698, *252 over *250 to 3698, 2500 u/s each, -5000 where
+  both touch) cut a jump's rise to ~6-11 u, but the in-air duck lifts the feet 18 u at once.
+* Go-Explore phase 1 from the TRUE spawn (`explore_phase1 --cell 64 --cell-energy 32 --exact-chains --act-every 4
+  --maxvel 3500 --tick-ms 8 --select-energy 2`, 256 envs, 2 threads, 5 min on the droplet, 273,677 runs): deepest
+  **3.21%** (808, -3,298, 3,366) = the old lineage's gate-2 pit, via (tick by tick, ge_replay 23/23 links exact):
+  1. 0.38 s: crouch-jump west from the spawn floor; lands ducked on *249 (feet 3657) at 0.96 s;
+  2. 3.7 s: a duck-jump inside the field (vz 262 -> rise 7.7 u + the 18 u duck lift = feet 3,682.7 over the 3681 top,
+     ~1.7 u of margin) lands on the *250 strip;
+  3. 8.4-8.8 s: runs east along the north strip (226 u/s) and jumps off its north-east end at (737, -2,924) onto the
+     ramp north of the corridor (y -2,880, z ~3,733), then west along the passage ducked at 180-300 u/s to the
+     tunnel's west end (152, -2,904, 3,714) = 1.39% at 14.0 s, the drop at 15.7 s.
+  A 1-minute run had already reached step 2. The incumbent never enters the basin: it repeats its old one-jump climb
+  onto the strip's north edge (62 u in the old core, 65 u now) and bounces there.
+* **Open question, for the operator: does this staircase exist in the REAL game?** Every step uses the mechanics
+  the 07:20 UTC anatomy above calls engine-exact (crouch-jump, in-air duck, stamina, push field as base velocity),
+  so in our core it is legal; but the margin at step 2 is ~1.7 u, the WR never uses the doorway, and the mapper put
+  the push fields exactly over the doorway's step heights. The conveyors' own FL_CONVEYOR push is unmodelled
+  (src/bsp.c); with angles 90 0 0 and speed -181 it would be +181 u/s UP while standing on them, which changes
+  nothing at a jump (PM_Jump sets vz). If the game does not allow it, the core needs another fix and every result
+  on this route (this branch's included) is sim-only.
+* Spine for a backward curriculum: `autoresearch/spines/pbfr1b4_stair_a.npy` (+ `.keys.npy`), the chain cut at
+  1.39% (provenance in the spines README).
