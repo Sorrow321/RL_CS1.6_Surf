@@ -4594,3 +4594,16 @@ minibatch's forward) - so an update is 1 Adam step of 64. Reported kl 0.03-0.05.
   every 5th tick past 1.4% and >= 2 s before an episode's end: 7,245 states, progress p10 6.7 / p50 39.8 / p90 77.8%.
 * c6 = c2's weights (68.294B) + the curriculum (demo-rate 0.2, tau0 1015) + `--spawn-states course_c2.npy
   --spawn-states-frac 0.3` + `--target-kl 0.15`, 6e8 steps. Box extended to 18:03 UTC.
+
+### c5's band froze at row 820 for 250M steps because of REPEATED ORIGINS; --demo-match-band (15:03 UTC)
+DemoCurriculum credits a finished spine episode to the LAST spine row whose origin (0.1 u) equals its spawn's; the GE
+line stands still for long stretches (232 of its 1,753 rows share an origin with another row, 87 groups, up to 14
+rows), so a band inside such a stretch never collects an outcome and never moves (no advance, no backoff: c5's last
+move was at ~68.71B, the run ended at 68.958B). `--demo-match-band` (the old lineage's fix for the same stall,
+pbr6b4_c11) credits it to the copy inside the band. Every GE spine with idling needs it.
+* c6 (15:00) progressed 1015 -> 980 in 3 min and was restarted as **c7 = c6 + --demo-match-band** (15:04).
+
+### The box went OFFLINE at ~15:05 UTC (vast status `offline`, ssh timing out), seconds after c7's launch
+Not pulled from it: c2's ckpt_latest (68.294B, the curriculum's stable weights), the course pool
+(runs/pool/course_c2.npy) and c6/c7. Lesson: pull the checkpoint a later run is to be built on (`box.py pull --ckpt`)
+before building on it. A backup course pool is being recorded locally from the incumbent (record_ckpt on CPU).
