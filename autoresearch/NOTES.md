@@ -4540,3 +4540,10 @@ The incumbent recipe's resume ran at 218-274k steps/s on it.
 * **cur3** (12:53 UTC): cur2's ckpt_final (68.756B, md5 f4296227...) + the same flags with `--demo-front-frac 0.8
   --demo-tau0 1389`, 1.5e9 steps. It crossed the 1384 stall within ~3 min (12:56: tau ~1289-1304, bands 58-88% with
   some 0% first visits).
+* cur3 at 13:18 UTC (69.30B): tau ~1089-1104 (the top of the half-pipe's WEST side after lap 1, another explorer loop).
+  The pace is the cooldown's: one move every 5 iterations (~7 s); each new band reads 0% on its first visit and passes
+  (40-54%) after 2-3 visits, net ~9 rows/min. kl median 1.5, greedy evals still at the doorway (0.38-0.46%).
+  The GE archive has no much shorter way to high energy (earliest h >= 3,880 anywhere: 6.9 s; >= 3,900: 8.8 s; the
+  record 4.7 s) - the explorer pumps slowly; the policy has to learn the efficient pump itself.
+* Tunnel probe again (cur3 69.33B, row 1880, 9 greedy): 6/9 finish at 62.0-62.4 s, fails at 10 / 33 / 51 s - the course
+  holds while the start room is taught (cur2 68.48B: 7/9); downstream reliability ~70% is the next problem after the start.
