@@ -4555,3 +4555,7 @@ The incumbent recipe's resume ran at 218-274k steps/s on it.
   at 20%: no oscillation at 20-29%), `--demo-front-frac 0.85`, `--respawn-frac 0.97` (3% true-start spawns instead of 10%:
   while the greedy cannot leave the room those 15-s doorway bounces were ~10% of all decisions), `--demo-match-band`
   (round 6's repeated-origin fix; the spine stands still at the spawn); 2.5e9 steps. Box extended to 17:14 UTC.
+* cur4 at 14:06 UTC (70.36B): tau 969 -> ~540 in 21 min (~20 rows/min, 4x cur3): `--demo-rate 0.2` removed the
+  20-29% oscillation. Now on lap 1's first descent into the half-pipe (row ~540 = 4.3 s into the line). kl median 1.9
+  (max 4.0), explained variance 0.98, value loss 1.5; training finishes 41% at ~72 s (from spawns ~4-8 s into the
+  line); greedy evals still at the doorway (0.38-0.43%).
