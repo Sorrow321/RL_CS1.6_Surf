@@ -4721,3 +4721,14 @@ Box 58244389 (RTX 5080, Ryzen 9 7945HX 32 thr / quota 30.7, 0.387 $/h, South Car
   move the mean (~6.8/9). x7's 18 misses are spread over the course - the start (1), the passage drop (1), the pit
   (2), 12% (2), 27%, 44-47% (4), 67%, the 71% bounce (2), 80%, the final shaft 91-93% (3): fast and slightly
   fragile everywhere, no single gate to fix.
+* x7 later evals: 7/9 / 8/9 / 9/9 65.76 / 7/9 / 9/9 66.36 / 8/9 / 5/9 / 9/9 66.55 - three 9/9 evals, all slower than
+  x4's 64.48 s. Round 8 plan on x7's final (73.543B): 61.45 / **61.36** / 61.46 / 61.46 s.
+* **The NW detour is the SPAWN's habit, not missing skill** (19:37 UTC, one beam from a row of the explorer's direct
+  walk: `beam_tas --skip-gate --start-state autoresearch/spines/pbfr1b2_door3.npy:100`, (782, -3,037) on the floor
+  moving west, x7's final weights): the policy's own copies go straight onto *249 at +1.00 s and *250 at +1.11 s,
+  then still wait ~1.6 s on the plate (gap +2.74 s, tunnel exit +4.52 s). From the true spawn (standing, facing
+  east) the same weights walk to the north corner first. A start spine that joins a direct-walk prefix to the
+  planner's fast plate -> gap is worth ~1 s at the tunnel exit (~3.7 s against the planner's 4.73) - not built
+  this round (~0.03 points); for the next round it is the cheapest second left in the run.
+* x8 (19:39 UTC) = x7's final + BC r8 + spawn-states r8 + the pace curriculum (row 381, rate 0.3) + greedy respawns,
+  lr 2e-5, 1.5e9 steps (to ~20:50 UTC).
