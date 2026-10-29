@@ -4592,3 +4592,28 @@ so the curriculum values are all passed). Success line d <= 55,533 (+2.83%). Rec
   states) - an advance of 10 states is now ~0.3 s of play instead of ~0.08 s, at the same per-advance
   cost in iterations. c2's ckpt_latest (68.866B), `--demo-tau0 444` (= per-tick 1,776), other flags as
   c2, 800M steps.
+* **c3** (68.866-69.28B+, 13:49-14:20 UTC): the thinned spine did NOT speed it up - the band sat at
+  434-444 (per-tick 1,736-1,776) for ~400M steps, advancing to 439 at 50-86% and failing at 434
+  (0-58%). Greedy evals unchanged (0.35-0.40).
+* **The wall, recorded** (c3 69.17B weights, `record_ckpt --spawn-states` one spine state, 6 episodes
+  each): state 439 (already climbing the ridge's EAST end, vz +400): 1/6 greedy goes through the
+  arch onto the shelf, into the tunnel and on to **24.70%** (the course after the tunnel is intact to
+  at least ~25%), the others arrive at the arch with h ~3,820-3,900 and drop into the spawn room.
+  State 434 (on the north face heading EAST at 810 u/s, before the curve): the policy turns back
+  WEST within ~20 ticks, skips the east-end U-turn whose high arc gains ~60 u of energy, reaches
+  the arch at h ~3,765-3,790 (needs ~3,880+) and lands in the spawn room, 0/6.
+* **Why it turns back - a lure in the reward, not the skill**: a spine spawn BEHIND the start
+  starts its ratchet record at its own d, so coming back toward the start pays ~2.5 reward units
+  (58,435 -> ~57,000 u) for ground the agent never chose to give up, while the U-turn pays only if
+  the whole sequence works. A real episode from the start would hold the start's d as its record
+  there and be paid nothing for that return.
+* **`--race-ratchet-start-cap 1` (new, off = byte-identical, config only when set, ckpt
+  restores)**: an episode's record starts at min(spawn d, the map start's d). Spawns past the start
+  and evals from it are unchanged; a spawn behind the start reads the record-gap column a real
+  episode from the start would read. Mirrored in the trainer's eval feed, record_ckpt and beam_tas.
+  Tests: `tests/python/test_ratchet_start_cap.py` (5, CPU). Generic: on any map, a spawn the
+  curriculum placed behind the start is not progress to undo.
+* `tests/python/test_race_ratchet.py` was broken on this branch before this change (its FakeCore
+  had no `.config`, which RaceReward.on_reset reads since the energy / surf terms); fixed, 23/24
+  pass - the remaining failure asserts a `RATCHET_COL = N_SCALAR + N_ROUTE - N_PASS - 1` string
+  the trainer no longer contains (stale, unrelated).

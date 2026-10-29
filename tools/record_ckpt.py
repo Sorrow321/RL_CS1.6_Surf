@@ -2408,17 +2408,24 @@ def main(argv=None, build_only: bool = False, device=None):
         _rd0 = float(np.mean(ogf.sample(map_spawn_pool(core)["origin"])))
         print(f"--race-ratchet: record gap normalised by the start "
               f"geodesic {_rd0:,.0f}u")
+        # --race-ratchet-start-cap: MIRRORED - an episode's record starts at min(its start d,
+        # the map start's d), so a --spawn-states recording behind the start reads the column
+        # the trainer fed there (a recording from the map start is unchanged)
+        _rcap = _rd0 if cfg.get("race_ratchet_start_cap") else 0.0
+        if _rcap > 0.0:
+            print(f"--race-ratchet-start-cap mirrored: the record starts at min(start d, {_rcap:,.0f}u)")
         _rs = {"rec": None, "tick": None}
 
-        def ratchet_fn(c, _f=ogf, _d0=_rd0):
+        def ratchet_fn(c, _f=ogf, _d0=_rd0, _cap=_rcap):
             sv = c.states_view
             d = _f.sample(sv["origin"]).astype(np.float64)
             tick = np.asarray(sv["tick"], np.int64).copy()
             rec, pt = _rs["rec"], _rs["tick"]
+            d_start = np.minimum(d, _cap) if _cap > 0.0 else d
             if rec is None or len(rec) != len(d) or pt is None:
-                rec = d.copy()
+                rec = d_start.copy()
             else:
-                rec = np.where(tick <= pt, d, rec)
+                rec = np.where(tick <= pt, d_start, rec)
             rec = np.minimum(rec, d)
             _rs["rec"], _rs["tick"] = rec, tick
             return ((d - rec) / _d0).astype(np.float32)

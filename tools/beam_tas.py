@@ -213,16 +213,19 @@ class XFeeds:
             # d so far (an episode start, read off the tick, re-arms it)
             _d0 = float(np.mean(self.ogf.sample(map_spawn_pool(core)["origin"])))
             _rs = {"rec": None, "tick": None}
+            # --race-ratchet-start-cap: the record starts at min(start d, the map start's d)
+            _cap = _d0 if self.cfg.get("race_ratchet_start_cap") else 0.0
 
-            def ratchet_fn(c, _f=self.ogf, _d0=_d0):
+            def ratchet_fn(c, _f=self.ogf, _d0=_d0, _cap=_cap):
                 sv = c.states_view
                 d = _f.sample(sv["origin"]).astype(np.float64)
                 tick = np.asarray(sv["tick"], np.int64).copy()
                 rec, pt = _rs["rec"], _rs["tick"]
+                d_start = np.minimum(d, _cap) if _cap > 0.0 else d
                 if rec is None or len(rec) != len(d) or pt is None:
-                    rec = d.copy()
+                    rec = d_start.copy()
                 else:
-                    rec = np.where(tick <= pt, d, rec)
+                    rec = np.where(tick <= pt, d_start, rec)
                 rec = np.minimum(rec, d)
                 _rs["rec"], _rs["tick"] = rec, tick
                 return ((d - rec) / _d0).astype(np.float32)

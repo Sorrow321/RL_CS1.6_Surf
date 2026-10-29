@@ -4885,6 +4885,18 @@ def main() -> None:
                          "gradient unless it finished or ended within eps "
                          "of the farther) as a 0/1 advantage weight on the "
                          "part of the episode inside the current buffer")
+    ap.add_argument("--race-ratchet-start-cap", type=int, choices=(0, 1), default=None,
+                    help="--race-ratchet: 1 = an episode's record STARTS at min(its spawn's d, the "
+                         "map start's d) instead of its spawn's own d. A spawn BEHIND the start (a "
+                         "curriculum spine state or a reservoir state the agent was moved to) then "
+                         "carries the record a real episode from the start would hold there: coming "
+                         "back to the start pays nothing, only progress past it pays, and the "
+                         "record-gap column reads what that real episode would read (pbfr1b1, "
+                         "2026-10-29: spine spawns on the field-opposed ridge were paid ~2.5 for "
+                         "turning straight back to the start with too little energy, which is the "
+                         "lure that kept the curriculum off the energy-gaining U-turn). Spawns past "
+                         "the start and evals from it are unchanged. 0/absent = off, "
+                         "byte-identical; config only when set; a checkpoint restores it")
     ap.add_argument("--race-ratchet", action="store_true", default=None,
                     help="race: pay only NEW progress RECORDS inside an "
                          "episode. The episode keeps b = the smallest "
@@ -8071,6 +8083,10 @@ def main() -> None:
                 and ck_cfg.get("race_ratchet")):
             args.race_ratchet = True
             restored.append("race_ratchet")
+        if (args.race_ratchet_start_cap is None
+                and ck_cfg.get("race_ratchet_start_cap") is not None):
+            args.race_ratchet_start_cap = int(ck_cfg["race_ratchet_start_cap"])
+            restored.append(f"race_ratchet_start_cap={args.race_ratchet_start_cap}")
         for _k in ("race_sr", "sr_select"):
             if getattr(args, _k) is None and ck_cfg.get(_k):
                 setattr(args, _k, True)
@@ -9621,6 +9637,10 @@ def main() -> None:
         args.race_latch_frac = 0.0
     if args.race_ratchet is None:
         args.race_ratchet = False
+    if args.race_ratchet_start_cap is None:
+        args.race_ratchet_start_cap = 0
+    if args.race_ratchet_start_cap and not args.race_ratchet:
+        raise SystemExit("--race-ratchet-start-cap caps the --race-ratchet record: needs --race-ratchet")
     if args.race_sr is None:
         args.race_sr = False
     if args.sr_eps_frac is None:
@@ -13336,7 +13356,7 @@ def main() -> None:
         feed.state = st      # the obs-reward mirror reads t-1's flag here
         return feed
 
-    def _make_eval_ratchet_feed(field, d0):
+    def _make_eval_ratchet_feed(field, d0, cap=0.0):
         """Mirror the training --race-ratchet record for evaluation rollouts.
 
         The eval core computes no reward, so nothing there owns the record;
@@ -13357,11 +13377,13 @@ def main() -> None:
             d = field.sample(sv["origin"]).astype(np.float64)
             tick = np.asarray(sv["tick"], np.int64).copy()
             rec, pt = st["rec"], st["tick"]
+            # --race-ratchet-start-cap: an episode's record starts at min(its start, cap)
+            d_start = np.minimum(d, cap) if cap > 0.0 else d
             if rec is None or len(rec) != len(d) or pt is None:
-                rec = d.copy()                    # the episode's own start
+                rec = d_start.copy()              # the episode's own start
             else:
                 fresh = tick <= pt                # a new episode restarts it
-                rec = np.where(fresh, d, rec)
+                rec = np.where(fresh, d_start, rec)
             rec = np.minimum(rec, d)
             st["rec"], st["tick"] = rec, tick
             return ((d - rec) / d0).astype(np.float32)
@@ -13737,6 +13759,8 @@ def main() -> None:
             _s.reward_fn.speed_pot = float(args.speed_pot)
             # --energy-pot: the same, on z + |v|^2 / (2 g) (reward units per 1000 u)
             _s.reward_fn.energy_pot = float(args.energy_pot)
+            # --race-ratchet-start-cap: the record starts at min(spawn d, this map's start d)
+            _s.reward_fn.ratchet_cap = (float(_s.rf_d0) if args.race_ratchet_start_cap else 0.0)
             _s.reward_fn.en_front_bonus = bool(args.energy_pot_front_bonus)
             _s.reward_fn.surf_bonus = SURF_BONUS_T
             _s.reward_fn.dive_pen = DIVE_PEN_T
@@ -13773,6 +13797,11 @@ def main() -> None:
                       f"and pay nothing. The record gap (d - b)/d0 is obs "
                       f"column {RATCHET_COL} (d0 = {_s.rf_d0:,.0f}u); "
                       f"stall/stagnant keep the raw d")
+                if args.race_ratchet_start_cap:
+                    print(f"race{f'[{_s.name}]' if MULTI else ''}: RATCHET START CAP - an "
+                          f"episode's record starts at min(its spawn d, the start's "
+                          f"{_s.rf_d0:,.0f}u): a spawn behind the start is paid nothing for "
+                          f"coming back to it (--race-ratchet-start-cap)")
             if _s.d_latch > 0.0:
                 print(f"race{f'[{_s.name}]' if MULTI else ''}: shaping "
                       f"LATCHED OFF once an episode reaches "
@@ -13887,7 +13916,8 @@ def main() -> None:
         _s.eval_ratchet_feed = (
             _make_eval_ratchet_feed(
                 _s.reward_field if _s.reward_field is not None
-                else _s.goal_field, max(_s.rf_d0, 1.0))
+                else _s.goal_field, max(_s.rf_d0, 1.0),
+                cap=(max(_s.rf_d0, 1.0) if args.race_ratchet_start_cap else 0.0))
             if N_RATCHET else None)
         # --curiosity-cond: the in-trainer eval runs the T = 0 member (the
         # exploit policy: full shaping, no novelty); the tools pick another
@@ -15005,6 +15035,9 @@ def main() -> None:
     if args.bc_keys_engine:
         # --bc-keys-engine: written ONLY when set (a loss option of the BC term)
         meta["config"]["bc_keys_engine"] = 1
+    if args.race_ratchet_start_cap:
+        # --race-ratchet-start-cap: written ONLY when set (a flag-off run.json is the control's)
+        meta["config"]["race_ratchet_start_cap"] = 1
     if args.bc_pitch_coef is not None:
         # --bc-pitch-coef: written ONLY when set (a loss option of the BC term)
         meta["config"]["bc_pitch_coef"] = float(args.bc_pitch_coef)

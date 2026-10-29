@@ -848,6 +848,14 @@ class RaceReward:
                                  else 1.0))
         self._rec: np.ndarray | None = None
         self._rec_boot: np.ndarray | None = None
+        # --race-ratchet-start-cap (pbfr1b1, 2026-10-29): > 0 = the record an episode STARTS
+        # with is min(its spawn's d, this cap), the cap being the map's start distance (the
+        # trainer sets it to rf_d0). A spawn BEHIND the start - a curriculum or reservoir state
+        # the agent was moved to - then carries the record a real episode from the start would
+        # hold there, so coming back to the start pays nothing and only progress past it does,
+        # and its record-gap column reads what that real episode would read. 0 = off: the record
+        # starts at the spawn's own d, byte-identical.
+        self.ratchet_cap = 0.0
         self.scale = float(scale)
         self.time_pen = float(time_pen)
         self.success_bonus = float(success_bonus)
@@ -1288,7 +1296,9 @@ class RaceReward:
         # armed off the spawn tick.
         if self.ratchet:
             self._rec = self._d.copy()
-            self._rec0 = self._d.copy()      # the record the episode STARTED at
+            if self.ratchet_cap > 0.0:
+                np.minimum(self._rec, self.ratchet_cap, out=self._rec)
+            self._rec0 = self._rec.copy()    # the record the episode STARTED at
             self._dip_paid = np.zeros(len(self._d), np.float32)
             self._rec_boot = self._rec.copy()
         self._since = np.zeros(n, np.int64)
@@ -1933,8 +1943,9 @@ class RaceReward:
                 # the ended rows already hold the NEW episode's spawn: the
                 # record restarts there, so the fresh episode's first call
                 # pays only what it actually gains from its own start
-                self._rec[ended] = d[ended]
-                self._rec0[ended] = d[ended]
+                self._rec[ended] = (np.minimum(d[ended], self.ratchet_cap)
+                                    if self.ratchet_cap > 0.0 else d[ended])
+                self._rec0[ended] = self._rec[ended]
                 if self._dip_paid is not None:
                     self._dip_paid[ended] = 0.0
             if self._d0 is not None:

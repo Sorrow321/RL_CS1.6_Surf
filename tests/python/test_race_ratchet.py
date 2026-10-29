@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import json
 import sys
+from types import SimpleNamespace
 from pathlib import Path
 
 import numpy as np
@@ -58,6 +59,8 @@ class FakeCore:
         self.num_envs = n
         self.states_view = np.zeros(n, dtype=STATE_DTYPE)
         self.goal_hits = np.zeros(n, np.uint8)
+        # RaceReward.on_reset reads the physics (gravity, maxvel) for its energy / surf terms
+        self.config = SimpleNamespace(phys=SimpleNamespace(sv_gravity=800.0, sv_maxvelocity=3500.0))
         self._bounds = (np.asarray(bounds[0], np.float32),
                         np.asarray(bounds[1], np.float32))
 
