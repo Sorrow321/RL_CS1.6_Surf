@@ -4699,3 +4699,10 @@ Box 58244389 (RTX 5080, Ryzen 9 7945HX 32 thr / quota 30.7, 0.387 $/h, South Car
 * **Open for the operator:** whether the *249/*250 staircase is passable in the real game (section "FOR THE
   OPERATOR" above). If it is not, the half-pipe archive (`runs/pbfr1b2/_ge/s1_archive.npz`) and spine hp1 are the
   start of the real-game route.
+* x5 evals (BC r5): 9/9 66.03 / 8/9 64.75 / 7/9 65.96 / 7/9 65.76 / 5/9 66.18 / 8/9 64.52 / 8/9 66.22 / 9/9 65.62 /
+  6/9 65.79 / 7/9 65.61 / 9/9 64.78 (117.841). No new best; the greedy's speed plateaus at ~64.4-64.8 s and
+  reliability drifts (5-9/9). The pace band 371-375 sat at 23-28% for two runs (advance needs 30%).
+* Round 6 plan on x5's final (73.643B): 61.59 / 61.56 / 61.64 / 61.55 s (one wave's greedy floor 80.45 s - a slow
+  greedy episode at that spawn). x6 (17:44 UTC) = x5's final + BC r6 + spawn-states r6 + the pace curriculum from
+  row 381 with **`--demo-rate 0.25`** (was 0.3: let the band pass at 25% so the pace rule reaches the true start),
+  x5's flags otherwise.
