@@ -2878,6 +2878,24 @@
       "detail": "autoresearch pbr6b3 2026-10-26: the instance REBOOTED twice mid-run (uptime reset at ~14:48 and ~15:37 UTC, 13 days up at 14:16), each time killing the trainer silently (cgroup oom_kill 0, no traceback; files intact). RTX 5070 Ti 16 GB, Ryzen 9 7950X 32 thr, South Korea, machine 136901; otherwise fine (~340k steps/s on the incumbent recipe)",
       "run": "",
       "reason": "unreliable"
+    },
+    {
+      "ip": "183.88.235.132",
+      "machine_id": 141910,
+      "host_id": 452472,
+      "date": "2026-10-27",
+      "detail": "uplink 19-22 KB/s measured twice (scp of 2.9 MB and 5.9 MB) while the agent host's downlink ran 5-14 MB/s: a 63 MB checkpoint needs ~55 min, past box.py pull's 30-min scp window; trainer itself fine (~210k steps/s, EPYC 7502, Thailand)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "86.120.124.250",
+      "machine_id": 152306,
+      "host_id": 716820,
+      "date": null,
+      "detail": "autoresearch pbr9b4: not running after 330 s (status offline, )",
+      "run": "",
+      "reason": "unreliable"
     }
   ],
   "known_good": [
