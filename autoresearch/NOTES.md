@@ -4612,3 +4612,7 @@ The incumbent recipe's resume ran at 218-274k steps/s on it.
   --demo-front-ticks 400` (was 0.5 / 40): the band is now the true start itself (tau 0), so 85% of training episodes
   sample the keys at T 2 and the yaw sigma x6 for their first 3 s - exploration for the start's keys, the greedy eval
   untouched. Hand-on for its first eval (= cur5's final weights): runs/pbfr1b3_cur6/ckpt_71875690496.pt.
+* cur6 at 15:39 UTC (72.34B, start-band T 2 for 3 s): evals 7/9 (70.00 s) / 8/9 / 9/9 (best 70.09 s, 117.664) / 5/9 / 5/9
+  (69.61) / 7/9 (**69.02 s**) / 7/9 (69.56). The START IS SPEEDING UP: some episodes now drop off the floor at 2.2-2.5 s
+  (was 2.9 s) and reach the tunnel at 7.4-8.1 s (was 8.4-8.5); but one episode in 3 of the last 4 evals now dies in the
+  start room (0% progress) - the price of the noisier start - plus the usual scattered downstream deaths (20-90%).
