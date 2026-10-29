@@ -27,6 +27,7 @@ a file or a checkpoint without the new columns or settings.
 from __future__ import annotations
 
 import importlib
+import json
 import shutil
 import subprocess
 import sys
@@ -595,3 +596,33 @@ def test_prefix_line_replay_keeps_the_wrappers_feeds_and_held_keys():
     # and so --prefix-line is no longer refused on a --keys-hold checkpoint
     i_k = bt.index('_raw = [f for f, on in (("--eps", args.eps > 0.0)')
     assert '("--prefix-line", bool(args.prefix_line))' not in bt[i_k:i_k + 1200]
+
+
+def test_refine_arch_archive_rules(tmp_path):
+    """tools/refine_arch.py: the archive keeps the M fastest DISTINCT lines (another action
+    table AND another finish tick), and the schedule offsets parallel workers."""
+    import refine_arch as ra
+    arch = []
+    for t, k in ((7863, "a"), (7867, "b"), (7872, "c")):
+        arch, ok = ra.offer(arch, t, f"{k}.npz", k, k, 3)
+        assert ok
+    assert [a["ticks"] for a in arch] == [7863, 7867, 7872]
+    assert not ra.offer(arch, 7880, "d.npz", "d", "d", 3)[1]        # full, slower than the slowest
+    assert not ra.offer(arch, 7860, "e.npz", "a", "e", 3)[1]        # the same line again
+    assert not ra.offer(arch, 7863, "f.npz", "f", "f", 3)[1]        # the same finish tick
+    arch, ok = ra.offer(arch, 7858, "g.npz", "g", "g", 3)
+    assert ok and [a["ticks"] for a in arch] == [7858, 7863, 7867]  # the slowest falls out
+    # seeding: bit-exact finishers only, by finish tick, distinct
+    for n, (t, ok_) in enumerate(((7900, True), (7863, True), (7863, True), (7850, False))):
+        d = tmp_path / f"w{n}"
+        d.mkdir()
+        (d / "summary.json").write_text(json.dumps({"best_ticks": t, "replay_bit_exact": ok_}))
+        np.savez(d / "beam_best.npz", acts=np.full((5, 6), n, np.int8),
+                 view=np.zeros((5, 2), np.float32), spawn_state=np.zeros(1, np.float32))
+    seeded = ra.seed_archive(["w*/summary.json"], 6, root=tmp_path)
+    assert [a["ticks"] for a in seeded] == [7863, 7900]
+    # the schedule: every base once per cycle, workers offset in base, fraction and checkpoint
+    fr, ck = [0.8, 0.2, 0.9], ["r28", "r38"]
+    assert [ra.schedule(i, 0, 6, 6, fr, ck)[0] for i in range(6)] == [0, 1, 2, 3, 4, 5]
+    assert ra.schedule(0, 0, 6, 6, fr, ck) == (0, 0.8, "r28")
+    assert ra.schedule(5000, 1, 6, 6, fr, ck) == ((5000 + 3) % 6, fr[5 % 3], "r38")
