@@ -435,3 +435,13 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
 * `pbr9b1_late2_states.npy` (md5 in NOTES): pbr9b1_fo2dec_states + the s71 beam's shaft passage x2 + the 89-94.5% shaft entries of
   three FINISHING greedy episodes of pbr9b1_c8's own 57.34B weights (record_ckpt --dump-states, seed 11) x8 - a `--spawn-states`
   pool aimed at the shaft's first kill sheet (z ~265), c8's commonest death.
+
+# corrected-core lineage (pbf*, from 2026-10-29)
+
+* `pbfr1b1_r38_reservoir.npy` (19,672 states, md5 09fb0c784e81581c338b94179d893455): the incumbent's
+  OWN respawn reservoir (pbEXIT2_r38's checkpoint, `respawn.states`, 20,000 states of its own
+  training episodes down the course, 0.1-94.1% on the grader field), minus the 328 states below 1.5%
+  (the old core's start-room route through the doorway) and the 53 that the corrected core puts
+  inside the restored conveyor slab *250. A `--spawn-states` pool that keeps the course after the
+  start practised while a curriculum teaches the start. The policy's own states, no demo, no record
+  (pbfr1b1, round 1 of the corrected-core lineage).
