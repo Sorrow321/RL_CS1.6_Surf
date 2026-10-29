@@ -4706,3 +4706,11 @@ Box 58244389 (RTX 5080, Ryzen 9 7945HX 32 thr / quota 30.7, 0.387 $/h, South Car
   greedy episode at that spawn). x6 (17:44 UTC) = x5's final + BC r6 + spawn-states r6 + the pace curriculum from
   row 381 with **`--demo-rate 0.25`** (was 0.3: let the band pass at 25% so the pace rule reaches the true start),
   x5's flags otherwise.
+* x6 evals (BC r6, pace rate 0.25): 9/9 65.04 / 8/9 / 8/9 / 7/9 / 9/9 64.75 / 6/9 / 8/9 / 6/9 / 5/9 64.44 / 7/9 /
+  8/9 65.04. No new best; the pace curriculum moved one band (to row 371, then 15% there) and the START got less
+  reliable: failures by max progress, x4 2 of 9 in the start room, x5 2/16, **x6 6/18** - the faster, riskier
+  plate -> gap jump costs episodes. Mean finishes per eval: x4 8.2, x5 7.5, x6 7.4 (drift).
+* x7 (18:30 UTC): **re-anchored** on x4's 117.851 snapshot (ckpt_72343355392) - the old lineage's lesson (c9 went
+  9/9 in 13 of 40 evals from c8's snapshot) - with x4's recipe exactly (pace rate 0.3 from row 376, greedy
+  respawns 0.2) at **lr 2e-5**, BC + spawn-states from a fresh round-7 plan on the snapshot (61.56 / 61.62 / 61.58
+  / 61.66 s), 1.2e9 steps.
