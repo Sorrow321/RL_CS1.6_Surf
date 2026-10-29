@@ -4761,3 +4761,7 @@ so the curriculum values are all passed). Success line d <= 55,533 (+2.83%). Rec
   descent onto the ridge heading east, 2-3.4%). KL 0.78-0.86, value fit 0.97. Greedy evals
   0.377-0.404: the episodes now wander the spawn room 20-80 s and die near the north wall /
   doorway; 2/9 reached x ~1,090-1,100 (the arch) in the last one.
+* c14 at 19:35 (73.13B): band cycles 104 / 99 / 94 / 89 - the wall 89-99 is the explorer surfing the
+  ridge's SOUTH face heading east, ducked, strafe-LEFT (into that face) at low energy (h ~3,660):
+  the mirror of the north-face skill. Greedy evals 0.392-0.431 (the 0.431 at 73.055B is the
+  branch's best so far, a start-room score); episodes reach x 870-1,025, short of the arch.
