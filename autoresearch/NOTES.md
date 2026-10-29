@@ -4673,3 +4673,18 @@ so the curriculum values are all passed). Success line d <= 55,533 (+2.83%). Rec
 * **c8** (15:56 UTC): c7's ckpt_latest, `--demo-rate 0.12` (advance at 12% band success; the
   uniform 20% replay over [tau, end] keeps raising competence behind the band), SIL 0.4 / top 128,
   `--demo-tau0 429`, 1.5B steps.
+* **What the policy does at the wall** (new `record_ckpt --spawn-keys F,S,D`: a `--spawn-states`
+  recording starts holding the given engine keys, as a training spine spawn does under
+  `--demo-keys`): c8 (70.43B) spawned at spine 429 holding strafe-right (1,2,0) switches at once to
+  strafe-LEFT + jump + duck, greedy and stochastic alike, and slides off the face into the kill
+  floor within 67 ticks. The mode there is a course habit pointing the wrong way; SIL's ~13% are
+  rare samples, not a flipped mode.
+* **c8** (70.41-70.50B, 15:56-16:01): with `--demo-rate 0.12` the band stepped to 424 and found
+  0.0% there; 429 at 13-16%. Each 5-state step back along the face is a fresh 0% wall.
+* Considered and not built (time): distilling the spine's translated keys + canonical view into the
+  policy at every spine state (a BC term on the first decision after each spine spawn, the
+  expert loop's mechanism applied to our own reward-free search line). plan_to_bc cannot do it as
+  is: non-finishing lines need a route .npz (this map has none) and its lines start NEUTRAL.
+* **c9** (16:03 UTC): c8's ckpt_latest, `--demo-rate 0.06 --demo-grow-max 10` (advance at 6% band
+  success, never leap more than 10 states), SIL 0.4 / top 128, `--demo-tau0 424`, 2B steps. The
+  last ~2 h of the round go to consolidation (course re-anchor) whatever the band reaches.
