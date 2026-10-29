@@ -4739,3 +4739,9 @@ so the curriculum values are all passed). Success line d <= 55,533 (+2.83%). Rec
 * **c12** (17:33 UTC): c11's ckpt_latest, `--demo-bc 0.5`, `--demo-rate 0.10`, the stratified
   course pool named explicitly (the box's tracked reservoir file restored), `--demo-tau0 309`, 3B
   steps.
+* **c12 result** (71.57-71.90B, 17:33-17:58 UTC, bc 0.5, rate 0.10): band 309 -> 254 in ~9 min, then
+  239-244 (239 = the turnaround at the ridge's west end, ~tick 956, 1% -> 4.8% in 15 min). Greedy
+  evals 0.396-0.404.
+* **c13** (18:00 UTC): c12's ckpt_latest, `--demo-bc 1.0 --demo-rate 0.06`, `--demo-tau0 239`, else
+  as c12 - the clock (5 h left, ~240 states to go) over per-band competence; the replay behind
+  the band, SIL and the band distillation keep raising it.
