@@ -732,6 +732,29 @@ def dedup_spine(states: np.ndarray) -> np.ndarray:
 # ---------------------------------------------------------------------------
 
 
+def nobrake_keys(fwd: np.ndarray, side: np.ndarray, off: np.ndarray):
+    """--view-follow-nobrake: (fwd, side) engine bins with every wish direction that points
+    more than 90 deg from the horizontal velocity mirrored to the opposite keys.
+
+    Under --view-follow the view sits at heading(v) + ``off`` (deg, CCW), so a burst's held keys
+    keep one wish angle beta relative to the velocity for the whole hold. GoldSrc's air
+    acceleration (src/pm.c PM_AirAccelerate) adds min(accel * wishspeed * dt, 30 - v.wishdir):
+    beta <= ~88 deg at speed adds nothing, beta = 90 is the air strafe (+30 u/s sideways per
+    tick, a speed GAIN), and beta > 90 adds up to 250 u/s per tick against the motion - a held
+    back key stops a 1,000 u/s flight in a few ticks. Pressing the opposite keys turns beta into
+    beta - 180 (|beta - 180| < 90): the same draw without the brake. No wish (both keys
+    released) is left alone. fwd bin 0/1/2 = back/none/forward, side bin 0/1/2 = left/none/
+    right (left = +90 deg, the core's AngleVectors right vector is yaw - 90)."""
+    f = np.asarray(fwd, np.int64) - 1
+    s = np.asarray(side, np.int64) - 1
+    alpha = np.degrees(np.arctan2(-s, f))                  # wish angle left of the view
+    beta = (np.asarray(off, np.float64) + alpha + 180.0) % 360.0 - 180.0
+    flip = ((f != 0) | (s != 0)) & (np.abs(beta) > 90.0 + 1e-6)
+    fo = np.where(flip, 2 - np.asarray(fwd), fwd)
+    so = np.where(flip, 2 - np.asarray(side), side)
+    return fo, so, flip
+
+
 def explore(args) -> int:
     from surfgym.core import SurfCore, default_config, phys_to_dict
     from surfgym.rewards import map_spawn_pool
@@ -914,6 +937,9 @@ def explore(args) -> int:
     vf_set = (None if not getattr(args, "view_follow", None) else
               np.array([float(x) for x in str(args.view_follow).split(",") if x.strip()]))
     vf_off = np.zeros(n, np.float64)
+    nobrake = bool(getattr(args, "view_follow_nobrake", False))
+    if nobrake and vf_set is None:
+        raise SystemExit("--view-follow-nobrake reads the burst's view offset: give --view-follow")
     if vf_set is not None:
         from surfgym.core import YAW_BINS
         vf_bins = YAW_BINS.astype(np.float64) * (float(cfg.yaw_rate_max_deg) / 10.0)
@@ -935,6 +961,10 @@ def explore(args) -> int:
         if vf_set is not None:
             # drawn after every existing draw: the flag-off random stream is untouched
             vf_off[idx] = vf_set[rng.integers(0, vf_set.size, m)]
+            if nobrake:
+                # --view-follow-nobrake: no draw of its own, so the random stream is unchanged
+                act[idx, 2], act[idx, 3], _ = nobrake_keys(act[idx, 2], act[idx, 3],
+                                                           vf_off[idx])
 
     # per-chunk run bookkeeping (parallel lists indexed by run id)
     r_t0: list[int] = []
@@ -1221,6 +1251,9 @@ def meta_dict(args, bsp, hasher, arch, it, n_goal, extra=None) -> dict:
         out["tick_ms"] = int(args.tick_ms)
     if getattr(args, "view_follow", None):
         out["view_follow"] = str(args.view_follow)
+    if getattr(args, "view_follow_nobrake", False):
+        # on only: the flag-off meta json is unchanged
+        out["view_follow_nobrake"] = True
     if float(getattr(args, "cell_energy", 0.0) or 0.0) > 0.0:
         out["cell_energy"] = float(args.cell_energy)
     if int(getattr(args, "cell_heading", 0) or 0) > 0:
@@ -1880,6 +1913,12 @@ def build_parser() -> argparse.ArgumentParser:
                          "RATE leaves the view anywhere, and a canonicalised spine then hides the "
                          "manoeuvre: round 4's gate-12 ramp needed a strafe the policy never "
                          "pressed). None = off, byte-identical")
+    ap.add_argument("--view-follow-nobrake", action="store_true",
+                    help="--view-follow: a burst whose held keys wish more than 90 deg away from "
+                         "the velocity (a brake of up to 250 u/s per tick in GoldSrc's air "
+                         "acceleration) presses the opposite keys instead (nobrake_keys): the "
+                         "search keeps the air strafe (90 deg) and coasting, never the brake. "
+                         "Physics only, no map constant. Off = byte-identical")
     ap.add_argument("--tick-ms", type=int, default=None,
                     help="the search core's physics tick, WHOLE ms (default: the core's 10, "
                          "byte-identical). A policy trained under --tick-ms-schedule flies "
