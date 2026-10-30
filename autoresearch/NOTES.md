@@ -83,3 +83,25 @@ Box 58455373 (RTX 4080 SUPER, EPYC 7K62, 96 threads visible but a 30.7-CPU cgrou
   (-2350, -2600) and die there (2.1-3.2%, 6.5-15 s) - the spot the control's 50M eval died on,
   right under the record's pit-exit corridor (the record passes (-2488, -2603) at z 584; the
   pit's catch *7 reaches z 577). A warm surfer is no shortcut through the start.
+
+### Arm uf2r1b2_egt (launched 22:20 UTC): per-call energy shaping + Go-Explore energy-top spawns
+* Why: (1) the recipe's energy term (`--energy-pot 3 --energy-pot-front 0.01
+  --energy-pot-front-bonus 1`) is paid once at the frontier band, so nothing charges the north
+  slide's energy loss (~-505 u of z + |v|^2/1600 at the sheet) or pays energy kept in the pit.
+  Per call at K 12 (pb_r26's own setting, carried unchanged from princessburglar) the slide nets
+  ~+5.5 - 6.1 = -0.6, the record's pit loop ~+5.6 by t 10; a crash in the bowl costs ~-11. (2) The
+  policy needs practice in the pit with the energy to leave it: GE's RETURN draw is 87% pit but
+  mostly doomed floor states (median E < 0); the explorer's own energy-top set (the most
+  energetic cell of each 64 u place, the set --select-energy boosts) is 19,228 rows, 25.6% of them
+  pit states with E > 1,000 (the -5..-2% band: median 1,655 u/s at z -719, E 1,032).
+* New tool: `tools/ge_return_states.py` (`--tops`; tests/python/test_ge_return_states.py).
+* Flags: the incumbent recipe + `--energy-pot 12 --energy-pot-front 0 --energy-pot-front-bonus 0
+  --spawn-states runs/uf2r1b2_ge1/tops.npy --spawn-states-frac 0.3`, 4e8 steps from scratch,
+  evals every 50M. Self-states: the branch's own GE archive rooted at the true spawn (md5
+  4d3f8d2d). Matched-step reference: uf2r1b2_ctl (5.26 / 5.66 / 5.69 / 5.62 / 5.65 / 5.59 / 5.66
+  at 50-352M, all on sheet *18).
+* Diagnostic to watch in training: `dip/max_survived_depth` (the deepest setback an episode
+  climbed back out of, % of the map): the record's pit is a ~9% dip; the control sat at ~0.7
+  after its first 100M.
+* Ops: run_arm.sh SCRATCH pins `--ckpt-every 1e9` (no milestone snapshots in a 4e8 run): pass
+  `--ckpt-every 5e7` from the next launch on, so the hand-off is next to the best eval.
