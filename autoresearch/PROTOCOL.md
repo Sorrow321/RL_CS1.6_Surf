@@ -50,7 +50,8 @@ findings are archived, not inherited: that is the flush.
 
 ## The goal and the one number
 
-Pass surf_princessburglar_b26 from the true start, champion-free and generic: first a finish,
+Pass surf_princessburglar_b26 from the true start, on the corrected core (**This lineage**
+below), champion-free and generic: first a finish,
 then finishing reliably, then faster than 75.18 s, the human world record (its demo timed on our
 zones, start curtain to finish box; the demo is an analysis instrument only, CLAUDE.md section
 0). The record's time is the bar a result is read against, never a constant in the reward, the
@@ -75,12 +76,53 @@ are fall catches back to the start room and stay fatal. The server runs sv_maxve
   (`--race-no-corner-cut 1`); `config.start_d` is its distance at the spawn.
 * only the first `config.score_episodes` (9) episodes of an eval count, by header episode
   index: a bigger eval is not a better score.
-* there is no incumbent checkpoint for this map: round 1 starts FROM SCRATCH with
-  `config.incumbent_recipe` - the sidistic lineage's final flags (it finished sidistic from
-  the true start after 7 rounds; NOTES.md says what each mechanism did there) plus the speed
-  cap. The sidistic finisher's weights are in `$AR_HOME/incumbent/sid_ref/ckpt.pt` (identical
-  observation and action layout) for a warm-start experiment if you want one; they were never
+* the incumbent (`$AR_HOME/incumbent/ckpt.pt`, AR_BRANCH.json `incumbent`) is described in
+  **This lineage** below. `config.incumbent_recipe` is the scratch recipe: the first
+  lineage's flags, measured on the old core. The sidistic finisher's weights are in
+  `$AR_HOME/incumbent/sid_ref/ckpt.pt` (identical observation and action layout), never
   trained on this map.
+
+## This lineage: the corrected core (operator, 2026-10-29)
+
+* **Why it exists.** The first princessburglar lineage (agents pbr*, rounds 1-9, 117.8 at
+  65.97 s) and the operator's expert loop after it (pbEXIT2: 9/9 at 62.89 s, a 60.069 s
+  search line) finished the map only in our simulator. The C core held 128 solid brush
+  entities and dropped the rest silently. This map has 135, and the 131st, func_conveyor
+  *250, is a 3 u slab on the floor of the doorway west of the spawn. With it the doorway
+  floor is 65 u above the spawn floor, above the 63 u crouch-jump (45 jump + 18 duck).
+  Without it the floor was 62 u, and every one of those finishes climbed through the gap in
+  its first 2.3 s. Commit 6bd7f931 (in your history) loads every brush entity and refuses a
+  map that overflows a table. Only evals recorded on that core or a descendant count, and
+  every box built from your branch is one. The grader's field is the old one: its occupancy
+  differs in 314 voxels, all off the course.
+* **The incumbent** is pbEXIT2_r38, the expert loop's final policy. It is champion-free: rounds
+  1-9 from scratch on this map, then expert iteration on its own beam-search lines (no human
+  demo, CLAUDE.md section 0). On the old core it flew the course 9/9. On the corrected core it
+  scores **0.405** (best progress 0.4%, 0/9): every greedy episode bounces at the doorway
+  edge (x 649, y -2930, peak z 3697) until the episode cap, and it never tries anything else.
+  The copy in `$AR_HOME/incumbent/` has one change: the expert loop's per-round spine path
+  (its own search line, on no box) is removed from the stored config. So
+  `box.py deploy --ckpt $AR_HOME/incumbent/ckpt.pt` followed by `box.py launch --resume` runs
+  as it is; the operator ran that launch on 2026-10-29. Everything else in the checkpoint is
+  r38's own and comes from the old core: the weights, the optimiser, the respawn reservoir
+  (the old line's states down the course), the unstuck state (its best is the old 54,367 u
+  frontier) and the novelty counts.
+* **What the record shows (ANALYSIS ONLY, CLAUDE.md section 0).** The human never uses the
+  doorway. It pumps in the half-pipe east of the spawn for ~6 s, then flies back west and
+  north into the passage. The goal field knows geometry, not jump height, so it points
+  straight at the doorway. The real way out therefore first runs AGAINST the potential: a
+  deceptive-field exploration problem of the unitfarmer2 kind (CLAUDE.md section 0). The
+  course after the start is in the weights. The question is whether a generic mechanism
+  finds the way out and keeps the rest.
+* **Section 0b binds here more than anywhere.** No reward, spawn rule, archive key, filter or
+  schedule may name the half-pipe or the doorway, use a box around either, or carry a speed,
+  height or time read off the record or the map. Ask the 0b question of everything: would I
+  run exactly this, with these constants, on a map I have never opened? Spawning from the
+  policy's OWN states (its reservoir, an archive of its own runs) is allowed. A hand-placed
+  spawn in the half-pipe is not.
+* **The bar.** First a finish, then 9/9, then the record's 75.18 s. The first lineage's
+  60-66 s are not a reference, because they skipped the ~6 s the record spends in the
+  half-pipe.
 
 ## Each wakeup
 
@@ -142,7 +184,7 @@ final before `wrapup_at`.
   user's view, which you do not read: see Independence). That replaces CLAUDE.md's per-box
   dashboard tunnel. A dashboard on the box is optional, and no tunnel is needed.
 * **Budget.** The total is the vast credit. box.py caps the fleet's burn at
-  config.budget_rate_usd_h ($1.2/h, the user, 2026-10-25) and keeps the $10 reserve: no rent
+  config.budget_rate_usd_h ($1.5/h, the user, 2026-10-29; $1.2/h from 2026-10-25) and keeps the $10 reserve: no rent
   at the reserve, and no `extend` that the fleet's burn would pay out of it.
 
 ## Code changes

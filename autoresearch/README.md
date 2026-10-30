@@ -9,7 +9,11 @@ record (a bar to read results against, never a reward constant). The second prog
 harness: the first, on surf_src_sidistic (2026-10-20..23, 7 rounds, ~/ar), finished that map
 from the true start; this one (user, 2026-10-23) asks whether its recipe converges quickly on
 the map the surf community calls the hardest. State lives in ~/ar_pb, agents and branches are
-named pbr<round>b<k> / ar/pbr<round>b<k>.
+named pbr<round>b<k> / ar/pbr<round>b<k>. **Since 2026-10-29 a second lineage runs on the
+corrected core** (6bd7f931: every finish of the first one climbed through a doorway the old
+core made 3 u too low). Its agents are pbfr<round>b<k>, and it has its own state.json; the
+first lineage's state is `~/ar_pb/state_pbr_oldcore.json`. PROTOCOL.md "This lineage" says why
+and what it starts from.
 
 ## How it works
 
@@ -55,7 +59,7 @@ named pbr<round>b<k> / ar/pbr<round>b<k>.
   destroys any instance on the account that breaks them, whoever rented it. It needs two
   consecutive sightings before acting.
 * **Budget.** No new box once the credit falls to the $10 reserve. The fleet's burn (live
-  boxes plus the new one) may not exceed config.budget_rate_usd_h, $1.2/h since 2026-10-25
+  boxes plus the new one) may not exceed config.budget_rate_usd_h, $1.5/h since 2026-10-29 ($1.2/h from 2026-10-25)
   (the user); without that key, (credit - reserve) / hours left until budget_end_hours.
   `box.py extend` is refused when the fleet's burn over the extension would come out of the
   reserve.
