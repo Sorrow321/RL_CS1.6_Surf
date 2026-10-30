@@ -186,3 +186,49 @@ on purpose: round 1 needs an exit, and the attribution comes after. Read with uf
   2 s window: **any finite window can be beaten by surviving just past it** (or by waiting on a
   ledge for the stall-kill). It is worth 0.5% over the platform edge; an exit (>= 5.5%) beats it.
   The policy flips between the lapping mode (530M) and this one (kl 0.03-0.04).
+* A6 ~675M greedy (`record_ckpt --dump-states`, 3 eps on the box): it now laps the pit ~6 times in
+  30 s, COUNTER-clockwise (north up the east side, south down the west side), bleeding 60-80 u of
+  E per lap (1,213 at the entry -> 520), highest at the north end (z ~-30..38). The record goes
+  CLOCKWISE (north on the west side at the floor, U-turn, south on the east side), then spirals
+  up the south end and the south-west wall to z 587 and flies north along the west rim. The
+  novelty key (cell x speed, no heading: `--int-heading 0`) pays nothing for lapping the other
+  way; the d-ranked beam culls exactly the record's line (it runs north into the dip first).
+* Beam on A6's 675M weights ranked by `--score dh --score-energy 3`: all 4,096 lineages alive and
+  lapping (d 32.5-33.5k), no exit.
+* A6 final (757-908M): 9/9 lap the pit for 22-32 s every eval, E at the bottom 610-1,023, the
+  highest climb z 110 (757M ep0, at 31 s); 0 out; scores 1.714-1.838.
+* A7 `uf2r1b1_tick` (23:07 UTC): resume of A6's final checkpoint (979.9M, md5 280d1bc3...) +
+  `--tick-ms-schedule 10:7.63:3e8` (the physics tick the record and the pb policies run at: 30%
+  more air-acceleration impulses per second, CLAUDE.md `--tick-ms`) + `--respawn-greedy-temp 1`
+  (not restored by a resume), 1.2B steps. Note: my `--death-charge-window` ring is sized at the
+  launch tick (200 calls), so at 7.67 ms it spans 1.53 s, not 2.
+* Queued idea: `--respawn-greedy-turn T` (the greedy rows' velocity and view turned together by
+  U(-T, T) deg; the recipe's front-perturb rows use 90) to show the policy the CLOCKWISE lap the
+  record's climb needs - the novelty key cannot pay a direction.
+* A7 1,056M (tick ~9.5 ms mid-ramp): 9/9 dive with E 1,240-1,253 at the entry and 1,825-1,840
+  u/s (the record's 1,822), but back in the quick-death mode (the floor at 6.1 s). The training
+  reservoir's deepest state is still the trap's 3.94% (96.063%): no training episode has ever
+  climbed out, so the critic has never seen an exit to value.
+* A8 `uf2r1b1_turn` (23:14 UTC): resume of A7's 1,080M checkpoint (md5 de446323..., the tick ramp
+  continues from its stored origin) + `--respawn-greedy-turn 180` (the greedy pit rows - the
+  policy's own laps - turned to a uniformly random heading, so the clockwise lap the record's
+  climb needs appears in training) + `--respawn-greedy-temp 1`.
+* Plan-B probe (analysis): `tools/mpc_bench.py --objective height --tick-ms 10 --duration 4`
+  (receding-horizon CEM over A/D + view offset, 1.2 s plan, replan every 4 ticks) from the
+  policy's own pit states (A6 675M greedy, `--dump-states`): from the entry (tick 339, E 1,213)
+  it climbs to z 75 in 1.6 s, then hits a surface (E 554 -> 93) and dies at 3.4 s; from tick 389
+  (E 1,054) it stalls at z -572. A height-greedy MPC from these states does not find the climb.
+* **A8: THE FIRST EXIT IN TRAINING (by 1,132M, ~23:16 UTC).** The training reservoir's deepest
+  state went 96.06% -> **93.38%** of d0 (progress 3.94% -> 6.6%), the unstuck reach 840 u ->
+  1,934 u, front-perturb episodes from it 2,286 u (7.5%). The one deep reservoir state: a
+  STANDING state on a ledge north of the pit, (-2,026, -1,196, 382), progress 6.55% (the record's
+  exit passes ~300-500 u west of it at z 354-504). Only real episodes are harvested (novel and
+  goal-anchored rows are not), so a training episode climbed out of the pit - most likely a
+  turned and speed-boosted greedy pit row. The greedy itself (1,156M) still laps for 30 s, now
+  with E ~1,125 at the bottom (record 1,117) and climbs to z ~-230..-300 at 7.9 s. Score 1.926.
+* Beam on A8's 1,181M weights from the TRUE start (d-ranked, 4096, 29 s at the 8.4 ms mid-ramp
+  tick): every lineage laps (best d 30.5-31.7k), no exit - the training exit came from a
+  perturbed (turned / boosted) pit row, not from the policy's own line. The ledge (-2,026,
+  -1,196, z 382) is above the north part of the pit's EAST side - where the greedy's
+  counter-clockwise lap climbs (its highest points z ~-30..38 nearby, E ~1,000 there; standing on
+  the ledge needs ~400-600): the lap the greedy already flies may lead to this exit.
