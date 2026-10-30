@@ -1,7 +1,3 @@
-{
- "agent": null,
- "round": 0,
- "final": false,
+{"agent": "uf2r1b4", "round": 1, "final": false,
  "best": null,
- "summary": "surf_unitfarmer2 lineage: no result yet"
-}
+ "summary": "No eval yet. Rent refused on the fleet budget pace since 21:46 UTC; a box.py retrier will deploy + launch uf2r1b4_pbw1 (warm start from refs/pb_r26 stripped to uf2, recipe training flags, lr 1e-4, the ckpt's own per-call energy shaping K=12, 7.64 ms tick) when a box frees. Local GE probe (pbf explorer flags, 6 min, 2 threads): 395k cells, fills the pit, loses the record's energy in the bowl after ~4 s, best 5.3% (east of the start), no pit exit."}
