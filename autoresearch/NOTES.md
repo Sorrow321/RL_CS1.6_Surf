@@ -140,3 +140,33 @@ Box 58455373 (RTX 4080 SUPER, EPYC 7K62, 96 threads visible but a 30.7-CPU cgrou
   the chunk's end) - the trainer's --respawn-margin rule applied to the archive, so a doomed fall
   never becomes a cell and --select-energy cannot prefer one. GE3 = GE1's flags + `--admit-margin
   2` (the recipe's own margin, carried unchanged), 20 min beside the dcn trainer.
+* **dcn result (4e8, 22:45-23:10 UTC): NULL.** Evals 1.71 / 3.10 / 0.94 / 2.68 / 1.25 / 2.84 /
+  2.20 / 2.89 (control 5.3-5.7). The death charge removes the slide (it nets 0) but nothing
+  replaces it: the greedy waits on the platform up to ~20 s and drops onto the south-west ledge
+  region (z ~510-596, (-1800..-2630, -2560..-2715)), dying there at 2.1-2.9% - the place pb_r26
+  died; the record flies over it at z 584 (the pit catch *7 tops out at 577 there). 16
+  stochastic episodes from the true start: 7 truncated at the 300 s cap ON THE PLATFORM, the rest
+  that ledge. **0 dives.** September's DC entries came with the scratch preset's 0.005/tick time
+  penalty (a cheap death + novel cells = dive for novelty); at the recipe's 0.001 the charged
+  death makes the agent camp.
+* **Bench: no policy survives the archive's "viable" top pit states either.** GE3 (admit margin 2)
+  top pit cells with E > 1,000 (2,515): dcn 0/24, control 0/24, pb_r26 0/24 - all three die at the
+  SAME instants (0.0-0.6 s), i.e. independent of the policy: the states were doomed. Cause: the
+  first --admit-margin exempted runs still alive at the chunk's end, so the last 2 s of every
+  surviving burst were admitted unchecked, and an energy ranking picks exactly the falls that die
+  just after. Fixed (77d4b6bb): a visit needs SEEN survival of the margin. GE4 = GE3 with the fix,
+  25 min. Lesson for anyone ranking states by energy: rank only states with an observed future.
+* Ramp search (October's tools/ramp_search.py, the one sequence-free pit exit): needs a mesh
+  export + ramps_mesh vocabulary that this checkout does not have for uf2, and the allocation that
+  found the exit (run 2, an optimistic piece-pair prior) was replaced; runs 3, 5, 6 with the
+  current code found none. Not run.
+
+### Arm uf2r1b2_seq (launched 23:21 UTC): the recipe + `--speed-equiv 1.0`
+* The shaping potential becomes d_eff = d - |v|^2/2g (beta 1: a unit of speed height is worth a
+  unit of distance), paid as its change, with the speed credit refunded at death. Under the
+  ratchet the dive's speed gain PAYS (+6.7 by the record's t 4.5) and a crash charges, and a policy
+  that keeps its speed in the bowl keeps the credit; the slide still nets only its progress
+  (its speed credit is refunded when it hits *18). The aim is a policy that LIVES in the pit,
+  which the exit search needs. Known costs: the exit climb converts speed into height and is
+  charged until the ratchet pays progress; lapping the bowl is credited (September's
+  dip-speed arms lapped at 1,740 u/s). Generic: no map constant (beta 1 is the unit).
