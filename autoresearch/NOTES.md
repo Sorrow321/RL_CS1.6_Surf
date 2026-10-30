@@ -126,3 +126,17 @@ Box 58455373 (RTX 4080 SUPER, EPYC 7K62, 96 threads visible but a 30.7-CPU cgrou
   25.7M steps (22:44) before it spent its budget on doomed falls.
 * If GE states are used again: select by what happens AFTER the state (its subtree survives, or
   a contact with a surface), never by the state's own energy.
+
+### Arm uf2r1b2_dcn (launched 22:45 UTC) and GE run 3 with an admission margin (22:58 UTC)
+* dcn = the incumbent recipe + `--death-charge 1.0 --int-coef 2.5 --int-speed 8 --int-view 0
+  --int-speed-weight 3 --int-speed-weight-up --ckpt-every 5e7`, 4e8 from scratch: September's
+  closest generic pit recipe (uf2DCspdw10v0up: 100% pit entry, 100% take-off attempts at ~1,000
+  u/s, 0 exits) on top of today's frontier machinery (greedy-death respawns, front perturbation,
+  unstuck temperature), which is what cracked princessburglar's gates once a policy reached them.
+  The point is a policy that LIVES in the pit, so a search from its own lip states can find the
+  exit. Caveat for the score: a greedy line that dives and dies scores ~2% (< the slide's 5.7).
+* New `explore_phase1 --admit-margin SECS` (f5e3c375; tests/python/test_ge_admit_margin.py, off =
+  byte-identical): a visit opens a new cell only if its run lived SECS past it (or was alive at
+  the chunk's end) - the trainer's --respawn-margin rule applied to the archive, so a doomed fall
+  never becomes a cell and --select-energy cannot prefer one. GE3 = GE1's flags + `--admit-margin
+  2` (the recipe's own margin, carried unchanged), 20 min beside the dcn trainer.
