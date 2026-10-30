@@ -105,3 +105,12 @@ Box 58455373 (RTX 4080 SUPER, EPYC 7K62, 96 threads visible but a 30.7-CPU cgrou
   after its first 100M.
 * Ops: run_arm.sh SCRATCH pins `--ckpt-every 1e9` (no milestone snapshots in a 4e8 run): pass
   `--ckpt-every 5e7` from the next launch on, so the hand-off is next to the best eval.
+* **egt result (4e8, 22:20-22:44 UTC): NULL, worse than the control.** Evals 2.96 / 2.11 / 2.84 /
+  2.62 / 1.34 / 2.58 / 0.84 / 1.95 at 0.5-352M (control 2.85 / 5.26 / 5.66 / 5.69 / 5.62 / 5.65 /
+  5.59 / 5.66). The greedy CAMPS on the platform: 37-60 s of bunny hops at 280-430 u/s (Emax
+  ~1,250, minz 1,059-1,181) until the eval's 30 s patience ends it. Per-call energy shaping makes
+  every way off the platform a charged energy loss (the slide, the ledge, a crash in the bowl) and
+  standing still free: the deception is not solved, the policy just stops trying. Per-call K 12
+  helped princessburglar's late gates, where the policy already flew; here it kills exploration.
+  `dip/max_survived_depth` read 14.5-19.7 in training, but the control showed the identical 14.48
+  at 20-83M with no pit spawns: an artifact of some respawn mode, not a pit exit.
