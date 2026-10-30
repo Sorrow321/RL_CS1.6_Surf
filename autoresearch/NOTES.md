@@ -114,3 +114,15 @@ Box 58455373 (RTX 4080 SUPER, EPYC 7K62, 96 threads visible but a 30.7-CPU cgrou
   helped princessburglar's late gates, where the policy already flew; here it kills exploration.
   `dip/max_survived_depth` read 14.5-19.7 in training, but the control showed the identical 14.48
   at 20-83M with no pit spawns: an artifact of some respawn mode, not a pit exit.
+
+### The archive's "high-energy pit states" are free falls into the floor (bench, 22:45 UTC)
+* Bench (measurement only): the 4,927 tops rows with z < 100 and E > 1,000, 24 stochastic episodes
+  each from egt's and the control's final weights (record_ckpt --spawn-states). **0/24 and 0/24
+  climb out; every episode dies within 0.0-0.4 s at z ~-970..-998.** Those states are falls at
+  1,550-1,825 u/s into the pit floor: E is high only because the impact has not happened yet
+  (October's "energy dominance is optimistic about contact losses still to come"). The pit's
+  energy-top cells are the doomed ones by construction; a spawn file of them teaches nothing.
+* So arm uf2r1b2_gts (the control's reward + 40% of those spawns), launched 22:42, was stopped at
+  25.7M steps (22:44) before it spent its budget on doomed falls.
+* If GE states are used again: select by what happens AFTER the state (its subtree survives, or
+  a contact with a surface), never by the state's own energy.
