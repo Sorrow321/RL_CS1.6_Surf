@@ -1,19 +1,18 @@
-# autoresearch: fork-and-flush on surf_princessburglar_b26
+# autoresearch: fork-and-flush on surf_unitfarmer2
 
 An unattended research loop on the agent host (the droplet, no GPU). It runs the method of
 Cai et al. 2026, "Fork-and-Flush: Escaping Idea Basins in Autoresearch Agents"
-(arXiv 2610.07447), toward one goal: **pass surf_princessburglar_b26 from the true start**
-(the start_run teleport's destination, declared in the map's zones file), champion-free and
-generic (CLAUDE.md sections 0 and 0b), then reliably, then faster than 75.18 s, the human world
-record (a bar to read results against, never a reward constant). The second program of this
-harness: the first, on surf_src_sidistic (2026-10-20..23, 7 rounds, ~/ar), finished that map
-from the true start; this one (user, 2026-10-23) asks whether its recipe converges quickly on
-the map the surf community calls the hardest. State lives in ~/ar_pb, agents and branches are
-named pbr<round>b<k> / ar/pbr<round>b<k>. **Since 2026-10-29 a second lineage runs on the
-corrected core** (6bd7f931: every finish of the first one climbed through a doorway the old
-core made 3 u too low). Its agents are pbfr<round>b<k>, and it has its own state.json; the
-first lineage's state is `~/ar_pb/state_pbr_oldcore.json`. PROTOCOL.md "This lineage" says why
-and what it starts from.
+(arXiv 2610.07447), toward one goal: **pass surf_unitfarmer2 from the true start** (its
+info_player_start), champion-free and generic (CLAUDE.md sections 0 and 0b): first out of the
+start pit, then a finish, then reliably, then faster than 35.17 s, the human world record (a
+bar to read results against, never a reward constant). This is the harness's third program.
+The first, on surf_src_sidistic (2026-10-20..23, ~/ar), finished that map from the true start.
+The second, on surf_princessburglar_b26 (2026-10-23..30, ~/ar_pb), finished it 9/9 from the true
+start on the corrected core. This one (user, 2026-10-30) takes the project's exploration
+benchmark: a start whose speed comes from a dive the potential field charges for. State lives
+in ~/ar_uf2, the checkout is ~/RL_Surf_uf2 (branch uf2/main), the tmux session is `ar_uf2`,
+and agents and branches are named uf2r<round>b<k> / ar/uf2r<round>b<k>. PROTOCOL.md "This
+lineage" says what is known and what is banned.
 
 ## How it works
 
@@ -22,18 +21,17 @@ and what it starts from.
   ("flush") in its own slot (`$AR_HOME/wt/b1..b4`) on its own branch
   (`ar/<agent_prefix>r<round>b<k>`; config agent_prefix).
 * **Schedule.** Rounds last **12 h** (user, 2026-10-20: 24 h is too long for one
-  lineage). There were **6** (72 h); the user added a 7th and an 8th on 2026-10-23, so 8
-  rounds, ~98 h in all. The schedule is fixed, as the paper advises, with K = 4. Change
-  `rounds` / `round_hours` in `config.json` to extend, and move `budget_end_hours` to the new
-  end with them.
+  lineage), **6** of them (user, 2026-10-30), 72 h in all. The schedule is fixed, as the paper
+  advises, with K = 4. Change `rounds` / `round_hours` in `config.json` to extend, and move
+  `budget_end_hours` to the new end with them.
 * **Selection.** At a round's end every branch is scored by `autoresearch/score.py`. A
   branch's score is its best greedy eval from the true start. The winner's branch head seeds
-  the next round. The losers are archived (`~/ar/archive/r<n>/`) and pruned.
+  the next round. The losers are archived (`~/ar_uf2/archive/r<n>/`) and pruned.
 * **Inside a round.** Each agent follows `autoresearch/PROTOCOL.md`:
   * it rents at most one GPU box through `autoresearch/box.py`;
   * it runs ablations of at most 30 min first and up to 6 h when promising;
   * it pushes its code to its branch so boxes can clone it;
-  * it harvests to `~/ar/runs/<agent>/`;
+  * it harvests to `~/ar_uf2/runs/<agent>/`;
   * it writes `RESULT.json` and appends to `autoresearch/NOTES.md`.
 * **The lead.** A fifth session, `ar-lead`, has no box. It watches everything and answers
   your questions.
@@ -58,9 +56,10 @@ and what it starts from.
 * **Enforcement.** `box.py` refuses any rental outside these limits. The fleet watchdog
   destroys any instance on the account that breaks them, whoever rented it. It needs two
   consecutive sightings before acting.
-* **Budget.** No new box once the credit falls to the $10 reserve. The fleet's burn (live
-  boxes plus the new one) may not exceed config.budget_rate_usd_h, $1.5/h since 2026-10-29 ($1.2/h from 2026-10-25)
-  (the user); without that key, (credit - reserve) / hours left until budget_end_hours.
+* **Budget.** No new box once the credit falls to the $10 reserve. This program has no flat
+  rate (config.budget_rate_usd_h is absent): the fleet's burn (live boxes plus the new one) may
+  not exceed (credit - reserve) / hours left until budget_end_hours, +10%, ~0.75 $/h at the
+  start ($64.59 of credit on 2026-10-30).
   `box.py extend` is refused when the fleet's burn over the extension would come out of the
   reserve.
 * **Deadlines.** Every box has a watchdog deadline (`box.py rent --hours`, `box.py extend`).
@@ -72,9 +71,9 @@ and what it starts from.
 * **Claude app or claude.ai/code -> Code.** Every session connects to Remote Control at
   start-up: `ar-lead`, and `ar-r<round>b<k>` for the branches. Open one and write to it.
   Ask `ar-lead` for the overall picture.
-* `ssh steam@<host>`, then `tmux attach -t ar`. Ctrl-b w lists the windows (watchdog, orch,
-  lead, b1..b4); Ctrl-b d detaches.
-* `cat ~/ar/status.md`, which is refreshed every 5 min. `tail ~/ar/orchestrator.log`.
+* `ssh steam@<host>`, then `tmux attach -t ar_uf2`. Ctrl-b w lists the windows (orch, b1..b4;
+  the fleet watchdog daemon is the first program's, shared); Ctrl-b d detaches.
+* `cat ~/ar_uf2/status.md`, which is refreshed every 5 min. `tail ~/ar_uf2/orchestrator.log`.
 * `python autoresearch/box.py status` shows the boxes, their cost and the budget.
 
 ## Controlling it
@@ -83,7 +82,7 @@ and what it starts from.
 |---|---|
 | `python autoresearch/orchestrator.py wrapup` | end the current round early, gracefully |
 | `python autoresearch/orchestrator.py stop` | release every box, end every branch session, stop |
-| `rm ~/ar/STOP && bash autoresearch/start.sh` | resume after a stop (state.json keeps the round) |
+| `rm ~/ar_uf2/STOP && bash ~/ar_uf2/start_orch.sh` (in tmux `ar_uf2`, window orch) | resume after a stop (state.json keeps the round) |
 
 ## One-time setup on the agent host (done by the setup session, 2026-10-20)
 
@@ -93,8 +92,9 @@ and what it starts from.
   * The C core is built (`build.sh`).
 * **Maps.** `maps/<config map stem>.*` (bsp + baked caches + zones.json) is copied into the
   main checkout, and `$AR_HOME/maps/<config maps_tarball>` holds the copy that boxes receive.
-* **Incumbent.** `~/ar/incumbent/` is round 0: sidEM2cap2surfGR at 749.7M, plus the surf
-  run's progress.csv as a reference.
+* **Incumbent.** This program has none in round 1 (from scratch). `~/ar_uf2/incumbent/refs/`
+  holds three champion-free policies trained on other maps (pb_r26, pb_r15, sid_ref) as
+  optional warm starts; from round 2 on, `~/ar_uf2/incumbent/ckpt.pt` is the last winner's.
 * **Claude Code** (`~/.claude/settings.json`): `permissions.defaultMode: "auto"` and
   `remoteControlAtStartup: true`. Log in once with `claude auth login` (a claude.ai account;
   Remote Control does not work with an API key). The five working directories (main checkout,

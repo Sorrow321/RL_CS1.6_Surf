@@ -1,4 +1,4 @@
-# Autoresearch protocol - branch agents (fork-and-flush on surf_princessburglar_b26)
+# Autoresearch protocol - branch agents (fork-and-flush on surf_unitfarmer2)
 
 You are ONE branch agent of a fork-and-flush round (Cai et al. 2026, arXiv 2610.07447,
 "Escaping Idea Basins in Autoresearch Agents"). Read this file, then `CLAUDE.md` (binding,
@@ -30,7 +30,8 @@ read only:
   history;
 * your runs (`$AR_HOME/runs/$AR_AGENT/`) and your box (`box.py status --agent $AR_AGENT`,
   `box.py budget`);
-* the incumbent (`$AR_HOME/incumbent/`).
+* the incumbent (`$AR_HOME/incumbent/`, its `refs/` included);
+* the WR demo's analysis files (`$AR_HOME/wr/`: ANALYSIS ONLY, CLAUDE.md section 0).
 
 Never read, list or grep any of these:
 
@@ -50,11 +51,11 @@ findings are archived, not inherited: that is the flush.
 
 ## The goal and the one number
 
-Pass surf_princessburglar_b26 from the true start, on the corrected core (**This lineage**
-below), champion-free and generic: first a finish,
-then finishing reliably, then faster than 75.18 s, the human world record (its demo timed on our
-zones, start curtain to finish box; the demo is an analysis instrument only, CLAUDE.md section
-0). The record's time is the bar a result is read against, never a constant in the reward, the
+Pass surf_unitfarmer2 from the true start, champion-free and generic (**This lineage** below):
+first OUT OF THE START PIT, then a finish, then finishing reliably, then faster than 35.17 s,
+the human world record (Fizz, 2024-01-28, speedrun.eu; its demo times 35.21 s on our zones,
+start curtain to finish box; the demo is an analysis instrument only, CLAUDE.md section 0).
+The record's time is the bar a result is read against, never a constant in the reward, the
 spawn rule or a schedule (CLAUDE.md 0b). Your score is
 `python autoresearch/score.py --best $AR_HOME/runs/$AR_AGENT/`. It is the best eval's
 max-episode progress on the goal field (a finish counts 100), plus 10 x the finish fraction,
@@ -63,66 +64,114 @@ episode of the 9 is worth 1.11 and one second off the best finish 0.033, so the 
 reliability before speed. Only greedy evals from the true start count; the grader rejects
 anything else.
 
-The true start. The map's spawn sits in a SEALED start room whose only way out is the
-trigger_teleport `start_run`; the timer's start curtain fires at the same moment. Every
-teleport is fatal in our core (teleport_fail), so the map's zones file
-(`maps/surf_princessburglar_b26.zones.json`, source manual) declares the spawn at that
-teleport's destination, (860, -3005, 3653) yaw 0 (the destination + 37 u, where CS 1.6 puts
-the hull centre). Every trainer, recorder and the grader start there. The other 32 teleports
-are fall catches back to the start room and stay fatal. The server runs sv_maxvelocity 3500
-(the WR demo's movevars), so the recipe carries `--maxvel 3500`.
+The true start. The map's own `info_player_start`, (-2176, -2272, 1192) yaw 270, on the start
+platform (floor z 1,152). The start curtain (trigger_multiple *16 -> counter_start_button) is
+the slab y -2,408..-2,400 just south of it; the finish is trigger_multiple *23 ->
+counter_stop_button, the box (3328, -2592, -640)..(3936, -1888, 96). Both come from
+`maps/surf_unitfarmer2.zones.json` (source auto: the BSP's own timer triggers), and every
+trainer, recorder and the grader start at that spawn. The map's 11 trigger_teleports are fall
+catches (4 back to the spawn, `recomeco`; 7 to a restart at (-2176, 3200, 640), `part2`). The
+record touches none of them, and every one ends the episode in our core (`--teleport-fail`).
+The server runs sv_maxvelocity 3500 (the WR demo's movevars; airaccelerate 100 and gravity
+800 are the core's defaults), so the recipe carries `--maxvel 3500`.
 
 * the field is `config.field` = the no-corner-cut goal graph, the field the recipe shapes on
-  (`--race-no-corner-cut 1`); `config.start_d` is its distance at the spawn.
+  (`--race-no-corner-cut 1`); `config.start_d` is its distance at the spawn, 30,647.5 u.
 * only the first `config.score_episodes` (9) episodes of an eval count, by header episode
   index: a bigger eval is not a better score.
-* the incumbent (`$AR_HOME/incumbent/ckpt.pt`, AR_BRANCH.json `incumbent`) is described in
-  **This lineage** below. `config.incumbent_recipe` is the scratch recipe: the first
-  lineage's flags, measured on the old core. The sidistic finisher's weights are in
-  `$AR_HOME/incumbent/sid_ref/ckpt.pt` (identical observation and action layout), never
-  trained on this map.
+* **Round 1 has no incumbent** (AR_BRANCH.json `incumbent` is null, and
+  `$AR_HOME/incumbent/ckpt.pt` does not exist yet). From round 2 on it is the previous
+  winner's checkpoint. `config.incumbent_recipe` is the scratch recipe (the sidistic finisher's
+  flags, carried through both princessburglar lineages). Three policies that have never seen
+  this map are kept as optional warm starts in `$AR_HOME/incumbent/refs/`. All three are
+  champion-free and have the recipe's observation and action layout:
+  * `pb_r26`: the princessburglar expert loop's final policy, 9/9;
+  * `pb_r15`: that loop's best eval, 9/9 at 62.11 s best / 65.62 s mean;
+  * `sid_ref`: the sidistic lineage's finisher. It has no `run.json`; its config is inside
+    the checkpoint.
 
-## This lineage: the corrected core (operator, 2026-10-29)
+  The two pb policies come with their `run.json`. They run at a 7.64 ms tick (a 10 -> 7.63 ms
+  ramp that ended long before), and a resume keeps it. The scratch recipe runs at 10 ms.
 
-* **Why it exists.** The first princessburglar lineage (agents pbr*, rounds 1-9, 117.8 at
-  65.97 s) and the operator's expert loop after it (pbEXIT2: 9/9 at 62.89 s, a 60.069 s
-  search line) finished the map only in our simulator. The C core held 128 solid brush
-  entities and dropped the rest silently. This map has 135, and the 131st, func_conveyor
-  *250, is a 3 u slab on the floor of the doorway west of the spawn. With it the doorway
-  floor is 65 u above the spawn floor, above the 63 u crouch-jump (45 jump + 18 duck).
-  Without it the floor was 62 u, and every one of those finishes climbed through the gap in
-  its first 2.3 s. Commit 6bd7f931 (in your history) loads every brush entity and refuses a
-  map that overflows a table. Only evals recorded on that core or a descendant count, and
-  every box built from your branch is one. The grader's field is the old one: its occupancy
-  differs in 314 voxels, all off the course.
-* **The incumbent** is pbEXIT2_r38, the expert loop's final policy. It is champion-free: rounds
-  1-9 from scratch on this map, then expert iteration on its own beam-search lines (no human
-  demo, CLAUDE.md section 0). On the old core it flew the course 9/9. On the corrected core it
-  scores **0.405** (best progress 0.4%, 0/9): every greedy episode bounces at the doorway
-  edge (x 649, y -2930, peak z 3697) until the episode cap, and it never tries anything else.
-  The copy in `$AR_HOME/incumbent/` has one change: the expert loop's per-round spine path
-  (its own search line, on no box) is removed from the stored config. So
-  `box.py deploy --ckpt $AR_HOME/incumbent/ckpt.pt` followed by `box.py launch --resume` runs
-  as it is; the operator ran that launch on 2026-10-29. Everything else in the checkpoint is
-  r38's own and comes from the old core: the weights, the optimiser, the respawn reservoir
-  (the old line's states down the course), the unstuck state (its best is the old 54,367 u
-  frontier) and the novelty counts.
-* **What the record shows (ANALYSIS ONLY, CLAUDE.md section 0).** The human never uses the
-  doorway. It pumps in the half-pipe east of the spawn for ~6 s, then flies back west and
-  north into the passage. The goal field knows geometry, not jump height, so it points
-  straight at the doorway. The real way out therefore first runs AGAINST the potential: a
-  deceptive-field exploration problem of the unitfarmer2 kind (CLAUDE.md section 0). The
-  course after the start is in the weights. The question is whether a generic mechanism
-  finds the way out and keeps the rest.
+  Like every checkpoint, a warm start restores its own shape flags; never pass them to a
+  resume. A recipe that only works warm is not yet a recipe.
+
+## This lineage: surf_unitfarmer2 (operator, 2026-10-30)
+
+* **Why it exists.** The user, 2026-10-30: beat unitfarmer2, "especially ... the beginning":
+  the dive into the start pit that buys the speed the rest of the course needs. This map is
+  the project's EXPLORATION BENCHMARK (CLAUDE.md sections 0 and 0b, read them again now): the
+  deliverable is a GENERIC mechanism that finds the pit line by itself, with constants that
+  would be the same on a map nobody has opened. The user's next step after this program is
+  one recipe trained on hundreds of maps at once, so a trick that only works here is worth
+  nothing to it.
+* **What the record shows (ANALYSIS ONLY, CLAUDE.md section 0).** Times from the start
+  curtain, d on `config.field`, energy height E = z + |v|^2 / 1600:
+  * t+0: the curtain at 339 u/s, d 30,578.
+  * t+1: it drops off the platform's south edge (z 892, d 30,121).
+  * t+3: it is at the pit floor (z -857) at 1,817 u/s. It strafes during the fall: the
+    October analysis measured +120 u of E there, the per-tick air-accelerate ceiling.
+  * t+3.7: its potential has RISEN 3,060 u above its running minimum. The field points away
+    from the pit, so the shaping charges the whole dive.
+  * ~t+6.5: it is back below its t+1 potential.
+  * t+7.9: it leaves the pit at 1,127 u/s (d 29,090 = 5.1% progress).
+  * After that, progress is 10% at t+10, 31% at t+15, 48% at t+20, 63% at t+25, 78% at t+30,
+    and the finish at t+35.2. Its E stays ~1,000-1,200 u until the last 10 s.
+
+  These numbers are for READING results (did a run get out of the pit, how fast, where did
+  it lose energy). They never enter a reward, a spawn rule, an archive key or a schedule.
+* **What failed before (`docs/research-results.md`, grep `uf2` / `unitfarmer2`; read it).**
+  * 2026-09-13: eight champion-free RL arms at 1B steps each, all null on the pit: ratchet,
+    keys and all-heads temperature, frontier curriculum, speed reward, surf reward,
+    time-penalty bias, random reachable starts.
+  * 2026-10-16: Go-Explore + CEM (`tools/go_cem.py`, 192 u x energy cells) filled the pit
+    (13,554 cells) and never left it. It was ENERGY-bound: it arrived 280-390 u of E below
+    the record.
+  * 2026-10-17: the ramp search (`tools/ramp_search.py --alloc pw`) climbed out of the pit by
+    itself, with no record input, in 18.6 min. It then stopped at the next ramp
+    on energy: it left the pit at 550-710 u/s against the record's 1,127.
+* **Demo-trained, BANNED as bases (CLAUDE.md section 0).** Everything on this map that got
+  past the pit from the map start in October used the record's 17-ramp target sequence
+  (uf2SEQ_WR*, uf2R3*, uf2SC*: S20 -> S36), with stage files edited by hand after looking at
+  where the policy died. That is demo-assisted and map-specific: history, not a result. Those
+  checkpoints, and CLAUDE.md's list (uf2PIT*, uf2RPIT*, uf2FULL*, uf2CONTW, uf2G2), are never
+  resumed, benchmarked as results, or used to build a window. The dip-speed arms
+  (uf2DIPSPD*, uf2DCDIP*, uf2DIPcap*) are map-tuned analysis (0b), never a base either.
+* **What transferred from princessburglar (2026-10-29, the pbf lineage: the same harness and
+  recipe, champion-free; all of it is in this branch).**
+  * On that map the way out of the start room also runs against the potential: pump a
+    half-pipe for energy first.
+  * **What found it** in ~3 min of box CPU from the true spawn was Go-Explore with the
+    policy's own action frame:
+    `tools/explore_phase1.py --exact-chains --cell 64 --cell-energy 32 --cell-heading 1
+    --view-follow=-90,-60,-30,-15,0,15,30,60,90 --select-energy 3 --act-every 4 --decisions 100
+    --maxvel 3500 --envs 4096`. It ran at `--tick-ms 8`, its policy's tick; match the tick
+    of whatever will train on the line. The bursts hold a view offset from the velocity heading, and
+    energy cells plus `--select-energy` keep and re-explore the energy gains. The earlier
+    uniform-yaw explorer never pumped. `tools/ge_replay.py` turns a cell into an exact
+    per-tick line.
+  * **What taught it** was a backward curriculum on that one GE line (`--demo-file` of the
+    line, launched with `box.py launch --self-states "<how it was built>"`), warm from a policy
+    that already flew the rest of the course.
+  * **What made it faster** was expert iteration on the policy's own beam-search lines:
+    `tools/beam_tas.py` -> `tools/plan_to_bc.py` -> `--bc-file`, or the whole loop in
+    `tools/exit_local.py` with `--gate-rule expected`. Keep the beam elite at its default
+    0.25: 1/16 kills the population on a 7/9 policy. It took princessburglar from 64.15 s to
+    62.11 s greedy, and to a 59.40 s search line.
+  * Nothing in those tools names a place. The October go_cem result above is the
+    counter-evidence: an energy archive alone was not enough here. That is a question for you,
+    not a conclusion.
+  * **The difference from princessburglar:** no policy flies this course yet. Whatever finds
+    the pit line, the rest of the course must also be learned, from scratch or warm from a
+    `refs/` policy.
 * **Section 0b binds here more than anywhere.** No reward, spawn rule, archive key, filter or
-  schedule may name the half-pipe or the doorway, use a box around either, or carry a speed,
-  height or time read off the record or the map. Ask the 0b question of everything: would I
+  schedule may name the pit or a ramp, use a box around either, or carry a speed, height,
+  energy or time read off the record or the map. Ask the 0b question of everything: would I
   run exactly this, with these constants, on a map I have never opened? Spawning from the
-  policy's OWN states (its reservoir, an archive of its own runs) is allowed. A hand-placed
-  spawn in the half-pipe is not.
-* **The bar.** First a finish, then 9/9, then the record's 75.18 s. The first lineage's
-  60-66 s are not a reference, because they skipped the ~6 s the record spends in the
-  half-pipe.
+  policy's OWN states, or from a search's states rooted at the true spawn, is allowed. A
+  hand-placed spawn in the pit is not.
+* **The bar.** First out of the pit from the true start in a greedy eval (best progress past
+  ~5% with the episode still flying), then a finish, then 9/9, then the record's 35.17 s.
 
 ## Each wakeup
 
@@ -149,19 +198,22 @@ final before `wrapup_at`.
 ## Experiments: short first, long only when earned
 
 * **First test of any idea: at most 30 min of box time.** On a 3090 the incumbent recipe
-  runs roughly 150-250k env steps/s, so 30 min is about 3e8-4e8 steps. Size `--steps` to
-  the time, and read the box's own fps after the first minute.
+  runs roughly 150-250k env steps/s (227k on a 4080 on this map), so 30 min is about
+  3e8-4e8 steps. Size `--steps` to the time, and read the box's own fps after the first
+  minute.
 * **Compare at MATCHED STEPS** against the incumbent run's progress.csv
-  (`$AR_HOME/incumbent/`). Use the gate cleared and the step it was cleared at, never
+  (`$AR_HOME/incumbent/`; in round 1, which has no incumbent, against your own scratch
+  control on the same card type). Use the gate cleared and the step it was cleared at, never
   eval_progress alone (CLAUDE.md section 3). One seed, so a lead must be large to mean
   anything (CLAUDE.md: the gate ladder and the seed-noise floor).
 * **Extend up to 6 h only if the idea is promising**: it clears a gate sooner than the
   incumbent at matched steps, or clears a gate the incumbent never cleared. Say why in
   NOTES.md when you extend.
-* **Warm starts are allowed.** Push `$AR_HOME/incumbent/ckpt.pt` with
-  `box.py deploy --ckpt ...` and launch with `box.py launch --resume ...`. This measures AT
-  the wall (CLAUDE.md: the stuck checkpoint is one tool) or pushes the frontier past it.
-  State which in NOTES.md. A recipe that only works warm is not yet a recipe.
+* **Warm starts are allowed.** Push a checkpoint with `box.py deploy --ckpt ...`
+  (`$AR_HOME/incumbent/ckpt.pt` from round 2 on, or a `refs/` policy) and launch with
+  `box.py launch --resume ...`. This measures AT the wall (CLAUDE.md: the stuck checkpoint is
+  one tool) or pushes the frontier past it. State which in NOTES.md. A recipe that only works
+  warm is not yet a recipe.
 * **Hard rules from CLAUDE.md that bite here:**
   * No human demo touches training (section 0).
   * No map-specific method, threshold or box in the reward, the spawns or the schedule
@@ -180,12 +232,14 @@ final before `wrapup_at`.
   the 5080, are fine, and since 2026-10-25 the 3080 / 4070 / 5070 / 60 Ti class under lower
   caps: box.py takes the cheapest acceptable offer, so a box may be a slower card). No
   datacenter cards, ever. box.py and the watchdog enforce this.
-* **Watching.** The user watches through Claude Remote Control and `~/ar/status.md` (the
+* **Watching.** The user watches through Claude Remote Control and `$AR_HOME/status.md` (the
   user's view, which you do not read: see Independence). That replaces CLAUDE.md's per-box
   dashboard tunnel. A dashboard on the box is optional, and no tunnel is needed.
-* **Budget.** The total is the vast credit. box.py caps the fleet's burn at
-  config.budget_rate_usd_h ($1.5/h, the user, 2026-10-29; $1.2/h from 2026-10-25) and keeps the $10 reserve: no rent
-  at the reserve, and no `extend` that the fleet's burn would pay out of it.
+* **Budget.** The total is the vast credit ($64.59 at this program's start). box.py paces the
+  fleet's burn at (credit - reserve) / hours left until config.budget_end_hours (+10% slack),
+  ~0.75 $/h at the start: about three cheap boxes at once, so a box may be refused while the
+  others run. It keeps the $10 reserve: no rent at the reserve, and no `extend` that the
+  fleet's burn would pay out of it.
 
 ## Code changes
 
