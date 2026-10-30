@@ -36,3 +36,19 @@ def test_no_brake_table():
     assert allowed[2] == sorted(["-", "W", "S", "D", "WD", "SD"])
     assert allowed[0] == sorted(["-", "W", "S", "A", "WA", "SA"])
     assert ok.reshape(3, 9).sum(1).tolist() == [6, 6, 6]
+
+
+def test_surf_hold_side_presses_into_the_plane():
+    # the rule in explore(): with the view on the velocity heading psi, pm.c's right vector is
+    # (sin psi, -cos psi); the strafe key whose wish direction points INTO a plane (normal n out
+    # of the ramp) is right when r . n < 0, else left
+    def side(psi_deg, nx, ny):
+        psi = np.radians(psi_deg)
+        return 2 if np.sin(psi) * nx - np.cos(psi) * ny < 0.0 else 0
+    # moving north (psi 90): right is east (1, 0); a ramp EAST of the player faces west (n -x)
+    assert side(90.0, -0.8, 0.0) == 2
+    # the same ramp west of the player faces east: press left (west)
+    assert side(90.0, 0.8, 0.0) == 0
+    # moving east (psi 0): right is south (0, -1); a ramp to the south faces north (n +y)
+    assert side(0.0, 0.0, 0.8) == 2
+    assert ep.key_angle(1, 2) == -90.0 and ep.key_angle(1, 0) == 90.0

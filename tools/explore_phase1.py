@@ -937,6 +937,19 @@ def explore(args) -> int:
               np.array([float(x) for x in str(args.view_follow).split(",") if x.strip()]))
     vf_off = np.zeros(n, np.float64)
     nb_ok = nb_choice = nb_count = vf_set_sorted = None
+    # --surf-hold: which bursts surf, each burst's own (fwd, side) keys, this decision's offset-0
+    # override, and the tick each env's current run was restored at (its touch is stale then)
+    sh_p = float(getattr(args, "surf_hold", 0.0) or 0.0)
+    if sh_p > 0.0 and vf_set is None:
+        raise SystemExit("--surf-hold needs --view-follow (the surf keys are perpendicular to a "
+                         "view on the velocity heading)")
+    if not 0.0 <= sh_p <= 1.0:
+        raise SystemExit("--surf-hold must be in [0, 1]")
+    sh_on = np.zeros(n, bool)
+    sh_keys = np.zeros((n, 2), np.int32)
+    sh_off = np.zeros(n, bool)
+    env_t0 = np.full(n, -1, np.int64)
+    sh_count = [0, 0]                      # decisions overridden, decisions seen (live envs)
     if getattr(args, "no_brake", False):
         if vf_set is None:
             raise SystemExit("--no-brake needs --view-follow (the burst's offset from the "
@@ -981,6 +994,11 @@ def explore(args) -> int:
                     ch = nb_choice[oi[bad], rng.integers(0, 1 << 30, bi.size) % nb_count[oi[bad]]]
                     act[bi, 2] = ch // 3
                     act[bi, 3] = ch % 3
+        if sh_p > 0.0:
+            # --surf-hold: drawn after every existing draw (the flag-off stream is untouched)
+            sh_keys[idx, 0] = act[idx, 2]
+            sh_keys[idx, 1] = act[idx, 3]
+            sh_on[idx] = rng.random(m) < sh_p
 
     # per-chunk run bookkeeping (parallel lists indexed by run id)
     r_t0: list[int] = []
@@ -1002,6 +1020,7 @@ def explore(args) -> int:
                 st["tick"] = 0
                 st["stuck_ticks"] = 0
             core.set_state(e, st)
+            env_t0[e] = t0
             cur_run[e] = len(r_t0)
             r_t0.append(t0)
             r_d0.append(int(arch.depth[a]))
@@ -1043,6 +1062,31 @@ def explore(args) -> int:
                     live = np.flatnonzero((cur_run >= 0)
                                           & (rng.random(n) >= args.repeat_p))
                     fresh_actions(live)
+                    if sh_p > 0.0:
+                        # --surf-hold: the burst's own keys, unless the last tick touched a
+                        # surfable plane - then the strafe key into it at view offset 0
+                        act[:, 2] = sh_keys[:, 0]
+                        act[:, 3] = sh_keys[:, 1]
+                        sh_off[:] = False
+                        cnt, nrm, _ = core.get_touch()
+                        nz = nrm[..., 2]
+                        surf = ((nz > 0.0) & (nz < 0.7)
+                                & (np.arange(nrm.shape[1])[None, :] < cnt[:, None]))
+                        ok = (surf.any(1) & sh_on & (cur_run >= 0) & (env_t0 != t))
+                        sh_count[1] += int((cur_run >= 0).sum())
+                        if ok.any():
+                            e = np.flatnonzero(ok)
+                            k = surf[e].argmax(1)
+                            nh = nrm[e, k, :2].astype(np.float64)
+                            vel = np.asarray(sv["velocity"], np.float64)[e]
+                            psi = np.arctan2(vel[:, 1], vel[:, 0])
+                            # pm.c's right vector at view yaw psi is (sin psi, -cos psi); the
+                            # plane normal points out of the ramp, so "into it" is r . n < 0
+                            r_dot_n = np.sin(psi) * nh[:, 0] - np.cos(psi) * nh[:, 1]
+                            act[e, 2] = 1
+                            act[e, 3] = np.where(r_dot_n < 0.0, 2, 0)
+                            sh_off[e] = True
+                            sh_count[0] += int(e.size)
                 if vf_set is not None:
                     # steer the view toward heading(v_h) + the burst's offset at the core's yaw
                     # rate; below 100 u/s the drawn yaw rate stands (the policy's view mode is a
@@ -1050,7 +1094,8 @@ def explore(args) -> int:
                     # so ge_replay's chains stay exact
                     vel = np.asarray(sv["velocity"], np.float64)
                     fast = np.hypot(vel[:, 0], vel[:, 1]) >= 100.0
-                    want = np.degrees(np.arctan2(vel[:, 1], vel[:, 0])) + vf_off
+                    want = np.degrees(np.arctan2(vel[:, 1], vel[:, 0])) + (
+                        np.where(sh_off, 0.0, vf_off) if sh_p > 0.0 else vf_off)
                     dlt = (want - np.asarray(sv["yaw"], np.float64) + 180.0) % 360.0 - 180.0
                     dlt = np.clip(dlt, vf_bins[0], vf_bins[-1])
                     b = np.abs(vf_bins[None, :] - dlt[:, None]).argmin(axis=1)
@@ -1112,7 +1157,9 @@ def explore(args) -> int:
                           f"| deaths {n_deaths:9,} | best {arch.dist[best]:9.0f}u "
                           f"(depth {arch.depth[best]:6d}t) | "
                           f"{total_ticks / max(el, 1e-9) / 1e6:5.2f}M ticks/s | "
-                          f"{it / max(el, 1e-9):5.2f} it/s | {el / 60:.1f} min")
+                          f"{it / max(el, 1e-9):5.2f} it/s | {el / 60:.1f} min"
+                          + (f" | surf-hold {sh_count[0] / max(1, sh_count[1]):.1%} of decisions"
+                             if sh_p > 0.0 else ""))
             if args.snapshot_every > 0 and it % args.snapshot_every == 0:
                 arch.save(out / "archive.npz",
                           meta_dict(args, bsp, hasher, arch, it, n_goal,
@@ -1270,6 +1317,9 @@ def meta_dict(args, bsp, hasher, arch, it, n_goal, extra=None) -> dict:
     if getattr(args, "no_brake", False):
         # --no-brake only: the flag-off meta json is unchanged
         out["no_brake"] = True
+    if float(getattr(args, "surf_hold", 0.0) or 0.0) > 0.0:
+        # --surf-hold only: the flag-off meta json is unchanged
+        out["surf_hold"] = float(args.surf_hold)
     if float(getattr(args, "cell_energy", 0.0) or 0.0) > 0.0:
         out["cell_energy"] = float(args.cell_energy)
     if int(getattr(args, "cell_heading", 0) or 0) > 0:
@@ -1939,6 +1989,16 @@ def build_parser() -> argparse.ArgumentParser:
                          "a few ticks, and an energy-gated surf line (a pit pump) needs seconds "
                          "of flight with none of those. Physics of the movement model, the "
                          "same on every map; off = byte-identical")
+    ap.add_argument("--surf-hold", type=float, default=0.0,
+                    help="with --view-follow: P in (0, 1], the share of bursts that SURF: at "
+                         "every decision on which the last tick touched a surfable plane "
+                         "(0 < normal z < 0.7, the engine's own ground test), the burst's keys "
+                         "are replaced by the strafe key that presses INTO that plane, no forward "
+                         "key, and the view is steered to the velocity heading (offset 0): the "
+                         "perpendicular wish direction that keeps a surfer on a ramp and gains "
+                         "speed; off the plane the burst's own keys and offset come back. A "
+                         "movement prior of the engine (the same on every surf map, no place, no "
+                         "constant read off a map); 0 = off, byte-identical")
     ap.add_argument("--tick-ms", type=int, default=None,
                     help="the search core's physics tick, WHOLE ms (default: the core's 10, "
                          "byte-identical). A policy trained under --tick-ms-schedule flies "
