@@ -648,6 +648,7 @@ class RaceReward:
                  every: int = 1, d_floor: float = 0.0,
                  d_latch: float = 0.0, ng: int = 0, ng_gamma: float = 0.0,
                  ng_d0: float = 0.0, death_charge: float = 0.0,
+                 death_charge_window: float = 0.0,
                  arc=None, arc_scale: float = 0.0, stall_arc: bool = False,
                  arc_death_charge: float = 0.0,
                  ratchet: bool = False, ratchet_d0: float = 0.0,
@@ -998,6 +999,29 @@ class RaceReward:
         if self.death_charge and not self.ng_d0:
             raise ValueError("--death-charge needs ng_d0 (the map's start "
                              "geodesic) to define Phi")
+        # --death-charge-window W (uf2r1b1, 2026-10-30): under --race-ratchet the death charge
+        # takes back only the progress the ratchet paid in the LAST W SECONDS before the death,
+        # not the whole bank. A fatal fall's progress is made in its last second or two and is
+        # charged back in full; progress the episode SURVIVED past for W s is kept. kappa x
+        # scale x (record W s ago - record at death) >= 0, the record W s ago being the
+        # episode's own start record while the episode is younger than W. The bank of each env
+        # is read from a ring of the record, one entry per call; 0 = off (the full bank, the
+        # control byte for byte: no ring is allocated and the branch is the stock one).
+        self.dc_window_s = float(death_charge_window)
+        if not np.isfinite(self.dc_window_s) or self.dc_window_s < 0.0:
+            raise ValueError(f"--death-charge-window must be >= 0, got {death_charge_window!r}")
+        self._dc_n = 0
+        self._rec_ring = None
+        self._ring_pos = 0
+        if self.dc_window_s > 0.0:
+            if not self.death_charge > 0.0:
+                raise ValueError("--death-charge-window windows --death-charge: it needs "
+                                 "--death-charge > 0")
+            if not self.ratchet:
+                raise ValueError("--death-charge-window reads the ratchet's record: it needs "
+                                 "--race-ratchet")
+            self._dc_n = max(1, int(round(self.dc_window_s * 1000.0
+                                          / (self.tick_ms * float(self.every)))))
         # --curiosity-cond (cc_draw's notes): the per-env exploration
         # weight. cc_tmax 0 = off, and off touches no array and no branch
         # the control did not. The T vector is redrawn for an env at every
@@ -1290,6 +1314,10 @@ class RaceReward:
             self._rec = self._d.copy()
             self._rec0 = self._d.copy()      # the record the episode STARTED at
             self._dip_paid = np.zeros(len(self._d), np.float32)
+            if self._dc_n:
+                # --death-charge-window: every slot starts at the episode's own start record
+                self._rec_ring = np.tile(self._rec, (self._dc_n, 1))
+                self._ring_pos = 0
             self._rec_boot = self._rec.copy()
         self._since = np.zeros(n, np.int64)
         self._ticks = np.zeros(n, np.int64)
@@ -1729,7 +1757,17 @@ class RaceReward:
                 # (record at spawn - record at death) >= 0. The stock
                 # Phi(last state) goes negative inside a dip (d > d0) and
                 # would PAY for dying deep in the pit (2026-09-14)
-                phi_prev = np.maximum((self._rec0 - self._rec) * self.scale,
+                # --death-charge-window: the bank is only what the ratchet paid since the
+                # record of W seconds ago (the oldest slot of the ring, not yet overwritten)
+                _base = (self._rec_ring[self._ring_pos] if self._rec_ring is not None
+                         else self._rec0)
+                # the record AT DEATH is the one before this call: on an ended row the
+                # state is already the NEXT episode's spawn and `_rec` has been min-ed with
+                # its distance above, so a deeper next spawn (a reservoir row, or a
+                # goal-anchored row 256-1,532 u from the finish) charged the dying episode
+                # for ground it never covered - up to the whole map (uf2r1b1, 2026-10-30;
+                # the final tick's progress is forfeited anyway, r[ended] = 0 above)
+                phi_prev = np.maximum((_base - self._rec_boot) * self.scale,
                                       0.0).astype(np.float32)
             r[dead] -= self.death_charge * phi_prev[dead]
         if self.speed_equiv > 0.0:
@@ -1966,6 +2004,13 @@ class RaceReward:
             # run.
             self._dip.update(d, ended, self.scale,
                              float(self.every) * self.tick_ms / 1000.0)
+        if self._rec_ring is not None:
+            # --death-charge-window: this call's record into the oldest slot; an ended row
+            # already holds the NEW episode's start record, which fills its whole column
+            self._rec_ring[self._ring_pos] = self._rec
+            if ended.any():
+                self._rec_ring[:, ended] = self._rec[ended]
+            self._ring_pos = (self._ring_pos + 1) % self._dc_n
         return r
 
     # -- --curiosity-cond -----------------------------------------------------

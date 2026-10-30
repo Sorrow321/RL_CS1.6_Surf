@@ -301,6 +301,8 @@ TRAIN_ONLY = frozenset({
     # --race-ng is NOT here: it also levies a PER-CALL tax that the trainer
     # feeds into slot 12, and _feed below mirrors it.
     "death_charge",
+    # --death-charge-window: a window on that same terminal charge - TRAIN_ONLY likewise
+    "death_charge_window",
     # --chunk's LEARNABLE decoder is a Parameter of the policy, so it ships
     # inside ck["policy"] and a recording reads it from there. dec_ent is a
     # loss coefficient; codebook/codebook_bias only seeded the decoder at

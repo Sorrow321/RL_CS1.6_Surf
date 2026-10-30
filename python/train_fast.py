@@ -4954,6 +4954,13 @@ def main() -> None:
                          "deliberate deep dive abandons kappa*Phi. 0 = "
                          "off, byte-identical. Mutually exclusive with "
                          "--race-ng terminal modes. ckpt restores")
+    ap.add_argument("--death-charge-window", type=float, default=None,
+                    help="--death-charge + --race-ratchet: W > 0 SECONDS - a death takes back only the "
+                         "progress the ratchet paid in its last W s (kappa x scale x (record W s "
+                         "ago - record at death)), not the whole bank: a fatal fall's progress "
+                         "is charged back, progress the episode survived past for W s is kept "
+                         "(the reservoir's --respawn-margin reading of a doomed tail). 0/absent "
+                         "= the whole bank, byte-identical. ckpt restores; record_ckpt TRAIN_ONLY")
     ap.add_argument("--arc-death-charge", type=float, default=None,
                     help="--goal-reward arc: a current-open-line FACE-VALUE DEATH BOND - a "
                          "DEATH forfeits KAPPA x the post-clip arc credit actually paid on the "
@@ -7867,6 +7874,9 @@ def main() -> None:
         if args.death_charge is None and ck_cfg.get("death_charge"):
             args.death_charge = float(ck_cfg["death_charge"])
             restored.append(f"death_charge={args.death_charge:g}")
+        if args.death_charge_window is None and ck_cfg.get("death_charge_window"):
+            args.death_charge_window = float(ck_cfg["death_charge_window"])
+            restored.append(f"death_charge_window={args.death_charge_window:g}")
         if args.arc_death_charge is None and ck_cfg.get("arc_death_charge"):
             args.arc_death_charge = float(ck_cfg["arc_death_charge"])
             restored.append(f"arc_death_charge={args.arc_death_charge:g}")
@@ -13698,6 +13708,7 @@ def main() -> None:
                 d_latch=_s.d_latch,
                 ng=args.race_ng, ng_gamma=GAMMA_T, ng_d0=_s.rf_d0,
                 death_charge=(args.death_charge or 0.0),
+                death_charge_window=float(args.death_charge_window or 0.0),
                 # --race-arc: single-map by the guard above, so handing the
                 # one line to the (single) slot is exact; --goal-planner ramps on several maps:
                 # the map's own arc
@@ -13759,6 +13770,11 @@ def main() -> None:
                 print(f"race: DEATH CHARGE kappa={args.death_charge:g} - "
                       f"death abandons kappa*Phi of the bank; per-step "
                       f"shaping and finish stock")
+            if args.death_charge_window:
+                print(f"race: DEATH CHARGE WINDOW {args.death_charge_window:g} s - a death "
+                      f"takes back only what the ratchet paid in its last "
+                      f"{args.death_charge_window:g} s ({_s.reward_fn._dc_n} calls); progress "
+                      f"the episode survived past for that long is kept")
             if args.race_dfloor > 0.0:
                 print(f"race: potential FLOORED at d = "
                       f"{args.race_dfloor:,.0f}u "
@@ -14475,6 +14491,8 @@ def main() -> None:
                                    if args.reward == "race" else None),
                        "death_charge": (args.death_charge
                                         if args.reward == "race" else None),
+                       **({"death_charge_window": float(args.death_charge_window)}
+                          if args.reward == "race" and args.death_charge_window else {}),
                        "speed_coef": (args.speed_coef
                                       if args.reward == "race" else None),
                        **({"speed_pot": float(args.speed_pot)}

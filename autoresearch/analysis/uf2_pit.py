@@ -36,7 +36,8 @@ def pit_stats(r, tick):
 
 def main():
     for path in sys.argv[1:]:
-        eps = S.first_episodes(S.episodes(Path(path)), S.SCORE_EPISODES)
+        import os
+        eps = S.first_episodes(S.episodes(Path(path)), int(os.environ.get("PIT_EPS", S.SCORE_EPISODES)))
         n_in = n_out = 0
         lines = []
         for h, r, tr in eps:
