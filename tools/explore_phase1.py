@@ -360,12 +360,16 @@ class Archive:
         return i
 
     def ingest(self, g_key, g_run, g_tick, g_state, run_t0, run_d0,
-               run_origin, entries: list | None = None) -> np.ndarray:
+               run_origin, entries: list | None = None,
+               admit: np.ndarray | None = None) -> np.ndarray:
         """Fold one chunk's (run, cell) first-visit records into the archive.
 
         ``run_t0`` / ``run_d0`` / ``run_origin`` are per-run arrays: the tick
         the run's first recorded row sits at, the cumulative depth of the cell
         it was restored from, and that cell's archive index.
+
+        ``admit`` (--admit-margin): a record whose entry is False may not OPEN a
+        new cell (it still counts toward a known cell's C_seen); None = all.
 
         Returns the archive indices of cells added by this call (for the
         caller's incremental distance bookkeeping).
@@ -390,6 +394,8 @@ class Archive:
             k = keys[j]
             d = ticks[j]
             i = index.get(k)
+            if i is None and admit is not None and not admit[j]:
+                continue
             if i is None:
                 if self.size >= self.max_cells:
                     if not self.n_full_warned:
@@ -938,6 +944,11 @@ def explore(args) -> int:
               np.array([float(x) for x in str(args.view_follow).split(",") if x.strip()]))
     vf_off = np.zeros(n, np.float64)
     nobrake = bool(getattr(args, "view_follow_nobrake", False))
+    # --admit-margin: a visit opens a new cell only if its run lived this long past it (the
+    # trainer's --respawn-margin rule for the reservoir, applied to the archive), in ticks of
+    # the search core's own tick
+    admit_ticks = int(round(float(getattr(args, "admit_margin", 0.0) or 0.0) * 1000.0
+                            / float(cfg.phys.msec)))
     if nobrake and vf_set is None:
         raise SystemExit("--view-follow-nobrake reads the burst's view offset: give --view-follow")
     if vf_set is not None:
@@ -1068,7 +1079,8 @@ def explore(args) -> int:
                     break
 
             n_runs += len(r_t0)
-            fold_chunk(arch, hasher, hist, rid_h, r_t0, r_d0, r_org, dist, acts_h)
+            fold_chunk(arch, hasher, hist, rid_h, r_t0, r_d0, r_org, dist, acts_h,
+                       admit_margin_ticks=admit_ticks)
             it += 1
             if (max_minutes > 0.0 and not stop
                     and time.perf_counter() - t_start >= 60.0 * max_minutes):
@@ -1151,8 +1163,23 @@ def _goal_meta(extra, arch, spawns, cell, minutes=None):
     return m
 
 
+def admit_mask(rid_h: np.ndarray, n_runs: int, g_run: np.ndarray, g_tick: np.ndarray,
+               margin_ticks: int) -> np.ndarray:
+    """--admit-margin: True for a (run, cell) record whose run lived at least ``margin_ticks``
+    recorded ticks past it, or was still alive at the chunk's last tick. A run's recorded rows
+    end on the state before the step that ended it (rid_h is written before the step), so a run
+    whose last row is not the chunk's last died (or truncated) right after that row."""
+    ticks = rid_h.shape[0]
+    last = np.full(max(1, int(n_runs)), -1, np.int64)
+    t_idx, e_idx = np.nonzero(rid_h >= 0)
+    np.maximum.at(last, rid_h[t_idx, e_idx].astype(np.int64), t_idx.astype(np.int64))
+    lr = last[np.asarray(g_run, np.int64)]
+    alive = lr >= ticks - 1
+    return alive | ((lr - np.asarray(g_tick, np.int64)) >= int(margin_ticks))
+
+
 def fold_chunk(arch: Archive, hasher: CellHash, hist, rid_h, r_t0, r_d0,
-               r_org, dist, acts_h=None) -> None:
+               r_org, dist, acts_h=None, admit_margin_ticks: int = 0) -> None:
     """Archive everything one chunk of rollout discovered."""
     if not r_t0:
         return
@@ -1162,9 +1189,11 @@ def fold_chunk(arch: Archive, hasher: CellHash, hist, rid_h, r_t0, r_d0,
         return
     g_state = hist[g_tick, g_env]
     ent = [] if arch.exact else None
+    adm = (admit_mask(rid_h, len(r_t0), g_run, g_tick, admit_margin_ticks)
+           if admit_margin_ticks > 0 else None)
     added = arch.ingest(g_key, g_run, g_tick, g_state,
                         np.asarray(r_t0, np.int64), np.asarray(r_d0, np.int64),
-                        np.asarray(r_org, np.int64), entries=ent)
+                        np.asarray(r_org, np.int64), entries=ent, admit=adm)
     if ent:
         # --exact-chains: the run's actions from its restore (r_t0) to the entry tick
         for i, j in zip(added.tolist(), ent):
@@ -1254,6 +1283,9 @@ def meta_dict(args, bsp, hasher, arch, it, n_goal, extra=None) -> dict:
     if getattr(args, "view_follow_nobrake", False):
         # on only: the flag-off meta json is unchanged
         out["view_follow_nobrake"] = True
+    if float(getattr(args, "admit_margin", 0.0) or 0.0) > 0.0:
+        # on only: the flag-off meta json is unchanged
+        out["admit_margin"] = float(args.admit_margin)
     if float(getattr(args, "cell_energy", 0.0) or 0.0) > 0.0:
         out["cell_energy"] = float(args.cell_energy)
     if int(getattr(args, "cell_heading", 0) or 0) > 0:
@@ -1913,6 +1945,16 @@ def build_parser() -> argparse.ArgumentParser:
                          "RATE leaves the view anywhere, and a canonicalised spine then hides the "
                          "manoeuvre: round 4's gate-12 ramp needed a strafe the policy never "
                          "pressed). None = off, byte-identical")
+    ap.add_argument("--admit-margin", type=float, default=0.0, metavar="SECS",
+                    help="a visit OPENS a new cell only if its run lived SECS past it or was "
+                         "still alive at the chunk's end (a visit inside a run's last SECS still "
+                         "counts toward a known cell's C_seen): the archive keeps no state that "
+                         "is already falling to its death. Without it a surf pit fills with "
+                         "doomed falls, and an energy ranking (--select-energy) prefers them, "
+                         "since a fall keeps its energy until the impact (uf2r1b2: 0/48 bench "
+                         "episodes from the uf2 archive's energy-top pit cells lived 0.5 s). "
+                         "The trainer's --respawn-margin rule for its reservoir. 0 = off, "
+                         "byte-identical")
     ap.add_argument("--view-follow-nobrake", action="store_true",
                     help="--view-follow: a burst whose held keys wish more than 90 deg away from "
                          "the velocity (a brake of up to 250 u/s per tick in GoldSrc's air "
