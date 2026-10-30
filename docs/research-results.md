@@ -36910,3 +36910,26 @@ The run continues to 4e9.
 - Training ep_len is 346 ticks (3.5 s), against ~800-1,200 for the references at this stage: many novel episodes end fast.
 
 **Reading.** One seed. The novel spawns did not get out of the first trap sooner than the compass run, and how far ahead of the surf run they are is tied up with T. The window and CP2 are the next marks.
+
+## 2026-10-30 22:35 (UTC) - uf2r1b1: `--death-charge` under `--race-ratchet` charged deaths for the NEXT spawn's depth (fixed, ee29bffb); `--death-charge-window`
+
+**The bug.** `RaceReward.__call__` updates the ratchet record with `min(record, d)` every call, and
+on the call an episode dies its row already holds the NEXT episode's spawn (autoreset). The death
+charge then read `record0 - record`: when the next spawn was deeper than the dying episode's
+record - a reservoir row, or a `--respawn-backward-mix` goal-anchored row 256-1,532 u from the
+finish - the dying episode was charged for ground it never covered, up to the whole map. Old
+code, unit case: 1,000 u paid, next spawn at d 1,000 from 10,000 -> charged 9,000. On
+surf_unitfarmer2 with the incumbent recipe (10% of the non-start pool goal-anchored) that is the
+-7..-12 reward per training episode of three death-charge arms (uf2r1b1_dce / _nov / _temp,
+critic explained variance 0.1-0.2): their deaths were charged a lottery, so they say nothing
+about the death charge itself. With the fix (the charge reads `_rec_boot`, the record before the
+death call; the final tick's progress was already forfeited by `r[ended] = 0`), the first arm's
+training reward is positive and its explained variance 0.91 at 35M.
+**Who is affected:** every `--death-charge` + `--race-ratchet` run with respawns deeper than the
+dying episode's record. September's uf2DC* arms (no goal-anchored rows, a reservoir near the
+start) were exposed to a smaller gap, not to none; their numbers stand as measured under it.
+
+**`--death-charge-window W`** (s, default off and allocation-free): a death takes back only what
+the ratchet paid in its last W seconds; progress the episode survived past for W s is kept. W 2
+is the recipe's own doomed-tail margin (`--respawn-margin 2`). Tests:
+`tests/python/test_death_charge_window.py` (the gap fix included).
