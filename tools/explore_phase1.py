@@ -1165,17 +1165,17 @@ def _goal_meta(extra, arch, spawns, cell, minutes=None):
 
 def admit_mask(rid_h: np.ndarray, n_runs: int, g_run: np.ndarray, g_tick: np.ndarray,
                margin_ticks: int) -> np.ndarray:
-    """--admit-margin: True for a (run, cell) record whose run lived at least ``margin_ticks``
-    recorded ticks past it, or was still alive at the chunk's last tick. A run's recorded rows
-    end on the state before the step that ended it (rid_h is written before the step), so a run
-    whose last row is not the chunk's last died (or truncated) right after that row."""
-    ticks = rid_h.shape[0]
+    """--admit-margin: True for a (run, cell) record whose run was SEEN alive at least
+    ``margin_ticks`` recorded ticks past it. A run still alive at the chunk's end counts only
+    the ticks it was seen: a visit in a chunk's last ``margin_ticks`` is never admitted, because
+    its future is unknown and a fall that dies right after the chunk keeps its energy until then
+    (the first version admitted those, and on uf2 the energy-top pit cells were such falls). A
+    run's rows end on the state before the step that ended it (rid_h is written before the step)."""
     last = np.full(max(1, int(n_runs)), -1, np.int64)
     t_idx, e_idx = np.nonzero(rid_h >= 0)
     np.maximum.at(last, rid_h[t_idx, e_idx].astype(np.int64), t_idx.astype(np.int64))
     lr = last[np.asarray(g_run, np.int64)]
-    alive = lr >= ticks - 1
-    return alive | ((lr - np.asarray(g_tick, np.int64)) >= int(margin_ticks))
+    return (lr - np.asarray(g_tick, np.int64)) >= int(margin_ticks)
 
 
 def fold_chunk(arch: Archive, hasher: CellHash, hist, rid_h, r_t0, r_d0,
@@ -1946,10 +1946,10 @@ def build_parser() -> argparse.ArgumentParser:
                          "manoeuvre: round 4's gate-12 ramp needed a strafe the policy never "
                          "pressed). None = off, byte-identical")
     ap.add_argument("--admit-margin", type=float, default=0.0, metavar="SECS",
-                    help="a visit OPENS a new cell only if its run lived SECS past it or was "
-                         "still alive at the chunk's end (a visit inside a run's last SECS still "
-                         "counts toward a known cell's C_seen): the archive keeps no state that "
-                         "is already falling to its death. Without it a surf pit fills with "
+                    help="a visit OPENS a new cell only if its run was seen alive SECS past it "
+                         "(a visit inside a run's last SECS, or a chunk's, still counts toward a "
+                         "known cell's C_seen): the archive keeps no state that is already "
+                         "falling to its death. Without it a surf pit fills with "
                          "doomed falls, and an energy ranking (--select-energy) prefers them, "
                          "since a fall keeps its energy until the impact (uf2r1b2: 0/48 bench "
                          "episodes from the uf2 archive's energy-top pit cells lived 0.5 s). "

@@ -1,11 +1,11 @@
 """explore_phase1 --admit-margin (uf2r1b2, 2026-10-30).
 
-A visit opens a new archive cell only if its run lived SECS past it or was still alive at the
-chunk's end - the trainer's --respawn-margin rule, applied to the archive - so a surf pit does not
-fill with falls that are already doomed (and an energy ranking does not prefer them).
+A visit opens a new archive cell only if its run was seen alive SECS past it - the trainer's
+--respawn-margin rule, applied to the archive - so a surf pit does not fill with falls that are
+already doomed (and an energy ranking does not prefer them).
 
-(a) admit_mask on a hand-built rollout: runs that die keep only the visits >= margin before
-    their last row; a run alive at the chunk end keeps everything;
+(a) admit_mask on a hand-built rollout: only visits seen >= margin before a run's last row
+    are admitted, whether the run died or was alive at the chunk's end;
 (b) flag off: archive and meta bit-identical to HEAD's explorer;
 (c) flag on: the meta says so, fewer cells open than without it on the same seed, and
     ge_replay still replays the deepest chain exactly.
@@ -46,8 +46,9 @@ def test_admit_mask_on_a_hand_built_rollout():
     g_run = np.array([0, 0, 0, 0, 1, 1, 2, 2])
     g_tick = np.array([0, 1, 2, 3, 0, 9, 4, 9])
     m = admit_mask(rid, 3, g_run, g_tick, margin_ticks=2)
-    # run 0's last row is 3: visits at 0 and 1 are >= 2 rows before it, 2 and 3 are not
-    assert m.tolist() == [True, True, False, False, True, True, True, True]
+    # run 0's last row is 3: visits at 0 and 1 are >= 2 rows before it, 2 and 3 are not; runs 1
+    # and 2 are alive at the end, but a visit at the chunk's last row has no seen future
+    assert m.tolist() == [True, True, False, False, True, False, True, False]
     # a zero margin admits everything
     assert admit_mask(rid, 3, g_run, g_tick, margin_ticks=0).all()
 
