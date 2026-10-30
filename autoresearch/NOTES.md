@@ -85,3 +85,13 @@ the numbers). Read it before you start; append to it before you wrap up.
   at near-record energy - and let RL learn the closed-loop part from those spawns, with per-call
   energy shaping (--energy-pot K --energy-pot-front 0 --energy-pot-front-bonus 0) so a crash in
   the bowl costs at the tick it happens (K 8: a 1,000 u crash = -8, the progress reward of 2,450 u).
+* **Correction (23:28 UTC): the archive is NOT at record energy before the bowl.** With a
+  strict same-motion match (within 150 u, velocity cos > 0.95; the 0.8 test let free falls pass
+  as surfing), the 12-min archive's best is 1,259 at the record's t 1.25 (record 1,374: the
+  record's fall air-strafe, ~+120 u at its 7-8 ms frames, at most ~+60 at our 10 ms), 1,008 at
+  t 1.5 (record 1,295: the first ramp landing costs the archive ~250 u, the record ~80), 759 at
+  t 2.0, 524 at t 2.25, 16 at t 3.0. The "1,250 at t 2.5" states are doomed free falls into the
+  pit's floor teleport (every constant control from them ends in it within 0.2-0.7 s). So the
+  deficit begins at the FIRST ramp, 1.5 s from the start - October's "280-390 u short" again.
+  The search never rides the south curve the way the record does; RL has to learn it from the
+  true start's own fall, not from an archive state.

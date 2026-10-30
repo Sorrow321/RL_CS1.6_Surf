@@ -61,7 +61,7 @@ def best_per_place(st: np.ndarray, place_cell: float) -> np.ndarray:
 
 
 def convert(archive: Path, place_cell: float, keep_all: bool, max_rows: int,
-            seed: int) -> tuple[np.ndarray, str]:
+            seed: int, speed_scale: tuple[float, float] | None = None) -> tuple[np.ndarray, str]:
     with np.load(archive, allow_pickle=False) as z:
         st = z["state"]
     idx = np.arange(len(st)) if keep_all else best_per_place(st, place_cell)
@@ -72,10 +72,16 @@ def convert(archive: Path, place_cell: float, keep_all: bool, max_rows: int,
         rows[f] = st[f][idx]
     rows["tick"] = 0
     rows["stuck_ticks"] = 0
+    if speed_scale is not None:
+        # --speed-scale: each row's velocity times U(lo, hi), the recipe's own-state perturbation
+        # (--respawn-front-perturb-speed) applied to the search's states
+        k = np.random.default_rng(seed + 1).uniform(speed_scale[0], speed_scale[1], len(rows))
+        rows["velocity"] = (rows["velocity"] * k[:, None]).astype(np.float32)
     h = energy_height(rows)
     note = (f"{len(st):,} archive cells -> {len(rows):,} spawn states "
             f"({'all cells' if keep_all else f'the most energetic per {place_cell:g} u place'}"
-            f"{f', subsampled to {max_rows:,}' if max_rows > 0 and len(idx) == max_rows else ''}); "
+            f"{f', subsampled to {max_rows:,}' if max_rows > 0 and len(idx) == max_rows else ''}"
+            f"{f', velocity x U({speed_scale[0]:g}, {speed_scale[1]:g})' if speed_scale else ''}); "
             f"energy height p50 {np.median(h):,.0f} p90 {np.percentile(h, 90):,.0f} "
             f"max {h.max():,.0f}")
     return rows, note
@@ -98,6 +104,8 @@ def main(argv=None) -> int:
     ap.add_argument("--all", action="store_true", help="keep every archive cell instead")
     ap.add_argument("--max", type=int, default=0,
                     help="subsample to at most this many rows (0 = no cap)")
+    ap.add_argument("--speed-scale", type=float, nargs=2, default=None, metavar=("LO", "HI"),
+                    help="multiply each row's velocity by U(LO, HI) (default: unscaled)")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--watch", type=float, default=0.0,
                     help="re-convert whenever the archive changes, checking every this many "
@@ -114,7 +122,8 @@ def main(argv=None) -> int:
             try:
                 # a snapshot being written is not a valid zip yet: skip it, the next check
                 # sees the finished file (its mtime moves again when the write ends)
-                rows, note = convert(archive, a.place_cell, a.all, a.max, a.seed)
+                rows, note = convert(archive, a.place_cell, a.all, a.max, a.seed,
+                                     tuple(a.speed_scale) if a.speed_scale else None)
             except (OSError, ValueError, KeyError, EOFError, zipfile.BadZipFile) as e:
                 print(f"{time.strftime('%H:%M:%S')} {archive}: not readable yet ({e})",
                       flush=True)

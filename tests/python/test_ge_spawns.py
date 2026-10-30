@@ -58,3 +58,13 @@ def test_unreadable_archive_is_not_converted(tmp_path):
     out = tmp_path / "spawns.npy"
     assert ge_spawns.main(["--archive", str(p), "--out", str(out)]) == 1
     assert not out.exists()
+
+
+def test_speed_scale(tmp_path):
+    p, st = _archive(tmp_path)
+    out = tmp_path / "spawns.npy"
+    assert ge_spawns.main(["--archive", str(p), "--out", str(out), "--all",
+                           "--speed-scale", "2", "2"]) == 0
+    rows = np.load(out)
+    np.testing.assert_allclose(rows["velocity"], st["velocity"] * 2.0)
+    np.testing.assert_array_equal(rows["origin"], st["origin"])
