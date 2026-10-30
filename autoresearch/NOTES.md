@@ -170,3 +170,42 @@ Box 58455373 (RTX 4080 SUPER, EPYC 7K62, 96 threads visible but a 30.7-CPU cgrou
   which the exit search needs. Known costs: the exit climb converts speed into height and is
   charged until the ratchet pays progress; lapping the bowl is credited (September's
   dip-speed arms lapped at 1,740 u/s). Generic: no map constant (beta 1 is the unit).
+
+### Harness issue: `box.py pull --snapshot STEP` never pulls (zero-padded names)
+`--snapshot` is `type=int` and asks for `ckpt_{STEP}.pt`, but the trainer writes milestones as
+`ckpt_%010d.pt` (`ckpt_0150994944.pt`): the md5 lookup comes back empty and the pull skips the
+file without a word. Workaround: scp the padded file myself, md5-checked against the box, into
+`$AR_HOME/runs/<agent>/<run>/` (done for uf2r1b2_seq's ckpt_0150994944.pt, md5 3fef2861).
+
+### seq result and a route the potential hides: the record's post-pit corridor WITHOUT the pit
+* **seq (speed-equiv 1, 4e8): null for the pit, best score so far.** Evals 2.04 / 2.88 / 5.15 /
+  **5.86** / 5.69 / 5.65 / 5.70 / 5.61 at 0.5-352M (= the control within noise). The greedy slides
+  into *18 like the control; 16 stochastic episodes: 7/9 slide, 2/9 the south-west drop, 0 dives.
+  The dive's speed credit is refunded when it crashes, so it never pays.
+* **The trough.** GE2's deepest western chain (cell 466306, replayed exactly) shows a route the
+  field does not: drop off the platform's SOUTH-WEST CORNER (x ~-2,590), land on a floor at z 548
+  (t 3, a hard landing: E 1,152 -> 603), then a north-south TROUGH under the platform: bottom at
+  x ~-2,350 / z ~310-375, the east side up to z ~600-650 at x ~-2,170, from y ~-2,350 to ~-1,070.
+  That is exactly the corridor the record flies after the pit (t 9-10: (-2381, -2221, 518) ->
+  (-2352, -1755, 342) -> (-2493, -1356, 492)), and it leaves it WEST at z ~480 and ~1,000 u/s to
+  clear sheet *18's west edge (x -3,456). GE's random strafes PUMP the trough: E 470 -> 678 over
+  25 s; it leaves west at ~700 u/s and falls onto *18 at 7.9%.
+* Earliest chains to each progress level over GE1-4 (measurement): >= 7.0% in 10.1 s (GE1, west
+  via the trough) / 9.1 s (GE2, a fall north-east); >= 7.8% in 12.4 s (GE2); >= 8.0% in 22.8 s.
+  Every cell above ~6.5% is a fall that ends on *18: they score, they do not continue.
+* So the speed the course needs may also be bought by pumping the trough (princessburglar's
+  start was a half-pipe pump too) - a generic skill on a route the potential does not show.
+
+### Arm uf2r1b2_tc (launched 23:50 UTC): backward curriculum on GE1's 10 s trough line
+* Line: GE1 cell 613541's chain (12 links, exact): walk SW on the platform (0-3 s), drop off the
+  SW corner (3-4.5 s, 926 u/s), land on the z-548 floor (5.0 s, E 1,172 -> 592), the trough north
+  (6-9.5 s), exit west (9.5 s) and fall to 7.05% (10.1 s). Spine = tools/stitch_spine.py
+  spine:<the spawn> ge:<archive>:<chain> (views along the velocity, keys translated):
+  runs/uf2r1b2_lines/w7_spine.npy (+ .keys.npy), 1,012 states, md5 d2a75be9 / keys 6b6d82c5,
+  end d 28,488. Self-states: the branch's own GE line from the true spawn.
+* Flags: recipe + `--demo-file w7_spine.npy --demo-keys w7_spine.keys.npy --demo-window 5
+  --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5 --demo-rate 0.3 --demo-front-frac 0.8
+  --demo-success-d 100 --demo-success-bonus 50 --keys-hold-spawn-duck --yaw-entropy 0
+  --demo-front-temp 0.5 --demo-front-ticks 40 --demo-front-view 6 --demo-match-band
+  --no-respawn-novel --respawn-backward-mix 0 --int-real-only 0 --ckpt-every 5e7`, 4e8 from
+  scratch (princessburglar's curriculum set; the curriculum refuses novel / backward-mix rows).

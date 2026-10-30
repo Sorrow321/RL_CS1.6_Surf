@@ -3,16 +3,20 @@
  "round": 1,
  "final": false,
  "best": {
-  "score": 5.687,
-  "eval_file": "/home/steam/ar_uf2/runs/uf2r1b2/uf2r1b2_ctl/traj_0151519232.jsonl",
-  "run": "uf2r1b2_ctl",
+  "score": 5.857,
+  "eval_file": "/home/steam/ar_uf2/runs/uf2r1b2/uf2r1b2_seq/traj_0151519232.jsonl",
+  "run": "uf2r1b2_seq",
   "step": 151519232,
-  "ckpt": "/home/steam/ar_uf2/runs/uf2r1b2/uf2r1b2_ctl/ckpt_final.pt",
+  "ckpt": "/home/steam/ar_uf2/runs/uf2r1b2/uf2r1b2_seq/ckpt_0150994944.pt",
   "recipe": [
-   "incumbent_recipe (config.json), from scratch"
+   "incumbent_recipe (config.json)",
+   "--speed-equiv",
+   "1.0",
+   "--ckpt-every",
+   "5e7"
   ],
   "resume_from": null,
-  "commit": "a88a414e"
+  "commit": "5196a636"
  },
- "summary": "Round 1, from scratch. Control (incumbent recipe, 4e8): every greedy episode slides down the start ramp into kill sheet *18 at 4.5 s, best 5.69 at 151M, flat after. Go-Explore (pbf flags, and a new --view-follow-nobrake) never leaves the pit: chains reach the floor ~800 u of energy height below the record (impacts, not braking). pb_r26 (warm surfer) does not dive either. Running uf2r1b2_egt: recipe + per-call energy shaping K12 (pb_r26's own) + 30% spawns from the GE archive's energy-top cell of each place (25.6% high-energy pit states); watching dip/max_survived_depth (~9 = a pit exit). Next: search from the policy's own pit states if it learns to surf the bowl."
+ "summary": "Round 1, from scratch. Every generic arm so far ends on the start's traps: the control and --speed-equiv 1 slide into kill sheet *18 (5.69 / 5.86); per-call energy shaping K12 and the death charge + speed novelty make the agent camp on the platform (<= 3.1). Go-Explore never leaves the pit (energy lost to impacts); its energy-top pit states are doomed falls (benches 0/96), fixed by a new --admit-margin. New: GE found the record's post-pit corridor (a north-south trough under the platform) reachable WITHOUT the pit, via the platform's SW corner; running uf2r1b2_tc = backward curriculum on that 10 s GE line (west exit at 7.05%). Next: whether the policy pumps the trough for the west flight."
 }
