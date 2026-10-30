@@ -55,3 +55,15 @@ def test_file_draws_with_that_weight(tmp_path):
                      np.mean(y == 500)])
     want = np.array([1.0, 4.0, 2.0, 4.0]) / 11.0
     assert np.allclose(frac, want, atol=0.01), frac
+
+
+def test_tops_writes_each_places_most_energetic_cell_once(tmp_path):
+    p = _archive(tmp_path)
+    out = tmp_path / "tops.npy"
+    assert G.main(["--archive", str(p), "--out", str(out), "--tops"]) == 0
+    r = np.load(out)
+    # three places: cell 1 (the faster of the shared place), cells 2 and 3
+    assert len(r) == 3
+    assert sorted(r["origin"][:, 0].astype(int).tolist()) == [10, 20, 500]
+    # the slower cell of the shared place (cell 0, at (10, 10, 10)) is not written
+    assert not np.any((r["origin"][:, 0] == 10.0) & (r["origin"][:, 1] == 10.0))

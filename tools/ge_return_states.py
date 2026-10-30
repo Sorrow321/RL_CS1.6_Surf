@@ -12,6 +12,10 @@ archive's own cell and --select-energy.
 
     python tools/ge_return_states.py --archive runs/ge/archive.npz --out runs/ge/return.npy \\
         --n 60000 [--select-energy 3] [--seed 0]
+
+--tops writes instead the most energetic cell of EVERY place, once each (the set --select-energy
+boosts; uniform over places): on uf2r1b2_ge1 25.6% of those rows are high-energy pit states
+against 5.1% of the return draw, which the pit's floor cells (many, slow, doomed) dominate.
 """
 from __future__ import annotations
 
@@ -27,20 +31,26 @@ sys.path.insert(0, str(ROOT / "python"))
 sys.path.insert(0, str(ROOT / "tools"))
 
 
+def energy_tops(state, hasher) -> np.ndarray:
+    """Index of the most energetic cell of each place (explore_phase1 Archive.energy_tops)."""
+    from explore_phase1 import CellHash
+    pos = hasher.pos_keys(state)
+    o = state["origin"].astype(np.float64)
+    v = state["velocity"].astype(np.float64)
+    e = o[:, 2] + (v * v).sum(axis=1) / (2.0 * CellHash.G_ENERGY)
+    order = np.lexsort((-e, pos))
+    ps = pos[order]
+    first = np.ones(len(order), bool)
+    first[1:] = ps[1:] != ps[:-1]
+    return order[first]
+
+
 def return_weights(state, seen, hasher, select_energy: float) -> np.ndarray:
     """W = 1/sqrt(seen + 1), x (1 + K) on each place's most energetic cell (explore_phase1)."""
     from explore_phase1 import CellHash
     w = 1.0 / np.sqrt(np.asarray(seen, np.float64) + 1.0)
     if select_energy > 0.0 and len(state):
-        pos = hasher.pos_keys(state)
-        o = state["origin"].astype(np.float64)
-        v = state["velocity"].astype(np.float64)
-        e = o[:, 2] + (v * v).sum(axis=1) / (2.0 * CellHash.G_ENERGY)
-        order = np.lexsort((-e, pos))
-        ps = pos[order]
-        first = np.ones(len(order), bool)
-        first[1:] = ps[1:] != ps[:-1]
-        w[order[first]] *= 1.0 + select_energy
+        w[energy_tops(state, hasher)] *= 1.0 + select_energy
     return w
 
 
@@ -52,6 +62,8 @@ def main(argv=None) -> int:
     ap.add_argument("--select-energy", type=float, default=None,
                     help="default: the archive's own (its meta json), else 0")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--tops", action="store_true",
+                    help="write each place's most energetic cell once (no draw; --n ignored)")
     a = ap.parse_args(argv)
     from explore_phase1 import CellHash
     from surfgym.core import STATE_DTYPE
@@ -61,9 +73,12 @@ def main(argv=None) -> int:
     k = float(meta.get("select_energy", 0.0) if a.select_energy is None else a.select_energy)
     hasher = CellHash(mins=meta["grid_mins"], maxs=[1e9, 1e9, 1e9], cell=float(meta["cell"]))
     hasher.dims = tuple(int(x) for x in meta["grid_dims"])
-    w = return_weights(st, seen, hasher, k)
-    rng = np.random.default_rng(a.seed)
-    idx = rng.choice(len(st), size=int(a.n), replace=True, p=w / w.sum())
+    if a.tops:
+        idx = np.sort(energy_tops(st, hasher))
+    else:
+        w = return_weights(st, seen, hasher, k)
+        rng = np.random.default_rng(a.seed)
+        idx = rng.choice(len(st), size=int(a.n), replace=True, p=w / w.sum())
     rows = np.zeros(len(idx), STATE_DTYPE)
     for f in STATE_DTYPE.names:
         rows[f] = st[f][idx]
@@ -71,7 +86,7 @@ def main(argv=None) -> int:
     rows["stuck_ticks"] = 0
     np.save(a.out, rows)
     print(json.dumps({"archive": a.archive, "cells": int(len(st)), "rows": int(len(rows)),
-                      "distinct": int(len(np.unique(idx))), "select_energy": k, "seed": a.seed,
+                      "distinct": int(len(np.unique(idx))), "select_energy": k, "seed": a.seed, "tops": bool(a.tops),
                       "out": a.out}))
     return 0
 
