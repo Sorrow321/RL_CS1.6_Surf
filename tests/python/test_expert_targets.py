@@ -546,11 +546,45 @@ def test_view_hold_is_off_by_default_greedy_untouched_and_cloned():
 
 def test_exit_local_paired_gate_rule():
     src = (ROOT / "tools" / "exit_local.py").read_text(encoding="utf-8")
-    assert 'choices=("mean", "score", "paired")' in src
-    assert "--gate-rule paired compares on the same spawns" in src
+    assert 'choices=("mean", "score", "paired", "expected")' in src
+    assert 'if args.gate_rule in ("paired", "expected") and not (args.gate and args.gate_rematch):' in src
+    assert "compares on the same spawns: needs " in src
     # speed first: faster on the shared finishes, at most tol fewer finishes
     assert "accept = bool(pairs) and paired < 0.0 and len(fins) >= len(fi) - tol" in src
     assert "tol = max(1, int(round(args.gate_finish_tol * max(n, ni))))" in src
+
+
+def test_exit_local_expected_gate_rule(tmp_path):
+    """--gate-rule expected (pbx 2026-10-30): the mean episode time over the shared spawns, a DNF
+    charged the eval cap - pace and reliability at one exchange rate, where 'paired' can trade
+    finishes for pace but never pays a challenger for finishing more."""
+    import exit_local
+    # pbEXIT3 round 11 in miniature: more finishes, slower where both finished
+    ch, inc = [66.0, 66.5, 67.0, 65.0, None], [65.5, 66.0, None, None, None]
+    ec, ei, ok = exit_local.expected_gate(ch, inc, 75.0)
+    assert ok
+    assert ec == pytest.approx((66.0 + 66.5 + 67.0 + 65.0 + 75.0) / 5)
+    assert ei == pytest.approx((65.5 + 66.0 + 3 * 75.0) / 5)
+    pairs = [(a, b) for a, b in zip(ch, inc) if a is not None and b is not None]
+    assert sum(a - b for a, b in pairs) / len(pairs) > 0.0       # the paired rule rejects it
+    # faster where both finished, one more DNF: accepted only if the pace pays for the DNF
+    assert exit_local.expected_gate([60.0, 60.0, None], [66.0, 66.0, 66.0], 75.0)[2]
+    assert not exit_local.expected_gate([65.0, 65.0, None], [66.0, 66.0, 66.0], 75.0)[2]
+    # a tie, and no shared spawns, are rejected
+    assert exit_local.expected_gate([66.0, None], [66.0, None], 75.0)[2] is False
+    assert exit_local.expected_gate([], [], 75.0) == (None, None, False)
+    # the default DNF charge: --max-ticks at the eval file's tick; no tick_ms -> refused
+    f = tmp_path / "eval.jsonl"
+    f.write_text(json.dumps({"map": "m", "tick_ms": 23.0 / 3.0}) + "\n", encoding="utf-8")
+    assert 9800 * exit_local.eval_tick_ms(f) / 1000.0 == pytest.approx(75.133, abs=1e-3)
+    old = tmp_path / "old.jsonl"
+    old.write_text(json.dumps({"map": "m"}) + "\n", encoding="utf-8")
+    with pytest.raises(SystemExit):
+        exit_local.eval_tick_ms(old)
+    src = (ROOT / "tools" / "exit_local.py").read_text(encoding="utf-8")
+    assert "ec, ei, accept = expected_gate(ci, ii, dnf)" in src
+    assert "else args.max_ticks * eval_tick_ms(evs[0]) / 1000.0)" in src
+    assert "--gate-dnf-s is the DNF charge of --gate-rule expected" in src
 
 
 def test_prefix_line_replay_keeps_the_wrappers_feeds_and_held_keys():

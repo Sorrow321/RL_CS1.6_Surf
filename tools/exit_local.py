@@ -101,6 +101,28 @@ def episode_times(traj: Path):
     return out
 
 
+def eval_tick_ms(traj: Path) -> float:
+    """The tick of a record_ckpt eval file: its first header's tick_ms (refused when absent)."""
+    for line in open(traj, encoding="utf-8"):
+        o = json.loads(line)
+        if isinstance(o, dict) and "map" in o:
+            if "tick_ms" not in o:
+                raise SystemExit(f"{traj}: header without tick_ms - not assuming 10 ms")
+            return float(o["tick_ms"])
+    raise SystemExit(f"{traj}: no header")
+
+
+def expected_gate(ci, ii, dnf_s: float):
+    """--gate-rule expected: the mean episode time over the shared spawns, a DNF charged dnf_s.
+    ci / ii are episode_times() lists aligned spawn by spawn -> (challenger, incumbent, accept)."""
+    both = list(zip(ci, ii))
+    if not both:
+        return None, None, False
+    ec = sum(dnf_s if a is None else a for a, _ in both) / len(both)
+    ei = sum(dnf_s if b is None else b for _, b in both) / len(both)
+    return ec, ei, ec < ei
+
+
 def gate_seed(r: int, k: int) -> int:
     """The spawn seed of the k-th gate eval of round r, the same for the challenger and the
     incumbent's rematch: 7000 + r for the first (as it always was), then 20000 + 100 r + k."""
@@ -180,12 +202,23 @@ def main() -> int:
     ap.add_argument("--distil-args", default="",
                     help="extra tools/plan_to_bc.py flags, one string (e.g. '--no-value-target' "
                          "for a lineage whose reward plan_to_bc's line reward does not mirror)")
-    ap.add_argument("--gate-rule", choices=("mean", "score", "paired"), default="mean",
+    ap.add_argument("--gate-rule", choices=("mean", "score", "paired", "expected"),
+                    default="mean",
                     help="mean: every eval episode finished and the mean beats the bar (as "
                          "before). score: the GRADER's number (--grader: best progress + 10 x "
                          "finish fraction + the time term) of the challenger beats the "
                          "incumbent's on the same spawns (needs --gate-rematch 1) - finishing "
-                         "more often first, then faster, for a seed that does not finish yet")
+                         "more often first, then faster, for a seed that does not finish yet. "
+                         "expected: the mean episode time over the same spawns, a DNF charged "
+                         "--gate-dnf-s - pace and reliability at one exchange rate")
+    ap.add_argument("--gate-dnf-s", type=float, default=None,
+                    help="--gate-rule expected: the seconds a DNF costs (default: the eval cap, "
+                         "--max-ticks at the eval file's tick). 'paired' trades up to "
+                         "--gate-finish-tol finishes for pace and never pays a challenger for "
+                         "finishing MORE, so the accepted policies' reliability can only drift "
+                         "down (pbx 2026-10-30: r3 50/54 at a 66.39 s mean -> r10 64/81 at 65.67 "
+                         "s, the expected time 67.0 -> 67.6 s; round 11 lost on +0.62 s with 24 "
+                         "finishes to the incumbent's 19)")
     ap.add_argument("--gate-finish-tol", type=float, default=0.1,
                     help="--gate-rule paired: the challenger may finish this fraction of the eval "
                          "episodes FEWER than the incumbent (at least 1) and still be accepted when "
@@ -216,9 +249,11 @@ def main() -> int:
     plan_extra = shlex.split(args.plan_args)
     distil_extra = shlex.split(args.distil_args)
     grade = None
-    if args.gate_rule == "paired" and not (args.gate and args.gate_rematch):
-        raise SystemExit("--gate-rule paired compares on the same spawns: needs --gate 1 "
-                         "--gate-rematch 1")
+    if args.gate_rule in ("paired", "expected") and not (args.gate and args.gate_rematch):
+        raise SystemExit(f"--gate-rule {args.gate_rule} compares on the same spawns: needs "
+                         "--gate 1 --gate-rematch 1")
+    if args.gate_dnf_s is not None and args.gate_rule != "expected":
+        raise SystemExit("--gate-dnf-s is the DNF charge of --gate-rule expected")
     if args.gate_evals > 1 and not (args.gate and args.gate_rematch):
         raise SystemExit("--gate-evals N > 1 compares on shared spawns: needs --gate 1 "
                          "--gate-rematch 1")
@@ -480,6 +515,19 @@ def main() -> int:
                     tol = max(1, int(round(args.gate_finish_tol * max(n, ni))))
                     accept = bool(pairs) and paired < 0.0 and len(fins) >= len(fi) - tol
                     row["paired_rule"] = {"tol": tol, "finishes": [len(fins), len(fi)]}
+                if args.gate_rule == "expected":
+                    # pace and reliability at one exchange rate: one more finish is worth the
+                    # DNF charge minus its time (--gate-dnf-s)
+                    dnf = (args.gate_dnf_s if args.gate_dnf_s is not None
+                           else args.max_ticks * eval_tick_ms(evs[0]) / 1000.0)
+                    ec, ei, accept = expected_gate(ci, ii, dnf)
+                    row["expected"] = {"challenger": None if ec is None else round(ec, 3),
+                                       "incumbent": None if ei is None else round(ei, 3),
+                                       "dnf_s": round(dnf, 3), "spawns": min(len(ci), len(ii)),
+                                       "finishes": [len(fins), len(fi)]}
+                    log(fh, f"round {r}: expected time on {min(len(ci), len(ii))} shared spawns "
+                            f"(DNF = {dnf:.2f} s): {row['expected']['challenger']} s "
+                            f"(challenger) vs {row['expected']['incumbent']} s (incumbent)")
                 if args.gate_rule == "score":
                     # the grader on the same spawns: more finishes first, then the faster best
                     # finish, then the deeper best progress (sidistic 2026-10-23: the seed
@@ -509,6 +557,9 @@ def main() -> int:
                        f"{len(fins)}/{n} finished" if args.gate_rule == "score"
                        else f"paired {row.get('paired_s')} s, {len(fins)}/{n} vs {len(fi)}/{ni} "
                             f"finished" if args.gate_rule == "paired"
+                       else f"expected {row['expected']['challenger']} s vs "
+                            f"{row['expected']['incumbent']} s, {len(fins)}/{n} vs {len(fi)}/{ni} "
+                            f"finished" if args.gate_rule == "expected"
                        else f"mean {mean:.2f} s vs {bar:.2f} s, all {n} finished")
                 log(fh, f"round {r}: gate ACCEPTED ({why}) -> {best_mean_ck}")
                 if args.target_mean is not None and mean <= args.target_mean:
@@ -524,6 +575,9 @@ def main() -> int:
                        if args.gate_rule == "score"
                        else f"paired {row.get('paired_s')} s, {len(fins)}/{n} vs {len(fi)}/{ni} "
                             f"finished" if args.gate_rule == "paired"
+                       else f"expected {row['expected']['challenger']} s vs "
+                            f"{row['expected']['incumbent']} s, {len(fins)}/{n} vs {len(fi)}/{ni} "
+                            f"finished" if args.gate_rule == "expected"
                        else f"mean {mean:.2f} s vs {bar:.2f} s")
                 log(fh, f"round {r}: gate rejected ({why}) - the next round plans from "
                         f"{best_mean_ck}")
