@@ -2887,6 +2887,51 @@
       "detail": "autoresearch uf2op: not running after 330 s (status loading, )",
       "run": "",
       "reason": "unreliable"
+    },
+    {
+      "ip": "183.88.235.132",
+      "machine_id": 141910,
+      "host_id": 452472,
+      "date": "2026-10-27",
+      "detail": "uplink 19-22 KB/s measured twice (scp of 2.9 MB and 5.9 MB) while the agent host's downlink ran 5-14 MB/s: a 63 MB checkpoint needs ~55 min, past box.py pull's 30-min scp window; trainer itself fine (~210k steps/s, EPYC 7502, Thailand)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "86.120.124.250",
+      "machine_id": 152306,
+      "host_id": 716820,
+      "date": null,
+      "detail": "autoresearch pbr9b4: not running after 330 s (status offline, )",
+      "run": "",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "47.160.211.234",
+      "machine_id": 138344,
+      "host_id": 555054,
+      "date": "2026-10-29",
+      "detail": "RTX 5070 power limit 175 W of 250 W default (70%), bf16 GEMM 67 TFLOPS, gpu_health UNHEALTHY (no reference for the model); machine 138344 Ryzen 7950X",
+      "run": "pbfr1b4 (deploy gpu_health)",
+      "reason": "gpu_capped"
+    },
+    {
+      "ip": "47.160.211.234",
+      "machine_id": 138344,
+      "host_id": 555054,
+      "date": "2026-10-29",
+      "detail": "RTX 5070 power limit 175 W of 250 W default (70%), gpu_health UNHEALTHY; bf16 GEMM 67 TFLOPS; machine 138344 Texas; pbfr1b1 2026-10-29",
+      "run": "",
+      "reason": "gpu_capped"
+    },
+    {
+      "ip": "68.188.102.65",
+      "machine_id": 151122,
+      "host_id": null,
+      "date": "2026-10-29",
+      "detail": "autoresearch pbfr1b4: box 58254955 (RTX 5070, EPYC 7702, host load avg 124-220 from other tenants) went OFFLINE at ~15:05 UTC mid-run, ssh timing out for 13+ min; destroyed 15:19",
+      "run": "pbfr1b4_c7",
+      "reason": "unreliable"
     }
   ],
   "known_good": [
