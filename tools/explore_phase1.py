@@ -505,6 +505,28 @@ class Archive:
                 json.dumps(meta, indent=2), encoding="utf-8")
 
 
+def key_angle(fwd: int, side: int) -> float | None:
+    """The wish direction of action keys (fwd, side) in degrees from the view yaw, counter-
+    clockwise (src/env.c: fwd 0 = back, 2 = forward; side 0 = left, 2 = right; pm.c's right
+    vector is the view yaw - 90), or None when no movement key is held."""
+    fm, sm = int(fwd) - 1, int(side) - 1
+    if fm == 0 and sm == 0:
+        return None
+    return float(np.degrees(np.arctan2(-sm, fm)))
+
+
+def no_brake_table(offsets: np.ndarray) -> np.ndarray:
+    """--no-brake: ok[i, fwd, side] = keys (fwd, side) held at view offset offsets[i] from the
+    velocity heading do not brake: no key, or |offset + key angle| <= 90 deg (wrapped)."""
+    ok = np.zeros((len(offsets), 3, 3), bool)
+    for i, o in enumerate(np.asarray(offsets, np.float64)):
+        for f in range(3):
+            for sd in range(3):
+                k = key_angle(f, sd)
+                ok[i, f, sd] = k is None or abs((o + k + 180.0) % 360.0 - 180.0) <= 90.0 + 1e-6
+    return ok
+
+
 # ---------------------------------------------------------------------------
 # goal distance (progress printing only - never a reward)
 # ---------------------------------------------------------------------------
@@ -914,6 +936,20 @@ def explore(args) -> int:
     vf_set = (None if not getattr(args, "view_follow", None) else
               np.array([float(x) for x in str(args.view_follow).split(",") if x.strip()]))
     vf_off = np.zeros(n, np.float64)
+    nb_ok = nb_choice = nb_count = vf_set_sorted = None
+    if getattr(args, "no_brake", False):
+        if vf_set is None:
+            raise SystemExit("--no-brake needs --view-follow (the burst's offset from the "
+                             "velocity heading is what makes a key a brake)")
+        vf_set_sorted = np.unique(vf_set)
+        nb_ok = no_brake_table(vf_set_sorted)
+        nb_count = nb_ok.reshape(len(vf_set_sorted), 9).sum(1)
+        nb_choice = np.zeros((len(vf_set_sorted), 9), np.int64)
+        for _i in range(len(vf_set_sorted)):
+            _c = np.flatnonzero(nb_ok[_i].ravel())
+            nb_choice[_i, :len(_c)] = _c
+        print("--no-brake: (fwd, side) pairs allowed per view offset: "
+              + ", ".join(f"{o:g}: {int(c)}/9" for o, c in zip(vf_set_sorted, nb_count)))
     if vf_set is not None:
         from surfgym.core import YAW_BINS
         vf_bins = YAW_BINS.astype(np.float64) * (float(cfg.yaw_rate_max_deg) / 10.0)
@@ -935,6 +971,16 @@ def explore(args) -> int:
         if vf_set is not None:
             # drawn after every existing draw: the flag-off random stream is untouched
             vf_off[idx] = vf_set[rng.integers(0, vf_set.size, m)]
+            if nb_ok is not None:
+                # --no-brake: redraw (fwd, side) among the pairs that do not brake at this
+                # burst's view offset (after every other draw: the flag-off stream is untouched)
+                oi = np.searchsorted(vf_set_sorted, vf_off[idx])
+                bad = ~nb_ok[oi, act[idx, 2], act[idx, 3]]
+                if bad.any():
+                    bi = idx[bad]
+                    ch = nb_choice[oi[bad], rng.integers(0, 1 << 30, bi.size) % nb_count[oi[bad]]]
+                    act[bi, 2] = ch // 3
+                    act[bi, 3] = ch % 3
 
     # per-chunk run bookkeeping (parallel lists indexed by run id)
     r_t0: list[int] = []
@@ -1221,6 +1267,9 @@ def meta_dict(args, bsp, hasher, arch, it, n_goal, extra=None) -> dict:
         out["tick_ms"] = int(args.tick_ms)
     if getattr(args, "view_follow", None):
         out["view_follow"] = str(args.view_follow)
+    if getattr(args, "no_brake", False):
+        # --no-brake only: the flag-off meta json is unchanged
+        out["no_brake"] = True
     if float(getattr(args, "cell_energy", 0.0) or 0.0) > 0.0:
         out["cell_energy"] = float(args.cell_energy)
     if int(getattr(args, "cell_heading", 0) or 0) > 0:
@@ -1880,6 +1929,16 @@ def build_parser() -> argparse.ArgumentParser:
                          "RATE leaves the view anywhere, and a canonicalised spine then hides the "
                          "manoeuvre: round 4's gate-12 ramp needed a strafe the policy never "
                          "pressed). None = off, byte-identical")
+    ap.add_argument("--no-brake", action="store_true",
+                    help="with --view-follow: a burst never holds movement keys whose wish "
+                         "direction points AGAINST the velocity (|view offset + key angle| > 90 "
+                         "deg); such a draw is redrawn among the keys that do not. GoldSrc's "
+                         "air acceleration adds up to 250 u/s per 10 ms tick along the wish "
+                         "direction whenever that direction has a backward component, so a "
+                         "uniform key draw brakes about a third of all bursts to a stop within "
+                         "a few ticks, and an energy-gated surf line (a pit pump) needs seconds "
+                         "of flight with none of those. Physics of the movement model, the "
+                         "same on every map; off = byte-identical")
     ap.add_argument("--tick-ms", type=int, default=None,
                     help="the search core's physics tick, WHOLE ms (default: the core's 10, "
                          "byte-identical). A policy trained under --tick-ms-schedule flies "
