@@ -70,3 +70,16 @@ Box 58455373 (RTX 4080 SUPER, EPYC 7K62, 96 threads visible but a 30.7-CPU cgrou
 * New: `explore_phase1 --view-follow-nobrake` (commit 19ae2856): such a draw presses the
   opposite keys (beta -> beta - 180); no extra random draw, so off is byte-identical (tested
   against HEAD's explorer). Physics only: no map constant.
+
+### Probes (22:05-22:15 UTC)
+* Control evals 5.62 / 5.65 / 5.59 at 202-302M: plateaued on the same line (sheet *18 at
+  4.5 s, 5.4-5.7%). 240k steps/s on the 4080S once the explorer stopped competing.
+* `--view-follow-nobrake` GE (uf2r1b2_ge2, 20 min): NOT better in the pit. Chains that dove below
+  -5% come back with E <= -116; the deep cells sit on the pit floor (z ~-990, E ~0). So the
+  energy is lost to impacts in the bowl, not to held brake keys. Its deepest cells (8.1%) are
+  slow north-slide variants that walked west for 25-30 s at z ~180-220 and fall onto *18.
+* `pb_r26` (princessburglar 9/9, never saw this map; record_ckpt from the true start, 3 greedy
+  + 9 stochastic): no dive. All 12 episodes drop south-west onto a ledge at z ~510-590 near
+  (-2350, -2600) and die there (2.1-3.2%, 6.5-15 s) - the spot the control's 50M eval died on,
+  right under the record's pit-exit corridor (the record passes (-2488, -2603) at z 584; the
+  pit's catch *7 reaches z 577). A warm surfer is no shortcut through the start.
