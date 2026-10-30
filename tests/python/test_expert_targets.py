@@ -660,3 +660,11 @@ def test_refine_arch_archive_rules(tmp_path):
     assert [ra.schedule(i, 0, 6, 6, fr, ck)[0] for i in range(6)] == [0, 1, 2, 3, 4, 5]
     assert ra.schedule(0, 0, 6, 6, fr, ck) == (0, 0.8, "r28")
     assert ra.schedule(5000, 1, 6, 6, fr, ck) == ((5000 + 3) % 6, fr[5 % 3], "r38")
+    # --beam-extra: appended after the fixed flags, so a repeated flag overrides; default none
+    src = (ROOT / "tools" / "refine_arch.py").read_text(encoding="utf-8")
+    assert 'ap.add_argument("--beam-extra", default="",' in src
+    assert '*BEAM, *shlex.split(a.beam_extra), "--prefix-line"' in src
+    import argparse
+    p = argparse.ArgumentParser()
+    p.add_argument("--elite-frac", type=float, default=0.25)
+    assert p.parse_args(["--elite-frac", "0.0625", "--elite-frac", "0.25"]).elite_frac == 0.25

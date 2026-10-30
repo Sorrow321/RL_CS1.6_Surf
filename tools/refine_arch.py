@@ -32,6 +32,7 @@ import hashlib
 import itertools
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -108,6 +109,10 @@ def main(argv=None):
     ap.add_argument("--fracs", default=FRACS, help="junction fractions of a base line's ticks")
     ap.add_argument("--worker", type=int, default=int(os.environ.get("ARCH_WORKER", "0")))
     ap.add_argument("--seed0", type=int, default=41000, help="attempt i draws seed seed0 + i")
+    ap.add_argument("--beam-extra", default="",
+                    help="beam_tas flags appended after the fixed ones, one string; a repeated flag "
+                         "overrides (pbx 2026-10-30: '--elite-frac 0.25' for a policy whose "
+                         "1/16-elite populations die together, as the loop runs it)")
     a = ap.parse_args(argv)
     out = Path(a.out) if Path(a.out).is_absolute() else ROOT / a.out
     out.mkdir(parents=True, exist_ok=True)
@@ -141,7 +146,8 @@ def main(argv=None):
         jt = int(frac * int(base["ticks"])) // k * k
         d = out / f"a{i:03d}"
         cmd = [sys.executable, "-u", str(ROOT / "tools" / "beam_tas.py"), ck, "--map", a.map,
-               *BEAM, "--prefix-line", f"{base['npz']}:{jt}", "--seed", str(a.seed0 + i),
+               *BEAM, *shlex.split(a.beam_extra), "--prefix-line", f"{base['npz']}:{jt}",
+               "--seed", str(a.seed0 + i),
                "--torch-seed", str(a.seed0 + i), "--out-dir", str(d)]
         t0 = time.time()
         with open(out / f"a{i:03d}.log", "w") as f:
