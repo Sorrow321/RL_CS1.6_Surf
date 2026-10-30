@@ -25,3 +25,63 @@ the numbers). Read it before you start; append to it before you wrap up.
   spawn file, a spine, a target sequence, a BC set or a reward constant.
 
 ## Round log
+
+### uf2r1b3, round 1 - 2026-10-30 21:55 UTC: first look (no box yet; the fleet was at its burn limit)
+
+* **What kills the potential-following line (measurement, from the BSP).** trigger_teleport *18
+  (-> recomeco, the spawn) is a slab at z 160..161 over x -3456..-896, y -2400..-448: the floor of
+  the whole region between the start pit and the course north of it. The goal field (goalc_32)
+  is built over free voxels and routes THROUGH it: its steepest descent from the spawn runs east
+  of the pit, (-1520,-2128,336) -> (-1168,-1616,176) -> (-1072,-1104,80) -> north. A policy that
+  follows it reaches (-1340,-990,183) = d 27,807 = **9.27 % on the grader** and is teleported.
+  That is the "north dead end" of September's stage-1 arms, and every scratch run's first local
+  optimum here: a branch scoring ~9.3 has learned the field, not the map. The record dives past
+  the slab's far-west edge (x < -3,456) with ~1,200 u/s after the pit pump. *7 (recomeco) is the
+  pit's own fall catch (brush-shaped; the core tests brush containment, not the AABB).
+* **The field inside the pit points the right way.** Descents from the record's pit points go up
+  the pit's south ramp to the upper level (z ~528, d ~29,700) and then west/north-west, i.e. a
+  ratchet episode SPAWNED in the pit (b_0 = its own d, ~32-34k) is paid for climbing out along
+  the record's exit. Only the dive itself (start -> pit) is unpaid.
+* **explore_phase1, the pbf config, locally (3 min, 2 threads, 0.13M ticks/s ~ 1/10 of a box):**
+  300k cells, best 5.1 % (the east route, depth 6.8 s), z min -998. Along the record's path the
+  best same-motion energy height is at the record's level to t 2.5 s (1,169 vs 1,295) and then
+  collapses in the bowl: 306 at t 3.0 (record 1,204), -140..-399 at t 3.5-5.0, nothing within
+  200 u of the record from t 7.5 on. The direct drop from the platform reaches the upper level
+  (z 485-587) at |v| 394-644 (E 645-707) against the record's 920-1,100: the pit pump is the
+  missing speed. Same failure as October's go_cem. Box-scale compute is the open question.
+* **tools/ge_spawns.py** (new, test tests/python/test_ge_spawns.py): archive -> --spawn-states,
+  the most energetic state per 64 u place (14,083 places from the 300k-cell smoke archive),
+  --watch re-converts atomically when the archive changes (the trainer re-reads the file on an
+  mtime change every 20 iterations), so a search can run beside the trainer on the same box.
+* **Plan for the first box:** explore_phase1 (pbf config, 10 ms, ~12 threads) from the true spawn
+  + ge_spawns --watch + the scratch incumbent recipe with --spawn-states (frac 0.3). Read: does
+  the archive leave the pit; does training from pit states climb out; does the start line follow.
+
+### uf2r1b3 - 2026-10-30 22:52 UTC: the explorer and the bowl (local CPU; still no box)
+
+* **More search does not cross the bowl.** explore_phase1 (pbf config + --no-brake), 12 min
+  local (~4x the 3-min smoke): along the record's path the best same-motion energy height is now
+  AT the record's level right up to the bowl - 1,252 at the record's t 2.5 s point (record
+  1,295, |v| 1,715 vs 1,686) - and still collapses within the next 0.5 s: 276 at t 3.0 (record
+  1,204), 16 at t 3.5. Nothing within 200 u of the record from t 8.0 on. 430k cells, best 5.6 %.
+* **--no-brake** (new, explore_phase1): bursts never hold keys whose wish direction points
+  against the velocity (GoldSrc air accel brakes up to 250 u/s per tick there; the record's first
+  15 s never do, 57-72 % of its ticks sit in the 89-91 deg strafe window). Small gain before the
+  bowl (3-min A/B: 1,302/1,278/1,252/1,190/1,151 vs 1,286/1,289/1,239/1,119/1,169 at t
+  0.5-2.5), no effect in it.
+* **--surf-hold P** (new): a surfing burst presses the strafe key INTO the surfable plane it
+  touched, view on the velocity. Fires on only ~4 % of decisions here; no effect on the bowl
+  (3-min A/B: 157 at t 3.0). Kept, default off.
+* **Why (bench from the record's own states, MEASUREMENT ONLY, scratchpad bowl_bench.py):** from
+  its t 2.5 s state, 0.05 s before the bowl contact, "no keys" crashes to E 128 within 0.1 s,
+  "hold A" to 193, "hold D" keeps 1,301-1,312 (and dies ~0.4 s later without the next
+  manoeuvre); the record's own keys + yaw replayed open loop keep ~1,150-1,200 for 0.5 s, then
+  diverge (10 ms vs its 7-8 ms frames). D here steers AWAY from the bowl wall it is about to hit,
+  so it meets the curve tangentially: an anticipation, not "press into what you touch". The pit
+  pump is a chain of such 0.1 s knife-edges - closed-loop control. A random burst picks the right
+  key at the right tick rarely, and a chain of them almost never, which is why every archive
+  (October's, this one) arrives at the bowl at record energy and stops there.
+* **Consequence for the plan:** use the archive for what it does well - coverage up to the bowl
+  at near-record energy - and let RL learn the closed-loop part from those spawns, with per-call
+  energy shaping (--energy-pot K --energy-pot-front 0 --energy-pot-front-bonus 0) so a crash in
+  the bowl costs at the tick it happens (K 8: a 1,000 u crash = -8, the progress reward of 2,450 u).
