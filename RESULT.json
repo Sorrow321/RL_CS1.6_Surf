@@ -1,7 +1,5 @@
-{
- "agent": null,
- "round": 0,
- "final": false,
- "best": null,
- "summary": "surf_unitfarmer2 lineage: no result yet"
-}
+{"agent": "uf2r1b2", "round": 1, "final": false,
+ "best": {"score": 5.687, "eval_file": "/home/steam/ar_uf2/runs/uf2r1b2/uf2r1b2_ctl/traj_0151519232.jsonl",
+          "run": "uf2r1b2_ctl", "step": 151519232, "ckpt": "/home/steam/ar_uf2/runs/uf2r1b2/uf2r1b2_ctl/ckpt_latest.pt",
+          "recipe": ["incumbent_recipe (config.json), from scratch"], "resume_from": null, "commit": "a88a414e"},
+ "summary": "Round 1, from scratch. Control (incumbent recipe) at 151M: 9/9 greedy episodes slide down the start ramp at ~1,130 u/s into kill sheet *18 (z 160) at 4.4 s, 5.7% - the north-slide family of traps, not the pit. Go-Explore with the pbf flags (15 min, 631k cells) never leaves the pit: chains reach the pit floor ~800 u of energy height below the record. Cause found: uniform keys under --view-follow wish backward half the time = a 250 u/s/tick air brake; new explore_phase1 --view-follow-nobrake (commit 19ae2856, tested bit-identical off) is searching now. Next: if it finds a pit exit, a backward curriculum on that line from scratch."}

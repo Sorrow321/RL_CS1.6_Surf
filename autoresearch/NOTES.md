@@ -25,3 +25,48 @@ the numbers). Read it before you start; append to it before you wrap up.
   spawn file, a spine, a target sequence, a BC set or a reward constant.
 
 ## Round log
+
+## uf2r1b2 (round 1, slot 2) - 2026-10-30 21:40 UTC start
+
+Box 58455373 (RTX 4080 SUPER, EPYC 7K62, 96 threads visible but a 30.7-CPU cgroup quota),
+0.41 $/h, rented 21:44 UTC.
+
+### The start, measured (22:00 UTC; the record as a YARDSTICK only)
+* The record on config.field (d0 30,647.5): 1.7% at the platform's south edge (t 2.5 s from the
+  spawn), down to **-7.3%** at the pit bottom (t 5.5 s, z ~-800, |v| 1,800, E ~1,200), back to
+  1.3% at t 8.0, 3.7% at t 9.0, 5.3% at t 9.5 (z 342, 1,123 u/s), 7.5% at t 10.5 (-2969, -1306,
+  483). E = z + |v|^2/1600 stays 1,050-1,360 through the pit.
+* **The floor under the start is a teleport**: trigger_teleport *18 -> recomeco is a sheet at
+  z 160-161 over x -3456..-896, y -2400..-448. Everything that leaves the platform north or east
+  without the pit's speed falls onto it (the September "north slide" ends there too). The
+  record crosses that region at z ~340-580. The field cannot see it (it lets the player float
+  over the sheet), so the field's arrows point down the start ramp, into the sheet.
+* trigger_teleport *7 (bbox x -2880..-1472, y -3936..192, z -1024..577) is the pit's catch; the
+  pit floor kills at z ~-990.
+
+### Control: the incumbent recipe from scratch (uf2r1b2_ctl, 4e8 steps, evals every 50M)
+* Evals 2.85 (0.5M) / 5.26 (50M) / 5.66 (101M) / **5.69 (151M)**. At 151M all 9 greedy episodes
+  are one line: down the start ramp at ~1,130 u/s (Emax 1,340: it strafes), into sheet *18 at
+  t 4.4 s at (-1600, -2022, 181), 5.7%. At 50M half of them still died on a ledge at z ~540-590
+  (2.7-3.2%). Never the pit.
+
+### Go-Explore from the true spawn (pbf flags, 10 ms) never leaves the pit (uf2r1b2_ge1)
+* `explore_phase1 --exact-chains --cell 64 --cell-energy 32 --cell-heading 1
+  --view-follow=-90,-60,-30,-15,0,15,30,60,90 --select-energy 3 --act-every 4 --decisions 100
+  --maxvel 3500 --envs 4096`, 15 min (0.7M ticks/s: the archive bookkeeping is single-thread
+  Python, ~11 cores busy of 30): 631k cells, 10.3M runs, no goal. 89% of the archive is in the
+  pit (progress < -1%).
+* Deepest cell 5.81% (and 28,002 u on the corner-cutting field at the end): a slow walk east of
+  the platform -> a ledge at z 548 -> a floor at z ~300 -> north at 40-320 u/s, falling into
+  sheet *18 at (-1919, -1847). The north-slide family again, at E ~350.
+* Chains that dove below -5% and came back above -3%: max E **26**. The deep pit cells (progress
+  -12..-5%) are at z ~-990 with |v| 1,370-1,500, E 170-410: ~800 u of energy height below the
+  record's ~1,200 in the bowl. Random search is energy-bound in the pit, as in October.
+* WHY (core physics, tests/python/test_ge_nobrake.py): under --view-follow the held keys keep
+  one wish angle beta to the velocity for the whole hold (0.8 s on average at 95% repeat).
+  GoldSrc's air acceleration adds min(250, 30 - v.wishdir) u/s per tick along the wish: beta <=
+  ~88 deg does nothing, beta = 90 is the strafe (a gain), beta > 90 is a brake of up to 250 u/s
+  PER TICK. Uniform keys x the offset list wish backward about half the time.
+* New: `explore_phase1 --view-follow-nobrake` (commit 19ae2856): such a draw presses the
+  opposite keys (beta -> beta - 180); no extra random draw, so off is byte-identical (tested
+  against HEAD's explorer). Physics only: no map constant.
