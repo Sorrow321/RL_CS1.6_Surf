@@ -334,3 +334,11 @@ file without a word. Workaround: scp the padded file myself, md5-checked against
   (`--demo-success-energy 150`); `--demo-milestones 28588` keeps the trough route's old success
   line paying 50, so a pump first is +50 on top of the route. Resumed from tcq's 900.7M
   snapshot, with GE8's trough spawns (30%) and per-call energy K 8 kept.
+* **tcpump result (900.7M -> 1.3B): 8.199 (1,153M), the round's best.** Evals 8.01 / 7.82 / 7.66
+  / 7.87 / 7.89 / **8.20** / 8.06 / 7.96. The energy-rule curriculum walked from the spine's end
+  (row 3,102) to row 1,692 at 96-98% success (the policy pumps from mid-pump states to E >= 855).
+  The greedy from the true start does NOT pump yet (6 s runs; the curriculum has not reached the
+  pump's start at row 447): its gain is a further-west exit (x ~-2,900 vs -2,800) learned from
+  high-energy states. Hand-off ckpt_1152385024.pt (md5 865bf7f9), pulled by hand.
+* tcpump2 (03:02 UTC): tcpump's final (1.3B) + the same flags + `--demo-tau0 1692` (the
+  curriculum position is not in the checkpoint), 4e8.
