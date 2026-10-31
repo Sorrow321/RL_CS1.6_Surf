@@ -364,7 +364,7 @@ Box 58559243: RTX 5080 + Ryzen 9 7945HX (32 threads), 0.387 $/h, South Carolina 
 * GE-5 (20:47 UTC, 12 threads, 20 min): rooted at the 16 recorded states with h > -2,200 (all in
   loop 2; runs/ge/roots5b.npy) - the loop-2 exit, to extend the route like GE-4 should have.
 
-### Why the greedy's start is a coin flip: the route punishes the quick exit (20:55 UTC)
+### Why the greedy's start is a coin flip: the route punishes the quick exit (20:49 UTC)
 * In the recorded 2.79B greedy, ep_0001 leaves the start ramp for the half-pipe at **7.2 s** with
   h -2,861 (the record enters the half-pipe at ~7 s too); ep_0004 only at 72.7 s (h -2,755);
   ep_0000 never (h max -2,808). The GE-1 line the route is built on pumps in the ramp until 17 s.
