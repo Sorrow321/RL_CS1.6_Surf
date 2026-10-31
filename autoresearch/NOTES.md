@@ -523,7 +523,7 @@ on purpose: round 1 needs an exit, and the attribution comes after. Read with uf
   So the 9.6B snapshots are NOT pulled, and the hand-on for the 118.550 eval stays
   ckpt_8819048448 (the newest pulled snapshot at or before it; PROTOCOL's rule) - 1 s slower,
   reliable. RESULT.json says so.
-* **FIXED (b7e1b0f8 + this note): the loop could never hand back a FINISHING line.** Two defects:
+* **FIXED (58574f32): the loop could never hand back a FINISHING line.** Two defects:
   `beam_tas --save-frontier` wrote `beam_frontier.npz` only when the search did NOT cross (a beam
   that finished left auto_spine no line: search 5's `{"beam_rc": 0}` with no frontier fields), and
   `de < greedy_d - gain` rejects every line, a finisher included, once the greedy is within

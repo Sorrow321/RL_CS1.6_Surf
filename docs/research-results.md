@@ -37000,3 +37000,6 @@ surf_unitfarmer2's `ckpt_8819048448` the patched beam finished in 43.18 s (bit-e
 finishes in 4,096 envs), saved 5,632 states (end d 0), and `auto_spine` handed it back at
 greedy_d 177 / gain 500 and refused it at greedy_d 0. Flag-off behaviour is unchanged
 (`--save-frontier` off writes nothing new; a no-crossing search is untouched).
+
+CORRECTION to the section above (appended, 2026-10-31 05:58 UTC): the fix is commit **58574f32**,
+not b7e1b0f8, and the section was written at 05:56 UTC, not 06:20.
