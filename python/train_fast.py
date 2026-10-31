@@ -6598,6 +6598,13 @@ def main() -> None:
                          "energy height |v|^2 / (2 g) / 1000 of that state - the speed brought to "
                          "the frontier; dying before the band forfeits it, so no stretch is ever "
                          "cheaper to die on. A checkpoint restores it. 0 = the per-call potential")
+    ap.add_argument("--energy-pot-rel", type=float, default=None,   # 0 = off
+                    help="with --energy-pot: KAPPA > 0 replaces its K on every training slot by "
+                         "KAPPA x 1000 x the slot's progress scale (100 / d0 x --race-shaping), so "
+                         "one unit of energy height h = z + |v|^2 / (2 g) is shaped like KAPPA "
+                         "units of geodesic progress on ANY map (K 3 is 0.19 of that on a 6.4k u "
+                         "map and 0.92 on a 30k u one). A checkpoint restores it. 0 = off (K as "
+                         "given)")
     ap.add_argument("--surf-bonus", type=float, default=None,     # 0 = off
                     help="race (round 40, pnSURF): REWARD UNITS PER SECOND "
                          "paid while the player is riding a surfable face. "
@@ -8011,6 +8018,9 @@ def main() -> None:
         if args.energy_pot is None and ck_cfg.get("energy_pot") is not None:
             args.energy_pot = float(ck_cfg["energy_pot"])
             restored.append(f"energy_pot={args.energy_pot:g}")
+        if args.energy_pot_rel is None and ck_cfg.get("energy_pot_rel") is not None:
+            args.energy_pot_rel = float(ck_cfg["energy_pot_rel"])
+            restored.append(f"energy_pot_rel={args.energy_pot_rel:g}")
         if args.energy_pot_front is None and ck_cfg.get("energy_pot_front") is not None:
             args.energy_pot_front = float(ck_cfg["energy_pot_front"])
             restored.append(f"energy_pot_front={args.energy_pot_front:g}")
@@ -9473,6 +9483,12 @@ def main() -> None:
         raise SystemExit("--energy-pot K needs K >= 0 (0 = off)")
     if args.energy_pot > 0.0 and args.reward != "race":
         raise SystemExit("--energy-pot is a race-reward term: it needs --reward race")
+    if args.energy_pot_rel is None:
+        args.energy_pot_rel = 0.0
+    if args.energy_pot_rel < 0.0:
+        raise SystemExit("--energy-pot-rel KAPPA needs KAPPA >= 0 (0 = off)")
+    if args.energy_pot_rel > 0.0 and not args.energy_pot > 0.0:
+        raise SystemExit("--energy-pot-rel rescales --energy-pot: it needs --energy-pot K > 0 on")
     if args.energy_pot_front is None:
         args.energy_pot_front = 0.0
     if args.energy_pot_front > 0.0:
@@ -13848,6 +13864,14 @@ def main() -> None:
             _s.reward_fn.speed_pot = float(args.speed_pot)
             # --energy-pot: the same, on z + |v|^2 / (2 g) (reward units per 1000 u)
             _s.reward_fn.energy_pot = float(args.energy_pot)
+            if args.energy_pot_rel > 0.0:
+                # --energy-pot-rel: K in the slot's own progress units (KAPPA x 1000 x scale)
+                _s.reward_fn.energy_pot = (float(args.energy_pot_rel) * 1000.0
+                                           * float(_s.reward_fn.scale))
+                print(f"--energy-pot-rel {args.energy_pot_rel:g}: energy K = "
+                      f"{_s.reward_fn.energy_pot:.3f} on {_s.name} "
+                      f"(scale {_s.reward_fn.scale:.6g}/u; 1 u of h = {args.energy_pot_rel:g} u "
+                      f"of progress)")
             _s.reward_fn.en_front_bonus = bool(args.energy_pot_front_bonus)
             # --stall-energy: the stall clock also re-arms on energy records (u of h)
             _s.reward_fn.stall_energy = float(args.stall_energy)
@@ -14611,6 +14635,8 @@ def main() -> None:
                           if args.reward == "race" and args.stall_energy else {}),
                        **({"energy_pot_front": float(args.energy_pot_front)}
                           if args.reward == "race" and args.energy_pot_front else {}),
+                       **({"energy_pot_rel": float(args.energy_pot_rel)}
+                          if args.reward == "race" and args.energy_pot_rel else {}),
                        **({"energy_pot_front_bonus": int(args.energy_pot_front_bonus)}
                           if args.reward == "race" and args.energy_pot_front_bonus else {}),
                        "surf_bonus": (args.surf_bonus
