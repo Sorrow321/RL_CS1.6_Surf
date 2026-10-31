@@ -355,3 +355,11 @@ Box 58559243: RTX 5080 + Ryzen 9 7945HX (32 threads), 0.387 $/h, South Carolina 
   --energy-ratchet 1 --fail-pen 2 --yaw-sigma-max 0.3 --keys-hold-spawn-duck`. Not yet run from
   scratch as one launch: the A6 lineage reached it in steps (arc + spawns at 0, the tail at
   1.38B, a two-round GE line to 12.77% instead of one 12-min search to 9.48%).
+* A6c 2.21-2.74B scores: 18.251, 21.671, 20.475, **22.404 (2.44B, median 22.1%)**, 22.029, 20.975,
+  0.000 (2.66B, start ramp), 20.553: medians now 20-22% (most greedy episodes in loop 2), the
+  frontier creeping 21.4 -> 22.4%. Snapshot pulled: runs/zlr1b2_arc3/ckpt_2788163584.pt.
+* record_ckpt of that snapshot (6 x 150 s, no eval patience): only 2/6 leave the start ramp
+  (20.5% with h -1,107; 16.2%), 4/6 pump in the ramp for 97-150 s (h ~-2,800): the start-ramp ->
+  half-pipe transition is the weak gate, not loop 2.
+* GE-5 (20:47 UTC, 12 threads, 20 min): rooted at the 16 recorded states with h > -2,200 (all in
+  loop 2; runs/ge/roots5b.npy) - the loop-2 exit, to extend the route like GE-4 should have.
