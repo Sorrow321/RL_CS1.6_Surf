@@ -782,3 +782,26 @@ Incumbent: uf2r1b1's ckpt_13045858304 (118.592: 9/9, best 42.25 s; record 35.17 
   REAL finishes to score them. Real finishes are also box finishes, so a fast real-finishing
   policy beats the incumbent under either grader. Everything here now targets real finishes:
   the next searches and the BC rows run on the fixed core.
+* **The policy's own proposals do not finish for real** (CPU beam on the FIXED core, 96 envs, dh,
+  13:16-13:31 UTC): the population reaches the box region (field d 0) at 41.40 s and all 96
+  lineages die by tick 5,800, none in the hull. Its final approach: (2,017, -1,147, -817) at 40.2 s
+  -> (3,279, -1,829, -601) at 41.3 s, descending (vz -246). The record's (analysis only): (3,007,
+  -1,915, -450) -> (3,169, -2,019, -471) -> the hull at (3,332, -2,123, -509), where the west face
+  meets the diagonal - 60-90 u higher and ~300 u further south. The finish platform's floor is z
+  -640 on a solid block, so the policy's line meets the block's side below the platform: the real
+  finish needs a higher, more southern final approach (round 1's "~230 u of energy short" off the
+  last ramp). Round 1's policy learned the last 141 u of height under the box by itself once the
+  reward paid for it; on the fixed core the finish bonus pays only real entries.
+* Plan for the box (fixed core, built by the box from this branch): (1) a GPU beam (4,096 x 2
+  waves) on the incumbent - if any real line exists, distil it and launch the resume with BC +
+  --auto-bc; (2) otherwise launch the incumbent's own continuation on the fixed core (A13's
+  reward: the k02 spine at tau 0 + its keys + the 7 milestones) and let --auto-bc pick up real
+  lines once the policy makes them (it needs a BC file to start: a relaunch then).
+
+## Harness issue (uf2r2b2, 2026-10-31): score.py counts box finishes
+score.py reads "done" from each episode's trailer, i.e. whatever goal test the core that wrote the
+eval used. Every eval written before commit 4963372f (the round-1 incumbent's included) used the
+trigger's BOUNDING BOX; on surf_unitfarmer2 those finishes are not finishes in the game (0/9 of the
+incumbent's 118.592 eval enter the trigger's clip hull). `surfgym.zones.hull_probe(bsp)(23, origins)`
+re-checks a recording: an episode finished only if some row's origin is inside model *23's hull
+(the end trigger's model index comes from the BSP entity whose model bounds are zones.json's end).
