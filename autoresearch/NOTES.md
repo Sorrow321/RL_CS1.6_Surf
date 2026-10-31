@@ -396,3 +396,8 @@ on purpose: round 1 needs an exit, and the attribution comes after. Read with uf
   (1,586, 481, -726)) - dying on the `*12` floor at z ~-1,640; 2/9 still at 57%, 3/9 early (9%,
   9%, 23%). Search 2 (169 s): no new spine (beam 12,994 vs greedy 13,013). Hand-on:
   ckpt_6030360576 (16M before; md5 1786148f...).
+* A12 6,122M: 66.043 (median 62.3%); **6,197M: 68.707** (best 68.7%, median 67.9%): 9/9 past the
+  57% gate; 7/9 at 67.0-68.7% round (870..1,280, 1,560..1,880, z ~0) at ~37 s, then down onto the
+  `*12` floor (z ~-1,640). Hand-on: ckpt_6176112640 (21M before; md5 9e2ddd98...). **Training
+  reaches the end zone**: the reservoir's deepest state 5.50% of d0 = **94.5% progress**,
+  front-perturb best 29,204 u (95.3%); training reward 186/ep.
