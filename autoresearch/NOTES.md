@@ -692,3 +692,12 @@ loop (search -> distil) inside one scored run. tests/python/test_bc_reload.py.
   discounted shaping of any episode is -Phi(spawn). Tested (tests/python/test_energy_pot_ng.py).
   Plan: the first box arm resumes the incumbent with it (everything else as A13), then the
   expert side loop (BC on the policy's own beam lines) on top.
+
+### --respawn-greedy-plateau (10:50-10:55 UTC, commit 5f22673f)
+The greedy-line pool (`--respawn-greedy 0.25`, restored from the checkpoint) only harvested FAILED
+greedy episodes: for a 9/9 policy it is empty, its spawn share idle. New `--respawn-greedy-plateau
+SECS N` (default off): N evenly spaced states of every >= SECS stretch in which a greedy episode
+(finished ones too) set no new progress record. On the incumbent's line at 1.5 s it returns
+exactly the two time sinks found by hand - the pit's extra lap (1.66-11.24 s) and the bowl loop
+(29.9-32.3 s); at 1.0 s also a 1.25 s stall at 48.9%. Held for a later arm: in the first one,
+BC on the policy's own (two-lap) beam lines would pull against exploration in the pit.
