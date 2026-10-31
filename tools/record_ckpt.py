@@ -1233,6 +1233,13 @@ def main(argv=None, build_only: bool = False, device=None):
             print(f"--race-field-blur {float(cfg['race_field_blur']):g} mirrored "
                   "(the potential channel renders the blurred field)")
         core.set_goal_box(zones["end"]["mins"], zones["end"]["maxs"])
+        if cfg.get("goal_hull"):
+            # --goal-hull mirrored: the finish is the trigger model's clip hull (the engine rule)
+            from surfgym.zones import goal_trigger_model
+            _gm = goal_trigger_model(str(core.bsp_path), zones["end"])
+            if _gm >= 0:
+                core.set_goal_model(_gm)
+                print(f"--goal-hull mirrored: the finish is brush model *{_gm}'s clip hull")
         if cfg.get("goal_field_file"):
             # --goal-field-file: MIRRORED for what the policy SEES. The trainer's potential
             # channel, compass, pot-rate and ratchet gap all read the shaping field the file
@@ -2752,6 +2759,11 @@ def main(argv=None, build_only: bool = False, device=None):
             tick_ms=tick_ms)
         _sc.set_teleport_fail(True)             # eval parity, like the recorded core
         _sc.set_goal_box(zones["end"]["mins"], zones["end"]["maxs"])
+        if cfg.get("goal_hull"):
+            from surfgym.zones import goal_trigger_model
+            _gm = goal_trigger_model(str(_sc.bsp_path), zones["end"])
+            if _gm >= 0:
+                _sc.set_goal_model(_gm)
         _sl = MultiLine(_sc.num_envs, device=device, **({"offsets": _fan} if _fan else {}))
 
         # the SAME factory that built the recorded policy - not type(_pol): under --exec-temp /

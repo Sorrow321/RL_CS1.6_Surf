@@ -2418,6 +2418,12 @@ def main():
 
     def arm(core):
         core.set_goal_box(zones["end"]["mins"], zones["end"]["maxs"])
+        if cfg.get("goal_hull"):
+            # --goal-hull mirrored: the finish is the trigger model's clip hull (surf_set_goal_model)
+            from surfgym.zones import goal_trigger_model
+            _gm = goal_trigger_model(str(core.bsp_path), zones["end"])
+            if _gm >= 0:
+                core.set_goal_model(_gm)
         if cfg.get("teleport_fail") or cfg.get("reward") == "race":
             core.set_teleport_fail(True)
         core.set_spawn_pool(pool)

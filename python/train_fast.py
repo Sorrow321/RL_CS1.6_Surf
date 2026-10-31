@@ -1326,6 +1326,30 @@ def widen_for_route(ck, policy, flag="--route"):
     return n
 
 
+_GOAL_HULL_MODELS = {}
+
+
+def arm_goal_hull(core, bsp, box, on) -> int:
+    """--goal-hull: after set_goal_box, make the finish the trigger model's clip hull
+    (core.set_goal_model) when a trigger model has exactly the zone's box; -1 (the box stays)
+    otherwise or when the flag is off. One lookup and one line of log per map."""
+    if not on or box is None:
+        return -1
+    key = str(bsp)
+    if key not in _GOAL_HULL_MODELS:
+        from surfgym.zones import goal_trigger_model
+        m = goal_trigger_model(key, box)
+        _GOAL_HULL_MODELS[key] = m
+        print(f"--goal-hull: {Path(key).stem}: the finish is brush model *{m}'s CLIP HULL at "
+              f"tick end (the engine's trigger rule; the box is its precheck)" if m >= 0 else
+              f"--goal-hull: {Path(key).stem}: no trigger model has the finish box - the box "
+              "stays the goal")
+    m = _GOAL_HULL_MODELS[key]
+    if m >= 0:
+        core.set_goal_model(m)
+    return m
+
+
 #: Config keys that fix a checkpoint's TENSOR SHAPES, with the flag that
 #: sets each. Every one is restored from the checkpoint when its flag is
 #: absent (the arg defaults to None), so a mismatch only ever happens when
@@ -7640,6 +7664,18 @@ def main() -> None:
                          "the goal graph so the shaping gradient routes "
                          "around kill zones instead of through them (eval "
                          "progress still measured on the standard field)")
+    ap.add_argument("--goal-hull", type=int, default=None, choices=(0, 1),   # 0 = off; ckpt restores
+                    help="the finish fires on the finish TRIGGER MODEL'S CLIP HULL at the tick's "
+                         "end position (surf_set_goal_model: the engine's SV_TouchLinks rule, the "
+                         "test the core runs for teleports and hurts), with the zone box only its "
+                         "precheck - instead of the swept hull-inflated box. The model is the "
+                         "trigger whose bounds are the zone's own box (surfgym.zones."
+                         "goal_trigger_model); a map whose finish is a button box keeps the box. "
+                         "surf_unitfarmer2's finish is three thin curtains: the box's north-west "
+                         "corner, where every finish of the lineage before this flag landed, is "
+                         "nothing to the game (uf2r2b4, 2026-10-31). The trainer's AND the eval "
+                         "cores use it; record_ckpt / beam_tas mirror it from the config. "
+                         "Off = the box, byte-identical; config only when on")
     ap.add_argument("--race-no-corner-cut", type=int, default=None,
                     choices=(0, 1),                # 0 = off; ckpt restores
                     help="the SHAPING field is the goal graph WITHOUT corner cutting "
@@ -8364,6 +8400,9 @@ def main() -> None:
                 and ck_cfg.get("race_no_corner_cut") is not None):
             args.race_no_corner_cut = int(ck_cfg["race_no_corner_cut"])
             restored.append(f"race_no_corner_cut={args.race_no_corner_cut}")
+        if args.goal_hull is None and ck_cfg.get("goal_hull") is not None:
+            args.goal_hull = int(ck_cfg["goal_hull"])
+            restored.append(f"goal_hull={args.goal_hull}")
         if (args.respawn_reservoir is None
                 and ck_cfg.get("respawn_reservoir") is not None):
             args.respawn_reservoir = int(ck_cfg["respawn_reservoir"])
@@ -9439,6 +9478,8 @@ def main() -> None:
                          "--race-kill-aware or --race-dist euclid")
     if args.race_no_corner_cut is None:
         args.race_no_corner_cut = 0
+    if args.goal_hull is None:
+        args.goal_hull = 0
     if args.race_no_corner_cut and (args.race_ground or args.race_dist == "euclid"
                                     or args.goal_field_file):
         raise SystemExit("--race-no-corner-cut bakes the 3-D geodesic shaping field: not "
@@ -11682,6 +11723,7 @@ def main() -> None:
             if reward_field is None:
                 reward_field = goal_field
             core.set_goal_box(goal_box["mins"], goal_box["maxs"])
+            arm_goal_hull(core, _bsp, goal_box, args.goal_hull)
             if args.keep_teleports:
                 print("race mode forces the teleport-ends-episode rule "
                       "(--keep-teleports ignored: fallers respawn at start)")
@@ -12456,6 +12498,7 @@ def main() -> None:
             ec.set_teleport_fail(True)
         if slot.goal_box is not None:
             ec.set_goal_box(slot.goal_box["mins"], slot.goal_box["maxs"])
+            arm_goal_hull(ec, slot.bsp, slot.goal_box, args.goal_hull)
         ec.set_spawn_pool(slot.plat_pool)
         slot.eval_core = ec
 
@@ -12646,6 +12689,7 @@ def main() -> None:
             # held-out map, so --race-kill-aware has nothing to mask here
             hs.goal_field = hs.reward_field = gf
             ec.set_goal_box(hs.goal_box["mins"], hs.goal_box["maxs"])
+            arm_goal_hull(ec, ec.bsp_path, hs.goal_box, args.goal_hull)
             if not args.keep_teleports:
                 ec.set_teleport_fail(True)
             raw = map_spawn_pool(ec)
@@ -15020,6 +15064,9 @@ def main() -> None:
     if args.race_no_corner_cut:
         # written ONLY when set: a control run's config dump is unchanged
         meta["config"]["race_no_corner_cut"] = 1
+    if args.goal_hull:
+        # --goal-hull: written ONLY when set (the finish is the trigger model's clip hull)
+        meta["config"]["goal_hull"] = 1
     if args.bc_keys_engine:
         # --bc-keys-engine: written ONLY when set (a loss option of the BC term)
         meta["config"]["bc_keys_engine"] = 1

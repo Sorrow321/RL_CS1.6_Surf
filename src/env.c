@@ -27,6 +27,13 @@ typedef struct SurfSim {
      * speed) ends the episode as a completion */
     int32_t goal_enabled;
     float goal_mins[3], goal_maxs[3];
+    /* surf_set_goal_model (uf2r2b4, 2026-10-31): >= 0 = the finish is that brush model's CLIP
+     * HULL at the tick's end position - the engine's rule (SV_TouchLinks: the AABB is only the
+     * precheck), the trigger_contains test teleports and hurts already use - with the goal box
+     * as the precheck. -1 (the default) = the swept hull-inflated goal box, unchanged. On
+     * surf_unitfarmer2 the finish model is three thin curtains, so its box has an empty corner
+     * the game never fires in. */
+    int32_t goal_model;
     uint8_t* goal_hit;             /* per env: 1 on the tick it finished */
     uint8_t* pending_fail;         /* per env: force-fail on next step (Python
                                     * stagnation kill); consumed each step */
@@ -506,6 +513,7 @@ int32_t surf_abi_version(void) { return SURF_ABI_VERSION; }
 
 SurfSim* surf_create(const char* bsp_path, const SurfEnvConfig* cfg, char* err, int32_t errlen) {
     SurfSim* s = (SurfSim*)calloc(1, sizeof(SurfSim));
+    if (s) s->goal_model = -1;
     if (!s) return NULL;
     if (bsp_load(&s->map, bsp_path, err, errlen) != 0) { free(s); return NULL; }
     pm_init();                                 /* stuck table, before any parallel stepping */
@@ -586,6 +594,10 @@ void surf_set_goal_box(SurfSim* s, const float* mins, const float* maxs) {
     v3copy(s->goal_mins, mins);
     v3copy(s->goal_maxs, maxs);
     s->goal_enabled = 1;
+}
+
+void surf_set_goal_model(SurfSim* s, int32_t model) {
+    s->goal_model = (model >= 0 && model < s->map.nummodels) ? model : -1;
 }
 
 const uint8_t* surf_goal_hits(SurfSim* s) { return s->goal_hit; }
@@ -744,9 +756,24 @@ static void step_impl(SurfSim* s, const int32_t* actions, const float* view,
                 bmin[k] = s->goal_mins[k] - g_player_maxs[uh][k];
                 bmax[k] = s->goal_maxs[k] - g_player_mins[uh][k];
             }
-            /* pre-trigger positions: a fail teleport must not fake a finish
-             * by sweeping the respawn jump across the map */
-            if (seg_hits_box(prev_org, st->origin, bmin, bmax)) {
+            if (s->goal_model >= 0) {
+                /* the engine's rule at the tick's end position: player box vs goal box
+                 * precheck (bmin/bmax is that overlap in origin space), then the model's
+                 * clip hull (trigger_contains, as for teleports and hurts) */
+                const float* o = st->origin;
+                if (o[0] >= bmin[0] && o[0] <= bmax[0] && o[1] >= bmin[1] && o[1] <= bmax[1] &&
+                    o[2] >= bmin[2] && o[2] <= bmax[2]) {
+                    Trigger gt;
+                    memset(&gt, 0, sizeof gt);
+                    gt.model = s->goal_model;
+                    if (trigger_contains(&s->map, &gt, uh, o)) {
+                        complete = 1;
+                        s->goal_hit[i] = 1;
+                    }
+                }
+            } else if (seg_hits_box(prev_org, st->origin, bmin, bmax)) {
+                /* pre-trigger positions: a fail teleport must not fake a finish
+                 * by sweeping the respawn jump across the map */
                 complete = 1;
                 s->goal_hit[i] = 1;
             }

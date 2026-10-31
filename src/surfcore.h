@@ -200,6 +200,9 @@ SURF_API void surf_set_teleport_fail(SurfSim* s, int32_t enable);
 SURF_API void surf_get_touch(SurfSim* s, int32_t* counts, float* normals, float* points);
 SURF_API void surf_set_goal_box(SurfSim* s, const float* mins /*3*/,
                                 const float* maxs /*3*/);
+/* uf2r2b4 2026-10-31: model >= 0 = the finish is that brush model's clip hull at tick end
+ * (the engine's trigger rule; the goal box stays the precheck); -1 = the swept goal box. */
+SURF_API void surf_set_goal_model(SurfSim* s, int32_t model);
 /* Per-env view [num_envs]: 1 exactly on the batch tick that env crossed the
  * goal (already autoreset by the time the caller reads it). Valid until
  * surf_destroy; contents mutate every step. */

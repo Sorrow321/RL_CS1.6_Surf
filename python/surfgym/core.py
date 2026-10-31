@@ -861,6 +861,21 @@ class SurfCore:
             raise ValueError(f"goal box needs 3-vectors, got {lo} / {hi}")
         fn(self._handle(), (c_float * 3)(*lo), (c_float * 3)(*hi))
 
+    def set_goal_model(self, model: int) -> None:
+        """uf2r2b4 2026-10-31 (--goal-hull): model >= 0 = the finish is that brush model's CLIP
+        HULL at the tick's end position - the engine's trigger rule (SV_TouchLinks fires a brush
+        trigger only inside the model's clip hull; its AABB is just the precheck), the test the
+        core already runs for teleports and hurts - with the goal box kept as the precheck.
+        -1 = the swept goal box (the default). Requires a DLL with the export."""
+        fn = getattr(self._lib, "surf_set_goal_model", None)
+        if fn is None:
+            raise RuntimeError(
+                "this surfcore build predates surf_set_goal_model - "
+                "rebuild the core (build.ps1 / ./build.sh)")
+        fn.argtypes = [ctypes.c_void_p, ctypes.c_int32]
+        fn.restype = None
+        fn(self._handle(), int(model))
+
     @property
     def goal_hits(self) -> np.ndarray:
         """ZERO-COPY read-only uint8 view [num_envs]: 1 exactly on the batch
