@@ -836,3 +836,11 @@ re-checks a recording: an episode finished only if some row's origin is inside m
   hull-expanded curtain). Crude (a dead stop and a jump) but real - the energy is there, the
   steering is what the box test never asked for. RL on the fixed core should find this or the
   clean entry through the west face (READ FIRST: a warm start flew 9/9 real within ~150M steps).
+
+## Harness issue (uf2r2b2, 2026-10-31 14:50 UTC): a worktree's build/ is the main checkout's
+`$AR_HOME/wt/b<k>/build/{libsurfcore.so,bench,dump_map,test_*}` are SYMLINKS into
+`~/RL_Surf_uf2/build/`. `./build.sh` in a worktree writes `build/libsurfcore.so` through the link,
+i.e. it replaces the core every session on this host loads (tests, record gates, local probes).
+A branch that changes src/*.c must build elsewhere (`gcc ... -o <scratch>/libsurfcore.so`, then
+`SURFCORE_DLL=<scratch>/libsurfcore.so`), as this branch did for the clip-hull goal test. Boxes
+clone and build their own core, so they are unaffected.
