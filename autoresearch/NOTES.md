@@ -928,3 +928,15 @@ own best search line, for the spread gains BC on noisy beam lines (x1) could not
 x11's flags with spine = the 35.37 s real line (z0, 4,613 states), pace 0.02 0.3 (from the map start
 4,726 ticks = 36.25 s to d <= 100; the line 35.24 s), spawn states += z0-z2 (57,202). The loop:
 beam on the newest weights -> its best real line -> the pinned, pace-gated spine -> train ~45 min.
+* **x12: 9/9 real at 35.54 s = 118.815 (16.476B), and FASTER THAN THE HUMAN RECORD on the game clock.**
+  Evals (clip-hull grader): 16.098B 9/9 35.95 / 8/9 36.03 / 9/9 36.13 / 9/9 35.84 / 9/9 35.82 /
+  **16.476B 9/9 35.54 s (118.815)** / 9/9 35.80. Band paced success 78.5% (the tighter line bites).
+  Game clock (`autoresearch/analysis/uf2_game_clock.py`: the tick the player LEAVES the start
+  trigger's clip hull *16 -> the first tick inside the finish's clip hull *23, the unrecorded final
+  tick extrapolated): the 16.476B eval's nine = 34.761 / **34.753** / 35.267 / 35.236 / 34.807 /
+  35.290 / 35.297 / 35.167 / 35.021 s. The same measure on the record's demo (Fizz,
+  surf_unitfarmer2_wr.jsonl) reads **35.15 s** (operator: 35.14; official 35.17) - so the best
+  episode is 0.40 s under the record and 4 of 9 are under it. IN THE SIMULATOR: the core is a
+  GoldSrc movement reimplementation whose fidelity bugs have bitten twice (entity caps, the finish
+  box); a replay of this line in the real game is the confirmation that counts.
+  Hand-on for 118.815: ckpt_16467886080 (7.9M before; md5 1f602884; pulled).
