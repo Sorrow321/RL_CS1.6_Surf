@@ -179,3 +179,26 @@ Box 58559243: RTX 5080 + Ryzen 9 7945HX (32 threads), 0.387 $/h, South Carolina 
   `--int-real-only 1 needs --respawn-novel` -> `--int-real-only 0`. So this arm also loses the
   recipe's novel rows and goal-anchored rows (they were 30% of the non-start pool).
 * Box extended to 20:15 UTC. GE-2 (rooted in the half-pipe) runs beside it until ~18:32.
+* A4 result (stopped at 283M, 18:26 UTC): greedy 76 / 151 / 227M patience-cut 9 / 8 / 6, idling on
+  the platform (peak 156-203 u/s); best 0.70. Spine success by decile at ~150M: 0% from rows
+  0-90%, 19% from the last 10% (in the half-pipe, 2-3 s from the end). Yaw sigma 2.718 by 282M.
+
+### The yaw rot is what stops every run from pumping (18:20 UTC, diagnostic on the box)
+* record_ckpt of A4's 184M weights from 4 line states in the half-pipe (8 stochastic episodes,
+  15 s): h max = h at spawn in EVERY episode (not one energy record), 0 swings; the survivors
+  drift at 600-860 u/s in a narrow z band, the rest fall into the kill plane.
+* Why: the yaw is an OFFSET from the velocity heading, off_warp(tanh z) (u 0.5 -> 10 deg, u 1 ->
+  180 deg). At z sigma 0.3 (the init) the view stays within ~+-3 deg of the velocity: the strafe
+  optimum, where any held side key adds energy. Every run here walked sigma to the 2.718 clamp
+  (A2 by ~170M, A3 by 227M, A4 by 282M): offsets of ~+-170 deg, and in pm.c's air accelerate a
+  wishdir with a backward component BRAKES (addspeed = 30 - v.wishdir, accelspeed up to
+  airaccelerate x wishspeed x frametime = 175 u/s per tick). A policy trained on that noise
+  cannot discover pumping, and its mean drifts. pb saw the same (0.08 -> 2.718); its
+  `--yaw-entropy 0` stopped only the bonus part ("from scratch the policy gradient itself widens
+  the view": pbr1b1_scr 0.31 -> 2.718 by 270M anyway).
+* `--yaw-sigma-max S` (04524bae, new, off = bit-identical, mirrored in record_ckpt / beam_tas):
+  the pitch head's ceiling applied to the yaw head(s) under --view-absolute; the mean is free.
+  S 0.3 = the init value. Generic: the velocity-frame yaw's useful range is near zero on every
+  map (large offsets only brake). Test: tests/python/test_yaw_sigma_max.py.
+
+### A5 `zlr1b2_ys` (18:28 UTC): A4's flags + `--yaw-sigma-max 0.3` (one change)
