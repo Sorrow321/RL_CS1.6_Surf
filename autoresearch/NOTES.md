@@ -112,3 +112,70 @@ Box 58559243: RTX 5080 + Ryzen 9 7945HX (32 threads), 0.387 $/h, South Carolina 
   the episode's energy height and charges no loss. K 12 kept (pb_r26's). Test:
   tests/python/test_energy_ratchet.py.
 * Plus A1's `--stall-energy 32 --eval-patience-energy 32`. Same box, 6e8 budget.
+
+### A2 `zlr1b2_er`: no suicide bias left, but no pumping either; stopped at 243M (17:51 UTC)
+* Greedy 76 / 151 / 227M: fwd 182 / 268 / 98 u, peak 267 / 261 / 186 u/s, patience-cut 3 / 3 / 6
+  of 9, the rest fall into the pit at 5-25 s; h max = the spawn's (-3,071) in every episode. Best
+  progress 0.70% (score ~0.70, = the control). Training: energy RECORDS +8..10 u/ep against
+  -750..-1,090 u/ep of losses, stall 48-72%, yaw sigma pinned at 2.718 from ~170M (no signal).
+* Why nothing to learn from: (1) the true start is 100 u above the floor, so the first landing
+  burns ~106 u of h and an energy record needs > ~412 u/s on the floor first; (2) ~60% of the
+  training spawn pool is progress-keyed rows that sit at the pit edge on this map: front-perturb
+  (922 rows from 1-4 "frontier" reservoir states at progress 44 u), the greedy pool (states 2-0.25 s
+  before each greedy death = falling into the pit), plus 10% goal-anchored rows at the top. The
+  field's frontier IS the pit edge here, so the recipe trains where nothing can be learned.
+* Zero-shot refs (local CPU, greedy, 30 s, 7 ms): pb_r26 idles on the start floor (vmax 443);
+  uf2_x13 walks off the ledge into the pit at 10-11 s. Neither gains energy: a warm start buys no
+  pumping here.
+* The first gate, from the record (ANALYSIS ONLY): bhop the start floor to ~300-440 u/s, leave
+  the platform's west edge, land on a curved ramp that bottoms out at z -3,930 (the kill plane is
+  at -4,000..-4,050) and swings north-east into the half-pipe at ~830 u/s.
+
+### Go-Explore from the true spawn DOES enter the half-pipe and pump (17:52-18:04 UTC, box CPU)
+* `tools/explore_phase1.py --exact-chains --cell 64 --cell-energy 32 --cell-heading 1
+  --view-follow=-90,-60,-30,-15,0,15,30,60,90 --select-energy 3 --act-every 4 --decisions 100
+  --maxvel 3500 --tick-ms 7 --envs 4096 --threads 28 --max-minutes 12` (the pb/uf2 config at this
+  map's tick; runs/ge/zl1 on the box). At 3 min: 868k cells, best progress **8.21%** at
+  (1,047, 488, -2,879) = the half-pipe's EAST END (the record's east end reaches 6.2% at t 27.5),
+  h max **-2,549** (+525 u over the spawn; the record has -2,844 at t 10 and -2,294 at t 30);
+  123k states with h in -2,750..-2,500. Uniform HELD actions in the velocity frame pump on this
+  map (pb's half-pipe stalled at +150 u). Report: autoresearch/analysis/zl_ge_report.py.
+* Final (12 min, 28 threads): 1,595,692 cells, 10.4M runs, best progress **9.48%** at
+  (1,226, 497, -2,801) (the half-pipe's east end), h max -2,341 (+733 u over the spawn), 0 goal
+  hits. h bands: 97k cells at -2,500..-2,250. Best d flat at 5,759 from ~8 min: the next step up
+  needs more energy than random bursts add quickly.
+* `tools/ge_replay.py` -> runs/ge/zl1_line.npy on the box: 46 cells, 45/45 links exact, 3,961
+  ticks (27.7 s): off the platform's west edge at ~3 s, pumps in the curved start ramp (z -3,200
+  .. -3,815) to h -2,769 by 17 s, enters the half-pipe at 18 s (x -1,529), pumps to h -2,584 by
+  27 s, ends at the east end (9.48%). `tools/spine_canon_view.py` -> zl1_line_canon.npy (views
+  were a median 60 deg off the velocity).
+
+### A3 `zlr1b2_ge` (18:05 UTC): A2 + the GE archive as 30% of training spawns
+* Spawn file runs/ge/zl1_states.npy: the most energetic GE state per 256 u cell, kept if deeper
+  than the start on the field OR above the spawn's energy height (1,360 states, h p50 -2,437);
+  the trainer's own --ge-minutes keeps d < d0 only, which here would drop the half-pipe the run
+  has to pump in. Provenance: Go-Explore from the true spawn, reward-free, no demo.
+* At ~50M the file was swapped (atomically; the trainer re-reads it) for its view-canonical copy
+  (spine_canon_view.py; views were 60 deg off the velocity, a spawn-semantics defect).
+* GE-2 beside it (18:07, 12 threads, 25 min): explore_phase1 rooted at the line's last 1,461
+  states (the half-pipe), stride 10 -> runs/ge/zl2: more energy, and the exit to the second
+  half-pipe?
+* A3 result (stopped at 232M, 18:13 UTC): greedy 76 / 151 / 227M = patience-cut 5 / 8 / 9 of 9,
+  idling on the start platform at 260-530 u/s (score 0.70 at best, = the control). The suicide is
+  gone (A2's fail-pen) but the archive spawns teach nothing that reaches the true start: nothing
+  on the platform says "west, off the edge, fast". Yaw sigma back at its 2.718 cap by 227M.
+  Training energy records +15..37 u/ep (A2: +10).
+
+### A4 `zlr1b2_sp` (18:17 UTC): A3 + the GE line PINNED at the true start (uf2 x7's form)
+* `--demo-file runs/ge/zl1_line_canon.npy --demo-tau0 0 --demo-rate 0.0 --demo-grow 5
+  --demo-front-frac 0.5 --demo-window 5 --demo-grow-max 40 --demo-cooldown 5 --demo-min-ep 50
+  --demo-success-d 100 --demo-success-bonus 50 --keys-hold-spawn-duck`: half the line draws
+  start at rows [0, 4] (= the true start, where the eval starts), half uniform along the line;
+  an episode whose ratchet record crosses d(line end) + 100 = 5,859 u (7.9%) is paid +50 once.
+  `--keys-hold-spawn-duck`: 61% of the line's rows are crouched (GE's random duck bit).
+* Recipe incompatibilities hit on the way (all three refused at startup, in this order):
+  `--respawn-novel is not wired with --demo-file` -> `--no-respawn-novel`;
+  `--respawn-backward-mix needs --respawn-novel` -> `--respawn-backward-mix 0`;
+  `--int-real-only 1 needs --respawn-novel` -> `--int-real-only 0`. So this arm also loses the
+  recipe's novel rows and goal-anchored rows (they were 30% of the non-start pool).
+* Box extended to 20:15 UTC. GE-2 (rooted in the half-pipe) runs beside it until ~18:32.
