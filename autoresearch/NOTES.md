@@ -430,3 +430,18 @@ on purpose: round 1 needs an exit, and the attribution comes after. Read with uf
   29,584 / 27,363 / 17,276 / 13,765 / 13,232 / 8,515. Training: the reservoir's deepest 1.42% of
   d0 = **98.6%**; a front-perturb episode reached d ~0 (30,648 u), no finish counted yet.
   Hand-on: ckpt_7837057024 (21.5M before; md5 57f63cd8...).
+* **A13 7,934M: 94.570** (best 94.6%, median 93.7%, 0/9 finishes; 04:14 UTC): 9/9 out of the pit
+  and at 88.9-94.6%. Five of nine reach 93.7-94.6% at ~44-45 s round (1,720..1,905, -1,265..-1,475,
+  -760..-850), ~1,480 u west of the finish box (x 3,328), lose the line and fall to the z ~-1,350
+  floor by 46-49 s; three die at 90.2% round (1,670..1,730, -2,320..-2,370, z -1,350); one at 88.9%.
+  Training: the front-perturbed rows FINISH (fpert fin 90/142, best 30,648 u = 100%), training win
+  rate 11-14% at 0.4 s (rows harvested 2 s from the goal - the harvest, not the policy); the
+  reservoir's deepest 1.195% of d0. Curriculum on k01 at tau 5,484-5,799 of 6,500, 93% success.
+  9/9 past k01's line (3,476) -> search 2 (73 s): NEW SPINE `auto/k02` (5,800 states, end d 386 =
+  **98.7%**, md5 6f135705...): the beam bounces off a ramp at (1,842, -1,400, -951) (vz +531, where
+  the greedy now falls), runs south to (2,384, -1,515, -625) and ends at (2,923, -2,052, -753) moving
+  (1,114, -585, -472) - BELOW the finish box's floor (z -640) and falling: it passes under the box.
+  The beam's population died below d ~1,100 after tick ~6,000 (min_d 1,101 -> 1,594): no env of
+  4,096 found an entry into the box from that approach; the finish needs the box entered at
+  z >= -640. Milestones + 3,476; success line 486. Hand-on: ckpt_7934050304 (the eval's own step;
+  md5 a11560b1...). k01 / k02 copied to `autoresearch/spines/uf2r1b1_cut_k0{1,2}.npy` (+ keys).

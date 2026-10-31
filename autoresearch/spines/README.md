@@ -460,3 +460,9 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   **84.4%** of the map. uf2r1b1_cut trains on its first 4,800 rows (to d 8,408 = 72.6%; the cut
   made where its backward curriculum stalled past the greedy's frontier - the `--demo-stall-cut`
   rule by hand), `runs/beam/uf2r1b1_k03cut4800.npy` on the box (md5 40730657...).
+* `uf2r1b1_cut_k01.npy` (+ `.keys.npy`, 6,500 states, md5 7b7a8029b44ebb496719df5dfdea82cb): the
+  trainer's own `--auto-spine` search 1 of uf2r1b1_cut (beam_tas from the TRUE spawn on its own
+  7.78B weights, 4,096 envs, replayed open-loop): the course to d 3,376 = 89.0% of the map.
+* `uf2r1b1_cut_k02.npy` (+ `.keys.npy`, 5,800 states, md5 6f13570545426fbf87856ec6c2846177): search
+  2 of uf2r1b1_cut (7.93B weights, same rule): to d 386 = 98.7% - ends at (2,923, -2,052, -753)
+  falling, below the finish box's floor (z -640), i.e. it passes UNDER the box; no finish.
