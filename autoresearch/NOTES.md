@@ -119,3 +119,6 @@ idle for the first third of its round.
   end-turn. That is the plain air-strafe turn, an action the recipe's policy already expresses
   (view offset ~0 in --view-absolute velocity, one side key). It is a skill to discover, not a
   representational gap.
+* 20:06 UTC, still no box (3 h). The offer pool is thin too: the cheapest acceptable offer is a
+  4080S at 0.41 $/h (then a 3090 at 0.62, a 5080 at 0.62), so even with one of the two live
+  boxes released, a 0.41 box fits the 0.62 pace only if the remaining one burns <= 0.21.
