@@ -685,3 +685,24 @@ novelty 2.5, greedy rows x1-1.3 turned 180, tick 7.63 ms, etc. (the launch log's
   beams on the incumbent's weights - S1, S2, j652, u652 - 21,479 decisions, best 41.14 s,
   line-weight-decay 20), `--bc-coef 0.5 -> 0` over the 6.5e8-step run, `--bc-keys-engine`,
   `--bc-pitch-coef 0`. Start: head-acc 0.86, joint-acc 0.54, nll 0.83 against the lines.
+* Go-Explore rooted at the policy's OWN first-lap pit states (`autoresearch/r2b1/ge_pit1.sh`: 41
+  rows 450-850 of the r2s2 line, t 3.45-6.5 s; `--exact-chains --cell 64 --cell-energy 32
+  --cell-heading 1 --view-follow=-90..90 --select-energy 3 --decisions 100 --tick-ms 8`, 8 min,
+  5.9M runs, 1.28M cells): **0 cells past 1.7% progress**; the best climbs reach 0.6% at
+  (-1,557, -3,216, 51) with E ~300 (`autoresearch/r2b1/ge_early_exits.py`). Uniform held keys
+  cannot surf the climb out with the energy the first lap has.
+* **B2 `uf2r2b1_bc1`: 118.611 at 13.197B (9/9, best 41.67 s, mean 42.22 s; 10:26 UTC)** - the
+  first score over the incumbent. Evals: 6/9 42.70 s (after ONE iteration: the BC's first steps
+  move the policy; B1's first eval at the same step was 9/9) -> 9/9 42.37 -> **9/9 41.67** -> 9/9
+  42.32 (13.273B). BC: nll 0.83 -> 0.05 (head-acc 0.97, joint-acc 0.91) in ~40M steps, -0.24 /
+  0.996 / 0.983 by 13.27B; kl 0.13-0.24 (high: BC drags the policy); training crashes 0-18%.
+  Hand-on: ckpt_13190561792 (snapcopy, 6.8M before the eval), pulled.
+* New code (386cd649): `--respawn-greedy-plateau S` (+ `-n N`, default 200): the greedy pool also
+  keeps N evenly spaced states of every MID-EPISODE stall >= S s (the running best d gains < 64 u,
+  then gains) of every greedy episode, FINISHED ones included (`surfgym.greedy_spawn.plateaus`).
+  Without it the pool is empty once the greedy finishes 9/9 (only failed episodes are harvested),
+  so the turned / boosted greedy rows that gave round 1 its first pit exit (A8) no longer see the
+  pit laps. Off = bit-identical (unit tests: tests/python/test_respawn_greedy_plateau.py).
+* Expert-iteration round 2 (10:33 UTC): `autoresearch/r2b1/beams_it.sh` (six beams: plain x3
+  seeds, view-only forks at t 5.0 s, t 2.3 s and t 29.9 s - the 60-70% loop) on B2's 13.294B
+  weights -> BC file 2 for B3 (a resume of B2's final checkpoint).
