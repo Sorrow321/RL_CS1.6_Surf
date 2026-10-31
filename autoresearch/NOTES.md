@@ -298,3 +298,28 @@ file without a word. Workaround: scp the padded file myself, md5-checked against
   the policy that already values the trough practises the pit from viable states and is paid by
   the ratchet for climbing toward the trough (the pit's exit is the corridor's south end).
   Measure: the pit bench (0/24 climb-outs for tce) and the greedy evals vs 7.85.
+
+### The pump exists: GE from the policy's own trough ride (02:00-02:25 UTC)
+* **tcp (20% viable pit spawns, 800M -> 1.2B): no pit skill, route held.** Evals 7.35 / 7.78 /
+  7.65 / 7.74 / 7.84 / 7.60 / 7.69 / 7.77; pit bench 0/24 climb-outs with the SAME death instants
+  as every earlier policy. Restored by core.set_state or by the spawn pool, those GE4 states die at
+  identical ticks (32-108) with neutral input: falls at 1,400+ u/s toward the floor that survive
+  only with exact, immediate steering onto a ramp (GE's random inputs found it, no trained
+  policy does). Pit practice from search states: dead end, three ways (GE1 doomed, GE3 leaky,
+  GE4 viable-but-unsteerable).
+* **GE8 (40 min, rooted at 29 states of tce's own greedy trough ride, --admit-margin 1): PUMPS THE
+  TROUGH.** energy_pick against tce's line: **+345 E at 5.74% (h 1,004 vs 659, 1,022 u/s), +340 at
+  6.05% (1,005, 1,039 u/s)** - chains of ~26 s of random oscillation along the half-pipe, from E
+  ~650 to ~1,005 (the record carries ~1,100 there). Its deepest cell is only 7.0%: the admission
+  margin keeps the final falls out of the archive.
+* **Bench: tce's policy from the pumped trough states** (3,766 rows, 4.5-6.6% and E >= 900 -
+  a MEASUREMENT window, never a training file): best 8.93% at (-3,049, -940) - the round's
+  furthest - median 6.7%, all onto *18 within 1.5 s (it was never trained from there). So energy
+  in the trough is what the next ~1% needs.
+* New: `ge_return_states.py --not-behind-roots FIELD` (274f6bbd): only rows not behind the
+  search's own roots (GE8 fell back into the pit from the trough: 69% of its tops). Training file
+  = GE8 `--tops --not-behind-roots`: 2,188 rows, all in the trough, E median 970 (md5 5b1e73ca).
+* Arm tcq (02:27 UTC): tce's final + the corridor curriculum + per-call energy K 8 +
+  `--spawn-states runs/uf2r1b2_ge8/tops_fwd.npy --spawn-states-frac 0.3`: the west exit from
+  high trough energy, and a critic that learns what trough energy is worth (then: does the
+  policy start pumping from the true start?).
