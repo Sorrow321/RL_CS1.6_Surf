@@ -725,3 +725,16 @@ novelty 2.5, greedy rows x1-1.3 turned 180, tick 7.63 ms, etc. (the launch log's
   pool: 18 plateaus = every episode's start pit (1.5-11.6 s) and its 60-70% loop (29.6-32.5 s),
   4,427 states, turned U(-180, 180) and x1-1.3 (the restored greedy-row perturbations), 25% of the
   non-start pool. First eval (one iteration in): 7/9, 42.94 s (the BC's first steps again).
+* **B3 `uf2r2b1_bc2pl` result (stopped 13.849B, 11:14 UTC): FASTER, LESS RELIABLE.** Evals 7/9
+  42.94 s / 8/9 41.86 / 8/9 **41.47** / **9/9 41.67 (118.611, ties B2)** / 7/9 41.79 / 8/9 41.67 at
+  13.408-13.786B. Median finish 41.75-42.05 s (B2 42.2-42.9, the incumbent 42.54): 80% at 36.6-36.8
+  (37.04), 90% at 39.4-39.6 (39.97). The pit is unchanged (2% at 11.2-11.3 s; the plateaus stay
+  1.5-11.2 s), so ~400M steps of turned / boosted pit-lap respawns did not teach a first-lap exit.
+  Failures: late course (37.4, 38.7, 39.3, 42.6 s - one at 99.98%, 27 u west of the finish box and
+  53 u BELOW its floor), 19.2 s, one in the pit at 7.9 s. Training crashes ~20%.
+* Iteration 3 (beams on B3's 13.762B weights): **40.53-40.77 s** (still two pit laps: 2% at 11.1 s;
+  60% at 28.0, 70% at 33.1-33.3). BC file 3 `runs/bc/r2_bc3.npz` (16 lines, best 40.53 s, md5
+  d47e0432).
+* **B4 `uf2r2b1_bc3`** (11:15 UTC): resume of B3's 13,848,543,232 weights (md5 0e4246b3) with BC
+  file 3, `--bc-coef 0.3` (B2 / B3 lost 2-3 episodes in the eval after one iteration at 0.5), and
+  NO plateau rows (the pit did not move; they take 25% of the pool from the k02 line).
