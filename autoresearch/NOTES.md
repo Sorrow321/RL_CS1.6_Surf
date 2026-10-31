@@ -367,3 +367,16 @@ on purpose: round 1 needs an exit, and the attribution comes after. Read with uf
   dying on the `*11` sheet at z ~-1,023). Hand-on: ckpt_5408030720 (11.5M before; md5
   892cd43b...). Training frontier: the reservoir's deepest 32.50% of d0 = 67.5%, front-perturb
   best 20,905 u (68.2%). 0/9 past the k04 success line (56.7%) in four evals.
+* A11 5,495-5,646M: 51.633 / 45.195 / 46.698; stopped at 5,668M (02:33 UTC). **The k04 curriculum
+  never left the spine's last state** (tau 5090/5091, 0% success over 100 band episodes): my
+  `--demo-success-d -400` asks for 400 u PAST the line's end, and the beam's line is cut at its
+  best d - a state from which 400 u more is often impossible - so the curriculum never walks back
+  along the line and half the demo draws are spent on one dead state; the quorum (5/9 past 56.7%)
+  never forms, so the loop stops searching. -400 was right for the first spine (it had to force
+  the crossing out of the pit); for the loop's spines the pb playbook's `--demo-success-d 100`
+  (success = within 100 u of the end) is the rule: the curriculum walks the whole line back and
+  the quorum fires once the greedy reaches the end.
+* A12 `uf2r1b1_auto2` (02:35 UTC): resume of A11's 5,668M weights (md5 6d8e0110...) + the k04
+  spine (`autoresearch/spines/uf2r1b1_k04.npy`, the trainer's own search 4) with its keys,
+  `--demo-success-d 100`, `--demo-milestones 29584,27363,17276`, the same auto-spine loop, 8e9
+  steps (to the wrap-up); snapcopy beside it. Box extended to 09:32 UTC.

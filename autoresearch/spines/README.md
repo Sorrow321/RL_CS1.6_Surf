@@ -448,3 +448,9 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   onto the top of the solid block south of the platform, (-2,577, -2,763, 508), E ~1,200 - the
   record's crossing point is ~110 u above that block further east (ANALYSIS of where it ends
   only). Used by uf2r1b1_cur as `--demo-file` (backward curriculum, success = 400 u past its end).
+* `uf2r1b1_k04.npy` (+ `.keys.npy`, 5,091 states, md5 dc9db71bff850e1b8fed8b5ab5c782ff): the
+  trainer's own `--auto-spine` search 4 of uf2r1b1_auto (beam_tas from the TRUE spawn on its own
+  4.83B weights, 4,096 envs, replayed open-loop, trimmed at its last map contact and cut at its
+  best d): the start pit, the exit, the crossing of `*18`, its west edge, the north section and
+  the turn east to (2,117, -566, -432) at d 13,665 = 55.4% of the map. Used by uf2r1b1_auto2 as
+  `--demo-file` (+ `--demo-keys`) with `--demo-success-d 100`.
