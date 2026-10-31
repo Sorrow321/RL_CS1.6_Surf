@@ -846,3 +846,13 @@ Resume of x8's latest (14.317B) with spine = the first 3,751 ticks (28.75 s, pas
 (`--demo-tau0 0 --demo-rate 0.0`, pace 0.1 1.0 - from the start it still rejects a double lap; spine
 spawns within ~6 s before the cut reject the 1.4 s bowl loop), BC on that line's 938 decisions
 (0.3 -> 0.1 over 1e9), spawn states = x2's 5 lines + the two bowl lines (33,933 states), cold keys.
+* **x9 WORKS (13:01 UTC): the bowl shortcut is adopted.** Evals: 14.318B 1/9 (first update) / 14.393B
+  7/9 37.85 s / 14.469B 9/9 37.80 (118.740) / **14.544B 9/9 36.65 s = 118.778** (3 of 9 take the bowl
+  shortcut) / 14.620B 8/9 36.57 (8 of 9 take it: 36.6-37.4 s). Band paced success ~90%. Hand-on for
+  118.778: ckpt_14535360512 (8.9M before; md5 621ece63; pulled).
+* x9's fastest episode vs the record (instrument only; the record's file starts ~0.9 s later): even
+  or ahead everywhere except 45-50% (+0.5 s) and 60-70% (+0.6 s); ahead by 0.6 s over 70-100%.
+* The 45-50% mini loop in x9's greedy: at 21.0-21.4 s it rides up an east-side ramp (z 283 -> 396,
+  vz +443 at (3,495, 378)), swings back west (heading -166 at 21.8 s) and only then south; the record
+  passes ~250 u lower and turns south at x ~3,600. Pitch-hold searches from x9's greedy at 19.6 / 20.0
+  / 20.4 s running (runs/beam/u*).
