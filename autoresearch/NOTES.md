@@ -821,3 +821,19 @@ novelty 2.5, greedy rows x1-1.3 turned 180, tick 7.63 ms, etc. (the launch log's
   **What did it**: the policy's own Monte Carlo found the line, BC + pit spawn states put it in the
   policy's stochastic distribution (B5), and the pace gate made it the only way to succeed from the
   pit rows, so the greedy committed to it. ~3.5 s of the 6 s gap to the record, in ~40 min.
+* B6 continued: 8/9 37.18 s (14.946B; fail at 59.4%), 8/9 37.60 s (15.022B; fail at 15.2 s at the
+  pit EXIT). Its curriculum band stalls at rows 840-845 (t 6.5 s, the climb out): success flips
+  between 0% (845) and 52-57% (840), i.e. it is training exactly the move that fails.
+* **Hand-on audit of 118.726 (ckpt_14791213056)**: default seed 9/9, best 38.40 s (118.720; 7 of 9
+  one-lap, 2 two-lap at 43.0-43.2 s); **--seed 7: 6/9** (best 38.36 s) - 15/18. The three seed-7
+  failures (and the 15.022B eval's pit failure) die at the SAME place, the top of the one-lap climb,
+  (-1,840, -2,650, z ~525), ~80 u west of where the spine line passes (-1,757, -2,639, 535): the
+  one-lap exit skims the catch volume under the platform's south-east edge. Without eval patience
+  (record_ckpt runs 362 s) such an episode LAPS the pit for 70-350 s - the second-lap exit is
+  forgotten once the first lap is learnt - before dying there. Two failure modes now: that climb,
+  and scattered mid-course deaths (43%, 59%).
+* Iteration-4 searches on B6's 14.951B weights (`beams_it4.sh`): the plain d-ranked beam from the
+  TRUE start now finds the one-lap line by itself (36.97, 37.22 s); Monte Carlo 36.88-37.13 s;
+  prefix beams **36.65-36.69 s**. BC file 6 `runs/bc/r2_bc6.npz` (16 lines, best 36.65 s, md5
+  90cada01); spine candidate `runs/beam/r2_one723.npy` (36.65 s, md5 1c1dc348); pit states
+  `runs/beam/r2_pit_states3.npy` (md5 54365e81).
