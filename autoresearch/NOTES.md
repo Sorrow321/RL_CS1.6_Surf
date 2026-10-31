@@ -617,3 +617,43 @@ expert loop's seed (beam -> plan_to_bc -> --bc-file; keep the trainer's evals on
 counts only `traj_<step>.jsonl`). For the recipe (0b): make the three manual steps automatic (a
 first spine from the true start without a hand-run MC line; the stall cut without
 --auto-spine-energy) and repeat on a second map with the same flags and constants.
+
+## uf2r2b2 (round 2, slot 2) - 2026-10-31 09:44 UTC start
+
+Incumbent: uf2r1b1's ckpt_13045858304 (118.592: 9/9, best 42.25 s; record 35.17 s from the curtain).
+
+### Where the 42.25 s goes (analysis, `autoresearch/analysis/uf2_splits.py`; the record = yardstick only)
+* Split times by running-best progress on config.field, the incumbent's best eval (traj_13067878400,
+  ep6 = 42.25 s) vs the WR demo, both from the START CURTAIN (the policy crosses it at 0.70 s after
+  spawn; the record at 1.58 s into its demo): 2% +3.87 s, **5% +3.98 s (the pit)**, 60% +4.53 s
+  (+0.55 over 5-60%), **65% +5.88 s (+1.35 over 60-65%)**, finish +6.38 s (+0.50 over 65-100%).
+* The pit (positions every 0.4 s, `uf2_pit.py`): both dive off the south edge and enter at ~2.5 s
+  after the curtain with E ~1,290. The record laps ONCE clockwise (north on the west side, south on
+  the east side) and climbs out round the south end at +4.8..7.0 s with E ~1,060-1,110. The policy
+  laps TWICE counter-clockwise (north on the east side, south on the west side) and climbs out round
+  the south end on its SECOND pass (+9.2..10.4 s) to z ~656 at +12.8 s. At its FIRST south-end pass
+  (+4.4..5.2 s) it carries E ~1,150-1,170 - MORE than the record had for its climb - and rounds the
+  end at z ~-700 instead of climbing: the lost ~4.4 s is a route choice, not an energy gap.
+* The round-1 beam's 43.18 s finishing line (8.82B weights, fintest) laps twice as well (out at
+  14.1 s): the policy's own proposals reproduce the habit. Its yaw sigma is collapsed (0.018 in z,
+  ~0.06 deg): a plain beam has no steering diversity at all, only the key heads vary.
+
+### Plan: search a faster line where the line stalls, then distil it (generic: CLAUDE.md 0b)
+* `tools/speed_forks.py` (new, selftest): the plain beam from the TRUE start; the line's STALL
+  windows = gaps between running-best goal-field improvements of >= 500 u (on the incumbent's
+  42.25 s line: 1.57-11.75 s = the pit laps, 29.18-32.17 s = the 60-65% stretch, 24.3-26.1 s); one
+  branched beam per fork tick spread inside the longest window(s) (auto_spine's held view-offset
+  burst: half the population, U(-J, J) deg around the policy's own aim, held 0.5 s, for 2 s,
+  protected 3 generations); the fastest finishing line wins. Nothing names a place: the windows
+  come from the policy's own line and the field.
+* `tools/speed_round.sh` (new): speed_forks + plan_to_bc (--no-value-target: make_line_reward
+  does not mirror this lineage's ratchet / energy / death charge) over every crossing beam,
+  slower lines down-weighted (--line-weight-decay 20) -> bc.npz + spine (+ keys).
+* Then train (resume of the incumbent): the pbx-expert loop's working BC settings (`--bc-coef 0.5
+  --bc-coef-final 0.5 --bc-target dist --bc-value-coef 0 --bc-keys-engine --bc-pitch-coef 0`,
+  lr 3e-5) + spawns along the fast line; the trainer's evals ON (the grader counts only them).
+  Lessons carried from the pb notes (8a825803): BC held at 0.5 was the pbx loop's biggest step;
+  a curriculum band walking through a decision point destabilised the greedy there, and a pace
+  gate (`--demo-success-pace`) did not teach a new decision in 15-25 min at lr 5e-5.
+* No box until another branch releases one: every rent since 09:52 refused (fleet burn 0.767 of
+  0.831 $/h). A background loop retries every 90 s.
