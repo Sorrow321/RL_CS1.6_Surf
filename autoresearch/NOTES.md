@@ -873,3 +873,10 @@ finish (the incumbent's 118.592 is 1/9 real by the memory note's count). Evals o
 B7 (uf2r2b1_real1) on are recorded on the fixed core, so their finishes are real; everything
 earlier in `$AR_HOME/runs/uf2r2b1/` (B1-B6, scores up to 118.74) is NOT. A grader fix would re-score
 recordings on the trigger's hull from the positions (the memory note's plan).
+* **B7 `uf2r2b1_real1` on the FIXED core - REAL finishes: 118.730 at 15.595B (9/9, best 38.10 s, mean
+  38.36 s).** Evals: 6/9 38.41 s (B6's weights: the old line mostly carries on into the diagonal
+  ~0.3 s after the corner) / **0/9** (15.444B: all nine patience-cut in the pit - a transient) / 9/9
+  39.05 / **9/9 38.10** / 8/9 38.34 / 9/9 38.23 s (15.746B). Finishes now end inside the box at the
+  diagonal curtain, (3,345-3,469, -1,972..-2,097, -457..-594). Hand-on: ckpt_15584985088 (10.5M
+  before), pulled; re-recording on the box. Real-finish searches (`beams_it4.sh` on B7's weights)
+  running for a real-finish BC file.
