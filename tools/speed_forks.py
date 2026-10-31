@@ -98,7 +98,7 @@ def run(cmd, log: Path, timeout):
     return rc
 
 
-def beam(a, out: Path, tag: str, fork: int = 0, extra=()):
+def beam(a, out: Path, tag: str, fork: int = 0, extra=(), seed=None):
     bd = out / tag
     bd.mkdir(parents=True, exist_ok=True)
     tps = 1000.0 / a.tick
@@ -108,7 +108,8 @@ def beam(a, out: Path, tag: str, fork: int = 0, extra=()):
            "--greedy-envs", a.greedy_envs, "--allow-nonfinisher", "--save-frontier",
            "--skip-gate", "--route-file", "none", "--max-ticks", a.max_ticks,
            "--keep-finishers", a.keep, "--gens", a.gens,
-           "--torch-seed", a.seed, "--log-every", 10, "--out-dir", bd, *extra]
+           "--torch-seed", (a.seed if seed is None else seed), "--log-every", 10,
+           "--out-dir", bd, *extra]
     if fork > 0:
         cmd += ["--branch-at", f"t{int(fork)}:{int(a.envs) // 2}",
                 "--branch-burst", int(round(a.branch_burst_secs * tps)),
@@ -145,7 +146,10 @@ def main(argv=None) -> int:
     ap.add_argument("--stall-margin", type=float, default=500.0,
                     help="u: a running-best improvement smaller than this does not end a stall")
     ap.add_argument("--stalls", type=int, default=1, help="how many stall windows to fork in")
-    ap.add_argument("--forks", type=int, default=8, help="fork ticks per stall window")
+    ap.add_argument("--forks", type=int, default=8,
+                    help="fork ticks per stall window (0 = no forks: plain waves only)")
+    ap.add_argument("--waves", type=int, default=1,
+                    help="plain beams with torch seeds seed .. seed+N-1 (all go to the BC pool)")
     ap.add_argument("--fork-before-secs", type=float, default=1.0,
                     help="the forks start this long before each stall window opens")
     ap.add_argument("--branch-burst-secs", type=float, default=2.0)
@@ -191,13 +195,22 @@ def main(argv=None) -> int:
     z = np.load(fz, allow_pickle=False)
     d = field_d(field, z["states"])
     wins = stall_windows(d, a.stall_margin, a.stalls)
-    forks = fork_ticks(wins, a.forks, gen_ticks, before=int(round(a.fork_before_secs * 1000.0
-                                                                   / a.tick)))
+    forks = (fork_ticks(wins, a.forks, gen_ticks, before=int(round(a.fork_before_secs * 1000.0
+                                                                    / a.tick)))
+             if int(a.forks) > 0 else [])
     tps = 1000.0 / a.tick
     res.update(plain_len=int(len(d)), stalls=[[int(s), int(e)] for s, e in wins], forks=forks)
     print(f"plain line: {len(d)} ticks, best_s {plain.get('best_s')}; stalls "
           + ", ".join(f"{s}-{e} ({s / tps:.2f}-{e / tps:.2f} s)" for s, e in wins)
           + f"; forks at {forks}", flush=True)
+    for w in range(1, max(1, int(a.waves))):
+        # further plain waves (torch seeds seed+1, ...): the expert loop's BC pool, and a
+        # lottery on the fastest plain line
+        r = beam(a, out, f"plain_w{w}", 0, a.plain_extra.split() if a.plain_extra else (),
+                 seed=int(a.seed) + w)
+        res["beams"].append(r)
+        print(f"wave {w}: crossed {r.get('crossed')} best_s {r.get('best_s')}", flush=True)
+        (out / "summary.json").write_text(json.dumps(res, indent=1), encoding="utf-8")
     for t in forks:
         r = beam(a, out, f"fork_{t}", t)
         res["beams"].append(r)
