@@ -5237,6 +5237,40 @@ def main() -> None:
                          "cloning loss and BC fights a representation (pbx 2026-10-28: on "
                          "pbr9b1_c9's own greedy line ~1.9 nats of the four categorical "
                          "heads' 2.8 were that split). Config only when set; not restored")
+    ap.add_argument("--auto-bc", action="store_true",
+                    help="--bc-file + --demo-file: the EXPERT LOOP run by the trainer (uf2r2b2, "
+                         "2026-10-31; tools/exit_local.py's plan -> distil, without the relaunch). "
+                         "After a greedy eval, once --auto-bc-every steps have passed since the "
+                         "last search, a copy of ckpt_latest goes to tools/auto_bc.py BESIDE the "
+                         "training (--auto-bc-waves beam_tas populations of the policy's own "
+                         "proposals from the TRUE start, then plan_to_bc); when its fastest line "
+                         "beats the current BC line by --auto-bc-gain seconds, its rows replace "
+                         "the BC dataset and its line the spine (the curriculum restarts at "
+                         "--auto-bc-tau0). The coef schedule, the batch and the targets stay. "
+                         "Single map, single GPU. Config only when on; never restored")
+    ap.add_argument("--auto-bc-every", type=float, default=3e8,
+                    help="--auto-bc: env steps between two searches (from the launch's step)")
+    ap.add_argument("--auto-bc-waves", type=int, default=2,
+                    help="--auto-bc: beam_tas waves per search (torch seeds k*100 + w)")
+    ap.add_argument("--auto-bc-envs", type=int, default=4096,
+                    help="--auto-bc: beam population per wave")
+    ap.add_argument("--auto-bc-score", choices=("d", "dh"), default="dh",
+                    help="--auto-bc: beam ranking (dh = -d + the energy height, one u per u: on "
+                         "uf2 two dh waves of the incumbent's proposals finished 41.29 / 41.32 s, a "
+                         "d wave 41.59 s, its greedy 42.50 s)")
+    ap.add_argument("--auto-bc-keep", type=int, default=16,
+                    help="--auto-bc: finishing lineages kept per wave for the BC rows")
+    ap.add_argument("--auto-bc-gain", type=float, default=0.0,
+                    help="--auto-bc: seconds a new line must beat the current BC line by")
+    ap.add_argument("--auto-bc-best-s", type=float, default=None,
+                    help="--auto-bc: the current BC file's fastest line in seconds (default: "
+                         "the file's own meta when it records one, else none - the first "
+                         "search's line is taken whatever its time)")
+    ap.add_argument("--auto-bc-tau0", type=int, default=0,
+                    help="--auto-bc: the curriculum's tau after a swap (0 = the whole new line "
+                         "admitted at once, the spawn mix of a curriculum that has walked back)")
+    ap.add_argument("--auto-bc-timeout", type=float, default=3600.0,
+                    help="--auto-bc: wall-clock cap (s) of one search")
     ap.add_argument("--respawn-killsafe", type=int, default=None,  # 0 = off
                     help="bin reservoir states on the KILL-MASKED goal field "
                          "(goalk cache): states inside fail/teleport volumes "
@@ -15086,6 +15120,16 @@ def main() -> None:
     if args.demo_milestones:
         meta["config"]["demo_milestones"] = [float(x) for x in
                                              str(args.demo_milestones).split(",") if x.strip()]
+    if args.auto_bc:
+        # --auto-bc: dumped only when on (a flag-off run.json is the control's byte for byte);
+        # never restored - the loop is a property of the run, not of the weights
+        meta["config"].update(
+            auto_bc=1, auto_bc_every=float(args.auto_bc_every),
+            auto_bc_waves=int(args.auto_bc_waves), auto_bc_envs=int(args.auto_bc_envs),
+            auto_bc_score=str(args.auto_bc_score), auto_bc_keep=int(args.auto_bc_keep),
+            auto_bc_gain=float(args.auto_bc_gain), auto_bc_tau0=int(args.auto_bc_tau0),
+            auto_bc_timeout=float(args.auto_bc_timeout))
+
     if args.race_sr:
         # --race-sr: dumped only when on, so a flag-off run.json is the
         # control's byte for byte (test_int_split's identity check)
@@ -18252,6 +18296,7 @@ def main() -> None:
     # the policy is asked to imitate on is [15 core | latch | depth], the
     # rollout's own layout (tests/python/test_expert_iteration.py).
     bc = None
+    _BC_KW = None
     bc_coef_t = torch.zeros((), device=device)
     bc_coef_now = 0.0
     # --bc-value-coef: the target `z` is stored in RAW reward units, and
@@ -18313,7 +18358,7 @@ def main() -> None:
                          latch=(np.asarray(latch, np.float32) > 0.5))
                 return out_pv
 
-        bc = BCDataset(args.bc_file, device, n_latch=N_LATCH,
+        _BC_KW = dict(n_latch=N_LATCH,
                        obs_reward=bool(args.obs_reward),
                        seed=args.seed + 31 * D.rank, priv_fn=bc_priv_fn,
                        # --view-continuous: the rows' view targets (z), read
@@ -18334,6 +18379,8 @@ def main() -> None:
                        # (plan_to_bc records them per decision; surfgym.bc.XBLOCKS)
                        xlayout={"aux": N_AUX, "ratchet": N_RATCHET, "surf": N_SURF,
                                 "prate": N_PRATE})
+        # (--auto-bc rebuilds the dataset from each search's file with these same arguments)
+        bc = BCDataset(args.bc_file, device, **_BC_KW)
         print(bc.describe())
         bc_lidar, bc_dtype = slots[0].lidar, b_img.dtype
         bc_steps = (float(args.bc_steps) if args.bc_steps
@@ -18521,6 +18568,148 @@ def main() -> None:
                              # --view-continuous APPENDS its column, so a
                              # discrete round's file is byte-identical
                              + (",bc/view_mse" if VIEWC else "") + "\n")
+
+    # --auto-bc: the expert loop run by the trainer - tools/auto_bc.py (the policy's own beam
+    # waves from the true start + plan_to_bc) beside the training on a copy of ckpt_latest; a
+    # line faster than the current BC line replaces the BC rows and the spine. AUTOBC["eval"]
+    # is set by the greedy eval below, read after the eval block.
+    AUTOBC = None
+    if args.auto_bc:
+        if bc is None or demo is None:
+            raise SystemExit("--auto-bc needs --bc-file and --demo-file: it swaps both")
+        if args.auto_spine:
+            raise SystemExit("--auto-bc and --auto-spine both replace the spine: one or the other")
+        if MULTI or D.enabled:
+            raise SystemExit("--auto-bc: single map, single GPU (like --auto-spine)")
+        _b0 = args.auto_bc_best_s
+        if _b0 is None and bc.meta.get("best_s") is not None:
+            _b0 = float(bc.meta["best_s"])
+        AUTOBC = {"eval": None, "proc": None, "k": 0, "best_s": _b0, "swaps": 0,
+                  "next_at": int(global_step + float(args.auto_bc_every))}
+        print(f"--auto-bc: tools/auto_bc.py ({int(args.auto_bc_waves)} x "
+              f"{int(args.auto_bc_envs)} envs, --score {args.auto_bc_score}) beside the "
+              f"training after the first greedy eval past step {AUTOBC['next_at']:,}, then "
+              f"every {float(args.auto_bc_every):,.0f} steps; a line faster than "
+              + (f"{_b0:.2f} s" if _b0 is not None else "(none yet)")
+              + f" by {float(args.auto_bc_gain):g} s replaces the BC rows and the spine "
+              f"(tau {int(args.auto_bc_tau0)})", flush=True)
+
+    def _auto_bc_launch(ev_path):
+        """Start tools/auto_bc.py on a copy of ckpt_latest, beside the training."""
+        import shutil as _sh
+        import subprocess as _sp
+        from surfgym.route import episodes_from_traj
+        eps = [e for e in episodes_from_traj(ev_path) if len(e)][:max(1, int(args.eval_eps
+                                                                            or 9))]
+        lens = [len(e) for e in eps] or [12000]
+        tps = 1000.0 / float(args.tick_ms or 10.0)
+        AUTOBC["k"] += 1
+        kdir = out / "auto_bc" / f"k{AUTOBC['k']:02d}"
+        kdir.mkdir(parents=True, exist_ok=True)
+        save_ckpt("latest")
+        _sh.copyfile(out / "ckpt_latest.pt", kdir / "ckpt.pt")
+        # AUTO_BC_TOOL (tests only): another script with auto_bc.py's command line
+        tool = (os.environ.get("AUTO_BC_TOOL")
+                or str(Path(__file__).resolve().parents[1] / "tools" / "auto_bc.py"))
+        cmd = [sys.executable, "-u", tool,
+               "--ckpt", str(kdir / "ckpt.pt"), "--map", str(slots[0].core.bsp_path),
+               "--out", str(kdir), "--waves", str(int(args.auto_bc_waves)),
+               "--envs", str(int(args.auto_bc_envs)), "--score", str(args.auto_bc_score),
+               "--keep", str(int(args.auto_bc_keep)), "--seed", str(100 * AUTOBC["k"]),
+               "--max-ticks", str(int(max(lens) + 15.0 * tps)),
+               "--timeout", f"{float(args.auto_bc_timeout):g}"]
+        fh = open(kdir / "auto_bc.log", "w", encoding="utf-8", errors="replace")
+        proc = _sp.Popen(cmd, stdout=fh, stderr=_sp.STDOUT)
+        AUTOBC["proc"] = (proc, fh, time.time(), kdir)
+        print(f"[{global_step:>13,d}] auto-bc search {AUTOBC['k']}: " + " ".join(cmd),
+              flush=True)
+        print(f"[{global_step:>13,d}] auto-bc search {AUTOBC['k']}: running beside the "
+              f"training (pid {proc.pid}, log {kdir / 'auto_bc.log'})", flush=True)
+
+    def _auto_bc_poll():
+        """A finished search: a faster line's BC rows + spine replace the current ones."""
+        nonlocal bc, DEMO_END_D, PACE
+        proc, fh, t0, kdir = AUTOBC["proc"]
+        if proc.poll() is None:
+            if time.time() - t0 <= float(args.auto_bc_timeout) + 900:
+                return
+            proc.kill()
+            proc.wait()
+            print(f"!! auto-bc search {AUTOBC['k']} killed after {time.time() - t0:.0f}s",
+                  flush=True)
+        fh.close()
+        AUTOBC["proc"] = None
+        AUTOBC["next_at"] = int(global_step + float(args.auto_bc_every))
+        dt = time.time() - t0
+        res = None
+        for ln in (kdir / "auto_bc.log").read_text(encoding="utf-8",
+                                                   errors="replace").splitlines()[::-1]:
+            if ln.startswith("AUTO_BC "):
+                try:
+                    res = json.loads(ln[len("AUTO_BC "):])
+                except ValueError:
+                    res = None
+                break
+        cur = AUTOBC["best_s"]
+        if not res or not res.get("bc") or res.get("best_s") is None:
+            print(f"[{global_step:>13,d}] auto-bc search {AUTOBC['k']}: no line in {dt:.0f}s "
+                  f"(exit {proc.returncode}); next search after step {AUTOBC['next_at']:,}",
+                  flush=True)
+            return
+        new_s = float(res["best_s"])
+        if cur is not None and not new_s < float(cur) - float(args.auto_bc_gain):
+            print(f"[{global_step:>13,d}] auto-bc search {AUTOBC['k']}: its line {new_s:.2f} s "
+                  f"does not beat the current {float(cur):.2f} s by "
+                  f"{float(args.auto_bc_gain):g} s - kept ({dt:.0f}s); next search after step "
+                  f"{AUTOBC['next_at']:,}", flush=True)
+            return
+        # build everything first, then swap together: a failure leaves the old state whole
+        nbc = BCDataset(res["bc"], device, **_BC_KW)
+        if BCKE and nbc.keys_col != BC_KC:
+            print(f"!! auto-bc search {AUTOBC['k']}: the new file's held-key column "
+                  f"{nbc.keys_col} is not {BC_KC} - kept", flush=True)
+            return
+        sp = np.load(res["spine"])
+        nk = None
+        if DEMO_KEYS[0] is not None and res.get("keys") and Path(res["keys"]).exists():
+            nk = np.asarray(np.load(res["keys"]), np.int32)
+            if nk.shape != (len(sp), 3):
+                nk = None
+        nde, npace = DEMO_END_D, PACE
+        if DEMO_END_D is not None:
+            _f = (slots[0].reward_field if slots[0].reward_field is not None
+                  else slots[0].goal_field)
+            nde = (float(_f.sample(np.asarray(sp[-1]["origin"], np.float64)[None])[0])
+                   + float(args.demo_success_d))
+            if PACE is not None:
+                _pf, _ps = (float(x) for x in args.demo_success_pace)
+                npace = pace_allowed(len(sp), spine_cross_row(sp, _f.sample, nde), _pf,
+                                     TICK.secs_to_ticks(_ps))
+        bc = nbc
+        demo.reset_spine(sp, tau0=int(args.auto_bc_tau0))
+        if DEMO_KEYS[0] is not None:
+            DEMO_KEYS[0] = nk
+        DEMO_END_D, PACE = nde, npace
+        DEMO_PAID[0] = None
+        ALV[:] = [None, None, None, None, None]
+        demo_idx[:] = -1
+        AUTOBC["best_s"] = new_s
+        AUTOBC["swaps"] += 1
+        print(f"[{global_step:>13,d}] auto-bc search {AUTOBC['k']}: NEW BC ROWS + SPINE - "
+              f"{nbc.n:,} rows, line {new_s:.2f} s (was "
+              + (f"{float(cur):.2f} s" if cur is not None else "none")
+              + f"), spine {len(sp):,} states (keys {'yes' if nk is not None else 'no'}), "
+              f"curriculum tau {demo.tau}"
+              + (f", success line d <= {DEMO_END_D:,.0f}" if DEMO_END_D is not None else "")
+              + f" ({dt:.0f}s; swap {AUTOBC['swaps']})", flush=True)
+
+    if AUTOBC is not None:
+        import atexit as _ax
+
+        def _auto_bc_kill():
+            if AUTOBC.get("proc") is not None and AUTOBC["proc"][0].poll() is None:
+                AUTOBC["proc"][0].kill()
+        _ax.register(_auto_bc_kill)
 
     # ---- DDP gradient path (docs/ddp-plan.md steps 9 + 15) ------------------
     # Bucketed flat all-reduces; the views borrow each parameter's own
@@ -21370,6 +21559,8 @@ def main() -> None:
                     print(f"[{global_step:>13,d}] " + GREEDY.line())
                 if AUTO_SPINE and _i == 0 and not _s.heldout:
                     AUTO["eval"] = path     # --auto-spine: read after the eval block
+                if AUTOBC is not None and _i == 0 and not _s.heldout:
+                    AUTOBC["eval"] = path   # --auto-bc: read after the eval block
                 st = episode_stats(path)
                 _f = float(np.mean([e["fwd_max"] for e in st])) if st else 0.0
                 _p = float(np.mean([e["path"] for e in st])) if st else 0.0
@@ -21648,6 +21839,20 @@ def main() -> None:
                 AUTO["retry_at"] = int(global_step + float(args.auto_spine_retry))
                 print(f"!! auto-spine: {type(_ex).__name__}: {_ex}; next try at step "
                       f"{AUTO['retry_at']:,}", flush=True)
+        if AUTOBC is not None:
+            # --auto-bc: a search beside the training may have ended; a greedy eval past
+            # next_at starts the next one (one at a time)
+            _ap, AUTOBC["eval"] = AUTOBC["eval"], None
+            try:
+                if AUTOBC.get("proc") is not None:
+                    _auto_bc_poll()
+                elif _ap is not None and global_step >= AUTOBC["next_at"]:
+                    _auto_bc_launch(_ap)
+            except Exception as _ex:         # a failed search never ends the run
+                AUTOBC["proc"] = None
+                AUTOBC["next_at"] = int(global_step + float(args.auto_bc_every))
+                print(f"!! auto-bc: {type(_ex).__name__}: {_ex}; next search after step "
+                      f"{AUTOBC['next_at']:,}", flush=True)
         t_ck = tm.now()
         if global_step >= next_ckpt:
             next_ckpt = global_step + int(args.ckpt_every)
