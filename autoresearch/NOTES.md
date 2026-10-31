@@ -733,3 +733,21 @@ Incumbent: uf2r1b1's ckpt_13045858304 (118.592: 9/9, best 42.25 s; record 35.17 
   (one seed each: suggestive, the energy term keeps lineages that bleed less). Pool c3 = the three
   waves: 46 lines, 62,137 rows (`$AR_HOME/runs/uf2r2b2/sf_c3/bc.npz`, md5 e95fe713...), spine =
   c2's 41.29 s line.
+
+### `train_fast --auto-bc`: the expert loop inside the trainer (12:40-12:52 UTC, commit 258d3263)
+* Why: the expert loop (search on the current weights -> BC on the search's lines) is the one
+  generic speed lever that showed headroom here (the policy's own beam 41.29 s vs its greedy 42.50
+  s), and tools/exit_local.py runs it by RELAUNCHING the trainer every round with its evals off -
+  the grader counts only the trainer's own evals, and a relaunch costs compile + two record gates.
+* What: after a greedy eval, every --auto-bc-every steps (one at a time), a copy of ckpt_latest
+  goes to `tools/auto_bc.py` beside the training (--auto-bc-waves beam_tas populations of the
+  policy's own proposals from the TRUE start, `--score dh` by default, then plan_to_bc over the
+  crossings); a fastest line that beats the current BC line by --auto-bc-gain s replaces the BC
+  dataset (rebuilt with the run's own BCDataset arguments; the held-key column must match) and the
+  spine (curriculum tau -> --auto-bc-tau0, the success line and any pace table recomputed); the
+  coef schedule, batch and targets stay. Refused without --bc-file / --demo-file, with
+  --auto-spine, multi-map or DDP; TRAIN_ONLY in record_ckpt; config only when on; never restored.
+* Tests (tests/python/test_auto_bc.py, CPU, all pass): the tool's rules; the refusal; **flag off =
+  the trainer before it** (config + progress.csv on a uf2 smoke, 75 s); **end to end on the
+  incumbent** (a 16-env CPU resume with the c3 pool and a stand-in search tool via AUTO_BC_TOOL:
+  the first greedy eval starts the search, the next poll swaps the rows + spine in; 4.7 min).
