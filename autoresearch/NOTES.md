@@ -757,3 +757,20 @@ The score needs only ONE early-exit episode in a 9/9 eval (best finish time).
   (`runs/beam/jolt1.pt`, step 13,046,382,592, md5 fe41a5b8) is kept as a PROPOSAL policy - the plain
   beam from the true start on it, seeds 0-8 (`runs/beam/j<s>`), to collect early-exit lines from many
   starts for the next BC round.
+* The jolted policy as a proposal: plain beams from the true start on jolt1.pt (seeds 0-3) all go
+  extinct in the pit (frontier ~7.7 s, no finish) - one BC-1.0 update breaks it too much. Stopped.
+* x4 13.122B: 9/9 at 43.25 s, ALL double laps again (two triple-lap at 48 s) - the same reversion as x3.
+  BC on early-exit rows does not hold the turn against RL: the failed attempts in training teach the
+  policy to avoid it. Stopped at ~13.13B.
+
+### x5 `uf2r2b4_x5` (11:09 UTC): a PACE-GATED backward curriculum on the early-exit line
+The seed-0 DAgger line (the incumbent's greedy to 4.0 s, then the --pitch-hold search's early exit,
+38.79 s) CUT at 1,303 ticks (10.0 s, d 28,357 = 7.47%, out of the pit) as the spine, A13's backward
+curriculum (`--demo-window 5 --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5 --demo-rate 0.2
+--demo-min-ep 50 --demo-front-frac 0.5 --demo-success-d 100 --demo-success-bonus 50`) +
+**`--demo-success-pace 0.1 1.0`** (pbr9b1's rule: a spine episode succeeds - and is paid the 50 -
+only if it crosses the success line within (rows left on the spine) x 1.1 + 1 s; from the map start
+1,547 ticks = 11.9 s, while the double lap gets there at ~13.6 s). No BC. The curriculum cannot walk
+back past the turn until the policy takes the early exit from those states; at tau 0 the success
+needs the early exit from the true start. Generic: the spine is the policy's own search line, the
+pace gate is the line's own clock.

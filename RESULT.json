@@ -2,6 +2,18 @@
  "agent": "uf2r2b4",
  "round": 2,
  "final": false,
- "best": null,
- "summary": "10:30 UTC. Found by the policy's OWN search on the incumbent's weights: an EARLY PIT EXIT (first south pass, a left turn into the SW ramp at ~5.2 s) - beam re-rooted inside its own lost-frontier lineage -> finishing lines from the true start in 36.88-37.94 s (plain beam 41.19, incumbent greedy 42.25). x1 (BC 0.5 + spine on the plain 41.2 s lines) made the greedy SLOWER (44.06 s) - stopped. x2 (running): resume + the 5 early-exit lines as a fixed spine, RL only. Next: the same re-root trick on the 60-65% bowl loop; targeted BC in the divergence window if x2's greedy does not take the early exit."
+ "best": {
+  "score": 118.587,
+  "eval_file": "/home/steam/ar_uf2/runs/uf2r2b4/uf2r2b4_x2/traj_13046382592.jsonl",
+  "run": "uf2r2b4_x2",
+  "step": 13046382592,
+  "ckpt": null,
+  "recipe": [
+   "resume of the incumbent",
+   "--demo-file (5 early-exit lines, fixed window)"
+  ],
+  "resume_from": "/home/steam/ar_uf2/incumbent/r1/ckpt.pt (uf2r1b1 ckpt_13045858304)",
+  "commit": "c40898c5"
+ },
+ "summary": "11:12 UTC. The policy's own search on the incumbent's weights finds an EARLY PIT EXIT (36.9-38.8 s lines vs the greedy's 42.3 s): re-rooting the beam in its own lost-frontier lineage, and --pitch-hold (held camera offsets) from the greedy's own state - the turn is gated by where the camera looks. Teaching it: BC on the plain beam lines (x1) and on early-exit rows (x3, x4) both REVERT to the double lap within 75M steps (x3's first update did take it once: 38.82 s, 4/9); spine-only RL (x2) never takes it. Best eval so far 118.587 (x2, incumbent line). Running x5: a pace-gated backward curriculum (--demo-success-pace) on the cut early-exit line."
 }
