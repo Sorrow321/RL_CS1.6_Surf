@@ -284,3 +284,19 @@ Box 58559243: RTX 5080 + Ryzen 9 7945HX (32 threads), 0.387 $/h, South Carolina 
   (8 per episode, >= 400 ticks apart; runs/ge/roots4.npy) - return-then-explore from the
   policy's own frontier. A chain that leaves loop 1 + the recorded greedy prefix = a line from
   the true start for the next route.
+* A6b 827M: all 9 greedy episodes stayed in the start ramp (0%), 902M: back in the half-pipe
+  (frontier 553 u = 8.7%, cover 8.6%): the ramp -> half-pipe transition is still a coin flip for
+  the deterministic greedy at this stage (CLAUDE.md's gate ladder).
+
+### `--race-arc-tail U` (a705f5f0, 19:22 UTC): the field takes over past the route's end
+* The arc route ends at 12.77% and nothing past it pays (the field's ratchet is refused with
+  --race-arc), while the 819M greedy already pumps to the record's loop-exit energy. With
+  `--race-arc-tail U`, an episode whose arc anchor reaches the route's last U units switches the
+  field's ratchet on for the rest of the episode (records of d paid at 100/d0, a record re-arms
+  the stall). The route covers what the field cannot see; the field leads after it, so a route
+  found by search need not reach the finish. U = 1,500 = the arc corridor (the arc mode's own
+  constant). Off = bit-identical, TRAIN_ONLY, refused with --obs-reward.
+  Test: tests/python/test_race_arc_tail.py.
+* Deploying during a run: deploy_box.sh's GPU health check fails while the trainer / GE / beam
+  load the card ("below spec"); the checkout and build before it had run (git log a705f5f0 on the
+  box), the restamp after it had not (ran by hand: caches matching). Not a bad host.
