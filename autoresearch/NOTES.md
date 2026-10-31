@@ -670,3 +670,25 @@ every 20 iterations; `surfgym.bc.reload_refusal` keeps the old rows on a layout 
 `tools/expert_side.py` (beside ONE trainer: snapshot ckpt_latest -> beam_tas waves from the true
 start -> plan_to_bc -> os.replace of the trainer's --bc-file and --spawn-states file). The expert
 loop (search -> distil) inside one scored run. tests/python/test_bc_reload.py.
+
+### The objective pays the policy to be slow: the stock energy potential leaks (10:30-10:50 UTC)
+* `--energy-pot 12` (round 1's A5 onward) pays the per-call CHANGE of Phi = 12 h / 1000. Under
+  gamma < 1 that does not telescope: sum_t g^t (Phi_{t+1} - Phi_t) = -Phi_0 + (1-g)/g sum g^t Phi_t
+  + ... - a bonus of ~(1 - g) Phi(s') per call for being ALIVE at energy height h, and nothing
+  charged at a death or a finish. Measured on the incumbent's own greedy line (gamma_tick
+  0.999617, 130 ticks/s): **+0.73 reward/s in the start pit (h ~1,210), +0.57/s over 60-70%, +0.55/s
+  over the line, against the time penalty's -0.10/s** - net +0.55/s for staying alive; 12.5
+  discounted from the spawn vs the time penalty's 1.8. The same leak the codebase measured and
+  fixed for the progress shaping in round 27 (`--race-ng`), never fixed for the energy term.
+* What it buys, by the 50-point milestones' arithmetic (discount 20 s): a 4 s earlier pit exit is
+  worth ~+26 at the spawn (milestones + finish moved earlier) against the leak's -2.5, so the
+  extra pit lap is mostly a SKILL gap (the climb the policy knows needs E ~1,250); but late in the
+  course, where the milestones are discounted, a 1.5 s shortcut that spends 200 u of energy (the
+  record's 60-64% bowl line: E 1,013 -> 608) nets about -0.9 under the stock term and +2.4
+  without it. The leak protects the slow, energy-keeping lines.
+* New: `--energy-pot-ng` (default off, commit 0239e9c5): the conformant form - each live call taxed
+  (1 - gamma_tick^every) Phi(s'), a death or a finish charged its last pre-terminal potential, the
+  per-call change still paid (the credit assignment the pit skill was learned with); the
+  discounted shaping of any episode is -Phi(spawn). Tested (tests/python/test_energy_pot_ng.py).
+  Plan: the first box arm resumes the incumbent with it (everything else as A13), then the
+  expert side loop (BC on the policy's own beam lines) on top.

@@ -3,5 +3,5 @@
  "round": 2,
  "final": false,
  "best": null,
- "summary": "Round 2 start (09:44 UTC): incumbent 118.592 (9/9, best 42.25 s). Analysis: the incumbent laps the start pit once more than the record (~4 s) and loops a bowl at 60-64% (~1.5 s). Plan: the policy's own beam search from the true start on the incumbent's weights -> a faster finishing line -> taught warm (spine with --demo-success-pace and/or BC), trainer evals on."
+ "summary": "No box yet (10:50 UTC): the fleet's budget pace is taken by two other boxes. Analysis: the incumbent laps the start pit twice (~4 s) and loops the 60-64% bowl (~1.5 s); local CPU probes (beams, branched beams, uniform GE) found no shortcut. Found: the stock --energy-pot leaks ~+0.55 reward/s for staying alive at energy (vs time pen -0.10/s) - the objective pays slowness. Built + tested: --energy-pot-ng (Ng-conformant energy potential), --bc-reload + tools/expert_side.py (expert loop beside one scored run). Next: resume the incumbent with --energy-pot-ng, then add the side loop's BC."
 }
