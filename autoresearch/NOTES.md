@@ -440,3 +440,7 @@ Box 58559243: RTX 5080 + Ryzen 9 7945HX (32 threads), 0.387 $/h, South Carolina 
 * Read against the A6 lineage at matched steps (A6: off the platform 151M; A6b 9.9% at 676M,
   14.1% at 1.20B; tail from 1.38B: 19.7% at 1.53B; self-route from 2.79B: 23.4% at 2.94B,
   25.2% at 3.28B, 26.9% at 3.74B).
+* B1 0.5-680M: every greedy eval 0.0% (all 9 episodes pump in the start ramp until the patience
+  cut; 604M: 44-60 swings, h max -2,692..-2,733 - more than A6 at 600M, ~-2,950; 0% because the
+  ramp lies behind the start on the field). Training reward 38/ep at 680M (A6: 26 at 600M), arc
+  1,713 u/ep, tail 52 u/ep. A6b first made the ramp -> half-pipe transition at 676M.
