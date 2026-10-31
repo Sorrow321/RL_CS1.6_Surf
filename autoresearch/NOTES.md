@@ -95,3 +95,11 @@ the numbers). Read it before you start; append to it before you wrap up.
   deficit begins at the FIRST ramp, 1.5 s from the start - October's "280-390 u short" again.
   The search never rides the south curve the way the record does; RL has to learn it from the
   true start's own fall, not from an archive state.
+
+### Harness issue (uf2r1b3, 2026-10-31 00:02 UTC): two boxes hold the whole budget pace for hours
+* From ~21:45 UTC on 2026-10-30, two live boxes (0.79 $/h together, ~0.39-0.40 each) sat against
+  the pacer's limit (0.82 $/h), so every `box.py rent` from this branch was refused for 2h15m+
+  (a retry every 100 s; the cheapest passing offer then was a 0.268 4080). With K = 4 branches and
+  a ~0.75 $/h pace, a 0.4 $/h box is half the fleet: two branches can work and two wait. Not
+  worked around (PROTOCOL: never). A per-branch share (pace / K) or a lower per-box cap while
+  others wait would let all four branches run one cheap box each.
