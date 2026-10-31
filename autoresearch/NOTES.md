@@ -352,3 +352,9 @@ on purpose: round 1 needs an exit, and the attribution comes after. Read with uf
   461) = 48%; 8/9 at 37-40%). 1/9 past the k03 success line (43.6%): the quorum is 5. Hand-on:
   ckpt_4738514944 (1.6M before; md5 430b0d0c...). Training: the reservoir's deepest 44.66% of d0 =
   55.3%, front-perturb best 17,070 u (55.7%).
+* **A11 4,816M: 47.982** (best 48.0%, median 45.9%): 9/9 at 44.8-48.0% round (2,600..3,300,
+  700..1,600, z 217..811) - the record's t+19..20 stretch (48% at t+20) - dying at z ~-185 beyond.
+  Hand-on: ckpt_4815585280 (= the eval step; md5 f7578dee...). Search 4 (46 s): NEW SPINE (5,091
+  states, end d 13,665 = 55.4%, the greedy frontier 16,572); success line d <= 13,265;
+  milestones 29,584 / 27,363 / 17,276. Four spines so far: 1.9% (the MC line) -> 9.4% -> 42.3% ->
+  55.4%.
