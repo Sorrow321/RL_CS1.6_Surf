@@ -407,3 +407,12 @@ file without a word. Workaround: scp the padded file myself, md5-checked against
   on the extension yet. Hand-off ckpt_2833252352.pt (md5 94fadc5d).
 * GE13 (rooted at ne4's last 4 s, 15 min): 22.73% at (-2,032, 2,530, -161) - +0.5% only, not spliced.
 * tcne6 (05:41 UTC): tcne5's final + the same ne4 spine + `--demo-tau0 3351`, 4e8.
+* **tcne6 (tau0 3351, 3.183B -> 3.583B): stuck at the ledge.** Evals 10.19 / 10.58 / 10.53 / 10.55 /
+  10.55 / 10.07 / 10.66 / 10.66 (no new best). The curriculum oscillated at rows 3346-3351 (51% ->
+  2.5% -> back off): 150 ticks into GE12's chain, where it lands hard on a ledge at z ~215 near
+  x -1,000 (E 935 -> 262) and walks east at ~180 u/s to the drop. EVERY GE12 chain past 11% has a
+  minimum speed of 184 u/s - the ledge stop is the one way over *18's NE edge the search found.
+  GE14 (from GE13's forward tops): 23.00%, +0.3 only.
+* tcne7 (06:08 UTC): tcne6's final + tau0 3351 + a hotter band (`--demo-front-temp 1.0
+  --demo-front-ticks 100`, keys at 2x and yaw sigma x6 for the first second after a band spawn),
+  princessburglar's tool for a bounce at a precise step.
