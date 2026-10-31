@@ -892,3 +892,16 @@ Resume of x9's latest (14.942B) with the same flags + --goal-hull 1 ("--goal-hul
   x9 14.771B 0/9; the incumbent's traj_13067878400 **1/9** (42.57 s). The real finish costs ~0.5 s
   over the fake corner. Hand-on for 118.781 (real): ckpt_15160836096 (8.4M before; md5 8b043c22).
   By the CURRENT score.py x9's fake 118.799 still ranks first; RESULT.json carries both.
+* x10 15.24-15.32B: 9/9 36.59 (118.780) / 9/9 36.83 (118.772) - seven 9/9 evals in a row, all real.
+  Stopped at 15.375B (13:38). Its weights: plain beams from the true start find REAL finishes in
+  36.06 / 36.05 s (greedy 36.67 / 37.61 on those spawns): the gain is spread 0.1-0.2 s over many
+  segments, plus a slow final approach in some greedy episodes (seed 1: 1.2 s from 99% to the
+  curtain, the beam 0.35 s). Pitch-hold searches from x10's greedy at 31.4 / 33.0 / 34.5 s = plain
+  (36.54-36.85): no shortcut on the final approach.
+
+### x11 `uf2r2b4_x11` (13:39 UTC): a TIGHT pace on a full real-finishing line
+Resume of x10's latest (15.375B) with spine = the 36.05 s real-finishing beam line on x10's own
+weights (full, 4,702 states), band pinned at the true start, `--demo-success-pace 0.02 0.3` (from the
+map start the +50 needs d <= 100 within 4,806 ticks = 36.85 s; the line takes 35.83 s), the x9 line
+BC at 0.1, spawn states = 9 own beam lines, --goal-hull 1. A speed reward relative to the policy's
+own best search line, for the spread gains BC on noisy beam lines (x1) could not deliver.
