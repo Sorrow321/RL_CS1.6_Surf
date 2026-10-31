@@ -435,3 +435,23 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
 * `pbr9b1_late2_states.npy` (md5 in NOTES): pbr9b1_fo2dec_states + the s71 beam's shaft passage x2 + the 89-94.5% shaft entries of
   three FINISHING greedy episodes of pbr9b1_c8's own 57.34B weights (record_ckpt --dump-states, seed 11) x8 - a `--spawn-states`
   pool aimed at the shaft's first kill sheet (z ~265), c8's commonest death.
+
+## uf2r1b2 (surf_unitfarmer2, round 1) - the corridor lineage's spines (all champion-free)
+
+Every file is the branch's own reward-free Go-Explore (tools/explore_phase1.py --exact-chains),
+rooted at the true spawn or at the policy's own greedy line, replayed exactly by tools/ge_replay.py
+and stitched in the policy frame by tools/stitch_spine.py (`<name>.keys.npy` = the held keys for
+train_fast --demo-keys). Never a demo or the record (CLAUDE.md section 0).
+
+| file | rows | end | how |
+|---|---|---|---|
+| uf2r1b2_w7_spine | 1,012 | 7.05% | GE1 (from the true spawn) chain to cell 613541: SW corner -> floor z 548 -> trough -> west fall |
+| uf2r1b2_pump_spine | 3,103 | 6.05%, E 1,005 | tce's greedy line [0,447] + GE8 chain to 230626 (26.5 s pumping the trough) |
+| uf2r1b2_ne_spine | 2,098 | 9.25% | tce line [0,447] + GE8 -> 192980 + GE9 -> 63710 (the north-east exit) |
+| uf2r1b2_ne2_spine | 3,418 | 10.23% | tce line [0,447] + GE8 -> 238221 + GE9 -> 668210 |
+| uf2r1b2_ne3_spine | 3,419 | 10.65% | ne2 to row 3158 + GE11 -> 540508 |
+| uf2r1b2_ne4_spine | 4,192 | 22.27% | ne3 to row 3195 + GE12 -> 987607 (past *18's NE edge, the lower area, north) |
+| uf2r1b2_ge8_tops_fwd_states | 2,188 | - | spawn states: ge_return_states --tops --not-behind-roots of GE8 (rooted at tce's trough ride) |
+
+The ne4 spine's curriculum stalls at razor bands (rows 3346-3350: feet ~2 u above *18 at its edge;
+rows 3261-3285: the flight onto the floor at x ~-1,006) - see autoresearch/NOTES.md (uf2r1b2).

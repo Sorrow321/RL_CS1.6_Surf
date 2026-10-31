@@ -17,3 +17,15 @@ Both run ON THE BOX from /root/RL_Surf (copy the .py files and the .npy there), 
 * `pb_energy_profile.py LEVELS traj.jsonl [...]` - per episode, at the first arrival at each progress level: time, energy
   height z + |v|^2/1600, speed and position. Run it on an eval and on a reference (the policy's own beam line saved as a
   trajectory, or the WR demo `$AR_HOME/incumbent/wr/pb_wr.jsonl` as a yardstick) to see where a gate's energy is lost.
+
+# uf2r1b2 (surf_unitfarmer2, round 1) analysis scripts (MEASUREMENT ONLY - never training)
+
+Copied to the box and run from /root/RL_Surf (paths inside assume it): `uf2_ge_top.py ARCHIVE N`
+(deepest cells on the grader field), `uf2_ge_chain.py ARCHIVE CELL` (a cell's chain), `uf2_ge_pitexit.py`
+/ `uf2_ge_front.py` (chains that dove and came back; energy per progress band), `uf2_ge_pareto.py`
+(earliest arrival per progress level), `uf2_ge_root_need.py` (root energy a deep exit needs),
+`uf2_pit_bench_states.py` + `uf2_pit_bench_read.py` (bench a policy from given states with
+record_ckpt --spawn-states), `uf2_line_profile.py` (a spine's path / energy / contact), `uf2_states_dist.py`
+(a spawn file's progress / energy mix), `uf2_spawn_paths.py` (set_state vs spawn-pool restore),
+`uf2_pumped_states.py` (a bench window). Local: `uf2_ep_ends.py` / `uf2_ep_profile.py` (eval episodes),
+`uf2_wr_profile.py` (the WR demo as a YARDSTICK only, CLAUDE.md section 0).
