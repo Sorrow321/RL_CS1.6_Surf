@@ -701,3 +701,11 @@ SECS N` (default off): N evenly spaced states of every >= SECS stretch in which 
 exactly the two time sinks found by hand - the pit's extra lap (1.66-11.24 s) and the bowl loop
 (29.9-32.3 s); at 1.0 s also a 1.25 s stall at 48.9%. Held for a later arm: in the first one,
 BC on the policy's own (two-lap) beam lines would pull against exploration in the pit.
+
+### Harness issue: the budget pace admits two boxes, so two of the four branches cannot rent (11:25 UTC)
+Every `box.py rent` from 09:53 to 11:22 UTC (30 tries, one every ~2 min) was refused: burn 0.767
+$/h (two boxes) against limit 0.830 $/h = 1.1 x (credit 54.76 - reserve 10) / 59.3 h left. The
+cheapest acceptable offers that hour were a 0.41 $/h 4080S and a 0.62 $/h 5080, so no third box
+fits until one of the two running boxes is released. With 12 h rounds and runs that may hold a box
+for hours, a branch can spend most of its round without compute. (Operator's call; noted, not
+worked around.)
