@@ -162,3 +162,17 @@ last seconds if the beam falls short) gives a spine 200 u past the greedy fronti
 curriculum restarts at its end, old success lines keep paying as milestones) + snapcopy beside it.
 Why: E2's spine ends at 9.48% while its greedy reaches 24%; 90% of its spawns are on the first
 27 s of the line, so the frontier trains only through respawn-greedy rows and long episodes.
+* **E3 (18:38-19:00 UTC): 26.307 / 30.872 / 33.645 / 35.070** at 560 / 635 / 711 / 786M (box
+  extended to 22:00 UTC). At 786M 9/9 alike: up the first loop by ~23 s, the second trough
+  (x -1,600..3,000, y -1,000..-100, z -2,560..-1,240) pumped from E -833 to -116 by ~57 s
+  (2,490 u/s max), 34.0-35.1% at its east end top (2,404, -877, -1,241), then north-east off the
+  east end and a fall into the bottom teleport at (2,450, -500) at 59 s. The record (ANALYSIS ONLY)
+  leaves the second trough at its WEST end at about the same energy (E -131 at t+135, (-2,032,
+  2,560, -999)) into a third structure it swings along y (x -2,300..-750, y 0..3,000, z -1,300
+  ..-120; 30-47% at t+140..195).
+  * Hand-on for 35.07: snapcopy's ckpt_785383424.pt (1M before the eval, pulled).
+  * auto-spine search 1 (on the 711M weights, beside training, slow: >17 min - the beam has to fly
+    ~60 s lines at 4,096 envs; training drops 286k -> 234k steps/s while it runs): beam + 5 branched
+    beams end at d 4,381-4,420, behind the moving greedy frontier (4,294 at 711M, 4,179 at 786M,
+    4,094 at 862M), so it went on to its Go-Explore stage (10 min, rooted before the line's stall).
+    The policy is outrunning its own search here.

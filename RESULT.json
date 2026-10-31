@@ -3,11 +3,11 @@
  "round": 1,
  "final": false,
  "best": {
-  "score": 24.031,
-  "eval_file": "/home/steam/ar_loop/runs/zlr1b4/zlr1b4_e2/traj_0529006592.jsonl",
-  "run": "zlr1b4_e2",
-  "step": 529006592,
-  "ckpt": "/home/steam/ar_loop/runs/zlr1b4/zlr1b4_e2/ckpt_latest.pt",
+  "score": 35.07,
+  "eval_file": "/home/steam/ar_loop/runs/zlr1b4/zlr1b4_e3/traj_0786432000.jsonl",
+  "run": "zlr1b4_e3",
+  "step": 786432000,
+  "ckpt": "/home/steam/ar_loop/runs/zlr1b4/zlr1b4_e3/ckpt_785383424.pt",
   "recipe": [
    "--energy-pot",
    "12",
@@ -41,10 +41,25 @@
    "--respawn-backward-mix",
    "0",
    "--int-real-only",
-   "0"
+   "0",
+   "(E3 resume) --auto-spine",
+   "--auto-spine-async",
+   "--auto-spine-milestones",
+   "--auto-spine-patience",
+   "3e8",
+   "--auto-spine-delay",
+   "5e7",
+   "--ckpt-every",
+   "2e8",
+   "--demo-tau0",
+   "114",
+   "--demo-cooldown",
+   "5",
+   "--demo-grow-max",
+   "40"
   ],
-  "resume_from": null,
+  "resume_from": "zlr1b4_e2 ckpt_latest 559415296 (md5 7c95d700)",
   "commit": "5d07d0df"
  },
- "summary": "Control (recipe) 0.587. E1 (per-call energy K12 + new --energy-stall 32) null. Go-Explore from the true spawn (energy cells, 12 min) reached the first trough (9.48%, exact 27.7 s line). E2 = E1 + backward curriculum on that line, from scratch: greedy 0.67/10.85/11.15/16.38/24.03 at 227/302/378/453/529M - 9/9 up the first loop and into the second trough, 22-24% by 30 s (record: 11% at 90 s). E3 = E2's 559M weights + --auto-spine (beam/GE from the true start on its own weights -> next spine), running."
+ "summary": "Control (recipe) 0.587. E1 (per-call energy K12 + new --energy-stall 32) null. Go-Explore from the true spawn (energy cells, 12 min) reached the first trough (9.48%, exact 27.7 s line). E2 = E1 + backward curriculum on that line, from scratch: 10.85/16.38/24.03 at 302/453/529M. E3 = E2's 559M weights + --auto-spine: 26.3/30.9/33.6/35.07 at 560/635/711/786M - 9/9 at 34-35% by 56 s (record 43% at 150 s), E up to -100, then a fall. Next: let the auto-spine loop run."
 }
