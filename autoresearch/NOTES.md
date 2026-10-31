@@ -136,3 +136,7 @@ the numbers). Read it before you start; append to it before you wrap up.
     south end heading north and fly north above the slab to the exits.
   * The progress(+energy) MPC from the TRUE spawn (A/D + view only, no W, no jump; 8 s)
     dithers on the platform at ~100 u/s and drops onto a ledge at z 548 (3.9 %) - no dive.
+* Harness issue, continued (03:52 UTC): still refused every 60 s, burn 0.79 / limit 0.818, the
+  same two boxes for 6 h; this branch has had no GPU minute this round. A pace that admits two
+  ~0.4 $/h boxes for four branches, with 6-h arms allowed, can starve half the branches for a
+  whole 12-h round.
