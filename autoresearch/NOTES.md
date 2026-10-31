@@ -425,7 +425,7 @@ Box 58559243: RTX 5080 + Ryzen 9 7945HX (32 threads), 0.387 $/h, South Carolina 
   23.438 (median 2.2%), 21.150 - a plateau at 23-24% with collapses; no record after 26.870.
   Stopped 22:28 UTC. The shortest-line tie-break (18ecfd30) is the response for the next runs.
 
-### B1 `zlr1b2_one` (22:43 UTC): the WHOLE recipe FROM SCRATCH, one launch
+### B1 `zlr1b2_one` (22:42 UTC): the WHOLE recipe FROM SCRATCH, one launch
 * `box.py launch` (the incumbent recipe prepended) + `--no-race-ratchet --ge-minutes 9 --ge-arc
   1500 --race-arc-self 0.01 --stall-energy 32 --eval-patience-energy 32 --energy-pot 12
   --energy-pot-front 0 --energy-pot-front-bonus 0 --energy-ratchet 1 --fail-pen 2
