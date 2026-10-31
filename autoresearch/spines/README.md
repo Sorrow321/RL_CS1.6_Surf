@@ -435,3 +435,16 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
 * `pbr9b1_late2_states.npy` (md5 in NOTES): pbr9b1_fo2dec_states + the s71 beam's shaft passage x2 + the 89-94.5% shaft entries of
   three FINISHING greedy episodes of pbr9b1_c8's own 57.34B weights (record_ckpt --dump-states, seed 11) x8 - a `--spawn-states`
   pool aimed at the shaft's first kill sheet (z ~265), c8's commonest death.
+
+# surf_unitfarmer2 (uf2r1b1, round 1 of the uf2 lineage)
+
+* `uf2r1b1_mcline.npy` (4,000 states at the 7.667 ms [8,8,7] tick, md5
+  4b81ee670125edf2b331005ed7224e9e): the POLICY'S OWN stochastic rollout from the map's true spawn
+  (-2,176, -2,272, 1,192) - `tools/beam_tas.py --elite-frac 1.0 --keys-temp 1.5 --envs 4096
+  --save-frontier` (a pure Monte Carlo of 4,096 independent rollouts, no cloning) of
+  uf2r1b1_turn's final weights (2.28B) - the lineage whose state at a 1 s boundary was the
+  deepest (d 29,987 at 30.6 s), replayed open-loop (replay_ok) and kept up to that tick. Route:
+  the dive into the start pit, ~4 counter-clockwise laps, then a climb round the pit's south end
+  onto the top of the solid block south of the platform, (-2,577, -2,763, 508), E ~1,200 - the
+  record's crossing point is ~110 u above that block further east (ANALYSIS of where it ends
+  only). Used by uf2r1b1_cur as `--demo-file` (backward curriculum, success = 400 u past its end).

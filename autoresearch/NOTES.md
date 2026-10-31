@@ -232,3 +232,49 @@ on purpose: round 1 needs an exit, and the attribution comes after. Read with uf
   -1,196, z 382) is above the north part of the pit's EAST side - where the greedy's
   counter-clockwise lap climbs (its highest points z ~-30..38 nearby, E ~1,000 there; standing on
   the ledge needs ~400-600): the lap the greedy already flies may lead to this exit.
+* A8 1,307M (the ramp done: 7.67 ms): the greedy's pit energy now BEATS the record's - in at E
+  1,301-1,304 (record 1,294), at the bottom 1,215-1,226 (record 1,117), 1,828-1,865 u/s - and it
+  laps higher: south down the west side (z ~-830), round the south end climbing, then north up
+  the EAST side at z -16..-61 with E ~1,240, west at the north end and down again; alive to the
+  26.6 s cut. Closest approach to the training ledge 323-467 u at E 1,120-1,282 (the ledge needs
+  ~300-400): a steering gap, not an energy gap. Score 1.956.
+* The training frontier is a LEDGE: 4,479 of the reservoir's 20,000 states (22%) stand on it at
+  (-1,970, -1,075, z ~300), progress 6.95%, |v| ~0 - climbed out by perturbed pit rows, then
+  waiting for the stall-kill keeps the record (the finite window's exploit again). A beam from
+  the true start on the 1,353M weights still finds no exit (best d 30,081 at 19.9 s).
+* **Why the greedy does not follow the training exit (field + geometry, 00:00 UTC):** at the
+  ledge's x, y the field jumps from d 32,874 at z 100 to 28,480 at z 150 - the pit's whole
+  NORTH part is roofed by the `*18` kill sheet (z 161), and the ledge (z ~300) stands ABOVE it.
+  The training exits climbed out at the pit's SOUTH end (no sheet there, y < -2,400) above z
+  ~200 and flew north over the sheet onto the ledge - the record's kind of exit. The greedy laps
+  under the sheet (its north-end peaks z ~29-110, the sheet's underside) and at the south end
+  turns north at z ~0-50 with E ~1,150-1,235 (the record climbs the same south-east ramp to z
+  320 and the west side to 587 with E ~1,100): a steering gap. Trend of the greedy's first-lap
+  south-end peak (median of 9): z -400 (980M) -> -226 (1,156M) -> -1..47 (1,383-1,458M) -> -323..31
+  (1.5-2.1B), single episodes at z 317-458 (1,232M, 1,836M, 1,987M, 2,138M) - i.e. at the record's
+  climb height, none turning north there yet.
+* Beams on A8's 2,063M weights - critic-ranked (`--score v`), d-ranked with `--keys-temp 2
+  --view-temp 2`, and d-ranked from the greedy's own exact south-end states (`--start-state`,
+  ticks 829 / 879 / 904 of a dumped greedy episode) - none climbs out (best d ~30.5k): the
+  policy's proposals do not contain the higher line yet.
+* A9 `uf2r1b1_turn2` (~00:02 UTC): A8 continued unchanged (2.4B steps) - the climb is converging.
+* The greedy's highest south-end climbs (z 378-458; 1,836M ep2 at t 10.5 s, 1,987M ep3 at 10.6 s,
+  2,138M ep3 at 13.9 s) come on LATER laps with E ~950-1,070 (bled on the earlier laps) and peak
+  heading EAST (vz ~0, |v_h| ~950-990), then fall back into the pit. The record climbs on its
+  FIRST lap with E ~1,100 and turns NORTH at z 485-587 to cross over the sheet. What is missing:
+  the high climb on the first (full-energy) lap and a north turn at its top.
+* Monte Carlo from the TRUE start (`beam_tas --elite-frac 1.0`: 4,096 independent rollouts, no
+  cloning) on A8's final weights: keys-temp 1 -> best d 30,020; keys-temp 1.5 -> 29,987 at 30.6 s:
+  one lineage climbed round the pit's south end on its 4th lap onto the TOP of the solid block
+  south of the platform ((-2,577, -2,763, 508), E 1,200, heading east) - the record crosses ~110 u
+  above that block (y -2,500..-2,700 is solid up to z ~475 on the field) and drops north into the
+  open air above the sheet (y ~-2,300, z >= 175). Beams rooted at that lineage's states just
+  before (`--start-state`, d-ranked, keys-temp 1.5, view-temp 1 / 3 / 6): none crosses (best d
+  ~29,900 at 0.8 s, then back into the pit).
+* A10 `uf2r1b1_cur` (00:31 UTC): RESUME of A9's 2.36B weights + a BACKWARD CURRICULUM on that
+  Monte Carlo line (`autoresearch/spines/uf2r1b1_mcline.npy`, the policy's own rollout - provenance
+  in spines/README.md): `--demo-file ... --demo-success-d -400 --demo-success-bonus 50
+  --demo-window 5 --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5 --demo-front-frac 0.5
+  --demo-front-temp 0.5 --demo-front-ticks 40 --demo-front-view 6` (the pb playbook; success =
+  the record 400 u past the line's end = across the block, over the sheet) + `--no-respawn-novel
+  --respawn-backward-mix 0 --int-real-only 0` (both refuse a demo spine) + `--respawn-greedy-temp 1`.
