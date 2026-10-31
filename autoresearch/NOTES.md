@@ -416,3 +416,10 @@ file without a word. Workaround: scp the padded file myself, md5-checked against
 * tcne7 (06:08 UTC): tcne6's final + tau0 3351 + a hotter band (`--demo-front-temp 1.0
   --demo-front-ticks 100`, keys at 2x and yaw sigma x6 for the first second after a band spawn),
   princessburglar's tool for a bounce at a precise step.
+* **Why the band is stuck (bench, 06:12 UTC): a 2 u margin over *18's edge.** tcne6's policy from
+  the band rows 3346-3350 (12 stoch): every episode dies within 0.0-0.1 s at x ~-896 - *18's east
+  edge (x max -896). The spine there slides off a floor at origin z 213 -> 199, i.e. feet ~2 u
+  above the sheet's top (z 161), and GE12's exact inputs kept enough eastward speed to clear
+  x -896 before the feet dropped those 2 u. Every GE12 chain past 11% crosses here (min speed
+  184 u/s along each): the only crossing the search found, and a razor. A crossing with more
+  height (arriving with more energy, or from further up the floor) is what to search for next.
