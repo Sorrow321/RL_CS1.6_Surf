@@ -36933,3 +36933,56 @@ start) were exposed to a smaller gap, not to none; their numbers stand as measur
 the ratchet paid in its last W seconds; progress the episode survived past for W s is kept. W 2
 is the recipe's own doomed-tail margin (`--respawn-margin 2`). Tests:
 `tests/python/test_death_charge_window.py` (the gap fix included).
+
+## 2026-10-31 05:10 (UTC) - uf2r1b1: surf_unitfarmer2 FINISHED 9/9 from the true start, champion-free (one lineage from scratch, 8.16B steps, 45.0 s; best 43.98 s at 8.84B; record 35.17 s)
+
+**What.** Fork-and-flush round 1, slot 1, one RTX 5080. One lineage trained FROM SCRATCH
+(`uf2r1b1_dcw`, 0-279M) and resumed through A5..A13 (`uf2r1b1_cut`) reaches the finish of
+surf_unitfarmer2 - the exploration benchmark of section 0 - in **9/9 greedy evals at 8.161B steps
+(45.00-45.54 s)**, entering the box through its west face 45-115 u above its floor. Its hand-on
+snapshot `ckpt_8152154112` (md5 d8d471138c8dcfd8aa12f1eb868deaad) re-records 9/9 on its own
+(44.74-45.52 s), and so does `ckpt_8819048448` (md5 d772ebb486b7cd9a2097af37135a7a20; 44.44-44.96 s),
+the snapshot before the best eval. Later evals: 9/9 at 8.24 / 8.31 / 8.54 / 8.84B (best 43.98 s), 8/9 at 8.46 / 8.69
+/ 8.76 / 8.92B - and 0/9 at 8.39B, 2/9 at 8.61B (deaths in the start pit at ~1.7%): the pit is
+still the fragile part. Score (autoresearch/score.py): control 5.608 -> **118.534**.
+
+**No human demo entered training.** Every spine was the policy's OWN line: a Monte Carlo of its
+own weights from the true spawn (`uf2r1b1_mcline`), then the trainer's `--auto-spine` beams
+(`beam_tas` from the true spawn on its newest weights). The record was read for analysis only (the
+final ramp's arc, split times). Provenance and md5s: `autoresearch/spines/README.md`.
+
+**The path** (details in `autoresearch/NOTES.md`):
+
+| arm | change (each a resume of the same weights unless marked) | result |
+|---|---|---|
+| control | the round's base recipe | 5.608 (the east trap at 151M) |
+| A1-A3 `dce` `nov` `temp` | `--death-charge 1` under `--race-ratchet` + energy / novelty / keys temperature | uninformative: the charge billed the NEXT spawn's depth (fixed, ee29bffb) |
+| A4 `dcw`, FROM SCRATCH | the fixed charge windowed (`--death-charge-window 2`), speed-bin novelty `--int-coef 2.5 --int-view 0 --int-speed 8 --int-speed-weight 3 --int-speed-weight-up`, `--yaw-entropy 0`, keys temperature | 9/9 dive into the start pit at 227M |
+| A5 `dcw2` | per-call energy potential `--energy-pot 12`, `--unstuck-max 0.5` | the pit at near-record energy, no exit |
+| A6 `gsp`, A8 `turn` | greedy-row respawns at x1.0-1.3 speed (A6), heading turned U(-180, 180) (A8) | the first exit in training (A8, by 1.13B) |
+| A7 `tick` | `--tick-ms-schedule 10:7.63:3e8` | dives at the record's speed |
+| A10 `cur` | backward curriculum on the policy's own Monte Carlo line (`beam_tas --elite-frac 1.0` from the true spawn, BY HAND) | the greedy leaves the pit (2.94B, 8.8) |
+| A11 `auto` | the trainer's `--auto-spine` loop (beam from the true spawn on the newest weights -> next spine) | 12.5 -> 50.8 |
+| A12 `auto2` | `--demo-success-d 100` instead of -400 (BY HAND: -400 stalls a curriculum at a beam spine's end) | 55.8 -> 69.2 |
+| A13 `cut` | search 3's 84% spine CUT at row 4,800, where its curriculum stalled (the `--demo-stall-cut` rule, BY HAND) | 86.1 -> 88.9 -> 94.6 -> 99.1 -> 99.7 -> **9/9 finishes** (8.16B) |
+
+**What closed the last 1%.** At 8.085B the greedy reached 99.7% - 47 u from the box's west edge,
+141 u BELOW its floor; the box sits on a solid block (the field reads 34,659 60 u under it), so it
+is entered from above or not at all. The loop's last spine (search 2, d 386) passed UNDER the box,
+and search 3 found nothing (4,096 envs, three branched beams, 0 finishes). One eval later (8.16B)
+all nine episodes finished: the k02 curriculum walking back plus the training's own finishes
+(front-perturbed rows finished 90/142 at 7.98B) taught the last ~150 u of height. No search
+produced the finishing line.
+
+**Caveats, in force:**
+* ONE map. Section 0b: not a recipe winner until the SAME flags and constants repeat on a second
+  map. Three steps were applied by hand (the first spine, the success-line constant, the cut);
+  each corresponds to a generic rule (`--auto-spine` from the start, `--demo-success-d 100`,
+  `--demo-stall-cut`), but the run did not apply them automatically.
+* **Open defect in `tools/auto_spine.py`:** a new spine must end `--auto-spine-gain` u deeper
+  than the greedy frontier, so once the greedy is within the gain of the goal not even a
+  FINISHING line can be handed back (`0 < 177 - 500`). It did not matter here (the greedy closed
+  the gap itself). A fix also needs `beam_tas --save-frontier` to keep a finishing lineage (its
+  frontier tracks only live elites and its replay stops before the finish tick).
+* Speed: 8.4 s behind the record, 3.55 s of it in the start pit (the greedy's energy laps), 1.6 s
+  over 60-70% of the course (split times against the record, analysis only).

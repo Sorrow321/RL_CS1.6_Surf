@@ -495,3 +495,11 @@ on purpose: round 1 needs an exit, and the attribution comes after. Read with uf
   100% 36.76 vs 45.16 (+0.10 on the final approach) - 8.4 s in all, 42% of it in the pit. The
   score's time term is 10 x (1 - t/300): the record's pace is worth +0.33 over 45 s; 9/9 is worth
   far more than speed (one failure costs 1.1), so the hand-on is always the best EVAL.
+* A13 8.16-8.92B, eleven evals: 9/9 at 8.161 (45.00 s) / 8.236 (44.77) / 8.312 (44.97) / 8.538
+  (45.36) / **8.840B (43.98 s, 118.534)**; 8/9 at 8.463 / 8.689 / 8.765 / 8.916; **0/9 at 8.387B**
+  (all nine die in the start pit at 1.8%) and 2/9 at 8.614B (seven die there at ~1.7%): the pit
+  entry is still the fragile part, the rest of the course holds. The curriculum walked back to
+  tau 674 of 5,800 by 8.97B; search 5 (8.85B, greedy_d 0) found no spine (as it cannot).
+  Hand-on for 118.534 = ckpt_8819048448 (21M before the eval; the next snapshot is after it),
+  VERIFIED by its own greedy recording on the box: **9/9, 44.44-44.96 s, score 118.519**, into the
+  box 130-200 u above its floor (`verify/greedy_8819048448.jsonl`; md5 d772ebb4...).

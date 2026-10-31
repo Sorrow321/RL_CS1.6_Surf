@@ -3,11 +3,11 @@
  "round": 1,
  "final": false,
  "best": {
-  "score": 118.5,
-  "eval_file": "/home/steam/ar_uf2/runs/uf2r1b1/uf2r1b1_cut/traj_8160542720.jsonl",
+  "score": 118.534,
+  "eval_file": "/home/steam/ar_uf2/runs/uf2r1b1/uf2r1b1_cut/traj_8840019968.jsonl",
   "run": "uf2r1b1_cut",
-  "step": 8160542720,
-  "ckpt": "/home/steam/ar_uf2/runs/uf2r1b1/uf2r1b1_cut/ckpt_8152154112.pt",
+  "step": 8840019968,
+  "ckpt": "/home/steam/ar_uf2/runs/uf2r1b1/uf2r1b1_cut/ckpt_8819048448.pt",
   "recipe": [
    "--death-charge",
    "1",
@@ -89,7 +89,7 @@
    "1e8"
   ],
   "resume_from": "chain: uf2r1b1_dcw (scratch, 0-279M) -> dcw2 -> gsp -> tick -> turn -> turn2 -> cur (2.415B) -> loop/auto (MC line, then beam spines) -> k04 (-d 100) -> cut (k03 line cut at row 4800, resumed at ~7.4B)",
-  "commit": "4e4e25ff"
+  "commit": "fb2388e6"
  },
- "summary": "118.500 (A13 8.161B: 9/9 greedy episodes FINISH surf_unitfarmer2 from the true start, 45.00-45.54 s; record 35.17 s): every episode dives into the start pit, climbs out, flies the whole course and enters the finish box through its west face at (3,303..3,312, -1,926..-1,980, -526..-594), 45-110 u above its floor - one eval after the greedy had passed 141 u under it (99.689 at 8.085B). Champion-free and from one lineage trained from scratch: recipe + death charge (a ratchet bug fixed; windowed 2 s) + per-call energy K12 + 10x upward speed novelty + yaw-entropy 0 + keys T -> the dive (227M); greedy-row speed x1-1.3 + heading turn 180 -> the first training exit; tick 10->7.63 ms; a backward curriculum on the policy's own Monte Carlo line -> the greedy exits (2.94B, 8.8); the trainer's auto-spine loop (beam_tas from the true start on its newest weights -> next spine, curriculum walks back) -> 12.5 -> 69.2; success line d 100 (not -400, which stalls at a spine's end) and a cut of the 84% spine where its curriculum stalled -> 86.1 -> 88.9 -> 94.6 -> 99.1 -> 99.7 -> 9/9 finishes. Control = 5.608."
+ "summary": "118.534 (A13 8.840B: 9/9 greedy episodes FINISH surf_unitfarmer2 from the true start, best 43.98 s; record 35.17 s; first 9/9 at 8.161B, 45.00 s; hand-on ckpt_8819048448 re-records 9/9 at 44.44-44.96 s): every episode dives into the start pit, climbs out, flies the whole course and enters the finish box through its west face at (3,303..3,312, -1,926..-1,980, -526..-594), 45-110 u above its floor - one eval after the greedy had passed 141 u under it (99.689 at 8.085B). Champion-free and from one lineage trained from scratch: recipe + death charge (a ratchet bug fixed; windowed 2 s) + per-call energy K12 + 10x upward speed novelty + yaw-entropy 0 + keys T -> the dive (227M); greedy-row speed x1-1.3 + heading turn 180 -> the first training exit; tick 10->7.63 ms; a backward curriculum on the policy's own Monte Carlo line -> the greedy exits (2.94B, 8.8); the trainer's auto-spine loop (beam_tas from the true start on its newest weights -> next spine, curriculum walks back) -> 12.5 -> 69.2; success line d 100 (not -400, which stalls at a spine's end) and a cut of the 84% spine where its curriculum stalled -> 86.1 -> 88.9 -> 94.6 -> 99.1 -> 99.7 -> 9/9 finishes. Control = 5.608."
 }
