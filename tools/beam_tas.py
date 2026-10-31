@@ -982,7 +982,7 @@ class MixedTorchPolicy(SampledTorchPolicy):
     arrives at the finish window late, low, and dead."""
 
     def __init__(self, *a, n_greedy: int, view_temp=None, keys_temp=None, view_hold=None,
-                 hold_seed: int = 0, pitch_hold=None, **kw):
+                 hold_seed: int = 0, pitch_hold=None, pitch_hold_for: int = 0, **kw):
         super().__init__(*a, **kw)
         self._ng = int(n_greedy)
         # --view-hold SIGMA PERIOD (None = off, nothing below runs): each PROPOSAL env adds a
@@ -1009,6 +1009,8 @@ class MixedTorchPolicy(SampledTorchPolicy):
             self._ph_k = 0
             self._ph_seed = int(hold_seed) + 104729
             self._ph_gen = None
+            # --pitch-hold-for N: only the search's first N decisions carry the offset (0 = all)
+            self._ph_for = int(pitch_hold_for or 0)
         # --view-temp / --keys-temp (None = off, the draw is byte-identical): the PROPOSAL
         # envs sample the yaw head at sigma x view_temp (pitch untouched: camera only) and
         # the four key heads at logits / keys_temp; the greedy envs still take mu / argmax
@@ -1048,7 +1050,8 @@ class MixedTorchPolicy(SampledTorchPolicy):
                     self._ph_c = torch.randn(n, generator=self._ph_gen, device=z.device,
                                              dtype=z.dtype) * self._ph[0]
                 self._ph_k += 1
-                z[:, -1] = z[:, -1] + self._ph_c
+                if self._ph_for <= 0 or self._ph_k <= self._ph_for:
+                    z[:, -1] = z[:, -1] + self._ph_c
             if self._ng > 0:
                 act[:self._ng, N_VIEW:] = padded[:self._ng, N_VIEW:].argmax(-1)
                 z[:self._ng] = mu[:self._ng]
@@ -1945,6 +1948,10 @@ def main():
                          "lineage. The pitch moves only the depth image, so this proposes "
                          "sustained camera directions (what the policy looks at), which an i.i.d. "
                          "per-decision draw does not hold. None = off, byte-identical")
+    ap.add_argument("--pitch-hold-for", type=int, default=0, metavar="N",
+                    help="--pitch-hold: apply the held pitch offsets only during the search's "
+                         "first N decisions (a camera choice at a junction, not noise over the "
+                         "whole line); 0 = every decision")
     ap.add_argument("--cc-T", default="0",
                     help="--curiosity-cond checkpoints: the family member "
                          "the PROPOSAL envs run as - a T in [0, cc_tmax] "
@@ -2753,7 +2760,7 @@ def main():
                                 K, stack, n_greedy=args.greedy_envs,
                                 view_temp=args.view_temp, keys_temp=args.keys_temp,
                                 view_hold=args.view_hold, hold_seed=int(args.torch_seed) + 7919,
-                                pitch_hold=args.pitch_hold,
+                                pitch_hold=args.pitch_hold, pitch_hold_for=args.pitch_hold_for,
                                 extra_slot=esN, extra_fn=efN,
                                 latch_fn=latchN, cc_fn=cc_fnN, keys_hold=KEYS, **xkwN)
     elif args.eps > 0.0 or args.dedup:
