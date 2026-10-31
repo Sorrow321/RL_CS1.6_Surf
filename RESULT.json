@@ -3,5 +3,5 @@
  "round": 1,
  "final": false,
  "best": null,
- "summary": "No run yet (18:52 UTC): fleet budget pace taken by other boxes since 17:15. Built --stall-energy (51b5b635) and --energy-pot-rel (235bde20). Local GE K30: 8.66% at loop 1's east end, no loop 2. Queued on one box: arm A zlr1b3_enr (recipe + stall-energy 32 + energy-pot-rel 1 per-call + time-pen 0 + death charge 2 s) with GE beside it, then the recipe control zlr1b3_ctl."
+ "summary": "No box yet (21:45 UTC, 4.5 h): the fleet's budget pace fits ~1 box and two boxes have held it since ~17:15. Built --stall-energy, --energy-pot-rel, --energy-death-window (tested, pushed). Local Go-Explore (40 min, 1 core): loop-1 energy -2,329 but no transfer to loop 2 (best 9.35%). Queued: arm A zlr1b3_enr = recipe + --stall-energy 32 --energy-pot-rel 1 --energy-pot-front 0 --energy-pot-front-bonus 0 --energy-death-window 2 --time-pen 0 --death-charge 1 --death-charge-window 2 (6e8), then the recipe control (4e8) with GE beside it."
 }
