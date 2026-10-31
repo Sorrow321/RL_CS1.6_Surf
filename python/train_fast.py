@@ -6586,6 +6586,14 @@ def main() -> None:
                          "energy height |v|^2 / (2 g) / 1000 of that state - the speed brought to "
                          "the frontier; dying before the band forfeits it, so no stretch is ever "
                          "cheaper to die on. A checkpoint restores it. 0 = the per-call potential")
+    ap.add_argument("--energy-ratchet", type=int, default=None, choices=(0, 1),
+                    help="with --energy-pot K: 1 = the RATCHET form - pay only NEW records of the "
+                         "episode's energy height, K x (h - its best so far) / 1000, and charge "
+                         "nothing for a loss (a landing, a wall, friction). A learner that cannot "
+                         "pump yet is never charged for its contacts, so the energy term never "
+                         "prices living below dying; a lost-and-regained h is paid once; bounded "
+                         "per episode by K x (h max - h at spawn). Not with --energy-pot-front. "
+                         "A checkpoint restores it. 0 = the per-call form (bit-identical)")
     ap.add_argument("--surf-bonus", type=float, default=None,     # 0 = off
                     help="race (round 40, pnSURF): REWARD UNITS PER SECOND "
                          "paid while the player is riding a surfable face. "
@@ -8018,6 +8026,9 @@ def main() -> None:
         if args.energy_pot_front_bonus is None and ck_cfg.get("energy_pot_front_bonus"):
             args.energy_pot_front_bonus = int(ck_cfg["energy_pot_front_bonus"])
             restored.append(f"energy_pot_front_bonus={args.energy_pot_front_bonus}")
+        if args.energy_ratchet is None and ck_cfg.get("energy_ratchet"):
+            args.energy_ratchet = int(ck_cfg["energy_ratchet"])
+            restored.append(f"energy_ratchet={args.energy_ratchet}")
         if args.speed_coef is None and ck_cfg.get("speed_coef") is not None:
             args.speed_coef = float(ck_cfg["speed_coef"])
             restored.append(f"speed_coef={args.speed_coef:g}")
@@ -9488,6 +9499,13 @@ def main() -> None:
         args.energy_pot_front_bonus = 0
     if args.energy_pot_front_bonus and not args.energy_pot_front > 0.0:
         raise SystemExit("--energy-pot-front-bonus pays at the band edge: it needs --energy-pot-front B > 0")
+    if args.energy_ratchet is None:
+        args.energy_ratchet = 0
+    if args.energy_ratchet:
+        if not args.energy_pot > 0.0:
+            raise SystemExit("--energy-ratchet is a form of --energy-pot: it needs --energy-pot K > 0")
+        if args.energy_pot_front > 0.0:
+            raise SystemExit("--energy-ratchet replaces the per-call term; not with --energy-pot-front")
     if args.surf_bonus is None:
         args.surf_bonus = 0.0
     if args.dive_pen is None:
@@ -13866,6 +13884,8 @@ def main() -> None:
             # --energy-pot: the same, on z + |v|^2 / (2 g) (reward units per 1000 u)
             _s.reward_fn.energy_pot = float(args.energy_pot)
             _s.reward_fn.en_front_bonus = bool(args.energy_pot_front_bonus)
+            # --energy-ratchet: only new energy-height records are paid
+            _s.reward_fn.en_ratchet = bool(args.energy_ratchet)
             # --stall-energy: energy-height records re-arm the stall timer (u, cumulative)
             _s.reward_fn.stall_energy = float(args.stall_energy)
             _s.reward_fn.surf_bonus = SURF_BONUS_T
@@ -14629,6 +14649,9 @@ def main() -> None:
                           if args.reward == "race" and args.energy_pot_front else {}),
                        **({"energy_pot_front_bonus": int(args.energy_pot_front_bonus)}
                           if args.reward == "race" and args.energy_pot_front_bonus else {}),
+                       # --energy-ratchet: written ONLY when on
+                       **({"energy_ratchet": 1}
+                          if args.reward == "race" and args.energy_ratchet else {}),
                        # --stall-energy: written ONLY when on (a config without it is the old one)
                        **({"stall_energy": float(args.stall_energy)}
                           if args.reward == "race" and args.stall_energy else {}),
