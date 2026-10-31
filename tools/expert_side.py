@@ -97,39 +97,102 @@ def replace_atomic(src: Path, dst: Path):
     os.replace(tmp, dst)
 
 
+def wave_cmd(a, ckpt: Path, r: int, w: int, wdir: Path, extra=()):
+    return [PY, "-u", ROOT / "tools" / "beam_tas.py", ckpt, "--map", a.map,
+            "--envs", a.envs, "--greedy-envs", a.greedy_envs, "--score", a.score,
+            "--resample-every", a.resample, "--greedy-eps", 1, "--max-ticks", a.max_ticks,
+            "--keep-finishers", a.keep, "--route-file", "none", "--save-frontier",
+            "--torch-seed", 1000 * r + w + a.seed_base, "--seed", 1 + 100 * r + w + a.seed_base,
+            "--out-dir", wdir, *a.plan_args.split(), *[str(x) for x in extra]]
+
+
+def run_wave(a, ckpt: Path, r: int, w: int, rdir: Path, extra=(), tag="plain") -> dict:
+    wdir = rdir / f"wave_{w}"
+    rc = run(wave_cmd(a, ckpt, r, w, wdir, extra), rdir / f"wave_{w}.log",
+             timeout=a.wave_timeout)
+    s = {}
+    if (wdir / "summary.json").exists():
+        s = json.loads((wdir / "summary.json").read_text(encoding="utf-8"))
+    out = {"wave": w, "kind": tag, "rc": rc, "crossed": bool(s.get("crossed")),
+           "best_s": s.get("best_s"), "greedy_s": s.get("greedy_s"),
+           "npz": str(wdir / "beam_best.npz"), "frontier": str(wdir / "beam_frontier.npz")}
+    if tag != "plain":
+        out["branch"] = list(extra)
+    log(f"round {r} wave {w} ({tag}): rc {rc} crossed {s.get('crossed')} best "
+        f"{s.get('best_s')} s (greedy {s.get('greedy_s')} s)")
+    return out
+
+
+def line_plateau_fork(a, frontier: Path, rng) -> tuple:
+    """The fork tick for a branched wave: inside the first half of the LONGEST record plateau of
+    a finishing line (its per-tick states, beam_tas --save-frontier) on --field, drawn uniformly.
+    -> (tick, (start, end)) or (None, None) when the line has no plateau of --branch-secs."""
+    import numpy as np
+    sys.path.insert(0, str(ROOT / "python"))
+    from surfgym.goalfield import GoalField
+    from surfgym.greedy_spawn import record_plateaus
+    z = np.load(frontier, allow_pickle=False)
+    st = z["states"]
+    zf = np.load(a.field, allow_pickle=False)
+    f = GoalField(zf["grid"].astype(np.float32) * float(zf["quant"]), zf["mins"],
+                  float(zf["cell"]), float(zf["reach_max"]))
+    d = np.asarray(f.sample(st["origin"].astype(np.float64)), np.float64)
+    d = np.where(d < f.reach_max - 0.5 * f.cell, d, np.inf)
+    tick_ms = float(json.loads((frontier.parent / "summary.json").read_text())["tick_ms"])
+    pl = record_plateaus(d, 1000.0 / tick_ms, a.branch_secs)
+    if not pl:
+        return None, None
+    s0, e0 = max(pl, key=lambda x: x[1] - x[0])
+    return int(s0 + rng.uniform(0.0, 0.5) * (e0 - s0)), (int(s0), int(e0))
+
+
 def one_round(a, r: int, ckpt: Path, rdir: Path) -> dict:
+    import numpy as np
     row = {"round": r, "t": time.time(), "ckpt_step": ckpt_step(ckpt)}
-    npzs, waves = [], []
+    waves = []
     t0 = time.time()
     for w in range(a.waves):
-        wdir = rdir / f"wave_{w}"
-        cmd = [PY, "-u", ROOT / "tools" / "beam_tas.py", ckpt, "--map", a.map,
-               "--envs", a.envs, "--greedy-envs", a.greedy_envs, "--score", a.score,
-               "--resample-every", a.resample, "--greedy-eps", 1, "--max-ticks", a.max_ticks,
-               "--keep-finishers", a.keep, "--route-file", "none",
-               "--torch-seed", 1000 * r + w + a.seed_base, "--seed", 1 + 100 * r + w + a.seed_base,
-               "--out-dir", wdir, *a.plan_args.split()]
-        rc = run(cmd, rdir / f"wave_{w}.log", timeout=a.wave_timeout)
-        s = {}
-        if (wdir / "summary.json").exists():
-            s = json.loads((wdir / "summary.json").read_text(encoding="utf-8"))
-        waves.append({"wave": w, "rc": rc, "crossed": bool(s.get("crossed")),
-                      "best_s": s.get("best_s"), "greedy_s": s.get("greedy_s")})
-        if rc == 0 and s.get("crossed") and (wdir / "beam_best.npz").exists():
-            npzs.append((s.get("best_s") or 1e9, wdir / "beam_best.npz"))
-        log(f"round {r} wave {w}: rc {rc} crossed {s.get('crossed')} best {s.get('best_s')} s "
-            f"(greedy {s.get('greedy_s')} s)")
+        waves.append(run_wave(a, ckpt, r, w, rdir))
+    # --branch-waves: forks at the fastest plain line's longest record plateau (its own time
+    # sink: an extra lap, a loop), half the population holding yaw offsets around the policy's
+    # own target for --branch-hold ticks - a line the policy's narrow proposals never emit
+    plain = [x for x in waves if x["rc"] == 0 and x["crossed"] and x["best_s"]]
+    if a.branch_waves > 0 and plain:
+        fast = min(plain, key=lambda x: x["best_s"])
+        rng = np.random.default_rng(7919 * r + a.seed_base)
+        for k in range(a.branch_waves):
+            try:
+                tick, pl = line_plateau_fork(a, Path(fast["frontier"]), rng)
+            except Exception as e:                   # noqa: BLE001 - a missing frontier file
+                log(f"round {r}: no fork tick ({e!r})")
+                break
+            if tick is None:
+                log(f"round {r}: the fastest line has no record plateau >= {a.branch_secs:g} s")
+                break
+            extra = ["--branch-at", f"t{tick}:{int(a.envs) // 2}", "--branch-view-only",
+                     "--branch-jitter", int(a.branch_jitter), "--branch-hold", int(a.branch_hold),
+                     "--branch-burst", int(a.branch_burst), "--branch-protect",
+                     int(a.branch_protect)]
+            x = run_wave(a, ckpt, r, a.waves + k, rdir, extra, tag="branch")
+            x["plateau"] = pl
+            waves.append(x)
     row["plan"] = {"waves": waves, "wall_s": round(time.time() - t0, 1)}
-    if not npzs:
+    ok = [x for x in waves if x["rc"] == 0 and x["crossed"] and x["best_s"]
+          and Path(x["npz"]).exists()]
+    if not ok:
         row["handed_on"] = False
         return row
-    npzs.sort(key=lambda x: x[0])
+    ok.sort(key=lambda x: x["best_s"])
+    best = float(ok[0]["best_s"])
+    # --wave-tol: distil only the waves within this fraction of the round's fastest line, so a
+    # much faster line (one found by a fork) is not diluted by the old route's waves
+    keep = [x for x in ok if x["best_s"] <= best * (1.0 + a.wave_tol)]
     parts, best_spine = [], None
     sys.path.insert(0, str(ROOT / "python"))
     from surfgym.bc import merge_bc_files
-    for i, (best_s, z) in enumerate(npzs):
+    for i, x in enumerate(keep):
         bi, si = rdir / f"bc_{i}.npz", rdir / f"spine_{i}.npy"
-        rc = run([PY, "-u", ROOT / "tools" / "plan_to_bc.py", "--plan", z, "--ckpt", ckpt,
+        rc = run([PY, "-u", ROOT / "tools" / "plan_to_bc.py", "--plan", x["npz"], "--ckpt", ckpt,
                   "--out", bi, "--spine", si, "--map", a.map, *a.distil_args.split()],
                  rdir / f"distil_{i}.log", timeout=1800)
         if rc != 0 or not bi.exists():
@@ -148,10 +211,14 @@ def one_round(a, r: int, ckpt: Path, rdir: Path) -> dict:
     replace_atomic(bc, Path(a.bc))
     if best_spine is not None and a.states:
         replace_atomic(best_spine, Path(a.states))
-    row.update(handed_on=True, best_s=float(npzs[0][0]), waves_distilled=len(parts),
+        ks = best_spine.with_suffix(".keys.npy")
+        if ks.exists():
+            replace_atomic(ks, Path(a.states).with_suffix(".keys.npy"))
+    row.update(handed_on=True, best_s=best, best_kind=ok[0]["kind"],
+               waves_distilled=len(parts),
                lines=(int(meta.get("lines", 0)) if isinstance(meta, dict) else None))
-    log(f"round {r}: handed on {len(parts)} wave(s), best line {npzs[0][0]} s -> {a.bc}"
-        + (f", {a.states}" if a.states else ""))
+    log(f"round {r}: handed on {len(parts)} wave(s), best line {best} s ({ok[0]['kind']}) -> "
+        f"{a.bc}" + (f", {a.states}" if a.states else ""))
     return row
 
 
@@ -179,6 +246,23 @@ def main(argv=None):
     ap.add_argument("--score", default="d")
     ap.add_argument("--max-ticks", type=int, default=7000)
     ap.add_argument("--seed-base", type=int, default=0)
+    ap.add_argument("--field", default=None,
+                    help="the goal field for the record plateaus (default: the map's "
+                         "no-corner-cut field <map>.goalc_32.npz, else <map>.goal_32.npz)")
+    ap.add_argument("--branch-waves", type=int, default=0,
+                    help="per round, this many extra waves forked at the fastest plain line's "
+                         "longest record plateau (0 = off)")
+    ap.add_argument("--branch-secs", type=float, default=1.5,
+                    help="--branch-waves: the shortest record plateau that counts (s)")
+    ap.add_argument("--branch-jitter", type=int, default=30,
+                    help="--branch-waves: the held yaw offset U(-J, J) deg on the policy's target")
+    ap.add_argument("--branch-hold", type=int, default=50, help="--branch-waves: ticks per offset")
+    ap.add_argument("--branch-burst", type=int, default=300, help="--branch-waves: burst ticks")
+    ap.add_argument("--branch-protect", type=int, default=4,
+                    help="--branch-waves: generations the forked lineages cannot be culled")
+    ap.add_argument("--wave-tol", type=float, default=0.02,
+                    help="distil only the waves whose fastest line is within this fraction of "
+                         "the round's fastest")
     ap.add_argument("--start-step", type=float, default=-1.0,
                     help="the step the files were last planned at (a --once round before the "
                          "launch): the loop plans again only --min-step-gap past it")
@@ -188,6 +272,14 @@ def main(argv=None):
                     help="extra plan_to_bc flags, one string")
     ap.add_argument("--deadline", type=float, default=0.0, help="unix time to stop at (0 = none)")
     a = ap.parse_args(argv)
+    if a.field is None:
+        mp = Path(a.map)
+        for cand in (mp.with_suffix(".goalc_32.npz"), mp.with_suffix(".goal_32.npz")):
+            if cand.exists():
+                a.field = str(cand)
+                break
+    if a.branch_waves > 0 and not a.field:
+        raise SystemExit("--branch-waves needs a goal field (--field)")
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     last_step = int(a.start_step)
