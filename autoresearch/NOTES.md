@@ -109,3 +109,13 @@ two hours, so this branch has had no box at all in the first 2 h 10 min of its 1
 (every `rent` refused: "no offer passes ... within the budget pace"). A per-agent share (a
 queue, or a cap on one agent's box-hours while another waits) would keep a branch from sitting
 idle for the first third of its round.
+* 19:45 UTC, still no box. Plan revised: NO Go-Explore beside arm A. Plain GE's loop-1 energy
+  grows ~log(compute) (E max -2,985 / -2,800 / -2,592 at 3 / 5 / 30 thread-min); loop 2 needs
+  ~-1,950, i.e. ~200x the 30 thread-min, so on the box it would only cost arm A ~20% of its steps.
+  Control `zlr1b3_ctl` cut to 4e8 (enough for a matched-step reading of arm A's gates).
+* What the pump IS (record, analysis only): at each end the heading reverses through ~120 deg in
+  ~1 s with the view ALONG the velocity (yaw within a few deg of the heading) and ONE strafe key
+  held toward the inside of the turn (right at one end, left at the other); E +40-55 u per
+  end-turn. That is the plain air-strafe turn, an action the recipe's policy already expresses
+  (view offset ~0 in --view-absolute velocity, one side key). It is a skill to discover, not a
+  representational gap.
