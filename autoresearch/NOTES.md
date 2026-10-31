@@ -111,3 +111,13 @@ the numbers). Read it before you start; append to it before you wrap up.
   + surf-hold 0.5: 1,281 / 1,016. So +15-30 u before the first ramp and a lucky line now and then;
   the first-ramp landing (~250 u lost against the record's ~80) and everything after it are not
   fixed by a better random prior. Kept, default off (flag off byte-identical, checked).
+* **Warm start from refs/pb_r26, what a resume on this map would take (02:26 UTC, not run).** The
+  checkpoint's config restores, on a bare resume: map surf_princessburglar_b26 (run_arm's resume
+  branch passes no --map, and its PRE-LAUNCH record gate records the source checkpoint on ITS map,
+  which the box does not have), demo_file + demo_front_frac 0.8 (its own pb spine; with the file
+  blanked, --demo-front-frac 0 is needed or the trainer exits), lr 2e-5, energy_pot 12 (per call),
+  tick 7.64 ms (the finished 10 -> 7.63 ramp), obs_potential_d0 for pb. bc_file is NOT restored;
+  the pb reservoir is dropped on the map mismatch (respawn.py); novelty tables of the wrong length
+  are re-zeroed. So a warm start needs a retargeted checkpoint (config map -> surf_unitfarmer2,
+  demo/spawn files cleared, demo_front_frac 0, run state dropped), pushed with deploy --ckpt.
+  Kept as the second option; the first box goes to the scratch arm.
