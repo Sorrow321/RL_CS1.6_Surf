@@ -153,3 +153,24 @@ the numbers). Read it before you start; append to it before you wrap up.
   --spawn-states from the GE archive (tools/ge_spawns.py, autoresearch/spines/uf2r1b3_ge12_seed.npy)
   + its own per-call energy shaping, lr 1e-4; (2) scratch: the recipe + --tick-ms 8 + per-call
   --energy-pot 8 + the same spawns. Both flag sets pass a local CPU smoke run and the record gate.
+
+### uf2r1b3 round 1 lesson (final, 2026-10-31 09:02 UTC)
+* **Result: no score.** No box was ever available to this branch: every `box.py rent` from 21:44 UTC
+  (retried every ~100 s) to the 08:15 cutoff was refused by the burn pace, two other boxes holding
+  0.79 of the 0.82 $/h limit the whole round (see "Harness issue" above). score.py on
+  runs/uf2r1b3/: 0 evals. Nothing was pulled, nothing is billing (box.py status: no box).
+* **What the round established (CPU measurements, all above in this file):** the 9.27 % local optimum
+  is the kill slab *18 at z 160, which the goal field routes through; the z 490 floor south of the
+  platform is a fall catch (*7); beating ~9.3 needs the record's whole start chain (pit pump under
+  the slab, central ramp north over it, dive past x -3,456) from the true start. Random-burst
+  Go-Explore - with or without the three new movement priors - arrives at the first ramp 250-290 u
+  of energy height below the record and its coverage of the record's line saturates within minutes;
+  benches from the record's states show the bowl is a 0.1 s closed-loop choice of strafe key.
+* **What the next round can launch without rebuilding anything:** the warm arm (refs/pb_r26 retargeted
+  by tools/ckpt_retarget.py, deploy --ckpt, launch --resume with --lr 1e-4 --spawn-states
+  runs/uf2r1b3_ge_spawns.npy --spawn-states-frac 0.3 --reset-int-counts, SELF_STATES provenance as
+  in the scratchpad script) and the scratch arm (the recipe + --tick-ms 8 --energy-pot 8
+  --energy-pot-front 0 --energy-pot-front-bonus 0 + the same spawns). The seed spawn file is
+  autoresearch/spines/uf2r1b3_ge12_seed.npy (README there). Judge either on the dip/* columns
+  (does any training episode survive the pit dip) and on autoresearch/analysis/uf2_eval_report.py
+  (PIT entry, its energy, OUT), not on eval_progress.
