@@ -737,3 +737,25 @@ climb needs E ~1,250 at the south-west; its entry turn (a sharp LEFT at the ramp
 costs ~117 u of E, the record's wide RIGHT turn ~0. Generic levers: training-side exploration at
 the line's time sink with turned headings (`--respawn-greedy-plateau` + `--respawn-greedy-turn`),
 so the policy learns to surf the pit in other directions, and the side loop's forked waves there.
+
+### THE FINISHES WERE MOSTLY FAKE: the core's finish was the trigger's bounding box (13:35-14:00 UTC)
+* Found by the operator from the user's eye on the uf2 video (the user's memory note
+  `finish-trigger-aabb`, 13:04 UTC): `detect_zones` gives the finish as the trigger_multiple's model
+  AABB and the core scored a finish when the swept player segment crossed that (hull-inflated) box;
+  GoldSrc fires a brush trigger only when the origin is inside the model's CLIP HULL at the end of a
+  move (ReHLDS SV_TouchLinks) - the rule the core already used for every kill/push/teleport trigger.
+* unitfarmer2's finish `*23` is three 1 u curtains: the west face x 3,328 for y <= -2,144, a diagonal
+  (3,328, -2,144)-(3,584, -1,888), the north face y -1,888 for x >= 3,584. The box's NW triangle and
+  its interior are NO finish.
+* Reproduced here with the core's own hull test (`autoresearch/analysis/uf2_real_finish.py`): the
+  round-1 incumbent's 9/9 eval (traj_13067878400) has **1 real finish** (ep0, 42.57 s: it crosses the
+  west curtain at y -2,201). Two episodes enter the west face at y -2,026 / -2,052 (no curtain there)
+  and six come in heading SOUTH through the box's north edge at x 3,308-3,384 (the north curtain
+  starts at x 3,584) into the empty triangle - whose south-east edge is the real diagonal ~250 u on.
+  The 42.22 s local beam line is fake too. Every lineage result on this map is mostly sim-only.
+* Fix (commit 925f35ba, default off): `--goal-hull` - the finish is the engine's trigger touch on the
+  brush model whose bounds are the zones' end box (`surf_set_goal_model`; core exports additive, the
+  unflagged core byte-identical to the old one by a hashed 16-env rollout); record_ckpt MIRRORS it,
+  beam_tas / plan_to_bc / beam_best_states mirror it (`surfgym.core.arm_finish`). The grader
+  (score.py, the operator's) reads the trainer's done flags, so a `--goal-hull` run's evals count only
+  real finishes. Every arm of mine from here on runs with it.
