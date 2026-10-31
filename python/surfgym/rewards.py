@@ -1089,6 +1089,18 @@ class RaceReward:
         # on the way (so dying before the band forfeits it and is never the cheaper end; the
         # kinetic part, not z, so the map's coordinate origin does not enter)
         self.en_front_bonus = False
+        # --stall-energy E (zlr1b2, 2026-10-31): the stall timer ALSO re-arms when the episode's
+        # best energy height h = z + |v|^2 / (2 g) has risen more than E units above its value at
+        # the last energy re-arm (CUMULATIVE, like --eval-patience: a slow pump of ~1 u per call
+        # still re-arms). Gravity trades height for speed and back without changing h, so h only
+        # rises by what the player adds (air acceleration, a jump): a line that is still pumping
+        # energy is not stalled even while the field says it goes nowhere. h is bounded (the
+        # map's height plus sv_maxvelocity), so an energy farm still stalls once it saturates.
+        # 0 = off: the block is skipped, no state, bit-identical. Training slots only.
+        self.stall_energy = 0.0
+        self._sh_ref = None
+        self._sh_best = None
+        self.stall_en_rearms = 0
         # --surf-bonus / --dive-pen (round 40, pnSURF): "surfing = good,
         # diving = bad" as a dense per-tick term. Both are REWARD UNITS PER
         # SECOND on the flag; the trainer converts to per-tick. 0/0 is off
@@ -1277,6 +1289,8 @@ class RaceReward:
         self._spd_prev = None        # --speed-pot re-anchors on the first call
         self._en_prev = None         # --energy-pot re-anchors on the first call
         self._en_off = None          # --energy-pot-front: no episode is latched yet
+        self._sh_ref = None          # --stall-energy re-anchors on the first call
+        self._sh_best = None
         self._g_en = float(core.config.phys.sv_gravity)
         self._best = self._d.copy()
         if self.sr:
@@ -1920,6 +1934,24 @@ class RaceReward:
         sd = (-np.asarray(self.arc.arc, np.float64) if self.stall_arc else d)
         improved = sd < self._best - self.stall_eps
         self._best = np.minimum(self._best, sd)
+        if self.stall_energy > 0.0:
+            # --stall-energy: a new energy-height record (cumulative, E above the last
+            # re-arm's) also re-arms the timer. Ended rows hold the NEXT episode's spawn; they
+            # re-anchor below, and their timer is reset there anyway.
+            _vv = np.asarray(_states(core)["velocity"], np.float64)
+            _h = (_states(core)["origin"][:, 2].astype(np.float64)
+                  + (_vv * _vv).sum(axis=1) / (2.0 * self._g_en))
+            if self._sh_ref is None or self._sh_ref.shape != _h.shape:
+                self._sh_ref = _h.copy()
+                self._sh_best = _h.copy()
+            self._sh_best = np.maximum(self._sh_best, _h)
+            egain = self._sh_best > self._sh_ref + self.stall_energy
+            self._sh_ref = np.where(egain, self._sh_best, self._sh_ref)
+            self.stall_en_rearms += int(np.count_nonzero(egain & ~improved & ~ended))
+            improved = improved | egain
+            if ended.any():
+                self._sh_ref[ended] = _h[ended]
+                self._sh_best[ended] = _h[ended]
         self._since = np.where(improved, 0, self._since + self.every)
         if self.d_latch > 0.0:
             self._latched |= d <= self.d_latch
@@ -2219,6 +2251,12 @@ class RaceReward:
             if self._en_off is not None:
                 # --energy-pot-front: the share of envs whose episode is past the band edge now
                 out["en_off_frac"] = float(self._en_off.mean())
+        if self.stall_energy > 0.0:
+            # --stall-energy: timer re-arms that only the energy rule gave (the field rule did
+            # not), per ended episode
+            out["stall_en_rearms_per_ep"] = ((self.stall_en_rearms / n_ep) if n_ep
+                                             else float("nan"))
+            self.stall_en_rearms = 0
         if self.arc is not None:
             out["arc_gain"] = (float(np.mean(self.arc_gain))
                                if self.arc_gain else float("nan"))

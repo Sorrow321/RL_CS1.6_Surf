@@ -141,6 +141,10 @@ TRAIN_ONLY = frozenset({
     # --eval-patience: the TRAINER's eval-time cost rule (cut an eval episode that stopped
     # gaining); a recording runs every episode to its own --ep-ticks, the honest full line
     "eval_patience",
+    # --eval-patience-energy: the same eval-time cost rule's energy re-arm - TRAIN_ONLY likewise
+    "eval_patience_energy",
+    # --stall-energy: the TRAINING stall timer's energy re-arm; a recording kills nothing by it
+    "stall_energy",
     # --eval-parallel: how the TRAINER schedules its eval episodes (side by side on a wider
     # eval core); a recording flies its own episodes, the policy and the starts are the same
     "eval_parallel",
