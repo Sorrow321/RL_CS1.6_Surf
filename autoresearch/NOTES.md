@@ -401,3 +401,10 @@ on purpose: round 1 needs an exit, and the attribution comes after. Read with uf
   `*12` floor (z ~-1,640). Hand-on: ckpt_6176112640 (21M before; md5 9e2ddd98...). **Training
   reaches the end zone**: the reservoir's deepest state 5.50% of d0 = **94.5% progress**,
   front-perturb best 29,204 u (95.3%); training reward 186/ep.
+* A12 6,273-6,726M: 9 evals at 66-69%, best **69.163** (6,726M: best 69.2%, median 67.9%): the
+  greedy holds ~68% (the `*12` floor at z ~-1,640 after 67-69%). **Search 3 (6,359M, 44 s): NEW
+  SPINE from the beam on the policy's own weights from the TRUE start: 5,200 states, end d 4,782 =
+  84.4% of the map** (the greedy frontier 9,845 = 67.9%); success line d <= 4,882; the curriculum
+  (tau 4759/5200 at 6.75B, 37% band success) teaches it from its end. Training's reservoir
+  frontier 94.7%, front-perturb best 29,698 u (96.9%). Hand-on: ckpt_6717702144 (8M before; md5
+  178214a5...).
