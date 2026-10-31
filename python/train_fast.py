@@ -3884,6 +3884,40 @@ def race_progress_eps(traj_path: Path, field) -> list:
     return per_ep
 
 
+def arc_self_candidate(traj_path: Path, field):
+    """--race-arc-self: the DEEPEST episode of a greedy recording on ``field`` -> (its positions
+    from the start to its deepest tick (T, 3) float64, that deepest d), or None. Off-field rows
+    (the unreachable sentinel) never count as deep."""
+    rows, best = [], None
+    lim = float(field.reach_max) - 0.5 * float(field.cell)
+    with open(traj_path, encoding="utf-8") as f:
+        for line in f:
+            row = json.loads(line)
+            if isinstance(row, dict) and "map" in row:
+                rows = []
+            elif isinstance(row, list):
+                rows.append(row)
+            elif isinstance(row, dict) and "end" in row and rows:
+                a = np.asarray(rows, dtype=np.float64)
+                d = np.asarray(field.sample(a[:, 1:4]), np.float64)
+                d = np.where(d < lim, d, np.inf)
+                i = int(np.argmin(d))
+                if np.isfinite(d[i]) and (best is None or d[i] < best[1]):
+                    best = (a[: i + 1, 1:4].copy(), float(d[i]))
+                rows = []
+    return best
+
+
+def resample_polyline(pts, spacing: float):
+    """(T, 3) positions -> the polyline at a uniform arc spacing (the --race-arc route form)."""
+    p = np.asarray(pts, np.float64)
+    p = p[np.concatenate([[True], np.linalg.norm(np.diff(p, axis=0), axis=1) > 1e-6])]
+    sarc = np.concatenate([[0.0], np.cumsum(np.linalg.norm(np.diff(p, axis=0), axis=1))])
+    n = int(np.floor(sarc[-1] / float(spacing))) + 1
+    t = np.arange(n) * float(spacing)
+    return np.stack([np.interp(t, sarc, p[:, k]) for k in range(3)], axis=1)
+
+
 def _seg_hits_box(pts, box):
     """True where ANY consecutive segment of ``pts`` (T, 3) pierces the AABB.
 
@@ -7857,6 +7891,17 @@ def main() -> None:
                          "is blind; past its end the field leads again, so a route need not reach "
                          "the finish. Not with --obs-reward. 0 = off (bit-identical); ckpt "
                          "restores")
+    ap.add_argument("--race-arc-self", type=float, default=None,     # 0 = off
+                    help="--race-arc: M > 0 - after every greedy eval, if the eval's deepest "
+                         "episode reached a shaping-field distance more than M x d0 below the "
+                         "current route's end, the route BECOMES that episode's own line from the "
+                         "true start to its deepest tick (resampled at the route's spacing): the "
+                         "progress coordinate follows the policy's own best line (CLAUDE.md's "
+                         "xSELF construction, iterated) instead of the line it started from, whose "
+                         "detours a better policy skips and the arc window then refuses to pay. "
+                         "Every training env is re-anchored on the new route; the route is saved "
+                         "as runs/<run>/arc_self.npz and the checkpoint config points at it. 0 = "
+                         "off (bit-identical); ckpt restores")
     ap.add_argument("--race-ground", type=int, default=None, choices=(0, 1),
                     help="race: the GROUND-BOUND goal field (the user, 2026-10-03, skate_laby: "
                          "'maybe the potential field ... is bad'): a walkable graph of the "
@@ -8355,6 +8400,9 @@ def main() -> None:
         if args.race_arc_tail is None and ck_cfg.get("race_arc_tail"):
             args.race_arc_tail = float(ck_cfg["race_arc_tail"])
             restored.append(f"race_arc_tail={args.race_arc_tail:g}")
+        if args.race_arc_self is None and ck_cfg.get("race_arc_self"):
+            args.race_arc_self = float(ck_cfg["race_arc_self"])
+            restored.append(f"race_arc_self={args.race_arc_self:g}")
         if (args.race_arc_corridor is None
                 and ck_cfg.get("race_arc_corridor") is not None):
             args.race_arc_corridor = float(ck_cfg["race_arc_corridor"])
@@ -9723,6 +9771,17 @@ def main() -> None:
             args.race_arc_tail = float(args.ge_arc)
         if args.stall_arc is None:
             args.stall_arc = 1
+    if args.race_arc_self is None:
+        args.race_arc_self = 0.0
+    if args.race_arc_self < 0.0:
+        raise SystemExit("--race-arc-self M needs M >= 0 (0 = off)")
+    if args.race_arc_self > 0.0:
+        if not args.race_arc:
+            raise SystemExit("--race-arc-self replaces the --race-arc route: it needs --race-arc")
+        if args.maps:
+            raise SystemExit("--race-arc-self is single-map (one route)")
+        if args.obs_reward:
+            raise SystemExit("--race-arc-self is not mirrored in the --obs-reward feed")
     if args.race_arc_tail is None:
         args.race_arc_tail = 0.0
     if args.race_arc_tail < 0.0:
@@ -14865,6 +14924,9 @@ def main() -> None:
                        # --race-arc-tail: written ONLY when on
                        **({"race_arc_tail": float(args.race_arc_tail)}
                           if args.reward == "race" and args.race_arc_tail else {}),
+                       # --race-arc-self: written ONLY when on
+                       **({"race_arc_self": float(args.race_arc_self)}
+                          if args.reward == "race" and args.race_arc_self else {}),
                        # --stall-energy: written ONLY when on (a config without it is the old one)
                        **({"stall_energy": float(args.stall_energy)}
                           if args.reward == "race" and args.stall_energy else {}),
@@ -21755,6 +21817,42 @@ def main() -> None:
                     print(f"[{global_step:>13,d}] " + GREEDY.line())
                 if AUTO_SPINE and _i == 0 and not _s.heldout:
                     AUTO["eval"] = path     # --auto-spine: read after the eval block
+                if (float(args.race_arc_self or 0.0) > 0.0 and _i == 0 and not _s.heldout
+                        and isinstance(_s.reward_fn, RaceReward)
+                        and _s.reward_fn.arc is not None):
+                    # --race-arc-self: the route becomes the eval's deepest episode's own line
+                    # when that episode beats the route's end by M x d0
+                    _rf = _s.reward_fn
+                    _cand = arc_self_candidate(path, _rf.field)
+                    _a0 = _rf.arc
+                    _d_end = float(np.asarray(_rf.field.sample(_a0.pts[-1:]), np.float64)[0])
+                    _marg = float(args.race_arc_self) * float(_s.rf_d0 or 0.0)
+                    if _cand is not None and _cand[1] < _d_end - _marg:
+                        _pts = resample_polyline(_cand[0], _a0.spacing)
+                        if len(_pts) >= 2:
+                            _new = ArcProgress(_pts, spacing=_a0.spacing,
+                                               corridor=_a0.corridor, window=_a0.window,
+                                               source=str(out / "arc_self.npz"))
+                            np.savez(out / "arc_self.tmp.npz", route=_pts.astype(np.float32),
+                                     spacing=np.float32(_a0.spacing))
+                            os.replace(out / "arc_self.tmp.npz", out / "arc_self.npz")
+                            _pos = np.asarray(_s.core.states_view["origin"], np.float64)
+                            _new.reset(_pos)
+                            _rf.arc = _new
+                            _rf.arc_scale = (100.0 / _new.length
+                                             * float(args.race_shaping or 1.0))
+                            _rf._arc_spawn = _new.arc.copy()
+                            _rf._arc_max = _new.arc.copy()
+                            _rf._arc_off = np.zeros(len(_new.arc), np.int64)
+                            if _rf.stall_arc:
+                                _rf._best = -np.asarray(_new.arc, np.float64).copy()
+                            _rf._tail_on = None      # --race-arc-tail re-arms lazily
+                            meta["config"]["race_arc"] = str(out / "arc_self.npz")
+                            print(f"[{global_step:>13,d}] --race-arc-self: the route is now "
+                                  f"this eval's deepest episode (d {_cand[1]:,.0f} < route end "
+                                  f"{_d_end:,.0f} - {_marg:,.0f}): {len(_pts)} vertices = "
+                                  f"{_new.length:,.0f} u, scale {_rf.arc_scale:.6g}/u -> "
+                                  f"{out / 'arc_self.npz'}", flush=True)
                 st = episode_stats(path)
                 _f = float(np.mean([e["fwd_max"] for e in st])) if st else 0.0
                 _p = float(np.mean([e["path"] for e in st])) if st else 0.0

@@ -149,6 +149,8 @@ TRAIN_ONLY = frozenset({
     "energy_ratchet",
     # --race-arc-tail: a TRAINING reward term (refused with --obs-reward) - TRAIN_ONLY
     "race_arc_tail",
+    # --race-arc-self: a TRAINING route update (refused with --obs-reward) - TRAIN_ONLY
+    "race_arc_self",
     # --ge-arc: the run's search-to-route record (the route and spawns ride as race_arc /
     # spawn_states) - TRAIN_ONLY
     "ge_arc", "ge_arc_minutes",
