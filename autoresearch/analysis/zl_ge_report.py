@@ -35,6 +35,11 @@ def main():
     ap.add_argument("archive")
     ap.add_argument("--out", default=None)
     ap.add_argument("--pick-cell", type=float, default=256.0)
+    ap.add_argument("--forward", action="store_true",
+                    help="keep only picks FORWARD of the start: deeper on the field (d < d0) or "
+                         "with more energy height than the spawn at rest (h > h0 + 32 u). The "
+                         "trainer's --ge-minutes keeps d < d0 only, which on a loop map drops the "
+                         "half-pipe the run has to pump in")
     a = ap.parse_args()
     z = np.load(a.archive, allow_pickle=True)
     st = z["state"]
@@ -79,6 +84,13 @@ def main():
         first = np.ones(len(order), bool)
         first[1:] = key[order][1:] != key[order][:-1]
         pick = order[first]
+        if a.forward:
+            zp = json.loads((REPO / Path(json.loads((REPO / "autoresearch" / "config.json").read_text())["map"]).with_suffix(".zones.json")).read_text())
+            h0 = float(zp["spawns"][0]["origin"][2])          # the spawn is at rest
+            fw = (ok[pick] & (d[pick] < d0)) | (h[pick] > h0 + 32.0)
+            print(f"--forward: {int(fw.sum()):,} of {len(pick):,} picks are deeper than the start "
+                  f"(d < {d0:,.0f}) or above its energy (h > {h0 + 32.0:,.0f})")
+            pick = pick[fw]
         rows = np.zeros(len(pick), SD)
         for nm in SD.names:
             rows[nm] = st[nm][pick]
