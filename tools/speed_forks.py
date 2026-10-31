@@ -101,7 +101,8 @@ def beam(a, out: Path, tag: str, fork: int = 0, extra=()):
     bd.mkdir(parents=True, exist_ok=True)
     tps = 1000.0 / a.tick
     cmd = [sys.executable, "-u", ROOT / "tools" / "beam_tas.py", a.ckpt, "--map", a.map,
-           "--envs", a.envs, "--resample-every", a.resample, "--score", "d",
+           "--envs", a.envs, "--resample-every", a.resample, "--score", a.score,
+           "--score-energy", a.score_energy,
            "--greedy-envs", a.greedy_envs, "--allow-nonfinisher", "--save-frontier",
            "--skip-gate", "--route-file", "none", "--max-ticks", a.max_ticks,
            "--keep-finishers", a.keep, "--gens", a.gens,
@@ -147,6 +148,13 @@ def main(argv=None) -> int:
     ap.add_argument("--branch-hold-secs", type=float, default=0.5)
     ap.add_argument("--branch-jitter", type=float, default=45.0)
     ap.add_argument("--branch-protect", type=int, default=3)
+    ap.add_argument("--score", choices=["d", "dh"], default="d",
+                    help="beam_tas --score for every beam: d = goal-field distance; dh = -d + "
+                         "--score-energy x the energy height z + |v|^2/2g. A held offset that "
+                         "drives the player into a wall trades ~1,000 u of energy for ~150 u of "
+                         "height, and d alone ranks that crash first (uf2r2b2's CPU probe)")
+    ap.add_argument("--score-energy", type=float, default=1.0,
+                    help="--score dh: u of field distance one u of energy height is worth")
     ap.add_argument("--plain-extra", default="",
                     help="extra beam_tas flags for the plain beam only (one string)")
     ap.add_argument("--selftest", action="store_true")
