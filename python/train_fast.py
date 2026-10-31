@@ -21886,7 +21886,11 @@ def main() -> None:
                 # --energy-pot: energy height gained / lost per ended training episode
                 race_note += (f"  en +{rs['en_gain_per_ep']:,.0f}"
                               f"/-{rs['en_loss_per_ep']:,.0f}u/ep"
-                              + (f" off {rs['en_off_frac']:.0%}" if "en_off_frac" in rs else ""))
+                              + (f" off {rs['en_off_frac']:.0%}" if "en_off_frac" in rs else "")
+                              # --energy-pot-ng: the conformant tax and terminal charge (u of h)
+                              + (f" ng tax {rs['en_ng_tax_per_ep']:,.0f}/term "
+                                 f"{rs['en_ng_term_per_ep']:,.0f}u/ep"
+                                 if "en_ng_tax_per_ep" in rs else ""))
             if respawn is not None:
                 # CLAUDE.md: race/win_rate is the THIRD deceptive metric and
                 # it has fired - round 19 read 18.46% off a reservoir that
