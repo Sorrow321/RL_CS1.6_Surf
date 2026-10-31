@@ -176,3 +176,17 @@ Why: E2's spine ends at 9.48% while its greedy reaches 24%; 90% of its spawns ar
     beams end at d 4,381-4,420, behind the moving greedy frontier (4,294 at 711M, 4,179 at 786M,
     4,094 at 862M), so it went on to its Go-Explore stage (10 min, rooted before the line's stall).
     The policy is outrunning its own search here.
+* **E3 19:00-19:25 UTC: 36.386 (862M) / 46.904 / 55.332 / 57.416 (1,088M) / 56.679 (1,164M).**
+  * auto-spine search 1 (711M weights) ended with a NEW SPINE (8,797 states = 61.6 s; success line
+    d <= 4,376 = 31.2%; the GE line's 5,859 kept as a milestone) - the curriculum walked it back
+    from 8,796 to ~8,040 by 1.2B at 79-91% band success. Search 2 (1,088M weights) running: its
+    beams reach d ~2,796, about the greedy frontier (2,752), so its GE stage decides.
+  * 1,088M (hand-on: ckpt_1088421888.pt at the eval's own step, pulled): 9/9 alike, 56.4-57.4% at
+    ~97-102 s, E up to +1,600, 2,980 u/s: the first loop, the second trough, then the record's
+    THIRD structure, swung along y (x -2,300..-1,600, y 70..2,800, z -1,300..+250) - and out of it
+    to the WEST (x -2,850..-2,940) into a fall at ~104 s. The record (ANALYSIS ONLY) swings the
+    same structure up to E ~2,100 (55-57% at t+200..213 s) and at t+305..310 drops onto a platform
+    at z ~640 round (-1,560, 1,790) (E 2,176 -> 648: a landing), 60.9% at t+310, then climbs
+    (70% at t+351 z 1,266; 86% at t+388 z 2,075; 90% at t+412; the finish at t+450, z 3,029).
+  * Training at 1.2B: stall kills up to 38% (the new spine's band at 56 s on its line), reservoir
+    deepest 43.3% of d0 (56.7%), energy +1,517/-1,114 u/ep, 235k steps/s with the search beside it.
