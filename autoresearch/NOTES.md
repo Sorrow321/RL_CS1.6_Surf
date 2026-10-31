@@ -358,3 +358,7 @@ on purpose: round 1 needs an exit, and the attribution comes after. Read with uf
   states, end d 13,665 = 55.4%, the greedy frontier 16,572); success line d <= 13,265;
   milestones 29,584 / 27,363 / 17,276. Four spines so far: 1.9% (the MC line) -> 9.4% -> 42.3% ->
   55.4%.
+* **A11 4,891M: 50.801** (best 50.8%, median 49.5%): 6/9 reach 49.5-50.8% at ~27 s round
+  (3,320..3,450, -380..-30) and die at z ~-186 (the bottom of the `*10` trigger, z -224); 2/9 at
+  46%, 1/9 at 24.7%. 4,967M: 47.477. Hand-on: ckpt_4874305536 (17M before; md5 e88fd75b...).
+  0/9 past the k04 success line (56.7%) yet.
