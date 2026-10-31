@@ -860,6 +860,61 @@ class SurfCore:
         if len(lo) != 3 or len(hi) != 3:
             raise ValueError(f"goal box needs 3-vectors, got {lo} / {hi}")
         fn(self._handle(), (c_float * 3)(*lo), (c_float * 3)(*hi))
+        self.goal_model = -1
+
+    def _goal_fn(self, name, argtypes, restype):
+        fn = getattr(self._lib, name, None)
+        if fn is None:
+            raise RuntimeError(f"this surfcore build predates {name} (--goal-hull) - rebuild "
+                               "the core (build.ps1 / ./build.sh)")
+        fn.argtypes, fn.restype = argtypes, restype
+        return fn
+
+    def find_box_model(self, mins, maxs, tol: float = 1.5) -> int:
+        """The brush model whose bounds equal this box within ``tol`` u (a type-1 map's finish
+        box IS its trigger's model AABB), else -1."""
+        fn = self._goal_fn("surf_find_box_model", [ctypes.c_void_p, ctypes.POINTER(c_float),
+                                                   ctypes.POINTER(c_float), c_float],
+                           ctypes.c_int32)
+        lo = [float(v) for v in mins]
+        hi = [float(v) for v in maxs]
+        return int(fn(self._handle(), (c_float * 3)(*lo), (c_float * 3)(*hi), float(tol)))
+
+    def set_goal_model(self, model: int) -> None:
+        """--goal-hull: a finish is the engine's trigger touch on brush model ``model`` at the
+        tick end (player box vs its bounds, then its clip hull contains the origin), not the
+        swept segment vs the goal box. -1 restores the box test. Call after set_goal_box."""
+        fn = self._goal_fn("surf_set_goal_model", [ctypes.c_void_p, ctypes.c_int32],
+                           ctypes.c_int32)
+        if int(fn(self._handle(), int(model))) != 0:
+            raise ValueError(f"surf_set_goal_model: model {model} is out of range")
+        self.goal_model = int(model)
+
+    def set_goal_hull(self, mins, maxs, tol: float = 1.5) -> int:
+        """set_goal_box + --goal-hull on the brush model whose bounds are this box; refuses a box
+        that is no model's bounds (a type-2/3 button box: there is no trigger hull to test)."""
+        self.set_goal_box(mins, maxs)
+        m = self.find_box_model(mins, maxs, tol)
+        if m < 1:
+            raise ValueError(f"--goal-hull: the finish box {list(mins)}..{list(maxs)} is not the "
+                             "bounds of any brush model (not a trigger finish)")
+        self.set_goal_model(m)
+        return m
+
+    def model_contains(self, model: int, origins, ducked=None) -> np.ndarray:
+        """Per origin: the engine's containment of a player origin in brush model ``model``'s
+        clip hull (standing, or ducked where ``ducked`` is true) - re-scoring a recording."""
+        fn = self._goal_fn("surf_model_contains", [ctypes.c_void_p, ctypes.c_int32,
+                                                   ctypes.c_int32, ctypes.POINTER(c_float)],
+                           ctypes.c_int32)
+        o = np.asarray(origins, np.float32).reshape(-1, 3)
+        dk = (np.zeros(len(o), bool) if ducked is None
+              else np.asarray(ducked, bool).reshape(-1))
+        out = np.zeros(len(o), bool)
+        for i in range(len(o)):
+            out[i] = bool(fn(self._handle(), int(model), int(dk[i]),
+                             (c_float * 3)(*[float(x) for x in o[i]])))
+        return out
 
     @property
     def goal_hits(self) -> np.ndarray:
@@ -1127,3 +1182,15 @@ class SurfCore:
             sim, mins.ctypes.data_as(P_F32), maxs.ctypes.data_as(P_F32)
         )
         return mins, maxs
+
+
+def arm_finish(core, box, cfg) -> int:
+    """Arm the finish the way the run that wrote ``cfg`` (a checkpoint's config) defined it:
+    --goal-hull = the finish trigger's clip hull (core.set_goal_hull), else the box. Every tool
+    that replays, searches or records a checkpoint's episodes calls this, so a "finish" means
+    the same thing to the trainer, its evals and the tools. -> the goal model (-1 = the box)."""
+    if cfg and cfg.get("goal_hull"):
+        return core.set_goal_hull(box["mins"], box["maxs"])
+    core.set_goal_box(box["mins"], box["maxs"])
+    return -1
+

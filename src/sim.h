@@ -146,6 +146,10 @@ void trace_one_model(const BspMap* m, int model, const float* ent_origin, int us
 int  hull_point_contents(const Hull* h, int num, const float* p);
 int  point_contents(const BspMap* m, const float* p);                    /* world hull0 + contents ents */
 int  trigger_contains(const BspMap* m, const Trigger* t, int usehull, const float* origin);
+/* the same engine containment for ANY brush model (the --goal-hull finish): the model's
+ * clip hull for the player's size, queried at the player origin in model-local space */
+int  model_hull_contains(const BspMap* m, int model, const float* ent_origin, int usehull,
+                         const float* origin);
 
 /* pm.c — one full player-movement tick on a SurfState (no env logic).
  * PmPersist carries per-player stuck bookkeeping the engine keeps in statics. */

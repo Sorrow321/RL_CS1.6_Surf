@@ -92,7 +92,7 @@ from surfgym.bc import (check_probs, contact_rows, decision_gamma,
                         save_bc_dataset, subsample_by_path, survivor_probs,
                         keys_policy_probs, keys_policy_rows, keys_resolve_rows,
                         line_held_keys, spawn_held)
-from surfgym.core import phys_to_dict
+from surfgym.core import arm_finish, phys_to_dict
 from surfgym.rewards import map_spawn_pool
 from surfgym.tick import TickClock, ticks_to_secs
 from surfgym.view import view_desc, view_mode_code, z_from_view_any
@@ -147,7 +147,7 @@ def open_planner_core(cfg: dict, map_path: str, ep_cap: int, tick=None):
     if cfg.get("fix_pitch") is not None:
         pool["pitch"] = float(cfg["fix_pitch"])
     d0 = float(np.mean(gf.sample(raw["origin"])))
-    core.set_goal_box(zones["end"]["mins"], zones["end"]["maxs"])
+    arm_finish(core, zones["end"], cfg)        # --goal-hull mirrored (the replay's finish)
     if cfg.get("teleport_fail") or cfg.get("reward") == "race":
         core.set_teleport_fail(True)
     core.set_spawn_pool(pool)

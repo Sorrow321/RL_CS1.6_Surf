@@ -124,7 +124,7 @@ import torch
 from eval_honesty import corridor_progress, load_route
 from surfgym import SurfCore, default_config
 from surfgym.bc import make_eval_feeds, rank_lineages
-from surfgym.core import SURF_IN_DUCK, SURF_IN_JUMP, phys_to_dict
+from surfgym.core import SURF_IN_DUCK, SURF_IN_JUMP, arm_finish, phys_to_dict
 from surfgym.keyshold import HELD_HEADS
 from surfgym.rewards import cc_draw, map_spawn_pool
 from surfgym.route import ArcProgress
@@ -2368,7 +2368,8 @@ def main():
     print(f"race: start geodesic {d0:.0f}u, spawn pool {len(pool)} points")
 
     def arm(core):
-        core.set_goal_box(zones["end"]["mins"], zones["end"]["maxs"])
+        # --goal-hull mirrored: the search's finish is the run's finish
+        arm_finish(core, zones["end"], cfg)
         if cfg.get("teleport_fail") or cfg.get("reward") == "race":
             core.set_teleport_fail(True)
         core.set_spawn_pool(pool)

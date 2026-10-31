@@ -6537,6 +6537,18 @@ def main() -> None:
                          "energy height |v|^2 / (2 g) / 1000 of that state - the speed brought to "
                          "the frontier; dying before the band forfeits it, so no stretch is ever "
                          "cheaper to die on. A checkpoint restores it. 0 = the per-call potential")
+    ap.add_argument("--goal-hull", action="store_const", const=1, default=None,
+                    help="race: a FINISH is the engine's trigger touch on the finish trigger's "
+                         "brush model (the one whose bounds are the zones' end box) at the end of "
+                         "a tick - player box vs the model's bounds, then its CLIP HULL for the "
+                         "player's size contains the origin (ReHLDS SV_TouchLinks, the rule the "
+                         "core already applies to kill/push/teleport triggers) - instead of the "
+                         "swept segment vs the box. unitfarmer2's finish is three 1 u curtains: the "
+                         "box's NW triangle and interior are no finish in the game, and 8 of the "
+                         "round-1 incumbent's 9 eval finishes only touched them. Refused on a "
+                         "finish that is no brush model (a button box). Off = the box test, "
+                         "byte-identical. Config when set; a resume restores it; record_ckpt and "
+                         "the search tools mirror it")
     ap.add_argument("--energy-pot-ng", action="store_const", const=1, default=None,
                     help="with --energy-pot: the --race-ng treatment of the energy potential. The "
                          "stock per-call change Phi(s') - Phi(s) does not telescope under gamma "
@@ -7959,6 +7971,10 @@ def main() -> None:
         if args.energy_pot is None and ck_cfg.get("energy_pot") is not None:
             args.energy_pot = float(ck_cfg["energy_pot"])
             restored.append(f"energy_pot={args.energy_pot:g}")
+        if args.goal_hull is None and ck_cfg.get("goal_hull"):
+            # --goal-hull: what a finish IS - a resume of such a run must keep it
+            args.goal_hull = 1
+            restored.append("goal_hull")
         if args.energy_pot_front is None and ck_cfg.get("energy_pot_front") is not None:
             args.energy_pot_front = float(ck_cfg["energy_pot_front"])
             restored.append(f"energy_pot_front={args.energy_pot_front:g}")
@@ -11722,7 +11738,12 @@ def main() -> None:
                       "and the obs channel keep the free-space field")
             if reward_field is None:
                 reward_field = goal_field
-            core.set_goal_box(goal_box["mins"], goal_box["maxs"])
+            if args.goal_hull:
+                _gm = core.set_goal_hull(goal_box["mins"], goal_box["maxs"])
+                print(f"--goal-hull: the finish is brush model *{_gm}'s clip hull at the tick end "
+                      f"(engine trigger touch), not its bounding box")
+            else:
+                core.set_goal_box(goal_box["mins"], goal_box["maxs"])
             if args.keep_teleports:
                 print("race mode forces the teleport-ends-episode rule "
                       "(--keep-teleports ignored: fallers respawn at start)")
@@ -12505,7 +12526,10 @@ def main() -> None:
         if not args.keep_teleports:
             ec.set_teleport_fail(True)
         if slot.goal_box is not None:
-            ec.set_goal_box(slot.goal_box["mins"], slot.goal_box["maxs"])
+            if args.goal_hull:
+                ec.set_goal_hull(slot.goal_box["mins"], slot.goal_box["maxs"])
+            else:
+                ec.set_goal_box(slot.goal_box["mins"], slot.goal_box["maxs"])
         ec.set_spawn_pool(slot.plat_pool)
         slot.eval_core = ec
 
@@ -12695,7 +12719,10 @@ def main() -> None:
             # the STANDARD field for both roles: nothing ever shapes on a
             # held-out map, so --race-kill-aware has nothing to mask here
             hs.goal_field = hs.reward_field = gf
-            ec.set_goal_box(hs.goal_box["mins"], hs.goal_box["maxs"])
+            if args.goal_hull:
+                ec.set_goal_hull(hs.goal_box["mins"], hs.goal_box["maxs"])
+            else:
+                ec.set_goal_box(hs.goal_box["mins"], hs.goal_box["maxs"])
             if not args.keep_teleports:
                 ec.set_teleport_fail(True)
             raw = map_spawn_pool(ec)
@@ -14559,6 +14586,7 @@ def main() -> None:
                           if args.reward == "race" and args.energy_pot_front_bonus else {}),
                        **({"energy_pot_ng": 1}
                           if args.reward == "race" and args.energy_pot_ng else {}),
+                       **({"goal_hull": 1} if args.goal_hull else {}),
                        "surf_bonus": (args.surf_bonus
                                       if args.reward == "race" else None),
                        "dive_pen": (args.dive_pen

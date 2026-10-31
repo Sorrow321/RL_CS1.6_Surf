@@ -27,6 +27,7 @@ typedef struct SurfSim {
      * speed) ends the episode as a completion */
     int32_t goal_enabled;
     float goal_mins[3], goal_maxs[3];
+    int32_t goal_model;            /* --goal-hull: the goal brush model (>= 1) or -1 (box test) */
     uint8_t* goal_hit;             /* per env: 1 on the tick it finished */
     uint8_t* pending_fail;         /* per env: force-fail on next step (Python
                                     * stagnation kill); consumed each step */
@@ -507,6 +508,7 @@ int32_t surf_abi_version(void) { return SURF_ABI_VERSION; }
 SurfSim* surf_create(const char* bsp_path, const SurfEnvConfig* cfg, char* err, int32_t errlen) {
     SurfSim* s = (SurfSim*)calloc(1, sizeof(SurfSim));
     if (!s) return NULL;
+    s->goal_model = -1;                        /* --goal-hull off: the goal box test */
     if (bsp_load(&s->map, bsp_path, err, errlen) != 0) { free(s); return NULL; }
     pm_init();                                 /* stuck table, before any parallel stepping */
     s->cfg = *cfg;
@@ -589,6 +591,31 @@ void surf_set_goal_box(SurfSim* s, const float* mins, const float* maxs) {
 }
 
 const uint8_t* surf_goal_hits(SurfSim* s) { return s->goal_hit; }
+
+int32_t surf_find_box_model(SurfSim* s, const float* mins, const float* maxs, float tol) {
+    if (!mins || !maxs) return -1;
+    const BspMap* m = &s->map;
+    for (int i = 1; i < m->nummodels; i++) {
+        const BModel* mod = &m->models[i];
+        int ok = 1;
+        for (int k = 0; k < 3 && ok; k++)
+            if (fabsf(mod->mins[k] - mins[k]) > tol || fabsf(mod->maxs[k] - maxs[k]) > tol) ok = 0;
+        if (ok) return i;
+    }
+    return -1;
+}
+
+int32_t surf_set_goal_model(SurfSim* s, int32_t model) {
+    if (model < 0) { s->goal_model = -1; return 0; }
+    if (model < 1 || model >= s->map.nummodels) return -1;
+    s->goal_model = model;
+    return 0;
+}
+
+int32_t surf_model_contains(SurfSim* s, int32_t model, int32_t usehull, const float* origin) {
+    if (!origin || model < 1 || model >= s->map.nummodels) return 0;
+    return model_hull_contains(&s->map, model, NULL, usehull ? 1 : 0, origin);
+}
 
 void surf_force_fail(SurfSim* s, const uint8_t* mask) {
     if (!mask) return;
@@ -735,7 +762,22 @@ static void step_impl(SurfSim* s, const int32_t* actions, const float* view,
         st->tick++;
 
         int fail = 0, complete = 0;
-        if (s->goal_enabled) {
+        if (s->goal_enabled && s->goal_model >= 1) {
+            /* --goal-hull: the engine's trigger touch at the END of the move (SV_TouchLinks):
+             * player box vs the model's bounds padded +-1 (SetObjectCollisionBox), then the
+             * model's clip hull for the player's size must contain the origin. A finish that
+             * only crosses the empty part of the trigger's bounding box is no finish. */
+            int uh = (s->cfg.phys.enable_duck && st->ducked) ? 1 : 0;
+            const BModel* gm = &s->map.models[s->goal_model];
+            int over = 1;
+            for (int k = 0; k < 3 && over; k++)
+                if (st->origin[k] + g_player_maxs[uh][k] < gm->mins[k] - 1.0f ||
+                    st->origin[k] + g_player_mins[uh][k] > gm->maxs[k] + 1.0f) over = 0;
+            if (over && model_hull_contains(&s->map, s->goal_model, NULL, uh, st->origin)) {
+                complete = 1;
+                s->goal_hit[i] = 1;
+            }
+        } else if (s->goal_enabled) {
             /* hull-inflated box: origin in [gmin - pmaxs, gmax - pmins] is the
              * same condition as the trigger AABB-overlap precheck above */
             int uh = (s->cfg.phys.enable_duck && st->ducked) ? 1 : 0;

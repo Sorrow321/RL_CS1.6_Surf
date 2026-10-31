@@ -25,6 +25,7 @@ import numpy as np
 import torch
 
 from surfgym import SurfCore, default_config
+from surfgym.core import arm_finish
 from surfgym.record import record_rollout
 from surfgym.view import view_mode_code, wrap180
 from surfgym.route import RouteLine
@@ -1235,7 +1236,9 @@ def main(argv=None, build_only: bool = False, device=None):
             gf = blur_goal_field(gf, float(cfg["race_field_blur"]))
             print(f"--race-field-blur {float(cfg['race_field_blur']):g} mirrored "
                   "(the potential channel renders the blurred field)")
-        core.set_goal_box(zones["end"]["mins"], zones["end"]["maxs"])
+        # --goal-hull: MIRRORED - what a finish IS (the trigger's clip hull, not its box)
+        if arm_finish(core, zones["end"], {"goal_hull": cfg.get("goal_hull")}) >= 1:
+            print("--goal-hull mirrored: a finish is the trigger's clip hull at the tick end")
         if cfg.get("goal_field_file"):
             # --goal-field-file: MIRRORED for what the policy SEES. The trainer's potential
             # channel, compass, pot-rate and ratchet gap all read the shaping field the file
@@ -2754,7 +2757,7 @@ def main(argv=None, build_only: bool = False, device=None):
             lidar_w=0, lidar_h=0, pitch_rate_max_deg=pitch_rate_core, **_tick_env, **_view_env),
             tick_ms=tick_ms)
         _sc.set_teleport_fail(True)             # eval parity, like the recorded core
-        _sc.set_goal_box(zones["end"]["mins"], zones["end"]["maxs"])
+        arm_finish(_sc, zones["end"], cfg)      # --goal-hull mirrored, like the recorded core
         _sl = MultiLine(_sc.num_envs, device=device, **({"offsets": _fan} if _fan else {}))
 
         # the SAME factory that built the recorded policy - not type(_pol): under --exec-temp /

@@ -204,6 +204,18 @@ SURF_API void surf_set_goal_box(SurfSim* s, const float* mins /*3*/,
  * goal (already autoreset by the time the caller reads it). Valid until
  * surf_destroy; contents mutate every step. */
 SURF_API const uint8_t* surf_goal_hits(SurfSim* s);
+/* --goal-hull (2026-10-31): the brush model whose bounds equal this box within tol u (the
+ * zones' finish box of a type-1 map is its trigger's model AABB), else -1. */
+SURF_API int32_t surf_find_box_model(SurfSim* s, const float* mins /*3*/, const float* maxs /*3*/,
+                                     float tol);
+/* model >= 1: a finish is the engine's trigger touch on that brush model at the tick END (player
+ * box vs the model's bounds +-1, then the model's clip hull for the player's size contains the
+ * origin: ReHLDS SV_TouchLinks), instead of the swept segment vs the goal box. -1 = the box test
+ * (the default, unchanged). Returns 0, or -1 for a model out of range. */
+SURF_API int32_t surf_set_goal_model(SurfSim* s, int32_t model);
+/* the same containment as a query (re-scoring a recording): usehull 0 standing, 1 ducked */
+SURF_API int32_t surf_model_contains(SurfSim* s, int32_t model, int32_t usehull,
+                                     const float* origin /*3*/);
 /* Mark envs (mask[i] != 0) to end as a FAIL on their next batch tick — the
  * Python-side stagnation kill ("no progress toward the goal in N seconds").
  * Consumed once; a goal crossing on the same tick wins over the kill. */

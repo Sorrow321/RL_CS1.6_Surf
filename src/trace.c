@@ -219,6 +219,21 @@ int point_contents(const BspMap* m, const float* p) {
     return cont;
 }
 
+/* model_hull_contains: trigger_contains for any brush model (no Trigger record) - the goal
+ * trigger_multiple of a timed map is not one of the core's kill/push/teleport triggers. */
+int model_hull_contains(const BspMap* m, int model, const float* ent_origin, int usehull,
+                        const float* origin) {
+    if (model < 1 || model >= m->nummodels) return 0;
+    Hull h;
+    bsp_model_hull(m, &m->models[model], bsphull_for_usehull(usehull), &h);
+    float local[3];
+    for (int i = 0; i < 3; i++) {
+        float off = h.clip_mins[i] - g_player_mins[usehull][i] + (ent_origin ? ent_origin[i] : 0.0f);
+        local[i] = origin[i] - off;
+    }
+    return hull_point_contents(&h, h.firstclipnode, local) == CONTENTS_SOLID;
+}
+
 /* SV_TouchLinks containment: trigger model's hull selected by the PLAYER's box size,
  * queried at player origin in trigger-local space. Interior of a trigger brush reads SOLID. */
 int trigger_contains(const BspMap* m, const Trigger* t, int usehull, const float* origin) {

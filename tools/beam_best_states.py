@@ -37,6 +37,7 @@ def main(argv=None) -> int:
     from beam_tas import build_sim, line_view_ticks, resolve_map
     from surfgym.tick import TickClock
     from surfgym.zones import load_zones
+    from surfgym.core import arm_finish
     ck = torch.load(a.ckpt, map_location="cpu", weights_only=False)
     cfg = ck.get("config") or {}
     z = np.load(a.beam, allow_pickle=False)
@@ -49,7 +50,7 @@ def main(argv=None) -> int:
     map_path = resolve_map(a.map, cfg.get("map", "surf_ski_2"))
     core = build_sim(cfg, map_path, 1, max(fin + 10, int(cfg.get("ep_ticks", 700))), tick=tick)
     zones = load_zones(core.bsp_path)
-    core.set_goal_box(zones["end"]["mins"], zones["end"]["maxs"])
+    arm_finish(core, zones["end"], cfg)        # --goal-hull mirrored
     if cfg.get("teleport_fail") or cfg.get("reward") == "race":
         core.set_teleport_fail(True)
     row0 = np.asarray(z["spawn_state"]).reshape(-1)[:1]
