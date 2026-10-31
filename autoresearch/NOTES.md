@@ -940,3 +940,8 @@ beam on the newest weights -> its best real line -> the pinned, pace-gated spine
   GoldSrc movement reimplementation whose fidelity bugs have bitten twice (entity caps, the finish
   box); a replay of this line in the real game is the confirmation that counts.
   Hand-on for 118.815: ckpt_16467886080 (7.9M before; md5 1f602884; pulled).
+* x12 to 16.666B: + 9/9 35.80 / 9/9 35.69 (118.810). Beams on its 16.598B weights: 35.00 / 35.00 / 34.95 s
+  (greedy 36.19 / 36.08 / 35.99 on spawns 0-2). Stopped at 16.666B (14:42).
+
+### x13 `uf2r2b4_x13` (14:43 UTC): the next iteration, spine = the 34.95 s real line (a2)
+Same flags; pace from the map start 4,660 ticks = 35.73 s to d <= 100; spawn states 70,890 (15 lines).
