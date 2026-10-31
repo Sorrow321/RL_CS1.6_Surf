@@ -111,7 +111,7 @@ __all__ = ["BC_VERSION", "BC_VERSIONS", "NACT", "NPAD", "REWARD_SLOT",
            "survivor_probs", "count_probs", "gumbel_improved_probs",
            "decision_gamma", "returns_to_go", "make_line_reward",
            "keys_policy_rows", "keys_resolve_rows", "keys_policy_probs", "spawn_held",
-           "line_held_keys"]
+           "line_held_keys", "reload_refusal"]
 
 #: 1 = actions only (the CAT target); 2 adds ``probs`` / ``zret`` / ``zmask``.
 #: Both load. A writer that is handed none of the three writes 1, so an
@@ -1108,6 +1108,23 @@ def merge_bc_files(paths, out) -> dict:
                     view=cat("view"), view_zmu=cat("view_zmu"), view_zsd=cat("view_zsd"),
                     keys=cat("keys"), xcols=xcols, view_z=cat("view_z"))
     return meta
+
+
+def reload_refusal(new, keys_col, keys_engine: bool, value_coef: float):
+    """train_fast --bc-reload: why a re-read BCDataset ``new`` cannot replace the rows the
+    trainer is distilling from, or None when it can. The compiled BC term reads the held-key
+    state at a FIXED column (``keys_col``, under --bc-keys-engine) and a value term needs a
+    return to regress onto (--bc-value-coef > 0), so a file whose layout differs there is
+    refused and the trainer keeps its previous rows. Everything else - the row count, the
+    lines, the search distribution - is free to change between reads."""
+    if keys_engine and new.keys_col != keys_col:
+        return (f"held-key columns at {new.keys_col}, the compiled term reads them at "
+                f"{keys_col}")
+    if float(value_coef) > 0.0 and not new.has_value:
+        return "no value target (--bc-value-coef needs one)"
+    if new.n <= 0:
+        return "no rows"
+    return None
 
 
 class BCDataset:

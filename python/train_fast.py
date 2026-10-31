@@ -115,6 +115,7 @@ from surfgym.surfflag import SurfFlag, g_step_of, make_surf_feed
 from surfgym.privfeat import PRIV_DIM, PRIV_FEATURES, PrivFeat, velocity_from_obs
 from surfgym.record import record_rollout, record_rollout_parallel
 from surfgym.bc import BCDataset
+from surfgym.bc import reload_refusal as bc_reload_refusal
 from surfgym.respawn import (BackwardSpawnSampler, DemoCurriculum, FrontierPerturbRows,
                              FrontierSpawnSampler, NovelSpawnSampler,
                              RandomSpawnSampler, RespawnBuffer)
@@ -5237,6 +5238,15 @@ def main() -> None:
                          "cloning loss and BC fights a representation (pbx 2026-10-28: on "
                          "pbr9b1_c9's own greedy line ~1.9 nats of the four categorical "
                          "heads' 2.8 were that split). Config only when set; not restored")
+    ap.add_argument("--bc-reload", action="store_const", const=1, default=None,
+                    help="--bc-file: RE-READ the file when its mtime changes (checked every 20 "
+                         "iterations, the --spawn-states rule), so an outer search loop on the box "
+                         "(beam_tas on the newest ckpt_latest -> plan_to_bc -> an atomic replace "
+                         "of the file) feeds ONE training run the planner's newest lines: the "
+                         "expert loop without a relaunch, the run's own greedy evals uninterrupted. "
+                         "A file whose layout differs (held-key columns, value rows the term "
+                         "needs) is refused and the previous rows kept. Off = the file is read "
+                         "once, byte-identical. Config only when set; not restored")
     ap.add_argument("--respawn-killsafe", type=int, default=None,  # 0 = off
                     help="bin reservoir states on the KILL-MASKED goal field "
                          "(goalk cache): states inside fail/teleport volumes "
@@ -15026,6 +15036,9 @@ def main() -> None:
     if args.bc_pitch_coef is not None:
         # --bc-pitch-coef: written ONLY when set (a loss option of the BC term)
         meta["config"]["bc_pitch_coef"] = float(args.bc_pitch_coef)
+    if args.bc_reload:
+        # --bc-reload: written ONLY when set (how often the BC term's rows are re-read)
+        meta["config"]["bc_reload"] = 1
     if float(args.ge_minutes or 0.0) > 0.0:
         # --ge-minutes: written ONLY when on (a control run's config dump is unchanged); a
         # resume restores the four and reuses runs/<run>/ge_states.npy
@@ -18275,6 +18288,11 @@ def main() -> None:
                          "pitch head of the BC view term)")
     if BCPC is not None and BCPC < 0.0:
         raise SystemExit("--bc-pitch-coef must be >= 0")
+    # --bc-reload: re-read --bc-file on an mtime change (None = read once, today)
+    BC_RELOAD = bool(args.bc_reload)
+    if BC_RELOAD and not args.bc_file:
+        raise SystemExit("--bc-reload needs --bc-file (it re-reads that file)")
+    BC_MTIME = None
     bc_stats = None
     if args.bc_file:
         if MULTI or route is not None or STACK > 1 or H > 0:
@@ -18313,28 +18331,38 @@ def main() -> None:
                          latch=(np.asarray(latch, np.float32) > 0.5))
                 return out_pv
 
-        bc = BCDataset(args.bc_file, device, n_latch=N_LATCH,
-                       obs_reward=bool(args.obs_reward),
-                       seed=args.seed + 31 * D.rank, priv_fn=bc_priv_fn,
-                       # --view-continuous: the rows' view targets (z), read
-                       # from the file's own view columns or derived from
-                       # the bins the way the core would apply them
-                       view_continuous=VIEWC,
-                       yaw_adaptive=bool(args.yaw_adaptive),
-                       pitch_rate_max_deg=float(
-                           core.config.pitch_rate_max_deg),
-                       # --view-absolute: the file's rows must be targets
-                       # of the same mode (z_from_view_abs), never deltas
-                       view_absolute=VIEW_ABS,
-                       # --curiosity-cond: the rows get the T = 0 column
-                       n_cc=N_CC,
-                       # --keys-hold: the rows' held-key columns + policy-space targets
-                       keys_hold=bool(args.keys_hold),
-                       # the compass, ratchet gap, surf flag and pot rate the file must carry
-                       # (plan_to_bc records them per decision; surfgym.bc.XBLOCKS)
-                       xlayout={"aux": N_AUX, "ratchet": N_RATCHET, "surf": N_SURF,
-                                "prate": N_PRATE})
+        def _make_bc(_path, _seed_off=0):
+            # one constructor for the first read and every --bc-reload re-read
+            return BCDataset(_path, device, n_latch=N_LATCH,
+                             obs_reward=bool(args.obs_reward),
+                             seed=args.seed + 31 * D.rank + _seed_off, priv_fn=bc_priv_fn,
+                             # --view-continuous: the rows' view targets (z), read
+                             # from the file's own view columns or derived from
+                             # the bins the way the core would apply them
+                             view_continuous=VIEWC,
+                             yaw_adaptive=bool(args.yaw_adaptive),
+                             pitch_rate_max_deg=float(
+                                 core.config.pitch_rate_max_deg),
+                             # --view-absolute: the file's rows must be targets
+                             # of the same mode (z_from_view_abs), never deltas
+                             view_absolute=VIEW_ABS,
+                             # --curiosity-cond: the rows get the T = 0 column
+                             n_cc=N_CC,
+                             # --keys-hold: the rows' held-key columns + policy-space targets
+                             keys_hold=bool(args.keys_hold),
+                             # the compass, ratchet gap, surf flag and pot rate the file must
+                             # carry (plan_to_bc records them per decision; surfgym.bc.XBLOCKS)
+                             xlayout={"aux": N_AUX, "ratchet": N_RATCHET, "surf": N_SURF,
+                                      "prate": N_PRATE})
+
+        if BC_RELOAD:
+            # the mtime BEFORE the read: a replace that lands during the read is re-read
+            BC_MTIME = os.path.getmtime(args.bc_file)
+        bc = _make_bc(args.bc_file)
         print(bc.describe())
+        if BC_RELOAD:
+            print(f"bc: --bc-reload - {args.bc_file} is re-read when its mtime changes "
+                  f"(checked every 20 iterations)")
         bc_lidar, bc_dtype = slots[0].lidar, b_img.dtype
         bc_steps = (float(args.bc_steps) if args.bc_steps
                     else max(1.0, float(args.steps) - float(global_step)))
@@ -18870,6 +18898,26 @@ def main() -> None:
                           f"{SS_PATH} at step {global_step:,}", flush=True)
             except (OSError, ValueError) as _e:
                 print(f"--spawn-states: re-read failed ({_e}); keeping the previous pool",
+                      flush=True)
+
+        if BC_RELOAD and bc is not None and it_no % 20 == 0:
+            # --bc-reload: an outer search loop replaced the BC file (atomically, os.replace)
+            try:
+                _mt = os.path.getmtime(args.bc_file)
+                if _mt != BC_MTIME:
+                    _nb = _make_bc(args.bc_file, _seed_off=int(it_no))
+                    _why = bc_reload_refusal(_nb, BC_KC, BCKE, BCV)
+                    BC_MTIME = _mt
+                    if _why is None:
+                        bc = _nb
+                        print(f"bc: --bc-reload re-read {args.bc_file} at step "
+                              f"{global_step:,}: {bc.describe()}", flush=True)
+                    else:
+                        print(f"bc: --bc-reload REFUSED {args.bc_file} at step "
+                              f"{global_step:,} ({_why}); keeping the previous rows",
+                              flush=True)
+            except (OSError, ValueError, KeyError) as _e:
+                print(f"bc: --bc-reload re-read failed ({_e!r}); keeping the previous rows",
                       flush=True)
 
         def _set_pool(_slot, _pool):

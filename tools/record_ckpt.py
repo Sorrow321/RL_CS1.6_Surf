@@ -407,6 +407,8 @@ TRAIN_ONLY = frozenset({
     # --bc-keys-engine: how that loss scores the held key heads (by their engine action);
     # --bc-pitch-coef: the pitch head's weight in its view term
     "bc_keys_engine", "bc_pitch_coef",
+    # --bc-reload: how often that loss's rows are re-read (an mtime check); training-time only
+    "bc_reload",
     # tools/ckpt_qr_to_scalar.py stamps the source path of a collapsed
     # quantile checkpoint; provenance only
     "qr_source",

@@ -617,3 +617,35 @@ expert loop's seed (beam -> plan_to_bc -> --bc-file; keep the trainer's evals on
 counts only `traj_<step>.jsonl`). For the recipe (0b): make the three manual steps automatic (a
 first spine from the true start without a hand-run MC line; the stall cut without
 --auto-spine-energy) and repeat on a second map with the same flags and constants.
+
+## uf2r2b3 (round 2, slot 3) - 2026-10-31 09:44 UTC start
+
+Incumbent: uf2r1b1's ckpt_13045858304 (118.592: 9/9, best 42.25 s). No box at the start: the
+fleet's budget pace (limit 0.831 $/h) was taken by two other boxes (0.767 $/h) and the only
+acceptable offers were a 0.41 $/h 4080S and a 0.62 $/h 5080, so the first hour was analysis and
+local CPU probes.
+
+### Where the incumbent's 42.25 s goes (ANALYSIS ONLY: the record as a yardstick, 10:00 UTC)
+`pb_energy_profile.py` on traj_13067878400 vs the WR demo (demo time ~ policy time + 0.6 s: the
+greedy walks off the platform at once, the record prestrafes). Gap at first arrival: +2.9 s at 2%,
++3.0 at 5%, +3.5 at 50-60%, **+5.1 at 70% (1.6 s lost over 60-70%)**, +5.6 at 90%, +5.7 at 99%.
+* **The start pit (~4 s): the greedy laps it TWICE.** In at 3.2 s (E ~1,280), north up the EAST side,
+  U-turn at the north end (4.5 s), south down the WEST side, round the south end (6.0 s, E 1,169,
+  heading east) WITHOUT climbing, north up the east side again, U-turn (8.5 s), south down the west
+  side, and only then the climb at the south-west (10.0 s, (-2,414, -2,898, -709), vz +1,066, E 1,153)
+  -> out at ~12.4 s. Each lap pumps ~+100 u of E (the climb it knows needs E ~1,250 at the bottom).
+  The record (CW: north on the west side, south on the east side) climbs at the south end on its
+  FIRST pass with E ~1,054 and gains energy in the spiral; it is out ~3.6 s sooner.
+* **The 60-64% bowl (~1.5 s): an extra loop.** At (1,244, 742, -662) heading east the greedy turns
+  SOUTH to (1,751, -495, -1,123) and back north (6,000 u of path from 60% to 64%; the record 3,200 u,
+  straight north through (1,600, 1,007, -1,223)). It reaches 60% with MORE energy than the record.
+* The rest: +0.6 s over 2-60%, +0.6 s over 80-90%.
+
+### Local CPU probes (the incumbent's weights, this host, 10:00-10:20 UTC)
+* `record_ckpt --dump-states` (1 greedy episode, CPU): seconds. `beam_tas --envs 2 --greedy-envs 2`
+  (all-greedy) gives the greedy line's action table to 43.13 s (CPU numerics; replay bit-exact) ->
+  usable as `--prefix-line` (beam_tas refuses `--greedy-prefix` on a keys-hold checkpoint).
+* Beam from that line's tick 600 (4.6 s, west side of lap 1), 64 envs, `--keys-temp 1.5 --view-temp 2`,
+  d-ranked: no first-lap exit - min_d tracks the greedy's d tick for tick (29,781 vs 29,780 at t
+  1,500), med_d within ~30 u of min_d: the yaw sigma is 0.018 (x2 = 0.036), the population is one
+  lineage. The policy's own proposals do not contain the first-lap climb.
