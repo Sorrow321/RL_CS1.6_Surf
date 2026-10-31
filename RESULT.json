@@ -3,10 +3,10 @@
  "round": 1,
  "final": false,
  "best": {
-  "score": 8.846,
-  "eval_file": "/home/steam/ar_uf2/runs/uf2r1b1/uf2r1b1_cur/traj_2943877120.jsonl",
+  "score": 9.126,
+  "eval_file": "/home/steam/ar_uf2/runs/uf2r1b1/uf2r1b1_cur/traj_3094872064.jsonl",
   "run": "uf2r1b1_cur",
-  "step": 2943877120,
+  "step": 3094872064,
   "ckpt": "/home/steam/ar_uf2/runs/uf2r1b1/uf2r1b1_cur/ckpt_latest.pt",
   "recipe": [
    "--death-charge",
@@ -57,5 +57,5 @@
   "resume_from": "chain: uf2r1b1_dcw (scratch, 0-279M) -> dcw2 -> gsp -> tick -> turn -> turn2 -> cur (resumed at 2.415B)",
   "commit": "a56ec347"
  },
- "summary": "8.846 (best 8.8%, median 6.5%): the greedy line climbs OUT of the start pit from the true start in 7/9 episodes (dies afterwards on the *18 kill sheet or the east catch). One lineage, from scratch: the recipe + death charge (fixed a ratchet bug; windowed 2 s) + per-call energy K12 + 10x upward speed novelty + yaw-entropy 0 + keys T -> dives into the pit at 227M; + greedy-row speed x1-1.3 / heading turn 180 -> laps at record energy and the first TRAINING exit (1.13B); + tick 10->7.63 ms; + a backward curriculum on the policy's own Monte Carlo line to the top of the block south of the platform -> the greedy exits at 2.94B. Control (incumbent recipe from scratch) = 5.608, the east trap."
+ "summary": "9.126 (best 9.1%, median 7.9%; A10 3.095B): the greedy line climbs OUT of the start pit from the true start in 7/9 episodes (dies afterwards on the *18 kill sheet or the east catch). One lineage, from scratch: the recipe + death charge (fixed a ratchet bug; windowed 2 s) + per-call energy K12 + 10x upward speed novelty + yaw-entropy 0 + keys T -> dives into the pit at 227M; + greedy-row speed x1-1.3 / heading turn 180 -> laps at record energy and the first TRAINING exit (1.13B); + tick 10->7.63 ms; + a backward curriculum on the policy's own Monte Carlo line to the top of the block south of the platform -> the greedy exits at 2.94B. Control (incumbent recipe from scratch) = 5.608, the east trap."
 }

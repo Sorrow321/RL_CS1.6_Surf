@@ -295,3 +295,16 @@ on purpose: round 1 needs an exit, and the attribution comes after. Read with uf
   east); ep0 / ep2 leave by the pit's east side into the catch (4.0-4.1%). The lineage's first
   gate ("out of the pit from the true start, flying past 5%"). Checkpoint pulled: ckpt_latest at
   2,985M (41M after the eval; no milestone before it).
+* A10 to 3,456M (stopped 00:55 UTC): evals 7.378 / **9.126** (3,095M, median 7.9%) / 6.453 /
+  4.047 / 6.673 / 6.672 - the greedy exits every eval and dies within a few % after. The
+  curriculum walked all the way back: tau 0 (the true start) with 95.8% success over 500 eps
+  (success = the record past d 29,584). The TRAINING frontier is ~20% of the map: the
+  reservoir's deepest 79.31% of d0, front-perturb best 6,411 u (20.9%), training reward ~59/ep.
+  The greedy lags the stochastic training line by ~10% of the map.
+* A11 `uf2r1b1_auto` (00:56 UTC): resume of A10's 3,456M weights (md5 44f472af...) + the
+  pb lineage's search -> curriculum loop: `--auto-spine --auto-spine-async --auto-spine-milestones
+  --auto-spine-gain 500 --auto-spine-ge-minutes 0 --auto-spine-delay 1e8` (a beam from the TRUE
+  start on the newest weights after each eval whose quorum crosses the spine's success line; a
+  line that beats the greedy frontier by 500 u becomes the next spine; the old success line
+  keeps paying as a milestone) + `--ckpt-every 2e8` + `tools/snapcopy.py` beside it (a hand-on
+  near every eval); A10's curriculum flags with `--demo-tau0 0`.
