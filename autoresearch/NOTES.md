@@ -725,3 +725,7 @@ Incumbent: uf2r1b1's ckpt_13045858304 (118.592: 9/9, best 42.25 s; record 35.17 
   finishers: 20,355 BC rows -> `$AR_HOME/runs/uf2r2b2/sf_c1/bc.npz` (md5 b3a6df84...), spine =
   `autoresearch/spines/uf2r2b2_c1.npy` (+ keys). The expert loop's first round is ready before the
   box: a box can start training right after deploy.
+* Wave 2 (CPU, `--score dh --score-energy 1`, torch seed 1): **41.29 s** (bit-exact), 1.21 s under
+  the greedy line; most of its lead over wave 1 is in the last 15% (37.80 -> 41.29 vs 37.84 ->
+  41.59). Pool c2 = both waves: 31 lines, 41,907 rows (`$AR_HOME/runs/uf2r2b2/sf_c2/bc.npz`, md5
+  d14ea09a...), spine `autoresearch/spines/uf2r2b2_c2.npy`.

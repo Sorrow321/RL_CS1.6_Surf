@@ -476,3 +476,10 @@ CPU, torch seed 0), replayed bit-exact: a finish in 41.59 s (the greedy line on 
 (-0.26 s by 40%, -0.78 s by 65%). `plan_to_bc --no-value-target --line-weight-decay 20` over its
 15 kept finishers -> BC rows in `$AR_HOME/runs/uf2r2b2/sf_c1/bc.npz` (md5 b3a6df84...).
 Spine md5 b85169c2..., keys md5 667d7aaa...
+
+## uf2r2b2_c2 (round 2, 2026-10-31 12:20 UTC) - the policy's own 41.29 s beam line
+`uf2r2b2_c2.npy` (+ `.keys.npy`): 5,386 per-tick states of the fastest lineage of a second CPU beam
+on the same incumbent weights (`--score dh --score-energy 1 --torch-seed 1`, otherwise as c1),
+bit-exact finish in 41.29 s. BC pool `$AR_HOME/runs/uf2r2b2/sf_c2/bc.npz` (md5 d14ea09a...) =
+plan_to_bc over BOTH waves' kept finishers (31 lines, 41,907 rows, --line-weight-decay 20).
+Spine md5 c083adb6..., keys md5 7dcdbf73...
