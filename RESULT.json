@@ -3,11 +3,11 @@
  "round": 2,
  "final": false,
  "best": {
-  "score": 118.621,
-  "eval_file": "/home/steam/ar_uf2/runs/uf2r2b1/uf2r2b1_bc3/traj_13924564992.jsonl",
+  "score": 118.627,
+  "eval_file": "/home/steam/ar_uf2/runs/uf2r2b1/uf2r2b1_bc3/traj_14000062464.jsonl",
   "run": "uf2r2b1_bc3",
-  "step": 13924564992,
-  "ckpt": "/home/steam/ar_uf2/runs/uf2r2b1/uf2r2b1_bc3/ckpt_13920370688.pt",
+  "step": 14000062464,
+  "ckpt": "/home/steam/ar_uf2/runs/uf2r2b1/uf2r2b1_bc3/ckpt_13973848064.pt",
   "recipe": [
    "resume chain: incumbent 13.046B -> uf2r2b1_bc1 (BC1, 13.408B) -> uf2r2b1_bc2pl (BC2 + plateau, 13.849B) -> uf2r2b1_bc3",
    "--demo-file autoresearch/spines/uf2r1b1_cut_k02.npy",
@@ -52,5 +52,5 @@
   "resume_from": "uf2r2b1_bc2pl ckpt_latest 13,848,543,232 (md5 0e4246b3)",
   "commit": "bed76bfd"
  },
- "summary": "118.621 (B4 uf2r2b1_bc3 at 13.925B: 9/9, best 41.37 s, mean 41.97 s): EXPERT ITERATION - the incumbent resumed on its own last curriculum (k02 at tau 0) + BC toward its own beam lines, re-searched on each new policy (beam bests 41.14 -> 40.80 -> 40.53 s). B1 (pace-gated spine) failed: a new spine restarts at its end and the pit loses its spawns. Pit-lap respawns (--respawn-greedy-plateau, new) did not move the pit and cost reliability. BREAKTHROUGH (11:20 UTC): MONTE CARLO (beam_tas --elite-frac 1.0, no d-ranked culling) with held view offsets at t 3.07 s finds a FIRST-LAP pit exit: a 37.34 s finishing line (2% at 7.12 s vs the greedy's 11.2 s); the d-ranked beam culls it (the detour north raises d). Next: BC onto it."
+ "summary": "118.627 (B4 uf2r2b1_bc3 at 14.000B: 9/9, best 41.19 s, mean 41.63 s): EXPERT ITERATION - the incumbent resumed on its own last curriculum (k02 at tau 0) + BC toward its own beam lines, re-searched on each new policy (beam bests 41.14 -> 40.80 -> 40.53 s). B1 (pace-gated spine) failed: a new spine restarts at its end and the pit loses its spawns. Pit-lap respawns (--respawn-greedy-plateau, new) did not move the pit and cost reliability. BREAKTHROUGH (11:20 UTC): MONTE CARLO (beam_tas --elite-frac 1.0, no d-ranked culling) with held view offsets at t 3.07 s finds a FIRST-LAP pit exit: a 37.34 s finishing line (2% at 7.12 s vs the greedy's 11.2 s); the d-ranked beam culls it (the detour north raises d). Next: BC onto it."
 }

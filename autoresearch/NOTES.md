@@ -764,3 +764,22 @@ novelty 2.5, greedy rows x1-1.3 turned 180, tick 7.63 ms, etc. (the launch log's
 * Next (11:30 UTC): prefix beams (`beams_pf.sh`: replay a 37.x s line's first 8-9 s with
   `--prefix-line`, then a d-ranked search for the rest on B4's 13.986B weights) -> BC file 4 with the
   one-lap exit, + the line's pit states as `--spawn-states` -> B5.
+* Monte Carlo 2 (`beams_mc2.sh`, B3's 13.762B weights, forks at tick 400): **8 of 12 runs give a
+  first-lap exit**, finishing in 37.51-38.14 s (several of them NON-fork lineages: 37.76, 37.91 s);
+  forks held for 60 ticks (redrawn) and plain Monte Carlo (no fork) give none (40.70-41.17 s). The
+  37.34 s winner's held yaw offset turns out to be SMALL (its executed yaw stays within +-2 deg of the
+  policy's own through the burst): the one-lap exit is the policy's own key choices near t 4 s; what
+  finds it is Monte Carlo whose dead lineages (the big offsets die) are refilled from survivors at
+  the resample boundaries, i.e. many more samples of that decision, and NO d-ranked culling.
+* Prefix beams (`beams_pf.sh`: `--prefix-line` = a Monte Carlo line's first 1,043-1,174 ticks, then
+  a d-ranked beam for the rest on B4's 13.986B weights): **36.59 / 36.62 / 36.66 / 36.91 / 37.24 s**,
+  all replayed bit-exact. BC file 4 `runs/bc/r2_bc4.npz` (16 lines, best 36.59 s, md5 4c2a63a1; the
+  prefix rows' z rebuilt from the executed view, keys rebuilt from the engine rows - consistent
+  with --bc-keys-engine). Spawn states `runs/beam/r2_pit_states.npy` (368 states, t 2.8-8.4 s of the
+  36.59 s line, md5 5eafbf60).
+* B4 later: 9/9 41.48 s (14.076B); stopped at 14.141B (11:43 UTC). Hand-on for 118.627 (14.000B):
+  ckpt_13973848064 (26M before; the next copy is after the eval) re-records 9/9 41.28 s (118.624)
+  and 8/9 41.48 s with --seed 7 (17/18).
+* **B5 `uf2r2b1_pit1`** (11:44 UTC): resume of B4's 14,141,095,936 weights (md5 7b898296) + BC file 4
+  (coef 0.3 -> 0) + `--spawn-states runs/beam/r2_pit_states.npy --spawn-states-frac 0.1`; k02
+  curriculum at tau 0 as before. Goal: the greedy flies the one-lap exit (~37 s).
