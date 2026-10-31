@@ -390,3 +390,14 @@ file without a word. Workaround: scp the padded file myself, md5-checked against
 * Arm tcne4 (04:52 UTC): ne3 spine = ne2_spine to row 3158 + GE11's chain to cell 540508 (3,419
   states, md5 81326566, end 10.65%), milestones 28588,27912,27611, resumed from tcne3's latest
   (2,393.9M, md5 277a2045). GE12 from ne3's last 3 s meanwhile.
+* **tcne4 (2.394B -> 2.794B): 10.688 (2,495M).** Evals 10.23 / 10.31 / **10.69** / 10.61 / 10.58 /
+  10.67 / 10.65 / 10.57 (medians 10.5-10.6%). Hand-off ckpt_2494562304.pt (md5 0cf0db23).
+* **GE12 (rooted at ne3_spine's last 3 s, 15 min): 22.27% - a way PAST *18.** 1,014,238 cells.
+  The chain to cell 987607 (22 links, exact, 10 s): from the NE exit (E 926) east over the sheet
+  -> a ledge at z ~217 near x -1,000..-850 -> off its east edge (x -867) -> down to z -255 -> surfs
+  NORTH through a lower area at z ~-450..-600 at ~900 u/s (E ~0-65) from y -640 to y 1,100 ->
+  north-west to (-2,057, 2,429, -253) at 22.27%. That is the record's t 14 region (the record:
+  (-2,406, 2,395, 171) at 22.3%).
+* Arm tcne5 (05:18 UTC): ne4 spine = ne3_spine to row 3195 + GE12's chain (4,192 states, md5
+  a07ddcc8, end d 23,823 = 22.27%), milestones 28588,27912,27611,27482, resumed from tcne4's
+  latest (2,782.9M, md5 c85de03f).
