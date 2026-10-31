@@ -274,3 +274,12 @@ file without a word. Workaround: scp the padded file myself, md5-checked against
   kinetic energy height, paid ONCE when the record first enters the frontier band - here the
   trough's west exit - and forfeited by dying earlier, so nothing to farm and no charge on the
   floor). Leaving the trough at 1,100 u/s instead of 700 is worth ~+5.4: a direct price on a pump.
+* **GE4 (strict admission margin 2 s) holds VIABLE high-energy pit states**: its energy-top pit
+  cells reach E 939-954 at progress -4..-1% (GE1-3's pit cells were doomed or E <= 413). 487 rows
+  with z < 100 and E > 800 (median E 870, z -465, 1,460 u/s). tce's policy from them (24 stoch,
+  bench only): 0/24 climb out, but they live 0.3-1.4 s (GE's random actions survived 2 s from the
+  same states: the policy has never practised the pit). An exit at E ~870 is physically possible:
+  over the catch *7 (top z 577) at ~680 u/s, into the trough with ~870 E (the route has ~650).
+* Next arm (after tcf): the corridor curriculum + ~20% spawns from GE4's viable pit states (the
+  branch's own search from the true spawn), so the policy that already values the trough learns
+  to survive the pit and climb toward it - the pit's exit is the corridor's south end.
