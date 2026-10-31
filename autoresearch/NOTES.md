@@ -738,3 +738,29 @@ novelty 2.5, greedy rows x1-1.3 turned 180, tick 7.63 ms, etc. (the launch log's
 * **B4 `uf2r2b1_bc3`** (11:15 UTC): resume of B3's 13,848,543,232 weights (md5 0e4246b3) with BC
   file 3, `--bc-coef 0.3` (B2 / B3 lost 2-3 episodes in the eval after one iteration at 0.5), and
   NO plateau rows (the pit did not move; they take 25% of the pool from the k02 line).
+* **B4 `uf2r2b1_bc3`: 9/9 again, and faster: 41.43 s (118.619, 13.849B) and 41.37 s (118.621,
+  13.925B; mean 41.96-41.97 s).** BC coef 0.3 and no plateau rows: reliability is back (the
+  plateau rows, not BC2, most likely cost B3 its 7-8/9). Hand-on for 118.621: ckpt_13920370688
+  (4.2M before the eval), pulled.
+* **BREAKTHROUGH: a FIRST-LAP PIT EXIT found by the policy's own Monte Carlo (11:18 UTC).**
+  `autoresearch/r2b1/beams_mc.sh`: beam_tas `--elite-frac 1.0` (no cloning: 4,096 independent
+  stochastic rollouts of the policy from the true start, 32 greedy) + view-only forks of 3,072 envs
+  at tick 400 (t 3.07 s) holding a heading offset U(-J, J) for 0.46-0.92 s, on B3's 13.762B weights:
+  * J 60, burst 120 ticks, hold 120: a fork lineage **finishes in 37.34 s**; J 40 / 120 / 60: a
+    plain (non-fork) lineage finishes in **38.00 s**; the other six settings (J 0-60, forks at tick
+    400 or 500) 40.80-40.96 s.
+  * The 37.34 s line's pit (ANALYSIS): north up the east side as always, but at t 4.0 (-1,918,
+    -1,444, -732, vz +418) it carries on NORTH to (-2,284, -811, -623) at t 4.5 instead of turning
+    west at y ~-1,400, comes south down the west side (t 5.0-5.5) and climbs out at the south end on
+    the FIRST pass: t 6.0 (-2,273, -2,968, -499) vz +1,290 -> z 45 at 6.5 -> z 389 at 7.0 -> out
+    (3.0%) at 7.5. **2% at 7.12 s** (the greedy 11.2 s; the record 8.33 s on its file clock, ~7.4 s
+    on ours); 20% 12.73, 60% 24.46, 70% 29.85, 100% 37.31. It is the second lap's own north
+    excursion flown on the first lap.
+  * **Why every earlier search missed it**: a d-ranked beam culls the north excursion (d rises
+    going north: progress -9% at t 4.5 vs the lappers' -7%) before it pays off ~3 s later; the
+    forks were protected 3-8 generations but resampled on d around them. Monte Carlo does not cull.
+  * More Monte Carlo (`beams_mc2.sh`, the J 60 / tick 400 fork, new seeds): 37.75 s, 37.67 s ... -
+    it is reproducible in the policy's own distribution with a held heading offset at the turn.
+* Next (11:30 UTC): prefix beams (`beams_pf.sh`: replay a 37.x s line's first 8-9 s with
+  `--prefix-line`, then a d-ranked search for the rest on B4's 13.986B weights) -> BC file 4 with the
+  one-lap exit, + the line's pit states as `--spawn-states` -> B5.
