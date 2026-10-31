@@ -541,6 +541,7 @@ on purpose: round 1 needs an exit, and the attribution comes after. Read with uf
   ckpt_9980346368 (143M before: snapcopy copied nothing 05:54-06:04 - it copies only when
   ckpt_latest's mtime moves, and PRUNES its own copies after 45 min, so a candidate must be
   pulled within 45 min) and it re-records **8/9** (best 43.03 s). Every late snapshot re-recorded
-  so far is 6/9-8/9 while the evals around it read 9/9 (the recorder's spawn seed follows the
-  step; the eval's does not): the late policy finishes ~90% of its episodes, the 8.819B one 18/18.
+  so far is 6/9-8/9 while the evals around it read 9/9 (both seed their spawns from the step,
+  `step & 0x7FFFFFFF`, so each is another draw): the late policy finishes ~90% of its episodes,
+  the 8.819B one 18/18.
   Hand-on stays ckpt_8819048448.
