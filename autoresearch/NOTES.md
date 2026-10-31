@@ -401,3 +401,9 @@ file without a word. Workaround: scp the padded file myself, md5-checked against
 * Arm tcne5 (05:18 UTC): ne4 spine = ne3_spine to row 3195 + GE12's chain (4,192 states, md5
   a07ddcc8, end d 23,823 = 22.27%), milestones 28588,27912,27611,27482, resumed from tcne4's
   latest (2,782.9M, md5 c85de03f).
+* **tcne5 (2.783B -> 3.183B): 10.713 (2,834M)**; evals 2.84 (the first after the resume) / 10.71 /
+  10.61 / 10.61 / 10.61 / 10.50 / 10.53 / 10.54. The curriculum walked the new GE12 segment from
+  row 4,191 back to 3,351 (48% success at the end; the splice is at row 3,195): the greedy is not
+  on the extension yet. Hand-off ckpt_2833252352.pt (md5 94fadc5d).
+* GE13 (rooted at ne4's last 4 s, 15 min): 22.73% at (-2,032, 2,530, -161) - +0.5% only, not spliced.
+* tcne6 (05:41 UTC): tcne5's final + the same ne4 spine + `--demo-tau0 3351`, 4e8.
