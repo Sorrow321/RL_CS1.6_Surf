@@ -1,3 +1,7 @@
-{"agent": "uf2r2b2", "round": 2, "final": false,
+{
+ "agent": "uf2r2b2",
+ "round": 2,
+ "final": false,
  "best": null,
- "summary": "Round 2 start (09:44 UTC). Incumbent 118.592 (9/9, 42.25 s). Split analysis vs the record: of the 6.4 s gap (from the curtain), ~4.0 s is the start pit (the policy laps twice counter-clockwise and climbs out on its 2nd south-end pass at ~+10 s; the record climbs at +4.8..7 s) and 1.35 s is 60-65%. Plan: find a 1-lap pit exit by search on the incumbent's weights, then teach it (curriculum / BC)."}
+ "summary": "No box yet (fleet budget pace full since 09:52; retrying every 90 s). Split analysis: of the 6.4 s gap to the record (from the curtain) ~4.0 s is the start pit (2 counter-clockwise laps, the climb on the 2nd south-end pass; the 1st pass already has more energy than the record's climb) and 1.35 s an extra loop at 60-65%. CPU probes (beam forks with held view offsets from the policy's own greedy line, Go-Explore from its first-lap states): a first-pass surf climb exists but the policy's continuation falls ~100 u of energy short of the exit; GE cannot surf the bowl; forks at the loop die. d ranks wall crashes first (dh fixes it). Next on a box: expert loop on the policy's own beam lines (tools/speed_forks.py waves + plan_to_bc, BC held 0.5, A13's milestones + spawn mix kept), forks as a lottery."
+}

@@ -697,3 +697,24 @@ Incumbent: uf2r1b1's ckpt_13045858304 (118.592: 9/9, best 42.25 s; record 35.17 
   up (to z 584-656). So the 1st-pass exit needs ~10 deg more east at the slope and the policy's own
   climb after it - the +-20 deg probe's climber had the first part and lost the second to the
   burst's later random offsets.
+* One short held offset (one 0.52 s hold, +-20 deg) at 5.00 s: 92 of 80 branched lineages (with
+  clones) alive at the end, and the best now turns the RIGHT way after its climb (counter-clockwise,
+  the 2nd-pass style: up the SE wall from 5.1 s, round the south end, heading north at (-1,630,
+  -3,317) at 7.1 s) - but low: peak z 52 with E ~1,040, descending, where the 2nd-pass climb is at
+  z 343 with vz +621 and E ~1,160. The policy's own continuation after a nudge falls ~100 u of
+  energy (and a steeper climb) short of the exit.
+* The 60-65% loop (fork at tick 3,820 = 29.3 s, just before the wrong turn at (927, -104) heading
+  59 deg; +-45 deg, two 0.52 s holds, dh): the forks lead by up to 650 u for a second, 62 of 96
+  lineages die at tick 4,120, and the end is the greedy's own line (d 9,671 at 4,420 vs 9,534 at
+  4,452). Same pattern as the pit: a held offset changes the route, the policy cannot follow it up.
+* `plan_to_bc` on the incumbent's own greedy line (CPU, 9 s): 1,386 rows, keys targets = the
+  planner's policy rows, view z = the planner's drawn z, spine + held keys: the distil step works
+  on this checkpoint (keys-hold, absolute view, the 8 scalar columns).
+* **Plan change**: route changes by forking the policy's own proposals look out of reach at this
+  scale (5 probes, ~400 forked lineages, 0 early exits). First box job = the expert loop on the
+  policy's OWN lines: plain beams from the true start (waves over torch seeds, `--score d` and
+  `dh`), plan_to_bc over the crossings, a resume with BC held at 0.5 (pbx) and A13's reward and
+  spawn mix kept (`--demo-milestones 29584,27363,17276,13765,13232,8515,3476`, the fast line as
+  the spine with `--demo-tau0 0`: a resume restores neither the milestones nor the curriculum's
+  position, and dropping 7 x 50 of the training return would shock the critic). The forks stay in
+  the search as a cheap lottery.
