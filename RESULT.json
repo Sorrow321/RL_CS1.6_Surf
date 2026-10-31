@@ -3,11 +3,11 @@
  "round": 1,
  "final": false,
  "best": {
-  "score": 7.854,
-  "eval_file": "/home/steam/ar_uf2/runs/uf2r1b2/uf2r1b2_tce2/traj_0800587776.jsonl",
-  "run": "uf2r1b2_tce2",
-  "step": 800587776,
-  "ckpt": "/home/steam/ar_uf2/runs/uf2r1b2/uf2r1b2_tce2/ckpt_0800063488.pt",
+  "score": 7.953,
+  "eval_file": "/home/steam/ar_uf2/runs/uf2r1b2/uf2r1b2_tcq/traj_0901251072.jsonl",
+  "run": "uf2r1b2_tcq",
+  "step": 901251072,
+  "ckpt": "/home/steam/ar_uf2/runs/uf2r1b2/uf2r1b2_tcq/ckpt_0900726784.pt",
   "recipe": [
    "incumbent_recipe (config.json)",
    "--demo-file",
@@ -54,10 +54,14 @@
    "--energy-pot-front",
    "0",
    "--energy-pot-front-bonus",
-   "0"
+   "0",
+   "--spawn-states",
+   "runs/uf2r1b2_ge8/tops_fwd.npy",
+   "--spawn-states-frac",
+   "0.3"
   ],
-  "resume_from": "uf2r1b2_tce ckpt_final (800,063,488 steps, md5 d1ce2797) - the eval is tce2's first, one PPO iteration after the resume; the snapshot file is that checkpoint",
-  "commit": "331ef376"
+  "resume_from": "uf2r1b2_tce ckpt_final (800,063,488 steps, md5 d1ce2797)",
+  "commit": "39ea55c0"
  },
- "summary": "Round 1. Generic arms end on the start's traps (control / speed-equiv slide into kill sheet *18 at 5.7-5.9; per-call energy and the death charge camp). Go-Explore never leaves the pit, but its archive holds the record's post-pit corridor (a trough under the platform) via the platform's SW corner. Backward curriculum on that 10 s GE line from scratch (tc): 7.43 at 101M; + per-call energy K8 (tce): 7.70-7.85 (best 7.854 = tce's final weights, tce2's first eval). Per-call energy K16 collapses (no death refund: gain energy on the platform and die). Gate: a floor landing costs ~600 E and the trough exit is too slow for *18's west edge; GE finds no pump. Running tcf = frontier energy bonus K12 (pays the exit speed once)."
+ "summary": "Round 1. Generic arms end on the start's traps (slide into kill sheet *18 at 5.7-5.9; per-call energy / death charge camp). Go-Explore never leaves the pit, but holds the record's post-pit corridor (a trough under the platform) via the platform's SW corner. Backward curriculum on that 10 s GE line from scratch (tc) 7.43; + per-call energy K8 (tce) 7.85; + 30% spawns from a GE search rooted at the policy's own trough ride, which PUMPS the trough +345 E (tcq) 7.95. Gate: the trough exit is too slow for *18's west edge (the policy enters the trough with ~650 E after an unavoidable floor landing). Next: an energy-rule curriculum on the pump chain (PB's energy-gate playbook)."
 }
