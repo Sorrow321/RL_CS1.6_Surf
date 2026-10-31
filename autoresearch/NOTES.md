@@ -503,3 +503,13 @@ on purpose: round 1 needs an exit, and the attribution comes after. Read with uf
   Hand-on for 118.534 = ckpt_8819048448 (21M before the eval; the next snapshot is after it),
   VERIFIED by its own greedy recording on the box: **9/9, 44.44-44.96 s, score 118.519**, into the
   box 130-200 u above its floor (`verify/greedy_8819048448.jsonl`; md5 d772ebb4...).
+* The two bad evals (analysis): at 8.387B (0/9) all nine dive into the pit with full energy
+  (E 1,294 at the entry, ~1,100 at the bottom) and then LAP in it without taking the exit until
+  the 30 s eval-patience cut (best 1.77% at 1.66 s); at 8.614B (2/9) four mis-dive into a catch at
+  (-2,272, -3,084, 232) at 2.48 s, two lap, one dies at 64.6%. The rest of the course holds in
+  every eval after 8.16B: the start pit (its entry and its exit decision) is where this policy
+  is fragile AND where it is slow (3.55 s of the 8.4 s). Both are round 2's problem.
+* Not run: the expert loop (`tools/exit_local.py`) for speed - the grader counts only the
+  trainer's own `traj_<step>.jsonl` evals, the loop trains with evals off, and its gain on
+  princessburglar (64.15 -> 62.11 s over many rounds) is worth ~0.07 here at 0.033 per second.
+  A13 keeps training (its own evals are scored) to the wrap-up.
