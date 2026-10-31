@@ -729,3 +729,7 @@ Incumbent: uf2r1b1's ckpt_13045858304 (118.592: 9/9, best 42.25 s; record 35.17 
   the greedy line; most of its lead over wave 1 is in the last 15% (37.80 -> 41.29 vs 37.84 ->
   41.59). Pool c2 = both waves: 31 lines, 41,907 rows (`$AR_HOME/runs/uf2r2b2/sf_c2/bc.npz`, md5
   d14ea09a...), spine `autoresearch/spines/uf2r2b2_c2.npy`.
+* Wave 3 (CPU, dh, torch seed 2): 41.32 s. dh-ranked waves 41.29 / 41.32 s vs the d-ranked 41.59 s
+  (one seed each: suggestive, the energy term keeps lineages that bleed less). Pool c3 = the three
+  waves: 46 lines, 62,137 rows (`$AR_HOME/runs/uf2r2b2/sf_c3/bc.npz`, md5 e95fe713...), spine =
+  c2's 41.29 s line.
