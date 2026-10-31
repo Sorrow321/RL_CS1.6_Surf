@@ -317,3 +317,11 @@ on purpose: round 1 needs an exit, and the attribution comes after. Read with uf
   - and die on the `*8` sheet (z -767..-768) where the record surfs higher (z -591 -> -102);
   3/9 still die in the pit at 7-8 s, 1 on `*18` (7.87%). Search 2 started (5/9 past 27,363).
   Hand-on snapshot pulled: ckpt_3662675968 (20M before the eval; snapcopy).
+* A11 3,759M: **12.524** (best 12.5%, median 12.1%) - 9/9 greedy episodes alike: out of the pit
+  at ~11 s, then 11.1-12.5% at ~16.5 s round (-3,450, -15), dying on the `*8` sheet at z ~-746
+  (the record surfs ~250 u higher there: (-3,295, -86, -498) at t+10.5). 3,834M: 11.672.
+  Search 2 (3,683M -> 3,779M, 375 s): NO new spine - the beam's frontier d 26,842 against the greedy
+  frontier 27,220 = +378 u, under the 500 u gain (the trainer's default gain is 200: with it this
+  spine would have been taken). Training: the reservoir's deepest 59.32% of d0 = **40.7%**,
+  front-perturb best 12,478 u (40.7%) - the stochastic frontier is 3x the greedy's.
+  Hand-on snapshot pulled: ckpt_3749183488 (9M before the eval; md5 8771e806...).
