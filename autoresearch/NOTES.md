@@ -912,3 +912,7 @@ own best search line, for the spread gains BC on noisy beam lines (x1) could not
   checkpoints, train a little more on the fixed finish, no scratch retraining.
   By that grader (run from the main checkout, read-only): x7 / x8 / x9 best 100.0 (box-only), **x10
   118.781** (15.169B, 9/9 real, 36.57 s). RESULT.json now points at x10 (hand-on ckpt_15160836096).
+* **x11 (tight pace on the 36.05 s real line) is FASTER on real finishes** (clip-hull grader):
+  15.376B 7/9 36.67 (first update) / **15.451B 9/9 36.29 s = 118.790** / 15.527B 8/9 36.28 /
+  15.602B 9/9 36.46 (118.785). Band paced success ~90% (the pace 0.02 0.3 is passed by most band
+  episodes). Hand-on for 118.790: ckpt_15441854464 (9.4M before; md5 5e126873; pulled).
