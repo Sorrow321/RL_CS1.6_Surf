@@ -3,18 +3,18 @@
  "round": 2,
  "final": false,
  "best": {
-  "score": 118.73,
-  "eval_file": "/home/steam/ar_uf2/runs/uf2r2b1/uf2r2b1_real1/traj_15595470848.jsonl",
-  "run": "uf2r2b1_real1",
-  "step": 15595470848,
-  "ckpt": "/home/steam/ar_uf2/runs/uf2r2b1/uf2r2b1_real1/ckpt_15584985088.pt",
+  "score": 118.744,
+  "eval_file": "/home/steam/ar_uf2/runs/uf2r2b1/uf2r2b1_real2/traj_16202072064.jsonl",
+  "run": "uf2r2b1_real2",
+  "step": 16202072064,
+  "ckpt": "/home/steam/ar_uf2/runs/uf2r2b1/uf2r2b1_real2/ckpt_16193683456.pt",
   "real_finishes": "yes - recorded on the FIXED core (85592304: the finish is the trigger's clip hull)",
   "recipe": [
-   "resume chain: incumbent 13.046B -> bc1 -> bc2pl -> bc3 -> pit1 -> pace3 (15.368B) -> uf2r2b1_real1 (fixed core)",
-   "--demo-file runs/beam/r2_one621.npy (36.77 s one-lap line: beam_tas Monte Carlo prefix + d-ranked beam on the policy's own weights, from the true start)",
-   "--demo-keys runs/beam/r2_one621.keys.npy",
+   "resume chain: incumbent 13.046B -> bc1 -> bc2pl -> bc3 -> pit1 -> pace3 -> real1 (fixed core, 15.975B) -> uf2r2b1_real2",
+   "--demo-file runs/beam/r2_real723.npy (37.50 s REAL-finish line of a beam_tas prefix search on the policy's own 15.77B weights from the true start)",
+   "--demo-keys runs/beam/r2_real723.keys.npy",
    "--demo-tau0",
-   "840",
+   "1070",
    "--demo-success-d",
    "100",
    "--demo-success-bonus",
@@ -44,12 +44,20 @@
    "1",
    "--ckpt-every",
    "2e8",
-   "--spawn-states runs/beam/r2_pit_states2.npy (368 states t 2.8-8.4 s of the spine)",
+   "--bc-file runs/bc/r2_bc7.npz (16 real-finish lines, best 37.50 s)",
+   "--bc-coef",
+   "0.3",
+   "--bc-coef-final",
+   "0",
+   "--bc-keys-engine",
+   "--bc-pitch-coef",
+   "0",
+   "--spawn-states runs/beam/r2_pit_states4.npy",
    "--spawn-states-frac",
    "0.1"
   ],
-  "resume_from": "uf2r2b1_pace3 ckpt_final 15,368,454,144 (md5 fd3a6826)",
-  "commit": "85592304"
+  "resume_from": "uf2r2b1_real1 ckpt_latest 15,975,055,360 (md5 0bd5b400)",
+  "commit": "b63d68d2"
  },
- "summary": "118.730 with REAL finishes (B7 uf2r2b1_real1 at 15.595B on the fixed core: 9/9, best 38.10 s, mean 38.36 s). The core scored the finish trigger's BOUNDING BOX: every earlier finish of this lineage (and the incumbent's, 1/9 real) skimmed its empty corner - fixed here (85592304, the trigger's clip hull; see NOTES 'Harness issue'). How the policy got to 38 s: expert iteration (BC toward its own beam lines), MONTE CARLO search that finds the one-lap start-pit exit the d-ranked beam culls, and a PACE-GATED backward curriculum on that line (the greedy leaves the pit on its first lap; 2% at 7.7 s vs 11.2 s). Next: real-finish searches -> BC; reliability of the pit climb."
+ "summary": "118.744 with REAL finishes (B8 uf2r2b1_real2 at 16.202B on the fixed core: 9/9, best 37.69 s; four 9/9 evals in a row). The core scored the finish trigger's BOUNDING BOX: every earlier finish of this lineage (and the incumbent's, 1/9 real) skimmed its empty corner - fixed here (85592304, the trigger's clip hull; see NOTES 'Harness issue'). How the policy got to 38 s: expert iteration (BC toward its own beam lines), MONTE CARLO search that finds the one-lap start-pit exit the d-ranked beam culls, and a PACE-GATED backward curriculum on that line (the greedy leaves the pit on its first lap; 2% at 7.7 s vs 11.2 s). Next: real-finish searches -> BC; reliability of the pit climb."
 }

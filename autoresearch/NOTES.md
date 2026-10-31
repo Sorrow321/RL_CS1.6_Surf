@@ -908,3 +908,8 @@ recordings on the trigger's hull from the positions (the memory note's plan).
   the current policy's, where B7's band was stuck at r2_one621's row 845 with 0% for ~0.5B steps),
   tau0 1,070 (just past its exit, row 1,067), pace 0.05 1.0; BC file 7 at 0.3; its pit states
   (`r2_pit_states4.npy`) at 10%. Band success 77.6% at 1,070 at once.
+* **B8 `uf2r2b1_real2`: 118.744 (16.202B: 9/9 REAL, best 37.69 s)** - four 9/9 evals in a row: 37.89
+  (118.737) / 38.08 / **37.69** / 37.78 s (16.051-16.278B; official re-score identical); first eval
+  8/9 37.72. The curriculum on the policy's own real-finish line walked from row 1,070 back to tau 0
+  (the true start) in ~250M steps (56-64% paced success). Hand-on: ckpt_16193683456 (8.4M before),
+  pulled; re-recording. Next search round (`beams_it4.sh`) on B8's 16.31B weights.
