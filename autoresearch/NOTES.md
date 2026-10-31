@@ -130,3 +130,11 @@ idle for the first third of its round.
   to loop 2's face, ~800 u higher to the south). The global top-energy cells are useless as
   roots: all 64 are falls into the void (z -3,656..-3,980, 1,464-1,635 u/s) strafed on the way
   down. GE is not the route to loop 2 at local compute; arm A (RL) stays the first box run.
+* The transfer loop 1 -> loop 2 (record, ANALYSIS ONLY, to read evals): at the bottom of loop 1
+  (x 427, z -3,323, 1,479 u/s east, E -1,956, t+64.0) it climbs the east end and turns RIGHT
+  (south) while climbing - heading 55 -> 6 -> -61 -> -98 deg, vz up to +931 - to (1,184, 75,
+  -2,648) at t+65.0 (11.9%), flies south over the gap at z ~-2,490..-2,560 ((1,268, -283) at
+  t+65.4, 983 u/s) and lands on loop 2's ramp at (1,612, -448, -2,499) heading east at t+65.8;
+  loop 2's first end swing reaches 19.4% at t+67. Every loop-1 pass before it turned LEFT
+  (north, back west) at that end. A greedy eval that turns right at the east end with
+  |v| >~ 1,000 at the bottom is attempting the transfer.
