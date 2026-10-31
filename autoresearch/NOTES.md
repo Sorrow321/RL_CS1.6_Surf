@@ -190,3 +190,29 @@ Why: E2's spine ends at 9.48% while its greedy reaches 24%; 90% of its spawns ar
     (70% at t+351 z 1,266; 86% at t+388 z 2,075; 90% at t+412; the finish at t+450, z 3,029).
   * Training at 1.2B: stall kills up to 38% (the new spine's band at 56 s on its line), reservoir
     deepest 43.3% of d0 (56.7%), energy +1,517/-1,114 u/ep, 235k steps/s with the search beside it.
+
+### E3 REGRESSED after a STALE auto-spine (19:25-19:50 UTC) -> `--auto-spine-recheck`
+* Evals after 1,088M: 56.679 (1,164M) / **33.583 (1,239M)** / 34.453 / 34.983 / 34.067 / 33.960
+  (1,541M); stopped at 1,678M. The greedy fell back to the SECOND trough: 9/9 pump it only to E
+  ~-550 (at 786M it reached -116 there and at 1,088M left it west for the third structure), then
+  fall off its east end or stall to the patience cut at 31.7-34.0%. Training: stall kills 38% ->
+  67%, the reservoir's deepest 43.3% -> 66.0% of d0 (56.7% -> 34%), unstuck T at its 0.2 cap.
+* Cause: search 1 ran on the 711M weights (greedy frontier d 4,511) for ~22 min beside the
+  training; its spine (8,797 states, end d 4,376 = 31%: that policy's beam line, ending at the
+  second trough's east-end top - a DEAD END, where the 786M greedy also died) was adopted at
+  ~1,072M, when the greedy was already at d 2,752 (57%). The curriculum restarted at its end with
+  90% of spawns on its late part and the +50 on its 31% success line; within 75M steps the greedy
+  had re-learned the dead end. The search compared itself with the frontier of the eval that
+  STARTED it; nothing re-checked at adoption.
+* Fix (commit cf1a7bc0, tests/python/test_auto_spine_recheck.py): `--auto-spine-recheck` - adopt a
+  spine only if its end still beats the LATEST eval's greedy frontier by --auto-spine-gain;
+  otherwise discard it and retry after --auto-spine-retry. Generic (a search result must still be
+  ahead of the policy when it is used); off = as before.
+* (ops) `pgrep -f '<pattern>'` inside a box.py ssh command matches the ssh shell's own command line
+  and kills the session (CLAUDE.md's warning, met again): kill by pid file, or pattern on a
+  process name that is not in the command.
+
+### E4 `zlr1b4_e4` (19:57 UTC): resume of E3's 1,088M snapshot (57.4%) + the auto-spine loop WITH the recheck
+`runs_ckpt.pt` = ckpt_1088421888 (md5 3c500701); the GE-line spine (success line 9.48%) restores
+from the checkpoint - the spine under which 559M -> 1,088M went 24% -> 57% by itself; E3's flags
++ `--auto-spine-recheck`, snapcopy beside it.
