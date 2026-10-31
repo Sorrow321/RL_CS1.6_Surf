@@ -913,3 +913,22 @@ recordings on the trigger's hull from the positions (the memory note's plan).
   8/9 37.72. The curriculum on the policy's own real-finish line walked from row 1,070 back to tau 0
   (the true start) in ~250M steps (56-64% paced success). Hand-on: ckpt_16193683456 (8.4M before),
   pulled; re-recording. Next search round (`beams_it4.sh`) on B8's 16.31B weights.
+* B8 hand-on ckpt_16193683456 re-records 8/9 (38.00 s) and 9/9 (37.99 s): 17/18. B8 last eval 9/9 38.16 s
+  (16.353B: five 9/9 in a row); stopped at 16.420B (14:45 UTC).
+* **Search round on B8's 16.318B weights: REAL-finish lines 36.75-37.19 s** (d-ranked 36.81 / 36.83,
+  Monte Carlo 36.96-37.19, prefix 36.75-36.85) - 0.75 s faster than the same round on B7's weights.
+  Spine `runs/beam/r2_real2_723.npy` (36.75 s, md5 55e02b43), BC file 8 `runs/bc/r2_bc8.npz` (md5
+  49ea70e0), pit states `r2_pit_states5.npy`.
+* **Go-Explore at the 60-70% loop** (`ge_loop1.sh`: 38 roots, rows 3,195-3,380 of r2_real723 = t
+  24.5-25.9 s, 6 min, 1.1M cells): the explorer FINDS the record's early turn east - 62.9% by t 26.0
+  (the line 61.6%), 63.5% by 26.5 - but its chains bleed energy (E 489 -> 154 -> negative) and the line
+  catches up by t 29 (65.6 vs 65.8%) and passes it by 30 (68.9 vs 66.9%). Its best states at the turn
+  with the record's ENERGY (cell 915679: t 25.94, (1,439, 164, -395), v (1,237, -343, -781), E 1,015 -
+  the record at t 26.0: (1,279, 112, -215), E 1,005) sit ~150-180 u LOWER than the record: beams on
+  B8's weights STARTED there (`beams_from_ge.sh`, `--start-state`, 5 states) die out within 1.5 s
+  (all 4,096 lineages, every state). The loop stays: the turn's position is reachable, its height with
+  the speed is not, by uniform exploration or by held-offset forks of the policy.
+* **B9 `uf2r2b1_real3`** (14:46 UTC): resume of B8's 16,419,651,584 (md5 06d98e6d); spine r2_real2_723
+  at `--demo-tau0 0` (full coverage from the start), pace TIGHTER `0.04 0.4` (from the map start
+  38.4 s: the greedy's 37.7-38.2 s runs make it, the average stochastic one does not), BC file 8 at 0.3,
+  pit states5 10%. Evals: 8/9 37.51 s (fail at 77.6%), 8/9 37.48 s (a pit-entry fall at 5.0 s).
