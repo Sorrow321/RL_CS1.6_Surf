@@ -830,3 +830,19 @@ only a PACED early exit earns the +50) and `--unstuck-max 0` (keys at T 1, entro
   28.0 s - ~2 s; the record (instrument only) turns EAST at that point (heading -24) and goes straight
   north along x ~1,550-1,675. Searches from x7's own greedy state at 24.9 / 25.3 / 25.7 s (plain,
   --pitch-hold 2.0 20 for 60 decisions, --view-hold 1.0 20, both) are running (runs/beam/w*).
+* x8 (13.846-14.317B): 9/9 38.28 (118.724) / **9/9 38.19 (118.727)** / 9/9 38.30 / 8/9 38.08 / 8/9 38.06 /
+  **9/9 38.00 s = 118.733 (14.224B)** / 9/9 38.33 (14.299B). Hand-on for 118.733: ckpt_14198767616
+  (25M before; md5 bd28df8d; pulled). Stopped at 14.317B (12:44) for x9.
+* **The 60-65% bowl is camera-gated too.** From x7's greedy line (--frontier-last, 3,401 ticks) at
+  ticks 3,252 / 3,300 / 3,352 (24.9-25.7 s): plain search 38.15 / 38.04 / 38.10 s; --pitch-hold 2.0 20
+  --pitch-hold-for 60: **37.13 / 37.05 / 36.83 s**; --view-hold 1.0 20 (yaw): 38.47-38.76 (worse);
+  both: 38.46-38.78. The pitch-hold line turns EAST at 26.4 s (heading 2, (1,274, 81)) and goes
+  straight north to the climb at 28.0 s - 60% -> 65% in 2.5 s (the record's 2.5) instead of 3.9.
+  From x8's own greedy (14.264B) at 3,300 / 3,352: 36.81 / 36.93 / **36.70** s, 38.45 once; plain 37.70.
+
+### x9 `uf2r2b4_x9` (12:45 UTC): the bowl shortcut, the same mechanism
+Resume of x8's latest (14.317B) with spine = the first 3,751 ticks (28.75 s, past the bowl) of the
+36.70 s line (x8's own greedy to 25.7 s + the pitch-hold search), band pinned at the true start
+(`--demo-tau0 0 --demo-rate 0.0`, pace 0.1 1.0 - from the start it still rejects a double lap; spine
+spawns within ~6 s before the cut reject the 1.4 s bowl loop), BC on that line's 938 decisions
+(0.3 -> 0.1 over 1e9), spawn states = x2's 5 lines + the two bowl lines (33,933 states), cold keys.
