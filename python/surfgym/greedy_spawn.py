@@ -102,10 +102,30 @@ def energy_losses(ep, stop: int, per_s: float, secs: float, n: int, win: float =
     return out
 
 
+def record_plateaus(d, per_s: float, secs: float, eps: float = 32.0):
+    """--respawn-greedy-plateau: the (start, end) tick pairs of an episode's stretches without a
+    new progress RECORD. ``d`` is the field distance per tick (non-finite = off the field); a tick
+    sets a record when d falls more than ``eps`` u below the last record, and a plateau is the
+    span from one record to the next when it lasts at least ``secs`` seconds. The tail after the
+    last record (a stall that never recovered) is --respawn-greedy-stuck's, not this. On a
+    finishing line these are the seconds it spends without gaining ground - the start pit's
+    extra lap, a bowl's loop - wherever they are; nothing here knows the map."""
+    d = np.asarray(d, np.float64)
+    d = np.where(np.isfinite(d), d, np.inf)
+    out, best, anchor = [], np.inf, 0
+    need = float(secs) * float(per_s)
+    for t in range(len(d)):
+        if d[t] < best - float(eps):
+            if np.isfinite(best) and t - anchor >= need:
+                out.append((int(anchor), int(t)))
+            best, anchor = float(d[t]), t
+    return out
+
+
 class GreedyLinePool:
     def __init__(self, frac: float, window=(0.5, 5.0), seed: int = 0, stuck: int = 0,
                  turn: float = 0.0, speed=None, contact: bool = False, energy: int = 0,
-                 energy_secs: float = 12.0):
+                 energy_secs: float = 12.0, plateau: float = 0.0, plateau_n: int = 0):
         frac = float(frac)
         if not 0.0 < frac < 1.0:
             raise ValueError(f"--respawn-greedy F needs 0 < F < 1, got {frac!r}")
@@ -149,6 +169,16 @@ class GreedyLinePool:
             raise ValueError(f"--respawn-greedy-energy-secs S needs S > 0, got {energy_secs!r}")
         self.energy = int(energy)
         self.energy_secs = float(energy_secs)
+        # --respawn-greedy-plateau S N (uf2r2b3, 2026-10-31): also N evenly spaced states of each
+        # stretch of S s or more in which a greedy episode - FINISHED ones included - set no new
+        # progress record (record_plateaus). A 9/9 policy has no failed episode, so without it the
+        # pool is empty; with it the training returns to where the deployed line spends time
+        # without gaining ground and explores there. 0 = off: finished episodes are skipped
+        if float(plateau) < 0.0 or (float(plateau) > 0.0 and int(plateau_n) <= 0):
+            raise ValueError(f"--respawn-greedy-plateau S N needs S > 0 and N > 0, got "
+                             f"{plateau!r} {plateau_n!r}")
+        self.plateau = float(plateau)
+        self.plateau_n = int(plateau_n)
         self._prng = np.random.default_rng(int(seed) + 7717)
         self.rng = np.random.default_rng(int(seed))
         self.rows = np.zeros(0, STATE_DTYPE)
@@ -223,12 +253,23 @@ class GreedyLinePool:
         per_s = 1000.0 / float(tick_ms)
         lo_t, hi_t = int(round(self.lo * per_s)), int(round(self.hi * per_s))
         keep, deaths, stops, launches, losses, n_used = [], [], [], [], [], 0
+        plats = []
         for i, ep in enumerate(eps):
             end = summaries[i].get("end") if i < len(summaries) else None
             n = len(ep)
-            if end not in ("fail", "trunc") or not n:
-                continue
             idx = []
+            if self.plateau > 0.0 and d_fn is not None and n:
+                # --respawn-greedy-plateau: every episode's record plateaus, finished ones too
+                _dp = np.asarray(d_fn(np.asarray(ep["origin"], np.float64)), np.float64)
+                for a, b in record_plateaus(_dp, per_s, self.plateau):
+                    idx.append(np.unique(np.linspace(
+                        a, b, num=min(self.plateau_n, b - a + 1)).astype(np.int64)))
+                    plats.append((round(a / per_s, 2), round(b / per_s, 2)))
+            if end not in ("fail", "trunc") or not n:
+                if idx:
+                    keep.append(ep[np.unique(np.concatenate(idx))])
+                    n_used += 1
+                continue
             c = last_contact(ep, lo_t) if (self.contact and end == "fail") else n - 1
             if self.contact and end == "fail" and n - 1 - c > lo_t:
                 # the launch and the HI - LO seconds before it
@@ -272,6 +313,8 @@ class GreedyLinePool:
             self.info["launches_s"] = launches
         if self.energy:
             self.info["energy_losses"] = losses
+        if self.plateau > 0.0:
+            self.info["plateaus_s"] = plats
         return dict(self.info, rows=self.size)
 
     # -- the pool ------------------------------------------------------------
@@ -333,7 +376,10 @@ class GreedyLinePool:
                    .format(", ".join(f"{v:.1f}" for v in la) if la else "none"))
                 + ("" if not self.energy else "; energy losses anchored ({})".format(
                     ", ".join(f"{du:,} u at {s:.1f} s" for s, du in self.info.get(
-                        "energy_losses", [])) or "none")))
+                        "energy_losses", [])) or "none"))
+                + ("" if not self.plateau else "; record plateaus >= {:g} s ({})".format(
+                    self.plateau, ", ".join(f"{a:.1f}-{b:.1f}" for a, b in self.info.get(
+                        "plateaus_s", [])[:12]) or "none")))
 
     # -- persistence ---------------------------------------------------------
     def state_dict(self) -> dict:
