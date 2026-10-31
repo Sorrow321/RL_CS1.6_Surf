@@ -951,3 +951,12 @@ Same flags; pace from the map start 4,660 ticks = 35.73 s to d <= 100; spawn sta
   ~21 s, kicked up and north by a ramp, back south), which the beam line flies 0.2 s better and the
   record (instrument only) avoids by passing lower. Searches from x13's greedy at 18.0-19.1 s (pitch-hold
   for 80 decisions, view-hold, keys-temp 2) running. Hand-on: ckpt_17101225984 (18M before; md5 7880efda).
+* 45-50% searches from x13's greedy at 18.0 / 18.55 / 19.1 s (pitch-hold 2.0 20 for 80 decisions, view-hold
+  1.0 25, keys-temp 2 + resample 50): 35.00-35.37 s vs plain 35.11 - no shortcut there.
+* x13 to 17.298B: + 9/9 35.37 (118.821) / **9/9 35.31 s = 118.823 (17.271B)**. Its game clock: 34.83 /
+  **34.54** / 34.99 / 34.81 / 34.54 / 34.88 / 34.85 / 34.70 / 35.09 s - **all nine under the record's
+  35.15** (best 0.61 s under; simulator caveat above). Hand-on: ckpt_17270046720 (0.5M before; md5
+  bb997c6d; pulled). Beams on x13's 17.240B weights: 34.82 / 34.81 / 34.82 / 34.83 s (greedy 35.37-36.04).
+
+### x14 `uf2r2b4_x14` (15:17 UTC): spine = the 34.81 s real line (b1); pace from the map start 4,644 ticks
+= 35.61 s; spawn states 89,057 (19 lines). Same flags.
