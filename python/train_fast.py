@@ -7443,6 +7443,18 @@ def main() -> None:
                     metavar=("LO", "HI"),
                     help="--respawn-greedy: keep the states from HI down to LO seconds before "
                          "each failed greedy episode's last tick (default 0.5 5.0)")
+    ap.add_argument("--respawn-greedy-plateau", type=float, default=None,   # None = off
+                    help="--respawn-greedy: also keep --respawn-greedy-plateau-n evenly spaced "
+                         "states of every MID-EPISODE stall of SECS or more of EVERY greedy "
+                         "episode, a finished one included: a stretch over which the running "
+                         "best field distance did not improve by 64 u and after which it did "
+                         "(surfgym.greedy_spawn.plateaus) - where a line that works wastes "
+                         "time (a lap of a pit, a loop in a bowl). The pool's turn / speed "
+                         "perturbations and --respawn-greedy-temp apply to these rows too. "
+                         "Without it a finishing greedy line gives the pool nothing. Off = "
+                         "today, bit-identical; config only when set, not restored")
+    ap.add_argument("--respawn-greedy-plateau-n", type=int, default=None,   # 200
+                    help="--respawn-greedy-plateau: states kept per plateau (default 200)")
     ap.add_argument("--archive-frac", type=float, default=None,   # 0 = off
                     help="survivor-gated predecessor archive: the share of the "
                          "spawn pool replaced each iteration by archive rows - "
@@ -12351,7 +12363,9 @@ def main() -> None:
                                     speed=args.respawn_greedy_speed,
                                     contact=bool(args.respawn_greedy_contact),
                                     energy=int(args.respawn_greedy_energy or 0),
-                                    energy_secs=float(args.respawn_greedy_energy_secs or 12.0))
+                                    energy_secs=float(args.respawn_greedy_energy_secs or 12.0),
+                                    plateau=float(args.respawn_greedy_plateau or 0.0),
+                                    plateau_n=int(args.respawn_greedy_plateau_n or 200))
         except ValueError as _e:
             raise SystemExit(str(_e))
         print(f"respawn GREEDY: {GREEDY.frac:.0%} of the non-start pool = the policy's own "
@@ -12367,9 +12381,15 @@ def main() -> None:
                  "(--respawn-greedy-contact)" if GREEDY.contact else "")
               + (f"; + the {GREEDY.energy} largest energy-height losses of each episode's last "
                  f"{GREEDY.energy_secs:g} s before its stop (--respawn-greedy-energy)"
-                 if GREEDY.energy else ""))
+                 if GREEDY.energy else "")
+              + (f"; + {GREEDY.plateau_n} evenly spaced states of every mid-episode plateau of "
+                 f">= {GREEDY.plateau:g} s (no {GREEDY.plateau_eps:g} u gain of the running best "
+                 f"d, then one) of EVERY greedy episode, finished ones included "
+                 f"(--respawn-greedy-plateau)" if GREEDY.plateau > 0.0 else ""))
     elif args.respawn_greedy_contact:
         raise SystemExit("--respawn-greedy-contact anchors the --respawn-greedy rows")
+    elif float(args.respawn_greedy_plateau or 0.0) > 0.0:
+        raise SystemExit("--respawn-greedy-plateau adds to the --respawn-greedy rows")
     elif args.respawn_greedy_energy:
         raise SystemExit("--respawn-greedy-energy anchors the --respawn-greedy rows")
     if args.respawn_backward:
@@ -15198,6 +15218,9 @@ def main() -> None:
         if GREEDY.energy:
             meta["config"]["respawn_greedy_energy"] = int(GREEDY.energy)
             meta["config"]["respawn_greedy_energy_secs"] = float(GREEDY.energy_secs)
+        if GREEDY.plateau > 0.0:
+            meta["config"]["respawn_greedy_plateau"] = float(GREEDY.plateau)
+            meta["config"]["respawn_greedy_plateau_n"] = int(GREEDY.plateau_n)
         if GREEDY.turn > 0.0:
             meta["config"]["respawn_greedy_turn"] = float(GREEDY.turn)
         if GREEDY.speed is not None:
