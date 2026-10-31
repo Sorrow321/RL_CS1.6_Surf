@@ -466,3 +466,17 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
 * `uf2r1b1_cut_k02.npy` (+ `.keys.npy`, 5,800 states, md5 6f13570545426fbf87856ec6c2846177): search
   2 of uf2r1b1_cut (7.93B weights, same rule): to d 386 = 98.7% - ends at (2,923, -2,052, -753)
   falling, below the finish box's floor (z -640), i.e. it passes UNDER the box; no finish.
+
+# surf_za_loop (zlr1b3, round 1)
+
+* `zlr1b3_ge30w.npy` (6,647 states = 46.5 s at 7 ms, md5 6952efc968cdd785eb6b538a6b85fffc) +
+  `zlr1b3_ge30w.keys.npy` (held fwd/side/duck per row, md5 806549eef4b17f55b0cd0d630e62e021):
+  ONE exact per-tick line from the map's TRUE spawn (the start teleport's destination) up loop 1
+  to its WEST end apex (-1,719, 1,123, -2,642) = 10.65% on config.field, energy height -3,074 ->
+  -2,363 on the way (loop-1 pumping). `tools/explore_phase1.py --exact-chains` (reward-free
+  uniform bursts with --view-follow offsets, 128 u x --cell-energy 32 x --cell-heading 1 cells,
+  --select-energy 30, --tick-ms 7 --maxvel 3500, 768 envs, 30 min on one local core, seed 5),
+  `tools/ge_replay.py` (its deepest chain, 65/65 links exact), keys from the chain's own link
+  actions (auto_spine.chain_keys), views along the velocity (spine_canon_view.py: they were a
+  median 46 deg off it). `autoresearch/analysis/zl_ge_spine.py` builds both. No demo, no record
+  data, no policy (the record was used only to READ where loop 1 is, never by the search).
