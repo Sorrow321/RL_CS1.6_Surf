@@ -466,3 +466,13 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
 * `uf2r1b1_cut_k02.npy` (+ `.keys.npy`, 5,800 states, md5 6f13570545426fbf87856ec6c2846177): search
   2 of uf2r1b1_cut (7.93B weights, same rule): to d 386 = 98.7% - ends at (2,923, -2,052, -753)
   falling, below the finish box's floor (z -640), i.e. it passes UNDER the box; no finish.
+
+## uf2r2b2_c1 (round 2, 2026-10-31 12:04 UTC) - the policy's own 41.59 s beam line
+`uf2r2b2_c1.npy` (+ `.keys.npy`): 5,425 per-tick states of the FASTEST of 96 lineages of
+`tools/beam_tas.py` from the TRUE start on the round-1 incumbent ckpt_13045858304 (md5 359ab38c...),
+the policy's own proposals only (`--envs 96 --greedy-envs 8 --score d --keep-finishers 16 --gens 2`,
+CPU, torch seed 0), replayed bit-exact: a finish in 41.59 s (the greedy line on the same weights:
+42.50 s). Same route as the greedy (splits equal through the pit), faster execution from ~20% on
+(-0.26 s by 40%, -0.78 s by 65%). `plan_to_bc --no-value-target --line-weight-decay 20` over its
+15 kept finishers -> BC rows in `$AR_HOME/runs/uf2r2b2/sf_c1/bc.npz` (md5 b3a6df84...).
+Spine md5 b85169c2..., keys md5 667d7aaa...
