@@ -86,9 +86,16 @@ def main():
                 continue
             core_done += 1
             p = r[:, 1:4]
+            v = r[:, 4:7]
+            dt = float(h.get("tick_ms", 10.0)) / 1000.0
+            # the recorded rows stop one tick short: the core ends the episode on the tick whose
+            # END position is inside the hull, and that state is never written (autoreset) - so
+            # the last row is also stepped forward 1-2 ticks along its velocity
+            cand = [(i, p[i]) for i in range(max(0, len(p) - 400), len(p))]
+            cand += [(len(p) - 1 + k, p[-1] + v[-1] * dt * k) for k in (1, 2)]
             hit = -1
-            for i in range(max(0, len(p) - 400), len(p)):
-                if any(hull_contents(planes, clip, int(m["head"][hi]), p[i]) == CONTENTS_SOLID
+            for i, q in cand:
+                if any(hull_contents(planes, clip, int(m["head"][hi]), q) == CONTENTS_SOLID
                        for hi in (1, 3)):
                     hit = i
                     break
