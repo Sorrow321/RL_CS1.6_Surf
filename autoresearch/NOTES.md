@@ -475,3 +475,13 @@ on purpose: round 1 needs an exit, and the attribution comes after. Read with uf
   (`--energy-gain 150` = the pbr5b2 constant, `--ge-boost ""`, GE 8 min, no branches): roots
   before the line's largest energy losses, a uniform explorer keyed on position x energy, the
   deepest cell keeping >= 150 u more energy than the line at the same progress.
+* **A13 8,161M: 118.500 - 9/9 GREEDY FINISHES from the true start** (45.00-45.54 s; 04:40 UTC).
+  Every episode dives into the start pit, climbs out, flies the whole course and enters the box
+  through its west face at (3,303..3,312, -1,926..-1,980, -526..-594), 45-115 u above its floor -
+  ONE eval after the greedy passed 141 u under it (99.689 at 8.085B). No new spine did it (search 3
+  found none; the gain rule could not have handed one back): the k02 curriculum walking back
+  (tau 2,394 of 5,800 at 8.23B, 84% success) and the training's own finishes (fpert fin 90/142 at
+  7.98B; win 74% at 8.23B) taught the last 141 u of height. Hand-on: ckpt_8152154112 (8.4M before;
+  md5 d8d47113...), VERIFIED by its own greedy recording on the box (record_ckpt, 9 episodes):
+  **9/9 finishes, 44.74-45.52 s, score 118.509** (`runs/uf2r1b1_cut/verify/greedy_8152154112.jsonl`).
+  Next: the time (record 35.17 s; the greedy is ~10 s slower).
