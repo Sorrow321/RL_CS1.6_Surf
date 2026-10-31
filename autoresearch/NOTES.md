@@ -714,3 +714,26 @@ worked around.)
   the first half of that line's longest record plateau, ticks 213-1466) ran, forked at tick 700,
   and its winner was an unforked lineage (42.24 s). The round hands on the BC file and the line's
   states. Still no box at 12:03 UTC (45 refusals).
+
+### WON'T or CAN'T at the start pit: the incumbent cannot fly the record's lap (12:35 UTC, MEASUREMENT)
+`autoresearch/analysis/uf2_record_pit_bench.py` (CLAUDE.md section 0: a diagnostic bench that places a
+policy in demo states to measure the missing skill; the states live only in the scratch dir, never
+a spawn file, spine or target): the incumbent's greedy policy (record_ckpt, 1 episode per state)
+from the WR demo's states along its single CLOCKWISE pit lap and climb (view within 3 deg of the
+velocity there, no duck, airborne - well-formed spawns):
+
+| record t | where (record) | E | record out (5%) in | incumbent |
+|---|---|---|---|---|
+| 3.5 | (-1,949, -3,319, 107) entry, heading SW | 1,279 | 5.9 s | dies in 0.95 s |
+| 4.0 | (-2,298, -3,087, -379) CW turn done, heading N | 1,294 | 5.4 s | dies in 0.46 s |
+| 4.5-5.0 | west side north, z ~-800..-845 | 1,202-1,209 | 4.4-4.9 s | dies in 0.4-1.2 s |
+| 5.5-6.0 | north-end U-turn / east side south | 1,120 | 3.4-3.9 s | laps 15 s, not out |
+| 6.5-7.0 | the record's climb (vz +1,192) | 1,055-1,073 | 2.4-2.9 s | falls, dies in 1.2-1.5 s |
+
+So the record's line through the pit (a CW lap at the floor, a low-energy climb from the east side)
+is a SKILL the policy does not have, not only a decision it never tries - which is why no search
+over the policy's own proposals (beams, branched beams) found a one-lap exit. The policy's own
+climb needs E ~1,250 at the south-west; its entry turn (a sharp LEFT at the ramp's bottom, t 2-3 s)
+costs ~117 u of E, the record's wide RIGHT turn ~0. Generic levers: training-side exploration at
+the line's time sink with turned headings (`--respawn-greedy-plateau` + `--respawn-greedy-turn`),
+so the policy learns to surf the pit in other directions, and the side loop's forked waves there.
