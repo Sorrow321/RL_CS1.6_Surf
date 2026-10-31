@@ -424,3 +424,9 @@ on purpose: round 1 needs an exit, and the attribution comes after. Read with uf
   at z ~-1,350; 2/9 still fail at the pit's east side (3.6%). 7/9 past the cut's line (8,515) ->
   search 1 running. The curriculum walked back to tau 2299 of 4,800 within ~400M steps.
   Hand-on: ckpt_7780433920 (2.6M before; md5 4ba632fe...).
+* **A13 7,859M: 88.920** (best 88.9%, median 85.6%): 9/9 out of the pit and at 84.9-88.9%; ep7 to
+  (1,628, -2,797, -345) at 54.8 s, ~1,700 u west of the finish box's west edge (x 3,328). Search 1
+  (115 s): NEW SPINE (6,500 states, end d 3,376 = 89.0%); success line 3,476; milestones now
+  29,584 / 27,363 / 17,276 / 13,765 / 13,232 / 8,515. Training: the reservoir's deepest 1.42% of
+  d0 = **98.6%**; a front-perturb episode reached d ~0 (30,648 u), no finish counted yet.
+  Hand-on: ckpt_7837057024 (21.5M before; md5 57f63cd8...).
