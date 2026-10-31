@@ -445,3 +445,13 @@ on purpose: round 1 needs an exit, and the attribution comes after. Read with uf
   4,096 found an entry into the box from that approach; the finish needs the box entered at
   z >= -640. Milestones + 3,476; success line 486. Hand-on: ckpt_7934050304 (the eval's own step;
   md5 a11560b1...). k01 / k02 copied to `autoresearch/spines/uf2r1b1_cut_k0{1,2}.npy` (+ keys).
+* **A13 8,010M: 99.094** (best 99.1%, median 98.5%, 0/9 finishes; 04:20 UTC), one eval after k02
+  took over: five of nine at 98.5-99.1% (3,133..3,253, -1,739..-1,810, -893..-1,052) at ~45 s -
+  171 u west of the box's x edge and 120 u north of its y edge but **250-410 u below its floor**
+  (z -640) - then drift back south-west falling to the z ~-1,350 floor; 2/9 die at 72-73% round
+  (-134..-208, 700..1,010), 1 at 89%, 1 in the pit (1.8%). Training: reservoir mind 0.379%
+  (d ~116 - the under-box approach), and the front-perturbed rows that FINISHED 90/142 at 7.98B
+  now finish **0/71-74**: the k02 curriculum's harvest filled the reservoir's front with the
+  doomed under-box states (small d, no way up). The geodesic field ranks "under the box" next to
+  "in the box" - the same deception as the cannonball descent. Hand-on: ckpt_8005877760 (3.7M
+  before; md5 2a5f39d1...).

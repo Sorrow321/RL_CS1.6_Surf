@@ -3,11 +3,11 @@
  "round": 1,
  "final": false,
  "best": {
-  "score": 94.57,
-  "eval_file": "/home/steam/ar_uf2/runs/uf2r1b1/uf2r1b1_cut/traj_7934050304.jsonl",
+  "score": 99.094,
+  "eval_file": "/home/steam/ar_uf2/runs/uf2r1b1/uf2r1b1_cut/traj_8009547776.jsonl",
   "run": "uf2r1b1_cut",
-  "step": 7934050304,
-  "ckpt": "/home/steam/ar_uf2/runs/uf2r1b1/uf2r1b1_cut/ckpt_7934050304.pt",
+  "step": 8009547776,
+  "ckpt": "/home/steam/ar_uf2/runs/uf2r1b1/uf2r1b1_cut/ckpt_8005877760.pt",
   "recipe": [
    "--death-charge",
    "1",
@@ -89,7 +89,7 @@
    "1e8"
   ],
   "resume_from": "chain: uf2r1b1_dcw (scratch, 0-279M) -> dcw2 -> gsp -> tick -> turn -> turn2 -> cur (2.415B) -> loop/auto (MC line, then beam spines) -> k04 (-d 100) -> cut (k03 line cut at row 4800, resumed at ~7.4B)",
-  "commit": "15a306f3"
+  "commit": "c2faa4a9"
  },
- "summary": "94.570 (A13 7.934B: best 94.6%, median 93.7%, 0/9 finishes): 9/9 greedy episodes leave the start pit and fly to 88.9-94.6% of unitfarmer2; the best five lose the line at x~1,850 (about 1,480 u west of the finish box) and fall into the z~-1,350 kill sheet. In training the front-perturbed rows already finish (fpert fin 90/142) and the backward curriculum on the beam spine is at rows 5,484-5,799 with 93% success. One lineage from scratch, champion-free: recipe + death charge (a ratchet bug fixed; windowed 2 s) + per-call energy K12 + 10x upward speed novelty + yaw-entropy 0 + keys T -> the dive (227M); greedy-row speed x1-1.3 + heading turn 180 -> the first training exit; tick 10->7.63 ms; a backward curriculum on the policy's own Monte Carlo line -> the greedy exits (2.94B, 8.8); the auto-spine loop (beam from the true start on the newest weights -> next spine) -> 12.5 -> 69.2; success line d 100 (not -400, which stalls at a spine's end) and a cut of the 84% spine where its curriculum stalled -> 86.1 -> 88.9 -> 94.6. Control = 5.608."
+ "summary": "99.094 (A13 8.010B: best 99.1%, median 98.5%, 0/9 finishes): 7/9 greedy episodes leave the start pit and fly the whole course; five reach 98.5-99.1% at ~45 s round (3,133..3,253, -1,739..-1,810, -893..-1,052) - beside the finish box's north-west corner but 250-400 u BELOW its floor (z -640) - and fall to the z ~-1,350 floor. The last spine (the trainer's own auto-spine beam from the true start) also passes under the box: the finish needs the box entered from above. One lineage from scratch, champion-free: recipe + death charge (a ratchet bug fixed; windowed 2 s) + per-call energy K12 + 10x upward speed novelty + yaw-entropy 0 + keys T -> the dive (227M); greedy-row speed x1-1.3 + heading turn 180 -> the first training exit; tick 10->7.63 ms; a backward curriculum on the policy's own Monte Carlo line -> the greedy exits (2.94B, 8.8); the auto-spine loop (beam from the true start on the newest weights -> next spine) -> 12.5 -> 69.2; success line d 100 (not -400, which stalls at a spine's end) and a cut of the 84% spine where its curriculum stalled -> 86.1 -> 88.9 -> 94.6 -> 99.1. Control = 5.608."
 }
