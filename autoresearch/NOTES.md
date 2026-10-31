@@ -339,3 +339,11 @@ on purpose: round 1 needs an exit, and the attribution comes after. Read with uf
 * Search 3 (-> 4,161M, 91 s): NEW SPINE from the beam on the newest weights (3,500 states, end d
   17,676 = 42.3%, the greedy frontier 19,765): success line d <= 17,276; milestones 29,584 and
   27,363 keep paying. The loop now has three spines; the curriculum restarts at the new end.
+* A11 4,212-4,514M: 38.489 / 35.846 / 39.248 / 21.426 / **41.668** (4,514M: best 41.7%, median
+  39.1%; 9/9 at 35.6-41.7%, dying in the `*9` kill volume (z <= -592) round (1,200..3,500,
+  2,300..3,600) where the record climbs east out of it: (162, 3,593, -486) at t+15 -> (2,735,
+  622, 461) at t+20). Hand-on: ckpt_4509925376 (3.7M before; md5 7e40760e...). Training frontier:
+  the reservoir's deepest 49.96% of d0 = **50%**, front-perturb best 16,119 u (52.6%).
+  The k03 curriculum is stuck at its end (0% of band spawns 400 u past d 17,676) and no greedy
+  episode crosses its success line (43.6%), so the loop does not search again (no
+  --auto-spine-patience set).
