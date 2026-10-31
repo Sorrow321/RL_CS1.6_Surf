@@ -659,3 +659,29 @@ A13's paid lines (29584, 27363, 17276, 13765, 13232, 8515, 3476, 486); curriculu
 --respawn-greedy-temp 1; no auto-spine (refused with the pace rule); --ckpt-every 2e8 + snapcopy;
 6.5e8 steps (~30 min). Flags restored from the checkpoint: energy-pot 12, death charge 1 / 2 s,
 novelty 2.5, greedy rows x1-1.3 turned 180, tick 7.63 ms, etc. (the launch log's "restored" line).
+* **B1 result: STOPPED at 13.234B (10:14 UTC), a clear negative.** Evals 9/9 42.30 s (118.590, the
+  resumed weights) -> 8/9 42.41 s (117.475) -> 7/9 42.74 s (116.353) at 13.046 / 13.122 / 13.197B.
+  The pace curriculum walked back to row ~4,070 of 5,366 in ~60M steps and stalled there (band
+  success 3.6-26%: the last ~10 s of the beam line is ~0.5 s faster than the policy's habit and it
+  carries much less energy: E 593 at 90% and 463 at 95% vs the greedy's ~850). Training crashes 8%
+  -> 27-33%, training win rate 70% -> 22-60%. Failures: one in the pit at 4.3 s, one at 37.7%, one
+  at 89.5%. **Design flaw**: a NEW spine restarts its curriculum at its END, so every demo draw sat
+  in [4,070, 5,365] - the start and the pit lost the spawns the incumbent was trained on (A13's k02
+  curriculum sat at tau 0: half the demo draws on the true start, half uniform over the line). A
+  warm policy's distribution must not be moved off its own start by a speed spine.
+* Pit searches (10:02-10:17 UTC, beside B1): view-only forks of 3,072 envs at ticks 600 / 700 / 800
+  (t 4.6 / 5.4 / 6.1 s; jitter 0 or 30, burst 1.0-1.5 s, protect 4-5) -> 41.14-41.35 s; forks at the
+  pit ENTRY (ticks 300 / 400, t 2.3 / 3.1 s, where the record curves west and the policy east;
+  jitter 0 / 60 / 90, protect 7-8) -> 41.15-41.32 s; held offsets on every proposal env
+  (`--view-hold` 0.5-2.0 x 10-25 decisions) -> 42.12-42.67 s (they hurt the late course). **No
+  search left the pit on the first lap**: the best branch lineages were still at d ~31,200 (progress
+  -2%) at 7.7 s and culled by 15 s. One `--view-hold 0.5 10` lineage reached 7.4% at 7.7 s by a
+  different route - off the platform's SE corner at t 2, landing on ledges (E 1,208 -> 638 at t 3)
+  and WALKING north at 300-500 u/s to round 1's training ledge (-2,000, -1,177, 343) at t 7: no
+  energy for the course (the beam's winner was a two-lap line).
+* B2 `uf2r2b1_bc1` (10:16 UTC): resume of the incumbent with A13's own end distribution (the k02
+  spine, `--demo-tau0 0`, success line 486, milestones 29584..3476, no auto-spine) + EXPERT
+  ITERATION: `--bc-file runs/bc/r2_bc1.npz` (plan_to_bc of the 16 fastest finishing lines of four
+  beams on the incumbent's weights - S1, S2, j652, u652 - 21,479 decisions, best 41.14 s,
+  line-weight-decay 20), `--bc-coef 0.5 -> 0` over the 6.5e8-step run, `--bc-keys-engine`,
+  `--bc-pitch-coef 0`. Start: head-acc 0.86, joint-acc 0.54, nll 0.83 against the lines.
