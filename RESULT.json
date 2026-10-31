@@ -3,15 +3,15 @@
  "round": 2,
  "final": false,
  "best": {
-  "score": 118.733,
-  "eval_file": "/home/steam/ar_uf2/runs/uf2r2b4/uf2r2b4_x8/traj_14223933440.jsonl",
-  "run": "uf2r2b4_x8",
-  "step": 14223933440,
-  "ckpt": "/home/steam/ar_uf2/runs/uf2r2b4/uf2r2b4_x8/ckpt_14198767616.pt",
+  "score": 118.778,
+  "eval_file": "/home/steam/ar_uf2/runs/uf2r2b4/uf2r2b4_x9/traj_14544273408.jsonl",
+  "run": "uf2r2b4_x9",
+  "step": 14544273408,
+  "ckpt": "/home/steam/ar_uf2/runs/uf2r2b4/uf2r2b4_x9/ckpt_14535360512.pt",
   "recipe": [
-   "resume of the incumbent (uf2r1b1 ckpt_13045858304)",
-   "--demo-file runs/beam/x5/spine.npy (the first 1,303 ticks of a 38.79 s early-exit line: the incumbent's greedy to 4.0 s + beam_tas --pitch-hold 2.0 20; md5 be8446ca)",
-   "--demo-keys runs/beam/x5/spine.keys.npy",
+   "resume (chain above)",
+   "--demo-file runs/beam/x9/spine.npy (the first 3,751 ticks of a 36.70 s line: the x8 policy's own greedy to 25.7 s + beam_tas --pitch-hold 2.0 20 --pitch-hold-for 60; md5 b9cc88b2)",
+   "--demo-keys runs/beam/x9/spine.keys.npy",
    "--demo-window",
    "5",
    "--demo-grow",
@@ -35,16 +35,16 @@
    "--demo-success-pace",
    "0.1",
    "1.0",
-   "--bc-file runs/beam/x6/bc_line.npz (that line's own 326 decisions; md5 996bd16c)",
+   "--bc-file runs/beam/x9/bc_line.npz (the line's own 938 decisions; md5 cb1fa8ba)",
    "--bc-coef",
-   "0.5",
+   "0.3",
    "--bc-coef-final",
    "0.1",
    "--bc-steps",
-   "6e8",
+   "1e9",
    "--bc-target",
    "argmax",
-   "--spawn-states runs/beam/x2/spine.npy (5 early-exit lines 36.88-37.94 s; md5 77eb0fbf)",
+   "--spawn-states runs/beam/x9/spawn.npy (7 early-exit / bowl lines of the policy's own beam; md5 614ce08c)",
    "--spawn-states-frac",
    "0.2",
    "--unstuck-max",
@@ -52,8 +52,8 @@
    "--ckpt-every",
    "1e8"
   ],
-  "resume_from": "uf2r2b4_x7 ckpt_final (13.846B, md5 3086824d) <- the incumbent uf2r1b1 ckpt_13045858304 (md5 359ab38c)",
-  "commit": "c07466b4"
+  "resume_from": "uf2r2b4_x8 ckpt_latest (14.317B, md5 7760e4e2) <- x7 ckpt_final (13.846B) <- the incumbent uf2r1b1 ckpt_13045858304 (md5 359ab38c)",
+  "commit": "8e356ca2"
  },
- "summary": "118.733 (12:45 UTC): x8 14.224B 9/9, best 38.00 s (incumbent 118.592 = 42.25 s). The greedy takes an EARLY PIT EXIT (out of the pit ~3.4 s sooner) found by the policy's own search - beam_tas --pitch-hold (held camera pitch) from the incumbent's own greedy state: the turn into the ramp is gated by where the camera looks. Taught by a pace-gated spine (--demo-success-pace 0.1 1.0) pinned at the true start (--demo-tau0 0 --demo-rate 0) + BC on that line + full early-exit lines as spawn states + cold keys (--unstuck-max 0): x7 (13.05-13.85B, 118.715), x8 = its continuation (BC 0.1). Failed before: BC on plain beam lines (x1), spine-only RL (x2), BC on early-exit rows (x3/x4, revert), a walking pace-gated curriculum (x5/x6, stalls at a ramp kick). Next: the 60-65% bowl loop - --pitch-hold from x7's greedy at 25.7 s finds the record's route there (36.83 s vs 38.10 plain); teach it the same way (x9)."
+ "summary": "118.778 (13:03 UTC): x9 14.544B 9/9, best 36.65 s (incumbent 118.592 = 42.25 s; record 35.17 s). Two shortcuts the policy's own search found and the greedy now flies: an EARLY PIT EXIT (~3.4 s) and the 60-65% BOWL (~1.4 s). Both are camera-gated: found by beam_tas --pitch-hold (held camera pitch) from the policy's own greedy state. Both taught the same way: a pace-gated spine (--demo-success-pace 0.1 1.0) pinned at the true start (--demo-tau0 0 --demo-rate 0) + BC on the line + the lines as spawn states + cold keys (--unstuck-max 0). x7 (pit) 118.715 -> x8 (continuation) 118.733 -> x9 (bowl) 118.778. Failed before: BC on plain beam lines (x1), spine-only RL (x2), BC on early-exit rows (x3/x4, revert), a walking pace-gated curriculum (x5/x6, stalls at a ramp kick)."
 }
