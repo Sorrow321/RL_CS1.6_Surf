@@ -225,3 +225,17 @@ def test_flag_off_is_bit_identical_to_the_trainer_before_the_change():
         assert torch.equal(sa["policy"][k], sb["policy"][k]), k
     for dd in (d0, a, b):
         shutil.rmtree(dd, ignore_errors=True)
+
+def test_a_reservoir_with_no_progress_gives_no_rows():
+    """surf_za_loop's bake (2026-10-31): every reservoir state BEHIND the start (d > d0, the fall
+    off the start ledge raises d) left the band empty, and rng.integers(0, 0) killed the trainer.
+    An empty band returns no rows, as documented, and draws nothing from the generator."""
+    g = np.tile((np.arange(8, dtype=np.float32) * 32.0 + 1000.0)[None, None, :], (8, 8, 1))
+    fld = GoalField(g, np.zeros(3), 32.0, 5000.0)
+    rows = np.zeros(40, STATE_DTYPE)
+    rows["origin"] = np.array([[16.0 + 32.0 * (i % 8), 16.0, 16.0] for i in range(40)], np.float32)
+    fp = FrontierPerturbRows(fld, 900.0, band=0.01, seed=0)     # d0 below every state's d
+    state = fp.rng.bit_generator.state
+    out = fp.rows(_Res(rows), 10)
+    assert len(out) == 0 and fp.last["n"] == 0 and fp.last["src"] == 0
+    assert fp.rng.bit_generator.state == state

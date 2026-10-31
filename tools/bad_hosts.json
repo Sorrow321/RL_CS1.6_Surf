@@ -2932,6 +2932,15 @@
       "detail": "autoresearch pbfr1b4: box 58254955 (RTX 5070, EPYC 7702, host load avg 124-220 from other tenants) went OFFLINE at ~15:05 UTC mid-run, ssh timing out for 13+ min; destroyed 15:19",
       "run": "pbfr1b4_c7",
       "reason": "unreliable"
+    },
+    {
+      "ip": "36.13.50.133",
+      "machine_id": 150744,
+      "host_id": 618782,
+      "date": "2026-10-31",
+      "detail": "RTX 3090 SW Power Cap: 240 W of 350 W, bf16 GEMM 58 TFLOPS vs ref 69 (84%), sm 930 MHz under load (zlop bake, 2026-10-31)",
+      "run": "",
+      "reason": "gpu_capped"
     }
   ],
   "known_good": [

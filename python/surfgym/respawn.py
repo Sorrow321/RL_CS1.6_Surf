@@ -1833,6 +1833,12 @@ class FrontierPerturbRows:
         p_max = self.d0 - float(d[ok].min())
         d_thr = self.d0 - (1.0 - self.band) * p_max
         src = np.flatnonzero(ok & (d <= d_thr))
+        if not len(src):
+            # every state BEHIND the start (d > d0, so p_max < 0 and the band is empty): a policy
+            # with no progress yet (surf_za_loop's bake, 2026-10-31: the fall off the start
+            # teleport's ledge raises d) - none, as documented; rng.integers(0, 0) raised here
+            self.last = {"n": 0, "src": 0, "d_thr": float(d_thr), "prog_med": float("nan")}
+            return np.zeros(0, dtype=STATE_DTYPE)
         out = reservoir._store[src[self.rng.integers(0, len(src), n)]].copy()
         v = out["velocity"].astype(np.float64)
         if self.turn > 0.0:
