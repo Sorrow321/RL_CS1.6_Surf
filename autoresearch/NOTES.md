@@ -751,3 +751,34 @@ Incumbent: uf2r1b1's ckpt_13045858304 (118.592: 9/9, best 42.25 s; record 35.17 
   the trainer before it** (config + progress.csv on a uf2 smoke, 75 s); **end to end on the
   incumbent** (a 16-env CPU resume with the c3 pool and a stand-in search tool via AUTO_BC_TOOL:
   the first greedy eval starts the search, the next poll swaps the rows + spine in; 4.7 min).
+
+### THE FINISH WAS FAKE: the core completed on the trigger's BOX, the game on its clip hull (13:05-13:20 UTC)
+* Source: a memory note written ~13:04 UTC by another session (the user saw on the uf2 video that
+  "the box for the AI is inflated while for the human it's not"): zones.json's finish is the
+  trigger_multiple's BOUNDING BOX, the core's goal test a swept segment against that box
+  (hull-inflated), while GoldSrc fires a brush trigger only with the player origin inside the
+  model's CLIP HULL at the end of the move (SV_TouchLinks; the box is the pre-check).
+  surf_unitfarmer2's finish *23 is three 1 u curtains - x 3328 for y <= -2144, the diagonal
+  (3328, -2144)-(3584, -1888), y -1888 for x >= 3584 - and its box adds an empty triangle NW of
+  the diagonal. CLAUDE.md's rule: a move the game would not count is a simulator bug.
+* **Verified here** (`zones.hull_probe`, the model's hull-1 clipnode tree, every tick): the round-1
+  incumbent's best eval traj_13067878400 (9/9 "done", 42.25 s) - **0 of 9 episodes ever enter the
+  hull**; they end at x 3,303-3,384, y -1,864..-2,201, z -442..-546, in front of the curtains. My
+  three CPU beam lines (41.59 / 41.29 / 41.32 s) - **all fake** (they end at x ~3,305-3,322, y
+  ~-1,866, z -601..-663). The WR demo enters the hull at 36.8 s of its demo (35.2 s from the
+  curtain). So the pools c1-c3 teach the fake corner: NOT to be distilled.
+* **Fixed in the core (commit 4963372f, generic)**: surf_set_goal_box finds the brush model whose
+  bounds ARE the goal box (0.5 u; zones "end" on any type-1 map) and the goal test becomes the box
+  pre-check + `trigger_contains` (the engine's hull test the core already used for teleports) at
+  tick end; a box that is no model's bounds (type-2/3 padded button finishes) keeps the swept box.
+  Default ON (a simulator bug, like the entity-table caps); `surf_set_goal_hull(0)` restores the
+  old rule. Probes: the triangle at (3315, -1950, -500) finishes under the box rule and not under
+  the hull rule; crossings of the west face and the diagonal finish under both.
+  tests/python/test_goal_hull.py (4). NB this host's `build/` holds SYMLINKS into the main
+  checkout's build: never run build.sh in a worktree (it would replace the shared core); the
+  patched core was built into the scratchpad and tested with SURFCORE_DLL. Boxes build their own.
+* Consequence for the round: under the grader as it stands (the trailer's "done", i.e. the
+  core's test) the incumbent's 118.592 was made by box finishes; a branch on the fixed core needs
+  REAL finishes to score them. Real finishes are also box finishes, so a fast real-finishing
+  policy beats the incumbent under either grader. Everything here now targets real finishes:
+  the next searches and the BC rows run on the fixed core.
