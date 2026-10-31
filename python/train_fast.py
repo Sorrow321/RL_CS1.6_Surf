@@ -11174,10 +11174,9 @@ def main() -> None:
         SS_PATH, SS_FRAC = _ge_phase1(args), args.ge_frac
         print(f"provenance: ge_states = {SS_PATH} (this run's own Go-Explore phase-1 archive "
               "from the true spawn: reward-free, uniform random actions; no demo)")
-        if args.ge_arc > 0.0:
-            # the config records the files as plain --spawn-states / --race-arc (a resume reads
-            # them; it never re-runs the search)
-            args.spawn_states, args.spawn_states_frac = SS_PATH, float(SS_FRAC)
+        # --ge-arc: the config records the files as plain --spawn-states / --race-arc (a resume
+        # reads them; it never re-runs the search) - set AFTER the provenance check below, which
+        # this run's own reward-free search is exempt from exactly as --ge-minutes' pool is
     elif any(getattr(args, _gk) is not None for _gk in ("ge_frac", "ge_cell", "ge_speed")):
         raise SystemExit("--ge-frac / --ge-cell / --ge-speed need --ge-minutes > 0")
     if SS_PATH:
@@ -11251,6 +11250,9 @@ def main() -> None:
                           f"{_pj.get('rows')} rows)")
             except (OSError, ValueError):
                 pass
+    if float(args.ge_arc or 0.0) > 0.0 and float(args.ge_minutes or 0.0) > 0.0 and SS_PATH:
+        # --ge-arc: now the config may name the run's own search files (see the GE block)
+        args.spawn_states, args.spawn_states_frac = SS_PATH, float(SS_FRAC)
     # --unstuck (docs/unstuck.md): Python constants, so the flag-off
     # trainer traces and captures exactly the graphs it always did.
     if args.no_unstuck and args.unstuck:
