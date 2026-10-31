@@ -3,19 +3,21 @@
  "round": 1,
  "final": false,
  "best": {
-  "score": 22.404,
-  "eval_file": "/home/steam/ar_loop/runs/zlr1b2/zlr1b2_arc3/traj_2437414912.jsonl",
-  "run": "zlr1b2_arc3",
-  "step": 2437414912,
-  "ckpt": "/home/steam/ar_loop/runs/zlr1b2/zlr1b2_arc3/ckpt_2788163584.pt",
+  "score": 23.367,
+  "eval_file": "/home/steam/ar_loop/runs/zlr1b2/zlr1b2_self/traj_2939682816.jsonl",
+  "run": "zlr1b2_self",
+  "step": 2939682816,
+  "ckpt": "/home/steam/ar_loop/runs/zlr1b2/zlr1b2_self/ckpt_3115319296.pt",
   "recipe": [
    "recipe minus --race-ratchet",
    "--race-arc",
-   "runs/ge/zl12_route.npz",
+   "runs/ge/self5_route.npz (the policy's own greedy episode)",
+   "--race-arc-tail",
+   "1500",
    "--stall-arc",
    "1",
    "--spawn-states",
-   "runs/ge/zl12_spawn.npy",
+   "runs/ge/self5_spawn.npy",
    "--spawn-states-frac",
    "0.4",
    "--stall-energy",
@@ -34,12 +36,10 @@
    "2",
    "--yaw-sigma-max",
    "0.3",
-   "--keys-hold-spawn-duck",
-   "--race-arc-tail",
-   "1500"
+   "--keys-hold-spawn-duck"
   ],
-  "resume_from": "/home/steam/ar_loop/runs/zlr1b2/zlr1b2_arc2/ckpt_1379926016.pt",
-  "commit": "03e33498"
+  "resume_from": "/home/steam/ar_loop/runs/zlr1b2/zlr1b2_arc3/ckpt_2788163584.pt",
+  "commit": "4bb3cd69"
  },
- "summary": "A1-A5 never get the greedy off the start platform (best 0.704). Go-Explore from the true spawn (energy cells) finds a 40.5 s line to 12.77%; it becomes a --race-arc route. A6 (arc shaping + energy ratchet + fail-pen 2 + yaw sigma cap 0.3, from scratch) leaves the platform at 151M; A6b pumps through the start ramp and half-pipe to the route's end (1.20B: 14.093); A6c adds --race-arc-tail 1500 (the field's ratchet past the route): 1.53B 9/9 at 19.0-19.75% (h ~-1,150, loop 2), 2.44B best 22.4% median 22.1% (score 22.404). The start-ramp transition still fails in some evals (0/9 at 1.68B, 1.76B). Next: keep training; consistency; loop 3."
+ "summary": "A1-A5 never get the greedy off the start platform (best 0.704). Go-Explore from the true spawn (energy cells) finds a 40.5 s line to 12.77%, used as a --race-arc route. A6 (arc shaping + energy ratchet + fail-pen 2 + yaw sigma cap 0.3, from scratch) leaves the platform; A6b reaches the route's end (14.093); A6c adds --race-arc-tail (field ratchet past the route) and gets out of loop 1 (22.404 at 2.44B). A7 rebuilds the route from the policy's OWN best greedy episode (xSELF): the start-ramp coin flip goes away, 2.94B 23.367 (median 23.1%). Next: iterate the self-route; from-scratch confirmation of the one-flag recipe (--ge-arc)."
 }
