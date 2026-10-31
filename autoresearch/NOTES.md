@@ -657,3 +657,28 @@ Incumbent: uf2r1b1's ckpt_13045858304 (118.592: 9/9, best 42.25 s; record 35.17 
   gate (`--demo-success-pace`) did not teach a new decision in 15-25 min at lr 5e-5.
 * No box until another branch releases one: every rent since 09:52 refused (fleet burn 0.767 of
   0.831 $/h). A background loop retries every 90 s.
+
+### CPU probes while no box is free (10:30-10:50 UTC; this host, 2 threads, 96 envs, ANALYSIS)
+* `beam_tas --greedy-prefix` is refused on a keys-hold checkpoint; `--prefix-line NPZ:TICKS` is not
+  (it replays a saved line's engine rows and syncs the held keys). So: a 4-env all-greedy beam
+  records the incumbent's greedy line (42.50 s, bit-exact, `greedy/beam_best.npz`), and each probe
+  replays its first T ticks into every env and forks there (`--branch-at`, view-only held offsets).
+  NB the fork fires at the first resample boundary AFTER the prefix (prefix 600 -> fork at 700).
+* Fork at 5.37 s (tick 700, the first south-end pass), +-45 deg, `--score d`: the forked lineages
+  lead on d by 900 u at 6.9 s and are cloned over the whole population, then 80 of 96 die by 8.4 s;
+  the end is the greedy's 2-lap exit (d 29,746 at 11.5 s). The leader was a CRASH: into the south
+  wall at 1,750 u/s, E 1,162 -> 56 in 0.15 s, then a ballistic rise (d falls with height).
+  **d alone ranks a wall crash first**; `--score dh --score-energy 1` (one u of energy height = one
+  u of field distance; the trainer's own --energy-pot 12 prices it at ~3.7) stops the cascade:
+  no mass death, the forks die out, the population stays on the lap.
+* Fork at 5.00 s (tick 652), dh: +-45 deg kills 28 of 64 forks within 0.8 s, none survives; +-20
+  deg (protect 4): 32 of 64 alive at the end, and one fork made a REAL surf climb on the first
+  pass - up the south-east wall from 5.1 s (E 1,152 -> 961 at the wall contact, then constant 961:
+  frictionless surfing), round the south end clockwise at z ~0-14 (6.4-6.8 s) and back down. The
+  record climbs the same end with E 1,060-1,110 but GAINS energy on the way up (air strafe) and
+  spirals to z 570. So the first-pass climb exists in reach; the policy's own continuation does
+  not finish it. No probe found an early exit (d < 30,000 before ~1,450 ticks).
+* `tools/speed_forks.py --fork-before-secs 1` (default): the forks start a second before each stall
+  window - the 60-65% loop turns the wrong way (north instead of east at (917, -185)) ~0.3 s before
+  its window opens; the pit's choice (the lap direction at the dive, the climb at the first pass)
+  is inside its window.
