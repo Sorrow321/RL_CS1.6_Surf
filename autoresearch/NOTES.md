@@ -789,3 +789,18 @@ curriculum spawns exactly on these states, so the kick's key press is cloned whe
 `--bc-coef 0.5 --bc-coef-final 0.1 --bc-steps 6e8 --bc-target argmax` + `--spawn-states
 runs/beam/x2/spine.npy --spawn-states-frac 0.2` (the 5 full early-exit lines: the approach and the
 rest of the course stay in the spawn pool).
+* x6 (11:23-11:40): the line BC fits perfectly (joint-acc 1.000) yet the curriculum oscillates at the
+  same kick: band [873, 877] 0.4-0.9%, [878, 882] ~35% paced success. Evals 0/9 (first update) /
+  8/9 42.99 s / 9/9 44.65 / 8/9 44.80 - slower, as x5. Stopped.
+  Why the band fails right before the kick (my reading): the kick needs a 1-tick-precise side-key
+  press while crouched; training samples the keys at T 1.5 (the restored --unstuck has sat at its
+  0.5 cap since ~8B: "T 0.50" in every step line), and a mid-repeat reset hands a new spawn 0-3
+  ticks of the previous episode's held action (train_fast's frame-skip semantics). From 878 on the
+  key is already held (spine keys), so "keep" suffices. Not the energy term: --energy-pot is per-call
+  potential shaping (telescopes); the double lap's +107 u is worth ~1.3 reward against ~10 lost to
+  discounting over the 4.5 s delay - the objective already prefers the early exit.
+
+### x7 `uf2r2b4_x7` (11:40 UTC): band PINNED at the true start, cold keys
+x6's flags with `--demo-tau0 0 --demo-rate 0.0` (the band stays at spine rows [0, 4] = the true
+start: half the spine draws start where the eval starts, the other half uniform along the cut line;
+only a PACED early exit earns the +50) and `--unstuck-max 0` (keys at T 1, entropy coef 0.005).
