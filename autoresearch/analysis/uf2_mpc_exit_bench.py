@@ -27,6 +27,7 @@ ap.add_argument("--pop", type=int, default=256)
 ap.add_argument("--iters", type=int, default=3)
 ap.add_argument("--max-offset", type=float, default=30.0)
 ap.add_argument("--seed", type=int, default=0)
+ap.add_argument("--w-energy", type=float, default=0.25)
 a = ap.parse_args()
 rng = np.random.default_rng(a.seed)
 z = np.load(ROOT / "maps/surf_unitfarmer2.goalc_32.npz", allow_pickle=False)
@@ -43,14 +44,17 @@ rw = states_rw(core); sv = core.states_view
 cur = core.get_states()[0].copy()
 w = np.load(os.path.join(os.environ.get("AR_HOME", "/home/steam/ar_uf2"), "wr", "surf_unitfarmer2_wr.frames.npz"))
 wt = w["t"] - w["t"][0]
-i = int(np.searchsorted(wt, a.bench_time))
+i = int(np.searchsorted(wt, max(a.bench_time, 0.0)))
 o0, v0 = w["simorg"][i].astype(np.float64), w["simvel"][i].astype(np.float64)
 E0 = o0[2] + (v0 ** 2).sum() / (2 * G)
 if a.energy > 0:
     sp = np.sqrt(max(0.0, 2 * G * (a.energy - o0[2])))
     v0 = v0 / np.linalg.norm(v0) * sp
-cur["origin"], cur["velocity"] = o0, v0
-cur["yaw"], cur["onground"] = float(w["viewangles"][i, 1]), -1
+if a.bench_time >= 0:
+    cur["origin"], cur["velocity"] = o0, v0
+    cur["yaw"], cur["onground"] = float(w["viewangles"][i, 1]), -1
+else:
+    o0, v0 = cur["origin"].astype(np.float64), cur["velocity"].astype(np.float64)
 cur["tick"], cur["stuck_ticks"] = 0, 0
 cur["basevelocity"] = (0.0, 0.0, 0.0)
 print(f"BENCH t {a.bench_time} at ({o0[0]:.0f},{o0[1]:.0f},{o0[2]:.0f}) record E {E0:.0f} -> start E "
@@ -86,7 +90,7 @@ for r in range(n_rep):
                 dmin = np.where(alive, np.minimum(dmin, dd), dmin)
         oo = np.asarray(sv["origin"], np.float64); vv = np.asarray(sv["velocity"], np.float64)
         E = oo[:, 2] + (vv * vv).sum(1) / (2 * G)
-        score = -dmin + 0.25 * E
+        score = -dmin + a.w_energy * E
         score[~alive] = -np.inf
         el = np.argsort(-score)[:n_el]; el = el[np.isfinite(score[el])]
         if len(el) == 0:

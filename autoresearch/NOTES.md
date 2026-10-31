@@ -113,3 +113,26 @@ the numbers). Read it before you start; append to it before you wrap up.
   a wide turn-around), so: per-call energy shaping is aimed at the right quantity, and the 10 ms
   tick costs ~30-50 u of the fall-strafe gain against the record's 7.6 ms (56 vs ~78 u/s
   ceiling) - a third to a half of the whole slack.
+* 23:56 UTC, still no box (refused every 2 min since 21:46). The retrier now launches TWO arms on
+  the one box when it comes (a hedge: this branch may get one box window this round), then the
+  weaker is stopped at its first evals:
+  * `uf2r1b4_pbw1`: the warm start above (resume of pb26_uf2_init.pt; --lr 1e-4; the
+    checkpoint's per-call K = 12 energy shaping and 7.64 ms tick).
+  * `uf2r1b4_sk12`: SCRATCH, the incumbent recipe + `--tick-ms 7.63 --energy-pot 12
+    --energy-pot-front 0 --energy-pot-front-bonus 0` - the same two energy levers from nothing
+    (the record's 131 fps physics, the bench's ~100 u budget; per-call shaping charges every
+    landing and pays every strafe). CPU smoke (16 envs): starts, [8, 8, 7] ms pattern, 230 s
+    episode cap, gamma/time-pen/stall-eps converted per tick.
+  Both are compared on gates cleared (the 9.3 % east slab, the north room at 13-18 %) and the
+  greedy line's energy at the pit's north end (uf2_eval_lines.py prints it).
+* 01:50 UTC, more nulls from searching on CPU (no box yet):
+  * The 6-min GE archive holds NO state climbing north out of the bowl's south end (y < -2700,
+    vy > 300, vz > 0) with E >= 900 (the record climbs S19 at 7.9 s with 1,127). Its
+    "north-heading" high-E states are steep falls onto the kill layer at y ~-2550..-2750, z ~560.
+  * Geometry of the loop: the z 160 kill slab covers the pit column's whole north part
+    (y -2400..-448), so the bowl under it connects to the flight level above it ONLY at the south
+    end: a line must go down, lap the bowl (the field inside the bowl correctly points SOUTH,
+    d 31k at the south end -> 33k at the north end under the central block), climb out at the
+    south end heading north and fly north above the slab to the exits.
+  * The progress(+energy) MPC from the TRUE spawn (A/D + view only, no W, no jump; 8 s)
+    dithers on the platform at ~100 u/s and drops onto a ledge at z 548 (3.9 %) - no dive.
