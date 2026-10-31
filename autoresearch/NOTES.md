@@ -545,3 +545,8 @@ on purpose: round 1 needs an exit, and the attribution comes after. Read with uf
   `step & 0x7FFFFFFF`, so each is another draw): the late policy finishes ~90% of its episodes,
   the 8.819B one 18/18.
   Hand-on stays ckpt_8819048448.
+* A13 10.20-10.95B: 9/9 at 10.274 (43.13 s) / 10.350 (42.90) / 10.425 (42.73) / 10.576 / 10.652 /
+  10.727 (42.73) / 10.878 / **10.954B (42.58 s, 118.581)**; 8/9 at 10.199 / 10.501; **2/9 at
+  10.803B** (seven die in the start pit at 1.7%). The time has flattened at 42.6-43.1 s. The
+  snapshot before the best eval, ckpt_10944512000, re-records **8/9** (best 43.25 s): the hand-on
+  stays ckpt_8819048448.
