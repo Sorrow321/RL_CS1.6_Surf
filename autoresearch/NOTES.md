@@ -69,3 +69,15 @@ the numbers). Read it before you start; append to it before you wrap up.
   Would I run exactly this on a map I never opened? Yes: energy height and the field distance
   are in the same unit on every map, and the 32 u is the eval rule's own constant.
 * Box: `rent` REFUSED at 17:32 on the fleet's budget pace (two boxes up, burn 0.59 of 0.619 $/h).
+* 18:29 UTC: still no box (budget pace full since 17:32: two boxes, 0.59 of 0.619 $/h). A single
+  background waiter retries `rent` once a minute; on a box it deploys with
+  `--ckpt runs/warm_uf2x13.pt` and launches TWO arms side by side (the trainer takes half the
+  container's CPUs, so two fit a 32-thread box; steps, not wall time, are compared):
+  * `zlr1b1_en`: scratch, the recipe + `--energy-pot 1 --energy-pot-rel 1 --energy-pot-front 0
+    --energy-pot-front-bonus 0 --stall-energy 32 --eval-patience-energy 1`, 5e8 steps.
+  * `zlr1b1_wen`: the same flags WARM from uf2_x13's weights (`tools/warm_from_ref.py`: weights
+    and Adam moments of uf2_x13, the config of the operator's scratch check run on this map, so
+    the resume trains exactly the scratch recipe; step 0; uf2's spine / BC / spawn files and its
+    novelty counts, reservoir and greedy pool dropped; all shape keys verified equal). It asks a
+    different question: does a policy that already surfs at 1,000+ u/s learn the pump. Zero-shot
+    it falls into the kill plane at 7.8 s (recorded on CPU, peak 1,164 u/s).
