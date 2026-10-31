@@ -256,3 +256,21 @@ file without a word. Workaround: scp the padded file myself, md5-checked against
   kept): the +50 bonus is paid at the line's end, which the direct route already reaches, so it
   PENALISES an 8 s pump by delaying the bonus (~-17 in discounted value); energy at K 16 pays the
   pump ~+7.
+* **tce2 (K 16 per call, bonus 0; 800M -> 1.2B): COLLAPSED.** Evals **7.854** (800.6M: tce's final
+  weights after one iteration - the round's best) / 2.98 / 2.98 / 2.96 / 3.46 / 3.49 / 3.51 / 3.52.
+  The late policy strafes on the platform (Emax ~1,357) and drops into the south-east catch at
+  2.9 s. The energy term "telescopes per episode, no death refund", so dying rich pays (+2.6 at
+  K 16 for +165 E), while the trough route pays the floor's -600 E (-9.6). Per-call energy is
+  safe only at a K where the route's progress outweighs its unavoidable losses (K 8 here).
+* Hand-off for the 7.854 eval: tce2 had no snapshot at or before 800.6M, so the hand-off rule would
+  take its newest (collapsed) checkpoint. I copied the exact checkpoint tce2 resumed from (tce's
+  ckpt_final, its own step 800,063,488, md5 d1ce2797) into $AR_HOME/runs/uf2r1b2/uf2r1b2_tce2/ as
+  ckpt_0800063488.pt - the weights that eval ran on, one PPO iteration earlier.
+* **GE6 (15 min, rooted at 29 states of tce's own trough ride): no pump.** energy_pick against
+  tce's line: +59 E at 5-6%, +49 at 6-7%, -193 at 7-8%; the deepest cells reach 8.0% (falls onto
+  *18 at (-2,901, -1,227)). Random bursts lose at the trough walls what they gain by strafing.
+* Arm tcf (01:10 UTC): tce's final weights + the same curriculum and bonus + `--energy-pot 12
+  --energy-pot-front 0.01 --energy-pot-front-bonus 1` (the recipe's own mode at K 12: K x the
+  kinetic energy height, paid ONCE when the record first enters the frontier band - here the
+  trough's west exit - and forfeited by dying earlier, so nothing to farm and no charge on the
+  floor). Leaving the trough at 1,100 u/s instead of 700 is worth ~+5.4: a direct price on a pump.
