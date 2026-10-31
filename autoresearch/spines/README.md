@@ -454,3 +454,9 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   best d): the start pit, the exit, the crossing of `*18`, its west edge, the north section and
   the turn east to (2,117, -566, -432) at d 13,665 = 55.4% of the map. Used by uf2r1b1_auto2 as
   `--demo-file` (+ `--demo-keys`) with `--demo-success-d 100`.
+* `uf2r1b1_auto2_k03.npy` (+ `.keys.npy`, 5,200 states, md5 89d7db9df34a8dc6281bac9cde5078f7): the
+  trainer's own `--auto-spine` search 3 of uf2r1b1_auto2 (beam_tas from the TRUE spawn on its own
+  6.36B weights, 4,096 envs, replayed open-loop): the whole course to (157..., ...) at d 4,782 =
+  **84.4%** of the map. uf2r1b1_cut trains on its first 4,800 rows (to d 8,408 = 72.6%; the cut
+  made where its backward curriculum stalled past the greedy's frontier - the `--demo-stall-cut`
+  rule by hand), `runs/beam/uf2r1b1_k03cut4800.npy` on the box (md5 40730657...).

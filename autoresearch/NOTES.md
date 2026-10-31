@@ -408,3 +408,12 @@ on purpose: round 1 needs an exit, and the attribution comes after. Read with uf
   (tau 4759/5200 at 6.75B, 37% band success) teaches it from its end. Training's reservoir
   frontier 94.7%, front-perturb best 29,698 u (96.9%). Hand-on: ckpt_6717702144 (8M before; md5
   178214a5...).
+* A12 6,800-7,330M: 69.059 / 69.057 / 68.777 / 67.853 / 68.985 - the greedy holds 68-69% for ~1B
+  steps. The k03 curriculum (the 84.4% beam line) STALLS at its end: band tau 4744-4759 of 5,200
+  (~71%), success 37% -> 17%; success = reaching the line's end through 4800-5200 (72.6% -> 84.4%),
+  which the beam itself flew at E ~250-290 (a barely-surviving stretch). The greedy follows that
+  line to ~rows 4,550-4,600 (67-69%) and fails; nothing teaches 68-72%.
+* A13 `uf2r1b1_cut` (03:53 UTC): resume of A12's 7.38B weights with the k03 line CUT at row 4800
+  (d 8,408 = 72.6%; success line 8,508 - ~3.5% past the greedy) - the `--demo-stall-cut` rule
+  (pbr6b4) applied by hand: cut where the backward curriculum stalls past the greedy's frontier;
+  milestones 29,584 / 27,363 / 17,276 / 13,765 / 13,232; the same loop; 6.5e9 steps (to the wrap-up).
