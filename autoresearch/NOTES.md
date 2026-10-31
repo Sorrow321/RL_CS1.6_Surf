@@ -905,3 +905,10 @@ weights (full, 4,702 states), band pinned at the true start, `--demo-success-pac
 map start the +50 needs d <= 100 within 4,806 ticks = 36.85 s; the line takes 35.83 s), the x9 line
 BC at 0.1, spawn states = 9 own beam lines, --goal-hull 1. A speed reward relative to the policy's
 own best search line, for the spread gains BC on noisy beam lines (x1) could not deliver.
+* OPERATOR NOTE (13:50 UTC): the finish-trigger fix is in the harness (uf2/main 2a27047f, PROTOCOL.md
+  READ FIRST): score.py counts a "done" only if the finishing step entered the clip hull (box-only =
+  progress, `box_only`); round 2 is scored that way; the round-1 incumbent re-scores 118.592 -> 109.692
+  (1/9 real). The shared local core completes on the clip hull by default. The user: keep the
+  checkpoints, train a little more on the fixed finish, no scratch retraining.
+  By that grader (run from the main checkout, read-only): x7 / x8 / x9 best 100.0 (box-only), **x10
+  118.781** (15.169B, 9/9 real, 36.57 s). RESULT.json now points at x10 (hand-on ckpt_15160836096).
