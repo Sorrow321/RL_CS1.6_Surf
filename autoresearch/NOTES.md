@@ -30,3 +30,42 @@ the numbers). Read it before you start; append to it before you wrap up.
   constant. PROTOCOL.md READ FIRST has what it shows.
 
 ## Round log
+
+### zlr1b1 (round 1, slot 1) - 2026-10-31 17:34 UTC: energy as progress for the stall clocks
+* **What the recipe cannot see, measured (record demo, ANALYSIS ONLY; d on config.field, its
+  own first row as d0 6,441 u, the spawn's 6,362):** the first loop is a ~3,000 u half-pipe
+  running east-west (x -1,900..+1,250, its floor z ~-3,300 at y ~50). The record crosses it
+  every ~4 s; each pass climbs higher on an end wall, so the FIELD does pay the loop at the
+  turnarounds: best progress 1.1% (t 16 s) -> 5.5% (20) -> 7.5% (28) -> 8.7% (32), swinging to
+  -4% at the floor in between. At t 34-38 the record loses ~800 u of energy height
+  (h = z + |v|^2/1600: -2,166 -> -2,962, a 380 u drop gaining almost no speed), and neither its
+  d record nor its h record moves by 32 u again until t ~62. So the record's own line would be
+  cut by the eval patience rule at 61.6 s and by the 15 s training stall at 46.6 s, with or
+  without an energy channel. The second half-pipe (y ~-600, z -2,250..-2,550) starts at t ~70:
+  progress 17-25% there through t 130.
+* **What the recipe does pay on the loop:** the ratchet pays the higher turnarounds; nothing
+  pays the energy built between them (`--energy-pot 3 --energy-pot-front 0.01
+  --energy-pot-front-bonus 1` pays NOTHING per call, only once at the reservoir's frontier
+  band); the novelty key's speed bins are 1,333 u/s wide (`--int-speed 3`), so a first-loop pump
+  (345 -> 1,300 u/s) stays in bin 0. The training stall rule re-arms only on ONE decision that
+  beats the running best d by 3.5 u (125 u/s toward the goal at the record), so a pass that
+  tops the last one by under ~10 u does not re-arm it, and `stagnant_mask` (3 s without a
+  re-arm) keeps every such state out of the reservoir.
+* **New flags (2f3d07d7, all default off, bit-identical: tests/python/test_stall_energy.py runs
+  the trainer at HEAD~ and after the change on the same smoke and compares config,
+  progress.csv, eval bytes and weights; the smoke falls back to surf_za_loop where sidistic is
+  not installed):**
+  * `--stall-energy EPS`: the training stall timer also re-arms when h has risen EPS u above
+    its value at the last energy re-arm (cumulative, any rate). Also un-stagnates pumping states
+    for the reservoir. Step line `se N%` = share of re-arms made by energy alone. EPS 32 = the
+    eval patience's own constant (generic, not read off this map).
+  * `--eval-patience-energy 1`: the eval patience clock gets the same channel, same 32 u.
+  * `--energy-pot-rel 1`: `--energy-pot K` in units of the shaping scale (100/d0 per u), so K 1
+    pays one u of energy height like one u of field progress on every map (15.75 per 1000 u
+    here; 0.5 on cannonball). A unit, not a per-map constant.
+* **First arm (planned): `zlr1b1_en`** = the recipe + `--energy-pot 1 --energy-pot-rel 1
+  --energy-pot-front 0 --energy-pot-front-bonus 0 --stall-energy 32 --eval-patience-energy 1`,
+  scratch, 30 min; then the recipe alone as the scratch control on the same card type.
+  Would I run exactly this on a map I never opened? Yes: energy height and the field distance
+  are in the same unit on every map, and the 32 u is the eval rule's own constant.
+* Box: `rent` REFUSED at 17:32 on the fleet's budget pace (two boxes up, burn 0.59 of 0.619 $/h).
