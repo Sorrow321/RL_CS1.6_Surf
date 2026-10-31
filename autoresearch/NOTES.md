@@ -423,3 +423,13 @@ file without a word. Workaround: scp the padded file myself, md5-checked against
   x -896 before the feet dropped those 2 u. Every GE12 chain past 11% crosses here (min speed
   184 u/s along each): the only crossing the search found, and a razor. A crossing with more
   height (arriving with more energy, or from further up the floor) is what to search for next.
+* **tcne7 (hot band, 3.583B -> 3.983B): the band rose 2.5% -> 9.2%, still backing off**; evals
+  10.54-10.59 (no new best).
+* **GE15 (rooted at ne4's flight states before the floor landing, 15 min): no high crossing.**
+  982k cells; every chain past 11% has a minimum speed <= 264 u/s and passes east of x -1,100 no
+  higher than z 196: the NE flight descends onto the floor at x ~-1,006 (|v| 1,054 -> 287) in every
+  chain found, so the crossing of *18's edge is a razor in all of them. (A hop on landing would
+  keep the speed; the uniform explorer did not find one in 15 min.)
+* tcne8 (06:35 UTC): tcne7's final + tau0 3346 + `--demo-rate 0.08` (advance through the razor
+  band at its ~9% success instead of backing off: the score is the best of 9 greedy episodes) +
+  the hot band.
