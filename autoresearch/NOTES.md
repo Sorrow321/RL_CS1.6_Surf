@@ -417,3 +417,10 @@ on purpose: round 1 needs an exit, and the attribution comes after. Read with uf
   (d 8,408 = 72.6%; success line 8,508 - ~3.5% past the greedy) - the `--demo-stall-cut` rule
   (pbr6b4) applied by hand: cut where the backward curriculum stalls past the greedy's frontier;
   milestones 29,584 / 27,363 / 17,276 / 13,765 / 13,232; the same loop; 6.5e9 steps (to the wrap-up).
+* **A13 7,783M: 86.071** (best 86.1%, median 85.6%; 04:07 UTC): the cut worked. The first evals
+  after the restart collapsed while the new curriculum moved the policy (1.794 / 9.057 / 1.900 /
+  51.237 at 7.48-7.71B), then 7/9 reach 85.5-86.1% at 41-48 s round (530..680, -2,550..-2,830,
+  -160..-440) - ~2,700 u west of the finish box (x 3,328-3,936, same y band) - and fall to a floor
+  at z ~-1,350; 2/9 still fail at the pit's east side (3.6%). 7/9 past the cut's line (8,515) ->
+  search 1 running. The curriculum walked back to tau 2299 of 4,800 within ~400M steps.
+  Hand-on: ckpt_7780433920 (2.6M before; md5 4ba632fe...).
