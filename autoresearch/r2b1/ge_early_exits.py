@@ -30,6 +30,7 @@ def main():
     ap.add_argument("--field", default=str(ROOT / "maps" / "surf_unitfarmer2.goalc_32.npz"))
     ap.add_argument("--d0", type=float, default=30647.5)
     ap.add_argument("--top", type=int, default=25)
+    ap.add_argument("--times", type=float, nargs="+", default=[6, 7, 8, 9, 10, 11, 12])
     a = ap.parse_args()
     from auto_spine import load_field
     f = load_field(a.field)
@@ -77,11 +78,11 @@ def main():
             print(f"  t {tsec[i]:6.2f}s prog {prog[i]:6.2f}% ({o[i,0]:6.0f},{o[i,1]:6.0f},{o[i,2]:6.0f}) "
                   f"|v| {np.linalg.norm(v[i]):5.0f} E {E[i]:6.0f} root row {rows[i]} depth {dep[i]} cell {i}")
     # best progress reached by time
-    for T in (6, 7, 8, 9, 10, 11, 12):
+    for T in getattr(a, "times", (6, 7, 8, 9, 10, 11, 12)):
         m = (tsec <= T) & (rows >= 0)
         if m.any():
             i = int(np.flatnonzero(m)[np.argmax(prog[m])])
-            print(f"  by t {T:2d}s: best prog {prog[i]:6.2f}% at ({o[i,0]:6.0f},{o[i,1]:6.0f},{o[i,2]:6.0f}) "
+            print(f"  by t {T:5.2f}s: best prog {prog[i]:6.2f}% at ({o[i,0]:6.0f},{o[i,1]:6.0f},{o[i,2]:6.0f}) "
                   f"E {E[i]:6.0f} t {tsec[i]:5.2f} cell {i}")
 
 
