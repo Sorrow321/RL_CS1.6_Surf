@@ -576,8 +576,14 @@ def save_frontier_line(frontier, cfg, map_path, ep_cap, tick, arm, row0, obs_sta
         ok = fin_t == int(frontier["tick"])
     else:
         ok = best_d <= float(frontier["d"]) + float(gf.cell)
+    # view_mode + gate_seed (uf2r2b4, 2026-10-31): what --prefix-line needs to replay this
+    # line as a prefix (it refused a --view-absolute frontier as "view_mode 0", and it reseeds
+    # the replay core from gate_seed)
     np.savez(out_dir / "beam_frontier.npz", acts=acts,
-             **({"view": np.asarray(view, np.float32)} if view is not None else {}),
+             **({"view": np.asarray(view, np.float32),
+                 "view_mode": np.int32(view_mode_code(cfg.get("view_absolute")))}
+                if view is not None else {}),
+             gate_seed=np.int32(gate_seed),
              states=states, spawn_state=row0, obs_start=np.asarray(obs_start, np.float32),
              act_every=np.int32(k), frontier_d=np.float64(frontier["d"]),
              frontier_tick=np.int32(frontier["tick"]), replay_best_d=np.float64(best_d),
