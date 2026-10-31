@@ -443,9 +443,11 @@ file without a word. Workaround: scp the padded file myself, md5-checked against
   tcne11 (07:55 UTC): tcne10's final, the same spine at tau 0 (consolidation of the flown route,
   more greedy evals before the harvest).
 
-### uf2r1b2 round 1 lesson (DRAFT 07:55 UTC; finalised at wrap-up)
-* **Score 2.85 (control at 0.5M) -> 10.713** (uf2r1b2_tcne5, eval 2,833,776,640: 9/9 at
-  10.5-10.7%). No finish; the pit itself is still unflown - this lineage goes AROUND it.
+### uf2r1b2 round 1 lesson (final)
+* **Score 2.85 (control at 0.5M) -> 10.747** (uf2r1b2_tcne11, eval 5,264,375,808: 9/9 at
+  10.4-10.8%; hand-off ckpt_5263851520.pt, md5 2ed83146, pulled by hand; tcne11 = tcne10's final
+  at tau 0, a consolidation of the flown route). No finish; the pit itself is still unflown -
+  this lineage goes AROUND it, through the pit's exit corridor.
 * **What the start is** (measured): a platform over two kill volumes - teleport sheet *18 at z 160
   under the whole north/east (the "north slide" ends there) and the pit's catch *7 (to z 577 south
   of the platform). The record buys ~1,100 E in the pit and flies over both. The potential field
@@ -486,3 +488,5 @@ file without a word. Workaround: scp the padded file myself, md5-checked against
   (`--tops`, `--not-behind-roots`). Spines and spawn files in autoresearch/spines/ (README),
   measurement scripts in autoresearch/analysis/uf2_*.py. Harness issue: box.py pull --snapshot
   (zero-padded names) - pull snapshots by hand.
+* **Box:** 58455373 (RTX 4080 SUPER, $0.41/h), 21:44 -> 08:23 UTC (~10.7 h, ~$4.4), released at
+  08:23 with every run's evals and the hand-off checkpoints pulled to $AR_HOME/runs/uf2r1b2/.
