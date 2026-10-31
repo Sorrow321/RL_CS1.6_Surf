@@ -3884,11 +3884,13 @@ def race_progress_eps(traj_path: Path, field) -> list:
     return per_ep
 
 
-def arc_self_candidate(traj_path: Path, field):
+def arc_self_candidate(traj_path: Path, field, tie: float = 0.0):
     """--race-arc-self: the DEEPEST episode of a greedy recording on ``field`` -> (its positions
     from the start to its deepest tick (T, 3) float64, that deepest d), or None. Off-field rows
-    (the unreachable sentinel) never count as deep."""
-    rows, best = [], None
+    (the unreachable sentinel) never count as deep. ``tie`` > 0: among the episodes whose
+    deepest d is within ``tie`` of the deepest, the one that gets there in the FEWEST ticks (the
+    shortest line: the deepest episode is often the one that swung longest to get there)."""
+    rows, eps = [], []
     lim = float(field.reach_max) - 0.5 * float(field.cell)
     with open(traj_path, encoding="utf-8") as f:
         for line in f:
@@ -3902,10 +3904,18 @@ def arc_self_candidate(traj_path: Path, field):
                 d = np.asarray(field.sample(a[:, 1:4]), np.float64)
                 d = np.where(d < lim, d, np.inf)
                 i = int(np.argmin(d))
-                if np.isfinite(d[i]) and (best is None or d[i] < best[1]):
-                    best = (a[: i + 1, 1:4].copy(), float(d[i]))
+                if np.isfinite(d[i]):
+                    eps.append((a[: i + 1, 1:4].copy(), float(d[i]), i))
                 rows = []
-    return best
+    if not eps:
+        return None
+    dbest = min(e[1] for e in eps)
+    if float(tie) > 0.0:
+        near = [e for e in eps if e[1] <= dbest + float(tie)]
+        pick = min(near, key=lambda e: (e[2], e[1]))
+    else:
+        pick = min(eps, key=lambda e: e[1])
+    return pick[0], pick[1]
 
 
 def resample_polyline(pts, spacing: float):
@@ -21824,10 +21834,11 @@ def main() -> None:
                     # --race-arc-self: the route becomes the eval's deepest episode's own line
                     # when that episode beats the route's end by M x d0
                     _rf = _s.reward_fn
-                    _cand = arc_self_candidate(path, _rf.field)
                     _a0 = _rf.arc
                     _d_end = float(np.asarray(_rf.field.sample(_a0.pts[-1:]), np.float64)[0])
                     _marg = float(args.race_arc_self) * float(_s.rf_d0 or 0.0)
+                    # the shortest line among the episodes within half the margin of the deepest
+                    _cand = arc_self_candidate(path, _rf.field, tie=0.5 * _marg)
                     if _cand is not None and _cand[1] < _d_end - _marg:
                         _pts = resample_polyline(_cand[0], _a0.spacing)
                         if len(_pts) >= 2:

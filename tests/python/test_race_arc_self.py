@@ -72,3 +72,16 @@ def test_the_recorder_lists_it_as_training_only():
     sys.path.insert(0, str(ROOT / "tools"))
     import record_ckpt as rc
     assert "race_arc_self" in rc.TRAIN_ONLY
+
+
+def test_the_tie_break_takes_the_shortest_line_near_the_deepest(tmp_path):
+    import train_fast as tf
+    p = tmp_path / "traj.jsonl"
+    # ep0 reaches x 900 at tick 6 (a long way round); ep1 reaches x 880 at tick 2
+    _write(p, [[0, 100, 300, 50, 400, 600, 900], [0, 500, 880, 100]])
+    pts, d = tf.arc_self_candidate(p, _XField())                  # no tie: the deepest
+    assert d == pytest.approx(10_000.0 - 900.0) and len(pts) == 7
+    pts, d = tf.arc_self_candidate(p, _XField(), tie=30.0)        # within 30 u: the shorter
+    assert d == pytest.approx(10_000.0 - 880.0) and len(pts) == 3
+    pts, d = tf.arc_self_candidate(p, _XField(), tie=10.0)        # 20 u apart: no tie
+    assert len(pts) == 7
