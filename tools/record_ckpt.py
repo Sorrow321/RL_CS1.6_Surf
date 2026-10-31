@@ -149,6 +149,9 @@ TRAIN_ONLY = frozenset({
     "energy_ratchet",
     # --race-arc-tail: a TRAINING reward term (refused with --obs-reward) - TRAIN_ONLY
     "race_arc_tail",
+    # --ge-arc: the run's search-to-route record (the route and spawns ride as race_arc /
+    # spawn_states) - TRAIN_ONLY
+    "ge_arc", "ge_arc_minutes",
     # --eval-parallel: how the TRAINER schedules its eval episodes (side by side on a wider
     # eval core); a recording flies its own episodes, the policy and the starts are the same
     "eval_parallel",

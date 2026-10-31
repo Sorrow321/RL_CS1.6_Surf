@@ -4561,6 +4561,88 @@ def episode_stats(traj_path: Path):
     return out
 
 
+def _ge_field_path(args) -> Path:
+    """--ge-arc: the shaping field's cache file (surfgym.goalfield's naming: goal + g/k/c tags +
+    _<cell>), which the search's deepest cell and the forward filter are read on."""
+    bsp = Path(args.map)
+    nc = bool(int(getattr(args, "race_no_corner_cut", 0) or 0))
+    tag = ("k" if getattr(args, "race_kill_aware", None) else "") + ("c" if nc else "")
+    gc = getattr(args, "goal_cell", None)
+    cell = float(str(gc).split(",")[0]) if gc not in (None, "") else float(args.lidar_cell)
+    return bsp.parent / f"{bsp.stem}.goal{tag}_{cell:g}.npz"
+
+
+def _ge_arc_build(args, out: Path, z) -> np.ndarray:
+    """--ge-arc: the archive -> (1) the deepest cell's exact chain replayed into a per-tick line
+    (tools/ge_replay.py), (2) the line resampled at 128 u -> args.race_arc (runs/<run>/
+    ge_route.npz), (3) the spawn rows: the line + the archive's most energetic state per 256 u
+    cell kept if deeper than the start on the field OR above the spawn's energy height + 32 u,
+    every row's view along its velocity (tools/spine_canon_view.canon_view). -> the rows."""
+    import subprocess
+    from surfgym.core import STATE_DTYPE as _SD
+    from surfgym.goalfield import GoalField
+    sys.path.insert(0, str(ROOT / "tools"))
+    from spine_canon_view import canon_view
+    fpath = _ge_field_path(args)
+    if not fpath.exists():
+        raise SystemExit(f"--ge-arc: the shaping field {fpath} is not baked (bake it first)")
+    line_p = out / "ge_line.npy"
+    r = subprocess.run([sys.executable, "-u", str(ROOT / "tools" / "ge_replay.py"),
+                        "--map", str(args.map), "--archive", str(out / "ge" / "archive.npz"),
+                        "--field", str(fpath), "--out", str(line_p)],
+                       capture_output=True, text=True)
+    print((r.stdout + r.stderr).strip()[-600:], flush=True)
+    if r.returncode != 0 or not line_p.exists():
+        raise SystemExit("--ge-arc: tools/ge_replay.py failed")
+    line = np.load(line_p, allow_pickle=False)
+    # (2) the route: the line's polyline at a uniform 128 u arc spacing
+    p = line["origin"].astype(np.float64)
+    p = p[np.concatenate([[True], np.linalg.norm(np.diff(p, axis=0), axis=1) > 1e-6])]
+    sarc = np.concatenate([[0.0], np.cumsum(np.linalg.norm(np.diff(p, axis=0), axis=1))])
+    nv = int(np.floor(sarc[-1] / 128.0)) + 1
+    if nv < 2:
+        raise SystemExit("--ge-arc: the search's line is shorter than one route segment")
+    tt = np.arange(nv) * 128.0
+    route = np.stack([np.interp(tt, sarc, p[:, k]) for k in range(3)], axis=1)
+    rpath = Path(args.race_arc)
+    rpath.parent.mkdir(parents=True, exist_ok=True)
+    np.savez(rpath, route=route.astype(np.float32), spacing=np.float32(128.0))
+    # (3) the forward subset of the archive: one state per 256 u cell, the most energetic
+    gz = np.load(fpath, allow_pickle=False)
+    field = GoalField(gz["grid"].astype(np.float32) * float(gz["quant"]), gz["mins"],
+                      float(gz["cell"]), float(gz["reach_max"]))
+    st = z["state"]
+    pos = st["origin"].astype(np.float64)
+    vel = st["velocity"].astype(np.float64)
+    h = pos[:, 2] + (vel * vel).sum(axis=1) / 1600.0
+    d = np.asarray(field.sample(pos), np.float64)
+    ok = d < float(field.reach_max) - 16.0
+    roots = np.flatnonzero(np.asarray(z["parent"]) < 0)
+    d0 = float(np.min(d[roots])) if len(roots) else float(d[0])
+    h0 = float(np.max(h[roots])) if len(roots) else float(h[0])
+    c = np.floor(pos / 256.0).astype(np.int64)
+    key = (c[:, 0] * 1_000_003 + c[:, 1]) * 1_000_003 + c[:, 2]
+    order = np.lexsort((-h, key))
+    first = np.ones(len(order), bool)
+    first[1:] = key[order][1:] != key[order][:-1]
+    pick = order[first]
+    pick = pick[(ok[pick] & (d[pick] < d0)) | (h[pick] > h0 + 32.0)]
+    arch = np.zeros(len(pick), _SD)
+    for f in _SD.names:
+        arch[f] = st[f][pick]
+    lrows = np.zeros(len(line), _SD)
+    for f in _SD.names:
+        lrows[f] = line[f]
+    rows, _ = canon_view(np.concatenate([lrows, arch]))
+    dl = np.asarray(field.sample(line["origin"].astype(np.float64)), np.float64)
+    print(f"--ge-arc: line {len(line):,} ticks to d {float(dl[-1]):,.0f} "
+          f"({100.0 * (d0 - float(np.min(dl))) / max(d0, 1.0):.2f}% of the start's {d0:,.0f}); "
+          f"route {nv} vertices @ 128 u = {sarc[-1]:,.0f} u -> {rpath}; spawn rows {len(rows):,} "
+          f"(line {len(line):,} + {len(pick):,} forward archive cells, views along the "
+          f"velocity)", flush=True)
+    return rows
+
+
 def _ge_phase1(args) -> str:
     """--ge-minutes: run tools/explore_phase1.py (Go-Explore phase 1, reward-free) from the
     map's true spawn for args.ge_minutes on every CPU the container allows, then write its
@@ -4580,13 +4662,26 @@ def _ge_phase1(args) -> str:
     except AttributeError:                   # pragma: no cover - Windows
         n = os.cpu_count() or 8
     n = min(n, _cgroup_cpu_quota() or n)
-    cmd = [sys.executable, "-u", str(ROOT / "tools" / "explore_phase1.py"),
-           "--map", str(args.map), "--out", str(out / "ge"), "--envs", "2048",
-           "--cell", f"{float(args.ge_cell):g}", "--cell-speed", str(int(args.ge_speed)),
-           "--cell-speed-max", "2400", "--decisions", "100",
-           "--act-every", str(int(args.act_every)), "--maxvel", f"{float(args.maxvel):g}",
-           "--max-minutes", f"{float(args.ge_minutes):g}", "--threads", str(n),
-           "--seed", str(int(args.seed)), "--snapshot-every", "100", "--print-every", "100"]
+    GE_ARC = float(getattr(args, "ge_arc", 0.0) or 0.0) > 0.0
+    if GE_ARC:
+        # --ge-arc: the energy-cell search with exact chains at this run's (whole-ms) tick
+        cmd = [sys.executable, "-u", str(ROOT / "tools" / "explore_phase1.py"),
+               "--map", str(args.map), "--out", str(out / "ge"), "--envs", "4096",
+               "--cell", "64", "--cell-energy", "32", "--cell-heading", "1",
+               "--view-follow=-90,-60,-30,-15,0,15,30,60,90", "--select-energy", "3",
+               "--exact-chains", "--decisions", "100",
+               "--act-every", str(int(args.act_every)), "--maxvel", f"{float(args.maxvel):g}",
+               "--tick-ms", str(int(round(float(args.tick_ms)))),
+               "--max-minutes", f"{float(args.ge_minutes):g}", "--threads", str(n),
+               "--seed", str(int(args.seed)), "--snapshot-every", "100", "--print-every", "100"]
+    else:
+        cmd = [sys.executable, "-u", str(ROOT / "tools" / "explore_phase1.py"),
+               "--map", str(args.map), "--out", str(out / "ge"), "--envs", "2048",
+               "--cell", f"{float(args.ge_cell):g}", "--cell-speed", str(int(args.ge_speed)),
+               "--cell-speed-max", "2400", "--decisions", "100",
+               "--act-every", str(int(args.act_every)), "--maxvel", f"{float(args.maxvel):g}",
+               "--max-minutes", f"{float(args.ge_minutes):g}", "--threads", str(n),
+               "--seed", str(int(args.seed)), "--snapshot-every", "100", "--print-every", "100"]
     print(f"--ge-minutes {float(args.ge_minutes):g}: Go-Explore phase 1 from the true spawn "
           f"({n} threads): {' '.join(cmd[2:])}", flush=True)
     env = dict(os.environ, OMP_NUM_THREADS=str(n))
@@ -4599,9 +4694,12 @@ def _ge_phase1(args) -> str:
                          f"{out / 'ge.log'}")
     z = np.load(out / "ge" / "archive.npz", allow_pickle=True)
     st = z["state"]
-    rows = np.zeros(len(st), _SD)
-    for f in _SD.names:
-        rows[f] = st[f]
+    if GE_ARC:
+        rows = _ge_arc_build(args, out, z)
+    else:
+        rows = np.zeros(len(st), _SD)
+        for f in _SD.names:
+            rows[f] = st[f]
     rows["tick"] = 0
     rows["stuck_ticks"] = 0
     tmp = out / "ge_states.tmp.npy"
@@ -4959,6 +5057,9 @@ def main() -> None:
                          "gradient unless it finished or ended within eps "
                          "of the farther) as a 0/1 advantage weight on the "
                          "part of the episode inside the current buffer")
+    ap.add_argument("--no-race-ratchet", dest="race_ratchet", action="store_false",
+                    help="turn --race-ratchet OFF (a preset or a checkpoint that carries it); "
+                         "--race-arc refuses the ratchet as a second treatment of the same defect")
     ap.add_argument("--race-ratchet", action="store_true", default=None,
                     help="race: pay only NEW progress RECORDS inside an "
                          "episode. The episode keeps b = the smallest "
@@ -7489,6 +7590,20 @@ def main() -> None:
                          "start room's crouch tunnel (invisible to the slab field) in ~1 min. "
                          "Written to runs/<run>/ge/ + ge_states.npy; a resume reuses the file. "
                          "Single map, 10 ms tick. 0 = off (bit-identical); ckpt restores")
+    ap.add_argument("--ge-arc", type=float, default=None,      # 0 = off
+                    help="--ge-minutes M: U > 0 - the search becomes the ROUTE (zlr1b2, "
+                         "2026-10-31): Go-Explore from the true spawn with energy cells at this "
+                         "run's tick (explore_phase1 --exact-chains --cell 64 --cell-energy 32 "
+                         "--cell-heading 1 --view-follow -90..90 --select-energy 3), its deepest "
+                         "cell's exact chain replayed into a line (tools/ge_replay.py), the line "
+                         "resampled at 128 u into runs/<run>/ge_route.npz = --race-arc with "
+                         "--race-arc-tail U and --stall-arc 1, and the training spawn pool "
+                         "(--ge-frac, default 0.4) = the line + the archive's most energetic "
+                         "state per 256 u cell that is deeper than the start on the field OR above "
+                         "its energy height, views along the velocity. The route covers what the "
+                         "field cannot see (a loop pumped for speed); the field leads past it. "
+                         "Needs --no-race-ratchet. Config records the route and the spawn file "
+                         "(a resume reads them as --race-arc / --spawn-states). 0 = off")
     ap.add_argument("--ge-frac", type=float, default=None,
                     help="--ge-minutes: the share of every training spawn pool drawn uniformly "
                          "from the archive, in (0, 1) (default 0.3)")
@@ -9586,6 +9701,28 @@ def main() -> None:
     args.stall_arc = int(args.stall_arc)
     if args.stall_arc not in (0, 1):
         raise SystemExit("--stall-arc is 0 or 1")
+    if args.ge_arc is None:
+        args.ge_arc = 0.0
+    if args.ge_arc < 0.0:
+        raise SystemExit("--ge-arc U needs U >= 0 (0 = off)")
+    if args.ge_arc > 0.0:
+        if not float(args.ge_minutes or 0.0) > 0.0:
+            raise SystemExit("--ge-arc builds the route from a Go-Explore run: it needs "
+                             "--ge-minutes M > 0")
+        if args.race_arc:
+            raise SystemExit("--ge-arc builds its own route: not with --race-arc")
+        if args.race_ratchet:
+            raise SystemExit("--ge-arc shapes on arc length (--race-arc), which refuses the "
+                             "ratchet: pass --no-race-ratchet (the field's ratchet returns past the "
+                             "route's end through --race-arc-tail)")
+        if args.reward != "race":
+            raise SystemExit("--ge-arc needs --reward race")
+        # the route the GE phase will write; set now so every --race-arc rule below sees it
+        args.race_arc = str(ROOT / "runs" / args.run / "ge_route.npz")
+        if not float(args.race_arc_tail or 0.0) > 0.0:
+            args.race_arc_tail = float(args.ge_arc)
+        if args.stall_arc is None:
+            args.stall_arc = 1
     if args.race_arc_tail is None:
         args.race_arc_tail = 0.0
     if args.race_arc_tail < 0.0:
@@ -10950,8 +11087,15 @@ def main() -> None:
                              "--spawn-states")
         if args.maps:
             raise SystemExit("--ge-minutes is single-map")
-        if abs(float(args.tick_ms) - 10.0) > 1e-9 or args.tick_ms_schedule:
+        if args.ge_arc > 0.0:
+            # --ge-arc: explore_phase1 --tick-ms takes WHOLE ms (its exact-chain rule)
+            if args.tick_ms_schedule or abs(float(args.tick_ms) - round(float(args.tick_ms))) > 1e-9:
+                raise SystemExit("--ge-arc: explore_phase1 runs a whole-ms tick only (no "
+                                 "--tick-ms-schedule)")
+        elif abs(float(args.tick_ms) - 10.0) > 1e-9 or args.tick_ms_schedule:
             raise SystemExit("--ge-minutes: explore_phase1 runs the 10 ms tick only")
+        if args.ge_arc > 0.0 and args.ge_frac is None:
+            args.ge_frac = 0.4
         args.ge_frac = 0.3 if args.ge_frac is None else float(args.ge_frac)
         args.ge_cell = 64.0 if args.ge_cell is None else float(args.ge_cell)
         args.ge_speed = 8 if args.ge_speed is None else int(args.ge_speed)
@@ -10960,6 +11104,10 @@ def main() -> None:
         SS_PATH, SS_FRAC = _ge_phase1(args), args.ge_frac
         print(f"provenance: ge_states = {SS_PATH} (this run's own Go-Explore phase-1 archive "
               "from the true spawn: reward-free, uniform random actions; no demo)")
+        if args.ge_arc > 0.0:
+            # the config records the files as plain --spawn-states / --race-arc (a resume reads
+            # them; it never re-runs the search)
+            args.spawn_states, args.spawn_states_frac = SS_PATH, float(SS_FRAC)
     elif any(getattr(args, _gk) is not None for _gk in ("ge_frac", "ge_cell", "ge_speed")):
         raise SystemExit("--ge-frac / --ge-cell / --ge-speed need --ge-minutes > 0")
     if SS_PATH:
@@ -15251,7 +15399,11 @@ def main() -> None:
     if args.bc_pitch_coef is not None:
         # --bc-pitch-coef: written ONLY when set (a loss option of the BC term)
         meta["config"]["bc_pitch_coef"] = float(args.bc_pitch_coef)
-    if float(args.ge_minutes or 0.0) > 0.0:
+    if float(args.ge_arc or 0.0) > 0.0:
+        # --ge-arc: the search's own record (not restored: the route and the spawn file are in
+        # the config as race_arc / spawn_states, which a resume reads)
+        meta["config"].update(ge_arc=float(args.ge_arc), ge_arc_minutes=float(args.ge_minutes))
+    elif float(args.ge_minutes or 0.0) > 0.0:
         # --ge-minutes: written ONLY when on (a control run's config dump is unchanged); a
         # resume restores the four and reuses runs/<run>/ge_states.npy
         meta["config"].update(ge_minutes=float(args.ge_minutes), ge_frac=float(args.ge_frac),
@@ -17835,7 +17987,8 @@ def main() -> None:
             for _s, _b in zip(slots, INT_BASE):
                 _s.reward_fn.int_coef = _b * (1.0 + unstuck_T)
     SS_RNG = np.random.default_rng(int(args.seed) + 4242)     # --spawn-states draws
-    if float(args.ge_minutes or 0.0) > 0.0 and SPAWN_STATES is not None:
+    if (float(args.ge_minutes or 0.0) > 0.0 and SPAWN_STATES is not None
+            and not float(args.ge_arc or 0.0) > 0.0):
         # --ge-minutes: archive cells BEHIND the start on the shaping field are dropped - dead
         # ends the reward never pays, which a uniform draw over-samples (princessburglar: 61% of
         # the archive is the half-pipe east of the spawn, and a policy spawned there learned to
