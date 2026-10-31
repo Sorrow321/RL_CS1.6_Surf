@@ -774,3 +774,18 @@ only if it crosses the success line within (rows left on the spine) x 1.1 + 1 s;
 back past the turn until the policy takes the early exit from those states; at tau 0 the success
 needs the early exit from the true start. Generic: the spine is the policy's own search line, the
 pace gate is the line's own clock.
+* x5 to 13.35B (300M steps): the curriculum walked tau 1303 -> 873 in ~100M steps, then OSCILLATED:
+  band [878, 882] ~35% paced success, band [873, 877] 0% over 500 eps each time. Rows 878-882 on
+  the line are a RAMP KICK at the top of the climb ((-1,661, -2,878, 457): vel (-445, 847, 306) ->
+  (-390, 547, 594) while crouched, the side key switched 0 -> 2 at row 878): spawned at 873-877 with
+  the line's held keys, the policy never makes that kick. And the greedy got SLOWER from the true
+  start: evals 118.587 (42.38 s) / 115.232 (6/9) / 118.541 (43.76) / 118.505 (44.84 s), pit entry
+  3.5-3.6 s instead of 3.2, climb-out at ~15 s - a pit-only spine leaves the approach untrained.
+  Stopped at 13.35B.
+
+### x6 `uf2r2b4_x6` (11:23 UTC): x5's pace-gated curriculum + BC on the spine line + spawn states
++ `--bc-file runs/beam/x6/bc_line.npz` (the spine line's OWN 326 decisions, ticks 0-1,300: the
+curriculum spawns exactly on these states, so the kick's key press is cloned where it is needed)
+`--bc-coef 0.5 --bc-coef-final 0.1 --bc-steps 6e8 --bc-target argmax` + `--spawn-states
+runs/beam/x2/spine.npy --spawn-states-frac 0.2` (the 5 full early-exit lines: the approach and the
+rest of the course stay in the spawn pool).
