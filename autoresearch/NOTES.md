@@ -122,3 +122,11 @@ idle for the first third of its round.
 * 20:06 UTC, still no box (3 h). The offer pool is thin too: the cheapest acceptable offer is a
   4080S at 0.41 $/h (then a 3090 at 0.62, a 5080 at 0.62), so even with one of the two live
   boxes released, a 0.41 box fits the 0.62 pace only if the remaining one burns <= 0.21.
+* GE K 30 for 40 min (local, `--threads 3` but effectively ONE core: 100% CPU, 0.14-0.17M
+  ticks/s, the same as 1 thread): 1.28M cells, loop-1 E max **-2,329** (above the ~-2,400 I
+  estimate the jump to loop 2 needs), best progress 9.35% (5,767 u, reached by minute ~18 and
+  never beaten), the highest states z -2,664 at (x -800..-1,100, y 670-860) north of the wedge;
+  **0 loop-2 cells**. The archive has the energy but not the transfer (up the east end and over
+  to loop 2's face, ~800 u higher to the south). The global top-energy cells are useless as
+  roots: all 64 are falls into the void (z -3,656..-3,980, 1,464-1,635 u/s) strafed on the way
+  down. GE is not the route to loop 2 at local compute; arm A (RL) stays the first box run.
