@@ -438,3 +438,51 @@ file without a word. Workaround: scp the padded file myself, md5-checked against
   3286 -> 4.4% at 3281 -> back off): the flight a few ticks before the floor landing at ~3290.
   Evals 10.54-10.61 (no new best; the greedy is not on the extension yet).
 * tcne9 (06:58 UTC): tcne8's final + tau0 3281 + `--demo-rate 0.04`, the hot band kept.
+* tcne9 (rate 0.04) / tcne10 (rate 0.02), 4.383B -> 5.183B: the curriculum crept 3281 -> 3261-3266
+  and stayed (band [3261,3265] under 2-4% even at those rates); evals 10.20-10.66, no new best.
+  tcne11 (07:55 UTC): tcne10's final, the same spine at tau 0 (consolidation of the flown route,
+  more greedy evals before the harvest).
+
+### uf2r1b2 round 1 lesson (DRAFT 07:55 UTC; finalised at wrap-up)
+* **Score 2.85 (control at 0.5M) -> 10.713** (uf2r1b2_tcne5, eval 2,833,776,640: 9/9 at
+  10.5-10.7%). No finish; the pit itself is still unflown - this lineage goes AROUND it.
+* **What the start is** (measured): a platform over two kill volumes - teleport sheet *18 at z 160
+  under the whole north/east (the "north slide" ends there) and the pit's catch *7 (to z 577 south
+  of the platform). The record buys ~1,100 E in the pit and flies over both. The potential field
+  sees neither (it floats over the sheet), so it points the policy into *18.
+* **What did NOT work** (all from scratch, the incumbent recipe + one change): per-call energy
+  shaping K 12 (camps on the platform: every way off loses energy), death charge + September's
+  speed novelty (camps; September's entries came with a 5x time penalty), `--speed-equiv 1` (=
+  control), Go-Explore spawns of any kind in the pit (every archived high-energy pit state is a
+  fall that only exact steering survives: 0/96 bench episodes from four policies). Go-Explore
+  from the true spawn never leaves the pit (impacts in the bowl, not braking: the new
+  --view-follow-nobrake did not help).
+* **What worked: the princessburglar search -> curriculum loop on a route the field hides.**
+  1. GE from the true spawn found the record's POST-pit corridor (a north-south trough under the
+     platform) reachable via the platform's SW corner. A backward curriculum on that 10 s line,
+     from scratch (tc): 7.43 in 100M steps.
+  2. Per-call energy shaping at a low K (8) on the FLOWN route: 7.85 (at K 16 it collapses: the
+     energy term has no death refund, so "strafe on the platform, then die rich" pays).
+  3. GE rooted at the policy's own trough ride PUMPS the half-pipe (+345 E in ~26 s of random
+     oscillation); its states as 30% spawns (tcq) 7.95; an energy-rule curriculum on the pump
+     chain (tcpump) 8.20.
+  4. GE from the pumped states found the trough's NORTH-EAST exit (deeper than west); a depth
+     curriculum on own line + GE pump chain + GE exit (tcne) 9.65, a longer pump (tcne3) 10.26,
+     one more GE extension (tcne4/5) 10.71. Each curriculum walked 2-3.4k states back to the
+     true start in 200-400M steps when nothing in the line was a razor.
+* **The open gate: *18's NE edge.** GE12 from the 10.65% line's end found the way past *18
+  (a floor at z ~181 near x -1,006..-896, its east edge, a drop into a lower area at z ~-500, north
+  along x ~-1,100..-2,100 to 22.27% - the record's t 14 region). Every chain found lands on that
+  floor (the flight from the NE exit descends onto it; CS 1.6's bunny-hop cap keeps a hop at
+  ~300 u/s) and leaves it ~2 u above *18 at x -896: razor bands at rows 3346-3350 and 3261-3285 of
+  ne4_spine held the curriculum for ~1.6B steps (front temperature 1.0 and advance rates 0.08 ->
+  0.02 moved it from 3346 to 3261 only).
+* **Next (if this lineage continues):** resume the incumbent on ne4_spine with tau0 ~3261 and
+  look for a crossing with margin: GE rooted further back (the trough's NE side, more energy) for
+  a flight that clears the floor, or a policy-guided search (beam_tas on these weights) from the
+  floor's states. And the pit itself remains the real target: the trough is its exit corridor.
+* **New tools (all default off / bit-identical when off, tested):** explore_phase1
+  `--view-follow-nobrake`, `--admit-margin SECS` (seen-survival only); tools/ge_return_states.py
+  (`--tops`, `--not-behind-roots`). Spines and spawn files in autoresearch/spines/ (README),
+  measurement scripts in autoresearch/analysis/uf2_*.py. Harness issue: box.py pull --snapshot
+  (zero-padded names) - pull snapshots by hand.
