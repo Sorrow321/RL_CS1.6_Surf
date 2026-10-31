@@ -284,3 +284,21 @@ line kept paying as `--demo-milestones 5859`. No auto-spine (its searches could 
 greedy here, cost ~18% throughput, and a new spine with demo-rate 0 would pin the band at its end).
 Why: the frontier skill is SURVIVING and pumping the third structure up to ~1,900 u; the GE-line
 spine put 90% of spawns on the first 27 s of the route.
+* **E6 (21:27-21:45 UTC, 1.44-1.77B): 56.232 / 57.505 / 56.623 / 55.945 / 56.084** - the plateau
+  again in 330M steps (stall kills ~40%: the beam line's last 20 s are a crawl, so spawns there go
+  nowhere). Its greedy dies at 95-112 s. Traced (1,666M ep0): a west-end swing top at (-2,342,
+  1,308, 143) = 55.5%, then the swing east passes the pillar's west face at (-1,707, 1,796, -111)
+  - right where the record climbs - but on the DOWNswing (vz -640; the record hits it rising at
+  +1,396), and carries on north-east off the structure into the void (z -1,450 at (-932, 2,955)
+  where the record rides at ~-120) and the bottom teleport.
+* The frontier skill is SURVIVAL in the third structure: the record spends ~150 s there pumping E
+  ~500 -> ~2,100 (t+150..305); the policy enters at ~80 s with E ~1,000 and is dead ~25 s later,
+  still gaining energy. The objective makes dying free (no death refund on the energy term, the
+  ratchet keeps paid progress; only the lost future income argues for surviving).
+
+### E7 `zlr1b4_e7` (21:47 UTC): E6 + `--fail-pen 10`
+Resume of E6's ckpt_latest (1,764.75M, md5 7ec885e9), the same spine flags, plus the trainer's
+flat terminal penalty on death (falls, kill triggers, stall kills; truncation exempt): 10 = a fifth
+of the success bonus, a constant that reads nothing on the map. CLAUDE.md records --fail-pen 10 as
+inconclusive on cannonball scratch arms (4.3x for on one card, 8.7x against on another) - this is a
+different question (a trained policy that dies at its frontier while still gaining).
