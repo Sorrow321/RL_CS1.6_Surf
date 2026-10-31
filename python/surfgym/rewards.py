@@ -1073,6 +1073,18 @@ class RaceReward:
         self.energy_pot = 0.0
         self._en_prev = None
         self._g_en = 800.0
+        # --stall-energy EPS (zlr1b3, 2026-10-31): the stall clock also re-arms when the
+        # episode's best ENERGY HEIGHT h = z + |v|^2 / (2 g) has grown by EPS u since the clock
+        # last re-armed (cumulative, any rate), not only when one call beats the best field
+        # distance by stall_eps. An episode that is gaining energy is not stalled: on a map whose
+        # climb needs speed pumped first (ride a ramp side to side, then jump to the next) the
+        # field records come only once the speed is there. Bounded: h can only grow to z +
+        # maxvel^2 / (2 g). It also moves stagnant_mask (the same clock): a state that is
+        # gaining energy is not "stuck" for the reservoir harvest either. 0 = off: no state, the
+        # clock is the field's alone, byte-identical. Training slots only, like energy_pot.
+        self.stall_energy = 0.0
+        self._ebest = None
+        self._eref = None
         self.en_gain = 0.0
         self.en_loss = 0.0
         # --energy-pot-front B: the term is paid only BEFORE the frontier band. en_front_d is the
@@ -1279,6 +1291,14 @@ class RaceReward:
         self._en_off = None          # --energy-pot-front: no episode is latched yet
         self._g_en = float(core.config.phys.sv_gravity)
         self._best = self._d.copy()
+        if self.stall_energy > 0.0:
+            # --stall-energy: the episode's energy record and the clock's reference start at
+            # the spawn's own energy height
+            _vv = v0.astype(np.float64)
+            _h0 = (_states(core)["origin"][:, 2].astype(np.float64)
+                   + (_vv * _vv).sum(axis=1) / (2.0 * self._g_en))
+            self._ebest = _h0.copy()
+            self._eref = _h0.copy()
         if self.sr:
             if n % 2:
                 raise ValueError("--race-sr pairs envs (2k, 2k+1): needs an "
@@ -1920,6 +1940,22 @@ class RaceReward:
         sd = (-np.asarray(self.arc.arc, np.float64) if self.stall_arc else d)
         improved = sd < self._best - self.stall_eps
         self._best = np.minimum(self._best, sd)
+        _h_st = None
+        if self.stall_energy > 0.0:
+            # --stall-energy: a new energy record EPS above the clock's last re-arm also
+            # re-arms it (cumulative: the reference moves only when it fires). Ended rows hold
+            # the NEXT episode's spawn and are re-anchored below.
+            _st = _states(core)
+            _vv = _st["velocity"].astype(np.float64)
+            _h_st = (_st["origin"][:, 2].astype(np.float64)
+                     + (_vv * _vv).sum(axis=1) / (2.0 * self._g_en))
+            if self._ebest is None or self._ebest.shape != _h_st.shape:
+                self._ebest = _h_st.copy()
+                self._eref = _h_st.copy()
+            self._ebest = np.maximum(self._ebest, _h_st)
+            e_imp = self._ebest > self._eref + self.stall_energy
+            self._eref = np.where(e_imp, self._ebest, self._eref)
+            improved = improved | e_imp
         self._since = np.where(improved, 0, self._since + self.every)
         if self.d_latch > 0.0:
             self._latched |= d <= self.d_latch
@@ -1979,6 +2015,10 @@ class RaceReward:
                 self._d0[ended] = d[ended]
             self._since[ended] = 0
             self._ticks[ended] = 0
+            if _h_st is not None:
+                # --stall-energy: the new episode's record starts at its own spawn's energy
+                self._ebest[ended] = _h_st[ended]
+                self._eref[ended] = _h_st[ended]
             if self.d_latch > 0.0:
                 # ended rows already hold the NEW episode's spawn, so
                 # this both CLEARS the flag and re-arms it when that

@@ -303,6 +303,9 @@ TRAIN_ONLY = frozenset({
     "death_charge",
     # --death-charge-window: a window on that same terminal charge - TRAIN_ONLY likewise
     "death_charge_window",
+    # --stall-energy: when the TRAINING stall clock (and the trainer's eval patience) re-arms; a
+    # recording runs every episode to its own --ep-ticks - TRAIN_ONLY like eval_patience
+    "stall_energy",
     # --chunk's LEARNABLE decoder is a Parameter of the policy, so it ships
     # inside ck["policy"] and a recording reads it from there. dec_ent is a
     # loss coefficient; codebook/codebook_bias only seeded the decoder at
