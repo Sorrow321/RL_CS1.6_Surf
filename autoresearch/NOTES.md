@@ -759,3 +759,10 @@ so the policy learns to surf the pit in other directions, and the side loop's fo
   beam_tas / plan_to_bc / beam_best_states mirror it (`surfgym.core.arm_finish`). The grader
   (score.py, the operator's) reads the trainer's done flags, so a `--goal-hull` run's evals count only
   real finishes. Every arm of mine from here on runs with it.
+* Under `--goal-hull` (stamped into the snapshot by `expert_side --goal-hull`, CPU test 13:57-14:01
+  UTC): the incumbent's greedy gate (spawn seed 1) finishes REALLY in 42.60 s (the box rule: 42.46 s
+  - it crosses the empty triangle first); the 4-env beam's lineages all reached d 16 (inside the box)
+  at 42.2 s and died by 44.5 s without a real finish. The triangle is open air (point contents empty
+  from z -700 to -480 along x 3,320-3,380): a line that enters it heading south meets the real
+  diagonal curtain 220-280 u (~0.2 s) later - the policy was never trained to keep flying there,
+  because every episode ended at the box's edge.
