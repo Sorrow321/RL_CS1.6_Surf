@@ -222,3 +222,17 @@ file without a word. Workaround: scp the padded file myself, md5-checked against
   u/s. So the next gate is ENERGY, lost in one landing: princessburglar's energy-gate playbook
   (per-call energy shaping on a flown route; a GE energy search from the policy's own states
   before the loss; pick by energy; teach with --demo-success-energy).
+
+### The energy gate: tce (resume + per-call energy K 8) and GE5 from the policy's own fall (00:20 UTC)
+* tce = tc's ckpt_final (400M) resumed with the same spine and flags + `--demo-tau0 0
+  --energy-pot 8 --energy-pot-front 0 --energy-pot-front-bonus 0` (every loss of energy height
+  charged when it happens: the floor landing's -560 u costs ~-4.5), 4e8 more steps. On a flown
+  route the energy term is a price on the landing, not a reason to camp (egt camped because no
+  route paid yet).
+* GE5 = explore_phase1 (pbf flags) rooted at 29 states of tc's own greedy line BEFORE the landing
+  (ticks 100-268: the platform run and the fall; `--roots-spine --roots-keep-all`, no boost), 12
+  min: looking for a fall into the trough that keeps its energy (the line holds E ~640-660 there,
+  the record ~1,100). Then tools/energy_pick.py -> stitch_spine -> --demo-success-energy.
+* tc's greedy line (record_ckpt --dump-states, runs/uf2r1b2_lines/tc_greedy_states.npz): tick 270
+  (-2547, -2504, 533) at 1,077 u/s E 1,258 -> tick 275 on the floor (-2549, -2477, 548) at 487 u/s
+  E 696. One impact, -560 E.
