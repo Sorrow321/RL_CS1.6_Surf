@@ -921,3 +921,10 @@ own best search line, for the spread gains BC on noisy beam lines (x1) could not
   now faster than its own 36.05 s spine, so the pace no longer discriminates: next iteration = a new
   beam on x11's weights -> a faster real line -> the same pace-gated spine (x12). Hand-on for 118.807:
   ckpt_15897985024 (6.3M before; md5 a1189213; pulled).
+* Beams on x11's weights (16.050B, plain, real finish via the mirrored goal_hull): 35.37 / 35.49 / 35.43 s
+  (greedy 36.17 / 36.37 / 36.47 on spawns 0-2). x11 stopped at 16.098B (14:14).
+
+### x12 `uf2r2b4_x12` (14:15 UTC): the next pace-gated iteration
+x11's flags with spine = the 35.37 s real line (z0, 4,613 states), pace 0.02 0.3 (from the map start
+4,726 ticks = 36.25 s to d <= 100; the line 35.24 s), spawn states += z0-z2 (57,202). The loop:
+beam on the newest weights -> its best real line -> the pinned, pace-gated spine -> train ~45 min.
