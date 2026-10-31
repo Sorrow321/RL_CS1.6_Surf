@@ -3,11 +3,11 @@
  "round": 1,
  "final": false,
  "best": {
-  "score": 57.416,
-  "eval_file": "/home/steam/ar_loop/runs/zlr1b4/zlr1b4_e3/traj_1088421888.jsonl",
-  "run": "zlr1b4_e3",
-  "step": 1088421888,
-  "ckpt": "/home/steam/ar_loop/runs/zlr1b4/zlr1b4_e3/ckpt_1088421888.pt",
+  "score": 57.863,
+  "eval_file": "/home/steam/ar_loop/runs/zlr1b4/zlr1b4_e4/traj_1239941120.jsonl",
+  "run": "zlr1b4_e4",
+  "step": 1239941120,
+  "ckpt": "/home/steam/ar_loop/runs/zlr1b4/zlr1b4_e4/ckpt_1239941120.pt",
   "recipe": [
    "--energy-pot",
    "12",
@@ -56,10 +56,11 @@
    "--demo-cooldown",
    "5",
    "--demo-grow-max",
-   "40"
+   "40",
+   "--auto-spine-recheck"
   ],
-  "resume_from": "zlr1b4_e2 ckpt_latest 559415296 (md5 7c95d700)",
+  "resume_from": "zlr1b4_e3 ckpt_1088421888 (md5 3c500701) <- zlr1b4_e2 ckpt_latest 559415296 (md5 7c95d700)",
   "commit": "5d07d0df"
  },
- "summary": "Control (recipe) 0.587. E1 (per-call energy K12 + new --energy-stall 32) null. Go-Explore from the true spawn (energy cells, 12 min) reached the first trough (9.48%, exact 27.7 s line). E2 = E1 + backward curriculum on that line, from scratch: 10.85/16.38/24.03 at 302/453/529M. E3 = E2's 559M weights + --auto-spine (beam/GE from the true start on its own weights -> next spine): 35.1 (786M) / 46.9 / 55.3 / 57.42 (1088M) / 56.7 - 9/9 at 56-57% by ~100 s (record: 63% at 330 s), E up to +1,600, then a fall. Next: let the auto-spine loop run (search 2 underway)."
+ "summary": "Control (recipe) 0.587. E1 (per-call energy K12 + new --energy-stall 32) null. Go-Explore from the true spawn (energy cells, 12 min) reached the first trough (9.48%). E2 = E1 + backward curriculum on that GE line, from scratch: 24.0 at 529M. E3 = + --auto-spine: 57.4 at 1088M, then a stale spine (adopted 22 min late, ending at 31%) dragged the greedy back to 34% -> new --auto-spine-recheck. E4 = 1088M + recheck: 57.4/57.5/57.86/54.4 - a plateau at the third structure's exit (record: a landing onto a platform at z 640, 61%)."
 }

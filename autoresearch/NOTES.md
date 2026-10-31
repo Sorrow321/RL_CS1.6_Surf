@@ -216,3 +216,29 @@ Why: E2's spine ends at 9.48% while its greedy reaches 24%; 90% of its spawns ar
 `runs_ckpt.pt` = ckpt_1088421888 (md5 3c500701); the GE-line spine (success line 9.48%) restores
 from the checkpoint - the spine under which 559M -> 1,088M went 24% -> 57% by itself; E3's flags
 + `--auto-spine-recheck`, snapcopy beside it.
+* **E4 (19:57-20:24 UTC): 57.384 / 57.513 / 57.863 (1,239M) / 54.413 / 55.626 (1,391M)** - the 57%
+  level HOLDS with the recheck (E3 fell to 34% within 150M steps of the stale spine), but it is a
+  plateau: the eval frontier did not move for 375M steps, unstuck T at its 0.2 cap. Hand-on for
+  57.863: ckpt_1239941120.pt (the eval's own step, pulled). Stopped at 1,450M (ckpt_latest
+  1,438,646,272, md5 a692435c). Its search 1 (1,164M weights): branched beams to d 2,686 (57.8%),
+  i.e. the greedy's own frontier; it was in its GE stage when stopped.
+* **The 57% barrier (ANALYSIS ONLY - the record):** at t+305-306.5 the record swings the third
+  structure at E ~2,100-2,200, flies up at (-1,635, 1,539, -569) with vz +1,396, hits a wall face at
+  x ~-1,616 that takes its horizontal speed (v (0, 104, 996) at t+307: E 1,903 -> 654, a loss of
+  ~1,250 u) and rises straight onto a platform at z ~617-640 round (-1,590, 1,790): 60.9% at t+310,
+  then it climbs from there (70% at t+351 z 1,266 ... the finish at t+450). The 1,239M greedy comes
+  within 640-820 u of that platform at 80-90 s at (-1,870, 1,300, 80..275) with E 1,000-1,370, then
+  falls out of the structure (dead at 91-99 s).
+* **Why the objective blocks it:** the per-call energy potential charges that conversion of speed
+  into a stop on a higher ledge: ~1,250 u x K 12 / 1,000 = -15 reward on one call, against +3 of
+  field progress (57.85% -> 60.9%) - and the climb that pays afterwards is 40-80 s away, past the
+  20 s horizon. Energy is the resource the loops build; charging its SPENDING at the frontier is
+  wrong on any map where a ledge has to be landed.
+
+### E5 `zlr1b4_e5` (20:26 UTC): E4's 1,438.6M weights + `--energy-pot-front 0.01`
+The recipe's own form of the fix (incumbent recipe: `--energy-pot-front 0.01`): the per-call energy
+term is paid only until the episode's ratchet record reaches the frontier band (progress >= 0.99 x
+the reservoir's deepest, re-read every iteration); inside the band energy is free to spend - so
+the pumping behind the frontier stays paid and the landing at the frontier costs nothing.
+`--energy-pot-front-bonus` stays 0 (no one-time bonus: the per-call signal is what taught the
+pump). Everything else as E4 (auto-spine + recheck, snapcopy).
