@@ -536,3 +536,11 @@ on purpose: round 1 needs an exit, and the attribution comes after. Read with uf
 * The policy's own beam (4,096 envs, 8.819B weights) finishes in 43.18 s against its greedy's
   44.4-45.0 s: a search line ~1.3 s faster exists in its own distribution - the expert loop's
   (beam -> BC) starting point for round 2.
+* A13 9.75-10.20B: 9/9 at 9.746 (44.02 s) / 9.821 (43.72) / 9.897 (43.56) / 10.048 (43.70) /
+  **10.123B (42.62 s, 118.579)**; 8/9 at 9.972 and 10.199. The snapshot before the best eval is
+  ckpt_9980346368 (143M before: snapcopy copied nothing 05:54-06:04 - it copies only when
+  ckpt_latest's mtime moves, and PRUNES its own copies after 45 min, so a candidate must be
+  pulled within 45 min) and it re-records **8/9** (best 43.03 s). Every late snapshot re-recorded
+  so far is 6/9-8/9 while the evals around it read 9/9 (the recorder's spawn seed follows the
+  step; the eval's does not): the late policy finishes ~90% of its episodes, the 8.819B one 18/18.
+  Hand-on stays ckpt_8819048448.

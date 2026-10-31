@@ -3,10 +3,10 @@
  "round": 1,
  "final": false,
  "best": {
-  "score": 118.55,
-  "eval_file": "/home/steam/ar_uf2/runs/uf2r1b1/uf2r1b1_cut/traj_9670492160.jsonl",
+  "score": 118.579,
+  "eval_file": "/home/steam/ar_uf2/runs/uf2r1b1/uf2r1b1_cut/traj_10123476992.jsonl",
   "run": "uf2r1b1_cut",
-  "step": 9670492160,
+  "step": 10123476992,
   "ckpt": "/home/steam/ar_uf2/runs/uf2r1b1/uf2r1b1_cut/ckpt_8819048448.pt",
   "recipe": [
    "--death-charge",
@@ -89,7 +89,7 @@
    "1e8"
   ],
   "resume_from": "chain: uf2r1b1_dcw (scratch, 0-279M) -> dcw2 -> gsp -> tick -> turn -> turn2 -> cur (2.415B) -> loop/auto (MC line, then beam spines) -> k04 (-d 100) -> cut (k03 line cut at row 4800, resumed at ~7.4B)",
-  "commit": "d63ebf51"
+  "commit": "17a4eaf6"
  },
- "summary": "118.550 (A13 9.670B: 9/9 greedy FINISHES of surf_unitfarmer2 from the true start, best 43.51 s; record 35.17 s; first 9/9 at 8.161B, 45.00 s). Hand-on = ckpt_8819048448, the newest PULLED snapshot before the best eval, re-recorded 9/9 TWICE (seeds default and 7: 18/18, 44.44-44.96 s); the snapshots just before the 9.670B eval re-record only 8/9 (9.662B) and 6/9 (9.638B), so they were not pulled. One lineage from scratch, champion-free, no demo in training: fixed + windowed death charge, per-call energy K12, speed-bin novelty, keys T -> the pit dive (227M); greedy-row speed/turn -> first exit; tick 10->7.63 ms; backward curriculum on the policy's own Monte Carlo line (by hand) -> greedy exit (2.94B); the trainer's auto-spine loop (beams from the true start on its own weights) -> 69.2; success-d 100 and a stall cut of the 84% spine (both by hand) -> 99.7 -> 9/9. Next: the pit (8.4 s behind the record, 3.55 s of it in the pit, where late snapshots also fail); the auto_spine gain rule cannot hand back a finishing line near the goal."
+ "summary": "118.579 (A13 10.123B: 9/9 greedy FINISHES of surf_unitfarmer2 from the true start, best 42.62 s; record 35.17 s; first 9/9 at 8.161B, 45.00 s). Hand-on = ckpt_8819048448, the newest PULLED snapshot before the best eval, re-recorded 9/9 TWICE (seeds default and 7: 18/18, 44.44-44.96 s); every later snapshot re-recorded falls short (9.638B 6/9, 9.662B 8/9, 9.980B 8/9 - the newest before the best eval), so none was pulled. One lineage from scratch, champion-free, no demo in training: fixed + windowed death charge, per-call energy K12, speed-bin novelty, keys T -> the pit dive (227M); greedy-row speed/turn -> first exit; tick 10->7.63 ms; backward curriculum on the policy's own Monte Carlo line (by hand) -> greedy exit (2.94B); the trainer's auto-spine loop (beams from the true start on its own weights) -> 69.2; success-d 100 and a stall cut of the 84% spine (both by hand) -> 99.7 -> 9/9. Next: the pit (8.4 s behind the record, 3.55 s of it in the pit, where late snapshots also fail); the auto_spine gain rule cannot hand back a finishing line near the goal."
 }
