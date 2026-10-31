@@ -805,3 +805,11 @@ trigger's BOUNDING BOX; on surf_unitfarmer2 those finishes are not finishes in t
 incumbent's 118.592 eval enter the trigger's clip hull). `surfgym.zones.hull_probe(bsp)(23, origins)`
 re-checks a recording: an episode finished only if some row's origin is inside model *23's hull
 (the end trigger's model index comes from the BSP entity whose model bounds are zones.json's end).
+* Forks at the last ramp on the fixed core (CPU, prefix 39.1 s, fork 39.9 s, 80 x +-30 deg): no
+  real finish (best d 203 at 42.2 s, all dead by 5,800). Where the lines part (analysis, the
+  record as a yardstick): at 94% the policy is where the record is - (1,838, -1,341, -958) vs
+  (1,846, -1,345, -935) - with ~100 u less energy height (475 vs 572); then it curves south LATER:
+  80 u further north at 96%, 160 at 97%, 240 at 98%, 270 at 99.5% ((3,186, -1,728) vs (3,137,
+  -1,999)), i.e. aimed at the box's empty triangle the old goal test paid for, not at the west-face
+  / diagonal corner the record enters. On the fixed core only the corner pays (+50): a later
+  steering change over the final ~1.5 s for RL to learn, like round 1's last 141 u under the box.
