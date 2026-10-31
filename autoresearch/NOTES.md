@@ -103,3 +103,11 @@ the numbers). Read it before you start; append to it before you wrap up.
   a ~0.75 $/h pace, a 0.4 $/h box is half the fleet: two branches can work and two wait. Not
   worked around (PROTOCOL: never). A per-branch share (pace / K) or a lower per-box cap while
   others wait would let all four branches run one cheap box each.
+* **--strafe-share P** (new, explore_phase1; 01:52 UTC): P of fresh burst draws air-strafe (offset 0, no
+  forward key, A or D). Local 3-min A/Bs, strict same-motion energy at the record's t 1.25 / 1.5 s
+  (record 1,374 / 1,295): no-brake alone 1,259 / 1,008 (the 12-min run from the same seed: the
+  SAME numbers - the record line's coverage saturates in the first minutes), strafe-share 0.3 seed
+  0: 1,272 / 1,239 (3 states within 150 u of the record's energy), seed 1: 1,290 / 1,082,
+  + surf-hold 0.5: 1,281 / 1,016. So +15-30 u before the first ramp and a lucky line now and then;
+  the first-ramp landing (~250 u lost against the record's ~80) and everything after it are not
+  fixed by a better random prior. Kept, default off (flag off byte-identical, checked).

@@ -939,6 +939,11 @@ def explore(args) -> int:
     nb_ok = nb_choice = nb_count = vf_set_sorted = None
     # --surf-hold: which bursts surf, each burst's own (fwd, side) keys, this decision's offset-0
     # override, and the tick each env's current run was restored at (its touch is stale then)
+    st_p = float(getattr(args, "strafe_share", 0.0) or 0.0)
+    if st_p > 0.0 and vf_set is None:
+        raise SystemExit("--strafe-share needs --view-follow")
+    if not 0.0 <= st_p <= 1.0:
+        raise SystemExit("--strafe-share must be in [0, 1]")
     sh_p = float(getattr(args, "surf_hold", 0.0) or 0.0)
     if sh_p > 0.0 and vf_set is None:
         raise SystemExit("--surf-hold needs --view-follow (the surf keys are perpendicular to a "
@@ -994,6 +999,12 @@ def explore(args) -> int:
                     ch = nb_choice[oi[bad], rng.integers(0, 1 << 30, bi.size) % nb_count[oi[bad]]]
                     act[bi, 2] = ch // 3
                     act[bi, 3] = ch % 3
+        if st_p > 0.0:
+            # --strafe-share: drawn after every existing draw (the flag-off stream is untouched)
+            sel = idx[rng.random(m) < st_p]
+            vf_off[sel] = 0.0
+            act[sel, 2] = 1
+            act[sel, 3] = np.where(rng.random(sel.size) < 0.5, 0, 2)
         if sh_p > 0.0:
             # --surf-hold: drawn after every existing draw (the flag-off stream is untouched)
             sh_keys[idx, 0] = act[idx, 2]
@@ -1317,6 +1328,9 @@ def meta_dict(args, bsp, hasher, arch, it, n_goal, extra=None) -> dict:
     if getattr(args, "no_brake", False):
         # --no-brake only: the flag-off meta json is unchanged
         out["no_brake"] = True
+    if float(getattr(args, "strafe_share", 0.0) or 0.0) > 0.0:
+        # --strafe-share only: the flag-off meta json is unchanged
+        out["strafe_share"] = float(args.strafe_share)
     if float(getattr(args, "surf_hold", 0.0) or 0.0) > 0.0:
         # --surf-hold only: the flag-off meta json is unchanged
         out["surf_hold"] = float(args.surf_hold)
@@ -1989,6 +2003,12 @@ def build_parser() -> argparse.ArgumentParser:
                          "a few ticks, and an energy-gated surf line (a pit pump) needs seconds "
                          "of flight with none of those. Physics of the movement model, the "
                          "same on every map; off = byte-identical")
+    ap.add_argument("--strafe-share", type=float, default=0.0,
+                    help="with --view-follow: P in (0, 1], the share of fresh burst draws that "
+                         "AIR-STRAFE: view offset 0 from the velocity heading, no forward key, "
+                         "a strafe key (A or D, uniform) - the perpendicular wish direction, the "
+                         "engine's one way to gain speed in the air (|v|^2 + 900 per tick). Drawn "
+                         "after every other draw; 0 = off, byte-identical")
     ap.add_argument("--surf-hold", type=float, default=0.0,
                     help="with --view-follow: P in (0, 1], the share of bursts that SURF: at "
                          "every decision on which the last tick touched a surfable plane "
