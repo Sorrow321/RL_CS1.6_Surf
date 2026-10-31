@@ -513,3 +513,13 @@ on purpose: round 1 needs an exit, and the attribution comes after. Read with uf
   trainer's own `traj_<step>.jsonl` evals, the loop trains with evals off, and its gain on
   princessburglar (64.15 -> 62.11 s over many rounds) is worth ~0.07 here at 0.033 per second.
   A13 keeps training (its own evals are scored) to the wrap-up.
+* A13 8.99-9.67B: 9/9 at 8.991 (44.99 s) / 9.067 (44.41) / 9.142 (44.05) / 9.293 (43.92) / 9.369
+  (44.14) / 9.444 (43.83) / **9.670B (43.51 s, 118.550)**; 7/9 at 9.519 / 9.595, 5/9 at 9.218.
+  The curriculum reached tau 0 (the whole k02 line from the true spawn) by 9.76B.
+* Hand-on audit (greedy re-recordings on the box, record_ckpt 9 episodes): ckpt_9661579264
+  (8.9M before the 118.550 eval) **8/9** (one dies at 64.4%), best 43.65 s; ckpt_9637986304
+  **6/9**, best 44.02 s; ckpt_8819048448 **9/9 again with --seed 7** (best 44.54 s; 18/18 over
+  two seeds). The late policy's evals overstate it: 9/9 evals sit between 6/9-8/9 snapshots.
+  So the 9.6B snapshots are NOT pulled, and the hand-on for the 118.550 eval stays
+  ckpt_8819048448 (the newest pulled snapshot at or before it; PROTOCOL's rule) - 1 s slower,
+  reliable. RESULT.json says so.
