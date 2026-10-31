@@ -363,3 +363,14 @@ Box 58559243: RTX 5080 + Ryzen 9 7945HX (32 threads), 0.387 $/h, South Carolina 
   half-pipe transition is the weak gate, not loop 2.
 * GE-5 (20:47 UTC, 12 threads, 20 min): rooted at the 16 recorded states with h > -2,200 (all in
   loop 2; runs/ge/roots5b.npy) - the loop-2 exit, to extend the route like GE-4 should have.
+
+### Why the greedy's start is a coin flip: the route punishes the quick exit (20:55 UTC)
+* In the recorded 2.79B greedy, ep_0001 leaves the start ramp for the half-pipe at **7.2 s** with
+  h -2,861 (the record enters the half-pipe at ~7 s too); ep_0004 only at 72.7 s (h -2,755);
+  ep_0000 never (h max -2,808). The GE-1 line the route is built on pumps in the ramp until 17 s.
+  A quick exit jumps ahead of the arc anchor by more than its +-16-vertex window (2,048 u), so
+  the anchor freezes and the rest of the route pays nothing: the arc reward PUNISHES the
+  policy's best opening and rewards the GE line's 17 s of ramp pumping.
+* The generic fix is CLAUDE.md's xSELF construction: rebuild the route from the policy's OWN best
+  greedy episode (the deepest one, cut at its deepest point), extended by a search from its end.
+  ep_0001: 20.47% at 134.4 s, 163,875 u of arc to there, h up to -1,237.
