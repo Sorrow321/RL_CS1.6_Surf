@@ -6537,6 +6537,19 @@ def main() -> None:
                          "energy height |v|^2 / (2 g) / 1000 of that state - the speed brought to "
                          "the frontier; dying before the band forfeits it, so no stretch is ever "
                          "cheaper to die on. A checkpoint restores it. 0 = the per-call potential")
+    ap.add_argument("--energy-pot-ng", action="store_const", const=1, default=None,
+                    help="with --energy-pot: the --race-ng treatment of the energy potential. The "
+                         "stock per-call change Phi(s') - Phi(s) does not telescope under gamma "
+                         "< 1, and its residue is a bonus of ~(1 - gamma^every) * Phi(s') per call "
+                         "for being ALIVE at energy height h (unitfarmer2's greedy line at K 12: "
+                         "+0.55 reward/s against the time penalty's -0.10/s), so it pays a policy "
+                         "to take longer and to keep energy it never spends. On: each call is "
+                         "taxed (1 - gamma_tick^every) * Phi(s') and a death or a finish is charged "
+                         "the potential of its last pre-terminal state, so the discounted shaping "
+                         "over any episode is -Phi(spawn): Ng et al. 1999's invariance (Grzes 2017 "
+                         "for the terminal). The per-call change is still paid (the credit "
+                         "assignment). Truncation exempt. Refused with --energy-pot-front. Off = "
+                         "the stock form, byte-identical. Config only when set; not restored")
     ap.add_argument("--surf-bonus", type=float, default=None,     # 0 = off
                     help="race (round 40, pnSURF): REWARD UNITS PER SECOND "
                          "paid while the player is riding a surfable face. "
@@ -9401,6 +9414,13 @@ def main() -> None:
         args.energy_pot_front_bonus = 0
     if args.energy_pot_front_bonus and not args.energy_pot_front > 0.0:
         raise SystemExit("--energy-pot-front-bonus pays at the band edge: it needs --energy-pot-front B > 0")
+    if args.energy_pot_ng:
+        if not args.energy_pot > 0.0:
+            raise SystemExit("--energy-pot-ng conforms --energy-pot: it needs --energy-pot K > 0")
+        if args.energy_pot_front > 0.0 or args.energy_pot_front_bonus:
+            raise SystemExit("--energy-pot-ng with --energy-pot-front: the band latch stops the "
+                             "term mid-episode, and a stopped potential has no conformant terminal; "
+                             "run them as separate arms")
     if args.surf_bonus is None:
         args.surf_bonus = 0.0
     if args.dive_pen is None:
@@ -13759,6 +13779,10 @@ def main() -> None:
             # --energy-pot: the same, on z + |v|^2 / (2 g) (reward units per 1000 u)
             _s.reward_fn.energy_pot = float(args.energy_pot)
             _s.reward_fn.en_front_bonus = bool(args.energy_pot_front_bonus)
+            if args.energy_pot_ng:
+                # --energy-pot-ng: the per-call discount of the conformant tax
+                _s.reward_fn.energy_ng = True
+                _s.reward_fn._en_ng_g = float(GAMMA_T) ** float(_s.reward_fn.every)
             _s.reward_fn.surf_bonus = SURF_BONUS_T
             _s.reward_fn.dive_pen = DIVE_PEN_T
             _s.reward_fn.surf_hspd = float(args.surf_hspd)
@@ -14513,6 +14537,8 @@ def main() -> None:
                           if args.reward == "race" and args.energy_pot_front else {}),
                        **({"energy_pot_front_bonus": int(args.energy_pot_front_bonus)}
                           if args.reward == "race" and args.energy_pot_front_bonus else {}),
+                       **({"energy_pot_ng": 1}
+                          if args.reward == "race" and args.energy_pot_ng else {}),
                        "surf_bonus": (args.surf_bonus
                                       if args.reward == "race" else None),
                        "dive_pen": (args.dive_pen
@@ -18771,6 +18797,9 @@ def main() -> None:
                 if args.race_ng:
                     # RaceReward folds gamma**every into _ng_g at build time
                     _rf._ng_g = float(GAMMA_T) ** float(_rf.every)
+                if args.energy_pot_ng and getattr(_rf, "energy_ng", False):
+                    # --energy-pot-ng: the conformant tax follows the tick's gamma
+                    _rf._en_ng_g = float(GAMMA_T) ** float(_rf.every)
                 if not getattr(_s, "heldout", False):
                     # startup sets speed_coef on TRAINING slots only
                     _rf.speed_coef = SPEED_COEF_T

@@ -1073,6 +1073,24 @@ class RaceReward:
         self.energy_pot = 0.0
         self._en_prev = None
         self._g_en = 800.0
+        # --energy-pot-ng (uf2r2b3, 2026-10-31): the --race-ng treatment of the stock form on the
+        # energy potential. The stock per-call change Phi(s') - Phi(s) does not telescope under
+        # gamma < 1: its discounted residue is a per-call bonus of ~(1 - gamma^every) * Phi(s')
+        # for being ALIVE at energy height h - on unitfarmer2's greedy line at K 12 that is
+        # +0.55 reward/s against the time penalty's -0.10/s (12.5 vs 1.8 discounted from the
+        # spawn) - so the stock term pays a policy to take longer and to pump energy it never
+        # spends. On: per call the tax (1 - g) * Phi(s') is charged on live rows (g = the
+        # per-call discount, gamma_tick ** every, set by the trainer), and a death or a finish
+        # charges the last pre-terminal potential -Phi(s_{T-1}): over any episode the shaping
+        # then nets -Phi(spawn), a constant, and only its credit assignment remains (Ng et al.
+        # 1999; Grzes 2017 for termination). Truncation is exempt (the bootstrap carries V).
+        # The immediate per-call change is still paid, so a strafe's gain is credited on the
+        # call it happens. False = the stock form, byte-identical.
+        self.energy_ng = False
+        self._en_ng_g = 1.0
+        self._en_ng_charge = None
+        self.en_ng_tax = 0.0      # units of h taxed since pop_stats (diagnostics)
+        self.en_ng_term = 0.0     # units of h charged at terminals since pop_stats
         self.en_gain = 0.0
         self.en_loss = 0.0
         # --energy-pot-front B: the term is paid only BEFORE the frontier band. en_front_d is the
@@ -1655,6 +1673,19 @@ class RaceReward:
             r += ((self.energy_pot / 1000.0) * dh).astype(np.float32)
             self.en_gain += float(dh[dh > 0.0].sum())
             self.en_loss -= float(dh[dh < 0.0].sum())
+            if self.energy_ng:
+                # --energy-pot-ng: tax the post-step potential on live rows (an ended row's h is
+                # already the next spawn's), then charge each death and finish the potential of
+                # its last pre-terminal state (_en_prev); a truncated row pays neither
+                _k = self.energy_pot / 1000.0
+                _live = ~ended
+                _tax = np.where(_live, (1.0 - self._en_ng_g) * h, 0.0)
+                r -= (_k * _tax).astype(np.float32)
+                # the terminal charge lands AFTER the ended-row wipe below (r[ended] = 0)
+                _term = np.asarray(done, bool)
+                self._en_ng_charge = np.where(_term, _k * self._en_prev, 0.0).astype(np.float32)
+                self.en_ng_tax += float(_tax.sum())
+                self.en_ng_term += float(self._en_prev[_term].sum()) if _term.any() else 0.0
             self._en_prev = h
         if self.dip_speed_coef > 0.0 and self._rec is not None and self.arc is None:
             # `_rec` already holds this state's record (updated above), so
@@ -1714,6 +1745,9 @@ class RaceReward:
         # bonus); outcome pays instead
         r[ended] = 0.0
         r[goal] += self.success_bonus
+        if self.energy_ng and self.energy_pot > 0.0:
+            # --energy-pot-ng: a death or a finish charges its last pre-terminal energy potential
+            r -= self._en_ng_charge
         if self.finish_k > 0.0 and goal.any():
             tsec = (self._ticks[goal].astype(np.float64)
                     + float(self.every)) / (1000.0 / self.tick_ms)
@@ -2216,6 +2250,11 @@ class RaceReward:
             out["en_gain_per_ep"] = (self.en_gain / n_ep) if n_ep else float("nan")
             out["en_loss_per_ep"] = (self.en_loss / n_ep) if n_ep else float("nan")
             self.en_gain = self.en_loss = 0.0
+            if self.energy_ng:
+                # --energy-pot-ng: the tax and the terminal charge (units of h) per ended episode
+                out["en_ng_tax_per_ep"] = (self.en_ng_tax / n_ep) if n_ep else float("nan")
+                out["en_ng_term_per_ep"] = (self.en_ng_term / n_ep) if n_ep else float("nan")
+                self.en_ng_tax = self.en_ng_term = 0.0
             if self._en_off is not None:
                 # --energy-pot-front: the share of envs whose episode is past the band edge now
                 out["en_off_frac"] = float(self._en_off.mean())
