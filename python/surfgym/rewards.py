@@ -1144,6 +1144,18 @@ class RaceReward:
         self._dc: np.ndarray | None = None
         self._best: np.ndarray | None = None
         self._since: np.ndarray | None = None
+        # --stall-energy EPS (zlr1b1, 2026-10-31): the stall timer ALSO re-arms when the
+        # episode's energy height h = z + |v|^2 / (2 g) has risen by more than EPS u since the
+        # last energy re-arm (cumulative, any rate: _hst is the h at that re-arm, or at the
+        # episode's start). Pumping speed against the field (a loop: riding a ramp side to side
+        # until the speed carries to the next one) is progress the field cannot see; without
+        # this it is killed after --stall-secs and, through stagnant_mask, never harvested.
+        # Energy is bounded (sv_maxvelocity, the map's height), so it cannot re-arm forever.
+        # 0 = off: no state, no branch (the trainer sets the attribute on training slots).
+        self.stall_energy = 0.0
+        self._hst: np.ndarray | None = None
+        self.se_rearm = 0          # env-calls re-armed by energy alone, since pop_stats
+        self.se_rearm_all = 0      # env-calls re-armed by either channel, since pop_stats
         self._ticks: np.ndarray | None = None
         self._counts: np.ndarray | None = None   # global cell visit counts
         self._pending_counts: np.ndarray | None = None
@@ -1278,6 +1290,7 @@ class RaceReward:
         self._en_prev = None         # --energy-pot re-anchors on the first call
         self._en_off = None          # --energy-pot-front: no episode is latched yet
         self._g_en = float(core.config.phys.sv_gravity)
+        self._hst = None             # --stall-energy re-anchors on the first call
         self._best = self._d.copy()
         if self.sr:
             if n % 2:
@@ -1920,6 +1933,19 @@ class RaceReward:
         sd = (-np.asarray(self.arc.arc, np.float64) if self.stall_arc else d)
         improved = sd < self._best - self.stall_eps
         self._best = np.minimum(self._best, sd)
+        if self.stall_energy > 0.0:
+            # --stall-energy: the energy channel (cumulative: h above the anchor by EPS). Ended
+            # rows hold the NEXT episode's spawn: they re-anchor in the `ended` block below.
+            vve = v.astype(np.float64)
+            hse = (_states(core)["origin"][:, 2].astype(np.float64)
+                   + (vve * vve).sum(axis=1) / (2.0 * self._g_en))
+            if self._hst is None or self._hst.shape != hse.shape:
+                self._hst = hse.copy()
+            gain_h = hse > self._hst + self.stall_energy
+            self._hst = np.where(gain_h, hse, self._hst)
+            self.se_rearm += int((gain_h & ~improved & ~ended).sum())
+            improved = improved | gain_h
+            self.se_rearm_all += int((improved & ~ended).sum())
         self._since = np.where(improved, 0, self._since + self.every)
         if self.d_latch > 0.0:
             self._latched |= d <= self.d_latch
@@ -1978,6 +2004,9 @@ class RaceReward:
             if self._d0 is not None:
                 self._d0[ended] = d[ended]
             self._since[ended] = 0
+            if self.stall_energy > 0.0 and self._hst is not None:
+                # --stall-energy: the new episode's anchor is its own spawn's h
+                self._hst[ended] = hse[ended]
             self._ticks[ended] = 0
             if self.d_latch > 0.0:
                 # ended rows already hold the NEW episode's spawn, so
@@ -2219,6 +2248,12 @@ class RaceReward:
             if self._en_off is not None:
                 # --energy-pot-front: the share of envs whose episode is past the band edge now
                 out["en_off_frac"] = float(self._en_off.mean())
+        if self.stall_energy > 0.0:
+            # --stall-energy: the share of stall-timer re-arms that the energy channel alone
+            # made (the field did not) - how much of the training is pumping against the field
+            out["en_stall_frac"] = (self.se_rearm / self.se_rearm_all if self.se_rearm_all
+                              else float("nan"))
+            self.se_rearm = self.se_rearm_all = 0
         if self.arc is not None:
             out["arc_gain"] = (float(np.mean(self.arc_gain))
                                if self.arc_gain else float("nan"))
