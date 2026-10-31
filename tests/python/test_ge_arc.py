@@ -79,3 +79,23 @@ def test_the_recorder_lists_the_keys_as_training_only():
     sys.path.insert(0, str(ROOT / "tools"))
     import record_ckpt as rc
     assert {"ge_arc", "ge_arc_minutes"} <= set(rc.TRAIN_ONLY)
+
+
+def test_no_race_ratchet_leaves_the_default_unset():
+    """--no-race-ratchet shares race_ratchet's dest: registered with default None after the
+    original, the default stays None (a store_false registered first would turn the ratchet ON
+    for every run that passes neither flag)."""
+    src = (ROOT / "python" / "train_fast.py").read_text(encoding="utf-8")
+    a = src.index('"--race-ratchet", action="store_true", default=None')
+    b = src.index('"--no-race-ratchet", dest="race_ratchet", action="store_false"')
+    assert a < b
+    blk = src[b: b + 200]
+    assert "default=None" in blk
+
+
+@needs_map
+def test_ge_arc_without_the_ratchet_flag_is_not_refused_for_the_ratchet():
+    # refused LATER (an invalid --ge-frac), so a ratchet ON by default would show up first
+    rc, out = _refusal(["--ge-arc", "1500", "--ge-minutes", "1", "--ge-frac", "2"])
+    assert rc != 0 and "--ge-frac must be in (0, 1)" in out
+    assert "--no-race-ratchet" not in out

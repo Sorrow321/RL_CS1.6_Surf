@@ -5091,9 +5091,6 @@ def main() -> None:
                          "gradient unless it finished or ended within eps "
                          "of the farther) as a 0/1 advantage weight on the "
                          "part of the episode inside the current buffer")
-    ap.add_argument("--no-race-ratchet", dest="race_ratchet", action="store_false",
-                    help="turn --race-ratchet OFF (a preset or a checkpoint that carries it); "
-                         "--race-arc refuses the ratchet as a second treatment of the same defect")
     ap.add_argument("--race-ratchet", action="store_true", default=None,
                     help="race: pay only NEW progress RECORDS inside an "
                          "episode. The episode keeps b = the smallest "
@@ -5117,6 +5114,10 @@ def main() -> None:
                          "detector and the respawn stagnant mask all keep "
                          "the RAW d. Mutually exclusive with --race-latch/"
                          "--race-dfloor/--race-arc/--race-ng. ckpt restores")
+    ap.add_argument("--no-race-ratchet", dest="race_ratchet", action="store_false",
+                    default=None,
+                    help="turn --race-ratchet OFF (a preset or a checkpoint that carries it); "
+                         "--race-arc refuses the ratchet as a second treatment of the same defect")
     ap.add_argument("--no-dip-diag", action="store_true",
                     help="turn OFF the dip/* diagnostic (it is ON by "
                          "default on every race arm, costs no reward term "
