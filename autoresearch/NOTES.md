@@ -325,3 +325,11 @@ on purpose: round 1 needs an exit, and the attribution comes after. Read with uf
   spine would have been taken). Training: the reservoir's deepest 59.32% of d0 = **40.7%**,
   front-perturb best 12,478 u (40.7%) - the stochastic frontier is 3x the greedy's.
   Hand-on snapshot pulled: ckpt_3749183488 (9M before the eval; md5 8771e806...).
+* **A11 3,985M: 38.339 (01:20 UTC)** - best 38.3%, median 34.5%: 8/9 greedy episodes leave the
+  pit (~10.6 s), cross `*18`, pass its west edge and fly on to 32.8-38.3% by ~24-26 s round
+  (530..2,510, 3,290..3,610) - the record's ~t+16 region (31.3% at t+15) - then fall (z ~-860);
+  1/9 back on `*18` (6.5%). The jump came between the 3,910M eval (12.457) and this one, with no
+  new spine (search 3 had not run): the policy itself extended past the `*8` sheet.
+  snapcopy had silently stopped copying at 01:12 (3,857M; restarted 01:21), so the snapshots
+  either side of the eval are 3,857M (pre-jump) and 4,050M (saved by hand, md5 66760a96...; its
+  own fresh 9-episode greedy recording: 23.85% best / 23.6% median). Both pulled.
