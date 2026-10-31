@@ -209,3 +209,16 @@ file without a word. Workaround: scp the padded file myself, md5-checked against
   --demo-front-temp 0.5 --demo-front-ticks 40 --demo-front-view 6 --demo-match-band
   --no-respawn-novel --respawn-backward-mix 0 --int-real-only 0 --ckpt-every 5e7`, 4e8 from
   scratch (princessburglar's curriculum set; the curriculum refuses novel / backward-mix rows).
+* **tc result (4e8, 23:50-00:14 UTC): 7.425, the round's best so far.** Evals 2.69 / 3.76 /
+  **7.43 (101M)** / 7.36 / 7.42 / 7.31 / 7.28 / 7.33 at 0.5-352M - every eval from 101M on has
+  9/9 episodes at 7.1-7.4%. The curriculum walked from the spine's end to its start in ~100M
+  steps (`demo starts [0,1011] ... success 99.3% over 500 eps`). Hand-off snapshot
+  ckpt_0100663296.pt (md5 3360a70e) pulled by hand (the harness issue above).
+* The greedy line at 352M, 5.4 s (faster than the 10 s search line): runs SW on the platform
+  strafing (E 1,192 -> 1,325), drops off the corner, **lands on the z-548 floor at t 2.75 (E
+  1,177 -> 623: half its energy in one impact)**, rides the trough bottom north at ~745 u/s, leaves
+  west at z ~300 and falls onto *18 at (-2,725, -1,355) at 7.3%. The record leaves the trough at
+  z ~490 and ~1,000 u/s and clears *18's west edge (x -3,456); from z 300 that edge needs ~1,700
+  u/s. So the next gate is ENERGY, lost in one landing: princessburglar's energy-gate playbook
+  (per-call energy shaping on a flown route; a GE energy search from the policy's own states
+  before the loss; pick by energy; teach with --demo-success-energy).
