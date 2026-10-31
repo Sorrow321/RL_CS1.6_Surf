@@ -485,3 +485,13 @@ on purpose: round 1 needs an exit, and the attribution comes after. Read with uf
   md5 d8d47113...), VERIFIED by its own greedy recording on the box (record_ckpt, 9 episodes):
   **9/9 finishes, 44.74-45.52 s, score 118.509** (`runs/uf2r1b1_cut/verify/greedy_8152154112.jsonl`).
   Next: the time (record 35.17 s; the greedy is ~10 s slower).
+* Manual search m1 (beside A13 on the 8.081B weights, 04:23-04:31): its beam reached d 63 (no
+  finish); the energy stage had started its GE (roots before losses of 227 / 216 / 106 u at ticks
+  4,160 / 5,144 / 5,428) when the greedy finished on its own - stopped (kill by pid).
+* ANALYSIS (the record as an instrument only): split times by best field progress, the record
+  vs the 8.152B greedy (median of 9): 2% 8.33 vs 11.88 s (**+3.55 s in the start pit** - the
+  greedy's energy laps vs the record's direct exit), 40% 18.88 vs 23.69 (+1.26 over 2-40%), 60%
+  25.26 vs 31.23 (+1.17), 70% 29.29 vs 36.88 (**+1.61 over 60-70%**), 90% 34.38 vs 42.68 (+0.71),
+  100% 36.76 vs 45.16 (+0.10 on the final approach) - 8.4 s in all, 42% of it in the pit. The
+  score's time term is 10 x (1 - t/300): the record's pace is worth +0.33 over 45 s; 9/9 is worth
+  far more than speed (one failure costs 1.1), so the hand-on is always the best EVAL.
