@@ -4111,9 +4111,23 @@ def make_eval_stall_hook(core, field, stall_ticks, stall_eps, every, env=0):
     return hook
 
 
-def make_eval_patience_hook(core, field, patience_ticks, eps=32.0, env=0):
+def _eval_energy_h(core, sl):
+    """--energy-stall: energy height h = z + |v|^2 / (2 g) of the eval core's envs ``sl``."""
+    st = core.states_view
+    vv = st["velocity"][sl].astype(np.float64)
+    g = float(core.config.phys.sv_gravity)
+    return st["origin"][sl, 2].astype(np.float64) + (vv * vv).sum(axis=-1) / (2.0 * g)
+
+
+def make_eval_patience_hook(core, field, patience_ticks, eps=32.0, env=0, energy_eps=0.0):
     """``record_rollout`` on_tick for --eval-patience: end an EVAL episode whose best
     field progress has not grown by ``eps`` units over ``patience_ticks`` physics ticks.
+
+    ``energy_eps`` > 0 (--energy-stall): the clock ALSO re-arms when the episode's best
+    energy height z + |v|^2 / (2 g) has risen ``energy_eps`` above its value at the last
+    energy re-arm (the same cumulative rule), so a line pumping a ramp for speed - which
+    the field cannot see - is not cut while it is still gaining energy. 0 = the field
+    alone, exactly as before.
 
     Why it exists. Without a time penalty the greedy line often stops somewhere safe
     and lives to the --ep-ticks cap: on sidistic (r3b3_gwx2, 8.72B) 5 of 9 eval
@@ -4133,11 +4147,15 @@ def make_eval_patience_hook(core, field, patience_ticks, eps=32.0, env=0):
     indices of the episodes, in recording order, that ended by it).
     """
     st = {"ref": None, "best": None, "since": 0, "ep": 0, "n": 0, "killed": []}
+    if energy_eps > 0.0:
+        st["eref"] = st["ebest"] = None
     lim = float(field.reach_max) - 0.5 * float(field.cell)
 
     def hook(t, states, rewards, done, trunc):
         if bool(done[env]) or bool(trunc[env]):
             st["ref"] = st["best"] = None
+            if energy_eps > 0.0:
+                st["eref"] = st["ebest"] = None
             st["since"] = 0
             st["ep"] += 1
             return
@@ -4147,12 +4165,22 @@ def make_eval_patience_hook(core, field, patience_ticks, eps=32.0, env=0):
             core.states_view["origin"][env:env + 1].astype(np.float64))[0])
         if not d < lim:
             d = float("inf")
+        if energy_eps > 0.0:
+            h = float(_eval_energy_h(core, slice(env, env + 1))[0])
         if st["ref"] is None:            # first tick of the episode: arm it
             st["ref"] = st["best"] = d
+            if energy_eps > 0.0:
+                st["eref"] = st["ebest"] = h
             return
         st["best"] = min(st["best"], d)
+        if energy_eps > 0.0:
+            st["ebest"] = max(st["ebest"], h)
         if st["best"] < st["ref"] - eps:
             st["ref"] = st["best"]
+            st["since"] = 0
+            return
+        if energy_eps > 0.0 and st["ebest"] > st["eref"] + energy_eps:
+            st["eref"] = st["ebest"]
             st["since"] = 0
             return
         st["since"] += 1
@@ -4169,16 +4197,21 @@ def make_eval_patience_hook(core, field, patience_ticks, eps=32.0, env=0):
     return hook
 
 
-def make_eval_patience_hook_par(core, field, patience_ticks, n_envs, eps=32.0):
+def make_eval_patience_hook_par(core, field, patience_ticks, n_envs, eps=32.0,
+                                energy_eps=0.0):
     """make_eval_patience_hook for a recording whose episodes run SIDE BY SIDE
     (--eval-parallel, record_rollout_parallel): env i's FIRST episode is episode i, the
     same cumulative rule per env, and an env is let go once that episode ends (the core
     autoresets it in place; the recorder no longer records it). ``hook.state["killed"]``
-    holds the episode (= env) indices the rule ended, in kill order."""
+    holds the episode (= env) indices the rule ended, in kill order. ``energy_eps`` > 0
+    (--energy-stall): an energy-height record re-arms the clock too, as in
+    make_eval_patience_hook."""
     n = int(n_envs)
     lim = float(field.reach_max) - 0.5 * float(field.cell)
     st = {"ref": None, "best": None, "since": np.zeros(n, np.int64),
           "live": np.ones(n, bool), "n": 0, "killed": []}
+    if energy_eps > 0.0:
+        st["eref"] = st["ebest"] = None
 
     def hook(t, states, rewards, done, trunc):
         live = st["live"]
@@ -4188,13 +4221,23 @@ def make_eval_patience_hook_par(core, field, patience_ticks, n_envs, eps=32.0):
         d = np.asarray(field.sample(
             core.states_view["origin"][:n].astype(np.float64)), np.float64)
         d = np.where(d < lim, d, np.inf)
+        if energy_eps > 0.0:
+            h = _eval_energy_h(core, slice(0, n))
         if st["ref"] is None:            # the first tick of every episode: arm them
             st["ref"], st["best"] = d.copy(), d.copy()
+            if energy_eps > 0.0:
+                st["eref"], st["ebest"] = h.copy(), h.copy()
             return
         best = np.minimum(st["best"], d)
         st["best"] = best
         gain = best < st["ref"] - eps
         st["ref"] = np.where(gain, best, st["ref"])
+        if energy_eps > 0.0:
+            ebest = np.maximum(st["ebest"], h)
+            st["ebest"] = ebest
+            egain = ebest > st["eref"] + energy_eps
+            st["eref"] = np.where(egain, ebest, st["eref"])
+            gain = gain | egain
         since = st["since"]
         since[gain] = 0
         since[~gain & live] += 1
@@ -6606,6 +6649,16 @@ def main() -> None:
     ap.add_argument("--stall-secs", type=float, default=None,     # 15
                     help="race: kill an episode whose distance-to-finish "
                          "best hasn't improved for this long (0 = off)")
+    ap.add_argument("--energy-stall", type=float, default=None,   # 0 = off
+                    help="race: ENERGY HEIGHT counts as progress for the stall rules - the "
+                         "training stall kill (--stall-secs) and the greedy eval's "
+                         "--eval-patience both re-arm when the episode's best h = z + "
+                         "|v|^2 / (2 g) has risen EPS units above its value at the last "
+                         "energy re-arm (cumulative, any rate). A surfer pumping a ramp or a "
+                         "loop for speed makes no field progress while it builds the energy "
+                         "it needs; the field-only rules end it. Nothing adds energy at rest, "
+                         "at a constant speed or in free fall, so those still stall. A "
+                         "checkpoint restores it. 0 = off (the field alone)")
     ap.add_argument("--stall-arc", type=int, default=None,        # 0
                     help="race + --race-arc: 1 = the stall detector watches the ROUTE ARC (a "
                          "new record along the route by more than --stall-eps in one call "
@@ -7986,6 +8039,10 @@ def main() -> None:
         if args.stall_arc is None and ck_cfg.get("stall_arc") is not None:
             args.stall_arc = int(ck_cfg["stall_arc"])
             restored.append(f"stall_arc={args.stall_arc}")
+        if args.energy_stall is None and ck_cfg.get("energy_stall") is not None:
+            # --energy-stall: a stall CONDITION, carried across a resume like stall_secs
+            args.energy_stall = float(ck_cfg["energy_stall"])
+            restored.append(f"energy_stall={args.energy_stall:g}")
         if args.max_step is None and ck_cfg.get("max_step") is not None:
             args.max_step = float(ck_cfg["max_step"])
             restored.append(f"max_step={args.max_step:g}")
@@ -9459,6 +9516,12 @@ def main() -> None:
         args.stall_eps = 32.0                 # RaceReward's own default
     if args.stall_arc is None:
         args.stall_arc = 0
+    if args.energy_stall is None:
+        args.energy_stall = 0.0
+    if args.energy_stall < 0.0:
+        raise SystemExit(f"--energy-stall EPS needs EPS >= 0 (0 = off), got {args.energy_stall:g}")
+    if args.energy_stall > 0.0 and args.reward != "race":
+        raise SystemExit("--energy-stall re-arms the race reward's stall rule: it needs --reward race")
     args.stall_arc = int(args.stall_arc)
     if args.stall_arc not in (0, 1):
         raise SystemExit("--stall-arc is 0 or 1")
@@ -13793,6 +13856,8 @@ def main() -> None:
             # --energy-pot: the same, on z + |v|^2 / (2 g) (reward units per 1000 u)
             _s.reward_fn.energy_pot = float(args.energy_pot)
             _s.reward_fn.en_front_bonus = bool(args.energy_pot_front_bonus)
+            # --energy-stall: energy records re-arm the training stall clock (0 = off)
+            _s.reward_fn.stall_energy = float(args.energy_stall)
             _s.reward_fn.surf_bonus = SURF_BONUS_T
             _s.reward_fn.dive_pen = DIVE_PEN_T
             _s.reward_fn.surf_hspd = float(args.surf_hspd)
@@ -13915,6 +13980,11 @@ def main() -> None:
     if EVAL_PATIENCE:
         print(f"--eval-patience: a greedy eval episode ends once its best field progress "
               f"has not grown by 32u for {args.eval_patience:g}s ({EVAL_PATIENCE:,} ticks)")
+    if args.reward == "race" and float(args.energy_stall) > 0.0:
+        print(f"--energy-stall {args.energy_stall:g}: an energy-height record "
+              f"(z + |v|^2 / 2g, {args.energy_stall:g}u above the last energy re-arm, "
+              f"cumulative) re-arms the training stall kill"
+              + (" and the eval patience clock" if EVAL_PATIENCE else ""))
     retn = ReturnNorm()
     if RETN:
         print(f"--ret-norm: the critic predicts NORMALIZED returns "
@@ -15252,6 +15322,9 @@ def main() -> None:
     # --eval-patience: written ONLY when on, like the greedy pool above
     if EVAL_PATIENCE:
         meta["config"]["eval_patience"] = float(args.eval_patience)
+    # --energy-stall: written ONLY when on, like the patience rule above
+    if args.reward == "race" and float(args.energy_stall) > 0.0:
+        meta["config"]["energy_stall"] = float(args.energy_stall)
     # --eval-parallel: written ONLY when on, like the patience rule above
     if N_EVAL_PAR:
         meta["config"]["eval_parallel"] = 1
@@ -21339,11 +21412,16 @@ def main() -> None:
                     _ghdr = {**_ghdr, "eval_parallel": 1}
                 if EVAL_PATIENCE and _s.goal_field is not None:
                     _ghdr = {**_ghdr, "eval_patience": float(args.eval_patience)}
-                    _ev_pat = (make_eval_patience_hook_par(_s.eval_core, _s.goal_field,
-                                                           EVAL_PATIENCE, N_EVAL_PAR)
+                    if float(args.energy_stall) > 0.0:
+                        # --energy-stall: the cut rule also watched the energy height
+                        _ghdr = {**_ghdr, "energy_stall": float(args.energy_stall)}
+                    _ev_pat = (make_eval_patience_hook_par(
+                                   _s.eval_core, _s.goal_field, EVAL_PATIENCE, N_EVAL_PAR,
+                                   energy_eps=float(args.energy_stall))
                                if N_EVAL_PAR else
                                make_eval_patience_hook(_s.eval_core, _s.goal_field,
-                                                       EVAL_PATIENCE))
+                                                       EVAL_PATIENCE,
+                                                       energy_eps=float(args.energy_stall)))
                     _ev_tick = chain_ticks(_ev_tick, _ev_pat)
                 _rg_cap = GREEDY is not None and not _s.heldout
                 if _rg_cap:

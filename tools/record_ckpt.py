@@ -141,6 +141,10 @@ TRAIN_ONLY = frozenset({
     # --eval-patience: the TRAINER's eval-time cost rule (cut an eval episode that stopped
     # gaining); a recording runs every episode to its own --ep-ticks, the honest full line
     "eval_patience",
+    # --energy-stall: energy records re-arm the TRAINING stall kill and the trainer's eval
+    # patience clock - both TRAINER rules; a recording runs to its own --ep-ticks (and its
+    # optional --eval-stall mirror refuses such a checkpoint below rather than half-mirror it)
+    "energy_stall",
     # --eval-parallel: how the TRAINER schedules its eval episodes (side by side on a wider
     # eval core); a recording flies its own episodes, the policy and the starts are the same
     "eval_parallel",
@@ -2558,6 +2562,10 @@ def main(argv=None, build_only: bool = False, device=None):
             raise SystemExit("--eval-stall on a --stall-arc checkpoint: the recording's stall "
                              "hook watches the field, the run's training kill watched the route "
                              "arc - not mirrored")
+        if cfg.get("energy_stall"):
+            raise SystemExit("--eval-stall on an --energy-stall checkpoint: the recording's "
+                             "stall hook watches the field alone, the run's training kill also "
+                             "re-armed on energy records - not mirrored")
         _stall_ticks = TICK.secs_to_ticks(float(cfg.get("stall_secs") or 15.0))
         # train_fast: `every = KH if --reward-per-decision else 1`, and
         # KH = act_every * max(1, chunk)

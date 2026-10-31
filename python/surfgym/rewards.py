@@ -1089,6 +1089,20 @@ class RaceReward:
         # on the way (so dying before the band forfeits it and is never the cheaper end; the
         # kinetic part, not z, so the map's coordinate origin does not enter)
         self.en_front_bonus = False
+        # --energy-stall EPS (zlr1b4, 2026-10-31): ENERGY HEIGHT counts as progress for the stall
+        # detector. The field watches where the player is; a surfer pumping a ramp for speed (a
+        # loop, a half-pipe) makes no field progress while it builds the energy it needs, and the
+        # field-only rule kills it after --stall-secs. With EPS > 0 the stall clock also re-arms
+        # when the episode's best h = z + |v|^2 / (2 g) has risen EPS above its value at the last
+        # energy re-arm - CUMULATIVE, at any rate (the --eval-patience rule), because a strafe adds
+        # at most ~0.5 u of h per frame and no single call clears a per-call threshold. A player
+        # that adds no energy (standing, circling at a constant speed, free fall: GoldSrc's
+        # half-step gravity keeps h exactly) re-arms nothing, so the kill still fires there.
+        # 0 = off: no state, nothing computed, bit-identical. Set by the trainer on every slot
+        # whose stall rule it drives; _se_ref / _se_best are per-env, re-anchored at each spawn.
+        self.stall_energy = 0.0
+        self._se_ref = None
+        self._se_best = None
         # --surf-bonus / --dive-pen (round 40, pnSURF): "surfing = good,
         # diving = bad" as a dense per-tick term. Both are REWARD UNITS PER
         # SECOND on the flag; the trainer converts to per-tick. 0/0 is off
@@ -1254,6 +1268,15 @@ class RaceReward:
             key = key * self.int_heading + hb
         return key
 
+    def _energy_h(self, core) -> np.ndarray:
+        """Energy height h = z + |v|^2 / (2 g) per env (float64), g = the core's sv_gravity -
+        the --energy-pot quantity, for the --energy-stall clock."""
+        st = _states(core)
+        vv = st["velocity"].astype(np.float64)
+        g = float(getattr(getattr(getattr(core, "config", None), "phys", None),
+                          "sv_gravity", 0.0) or self._g_en)
+        return st["origin"][:, 2].astype(np.float64) + (vv * vv).sum(axis=1) / (2.0 * g)
+
     def _clamp(self, d: np.ndarray) -> np.ndarray:
         """d_eff = max(d, d_floor). Off (0) returns the array unchanged, so
         the control path allocates and computes exactly what it always did."""
@@ -1321,6 +1344,10 @@ class RaceReward:
             self._rec_boot = self._rec.copy()
         self._since = np.zeros(n, np.int64)
         self._ticks = np.zeros(n, np.int64)
+        if self.stall_energy > 0.0:
+            # --energy-stall: the energy clock starts at each episode's own spawn energy
+            self._se_ref = self._energy_h(core)
+            self._se_best = self._se_ref.copy()
         if self.dip:
             # the accumulator survives a re-reset (it is drained per
             # iteration, not per reset); only the per-env record restarts
@@ -1920,6 +1947,18 @@ class RaceReward:
         sd = (-np.asarray(self.arc.arc, np.float64) if self.stall_arc else d)
         improved = sd < self._best - self.stall_eps
         self._best = np.minimum(self._best, sd)
+        if self.stall_energy > 0.0:
+            # --energy-stall: an energy record EPS above the last energy re-arm also re-arms the
+            # clock (cumulative). Ended rows hold the NEXT episode's spawn: they are re-anchored
+            # in the `ended` block below and their verdict here is irrelevant (since := 0 there)
+            h = self._energy_h(core)
+            if self._se_ref is None or self._se_ref.shape != h.shape:
+                self._se_ref = h.copy()
+                self._se_best = h.copy()
+            self._se_best = np.maximum(self._se_best, h)
+            egain = self._se_best > self._se_ref + self.stall_energy
+            self._se_ref = np.where(egain, self._se_best, self._se_ref)
+            improved = improved | egain
         self._since = np.where(improved, 0, self._since + self.every)
         if self.d_latch > 0.0:
             self._latched |= d <= self.d_latch
@@ -1979,6 +2018,11 @@ class RaceReward:
                 self._d0[ended] = d[ended]
             self._since[ended] = 0
             self._ticks[ended] = 0
+            if self.stall_energy > 0.0 and self._se_ref is not None:
+                # --energy-stall: the new episode's clock starts at its own spawn energy
+                h_new = self._energy_h(core)
+                self._se_ref[ended] = h_new[ended]
+                self._se_best[ended] = h_new[ended]
             if self.d_latch > 0.0:
                 # ended rows already hold the NEW episode's spawn, so
                 # this both CLEARS the flag and re-arms it when that
