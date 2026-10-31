@@ -140,3 +140,37 @@ the numbers). Read it before you start; append to it before you wrap up.
   same two boxes for 6 h; this branch has had no GPU minute this round. A pace that admits two
   ~0.4 $/h boxes for four branches, with 6-h arms allowed, can starve half the branches for a
   whole 12-h round.
+
+### Round 1 lesson, uf2r1b4 (wrap-up 2026-10-31 09:00 UTC): no GPU minute; the wall is measured
+* **No box all round.** `box.py rent` was refused every 1-2 min from 21:46 to 08:15 UTC on the fleet
+  budget pace (burn 0.79 $/h against a limit of 0.815-0.823, the same two boxes the whole night;
+  cheapest acceptable offers 0.196-0.467 $/h). No run, no eval, no score. See "Harness issue"
+  above: four branches, a pace for two ~0.4 $/h boxes, 6-h arms allowed.
+* **What this branch measured instead (CPU, analysis only; the record as a ruler/bench start):**
+  1. On the grader's field the September "north dead end" reads 9.27 %, and the record passes
+     9.27 % only ~11.3 s in. The pit itself is negative progress.
+  2. The start region is 99.46 % mirror-symmetric about x = -2176. The 9.3 % death is the EAST
+     side exit falling on the z 160 kill slab (x -3456..-896, y -2400..-448); the record takes the
+     WEST exit at the slab's outer edge and drops under the y ~-424 wall into the north room.
+  3. `autoresearch/analysis/uf2_mpc_exit_bench.py`: from the record's north-end state (10.0 s),
+     a progress MPC reaches the north room (16-18 %) at E 1,100-1,125 (3/3 at 8 and 10 ms),
+     1/3-2/3 at 1,060, 0-1/3 at 1,030, 0 at <= 1,000 (falls on the slab at 7.6-8.9 % or stalls
+     at 6-7.6 %). **The start is a ~100 u net energy budget** (spawn 1,188; record nets -63).
+  4. The bowl under the slab reaches the flight level only at its SOUTH end: the line laps the
+     bowl, climbs out heading north and flies north over the slab (the field inside the bowl
+     points south, correctly).
+  5. GE with the pbf flags (6 min, 2 threads) fills the pit (377k cells) but loses the bowl's
+     energy after ~4 s and holds no south-end climb with E >= 900; a progress MPC from the true
+     spawn never dives. refs/pb_r26 zero-shot on this map dithers at ~100 u/s and dies at 2.4 %.
+* **What the next round should run first** (prepared and CPU-smoke-tested here, never on a GPU):
+  energy-management arms, because the gate is energy, not route:
+  * `uf2r1b4_sk12`: scratch, the recipe + `--tick-ms 7.63 --energy-pot 12 --energy-pot-front 0
+    --energy-pot-front-bonus 0` (the record's 131 fps: ~+40 % air-strafe energy per second; per-call
+    shaping charges every landing and pays every strafe);
+  * `uf2r1b4_pbw1`: refs/pb_r26 warm (`runs/uf2r1b4/_init/pb26_uf2_init.pt`, md5 e2b2315f: pb_r26 with
+    princessburglar's run state and curricula dropped), `--resume`, `--map maps/surf_unitfarmer2.bsp
+    --lr 1e-4 --ep-ticks 30000` + the recipe's training flags (its own K = 12 per-call shaping and
+    7.64 ms tick restored). Its yaw sigma is 0.017 (yaw entropy 0 in the checkpoint).
+  Read every eval with `autoresearch/analysis/uf2_eval_lines.py` (E at the pit's north end, side,
+  north room): an arm is improving when that energy rises toward ~1,060-1,100 even before the
+  score moves off ~9.3 %.

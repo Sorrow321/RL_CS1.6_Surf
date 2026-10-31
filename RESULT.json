@@ -1,3 +1,7 @@
-{"agent": "uf2r1b4", "round": 1, "final": false,
+{
+ "agent": "uf2r1b4",
+ "round": 1,
+ "final": true,
  "best": null,
- "summary": "No eval yet. Rent refused on the fleet budget pace since 21:46 UTC; a box.py retrier will deploy + launch uf2r1b4_pbw1 (warm start from refs/pb_r26 stripped to uf2, recipe training flags, lr 1e-4, the ckpt's own per-call energy shaping K=12, 7.64 ms tick) when a box frees. Local GE probe (pbf explorer flags, 6 min, 2 threads): 395k cells, fills the pit, loses the record's energy in the bowl after ~4 s, best 5.3% (east of the start), no pit exit."}
+ "summary": "No GPU minute this round: box.py rent was refused every 1-2 min from 21:46 to 08:15 UTC on the fleet budget pace (burn 0.79 / limit ~0.82 $/h, the same two boxes all night), so no eval and no score. CPU analysis instead: the September 9.3% 'dead end' is the east-side exit's z 160 kill slab (the start region is 99.5% mirror-symmetric, the record takes the west exit); an MPC bench from the record's north-end state reaches the north room (16-18%) only with E >= ~1,060-1,100 there (record 1,125, spawn 1,188): the wall is a ~100 u net energy budget; the bowl under the slab reaches the flight level only at its south end. Prepared, untested on a GPU: uf2r1b4_pbw1 (refs/pb_r26 warm, lr 1e-4, per-call energy shaping K=12, 7.64 ms) and uf2r1b4_sk12 (scratch recipe + --tick-ms 7.63 --energy-pot 12 --energy-pot-front 0 --energy-pot-front-bonus 0)."
+}
