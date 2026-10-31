@@ -201,7 +201,11 @@ def chain_keys(archive, field, n_states: int, cell=None):
         d[d >= field.reach_max - 0.5 * field.cell] = np.inf
         cell = int(np.argmin(d))
     ch = chain_to(z["parent"], int(cell))
-    seq = np.concatenate([z["link_acts"][z["link_off"][c]:z["link_off"][c + 1]]
+    # read the action table ONCE: every z[...] on an NpzFile decompresses the whole array again,
+    # and a slice of it keeps that copy alive - per link, on a 24M-row table, that is gigabytes
+    # (zlr1b3, 2026-10-31: the OOM killer took the builder on a 464k-cell archive)
+    acts, off = z["link_acts"], z["link_off"]
+    seq = np.concatenate([acts[off[c]:off[c + 1]]
                           for c in ch[1:]]) if len(ch) > 1 else np.zeros((0, 6), np.int64)
     if len(seq) != n_states - 1:
         return None

@@ -480,3 +480,10 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   actions (auto_spine.chain_keys), views along the velocity (spine_canon_view.py: they were a
   median 46 deg off it). `autoresearch/analysis/zl_ge_spine.py` builds both. No demo, no record
   data, no policy (the record was used only to READ where loop 1 is, never by the search).
+* `zlr1b3_ge60w.npy` (9,315 states = 65.2 s at 7 ms, md5 d12d41c62e81c8862c9c3ea40c3fa135) +
+  `zlr1b3_ge60w.keys.npy` (md5 c47fcdab93d95bf0254a871790cd88a1): the same construction from a
+  60-min archive (128 u x energy 32 x heading cells, --select-energy 30, seed 7, 768 envs, one
+  local core; 464,707 cells, 100/100 links exact). From the TRUE spawn: ~17 s in the start dip,
+  onto loop 1 at ~19 s, then end-to-end pumping passes, E -3,020 (19 s) -> -2,177 (63 s), and a
+  flight north off loop 1's WEST end to its apex (-1,874, 1,337, -2,517) = 13.94% on
+  config.field (E -2,200, 713 u/s, open air). No demo, no record data, no policy.
