@@ -406,3 +406,11 @@ Box 58559243: RTX 5080 + Ryzen 9 7945HX (32 threads), 0.387 $/h, South Carolina 
   default=None now; two regression tests in test_ge_arc.py fail on the old parser. No training
   run used it (the box ran a705f5f0 until 21:27).
 * A8 `zlr1b2_aself` (21:31 UTC): resume of A7's 3.21B weights + `--race-arc-self 0.01`.
+* **A8 (automatic self-route): the route swapped at 3.21B (end d 4,879 = 23.3%; 126,336 u) and at
+  3.28B (end d 4,758 = 25.2%; 168,064 u). Evals 3.21B 23.300 (median 23.1%), 3.28B 25.203
+  (median 25.1%), 3.36B 22.914 (median 22.7%).** Training at 3.38B: reservoir deepest 25.6%,
+  arc gain 58k u/ep, tail 247 u/ep, energy records +247 u/ep. Snapshot pulled:
+  runs/zlr1b2_aself/ckpt_3369598976.pt.
+* Plan: A8 runs while it keeps setting records; ~23:30 UTC the box switches to a FROM-SCRATCH
+  launch of the whole recipe (`--ge-minutes 12 --ge-arc 1500 --race-arc-self 0.01` + the
+  energy rules, fail-pen, yaw cap) to confirm it in one launch.
