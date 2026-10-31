@@ -433,3 +433,8 @@ file without a word. Workaround: scp the padded file myself, md5-checked against
 * tcne8 (06:35 UTC): tcne7's final + tau0 3346 + `--demo-rate 0.08` (advance through the razor
   band at its ~9% success instead of backing off: the score is the best of 9 greedy episodes) +
   the hot band.
+* **tcne8 (tau0 3346, rate 0.08, 3.983B -> 4.383B): through the razor, stuck one step earlier.**
+  The curriculum advanced past rows 3346-3350 and on to row 3281, where it oscillates (85% at
+  3286 -> 4.4% at 3281 -> back off): the flight a few ticks before the floor landing at ~3290.
+  Evals 10.54-10.61 (no new best; the greedy is not on the extension yet).
+* tcne9 (06:58 UTC): tcne8's final + tau0 3281 + `--demo-rate 0.04`, the hot band kept.
