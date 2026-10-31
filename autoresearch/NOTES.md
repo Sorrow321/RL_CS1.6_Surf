@@ -85,3 +85,13 @@ the numbers). Read it before you start; append to it before you wrap up.
   all to the destination "map") and the bottom kill plane *21: the loops are plain ramp geometry,
   nothing in the core's trigger handling is involved. Still no box at 19:35 UTC (the pace has been
   full for 2 h; the waiter retries every minute).
+
+### Harness issue (zlr1b1, 2026-10-31 20:05 UTC): the budget pace starves a branch for hours
+* The pace ((credit - reserve) / hours left x 1.1 = 0.618 $/h) admits about two cheap boxes. Two
+  boxes were up from before 17:32 UTC, burning 0.59 $/h together, and stayed up: this branch's
+  `rent` has been refused every minute from 17:32 to (at least) 20:05 UTC (~85 tries by a single
+  background waiter; headroom 0.028 $/h, no offer that cheap). With 4 branches and arms allowed up
+  to 6 h, a branch that does not get a box in the first minutes of a round can lose most of it.
+  Nothing on this branch works around it. Suggestions for the operator: a per-agent share of the
+  pace (e.g. limit / branches), or a cap on how long one box may hold the pace while another
+  branch waits.
