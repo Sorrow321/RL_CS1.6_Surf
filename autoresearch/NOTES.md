@@ -63,3 +63,15 @@ once the episode's best energy height has grown EPS u since the last re-arm (cum
 I ship it for every map? Yes: an episode gaining energy is not stalled anywhere; bounded by
 maxvel (h <= z + 7,656 u at 3,500 u/s). EPS 32 = the eval-patience's own field eps. Off is
 byte-identical; tests/python/test_stall_energy.py.
+* Go-Explore with STRONGER energy selection (local, 1 thread, 5 min; `--select-energy 30`
+  instead of 3, everything else the pbf config at --tick-ms 7): 329k cells, best 6.4% (5,955 u)
+  vs 2.2% at K 3, E max -2,800 vs -2,948, loop-1 cells to x 1,832 (the east end). Its deepest
+  cells are NOT pumping: they stand/hover on the TOP RIDGE of loop 1's wedge (x 170-950,
+  y 76-440, z -2,879..-3,189, |v| 31-466). Geometry (point traces): the wedge's ridge is at z
+  -2,960 (y ~410) for x -1,800..800; a 200 u slab spans z -2,872..-2,672 over x ~200-800,
+  y ~300..1,400+ (88 u above the ridge); field progress on the ridge 1.6% (x <= -600) .. 5.0%
+  (x 0), on the slab's top 10.8-11.6%. The record never stands on either; its transfer to loop
+  2 passes the slab's east end at z ~-2,650 (11.9%, t+65). So the field has a DECEPTIVE local
+  optimum on loop 1 (climb onto the ridge: ~5% in seconds) that pays more than the record's
+  first ~30 s of pumping. K 30 is a generic choice (energy tops dominate selection on any
+  map), not read off this map.
