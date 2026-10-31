@@ -730,3 +730,17 @@ The score needs only ONE early-exit episode in a 9/9 eval (best finish time).
   saved with the new `--frontier-last` (all-greedy population, 6f435b5b) and re-searched from its own
   state at ticks 644 / 672 (seeds 0, 1, 2): 41.16-41.45 s, no early exit - at 1.33 deg/tick the
   camera cannot get from +30 down to -50 in time. DAgger has to start earlier (4.3-4.6 s).
+* `beam_tas --pitch-hold SIGMA PERIOD` (54c0c810): --view-hold's twin on the PITCH z (a held camera
+  direction per proposal env, redrawn every PERIOD decisions, cloned with the lineage). From the
+  TRUE start (seeds 0-2, 2.0/20 and 1.0/20): 40.79-42.04 s, no early exit. From the GREEDY'S OWN
+  state (`--frontier-last` greedy line as `--prefix-line`): seed 0 cut at 520 (4.0 s) with 2.0/20 ->
+  **38.79 s, out of the pit at 6.7 s** - an early-exit continuation of the greedy's own state, the
+  DAgger label; seed 0 at 580 (4.45 s): 41.48; seeds 1 / 2 at 560: 40.72 / 40.99 (double lap, but ~1 s
+  faster at 45-50%). Plain re-search (no pitch hold) from the greedy's state at 560 / 600 / 644 /
+  672: 41.07-41.58, never an early exit.
+* The trainer's `--view-ou-sigma` (held exploration noise) is yaw-only, and it stores the un-offset
+  z, so even a pitch version would not move the greedy's pitch mean toward "look down": the pitch
+  has to come from BC on the EXECUTED view of lines that took the exit.
+* DAgger sweep (10:50 UTC, two streams): seeds 0-8 x cuts 440 / 480 / 520 x --pitch-hold 2.0 / 3.0
+  (period 20) from each seed's greedy line -> every early-exit line becomes BC rows (state ticks
+  440-900, lines finishing <= 39.5 s) + spine for x4.
