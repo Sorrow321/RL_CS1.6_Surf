@@ -3,11 +3,11 @@
  "round": 2,
  "final": false,
  "best": {
-  "score": 118.778,
-  "eval_file": "/home/steam/ar_uf2/runs/uf2r2b4/uf2r2b4_x9/traj_14544273408.jsonl",
+  "score": 118.799,
+  "eval_file": "/home/steam/ar_uf2/runs/uf2r2b4/uf2r2b4_x9/traj_14770765824.jsonl",
   "run": "uf2r2b4_x9",
-  "step": 14544273408,
-  "ckpt": "/home/steam/ar_uf2/runs/uf2r2b4/uf2r2b4_x9/ckpt_14535360512.pt",
+  "step": 14770765824,
+  "ckpt": "/home/steam/ar_uf2/runs/uf2r2b4/uf2r2b4_x9/ckpt_14769192960.pt",
   "recipe": [
    "resume (chain above)",
    "--demo-file runs/beam/x9/spine.npy (the first 3,751 ticks of a 36.70 s line: the x8 policy's own greedy to 25.7 s + beam_tas --pitch-hold 2.0 20 --pitch-hold-for 60; md5 b9cc88b2)",
@@ -53,7 +53,7 @@
    "1e8"
   ],
   "resume_from": "uf2r2b4_x8 ckpt_latest (14.317B, md5 7760e4e2) <- x7 ckpt_final (13.846B) <- the incumbent uf2r1b1 ckpt_13045858304 (md5 359ab38c)",
-  "commit": "8e356ca2"
+  "commit": "294e5638"
  },
- "summary": "118.778 (13:03 UTC): x9 14.544B 9/9, best 36.65 s (incumbent 118.592 = 42.25 s; record 35.17 s). Two shortcuts the policy's own search found and the greedy now flies: an EARLY PIT EXIT (~3.4 s) and the 60-65% BOWL (~1.4 s). Both are camera-gated: found by beam_tas --pitch-hold (held camera pitch) from the policy's own greedy state. Both taught the same way: a pace-gated spine (--demo-success-pace 0.1 1.0) pinned at the true start (--demo-tau0 0 --demo-rate 0) + BC on the line + the lines as spawn states + cold keys (--unstuck-max 0). x7 (pit) 118.715 -> x8 (continuation) 118.733 -> x9 (bowl) 118.778. Failed before: BC on plain beam lines (x1), spine-only RL (x2), BC on early-exit rows (x3/x4, revert), a walking pace-gated curriculum (x5/x6, stalls at a ramp kick)."
+ "summary": "118.799 (13:16 UTC): x9 14.771B 9/9, best 36.03 s (incumbent 118.592 = 42.25 s; record 35.17 s). Two shortcuts the policy's own search found and the greedy now flies: an EARLY PIT EXIT (~3.4 s) and the 60-65% BOWL (~1.4 s). Both are camera-gated: found by beam_tas --pitch-hold (held camera pitch) from the policy's own greedy state. Both taught the same way: a pace-gated spine (--demo-success-pace 0.1 1.0) pinned at the true start (--demo-tau0 0 --demo-rate 0) + BC on the line + the lines as spawn states + cold keys (--unstuck-max 0). x7 (pit) 118.715 -> x8 (continuation) 118.733 -> x9 (bowl) 118.778. Failed before: BC on plain beam lines (x1), spine-only RL (x2), BC on early-exit rows (x3/x4, revert), a walking pace-gated curriculum (x5/x6, stalls at a ramp kick)."
 }

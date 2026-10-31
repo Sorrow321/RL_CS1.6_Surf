@@ -856,3 +856,30 @@ spawns within ~6 s before the cut reject the 1.4 s bowl loop), BC on that line's
   vz +443 at (3,495, 378)), swings back west (heading -166 at 21.8 s) and only then south; the record
   passes ~250 u lower and turns south at x ~3,600. Pitch-hold searches from x9's greedy at 19.6 / 20.0
   / 20.4 s running (runs/beam/u*).
+* x9 14.62-14.92B: 8/9 36.57 / 8/9 36.29 / **9/9 36.03 s = 118.799 (14.771B)** / 9/9 36.62 (118.779) /
+  9/9 36.50 (118.783). Hand-on for 118.799: ckpt_14769192960 (1.6M before; md5 99080d39; pulled).
+  Stopped at 14.942B (13:16) for x10.
+
+### Harness issue: every finish of this lineage is a FAKE finish by the engine's rule (13:10 UTC)
+The core's goal test (src/env.c) is the finish trigger's AABB (swept, hull-inflated); GoldSrc fires
+a brush trigger only inside the model's CLIP HULL (SV_TouchLinks; the AABB is its precheck) - the
+test src/trace.c trigger_contains() already runs for teleports and hurts. surf_unitfarmer2's finish
+(*23 -> counter_stop_button) is three 1-u curtains (west face x 3,328 for y <= -2,144, the diagonal
+(3,328, -2,144)-(3,584, -1,888), north face y -1,888 for x >= 3,584); the box's north-west corner
+is empty. (Found by the user/operator from the video; memory note finish-trigger-aabb.)
+Measured on my files with `autoresearch/analysis/uf2_real_finish.py` (this branch: the BSP's own
+clip hull, hulls 1 and 3, over each "done" episode's last 400 rows): the round-1 incumbent eval
+traj_13067878400 **0/9 real**; x7 13.801B, x8 14.224B, x9 14.544B **0/9 real** each - every policy
+enters the box at ~(3,310, -1,876), ~200 u north-west of the diagonal. score.py trusts the core's
+"done" label, so it scores these as finishes. A re-score needs score.py to test the clip hull
+(the tool above is the algorithm).
+**Fix on this branch (294e5638): `--goal-hull 1`** - the finish = the trigger model's clip hull at
+tick end (core export surf_set_goal_model; -1 = the old box, byte-identical; the model is the
+trigger whose bounds are the zone box, so button maps keep their box), trainer + eval cores,
+restored from a checkpoint, mirrored in record_ckpt / beam_tas / plan_to_bc;
+tests/python/test_goal_hull.py (the box fires in the empty corner, the hull does not; the hull
+fires on the diagonal and the west face). Rebuilt on the box (4/4 tests pass there).
+
+### x10 `uf2r2b4_x10` (13:17 UTC): x9 + `--goal-hull 1` - learn the REAL finish
+Resume of x9's latest (14.942B) with the same flags + --goal-hull 1 ("--goal-hull: ... brush model
+*23's CLIP HULL" in the log; goal_hull in run.json). Its evals' "done" are real finishes.
