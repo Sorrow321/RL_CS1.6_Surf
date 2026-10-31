@@ -3,17 +3,17 @@
  "round": 2,
  "final": false,
  "best": {
-  "score": 118.815,
-  "eval_file": "/home/steam/ar_uf2/runs/uf2r2b4/uf2r2b4_x12/traj_16475750400.jsonl",
-  "run": "uf2r2b4_x12",
-  "step": 16475750400,
-  "ckpt": "/home/steam/ar_uf2/runs/uf2r2b4/uf2r2b4_x12/ckpt_16467886080.pt",
+  "score": 118.817,
+  "eval_file": "/home/steam/ar_uf2/runs/uf2r2b4/uf2r2b4_x13/traj_17119576064.jsonl",
+  "run": "uf2r2b4_x13",
+  "step": 17119576064,
+  "ckpt": "/home/steam/ar_uf2/runs/uf2r2b4/uf2r2b4_x13/ckpt_17101225984.pt",
   "recipe": [
    "resume (x9 ckpt_latest 14.942B <- x8 <- x7 <- the incumbent uf2r1b1 ckpt_13045858304)",
    "--goal-hull",
    "1",
-   "--demo-file runs/beam/x12/spine.npy (a 35.37 s real-finishing plain beam line on x11's own weights; md5 deec0e90)",
-   "--demo-keys runs/beam/x12/spine.keys.npy",
+   "--demo-file runs/beam/x13/spine.npy (a 34.95 s real-finishing plain beam line on x12's own weights; md5 c3f5467e)",
+   "--demo-keys runs/beam/x13/spine.keys.npy",
    "--demo-window",
    "5",
    "--demo-grow",
@@ -46,7 +46,7 @@
    "3e9",
    "--bc-target",
    "argmax",
-   "--spawn-states runs/beam/x12/spawn.npy (12 lines of the policy's own beam; md5 374e3948)",
+   "--spawn-states runs/beam/x13/spawn.npy (15 lines of the policy's own beam; md5 1f78e6cd)",
    "--spawn-states-frac",
    "0.2",
    "--unstuck-max",
@@ -54,8 +54,8 @@
    "--ckpt-every",
    "1e8"
   ],
-  "resume_from": "uf2r2b4_x11 ckpt_latest (16.098B, md5 a0b00a7b) <- x10 <- x9 <- x8 <- x7 <- the incumbent uf2r1b1 ckpt_13045858304",
+  "resume_from": "uf2r2b4_x12 ckpt_latest (16.666B, md5 9e025e8e) <- x11 <- x10 <- x9 <- x8 <- x7 <- the incumbent uf2r1b1 ckpt_13045858304",
   "commit": "a457b5be"
  },
- "summary": "118.815 by the operator's clip-hull grader (14:40 UTC; the round-1 incumbent re-scores 109.692): x12 16.476B 9/9 REAL finishes, best 35.54 s spawn clock = **34.75 s GAME CLOCK** (start-trigger exit -> finish clip hull; the record's demo reads 35.15 s the same way, official 35.17) - 4 of 9 episodes under the human record, in the simulator. Two camera-gated shortcuts found by the policy's own search (beam_tas --pitch-hold from its own greedy state): an early pit exit (~3.4 s) and the 60-65% bowl (~1.4 s); taught by a pace-gated spine pinned at the true start (--demo-tau0 0 --demo-rate 0 --demo-success-pace) + BC on the line + the lines as spawn states + cold keys (--unstuck-max 0); then the real finish (--goal-hull 1) warm; then iterated: beam on the newest weights -> its best real line -> the next pace-gated spine (x11 36.05 s line -> 35.80; x12 35.37 s line -> 35.54)."
+ "summary": "118.817 by the operator's clip-hull grader (15:08 UTC; the round-1 incumbent re-scores 109.692): x13 17.120B 9/9 REAL finishes, best 35.50 s spawn clock (x12 16.476B: 35.54 s = **34.75 s GAME CLOCK** (start-trigger exit -> finish clip hull; the record's demo reads 35.15 s the same way, official 35.17) - 4 of 9 episodes under the human record, in the simulator. Two camera-gated shortcuts found by the policy's own search (beam_tas --pitch-hold from its own greedy state): an early pit exit (~3.4 s) and the 60-65% bowl (~1.4 s); taught by a pace-gated spine pinned at the true start (--demo-tau0 0 --demo-rate 0 --demo-success-pace) + BC on the line + the lines as spawn states + cold keys (--unstuck-max 0); then the real finish (--goal-hull 1) warm; then iterated: beam on the newest weights -> its best real line -> the next pace-gated spine (x11 36.05 s line -> 35.80; x12 35.37 s line -> 35.54)."
 }

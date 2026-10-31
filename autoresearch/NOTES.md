@@ -945,3 +945,9 @@ beam on the newest weights -> its best real line -> the pinned, pace-gated spine
 
 ### x13 `uf2r2b4_x13` (14:43 UTC): the next iteration, spine = the 34.95 s real line (a2)
 Same flags; pace from the map start 4,660 ticks = 35.73 s to d <= 100; spawn states 70,890 (15 lines).
+* x13 16.67-17.12B: 9/9 35.67 / 9/9 35.68 / 8/9 35.48 / 9/9 35.75 / 9/9 35.75 / 9/9 35.69 / **9/9 35.50 s =
+  118.817 (17.120B)**; band paced success 67% (the 34.95 s line bites). Gains slow: x13's best episode
+  matches the 34.95 s line to 45% and loses ~0.4 s over 45-50% - the same mini loop (east to x ~3,600 at
+  ~21 s, kicked up and north by a ramp, back south), which the beam line flies 0.2 s better and the
+  record (instrument only) avoids by passing lower. Searches from x13's greedy at 18.0-19.1 s (pitch-hold
+  for 80 decisions, view-hold, keys-temp 2) running. Hand-on: ckpt_17101225984 (18M before; md5 7880efda).
