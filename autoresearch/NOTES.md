@@ -709,3 +709,24 @@ x2's flags + `--bc-file runs/beam/x3/bc_win.npz` (plan_to_bc rows of the 73 kept
 cut to state ticks 600-900 = 4.6-6.9 s: the approach, the turn, the climb-out; 5,548 rows; md5
 ef665d73) `--bc-coef 0.5 --bc-coef-final 0.05 --bc-steps 4e8 --bc-target argmax` (value coef 0).
 The score needs only ONE early-exit episode in a 9/9 eval (best finish time).
+* x3 evals: 13.046B (ONE update in) **4/9 but ep8 takes the early exit: out of the pit at 8.9 s,
+  finished in 38.82 s** (the first greedy run under 42 s); ep1 tried the early climb and died in the
+  catch at 6.7 s; the rest lapped or died. 13.122B: 9/9 at 42.80 s, all nine back to the double lap
+  (climb at ~14 s) - the BC rows are MEMORIZED (joint-acc 0.993) but only on the line's exact states:
+  the greedy's own path at the decision is 15-25 u away and the turn does not carry over.
+* Bowl forks on the 36.93 s line (prefix 3,100, forks at 3,120-3,200 ticks, view-only held offsets
+  30-90 deg, protect 4-6 gens; and keys-temp 2 / resample 50): 36.95-37.23 s, 0 branch lineages
+  alive at the end. No bowl shortcut from view forks.
+* Next: DAgger - label the GREEDY'S OWN states at the decision: `beam_tas --greedy-prefix P --seed S`
+  (the greedy flies to tick P from spawn draw S, then the search) for S = 0..8, P = 644 / 672.
+* x3 13.197B: 9/9 at 44.37 s, all double laps; stopped (10:58). Best of x1-x3: 118.587 (x2's first eval,
+  the incumbent's own line) - below the incumbent's 118.592.
+* **What triggers the early turn: the CAMERA PITCH.** Tick-by-tick, the early-exit lineage (e900) and
+  the greedy (same spawn draw) differ before 5 s mainly in the pitch target (no physics effect, but
+  it moves the depth image): from decision ~148 (4.5 s) the lineage looks DOWN (-25 .. -62 deg) while
+  the greedy looks UP (+21 .. +30; pitch sigma 0.40, yaw sigma 0.018). Seeing the ramp, the policy's
+  own yaw mu rises to +0.9 .. +1.4 deg at 5.1-5.3 s (greedy ~0) and the strafe carries it onto the
+  steep part of the south-west ramp (vz +463 / +875 at 5.2 / 5.37 s vs +194 / +412). The greedy line
+  saved with the new `--frontier-last` (all-greedy population, 6f435b5b) and re-searched from its own
+  state at ticks 644 / 672 (seeds 0, 1, 2): 41.16-41.45 s, no early exit - at 1.33 deg/tick the
+  camera cannot get from +30 down to -50 in time. DAgger has to start earlier (4.3-4.6 s).
