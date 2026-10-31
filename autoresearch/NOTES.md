@@ -421,3 +421,22 @@ Box 58559243: RTX 5080 + Ryzen 9 7945HX (32 threads), 0.387 $/h, South Carolina 
   get there, so the route grows (126k -> 168k -> 258k u) and the arc pays less per unit (100/L);
   the medians dipped to 22.5-23.1% right after the third swap. A shorter-line tie-break (the
   fastest episode within the margin of the deepest) is the obvious refinement - not built.
+* A8 after the third swap (3.81-4.42B): 22.992, 23.338, 23.699, 23.520, 23.260, 3.846, 23.811,
+  23.438 (median 2.2%), 21.150 - a plateau at 23-24% with collapses; no record after 26.870.
+  Stopped 22:28 UTC. The shortest-line tie-break (18ecfd30) is the response for the next runs.
+
+### B1 `zlr1b2_one` (22:43 UTC): the WHOLE recipe FROM SCRATCH, one launch
+* `box.py launch` (the incumbent recipe prepended) + `--no-race-ratchet --ge-minutes 9 --ge-arc
+  1500 --race-arc-self 0.01 --stall-energy 32 --eval-patience-energy 32 --energy-pot 12
+  --energy-pot-front 0 --energy-pot-front-bonus 0 --energy-ratchet 1 --fail-pen 2
+  --yaw-sigma-max 0.3 --keys-hold-spawn-duck`. Nothing hand-made: the trainer's 9-minute search
+  (30 threads) reproduced GE-1 exactly (same seed: the 9.48% cell, the 3,961-tick line); route
+  21,888 u (172 vertices); spawn rows 5,294 (line + 1,333 forward archive cells).
+* Two launch defects found and fixed on the way (f391270a, 50423480): `--ge-arc` named its spawn
+  file in args before the trainer's SELF_STATES provenance check (refused after the search; the
+  run's own reward-free search is exempt like --ge-minutes' pool), and set --stall-arc only when
+  None while a default of 0 is set earlier (it ran with the field stall clock for a minute).
+  The relaunch reused the run's search files (`_ge_phase1` reuses runs/<run>/ge_states.npy).
+* Read against the A6 lineage at matched steps (A6: off the platform 151M; A6b 9.9% at 676M,
+  14.1% at 1.20B; tail from 1.38B: 19.7% at 1.53B; self-route from 2.79B: 23.4% at 2.94B,
+  25.2% at 3.28B, 26.9% at 3.74B).
