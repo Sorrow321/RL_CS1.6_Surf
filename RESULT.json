@@ -3,11 +3,11 @@
  "round": 1,
  "final": false,
  "best": {
-  "score": 57.863,
-  "eval_file": "/home/steam/ar_loop/runs/zlr1b4/zlr1b4_e4/traj_1239941120.jsonl",
-  "run": "zlr1b4_e4",
-  "step": 1239941120,
-  "ckpt": "/home/steam/ar_loop/runs/zlr1b4/zlr1b4_e4/ckpt_1239941120.pt",
+  "score": 62.327,
+  "eval_file": "/home/steam/ar_loop/runs/zlr1b4/zlr1b4_e8/traj_1542455296.jsonl",
+  "run": "zlr1b4_e8",
+  "step": 1542455296,
+  "ckpt": "/home/steam/ar_loop/runs/zlr1b4/zlr1b4_e8/ckpt_1542455296.pt",
   "recipe": [
    "--energy-pot",
    "12",
@@ -42,13 +42,6 @@
    "0",
    "--int-real-only",
    "0",
-   "(E3 resume) --auto-spine",
-   "--auto-spine-async",
-   "--auto-spine-milestones",
-   "--auto-spine-patience",
-   "3e8",
-   "--auto-spine-delay",
-   "5e7",
    "--ckpt-every",
    "2e8",
    "--demo-tau0",
@@ -57,10 +50,19 @@
    "5",
    "--demo-grow-max",
    "40",
-   "--auto-spine-recheck"
+   "(E8 resume of E4-1239M) --fail-pen",
+   "3",
+   "--demo-tau0",
+   "114",
+   "--demo-cooldown",
+   "5",
+   "--demo-grow-max",
+   "40",
+   "--ckpt-every",
+   "2e8"
   ],
-  "resume_from": "zlr1b4_e3 ckpt_1088421888 (md5 3c500701) <- zlr1b4_e2 ckpt_latest 559415296 (md5 7c95d700)",
+  "resume_from": "zlr1b4_e4 ckpt_1239941120 (md5 3c500701) <- zlr1b4_e3 ckpt_1088421888 <- zlr1b4_e2 ckpt_latest 559415296",
   "commit": "5d07d0df"
  },
- "summary": "Control (recipe) 0.587. E1 (per-call energy K12 + new --energy-stall 32) null. Go-Explore from the true spawn (energy cells, 12 min) reached the first trough (9.48%). E2 = E1 + backward curriculum on that GE line, from scratch: 24.0 at 529M. E3 = + --auto-spine: 57.4 at 1088M, then a stale spine (adopted 22 min late, ending at 31%) dragged the greedy back to 34% -> new --auto-spine-recheck. E4 = 1088M + recheck: 57.4/57.5/57.86/54.4 - a plateau at the third structure's exit (record: a landing onto a platform at z 640, 61%)."
+ "summary": "Control (recipe) 0.587. E1 (per-call energy K12 + new --energy-stall 32) null. Go-Explore from the true spawn (energy cells, 12 min) reached the first trough (9.48%). E2 = E1 + backward curriculum on that GE line, from scratch: 24.0 at 529M. E3 = + --auto-spine: 57.4 at 1088M (then a stale spine -> new --auto-spine-recheck). E4 holds 57.9; E5 (energy free at the front), E6 (own beam spine), E7 (--fail-pen 10: survives but stops pumping) plateau at 55-57. E8 = E4's 57.9% weights + --fail-pen 3: 58.8/58.9/62.29/62.33 at 1316-1542M - survives the third structure, E ~2,600, 62%."
 }

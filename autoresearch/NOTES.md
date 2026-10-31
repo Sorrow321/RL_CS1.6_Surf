@@ -326,3 +326,13 @@ different question (a trained policy that dies at its frontier while still gaini
 ### E8 `zlr1b4_e8` (22:18 UTC): E4's 1,239M weights (the 57.86% policy) + `--fail-pen 3`
 A milder death penalty on the aggressive policy (E4's config otherwise restored: the GE-line
 spine, per-call energy K 12, energy-stall 32), to look for survival AND energy at the frontier.
+* **E8 BREAKS THE 57% PLATEAU (22:18-22:40 UTC): 57.735 (1,240M) / 58.751 / 58.858 / 62.286
+  (1,467M) / 62.327 (1,542M).** `--fail-pen 3` is the middle the two ends lacked: the policy keeps
+  pumping AND survives the third structure ~20 s longer. 1,542M (hand-on ckpt_1542455296.pt, the
+  eval's own step, pulled): 9/9 at 61.8-62.3% by ~110-116 s, E max 2,520-2,630 (the record has
+  ~2,100 at its pillar approach), speed to 3,240 u/s. Traced (ep0): 95 -> 117 s swinging the third
+  structure along y (x -2,300..-550), E 1,519 -> 2,336 (~37 u/s), the swing tops rising with the
+  energy - 57.8% (z 385) -> 59.5% (459) -> 61.0% (516) -> 60.9% (551) - then at ~119 s (E 2,219) it
+  swings EAST out of the structure ((575, 2,155, 571) -> (2,905, 377, -709)) and falls. It has the
+  energy now; the climb onto the pillar (60.9%) and on up (the record: 70% at z 1,266, 86% at
+  z 2,075) is the next skill. Training: reservoir deepest 37.5% of d0 (62.5%), stall kills 10%.
