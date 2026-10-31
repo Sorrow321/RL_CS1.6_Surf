@@ -397,6 +397,42 @@ def _dll_candidates(dll_path: Optional[Union[str, os.PathLike]] = None) -> List[
     return cands
 
 
+_FINISH_MODEL_CACHE: dict = {}
+
+
+def finish_trigger_model(bsp_path, mins, maxs, tol: float = 1.0):
+    """The trigger brush a finish box IS (2026-10-31): -> (model index, entity origin) of the
+    trigger_multiple whose brush model's bounds (+ its origin) equal the box within ``tol`` u, or
+    (None, None) - a type-2 / 3 map's padded button box, or a hand-written box, matches none and
+    is scored as a box. Generic: the BSP's own entity and model lumps, no map constant."""
+    key = (os.path.abspath(str(bsp_path)), tuple(round(float(v), 3) for v in mins),
+           tuple(round(float(v), 3) for v in maxs))
+    if key in _FINISH_MODEL_CACHE:
+        return _FINISH_MODEL_CACHE[key]
+    out = (None, None)
+    try:
+        from .zones import parse_bsp
+        ents, bb = parse_bsp(bsp_path)
+        for e in ents:
+            mref = e.get("model", "")
+            if not (e.get("classname", "") == "trigger_multiple" and mref.startswith("*")):
+                continue
+            i = int(mref[1:])
+            if not 0 < i < len(bb):
+                continue
+            org = [float(v) for v in e.get("origin", "0 0 0").split()[:3]] or [0.0, 0.0, 0.0]
+            lo = [bb[i][0][k] + org[k] for k in range(3)]
+            hi = [bb[i][1][k] + org[k] for k in range(3)]
+            if all(abs(lo[k] - float(mins[k])) <= tol and abs(hi[k] - float(maxs[k])) <= tol
+                   for k in range(3)):
+                out = (i, org)
+                break
+    except Exception:                                   # noqa: BLE001
+        out = (None, None)
+    _FINISH_MODEL_CACHE[key] = out
+    return out
+
+
 def _load_library(dll_path: Optional[Union[str, os.PathLike]] = None) -> ctypes.CDLL:
     cands = _dll_candidates(dll_path)
     path = next((p for p in cands if p.is_file()), None)
@@ -860,6 +896,30 @@ class SurfCore:
         if len(lo) != 3 or len(hi) != 3:
             raise ValueError(f"goal box needs 3-vectors, got {lo} / {hi}")
         fn(self._handle(), (c_float * 3)(*lo), (c_float * 3)(*hi))
+        # 2026-10-31: the finish is the TRIGGER, not its bounding box. When the box is a
+        # trigger_multiple brush's own bounds (a type-1 map: tools/detect_zones takes them), the
+        # crossing counts only inside that brush's clip hull - the engine's rule. surf_unitfarmer2's
+        # finish is three 1 u curtains whose box has an empty corner the policies learnt to skim:
+        # 85% of the core's finishes there were not finishes in the game. A button box (types 2 /
+        # 3) matches no trigger and keeps the box test. SURF_GOAL_AABB=1 restores the box alone.
+        self.goal_model = -1
+        if os.environ.get("SURF_GOAL_AABB", "0") != "1":
+            m, org = finish_trigger_model(self.bsp_path, lo, hi)
+            if m is not None:
+                self.set_goal_model(m, org)
+
+    def set_goal_model(self, model: int, origin=None) -> None:
+        """Arm the finish trigger's brush model (*N): a goal-box crossing then counts only where
+        the tick's segment enters the model's clip hull (surf_set_goal_model; -1 disarms)."""
+        fn = getattr(self._lib, "surf_set_goal_model", None)
+        if fn is None:
+            raise RuntimeError("this surfcore build predates surf_set_goal_model - rebuild the "
+                               "core (./build.sh): a finish would be scored on the trigger's box")
+        fn.argtypes = [ctypes.c_void_p, ctypes.c_int32, ctypes.POINTER(c_float)]
+        fn.restype = None
+        o = None if origin is None else (c_float * 3)(*[float(v) for v in origin])
+        fn(self._handle(), ctypes.c_int32(int(model)), o)
+        self.goal_model = int(model)
 
     @property
     def goal_hits(self) -> np.ndarray:

@@ -204,6 +204,13 @@ SURF_API void surf_set_goal_box(SurfSim* s, const float* mins /*3*/,
  * goal (already autoreset by the time the caller reads it). Valid until
  * surf_destroy; contents mutate every step. */
 SURF_API const uint8_t* surf_goal_hits(SurfSim* s);
+/* surf_set_goal_model (2026-10-31, additive): arm the finish TRIGGER's brush model (*N index): a
+ * crossing of the goal box then counts only where the tick's segment enters that model's clip hull
+ * (the engine's rule for a brush trigger; the box was the trigger's bounding box, and on a non-box
+ * trigger - surf_unitfarmer2's finish is three 1 u curtains - the box counted empty corners).
+ * origin = the entity's origin (NULL = 0); model < 0 disarms (the box alone, as before). */
+SURF_API void surf_set_goal_model(SurfSim* s, int32_t model, const float* origin /*3 or NULL*/);
+SURF_API int32_t surf_get_goal_model(SurfSim* s);
 /* Mark envs (mask[i] != 0) to end as a FAIL on their next batch tick — the
  * Python-side stagnation kill ("no progress toward the goal in N seconds").
  * Consumed once; a goal crossing on the same tick wins over the kill. */

@@ -27,6 +27,11 @@ typedef struct SurfSim {
      * speed) ends the episode as a completion */
     int32_t goal_enabled;
     float goal_mins[3], goal_maxs[3];
+    /* surf_set_goal_model (2026-10-31): the finish TRIGGER's brush model; >= 0 = a crossing of the
+     * box counts only where the segment is inside that model's clip hull (the engine's
+     * brush-trigger rule), -1 = the box alone, as before */
+    int32_t goal_model;
+    float goal_model_origin[3];
     uint8_t* goal_hit;             /* per env: 1 on the tick it finished */
     uint8_t* pending_fail;         /* per env: force-fail on next step (Python
                                     * stagnation kill); consumed each step */
@@ -546,6 +551,7 @@ SurfSim* surf_create(const char* bsp_path, const SurfEnvConfig* cfg, char* err, 
     s->rng = (uint64_t*)calloc((size_t)n, sizeof(uint64_t));
     s->once_used = (uint64_t(*)[ONCE_WORDS])calloc((size_t)n, sizeof(uint64_t[ONCE_WORDS]));
     s->goal_hit = (uint8_t*)calloc((size_t)n, sizeof(uint8_t));
+    s->goal_model = -1;
     s->pending_fail = (uint8_t*)calloc((size_t)n, sizeof(uint8_t));
     if (!s->st || !s->pp || !s->last_yaw_delta || !s->last_pitch_delta ||
         !s->rng || !s->once_used || !s->goal_hit || !s->pending_fail) {
@@ -590,6 +596,13 @@ void surf_set_goal_box(SurfSim* s, const float* mins, const float* maxs) {
 
 const uint8_t* surf_goal_hits(SurfSim* s) { return s->goal_hit; }
 
+void surf_set_goal_model(SurfSim* s, int32_t model, const float* origin) {
+    if (model < 0 || model >= s->map.nummodels) { s->goal_model = -1; return; }
+    s->goal_model = model;
+    if (origin) v3copy(s->goal_model_origin, origin); else v3zero(s->goal_model_origin);
+}
+int32_t surf_get_goal_model(SurfSim* s) { return s->goal_model; }
+
 void surf_force_fail(SurfSim* s, const uint8_t* mask) {
     if (!mask) return;
     for (int i = 0; i < s->cfg.num_envs; i++)
@@ -614,6 +627,29 @@ static int seg_hits_box(const float* p0, const float* p1,
         }
     }
     return 1;
+}
+
+/* surf_set_goal_model: does the tick's segment p0 -> p1 enter the finish trigger's clip hull?
+ * GoldSrc fires a brush trigger when the player's origin is inside the model's player-expanded clip
+ * hull at the end of a frame (SV_TouchLinks); the hull of a 1 u curtain is 33 u thick in x / y, so
+ * points sampled every <= 16 u along the tick's segment (end point last) see every crossing a frame
+ * rate the core runs at would. A box-shaped trigger's hull IS the hull-inflated box. */
+static int seg_hits_goal_model(const SurfSim* s, int usehull, const float* p0, const float* p1) {
+    Trigger t;
+    memset(&t, 0, sizeof(t));
+    t.model = s->goal_model;
+    v3copy(t.origin, s->goal_model_origin);
+    float d[3] = { p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2] };
+    float len = sqrtf(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+    int n = (int)ceilf(len / 16.0f);
+    if (n < 1) n = 1;
+    if (n > 64) n = 64;
+    for (int k = 1; k <= n; k++) {
+        float f = (float)k / (float)n, q[3];
+        for (int j = 0; j < 3; j++) q[j] = p0[j] + f * d[j];
+        if (trigger_contains(&s->map, &t, usehull, q)) return 1;
+    }
+    return 0;
 }
 
 int32_t surf_set_spawn_pool(SurfSim* s, const SurfState* pool, int32_t n) {
@@ -746,7 +782,8 @@ static void step_impl(SurfSim* s, const int32_t* actions, const float* view,
             }
             /* pre-trigger positions: a fail teleport must not fake a finish
              * by sweeping the respawn jump across the map */
-            if (seg_hits_box(prev_org, st->origin, bmin, bmax)) {
+            if (seg_hits_box(prev_org, st->origin, bmin, bmax)
+                && (s->goal_model < 0 || seg_hits_goal_model(s, uh, prev_org, st->origin))) {
                 complete = 1;
                 s->goal_hit[i] = 1;
             }
