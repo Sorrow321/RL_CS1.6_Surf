@@ -709,3 +709,8 @@ cheapest acceptable offers that hour were a 0.41 $/h 4080S and a 0.62 $/h 5080, 
 fits until one of the two running boxes is released. With 12 h rounds and runs that may hold a box
 for hours, a branch can spend most of its round without compute. (Operator's call; noted, not
 worked around.)
+* expert_side checked locally (11:24-12:03 UTC, CPU, 4-env beams on the incumbent): a plain wave
+  finished in 42.221 s (its greedy gate 42.458 s); a forked wave (`--branch-at t612:2` = a tick in
+  the first half of that line's longest record plateau, ticks 213-1466) ran, forked at tick 700,
+  and its winner was an unforked lineage (42.24 s). The round hands on the BC file and the line's
+  states. Still no box at 12:03 UTC (45 refusals).
