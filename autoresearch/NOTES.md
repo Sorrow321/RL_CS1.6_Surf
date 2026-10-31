@@ -276,8 +276,7 @@ Box 58559243: RTX 5080 + Ryzen 9 7945HX (32 threads), 0.387 $/h, South Carolina 
   half-pipe at ~55-60 s, ends high on the north-west rim (-1,904, 1,322, -2,522), h max -2,075.
   Beam b2 (A6b's 688M weights, 150 s, 231 s of search): into the half-pipe ~20 s sooner, h max
   -2,161, but its frontier is 9.0% (d 5,790 at 118 s). Neither leaves loop 1.
-* A6b 752M: frontier 625 u (9.8%), cover 8.6%, patience-cut 9 (the episodes fly to the 120 s
-  cut... no: until the patience rule). 819M greedy recorded on the box (6 eps x 120 s, full
+* A6b 752M: frontier 625 u (9.8%), cover 8.6%, all 9 episodes ended by the patience rule. 819M greedy recorded on the box (6 eps x 120 s, full
   states): 4/6 pump to h **-1,912..-1,927** (above the record's ~-1,950 at its loop-1 exit) and
   fly the whole 120 s; 2/6 stay in the start ramp (h ~-2,800). The policy has the energy; the
   arc route ends at 12.77% and nothing pays leaving loop 1.
