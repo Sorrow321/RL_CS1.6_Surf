@@ -204,6 +204,18 @@ SURF_API void surf_set_goal_box(SurfSim* s, const float* mins /*3*/,
  * goal (already autoreset by the time the caller reads it). Valid until
  * surf_destroy; contents mutate every step. */
 SURF_API const uint8_t* surf_goal_hits(SurfSim* s);
+/* The engine rule for a brush timer trigger (additive, 2026-10-31): with goal_hull on (the
+ * default) a goal box that IS a brush model's bounds (zones.json's "end" on a type-1 map) is
+ * completed only with the player origin inside that model's clip hull at the end of the move
+ * (GoldSrc SV_TouchLinks); a box that is no model's bounds keeps the swept-box rule. 0 = the
+ * swept box for every goal (the pre-fix rule). surf_goal_model: the matched model, 0 = none. */
+SURF_API void surf_set_goal_hull(SurfSim* s, int32_t on);
+SURF_API int32_t surf_goal_model(SurfSim* s);
+/* uf2r2b4 (--goal-hull): model >= 1 = that brush model's clip hull decides the finish,
+ * whatever the box matched (until the next surf_set_goal_box); else the swept box. A plain
+ * box trigger keeps the swept box under the default auto match (its hull IS that box).
+ * origin = the trigger entity's origin (NULL = 0; uf2r2b1's signature). */
+SURF_API void surf_set_goal_model(SurfSim* s, int32_t model, const float* origin /*3 or NULL*/);
 /* Mark envs (mask[i] != 0) to end as a FAIL on their next batch tick — the
  * Python-side stagnation kill ("no progress toward the goal in N seconds").
  * Consumed once; a goal crossing on the same tick wins over the kill. */

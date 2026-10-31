@@ -14,7 +14,11 @@ One number per GREEDY eval from the TRUE map start - the trajectories the traine
 * only the first config.score_episodes episodes count (header episode index < N; 9 = what
   the trainer records): the score is a max over episodes, so a larger eval would only buy
   more lottery tickets.
-* finish_frac: episodes that ended "done" (inside the finish) / episodes.
+* finish_frac: episodes that ended "done" (inside the finish) / episodes. When the finish
+  trigger is not a plain box (surf_unitfarmer2's *23: three 1 u curtains whose bounding box adds
+  an empty triangle), "done" counts only if the finishing step entered the trigger's CLIP HULL -
+  the engine's rule (SV_TouchLinks), surfgym.goalhull; a box-only "done" from a core before the
+  clip-hull goal (2026-10-31) scores as progress and is counted in "box_only".
 * the time term only exists once something finishes: faster is better, 300 s = the cap.
 
 Validation - an eval that fails it scores None and is never selected:
@@ -46,6 +50,7 @@ SCORE_EPISODES = int(CFG.get("score_episodes") or 0)
 EP_CAP_S = 300.0
 _FIELD = None
 _CPS = None
+_GOAL = None
 
 
 def field():
@@ -74,6 +79,23 @@ def curtains():
                              np.asarray(bb[m][1]) + [16, 16, 36]))
         _CPS.sort()
     return _CPS
+
+
+def goal_hull():
+    """surfgym.goalhull.GoalHull of the finish trigger when its clip hull is not a plain box
+    (then a box-only "done" is no finish), else None."""
+    global _GOAL
+    if _GOAL is None:
+        _GOAL = False
+        zp = (REPO / CFG["map"]).with_suffix(".zones.json")
+        try:
+            end = json.loads(zp.read_text(encoding="utf-8")).get("end")
+        except (OSError, ValueError):
+            end = None
+        if end and end.get("mins") and end.get("maxs"):
+            from surfgym.goalhull import GoalHull
+            _GOAL = GoalHull.for_box(REPO / CFG["map"], end) or False
+    return _GOAL or None
 
 
 def episodes(path: Path):
@@ -119,8 +141,8 @@ def score_file(path: Path) -> dict:
     if len(eps) < 5:
         out["error"] = f"{len(eps)} episodes (< 5)"
         return out
-    f, cps = field(), curtains()
-    prog, cp_max, fins, ends = [], 0, [], []
+    f, cps, gh = field(), curtains(), goal_hull()
+    prog, cp_max, fins, ends, box_only = [], 0, [], [], 0
     for hdr, r, tr in eps:
         if hdr.get("map") != want_map:
             out["error"] = f"map {hdr.get('map')!r} is not {want_map!r}"
@@ -140,6 +162,11 @@ def score_file(path: Path) -> dict:
         ok = d < f.reach_max - 0.5 * f.cell
         dmin = float(d[ok].min()) if ok.any() else d0
         done = tr.get("end") == "done"
+        if done and gh is not None:
+            pat = hdr.get("tick_pattern_ms")
+            tick_s = (float(np.mean(pat)) if pat else float(hdr.get("tick_ms", 10.0))) / 1000.0
+            if not gh.finished(r, tick_s):
+                done, box_only = False, box_only + 1     # the engine never fires it there
         prog.append(100.0 if done else max(0.0, 100.0 * (d0 - dmin) / d0))
         for n, lo, hi in cps:
             if np.any(np.all((p >= lo) & (p <= hi), axis=1)):
@@ -156,7 +183,7 @@ def score_file(path: Path) -> dict:
                 "median_progress_pct": round(float(np.median(prog)), 2),
                 "finishes": len(fins), "episodes": len(eps),
                 "best_finish_s": round(min(fins), 2) if fins else None,
-                "max_cp": cp_max, "ends": ends})
+                "max_cp": cp_max, "ends": ends, "box_only": box_only})
     return out
 
 

@@ -489,6 +489,50 @@ def _bind(lib: ctypes.CDLL) -> ctypes.CDLL:
 # SurfCore
 # ---------------------------------------------------------------------------
 
+class _GoalModel(int):
+    """SurfCore.goal_model: an int that may also be called (both branch APIs of 2026-10-31)."""
+
+    def __call__(self) -> int:
+        return int(self)
+
+
+_FINISH_MODEL_CACHE: dict = {}
+
+
+def finish_trigger_model(bsp_path, mins, maxs, tol: float = 1.0):
+    """uf2r2b1 2026-10-31: the trigger brush a finish box IS -> (model index, entity origin) of
+    the trigger_multiple whose brush model's bounds (+ its origin) equal the box within ``tol``
+    u, or (None, None) - a type-2 / 3 map's padded button box, or a hand-written box, matches
+    none and is scored as a box. Generic: the BSP's own entity and model lumps, no map
+    constant. (The core matches the box itself; this is for tools and tests.)"""
+    key = (os.path.abspath(str(bsp_path)), tuple(round(float(v), 3) for v in mins),
+           tuple(round(float(v), 3) for v in maxs))
+    if key in _FINISH_MODEL_CACHE:
+        return _FINISH_MODEL_CACHE[key]
+    out = (None, None)
+    try:
+        from .zones import parse_bsp
+        ents, bb = parse_bsp(bsp_path)
+        for e in ents:
+            mref = e.get("model", "")
+            if not (e.get("classname", "") == "trigger_multiple" and mref.startswith("*")):
+                continue
+            i = int(mref[1:])
+            if not 0 < i < len(bb):
+                continue
+            org = [float(v) for v in e.get("origin", "0 0 0").split()[:3]] or [0.0, 0.0, 0.0]
+            lo = [bb[i][0][k] + org[k] for k in range(3)]
+            hi = [bb[i][1][k] + org[k] for k in range(3)]
+            if all(abs(lo[k] - float(mins[k])) <= tol and abs(hi[k] - float(maxs[k])) <= tol
+                   for k in range(3)):
+                out = (i, org)
+                break
+    except Exception:                                   # noqa: BLE001
+        out = (None, None)
+    _FINISH_MODEL_CACHE[key] = out
+    return out
+
+
 class SurfCore:
     """Batch surf simulation — thin, zero-copy wrapper over surfcore.dll.
 
@@ -860,6 +904,54 @@ class SurfCore:
         if len(lo) != 3 or len(hi) != 3:
             raise ValueError(f"goal box needs 3-vectors, got {lo} / {hi}")
         fn(self._handle(), (c_float * 3)(*lo), (c_float * 3)(*hi))
+        # 2026-10-31: the core now finds the brush model whose bounds ARE this box and, unless it
+        # is a plain box, completes on its clip hull (the engine's rule; goal_hull). uf2r2b1's
+        # SURF_GOAL_AABB=1 restores the swept box alone (the pre-fix rule).
+        if os.environ.get("SURF_GOAL_AABB", "0") == "1":
+            self.set_goal_hull(False)
+
+    def set_goal_hull(self, on: bool = True) -> None:
+        """The engine rule for a brush timer trigger (2026-10-31): on (the core's default), a
+        goal box that IS a brush model's bounds completes only with the player origin inside
+        that model's clip hull at the end of the move (GoldSrc SV_TouchLinks); off = the swept
+        box for every goal (the pre-fix rule). A core built before the export ignores it
+        (it only HAS the box rule)."""
+        fn = getattr(self._lib, "surf_set_goal_hull", None)
+        if fn is None:
+            return
+        fn.argtypes = [ctypes.c_void_p, ctypes.c_int32]
+        fn.restype = None
+        fn(self._handle(), 1 if on else 0)
+
+    def set_goal_model(self, model: int, origin=None) -> None:
+        """uf2r2b4 / uf2r2b1 2026-10-31: model >= 1 = the finish is that brush model's CLIP HULL
+        at the tick's end position - the engine's trigger rule (SV_TouchLinks fires a brush
+        trigger only inside the model's clip hull; its AABB is just the precheck), the test the
+        core already runs for teleports and hurts - with the goal box kept as the precheck;
+        origin = the trigger entity's origin (None = 0). -1 = the swept goal box. Requires a DLL
+        with the export."""
+        fn = getattr(self._lib, "surf_set_goal_model", None)
+        if fn is None:
+            raise RuntimeError(
+                "this surfcore build predates surf_set_goal_model - "
+                "rebuild the core (build.ps1 / ./build.sh)")
+        fn.argtypes = [ctypes.c_void_p, ctypes.c_int32, ctypes.POINTER(c_float)]
+        fn.restype = None
+        org = None if origin is None else (c_float * 3)(*[float(v) for v in origin][:3])
+        fn(self._handle(), int(model), org)
+
+    @property
+    def goal_model(self) -> "_GoalModel":
+        """The brush model whose clip hull decides the finish (the box's own trigger, or one
+        named by set_goal_model), 0 = none (the swept box decides), -1 = a core built before the
+        export. Reads as an int (uf2r2b1: core.goal_model == 23) and calls as a method
+        (uf2r2b2: core.goal_model())."""
+        fn = getattr(self._lib, "surf_goal_model", None)
+        if fn is None:
+            return _GoalModel(-1)
+        fn.argtypes = [ctypes.c_void_p]
+        fn.restype = ctypes.c_int32
+        return _GoalModel(int(fn(self._handle())))
 
     @property
     def goal_hits(self) -> np.ndarray:
