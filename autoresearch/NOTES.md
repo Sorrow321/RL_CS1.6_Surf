@@ -380,3 +380,13 @@ file without a word. Workaround: scp the padded file myself, md5-checked against
   (runs/uf2r1b2_lines/ne2_spine.npy); depth rule (success d <= 27,611 = 9.9%), milestones
   28588,27912 (both earlier success lines keep paying), resumed from tcne2's final (1.952B), 7e8.
   GE11 meanwhile from the new spine's last 3 s (what lies past the NE fall?).
+* **tcne3 (1.952B -> 2.405B, stopped): 10.255 (2,305M), the round's best.** Evals 9.36 / 9.69 /
+  9.67 / 9.68 / **10.13** / 9.98 / 10.25 / **10.26** / 10.19 (medians 10.0-10.2%): the 3,418-state
+  spine (27 s of GE8 pumping + GE9's NE exit) was walked back to the true start (97% at tau 0)
+  in ~200M steps - the prefix the policy already flew went fast. Hand-off ckpt_2304770048.pt
+  (md5 bf28c248), pulled by hand.
+* **GE11 (rooted at ne2_spine's last 3 s, 15 min): 10.65%** at (-954, -764, 180) - at *18's NE
+  edge (x -896).
+* Arm tcne4 (04:52 UTC): ne3 spine = ne2_spine to row 3158 + GE11's chain to cell 540508 (3,419
+  states, md5 81326566, end 10.65%), milestones 28588,27912,27611, resumed from tcne3's latest
+  (2,393.9M, md5 277a2045). GE12 from ne3's last 3 s meanwhile.
