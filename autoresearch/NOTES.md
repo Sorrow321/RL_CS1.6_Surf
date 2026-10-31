@@ -550,3 +550,8 @@ on purpose: round 1 needs an exit, and the attribution comes after. Read with uf
   10.803B** (seven die in the start pit at 1.7%). The time has flattened at 42.6-43.1 s. The
   snapshot before the best eval, ckpt_10944512000, re-records **8/9** (best 43.25 s): the hand-on
   stays ckpt_8819048448.
+* A13 11.03-12.39B: 9/9 at 11.029 / 11.180 / 11.256 (42.57 s, ties 118.581) / 11.482 / 11.633 /
+  11.859 / 12.011 / 12.086; 8/9 at 11.104 / 11.407 / 11.558 / 11.708 / 11.784 / 11.935 / 12.162
+  / 12.237; **0/9 at 11.331, 12.313 and 12.388B** (all nine lap or die in the start pit at
+  1.7-1.8%). No gain in speed after ~10.4B (42.6-43.5 s), and the whole-eval pit failures come
+  more often late: long training on this mixture does not stabilise the pit.
