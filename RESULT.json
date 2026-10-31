@@ -3,17 +3,17 @@
  "round": 1,
  "final": false,
  "best": {
-  "score": 8.199,
-  "eval_file": "/home/steam/ar_uf2/runs/uf2r1b2/uf2r1b2_tcpump/traj_1152909312.jsonl",
-  "run": "uf2r1b2_tcpump",
-  "step": 1152909312,
-  "ckpt": "/home/steam/ar_uf2/runs/uf2r1b2/uf2r1b2_tcpump/ckpt_1152385024.pt",
+  "score": 9.647,
+  "eval_file": "/home/steam/ar_uf2/runs/uf2r1b2/uf2r1b2_tcne/traj_1454899200.jsonl",
+  "run": "uf2r1b2_tcne",
+  "step": 1454899200,
+  "ckpt": "/home/steam/ar_uf2/runs/uf2r1b2/uf2r1b2_tcne/ckpt_1454374912.pt",
   "recipe": [
    "incumbent_recipe (config.json)",
    "--demo-file",
-   "runs/uf2r1b2_lines/pump_spine.npy",
+   "runs/uf2r1b2_lines/ne_spine.npy",
    "--demo-keys",
-   "runs/uf2r1b2_lines/pump_spine.keys.npy",
+   "runs/uf2r1b2_lines/ne_spine.keys.npy",
    "--demo-window",
    "5",
    "--demo-grow",
@@ -28,8 +28,6 @@
    "0.8",
    "--demo-success-d",
    "100",
-   "--demo-success-energy",
-   "150",
    "--demo-success-bonus",
    "50",
    "--demo-milestones",
@@ -62,8 +60,8 @@
    "--ckpt-every",
    "5e7"
   ],
-  "resume_from": "uf2r1b2_tcq ckpt_0900726784 (md5 48c49d2a)",
-  "commit": "6d28e662"
+  "resume_from": "uf2r1b2_tcpump ckpt_1152385024 (md5 865bf7f9)",
+  "commit": "b5c794e1"
  },
- "summary": "Round 1. Generic arms end on the start's traps (slide into kill sheet *18 at 5.7-5.9; per-call energy / death charge camp). Go-Explore never leaves the pit, but holds the record's post-pit corridor (a trough under the platform) via the platform's SW corner. Lineage of this branch's runs: backward curriculum on a 10 s GE trough line from scratch (tc) 7.43 -> + per-call energy K8 (tce) 7.85 -> + spawns from a GE search rooted at the policy's own trough ride, which pumps the trough +345 E (tcq) 7.95 -> energy-rule curriculum on that pump chain (tcpump) 8.20 at 1.15B; continuing (tcpump2, tau0 1692). Gate: the policy enters the trough with ~650 E after an unavoidable floor landing and must pump to clear *18's west edge."
+ "summary": "Round 1. Generic arms end on the start's traps (slide into kill sheet *18 at 5.7-5.9; per-call energy / death charge camp). Go-Explore never leaves the pit, but holds the record's post-pit corridor (a trough under the platform) via the platform's SW corner. This branch's lineage: backward curriculum on a 10 s GE trough line (tc, scratch) 7.43 -> per-call energy K8 (tce) 7.85 -> spawns from a GE search rooted at the policy's own trough ride, which pumps the trough (tcq) 7.95 -> energy-rule curriculum on the pump chain (tcpump) 8.20 -> curriculum on own line + GE pump chain + a GE north-east exit (tcne) 9.65 at 1.45B: the greedy now pumps once in the trough and exits north-east. Next: GE from the new line's end."
 }
