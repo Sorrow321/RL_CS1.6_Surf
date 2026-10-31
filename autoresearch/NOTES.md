@@ -828,3 +828,11 @@ re-checks a recording: an episode finished only if some row's origin is inside m
   with A13's own reward (k02 spine at tau 0 + keys + the 7 milestones) + --auto-bc (placeholder at
   coef 0, --auto-bc-coef 0.5 at the first real line its own search finds).
 * Box: still none (every rent refused since 09:52 UTC, the fleet at its spending pace).
+* **A real finish is within reach of the policy's own arrival** (Go-Explore on the fixed core,
+  13:45 UTC, CPU, roots = the greedy line's states at 39.5-41.8 s every 10 ticks): GOAL #1 in the
+  first iteration - from the greedy state at tick 5,390 (2,093, -1,185, -769) a uniform burst flies
+  to (3,470, -1,931, -655), just NW of the diagonal curtain and below the platform's level, stops
+  against the platform's side and jumps: its hull touches the diagonal (~22 u off, inside the
+  hull-expanded curtain). Crude (a dead stop and a jump) but real - the energy is there, the
+  steering is what the box test never asked for. RL on the fixed core should find this or the
+  clean entry through the west face (READ FIRST: a warm start flew 9/9 real within ~150M steps).
