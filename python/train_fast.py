@@ -4111,6 +4111,16 @@ def make_eval_stall_hook(core, field, stall_ticks, stall_eps, every, env=0):
     return hook
 
 
+def spine_is_fresh(end_d: float, greedy_med, gain: float) -> bool:
+    """--auto-spine-recheck: a new spine whose end lies at field distance ``end_d`` is still worth
+    adopting when it beats the latest greedy frontier ``greedy_med`` (the median deepest d of the
+    last greedy eval; None = no eval read yet, which keeps the search's own verdict) by ``gain``
+    u: end_d <= greedy_med - gain."""
+    if greedy_med is None:
+        return True
+    return float(end_d) <= float(greedy_med) - float(gain)
+
+
 def _eval_energy_h(core, sl):
     """--energy-stall: energy height h = z + |v|^2 / (2 g) of the eval core's envs ``sl``."""
     st = core.states_view
@@ -5185,6 +5195,17 @@ def main() -> None:
                          "and leaves most of a box's CPU quota idle; a blocking search held it "
                          "for up to ~28 min (pbr6b4_c12). Off = the trainer waits, as before; "
                          "config only when on; never restored")
+    ap.add_argument("--auto-spine-recheck", action="store_true",
+                    help="--auto-spine: a search's spine is ADOPTED only if its end still beats "
+                         "the LATEST greedy eval's frontier (median deepest d) by "
+                         "--auto-spine-gain - the search itself compared against the frontier of "
+                         "the eval that started it, and an --auto-spine-async search that runs "
+                         "20-40 min can come back behind a policy that has moved on (zlr1b4_e3: "
+                         "a spine ending at 31% replaced the curriculum while the greedy was at "
+                         "57%, and the greedy fell back to the spine's dead end within 75M "
+                         "steps). A stale spine is discarded and the loop retries after "
+                         "--auto-spine-retry. Off = adopt as before; config only when on; never "
+                         "restored")
     ap.add_argument("--auto-spine-energy", type=float, default=None,   # None = off
                     help="--auto-spine: G > 0 adds an ENERGY stage to the search (auto_spine "
                          "--energy-gain G): when no deeper line exists, a line keeping >= G u "
@@ -12119,6 +12140,8 @@ def main() -> None:
                       f"{0.5 * float(args.auto_spine_energy):g}")
     elif args.auto_spine:
         raise SystemExit("--auto-spine needs --demo-file (the first spine) and --demo-success-d")
+    if args.auto_spine_recheck and not args.auto_spine:
+        raise SystemExit("--auto-spine-recheck needs --auto-spine")
     if args.auto_spine_energy is not None and not args.auto_spine:
         raise SystemExit("--auto-spine-energy is a stage of --auto-spine's search: give it")
     if args.auto_spine_async:
@@ -15196,6 +15219,8 @@ def main() -> None:
             meta["config"]["auto_spine_milestones"] = 1
         if args.auto_spine_async:
             meta["config"]["auto_spine_async"] = 1
+        if args.auto_spine_recheck:
+            meta["config"]["auto_spine_recheck"] = 1
         if args.auto_spine_energy is not None:
             meta["config"]["auto_spine_energy"] = float(args.auto_spine_energy)
         if float(args.demo_stall_cut or 0.0) > 0.0:
@@ -16484,6 +16509,18 @@ def main() -> None:
                   f"step {AUTO['retry_at']:,}", flush=True)
             return
         sp = np.load(res["spine"])
+        if args.auto_spine_recheck:
+            # --auto-spine-recheck: the policy may have moved on while the search ran
+            _de_new = float(_f.sample(np.asarray(sp[-1]["origin"], np.float64)[None])[0])
+            if not spine_is_fresh(_de_new, AUTO.get("med"), float(args.auto_spine_gain)):
+                AUTO["retry_at"] = int(global_step + float(args.auto_spine_retry))
+                AUTO["last"] = int(global_step)
+                print(f"[{global_step:>13,d}] auto-spine search {AUTO['k']}: STALE spine "
+                      f"discarded - its end d {_de_new:,.0f} does not beat the latest greedy "
+                      f"frontier {float(AUTO['med']):,.0f} by {float(args.auto_spine_gain):g} u "
+                      f"(the search started at {med:,.0f}); next try at step "
+                      f"{AUTO['retry_at']:,}", flush=True)
+                return
         demo.reset_spine(sp)
         if DEMO_KEYS[0] is not None:
             # the new spine's held keys (auto_spine writes them next to it), else none
