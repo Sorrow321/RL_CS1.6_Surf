@@ -5271,6 +5271,11 @@ def main() -> None:
                          "admitted at once, the spawn mix of a curriculum that has walked back)")
     ap.add_argument("--auto-bc-timeout", type=float, default=3600.0,
                     help="--auto-bc: wall-clock cap (s) of one search")
+    ap.add_argument("--auto-bc-coef", type=float, default=None,
+                    help="--auto-bc: the BC coefficient from the first swap on (both --bc-coef and "
+                         "--bc-coef-final), so a run can start with an inert placeholder file "
+                         "(--bc-coef 0 --bc-coef-final 0) and clone only lines its own search "
+                         "found; None = the launch's schedule throughout")
     ap.add_argument("--respawn-killsafe", type=int, default=None,  # 0 = off
                     help="bin reservoir states on the KILL-MASKED goal field "
                          "(goalk cache): states inside fail/teleport volumes "
@@ -15129,6 +15134,8 @@ def main() -> None:
             auto_bc_score=str(args.auto_bc_score), auto_bc_keep=int(args.auto_bc_keep),
             auto_bc_gain=float(args.auto_bc_gain), auto_bc_tau0=int(args.auto_bc_tau0),
             auto_bc_timeout=float(args.auto_bc_timeout))
+        if args.auto_bc_coef is not None:
+            meta["config"]["auto_bc_coef"] = float(args.auto_bc_coef)
 
     if args.race_sr:
         # --race-sr: dumped only when on, so a flag-off run.json is the
@@ -18695,13 +18702,18 @@ def main() -> None:
         demo_idx[:] = -1
         AUTOBC["best_s"] = new_s
         AUTOBC["swaps"] += 1
+        if args.auto_bc_coef is not None:
+            # --auto-bc-coef: the coefficient from the first swap on (a placeholder launch file
+            # at coef 0 clones nothing until the run's own search has found a line)
+            args.bc_coef = args.bc_coef_final = float(args.auto_bc_coef)
         print(f"[{global_step:>13,d}] auto-bc search {AUTOBC['k']}: NEW BC ROWS + SPINE - "
               f"{nbc.n:,} rows, line {new_s:.2f} s (was "
               + (f"{float(cur):.2f} s" if cur is not None else "none")
               + f"), spine {len(sp):,} states (keys {'yes' if nk is not None else 'no'}), "
               f"curriculum tau {demo.tau}"
               + (f", success line d <= {DEMO_END_D:,.0f}" if DEMO_END_D is not None else "")
-              + f" ({dt:.0f}s; swap {AUTOBC['swaps']})", flush=True)
+              + f" ({dt:.0f}s; swap {AUTOBC['swaps']}; bc coef {float(args.bc_coef):g})",
+              flush=True)
 
     if AUTOBC is not None:
         import atexit as _ax

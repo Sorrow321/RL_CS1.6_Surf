@@ -115,7 +115,7 @@ TRAIN_ONLY = frozenset({
     # --auto-bc: the TRAINING expert loop (BC rows + spine replaced by the run's own beam
     # search); a recording spawns at the map start and samples its own policy
     "auto_bc", "auto_bc_every", "auto_bc_waves", "auto_bc_envs", "auto_bc_score",
-    "auto_bc_keep", "auto_bc_gain", "auto_bc_tau0", "auto_bc_timeout",
+    "auto_bc_keep", "auto_bc_gain", "auto_bc_tau0", "auto_bc_timeout", "auto_bc_coef",
     # --respawn-greedy-contact: where the TRAINING greedy-line rows are anchored
     "respawn_greedy_contact", "respawn_greedy_energy", "respawn_greedy_energy_secs",
     "demo_success_energy",

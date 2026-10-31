@@ -150,17 +150,20 @@ def test_end_to_end_swap_on_the_incumbent(tmp_path):
                   "--demo-file", str(POOL / "spine.npy"),
                   "--demo-keys", str(POOL / "spine.keys.npy"), "--demo-tau0", "0",
                   "--demo-milestones", "29584,27363,17276,13765,13232,8515,3476",
-                  "--bc-file", str(POOL / "bc.npz"), "--bc-coef", "0.5",
-                  "--bc-coef-final", "0.5", "--bc-target", "dist", "--bc-value-coef", "0",
+                  "--bc-file", str(POOL / "bc.npz"), "--bc-coef", "0",
+                  "--bc-coef-final", "0", "--bc-target", "dist", "--bc-value-coef", "0",
                   "--bc-keys-engine", "--bc-pitch-coef", "0", "--bc-batch", "64",
-                  "--lr", "3e-5", "--auto-bc", "--auto-bc-every", "0"],
+                  "--lr", "3e-5", "--auto-bc", "--auto-bc-every", "0",
+                  "--auto-bc-coef", "0.5", "--auto-bc-best-s", "999"],
                  env=_env(SELF_STATES="1", AUTO_BC_TOOL=str(fake)), timeout=5400)
         out = r.stdout + r.stderr
         assert r.returncode == 0, out[-5000:]
         assert "--auto-bc: tools/auto_bc.py" in out, out[-3000:]
         assert "auto-bc search 1: running beside the training" in out, out[-3000:]
         assert "auto-bc search 1: NEW BC ROWS + SPINE" in out, out[-3000:]
+        assert "line 1.00 s (was 999.00 s)" in out and "bc coef 0.5)" in out, out[-3000:]
         cfg = json.loads((ROOT / "runs" / run / "run.json").read_text())["config"]
         assert cfg["auto_bc"] == 1 and cfg["auto_bc_score"] == "dh"
+        assert cfg["auto_bc_coef"] == 0.5
     finally:
         shutil.rmtree(ROOT / "runs" / run, ignore_errors=True)
