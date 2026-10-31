@@ -916,3 +916,8 @@ own best search line, for the spread gains BC on noisy beam lines (x1) could not
   15.376B 7/9 36.67 (first update) / **15.451B 9/9 36.29 s = 118.790** / 15.527B 8/9 36.28 /
   15.602B 9/9 36.46 (118.785). Band paced success ~90% (the pace 0.02 0.3 is passed by most band
   episodes). Hand-on for 118.790: ckpt_15441854464 (9.4M before; md5 5e126873; pulled).
+* x11 15.68-15.98B (clip-hull grader): 9/9 36.23 (118.792) / 9/9 36.10 (118.797) / 9/9 35.95 (118.802) /
+  **9/9 35.80 s = 118.807 (15.904B)** / 8/9 36.14 - ~0.15 s per eval, every finish real. The greedy is
+  now faster than its own 36.05 s spine, so the pace no longer discriminates: next iteration = a new
+  beam on x11's weights -> a faster real line -> the same pace-gated spine (x12). Hand-on for 118.807:
+  ckpt_15897985024 (6.3M before; md5 a1189213; pulled).

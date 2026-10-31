@@ -3,11 +3,11 @@
  "round": 2,
  "final": false,
  "best": {
-  "score": 118.79,
-  "eval_file": "/home/steam/ar_uf2/runs/uf2r2b4/uf2r2b4_x11/traj_15451291648.jsonl",
+  "score": 118.807,
+  "eval_file": "/home/steam/ar_uf2/runs/uf2r2b4/uf2r2b4_x11/traj_15904276480.jsonl",
   "run": "uf2r2b4_x11",
-  "step": 15451291648,
-  "ckpt": "/home/steam/ar_uf2/runs/uf2r2b4/uf2r2b4_x11/ckpt_15441854464.pt",
+  "step": 15904276480,
+  "ckpt": "/home/steam/ar_uf2/runs/uf2r2b4/uf2r2b4_x11/ckpt_15897985024.pt",
   "recipe": [
    "resume (x9 ckpt_latest 14.942B <- x8 <- x7 <- the incumbent uf2r1b1 ckpt_13045858304)",
    "--goal-hull",
@@ -57,5 +57,5 @@
   "resume_from": "uf2r2b4_x10 ckpt_latest (15.375B, md5 4d285beb) <- x9 <- x8 <- x7 <- the incumbent uf2r1b1 ckpt_13045858304",
   "commit": "a457b5be"
  },
- "summary": "118.790 by the operator's clip-hull grader (13:52 UTC; the round-1 incumbent re-scores 109.692): x11 15.451B 9/9 REAL finishes, best 36.29 s (x10: 118.781, 36.57 s) (x7-x9's box-era evals now score 100.0, box-only). Two camera-gated shortcuts found by the policy's own search (beam_tas --pitch-hold from its own greedy state): an early pit exit (~3.4 s) and the 60-65% bowl (~1.4 s); taught by a pace-gated spine pinned at the true start (--demo-tau0 0 --demo-rate 0 --demo-success-pace) + BC on the line + the lines as spawn states + cold keys (--unstuck-max 0); then the real finish (--goal-hull 1, this branch's core fix) warm from the box-era weights. x11 (running): a tight pace (0.02 0.3) on a 36.05 s real-finish beam line of the policy's own weights, for the spread ~0.5 s the search still finds."
+ "summary": "118.807 by the operator's clip-hull grader (14:12 UTC; the round-1 incumbent re-scores 109.692): x11 15.904B 9/9 REAL finishes, best 35.80 s (x10: 118.781, 36.57 s) (x7-x9's box-era evals now score 100.0, box-only). Two camera-gated shortcuts found by the policy's own search (beam_tas --pitch-hold from its own greedy state): an early pit exit (~3.4 s) and the 60-65% bowl (~1.4 s); taught by a pace-gated spine pinned at the true start (--demo-tau0 0 --demo-rate 0 --demo-success-pace) + BC on the line + the lines as spawn states + cold keys (--unstuck-max 0); then the real finish (--goal-hull 1, this branch's core fix) warm from the box-era weights. x11 (running): a tight pace (0.02 0.3) on a 36.05 s real-finish beam line of the policy's own weights, for the spread ~0.5 s the search still finds."
 }
