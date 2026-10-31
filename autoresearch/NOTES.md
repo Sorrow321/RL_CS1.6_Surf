@@ -278,3 +278,20 @@ on purpose: round 1 needs an exit, and the attribution comes after. Read with uf
   --demo-front-temp 0.5 --demo-front-ticks 40 --demo-front-view 6` (the pb playbook; success =
   the record 400 u past the line's end = across the block, over the sheet) + `--no-respawn-novel
   --respawn-backward-mix 0 --int-real-only 0` (both refuse a demo spine) + `--respawn-greedy-temp 1`.
+* **A10 at 2.87B (00:29 UTC, ~20 min in): training flies out of the pit.** The reservoir's deepest
+  state 93.05% -> **90.71%** of d0 (9.3% progress); 151 reservoir states past 5%, most of them
+  FLYING above the sheet north at ~1,170-1,190 u/s with E 1,180-1,350 (e.g. (-2,069, -1,432, 455)
+  E 1,354; (-743, -1,108, 325) at 9.29% heading north-east), some at z ~700 with E ~1,800-2,000;
+  front-perturb episodes reach 4,221 u (13.8%). 164 spine-line bonuses paid (records past d 29,584),
+  though the curriculum's own frontier-band success is still 0% at tau 3999. The greedy: 9/9 dive
+  with E 1,200+ at the pit bottom (peaks 1,403-1,444); one episode (2,868M ep4) climbed out of the
+  pit's EAST side to (-1,503, -2,512, 583) with E 1,306 at 24 s - 3.73%, the greedy's first
+  progress past the platform edge - and died there (the catch's top is z 577). Score 3.729.
+* **THE GREEDY CLIMBS OUT OF THE PIT: 8.846 at 2,944M (A10, 00:32 UTC, ~23 min into the
+  curriculum).** `traj_2943877120`: best 8.85%, median 6.5%; 7/9 episodes past 6% after leaving
+  the pit at 13-18 s - ep1 / ep3 die at (-2,480, -1,353, 182) / (-2,456, -1,215, 180), i.e. ON the
+  `*18` sheet right under the record's S19 touch ((-2,571, -1,357, 504) at t+8.5): across the
+  block and north, but too low; ep6 reaches 8.85% at (-1,064, -1,270, 183) (the sheet, further
+  east); ep0 / ep2 leave by the pit's east side into the catch (4.0-4.1%). The lineage's first
+  gate ("out of the pit from the true start, flying past 5%"). Checkpoint pulled: ckpt_latest at
+  2,985M (41M after the eval; no milestone before it).
