@@ -880,3 +880,13 @@ recordings on the trigger's hull from the positions (the memory note's plan).
   diagonal curtain, (3,345-3,469, -1,972..-2,097, -457..-594). Hand-on: ckpt_15584985088 (10.5M
   before), pulled; re-recording on the box. Real-finish searches (`beams_it4.sh` on B7's weights)
   running for a real-finish BC file.
+* OPERATOR NOTE (13:50 UTC): the finish fix is in the harness (uf2/main 2a27047f, PROTOCOL READ FIRST;
+  found independently by uf2r2b1 / b2 / b4 the same hour, merged); score.py counts a "done" only if
+  the finishing step entered the trigger's clip hull (box-only = progress, `box_only`): the round-1
+  incumbent re-scores 118.592 -> 109.692 (1/9 real). The user: keep the checkpoints and train a little
+  more on the fixed finish, no scratch retraining. Re-scored with the operator's score.py (copied
+  read-only to the scratchpad): B7's evals are real (118.730 stands), B6's 118.726 eval -> 100.000.
+* B7 hand-on ckpt_15584985088 re-records **9/9 REAL twice** (default seed 38.30 s = 118.723; --seed 7
+  38.14 s = 118.729): 18/18. B7 later: 8/9 38.20 s (15.822B); the band sits at the climb (845: 0%).
+* Real-finish searches on B7's 15.77B weights (`beams_it4.sh`): d-ranked beams 37.57 / 37.63 s, Monte
+  Carlo 37.66-37.94 s (the box-finish lines were 36.65-36.97 s: a real finish costs ~0.6 s more).
