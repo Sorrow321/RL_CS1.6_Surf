@@ -861,6 +861,29 @@ class SurfCore:
             raise ValueError(f"goal box needs 3-vectors, got {lo} / {hi}")
         fn(self._handle(), (c_float * 3)(*lo), (c_float * 3)(*hi))
 
+    def set_goal_hull(self, on: bool = True) -> None:
+        """The engine rule for a brush timer trigger (2026-10-31): on (the core's default), a
+        goal box that IS a brush model's bounds completes only with the player origin inside
+        that model's clip hull at the end of the move (GoldSrc SV_TouchLinks); off = the swept
+        box for every goal (the pre-fix rule). A core built before the export ignores it
+        (it only HAS the box rule)."""
+        fn = getattr(self._lib, "surf_set_goal_hull", None)
+        if fn is None:
+            return
+        fn.argtypes = [ctypes.c_void_p, ctypes.c_int32]
+        fn.restype = None
+        fn(self._handle(), 1 if on else 0)
+
+    def goal_model(self) -> int:
+        """The brush model the goal box matched (its clip hull decides the finish), 0 = none
+        (the swept box decides), -1 = a core built before the export."""
+        fn = getattr(self._lib, "surf_goal_model", None)
+        if fn is None:
+            return -1
+        fn.argtypes = [ctypes.c_void_p]
+        fn.restype = ctypes.c_int32
+        return int(fn(self._handle()))
+
     @property
     def goal_hits(self) -> np.ndarray:
         """ZERO-COPY read-only uint8 view [num_envs]: 1 exactly on the batch
