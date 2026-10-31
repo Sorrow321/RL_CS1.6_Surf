@@ -455,3 +455,23 @@ on purpose: round 1 needs an exit, and the attribution comes after. Read with uf
   doomed under-box states (small d, no way up). The geodesic field ranks "under the box" next to
   "in the box" - the same deception as the cannonball descent. Hand-on: ckpt_8005877760 (3.7M
   before; md5 2a5f39d1...).
+* **A13 8,085M: 99.689** (best 99.7%, median 99.4%, 0/9 finishes; 04:22 UTC): 8/9 at 99.28-99.69%,
+  the best to (3,281, -1,834, -781) - 47 u west of the finish box's west edge, 54 u north of it,
+  **141 u below its floor**; then they overshoot east along the box's north side (to x ~3,900) or
+  turn back west, and fall to the z ~-1,350 floor. The field reads d 0 inside the box and 34,659
+  60 u under its floor: the box sits ON a solid block and must be entered from above. Hand-on:
+  ckpt_8080850944 (4.2M before; md5 ea634269...).
+* Search 3 (8.01B, 267 s): NO new spine - beam frontier d 349, branched beams at 5,615 / 5,354 /
+  5,121 (energy forks before losses of 218 u at 5,187 and 114 u at 5,475) d 342-379, 0 finishes in
+  4,096 envs each, the population extinct by t 6,000. **And the loop cannot hand back a finish any
+  more**: a spine must end `--auto-spine-gain` (500) u deeper than the greedy frontier, which is
+  now 177 u from the goal - even a FINISHING line (d 0) fails `0 < 177 - 500`. A defect of the
+  gain rule near the goal (a finisher should always beat a non-finisher).
+* ANALYSIS (the record, insight only): it climbs the same ramp (1,790..1,940, -1,580..-1,190) at
+  35.1-35.4 s with vz +320..+780 and arcs east at z -625..-448 into the box's west face at
+  (3,334, -2,125, -510); at x 2,384 its energy height is ~556 against the k02 line's ~324 - the
+  policy comes off that ramp ~230 u of energy short, which is what puts it under the box floor.
+* Manual search m1 (04:31 UTC, beside A13 on the 8.081B weights): auto_spine's ENERGY stage alone
+  (`--energy-gain 150` = the pbr5b2 constant, `--ge-boost ""`, GE 8 min, no branches): roots
+  before the line's largest energy losses, a uniform explorer keyed on position x energy, the
+  deepest cell keeping >= 150 u more energy than the line at the same progress.
