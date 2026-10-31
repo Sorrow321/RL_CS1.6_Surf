@@ -706,3 +706,22 @@ novelty 2.5, greedy rows x1-1.3 turned 180, tick 7.63 ms, etc. (the launch log's
 * Expert-iteration round 2 (10:33 UTC): `autoresearch/r2b1/beams_it.sh` (six beams: plain x3
   seeds, view-only forks at t 5.0 s, t 2.3 s and t 29.9 s - the 60-70% loop) on B2's 13.294B
   weights -> BC file 2 for B3 (a resume of B2's final checkpoint).
+* Hand-on audit: **ckpt_13190561792 re-records 9/9 twice** (record_ckpt on the box, 9 eps: default
+  seed best 42.21 s / score 118.593; --seed 7 best 41.49 s / 118.617; `uf2r2b1_bc1/verify/`).
+* B2 later evals: 9/9 42.32 s (13.273B), 9/9 42.41 s (13.348B); stopped at 13.408B (10:44 UTC) to
+  iterate. The BC drags the greedy only partly: its median finish stays 42.2-42.9 s (the
+  incumbent's 42.54) while the lines it clones run 41.1-41.6 s.
+* **Iteration 2 searches** (six beams on B2's 13.294B weights, `beams_it.sh`): **40.80-40.96 s**
+  (iteration 1 on the incumbent: 41.14-41.35) - the search improves with the policy. The 40.79 s
+  line vs the incumbent's median: 2% 11.22 vs 11.24 (both pit laps still), 60% 28.54 vs 28.80, 70%
+  33.77 vs 34.40, 80% 36.17 vs 37.04, 90% 38.62 vs 39.97, 100% 40.77 vs 42.54: all of the gain
+  after 60%. A fork at t 29.9 s (the 60-70% loop) did not find a direct line (40.96 s).
+* BC file 2 `runs/bc/r2_bc2.npz` (16 lines, best 40.80 s, md5 d7f48d0b). The box was moved to
+  bf59e8d4 with `box.py deploy` (code only: the run dirs are untracked); its gpu_health step
+  FAILED because B2 was training on the GPU (a GEMM benchmark under load) - not a host defect,
+  the same card passed at the first deploy, so it is NOT blocklisted. Maps restamped by hand.
+* **B3 `uf2r2b1_bc2pl`** (10:45 UTC): resume of B2's 13,407,617,024 weights (md5 f42e1e0e), B2's
+  flags with `--bc-file runs/bc/r2_bc2.npz` + **`--respawn-greedy-plateau 2`**. The first eval's
+  pool: 18 plateaus = every episode's start pit (1.5-11.6 s) and its 60-70% loop (29.6-32.5 s),
+  4,427 states, turned U(-180, 180) and x1-1.3 (the restored greedy-row perturbations), 25% of the
+  non-start pool. First eval (one iteration in): 7/9, 42.94 s (the BC's first steps again).
