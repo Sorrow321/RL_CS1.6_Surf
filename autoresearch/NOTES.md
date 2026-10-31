@@ -152,3 +152,17 @@ idle for the first third of its round.
   front of loop 2's face from the north at (-380, -290, -2,730) (7.5%), none on loop 2. A
   coarser archive pumps faster per CPU-minute (fewer cells, each energy top drawn more often).
   The box GE beside the control now uses --cell 128; a 60-min local run (seed 7) started 22:44.
+* **Plan change (22:55 UTC): arm B `zlr1b3_cur` goes first** = arm A's reward + a backward
+  curriculum on `autoresearch/spines/zlr1b3_ge30w.npy` (the 30-min 128 u GE line from the true
+  spawn to loop 1's west apex, 10.65%, E -3,074 -> -2,363; its held keys; views along the
+  velocity): `--demo-file ... --demo-keys ... --demo-success-d 100 --demo-success-bonus 50
+  --demo-window 5 --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5 --demo-front-frac 0.5
+  --demo-front-temp 0.5 --demo-front-ticks 40 --demo-front-view 6 --no-respawn-novel
+  --respawn-backward-mix 0 --int-real-only 0` (uf2r1b1's A10 playbook with its later
+  --demo-success-d 100 rule). Why first: with ~1 box for 4 agents I may get one session; a
+  curriculum on an own-search line is what moved the greedy past the hardest gate on both
+  earlier maps, and pure RL from scratch on a 60 s pumping gate is the slower bet. The control
+  (4e8, GE 128 u beside it) follows on the same box; arm A (no spine) after that if time allows.
+  CPU smoke of the whole flag set passed (curriculum 6,647 states, keys on 6,283 rows, success
+  line d <= 5,784). The launchers had a pipe bug (`if ! cmd | tail` tests tail): fixed with
+  `set -o pipefail`.
