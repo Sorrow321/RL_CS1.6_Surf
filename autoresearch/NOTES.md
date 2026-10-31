@@ -617,3 +617,45 @@ expert loop's seed (beam -> plan_to_bc -> --bc-file; keep the trainer's evals on
 counts only `traj_<step>.jsonl`). For the recipe (0b): make the three manual steps automatic (a
 first spine from the true start without a hand-run MC line; the stall cut without
 --auto-spine-energy) and repeat on a second map with the same flags and constants.
+
+## uf2r2b1 (round 2, slot 1) - 2026-10-31 09:44 UTC start
+
+Box 58518461: RTX 5080 + i9-14900K (machine 147030, round 1's host), 0.38 $/h, Utah. Incumbent
+118.592 = uf2r1b1's ckpt_13045858304 (9/9, best 42.25 s); the score needs 9/9 AND a faster best
+finish (1 s = 0.033), so this round is about TIME with the pit reliability kept.
+
+### Where the 42.2 s goes (ANALYSIS ONLY, the record as an instrument; 09:45-09:50 UTC)
+Split times by best field progress (`autoresearch/r2b1/` has no script for it yet; scratch
+splits.py), the incumbent's 13.068B eval (median of 9) vs the record (file clock, its curtain at
+~1.55 s): 1% 1.29 vs 2.15 / **2% 11.24 vs 8.33** / 5% 12.44 vs 9.41 / 20% 16.77 vs 13.49 / 40% 22.29
+vs 18.88 / 60% 28.80 vs 25.26 / **70% 34.40 vs 29.29** / 90% 39.97 vs 34.39 / 100% 42.54 vs 36.76.
+* The pit (1% -> 2%): 9.95 s vs 6.18 s = **+3.8 s**. The greedy laps the pit TWICE counter-clockwise
+  (in going north on the EAST side, west at the north end, south down the WEST side, round the south
+  end at y -3,755 and z ~-700 east, north again on the east side to y -645, west, south on the west
+  side, and only then climbs the south-west wall: z -783 at t 10.0 with vz +777 -> z 272 at t 11.0
+  -> out north at t ~12). The record laps ONCE clockwise (north on the west side, U-turn east at the
+  north end, south on the east side, climbs the south end at t 6.5-7.5, out at t ~8). On its first
+  pass of the south end the greedy is LOW (z -760..-670, vz +382) with E 1,150-1,160 - more than the
+  record's 1,054-1,100 during its climb; the second lap buys +120 u of E (1,155 -> 1,277).
+* 60% -> 70%: 5.60 vs 4.03 s = **+1.6 s**: an extra half-loop in the bowl at z ~-1,150 round
+  (1,100..1,850, -490..+740) at t 30-31.5 (east, SOUTH to y -488, back north) where the record goes
+  east and straight north. The greedy carries more E there (845-890 vs 608-707).
+* Both losses are extra loops on an energy-conservative line.
+
+### Searches on the incumbent's weights (box, 09:57-10:00 UTC; 28 s each)
+`autoresearch/r2b1/beams1.sh`: beam_tas from the TRUE start, 4096 envs, d-ranked, 32 greedy envs,
+--save-frontier --keep-finishers 8 --gens 3. S1 plain: **41.17 s** (5,752 finishes). S2 + a view-only
+fork at tick 650 (t 5.0 s, half the population, jitter 45, protect 3): **41.14 s**. S3 keys-temp 1.5
+view-temp 2: 41.36 s. All lap the pit twice (2% at 11.1-11.3 s): the gain is in the late course
+(60-70% 5.26 s vs 5.60; 70-100% 7.56 vs 8.14).
+
+### B1 `uf2r2b1_pace` (launched 09:59:57 UTC): the speed curriculum
+Warm resume of the incumbent (13,045,858,304; md5 359ab38c) - measures the speed lever AT the
+policy's frontier. The S2 line (5,366 states, `runs/beam/r2s2.npy`, md5 4a2f3f1a; keys 06864232)
+as the spine, taught with the PACE rule (pbr9b1's `--demo-success-pace`): a spine episode
+succeeds and is paid the 50 only if it crosses d <= 100 within the line's own time from its spawn
+row + 0.5 s (from the map start 5,417 ticks = 41.55 s; the greedy takes ~42.2 s). Milestones keep
+A13's paid lines (29584, 27363, 17276, 13765, 13232, 8515, 3476, 486); curriculum flags as A13;
+--respawn-greedy-temp 1; no auto-spine (refused with the pace rule); --ckpt-every 2e8 + snapcopy;
+6.5e8 steps (~30 min). Flags restored from the checkpoint: energy-pot 12, death charge 1 / 2 s,
+novelty 2.5, greedy rows x1-1.3 turned 180, tick 7.63 ms, etc. (the launch log's "restored" line).
