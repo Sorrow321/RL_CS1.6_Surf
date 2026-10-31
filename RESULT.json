@@ -1,3 +1,7 @@
-{"agent": "zlr1b3", "round": 1, "final": false,
+{
+ "agent": "zlr1b3",
+ "round": 1,
+ "final": false,
  "best": null,
- "summary": "No run yet (17:28 UTC): the fleet's budget pace allows ~1 box at a time and it was taken. Built --stall-energy EPS (the stall clock and --eval-patience also re-arm on energy-height records; 51b5b635). First arm planned: recipe + --stall-energy 32 + per-call --energy-pot 3 (front 0) + --death-charge 1 --death-charge-window 2, then a scratch control on the same card."}
+ "summary": "No run yet (18:52 UTC): fleet budget pace taken by other boxes since 17:15. Built --stall-energy (51b5b635) and --energy-pot-rel (235bde20). Local GE K30: 8.66% at loop 1's east end, no loop 2. Queued on one box: arm A zlr1b3_enr (recipe + stall-energy 32 + energy-pot-rel 1 per-call + time-pen 0 + death charge 2 s) with GE beside it, then the recipe control zlr1b3_ctl."
+}

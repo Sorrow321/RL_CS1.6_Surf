@@ -75,3 +75,23 @@ byte-identical; tests/python/test_stall_energy.py.
   optimum on loop 1 (climb onto the ridge: ~5% in seconds) that pays more than the record's
   first ~30 s of pumping. K 30 is a generic choice (energy tops dominate selection on any
   map), not read off this map.
+* GE K 30, 15 min on 2 local threads (755k cells): best **8.66%** at loop 1's EAST END
+  ((1,160, 487, -2,850), |v| 207, E -2,824, 23.7 s from the spawn); the east-end cells at
+  7-8.7% fly with |v| 200-550 and E -2,695..-2,830. E max on loop 1 -2,592 (3 min: -2,985,
+  5 min: -2,800). The search climbs the end by spending its speed at the apex; the record
+  carries ~600-750 u MORE energy through that end (E -1,956 at t+64) and needs it for the
+  jump to loop 2. No loop-2 cell yet. Energy grows slowly with compute (sub-linear).
+* `--energy-pot-rel KAPPA` (235bde20, generic): the energy term's K = KAPPA x 1000 x the
+  slot's progress scale (100/d0 x --race-shaping), i.e. one unit of energy height shaped like
+  KAPPA units of geodesic progress on any map. KAPPA 1 = the unit equivalence, the value I
+  would ship everywhere (K 3 is 0.19 of a progress unit here, 0.92 on unitfarmer2). On loop 1
+  the record's +1,050 u of E would pay 16.5 at KAPPA 1 against 9.4 from the end records, and
+  it is paid during the turn that gains it, not ~4 s later at the next apex.
+* Plan (no box yet at 18:52: the fleet's pace allows ~1.6 boxes and two were taken at 17:15):
+  arm A `zlr1b3_enr` = recipe + `--stall-energy 32 --energy-pot-rel 1 --energy-pot-front 0
+  --energy-pot-front-bonus 0 --time-pen 0 --death-charge 1 --death-charge-window 2` (6e8) with
+  GE K 30 (12 threads, 25 min) beside it, then the plain-recipe control `zlr1b3_ctl` (6e8) on
+  the same box. Why --time-pen 0: 0.1/s is about what pumping earns early, so it made a quick
+  death the better return; with the ratchet and gamma a sooner record is still worth more.
+* Process hygiene: a `pgrep -af explore_phase1` at 18:37 also listed another agent's launch
+  command line (a local process). Not acted on; listings are filtered to my own paths now.
