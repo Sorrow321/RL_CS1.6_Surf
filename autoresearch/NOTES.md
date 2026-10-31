@@ -238,3 +238,20 @@ Box 58559243: RTX 5080 + Ryzen 9 7945HX (32 threads), 0.387 $/h, South Carolina 
   ~356k steps/s with GE-3 beside it. The policy follows the line's order (the GE line itself pumps
   in this ramp from 3 to 17 s, h -3,074 -> -2,769, before entering the half-pipe at 18 s).
 * Promising by the protocol's rule (a gate no other arm cleared): extend.
+* A6 to its 600M budget (19:03 UTC): greedy 227 / 302 / 378 / 453 / 529M all ride and pump the
+  curved start ramp (path 34-51k u, peak 1,167-1,258 u/s, episodes ~35-50 s, patience-cut 7-9 of
+  9) without the line's transition into the half-pipe (the line makes it at 17 s with h -2,769;
+  the greedy's h max ~-2,950); field progress 0.0% (the ramp lies behind the start on the
+  field). Training reward 13.9 -> 25.8/ep, energy records +48 -> +110 u/ep, arc gain 2,113 ->
+  2,524 u/ep, yaw sigma 0.14. Best score stays 1.341 (151M). ckpt_final pulled (md5 308e7709).
+* A6b `zlr1b2_arc2` (19:04 UTC): resume of ckpt_final to 3.6e9 (everything restored from the
+  checkpoint: route, spawn states, energy rules, yaw cap; verified in the log).
+* GE-3 (rooted on the joined line's last 2,364 rows, 25 min, 12 threads): 2,660,118 cells, best
+  **13.37%** at (384, 487, -2,550), h max -2,034. East of the half-pipe it covers x 1,800-2,600
+  (213k states) but only low (z <= -2,773), its high-energy states falling near the kill plane.
+  The record (ANALYSIS ONLY) leaves loop 1 eastward at h ~-1,950 and reaches (2,317, -680,
+  -2,252) at t 70: random bursts pump to ~-2,050 but not along that exit. No new route from it.
+* Beam b1 (19:07 UTC, on the box beside A6b): beam_tas from the TRUE START on A6's 600M weights,
+  --score dh --score-energy 1 (rank by -d + energy height), 4,096 envs, 25-decision generations,
+  14,300 ticks (100 s), --save-frontier: does the policy's own pumping + selection make the
+  ramp -> half-pipe transition and go past the GE line?
