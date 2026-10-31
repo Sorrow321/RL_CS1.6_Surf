@@ -16,6 +16,11 @@ archive's own cell and --select-energy.
 --tops writes instead the most energetic cell of EVERY place, once each (the set --select-energy
 boosts; uniform over places): on uf2r1b2_ge1 25.6% of those rows are high-energy pit states
 against 5.1% of the return draw, which the pit's floor cells (many, slow, doomed) dominate.
+
+--not-behind-roots FIELD keeps only rows that are not behind the search's own roots on the field:
+d <= the largest d among the root cells (parent -1). A search rooted at the policy's own line
+(--roots-spine) also wanders back down the route; this is princessburglar's "deeper than the
+start" rule (round 1), measured from the search's own roots, with no map constant.
 """
 from __future__ import annotations
 
@@ -64,6 +69,9 @@ def main(argv=None) -> int:
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--tops", action="store_true",
                     help="write each place's most energetic cell once (no draw; --n ignored)")
+    ap.add_argument("--not-behind-roots", default=None, metavar="FIELD",
+                    help="keep only rows with d <= the largest d of the archive's root cells on "
+                         "this GoalField .npz (no row behind where the search was rooted)")
     a = ap.parse_args(argv)
     from explore_phase1 import CellHash
     from surfgym.core import STATE_DTYPE
@@ -73,10 +81,25 @@ def main(argv=None) -> int:
     k = float(meta.get("select_energy", 0.0) if a.select_energy is None else a.select_energy)
     hasher = CellHash(mins=meta["grid_mins"], maxs=[1e9, 1e9, 1e9], cell=float(meta["cell"]))
     hasher.dims = tuple(int(x) for x in meta["grid_dims"])
+    keep = None
+    if a.not_behind_roots:
+        from surfgym.goalfield import GoalField
+        zf = np.load(a.not_behind_roots, allow_pickle=False)
+        gf = GoalField(zf["grid"].astype(np.float32) * float(zf["quant"]), zf["mins"],
+                       float(zf["cell"]), float(zf["reach_max"]))
+        d = gf.sample(st["origin"].astype(np.float64)).astype(np.float64)
+        roots = np.flatnonzero(np.asarray(z["parent"]) < 0) if "parent" in z.files else np.arange(0)
+        if roots.size == 0:
+            raise SystemExit("--not-behind-roots: the archive has no root cells (parent -1)")
+        keep = d <= float(d[roots].max())
     if a.tops:
         idx = np.sort(energy_tops(st, hasher))
+        if keep is not None:
+            idx = idx[keep[idx]]
     else:
         w = return_weights(st, seen, hasher, k)
+        if keep is not None:
+            w = np.where(keep, w, 0.0)
         rng = np.random.default_rng(a.seed)
         idx = rng.choice(len(st), size=int(a.n), replace=True, p=w / w.sum())
     rows = np.zeros(len(idx), STATE_DTYPE)
@@ -87,6 +110,7 @@ def main(argv=None) -> int:
     np.save(a.out, rows)
     print(json.dumps({"archive": a.archive, "cells": int(len(st)), "rows": int(len(rows)),
                       "distinct": int(len(np.unique(idx))), "select_energy": k, "seed": a.seed, "tops": bool(a.tops),
+                      "not_behind_roots": a.not_behind_roots,
                       "out": a.out}))
     return 0
 

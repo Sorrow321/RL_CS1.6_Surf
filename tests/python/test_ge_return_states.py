@@ -67,3 +67,26 @@ def test_tops_writes_each_places_most_energetic_cell_once(tmp_path):
     assert sorted(r["origin"][:, 0].astype(int).tolist()) == [10, 20, 500]
     # the slower cell of the shared place (cell 0, at (10, 10, 10)) is not written
     assert not np.any((r["origin"][:, 0] == 10.0) & (r["origin"][:, 1] == 10.0))
+
+
+def test_not_behind_roots_drops_rows_behind_the_roots(tmp_path):
+    # a 1-D toy field along x: d = 1000 - x on a 16-cell grid of 64 u (GoalField grids are
+    # (nz, ny, nx)); the root is at x 300 (d 700)
+    st = np.zeros(4, STATE_DTYPE)
+    st["origin"] = [[300, 32, 32], [500, 32, 32], [100, 32, 32], [700, 32, 32]]
+    st["velocity"] = [[10, 0, 0], [10, 0, 0], [10, 0, 0], [10, 0, 0]]
+    p = tmp_path / "archive.npz"
+    np.savez(p, state=st, seen=np.zeros(4, np.int64), parent=np.array([-1, 0, 0, 1]))
+    p.with_suffix(".meta.json").write_text(json.dumps(
+        {"cell": 64.0, "grid_mins": [0.0, 0.0, 0.0], "grid_dims": [16, 16, 16]}))
+    xs = (np.arange(16) + 0.5) * 64.0
+    grid = np.ascontiguousarray(np.broadcast_to((1000.0 - xs)[None, None, :], (4, 4, 16)),
+                                np.float32)
+    fp = tmp_path / "field.npz"
+    np.savez(fp, grid=grid, quant=np.float32(1.0), mins=np.zeros(3, np.float32),
+             cell=np.float32(64.0), reach_max=np.float32(1e6))
+    out = tmp_path / "tops.npy"
+    assert G.main(["--archive", str(p), "--out", str(out), "--tops",
+                   "--not-behind-roots", str(fp)]) == 0
+    xs_out = sorted(np.load(out)["origin"][:, 0].astype(int).tolist())
+    assert xs_out == [300, 500, 700]          # x 100 lies behind the root (d 900 > 700)
