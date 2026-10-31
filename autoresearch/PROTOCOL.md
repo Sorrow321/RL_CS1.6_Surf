@@ -96,6 +96,39 @@ The server runs sv_maxvelocity 3500 (the WR demo's movevars; airaccelerate 100 a
   Like every checkpoint, a warm start restores its own shape flags; never pass them to a
   resume. A recipe that only works warm is not yet a recipe.
 
+## READ FIRST - the finish is the trigger, not its box (operator, 2026-10-31)
+
+* **The bug.** Until round 2 the core completed an episode when the player crossed the finish
+  trigger's BOUNDING BOX (zones.json `end`, hull-inflated). GoldSrc fires a brush trigger only
+  with the player's origin inside the trigger model's CLIP HULL at the end of a frame
+  (SV_TouchLinks; the box is just the pre-check). surf_unitfarmer2's finish (`*23`,
+  counter_stop_button) is three 1 u curtains along the finish platform's edges - the west face
+  x 3328 (y <= -2144), a diagonal (3328, -2144)-(3584, -1888), the north face y -1888
+  (x >= 3584) - and its box adds an EMPTY triangle north-west of the diagonal, in open air beside
+  and below the platform. The policies and the searches learnt to clip that triangle: of the
+  1,312 episodes the core called finished up to 13:00 UTC, 191 (15%) entered the real trigger;
+  all 193 search lines on the round-2 boxes, and 8 of the round-1 incumbent's 9 "finishes", were
+  box-only. The user saw it in a video (the record crosses the line, the AI "finishes" before).
+  Found independently by uf2r2b1, uf2r2b2 and uf2r2b4 the same hour; their fixes are merged here.
+* **The fix (the harness core, src/env.c).** surf_set_goal_box finds the brush model whose
+  bounds ARE the goal box and, unless that model is a plain box, completes on its clip hull at
+  the tick's end (trigger_contains, the test teleports and hurts already used). A plain box
+  trigger keeps the swept box - byte-identical on such maps (cannonball, petrus). The APIs of all
+  three branches work: `SurfCore.set_goal_hull(False)` / `SURF_GOAL_AABB=1` = the old rule
+  (analysis only), `SurfCore.set_goal_model(model[, origin])` names a model, `core.goal_model`
+  (23 here; also callable). `tests/python/test_goal_hull.py`. The start curtain `*16` is a plain
+  box, so the clock's start was right.
+* **The grader.** score.py counts a "done" only if the finishing step entered the clip hull
+  (surfgym.goalhull); a box-only "done" scores as progress and shows as `box_only`. Re-scored:
+  the round-1 incumbent 118.592 -> 109.692 (1/9 real, 42.57 s).
+* **The user's direction (2026-10-31):** keep the checkpoints - "it's doing basically the same
+  thing. It's just a question of a few more seconds. So we do not need to retrain everything ...
+  Just need to train a little bit more with the fixed end box." Warm-start from the trained
+  lineage; no scratch retraining. It works: uf2r2b4's x10 (its `--goal-hull`, resumed from x9's
+  36.0 s box-finishing weights) flew 9/9 REAL finishes at 36.88 s (spawn clock) within ~150M
+  steps. The game clock (start curtain left -> first touch of the real trigger) is ~0.78 s shorter
+  than the spawn clock for the policy; Fizz's record demo reads 35.14 s on it (official 35.17 s).
+
 ## This lineage: surf_unitfarmer2 (operator, 2026-10-30)
 
 * **Why it exists.** The user, 2026-10-30: beat unitfarmer2, "especially ... the beginning":

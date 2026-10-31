@@ -211,6 +211,12 @@ SURF_API const uint8_t* surf_goal_hits(SurfSim* s);
  * swept box for every goal (the pre-fix rule). surf_goal_model: the matched model, 0 = none. */
 SURF_API void surf_set_goal_hull(SurfSim* s, int32_t on);
 SURF_API int32_t surf_goal_model(SurfSim* s);
+/* uf2r2b4 (--goal-hull): model >= 1 = that brush model's clip hull decides the finish,
+ * whatever the box matched (until the next surf_set_goal_box); else the swept box. A plain
+ * box trigger keeps the swept box under the default auto match (its hull IS that box).
+ * surf_set_goal_model_origin: the armed model's entity origin (NULL = 0), after it. */
+SURF_API void surf_set_goal_model(SurfSim* s, int32_t model);
+SURF_API void surf_set_goal_model_origin(SurfSim* s, const float* origin /*3 or NULL*/);
 /* Mark envs (mask[i] != 0) to end as a FAIL on their next batch tick — the
  * Python-side stagnation kill ("no progress toward the goal in N seconds").
  * Consumed once; a goal crossing on the same tick wins over the kill. */

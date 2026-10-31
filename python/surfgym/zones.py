@@ -385,3 +385,27 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+def goal_trigger_model(bsp_path, box, tol: float = 1.0) -> int:
+    """--goal-hull (uf2r2b4, 2026-10-31): the brush model whose bounds ARE the finish box - the
+    trigger the zone was detected from (type 1: a timer trigger_multiple's brush) - or -1 when no
+    trigger model matches (type 2/3 button boxes stay boxes). Generic: no map is named; the zone
+    file's own box picks the model."""
+    import numpy as np
+    ents, bb = parse_bsp(bsp_path)
+    lo = np.asarray(box["mins"], np.float64)
+    hi = np.asarray(box["maxs"], np.float64)
+    best = -1
+    for e in ents:
+        mdl = e.get("model", "")
+        if not mdl.startswith("*") or not e.get("classname", "").startswith("trigger_"):
+            continue
+        n = int(mdl[1:])
+        if n >= len(bb):
+            continue
+        mn, mx = (np.asarray(v, np.float64) for v in bb[n])
+        if np.all(np.abs(mn - lo) <= tol) and np.all(np.abs(mx - hi) <= tol):
+            best = n
+            break
+    return best

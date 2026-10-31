@@ -33,9 +33,12 @@ typedef struct SurfSim {
      * (SV_TouchLinks; the box is the BoundsIntersect pre-check). goal_hull 1 (the default) finds
      * that model (goal_model > 0); 0 keeps the swept box for every goal (the pre-fix rule).
      * surf_unitfarmer2's finish *23 is three 1 u curtains whose box adds an empty triangle: 0 of
-     * the round-1 incumbent's 9/9 box finishes ever entered the hull. */
+     * the round-1 incumbent's 9/9 box finishes ever entered the hull. Harness merge (operator,
+     * 2026-10-31): a PLAIN box trigger keeps the swept box (its hull is that box: other maps
+     * byte-identical), and uf2r2b4's surf_set_goal_model names the model explicitly. */
     int32_t goal_hull;
     int32_t goal_model;
+    float goal_model_origin[3];    /* the trigger entity's origin (surf_set_goal_model; 0 auto) */
     uint8_t* goal_hit;             /* per env: 1 on the tick it finished */
     uint8_t* pending_fail;         /* per env: force-fail on next step (Python
                                     * stagnation kill); consumed each step */
@@ -591,10 +594,38 @@ void surf_get_touch(SurfSim* s, int32_t* counts, float* normals, float* points) 
     }
 }
 
+/* 1 when the model's standing clip hull is exactly its bounds grown by the player hull: six
+ * axial planes on the six faces, each node with one EMPTY side - a plain box trigger. Its clip
+ * hull IS the box overlap, so the swept box stays its goal test, byte-identical with the core
+ * before the clip-hull rule (operator, 2026-10-31: the finishes of the other maps were right). */
+static int model_is_plain_box(const BspMap* m, int model) {
+    const BModel* bm = &m->models[model];
+    Hull h;
+    bsp_model_hull(m, bm, 1, &h);
+    int num = h.firstclipnode, n = 0, faces = 0;
+    while (num >= 0) {
+        if (++n > 6) return 0;
+        const BClipNode* node = &h.clipnodes[num];
+        const BPlane* pl = &h.planes[node->planenum];
+        if (pl->type >= 3) return 0;                     /* a non-axial plane */
+        int ax = pl->type, c0 = node->children[0], c1 = node->children[1];
+        float lo = bm->mins[ax] + g_player_mins[0][ax], hi = bm->maxs[ax] + g_player_maxs[0][ax];
+        if (fabsf(pl->dist - lo) <= 0.01f) faces |= 1 << (2 * ax);
+        else if (fabsf(pl->dist - hi) <= 0.01f) faces |= 2 << (2 * ax);
+        else return 0;                                   /* not a face of the grown bounds */
+        if (c0 == CONTENTS_EMPTY) num = c1;
+        else if (c1 == CONTENTS_EMPTY) num = c0;
+        else return 0;                                   /* both sides go on: not one box */
+    }
+    return n == 6 && num == CONTENTS_SOLID && faces == 0x3F;
+}
+
 /* goal_model = the brush model (index >= 1) whose bounds ARE the goal box (within 0.5 u), when
- * goal_hull is on; 0 = none (a padded button box, a hand-made box): the swept box decides. */
+ * goal_hull is on and that model is not a plain box; 0 = none (a padded button box, a hand-made
+ * box, a plain box trigger): the swept box decides. */
 static void goal_match_model(SurfSim* s) {
     s->goal_model = 0;
+    v3zero(s->goal_model_origin);
     if (!s->goal_enabled || !s->goal_hull) return;
     for (int i = 1; i < s->map.nummodels; i++) {
         const BModel* bm = &s->map.models[i];
@@ -602,7 +633,10 @@ static void goal_match_model(SurfSim* s) {
         for (int k = 0; k < 3 && ok; k++)
             if (fabsf(bm->mins[k] - s->goal_mins[k]) > 0.5f
                 || fabsf(bm->maxs[k] - s->goal_maxs[k]) > 0.5f) ok = 0;
-        if (ok) { s->goal_model = i; return; }
+        if (ok) {
+            if (!model_is_plain_box(&s->map, i)) s->goal_model = i;
+            return;
+        }
     }
 }
 
@@ -617,6 +651,26 @@ void surf_set_goal_box(SurfSim* s, const float* mins, const float* maxs) {
 void surf_set_goal_hull(SurfSim* s, int32_t on) {
     s->goal_hull = on ? 1 : 0;
     goal_match_model(s);
+}
+
+/* uf2r2b4's export (uf2r2b1's takes a third argument, the entity origin; on x86-64 an extra
+ * argument is ignored, so both branches' callers are safe with this two-argument form): model >= 1
+ * = that brush model's clip hull decides the finish, whatever the box matched (until the next
+ * surf_set_goal_box); anything else = the swept box (goal_hull off). Origin 0. */
+void surf_set_goal_model(SurfSim* s, int32_t model) {
+    v3zero(s->goal_model_origin);
+    if (model >= 1 && model < s->map.nummodels) {
+        s->goal_hull = 1;
+        s->goal_model = model;
+    } else {
+        s->goal_hull = 0;
+        s->goal_model = 0;
+    }
+}
+
+/* the armed goal model's entity origin (a trigger with an origin brush; NULL = 0) */
+void surf_set_goal_model_origin(SurfSim* s, const float* origin) {
+    if (origin) v3copy(s->goal_model_origin, origin); else v3zero(s->goal_model_origin);
 }
 
 int32_t surf_goal_model(SurfSim* s) { return s->goal_model; }
@@ -787,6 +841,7 @@ static void step_impl(SurfSim* s, const int32_t* actions, const float* view,
                     Trigger gt;
                     memset(&gt, 0, sizeof(gt));
                     gt.model = s->goal_model;
+                    v3copy(gt.origin, s->goal_model_origin);
                     if (trigger_contains(&s->map, &gt, uh, st->origin)) {
                         complete = 1;
                         s->goal_hit[i] = 1;
