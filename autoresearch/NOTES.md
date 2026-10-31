@@ -95,3 +95,17 @@ byte-identical; tests/python/test_stall_energy.py.
   death the better return; with the ratchet and gamma a sooner record is still worth more.
 * Process hygiene: a `pgrep -af explore_phase1` at 18:37 also listed another agent's launch
   command line (a local process). Not acted on; listings are filtered to my own paths now.
+* `--energy-death-window W` (e17b8429, generic): a death takes back what the energy term paid
+  over the episode's last W s if it was a net gain (the --death-charge-window rule on the energy
+  term). Why: with KAPPA 1 a policy that cannot pump yet earns ~+0.8 by air-strafing (up to ~80
+  u of h per second of perfect strafe at any speed: 450/|v| u/s per tick x |v| / g) on its way
+  into a fatal fall; refunded, a death keeps nothing it strafed up in its last 2 s. Arm A now
+  carries `--energy-death-window 2` (smoke: K 15.719 on this map, 286 calls per 2 s at 7 ms).
+
+### Harness issue: one box for four agents (zlr1b3, 19:20 UTC)
+The fleet pace (credit - reserve) / hours left x 1.1 = 0.62 $/h fits one 5080-class box
+(0.35-0.39) plus a cheap card. From ~17:15 two boxes held the whole pace (burn 0.59) for over
+two hours, so this branch has had no box at all in the first 2 h 10 min of its 12 h round
+(every `rent` refused: "no offer passes ... within the budget pace"). A per-agent share (a
+queue, or a cap on one agent's box-hours while another waits) would keep a branch from sitting
+idle for the first third of its round.
