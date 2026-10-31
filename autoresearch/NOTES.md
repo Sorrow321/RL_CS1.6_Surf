@@ -342,3 +342,20 @@ file without a word. Workaround: scp the padded file myself, md5-checked against
   high-energy states. Hand-off ckpt_1152385024.pt (md5 865bf7f9), pulled by hand.
 * tcpump2 (03:02 UTC): tcpump's final (1.3B) + the same flags + `--demo-tau0 1692` (the
   curriculum position is not in the checkpoint), 4e8.
+* **tcpump2 (tau0 1692, 1.3B -> 1.7B): STALLED, no new best.** Evals 1.87 (the first eval after
+  the resume) / 8.01 / 8.02 / 7.96 / 7.97 / 7.72 / 7.78 / 7.61. The curriculum oscillated the whole
+  run: band [1692,1696] 98-99% -> advance to [1687,1691] -> **exactly 0.0% over 500 eps** ->
+  back off (already at the end of tcpump). Spine rows 1680-1699 are a smooth surf south up the
+  trough's side (E ~822-824, the same keys, ducked); nothing visible explains a 99% -> 0% step in
+  5 ticks - likely a bookkeeping edge, not a skill (princessburglar's lesson: check a stuck band's
+  outcomes before calling it difficulty). Not resolved; the next spine avoids it.
+* **GE9 (20 min, rooted at GE8's 2,188 pumped trough states): the NORTH-EAST exit.** Deepest cells
+  **10.23%** at (-1,143, -762, 183) - the trough's east side leads north-east, onto *18's NE part,
+  much deeper than the west exit (8-9%). By the root's energy: E 697 -> 8.25%, **E 747 -> 9.25%**
+  (a 0.77 s chain from (-1,850, -1,247, 381)), E 861 -> 10.23% (2.4 s), E 1,010 -> 10.07%. The
+  fastest route past 8.8% found: tce's line + GE8's chain to cell 192980 (15.7 s in the trough, E
+  692 -> ~826) + GE9's chain to cell 63710 (the NE exit, 9.25%).
+* Arm tcne (03:43 UTC): spine = tce line [0, 447] + GE8 chain to 192980 + GE9 chain to 63710
+  (stitch_spine, 2,098 states, md5 88b6c7ce, end 9.25%); depth rule (success d <= 27,912 = 8.92%),
+  bonus 50, milestone 28588, GE8 trough spawns 30%, per-call energy K 8; resumed from tcpump's
+  8.2 snapshot (ckpt_1152385024).
