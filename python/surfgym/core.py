@@ -935,10 +935,17 @@ class SurfCore:
             raise RuntimeError(
                 "this surfcore build predates surf_set_goal_model - "
                 "rebuild the core (build.ps1 / ./build.sh)")
-        fn.argtypes = [ctypes.c_void_p, ctypes.c_int32, ctypes.POINTER(c_float)]
+        fn.argtypes = [ctypes.c_void_p, ctypes.c_int32]
         fn.restype = None
-        org = None if origin is None else (c_float * 3)(*[float(v) for v in origin][:3])
-        fn(self._handle(), int(model), org)
+        fn(self._handle(), int(model))
+        if origin is not None and any(float(v) != 0.0 for v in list(origin)[:3]):
+            fo = getattr(self._lib, "surf_set_goal_model_origin", None)
+            if fo is None:
+                raise RuntimeError("this surfcore build predates surf_set_goal_model_origin - "
+                                   "rebuild the core (build.ps1 / ./build.sh)")
+            fo.argtypes = [ctypes.c_void_p, ctypes.POINTER(c_float)]
+            fo.restype = None
+            fo(self._handle(), (c_float * 3)(*[float(v) for v in list(origin)[:3]]))
 
     @property
     def goal_model(self) -> "_GoalModel":

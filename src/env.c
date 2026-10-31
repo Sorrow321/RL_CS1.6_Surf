@@ -653,19 +653,24 @@ void surf_set_goal_hull(SurfSim* s, int32_t on) {
     goal_match_model(s);
 }
 
-/* uf2r2b4's and uf2r2b1's export: model >= 1 = that brush model's clip hull decides the finish,
- * whatever the box matched (until the next surf_set_goal_box), origin = its entity's origin (NULL
- * = 0); anything else = the swept box (goal_hull off). */
-void surf_set_goal_model(SurfSim* s, int32_t model, const float* origin) {
+/* uf2r2b4's export (uf2r2b1's takes a third argument, the entity origin; on x86-64 an extra
+ * argument is ignored, so both branches' callers are safe with this two-argument form): model >= 1
+ * = that brush model's clip hull decides the finish, whatever the box matched (until the next
+ * surf_set_goal_box); anything else = the swept box (goal_hull off). Origin 0. */
+void surf_set_goal_model(SurfSim* s, int32_t model) {
+    v3zero(s->goal_model_origin);
     if (model >= 1 && model < s->map.nummodels) {
         s->goal_hull = 1;
         s->goal_model = model;
-        if (origin) v3copy(s->goal_model_origin, origin); else v3zero(s->goal_model_origin);
     } else {
         s->goal_hull = 0;
         s->goal_model = 0;
-        v3zero(s->goal_model_origin);
     }
+}
+
+/* the armed goal model's entity origin (a trigger with an origin brush; NULL = 0) */
+void surf_set_goal_model_origin(SurfSim* s, const float* origin) {
+    if (origin) v3copy(s->goal_model_origin, origin); else v3zero(s->goal_model_origin);
 }
 
 int32_t surf_goal_model(SurfSim* s) { return s->goal_model; }
