@@ -283,3 +283,18 @@ file without a word. Workaround: scp the padded file myself, md5-checked against
 * Next arm (after tcf): the corridor curriculum + ~20% spawns from GE4's viable pit states (the
   branch's own search from the true spawn), so the policy that already values the trough learns
   to survive the pit and climb toward it - the pit's exit is the corridor's south end.
+* **tcf (frontier energy bonus K 12, 800M -> 1.2B): REGRESSED** 7.84 (the resumed weights) ->
+  7.32 / 7.13 / 7.11 / 7.12 / 7.06 / 7.09 / 7.10. A once-per-episode bonus for the speed brought
+  to the frontier band also pays for reaching the band early and fast, not for going further.
+* **GE7 (rooted at GE4's 487 viable pit states, strict margin 2 s, 15 min): no exit** (88k cells;
+  nothing deeper than the start's distance).
+* **beam_tas on tce's weights from the true start** (4,096 envs, resample 25, --score d,
+  --save-frontier): every lineage dies by 6 s, so its frontier is the last resample before the
+  fall (6.93%), below the greedy's in-fall peak (7.85). On a route that ENDS in a fall, a d-ranked
+  beam cannot see past the fall; the trough route is at its ceiling (~8% from E ~690, by GE5/GE6
+  and ballistics: from z ~490 at ~570 u/s the fall lands near x -3,000, short of *18's edge).
+* Arm tcp (01:36 UTC): tce's final weights + the corridor curriculum (bonus 50) + per-call energy
+  K 8 + `--spawn-states runs/bench_pit/pit_viable_ge4.npy --spawn-states-frac 0.2` (md5 01b9efbb):
+  the policy that already values the trough practises the pit from viable states and is paid by
+  the ratchet for climbing toward the trough (the pit's exit is the corridor's south end).
+  Measure: the pit bench (0/24 climb-outs for tce) and the greedy evals vs 7.85.
