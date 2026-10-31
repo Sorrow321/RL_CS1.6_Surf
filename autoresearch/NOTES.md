@@ -81,3 +81,7 @@ the numbers). Read it before you start; append to it before you wrap up.
     novelty counts, reservoir and greedy pool dropped; all shape keys verified equal). It asks a
     different question: does a policy that already surfs at 1,000+ u/s learn the pump. Zero-shot
     it falls into the kill plane at 7.8 s (recorded on CPU, peak 1,164 u/s).
+* Map entities (analysis): no trigger_push, no other teleport than the start room's eight (*4-*11,
+  all to the destination "map") and the bottom kill plane *21: the loops are plain ramp geometry,
+  nothing in the core's trigger handling is involved. Still no box at 19:35 UTC (the pace has been
+  full for 2 h; the waiter retries every minute).
