@@ -135,3 +135,21 @@ the numbers). Read it before you start; append to it before you wrap up.
   learned exactly that with per-call energy shaping on a map whose start is a half-pipe pump.
   The scratch arm (same additions, 8 ms) stays the next one; a recipe that only works warm is not
   yet a recipe.
+
+### uf2r1b3 round 1 lesson (draft 06:42 UTC; final at wrap-up)
+* **No box all round** (every rent refused by the burn pace from 21:45 on: two 0.39-0.40 $/h boxes
+  held 0.79 of the 0.82 $/h limit). Everything below is analysis and code, measured on CPU.
+* **What this map is, for the next agent (measurements):** a field-following line dies at 9.27 %
+  on the kill slab *18 (z 160); the z 490 floor south of the platform is inside fall catch *7; the
+  record pumps the start pit (flying UNDER the slab at z -870), comes back up, surfs a central ramp
+  (z ~465, x -2,250..-2,100) north over the slab and dives past its far-west edge (x < -3,456).
+  A score above ~9.3 needs that whole chain from the true start.
+* **Search alone does not do it:** explore_phase1 (pbf config, + --no-brake / --surf-hold /
+  --strafe-share, 3-12 min local) never rides the south curve the record rides: strict same-motion
+  energy is 250-290 u short at the first ramp (t 1.5 s) and the archive's coverage of the record's
+  line saturates within minutes. Benches from the record's own states show the bowl is a 0.1 s
+  closed-loop choice of strafe key. Use RL for the control, search for coverage.
+* **Ready to run, in order:** (1) warm: refs/pb_r26 retargeted (tools/ckpt_retarget.py) +
+  --spawn-states from the GE archive (tools/ge_spawns.py, autoresearch/spines/uf2r1b3_ge12_seed.npy)
+  + its own per-call energy shaping, lr 1e-4; (2) scratch: the recipe + --tick-ms 8 + per-call
+  --energy-pot 8 + the same spawns. Both flag sets pass a local CPU smoke run and the record gate.
