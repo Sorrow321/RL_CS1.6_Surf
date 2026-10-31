@@ -3,11 +3,11 @@
  "round": 2,
  "final": false,
  "best": {
-  "score": 118.715,
-  "eval_file": "/home/steam/ar_uf2/runs/uf2r2b4/uf2r2b4_x7/traj_13801357312.jsonl",
-  "run": "uf2r2b4_x7",
-  "step": 13801357312,
-  "ckpt": "/home/steam/ar_uf2/runs/uf2r2b4/uf2r2b4_x7/ckpt_13801357312.pt",
+  "score": 118.733,
+  "eval_file": "/home/steam/ar_uf2/runs/uf2r2b4/uf2r2b4_x8/traj_14223933440.jsonl",
+  "run": "uf2r2b4_x8",
+  "step": 14223933440,
+  "ckpt": "/home/steam/ar_uf2/runs/uf2r2b4/uf2r2b4_x8/ckpt_14198767616.pt",
   "recipe": [
    "resume of the incumbent (uf2r1b1 ckpt_13045858304)",
    "--demo-file runs/beam/x5/spine.npy (the first 1,303 ticks of a 38.79 s early-exit line: the incumbent's greedy to 4.0 s + beam_tas --pitch-hold 2.0 20; md5 be8446ca)",
@@ -52,8 +52,8 @@
    "--ckpt-every",
    "1e8"
   ],
-  "resume_from": "/home/steam/ar_uf2/incumbent/r1/ckpt.pt (uf2r1b1 ckpt_13045858304, md5 359ab38c)",
-  "commit": "43c641e9"
+  "resume_from": "uf2r2b4_x7 ckpt_final (13.846B, md5 3086824d) <- the incumbent uf2r1b1 ckpt_13045858304 (md5 359ab38c)",
+  "commit": "c07466b4"
  },
- "summary": "118.715 (12:20 UTC): x7 13.801B 9/9, best 38.55 s (13.650B: 118.708, 38.77 s) (incumbent 118.592 = 42.25 s). The greedy takes an EARLY PIT EXIT (out at ~10 s instead of 13.3) found by the policy's own search: beam_tas --pitch-hold (held camera pitch) from the incumbent's own greedy state - the turn into the ramp is gated by where the camera looks. Taught by a pace-gated spine (--demo-success-pace) pinned at the true start (--demo-tau0 0 --demo-rate 0) + BC on that line + full early-exit lines as spawn states + cold keys (--unstuck-max 0). Failed before it: BC on plain beam lines (x1, slower), spine-only RL (x2), BC on early-exit rows (x3/x4, revert), a walking pace-gated curriculum (x5/x6, stalls at a ramp kick). x8 (12:19) continues x7 for 3e9 steps; then the 60-65% bowl loop (~1.5 s)."
+ "summary": "118.733 (12:45 UTC): x8 14.224B 9/9, best 38.00 s (incumbent 118.592 = 42.25 s). The greedy takes an EARLY PIT EXIT (out of the pit ~3.4 s sooner) found by the policy's own search - beam_tas --pitch-hold (held camera pitch) from the incumbent's own greedy state: the turn into the ramp is gated by where the camera looks. Taught by a pace-gated spine (--demo-success-pace 0.1 1.0) pinned at the true start (--demo-tau0 0 --demo-rate 0) + BC on that line + full early-exit lines as spawn states + cold keys (--unstuck-max 0): x7 (13.05-13.85B, 118.715), x8 = its continuation (BC 0.1). Failed before: BC on plain beam lines (x1), spine-only RL (x2), BC on early-exit rows (x3/x4, revert), a walking pace-gated curriculum (x5/x6, stalls at a ramp kick). Next: the 60-65% bowl loop - --pitch-hold from x7's greedy at 25.7 s finds the record's route there (36.83 s vs 38.10 plain); teach it the same way (x9)."
 }
