@@ -302,3 +302,27 @@ flat terminal penalty on death (falls, kill triggers, stall kills; truncation ex
 of the success bonus, a constant that reads nothing on the map. CLAUDE.md records --fail-pen 10 as
 inconclusive on cannonball scratch arms (4.3x for on one card, 8.7x against on another) - this is a
 different question (a trained policy that dies at its frontier while still gaining).
+* **E7 (21:47-22:05 UTC, 1.76-2.17B): 56.077 / 55.215 / 56.860 / 56.194 / 55.780 / 55.98** - no
+  break. `--fail-pen 10` changed the BEHAVIOUR as intended but the wrong way for the score: the
+  greedy now survives the third structure (episodes end at 117-145 s by the eval's patience cut,
+  alive at z 65..-750) but plays safe - E max ~1,040 (E4: 1,500-1,700), speed max ~1,920 (E4:
+  2,900) - and stops gaining. Training stall kills 63% (each a -10 now). It traded energy for
+  survival; the platform needs both.
+* GE zl4 (22:07 UTC, full CPU, 28 threads): rooted at E4-1239M's OWN greedy states (record_ckpt
+  --dump-states, 3 episodes, ticks 10,000..death-300 every 15 = 624 roots, E 639-1,467) with fine
+  cells (64 u x energy 48): 6.35M cells in 3.6 min, best d stuck at 2,689 (start 2,707) from the
+  first 20 s - killed. Uniform bursts LOSE energy at these speeds (the explorer's energy never
+  exceeds its roots'), so they cannot build the ~1,900 u the pillar climb needs.
+* Beam dh1 (22:12 UTC): `tools/beam_tas.py` from the TRUE start on E4-1239M (the policy's own
+  proposals, 4,096 envs, resample 25) ranked by `--score dh --score-energy 2` (-d + 2 x energy
+  height: lineages that carry energy are kept over the ones that die), 28,571 ticks (200 s).
+* Beam dh1 result: ALL 4,096 lineages dead by t = 91.7 s (population extinct at 13,100 ticks); the
+  frontier d 2,731 (57.1%) at 88.2 s. The policy's own action distribution, selected every 25
+  decisions for depth + energy, cannot sustain the third structure past ~90 s: a skill gap, not
+  bad luck in the greedy. (A beam ranked by plain d ends at the same depth: auto-spine's beams.)
+* So far the two ends: E4 (no death penalty) pumps to E 1,500-1,700 and dies at ~100 s; E7
+  (fail-pen 10) survives but stops pumping (E ~1,040). The platform needs survival AND ~1,900 u.
+
+### E8 `zlr1b4_e8` (22:18 UTC): E4's 1,239M weights (the 57.86% policy) + `--fail-pen 3`
+A milder death penalty on the aggressive policy (E4's config otherwise restored: the GE-line
+spine, per-call energy K 12, energy-stall 32), to look for survival AND energy at the frontier.
