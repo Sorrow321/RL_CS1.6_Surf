@@ -336,3 +336,30 @@ spine, per-call energy K 12, energy-stall 32), to look for survival AND energy a
   swings EAST out of the structure ((575, 2,155, 571) -> (2,905, 377, -709)) and falls. It has the
   energy now; the climb onto the pillar (60.9%) and on up (the record: 70% at z 1,266, 86% at
   z 2,075) is the next skill. Training: reservoir deepest 37.5% of d0 (62.5%), stall kills 10%.
+* E8 23:05 UTC: 61.242 (1,693M) / 62.079 / **62.774 (1,844M)** / 61.898 / 60.829 (1,995M). Hand-on
+  for 62.774: ckpt_1844445184.pt (the eval's own step, pulled). The 62.77% run's swing tops have
+  moved EAST (x -110..+220, y 1,150-1,700, z ~600, E ~2,350-2,640); it leaves the structure at
+  ~117 s and falls. Some evals now lose 1-3 episodes early (14-75 s): fail-pen 3 costs a little
+  reliability at the start.
+* What lies beyond (ANALYSIS ONLY - the record): the platform at z 641 is the floor of a FOURTH loop
+  structure above the third (x -1,600..-760, y 0..2,700, z 630-1,500): from t+310 (E 648, nearly at
+  rest) it swings that one along y pumping E back to ~2,600 by t+378 (61-72%), then climbs out of
+  its top (70% at t+382 z 1,272; 78% t+386 z 1,680; 84% t+390 z 2,041; finish t+450 z 3,029). So the
+  next skill is getting from the third structure (swing tops z ~600) up INTO the fourth.
+* Beam d2 (23:10 UTC, beside E8): beam_tas --score d from the TRUE start on E8-1844M (4,096 envs,
+  200 s) - the policy survives the third structure now, so its own lineages may reach further than
+  E4's (all dead by 92 s).
+* Beam d2 result: frontier d 2,428 (61.8%) at 126.7 s, the population extinct at 130.9 s (E4's beam:
+  92 s) - E8's policy survives ~40 s longer, but no lineage of its own enters the fourth structure
+  and none beats its greedy (62.77%).
+* E8 23:15 UTC: 60.829 / 61.116 / 61.004 (1,995-2,146M): a second plateau ~61-62.8%. Stopped at
+  2,181M (ckpt_latest 2,181,038,080, md5 b543d331).
+
+### E9 `zlr1b4_e9` (23:18 UTC): E8's weights + a whole-route spine on its own beam line
+Resume of E8's ckpt_latest with the spine = beam d2's line (`autoresearch/spines/
+zlr1b4_e8beam_d2_line.npy`, md5 4bd2c9a3: beam_tas from the TRUE start on E8-1844M, replay ok,
+18,100 ticks = 126.7 s to 61.8%, through all three structures), band pinned at the true start
+(`--demo-tau0 0 --demo-rate 0`), the GE line's 9.48% kept as a milestone, --fail-pen 3 restored.
+~20% of all spawns now land in the third structure (the GE-line spine put 90% of spawns on the
+first 27 s of the route, which the policy has mastered). E6 tried this with fail-pen 0 and its
+spawns there just died; E8's policy survives there now.
