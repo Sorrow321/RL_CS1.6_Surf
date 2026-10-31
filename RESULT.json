@@ -1,7 +1,7 @@
 {
  "agent": "uf2r1b2",
  "round": 1,
- "final": false,
+ "final": true,
  "best": {
   "score": 10.747,
   "eval_file": "/home/steam/ar_uf2/runs/uf2r1b2/uf2r1b2_tcne11/traj_5264375808.jsonl",

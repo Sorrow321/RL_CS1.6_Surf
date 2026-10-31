@@ -490,3 +490,9 @@ file without a word. Workaround: scp the padded file myself, md5-checked against
   (zero-padded names) - pull snapshots by hand.
 * **Box:** 58455373 (RTX 4080 SUPER, $0.41/h), 21:44 -> 08:23 UTC (~10.7 h, ~$4.4), released at
   08:23 with every run's evals and the hand-off checkpoints pulled to $AR_HOME/runs/uf2r1b2/.
+* **Wrap-up (09:01 UTC):** final score **10.747** = uf2r1b2_tcne11 traj_5264375808.jsonl (9/9,
+  best 10.75%, median 10.6%, 0 finishes). Hand-off: $AR_HOME/runs/uf2r1b2/uf2r1b2_tcne11/
+  ckpt_5263851520.pt (md5 2ed83146, 0.5M steps before the eval) and ckpt_final.pt (md5
+  ca04ac50). To resume this lineage: that checkpoint + autoresearch/spines/uf2r1b2_ne4_spine.npy
+  (+ .keys.npy) + uf2r1b2_ge8_tops_fwd_states.npy with the tcne flag set in RESULT.json, from
+  `--demo-tau0 ~3261` (the razor bands are the next problem).
