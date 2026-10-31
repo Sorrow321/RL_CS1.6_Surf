@@ -242,3 +242,19 @@ the reservoir's deepest, re-read every iteration); inside the band energy is fre
 the pumping behind the frontier stays paid and the landing at the frontier costs nothing.
 `--energy-pot-front-bonus` stays 0 (no one-time bonus: the per-call signal is what taught the
 pump). Everything else as E4 (auto-spine + recheck, snapcopy).
+* **E5 (20:26-20:50 UTC): 56.232 / 55.415 / 56.743 / 55.772** (1,439-1,666M) - no break yet; only
+  1-4% of training episodes reach the band (where energy is now free); the greedy now dies at
+  ~82 s flying NORTH out of the third structure (y 2,540-3,265). Eval frontier unchanged since
+  1,088M (713M steps).
+* auto-spine search 1 in E5 (1,439M weights): beam + 5 branched beams all end at d 2,816 (55.7%,
+  greedy frontier 2,889); its GE stage HIT --max-cells 4,000,000 in 2.9 min (64 u x energy-32
+  cells explode at 1,000-2,900 u/s in a 700 x 2,700 x 1,500 u structure) and could add nothing;
+  killed. auto_spine.py's GE cell sizes are fixed (not a trainer flag).
+* GE zl3 (20:52 UTC, by hand, beside E5, 14 threads, 15 min): rooted at the auto-spine beam line's
+  OWN third-structure states (beam_frontier.npz states 7,700..11,699 every 25 = 160 roots, the
+  policy's search line from the true start), COARSER cells `--cell 128 --cell-energy 64
+  --max-cells 8000000`, the rest the explorer config above. Looking for the next ledge (the
+  record's platform at 60.9%); a deeper chain splices onto the beam line (ge_spine.py) as a spine.
+* (ops, again) a box.py ssh command that kills by `grep -E '[x]yz'` still matches its OWN shell
+  when the same command later LAUNCHES xyz (the text is in bash -c's argv): kill and launch in
+  separate ssh calls, or put the work in a script file on the box.
