@@ -766,3 +766,12 @@ so the policy learns to surf the pit in other directions, and the side loop's fo
   from z -700 to -480 along x 3,320-3,380): a line that enters it heading south meets the real
   diagonal curtain 220-280 u (~0.2 s) later - the policy was never trained to keep flying there,
   because every episode ended at the box's edge.
+
+### Harness issue: the grader counts the core's box finishes - a fix is on this branch (15:05 UTC)
+`autoresearch/score.py` reads each episode's trailer (`end: done`), i.e. the core's goal test, which
+was the finish trigger's bounding box (the operator's finding). On this branch: `--goal-hull` (commit
+925f35ba; core exports `surf_find_box_model` / `surf_set_goal_model` / `surf_model_contains`, the
+unflagged core byte-identical) makes the trainer's and every tool's finish the engine's trigger touch,
+and `autoresearch/analysis/uf2_real_finish.py` re-scores any recording with the same clip-hull test
+(the round-1 incumbent's 9/9 eval: 1 real finish). The grader is the operator's file, so it is not
+changed here; a `--goal-hull` run's own evals already count only real finishes.
