@@ -362,3 +362,8 @@ on purpose: round 1 needs an exit, and the attribution comes after. Read with uf
   (3,320..3,450, -380..-30) and die at z ~-186 (the bottom of the `*10` trigger, z -224); 2/9 at
   46%, 1/9 at 24.7%. 4,967M: 47.477. Hand-on: ckpt_4874305536 (17M before; md5 e88fd75b...).
   0/9 past the k04 success line (56.7%) yet.
+* A11 5,193-5,420M: 48.312 / 49.864 / 52.461 / **53.590** (5,420M: best 53.6%, median 53.0%;
+  7/9 at 50.9-53.6% round (2,710..2,900, -150..-830) after 38-48 s - slower than the 4.9B line -
+  dying on the `*11` sheet at z ~-1,023). Hand-on: ckpt_5408030720 (11.5M before; md5
+  892cd43b...). Training frontier: the reservoir's deepest 32.50% of d0 = 67.5%, front-perturb
+  best 20,905 u (68.2%). 0/9 past the k04 success line (56.7%) in four evals.
