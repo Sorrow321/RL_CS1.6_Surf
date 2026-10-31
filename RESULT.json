@@ -3,11 +3,11 @@
  "round": 1,
  "final": false,
  "best": {
-  "score": 7.425,
-  "eval_file": "/home/steam/ar_uf2/runs/uf2r1b2/uf2r1b2_tc/traj_0101187584.jsonl",
-  "run": "uf2r1b2_tc",
-  "step": 101187584,
-  "ckpt": "/home/steam/ar_uf2/runs/uf2r1b2/uf2r1b2_tc/ckpt_0100663296.pt",
+  "score": 7.699,
+  "eval_file": "/home/steam/ar_uf2/runs/uf2r1b2/uf2r1b2_tce/traj_0702545920.jsonl",
+  "run": "uf2r1b2_tce",
+  "step": 702545920,
+  "ckpt": "/home/steam/ar_uf2/runs/uf2r1b2/uf2r1b2_tce/ckpt_0702021632.pt",
   "recipe": [
    "incumbent_recipe (config.json)",
    "--demo-file",
@@ -46,10 +46,18 @@
    "--int-real-only",
    "0",
    "--ckpt-every",
-   "5e7"
+   "5e7",
+   "--demo-tau0",
+   "0",
+   "--energy-pot",
+   "8",
+   "--energy-pot-front",
+   "0",
+   "--energy-pot-front-bonus",
+   "0"
   ],
-  "resume_from": null,
-  "commit": "a01a70f5"
+  "resume_from": "/home/steam/ar_uf2/runs/uf2r1b2/uf2r1b2_tc (ckpt_final, 400M, md5 6e692d05)",
+  "commit": "331ef376"
  },
- "summary": "Round 1, from scratch. The generic arms all end on the start's traps (control / speed-equiv slide into kill sheet *18 at 5.7-5.9; per-call energy and death charge camp on the platform). Go-Explore never leaves the pit, but its archive holds the record's post-pit corridor (a trough under the platform) reached via the platform's SW corner. A backward curriculum on that 10 s GE line (uf2r1b2_tc, from scratch) took the greedy line to 7.43 at 101M (9/9 at 7.1-7.4%, curriculum at the true start by ~100M). The next gate is energy: the line lands on a floor at z 548 (E 1,177 -> 623) and leaves the trough too slow to clear *18's west edge. Running uf2r1b2_tce = tc + per-call energy shaping K8; next a GE energy search from the policy's own fall."
+ "summary": "Round 1. The generic arms all end on the start's traps (control / speed-equiv slide into kill sheet *18 at 5.7-5.9; per-call energy and the death charge camp on the platform). Go-Explore never leaves the pit, but its archive holds the record's post-pit corridor (a trough under the platform) reached via the platform's SW corner. A backward curriculum on that 10 s GE line (tc, from scratch) took the greedy line to 7.43 at 101M; resumed with per-call energy shaping K8 (tce) 7.70 at 703M. The gate now: a floor landing costs ~600 E and the trough exit is too slow to clear *18's west edge; running tce2 (K16, no success bonus) + GE6 rooted in the trough to find a pump."
 }
