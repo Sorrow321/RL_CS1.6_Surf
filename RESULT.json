@@ -3,11 +3,11 @@
  "round": 1,
  "final": false,
  "best": {
-  "score": 9.905,
-  "eval_file": "/home/steam/ar_loop/runs/zlr1b2/zlr1b2_arc2/traj_0676331520.jsonl",
+  "score": 14.093,
+  "eval_file": "/home/steam/ar_loop/runs/zlr1b2/zlr1b2_arc2/traj_1204813824.jsonl",
   "run": "zlr1b2_arc2",
-  "step": 676331520,
-  "ckpt": "/home/steam/ar_loop/runs/zlr1b2/zlr1b2_arc2/ckpt_688390144.pt",
+  "step": 1204813824,
+  "ckpt": "/home/steam/ar_loop/runs/zlr1b2/zlr1b2_arc2/ckpt_1379926016.pt",
   "recipe": [
    "recipe minus --race-ratchet",
    "--race-arc",
@@ -37,7 +37,7 @@
    "--keys-hold-spawn-duck"
   ],
   "resume_from": "/home/steam/ar_loop/runs/zlr1b2/zlr1b2_arc/ckpt_final.pt",
-  "commit": "840ea283"
+  "commit": "b78ce5cc"
  },
- "summary": "A1-A5 (energy re-arms, energy ratchet, fail-pen, GE spawns, pinned GE spine, yaw cap) never get the greedy off the start platform (best 0.704). Go-Explore from the true spawn (energy cells) finds 9.48% then 12.77% (rooted again); the exact joined line (40.5 s) becomes a --race-arc route. A6 (arc shaping along it + energy ratchet + fail-pen 2 + yaw sigma cap 0.3, from scratch) leaves the platform at 151M (1.341); resumed (A6b) it makes the ramp->half-pipe transition: 676M greedy 6/9 at 9.5-9.9%, h max ~-2,000, score 9.905. Next: keep training; extend the route past loop 1 (beam search on its own weights)."
+ "summary": "A1-A5 never get the greedy off the start platform (best 0.704). Go-Explore from the true spawn (energy cells) finds 9.48% then 12.77%; the exact joined line (40.5 s) becomes a --race-arc route. A6 (arc shaping along it + energy ratchet + fail-pen 2 + yaw sigma cap 0.3, from scratch) leaves the platform at 151M; resumed (A6b) it pumps through the start ramp into the half-pipe (676M 9.9%) and to the route's end: 1.20B best 14.1% median 13.8% (score 14.093), h ~-1,920 = the record's loop-exit energy. GE/beam from its own states reach 14.3% but no exit from loop 1 yet. Next: A6c = + --race-arc-tail (field ratchet past the route)."
 }
