@@ -366,10 +366,11 @@ class GreedyLinePool:
     def line(self) -> str:
         d, b = self.info["deaths_s"], self.info.get("stops_s", [])
         la = self.info.get("launches_s")
-        return ("greedy-line pool: {:,} own states from {}/{} failed greedy episodes "
+        return ("greedy-line pool: {:,} own states from {}/{} {} greedy episodes "
                 "(deaths at {} s, {:g}..{:g} s before each; best-progress stops at {} s), "
                 "{:.0%} of the non-start pool"
                 .format(self.size, self.info["fail"], self.info["eps"],
+                        "used" if self.plateau else "failed",
                         ", ".join(f"{v:.1f}" for v in d) if d else "-", self.hi, self.lo,
                         ", ".join(f"{v:.1f}" for v in b) if b else "-", self.frac)
                 + ("" if la is None else "; fatal flights anchored at their last contact ({} s)"
