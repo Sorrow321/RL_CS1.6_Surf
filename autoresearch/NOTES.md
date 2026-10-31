@@ -811,3 +811,13 @@ novelty 2.5, greedy rows x1-1.3 turned 180, tick 7.63 ms, etc. (the launch log's
   ~0.5-1 s faster than the policy's own) and backs off only 5 rows a move: relaunched at 5% + 1 s,
   where the band at 1,050 succeeds 55% and the curriculum walks back into the pit.
 * Box extended to 15:12 UTC.
+* **B6 `uf2r2b1_pace3`: THE GREEDY LEAVES THE START PIT ON ITS FIRST LAP (12:25 UTC).** Evals: 7/9
+  41.25 s / 6/9 41.58 / 9/9 41.69 (14.720B) / **9/9, best 38.23 s = 118.726 (14.795B)** - three
+  episodes one-lap (38.23, 38.30, 39.42 s), six still two-lap (42.6-43.1 s) - / **8/9, ALL NINE
+  one-lap (2% at 7.65-7.93 s), finishes 37.90-38.41 s, mean 38.23 s (14.871B)**; the one failure
+  died at 43.3% (22.9 s), mid-course, not in the pit. The curriculum walked back from row 1,050
+  (t 8.0 s) to ~845 (t 6.5 s, the climb) in ~300M steps (band success ~55-60%; one 0% band at 845
+  backed off once). Hand-on for 118.726: ckpt_14791213056 (4.2M before), pulled.
+  **What did it**: the policy's own Monte Carlo found the line, BC + pit spawn states put it in the
+  policy's stochastic distribution (B5), and the pace gate made it the only way to succeed from the
+  pit rows, so the greedy committed to it. ~3.5 s of the 6 s gap to the record, in ~40 min.
