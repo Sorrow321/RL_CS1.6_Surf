@@ -435,3 +435,15 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
 * `pbr9b1_late2_states.npy` (md5 in NOTES): pbr9b1_fo2dec_states + the s71 beam's shaft passage x2 + the 89-94.5% shaft entries of
   three FINISHING greedy episodes of pbr9b1_c8's own 57.34B weights (record_ckpt --dump-states, seed 11) x8 - a `--spawn-states`
   pool aimed at the shaft's first kill sheet (z ~265), c8's commonest death.
+
+# surf_unitfarmer2 (uf2r1b3, round 1)
+
+* `uf2r1b3_ge12_seed.npy` (15,407 states, md5 566d320257ba3c147acc581020dbd6ff): the archive of ONE reward-free
+  Go-Explore phase-1 search rooted ONLY at the map's true spawn (`tools/explore_phase1.py
+  --exact-chains --cell 64 --cell-energy 32 --cell-heading 1 --view-follow=-90,...,90 --no-brake
+  --select-energy 3 --act-every 4 --decisions 100 --maxvel 3500`, 10 ms tick, 256 envs, 12 min on
+  2 local CPU threads, 429,770 cells), converted by `tools/ge_spawns.py --speed-scale 1.0 1.2
+  --view-on-velocity`: the most energetic state of every 64 u place, velocity x U(1.0, 1.2) (the
+  recipe's own-state perturbation), view re-aimed along the velocity, clocks zeroed. No demo, no
+  record, no reward entered it. The seed `--spawn-states` of the first uf2r1b3 arm; the box's own
+  search (8 ms) replaces it live once its archive is bigger.

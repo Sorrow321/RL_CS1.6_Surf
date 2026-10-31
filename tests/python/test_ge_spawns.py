@@ -68,3 +68,13 @@ def test_speed_scale(tmp_path):
     rows = np.load(out)
     np.testing.assert_allclose(rows["velocity"], st["velocity"] * 2.0)
     np.testing.assert_array_equal(rows["origin"], st["origin"])
+
+
+def test_view_on_velocity(tmp_path):
+    p, st = _archive(tmp_path)
+    out = tmp_path / "spawns.npy"
+    assert ge_spawns.main(["--archive", str(p), "--out", str(out), "--all",
+                           "--view-on-velocity"]) == 0
+    rows = np.load(out)
+    # rows 1, 2 move +x (yaw 0), rows 3, 4 move +y (yaw 90); rows 0 and 5 are still: kept
+    np.testing.assert_allclose(rows["yaw"], [0.0, 0.0, 0.0, 90.0, 90.0, 5.0])

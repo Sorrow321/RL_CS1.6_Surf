@@ -61,7 +61,8 @@ def best_per_place(st: np.ndarray, place_cell: float) -> np.ndarray:
 
 
 def convert(archive: Path, place_cell: float, keep_all: bool, max_rows: int,
-            seed: int, speed_scale: tuple[float, float] | None = None) -> tuple[np.ndarray, str]:
+            seed: int, speed_scale: tuple[float, float] | None = None,
+            view_on_velocity: bool = False) -> tuple[np.ndarray, str]:
     with np.load(archive, allow_pickle=False) as z:
         st = z["state"]
     idx = np.arange(len(st)) if keep_all else best_per_place(st, place_cell)
@@ -77,11 +78,18 @@ def convert(archive: Path, place_cell: float, keep_all: bool, max_rows: int,
         # (--respawn-front-perturb-speed) applied to the search's states
         k = np.random.default_rng(seed + 1).uniform(speed_scale[0], speed_scale[1], len(rows))
         rows["velocity"] = (rows["velocity"] * k[:, None]).astype(np.float32)
+    if view_on_velocity:
+        # --view-on-velocity: the view re-aimed along the horizontal velocity (|v_h| >= 100 u/s),
+        # where a --view-absolute velocity policy looks; the explorer's bursts held random offsets
+        v = rows["velocity"].astype(np.float64)
+        fast = np.hypot(v[:, 0], v[:, 1]) >= 100.0
+        rows["yaw"][fast] = np.degrees(np.arctan2(v[fast, 1], v[fast, 0])).astype(np.float32)
     h = energy_height(rows)
     note = (f"{len(st):,} archive cells -> {len(rows):,} spawn states "
             f"({'all cells' if keep_all else f'the most energetic per {place_cell:g} u place'}"
             f"{f', subsampled to {max_rows:,}' if max_rows > 0 and len(idx) == max_rows else ''}"
-            f"{f', velocity x U({speed_scale[0]:g}, {speed_scale[1]:g})' if speed_scale else ''}); "
+            f"{f', velocity x U({speed_scale[0]:g}, {speed_scale[1]:g})' if speed_scale else ''}"
+            f"{', view on the velocity' if view_on_velocity else ''}); "
             f"energy height p50 {np.median(h):,.0f} p90 {np.percentile(h, 90):,.0f} "
             f"max {h.max():,.0f}")
     return rows, note
@@ -106,6 +114,8 @@ def main(argv=None) -> int:
                     help="subsample to at most this many rows (0 = no cap)")
     ap.add_argument("--speed-scale", type=float, nargs=2, default=None, metavar=("LO", "HI"),
                     help="multiply each row's velocity by U(LO, HI) (default: unscaled)")
+    ap.add_argument("--view-on-velocity", action="store_true",
+                    help="re-aim each row's view along its horizontal velocity (|v_h| >= 100 u/s)")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--watch", type=float, default=0.0,
                     help="re-convert whenever the archive changes, checking every this many "
@@ -123,7 +133,8 @@ def main(argv=None) -> int:
                 # a snapshot being written is not a valid zip yet: skip it, the next check
                 # sees the finished file (its mtime moves again when the write ends)
                 rows, note = convert(archive, a.place_cell, a.all, a.max, a.seed,
-                                     tuple(a.speed_scale) if a.speed_scale else None)
+                                     tuple(a.speed_scale) if a.speed_scale else None,
+                                     a.view_on_velocity)
             except (OSError, ValueError, KeyError, EOFError, zipfile.BadZipFile) as e:
                 print(f"{time.strftime('%H:%M:%S')} {archive}: not readable yet ({e})",
                       flush=True)

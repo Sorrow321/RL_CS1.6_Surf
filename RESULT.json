@@ -1,7 +1,7 @@
 {
- "agent": null,
- "round": 0,
+ "agent": "uf2r1b3",
+ "round": 1,
  "final": false,
  "best": null,
- "summary": "surf_unitfarmer2 lineage: no result yet"
+ "summary": "00:40 UTC: still no box (fleet at its burn limit since 21:45). Ready to launch: explore_phase1 (8 ms, --no-brake, energy cells) beside the scratch incumbent recipe + --tick-ms 8 + per-call energy shaping (--energy-pot 8, front 0) + --spawn-states (archive, most energetic per 64 u place, v x U(1, 1.25), frac 0.3); flags and record gate verified locally. Findings: the 9.27% dead end is a kill-teleport slab at z 160 the field routes through; the archive's energy deficit vs the record starts at the first ramp (1,008 vs 1,295 at t 1.5); the bowl is a 0.1 s closed-loop knife-edge."
 }
