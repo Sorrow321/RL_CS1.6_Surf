@@ -783,3 +783,16 @@ novelty 2.5, greedy rows x1-1.3 turned 180, tick 7.63 ms, etc. (the launch log's
 * **B5 `uf2r2b1_pit1`** (11:44 UTC): resume of B4's 14,141,095,936 weights (md5 7b898296) + BC file 4
   (coef 0.3 -> 0) + `--spawn-states runs/beam/r2_pit_states.npy --spawn-states-frac 0.1`; k02
   curriculum at tau 0 as before. Goal: the greedy flies the one-lap exit (~37 s).
+* **B5 `uf2r2b1_pit1`: 118.633 at 14.368B (9/9, best 41.00 s, mean 41.39 s)** - the branch's best.
+  Evals 7/9 40.98 s / 6/9 41.05 / 9/9 41.70 / **9/9 41.00**. BUT the greedy never takes the one-lap
+  exit: 2% at 10.8-11.2 s in every episode. BC fits the one-lap lines at their own states (joint-acc
+  0.999) and the spawn states let the policy practise them, yet the closed loop from the true start
+  still turns west at the first lap's north end (the decision is made in states the BC rows do not
+  quite cover - the Monte Carlo prefix's first 3 s were sampled, not the greedy's). The late course
+  did get faster (finishes 41.0-41.9 s; one fail-free eval at mean 41.39 s). Hand-on:
+  ckpt_14361821184 (6.3M before), pulled.
+* Next: a PACE-GATED backward curriculum on a one-lap line from the CURRENT weights
+  (`beams_mc3.sh`: Monte Carlo on B5's 14.454B weights -> the fastest finisher -> prefix beams), the
+  curriculum started just PAST the pit exit (`--demo-tau0` ~ the exit row) so the uniform draws cover
+  the whole rest of the course (B1's lesson) and the band walks back INTO the pit, where only a
+  one-lap exit keeps the line's pace.
