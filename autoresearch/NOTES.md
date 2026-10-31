@@ -311,3 +311,16 @@ Box 58559243: RTX 5080 + Ryzen 9 7945HX (32 threads), 0.387 $/h, South Carolina 
   Snapshot pulled: runs/zlr1b2_arc2/ckpt_1379926016.pt (md5 b8beeff0).
 * A6c `zlr1b2_arc3` (19:43 UTC): resume of that snapshot + `--race-arc-tail 1500`, to 4.4e9 (route,
   spawns, energy rules, yaw cap restored; verified). Box extended.
+
+### The loop-1 exit, read off the record (ANALYSIS ONLY - it must not pick a route or a reward)
+* t 66.7-67.1: along the half-pipe bottom eastward at ~1,480 u/s (h ~-1,970); t 67.5-68.3: up the
+  east wall, a carve to the SOUTH over its top (x ~1,180, z -2,745 -> -2,633, vy -860..-940; field
+  11.9%); t 68.7-69.3: lands on a ledge at z ~-2,490 south of the half-pipe (y ~-400) and runs east
+  at ~1,000 u/s (field 10.7-11.6%); t 69.5-70.3: up a ramp at x 2,000-2,500 into loop 2 (field
+  12.1 -> 19.4%). h at the carve ~-1,950.
+* The GE-2 route ends on the NORTH rim (12.77%), so with `--race-arc-tail` the field's record
+  starts at 12.77% and the exit's 10.7-12% stretch is unpaid. A route rule that picks by the
+  record would be demo supervision (section 0); the generic alternative is the tail ON FROM THE
+  START (`--race-arc-tail` >= the route length: the field's ratchet beside the arc everywhere),
+  which pays the east-wall climb whenever it beats the episode's own record. Next arm if A6c
+  stalls at ~14%.
