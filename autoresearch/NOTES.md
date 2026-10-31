@@ -363,3 +363,16 @@ zlr1b4_e8beam_d2_line.npy`, md5 4bd2c9a3: beam_tas from the TRUE start on E8-184
 ~20% of all spawns now land in the third structure (the GE-line spine put 90% of spawns on the
 first 27 s of the route, which the policy has mastered). E6 tried this with fail-pen 0 and its
 spawns there just died; E8's policy survives there now.
+* **E9 (23:18-23:45 UTC, 2.18-2.58B): 62.553 / 62.294 / 61.233 / 61.426 / 62.252 / 61.631** - the
+  whole-route own-beam spine holds the ~62% level but does not move it (band success at the true
+  start 54%: the full 126.7 s line from the start). Stopped at 2,577M (ckpt 2,562,719,744, md5
+  207c4704).
+
+### E10 `zlr1b4_e10` (23:46 UTC): E9's weights + `--fail-pen 5`; GE zl5 beside it
+* E10: one change on E9 - a firmer death penalty (3 -> 5) for a policy that now pumps to E ~2,600
+  and dies by over-swinging out of the structure at ~120 s; does more survival pressure buy
+  control at the top (E7 showed 10 from a low-energy policy makes it stop pumping).
+* GE zl5 (14 threads, 20 min, coarse 128 u x energy-64 cells): rooted at E8-1844M's OWN greedy states
+  (record_ckpt --dump-states, 4 episodes; the last ~25 s before each fatal fall of the 3 that
+  reach 61.5-62.1%, every 20 ticks = 492 roots, E up to 2,431, z up to 580) - the first explorer
+  roots with the energy the climb needs: does anything get up into the fourth structure?
