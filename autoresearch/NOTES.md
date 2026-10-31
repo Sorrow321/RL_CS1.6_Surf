@@ -555,3 +555,9 @@ on purpose: round 1 needs an exit, and the attribution comes after. Read with uf
   / 12.237; **0/9 at 11.331, 12.313 and 12.388B** (all nine lap or die in the start pit at
   1.7-1.8%). No gain in speed after ~10.4B (42.6-43.5 s), and the whole-eval pit failures come
   more often late: long training on this mixture does not stabilise the pit.
+* **A13 12.46-13.29B: the late policy steadied.** 9/9 at 12.539 / 12.615 / 12.766 / 12.841 /
+  12.917 (42.45 s) / 12.992 (42.47) / **13.068B (42.25 s, 118.592)** / 13.143 / 13.219 (42.35) /
+  13.294 - seven 9/9 evals in a row from 12.77B; 7/9 at 12.464, 8/9 at 12.690. The snapshot
+  before the best eval, **ckpt_13045858304, re-records 9/9 TWICE** (default seed best 42.07 s,
+  score 118.598; --seed 7 best 42.13 s): the first late snapshot to do so. Pulled (md5
+  359ab38c...) - the new hand-on, 18/18 like ckpt_8819048448 and ~2.4 s faster.
