@@ -200,13 +200,32 @@ SURF_API void surf_set_teleport_fail(SurfSim* s, int32_t enable);
 SURF_API void surf_get_touch(SurfSim* s, int32_t* counts, float* normals, float* points);
 SURF_API void surf_set_goal_box(SurfSim* s, const float* mins /*3*/,
                                 const float* maxs /*3*/);
-/* uf2r2b4 2026-10-31: model >= 0 = the finish is that brush model's clip hull at tick end
- * (the engine's trigger rule; the goal box stays the precheck); -1 = the swept goal box. */
-SURF_API void surf_set_goal_model(SurfSim* s, int32_t model);
 /* Per-env view [num_envs]: 1 exactly on the batch tick that env crossed the
  * goal (already autoreset by the time the caller reads it). Valid until
  * surf_destroy; contents mutate every step. */
 SURF_API const uint8_t* surf_goal_hits(SurfSim* s);
+/* The engine rule for a brush timer trigger (additive, 2026-10-31): with goal_hull on (the
+ * default) a goal box that IS a brush model's bounds (zones.json's "end" on a type-1 map) is
+ * completed only with the player origin inside that model's clip hull at the end of the move
+ * (GoldSrc SV_TouchLinks); a box that is no model's bounds keeps the swept-box rule. 0 = the
+ * swept box for every goal (the pre-fix rule). surf_goal_model: the matched model, 0 = none. */
+SURF_API void surf_set_goal_hull(SurfSim* s, int32_t on);
+SURF_API int32_t surf_goal_model(SurfSim* s);
+/* uf2r2b4 (--goal-hull): model >= 1 = that brush model's clip hull decides the finish,
+ * whatever the box matched (until the next surf_set_goal_box); else the swept box. A plain
+ * box trigger keeps the swept box under the default auto match (its hull IS that box).
+ * surf_set_goal_model_origin: the armed model's entity origin (NULL = 0), after it. */
+SURF_API void surf_set_goal_model(SurfSim* s, int32_t model);
+SURF_API void surf_set_goal_model_origin(SurfSim* s, const float* origin /*3 or NULL*/);
+/* A finish of SEVERAL brush triggers (operator, 2026-10-31; surf_za_loop: five trigger_multiples
+ * on the stop button): after surf_set_goal_box (their union box, which stays the box for
+ * everything box-shaped), the step completes on ANY listed model - a plain box by its swept box,
+ * any other shape by its clip hull at the end of the move. origins: 3 floats per model (NULL = 0).
+ * Returns the count armed (0 = cleared, -1 = refused: a bad index or more than 32).
+ * surf_set_goal_box clears the list. surf_goal_nmodels: the armed count. */
+SURF_API int32_t surf_set_goal_models(SurfSim* s, const int32_t* models,
+                                      const float* origins /*3*n or NULL*/, int32_t n);
+SURF_API int32_t surf_goal_nmodels(SurfSim* s);
 /* Mark envs (mask[i] != 0) to end as a FAIL on their next batch tick — the
  * Python-side stagnation kill ("no progress toward the goal in N seconds").
  * Consumed once; a goal crossing on the same tick wins over the kill. */

@@ -516,6 +516,13 @@ def build_goal_field(core, zone, cell: float, cache_dir=None,
            f"{f'd{_GRAVITY_RULE_VERSION}_' if gravity_dir else ''}"
            f"{'c1_' if no_corner_cut else ''}"
            f"{_map_sig(bsp)}_" + "_".join(f"{v:g}" for v in box) + pane_tag(core))
+    # a zone of SEVERAL trigger boxes (zones.detect_zones: surf_za_loop's five finish slabs)
+    # seeds each box, not their union's open corners; its signature names them (a single-box
+    # zone's signature is unchanged)
+    seed_boxes = zone.get("boxes") or [zone]
+    if zone.get("boxes"):
+        sig += "_b" + "_".join(f"{v:g}" for b in seed_boxes
+                               for v in np.round(np.asarray(b["mins"] + b["maxs"], np.float64), 1))
     cache = Path(cache_dir) if cache_dir else bsp.parent
     tag = (f"{'g' if gravity_dir else ''}{'k' if mask_kill else ''}"
            f"{'c' if no_corner_cut else ''}")
@@ -558,12 +565,13 @@ def build_goal_field(core, zone, cell: float, cache_dir=None,
         print(f"goal graph: {len(kz)} kill volumes hull-masked "
               f"({masked} free voxels -> wall)")
     nz, ny, nx = occ.shape
-    smin, smax = _zone_seed_box(zone, cell)
-    lo = np.maximum(np.floor((smin - mins) / cell - 0.5), 0).astype(int)
-    hi = np.minimum(np.ceil((smax - mins) / cell - 0.5),
-                    [nx - 1, ny - 1, nz - 1]).astype(int)
     seed = np.zeros(occ.shape, bool)
-    seed[lo[2]:hi[2] + 1, lo[1]:hi[1] + 1, lo[0]:hi[0] + 1] = True
+    for zb in seed_boxes:
+        smin, smax = _zone_seed_box(zb, cell)
+        lo = np.maximum(np.floor((smin - mins) / cell - 0.5), 0).astype(int)
+        hi = np.minimum(np.ceil((smax - mins) / cell - 0.5),
+                        [nx - 1, ny - 1, nz - 1]).astype(int)
+        seed[lo[2]:hi[2] + 1, lo[1]:hi[1] + 1, lo[0]:hi[0] + 1] = True
 
     d, reach_max, _ = _bfs_geodesic(occ, seed, cell, gravity_dir=gravity_dir,
                                     device=device, no_corner_cut=no_corner_cut)

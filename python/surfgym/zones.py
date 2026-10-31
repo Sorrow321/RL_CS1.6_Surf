@@ -254,6 +254,7 @@ def detect_zones(bsp_path):
         return None
 
     zones = {"start": None, "end": None}
+    found = {"start": [], "end": []}
     for ent in entities:
         if ent.get("classname") != "trigger_multiple":
             continue
@@ -263,8 +264,36 @@ def detect_zones(bsp_path):
             low = target.lower()
             if any(k in low for k in ("mapend", "map_end", "finishzone", "endzone")):
                 role = "end"
-        if role and zones[role] is None:
-            zones[role] = box_of(ent)
+        if role:
+            b = box_of(ent)
+            if b is not None:
+                found[role].append((b, _model_index(ent), ent))
+    for role, hits in found.items():
+        if len(hits) == 1:
+            zones[role] = hits[0][0]
+        elif hits:
+            # SEVERAL triggers on the same timer button (operator, 2026-10-31: surf_za_loop's
+            # five finish slabs): the game fires the button from ANY of them. The zone is their
+            # union box - what everything box-shaped reads (the goal field seeds each box, the
+            # core's goal box) - plus the boxes and their brush models, so the finish test is
+            # ANY trigger (SurfCore.set_goal_box arms them), never the union's empty corners.
+            # A single trigger keeps the zone it always had (every earlier map unchanged).
+            boxes = [h[0] for h in hits]
+            org = []
+            for h in hits:
+                try:
+                    v = [float(x) for x in (h[2].get("origin") or "0 0 0").split()[:3]]
+                except ValueError:
+                    v = [0.0, 0.0, 0.0]
+                org.append(v if len(v) == 3 else [0.0, 0.0, 0.0])
+            zones[role] = {
+                "mins": [min(b["mins"][k] for b in boxes) for k in range(3)],
+                "maxs": [max(b["maxs"][k] for b in boxes) for k in range(3)],
+                "boxes": boxes,
+                "models": [int(h[1]) for h in hits],
+                "origins": org,
+                "from": f"trigger_multiple x{len(hits)} (union; the finish is ANY of them)",
+            }
 
     # FALLBACK: the timer button ITSELF, when nothing touches it.
     #

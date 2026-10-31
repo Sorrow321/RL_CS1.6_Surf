@@ -1,0 +1,136 @@
+{
+  "map": "surf_za_loop",
+  "source": "manual",
+  "start": {
+    "mins": [
+      -1696.0,
+      -2016.0,
+      -3216.0
+    ],
+    "maxs": [
+      -1680.0,
+      -992.0,
+      -3016.0
+    ]
+  },
+  "end": {
+    "mins": [
+      -2360.0,
+      -2784.0,
+      3008.0
+    ],
+    "maxs": [
+      3008.0,
+      3360.0,
+      3209.60009765625
+    ],
+    "boxes": [
+      {
+        "mins": [
+          -2360.0,
+          536.0,
+          3008.0
+        ],
+        "maxs": [
+          3008.0,
+          1312.0,
+          3209.60009765625
+        ]
+      },
+      {
+        "mins": [
+          -320.0,
+          1312.0,
+          3008.0
+        ],
+        "maxs": [
+          -64.0,
+          3360.0,
+          3209.60009765625
+        ]
+      },
+      {
+        "mins": [
+          -2360.0,
+          40.0,
+          3008.0
+        ],
+        "maxs": [
+          -64.0,
+          536.0,
+          3209.60009765625
+        ]
+      },
+      {
+        "mins": [
+          -2360.0,
+          -736.0,
+          3008.0
+        ],
+        "maxs": [
+          3008.0,
+          40.0,
+          3209.60009765625
+        ]
+      },
+      {
+        "mins": [
+          -320.0,
+          -2784.0,
+          3008.0
+        ],
+        "maxs": [
+          -64.0,
+          -736.0,
+          3209.60009765625
+        ]
+      }
+    ],
+    "models": [
+      15,
+      16,
+      17,
+      18,
+      19
+    ],
+    "origins": [
+      [
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0,
+        0.0
+      ]
+    ],
+    "from": "trigger_multiple x5 (union; the finish is ANY of them)"
+  },
+  "note": "operator 2026-10-31: auto-detected (zones.detect_zones) + the declared spawn. Every info_player_start (32, a sealed spawn room) stands on a trigger_teleport (*4-*11) to info_teleport_destination 'map' (-1504 -1536 -3110.87, yaw 180), the same destination every fall teleport (*21 under the map) uses: the timed run starts there - the core puts the player at z -3073.87 (destination - hull mins + 1), yaw 180, at rest, one tick after the map's own spawn (verified). The finish is ANY of five trigger_multiples on the stop button (*15-*19, plain boxes at z 3008-3210); 'end' is their union box and lists them (models/boxes): the union is two thirds open air no trigger covers, so the finish test is the five boxes (SurfCore.set_goal_box arms them), never the union. source 'manual': never re-extracted (that would drop 'spawns').",
+  "spawns": [
+    {
+      "origin": [
+        -1504.0,
+        -1536.0,
+        -3073.87
+      ],
+      "yaw": 180.0
+    }
+  ]
+}
