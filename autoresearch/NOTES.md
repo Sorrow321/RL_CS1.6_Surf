@@ -814,3 +814,19 @@ only a PACED early exit earns the +50) and `--unstuck-max 0` (keys at T 1, entro
   What made the difference vs x3-x6: cold keys (T 1 instead of the restored unstuck T 1.5), the band
   pinned at the eval's own start with the paced +50, BC on the spine line, and full early-exit lines
   as spawn states.
+* **x7 BEATS THE INCUMBENT** (all 9/9 evals): 13.348B 9/9 39.58 s (118.681); 13.499B 9/9 39.08
+  (118.697); 13.575B 9/9 38.81 (118.706); 13.650B 9/9 38.77 (118.708); **13.801B 9/9 38.55 s =
+  118.715**; 8/9 at 13.423 / 13.272 / 13.197B, 7/9 at 13.726B. Splits vs the incumbent: 2% at 7.8 s
+  (11.2), 60% at 25.8-26.2 (28.8), 100% at 38.8-39.1 (42.6) - the whole gain is the pit, held to the
+  end. Band paced success 95%. x7 ended at its budget, 13.846B (12:18).
+* Hand-on audit (record_ckpt 9 greedy eps, default seed / --seed 7): ckpt_13646692352 (3.7M before
+  the 118.708 eval) 8/9 38.91 s / 8/9 38.63 s; **ckpt_13801357312 (= the 118.715 eval's step) 9/9
+  38.67 s / 6/9 38.57 s** - ~85% reliable; failures scattered (the pit, 19%, 96%). Both pulled
+  (md5 adbf922c / 9c7bed19), and x7's ckpt_final (md5 3086824d).
+* x8 `uf2r2b4_x8` (12:19 UTC): continuation of x7's final, the same flags with the BC constant at 0.1,
+  3e9 steps, snapcopy beside it - to firm 85% into 9/9 and keep shaving time.
+* The 60-65% bowl in x7's greedy (13.801B ep): at 26.0 s at (874, -131) heading 59 it turns NORTH
+  (26.4 s heading 102, (868, 373)), drops into the bowl, U-turns south at 27.2 s and back north at
+  28.0 s - ~2 s; the record (instrument only) turns EAST at that point (heading -24) and goes straight
+  north along x ~1,550-1,675. Searches from x7's own greedy state at 24.9 / 25.3 / 25.7 s (plain,
+  --pitch-hold 2.0 20 for 60 decisions, --view-hold 1.0 20, both) are running (runs/beam/w*).
