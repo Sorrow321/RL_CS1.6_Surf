@@ -374,3 +374,16 @@ Box 58559243: RTX 5080 + Ryzen 9 7945HX (32 threads), 0.387 $/h, South Carolina 
 * The generic fix is CLAUDE.md's xSELF construction: rebuild the route from the policy's OWN best
   greedy episode (the deepest one, cut at its deepest point), extended by a search from its end.
   ep_0001: 20.47% at 134.4 s, 163,875 u of arc to there, h up to -1,237.
+* A6c 2.81-3.27B (stopped 21:08 UTC): 18.649, 0.000, 20.161, 20.806, 0.000, 21.167, 0.000: the
+  frontier stays at ~20-21% and the whole-eval start-ramp failures come back more often (the GE
+  route keeps rewarding the ramp pumping). Best of the run: 22.404 at 2.44B.
+* GE-5 (rooted at 16 loop-2 states, 20 min): 3,942,750 cells, nothing deeper than its roots
+  (archive best 14.79% outside them), h max -1,061: random bursts do not find loop 2's exit.
+
+### A7 `zlr1b2_self` (21:08 UTC): the xSELF route
+* Resume of the 2.79B snapshot with `--race-arc runs/ge/self5_route.npz` (the policy's own greedy
+  ep_0001 from the true start, cut at its deepest point: 19,203 ticks, 20.47%, 163,840 u of arc
+  @ 128 u; scale 0.00061/u), `--race-arc-tail 1500`, `--spawn-states runs/ge/self5_spawn.npy`
+  (that episode's states, views canonical, + GE-1's 1,360 forward cells) at 0.4. Box extended
+  to 23:39 UTC. Read against A6c at matched steps: the share of whole evals stuck in the start
+  ramp, the median, the frontier past 22.4%.
