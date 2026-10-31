@@ -387,3 +387,22 @@ Box 58559243: RTX 5080 + Ryzen 9 7945HX (32 threads), 0.387 $/h, South Carolina 
   (that episode's states, views canonical, + GE-1's 1,360 forward cells) at 0.4. Box extended
   to 23:39 UTC. Read against A6c at matched steps: the share of whole evals stuck in the start
   ramp, the median, the frontier past 22.4%.
+* **A7 (the self-route) works: 2.86B 21.966 (median 21.9%), 2.94B 23.367 (median 23.1%), 3.02B
+  22.837, 3.09B 23.273 (median 23.1%), 3.17B 22.376 (median 22.1%).** The whole-eval start-ramp
+  failures are gone (1 of 5 evals with a low median, vs half of A6c's); the frontier 22-23.4%.
+  Snapshots pulled: runs/zlr1b2_self/ckpt_3115319296.pt (and 3208642560 on the box).
+
+### `--race-arc-self M` (a2ed6852): the xSELF route, iterated automatically
+* After every greedy eval, if the deepest episode beats the current route's end by more than
+  M x d0 on the shaping field, the route becomes that episode's own line from the true start to
+  its deepest tick (same spacing / corridor / window); every training env is re-anchored, the
+  arc records re-armed, the tail re-armed lazily; runs/<run>/arc_self.npz and the checkpoint
+  config point at it. M 0.01 (64 u here). Off = bit-identical, TRAIN_ONLY. Test:
+  tests/python/test_race_arc_self.py.
+* **BUG caught at launch (fixed, bb0d2cda):** `--no-race-ratchet` (6d0f04f5) was registered as a
+  store_false BEFORE `--race-ratchet`, so argparse took ITS default (True) for the shared dest:
+  every run passing neither flag would have trained with the ratchet ON. It surfaced as the A8
+  resume's refusal ("--race-ratchet with --race-arc"). Registered after the original with
+  default=None now; two regression tests in test_ge_arc.py fail on the old parser. No training
+  run used it (the box ran a705f5f0 until 21:27).
+* A8 `zlr1b2_aself` (21:31 UTC): resume of A7's 3.21B weights + `--race-arc-self 0.01`.
