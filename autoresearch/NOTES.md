@@ -804,3 +804,13 @@ rest of the course stay in the spawn pool).
 x6's flags with `--demo-tau0 0 --demo-rate 0.0` (the band stays at spine rows [0, 4] = the true
 start: half the spine draws start where the eval starts, the other half uniform along the cut line;
 only a PACED early exit earns the +50) and `--unstuck-max 0` (keys at T 1, entropy coef 0.005).
+* **x7 WORKS (11:54 UTC): the greedy takes the early pit exit.** The true-start band's PACED success
+  92-95% over 500 eps by 13.33B (the training policy from the true start flies the early exit at the
+  line's pace). Greedy evals: 13.046B 0/9 (first update), **13.122B 7/9 best 39.50 s, 13.197B 8/9
+  39.61 s, 13.273B 8/9 39.74 s** - every episode out of the pit at ~10.0-10.3 s (the incumbent: 13.3
+  s) and the finishers at 39.6-40.4 s (incumbent 42.3-42.8). The failures are downstream and vary:
+  13.197B ep8 died at 64.7% in the 60-65% bowl (the `*12` floor), 13.273B ep3 at 10.7% just after the
+  pit (the `*8` sheet). Score so far 117.569 (8/9) - 9/9 at ~39.6 s would be ~118.68.
+  What made the difference vs x3-x6: cold keys (T 1 instead of the restored unstuck T 1.5), the band
+  pinned at the eval's own start with the paced +50, BC on the spine line, and full early-exit lines
+  as spawn states.
