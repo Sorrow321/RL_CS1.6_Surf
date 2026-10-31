@@ -775,3 +775,9 @@ unflagged core byte-identical) makes the trainer's and every tool's finish the e
 and `autoresearch/analysis/uf2_real_finish.py` re-scores any recording with the same clip-hull test
 (the round-1 incumbent's 9/9 eval: 1 real finish). The grader is the operator's file, so it is not
 changed here; a `--goal-hull` run's own evals already count only real finishes.
+* **But the incumbent DOES finish under the real rule** (15:05 UTC, CPU): its checkpoint with
+  `goal_hull` stamped into the config, recorded by record_ckpt (9 greedy episodes, the step's seed,
+  `--goal-hull mirrored`): **9/9 REAL finishes, best 42.36 s, median 42.61 s, grader 118.588**
+  (splits 2% 11.29 s, 5% 12.47, 60% 28.96, 90% 40.04). Re-scoring a box-rule recording (1/9) undercounts
+  the policy: those episodes were CUT at the fake finish; allowed to fly on, they cross the real
+  diagonal ~0.1-0.3 s later. Under the engine's rule the lineage's line costs ~0.1-0.3 s, not the finish.
