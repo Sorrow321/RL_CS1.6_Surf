@@ -932,3 +932,9 @@ recordings on the trigger's hull from the positions (the memory note's plan).
   at `--demo-tau0 0` (full coverage from the start), pace TIGHTER `0.04 0.4` (from the map start
   38.4 s: the greedy's 37.7-38.2 s runs make it, the average stochastic one does not), BC file 8 at 0.3,
   pit states5 10%. Evals: 8/9 37.51 s (fail at 77.6%), 8/9 37.48 s (a pit-entry fall at 5.0 s).
+* **B9 `uf2r2b1_real3`: 118.755 (16.949B: 9/9 REAL, best 37.36 s, mean 37.63 s)**; evals 16.42-16.95B:
+  8/9 37.51 / 8/9 37.48 / **9/9 37.40 (118.753)** / 8/9 37.41 / 8/9 37.56 / 9/9 37.70 / 8/9 37.40 /
+  **9/9 37.36**. Faster than B8 (best 37.36-37.70 vs 37.69-38.16 s) at ~50% 9/9 evals (B8 ~85%). The
+  curriculum sits at tau 0 (51% paced success). Hand-ons pulled: ckpt_16940269568 (8.4M before
+  118.755; re-recording) and ckpt_16571170816 (= the 118.753 eval's step). Search round on B9's
+  17.003B weights running.
