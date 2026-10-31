@@ -73,3 +73,42 @@ Box 58559243: RTX 5080 + Ryzen 9 7945HX (32 threads), 0.387 $/h, South Carolina 
   loop-1 policy. At K 12 the same learner breaks even and the record's pace pays 3.6x the time
   penalty. Read with: energy gained per episode, stall share, greedy peak speed / E, where the
   greedy dies, and whether any greedy episode reaches the second half-pipe (progress > ~5%).
+
+### Correction: the half-pipe's ends DO pay on the field (17:28 UTC, analysis of the record)
+* config.field along the record (running-min progress, what the ratchet pays and the grader
+  scores): 0.0% at t 10, **5.6% at t 12.5**, 6.2% at t 27.5, 7.7% at t 30, **10.2% at t 32.5**,
+  flat to t 62.5, 12.6% at t 65, 17.5% at t 70 (second half-pipe), 23.7% at t 87.5. The ends of
+  each swing climb toward the goal (z -2,856 at x -1,746: 3.1%; z -2,982 at x 1,129: 5.5%), so
+  every higher swing is a new record: pumping IS paid, in steps, and the score can reach ~10%
+  inside the first half-pipe. (PROTOCOL's "progress negative the whole first minute" reads the
+  instantaneous d, not the running min.) The gaps between records are 10 s and 32 s: the
+  training stall (15 s) and the eval patience (30 s) still cut the record's line without the
+  energy re-arm.
+* The first gate is the drop: from the curtain the record goes down a ramp to z -3,875 (t 5,
+  1,172 u/s; the bottom teleport is at z -4,000) and up the far side into the half-pipe. The
+  control's greedy at 151M falls to z -3,960 (dead) in 5 of 9 episodes and idles in the rest;
+  its energy height never rises above the spawn's (h max -3,071 vs -3,074).
+
+### A1 `zlr1b2_en` (energy re-arms + per-call energy K 12): SUICIDE, stopped at 382M (17:41 UTC)
+* Greedy at 76 / 151 / 227 / 302 / 378M: every episode dives into the bottom teleport in 3.4-4.9 s
+  (z -3,960; h max = the spawn's), path 224-509 u, peak 88-302 u/s; score <= 0.38%.
+* Training: by 300M 92-93% of episodes end in a crash and 2-3% by the stall (the control at 208M
+  the same: 93-94% crash); episode length 467; energy +167/-296 u/ep (net LOSS); yaw sigma pinned
+  at 2.718 (no signal); the unstuck temperature had fired (T 0.20).
+* Why: dying is free and living is charged. The time penalty is 0.1 reward/s; per-call energy at
+  K 12 charges a learner ~1.2 for its first landing (the 100 u drop off the spawn ledge) and for
+  every contact after; nothing charges a death. The cheapest episode is the shortest one, and
+  both the control and A1 found it (A1 faster). The energy re-arm never got a pumping line to
+  protect.
+
+### A2 `zlr1b2_er` (17:42 UTC): the death made neutral in time, the energy term made non-negative
+* `--fail-pen 2`: a death (fall, stall kill) costs the DISCOUNTED VALUE OF THE TIME-PENALTY STREAM,
+  tp_tick / (1 - gamma_tick) = 0.0007 / 0.00035 = 2.0 (= 0.001 / 0.0005 at the 10 ms reference:
+  the recipe's own time_pen and gamma, no map constant). With it, dying at any time t costs the same
+  discounted total, tp/(1-g) x [(1 - g^t) + g^t]: WHEN to die is neutral, and any positive term
+  (energy records, ratchet progress, novelty) tips the policy toward living. Generic: it is the
+  termination-bias correction for a constant time penalty on every map.
+* `--energy-ratchet 1` (4439aab8, new, off = bit-identical): `--energy-pot K` pays only NEW records of
+  the episode's energy height and charges no loss. K 12 kept (pb_r26's). Test:
+  tests/python/test_energy_ratchet.py.
+* Plus A1's `--stall-energy 32 --eval-patience-energy 32`. Same box, 6e8 budget.
