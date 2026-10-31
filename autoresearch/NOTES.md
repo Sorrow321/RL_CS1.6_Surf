@@ -796,3 +796,18 @@ novelty 2.5, greedy rows x1-1.3 turned 180, tick 7.63 ms, etc. (the launch log's
   curriculum started just PAST the pit exit (`--demo-tau0` ~ the exit row) so the uniform draws cover
   the whole rest of the course (B1's lesson) and the band walks back INTO the pit, where only a
   one-lap exit keeps the line's pace.
+* Monte Carlo 3 on B5's 14.454B weights (`beams_mc3.sh`): **all 8 runs give a one-lap exit**
+  (37.24-37.91 s), the two PLAIN Monte Carlo runs (no fork) included - on B3's weights plain Monte
+  Carlo gave none. BC4 + the pit spawn states moved the policy's stochastic distribution onto the
+  one-lap exit; only its deterministic mode (the greedy) still turns west. Prefix beams 36.77-36.96 s.
+  B5's last evals: 8/9 41.68 s, 9/9 41.77 s; stopped at 14.568B (12:08 UTC).
+* **B6 `uf2r2b1_pace3`** (12:11 UTC): resume of B5's 14,568,390,656 weights (md5 12210a5c); the 36.77 s
+  one-lap line as the curriculum spine (`runs/beam/r2_one621.npy`, md5 a480c602, + keys) started at
+  row 1,050 (just past the pit exit, t 8.0 s), PACE-gated: `--demo-success-pace 0.05 1.0` (from the
+  map start 5,153 ticks = 39.5 s: only a one-lap exit makes it, the two-lap greedy takes 41+ s);
+  milestones 29584..3476 + 486 (k02's line); BC file 5 (16 one-lap lines from B5's weights, best
+  36.77 s) at 0.3; spawn states = the spine's t 2.8-8.4 s (10%). A first try with `0.02 0.5`
+  (`uf2r2b1_pace2_aborted`) had 0% band success at row 1,050 (the line's late course is beam-optimised,
+  ~0.5-1 s faster than the policy's own) and backs off only 5 rows a move: relaunched at 5% + 1 s,
+  where the band at 1,050 succeeds 55% and the curriculum walks back into the pit.
+* Box extended to 15:12 UTC.
