@@ -1,18 +1,21 @@
-# autoresearch: fork-and-flush on surf_unitfarmer2
+# autoresearch: fork-and-flush on surf_za_loop
 
 An unattended research loop on the agent host (the droplet, no GPU). It runs the method of
 Cai et al. 2026, "Fork-and-Flush: Escaping Idea Basins in Autoresearch Agents"
-(arXiv 2610.07447), toward one goal: **pass surf_unitfarmer2 from the true start** (its
-info_player_start), champion-free and generic (CLAUDE.md sections 0 and 0b): first out of the
-start pit, then a finish, then reliably, then faster than 35.17 s, the human world record (a
-bar to read results against, never a reward constant). This is the harness's third program.
-The first, on surf_src_sidistic (2026-10-20..23, ~/ar), finished that map from the true start.
-The second, on surf_princessburglar_b26 (2026-10-23..30, ~/ar_pb), finished it 9/9 from the true
-start on the corrected core. This one (user, 2026-10-30) takes the project's exploration
-benchmark: a start whose speed comes from a dive the potential field charges for. State lives
-in ~/ar_uf2, the checkout is ~/RL_Surf_uf2 (branch uf2/main), the tmux session is `ar_uf2`,
-and agents and branches are named uf2r<round>b<k> / ar/uf2r<round>b<k>. PROTOCOL.md "This
-lineage" says what is known and what is banned.
+(arXiv 2610.07447), toward one goal: **pass surf_za_loop from the true start** (the start
+teleport's destination, where every spawn of the map lands), champion-free and generic
+(CLAUDE.md sections 0 and 0b): first up the first loop, then a finish, then reliably, then
+faster than the human record (krs, 491.65 s on speedrun.eu; its demo reads 450.46 s on our
+clock: a bar to read results against, never a reward constant). This is the harness's fourth
+program. The first, on surf_src_sidistic (2026-10-20..23, ~/ar), finished that map from the
+true start. The second, on surf_princessburglar_b26 (2026-10-23..30, ~/ar_pb), finished it 9/9
+from the true start on the corrected core. The third, on surf_unitfarmer2 (2026-10-30..31,
+~/ar_loop), passed its start pit and went faster than its record in the simulator; the user
+stopped it in round 2. This one (user, 2026-10-31) takes a map of LOOPS: ride a ramp side to
+side until the speed carries you to the next one, 6,100 u of climb that the potential field
+cannot see. State lives in ~/ar_loop, the checkout is ~/RL_Surf_loop (branch loop/main), the
+tmux session is `ar_loop`, and agents and branches are named zlr<round>b<k> /
+ar/zlr<round>b<k>. PROTOCOL.md "This lineage" says what is known and what is banned.
 
 ## How it works
 
@@ -21,17 +24,17 @@ lineage" says what is known and what is banned.
   ("flush") in its own slot (`$AR_HOME/wt/b1..b4`) on its own branch
   (`ar/<agent_prefix>r<round>b<k>`; config agent_prefix).
 * **Schedule.** Rounds last **12 h** (user, 2026-10-20: 24 h is too long for one
-  lineage), **6** of them (user, 2026-10-30), 72 h in all. The schedule is fixed, as the paper
+  lineage), **6** of them (user, 2026-10-31: "the same way we did before"), 72 h in all. The schedule is fixed, as the paper
   advises, with K = 4. Change `rounds` / `round_hours` in `config.json` to extend, and move
   `budget_end_hours` to the new end with them.
 * **Selection.** At a round's end every branch is scored by `autoresearch/score.py`. A
   branch's score is its best greedy eval from the true start. The winner's branch head seeds
-  the next round. The losers are archived (`~/ar_uf2/archive/r<n>/`) and pruned.
+  the next round. The losers are archived (`~/ar_loop/archive/r<n>/`) and pruned.
 * **Inside a round.** Each agent follows `autoresearch/PROTOCOL.md`:
   * it rents at most one GPU box through `autoresearch/box.py`;
   * it runs ablations of at most 30 min first and up to 6 h when promising;
   * it pushes its code to its branch so boxes can clone it;
-  * it harvests to `~/ar_uf2/runs/<agent>/`;
+  * it harvests to `~/ar_loop/runs/<agent>/`;
   * it writes `RESULT.json` and appends to `autoresearch/NOTES.md`.
 * **The lead.** A fifth session, `ar-lead`, has no box. It watches everything and answers
   your questions.
@@ -58,8 +61,8 @@ lineage" says what is known and what is banned.
   consecutive sightings before acting.
 * **Budget.** No new box once the credit falls to the $10 reserve. This program has no flat
   rate (config.budget_rate_usd_h is absent): the fleet's burn (live boxes plus the new one) may
-  not exceed (credit - reserve) / hours left until budget_end_hours, +10%, ~0.75 $/h at the
-  start ($64.59 of credit on 2026-10-30).
+  not exceed (credit - reserve) / hours left until budget_end_hours, +10%, ~0.56 $/h at the
+  start ($51.12 of credit on 2026-10-31): one or two cheap boxes at once.
   `box.py extend` is refused when the fleet's burn over the extension would come out of the
   reserve.
 * **Deadlines.** Every box has a watchdog deadline (`box.py rent --hours`, `box.py extend`).
@@ -71,9 +74,9 @@ lineage" says what is known and what is banned.
 * **Claude app or claude.ai/code -> Code.** Every session connects to Remote Control at
   start-up: `ar-lead`, and `ar-r<round>b<k>` for the branches. Open one and write to it.
   Ask `ar-lead` for the overall picture.
-* `ssh steam@<host>`, then `tmux attach -t ar_uf2`. Ctrl-b w lists the windows (orch, b1..b4;
+* `ssh steam@<host>`, then `tmux attach -t ar_loop`. Ctrl-b w lists the windows (orch, b1..b4;
   the fleet watchdog daemon is the first program's, shared); Ctrl-b d detaches.
-* `cat ~/ar_uf2/status.md`, which is refreshed every 5 min. `tail ~/ar_uf2/orchestrator.log`.
+* `cat ~/ar_loop/status.md`, which is refreshed every 5 min. `tail ~/ar_loop/orchestrator.log`.
 * `python autoresearch/box.py status` shows the boxes, their cost and the budget.
 
 ## Controlling it
@@ -82,7 +85,7 @@ lineage" says what is known and what is banned.
 |---|---|
 | `python autoresearch/orchestrator.py wrapup` | end the current round early, gracefully |
 | `python autoresearch/orchestrator.py stop` | release every box, end every branch session, stop |
-| `rm ~/ar_uf2/STOP && bash ~/ar_uf2/start_orch.sh` (in tmux `ar_uf2`, window orch) | resume after a stop (state.json keeps the round) |
+| `rm ~/ar_loop/STOP && bash ~/ar_loop/start_orch.sh` (in tmux `ar_loop`, window orch) | resume after a stop (state.json keeps the round) |
 
 ## One-time setup on the agent host (done by the setup session, 2026-10-20)
 
@@ -92,9 +95,9 @@ lineage" says what is known and what is banned.
   * The C core is built (`build.sh`).
 * **Maps.** `maps/<config map stem>.*` (bsp + baked caches + zones.json) is copied into the
   main checkout, and `$AR_HOME/maps/<config maps_tarball>` holds the copy that boxes receive.
-* **Incumbent.** This program has none in round 1 (from scratch). `~/ar_uf2/incumbent/refs/`
-  holds three champion-free policies trained on other maps (pb_r26, pb_r15, sid_ref) as
-  optional warm starts; from round 2 on, `~/ar_uf2/incumbent/ckpt.pt` is the last winner's.
+* **Incumbent.** This program has none in round 1 (from scratch). `~/ar_loop/incumbent/refs/`
+  holds four champion-free policies trained on other maps (uf2_x13, pb_r26, pb_r15, sid_ref) as
+  optional warm starts; from round 2 on, `~/ar_loop/incumbent/ckpt.pt` is the last winner's.
 * **Claude Code** (`~/.claude/settings.json`): `permissions.defaultMode: "auto"` and
   `remoteControlAtStartup: true`. Log in once with `claude auth login` (a claude.ai account;
   Remote Control does not work with an API key). The five working directories (main checkout,
