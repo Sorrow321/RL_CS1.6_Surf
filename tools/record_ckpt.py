@@ -147,6 +147,8 @@ TRAIN_ONLY = frozenset({
     "stall_energy",
     # --energy-ratchet: a form of the TRAINING energy term - TRAIN_ONLY like energy_pot
     "energy_ratchet",
+    # --race-arc-tail: a TRAINING reward term (refused with --obs-reward) - TRAIN_ONLY
+    "race_arc_tail",
     # --eval-parallel: how the TRAINER schedules its eval episodes (side by side on a wider
     # eval core); a recording flies its own episodes, the policy and the starts are the same
     "eval_parallel",

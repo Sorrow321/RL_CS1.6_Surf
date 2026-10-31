@@ -1110,6 +1110,17 @@ class RaceReward:
         # Ended rows re-anchor on the next spawn. False = the per-call form, bit-identical.
         self.en_ratchet = False
         self._en_rec = None
+        # --race-arc-tail U (zlr1b2, 2026-10-31): with --race-arc, an env whose arc anchor reaches
+        # the route's last U units switches the FIELD's ratchet on for the rest of its episode:
+        # new records of the shaping-field distance (below the record at tail entry) are paid at
+        # the field's scale (100 / d0). The route - a line found by search - covers the stretch
+        # where the field is blind; past its end the field leads again, so a route need not
+        # reach the finish. 0 = off: no state, the arc branch op for op.
+        self.arc_tail = 0.0
+        self._tail_on = None
+        self._tail_rec = None
+        self._tail_gain = None
+        self.arc_tail_paid = 0.0
         # --surf-bonus / --dive-pen (round 40, pnSURF): "surfing = good,
         # diving = bad" as a dense per-tick term. Both are REWARD UNITS PER
         # SECOND on the flag; the trainer converts to per-tick. 0/0 is off
@@ -1365,6 +1376,11 @@ class RaceReward:
             self._arc_off = np.zeros(n, np.int64)
             if self.stall_arc:
                 self._best = -np.asarray(self.arc.arc, np.float64).copy()
+            if self.arc_tail > 0.0:
+                # a spawn already inside the tail starts with the field's ratchet on
+                self._tail_on = self.arc.arc >= self.arc.length - self.arc_tail
+                self._tail_rec = self._d.copy()
+                self._tail_gain = np.zeros(n, np.float64)
         if self.int_coef > 0.0:
             mins, maxs = core.map_bounds()
             self._mins = mins.astype(np.float64)
@@ -1630,6 +1646,26 @@ class RaceReward:
             cur = np.where(ended, arc_before, self.arc.arc)
             self._arc_max = np.maximum(self._arc_max, cur)
             self._arc_off += (~inside) & ~ended
+            if self.arc_tail > 0.0:
+                # --race-arc-tail: entering the route's last arc_tail u switches the field's
+                # ratchet on (the record starts at the entry state); ended rows are re-armed in
+                # the ended block below, after the arc anchor is rebuilt on the new spawn
+                if self._tail_on is None or self._tail_on.shape != d.shape:
+                    # set after on_reset (the trainer installs arc_tail on a built reward):
+                    # start every episode's record here, the tail state from the anchor
+                    self._tail_on = np.zeros(d.shape, bool)
+                    self._tail_rec = d.copy()
+                on_now = (self.arc.arc >= self.arc.length - self.arc_tail) & ~ended
+                newly = on_now & ~self._tail_on
+                self._tail_rec[newly] = d[newly]
+                self._tail_on |= on_now
+                act = self._tail_on & ~ended
+                gain = np.where(act, np.maximum(self._tail_rec - d, 0.0), 0.0)
+                np.clip(gain, 0.0, clip, out=gain)
+                self._tail_rec = np.where(act, np.minimum(self._tail_rec, d), self._tail_rec)
+                self._tail_gain = gain
+                r += (gain * self.scale).astype(np.float32)
+                self.arc_tail_paid += float(gain.sum())
         v = _states(core)["velocity"]
         s = np.hypot(v[:, 0], v[:, 1]).astype(np.float64)
         if self.speed_coef > 0.0:
@@ -1955,6 +1991,10 @@ class RaceReward:
         sd = (-np.asarray(self.arc.arc, np.float64) if self.stall_arc else d)
         improved = sd < self._best - self.stall_eps
         self._best = np.minimum(self._best, sd)
+        if self.arc_tail > 0.0 and self._tail_gain is not None:
+            # --race-arc-tail: a new field record in the tail re-arms the timer like a new arc
+            # record does on the route
+            improved = improved | (self._tail_gain > self.stall_eps)
         if self.stall_energy > 0.0:
             # --stall-energy: a new energy-height record (cumulative, E above the last
             # re-arm's) also re-arms the timer. Ended rows hold the NEXT episode's spawn; they
@@ -2011,6 +2051,10 @@ class RaceReward:
                 self._arc_spawn[ended] = self.arc.arc[ended]
                 self._arc_max[ended] = self.arc.arc[ended]
                 self._arc_off[ended] = 0
+                if self.arc_tail > 0.0 and self._tail_on is not None:
+                    self._tail_on[ended] = (self.arc.arc[ended]
+                                            >= self.arc.length - self.arc_tail)
+                    self._tail_rec[ended] = d[ended]
             self._best[ended] = (-np.asarray(self.arc.arc, np.float64)[ended] if self.stall_arc
                                  else d[ended])
             if self._vz is not None:
@@ -2290,6 +2334,10 @@ class RaceReward:
             self.arc_gain.clear()
             self.arc_reach.clear()
             self.arc_off_frac.clear()
+            if self.arc_tail > 0.0:
+                # --race-arc-tail: field progress (u) paid past the route, per ended episode
+                out["arc_tail_per_ep"] = (self.arc_tail_paid / n_ep) if n_ep else float("nan")
+                self.arc_tail_paid = 0.0
         if self._fr_best is not None:
             # --respawn-frontier: four numbers, and they are meant to be
             # read TOGETHER (CLAUDE.md's win-rate trap).

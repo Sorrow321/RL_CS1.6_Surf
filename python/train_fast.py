@@ -7733,6 +7733,15 @@ def main() -> None:
                     help="how many route vertices the arc anchor may move "
                          "per tick (anti-farming: an off-route flight cannot "
                          "walk the coordinate down the track)")
+    ap.add_argument("--race-arc-tail", type=float, default=None,     # 0 = off
+                    help="--race-arc: U > 0 - an episode whose arc anchor reaches the route's "
+                         "last U units switches the shaping FIELD's ratchet on for the rest of "
+                         "the episode: new records of d (below the record at tail entry) are "
+                         "paid at the field's scale 100/d0, and a record re-arms the stall timer. "
+                         "The route (a line found by search) covers the stretch where the field "
+                         "is blind; past its end the field leads again, so a route need not reach "
+                         "the finish. Not with --obs-reward. 0 = off (bit-identical); ckpt "
+                         "restores")
     ap.add_argument("--race-ground", type=int, default=None, choices=(0, 1),
                     help="race: the GROUND-BOUND goal field (the user, 2026-10-03, skate_laby: "
                          "'maybe the potential field ... is bad'): a walkable graph of the "
@@ -8228,6 +8237,9 @@ def main() -> None:
             # block below - not a route FILE to load as --race-arc
             args.race_arc = str(ck_cfg["race_arc"])
             restored.append(f"race_arc={Path(args.race_arc).name}")
+        if args.race_arc_tail is None and ck_cfg.get("race_arc_tail"):
+            args.race_arc_tail = float(ck_cfg["race_arc_tail"])
+            restored.append(f"race_arc_tail={args.race_arc_tail:g}")
         if (args.race_arc_corridor is None
                 and ck_cfg.get("race_arc_corridor") is not None):
             args.race_arc_corridor = float(ck_cfg["race_arc_corridor"])
@@ -9574,6 +9586,16 @@ def main() -> None:
     args.stall_arc = int(args.stall_arc)
     if args.stall_arc not in (0, 1):
         raise SystemExit("--stall-arc is 0 or 1")
+    if args.race_arc_tail is None:
+        args.race_arc_tail = 0.0
+    if args.race_arc_tail < 0.0:
+        raise SystemExit("--race-arc-tail U needs U >= 0 (0 = off)")
+    if args.race_arc_tail > 0.0:
+        if not args.race_arc:
+            raise SystemExit("--race-arc-tail switches the field on at the --race-arc route's end: "
+                             "it needs --race-arc")
+        if args.obs_reward:
+            raise SystemExit("--race-arc-tail is not mirrored in the --obs-reward feed")
     if args.stall_arc and (args.reward != "race" or not args.race_arc):
         raise SystemExit("--stall-arc 1 needs --reward race and --race-arc (the route whose arc "
                          "the stall detector watches)")
@@ -13924,6 +13946,8 @@ def main() -> None:
             _s.reward_fn.en_front_bonus = bool(args.energy_pot_front_bonus)
             # --energy-ratchet: only new energy-height records are paid
             _s.reward_fn.en_ratchet = bool(args.energy_ratchet)
+            # --race-arc-tail: the field's ratchet past the route's last U units (u)
+            _s.reward_fn.arc_tail = float(args.race_arc_tail or 0.0)
             # --stall-energy: energy-height records re-arm the stall timer (u, cumulative)
             _s.reward_fn.stall_energy = float(args.stall_energy)
             _s.reward_fn.surf_bonus = SURF_BONUS_T
@@ -14690,6 +14714,9 @@ def main() -> None:
                        # --energy-ratchet: written ONLY when on
                        **({"energy_ratchet": 1}
                           if args.reward == "race" and args.energy_ratchet else {}),
+                       # --race-arc-tail: written ONLY when on
+                       **({"race_arc_tail": float(args.race_arc_tail)}
+                          if args.reward == "race" and args.race_arc_tail else {}),
                        # --stall-energy: written ONLY when on (a config without it is the old one)
                        **({"stall_energy": float(args.stall_energy)}
                           if args.reward == "race" and args.stall_energy else {}),
@@ -22039,6 +22066,9 @@ def main() -> None:
             if g is not None and g == g:
                 race_note += (f"  arc gain {g:>8,.0f}u  reach {rch:>8,.0f}u"
                               f"  p90 {p90:>8,.0f}u  off {offf:5.1%}")
+                if rs.get("arc_tail_per_ep") is not None and rs["arc_tail_per_ep"] == rs["arc_tail_per_ep"]:
+                    # --race-arc-tail: field progress paid past the route's end, per episode
+                    race_note += f"  tail {rs['arc_tail_per_ep']:,.0f}u/ep"
         if goalsys is not None:
             race_note += goalsys.note(global_step) + plan_note
         hyg_note = (f"  ev {expl_var:+.3f}" if expl_var == expl_var
