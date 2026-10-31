@@ -202,3 +202,30 @@ Box 58559243: RTX 5080 + Ryzen 9 7945HX (32 threads), 0.387 $/h, South Carolina 
   map (large offsets only brake). Test: tests/python/test_yaw_sigma_max.py.
 
 ### A5 `zlr1b2_ys` (18:28 UTC): A4's flags + `--yaw-sigma-max 0.3` (one change)
+* A5 result (stopped at 214M, 18:37 UTC): yaw sigma held at 0.300 (cap) the whole run, pitch
+  0.30 -> 0.15; greedy 76 / 151M patience-cut 6 / 8, idling on the platform at up to 328 u/s;
+  training energy RECORDS rose +8 -> +24 u/ep over 170M (A4: +7-8), stall 55-64%. The cap stops
+  the rot but at 200M the policy still has no reason to leave the platform: the +50 at the line's
+  end is ~28 s away and nothing in between pays for following the line.
+
+### GE-2 (rooted on the GE-1 line's half-pipe, 25 min, 12 threads beside A3-A5)
+* 2,511,985 cells, best **12.77%** (d 5,549) at (268, 1,336, -2,592): standing on a rim at
+  z -2,592 north of the half-pipe (the record's best inside loop 1 is 12.64% at t 65); h max
+  -2,130 (+944 u over the spawn; GE rides the deep U's near the kill plane at 1,700 u/s). 0 goal
+  hits, no exit to the second half-pipe yet.
+* ge_replay: 27 cells, 26/26 links exact, 2,364 ticks from line row 3,420; joined:
+  runs/ge/zl12_line.npy = GE-1 line [0, 3,420) + that chain = **5,784 ticks (40.5 s) from the
+  true spawn to 12.77%**; arc route runs/ge/zl12_route.npz (28,032 u, 220 vertices @ 128 u).
+
+### A6 `zlr1b2_arc` (18:39 UTC): ARC-LENGTH shaping along the GE line (the xSELF construction)
+* The field cannot see the loops; arc length along a line found by reward-free search from the
+  true start is monotone through them (CLAUDE.md: "the reference line supplies the ORDERING" -
+  xSELF finished 47/102 on cannonball with a line from the policy's own runs). Generic recipe:
+  search -> line -> arc coordinate; no demo, no map constant.
+* Flags: the recipe WITHOUT `--race-ratchet` (RaceReward refuses ratchet + arc as "a second
+  treatment of the same defect"; launched with --no-recipe and the recipe minus that flag),
+  `--race-arc runs/ge/zl12_route.npz --stall-arc 1` (corridor 1,500, window +-16 = the defaults;
+  scale 100 / 28,032 u), `--spawn-states runs/ge/zl12_spawn.npy --spawn-states-frac 0.4` (the
+  line's 5,784 states, views canonical, + GE-1's 1,360), `--stall-energy 32
+  --eval-patience-energy 32 --energy-pot 12 --energy-pot-front 0 --energy-pot-front-bonus 0
+  --energy-ratchet 1 --fail-pen 2 --yaw-sigma-max 0.3 --keys-hold-spawn-duck`.
