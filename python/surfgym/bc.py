@@ -210,7 +210,9 @@ def make_eval_feeds(cfg: dict, field, d0: float, k: int,
     the policy reads its own reward from (record_ckpt's mirror, the tick-ms
     review). Identity at 10 ms: TickClock.per_tick / gamma return the value
     itself, so the default path is byte-identical."""
-    if cfg.get("race_arc"):
+    if cfg.get("race_arc") and cfg.get("obs_reward"):
+        # the arc term reaches the policy only through --obs-reward's slot 12; without that
+        # feed an arc checkpoint's inference is the geodesic run's (zlr1b2, 2026-10-31)
         raise SystemExit("make_eval_feeds: --race-arc checkpoints are not "
                          "supported (the slot-12 mirror would be the "
                          "geodesic term, not the arc term)")

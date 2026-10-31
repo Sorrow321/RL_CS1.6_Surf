@@ -2259,7 +2259,12 @@ def main():
     if cfg.get("reward") != "race":
         raise SystemExit("beam_tas needs a race checkpoint (goal-box "
                          f"finish); this one has reward={cfg.get('reward')!r}")
-    bad = [k for k in UNSUPPORTED if cfg.get(k)]
+    # --race-arc carries per-env state (the arc anchor) that reaches INFERENCE only through
+    # --obs-reward's slot 12 (record_ckpt's mirror); without that feed the arc is reward-only
+    # and the beam (which ranks by its own --score, never the training reward) has nothing of
+    # it to clone (zlr1b2, 2026-10-31)
+    bad = [k for k in UNSUPPORTED if cfg.get(k)
+           and not (k == "race_arc" and not cfg.get("obs_reward"))]
     if bad:
         raise SystemExit("beam_tas v1 cannot clone the per-env inference "
                          "state of: " + ", ".join(bad))
