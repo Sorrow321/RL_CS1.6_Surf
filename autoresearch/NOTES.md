@@ -444,3 +444,9 @@ Box 58559243: RTX 5080 + Ryzen 9 7945HX (32 threads), 0.387 $/h, South Carolina 
   cut; 604M: 44-60 swings, h max -2,692..-2,733 - more than A6 at 600M, ~-2,950; 0% because the
   ramp lies behind the start on the field). Training reward 38/ep at 680M (A6: 26 at 600M), arc
   1,713 u/ep, tail 52 u/ep. A6b first made the ramp -> half-pipe transition at 676M.
+* B1 0.68-1.35B: 0.0% except 1.06B (9.449: one episode to the route's end, the half-pipe's east
+  end); greedy episodes mostly pump in the start ramp. Training reward 48/ep, arc 2,051 u/ep,
+  tail 13 u/ep, reservoir deepest 7.2%. Slower than the A6 lineage at matched steps (A6b:
+  9.9% at 676M, 14.1% at 1.2B) - one seed each through a binary gate (the ramp -> half-pipe
+  transition), and the route here ends at 9.48% (one 9-minute search) where A6's joined line
+  ended at 12.77% (two searches). Box extended to 04:39 UTC (the round's wrap-up is 04:29).
