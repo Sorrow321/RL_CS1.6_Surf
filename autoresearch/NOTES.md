@@ -837,3 +837,39 @@ novelty 2.5, greedy rows x1-1.3 turned 180, tick 7.63 ms, etc. (the launch log's
   prefix beams **36.65-36.69 s**. BC file 6 `runs/bc/r2_bc6.npz` (16 lines, best 36.65 s, md5
   90cada01); spine candidate `runs/beam/r2_one723.npy` (36.65 s, md5 1c1dc348); pit states
   `runs/beam/r2_pit_states3.npy` (md5 54365e81).
+* B6 ended at its budget (15.368B, 13:13 UTC): 9/9 37.89 s / 9/9 37.95 / 9/9 37.53 / 9/9 37.82 s
+  (15.097-15.324B; scored 118.72-118.74 by score.py) - every episode one-lap, reliability back.
+
+### !! The finishes were FAKE: the core scored the finish trigger's BOUNDING BOX (13:15 UTC)
+A memory note of the operator's session (2026-10-31 13:04, "finish-trigger-aabb", from the user's
+eye on a uf2 video) reports: the core's goal test (src/env.c, the swept segment vs the
+hull-inflated AABB from zones.json) is not the game's - GoldSrc fires a brush trigger only inside
+the model's player-expanded clip hull - and surf_unitfarmer2's finish (*23 -> counter_stop_button)
+is three 1 u curtains (west face x 3,328 for y <= -2,144; a diagonal (3,328, -2,144)-(3,584, -1,888);
+north face y -1,888 for x >= 3,584) whose box has an EMPTY north-west corner. Checked on my own
+evals: **every "finish" of B6 (and B2-B5, and the incumbent's 13.068B eval but one episode) ends at
+(3,302..3,330, -1,865..-1,950, -520..-650)** - the hull-inflated corner, outside the real trigger
+(a real crossing needs y <= -2,128 at the west face, or the diagonal / north face hull). So
+118.611-118.74 here, and the incumbent's 118.592, are scores of finishes the game would not count.
+* **FIX (85592304, my branch)**: `surf_set_goal_model` (additive C export) + `SurfCore.set_goal_box`
+  arms the trigger_multiple whose model bounds ARE the box (`surfgym.core.finish_trigger_model`, the
+  BSP's own lumps; *23 here): a crossing counts only where the tick's segment (points <= 16 u apart)
+  is inside that model's clip hull (`trigger_contains`, the test the core already used for
+  teleports / hurts - so the PIT-EXIT catch deaths above are real; only the finish was wrong). A
+  button box matches no trigger and keeps the box test; `SURF_GOAL_AABB=1` restores the old test.
+  Tests on the real map (`tests/python/test_goal_model.py`): the corner skim finished on the box
+  and does not on the trigger; a west-curtain crossing finishes under both. Every tool (trainer,
+  evals, beam_tas, record_ckpt, explore) arms the goal through set_goal_box, so all get it. Box:
+  core rebuilt (`./build.sh`) at 85592304, tests pass there.
+* **B7 `uf2r2b1_real1`** (13:23 UTC): resume of B6's final 15,368,454,144 (md5 fd3a6826) on the fixed
+  core; the r2_one621 curriculum (band from row 840, pace 0.05 1.0) and pit spawn states as B6; **no
+  BC** (every BC line ends in the corner skim). The pace line d <= 100 is still reached by the
+  skim, the finish bonus (50) no longer: the policy has to carry on ~250 u into a real curtain.
+
+### Harness issue (for the operator)
+`autoresearch/score.py` (a harness file) counts `end == "done"` from the trajectory trailer, i.e.
+whatever goal test the recording core ran. Evals recorded on the old core count the corner skim as a
+finish (the incumbent's 118.592 is 1/9 real by the memory note's count). Evals of this branch from
+B7 (uf2r2b1_real1) on are recorded on the fixed core, so their finishes are real; everything
+earlier in `$AR_HOME/runs/uf2r2b1/` (B1-B6, scores up to 118.74) is NOT. A grader fix would re-score
+recordings on the trigger's hull from the positions (the memory note's plan).
