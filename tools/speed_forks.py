@@ -67,13 +67,15 @@ def stall_windows(d, margin: float, n: int = 1):
     return gaps[:max(0, int(n))]
 
 
-def fork_ticks(windows, k: int, gen_ticks: int, lead: int = 0):
-    """k fork ticks spread evenly inside each window, snapped to resample boundaries (multiples
-    of gen_ticks), at least one generation after the window opens and ``lead`` ticks before
-    it closes; duplicates dropped, sorted."""
+def fork_ticks(windows, k: int, gen_ticks: int, lead: int = 0, before: int = 0):
+    """k fork ticks spread evenly over each window, snapped to resample boundaries (multiples
+    of gen_ticks), from ``before`` ticks BEFORE the window opens (the choice that causes a
+    stall is made just before the line stops gaining: the 60-65% loop on uf2 turns the wrong
+    way ~0.3 s before its window opens) to ``lead`` ticks (at least one generation) before it
+    closes; duplicates dropped, sorted."""
     out = set()
     for a, b in windows:
-        lo = (a // gen_ticks + 1) * gen_ticks
+        lo = max(gen_ticks, ((a - int(before)) // gen_ticks + 1) * gen_ticks)
         hi = b - max(lead, gen_ticks)
         if hi < lo:
             continue
@@ -144,6 +146,8 @@ def main(argv=None) -> int:
                     help="u: a running-best improvement smaller than this does not end a stall")
     ap.add_argument("--stalls", type=int, default=1, help="how many stall windows to fork in")
     ap.add_argument("--forks", type=int, default=8, help="fork ticks per stall window")
+    ap.add_argument("--fork-before-secs", type=float, default=1.0,
+                    help="the forks start this long before each stall window opens")
     ap.add_argument("--branch-burst-secs", type=float, default=2.0)
     ap.add_argument("--branch-hold-secs", type=float, default=0.5)
     ap.add_argument("--branch-jitter", type=float, default=45.0)
@@ -187,7 +191,8 @@ def main(argv=None) -> int:
     z = np.load(fz, allow_pickle=False)
     d = field_d(field, z["states"])
     wins = stall_windows(d, a.stall_margin, a.stalls)
-    forks = fork_ticks(wins, a.forks, gen_ticks)
+    forks = fork_ticks(wins, a.forks, gen_ticks, before=int(round(a.fork_before_secs * 1000.0
+                                                                   / a.tick)))
     tps = 1000.0 / a.tick
     res.update(plain_len=int(len(d)), stalls=[[int(s), int(e)] for s, e in wins], forks=forks)
     print(f"plain line: {len(d)} ticks, best_s {plain.get('best_s')}; stalls "
@@ -231,6 +236,8 @@ def selftest() -> int:
     f = fork_ticks(w, 5, 100)
     assert f and f[0] >= s + 1 and f[-1] <= e - 100 and all(x % 100 == 0 for x in f), f
     assert len(set(f)) == len(f)
+    fb = fork_ticks(w, 5, 100, before=150)
+    assert fb[0] <= s and fb[0] >= 1 and fb[-1] <= e - 100, fb
     # two stalls, ranked by length
     d2 = np.concatenate([np.full(300, 1000.0), np.linspace(1000, 0, 10), np.full(500, 0.0)])
     w2 = stall_windows(d2, 100.0, 2)
