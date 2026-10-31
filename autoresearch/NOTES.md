@@ -300,3 +300,14 @@ Box 58559243: RTX 5080 + Ryzen 9 7945HX (32 threads), 0.387 $/h, South Carolina 
 * Deploying during a run: deploy_box.sh's GPU health check fails while the trainer / GE / beam
   load the card ("below spec"); the checkout and build before it had run (git log a705f5f0 on the
   box), the restamp after it had not (ran by hand: caches matching). Not a bad host.
+* GE-4 (rooted at the 819M greedy's own highest-energy states, 20 min): 3,052,701 cells, best
+  **14.32%** at (341, 483, -2,488), h max **-1,838** (above the record's ~-1,950 at its exit), east
+  of the half-pipe z max -2,621 (x 1,800-2,600): energy is no longer the gap - the direction is;
+  no exit from loop 1 in 20 min.
+* **A6b evals (score): 0.60B 9.104, 0.68B 9.905, 0.75B 10.043, 0.83B 0.000, 0.90B 8.918, 0.98B
+  11.041, 1.05B 0.000, 1.13B 12.420, 1.20B 14.093 (best 14.1%, median 13.8%), 1.28B 13.806,
+  1.36B ~13.7% (median low).** The policy reaches the route's end (12.77%) and a little past it;
+  the 0.000 evals are the deterministic greedy staying in the start ramp (coin-flip gate).
+  Snapshot pulled: runs/zlr1b2_arc2/ckpt_1379926016.pt (md5 b8beeff0).
+* A6c `zlr1b2_arc3` (19:43 UTC): resume of that snapshot + `--race-arc-tail 1500`, to 4.4e9 (route,
+  spawns, energy rules, yaw cap restored; verified). Box extended.
