@@ -1085,6 +1085,17 @@ class RaceReward:
         self.stall_energy = 0.0
         self._ebest = None
         self._eref = None
+        # --energy-death-window W (zlr1b3, 2026-10-31): a DEATH (done, not a finish) takes back
+        # what the --energy-pot term paid this episode over its last W seconds, if that was a
+        # net gain: energy strafed up on the way to a fatal fall is not kept, the
+        # --death-charge-window rule applied to the energy term (Grzes 2017: a terminal must
+        # not keep shaping it would not have earned by surviving). A per-env cumulative of the
+        # term's pay and a ring of it, one slot per call. 0 = off: no state, byte-identical.
+        self.en_death_n = 0
+        self._en_cum = None
+        self._en_ring = None
+        self._en_ring_pos = 0
+        self.en_refund = 0.0
         self.en_gain = 0.0
         self.en_loss = 0.0
         # --energy-pot-front B: the term is paid only BEFORE the frontier band. en_front_d is the
@@ -1288,6 +1299,7 @@ class RaceReward:
         self._vmax = float(getattr(core.config.phys, "sv_maxvelocity", 0.0) or 0.0)
         self._spd_prev = None        # --speed-pot re-anchors on the first call
         self._en_prev = None         # --energy-pot re-anchors on the first call
+        self._en_cum = None          # --energy-death-window: re-allocated on the first call
         self._en_off = None          # --energy-pot-front: no episode is latched yet
         self._g_en = float(core.config.phys.sv_gravity)
         self._best = self._d.copy()
@@ -1672,10 +1684,32 @@ class RaceReward:
                 self._en_off[ended] = d[ended] <= self.en_front_d
             elif self.en_front_bonus:
                 dh = np.zeros_like(dh)       # no band yet (an empty reservoir): nothing to pay
-            r += ((self.energy_pot / 1000.0) * dh).astype(np.float32)
+            _en_pay = ((self.energy_pot / 1000.0) * dh).astype(np.float32)
+            _en_back = None
+            r += _en_pay
             self.en_gain += float(dh[dh > 0.0].sum())
             self.en_loss -= float(dh[dh < 0.0].sum())
             self._en_prev = h
+            if self.en_death_n > 0:
+                # --energy-death-window: the cumulative pay of this episode (ended rows paid 0
+                # this call, so their cum is the dying episode's) against its value W s ago
+                n_ = len(h)
+                if self._en_cum is None or self._en_cum.shape != (n_,):
+                    self._en_cum = np.zeros(n_, np.float64)
+                    self._en_ring = np.zeros((self.en_death_n, n_), np.float64)
+                    self._en_ring_pos = 0
+                self._en_cum += _en_pay.astype(np.float64)
+                dead_ = done.astype(bool) & ~goal
+                if dead_.any():
+                    # charged with the other terminal charges, after `r[ended] = 0` below
+                    back = np.maximum(self._en_cum - self._en_ring[self._en_ring_pos], 0.0)
+                    _en_back = np.where(dead_, back, 0.0).astype(np.float32)
+                    self.en_refund += float(back[dead_].sum())
+                if ended.any():
+                    self._en_cum[ended] = 0.0
+                    self._en_ring[:, ended] = 0.0
+                self._en_ring[self._en_ring_pos] = self._en_cum
+                self._en_ring_pos = (self._en_ring_pos + 1) % self.en_death_n
         if self.dip_speed_coef > 0.0 and self._rec is not None and self.arc is None:
             # `_rec` already holds this state's record (updated above), so
             # dc > _rec + margin is exactly "inside a dip"; ended rows are
@@ -1734,6 +1768,10 @@ class RaceReward:
         # bonus); outcome pays instead
         r[ended] = 0.0
         r[goal] += self.success_bonus
+        if self.energy_pot > 0.0 and self.en_death_n > 0 and _en_back is not None:
+            # --energy-death-window: the energy term's net gain over the dying episode's last
+            # W s, taken back with the terminal charges
+            r -= _en_back
         if self.finish_k > 0.0 and goal.any():
             tsec = (self._ticks[goal].astype(np.float64)
                     + float(self.every)) / (1000.0 / self.tick_ms)
@@ -2256,6 +2294,10 @@ class RaceReward:
             out["en_gain_per_ep"] = (self.en_gain / n_ep) if n_ep else float("nan")
             out["en_loss_per_ep"] = (self.en_loss / n_ep) if n_ep else float("nan")
             self.en_gain = self.en_loss = 0.0
+            if self.en_death_n > 0:
+                # --energy-death-window: reward taken back at deaths, per ended episode
+                out["en_refund_per_ep"] = (self.en_refund / n_ep) if n_ep else float("nan")
+                self.en_refund = 0.0
             if self._en_off is not None:
                 # --energy-pot-front: the share of envs whose episode is past the band edge now
                 out["en_off_frac"] = float(self._en_off.mean())

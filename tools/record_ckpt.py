@@ -90,6 +90,7 @@ TRAIN_ONLY = frozenset({
     "speed_pot",
     # --energy-pot: a training reward term (the --speed-pot form on z + |v|^2 / 2g)
     "energy_pot", "energy_pot_front", "energy_pot_front_bonus", "energy_pot_rel",
+    "energy_death_window",
     # --min-speed-kill / --min-speed-grace: a TRAINING kill rule (force_fail below a speed
     # floor); evals and recordings never kill, exactly like the stall kill
     "min_speed_kill", "min_speed_grace", "min_speed_secs",

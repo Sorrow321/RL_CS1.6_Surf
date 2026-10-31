@@ -6605,6 +6605,13 @@ def main() -> None:
                          "units of geodesic progress on ANY map (K 3 is 0.19 of that on a 6.4k u "
                          "map and 0.92 on a 30k u one). A checkpoint restores it. 0 = off (K as "
                          "given)")
+    ap.add_argument("--energy-death-window", type=float, default=None,   # 0 = off
+                    help="with --energy-pot: W > 0 SECONDS - a DEATH (not a finish, not a "
+                         "truncation) takes back what the energy term paid over the episode's "
+                         "last W s when that was a net gain (the whole episode's when it is "
+                         "younger): energy strafed up on the way into a fatal fall is not kept "
+                         "(the --death-charge-window rule on the energy term). A checkpoint "
+                         "restores it. 0 = off, byte-identical")
     ap.add_argument("--surf-bonus", type=float, default=None,     # 0 = off
                     help="race (round 40, pnSURF): REWARD UNITS PER SECOND "
                          "paid while the player is riding a surfable face. "
@@ -8021,6 +8028,9 @@ def main() -> None:
         if args.energy_pot_rel is None and ck_cfg.get("energy_pot_rel") is not None:
             args.energy_pot_rel = float(ck_cfg["energy_pot_rel"])
             restored.append(f"energy_pot_rel={args.energy_pot_rel:g}")
+        if args.energy_death_window is None and ck_cfg.get("energy_death_window") is not None:
+            args.energy_death_window = float(ck_cfg["energy_death_window"])
+            restored.append(f"energy_death_window={args.energy_death_window:g}")
         if args.energy_pot_front is None and ck_cfg.get("energy_pot_front") is not None:
             args.energy_pot_front = float(ck_cfg["energy_pot_front"])
             restored.append(f"energy_pot_front={args.energy_pot_front:g}")
@@ -9489,6 +9499,13 @@ def main() -> None:
         raise SystemExit("--energy-pot-rel KAPPA needs KAPPA >= 0 (0 = off)")
     if args.energy_pot_rel > 0.0 and not args.energy_pot > 0.0:
         raise SystemExit("--energy-pot-rel rescales --energy-pot: it needs --energy-pot K > 0 on")
+    if args.energy_death_window is None:
+        args.energy_death_window = 0.0
+    if args.energy_death_window < 0.0:
+        raise SystemExit("--energy-death-window W needs W >= 0 (0 = off)")
+    if args.energy_death_window > 0.0 and not args.energy_pot > 0.0:
+        raise SystemExit("--energy-death-window refunds the --energy-pot term: it needs "
+                         "--energy-pot K > 0 on")
     if args.energy_pot_front is None:
         args.energy_pot_front = 0.0
     if args.energy_pot_front > 0.0:
@@ -13873,6 +13890,13 @@ def main() -> None:
                       f"(scale {_s.reward_fn.scale:.6g}/u; 1 u of h = {args.energy_pot_rel:g} u "
                       f"of progress)")
             _s.reward_fn.en_front_bonus = bool(args.energy_pot_front_bonus)
+            if args.energy_death_window > 0.0:
+                # --energy-death-window: calls per W at this slot's call cadence
+                _s.reward_fn.en_death_n = max(1, int(round(
+                    float(args.energy_death_window) * 1000.0
+                    / (float(_s.reward_fn.tick_ms) * float(_s.reward_fn.every)))))
+                print(f"--energy-death-window {args.energy_death_window:g} s: a death takes back "
+                      f"the energy term's net gain over its last {_s.reward_fn.en_death_n} calls")
             # --stall-energy: the stall clock also re-arms on energy records (u of h)
             _s.reward_fn.stall_energy = float(args.stall_energy)
             _s.reward_fn.surf_bonus = SURF_BONUS_T
@@ -14637,6 +14661,8 @@ def main() -> None:
                           if args.reward == "race" and args.energy_pot_front else {}),
                        **({"energy_pot_rel": float(args.energy_pot_rel)}
                           if args.reward == "race" and args.energy_pot_rel else {}),
+                       **({"energy_death_window": float(args.energy_death_window)}
+                          if args.reward == "race" and args.energy_death_window else {}),
                        **({"energy_pot_front_bonus": int(args.energy_pot_front_bonus)}
                           if args.reward == "race" and args.energy_pot_front_bonus else {}),
                        "surf_bonus": (args.surf_bonus
@@ -21953,7 +21979,9 @@ def main() -> None:
                 # --energy-pot: energy height gained / lost per ended training episode
                 race_note += (f"  en +{rs['en_gain_per_ep']:,.0f}"
                               f"/-{rs['en_loss_per_ep']:,.0f}u/ep"
-                              + (f" off {rs['en_off_frac']:.0%}" if "en_off_frac" in rs else ""))
+                              + (f" off {rs['en_off_frac']:.0%}" if "en_off_frac" in rs else "")
+                              + (f" refund {rs['en_refund_per_ep']:.2f}/ep"
+                                 if "en_refund_per_ep" in rs else ""))
             if respawn is not None:
                 # CLAUDE.md: race/win_rate is the THIRD deceptive metric and
                 # it has fired - round 19 read 18.46% off a reservoir that
