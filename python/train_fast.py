@@ -9780,7 +9780,8 @@ def main() -> None:
         args.race_arc = str(ROOT / "runs" / args.run / "ge_route.npz")
         if not float(args.race_arc_tail or 0.0) > 0.0:
             args.race_arc_tail = float(args.ge_arc)
-        if args.stall_arc is None:
+        if not flag_given("--stall-arc"):
+            # the stall clock watches the route's arc (a stall default of 0 is set earlier)
             args.stall_arc = 1
     if args.race_arc_self is None:
         args.race_arc_self = 0.0
