@@ -74,14 +74,23 @@ def ckpt_step(path: Path) -> int:
     return int(torch.load(path, map_location="cpu", weights_only=False)["global_step"])
 
 
-def snapshot(src: Path, dst: Path) -> bool:
+def snapshot(src: Path, dst: Path, goal_hull: bool = False) -> bool:
     """Copy a checkpoint the trainer may be rewriting: copy, then accept only a copy that loads
-    (the trainer writes ckpt_latest through a temp file, but a copy can still race it)."""
+    (the trainer writes ckpt_latest through a temp file, but a copy can still race it).
+    ``goal_hull``: stamp config.goal_hull = 1 into the copy, so beam_tas and plan_to_bc (which
+    mirror the checkpoint's config) search and replay with the real finish rule even on a
+    checkpoint whose run predates --goal-hull (the incumbent, before the launch)."""
     dst.parent.mkdir(parents=True, exist_ok=True)
     for _ in range(5):
         try:
             shutil.copyfile(src, dst)
             ckpt_step(dst)
+            if goal_hull:
+                import torch
+                ck = torch.load(dst, map_location="cpu", weights_only=False)
+                if not (ck.get("config") or {}).get("goal_hull"):
+                    ck.setdefault("config", {})["goal_hull"] = 1
+                    torch.save(ck, dst)
             return True
         except Exception:                            # noqa: BLE001 - retry a torn copy
             time.sleep(5)
@@ -260,6 +269,9 @@ def main(argv=None):
     ap.add_argument("--branch-burst", type=int, default=300, help="--branch-waves: burst ticks")
     ap.add_argument("--branch-protect", type=int, default=4,
                     help="--branch-waves: generations the forked lineages cannot be culled")
+    ap.add_argument("--goal-hull", action="store_true",
+                    help="plan and distil with the REAL finish (the trigger's clip hull, "
+                         "train_fast --goal-hull): stamped into each round's snapshot config")
     ap.add_argument("--wave-tol", type=float, default=0.02,
                     help="distil only the waves whose fastest line is within this fraction of "
                          "the round's fastest")
@@ -300,7 +312,7 @@ def main(argv=None):
             time.sleep(30)
             continue
         ck = rdir / "ckpt.pt"
-        if not snapshot(src, ck):
+        if not snapshot(src, ck, goal_hull=a.goal_hull):
             log(f"round {r}: could not copy {src}")
             time.sleep(60)
             continue
