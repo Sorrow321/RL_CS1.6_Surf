@@ -159,7 +159,16 @@ def beam(a, out: Path, branch_tick: int = 0, tag: str = None):
         KEYS[tag] = keys_from_acts(z["acts"], int(z["act_every"]), len(z["states"]))
     return z["states"], {f"{tag}_rc": rc, f"{tag}_replay_ok": int(z["replay_ok"]),
                          f"{tag}_frontier_d": float(z["frontier_d"]),
-                         f"{tag}_frontier_tick": int(z["frontier_tick"])}
+                         f"{tag}_frontier_tick": int(z["frontier_tick"]),
+                         f"{tag}_finished": int(z["finished"]) if "finished" in z.files else 0}
+
+
+def beats_greedy(de: float, greedy_d: float, gain: float, finished: bool = False) -> bool:
+    """A line beats the greedy frontier when its end is --gain deeper, or when it FINISHES and
+    the greedy's median episode does not (greedy_d > 0): within --gain of the goal not even a
+    finisher passes ``de < greedy_d - gain`` (uf2r1b1, 2026-10-31: the greedy 177 u from the
+    finish, gain 500)."""
+    return bool(de < float(greedy_d) - float(gain)) or (bool(finished) and float(greedy_d) > 0.0)
 
 
 # the held keys (fwd, side, duck; engine bins) each line's states were reached with, by line
@@ -538,13 +547,17 @@ def main(argv=None) -> int:
     best_src = None
     if line is not None and len(line):
         d = field_d(field, line)
-        e, de = cut_line(line, d, a.contact_tol, a.cut)
+        fin = bool(info.get("beam_finished"))
+        # a FINISHING line is kept whole, to its pre-finish state: the cut rules are for lines
+        # that end in a fall
+        e, de = (len(line) - 1, float(d[-1])) if fin else cut_line(line, d, a.contact_tol, a.cut)
         res.update(beam_len=int(len(line)), beam_end=e, beam_end_d=de,
                    beam_best_d=float(d.min()))
-        print(f"beam line: {len(line)} states, best d {d.min():,.0f}, cut at {e} "
-              f"(last contact {contact_cut_states(line, a.contact_tol)}) d {de:,.0f}; greedy "
-              f"frontier {a.greedy_d:,.0f}", flush=True)
-        if de < a.greedy_d - a.gain:
+        print(f"beam line: {len(line)} states, best d {d.min():,.0f}, "
+              + ("FINISHES - kept whole, " if fin else
+                 f"cut at {e} (last contact {contact_cut_states(line, a.contact_tol)}) ")
+              + f"d {de:,.0f}; greedy frontier {a.greedy_d:,.0f}", flush=True)
+        if beats_greedy(de, a.greedy_d, a.gain, fin):
             best_src = ("beam", line[:e + 1], de)
         # branched beams: the fork at --branch-tick and --branch-extra-secs earlier (a fork AT
         # the commitment point only perturbs what is already decided; each beam costs ~20 s)
@@ -580,13 +593,16 @@ def main(argv=None) -> int:
             if bl is None or not len(bl):
                 continue
             bd_ = field_d(field, bl)
-            be, bde = cut_line(bl, bd_, a.contact_tol, a.cut)
+            bfin = bool(bi.get(f"{tag}_finished"))
+            be, bde = ((len(bl) - 1, float(bd_[-1])) if bfin
+                       else cut_line(bl, bd_, a.contact_tol, a.cut))
             pre = "br" if k == 0 else f"br{k + 1}"
             res.update({f"{pre}_len": int(len(bl)), f"{pre}_end": be, f"{pre}_end_d": bde,
                         f"{pre}_best_d": float(bd_.min()), f"{pre}_fork": int(ft)})
             print(f"branched beam line (fork at tick {ft}): {len(bl)} states, "
-                  f"best d {bd_.min():,.0f}, cut at {be} d {bde:,.0f}", flush=True)
-            if bde < a.greedy_d - a.gain:
+                  f"best d {bd_.min():,.0f}, " + ("FINISHES, " if bfin else f"cut at {be} ")
+                  + f"d {bde:,.0f}", flush=True)
+            if beats_greedy(bde, a.greedy_d, a.gain, bfin):
                 best_src = (tag, bl[:be + 1], bde)
             elif bde < de:
                 line, d, e, de = bl, bd_, be, bde     # GE roots on the deepest line

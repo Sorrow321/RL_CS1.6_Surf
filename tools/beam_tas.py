@@ -538,11 +538,14 @@ def run_episode(core, pol, obs, fout, max_ticks, header, episode_idx):
 
 
 def save_frontier_line(frontier, cfg, map_path, ep_cap, tick, arm, row0, obs_start,
-                       gate_seed, k, out_dir, gf) -> None:
+                       gate_seed, k, out_dir, gf, finished: bool = False) -> None:
     """--save-frontier: replay the frontier lineage's action table open-loop on a fresh
     1-env core from the search's spawn row and write its per-tick states (the curriculum
     spine) and trajectory. The replay must reach the frontier's d to within a cell, or the
-    files are still written but flagged (the batched search and a 1-env core disagreed)."""
+    files are still written but flagged (the batched search and a 1-env core disagreed).
+    ``finished``: the frontier is the search's FINISHING winner (its finish tick); the states
+    run up to the pre-finish state, and the replay is ok when it finishes on that same tick
+    (``finished`` = 1 in the npz)."""
     acts = np.asarray(frontier["acts"], np.int32)
     view = frontier.get("view")
     acts_t = np.repeat(acts, int(k), axis=0)
@@ -551,7 +554,7 @@ def save_frontier_line(frontier, cfg, map_path, ep_cap, tick, arm, row0, obs_sta
     arm(core)
     core.reset(gate_seed)
     core.set_state(0, row0)
-    states, best_d = [], float("inf")
+    states, best_d, fin_t = [], float("inf"), -1
     for t in range(min(len(acts_t), int(frontier["tick"]))):
         states.append(core.get_states()[0].copy())
         a = np.ascontiguousarray(acts_t[t].reshape(1, 6), dtype=np.int32)
@@ -561,20 +564,30 @@ def save_frontier_line(frontier, cfg, map_path, ep_cap, tick, arm, row0, obs_sta
         else:
             _o, _r, done, trunc, _ = core.step(a)
         if bool(np.asarray(done)[0]) or bool(np.asarray(trunc)[0]):
+            if bool(np.asarray(done)[0]) and bool(core.goal_hits[0]):
+                fin_t = t + 1
             break
         best_d = min(best_d, float(gf.sample(
             np.asarray(core.get_states()[0]["origin"], np.float64)[None])[0]))
     states = np.array(states)
-    ok = best_d <= float(frontier["d"]) + float(gf.cell)
+    if finished:
+        best_d = min(best_d, float(gf.sample(
+            np.asarray(states[-1]["origin"], np.float64)[None])[0])) if len(states) else best_d
+        ok = fin_t == int(frontier["tick"])
+    else:
+        ok = best_d <= float(frontier["d"]) + float(gf.cell)
     np.savez(out_dir / "beam_frontier.npz", acts=acts,
              **({"view": np.asarray(view, np.float32)} if view is not None else {}),
              states=states, spawn_state=row0, obs_start=np.asarray(obs_start, np.float32),
              act_every=np.int32(k), frontier_d=np.float64(frontier["d"]),
              frontier_tick=np.int32(frontier["tick"]), replay_best_d=np.float64(best_d),
-             replay_ok=np.int32(1 if ok else 0))
+             replay_ok=np.int32(1 if ok else 0), finished=np.int32(1 if finished else 0))
     print(f"--save-frontier: {len(states)} states, replay best d {best_d:,.0f} "
-          f"(search frontier {frontier['d']:,.0f}) -> {out_dir / 'beam_frontier.npz'}"
-          + ("" if ok else "  !! the replay did NOT reach the frontier"))
+          + (f"(the FINISHING winner, finish tick {int(frontier['tick'])}) "
+             if finished else f"(search frontier {frontier['d']:,.0f}) ")
+          + f"-> {out_dir / 'beam_frontier.npz'}"
+          + ("" if ok else ("  !! the replay did NOT finish on the search's tick" if finished
+                            else "  !! the replay did NOT reach the frontier")))
 
 
 class Playback:
@@ -2178,6 +2191,8 @@ def main():
                     "beam_frontier.npz (acts, view, spawn_state, the per-tick STATE_DTYPE "
                     "states) and beam_frontier.jsonl - so a line deeper than the policy's own "
                     "can seed a curriculum (train_fast --demo-file ... --demo-success-d). "
+                    "On a crossing, the FINISHING winner's line is saved the same way "
+                    "(finished = 1, its states up to the pre-finish tick). "
                     "Off = the tool as it was")
     ap.add_argument("--out-dir", default=str(ROOT / "runs" / "beam_tas"))
     ap.add_argument("--log-every", type=int, default=5,
@@ -3876,6 +3891,13 @@ def main():
                                                                    1.0)
     (out_dir / "summary.json").write_text(
         json.dumps(summary, indent=2), encoding="utf-8")
+    if args.save_frontier:
+        # --save-frontier on a CROSSING (uf2r1b1, 2026-10-31): the finishing winner is the line a
+        # curriculum wants most, yet a search that finished wrote no beam_frontier.npz at all,
+        # so tools/auto_spine.py had no line to hand back from it
+        save_frontier_line({"acts": best["acts"], "view": best.get("view"), "d": 0.0,
+                            "tick": int(best["tick"])}, cfg, map_path, ep_cap, TICK, arm,
+                           row0, obs_start, gate_seed, K, out_dir, ogf, finished=True)
     if greedy_ticks is None:
         print(f"beam TAS: {'SPLICED ' if prefix else ''}CROSSING in "
               f"{secs(best['tick']):.2f}s "

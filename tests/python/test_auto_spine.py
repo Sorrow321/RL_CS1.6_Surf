@@ -484,3 +484,73 @@ def test_mixed_boost_stage_keeps_all_roots(tmp_path, monkeypatch):
     auto_spine.go_explore(a, tmp_path / "two", line, 150, boosts=[1.0, 1.04])
     auto_spine.go_explore(a, tmp_path / "one", line, 150, boosts=[1.08])
     assert "--roots-keep-all" in seen[0] and "--roots-keep-all" not in seen[1]
+
+
+def test_a_finishing_line_beats_a_greedy_within_the_gain():
+    """uf2r1b1 (2026-10-31): a FINISHING line beats a greedy frontier that does not finish,
+    whatever --gain asks; within --gain of the goal no depth could (the greedy 177 u from the
+    finish, gain 500, a finisher's d 0: 0 < 177 - 500 is false). A greedy that finishes
+    (median deepest d 0) is beaten by nothing, a finisher included."""
+    sys.path.insert(0, str(ROOT / "tools"))
+    import auto_spine
+    assert not auto_spine.beats_greedy(0.0, 177.0, 500.0)                 # the old rule alone
+    assert auto_spine.beats_greedy(0.0, 177.0, 500.0, finished=True)
+    assert auto_spine.beats_greedy(30.0, 177.0, 500.0, finished=True)
+    assert not auto_spine.beats_greedy(0.0, 0.0, 500.0, finished=True)    # the greedy finishes
+    assert auto_spine.beats_greedy(4000.0, 5000.0, 500.0)                 # depth, as before
+    assert not auto_spine.beats_greedy(4600.0, 5000.0, 500.0)
+    assert auto_spine.beats_greedy(10.0, float("inf"), 500.0, finished=True)
+
+
+def test_beam_reports_whether_its_line_finished(tmp_path, monkeypatch):
+    """beam() reads beam_tas's `finished` flag; a frontier file without it (the format before)
+    is a line that did not finish."""
+    sys.path.insert(0, str(ROOT / "tools"))
+    import auto_spine
+    from surfgym.core import STATE_DTYPE
+    monkeypatch.setattr(auto_spine, "run", lambda cmd, log, timeout: 0)
+    a = auto_spine.main.__globals__["argparse"].Namespace(
+        ckpt="c.pt", map="m.bsp", envs=64, greedy_envs=4, beam_ticks=100, seed=0, timeout=10)
+    st = np.zeros(20, STATE_DTYPE)
+    for name, extra, want in (("fin", {"finished": np.int32(1)}, 1), ("old", {}, 0)):
+        out = tmp_path / name
+        (out / "beam").mkdir(parents=True)
+        np.savez(out / "beam" / "beam_frontier.npz", states=st, replay_ok=np.int32(1),
+                 frontier_d=np.float64(0.0), frontier_tick=np.int32(20), **extra)
+        line, info = auto_spine.beam(a, out)
+        assert len(line) == 20 and info["beam_finished"] == want
+
+
+def test_a_finishing_beam_line_is_handed_back_whole(tmp_path, monkeypatch):
+    """main(): the beam's FINISHING line becomes the spine, kept whole to its pre-finish state,
+    though its end is not --gain deeper than the greedy; the same line unfinished is not."""
+    sys.path.insert(0, str(ROOT / "tools"))
+    import auto_spine
+    from surfgym.core import STATE_DTYPE
+    nx, ny, nz, cell = 64, 4, 4, 32.0
+    grid = np.zeros((nz, ny, nx), np.float32)
+    grid[:] = (2200.0 - (np.arange(nx) + 0.5) * cell)[None, None, :]       # d = 2,200 - x
+    fp = tmp_path / "field.npz"
+    np.savez(fp, grid=grid, quant=np.float64(1.0), mins=np.zeros(3), cell=np.float64(cell),
+             reach_max=np.float64(20000.0))
+    n = 60
+    line = np.zeros(n, STATE_DTYPE)
+    line["origin"][:, 0] = np.linspace(100.0, 2000.0, n)
+    line["origin"][:, 1:] = 50.0
+    line["velocity"][:, 0] = 900.0
+    line["velocity"][:, 2] = -8.0 * np.arange(n)          # ballistic: no contact after row 0
+    end_d = float(auto_spine.field_d(auto_spine.load_field(fp), line[-1:])[0])
+    for fin, want_rc in ((1, 0), (0, 2)):
+        monkeypatch.setattr(auto_spine, "beam", lambda a, out, branch_tick=0, tag=None, f=fin: (
+            line, {"beam_rc": 0, "beam_finished": f}))
+        out = tmp_path / f"k_{fin}"
+        rc = auto_spine.main(["--ckpt", "c.pt", "--map", "m.bsp", "--field", str(fp),
+                              "--out", str(out), "--greedy-d", f"{end_d + 100.0:g}",
+                              "--gain", "500", "--ge-minutes", "0"])
+        assert rc == want_rc
+        if fin:
+            info = json.loads((out / "spine.json").read_text())
+            assert info["source"] == "beam" and info["n"] == n and info["beam_finished"] == 1
+            assert np.load(out / "spine.npy")["origin"][-1, 0] == 2000.0
+        else:
+            assert not (out / "spine.json").exists()
