@@ -359,3 +359,14 @@ file without a word. Workaround: scp the padded file myself, md5-checked against
   (stitch_spine, 2,098 states, md5 88b6c7ce, end 9.25%); depth rule (success d <= 27,912 = 8.92%),
   bonus 50, milestone 28588, GE8 trough spawns 30%, per-call energy K 8; resumed from tcpump's
   8.2 snapshot (ckpt_1152385024).
+* **tcne result (1.152B -> 1.552B): 9.647 (1,455M), the round's best.** Evals 8.15 / 8.53 / 8.72 /
+  8.78 / 8.85 / 8.84 / **9.65** / 9.53 (medians 8.4-9.5%). The depth-rule curriculum walked the
+  whole 2,098-state spine back to the true start (tau 0 at ~98.7% success) in ~400M steps - no
+  stall this time. The greedy line (10.4-10.6 s): platform -> SW drop -> floor (E 599) -> trough
+  north -> climbs the east side at the north end -> ONE pump swing back south -> north again at
+  812 u/s (E ~750) -> **exits north-east** -> onto *18 at (-1,253, -924) at 9.3-9.65%. It learned a
+  one-cycle version of GE8's 15.7 s wander. Hand-off ckpt_1454374912.pt (md5 9c473627), pulled
+  by hand.
+* Next cycle (04:00 UTC): GE10 rooted at 47 states of tcne's own greedy line's last 3 s (ticks
+  752-1032, before the fall; runs/uf2r1b2_lines/ne_tail_roots.npy), 15 min; tcne2 = tcne's final
+  + the same spine at tau 0 (consolidation) on the GPU meanwhile.
