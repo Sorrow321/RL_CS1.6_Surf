@@ -649,3 +649,24 @@ greedy walks off the platform at once, the record prestrafes). Gap at first arri
   d-ranked: no first-lap exit - min_d tracks the greedy's d tick for tick (29,781 vs 29,780 at t
   1,500), med_d within ~30 u of min_d: the yaw sigma is 0.018 (x2 = 0.036), the population is one
   lineage. The policy's own proposals do not contain the first-lap climb.
+* Uniform-burst Go-Explore rooted at 61 of the greedy line's own lap-1 pit states (ticks 380-860,
+  `explore_phase1 --exact-chains --cell 64 --cell-energy 32 --cell-heading 1 --view-follow=-90..90
+  --select-energy 3 --tick-ms 8`, 6 min on 2 local threads, 0.16M ticks/s, 812k cells): nothing
+  above the pit - the best cells are bled states at the south rim (d ~30,637, E 200-600, z ~0),
+  the highest z 92. Round 1's finding holds from the policy's own pit states too: random bursts
+  do not surf the bowl.
+* Branched beams (the policy's own keys, its yaw target offset by U(-J, J) deg held for H ticks,
+  `--branch-at tT:56 --branch-view-only --branch-protect P`, 64 envs on CPU): J 30 at the lap-1
+  west side (t 4.6 s) - branched lineages ~800 u ahead of the greedy at 6.1 s, then all fell back
+  and died (frontier = the greedy's own lap-2 exit, same time); J 90 at the dive (t 2.3 s, protect
+  6) - ~400 u ahead at 10 s, frontier 75 u better than the greedy at 12.3 s. No first-lap exit in
+  64-env CPU probes. The pit shortcut needs GPU-scale search (4,096 envs, many seeds), if it is in
+  reach at all.
+
+### --bc-reload and tools/expert_side.py (10:15-10:25 UTC, commit 6b409c89 + this one)
+The grader counts only the trainer's own evals, and exit_local relaunches a trainer (evals off)
+every round. New: `train_fast --bc-reload` (default off; re-reads --bc-file when its mtime moves,
+every 20 iterations; `surfgym.bc.reload_refusal` keeps the old rows on a layout change) and
+`tools/expert_side.py` (beside ONE trainer: snapshot ckpt_latest -> beam_tas waves from the true
+start -> plan_to_bc -> os.replace of the trainer's --bc-file and --spawn-states file). The expert
+loop (search -> distil) inside one scored run. tests/python/test_bc_reload.py.
