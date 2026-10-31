@@ -561,3 +561,10 @@ on purpose: round 1 needs an exit, and the attribution comes after. Read with uf
   before the best eval, **ckpt_13045858304, re-records 9/9 TWICE** (default seed best 42.07 s,
   score 118.598; --seed 7 best 42.13 s): the first late snapshot to do so. Pulled (md5
   359ab38c...) - the new hand-on, 18/18 like ckpt_8819048448 and ~2.4 s faster.
+* **A13 ended at its budget, 13,905,166,336 steps (08:47 UTC; 365,604 steps/s on the 5080).**
+  Last evals 13.37-13.90B: 9/9 at 13.370 / 13.445 / 13.521 / 13.672 (42.47 s) / 13.747 / 13.823 /
+  13.898, 7/9 at 13.596 - nothing past 118.592. Harvested before release: all 14 runs (204 evals,
+  run.json each), uf2r1b1_cut's ckpt_latest (md5 f1ee081d...) and the hand-on ckpt_13045858304
+  (md5 359ab38c...), and `uf2r1b1_cut/extras/` (the trainer log, the auto-spine searches' logs
+  and spine.json files, the 43.18 s finishing beam line of the box test in `fintest/`, the
+  re-recording logs). Box 58455319 released at 08:54 UTC (idle since 08:47).
