@@ -258,3 +258,29 @@ pump). Everything else as E4 (auto-spine + recheck, snapcopy).
 * (ops, again) a box.py ssh command that kills by `grep -E '[x]yz'` still matches its OWN shell
   when the same command later LAUNCHES xyz (the text is in bash -c's argv): kill and launch in
   separate ssh calls, or put the work in a script file on the box.
+* **E5 final (stopped 21:25 UTC at 2.16B): 56.2 / 55.4 / 56.7 / 55.8 / 55.7 / 56.7 / 56.0 / 55.9** -
+  `--energy-pot-front 0.01` did NOT open the platform, and it is the wrong form here: inside the band
+  the energy term pays nothing, so a policy that cannot make a new record there earns only the
+  time penalty by staying alive - dying becomes the better end. E5's greedy died EARLIER (~82 s
+  against E4's 91-105 s), and the energy it needs is only built by staying alive (the record has
+  E ~1,900 at its approach to the pillar; the policy peaks at 1,500-1,700 and is still GAINING
+  when it flies out of the structure at ~100 s).
+* GE zl3 (15 min, coarse cells, 160 roots in the third structure from e5's beam line): 2.18M cells,
+  best 56.09% - nothing past the plateau. Its top cells sit at exactly z 164.19 (1,281 cells, vz
+  ~0, over x -3,031..-16, y 1,227..3,344), but the core's physics flies a player from those spots
+  freely to 566-626 u (no clip ceiling, no water): the explorer's roots carried at most E ~1,360
+  and uniform bursts do not pump this structure, so 164 is just where their energy tops out.
+  The record's platform is the top of a solid pillar at (-1,590, 1,790) (occupancy: solid z
+  -706..~573), reached by flying into its west face and rising along it.
+
+### E6 `zlr1b4_e6` (21:27 UTC): back to E4's objective + a spine on the policy's OWN current route
+Resume of E4's ckpt_latest (1,438.6M, md5 a692435c; per-call energy everywhere, as E4) with the
+spine = e5's auto-spine beam line (`autoresearch/spines/zlr1b4_e5beam_line.npy`, md5 0f507f6b:
+beam_tas from the TRUE start on the policy's weights, 11,700 ticks = 81.9 s, start -> both troughs
+-> the third structure, 55.7%), the band PINNED at the true start (`--demo-tau0 0 --demo-rate 0`,
+uf2r2b4 x7's rule: half the spine draws at the eval's own start, half uniform along the line - a
+third of the line is the third structure, where the policy dies), the GE line's 9.48% success
+line kept paying as `--demo-milestones 5859`. No auto-spine (its searches could not beat the
+greedy here, cost ~18% throughput, and a new spine with demo-rate 0 would pin the band at its end).
+Why: the frontier skill is SURVIVING and pumping the third structure up to ~1,900 u; the GE-line
+spine put 90% of spawns on the first 27 s of the route.
