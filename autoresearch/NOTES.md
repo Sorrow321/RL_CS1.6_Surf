@@ -308,3 +308,12 @@ on purpose: round 1 needs an exit, and the attribution comes after. Read with uf
   line that beats the greedy frontier by 500 u becomes the next spine; the old success line
   keeps paying as a milestone) + `--ckpt-every 2e8` + `tools/snapcopy.py` beside it (a hand-on
   near every eval); A10's curriculum flags with `--demo-tau0 0`.
+* **A11: 12.229 at 3,683M (01:05 UTC) - the auto-spine loop works here.** Search 1 (at 3,608M,
+  beside the training, 114 s): a NEW SPINE from the beam on the newest weights from the TRUE
+  start (2,900 states, end d 27,763, 918 u past the greedy frontier 28,681); success line d <=
+  27,363; the old line 29,584 kept as a milestone. The next eval: 5/9 greedy episodes reach
+  11.2-12.2% at ~29 s around (-3,061..-3,650, -140..-439, -740) - past the `*18` sheet's WEST edge
+  on the record's own route (the record: (-3,382, -787, -220) at t+10, (-3,161, 712, -591) at t+11)
+  - and die on the `*8` sheet (z -767..-768) where the record surfs higher (z -591 -> -102);
+  3/9 still die in the pit at 7-8 s, 1 on `*18` (7.87%). Search 2 started (5/9 past 27,363).
+  Hand-on snapshot pulled: ckpt_3662675968 (20M before the eval; snapcopy).
