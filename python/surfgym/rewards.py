@@ -2254,7 +2254,7 @@ class RaceReward:
         if self.stall_energy > 0.0:
             # --stall-energy: timer re-arms that only the energy rule gave (the field rule did
             # not), per ended episode
-            out["stall_en_rearms_per_ep"] = ((self.stall_en_rearms / n_ep) if n_ep
+            out["en_stall_rearms_per_ep"] = ((self.stall_en_rearms / n_ep) if n_ep
                                              else float("nan"))
             self.stall_en_rearms = 0
         if self.arc is not None:

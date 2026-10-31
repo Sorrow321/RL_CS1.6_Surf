@@ -1,7 +1,5 @@
-{
- "agent": null,
- "round": 0,
- "final": false,
- "best": null,
- "summary": "surf_za_loop lineage: no result yet"
-}
+{"agent": "zlr1b2", "round": 1, "final": false,
+ "best": {"score": 0.704, "eval_file": "/home/steam/ar_loop/runs/zlr1b2/zlr1b2_ctl/traj_0151519232.jsonl",
+          "run": "zlr1b2_ctl", "step": 151519232, "ckpt": null,
+          "recipe": [], "resume_from": null, "commit": "30856714"},
+ "summary": "Control (recipe from scratch, 5080): 0.704 at 151M (0.7% progress, 0/9); 68-79% of training episodes stall-killed, greedy wanders by the spawn and is cut by --eval-patience 30. Found: the record's own line would be cut at 30 s by --eval-patience (no field progress for ~65 s in the first half-pipe). Built --stall-energy / --eval-patience-energy (energy-height records re-arm both clocks; generic, off = bit-identical). Next: A1 = recipe + both at 32 u + per-call energy shaping K 12."}

@@ -30,3 +30,46 @@ the numbers). Read it before you start; append to it before you wrap up.
   constant. PROTOCOL.md READ FIRST has what it shows.
 
 ## Round log
+
+## zlr1b2 (round 1, slot 2) - 2026-10-31 17:10 UTC start
+
+Box 58559243: RTX 5080 + Ryzen 9 7945HX (32 threads), 0.387 $/h, South Carolina (rented 17:14).
+
+### The first loop, read off the record (ANALYSIS ONLY, CLAUDE.md section 0)
+* The "loop" is a half-pipe along x: from the curtain the record drops to z ~-3,824 (t+6, 1,169 u/s)
+  and then swings x -1,900 <-> +1,200 at y 50..800, z -3,330 (bottom) .. -2,600 (ends), one swing
+  every ~2-4 s. E = z + |v|^2/1600: -3,180 at rest, -2,970 at t 6, -2,179 at t 34 (+28 u/s), a
+  -780 u loss at t 34-38 (a mistake), back to -2,010 at t 64 (+34 u/s); at t ~68-70 it leaves the
+  east end for a second half-pipe at y ~-600, z ~-2,250 (x -650 <-> 2,300), still +22 u/s of E.
+  The field pays nothing until then (progress negative the whole first minute).
+* Perfect air strafing (wishspeed cap 30 u/s per frame, perpendicular) is ~+80 u/s of E at 7 ms:
+  the record pumps at a third to a half of that.
+
+### Two rules that kill every pumping line, whatever the policy learns
+* Training: `--stall-secs 15` kills an episode with no field record by > stall_eps in one call.
+* Evals: `--eval-patience 30` cuts a greedy episode whose best field progress has not grown 32 u
+  in 30 s. **The record's own line would be cut at 30 s with 0 progress** (it gains its first
+  field progress at ~65 s). So the score cannot move past ~0 on this map under the recipe's eval,
+  even for a policy that rides the loop like the record.
+* Fix (7e5b6d0f, generic, flags off = bit-identical): `--stall-energy E` and
+  `--eval-patience-energy E`: either clock ALSO re-arms when the episode's best energy height
+  h = z + |v|^2/2g rises more than E above its value at the last re-arm (cumulative). Free fall
+  and frictionless surfing keep h; only air acceleration / jumps raise it; h is bounded (height +
+  sv_maxvelocity), so a farm still stalls once it saturates. E = 32 u (the patience rule's own
+  32 u). Would I ship it on a map I never opened? Yes: it changes nothing where the field moves,
+  and where it does not, a line still adding energy is not idle.
+  Test: tests/python/test_stall_energy.py.
+
+### Plan (17:23 UTC)
+* `zlr1b2_ctl`: the recipe from scratch (control), 5080, 6e8 budget, stopped at ~2.3e8 to free
+  the box. 0.5M / 76M / 151M greedy: fwd 49 / 83 / 311 u, peak speed 87 / 153 / 297 u/s,
+  patience-cut 9 / 9 / 4 of 9, frontier 0 / 0 / 31 u. Training: 68-79% of episodes stall-killed,
+  energy term (front bonus form) pays ~0, yaw sigma climbing to 1.2 (no signal).
+* A1 `zlr1b2_en`: recipe + `--stall-energy 32 --eval-patience-energy 32` + PER-CALL energy
+  shaping `--energy-pot 12 --energy-pot-front 0 --energy-pot-front-bonus 0` (pb_r26's form and K,
+  carried unchanged from the princessburglar expert loop; not tuned here). Why K 12 and not the
+  recipe's 3: the time penalty is 0.1 reward/s; at K 3 a pump at the record's ~30 u/s pays
+  0.09/s, so a learner pumping 10 u/s is paid less than it is charged and dying early is the best
+  loop-1 policy. At K 12 the same learner breaks even and the record's pace pays 3.6x the time
+  penalty. Read with: energy gained per episode, stall share, greedy peak speed / E, where the
+  greedy dies, and whether any greedy episode reaches the second half-pipe (progress > ~5%).

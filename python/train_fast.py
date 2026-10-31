@@ -21949,10 +21949,10 @@ def main() -> None:
                 race_note += (f"  en +{rs['en_gain_per_ep']:,.0f}"
                               f"/-{rs['en_loss_per_ep']:,.0f}u/ep"
                               + (f" off {rs['en_off_frac']:.0%}" if "en_off_frac" in rs else ""))
-            if ("stall_en_rearms_per_ep" in rs
-                    and rs["stall_en_rearms_per_ep"] == rs["stall_en_rearms_per_ep"]):
+            if ("en_stall_rearms_per_ep" in rs
+                    and rs["en_stall_rearms_per_ep"] == rs["en_stall_rearms_per_ep"]):
                 # --stall-energy: re-arms only the energy rule gave, per ended episode
-                race_note += f"  stE {rs['stall_en_rearms_per_ep']:.1f}/ep"
+                race_note += f"  stE {rs['en_stall_rearms_per_ep']:.1f}/ep"
             if respawn is not None:
                 # CLAUDE.md: race/win_rate is the THIRD deceptive metric and
                 # it has fired - round 19 read 18.46% off a reservoir that

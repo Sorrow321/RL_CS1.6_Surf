@@ -97,7 +97,7 @@ def test_zero_is_off_no_state_and_the_old_stall():
     # both envs stall on the same call (the field rule alone): every 10 calls
     fired = [i for i, k in enumerate(kills) if k is not None]
     assert fired and all(kills[i] == [1, 1] for i in fired)
-    assert "stall_en_rearms_per_ep" not in rr.pop_stats()
+    assert "en_stall_rearms_per_ep" not in rr.pop_stats()
 
 
 def test_a_pumping_env_survives_the_window_a_static_one_dies_in():
@@ -191,7 +191,7 @@ def test_the_rearm_count_is_reported_when_on():
     _step(rr, core.put([0.0], [0.0]), done=[1])
     st = rr.pop_stats()
     # anchored on the first call (h 10): re-arms at h 50, 90, ..., 370 = 9 of them
-    assert st["stall_en_rearms_per_ep"] == pytest.approx(9.0)
+    assert st["en_stall_rearms_per_ep"] == pytest.approx(9.0)
     assert rr.stall_en_rearms == 0
 
 
