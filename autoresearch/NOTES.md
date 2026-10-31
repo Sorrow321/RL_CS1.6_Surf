@@ -335,3 +335,23 @@ Box 58559243: RTX 5080 + Ryzen 9 7945HX (32 threads), 0.387 $/h, South Carolina 
   progress 194 u/ep, energy records +177 u/ep, reservoir deepest 21.5%, yaw sigma 0.096.
 * The remaining weakness: the start-ramp -> half-pipe transition is a coin flip for the greedy
   (whole evals of 0%). Snapshot pulled: runs/zlr1b2_arc3/ckpt_2028470272.pt.
+* A6c 2.06B frontier 1,329 u (20.9%), 2.14B 1,295 u (20.4%): holding at ~20-21% (loop 2).
+
+### `--ge-arc U` (6d0f04f5, 20:15 UTC): the procedure as ONE generic flag
+* `--ge-minutes M --ge-arc U --no-race-ratchet`: Go-Explore phase 1 from the true spawn for M
+  minutes on all CPUs (energy cells 64 u x 32 u of h, heading, view offsets in the velocity
+  frame, select-energy 3, exact chains, at the run's whole-ms tick) -> the deepest cell's exact
+  chain replayed into a line (ge_replay) -> the line at 128 u = runs/<run>/ge_route.npz as
+  --race-arc with --race-arc-tail U and --stall-arc 1 -> spawn rows (--ge-frac, default 0.4) =
+  the line + the archive's most energetic state per 256 u cell that is deeper than the start on
+  the field OR above its energy height + 32, views along the velocity. The config records the
+  route and the spawn file as race_arc / spawn_states (a resume reads them, never re-searches).
+  `--no-race-ratchet` (new) turns a preset's ratchet off (--race-arc refuses it). Off =
+  bit-identical. Test: tests/python/test_ge_arc.py (refusals; a 3-s search on this map -> route
+  + rows).
+* The recipe this lineage would ship (constants set once, no map knowledge): the incumbent recipe
+  without --race-ratchet + `--ge-minutes 12 --ge-arc 1500 --stall-energy 32
+  --eval-patience-energy 32 --energy-pot 12 --energy-pot-front 0 --energy-pot-front-bonus 0
+  --energy-ratchet 1 --fail-pen 2 --yaw-sigma-max 0.3 --keys-hold-spawn-duck`. Not yet run from
+  scratch as one launch: the A6 lineage reached it in steps (arc + spawns at 0, the tail at
+  1.38B, a two-round GE line to 12.77% instead of one 12-min search to 9.48%).
