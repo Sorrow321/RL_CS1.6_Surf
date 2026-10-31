@@ -890,3 +890,21 @@ recordings on the trigger's hull from the positions (the memory note's plan).
   38.14 s = 118.729): 18/18. B7 later: 8/9 38.20 s (15.822B); the band sits at the climb (845: 0%).
 * Real-finish searches on B7's 15.77B weights (`beams_it4.sh`): d-ranked beams 37.57 / 37.63 s, Monte
   Carlo 37.66-37.94 s (the box-finish lines were 36.65-36.97 s: a real finish costs ~0.6 s more).
+* Real-finish prefix beams (B7's 15.77B weights): **37.50-37.60 s** (best real line 37.50 s). BC file 7
+  `runs/bc/r2_bc7.npz` (16 real-finish lines, md5 1239d576).
+* **Where the 38.1 s still loses (ANALYSIS, B7 15.595B median vs the record ~0.86 s file offset)**:
+  the pit +0.24 s (the one-lap exit is near the record's), 2-60% +0.6 s, **60-70% +1.4 s** (B7 5.45 s
+  vs the record's 4.03 s: at t 25.5 both are at ~(900, -240) heading north; the record turns EAST
+  within 0.5 s and dives into the bowl north-bound at x ~1,600; B7 carries on north to y ~700, turns
+  back SOUTH through (1,358, -7, -1,243) and comes north again 1.5 s behind), 80-90% +0.4 s. The
+  real-finish search lines keep the same loop (60-70% in 5.26 s).
+* Loop Monte Carlo (`beams_loop.sh`: --prefix-line of the 37.50 s line to tick 3,100-3,300, then
+  `--elite-frac 1.0` + view-only held-offset forks of 3,072 envs at ticks 3,200-3,400 = t 24.5-26.1 s,
+  J 30-90, 0.5-0.92 s): **8 of 8 null** (37.63-37.74 s, every winner a non-fork lineage). Unlike the
+  pit, a held heading offset there does not put the policy onto the record's turn.
+* B7 final evals: 9/9 38.35 s (15.897B), 5/9 37.98 s (15.973B); stopped at 15.975B (14:09 UTC).
+* **B8 `uf2r2b1_real2`** (14:10 UTC): resume of B7's 15,975,055,360 (md5 0bd5b400); spine = the
+  37.50 s REAL line (`runs/beam/r2_real723.npy` md5 528f703f, from B7's own weights: its pit climb is
+  the current policy's, where B7's band was stuck at r2_one621's row 845 with 0% for ~0.5B steps),
+  tau0 1,070 (just past its exit, row 1,067), pace 0.05 1.0; BC file 7 at 0.3; its pit states
+  (`r2_pit_states4.npy`) at 10%. Band success 77.6% at 1,070 at once.
