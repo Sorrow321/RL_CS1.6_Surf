@@ -2200,6 +2200,14 @@ def main():
                     "On a crossing, the FINISHING winner's line is saved the same way "
                     "(finished = 1, its states up to the pre-finish tick). "
                     "Off = the tool as it was")
+    ap.add_argument("--frontier-last", action="store_true",
+                    help="--save-frontier: the frontier is the LEADER at the LAST resample (its "
+                    "action table and states up to that tick) instead of the deepest-d lineage "
+                    "of the whole search. With --envs = --greedy-envs every env is the greedy, "
+                    "so this saves the greedy's own line to --max-ticks: a --prefix-line that "
+                    "starts a search from the greedy's own state at any tick (the --keys-hold-"
+                    "safe twin of --greedy-prefix, which refuses a --keys-hold checkpoint). "
+                    "Off = the deepest-d rule, byte-identical")
     ap.add_argument("--out-dir", default=str(ROOT / "runs" / "beam_tas"))
     ap.add_argument("--log-every", type=int, default=5,
                     help="print every Nth generation")
@@ -3394,7 +3402,7 @@ def main():
                                   + f", protect {args.branch_protect} gens")
                 lead_vert = int(sc[keep[0]] // 1e6) if args.score == "route" \
                     else -1
-                if (lead_vert > frontier["vert"]
+                if (args.frontier_last or lead_vert > frontier["vert"]
                         or (lead_vert == frontier["vert"]
                             and dgeo[keep[0]] < frontier["d"])):
                     frontier = {"vert": lead_vert,
