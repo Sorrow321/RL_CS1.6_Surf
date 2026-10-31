@@ -145,3 +145,10 @@ idle for the first third of its round.
   (the record had -1,923 there). GE's -2,329 is ~100 u short of even the ideal shot.
 * 22:13 UTC: GE with 128 u cells (instead of 64), 30 min on one local core, to see whether a
   coarser archive pumps faster per CPU-minute (fewer cells, more selections per energy top).
+* GE with **128 u cells** (30 min, one local core, seed 5): 272k cells (vs 1.28M at 64 u in
+  40 min), loop-1 E max **-2,223** (64 u, 40 min: -2,329) - at the ballistic floor of the
+  transfer - and best **10.65%** (64 u: 9.35%) at loop 1's WEST end apex (-1,719, 1,123,
+  -2,642), the record's west-end apex region (its 9.4% at t+61). 10 cells reach the air in
+  front of loop 2's face from the north at (-380, -290, -2,730) (7.5%), none on loop 2. A
+  coarser archive pumps faster per CPU-minute (fewer cells, each energy top drawn more often).
+  The box GE beside the control now uses --cell 128; a 60-min local run (seed 7) started 22:44.
