@@ -95,3 +95,11 @@ the numbers). Read it before you start; append to it before you wrap up.
   Nothing on this branch works around it. Suggestions for the operator: a per-agent share of the
   pace (e.g. limit / branches), or a cap on how long one box may hold the pace while another
   branch waits.
+* Zero-shot on this map (CPU, `record_ckpt` of `tools/warm_from_ref.py` checkpoints = the refs'
+  weights under the recipe's config here, 42 s cap; all four are shape-compatible with the recipe):
+  none pumps. uf2_x13 heads off the start floor and dives into the kill plane (greedy 7.8 s,
+  stochastic 6.9 / 19.0 s, peak ~1,160 u/s, energy never above the spawn's); pb_r15 / pb_r26 /
+  sid_ref mostly stay on the start floor until the cap (best 0.0-0.7%, peak ~450 u/s; one
+  stochastic pb_r26 episode gained 29 u of energy height before it fell). So a warm start brings
+  surfing skill, not the loop: it still has to learn the pump. uf2_x13 stays the warm arm (it at
+  least goes where the half-pipe is).
