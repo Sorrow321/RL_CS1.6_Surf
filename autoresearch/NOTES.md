@@ -121,3 +121,17 @@ the numbers). Read it before you start; append to it before you wrap up.
   are re-zeroed. So a warm start needs a retargeted checkpoint (config map -> surf_unitfarmer2,
   demo/spawn files cleared, demo_front_frac 0, run state dropped), pushed with deploy --ckpt.
   Kept as the second option; the first box goes to the scratch arm.
+* **The warm start is ready and goes first (03:04 UTC).** tools/ckpt_retarget.py (new, test
+  tests/python/test_ckpt_retarget.py) turns refs/pb_r26 into a uf2 warm start (config map ->
+  surf_unitfarmer2; demo/BC/spawn files, demo_front_frac, obs_potential_d0 cleared; reservoir,
+  novelty table, unstuck tracker dropped; weights, optimizer, step 80.08B and shape flags kept;
+  md5 b2426d19). Local checks: the record gate passes on it; a 32-env CPU resume runs at 7.64 ms
+  ([8,8,7]), energy_pot 12 per call (its own), episode cap 320.9 s; its yaw sigma is 0.017 (a
+  near-deterministic policy). Zero-shot from the true start (greedy 2, stochastic 3, 6.5-19 s) it
+  hops slowly on the platform (|v| < 300) and steps off into the fall catch at z ~510-550, best
+  2.2-2.4 %: the upper-level floor south of the platform (z 490) lies inside trigger *7's brush,
+  so it is a death floor too (the operator's scratch smoke dies at the same place). Why warm
+  first: the wall here is low-level energy control (landings, ramp riding, a pump), and pb_r26
+  learned exactly that with per-call energy shaping on a map whose start is a half-pipe pump.
+  The scratch arm (same additions, 8 ms) stays the next one; a recipe that only works warm is not
+  yet a recipe.
