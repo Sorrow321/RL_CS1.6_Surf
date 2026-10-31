@@ -3,5 +3,5 @@
  "round": 2,
  "final": false,
  "best": null,
- "summary": "Starting (09:55 UTC). Incumbent 118.592 = 9/9 at 42.25 s. Split analysis (record as instrument only): the incumbent loses ~3 s in the start pit (one extra energy lap before the climb: out at 11.2 s vs the record's 8.3 s) and ~1.5 s at 60-65%. Plan: search the policy's own distribution for the earlier pit exit (receding-horizon beam / forks at the first south-end pass), then teach the faster line (expert iteration: beam -> BC + spine) warm from the incumbent, evals on."
+ "summary": "10:30 UTC. Found by the policy's OWN search on the incumbent's weights: an EARLY PIT EXIT (first south pass, a left turn into the SW ramp at ~5.2 s) - beam re-rooted inside its own lost-frontier lineage -> finishing lines from the true start in 36.88-37.94 s (plain beam 41.19, incumbent greedy 42.25). x1 (BC 0.5 + spine on the plain 41.2 s lines) made the greedy SLOWER (44.06 s) - stopped. x2 (running): resume + the 5 early-exit lines as a fixed spine, RL only. Next: the same re-root trick on the 60-65% bowl loop; targeted BC in the divergence window if x2's greedy does not take the early exit."
 }

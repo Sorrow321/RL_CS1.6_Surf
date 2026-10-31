@@ -617,3 +617,73 @@ expert loop's seed (beam -> plan_to_bc -> --bc-file; keep the trainer's evals on
 counts only `traj_<step>.jsonl`). For the recipe (0b): make the three manual steps automatic (a
 first spine from the true start without a hand-run MC line; the stall cut without
 --auto-spine-energy) and repeat on a second map with the same flags and constants.
+
+## uf2r2b4 (round 2, slot 4) - 2026-10-31 09:45 UTC start
+
+Box 58518546: RTX 5080, 0.387 $/h, South Carolina (deployed 09:53, the incumbent ckpt pushed as
+runs_ckpt.pt, md5 359ab38c).
+
+### Where the incumbent's 42.3 s goes (ANALYSIS ONLY: the record is an instrument, CLAUDE.md 0)
+Split times by best progress on config.field, the incumbent's 13.068B eval (9 eps, all within
+0.5 s of each other) vs the record (its file starts ~0.8 s later at the 1% mark):
+* 2% (out of the pit): 11.2-11.4 s vs the record's 8.3 s: **~3-4 s in the start pit.** The
+  greedy enters the pit at 3.2 s with E 1,285 (record 1,294) and has MORE energy at the bottom
+  (1,250 vs 1,117), but laps counter-clockwise TWICE: north up the east side, south down the west
+  side, round the south end at ~5.5-6.0 s with E ~1,150 WITHOUT turning into the south-west ramp
+  (heading -88, vz +389), a second lap gaining ~100 u of E (1,148 -> 1,255 by 9.5 s), and only
+  then climbs at the south-west (10.0 s: (-2,384, -2,909, -663), heading -48, vz +1,196) and out.
+  The record laps once, clockwise (north on the west side, south on the east side), and climbs at
+  the south end heading south-west at ~6.5 s with E ~1,120.
+* 60% -> 65%: 4.0 s vs 2.5 s: **~1.5 s in a loop in the bowl at (1,200..1,900, -300..800,
+  z -1,100..-1,200)**: at 30.0 s the greedy heads east at (1,179, 790, -650), drops into the bowl
+  heading SOUTH (30.4 s, (1,387, 405, -1,107)), U-turns and comes back north at 31.2 s; the record
+  goes east first at y ~0..375 and then straight north along x ~1,550-1,675 to the climb.
+* The rest (2-60%, 65-100%): ~1 s in all.
+
+### The policy's own search on the incumbent's weights (beam_tas from the TRUE start, 4096 envs)
+* b0 (d-ranked, resample 25, 64 greedy envs): greedy 42.30 s (spawn seed 0) -> **41.19 s**
+  (+1.11 s, 6,009 finishes); the gain is spread over 45-100%, the beam line laps the pit twice
+  exactly like the greedy (2% at 11.3 s). The round-1 beam on the 8.82B weights did the same.
+* Wider proposals do NOT find either shortcut, and noise in the yaw costs speed: --view-temp 10 /
+  30 -> 42.52 / 42.59 s; --view-hold 0.3 25 / 1.0 25 -> 42.34 / 42.19 s; --keys-temp 2 -> 41.37 s;
+  --resample-every 75 -> 41.45 s; forks of 2,048 envs with held view offsets at the pit's first
+  south pass (--branch-at t650 / t600, --branch-view-only, jitter 20 / 40 deg, protect 4-5 gens)
+  -> 41.29 / 41.28 s with 0 of 2,048 branch lineages alive at the end (none climbs early).
+* --commit (receding-horizon) refuses a --keys-hold checkpoint.
+* plan_waves x1 (3 waves, spawn seeds 1-3): 41.32 / 41.20 / 41.42 s against greedies 42.79 / 42.65
+  / 41.83 s on the same spawns - the greedy's time depends on the spawn draw by ~1 s.
+
+### x1 `uf2r2b4_x1`: expert iteration (BC + spine) on the plain beam lines - WORSE, stopped
+Resume of the incumbent + `--bc-file` (plan_waves x1: 46 lines, 62k rows) `--bc-coef 0.5 -> 0 over
+3e8 --bc-target dist --bc-value-coef 0.25` + the three 41.2-41.4 s lines as a fixed full-window
+spine (`--demo-window 16166 --demo-rate 2.0 --demo-min-ep 1e9 --demo-grow 0 --demo-front-frac 0`;
+the checkpoint restores --demo-front-frac 0.5, which needs --demo-grow) + `--lr 1e-4`.
+Evals: 13.046B 6/9 (best 42.64 s; ONE PPO update in), 13.122B 9/9 best **44.06 s**, 13.197B 8/9
+45.19 s - slower on every segment than the incumbent (42.3-42.8 s). Stopped at 13.2B (10:17).
+Why (my reading): the lines are the policy's own SAMPLES, so most of their decisions are noise
+(head-acc 0.61, joint-acc 0.14 at the start): cloning them into the argmax makes the greedy noisier;
+and the BC value target is the line's EXTRINSIC return (plan_to_bc drops int_coef) while this
+critic was trained on ext + int (int 25-37 per episode) - v-mse 6,838 at the first step. BC also cut
+the trainer to 70-240k steps/s (365k without). Do not use --bc-value-coef on an int_coef policy.
+
+### THE EARLY PIT EXIT, found by the policy's own search (10:13-10:20 UTC)
+* Per-generation log of the plain beam (`--log-every 1`): at tick 900 (6.90 s) the population's best
+  lineage is at d 29,845 (2.6%) - a climb on the FIRST south pass - and at tick 1000 the best is
+  30,312 again: the beam cloned it and then lost it (all its clones fell back into the pit). The
+  final selection (first finish) never sees it.
+* `--max-ticks 1001 --save-frontier` keeps that lineage (`runs/beam/e900`, the frontier = the
+  deepest d at any resample). It turns LEFT into the south-west ramp at ~5.2 s (heading -82 -> -63
+  -> -16, vz +377 -> +962 -> +1,261) where the greedy goes straight south (heading -88, vz +389) and
+  laps again; it tops out at (-1,689, -2,757, 502) at 6.9 s with E 1,131 - the greedy's own exit
+  point (it is at (-1,690, -2,677, 552) at 11.5 s with E 1,198).
+* Re-rooting the beam INSIDE that lineage (`--prefix-line beam_frontier.npz:T`; beam_tas needed a fix:
+  the frontier npz lacked view_mode and gate_seed, ec987bd9): from T = 880 (6.75 s) and 800 every
+  continuation falls back into the pit (47.3 / 47.1 s finishes after more laps); **from T = 700
+  (5.37 s, on the ramp) the search climbs out and FINISHES in 36.93 s** (bit-exact replay;
+  `runs/beam/q700`), 2% progress at 6.7 s instead of 11.3 s, and it keeps the 4.6 s lead to the
+  finish (60% at 24.2 s vs 28.5; 100% at 36.9 vs 41.2). Other torch seeds from T = 700: 37.94 /
+  37.33 s. It still flies the 60-65% bowl loop (3.9 s there vs the record's 2.5).
+* Generic reading: the beam's lockstep selection keeps whatever is deepest NOW, so a lineage that
+  is briefly the deepest and then needs a different continuation is cloned and lost; re-rooting a
+  search a little before a lost frontier (several offsets) recovers it. No constant here names the
+  map: the frontier is the search's own deepest-d lineage, the offsets are times.
