@@ -385,3 +385,9 @@ on purpose: round 1 needs an exit, and the attribution comes after. Read with uf
   z ~790), 1 at 51.6%. With `--demo-success-d 100` the curriculum WALKS BACK at once: tau 5090 ->
   3035 in ~150M steps, 94% success over 312 band episodes. Hand-on: ckpt_5807538176 (12M before;
   md5 88e3458a...).
+* A12 5,895M: 55.508 (median 55.5%); **5,971M: 57.749** (best 57.8%, median 57.5%): 7/9 die at the
+  SAME spot ~31 s, (1,530..1,650, -300..-355, -331), with E 54-89 - an ENERGY gate: the line
+  arrives with ~1,300 u of E at 50% and bleeds it all by 57% (the record passes this stretch
+  with E ~1,000: (1,586, 481, -726) at t+25 = 63%). A12's search 1 (5,909M, 55 s): new spine
+  (4,585 states, end d 13,132 = 57.2%); 7/9 past its line -> search 2 running. The k01 curriculum
+  at tau 3549 with 99.8% success. Hand-on: ckpt_5961678848 (9M before; md5 915931b4...).

@@ -3,11 +3,11 @@
  "round": 1,
  "final": false,
  "best": {
-  "score": 55.779,
-  "eval_file": "/home/steam/ar_uf2/runs/uf2r1b1/uf2r1b1_auto2/traj_5819596800.jsonl",
+  "score": 57.749,
+  "eval_file": "/home/steam/ar_uf2/runs/uf2r1b1/uf2r1b1_auto2/traj_5970591744.jsonl",
   "run": "uf2r1b1_auto2",
-  "step": 5819596800,
-  "ckpt": "/home/steam/ar_uf2/runs/uf2r1b1/uf2r1b1_auto2/ckpt_5807538176.pt",
+  "step": 5970591744,
+  "ckpt": "/home/steam/ar_uf2/runs/uf2r1b1/uf2r1b1_auto2/ckpt_5961678848.pt",
   "recipe": [
    "--death-charge",
    "1",
@@ -63,5 +63,5 @@
   "resume_from": "chain: uf2r1b1_dcw (scratch, 0-279M) -> dcw2 -> gsp -> tick -> turn -> turn2 -> cur (resumed at 2.415B)",
   "commit": "a56ec347"
  },
- "summary": "55.779 (A12 5.820B: best 55.8%, median 46.3%): 8/9 greedy episodes climb out of the start pit, cross the *18 sheet, pass its west edge, and fly to 33-38% of the map (the record's ~t+16 region) by ~25 s. One lineage from scratch: recipe + death charge (a ratchet bug fixed; windowed 2 s) + per-call energy K12 + 10x upward speed novelty + yaw-entropy 0 + keys T -> the dive (227M); greedy-row speed x1-1.3 + heading turn 180 -> record-energy laps, the first training exit; tick 10->7.63 ms; a backward curriculum on the policy's own Monte Carlo line -> the greedy exits (2.94B, 8.8); the auto-spine loop (beam from the true start -> next spine) -> 12.5 -> 38.3. Control = 5.608."
+ "summary": "57.749 (A12 5.971B: best 57.8%, median 57.5%): 8/9 greedy episodes climb out of the start pit, cross the *18 sheet, pass its west edge, and fly to 33-38% of the map (the record's ~t+16 region) by ~25 s. One lineage from scratch: recipe + death charge (a ratchet bug fixed; windowed 2 s) + per-call energy K12 + 10x upward speed novelty + yaw-entropy 0 + keys T -> the dive (227M); greedy-row speed x1-1.3 + heading turn 180 -> record-energy laps, the first training exit; tick 10->7.63 ms; a backward curriculum on the policy's own Monte Carlo line -> the greedy exits (2.94B, 8.8); the auto-spine loop (beam from the true start -> next spine) -> 12.5 -> 38.3. Control = 5.608."
 }
