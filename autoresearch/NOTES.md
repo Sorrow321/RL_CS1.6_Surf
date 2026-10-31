@@ -523,3 +523,16 @@ on purpose: round 1 needs an exit, and the attribution comes after. Read with uf
   So the 9.6B snapshots are NOT pulled, and the hand-on for the 118.550 eval stays
   ckpt_8819048448 (the newest pulled snapshot at or before it; PROTOCOL's rule) - 1 s slower,
   reliable. RESULT.json says so.
+* **FIXED (b7e1b0f8 + this note): the loop could never hand back a FINISHING line.** Two defects:
+  `beam_tas --save-frontier` wrote `beam_frontier.npz` only when the search did NOT cross (a beam
+  that finished left auto_spine no line: search 5's `{"beam_rc": 0}` with no frontier fields), and
+  `de < greedy_d - gain` rejects every line, a finisher included, once the greedy is within
+  --gain of the goal. Now a crossing also saves the finishing winner (states to the pre-finish
+  tick, `finished` 1), and `auto_spine.beats_greedy` lets a finishing line beat a greedy whose
+  median episode does not finish. Unit tests + a box test on ckpt_8819048448: the patched beam
+  finished in **43.18 s** (8,190 finishes in 4,096 envs, bit-exact), 5,632 states, handed back at
+  greedy_d 177 / gain 500, refused at greedy_d 0. A13 itself runs the old code (deployed
+  ee29bffb); it did not need the fix (its greedy closed the last 141 u itself).
+* The policy's own beam (4,096 envs, 8.819B weights) finishes in 43.18 s against its greedy's
+  44.4-45.0 s: a search line ~1.3 s faster exists in its own distribution - the expert loop's
+  (beam -> BC) starting point for round 2.

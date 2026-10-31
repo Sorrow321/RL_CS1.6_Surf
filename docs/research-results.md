@@ -36986,3 +36986,17 @@ produced the finishing line.
   frontier tracks only live elites and its replay stops before the finish tick).
 * Speed: 8.4 s behind the record, 3.55 s of it in the start pit (the greedy's energy laps), 1.6 s
   over 60-70% of the course (split times against the record, analysis only).
+
+## 2026-10-31 06:20 (UTC) - uf2r1b1 follow-up: the auto-spine loop's finish defect FIXED (b7e1b0f8)
+
+The open defect in the section above is fixed. It was two defects: `beam_tas --save-frontier`
+saved a line only when the search did NOT cross, so a beam that FINISHED handed `auto_spine` no
+line at all; and the gain rule (`de < greedy_d - gain`) rejects every line, a finisher included,
+once the greedy is within `--auto-spine-gain` of the goal. A crossing now also saves the
+finishing winner's line (`finished` 1; ok = the open-loop replay finishes on the search's tick),
+and `auto_spine.beats_greedy` lets a finishing line beat a greedy whose median episode does not
+finish (`greedy_d > 0`). Tested in `tests/python/test_auto_spine.py` and on the box: on
+surf_unitfarmer2's `ckpt_8819048448` the patched beam finished in 43.18 s (bit-exact; 8,190
+finishes in 4,096 envs), saved 5,632 states (end d 0), and `auto_spine` handed it back at
+greedy_d 177 / gain 500 and refused it at greedy_d 0. Flag-off behaviour is unchanged
+(`--save-frontier` off writes nothing new; a no-crossing search is untouched).
