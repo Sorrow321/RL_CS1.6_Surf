@@ -883,3 +883,12 @@ fires on the diagonal and the west face). Rebuilt on the box (4/4 tests pass the
 ### x10 `uf2r2b4_x10` (13:17 UTC): x9 + `--goal-hull 1` - learn the REAL finish
 Resume of x9's latest (14.942B) with the same flags + --goal-hull 1 ("--goal-hull: ... brush model
 *23's CLIP HULL" in the log; goal_hull in run.json). Its evals' "done" are real finishes.
+* **x10 finishes for REAL.** Evals (all graded "done" by the clip-hull goal): 14.943B 3/9 (first
+  update) / 15.018B 9/9 36.88 s (118.771) / 15.094B 9/9 36.96 / **15.169B 9/9 36.57 s (118.781)**.
+  The episodes end on the diagonal curtain at ~(3,440-3,480, -1,960..-2,005, -520..-560) instead of
+  the box's NW corner at (3,306, -1,875). uf2_real_finish.py (fixed f989fa10: the recorded rows
+  stop one tick short of the hull - the final state is never written - so the last row is stepped
+  1-2 ticks along its velocity): x10 15.018 / 15.094 / 15.169B **9/9 REAL each** (36.57-37.35 s);
+  x9 14.771B 0/9; the incumbent's traj_13067878400 **1/9** (42.57 s). The real finish costs ~0.5 s
+  over the fake corner. Hand-on for 118.781 (real): ckpt_15160836096 (8.4M before; md5 8b043c22).
+  By the CURRENT score.py x9's fake 118.799 still ranks first; RESULT.json carries both.

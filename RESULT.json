@@ -55,5 +55,20 @@
   "resume_from": "uf2r2b4_x8 ckpt_latest (14.317B, md5 7760e4e2) <- x7 ckpt_final (13.846B) <- the incumbent uf2r1b1 ckpt_13045858304 (md5 359ab38c)",
   "commit": "294e5638"
  },
- "summary": "118.799 (13:16 UTC): x9 14.771B 9/9, best 36.03 s (incumbent 118.592 = 42.25 s; record 35.17 s). Two shortcuts the policy's own search found and the greedy now flies: an EARLY PIT EXIT (~3.4 s) and the 60-65% BOWL (~1.4 s). Both are camera-gated: found by beam_tas --pitch-hold (held camera pitch) from the policy's own greedy state. Both taught the same way: a pace-gated spine (--demo-success-pace 0.1 1.0) pinned at the true start (--demo-tau0 0 --demo-rate 0) + BC on the line + the lines as spawn states + cold keys (--unstuck-max 0). x7 (pit) 118.715 -> x8 (continuation) 118.733 -> x9 (bowl) 118.778. Failed before: BC on plain beam lines (x1), spine-only RL (x2), BC on early-exit rows (x3/x4, revert), a walking pace-gated curriculum (x5/x6, stalls at a ramp kick)."
+ "summary": "CAVEAT (13:33 UTC): by the ENGINE's trigger rule (clip hull, not the finish box) the round-1 incumbent finishes 1/9 and my x7-x9 evals 0/9 - every policy entered the box's empty NW corner. x10 (--goal-hull 1, this branch's core fix, 294e5638) finishes 9/9 REAL at 36.57 s (15.169B, 118.781). score.py still trusts the core's box: by it my best is x9 14.771B 118.799 (fake finishes). Method that got here: two camera-gated shortcuts found by the policy's own search (beam_tas --pitch-hold from its own greedy state) - an early pit exit (~3.4 s) and the 60-65% bowl (~1.4 s) - taught by a pace-gated spine pinned at the true start + BC on the line + the lines as spawn states + cold keys. Next: x10 continues on the real finish; aim to beat 118.799 with real finishes.",
+ "real_finish_best": {
+  "score_if_clip_hull_graded": 118.781,
+  "score_current_grader": 118.781,
+  "eval_file": "/home/steam/ar_uf2/runs/uf2r2b4/uf2r2b4_x10/traj_15169224704.jsonl",
+  "run": "uf2r2b4_x10",
+  "step": 15169224704,
+  "real_finishes": "9/9 (clip hull, autoresearch/analysis/uf2_real_finish.py)",
+  "best_real_s": 36.57,
+  "ckpt": "/home/steam/ar_uf2/runs/uf2r2b4/uf2r2b4_x10/ckpt_15160836096.pt",
+  "recipe_delta": [
+   "--goal-hull",
+   "1"
+  ],
+  "commit": "f989fa10"
+ }
 }
