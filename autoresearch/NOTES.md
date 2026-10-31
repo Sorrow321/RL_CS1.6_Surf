@@ -347,3 +347,8 @@ on purpose: round 1 needs an exit, and the attribution comes after. Read with uf
   The k03 curriculum is stuck at its end (0% of band spawns 400 u past d 17,676) and no greedy
   episode crosses its success line (43.6%), so the loop does not search again (no
   --auto-spine-patience set).
+* A11 4,589-4,740M: 39.595 / 35.864 / **44.455** (4,740M: best 44.5%, median 39.4%; ep8 past the
+  `*9` climb to (3,277, 1,419, -189), 44.5%, on its way to the record's t+20 point (2,735, 622,
+  461) = 48%; 8/9 at 37-40%). 1/9 past the k03 success line (43.6%): the quorum is 5. Hand-on:
+  ckpt_4738514944 (1.6M before; md5 430b0d0c...). Training: the reservoir's deepest 44.66% of d0 =
+  55.3%, front-perturb best 17,070 u (55.7%).
