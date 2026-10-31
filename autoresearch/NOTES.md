@@ -687,3 +687,25 @@ the trainer to 70-240k steps/s (365k without). Do not use --bc-value-coef on an 
   is briefly the deepest and then needs a different continuation is cloned and lost; re-rooting a
   search a little before a lost frontier (several offsets) recovers it. No constant here names the
   map: the frontier is the search's own deepest-d lineage, the offsets are times.
+* The bowl loop (60-65%): the 36.93 s search's per-generation best d stalls 24.5-27.6 s (11,848 ->
+  12,167 -> 11,227); capturing that lineage (`--max-ticks 3201`, `runs/beam/e3200`) and re-rooting at
+  2,800-3,100 ticks gives 36.84-36.95 s: no shortcut there (that "lost frontier" is the same loop).
+* Where the early-exit line leaves the greedy (seed-0 spawn): within 15-25 u of the greedy's path to
+  tick 660 (5.06 s); then on the ramp it turns hard left (heading -80 -> +2 by 5.52 s, vz 463 -> 1,310)
+  while the greedy goes straight (vz ~420) and laps. Re-rooting at 600 (4.6 s) finds no early exit
+  (41.38 s); at 652 (5.0 s) 36.88 s; at 752 (5.77 s) 47.34 s.
+
+### x2 `uf2r2b4_x2`: the 5 early-exit lines as a fixed spine, RL only - not adopted, stopped
+Resume of the incumbent + spine = q700 / r650 / r700a-c (36.88-37.94 s, 24,345 states, keys),
+`--demo-window 24345 --demo-rate 2.0 --demo-min-ep 1e9 --demo-grow 0 --demo-front-frac 0`, lr 3e-4
+(restored), no BC; 390k steps/s. Spine episodes finish 82% (14.4k by 13.13B). Evals: 13.046B 9/9
+42.38 s; 13.122B 8/9 43.45 s; 13.197B 9/9 43.59 s - the greedy still laps twice and climbs out
+LATER (z max at ~14.0 s vs the incumbent's 13.3 s). The turn is a rare sample (the plain beam found
+it once in 4,096 x 9 generations), so PPO's p x A signal from the start is tiny; the spine spawns on
+the shared prefix act like the greedy. Stopped at 13.2B (10:31).
+
+### x3 `uf2r2b4_x3` (10:32 UTC): + BC only in the divergence window
+x2's flags + `--bc-file runs/beam/x3/bc_win.npz` (plan_to_bc rows of the 73 kept early-exit lines,
+cut to state ticks 600-900 = 4.6-6.9 s: the approach, the turn, the climb-out; 5,548 rows; md5
+ef665d73) `--bc-coef 0.5 --bc-coef-final 0.05 --bc-steps 4e8 --bc-target argmax` (value coef 0).
+The score needs only ONE early-exit episode in a 9/9 eval (best finish time).
