@@ -255,3 +255,19 @@ Box 58559243: RTX 5080 + Ryzen 9 7945HX (32 threads), 0.387 $/h, South Carolina 
   --score dh --score-energy 1 (rank by -d + energy height), 4,096 envs, 25-decision generations,
   14,300 ticks (100 s), --save-frontier: does the policy's own pumping + selection make the
   ramp -> half-pipe transition and go past the GE line?
+* **A6b 676M (19:08 UTC): score 9.905.** Greedy 6/9 episodes pump to h ~-2,000 (+1,074 u over the
+  spawn; the record leaves loop 1 at ~-1,950) and reach 9.54-9.91% on the half-pipe's ends
+  (z max -2,465..-2,506), flying 76-120 s with 68-104 swings; 3/9 still stay in the start ramp
+  (h ~-2,850). median 9.63%. (600.8M, the resume's first eval: frontier 565 u, cover 2.8%.)
+  Snapshot of the weights 12M steps later: runs/zlr1b2_arc2/ckpt_688390144.pt (pulled).
+* Beam b1 (beam_tas on A6's 600M weights, --score dh): beam_tas and surfgym.bc.make_eval_feeds
+  refused every --race-arc checkpoint; the arc reaches inference only through --obs-reward's
+  slot 12, so both now refuse arc + obs-reward only (840ea283, test_arc_beam_feeds.py). b1's
+  population at t 6,000: min d 5,975-6,050, median ~6,120 (3.8%).
+
+### Harness issue (box.py pull --snapshot)
+* `box.py pull --snapshot STEP` fetches `ckpt_<STEP>.pt` with STEP as a plain int, but the
+  trainer names snapshots `ckpt_{step:010d}.pt` (zero-padded): below 1e9 steps they never match
+  (a resumed run at 600M with --ckpt-every 1e9 writes its first snapshot at 1.6B). Workaround: a
+  hardlink with the unpadded name on the box (`ln ckpt_0688390144.pt ckpt_688390144.pt`), then
+  `pull --snapshot 688390144`.

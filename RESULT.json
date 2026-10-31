@@ -7,7 +7,7 @@
   "eval_file": "/home/steam/ar_loop/runs/zlr1b2/zlr1b2_arc2/traj_0676331520.jsonl",
   "run": "zlr1b2_arc2",
   "step": 676331520,
-  "ckpt": "/home/steam/ar_loop/runs/zlr1b2/zlr1b2_arc2/ckpt_0688390144.pt",
+  "ckpt": "/home/steam/ar_loop/runs/zlr1b2/zlr1b2_arc2/ckpt_688390144.pt",
   "recipe": [
    "recipe minus --race-ratchet",
    "--race-arc",
