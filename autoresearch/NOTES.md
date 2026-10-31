@@ -229,3 +229,12 @@ Box 58559243: RTX 5080 + Ryzen 9 7945HX (32 threads), 0.387 $/h, South Carolina 
   line's 5,784 states, views canonical, + GE-1's 1,360), `--stall-energy 32
   --eval-patience-energy 32 --energy-pot 12 --energy-pot-front 0 --energy-pot-front-bonus 0
   --energy-ratchet 1 --fail-pen 2 --yaw-sigma-max 0.3 --keys-hold-spawn-duck`.
+* **A6 at 151M (18:44 UTC): the first arm off the start platform.** Greedy 76M: all 9 leave the
+  platform, catch the curved start ramp (z -3,912..-3,964) and swing in it (5-11 swings, vmax
+  ~1,150 u/s, h max -2,986..-3,014 = +60-90 u), dying at 30-36 s; 151M: 17-43 swings, h max
+  -2,952..-2,977 (+100-120 u), episodes 32-64 s (the energy re-arm keeps them past the 30 s
+  patience), one episode 1.34% (score **1.341**; every earlier arm <= 0.704). Training: reward
+  13.9/ep, arc gain 2,113 u/ep, energy records +48 u/ep, yaw sigma 0.17 (cap 0.3), ep len 2,452,
+  ~356k steps/s with GE-3 beside it. The policy follows the line's order (the GE line itself pumps
+  in this ramp from 3 to 17 s, h -3,074 -> -2,769, before entering the half-pipe at 18 s).
+* Promising by the protocol's rule (a gate no other arm cleared): extend.
