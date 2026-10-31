@@ -414,3 +414,10 @@ Box 58559243: RTX 5080 + Ryzen 9 7945HX (32 threads), 0.387 $/h, South Carolina 
 * Plan: A8 runs while it keeps setting records; ~23:30 UTC the box switches to a FROM-SCRATCH
   launch of the whole recipe (`--ge-minutes 12 --ge-arc 1500 --race-arc-self 0.01` + the
   energy rules, fail-pen, yaw cap) to confirm it in one launch.
+* A8 3.44-3.89B: 23.379, 22.942, 24.415, 25.842 (median 25.5%), **26.870 (3.74B, median 26.8%)**,
+  22.992, 23.338. Third route swap at 3.74B: end d 4,652 (26.9%), 2,014 vertices = 257,664 u
+  (scale 0.00039/u). Snapshot pulled: runs/zlr1b2_aself/ckpt_3923247104.pt.
+* A cost of the swap rule as written: the DEEPEST episode is also the one that swung longest to
+  get there, so the route grows (126k -> 168k -> 258k u) and the arc pays less per unit (100/L);
+  the medians dipped to 22.5-23.1% right after the third swap. A shorter-line tie-break (the
+  fastest episode within the margin of the deepest) is the obvious refinement - not built.
